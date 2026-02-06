@@ -23,7 +23,7 @@ module Gitlab
           assignee_id: assignee_id,
           created_at: raw_data[:created_at],
           updated_at: raw_data[:updated_at],
-          imported: true
+          imported_from: imported_from
         }
       end
 
@@ -76,6 +76,32 @@ module Gitlab
 
       def opened?
         state == 'opened'
+      end
+
+      def project_assignee_association
+        :merge_request_assignees
+      end
+
+      def contributing_user_formatters
+        {
+          author_id: author
+        }
+      end
+
+      def contributing_assignee_formatters
+        {
+          user_id: assignee
+        }
+      end
+
+      def target_branch_sha
+        # For merged PRs, Gitea returns base[:sha] as the merge commit SHA,
+        # not the target branch SHA before the merge. We need to use merge_base instead.
+        if raw_data[:merged] && raw_data[:merge_base].present?
+          raw_data[:merge_base]
+        else
+          target_branch.sha
+        end
       end
 
       private

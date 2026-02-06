@@ -76,7 +76,7 @@ RSpec.describe PipelineScheduleWorker, :sidekiq_inline, feature_category: :conti
 
     context 'when gitlab-ci.yml is corrupted' do
       before do
-        stub_ci_pipeline_yaml_file(YAML.dump(rspec: { variables: 'rspec' } ))
+        stub_ci_pipeline_yaml_file(YAML.dump(rspec: { variables: 'rspec' }))
       end
 
       it 'creates a new pipeline' do
@@ -85,11 +85,11 @@ RSpec.describe PipelineScheduleWorker, :sidekiq_inline, feature_category: :conti
     end
   end
 
-  context 'when the schedule is not runnable by the user' do
-    it 'does not deactivate the schedule' do
+  context 'when the schedule is not runnable by the schedule owner' do
+    it 'deactivates the schedule' do
       subject
 
-      expect(pipeline_schedule.reload.active).to be_truthy
+      expect(pipeline_schedule.reload.active).to be_falsey
     end
 
     it 'does not create a pipeline' do
@@ -160,26 +160,6 @@ RSpec.describe PipelineScheduleWorker, :sidekiq_inline, feature_category: :conti
         .and_call_original
 
       subject
-    end
-
-    context 'with run_pipeline_schedule_worker_with_delay disabled' do
-      before do
-        stub_feature_flags(run_pipeline_schedule_worker_with_delay: false)
-      end
-
-      it 'calls bulk_perform_async with the arguments and delay' do
-        expect(RunPipelineScheduleWorker)
-          .to receive(:bulk_perform_async)
-          .with([[pipeline_schedule.id, user.id, { scheduling: true }]])
-          .and_call_original
-
-        expect(RunPipelineScheduleWorker)
-          .to receive(:bulk_perform_async)
-          .with([[other_pipeline_schedule.id, user.id, { scheduling: true }]])
-          .and_call_original
-
-        subject
-      end
     end
   end
 end

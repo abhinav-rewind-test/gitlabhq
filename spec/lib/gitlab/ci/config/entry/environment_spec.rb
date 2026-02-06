@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
-RSpec.describe Gitlab::Ci::Config::Entry::Environment do
+RSpec.describe Gitlab::Ci::Config::Entry::Environment, feature_category: :environment_management do
   let(:entry) { described_class.new(config) }
 
   before do
@@ -323,13 +323,10 @@ RSpec.describe Gitlab::Ci::Config::Entry::Environment do
       it { expect(entry).to be_valid }
     end
 
-    context 'is unknown value' do
-      let(:deployment_tier) { 'unknown' }
+    context 'is a variable' do
+      let(:deployment_tier) { '$DEPLOYMENT_TIER' }
 
-      it 'is invalid and adds an error' do
-        expect(entry).not_to be_valid
-        expect(entry.errors).to include("environment deployment tier must be one of #{::Environment.tiers.keys.join(', ')}")
-      end
+      it { expect(entry).to be_valid }
     end
   end
 end

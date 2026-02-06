@@ -25,6 +25,7 @@ class UserCustomAttribute < ApplicationRecord
   DELETED_OWN_ACCOUNT_AT = 'deleted_own_account_at'
   SKIPPED_ACCOUNT_DELETION_AT = 'skipped_account_deletion_at'
   DEEP_CLEAN_CI_USAGE_WHEN_BANNED = 'deep_clean_ci_usage_when_banned'
+  TOP_LEVEL_GROUP_LIMIT_EXEMPT = 'top_level_group_limit_exempt'
 
   class << self
     def upsert_custom_attributes(custom_attributes)
@@ -59,6 +60,10 @@ class UserCustomAttribute < ApplicationRecord
       return unless spam_log
 
       upsert_custom_attribute(user_id: spam_log.user_id, key: AUTO_BANNED_BY_SPAM_LOG_ID, value: spam_log.id)
+    end
+
+    def set_auto_banned_by(user:, reason:)
+      upsert_custom_attribute(user_id: user.id, key: AUTO_BANNED_BY, value: reason)
     end
 
     def set_trusted_by(user:, trusted_by:)

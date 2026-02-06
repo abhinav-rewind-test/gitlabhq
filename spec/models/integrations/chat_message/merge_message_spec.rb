@@ -8,9 +8,9 @@ RSpec.describe Integrations::ChatMessage::MergeMessage do
   let(:args) do
     {
       user: {
-          name: 'Test User',
-          username: 'test.user',
-          avatar_url: 'http://someavatar.com'
+        name: 'Test User',
+        username: 'test.user',
+        avatar_url: 'http://someavatar.com'
       },
       project_name: 'project_name',
       project_url: 'http://somewhere.com',
@@ -46,6 +46,7 @@ RSpec.describe Integrations::ChatMessage::MergeMessage do
       before do
         args[:object_attributes][:state] = 'closed'
       end
+
       it 'returns a message regarding closing of merge requests' do
         expect(subject.pretext).to eq(
           'Test User (test.user) closed merge request <http://somewhere.com/-/merge_requests/100|!100 *Merge request title*> in <http://somewhere.com|project_name>')

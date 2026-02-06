@@ -4,39 +4,72 @@ require_relative '../../migration_helpers'
 module RuboCop
   module Cop
     module Migration
-      # Cop that checks if new indexes are introduced to forbidden tables.
+      # Adding indexes to certain high traffic tables may cause problems,
+      # and caution should be exercised when doing it.
+      # The goal of this rule is raise awareness and start a discussion.
+      # More details can be found in
+      #   - https://gitlab.com/gitlab-org/gitlab/-/issues/332886
+      #   - https://gitlab.com/groups/gitlab-org/-/epics/11543
+      #   - https://gitlab.com/gitlab-org/gitlab/-/issues/460799
       class PreventIndexCreation < RuboCop::Cop::Base
         include MigrationHelpers
 
-        FORBIDDEN_TABLES = %i[ci_builds namespaces projects users].freeze
+        # NOTE: Other tables are prevented by this cop via `table_size:`
+        FORBIDDEN_TABLES = [
+          :p_ci_builds,             # Too many indexes + frequently accessed
+          :namespaces,              # Too many indexes + frequently accessed
+          :projects,                # Too many indexes + frequently accessed
+          :users,                   # Too many indexes + frequently accessed
+          :merge_requests,          # Too many indexes + frequently accessed
+          :project_statistics,      # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154487
+          :issues,                  # Too many indexes + frequently accessed
+          :issue_search_data,       # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154487
+          :packages_packages,       # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154487
+          :sbom_occurrences,        # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/154487
+          :deployments              # Too many indexes + frequently accessed
+        ].freeze
 
-        MSG = "Adding new index to #{FORBIDDEN_TABLES.join(", ")} is forbidden. " \
-              "For `ci_builds` see https://gitlab.com/gitlab-org/gitlab/-/issues/332886, " \
-              "for `namespaces`, `projects`, and `users` see https://gitlab.com/groups/gitlab-org/-/epics/11543".freeze
+        MSG = "Adding new index to certain tables is forbidden. See " \
+              "https://gitlab.com/gitlab-org/gitlab/-/blob/master/rubocop/cop/migration/prevent_index_creation.rb " \
+              "for more details"
 
         def on_new_investigation
           super
           @forbidden_tables_used = false
         end
 
+        # @!method add_index?(node)
         def_node_matcher :add_index?, <<~PATTERN
           (send nil? :add_index ({sym|str} #forbidden_tables?) ...)
         PATTERN
 
+        # @!method add_concurrent_index?(node)
         def_node_matcher :add_concurrent_index?, <<~PATTERN
-          (send nil? :add_concurrent_index ({sym|str} #forbidden_tables?) ...)
+          (send nil? { :add_concurrent_index | :add_concurrent_partitioned_index } ({sym|str} #forbidden_tables?) ...)
         PATTERN
 
+        # @!method prepare_async_index?(node)
+        def_node_matcher :prepare_async_index?, <<~PATTERN
+          (send nil? { :prepare_async_index | :prepare_partitioned_async_index } ({sym|str} #forbidden_tables?) ...)
+        PATTERN
+
+        # @!method forbidden_constant_defined?(node)
         def_node_matcher :forbidden_constant_defined?, <<~PATTERN
           (casgn nil? _ ({sym|str} #forbidden_tables?))
         PATTERN
 
+        # @!method add_concurrent_index_with_constant?(node)
         def_node_matcher :add_concurrent_index_with_constant?, <<~PATTERN
-          (send nil? :add_concurrent_index (const nil? _) ...)
+          (send nil? { :add_concurrent_index | :add_concurrent_partitioned_index } (const nil? _) ...)
+        PATTERN
+
+        # @!method prepare_async_index_with_constant?(node)
+        def_node_matcher :prepare_async_index_with_constant?, <<~PATTERN
+          (send nil? { :prepare_async_index | :prepare_partitioned_async_index } (const nil? _) ...)
         PATTERN
 
         def on_casgn(node)
-          @forbidden_tables_used = !!forbidden_constant_defined?(node)
+          @forbidden_tables_used ||= !!forbidden_constant_defined?(node)
         end
 
         def on_def(node)
@@ -53,15 +86,22 @@ module RuboCop
         private
 
         def forbidden_tables?(node)
-          FORBIDDEN_TABLES.include?(node.to_sym)
+          FORBIDDEN_TABLES.include?(node.to_sym) || large_or_over_limit_tables.include?(node.to_sym)
         end
 
         def offense?(node)
-          add_index?(node) || add_concurrent_index?(node) || any_constant_used_with_forbidden_tables?(node)
+          return true if add_index?(node)
+          return true if add_concurrent_index?(node)
+          return true if prepare_async_index?(node)
+          return true if any_constant_used_with_forbidden_tables?(node)
+
+          false
         end
 
         def any_constant_used_with_forbidden_tables?(node)
-          add_concurrent_index_with_constant?(node) && @forbidden_tables_used
+          @forbidden_tables_used && (
+            add_concurrent_index_with_constant?(node) || prepare_async_index_with_constant?(node)
+          )
         end
       end
     end

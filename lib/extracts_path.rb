@@ -2,24 +2,12 @@
 
 # Module providing methods for dealing with separating a tree-ish string and a
 # file path string when combined in a request parameter
+# rubocop:disable Gitlab/ModuleWithInstanceVariables -- will be fixed in https://gitlab.com/gitlab-org/gitlab/-/issues/425379
 module ExtractsPath
-  extend ::Gitlab::Utils::Override
-  include ExtractsRef
-
-  # If we have an ID of 'foo.atom', and the controller provides Atom and HTML
-  # formats, then we have to check if the request was for the Atom version of
-  # the ID without the '.atom' suffix, or the HTML version of the ID including
-  # the suffix. We only check this if the version including the suffix doesn't
-  # match, so it is possible to create a branch which has an unroutable Atom
-  # feed.
-  def extract_ref_without_atom(id)
-    id_without_atom = id.sub(/\.atom$/, '')
-    valid_refs = ref_names.select { |v| "#{id_without_atom}/".start_with?("#{v}/") }
-
-    raise InvalidPathError if valid_refs.blank?
-
-    valid_refs.max_by(&:length)
-  end
+  InvalidPathError = ExtractsRef::RefExtractor::InvalidPathError
+  BRANCH_REF_TYPE = ExtractsRef::RefExtractor::BRANCH_REF_TYPE
+  TAG_REF_TYPE = ExtractsRef::RefExtractor::TAG_REF_TYPE
+  REF_TYPES = ExtractsRef::RefExtractor::REF_TYPES
 
   # Extends the method to handle if there is no path and the ref doesn't
   # exist in the repo, try to resolve the ref without an '.atom' suffix.
@@ -31,12 +19,29 @@ module ExtractsPath
   # Automatically redirects to the current default branch if the ref matches a
   # previous default branch that has subsequently been deleted.
   #
-  # rubocop:disable Gitlab/ModuleWithInstanceVariables
-  override :assign_ref_vars
+  # Assignments are:
+  #
+  # - @id     - A string representing the joined ref and path
+  # - @ref    - A string representing the ref (e.g., the branch, tag, or commit SHA)
+  # - @path   - A string representing the filesystem path
+  # - @commit - A Commit representing the commit from the given ref
+  # - @ref_type - The type of ref this is, will attempt to detect if not supplied in params
+  #
+  # If the :id parameter appears to be requesting a specific response format,
+  # that will be handled as well.
   def assign_ref_vars
-    super
+    @id = ref_extractor.id
+    @ref = ref_extractor.ref
+    @path = ref_extractor.path
+    @repo = ref_extractor.repo
 
-    rectify_atom!
+    if @ref.present?
+      @commit = ref_extractor.commit
+      @fully_qualified_ref = ref_extractor.fully_qualified_ref
+    end
+
+    rectify_format!
+    ref_type if Feature.enabled?(:verified_ref_extractor, @project)
 
     rectify_renamed_default_branch! && return
 
@@ -47,7 +52,17 @@ module ExtractsPath
   rescue RuntimeError, NoMethodError, InvalidPathError
     render_404
   end
-  # rubocop:enable Gitlab/ModuleWithInstanceVariables
+
+  def ref_type
+    if Feature.enabled?(:verified_ref_extractor, @project)
+      return @ref_type if defined? @ref_type
+
+      @ref_type = ExtractsRef::VerifiedRefExtractor
+        .ref_type(repository_container.repository, ref: ref_extractor.ref, ref_type: ref_extractor.ref_type)
+    else
+      ExtractsRef::RefExtractor.ref_type(params[:ref_type])
+    end
+  end
 
   private
 
@@ -56,23 +71,42 @@ module ExtractsPath
     false
   end
 
-  # rubocop:disable Gitlab/ModuleWithInstanceVariables
-  def rectify_atom!
-    return if @commit
-    return unless @id.ends_with?('.atom')
-    return unless @path.empty?
+  def rectify_format!
+    return if @commit || @path.present?
 
-    @id = @ref = extract_ref_without_atom(@id)
-    @commit = @repo.commit(@ref)
+    bare_ref, format = extract_ref_and_format(@id)
+    return unless format
 
-    request.format = :atom if @commit
+    @id = @ref = bare_ref
+    @fully_qualified_ref = ExtractsRef::RefExtractor.qualify_ref(@ref, ref_type)
+    @commit = @repo.commit(@fully_qualified_ref)
+
+    return unless @commit
+
+    request.format = format
   end
-  # rubocop:enable Gitlab/ModuleWithInstanceVariables
+
+  # If we have an ID of 'foo.atom' or 'foo.json', and the controller provides
+  # Atom, JSON, and HTML formats, then we have to check if the request was for
+  # the Atom version of the ID without the '.atom' suffix, the JSON version of
+  # the ID without the '.json' suffix, or the HTML version of the ID including
+  # the suffix. We only check this if the version including the suffix doesn't
+  # match, so it is possible to create a branch which has an unroutable Atom
+  # feed or JSON view.
+  def extract_ref_and_format(id)
+    return [id, nil] unless id.match?(/\.(?:atom|json)$/)
+
+    id, _dot, format = id.rpartition('.')
+    ref = ref_names.find { |ref_name| id == ref_name }
+
+    raise InvalidPathError if ref.blank?
+
+    [ref, format.to_sym]
+  end
 
   # For GET/HEAD requests, if the ref doesn't exist in the repository, check
   # whether we're trying to access a renamed default branch. If we are, we can
   # redirect to the current default branch instead of rendering a 404.
-  # rubocop:disable Gitlab/ModuleWithInstanceVariables
   def rectify_renamed_default_branch!
     return unless redirect_renamed_default_branch?
     return if @commit
@@ -85,10 +119,20 @@ module ExtractsPath
 
     true
   end
-  # rubocop:enable Gitlab/ModuleWithInstanceVariables
 
-  override :repository_container
+  def ref_names
+    return [] unless repository_container
+
+    @ref_names ||= repository_container.repository.ref_names
+  end
+
   def repository_container
     @project
   end
+
+  def ref_extractor
+    @ref_extractor ||=
+      ExtractsRef::RefExtractor.new(repository_container, params.permit(:id, :ref, :path, :ref_type)).tap(&:extract!)
+  end
 end
+# rubocop:enable Gitlab/ModuleWithInstanceVariables

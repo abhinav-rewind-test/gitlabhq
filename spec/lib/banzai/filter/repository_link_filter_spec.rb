@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :markdown do
   include RepoHelpers
 
   def filter(doc, contexts = {})
@@ -46,8 +46,8 @@ RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_pla
     end
   end
 
-  let(:project)        { create(:project, :repository, :public) }
-  let(:user)           { create(:user) }
+  let_it_be(:project)  { create(:project, :repository, :public) }
+  let_it_be(:user)     { create(:user) }
   let(:group)          { nil }
   let(:project_path)   { project.full_path }
   let(:ref)            { 'markdown' }
@@ -61,7 +61,7 @@ RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_pla
 
     allow_gitaly_n_plus_1 do
       30.times do |i|
-        create_file_in_repo(project, ref, ref, "new_file_#{i}", "x" )
+        create_file_in_repo(project, ref, ref, "new_file_#{i}", "x")
         raw_doc += link("new_file_#{i}")
       end
     end
@@ -100,19 +100,19 @@ RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_pla
   end
 
   context 'without a repository' do
-    let(:project) { create(:project) }
+    let_it_be(:project) { create(:project) }
 
     include_examples 'preserve unchanged'
   end
 
   context 'with an empty repository' do
-    let(:project) { create(:project_empty_repo) }
+    let_it_be(:project) { create(:project_empty_repo) }
 
     include_examples 'preserve unchanged'
   end
 
   context 'without project repository access' do
-    let(:project) { create(:project, :repository, repository_access_level: ProjectFeature::PRIVATE) }
+    let_it_be(:project) { create(:project, :repository, repository_access_level: ProjectFeature::PRIVATE) }
 
     include_examples 'preserve unchanged'
   end
@@ -142,7 +142,7 @@ RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_pla
   end
 
   it 'ignores ref if commit is passed' do
-    doc = filter(link('non/existent.file'), commit: project.commit('empty-branch') )
+    doc = filter(link('non/existent.file'), commit: project.commit('empty-branch'))
     expect(doc.at_css('a')['href'])
       .to eq "/#{project_path}/-/blob/#{ref}/non/existent.file"
   end
@@ -390,4 +390,6 @@ RSpec.describe Banzai::Filter::RepositoryLinkFilter, feature_category: :team_pla
 
     include_examples 'valid repository'
   end
+
+  it_behaves_like 'pipeline timing check'
 end

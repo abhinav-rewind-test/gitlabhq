@@ -20,8 +20,12 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::GitlabSchemasMetrics, query_ana
     process_sql(ActiveRecord::Base, "SELECT 1 FROM projects")
   end
 
-  context 'properly observes all queries', :add_ci_connection do
+  context 'properly observes all queries' do
     using RSpec::Parameterized::TableSyntax
+
+    before do
+      skip_if_multiple_databases_not_setup
+    end
 
     where do
       {
@@ -29,7 +33,7 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::GitlabSchemasMetrics, query_ana
           model: ApplicationRecord,
           sql: "SELECT 1 FROM projects",
           expectations: {
-            gitlab_schemas: "gitlab_main_cell",
+            gitlab_schemas: "gitlab_main_org",
             db_config_name: "main"
           }
         },
@@ -37,7 +41,7 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::GitlabSchemasMetrics, query_ana
           model: ApplicationRecord,
           sql: "SELECT 1 FROM projects LEFT JOIN p_ci_builds ON p_ci_builds.project_id=projects.id",
           expectations: {
-            gitlab_schemas: "gitlab_ci,gitlab_main_cell",
+            gitlab_schemas: "gitlab_ci,gitlab_main_org",
             db_config_name: "main"
           }
         },
@@ -45,7 +49,7 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::GitlabSchemasMetrics, query_ana
           model: ApplicationRecord,
           sql: "SELECT 1 FROM p_ci_builds LEFT JOIN projects ON p_ci_builds.project_id=projects.id",
           expectations: {
-            gitlab_schemas: "gitlab_ci,gitlab_main_cell",
+            gitlab_schemas: "gitlab_ci,gitlab_main_org",
             db_config_name: "main"
           }
         },

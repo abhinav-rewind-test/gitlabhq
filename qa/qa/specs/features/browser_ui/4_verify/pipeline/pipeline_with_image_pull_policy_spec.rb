@@ -1,33 +1,35 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Verify', :runner, product_group: :pipeline_authoring do
+  RSpec.describe 'Verify', feature_category: :pipeline_composition do
     describe 'Pipeline with image:pull_policy' do
       let(:runner_name) { "qa-runner-#{Faker::Alphanumeric.alphanumeric(number: 8)}" }
       let(:job_name) { "test-job-#{pull_policies.join('-')}" }
       let(:project) { create(:project, name: 'pipeline-with-image-pull-policy') }
       let!(:runner) do
-        Resource::ProjectRunner.fabricate! do |runner|
-          runner.project = project
-          runner.name = runner_name
-          runner.tags = [runner_name]
-          runner.executor = :docker
-        end
+        create(:project_runner,
+          project: project,
+          name: runner_name,
+          tags: [runner_name],
+          executor: :docker)
       end
 
       before do
+        Flow::Login.sign_in
         update_runner_policy(allowed_policies)
         add_ci_file
-        Flow::Login.sign_in
-        project.visit!
-        Flow::Pipeline.visit_latest_pipeline
+
+        project.visit_latest_pipeline
       end
 
       after do
         runner.remove_via_api!
       end
 
-      context 'when policy is allowed' do
+      context 'when policy is allowed', quarantine: {
+        type: :flaky,
+        issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24024'
+      } do
         let(:allowed_policies) { %w[if-not-present always never] }
 
         where do
@@ -35,13 +37,13 @@ module QA
             'with [always] policy' => {
               pull_policies: %w[always],
               pull_image: true,
-              message: 'Pulling docker image ruby:2.6',
+              message: 'Pulling docker image ruby:latest',
               testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/367154'
             },
             'with [always if-not-present] policies' => {
               pull_policies: %w[always if-not-present],
               pull_image: true,
-              message: 'Pulling docker image ruby:2.6',
+              message: 'Pulling docker image ruby:latest',
               testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/368857'
             },
             'with [if-not-present] policy' => {
@@ -53,15 +55,15 @@ module QA
             'with [never] policy' => {
               pull_policies: %w[never],
               pull_image: false,
-              message: 'Pulling docker image',
+              message: 'Pulling docker image ruby:latest',
               testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/368859'
             }
           }
         end
 
         with_them do
-          it 'applies pull policy in job correctly', :reliable, testcase: params[:testcase] do
-            visit_job
+          it 'applies pull policy in job correctly', testcase: params[:testcase] do
+            project.visit_job(job_name)
 
             if pull_image
               expect(job_log).to have_content(message),
@@ -84,10 +86,14 @@ module QA
         let(:text2) { 'is not one of the allowed_pull_policies ([never])' }
 
         it(
-          'fails job with policy not allowed message', :reliable,
-          testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/368853'
+          'fails job with policy not allowed message', :smoke,
+          testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/368853',
+          quarantine: {
+            type: :flaky,
+            issue: "https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24025"
+          }
         ) do
-          visit_job
+          project.visit_job(job_name)
 
           expect(job_log).to include(text1, text2),
             "Expected to find contents #{text1} and #{text2} in #{job_log}, but didn't."
@@ -123,25 +129,20 @@ module QA
             file_path: '.gitlab-ci.yml',
             content: <<~YAML
               default:
-                image: ruby:2.6
+                image: ruby:latest
                 tags: [#{runner_name}]
 
               #{job_name}:
                 script: echo "Using pull policies #{pull_policies}"
                 image:
-                  name: ruby:2.6
+                  name: ruby:latest
                   pull_policy: #{pull_policies}
             YAML
           }
         ])
-      end
 
-      def visit_job
-        Page::Project::Pipeline::Show.perform do |show|
-          Support::Waiter.wait_until(max_duration: 90) { show.completed? }
-
-          show.click_job(job_name)
-        end
+        Flow::Pipeline.wait_for_pipeline_creation_via_api(project: project)
+        Flow::Pipeline.wait_for_latest_pipeline_to_have_status(project: project, status: 'success')
       end
 
       def job_log

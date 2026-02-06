@@ -47,7 +47,7 @@ RSpec.describe 'Test coverage of the Project Import', feature_category: :importe
       project.ci_pipelines.notes.events
       project.ci_pipelines.notes.events.push_event_payload
       project.protected_branches.unprotect_access_levels
-      project.prometheus_metrics
+      project.protected_branches.squash_option
       project.boards.lists.label.priorities
       project.service_desk_setting
       project.security_setting
@@ -55,6 +55,7 @@ RSpec.describe 'Test coverage of the Project Import', feature_category: :importe
       project.approval_rules
       project.approval_rules.approval_project_rules_protected_branches
       project.approval_rules.approval_project_rules_users
+      project.user_contributions
     ].freeze
   end
 

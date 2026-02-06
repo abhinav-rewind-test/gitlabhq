@@ -12,11 +12,11 @@ import eventHub from '~/invite_members/event_hub';
 import ImportProjectMembersModal from '~/invite_members/components/import_project_members_modal.vue';
 import ProjectSelect from '~/invite_members/components/project_select.vue';
 import axios from '~/lib/utils/axios_utils';
-import { HTTP_STATUS_CREATED } from '~/lib/utils/http_status';
+import { HTTP_STATUS_CREATED, HTTP_STATUS_UNPROCESSABLE_ENTITY } from '~/lib/utils/http_status';
 
 import {
   displaySuccessfulInvitationAlert,
-  reloadOnInvitationSuccess,
+  reloadOnMemberInvitationSuccess,
 } from '~/invite_members/utils/trigger_successful_invite_alert';
 
 import {
@@ -50,12 +50,15 @@ const expectTracking = (action) =>
   });
 
 const triggerOpenModal = async () => {
-  eventHub.$emit('openProjectMembersModal');
+  eventHub.$emit('open-project-members-modal');
   await nextTick();
 };
 
-const createComponent = ({ props = {} } = {}) => {
+const createComponent = ({ props = {}, provide = {} } = {}) => {
   wrapper = shallowMountExtended(ImportProjectMembersModal, {
+    provide: {
+      ...provide,
+    },
     propsData: {
       projectId,
       projectName,
@@ -102,6 +105,8 @@ describe('ImportProjectMembersModal', () => {
   const findMoreInviteErrorsButton = () => wrapper.findByTestId('accordion-button');
   const findAccordion = () => wrapper.findComponent(GlCollapse);
   const findErrorsIcon = () => wrapper.findComponent(GlIcon);
+  const findSeatOveragesAlert = () =>
+    wrapper.findByTestId('import-project-members-seat-overages-alert');
   const findMemberErrorMessage = (element) =>
     `@${Object.keys(importProjectMembersApiResponse.EXPANDED_IMPORT_ERRORS.message)[element]}: ${
       Object.values(importProjectMembersApiResponse.EXPANDED_IMPORT_ERRORS.message)[element]
@@ -191,8 +196,8 @@ describe('ImportProjectMembersModal', () => {
         expect(displaySuccessfulInvitationAlert).toHaveBeenCalled();
       });
 
-      it('calls reloadOnInvitationSuccess', () => {
-        expect(reloadOnInvitationSuccess).toHaveBeenCalled();
+      it('calls reloadOnMemberInvitationSuccess', () => {
+        expect(reloadOnMemberInvitationSuccess).toHaveBeenCalled();
       });
 
       it('does not display the successful toastMessage', () => {
@@ -242,8 +247,8 @@ describe('ImportProjectMembersModal', () => {
         expect(displaySuccessfulInvitationAlert).not.toHaveBeenCalled();
       });
 
-      it('does not call reloadOnInvitationSuccess', () => {
-        expect(reloadOnInvitationSuccess).not.toHaveBeenCalled();
+      it('does not call reloadOnMemberInvitationSuccess', () => {
+        expect(reloadOnMemberInvitationSuccess).not.toHaveBeenCalled();
       });
 
       it('sets isLoading to false after success', () => {
@@ -288,6 +293,26 @@ describe('ImportProjectMembersModal', () => {
 
         expect(formGroupInvalidFeedback()).toBe('');
         expect(formGroupErrorState()).not.toBe(false);
+      });
+    });
+
+    describe('when the api error includes an error message', () => {
+      beforeEach(async () => {
+        createComponent();
+
+        findProjectSelect().vm.$emit('input', projectToBeImported);
+
+        jest.spyOn(ProjectsApi, 'importProjectMembers').mockRejectedValue({
+          response: { data: { success: false, message: 'Failure message' } },
+        });
+
+        clickImportButton();
+        await waitForPromises();
+      });
+
+      it('displays the error message from the api', () => {
+        expect(formGroupInvalidFeedback()).toBe('Failure message');
+        expect(formGroupErrorState()).toBe(false);
       });
     });
 
@@ -365,6 +390,41 @@ describe('ImportProjectMembersModal', () => {
 
         expect(findAccordion().exists()).toBe(false);
         expect(findMoreInviteErrorsButton().exists()).toBe(false);
+      });
+    });
+
+    describe('when the import fails due to a seat overage', () => {
+      const mockInvitationsApi = (code, data) => {
+        mock.onPost(IMPORT_PROJECT_MEMBERS_PATH).reply(code, data);
+      };
+
+      beforeEach(() => {
+        createComponent({ provide: { addSeatsHref: 'add_seats_url' } });
+        findProjectSelect().vm.$emit('input', projectToBeImported);
+      });
+
+      it('clears the error when the modal is closed', async () => {
+        mockInvitationsApi(
+          HTTP_STATUS_UNPROCESSABLE_ENTITY,
+          importProjectMembersApiResponse.SEAT_OVERAGE_IMPORT_ERRORS,
+        );
+
+        clickImportButton();
+        await waitForPromises();
+
+        expect(formGroupInvalidFeedback()).toBe(
+          'There are not enough available seats to invite this many users.',
+        );
+        expect(formGroupErrorState()).toBe(false);
+        expect(findSeatOveragesAlert().exists()).toBe(true);
+
+        closeModal();
+
+        await nextTick();
+
+        expect(formGroupInvalidFeedback()).toBe('');
+        expect(formGroupErrorState()).not.toBe(false);
+        expect(findSeatOveragesAlert().exists()).toBe(false);
       });
     });
   });

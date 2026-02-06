@@ -1,29 +1,28 @@
 /*
-The upstream type implements http.Handler.
+Package upstream implements handlers for handling upstream requests.
 
-In this file we handle request routing and interaction with the authBackend.
+The upstream package provides functionality for routing requests and interacting with backend servers.
 */
-
 package upstream
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
-	"net/http"
-	"net/url"
-	"strings"
-
+	redis "github.com/redis/go-redis/v9"
 	"github.com/sebest/xff"
 	"github.com/sirupsen/logrus"
-
 	"gitlab.com/gitlab-org/labkit/correlation"
 
 	apipkg "gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/builds"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/config"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/healthcheck"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/helper"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/helper/nginx"
 	proxypkg "gitlab.com/gitlab-org/gitlab/workhorse/internal/proxy"
@@ -34,11 +33,14 @@ import (
 )
 
 var (
-	DefaultBackend         = helper.URLMustParse("http://localhost:8080")
+	// DefaultBackend is the default URL for the backend.
+	DefaultBackend = helper.URLMustParse("http://localhost:8080")
+
 	requestHeaderBlacklist = []string{
 		upload.RewrittenFieldsHeader,
 	}
-	geoProxyApiPollingInterval = 10 * time.Second
+
+	geoProxyAPIPollingInterval = 10 * time.Second
 )
 
 type upstream struct {
@@ -59,13 +61,44 @@ type upstream struct {
 	enableGeoProxyFeature bool
 	mu                    sync.RWMutex
 	watchKeyHandler       builds.WatchKeyHandler
+	rdb                   *redis.Client
+	healthCheckServer     *healthcheck.Server // Can be nil
+	shutdownChan          <-chan struct{}
+	upgradedConnsManager  *UpgradedConnsManager
 }
 
-func NewUpstream(cfg config.Config, accessLogger *logrus.Logger, watchKeyHandler builds.WatchKeyHandler) http.Handler {
-	return newUpstream(cfg, accessLogger, configureRoutes, watchKeyHandler)
+// NewUpstream creates a new HTTP handler for handling upstream requests based on the provided configuration.
+func NewUpstream(
+	cfg config.Config,
+	accessLogger *logrus.Logger,
+	watchKeyHandler builds.WatchKeyHandler,
+	rdb *redis.Client,
+	healthCheckServer *healthcheck.Server,
+	shutdownChan <-chan struct{},
+	upgradedConnsManager *UpgradedConnsManager,
+) http.Handler {
+	return newUpstream(
+		cfg,
+		accessLogger,
+		configureRoutes,
+		watchKeyHandler,
+		rdb,
+		healthCheckServer,
+		shutdownChan,
+		upgradedConnsManager,
+	)
 }
 
-func newUpstream(cfg config.Config, accessLogger *logrus.Logger, routesCallback func(*upstream), watchKeyHandler builds.WatchKeyHandler) http.Handler {
+func newUpstream(
+	cfg config.Config,
+	accessLogger *logrus.Logger,
+	routesCallback func(*upstream),
+	watchKeyHandler builds.WatchKeyHandler,
+	rdb *redis.Client,
+	healthCheckServer *healthcheck.Server,
+	shutdownChan <-chan struct{},
+	upgradedConnsManager *UpgradedConnsManager,
+) http.Handler {
 	up := upstream{
 		Config:       cfg,
 		accessLogger: accessLogger,
@@ -73,6 +106,10 @@ func newUpstream(cfg config.Config, accessLogger *logrus.Logger, routesCallback 
 		enableGeoProxyFeature: os.Getenv("GEO_SECONDARY_PROXY") != "0",
 		geoProxyBackend:       &url.URL{},
 		watchKeyHandler:       watchKeyHandler,
+		rdb:                   rdb,
+		healthCheckServer:     healthCheckServer,
+		shutdownChan:          shutdownChan,
+		upgradedConnsManager:  upgradedConnsManager,
 	}
 	if up.geoProxyPollSleep == nil {
 		up.geoProxyPollSleep = time.Sleep
@@ -109,6 +146,9 @@ func newUpstream(cfg config.Config, accessLogger *logrus.Logger, routesCallback 
 	}
 	if cfg.TrustedCIDRsForXForwardedFor != nil {
 		correlationOpts = append(correlationOpts, correlation.WithCIDRsTrustedForXForwardedFor(cfg.TrustedCIDRsForXForwardedFor))
+	}
+	if cfg.AdoptCfRayHeader {
+		correlationOpts = append(correlationOpts, correlation.WithAdoptCfRayHeader())
 	}
 
 	handler := correlation.InjectCorrelationID(&up, correlationOpts...)
@@ -207,15 +247,11 @@ func (u *upstream) findGeoProxyRoute(cleanedPath string, r *http.Request) *route
 func (u *upstream) pollGeoProxyAPI() {
 	defer close(u.geoPollerDone)
 
-	for {
-		// Check enableGeoProxyFeature every time because `callGeoProxyApi()` can change its value.
-		// This is can also be disabled through the GEO_SECONDARY_PROXY env var.
-		if !u.enableGeoProxyFeature {
-			break
-		}
-
+	// Check enableGeoProxyFeature every time because `callGeoProxyApi()` can change its value.
+	// This is can also be disabled through the GEO_SECONDARY_PROXY env var.
+	for u.enableGeoProxyFeature {
 		u.callGeoProxyAPI()
-		u.geoProxyPollSleep(geoProxyApiPollingInterval)
+		u.geoProxyPollSleep(geoProxyAPIPollingInterval)
 	}
 }
 
@@ -235,16 +271,8 @@ func (u *upstream) callGeoProxyAPI() {
 		return
 	}
 
-	hasProxyDataChanged := false
-	if u.geoProxyBackend.String() != geoProxyData.GeoProxyURL.String() {
-		// URL changed
-		hasProxyDataChanged = true
-	}
-
-	if u.geoProxyExtraData != geoProxyData.GeoProxyExtraData {
-		// Signed data changed
-		hasProxyDataChanged = true
-	}
+	hasProxyDataChanged := u.geoProxyBackend.String() != geoProxyData.GeoProxyURL.String() || // URL changed
+		u.geoProxyExtraData != geoProxyData.GeoProxyExtraData // Signed data changed
 
 	if hasProxyDataChanged {
 		u.updateGeoProxyFieldsFromData(geoProxyData)
@@ -274,17 +302,17 @@ func (u *upstream) updateGeoProxyFieldsFromData(geoProxyData *apipkg.GeoProxyDat
 		proxypkg.WithCustomHeaders(geoProxyWorkhorseHeaders),
 		proxypkg.WithForcedTargetHostHeader(),
 	)
-	u.geoProxyCableRoute = u.wsRoute(`^/-/cable\z`, geoProxyUpstream)
-	u.geoProxyRoute = u.route("", "", geoProxyUpstream, withGeoProxy())
+	u.geoProxyCableRoute = u.wsRoute(newRoute(`^/-/cable\z`, "geo_action_cable", railsBackend), geoProxyUpstream)
+	u.geoProxyRoute = u.route("", newRoute("", "proxy", geoPrimaryBackend), geoProxyUpstream, withGeoProxy())
 }
 
-func httpError(w http.ResponseWriter, r *http.Request, error string, code int) {
+func httpError(w http.ResponseWriter, r *http.Request, err string, code int) {
 	if r.ProtoAtLeast(1, 1) {
 		// Force client to disconnect if we render request error
 		w.Header().Set("Connection", "close")
 	}
 
-	http.Error(w, error, code)
+	http.Error(w, err, code)
 }
 
 func fixRemoteAddr(r *http.Request) {

@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 module SendFileUpload
-  def send_upload(file_upload, send_params: {}, redirect_params: {}, attachment: nil, proxy: false, disposition: 'attachment')
-    content_type = content_type_for(attachment)
+  def send_upload(
+    file_upload, send_params: {}, redirect_params: {}, attachment: nil, proxy: false,
+    disposition: 'attachment', ssrf_params: {}, sanitize_content_type: false)
+    content_type = content_type_for(attachment, sanitize: sanitize_content_type)
 
     if attachment
-      response_disposition = ActionDispatch::Http::ContentDisposition.format(disposition: disposition, filename: attachment)
+      response_disposition = ActionDispatch::Http::ContentDisposition.format(disposition: disposition,
+        filename: attachment)
 
       # Response-Content-Type will not override an existing Content-Type in
       # Google Cloud Storage, so the metadata needs to be cleared on GCS for
@@ -22,42 +25,29 @@ module SendFileUpload
 
     if image_scaling_request?(file_upload)
       location = file_upload.file_storage? ? file_upload.path : file_upload.url
-      headers.store(*Gitlab::Workhorse.send_scaled_image(location, params[:width].to_i, content_type))
+      headers.store(*Gitlab::Workhorse.send_scaled_image(location, safe_width, content_type))
       head :ok
     elsif file_upload.file_storage?
       send_file file_upload.path, send_params
-    elsif file_upload.class.proxy_download_enabled? || proxy
-      headers.store(*Gitlab::Workhorse.send_url(file_upload.url(**redirect_params)))
+    elsif file_upload.proxy_download_enabled? || proxy
+      headers.store(*Gitlab::Workhorse.send_url(file_upload.url(**redirect_params), **ssrf_params))
       head :ok
     else
-      redirect_to cdn_fronted_url(file_upload, redirect_params)
+      file_url = ObjectStorage::CDN::FileUrl.new(
+        file: file_upload,
+        ip_address: request.remote_ip,
+        redirect_params: redirect_params)
+      redirect_to file_url.url
     end
   end
 
-  def cdn_fronted_url(file, redirect_params)
-    if file.respond_to?(:cdn_enabled_url)
-      result = file.cdn_enabled_url(request.remote_ip, redirect_params[:query])
-      Gitlab::ApplicationContext.push(artifact_used_cdn: result.used_cdn)
-      result.url
-    else
-      file.url(**redirect_params)
-    end
-  end
-
-  def content_type_for(attachment)
+  def content_type_for(attachment, sanitize:)
     return '' unless attachment
 
-    guess_content_type(attachment)
-  end
+    content_type = ::Gitlab::Utils::MimeType.from_filename(attachment)
+    return content_type unless sanitize
 
-  def guess_content_type(filename)
-    types = MIME::Types.type_for(filename)
-
-    if types.present?
-      types.first.content_type
-    else
-      "application/octet-stream"
-    end
+    ::Gitlab::ContentTypes.sanitize_content_type(content_type)
   end
 
   private
@@ -87,6 +77,13 @@ module SendFileUpload
   end
 
   def valid_image_scaling_width?(allowed_scalar_widths)
-    allowed_scalar_widths.include?(params[:width]&.to_i)
+    allowed_scalar_widths.include?(safe_width)
+  end
+
+  def safe_width
+    width = params[:width]
+    return 0 unless width.is_a?(String) || width.is_a?(Integer)
+
+    width.to_i
   end
 end

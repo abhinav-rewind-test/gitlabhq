@@ -1,16 +1,17 @@
 import { GlButton } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
+import organizationsGraphQlResponse from 'test_fixtures/graphql/organizations/organizations.query.graphql.json';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
 import { DEFAULT_PER_PAGE } from '~/api';
-import { organizations as nodes, pageInfo, pageInfoEmpty } from '~/organizations/mock_data';
-import organizationsQuery from '~/admin/organizations/index/graphql/queries/organizations.query.graphql';
+import organizationsQuery from '~/organizations/shared/graphql/queries/organizations.query.graphql';
 import OrganizationsIndexApp from '~/admin/organizations/index/components/app.vue';
 import OrganizationsView from '~/organizations/shared/components/organizations_view.vue';
 import { MOCK_NEW_ORG_URL } from 'jest/organizations/shared/mock_data';
+import { pageInfoEmpty } from 'jest/organizations/mock_data';
 
 jest.mock('~/alert');
 
@@ -20,32 +21,33 @@ describe('AdminOrganizationsIndexApp', () => {
   let wrapper;
   let mockApollo;
 
-  const organizations = {
-    nodes,
-    pageInfo,
-  };
+  const {
+    data: { organizations },
+  } = organizationsGraphQlResponse;
 
   const organizationEmpty = {
     nodes: [],
     pageInfo: pageInfoEmpty,
   };
 
-  const successHandler = jest.fn().mockResolvedValue({
-    data: {
-      organizations,
-    },
-  });
+  const successHandler = jest.fn().mockResolvedValue(organizationsGraphQlResponse);
 
-  const createComponent = (handler = successHandler) => {
+  const createComponent = ({ handler = successHandler, provide = {} } = {}) => {
     mockApollo = createMockApollo([[organizationsQuery, handler]]);
 
     wrapper = shallowMountExtended(OrganizationsIndexApp, {
       apolloProvider: mockApollo,
       provide: {
         newOrganizationUrl: MOCK_NEW_ORG_URL,
+        canCreateOrganization: true,
+        ...provide,
       },
     });
   };
+
+  beforeEach(() => {
+    gon.features = { organizationSwitching: true };
+  });
 
   afterEach(() => {
     mockApollo = null;
@@ -89,7 +91,7 @@ describe('AdminOrganizationsIndexApp', () => {
 
   describe('when API call is loading', () => {
     beforeEach(() => {
-      createComponent(jest.fn().mockReturnValue(new Promise(() => {})));
+      createComponent({ handler: jest.fn().mockReturnValue(new Promise(() => {})) });
     });
 
     itRendersHeaderText();
@@ -119,15 +121,24 @@ describe('AdminOrganizationsIndexApp', () => {
     });
   });
 
+  describe('when `canCreateOrganization` is false', () => {
+    beforeEach(() => {
+      createComponent({ provide: { canCreateOrganization: false } });
+      return waitForPromises();
+    });
+
+    itDoesNotRenderNewOrganizationButton();
+  });
+
   describe('when API call is successful and returns no organizations', () => {
     beforeEach(async () => {
-      createComponent(
-        jest.fn().mockResolvedValue({
+      createComponent({
+        handler: jest.fn().mockResolvedValue({
           data: {
             organizations: organizationEmpty,
           },
         }),
-      );
+      });
       await waitForPromises();
     });
 
@@ -147,7 +158,7 @@ describe('AdminOrganizationsIndexApp', () => {
     const error = new Error();
 
     beforeEach(async () => {
-      createComponent(jest.fn().mockRejectedValue(error));
+      createComponent({ handler: jest.fn().mockRejectedValue(error) });
       await waitForPromises();
     });
 

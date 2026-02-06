@@ -7,10 +7,12 @@ class ProtectedBranch < ApplicationRecord
   include EachBatch
   include Presentable
 
-  belongs_to :group, foreign_key: :namespace_id, touch: true, inverse_of: :protected_branches
+  belongs_to :group, foreign_key: :namespace_id, touch: true, inverse_of: :protected_branches, optional: true
 
-  validate :validate_either_project_or_top_group
-  validates :name, presence: true
+  validates_with ExactlyOnePresentValidator, fields: [:project, :group],
+    message: ->(_fields) { _('must be associated with a Group or a Project') }
+
+  validate :validate_not_subgroup
   validates :name, uniqueness: { scope: [:project_id, :namespace_id] }, if: :name_changed?
 
   scope :requiring_code_owner_approval, -> { where(code_owner_approval_required: true) }
@@ -19,6 +21,15 @@ class ProtectedBranch < ApplicationRecord
   scope :sorted_by_namespace_and_name, -> { order(:namespace_id, :name) }
 
   scope :for_group, ->(group) { where(group: group) }
+  scope :preload_access_levels, -> { preload(:push_access_levels, :merge_access_levels) }
+
+  scope :after_name_and_id, ->(name, id) {
+    return none unless name && id
+
+    where('(name > ?) OR (name = ? AND id > ?)', name, name, id).order(:name, :id)
+  }
+
+  scope :excluding_name, ->(name) { where.not(name: name) if name.present? }
 
   protected_ref_access_levels :merge, :push
 
@@ -53,23 +64,7 @@ class ProtectedBranch < ApplicationRecord
   end
 
   def self.allow_force_push?(project, ref_name)
-    if allow_protected_branches_for_group?(project.group)
-      protected_branches = project.all_protected_branches.matching(ref_name)
-
-      project_protected_branches, group_protected_branches = protected_branches.partition(&:project_id)
-
-      # Group owner can be able to enforce the settings
-      return group_protected_branches.any?(&:allow_force_push) if group_protected_branches.present?
-      return project_protected_branches.any?(&:allow_force_push) if project_protected_branches.present?
-
-      false
-    else
-      project.protected_branches.allowing_force_push.matching(ref_name).any?
-    end
-  end
-
-  def self.allow_protected_branches_for_group?(group)
-    Feature.enabled?(:group_protected_branches, group) || Feature.enabled?(:allow_protected_branches_for_group, group)
+    project.all_protected_branches.allowing_force_push.matching(ref_name).any?
   end
 
   def self.any_protected?(project, ref_names)
@@ -95,15 +90,19 @@ class ProtectedBranch < ApplicationRecord
     where(fuzzy_arel_match(:name, query.downcase))
   end
 
-  def allow_multiple?(type)
-    type == :push
-  end
-
   def self.downcase_humanized_name
     name.underscore.humanize.downcase
   end
 
+  def self.default_branch_for(project)
+    return unless project&.default_branch
+
+    project.protected_branches.detect { |branch| branch.name == project.default_branch }
+  end
+
   def default_branch?
+    return false unless project.present?
+
     name == project.default_branch
   end
 
@@ -121,14 +120,10 @@ class ProtectedBranch < ApplicationRecord
 
   private
 
-  def validate_either_project_or_top_group
-    if !project && !group
-      errors.add(:base, _('must be associated with a Group or a Project'))
-    elsif project && group
-      errors.add(:base, _('cannot be associated with both a Group and a Project'))
-    elsif group && group.subgroup?
-      errors.add(:base, _('cannot be associated with a subgroup'))
-    end
+  def validate_not_subgroup
+    return unless group&.subgroup?
+
+    errors.add(:base, _('cannot be associated with a subgroup'))
   end
 end
 

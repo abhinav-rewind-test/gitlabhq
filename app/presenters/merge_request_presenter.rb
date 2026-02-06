@@ -33,7 +33,7 @@ class MergeRequestPresenter < Gitlab::View::Presenter::Delegated
 
   def create_issue_to_resolve_discussions_path
     if can?(current_user, :create_issue, project) && project.issues_enabled?
-      new_project_issue_path(project, merge_request_to_resolve_discussions_of: iid)
+      new_project_issue_path(project, merge_request_to_resolve_discussions_of: iid, merge_request_id: id)
     end
   end
 
@@ -246,6 +246,10 @@ class MergeRequestPresenter < Gitlab::View::Presenter::Delegated
     '%.2f' % merge_request.pipeline_coverage_delta
   end
 
+  def jenkins_integration_active
+    project.jenkins_integration_active?
+  end
+
   private
 
   def cached_can_be_reverted?
@@ -261,7 +265,7 @@ class MergeRequestPresenter < Gitlab::View::Presenter::Delegated
   end
 
   def pipeline
-    @pipeline ||= actual_head_pipeline
+    @pipeline ||= diff_head_pipeline
   end
 
   def issues_sentence(project, issues)

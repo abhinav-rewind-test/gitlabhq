@@ -12,12 +12,7 @@ describe('whats new actions', () => {
     useLocalStorageSpy();
 
     it('should commit openDrawer', async () => {
-      await testAction(actions.openDrawer, 'digest-hash', {}, [{ type: types.OPEN_DRAWER }]);
-
-      expect(window.localStorage.setItem).toHaveBeenCalledWith(
-        'display-whats-new-notification',
-        'digest-hash',
-      );
+      await testAction(actions.openDrawer, {}, {}, [{ type: types.OPEN_DRAWER }]);
     });
   });
 
@@ -57,7 +52,10 @@ describe('whats new actions', () => {
         {},
         {},
         expect.arrayContaining([
-          { type: types.ADD_FEATURES, payload: [{ title: 'GitLab Stories' }] },
+          {
+            type: types.ADD_FEATURES,
+            payload: [{ releaseHeading: true, release: undefined }, { title: 'GitLab Stories' }],
+          },
         ]),
       );
     });
@@ -74,7 +72,10 @@ describe('whats new actions', () => {
         { page: 8, versionDigest: 42 },
         {},
         expect.arrayContaining([
-          { type: types.ADD_FEATURES, payload: [{ title: 'GitLab Stories' }] },
+          {
+            type: types.ADD_FEATURES,
+            payload: [{ releaseHeading: true, release: undefined }, { title: 'GitLab Stories' }],
+          },
         ]),
       );
     });
@@ -86,7 +87,13 @@ describe('whats new actions', () => {
     it('should commit fetching, setFeatures and setPagination', () => {
       return testAction(actions.fetchItems, {}, {}, [
         { type: types.SET_FETCHING, payload: true },
-        { type: types.ADD_FEATURES, payload: [{ title: 'Whats New Drawer', url: 'www.url.com' }] },
+        {
+          type: types.ADD_FEATURES,
+          payload: [
+            { releaseHeading: true, release: undefined },
+            { title: 'Whats New Drawer', url: 'www.url.com' },
+          ],
+        },
         { type: types.SET_PAGE_INFO, payload: { nextPage: 2 } },
         { type: types.SET_FETCHING, payload: false },
       ]);
@@ -97,6 +104,14 @@ describe('whats new actions', () => {
     it('should commit setDrawerBodyHeight', () => {
       return testAction(actions.setDrawerBodyHeight, 42, {}, [
         { type: types.SET_DRAWER_BODY_HEIGHT, payload: 42 },
+      ]);
+    });
+  });
+
+  describe('setReadArticles', () => {
+    it('should commit setReadArticles', () => {
+      return testAction(actions.setReadArticles, [1], {}, [
+        { type: types.SET_READ_ARTICLES, payload: [1] },
       ]);
     });
   });

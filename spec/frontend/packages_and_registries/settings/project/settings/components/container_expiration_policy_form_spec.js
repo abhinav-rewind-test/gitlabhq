@@ -1,15 +1,16 @@
+import { GlSprintf } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import VueApollo from 'vue-apollo';
 import Vue, { nextTick } from 'vue';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
 import waitForPromises from 'helpers/wait_for_promises';
-import { GlCard, GlLoadingIcon } from 'jest/packages_and_registries/shared/stubs';
+import { GlLoadingIcon } from 'jest/packages_and_registries/shared/stubs';
 import component from '~/packages_and_registries/settings/project/components/container_expiration_policy_form.vue';
 import { UPDATE_SETTINGS_ERROR_MESSAGE } from '~/packages_and_registries/settings/project/constants';
 import updateContainerExpirationPolicyMutation from '~/packages_and_registries/settings/project/graphql/mutations/update_container_expiration_policy.mutation.graphql';
 import expirationPolicyQuery from '~/packages_and_registries/settings/project/graphql/queries/get_expiration_policy.query.graphql';
-import Tracking from '~/tracking';
+import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
 import { expirationPolicyPayload, expirationPolicyMutationPayload } from '../mock_data';
 
 describe('Container Expiration Policy Settings Form', () => {
@@ -23,12 +24,12 @@ describe('Container Expiration Policy Settings Form', () => {
 
   const {
     data: {
-      project: { containerExpirationPolicy },
+      project: { containerTagsExpirationPolicy },
     },
   } = expirationPolicyPayload();
 
   const defaultProps = {
-    value: { ...containerExpirationPolicy },
+    value: { ...containerTagsExpirationPolicy },
   };
 
   const trackingPayload = {
@@ -59,8 +60,8 @@ describe('Container Expiration Policy Settings Form', () => {
   } = {}) => {
     wrapper = shallowMount(component, {
       stubs: {
-        GlCard,
         GlLoadingIcon,
+        GlSprintf,
       },
       propsData: { ...props },
       provide,
@@ -104,7 +105,7 @@ describe('Container Expiration Policy Settings Form', () => {
     // we keep in sync what prop we pass to the component with the cache
     const {
       data: {
-        project: { containerExpirationPolicy: value },
+        project: { containerTagsExpirationPolicy: value },
       },
     } = queryPayload;
 
@@ -119,10 +120,6 @@ describe('Container Expiration Policy Settings Form', () => {
       },
     });
   };
-
-  beforeEach(() => {
-    jest.spyOn(Tracking, 'event');
-  });
 
   describe.each`
     model              | finder                   | fieldName         | type          | defaultValue
@@ -269,14 +266,26 @@ describe('Container Expiration Policy Settings Form', () => {
         });
       });
 
-      it('tracks the submit event', async () => {
-        mountComponentWithApollo({
-          mutationResolver: jest.fn().mockResolvedValue(expirationPolicyMutationPayload()),
+      describe('tracking', () => {
+        let trackingSpy;
+
+        beforeEach(() => {
+          trackingSpy = mockTracking(undefined, undefined, jest.spyOn);
         });
 
-        await submitForm();
+        afterEach(() => {
+          unmockTracking();
+        });
 
-        expect(Tracking.event).toHaveBeenCalledWith(undefined, 'submit_form', trackingPayload);
+        it('tracks the submit event', async () => {
+          mountComponentWithApollo({
+            mutationResolver: jest.fn().mockResolvedValue(expirationPolicyMutationPayload()),
+          });
+
+          await submitForm();
+
+          expect(trackingSpy).toHaveBeenCalledWith(undefined, 'submit_form', trackingPayload);
+        });
       });
 
       it('redirects to package and registry project settings page when submitted successfully', async () => {

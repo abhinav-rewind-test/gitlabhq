@@ -1,5 +1,8 @@
 <script>
-export default {
+import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
+
+export default normalizeRender({
+  name: 'LineNumber',
   functional: true,
   props: {
     lineNumber: {
@@ -29,5 +32,5 @@ export default {
       lineNumber,
     );
   },
-};
+});
 </script>

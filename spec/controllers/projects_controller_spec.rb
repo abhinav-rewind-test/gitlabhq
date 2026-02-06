@@ -8,7 +8,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   using RSpec::Parameterized::TableSyntax
 
   let_it_be(:project, reload: true) { create(:project, :with_export, service_desk_enabled: false) }
-  let_it_be(:public_project) { create(:project, :public) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:public_project) { create(:project, :public, namespace: group) }
   let_it_be(:user) { create(:user) }
 
   let(:jpg) { fixture_file_upload('spec/fixtures/rails_sample.jpg', 'image/jpg') }
@@ -173,122 +174,6 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         sign_in(user)
       end
 
-      context "user has access to project" do
-        before do
-          expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original
-        end
-
-        context 'when ambiguous_ref_modal is disabled' do
-          before do
-            stub_feature_flags(ambiguous_ref_modal: false)
-          end
-
-          context 'when there is a tag with the same name as the default branch' do
-            let_it_be(:tagged_project) { create(:project, :public, :custom_repo, files: ['somefile']) }
-            let(:tree_with_default_branch) do
-              branch = tagged_project.repository.find_branch(tagged_project.default_branch)
-              project_tree_path(tagged_project, branch.target)
-            end
-
-            before do
-              tagged_project.repository.create_file(
-                tagged_project.creator,
-                'file_for_tag',
-                'content for file',
-                message: "Automatically created file",
-                branch_name: 'branch-to-tag'
-              )
-
-              tagged_project.repository.add_tag(
-                tagged_project.creator,
-                tagged_project.default_branch, # tag name
-                'branch-to-tag' # target
-              )
-            end
-
-            it 'redirects to tree view for the default branch' do
-              get :show, params: { namespace_id: tagged_project.namespace, id: tagged_project }
-              expect(response).to redirect_to(tree_with_default_branch)
-            end
-          end
-
-          context 'when the default branch name is ambiguous' do
-            let_it_be(:project_with_default_branch) do
-              create(:project, :public, :custom_repo, files: ['somefile'])
-            end
-
-            shared_examples 'ambiguous ref redirects' do
-              let(:project) { project_with_default_branch }
-              let(:branch_ref) { "refs/heads/#{ref}" }
-              let(:repo) { project.repository }
-
-              before do
-                repo.create_branch(branch_ref, 'master')
-                repo.change_head(ref)
-              end
-
-              after do
-                repo.change_head('master')
-                repo.delete_branch(branch_ref)
-              end
-
-              subject do
-                get(
-                  :show,
-                  params: {
-                    namespace_id: project.namespace,
-                    id: project
-                  }
-                )
-              end
-
-              context 'when there is no conflicting ref' do
-                let(:other_ref) { 'non-existent-ref' }
-
-                it { is_expected.to have_gitlab_http_status(:ok) }
-              end
-
-              context 'and that other ref exists' do
-                let(:other_ref) { 'master' }
-
-                let(:project_default_root_tree_path) do
-                  sha = repo.find_branch(project.default_branch).target
-                  project_tree_path(project, sha)
-                end
-
-                it 'redirects to tree view for the default branch' do
-                  is_expected.to redirect_to(project_default_root_tree_path)
-                end
-              end
-            end
-
-            context 'when ref starts with ref/heads/' do
-              let(:ref) { "refs/heads/#{other_ref}" }
-
-              include_examples 'ambiguous ref redirects'
-            end
-
-            context 'when ref starts with ref/tags/' do
-              let(:ref) { "refs/tags/#{other_ref}" }
-
-              include_examples 'ambiguous ref redirects'
-            end
-
-            context 'when ref starts with heads/' do
-              let(:ref) { "heads/#{other_ref}" }
-
-              include_examples 'ambiguous ref redirects'
-            end
-
-            context 'when ref starts with tags/' do
-              let(:ref) { "tags/#{other_ref}" }
-
-              include_examples 'ambiguous ref redirects'
-            end
-          end
-        end
-      end
-
       describe "when project repository is disabled" do
         render_views
 
@@ -383,7 +268,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         sign_in(user)
 
         expect_next_instance_of(Repository) do |repository|
-          expect(repository).to receive(:root_ref).and_raise(Gitlab::Git::CommandError, 'get default branch').twice
+          expect(repository).to receive(:root_ref).and_raise(Gitlab::Git::CommandError, 'get default branch')
         end
       end
 
@@ -431,12 +316,12 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         expect(response).to render_template('_readme')
       end
 
-      it 'does not make Gitaly requests', :request_store, :clean_gitlab_redis_cache do
+      it 'makes a single Gitaly request to fetch .git-blame-ignore-revs', :request_store, :clean_gitlab_redis_cache do
         # Warm up to populate repository cache
         get_show
         RequestStore.clear!
 
-        expect { get_show }.not_to change { Gitlab::GitalyClient.get_request_count }
+        expect { get_show }.to change { Gitlab::GitalyClient.get_request_count }.by(1)
       end
 
       it "renders files even with invalid license" do
@@ -518,9 +403,10 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       end
     end
 
-    context 'when the project is pending deletions' do
+    context 'when the project is in deletion_in_progress state' do
       it 'renders a 404 error' do
-        project = create(:project, pending_delete: true)
+        project = create(:project)
+        project.project_namespace.start_deletion!(transition_user: user)
         sign_in(user)
 
         get :show, params: { namespace_id: project.namespace, id: project }
@@ -565,6 +451,49 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       end
     end
 
+    context 'redirection from http://someproject.git?ref=master' do
+      it 'redirects to project without .git extension' do
+        get :show, params: { namespace_id: public_project.namespace, id: public_project, ref: 'master', path: '/.gitlab-ci.yml' }, format: :git
+
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(project_path(public_project, ref: 'master', path: '/.gitlab-ci.yml'))
+        expect(response.body).to match(/You.are.being.+redirected/)
+      end
+    end
+
+    context 'redirection from http://someproject?format=git' do
+      let_it_be_with_reload(:public_project) { create(:project, :public) }
+
+      context 'with git in project path' do
+        before do
+          public_project.update!(path: 'my.gitlab')
+
+          request.env['PATH_INFO'] = "/#{public_project.namespace.path}/#{public_project.path}"
+          request.env['QUERY_STRING'] = 'format=git'
+        end
+
+        it 'does not trigger a redirect' do
+          get :show,
+            params: { namespace_id: public_project.namespace.path, id: public_project.path },
+            format: :git
+
+          expect(response).to have_gitlab_http_status(:not_found)
+          expect(response).not_to redirect_to(project_path(public_project))
+        end
+      end
+
+      context 'with git not in project path' do
+        it 'does trigger a redirect' do
+          get :show,
+            params: { namespace_id: public_project.namespace.path, id: public_project.path },
+            format: :git
+
+          expect(response).to have_gitlab_http_status(:found)
+          expect(response).to redirect_to(project_path(public_project))
+        end
+      end
+    end
+
     context 'when project is moved and git format is requested' do
       let(:old_path) { project.path + 'old' }
 
@@ -600,6 +529,54 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
         expect { get(:show, params: { namespace_id: public_project.namespace, id: public_project }) }
           .not_to exceed_query_limit(2).for_query(expected_query)
+      end
+    end
+
+    context 'when marked for deletion' do
+      render_views
+
+      subject { get :show, params: { namespace_id: public_project.namespace.path, id: public_project.path } }
+
+      let(:ancestor_notice_regex) do
+        %r{The parent group is pending deletion\. This project will be <strong>permanently deleted</strong> on <strong>.*</strong>\.}
+      end
+
+      context 'when the parent group has not been scheduled for deletion' do
+        it 'does not show the notice' do
+          subject
+
+          expect(response.body).not_to match(ancestor_notice_regex)
+        end
+      end
+
+      context 'when the parent group has been scheduled for deletion' do
+        before do
+          create(:group_deletion_schedule,
+            group: public_project.group,
+            marked_for_deletion_on: Date.current,
+            deleting_user: user
+          )
+        end
+
+        it 'shows the notice that the parent group has been scheduled for deletion' do
+          subject
+
+          expect(response.body).to match(ancestor_notice_regex)
+        end
+
+        context 'when the project itself has also been scheduled for deletion' do
+          it 'does not show the notice that the parent group has been scheduled for deletion' do
+            public_project.update!(marked_for_deletion_at: Date.current)
+
+            subject
+
+            expect(response.body).not_to match(ancestor_notice_regex)
+            # However, shows the notice that the project has been marked for deletion.
+            expect(response.body).to match(
+              %r{This project and all its data will be <strong>permanently deleted</strong> on <strong>.*</strong>\.}
+            )
+          end
+        end
       end
     end
   end
@@ -643,6 +620,37 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
           expect(response).to have_gitlab_http_status(:redirect)
         end
+      end
+    end
+
+    context 'when security features are enabled' do
+      let(:params) do
+        {
+          name: 'New Project',
+          path: 'new-project',
+          description: 'New project description',
+          namespace_id: user.namespace.id,
+          initialize_with_sast: '1',
+          initialize_with_secret_detection: '1'
+        }
+      end
+
+      it 'calls appropriate create service methods' do
+        expect_next_instance_of(Projects::CreateService) do |service|
+          expect(service.instance_variable_get(:@initialize_with_sast)).to eq(true)
+          expect(service.instance_variable_get(:@initialize_with_secret_detection)).to eq(true)
+        end
+
+        subject
+      end
+
+      it 'creates a project with security features enabled' do
+        expect { subject }.to change { Project.count }.by(1)
+
+        project = Project.last
+        expect(project.name).to eq('New Project')
+        expect(project.path).to eq('new-project')
+        expect(response).to have_gitlab_http_status(:redirect)
       end
     end
   end
@@ -761,7 +769,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
   describe '#housekeeping' do
     let_it_be(:group) { create(:group) }
-    let(:housekeeping_service_dbl) { instance_double(Repositories::HousekeepingService) }
+    let(:housekeeping_service_dbl) { instance_double(::Repositories::HousekeepingService) }
     let(:params) do
       {
         namespace_id: project.namespace.path,
@@ -772,7 +780,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
     let(:prune) { nil }
     let_it_be(:project) { create(:project, group: group) }
-    let(:housekeeping) { Repositories::HousekeepingService.new(project) }
+    let(:housekeeping) { ::Repositories::HousekeepingService.new(project) }
 
     subject { post :housekeeping, params: params }
 
@@ -781,7 +789,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         group.add_owner(user)
         sign_in(user)
 
-        allow(Repositories::HousekeepingService).to receive(:new).with(project, :eager).and_return(housekeeping)
+        allow(::Repositories::HousekeepingService).to receive(:new).with(project, :eager).and_return(housekeeping)
       end
 
       it 'forces a full garbage collection' do
@@ -814,7 +822,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         let(:prune) { true }
 
         it 'enqueues pruning' do
-          allow(Repositories::HousekeepingService).to receive(:new).with(project, :prune).and_return(housekeeping_service_dbl)
+          allow(::Repositories::HousekeepingService).to receive(:new).with(project, :prune).and_return(housekeeping_service_dbl)
           expect(housekeeping_service_dbl).to receive(:execute)
 
           subject
@@ -906,7 +914,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           create(:container_repository, project: project, name: :image)
         end
 
-        let(:message) { 'UpdateProject|Cannot rename project because it contains container registry tags!' }
+        let(:message) { 'UpdateProject|Cannot rename or delete project because it contains container registry tags. Delete all container registry tags first. https://docs.gitlab.com/user/packages/container_registry/#move-or-rename-container-registry-repositories' }
 
         shared_examples 'not allowing the rename of the project' do
           it 'does not allow to rename the project' do
@@ -1025,6 +1033,26 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       end
     end
 
+    context 'when updating non boolean values on project setting' do
+      it 'updates project settings attributes accordingly' do
+        put :update, params: {
+          namespace_id: project.namespace,
+          id: project.path,
+          project: {
+            project_setting_attributes: {
+              merge_request_title_regex: 'aaa',
+              merge_request_title_regex_description: 'Test description'
+            }
+          }
+        }
+
+        project.reload
+
+        expect(project.merge_request_title_regex).to eq('aaa')
+        expect(project.merge_request_title_regex_description).to eq('Test description')
+      end
+    end
+
     context 'when updating boolean values on project_settings' do
       using RSpec::Parameterized::TableSyntax
 
@@ -1046,7 +1074,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
               project_setting_attributes: {
                 show_default_award_emojis: boolean_value,
                 enforce_auth_checks_on_uploads: boolean_value,
-                emails_enabled: boolean_value
+                emails_enabled: boolean_value,
+                extended_prat_expiry_webhooks_execute: boolean_value
               }
             }
           }
@@ -1057,6 +1086,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           expect(project.enforce_auth_checks_on_uploads?).to eq(result)
           expect(project.emails_enabled?).to eq(result)
           expect(project.emails_disabled?).to eq(!result)
+          expect(project.extended_prat_expiry_webhooks_execute?).to eq(result)
         end
       end
     end
@@ -1180,6 +1210,30 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       it_behaves_like 'project namespace is not changed', s_('TransferProject|Please select a new namespace for your project.')
     end
 
+    context 'when the project is archived' do
+      let(:new_namespace) { create(:group) }
+
+      before do
+        project.update!(archived: true)
+      end
+
+      it 'does not change the project namespace' do
+        controller.instance_variable_set(:@project, project)
+        sign_in(admin)
+
+        old_namespace = project.namespace
+
+        put :transfer, params: {
+          namespace_id: old_namespace.path, new_namespace_id: new_namespace.id, id: project.path
+        }, format: :js
+
+        project.reload
+
+        expect(project.namespace).to eq(old_namespace)
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
     context 'when new namespace is the same as the current namespace' do
       let(:new_namespace_id) { project.namespace.id }
 
@@ -1190,35 +1244,110 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
   describe "#destroy", :enable_admin_mode do
     let_it_be(:admin) { create(:admin) }
 
-    it "redirects to the dashboard", :sidekiq_might_not_need_inline do
-      controller.instance_variable_set(:@project, project)
-      sign_in(admin)
+    let_it_be(:group) { create(:group, owners: user) }
+    let_it_be_with_reload(:project) { create(:project, group: group) }
 
-      orig_id = project.id
-      delete :destroy, params: { namespace_id: project.namespace, id: project }
-
-      expect { Project.find(orig_id) }.to raise_error(ActiveRecord::RecordNotFound)
-      expect(response).to have_gitlab_http_status(:found)
-      expect(response).to redirect_to(dashboard_projects_path)
+    before do
+      sign_in(user)
     end
 
-    context "when the project is forked" do
-      let(:project) { create(:project, :repository) }
-      let(:forked_project) { fork_project(project, nil, repository: true) }
-      let(:merge_request) do
-        create(:merge_request,
-          source_project: forked_project,
-          target_project: project)
+    shared_examples 'marks project for deletion' do
+      specify :aggregate_failures do
+        delete :destroy, params: { namespace_id: project.namespace, id: project }
+
+        expect(project.reload.self_deletion_scheduled?).to be_truthy
+        expect(project.reload.hidden?).to be_falsey
+        expect(response).to have_gitlab_http_status(:found)
+        expect(response).to redirect_to(project_path(project))
+        expect(flash[:toast]).to be_nil
+      end
+    end
+
+    it_behaves_like 'marks project for deletion'
+
+    it 'does not mark project for deletion because of error' do
+      message = 'Error'
+
+      expect(::Projects::MarkForDeletionService).to receive_message_chain(:new, :execute).and_return(ServiceResponse.error(message: message))
+
+      delete :destroy, params: { namespace_id: project.namespace, id: project }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(response).to render_template(:edit)
+      expect(flash[:alert]).to include(message)
+    end
+
+    context 'when project is already marked for deletion' do
+      let_it_be(:project) { create(:project, group: group, marked_for_deletion_at: Date.current) }
+
+      describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
+        before do
+          stub_application_setting(allow_immediate_namespaces_deletion: false)
+        end
+
+        subject(:request) { delete :destroy, params: { namespace_id: project.namespace, id: project, permanently_delete: true } }
+
+        it 'returns error' do
+          Sidekiq::Testing.fake! do
+            expect { request }.not_to change { ProjectDestroyWorker.jobs.size }
+          end
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
       end
 
-      it "closes all related merge requests", :sidekiq_might_not_need_inline do
-        project.merge_requests << merge_request
-        sign_in(admin)
+      context 'when permanently_delete param is set' do
+        it 'deletes project right away' do
+          expect(ProjectDestroyWorker).to receive(:perform_async)
 
-        delete :destroy, params: { namespace_id: forked_project.namespace, id: forked_project }
+          delete :destroy, params: { namespace_id: project.namespace, id: project, permanently_delete: true }
 
-        expect(merge_request.reload.state).to eq('closed')
+          expect(project.reload.deletion_in_progress?).to eq(true)
+          expect(response).to have_gitlab_http_status(:found)
+          expect(response).to redirect_to(dashboard_projects_path)
+        end
       end
+
+      context 'when permanently_delete param is not set' do
+        it 'redirects to edit page' do
+          expect(ProjectDestroyWorker).not_to receive(:perform_async)
+
+          delete :destroy, params: { namespace_id: project.namespace, id: project }
+
+          expect(project.reload.deletion_in_progress?).to eq(false)
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to render_template(:edit)
+          expect(flash[:alert]).to include('Project has already been marked for deletion')
+        end
+      end
+    end
+  end
+
+  describe 'POST #restore', feature_category: :groups_and_projects do
+    let_it_be(:project) { create(:project, :aimed_for_deletion, namespace: user.namespace) }
+
+    before do
+      sign_in(user)
+    end
+
+    it 'restores project deletion' do
+      post :restore, params: { namespace_id: project.namespace, project_id: project }
+
+      expect(project.reload.marked_for_deletion_at).to be_nil
+      expect(project.reload.archived).to be_falsey
+      expect(response).to have_gitlab_http_status(:found)
+      expect(response).to redirect_to(edit_project_path(project))
+    end
+
+    it 'does not restore project because of error' do
+      message = 'Error'
+      expect(::Projects::RestoreService).to receive_message_chain(:new, :execute).and_return(ServiceResponse.error(message: message))
+
+      post :restore, params: { namespace_id: project.namespace, project_id: project }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(response).to render_template(:edit)
+      expect(flash[:alert]).to include(message)
     end
   end
 
@@ -1366,17 +1495,38 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     it 'uses gitaly pagination' do
-      expected_params = ActionController::Parameters.new(ref: '123456', per_page: 100).permit!
+      branch_params = ActionController::Parameters.new(ref: '123456', per_page: 100, sort: 'updated_desc').permit!
+      tag_params = ActionController::Parameters.new(ref: '123456', per_page: 100).permit!
 
-      expect_next_instance_of(BranchesFinder, project.repository, expected_params) do |finder|
+      expect_next_instance_of(BranchesFinder, project.repository, branch_params) do |finder|
         expect(finder).to receive(:execute).with(gitaly_pagination: true).and_call_original
       end
 
-      expect_next_instance_of(TagsFinder, project.repository, expected_params) do |finder|
+      expect_next_instance_of(TagsFinder, project.repository, tag_params) do |finder|
         expect(finder).to receive(:execute).with(gitaly_pagination: true).and_call_original
       end
 
       get :refs, params: { namespace_id: project.namespace, id: project, ref: "123456" }
+    end
+
+    it 'defaults to updated_desc sorting for branches when no sort parameter provided' do
+      branch_params = ActionController::Parameters.new(per_page: 100, sort: 'updated_desc').permit!
+
+      expect_next_instance_of(BranchesFinder, project.repository, branch_params) do |finder|
+        expect(finder).to receive(:execute).with(gitaly_pagination: true).and_call_original
+      end
+
+      get :refs, params: { namespace_id: project.namespace, id: project }
+    end
+
+    it 'honors explicit sort parameter for branches' do
+      explicit_params = ActionController::Parameters.new(per_page: 100, sort: 'name').permit!
+
+      expect_next_instance_of(BranchesFinder, project.repository, explicit_params) do |finder|
+        expect(finder).to receive(:execute).with(gitaly_pagination: true).and_call_original
+      end
+
+      get :refs, params: { namespace_id: project.namespace, id: project, sort: 'name' }
     end
 
     context 'when gitaly is unavailable' do
@@ -1455,7 +1605,9 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     it 'renders json in a correct format' do
-      post :preview_markdown, params: { namespace_id: public_project.namespace, id: public_project, text: '*Markdown* text' }
+      expect(Banzai::Renderer).to receive(:render).once.and_call_original
+
+      post :preview_markdown, params: { namespace_id: public_project.namespace, project_id: public_project, text: '*Markdown* text' }
 
       expect(json_response.keys).to match_array(%w[body references])
     end
@@ -1464,7 +1616,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       let(:private_project) { create(:project, :private) }
 
       it 'returns 404' do
-        post :preview_markdown, params: { namespace_id: private_project.namespace, id: private_project, text: '*Markdown* text' }
+        post :preview_markdown, params: { namespace_id: private_project.namespace, project_id: private_project, text: '*Markdown* text' }
 
         expect(response).to have_gitlab_http_status(:not_found)
       end
@@ -1477,20 +1629,20 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
       it 'renders JSON body with state filter for issues' do
         post :preview_markdown, params: {
-                                  namespace_id: public_project.namespace,
-                                  id: public_project,
-                                  text: issue.to_reference
-                                }
+          namespace_id: public_project.namespace,
+          project_id: public_project,
+          text: issue.to_reference
+        }
 
         expect(json_response['body']).to match(/\##{issue.iid} \(closed\)/)
       end
 
       it 'renders JSON body with state filter for MRs' do
         post :preview_markdown, params: {
-                                  namespace_id: public_project.namespace,
-                                  id: public_project,
-                                  text: merge_request.to_reference
-                                }
+          namespace_id: public_project.namespace,
+          project_id: public_project,
+          text: merge_request.to_reference
+        }
 
         expect(json_response['body']).to match(/!#{merge_request.iid} \(closed\)/)
       end
@@ -1500,8 +1652,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       let(:project_with_repo) { create(:project, :repository) }
       let(:preview_markdown_params) do
         {
-          namespace_id: project_with_repo.namespace,
-          id: project_with_repo,
+          namespace_id: project_with_repo.namespace.full_path,
+          project_id: project_with_repo.path,
           text: "![](./logo-white.png)\n",
           path: 'files/images/README.md'
         }
@@ -1524,8 +1676,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
       let(:project_with_repo) { create(:project, :repository) }
       let(:preview_markdown_params) do
         {
-          namespace_id: project_with_repo.namespace,
-          id: project_with_repo,
+          namespace_id: project_with_repo.namespace.full_path,
+          project_id: project_with_repo.path,
           text: "![](./logo-white.png)\n",
           ref: 'other_branch',
           path: 'files/images/README.md'
@@ -1543,6 +1695,30 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         post :preview_markdown, params: preview_markdown_params
 
         expect(json_response['body']).to include(expanded_path)
+      end
+    end
+
+    context 'when Markdown is previewed on commit' do
+      let(:preview_markdown_params) do
+        {
+          namespace_id: public_project.namespace,
+          project_id: public_project,
+          target_type: 'Commit',
+          text: <<~MARKDOWN
+            [[_TOC_]]
+
+            # Hello
+            ## Tere
+            ### よしよし
+          MARKDOWN
+        }
+      end
+
+      it 'does not render TOCs' do
+        post :preview_markdown, params: preview_markdown_params
+
+        expect(json_response['body']).to include('TOC')
+        expect(json_response['body']).not_to include('<h1 id')
       end
     end
   end
@@ -1662,7 +1838,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         allow_next_instance_of(Gitlab::ApplicationRateLimiter::BaseStrategy) do |strategy|
           allow(strategy)
             .to receive(:increment)
-            .and_return(Gitlab::ApplicationRateLimiter.rate_limits["project_#{action}".to_sym][:threshold].call + 1)
+            .and_return(Gitlab::ApplicationRateLimiter.rate_limits[:"project_#{action}"][:threshold].call + 1)
         end
       end
 
@@ -1718,6 +1894,26 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
             expect(flash[:alert]).to be_nil
           end
         end
+
+        context 'when export is already in progress' do
+          it 'returns 302 with alert if export already queued' do
+            create(:project_export_job, :queued, project: project, user: user)
+
+            post action, params: { namespace_id: project.namespace, id: project }
+
+            expect(response).to redirect_to(edit_project_path(project, anchor: 'js-project-advanced-settings'))
+            expect(flash[:alert]).to include('An export is already running or queued for this project.')
+          end
+
+          it 'returns 302 with alert if export already started' do
+            create(:project_export_job, :started, project: project, user: user)
+
+            post action, params: { namespace_id: project.namespace, id: project }
+
+            expect(response).to redirect_to(edit_project_path(project, anchor: 'js-project-advanced-settings'))
+            expect(flash[:alert]).to include('An export is already running or queued for this project.')
+          end
+        end
       end
 
       context 'when project export is disabled' do
@@ -1738,7 +1934,8 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
     end
 
     describe '#download_export', :clean_gitlab_redis_rate_limiting do
-      let(:project) { create(:project, :with_export, service_desk_enabled: false) }
+      let(:project) { create(:project, service_desk_enabled: false, creator: user) }
+      let!(:export) { create(:import_export_upload, project: project, user: user) }
       let(:action) { :download_export }
 
       context 'object storage enabled' do
@@ -1752,7 +1949,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
 
         context 'when project export file is absent' do
           it 'alerts the user and returns 302' do
-            project.export_file.file.delete
+            project.export_file(user).file.delete
 
             get action, params: { namespace_id: project.namespace, id: project }
 
@@ -1783,7 +1980,7 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
           end
 
           it 'prevents requesting project export' do
-            post action, params: { namespace_id: project.namespace, id: project }
+            get action, params: { namespace_id: project.namespace, id: project }
 
             expect(response.body).to eq('This endpoint has been requested too many times. Try again later.')
             expect(response).to have_gitlab_http_status(:too_many_requests)
@@ -1791,39 +1988,12 @@ RSpec.describe ProjectsController, feature_category: :groups_and_projects do
         end
 
         context 'applies correct scope when throttling', :clean_gitlab_redis_rate_limiting do
-          before do
-            stub_application_setting(project_download_export_limit: 1)
-
-            travel_to Date.current.beginning_of_day
-          end
-
-          after do
-            travel_back
-          end
-
-          it 'applies throttle per namespace' do
+          it 'applies throttle per project' do
             expect(Gitlab::ApplicationRateLimiter)
               .to receive(:throttled?)
-              .with(:project_download_export, scope: [user, project.namespace])
-
-            post action, params: { namespace_id: project.namespace, id: project }
-          end
-
-          it 'throttles downloads within same namespaces' do
-            # simulate prior request to the same namespace, which increments the rate limit counter for that scope
-            Gitlab::ApplicationRateLimiter.throttled?(:project_download_export, scope: [user, project.namespace])
+              .with(:project_download_export, scope: [user, project])
 
             get action, params: { namespace_id: project.namespace, id: project }
-            expect(response).to have_gitlab_http_status(:too_many_requests)
-          end
-
-          it 'allows downloads from different namespaces' do
-            # simulate prior request to a different namespace, which increments the rate limit counter for that scope
-            Gitlab::ApplicationRateLimiter.throttled?(:project_download_export,
-              scope: [user, create(:project, :with_export).namespace])
-
-            get action, params: { namespace_id: project.namespace, id: project }
-            expect(response).to have_gitlab_http_status(:ok)
           end
         end
       end

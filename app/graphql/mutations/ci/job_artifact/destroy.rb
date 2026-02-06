@@ -6,19 +6,19 @@ module Mutations
       class Destroy < BaseMutation
         graphql_name 'ArtifactDestroy'
 
-        authorize :destroy_artifacts
+        authorize :delete_job_artifact
 
         ArtifactID = ::Types::GlobalIDType[::Ci::JobArtifact]
 
         argument :id,
-                 ArtifactID,
-                 required: true,
-                 description: 'ID of the artifact to delete.'
+          ArtifactID,
+          required: true,
+          description: 'ID of the artifact to delete.'
 
         field :artifact,
-              Types::Ci::JobArtifactType,
-              null: true,
-              description: 'Deleted artifact.'
+          Types::Ci::JobArtifactType,
+          null: true,
+          description: 'Deleted artifact.'
 
         def find_object(id:)
           GlobalID::Locator.locate(id)

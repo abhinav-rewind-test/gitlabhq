@@ -40,16 +40,18 @@ class BaseContainerService
   end
   strong_memoize_attr :project_group
 
+  def root_ancestor
+    project_group&.root_ancestor || group&.root_ancestor
+  end
+
   private
 
   def handle_container_type(container)
     case container
-    when Project
-      @project = container
+    when Project, Namespaces::ProjectNamespace
+      @project = container.owner_entity
     when Group
       @group = container
-    when Namespaces::ProjectNamespace
-      @project = container.project
     end
   end
 end

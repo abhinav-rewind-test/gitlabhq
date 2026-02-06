@@ -2,26 +2,26 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Group iterations API
 ---
 
-# Group iterations API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/118742) in GitLab 13.5.
-> - Moved to GitLab Premium in 13.9.
+{{< /details >}}
 
-This page describes the group iterations API.
-There's a separate [project iterations API](iterations.md) page.
+Use this API to access [group iterations](../user/group/iterations/_index.md).
+
+For project iterations, use the [project iterations API](iterations.md).
 
 ## List group iterations
 
 Returns a list of group iterations.
 
 Iterations created by **Enable automatic scheduling** in
-[Iteration cadences](../user/group/iterations/index.md#iteration-cadences) return `null` for
+[Iteration cadences](../user/group/iterations/_index.md#iteration-cadences) return `null` for
 the `title` and `description` fields.
 
 ```plaintext
@@ -48,7 +48,8 @@ GET /groups/:id/iterations?updated_after=2013-10-02T09%3A24%3A18Z
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/iterations"
+  curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/iterations"
 ```
 
 Example response:

@@ -29,8 +29,8 @@ export default {
       :href="url"
       :title="$options.i18n.buttonLabel"
       :aria-label="$options.i18n.buttonLabel"
-      class="new-issue-for-discussion discussion-create-issue-btn gl-w-full gl-sm-w-auto"
-      icon="issue-new"
+      class="new-issue-for-discussion discussion-create-issue-btn gl-w-full @sm/panel:gl-w-auto"
+      icon="work-item-new"
     />
   </div>
 </template>

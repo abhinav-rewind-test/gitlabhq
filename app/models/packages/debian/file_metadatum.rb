@@ -12,16 +12,16 @@ module Packages
       validates :package_file, presence: true
       validate :valid_debian_package_type
 
-      enum file_type: {
+      enum :file_type, {
         unknown: 1, source: 2, dsc: 3, deb: 4, udeb: 5, buildinfo: 6, changes: 7, ddeb: 8
       }
 
       validates :file_type, presence: true
       validates :file_type, inclusion: { in: %w[unknown] },
-        if: -> { package_file&.package&.debian_incoming? || package_file&.package&.processing? }
+        if: -> { package_file&.package&.incoming? || package_file&.package&.processing? }
       validates :file_type,
         inclusion: { in: %w[source dsc deb udeb buildinfo changes ddeb] },
-        if: -> { package_file&.package&.debian_package? && !package_file&.package&.processing? }
+        if: -> { !package_file&.package&.incoming? && !package_file&.package&.processing? }
 
       validates :component,
         presence: true,

@@ -9,6 +9,7 @@ export default function initNewTagRefSelector() {
     // eslint-disable-next-line no-new
     new Vue({
       el,
+      name: 'RefSelectorRoot',
       render(createComponent) {
         return createComponent(RefSelector, {
           props: {
@@ -16,6 +17,7 @@ export default function initNewTagRefSelector() {
             name: hiddenInputName,
             queryParams: { sort: 'updated_desc' },
             projectId,
+            useSymbolicRefNames: true,
           },
         });
       },

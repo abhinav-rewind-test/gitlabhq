@@ -5,13 +5,8 @@ require 'spec_helper'
 RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   let_it_be(:project, refind: true) { create(:project) }
   let_it_be(:client, refind: true) { create(:operations_feature_flags_client, project: project) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:reporter) { create(:user) }
-
-  before_all do
-    project.add_developer(developer)
-    project.add_reporter(reporter)
-  end
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:reporter) { create(:user, reporter_of: project) }
 
   def create_list(name: 'mylist', user_xids: 'user1')
     create(:operations_feature_flag_user_list, project: project, name: name, user_xids: user_xids)
@@ -26,6 +21,14 @@ RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   end
 
   describe 'GET /projects/:id/feature_flags_user_lists' do
+    it_behaves_like 'authorizing granular token permissions', :read_feature_flag_user_list do
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{project.id}/feature_flags_user_lists", personal_access_token: pat)
+      end
+    end
+
     it 'forbids the request for a reporter' do
       get api("/projects/#{project.id}/feature_flags_user_lists", reporter)
 
@@ -132,6 +135,15 @@ RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   end
 
   describe 'GET /projects/:id/feature_flags_user_lists/:iid' do
+    it_behaves_like 'authorizing granular token permissions', :read_feature_flag_user_list do
+      let_it_be(:list) { create_list }
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{project.id}/feature_flags_user_lists/#{list.iid}", personal_access_token: pat)
+      end
+    end
+
     it 'forbids the request for a reporter' do
       list = create_list
 
@@ -199,6 +211,16 @@ RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   end
 
   describe 'POST /projects/:id/feature_flags_user_lists' do
+    it_behaves_like 'authorizing granular token permissions', :create_feature_flag_user_list do
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        post api("/projects/#{project.id}/feature_flags_user_lists", personal_access_token: pat), params: {
+          name: 'mylist', user_xids: 'user1'
+        }
+      end
+    end
+
     it 'forbids the request for a reporter' do
       post api("/projects/#{project.id}/feature_flags_user_lists", reporter), params: {
         name: 'mylist', user_xids: 'user1'
@@ -281,6 +303,17 @@ RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   end
 
   describe 'PUT /projects/:id/feature_flags_user_lists/:iid' do
+    it_behaves_like 'authorizing granular token permissions', :update_feature_flag_user_list do
+      let_it_be(:list) { create_list(name: 'original_name') }
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        put api("/projects/#{project.id}/feature_flags_user_lists/#{list.iid}", personal_access_token: pat), params: {
+          name: 'mylist'
+        }
+      end
+    end
+
     it 'forbids the request for a reporter' do
       list = create_list(name: 'original_name')
 
@@ -359,6 +392,15 @@ RSpec.describe API::FeatureFlagsUserLists, feature_category: :feature_flags do
   end
 
   describe 'DELETE /projects/:id/feature_flags_user_lists/:iid' do
+    it_behaves_like 'authorizing granular token permissions', :delete_feature_flag_user_list do
+      let_it_be(:list) { create_list }
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        delete api("/projects/#{project.id}/feature_flags_user_lists/#{list.iid}", personal_access_token: pat)
+      end
+    end
+
     it 'forbids the request for a reporter' do
       list = create_list
 

@@ -6,12 +6,12 @@ RSpec.describe Projects::RefsController, feature_category: :source_code_manageme
   let_it_be(:project) { create(:project, :repository) }
   let(:user) { create(:user) }
 
-  before do
-    sign_in(user)
-    project.add_developer(user)
-  end
-
   describe 'GET #switch' do
+    before do
+      sign_in(user)
+      project.add_developer(user)
+    end
+
     context 'with normal parameters' do
       using RSpec::Parameterized::TableSyntax
 
@@ -32,12 +32,12 @@ RSpec.describe Projects::RefsController, feature_category: :source_code_manageme
         'blob'           | nil     | nil       | lazy { project_blob_path(project, id) }
         'blob'           | 'heads' | nil       | lazy { project_blob_path(project, id) }
         'blob'           | nil     | 'foo/bar' | lazy { project_blob_path(project, id_and_path) }
-        'graph'          | nil     | nil       | lazy { project_network_path(project, id) }
+        'graph'          | nil     | nil       | lazy { project_network_path(project, id, ref_type: 'heads') }
         'graph'          | 'heads' | nil       | lazy { project_network_path(project, id, ref_type: 'heads') }
-        'graph'          | nil     | 'foo/bar' | lazy { project_network_path(project, id_and_path) }
-        'graphs'         | nil     | nil       | lazy { project_graph_path(project, id) }
+        'graph'          | nil     | 'foo/bar' | lazy { project_network_path(project, id_and_path, ref_type: 'heads') }
+        'graphs'         | nil     | nil       | lazy { project_graph_path(project, id, ref_type: 'heads') }
         'graphs'         | 'heads' | nil       | lazy { project_graph_path(project, id, ref_type: 'heads') }
-        'graphs'         | nil     | 'foo/bar' | lazy { project_graph_path(project, id_and_path) }
+        'graphs'         | nil     | 'foo/bar' | lazy { project_graph_path(project, id_and_path, ref_type: 'heads') }
         'find_file'      | nil     | nil       | lazy { project_find_file_path(project, id) }
         'find_file'      | 'heads' | nil       | lazy { project_find_file_path(project, id) }
         'find_file'      | nil     | 'foo/bar' | lazy { project_find_file_path(project, id_and_path) }
@@ -47,17 +47,59 @@ RSpec.describe Projects::RefsController, feature_category: :source_code_manageme
         'badges'         | nil     | nil       | lazy { project_settings_ci_cd_path(project, ref: id) }
         'badges'         | 'heads' | nil       | lazy { project_settings_ci_cd_path(project, ref: id) }
         'badges'         | nil     | 'foo/bar' | lazy { project_settings_ci_cd_path(project, ref: id_and_path) }
-        'commits'        | nil     | nil       | lazy { project_commits_path(project, id) }
+        'commits'        | nil     | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
         'commits'        | 'heads' | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
-        'commits'        | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path) }
-        nil              | nil     | nil       | lazy { project_commits_path(project, id) }
+        'commits'        | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path, ref_type: 'heads') }
+        nil              | nil     | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
         nil              | 'heads' | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
-        nil              | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path) }
+        nil              | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path, ref_type: 'heads') }
       end
 
       with_them do
         it 'redirects to destination' do
           expect(subject).to redirect_to(redirected_to)
+        end
+      end
+
+      context 'when verified_ref_extractor is disabled' do
+        before do
+          stub_feature_flags(verified_ref_extractor: false)
+        end
+
+        where(:destination, :ref_type, :path, :redirected_to) do
+          'tree'           | nil     | nil       | lazy { project_tree_path(project, id) }
+          'tree'           | 'heads' | nil       | lazy { project_tree_path(project, id) }
+          'tree'           | nil     | 'foo/bar' | lazy { project_tree_path(project, id_and_path) }
+          'blob'           | nil     | nil       | lazy { project_blob_path(project, id) }
+          'blob'           | 'heads' | nil       | lazy { project_blob_path(project, id) }
+          'blob'           | nil     | 'foo/bar' | lazy { project_blob_path(project, id_and_path) }
+          'graph'          | nil     | nil       | lazy { project_network_path(project, id) }
+          'graph'          | 'heads' | nil       | lazy { project_network_path(project, id, ref_type: 'heads') }
+          'graph'          | nil     | 'foo/bar' | lazy { project_network_path(project, id_and_path) }
+          'graphs'         | nil     | nil       | lazy { project_graph_path(project, id) }
+          'graphs'         | 'heads' | nil       | lazy { project_graph_path(project, id, ref_type: 'heads') }
+          'graphs'         | nil     | 'foo/bar' | lazy { project_graph_path(project, id_and_path) }
+          'find_file'      | nil     | nil       | lazy { project_find_file_path(project, id) }
+          'find_file'      | 'heads' | nil       | lazy { project_find_file_path(project, id) }
+          'find_file'      | nil     | 'foo/bar' | lazy { project_find_file_path(project, id_and_path) }
+          'graphs_commits' | nil     | nil       | lazy { commits_project_graph_path(project, id) }
+          'graphs_commits' | 'heads' | nil       | lazy { commits_project_graph_path(project, id) }
+          'graphs_commits' | nil     | 'foo/bar' | lazy { commits_project_graph_path(project, id_and_path) }
+          'badges'         | nil     | nil       | lazy { project_settings_ci_cd_path(project, ref: id) }
+          'badges'         | 'heads' | nil       | lazy { project_settings_ci_cd_path(project, ref: id) }
+          'badges'         | nil     | 'foo/bar' | lazy { project_settings_ci_cd_path(project, ref: id_and_path) }
+          'commits'        | nil     | nil       | lazy { project_commits_path(project, id) }
+          'commits'        | 'heads' | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
+          'commits'        | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path) }
+          nil              | nil     | nil       | lazy { project_commits_path(project, id) }
+          nil              | 'heads' | nil       | lazy { project_commits_path(project, id, ref_type: 'heads') }
+          nil              | nil     | 'foo/bar' | lazy { project_commits_path(project, id_and_path) }
+        end
+
+        with_them do
+          it 'redirects to destination' do
+            expect(subject).to redirect_to(redirected_to)
+          end
         end
       end
     end
@@ -116,43 +158,80 @@ RSpec.describe Projects::RefsController, feature_category: :source_code_manageme
       }.merge(params), xhr: true
     end
 
-    it 'never throws MissingTemplate' do
-      expect { default_get }.not_to raise_error
-      expect { xhr_get(:json) }.not_to raise_error
-      expect { xhr_get }.not_to raise_error
+    context 'when user is unauthenticated' do
+      let_it_be(:project) { create(:project, :repository, :public) }
+
+      it 'renders 200' do
+        xhr_get(:json)
+
+        expect(response).to have_gitlab_http_status(:ok)
+      end
+
+      context 'when requested ref is not default branch' do
+        it 'renders 401' do
+          xhr_get(:json, id: 'feature')
+
+          expect(response).to have_gitlab_http_status(:unauthorized)
+        end
+
+        context 'when "require_login_for_commit_tree" FF is disabled' do
+          before do
+            stub_feature_flags(require_login_for_commit_tree: false)
+          end
+
+          it 'is successful' do
+            xhr_get(:json, id: 'feature')
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+      end
     end
 
-    it 'renders 404 for HTML requests' do
-      xhr_get
+    context 'when user authenticated' do
+      before do
+        sign_in(user)
+        project.add_developer(user)
+      end
 
-      expect(response).to be_not_found
-    end
+      it 'never throws MissingTemplate' do
+        expect { default_get }.not_to raise_error
+        expect { xhr_get(:json) }.not_to raise_error
+        expect { xhr_get }.not_to raise_error
+      end
 
-    context 'when ref is incorrect' do
-      it 'returns 404 page' do
-        xhr_get(:json, id: '.')
+      it 'renders 404 for HTML requests' do
+        xhr_get
 
         expect(response).to be_not_found
       end
-    end
 
-    context 'when offset has an invalid format' do
-      it 'renders JSON' do
-        xhr_get(:json, offset: { wrong: :format })
+      context 'when ref is incorrect' do
+        it 'returns 404 page' do
+          xhr_get(:json, id: '.')
 
-        expect(response).to be_successful
-        expect(json_response).to be_kind_of(Array)
+          expect(response).to be_not_found
+        end
       end
-    end
 
-    context 'when json is requested' do
-      it 'renders JSON' do
-        expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original
+      context 'when offset has an invalid format' do
+        it 'renders JSON' do
+          xhr_get(:json, offset: { wrong: :format })
 
-        xhr_get(:json)
+          expect(response).to be_successful
+          expect(json_response).to be_kind_of(Array)
+        end
+      end
 
-        expect(response).to be_successful
-        expect(json_response).to be_kind_of(Array)
+      context 'when json is requested' do
+        it 'renders JSON' do
+          expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original
+
+          xhr_get(:json)
+
+          expect(response).to be_successful
+          expect(json_response).to be_kind_of(Array)
+        end
       end
     end
   end

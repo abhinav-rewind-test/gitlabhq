@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
 module FormHelper
-  def form_errors(model, type: 'form', truncate: [], custom_message: [])
+  def form_errors(model, type: 'form', truncate: [], custom_message: [], custom_headline: nil)
     errors = model.errors
 
     return unless errors.any?
 
-    headline = n_(
+    headline = custom_headline || safe_format(n_(
       'The %{type} contains the following error:',
       'The %{type} contains the following errors:',
       errors.count
-    ) % { type: type }
+    ), type: type)
 
     truncate = Array.wrap(truncate)
 
@@ -79,8 +79,8 @@ module FormHelper
 
     type = issuable_type.to_s
 
-    if type == 'issue' && issue_supports_multiple_assignees? ||
-        type == 'merge_request' && merge_request_supports_multiple_assignees?
+    if (type == 'issue' && issue_supports_multiple_assignees?) ||
+        (type == 'merge_request' && merge_request_supports_multiple_assignees?)
       dropdown_data = multiple_assignees_dropdown_options(dropdown_data)
     end
 
@@ -110,17 +110,11 @@ module FormHelper
       }
     }
 
-    if iid
-      dropdown_data[:data][:iid] = iid
-    end
+    dropdown_data[:data][:iid] = iid if iid
 
-    if target_branch
-      dropdown_data[:data][:target_branch] = target_branch
-    end
+    dropdown_data[:data][:target_branch] = target_branch if target_branch
 
-    if merge_request_supports_multiple_reviewers?
-      dropdown_data = multiple_reviewers_dropdown_options(dropdown_data)
-    end
+    dropdown_data = multiple_reviewers_dropdown_options(dropdown_data) if merge_request_supports_multiple_reviewers?
 
     dropdown_data[:data].merge!(reviewers_dropdown_options_for_suggested_reviewers)
     dropdown_data

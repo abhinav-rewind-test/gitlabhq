@@ -16,7 +16,7 @@ exports[`Alert integration settings form default state should match the default 
       <gl-form-checkbox-stub
         checked="true"
         data-testid="create-incident-checkbox"
-        id="reference-0"
+        value="true"
       >
         <span>
           Create an incident. Incidents are created for each alert triggered.
@@ -24,15 +24,15 @@ exports[`Alert integration settings form default state should match the default 
       </gl-form-checkbox-stub>
     </gl-form-group-stub>
     <gl-form-group-stub
-      class="col-8 col-md-9 gl-px-6"
+      class="gl-col-8 gl-col-md-9 gl-px-6"
       label-for="alert-integration-settings-issue-template"
       label-size="sm"
       labeldescription=""
       optionaltext="(optional)"
     >
       <label
-        class="gl-display-inline-flex"
-        for="reference-1"
+        class="gl-inline-flex"
+        for="reference-0"
       >
         Incident template (optional).
         <gl-link-stub
@@ -40,7 +40,7 @@ exports[`Alert integration settings form default state should match the default 
           target="_blank"
         >
           <span
-            class="gl-font-weight-normal gl-pl-2"
+            class="gl-font-normal gl-pl-2"
           >
             Learn more.
           </span>
@@ -52,10 +52,10 @@ exports[`Alert integration settings form default state should match the default 
         data-testid="incident-templates-dropdown"
         headertext=""
         icon=""
-        id="reference-1"
+        id="reference-0"
         items="[object Object]"
         noresultstext="No results found"
-        placement="left"
+        placement="bottom-start"
         positioningstrategy="absolute"
         resetbuttonlabel=""
         searchplaceholder="Search"
@@ -74,7 +74,7 @@ exports[`Alert integration settings form default state should match the default 
     >
       <gl-form-checkbox-stub
         data-testid="enable-email-notification-checkbox"
-        id="reference-2"
+        value="true"
       >
         <span>
           Send a single email notification to Owners and Maintainers for new alerts.
@@ -88,7 +88,7 @@ exports[`Alert integration settings form default state should match the default 
     >
       <gl-form-checkbox-stub
         checked="true"
-        id="reference-3"
+        value="true"
       >
         <span>
           Automatically close associated incident when a recovery alert notification resolves an alert
@@ -102,6 +102,7 @@ exports[`Alert integration settings form default state should match the default 
       data-testid="save-changes-button"
       icon=""
       size="medium"
+      tag="button"
       type="submit"
       variant="confirm"
     >

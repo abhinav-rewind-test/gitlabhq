@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Database::BatchCount do
+RSpec.describe Gitlab::Database::BatchCount, feature_category: :database do
   let_it_be(:fallback) { ::Gitlab::Database::BatchCounter::FALLBACK }
   let_it_be(:small_batch_size) { calculate_batch_size(::Gitlab::Database::BatchCounter::MIN_REQUIRED_BATCH_SIZE) }
   let_it_be(:max_allowed_loops) { ::Gitlab::Database::BatchCounter::MAX_ALLOWED_LOOPS }
@@ -35,7 +35,7 @@ RSpec.describe Gitlab::Database::BatchCount do
     end
 
     it 'returns fallback if loops more than allowed' do
-      large_finish = max_allowed_loops * default_batch_size + 1
+      large_finish = (max_allowed_loops * default_batch_size) + 1
       expect(described_class.public_send(method, *args, start: 1, finish: large_finish)).to eq(fallback)
     end
 
@@ -118,7 +118,7 @@ RSpec.describe Gitlab::Database::BatchCount do
       expect(described_class.batch_count(model, batch_size: 50_000)).to eq(model.count)
     end
 
-    it 'will not count table with a batch size less than allowed' do
+    it 'does not count table with a batch size less than allowed' do
       expect(described_class.batch_count(model, batch_size: small_batch_size)).to eq(fallback)
     end
 
@@ -244,7 +244,7 @@ RSpec.describe Gitlab::Database::BatchCount do
       expect(described_class.batch_count_with_timeout(model, batch_size: 50_000)).to eq({ status: :completed, count: model.count })
     end
 
-    it 'will not count table with a batch size less than allowed' do
+    it 'does not count table with a batch size less than allowed' do
       expect(described_class.batch_count_with_timeout(model, batch_size: small_batch_size)).to eq({ status: :bad_config })
     end
 
@@ -347,7 +347,7 @@ RSpec.describe Gitlab::Database::BatchCount do
       expect(described_class.batch_distinct_count(model, column, batch_size: 50_000)).to eq(2)
     end
 
-    it 'will not count table with a batch size less than allowed' do
+    it 'does not count table with a batch size less than allowed' do
       expect(described_class.batch_distinct_count(model, column, batch_size: small_batch_size)).to eq(fallback)
     end
 
@@ -399,7 +399,7 @@ RSpec.describe Gitlab::Database::BatchCount do
         let(:default_batch_size) { Gitlab::Database::BatchCounter::DEFAULT_DISTINCT_BATCH_SIZE }
       end
 
-      it 'will raise an error if distinct count with the :id column is requested' do
+      it 'raises an error if distinct count with the :id column is requested' do
         expect do
           described_class.batch_count(described_class.batch_distinct_count(model, :id))
         end.to raise_error 'Use distinct count only with non id fields'

@@ -9,30 +9,39 @@ module Types
           graphql_name 'CiCatalogResourceComponent'
 
           field :id, ::Types::GlobalIDType[::Ci::Catalog::Resources::Component], null: false,
-            description: 'ID of the component.',
-            alpha: { milestone: '16.7' }
+            description: 'ID of the component.'
 
           field :name, GraphQL::Types::String, null: true,
-            description: 'Name of the component.',
-            alpha: { milestone: '16.7' }
+            description: 'Name of the component.'
 
           field :include_path, GraphQL::Types::String, null: true,
-            method: :path,
-            description: 'Path used to include the component.',
-            alpha: { milestone: '16.7' }
+            description: 'Path used to include the component.'
 
-          field :inputs, [Types::Ci::Catalog::Resources::Components::InputType], null: true,
-            description: 'Inputs for the component.',
-            alpha: { milestone: '16.7' }
+          field :inputs, [Types::Ci::Inputs::SpecType], null: true,
+            description: 'Inputs for the component.'
+
+          field :last_30_day_usage_count, GraphQL::Types::Int, null: true,
+            description: 'Number of times the component has been used in the last 30 days ' \
+              'in a pipeline using `include`.'
 
           def inputs
-            object.inputs.map do |key, value|
-              {
-                name: key,
-                required: !value&.key?('default'),
-                default: value&.dig('default')
-              }
+            object.spec.fetch('inputs', {}).map do |key, value|
+              input_hash(key, value)
             end
+          end
+
+          private
+
+          def input_hash(key, value)
+            {
+              name: key,
+              required?: !value&.key?('default'),
+              default: value&.dig('default'),
+              description: value&.dig('description'),
+              regex: value&.dig('regex'),
+              type: value&.dig('type') || 'string',
+              rules: value&.dig('rules')
+            }
           end
         end
       end

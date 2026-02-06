@@ -2,9 +2,18 @@
 
 module Ci
   class BuildPolicy < CommitStatusPolicy
+    include Ci::ProcessablePolicy
     include Ci::DeployablePolicy
 
-    delegate { @subject.project }
+    delegate(:project) { @subject.project }
+
+    condition(:public_project, scope: :subject) do
+      @subject.project.public?
+    end
+
+    condition(:guest) do
+      can?(:guest_access, @subject.project)
+    end
 
     condition(:protected_ref) do
       access = ::Gitlab::UserAccess.new(@user, container: @subject.project)
@@ -16,7 +25,7 @@ module Ci
       end
     end
 
-    condition(:unprotected_ref) do
+    condition(:unprotected_ref, scope: :subject) do
       if @subject.tag?
         !ProtectedTag.protected?(@subject.project, @subject.ref)
       else
@@ -32,16 +41,16 @@ module Ci
       @subject.project.branch_allows_collaboration?(@user, @subject.ref)
     end
 
-    condition(:archived, scope: :subject) do
-      @subject.archived?
-    end
-
     condition(:artifacts_public, scope: :subject) do
       @subject.artifacts_public?
     end
 
     condition(:artifacts_none, scope: :subject) do
       @subject.artifacts_no_access?
+    end
+
+    condition(:artifacts_maintainer_only, scope: :subject) do
+      @subject.needs_maintainer_role_for_artifact_access?
     end
 
     condition(:terminal, scope: :subject) do
@@ -56,16 +65,25 @@ module Ci
       @subject.debug_mode?
     end
 
-    condition(:can_read_project_build, scope: :subject) do
+    condition(:can_read_project_build) do
       can?(:read_build, @subject.project)
     end
 
-    condition(:project_update_build, scope: :subject) do
+    condition(:project_update_build) do
       can?(:update_build, @subject.project)
     end
 
     condition(:project_developer) do
       can?(:developer_access, @subject.project)
+    end
+
+    condition(:explicit_member) { @subject.project.member?(@user) }
+
+    rule { public_project & project_developer }.enable :read_manual_variables
+    rule { ~public_project & explicit_member }.enable :read_manual_variables
+
+    condition(:project_maintainer) do
+      can?(:maintainer_access, @subject.project)
     end
 
     # Use admin_ci_minutes for detailed quota and usage reporting
@@ -77,30 +95,23 @@ module Ci
 
     rule { debug_mode & ~project_update_build }.prevent :read_build_trace
 
-    # Authorizing the user to access to protected entities.
-    # There is a "jailbreak" mode to exceptionally bypass the authorization,
-    # however, you should NEVER allow it, rather suspect it's a wrong feature/product design.
-    rule { ~can?(:jailbreak) & (archived | (protected_ref & ~admin)) }.policy do
-      prevent :update_commit_status
+    rule { ~reporter_has_access_to_protected_environment & protected_ref }.policy do
+      prevent(*all_job_write_abilities)
     end
 
-    rule { ~can?(:jailbreak) & (archived | protected_ref) }.policy do
-      prevent :cancel_build
-      prevent :update_build
-      prevent :erase_build
+    rule { archived }.policy do
+      prevent :create_build_terminal
     end
 
     rule { can?(:admin_build) | (can?(:update_build) & owner_of_job & unprotected_ref) }.enable :erase_build
 
     rule { can?(:public_access) & branch_allows_collaboration }.policy do
       enable :cancel_build
-      enable :update_build
-      enable :update_commit_status
+
+      enable(*all_job_update_abilities)
     end
 
     rule { can?(:update_build) & terminal & owner_of_job }.enable :create_build_terminal
-
-    rule { can?(:update_build) }.enable :play_job
 
     rule { is_web_ide_terminal & can?(:create_web_ide_terminal) & (admin | owner_of_job) }.policy do
       enable :read_web_ide_terminal
@@ -122,6 +133,7 @@ module Ci
 
     rule { can_read_project_build & ~artifacts_none }.enable :read_job_artifacts
     rule { ~artifacts_public & ~project_developer }.prevent :read_job_artifacts
+    rule { artifacts_maintainer_only & ~project_maintainer }.prevent :read_job_artifacts
   end
 end
 

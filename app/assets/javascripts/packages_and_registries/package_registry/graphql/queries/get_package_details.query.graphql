@@ -1,4 +1,4 @@
-#import "~/packages_and_registries/package_registry/graphql/fragments/package_group_settings.fragment.graphql"
+# @feature_category: package_registry
 
 query getPackageDetails($id: PackagesPackageID!) {
   package(id: $id) {
@@ -10,6 +10,7 @@ query getPackageDetails($id: PackagesPackageID!) {
     createdAt
     updatedAt
     status
+    statusMessage
     publicPackage
     npmUrl
     mavenUrl
@@ -19,14 +20,12 @@ query getPackageDetails($id: PackagesPackageID!) {
     pypiSetupUrl
     composerUrl
     composerConfigRepositoryUrl
+    protectionRuleExists
     project {
       id
       path
       name
       fullPath
-      group {
-        ...GroupPackageSettings
-      }
     }
     tags(first: 10) {
       nodes {

@@ -15,8 +15,7 @@ RSpec.describe ProjectRepository, feature_category: :source_code_management do
 
   describe '.find_project' do
     it 'finds project by disk path' do
-      project = create(:project)
-      project.track_project_repository
+      project = create(:project_with_repo)
 
       expect(described_class.find_project(project.disk_path)).to eq(project)
     end
@@ -47,6 +46,13 @@ RSpec.describe ProjectRepository, feature_category: :source_code_management do
       let(:project_repository) { build(:project_repository) }
 
       it { is_expected.to eq 'sha1' }
+    end
+  end
+
+  context 'with loose foreign key on project_repositories.project_id' do
+    it_behaves_like 'cleanup by a loose foreign key' do
+      let_it_be(:parent) { create(:project) }
+      let_it_be(:model) { create(:project_repository, project: parent) }
     end
   end
 end

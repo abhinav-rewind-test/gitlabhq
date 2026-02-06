@@ -19,13 +19,13 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
     subject { get_show }
 
-    shared_examples 'limited number of Gitaly request' do
+    shared_examples 'limited number of Gitaly request' do |request_count: 3|
       it 'makes a limited number of Gitaly request', :request_store, :clean_gitlab_redis_cache do
         # Warm up to populate repository cache
         get_show
         RequestStore.clear!
 
-        expect { get_show }.to change { Gitlab::GitalyClient.get_request_count }.by(2)
+        expect { get_show }.to change { Gitlab::GitalyClient.get_request_count }.by(request_count)
       end
     end
 
@@ -78,7 +78,7 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
       it_behaves_like 'a controller that can serve LFS files'
       it_behaves_like 'project cache control headers'
-      include_examples 'limited number of Gitaly request'
+      include_examples 'limited number of Gitaly request', request_count: 6
     end
 
     context 'when the endpoint receives requests above the limit' do
@@ -234,6 +234,49 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
       end
     end
 
+    describe 'ambiguous refs' do
+      let(:file_path) { 'v1.1.0/bar/branch-test.txt' }
+
+      context 'when ref_type is heads' do
+        let(:params) { { ref_type: 'heads' } }
+
+        it 'shows the blob from the branch ref' do
+          expect(project.repository.tag_exists?('v1.1.0')).to be(true)
+          expect(project.repository.branch_exists?('v1.1.0')).to be(true)
+
+          get_show
+
+          expect(response).to have_gitlab_http_status(:success)
+        end
+      end
+
+      context 'when ref_type is tags' do
+        let(:params) { { ref_type: 'tags' } }
+
+        it 'shows the blob from the tag ref' do
+          expect(project.repository.tag_exists?('v1.1.0')).to be(true)
+          expect(project.repository.branch_exists?('v1.1.0')).to be(true)
+
+          get_show
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
+
+      context 'when ref_type is nil' do
+        let(:params) { { ref_type: nil } }
+
+        it 'shows the blob from the tag ref' do
+          expect(project.repository.tag_exists?('v1.1.0')).to be(true)
+          expect(project.repository.branch_exists?('v1.1.0')).to be(true)
+
+          get_show
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
+    end
+
     describe 'caching' do
       let(:ref) { project.default_branch }
 
@@ -269,7 +312,7 @@ RSpec.describe Projects::RawController, feature_category: :source_code_managemen
 
       context 'when a public project has private repo' do
         let(:project) { create(:project, :public, :repository, :repository_private) }
-        let(:user) { create(:user, maintainer_projects: [project]) }
+        let(:user) { create(:user, maintainer_of: project) }
 
         it 'does not set public caching header' do
           sign_in user

@@ -8,20 +8,20 @@ RSpec.describe Gitlab::Suggestions::SuggestionSet do
 
   def create_suggestion(file_path, new_line, to_content)
     position = Gitlab::Diff::Position.new(old_path: file_path,
-                                          new_path: file_path,
-                                          old_line: nil,
-                                          new_line: new_line,
-                                          diff_refs: merge_request.diff_refs)
+      new_path: file_path,
+      old_line: nil,
+      new_line: new_line,
+      diff_refs: merge_request.diff_refs)
 
     diff_note = create(:diff_note_on_merge_request,
-                       noteable: merge_request,
-                       position: position,
-                       project: project)
+      noteable: merge_request,
+      position: position,
+      project: project)
 
     create(:suggestion,
-           :content_from_repo,
-           note: diff_note,
-           to_content: to_content)
+      :content_from_repo,
+      note: diff_note,
+      to_content: to_content)
   end
 
   let_it_be(:user) { create(:user) }
@@ -74,6 +74,12 @@ RSpec.describe Gitlab::Suggestions::SuggestionSet do
       end
     end
 
+    describe '#merge_request' do
+      it 'returns the merge_request associated with the suggestions' do
+        expect(suggestion_set.merge_request).to eq(merge_request)
+      end
+    end
+
     describe '#valid?' do
       it 'returns true if no errors are found' do
         expect(suggestion_set.valid?).to be(true)
@@ -94,7 +100,7 @@ RSpec.describe Gitlab::Suggestions::SuggestionSet do
       end
 
       it 'returns nil if no errors are found' do
-        expect(suggestion_set.error_message).to be(nil)
+        expect(suggestion_set.error_message).to be_nil
       end
     end
 

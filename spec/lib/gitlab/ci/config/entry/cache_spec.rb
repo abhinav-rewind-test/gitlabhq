@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::Cache do
   using RSpec::Parameterized::TableSyntax
@@ -212,7 +212,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Cache do
             let(:config) { { key: {} } }
 
             it 'reports error with descendants' do
-              is_expected.to include 'key config missing required keys: files'
+              is_expected.to include 'key config must use exactly one of these keys: files, files_commits'
             end
           end
 
@@ -228,7 +228,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Cache do
             let(:config) { { key: { prefix: 'a-prefix' } } }
 
             it 'reports error with descendants' do
-              is_expected.to include 'key config missing required keys: files'
+              is_expected.to include 'key config must use exactly one of these keys: files, files_commits'
             end
           end
 

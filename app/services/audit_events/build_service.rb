@@ -2,6 +2,8 @@
 
 module AuditEvents
   class BuildService
+    include ::Gitlab::Audit::ScopeValidation
+
     # Handle missing attributes
     MissingAttributeError = Class.new(StandardError)
 
@@ -12,9 +14,10 @@ module AuditEvents
       author:, scope:, target:, message:,
       created_at: DateTime.current, additional_details: {}, ip_address: nil, target_details: nil)
       raise MissingAttributeError, "author" if author.blank?
-      raise MissingAttributeError, "scope" if scope.blank?
       raise MissingAttributeError, "target" if target.blank?
       raise MissingAttributeError, "message" if message.blank?
+
+      validate_scope!(scope)
 
       @author = build_author(author)
       @scope = scope
@@ -51,13 +54,13 @@ module AuditEvents
 
     def base_details_payload
       @additional_details.merge({
-                                  author_name: @author.name,
-                                  author_class: @author.class.name,
-                                  target_id: @target.id,
-                                  target_type: @target.type,
-                                  target_details: @target_details || @target.details,
-                                  custom_message: @message
-                                })
+        author_name: @author.name,
+        author_class: @author.class.name,
+        target_id: @target.id,
+        target_type: @target.type,
+        target_details: @target_details || @target.details,
+        custom_message: @message
+      })
     end
 
     def build_author(author)

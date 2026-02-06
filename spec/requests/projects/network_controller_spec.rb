@@ -14,6 +14,38 @@ RSpec.describe Projects::NetworkController, feature_category: :source_code_manag
         subject
         expect(response).to redirect_to(new_user_session_path)
       end
+
+      context 'when project is public' do
+        let_it_be(:project) { create(:project, :repository, :public) }
+
+        it 'is successful' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+
+        context 'when non-default branch is requested' do
+          let(:ref) { 'feature' }
+
+          it 'redirects to sign in page' do
+            subject
+
+            expect(response).to redirect_to(new_user_session_path)
+          end
+
+          context 'when "require_login_for_commit_tree" FF is disabled' do
+            before do
+              stub_feature_flags(require_login_for_commit_tree: false)
+            end
+
+            it 'is successful' do
+              subject
+
+              expect(response).to have_gitlab_http_status(:ok)
+            end
+          end
+        end
+      end
     end
 
     context 'when user is authorized' do
@@ -28,18 +60,90 @@ RSpec.describe Projects::NetworkController, feature_category: :source_code_manag
         expect(response).to be_successful
       end
 
-      context 'when ref_type is provided' do
-        subject { get project_network_path(project, ref, ref_type: 'heads') }
+      describe '#url' do
+        context 'when ref_type is provided' do
+          subject { get project_network_path(project, ref, ref_type: 'heads') }
 
-        it 'assigns url with ref_type' do
-          subject
-          expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json, ref_type: 'heads'))
+          it 'assigns url with ref_type' do
+            subject
+            expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json, ref_type: 'heads'))
+          end
+        end
+
+        context 'when ref is for a branch' do
+          it 'includes inferred ref_type=heads' do
+            subject
+            expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json, ref_type: 'heads'))
+          end
+
+          context 'when verified_ref_extractor is disabled' do
+            before do
+              stub_feature_flags(verified_ref_extractor: false)
+            end
+
+            it 'does not include inferred ref_type' do
+              subject
+              expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json))
+            end
+          end
+        end
+
+        context 'when ref is for a tag' do
+          let(:ref) { project.repository.tag_names.first }
+
+          it 'includes inferred ref_type=tags' do
+            subject
+            expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json, ref_type: 'tags'))
+          end
+
+          context 'when verified_ref_extractor is disabled' do
+            before do
+              stub_feature_flags(verified_ref_extractor: false)
+            end
+
+            it 'does not include inferred ref_type' do
+              subject
+              expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json))
+            end
+          end
+        end
+
+        context 'when ref is ambiguous' do
+          let(:ref) { project.repository.tag_names.first }
+
+          before do
+            project.repository.create_branch(ref, project.default_branch)
+            project.repository.expire_branches_cache
+          end
+
+          after do
+            project.repository.rm_branch(project.owner, ref)
+          end
+
+          it 'does not include ref_type' do
+            subject
+            expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json))
+          end
+
+          context 'when verified_ref_extractor is disabled' do
+            before do
+              stub_feature_flags(verified_ref_extractor: false)
+            end
+
+            it 'does not include ref_type' do
+              subject
+              expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json))
+            end
+          end
         end
       end
 
-      it 'assigns url' do
-        subject
-        expect(assigns(:url)).to eq(project_network_path(project, ref, format: :json))
+      context 'when path includes a space' do
+        it 'still renders the page' do
+          get [project_network_path(project, ref), '/%20'].join
+
+          expect(response).to have_gitlab_http_status(:ok)
+        end
       end
     end
   end

@@ -5,9 +5,11 @@
 *.rej
 .dir-locals.el
 .DS_Store
+/OpenCode.md
 .bundle
 .chef
 .directory
+.history
 .eslintcache
 /.envrc
 eslint-report.html
@@ -45,7 +47,7 @@ eslint-report.html
 /config/redis.yml
 /config/unicorn.rb
 /config/puma.rb
-/config/secrets.yml
+/config/secrets.yml*
 /config/session_store.yml
 /config/sidekiq.yml
 /config/click_house.yml
@@ -59,7 +61,7 @@ eslint-report.html
 /jsconfig.json
 /lefthook-local.yml
 /log/*.log*
-/node_modules
+node_modules
 /nohup.out
 /public/assets/
 /public/uploads.*
@@ -72,13 +74,16 @@ eslint-report.html
 /tags
 /vendor/bundle/*
 /vendor/package_metadata_db/
+/vendor/package_metadata/
 /builds*
 /.gitlab_workhorse_secret
 /.gitlab_pages_secret
 /.gitlab_kas_secret
+/.gitlab_openbao_authentication_token_secret
 /.gitlab_suggested_reviewers_secret
 /.gitlab_zoekt_username
 /.gitlab_zoekt_password
+/.gitlab/duo/chat-rules.md
 /webpack-report/
 /crystalball/
 /test_results/
@@ -118,8 +123,17 @@ jest-snapshot-test-report.json
 *.local
 /config/vite.gdk.json
 
-# CSS compilation for cssbundling
+# CSS compilation for cssbundling and tailwind
 app/assets/builds/
+config/helpers/tailwind/all_utilities.haml
+config/helpers/tailwind/css_in_js.js
 
 # ruby-lsp
 .index.yml
+
+# Rubocop cop documentation generation
+.yardoc
+
+# yalc for temporary testing
+.yalc
+yalc.lock

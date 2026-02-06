@@ -8,6 +8,7 @@ import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
  *  - Dropdown badge components
  */
 export default {
+  name: 'JobNameComponent',
   components: {
     CiIcon,
   },
@@ -29,15 +30,15 @@ export default {
 };
 </script>
 <template>
-  <span class="gl-max-w-full gl-display-flex gl-align-items-center gl-flex-grow-1">
+  <span class="gl-flex gl-items-center">
     <ci-icon
       :size="iconSize"
       :status="status"
       :show-tooltip="false"
       :use-link="false"
-      class="gl-line-height-0"
+      class="gl-leading-0"
     />
-    <span class="gl-text-truncate mw-70p gl-pl-3 gl-display-inline-block">
+    <span class="gl-line-clamp-2 gl-pl-3 gl-text-left gl-wrap-anywhere" :title="name">
       {{ name }}
     </span>
   </span>

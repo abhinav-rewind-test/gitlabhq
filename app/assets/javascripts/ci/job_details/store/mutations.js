@@ -1,5 +1,5 @@
 import * as types from './mutation_types';
-import { logLinesParser } from './utils';
+import { logLinesParser, checkJobHasLog } from './utils';
 
 export default {
   [types.SET_JOB_LOG_OPTIONS](state, options = {}) {
@@ -106,7 +106,11 @@ export default {
   },
   [types.RECEIVE_JOB_ERROR](state) {
     state.isLoading = false;
-    state.job = {};
+
+    if (!checkJobHasLog(state)) {
+      state.job = {};
+    }
+
     state.hasError = true;
   },
 
@@ -121,9 +125,6 @@ export default {
   },
   [types.DISABLE_SCROLL_BOTTOM](state) {
     state.isScrollBottomDisabled = true;
-  },
-  [types.TOGGLE_SCROLL_ANIMATION](state, toggle) {
-    state.isScrollingDown = toggle;
   },
   [types.REQUEST_JOBS_FOR_STAGE](state, stage = {}) {
     state.isLoadingJobs = true;

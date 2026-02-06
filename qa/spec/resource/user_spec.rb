@@ -6,7 +6,7 @@ RSpec.describe QA::Resource::User do
       name: "GitLab QA",
       username: "gitlab-qa",
       web_url: "https://staging.gitlab.com/gitlab-qa",
-      public_email: "1614863-gitlab-qa@users.noreply.staging.gitlab.com"
+      commit_email: "1614863-gitlab-qa@users.noreply.staging.gitlab.com"
     }
   end
 
@@ -32,6 +32,26 @@ RSpec.describe QA::Resource::User do
       subject.password = new_password
 
       expect(subject.password).to eq(new_password)
+    end
+  end
+
+  describe '#git_repo_password' do
+    context 'when user has a personal access token' do
+      it 'returns the personal access token' do
+        token = 'glpat-test-token-123'
+        allow(subject).to receive(:current_personal_access_token).and_return(token)
+
+        expect(subject.git_repo_credential).to eq(token)
+      end
+    end
+
+    context 'when user does not have a personal access token' do
+      it 'returns the password' do
+        allow(subject).to receive(:current_personal_access_token).and_return(nil)
+        subject.password = 'test-password'
+
+        expect(subject.git_repo_credential).to eq('test-password')
+      end
     end
   end
 
@@ -65,21 +85,11 @@ RSpec.describe QA::Resource::User do
     end
   end
 
-  describe '#public_email' do
-    it 'defaults to QA::Runtime::User.default_email' do
-      expect(subject.public_email).to eq(QA::Runtime::User.default_email)
-    end
-
-    it 'retrieves the public_email from the api_resource if present' do
+  describe '#commit_email' do
+    it 'retrieves the commit_email from the api_resource if present' do
       subject.__send__(:api_resource=, api_resource)
 
-      expect(subject.public_email).to eq(api_resource[:public_email])
-    end
-
-    it 'defaults to QA::Runtime::User.default_email if the public_email from the api_resource is blank' do
-      subject.__send__(:api_resource=, api_resource.merge(public_email: ''))
-
-      expect(subject.public_email).to eq(QA::Runtime::User.default_email)
+      expect(subject.commit_email).to eq(api_resource[:commit_email])
     end
   end
 
@@ -136,33 +146,11 @@ RSpec.describe QA::Resource::User do
         allow(QA::Page::Admin::Menu).to receive(:perform)
         allow(QA::Page::Admin::Overview::Users::Index).to receive(:perform).and_yield(index_mock)
 
-        expect(index_mock).to receive(:search_user).with(username)
+        expect(index_mock).to receive(:choose_search_user).with(username)
+        expect(index_mock).to receive(:click_search)
         expect(index_mock).to receive(:has_username?).with(username).and_return(found)
 
         expect(subject.has_user?(subject)).to eq(found)
-      end
-    end
-  end
-
-  describe '#fabricate_or_use' do
-    # Signup Disabled, Personal Access Tokens disabled, method used, method that is not used
-    [
-      [true,  false, :fabricate_via_api!, :fabricate!],
-      [false, false, :fabricate!, :fabricate_via_api!],
-      [false, true,  :fabricate!, :fabricate_via_api!],
-      [true,  true,  :fabricate!, :fabricate_via_api!]
-    ].each do |signup_disabled, personal_access_tokens_disabled, method_used, method_not_used|
-      it "when signup_disabled is #{signup_disabled}, "\
-         "personal_access_tokens_disabled is #{personal_access_tokens_disabled}, "\
-         "calls #{method_used}, does not call #{method_not_used}" do
-        allow(QA::Runtime::Env).to receive(:signup_disabled?).and_return(signup_disabled)
-        allow(QA::Runtime::Env).to receive(:personal_access_tokens_disabled?)
-          .and_return(personal_access_tokens_disabled)
-
-        expect(described_class).to receive(method_used)
-        expect(described_class).not_to receive(method_not_used)
-
-        described_class.fabricate_or_use
       end
     end
   end

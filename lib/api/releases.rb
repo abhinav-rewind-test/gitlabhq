@@ -5,7 +5,6 @@ module API
     include PaginationParams
 
     releases_tags = %w[releases]
-
     RELEASE_ENDPOINT_REQUIREMENTS = API::NAMESPACE_OR_PROJECT_REQUIREMENTS
       .merge(tag_name: API::NO_SLASH_URL_PART_REGEX)
     RELEASE_CLI_USER_AGENT = 'GitLab-release-cli'
@@ -48,6 +47,7 @@ module API
 
         use :pagination
       end
+      route_setting :authorization, permissions: :read_release, boundary_type: :group
       get ":id/releases" do
         finder_options = {
           sort: params[:sort]
@@ -98,6 +98,9 @@ module API
         optional :updated_after, type: DateTime, desc: 'Return releases updated after the specified datetime. Format: ISO 8601 YYYY-MM-DDTHH:MM:SSZ'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_release, boundary_type: :project,
+        job_token_policies: :read_releases,
+        allow_public_access_for_enabled_project_features: [:repository, :releases]
       get ':id/releases' do
         releases = ::ReleasesFinder.new(user_project, current_user, declared_params.slice(:order_by, :sort, :updated_before, :updated_after)).execute
 
@@ -105,14 +108,14 @@ module API
         # Since the cached result could contain sensitive information,
         # it will expire in a short interval.
         present_cached paginate(releases),
-                        with: Entities::Release,
-                        # `current_user` could be absent if the releases are publicly accesible.
-                        # We should not use `cache_key` for the user because the version/updated_at
-                        # context is unnecessary here.
-                        cache_context: -> (_) { "user:{#{current_user&.id}}" },
-                        expires_in: 5.minutes,
-                        current_user: current_user,
-                        include_html_description: declared_params[:include_html_description]
+          with: Entities::Release,
+          # `current_user` could be absent if the releases are publicly accesible.
+          # We should not use `cache_key` for the user because the version/updated_at
+          # context is unnecessary here.
+          cache_context: ->(_) { "user:{#{current_user&.id}}" },
+          expires_in: 5.minutes,
+          current_user: current_user,
+          include_html_description: declared_params[:include_html_description]
       end
 
       desc 'Get a release by a tag name' do
@@ -133,6 +136,9 @@ module API
           desc: 'If `true`, a response includes HTML rendered markdown of the release description'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_release, boundary_type: :project,
+        job_token_policies: :read_releases,
+        allow_public_access_for_enabled_project_features: [:repository, :releases]
       get ':id/releases/:tag_name', requirements: RELEASE_ENDPOINT_REQUIREMENTS do
         authorize_read_code!
 
@@ -160,6 +166,9 @@ module API
           as: :filepath
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_release, boundary_type: :project,
+        job_token_policies: :read_releases,
+        allow_public_access_for_enabled_project_features: [:repository, :releases]
       get ':id/releases/:tag_name/downloads/*direct_asset_path', format: false, requirements: RELEASE_ENDPOINT_REQUIREMENTS do
         authorize_read_code!
 
@@ -188,6 +197,9 @@ module API
           desc: 'The path to be suffixed to the latest release'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_release, boundary_type: :project,
+        job_token_policies: :read_releases,
+        allow_public_access_for_enabled_project_features: [:repository, :releases]
       get ':id/releases/permalink/latest(/)(*suffix_path)', format: false, requirements: RELEASE_ENDPOINT_REQUIREMENTS do
         authorize_read_code!
 
@@ -196,7 +208,7 @@ module API
         not_found! unless latest_release
 
         # Build the full API URL with the tag of the latest release
-        redirect_url = api_v4_projects_releases_path(id: user_project.id, tag_name: latest_release.tag)
+        redirect_url = api_v4_projects_releases_path(id: user_project.id, tag_name: ERB::Util.url_encode(latest_release.tag))
 
         # Include the additional suffix_path if present
         redirect_url += "/#{declared_params[:suffix_path]}" if declared_params[:suffix_path].present?
@@ -209,7 +221,7 @@ module API
           redirect_url += "?#{query_parameters_except_order_by.compact.to_param}"
         end
 
-        redirect redirect_url
+        redirect expose_path(redirect_url)
       end
 
       desc 'Create a release' do
@@ -237,8 +249,8 @@ module API
           desc: "If a tag specified in `tag_name` doesn't exist, the release is created from `ref` and tagged " \
                 "with `tag_name`. It can be a commit SHA, another tag name, or a branch name."
 
-        optional :assets, type: Hash do
-          optional :links, type: Array do
+        optional :assets, type: Hash, desc: 'Object that contains assets for the release' do
+          optional :links, type: Array, desc: 'Link information about the release' do
             requires :name, type: String, desc: 'The name of the link. Link names must be unique within the release'
             requires :url, type: String, desc: 'The URL of the link. Link URLs must be unique within the release'
             optional :direct_asset_path, type: String, desc: 'Optional path for a direct asset link'
@@ -253,9 +265,9 @@ module API
           desc: 'The title of each milestone the release is associated with. GitLab Premium customers can specify group milestones. Cannot be combined with `milestone_ids` parameter.'
 
         optional :milestone_ids,
-           type: Array[String, Integer],
-           coerce_with: ::API::Validations::Types::CommaSeparatedToIntegerArray.coerce,
-           desc: 'The ID of each milestone the release is associated with. GitLab Premium customers can specify group milestones. Cannot be combined with `milestones` parameter.'
+          type: Array[String, Integer],
+          coerce_with: ::API::Validations::Types::CommaSeparatedToIntegerArray.coerce,
+          desc: 'The ID of each milestone the release is associated with. GitLab Premium customers can specify group milestones. Cannot be combined with `milestones` parameter.'
 
         mutually_exclusive :milestones, :milestone_ids, message: 'Cannot specify milestones and milestone_ids at the same time'
 
@@ -263,8 +275,17 @@ module API
           type: DateTime,
           desc: 'Date and time for the release. Defaults to the current time. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`). ' \
                 'Only provide this field if creating an upcoming or historical release.'
+
+        optional :legacy_catalog_publish,
+          type: Boolean,
+          desc: 'If true, the release will be published to the CI catalog. ' \
+                'This parameter is for internal use only and will be removed in a future release. ' \
+                'If the feature flag ci_release_cli_catalog_publish_option is disabled, this parameter will be ignored ' \
+                'and the release will published to the CI catalog as it was before this parameter was introduced.'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :create_release, boundary_type: :project,
+        job_token_policies: :admin_releases
       post ':id/releases' do
         authorize_create_release!
 
@@ -310,6 +331,8 @@ module API
         mutually_exclusive :milestones, :milestone_ids, message: 'Cannot specify milestones and milestone_ids at the same time'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :update_release, boundary_type: :project,
+        job_token_policies: :admin_releases
       put ':id/releases/:tag_name', requirements: RELEASE_ENDPOINT_REQUIREMENTS do
         authorize_update_release!
 
@@ -340,6 +363,8 @@ module API
         requires :tag_name, type: String, desc: 'The Git tag the release is associated with', as: :tag
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :delete_release, boundary_type: :project,
+        job_token_policies: :admin_releases
       delete ':id/releases/:tag_name', requirements: RELEASE_ENDPOINT_REQUIREMENTS do
         authorize_destroy_release!
 
@@ -355,6 +380,7 @@ module API
       end
     end
 
+    helpers ::API::Helpers::RelatedResourcesHelpers
     helpers do
       def authorize_read_group_releases!
         authorize! :read_release, user_group

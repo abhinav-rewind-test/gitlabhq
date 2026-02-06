@@ -1,6 +1,5 @@
 <script>
 import { GlModal, GlSprintf } from '@gitlab/ui';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import csrf from '~/lib/utils/csrf';
 import { __, s__ } from '~/locale';
 
@@ -9,7 +8,6 @@ export default {
     GlModal,
     GlSprintf,
   },
-  mixins: [glFeatureFlagMixin()],
   props: {
     actionUrl: {
       type: String,
@@ -21,6 +19,10 @@ export default {
     },
     username: {
       type: String,
+      required: true,
+    },
+    delayUserAccountSelfDeletion: {
+      type: Boolean,
       required: true,
     },
   },
@@ -35,7 +37,9 @@ export default {
       return csrf.token;
     },
     confirmationValue() {
-      return this.confirmWithPassword ? __('password') : __('username');
+      return this.confirmWithPassword
+        ? s__('Profiles|Type your %{codeStart}password%{codeEnd} to confirm:')
+        : s__('Profiles|Type your %{codeStart}username%{codeEnd} to confirm:');
     },
     primaryProps() {
       return {
@@ -59,6 +63,11 @@ export default {
       }
       return this.enteredUsername === this.username;
     },
+    deleteMessage() {
+      return this.delayUserAccountSelfDeletion
+        ? this.$options.i18n.textdelay
+        : this.$options.i18n.text;
+    },
   },
   methods: {
     onSubmit() {
@@ -70,12 +79,11 @@ export default {
   },
   i18n: {
     textdelay: s__(`Profiles|
-You are about to permanently delete %{yourAccount}, and all of the issues, merge requests, and groups linked to your account.
-Once you confirm %{deleteAccount}, it cannot be undone or recovered. You might have to wait seven days before creating a new account with the same username or email.`),
+You are about to permanently delete %{strongStart}your account%{strongEnd}, and all of the issues, merge requests, and groups linked to your account.
+Once you confirm %{strongStart}Delete account%{strongEnd}, your account cannot be recovered. It might take up to seven days before you can create a new account with the same username or email.`),
     text: s__(`Profiles|
-You are about to permanently delete %{yourAccount}, and all of the issues, merge requests, and groups linked to your account.
-Once you confirm %{deleteAccount}, it cannot be undone or recovered.`),
-    inputLabel: s__('Profiles|Type your %{confirmationValue} to confirm:'),
+You are about to permanently delete %{strongStart}your account%{strongEnd}, and all of the issues, merge requests, and groups linked to your account.
+Once you confirm %{strongStart}Delete account%{strongEnd}, your account cannot be recovered.`),
   },
 };
 </script>
@@ -86,26 +94,12 @@ Once you confirm %{deleteAccount}, it cannot be undone or recovered.`),
     title="Profiles"
     :action-primary="primaryProps"
     :action-cancel="cancelProps"
-    :ok-disabled="!canSubmit"
     @primary="onSubmit"
   >
     <p>
-      <gl-sprintf v-if="glFeatures.delayDeleteOwnUser" :message="$options.i18n.textdelay">
-        <template #yourAccount>
-          <strong>{{ s__('Profiles|your account') }}</strong>
-        </template>
-
-        <template #deleteAccount>
-          <strong>{{ s__('Profiles|Delete account') }}</strong>
-        </template>
-      </gl-sprintf>
-      <gl-sprintf v-else :message="$options.i18n.text">
-        <template #yourAccount>
-          <strong>{{ s__('Profiles|your account') }}</strong>
-        </template>
-
-        <template #deleteAccount>
-          <strong>{{ s__('Profiles|Delete account') }}</strong>
+      <gl-sprintf :message="deleteMessage">
+        <template #strong="{ content }">
+          <strong>{{ content }}</strong>
         </template>
       </gl-sprintf>
     </p>
@@ -115,9 +109,9 @@ Once you confirm %{deleteAccount}, it cannot be undone or recovered.`),
       <input :value="csrfToken" type="hidden" name="authenticity_token" />
 
       <p id="input-label">
-        <gl-sprintf :message="$options.i18n.inputLabel">
-          <template #confirmationValue>
-            <code>{{ confirmationValue }}</code>
+        <gl-sprintf :message="confirmationValue">
+          <template #code="{ content }">
+            <code>{{ content }}</code>
           </template>
         </gl-sprintf>
       </p>
@@ -137,6 +131,7 @@ Once you confirm %{deleteAccount}, it cannot be undone or recovered.`),
         name="username"
         class="form-control"
         type="text"
+        data-testid="username-confirmation-field"
         aria-labelledby="input-label"
       />
     </form>

@@ -13,6 +13,81 @@ export const createNewMenuGroups = [
         href: '/groups/new?parent_id=22#create-group-pane',
       },
       {
+        text: 'New work item',
+        component: 'create_new_work_item_modal',
+      },
+      {
+        text: 'Invite members',
+        component: 'invite_members',
+      },
+    ],
+  },
+  {
+    name: 'GitLab',
+    items: [
+      {
+        text: 'New project/repository',
+        href: '/projects/new',
+      },
+      {
+        text: 'New group',
+        href: '/groups/new',
+      },
+      {
+        text: 'New snippet',
+        href: '/-/snippets/new',
+      },
+    ],
+  },
+];
+
+export const createNewMenuProjects = [
+  {
+    name: 'This project',
+    items: [
+      {
+        text: 'New work item',
+        href: 'issues/new',
+        component: 'create_new_work_item_modal',
+      },
+      {
+        text: 'Invite members',
+        component: 'invite_members',
+      },
+    ],
+  },
+  {
+    name: 'GitLab',
+    items: [
+      {
+        text: 'New project/repository',
+        href: '/projects/new',
+      },
+      {
+        text: 'New group',
+        href: '/groups/new',
+      },
+      {
+        text: 'New snippet',
+        href: '/-/snippets/new',
+      },
+    ],
+  },
+];
+
+export const createNewMenuGroupsLegacy = [
+  {
+    name: 'This group',
+    items: [
+      {
+        text: 'New project/repository',
+        href: '/projects/new?namespace_id=22',
+      },
+      {
+        text: 'New subgroup',
+        href: '/groups/new?parent_id=22#create-group-pane',
+      },
+      {
         text: 'New epic',
         href: '/groups/gitlab-org/-/epics/new',
       },
@@ -79,15 +154,23 @@ export const contextSwitcherLinks = [
 
 export const sidebarData = {
   is_logged_in: true,
-  is_admin: false,
+  admin_mode: {
+    user_is_admin: false,
+  },
   admin_url: '/admin',
-  current_menu_items: [],
+  current_menu_items: [
+    {
+      id: 'homepage_menu',
+      title: 'Home',
+    },
+  ],
   current_context: {},
   current_context_header: 'Your work',
   name: 'Administrator',
   username: 'root',
   avatar_url: 'path/to/img_administrator',
   logo_url: 'path/to/logo',
+  compare_plans_url: 'path/to/compare_plans',
   user_counts: {
     last_update: Date.now(),
     todos: 3,
@@ -102,9 +185,13 @@ export const sidebarData = {
   projects_path: 'path/to/projects',
   groups_path: 'path/to/groups',
   support_path: '/support',
+  docs_path: '/help/docs',
+  university_path: 'https://university.gitlab.com/',
   display_whats_new: true,
-  whats_new_most_recent_release_items_count: 5,
+  whats_new_most_recent_release_items_count: 2,
   whats_new_version_digest: 1,
+  whats_new_mark_as_read_path: 'path/to/mark_as_read',
+  whats_new_read_articles: [],
   show_version_check: false,
   gitlab_version: { major: 16, minor: 0 },
   gitlab_version_check: { severity: 'success' },
@@ -126,6 +213,12 @@ export const sidebarData = {
     },
   ],
   track_visits_path: '/-/track_visits',
+  sign_in_visible: true,
+  sign_in_path: '/sign_in',
+  allow_signup: true,
+  new_user_registration_path: '/sign_up',
+  trial_registration_path: '/trial_registrations/new',
+  has_multiple_organizations: false,
 };
 
 export const loggedOutSidebarData = {
@@ -200,8 +293,8 @@ export const frecentGroupsMock = [
     id: 'gid://gitlab/Group/1',
     name: 'Frecent group 1',
     namespace: 'Frecent Namespace 1',
-    webUrl: '/frecent-namespace-1/frecent-group-1',
     avatarUrl: '/uploads/-/avatar1.png',
+    fullPath: 'frecent-namespace-1/frecent-group-1',
   },
 ];
 
@@ -210,8 +303,8 @@ export const frecentProjectsMock = [
     id: 'gid://gitlab/Project/1',
     name: 'Frecent project 1',
     namespace: 'Frecent Namespace 1 / Frecent project 1',
-    webUrl: '/frecent-namespace-1/frecent-project-1',
     avatarUrl: '/uploads/-/avatar1.png',
+    fullPath: 'frecent-namespace-1/frecent-project-1',
   },
 ];
 
@@ -243,3 +336,22 @@ export const sortedFrequentItems = [
   { id: 1, frequency: 12, lastAccessedOn: 1491400843391 },
   { id: 4, frequency: 8, lastAccessedOn: 1497979281815 },
 ];
+
+export const sidebarDataCountResponse = ({
+  openIssuesCount = 8,
+  openMergeRequestsCount = 236456,
+} = {}) => {
+  return {
+    data: {
+      namespace: {
+        id: 'gid://gitlab/Project/11',
+        sidebar: {
+          openIssuesCount,
+          openMergeRequestsCount,
+          __typename: 'NamespaceSidebar',
+        },
+        __typename: 'Namespace',
+      },
+    },
+  };
+};

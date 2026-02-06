@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Plan', :reliable, product_group: :project_management do
+  RSpec.describe 'Plan', :smoke, feature_category: :team_planning do
     describe 'filter issue comments activities' do
       before do
         Flow::Login.sign_in
@@ -9,15 +9,22 @@ module QA
         create(:issue).visit!
       end
 
-      it 'filters comments and activities in an issue', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347948' do
-        Page::Project::Issue::Show.perform do |show|
+      it(
+        'filters comments and activities in an issue', :aggregate_failures,
+        testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347948',
+        quarantine: {
+          issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24019',
+          type: :flaky
+        }
+      ) do
+        Page::Project::WorkItem::Show.perform do |show|
           my_own_comment = "My own comment"
           made_the_issue_confidential = "made the issue confidential"
 
           show.comment('/confidential', filter: :comments_only)
           show.comment(my_own_comment, filter: :comments_only)
 
-          expect(show).not_to have_content(made_the_issue_confidential)
+          expect { show }.not_to eventually_have_content(made_the_issue_confidential)
           expect(show).to have_comment(my_own_comment)
 
           show.select_all_activities_filter

@@ -2,14 +2,11 @@
 
 module MergeRequests
   class AfterCreateService < MergeRequests::BaseService
-    include Gitlab::Utils::StrongMemoize
-
     def execute(merge_request)
       merge_request.ensure_merge_request_diff
 
       prepare_for_mergeability(merge_request)
       prepare_merge_request(merge_request)
-
       mark_merge_request_as_prepared(merge_request)
 
       logger.info(**log_payload(merge_request, 'Executing hooks'))
@@ -20,10 +17,17 @@ module MergeRequests
     private
 
     def prepare_for_mergeability(merge_request)
-      logger.info(**log_payload(merge_request, 'Creating pipeline'))
-      create_pipeline_for(merge_request, current_user)
-      logger.info(**log_payload(merge_request, 'Pipeline created'))
-      merge_request.update_head_pipeline
+      if async_pipeline_creation?(merge_request)
+        logger.info(**log_payload(merge_request, 'Creating pipeline async'))
+        create_pipeline_for(merge_request, current_user, async: true)
+        logger.info(**log_payload(merge_request, 'Pipeline creating async'))
+      else
+        logger.info(**log_payload(merge_request, 'Creating pipeline'))
+        create_pipeline_for(merge_request, current_user, async: false)
+        merge_request.update_head_pipeline
+        logger.info(**log_payload(merge_request, 'Pipeline created'))
+      end
+
       check_mergeability(merge_request)
     end
 
@@ -34,16 +38,17 @@ module MergeRequests
       merge_request_activity_counter.track_mr_including_ci_config(user: current_user, merge_request: merge_request)
 
       notification_service.new_merge_request(merge_request, current_user)
-
       merge_request.diffs(include_stats: false).write_cache
       merge_request.create_cross_references!(current_user)
-
-      Onboarding::ProgressService.new(merge_request.target_project.namespace).execute(action: :merge_request_created)
-
       todo_service.new_merge_request(merge_request, current_user)
       merge_request.cache_merge_request_closes_issues!(current_user)
 
-      Gitlab::UsageDataCounters::MergeRequestCounter.count(:create)
+      Gitlab::InternalEvents.track_event(
+        'create_merge_request',
+        user: current_user,
+        project: merge_request.target_project
+      )
+
       link_lfs_objects(merge_request)
     end
 
@@ -73,6 +78,10 @@ module MergeRequests
         merge_request_id: merge_request.id,
         message: message
       )
+    end
+
+    def async_pipeline_creation?(merge_request)
+      Feature.enabled?(:async_mr_pipeline_creation, merge_request.target_project)
     end
   end
 end

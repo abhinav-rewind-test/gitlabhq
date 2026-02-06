@@ -4,13 +4,14 @@ module API
   class SystemHooks < ::API::Base
     include PaginationParams
 
-    system_hooks_tags = %w[system_hooks]
-
+    system_hooks_tags = %w[hooks]
     feature_category :webhooks
 
     before do
       authenticate!
-      authenticated_as_admin!
+      ability = route.request_method == 'GET' ? :read_web_hook : :admin_web_hook
+      authorize! ability
+      set_current_organization
     end
 
     helpers ::API::Helpers::WebHooksHelpers
@@ -21,19 +22,26 @@ module API
       end
 
       params :hook_parameters do
+        optional :name, type: String, desc: 'Name of the hook'
+        optional :description, type: String, desc: 'Description of the hook'
         optional :token, type: String,
-                         desc: "Secret token to validate received payloads; this isn't returned in the response"
+          desc: "Secret token to validate received payloads; this isn't returned in the response"
         optional :push_events, type: Boolean, desc: 'When true, the hook fires on push events'
         optional :tag_push_events, type: Boolean, desc: 'When true, the hook fires on new tags being pushed'
         optional :merge_requests_events, type: Boolean, desc: 'Trigger hook on merge requests events'
         optional :repository_update_events, type: Boolean, desc: 'Trigger hook on repository update events'
         optional :enable_ssl_verification, type: Boolean, desc: 'Do SSL verification when triggering the hook'
+        optional :push_events_branch_filter, type: String, desc: "Trigger hook on specified branch only"
+        optional :branch_filter_strategy, type: String, values: WebHook.branch_filter_strategies.keys,
+          desc: "Filter push events by branch. Possible values are `wildcard` (default), `regex`, and `all_branches`"
         use :url_variables
+        use :custom_headers
       end
     end
 
     resource :hooks do
-      mount ::API::Hooks::UrlVariables
+      mount ::API::Hooks::UrlVariables, with: { boundary_type: :instance }
+      mount ::API::Hooks::CustomHeaders, with: { boundary_type: :instance }
 
       desc 'List system hooks' do
         detail 'Get a list of all system hooks'
@@ -44,6 +52,7 @@ module API
       params do
         use :pagination
       end
+      route_setting :authorization, permissions: :read_webhook, boundary_type: :instance
       get do
         present paginate(SystemHook.all), with: Entities::Hook
       end
@@ -59,6 +68,7 @@ module API
       params do
         requires :hook_id, type: Integer, desc: 'The ID of the system hook'
       end
+      route_setting :authorization, permissions: :read_webhook, boundary_type: :instance
       get ":hook_id" do
         present find_hook, with: Entities::Hook
       end
@@ -77,11 +87,17 @@ module API
         use :requires_url
         use :hook_parameters
       end
+      route_setting :authorization, permissions: :create_webhook, boundary_type: :instance
       post do
         hook_params = create_hook_params
-        hook = SystemHook.new(hook_params)
 
-        save_hook(hook, Entities::Hook)
+        result = WebHooks::CreateService.new(current_user).execute(hook_params, hook_scope, Current.organization)
+
+        if result[:status] == :success
+          present result[:hook], with: Entities::Hook
+        else
+          error!(result.message, result.http_status || 422)
+        end
       end
 
       desc 'Edit system hook' do
@@ -94,6 +110,7 @@ module API
         ]
         tags system_hooks_tags
       end
+      route_setting :authorization, permissions: :update_webhook, boundary_type: :instance
       params do
         requires :hook_id, type: Integer, desc: 'The ID of the system hook'
         use :optional_url
@@ -126,6 +143,7 @@ module API
       params do
         requires :hook_id, type: Integer, desc: 'The ID of the system hook'
       end
+      route_setting :authorization, permissions: :delete_webhook, boundary_type: :instance
       delete ":hook_id" do
         hook = find_hook
 

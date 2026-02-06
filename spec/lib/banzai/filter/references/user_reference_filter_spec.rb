@@ -2,19 +2,19 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   def get_reference(user)
     user.to_reference
   end
 
-  let(:project)   { create(:project, :public) }
-  let(:user)      { create(:user) }
-  subject { user }
-
+  let(:project) { create(:project, :public) }
+  let(:user) { create(:user) }
   let(:subject_name) { "user" }
   let(:reference) { get_reference(user) }
+
+  subject { user }
 
   it_behaves_like 'user reference or project reference'
 
@@ -23,19 +23,19 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
   end
 
   it 'ignores invalid users' do
-    exp = act = "Hey #{invalidate_reference(reference)}"
-    expect(reference_filter(act).to_html).to eq(exp)
+    act = "Hey #{invalidate_reference(reference)}"
+    expect(reference_filter(act).to_html).to include act
   end
 
   it 'ignores references with text before the @ sign' do
-    exp = act = "Hey foo#{reference}"
-    expect(reference_filter(act).to_html).to eq(exp)
+    act = "Hey foo#{reference}"
+    expect(reference_filter(act).to_html).to include act
   end
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Hey #{reference}</#{elem}>"
-      expect(reference_filter(act).to_html).to eq exp
+      act = "<#{elem}>Hey #{reference}</#{elem}>"
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -173,12 +173,11 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
   context 'in group context' do
     let(:group) { create(:group) }
     let(:group_member) { create(:user) }
+    let(:context) { { author: group_member, project: nil, group: group } }
 
     before do
       group.add_developer(group_member)
     end
-
-    let(:context) { { author: group_member, project: nil, group: group } }
 
     it 'supports a special @all mention' do
       stub_feature_flags(disable_all_mention: false)
@@ -202,12 +201,26 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
 
       expect(doc.css('a').first.attr('href')).to eq urls.user_url(group)
     end
+
+    it 'adds data-original for the redactor, preserving the input' do
+      reference = group.to_reference
+      entered = reference.upcase
+      expect(entered).not_to eq(reference)
+
+      doc = reference_filter("Hey #{entered}", context)
+      a = doc.css('a').first
+
+      expect(a.content).to eq(reference) # Text content is canonicalised (when visible) ...
+      expect(a.attr('data-original')).to eq(entered) # ... but original input is preserved for redaction.
+    end
   end
 
   describe '#namespaces' do
     it 'returns a Hash containing all Namespaces' do
-      document = Nokogiri::HTML.fragment("<p>#{get_reference(user)}</p>")
-      filter = described_class.new(document, project: project)
+      frag = Nokogiri::HTML.fragment("<p></p>")
+      frag.css('p').first.content = get_reference(user)
+
+      filter = described_class.new(frag, project: project)
       ns = user.namespace
 
       expect(filter.send(:namespaces)).to eq({ ns.path => ns })
@@ -216,10 +229,110 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
 
   describe '#usernames' do
     it 'returns the usernames mentioned in a document' do
-      document = Nokogiri::HTML.fragment("<p>#{get_reference(user)}</p>")
-      filter = described_class.new(document, project: project)
+      frag = Nokogiri::HTML.fragment("<p></p>")
+      frag.css('p').first.content = get_reference(user)
+
+      filter = described_class.new(frag, project: project)
 
       expect(filter.send(:usernames)).to eq([user.username])
+    end
+
+    it 'correctly locates username mentions in hrefs' do
+      frag = Nokogiri::HTML.fragment("<p></p>")
+
+      a = frag.document.create_element('a')
+      frag.css('p').first.add_child(a)
+      a['href'] = get_reference(user)
+
+      filter = described_class.new(frag, project: project)
+
+      expect(filter.send(:usernames)).to eq([user.username])
+    end
+
+    it 'does not locate username mentions where it ought not look' do
+      frag = Nokogiri::HTML.fragment("<p></p>")
+
+      a = frag.document.create_element('a')
+      frag.css('p').first.add_child(a)
+      a['data-elsewhere'] = get_reference(user)
+
+      filter = described_class.new(frag, project: project)
+
+      expect(filter.send(:usernames)).to eq([])
+    end
+  end
+
+  describe '#org_user_detail' do
+    let(:org_user_detail) { create(:organization_user_detail, organization: project.organization) }
+    let(:author) { create(:user, organization: project.organization) }
+
+    it 'supports mentioning users aliased within organization' do
+      reference = org_user_detail.to_reference
+      doc = reference_filter("Hey #{reference}", project: project)
+
+      expect(doc.css('a').first.attr('href')).to eq urls.user_url(org_user_detail.user)
+    end
+
+    it 'supports mentioning user aliases for snippets' do
+      reference = org_user_detail.to_reference
+      doc = reference_filter("Hey #{reference}", author: author)
+
+      expect(doc.css('a').first.attr('href')).to eq urls.user_url(org_user_detail.user)
+    end
+
+    context 'with no context for filter' do
+      let!(:user) { create(:user) }
+      let!(:org_user_detail) { create(:organization_user_detail, user: user) }
+
+      it 'supports mentioning user aliases from default organization' do
+        expect(Organizations::Organization.count).to eq(1)
+
+        reference = org_user_detail.to_reference
+        doc = reference_filter("Hey #{reference}")
+
+        expect(doc.css('a').first.attr('href')).to eq urls.user_url(org_user_detail.user)
+      end
+    end
+
+    context 'in group context' do
+      let(:group) { create(:group, developers: [group_member]) }
+      let(:group_member) { create(:user) }
+      let(:org_user_detail) { create(:organization_user_detail, organization: group.organization) }
+      let(:context) { { author: group_member, project: nil, group: group } }
+
+      it 'supports mentioning a single user' do
+        reference = org_user_detail.to_reference
+        doc = reference_filter("Hey #{reference}", context)
+
+        expect(doc.css('a').first.attr('href')).to eq urls.user_url(org_user_detail.user)
+      end
+    end
+
+    context 'when organization_users_internal FF is disabled' do
+      before do
+        stub_feature_flags(organization_users_internal: false)
+      end
+
+      it 'does not support mentioning users aliased within organization' do
+        reference = org_user_detail.to_reference
+        doc = reference_filter("Hey #{reference}", project: project)
+
+        expect(doc.css('a')).to be_empty
+      end
+
+      context 'in group context' do
+        let(:group) { create(:group, developers: [group_member]) }
+        let(:group_member) { create(:user) }
+        let(:org_user_detail) { create(:organization_user_detail, organization: group.organization) }
+        let(:context) { { author: group_member, project: nil, group: group } }
+
+        it 'does not support mentioning a single user' do
+          reference = org_user_detail.to_reference
+          doc = reference_filter("Hey #{reference}", context)
+
+          expect(doc.css('a')).to be_empty
+        end
+      end
     end
   end
 
@@ -243,5 +356,14 @@ RSpec.describe Banzai::Filter::References::UserReferenceFilter, feature_category
         reference_filter(markdown)
       end.to issue_same_number_of_queries_as(control_count)
     end
+  end
+
+  it_behaves_like 'limits the number of filtered items' do
+    let(:text) { "#{reference} #{reference} #{reference}" }
+    let(:ends_with) { "</a> #{reference}" }
+  end
+
+  it_behaves_like 'ReferenceFilter#references_in' do
+    let(:filter_instance) { described_class.new(nil, { project: nil }) }
   end
 end

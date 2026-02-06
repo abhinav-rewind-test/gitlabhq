@@ -2,14 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe 'RunnerCreate', feature_category: :fleet_visibility do
+RSpec.describe 'RunnerCreate', feature_category: :runner_core do
   include GraphqlHelpers
 
   let_it_be(:user) { create(:user) }
   let_it_be(:group_owner) { create(:user) }
   let_it_be(:admin) { create(:admin) }
 
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group) { create(:group, owners: group_owner, developers: user) }
   let_it_be(:other_group) { create(:group) }
 
   let(:mutation_params) do
@@ -25,13 +25,9 @@ RSpec.describe 'RunnerCreate', feature_category: :fleet_visibility do
   end
 
   let(:mutation) do
-    variables = {
-      **mutation_params
-    }
-
     graphql_mutation(
       :runner_create,
-      variables,
+      mutation_params,
       <<-QL
         runner {
           ephemeralAuthenticationToken
@@ -52,10 +48,6 @@ RSpec.describe 'RunnerCreate', feature_category: :fleet_visibility do
   end
 
   let(:mutation_response) { graphql_mutation_response(:runner_create) }
-
-  before do
-    group.add_owner(group_owner)
-  end
 
   shared_context 'when model is invalid returns error' do
     let(:mutation_params) do

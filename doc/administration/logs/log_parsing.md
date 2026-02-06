@@ -1,24 +1,28 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Parsing GitLab logs with `jq`
 ---
 
-# Parsing GitLab logs with `jq`
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 We recommend using log aggregation and search tools like Kibana and Splunk whenever possible,
 but if they are not available you can still quickly parse
-[GitLab logs](../logs/index.md) in JSON format
-(the default in GitLab 12.0 and later) using [`jq`](https://stedolan.github.io/jq/).
+[GitLab logs](_index.md) in JSON format
+using [`jq`](https://stedolan.github.io/jq/).
 
-NOTE:
-Specifically for summarizing error events and basic usage statistics,
-the GitLab Support Team provides the specialised
-[`fast-stats` tool](https://gitlab.com/gitlab-com/support/toolbox/fast-stats/#when-to-use-it).
+> [!note]
+> Specifically for summarizing error events and basic usage statistics,
+> the GitLab Support Team offers the specialized
+> [`fast-stats` tool](https://gitlab.com/gitlab-com/support/toolbox/fast-stats/#when-to-use-it).
+> It can usually process larger logs much faster than `jq` and
+> outputs a larger selection of statistical information.
 
 ## What is JQ?
 
@@ -29,7 +33,19 @@ include use cases targeted for parsing GitLab log files.
 
 The examples listed below address their respective log files by
 their relative Linux package installation paths and default filenames.
-Find the respective full paths in the [GitLab logs sections](../logs/index.md#production_jsonlog).
+Find the respective full paths in the [GitLab logs sections](_index.md#production_jsonlog).
+
+### Compressed logs
+
+When [log files are rotated](https://smarden.org/runit/svlogd.8), they are renamed in
+Unix timestamp format and compressed with `gzip`. The resulting file name looks like
+`@40000000624492fa18da6f34.s`. These files must be handled differently before parsing,
+than the more recent log files:
+
+- To uncompress the file, use `gunzip -S .s @40000000624492fa18da6f34.s`, replacing
+  the filename with your compressed log file's name.
+- To read or pipe the file directly, use `zcat` or `zless`.
+- To search file contents, use `zgrep`.
 
 ### General Commands
 
@@ -146,6 +162,12 @@ CT: 2435   METHOD: MetricsController#index DURS: 299.29,  284.01,  158.57
 CT: 1328   METHOD: Projects::NotesController#index DURS: 403.99,  386.29,  384.39
 ```
 
+Alternatively, use [`fast-stats`](https://gitlab.com/gitlab-com/support/toolbox/fast-stats):
+
+```shell
+fast-stats --verbose --limit=3 production_json.log
+```
+
 ### Parsing `gitlab-rails/api_json.log`
 
 #### Print top three routes with request count and their three longest durations
@@ -162,47 +184,71 @@ CT: 297  ROUTE: /api/:version/projects/:id/repository/tags       DURS: 731.39,  
 CT: 190  ROUTE: /api/:version/projects/:id/repository/commits    DURS: 1079.02,  979.68,  958.21
 ```
 
+Alternatively, use [`fast-stats`](https://gitlab.com/gitlab-com/support/toolbox/fast-stats):
+
+```shell
+fast-stats --verbose --limit=3 api_json.log
+```
+
 #### Print top API user agents
 
 ```shell
-jq --raw-output 'select(.remote_ip != "127.0.0.1") | [.remote_ip, .username, .route, .ua] | @tsv' api_json.log |
-  sort | uniq -c | sort -n | tail
+jq --raw-output '
+  select(.remote_ip != "127.0.0.1") | [
+    (.time | split(".")[0] | strptime("%Y-%m-%dT%H:%M:%S") | strftime("…%m-%dT%H…")),
+    ."meta.caller_id", .username, .ua
+  ] | @tsv' api_json.log | sort | uniq -c \
+  | grep --invert-match --extended-regexp '^\s+\d{1,3}\b'
 ```
 
 **Example output**:
 
 ```plaintext
-  89 1.2.3.4, 127.0.0.1  some_user  /api/:version/projects/:id/pipelines  # plus browser details; OK
- 567 5.6.7.8, 127.0.0.1      /api/:version/jobs/:id/trace gitlab-runner   # plus version details; OK
-1234 98.76.54.31, 127.0.0.1  some_bot  /api/:version/projects/:id/repository/files/:file_path/raw
+ 1234 …01-12T01…  GET /api/:version/projects/:id/pipelines  some_user  # plus browser details; OK
+54321 …01-12T01…  POST /api/:version/projects/:id/repository/files/:file_path/raw  some_bot
+ 5678 …01-12T01…  PATCH /api/:version/jobs/:id/trace gitlab-runner     # plus version details; OK
 ```
 
-This example shows a custom tool or script causing an unexpectedly high number of requests.
-User agents in this situation can be:
+This example shows a custom tool or script causing an unexpectedly high [request rate (>15 RPS)](../reference_architectures/_index.md#available-reference-architectures).
+User agents in this situation can be specialized [third-party clients](../../api/rest/third_party_clients.md),
+or general tools like `curl`.
 
-- Third party libraries like `python-requests` or `curl`.
-- [GitLab CLI clients](https://about.gitlab.com/partners/technology-partners/#cli-clients).
+The hourly aggregation helps to:
 
-You can also [use `fast-stats top`](#parsing-gitlab-logs-with-jq) to extract performance statistics for those users or bots.
+- Correlate spikes of bot or user activity to data from monitoring tools such as [Prometheus](../monitoring/prometheus/_index.md).
+- Evaluate [rate limit settings](../settings/user_and_ip_rate_limits.md).
+
+In tandem to `jq`, use [`fast-stats top`](https://gitlab.com/gitlab-com/support/toolbox/fast-stats/-/blob/main/README.md#top)
+to review the performance impact of those users and bots:
+
+```shell
+fast-stats top --display=percentage --sort-by=cpu-s api_json.log
+```
+
+A high request frequency alone is not automatically a problem, but using a large percentage of any resource is.
 
 ### Parsing `gitlab-rails/importer.log`
 
-To troubleshoot [project imports](../../administration/raketasks/project_import_export.md) or
-[migrations](../../user/project/import/index.md), run this command:
+To troubleshoot [project imports](../raketasks/project_import_export.md) or
+[migrations](../../user/import/_index.md), run this command:
 
 ```shell
 jq 'select(.project_path == "<namespace>/<project>").error_messages' importer.log
 ```
 
-For common issues, see [troubleshooting](../../administration/raketasks/project_import_export.md#troubleshooting).
+For common issues, see [troubleshooting](../raketasks/import_export_rake_tasks_troubleshooting.md).
 
 ### Parsing `gitlab-workhorse/current`
 
 #### Print top Workhorse user agents
 
 ```shell
-jq --raw-output 'select(.remote_ip != "127.0.0.1") | [.remote_ip, .uri, .user_agent] | @tsv' current |
-  sort | uniq -c | sort -n | tail
+jq --raw-output '
+  select(.remote_ip != "127.0.0.1") | [
+    (.time | split(".")[0] | strptime("%Y-%m-%dT%H:%M:%S") | strftime("…%m-%dT%H…")),
+    .remote_ip, .uri, .user_agent
+  ] | @tsv' current |
+  sort | uniq -c
 ```
 
 Similar to the [API `ua` example](#print-top-api-user-agents),
@@ -210,22 +256,26 @@ many unexpected user agents in this output indicate unoptimized scripts.
 Expected user agents include `gitlab-runner`, `GitLab-Shell`, and browsers.
 
 The performance impact of runners checking for new jobs can be reduced by increasing
-[the `check_interval` setting](https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section),
+[the `check_interval` setting](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-global-section),
 for example.
 
 ### Parsing `gitlab-rails/geo.log`
 
 #### Find most common Geo sync errors
 
-If [the `geo:status` Rake task](../geo/replication/troubleshooting/index.md#sync-status-rake-task)
+If [the `geo:status` Rake task](../geo/replication/troubleshooting/common.md#sync-status-rake-task)
 repeatedly reports that some items never reach 100%,
 the following command helps to focus on the most common errors.
 
 ```shell
-jq --raw-output 'select(.severity == "ERROR") | [.project_path, .class, .message, .error] | @tsv' geo.log | sort | uniq -c | sort | tail
+jq --raw-output 'select(.severity == "ERROR") | [
+  (.time | split(".")[0] | strptime("%Y-%m-%dT%H:%M:%S") | strftime("…%m-%dT%H:%M…")),
+  .class, .id, .message, .error
+  ] | @tsv' geo.log \
+  | sort | uniq -c
 ```
 
-Refer to our [Geo troubleshooting page](../geo/replication/troubleshooting/index.md)
+Refer to our [Geo troubleshooting page](../geo/replication/troubleshooting/_index.md)
 for advice about specific error messages.
 
 ### Parsing `gitaly/current`
@@ -287,11 +337,44 @@ jq --raw-output --slurp '
   ...
 ```
 
+Alternatively, use [`fast-stats`](https://gitlab.com/gitlab-com/support/toolbox/fast-stats):
+
+```shell
+fast-stats top --sort-by=duration current
+```
+
 #### Types of user and project activity overview
 
 ```shell
-jq --raw-output '[.username, ."grpc.method", ."grpc.request.glProjectPath"] | @tsv' current | sort | uniq -c | sort -n
+jq --raw-output '[
+    (.time | split(".")[0] | strptime("%Y-%m-%dT%H:%M:%S") | strftime("…%m-%dT%H…")),
+    .username, ."grpc.method", ."grpc.request.glProjectPath"
+  ] | @tsv' current | sort | uniq -c \
+  | grep --invert-match --extended-regexp '^\s+\d{1,3}\b'
 ```
+
+**Example output**:
+
+```plaintext
+ 5678 …01-12T01…     ReferenceTransactionHook  # Praefect operation; OK
+54321 …01-12T01…  some_bot   GetBlobs    namespace/subgroup/project
+ 1234 …01-12T01…  some_user  FindCommit  namespace/subgroup/project
+```
+
+This example shows a custom tool or script causing unexpectedly high of [request rate (>15 RPS)](../reference_architectures/_index.md#available-reference-architectures) on Gitaly.
+The hourly aggregation helps to:
+
+- Correlate spikes of bot or user activity to data from monitoring tools such as [Prometheus](../monitoring/prometheus/_index.md).
+- Evaluate [rate limit settings](../settings/user_and_ip_rate_limits.md).
+
+In tandem to `jq`, use [`fast-stats top`](https://gitlab.com/gitlab-com/support/toolbox/fast-stats/-/blob/main/README.md#top)
+to review the performance impact of those users and bots:
+
+```shell
+fast-stats top --display=percentage --sort-by=cpu-s current
+```
+
+A high request frequency alone is not automatically a problem, but using a large percentage of any resource is.
 
 #### Find all projects affected by a fatal Git problem
 
@@ -303,7 +386,7 @@ grep "fatal: " current |
 
 ### Parsing `gitlab-shell/gitlab-shell.log`
 
-For investigating Git calls via SSH, from [GitLab 12.10](https://gitlab.com/gitlab-org/gitlab-shell/-/merge_requests/367).
+For investigating Git calls through SSH.
 
 Find the top 20 calls by project and user:
 

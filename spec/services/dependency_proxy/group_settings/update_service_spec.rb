@@ -2,21 +2,21 @@
 
 require 'spec_helper'
 
-RSpec.describe ::DependencyProxy::GroupSettings::UpdateService, feature_category: :dependency_proxy do
+RSpec.describe ::DependencyProxy::GroupSettings::UpdateService, feature_category: :virtual_registry do
   using RSpec::Parameterized::TableSyntax
 
   let_it_be_with_reload(:group) { create(:group) }
   let_it_be_with_reload(:group_settings) { create(:dependency_proxy_group_setting, group: group) }
   let_it_be(:user) { create(:user) }
-  let_it_be(:params) { { enabled: false } }
+  let_it_be(:params) { { enabled: false, identity: 'i', secret: 's' } }
 
   describe '#execute' do
     subject { described_class.new(container: group, current_user: user, params: params).execute }
 
     shared_examples 'updating the dependency proxy group settings' do
       it_behaves_like 'updating the dependency proxy group settings attributes',
-        from: { enabled: true },
-        to: { enabled: false }
+        from: { enabled: true, identity: 'username', secret: 'secret' },
+        to: { enabled: false, identity: 'i', secret: 's' }
 
       it 'returns a success' do
         result = subject
@@ -56,14 +56,6 @@ RSpec.describe ::DependencyProxy::GroupSettings::UpdateService, feature_category
       end
 
       it_behaves_like params[:shared_examples_name]
-
-      context 'with disabled admin_package feature flag' do
-        before do
-          stub_feature_flags(raise_group_admin_package_permission_to_owner: false)
-        end
-
-        it_behaves_like 'updating the dependency proxy group settings' if params[:user_role] == :maintainer
-      end
     end
   end
 end

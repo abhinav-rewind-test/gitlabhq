@@ -2,6 +2,8 @@
 
 module Organizations
   class ApplicationController < ::ApplicationController
+    include OrganizationHelper
+
     before_action :check_feature_flag!
     before_action :organization
 
@@ -10,17 +12,19 @@ module Organizations
     private
 
     def organization
-      return unless params[:organization_path]
+      organization_path = params.permit(:organization_path)[:organization_path]
+      return unless organization_path
 
-      @organization = Organizations::Organization.find_by_path(params[:organization_path])
+      @organization = Organizations::Organization.find_by_path(organization_path)
     end
     strong_memoize_attr :organization
 
     def check_feature_flag!
-      access_denied! unless Feature.enabled?(:ui_for_organizations, current_user)
+      access_denied! unless ui_for_organizations_enabled?
     end
 
     def authorize_create_organization!
+      access_denied! unless Feature.enabled?(:organization_switching, current_user)
       access_denied! unless can?(current_user, :create_organization)
     end
 

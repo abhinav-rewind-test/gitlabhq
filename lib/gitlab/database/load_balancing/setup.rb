@@ -48,6 +48,14 @@ module Gitlab
           setup_class_attribute(:load_balancer, load_balancer)
           setup_class_attribute(:connection, ConnectionProxy.new(load_balancer))
           setup_class_attribute(:sticking, Sticking.new(load_balancer))
+
+          @model.singleton_class.alias_method(:lease_connection, :connection)
+          @model.singleton_class.define_method(:with_connection) do |*_args, **_kwargs, &block|
+            # The original rails with_connection would return the connection to the pool,
+            # but here we don't know if it's a primary or replica connection yet, so we keep it checked out for
+            # the duration of the request
+            block&.call(connection)
+          end
         end
 
         def setup_service_discovery

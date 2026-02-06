@@ -61,12 +61,23 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       execute_service
     end
 
-    it 'creates a pipeline and updates the HEAD pipeline' do
+    it 'creates a pipeline asynchronously' do
       expect(after_create_service)
-        .to receive(:create_pipeline_for).with(merge_request, merge_request.author)
-      expect(merge_request).to receive(:update_head_pipeline)
+        .to receive(:create_pipeline_for).with(merge_request, merge_request.author, async: true)
 
       execute_service
+    end
+
+    context 'when async_mr_pipeline_creation feature flag is disabled' do
+      it 'creates a pipeline synchronously and updates the HEAD pipeline' do
+        stub_feature_flags(async_mr_pipeline_creation: false)
+
+        expect(after_create_service)
+          .to receive(:create_pipeline_for).with(merge_request, merge_request.author, async: false)
+        expect(merge_request).to receive(:update_head_pipeline)
+
+        execute_service
+      end
     end
 
     it 'executes hooks and integrations' do
@@ -86,10 +97,6 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       expect(Integrations::GroupMentionWorker).to receive(:perform_async)
 
       execute_service
-    end
-
-    it_behaves_like 'records an onboarding progress action', :merge_request_created do
-      let(:namespace) { merge_request.target_project.namespace }
     end
 
     context 'when merge request is in unchecked state' do
@@ -132,8 +139,8 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
         before do
           # This is only one of the possible cases that can fail. This is to
           # simulate a failure that happens during the service call.
-          allow(merge_request)
-            .to receive(:update_head_pipeline)
+          allow(after_create_service)
+            .to receive(:create_pipeline_for)
             .and_raise(StandardError)
         end
 
@@ -170,10 +177,12 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
       end
     end
 
-    it 'increments the usage data counter of create event' do
-      counter = Gitlab::UsageDataCounters::MergeRequestCounter
+    it_behaves_like 'internal event tracking' do
+      let(:user) { merge_request.author }
+      let(:event) { 'create_merge_request' }
+      let(:project) { merge_request.project }
 
-      expect { execute_service }.to change { counter.read(:create) }.by(1)
+      subject(:track_event) { execute_service }
     end
 
     context 'todos' do
@@ -236,17 +245,15 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
         merge_request.target_branch = merge_request.target_project.default_branch
         merge_request.save!
 
-        execute_service
+        expect do
+          execute_service
+        end.to change { MergeRequestsClosingIssues.count }.by(2)
 
-        issue_ids = MergeRequestsClosingIssues.where(merge_request: merge_request).pluck(:issue_id)
-        expect(issue_ids).to match_array([first_issue.id, second_issue.id])
+        expect(MergeRequestsClosingIssues.where(merge_request: merge_request)).to contain_exactly(
+          have_attributes(issue_id: first_issue.id, from_mr_description: true),
+          have_attributes(issue_id: second_issue.id, from_mr_description: true)
+        )
       end
-    end
-
-    it 'tracks merge request creation in usage data' do
-      expect(Gitlab::UsageDataCounters::MergeRequestCounter).to receive(:count).with(:create)
-
-      execute_service
     end
 
     it 'calls MergeRequests::LinkLfsObjectsService#execute' do
@@ -267,8 +274,8 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
         [
           'Executing hooks',
           'Executed hooks',
-          'Creating pipeline',
-          'Pipeline created'
+          'Creating pipeline async',
+          'Pipeline creating async'
         ].each do |message|
           expect(Gitlab::AppLogger).to receive(:info).with(
             hash_including(
@@ -280,6 +287,35 @@ RSpec.describe MergeRequests::AfterCreateService, feature_category: :code_review
         end
 
         execute_service
+      end
+
+      context 'when async_mr_pipeline_creation feature flag is disabled' do
+        before do
+          stub_feature_flags(async_mr_pipeline_creation: false)
+        end
+
+        it 'logs specific events' do
+          ::Gitlab::ApplicationContext.push(caller_id: 'NewMergeRequestWorker')
+
+          allow(Gitlab::AppLogger).to receive(:info).and_call_original
+
+          [
+            'Executing hooks',
+            'Executed hooks',
+            'Creating pipeline',
+            'Pipeline created'
+          ].each do |message|
+            expect(Gitlab::AppLogger).to receive(:info).with(
+              hash_including(
+                'meta.caller_id' => 'NewMergeRequestWorker',
+                message: message,
+                merge_request_id: merge_request.id
+              )
+            ).and_call_original
+          end
+
+          execute_service
+        end
       end
     end
   end

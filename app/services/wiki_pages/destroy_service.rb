@@ -12,8 +12,8 @@ module WikiPages
       end
     end
 
-    def usage_counter_action
-      :delete
+    def internal_event_name
+      'delete_wiki_page'
     end
 
     def external_action
@@ -29,3 +29,5 @@ module WikiPages
     end
   end
 end
+
+WikiPages::DestroyService.prepend_mod_with('WikiPages::DestroyService')

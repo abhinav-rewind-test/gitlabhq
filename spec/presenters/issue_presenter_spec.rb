@@ -9,7 +9,7 @@ RSpec.describe IssuePresenter do
   let_it_be(:reporter) { create(:user) }
   let_it_be(:guest) { create(:user) }
   let_it_be(:developer) { create(:user) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group) { create(:group, developers: [user, developer], reporters: reporter, guests: guest) }
   let_it_be(:project) { create(:project, group: group) }
   let_it_be(:issue) { create(:issue, project: project) }
   let_it_be(:task) { create(:issue, :task, project: project) }
@@ -20,16 +20,9 @@ RSpec.describe IssuePresenter do
   let(:obfuscated_email) { 'an*****@e*****.c**' }
   let(:email) { 'any@email.com' }
 
-  before_all do
-    group.add_developer(user)
-    group.add_developer(developer)
-    group.add_reporter(reporter)
-    group.add_guest(guest)
-  end
-
   describe '#web_url' do
     it 'returns correct path' do
-      expect(presenter.web_url).to eq("http://localhost/#{project.full_path}/-/issues/#{presented_issue.iid}")
+      expect(presenter.web_url).to eq(::Gitlab::UrlBuilder.build(presented_issue))
     end
 
     context 'when issue type is task' do
@@ -59,17 +52,7 @@ RSpec.describe IssuePresenter do
 
   describe '#issue_path' do
     it 'returns correct path' do
-      expect(presenter.issue_path).to eq("/#{project.full_path}/-/issues/#{presented_issue.iid}")
-    end
-
-    context 'when issue type is task' do
-      let(:presented_issue) { task }
-
-      it 'returns a work item path using iid for the task' do
-        expect(presenter.issue_path).to eq(
-          project_work_item_path(project, presented_issue.iid)
-        )
-      end
+      expect(presenter.issue_path).to eq(::Gitlab::UrlBuilder.instance.issue_path(issue))
     end
   end
 
@@ -105,6 +88,38 @@ RSpec.describe IssuePresenter do
     end
   end
 
+  describe '#parent_emails_enabled?' do
+    subject { presenter.parent_emails_enabled? }
+
+    it 'returns true when email notifications are enabled for the project' do
+      is_expected.to be(true)
+    end
+
+    context 'when email notifications are disabled for the project' do
+      before do
+        allow(project).to receive(:emails_enabled?).and_return(false)
+      end
+
+      it { is_expected.to be(false) }
+    end
+
+    context 'when issue is group-level' do
+      let(:presented_issue) { create(:issue, :group_level, namespace: group) }
+
+      it 'returns true when email notifications are enabled for the group' do
+        is_expected.to be(true)
+      end
+
+      context 'when email notifications are disabled for the group' do
+        before do
+          allow(group).to receive(:emails_enabled?).and_return(false)
+        end
+
+        it { is_expected.to be(false) }
+      end
+    end
+  end
+
   describe '#service_desk_reply_to' do
     context 'when issue is not a service desk issue' do
       subject { presenter.service_desk_reply_to }
@@ -114,7 +129,7 @@ RSpec.describe IssuePresenter do
 
     context 'when issue is a service desk issue' do
       let(:service_desk_issue) do
-        create(:issue, project: project, author: Users::Internal.support_bot, service_desk_reply_to: email)
+        create(:issue, project: project, author: create(:support_bot), service_desk_reply_to: email)
       end
 
       let(:user) { nil }

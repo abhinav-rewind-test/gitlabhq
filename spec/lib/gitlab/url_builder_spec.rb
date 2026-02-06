@@ -16,26 +16,63 @@ RSpec.describe Gitlab::UrlBuilder do
   describe '.build' do
     using RSpec::Parameterized::TableSyntax
 
+    context 'when work_item_legacy_url: true', feature_category: :team_planning do
+      before do
+        stub_feature_flags(work_item_legacy_url: true)
+      end
+
+      where(:factory, :path_generator) do
+        :issue                     | ->(issue)     { "/#{issue.project.full_path}/-/issues/#{issue.iid}" }
+        [:issue, :task]            | ->(issue)     { "/#{issue.project.full_path}/-/work_items/#{issue.iid}" }
+        [:issue, :group_level]     | ->(issue)     { "/groups/#{issue.namespace.full_path}/-/work_items/#{issue.iid}" }
+        [:work_item, :issue]       | ->(work_item) { "/#{work_item.project.full_path}/-/issues/#{work_item.iid}" }
+        [:work_item, :incident]    | ->(work_item) { "/#{work_item.project.full_path}/-/issues/#{work_item.iid}" }
+        [:work_item, :task]        | ->(work_item) { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
+        [:work_item, :group_level] | ->(work_item) { "/groups/#{work_item.namespace.full_path}/-/work_items/#{work_item.iid}" }
+        :note_on_issue             | ->(note)      { "/#{note.project.full_path}/-/issues/#{note.noteable.iid}#note_#{note.id}" }
+        :discussion_note_on_issue  | ->(note)      { "/#{note.project.full_path}/-/issues/#{note.noteable.iid}#note_#{note.id}" }
+      end
+
+      with_them do
+        let(:object) { build_stubbed(*Array(factory)) }
+        let(:path) { path_generator.call(object) }
+
+        it 'returns the full URL' do
+          expect(subject.build(object)).to eq("#{Gitlab.config.gitlab.url}#{path}")
+        end
+
+        it 'returns only the path if only_path is given' do
+          expect(subject.build(object, only_path: true)).to eq(path)
+        end
+      end
+    end
+
     where(:factory, :path_generator) do
       :project           | ->(project)       { "/#{project.full_path}" }
       :board             | ->(board)         { "/#{board.project.full_path}/-/boards/#{board.id}" }
       :group_board       | ->(board)         { "/groups/#{board.group.full_path}/-/boards/#{board.id}" }
       :commit            | ->(commit)        { "/#{commit.project.full_path}/-/commit/#{commit.id}" }
-      :issue             | ->(issue)         { "/#{issue.project.full_path}/-/issues/#{issue.iid}" }
-      [:issue, :task]    | ->(issue)         { "/#{issue.project.full_path}/-/work_items/#{issue.iid}" }
-      [:work_item, :task] | ->(work_item)    { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
-      [:work_item, :issue] | ->(work_item)   { "/#{work_item.project.full_path}/-/issues/#{work_item.iid}" }
+
+      # WorkItems/Issues
+      :issue                     | ->(work_item) { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
+      [:work_item, :issue]       | ->(work_item) { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
+      [:work_item, :incident]    | ->(work_item) { "/#{work_item.project.full_path}/-/issues/#{work_item.iid}" }
+      [:work_item, :task]        | ->(work_item) { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
+      [:issue, :task]            | ->(work_item) { "/#{work_item.project.full_path}/-/work_items/#{work_item.iid}" }
+      [:issue, :group_level]     | ->(work_item) { "/groups/#{work_item.namespace.full_path}/-/work_items/#{work_item.iid}" }
+      [:work_item, :group_level] | ->(work_item) { "/groups/#{work_item.namespace.full_path}/-/work_items/#{work_item.iid}" }
+      :note_on_issue             | ->(note)      { "/#{note.project.full_path}/-/work_items/#{note.noteable.iid}#note_#{note.id}" }
+      :discussion_note_on_issue  | ->(note)      { "/#{note.project.full_path}/-/work_items/#{note.noteable.iid}#note_#{note.id}" }
+
       :merge_request     | ->(merge_request) { "/#{merge_request.project.full_path}/-/merge_requests/#{merge_request.iid}" }
       :project_milestone | ->(milestone)     { "/#{milestone.project.full_path}/-/milestones/#{milestone.iid}" }
       :project_snippet   | ->(snippet)       { "/#{snippet.project.full_path}/-/snippets/#{snippet.id}" }
       :project_wiki      | ->(wiki)          { "/#{wiki.container.full_path}/-/wikis/home" }
       :release           | ->(release)       { "/#{release.project.full_path}/-/releases/#{release.tag}" }
-      :organization      | ->(organization)  { "/-/organizations/#{organization.path}" }
+      :organization      | ->(organization)  { "/o/#{organization.path}" }
       :ci_build          | ->(build)         { "/#{build.project.full_path}/-/jobs/#{build.id}" }
+      :ci_pipeline       | ->(pipeline)      { "/#{pipeline.project.full_path}/-/pipelines/#{pipeline.id}" }
       :design            | ->(design)        { "/#{design.project.full_path}/-/design_management/designs/#{design.id}/raw_image" }
-
-      [:issue, :group_level]     | ->(issue)     { "/groups/#{issue.namespace.full_path}/-/work_items/#{issue.iid}" }
-      [:work_item, :group_level] | ->(work_item) { "/groups/#{work_item.namespace.full_path}/-/work_items/#{work_item.iid}" }
 
       :group             | ->(group)         { "/groups/#{group.full_path}" }
       :group_milestone   | ->(milestone)     { "/groups/#{milestone.group.full_path}/-/milestones/#{milestone.iid}" }
@@ -49,9 +86,6 @@ RSpec.describe Gitlab::UrlBuilder do
       :discussion_note_on_commit           | ->(note) { "/#{note.project.full_path}/-/commit/#{note.commit_id}#note_#{note.id}" }
       :legacy_diff_note_on_commit          | ->(note) { "/#{note.project.full_path}/-/commit/#{note.commit_id}#note_#{note.id}" }
 
-      :note_on_issue                       | ->(note) { "/#{note.project.full_path}/-/issues/#{note.noteable.iid}#note_#{note.id}" }
-      :discussion_note_on_issue            | ->(note) { "/#{note.project.full_path}/-/issues/#{note.noteable.iid}#note_#{note.id}" }
-
       :note_on_merge_request               | ->(note) { "/#{note.project.full_path}/-/merge_requests/#{note.noteable.iid}#note_#{note.id}" }
       :diff_note_on_merge_request          | ->(note) { "/#{note.project.full_path}/-/merge_requests/#{note.noteable.iid}#note_#{note.id}" }
       :discussion_note_on_merge_request    | ->(note) { "/#{note.project.full_path}/-/merge_requests/#{note.noteable.iid}#note_#{note.id}" }
@@ -61,8 +95,9 @@ RSpec.describe Gitlab::UrlBuilder do
       :discussion_note_on_project_snippet  | ->(note) { "/#{note.project.full_path}/-/snippets/#{note.noteable_id}#note_#{note.id}" }
       :discussion_note_on_personal_snippet | ->(note) { "/-/snippets/#{note.noteable_id}#note_#{note.id}" }
       :note_on_personal_snippet            | ->(note) { "/-/snippets/#{note.noteable_id}#note_#{note.id}" }
-      :note_on_abuse_report | ->(note) { "/admin/abuse_reports/#{note.noteable_id}#note_#{note.id}" }
-      :package | ->(package) { "/#{package.project.full_path}/-/packages/#{package.id}" }
+      :package                             | ->(package) { "/#{package.project.full_path}/-/packages/#{package.id}" }
+      :user_namespace                      | ->(user_namespace) { "/#{user_namespace.owner.full_path}" }
+      :project_namespace                   | ->(project_namespace) { "/#{project_namespace.project.full_path}" }
     end
 
     with_them do
@@ -78,14 +113,58 @@ RSpec.describe Gitlab::UrlBuilder do
       end
     end
 
+    context 'when passing a Service Desk issue', feature_category: :service_desk do
+      let(:service_desk_issue) { create(:work_item, :issue, author: create(:support_bot)) }
+
+      subject { described_class.build(service_desk_issue, only_path: true) }
+
+      it { is_expected.to eq("/#{service_desk_issue.project.full_path}/-/issues/#{service_desk_issue.iid}") }
+    end
+
+    context 'when passing a wiki note' do
+      let_it_be(:wiki_page_slug) { create(:wiki_page_slug, canonical: true) }
+      let(:wiki_page_meta) { wiki_page_slug.reload.wiki_page_meta }
+      let(:note) { build_stubbed(:note, noteable: wiki_page_meta, project: wiki_page_meta.project) }
+
+      let(:path) { "/#{note.project.full_path}/-/wikis/#{note.noteable.canonical_slug}#note_#{note.id}" }
+
+      it 'returns the full URL' do
+        expect(subject.build(note)).to eq("#{Gitlab.config.gitlab.url}#{path}")
+      end
+
+      it 'returns only the path if only_path is given' do
+        expect(subject.build(note, only_path: true)).to eq(path)
+      end
+    end
+
+    context 'when passing a wiki page meta object' do
+      # NOTE: `build_stubbed` doesn't work for wiki_page_meta properly at the moment
+      let_it_be(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page) }
+
+      it 'returns the full URL' do
+        path = "#{wiki_page_meta.container.wiki.wiki_base_path}/#{wiki_page_meta.canonical_slug}"
+
+        expect(subject.build(wiki_page_meta)).to eq("#{Gitlab.config.gitlab.url}#{path}")
+      end
+    end
+
     context 'when passing a compare' do
       # NOTE: The Compare requires an actual repository, which isn't available
       # with the `build_stubbed` strategy used by the table tests above
       let_it_be(:compare) { create(:compare) }
       let_it_be(:project) { compare.project }
 
-      it 'returns the full URL' do
+      it 'returns the full URL with three dots' do
         expect(subject.build(compare)).to eq("#{Gitlab.config.gitlab.url}/#{project.full_path}/-/compare/#{compare.base_commit_sha}...#{compare.head_commit_sha}")
+      end
+
+      context 'when compare is straight' do
+        let(:compare) { create(:compare, straight: true) }
+        let(:project) { compare.project }
+
+        it 'returns the URL with two dots' do
+          expect(subject.build(compare)).to eq("#{Gitlab.config.gitlab.url}/#{project.full_path}/-/compare/#{compare.start_commit_sha}..#{compare.head_commit_sha}")
+        end
       end
 
       it 'returns only the path if only_path is given' do
@@ -194,11 +273,11 @@ RSpec.describe Gitlab::UrlBuilder do
     context 'when passing Packages::Package' do
       let(:package) { build_stubbed(:terraform_module_package) }
 
-      context 'with infrastructure package' do
-        it 'returns the url for infrastucture registry' do
+      context 'with terraform module package' do
+        it 'returns the url for terraform module registry' do
           url = subject.build(package)
 
-          expect(url).to eq "#{Gitlab.config.gitlab.url}/#{package.project.full_path}/-/infrastructure_registry/#{package.id}"
+          expect(url).to eq "#{Gitlab.config.gitlab.url}/#{package.project.full_path}/-/terraform_module_registry/#{package.id}"
         end
       end
     end

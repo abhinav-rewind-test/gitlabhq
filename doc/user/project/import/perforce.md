@@ -1,14 +1,17 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Create
+group: Import
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Migrate from Perforce Helix
+description: "Migrate from Perforce Helix to Git."
 ---
 
-# Migrating from Perforce Helix
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 [Perforce Helix](https://www.perforce.com/) provides a set of tools which also
 include a centralized, proprietary version control system similar to Git.
@@ -41,10 +44,10 @@ Git:
 Perforce Helix can be difficult to manage both from a user and an administrator
 perspective. Migrating to Git/GitLab there is:
 
-- **No licensing costs**: Git is GPL while Perforce Helix is proprietary.
-- **Shorter learning curve**: Git has a big community and a vast number of
+- No licensing costs: Git is GPL while Perforce Helix is proprietary.
+- Shorter learning curve: Git has a big community and a vast number of
   tutorials to get you started.
-- **Integration with modern tools**: By migrating to Git and GitLab, you can have
+- Integration with modern tools: By migrating to Git and GitLab, you can have
   an open source end-to-end software development platform with built-in version
   control, issue tracking, code review, CI/CD, and more.
 
@@ -64,7 +67,3 @@ creating small and efficient Git packfiles. So it might be a good
 idea to spend time and CPU to properly repack your repository before
 sending it for the first time to your GitLab server. See
 [this StackOverflow question](https://stackoverflow.com/questions/28720151/git-gc-aggressive-vs-git-repack/).
-
-## Related topics
-
-- [Mirror with Perforce Helix with Git Fusion](../repository/mirror/bidirectional.md#mirror-with-perforce-helix-with-git-fusion)

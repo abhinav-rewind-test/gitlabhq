@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :markdown do
   let(:project) { build_stubbed(:project) }
 
   describe '#each_node' do
@@ -81,13 +81,15 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
   RSpec.shared_examples 'replaces text' do |method_name, index|
     let(:args) { [filter.nodes[index], index, ref_pattern || href_link].compact }
 
+    def call_method(method_name, replacement)
+      filter.send(method_name, *args) { replacement }
+    end
+
     context 'when content didnt change' do
       it 'does not replace link node with html' do
-        filter.send(method_name, *args) do
-          existing_content
-        end
+        call_method(method_name, existing_content)
 
-        expect(filter).not_to receive(:replace_text_with_html)
+        expect(filter).not_to receive(:replace_node_with_html)
       end
     end
 
@@ -95,25 +97,19 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
       let(:html) { %(text <a href="reference_url" class="gfm gfm-user" title="reference">Reference</a>) }
 
       it 'replaces reference node' do
-        filter.send(method_name, *args) do
-          html
-        end
+        call_method(method_name, html)
 
         expect(document.css('a').length).to eq 1
       end
 
-      it 'calls replace_and_update_new_nodes' do
-        expect(filter).to receive(:replace_and_update_new_nodes).with(filter.nodes[index], index, html)
+      it 'calls replace_node_with_html' do
+        expect(filter).to receive(:replace_node_with_html).with(filter.nodes[index], index, html)
 
-        filter.send(method_name, *args) do
-          html
-        end
+        call_method(method_name, html)
       end
 
       it 'stores filtered new nodes' do
-        filter.send(method_name, *args) do
-          html
-        end
+        call_method(method_name, html)
 
         expect(filter.instance_variable_get(:@new_nodes)).to eq({ index => [filter.each_node.to_a[index]] })
       end
@@ -151,7 +147,7 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
     end
   end
 
-  describe '#replace_text_when_pattern_matches' do
+  describe '#replace_node_when_text_matches' do
     include_context 'document nodes'
     let(:node) { Nokogiri::HTML.fragment('text @reference') }
 
@@ -162,31 +158,12 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
       let(:nodes) { [node] }
 
       it 'skips node' do
-        expect { |b| filter.send(:replace_text_when_pattern_matches, filter.nodes[0], 0, ref_pattern, &b) }.not_to yield_control
+        expect { |b| filter.send(:replace_node_when_text_matches, filter.nodes[0], 0, ref_pattern, &b) }.not_to yield_control
       end
     end
 
-    it_behaves_like 'replaces document node', :replace_text_when_pattern_matches do
+    it_behaves_like 'replaces document node', :replace_node_when_text_matches do
       let(:existing_content) { node.to_html }
-    end
-  end
-
-  describe '#replace_link_node_with_text' do
-    include_context 'document nodes'
-    let(:node) { Nokogiri::HTML.fragment('<a>end text</a>') }
-
-    it_behaves_like 'replaces document node', :replace_link_node_with_text do
-      let(:existing_content) { node.text }
-    end
-  end
-
-  describe '#replace_link_node_with_href' do
-    include_context 'document nodes'
-    let(:node) { Nokogiri::HTML.fragment('<a href="link">end text</a>') }
-    let(:href_link) { CGI.unescape(node.attr('href').to_s) }
-
-    it_behaves_like 'replaces document node', :replace_link_node_with_href do
-      let(:existing_content) { href_link }
     end
   end
 
@@ -221,11 +198,40 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
         expect(filter).to receive(:with_update_nodes).and_call_original
         expect(filter).to receive(:call) { filter.instance_variable_set(:@new_nodes, new_nodes) }
         expect(filter).to receive(:update_nodes!).and_call_original
+        expect(filter).to receive(:nodes?).and_call_original
       end
 
       described_class.call(document, { project: project }, result)
 
       expect(result[:reference_filter_nodes]).to eq(expected_nodes)
+    end
+  end
+
+  describe '#replace_references_in_text_with_html' do
+    let(:document) { Nokogiri::HTML.fragment('<a href="foo">foo</a>') }
+    let(:filter) { described_class.new(document, project:) }
+
+    context 'enumerator yields non-MatchData' do
+      let(:weird_enumerator) { ["weh"].each }
+
+      it 'raises ArgumentError' do
+        expect { filter.replace_references_in_text_with_html(weird_enumerator) }.to raise_error(ArgumentError)
+      end
+    end
+  end
+
+  describe '#nodes?' do
+    let_it_be(:document) { Nokogiri::HTML.fragment('<a href="foo">foo</a>') }
+    let(:filter) { described_class.new(document, project: project) }
+
+    it 'returns false when nodes are not loaded' do
+      expect(filter.nodes?).to be_falsey
+    end
+
+    it 'returns true when nodes are loaded' do
+      filter.nodes
+
+      expect(filter.nodes?).to be_truthy
     end
   end
 
@@ -245,4 +251,6 @@ RSpec.describe Banzai::Filter::References::ReferenceFilter, feature_category: :t
       end
     end
   end
+
+  it_behaves_like 'pipeline timing check', context: { project: nil }
 end

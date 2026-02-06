@@ -39,7 +39,7 @@ describe('RunnerTypeBadge', () => {
     createComponent({ props: { count: mockCount } });
 
     expect(findBadge().props('icon')).toBe('container-image');
-    expect(findBadge().props('variant')).toBe('muted');
+    expect(findBadge().props('variant')).toBe('neutral');
   });
 
   it('renders badge and tooltip with formatted count', () => {
@@ -47,11 +47,5 @@ describe('RunnerTypeBadge', () => {
 
     expect(findBadge().text()).toBe('1,000');
     expect(getTooltip().value).toContain('1,000');
-  });
-
-  it('passes arbitrary attributes to badge', () => {
-    createComponent({ props: { count: 2, size: 'sm' } });
-
-    expect(findBadge().props('size')).toBe('sm');
   });
 });

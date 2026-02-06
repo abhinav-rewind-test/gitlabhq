@@ -4,18 +4,25 @@ export const mockId = 401;
 export const mockJobResponse = {
   data: {
     project: {
-      id: 'gid://gitlab/Project/4',
+      id: 'gid://gitlab/Project/20',
       job: {
-        id: 'gid://gitlab/Ci::Build/401',
-        manualJob: true,
+        id: 'gid://gitlab/Ci::Build/13051',
         manualVariables: {
           nodes: [],
           __typename: 'CiManualVariableConnection',
         },
-        name: 'manual_job',
-        retryable: true,
-        status: 'SUCCESS',
         __typename: 'CiJob',
+        manualJob: false,
+        name: 'artifact_job',
+        detailedStatus: {
+          id: 'success-13051-13051',
+          icon: 'status_success',
+          text: 'Passed',
+          detailsPath: '/root/ci-project/-/jobs/13051',
+          __typename: 'DetailedStatus',
+        },
+        startedAt: '',
+        createdAt: '2025-04-21T16:19:15Z',
       },
       __typename: 'Project',
     },
@@ -41,8 +48,15 @@ export const mockJobWithVariablesResponse = {
           __typename: 'CiManualVariableConnection',
         },
         name: 'manual_job',
-        retryable: true,
-        status: 'SUCCESS',
+        detailedStatus: {
+          id: 'manual-13046-13046',
+          icon: 'status_manual',
+          text: 'Manual',
+          detailsPath: '/root/ci-project/-/jobs/13046',
+          __typename: 'DetailedStatus',
+        },
+        startedAt: null,
+        createdAt: '2025-04-21T16:19:15Z',
         __typename: 'CiJob',
       },
       __typename: 'Project',
@@ -55,6 +69,7 @@ export const mockJobPlayMutationData = {
     jobPlay: {
       job: {
         id: 'gid://gitlab/Ci::Build/401',
+        name: 'playable_job',
         manualVariables: {
           nodes: [
             {
@@ -118,6 +133,29 @@ export const mockPendingJobData = {
       button_title: 'Retry job',
       method: 'post',
       path: '/path',
+    },
+  },
+};
+
+export const mockJobInputsQueryHandler = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/4',
+      job: {
+        id: `gid://gitlab/Ci::Build/${mockId}`,
+        inputsSpec: [
+          {
+            name: 'environment',
+            type: 'STRING',
+            description: 'Target environment',
+            required: false,
+            default: 'staging',
+            options: ['staging', 'production'],
+            regex: null,
+          },
+        ],
+        inputs: [{ name: 'environment', value: 'staging' }],
+      },
     },
   },
 };

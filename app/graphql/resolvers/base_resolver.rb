@@ -4,6 +4,7 @@ module Resolvers
   class BaseResolver < GraphQL::Schema::Resolver
     extend ::Gitlab::Utils::Override
     include ::Gitlab::Utils::StrongMemoize
+    include Gitlab::Graphql::Authorize::AuthorizeResource
 
     argument_class ::Types::BaseArgument
 
@@ -124,14 +125,16 @@ module Resolvers
     end
 
     def self.complexity_multiplier(args)
-      # When fetching many items, additional complexity is added to the field
-      # depending on how many items is fetched. For each item we add 1% of the
-      # original complexity - this means that loading 100 items (our default
-      # max_page_size limit) doubles the original complexity.
-      #
-      # Complexity is not increased when searching by specific ID(s), because
-      # complexity difference is minimal in this case.
-      [args[:iid], args[:iids]].any? ? 0 : 0.01
+      # Single iid lookup gets no multiplier (optimized case)
+      return 0 if args[:iid]
+
+      # Array of iids - apply multiplier based on size
+      if args[:iids].present?
+        args[:iids].length > 100 ? 0.02 : 0.01
+      else
+        # Default multiplier for other cases
+        0.01
+      end
     end
 
     def self.before_connection_authorization(&block)
@@ -174,7 +177,13 @@ module Resolvers
     end
 
     def self.authorized?(object, context)
-      authorization.ok?(object, context[:current_user])
+      authorization.ok?(object, context[:current_user], scope_validator: context[:scope_validator])
+    end
+
+    private
+
+    def current_organization
+      context[:current_organization]
     end
   end
 end

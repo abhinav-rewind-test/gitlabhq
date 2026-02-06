@@ -2,13 +2,9 @@
 
 require 'spec_helper'
 
-RSpec.describe Groups::BoardsController do
+RSpec.describe Groups::BoardsController, feature_category: :team_planning do
   let_it_be(:group) { create(:group) }
-  let_it_be(:user)  { create(:user) }
-
-  before_all do
-    group.add_maintainer(user)
-  end
+  let_it_be(:user)  { create(:user, maintainer_of: group) }
 
   before do
     sign_in(user)
@@ -102,7 +98,7 @@ RSpec.describe Groups::BoardsController do
         it 'does not save visit' do
           sign_out(user)
 
-          expect { read_board board: public_board }.to change(BoardGroupRecentVisit, :count).by(0)
+          expect { read_board board: public_board }.to not_change(BoardGroupRecentVisit, :count)
 
           expect(response).to render_template :show
           expect(response.media_type).to eq 'text/html'

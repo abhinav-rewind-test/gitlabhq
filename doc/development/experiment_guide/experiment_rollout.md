@@ -1,10 +1,9 @@
 ---
 stage: Growth
 group: Acquisition
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Experiment rollouts and feature flags
 ---
-
-# Experiment rollouts and feature flags
 
 ## Experiment rollout issue
 
@@ -23,7 +22,7 @@ In either case, an outcome of the experiment should be posted to the issue with 
 
 When there is a case on GitLab.com (SaaS) that necessitates turning off all experiments, we have this control.
 
-You can toggle experiments on SaaS on and off using the `gitlab_experiment` [feature flag](../feature_flags).
+You can toggle experiments on SaaS on and off using the `gitlab_experiment` [feature flag](../feature_flags/_index.md).
 
 This can be done via ChatOps:
 
@@ -33,10 +32,10 @@ This can be done via ChatOps:
 
 ## Notes on feature flags
 
-NOTE:
-We use the terms "enabled" and "disabled" here, even though it's against our
-[documentation style guide recommendations](../documentation/styleguide/word_list.md#enable)
-because these are the terms that the feature flag documentation uses.
+> [!note]
+> We use the terms "enabled" and "disabled" here, even though it's against our
+> [documentation style guide recommendations](../documentation/styleguide/word_list.md#enable)
+> because these are the terms that the feature flag documentation uses.
 
 You may already be familiar with the concept of feature flags in GitLab, but using
 feature flags in experiments is a bit different. While in general terms, a feature flag
@@ -72,6 +71,3 @@ _inactive_ experiment until we set the feature flag to `conditional`. After whic
 our experiment is then considered _running_. If you choose to "enable" your feature flag,
 you should consider the experiment to be _resolved_, because everyone is assigned
 the candidate unless they've opted out of experimentation.
-
-As of GitLab 13.10, work is being done to improve this process and how we communicate
-about it.

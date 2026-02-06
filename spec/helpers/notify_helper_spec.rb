@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe NotifyHelper do
+RSpec.describe NotifyHelper, feature_category: :shared do
   using RSpec::Parameterized::TableSyntax
 
   describe 'merge_request_reference_link' do
@@ -21,33 +21,9 @@ RSpec.describe NotifyHelper do
     let(:issue) { create(:issue, project: project) }
 
     it 'returns link to issue with the text reference' do
-      url = "http://test.host/#{project.full_path}/-/issues/#{issue.iid}"
+      url = "http://test.host#{::Gitlab::UrlBuilder.instance.issue_path(issue)}"
 
       expect(issue_reference_link(issue)).to eq(reference_link(issue, url))
-    end
-  end
-
-  describe '#invited_to_description' do
-    where(:source, :description) do
-      build(:project, description: nil) | /Projects are/
-      build(:group, description: nil) | /Groups assemble/
-      build(:project, description: '_description_') | '_description_'
-      build(:group, description: '_description_') | '_description_'
-    end
-
-    with_them do
-      specify do
-        expect(helper.invited_to_description(source)).to match description
-      end
-    end
-
-    it 'truncates long descriptions', :aggregate_failures do
-      description = '_description_ ' * 30
-      project = build(:project, description: description)
-
-      result = helper.invited_to_description(project)
-      expect(result).not_to match description
-      expect(result.length).to be <= 200
     end
   end
 
@@ -62,7 +38,7 @@ RSpec.describe NotifyHelper do
 
     it 'returns MR approved description' do
       mr_link_style = "font-weight: 600;color:#3777b0;text-decoration:none"
-      reviewer_avatar_style = "border-radius:12px;margin:-7px 0 -7px 3px;"
+      reviewer_avatar_style = "border-radius:12px;margin-left:3px;vertical-align:bottom;"
       mr_link = link_to(merge_request.to_reference, merge_request_url(merge_request), style: mr_link_style).html_safe
       reviewer_avatar = content_tag(
         :img,
@@ -84,6 +60,27 @@ RSpec.describe NotifyHelper do
       expect(result[:reviewer_highlight]).to eq '<span>'.html_safe
       expect(result[:reviewer_avatar]).to eq reviewer_avatar
       expect(result[:reviewer_link]).to eq reviewer_link
+    end
+  end
+
+  describe '#work_item_type_for' do
+    where(:work_item, :expected_type, :for_ee?) do
+      lazy { build(:issue) }              | 'issue' | false
+      lazy { build(:issue, :task) }       | 'issue' | false
+      lazy { build(:issue, :test_case) }  | 'issue' | true
+      lazy { build(:issue, :key_result) } | 'issue' | true
+      lazy { build(:issue, :objective) }  | 'issue' | true
+      lazy { build(:issue, :ticket) }     | 'issue' | false
+      lazy { build(:incident) }           | 'issue' | false
+      lazy { build(:issue, :epic) }       | 'epic'  | true
+    end
+
+    with_them do
+      it do
+        skip if !Gitlab.ee? && for_ee?
+
+        expect(helper.work_item_type_for(work_item)).to eq(expected_type)
+      end
     end
   end
 

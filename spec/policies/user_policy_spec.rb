@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe UserPolicy do
+RSpec.describe UserPolicy, feature_category: :permissions do
   let_it_be(:admin) { create(:user, :admin) }
   let_it_be(:regular_user) { create(:user) }
   let_it_be(:subject_user) { create(:user) }
@@ -16,7 +16,7 @@ RSpec.describe UserPolicy do
     it { is_expected.to be_allowed(:read_user) }
   end
 
-  describe "reading a different user's Personal Access Tokens" do
+  describe "reading a different user's Personal access tokens" do
     let(:token) { create(:personal_access_token, user: user) }
 
     context 'when user is admin' do
@@ -44,7 +44,7 @@ RSpec.describe UserPolicy do
     end
   end
 
-  describe "creating a different user's Personal Access Tokens" do
+  describe "creating a different user's Personal access tokens" do
     context 'when current_user is admin' do
       let(:current_user) { admin }
 
@@ -90,7 +90,7 @@ RSpec.describe UserPolicy do
         subject { described_class.new(current_user, current_user) }
 
         context 'when current_user is not blocked' do
-          it { is_expected.to be_allowed(:get_user_associations_count ) }
+          it { is_expected.to be_allowed(:get_user_associations_count) }
         end
 
         context 'when current_user is blocked' do
@@ -112,7 +112,7 @@ RSpec.describe UserPolicy do
         subject { described_class.new(current_user, current_user) }
 
         context 'when current_user is not blocked' do
-          it { is_expected.to be_allowed(:get_user_associations_count ) }
+          it { is_expected.to be_allowed(:get_user_associations_count) }
         end
 
         context 'when current_user is blocked' do
@@ -191,21 +191,41 @@ RSpec.describe UserPolicy do
     end
   end
 
-  describe "reading a user's group count" do
+  describe 'disabling a passkey' do
+    context 'disabling their own passkey' do
+      let(:user) { current_user }
+
+      it { is_expected.to be_allowed(:disable_passkey) }
+    end
+
+    context 'disabling the passkey of another user' do
+      context 'when the executor is an admin', :enable_admin_mode do
+        let(:current_user) { admin }
+
+        it { is_expected.to be_allowed(:disable_passkey) }
+      end
+
+      context 'when the executor is not an admin' do
+        it { is_expected.not_to be_allowed(:disable_passkey) }
+      end
+    end
+  end
+
+  describe ":read_user_membership_counts" do
     context "when current_user is an admin", :enable_admin_mode do
       let(:current_user) { admin }
 
-      it { is_expected.to be_allowed(:read_group_count) }
+      it { is_expected.to be_allowed(:read_user_membership_counts) }
     end
 
     context "for self users" do
       let(:user) { current_user }
 
-      it { is_expected.to be_allowed(:read_group_count) }
+      it { is_expected.to be_allowed(:read_user_membership_counts) }
     end
 
     context "when accessing a different user's group count" do
-      it { is_expected.not_to be_allowed(:read_group_count) }
+      it { is_expected.not_to be_allowed(:read_user_membership_counts) }
     end
   end
 
@@ -299,6 +319,60 @@ RSpec.describe UserPolicy do
       context "requesting a different user's" do
         it { is_expected.not_to be_allowed(:read_user_email_address) }
         it { is_expected.not_to be_allowed(:admin_user_email_address) }
+      end
+    end
+  end
+
+  describe ':read_user_preference' do
+    context 'when user is admin' do
+      let(:current_user) { admin }
+
+      context 'when admin mode is enabled', :enable_admin_mode do
+        it { is_expected.to be_allowed(:read_user_preference) }
+      end
+
+      context 'when admin mode is disabled' do
+        it { is_expected.not_to be_allowed(:read_user_preference) }
+      end
+    end
+
+    context 'when user is not an admin' do
+      context 'requesting their own' do
+        subject { described_class.new(current_user, current_user) }
+
+        it { is_expected.to be_allowed(:read_user_preference) }
+      end
+
+      context "requesting a different user's" do
+        it { is_expected.not_to be_allowed(:read_user_preference) }
+      end
+    end
+  end
+
+  describe ':xxxx_custom_attribute permissions' do
+    context 'when user is admin' do
+      let(:current_user) { admin }
+
+      context 'when admin mode is enabled', :enable_admin_mode do
+        it { is_expected.to be_allowed(:read_custom_attribute) }
+        it { is_expected.to be_allowed(:update_custom_attribute) }
+      end
+
+      context 'when admin mode is disabled' do
+        it { is_expected.not_to be_allowed(:read_custom_attribute) }
+        it { is_expected.not_to be_allowed(:update_custom_attribute) }
+      end
+    end
+
+    context 'when user is not an admin' do
+      it { is_expected.not_to be_allowed(:read_custom_attribute) }
+      it { is_expected.not_to be_allowed(:update_custom_attribute) }
+
+      context 'requesting their own' do
+        subject { described_class.new(current_user, current_user) }
+
+        it { is_expected.not_to be_allowed(:read_custom_attribute) }
+        it { is_expected.not_to be_allowed(:update_custom_attribute) }
       end
     end
   end

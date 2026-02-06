@@ -1,36 +1,35 @@
 <script>
 import { createAlert, VARIANT_SUCCESS } from '~/alert';
-import { visitUrl, setUrlParams } from '~/lib/utils/url_utility';
+import { visitUrl } from '~/lib/utils/url_utility';
 import { s__ } from '~/locale';
-
-import RegistrationCompatibilityAlert from '~/ci/runner/components/registration/registration_compatibility_alert.vue';
-import RunnerPlatformsRadioGroup from '~/ci/runner/components/runner_platforms_radio_group.vue';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 import RunnerCreateForm from '~/ci/runner/components/runner_create_form.vue';
-import { DEFAULT_PLATFORM, PARAM_KEY_PLATFORM, INSTANCE_TYPE } from '../constants';
-import { saveAlertToLocalStorage } from '../local_storage_alert/save_alert_to_local_storage';
+import RunnerCreateWizard from '~/ci/runner/components/runner_create_wizard.vue';
+import { saveAlertToLocalStorage } from '~/lib/utils/local_storage_alert';
+import { INSTANCE_TYPE } from '../constants';
 
 export default {
   name: 'AdminNewRunnerApp',
   components: {
-    RegistrationCompatibilityAlert,
-    RunnerPlatformsRadioGroup,
     RunnerCreateForm,
+    RunnerCreateWizard,
+    PageHeading,
   },
-  data() {
-    return {
-      platform: DEFAULT_PLATFORM,
-    };
+  mixins: [glFeatureFlagsMixin()],
+  props: {
+    runnersPath: {
+      type: String,
+      required: true,
+    },
   },
   methods: {
     onSaved(runner) {
-      const params = { [PARAM_KEY_PLATFORM]: this.platform };
-      const ephemeralRegisterUrl = setUrlParams(params, runner.ephemeralRegisterUrl);
-
       saveAlertToLocalStorage({
         message: s__('Runners|Runner created.'),
         variant: VARIANT_SUCCESS,
       });
-      visitUrl(ephemeralRegisterUrl);
+      visitUrl(runner.ephemeralRegisterUrl);
     },
     onError(error) {
       createAlert({ message: error.message });
@@ -41,29 +40,21 @@ export default {
 </script>
 
 <template>
-  <div class="gl-mt-5">
-    <h1 class="gl-heading-1">{{ s__('Runners|New instance runner') }}</h1>
-
-    <registration-compatibility-alert :alert-key="$options.INSTANCE_TYPE" />
-
-    <p>
-      {{
-        s__(
-          'Runners|Create an instance runner to generate a command that registers the runner with all its configurations.',
-        )
-      }}
-    </p>
-
-    <hr aria-hidden="true" />
-
-    <h2 class="gl-heading-2">
-      {{ s__('Runners|Platform') }}
-    </h2>
-
-    <runner-platforms-radio-group v-model="platform" />
-
-    <hr aria-hidden="true" />
-
+  <runner-create-wizard
+    v-if="glFeatures.runnerCreateWizardAdmin"
+    :runner-type="$options.INSTANCE_TYPE"
+    :runners-path="runnersPath"
+  />
+  <div v-else>
+    <page-heading :heading="s__('Runners|Create instance runner')">
+      <template #description>
+        {{
+          s__(
+            'Runners|Create an instance runner to generate a command that registers the runner with all its configurations.',
+          )
+        }}
+      </template>
+    </page-heading>
     <runner-create-form :runner-type="$options.INSTANCE_TYPE" @saved="onSaved" @error="onError" />
   </div>
 </template>

@@ -1,30 +1,69 @@
 <script>
-import { GlCard, GlLink } from '@gitlab/ui';
+import { GlLink, GlButton } from '@gitlab/ui';
 import { s__ } from '~/locale';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import CrudComponent from '~/vue_shared/components/crud_component.vue';
+import GroupInheritancePopover from '~/vue_shared/components/settings/group_inheritance_popover.vue';
 import ProtectionRow from './protection_row.vue';
+import DisabledByPolicyPopover from './disabled_by_policy_popover.vue';
 
 export const i18n = {
   rolesTitle: s__('BranchRules|Roles'),
-  usersTitle: s__('BranchRules|Users'),
+  usersAndGroupsTitle: s__('BranchRules|Users & groups'),
   groupsTitle: s__('BranchRules|Groups'),
+  deployKeysTitle: s__('BranchRules|Deploy keys'),
 };
 
 export default {
   name: 'ProtectionDetail',
   i18n,
-  components: { GlCard, GlLink, ProtectionRow },
+  components: {
+    GlLink,
+    GlButton,
+    ProtectionRow,
+    CrudComponent,
+    DisabledByPolicyPopover,
+    GroupInheritancePopover,
+  },
+  mixins: [glFeatureFlagsMixin()],
+  inject: {
+    canAdminGroupProtectedBranches: { default: false },
+    groupSettingsRepositoryPath: { default: '' },
+  },
   props: {
     header: {
       type: String,
       required: true,
     },
+    icon: {
+      type: String,
+      required: false,
+      default: 'shield',
+    },
+    count: {
+      type: Number,
+      required: false,
+      default: null,
+    },
     headerLinkTitle: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     headerLinkHref: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
+    },
+    isProtectedByPolicy: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isProtectedByWarnPolicy: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
     roles: {
       type: Array,
@@ -41,7 +80,7 @@ export default {
       required: false,
       default: () => [],
     },
-    approvals: {
+    deployKeys: {
       type: Array,
       required: false,
       default: () => [],
@@ -51,54 +90,124 @@ export default {
       required: false,
       default: () => [],
     },
+    isEditAvailable: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isGroupLevel: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    emptyStateCopy: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    helpText: {
+      type: String,
+      required: false,
+      default: () => '',
+    },
   },
   computed: {
-    showUsersDivider() {
+    hasRoles() {
       return Boolean(this.roles.length);
     },
-    showGroupsDivider() {
-      return Boolean(this.roles.length || this.users.length);
+    hasUsers() {
+      return Boolean(this.users.length);
+    },
+    hasGroups() {
+      return Boolean(this.groups.length);
+    },
+    hasDeployKeys() {
+      return Boolean(this.deployKeys.length);
+    },
+    hasStatusChecks() {
+      return Boolean(this.statusChecks.length);
+    },
+    isEditDisabled() {
+      return this.isGroupLevel || this.isProtectedByPolicy;
+    },
+    isProtectedByAnyPolicy() {
+      return this.isProtectedByPolicy || this.isProtectedByWarnPolicy;
+    },
+    showDivider() {
+      return this.hasRoles || this.hasUsers;
+    },
+    showEmptyState() {
+      return (
+        !this.hasRoles &&
+        !this.hasUsers &&
+        !this.hasGroups &&
+        !this.hasStatusChecks &&
+        !this.hasDeployKeys
+      );
+    },
+    showDescriptionSlot() {
+      return this.helpText || this.$scopedSlots.description;
     },
   },
 };
 </script>
 
 <template>
-  <gl-card class="gl-mb-5" body-class="gl-py-0">
-    <template #header>
-      <div class="gl-display-flex gl-justify-content-space-between">
-        <strong>{{ header }}</strong>
-        <gl-link :href="headerLinkHref">{{ headerLinkTitle }}</gl-link>
-      </div>
+  <crud-component :title="header" :icon="icon" :count="count" data-testid="status-checks">
+    <template v-if="showDescriptionSlot" #description>
+      <slot name="description">
+        {{ helpText }}
+      </slot>
     </template>
+    <template #actions>
+      <div v-if="isEditAvailable" class="gl-flex">
+        <gl-button
+          :disabled="isEditDisabled"
+          size="small"
+          data-testid="edit-rule-button"
+          @click="$emit('edit')"
+          >{{ __('Edit') }}
+        </gl-button>
+        <disabled-by-policy-popover
+          v-if="isProtectedByAnyPolicy"
+          :is-protected-by-policy="isProtectedByPolicy"
+        />
+        <group-inheritance-popover
+          v-else-if="isGroupLevel"
+          :has-group-permissions="canAdminGroupProtectedBranches"
+          :group-settings-repository-path="groupSettingsRepositoryPath"
+        />
+      </div>
+      <gl-link v-else-if="headerLinkHref && headerLinkTitle" :href="headerLinkHref">{{
+        headerLinkTitle
+      }}</gl-link>
+    </template>
+    <span
+      v-if="showEmptyState && emptyStateCopy && !$scopedSlots.content"
+      class="gl-text-subtle"
+      data-testid="protection-empty-state"
+    >
+      {{ emptyStateCopy }}
+    </span>
 
     <!-- Roles -->
     <protection-row v-if="roles.length" :title="$options.i18n.rolesTitle" :access-levels="roles" />
 
-    <!-- Users -->
+    <!-- Users and Groups -->
     <protection-row
-      v-if="users.length"
-      :show-divider="showUsersDivider"
+      v-if="hasUsers || hasGroups"
+      :show-divider="hasRoles"
       :users="users"
-      :title="$options.i18n.usersTitle"
+      :groups="groups"
+      :title="$options.i18n.usersAndGroupsTitle"
     />
 
-    <!-- Groups -->
+    <!-- Deploy keys -->
     <protection-row
-      v-if="groups.length"
-      :show-divider="showGroupsDivider"
-      :title="$options.i18n.groupsTitle"
-      :access-levels="groups"
-    />
-
-    <!-- Approvals -->
-    <protection-row
-      v-for="(approval, index) in approvals"
-      :key="approval.name"
-      :show-divider="index !== 0"
-      :title="approval.name"
-      :users="approval.eligibleApprovers.nodes"
-      :approvals-required="approval.approvalsRequired"
+      v-if="hasDeployKeys"
+      :show-divider="showDivider"
+      :deploy-keys="deployKeys"
+      :title="$options.i18n.deployKeysTitle"
     />
 
     <!-- Status checks -->
@@ -108,6 +217,9 @@ export default {
       :show-divider="index !== 0"
       :title="statusCheck.name"
       :status-check-url="statusCheck.externalUrl"
+      :hmac="statusCheck.hmac"
     />
-  </gl-card>
+
+    <slot name="content"></slot>
+  </crud-component>
 </template>

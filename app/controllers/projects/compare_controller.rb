@@ -7,13 +7,15 @@ class Projects::CompareController < Projects::ApplicationController
   include DiffHelper
   include RendersCommits
   include CompareHelper
+  include Projects::TargetProjects
+  include RapidDiffs::Resource
 
   # Authorize
   before_action :require_non_empty_project
   before_action :authorize_read_code!
   # Defining ivars
-  before_action :define_diffs, only: [:show, :diff_for_path]
   before_action :define_environment, only: [:show]
+  before_action :define_diffs, only: [:diff_for_path]
   before_action :define_diff_notes_disabled, only: [:show, :diff_for_path]
   before_action :define_commits, only: [:show, :diff_for_path, :signatures]
   before_action :merge_request, only: [:index, :show]
@@ -23,18 +25,28 @@ class Projects::CompareController < Projects::ApplicationController
   feature_category :source_code_management
   urgency :low, [:show, :create, :signatures]
 
-  # Diffs may be pretty chunky, the less is better in this endpoint.
-  # Pagination design guides: https://design.gitlab.com/components/pagination/#behavior
-  COMMIT_DIFFS_PER_PAGE = 20
+  helper_method :rapid_diffs_presenter
 
   def index
     compare_params
   end
 
   def show
-    apply_diff_view_cookie!
+    respond_to do |format|
+      format.html do
+        apply_diff_view_cookie!
+      end
 
-    render locals: { pagination_params: params.permit(:page) }
+      format.patch do
+        define_diffs
+        compare ? send_git_patch(source_project.repository, compare.diff_refs) : render_404
+      end
+
+      format.diff do
+        define_diffs
+        compare ? send_git_diff(source_project.repository, compare.diff_refs) : render_404
+      end
+    end
   end
 
   def diff_for_path
@@ -44,17 +56,14 @@ class Projects::CompareController < Projects::ApplicationController
   end
 
   def create
-    from_to_vars = {
-      from: compare_params[:from].presence,
-      to: compare_params[:to].presence,
-      from_project_id: compare_params[:from_project_id].presence,
-      straight: compare_params[:straight].presence
-    }
+    from_to_vars = build_from_to_vars
 
     if from_to_vars[:from].blank? || from_to_vars[:to].blank?
       flash[:alert] = "You must select a Source and a Target revision"
 
       redirect_to project_compare_index_path(source_project, from_to_vars)
+    elsif compare_params[:straight] == "true"
+      redirect_to project_compare_with_two_dots_path(source_project, from_to_vars)
     else
       redirect_to project_compare_path(source_project, from_to_vars)
     end
@@ -75,7 +84,28 @@ class Projects::CompareController < Projects::ApplicationController
     end
   end
 
+  def target_projects_json
+    render json: ProjectSerializer.new.represent(get_target_projects)
+  end
+
   private
+
+  def rapid_diffs_presenter
+    @rapid_diffs_presenter ||= ::RapidDiffs::ComparePresenter.new(
+      compare,
+      diff_view: diff_view,
+      diff_options: diff_options,
+      request_params: compare_params
+    )
+  end
+
+  def build_from_to_vars
+    {
+      from: compare_params[:from].presence,
+      to: compare_params[:to].presence,
+      from_project_id: compare_params[:from_project_id].presence
+    }
+  end
 
   def validate_refs!
     invalid = [head_ref, start_ref].filter { |ref| !valid_ref?(ref) }
@@ -137,8 +167,14 @@ class Projects::CompareController < Projects::ApplicationController
   def define_commits
     strong_memoize(:commits) do
       if compare.present?
-        commits = compare.commits.with_markdown_cache.with_latest_pipeline(head_ref)
-        set_commits_for_rendering(commits)
+        commits = compare.commits
+
+        # Only fetch pipeline information when we have fewer than the display limit
+        commits = commits.with_latest_pipeline(head_ref) if commits.count < MergeRequestDiff::COMMITS_SAFE_SIZE
+
+        limited, _ = limited_commits(commits, commits.count)
+
+        set_commits_for_rendering(Commit.preload_markdown_cache!(limited), commits_count: commits.count)
       else
         []
       end
@@ -151,9 +187,18 @@ class Projects::CompareController < Projects::ApplicationController
 
   def define_environment
     if compare
-      environment_params = source_project.repository.branch_exists?(head_ref) ? { ref: head_ref } : { commit: compare.commit }
+      environment_params = if source_project.repository.branch_exists?(head_ref)
+                             { ref: head_ref }
+                           else
+                             { commit: compare.commit }
+                           end
+
       environment_params[:find_latest] = true
-      @environment = ::Environments::EnvironmentsByDeploymentsFinder.new(source_project, current_user, environment_params).execute.last
+      @environment = ::Environments::EnvironmentsByDeploymentsFinder.new(
+        source_project,
+        current_user,
+        environment_params
+      ).execute.last
     end
   end
 
@@ -169,6 +214,21 @@ class Projects::CompareController < Projects::ApplicationController
   # rubocop: enable CodeReuse/ActiveRecord
 
   def compare_params
-    @compare_params ||= params.permit(:from, :to, :from_project_id, :straight)
+    @compare_params ||= params.permit(
+      :from,
+      :to,
+      :from_project_id,
+      :straight,
+      :to_project_id,
+      :old_path,
+      :new_path,
+      :file_path
+    )
+  end
+
+  def diffs_resource(options = {})
+    compare&.diffs(diff_options.merge(options))
   end
 end
+
+Projects::CompareController.prepend_mod

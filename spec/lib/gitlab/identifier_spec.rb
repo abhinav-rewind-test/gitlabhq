@@ -14,7 +14,7 @@ RSpec.describe Gitlab::Identifier do
   describe '#identify' do
     context 'without an identifier' do
       it 'returns nil' do
-        expect(identifier.identify('')).to be nil
+        expect(identifier.identify('')).to be_nil
       end
     end
 
@@ -81,6 +81,16 @@ RSpec.describe Gitlab::Identifier do
         found = identifier.identify_using_ssh_key("key-#{key.id}")
 
         expect(found).to eq(user)
+      end
+    end
+
+    context 'when key id is for a deploy key' do
+      let(:key) { create(:deploy_key, user: user) }
+
+      it 'returns nil' do
+        found = identifier.identify_using_ssh_key("key-#{key.id}")
+
+        expect(found).to be_nil
       end
     end
   end

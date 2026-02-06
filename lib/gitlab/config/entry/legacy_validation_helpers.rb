@@ -24,7 +24,12 @@ module Gitlab
           if parser && parser.respond_to?(:validate_duration_limit)
             parser.validate_duration_limit(value, limit)
           else
-            ChronicDuration.parse(value).second.from_now < ChronicDuration.parse(limit).second.from_now
+            parsed_value = ChronicDuration.parse(value)
+            parsed_limit = ChronicDuration.parse(limit)
+
+            return false if parsed_value.nil? || parsed_limit.nil?
+
+            parsed_value.second.from_now < parsed_limit.second.from_now
           end
         rescue ChronicDuration::DurationParseError
           false
@@ -45,7 +50,7 @@ module Gitlab
         def validate_array_value_variables(variables)
           variables.is_a?(Hash) &&
             variables.keys.all?(&method(:validate_alphanumeric)) &&
-            variables.values.all?(&:present?) &&
+            variables.values.all? { |v| !v.nil? } &&
             variables.values.flatten(1).all?(&method(:validate_alphanumeric))
         end
 

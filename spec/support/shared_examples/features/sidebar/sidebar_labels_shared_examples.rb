@@ -2,6 +2,9 @@
 
 RSpec.shared_examples 'labels sidebar widget' do
   context 'editing labels' do
+    # Ensure support bot user is created so creation doesn't count towards query limit
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+    let_it_be(:support_bot) { create(:support_bot) }
     let_it_be(:development) { create(:group_label, group: group, name: 'Development') }
     let_it_be(:stretch)     { create(:label, project: project, name: 'Stretch') }
     let_it_be(:xss_label) { create(:label, project: project, title: '&lt;script&gt;alert("xss");&lt;&#x2F;script&gt;') }
@@ -48,7 +51,7 @@ RSpec.shared_examples 'labels sidebar widget' do
     end
 
     it 'adds first label by pressing enter when search',
-      quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/414877' do
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17044' do
       within(labels_widget) do
         page.within('[data-testid="value-wrapper"]') do
           expect(page).not_to have_content(development.name)
@@ -96,11 +99,13 @@ RSpec.shared_examples 'labels sidebar widget' do
         end
       end
 
-      it 'creates new label' do
+      it 'creates new label', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9509' do
         page.within(labels_widget) do
-          fill_in 'Name new label', with: 'wontfix'
+          fill_in 'Label name', with: 'wontfix'
           click_link 'Magenta-pink'
           click_button 'Create'
+
+          wait_for_requests
 
           expect(page).to have_content 'wontfix'
         end
@@ -108,14 +113,11 @@ RSpec.shared_examples 'labels sidebar widget' do
 
       it 'shows error message if label title is taken' do
         page.within(labels_widget) do
-          fill_in 'Name new label', with: development.title
-          page.find('.suggest-colors a', match: :first).click
-          page.find('button', text: 'Create').click
-          wait_for_requests
+          fill_in 'Label name', with: development.title
+          click_link 'Magenta-pink'
+          click_button 'Create'
 
-          page.within('.dropdown-input') do
-            expect(page.find('.gl-alert')).to have_content 'Title'
-          end
+          expect(page).to have_css '.gl-alert', text: 'Title'
         end
       end
     end

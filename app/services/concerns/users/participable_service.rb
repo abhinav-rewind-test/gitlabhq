@@ -15,6 +15,7 @@ module Users
 
     def noteable_owner
       return [] unless noteable && noteable.author.present?
+      return [] if noteable.author.placeholder? || noteable.author.import_user?
 
       [noteable.author].tap do |users|
         preload_status(users)
@@ -25,6 +26,7 @@ module Users
       return [] unless noteable
 
       users = noteable.participants(current_user)
+      users = users.reject { |user| user.placeholder? || user.import_user? }
       sorted(users)
     end
 
@@ -44,18 +46,27 @@ module Users
       end
     end
 
-    def groups
-      return [] unless current_user
+    def relation_at_search_limit?(users_relation)
+      params[:search] && users_relation.size >= SEARCH_LIMIT
+    end
 
-      relation = current_user.authorized_groups
+    def groups(organization: nil)
+      return [] unless organization.nil? || organization.is_a?(Organizations::Organization)
 
-      if params[:search]
-        relation.gfm_autocomplete_search(params[:search]).limit(SEARCH_LIMIT).to_a
-      else
-        relation.with_route.sort_by(&:full_path)
+      strong_memoize_with(:groups, organization) do
+        break [] unless current_user
+
+        relation = current_user.authorized_groups
+
+        relation = relation.in_organization(organization) if organization
+
+        if params[:search]
+          relation.gfm_autocomplete_search(params[:search]).limit(SEARCH_LIMIT).to_a
+        else
+          relation.with_route.sort_by(&:full_path)
+        end
       end
     end
-    strong_memoize_attr :groups
 
     def render_participants_as_hash(participants)
       participants.map { |participant| participant_as_hash(participant) }
@@ -67,6 +78,8 @@ module Users
         group_as_hash(participant)
       when User
         user_as_hash(participant)
+      when Organizations::OrganizationUserDetail
+        org_user_detail_as_hash(participant)
       else
         participant
       end
@@ -78,7 +91,8 @@ module Users
         username: user.username,
         name: user.name,
         avatar_url: user.avatar_url,
-        availability: lazy_user_availability(user).itself # calling #itself to avoid returning a BatchLoader instance
+        availability: lazy_user_availability(user).itself, # calling #itself to avoid returning a BatchLoader instance
+        composite_identity_enforced: user.composite_identity_enforced
       }
     end
 
@@ -90,6 +104,20 @@ module Users
         avatar_url: group.avatar_url,
         count: group_counts.fetch(group.id, 0),
         mentionsDisabled: group.mentions_disabled
+      }
+    end
+
+    def org_user_detail_as_hash(org_user_detail)
+      user = org_user_detail.user
+      {
+        type: user.class.name,
+        username: org_user_detail.username,
+        name: org_user_detail.display_name,
+        avatar_url: user.avatar_url,
+        availability: lazy_user_availability(user).itself, # calling #itself to avoid returning a BatchLoader instance
+        original_username: user.username,
+        original_displayname: user.name,
+        composite_identity_enforced: user.composite_identity_enforced
       }
     end
 
@@ -119,3 +147,5 @@ module Users
     end
   end
 end
+
+Users::ParticipableService.prepend_mod

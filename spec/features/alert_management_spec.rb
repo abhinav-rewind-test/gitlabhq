@@ -4,11 +4,7 @@ require 'spec_helper'
 
 RSpec.describe 'Alert management', :js, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
-
-  before_all do
-    project.add_developer(developer)
-  end
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   context 'when visiting the alert details page' do
     let!(:alert) { create(:alert_management_alert, :resolved, :with_fingerprint, title: 'dos-test', project: project, **options) }
@@ -16,6 +12,7 @@ RSpec.describe 'Alert management', :js, feature_category: :incident_management d
 
     before do
       sign_in(user)
+      stub_feature_flags(hide_incident_management_features: false)
     end
 
     context 'when actor has permission to see the alert' do

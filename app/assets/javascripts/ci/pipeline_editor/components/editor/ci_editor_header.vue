@@ -1,5 +1,6 @@
 <script>
-import { GlButton } from '@gitlab/ui';
+import { GlButton, GlLink } from '@gitlab/ui';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import { __, s__ } from '~/locale';
 import Tracking from '~/tracking';
 import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
@@ -8,19 +9,18 @@ import {
   EDITOR_APP_DRAWER_JOB_ASSISTANT,
   EDITOR_APP_DRAWER_NONE,
   pipelineEditorTrackingOptions,
-  TEMPLATE_REPOSITORY_URL,
 } from '../../constants';
 
 export default {
   i18n: {
-    browseCatalog: __('Browse CI/CD Catalog'),
-    browseTemplates: __('Browse templates'),
+    browseCatalog: __('CI/CD Catalog'),
     help: __('Help'),
     jobAssistant: s__('JobAssistant|Job assistant'),
+    editorA11y: s__('PipelineEditor|Editor accessibility guide'),
   },
-  TEMPLATE_REPOSITORY_URL,
   components: {
     GlButton,
+    GlLink,
   },
   mixins: [glFeatureFlagMixin(), Tracking.mixin()],
   inject: ['ciCatalogPath'],
@@ -32,6 +32,14 @@ export default {
     showJobAssistantDrawer: {
       type: Boolean,
       required: true,
+    },
+  },
+  emits: ['switch-drawer'],
+  computed: {
+    editorA11yHelpPagePath() {
+      return helpPagePath('ci/pipeline_editor/_index.md', {
+        anchor: 'editor-accessibility-options',
+      });
     },
   },
   methods: {
@@ -58,39 +66,24 @@ export default {
       const { label, actions } = pipelineEditorTrackingOptions;
       this.track(actions.openHelpDrawer, { label });
     },
-    trackTemplateBrowsing() {
-      const { label, actions } = pipelineEditorTrackingOptions;
-
-      this.track(actions.browseTemplates, { label });
-    },
   },
 };
 </script>
 
 <template>
   <div
-    class="gl-display-flex gl-p-3 gl-gap-3 gl-border-solid gl-border-gray-100 gl-border-1 gl-flex-direction-column gl-md-flex-direction-row"
+    class="gl-flex gl-flex-col gl-gap-3 gl-rounded-t-lg gl-border-1 gl-border-solid gl-border-default gl-p-3 @md/panel:gl-flex-row @md/panel:gl-items-center"
   >
     <slot></slot>
     <gl-button
       :href="ciCatalogPath"
       size="small"
-      icon="external-link"
+      icon="catalog-checkmark"
       target="_blank"
       data-testid="catalog-repo-link"
       @click="trackCatalogBrowsing"
     >
       {{ $options.i18n.browseCatalog }}
-    </gl-button>
-    <gl-button
-      :href="$options.TEMPLATE_REPOSITORY_URL"
-      size="small"
-      icon="external-link"
-      target="_blank"
-      data-testid="template-repo-link"
-      @click="trackTemplateBrowsing"
-    >
-      {{ $options.i18n.browseTemplates }}
     </gl-button>
     <gl-button
       icon="information-o"
@@ -108,5 +101,12 @@ export default {
     >
       {{ $options.i18n.jobAssistant }}
     </gl-button>
+    <gl-link
+      class="gl-p-2 gl-text-center"
+      :href="editorA11yHelpPagePath"
+      data-testid="editor-accessibility-link"
+    >
+      {{ $options.i18n.editorA11y }}
+    </gl-link>
   </div>
 </template>

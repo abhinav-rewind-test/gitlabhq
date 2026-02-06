@@ -12,6 +12,7 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
 
   before do
     stub_licensed_features(licensed_scan_types.index_with { true })
+    stub_licensed_features(secret_push_protection: true)
   end
 
   describe '#to_html_data_attribute' do
@@ -29,13 +30,13 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
         )
       end
 
-      let!(:build_sast) { create(:ci_build, :sast, pipeline: pipeline) }
+      let!(:build_sast) { create(:ci_build, :sast, name: 'semgrep-sast', pipeline: pipeline) }
       let!(:build_dast) { create(:ci_build, :dast, pipeline: pipeline) }
       let!(:build_license_scanning) { create(:ci_build, :license_scanning, pipeline: pipeline) }
 
       it 'includes links to auto devops and secure product docs' do
-        expect(html_data[:auto_devops_help_page_path]).to eq(help_page_path('topics/autodevops/index'))
-        expect(html_data[:help_page_path]).to eq(help_page_path('user/application_security/index'))
+        expect(html_data[:auto_devops_help_page_path]).to eq(help_page_path('topics/autodevops/_index.md'))
+        expect(html_data[:help_page_path]).to eq(help_page_path('user/application_security/_index.md'))
       end
 
       it 'returns info that Auto DevOps is not enabled' do
@@ -47,8 +48,123 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
         expect(html_data[:latest_pipeline_path]).to eq(project_pipeline_path(project, pipeline))
       end
 
-      it 'has stubs for autofix' do
-        expect(html_data.keys).to include(:can_toggle_auto_fix_settings, :auto_fix_enabled, :auto_fix_user_path)
+      it 'includes a link to vulnerability_training_docs' do
+        expect(html_data[:vulnerability_training_docs_path]).to eq(
+          help_page_path(
+            'user/application_security/vulnerabilities/_index.md',
+            anchor: 'enable-security-training-for-vulnerabilities'
+          )
+        )
+      end
+
+      it 'includes a link to upgrade url' do
+        expect(html_data[:upgrade_path]).to eq(promo_pricing_url)
+      end
+
+      context 'with group_full_path value' do
+        context 'when project has root group' do
+          let_it_be(:parent) { create(:group) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          it 'includes a link to group_full_path' do
+            expect(html_data[:group_full_path]).to eq(parent.full_path)
+          end
+        end
+
+        context 'when project is under a user namespace' do
+          let_it_be(:parent) { create(:user_namespace) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          it 'returns nil' do
+            expect(html_data[:group_full_path]).to be_nil
+          end
+        end
+      end
+
+      context 'with scan profiles permissions' do
+        context 'when project has root group' do
+          let_it_be(:parent) { create(:group) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          where(:has_permission, :result) do
+            true  | true
+            false | false
+          end
+
+          with_them do
+            before do
+              allow_next_instance_of(described_class) do |presenter|
+                allow(presenter).to receive(:can?).and_return(false) # default stub for any other permission checks
+                allow(presenter).to receive(:can?).with(anything, :apply_security_scan_profiles, project).and_return(has_permission)
+              end
+            end
+
+            it 'returns expected permission result for can_apply_profiles' do
+              expect(html_data[:can_apply_profiles]).to eq(result)
+            end
+          end
+        end
+
+        context 'when project is under a user namespace' do
+          let_it_be(:parent) { create(:user_namespace) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          before do
+            allow_next_instance_of(described_class) do |presenter|
+              allow(presenter).to receive(:can?).and_return(true)
+            end
+          end
+
+          it 'always returns false' do
+            expect(html_data[:can_apply_profiles]).to be false
+          end
+        end
+      end
+
+      context 'with attributes permissions' do
+        context 'when project has root group' do
+          let_it_be(:parent) { create(:group) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          where(:permission, :field, :has_permission, :result) do
+            :read_security_attribute   | :can_read_attributes   | true  | true
+            :read_security_attribute   | :can_read_attributes   | false | false
+            :admin_security_attributes | :can_manage_attributes | true  | true
+            :admin_security_attributes | :can_manage_attributes | false | false
+          end
+
+          with_them do
+            before do
+              allow_next_instance_of(described_class) do |presenter|
+                allow(presenter).to receive(:can?).and_return(false) # default stub for any other permission checks
+                allow(presenter).to receive(:can?).with(anything, permission, parent).and_return(has_permission)
+              end
+            end
+
+            it 'returns expected permission result' do
+              expect(html_data[field]).to eq(result)
+            end
+          end
+        end
+
+        context 'when project is under a user namespace' do
+          let_it_be(:parent) { create(:user_namespace) }
+          let_it_be(:project) { create(:project, namespace: parent) }
+
+          where(:field) { [:can_read_attributes, :can_manage_attributes] }
+
+          with_them do
+            before do
+              allow_next_instance_of(described_class) do |presenter|
+                allow(presenter).to receive(:can?).and_return(true)
+              end
+            end
+
+            it 'always returns false' do
+              expect(html_data[field]).to be false
+            end
+          end
+        end
       end
 
       context "while retrieving information about user's ability to enable auto_devops" do
@@ -98,6 +214,7 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
           :dast | true
           :dast_profiles | true
           :sast | true
+          :sast_advanced | false
           :sast_iac | false
           :container_scanning | false
           :cluster_image_scanning | false
@@ -132,10 +249,10 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
         end
 
         let!(:artifacts) do
-          { artifacts: { reports: { other_job: ['gl-other-report.json'], sast: ['gl-sast-report.json'] } } }
+          { artifacts: { reports: { annotations: ['gl-other-report.json'], sast: ['gl-sast-report.json'] } } }
         end
 
-        let!(:complicated_job) { build_stubbed(:ci_build, options: artifacts) }
+        let!(:complicated_job) { build_stubbed(:ci_build, name: 'semgrep-sast', options: artifacts) }
 
         before do
           allow_next_instance_of(::Security::SecurityJobsFinder) do |finder|
@@ -232,7 +349,7 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
         )
       end
 
-      let!(:build_sast) { create(:ci_build, :sast, pipeline: pipeline, status: 'success') }
+      let!(:build_sast) { create(:ci_build, :sast, name: 'semgrep-sast', pipeline: pipeline, status: 'success') }
       let!(:build_dast) { create(:ci_build, :dast, pipeline: pipeline, status: 'success') }
       let!(:ci_build) { create(:ci_build, :secret_detection, pipeline: pipeline, status: 'pending') }
 
@@ -276,7 +393,7 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
       end
 
       it 'includes a link to CI pipeline docs' do
-        expect(html_data[:latest_pipeline_path]).to eq(help_page_path('ci/pipelines/index'))
+        expect(html_data[:latest_pipeline_path]).to eq(help_page_path('ci/pipelines/_index.md'))
       end
 
       context 'when gathering feature data' do
@@ -307,8 +424,20 @@ RSpec.describe Projects::Security::ConfigurationPresenter, feature_category: :so
       end
     end
 
+    describe 'secret_push_protection' do
+      let_it_be(:project) { create(:project, :repository) }
+      let(:features) { Gitlab::Json.parse(html_data[:features]) }
+
+      it 'feature includes secret_push_protection' do
+        skip unless Gitlab.ee?
+
+        feature = features.find { |scan| scan["type"] == 'secret_push_protection' }
+        expect(feature).not_to be_nil
+      end
+    end
+
     def licensed_scan_types
-      ::Security::SecurityJobsFinder.allowed_job_types + ::Security::LicenseComplianceJobsFinder.allowed_job_types - [:cluster_image_scanning]
+      Enums::Security.analyzer_types.keys + ::Security::LicenseComplianceJobsFinder.allowed_job_types - [:cluster_image_scanning]
     end
   end
 end

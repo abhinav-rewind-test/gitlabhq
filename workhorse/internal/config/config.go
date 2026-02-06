@@ -1,7 +1,10 @@
+// Package config provides configuration management for object storage,
+// including support for S3, Azure Blob Storage, and Google Cloud Storage.
 package config
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/BurntSushi/toml"
@@ -23,36 +27,53 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+// Megabyte constant for size calculations
 const Megabyte = 1 << 20
 
+// TLSVersions contains a mapping of textual TLS versions to tls.Version* constants
+var TLSVersions = map[string]uint16{
+	"":       0, // Default value in tls.Config
+	"tls1.0": tls.VersionTLS10,
+	"tls1.1": tls.VersionTLS11,
+	"tls1.2": tls.VersionTLS12,
+	"tls1.3": tls.VersionTLS13,
+}
+
+// TomlURL wraps url.URL for TOML unmarshalling
 type TomlURL struct {
 	url.URL
 }
 
+// UnmarshalText parses a TOML text representation into a TomlURL
 func (u *TomlURL) UnmarshalText(text []byte) error {
 	temp, err := url.Parse(string(text))
 	u.URL = *temp
 	return err
 }
 
+// MarshalText converts a TomlURL back to TOML text representation
 func (u *TomlURL) MarshalText() ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
+// TomlDuration wraps time.Duration for TOML unmarshalling
 type TomlDuration struct {
 	time.Duration
 }
 
+// UnmarshalText parses a TOML text representation into a TomlDuration
 func (d *TomlDuration) UnmarshalText(text []byte) error {
 	temp, err := time.ParseDuration(string(text))
 	d.Duration = temp
 	return err
 }
 
+// MarshalText converts a TomlDuration back to TOML text representation
 func (d TomlDuration) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
+// ObjectStorageCredentials holds credentials for various object storage providers
 type ObjectStorageCredentials struct {
 	Provider string
 
@@ -61,16 +82,19 @@ type ObjectStorageCredentials struct {
 	GoogleCredentials GoogleCredentials `toml:"google" json:"google"`
 }
 
+// ObjectStorageConfig contains the URLMux for object storage configuration
 type ObjectStorageConfig struct {
 	URLMux *blob.URLMux `toml:"-"`
 }
 
+// S3Credentials holds AWS S3 credentials
 type S3Credentials struct {
 	AwsAccessKeyID     string `toml:"aws_access_key_id" json:"aws_access_key_id"`
 	AwsSecretAccessKey string `toml:"aws_secret_access_key" json:"aws_secret_access_key"`
 	AwsSessionToken    string `toml:"aws_session_token" json:"aws_session_token"`
 }
 
+// S3Config holds S3-specific configuration options
 type S3Config struct {
 	Region               string `toml:"-"`
 	Bucket               string `toml:"-"`
@@ -79,57 +103,114 @@ type S3Config struct {
 	UseIamProfile        bool   `toml:"-"`
 	ServerSideEncryption string `toml:"-"` // Server-side encryption mode (e.g. AES256, aws:kms)
 	SSEKMSKeyID          string `toml:"-"` // Server-side encryption key-management service key ID (e.g. arn:aws:xxx)
+	AwsSDK               string `toml:"-"` // DEPRECATED. AWS SDK v2 is always used now.
 }
 
+// GoCloudConfig holds GoCloud-specific configuration
 type GoCloudConfig struct {
 	URL string `toml:"-"`
 }
 
+// AzureCredentials holds Azure Blob Storage credentials
 type AzureCredentials struct {
 	AccountName string `toml:"azure_storage_account_name" json:"azure_storage_account_name"`
 	AccountKey  string `toml:"azure_storage_access_key" json:"azure_storage_access_key"`
 }
 
+// GoogleCredentials holds Google Cloud Storage credentials
 type GoogleCredentials struct {
 	ApplicationDefault bool   `toml:"google_application_default" json:"google_application_default"`
 	JSONKeyString      string `toml:"google_json_key_string" json:"google_json_key_string"`
 	JSONKeyLocation    string `toml:"google_json_key_location" json:"google_json_key_location"`
 }
 
+// RedisConfig holds configuration for Redis
 type RedisConfig struct {
 	URL              TomlURL
 	Sentinel         []TomlURL
 	SentinelMaster   string
+	SentinelUsername string
 	SentinelPassword string
 	Password         string
 	DB               *int
 	MaxIdle          *int
 	MaxActive        *int
+	TLS              *TLSConfig `toml:"tls" json:"tls"`
 }
 
+// SentinelConfig contains configuration options specifically for Sentinel
+type SentinelConfig struct {
+	TLS *TLSConfig `toml:"tls" json:"tls"`
+}
+
+// ImageResizerConfig holds configuration for the image resizer
 type ImageResizerConfig struct {
 	MaxScalerProcs uint32 `toml:"max_scaler_procs" json:"max_scaler_procs"`
 	MaxScalerMem   uint64 `toml:"max_scaler_mem" json:"max_scaler_mem"`
 	MaxFilesize    uint64 `toml:"max_filesize" json:"max_filesize"`
 }
 
+// MetadataConfig holds configuration for metadata processing
 type MetadataConfig struct {
 	ZipReaderLimitBytes int64 `toml:"zip_reader_limit_bytes"`
 }
 
-type TlsConfig struct {
-	Certificate string `toml:"certificate" json:"certificate"`
-	Key         string `toml:"key" json:"key"`
-	MinVersion  string `toml:"min_version" json:"min_version"`
-	MaxVersion  string `toml:"max_version" json:"max_version"`
+// TLSConfig holds TLS configuration settings
+type TLSConfig struct {
+	Certificate   string `toml:"certificate" json:"certificate"`
+	Key           string `toml:"key" json:"key"`
+	CACertificate string `toml:"ca_certificate" json:"ca_certificate"`
+	MinVersion    string `toml:"min_version" json:"min_version"`
+	MaxVersion    string `toml:"max_version" json:"max_version"`
 }
 
+// ListenerConfig holds configuration for network listeners
 type ListenerConfig struct {
 	Network string     `toml:"network" json:"network"`
 	Addr    string     `toml:"addr" json:"addr"`
-	Tls     *TlsConfig `toml:"tls" json:"tls"`
+	TLS     *TLSConfig `toml:"tls" json:"tls"`
 }
 
+// CircuitBreakerConfig holds circuit breaker settings
+type CircuitBreakerConfig struct {
+	Enabled             bool   `toml:"enabled" json:"enabled"`
+	Timeout             uint32 `toml:"timeout" json:"timeout"`
+	Interval            uint32 `toml:"interval" json:"interval"`
+	MaxRequests         uint32 `toml:"max_requests" json:"max_requests"`
+	ConsecutiveFailures uint32 `toml:"consecutive_failures" json:"consecutive_failures"`
+}
+
+// HealthCheckConfig holds configuration for health check endpoints
+type HealthCheckConfig struct {
+	// Network is the network type (tcp, tcp4, tcp6, unix)
+	Network string `toml:"network" json:"network"`
+	// Addr is the address to listen on (e.g., "localhost:8082")
+	Addr string `toml:"addr" json:"addr"`
+	// ReadinessProbeURL is the URL to check the readiness endpoint
+	ReadinessProbeURL string `toml:"readiness_probe_url" json:"readiness_probe_url"`
+	// PumaControlURL is the URL to check Puma's control server (for readiness checks)
+	PumaControlURL string `toml:"puma_control_url" json:"puma_control_url"`
+	// CheckInterval is how often to perform health checks
+	CheckInterval TomlDuration `toml:"check_interval" json:"check_interval"`
+	// Timeout for health check requests
+	Timeout TomlDuration `toml:"timeout" json:"timeout"`
+	// GracefulShutdownDelay is how long to remain not ready after shutdown signal
+	GracefulShutdownDelay TomlDuration `toml:"graceful_shutdown_delay" json:"graceful_shutdown_delay"`
+	// MaxConsecutiveFailures is the number of consecutive failures allowed before marking as not ready (readiness only)
+	MaxConsecutiveFailures int `toml:"max_consecutive_failures" json:"max_consecutive_failures"`
+	// MinSuccessfulProbes is the number of successful probes in a row required to be deemed ready (readiness only)
+	MinSuccessfulProbes int `toml:"min_successful_probes" json:"min_successful_probes"`
+	// RailsSkipInterval is the duration to skip Rails readiness checks after a successful request
+	RailsSkipInterval TomlDuration `toml:"rails_skip_interval" json:"rails_skip_interval"`
+	// LoadShedBacklogThreshold is the backlog threshold at which to start shedding load (0 = disabled)
+	LoadShedBacklogThreshold int `toml:"load_shed_backlog_threshold" json:"load_shed_backlog_threshold"`
+	// LoadShedRetryAfterSeconds is the Retry-After header value in seconds when shedding load (default 0)
+	LoadShedRetryAfterSeconds int `toml:"load_shed_retry_after_seconds" json:"load_shed_retry_after_seconds"`
+	// LoadShedStrategy is the strategy to use for calculating effective backlog (max, sum; default: max)
+	LoadShedStrategy string `toml:"load_shed_strategy" json:"load_shed_strategy"`
+}
+
+// Config holds the overall application configuration
 type Config struct {
 	ConfigCommand                string                   `toml:"config_command,omitempty" json:"config_command"`
 	Redis                        *RedisConfig             `toml:"redis" json:"redis"`
@@ -148,6 +229,7 @@ type Config struct {
 	ObjectStorageConfig          ObjectStorageConfig      `toml:"-"`
 	ObjectStorageCredentials     ObjectStorageCredentials `toml:"object_storage" json:"object_storage"`
 	PropagateCorrelationID       bool                     `toml:"-"`
+	AdoptCfRayHeader             bool                     `toml:"adopt_cf_ray_header" json:"adopt_cf_ray_header"`
 	ImageResizerConfig           ImageResizerConfig       `toml:"image_resizer" json:"image_resizer"`
 	MetadataConfig               MetadataConfig           `toml:"metadata" json:"metadata"`
 	AltDocumentRoot              string                   `toml:"alt_document_root" json:"alt_document_root"`
@@ -156,24 +238,41 @@ type Config struct {
 	TrustedCIDRsForPropagation   []string                 `toml:"trusted_cidrs_for_propagation" json:"trusted_cidrs_for_propagation"`
 	Listeners                    []ListenerConfig         `toml:"listeners" json:"listeners"`
 	MetricsListener              *ListenerConfig          `toml:"metrics_listener" json:"metrics_listener"`
+	HealthCheckListener          *HealthCheckConfig       `toml:"health_check_listener" json:"health_check_listener"`
+	Sentinel                     *SentinelConfig          `toml:"Sentinel" json:"Sentinel"`
+	CircuitBreakerConfig         CircuitBreakerConfig     `toml:"circuit_breaker" json:"circuit_breaker"`
 }
 
+// DefaultImageResizerConfig contains default settings for the image resizer
 var DefaultImageResizerConfig = ImageResizerConfig{
 	MaxScalerProcs: uint32(math.Max(2, float64(runtime.NumCPU())/2)),
 	MaxFilesize:    250 * 1000, // 250kB,
 }
 
+// DefaultMetadataConfig contains default settings for metadata processing
 var DefaultMetadataConfig = MetadataConfig{
 	ZipReaderLimitBytes: 100 * Megabyte,
 }
 
+// DefaultCircuitBreakerConfig contains default settings for the circuit breaker
+var DefaultCircuitBreakerConfig = CircuitBreakerConfig{
+	Enabled:             false,
+	Timeout:             60,
+	Interval:            180,
+	MaxRequests:         1,
+	ConsecutiveFailures: 5,
+}
+
+// NewDefaultConfig creates a new configuration with default values
 func NewDefaultConfig() *Config {
 	return &Config{
-		ImageResizerConfig: DefaultImageResizerConfig,
-		MetadataConfig:     DefaultMetadataConfig,
+		ImageResizerConfig:   DefaultImageResizerConfig,
+		MetadataConfig:       DefaultMetadataConfig,
+		CircuitBreakerConfig: DefaultCircuitBreakerConfig,
 	}
 }
 
+// LoadConfigFromFile reads configuration from a specified file
 func LoadConfigFromFile(file *string) (*Config, error) {
 	tomlData := ""
 
@@ -188,6 +287,7 @@ func LoadConfigFromFile(file *string) (*Config, error) {
 	return LoadConfig(tomlData)
 }
 
+// LoadConfig loads configuration from a TOML string
 func LoadConfig(data string) (*Config, error) {
 	cfg := NewDefaultConfig()
 
@@ -215,15 +315,13 @@ func LoadConfig(data string) (*Config, error) {
 	return cfg, nil
 }
 
+// RegisterGoCloudURLOpeners registers URL openers for GoCloud storage providers
 func (c *Config) RegisterGoCloudURLOpeners() error {
 	c.ObjectStorageConfig.URLMux = new(blob.URLMux)
 
 	creds := c.ObjectStorageCredentials
-	if strings.EqualFold(creds.Provider, "AzureRM") && creds.AzureCredentials.AccountName != "" && creds.AzureCredentials.AccountKey != "" {
-		urlOpener, err := creds.AzureCredentials.getURLOpener()
-		if err != nil {
-			return err
-		}
+	if strings.EqualFold(creds.Provider, "AzureRM") && creds.AzureCredentials.AccountName != "" {
+		urlOpener := creds.AzureCredentials.getURLOpener()
 		c.ObjectStorageConfig.URLMux.RegisterBucket(azureblob.Scheme, urlOpener)
 	}
 
@@ -238,24 +336,64 @@ func (c *Config) RegisterGoCloudURLOpeners() error {
 	return nil
 }
 
-func (creds *AzureCredentials) getURLOpener() (*azureblob.URLOpener, error) {
+// ApplyHealthCheckDefaults applies default values to health check configuration
+func (c *Config) ApplyHealthCheckDefaults() {
+	if c.HealthCheckListener == nil {
+		return
+	}
+
+	if c.HealthCheckListener.CheckInterval.Duration == 0 {
+		c.HealthCheckListener.CheckInterval = TomlDuration{Duration: 10 * time.Second}
+	}
+	if c.HealthCheckListener.Timeout.Duration == 0 {
+		c.HealthCheckListener.Timeout = TomlDuration{Duration: 5 * time.Second}
+	}
+	if c.HealthCheckListener.GracefulShutdownDelay.Duration == 0 {
+		c.HealthCheckListener.GracefulShutdownDelay = TomlDuration{Duration: 10 * time.Second}
+	}
+	if c.HealthCheckListener.MaxConsecutiveFailures <= 0 {
+		c.HealthCheckListener.MaxConsecutiveFailures = 1
+	}
+	if c.HealthCheckListener.MinSuccessfulProbes <= 0 {
+		c.HealthCheckListener.MinSuccessfulProbes = 1
+	}
+	if c.HealthCheckListener.ReadinessProbeURL == "" {
+		readinessProbeURL := "http://localhost:8080/-/readiness"
+		if c.Backend != nil {
+			readinessProbeURL = c.Backend.String() + "/-/readiness"
+		}
+		c.HealthCheckListener.ReadinessProbeURL = readinessProbeURL
+	}
+}
+
+func (creds *AzureCredentials) getURLOpener() *azureblob.URLOpener {
 	serviceURLOptions := azureblob.ServiceURLOptions{
 		AccountName: creds.AccountName,
 	}
 
 	clientFunc := func(svcURL azureblob.ServiceURL, containerName azureblob.ContainerName) (*container.Client, error) {
-		sharedKeyCred, err := azblob.NewSharedKeyCredential(creds.AccountName, creds.AccountKey)
-		if err != nil {
-			return nil, fmt.Errorf("error creating Azure credentials: %w", err)
-		}
 		containerURL := fmt.Sprintf("%s/%s", svcURL, containerName)
-		return container.NewClientWithSharedKeyCredential(containerURL, sharedKeyCred, &container.ClientOptions{})
+
+		if creds.AccountKey != "" {
+			sharedKeyCred, err := azblob.NewSharedKeyCredential(creds.AccountName, creds.AccountKey)
+			if err != nil {
+				return nil, fmt.Errorf("error creating Azure credentials: %w", err)
+			}
+			return container.NewClientWithSharedKeyCredential(containerURL, sharedKeyCred, &container.ClientOptions{})
+		}
+
+		creds, err := azidentity.NewDefaultAzureCredential(nil)
+		if err != nil {
+			return nil, fmt.Errorf("error creating default Azure credentials: %w", err)
+		}
+
+		return container.NewClient(containerURL, creds, nil)
 	}
 
 	return &azureblob.URLOpener{
 		MakeClient:        clientFunc,
 		ServiceURLOptions: serviceURLOptions,
-	}, nil
+	}
 }
 
 func (creds *GoogleCredentials) getURLOpener() (*gcsblob.URLOpener, error) {

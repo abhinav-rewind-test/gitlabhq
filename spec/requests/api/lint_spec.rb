@@ -268,6 +268,114 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
 
           it_behaves_like 'valid config with warnings'
         end
+
+        context 'when authenticated user has no API token' do
+          before do
+            allow(::Current).to receive(:token_info).and_return(nil)
+          end
+
+          it 'returns unauthorized error' do
+            ci_lint
+
+            expect(response).to have_gitlab_http_status(:unauthorized)
+            expect(json_response['message']).to include('This endpoint requires an API authentication')
+          end
+        end
+      end
+
+      context 'when including a component' do
+        let_it_be(:component_project_files) do
+          {
+            'templates/component-x.yml' => <<~YAML
+              job:
+                script: echo 1
+            YAML
+          }
+        end
+
+        let_it_be(:component_project) { create(:project, :public, :custom_repo, files: component_project_files) }
+
+        let_it_be(:project_files) do
+          {
+            '.gitlab-ci.yml' => <<~YAML
+              include:
+                - component: #{Gitlab.config.gitlab.host}/#{component_project.full_path}/component-x@master
+            YAML
+          }
+        end
+
+        let_it_be(:project) { create(:project, :custom_repo, files: project_files) }
+
+        it 'passes validation' do
+          ci_lint
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['merged_yaml']).to include("script: echo 1")
+          expect(json_response['includes']).to contain_exactly(
+            {
+              'type' => 'component',
+              'location' => "#{Gitlab.config.gitlab.host}/#{component_project.full_path}/component-x@master",
+              'blob' => "http://#{Gitlab.config.gitlab.host}/#{component_project.full_path}/-/blob/#{component_project.repository.head_commit.sha}/templates/component-x.yml",
+              'raw' => nil,
+              'extra' => {},
+              'context_project' => project.full_path,
+              'context_sha' => project.repository.head_commit.sha
+            }
+          )
+          expect(json_response['valid']).to eq(true)
+          expect(json_response['warnings']).to eq([])
+          expect(json_response['errors']).to eq([])
+        end
+      end
+
+      context 'when including a project file' do
+        let_it_be(:other_project_files) do
+          {
+            'tests.yml' => <<~YAML
+              job:
+                script: echo 1
+            YAML
+          }
+        end
+
+        let_it_be(:other_project) { create(:project, :public, :custom_repo, files: other_project_files) }
+
+        let_it_be(:project_files) do
+          {
+            '.gitlab-ci.yml' => <<~YAML
+              include:
+                - project: #{other_project.full_path}
+                  ref: master
+                  file: tests.yml
+            YAML
+          }
+        end
+
+        let_it_be(:project) { create(:project, :custom_repo, files: project_files) }
+
+        it 'passes validation' do
+          ci_lint
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['merged_yaml']).to include("script: echo 1")
+          expect(json_response['includes']).to contain_exactly(
+            {
+              'type' => 'file',
+              'location' => "tests.yml",
+              'blob' => "http://#{Gitlab.config.gitlab.host}/#{other_project.full_path}/-/blob/#{other_project.repository.head_commit.sha}/tests.yml",
+              'raw' => "http://#{Gitlab.config.gitlab.host}/#{other_project.full_path}/-/raw/#{other_project.repository.head_commit.sha}/tests.yml",
+              'extra' => {
+                'project' => other_project.full_path,
+                'ref' => 'master'
+              },
+              'context_project' => project.full_path,
+              'context_sha' => project.repository.head_commit.sha
+            }
+          )
+          expect(json_response['valid']).to eq(true)
+          expect(json_response['warnings']).to eq([])
+          expect(json_response['errors']).to eq([])
+        end
       end
 
       context 'with invalid .gitlab-ci.yml content' do
@@ -483,6 +591,62 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
         end
       end
     end
+
+    context 'when the project is public' do
+      let_it_be(:project) { create(:project, :repository, :public) }
+
+      context 'with valid .gitlab-ci.yml content' do
+        let_it_be(:yaml_content) do
+          { test: { stage: 'test', script: 'echo 1' } }.to_yaml
+        end
+
+        before_all do
+          project.repository.create_file(
+            project.creator,
+            '.gitlab-ci.yml',
+            yaml_content,
+            message: 'Automatically created .gitlab-ci.yml',
+            branch_name: 'master'
+          )
+        end
+
+        shared_examples 'passing validation' do
+          it 'passes validation' do
+            ci_lint
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['valid']).to eq(true)
+            expect(json_response['warnings']).to eq([])
+            expect(json_response['errors']).to eq([])
+          end
+        end
+
+        context 'when unauthenticated' do
+          let_it_be(:api_user) { nil }
+
+          it_behaves_like 'passing validation'
+        end
+
+        context 'when authenticated as project developer' do
+          let_it_be(:api_user) { create(:user) }
+
+          before do
+            project.add_developer(api_user)
+          end
+
+          it_behaves_like 'passing validation'
+        end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_ci_config do
+      let(:user) { create(:user) }
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/ci/lint", personal_access_token: pat) }
+      before do
+        project.add_developer(user)
+      end
+    end
   end
 
   describe 'POST /projects/:id/ci/lint' do
@@ -631,6 +795,22 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
       end
     end
 
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_access_token) { create(:oauth_access_token, user: project.owner, scopes: [:ai_workflows]) }
+
+      it 'allows access to POST endpoint' do
+        post api("/projects/#{project.id}/ci/lint", oauth_access_token: oauth_access_token), params: { content: yaml_content }
+
+        expect(response).to have_gitlab_http_status(:ok)
+      end
+
+      it 'does not allow access to GET endpoint' do
+        get api("/projects/#{project.id}/ci/lint", oauth_access_token: oauth_access_token)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+
     context 'when authenticated as project guest' do
       before do
         project.add_guest(api_user)
@@ -669,6 +849,35 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
           let(:dry_run) { false }
 
           it_behaves_like 'valid project config'
+
+          context 'when running on a protected branch' do
+            let_it_be(:yaml_content) do
+              {
+                include: { remote: 'https://test.example.com/${SECRET_TOKEN}.yml' },
+                test: { stage: 'test', script: 'echo 1' }
+              }.to_yaml
+            end
+
+            before do
+              sha = project.repository.commit.sha # this is always the sha used by this endpoint for linting
+              ref = Gitlab::Ci::RefFinder.new(project).find_by_sha(sha)
+
+              create(:protected_branch, name: ref, project: project)
+              create(:ci_variable, key: 'SECRET_TOKEN', value: 'secret!!!!!', project: project, protected: true)
+            end
+
+            it 'does not expand protected variables' do
+              ci_lint
+
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(json_response['merged_yaml']).to be_nil
+              expect(json_response['includes']).to be_nil
+              expect(json_response['valid']).to be_falsey
+              expect(json_response['errors']).to eq([
+                'Included file `https://test.example.com/.yml` does not have YAML extension!'
+              ])
+            end
+          end
         end
 
         context 'when running with include jobs param' do
@@ -692,6 +901,47 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
             ci_lint
 
             expect(json_response).not_to have_key('jobs')
+          end
+        end
+      end
+
+      context 'when authenticated as project maintainer' do
+        before do
+          project.add_maintainer(api_user)
+        end
+
+        context 'when running static validation' do
+          let(:dry_run) { false }
+
+          context 'when running on a protected branch' do
+            let_it_be(:yaml_content) do
+              {
+                include: { remote: 'https://test.example.com/${SECRET_TOKEN}.yml' },
+                test: { stage: 'test', script: 'echo 1' }
+              }.to_yaml
+            end
+
+            before do
+              sha = project.repository.commit.sha # this is always the sha used by this endpoint for linting
+              ref = Gitlab::Ci::RefFinder.new(project).find_by_sha(sha)
+
+              create(:protected_branch, name: ref, project: project)
+              create(:ci_variable, key: 'SECRET_TOKEN', value: 'secret!!!!!', project: project, protected: true)
+
+              stub_request(:get, "https://test.example.com/secret!!!!!.yml")
+            end
+
+            it 'expands protected variables', :aggregate_failures do
+              ci_lint
+
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(json_response['merged_yaml']).to be_nil
+              expect(json_response['includes']).to be_nil
+              expect(json_response['valid']).to be_falsey
+              expect(json_response['errors']).to eq([
+                'Included file `https://test.example.com/secret!!!!!.yml` is empty or does not exist!'
+              ])
+            end
           end
         end
       end
@@ -736,6 +986,21 @@ RSpec.describe API::Lint, feature_category: :pipeline_composition do
             expect(json_response).to have_key('jobs')
           end
         end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :validate_ci_config do
+      let(:user) { create(:user) }
+      let_it_be(:yaml_content) do
+        {
+          include: { remote: 'https://test.example.com/${SECRET_TOKEN}.yml' }
+        }.to_yaml
+      end
+
+      let(:boundary_object) { project }
+      let(:request) { post api("/projects/#{project.id}/ci/lint", personal_access_token: pat), params: { content: yaml_content } }
+      before do
+        project.add_developer(user)
       end
     end
   end

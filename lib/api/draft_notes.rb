@@ -30,7 +30,7 @@ module API
       def publish_draft_note(params:)
         ::DraftNotes::PublishService
           .new(merge_request(params: params), current_user)
-          .execute(get_draft_note(params: params))
+          .execute(draft: get_draft_note(params: params))
       end
 
       def publish_draft_notes(params:)
@@ -48,11 +48,11 @@ module API
       end
 
       params :positional do
-        optional :position, type: Hash do
+        optional :position, type: Hash, desc: 'Position when creating a note' do
           requires :base_sha, type: String, desc: 'Base commit SHA in the source branch'
           requires :start_sha, type: String, desc: 'SHA referencing commit in target branch'
           requires :head_sha, type: String, desc: 'SHA referencing HEAD of this merge request'
-          requires :position_type, type: String, desc: 'Type of the position reference', values: %w[text image]
+          requires :position_type, type: String, desc: 'Type of the position reference', values: %w[text image file]
           optional :new_path, type: String, desc: 'File path after change'
           optional :new_line, type: Integer, desc: 'Line number after change'
           optional :old_path, type: String, desc: 'File path before change'
@@ -62,18 +62,18 @@ module API
           optional :x, type: Integer, desc: 'X coordinate in the image'
           optional :y, type: Integer, desc: 'Y coordinate in the image'
 
-          optional :line_range, type: Hash, desc: 'Multi-line start and end' do
-            optional :start, type: Hash do
+          optional :line_range, type: Hash, desc: 'Line range for a multi-line note' do
+            optional :start, type: Hash, desc: 'Start line for a multi-line note' do
               optional :line_code, type: String, desc: 'Start line code for multi-line note'
               optional :type, type: String, desc: 'Start line type for multi-line note'
-              optional :old_line, type: String, desc: 'Start old_line line number'
-              optional :new_line, type: String, desc: 'Start new_line line number'
+              optional :old_line, type: Integer, desc: 'Start old_line line number'
+              optional :new_line, type: Integer, desc: 'Start new_line line number'
             end
-            optional :end, type: Hash do
+            optional :end, type: Hash, desc: 'End line for a multi-line note' do
               optional :line_code, type: String, desc: 'End line code for multi-line note'
               optional :type, type: String, desc: 'End line type for multi-line note'
-              optional :old_line, type: String, desc: 'End old_line line number'
-              optional :new_line, type: String, desc: 'End new_line line number'
+              optional :old_line, type: Integer, desc: 'End old_line line number'
+              optional :new_line, type: Integer, desc: 'End new_line line number'
             end
           end
         end
@@ -97,6 +97,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project"
@@ -112,6 +113,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project"
@@ -134,6 +136,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                        type: String,  desc: "The ID of a project."
@@ -165,6 +168,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project."
@@ -194,6 +198,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project"
@@ -220,6 +225,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project"
@@ -245,6 +251,7 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not found' }
         ]
+        tags ['draft_notes']
       end
       params do
         requires :id,                type: String,  desc: "The ID of a project"

@@ -16,33 +16,38 @@ module Banzai
           h.project_merge_request_url(project, mr, only_path: context[:only_path])
         end
 
-        def object_link_text_extras(object, matches)
+        def object_link_content_html_extras(object, matches)
           extras = super
 
           if commit_ref = object_link_commit_ref(object, matches)
             klass = reference_class(:commit, tooltip: false)
-            commit_ref_tag = %(<span class="#{klass}">#{commit_ref}</span>)
 
-            return extras.unshift(commit_ref_tag)
+            commit_ref_tag = doc.document.create_element("span")
+            commit_ref_tag['class'] = klass
+            commit_ref_tag.content = commit_ref
+
+            return extras.unshift(commit_ref_tag.to_html)
           end
 
           path = matches[:path] if matches.names.include?("path")
 
           case path
           when '/diffs'
-            extras.unshift "diffs"
+            extras.unshift CGI.escapeHTML("diffs")
           when '/commits'
-            extras.unshift "commits"
+            extras.unshift CGI.escapeHTML("commits")
           when '/builds'
-            extras.unshift "builds"
+            extras.unshift CGI.escapeHTML("builds")
           end
 
           extras
         end
 
         def parent_records(parent, ids)
+          return MergeRequest.none unless parent.is_a?(Project)
+
           parent.merge_requests
-            .where(iid: ids.to_a)
+            .iid_in(ids.to_a)
             .includes(target_project: :namespace)
         end
 
@@ -50,7 +55,7 @@ module Banzai
           super
         end
 
-        def data_attributes_for(text, parent, object, **data)
+        def data_attributes_for(original, parent, object, **data)
           super.merge(project_path: parent.full_path, iid: object.iid)
         end
 
@@ -75,9 +80,31 @@ module Banzai
 
         def find_commit_by_sha(object, commit_sha)
           @all_commits ||= {}
-          @all_commits[object.id] ||= object.all_commits
+
+          unless @all_commits.key?(object.id)
+            @all_commits[object.id] = if Feature.enabled?(:merge_request_diff_commits_dedup, object.project)
+                                        preloaded_all_commits(object)
+                                      else
+                                        object.all_commits
+                                      end
+          end
 
           @all_commits[object.id].find { |commit| commit.sha == commit_sha }
+        end
+
+        def preloaded_all_commits(object)
+          commits = object.all_commits
+
+          ActiveRecord::Associations::Preloader.new(
+            records: commits,
+            associations: [
+              :commit_author,
+              :committer,
+              :merge_request_commits_metadata
+            ]
+          ).call
+
+          commits
         end
       end
     end

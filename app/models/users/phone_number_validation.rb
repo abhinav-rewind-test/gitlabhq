@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 module Users
-  class PhoneNumberValidation < MainClusterwide::ApplicationRecord
-    include IgnorableColumns
-
+  class PhoneNumberValidation < ApplicationRecord
     # SMS send attempts subsequent to the first one will have wait times of 1
     # min, 3 min, 5 min after each one respectively. Wait time between the fifth
     # attempt and so on will be 10 minutes.
@@ -48,6 +46,10 @@ module Users
 
     def similar_records
       self.class.similar_to(self).includes(:user)
+    end
+
+    def duplicate_records
+      self.class.similar_to(self).where.not(user: user)
     end
 
     def self.related_to_banned_user?(international_dial_code, phone_number)

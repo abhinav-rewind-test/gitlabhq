@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe PlanLimits do
   let_it_be(:project) { create(:project) }
-  let_it_be(:plan_limits) { create(:plan_limits) }
+  let_it_be(:plan_limits) { create(:plan_limits, :default_plan) }
 
   let(:project_hooks_count) { 2 }
 
@@ -13,8 +13,13 @@ RSpec.describe PlanLimits do
   end
 
   describe 'validations' do
+    subject { build(:plan_limits, :default_plan) }
+
     it { is_expected.to validate_numericality_of(:notification_limit).only_integer.is_greater_than_or_equal_to(0) }
     it { is_expected.to validate_numericality_of(:enforcement_limit).only_integer.is_greater_than_or_equal_to(0) }
+    it { is_expected.to validate_numericality_of(:web_hook_calls).is_greater_than_or_equal_to(0) }
+    it { is_expected.to validate_numericality_of(:web_hook_calls_low).is_greater_than_or_equal_to(0) }
+    it { is_expected.to validate_numericality_of(:web_hook_calls_mid).is_greater_than_or_equal_to(0) }
 
     describe 'limits_history' do
       context 'when does not match the JSON schema' do
@@ -249,6 +254,8 @@ RSpec.describe PlanLimits do
         ci_max_artifact_size_coverage_fuzzing
         ci_max_artifact_size_api_fuzzing
         ci_max_artifact_size_annotations
+        ci_max_artifact_size_jacoco
+        ci_max_artifact_size_slsa_provenance_statement
       ]
     end
 
@@ -261,13 +268,20 @@ RSpec.describe PlanLimits do
         web_hook_calls
         web_hook_calls_mid
         web_hook_calls_low
+        import_placeholder_user_limit_tier_1
+        import_placeholder_user_limit_tier_2
+        import_placeholder_user_limit_tier_3
+        import_placeholder_user_limit_tier_4
         ci_daily_pipeline_schedule_triggers
-        repository_size
         security_policy_scan_execution_schedules
         enforcement_limit
         notification_limit
         project_access_token_limit
       ] + disabled_max_artifact_size_columns
+    end
+
+    let(:columns_with_nil) do
+      %w[repository_size]
     end
 
     let(:datetime_columns) do
@@ -283,6 +297,7 @@ RSpec.describe PlanLimits do
       attributes = attributes.except(described_class.primary_key)
       attributes = attributes.except(described_class.reflections.values.map(&:foreign_key))
       attributes = attributes.except(*columns_with_zero)
+      attributes = attributes.except(*columns_with_nil)
       attributes = attributes.except(*datetime_columns)
       attributes = attributes.except(*history_columns)
 
@@ -295,6 +310,13 @@ RSpec.describe PlanLimits do
 
       expect(attributes).to all(include(be_zero))
     end
+
+    it "has nil values for disabled limits" do
+      attributes = plan_limits.attributes
+      attributes = attributes.slice(*columns_with_nil)
+
+      expect(attributes).to all(include(be_nil))
+    end
   end
 
   describe '#dashboard_storage_limit_enabled?' do
@@ -303,9 +325,31 @@ RSpec.describe PlanLimits do
     end
   end
 
+  describe '#set_plan_name_uid' do
+    context 'when plan_name_uid is missing' do
+      it 'populates plan_name_uid on save' do
+        plan_limits.update_column(:plan_name_uid, nil)
+
+        plan_limits.reload.update!(ci_pipeline_size: 200)
+
+        expect(plan_limits.reload.plan_name_uid).to eq(Plan::PLAN_NAME_UID_LIST[:default])
+      end
+    end
+
+    context 'when plan is nil' do
+      it 'sets plan_name_uid to nil without raising an error' do
+        limits = build(:plan_limits, plan: nil)
+
+        limits.set_plan_name_uid
+
+        expect(limits.plan_name_uid).to be_nil
+      end
+    end
+  end
+
   describe '#format_limits_history', :freeze_time do
     let(:user) { create(:user) }
-    let(:plan_limits) { create(:plan_limits) }
+    let(:plan_limits) { create(:plan_limits, plan: create(:plan, name: 'premium')) }
     let(:current_timestamp) { Time.current.utc.to_i }
 
     it 'formats a single attribute change' do
@@ -386,6 +430,7 @@ RSpec.describe PlanLimits do
       let(:plan_limits) do
         create(
           :plan_limits,
+          plan: create(:plan, name: 'ultimate'),
           limits_history: {
             'enforcement_limit' => [
               {

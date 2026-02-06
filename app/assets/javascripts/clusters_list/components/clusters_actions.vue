@@ -27,13 +27,15 @@ export default {
     'canAddCluster',
     'displayClusterAgents',
     'certificateBasedClustersEnabled',
+    'isGroup',
   ],
   computed: {
     shouldTriggerModal() {
-      return this.canAddCluster && this.displayClusterAgents;
+      return this.canAddCluster && this.displayClusterAgents && !this.isGroup;
     },
     defaultActionText() {
-      const { connectCluster, connectWithAgent, connectClusterDeprecated } = this.$options.i18n;
+      const { connectCluster, connectWithAgent, connectClusterDeprecated, createCluster } =
+        this.$options.i18n;
 
       if (!this.displayClusterAgents) {
         return connectClusterDeprecated;
@@ -41,9 +43,15 @@ export default {
       if (!this.certificateBasedClustersEnabled) {
         return connectCluster;
       }
+      if (this.isGroup) {
+        return createCluster;
+      }
       return connectWithAgent;
     },
     defaultActionUrl() {
+      if (this.isGroup) {
+        return this.newClusterDocsPath;
+      }
       if (this.displayClusterAgents) {
         return null;
       }
@@ -66,7 +74,7 @@ export default {
       };
       const actions = [];
 
-      if (this.displayClusterAgents) {
+      if (this.displayClusterAgents && !this.isGroup) {
         actions.push(createCluster);
       }
       if (this.displayClusterAgents && this.certificateBasedClustersEnabled) {
@@ -91,9 +99,7 @@ export default {
       :title="$options.i18n.actionsDisabledHint"
     />
 
-    <!--TODO: Replace button-group workaround once `split` option for new dropdowns is implemented.-->
-    <!-- See issue at https://gitlab.com/gitlab-org/gitlab-ui/-/issues/2263-->
-    <gl-button-group ref="actions" class="gl-w-full gl-mb-3 gl-md-w-auto gl-md-mb-0">
+    <gl-button-group ref="actions" class="gl-mb-3 gl-w-full @md/panel:gl-mb-0 @md/panel:gl-w-auto">
       <gl-button
         v-gl-modal-directive="shouldTriggerModal && $options.INSTALL_AGENT_MODAL_ID"
         :href="defaultActionUrl"
@@ -106,11 +112,9 @@ export default {
       </gl-button>
       <gl-disclosure-dropdown
         v-if="actionItems.length"
-        class="split"
-        toggle-class="gl-rounded-top-left-none! gl-rounded-bottom-left-none! gl-pl-1!"
         category="primary"
         variant="confirm"
-        placement="right"
+        placement="bottom-end"
         :toggle-text="defaultActionText"
         :items="actionItems"
         :disabled="!canAddCluster"

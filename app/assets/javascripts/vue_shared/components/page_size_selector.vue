@@ -14,10 +14,20 @@ export default {
       type: Number,
       required: true,
     },
+    excludePageSizes: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
   },
   computed: {
+    availablePageSizes() {
+      return this.excludePageSizes.length > 0
+        ? PAGE_SIZES.filter(({ value }) => !this.excludePageSizes.includes(value))
+        : PAGE_SIZES;
+    },
     selectedItem() {
-      return PAGE_SIZES.find(({ value }) => value === this.value);
+      return this.availablePageSizes.find(({ value }) => value === this.value);
     },
     toggleText() {
       return this.selectedItem.text;
@@ -28,14 +38,13 @@ export default {
       this.$emit('input', pageSize);
     },
   },
-  PAGE_SIZES,
 };
 </script>
 
 <template>
   <gl-collapsible-listbox
     :toggle-text="toggleText"
-    :items="$options.PAGE_SIZES"
+    :items="availablePageSizes"
     :selected="value"
     @select="emitInput($event)"
   />

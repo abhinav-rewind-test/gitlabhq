@@ -3,9 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
-  include RoutesHelpers
   include ProjectForksHelper
-  include ::ExclusiveLeaseHelpers
 
   let_it_be(:project) { create(:project) }
 
@@ -15,29 +13,30 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
   before do
     sign_in(user)
     project.add_role(user, role)
+    stub_feature_flags(pipelines_page_graphql: false)
   end
 
   shared_context 'pipeline builds' do
     let!(:external_stage) { create(:ci_stage, name: 'external', pipeline: pipeline) }
 
     let!(:build_passed) do
-      create(:ci_build, :success, pipeline: pipeline, stage: 'build', stage_idx: 0, name: 'build')
+      create(:ci_build, :success, pipeline: pipeline, stage: 'build', stage_idx: 0, name: 'build-job')
     end
 
     let!(:build_failed) do
-      create(:ci_build, :failed, pipeline: pipeline, stage: 'test', stage_idx: 1, name: 'test')
+      create(:ci_build, :failed, pipeline: pipeline, stage: 'test', stage_idx: 1, name: 'test-job')
     end
 
     let!(:build_preparing) do
-      create(:ci_build, :preparing, pipeline: pipeline, stage: 'deploy', stage_idx: 2, name: 'prepare')
+      create(:ci_build, :preparing, pipeline: pipeline, stage: 'deploy', stage_idx: 2, name: 'prepare-job')
     end
 
     let!(:build_running) do
-      create(:ci_build, :running, pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'deploy')
+      create(:ci_build, :running, pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'deploy-job')
     end
 
     let!(:build_manual) do
-      create(:ci_build, :manual, pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'manual-build')
+      create(:ci_build, :manual, pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'manual-job')
     end
 
     let!(:build_scheduled) do
@@ -49,7 +48,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         :generic_commit_status,
         status: 'success',
         pipeline: pipeline,
-        name: 'jenkins',
+        name: 'jenkins-job',
         ci_stage: external_stage,
         ref: 'master',
         target_url: 'http://gitlab.com/status'
@@ -69,38 +68,17 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
 
     subject(:visit_pipeline) { visit project_pipeline_path(project, pipeline) }
 
-    it 'shows the pipeline graph' do
-      visit_pipeline
-
-      expect(page).to have_selector('.js-pipeline-graph')
-      expect(page).to have_content('build')
-      expect(page).to have_content('test')
-      expect(page).to have_content('deploy')
-      expect(page).to have_content('Retry')
-      expect(page).to have_content('Cancel pipeline')
-    end
-
-    it 'shows link to the pipeline ref' do
-      visit_pipeline
-
-      expect(page).to have_link(pipeline.ref)
-    end
-
     it 'shows the pipeline information' do
       visit_pipeline
 
-      within_testid 'pipeline-details-header' do
-        expect(page).to have_content("For #{pipeline.ref}")
+      within_testid 'pipeline-header' do
+        expect(page).to have_link(pipeline.ref)
+        expect(page).to have_content("In #{pipeline.ref}")
         expect(page).to have_content("#{pipeline.statuses.count} jobs")
         expect(page).to have_link(pipeline.ref,
           href: project_commits_path(pipeline.project, pipeline.ref))
-      end
-    end
 
-    it 'displays pipeline name instead of commit title' do
-      visit_pipeline
-
-      within_testid 'pipeline-details-header' do
+        # shows name instead of commit title
         expect(page).to have_content(pipeline.name)
         expect(page).to have_content(project.commit.short_id)
         expect(page).not_to have_selector('[data-testid="pipeline-commit-title"]')
@@ -115,7 +93,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       it 'displays commit title' do
         visit_pipeline
 
-        within_testid 'pipeline-details-header' do
+        within_testid 'pipeline-header' do
           expect(page).to have_content(project.commit.title)
           expect(page).not_to have_selector('[data-testid="pipeline-name"]')
         end
@@ -140,7 +118,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'shows time ago' do
           visit project_pipeline_path(project, finished_pipeline)
 
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).to have_selector('[data-testid="pipeline-finished-time-ago"]')
           end
         end
@@ -150,7 +128,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'does not show time ago' do
           visit_pipeline
 
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).not_to have_selector('[data-testid="pipeline-finished-time-ago"]')
           end
         end
@@ -163,18 +141,42 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
           visit_pipeline
         end
 
+        it 'shows pipeline actions' do
+          expect(page).to have_content('Retry')
+          expect(page).to have_content('Cancel pipeline')
+        end
+
+        it 'shows a graph with grouped stages' do
+          expect(page).to have_css('.js-pipeline-graph')
+
+          # stages
+          expect(page).to have_text('build')
+          expect(page).to have_text('test')
+          expect(page).to have_text('deploy')
+          expect(page).to have_text('external')
+
+          # builds
+          expect(page).to have_text('build-job')
+          expect(page).to have_text('test-job')
+          expect(page).to have_text('prepare-job')
+          expect(page).to have_text('deploy-job')
+          expect(page).to have_text('manual-job')
+          expect(page).to have_text('delayed-job')
+          expect(page).to have_text('jenkins-job')
+        end
+
         it 'shows a running icon and a cancel action for the running build' do
-          page.within('#ci-badge-deploy') do
+          page.within('#ci-badge-deploy-job') do
             expect(page).to have_selector('[data-testid="status_running_borderless-icon"]')
             expect(page).to have_selector('.js-icon-cancel')
-            expect(page).to have_content('deploy')
+            expect(page).to have_content('deploy-job')
           end
         end
 
         it 'cancels the running build and shows retry button', :sidekiq_might_not_need_inline do
-          find('#ci-badge-deploy .ci-action-icon-container').click
+          find('#ci-badge-deploy-job .ci-action-icon-container').click
 
-          page.within('#ci-badge-deploy') do
+          page.within('#ci-badge-deploy-job') do
             expect(page).to have_css('.js-icon-retry')
           end
         end
@@ -186,32 +188,18 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows a preparing icon and a cancel action' do
-          page.within('#ci-badge-prepare') do
+          page.within('#ci-badge-prepare-job') do
             expect(page).to have_selector('[data-testid="status_preparing_borderless-icon"]')
             expect(page).to have_selector('.js-icon-cancel')
-            expect(page).to have_content('prepare')
+            expect(page).to have_content('prepare-job')
           end
         end
 
         it 'does not show the retry button' do
-          find('#ci-badge-deploy .ci-action-icon-container').click
+          find('#ci-badge-deploy-job .ci-action-icon-container').click
 
-          page.within('#ci-badge-deploy') do
+          page.within('#ci-badge-deploy-job') do
             expect(page).not_to have_css('.js-icon-retry')
-          end
-        end
-
-        context 'when ci_canceling_status is disabled' do
-          before do
-            stub_feature_flags(ci_canceling_status: false)
-          end
-
-          it 'shows retry button', :sidekiq_inline do
-            find('#ci-badge-deploy .ci-action-icon-container').click
-
-            page.within('#ci-badge-deploy') do
-              expect(page).to have_css('.js-icon-retry')
-            end
           end
         end
       end
@@ -222,22 +210,22 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows the success icon and a retry action for the successful build' do
-          page.within('#ci-badge-build') do
+          page.within('#ci-badge-build-job') do
             expect(page).to have_selector('[data-testid="status_success_borderless-icon"]')
             expect(page).to have_content('build')
           end
 
-          page.within('#ci-badge-build .ci-action-icon-container.js-icon-retry') do
+          page.within('#ci-badge-build-job .ci-action-icon-container.js-icon-retry') do
             expect(page).to have_selector('svg')
           end
         end
 
         it 'is possible to retry the success job', :sidekiq_might_not_need_inline do
-          find('#ci-badge-build .ci-action-icon-container').click
+          find('#ci-badge-build-job .ci-action-icon-container').click
           wait_for_requests
 
           expect(page).not_to have_content('Retry job')
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
           end
         end
@@ -276,30 +264,31 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows the failed icon and a retry action for the failed build' do
-          page.within('#ci-badge-test') do
+          page.within('#ci-badge-test-job') do
             expect(page).to have_selector('[data-testid="status_failed_borderless-icon"]')
             expect(page).to have_content('test')
           end
 
-          page.within('#ci-badge-test .ci-action-icon-container.js-icon-retry') do
+          page.within('#ci-badge-test-job .ci-action-icon-container.js-icon-retry') do
             expect(page).to have_selector('svg')
           end
         end
 
         it 'is possible to retry the failed build', :sidekiq_might_not_need_inline do
-          find('#ci-badge-test .ci-action-icon-container').click
+          find('#ci-badge-test-job .ci-action-icon-container').click
           wait_for_requests
 
           expect(page).not_to have_content('Retry job')
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
           end
         end
 
         it 'includes the failure reason' do
-          page.within('#ci-badge-test') do
-            build_link = page.find('.js-pipeline-graph-job-link')
-            expect(build_link['title']).to eq('test - failed - (unknown failure)')
+          page.within('#ci-badge-test-job') do
+            # TODO Find way to locate this link with title
+            build_link = find_by_testid('ci-job-item').find('a')
+            expect(build_link['title']).to eq('Failed - (unknown failure)')
           end
         end
       end
@@ -310,22 +299,22 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows the skipped icon and a play action for the manual build' do
-          page.within('#ci-badge-manual-build') do
+          page.within('#ci-badge-manual-job') do
             expect(page).to have_selector('[data-testid="status_manual_borderless-icon"]')
             expect(page).to have_content('manual')
           end
 
-          page.within('#ci-badge-manual-build .ci-action-icon-container.js-icon-play') do
+          page.within('#ci-badge-manual-job .ci-action-icon-container.js-icon-play') do
             expect(page).to have_selector('svg')
           end
         end
 
         it 'is possible to play the manual job', :sidekiq_might_not_need_inline do
-          find('#ci-badge-manual-build .ci-action-icon-container').click
+          find('#ci-badge-manual-job .ci-action-icon-container').click
           wait_for_requests
 
-          expect(page).not_to have_content('Play job')
-          within_testid('pipeline-details-header') do
+          expect(page).not_to have_content('Run job')
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
           end
         end
@@ -394,42 +383,25 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
                 expect(page).to have_selector('[data-testid="status_canceled_borderless-icon"]')
                 expect(page).to have_selector('button[aria-label="Retry downstream pipeline"]')
               end
-
-              context 'when ci_canceling_status is disabled' do
-                before do
-                  stub_feature_flags(ci_canceling_status: false)
-                end
-
-                it 'shows the pipeline as canceled with the retry action' do
-                  expect(page).to have_selector('[data-testid="status_canceled_borderless-icon"]')
-                  expect(page).to have_selector('button[aria-label="Retry downstream pipeline"]')
-                end
-              end
             end
           end
 
           context 'with a failed downstream' do
             let(:status) { :failed }
 
-            context 'when ci_canceling_status is disabled' do
+            it 'indicates that pipeline can be retried' do
+              expect(page).to have_selector('button[aria-label="Retry downstream pipeline"]')
+            end
+
+            context 'when retrying' do
               before do
-                stub_feature_flags(ci_canceling_status: false)
+                find('button[aria-label="Retry downstream pipeline"]').click
+                wait_for_requests
               end
 
-              it 'indicates that pipeline can be retried' do
-                expect(page).to have_selector('button[aria-label="Retry downstream pipeline"]')
-              end
-
-              context 'when retrying' do
-                before do
-                  find('button[aria-label="Retry downstream pipeline"]').click
-                  wait_for_requests
-                end
-
-                it 'shows running pipeline with the cancel action' do
-                  expect(page).to have_selector('[data-testid="status_running_borderless-icon"]')
-                  expect(page).to have_selector('button[aria-label="Cancel downstream pipeline"]')
-                end
+              it 'shows running pipeline with the cancel action' do
+                expect(page).to have_selector('[data-testid="status_running_borderless-icon"]')
+                expect(page).to have_selector('button[aria-label="Cancel downstream pipeline"]')
               end
             end
           end
@@ -497,10 +469,9 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         visit_pipeline
       end
 
-      it 'shows Pipeline, Jobs, DAG and Failed Jobs tabs with link' do
+      it 'shows Pipeline, Jobs, and Failed Jobs tabs with link' do
         expect(page).to have_link('Pipeline')
         expect(page).to have_link('Jobs')
-        expect(page).to have_link('Needs')
         expect(page).to have_link('Failed Jobs')
       end
 
@@ -513,7 +484,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         let(:role) { :guest }
 
         it 'does not show the pipeline details page' do
-          expect(page).to have_content('Not Found')
+          expect(page).to have_content('Page not found')
         end
       end
     end
@@ -531,7 +502,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
           expect(find_by_testid('tests-counter').text).to eq(pipeline.test_report_summary.total[:count].to_s)
         end
 
-        it 'calls summary.json endpoint', :js do
+        it 'calls summary.json endpoint' do
           find('.gl-tab-nav-item', text: 'Tests').click
 
           expect(page).to have_content('Jobs')
@@ -566,7 +537,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows running status in pipeline header', :sidekiq_might_not_need_inline do
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
           end
         end
@@ -581,16 +552,6 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
 
       it 'does not show a "Cancel pipeline" button', :sidekiq_inline do
         expect(page).not_to have_content('Cancel pipeline')
-      end
-
-      context 'when ci_canceling_status disabled' do
-        before do
-          stub_feature_flags(ci_canceling_status: false)
-        end
-
-        it 'does not show a "Cancel pipeline" button', :sidekiq_inline do
-          expect(page).not_to have_content('Cancel pipeline')
-        end
       end
     end
 
@@ -639,7 +600,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'does not render render raw HTML to the pipeline ref' do
-        within_testid 'pipeline-details-header' do
+        within_testid 'pipeline-header' do
           expect(page).not_to have_content('<span class="ref-name"')
         end
       end
@@ -665,7 +626,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       it 'shows the pipeline information' do
         visit_pipeline
 
-        within_testid 'pipeline-details-header' do
+        within_testid 'pipeline-header' do
           expect(page).to have_content("#{pipeline.statuses.count} jobs")
           expect(page).to have_content("Related merge request !#{merge_request.iid} " \
                                        "to merge #{merge_request.source_branch}")
@@ -684,7 +645,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'does not link to the source branch commit path' do
           visit_pipeline
 
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).not_to have_link(merge_request.source_branch)
             expect(page).to have_content(merge_request.source_branch)
           end
@@ -699,7 +660,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows the pipeline information', :sidekiq_might_not_need_inline do
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).to have_content("#{pipeline.statuses.count} jobs")
             expect(page).to have_content("Related merge request !#{merge_request.iid} " \
                                          "to merge #{merge_request.source_branch}")
@@ -736,7 +697,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       it 'shows the pipeline information' do
         visit_pipeline
 
-        within_testid 'pipeline-details-header' do
+        within_testid 'pipeline-header' do
           expect(page).to have_content("#{pipeline.statuses.count} jobs")
           expect(page).to have_content("Related merge request !#{merge_request.iid} " \
                                        "to merge #{merge_request.source_branch} " \
@@ -758,7 +719,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'does not link to the target branch commit path' do
           visit_pipeline
 
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).not_to have_link(merge_request.target_branch)
             expect(page).to have_content(merge_request.target_branch)
           end
@@ -773,7 +734,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         end
 
         it 'shows the pipeline information', :sidekiq_might_not_need_inline do
-          within_testid 'pipeline-details-header' do
+          within_testid 'pipeline-header' do
             expect(page).to have_content("#{pipeline.statuses.count} jobs")
             expect(page).to have_content("Related merge request !#{merge_request.iid} " \
                                        "to merge #{merge_request.source_branch} " \
@@ -816,7 +777,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'does link to job' do
-        expect(page).to have_selector('.js-pipeline-graph-job-link')
+        expect(page).to have_selector('[data-testid="ci-job-item"]')
       end
     end
   end
@@ -882,7 +843,8 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
           expect(page).to have_selector('[data-testid="pipeline-schedule-description"]', text: 'blocked user schedule')
         end
 
-        it 'does not create a new Pipeline', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/408215' do
+        it 'does not create a new Pipeline',
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24866' do
           visit project_pipelines_path(project)
 
           expect(page).not_to have_selector('.ci-table')
@@ -932,7 +894,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       it 'shows deploy job as created' do
         subject
 
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Pending')
         end
 
@@ -957,7 +919,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'shows deploy job as pending' do
           subject
 
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
           end
 
@@ -986,7 +948,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
         it 'shows deploy job as waiting for resource' do
           subject
 
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Waiting')
           end
 
@@ -1006,7 +968,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
           it 'shows deploy job as pending' do
             subject
 
-            within_testid('pipeline-details-header') do
+            within_testid('pipeline-header') do
               expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Running')
             end
 
@@ -1034,7 +996,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
           it 'shows deploy job as waiting for resource' do
             subject
 
-            within_testid('pipeline-details-header') do
+            within_testid('pipeline-header') do
               expect(page).to have_selector('[data-testid="ci-icon"]', text: 'Waiting')
             end
 
@@ -1070,14 +1032,13 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       expect(page).to have_content(build_external.id)
       expect(page).to have_content('Retry')
       expect(page).to have_content('Cancel pipeline')
-      expect(page).to have_button('Play')
+      expect(page).to have_button('Run')
     end
 
     context 'page tabs' do
-      it 'shows Pipeline, Jobs and DAG tabs with link' do
+      it 'shows Pipeline and Jobs tabs with link' do
         expect(page).to have_link('Pipeline')
         expect(page).to have_link('Jobs')
-        expect(page).to have_link('Needs')
       end
 
       it 'shows counter in Jobs tab' do
@@ -1116,7 +1077,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
     context 'playing manual job' do
       before do
         within_testid 'jobs-tab-table' do
-          click_button('Play')
+          click_button('Run')
 
           wait_for_requests
         end
@@ -1133,7 +1094,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'unschedules the delayed job and shows play button as a manual job' do
-        expect(page).to have_button('Play')
+        expect(page).to have_button('Run')
         expect(page).not_to have_button('Unschedule')
       end
     end
@@ -1262,26 +1223,6 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
     end
   end
 
-  describe 'GET /:project/-/pipelines/:id/dag' do
-    include_context 'pipeline builds'
-
-    let_it_be(:project) { create(:project, :repository) }
-
-    let(:pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id) }
-
-    before do
-      visit dag_project_pipeline_path(project, pipeline)
-    end
-
-    context 'page tabs' do
-      it 'shows Pipeline, Jobs and DAG tabs with link' do
-        expect(page).to have_link('Pipeline')
-        expect(page).to have_link('Jobs')
-        expect(page).to have_link('Needs')
-      end
-    end
-  end
-
   context 'when user sees pipeline flags in a pipeline detail page' do
     let_it_be(:project) { create(:project, :repository) }
 
@@ -1303,7 +1244,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'contains badge that indicates it is the latest build' do
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_content 'latest'
         end
       end
@@ -1313,7 +1254,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       let(:pipeline) do
         create(
           :ci_pipeline,
-          :invalid,
+          :invalid_config_error,
           project: project,
           ref: 'master',
           sha: project.commit.id,
@@ -1322,21 +1263,23 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       before do
+        pipeline.add_error_message('invalid YAML')
+        pipeline.save!
         visit project_pipeline_path(project, pipeline)
       end
 
       it 'contains badge that indicates errors' do
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_content 'yaml invalid'
         end
       end
 
       it 'contains badge with tooltip which contains error' do
-        expect(pipeline).to have_yaml_errors
+        expect(pipeline.error_messages).not_to be_empty
 
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_selector(
-            %(span[title="#{pipeline.yaml_errors}"]))
+            %(button[title="#{pipeline.error_messages.first.content}"]))
         end
       end
 
@@ -1347,9 +1290,9 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       it 'contains badge with tooltip which contains failure reason' do
         expect(pipeline.failure_reason?).to eq true
 
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_selector(
-            %(span[title="#{pipeline.present.failure_reason}"]))
+            %(button[title="#{pipeline.present.failure_reason}"]))
         end
       end
     end
@@ -1365,7 +1308,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'contains badge that indicates being stuck' do
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_content 'stuck'
         end
       end
@@ -1391,7 +1334,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'contains badge that indicates using auto devops' do
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_content 'Auto DevOps'
         end
       end
@@ -1427,7 +1370,7 @@ RSpec.describe 'Pipeline', :js, feature_category: :continuous_integration do
       end
 
       it 'contains badge that indicates detached merge request pipeline' do
-        within_testid('pipeline-details-header') do
+        within_testid('pipeline-header') do
           expect(page).to have_content 'merge request'
         end
       end

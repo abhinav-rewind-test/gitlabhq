@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Integrations
-  class GitlabSlackApplication < BaseSlackNotification
+  class GitlabSlackApplication < Integration
     attribute :alert_events, default: false
     attribute :commit_events, default: false
     attribute :confidential_issues_events, default: false
@@ -20,6 +20,10 @@ module Integrations
     has_one :slack_integration, foreign_key: :integration_id, inverse_of: :integration
     delegate :bot_access_token, :bot_user_id, to: :slack_integration, allow_nil: true
 
+    scope :by_ids, ->(ids) { where(id: ids) }
+    scope :without_slack_integration, -> { where.missing(:slack_integration) }
+
+    include Integrations::Base::SlackNotification
     include SlackMattermostFields
 
     def self.title
@@ -34,8 +38,8 @@ module Integrations
       'gitlab_slack_application'
     end
 
-    override :show_active_box?
-    def show_active_box?
+    override :manual_activation?
+    def manual_activation?
       false
     end
 
@@ -76,6 +80,23 @@ module Integrations
       return [] unless editable?
 
       super
+    end
+
+    def after_build_from_integration(new_integration)
+      return unless slack_integration
+
+      new_integration.slack_integration = slack_integration.dup.tap do |entity|
+        entity.alias = new_integration.parent&.full_path ||
+          SlackIntegration.organization_alias(new_integration.organization_id)
+
+        # The sharding key of the slack_integrations table is derived from the
+        # sharding key set on the related Integration record
+        entity.organization_id = new_integration.organization_id
+        entity.project_id = new_integration.project_id
+        entity.group_id = new_integration.group_id
+
+        entity.authorized_scope_names = slack_integration.authorized_scope_names
+      end
     end
 
     override :requires_webhook?

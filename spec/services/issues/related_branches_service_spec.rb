@@ -3,23 +3,26 @@
 require 'spec_helper'
 
 RSpec.describe Issues::RelatedBranchesService, feature_category: :team_planning do
-  let_it_be(:project) { create(:project, :repository, :public, public_builds: false) }
-  let_it_be(:developer) { create(:user) }
+  let_it_be(:project) { create(:project, :repository, :public, :repository_private, public_builds: false) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
   let_it_be(:issue) { create(:issue, project: project) }
 
   let(:user) { developer }
 
   subject { described_class.new(container: project, current_user: user) }
 
-  before_all do
-    project.add_developer(developer)
-  end
-
   describe '#execute' do
     let(:branch_info) { subject.execute(issue) }
 
     context 'branches are available' do
       let_it_be(:pipeline) { create(:ci_pipeline, :success, project: project, ref: issue.to_branch_name) }
+      let_it_be(:branch_compare_path) do
+        Gitlab::Routing.url_helpers.project_compare_path(
+          project,
+          from: project.default_branch,
+          to: issue.to_branch_name
+        )
+      end
 
       before_all do
         project.repository.create_branch(issue.to_branch_name, pipeline.sha)
@@ -32,18 +35,51 @@ RSpec.describe Issues::RelatedBranchesService, feature_category: :team_planning 
       context 'when user has access to pipelines' do
         it 'selects relevant branches, along with pipeline status' do
           expect(branch_info).to contain_exactly(
-            { name: issue.to_branch_name, pipeline_status: an_instance_of(Gitlab::Ci::Status::Success) }
+            {
+              name: issue.to_branch_name,
+              pipeline_status: an_instance_of(Gitlab::Ci::Status::Success),
+              compare_path: branch_compare_path
+            }
           )
         end
       end
 
       context 'when user does not have access to pipelines' do
-        let(:user) { create(:user) }
+        let(:user) { create(:user, guest_of: project) }
 
         it 'returns branches without pipeline status' do
           expect(branch_info).to contain_exactly(
-            { name: issue.to_branch_name, pipeline_status: nil }
+            { name: issue.to_branch_name, pipeline_status: nil, compare_path: branch_compare_path }
           )
+        end
+      end
+
+      context 'when branch name contains non ascii characters' do
+        let(:non_ascii_branch_name) { "#{issue.iid}-branch-with-功能分支-UTF-8-chars" }
+
+        around do |example|
+          project.repository.create_branch(non_ascii_branch_name, project.repository.root_ref)
+          example.run
+          # We cannot keep the branch as it will affect the expectation of other examples because repository is not
+          # reset across specs
+          project.repository.delete_branch(non_ascii_branch_name)
+        end
+
+        it 'returns a UTF-8 encoded string in branch name', :aggregate_failures do
+          expect(branch_info).to contain_exactly(
+            hash_including(name: issue.to_branch_name),
+            hash_including(name: non_ascii_branch_name)
+          )
+
+          expect(branch_info.pluck(:name).map(&:encoding).map(&:to_s)).to all(eq('UTF-8'))
+        end
+      end
+
+      context 'when user does not have access to project repository' do
+        let(:user) { create(:user) }
+
+        it 'does not return any branches' do
+          expect(branch_info).to be_empty
         end
       end
 

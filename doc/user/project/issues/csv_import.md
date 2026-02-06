@@ -1,23 +1,34 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Create
+group: Import
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Importing issues from CSV
+description: "Import issues to a project by uploading a CSV file."
 ---
 
-# Importing issues from CSV
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-You can import issues to a project by uploading a CSV file with the following columns:
+{{< /details >}}
 
-| Name          | Required?              | Description                                      |
-|:--------------|:-----------------------|:-------------------------------------------------|
-| `title`       | **{check-circle}** Yes | Issue title.                                     |
-| `description` | **{check-circle}** Yes | Issue description.                               |
-| `due_date`    | **{dotted-circle}** No | Issue due date in `YYYY-MM-DD` format. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/91317) in GitLab 15.2. |
-| `milestone`   | **{dotted-circle}** No | Title of the issue milestone. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/112204) in GitLab 16.7.         |
+{{< history >}}
+
+- Additionally [allowed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/169256) for Planner role in GitLab 17.7.
+- Support for the `type` column [added](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/199945) in GitLab 18.4.
+
+{{< /history >}}
+
+You can import issues to a project by uploading a CSV (comma-separated values) file with the following columns:
+
+| Name          | Required                             | Description |
+| ------------- | ------------------------------------ | ----------- |
+| `title`       | {{< yes >}} | Issue title. |
+| `description` | {{< yes >}} | Issue description. |
+| `due_date`    | {{< no >}} | Issue due date in `YYYY-MM-DD` format. |
+| `milestone`   | {{< no >}} | Title of the issue milestone. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/112204) in GitLab 16.7. |
+| `type`        | {{< no >}} | Type of issue. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/200893) in GitLab 18.4. |
 
 Data in other columns is not imported.
 
@@ -28,7 +39,7 @@ Alternatively, you can [move an issue](managing_issues.md#move-an-issue). Moving
 
 The user uploading the CSV file is set as the author of the imported issues.
 
-You must have at least the Developer role for a project to import issues.
+You must have the Planner role or at least the Developer role for a project to import issues.
 
 ## Prepare for the import
 
@@ -40,9 +51,9 @@ You must have at least the Developer role for a project to import issues.
 
 To import issues:
 
-1. Go to your project's Issues list page.
+1. Go to your project's **Issues** page.
 1. Open the import feature, depending if the project has issues:
-   - The project has existing issues: in the upper-right corner, next to **Bulk edit**, select **Actions** (**{ellipsis_v}**) **> Import CSV**.
+   - The project has existing issues: in the upper-right corner, next to **Bulk edit**, select **Actions** ({{< icon name="ellipsis_v" >}}) > **Import CSV**.
    - The project has no issues: in the middle of the page, select **Import CSV**.
 1. Select the file you want to import, and then select **Import issues**.
 
@@ -51,12 +62,15 @@ to you if any errors are detected or after the import is complete.
 
 ## CSV file format
 
-To import issues, GitLab requires CSV files have a specific format:
+To import issues, GitLab requires CSV files have a specific format.
+
+> [!note]
+> For information about CSV parsing requirements that can affect how imported files display when viewed in GitLab, see [CSV parsing considerations](../repository/files/csv.md#csv-parsing-considerations).
 
 | Element                | Format |
-|------------------------|--------|
+| ---------------------- | ------ |
 | header row             | CSV files must include the following headers: `title` and `description`. The case of the headers does not matter. |
-| columns                | Data from columns outside of `title`, `description`, `due_date`, and `milestone` are not imported. |
+| columns                | Data from columns outside of `title`, `description`, `due_date`, `milestone` and `type` are not imported. |
 | separators             | The column separator is detected from the header row. Supported separator characters are commas (`,`), semicolons (`;`), and tabs (`\t`). The row separator can be either `CRLF` or `LF`. |
 | double-quote character | The double-quote (`"`) character is used to quote fields, enabling the use of the column separator in a field (see the third line in the sample CSV data below). To insert a double-quote (`"`) in a quoted field use two double-quote characters in succession (`""`). |
 | data rows              | After the header row, following rows must use the same column order. The issue title is required, but the description is optional. |
@@ -88,5 +102,5 @@ An issue with milestone,"My milestone is created",,v1.0
 
 The limit depends on how your GitLab instance is hosted:
 
-- Self-managed: Set by the configuration value of `Max Attachment Size` for the GitLab instance.
+- GitLab Self-Managed: Set by the configuration value of `Max Attachment Size` for the GitLab instance.
 - GitLab SaaS: On GitLab.com, it's set to 10 MB.

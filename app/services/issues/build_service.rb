@@ -8,10 +8,8 @@ module Issues
       filter_resolve_discussion_params
 
       container_param = case container
-                        when Project
-                          { project: project }
-                        when Namespaces::ProjectNamespace
-                          { project: container.project }
+                        when Project, Namespaces::ProjectNamespace
+                          { project: container.owner_entity }
                         else
                           { namespace: container }
                         end
@@ -34,12 +32,12 @@ module Issues
 
     def description_for_discussions
       if discussions_to_resolve.empty?
-        return "There are no unresolved discussions. "\
+        return "There are no unresolved discussions. " \
                "Review the conversation in #{merge_request_to_resolve_discussions_of.to_reference}"
       end
 
-      description = "The following #{'discussion'.pluralize(discussions_to_resolve.size)} "\
-                    "from #{merge_request_to_resolve_discussions_of.to_reference} "\
+      description = "The following #{'discussion'.pluralize(discussions_to_resolve.size)} " \
+                    "from #{merge_request_to_resolve_discussions_of.to_reference} " \
                     "should be addressed:"
 
       [description, *items_for_discussions].join("\n\n")
@@ -77,7 +75,7 @@ module Issues
     def set_work_item_type(issue)
       work_item_type = if params[:work_item_type_id].present?
                          params.delete(:work_item_type)
-                         WorkItems::Type.find_by(id: params.delete(:work_item_type_id)) # rubocop: disable CodeReuse/ActiveRecord
+                         work_item_type_provider.find_by_id(params.delete(:work_item_type_id))
                        else
                          params.delete(:work_item_type)
                        end
@@ -86,12 +84,15 @@ module Issues
       # In the future only params[:work_item_type] should be provided
       base_type = work_item_type&.base_type || params[:issue_type]
 
+      # For custom types we need to bypass this check and instead check create_work_item
+      # and check whether type belongs to namespace hierarchy
+      # See https://gitlab.com/gitlab-org/gitlab/-/issues/581940
       issue.work_item_type = if create_issue_type_allowed?(container, base_type)
-                               work_item_type || WorkItems::Type.default_by_type(base_type)
+                               work_item_type || work_item_type_provider.find_by_base_type(base_type)
                              else
                                # If no work item type was provided or not allowed, we need to set it to
                                # the default issue_type
-                               WorkItems::Type.default_by_type(::Issue::DEFAULT_ISSUE_TYPE)
+                               work_item_type_provider.default_issue_type
                              end
     end
 
@@ -111,10 +112,14 @@ module Issues
     end
 
     def build_issue_params
-      { author: current_user }
+      { author: }
         .merge(issue_params_with_info_from_discussions)
         .merge(public_params)
         .with_indifferent_access
+    end
+
+    def author
+      Gitlab::Auth::Identity.invert_composite_identity(current_user)
     end
   end
 end

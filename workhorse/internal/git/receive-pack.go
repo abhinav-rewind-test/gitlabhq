@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -13,7 +14,7 @@ import (
 // Will not return a non-nil error after the response body has been
 // written to.
 // and `git push` doesn't provide `gitalypb.PackfileNegotiationStatistics`.
-func handleReceivePack(w *HttpResponseWriter, r *http.Request, a *api.Response) (*gitalypb.PackfileNegotiationStatistics, error) {
+func handleReceivePack(w *HTTPResponseWriter, r *http.Request, a *api.Response) (*gitalypb.PackfileNegotiationStatistics, error) {
 	action := getService(r)
 	writePostRPCHeader(w, action)
 
@@ -22,12 +23,18 @@ func handleReceivePack(w *HttpResponseWriter, r *http.Request, a *api.Response) 
 
 	gitProtocol := r.Header.Get("Git-Protocol")
 
-	ctx, smarthttp, err := gitaly.NewSmartHTTPClient(r.Context(), a.GitalyServer)
+	// Extract correlation ID from X-Gitaly-Correlation-Id header and store in context
+	ctx := r.Context()
+	if correlationID := r.Header.Get(XGitalyCorrelationID); correlationID != "" {
+		ctx = context.WithValue(ctx, gitaly.GitalyCorrelationIDKey, correlationID)
+	}
+
+	ctx, smarthttp, err := gitaly.NewSmartHTTPClient(ctx, a.GitalyServer)
 	if err != nil {
 		return nil, fmt.Errorf("smarthttp.ReceivePack: %v", err)
 	}
 
-	if err := smarthttp.ReceivePack(ctx, &a.Repository, a.GL_ID, a.GL_USERNAME, a.GL_REPOSITORY, a.GitConfigOptions, cr, cw, gitProtocol); err != nil {
+	if err := smarthttp.ReceivePack(ctx, &a.Repository, a.GL_ID, a.GL_USERNAME, a.GL_REPOSITORY, a.GitConfigOptions, a.GlScopedUserID, a.GLBuildID, cr, cw, gitProtocol); err != nil {
 		return nil, fmt.Errorf("smarthttp.ReceivePack: %w", err)
 	}
 

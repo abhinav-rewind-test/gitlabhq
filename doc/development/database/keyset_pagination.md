@@ -1,10 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Keyset pagination
 ---
-
-# Keyset pagination
 
 The keyset pagination library can be used in HAML-based views and the REST API within the GitLab project.
 
@@ -166,8 +165,8 @@ the primary key is covered by a database index.
 
 When two or more columns are used in the `ORDER BY` clause, it's advised to check the generated database query and make sure that the correct index configuration is used. More information can be found on the [pagination guideline page](pagination_guidelines.md#index-coverage).
 
-NOTE:
-While the query performance of the first page might look good, the second page (where the cursor attributes are used in the query) might yield poor performance. It's advised to always verify the performance of both queries: first page and second page.
+> [!note]
+> While the query performance of the first page might look good, the second page (where the cursor attributes are used in the query) might yield poor performance. It's advised to always verify the performance of both queries: first page and second page.
 
 Example database query with tie-breaker (`id`) column:
 
@@ -242,14 +241,12 @@ order = Gitlab::Pagination::Keyset::Order.build([
     order_expression: Issue.arel_table[:relative_position].desc.nulls_last,
     reversed_order_expression: Issue.arel_table[:relative_position].asc.nulls_first,
     nullable: :nulls_last,
-    order_direction: :desc,
-    distinct: false
+    order_direction: :desc
   ),
   Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
     attribute_name: 'id',
     order_expression: Issue.arel_table[:id].asc,
-    nullable: :not_nullable,
-    distinct: true
+    nullable: :not_nullable
   )
 ])
 
@@ -270,7 +267,6 @@ order = Gitlab::Pagination::Keyset::Order.build([
     order_expression: Arel.sql('id * 10').asc,
     nullable: :not_nullable,
     order_direction: :asc,
-    distinct: true,
     add_to_projections: true
   )
 ])
@@ -296,8 +292,7 @@ order = Gitlab::Pagination::Keyset::Order.build([
   Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
     attribute_name: 'iid',
     order_expression: Issue.arel_table[:iid].asc,
-    nullable: :not_nullable,
-    distinct: true
+    nullable: :not_nullable
   )
 ])
 

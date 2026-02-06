@@ -5,9 +5,7 @@ require 'spec_helper'
 RSpec.describe Ci::StuckBuilds::DropPendingService, feature_category: :continuous_integration do
   let_it_be(:runner) { create(:ci_runner) }
   let_it_be(:pipeline) { create(:ci_empty_pipeline) }
-  let_it_be_with_reload(:job) do
-    create(:ci_build, pipeline: pipeline, runner: runner)
-  end
+  let_it_be_with_reload(:job) { create(:ci_build, pipeline: pipeline) }
 
   let(:created_at) {}
   let(:updated_at) {}
@@ -40,12 +38,14 @@ RSpec.describe Ci::StuckBuilds::DropPendingService, feature_category: :continuou
           let(:created_at) { 1.5.days.ago }
 
           it_behaves_like 'job is dropped with failure reason', 'stuck_or_timeout_failure'
+          it_behaves_like 'when invalid dooms the job bypassing validations'
         end
 
         context 'when created_at is before updated_at' do
           let(:created_at) { 3.days.ago }
 
           it_behaves_like 'job is dropped with failure reason', 'stuck_or_timeout_failure'
+          it_behaves_like 'when invalid dooms the job bypassing validations'
         end
       end
 
@@ -96,12 +96,14 @@ RSpec.describe Ci::StuckBuilds::DropPendingService, feature_category: :continuou
           let(:created_at) { 1.5.hours.ago }
 
           it_behaves_like 'job is dropped with failure reason', 'stuck_or_timeout_failure'
+          it_behaves_like 'when invalid dooms the job bypassing validations'
         end
 
         context 'when created_at is before updated_at' do
           let(:created_at) { 3.days.ago }
 
           it_behaves_like 'job is dropped with failure reason', 'stuck_or_timeout_failure'
+          it_behaves_like 'when invalid dooms the job bypassing validations'
         end
       end
 

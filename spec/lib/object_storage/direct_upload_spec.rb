@@ -67,7 +67,7 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
         let(:maximum_size) { nil }
 
         it "raises an error" do
-          expect { direct_upload }.to raise_error /maximum_size has to be specified if length is unknown/
+          expect { direct_upload }.to raise_error(/maximum_size has to be specified if length is unknown/)
         end
       end
     end
@@ -123,6 +123,7 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
         expect(s3_config[:Region]).to eq(region)
         expect(s3_config[:PathStyle]).to eq(path_style)
         expect(s3_config[:UseIamProfile]).to eq(use_iam_profile)
+        expect(s3_config[:AwsSDK]).to eq("v2")
         expect(s3_config.keys).not_to include(%i[ServerSideEncryption SSEKMSKeyID])
       end
 
@@ -205,14 +206,19 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
           expect(subject[:ObjectStorage][:GoCloudConfig]).to eq({ URL: gocloud_url })
         end
       end
+    end
 
-      context 'with workhorse_google_client disabled' do
-        before do
-          stub_feature_flags(workhorse_google_client: false)
-        end
+    shared_examples 'a valid Google upload with universe_domain' do |use_workhorse_client: true|
+      let(:gocloud_url) { "gs://#{bucket_name}?universe_domain=#{universe_domain}" }
 
-        it 'does not set Workhorse client data' do
-          expect(subject.keys).not_to include(:UseWorkhorseClient, :RemoteTempObjectID, :ObjectStorage)
+      it_behaves_like 'a valid upload'
+
+      if use_workhorse_client
+        it 'enables the Workhorse client with universe_domain' do
+          expect(subject[:UseWorkhorseClient]).to be true
+          expect(subject[:RemoteTempObjectID]).to eq(object_name)
+          expect(subject[:ObjectStorage][:Provider]).to eq('Google')
+          expect(subject[:ObjectStorage][:GoCloudConfig]).to eq({ URL: gocloud_url })
         end
       end
     end
@@ -246,7 +252,7 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
           expect(subject[:GetURL]).to start_with(storage_url)
 
           uri = Addressable::URI.parse(subject[:GetURL])
-          expect(uri.path).to include("tmp/uploads/#{CGI.escape("テスト")}")
+          expect(uri.path).to include("tmp/uploads/#{CGI.escape('テスト')}")
         end
       end
     end
@@ -373,7 +379,7 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
             end
 
             it 'part size is minimum, 5MB' do
-              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabyte)
+              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabytes)
             end
           end
 
@@ -385,43 +391,43 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
             end
 
             it 'part size is minimum, 5MB' do
-              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabyte)
+              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabytes)
             end
           end
 
           context 'when maximum upload size is 10MB' do
-            let(:maximum_size) { 10.megabyte }
+            let(:maximum_size) { 10.megabytes }
 
             it 'returns only 2 parts' do
               expect(subject[:MultipartUpload][:PartURLs].length).to eq(2)
             end
 
             it 'part size is minimum, 5MB' do
-              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabyte)
+              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabytes)
             end
           end
 
           context 'when maximum upload size is 12MB' do
-            let(:maximum_size) { 12.megabyte }
+            let(:maximum_size) { 12.megabytes }
 
             it 'returns only 3 parts' do
               expect(subject[:MultipartUpload][:PartURLs].length).to eq(3)
             end
 
             it 'part size is rounded-up to 5MB' do
-              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabyte)
+              expect(subject[:MultipartUpload][:PartSize]).to eq(5.megabytes)
             end
           end
 
           context 'when maximum upload size is 49GB' do
-            let(:maximum_size) { 49.gigabyte }
+            let(:maximum_size) { 49.gigabytes }
 
             it 'returns maximum, 100 parts' do
               expect(subject[:MultipartUpload][:PartURLs].length).to eq(100)
             end
 
             it 'part size is rounded-up to 5MB' do
-              expect(subject[:MultipartUpload][:PartSize]).to eq(505.megabyte)
+              expect(subject[:MultipartUpload][:PartSize]).to eq(505.megabytes)
             end
           end
         end
@@ -433,9 +439,7 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
 
       # We need to use fog mocks as using google_application_default
       # will trigger network requests which we don't want in this spec.
-      # In turn, using fog mocks will don't use a specific storage endpoint,
-      # hence the storage_url with the empty host.
-      let(:storage_url) { 'https:///uploads/' }
+      let(:storage_url) { 'https://storage.googleapis.com/uploads/' }
 
       before do
         Fog.mock!
@@ -512,6 +516,32 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
           it_behaves_like 'a valid upload without multipart data'
         end
       end
+
+      context 'with universe_domain' do
+        let(:universe_domain) { 'googleapis.com' }
+        let(:credentials) do
+          {
+            provider: 'Google',
+            google_project: 'GOOGLE_PROJECT',
+            google_application_default: true,
+            universe_domain: universe_domain
+          }
+        end
+
+        context 'when length is known' do
+          let(:has_length) { true }
+
+          it_behaves_like 'a valid Google upload with universe_domain'
+          it_behaves_like 'a valid upload without multipart data'
+        end
+
+        context 'when length is unknown' do
+          let(:has_length) { false }
+
+          it_behaves_like 'a valid Google upload with universe_domain'
+          it_behaves_like 'a valid upload without multipart data'
+        end
+      end
     end
 
     context 'when AzureRM is used' do
@@ -576,6 +606,52 @@ RSpec.describe ObjectStorage::DirectUpload, feature_category: :shared do
       let(:consolidated_settings) { true }
 
       it { is_expected.to be_falsey }
+    end
+  end
+
+  describe '#google_gocloud_url' do
+    let(:direct_upload) { described_class.new(config, object_name, has_length: true) }
+    let(:consolidated_settings) { true }
+
+    subject { direct_upload.google_gocloud_url }
+
+    context 'when Google is used without universe_domain' do
+      let(:credentials) do
+        {
+          provider: 'Google',
+          google_project: 'GOOGLE_PROJECT',
+          google_application_default: true
+        }
+      end
+
+      it { is_expected.to eq("gs://#{bucket_name}") }
+    end
+
+    context 'when Google is used with universe_domain' do
+      let(:universe_domain) { 'googleapis.com' }
+      let(:credentials) do
+        {
+          provider: 'Google',
+          google_project: 'GOOGLE_PROJECT',
+          google_application_default: true,
+          universe_domain: universe_domain
+        }
+      end
+
+      it { is_expected.to eq("gs://#{bucket_name}?universe_domain=#{universe_domain}") }
+    end
+
+    context 'when Google is used with empty universe_domain' do
+      let(:credentials) do
+        {
+          provider: 'Google',
+          google_project: 'GOOGLE_PROJECT',
+          google_application_default: true,
+          universe_domain: ''
+        }
+      end
+
+      it { is_expected.to eq("gs://#{bucket_name}") }
     end
   end
 end

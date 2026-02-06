@@ -44,9 +44,9 @@ export default {
       return `rounded-${this.position}`;
     },
     textAlignmentClass() {
-      if (this.isFullWidth) return 'text-center';
+      if (this.isFullWidth) return 'gl-text-center';
 
-      return `text-${this.isLeftSide ? SIDES.right : SIDES.left}`;
+      return this.isLeftSide ? 'gl-text-right' : 'gl-text-left';
     },
     positionSideClass() {
       return `position-${this.isLeftSide ? SIDES.right : SIDES.left}-0`;
@@ -58,14 +58,14 @@ export default {
 <template>
   <div
     :class="{ full: isFullWidth }"
-    class="position-relative float-left pt-1 graph-side gl-h-full"
+    class="graph-side gl-relative gl-float-left gl-h-full gl-pt-2"
   >
     <div
       :style="style"
       :class="[roundedClass, positionSideClass]"
-      class="position-absolute bar js-graph-bar"
+      class="bar js-graph-bar gl-absolute"
     ></div>
-    <span :class="textAlignmentClass" class="gl-display-block gl-pt-1 gl-px-1 count js-graph-count">
+    <span :class="textAlignmentClass" class="count js-graph-count gl-block gl-px-1 gl-pt-1">
       {{ label }}
     </span>
   </div>

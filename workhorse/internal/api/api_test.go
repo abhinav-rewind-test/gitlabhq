@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,8 +10,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 
@@ -18,6 +21,10 @@ import (
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/secret"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/testhelper"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/upstream/roundtripper"
+)
+
+const (
+	customPath = "/my/api/path"
 )
 
 func TestGetGeoProxyDataForResponses(t *testing.T) {
@@ -57,7 +64,7 @@ func TestPreAuthorizeFixedPath_OK(t *testing.T) {
 	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/my/api/path" {
+		if r.URL.Path != customPath {
 			return
 		}
 
@@ -74,7 +81,7 @@ func TestPreAuthorizeFixedPath_OK(t *testing.T) {
 	req.Header.Set("key1", "value1")
 
 	api := NewAPI(helper.URLMustParse(ts.URL), "123", http.DefaultTransport)
-	resp, err := api.PreAuthorizeFixedPath(req, "POST", "/my/api/path")
+	resp, err := api.PreAuthorizeFixedPath(req, "POST", customPath)
 	require.NoError(t, err)
 
 	require.Equal(t, "value1", upstreamHeaders.Get("key1"), "original headers must propagate")
@@ -85,7 +92,7 @@ func TestPreAuthorizeFixedPath_OK(t *testing.T) {
 
 func TestPreAuthorizeFixedPath_Unauthorized(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/my/api/path" {
+		if r.URL.Path != customPath {
 			return
 		}
 
@@ -103,10 +110,31 @@ func TestPreAuthorizeFixedPath_Unauthorized(t *testing.T) {
 	require.ErrorAs(t, err, &preAuthError)
 }
 
-func getGeoProxyDataGivenResponse(t *testing.T, givenInternalApiResponse string) (*GeoProxyData, error) {
-	t.Helper()
-	ts := testRailsServer(regexp.MustCompile(`/api/v4/geo/proxy`), 200, givenInternalApiResponse)
+func TestPreAuthorizeHandler_NotFound(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		io.WriteString(w, strings.Repeat("a", failureResponseLimit+100))
+	}))
 	defer ts.Close()
+
+	req, err := http.NewRequest("GET", "/original/request/path", nil)
+	require.NoError(t, err)
+
+	api := NewAPI(helper.URLMustParse(ts.URL), "123", http.DefaultTransport)
+
+	handler := api.PreAuthorizeHandler(func(_ http.ResponseWriter, _ *http.Request, _ *Response) {}, "/api/v4/internal/authorized_request")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func getGeoProxyDataGivenResponse(t *testing.T, givenInternalAPIResponse string) (*GeoProxyData, error) {
+	t.Helper()
+	ts := testRailsServer(t, regexp.MustCompile(`/api/v4/geo/proxy`), 200, givenInternalAPIResponse)
+
 	backend := helper.URLMustParse(ts.URL)
 	version := "123"
 	rt := roundtripper.NewTestBackendRoundTripper(backend)
@@ -119,8 +147,8 @@ func getGeoProxyDataGivenResponse(t *testing.T, givenInternalApiResponse string)
 	return geoProxyData, err
 }
 
-func testRailsServer(url *regexp.Regexp, code int, body string) *httptest.Server {
-	return testhelper.TestServerWithHandlerWithGeoPolling(url, func(w http.ResponseWriter, r *http.Request) {
+func testRailsServer(t *testing.T, url *regexp.Regexp, code int, body string) *httptest.Server {
+	return testhelper.TestServerWithHandlerWithGeoPolling(t, url, func(w http.ResponseWriter, r *http.Request) {
 		// return a 204 No Content response if we don't receive the JWT header
 		if r.Header.Get(secret.RequestHeader) == "" {
 			w.WriteHeader(204)
@@ -174,7 +202,7 @@ func TestSendGitAuditEvent(t *testing.T) {
 		requestBody    GitAuditEventRequest
 	)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v4/internal/shellhorse/git_audit_event" {
 			return
 		}
@@ -182,9 +210,9 @@ func TestSendGitAuditEvent(t *testing.T) {
 		requestHeaders = r.Header
 		defer r.Body.Close()
 		b, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		err = json.Unmarshal(b, &requestBody)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}))
 	defer ts.Close()
 
@@ -194,6 +222,7 @@ func TestSendGitAuditEvent(t *testing.T) {
 		Protocol: "http",
 		Repo:     "project-1",
 		Username: "GitLab-Shell",
+		Changes:  "_any",
 		PackfileStats: &gitalypb.PackfileNegotiationStatistics{
 			Wants: 3,
 			Haves: 23,
@@ -205,4 +234,32 @@ func TestSendGitAuditEvent(t *testing.T) {
 	require.NotEmpty(t, requestHeaders)
 	require.NotEmpty(t, requestHeaders["Gitlab-Workhorse-Api-Request"])
 	require.Equal(t, auditRequest, requestBody)
+}
+
+func Test_passResponseBack(t *testing.T) {
+	t.Run("filters out sensitive headers", func(t *testing.T) {
+		sensitiveData := []string{"sensitive-data"}
+		safeData := "safe-data"
+
+		httpResp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString("")),
+			Header: http.Header{
+				"gitlab-workhorse-send-data": sensitiveData,
+				"gitlab-sv":                  sensitiveData,
+				"gitlab-lb":                  sensitiveData,
+				"Safe-Header":                []string{safeData},
+			},
+		}
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/", nil)
+
+		passResponseBack(httpResp, w, r)
+
+		require.Empty(t, w.Header().Get("gitlab-workhorse-send-data"))
+		require.Empty(t, w.Header().Get("gitlab-sv"))
+		require.Empty(t, w.Header().Get("gitlab-lb"))
+		require.Equal(t, safeData, w.Header().Get("Safe-Header"))
+	})
 }

@@ -64,6 +64,12 @@ module Banzai
           group_ref
         end
 
+        def full_namespace_path(matches)
+          return current_parent_path if matches.named_captures['group_or_project_namespace'].blank?
+
+          matches[:group_or_project_namespace]
+        end
+
         def cache_loaded?
           !!@cache_loaded
         end
@@ -88,6 +94,8 @@ module Banzai
               prepare_doc_for_scan.to_enum(:scan, pattern).each do
                 parent_path = if parent_type == :group
                                 full_group_path($~[:group])
+                              elsif parent_type == :namespace
+                                full_namespace_path($~)
                               else
                                 full_project_path($~[:namespace], $~[:project], $~)
                               end
@@ -141,7 +149,7 @@ module Banzai
             parent_per_reference.each do |path, parent|
               record_ids = references_per_parent[path]
 
-              filter.parent_records(parent, record_ids).each do |record|
+              filter.parent_records(parent, record_ids)&.each do |record|
                 hash[parent][filter.record_identifier(record)] = record
               end
             end
@@ -187,40 +195,19 @@ module Banzai
         def objects_for_paths(paths, absolute_path)
           search_paths = absolute_path ? paths.pluck(1..-1) : paths
 
-          klass = parent_type.to_s.camelize.constantize
-          result = klass.where_full_path_in(search_paths)
-          return result if parent_type == :group
-          return unless parent_type == :project
-
-          projects = result.includes(namespace: :route)
-            .allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/420046")
-
-          return projects unless absolute_path
-
-          # If we make it to here, then we're handling absolute path(s).
-          # Which means we need to also search groups as well as projects.
-          # Possible future optimization might be to use Route along the lines of:
-          #   Routable.where_full_path_in(paths).includes(:source)
-          # See `routable.rb`
-          groups = Group.where_full_path_in(search_paths)
-
-          projects.to_a + groups.to_a
+          Route.by_paths(search_paths).preload(source: [:route, { namespace: :route }]).map(&:source)
         end
 
         def refs_cache
-          Gitlab::SafeRequestStore["banzai_#{parent_type}_refs".to_sym] ||= {}
+          Gitlab::SafeRequestStore[:"banzai_#{parent_type}_refs"] ||= {}
         end
 
         def prepare_doc_for_scan
-          filter.requires_unescaping? ? unescape_html_entities(html_content) : html_content
+          filter.requires_unescaping? ? CGI.unescapeHTML(html_content) : html_content
         end
 
         def html_content
           result[:rendered_html] ||= filter.doc.to_html
-        end
-
-        def unescape_html_entities(text)
-          CGI.unescapeHTML(text.to_s)
         end
       end
     end

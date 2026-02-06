@@ -3,6 +3,7 @@
 module Issues
   class DuplicateService < Issues::BaseService
     def execute(duplicate_issue, canonical_issue)
+      return if canonical_issue.blank?
       return if canonical_issue == duplicate_issue
       return unless can?(current_user, :update_issue, duplicate_issue)
       return unless can?(current_user, :create_note, canonical_issue)
@@ -10,8 +11,14 @@ module Issues
       create_issue_duplicate_note(duplicate_issue, canonical_issue)
       create_issue_canonical_note(canonical_issue, duplicate_issue)
 
-      close_service.new(container: project, current_user: current_user).execute(duplicate_issue)
       duplicate_issue.update(duplicated_to: canonical_issue)
+      close_service.new(container: container, current_user: current_user).execute(duplicate_issue)
+
+      Gitlab::WorkItems::Instrumentation::TrackingService.new(
+        work_item: duplicate_issue,
+        current_user: current_user,
+        event: Gitlab::WorkItems::Instrumentation::EventActions::MARKED_AS_DUPLICATE
+      ).execute
 
       relate_two_issues(duplicate_issue, canonical_issue)
     end

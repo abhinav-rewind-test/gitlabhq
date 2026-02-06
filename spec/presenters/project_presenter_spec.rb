@@ -285,7 +285,7 @@ RSpec.describe ProjectPresenter do
 
     describe '#storage_anchor_data' do
       it 'does not return storage data for non-admin users' do
-        expect(presenter.storage_anchor_data).to be(nil)
+        expect(presenter.storage_anchor_data).to be_nil
       end
 
       it 'returns storage data with usage quotas link for admin users' do
@@ -305,7 +305,7 @@ RSpec.describe ProjectPresenter do
 
         context 'when user cannot collaborate' do
           it 'returns no value' do
-            expect(presenter.gitlab_ci_anchor_data).to be(nil)
+            expect(presenter.gitlab_ci_anchor_data).to be_nil
           end
         end
 
@@ -314,7 +314,31 @@ RSpec.describe ProjectPresenter do
             project.add_developer(user)
           end
 
-          context 'and the CI/CD file is missing' do
+          context 'when CI/CD is disabled' do
+            before do
+              project.project_feature.update_attribute(:builds_access_level, ProjectFeature::DISABLED)
+            end
+
+            it 'returns disabled `Set up CI/CD` button with tooltip' do
+              anchor_data = presenter.gitlab_ci_anchor_data
+
+              expect(anchor_data).to have_attributes(
+                is_link: false,
+                label: a_string_including('Set up CI/CD'),
+                link: nil,
+                class_modifier: 'btn-link !gl-px-0'
+              )
+              expect(anchor_data.data).to eq(
+                title: 'CI/CD is disabled for this project'
+              )
+            end
+          end
+
+          context 'when CI/CD is enabled and the CI/CD file is missing' do
+            before do
+              project.project_feature.update_attribute(:builds_access_level, ProjectFeature::ENABLED)
+            end
+
             it 'returns `Set up CI/CD` button' do
               expect(presenter.gitlab_ci_anchor_data).to have_attributes(
                 is_link: false,
@@ -324,7 +348,11 @@ RSpec.describe ProjectPresenter do
             end
           end
 
-          context 'and there is a CI/CD file' do
+          context 'when CI/CD is enabled and there is a CI/CD file' do
+            before do
+              project.project_feature.update_attribute(:builds_access_level, ProjectFeature::ENABLED)
+            end
+
             it 'returns `CI/CD configuration` button' do
               allow(project).to receive(:has_ci_config_file?).and_return true
 
@@ -413,6 +441,24 @@ RSpec.describe ProjectPresenter do
 
         it { expect(presenter.terraform_states_anchor_data).to match(expected_result) }
       end
+
+      context 'terraform warning icon' do
+        let(:label) { presenter.terraform_states_anchor_data.label }
+        let(:title) do
+          Regexp.quote(s_('Terraform|Support for periods (`.`) in Terraform state names might break existing states.'))
+        end
+
+        let(:expected) do
+          %r{<span title="#{title}" class=".+" data-toggle="tooltip"><svg .+ data-testid="error-icon">.+</svg></span>}
+        end
+
+        it 'is present' do
+          allow(project.terraform_states).to receive(:exists?).and_return(true)
+          allow(presenter).to receive(:can?).with(user, :read_terraform_state, project).and_return(true)
+
+          expect(label).to match(expected)
+        end
+      end
     end
 
     describe '#tags_anchor_data' do
@@ -426,18 +472,13 @@ RSpec.describe ProjectPresenter do
     end
 
     describe '#new_file_anchor_data' do
-      before do
-        stub_feature_flags(project_overview_reorg: false)
-      end
-
       it 'returns new file data if user can push' do
         project.add_developer(user)
 
         expect(presenter.new_file_anchor_data).to have_attributes(
           is_link: false,
           label: a_string_including("New file"),
-          link: presenter.project_new_blob_path(project, 'master'),
-          class_modifier: 'btn-dashed'
+          link: presenter.project_new_blob_path(project, 'master')
         )
       end
 
@@ -661,10 +702,12 @@ RSpec.describe ProjectPresenter do
             label: a_string_including('Upload file'),
             data: {
               "can_push_code" => "true",
+              "can_push_to_branch" => "true",
               "original_branch" => "master",
               "path" => "/#{project.full_path}/-/create/master",
               "project_path" => project.full_path,
-              "target_branch" => "master"
+              "target_branch" => "master",
+              "full_name" => project.name_with_namespace
             }
           )
         end
@@ -738,7 +781,7 @@ RSpec.describe ProjectPresenter do
           label: a_string_ending_with('GitLab Pages'),
           link: Gitlab::Pages::UrlBuilder
           .new(project)
-          .pages_url(with_unique_domain: true),
+          .pages_url,
           class_modifier: 'btn-default'
         )
       end
@@ -758,6 +801,93 @@ RSpec.describe ProjectPresenter do
         end
 
         it { expect(presenter.pages_anchor_data).to match(expected_result) }
+      end
+    end
+
+    describe '#observability_anchor_data' do
+      let(:observability_setting) { nil }
+      let(:can_read_observability) { true }
+      let_it_be(:group) { create(:group) }
+      let_it_be(:project_with_group) { create(:project, group: group) }
+
+      before do
+        stub_feature_flags(observability_sass_features: group)
+        allow(presenter).to receive(:can?).with(user, :read_observability_portal,
+          group).and_return(can_read_observability)
+
+        allow(Observability::GroupO11ySetting).to receive(:observability_setting_for)
+          .with(project)
+          .and_return(observability_setting)
+      end
+
+      context 'when project has no group' do
+        it 'returns nil' do
+          expect(presenter.send(:observability_anchor_data)).to be_nil
+        end
+      end
+
+      context 'when current_user is nil' do
+        let(:presenter_without_user) { described_class.new(project_with_group, current_user: nil) }
+
+        it 'returns nil' do
+          expect(presenter_without_user.send(:observability_anchor_data)).to be_nil
+        end
+      end
+
+      context 'when user cannot read observability' do
+        let(:can_read_observability) { false }
+
+        it 'returns nil' do
+          expect(presenter.observability_anchor_data).to be_nil
+        end
+      end
+
+      context 'when observability feature is not enabled' do
+        before do
+          stub_feature_flags(observability_sass_features: false)
+        end
+
+        it 'returns nil' do
+          expect(presenter.observability_anchor_data).to be_nil
+        end
+      end
+
+      context 'when all conditions are met' do
+        let(:presenter) { described_class.new(project_with_group, current_user: user) }
+        let(:expected_link) { presenter.group_observability_setup_path(project_with_group.group) }
+
+        before do
+          allow(presenter).to receive(:can?).with(user, :read_observability_portal,
+            group).and_return(can_read_observability)
+
+          allow(Observability::GroupO11ySetting).to receive(:observability_setting_for)
+            .with(project_with_group)
+            .and_return(observability_setting)
+        end
+
+        context 'when observability settings are present' do
+          let(:observability_setting) { instance_double(Observability::GroupO11ySetting) }
+
+          it 'returns anchor data with configuration label and btn-default class' do
+            expect(presenter.observability_anchor_data).to have_attributes(
+              is_link: false,
+              label: a_string_including('Observability configuration'),
+              link: expected_link,
+              class_modifier: 'btn-default'
+            )
+          end
+        end
+
+        context 'when observability settings are not present' do
+          it 'returns anchor data with enable label and no class modifier' do
+            expect(presenter.observability_anchor_data).to have_attributes(
+              is_link: false,
+              label: a_string_including('Enable Observability'),
+              link: expected_link,
+              class_modifier: nil
+            )
+          end
+        end
       end
     end
   end
@@ -785,7 +915,6 @@ RSpec.describe ProjectPresenter do
     subject(:empty_repo_statistics_buttons) { presenter.empty_repo_statistics_buttons }
 
     before do
-      stub_feature_flags(project_overview_reorg: false)
       allow(project).to receive(:auto_devops_enabled?).and_return(false)
     end
 
@@ -868,7 +997,7 @@ RSpec.describe ProjectPresenter do
         end
 
         context 'and there is already a cluster associated to this project' do
-          let(:project) { create(:project, clusters: [build(:cluster, :providing_by_gcp)]) }
+          let(:project) { create(:project, clusters: [create(:cluster)]) }
 
           it { is_expected.to be_falsey }
         end

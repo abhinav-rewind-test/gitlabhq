@@ -9,8 +9,9 @@ module RuboCop
 
         # We want to exclude our own basetypes and scalars
         ALLOWED_TYPES = %w[BaseEnum BaseEdge BaseScalar BasePermissionType MutationType SubscriptionType
-                           QueryType GraphQL::Schema BaseUnion BaseInputObject].freeze
+          QueryType GraphQL::Schema BaseUnion BaseInputObject].freeze
 
+        # @!method authorize?(node)
         def_node_search :authorize?, <<~PATTERN
           (send nil? :authorize sym+)
         PATTERN

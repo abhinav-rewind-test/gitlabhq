@@ -6,13 +6,23 @@ module Ci
     include ::Gitlab::Utils::StrongMemoize
     include ::Services::ReturnServiceResponses
 
+    InvalidState = Class.new(StandardError)
+
     delegate :sha, to: :commit
+
+    # Default number of pipelines to return
+    DEFAULT_LIMIT_PIPELINES = 100
 
     def execute(optional_commit_status_params:)
       in_lock(pipeline_lock_key, **pipeline_lock_params) do
         @optional_commit_status_params = optional_commit_status_params
         unsafe_execute
       end
+    rescue FailedToObtainLockError
+      ServiceResponse.error(
+        message: 'Another update to this commit status is in progress',
+        reason: :conflict
+      )
     end
 
     private
@@ -20,11 +30,10 @@ module Ci
     attr_reader :pipeline, :stage, :commit_status, :optional_commit_status_params
 
     def unsafe_execute
-      return not_found('Commit') if commit.blank?
-      return bad_request('State is required') if params[:state].blank?
-      return not_found('References for commit') if ref.blank?
+      result = validate
+      return result if result&.error?
 
-      @pipeline = first_matching_pipeline || create_pipeline
+      @pipeline = find_or_create_pipeline
       return forbidden unless ::Ability.allowed?(current_user, :update_pipeline, pipeline)
 
       @stage = find_or_create_external_stage
@@ -36,8 +45,21 @@ module Ci
 
       return bad_request(response.message) if response.error?
 
-      update_merge_request_head_pipeline
       response
+    end
+
+    def validate
+      return not_found('Commit') if commit.blank?
+      return bad_request('State is required') if params[:state].blank?
+      return not_found('References for commit') if ref.blank?
+
+      return unless params[:pipeline_id]
+
+      return not_found("Pipeline for pipeline_id, sha and ref") unless first_matching_pipeline
+
+      return if can_append_jobs_to_existing_pipeline?
+
+      error("The number of jobs has exceeded the limit", :unprocessable_entity)
     end
 
     def ref
@@ -51,13 +73,38 @@ module Ci
     end
     strong_memoize_attr :commit
 
+    def find_or_create_pipeline
+      return create_pipeline unless first_matching_pipeline
+      return first_matching_pipeline if can_append_jobs_to_existing_pipeline?
+
+      create_log_entry
+      create_pipeline
+    end
+
+    def can_append_jobs_to_existing_pipeline?
+      return true unless first_matching_pipeline_size_exceeded?
+      return true if external_commit_status_exists?
+
+      false
+    end
+    strong_memoize_attr :can_append_jobs_to_existing_pipeline?
+
     def first_matching_pipeline
-      pipelines = project.ci_pipelines.newest_first(sha: sha)
+      limit = params[:pipeline_id] ? nil : DEFAULT_LIMIT_PIPELINES
+      pipelines = project.ci_pipelines.newest_first(sha: sha, limit: limit)
+      pipelines = pipelines.not_archived
       pipelines = pipelines.for_ref(params[:ref]) if params[:ref]
       pipelines = pipelines.id_in(params[:pipeline_id]) if params[:pipeline_id]
       pipelines.first
     end
     strong_memoize_attr :first_matching_pipeline
+
+    def first_matching_pipeline_size_exceeded?
+      project
+        .actual_limits
+        .exceeded?(:ci_pipeline_size, first_matching_pipeline.all_jobs)
+    end
+    strong_memoize_attr :first_matching_pipeline_size_exceeded?
 
     def name
       params[:name] || params[:context] || 'default'
@@ -73,6 +120,10 @@ module Ci
       ).tap do |new_pipeline|
         new_pipeline.ensure_project_iid!
         new_pipeline.save!
+
+        Gitlab::EventStore.publish(
+          Ci::PipelineCreatedEvent.new(data: { pipeline_id: new_pipeline.id, partition_id: new_pipeline.partition_id })
+        )
       end
     end
 
@@ -83,35 +134,36 @@ module Ci
       end
     end
 
+    def external_commit_status_exists?
+      external_commit_status_scope(first_matching_pipeline).any?
+    end
+
     def find_or_build_external_commit_status
-      ::GenericCommitStatus.running_or_pending.find_or_initialize_by( # rubocop:disable CodeReuse/ActiveRecord
-        project: project,
-        pipeline: pipeline,
-        name: name,
-        ref: ref,
-        user: current_user,
-        protected: project.protected_for?(ref),
+      external_commit_status_scope(pipeline).find_or_initialize_by( # rubocop:disable CodeReuse/ActiveRecord
         ci_stage: stage,
-        stage_idx: stage.position,
-        stage: 'external',
-        partition_id: pipeline.partition_id
+        stage_idx: stage.position
       ).tap do |new_commit_status|
         new_commit_status.assign_attributes(optional_commit_status_params)
       end
+    end
+
+    def external_commit_status_scope(pipeline)
+      scope = ::GenericCommitStatus
+        .running_or_pending
+        .for_project(project.id)
+        .in_pipelines(pipeline)
+        .in_partition(pipeline.partition_id)
+        .for_ref(ref)
+        .by_name(name)
+        .for_user(current_user)
+      scope = scope.ref_protected if project.protected_for?(ref)
+      scope
     end
 
     def add_or_update_external_job
       ::Ci::Pipelines::AddJobService.new(pipeline).execute!(commit_status) do |job|
         apply_job_state!(job)
       end
-    end
-
-    def update_merge_request_head_pipeline
-      return unless pipeline.latest?
-
-      ::MergeRequest
-        .from_project(project).from_source_branches(ref)
-        .update_all(head_pipeline_id: pipeline.id)
     end
 
     def apply_job_state!(job)
@@ -127,8 +179,10 @@ module Ci
         job.drop!(:api_failure)
       when 'canceled'
         job.cancel!
+      when 'skipped'
+        job.skip!
       else
-        raise('invalid state')
+        raise InvalidState, 'invalid state'
       end
     end
 
@@ -138,10 +192,24 @@ module Ci
 
     def pipeline_lock_params
       {
-        ttl: 5.seconds,
-        sleep_sec: 0.1.seconds,
+        ttl: 1.minute,
+        # Retry over 10 seconds since the lock is long but the p99 is ~2 seconds
+        # We need to balance not keeping requests open with avoiding returning 409 which
+        # can result in a job stuck in running or pending
+        sleep_sec: 0.5.seconds,
         retries: 20
       }
+    end
+
+    def create_log_entry
+      Gitlab::AppJsonLogger.info(
+        class: self.class.name,
+        namespace_id: project.namespace_id,
+        project_id: project.id,
+        pipeline_id: params[:pipeline_id],
+        subscription_plan: project.actual_plan_name,
+        message: 'Project tried to create more jobs than the quota allowed'
+      )
     end
 
     def not_found(message)

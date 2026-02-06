@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 require 'sawyer'
 
 require_relative '../../config/initializers/sawyer_patch'
@@ -34,7 +34,7 @@ RSpec.describe 'sawyer_patch' do
     sawyer_resource = Sawyer::Resource.new(
       Sawyer::Agent.new(''),
       {
-        'user': 'value',
+        user: 'value',
         'user=': 'value',
         '==': 'value',
         '!=': 'value',

@@ -2,26 +2,27 @@
 import {
   GlBadge,
   GlButton,
-  GlIcon,
   GlDisclosureDropdown,
   GlDisclosureDropdownGroup,
+  GlTooltipDirective,
 } from '@gitlab/ui';
-import GitlabVersionCheckBadge from '~/gitlab_version_check/components/gitlab_version_check_badge.vue';
+import GitlabVersionCheckBadge from 'jh_else_ce/gitlab_version_check/components/gitlab_version_check_badge.vue';
 import { helpPagePath } from '~/helpers/help_page_helper';
-import { FORUM_URL, DOCS_URL, PROMO_URL } from 'jh_else_ce/lib/utils/url_utility';
-import { __, s__ } from '~/locale';
-import { STORAGE_KEY } from '~/whats_new/utils/notification';
+import { FORUM_URL, PROMO_URL, CONTRIBUTE_URL } from '~/constants';
+import { __ } from '~/locale';
 import Tracking from '~/tracking';
-import { DROPDOWN_Y_OFFSET, HELP_MENU_TRACKING_DEFAULTS, helpCenterState } from '../constants';
+import { DROPDOWN_Y_OFFSET, HELP_MENU_TRACKING_DEFAULTS } from '../constants';
 
 export default {
   components: {
     GlBadge,
     GlButton,
-    GlIcon,
     GlDisclosureDropdown,
     GlDisclosureDropdownGroup,
     GitlabVersionCheckBadge,
+  },
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   mixins: [Tracking.mixin({ property: 'nav_help_menu' })],
   i18n: {
@@ -29,14 +30,18 @@ export default {
     support: __('Support'),
     docs: __('GitLab documentation'),
     plans: __('Compare GitLab plans'),
-    forum: __('Community forum'),
+    forum: __('GitLab community forum'),
+    university: __('GitLab University'),
     contribute: __('Contribute to GitLab'),
     feedback: __('Provide feedback'),
     shortcuts: __('Keyboard shortcuts'),
     version: __('Your GitLab version'),
     whatsnew: __("What's new"),
-    chat: s__('TanukiBot|GitLab Duo Chat'),
+    terms: __('Terms and privacy'),
+    privacy: __('Privacy statement'),
+    whatsnewToast: __("What's new moved to Help."),
   },
+  inject: ['isSaas', 'isIconOnly'],
   props: {
     sidebarData: {
       type: Object,
@@ -46,36 +51,15 @@ export default {
   data() {
     return {
       showWhatsNewNotification: this.shouldShowWhatsNewNotification(),
-      helpCenterState,
+      whatsNewMostRecentReleaseUnreadCount: this.calculateWhatsNewMostRecentReleaseUnreadCount(),
       toggleWhatsNewDrawer: null,
     };
   },
   computed: {
     itemGroups() {
-      return {
-        versionCheck: {
-          items: [
-            {
-              text: this.$options.i18n.version,
-              href: helpPagePath('update/index'),
-              version: `${this.sidebarData.gitlab_version.major}.${this.sidebarData.gitlab_version.minor}`,
-              extraAttrs: {
-                ...this.trackingAttrs('version_help_dropdown'),
-              },
-            },
-          ],
-        },
+      const groups = {
         helpLinks: {
           items: [
-            this.sidebarData.show_tanuki_bot && {
-              icon: 'tanuki-ai',
-              text: this.$options.i18n.chat,
-              action: this.showTanukiBotChat,
-              extraAttrs: {
-                ...this.trackingAttrs('tanuki_bot_help_dropdown'),
-                'data-testid': 'duo-chat-menu-item',
-              },
-            },
             {
               text: this.$options.i18n.help,
               href: helpPagePath(),
@@ -92,14 +76,21 @@ export default {
             },
             {
               text: this.$options.i18n.docs,
-              href: DOCS_URL,
+              href: this.sidebarData.docs_path,
               extraAttrs: {
                 ...this.trackingAttrs('gitlab_documentation'),
               },
             },
             {
+              text: this.$options.i18n.university,
+              href: this.sidebarData.university_path,
+              extraAttrs: {
+                ...this.trackingAttrs('gitlab_university'),
+              },
+            },
+            {
               text: this.$options.i18n.plans,
-              href: `${PROMO_URL}/pricing`,
+              href: this.sidebarData.compare_plans_url,
               extraAttrs: {
                 ...this.trackingAttrs('compare_gitlab_plans'),
               },
@@ -113,7 +104,7 @@ export default {
             },
             {
               text: this.$options.i18n.contribute,
-              href: helpPagePath('', { anchor: 'contributing-to-gitlab' }),
+              href: CONTRIBUTE_URL,
               extraAttrs: {
                 ...this.trackingAttrs('contribute_to_gitlab'),
               },
@@ -125,6 +116,21 @@ export default {
                 ...this.trackingAttrs('submit_feedback'),
               },
             },
+            this.isSaas && {
+              text: this.$options.i18n.privacy,
+              href: `${PROMO_URL}/privacy`,
+              extraAttrs: {
+                ...this.trackingAttrs('privacy'),
+              },
+            },
+            this.sidebarData.terms &&
+              !this.isSaas && {
+                text: this.$options.i18n.terms,
+                href: this.sidebarData.terms,
+                extraAttrs: {
+                  ...this.trackingAttrs('terms'),
+                },
+              },
           ].filter(Boolean),
         },
         helpActions: {
@@ -140,21 +146,36 @@ export default {
               },
               shortcut: '?',
             },
-            this.sidebarData.display_whats_new && {
-              text: this.$options.i18n.whatsnew,
-              action: this.showWhatsNew,
-              count:
-                this.showWhatsNewNotification &&
-                this.sidebarData.whats_new_most_recent_release_items_count,
-              extraAttrs: {
-                'data-track-action': 'click_button',
-                'data-track-label': 'whats_new',
-                'data-track-property': HELP_MENU_TRACKING_DEFAULTS['data-track-property'],
+            this.sidebarData.display_whats_new &&
+              !this.showWhatsNewNotification && {
+                text: this.$options.i18n.whatsnew,
+                action: this.showWhatsNew,
+                extraAttrs: {
+                  'data-track-action': 'click_button',
+                  'data-track-label': 'whats_new',
+                  'data-track-property': HELP_MENU_TRACKING_DEFAULTS['data-track-property'],
+                },
               },
-            },
           ].filter(Boolean),
         },
       };
+
+      if (this.sidebarData.show_version_check) {
+        groups.versionCheck = {
+          items: [
+            {
+              text: this.$options.i18n.version,
+              href: helpPagePath('update/_index.md'),
+              version: `${this.sidebarData.gitlab_version.major}.${this.sidebarData.gitlab_version.minor}`,
+              extraAttrs: {
+                ...this.trackingAttrs('version_help_dropdown'),
+              },
+            },
+          ],
+        };
+      }
+
+      return groups;
     },
     updateSeverity() {
       return this.sidebarData.gitlab_version_check?.severity;
@@ -162,31 +183,53 @@ export default {
   },
   methods: {
     shouldShowWhatsNewNotification() {
-      if (
-        !this.sidebarData.display_whats_new ||
-        localStorage.getItem(STORAGE_KEY) === this.sidebarData.whats_new_version_digest
-      ) {
-        return false;
-      }
-      return true;
+      return (
+        this.sidebarData.display_whats_new &&
+        this.calculateWhatsNewMostRecentReleaseUnreadCount() > 0
+      );
     },
+    calculateWhatsNewMostRecentReleaseUnreadCount() {
+      if (!this.sidebarData.display_whats_new) {
+        return 0;
+      }
 
-    showTanukiBotChat() {
-      this.helpCenterState.showTanukiBotChatDrawer = true;
+      return (
+        this.sidebarData.whats_new_most_recent_release_items_count -
+        this.sidebarData.whats_new_read_articles.length
+      );
     },
 
     async showWhatsNew() {
-      this.showWhatsNewNotification = false;
-
       if (!this.toggleWhatsNewDrawer) {
         const { default: toggleWhatsNewDrawer } = await import(
           /* webpackChunkName: 'whatsNewApp' */ '~/whats_new'
         );
         this.toggleWhatsNewDrawer = toggleWhatsNewDrawer;
-        this.toggleWhatsNewDrawer(this.sidebarData.whats_new_version_digest);
+
+        this.toggleWhatsNewDrawer(
+          {
+            versionDigest: this.sidebarData.whats_new_version_digest,
+            initialReadArticles: this.sidebarData.whats_new_read_articles,
+            markAsReadPath: this.sidebarData.whats_new_mark_as_read_path,
+            mostRecentReleaseItemsCount: this.sidebarData.whats_new_most_recent_release_items_count,
+          },
+          this.hideWhatsNewNotification,
+          this.updateWhatsNewNotificationBadge,
+        );
       } else {
         this.toggleWhatsNewDrawer();
       }
+    },
+
+    hideWhatsNewNotification() {
+      if (this.showWhatsNewNotification && this.whatsNewMostRecentReleaseUnreadCount === 0) {
+        this.showWhatsNewNotification = false;
+        this.$toast.show(this.$options.i18n.whatsnewToast);
+      }
+    },
+
+    updateWhatsNewNotificationBadge(unreadCount) {
+      this.whatsNewMostRecentReleaseUnreadCount = unreadCount;
     },
 
     trackingAttrs(label) {
@@ -207,67 +250,90 @@ export default {
 </script>
 
 <template>
-  <gl-disclosure-dropdown
-    :dropdown-offset="$options.dropdownOffset"
-    @shown="trackDropdownToggle(true)"
-    @hidden="trackDropdownToggle(false)"
-  >
-    <template #toggle>
-      <gl-button
-        category="tertiary"
-        icon="question-o"
-        class="super-sidebar-help-center-toggle btn-with-notification"
-        data-testid="sidebar-help-button"
+  <div class="gl-flex gl-flex-col gl-gap-2">
+    <gl-button
+      v-if="showWhatsNewNotification"
+      v-gl-tooltip.right="isIconOnly ? $options.i18n.whatsnew : ''"
+      class="super-sidebar-whats-new super-sidebar-nav-item gl-w-full !gl-justify-start gl-gap-3 !gl-px-2-5"
+      category="tertiary"
+      icon="compass"
+      data-testid="sidebar-whatsnew-button"
+      data-track-action="click_button"
+      data-track-label="whats_new"
+      data-track-property="nav_whats_new"
+      :aria-label="$options.i18n.whatsnew"
+      :button-text-classes="{
+        'gl-w-full gl-flex gl-items-center gl-justify-between !gl-text-default': !isIconOnly,
+        'gl-hidden': isIconOnly,
+      }"
+      @click="showWhatsNew"
+    >
+      {{ $options.i18n.whatsnew }}
+
+      <gl-badge
+        variant="neutral"
+        aria-hidden="true"
+        data-testid="notification-count"
+        class="gl-mr-1"
       >
-        <span
-          v-if="showWhatsNewNotification"
-          data-testid="notification-dot"
-          class="notification-dot-info"
-        ></span>
-        {{ $options.i18n.help }}
-      </gl-button>
-    </template>
-
-    <gl-disclosure-dropdown-group
-      v-if="sidebarData.show_version_check"
-      :group="itemGroups.versionCheck"
-    >
-      <template #list-item="{ item }">
-        <span class="gl-display-flex gl-flex-direction-column gl-line-height-24">
-          <span class="gl-font-sm gl-font-weight-bold">
-            {{ item.text }}
-            <gl-emoji data-name="rocket" />
-          </span>
-          <span>
-            <span class="gl-mr-2">{{ item.version }}</span>
-            <gitlab-version-check-badge v-if="updateSeverity" :status="updateSeverity" size="sm" />
-          </span>
+        <span class="gl-m-1 gl-min-w-3">
+          {{ whatsNewMostRecentReleaseUnreadCount }}
         </span>
-      </template>
-    </gl-disclosure-dropdown-group>
+      </gl-badge>
+    </gl-button>
 
-    <gl-disclosure-dropdown-group
-      :group="itemGroups.helpLinks"
-      :bordered="sidebarData.show_version_check"
+    <gl-disclosure-dropdown
+      class="super-sidebar-help-center-dropdown"
+      :dropdown-offset="$options.dropdownOffset"
+      block
+      @shown="trackDropdownToggle(true)"
+      @hidden="trackDropdownToggle(false)"
     >
-      <template #list-item="{ item }">
-        <span class="gl-display-flex gl-justify-content-space-between gl-align-items-center">
-          {{ item.text }}
-          <gl-icon v-if="item.icon" :name="item.icon" class="gl-text-gray-500" />
-        </span>
-      </template>
-    </gl-disclosure-dropdown-group>
-
-    <gl-disclosure-dropdown-group :group="itemGroups.helpActions" bordered>
-      <template #list-item="{ item }">
-        <span
-          class="gl-display-flex gl-justify-content-space-between gl-align-items-center gl-my-n1"
+      <template #toggle>
+        <gl-button
+          v-gl-tooltip.right="isIconOnly ? $options.i18n.help : ''"
+          category="tertiary"
+          icon="question-o"
+          class="super-sidebar-help-center-toggle super-sidebar-nav-item gl-w-full !gl-justify-start gl-gap-3 !gl-px-2-5 !gl-py-2"
+          :button-text-classes="{ '!gl-text-default': !isIconOnly, 'gl-hidden': isIconOnly }"
+          :aria-label="$options.i18n.help"
+          data-testid="sidebar-help-button"
         >
-          {{ item.text }}
-          <gl-badge v-if="item.count" pill size="sm" variant="info">{{ item.count }}</gl-badge>
-          <kbd v-else-if="item.shortcut" class="flat">?</kbd>
-        </span>
+          {{ $options.i18n.help }}
+        </gl-button>
       </template>
-    </gl-disclosure-dropdown-group>
-  </gl-disclosure-dropdown>
+
+      <gl-disclosure-dropdown-group
+        v-if="sidebarData.show_version_check"
+        :group="itemGroups.versionCheck"
+      >
+        <template #list-item="{ item }">
+          <span class="gl-flex gl-flex-col gl-leading-24">
+            <span class="gl-text-sm gl-font-bold">
+              {{ item.text }}
+              <gl-emoji data-name="rocket" aria-hidden="true" />
+            </span>
+            <span>
+              <span class="gl-mr-2">{{ item.version }}</span>
+              <gitlab-version-check-badge v-if="updateSeverity" :status="updateSeverity" />
+            </span>
+          </span>
+        </template>
+      </gl-disclosure-dropdown-group>
+
+      <gl-disclosure-dropdown-group
+        :group="itemGroups.helpLinks"
+        :bordered="sidebarData.show_version_check"
+      />
+
+      <gl-disclosure-dropdown-group :group="itemGroups.helpActions" bordered>
+        <template #list-item="{ item }">
+          <span class="-gl-my-1 gl-flex gl-items-center gl-justify-between">
+            {{ item.text }}
+            <kbd v-if="item.shortcut" aria-hidden="true" class="flat">?</kbd>
+          </span>
+        </template>
+      </gl-disclosure-dropdown-group>
+    </gl-disclosure-dropdown>
+  </div>
 </template>

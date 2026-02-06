@@ -29,16 +29,54 @@ RSpec.describe QA::Resource::ApiFabricator do
     end
   end
 
+  let(:graphql_resource) do
+    Class.new do
+      def self.name
+        'FooBarResource'
+      end
+
+      def api_get_path
+        '/graphql'
+      end
+
+      def api_post_path
+        api_get_path
+      end
+
+      def api_post_body
+        <<~GQL
+          mutation {
+            createFooBar(
+              input: {
+                name: "name"
+              }
+            ) {
+              name
+              id
+            }
+            errors
+          }
+        GQL
+      end
+
+      def process_api_response(parsed_response)
+        response = parsed_response[:foobar]
+        response[:id] = extract_graphql_id(response)
+
+        super(response)
+      end
+    end
+  end
+
+  let(:api_client_instance) { QA::Runtime::API::Client.new(personal_access_token: 'foo') }
+
   before do
-    allow(subject).to receive(:current_url).and_return('')
+    allow(QA::Runtime::User::Store).to receive(:default_api_client).and_return(api_client_instance)
   end
 
   subject { resource.tap { |f| f.include(described_class) }.new }
 
   describe '#api_support?' do
-    let(:api_client) { spy('Runtime::API::Client') }
-    let(:api_client_instance) { double('API Client') }
-
     context 'when resource does not support fabrication via the API' do
       let(:resource) { resource_without_api_support }
 
@@ -57,21 +95,13 @@ RSpec.describe QA::Resource::ApiFabricator do
   end
 
   describe '#fabricate_via_api!' do
-    let(:api_client) { spy('Runtime::API::Client') }
-    let(:api_client_instance) { double('API Client') }
-
-    before do
-      stub_const('QA::Runtime::API::Client', api_client)
-
-      allow(api_client).to receive(:new).and_return(api_client_instance)
-      allow(api_client_instance).to receive(:personal_access_token).and_return('foo')
-    end
-
     context 'when resource does not support fabrication via the API' do
       let(:resource) { resource_without_api_support }
 
       it 'raises a NotImplementedError exception' do
-        expect { subject.fabricate_via_api! }.to raise_error(NotImplementedError, "Resource FooBarResource does not support fabrication via the API!")
+        expect do
+          subject.fabricate_via_api!
+        end.to raise_error(NotImplementedError, "Resource FooBarResource does not support fabrication via the API!")
       end
     end
 
@@ -95,7 +125,8 @@ RSpec.describe QA::Resource::ApiFabricator do
         end
 
         it 'returns the resource URL' do
-          expect(api_request).to receive(:new).with(api_client_instance, subject.api_post_path).and_return(double(url: resource_web_url))
+          expect(api_request).to receive(:new).with(api_client_instance,
+            subject.api_post_path).and_return(double(url: resource_web_url))
           expect(subject).to receive(:post).with(resource_web_url, subject.api_post_body, {}).and_return(raw_post)
 
           expect(subject.fabricate_via_api!).to eq(resource_web_url)
@@ -112,7 +143,8 @@ RSpec.describe QA::Resource::ApiFabricator do
           let(:raw_post) { double('Raw POST response', code: 400, body: post_response.to_json, headers: {}) }
 
           it 'raises a ResourceFabricationFailedError exception' do
-            expect(api_request).to receive(:new).with(api_client_instance, subject.api_post_path).and_return(double(url: resource_web_url))
+            expect(api_request).to receive(:new).with(api_client_instance,
+              subject.api_post_path).and_return(double(url: resource_web_url))
             expect(subject).to receive(:post).with(resource_web_url, subject.api_post_body, {}).and_return(raw_post)
 
             expect { subject.fabricate_via_api! }.to raise_error do |error|
@@ -125,10 +157,12 @@ RSpec.describe QA::Resource::ApiFabricator do
           end
 
           it 'logs a correlation id' do
-            response = double('Raw POST response', code: 400, body: post_response.to_json, headers: { x_request_id: 'foobar' })
+            response = double('Raw POST response', code: 400, body: post_response.to_json,
+              headers: { x_request_id: 'foobar' })
             allow(QA::Support::Loglinking).to receive(:logging_environment).and_return(nil)
 
-            expect(api_request).to receive(:new).with(api_client_instance, subject.api_post_path).and_return(double(url: resource_web_url))
+            expect(api_request).to receive(:new).with(api_client_instance,
+              subject.api_post_path).and_return(double(url: resource_web_url))
             expect(subject).to receive(:post).with(resource_web_url, subject.api_post_body, {}).and_return(response)
 
             expect { subject.fabricate_via_api! }.to raise_error do |error|
@@ -141,15 +175,18 @@ RSpec.describe QA::Resource::ApiFabricator do
           end
 
           it 'logs Sentry and Kibana URLs from staging' do
-            response = double('Raw POST response', code: 400, body: post_response.to_json, headers: { x_request_id: 'foobar' })
+            response = double('Raw POST response', code: 400, body: post_response.to_json,
+              headers: { x_request_id: 'foobar' })
             cookies = [{ name: 'Foo', value: 'Bar' }, { name: 'gitlab_canary', value: 'true' }]
             time = Time.new(2022, 11, 14, 0, 0, 0, '+00:00')
 
-            allow(Capybara.current_session).to receive_message_chain(:driver, :browser, :manage, :all_cookies).and_return(cookies)
+            allow(Capybara.current_session).to receive_message_chain(:driver, :browser, :manage,
+              :all_cookies).and_return(cookies)
             allow(QA::Runtime::Scenario).to receive(:attributes).and_return({ gitlab_address: 'https://staging.gitlab.com' })
             allow(Time).to receive(:now).and_return(time)
 
-            expect(api_request).to receive(:new).with(api_client_instance, subject.api_post_path).and_return(double(url: resource_web_url))
+            expect(api_request).to receive(:new).with(api_client_instance,
+              subject.api_post_path).and_return(double(url: resource_web_url))
             expect(subject).to receive(:post).with(resource_web_url, subject.api_post_body, {}).and_return(response)
 
             expect { subject.fabricate_via_api! }.to raise_error do |error|
@@ -200,6 +237,67 @@ RSpec.describe QA::Resource::ApiFabricator do
           expect(subject).to receive(:transform_api_resource).with(response).and_return(transformed_resource)
 
           subject.fabricate_via_api!
+        end
+      end
+    end
+
+    context 'when graphql resource supports fabrication via the API' do
+      let(:resource) { graphql_resource }
+      let(:api_request) { spy('Runtime::API::Request') }
+      let(:resource_web_url) { 'http://example.org/api/v4/foo' }
+      let(:response) do
+        {
+          data: {
+            foobarCreate: {
+              foobar: {
+                id: "gid://gitlab/FooBar/4096",
+                title: "testing 1",
+                dueDate: "2024-08-11",
+                webUrl: resource_web_url
+              },
+              errors: []
+            }
+          }
+        }
+      end
+
+      let(:parsed_resource) do
+        {
+          id: "4096",
+          title: "testing 1",
+          due_date: "2024-08-11",
+          web_url: resource_web_url
+        }
+      end
+
+      let(:raw_post) { double('Raw POST response', code: 200, body: response.to_json) }
+
+      before do
+        stub_const('QA::Runtime::API::Request', api_request)
+
+        allow(api_request).to receive(:new).and_return(double(url: resource_web_url))
+        allow(subject).to receive(:get).and_return(double("Raw GET response", code: 200, body: {}.to_json))
+      end
+
+      context 'when creating a resource' do
+        before do
+          allow(subject).to receive(:post).with(resource_web_url, { query: subject.api_post_body }, {})
+            .and_return(raw_post)
+        end
+
+        it 'returns the resource URL' do
+          expect(api_request).to receive(:new).with(api_client_instance, subject.api_post_path)
+            .and_return(double(url: resource_web_url))
+          expect(subject).to receive(:post).with(resource_web_url, { query: subject.api_post_body }, {})
+            .and_return(raw_post)
+
+          expect(subject.fabricate_via_api!).to eq(resource_web_url)
+        end
+
+        it 'populates api_resource with the extracted graphql body' do
+          subject.fabricate_via_api!
+
+          expect(subject.api_resource).to eq(parsed_resource)
         end
       end
     end

@@ -33,6 +33,12 @@ class Ability
       end
     end
 
+    def users_that_can_read_confidential_issues(users, container)
+      DeclarativePolicy.subject_scope do
+        users.select { |u| allowed?(u, :read_confidential_issues, container) }
+      end
+    end
+
     # Returns an Array of Issues that can be read by the given user.
     #
     # issues - The issues to reduce down to those readable by the user.
@@ -43,7 +49,7 @@ class Ability
       issues = apply_filters_if_needed(issues, user, filters)
 
       DeclarativePolicy.user_scope do
-        issues.select { |issue| issue.visible_to_user?(user) }
+        issues.select { |issue| allowed?(user, :read_issue, issue) }
       end
     end
     alias_method :work_items_readable_by_user, :issues_readable_by_user
@@ -80,14 +86,23 @@ class Ability
 
       before_check(policy, ability.to_sym, user, subject, opts)
 
-      case opts[:scope]
-      when :user
-        DeclarativePolicy.user_scope { policy.allowed?(ability) }
-      when :subject
-        DeclarativePolicy.subject_scope { policy.allowed?(ability) }
-      else
-        policy.allowed?(ability)
+      result = case opts[:scope]
+               when :user
+                 DeclarativePolicy.user_scope { policy.allowed?(ability) }
+               when :subject
+                 DeclarativePolicy.subject_scope { policy.allowed?(ability) }
+               else
+                 policy.allowed?(ability)
+               end
+
+      if opts[:composite_identity_check] == false ||
+          !user.respond_to?(:composite_identity_enforced?) ||
+          !user&.composite_identity_enforced?
+        return result
       end
+
+      result && with_composite_identity_check(user, ability, subject, **opts)
+
     ensure
       # TODO: replace with runner invalidation:
       # See: https://gitlab.com/gitlab-org/declarative-policy/-/merge_requests/24
@@ -151,9 +166,7 @@ class Ability
 
       added_keys = keys_after - keys_before
       added_keys.each do |key|
-        if key.is_a?(String) && key.start_with?('/dp') && key =~ matching
-          ::Gitlab::SafeRequestStore.delete(key)
-        end
+        ::Gitlab::SafeRequestStore.delete(key) if key.is_a?(String) && key.start_with?('/dp') && key =~ matching
       end
     end
 
@@ -169,6 +182,28 @@ class Ability
       end
 
       elements
+    end
+
+    def with_composite_identity_check(user, ability, subject = :global, **opts)
+      check_user = find_user_for_composite_identity_check(user)
+
+      return false if check_user.nil?
+
+      allowed?(
+        check_user,
+        ability,
+        subject,
+        **opts.merge(composite_identity_check: false)
+      )
+    end
+
+    def find_user_for_composite_identity_check(user)
+      return Gitlab::Auth::Identity.find_primary_user_by_scoped_user_id(user.id) unless user.service_account?
+
+      identity = ::Gitlab::Auth::Identity.fabricate(user)
+      return unless identity&.valid?
+
+      identity.scoped_user
     end
   end
 end

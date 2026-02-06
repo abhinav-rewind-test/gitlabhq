@@ -6,14 +6,9 @@ import axios from '~/lib/utils/axios_utils';
 import { __, s__ } from '~/locale';
 import { initToggle } from '~/toggles';
 import { expandSection } from '~/settings_panels';
-import { scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import { initAccessDropdown } from '~/projects/settings/init_access_dropdown';
-import {
-  BRANCH_RULES_ANCHOR,
-  PROTECTED_BRANCHES_ANCHOR,
-  IS_PROTECTED_BRANCH_CREATED,
-  ACCESS_LEVELS,
-} from './constants';
+import { PROTECTED_BRANCHES_ANCHOR, IS_PROTECTED_BRANCH_CREATED, ACCESS_LEVELS } from './constants';
 
 export default class ProtectedBranchCreate {
   constructor(options) {
@@ -21,6 +16,7 @@ export default class ProtectedBranchCreate {
     this.$form = $('.js-new-protected-branch');
     this.isLocalStorageAvailable = AccessorUtilities.canUseLocalStorage();
     this.forcePushToggle = initToggle(document.querySelector('.js-force-push-toggle'));
+    this.sectionSelector = options.sectionSelector;
     if (this.hasLicense) {
       this.codeOwnerToggle = initToggle(document.querySelector('.js-code-owner-toggle'));
     }
@@ -85,6 +81,7 @@ export default class ProtectedBranchCreate {
       accessLevelsData,
       groupsWithProjectAccess: true,
       testId,
+      sectionSelector: this.sectionSelector,
     });
 
     dropdown.$on('select', (selected) => {
@@ -124,22 +121,16 @@ export default class ProtectedBranchCreate {
     return this.isLocalStorageAvailable && localStorage.getItem(IS_PROTECTED_BRANCH_CREATED);
   }
 
+  // eslint-disable-next-line class-methods-use-this
   createSuccessAlert() {
+    // Feature flag removed - alert no longer needed
+  }
+
+  createLimitedSuccessAlert() {
     this.alert = createAlert({
       variant: VARIANT_SUCCESS,
       containerSelector: '.js-alert-protected-branch-created-container',
-      title: s__('ProtectedBranch|View protected branches as branch rules'),
-      message: s__('ProtectedBranch|Manage branch related settings in one area with branch rules.'),
-      primaryButton: {
-        text: s__('ProtectedBranch|View branch rule'),
-        clickHandler: () => {
-          this.expandAndScroll(BRANCH_RULES_ANCHOR);
-        },
-      },
-      secondaryButton: {
-        text: __('Dismiss'),
-        clickHandler: () => this.alert.dismiss(),
-      },
+      message: s__('ProtectedBranch|Protected branch was successfully created'),
     });
   }
 
@@ -149,7 +140,12 @@ export default class ProtectedBranchCreate {
     }
     this.expandAndScroll(PROTECTED_BRANCHES_ANCHOR);
 
-    this.createSuccessAlert();
+    if (gon.abilities.adminProject || gon.abilities.adminGroup) {
+      this.createSuccessAlert();
+    } else {
+      this.createLimitedSuccessAlert();
+    }
+
     localStorage.removeItem(IS_PROTECTED_BRANCH_CREATED);
   }
 

@@ -8,6 +8,8 @@
 #   EventCreateService.new.new_issue(issue, current_user)
 #
 class EventCreateService
+  include Gitlab::InternalEventsTracking
+
   IllegalActionError = Class.new(StandardError)
 
   DEGIGN_EVENT_LABEL = 'usage_activity_by_stage_monthly.create.action_monthly_active_users_design_management'
@@ -103,19 +105,19 @@ class EventCreateService
   def join_source(source, current_user)
     return unless source.is_a?(Project)
 
-    create_event(source, current_user, :joined)
+    create_record_event(source, current_user, :joined)
   end
 
   def leave_project(project, current_user)
-    create_event(project, current_user, :left)
+    create_record_event(project, current_user, :left)
   end
 
   def expired_leave_project(project, current_user)
-    create_event(project, current_user, :expired)
+    create_record_event(project, current_user, :expired)
   end
 
   def create_project(project, current_user)
-    create_event(project, current_user, :created)
+    create_record_event(project, current_user, :created)
   end
 
   def push(project, current_user, push_data)
@@ -176,7 +178,6 @@ class EventCreateService
   def wiki_event(wiki_page_meta, author, action, fingerprint)
     raise IllegalActionError, action unless Event::WIKI_ACTIONS.include?(action)
 
-    Gitlab::UsageDataCounters::HLLRedisCounter.track_event(:wiki_action, values: author.id)
     Gitlab::UsageDataCounters::HLLRedisCounter.track_event(:git_write_action, values: author.id)
 
     duplicate = Event.for_wiki_meta(wiki_page_meta).for_fingerprint(fingerprint).first
@@ -218,7 +219,7 @@ class EventCreateService
       action = Event.actions[status]
       raise IllegalActionError, "#{status} is not a valid status" if action.nil?
 
-      parent_attrs(record.resource_parent)
+      parent_attrs(record.resource_parent, current_user)
         .merge(base_attrs)
         .merge(action: action, fingerprint: fingerprint, target_id: record.id, target_type: record.class.name)
     end
@@ -241,6 +242,11 @@ class EventCreateService
     Gitlab::UsageDataCounters::HLLRedisCounter.track_event(:project_action, values: current_user.id)
     Gitlab::UsageDataCounters::HLLRedisCounter.track_event(:git_write_action, values: current_user.id)
 
+    # Track human users only (excluding bots) for customer health scoring
+    unless current_user.bot?
+      track_internal_event('perform_git_operation_on_project', user: current_user, project: project)
+    end
+
     namespace = project.namespace
     Gitlab::Tracking.event(
       self.class.to_s,
@@ -257,6 +263,13 @@ class EventCreateService
       .cache_last_push_event(event)
 
     Users::ActivityService.new(author: current_user, namespace: namespace, project: project).execute
+
+    Gitlab::EventStore.publish(
+      Users::ActivityEvent.new(data: {
+        user_id: current_user.id,
+        namespace_id: project.root_ancestor.id
+      })
+    )
   end
 
   def create_event(resource_parent, current_user, status, attributes = {})
@@ -264,16 +277,32 @@ class EventCreateService
       action: status,
       author_id: current_user.id
     )
-    attributes.merge!(parent_attrs(resource_parent))
+    attributes.merge!(parent_attrs(resource_parent, current_user))
 
-    if attributes[:fingerprint].present?
-      Event.safe_find_or_create_by!(attributes)
-    else
-      Event.create!(attributes)
+    event = if attributes[:fingerprint].present?
+              Event.safe_find_or_create_by!(attributes)
+            else
+              Event.create!(attributes)
+            end
+
+    # Track all manage events (including bots)
+    tracking_params = { user: current_user }
+    if resource_parent.is_a?(Project)
+      tracking_params[:project] = resource_parent
+      tracking_params[:namespace] = resource_parent.namespace
+    elsif resource_parent.is_a?(Group)
+      tracking_params[:namespace] = resource_parent
     end
+
+    track_internal_event('manage_event', **tracking_params)
+
+    # Track human users only (excluding bots) for customer health scoring
+    track_internal_event('manage_event_human_users', **tracking_params) unless current_user.bot?
+
+    event
   end
 
-  def parent_attrs(resource_parent)
+  def parent_attrs(resource_parent, current_user)
     resource_parent_attr = case resource_parent
                            when Project
                              :project_id
@@ -281,7 +310,7 @@ class EventCreateService
                              :group_id
                            end
 
-    return {} unless resource_parent_attr
+    return { personal_namespace_id: current_user.namespace_id }.compact unless resource_parent_attr
 
     { resource_parent_attr => resource_parent.id }
   end

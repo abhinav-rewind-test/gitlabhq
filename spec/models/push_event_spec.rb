@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe PushEvent do
+RSpec.describe PushEvent, feature_category: :source_code_management do
   let(:payload) { PushEventPayload.new }
 
   let(:event) do
@@ -13,18 +13,31 @@ RSpec.describe PushEvent do
     event
   end
 
+  describe 'validations' do
+    it { is_expected.to validate_presence_of(:project_id) }
+    it { is_expected.to validate_absence_of(:target_id) }
+    it { is_expected.to validate_absence_of(:target_type) }
+
+    context 'when target is nil' do
+      let(:push_event) { create(:push_event, target: nil) }
+
+      it 'does not raise target validation error' do
+        expect { push_event.validate! }.not_to raise_error
+      end
+    end
+  end
+
   describe '.created_or_pushed' do
     let(:event1) { create(:push_event) }
     let(:event2) { create(:push_event) }
     let(:event3) { create(:push_event) }
+    let(:relation) { described_class.created_or_pushed }
 
     before do
       create(:push_event_payload, event: event1, action: :pushed)
       create(:push_event_payload, event: event2, action: :created)
       create(:push_event_payload, event: event3, action: :removed)
     end
-
-    let(:relation) { described_class.created_or_pushed }
 
     it 'includes events for pushing to existing refs' do
       expect(relation).to include(event1)
@@ -42,13 +55,12 @@ RSpec.describe PushEvent do
   describe '.branch_events' do
     let(:event1) { create(:push_event) }
     let(:event2) { create(:push_event) }
+    let(:relation) { described_class.branch_events }
 
     before do
       create(:push_event_payload, event: event1, ref_type: :branch)
       create(:push_event_payload, event: event2, ref_type: :tag)
     end
-
-    let(:relation) { described_class.branch_events }
 
     it 'includes events for branches' do
       expect(relation).to include(event1)
@@ -66,6 +78,7 @@ RSpec.describe PushEvent do
     let(:event3) { create(:push_event, project: project) }
     let(:event4) { create(:push_event, project: project) }
     let(:event5) { create(:push_event, project: project) }
+    let(:relation) { described_class.without_existing_merge_requests }
 
     before do
       create(:push_event_payload, event: event1, ref: 'foo', action: :created)
@@ -93,8 +106,6 @@ RSpec.describe PushEvent do
         source_branch: 'qux'
       )
     end
-
-    let(:relation) { described_class.without_existing_merge_requests }
 
     it 'includes events that do not have a corresponding merge request' do
       expect(relation).to include(event1)
@@ -175,18 +186,6 @@ RSpec.describe PushEvent do
       allow(payload).to receive(:branch?).and_return(false)
 
       expect(event).not_to be_branch
-    end
-  end
-
-  describe '#valid_push?' do
-    it 'returns true if a ref exists' do
-      allow(payload).to receive(:ref).and_return('master')
-
-      expect(event).to be_valid_push
-    end
-
-    it 'returns false when no ref is present' do
-      expect(event).not_to be_valid_push
     end
   end
 

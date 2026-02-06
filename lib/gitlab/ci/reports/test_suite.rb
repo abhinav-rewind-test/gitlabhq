@@ -29,13 +29,11 @@ module Gitlab
           end
         end
 
-        # rubocop: disable CodeReuse/ActiveRecord
         def total_count
           return 0 if suite_error
 
           [success_count, failed_count, skipped_count, error_count].sum
         end
-        # rubocop: enable CodeReuse/ActiveRecord
 
         def total_status
           if suite_error
@@ -58,7 +56,7 @@ module Gitlab
         end
 
         TestCase::STATUS_TYPES.each do |status_type|
-          define_method("#{status_type}") do
+          define_method(status_type.to_s) do
             return {} if suite_error || test_cases[status_type].nil?
 
             test_cases[status_type]

@@ -27,6 +27,10 @@ RSpec.describe "User edits labels", feature_category: :team_planning do
     end
   end
 
+  it_behaves_like 'unarchiving label' do
+    let(:label) { create(:label, :archived, project: project) }
+  end
+
   it 'allows user to delete label', :js do
     click_button 'Delete'
 

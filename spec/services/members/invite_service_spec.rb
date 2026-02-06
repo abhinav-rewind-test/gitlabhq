@@ -5,8 +5,9 @@ require 'spec_helper'
 RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_shared_state, :sidekiq_inline,
   feature_category: :groups_and_projects do
   let_it_be(:project, reload: true) { create(:project) }
+  let_it_be(:organization) { project.organization }
   let_it_be(:user) { project.first_owner }
-  let_it_be(:project_user) { create(:user) }
+  let_it_be(:project_user, reload: true) { create(:user) }
   let_it_be(:user_invited_by_id) { create(:user) }
   let_it_be(:namespace) { project.namespace }
 
@@ -22,8 +23,6 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
       expect_to_create_members(count: 1)
       expect(result[:status]).to eq(:success)
     end
-
-    it_behaves_like 'records an onboarding progress action', :user_added
   end
 
   context 'when email belongs to an existing user as a confirmed secondary email' do
@@ -199,8 +198,6 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
         expect(result[:status]).to eq(:error)
         expect(result[:message][params[:email]]).to eq("Invite email is invalid")
       end
-
-      it_behaves_like 'does not record an onboarding progress action'
     end
 
     context 'with user_id and singular invalid email' do
@@ -223,8 +220,6 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
         expect(result[:status]).to eq(:error)
         expect(result[:message][params[:email]]).to eq("Invite email is invalid")
       end
-
-      it_behaves_like 'does not record an onboarding progress action'
     end
   end
 
@@ -253,6 +248,50 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
       it 'only creates one member per unique invite' do
         expect_to_create_members(count: 1)
         expect(result[:status]).to eq(:success)
+      end
+    end
+  end
+
+  context 'with case insensitive emails' do
+    let(:params) { { email: %w[email@example.org EMAIL@EXAMPLE.ORG] } }
+
+    it 'only creates one member and returns the error object correctly formatted' do
+      expect_to_create_members(count: 1)
+      expect(result[:status]).to eq(:error)
+      expect(result[:message][params[:email].last]).to eq("The member's email address has already been taken")
+    end
+
+    context 'when the invite already exists for the last email' do
+      let(:params) { { email: %w[EMAIL@EXAMPLE.ORG], access_level: -1 } }
+
+      before do
+        create(:project_member, :invited, source: project, invite_email: 'EMAIL@EXAMPLE.ORG')
+      end
+
+      it 'returns an error object correctly formatted' do
+        expect(result[:message]['EMAIL@EXAMPLE.ORG']).to eq("Access level is not included in the list")
+      end
+    end
+
+    context 'with invite email sent in as upper case of an existing user email' do
+      let(:params) { { email: project_user.email.upcase } }
+
+      before do
+        create(:project_member, source: project, user: project_user)
+      end
+
+      it 'does not create a new member' do
+        expect_to_create_members(count: 0)
+        expect(result[:status]).to eq(:success)
+      end
+    end
+
+    context 'with invite email sent in as upper case of an existing member user email' do
+      let(:params) { { email: user.email.upcase } }
+
+      it 'does not create a new member' do
+        expect_not_to_create_members
+        expect(result[:message][user.email.upcase]).to eq("not authorized to update member")
       end
     end
   end
@@ -327,12 +366,28 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
     context 'with user_id' do
       let(:params) { { user_id: project_user.id } }
 
-      it_behaves_like 'records an onboarding progress action', :user_added
-
       it 'adds an existing user to members' do
         expect_to_create_members(count: 1)
         expect(result[:status]).to eq(:success)
         expect(project.users).to include project_user
+      end
+    end
+
+    context 'with case sensitive private_commit_email' do
+      let(:email) do
+        "#{user.id}-bobby_tables@#{Gitlab::CurrentSettings.current_application_settings.commit_email_hostname}"
+      end
+
+      let(:params) { { email: email.upcase } }
+
+      it 'does not find the existing user and creates a new member as an invite' do
+        # TODO: https://gitlab.com/gitlab-org/gitlab/-/issues/461885 will change this logic so that the existing
+        # user is found once we are case insensitive for private_commit_email
+        expect(project.users).to include user
+
+        expect_to_create_members(count: 1)
+        expect(result[:status]).to eq(:success)
+        expect(project.members.last).to be_invite
       end
     end
   end
@@ -344,6 +399,42 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
       it 'returns an error' do
         expect_not_to_create_members
         expect(result[:message][project_user.email]).to eq("Access level is not included in the list")
+      end
+
+      context 'with upper case private commit email due to username casing' do
+        let(:email) do
+          hostname = Gitlab::CurrentSettings.current_application_settings.commit_email_hostname
+          "#{project_user.id}-bobby_tables@#{hostname}"
+        end
+
+        let(:params) { { email: email, access_level: -1 } }
+
+        before do
+          project_user.update!(username: 'BOBBY_TABLES')
+        end
+
+        it 'returns an error object correctly formatted' do
+          expect_not_to_create_members
+          expect(result[:message][email]).to eq("Access level is not included in the list")
+        end
+
+        context 'with invite email sent in as upper case' do
+          let(:params) { { email: email.upcase, access_level: -1 } }
+
+          it 'returns an error object correctly formatted' do
+            expect_not_to_create_members
+            expect(result[:message][email.upcase]).to eq("Access level is not included in the list")
+          end
+        end
+      end
+
+      context 'with invite email sent in as upper case' do
+        let(:params) { { email: project_user.email.upcase, access_level: -1 } }
+
+        it 'returns an error' do
+          expect_not_to_create_members
+          expect(result[:message][params[:email]]).to eq("Access level is not included in the list")
+        end
       end
     end
 
@@ -475,6 +566,47 @@ RSpec.describe Members::InviteService, :aggregate_failures, :clean_gitlab_redis_
           expect(project.users).to include project_user
           expect(project.project_members.last.access_level).to eq ProjectMember::MAINTAINER
         end
+      end
+    end
+  end
+
+  describe 'event publishing' do
+    context 'when members are successfully created' do
+      let(:params) do
+        {
+          email: 'email1@example.org,email2@example.org',
+          user_id: [project_user.id, user_invited_by_id.id]
+        }
+      end
+
+      it 'publishes event with user IDs only from members with existing users' do
+        expect { expect_to_create_members(count: 4) }.to publish_event(Members::MembersAddedEvent).with(
+          source_id: project.id,
+          source_type: "Project",
+          invited_user_ids: match_array([be_an(Integer), be_an(Integer)])
+        )
+
+        expect(result[:status]).to eq(:success)
+      end
+    end
+
+    context 'when some invites fail validation' do
+      let(:params) do
+        {
+          email: 'valid@example.org,invalid-email',
+          user_id: project_user.id
+        }
+      end
+
+      it 'publishes event with user IDs from valid members and from members with existing users' do
+        expect { expect_to_create_members(count: 2) }.to publish_event(Members::MembersAddedEvent).with(
+          source_id: project.id,
+          source_type: "Project",
+          invited_user_ids: match_array(be_an(Integer))
+        )
+
+        expect(result[:status]).to eq(:error)
+        expect(result[:message]['invalid-email']).to eq('Invite email is invalid')
       end
     end
   end

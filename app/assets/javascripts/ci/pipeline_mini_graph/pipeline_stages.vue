@@ -1,61 +1,38 @@
 <script>
-import PipelineStage from './pipeline_stage.vue';
-import LegacyPipelineStage from './legacy_pipeline_stage.vue';
+import PipelineStageDropdown from './pipeline_stage_dropdown.vue';
 /**
  * Renders the pipeline stages portion of the pipeline mini graph.
  */
 export default {
+  name: 'PipelineStages',
   components: {
-    LegacyPipelineStage,
-    PipelineStage,
+    PipelineStageDropdown,
   },
   props: {
-    stages: {
-      type: Array,
-      required: true,
-    },
-    updateDropdown: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-    isGraphql: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
     isMergeTrain: {
       type: Boolean,
       required: false,
       default: false,
     },
-    pipelineEtag: {
-      type: String,
-      required: false,
-      default: '',
+    stages: {
+      type: Array,
+      required: true,
     },
   },
+  emits: ['jobActionExecuted', 'miniGraphStageClick'],
 };
 </script>
 <template>
-  <div class="gl-display-inline gl-vertical-align-middle">
+  <div class="gl-contents gl-align-middle">
     <div
       v-for="stage in stages"
-      :key="stage.name"
-      class="pipeline-mini-graph-stage-container dropdown gl-display-inline-flex gl-mr-2 gl-my-2 gl-vertical-align-middle"
+      :key="stage.id"
+      class="pipeline-mini-graph-stage-container dropdown gl-my-1 gl-mr-2 gl-inline-flex gl-align-middle"
     >
-      <pipeline-stage
-        v-if="isGraphql"
-        :stage-id="stage.id"
-        :is-merge-train="isMergeTrain"
-        :pipeline-etag="pipelineEtag"
-        @miniGraphStageClick="$emit('miniGraphStageClick')"
-      />
-      <legacy-pipeline-stage
-        v-else
+      <pipeline-stage-dropdown
         :stage="stage"
-        :update-dropdown="updateDropdown"
         :is-merge-train="isMergeTrain"
+        @jobActionExecuted="$emit('jobActionExecuted')"
         @miniGraphStageClick="$emit('miniGraphStageClick')"
       />
     </div>

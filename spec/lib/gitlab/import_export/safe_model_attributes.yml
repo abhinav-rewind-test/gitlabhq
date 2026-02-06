@@ -31,9 +31,10 @@ Issue:
 - last_edited_by_id
 - discussion_locked
 - health_status
-- external_key
 - issue_type
 - email_message_id
+- imported
+- imported_from
 Event:
 - id
 - target_type
@@ -44,6 +45,8 @@ Event:
 - action
 - author_id
 - fingerprint
+- imported
+- imported_from
 WikiPage::Meta:
 - id
 - title
@@ -87,6 +90,8 @@ Note:
 - confidential
 - last_edited_at
 - internal
+- imported
+- imported_from
 Notes::NoteMetadata:
 - note_id
 - email_participant
@@ -121,6 +126,8 @@ Milestone:
 - updated_at
 - state
 - iid
+MilestoneRelease:
+- project_id
 ProjectSnippet:
 - id
 - title
@@ -133,6 +140,8 @@ ProjectSnippet:
 - file_name
 - type
 - visibility_level
+- imported
+- imported_from
 Release:
 - id
 - name
@@ -178,7 +187,8 @@ ProjectMember:
 User:
 - id
 - username
-- email
+- name
+- public_email
 MergeRequest:
 - id
 - target_branch
@@ -217,6 +227,8 @@ MergeRequest:
 - allow_maintainer_to_push
 - merge_ref_sha
 - draft
+- imported
+- imported_from
 MergeRequestDiff:
 - id
 - state
@@ -247,6 +259,12 @@ MergeRequest::DiffCommitUser:
 - id
 - name
 - email
+MergeRequest::CommitsMetadata:
+- sha
+- message
+- trailers
+- authored_date
+- committed_date
 MergeRequestDiffFile:
 - merge_request_diff_id
 - relative_order
@@ -259,6 +277,7 @@ MergeRequestDiffFile:
 - b_mode
 - too_large
 - binary
+- encoded_file_path
 MergeRequestContextCommit:
 - id
 - authored_date
@@ -372,7 +391,6 @@ Ci::Build:
 - options
 - allow_failure
 - stage
-- trigger_request_id
 - stage_idx
 - stage_id
 - tag
@@ -424,7 +442,6 @@ Ci::Bridge:
 - options
 - allow_failure
 - stage
-- trigger_request_id
 - stage_idx
 - stage_id
 - tag
@@ -476,7 +493,6 @@ GenericCommitStatus:
 - options
 - allow_failure
 - stage
-- trigger_request_id
 - stage_idx
 - stage_id
 - tag
@@ -608,6 +624,7 @@ ProjectHook:
 - confidential_note_events
 - repository_update_events
 - releases_events
+- milestone_events
 - emoji_events
 - resource_access_token_events
 ProtectedBranch:
@@ -681,6 +698,9 @@ Project:
 - merge_commit_template
 - squash_commit_template
 - issue_branch_template
+- merge_request_title_regex
+- merge_request_title_regex_description
+- max_artifacts_size
 Author:
 - name
 ProjectFeature:
@@ -784,26 +804,6 @@ ProjectCustomAttribute:
 - project_id
 - key
 - value
-PrometheusMetric:
-- id
-- created_at
-- updated_at
-- project_id
-- y_label
-- unit
-- legend
-- title
-- query
-- group
-- common
-- identifier
-- dashboard_path
-PrometheusAlert:
-- threshold
-- operator
-- environment_id
-- project_id
-- prometheus_metric_id
 Badge:
 - id
 - name
@@ -816,9 +816,30 @@ Badge:
 - type
 ProjectCiCdSetting:
 - group_runners_enabled
-- runner_token_expiration_interval
+- merge_pipelines_enabled
 - default_git_depth
+- forward_deployment_enabled
+- merge_trains_enabled
+- auto_rollback_enabled
+- keep_latest_artifact
+- job_token_scope_enabled
+- runner_token_expiration_interval
+- separated_caches
+- allow_fork_pipelines_to_run_in_parent_project
+- inbound_job_token_scope_enabled
+- forward_deployment_rollback_allowed
+- merge_trains_skip_train_allowed
+- restrict_pipeline_cancellation_role
+- pipeline_variables_minimum_override_role
+- push_repository_for_job_token_allowed
+- id_token_sub_claim_components
+- delete_pipelines_in_seconds
+- allow_composite_identities_to_run_pipelines
+- display_pipeline_variables
+- resource_group_default_process_mode
 ProjectSetting:
+- merge_commit_template
+- squash_commit_template
 - squash_option
 - allow_merge_on_skipped_pipeline
 - only_allow_merge_if_all_status_checks_passed
@@ -936,6 +957,7 @@ DesignManagement::Version:
 - created_at
 - sha
 - author_id
+- namespace_id
 ZoomMeeting:
 - id
 - project_id
@@ -989,16 +1011,18 @@ Epic:
   - start_date_sourcing_epic_id
   - due_date_sourcing_epic_id
   - health_status
-  - external_key
   - confidential
   - color
   - total_opened_issue_weight
   - total_closed_issue_weight
   - total_opened_issue_count
   - total_closed_issue_count
+  - imported
+  - imported_from
 EpicIssue:
   - id
   - relative_position
+  - namespace_id
 SystemNoteMetadata:
   - id
   - commit_count
@@ -1007,18 +1031,12 @@ SystemNoteMetadata:
   - updated_at
 ProjectSecuritySetting:
   - project_id
-  - auto_fix_container_scanning
-  - auto_fix_dast
-  - auto_fix_dependency_scanning
-  - auto_fix_sast
   - created_at
   - updated_at
 IssuableSla:
   - issue_id
   - due_at
 PushRule:
-  - force_push_regex
-  - delete_branch_regex
   - commit_message_regex
   - author_email_regex
   - file_name_regex
@@ -1090,6 +1108,10 @@ ApprovalProjectRulesProtectedBranch:
   - branch_name
 WorkItems::Type:
   - base_type
+WorkItems::Description:
+  - description
+  - last_edited_at
+  - last_edited_by_id
 TimeTracking::TimelogCategories:
   - id
   - name
@@ -1104,3 +1126,37 @@ NoteDiffFile:
   - b_mode
   - new_path
   - old_path
+Vulnerability:
+  - project_id
+  - author_id
+  - title
+  - description
+  - severity
+  - report_type
+Vulnerabilities::Finding:
+  - severity
+  - report_type
+  - project_id
+  - location_fingerprint
+  - name
+  - metadata_version
+  - raw_metadata
+  - detection_method
+  - uuid
+Vulnerabilities::Scanner:
+  - project_id
+  - external_id
+  - name
+  - vendor
+Vulnerabilities::Identifier:
+  - project_id
+  - fingerprint
+  - external_type
+  - external_id
+  - name
+  - url
+Vulnerabilities::Read:
+  - project_id
+Projects::BranchRules::SquashOption:
+  - squash_option
+  - project_id

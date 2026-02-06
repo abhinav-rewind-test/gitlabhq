@@ -21,6 +21,7 @@
 #     label_name: string
 #     sort: string
 #     non_archived: boolean
+#     merged_without_event_source: boolean
 #     my_reaction_emoji: string
 #     source_branch: string
 #     target_branch: string
@@ -28,6 +29,15 @@
 #     created_before: datetime
 #     updated_after: datetime
 #     updated_before: datetime
+#     review_states: 'unreviewed', 'reviewed', 'requested_changes' or 'approved'
+#     not:
+#       only_reviewer: boolean
+#       reviewer_username: string
+#       review_states: 'unreviewed', 'reviewed', 'requested_changes' or 'approved'
+#     or:
+#       only_reviewer_username: boolean
+#       reviewer_wildcard: string
+#       review_states: 'unreviewed', 'reviewed', 'requested_changes' or 'approved'
 #
 class MergeRequestsFinder < IssuableFinder
   extend ::Gitlab::Utils::Override
@@ -49,6 +59,7 @@ class MergeRequestsFinder < IssuableFinder
       :merged_before,
       :reviewer_id,
       :reviewer_username,
+      :review_state,
       :source_branch,
       :target_branch,
       :wip
@@ -77,9 +88,14 @@ class MergeRequestsFinder < IssuableFinder
     items = by_approvals(items)
     items = by_deployments(items)
     items = by_reviewer(items)
+    items = by_review_state(items)
     items = by_source_project_id(items)
-
-    by_approved(items)
+    items = by_resource_event_state(items)
+    items = by_assignee_or_reviewer(items)
+    items = by_blob_path(items)
+    items = by_no_review_requested_or_only_user(items)
+    items = by_review_states_or_no_reviewer(items)
+    by_valid_or_no_reviewers(items)
   end
 
   def filter_negated_items(items)
@@ -87,6 +103,8 @@ class MergeRequestsFinder < IssuableFinder
     items = by_negated_reviewer(items)
     items = by_negated_approved_by(items)
     items = by_negated_target_branch(items)
+    items = by_negated_review_states(items)
+    items = by_negated_only_reviewer(items)
     by_negated_source_branch(items)
   end
 
@@ -102,10 +120,18 @@ class MergeRequestsFinder < IssuableFinder
     items.group(grouping_columns) # rubocop:disable CodeReuse/ActiveRecord
   end
 
+  def by_author(items)
+    MergeRequests::AuthorFilter.new(
+      current_user: current_user,
+      params: params
+    ).filter(items)
+  end
+
   def by_commit(items)
     return items unless params[:commit_sha].presence
+    return items unless params.project
 
-    items.by_related_commit_sha(params[:commit_sha])
+    items.by_related_commit_sha(params.project, params[:commit_sha])
   end
 
   def source_branch
@@ -164,6 +190,12 @@ class MergeRequestsFinder < IssuableFinder
   end
   # rubocop: enable CodeReuse/ActiveRecord
 
+  def by_resource_event_state(items)
+    return items unless params[:merged_without_event_source].present?
+
+    items.merged_without_state_event_source
+  end
+
   # rubocop: disable CodeReuse/ActiveRecord
   def by_draft(items)
     draft_param = Gitlab::Utils.to_boolean(params.fetch(:draft) { params.fetch(:wip, nil) })
@@ -192,17 +224,6 @@ class MergeRequestsFinder < IssuableFinder
       .execute(items)
   end
   # rubocop: enable CodeReuse/Finder
-
-  def by_approved(items)
-    approved_param = Gitlab::Utils.to_boolean(params.fetch(:approved, nil))
-    return items if approved_param.nil? || Feature.disabled?(:mr_approved_filter, type: :ops)
-
-    if approved_param
-      items.with_approvals
-    else
-      items.without_approvals
-    end
-  end
 
   def by_deployments(items)
     env = params[:environment]
@@ -235,13 +256,27 @@ class MergeRequestsFinder < IssuableFinder
     elsif params.filter_by_any_reviewer?
       items.review_requested
     elsif params.reviewer
-      items.review_requested_to(params.reviewer)
+      items.review_requested_to(params.reviewer, params.review_state)
     else # reviewer not found
       items.none
     end
   end
 
+  def by_review_state(items)
+    return items unless params.review_state.present?
+    return items if params.reviewer_id? || params.reviewer_username?
+
+    items.review_states(params.review_state, params.ignored_reviewer)
+  end
+
+  def by_negated_review_states(items)
+    return items unless params.not_review_states.present?
+
+    items.no_review_states(params.not_review_states, params.ignored_reviewer)
+  end
+
   def by_negated_reviewer(items)
+    return items if not_params[:only_reviewer]
     return items unless not_params.reviewer_id? || not_params.reviewer_username?
 
     if not_params.reviewer.present?
@@ -251,7 +286,73 @@ class MergeRequestsFinder < IssuableFinder
     end
   end
 
+  def by_negated_only_reviewer(items)
+    return items unless not_params[:only_reviewer]
+    return items unless not_params.reviewer_id? || not_params.reviewer_username?
+
+    items.not_only_reviewer(not_params.reviewer)
+  end
+
+  def by_review_states_or_no_reviewer(items)
+    return items unless or_params&.fetch(:reviewer_wildcard, false).present?
+    return items unless or_params[:reviewer_wildcard].to_s.casecmp?('NONE')
+    return items unless or_params[:review_states]
+    return items if or_params&.fetch(:only_reviewer_username, false).present?
+
+    states = or_params[:review_states].map { |state| MergeRequestReviewer.states[state] }
+
+    items.with_review_states_or_no_reviewer(states)
+  end
+
+  def by_no_review_requested_or_only_user(items)
+    return items unless should_apply_reviewer_filter?
+    return items if or_params[:review_states]
+
+    items.no_review_requested_or_only_user(or_only_user)
+  end
+
+  def by_valid_or_no_reviewers(items)
+    return items unless should_apply_reviewer_filter?
+    return items unless or_params[:review_states]
+
+    states = or_params[:review_states].map { |state| MergeRequestReviewer.states[state] }
+
+    items.with_valid_or_no_reviewers(states, or_only_user)
+  end
+
+  def by_assignee_or_reviewer(items)
+    return items unless params.assigned_user
+
+    items.assignee_or_reviewer(
+      params.assigned_user,
+      params.assigned_review_states,
+      params.reviewer_review_states
+    )
+  end
+
+  def by_blob_path(items)
+    blob_path = params[:blob_path]
+
+    return items unless blob_path
+    return items.none unless params.project
+
+    items.by_blob_path(blob_path)
+  end
+
+  def by_closed_at(items)
+    closed_after = params[:closed_after]
+    closed_before = params[:closed_before]
+
+    return items unless closed_after || closed_before
+
+    items.with_closed_between(closed_after, closed_before)
+  end
+
   def parse_datetime(input)
+    # NOTE: Input from GraphQL query is a Time object already.
+    #   Just return DateTime object for consistency instead of trying to parse it.
+    return input.to_datetime if input.is_a?(Time)
+
     # To work around http://www.ruby-lang.org/en/news/2021/11/15/date-parsing-method-regexp-dos-cve-2021-41817/
     DateTime.parse(input.byteslice(0, 128)) if input
   rescue Date::Error
@@ -262,6 +363,24 @@ class MergeRequestsFinder < IssuableFinder
     return false unless params[:sort].present?
 
     params[:approved_by_usernames].present? || params[:approved_by_ids].present?
+  end
+
+  def or_params
+    params[:or]
+  end
+
+  def or_only_user
+    User.find_by_username(or_params[:only_reviewer_username])
+  end
+  strong_memoize_attr :or_only_user
+
+  def should_apply_reviewer_filter?
+    return false unless or_params&.fetch(:reviewer_wildcard, false).present?
+    return false unless or_params&.fetch(:only_reviewer_username, false).present?
+    return false unless or_params[:reviewer_wildcard].to_s.casecmp?('NONE')
+    return false unless or_only_user
+
+    true
   end
 end
 

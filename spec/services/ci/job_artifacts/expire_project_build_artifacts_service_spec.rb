@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::JobArtifacts::ExpireProjectBuildArtifactsService, feature_category: :build_artifacts do
+RSpec.describe Ci::JobArtifacts::ExpireProjectBuildArtifactsService, feature_category: :job_artifacts do
   let_it_be(:project) { create(:project) }
   let_it_be(:pipeline, reload: true) { create(:ci_pipeline, :unlocked, project: project) }
 
@@ -10,7 +10,7 @@ RSpec.describe Ci::JobArtifacts::ExpireProjectBuildArtifactsService, feature_cat
 
   RSpec::Matchers.define :have_locked_status do |expected_status|
     match do |job_artifacts|
-      predicate = "#{expected_status}?".to_sym
+      predicate = :"#{expected_status}?"
       job_artifacts.all? { |artifact| artifact.__send__(predicate) }
     end
   end

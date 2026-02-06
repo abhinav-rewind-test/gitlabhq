@@ -1,43 +1,49 @@
 ---
-stage: Govern
-group: Threat Insights
+stage: Security Risk Management
+group: Security Insights
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Vulnerabilities API
+description: Manage GitLab vulnerabilities with REST API (deprecated). Supports retrieve, confirm, resolve, dismiss, and revert operations. Use GraphQL instead.
 ---
 
-# Vulnerabilities API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/10242) in GitLab 12.6.
-> - `last_edited_at` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `start_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `updated_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `last_edited_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `due_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+{{< /details >}}
 
-NOTE:
-The former Vulnerabilities API was renamed to Vulnerability Findings API
-and its documentation was moved to [a different location](vulnerability_findings.md).
-This document now describes the new Vulnerabilities API that provides access to
-[Vulnerabilities](https://gitlab.com/groups/gitlab-org/-/epics/634).
+{{< history >}}
 
-WARNING:
-This API is in the process of being deprecated and considered unstable.
-The response payload may be subject to change or breakage
-across GitLab releases. Use the
-[GraphQL API](graphql/reference/index.md#queryvulnerabilities) instead. For more information, see [GraphQL examples](#replace-vulnerability-rest-api-with-graphql).
+- `last_edited_at` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `start_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `updated_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `last_edited_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `due_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
 
-Every API call to vulnerabilities must be [authenticated](rest/index.md#authentication).
+{{< /history >}}
+
+> [!note]
+> The former Vulnerabilities API was renamed to Vulnerability Findings API
+> and its documentation was moved to [a different location](vulnerability_findings.md).
+> This document now describes the new Vulnerabilities API that provides access to
+> [Vulnerabilities](https://gitlab.com/groups/gitlab-org/-/epics/634).
+
+Every API call to vulnerabilities must be [authenticated](rest/authentication.md).
 
 If an authenticated user does not have permission to
-[view vulnerabilities](../user/permissions.md#project-members-permissions),
+[view vulnerability report](../user/permissions.md#project-application-security),
 this request returns a `403 Forbidden` status code.
 
-## Single vulnerability
+> [!warning]
+> This API is in the process of being deprecated and considered unstable.
+> The response payload may be subject to change or breakage
+> across GitLab releases. Use the
+> [GraphQL API](graphql/reference/_index.md#queryvulnerabilities) instead. For more information, see [GraphQL examples](#replace-vulnerability-rest-api-with-graphql).
 
-Gets a single vulnerability
+## Retrieve a vulnerability
+
+Retrieves a specified vulnerability.
 
 ```plaintext
 GET /vulnerabilities/:id
@@ -48,7 +54,9 @@ GET /vulnerabilities/:id
 | `id` | integer or string | yes | The ID of a Vulnerability to get |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/vulnerabilities/1"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/vulnerabilities/1"
 ```
 
 Example response:
@@ -76,12 +84,12 @@ Example response:
 }
 ```
 
-## Confirm vulnerability
+## Confirm a vulnerability
 
-Confirms a given vulnerability. Returns status code `304` if the vulnerability is already confirmed.
+Confirms a specified vulnerability. Returns status code `304` if the vulnerability is already confirmed.
 
 If an authenticated user does not have permission to
-[confirm vulnerabilities](../user/permissions.md#project-members-permissions),
+[change vulnerability status](../user/permissions.md#project-application-security),
 this request results in a `403` status code.
 
 ```plaintext
@@ -93,7 +101,9 @@ POST /vulnerabilities/:id/confirm
 | `id` | integer or string | yes | The ID of a vulnerability to confirm |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/vulnerabilities/5/confirm"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/vulnerabilities/5/confirm"
 ```
 
 Example response:
@@ -121,12 +131,12 @@ Example response:
 }
 ```
 
-## Resolve vulnerability
+## Resolve a vulnerability
 
-Resolves a given vulnerability. Returns status code `304` if the vulnerability is already resolved.
+Resolves a specified vulnerability. Returns status code `304` if the vulnerability is already resolved.
 
 If an authenticated user does not have permission to
-[resolve vulnerabilities](../user/permissions.md#project-members-permissions),
+[change vulnerability status](../user/permissions.md#project-application-security),
 this request results in a `403` status code.
 
 ```plaintext
@@ -138,7 +148,9 @@ POST /vulnerabilities/:id/resolve
 | `id` | integer or string | yes | The ID of a Vulnerability to resolve |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/vulnerabilities/5/resolve"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/vulnerabilities/5/resolve"
 ```
 
 Example response:
@@ -166,12 +178,12 @@ Example response:
 }
 ```
 
-## Dismiss vulnerability
+## Dismiss a vulnerability
 
-Dismisses a given vulnerability. Returns status code `304` if the vulnerability is already dismissed.
+Dismisses a specified vulnerability. Returns status code `304` if the vulnerability is already dismissed.
 
 If an authenticated user does not have permission to
-[dismiss vulnerabilities](../user/permissions.md#project-members-permissions),
+[change vulnerability status](../user/permissions.md#project-application-security),
 this request results in a `403` status code.
 
 ```plaintext
@@ -183,7 +195,9 @@ POST /vulnerabilities/:id/dismiss
 | `id` | integer or string | yes | The ID of a vulnerability to dismiss |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/vulnerabilities/5/dismiss"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/vulnerabilities/5/dismiss"
 ```
 
 Example response:
@@ -211,12 +225,12 @@ Example response:
 }
 ```
 
-## Revert vulnerability to detected state
+## Revert a vulnerability to detected state
 
-Reverts a given vulnerability to detected state. Returns status code `304` if the vulnerability is already in detected state.
+Reverts a specified vulnerability to detected state. Returns status code `304` if the vulnerability is already in detected state.
 
 If an authenticated user does not have permission to
-[revert vulnerability to detected state](../user/permissions.md#project-members-permissions),
+[change vulnerability status](../user/permissions.md#project-application-security),
 this request results in a `403` status code.
 
 ```plaintext
@@ -228,7 +242,9 @@ POST /vulnerabilities/:id/revert
 | `id` | integer or string | yes | The ID of a vulnerability to revert to detected state |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/vulnerabilities/5/revert"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/vulnerabilities/5/revert"
 ```
 
 Example response:
@@ -264,7 +280,7 @@ with the GraphQL API.
 
 ### GraphQL - Single vulnerability
 
-Use [`Query.vulnerability`](graphql/reference/index.md#queryvulnerability).
+Use [`Query.vulnerability`](graphql/reference/_index.md#queryvulnerability).
 
 ```graphql
 {
@@ -320,7 +336,7 @@ Example response:
 
 ### GraphQL - Confirm vulnerability
 
-Use [`Mutation.vulnerabilityConfirm`](graphql/reference/index.md#mutationvulnerabilityconfirm).
+Use [`Mutation.vulnerabilityConfirm`](graphql/reference/_index.md#mutationvulnerabilityconfirm).
 
 ```graphql
 mutation {
@@ -350,7 +366,7 @@ Example response:
 
 ### GraphQL - Resolve vulnerability
 
-Use [`Mutation.vulnerabilityResolve`](graphql/reference/index.md#mutationvulnerabilityresolve).
+Use [`Mutation.vulnerabilityResolve`](graphql/reference/_index.md#mutationvulnerabilityresolve).
 
 ```graphql
 mutation {
@@ -380,7 +396,7 @@ Example response:
 
 ### GraphQL - Dismiss vulnerability
 
-Use [`Mutation.vulnerabilityDismiss`](graphql/reference/index.md#mutationvulnerabilitydismiss).
+Use [`Mutation.vulnerabilityDismiss`](graphql/reference/_index.md#mutationvulnerabilitydismiss).
 
 ```graphql
 mutation {
@@ -410,7 +426,7 @@ Example response:
 
 ### GraphQL - Revert vulnerability to detected state
 
-Use [`Mutation.vulnerabilityRevertToDetected`](graphql/reference/index.md#mutationvulnerabilityreverttodetected).
+Use [`Mutation.vulnerabilityRevertToDetected`](graphql/reference/_index.md#mutationvulnerabilityreverttodetected).
 
 ```graphql
 mutation {

@@ -2,6 +2,23 @@
 
 require_relative '../support/helpers/test_env'
 
+module FactoryHelpers
+  def self.build_project_namespace(project, evaluator)
+    project_namespace_hash = {
+      name: evaluator.name,
+      path: evaluator.path,
+      parent: evaluator.namespace,
+      organization: evaluator.organization,
+      shared_runners_enabled: evaluator.shared_runners_enabled,
+      visibility_level: evaluator.visibility_level
+    }
+
+    project_namespace_hash[:id] = evaluator.project_namespace_id.presence
+
+    project.build_project_namespace(project_namespace_hash)
+  end
+end
+
 FactoryBot.define do
   # Project without repository
   #
@@ -16,7 +33,18 @@ FactoryBot.define do
     has_external_wiki { false }
 
     # Associations
-    namespace
+    namespace do
+      next group if group
+
+      if @overrides[:organization]
+        association(:namespace, organization: @overrides[:organization])
+      else
+        # rubocop:disable RSpec/FactoryBot/InlineAssociation -- Fit current code structure
+        association(:namespace, organization: create(:common_organization))
+        # rubocop:enable RSpec/FactoryBot/InlineAssociation
+      end
+    end
+
     creator { group ? association(:user) : namespace&.owner }
 
     transient do
@@ -57,15 +85,28 @@ FactoryBot.define do
       import_last_error { nil }
       forward_deployment_enabled { nil }
       forward_deployment_rollback_allowed { nil }
-      restrict_user_defined_variables { nil }
       ci_outbound_job_token_scope_enabled { nil }
       ci_inbound_job_token_scope_enabled { nil }
       runners_token { nil }
       runner_token_expiration_interval { nil }
       runner_token_expiration_interval_human_readable { nil }
+      ci_delete_pipelines_in_seconds { nil }
+
+      # rubocop:disable Lint/EmptyBlock -- block is required by factorybot
+      guests {}
+      planners {}
+      reporters {}
+      security_managers {}
+      developers {}
+      maintainers {}
+      owners {}
+      # rubocop:enable Lint/EmptyBlock
     end
 
     after(:build) do |project, evaluator|
+      project.organization ||= project.namespace&.organization
+      project.organization ||= create(:common_organization)
+
       # Builds and MRs can't have higher visibility level than repository access level.
       builds_access_level = [evaluator.builds_access_level, evaluator.repository_access_level].min
       merge_requests_access_level = [evaluator.merge_requests_access_level, evaluator.repository_access_level].min
@@ -87,20 +128,37 @@ FactoryBot.define do
         security_and_compliance_access_level: evaluator.security_and_compliance_access_level
       }
 
-      project_namespace_hash = {
-        name: evaluator.name,
-        path: evaluator.path,
-        parent: evaluator.namespace,
-        shared_runners_enabled: evaluator.shared_runners_enabled,
-        visibility_level: evaluator.visibility_level
+      project_ci_cd_settings_hash = {}
+
+      ci_cd_settings_attribute_mapping = {
+        group_runners_enabled: nil,
+        merge_pipelines_enabled: nil,
+        merge_trains_enabled: nil,
+        keep_latest_artifact: nil,
+        restrict_user_defined_variables: nil,
+        ci_outbound_job_token_scope_enabled: :job_token_scope_enabled,
+        ci_inbound_job_token_scope_enabled: :inbound_job_token_scope_enabled,
+        runner_token_expiration_interval: nil,
+        runner_token_expiration_interval_human_readable: nil,
+        ci_delete_pipelines_in_seconds: :delete_pipelines_in_seconds
       }
 
-      project_namespace_hash[:id] = evaluator.project_namespace_id.presence
+      ci_cd_settings_attribute_mapping.each do |project_attr, ci_cd_settings_attr|
+        value = evaluator.public_send(project_attr)
+        ci_cd_settings_attr ||= project_attr
 
-      project.build_project_namespace(project_namespace_hash)
+        project_ci_cd_settings_hash[ci_cd_settings_attr] = value unless value.nil?
+      end
+
+      FactoryHelpers.build_project_namespace(project, evaluator)
       project.build_project_feature(project_feature_hash)
+      project.build_ci_cd_settings(project_ci_cd_settings_hash)
 
       project.set_runners_token(evaluator.runners_token) if evaluator.runners_token.present?
+    end
+
+    after(:stub) do |project, evaluator|
+      FactoryHelpers.build_project_namespace(project, evaluator)
     end
 
     to_create do |project|
@@ -122,17 +180,6 @@ FactoryBot.define do
         end
       end
 
-      # assign the delegated `#ci_cd_settings` attributes after create
-      project.group_runners_enabled = evaluator.group_runners_enabled unless evaluator.group_runners_enabled.nil?
-      project.merge_pipelines_enabled = evaluator.merge_pipelines_enabled unless evaluator.merge_pipelines_enabled.nil?
-      project.merge_trains_enabled = evaluator.merge_trains_enabled unless evaluator.merge_trains_enabled.nil?
-      project.keep_latest_artifact = evaluator.keep_latest_artifact unless evaluator.keep_latest_artifact.nil?
-      project.restrict_user_defined_variables = evaluator.restrict_user_defined_variables unless evaluator.restrict_user_defined_variables.nil?
-      project.ci_outbound_job_token_scope_enabled = evaluator.ci_outbound_job_token_scope_enabled unless evaluator.ci_outbound_job_token_scope_enabled.nil?
-      project.ci_inbound_job_token_scope_enabled = evaluator.ci_inbound_job_token_scope_enabled unless evaluator.ci_inbound_job_token_scope_enabled.nil?
-      project.runner_token_expiration_interval = evaluator.runner_token_expiration_interval unless evaluator.runner_token_expiration_interval.nil?
-      project.runner_token_expiration_interval_human_readable = evaluator.runner_token_expiration_interval_human_readable unless evaluator.runner_token_expiration_interval_human_readable.nil?
-
       if evaluator.import_status
         import_state = project.import_state || project.build_import_state
         import_state.status = evaluator.import_status
@@ -144,6 +191,14 @@ FactoryBot.define do
 
       # simulating ::Projects::ProcessSyncEventsWorker because most tests don't run Sidekiq inline
       project.create_ci_project_mirror!(namespace_id: project.namespace_id) unless project.ci_project_mirror
+
+      project.add_members(Array.wrap(evaluator.guests), :guest)
+      project.add_members(Array.wrap(evaluator.planners), :planner)
+      project.add_members(Array.wrap(evaluator.reporters), :reporter)
+      project.add_members(Array.wrap(evaluator.security_managers), :security_manager)
+      project.add_members(Array.wrap(evaluator.developers), :developer)
+      project.add_members(Array.wrap(evaluator.maintainers), :maintainer)
+      project.add_members(Array.wrap(evaluator.owners), :owner)
     end
 
     trait :public do
@@ -178,6 +233,18 @@ FactoryBot.define do
       import_status { :canceled }
     end
 
+    trait :bitbucket_server_import do
+      import_started
+      import_url { 'https://bitbucket.example.com' }
+      import_type { :bitbucket_server }
+    end
+
+    trait :github_import do
+      import_started
+      import_url { 'https://github.com' }
+      import_type { :github }
+    end
+
     trait :jira_dvcs_server do
       before(:create) do |project|
         create(:project_feature_usage, :dvcs_server, project: project)
@@ -186,6 +253,15 @@ FactoryBot.define do
 
     trait :archived do
       archived { true }
+    end
+
+    trait :aimed_for_deletion do
+      marked_for_deletion_at { Date.yesterday }
+      deleting_user { creator }
+    end
+
+    trait :not_aimed_for_deletion do
+      marked_for_deletion_at { nil }
     end
 
     trait :hidden do
@@ -207,7 +283,7 @@ FactoryBot.define do
     end
 
     trait :with_namespace_settings do
-      namespace factory: [:namespace, :with_namespace_settings]
+      association :namespace, :with_namespace_settings
     end
 
     trait :with_avatar do
@@ -215,8 +291,15 @@ FactoryBot.define do
     end
 
     trait :with_export do
-      after(:create) do |project, _evaluator|
-        ProjectExportWorker.new.perform(project.creator.id, project.id)
+      transient do
+        export_user { nil }
+      end
+
+      after(:create) do |project, evaluator|
+        export_user = evaluator.export_user || project.creator
+
+        project.add_maintainer(export_user)
+        ProjectExportWorker.new.perform(export_user.id, project.id)
       end
     end
 
@@ -251,6 +334,8 @@ FactoryBot.define do
             branch_name: project.default_branch || 'master'
           )
         end
+
+        project.track_project_repository
       end
     end
 
@@ -286,6 +371,13 @@ FactoryBot.define do
           'README.md' => 'readme'
         }
       end
+    end
+
+    # A basic repository with a single file 'test.txt'. It also has the HEAD as the default branch.
+    trait :small_repo do
+      custom_repo
+
+      files { { 'test.txt' => 'test' } }
 
       transient do
         create_tag { nil }
@@ -299,13 +391,6 @@ FactoryBot.define do
             project.repository.commit.sha)
         end
       end
-    end
-
-    # A basic repository with a single file 'test.txt'. It also has the HEAD as the default branch.
-    trait :small_repo do
-      custom_repo
-
-      files { { 'test.txt' => 'test' } }
 
       after(:create) do |project|
         Sidekiq::Worker.skipping_transaction_check do
@@ -410,6 +495,14 @@ FactoryBot.define do
       end
     end
 
+    trait :fork_repository do
+      after(:create) do |project|
+        project.repository.raw.gitaly_repository_client.fork_repository(
+          project.forked_from_project.repository.raw
+        )
+      end
+    end
+
     trait :design_repo do
       after(:create) do |project|
         raise 'Failed to create design repository!' unless project.design_repository.create_if_not_exists
@@ -433,12 +526,6 @@ FactoryBot.define do
       end
     end
 
-    trait :stubbed_commit_count do
-      after(:build) do |project|
-        stub_method(project.repository, :commit_count) { 2 }
-      end
-    end
-
     trait :stubbed_branch_count do
       after(:build) do |project|
         stub_method(project.repository, :branch_count) { 2 }
@@ -450,6 +537,16 @@ FactoryBot.define do
         stub_feature_flags(main_branch_over_master: false)
 
         raise 'Failed to create wiki repository!' unless project.create_wiki
+      end
+    end
+
+    trait :wiki_repo_with_page do
+      after(:create) do |project|
+        stub_feature_flags(main_branch_over_master: false)
+
+        raise 'Failed to create wiki repository!' unless project.create_wiki
+
+        project.wiki.create_page('Home', 'This is the home page')
       end
     end
 
@@ -532,7 +629,7 @@ FactoryBot.define do
   trait :pages_published do
     after(:create) do |project|
       project.mark_pages_onboarding_complete
-      create(:pages_deployment, project: project) # rubocop: disable RSpec/FactoryBot/StrategyInCallback
+      create(:pages_deployment, project: project)
     end
   end
 
@@ -576,6 +673,10 @@ FactoryBot.define do
     empty_repo
   end
 
+  factory :project_with_repo, parent: :project do
+    repository
+  end
+
   factory :forked_project_with_submodules, parent: :project do
     path { 'forked-gitlabhq' }
 
@@ -594,8 +695,12 @@ FactoryBot.define do
     end
   end
 
+  trait :in_user_namespace do
+    namespace { association :user_namespace }
+  end
+
   trait :in_group do
-    namespace factory: [:group]
+    namespace { association :group, organization: organization }
   end
 
   trait :in_subgroup do
@@ -607,5 +712,19 @@ FactoryBot.define do
 
     path { 'gitlab-profile' }
     files { { 'README.md' => 'Hello World' } }
+  end
+
+  trait :allow_runner_registration_token do
+    after :create do |project|
+      create(:namespace_settings, namespace: project.namespace) unless project.namespace.namespace_settings
+      project.namespace.namespace_settings.update!(allow_runner_registration_token: true)
+    end
+  end
+
+  trait :import_user_mapping_enabled do
+    after(:build) do |project|
+      project.import_data ||= project.build_import_data
+      project.import_data.merge_data({ user_contribution_mapping_enabled: true })
+    end
   end
 end

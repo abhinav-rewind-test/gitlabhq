@@ -10,6 +10,7 @@ module Integrations
       attr_reader :state
       attr_reader :description
       attr_reader :object_kind
+      attr_reader :type
 
       def initialize(params)
         super
@@ -23,6 +24,7 @@ module Integrations
         @state = obj_attr[:state]
         @description = obj_attr[:description] || ''
         @object_kind = params[:object_kind]
+        @type = obj_attr[:type]
       end
 
       def attachments
@@ -33,9 +35,11 @@ module Integrations
       end
 
       def activity
+        subtitle = project_link ? "in #{project_link}" : ""
+
         {
           title: "#{issue_type} #{state} by #{strip_markup(user_combined_name)}",
-          subtitle: "in #{project_link}",
+          subtitle: subtitle,
           text: issue_link,
           image: user_avatar
         }
@@ -45,10 +49,15 @@ module Integrations
         '#C95823'
       end
 
+      def issue_type
+        @issue_type ||= type || fallback_type
+      end
+
       private
 
       def message
-        "[#{project_link}] #{issue_type} #{issue_link} #{state} by #{strip_markup(user_combined_name)}"
+        project_part = project_link ? "[#{project_link}] " : ""
+        "#{project_part}#{issue_type} #{issue_link} #{state} by #{strip_markup(user_combined_name)}"
       end
 
       def opened_issue?
@@ -65,6 +74,8 @@ module Integrations
       end
 
       def project_link
+        return if project_name.blank?
+
         link(project_name, project_url)
       end
 
@@ -76,8 +87,8 @@ module Integrations
         "#{Issue.reference_prefix}#{issue_iid} #{strip_markup(title)}"
       end
 
-      def issue_type
-        @issue_type ||= object_kind == 'incident' ? 'Incident' : 'Issue'
+      def fallback_type
+        object_kind == 'incident' ? 'Incident' : 'Issue'
       end
     end
   end

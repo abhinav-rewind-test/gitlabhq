@@ -19,7 +19,7 @@ module ApplicationSettings
     private
 
     def update_settings
-      validate_classification_label(application_setting, :external_authorization_service_default_label) unless bypass_external_auth?
+      validate_classification_label_param!(application_setting, :external_authorization_service_default_label) unless bypass_external_auth?
 
       if application_setting.errors.any?
         return false
@@ -30,7 +30,8 @@ module ApplicationSettings
       end
 
       update_terms(@params.delete(:terms))
-      update_default_branch_protection_defaults(@params[:default_branch_protection])
+      update_default_branch_protection_defaults(@params[:default_branch_protection_defaults])
+      update_legacy_default_branch_protection_defaults(@params[:default_branch_protection])
 
       add_to_outbound_local_requests_whitelist(@params.delete(:add_to_outbound_local_requests_whitelist))
 
@@ -46,7 +47,7 @@ module ApplicationSettings
         params[:usage_stats_set_by_user_id] = current_user.id
       end
 
-      @application_setting.assign_attributes(params)
+      @application_setting.assign_attributes(params.except(:auto_approve_pending_users))
 
       if invalidate_markdown_cache?
         @application_setting[:local_markdown_version] = @application_setting.local_markdown_version + 1
@@ -82,7 +83,7 @@ module ApplicationSettings
       @application_setting.reset_memoized_terms
     end
 
-    def update_default_branch_protection_defaults(default_branch_protection)
+    def update_legacy_default_branch_protection_defaults(default_branch_protection)
       return unless default_branch_protection.present?
 
       # We are migrating default_branch_protection from an integer
@@ -93,6 +94,12 @@ module ApplicationSettings
       # path. Until then, we want to sync up both columns.
       protection = Gitlab::Access::BranchProtection.new(default_branch_protection.to_i)
       @application_setting.default_branch_protection_defaults = protection.to_hash
+    end
+
+    def update_default_branch_protection_defaults(default_branch_protection_defaults)
+      return unless default_branch_protection_defaults.present?
+
+      @application_setting.default_branch_protection_defaults.merge!(default_branch_protection_defaults)
     end
 
     def process_performance_bar_allowed_group_id
@@ -123,6 +130,7 @@ module ApplicationSettings
     end
 
     def auto_approve_blocked_users
+      return unless auto_approve_pending_users?
       return unless should_auto_approve_blocked_users?
 
       ApproveBlockedPendingApprovalUsersWorker.perform_async(current_user.id)
@@ -134,6 +142,10 @@ module ApplicationSettings
       enabled_previous, enabled_current = application_setting.previous_changes[:require_admin_approval_after_user_signup]
 
       enabled_previous && !enabled_current
+    end
+
+    def auto_approve_pending_users?
+      Gitlab::Utils.to_boolean(params.fetch(:auto_approve_pending_users, false))
     end
   end
 end

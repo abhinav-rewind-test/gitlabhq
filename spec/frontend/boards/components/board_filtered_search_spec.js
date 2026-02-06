@@ -60,6 +60,7 @@ describe('BoardFilteredSearch', () => {
       provide: {
         initialFilterParams,
         fullPath: '',
+        hasCustomFieldsFeature: false,
         ...provide,
       },
       propsData: {
@@ -147,8 +148,7 @@ describe('BoardFilteredSearch', () => {
       expect(updateHistory).toHaveBeenCalledWith({
         title: '',
         replace: true,
-        url:
-          'http://test.host/?not[health_status]=atRisk&author_username=root&label_name[]=label&label_name[]=label%262&assignee_username=root&milestone_title=New%20Milestone&iteration_id=Any&iteration_cadence_id=3&types=INCIDENT&weight=2&release_tag=v1.0.0&health_status=onTrack',
+        url: 'http://test.host/?not[health_status]=atRisk&author_username=root&label_name[]=label&label_name[]=label%262&assignee_username=root&milestone_title=New%20Milestone&iteration_id=Any&iteration_cadence_id=3&types=INCIDENT&weight=2&release_tag=v1.0.0&health_status=onTrack',
       });
     });
 
@@ -226,6 +226,70 @@ describe('BoardFilteredSearch', () => {
           },
         ],
       ]);
+    });
+  });
+
+  describe('custom fields enabled', () => {
+    beforeEach(() => {
+      createComponent({
+        initialFilterParams: {
+          'custom-field[1]': '2',
+        },
+        provide: {
+          hasCustomFieldsFeature: true,
+        },
+      });
+    });
+
+    it('passes the correct props to FilterSearchBar', () => {
+      expect(findFilteredSearch().props('initialFilterValue')).toEqual([
+        { type: 'custom-field[1]', value: { data: '2', operator: '=' } },
+      ]);
+    });
+
+    it('updates url params after onFilter event', () => {
+      findFilteredSearch().vm.$emit('onFilter', [
+        { type: 'custom-field[1]', value: { data: '2', operator: '=' } },
+      ]);
+
+      expect(updateHistory).toHaveBeenCalledWith({
+        title: '',
+        replace: true,
+        url: 'http://test.host/?custom-field[1]=2',
+      });
+
+      expect(wrapper.emitted('setFilters')).toHaveLength(1);
+    });
+  });
+
+  describe('custom fields disabled', () => {
+    beforeEach(() => {
+      createComponent({
+        initialFilterParams: {
+          'custom-field[1]': '2',
+        },
+        provide: {
+          hasCustomFieldsFeature: false,
+        },
+      });
+    });
+
+    it('does not pass customfield params to FilterSearchBar', () => {
+      expect(findFilteredSearch().props('initialFilterValue')).toEqual([]);
+    });
+
+    it('does not update url params after onFilter event', () => {
+      findFilteredSearch().vm.$emit('onFilter', [
+        { type: 'custom-field[1]', value: { data: '2', operator: '=' } },
+      ]);
+
+      expect(updateHistory).toHaveBeenCalledWith({
+        title: '',
+        replace: true,
+        url: 'http://test.host/',
+      });
+
+      expect(wrapper.emitted('setFilters')).toHaveLength(1);
     });
   });
 });

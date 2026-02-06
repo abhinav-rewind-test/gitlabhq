@@ -22,7 +22,11 @@ class Projects::MergeRequests::DraftsController < Projects::MergeRequests::Appli
   end
 
   def create
-    create_params = draft_note_params.merge(in_reply_to_discussion_id: params[:in_reply_to_discussion_id])
+    create_params = draft_note_params.merge(
+      in_reply_to_discussion_id: params[:in_reply_to_discussion_id],
+      note_type: params.dig(:draft_note, :type)
+    )
+
     create_service = DraftNotes::CreateService.new(merge_request, current_user, create_params)
 
     draft_note = create_service.execute
@@ -53,7 +57,8 @@ class Projects::MergeRequests::DraftsController < Projects::MergeRequests::Appli
   end
 
   def publish
-    result = DraftNotes::PublishService.new(merge_request, current_user).execute(draft_note(allow_nil: true))
+    result = DraftNotes::PublishService.new(merge_request, current_user, draft_note_ids_param)
+      .execute(draft: draft_note(allow_nil: true))
 
     if create_note_params[:note]
       ::Notes::CreateService.new(@project, current_user, create_note_params).execute
@@ -109,7 +114,8 @@ class Projects::MergeRequests::DraftsController < Projects::MergeRequests::Appli
       :note,
       :position,
       :resolve_discussion,
-      :line_code
+      :line_code,
+      :internal
     ).tap do |h|
       # Old FE version will still be sending `draft_note[commit_id]` as 'undefined'.
       # That can result to having a note linked to a commit with 'undefined' ID
@@ -125,6 +131,13 @@ class Projects::MergeRequests::DraftsController < Projects::MergeRequests::Appli
       create_params[:noteable_type] = merge_request.class.name
       create_params[:noteable_id] = merge_request.id
     end
+  end
+
+  def draft_note_ids_param
+    permitted_params = params.permit(ids: [])
+    permitted_params[:ids] = permitted_params[:ids]&.map(&:to_i) if permitted_params[:ids].present?
+
+    permitted_params
   end
 
   def approve_params
@@ -149,11 +162,14 @@ class Projects::MergeRequests::DraftsController < Projects::MergeRequests::Appli
   end
 
   def render_draft_note(note)
-    params = { target_id: merge_request.id, target_type: 'MergeRequest', text: note.note }
-    result = PreviewMarkdownService.new(container: @project, current_user: current_user, params: params).execute
-    markdown_params = { markdown_engine: result[:markdown_engine], issuable_reference_expansion_enabled: true }
+    params = { target_id: merge_request.iid, target_type: 'MergeRequest', text: note.note }
+    result = PreviewMarkdownService.new(container: @project, current_user: current_user, params: params)
+      .execute do |text|
+      markdown_params = { issuable_reference_expansion_enabled: true, no_header_anchors: true }
+      view_context.markdown(text, markdown_params)
+    end
 
-    note.rendered_note = view_context.markdown(result[:text], markdown_params)
+    note.rendered_note = result[:rendered_html]
     note.users_referenced = result[:users]
     note.commands_changes = view_context.markdown(result[:commands])
 

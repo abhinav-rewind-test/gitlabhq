@@ -1,17 +1,16 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Gitaly
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Gitaly development guidelines
 ---
-
-# Gitaly development guidelines
 
 [Gitaly](https://gitlab.com/gitlab-org/gitaly) is a high-level Git RPC service used by GitLab Rails,
 Workhorse and GitLab Shell.
 
 ## Deep Dive
 
-<!-- vale gitlab.Spelling = NO -->
+<!-- vale gitlab_base.Spelling = NO -->
 
 In May 2019, Bob Van Landuyt
 hosted a Deep Dive (GitLab team members only: `https://gitlab.com/gitlab-org/create-stage/-/issues/1`)
@@ -19,9 +18,9 @@ on the [Gitaly project](https://gitlab.com/gitlab-org/gitaly). It included how t
 Ruby developer, and shared domain-specific knowledge with anyone who may work in this part of the
 codebase in the future.
 
-<!-- vale gitlab.Spelling = YES -->
+<!-- vale gitlab_base.Spelling = YES -->
 
-You can find the <i class="fa fa-youtube-play youtube" aria-hidden="true"></i> [recording on YouTube](https://www.youtube.com/watch?v=BmlEWFS8ORo), and the slides
+You can find the <i class="fa-youtube-play" aria-hidden="true"></i> [recording on YouTube](https://www.youtube.com/watch?v=BmlEWFS8ORo), and the slides
 on [Google Slides](https://docs.google.com/presentation/d/1VgRbiYih9ODhcPnL8dS0W98EwFYpJ7GXMPpX-1TM6YE/edit)
 and in [PDF](https://gitlab.com/gitlab-org/create-stage/uploads/a4fdb1026278bda5c1c5bb574379cf80/Create_Deep_Dive__Gitaly_for_Create_Ruby_Devs.pdf).
 
@@ -41,18 +40,50 @@ To read or write Git data, a request has to be made to Gitaly. This means that
 if you're developing a new feature where you need data that's not yet available
 in `lib/gitlab/git` changes have to be made to Gitaly.
 
-There should be no new code that touches Git repositories via disk access
+There should be no new code that touches Git repositories by using disk access
 anywhere in the `gitlab` repository. Anything that
-needs direct access to the Git repository *must* be implemented in Gitaly, and
-exposed via an RPC.
+needs direct access to the Git repository must be implemented in Gitaly, and
+exposed through an RPC.
 
-It's often easier to develop a new feature in Gitaly if you make the changes to
-GitLab that intends to use the new feature in a separate merge request, to be merged
-immediately after the Gitaly one. This allows you to test your changes before
-they are merged.
+To develop a new feature in Gitaly:
 
-- See [below](#running-tests-with-a-locally-modified-version-of-gitaly) for instructions on running GitLab tests with a modified version of Gitaly.
-- In GDK run `gdk install` and restart GDK using `gdk restart` to use a locally modified Gitaly version for development
+1. Raise a Gitaly merge request with the required changes.
+1. Also raise a GitLab merge request that makes use of the Gitaly changes.
+1. Test both sets of changes locally by running a local version of Gitaly that contains your changes along with your modified version of GitLab to test your changes in both projects before they're merged.
+
+See [below](#running-tests-with-a-locally-modified-version-of-gitaly) for instructions on running GitLab tests with a modified version of Gitaly.
+
+In GDK run `gdk install` and restart GDK using `gdk restart` to use a locally modified Gitaly version for development
+
+## Gitaly version compatibility requirement
+
+Compatibility between new Gitaly client versions and old Gitaly versions must be maintained during an upgrade. During an
+upgrade, Gitaly clients (for example, Rails) could be upgraded to the new version before Gitaly is upgraded. The
+newer Gitaly client can't rely on functionality that isn't available on the older Gitaly that is to be upgraded.
+
+To enforce this policy, Gitaly client developers must only use Gitaly features available in already released versions of
+Gitaly. Gitaly client developers must never develop against Gitaly features that are either:
+
+- Still in development.
+- To be released in the same milestone as the Gitaly client update that uses the features.
+
+For example:
+
+- If the current GitLab milestone is `18.1` and the version of GitLab to be released is `18.1`, all GitLab features
+  developed during the milestone must make use of features in Gitaly version `18.0` and earlier.
+- When GitLab `18.2` is released, Gitaly clients in that release must only use features that are available in Gitaly
+  `18.1` and earlier.
+- When Gitaly `18.2` is released, Gitaly client developers can use Gitaly features introduced in Gitaly `18.2`
+  for the GitLab `18.3` release.
+
+```mermaid
+sequenceDiagram
+        participant gl1 as GitLab 18.1.0
+        participant gl2 as GitLab 18.2.0
+        participant gl3 as GitLab 18.3.0
+        gl2 -->> gl1: "Clients uses Gitaly 18.1.0"
+        gl3 -->> gl2: "Clients uses Gitaly 18.2.0"
+```
 
 ## Gitaly-Related Test Failures
 
@@ -77,9 +108,9 @@ Raise an issue in the GitLab CE or EE repositories to report the issue. Include 
 ~performance ~"technical debt". Ensure that the issue contains the full stack trace and error message of the
 `TooManyInvocationsError`. Also include any known failing tests if possible.
 
-Isolate the source of the n+1 problem. This is usually a loop that results in Gitaly being called for each
+Isolate the source of the n+1 problem, which is usually a loop that results in Gitaly being called for each
 element in an array. If you are unable to isolate the problem, contact a member
-of the [Gitaly Team](https://gitlab.com/groups/gl-gitaly/group_members) for assistance.
+of the [Gitaly Team](https://gitlab.com/groups/gl-gitaly/-/group_members) for assistance.
 
 After the source has been found, wrap it in an `allow_n_plus_1_calls` block, as follows:
 
@@ -118,11 +149,11 @@ Usually, GitLab CE/EE tests use a local clone of Gitaly in
 `GITALY_SERVER_VERSION`. The `GITALY_SERVER_VERSION` file supports also
 branches and SHA to use a custom commit in [the repository](https://gitlab.com/gitlab-org/gitaly).
 
-NOTE:
-With the introduction of auto-deploy for Gitaly, the format of
-`GITALY_SERVER_VERSION` was aligned with Omnibus syntax.
-It no longer supports `=revision`, it evaluates the file content as a Git
-reference (branch or SHA). Only if it matches a semantic version does it prepend a `v`.
+> [!note]
+> With the introduction of auto-deploy for Gitaly, the format of
+> `GITALY_SERVER_VERSION` was aligned with Omnibus syntax.
+> It no longer supports `=revision`, it evaluates the file content as a Git
+> reference (branch or SHA). Only if it matches a semantic version does it prepend a `v`.
 
 If you want to run tests locally against a modified version of Gitaly you
 can replace `tmp/tests/gitaly` with a symlink. This is much faster
@@ -144,7 +175,7 @@ tests. Otherwise, Gitaly fails to boot.
 If you make changes to your local Gitaly in between test runs you need
 to manually run `make` again.
 
-Note that CI tests do not use your locally modified version of
+CI tests do not use your locally modified version of
 Gitaly. To use a custom Gitaly version in CI, you must update
 `GITALY_SERVER_VERSION` as described at the beginning of this section.
 
@@ -156,7 +187,7 @@ running tests:
 GITALY_REPO_URL=https://gitlab.com/nick.thomas/gitaly bundle exec rspec spec/lib/gitlab/git/repository_spec.rb
 ```
 
-If your fork of Gitaly is private, you can generate a [Deploy Token](../user/project/deploy_tokens/index.md)
+If your fork of Gitaly is private, you can generate a [Deploy Token](../user/project/deploy_tokens/_index.md)
 and specify it in the URL:
 
 ```shell
@@ -165,7 +196,7 @@ GITALY_REPO_URL=https://gitlab+deploy-token-1000:token-here@gitlab.com/nick.thom
 
 To use a custom Gitaly repository in CI/CD, for instance if you want your
 GitLab fork to always use your own Gitaly fork, set `GITALY_REPO_URL`
-as a [CI/CD variable](../ci/variables/index.md).
+as a [CI/CD variable](../ci/variables/_index.md).
 
 ### Use a locally modified version of Gitaly RPC client
 
@@ -199,7 +230,7 @@ Re-run steps 2-5 each time you want to try out new changes.
 
 ---
 
-[Return to Development documentation](index.md)
+[Return to Development documentation](_index.md)
 
 ## Wrapping RPCs in feature flags
 
@@ -277,9 +308,9 @@ Pay attention to the name of the flag and the one used in the Rails console. The
 between them (dashes replaced by underscores and name prefix is changed). Make sure to prefix all
 flags with `gitaly_`.
 
-NOTE:
-If not set in GitLab, feature flags are read as false from the console and Gitaly uses their
-default value. The default value depends on the GitLab version.
+> [!note]
+> If not set in GitLab, feature flags are read as false from the console and Gitaly uses their
+> default value. The default value depends on the GitLab version.
 
 ### Testing with GDK
 
@@ -364,9 +395,18 @@ These standard Git references are used by GitLab (through Gitaly) in any Git rep
 
 ### GitLab-specific references
 
+Commit chains that don't have Git references pointing to them can be removed when [housekeeping](../administration/housekeeping.md)
+runs. For commit chains that must remain accessible to a GitLab process or the UI, GitLab creates GitLab-specific reference to these
+commit chains to stop housekeeping removing them.
+
+These commit chains remain regardless of what users do to the repository. For example, deleting branches or force pushing.
+
+### Existing GitLab-specific references
+
 These GitLab-specific references are used exclusively by GitLab (through Gitaly):
 
-- `refs/keep-around/<object-id>`. References to commits that have pipeline jobs or merge requests. The `object-id` points to the commit the pipeline was run on.
+- `refs/keep-around/<object-id>`. Refers to commits used in the UI for merge requests, pipelines, and notes. Because `keep-around` references have no
+  lifecycle, don't use them for any new functionality.
 - `refs/merge-requests/<merge-request-iid>/`. [Merges](https://git-scm.com/docs/git-merge) merge two histories together. This ref namespace tracks information about a
   merge using the following refs under it:
   - `head`. Current `HEAD` of the merge request.
@@ -374,4 +414,30 @@ These GitLab-specific references are used exclusively by GitLab (through Gitaly)
   - If [merge trains are enabled](../ci/pipelines/merge_trains.md): `train`. Commit for the merge train.
 - `refs/pipelines/<pipeline-iid>`. References to pipelines. Temporarily used to store the pipeline commit object ID.
 - `refs/environments/<environment-slug>`. References to commits where deployments to environments were performed.
-- `refs/heads/revert-<source-commit-short-object-id>`. References to the commit's object ID created when [reverting changes](../user/project/merge_requests/revert_changes.md).
+
+### Create new GitLab-specific references
+
+GitLab-specific references are useful to ensure GitLab UI's continue to function but must be carefully managed otherwise they can cause performance
+degradation of the Git repositories they are created in.
+
+When creating new GitLab-specific references:
+
+1. Ensure Gitaly considers the new references as hidden. Hidden references are not accessible by users when they pull or fetch. Making GitLab-specific
+   references hidden prevents them from affecting end user Git performance.
+1. Ensure there is a defined lifecycle. Similar to PostgreSQL, Git repositories cannot handle an indefinite amount of data. Adding a large number of
+   references will eventually causes performance problems. Therefore, any created GitLab-specific reference should also be removed again when possible.
+1. Ensure the reference is namespaced for the feature it supports. To diagnose performance problems, references must be tied to the specific feature or model
+   in GitLab.
+
+### Test changes to GitLab-specific references
+
+Changing when GitLab-specific references are created can cause the GitLab UI or processes to fail long after the change is deployed because orphaned Git objects have a grace period before they are removed.
+
+To test changes to GitLab-specific references:
+
+1. [Locate the test repository on the file system](../administration/repository_storage_paths.md#translate-hashed-storage-paths).
+1. Force `git gc` to run on the server-side Gitaly repository:
+
+   ```shell
+   git gc --prune=now
+   ```

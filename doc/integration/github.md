@@ -1,14 +1,16 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Use GitHub as an OAuth 2.0 authentication provider
 ---
 
-# Use GitHub as an OAuth 2.0 authentication provider
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 You can integrate your GitLab instance with GitHub.com and GitHub Enterprise.
 You can import projects from GitHub, or sign in to GitLab
@@ -33,7 +35,7 @@ vulnerability can compromise GitLab accounts.
 To mitigate this vulnerability, append `/users/auth` to the authorization
 callback URL.
 
-However, as far as we know, GitHub does not validate the subdomain part of the `redirect_uri`.
+However, GitHub does not validate the subdomain part of the `redirect_uri`.
 Therefore, a subdomain takeover, an XSS, or an open redirect on any subdomain of
 your website could enable the covert redirect attack.
 
@@ -202,7 +204,7 @@ GitLab instance and GitHub Enterprise.
 
 To check for a connectivity issue:
 
-1. Go to the [`production.log`](../administration/logs/index.md#productionlog)
+1. Go to the [`production.log`](../administration/logs/_index.md#productionlog)
    on your GitLab server and look for the following error:
 
    ``` plaintext
@@ -237,7 +239,7 @@ and then connect it to your GitHub account
 
 To fix this issue, you must activate GitHub sign-in in GitLab:
 
-1. On the left sidebar, select your avatar.
+1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
-1. On the left sidebar, select **Account**.
+1. In the left sidebar, select **Account**.
 1. In the **Service sign-in** section, select **Connect to GitHub**.

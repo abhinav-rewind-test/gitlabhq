@@ -235,7 +235,7 @@ RSpec.describe HelpController do
 
       context 'when requested file exists' do
         before do
-          stub_doc_file_read(file_name: 'user/ssh.md', content: fixture_file('blockquote_fence_after.md'))
+          stub_doc_file_read(file_name: 'user/ssh.md', content: fixture_file('sample_doc.md'))
           stub_application_setting(help_page_documentation_base_url: '')
 
           subject
@@ -306,6 +306,34 @@ RSpec.describe HelpController do
         it_behaves_like 'documentation pages redirect', 'https://in-yaml.gitlab.com'
       end
 
+      context 'when path contains _index' do
+        let(:path) { 'user/ssh/_index' }
+        let(:gitlab_version) { version }
+
+        before do
+          allow(Settings).to receive(:gitlab_docs) { double(enabled: true, host: 'https://in-yaml.gitlab.com') }
+          stub_version(gitlab_version, 'ignored_revision_value')
+        end
+
+        it 'redirects to the path without _index and with version' do
+          get :show, params: { path: path }, format: :md
+
+          expect(response).to redirect_to('https://in-yaml.gitlab.com/13.4/user/ssh/')
+        end
+
+        context 'when it is a pre-release' do
+          before do
+            stub_version('13.4.0-pre', 'ignored_revision_value')
+          end
+
+          it 'redirects to the path without _index and without version' do
+            get :show, params: { path: path }, format: :md
+
+            expect(response).to redirect_to('https://in-yaml.gitlab.com/user/ssh/')
+          end
+        end
+      end
+
       context 'when requested file is missing' do
         before do
           stub_application_setting(help_page_documentation_base_url: '')
@@ -321,7 +349,7 @@ RSpec.describe HelpController do
     context 'for image formats' do
       context 'when requested file exists' do
         it 'renders the raw file' do
-          get :show, params: { path: 'user/img/markdown_logo' }, format: :png
+          get :show, params: { path: 'user/img/markdown_logo_v17_11' }, format: :png
 
           aggregate_failures do
             expect(response).to be_successful
@@ -400,6 +428,34 @@ RSpec.describe HelpController do
           expect(subject).to be_successful
           expect(assigns[:markdown]).to eq "# Test heading\n\nTest content"
         end
+      end
+    end
+  end
+
+  describe 'GET #docs' do
+    subject { get :redirect_to_docs }
+
+    before do
+      stub_application_setting(help_page_documentation_base_url: custom_docs_url)
+    end
+
+    context 'with no custom docs URL configured' do
+      let(:custom_docs_url) { nil }
+
+      it 'redirects to docs.gitlab.com' do
+        subject
+
+        expect(response).to redirect_to('https://docs.gitlab.com')
+      end
+    end
+
+    context 'with a custom docs URL configured' do
+      let(:custom_docs_url) { 'https://foo.example.com' }
+
+      it 'redirects to the configured docs URL' do
+        subject
+
+        expect(response).to redirect_to(custom_docs_url)
       end
     end
   end

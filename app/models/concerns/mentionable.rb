@@ -25,7 +25,7 @@ module Mentionable
     end
 
     if self < Participable
-      participant -> (user, ext) { all_references(user, extractor: ext) }
+      participant ->(user, ext) { all_references(user, extractor: ext) }
     end
   end
 
@@ -86,10 +86,6 @@ module Mentionable
 
   def referenced_projects(current_user = nil)
     Project.where(id: user_mentions.select("unnest(mentioned_projects_ids)")).public_or_visible_to_user(current_user)
-  end
-
-  def referenced_project_users(current_user = nil)
-    User.joins(:project_members).where(members: { source_id: referenced_projects(current_user) }).distinct
   end
 
   def referenced_groups(current_user = nil)
@@ -179,7 +175,7 @@ module Mentionable
   private
 
   def extracted_mentionables(refs)
-    refs.issues + refs.merge_requests + refs.commits
+    (refs.work_items + refs.issues).uniq(&:id) + refs.merge_requests + refs.commits
   end
 
   # Returns a Hash of changed mentionable fields

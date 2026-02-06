@@ -13,10 +13,10 @@ RSpec.describe Packages::Debian::SignDistributionService, feature_category: :pac
       let(:detach) { detach }
 
       if container_type == :group
-        let_it_be(:distribution) { create('debian_group_distribution', container: group) }
+        let_it_be(:distribution, refind: true) { create('debian_group_distribution', container: group) }
       else
         let_it_be(:project) { create(:project, group: group) }
-        let_it_be(:distribution) { create('debian_project_distribution', container: project) }
+        let_it_be(:distribution, refind: true) { create('debian_project_distribution', container: project) }
       end
 
       describe '#execute' do
@@ -43,7 +43,8 @@ RSpec.describe Packages::Debian::SignDistributionService, feature_category: :pac
             if detach
               expect(subject).to start_with("-----BEGIN PGP SIGNATURE-----\n")
             else
-              expect(subject).to start_with("-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n#{content}\n-----BEGIN PGP SIGNATURE-----\n")
+              # The hash algorithm depends on GPG version: 2.4.x uses SHA512, 2.2.x uses SHA256
+              expect(subject).to match(/\A-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA(256|512)\n\n#{Regexp.escape(content)}\n-----BEGIN PGP SIGNATURE-----\n/)
             end
 
             expect(subject).to end_with("\n-----END PGP SIGNATURE-----\n")

@@ -88,7 +88,6 @@ function createComponent({
   slots = defaultSlots,
   scopedSlots = defaultScopedSlots,
   mountFn = mount,
-  groupMultiSelectTokens = false,
 } = {}) {
   return mountFn(BaseToken, {
     propsData: {
@@ -96,9 +95,6 @@ function createComponent({
       ...props,
     },
     provide: {
-      glFeatures: {
-        groupMultiSelectTokens,
-      },
       portalName: 'fake target',
       alignSuggestions: jest.fn(),
       suggestionsListClass: () => 'custom-class',
@@ -130,7 +126,11 @@ describe('BaseToken', () => {
     it('calls `getRecentlyUsedSuggestions` to populate `recentSuggestions` when `recentSuggestionsStorageKey` is defined', () => {
       wrapper = createComponent();
 
-      expect(getRecentlyUsedSuggestions).toHaveBeenCalledWith(mockStorageKey);
+      expect(getRecentlyUsedSuggestions).toHaveBeenCalledWith(
+        mockStorageKey,
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 
@@ -166,7 +166,6 @@ describe('BaseToken', () => {
             suggestions: mockLabels,
             getActiveTokenValue: mockGetActiveTokenValue,
           },
-          groupMultiSelectTokens: true,
         });
 
         const lastTitle = mockLabels[mockLabels.length - 1].title;
@@ -231,7 +230,12 @@ describe('BaseToken', () => {
             const props = { defaultSuggestions: [], suggestions: mockSuggestions };
 
             getRecentlyUsedSuggestions.mockReturnValue([]);
-            wrapper = createComponent({ props, mountFn: shallowMountExtended, stubs: {} });
+            wrapper = createComponent({
+              props,
+              mountFn: shallowMountExtended,
+              stubs: {},
+              data: { isFetching: true },
+            });
             findGlFilteredSearchToken().vm.$emit('input', { data: searchKey });
 
             await nextTick();
@@ -255,10 +259,15 @@ describe('BaseToken', () => {
         const props = { defaultSuggestions: [], suggestions: mockSuggestions, config };
 
         getRecentlyUsedSuggestions.mockReturnValue([]);
-        wrapper = createComponent({ props, mountFn: shallowMountExtended, stubs: {} });
+        wrapper = createComponent({
+          props,
+          data: { isFetching: true },
+          mountFn: shallowMountExtended,
+          stubs: {},
+        });
 
         expect(findMockSuggestionList().exists()).toBe(true);
-        expect(getMockSuggestionListSuggestions().length).toEqual(maxSuggestions);
+        expect(getMockSuggestionListSuggestions()).toHaveLength(maxSuggestions);
       });
     });
 
@@ -355,8 +364,9 @@ describe('BaseToken', () => {
         it(`${
           shouldRenderFilteredSearchSuggestion ? 'should' : 'should not'
         } render GlFilteredSearchSuggestion`, () => {
-          const filteredSearchSuggestions = wrapper.findAllComponents(GlFilteredSearchSuggestion)
-            .wrappers;
+          const filteredSearchSuggestions = wrapper.findAllComponents(
+            GlFilteredSearchSuggestion,
+          ).wrappers;
 
           if (shouldRenderFilteredSearchSuggestion) {
             expect(filteredSearchSuggestions.map((c) => c.props())).toMatchObject(
@@ -367,13 +377,26 @@ describe('BaseToken', () => {
           }
         });
       });
+
+      describe('when searching for a value', () => {
+        beforeEach(() => {
+          wrapper = createComponent({
+            props: { defaultSuggestions: OPTIONS_NONE_ANY },
+          });
+          findGlFilteredSearchToken().vm.$emit('input', { data: 'foo' });
+        });
+
+        it('does not render default suggestions', () => {
+          expect(wrapper.findComponent(GlFilteredSearchSuggestion).exists()).toBe(false);
+        });
+      });
     });
 
     describe('with no suggestions', () => {
       it.each`
-        data                       | expected
-        ${{ searchKey: 'search' }} | ${'No matches found'}
-        ${{ hasFetched: true }}    | ${'No suggestions found'}
+        data                                         | expected
+        ${{ searchKey: 'search', isFetching: true }} | ${'No matches found'}
+        ${{ isFetching: true }}                      | ${'No suggestions found'}
       `('shows $expected text', ({ data, expected }) => {
         wrapper = createComponent({
           props: {
@@ -440,6 +463,7 @@ describe('BaseToken', () => {
           config: mockLabelToken,
           suggestionsLoading: true,
         },
+        data: { isFetching: false },
         stubs: { Portal: true },
       });
 

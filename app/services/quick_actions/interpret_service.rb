@@ -9,9 +9,10 @@ module QuickActions
     include Gitlab::QuickActions::IssueAndMergeRequestActions
     include Gitlab::QuickActions::MergeRequestActions
     include Gitlab::QuickActions::CommitActions
-    include Gitlab::QuickActions::CommonActions
     include Gitlab::QuickActions::RelateActions
     include Gitlab::QuickActions::WorkItemActions
+
+    QuickActionsNotAllowedError = Class.new(StandardError)
 
     attr_reader :quick_action_target
 
@@ -32,6 +33,9 @@ module QuickActions
       end.compact
     end
 
+    # IMPORTANT: unsafe! Use `execute_with_original_text` instead as it handles cleanup of any residual quick actions
+    # left in the original description.
+    #
     # Takes a text and interprets the commands that are extracted from it.
     # Returns the content without commands, a hash of changes to be applied to a record
     # and a string containing the execution_message to show to the user.
@@ -41,11 +45,32 @@ module QuickActions
       @quick_action_target = quick_action_target
       @updates = {}
       @execution_message = {}
+      @additional_properties = {}
 
       content, commands = extractor.extract_commands(content, only: only)
       extract_updates(commands)
 
       [content, @updates, execution_messages_for(commands), command_names(commands)]
+    end
+
+    # Similar to `execute` except also tries to extract any quick actions from original_text,
+    # and if found removes them from the main list of quick actions.
+    def execute_with_original_text(new_text, quick_action_target, only: nil, original_text: nil)
+      sanitized_new_text, new_command_params, execution_messages, command_names = execute(
+        new_text, quick_action_target, only: only
+      )
+
+      if original_text
+        _, original_command_params = self.class.new(
+          container: container,
+          current_user: current_user,
+          params: params
+        ).execute(original_text, quick_action_target, only: only)
+
+        new_command_params = (new_command_params.to_a - original_command_params.to_a).to_h if original_command_params
+      end
+
+      [sanitized_new_text, new_command_params, execution_messages, command_names]
     end
 
     # Takes a text and interprets the commands that are extracted from it.
@@ -89,20 +114,29 @@ module QuickActions
         failed_parse(format(_("Failed to find users for %{missing}"), missing: err.message))
       when Gitlab::QuickActions::UsersExtractor::TooManyRefsError
         failed_parse(format(_('Too many references. Quick actions are limited to at most %{max_count} user references'),
-                 max_count: err.limit))
+          max_count: err.limit))
       when Gitlab::QuickActions::UsersExtractor::TooManyFoundError
         failed_parse(format(_("Too many users found. Quick actions are limited to at most %{max_count} users"),
-                 max_count: err.limit))
+          max_count: err.limit))
       else
         Gitlab::ErrorTracking.track_and_raise_for_dev_exception(err)
         failed_parse(_('Something went wrong'))
       end
     end
 
-    def find_milestones(project, params = {})
-      group_ids = project.group.self_and_ancestors.select(:id) if project.group
+    def find_milestones(container, params = {})
+      return [] unless container
 
-      MilestonesFinder.new(params.merge(project_ids: [project.id], group_ids: group_ids)).execute
+      group_ids =
+        if container.is_a?(Group)
+          group.self_and_ancestors.select(:id)
+        elsif container.is_a?(Project) && container.group
+          container.group.self_and_ancestors.select(:id)
+        else
+          []
+        end
+
+      MilestonesFinder.new(params.merge(project_ids: [project&.id], group_ids: group_ids)).execute
     end
 
     def parent
@@ -110,7 +144,13 @@ module QuickActions
     end
 
     def find_labels(labels_params = nil)
-      extract_references(labels_params, :label) | find_labels_by_name_no_tilde(labels_params)
+      extracted_references = extract_references(labels_params, :label) | find_labels_by_name_no_tilde(labels_params)
+
+      if Feature.enabled?(:labels_archive, group || project_group)
+        extracted_references = extracted_references.reject(&:archived)
+      end
+
+      extracted_references
     end
 
     def find_labels_by_name_no_tilde(labels_params)
@@ -154,7 +194,7 @@ module QuickActions
     end
 
     def map_commands(commands, method)
-      commands.map do |name_or_alias, arg|
+      commands.flat_map do |name_or_alias, arg|
         definition = self.class.definition_by_name(name_or_alias)
         next unless definition
 
@@ -199,10 +239,18 @@ module QuickActions
     # rubocop: enable CodeReuse/ActiveRecord
 
     def usage_ping_tracking(quick_action_name, arg)
+      # Need to add this guard clause as `duo_code_review` quick action will fail
+      # if we continue to track its usage. This is because we don't have a metric
+      # for it and this is something that can change soon (e.g. quick action may
+      # be replaced by a UI component).
+      return if quick_action_name == :duo_code_review
+
       Gitlab::UsageDataCounters::QuickActionActivityUniqueCounter.track_unique_action(
         quick_action_name.to_s,
         args: arg&.strip,
-        user: current_user
+        user: current_user,
+        project: project,
+        additional_properties: @additional_properties[quick_action_name]
       )
     end
 

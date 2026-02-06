@@ -5,12 +5,38 @@ module API
     module NotesHelpers
       include ::RendersNotes
 
-      def self.feature_category_per_noteable_type
-        {
-          Issue => :team_planning,
-          MergeRequest => :code_review_workflow,
-          Snippet => :source_code_management
-        }
+      NoteableType = Data.define(:noteable_class, :feature_category, :noteables_str, :parent_type, :policy_base) do
+        def initialize(
+          noteable_class:,
+          feature_category:,
+          noteables_str: noteable_class.to_s.underscore.pluralize,
+          parent_type: noteable_class.parent_class.to_s.underscore,
+          policy_base: nil
+        )
+          super
+        end
+
+        def human_name
+          noteable_class.to_s.underscore.tr('_/', ' ')
+        end
+      end
+
+      def self.noteable_types
+        [
+          NoteableType.new(noteable_class: Issue, feature_category: :team_planning),
+          NoteableType.new(
+            noteable_class: MergeRequest,
+            feature_category: :code_review_workflow,
+            policy_base: 'merge_requests'
+          ),
+          NoteableType.new(noteable_class: Snippet, feature_category: :source_code_management),
+          NoteableType.new(
+            noteable_class: WikiPage::Meta,
+            feature_category: :wiki,
+            noteables_str: 'wiki_pages',
+            parent_type: 'project'
+          )
+        ]
       end
 
       def update_note(noteable, note_id)
@@ -27,10 +53,8 @@ module API
 
         note = ::Notes::UpdateService.new(project, current_user, opts).execute(note)
 
-        if note.errors.blank?
+        process_note_creation_result(note) do
           present note, with: Entities::Note
-        else
-          bad_request!("Failed to save note #{note.errors.messages}")
         end
       end
 
@@ -75,7 +99,7 @@ module API
       end
 
       def noteable_read_ability_name(noteable)
-        "read_#{ability_name(noteable)}".to_sym
+        :"read_#{ability_name(noteable)}"
       end
 
       def ability_name(noteable)
@@ -86,8 +110,8 @@ module API
         end
       end
 
-      def find_noteable(noteable_type, noteable_id)
-        params = finder_params_by_noteable_type_and_id(noteable_type, noteable_id)
+      def find_noteable(noteable_type, noteable_id, parent_type = nil)
+        params = finder_params_by_noteable_type_and_id(noteable_type, noteable_id, parent_type)
 
         noteable = NotesFinder.new(current_user, params).target
 
@@ -99,7 +123,7 @@ module API
         noteable || not_found!(noteable_type)
       end
 
-      def finder_params_by_noteable_type_and_id(type, id)
+      def finder_params_by_noteable_type_and_id(type, id, parent_type)
         target_type = type.name.underscore
         { target_type: target_type }.tap do |h|
           if %w[issue merge_request].include?(target_type)
@@ -108,16 +132,19 @@ module API
             h[:target_id] = id
           end
 
-          add_parent_to_finder_params(h, type)
+          add_parent_to_finder_params(h, type, parent_type)
         end
       end
 
-      def add_parent_to_finder_params(finder_params, noteable_type)
-        finder_params[:project] = user_project
+      def add_parent_to_finder_params(finder_params, noteable_type, parent_type)
+        finder_params[:project] = user_project if parent_type != 'group'
       end
 
       def noteable_parent(noteable)
-        public_send("user_#{noteable.class.parent_class.to_s.underscore}") # rubocop:disable GitlabSecurity/PublicSend
+        parent_class ||= noteable.container.class.name if noteable.is_a?(WikiPage::Meta)
+        parent_class ||= noteable.class.parent_class
+
+        public_send("user_#{parent_class.to_s.underscore}") # rubocop:disable GitlabSecurity/PublicSend
       end
 
       def create_note(noteable, opts)
@@ -134,9 +161,25 @@ module API
         ::Notes::CreateService.new(project, current_user, opts).execute
       end
 
+      def process_note_creation_result(note, &block)
+        quick_action_status = note.quick_actions_status
+
+        if quick_action_status&.commands_only? && quick_action_status.success?
+          status 202
+          present note, with: Entities::NoteCommands
+        elsif note.errors.present?
+          bad_request!("Note #{note.errors.messages}")
+        elsif note.persisted?
+          yield
+        elsif quick_action_status&.error?
+          bad_request!(quick_action_status.error_messages.join(', '))
+        end
+      end
+
       def resolve_discussion(noteable, discussion_id, resolved)
         discussion = noteable.find_discussion(discussion_id)
 
+        not_found!('Discussion') unless discussion
         forbidden! unless discussion.can_resolve?(current_user)
 
         if resolved
@@ -151,6 +194,31 @@ module API
 
       def disable_query_limiting
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/211538')
+      end
+
+      def self.job_token_policy_for(noteable_type, http_method)
+        return unless noteable_type&.policy_base
+        return unless http_method.present?
+
+        # Job tokens are restricted to read-only operations
+        raise ArgumentError, "Job tokens only support read operations" unless %w[GET HEAD].include?(http_method)
+
+        :"read_#{noteable_type.policy_base}"
+      end
+
+      def self.permission_name_for(noteable_type, http_method)
+        noteable_name = noteable_type.noteable_class.to_s.underscore.tr('/', '_')
+
+        # Map HTTP methods to CRUD operations
+        operation = case http_method
+                    when 'GET' then 'read'
+                    when 'POST' then 'create'
+                    when 'PUT', 'PATCH' then 'update'
+                    when 'DELETE' then 'delete'
+                    else raise ArgumentError, "Unsupported HTTP method: #{http_method}"
+                    end
+
+        :"#{operation}_#{noteable_name}_note"
       end
 
       private

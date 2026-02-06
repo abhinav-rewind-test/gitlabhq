@@ -9,7 +9,7 @@ import { createAlert } from '~/alert';
 import Description from '~/issues/show/components/description.vue';
 import eventHub from '~/issues/show/event_hub';
 import createWorkItemMutation from '~/work_items/graphql/create_work_item.mutation.graphql';
-import workItemTypesQuery from '~/work_items/graphql/project_work_item_types.query.graphql';
+import workItemTypesQuery from '~/work_items/graphql/namespace_work_item_types.query.graphql';
 import workItemByIidQuery from '~/work_items/graphql/work_item_by_iid.query.graphql';
 import TaskList from '~/task_list';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
@@ -17,9 +17,9 @@ import {
   createWorkItemMutationErrorResponse,
   createWorkItemMutationResponse,
   getIssueDetailsResponse,
-  projectWorkItemTypesQueryResponse,
+  namespaceWorkItemTypesQueryResponse,
   workItemByIidResponseFactory,
-} from 'jest/work_items/mock_data';
+} from 'ee_else_ce_jest/work_items/mock_data';
 import {
   descriptionProps as initialProps,
   descriptionHtmlWithList,
@@ -36,15 +36,15 @@ const $toast = {
 };
 
 const issueDetailsResponse = getIssueDetailsResponse();
-const workItemTypesQueryHandler = jest.fn().mockResolvedValue(projectWorkItemTypesQueryResponse);
+const workItemTypesQueryHandler = jest.fn().mockResolvedValue(namespaceWorkItemTypesQueryResponse);
 
 describe('Description component', () => {
   let wrapper;
 
   Vue.use(VueApollo);
 
-  const findGfmContent = () => wrapper.find('[data-testid="gfm-content"]');
-  const findTextarea = () => wrapper.find('[data-testid="textarea"]');
+  const findGfmContent = () => wrapper.findByTestId('gfm-content');
+  const findTextarea = () => wrapper.findByTestId('textarea');
   const findListItems = () => findGfmContent().findAll('ul > li');
   const findTaskActionButtons = () => wrapper.findAll('.task-list-item-actions');
 
@@ -151,13 +151,13 @@ describe('Description component', () => {
       TaskList.mockClear();
     });
 
-    it('re-inits the TaskList when description changed', () => {
+    it('re-inits the TaskList when description changed', async () => {
       createComponent({
         props: {
           issuableType: 'issuableType',
         },
       });
-      wrapper.setProps({
+      await wrapper.setProps({
         descriptionHtml: 'changed',
       });
 
@@ -178,13 +178,13 @@ describe('Description component', () => {
       expect(TaskList).not.toHaveBeenCalled();
     });
 
-    it('calls with issuableType dataType', () => {
+    it('calls with issuableType dataType', async () => {
       createComponent({
         props: {
           issuableType: 'issuableType',
         },
       });
-      wrapper.setProps({
+      await wrapper.setProps({
         descriptionHtml: 'changed',
       });
 
@@ -269,7 +269,7 @@ describe('Description component', () => {
           });
           await waitForPromises();
 
-          eventHub.$emit('convert-task-list-item', '4:4-8:19');
+          eventHub.$emit('convert-task-list-item', { id: '1', sourcepos: '4:4-8:19' });
           await waitForPromises();
         });
 
@@ -284,6 +284,10 @@ describe('Description component', () => {
         });
 
         it('calls a mutation to create a task', () => {
+          const workItemTypeIdForTask =
+            namespaceWorkItemTypesQueryResponse.data.namespace.workItemTypes.nodes.find(
+              (node) => node.name === 'Task',
+            ).id;
           const { confidential, iteration, milestone } = issueDetailsResponse.data.issue;
           expect(createWorkItemMutationHandler).toHaveBeenCalledWith({
             input: {
@@ -300,7 +304,7 @@ describe('Description component', () => {
               },
               projectPath: 'gitlab-org/gitlab-test',
               title: 'item 2',
-              workItemTypeId: 'gid://gitlab/WorkItems::Type/3',
+              workItemTypeId: workItemTypeIdForTask,
             },
           });
         });
@@ -320,7 +324,7 @@ describe('Description component', () => {
           });
           await waitForPromises();
 
-          eventHub.$emit('convert-task-list-item', '1:1-1:11');
+          eventHub.$emit('convert-task-list-item', { id: '1', sourcepos: '1:1-1:11' });
           await waitForPromises();
         });
 
@@ -351,7 +355,7 @@ describe('Description component', () => {
           props: { descriptionText },
         });
 
-        eventHub.$emit('delete-task-list-item', '4:4-5:19');
+        eventHub.$emit('delete-task-list-item', { id: '1', sourcepos: '4:4-5:19' });
 
         expect(wrapper.emitted('saveDescription')).toEqual([[newDescriptionText]]);
       });

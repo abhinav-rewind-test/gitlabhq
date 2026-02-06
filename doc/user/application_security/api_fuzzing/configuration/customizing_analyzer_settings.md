@@ -1,36 +1,34 @@
 ---
-stage: Secure
+stage: Application Security Testing
 group: Dynamic Analysis
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Customizing analyzer settings
 ---
-
-# Customizing analyzer settings
 
 The API fuzzing behavior can be changed through CI/CD variables.
 
-From GitLab 13.12 and later, the default API fuzzing configuration file is `.gitlab/gitlab-api-fuzzing-config.yml`. In GitLab 14.0 and later, API fuzzing configuration files must be in your repository's
-`.gitlab` directory instead of your repository's root.
+The API fuzzing configuration files must be in your repository's `.gitlab` directory.
 
-WARNING:
-All customization of GitLab security scanning tools should be tested in a merge request before
-merging these changes to the default branch. Failure to do so can give unexpected results,
-including a large number of false positives.
+> [!warning]
+> All customization of GitLab security scanning tools should be tested in a merge request before
+> merging these changes to the default branch. Failure to do so can give unexpected results,
+> including a large number of false positives.
 
 ## Authentication
 
 Authentication is handled by providing the authentication token as a header or cookie. You can
 provide a script that performs an authentication flow or calculates the token.
 
-### HTTP Basic Authentication
+### HTTP basic authentication
 
 [HTTP basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication)
 is an authentication method built into the HTTP protocol and used in conjunction with
 [transport layer security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security).
 
-We recommended that you [create a CI/CD variable](../../../../ci/variables/index.md#for-a-project)
+We recommended that you [create a CI/CD variable](../../../../ci/variables/_index.md#for-a-project)
 for the password (for example, `TEST_API_PASSWORD`), and set it to be masked. You can create CI/CD
-variables from the GitLab project's page at **Settings > CI/CD**, in the **Variables** section.
-Because of the [limitations on masked variables](../../../../ci/variables/index.md#mask-a-cicd-variable),
+variables from the GitLab project's page at **Settings** > **CI/CD**, in the **Variables** section.
+Because of the [limitations on masked variables](../../../../ci/variables/_index.md#mask-a-cicd-variable),
 you should Base64-encode the password before adding it as a variable.
 
 Finally, add two CI/CD variables to your `.gitlab-ci.yml` file:
@@ -75,10 +73,10 @@ outgoing HTTP requests.
 
 Follow these steps to provide the bearer token with `FUZZAPI_OVERRIDES_ENV`:
 
-1. [Create a CI/CD variable](../../../../ci/variables/index.md#for-a-project),
+1. [Create a CI/CD variable](../../../../ci/variables/_index.md#for-a-project),
    for example `TEST_API_BEARERAUTH`, with the value
    `{"headers":{"Authorization":"Bearer dXNlcm5hbWU6cGFzc3dvcmQ="}}` (substitute your token). You
-   can create CI/CD variables from the GitLab projects page at **Settings > CI/CD**, in the
+   can create CI/CD variables from the GitLab projects page at **Settings** > **CI/CD**, in the
    **Variables** section.
 
 1. In your `.gitlab-ci.yml` file, set `FUZZAPI_OVERRIDES_ENV` to the variable you just created:
@@ -98,7 +96,7 @@ Follow these steps to provide the bearer token with `FUZZAPI_OVERRIDES_ENV`:
    ```
 
 1. To validate that authentication is working, run an API fuzzing test and review the fuzzing logs
-   and the test API's application logs. See the [overrides section](#overrides) for more information about override commands.
+   and the test APIs application logs. See the [overrides section](#overrides) for more information about override commands.
 
 #### Token generated at test runtime
 
@@ -136,7 +134,7 @@ variables:
 ```
 
 To validate that authentication is working, run an API fuzzing test and review the fuzzing logs and
-the test API's application logs.
+the test APIs application logs.
 
 #### Token has short expiration
 
@@ -180,7 +178,7 @@ variables:
 ```
 
 To validate that authentication is working, run an API fuzzing test and review the fuzzing logs and
-the test API's application logs.
+the test APIs application logs.
 
 ## API fuzzing profiles
 
@@ -189,7 +187,7 @@ GitLab provides the configuration file
 It contains several testing profiles that perform a specific numbers of tests. The runtime of each
 profile increases as the number of tests increases.
 
-| Profile   | Fuzz Tests (per parameter) |
+| Profile   | Fuzz tests (per parameter) |
 |:----------|:---------------------------|
 | Quick-10  | 10 |
 | Medium-20 | 20 |
@@ -198,7 +196,7 @@ profile increases as the number of tests increases.
 
 ## Overrides
 
-API Fuzzing provides a method to add or override specific items in your request, for example:
+API fuzzing provides a method to add or override specific items in your request, for example:
 
 - Headers
 - Cookies
@@ -396,7 +394,7 @@ variables:
 ```
 
 In this example `.gitlab-ci.yml`, the `SECRET_OVERRIDES` variable provides the JSON. This is a
-[group or instance level CI/CD variable defined in the UI](../../../../ci/variables/index.md#define-a-cicd-variable-in-the-ui):
+[group or instance level CI/CD variable defined in the UI](../../../../ci/variables/_index.md#define-a-cicd-variable-in-the-ui):
 
 ```yaml
 stages:
@@ -421,9 +419,11 @@ container that has Python 3 and Bash installed.
 You have to set the environment variable `FUZZAPI_OVERRIDES_CMD` to the program or script you would like
 to execute. The provided command creates the overrides JSON file as defined previously.
 
-You might want to install other scripting runtimes like NodeJS or Ruby, or maybe you need to install a dependency for
-your overrides command. In this case, we recommend setting the `FUZZAPI_PRE_SCRIPT` to the file path of a script which
-provides those prerequisites. The script provided by `FUZZAPI_PRE_SCRIPT` is executed once, before the analyzer starts.
+You might want to install other scripting runtimes like NodeJS or Ruby, or maybe you need to install a dependency for your overrides command. In this case, you should set the `FUZZAPI_PRE_SCRIPT` to the file path of a script that provides those prerequisites. The script provided by `FUZZAPI_PRE_SCRIPT` is executed once, before the analyzer starts.
+
+> [!note]
+> When performing actions that require elevated permissions, make use of the `sudo` command.
+> For example, `sudo apk add nodejs`.
 
 See the [Alpine Linux package management](https://wiki.alpinelinux.org/wiki/Alpine_Linux_package_management)
 page for information about installing Alpine Linux packages.
@@ -438,8 +438,8 @@ Optionally:
 
 - `FUZZAPI_PRE_SCRIPT`: Script to install runtimes or dependencies before the analyzer starts.
 
-WARNING:
-To execute scripts in Alpine Linux you must first use the command [`chmod`](https://www.gnu.org/software/coreutils/manual/html_node/chmod-invocation.html) to set the [execution permission](https://www.gnu.org/software/coreutils/manual/html_node/Setting-Permissions.html). For example, to set the execution permission of `script.py` for everyone, use the command: `chmod a+x script.py`. If needed, you can version your `script.py` with the execution permission already set.
+> [!warning]
+> To execute scripts in Alpine Linux you must first use the command [`chmod`](https://www.gnu.org/software/coreutils/manual/html_node/chmod-invocation.html) to set the [execution permission](https://www.gnu.org/software/coreutils/manual/html_node/Setting-Permissions.html). For example, to set the execution permission of `script.py` for everyone, use the command: `sudo chmod a+x script.py`. If needed, you can version your `script.py` with the execution permission already set.
 
 ```yaml
 stages:
@@ -458,8 +458,6 @@ variables:
 ```
 
 ### Debugging overrides
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/334578) in GitLab 14.8.
 
 By default the output of the overrides command is hidden. If the overrides command returns a non zero exit code, the command is displayed as part of your job output. Optionally, you can set the variable `FUZZAPI_OVERRIDES_CMD_VERBOSE` to any value to display overrides command output as it is generated. This is useful when testing your overrides script, but should be disabled afterwards as it slows down testing.
 
@@ -585,9 +583,7 @@ As for example, the following script `user-pre-scan-set-up.sh`:
 
 echo "**** install python dependencies ****"
 
-python3 -m ensurepip
-pip3 install --no-cache --upgrade \
-    pip \
+sudo pip3 install --no-cache --upgrade --break-system-packages \
     requests \
     backoff
 
@@ -619,9 +615,7 @@ In the previous sample, you could use the script `user-pre-scan-set-up.sh` to al
 
 ## Exclude Paths
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/211892) in GitLab 14.0.
-
-When testing an API it can be useful to exclude certain paths. For example, you might exclude testing of an authentication service or an older version of the API. To exclude paths, use the `FUZZAPI_EXCLUDE_PATHS` CI/CD variable . This variable is specified in your `.gitlab-ci.yml` file. To exclude multiple paths, separate entries using the `;` character. In the provided paths you can use a single character wildcard `?` and `*` for a multiple character wildcard.
+When testing an API it can be useful to exclude certain paths. For example, you might exclude testing of an authentication service or an older version of the API. To exclude paths, use the `FUZZAPI_EXCLUDE_PATHS` CI/CD variable. This variable is specified in your `.gitlab-ci.yml` file. To exclude multiple paths, separate entries using the `;` character. In the provided paths you can use a single character wildcard `?` and `*` for a multiple character wildcard.
 
 To verify the paths are excluded, review the `Tested Operations` and `Excluded Operations` portion of the job output. You should not see any excluded paths listed under `Tested Operations`.
 
@@ -644,14 +638,15 @@ variables:
   FUZZAPI_EXCLUDE_PATHS: /auth
 ```
 
-To exclude `/auth`, and child resources (`/auth/child`), we use a wildcard.
+To exclude `/auth`, and child resources (`/auth/child`), use a wildcard:
 
 ```yaml
 variables:
   FUZZAPI_EXCLUDE_PATHS: /auth*
 ```
 
-To exclude multiple paths we can use the `;` character. In this example we exclude `/auth*` and `/v1/*`.
+To exclude multiple paths, use the `;` character to separate the paths. This example
+shows how to do so by excluding `/auth*` and `/v1/*`.
 
 ```yaml
 variables:
@@ -659,8 +654,6 @@ variables:
 ```
 
 ## Exclude parameters
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/292196) in GitLab 14.10.
 
 While testing an API you may might want to exclude a parameter (query string, header, or body element) from testing. This may be needed because a parameter always causes a failure, slows down testing, or for other reasons. To exclude parameters you can use one of the following variables: `FUZZAPI_EXCLUDE_PARAMETER_ENV` or `FUZZAPI_EXCLUDE_PARAMETER_FILE`.
 
@@ -765,13 +758,13 @@ The exclude parameters uses `body-json` when the request uses a content type `ap
 
 To exclude the property `password` on each entry of an array of `users` at the root level, set the `body-json` property's value to an array with the JSON Path expression `[ "$.users[*].paswword" ]`.
 
-The JSON Path expression starts with `$` to refer to the root node and uses `.` to refer to the current node. Then, it uses `users` to refer to a property and the characters `[` and `]` to enclose the index in the array you want to use, instead of providing a number as an index you use `*` to specify any index. After the index reference, we find `.` which now refers to any given selected index in the array, preceded by a property name `password`.
+The JSON Path expression starts with `$` to refer to the root node and uses `.` to refer to the current node. Next, it uses `users` to refer to a property. The characters `[` and `]` enclose the array index you want to use. You can use `*` to specify any index instead of providing a specific number. After the index reference, the `.` character refers to any given selected index in the array, followed by a property name `password`.
 
 For instance, the JSON document looks like this:
 
 ```json
 {
-  "body-json": [ "$.users[*].paswword" ]
+  "body-json": [ "$.users[*].password" ]
 }
 ```
 
@@ -889,8 +882,6 @@ The `api-fuzzing-exclude-parameters.json` is a JSON document that follows the st
 
 ## Exclude URLs
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/357195) in GitLab 14.10.
-
 As an alternative to excluding by paths, you can filter by any other component in the URL by using the `FUZZAPI_EXCLUDE_URLS` CI/CD variable. This variable can be set in your `.gitlab-ci.yml` file. The variable can store multiple values, separated by commas (`,`). Each value is a regular expression. Because each entry is a regular expression, an entry such as `.*` excludes all URLs because it is a regular expression that matches everything.
 
 In your job output you can check if any URLs matched any provided regular expression from `FUZZAPI_EXCLUDE_URLS`. Matching operations are listed in the **Excluded Operations** section. Operations listed in the **Excluded Operations** should not be listed in the **Tested Operations** section. For example the following portion of a job output:
@@ -905,8 +896,8 @@ In your job output you can check if any URLs matched any provided regular expres
 2021-05-27 21:51:08 [INF] API Fuzzing: ------------------------------------------------
 ```
 
-NOTE:
-Each value in `FUZZAPI_EXCLUDE_URLS` is a regular expression. Characters such as `.` , `*` and `$` among many others have special meanings in [regular expressions](https://en.wikipedia.org/wiki/Regular_expression#Standards).
+> [!note]
+> Each value in `FUZZAPI_EXCLUDE_URLS` is a regular expression. Characters such as `.` , `*` and `$` among many others have special meanings in [regular expressions](https://en.wikipedia.org/wiki/Regular_expression#Standards).
 
 ### Examples
 
@@ -982,7 +973,7 @@ variables:
   FUZZAPI_EXCLUDE_URLS: https://target/api/v.*/user/create$
 ```
 
-## Header Fuzzing
+## Header fuzzing
 
 Header fuzzing is disabled by default due to the high number of false positives that occur with many
 technology stacks. When header fuzzing is enabled, you must specify a list of headers to include in

@@ -18,13 +18,13 @@ RSpec.describe 'Merge request > User sees merge request file tree sidebar', :js,
   end
 
   it 'sees file tree sidebar' do
-    expect(page).to have_selector('.file-row[role=button]')
+    expect(page).to have_selector('[data-testid="file-tree-container"]')
   end
 
   shared_examples 'last entry clickable' do
     specify do
       sidebar_scroller.execute_script('this.scrollBy(0,99999)')
-      button = find_all('.file-row[role=button]').last
+      button = find_all('[data-testid="file-tree-container"] nav button').last
       title = button.find('[data-testid=file-row-name-container]')[:title]
       expect(button.obscured?).to be_falsy
       button.click
@@ -32,36 +32,20 @@ RSpec.describe 'Merge request > User sees merge request file tree sidebar', :js,
     end
   end
 
-  it_behaves_like 'last entry clickable'
-
-  context 'when has started a review' do
-    before do
-      add_diff_line_draft_comment('foo', find('.line_holder', match: :first))
-      # wait for review bar to appear
-      find_by_testid('review_bar_component')
-      # wait for sidebar to adjust
-      sleep(1)
-    end
-
+  context 'with quarantine', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9506' do
     it_behaves_like 'last entry clickable'
-
-    context 'when scrolled into full view' do
-      before do
-        sidebar.execute_script("this.scrollIntoView({ block: 'end' })")
-      end
-
-      it_behaves_like 'last entry clickable'
-    end
   end
 
   context 'when viewing using file-by-file mode' do
     let(:user) { create(:user, view_diffs_file_by_file: true) }
 
-    it_behaves_like 'last entry clickable'
+    context 'with quarantine', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9452' do
+      it_behaves_like 'last entry clickable'
+    end
 
     context 'when navigating to the next file' do
       before do
-        click_link 'Next'
+        find_by_testid('gl-pagination-next').click
         wait_for_requests
         # when we click the Next button the viewport will be scrolled a bit into the diffs view
         # this will cause for the file tree sidebar height to be recalculated

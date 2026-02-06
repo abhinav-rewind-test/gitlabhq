@@ -1,24 +1,26 @@
 ---
 stage: Create
-group: IDE
+group: Remote Development
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Documentation for the REST API for moving the storage for repositories in a GitLab group.
+title: Group repository storage moves API
 ---
 
-# Group repository storage moves API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/53016) in GitLab 13.9.
+{{< /details >}}
 
-Group wiki repositories can be moved between storages. This API can help you, for example,
-[migrate to Gitaly Cluster](../administration/gitaly/index.md#migrate-to-gitaly-cluster)
+Use this API to manage [group repository storage moves](../administration/operations/moving_repositories.md).
+This API can help you, for example,
+[migrate to Gitaly Cluster (Praefect)](../administration/gitaly/praefect/_index.md#migrate-to-gitaly-cluster-praefect)
 or migrate a [group wiki](../user/project/wiki/group.md). This API does not manage
 project repositories in a group. To schedule project moves, use the
 [project repository storage moves API](project_repository_storage_moves.md).
 
-As group repository storage moves are processed, they transition through different states. Values
+As GitLab processes a group repository storage move, it transitions through different states. Values
 of `state` are:
 
 - `initial`: The record has been created, but the background job has not yet been scheduled.
@@ -29,7 +31,7 @@ of `state` are:
 - `finished`: The group has been moved, and the repositories on the source storage have been deleted.
 - `cleanup failed`: The group has been moved, but the repositories on the source storage could not be deleted.
 
-To ensure data integrity, groups are put in a temporary read-only state for the
+To ensure data integrity, GitLab places groups in a temporary read-only state for the
 duration of the move. During this time, users receive this message if they try to
 push new commits:
 
@@ -37,26 +39,29 @@ push new commits:
 The repository is temporarily read-only. Please try again later.
 ```
 
-This API requires you to [authenticate yourself](rest/index.md#authentication) as an administrator.
+This API requires you to [authenticate yourself](rest/authentication.md) as an administrator.
 
 APIs are also available to move other types of repositories:
 
 - [Project repository storage moves API](project_repository_storage_moves.md).
 - [Snippet repository storage moves API](snippet_repository_storage_moves.md).
 
-## Retrieve all group repository storage moves
+## List all group repository storage moves
+
+Lists all group repository storage moves for an instance.
 
 ```plaintext
 GET /group_repository_storage_moves
 ```
 
 By default, `GET` requests return 20 results at a time, because the API results
-are [paginated](rest/index.md#pagination).
+are [paginated](rest/_index.md#pagination).
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/group_repository_storage_moves"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/group_repository_storage_moves"
 ```
 
 Example response:
@@ -78,16 +83,16 @@ Example response:
 ]
 ```
 
-## Retrieve all repository storage moves for a single group
+## List all repository storage moves for a group
 
-To retrieve all the repository storage moves for a single group you can use the following endpoint:
+Lists all repository storage moves for a specified group.
 
 ```plaintext
 GET /groups/:group_id/repository_storage_moves
 ```
 
 By default, `GET` requests return 20 results at a time, because the API results
-are [paginated](rest/index.md#pagination).
+are [paginated](rest/_index.md#pagination).
 
 Supported attributes:
 
@@ -98,7 +103,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves"
 ```
 
 Example response:
@@ -120,10 +126,9 @@ Example response:
 ]
 ```
 
-## Get a single group repository storage move
+## Retrieve a group repository storage move
 
-To retrieve a single repository storage move throughout all the existing repository
-storage moves, you can use the following endpoint:
+Retrieves a specified group repository storage move.
 
 ```plaintext
 GET /group_repository_storage_moves/:repository_storage_id
@@ -138,7 +143,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/group_repository_storage_moves/1"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/group_repository_storage_moves/1"
 ```
 
 Example response:
@@ -158,10 +164,9 @@ Example response:
 }
 ```
 
-## Get a single repository storage move for a group
+## Retrieve a repository storage move for a group
 
-Given a group, you can retrieve a specific repository storage move for that group,
-through the following endpoint:
+Retrieves a specified repository storage move for a group.
 
 ```plaintext
 GET /groups/:group_id/repository_storage_moves/:repository_storage_id
@@ -177,7 +182,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves/1"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves/1"
 ```
 
 Example response:
@@ -197,9 +203,9 @@ Example response:
 }
 ```
 
-## Schedule a repository storage move for a group
+## Create a group repository storage move
 
-Schedules a repository storage move for a group. This endpoint:
+Creates a group repository storage move for a specified group. This endpoint:
 
 - Moves only group Wiki repositories.
 - Doesn't move repositories for projects in a group. To schedule project moves, use the [Project repository storage moves](project_repository_storage_moves.md) API.
@@ -213,7 +219,7 @@ Supported attributes:
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
 | `group_id` | integer | yes | ID of the group. |
-| `destination_storage_name` | string | no | Name of the destination storage shard. In [GitLab 13.5 and later](https://gitlab.com/gitlab-org/gitaly/-/issues/3209), the storage is selected [based on storage weights](../administration/repository_storage_paths.md#configure-where-new-repositories-are-stored) if not provided. |
+| `destination_storage_name` | string | no | Name of the destination storage shard. The storage is selected [based on storage weights](../administration/repository_storage_paths.md#configure-where-new-repositories-are-stored) if not provided. |
 
 Example request:
 
@@ -221,7 +227,7 @@ Example request:
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
      --header "Content-Type: application/json" \
      --data '{"destination_storage_name":"storage2"}' \
-     "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves"
+     --url "https://gitlab.example.com/api/v4/groups/1/repository_storage_moves"
 ```
 
 Example response:
@@ -241,11 +247,9 @@ Example response:
 }
 ```
 
-## Schedule repository storage moves for all groups on a storage shard
+## Create group repository storage moves for a storage shard
 
-Schedules repository storage moves for each group repository stored on the source storage shard.
-This endpoint migrates all groups at once. For more information, see
-[Move all groups](../administration/operations/moving_repositories.md#move-all-groups).
+Creates repository storage moves for all groups on a specified storage shard.
 
 ```plaintext
 POST /group_repository_storage_moves
@@ -264,7 +268,7 @@ Example request:
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
      --header "Content-Type: application/json" \
      --data '{"source_storage_name":"default"}' \
-     "https://gitlab.example.com/api/v4/group_repository_storage_moves"
+     --url "https://gitlab.example.com/api/v4/group_repository_storage_moves"
 ```
 
 Example response:
@@ -274,3 +278,7 @@ Example response:
   "message": "202 Accepted"
 }
 ```
+
+## Related topics
+
+- [Moving repositories managed by GitLab](../administration/operations/moving_repositories.md)

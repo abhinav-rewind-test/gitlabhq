@@ -48,7 +48,6 @@ class EventFilter
     end
   end
 
-  # rubocop: disable Metrics/CyclomaticComplexity
   # This method build specialized in-operator optimized queries based on different
   # filter parameters. All queries will benefit from the index covering the following columns:
   # * author_id target_type action id
@@ -89,7 +88,8 @@ class EventFilter
     when TEAM
       in_operator_params(
         array_data: array_data,
-        scope: Event.where(target_type: nil),
+        # TODO: Remove nil filter once backfill is complete https://gitlab.com/gitlab-org/gitlab/-/issues/565789
+        scope: Event.where(target_type: [nil, Event::TARGET_TYPES[:project].name]),
         order_hint_column: :target_type,
         in_column: :action,
         in_values: Event.actions.values_at(*Event::TEAM_ACTIONS)
@@ -119,7 +119,6 @@ class EventFilter
       in_operator_params(array_data: array_data)
     end
   end
-  # rubocop: enable Metrics/CyclomaticComplexity
 
   private
 
@@ -128,7 +127,7 @@ class EventFilter
     base_scope = base_scope.merge(scope) if scope
 
     order = { id: :desc }
-    finder_query = -> (id_expression) { Event.where(Event.arel_table[:id].eq(id_expression)) }
+    finder_query = ->(id_expression) { Event.where(Event.arel_table[:id].eq(id_expression)) }
 
     if order_hint_column.present?
       order = Gitlab::Pagination::Keyset::Order.build(
@@ -136,8 +135,7 @@ class EventFilter
           Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
             attribute_name: order_hint_column,
             order_expression: Event.arel_table[order_hint_column].desc,
-            nullable: :nulls_last,
-            distinct: false
+            nullable: :nulls_last
           ),
           Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
             attribute_name: :id,
@@ -145,7 +143,7 @@ class EventFilter
           )
         ])
 
-      finder_query = -> (_order_hint, id_expression) { Event.where(Event.arel_table[:id].eq(id_expression)) }
+      finder_query = ->(_order_hint, id_expression) { Event.where(Event.arel_table[:id].eq(id_expression)) }
     end
 
     base_scope = base_scope.reorder(order)
@@ -182,11 +180,11 @@ class EventFilter
       cartesian = array_scope_ids.product(in_values)
       column_list = Arel::Nodes::ValuesList.new(cartesian)
 
-      as = "array_ids(id, #{Event.connection.quote_column_name(in_column)})"
+      as = "array_ids(id, #{Event.adapter_class.quote_column_name(in_column)})"
       from = Arel::Nodes::Grouping.new(column_list).as(as)
       {
         array_scope: array_scope_model.select(:id, in_column).from(from),
-        array_mapping_scope: -> (primary_id_expression, in_column_expression) do
+        array_mapping_scope: ->(primary_id_expression, in_column_expression) do
           Event
             .merge(scope)
             .where(Event.arel_table[array_mapping_column].eq(primary_id_expression))
@@ -200,7 +198,7 @@ class EventFilter
       from = Arel::Nodes::Grouping.new(array_ids_list).as('array_ids(id)')
       {
         array_scope: array_scope_model.select(:id).from(from),
-        array_mapping_scope: -> (primary_id_expression) do
+        array_mapping_scope: ->(primary_id_expression) do
           Event
             .merge(scope)
             .where(Event.arel_table[array_mapping_column].eq(primary_id_expression))

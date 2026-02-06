@@ -7,23 +7,10 @@ const PATH_SEPARATOR_LEADING_REGEX = new RegExp(`^${PATH_SEPARATOR}+`);
 const PATH_SEPARATOR_ENDING_REGEX = new RegExp(`${PATH_SEPARATOR}+$`);
 const SHA_REGEX = /[\da-f]{40}/gi;
 
-// GitLab default domain (override in jh)
-export const DOMAIN = 'gitlab.com';
-
-// Following URLs will be overwritten in jh
-export const FORUM_URL = `https://forum.${DOMAIN}/`; // forum.gitlab.com
-export const DOCS_URL = `https://docs.${DOMAIN}`; // docs.gitlab.com
-
-// About GitLab default host
-export const PROMO_HOST = `about.${DOMAIN}`; // about.gitlab.com
-
-// About Gitlab default url
-export const PROMO_URL = `https://${PROMO_HOST}`;
-
-// eslint-disable-next-line no-restricted-syntax
-export const DOCS_URL_IN_EE_DIR = `${DOCS_URL}/ee`;
-
-// Reset the cursor in a Regex so that multiple uses before a recompile don't fail
+/**
+ * Reset the cursor in a Regex so that multiple uses before a recompile don't fail
+ * @param {RegExp} regex
+ */
 function resetRegExp(regex) {
   regex.lastIndex = 0; /* eslint-disable-line no-param-reassign */
 
@@ -32,6 +19,7 @@ function resetRegExp(regex) {
 
 /**
  * Returns the absolute pathname for a relative or absolute URL string.
+ * @param {string} url
  *
  * A few examples of inputs and outputs:
  * 1) 'http://a.com/b/c/d' => '/b/c/d'
@@ -44,8 +32,11 @@ export const parseUrlPathname = (url) => {
   return pathname;
 };
 
-// Returns a decoded url parameter value
-// - Treats '+' as '%20'
+/**
+ * Returns a decoded url parameter value
+ * - Treats '+' as '%20'
+ * @param {string} val
+ */
 function decodeUrlParameter(val) {
   return decodeURIComponent(val.replace(/\+/g, '%20'));
 }
@@ -94,10 +85,16 @@ export function encodeSaferUrl(potentiallyUnsafePath) {
   return saferPath;
 }
 
+/**
+ * @param {string} path
+ */
 export function cleanLeadingSeparator(path) {
   return path.replace(PATH_SEPARATOR_LEADING_REGEX, '');
 }
 
+/**
+ * @param {string} path
+ */
 export function cleanEndingSeparator(path) {
   return path.replace(PATH_SEPARATOR_ENDING_REGEX, '');
 }
@@ -109,8 +106,8 @@ export function cleanEndingSeparator(path) {
  * - `joinPaths('abc/', '/def') === 'abc/def'`
  * - `joinPaths(null, 'abc/def', 'zoo) === 'abc/def/zoo'`
  *
- * @param  {...String} paths
- * @returns {String}
+ * @param  {...string} paths
+ * @returns {string}
  */
 export function joinPaths(...paths) {
   return paths.reduce((acc, path) => {
@@ -148,10 +145,10 @@ export function getParameterValues(sParam, url = window.location) {
  * Also removes `null` param values from the resulting URL.
  *
  * @param {Object} params - url keys and value to merge
- * @param {String} url
- * @param {Object} options
- * @param {Boolean} options.spreadArrays - split array values into separate key/value-pairs
- * @param {Boolean} options.sort - alphabetically sort params in the returned url (in asc order, i.e., a-z)
+ * @param {string} url
+ * @param {Object} [options]
+ * @param {boolean} [options.spreadArrays] - split array values into separate key/value-pairs
+ * @param {boolean} [options.sort] - alphabetically sort params in the returned url (in asc order, i.e., a-z)
  */
 export function mergeUrlParams(params, url, options = {}) {
   const { spreadArrays = false, sort = false } = options;
@@ -243,6 +240,16 @@ export function removeParams(params, url = window.location.href, skipEncoding = 
   return `${root}${writableQuery}${writableFragment}`;
 }
 
+export function updateHistory({ state = {}, title = '', url, replace = false, win = window } = {}) {
+  if (win.history) {
+    if (replace) {
+      win.history.replaceState(state, title, url);
+    } else {
+      win.history.pushState(state, title, url);
+    }
+  }
+}
+
 /**
  * Returns value after the '#' in the location hash
  * @returns Current value of the hash, undefined if not set
@@ -250,7 +257,25 @@ export function removeParams(params, url = window.location.href, skipEncoding = 
 export const getLocationHash = () => window.location.hash?.split('#')[1];
 
 /**
+ * Sets location hash to the given value.
+ * When value is undefined, the hash is removed.
+ * @param {string} hash - use undefined to remove location hash
+ */
+export const setLocationHash = (hash) => {
+  if (hash === undefined) {
+    updateHistory({
+      title: document.title,
+      url: window.location.pathname + window.location.search,
+      replace: true,
+    });
+  } else {
+    window.location.hash = hash;
+  }
+};
+
+/**
  * Returns a boolean indicating whether the URL hash contains the given string value
+ * @param {string} hashName
  */
 export function doesHashExistInUrl(hashName) {
   const hash = getLocationHash();
@@ -285,23 +310,15 @@ export const setUrlFragment = (url, fragment) => {
   return `${rootUrl}#${encodedFragment}`;
 };
 
-export function updateHistory({ state = {}, title = '', url, replace = false, win = window } = {}) {
-  if (win.history) {
-    if (replace) {
-      win.history.replaceState(state, title, url);
-    } else {
-      win.history.pushState(state, title, url);
-    }
-  }
-}
-
 export const escapeFileUrl = (fileUrl) => encodeURIComponent(fileUrl).replace(/%2F/g, '/');
 
 export function webIDEUrl(route = undefined) {
   let returnUrl = `${gon.relative_url_root || ''}/-/ide/`;
+
   if (route) {
-    returnUrl += `project${route.replace(new RegExp(`^${gon.relative_url_root || ''}`), '')}`;
+    returnUrl += `project${route.replace(new RegExp(`^${gon.relative_url_root || ''}/`), '/')}`;
   }
+
   return escapeFileUrl(returnUrl);
 }
 
@@ -359,17 +376,39 @@ export function isAbsoluteOrRootRelative(url) {
 }
 
 /**
- * Returns true if url is an external URL
+ * Returns a list of path segments of the given URL instance.
  *
- * @param {String} url
- * @returns {Boolean}
+ * @param {URL} url - URL instance (not a string!)
+ * @returns {Array<string>} List of path segments of the given URL
+ */
+export function pathSegments(url) {
+  const pathname = url.pathname.endsWith(PATH_SEPARATOR) ? url.pathname.slice(0, -1) : url.pathname;
+  return pathname.split(PATH_SEPARATOR).slice(1);
+}
+
+/**
+ * Returns `true` if the `url` is an external URL.
+ * The query and hash of the url are ignored.
+ *
+ * @param {string} url
+ * @returns {boolean}
  */
 export function isExternal(url) {
-  if (isRootRelative(url)) {
-    return false;
+  const gitlabURL = new URL(gon.gitlab_url);
+  const newURL = new URL(url, window.location.href);
+
+  if (gitlabURL.origin !== newURL.origin) {
+    return true;
   }
 
-  return !url.includes(gon.gitlab_url);
+  const gitlabURLpathSegments = pathSegments(gitlabURL);
+  const newURLpathSegments = pathSegments(newURL);
+
+  const isInternal = gitlabURLpathSegments.every(
+    (pathSegment, i) => pathSegment === newURLpathSegments[i],
+  );
+
+  return !isInternal;
 }
 
 /**
@@ -389,12 +428,19 @@ export function relativePathToAbsolute(path, basePath) {
 }
 
 /**
- * Checks if the provided URL is a safe URL (absolute http(s) or root-relative URL)
+ * Checks if the provided URL is a valid URL. Valid URLs are
+ * - absolute URLs (`http(s)://...`)
+ * - root-relative URLs (`/path/...`)
+ * - parsable by the `URL` constructor
+ * - has http or https protocol
+ *
+ * Relative URLs (`../path`), queries (`?...`), and hashes (`#...`) are not
+ * considered valid.
  *
  * @param {String} url that will be checked
  * @returns {Boolean}
  */
-export function isSafeURL(url) {
+export function isValidURL(url) {
   if (!isAbsoluteOrRootRelative(url)) {
     return false;
   }
@@ -405,19 +451,6 @@ export function isSafeURL(url) {
   } catch (e) {
     return false;
   }
-}
-
-/**
- * Returns the sanitized url when not safe
- *
- * @param {String} url
- * @returns {String}
- */
-export function sanitizeUrl(url) {
-  if (!isSafeURL(url)) {
-    return 'about:blank';
-  }
-  return url;
 }
 
 /**
@@ -464,14 +497,20 @@ export const getUrlParamsArray = () => urlParamsToArray(window.location.search);
  * @param {String} query from "document.location.search"
  * @param {Object} options
  * @param {Boolean?} options.gatherArrays - gather array values into an Array
+ * @param {Boolean?} options.specialOperators - handle special operators `or` & `not` with arrays
  * @param {Boolean?} options.legacySpacesDecode - (deprecated) plus symbols (+) are not replaced with spaces, false by default
  * @returns {Object}
  *
  * ex: "?one=1&two=2" into {one: 1, two: 2}
  */
-export function queryToObject(query, { gatherArrays = false, legacySpacesDecode = false } = {}) {
+export function queryToObject(
+  query,
+  { gatherArrays = false, specialOperators = false, legacySpacesDecode = false } = {},
+) {
   const removeQuestionMarkFromQuery = String(query).startsWith('?') ? query.slice(1) : query;
   return removeQuestionMarkFromQuery.split('&').reduce((accumulator, curr) => {
+    if (!curr) return accumulator;
+
     const [key, value] = curr.split('=');
     if (value === undefined) {
       return accumulator;
@@ -480,7 +519,24 @@ export function queryToObject(query, { gatherArrays = false, legacySpacesDecode 
     const decodedValue = legacySpacesDecode ? decodeURIComponent(value) : decodeUrlParameter(value);
     const decodedKey = legacySpacesDecode ? decodeURIComponent(key) : decodeUrlParameter(key);
 
-    if (gatherArrays && decodedKey.endsWith('[]')) {
+    // Handle `or` & `not` operators, eg; or[label_name][] or not[label_name][].
+    // Check if the key ends with square brackets (indicating an array)
+    const isArrayNotation = decodedKey.endsWith('[]');
+    if (specialOperators && decodedKey.includes('[')) {
+      // If it's an array notation and we have already started collecting values
+      if (isArrayNotation && accumulator[decodedKey]) {
+        // Add to existing array
+        accumulator[decodedKey].push(decodedValue);
+      }
+      // If it's array notation but first occurrence, initialize array with first value
+      else if (isArrayNotation) {
+        accumulator[decodedKey] = [decodedValue];
+      }
+      // For non-array bracket notation, just set the value
+      else {
+        accumulator[decodedKey] = decodedValue;
+      }
+    } else if (gatherArrays && decodedKey.endsWith('[]')) {
       const decodedArrayKey = decodedKey.slice(0, -2);
 
       if (!Array.isArray(accumulator[decodedArrayKey])) {
@@ -528,18 +584,22 @@ export function objectToQuery(params = {}) {
  * Sets query params for a given URL
  * It adds new query params, updates existing params with a new value and removes params with value null/undefined
  *
- * @param {Object} params The query params to be set/updated
- * @param {String} url The url to be operated on
- * @param {Boolean} clearParams Indicates whether existing query params should be removed or not
- * @param {Boolean} railsArraySyntax When enabled, changes the array syntax from `keys=` to `keys[]=` according to Rails conventions
- * @returns {String} A copy of the original with the updated query params
+ * @param {Object} params - The query params to be set/updated
+ * @param {Object} [options] - Configuration options
+ * @param {string} [options.url=window.location.href] - The url to be operated on
+ * @param {boolean} [options.clearParams=false] - Indicates whether existing query params should be removed or not
+ * @param {boolean} [options.railsArraySyntax=false] - When enabled, changes the array syntax from `keys=` to `keys[]=` according to Rails conventions
+ * @param {boolean} [options.decodeParams=false] - Whether to decode the parameters
+ * @returns {string} A copy of the original with the updated query params
  */
 export const setUrlParams = (
-  params,
-  url = window.location.href,
-  clearParams = false,
-  railsArraySyntax = false,
-  decodeParams = false,
+  params = {},
+  {
+    url = window.location.href,
+    clearParams = false,
+    railsArraySyntax = false,
+    decodeParams = false,
+  } = {},
 ) => {
   const urlObj = new URL(url);
   const queryString = urlObj.search;
@@ -682,24 +742,16 @@ export const removeLastSlashInUrlPath = (url) =>
   url.replace(/\/$/, '').replace(/\/(\?|#){1}([^/]*)$/, '$1$2');
 
 /**
- * Navigates to a URL
- * @deprecated Use visitUrl from ~/lib/utils/url_utility.js instead
- * @param {*} url
- */
-export function redirectTo(url) {
-  return window.location.assign(url);
-}
-
-/**
  * Navigates to a URL.
  *
  * If destination is a querystring, it will be automatically transformed into a fully qualified URL.
- * If the URL is not a safe URL (see isSafeURL implementation), this function will log an exception into Sentry.
+ * If the URL is not valid (see isValidURL implementation), this function will log an exception into Sentry.
+ * If the URL is external it calls window.open so it has no referrer header or reference to its opener.
  *
  * @param {*} destination - url to navigate to. This can be a fully qualified URL or a querystring.
- * @param {*} external - if true, open a new page or tab
+ * @param {*} openWindow - if true, open a new window or tab
  */
-export function visitUrl(destination, external = false) {
+export function visitUrl(destination, openWindow = false) {
   let url = destination;
 
   if (destination.startsWith('?')) {
@@ -708,16 +760,18 @@ export function visitUrl(destination, external = false) {
     url = currentUrl.toString();
   }
 
-  if (!isSafeURL(url)) {
+  if (!isValidURL(url)) {
     throw new RangeError(`Only http and https protocols are allowed: ${url}`);
   }
 
-  if (external) {
-    // Simulate `target="_blank" rel="noopener noreferrer"`
-    // See https://mathiasbynens.github.io/rel-noopener/
-    const otherWindow = window.open();
-    otherWindow.opener = null;
-    otherWindow.location.assign(url);
+  if (isExternal(url)) {
+    const target = openWindow ? '_blank' : '_self';
+    // Sets window.opener to null and avoids leaking referrer information.
+    // eslint-disable-next-line no-restricted-properties
+    window.open(url, target, 'noreferrer');
+  } else if (openWindow) {
+    // eslint-disable-next-line no-restricted-properties
+    window.open(url);
   } else {
     window.location.assign(url);
   }
@@ -727,7 +781,7 @@ export function visitUrl(destination, external = false) {
  * Navigates to a URL and display alerts.
  *
  * If destination is a querystring, it will be automatically transformed into a fully qualified URL.
- * If the URL is not a safe URL (see isSafeURL implementation), this function will log an exception into Sentry.
+ * If the URL is not valid (see isValidURL implementation), this function will log an exception into Sentry.
  *
  * @param {*} destination - url to navigate to. This can be a fully qualified URL or a querystring.
  * @param {{id: String, title?: String, message: String, variant: String, dismissible?: Boolean, persistOnPages?: String[]}[]} alerts - Alerts to display
@@ -738,7 +792,7 @@ export function visitUrlWithAlerts(destination, alerts) {
 }
 
 export function refreshCurrentPage() {
-  visitUrl(window.location.href);
+  window.location.reload();
 }
 
 // Adds a ref_type param to the path if refType is available
@@ -752,4 +806,79 @@ export function buildURLwithRefType({ base = window.location.origin, path, refTy
     url.searchParams.delete('ref_type');
   }
   return url.pathname + url.search;
+}
+
+export function stripRelativeUrlRootFromPath(path) {
+  const relativeUrlRoot = joinPaths(window.gon.relative_url_root, '/');
+
+  // If we have no relative url root or path doesn't start with it, just return the path
+  if (relativeUrlRoot === '/' || !path.startsWith(relativeUrlRoot)) {
+    return path;
+  }
+
+  return joinPaths('/', path.substring(relativeUrlRoot.length));
+}
+
+const LINE_RANGE_HASH_REGEX = /^#L(\d+)(?:-(\d+))?$/;
+
+/**
+ * Retrieves the line number range from the url hash if it exists.
+ *
+ * @param {string} [hash=window.location.hash] - The URL hash string to parse. Defaults to the current window's location hash.
+ *
+ * @returns {{beginning: number, end: number}| null} An object containing the line number range selected,
+ *                   otherwise returns null
+ */
+export const getLineRangeFromHash = (hash = window.location.hash) => {
+  const match = hash.match(LINE_RANGE_HASH_REGEX);
+  if (!match || !match[1]) return null;
+
+  const beginning = parseInt(match[1], 10);
+  // If there's a second number (end of range), use it; otherwise use the start number
+  const end = match[2] ? parseInt(match[2], 10) : beginning;
+
+  return { beginning, end };
+};
+
+/**
+ * Appends the current window's line reference hash to a URL if it exists.
+ *
+ * @param {string} url - The base URL to which the line reference should be appended
+ * @param {string} [hash=window.location.hash] - The hash string to check and potentially append. Defaults to the current window's location hash.
+ * @returns {string} The URL with the line reference hash appended if the current window's
+ *                   hash matches the line reference pattern (#L<number> or #L<number>-<number>),
+ *                   otherwise returns the original URL unchanged
+ */
+export function appendLineRangeHashToUrl(url, hash = window.location.hash) {
+  if (LINE_RANGE_HASH_REGEX.test(hash)) {
+    return url + hash;
+  }
+  return url;
+}
+
+/**
+ * Performs basic sanity checks on a URL before attempting connection:
+ * - is not empty
+ * - has no spaces
+ * - has http, git or https protocol
+ * - has a domain with at least one dot
+ *
+ * Does not guarantee the URL is fully valid or reachable.
+ *
+ * @param {String} url that will be checked
+ * @returns {Boolean}
+ */
+
+export function isReasonableGitUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  if (/\s/.test(url)) {
+    return false;
+  }
+
+  const pattern = /^(https?|git):\/\/[a-zA-Z0-9.-]+\.[a-zA-Z0-9.-]+/;
+
+  return pattern.test(url);
 }

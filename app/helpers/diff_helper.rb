@@ -35,7 +35,7 @@ module DiffHelper
       options[:paths] = params.values_at(:old_path, :new_path)
       options[:use_extra_viewer_as_main] = false
 
-      if Feature.enabled?(:large_ipynb_diffs, @project) && params[:file_identifier]&.include?('.ipynb')
+      if params[:file_identifier]&.include?('.ipynb')
         options[:max_patch_bytes_for_file_extension] = {
           '.ipynb' => 1.megabyte
         }
@@ -43,6 +43,10 @@ module DiffHelper
     end
 
     options
+  end
+
+  def with_custom_diff_options
+    yield diff_options.dup
   end
 
   def diff_match_line(old_pos, new_pos, text: '', view: :inline, bottom: false)
@@ -53,6 +57,13 @@ module DiffHelper
     line_num_class << 'js-unfold-bottom' if bottom
 
     html = []
+
+    expand_data = {}
+    if bottom
+      expand_data[:expand_next_line] = true
+    else
+      expand_data[:expand_prev_line] = true
+    end
 
     if old_pos
       html << content_tag(:td, '...', class: [*line_num_class, 'old_line'], data: { linenumber: old_pos })
@@ -74,7 +85,8 @@ module DiffHelper
 
     html = [content_tag(:td, '', class: [*first_line_num_class, css_class])]
     html << content_tag(:td, '', class: [*second_line_num_class, css_class]) if second_line_num_class
-    html << content_tag(:td, diff_line_content(line.rich_text), class: [*content_line_class, 'nomappinginraw', css_class])
+    html << content_tag(:td, diff_line_content(line.rich_text),
+      class: [*content_line_class, 'nomappinginraw', css_class])
 
     html.join.html_safe
   end
@@ -136,20 +148,28 @@ module DiffHelper
     ].join(' ').html_safe
   end
 
-  def submodule_diff_compare_link(diff_file)
+  def submodule_diff_compare_data(diff_file)
     compare_url = submodule_links(diff_file.blob, diff_file.content_sha, diff_file.repository, diff_file)&.compare
-    return '' unless compare_url
+    return unless compare_url
 
-    link_text = [
-      _('Compare'),
-      ' ',
-      content_tag(:span, Commit.truncate_sha(diff_file.old_blob.id), class: 'commit-sha'),
-      '...',
-      content_tag(:span, Commit.truncate_sha(diff_file.blob.id), class: 'commit-sha')
-    ].join('').html_safe
+    title = safe_format(
+      _('Compare %{old_commit} to %{new_commit}'),
+      old_commit: content_tag(:span, Commit.truncate_sha(diff_file.old_blob.id), class: 'commit-sha'),
+      new_commit: content_tag(:span, Commit.truncate_sha(diff_file.blob.id), class: 'commit-sha')
+    )
 
-    tooltip = _('Compare submodule commit revisions')
-    link_button_to link_text, compare_url, class: 'has-tooltip submodule-compare', title: tooltip
+    {
+      title: title,
+      href: compare_url,
+      tooltip: _('Compare submodule commit revisions')
+    }
+  end
+
+  def submodule_diff_compare_link(diff_file)
+    data = submodule_diff_compare_data(diff_file)
+    return '' unless data
+
+    link_button_to data[:title], data[:href], class: 'has-tooltip submodule-compare', title: data[:tooltip]
   end
 
   def diff_file_blob_raw_url(diff_file, only_path: false)
@@ -201,7 +221,9 @@ module DiffHelper
   end
 
   def apply_diff_view_cookie!
-    set_secure_cookie(:diff_view, params.delete(:view), type: CookiesHelper::COOKIE_TYPE_PERMANENT) if params[:view].present?
+    return unless params[:view].present?
+
+    set_secure_cookie(:diff_view, params.delete(:view), type: CookiesHelper::COOKIE_TYPE_PERMANENT)
   end
 
   def collapsed_diff_url(diff_file)
@@ -225,9 +247,12 @@ module DiffHelper
   end
 
   def conflicts(allow_tree_conflicts: false)
-    return unless merge_request.cannot_be_merged? && merge_request.source_branch_exists? && merge_request.target_branch_exists?
+    unless merge_request.cannot_be_merged? && merge_request.source_branch_exists? && merge_request.target_branch_exists?
+      return
+    end
 
-    conflicts_service = MergeRequests::Conflicts::ListService.new(merge_request, allow_tree_conflicts: allow_tree_conflicts) # rubocop:disable CodeReuse/ServiceClass
+    conflicts_service = MergeRequests::Conflicts::ListService.new(merge_request,
+      allow_tree_conflicts: allow_tree_conflicts)
 
     return unless allow_tree_conflicts || conflicts_service.can_be_resolved_in_ui?
 
@@ -242,10 +267,17 @@ module DiffHelper
   end
 
   def conflicts_with_types
-    return unless merge_request.cannot_be_merged? && merge_request.source_branch_exists? && merge_request.target_branch_exists?
+    unless merge_request.cannot_be_merged? && merge_request.source_branch_exists? && merge_request.target_branch_exists?
+      return
+    end
 
     cached_conflicts_with_types do
-      conflicts_service = MergeRequests::Conflicts::ListService.new(merge_request, allow_tree_conflicts: true) # rubocop:disable CodeReuse/ServiceClass
+      # We set skip_content to true since we don't really need the content to list the conflicts and their types
+      conflicts_service = MergeRequests::Conflicts::ListService.new(
+        merge_request,
+        allow_tree_conflicts: true,
+        skip_content: true
+      )
 
       {}.tap do |h|
         conflicts_service.conflicts.files.each do |file|
@@ -266,7 +298,19 @@ module DiffHelper
   end
 
   def params_with_whitespace
-    hide_whitespace? ? safe_params.except(:w) : safe_params.merge(w: 1)
+    # w - ignore whitespace
+    w = hide_whitespace? ? 0 : 1
+    safe_params.merge(w: w)
+  end
+
+  def file_heading_id(diff_file)
+    "#{diff_file.file_hash[0..8]}-heading"
+  end
+
+  def hide_whitespace?
+    return params[:w] == '1' if params.key?(:w)
+
+    current_user.nil? || !current_user.show_whitespace_in_diffs
   end
 
   private
@@ -299,7 +343,8 @@ module DiffHelper
     # Always use HTML to handle case where JSON diff rendered this button
     params_copy.delete(:format)
 
-    link_button_to url_for(params_copy), id: "#{name}-diff-btn", class: (selected ? 'selected' : ''), data: { view_type: name } do
+    link_button_to url_for(params_copy), id: "#{name}-diff-btn", class: (selected ? 'selected' : ''),
+      data: { view_type: name } do
       title
     end
   end
@@ -309,13 +354,13 @@ module DiffHelper
     toggle_whitespace_link(url, options)
   end
 
+  def commit_diff_whitespace_url(project, commit)
+    project_commit_path(project, commit.id, params_with_whitespace)
+  end
+
   def diff_compare_whitespace_link(project, from, to, options)
     url = project_compare_path(project, from, to, params_with_whitespace)
     toggle_whitespace_link(url, options)
-  end
-
-  def hide_whitespace?
-    params[:w] == '1'
   end
 
   def toggle_whitespace_link(url, options)
@@ -328,9 +373,7 @@ module DiffHelper
   end
 
   def log_overflow_limits(diff_files:, collection_overflow:)
-    if diff_files.any?(&:too_large?)
-      Gitlab::Metrics.add_event(:diffs_overflow_single_file_limits)
-    end
+    Gitlab::Metrics.add_event(:diffs_overflow_single_file_limits) if diff_files.any?(&:too_large?)
 
     Gitlab::Metrics.add_event(:diffs_overflow_collection_limits) if collection_overflow
     Gitlab::Metrics.add_event(:diffs_overflow_max_bytes_limits) if diff_files.overflow_max_bytes?

@@ -18,15 +18,15 @@ import (
 const cablePath = "/-/cable"
 
 func TestSingleBackend(t *testing.T) {
-	cableServerConns, cableBackendServer := startCableServer()
-	defer cableBackendServer.Close()
+	cableServerConns, cableBackendServer := startCableServer(t)
 
 	config := newUpstreamWithCableConfig(cableBackendServer.URL, "")
 	workhorse := startWorkhorseServerWithConfig(t, config)
 
 	cableURL := websocketURL(workhorse.URL, cablePath)
 
-	client, _, err := dialWebsocket(cableURL, nil)
+	client, http, err := dialWebsocket(cableURL, nil)
+	defer http.Body.Close()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -41,18 +41,17 @@ func TestSingleBackend(t *testing.T) {
 }
 
 func TestSeparateCableBackend(t *testing.T) {
-	authBackendServer := testhelper.TestServerWithHandler(regexp.MustCompile(`.`), http.HandlerFunc(http.NotFound))
-	defer authBackendServer.Close()
+	authBackendServer := testhelper.TestServerWithHandler(t, regexp.MustCompile(`.`), http.HandlerFunc(http.NotFoundHandler().ServeHTTP))
 
-	cableServerConns, cableBackendServer := startCableServer()
-	defer cableBackendServer.Close()
+	cableServerConns, cableBackendServer := startCableServer(t)
 
 	config := newUpstreamWithCableConfig(authBackendServer.URL, cableBackendServer.URL)
 	workhorse := startWorkhorseServerWithConfig(t, config)
 
 	cableURL := websocketURL(workhorse.URL, cablePath)
 
-	client, _, err := dialWebsocket(cableURL, nil)
+	client, http, err := dialWebsocket(cableURL, nil)
+	defer http.Body.Close()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -66,11 +65,11 @@ func TestSeparateCableBackend(t *testing.T) {
 	requireReadMessage(t, client, websocket.TextMessage, "world")
 }
 
-func startCableServer() (chan connWithReq, *httptest.Server) {
+func startCableServer(t *testing.T) (chan connWithReq, *httptest.Server) {
 	upgrader := &websocket.Upgrader{}
 
 	connCh := make(chan connWithReq, 1)
-	server := testhelper.TestServerWithHandler(regexp.MustCompile(cablePath), webSocketHandler(upgrader, connCh))
+	server := testhelper.TestServerWithHandler(t, regexp.MustCompile(cablePath), webSocketHandler(upgrader, connCh))
 
 	return connCh, server
 }

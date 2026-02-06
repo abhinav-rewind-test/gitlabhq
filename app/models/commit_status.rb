@@ -7,19 +7,8 @@ class CommitStatus < Ci::ApplicationRecord
   include AfterCommitQueue
   include Presentable
   include BulkInsertableAssociations
-  include TaggableQueries
-  include IgnorableColumns
 
-  ignore_columns %i[
-    auto_canceled_by_id_convert_to_bigint
-    commit_id_convert_to_bigint
-    erased_by_id_convert_to_bigint
-    project_id_convert_to_bigint
-    runner_id_convert_to_bigint
-    trigger_request_id_convert_to_bigint
-    upstream_pipeline_id_convert_to_bigint
-    user_id_convert_to_bigint
-  ], remove_with: '17.0', remove_after: '2024-04-22'
+  ignore_column :environment_auto_stop_in, remove_with: '18.4', remove_after: '2025-09-01'
 
   self.table_name = :p_ci_builds
   self.sequence_name = :ci_builds_id_seq
@@ -30,27 +19,40 @@ class CommitStatus < Ci::ApplicationRecord
 
   belongs_to :user
   belongs_to :project
-  belongs_to :pipeline, ->(build) { in_partition(build) }, class_name: 'Ci::Pipeline', foreign_key: :commit_id, inverse_of: :statuses, partition_foreign_key: :partition_id
+  belongs_to :pipeline,
+    ->(build) { in_partition(build) },
+    class_name: 'Ci::Pipeline',
+    foreign_key: :commit_id,
+    inverse_of: :statuses,
+    partition_foreign_key: :partition_id
   belongs_to :auto_canceled_by, class_name: 'Ci::Pipeline', inverse_of: :auto_canceled_jobs
-  belongs_to :ci_stage, class_name: 'Ci::Stage', foreign_key: :stage_id
+  belongs_to :ci_stage,
+    ->(build) { in_partition(build) },
+    class_name: 'Ci::Stage',
+    foreign_key: :stage_id,
+    partition_foreign_key: :partition_id
 
   has_many :needs, class_name: 'Ci::BuildNeed', foreign_key: :build_id, inverse_of: :build
 
   attribute :retried, default: false
 
-  enum scheduling_type: { stage: 0, dag: 1 }, _prefix: true
+  enum :scheduling_type, { stage: 0, dag: 1 }, prefix: true
   # We use `Enums::Ci::CommitStatus.failure_reasons` here so that EE can more easily
   # extend this `Hash` with new values.
-  enum failure_reason: Enums::Ci::CommitStatus.failure_reasons
+  enum :failure_reason, Enums::Ci::CommitStatus.failure_reasons
 
   delegate :commit, to: :pipeline
   delegate :sha, :short_sha, :before_sha, to: :pipeline
 
   validates :pipeline, presence: true, unless: :importing?
   validates :name, presence: true, unless: :importing?
-  validates :stage, :ref, :target_url, :description, length: { maximum: 255 }
+  validates :ci_stage, presence: true, on: :create, unless: :importing?
+  validates :ref, :target_url, :description, length: { maximum: 255 }
+  validates :project, presence: true
 
-  alias_attribute :author, :user
+  alias_method :author, :user
+  alias_method :author=, :user=
+
   alias_attribute :pipeline_id, :commit_id
 
   scope :failed_but_allowed, -> do
@@ -66,12 +68,13 @@ class CommitStatus < Ci::ApplicationRecord
   scope :latest_ordered, -> { latest.ordered.includes(project: :namespace) }
   scope :retried_ordered, -> { retried.order(name: :asc, id: :desc).includes(project: :namespace) }
   scope :ordered_by_pipeline, -> { order(pipeline_id: :asc) }
-  scope :before_stage, -> (index) { where('stage_idx < ?', index) }
-  scope :for_stage, -> (index) { where(stage_idx: index) }
-  scope :after_stage, -> (index) { where('stage_idx > ?', index) }
-  scope :for_project, -> (project_id) { where(project_id: project_id) }
-  scope :for_ref, -> (ref) { where(ref: ref) }
-  scope :by_name, -> (name) { where(name: name) }
+  scope :before_stage, ->(index) { where('stage_idx < ?', index) }
+  scope :for_stage, ->(index) { where(stage_idx: index) }
+  scope :after_stage, ->(index) { where('stage_idx > ?', index) }
+  scope :for_project, ->(project_id) { where(project_id: project_id) }
+  scope :for_ref, ->(ref) { where(ref: ref) }
+  scope :for_user, ->(user) { where(user: user) }
+  scope :by_name, ->(name) { where(name: name) }
   scope :in_pipelines, ->(pipelines) { where(pipeline: pipelines) }
   scope :with_pipeline, -> { joins(:pipeline) }
   scope :updated_at_before, ->(date) { where("#{quoted_table_name}.updated_at < ?", date) }
@@ -81,9 +84,10 @@ class CommitStatus < Ci::ApplicationRecord
   }
   scope :with_when_executed, ->(when_executed) { where(when: when_executed) }
   scope :with_type, ->(type) { where(type: type) }
+  scope :ref_protected, -> { where(protected: true) }
 
   # The scope applies `pluck` to split the queries. Use with care.
-  scope :for_project_paths, -> (paths) do
+  scope :for_project_paths, ->(paths) do
     # Pluck is used to split this query. Splitting the query is required for database decomposition for `ci_*` tables.
     # https://docs.gitlab.com/ee/development/database/transaction_guidelines.html#database-decomposition-and-sharding
     project_ids = Project.where_full_path_in(Array(paths), preload_routes: false).pluck(:id)
@@ -104,7 +108,7 @@ class CommitStatus < Ci::ApplicationRecord
     .where(arel_table[:partition_id].eq(Ci::Pipeline.arel_table[:partition_id]))
   end
 
-  scope :match_id_and_lock_version, -> (items) do
+  scope :match_id_and_lock_version, ->(items) do
     # it expects that items are an array of attributes to match
     # each hash needs to have `id` and `lock_version`
     or_conditions = items.inject(none) do |relation, item|
@@ -114,21 +118,6 @@ class CommitStatus < Ci::ApplicationRecord
     end
 
     merge(or_conditions)
-  end
-
-  ##
-  # We still create some CommitStatuses outside of CreatePipelineService.
-  #
-  # These are pages deployments and external statuses.
-  #
-  before_create unless: :importing? do
-    next if Feature.enabled?(:ci_remove_ensure_stage_service, project)
-
-    # rubocop: disable CodeReuse/ServiceClass
-    Ci::EnsureStageService.new(project, user).execute(self) do |stage|
-      self.run_after_commit { StageUpdateWorker.perform_async(stage.id) }
-    end
-    # rubocop: enable CodeReuse/ServiceClass
   end
 
   before_save if: :status_changed?, unless: :importing? do
@@ -166,7 +155,16 @@ class CommitStatus < Ci::ApplicationRecord
 
     event :drop do
       transition canceling: :canceled # runner returns success/failed
-      transition [:created, :waiting_for_resource, :preparing, :waiting_for_callback, :pending, :running, :manual, :scheduled] => :failed
+      transition [
+        :created,
+        :waiting_for_resource,
+        :preparing,
+        :waiting_for_callback,
+        :pending,
+        :running,
+        :manual,
+        :scheduled
+      ] => :failed
     end
 
     event :success do
@@ -176,10 +174,21 @@ class CommitStatus < Ci::ApplicationRecord
 
     event :cancel do
       transition running: :canceling, if: :supports_canceling?
-      transition [:created, :waiting_for_resource, :preparing, :waiting_for_callback, :pending, :manual, :scheduled, :running] => :canceled
+      transition CANCELABLE_STATUSES.map(&:to_sym) => :canceled
     end
 
-    before_transition [:created, :waiting_for_resource, :preparing, :skipped, :manual, :scheduled] => :pending do |commit_status|
+    event :force_cancel do
+      transition canceling: :canceled, if: :supports_force_cancel?
+    end
+
+    before_transition [
+      :created,
+      :waiting_for_resource,
+      :preparing,
+      :skipped,
+      :manual,
+      :scheduled
+    ] => :pending do |commit_status|
       commit_status.queued_at = Time.current
     end
 
@@ -197,7 +206,9 @@ class CommitStatus < Ci::ApplicationRecord
 
       commit_status.failure_reason = reason.failure_reason_enum
       commit_status.allow_failure = true if reason.force_allow_failure?
-      commit_status.exit_code = reason.exit_code if Feature.enabled?(:ci_retry_on_exit_codes, Feature.current_request)
+      # Windows exit codes can reach a max value of 32-bit unsigned integer
+      # We only allow a smallint for exit_code in the db, hence the added limit of 32767
+      commit_status.exit_code = reason.exit_code
     end
 
     before_transition [:skipped, :manual] => :created do |commit_status, transition|
@@ -243,25 +254,19 @@ class CommitStatus < Ci::ApplicationRecord
     false
   end
 
-  def self.use_partition_id_filter?
-    Ci::Pipeline.use_partition_id_filter?
-  end
-
   def locking_enabled?
     will_save_change_to_status?
   end
 
   def group_name
-    # [\b\s:] -> whitespace or column
-    # (\[.*\])|(\d+[\s:\/\\]+\d+) -> variables/matrix or parallel-jobs numbers
-    # {1,3} -> number of times that matches the variables/matrix or parallel-jobs numbers
-    #          we limit this to 3 because of possible abuse
-    regex = %r{([\b\s:]+((\[.*\])|(\d+[\s:\/\\]+\d+))){1,3}\s*\z}
-
-    name.to_s.sub(regex, '').strip
+    Gitlab::Utils::Job.group_name(name)
   end
 
   def supports_canceling?
+    false
+  end
+
+  def supports_force_cancel?
     false
   end
 
@@ -272,7 +277,7 @@ class CommitStatus < Ci::ApplicationRecord
 
   # Time spent in the pending state.
   def queued_duration
-    calculate_duration(queued_at, started_at)
+    calculate_duration(queued_at, started_at || finished_at)
   end
 
   def latest?
@@ -291,8 +296,12 @@ class CommitStatus < Ci::ApplicationRecord
     false
   end
 
-  def archived?
+  def force_cancelable?
     false
+  end
+
+  def archived?(...)
+    pipeline.archived?(...)
   end
 
   def stuck?
@@ -346,12 +355,19 @@ class CommitStatus < Ci::ApplicationRecord
     ci_stage&.name
   end
 
+  # TODO: Temporary technical debt so we can ignore `stage`: https://gitlab.com/gitlab-org/gitlab/-/issues/507579
+  alias_method :stage, :stage_name
+
   # Handled only by ci_build
   def exit_code=(value); end
 
   # For AiAction
   def to_ability_name
     'build'
+  end
+
+  def test_suite_name
+    nil
   end
 
   # For AiAction

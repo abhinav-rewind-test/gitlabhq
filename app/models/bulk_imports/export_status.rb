@@ -14,8 +14,8 @@ module BulkImports
       @client = Clients::HTTP.new(url: @configuration.url, token: @configuration.access_token)
     end
 
-    def started?
-      !empty? && status['status'] == Export::STARTED
+    def in_progress?
+      !empty? && Export::IN_PROGRESS_STATUSES.include?(status['status'])
     end
 
     def failed?
@@ -75,7 +75,7 @@ module BulkImports
     def status_from_cache
       status = Gitlab::Cache::Import::Caching.read(cache_key)
 
-      Gitlab::Json.parse(status) if status
+      Gitlab::Json.safe_parse(status) if status
     end
 
     def status_from_remote

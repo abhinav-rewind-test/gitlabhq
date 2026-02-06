@@ -56,6 +56,7 @@ export default {
     return {
       projectPath: '',
       rowNumbers: {},
+      isProcessingShowMore: false,
     };
   },
   computed: {
@@ -83,7 +84,14 @@ export default {
   },
   methods: {
     showMore() {
-      this.$emit('showMore');
+      this.isProcessingShowMore = true;
+      // Defer heavy rendering to improve INP (Interaction to Next Paint)
+      // This allows the browser to paint the button interaction immediately
+      // before processing the new entries. See: https://web.dev/articles/optimize-inp
+      setTimeout(() => {
+        this.$emit('showMore');
+        this.isProcessingShowMore = false;
+      }, 0);
     },
     generateRowNumber(entry, index) {
       const { flatPath, id } = entry;
@@ -117,7 +125,7 @@ export default {
 
 <template>
   <div class="tree-content-holder">
-    <div class="table-holder bordered-box">
+    <div class="table-holder gl-border gl-rounded-lg gl-border-section">
       <table
         :aria-label="tableCaption"
         class="table tree-table"
@@ -156,13 +164,13 @@ export default {
             />
           </template>
           <template v-if="isLoading">
-            <tr v-for="i in 5" :key="i" aria-hidden="true">
+            <tr v-for="i in 3" :key="i" aria-hidden="true" data-testid="loader">
               <td><gl-skeleton-loader :lines="1" /></td>
-              <td class="gl-display-none gl-sm-display-block">
+              <td class="gl-hidden @sm/panel:gl-block">
                 <gl-skeleton-loader :lines="1" />
               </td>
               <td>
-                <div class="gl-display-flex gl-lg-justify-content-end">
+                <div class="gl-flex @lg/panel:gl-justify-end">
                   <gl-skeleton-loader :equal-width-lines="true" :lines="1" />
                 </div>
               </td>
@@ -170,11 +178,10 @@ export default {
           </template>
           <template v-if="hasMore">
             <tr>
-              <td align="center" colspan="3" class="gl-p-0!">
+              <td align="center" colspan="3">
                 <gl-button
-                  variant="link"
-                  class="gl-display-flex gl-w-full gl-py-4!"
-                  :loading="isLoading"
+                  size="small"
+                  :loading="isProcessingShowMore || isLoading"
                   @click="showMore"
                 >
                   {{ s__('ProjectFileTree|Show more') }}

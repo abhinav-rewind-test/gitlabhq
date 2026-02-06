@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Issues::ReopenService, feature_category: :team_planning do
   let(:project) { create(:project) }
-  let(:issue) { create(:issue, :closed, project: project) }
+  let(:issue) { create(:issue, :closed, :unchanged, project: project) }
 
   describe '#execute' do
     context 'when user is not authorized to reopen issue' do
@@ -74,6 +74,10 @@ RSpec.describe Issues::ReopenService, feature_category: :team_planning do
         issue
       end
 
+      it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+        subject(:execute_service) { execute }
+      end
+
       context 'issue is incident type' do
         let(:issue) { create(:incident, :closed, project: project) }
         let(:current_user) { user }
@@ -133,6 +137,9 @@ RSpec.describe Issues::ReopenService, feature_category: :team_planning do
           execute
         end
       end
+
+      it_behaves_like 'tracks work item event', :issue, :user,
+        Gitlab::WorkItems::Instrumentation::EventActions::REOPEN, :execute
     end
   end
 end

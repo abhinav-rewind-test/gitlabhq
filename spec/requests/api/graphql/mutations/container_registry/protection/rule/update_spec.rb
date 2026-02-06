@@ -7,22 +7,22 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
 
   let_it_be(:project) { create(:project) }
   let_it_be_with_reload(:container_registry_protection_rule) do
-    create(:container_registry_protection_rule, project: project, push_protected_up_to_access_level: :developer)
+    create(:container_registry_protection_rule, project: project, minimum_access_level_for_push: :maintainer)
   end
 
-  let_it_be(:current_user) { create(:user, maintainer_projects: [project]) }
+  let_it_be(:current_user) { create(:user, maintainer_of: project) }
 
   let(:container_registry_protection_rule_attributes) do
     build_stubbed(:container_registry_protection_rule, project: project)
   end
 
   let(:mutation) do
-    graphql_mutation(:update_container_registry_protection_rule, input,
+    graphql_mutation(:update_container_protection_repository_rule, input,
       <<~QUERY
-      containerRegistryProtectionRule {
+      containerProtectionRepositoryRule {
         repositoryPathPattern
-        deleteProtectedUpToAccessLevel
-        pushProtectedUpToAccessLevel
+        minimumAccessLevelForDelete
+        minimumAccessLevelForPush
       }
       clientMutationId
       errors
@@ -34,14 +34,16 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
     {
       id: container_registry_protection_rule.to_global_id,
       repository_path_pattern: "#{container_registry_protection_rule.repository_path_pattern}-updated",
-      delete_protected_up_to_access_level: 'OWNER',
-      push_protected_up_to_access_level: 'MAINTAINER'
+      minimum_access_level_for_delete: 'OWNER',
+      minimum_access_level_for_push: 'MAINTAINER'
     }
   end
 
-  let(:mutation_response) { graphql_mutation_response(:update_container_registry_protection_rule) }
+  let(:mutation_response) { graphql_mutation_response(:update_container_protection_repository_rule) }
 
-  subject { post_graphql_mutation(mutation, current_user: current_user) }
+  subject(:post_graphql_mutation_update_container_registry_protection_rule) do
+    post_graphql_mutation(mutation, current_user: current_user)
+  end
 
   shared_examples 'a successful response' do
     it { subject.tap { expect_graphql_errors_to_be_empty } }
@@ -50,10 +52,10 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
       subject
 
       expect(mutation_response).to include(
-        'containerRegistryProtectionRule' => {
+        'containerProtectionRepositoryRule' => {
           'repositoryPathPattern' => input[:repository_path_pattern],
-          'deleteProtectedUpToAccessLevel' => input[:delete_protected_up_to_access_level],
-          'pushProtectedUpToAccessLevel' => input[:push_protected_up_to_access_level]
+          'minimumAccessLevelForDelete' => input[:minimum_access_level_for_delete],
+          'minimumAccessLevelForPush' => input[:minimum_access_level_for_push]
         }
       )
     end
@@ -62,7 +64,7 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
       subject.tap do
         expect(container_registry_protection_rule.reload).to have_attributes(
           repository_path_pattern: input[:repository_path_pattern],
-          push_protected_up_to_access_level: input[:push_protected_up_to_access_level].downcase
+          minimum_access_level_for_push: input[:minimum_access_level_for_push].downcase
         )
       end
     end
@@ -88,7 +90,7 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
     it { is_expected.tap { expect_graphql_errors_to_be_empty } }
 
     it 'returns a blank container registry protection rule' do
-      is_expected.tap { expect(mutation_response['containerRegistryProtectionRule']).to be_blank }
+      is_expected.tap { expect(mutation_response['containerProtectionRepositoryRule']).to be_blank }
     end
 
     it 'includes error message in response' do
@@ -96,26 +98,42 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
     end
   end
 
-  context 'with invalid input param `pushProtectedUpToAccessLevel`' do
-    let(:input) { super().merge(push_protected_up_to_access_level: nil) }
+  context 'with invalid input param `minimumAccessLevelForPush`' do
+    let(:input) { super().merge(minimum_access_level_for_push: 'INVALID_ACCESS_LEVEL') }
 
-    it_behaves_like 'an erroneous response'
+    it { is_expected.tap { expect_graphql_errors_to_include(/invalid value for minimumAccessLevelForPush/) } }
 
-    it { is_expected.tap { expect_graphql_errors_to_include(/pushProtectedUpToAccessLevel can't be blank/) } }
+    it do
+      expect { post_graphql_mutation_update_container_registry_protection_rule }
+        .not_to(change { container_registry_protection_rule.reload.updated_at })
+    end
   end
 
   context 'with invalid input param `repositoryPathPattern`' do
     let(:input) { super().merge(repository_path_pattern: '') }
 
-    it_behaves_like 'an erroneous response'
+    it 'returns error with correct error message' do
+      post_graphql_mutation_update_container_registry_protection_rule
 
-    it { is_expected.tap { expect_graphql_errors_to_include(/repositoryPathPattern can't be blank/) } }
+      expect_graphql_errors_to_include(/repositoryPathPattern can't be blank/)
+    end
+  end
+
+  context 'with blank input fields `minimumAccessLevelForPush` and `minimumAccessLevelForDelete`' do
+    let(:input) { super().merge(minimum_access_level_for_push: nil, minimum_access_level_for_delete: nil) }
+
+    it 'returns error with correct error message' do
+      post_graphql_mutation_update_container_registry_protection_rule
+
+      expect(mutation_response['errors'])
+        .to eq ['A rule requires at least the Maintainer role for either push or delete.']
+    end
   end
 
   context 'when current_user does not have permission' do
-    let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
-    let_it_be(:reporter) { create(:user).tap { |u| project.add_reporter(u) } }
-    let_it_be(:guest) { create(:user).tap { |u| project.add_guest(u) } }
+    let_it_be(:developer) { create(:user, developer_of: project) }
+    let_it_be(:reporter) { create(:user, reporter_of: project) }
+    let_it_be(:guest) { create(:user, guest_of: project) }
     let_it_be(:anonymous) { create(:user) }
 
     where(:current_user) do
@@ -124,20 +142,6 @@ RSpec.describe 'Updating the container registry protection rule', :aggregate_fai
 
     with_them do
       it { is_expected.tap { expect_graphql_errors_to_include(/you don't have permission to perform this action/) } }
-    end
-  end
-
-  context "when feature flag ':container_registry_protected_containers' disabled" do
-    before do
-      stub_feature_flags(container_registry_protected_containers: false)
-    end
-
-    it_behaves_like 'an erroneous response'
-
-    it 'returns error of disabled feature flag' do
-      is_expected.tap do
-        expect_graphql_errors_to_include(/'container_registry_protected_containers' feature flag is disabled/)
-      end
     end
   end
 end

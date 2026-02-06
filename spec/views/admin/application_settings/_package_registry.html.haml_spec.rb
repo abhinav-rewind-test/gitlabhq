@@ -3,11 +3,13 @@
 require 'spec_helper'
 
 RSpec.describe 'admin/application_settings/_package_registry' do
+  include RenderedHtml
+
   let_it_be(:admin) { create(:admin) }
   let_it_be(:default_plan_limits) { create(:plan_limits, :default_plan, :with_package_file_sizes) }
   let_it_be(:application_setting) { build(:application_setting) }
 
-  let(:page) { Capybara::Node::Simple.new(rendered) }
+  let(:page) { rendered_html }
 
   before do
     assign(:application_setting, application_setting)
@@ -52,7 +54,7 @@ RSpec.describe 'admin/application_settings/_package_registry' do
   end
 
   context 'with multiple plans' do
-    let_it_be(:plan) { create(:plan, name: 'Ultimate') }
+    let_it_be(:plan) { create(:plan, name: 'ultimate') }
     let_it_be(:ultimate_plan_limits) { create(:plan_limits, :with_package_file_sizes, plan: plan) }
 
     before do
@@ -64,6 +66,25 @@ RSpec.describe 'admin/application_settings/_package_registry' do
 
       expect(page).to have_content('Default')
       expect(page).to have_content('Ultimate')
+    end
+  end
+
+  context 'skip nuget package metadata url validation' do
+    before do
+      assign(:plans, [default_plan_limits.plan])
+    end
+
+    it 'renders nothing when saas', :saas do
+      subject
+
+      expect(rendered).not_to have_field(s_('PackageRegistry|Skip metadata URL validation for the NuGet package'), type: 'checkbox')
+    end
+
+    it 'renders the setting checkbox when self-managed' do
+      subject
+
+      expect(rendered).to have_field(s_('PackageRegistry|Skip metadata URL validation for the NuGet package'), type: 'checkbox')
+      expect(page.find_field(s_('PackageRegistry|Skip metadata URL validation for the NuGet package'))).not_to be_checked
     end
   end
 end

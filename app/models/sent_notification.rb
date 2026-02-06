@@ -1,33 +1,99 @@
 # frozen_string_literal: true
 
 class SentNotification < ApplicationRecord
-  include IgnorableColumns
+  include PartitionedTable
+  include EachBatch
 
-  ignore_column %i[id_convert_to_bigint], remove_with: '17.0', remove_after: '2024-04-19'
+  self.table_name = :p_sent_notifications
+
+  INVALID_NOTEABLE = Class.new(StandardError)
+  REPLY_KEY_BYTE_SIZE = 16
+  INTEGER_CONVERT_BASE = 36
+  BASE36_REGEX = /[0-9a-z]/
+  # Email reply key is in the form: <base36-partition-id>-<base36-reply-key>
+  PARTITIONED_REPLY_KEY_REGEX = /(?<partition>#{BASE36_REGEX}{1,4})-(?<reply_key>#{BASE36_REGEX}{25})/
+  LEGACY_REPLY_KEY_REGEX = /(?<legacy_key>[a-f\d]{32})/
+  FULL_REPLY_KEY_REGEX = /(?:(#{LEGACY_REPLY_KEY_REGEX})|(#{PARTITIONED_REPLY_KEY_REGEX}))/
+  PARTITION_DURATION = 2.months
+  RETENTION_PERIOD = 2.years
+
+  attr_readonly :partition
+  attribute :partition, default: nil
+
   belongs_to :project
-  belongs_to :noteable, polymorphic: true # rubocop:disable Cop/PolymorphicAssociations
+  belongs_to :noteable, polymorphic: true # rubocop:disable Cop/PolymorphicAssociations -- Legacy definition
   belongs_to :recipient, class_name: "User"
   belongs_to :issue_email_participant
+  belongs_to :namespace
 
-  validates :recipient, presence: true
-  validates :reply_key, presence: true, uniqueness: true
+  validates :recipient, :namespace_id, presence: true
   validates :noteable_id, presence: true, unless: :for_commit?
-  validates :commit_id, presence: true, if: :for_commit?
+  validates :commit_id, :project, presence: true, if: :for_commit?
   validates :in_reply_to_discussion_id, format: { with: /\A\h{40}\z/, allow_nil: true }
   validate :note_valid
 
-  after_save :keep_around_commit, if: :for_commit?
+  before_validation :ensure_sharding_key
+
+  partitioned_by :partition, strategy: :sliding_list,
+    next_partition_if: ->(active_partition) do
+      oldest_record_in_partition = select(:id, :created_at)
+        .for_partition(active_partition.value)
+        .order(:id)
+        .limit(1)
+        .take
+
+      oldest_record_in_partition.present? &&
+        oldest_record_in_partition.created_at < PARTITION_DURATION.ago
+    end,
+    detach_partition_if: ->(partition) do
+      newest_record_in_partition = select(:id, :created_at)
+        .for_partition(partition.value)
+        .order(id: :desc)
+        .limit(1)
+        .take
+
+      newest_record_in_partition.present? &&
+        newest_record_in_partition.created_at < RETENTION_PERIOD.ago
+    end
+
+  scope :for_partition, ->(partition) { where(partition: partition) }
+
+  before_save do
+    # attr_readonly still allows setting the column on insert
+    # This works because we have config.active_record.partial_inserts = true
+    clear_attribute_change(:partition)
+  end
 
   class << self
     def reply_key
-      SecureRandom.hex(16)
+      # Adding leading 0 to make the key size stable. 25 is the max we can get with 16 bytes
+      SecureRandom.random_number(2**(REPLY_KEY_BYTE_SIZE * 8)).to_s(INTEGER_CONVERT_BASE).rjust(25, '0')
     end
 
     def for(reply_key)
-      find_by(reply_key: reply_key)
+      matches = FULL_REPLY_KEY_REGEX.match(reply_key)
+      return unless matches
+
+      result = if matches[:reply_key]
+                 partition_result = where(
+                   partition: matches[:partition], reply_key: matches[:reply_key]
+                 ).to_a
+
+                 if partition_result.any?
+                   partition_result
+                 else
+                   where(reply_key: matches[:reply_key]).to_a
+                 end
+               else
+                 where(reply_key: matches[:legacy_key]).to_a
+               end
+
+      # We don't expect collisions, but in the unlikely case of one, behave like the record has been deleted
+      # Discussed in https://gitlab.com/gitlab-org/gitlab/-/issues/577844#note_2838135886
+      result.one? ? result.first : nil
     end
 
-    def record(noteable, recipient_id, reply_key = self.reply_key, attrs = {})
+    def record(noteable, recipient_id, attrs = {})
       noteable_id = nil
       commit_id = nil
       if noteable.is_a?(Commit)
@@ -48,15 +114,15 @@ class SentNotification < ApplicationRecord
 
       # Non-sticky write is used as `.record` is only used in ActionMailer
       # where there are no queries to SentNotification.
-      ::Gitlab::Database::LoadBalancing::Session.without_sticky_writes do
+      ::Gitlab::Database::LoadBalancing::SessionMap.current(load_balancer).without_sticky_writes do
         create(attrs)
       end
     end
 
-    def record_note(note, recipient_id, reply_key = self.reply_key, attrs = {})
+    def record_note(note, recipient_id, attrs = {})
       attrs[:in_reply_to_discussion_id] = note.discussion_id if note.part_of_discussion? || note.can_be_discussion_note?
 
-      record(note.noteable, recipient_id, reply_key, attrs)
+      record(note.noteable, recipient_id, attrs)
     end
   end
 
@@ -85,7 +151,7 @@ class SentNotification < ApplicationRecord
   end
 
   def to_param
-    self.reply_key
+    partitioned_reply_key
   end
 
   def create_reply(message, external_author = nil, dryrun: false)
@@ -96,35 +162,63 @@ class SentNotification < ApplicationRecord
 
     params[:external_author] = external_author if external_author.present?
 
-    klass.new(self.project,
-      self.recipient,
+    klass.new(project,
+      recipient,
       params
     ).execute
   end
 
+  def partitioned_reply_key
+    return reply_key unless persisted?
+
+    encoded_partition = partition.to_s(INTEGER_CONVERT_BASE)
+
+    "#{encoded_partition}-#{reply_key}"
+  end
+
   private
+
+  def ensure_sharding_key
+    self.namespace_id = namespace_id_from_noteable
+  end
+
+  def namespace_id_from_noteable
+    case noteable
+    when DesignManagement::Design, Issue
+      noteable.namespace_id
+    when MergeRequest, ProjectSnippet
+      noteable.project.project_namespace_id
+    when Commit
+      project.project_namespace_id
+    when WikiPage::Meta
+      noteable.namespace_id || noteable.project.project_namespace_id
+    else
+      # Raising an error here to make sure that the correct sharding key is set if support
+      # for a new `noteable_type` is added.
+      raise(
+        INVALID_NOTEABLE,
+        format(_("%{noteable_type} is not supported"), noteable_type: noteable_type)
+      )
+    end
+  end
 
   def reply_params
     {
-      noteable_type: self.noteable_type,
-      noteable_id: self.noteable_id,
-      commit_id: self.commit_id,
-      in_reply_to_discussion_id: self.in_reply_to_discussion_id
+      noteable_type: noteable_type,
+      noteable_id: noteable_id,
+      commit_id: commit_id,
+      in_reply_to_discussion_id: in_reply_to_discussion_id
     }
   end
 
   def note_valid
     note = create_reply('Test', dryrun: true)
+    return if note.valid?
 
-    unless note.valid?
-      self.errors.add(
-        :base, _("Note parameters are invalid: %{errors}") %
-          { errors: note.errors.full_messages.to_sentence }
-      )
-    end
-  end
-
-  def keep_around_commit
-    project.repository.keep_around(self.commit_id, source: self.class.name)
+    errors.add(
+      :base, format(_("Note parameters are invalid: %{errors}"), errors: note.errors.full_messages.to_sentence)
+    )
   end
 end
+
+SentNotification.prepend_mod

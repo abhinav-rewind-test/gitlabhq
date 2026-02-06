@@ -7,7 +7,8 @@ module Backup
     class Database < Target
       extend ::Gitlab::Utils::Override
       include Backup::Helper
-      attr_reader :force, :errors
+
+      attr_reader :force, :errors, :logger
 
       IGNORED_ERRORS = [
         # Ignore warnings
@@ -15,7 +16,9 @@ module Backup
         # Ignore the DROP errors; recent database dumps will use --if-exists with pg_dump
         /does not exist$/,
         # User may not have permissions to drop extensions or schemas
-        /must be owner of/
+        /must be owner of/,
+        # PG16 introduced generally ignorable error `must be able to SET ROLE "gitlab-psql"`
+        /must be able to SET ROLE "gitlab-psql"/i
       ].freeze
       IGNORED_ERRORS_REGEXP = Regexp.union(IGNORED_ERRORS).freeze
 
@@ -24,6 +27,7 @@ module Backup
 
         @errors = []
         @force = options.force?
+        @logger = Gitlab::BackupLogger.new(progress)
       end
 
       override :dump
@@ -39,7 +43,7 @@ module Backup
           dump_file_name = file_name(destination_dir, backup_connection.connection_name)
           FileUtils.rm_f(dump_file_name)
 
-          progress.print "Dumping PostgreSQL database #{pg_database_name} ... "
+          logger.info "Dumping PostgreSQL database #{pg_database_name} ... "
 
           schemas = []
 
@@ -61,8 +65,7 @@ module Backup
           raise DatabaseBackupError.new(active_record_config, dump_file_name) unless success
 
           report_success(success)
-
-          progress.flush
+          logger.flush
         end
       ensure
         if multiple_databases?
@@ -96,12 +99,12 @@ module Backup
           unless File.exist?(db_file_name)
             raise(Backup::Error, "Source database file does not exist #{db_file_name}") if main_database?(database_name)
 
-            progress.puts "Source backup for the database #{database_name} doesn't exist. Skipping the task"
+            logger.info "Source backup for the database #{database_name} doesn't exist. Skipping the task"
             return false
           end
 
           unless force
-            progress.puts 'Removing all tables. Press `Ctrl-C` within 5 seconds to abort'.color(:yellow)
+            logger.info 'Removing all tables. Press `Ctrl-C` within 5 seconds to abort'
             sleep(5)
           end
 
@@ -119,7 +122,7 @@ module Backup
             status, tracked_errors =
               case config[:adapter]
               when "postgresql" then
-                progress.print "Restoring PostgreSQL database #{database} ... "
+                logger.info "Restoring PostgreSQL database #{database} ... "
                 execute_and_track_errors(pg_restore_cmd(database), decompress_rd)
               end
             decompress_rd.close
@@ -129,9 +132,9 @@ module Backup
           end
 
           unless tracked_errors.empty?
-            progress.print "------ BEGIN ERRORS -----\n".color(:yellow)
-            progress.print tracked_errors.join.color(:yellow)
-            progress.print "------ END ERRORS -------\n".color(:yellow)
+            logger.error "------ BEGIN ERRORS -----\n"
+            logger.error tracked_errors.join
+            logger.error "------ END ERRORS -------\n"
 
             @errors += tracked_errors
           end
@@ -191,17 +194,13 @@ module Backup
       end
 
       def report_success(success)
-        if success
-          progress.puts '[DONE]'.color(:green)
-        else
-          progress.puts '[FAILED]'.color(:red)
-        end
+        success ? logger.info('[DONE]') : logger.error('[FAILED]')
       end
 
       private
 
       def drop_tables(database_name)
-        puts_time 'Cleaning the database ... '.color(:blue)
+        logger.info 'Cleaning the database ... '
 
         if Rake::Task.task_defined? "gitlab:db:drop_tables:#{database_name}"
           Rake::Task["gitlab:db:drop_tables:#{database_name}"].invoke
@@ -210,7 +209,7 @@ module Backup
           Rake::Task["gitlab:db:drop_tables"].invoke
         end
 
-        puts_time 'done'.color(:green)
+        logger.info 'done'
       end
 
       # @deprecated This will be removed when restore operation is refactored to use extended_env directly

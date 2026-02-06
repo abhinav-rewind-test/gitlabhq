@@ -1,8 +1,20 @@
 # frozen_string_literal: true
 
 module DbCleaner
+  def base_class_for(pool)
+    if pool.respond_to?(:connection_class)
+      pool.connection_class
+    else
+      pool.connection_descriptor.name.constantize
+    end
+  end
+
   def all_connection_classes
-    ::TestProf::BeforeAll::Adapters::ActiveRecord.all_connections.map(&:connection_class).uniq
+    ::ActiveRecord::Base
+      .connection_handler
+      .connection_pool_list(:writing)
+      .map { |pool| base_class_for(pool) }
+      .uniq
   end
 
   def delete_from_all_tables!(except: [])
@@ -13,7 +25,7 @@ module DbCleaner
 
   def deletion_except_tables
     %w[
-      work_item_types work_item_hierarchy_restrictions
+      work_item_types
       work_item_widget_definitions work_item_related_link_restrictions
     ]
   end
@@ -109,8 +121,29 @@ module DbCleaner
       connection.execute(cmd)
     end
 
-    ActiveRecord::Base.clear_all_connections! # rubocop:disable Database/MultipleDatabases
+    ActiveRecord::Base.connection_handler.clear_all_connections!
   end
 end
 
 DbCleaner.prepend_mod_with('DbCleaner')
+
+# We patch the establish_master_connection so that it establishes a connection
+# using a ActiveRecord::DatabaseConfigurations::HashConfig instead of a hash.
+#
+# Using a HashConfig avoids resetting the name of the connection.
+module PostgreSQLDatabaseTasksPatch
+  def establish_master_connection
+    establish_connection(
+      ActiveRecord::DatabaseConfigurations::HashConfig.new(
+        db_config.env_name,
+        db_config.name,
+        db_config.configuration_hash.merge(
+          database: "postgres",
+          schema_search_path: "public"
+        )
+      )
+    )
+  end
+end
+
+ActiveRecord::Tasks::PostgreSQLDatabaseTasks.prepend(PostgreSQLDatabaseTasksPatch)

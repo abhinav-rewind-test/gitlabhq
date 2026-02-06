@@ -1,26 +1,19 @@
-import { GlBanner, GlButton } from '@gitlab/ui';
-import { useLocalStorageSpy } from 'helpers/local_storage_helper';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import BetaBadge from '~/vue_shared/components/badges/beta_badge.vue';
 import CatalogHeader from '~/ci/catalog/components/list/catalog_header.vue';
-import { CATALOG_FEEDBACK_DISMISSED_KEY } from '~/ci/catalog/constants';
 
 describe('CatalogHeader', () => {
-  useLocalStorageSpy();
-
   let wrapper;
 
   const defaultProps = {};
   const customProvide = {
     pageTitle: 'Catalog page',
     pageDescription: 'This is a nice catalog page',
+    legalDisclaimer: '',
   };
 
-  const findBanner = () => wrapper.findComponent(GlBanner);
-  const findBetaBadge = () => wrapper.findComponent(BetaBadge);
-  const findFeedbackButton = () => findBanner().findComponent(GlButton);
   const findTitle = () => wrapper.find('h1');
   const findDescription = () => wrapper.findByTestId('page-description');
+  const findLegalDisclaimer = () => wrapper.findByTestId('legal-disclaimer');
 
   const createComponent = ({ props = {}, provide = {}, stubs = {} } = {}) => {
     wrapper = shallowMountExtended(CatalogHeader, {
@@ -34,16 +27,6 @@ describe('CatalogHeader', () => {
       },
     });
   };
-
-  describe('Default view', () => {
-    beforeEach(() => {
-      createComponent();
-    });
-
-    it('renders a Beta Badge', () => {
-      expect(findBetaBadge().exists()).toBe(true);
-    });
-  });
 
   describe('title and description', () => {
     describe('when there are no values provided', () => {
@@ -71,47 +54,18 @@ describe('CatalogHeader', () => {
     });
   });
 
-  describe('Feedback banner', () => {
-    describe('when user has never dismissed', () => {
-      beforeEach(() => {
-        createComponent({ stubs: { GlBanner } });
-      });
+  describe('legal disclaimer', () => {
+    it('is rendered if provided', () => {
+      const legalDisclaimer = 'legal disclaimer';
+      createComponent({ provide: { ...customProvide, legalDisclaimer } });
 
-      it('is visible', () => {
-        expect(findBanner().exists()).toBe(true);
-      });
-
-      it('has link to feedback issue', () => {
-        expect(findFeedbackButton().attributes().href).toBe(
-          'https://gitlab.com/gitlab-org/gitlab/-/issues/407556',
-        );
-      });
+      expect(findLegalDisclaimer().text()).toBe(legalDisclaimer);
     });
 
-    describe('when user dismisses it', () => {
-      beforeEach(() => {
-        createComponent();
-      });
+    it('is not rendered if not provided', () => {
+      createComponent();
 
-      it('sets the local storage and removes the banner', async () => {
-        expect(findBanner().exists()).toBe(true);
-
-        await findBanner().vm.$emit('close');
-
-        expect(localStorage.setItem).toHaveBeenCalledWith(CATALOG_FEEDBACK_DISMISSED_KEY, 'true');
-        expect(findBanner().exists()).toBe(false);
-      });
-    });
-
-    describe('when user has dismissed it before', () => {
-      beforeEach(() => {
-        localStorage.setItem(CATALOG_FEEDBACK_DISMISSED_KEY, 'true');
-        createComponent();
-      });
-
-      it('does not show the banner', () => {
-        expect(findBanner().exists()).toBe(false);
-      });
+      expect(findLegalDisclaimer().exists()).toBe(false);
     });
   });
 });

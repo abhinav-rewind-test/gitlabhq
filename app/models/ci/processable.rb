@@ -9,38 +9,101 @@ module Ci
     include Ci::Metadatable
     extend ::Gitlab::Utils::Override
 
+    ACTIONABLE_WHEN = %w[manual delayed].freeze
+
     self.allow_legacy_sti_class = true
+
+    attribute :temp_job_definition
 
     has_one :resource, class_name: 'Ci::Resource', foreign_key: 'build_id', inverse_of: :processable
     has_one :sourced_pipeline, class_name: 'Ci::Sources::Pipeline', foreign_key: :source_job_id, inverse_of: :source_job
+    has_one :trigger, through: :pipeline
+    has_one :job_environment, class_name: 'Environments::Job', inverse_of: :job
+    has_one :job_definition_instance, ->(job) { in_partition(job) },
+      class_name: 'Ci::JobDefinitionInstance',
+      foreign_key: :job_id,
+      partition_foreign_key: :partition_id,
+      inverse_of: :job,
+      autosave: true
+
+    has_one :job_definition, ->(job) { in_partition(job) },
+      class_name: 'Ci::JobDefinition',
+      foreign_key: :job_id,
+      partition_foreign_key: :partition_id,
+      through: :job_definition_instance
+
+    has_many :job_messages,
+      ->(build) { in_partition(build) },
+      class_name: 'Ci::JobMessage',
+      foreign_key: :job_id,
+      inverse_of: :job,
+      partition_foreign_key: :partition_id
+
+    has_many :error_job_messages,
+      ->(build) { in_partition(build).error.order(:id) },
+      class_name: 'Ci::JobMessage',
+      foreign_key: :job_id,
+      inverse_of: :job,
+      partition_foreign_key: :partition_id
 
     belongs_to :resource_group, class_name: 'Ci::ResourceGroup', inverse_of: :processables
 
+    has_one :job_source,
+      ->(job) { in_partition(job) },
+      class_name: 'Ci::BuildSource',
+      foreign_key: :build_id,
+      inverse_of: :job,
+      partition_foreign_key: :partition_id
+
     accepts_nested_attributes_for :needs
+    accepts_nested_attributes_for :job_definition_instance
 
     scope :preload_needs, -> { preload(:needs) }
+    scope :preload_job_definition_instances, -> { preload(:job_definition_instance) }
     scope :manual_actions, -> { where(when: :manual, status: COMPLETED_STATUSES + %i[manual]) }
 
-    scope :with_needs, -> (names = nil) do
+    scope :with_needs, ->(names = nil) do
       needs = Ci::BuildNeed.scoped_build.select(1)
       needs = needs.where(name: names) if names
       where('EXISTS (?)', needs)
     end
 
-    scope :without_needs, -> (names = nil) do
+    scope :without_needs, ->(names = nil) do
       needs = Ci::BuildNeed.scoped_build.select(1)
       needs = needs.where(name: names) if names
       where('NOT EXISTS (?)', needs)
     end
 
-    scope :interruptible, -> do
-      joins(:metadata).merge(Ci::BuildMetadata.with_interruptible)
+    scope :with_interruptible_true, -> do
+      where_exists(
+        Ci::JobDefinitionInstance
+          .joins(:job_definition)
+          .scoped_job
+          .merge(Ci::JobDefinition.with_interruptible_true)
+      )
     end
 
-    scope :not_interruptible, -> do
+    scope :with_metadata_interruptible_false, -> do
       joins(:metadata).where.not(
         Ci::BuildMetadata.table_name => { id: Ci::BuildMetadata.scoped_build.with_interruptible.select(:id) }
       )
+    end
+
+    scope :with_interruptible_false, -> do
+      where_not_exists(
+        Ci::JobDefinitionInstance
+           .joins(:job_definition)
+           .scoped_job
+           .merge(Ci::JobDefinition.with_interruptible_true)
+      )
+    end
+
+    # The run after commit queue is processed LIFO
+    # We need to ensure that the Redis data is persisted before any other callbacks the might depend on it.
+    before_commit do |job|
+      job.run_after_commit do
+        redis_state.save if defined?(@redis_state)
+      end
     end
 
     state_machine :status do
@@ -69,8 +132,7 @@ module Ci
 
       after_transition any => :waiting_for_resource do |processable|
         processable.run_after_commit do
-          Ci::ResourceGroups::AssignResourceFromResourceGroupWorker
-            .perform_async(processable.resource_group_id)
+          assign_resource_from_resource_group(processable)
         end
       end
 
@@ -80,9 +142,33 @@ module Ci
         processable.resource_group.release_resource_from(processable)
 
         processable.run_after_commit do
-          Ci::ResourceGroups::AssignResourceFromResourceGroupWorker
-            .perform_async(processable.resource_group_id)
+          assign_resource_from_resource_group(processable)
         end
+      end
+
+      after_transition any => [:failed] do |processable|
+        next if processable.allow_failure?
+        next unless processable.can_auto_cancel_pipeline_on_job_failure?
+
+        processable.run_after_commit do
+          processable.pipeline.cancel_async_on_job_failure
+        end
+      end
+    end
+
+    def self.fabricate(attrs)
+      attrs = attrs.dup
+      definition_attrs = attrs.extract!(*Ci::JobDefinition::CONFIG_ATTRIBUTES)
+      attrs[:tag_list] = definition_attrs[:tag_list] if definition_attrs.key?(:tag_list)
+
+      new(attrs).tap do |job|
+        job_definition = ::Ci::JobDefinition.fabricate(
+          config: definition_attrs,
+          project_id: job.project_id,
+          partition_id: job.partition_id
+        )
+
+        job.temp_job_definition = job_definition
       end
     end
 
@@ -110,6 +196,10 @@ module Ci
       )
     end
 
+    def assign_resource_from_resource_group(processable)
+      Ci::ResourceGroups::AssignResourceFromResourceGroupWorker.perform_async(processable.resource_group_id)
+    end
+
     validates :type, presence: true
     validates :scheduling_type, presence: true, on: :create, unless: :importing?
 
@@ -119,25 +209,30 @@ module Ci
       :merge_train_pipeline?,
       to: :pipeline
 
-    def clone(current_user:, new_job_variables_attributes: [])
-      new_attributes = self.class.clone_accessors.index_with do |attribute|
-        public_send(attribute) # rubocop:disable GitlabSecurity/PublicSend
-      end
+    delegate :short_token, to: :trigger, prefix: true, allow_nil: true
 
-      if persisted_environment.present?
-        new_attributes[:metadata_attributes] ||= {}
-        new_attributes[:metadata_attributes][:expanded_environment_name] = expanded_environment_name
-      end
+    # Scoped user is present when the user creating the pipeline supports composite identity.
+    # For example: a service account like GitLab Duo. The scoped user is used to further restrict
+    # the permissions of the CI job token associated to the `job.user`.
+    def scoped_user
+      # If jobs are retried by human users (not composite identity) we want to
+      # ignore the persisted `scoped_user_id`, because that is propagated
+      # together with `options` to cloned jobs.
+      # We also handle the case where `user` is `nil` (legacy behavior in specs).
+      return unless user&.composite_identity_enforced?
 
-      new_attributes[:user] = current_user
-
-      self.class.new(new_attributes)
+      User.find_by_id(scoped_user_id)
     end
+    strong_memoize_attr :scoped_user
 
     def retryable?
       return false if retried? || archived? || deployment_rejected?
 
       success? || failed? || canceled? || canceling?
+    end
+
+    def archived?(...)
+      degenerated? || super
     end
 
     def aggregated_needs_names
@@ -149,6 +244,10 @@ module Ci
     end
 
     def action?
+      raise NotImplementedError
+    end
+
+    def can_auto_cancel_pipeline_on_job_failure?
       raise NotImplementedError
     end
 
@@ -207,9 +306,17 @@ module Ci
     def dependency_variables
       return [] if all_dependencies.empty?
 
+      dependencies_with_accessible_artifacts = job_dependencies_with_accessible_artifacts(all_dependencies)
+
       Gitlab::Ci::Variables::Collection.new.concat(
-        Ci::JobVariable.where(job: all_dependencies).dotenv_source
+        Ci::JobVariable.where(job: dependencies_with_accessible_artifacts).dotenv_source
       )
+    end
+
+    def job_dependencies_with_accessible_artifacts(all_dependencies)
+      build_ids = all_dependencies.collect(&:id)
+
+      Ci::Build.id_in(build_ids).builds_with_accessible_artifacts(self.project_id)
     end
 
     def all_dependencies
@@ -217,6 +324,33 @@ module Ci
         dependencies.all
       end
     end
+
+    def manual_job?
+      self.when == 'manual'
+    end
+
+    def manual_confirmation_message
+      options[:manual_confirmation] if manual_job? && playable?
+    end
+
+    def redis_state
+      strong_memoize(:redis_state) do
+        Ci::JobRedisState.find_or_initialize_by(job: self)
+      end
+    end
+
+    def enqueue_immediately?
+      redis_state.enqueue_immediately?
+    end
+
+    def set_enqueue_immediately!
+      redis_state.enqueue_immediately = true
+    end
+
+    def source
+      job_source&.source || pipeline.source
+    end
+    strong_memoize_attr :source
 
     private
 

@@ -177,7 +177,6 @@ export default {
       :show-items="true"
       :show-error-msg="error"
       :i18n="$options.i18n"
-      :items="organizations.list"
       :page-info="organizations.pageInfo"
       :items-count="organizationsCount"
       :status-tabs="$options.statusTabs"
@@ -190,7 +189,7 @@ export default {
       @error-alert-dismissed="errorAlertDismissed"
     >
       <template #header-actions>
-        <div class="gl-display-flex gl-align-items-center gl-justify-content-end gl-my-3 gl-mr-5">
+        <div class="gl-my-3 gl-mr-5 gl-flex gl-items-center gl-justify-end">
           <a
             v-if="canReadCrmContact"
             :href="groupContactsPath"
@@ -230,7 +229,7 @@ export default {
               v-gl-tooltip.hover.bottom="$options.i18n.issuesButtonLabel"
               class="gl-mr-3"
               data-testid="issues-link"
-              icon="issues"
+              icon="work-item-issue"
               :aria-label="$options.i18n.issuesButtonLabel"
               :href="getIssuesPath(groupIssuesPath, id)"
             />
@@ -245,7 +244,7 @@ export default {
           </template>
 
           <template #table-busy>
-            <gl-loading-icon size="lg" color="dark" class="mt-3" />
+            <gl-loading-icon size="lg" color="dark" class="!gl-mt-5" />
           </template>
 
           <template #empty>

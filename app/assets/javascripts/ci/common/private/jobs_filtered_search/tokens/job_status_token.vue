@@ -3,6 +3,7 @@ import { GlFilteredSearchToken, GlFilteredSearchSuggestion, GlIcon } from '@gitl
 import { s__ } from '~/locale';
 
 export default {
+  name: 'JobStatusToken',
   components: {
     GlFilteredSearchToken,
     GlFilteredSearchSuggestion,
@@ -99,9 +100,9 @@ export default {
 <template>
   <gl-filtered-search-token v-bind="{ ...$props, ...$attrs }" v-on="$listeners">
     <template #view>
-      <div class="gl-display-flex gl-align-items-center">
+      <div class="gl-flex gl-items-center">
         <div :class="findActiveStatus.class">
-          <gl-icon :name="findActiveStatus.icon" class="gl-mr-2 gl-display-block" />
+          <gl-icon :name="findActiveStatus.icon" class="gl-mr-2 gl-block" />
         </div>
         <span>{{ findActiveStatus.text }}</span>
       </div>
@@ -112,7 +113,7 @@ export default {
         :key="index"
         :value="status.value"
       >
-        <div class="gl-display-flex" :class="status.class">
+        <div class="gl-flex" :class="status.class">
           <gl-icon :name="status.icon" class="gl-mr-3" />
           <span>{{ status.text }}</span>
         </div>

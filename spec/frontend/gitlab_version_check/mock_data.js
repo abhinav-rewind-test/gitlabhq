@@ -1,11 +1,11 @@
 export const VERSION_CHECK_BADGE_NO_PROP_FIXTURE =
-  '<div class="js-gitlab-version-check-badge"></div>';
+  '<div class="js-gitlab-version-check-badge" data-testid="check-version-badge"></div>';
 
-export const VERSION_CHECK_BADGE_NO_SEVERITY_FIXTURE = `<div class="js-gitlab-version-check-badge" data-version='{ "size": "sm" }'></div>`;
+export const VERSION_CHECK_BADGE_NO_SEVERITY_FIXTURE = `<div class="js-gitlab-version-check-badge" data-version='{ "size": "sm" }' data-testid="check-version-badge"></div>`;
 
 export const VERSION_CHECK_BADGE_FIXTURE = `<div class="js-gitlab-version-check-badge" data-version='{ "severity": "success" }'></div>`;
 
-export const VERSION_CHECK_BADGE_FINDER = '[data-testid="badge-click-wrapper"]';
+export const VERSION_CHECK_BADGE_FINDER = '[data-testid="check-version-badge"]';
 
 export const VERSION_BADGE_TEXT = 'Up to date';
 
@@ -13,4 +13,4 @@ export const SECURITY_MODAL_FIXTURE = `<div id="js-security-patch-upgrade-alert-
 
 export const SECURITY_MODAL_FINDER = '[data-testid="alert-modal-title"]';
 
-export const SECURITY_MODAL_TEXT = 'Important notice - Critical security release';
+export const SECURITY_MODAL_TEXT = 'Important notice - Critical patch release';

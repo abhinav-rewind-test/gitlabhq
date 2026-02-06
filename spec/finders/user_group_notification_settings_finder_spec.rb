@@ -15,7 +15,7 @@ RSpec.describe UserGroupNotificationSettingsFinder, feature_category: :team_plan
     context 'when the groups have no ancestors' do
       let_it_be(:groups) { create_list(:group, 3) }
 
-      it 'will be a default Global notification setting', :aggregate_failures do
+      it 'is a default Global notification setting', :aggregate_failures do
         expect(subject.count).to eq(3)
         expect(attributes(&:notification_email)).to match_array([nil])
         expect(attributes(&:level)).to match_array(['global'])
@@ -68,22 +68,6 @@ RSpec.describe UserGroupNotificationSettingsFinder, feature_category: :team_plan
           expect(subject.count).to eq(1)
           expect(attributes(&:level)).to match_array(['global'])
           expect(attributes(&:notification_email)).to match_array(['ancestor@example.com'])
-        end
-      end
-
-      context 'when the group has parent_id set but that does not belong to any group' do
-        let_it_be(:group) { create(:group) }
-        let_it_be(:groups) { [group] }
-
-        before do
-          # Let's set a parent_id for a group that definitely doesn't exist
-          group.update_columns(parent_id: 19283746)
-        end
-
-        it 'returns a default Global notification setting' do
-          expect(subject.count).to eq(1)
-          expect(attributes(&:level)).to match_array(['global'])
-          expect(attributes(&:notification_email)).to match_array([nil])
         end
       end
 

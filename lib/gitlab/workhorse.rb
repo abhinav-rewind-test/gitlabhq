@@ -20,7 +20,9 @@ module Gitlab
     include JwtAuthenticatable
 
     class << self
-      def git_http_ok(repository, repo_type, user, action, show_all_refs: false, need_audit: false)
+      def git_http_ok(
+        repository, repo_type, user, action, show_all_refs: false, need_audit: false,
+        authentication_context: {})
         raise "Unsupported action: #{action}" unless ALLOWED_GIT_HTTP_ACTIONS.include?(action.to_s)
 
         attrs = {
@@ -43,6 +45,22 @@ module Gitlab
           }
         }
 
+        ::Gitlab::Auth::Identity.currently_linked do |identity|
+          attrs[:GlScopedUserID] = identity.scoped_user.id.to_s
+        end
+
+        if authentication_context[:authentication_method] == :ci_job_token
+          attrs[:GlBuildID] = authentication_context[:authentication_method_id].to_s
+        end
+
+        if repo_type == Gitlab::GlRepository::PROJECT
+          project = repository.container
+          root_namespace = project&.root_namespace
+
+          attrs[:ProjectID] = project.id if project
+          attrs[:RootNamespaceID] = root_namespace.id if root_namespace
+        end
+
         # Custom option for git-receive-pack command
         receive_max_input_size = Gitlab::CurrentSettings.receive_max_input_size.to_i
         if receive_max_input_size > 0
@@ -52,7 +70,8 @@ module Gitlab
         attrs[:GitalyServer][:call_metadata].merge!(
           'user_id' => attrs[:GL_ID].presence,
           'username' => attrs[:GL_USERNAME].presence,
-          'remote_ip' => Gitlab::ApplicationContext.current_context_attribute(:remote_ip).presence
+          'remote_ip' => Gitlab::ApplicationContext.current_context_attribute(:remote_ip).presence,
+          'retry_config' => retry_config
         ).compact!
 
         attrs
@@ -74,7 +93,9 @@ module Gitlab
         ]
       end
 
-      def send_git_archive(repository, ref:, format:, append_sha:, path: nil)
+      def send_git_archive(
+        repository, ref:, format:, append_sha:, path: nil, include_lfs_blobs: true,
+        exclude_paths: [])
         format ||= 'tar.gz'
         format = format.downcase
 
@@ -88,11 +109,13 @@ module Gitlab
 
         raise "Repository or ref not found" if metadata.empty?
 
-        params = send_git_archive_params(repository, metadata, path, archive_format(format))
+        params = send_git_archive_params(repository, metadata, path, archive_format(format), include_lfs_blobs,
+          exclude_paths)
 
         # If present, DisableCache must be a Boolean. Otherwise
         # workhorse ignores it.
         params['DisableCache'] = true if git_archive_cache_disabled?
+        params['UseArchiveCleaner'] = git_archive_cache_cleaner_enabled?
         params['GitalyServer'] = gitaly_server_hash(repository)
 
         [
@@ -163,16 +186,32 @@ module Gitlab
       # timeouts can be given for the opening the connection and reading the response headers.
       # Their values must be given in seconds.
       # Example: timeouts: { open: 5, read: 5 }
+      # rubocop:disable Metrics/ParameterLists -- all arguments needed
       def send_url(
-        url, allow_redirects: false, method: 'GET', body: nil, headers: nil, timeouts: {}, response_statuses: {}
+        url,
+        allow_localhost: true,
+        allow_redirects: false,
+        method: 'GET',
+        body: nil,
+        ssrf_filter: false,
+        headers: {},
+        timeouts: {},
+        response_statuses: {},
+        response_headers: {},
+        allowed_endpoints: [],
+        restrict_forwarded_response_headers: {}
       )
         params = {
           'URL' => url,
           'AllowRedirects' => allow_redirects,
+          'AllowLocalhost' => allow_localhost,
+          'AllowedEndpoints' => allowed_endpoints,
+          'SSRFFilter' => ssrf_filter,
           'Body' => body.to_s,
-          'Header' => headers,
+          'Header' => headers.transform_values { |v| Array.wrap(v) },
+          'ResponseHeaders' => response_headers.transform_values { |v| Array.wrap(v) },
           'Method' => method
-        }.compact
+        }.merge(restrict_forwarded_response_headers_params(restrict_forwarded_response_headers)).compact
 
         if timeouts.present?
           params['DialTimeout'] = "#{timeouts[:open]}s" if timeouts[:open]
@@ -194,6 +233,7 @@ module Gitlab
           "send-url:#{encode(params.compact)}"
         ]
       end
+      # rubocop:enable Metrics/ParameterLists
 
       def send_scaled_image(location, width, content_type)
         params = {
@@ -208,18 +248,30 @@ module Gitlab
         ]
       end
 
-      def send_dependency(headers, url, upload_config: {})
+      def send_dependency(
+        headers,
+        url,
+        allow_localhost: true,
+        upload_config: {},
+        response_headers: {},
+        ssrf_filter: false,
+        allowed_endpoints: [],
+        restrict_forwarded_response_headers: {})
         params = {
+          'AllowLocalhost' => allow_localhost,
+          'AllowedEndpoints' => allowed_endpoints,
           'Headers' => headers.transform_values { |v| Array.wrap(v) },
+          'ResponseHeaders' => response_headers.transform_values { |v| Array.wrap(v) },
+          'SSRFFilter' => ssrf_filter,
           'Url' => url,
           'UploadConfig' => {
             'Method' => upload_config[:method],
             'Url' => upload_config[:url],
-            'Headers' => (upload_config[:headers] || {}).transform_values { |v| Array.wrap(v) }
+            'Headers' => (upload_config[:headers] || {}).transform_values { |v| Array.wrap(v) },
+            'AuthorizedUploadResponse' => upload_config[:authorized_upload_response] || {}
           }.compact_blank!
-        }
+        }.merge(restrict_forwarded_response_headers_params(restrict_forwarded_response_headers))
         params.compact_blank!
-
         [
           SEND_DATA_HEADER,
           "send-dependency:#{encode(params)}"
@@ -301,16 +353,23 @@ module Gitlab
       end
 
       def gitaly_server_hash(repository)
+        metadata = Feature::Gitaly.server_feature_flags(
+          user: ::Feature::Gitaly.user_actor,
+          repository: repository,
+          project: ::Feature::Gitaly.project_actor(repository.container),
+          group: ::Feature::Gitaly.group_actor(repository.container)
+        )
+        metadata['retry_config'] = retry_config
+
         {
           address: Gitlab::GitalyClient.address(repository.shard),
           token: Gitlab::GitalyClient.token(repository.shard),
-          call_metadata: Feature::Gitaly.server_feature_flags(
-            user: ::Feature::Gitaly.user_actor,
-            repository: repository,
-            project: ::Feature::Gitaly.project_actor(repository.container),
-            group: ::Feature::Gitaly.group_actor(repository.container)
-          )
+          call_metadata: metadata
         }
+      end
+
+      def retry_config
+        Gitlab::Json.dump(Gitlab::GitalyClient.retry_policy)
       end
 
       def gitaly_diff_or_patch_hash(repository, diff_refs)
@@ -323,6 +382,10 @@ module Gitlab
 
       def git_archive_cache_disabled?
         ENV['WORKHORSE_ARCHIVE_CACHE_DISABLED'].present? || Feature.enabled?(:workhorse_archive_cache_disabled)
+      end
+
+      def git_archive_cache_cleaner_enabled?
+        ENV["WORKHORSE_ARCHIVE_CACHE_CLEANER_DISABLED"].blank?
       end
 
       def archive_format(format)
@@ -338,9 +401,10 @@ module Gitlab
         end
       end
 
-      def send_git_archive_params(repository, metadata, path, format)
+      def send_git_archive_params(repository, metadata, path, format, include_lfs_blobs, exclude_paths)
         {
           'ArchivePath' => metadata['ArchivePath'],
+          'StoragePath' => metadata['StoragePath'],
           'GetArchiveRequest' => encode_binary(
             Gitaly::GetArchiveRequest.new(
               repository: repository.gitaly_repository,
@@ -348,10 +412,21 @@ module Gitlab
               prefix: metadata['ArchivePrefix'],
               format: format,
               path: Gitlab::EncodingHelper.encode_binary(path.presence || ""),
-              include_lfs_blobs: true
+              include_lfs_blobs: include_lfs_blobs,
+              exclude: exclude_paths.map { |exclude_path| Gitlab::EncodingHelper.encode_binary(exclude_path) }
             ).to_proto
           )
         }
+      end
+
+      def restrict_forwarded_response_headers_params(params)
+        params[:enabled] = false unless params.key?(:enabled)
+        {
+          'RestrictForwardedResponseHeaders' => {
+            'Enabled' => params[:enabled],
+            'AllowList' => params[:allow_list] || []
+          }
+        }.compact_blank!
       end
     end
   end

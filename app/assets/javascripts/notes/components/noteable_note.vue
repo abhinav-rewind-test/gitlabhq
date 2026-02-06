@@ -1,12 +1,10 @@
 <script>
 import { GlSprintf, GlAvatarLink, GlAvatar } from '@gitlab/ui';
-import $ from 'jquery';
-import { escape, isEmpty } from 'lodash';
-// eslint-disable-next-line no-restricted-imports
-import { mapGetters, mapActions } from 'vuex';
+import { escape } from 'lodash';
+import { mapState, mapActions } from 'pinia';
+import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
-import { INLINE_DIFF_LINES_KEY } from '~/diffs/constants';
 import { createAlert } from '~/alert';
 import { HTTP_STATUS_GONE } from '~/lib/utils/http_status';
 import { ignoreWhilePending } from '~/lib/utils/ignore_while_pending';
@@ -14,18 +12,14 @@ import { truncateSha } from '~/lib/utils/text_utility';
 import TimelineEntryItem from '~/vue_shared/components/notes/timeline_entry_item.vue';
 import { __, s__, sprintf } from '~/locale';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
-import { containsSensitiveToken, confirmSensitiveAction } from '~/lib/utils/secret_detection';
+import { detectAndConfirmSensitiveTokens } from '~/lib/utils/secret_detection';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { useNotes } from '~/notes/store/legacy_notes';
 import eventHub from '../event_hub';
 import noteable from '../mixins/noteable';
 import resolvable from '../mixins/resolvable';
 import { renderMarkdown, updateNoteErrorMessage } from '../utils';
-import {
-  getStartLineNumber,
-  getEndLineNumber,
-  getLineClasses,
-  commentLineOptions,
-  formatLineRange,
-} from './multiline_comment_utils';
+import { getStartLineNumber, getEndLineNumber, getLineClasses } from './multiline_comment_utils';
 import NoteActions from './note_actions.vue';
 import NoteBody from './note_body.vue';
 import NoteHeader from './note_header.vue';
@@ -80,16 +74,12 @@ export default {
       required: false,
       default: false,
     },
-    diffLines: {
-      type: Array,
-      required: false,
-      default: null,
-    },
     discussionRoot: {
       type: Boolean,
       required: false,
       default: false,
     },
+    // eslint-disable-next-line vue/no-unused-properties -- discussionResolvePath used by the `Resolvable` mixin
     discussionResolvePath: {
       type: String,
       required: false,
@@ -100,32 +90,59 @@ export default {
       required: false,
       default: false,
     },
-    shouldScrollToNote: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
     discussion: {
       type: Object,
       required: false,
       default: null,
     },
+    autosaveKey: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    restoreFromAutosave: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    anchorPrefix: {
+      type: String,
+      required: false,
+      default: 'note',
+    },
   },
   data() {
     return {
-      isEditing: false,
+      isEditingLocal: false,
       isDeleting: false,
       isRequesting: false,
       isResolving: false,
       commentLineStart: {},
+      // eslint-disable-next-line vue/no-unused-properties -- `resolveAsThread` is used by the `resolvable` mixin
       resolveAsThread: true,
     };
   },
   computed: {
-    ...mapGetters('diffs', ['getDiffFileByHash']),
-    ...mapGetters(['targetNoteHash', 'getNoteableData', 'getUserData', 'commentsDisabled']),
+    ...mapState(useLegacyDiffs, ['getDiffFileByHash']),
+    ...mapState(useNotes, ['targetNoteHash', 'getNoteableData', 'getUserData']),
+    isEditing: {
+      get() {
+        return this.note.isEditing ?? this.isEditingLocal;
+      },
+      set(value) {
+        this.isEditingLocal = value;
+        if (value) {
+          this.$emit('handleEdit');
+        } else {
+          this.$emit('cancelForm');
+        }
+      },
+    },
     author() {
       return this.note.author;
+    },
+    authorId() {
+      return getIdFromGraphQLId(this.author.id);
     },
     commentType() {
       return this.note.internal ? __('internal note') : __('comment');
@@ -137,14 +154,20 @@ export default {
         'is-requesting being-posted': this.isRequesting,
         'disabled-content': this.isDeleting,
         target: this.isTarget,
-        'is-editable': this.note.current_user.can_edit,
+        'is-editable': this.canEdit,
       };
     },
+    canAwardEmoji() {
+      return this.note.current_user?.can_award_emoji ?? false;
+    },
+    canEdit() {
+      return this.note.current_user?.can_edit ?? false;
+    },
     canReportAsAbuse() {
-      return Boolean(this.reportAbusePath) && this.author.id !== this.getUserData.id;
+      return Boolean(this.reportAbusePath) && this.authorId !== this.getUserData.id;
     },
     noteAnchorId() {
-      return `note_${this.note.id}`;
+      return `${this.anchorPrefix}_${this.note.id}`;
     },
     isTarget() {
       return this.targetNoteHash === this.noteAnchorId;
@@ -154,6 +177,9 @@ export default {
         return this.discussion.id;
       }
       return '';
+    },
+    commentLines() {
+      return this.getLinesForDiscussion({ discussion: this.discussion });
     },
     actionText() {
       if (!this.commit) {
@@ -175,8 +201,9 @@ export default {
     },
     canResolve() {
       if (!this.discussionRoot) return false;
+      if (!this.note.resolvable) return false;
 
-      return this.note.current_user.can_resolve_discussion;
+      return this.note.current_user?.can_resolve_discussion;
     },
     lineRange() {
       return this.note.position?.line_range;
@@ -197,10 +224,6 @@ export default {
 
       return this.line && this.startLineNumber !== this.endLineNumber;
     },
-    commentLineOptions() {
-      const lines = this.diffFile[INLINE_DIFF_LINES_KEY].length;
-      return commentLineOptions(lines, this.commentLineStart, this.line.line_code);
-    },
     diffFile() {
       let fileResolvedFromAvailableSource;
 
@@ -219,6 +242,9 @@ export default {
       const isFileComment = this.note.position?.position_type === 'file';
       return !this.isOverviewTab && (this.line || isFileComment);
     },
+    isAmazonQCodeReview() {
+      return this.author.username === 'amazon-q';
+    },
   },
   created() {
     const line = this.note.position?.line_range?.start || this.line;
@@ -236,32 +262,25 @@ export default {
       if (noteId === this.note.id) {
         this.isEditing = true;
         this.setSelectedCommentPositionHover();
-        this.scrollToNoteIfNeeded($(this.$el));
+        this.$el.scrollIntoView();
       }
     });
   },
 
-  mounted() {
-    if (this.isTarget && this.shouldScrollToNote) {
-      this.scrollToNoteIfNeeded($(this.$el));
-    }
-  },
-
   methods: {
-    ...mapActions([
+    ...mapActions(useNotes, [
       'deleteNote',
       'removeNote',
       'updateNote',
+      // eslint-disable-next-line vue/no-unused-properties -- toggleResolveNote() used by the `Resolvable` mixin
       'toggleResolveNote',
-      'scrollToNoteIfNeeded',
       'updateAssignees',
       'setSelectedCommentPositionHover',
-      'updateDiscussionPosition',
     ]),
+    ...mapActions(useLegacyDiffs, ['getLinesForDiscussion']),
     editHandler() {
       this.isEditing = true;
       this.setSelectedCommentPositionHover();
-      this.$emit('handleEdit');
     },
     async deleteHandler() {
       let { commentType } = this;
@@ -298,30 +317,17 @@ export default {
       }
     },
     updateSuccess() {
-      this.isEditing = false;
+      this.isEditingLocal = false;
       this.isRequesting = false;
       this.oldContent = null;
       renderGFM(this.$refs.noteBody.$el);
       this.$emit('updateSuccess');
     },
     async formUpdateHandler({ noteText, callback, resolveDiscussion }) {
-      const position = {
-        ...this.note.position,
-      };
-
-      if (this.discussionRoot && this.commentLineStart && this.line) {
-        position.line_range = formatLineRange(this.commentLineStart, this.line);
-        this.updateDiscussionPosition({
-          discussionId: this.note.discussion_id,
-          position,
-        });
-      }
-
       this.$emit('handleUpdateNote', {
         note: this.note,
         noteText,
         resolveDiscussion,
-        position,
         flashContainer: this.$el,
         callback: () => this.updateSuccess(),
         errorCallback: () => callback(),
@@ -329,12 +335,11 @@ export default {
 
       if (this.isDraft) return;
 
-      if (containsSensitiveToken(noteText)) {
-        const confirmed = await confirmSensitiveAction();
-        if (!confirmed) {
-          callback();
-          return;
-        }
+      const confirmSubmit = await detectAndConfirmSensitiveTokens({ content: noteText });
+
+      if (!confirmSubmit) {
+        callback();
+        return;
       }
 
       const data = {
@@ -346,9 +351,6 @@ export default {
         },
       };
 
-      // Stringifying an empty object yields `{}` which breaks graphql queries
-      // https://gitlab.com/gitlab-org/gitlab/-/issues/298827
-      if (!isEmpty(position)) data.note.note.position = JSON.stringify(position);
       this.isRequesting = true;
       this.oldContent = this.note.note_html;
       // eslint-disable-next-line vue/no-mutating-props
@@ -401,7 +403,6 @@ export default {
       }
       this.recoverNoteContent();
       this.isEditing = false;
-      this.$emit('cancelForm');
     }),
     recoverNoteContent() {
       if (this.oldContent) {
@@ -431,7 +432,7 @@ export default {
     <div
       v-if="showMultiLineComment"
       data-testid="multiline-comment"
-      class="gl-text-gray-500 gl-border-gray-100 gl-border-b-solid gl-border-b-1 gl-px-5 gl-py-3"
+      class="gl-border-b gl-border-section gl-px-5 gl-py-3 gl-text-subtle"
     >
       <gl-sprintf :message="__('Comment on lines %{startLine} to %{endLine}')">
         <template #startLine>
@@ -446,7 +447,7 @@ export default {
     <div v-if="isMRDiffView" class="timeline-avatar gl-float-left gl-pt-2">
       <gl-avatar-link
         :href="author.path"
-        :data-user-id="author.id"
+        :data-user-id="authorId"
         :data-username="author.username"
         class="js-user-link"
       >
@@ -464,7 +465,7 @@ export default {
     <div v-else class="timeline-avatar gl-float-left">
       <gl-avatar-link
         :href="author.path"
-        :data-user-id="author.id"
+        :data-user-id="authorId"
         :data-username="author.username"
         class="js-user-link gl-relative"
       >
@@ -486,18 +487,17 @@ export default {
           :created-at="note.created_at"
           :note-id="note.id"
           :is-internal-note="note.internal"
-          :noteable-type="noteableType"
+          :is-imported="note.imported"
           :email-participant="note.external_author"
         >
           <template #note-header-info>
             <slot name="note-header-info"></slot>
           </template>
           <span v-if="commit" v-safe-html="actionText"></span>
-          <span v-else-if="note.created_at" class="d-none d-sm-inline">&middot;</span>
         </note-header>
         <note-actions
           :author="author"
-          :author-id="author.id"
+          :author-id="authorId"
           :note-id="note.id"
           :note-url="note.noteable_note_url"
           :access-level="note.human_access"
@@ -506,15 +506,16 @@ export default {
           :project-name="note.project_name"
           :noteable-type="note.noteable_type"
           :show-reply="showReplyButton"
-          :can-edit="note.current_user.can_edit"
-          :can-award-emoji="note.current_user.can_award_emoji"
-          :can-delete="note.current_user.can_edit"
+          :can-edit="canEdit"
+          :can-award-emoji="canAwardEmoji"
+          :can-delete="canEdit"
           :can-report-as-abuse="canReportAsAbuse"
           :can-resolve="canResolve"
           :resolvable="note.resolvable || note.isDraft"
           :is-resolved="note.resolved || note.resolve_discussion"
           :is-resolving="isResolving"
           :resolved-by="note.resolved_by"
+          :is-amazon-q-code-review="isAmazonQCodeReview"
           :is-draft="note.isDraft"
           :resolve-discussion="note.isDraft && note.resolve_discussion"
           :discussion-id="discussionId"
@@ -528,17 +529,22 @@ export default {
       </div>
       <div class="timeline-discussion-body">
         <slot name="discussion-resolved-text"></slot>
-        <note-body
-          ref="noteBody"
-          :note="note"
-          :can-edit="note.current_user.can_edit"
-          :line="line"
-          :file="diffFile"
-          :is-editing="isEditing"
-          :help-page-path="helpPagePath"
-          @handleFormUpdate="formUpdateHandler"
-          @cancelForm="formCancelHandler"
-        />
+        <slot name="note-body">
+          <note-body
+            ref="noteBody"
+            :note="note"
+            :can-edit="canEdit"
+            :line="line"
+            :lines="commentLines"
+            :file="diffFile"
+            :is-editing="isEditing"
+            :autosave-key="autosaveKey"
+            :restore-from-autosave="restoreFromAutosave"
+            :help-page-path="helpPagePath"
+            @handleFormUpdate="formUpdateHandler"
+            @cancelForm="formCancelHandler"
+          />
+        </slot>
         <div class="timeline-discussion-body-footer">
           <slot name="after-note-body"></slot>
         </div>

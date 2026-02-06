@@ -6,9 +6,9 @@ class ResourceTimeboxEvent < ResourceEvent
 
   self.abstract_class = true
 
-  validate :exactly_one_issuable, unless: :importing?
+  validates_with ExactlyOnePresentValidator, fields: :issuable_id_attrs, unless: :importing?
 
-  enum action: {
+  enum :action, {
     add: 1,
     remove: 2
   }
@@ -43,4 +43,4 @@ class ResourceTimeboxEvent < ResourceEvent
   end
 end
 
-ResourceTimeboxEvent.prepend_mod_with('ResourceTimeboxEvent')
+ResourceTimeboxEvent.prepend_mod

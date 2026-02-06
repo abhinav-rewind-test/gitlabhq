@@ -1,3 +1,11 @@
+const mockPageInfo = {
+  hasNextPage: true,
+  hasPreviousPage: false,
+  startCursor: null,
+  endCursor: null,
+  __typename: 'PageInfo',
+};
+
 export const accessLevelsMockResponse = [
   {
     __typename: 'PushAccessLevelEdge',
@@ -17,16 +25,57 @@ export const accessLevelsMockResponse = [
   },
 ];
 
+export const squashOptionMockResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/6',
+      __typename: 'Project',
+      branchRules: {
+        __typename: 'BranchRuleConnection',
+        nodes: [
+          {
+            __typename: 'BranchRule',
+            name: 'main',
+            id: 'gid://gitlab/Projects/BranchRule/1',
+            squashOption: {
+              option: 'Encourage',
+              helpText: 'Checkbox is visible and selected by default.',
+              __typename: 'SquashOption',
+            },
+          },
+          {
+            __typename: 'BranchRule',
+            name: '*',
+            id: 'gid://gitlab/Projects/BranchRule/2',
+            squashOption: null,
+          },
+          {
+            __typename: 'BranchRule',
+            name: 'branch-with-$speci@l-#-chars',
+            id: 'gid://gitlab/Projects/BranchRule/3',
+            squashOption: {
+              option: 'Encourage',
+              helpText: 'Checkbox is visible and selected by default.',
+              __typename: 'SquashOption',
+            },
+          },
+        ],
+      },
+    },
+  },
+};
+
 export const branchRulesMockResponse = {
   data: {
     project: {
-      id: '123',
+      id: 'gid://gitlab/Project/1',
       __typename: 'Project',
       branchRules: {
         __typename: 'BranchRuleConnection',
         nodes: [
           {
             name: 'main',
+            id: 'gid://gitlab/Projects/BranchRule/1',
             isDefault: true,
             matchingBranchesCount: 1,
             branchProtection: {
@@ -44,6 +93,7 @@ export const branchRulesMockResponse = {
           },
           {
             name: 'test-*',
+            id: 'gid://gitlab/Projects/BranchRule/2',
             isDefault: false,
             matchingBranchesCount: 2,
             branchProtection: {
@@ -60,6 +110,38 @@ export const branchRulesMockResponse = {
             __typename: 'BranchRule',
           },
         ],
+        pageInfo: mockPageInfo,
+      },
+    },
+  },
+};
+
+export const predefinedBranchRulesMockResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/1',
+      __typename: 'Project',
+      branchRules: {
+        __typename: 'BranchRuleConnection',
+        nodes: [
+          {
+            name: 'All branches',
+            id: 'gid://gitlab/Projects::AllBranchesRule/7',
+            isDefault: false,
+            matchingBranchesCount: 12,
+            branchProtection: null,
+            __typename: 'BranchRule',
+          },
+          {
+            name: 'All protected branches',
+            id: 'gid://gitlab/Projects::AllBranchesRule/6',
+            isDefault: false,
+            matchingBranchesCount: 14,
+            branchProtection: null,
+            __typename: 'BranchRule',
+          },
+        ],
+        pageInfo: mockPageInfo,
       },
     },
   },
@@ -100,6 +182,7 @@ export const branchRulePropsMock = {
   },
   approvalRulesTotal: 0,
   statusChecksTotal: 0,
+  projectPath: 'some/project/path',
 };
 
 export const branchRuleWithoutDetailsPropsMock = {
@@ -109,4 +192,16 @@ export const branchRuleWithoutDetailsPropsMock = {
   branchProtection: null,
   approvalRulesTotal: 0,
   statusChecksTotal: 0,
+};
+
+export const protectableBranches = ['make-release-umd-bundle', 'main', 'v2.x'];
+
+export const protectableBranchesMockResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/1',
+      protectableBranches,
+      __typename: 'Project',
+    },
+  },
 };

@@ -11,14 +11,16 @@ export default (el) => {
     return null;
   }
 
-  const { projectEnvironmentsPath, projectPath, kasTunnelUrl } = el.dataset;
+  const { projectEnvironmentsPath, projectPath, markdownPreviewPath, kasTunnelUrl } = el.dataset;
 
   return new Vue({
     el,
+    name: 'NewEnvironmentRoot',
     apolloProvider: apolloProvider(),
     provide: {
       projectEnvironmentsPath,
       projectPath,
+      markdownPreviewPath,
       kasTunnelUrl: removeLastSlashInUrlPath(kasTunnelUrl),
     },
     render(h) {

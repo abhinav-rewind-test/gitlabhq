@@ -19,7 +19,7 @@ RSpec.describe EventsFinder do
   let!(:closed_issue_event2) { create(:event, :closed, project: project1, author: user, target: closed_issue, created_at: Date.new(2016, 2, 2)) }
   let!(:opened_merge_request_event2) { create(:event, :created, project: project2, author: user, target: opened_merge_request, created_at: Date.new(2017, 2, 2)) }
   let(:opened_merge_request3) { create(:merge_request, source_project: project1, author: other_user) }
-  let!(:other_developer_event) { create(:event, :created, project: project1, author: other_user, target: opened_merge_request3 ) }
+  let!(:other_developer_event) { create(:event, :created, project: project1, author: other_user, target: opened_merge_request3) }
 
   let_it_be(:public_project) { create(:project, :public, creator_id: user.id, namespace: user.namespace) }
 
@@ -110,6 +110,24 @@ RSpec.describe EventsFinder do
       events = described_class.new(source: project2, current_user: other_user).execute
 
       expect(events).to be_empty
+    end
+  end
+
+  context 'when target_type param is provided' do
+    context 'when "project"' do
+      let_it_be(:project) { public_project }
+
+      let_it_be(:project_event) { create(:project_event, project: project, target: project) }
+      let_it_be(:legacy_project_event) { create(:project_event, project: project, target: nil, action: :created) }
+
+      let_it_be(:event_with_nil_target_type) { create(:event, project: project, target: nil, action: :closed) }
+      let_it_be(:event_with_other_target_type) { create(:event, :for_issue, project: project) }
+
+      subject { described_class.new(scope: 'all', current_user: user, target_type: 'project').execute }
+
+      it { is_expected.to contain_exactly(project_event, legacy_project_event) }
+      it { is_expected.not_to include(event_with_nil_target_type) }
+      it { is_expected.not_to include(event_with_other_target_type) }
     end
   end
 end

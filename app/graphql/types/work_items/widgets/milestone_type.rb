@@ -10,12 +10,18 @@ module Types
         graphql_name 'WorkItemWidgetMilestone'
         description 'Represents a milestone widget'
 
-        implements Types::WorkItems::WidgetInterface
+        implements ::Types::WorkItems::WidgetInterface
+
+        def self.authorization_scopes
+          super + [:ai_workflows]
+        end
 
         field :milestone,
-              ::Types::MilestoneType,
-              null: true,
-              description: 'Milestone of the work item.'
+          ::Types::MilestoneType,
+          skip_type_authorization: [:read_milestone],
+          scopes: [:api, :read_api, :ai_workflows],
+          null: true,
+          description: 'Milestone of the work item.'
       end
       # rubocop:enable Graphql/AuthorizeTypes
     end

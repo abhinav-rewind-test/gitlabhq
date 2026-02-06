@@ -6,7 +6,7 @@ def match_mr1_note(content_regex)
   MergeRequest.find_by(title: 'MR1').notes.find { |n| n.note.match(/#{content_regex}/) }
 end
 
-RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :importers do
+RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, :clean_gitlab_redis_shared_state, feature_category: :importers do
   include ImportExport::CommonUtil
   using RSpec::Parameterized::TableSyntax
 
@@ -27,7 +27,6 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           @shared = @project.import_export_shared
 
           stub_all_feature_flags
-
           setup_import_export_config('complex')
           setup_reader
 
@@ -62,6 +61,14 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
 
         it 'has the project description' do
           expect(Project.find_by_path('project').description).to eq('Nisi et repellendus ut enim quo accusamus vel magnam.')
+        end
+
+        it 'has the project merge commit message template' do
+          expect(Project.find_by_path('project').merge_commit_template).to eq('merge commit message template')
+        end
+
+        it 'has the project squash commit message template' do
+          expect(Project.find_by_path('project').squash_commit_template).to eq('squash commit message template')
         end
 
         it 'has the same label associated to two issues' do
@@ -175,18 +182,21 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           task_issue1 = Issue.find_by(title: 'task by issue_type')
           task_issue2 = Issue.find_by(title: 'task by both attributes')
           incident_issue = Issue.find_by(title: 'incident by work_item_type')
-          issue_type = WorkItems::Type.default_by_type(:issue)
-          task_type = WorkItems::Type.default_by_type(:task)
+          issue_with_invalid_type = Issue.find_by(title: 'invalid issue type')
+          issue_type = build(:work_item_system_defined_type, :issue)
+          task_type = build(:work_item_system_defined_type, :task)
+          incident_type = build(:work_item_system_defined_type, :incident)
 
-          expect(task_issue1.work_item_type).to eq(task_type)
-          expect(task_issue2.work_item_type).to eq(task_type)
-          expect(incident_issue.work_item_type).to eq(WorkItems::Type.default_by_type(:incident))
+          expect(task_issue1.work_item_type_id).to eq(task_type.id)
+          expect(task_issue2.work_item_type_id).to eq(task_type.id)
+          expect(incident_issue.work_item_type_id).to eq(incident_type.id)
+          expect(issue_with_invalid_type.work_item_type_id).to eq(issue_type.id)
 
-          other_issue_types = Issue.preload(:work_item_type).where.not(
-            id: [task_issue1.id, task_issue2.id, incident_issue.id]
-          ).map(&:work_item_type)
+          other_issue_types = Issue.where.not(
+            id: [task_issue1.id, task_issue2.id, incident_issue.id, issue_with_invalid_type]
+          ).pluck(:work_item_type_id)
 
-          expect(other_issue_types).to all(eq(issue_type))
+          expect(other_issue_types).to all(eq(issue_type.id))
         end
 
         it 'preserves updated_at on issues' do
@@ -250,6 +260,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
 
           expect(note.suggestions.count).to eq(1)
           expect(note.suggestions.first.from_content).to eq("Original line\n")
+          expect(note.suggestions.first.namespace_id).to eq(note.project.project_namespace.id)
         end
 
         context 'event at forth level of the tree' do
@@ -263,7 +274,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
             expect(event.action).not_to be_nil
           end
 
-          it 'event belongs to note, belongs to merge request, belongs to a project' do
+          it 'event belongs to note, belongs to merge request, belongs to a project', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9482' do
             expect(event.note.noteable.project).not_to be_nil
           end
         end
@@ -276,25 +287,48 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           expect(MergeRequestDiffCommit.count).to eq(77)
         end
 
-        it 'assigns committer and author details to all diff commits' do
+        it 'has the correct data for merge request commits metadata' do
+          expect(MergeRequest::CommitsMetadata.count).to eq(27)
+        end
+
+        it 'assigns committer and author details to all diff commits and commits metadata' do
           MergeRequestDiffCommit.all.each do |commit|
-            expect(commit.commit_author_id).not_to be_nil
-            expect(commit.committer_id).not_to be_nil
+            expect(commit.commit_author).not_to be_nil
+            expect(commit.committer).not_to be_nil
+          end
+
+          MergeRequest::CommitsMetadata.all.each do |metadata|
+            expect(metadata.commit_author).not_to be_nil
+            expect(metadata.committer).not_to be_nil
           end
         end
 
-        it 'assigns the correct commit users to different diff commits' do
-          commit1 = MergeRequestDiffCommit
+        it 'assigns the correct commit users to different diff commits and commits metadata' do
+          commit_metadata_1 = MergeRequest::CommitsMetadata
             .find_by(sha: '0b4bc9a49b562e85de7cc9e834518ea6828729b9')
 
-          commit2 = MergeRequestDiffCommit
+          commit_metadata_2 = MergeRequest::CommitsMetadata
             .find_by(sha: 'a4e5dfebf42e34596526acb8611bc7ed80e4eb3f')
+
+          expect(commit_metadata_1.commit_author.name).to eq('Dmitriy Zaporozhets')
+          expect(commit_metadata_1.commit_author.email).to eq('dmitriy.zaporozhets@gmail.com')
+
+          expect(commit_metadata_2.commit_author.name).to eq('James Lopez')
+          expect(commit_metadata_2.commit_author.email).to eq('james@jameslopez.es')
+
+          commit1 = MergeRequestDiffCommit
+            .find_by(merge_request_commits_metadata_id: commit_metadata_1)
+
+          commit2 = MergeRequestDiffCommit
+            .find_by(merge_request_commits_metadata_id: commit_metadata_2)
 
           expect(commit1.commit_author.name).to eq('Dmitriy Zaporozhets')
           expect(commit1.commit_author.email).to eq('dmitriy.zaporozhets@gmail.com')
+          expect(commit1.merge_request_commits_metadata).to eq(commit_metadata_1)
 
           expect(commit2.commit_author.name).to eq('James Lopez')
           expect(commit2.commit_author.email).to eq('james@jameslopez.es')
+          expect(commit2.merge_request_commits_metadata).to eq(commit_metadata_2)
         end
 
         it 'has the correct data for merge request latest_merge_request_diff' do
@@ -303,7 +337,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           end
         end
 
-        it 'sets MWPS to false for all merge requests' do
+        it 'sets auto merge to false for all merge requests' do
           MergeRequest.find_each do |merge_request|
             expect(merge_request.merge_when_pipeline_succeeds).to eq(false)
           end
@@ -364,7 +398,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
         it 'has award emoji for a snippet' do
           award_emoji = @project.snippets.first.award_emoji
 
-          expect(award_emoji.map(&:name)).to contain_exactly('thumbsup', 'coffee')
+          expect(award_emoji.map(&:name)).to contain_exactly(AwardEmoji::THUMBS_UP, 'coffee')
         end
 
         it 'snippet has notes' do
@@ -374,11 +408,34 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
         it 'snippet has award emojis on notes' do
           award_emoji = @project.snippets.first.notes.first.award_emoji.first
 
-          expect(award_emoji.name).to eq('thumbsup')
+          expect(award_emoji.name).to eq(AwardEmoji::THUMBS_UP)
         end
 
-        it 'restores `ci_cd_settings` : `group_runners_enabled` setting' do
-          expect(@project.ci_cd_settings.group_runners_enabled?).to eq(false)
+        it 'restores project ci_cd_settings', :aggregate_failures do
+          settings = @project.ci_cd_settings
+
+          expect(settings.group_runners_enabled?).to eq(false)
+          expect(settings.merge_pipelines_enabled?).to eq(false)
+          expect(settings.default_git_depth).to eq(5)
+          expect(settings.forward_deployment_enabled?).to eq(false)
+          expect(settings.merge_trains_enabled?).to eq(false)
+          expect(settings.auto_rollback_enabled?).to eq(false)
+          expect(settings.keep_latest_artifact?).to eq(true)
+          expect(settings.job_token_scope_enabled?).to eq(true)
+          expect(settings.runner_token_expiration_interval).to eq(1.month.to_i)
+          expect(settings.separated_caches?).to eq(true)
+          expect(settings.allow_fork_pipelines_to_run_in_parent_project?).to eq(false)
+          expect(settings.inbound_job_token_scope_enabled?).to eq(true)
+          expect(settings.forward_deployment_rollback_allowed?).to eq(true)
+          expect(settings.merge_trains_skip_train_allowed?).to eq(false)
+          expect(settings.restrict_pipeline_cancellation_role).to eq('developer').or eq(0)
+          expect(settings.pipeline_variables_minimum_override_role).to eq('developer')
+          expect(settings.push_repository_for_job_token_allowed?).to eq(false)
+          expect(settings.id_token_sub_claim_components).to eq(%w[project_path ref_type ref])
+          expect(settings.delete_pipelines_in_seconds).to eq(1.month.to_i)
+          expect(settings.allow_composite_identities_to_run_pipelines?).to eq(false)
+          expect(settings.display_pipeline_variables?).to eq(false)
+          expect(settings.resource_group_default_process_mode).to eq('unordered')
         end
 
         it 'restores `auto_devops`' do
@@ -409,6 +466,17 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           award_emoji = @project.issues.first.notes.first.award_emoji.first
 
           expect(award_emoji.name).to eq('clapper')
+        end
+
+        it 'restores work_item_description for issues' do
+          issue = @project.issues.find_by(title: 'Voluptatem')
+          work_item_description = issue.work_item_description
+
+          expect(work_item_description).to be_present
+          expect(work_item_description.description).to eq('Aliquam enim illo et possimus.')
+          expect(work_item_description.description_html).to include('Aliquam enim illo et possimus.')
+          expect(work_item_description.last_edited_at).to eq(Time.parse('2016-06-14T15:02:47.967Z'))
+          expect(work_item_description.last_edited_by_id).to be_present
         end
 
         it 'restores container_expiration_policy' do
@@ -447,7 +515,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
 
           aggregate_failures do
             expect(pipeline_schedule.description).to eq('Schedule Description')
-            expect(pipeline_schedule.ref).to eq('refs/heads/master')
+            expect(pipeline_schedule.ref).to eq('master')
             expect(pipeline_schedule.cron).to eq('0 4 * * 0')
             expect(pipeline_schedule.cron_timezone).to eq('UTC')
             expect(pipeline_schedule.active).to eq(false)
@@ -480,7 +548,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
 
               aggregate_failures do
                 expect(release.tag).to eq('release-1.0')
-                expect(release.author_id).to eq(Users::Internal.ghost.id)
+                expect(release.author_id).to eq(Users::Internal.in_organization(@project.organization).ghost.id)
               end
             end
 
@@ -524,7 +592,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
           it 'has award emoji' do
             award_emoji = MergeRequest.find_by_title('MR1').award_emoji
 
-            expect(award_emoji.map(&:name)).to contain_exactly('thumbsup', 'drum')
+            expect(award_emoji.map(&:name)).to contain_exactly(AwardEmoji::THUMBS_UP, 'drum')
           end
 
           context 'notes' do
@@ -540,13 +608,14 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
               note_diff_file = merge_request_note.note_diff_file
 
               expect(note_diff_file.diff).to eq("@@ -14,3 +14,18 @@\n 1")
+              expect(note_diff_file.namespace_id).to eq(merge_request_note.project.project_namespace.id)
             end
           end
         end
 
         context 'tokens are regenerated' do
           it 'has new CI trigger tokens' do
-            expect(Ci::Trigger.where(token: %w[cdbfasdf44a5958c83654733449e585 33a66349b5ad01fc00174af87804e40]))
+            expect(Ci::Trigger.with_token(%w[cdbfasdf44a5958c83654733449e585 33a66349b5ad01fc00174af87804e40]))
               .to be_empty
           end
 
@@ -571,6 +640,11 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
               .each do |(pipeline, expected_status_size)|
               expect(pipeline.statuses.size).to eq(expected_status_size)
             end
+          end
+
+          it 'does not restore jobs metadata' do
+            expect(Ci::Build.for_project(@project).count).to eq(7)
+            expect(Ci::BuildMetadata.count).to eq(0)
           end
         end
 
@@ -899,7 +973,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
       end
 
       context 'with existing group models' do
-        let(:group) { create(:group).tap { |g| g.add_maintainer(user) } }
+        let(:group) { create(:group, maintainers: user) }
         let!(:project) do
           create(
             :project,
@@ -937,7 +1011,7 @@ RSpec.describe Gitlab::ImportExport::Project::TreeRestorer, feature_category: :i
       end
 
       context 'with clashing milestones on IID' do
-        let(:group) { create(:group).tap { |g| g.add_maintainer(user) } }
+        let(:group) { create(:group, maintainers: user) }
         let!(:project) do
           create(
             :project,

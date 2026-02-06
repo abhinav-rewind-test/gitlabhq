@@ -16,13 +16,17 @@ export default function init() {
     createMrPath,
     sourceProject,
     targetProject,
-    projectsFrom,
+    targetProjectsPath,
   } = el.dataset;
 
   return new Vue({
     el,
+    name: 'CompareAppRoot',
     components: {
       CompareApp,
+    },
+    provide: {
+      targetProjectsPath,
     },
     render(createElement) {
       return createElement(CompareApp, {
@@ -37,7 +41,6 @@ export default function init() {
           createMrPath,
           sourceProject: JSON.parse(sourceProject),
           targetProject: JSON.parse(targetProject),
-          projects: JSON.parse(projectsFrom),
         },
       });
     },

@@ -3,9 +3,15 @@
 require 'spec_helper'
 
 RSpec.describe 'User explores projects', feature_category: :user_profile do
-  shared_examples 'an "Explore > Projects" page with sidebar and breadcrumbs' do |page_path|
+  include GlFilteredSearchHelpers
+  before do
+    # Feature test will be added separately in https://gitlab.com/gitlab-org/gitlab/-/issues/520596
+    stub_feature_flags(explore_projects_vue: false)
+  end
+
+  shared_examples 'an "Explore > Projects" page with sidebar and breadcrumbs' do |page_path, params|
     before do
-      visit send(page_path)
+      visit send(page_path, params)
     end
 
     describe "sidebar", :js do
@@ -23,17 +29,46 @@ RSpec.describe 'User explores projects', feature_category: :user_profile do
       end
     end
 
-    describe 'breadcrumbs' do
+    describe 'breadcrumbs', :js do
       it 'has "Explore" as its root breadcrumb' do
-        within '.gl-breadcrumb-list li:first' do
-          expect(page).to have_link('Explore', href: explore_root_path)
+        within_testid('breadcrumb-links') do
+          expect(find('li:first-of-type')).to have_link('Explore', href: explore_root_path)
         end
       end
     end
   end
 
+  it 'renders all expected tabs', :aggregate_failures do
+    visit(explore_projects_path)
+
+    expect(page).to have_selector('.gl-tab-nav-item', text: 'Most starred')
+    expect(page).to have_selector('.gl-tab-nav-item', text: 'Active')
+    expect(page).to have_selector('.gl-tab-nav-item', text: 'Inactive')
+    expect(page).to have_selector('.gl-tab-nav-item', text: 'All')
+  end
+
+  context 'when `retire_trending_projects` flag is disabled' do
+    before do
+      stub_feature_flags(retire_trending_projects: false)
+    end
+
+    it 'renders all expected tabs', :aggregate_failures do
+      visit(explore_projects_path)
+
+      expect(page).to have_selector('.gl-tab-nav-item', text: 'Most starred')
+      expect(page).to have_selector('.gl-tab-nav-item', text: 'Trending')
+      expect(page).to have_selector('.gl-tab-nav-item', text: 'Active')
+      expect(page).to have_selector('.gl-tab-nav-item', text: 'Inactive')
+      expect(page).to have_selector('.gl-tab-nav-item', text: 'All')
+    end
+  end
+
   describe '"All" tab' do
-    it_behaves_like 'an "Explore > Projects" page with sidebar and breadcrumbs', :explore_projects_path
+    it_behaves_like(
+      'an "Explore > Projects" page with sidebar and breadcrumbs',
+      :explore_projects_path,
+      { archived: 'true' }
+    )
   end
 
   describe '"Most starred" tab' do
@@ -80,7 +115,7 @@ RSpec.describe 'User explores projects', feature_category: :user_profile do
 
       shared_examples 'empty search results' do
         it 'shows correct empty state message', :js do
-          fill_in 'name', with: 'zzzzzzzzzzzzzzzzzzz'
+          search('zzzzzzzzzzzzzzzzzzz')
 
           expect(page).to have_content('Explore public groups to find projects to contribute to')
         end
@@ -88,7 +123,7 @@ RSpec.describe 'User explores projects', feature_category: :user_profile do
 
       shared_examples 'minimum search length' do
         it 'shows a prompt to enter a longer search term', :js do
-          fill_in 'name', with: 'z'
+          search('z')
 
           expect(page).to have_content('Enter at least three characters to search')
         end
@@ -119,13 +154,23 @@ RSpec.describe 'User explores projects', feature_category: :user_profile do
           [archived_project, public_project].each { |project| create(:note_on_issue, project: project) }
 
           TrendingProject.refresh!
-
-          visit(trending_explore_projects_path)
         end
 
-        include_examples 'shows public projects'
-        include_examples 'empty search results'
-        include_examples 'minimum search length'
+        it 'redirects to active projects page' do
+          visit trending_explore_projects_path
+          expect(page).to have_current_path(active_explore_projects_path)
+        end
+
+        context 'when `retire_trending_projects` flag is disabled' do
+          before do
+            stub_feature_flags(retire_trending_projects: false)
+            visit(trending_explore_projects_path)
+          end
+
+          include_examples 'shows public projects'
+          include_examples 'empty search results'
+          include_examples 'minimum search length'
+        end
       end
     end
   end
@@ -160,5 +205,9 @@ RSpec.describe 'User explores projects', feature_category: :user_profile do
 
       it_behaves_like 'explore page empty state'
     end
+  end
+
+  def search(term)
+    gl_filtered_search_set_input(term, submit: true)
   end
 end

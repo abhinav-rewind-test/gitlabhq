@@ -6,6 +6,7 @@ RSpec.describe Gitlab::UsageDataCounters::QuickActionActivityUniqueCounter, :cle
   let(:user) { build(:user, id: 1) }
   let(:note) { build(:note, author: user) }
   let(:args) { nil }
+  let(:project) { build(:project) }
 
   shared_examples_for 'a tracked quick action unique event' do
     specify do
@@ -25,20 +26,15 @@ RSpec.describe Gitlab::UsageDataCounters::QuickActionActivityUniqueCounter, :cle
     it_behaves_like 'internal event tracking' do
       let(:event) { action }
     end
-
-    it 'tracks the internal event' do
-      expect(Gitlab::InternalEvents).to receive(:track_event).with(action, user: user).once
-      subject
-    end
   end
 
-  subject { described_class.track_unique_action(quickaction_name, args: args, user: user) }
+  subject { described_class.track_unique_action(quickaction_name, args: args, user: user, project: project) }
 
   describe '.track_unique_action' do
-    let(:quickaction_name) { 'approve' }
+    let(:quickaction_name) { 'award' }
 
     it_behaves_like 'a tracked quick action unique event' do
-      let(:action) { 'i_quickactions_approve' }
+      let(:action) { 'i_quickactions_award' }
     end
   end
 
@@ -200,22 +196,42 @@ RSpec.describe Gitlab::UsageDataCounters::QuickActionActivityUniqueCounter, :cle
     end
   end
 
-  context 'when tracking invite_email', feature_category: :service_desk do
-    let(:quickaction_name) { 'invite_email' }
+  context 'when tracking add_email', feature_category: :service_desk do
+    let(:quickaction_name) { 'add_email' }
 
     context 'with single email' do
       let(:args) { 'someone@gitlab.com' }
 
-      it_behaves_like 'a tracked quick action unique event' do
-        let(:action) { 'i_quickactions_invite_email_single' }
+      it_behaves_like 'a tracked quick action internal event' do
+        let(:action) { 'i_quickactions_add_email_single' }
       end
     end
 
     context 'with multiple emails' do
       let(:args) { 'someone@gitlab.com another@gitlab.com' }
 
-      it_behaves_like 'a tracked quick action unique event' do
-        let(:action) { 'i_quickactions_invite_email_multiple' }
+      it_behaves_like 'a tracked quick action internal event' do
+        let(:action) { 'i_quickactions_add_email_multiple' }
+      end
+    end
+  end
+
+  context 'when tracking remove_email', feature_category: :service_desk do
+    let(:quickaction_name) { 'remove_email' }
+
+    context 'with single email' do
+      let(:args) { 'someone@gitlab.com' }
+
+      it_behaves_like 'a tracked quick action internal event' do
+        let(:action) { 'i_quickactions_remove_email_single' }
+      end
+    end
+
+    context 'with multiple emails' do
+      let(:args) { 'someone@gitlab.com another@gitlab.com' }
+
+      it_behaves_like 'a tracked quick action internal event' do
+        let(:action) { 'i_quickactions_remove_email_multiple' }
       end
     end
   end

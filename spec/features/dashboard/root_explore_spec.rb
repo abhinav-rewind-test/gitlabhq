@@ -8,6 +8,11 @@ RSpec.describe 'Root explore', :saas, feature_category: :shared do
   let_it_be(:internal_project) { create(:project, :internal) }
   let_it_be(:private_project) { create(:project, :private) }
 
+  before do
+    # Feature test will be added separately in https://gitlab.com/gitlab-org/gitlab/-/issues/520596
+    stub_feature_flags(explore_projects_vue: false)
+  end
+
   context 'when logged in' do
     let_it_be(:user) { create(:user) }
 
@@ -27,13 +32,12 @@ RSpec.describe 'Root explore', :saas, feature_category: :shared do
     include_examples 'shows public projects'
   end
 
-  describe 'project language dropdown' do
-    let(:has_language_dropdown?) { page.has_selector?('[data-testid="project-language-dropdown"]') }
-
+  describe 'project language dropdown', :js do
     it 'is conditionally rendered' do
       visit explore_projects_path
+      find_by_testid('filtered-search-term-input').click
 
-      expect(has_language_dropdown?).to eq(true)
+      expect(page).to have_button('Language')
     end
   end
 end

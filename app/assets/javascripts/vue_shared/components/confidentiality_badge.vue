@@ -31,8 +31,8 @@ export default {
     },
     confidentialTextClass() {
       return {
-        'gl-display-none gl-sm-display-block': this.hideTextInSmallScreens,
-        'gl-ml-2': true,
+        'gl-sr-only @sm/panel:gl-not-sr-only': this.hideTextInSmallScreens,
+        '!gl-ml-2': true,
       };
     },
   },
@@ -40,7 +40,7 @@ export default {
 </script>
 
 <template>
-  <gl-badge v-gl-tooltip :title="confidentialTooltip" variant="warning">
+  <gl-badge v-gl-tooltip :title="confidentialTooltip" variant="warning" class="gl-shrink-0">
     <gl-icon name="eye-slash" :size="16" />
     <span data-testid="confidential-badge-text" :class="confidentialTextClass">{{
       __('Confidential')

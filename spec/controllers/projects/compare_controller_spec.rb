@@ -77,38 +77,31 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
     let(:page) { nil }
 
     context 'when the refs exist in the same project' do
-      context 'when we set the white space param' do
-        let(:from_project_id) { nil }
-        let(:from_ref) { '08f22f25' }
-        let(:to_ref) { '66eceea0' }
-        let(:whitespace) { 1 }
+      let(:from_project_id) { nil }
+      let(:from_ref) { 'improve%2Fawesome' }
+      let(:to_ref) { 'feature' }
 
-        it 'shows some diffs with ignore whitespace change option' do
-          show_request
+      it 'sets the commits ivar' do
+        show_request
 
-          expect(response).to be_successful
-          diff_file = assigns(:diffs).diff_files.first
-          expect(diff_file).not_to be_nil
-          expect(assigns(:commits).length).to be >= 1
-          # without whitespace option, there are more than 2 diff_splits
-          diff_splits = diff_file.diff.diff.split("\n")
-          expect(diff_splits.length).to be <= 2
-        end
+        expect(response).to be_successful
+        expect(assigns(:commits).length).to be >= 1
       end
+    end
 
-      context 'when we do not set the white space param' do
-        let(:from_project_id) { nil }
-        let(:from_ref) { 'improve%2Fawesome' }
-        let(:to_ref) { 'feature' }
-        let(:whitespace) { nil }
+    context 'with limited number of Redis calls' do
+      let(:from_project_id) { nil }
+      let(:from_ref) { 'cfe32cf6' }
+      let(:to_ref) { 'ddd0f15a' }
 
-        it 'sets the diffs and commits ivars' do
-          show_request
+      it 'preloads only necessary commits' do
+        stub_const("MergeRequestDiff::COMMITS_SAFE_SIZE", 10)
 
-          expect(response).to be_successful
-          expect(assigns(:diffs).diff_files.first).not_to be_nil
-          expect(assigns(:commits).length).to be >= 1
-        end
+        allow(Gitlab::MarkdownCache::Redis::Store).to receive(:new).exactly(20).times.and_call_original
+
+        control = RedisCommands::Recorder.new(pattern: 'markdown_cache') { show_request }
+
+        expect(control).not_to exceed_redis_command_calls_limit(:hmset, 10)
       end
     end
 
@@ -135,11 +128,10 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
       let(:to_ref) { 'feature' }
       let(:whitespace) { nil }
 
-      it 'shows the diff' do
+      it 'shows commits' do
         show_request
 
         expect(response).to be_successful
-        expect(assigns(:diffs).diff_files.first).not_to be_nil
         expect(assigns(:commits).length).to be >= 1
       end
     end
@@ -160,8 +152,6 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
 
           expect(response).to be_successful
           expect(assigns(:commits).length).to be >= 2
-          expect(assigns(:diffs).raw_diff_files.size).to be >= 2
-          expect(assigns(:diffs).diff_files.first).to be_present
         end
       end
 
@@ -171,12 +161,11 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
 
         let(:straight) { "true" }
 
-        it 'the commits are empty, but the removed lines are visible as diffs' do
+        it 'the commits are empty' do
           show_request
 
           expect(response).to be_successful
-          expect(assigns(:commits).length).to be == 0
-          expect(assigns(:diffs).diff_files.size).to be >= 4
+          expect(assigns(:commits).length).to eq 0
         end
       end
 
@@ -186,12 +175,11 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
 
         let(:straight) { "false" }
 
-        it 'the additional commits are not visible in diffs and commits' do
+        it 'the additional commits are not visible' do
           show_request
 
           expect(response).to be_successful
-          expect(assigns(:commits).length).to be == 0
-          expect(assigns(:diffs).diff_files.size).to be == 0
+          expect(assigns(:commits).length).to eq 0
         end
       end
     end
@@ -206,7 +194,6 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         show_request
 
         expect(response).to be_successful
-        expect(assigns(:diffs)).to be_empty
         expect(assigns(:commits)).to be_empty
       end
     end
@@ -229,14 +216,13 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         }
       end
 
-      it 'does not show the diff' do
+      it 'does not show commits' do
         allow(controller).to receive(:source_project).and_return(project)
         expect(project).to receive(:default_merge_request_target).and_return(private_fork)
 
         show_request
 
         expect(response).to be_successful
-        expect(assigns(:diffs)).to be_empty
         expect(assigns(:commits)).to be_empty
       end
     end
@@ -246,11 +232,10 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
       let(:from_ref) { 'non-existent-source-ref' }
       let(:to_ref) { 'feature' }
 
-      it 'sets empty diff and commit ivars' do
+      it 'sets empty commit ivar' do
         show_request
 
         expect(response).to be_successful
-        expect(assigns(:diffs)).to eq([])
         expect(assigns(:commits)).to eq([])
       end
     end
@@ -260,12 +245,75 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
       let(:from_ref) { 'improve%2Fawesome' }
       let(:to_ref) { 'non-existent-target-ref' }
 
-      it 'sets empty diff and commit ivars' do
+      it 'sets empty commit ivar' do
         show_request
 
         expect(response).to be_successful
-        expect(assigns(:diffs)).to eq([])
         expect(assigns(:commits)).to eq([])
+      end
+    end
+
+    context 'when format param is given' do
+      let(:from_project_id) { nil }
+      let(:from_ref) { 'master' }
+      let(:to_ref) { 'feature' }
+
+      context 'when format is diff' do
+        let(:request_params) { super().merge(format: 'diff') }
+
+        it 'sets the correct workhorse headers' do
+          show_request
+
+          expect(response.headers[Gitlab::Workhorse::SEND_DATA_HEADER]).to start_with("git-diff:")
+        end
+
+        context 'when compare is missing' do
+          before do
+            allow_next_instance_of(CompareService) do |service|
+              expect(service).to receive(:execute).and_return(nil)
+            end
+          end
+
+          it 'returns a 404 error' do
+            show_request
+
+            expect(response).to have_gitlab_http_status(:not_found)
+          end
+        end
+      end
+
+      context 'when format is patch' do
+        let(:request_params) { super().merge(format: 'patch') }
+
+        it 'sets the correct workhorse headers' do
+          show_request
+
+          expect(response.headers[Gitlab::Workhorse::SEND_DATA_HEADER]).to start_with("git-format-patch:")
+        end
+
+        context 'when compare is missing' do
+          before do
+            allow_next_instance_of(CompareService) do |service|
+              expect(service).to receive(:execute).and_return(nil)
+            end
+          end
+
+          it 'returns a 404 error' do
+            show_request
+
+            expect(response).to have_gitlab_http_status(:not_found)
+          end
+        end
+      end
+
+      context 'when format is not supported' do
+        let(:request_params) { super().merge(format: 'json') }
+
+        it 'returns a 404 error' do
+          show_request
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
       end
     end
 
@@ -328,31 +376,15 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
       let(:page) { 1 }
 
       shared_examples 'valid compare page' do
-        it 'shows the diff' do
+        it 'shows commits' do
           show_request
 
           expect(response).to be_successful
-          expect(assigns(:diffs).diff_files.first).to be_present
           expect(assigns(:commits).length).to be >= 1
         end
       end
 
       it_behaves_like 'valid compare page'
-
-      it 'only loads blobs in the current page' do
-        stub_const('Projects::CompareController::COMMIT_DIFFS_PER_PAGE', 1)
-
-        expect_next_instance_of(Repository) do |repository|
-          # This comparison contains 4 changed files but we expect only the blobs for the first one to be loaded
-          expect(repository).to receive(:blobs_at).with(
-            contain_exactly([from_ref, '.gitmodules'], [to_ref, '.gitmodules']), anything
-          ).and_call_original
-        end
-
-        show_request
-
-        expect(response).to be_successful
-      end
 
       context 'when from_ref is HEAD ref' do
         let(:from_ref) { 'HEAD' }
@@ -378,6 +410,41 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         show_request
 
         expect(response).to be_successful
+      end
+    end
+
+    context 'with commit count threshold' do
+      let_it_be(:from_project_id) { nil }
+      let_it_be(:from_ref) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9' }
+      let_it_be(:to_ref) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+      let_it_be(:straight) { "false" }
+
+      before_all do
+        create(:ci_pipeline, project: project, ref: to_ref)
+      end
+
+      context 'when commits count is below safe size limit' do
+        it 'loads pipeline information for commits' do
+          expect_next_instance_of(CommitCollection) do |instance|
+            expect(instance).to receive(:with_latest_pipeline).with(to_ref).and_call_original
+          end
+
+          show_request
+        end
+      end
+
+      context 'when commits count exceeds safe size limit' do
+        before do
+          stub_const('MergeRequestDiff::COMMITS_SAFE_SIZE', 1)
+        end
+
+        it 'does not load pipeline information' do
+          expect_next_instance_of(CommitCollection) do |instance|
+            expect(instance).not_to receive(:with_latest_pipeline)
+          end
+
+          show_request
+        end
       end
     end
   end
@@ -503,9 +570,15 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         project_id: project,
         from_project_id: from_project_id,
         from: from_ref,
-        to: to_ref
+        to: to_ref,
+        straight: straight,
+        to_project_id: to_project_id
       }
     end
+
+    let(:straight) { false }
+    let(:to_project_id) { nil }
+    let(:from_project_id) { nil }
 
     context 'when sending valid params' do
       let(:from_ref) { 'awesome%2Ffeature' }
@@ -525,6 +598,48 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         let(:from_project_id) { 'something or another' }
 
         it 'redirects to the show page without interpreting from_project_id' do
+          create_request
+
+          expect(response).to redirect_to(project_compare_path(project, from: from_ref, to: to_ref, from_project_id: from_project_id))
+        end
+      end
+
+      context 'when straight is true' do
+        let(:straight) { true }
+
+        it 'redirects to project_compare_with_two_dots_path' do
+          create_request
+
+          expect(response).to redirect_to(project_compare_with_two_dots_path(project, from: from_ref, to: to_ref, from_project_id: from_project_id))
+        end
+
+        context 'when the source and target are the same project' do
+          let(:from_project_id) { 'the_same_project_id' }
+          let(:to_project_id) { 'the_same_project_id' }
+
+          it 'includes from_project_id in the params' do
+            create_request
+
+            expect(response).to redirect_to(project_compare_with_two_dots_path(project, from: from_ref, to: to_ref, from_project_id: from_project_id))
+          end
+        end
+
+        context 'when the source and target are not the same project' do
+          let(:from_project_id) { 'from_project_id' }
+          let(:to_project_id) { 'to_project_id' }
+
+          it 'includes from_project_id in the params' do
+            create_request
+
+            expect(response).to redirect_to(project_compare_with_two_dots_path(project, from: from_ref, to: to_ref, from_project_id: from_project_id))
+          end
+        end
+      end
+
+      context 'when straight is false' do
+        let(:straight) { false }
+
+        it 'redirects to project_compare_path' do
           create_request
 
           expect(response).to redirect_to(project_compare_path(project, from: from_ref, to: to_ref, from_project_id: from_project_id))
@@ -676,6 +791,179 @@ RSpec.describe Projects::CompareController, feature_category: :source_code_manag
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response['signatures']).to be_empty
       end
+    end
+  end
+
+  describe 'GET #rapid_diffs' do
+    subject(:send_request) { get :show, params: request_params }
+
+    let(:format) { nil }
+    let(:request_params) do
+      {
+        namespace_id: project.namespace,
+        project_id: project,
+        from: '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9',
+        to: '5937ac0a7beb003549fc5fd26fc247adbce4a52e',
+        format: format
+      }
+    end
+
+    context 'when format is not supported' do
+      let(:format) { :png }
+
+      it 'returns a 404 error' do
+        send_request
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+  end
+
+  describe 'Get #diff_files_metadata' do
+    let(:params) do
+      {
+        namespace_id: project.namespace,
+        project_id: project,
+        from: from,
+        to: to
+      }
+    end
+
+    let(:send_request) { get :diff_files_metadata, params: params }
+
+    context 'with valid params' do
+      let(:from) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9' }
+      let(:to) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+
+      include_examples 'diff files metadata'
+    end
+
+    context 'with invalid params' do
+      let(:from) { '0123456789' }
+      let(:to) { '987654321' }
+
+      include_examples 'missing diff files metadata'
+    end
+  end
+
+  describe 'GET #diffs_stats' do
+    let(:params) do
+      {
+        namespace_id: project.namespace,
+        project_id: project,
+        from: from,
+        to: to
+      }
+    end
+
+    let(:send_request) { get :diffs_stats, params: params }
+
+    context 'with valid params' do
+      let(:from) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9' }
+      let(:to) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+
+      include_examples 'diffs stats' do
+        let(:expected_stats) do
+          {
+            added_lines: 15,
+            removed_lines: 6,
+            diffs_count: 4
+          }
+        end
+      end
+
+      context 'when diffs overflow' do
+        include_examples 'overflow' do
+          let(:expected_stats) do
+            {
+              visible_count: 4,
+              email_path: nil,
+              diff_path: nil
+            }
+          end
+        end
+      end
+    end
+
+    context 'with invalid params' do
+      let(:from) { '0123456789' }
+      let(:to) { '987654321' }
+
+      include_examples 'missing diffs stats'
+    end
+  end
+
+  describe 'GET #diff_file' do
+    let(:from) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9' }
+    let(:to) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+
+    let(:diff_file) { compare.diffs.diff_files.first }
+    let(:old_path) { diff_file.old_path }
+    let(:new_path) { diff_file.new_path }
+    let(:ignore_whitespace_changes) { false }
+    let(:view) { 'inline' }
+
+    let(:params) do
+      {
+        namespace_id: project.namespace,
+        project_id: project,
+        from: from,
+        to: to,
+        old_path: old_path,
+        new_path: new_path,
+        ignore_whitespace_changes: ignore_whitespace_changes,
+        view: view
+      }.compact
+    end
+
+    let(:send_request) { get :diff_file, params: params }
+
+    let(:compare) do
+      CompareService.new(project, to).execute(project, from)
+    end
+
+    before do
+      sign_in(user)
+    end
+
+    include_examples 'diff file endpoint'
+
+    context 'with whitespace-only diffs' do
+      let(:ignore_whitespace_changes) { true }
+      let(:diffs_collection) { instance_double(Gitlab::Diff::FileCollection::Base, diff_files: [diff_file]) }
+
+      before do
+        allow(diff_file).to receive(:whitespace_only?).and_return(true)
+      end
+
+      it 'makes a call to diffs_resource with ignore_whitespace_change: false' do
+        allow(controller).to receive(:diffs_resource).and_return(diffs_collection)
+
+        expect(controller).to receive(:diffs_resource).with(
+          hash_including(ignore_whitespace_change: false)
+        ).and_return(diffs_collection)
+
+        send_request
+
+        expect(response).to have_gitlab_http_status(:success)
+      end
+    end
+  end
+
+  describe 'GET target_projects_json', feature_category: :code_review_workflow do
+    it 'returns target projects JSON' do
+      project_fork = fork_project(project)
+
+      get :target_projects_json, params: { namespace_id: project.namespace.to_param, project_id: project }
+
+      expect(json_response.size).to be(2)
+
+      forked_project = json_response.detect { |project| project['id'] == project_fork.id }
+      expect(forked_project).to have_key('id')
+      expect(forked_project).to have_key('name')
+      expect(forked_project).to have_key('full_path')
+      expect(forked_project).to have_key('refs_url')
+      expect(forked_project).to have_key('forked')
     end
   end
 end

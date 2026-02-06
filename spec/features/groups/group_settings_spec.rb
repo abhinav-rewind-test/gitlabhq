@@ -2,14 +2,18 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
+RSpec.describe 'Edit group settings', :with_current_organization, feature_category: :groups_and_projects do
   include Spec::Support::Helpers::ModalHelpers
+  include Features::WebIdeSpecHelpers
+  include SafeFormatHelper
+  include ActionView::Helpers::TagHelper
+  include Namespaces::DeletableHelper
 
-  let(:user)  { create(:user) }
-  let(:group) { create(:group, path: 'foo') }
+  let_it_be(:user) { create(:user, organization: current_organization) }
+  let_it_be(:admin) { create(:user, :admin, organization: current_organization) }
+  let_it_be_with_reload(:group) { create(:group, path: 'foo', owners: [user]) }
 
   before do
-    group.add_owner(user)
     sign_in(user)
   end
 
@@ -56,7 +60,7 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
       end
     end
 
-    context 'with a project' do
+    context 'with a project', :js do
       let!(:project) { create(:project, group: group) }
       let(:old_project_full_path) { "/#{group.path}/#{project.path}" }
       let(:new_project_full_path) { "/#{new_group_path}/#{project.path}" }
@@ -74,7 +78,7 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
         visit new_project_full_path
 
         expect(page).to have_current_path(new_project_full_path, ignore_query: true)
-        expect(find('.breadcrumbs')).to have_content(project.name)
+        expect(find_by_testid('breadcrumb-links')).to have_content(project.name)
       end
 
       it 'the old project path redirects to the new path' do
@@ -82,7 +86,7 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
         visit old_project_full_path
 
         expect(page).to have_current_path(new_project_full_path, ignore_query: true)
-        expect(find('.breadcrumbs')).to have_content(project.name)
+        expect(find_by_testid('breadcrumb-links')).to have_content(project.name)
       end
     end
   end
@@ -91,7 +95,7 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
     it 'shows the selection menu' do
       visit edit_group_path(group)
 
-      expect(page).to have_content('Roles allowed to create projects')
+      expect(page).to have_content('Minimum role required to create projects')
     end
   end
 
@@ -128,15 +132,35 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
     it 'has a root URL label for top-level group' do
       visit edit_group_path(group)
 
-      expect(find(:css, '.group-root-path').text).to eq(root_url)
+      expect(find(:css, '.group-root-path').text).to eq(unscoped_root_url)
     end
 
-    it 'has a parent group URL label for a subgroup group' do
-      subgroup = create(:group, parent: group)
+    context 'with scoped paths' do
+      before do
+        allow(current_organization).to receive(:scoped_paths?).and_return(true)
+      end
 
-      visit edit_group_path(subgroup)
+      it 'has a parent group URL label for a subgroup group' do
+        subgroup = create(:group, parent: group)
 
-      expect(find(:css, '.group-root-path').text).to eq(group_url(subgroup.parent) + '/')
+        visit edit_group_path(subgroup)
+
+        expect(find(:css, '.group-root-path').text).to eq(group_url(subgroup.parent) + '/')
+      end
+    end
+
+    context 'without scoped paths' do
+      before do
+        allow(current_organization).to receive(:scoped_paths?).and_return(false)
+      end
+
+      it 'has a parent group URL label for a subgroup group' do
+        subgroup = create(:group, parent: group)
+
+        visit edit_group_path(subgroup)
+
+        expect(find(:css, '.group-root-path').text).to eq(group_url(subgroup.parent) + '/')
+      end
     end
   end
 
@@ -164,10 +188,10 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
         click_button s_('GroupSettings|Transfer group')
 
         page.within(confirm_modal) do
-          expect(page).to have_text "You are going to transfer #{selected_group.name} to another namespace. Are you ABSOLUTELY sure?"
+          expect(page).to have_text "You are about to transfer #{selected_group.full_path} to another namespace. This action changes the group's path and can lead to data loss."
 
           fill_in 'confirm_name_input', with: selected_group.full_path
-          click_button 'Confirm'
+          click_button 'Transfer group'
         end
 
         within_testid('breadcrumb-links') do
@@ -211,18 +235,18 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
     end
   end
 
-  context 'disable email notifications' do
-    it 'is visible' do
+  describe 'enable email notifications' do
+    it 'is available' do
       visit edit_group_path(group)
 
-      expect(page).to have_selector('#group_emails_disabled', visible: true)
+      expect(page).to have_selector('#group_emails_enabled')
     end
 
     it 'accepts the changed state' do
       visit edit_group_path(group)
-      check 'group_emails_disabled'
+      uncheck 'group_emails_enabled'
 
-      expect { save_permissions_group }.to change { updated_emails_disabled? }.to(true)
+      expect { save_permissions_group }.to change { updated_emails_enabled? }.to(false)
     end
   end
 
@@ -247,8 +271,6 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
   end
 
   describe 'group README', :js do
-    let_it_be(:group) { create(:group) }
-
     context 'with gitlab-profile project and README.md' do
       let_it_be(:project) { create(:project, :readme, namespace: group) }
 
@@ -280,7 +302,7 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
 
         expect(page).to have_current_path("/-/ide/project/#{group.readme_project.present.path_with_namespace}/edit/main/-/README.md/")
 
-        page.within('.ide') do
+        within_web_ide do
           expect(page).to have_text('README.md')
         end
       end
@@ -300,8 +322,318 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
 
         expect(page).to have_current_path("/-/ide/project/#{group.full_path}/gitlab-profile/edit/main/-/README.md/")
 
-        page.within('.ide') do
+        within_web_ide do
           expect(page).to have_text('README.md')
+        end
+      end
+    end
+  end
+
+  describe 'archive', :js do
+    let_it_be_with_reload(:ancestor) { group }
+    let_it_be_with_reload(:subgroup) { create(:group, parent: ancestor) }
+
+    shared_examples 'does not render archive settings when `archive_group` flag is disabled' do
+      before do
+        stub_feature_flags(archive_group: false)
+
+        visit edit_group_path(subgroup)
+      end
+
+      specify { expect(page).not_to have_button(s_('GroupProjectArchiveSettings|Archive')) }
+      specify { expect(page).not_to have_button(s_('GroupProjectUnarchiveSettings|Unarchive')) }
+    end
+
+    context 'when group is archived' do
+      before do
+        subgroup.namespace_settings.update!(archived: true)
+
+        visit edit_group_path(subgroup)
+      end
+
+      it 'can unarchive group', :aggregate_failures do
+        click_button s_('GroupProjectUnarchiveSettings|Unarchive')
+
+        expect(page).to have_current_path(group_path(subgroup))
+        expect(page.body).not_to include(safe_format(
+          _('This group is archived. Its subgroups, projects, and data are %{strong_open}read-only%{strong_close}.'),
+          tag_pair(tag.strong, :strong_open, :strong_close)
+        ))
+      end
+    end
+
+    context 'when ancestor is archived' do
+      before do
+        ancestor.namespace_settings.update!(archived: true)
+
+        visit edit_group_path(subgroup)
+      end
+
+      it 'renders section with no active button', :aggregate_failures do
+        find('[data-testid=cancel-icon]').hover
+
+        expect(page).to have_content(s_('GroupProjectArchiveSettings|Unarchive group'))
+        expect(page).to have_selector('[role="tooltip"]', text: s_(
+          'GroupProjectUnarchiveSettings|To unarchive this group, you must unarchive its parent group.'
+        ))
+
+        expect(page).not_to have_button(s_('GroupProjectArchiveSettings|Archive'))
+        expect(page).not_to have_button(s_('GroupProjectUnarchiveSettings|Unarchive'))
+      end
+    end
+
+    context 'when group and parent is not archived' do
+      before do
+        visit edit_group_path(subgroup)
+      end
+
+      it 'can archive group', :aggregate_failures do
+        click_button s_('GroupProjectArchiveSettings|Archive')
+
+        expect(page).to have_current_path(group_path(subgroup))
+        expect(page.body).to include(safe_format(
+          _('This group is archived. Its subgroups, projects, and data are %{strong_open}read-only%{strong_close}.'),
+          tag_pair(tag.strong, :strong_open, :strong_close)
+        ))
+      end
+
+      it_behaves_like 'does not render archive settings when `archive_group` flag is disabled'
+    end
+  end
+
+  describe 'group deletion', :js, :freeze_time do
+    def remove_with_confirm(button_text, confirm_with, confirm_button_text = 'Yes, delete group')
+      click_button button_text
+      fill_in 'confirm_name_input', with: confirm_with
+      click_button confirm_button_text
+    end
+
+    before do
+      stub_application_setting(deletion_adjourned_period: 7)
+    end
+
+    context 'when group is not marked for deletion' do
+      before do
+        visit edit_group_path(group)
+      end
+
+      it 'allows delayed deletion' do
+        remove_with_confirm('Delete', group.path)
+
+        expect(page).to have_content "This group and all its data will be permanently deleted on #{permanent_deletion_date_formatted}."
+      end
+    end
+
+    context 'when group is marked for deletion' do
+      before do
+        create(:group_deletion_schedule, group: group)
+      end
+
+      context 'when "Allow permanent deletion" setting is enabled' do
+        before do
+          stub_application_setting(usage_ping_enabled: true)
+          visit edit_group_path(group)
+        end
+
+        it 'allows permanent deletion', :sidekiq_inline do
+          expect { remove_with_confirm('Delete permanently', group.path) }.to change { Group.count }.by(-1)
+
+          expect(page).to have_content "#{group.name} is being deleted."
+        end
+      end
+
+      context 'when there are subgroups and projects' do
+        let_it_be(:subgroup) { create(:group, parent: group) }
+        let_it_be(:project) { create(:project, namespace: group) }
+
+        it 'does not allow permanent deletion of subgroup' do
+          visit edit_group_path(subgroup)
+
+          expect(page).not_to have_button('Delete permanently')
+          expect(page).to have_content "The parent group is pending deletion. This group will be permanently deleted on #{permanent_deletion_date_formatted(group)}."
+        end
+
+        it 'does not allow permanent deletion of project' do
+          visit edit_project_path(project)
+
+          expect(page).not_to have_button('Delete permanently')
+          expect(page).to have_content "The parent group is pending deletion. This project will be permanently deleted on #{permanent_deletion_date_formatted(group)}."
+        end
+      end
+
+      context 'when "Allow permanent deletion" setting is disabled' do
+        before do
+          stub_application_setting(allow_immediate_namespaces_deletion: false)
+        end
+
+        context 'when allow_immediate_namespaces_deletion feature flag is disabled' do
+          before do
+            stub_feature_flags(allow_immediate_namespaces_deletion: false)
+            visit edit_group_path(group)
+          end
+
+          it 'allows permanent deletion', :sidekiq_inline do
+            expect { remove_with_confirm('Delete permanently', group.path) }.to change { Group.count }.by(-1)
+
+            expect(page).to have_content "#{group.name} is being deleted."
+          end
+        end
+
+        it 'allows permanent deletion for admins', :enable_admin_mode, :sidekiq_inline do
+          sign_in(admin)
+          visit edit_group_path(group)
+
+          expect { remove_with_confirm('Delete permanently', group.path) }.to change { Group.count }.by(-1)
+
+          expect(page).to have_content "#{group.name} is being deleted."
+        end
+
+        it 'does not allow permanent deletion' do
+          visit edit_group_path(group)
+
+          expect(page).not_to have_button('Delete permanently')
+          expect(page).to have_content "This group and all its data will be permanently deleted on #{permanent_deletion_date_formatted(group)}."
+        end
+      end
+    end
+  end
+
+  describe 'update pages access control' do
+    let_it_be(:group) { create(:group, owners: [user]) }
+    let_it_be(:project) { create(:project, :pages_published, namespace: group, pages_access_level: ProjectFeature::PUBLIC) }
+
+    before do
+      stub_pages_setting(access_control: true, enabled: true)
+      allow(::Gitlab::Pages).to receive(:access_control_is_forced?).and_return(false)
+    end
+
+    context 'when group owner changes forced access control settings' do
+      context 'when group access control is being enabled' do
+        it 'project access control should be enforced' do
+          visit edit_group_path(group)
+
+          check 'group_force_pages_access_control'
+
+          expect { save_permissions_group }.to change {
+            project.private_pages?
+          }.from(false).to(true)
+        end
+      end
+    end
+  end
+
+  describe 'step-up authentication settings', :js do
+    context 'with configured step-up omniauth providers' do
+      let_it_be(:omniauth_provider_config_oidc) do
+        GitlabSettings::Options.new(
+          name: 'openid_connect',
+          label: 'OpenID Connect',
+          step_up_auth: {
+            namespace: {
+              id_token: {
+                required: { acr: 'gold' }
+              }
+            }
+          }
+        )
+      end
+
+      before do
+        stub_omniauth_setting(enabled: true, providers: [omniauth_provider_config_oidc])
+        allow(Devise).to receive(:omniauth_providers).and_return([omniauth_provider_config_oidc.name])
+      end
+
+      context 'when group has no parent' do
+        it 'allows configuring step-up authentication' do
+          visit edit_group_path(group)
+
+          within_testid('permissions-settings') do
+            expect(page).to have_content('Step-up authentication')
+            expect(page).to have_select('Step-up authentication', disabled: false, with_options: ['OpenID Connect'])
+          end
+        end
+
+        it 'can select and save step-up authentication provider' do
+          visit edit_group_path(group)
+
+          within_testid('permissions-settings') do
+            select 'OpenID Connect', from: 'group_step_up_auth_required_oauth_provider'
+            click_button 'Save changes'
+          end
+
+          expect(page).to have_text("Group '#{group.name}' was successfully updated")
+          expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to eq('openid_connect')
+        end
+
+        it 'can disable step-up authentication' do
+          group.namespace_settings.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+
+          visit edit_group_path(group)
+
+          within_testid('permissions-settings') do
+            select 'Disabled', from: 'group_step_up_auth_required_oauth_provider'
+            click_button 'Save changes'
+          end
+
+          expect(page).to have_text("Group '#{group.name}' was successfully updated")
+          expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to be_nil
+        end
+      end
+
+      context 'when group inherits step-up authentication from parent' do
+        let_it_be_with_reload(:grandparent_group) { create(:group, owners: [user]) }
+        let_it_be_with_reload(:parent_group) { create(:group, parent: grandparent_group, owners: [user]) }
+        let_it_be_with_reload(:child_group) { create(:group, parent: parent_group, owners: [user]) }
+
+        before do
+          parent_group.namespace_settings.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+        end
+
+        it 'shows complete inheritance alert with parent group name and guidance' do
+          visit edit_group_path(child_group)
+
+          within_testid('permissions-settings') do
+            expect(page).to have_content('Step-up authentication')
+
+            # Check the alert exists and has correct properties
+            alert = find_by_testid('step-up-auth-inheritance-alert')
+            expect(alert).to be_present
+            expect(alert[:class]).to include('gl-alert-info')
+            expect(alert).to have_content("Step-up authentication is inherited from parent group \"#{parent_group.name}\"")
+          end
+        end
+
+        it 'disables form controls and shows inherited value with proper accessibility' do
+          visit edit_group_path(child_group)
+
+          within_testid('permissions-settings') do
+            expect(page).to have_content('Step-up authentication')
+
+            # Check inheritance alert with complete messaging
+            expect(find_by_testid('step-up-auth-inheritance-alert'))
+              .to have_content("Step-up authentication is inherited from parent group \"#{parent_group.name}\"")
+
+            # Form controls should be disabled with correct inherited value
+            expect(page).to have_select('Step-up authentication', disabled: true, selected: 'OpenID Connect')
+
+            child_group.namespace_settings.update!(step_up_auth_required_oauth_provider: nil)
+          end
+        end
+      end
+    end
+
+    context 'without configured step-up omniauth providers' do
+      before do
+        stub_omniauth_setting(enabled: true, providers: [])
+        allow(Devise).to receive(:omniauth_providers).and_return([])
+      end
+
+      it 'shows only disabled option' do
+        visit edit_group_path(group)
+
+        within_testid('permissions-settings') do
+          expect(page).to have_content('Step-up authentication')
+          expect(page).to have_select('Step-up authentication', disabled: false, selected: 'Disabled', with_options: [])
         end
       end
     end
@@ -310,26 +642,26 @@ RSpec.describe 'Edit group settings', feature_category: :groups_and_projects do
   def update_path(new_group_path)
     visit edit_group_path(group)
 
-    page.within('.gs-advanced') do
+    within_testid('advanced-settings-content') do
       fill_in 'group_path', with: new_group_path
       click_button 'Change group URL'
     end
   end
 
   def save_general_group
-    page.within('.gs-general') do
+    within_testid('general-settings') do
       click_button 'Save changes'
     end
   end
 
   def save_permissions_group
-    page.within('.gs-permissions') do
+    within_testid('permissions-settings') do
       click_button 'Save changes'
     end
   end
 
-  def updated_emails_disabled?
+  def updated_emails_enabled?
     group.reload.clear_memoization(:emails_enabled_memoized)
-    group.emails_disabled?
+    group.emails_enabled?
   end
 end

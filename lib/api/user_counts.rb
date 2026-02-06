@@ -9,7 +9,9 @@ module API
       desc 'Return the user specific counts' do
         detail 'Assigned open issues, assigned MRs and pending todos count'
         success Entities::UserCounts
+        tags ['users']
       end
+      route_setting :authorization, permissions: :read_user_counts, boundary_type: :user
       get do
         unauthorized! unless current_user
 

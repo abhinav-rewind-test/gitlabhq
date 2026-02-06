@@ -1,9 +1,8 @@
 <script>
 import { GlButton } from '@gitlab/ui';
-import { sprintf } from '~/locale';
+import { sprintf, s__ } from '~/locale';
 import {
   UPDATE_SETTINGS_ERROR_MESSAGE,
-  UPDATE_SETTINGS_SUCCESS_MESSAGE,
   KEEP_N_DUPLICATED_PACKAGE_FILES_DESCRIPTION,
   KEEP_N_DUPLICATED_PACKAGE_FILES_FIELDNAME,
   KEEP_N_DUPLICATED_PACKAGE_FILES_LABEL,
@@ -46,6 +45,7 @@ export default {
   },
   data() {
     return {
+      // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
       tracking: {
         label: 'packages_cleanup_policies',
       },
@@ -114,7 +114,7 @@ export default {
           if (errorMessage) {
             throw errorMessage;
           } else {
-            this.$toast.show(UPDATE_SETTINGS_SUCCESS_MESSAGE);
+            this.$toast.show(s__('PackageRegistry|Changes saved.'));
           }
         })
         .catch(() => {
@@ -139,7 +139,7 @@ export default {
       :form-options="$options.formOptions.keepNDuplicatedPackageFiles"
       :label="$options.i18n.KEEP_N_DUPLICATED_PACKAGE_FILES_LABEL"
       :description="$options.i18n.KEEP_N_DUPLICATED_PACKAGE_FILES_DESCRIPTION"
-      dropdown-class="gl-md-max-w-50p"
+      dropdown-class="@md/panel:gl-max-w-1/2"
       name="keep-n-duplicated-package-files"
       data-testid="keep-n-duplicated-package-files-dropdown"
       @input="onModelChange($event, 'keepNDuplicatedPackageFiles')"
@@ -147,7 +147,7 @@ export default {
     <p v-if="value.nextRunAt" data-testid="next-run-at">
       {{ nextCleanupMessage }}
     </p>
-    <div class="gl-mt-6 gl-display-flex gl-align-items-center">
+    <div class="gl-mt-5 gl-flex gl-items-center">
       <gl-button
         data-testid="save-button"
         type="submit"

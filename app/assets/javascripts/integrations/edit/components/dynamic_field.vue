@@ -140,6 +140,11 @@ export default {
       return !this.propsSource.editable;
     },
   },
+  watch: {
+    model(newValue) {
+      this.$emit('update', newValue);
+    },
+  },
   created() {
     if (this.isNonEmptyPassword) {
       this.model = null;
@@ -183,6 +188,7 @@ export default {
       v-else-if="isTextarea"
       v-model="model"
       v-bind="sharedProps"
+      no-resize
       :placeholder="placeholder"
       :required="required"
     />

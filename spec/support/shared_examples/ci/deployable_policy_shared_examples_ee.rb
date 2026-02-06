@@ -20,14 +20,32 @@ RSpec.shared_examples 'a deployable job policy in EE' do |factory_type|
     it_behaves_like 'protected environments access', direct_access: true
   end
 
-  describe '#cancel_build?' do
-    subject { user.can?(:cancel_build, job) }
+  describe '#retry_job' do
+    subject { user.can?(:retry_job, job) }
 
     it_behaves_like 'protected environments access', direct_access: true
   end
 
-  describe '#update_commit_status?' do
-    subject { user.can?(:update_commit_status, job) }
+  describe '#play_job' do
+    subject { user.can?(:play_job, job) }
+
+    it_behaves_like 'protected environments access', direct_access: true
+  end
+
+  describe '#unschedule_job' do
+    subject { user.can?(:unschedule_job, job) }
+
+    it_behaves_like 'protected environments access', direct_access: true
+  end
+
+  describe '#keep_job_artifacts' do
+    subject { user.can?(:keep_job_artifacts, job) }
+
+    it_behaves_like 'protected environments access', direct_access: true
+  end
+
+  describe '#cancel_build?' do
+    subject { user.can?(:cancel_build, job) }
 
     it_behaves_like 'protected environments access', direct_access: true
   end
@@ -36,7 +54,7 @@ RSpec.shared_examples 'a deployable job policy in EE' do |factory_type|
     subject { user.can?(:erase_build, job) }
 
     context 'when the job triggerer is a project maintainer' do
-      let_it_be_with_refind(:user) { create(:user).tap { |u| project.add_maintainer(u) } }
+      let_it_be_with_refind(:user) { create(:user, maintainer_of: project) }
 
       before do
         stub_licensed_features(protected_environments: true)

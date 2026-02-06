@@ -4,24 +4,31 @@ module BulkImports
   class BatchedRelationExportService
     include Gitlab::Utils::StrongMemoize
 
-    BATCH_SIZE = 1000
     BATCH_CACHE_KEY = 'bulk_imports/batched_relation_export/%{export_id}/%{batch_id}'
+    BATCH_SIZE_CACHE_KEY = 'bulk_imports/batched_relation_export/%{export_id}/batch_size'
     CACHE_DURATION = 4.hours
 
     def self.cache_key(export_id, batch_id)
       Kernel.format(BATCH_CACHE_KEY, export_id: export_id, batch_id: batch_id)
     end
 
-    def initialize(user, portable, relation, jid)
+    def self.batch_size_cache_key(export_id)
+      Kernel.format(BATCH_SIZE_CACHE_KEY, export_id: export_id)
+    end
+
+    def initialize(user, portable, relation, jid, offline_export_id: nil)
       @user = user
       @portable = portable
       @relation = relation
       @resolved_relation = portable.public_send(relation) # rubocop:disable GitlabSecurity/PublicSend
       @jid = jid
+      @offline_export_id = offline_export_id
     end
 
     def execute
       return finish_export! if batches_count == 0
+
+      log_export_restart if export.started? && export.batches.in_progress.present?
 
       start_export!
       export.batches.destroy_all # rubocop: disable Cop/DestroyAll
@@ -32,10 +39,38 @@ module BulkImports
 
     private
 
-    attr_reader :user, :portable, :relation, :jid, :config, :resolved_relation
+    attr_reader :user, :portable, :relation, :jid, :config, :resolved_relation, :offline_export_id
+
+    # Returns the batch size for processing relation exports.
+    #
+    # The batch size determines how many records are processed together in each batch
+    # during the export operation. We cache the batch size so that any retried workers
+    # for the same relation export use the same batch size.
+    #
+    # @return [Integer] The number of records to process per batch
+    def batch_size
+      key = self.class.batch_size_cache_key(export.id)
+
+      Gitlab::Cache::Import::Caching.read_integer(key) ||
+        Gitlab::Cache::Import::Caching.write(
+          key,
+          Gitlab::CurrentSettings.relation_export_batch_size,
+          timeout: CACHE_DURATION
+        )
+    end
+    strong_memoize_attr :batch_size
 
     def export
-      @export ||= portable.bulk_import_exports.find_or_create_by!(relation: relation) # rubocop:disable CodeReuse/ActiveRecord
+      # TODO: Once `offline_export_id` is actually supported, we'll only want to supply
+      # the `user` parameter if `offline_export_id` is absent.
+      # Epic link: https://gitlab.com/groups/gitlab-org/-/work_items/8985
+      # rubocop:disable Performance/ActiveRecordSubtransactionMethods -- This is only executed from within a worker
+      @export ||= portable.bulk_import_exports.safe_find_or_create_by!(
+        relation: relation,
+        user: user,
+        offline_export_id: nil
+      )
+      # rubocop:enable Performance/ActiveRecordSubtransactionMethods
     end
 
     def objects_count
@@ -43,7 +78,7 @@ module BulkImports
     end
 
     def batches_count
-      objects_count.fdiv(BATCH_SIZE).ceil
+      objects_count.fdiv(batch_size).ceil
     end
 
     def start_export!
@@ -70,7 +105,7 @@ module BulkImports
     def enqueue_batch_exports
       batch_number = 0
 
-      resolved_relation.in_batches(of: BATCH_SIZE) do |batch|
+      resolved_relation.in_batches(of: batch_size) do |batch|
         batch_number += 1
 
         batch_id = find_or_create_batch(batch_number).id
@@ -87,5 +122,14 @@ module BulkImports
       export.batches.find_or_create_by!(batch_number: batch_number)
     end
     # rubocop:enable CodeReuse/ActiveRecord
+
+    def log_export_restart
+      Gitlab::Export::Logger.warn(
+        message: 'Restarting batched export relation and deleting existing export batches',
+        relation: relation,
+        export_id: export.id,
+        importer: Import::SOURCE_DIRECT_TRANSFER
+      )
+    end
   end
 end

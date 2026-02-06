@@ -49,19 +49,15 @@ module Gitlab
         adapter_name.casecmp('postgresql') == 0
       end
 
-      # Check whether the underlying database is in read-only mode
-      def db_read_only?
-        pg_is_in_recovery =
-          connection
-            .execute('SELECT pg_is_in_recovery()')
-            .first
-            .fetch('pg_is_in_recovery')
+      # Check whether the server is in recovery mode (recovering from a backup or archive)
+      def recovery?
+        recovery = connection.select_value('SELECT pg_is_in_recovery()')
 
-        Gitlab::Utils.to_boolean(pg_is_in_recovery)
+        Gitlab::Utils.to_boolean(recovery)
       end
 
-      def db_read_write?
-        !db_read_only?
+      def primary?
+        !recovery?
       end
 
       def version
@@ -69,7 +65,7 @@ module Gitlab
       end
 
       def database_version
-        connection.execute("SELECT VERSION()").first['version']
+        connection.select_value("SELECT VERSION()").to_s
       end
 
       def postgresql_minimum_supported_version?
@@ -91,18 +87,14 @@ module Gitlab
         # point to a `ConnectionProxy`, and obtaining those doesn't involve any
         # database queries. So instead we obtain the database version, which is
         # cached after the first call.
-        connection.schema_cache.database_version
+        connection.database_version
         true
       rescue StandardError
         false
       end
 
       def system_id
-        row = connection
-          .execute('SELECT system_identifier FROM pg_control_system()')
-          .first
-
-        row['system_identifier']
+        connection.select_value('SELECT system_identifier FROM pg_control_system()')
       end
 
       def flavor

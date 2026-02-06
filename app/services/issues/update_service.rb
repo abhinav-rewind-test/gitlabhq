@@ -2,6 +2,10 @@
 
 module Issues
   class UpdateService < Issues::BaseService
+    WORK_ITEM_DESCRIPTION_FIELDS = %w[
+      description description_html cached_markdown_version last_edited_by_id last_edited_at lock_version
+    ].freeze
+
     # NOTE: For Issues::UpdateService, we default perform_spam_check to false, because spam_checking is not
     # necessary in many cases, and we don't want to require every caller to explicitly pass it
     # to disable spam checking.
@@ -14,7 +18,7 @@ module Issues
       handle_move_between_ids(issue)
 
       change_issue_duplicate(issue)
-      move_issue_to_new_project(issue) || clone_issue(issue) || update_task_event(issue) || update(issue)
+      move_issue_to_new_container(issue) || clone_issue(issue) || update_task_event(issue) || update(issue)
     end
 
     def update(issue)
@@ -36,6 +40,8 @@ module Issues
 
       type_id = find_work_item_type_id(params[:issue_type])
 
+      # For custom types we need to use the abstraction layer so pass the work item type object
+      # See https://gitlab.com/groups/gitlab-org/-/work_items/20291
       issue.work_item_type_id = type_id
     end
 
@@ -74,6 +80,7 @@ module Issues
       notification_service.async.reassigned_issue(issue, current_user, old_assignees)
       todo_service.reassigned_assignable(issue, current_user, old_assignees)
       track_incident_action(current_user, issue, :incident_assigned)
+      execute_flow_triggers(issue, issue.assignees - old_assignees, :assign)
 
       GraphqlTriggers.issuable_assignees_updated(issue)
     end
@@ -83,39 +90,91 @@ module Issues
       todo_service.update_issue(issuable, current_user)
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def change_issue_duplicate(issue)
       canonical_issue_id = params.delete(:canonical_issue_id)
       return unless canonical_issue_id
 
-      canonical_issue = IssuesFinder.new(current_user).find_by(id: canonical_issue_id)
+      canonical_issue = Issue.find_by_id(canonical_issue_id)
 
       if canonical_issue
         Issues::DuplicateService.new(container: project, current_user: current_user).execute(issue, canonical_issue)
       end
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
-    def move_issue_to_new_project(issue)
-      target_project = params.delete(:target_project)
+    def move_issue_to_new_container(issue)
+      target_container = params.delete(:target_container)
 
-      return unless target_project &&
-          issue.can_move?(current_user, target_project) &&
-          target_project != issue.project
+      return unless target_container &&
+        issue.can_move?(current_user, target_container) &&
+        !move_to_same_container?(issue, target_container)
 
       update(issue)
-      Issues::MoveService.new(container: project, current_user: current_user).execute(issue, target_project)
+
+      move_service_container = target_container.is_a?(Project) ? target_container.project_namespace : target_container
+
+      ::WorkItems::DataSync::MoveService.new(
+        work_item: issue, current_user: current_user, target_namespace: move_service_container
+      ).execute[:work_item]
     end
 
     private
 
     attr_reader :perform_spam_check
 
+    override :transaction_update
+    def transaction_update(issue, opts = {})
+      return false unless super
+
+      sync_to_work_item_description(issue)
+    end
+
+    override :transaction_update_task
+    def transaction_update_task(issue)
+      return false unless super
+
+      sync_to_work_item_description(issue)
+    end
+
+    def sync_to_work_item_description(issue)
+      return true unless WORK_ITEM_DESCRIPTION_FIELDS.intersection(issue.previous_changes.keys).any?
+
+      result = WorkItems::Description.upsert({
+        work_item_id: issue.id,
+        namespace_id: issue.namespace_id,
+        description: issue.description,
+        description_html: issue.description_html,
+        last_edited_by_id: issue.last_edited_by_id,
+        last_edited_at: issue.last_edited_at,
+        lock_version: issue.lock_version,
+        cached_markdown_version: issue.cached_markdown_version
+      }, unique_by: [:work_item_id, :namespace_id])
+
+      # Logging when we fail to upsert the description. We don't want to rollback the transaction for now.
+      Gitlab::AppLogger.info(issue_id: issue.id, message: "Failed to upsert work_item_description") unless result.rows.any?
+
+      true
+    end
+
     override :after_update
-    def after_update(issue, _old_associations)
+    def after_update(issue, old_associations)
       super
 
       GraphqlTriggers.work_item_updated(issue)
+      publish_event(issue, old_associations)
+    end
+
+    def publish_event(work_item, old_associations)
+      event = WorkItems::WorkItemUpdatedEvent.new(data: {
+        id: work_item.id,
+        namespace_id: work_item.namespace_id,
+        previous_work_item_parent_id: old_associations[:work_item_parent_id],
+        updated_attributes: work_item.previous_changes&.keys&.map(&:to_s),
+        updated_widgets: @widget_params&.compact_blank&.keys&.map(&:to_s)
+      }.tap(&:compact_blank!))
+
+      work_item.run_after_commit_or_now do
+        Gitlab::EventStore.publish(event)
+      end
     end
 
     def handle_date_changes(issue)
@@ -125,15 +184,21 @@ module Issues
     end
 
     def clone_issue(issue)
-      target_project = params.delete(:target_clone_project)
+      target_container = params.delete(:target_clone_container)
       with_notes = params.delete(:clone_with_notes)
 
-      return unless target_project &&
-        issue.can_clone?(current_user, target_project)
+      return unless target_container &&
+        issue.can_clone?(current_user, target_container)
 
       # we've pre-empted this from running in #execute, so let's go ahead and update the Issue now.
       update(issue)
-      Issues::CloneService.new(container: project, current_user: current_user).execute(issue, target_project, with_notes: with_notes)
+
+      clone_service_container = target_container.is_a?(Project) ? target_container.project_namespace : target_container
+
+      ::WorkItems::DataSync::CloneService.new(
+        work_item: issue, current_user: current_user, target_namespace: clone_service_container,
+        params: { clone_with_notes: with_notes }
+      ).execute[:work_item]
     end
 
     def create_merge_request_from_quick_action
@@ -185,10 +250,18 @@ module Issues
     end
 
     def do_handle_issue_type_change(issue)
-      old_work_item_type = ::WorkItems::Type.find(issue.work_item_type_id_before_last_save).base_type
+      old_work_item_type = work_item_type_provider.find_by_id(issue.work_item_type_id_before_last_save).base_type
       SystemNoteService.change_issue_type(issue, current_user, old_work_item_type)
 
       ::IncidentManagement::IssuableEscalationStatuses::CreateService.new(issue).execute if issue.supports_escalation?
+    end
+
+    def move_to_same_container?(issue, target_container)
+      target_container_identifier = target_container.id
+
+      target_container_identifier = target_container.project_namespace_id if target_container.is_a?(Project)
+
+      issue.namespace_id == target_container_identifier
     end
 
     override :allowed_update_params

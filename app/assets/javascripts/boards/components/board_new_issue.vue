@@ -45,7 +45,7 @@ export default {
         };
       },
       update(data) {
-        const { board } = data.workspace;
+        const { board } = data.namespace;
         return {
           ...board,
           labels: board.labels?.nodes,
@@ -114,6 +114,6 @@ export default {
     @form-submit="submit"
     @form-cancel="cancel"
   >
-    <project-select v-if="isGroupBoard" v-model="selectedProject" :list="list" />
+    <project-select v-if="isGroupBoard" v-model="selectedProject" />
   </board-new-item>
 </template>

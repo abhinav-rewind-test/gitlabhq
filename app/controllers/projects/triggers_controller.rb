@@ -4,8 +4,8 @@ class Projects::TriggersController < Projects::ApplicationController
   before_action :authorize_manage_trigger_on_project!
   before_action :authorize_manage_trigger!, except: [:index, :create]
 
-  before_action :authorize_admin_trigger!, only: [:edit, :update]
-  before_action :trigger, only: [:edit, :update, :destroy]
+  before_action :authorize_admin_trigger!, only: [:update]
+  before_action :trigger, only: [:update, :destroy]
 
   layout 'project_settings'
 
@@ -20,7 +20,8 @@ class Projects::TriggersController < Projects::ApplicationController
     response = ::Ci::PipelineTriggers::CreateService.new(
       project: project,
       user: current_user,
-      description: trigger_params[:description]
+      description: trigger_params[:description],
+      expires_at: trigger_params[:expires_at]
     ).execute
 
     @trigger = response.payload[:trigger]
@@ -34,24 +35,25 @@ class Projects::TriggersController < Projects::ApplicationController
     redirect_to project_settings_ci_cd_path(@project, anchor: 'js-pipeline-triggers')
   end
 
-  def edit
-  end
-
   def update
-    response = ::Ci::PipelineTriggers::UpdateService.new(user: current_user, trigger: trigger, description: trigger_params[:description]).execute
+    response = ::Ci::PipelineTriggers::UpdateService.new(user: current_user, trigger: trigger,
+      description: trigger_params[:description]).execute
 
     if response.success?
-      redirect_to project_settings_ci_cd_path(@project, anchor: 'js-pipeline-triggers'), notice: _('Trigger token was successfully updated.')
+      redirect_to project_settings_ci_cd_path(@project, anchor: 'js-pipeline-triggers'),
+        notice: _('Trigger token was successfully updated.')
     else
       render action: "edit"
     end
   end
 
   def destroy
-    if trigger.destroy
-      flash[:notice] = _("Trigger removed.")
+    response = ::Ci::PipelineTriggers::DestroyService.new(user: current_user, trigger: trigger).execute
+
+    if response.success?
+      flash[:notice] = _("Trigger token removed.")
     else
-      flash[:alert] = _("Could not remove the trigger.")
+      flash[:alert] = response.message
     end
 
     redirect_to project_settings_ci_cd_path(@project, anchor: 'js-pipeline-triggers'), status: :found
@@ -77,6 +79,6 @@ class Projects::TriggersController < Projects::ApplicationController
   end
 
   def trigger_params
-    params.require(:trigger).permit(:description)
+    params.require(:trigger).permit(:description, :expires_at)
   end
 end

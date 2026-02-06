@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::QueryLimiting::Middleware do
   describe '#call' do
     it 'runs the application with query limiting in place' do
-      middleware = described_class.new(-> (env) { env })
+      middleware = described_class.new(->(env) { env })
 
       expect_next_instance_of(Gitlab::QueryLimiting::Transaction) do |instance|
         expect(instance).to receive(:act_upon_results)
@@ -14,10 +14,20 @@ RSpec.describe Gitlab::QueryLimiting::Middleware do
       expect(middleware.call({ number: 10 }))
         .to eq({ number: 10 })
     end
+
+    it 'skips query limiting when suppressed' do
+      expect(Gitlab::QueryLimiting::Transaction).not_to receive(:run)
+
+      Gitlab::QueryLimiting.with_suppressed do
+        middleware = described_class.new(->(env) { env })
+
+        expect(middleware.call({ number: 10 })).to eq({ number: 10 })
+      end
+    end
   end
 
   describe '#action_name' do
-    let(:middleware) { described_class.new(-> (env) { env }) }
+    let(:middleware) { described_class.new(->(env) { env }) }
 
     context 'using a Rails request' do
       it 'returns the name of the controller and action' do

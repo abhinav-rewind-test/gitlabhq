@@ -2,17 +2,18 @@
 
 module SearchArguments
   extend ActiveSupport::Concern
+  include Gitlab::Graphql::Authorize::AuthorizeResource
 
   included do
     argument :search, GraphQL::Types::String,
-             required: false,
-             description: 'Search query for title or description.'
+      required: false,
+      description: 'Search query for title or description.'
     argument :in, [Types::IssuableSearchableFieldEnum],
-             required: false,
-             description: <<~DESC
+      required: false,
+      description: <<~DESC
                Specify the fields to perform the search in.
                Defaults to `[TITLE, DESCRIPTION]`. Requires the `search` argument.'
-             DESC
+      DESC
   end
 
   def ready?(**args)
@@ -28,7 +29,7 @@ module SearchArguments
     return unless args[:in].present? && args[:search].blank?
 
     raise Gitlab::Graphql::Errors::ArgumentError,
-          '`search` should be present when including the `in` argument'
+      '`search` should be present when including the `in` argument'
   end
 
   def validate_search_rate_limit!(args)
@@ -48,8 +49,11 @@ module SearchArguments
       rate_limiter_key,
       scope: rate_limiter_scope
     )
-      raise Gitlab::Graphql::Errors::ResourceNotAvailable,
-        'This endpoint has been requested with the search argument too many times. Try again later.'
+      error_msg = <<~ERR.squish
+        This endpoint has been requested with the search argument too many times. Try again later.
+      ERR
+
+      raise_resource_not_available_error! error_msg
     end
   end
 

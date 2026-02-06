@@ -41,10 +41,10 @@ module Gitlab
           :stage_id,
           :end_event_filter,
           *LICENSED_PARAMS,
-          label_name: [].freeze,
-          assignee_username: [].freeze,
-          project_ids: [].freeze,
-          not: NEGATABLE_PARAMS
+          { label_name: [].freeze,
+            assignee_username: [].freeze,
+            project_ids: [].freeze,
+            not: NEGATABLE_PARAMS }
         ].freeze
 
         FINDER_PARAM_NAMES = [
@@ -174,8 +174,9 @@ module Gitlab
 
           {
             name: project.name,
-            full_path: project.full_path,
-            type: namespace.type
+            type: namespace.type,
+            path: project.full_path,
+            rest_api_request_path: project.full_path
           }
         end
 

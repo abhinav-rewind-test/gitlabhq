@@ -8,8 +8,8 @@ class Groups::LabelsController < Groups::ApplicationController
   before_action :authorize_label_for_admin_label!, only: [:edit, :update, :destroy]
   before_action :save_previous_label_path, only: [:edit]
 
-  before_action only: :index do
-    push_frontend_feature_flag(:label_similarity_sort, group)
+  before_action only: [:index] do
+    push_frontend_feature_flag(:labels_archive, group)
   end
 
   respond_to :html
@@ -22,7 +22,7 @@ class Groups::LabelsController < Groups::ApplicationController
       format.html do
         # at group level we do not want to list project labels,
         # we only want `only_group_labels = false` when pulling labels for label filter dropdowns, fetched through json
-        @labels = available_labels(params.merge(only_group_labels: true)).page(params[:page]) # rubocop: disable CodeReuse/ActiveRecord
+        @labels = available_labels(params.merge(only_group_labels: true)).page(params[:page])
         Preloaders::LabelsPreloader.new(@labels, current_user).preload_all
       end
       format.json do
@@ -81,19 +81,19 @@ class Groups::LabelsController < Groups::ApplicationController
   protected
 
   def authorize_group_for_admin_labels!
-    return render_404 unless can?(current_user, :admin_label, @group)
+    render_404 unless can?(current_user, :admin_label, @group)
   end
 
   def authorize_label_for_admin_label!
-    return render_404 unless can?(current_user, :admin_label, @label)
+    render_404 unless can?(current_user, :admin_label, @label)
   end
 
   def authorize_read_labels!
-    return render_404 unless can?(current_user, :read_label, @group)
+    render_404 unless can?(current_user, :read_label, @group)
   end
 
   def label
-    @label ||= available_labels(params.merge(only_group_labels: true)).find(params[:id])
+    @label ||= available_labels(params.merge(only_group_labels: true, ignore_archived: true)).find(params[:id])
   end
   alias_method :subscribable_resource, :label
 
@@ -103,6 +103,7 @@ class Groups::LabelsController < Groups::ApplicationController
 
   def label_params
     allowed = [:title, :description, :color]
+    allowed << :archived if Feature.enabled?(:labels_archive, group)
     allowed << :lock_on_merge if @group.supports_lock_on_merge?
 
     params.require(:label).permit(allowed)
@@ -125,6 +126,10 @@ class Groups::LabelsController < Groups::ApplicationController
   end
 
   def available_labels(options = params)
+    archived_param = if Feature.enabled?(:labels_archive, group) && !options[:ignore_archived]
+                       options[:archived].nil? ? false : options[:archived]
+                     end
+
     @available_labels ||=
       LabelsFinder.new(
         current_user,
@@ -134,7 +139,9 @@ class Groups::LabelsController < Groups::ApplicationController
         sort: sort,
         subscribed: options[:subscribed],
         include_descendant_groups: options[:include_descendant_groups],
-        search: options[:search]).execute
+        search: options[:search],
+        archived: archived_param
+      ).execute
   end
 
   def sort

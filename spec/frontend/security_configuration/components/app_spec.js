@@ -5,16 +5,25 @@ import { useLocalStorageSpy } from 'helpers/local_storage_helper';
 import { makeMockUserCalloutDismisser } from 'helpers/mock_user_callout_dismisser';
 import stubChildren from 'helpers/stub_children';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 import SecurityConfigurationApp from '~/security_configuration/components/app.vue';
 import AutoDevopsAlert from '~/security_configuration/components/auto_dev_ops_alert.vue';
 import AutoDevopsEnabledAlert from '~/security_configuration/components/auto_dev_ops_enabled_alert.vue';
 import { AUTO_DEVOPS_ENABLED_ALERT_DISMISSED_STORAGE_KEY } from '~/security_configuration/constants';
 import FeatureCard from '~/security_configuration/components/feature_card.vue';
-import TrainingProviderList from '~/security_configuration/components/training_provider_list.vue';
-import { securityFeaturesMock, provideMock } from '../mock_data';
+import PipelineSecretDetectionFeatureCard from '~/security_configuration/components/pipeline_secret_detection_feature_card.vue';
+import SecretPushProtectionFeatureCard from '~/security_configuration/components/secret_push_protection_feature_card.vue';
+import RefTrackingList from '~/security_configuration/components/ref_tracking_list.vue';
+import TrainingSection from '~/security_configuration/components/training_section.vue';
+import {
+  securityFeaturesMock,
+  provideMock,
+  secretPushProtectionMock,
+  pipelineSecretDetectionMock,
+} from '../mock_data';
 
 const gitlabCiHistoryPath = 'test/historyPath';
-const { vulnerabilityTrainingDocsPath, projectFullPath } = provideMock;
+const { projectFullPath } = provideMock;
 
 useLocalStorageSpy();
 Vue.use(VueApollo);
@@ -25,7 +34,12 @@ describe('~/security_configuration/components/app', () => {
   let wrapper;
   let userCalloutDismissSpy;
 
-  const createComponent = ({ shouldShowCallout = true, ...propsData } = {}) => {
+  const createComponent = ({
+    shouldShowCallout = true,
+    vulnerabilitiesAcrossContexts = true,
+    glFeatures = {},
+    ...propsData
+  } = {}) => {
     userCalloutDismissSpy = jest.fn();
 
     wrapper = mountExtended(SecurityConfigurationApp, {
@@ -34,7 +48,13 @@ describe('~/security_configuration/components/app', () => {
         securityTrainingEnabled: true,
         ...propsData,
       },
-      provide: provideMock,
+      provide: {
+        ...provideMock,
+        glFeatures: {
+          vulnerabilitiesAcrossContexts,
+          ...glFeatures,
+        },
+      },
       stubs: {
         ...stubChildren(SecurityConfigurationApp),
         GlLink: false,
@@ -45,35 +65,24 @@ describe('~/security_configuration/components/app', () => {
           dismiss: userCalloutDismissSpy,
           shouldShowCallout,
         }),
+        PageHeading,
       },
     });
   };
 
-  const findMainHeading = () => wrapper.find('h1');
+  const findMainHeading = () => wrapper.findByTestId('page-heading');
   const findTab = () => wrapper.findComponent(GlTab);
   const findTabs = () => wrapper.findAllComponents(GlTab);
   const findGlTabs = () => wrapper.findComponent(GlTabs);
   const findByTestId = (id) => wrapper.findByTestId(id);
   const findFeatureCards = () => wrapper.findAllComponents(FeatureCard);
-  const findTrainingProviderList = () => wrapper.findComponent(TrainingProviderList);
+  const findSecretPushProtection = () => wrapper.findComponent(SecretPushProtectionFeatureCard);
+  const findPipelineSecretDetectionCard = () =>
+    wrapper.findComponent(PipelineSecretDetectionFeatureCard);
+  const findRefsTrackingSection = () => wrapper.findByTestId('refs-tracking-section');
+  const findTrainingSection = () => wrapper.findComponent(TrainingSection);
   const findManageViaMRErrorAlert = () => wrapper.findByTestId('manage-via-mr-error-alert');
-  const findLink = ({ href, text, container = wrapper }) => {
-    const selector = `a[href="${href}"]`;
-    const link = container.find(selector);
-
-    if (link.exists() && link.text() === text) {
-      return link;
-    }
-
-    return wrapper.find(`${selector} does not exist`);
-  };
-  const findSecurityViewHistoryLink = () =>
-    findLink({
-      href: gitlabCiHistoryPath,
-      text: i18n.configurationHistory,
-      container: findByTestId('security-testing-tab'),
-    });
-
+  const findSecurityViewHistoryLink = () => wrapper.findByTestId('security-view-history-link');
   const findAutoDevopsAlert = () => wrapper.findComponent(AutoDevopsAlert);
   const findAutoDevopsEnabledAlert = () => wrapper.findComponent(AutoDevopsEnabledAlert);
   const findVulnerabilityManagementTab = () => wrapper.findByTestId('vulnerability-management-tab');
@@ -280,6 +289,53 @@ describe('~/security_configuration/components/app', () => {
     });
   });
 
+  describe('With secret push protection', () => {
+    beforeEach(() => {
+      createComponent({
+        augmentedSecurityFeatures: [secretPushProtectionMock],
+      });
+    });
+
+    it('does not render feature card component', () => {
+      expect(findFeatureCards()).toHaveLength(0);
+    });
+    it('renders component with correct props', () => {
+      expect(findSecretPushProtection().exists()).toBe(true);
+      expect(findSecretPushProtection().props('feature')).toEqual(secretPushProtectionMock);
+    });
+  });
+
+  describe('With pipeline secret detection', () => {
+    beforeEach(() => {
+      createComponent({
+        augmentedSecurityFeatures: [pipelineSecretDetectionMock],
+      });
+    });
+
+    it('does not render regular feature card component', () => {
+      expect(findFeatureCards()).toHaveLength(0);
+    });
+
+    it('renders PipelineSecretDetectionFeatureCard with correct props', () => {
+      expect(findPipelineSecretDetectionCard().props('feature')).toEqual(
+        pipelineSecretDetectionMock,
+      );
+    });
+
+    it('handles error events from PipelineSecretDetectionFeatureCard', async () => {
+      const errorMessage = 'Pipeline secret detection error';
+
+      expect(findManageViaMRErrorAlert().exists()).toBe(false);
+
+      const pipelineCard = findPipelineSecretDetectionCard();
+
+      pipelineCard.vm.$emit('error', errorMessage);
+      await nextTick();
+
+      expect(findManageViaMRErrorAlert().text()).toBe(errorMessage);
+    });
+  });
+
   describe('given gitlabCiPresent & gitlabCiHistoryPath props', () => {
     beforeEach(() => {
       createComponent({
@@ -296,11 +352,9 @@ describe('~/security_configuration/components/app', () => {
   });
 
   describe('Vulnerability management', () => {
-    const props = { securityTrainingEnabled: true };
-
     beforeEach(() => {
       createComponent({
-        ...props,
+        securityTrainingEnabled: true,
       });
     });
 
@@ -308,19 +362,50 @@ describe('~/security_configuration/components/app', () => {
       expect(findVulnerabilityManagementTab().exists()).toBe(true);
     });
 
-    it('renders TrainingProviderList component', () => {
-      expect(findTrainingProviderList().props()).toMatchObject(props);
+    describe('refs tracking section', () => {
+      it('renders the section with correct heading', () => {
+        expect(findRefsTrackingSection().props('heading')).toBe('Refs');
+      });
+
+      it('renders description with correct text', () => {
+        expect(findRefsTrackingSection().text()).toContain(
+          'Track vulnerabilities in up to 16 refs (branches or tags). The default branch is tracked by default on the Security Dashboard and Vulnerability report and cannot be removed.',
+        );
+      });
+
+      it('renders RefTrackingList component', () => {
+        expect(findRefsTrackingSection().findComponent(RefTrackingList).exists()).toBe(true);
+      });
+
+      it('renders link to help docs', () => {
+        const helpLink = findRefsTrackingSection().findComponent(GlLink);
+
+        expect(helpLink.text()).toBe(
+          'Learn more about vulnerability management on non-default branches and tags.',
+        );
+        expect(helpLink.attributes('href')).toBe(
+          '/help/user/application_security/vulnerability_report/_index.md',
+        );
+      });
     });
 
-    it('renders security training description', () => {
-      expect(findVulnerabilityManagementTab().text()).toContain(i18n.securityTrainingDescription);
+    describe('security training section', () => {
+      it('renders TrainingSection with correct props', () => {
+        expect(findTrainingSection().exists()).toBe(true);
+        expect(findTrainingSection().props('isFeatureAvailableOnCurrentTier')).toBe(true);
+      });
+    });
+  });
+
+  describe('when the "vulnerabilitiesAcrossContexts" feature flag is disabled', () => {
+    beforeEach(() => {
+      createComponent({
+        vulnerabilitiesAcrossContexts: false,
+      });
     });
 
-    it('renders link to help docs', () => {
-      const trainingLink = findVulnerabilityManagementTab().findComponent(GlLink);
-
-      expect(trainingLink.text()).toBe('Learn more about vulnerability training');
-      expect(trainingLink.attributes('href')).toBe(vulnerabilityTrainingDocsPath);
+    it('does not render refs tracking section', () => {
+      expect(findRefsTrackingSection().exists()).toBe(false);
     });
   });
 });

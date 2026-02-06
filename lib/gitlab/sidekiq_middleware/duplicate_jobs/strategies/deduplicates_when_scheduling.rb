@@ -15,18 +15,11 @@ module Gitlab
 
           override :schedule
           def schedule(job)
-            if deduplicatable_job? && check! && duplicate_job.duplicate?
-              job['duplicate-of'] = duplicate_job.existing_jid
+            return false if deduplicate?(job)
 
-              if duplicate_job.idempotent?
-                duplicate_job.update_latest_wal_location!
-                duplicate_job.set_deduplicated_flag!
-
-                Gitlab::SidekiqLogging::DeduplicationLogger.instance.deduplicated_log(
-                  job, strategy_name, duplicate_job.options)
-                return false
-              end
-            end
+            # Delete signaling key as the job will be enqueued and no
+            # rescheduling is needed on the server-middleware.
+            duplicate_job.clear_signaling_key
 
             yield
           end
@@ -38,12 +31,43 @@ module Gitlab
 
           private
 
+          def deduplicate?(job)
+            # no redis operations, hence this can be checked outside of the lease
+            return false unless deduplicatable_job?
+
+            return false unless check! && duplicate_job.duplicate?
+
+            job['duplicate-of'] = duplicate_job.existing_jid
+
+            return false unless duplicate_job.idempotent? # only dedup idempotent jobs
+
+            duplicate_job.update_latest_wal_location!
+
+            Gitlab::SidekiqLogging::DeduplicationLogger.instance.deduplicated_log(
+              job, strategy_name, duplicate_job.options)
+
+            true
+          end
+
           def update_job_wal_location!(job)
             job['dedup_wal_locations'] = duplicate_job.latest_wal_locations if duplicate_job.latest_wal_locations.present?
           end
 
           def deduplicatable_job?
+            return false if scheduled_deferred_job?
+            return false if concurrency_limit_resumed?
+
             !duplicate_job.scheduled? || duplicate_job.options[:including_scheduled]
+          end
+
+          # we do not deduplicate deferred perform_in/perform_at.
+          # note that the schedule enq will push the jobs out of the zset with `deferred: true`
+          def scheduled_deferred_job?
+            duplicate_job.scheduled? && duplicate_job.deferred?
+          end
+
+          def concurrency_limit_resumed?
+            duplicate_job.concurrency_limit_resumed?
           end
 
           def check!

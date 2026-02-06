@@ -6,14 +6,13 @@ module Pages
     include CronjobQueue # rubocop: disable Scalability/CronWorkerContext
 
     idempotent!
-    data_consistency :always # rubocop: disable SidekiqLoadBalancing/WorkerDataConsistency
+    data_consistency :always
 
     feature_category :pages
 
     def perform
       PagesDeployment.deactivated.each_batch do |deployments|
-        deployments.each { |deployment| deployment.file.remove! }
-        deployments.delete_all
+        deployments.each(&:destroy!)
       end
     end
   end

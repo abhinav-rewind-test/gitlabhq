@@ -3,15 +3,16 @@
 .file-tree-container {
   width: 100%;
 
-  @media (min-width: $breakpoint-md) {
+  @include gl-container-width-up(md, panel) {
     width: 300px;
   }
 }
 
+// stylelint-disable-next-line gitlab/no-gl-class
 .file-tree-container > div.gl-overflow-y-auto {
   max-height: 220px;
 
-  @media (min-width: $breakpoint-md) {
+  @include gl-container-width-up(md, panel) {
     max-height: 700px;
   }
 }
@@ -24,7 +25,7 @@
 .job-assistant-drawer {
   width: 100%;
 
-  @include media-breakpoint-up(sm) {
+  @include gl-container-width-up(sm, panel) {
     width: 560px;
   }
 }

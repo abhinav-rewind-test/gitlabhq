@@ -56,15 +56,14 @@ export default {
 <template>
   <gl-empty-state
     :svg-path="illustration"
-    :svg-height="null"
     :title="__('Import in progress')"
     :primary-button-text="__('View issues')"
     :primary-button-link="issuesLink"
   >
     <template #description>
-      <p class="mb-0">{{ importInitiatorText }}</p>
-      <p class="mb-0">{{ importTimeText }}</p>
-      <p class="mb-0">{{ importProjectText }}</p>
+      <p class="!gl-mb-0">{{ importInitiatorText }}</p>
+      <p class="!gl-mb-0">{{ importTimeText }}</p>
+      <p class="!gl-mb-0">{{ importProjectText }}</p>
     </template>
   </gl-empty-state>
 </template>

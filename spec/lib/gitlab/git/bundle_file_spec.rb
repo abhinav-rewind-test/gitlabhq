@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Git::BundleFile do
   describe '.check!' do
@@ -12,8 +12,15 @@ RSpec.describe Gitlab::Git::BundleFile do
       valid_bundle.close!
     end
 
-    it 'returns nil for a valid bundle' do
+    it 'returns nil for a valid v2 bundle' do
       valid_bundle.write("# v2 git bundle\nfoo bar baz\n")
+      valid_bundle.close
+
+      expect(described_class.check!(valid_bundle_path)).to be_nil
+    end
+
+    it 'returns nil for a valid v3 bundle' do
+      valid_bundle.write("# v3 git bundle\nfoo bar baz\n")
       valid_bundle.close
 
       expect(described_class.check!(valid_bundle_path)).to be_nil

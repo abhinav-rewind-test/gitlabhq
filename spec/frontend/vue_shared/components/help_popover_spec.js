@@ -23,11 +23,11 @@ describe('HelpPopover', () => {
     });
   };
 
-  describe('with title and content', () => {
-    beforeEach(() => {
-      createComponent();
-    });
+  beforeEach(() => {
+    createComponent();
+  });
 
+  describe('with title and content', () => {
     it('renders a link button with an icon question', () => {
       expect(findQuestionButton().props()).toMatchObject({
         icon: 'question-o',
@@ -50,6 +50,40 @@ describe('HelpPopover', () => {
 
     it('allows rendering content with HTML tags', () => {
       expect(findPopover().find('b').exists()).toBe(true);
+    });
+  });
+
+  describe('aria label', () => {
+    it('renders default "Help" label when no content or custom aria label is provided', () => {
+      createComponent({ props: { options: {} } });
+
+      expect(findQuestionButton().attributes('aria-label')).toBe('Help');
+    });
+
+    it('renders custom aria label', () => {
+      createComponent({
+        props: {
+          ariaLabel: 'Learn more',
+        },
+      });
+
+      expect(findQuestionButton().attributes('aria-label')).toBe('Learn more');
+    });
+
+    it('renders popover content as aria label', () => {
+      createComponent({
+        props: {
+          options: {
+            content: 'This is the content',
+          },
+        },
+      });
+
+      expect(findQuestionButton().attributes('aria-label')).toBe('This is the content');
+    });
+
+    it('renders combined title and content as aria label', () => {
+      expect(findQuestionButton().attributes('aria-label')).toBe('popover title popover content');
     });
   });
 
@@ -122,6 +156,20 @@ describe('HelpPopover', () => {
     });
   });
 
+  describe('with alternative aria label', () => {
+    beforeEach(() => {
+      createComponent({
+        props: {
+          icon: 'information-o',
+        },
+      });
+    });
+
+    it('uses the given icon', () => {
+      expect(findQuestionButton().props('icon')).toBe('information-o');
+    });
+  });
+
   describe('with custom slots', () => {
     const titleSlot = '<h1>title</h1>';
     const defaultSlot = '<strong>content</strong>';
@@ -145,7 +193,7 @@ describe('HelpPopover', () => {
 
     it('overrides title and content from options', () => {
       expect(findPopover().html()).not.toContain(title);
-      expect(findPopover().html()).toContain(content);
+      expect(findPopover().props('content')).toBe(content);
     });
   });
 });

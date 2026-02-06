@@ -7,16 +7,34 @@ module Gitlab
     # Scopes used for GitLab internal API (Kubernetes cluster access)
     K8S_PROXY_SCOPE = :k8s_proxy
 
+    # Scopes used for token allowed to rotate themselves
+    SELF_ROTATE_SCOPE = :self_rotate
+
     # Scopes used for GitLab API access
     API_SCOPE = :api
     READ_API_SCOPE = :read_api
     READ_USER_SCOPE = :read_user
     CREATE_RUNNER_SCOPE = :create_runner
-    API_SCOPES = [API_SCOPE, READ_API_SCOPE, READ_USER_SCOPE, CREATE_RUNNER_SCOPE, K8S_PROXY_SCOPE].freeze
+    MANAGE_RUNNER_SCOPE = :manage_runner
+    MCP_SCOPE = :mcp
+    GRANULAR_SCOPE = :granular
+    API_SCOPES = [
+      API_SCOPE, READ_API_SCOPE,
+      READ_USER_SCOPE,
+      CREATE_RUNNER_SCOPE, MANAGE_RUNNER_SCOPE,
+      K8S_PROXY_SCOPE,
+      SELF_ROTATE_SCOPE,
+      MCP_SCOPE,
+      GRANULAR_SCOPE
+    ].freeze
 
     # Scopes for Duo
     AI_FEATURES = :ai_features
     AI_FEATURES_SCOPES = [AI_FEATURES].freeze
+    AI_WORKFLOW = :ai_workflows
+    AI_WORKFLOW_SCOPES = [AI_WORKFLOW].freeze
+    DYNAMIC_USER = :"user:*"
+    DYNAMIC_SCOPES = [DYNAMIC_USER].freeze
 
     PROFILE_SCOPE = :profile
     EMAIL_SCOPE = :email
@@ -36,6 +54,13 @@ module Gitlab
     WRITE_REGISTRY_SCOPE = :write_registry
     REGISTRY_SCOPES = [READ_REGISTRY_SCOPE, WRITE_REGISTRY_SCOPE].freeze
 
+    # Scopes used for Virtual Registry access
+    READ_VIRTUAL_REGISTRY_SCOPE = :read_virtual_registry
+    WRITE_VIRTUAL_REGISTRY_SCOPE = :write_virtual_registry
+    VIRTUAL_REGISTRY_SCOPES = [
+      READ_VIRTUAL_REGISTRY_SCOPE, WRITE_VIRTUAL_REGISTRY_SCOPE
+    ].freeze
+
     # Scopes used for GitLab Observability access which is outside of the GitLab app itself.
     # Hence the lack of ability mapping in `abilities_for_scopes`.
     READ_OBSERVABILITY_SCOPE = :read_observability
@@ -50,10 +75,39 @@ module Gitlab
     ADMIN_MODE_SCOPE = :admin_mode
     ADMIN_SCOPES = [SUDO_SCOPE, ADMIN_MODE_SCOPE, READ_SERVICE_PING_SCOPE].freeze
 
+    Q_SCOPES = [API_SCOPE, REPOSITORY_SCOPES].flatten.freeze
+
     # Default scopes for OAuth applications that don't define their own
     DEFAULT_SCOPES = [API_SCOPE].freeze
 
+    # Scopes ordered by permission level, from lowest to highest.
+    # This is used to determine the order of scopes in the UI.
+    # If the scope is not present in this list, it won't appear in the UI.
+    UI_SCOPES_ORDERED_BY_PERMISSION = [
+      READ_SERVICE_PING_SCOPE,
+      READ_USER_SCOPE,
+      READ_REPOSITORY_SCOPE,
+      READ_OBSERVABILITY_SCOPE,
+      READ_VIRTUAL_REGISTRY_SCOPE,
+      READ_REGISTRY_SCOPE,
+      READ_API_SCOPE,
+      SELF_ROTATE_SCOPE,
+      WRITE_REPOSITORY_SCOPE,
+      WRITE_OBSERVABILITY_SCOPE,
+      WRITE_VIRTUAL_REGISTRY_SCOPE,
+      WRITE_REGISTRY_SCOPE,
+      API_SCOPE,
+      AI_FEATURES,
+      CREATE_RUNNER_SCOPE,
+      MANAGE_RUNNER_SCOPE,
+      K8S_PROXY_SCOPE,
+      ADMIN_MODE_SCOPE,
+      SUDO_SCOPE
+    ].freeze
+
     CI_JOB_USER = 'gitlab-ci-token'
+
+    extend Gitlab::InternalEventsTracking
 
     class << self
       prepend_mod_with('Gitlab::Auth') # rubocop: disable Cop/InjectEnterpriseEditionModule
@@ -75,11 +129,11 @@ module Gitlab
         result =
           service_request_check(login, password, project) ||
           build_access_token_check(login, password) ||
-          lfs_token_check(login, password, project) ||
-          oauth_access_token_check(login, password) ||
+          lfs_token_check(login, password, project, request) ||
+          oauth_access_token_check(password) ||
           personal_access_token_check(password, project) ||
           deploy_token_check(login, password, project) ||
-          user_with_password_for_git(login, password) ||
+          user_with_password_for_git(login, password, request: request) ||
           Gitlab::Auth::Result::EMPTY
 
         rate_limit!(rate_limiter, success: result.success?, login: login, request: request)
@@ -100,7 +154,7 @@ module Gitlab
       # different mechanisms, as in `.find_for_git_client`. This may lead to
       # unwanted access locks when the value provided for `password` was actually
       # a PAT, deploy token, etc.
-      def find_with_user_password(login, password, increment_failed_attempts: false)
+      def find_with_user_password(login, password, increment_failed_attempts: false, request: nil)
         # Avoid resource intensive checks if login credentials are not provided
         return unless login.present? && password.present?
 
@@ -113,30 +167,25 @@ module Gitlab
 
           break if user && !user.can_log_in_with_non_expired_password?
 
-          authenticators = []
-
-          if user
-            authenticators << Gitlab::Auth::OAuth::Provider.authentication(user, 'database')
-
-            # Add authenticators for all identities if user is not nil
-            user&.identities&.each do |identity|
-              authenticators << Gitlab::Auth::OAuth::Provider.authentication(user, identity.provider)
-            end
-          else
-            # If no user is provided, try LDAP.
-            #   LDAP users are only authenticated via LDAP
-            authenticators << Gitlab::Auth::Ldap::Authentication
-          end
-
-          authenticators.compact!
+          authenticators = password_authenticators_for_user(user)
 
           # return found user that was authenticated first for given login credentials
-          authenticated_user = authenticators.find do |auth|
-            authenticated_user = auth.login(login, password)
-            break authenticated_user if authenticated_user
+          authenticated_user, authenticator = authenticators.find do |authenticator|
+            authenticated_user = authenticator.login(login, password)
+            break authenticated_user, authenticator if authenticated_user
           end
 
           user_auth_attempt!(user, success: !!authenticated_user) if increment_failed_attempts
+
+          # Increase our visibility of authentication methods
+          if !!authenticated_user
+            # To mitigate the risk of large log volume we will log
+            # only when request is present, and use a Feature Flag with
+            # the request actor.
+            if request.present? && Feature.enabled?(:log_find_with_user_password, Feature.current_request)
+              log_authentication('Gitlab::Auth find_with_user_password succeeded', authenticated_user, authenticator, request: request)
+            end
+          end
 
           authenticated_user
         end
@@ -166,7 +215,7 @@ module Gitlab
             env: :blocklist,
             remote_ip: request.ip,
             request_method: request.request_method,
-            path: request.fullpath,
+            path: request.filtered_path,
             login: login
           )
         end
@@ -203,11 +252,24 @@ module Gitlab
         Gitlab::Auth::Result.new(nil, project, :ci, build_authentication_abilities)
       end
 
-      def user_with_password_for_git(login, password)
-        user = find_with_user_password(login, password)
+      def user_with_password_for_git(login, password, request: nil)
+        # Prevent LDAP and database authentication attempts when password is a token
+        return if password.present? && Authn::AgnosticTokenIdentifier.token?(password)
+
+        user = find_with_user_password(login, password, request: request)
         return unless user
 
-        verifier = TwoFactorAuthVerifier.new(user)
+        if user.ldap_user? &&
+            Gitlab::CurrentSettings.password_authentication_enabled_for_git? &&
+            Gitlab::Auth::Ldap::Config.prevent_ldap_sign_in?
+          track_internal_event(
+            'authenticate_to_ldap_with_git_over_https_when_prevent_ldap_sign_in_is_enabled',
+            user: user,
+            category: name
+          )
+        end
+
+        verifier = TwoFactorAuthVerifier.new(user, treat_email_otp_as_2fa: true)
 
         if user.two_factor_enabled? || verifier.two_factor_authentication_enforced?
           raise Gitlab::Auth::MissingPersonalAccessTokenError
@@ -216,13 +278,16 @@ module Gitlab
         Gitlab::Auth::Result.new(user, nil, :gitlab_or_ldap, full_authentication_abilities)
       end
 
-      def oauth_access_token_check(login, password)
-        if login == "oauth2" && password.present?
-          token = Doorkeeper::AccessToken.by_token(password)
+      def oauth_access_token_check(password)
+        if password.present?
+          token = OauthAccessToken.by_token(password)
 
           if valid_oauth_token?(token)
+            identity = ::Gitlab::Auth::Identity.link_from_oauth_token(token)
+            return if identity && !identity.valid?
+
             user = User.id_in(token.resource_owner_id).first
-            return unless user && user.can_log_in_with_non_expired_password?
+            return unless user && (user.can_log_in_with_non_expired_password? || valid_composite_identity?(user))
 
             Gitlab::Auth::Result.new(user, nil, :oauth, abilities_for_scopes(token.scopes))
           end
@@ -248,7 +313,8 @@ module Gitlab
         if token.user.can_log_in_with_non_expired_password? || (token.user.project_bot? || token.user.service_account?)
           ::PersonalAccessTokens::LastUsedService.new(token).execute
 
-          Gitlab::Auth::Result.new(token.user, nil, :personal_access_token, abilities_for_scopes(token.scopes))
+          Gitlab::Auth::Result.new(token.user, nil, :personal_access_token, abilities_for_scopes(token.scopes),
+            personal_access_token: token)
         end
       end
 
@@ -272,11 +338,16 @@ module Gitlab
         abilities_by_scope = {
           api: full_authentication_abilities,
           read_api: read_only_authentication_abilities,
-          read_registry: [:read_container_image],
-          write_registry: [:create_container_image],
-          read_repository: [:download_code],
-          write_repository: [:download_code, :push_code],
-          create_runner: [:create_instance_runner, :create_runner]
+          read_registry: %i[read_container_image],
+          write_registry: %i[create_container_image],
+          read_virtual_registry: %i[read_dependency_proxy],
+          write_virtual_registry: %i[write_dependency_proxy],
+          read_repository: %i[download_code],
+          write_repository: %i[download_code push_code],
+          create_runner: %i[create_instance_runners create_runners],
+          manage_runner: %i[assign_runner update_runner delete_runner],
+          ai_workflows: %i[push_code download_code],
+          mcp: %i[execute_mcp_tool] # This ability doesn't exist yet
         }
 
         scopes.flat_map do |scope|
@@ -304,7 +375,10 @@ module Gitlab
         end
       end
 
-      def lfs_token_check(login, encoded_token, project)
+      def lfs_token_check(login, encoded_token, project, request)
+        return unless login
+        return unless git_lfs_request?(request)
+
         deploy_key_matches = login.match(/\Alfs\+deploy-key-(\d+)\z/)
 
         actor =
@@ -316,7 +390,7 @@ module Gitlab
 
         return unless actor
 
-        token_handler = Gitlab::LfsToken.new(actor)
+        token_handler = Gitlab::LfsToken.new(actor, project)
 
         authentication_abilities =
           if token_handler.user?
@@ -343,8 +417,9 @@ module Gitlab
         if build.user
           return unless build.user.can_log_in_with_non_expired_password? || bot_user_can_read_project?(build.user, build.project)
 
+          auth_context = { authentication_method: :ci_job_token, authentication_method_id: build.id }
           # If user is assigned to build, use restricted credentials of user
-          Gitlab::Auth::Result.new(build.user, build.project, :build, build_authentication_abilities)
+          Gitlab::Auth::Result.new(build.user, build.project, :build, build_authentication_abilities, auth_context)
         else
           # Otherwise use generic CI credentials (backward compatibility)
           Gitlab::Auth::Result.new(nil, build.project, :ci, build_authentication_abilities)
@@ -357,6 +432,7 @@ module Gitlab
         [
           :read_project,
           :build_download_code,
+          :build_push_code,
           :build_read_container_image,
           :build_create_container_image,
           :build_destroy_container_image
@@ -405,7 +481,8 @@ module Gitlab
 
       # Other available scopes
       def optional_scopes
-        all_available_scopes + OPENID_SCOPES + PROFILE_SCOPES - DEFAULT_SCOPES
+        all_available_scopes + OPENID_SCOPES + PROFILE_SCOPES + AI_WORKFLOW_SCOPES + DYNAMIC_SCOPES - DEFAULT_SCOPES -
+          [GRANULAR_SCOPE]
       end
 
       def registry_scopes
@@ -414,11 +491,21 @@ module Gitlab
         REGISTRY_SCOPES
       end
 
+      def virtual_registry_scopes
+        return [] unless Gitlab.config.dependency_proxy.enabled
+
+        VIRTUAL_REGISTRY_SCOPES
+      end
+
       def resource_bot_scopes
         non_admin_available_scopes - [READ_USER_SCOPE]
       end
 
       private
+
+      def git_lfs_request?(request)
+        Gitlab::PathRegex.repository_git_lfs_route_regex.match?(request.path)
+      end
 
       def available_scopes_for_resource(resource)
         case resource
@@ -438,7 +525,14 @@ module Gitlab
       end
 
       def unavailable_scopes_for_resource(resource)
-        unavailable_observability_scopes_for_resource(resource)
+        unavailable_ai_features_scopes +
+          unavailable_observability_scopes_for_resource(resource) +
+          unavailable_virtual_registry_scopes_for_resource(resource) +
+          [GRANULAR_SCOPE]
+      end
+
+      def unavailable_ai_features_scopes
+        AI_WORKFLOW_SCOPES + [MCP_SCOPE]
       end
 
       def unavailable_observability_scopes_for_resource(resource)
@@ -448,14 +542,40 @@ module Gitlab
         OBSERVABILITY_SCOPES
       end
 
+      def unavailable_virtual_registry_scopes_for_resource(resource)
+        return VIRTUAL_REGISTRY_SCOPES if resource.is_a?(Project)
+
+        []
+      end
+
       def non_admin_available_scopes
-        API_SCOPES + REPOSITORY_SCOPES + registry_scopes + OBSERVABILITY_SCOPES + AI_FEATURES_SCOPES
+        API_SCOPES + REPOSITORY_SCOPES + registry_scopes + virtual_registry_scopes + OBSERVABILITY_SCOPES + AI_FEATURES_SCOPES
       end
 
       def find_build_by_token(token)
-        ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
+        ::Gitlab::Database::LoadBalancing::SessionMap
+          .with_sessions.use_primary do
           ::Ci::AuthJobFinder.new(token: token).execute
         end
+      end
+
+      def password_authenticators_for_user(user)
+        authenticators = []
+
+        if user
+          authenticators << Gitlab::Auth::OAuth::Provider.authentication(user, 'database')
+
+          # Add authenticators for all identities if user is not nil
+          user&.identities&.each do |identity|
+            authenticators << Gitlab::Auth::OAuth::Provider.authentication(user, identity.provider)
+          end
+        else
+          # If no user is provided, try LDAP.
+          #   LDAP users are only authenticated via LDAP
+          authenticators << Gitlab::Auth::Ldap::Authentication
+        end
+
+        authenticators.compact
       end
 
       def user_auth_attempt!(user, success:)
@@ -464,6 +584,28 @@ module Gitlab
 
         user.increment_failed_attempts!
       end
+
+      def valid_composite_identity?(user)
+        user.composite_identity_enforced? && user.service_account?
+      end
+
+      def log_authentication(message, user, authenticator, request: nil)
+        # `authenticator` can be an instance or a class
+        authenticator_class_name = authenticator.is_a?(Class) ? authenticator.to_s : authenticator.class.to_s
+
+        Gitlab::AuthLogger.info(
+          message: message,
+          user_id: user.id,
+          username: user.username,
+          authenticator: authenticator_class_name,
+          remote_ip: request&.remote_ip,
+          request_method: request&.request_method,
+          path: request&.filtered_path,
+          ua: request&.user_agent
+        )
+      end
     end
   end
 end
+
+Gitlab::Auth.prepend_mod_with('Gitlab::Auth')

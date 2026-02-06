@@ -5,12 +5,12 @@ module Mutations
     module Lists
       class BaseCreate < BaseMutation
         argument :backlog, GraphQL::Types::Boolean,
-                 required: false,
-                 description: 'Create the backlog list.'
+          required: false,
+          description: 'Create the backlog list.'
 
         argument :label_id, ::Types::GlobalIDType[::Label],
-                 required: false,
-                 description: 'Global ID of an existing label.'
+          required: false,
+          description: 'Global ID of an existing label.'
 
         def ready?(**args)
           if args.slice(*mutually_exclusive_args).size != 1
@@ -42,6 +42,7 @@ module Mutations
         def create_list_params(args)
           params = args.slice(*mutually_exclusive_args).with_indifferent_access
           params[:label_id] &&= ::GitlabSchema.parse_gid(params[:label_id], expected_type: ::Label).model_id
+          params[:position] = args[:position]
 
           params
         end

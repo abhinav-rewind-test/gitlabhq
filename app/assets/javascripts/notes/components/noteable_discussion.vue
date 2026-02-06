@@ -1,10 +1,9 @@
 <script>
 import { GlTooltipDirective, GlIcon } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapActions, mapGetters } from 'vuex';
+import { mapActions, mapState } from 'pinia';
 import DraftNote from '~/batch_comments/components/draft_note.vue';
 import { createAlert } from '~/alert';
-import { clearDraft, getDiscussionReplyKey } from '~/lib/utils/autosave';
+import { clearDraft, getDraft, getAutoSaveKeyFromDiscussion } from '~/lib/utils/autosave';
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { ignoreWhilePending } from '~/lib/utils/ignore_while_pending';
@@ -12,7 +11,11 @@ import { s__, __, sprintf } from '~/locale';
 import diffLineNoteFormMixin from '~/notes/mixins/diff_line_note_form';
 import TimelineEntryItem from '~/vue_shared/components/notes/timeline_entry_item.vue';
 import UserAvatarLink from '~/vue_shared/components/user_avatar/user_avatar_link.vue';
-import { containsSensitiveToken, confirmSensitiveAction } from '~/lib/utils/secret_detection';
+import { detectAndConfirmSensitiveTokens } from '~/lib/utils/secret_detection';
+import { FILE_DIFF_POSITION_TYPE, IMAGE_DIFF_POSITION_TYPE } from '~/diffs/constants';
+import { useNotes } from '~/notes/store/legacy_notes';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { CopyAsGFM } from '~/behaviors/markdown/copy_as_gfm';
 import eventHub from '../event_hub';
 import noteable from '../mixins/noteable';
 import resolvable from '../mixins/resolvable';
@@ -76,26 +79,21 @@ export default {
       required: false,
       default: false,
     },
-    shouldScrollToNote: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
   },
   data() {
     return {
       isReplying: false,
       isResolving: false,
+      // eslint-disable-next-line vue/no-unused-properties -- `resolveAsThread` is used by the `resolvable` mixin
       resolveAsThread: true,
     };
   },
   computed: {
-    ...mapGetters([
+    ...mapState(useNotes, [
       'convertedDisscussionIds',
       'getNoteableData',
       'userCanReply',
       'showJumpToNextDiscussion',
-      'getUserData',
     ]),
     diffFile() {
       const diffFile = this.discussion.diff_file;
@@ -109,9 +107,6 @@ export default {
         ),
       };
     },
-    currentUser() {
-      return this.getUserData;
-    },
     isLoggedIn() {
       return isLoggedIn();
     },
@@ -119,13 +114,10 @@ export default {
       return this.discussion.internal ? __('internal note') : __('comment');
     },
     autosaveKey() {
-      return getDiscussionReplyKey(this.firstNote.noteable_type, this.discussion.id);
+      return getAutoSaveKeyFromDiscussion(this.discussion);
     },
     newNotePath() {
       return this.getNoteableData.create_note_path;
-    },
-    firstNote() {
-      return this.discussion.notes.slice(0, 1)[0];
     },
     saveButtonTitle() {
       return this.discussion.internal ? __('Reply internally') : __('Reply');
@@ -170,8 +162,25 @@ export default {
       return !this.discussionResolved ? this.discussion.resolve_with_issue_path : '';
     },
     canShowReplyActions() {
-      if (this.shouldRenderDiffs && !this.discussion.diff_file?.diff_refs) {
-        return false;
+      if (this.isLoggedIn && !this.userCanReply) return false;
+      if (this.shouldRenderDiffs) {
+        if (this.discussion.diff_file?.diff_refs) {
+          return true;
+        }
+
+        /*
+         * https://gitlab.com/gitlab-com/gl-infra/production/-/issues/19118
+         *
+         * For most diff discussions we should have a `diff_file`.
+         * However in some cases we might not have this object.
+         * In these we need to check if the `original_position.position_type`
+         * is either a file or an image, doing this allows us to still
+         * render the reply actions.
+         */
+        return (
+          this.discussion.original_position?.position_type === FILE_DIFF_POSITION_TYPE ||
+          this.discussion.original_position?.position_type === IMAGE_DIFF_POSITION_TYPE
+        );
       }
 
       return true;
@@ -179,34 +188,50 @@ export default {
     isDiscussionInternal() {
       return this.discussion.notes[0]?.internal;
     },
+    commentLines() {
+      return this.getLinesForDiscussion({ discussion: this.discussion });
+    },
     discussionHolderClass() {
       return {
-        'is-replying gl-pt-0!': this.isReplying,
+        'is-replying': this.isReplying,
         'internal-note': this.isDiscussionInternal,
-        'public-note': !this.isDiscussionInternal,
-        'gl-pt-0!': !this.discussion.diff_discussion && this.isReplying,
+        '!gl-pt-0': !this.discussion.diff_discussion && this.isReplying,
       };
+    },
+    hasDraft() {
+      return Boolean(getDraft(this.autosaveKey));
     },
   },
   created() {
     eventHub.$on('startReplying', this.onStartReplying);
+    if (this.hasDraft) {
+      this.showReplyForm();
+    }
   },
   beforeDestroy() {
     eventHub.$off('startReplying', this.onStartReplying);
   },
   methods: {
-    ...mapActions([
+    ...mapActions(useNotes, [
       'saveNote',
       'removePlaceholderNotes',
+      // eslint-disable-next-line vue/no-unused-properties -- toggleResolveNote() used by the `Resolvable` mixin
       'toggleResolveNote',
       'removeConvertedDiscussion',
       'expandDiscussion',
     ]),
-    showReplyForm() {
+    ...mapActions(useLegacyDiffs, ['getLinesForDiscussion']),
+    showReplyForm(text) {
       this.isReplying = true;
 
       if (!this.discussion.expanded) {
         this.expandDiscussion({ discussionId: this.discussion.id });
+      }
+
+      if (typeof text !== 'undefined') {
+        this.$nextTick(() => {
+          this.$refs.noteForm.append(text);
+        });
       }
     },
     cancelReplyForm: ignoreWhilePending(async function cancelReplyForm(shouldConfirm, isDirty) {
@@ -240,12 +265,11 @@ export default {
         return;
       }
 
-      if (containsSensitiveToken(noteText)) {
-        const confirmed = await confirmSensitiveAction();
-        if (!confirmed) {
-          callback();
-          return;
-        }
+      const confirmSubmit = await detectAndConfirmSensitiveTokens({ content: noteText });
+
+      if (!confirmSubmit) {
+        callback();
+        return;
       }
 
       const postData = {
@@ -295,6 +319,13 @@ export default {
         this.showReplyForm();
       }
     },
+    async onQuoteReply() {
+      const text = await CopyAsGFM.selectionToGfm();
+      // prevent hotkey input from going into the form
+      requestAnimationFrame(() => {
+        this.showReplyForm(text);
+      });
+    },
   },
 };
 </script>
@@ -308,6 +339,7 @@ export default {
         :data-discussion-resolved="discussion.resolved"
         class="discussion js-discussion-container"
         data-testid="discussion-content"
+        @quoteReply="onQuoteReply"
       >
         <diff-discussion-header v-if="shouldRenderDiffs" :discussion="discussion" />
         <div v-if="!shouldHideDiscussionBody" class="discussion-body">
@@ -324,7 +356,6 @@ export default {
               :line="line"
               :should-group-replies="shouldGroupReplies"
               :is-overview-tab="isOverviewTab"
-              :should-scroll-to-note="shouldScrollToNote"
               @startReplying="showReplyForm"
             >
               <template #avatar-badge>
@@ -340,9 +371,10 @@ export default {
                 <li
                   v-else-if="canShowReplyActions && showReplies"
                   data-testid="reply-wrapper"
-                  class="discussion-reply-holder gl-border-t-0! gl-pb-5! clearfix"
+                  class="discussion-reply-holder gl-bg-subtle gl-clearfix"
                   :class="discussionHolderClass"
                 >
+                  <div class="flash-container !gl-mt-0 gl-mb-2"></div>
                   <discussion-actions
                     v-if="!isReplying && userCanReply"
                     :discussion="discussion"
@@ -359,7 +391,9 @@ export default {
                     :discussion="discussion"
                     :diff-file="diffFile"
                     :line="diffLine"
+                    :lines="commentLines"
                     :save-button-title="saveButtonTitle"
+                    :autofocus="!hasDraft"
                     :autosave-key="autosaveKey"
                     @handleFormUpdateAddToReview="addReplyToReview"
                     @handleFormUpdate="saveReply"

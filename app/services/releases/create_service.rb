@@ -6,8 +6,18 @@ module Releases
       return error(_('Access Denied'), 403) unless allowed?
       return error(_('You are not allowed to create this tag as it is protected.'), 403) unless can_create_tag?
       return error(_('Release already exists'), 409) if release
-      return error(format(_("Milestone(s) not found: %{milestones}"), milestones: inexistent_milestone_titles.join(', ')), 400) if inexistent_milestone_titles.any? # rubocop:disable Layout/LineLength
-      return error(format(_("Milestone id(s) not found: %{milestones}"), milestones: inexistent_milestone_ids.join(', ')), 400) if inexistent_milestone_ids.any? # rubocop:disable Layout/LineLength
+
+      if inexistent_milestone_titles.any?
+        return error(
+          format(_("Milestone(s) not found: %{milestones}"),
+            milestones: inexistent_milestone_titles.join(', ')), 400)
+      end
+
+      if inexistent_milestone_ids.any?
+        return error(
+          format(_("Milestone id(s) not found: %{milestones}"),
+            milestones: inexistent_milestone_ids.join(', ')), 400)
+      end
 
       # should be found before the creation of new tag
       # because tag creation can spawn new pipeline
@@ -50,8 +60,8 @@ module Releases
     def create_release(tag, evidence_pipeline)
       release = build_release(tag)
 
-      if project.catalog_resource && release.valid?
-        response = Ci::Catalog::Resources::ReleaseService.new(release).execute
+      if publish_catalog?(release)
+        response = Ci::Catalog::Resources::ReleaseService.new(release, current_user, nil).execute
 
         return error(response.message, 422) if response.error?
       end
@@ -98,6 +108,12 @@ module Releases
       return if release.historical_release? || release.upcoming_release?
 
       ::Releases::CreateEvidenceWorker.perform_async(release.id, pipeline&.id)
+    end
+
+    def publish_catalog?(release)
+      return false unless project.catalog_resource && release.valid?
+
+      ::Feature.enabled?(:ci_release_cli_catalog_publish_option, project) ? params[:legacy_catalog_publish] : true
     end
   end
 end

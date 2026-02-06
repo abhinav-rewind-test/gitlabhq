@@ -69,9 +69,12 @@ module Database
             config_model: base_model
           )
 
+          # Skip refreshing of attribute methods as we are inside a reconfigured DB connection
+          # and these models won't exist on all databases. We refresh later after migrating all DBs.
+          schema_migrate_up!(skip_refresh_attribute_methods: true)
+
           # Delete after migrating so that rows created during migration don't impact other
           # specs (for example, async foreign key creation rows)
-          schema_migrate_up!
           delete_from_all_tables!(except: deletion_except_tables)
         end
       end
@@ -90,53 +93,50 @@ module Database
     #
     # The execution within a block ensures safe cleanup of all allocated resources.
     #
-    # rubocop:disable Database/MultipleDatabases
     def with_reestablished_active_record_base(reconnect: true)
       connection_classes = ActiveRecord::Base
         .connection_handler
         .connection_pool_names
         .map(&:constantize)
-        .index_with(&:connection_db_config)
+
+      connection_classes.delete(ActiveRecord::PendingMigrationConnection)
+
+      connection_class_to_config = connection_classes.index_with(&:connection_db_config)
 
       original_handler = ActiveRecord::Base.connection_handler
       new_handler = ActiveRecord::ConnectionAdapters::ConnectionHandler.new
       ActiveRecord::Base.connection_handler = new_handler
 
-      connection_classes.each { |klass, db_config| klass.establish_connection(db_config) } if reconnect
+      if reconnect
+        # Schema validation requires all connections to be established so we skip this validator
+        # while we re-establish each connection class.
+        Gitlab::Database::QueryAnalyzers::GitlabSchemasValidateConnection.with_suppressed do
+          connection_class_to_config.each { |klass, db_config| klass.establish_connection(db_config) }
+        end
+      end
 
       yield
     ensure
       ActiveRecord::Base.connection_handler = original_handler
+
+      # Prevent connections from leaking by unpinning the connection before clearing.
+      # We also need to remove the pool from `@fixture_connection_pools` so that Rails
+      # does not try to unpin the connection again at the end of the test.
+      if @fixture_connection_pools
+        new_handler.each_connection_pool do |pool|
+          @fixture_connection_pools.delete(pool)&.unpin_connection!
+        end
+      end
+
       new_handler&.clear_all_connections!
     end
-    # rubocop:enable Database/MultipleDatabases
 
     def with_db_configs(test: test_config)
-      current_configurations = ActiveRecord::Base.configurations # rubocop:disable Database/MultipleDatabases
+      current_configurations = ActiveRecord::Base.configurations
       ActiveRecord::Base.configurations = { test: test_config }
       yield
     ensure
       ActiveRecord::Base.configurations = current_configurations
-    end
-
-    def with_added_ci_connection
-      if Gitlab::Database.has_config?(:ci)
-        # No need to add a ci: connection if we already have one
-        yield
-      else
-        with_reestablished_active_record_base(reconnect: true) do
-          reconfigure_db_connection(
-            name: :ci,
-            model: Ci::ApplicationRecord,
-            config_model: ActiveRecord::Base
-          )
-
-          yield
-
-          # Cleanup connection_specification_name for Ci::ApplicationRecord
-          Ci::ApplicationRecord.remove_connection
-        end
-      end
     end
   end
 

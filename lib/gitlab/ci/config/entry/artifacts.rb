@@ -13,7 +13,7 @@ module Gitlab
           include ::Gitlab::Config::Entry::Attributable
 
           ALLOWED_WHEN = %w[on_success on_failure always].freeze
-          ALLOWED_ACCESS = %w[none developer all].freeze
+          ALLOWED_ACCESS = %w[none developer maintainer all].freeze
           ALLOWED_KEYS = %i[name untracked paths reports when expire_in expose_as exclude public access].freeze
           EXPOSE_AS_REGEX = /\A\w[-\w ]*\z/
           EXPOSE_AS_ERROR_MESSAGE = "can contain only letters, digits, '-', '_' and spaces"
@@ -35,10 +35,11 @@ module Gitlab
               validates :untracked, boolean: true
               validates :paths, array_of_strings: true
               validates :paths, array_of_strings: {
-                with: /\A[^*]*\z/,
+                with: ::Ci::JobArtifact::EXPOSED_PATH_REGEX,
                 message: "can't contain '*' when used with 'expose_as'"
               }, if: :expose_as_present?
-              validates :expose_as, type: String, length: { maximum: 100 }, if: :expose_as_present?
+              validates :expose_as, type: String, length: { maximum: ::Ci::JobArtifact::MAX_EXPOSED_AS_LENGTH },
+                if: :expose_as_present?
               validates :expose_as, format: { with: EXPOSE_AS_REGEX, message: EXPOSE_AS_ERROR_MESSAGE }, if: :expose_as_present?
               validates :exclude, array_of_strings: true
               validates :reports, type: Hash
@@ -56,7 +57,7 @@ module Gitlab
 
           def value
             @config[:reports] = reports_value if @config.key?(:reports)
-            @config
+            @config.compact
           end
 
           def expose_as_present?

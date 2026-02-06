@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Build::Step do
+RSpec.describe Gitlab::Ci::Build::Step, feature_category: :continuous_integration do
   describe '#from_commands' do
     subject { described_class.from_commands(job) }
 
@@ -61,8 +61,8 @@ RSpec.describe Gitlab::Ci::Build::Step do
     context 'with release' do
       let(:job) { create(:ci_build, :release_options) }
 
-      it 'returns the release-cli command line' do
-        expect(subject.script).to eq(["release-cli create --name \"Release $CI_COMMIT_SHA\" --description \"Created using the release-cli $EXTRA_DESCRIPTION\" --tag-name \"release-$CI_COMMIT_SHA\" --ref \"$CI_COMMIT_SHA\" --assets-link \"{\\\"name\\\":\\\"asset1\\\",\\\"url\\\":\\\"https://example.com/assets/1\\\"}\""])
+      it 'returns glab command line' do
+        expect(subject.script).to match_array([a_string_including("glab release create -R $CI_PROJECT_PATH")])
       end
     end
 
@@ -71,6 +71,30 @@ RSpec.describe Gitlab::Ci::Build::Step do
 
       it 'does not fabricate an object' do
         is_expected.to be_nil
+      end
+    end
+
+    context 'with CI catalog release' do
+      let_it_be(:project) { create(:project, :catalog_resource_with_components) }
+      let_it_be(:ci_catalog_resource) { create(:ci_catalog_resource, project: project) }
+
+      let(:pipeline) { create(:ci_pipeline, project: project) }
+      let(:job) { create(:ci_build, :release_options, pipeline: pipeline) }
+
+      it 'returns glab scripts with catalog publish' do
+        expect(subject.script).to match_array([a_string_including("glab release create -R $CI_PROJECT_PATH")])
+        expect(subject.script).to match_array([a_string_including("--publish-to-catalog")])
+      end
+
+      context 'when the FF ci_release_cli_catalog_publish_option is disabled' do
+        before do
+          stub_feature_flags(ci_release_cli_catalog_publish_option: false)
+        end
+
+        it 'returns the release-cli script with catalog publish' do
+          expect(subject.script).to match_array([a_string_including("release-cli create")])
+          expect(subject.script).not_to match_array([a_string_including("--catalog-publish")])
+        end
       end
     end
   end

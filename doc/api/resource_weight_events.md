@@ -2,25 +2,23 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Resource weight events API
 ---
 
-# Resource weight events API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/32542) in GitLab 13.2.
+{{< /details >}}
 
-Resource weight events keep track of what happens to GitLab [issues](../user/project/issues/index.md).
-
-Use them to track which weight was set, who did it, and when it happened.
+Use this API to access weight change events for issues.
 
 ## Issues
 
-### List project issue weight events
+### List all project issue weight events
 
-Gets a list of all weight events for a single issue.
+Lists all weight events for a single issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_weight_events
@@ -28,13 +26,15 @@ GET /projects/:id/issues/:issue_iid/resource_weight_events
 
 | Attribute   | Type           | Required | Description                                                                     |
 | ----------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`        | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `issue_iid` | integer        | yes      | The IID of an issue                                                             |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/5/issues/11/resource_weight_events"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/5/issues/11/resource_weight_events"
 ```
 
 Example response:
@@ -72,9 +72,9 @@ Example response:
 ]
 ```
 
-### Get single issue weight event
+### Retrieve single issue weight event
 
-Returns a single weight event for a specific project issue
+Retrieves a single weight event for a specific project issue
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_weight_events/:resource_weight_event_id
@@ -84,14 +84,16 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `issue_iid`                   | integer        | yes      | The IID of an issue                                                             |
 | `resource_weight_event_id`    | integer        | yes      | The ID of a weight event                                                     |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/5/issues/11/resource_weight_events/143"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/5/issues/11/resource_weight_events/143"
 ```
 
 Example response:

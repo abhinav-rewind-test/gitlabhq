@@ -1,13 +1,20 @@
 <script>
+import { GlAlert } from '@gitlab/ui';
+import { uniqueId } from 'lodash';
+import { visitUrl } from '~/lib/utils/url_utility';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import Tracking from '~/tracking';
-import { ASC } from '~/notes/constants';
 import { __ } from '~/locale';
 import { clearDraft } from '~/lib/utils/autosave';
+import DiscussionReplyPlaceholder from '~/notes/components/discussion_reply_placeholder.vue';
+import ResolveDiscussionButton from '~/notes/components/discussion_resolve_button.vue';
+import { ASC, DESC } from '~/notes/constants';
+import { updateCacheAfterCreatingNote } from '../../graphql/cache_utils';
 import createNoteMutation from '../../graphql/notes/create_work_item_note.mutation.graphql';
-import groupWorkItemByIidQuery from '../../graphql/group_work_item_by_iid.query.graphql';
+import workItemNotesByIidQuery from '../../graphql/notes/work_item_notes_by_iid.query.graphql';
 import workItemByIidQuery from '../../graphql/work_item_by_iid.query.graphql';
 import { TRACKING_CATEGORY_SHOW, i18n } from '../../constants';
+import { findEmailParticipantsWidget } from '../../utils';
 import WorkItemNoteSignedOut from './work_item_note_signed_out.vue';
 import WorkItemCommentLocked from './work_item_comment_locked.vue';
 import WorkItemCommentForm from './work_item_comment_form.vue';
@@ -17,12 +24,14 @@ export default {
     avatarUrl: window.gon.current_user_avatar_url,
   },
   components: {
+    DiscussionReplyPlaceholder,
+    GlAlert,
     WorkItemNoteSignedOut,
     WorkItemCommentLocked,
     WorkItemCommentForm,
+    ResolveDiscussionButton,
   },
   mixins: [Tracking.mixin()],
-  inject: ['isGroup'],
   props: {
     fullPath: {
       type: String,
@@ -55,14 +64,14 @@ export default {
       type: String,
       required: true,
     },
-    sortOrder: {
-      type: String,
-      required: false,
-      default: ASC,
-    },
     markdownPreviewPath: {
       type: String,
       required: true,
+    },
+    newCommentTemplatePaths: {
+      type: Array,
+      required: false,
+      default: () => [],
     },
     autocompleteDataSources: {
       type: Object,
@@ -89,20 +98,59 @@ export default {
       required: false,
       default: false,
     },
+    isDiscussionResolved: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isDiscussionResolvable: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isResolving: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    hasReplies: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    parentId: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    hideFullscreenMarkdownButton: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    uploadsPath: {
+      type: String,
+      required: true,
+    },
+    discussionsSortOrder: {
+      type: String,
+      default: ASC,
+      required: false,
+    },
   },
   data() {
     return {
+      addNoteKey: this.generateUniqueId(),
+      errorMessages: '',
+      messages: '',
       workItem: {},
       isEditing: this.isNewDiscussion,
       isSubmitting: false,
-      isSubmittingWithKeydown: false,
     };
   },
   apollo: {
     workItem: {
-      query() {
-        return this.isGroup ? groupWorkItemByIidQuery : workItemByIidQuery;
-      },
+      query: workItemByIidQuery,
       variables() {
         return {
           fullPath: this.fullPath,
@@ -110,7 +158,7 @@ export default {
         };
       },
       update(data) {
-        return data.workspace.workItems.nodes[0] ?? {};
+        return data.namespace?.workItem ?? {};
       },
       skip() {
         return !this.workItemIid;
@@ -131,6 +179,12 @@ export default {
       // eslint-disable-next-line @gitlab/require-i18n-strings
       return this.discussionId ? `${this.discussionId}-comment` : `${this.workItemId}-comment`;
     },
+    autosaveKeyInternalNote() {
+      return this.discussionId
+        ? `${this.discussionId}-internal-note`
+        : `${this.workItemId}-internal-note`;
+    },
+    // eslint-disable-next-line vue/no-unused-properties
     tracking() {
       return {
         category: TRACKING_CATEGORY_SHOW,
@@ -146,12 +200,12 @@ export default {
     timelineContentClass() {
       return {
         'timeline-content': true,
-        'gl-border-0! gl-pl-0!': !this.addPadding,
+        '!gl-border-0 !gl-pl-0': !this.addPadding,
       };
     },
     parentClass() {
       return {
-        'gl-relative gl-display-flex gl-align-items-flex-start gl-flex-nowrap': !this.isEditing,
+        'gl-relative gl-flex gl-items-start gl-flex-wrap @sm/panel:gl-flex-nowrap': !this.isEditing,
       };
     },
     isProjectArchived() {
@@ -169,12 +223,20 @@ export default {
     timelineEntryClass() {
       return {
         'timeline-entry note-form': this.isNewDiscussion,
-        // eslint-disable-next-line @gitlab/require-i18n-strings
-        'note note-wrapper note-comment discussion-reply-holder gl-border-t-0! clearfix': !this
-          .isNewDiscussion,
-        'gl-pt-0! is-replying': this.isEditing,
+        '!gl-pb-5 note note-wrapper note-comment discussion-reply-holder gl-clearfix':
+          !this.isNewDiscussion,
+        'is-replying': this.isEditing,
         'internal-note': this.isInternalThread,
       };
+    },
+    resolveDiscussionTitle() {
+      return this.isDiscussionResolved ? __('Reopen thread') : __('Resolve thread');
+    },
+    hasEmailParticipantsWidget() {
+      return Boolean(findEmailParticipantsWidget(this.workItem));
+    },
+    showLockedBanner() {
+      return !this.isLoading && !this.canCreateNote && !this.isProjectArchived;
     },
   },
   watch: {
@@ -188,13 +250,23 @@ export default {
     },
   },
   methods: {
+    generateUniqueId() {
+      // used to rerender work-item-comment-form so the text in the textarea is cleared
+      return uniqueId(`work-item-add-note-${this.workItemId}-`);
+    },
+    // This method is called from parent components so we need
+    // ignore linter here.
+    // eslint-disable-next-line vue/no-unused-properties
+    appendText(text) {
+      this.$refs.commentForm.$refs.markdownEditor.append(text);
+    },
     async updateWorkItem({ commentText, isNoteInternal = false }) {
       this.isSubmitting = true;
       this.$emit('replying', commentText);
       try {
         this.track('add_work_item_comment');
 
-        await this.$apollo.mutate({
+        const { data } = await this.$apollo.mutate({
           mutation: createNoteMutation,
           variables: {
             input: {
@@ -204,42 +276,17 @@ export default {
               internal: isNoteInternal,
             },
           },
-          update(store, createNoteData) {
-            const numErrors = createNoteData.data?.createNote?.errors?.length;
-
-            if (numErrors) {
-              const { errors } = createNoteData.data.createNote;
-
-              // TODO: https://gitlab.com/gitlab-org/gitlab/-/issues/346557
-              // When a note only contains quick actions,
-              // additional "helpful" messages are embedded in the errors field.
-              // For instance, a note solely composed of "/assign @foobar" would
-              // return a message "Commands only Assigned @root." as an error on creation
-              // even though the quick action successfully executed.
-              if (
-                numErrors === 2 &&
-                errors[0].includes('Commands only') &&
-                errors[1].includes('Command names')
-              ) {
-                return;
-              }
-
-              throw new Error(createNoteData.data?.createNote?.errors[0]);
-            }
-          },
+          update: this.onNoteUpdate,
         });
-        /**
-         * https://gitlab.com/gitlab-org/gitlab/-/issues/388314
-         *
-         * Once form is successfully submitted, emit replied event,
-         * mark isSubmitting to false and clear storage before hiding the form.
-         * This will restrict comment form to restore the value while textarea
-         * input triggered due to keyboard event meta+enter.
-         *
-         */
+        const { errorMessages, messages } = data.createNote.quickActionsStatus;
+
+        this.errorMessages = errorMessages?.join(' ');
+        this.messages = messages?.join(' ');
         this.$emit('replied');
         clearDraft(this.autosaveKey);
+        clearDraft(this.autosaveKeyInternalNote);
         this.cancelEditing();
+        this.doFullPageReloadIfUnsupportedTypeChange(commentText);
       } catch (error) {
         this.$emit('error', error.message);
         Sentry.captureException(error);
@@ -247,13 +294,76 @@ export default {
         this.isSubmitting = false;
       }
     },
+    // Until incidents and Service Desk issues are fully migrated to work items
+    // we need to browse to the detail page again
+    // so the legacy detail view is rendered.
+    // https://gitlab.com/gitlab-org/gitlab/-/issues/502823
+    doFullPageReloadIfUnsupportedTypeChange(commentText) {
+      // Matches quick actions /promote_to incident /promote_to_incident /type incident and /convert_to_ticket case insensitive
+      const unsupportedTypeChangeRegex =
+        /\/(promote_to(?:_incident|\s{1,3}incident)|type\s{1,3}incident|convert_to_ticket)(?!\S)/im;
+
+      if (unsupportedTypeChangeRegex.test(commentText)) {
+        visitUrl(this.workItem.webUrl);
+      }
+    },
     cancelEditing() {
       this.isEditing = this.isNewDiscussion;
+      this.addNoteKey = this.generateUniqueId();
       this.$emit('cancelEditing');
     },
     showReplyForm() {
       this.isEditing = true;
       this.$emit('startReplying');
+    },
+    addDiscussionToCache(cache, newNote) {
+      const queryArgs = {
+        query: workItemNotesByIidQuery,
+        variables: { fullPath: this.fullPath, iid: this.workItemIid },
+      };
+      const sourceData = cache.readQuery(queryArgs);
+      if (!sourceData) {
+        return;
+      }
+      cache.writeQuery({
+        ...queryArgs,
+        data: updateCacheAfterCreatingNote(sourceData, newNote, {
+          prepend: this.discussionsSortOrder === DESC,
+        }),
+      });
+    },
+    onNoteUpdate(cache, { data }) {
+      this.addDiscussionToCache(cache, data.createNote.note);
+      this.$emit('updateCount', 1);
+      const numErrors = data?.createNote?.errors?.length;
+
+      if (numErrors) {
+        const { errors } = data.createNote;
+
+        // TODO: https://gitlab.com/gitlab-org/gitlab/-/issues/503600
+        // Refetching widgets as a temporary solution for dynamic updates
+        // of the sidebar on changing the work item type
+        if (numErrors === 2 && errors[1].includes('"type"')) {
+          this.$apollo.queries.workItem.refetch();
+          return;
+        }
+
+        // TODO: https://gitlab.com/gitlab-org/gitlab/-/issues/346557
+        // When a note only contains quick actions,
+        // additional "helpful" messages are embedded in the errors field.
+        // For instance, a note solely composed of "/assign @foobar" would
+        // return a message "Commands only Assigned @root." as an error on creation
+        // even though the quick action successfully executed.
+        if (
+          numErrors === 2 &&
+          errors[0].includes('Commands only') &&
+          errors[1].includes('Command names')
+        ) {
+          return;
+        }
+
+        throw new Error(data?.createNote?.errors[0]);
+      }
     },
   },
 };
@@ -262,44 +372,80 @@ export default {
 <template>
   <li :class="timelineEntryClass">
     <work-item-note-signed-out v-if="!signedIn" />
-    <work-item-comment-locked
-      v-else-if="!isLoading && !canCreateNote"
-      :work-item-type="workItemType"
-      :is-project-archived="isProjectArchived"
-    />
-    <div v-else :class="timelineEntryInnerClass">
+    <work-item-comment-locked v-else-if="showLockedBanner" :work-item-type="workItemType" />
+    <div v-else-if="!isProjectArchived" :class="timelineEntryInnerClass">
       <div :class="timelineContentClass">
+        <gl-alert
+          v-if="messages"
+          class="gl-mb-2"
+          data-testid="success-alert"
+          @dismiss="messages = ''"
+        >
+          {{ messages }}
+        </gl-alert>
+        <gl-alert
+          v-if="errorMessages"
+          class="gl-mb-2"
+          variant="danger"
+          data-testid="error-alert"
+          @dismiss="errorMessages = ''"
+        >
+          {{ errorMessages }}
+        </gl-alert>
         <div :class="parentClass">
           <work-item-comment-form
             v-if="isEditing"
+            :key="addNoteKey"
+            ref="commentForm"
             :work-item-type="workItemType"
             :aria-label="__('Add a reply')"
             :is-submitting="isSubmitting"
             :autosave-key="autosaveKey"
+            :autosave-key-internal-note="autosaveKeyInternalNote"
             :is-new-discussion="isNewDiscussion"
             :autocomplete-data-sources="autocompleteDataSources"
             :markdown-preview-path="markdownPreviewPath"
+            :new-comment-template-paths="newCommentTemplatePaths"
             :work-item-state="workItemState"
             :work-item-id="workItemId"
             :autofocus="autofocus"
             :comment-button-text="commentButtonText"
+            :is-discussion-internal="isInternalThread"
             :is-discussion-locked="isDiscussionLocked"
             :is-work-item-confidential="isWorkItemConfidential"
+            :is-discussion-resolved="isDiscussionResolved"
+            :is-discussion-resolvable="isDiscussionResolvable"
+            :full-path="fullPath"
+            :has-replies="hasReplies"
+            :work-item-iid="workItemIid"
+            :has-email-participants-widget="hasEmailParticipantsWidget"
+            :parent-id="parentId"
+            :hide-fullscreen-markdown-button="hideFullscreenMarkdownButton"
+            :uploads-path="uploadsPath"
+            @focus="$emit('focus')"
+            @blur="$emit('blur')"
+            @toggleResolveDiscussion="$emit('resolve')"
             @submitForm="updateWorkItem"
             @cancelEditing="cancelEditing"
             @error="$emit('error', $event)"
+            @startEditing="$emit('startEditing')"
+            @stopEditing="$emit('stopEditing')"
           />
-          <textarea
+          <discussion-reply-placeholder
             v-else
-            ref="textarea"
-            rows="1"
-            class="reply-placeholder-text-field"
             data-testid="note-reply-textarea"
-            :placeholder="__('Reply…')"
-            :aria-label="__('Reply to comment')"
             @focus="showReplyForm"
-            @click="showReplyForm"
-          ></textarea>
+          />
+
+          <div v-if="!isNewDiscussion && !isEditing" class="discussion-actions">
+            <resolve-discussion-button
+              v-if="isDiscussionResolvable"
+              data-testid="resolve-discussion-button"
+              :is-resolving="isResolving"
+              :button-title="resolveDiscussionTitle"
+              @onClick="$emit('resolve')"
+            />
+          </div>
         </div>
       </div>
     </div>

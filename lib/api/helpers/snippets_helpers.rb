@@ -6,7 +6,7 @@ module API
       extend Grape::API::Helpers
 
       params :raw_file_params do
-        requires :file_path, type: String, file_path: true, desc: 'The url encoded path to the file, e.g. lib%2Fclass%2Erb'
+        requires :file_path, type: String, file_path: true, desc: 'The URL-encoded path to the file, like lib%2Fclass%2Erb'
         requires :ref, type: String, desc: 'The name of branch, tag or commit'
       end
 
@@ -30,9 +30,9 @@ module API
       params :update_file_params do |options|
         optional :files, type: Array, desc: 'An array of files to update' do
           requires :action,
-                   type: String,
-                   values: SnippetInputAction::ACTIONS.map(&:to_s),
-                   desc: "The type of action to perform on the file, must be one of: #{SnippetInputAction::ACTIONS.join(", ")}"
+            type: String,
+            values: SnippetInputAction::ACTIONS.map(&:to_s),
+            desc: "The type of action to perform on the file, must be one of: #{SnippetInputAction::ACTIONS.join(', ')}"
           optional :content, type: String, desc: 'The content of a snippet'
           optional :file_path, file_path: true, type: String, desc: 'The file path of a snippet file'
           optional :previous_path, file_path: true, type: String, desc: 'The previous path of a snippet file'
@@ -80,6 +80,7 @@ module API
         file[:action] = :create
         file.symbolize_keys
       end
+      args[:organization_id] = Current.organization.id
 
       args
     end

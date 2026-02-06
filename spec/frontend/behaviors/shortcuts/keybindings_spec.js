@@ -8,6 +8,7 @@ import {
   HIDE_APPEARING_CONTENT,
   LOCAL_STORAGE_KEY,
   BOLD_TEXT,
+  GO_TO_HOMEPAGE,
 } from '~/behaviors/shortcuts/keybindings';
 
 describe('~/behaviors/shortcuts/keybindings', () => {
@@ -38,6 +39,23 @@ describe('~/behaviors/shortcuts/keybindings', () => {
         keybindingGroups.map((group) => group.keybindings.map((kb) => kb.id)),
       );
       expect(allCommandIds).toHaveLength(new Set(allCommandIds).size);
+    });
+
+    it('has no local keys conflicting with global keys', () => {
+      const globalGroup = keybindingGroups.find((group) => group.id === 'globalShortcuts');
+      const globalKeys = flatten(globalGroup.keybindings.map((binding) => binding.defaultKeys));
+      const localGroups = keybindingGroups.filter((group) => group !== globalGroup);
+      const localBindings = flatten(localGroups.map((group) => group.keybindings));
+      const localKeys = localBindings.reduce((acc, binding) => {
+        // Do not set 'overrideGlobalHotkey: true' for bindings that perform an action different from a global one
+        // Instead, remap a local shortcut
+        if (binding.overrideGlobalHotkey) return acc;
+        acc.push(...binding.defaultKeys);
+        return acc;
+      }, []);
+      localKeys.forEach((key) => {
+        expect(globalKeys).not.toContain(key);
+      });
     });
   });
 
@@ -102,6 +120,21 @@ describe('~/behaviors/shortcuts/keybindings', () => {
 
     it('returns the default keybinding for the command', () => {
       expect(keysFor(HIDE_APPEARING_CONTENT)).toEqual(['esc']);
+    });
+  });
+
+  describe('GO_TO_HOMEPAGE command', () => {
+    beforeEach(() => {
+      setupCustomizations();
+    });
+
+    it('has the correct default keybinding', () => {
+      expect(keysFor(GO_TO_HOMEPAGE)).toEqual(['shift+h']);
+    });
+
+    it('is included in the global shortcuts group', () => {
+      const globalGroup = keybindingGroups.find((group) => group.id === 'globalShortcuts');
+      expect(globalGroup.keybindings).toContain(GO_TO_HOMEPAGE);
     });
   });
 });

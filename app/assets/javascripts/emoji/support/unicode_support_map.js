@@ -1,6 +1,6 @@
 import AccessorUtilities from '~/lib/utils/accessor';
 
-const GL_EMOJI_VERSION = '0.2.0';
+const GL_EMOJI_VERSION = '0.3.0';
 
 const unicodeSupportTestMap = {
   // man, student (emojione does not have any of these yet), http://emojipedia.org/emoji-zwj-sequences/
@@ -25,6 +25,24 @@ const unicodeSupportTestMap = {
     // angel_tone5
     '\u{1F47C}\u{1F3FF}',
   ],
+  // lime, http://emojipedia.org/emoji-15.1/
+  15.1: '\u{1F642}\u{200D}\u{2194}\u{FE0F}',
+  // jellyfish, http://emojipedia.org/unicode-15.0/
+  '15.0': '\u{1FAE8}',
+  // coral, http://emojipedia.org/unicode-14.0/
+  '14.0': '\u{1FAE0}',
+  // face_with_spiral_eyes, http://emojipedia.org/emoji-13.1/
+  13.1: '\u{1F635}\u{200D}\u{1F4AB}',
+  // lungs, http://emojipedia.org/unicode-9.0/
+  '13.0': '\u{1FAC1}',
+  // person_red_hair, http://emojipedia.org/emoji-12.1/
+  12.1: '\u{1F9D1}\u{200D}\u{1F9B0}',
+  // yawning_face, http://emojipedia.org/unicode-13.0/
+  '12.0': '\u{1F971}',
+  // smiling_face_with_hearts, http://emojipedia.org/unicode-12.0/
+  '11.0': '\u{1F970}',
+  // face_vomiting, http://emojipedia.org/unicode-10.0/
+  '10.0': '\u{1F92E}',
   // rofl, http://emojipedia.org/unicode-9.0/
   '9.0': '\u{1F923}',
   // metal, http://emojipedia.org/unicode-8.0/
@@ -76,8 +94,10 @@ const chromeVersion = chromeMatches && chromeMatches[1] && parseInt(chromeMatche
 const fontSize = 16;
 function generateUnicodeSupportMap(testMap) {
   const testMapKeys = Object.keys(testMap);
-  const numTestEntries = testMapKeys.reduce((list, testKey) => list.concat(testMap[testKey]), [])
-    .length;
+  const numTestEntries = testMapKeys.reduce(
+    (list, testKey) => list.concat(testMap[testKey]),
+    [],
+  ).length;
 
   const canvas = document.createElement('canvas');
   (window.gl || window).testEmojiUnicodeSupportMapCanvas = canvas;
@@ -106,8 +126,12 @@ function generateUnicodeSupportMap(testMap) {
     // keep the `readIndex` in sync from the writes by running all entries
     const isTestSatisfied = [].concat(testEntry).reduce((isSatisfied) => {
       // Sample along the vertical-middle for a couple of characters
-      const imageData = ctx.getImageData(0, readIndex * fontSize + fontSize / 2, 2 * fontSize, 1)
-        .data;
+      const imageData = ctx.getImageData(
+        0,
+        readIndex * fontSize + fontSize / 2,
+        2 * fontSize,
+        1,
+      ).data;
 
       let isValidEmoji = false;
       for (let currentPixel = 0; currentPixel < 64; currentPixel += 1) {

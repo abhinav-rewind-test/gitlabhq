@@ -2,13 +2,18 @@
 
 require 'spec_helper'
 
-RSpec.describe GitlabSchema.types['SnippetBlobViewer'] do
+RSpec.describe GitlabSchema.types['SnippetBlobViewer'], :with_current_organization, feature_category: :source_code_management do
   let_it_be(:snippet) { create(:personal_snippet, :repository) }
   let_it_be(:blob) { snippet.repository.blob_at('HEAD', 'files/images/6049019_460s.jpg') }
 
+  before do
+    # Since this doesn't go through a request flow, we need to manually set Current.organization
+    Current.organization = current_organization
+  end
+
   it 'has the correct fields' do
     expected_fields = [:type, :load_async, :too_large, :collapsed,
-                       :render_error, :file_type, :loading_partial_name]
+      :render_error, :file_type, :loading_partial_name]
 
     expect(described_class).to have_graphql_fields(*expected_fields)
   end
@@ -31,7 +36,11 @@ RSpec.describe GitlabSchema.types['SnippetBlobViewer'] do
     end
 
     it 'returns false' do
-      snippet_blob = subject.dig('data', 'snippets', 'edges').first.dig('node', 'blobs', 'nodes').find { |b| b['path'] == blob.path }
+      snippet_blob = subject
+        .dig('data', 'snippets', 'edges')
+        .first
+        .dig('node', 'blobs', 'nodes')
+        .find { |b| b['path'] == blob.path }
 
       expect(snippet_blob['path']).to eq blob.path
       expect(blob_attribute).to be_nil

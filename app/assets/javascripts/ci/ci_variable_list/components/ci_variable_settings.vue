@@ -1,17 +1,20 @@
 <script>
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { ADD_VARIABLE_ACTION, EDIT_VARIABLE_ACTION, VARIABLE_ACTIONS } from '../constants';
 import CiVariableDrawer from './ci_variable_drawer.vue';
 import CiVariableTable from './ci_variable_table.vue';
 
 export default {
+  name: 'CiVariableSettings',
   components: {
     CiVariableDrawer,
     CiVariableTable,
   },
-  mixins: [glFeatureFlagsMixin()],
   props: {
     areEnvironmentsLoading: {
+      type: Boolean,
+      required: true,
+    },
+    areHiddenVariablesAvailable: {
       type: Boolean,
       required: true,
     },
@@ -58,6 +61,15 @@ export default {
       required: true,
     },
   },
+  emits: [
+    'add-variable',
+    'delete-variable',
+    'handle-next-page',
+    'handle-prev-page',
+    'search-environment-scope',
+    'sort-changed',
+    'update-variable',
+  ],
   data() {
     return {
       selectedVariable: {},
@@ -97,7 +109,7 @@ export default {
 
 <template>
   <div class="row">
-    <div class="col-lg-12">
+    <div class="gl-col-lg-12">
       <ci-variable-table
         :entity="entity"
         :is-loading="isLoading"
@@ -113,6 +125,7 @@ export default {
       <ci-variable-drawer
         v-if="showForm"
         :are-environments-loading="areEnvironmentsLoading"
+        :are-hidden-variables-available="areHiddenVariablesAvailable"
         :are-scoped-variables-available="areScopedVariablesAvailable"
         :environments="environments"
         :hide-environment-scope="hideEnvironmentScope"

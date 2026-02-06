@@ -1,4 +1,4 @@
-import { GlIcon } from '@gitlab/ui';
+import { GlIcon, GlButton } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import ChangedFileIcon from '~/vue_shared/components/changed_file_icon.vue';
 
@@ -25,13 +25,14 @@ describe('Changed file icon', () => {
   const findIconName = () => findIcon().props('name');
   const findIconClasses = () => findIcon().classes();
   const findTooltipText = () => wrapper.attributes('title');
+  const findIconWrapper = () => wrapper.findComponent(GlButton);
 
   it('with isCentered true, adds center class', () => {
     factory({
       isCentered: true,
     });
 
-    expect(wrapper.classes('ml-auto')).toBe(true);
+    expect(wrapper.classes('!gl-ml-auto')).toBe(true);
   });
 
   it('with isCentered false, does not center', () => {
@@ -39,7 +40,7 @@ describe('Changed file icon', () => {
       isCentered: false,
     });
 
-    expect(wrapper.classes('ml-auto')).toBe(false);
+    expect(wrapper.classes('!gl-ml-auto')).toBe(false);
   });
 
   it('with showTooltip false, does not show tooltip', () => {
@@ -62,6 +63,7 @@ describe('Changed file icon', () => {
     });
 
     it('renders icon', () => {
+      expect(findIconWrapper().exists()).toBe(true);
       expect(findIconName()).toBe(iconName);
       expect(findIconClasses()).toContain(iconName);
     });
@@ -78,12 +80,8 @@ describe('Changed file icon', () => {
       });
     });
 
-    it('does not show icon', () => {
-      expect(findIcon().exists()).toBe(false);
-    });
-
-    it('does not have tooltip text', () => {
-      expect(findTooltipText()).toBeUndefined();
+    it('does not show icon and a tooltip associated with it', () => {
+      expect(findIconWrapper().exists()).toBe(false);
     });
   });
 
@@ -109,5 +107,13 @@ describe('Changed file icon', () => {
     });
 
     expect(findIconName()).toEqual(iconName);
+  });
+
+  it('can be rendered as span', () => {
+    factory({
+      asButton: false,
+    });
+
+    expect(wrapper.element.tagName).toBe('SPAN');
   });
 });

@@ -2,14 +2,23 @@
 
 require 'spec_helper'
 
-RSpec.describe 'User edits snippet', :js, feature_category: :source_code_management do
+RSpec.describe 'User edits snippet', :js, feature_category: :source_code_management, quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/580358' do
   include DropzoneHelper
   include Features::SnippetSpecHelpers
 
   let_it_be(:file_name) { 'test.rb' }
   let_it_be(:content) { 'puts "test"' }
   let_it_be(:user) { create(:user) }
-  let_it_be(:snippet, reload: true) { create(:personal_snippet, :repository, :public, file_name: file_name, content: content, author: user) }
+  let_it_be(:snippet, reload: true) do
+    create(
+      :personal_snippet,
+      :repository,
+      :public,
+      file_name: file_name,
+      content: content,
+      author: user
+    )
+  end
 
   before do
     sign_in(user)
@@ -81,7 +90,7 @@ RSpec.describe 'User edits snippet', :js, feature_category: :source_code_managem
 
     it 'renders edit page and displays the error' do
       expect(page.find('.flash-container')).to have_content('Error updating the snippet - Error Message')
-      expect(page).to have_content('Edit Snippet')
+      expect(page).to have_content('Edit snippet')
     end
   end
 end

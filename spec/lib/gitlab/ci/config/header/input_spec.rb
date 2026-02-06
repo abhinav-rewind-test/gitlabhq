@@ -6,129 +6,149 @@ RSpec.describe Gitlab::Ci::Config::Header::Input, feature_category: :pipeline_co
   let(:factory) do
     Gitlab::Config::Entry::Factory
       .new(described_class)
-      .value(input_hash)
+      .value(config)
       .with(key: input_name)
   end
 
-  let(:input_name) { 'foo' }
+  let(:input_name) { 'environment' }
 
-  subject(:config) { factory.create!.tap(&:compose!) }
-
-  shared_examples 'a valid input' do
-    let(:expected_hash) { input_hash }
-
-    it 'passes validations' do
-      expect(config).to be_valid
-      expect(config.errors).to be_empty
-    end
-
-    it 'returns the value' do
-      expect(config.value).to eq(expected_hash)
+  subject(:entry) do
+    Gitlab::Ci::Config::FeatureFlags.with_actor(nil) do
+      factory.create!.tap(&:compose!)
     end
   end
 
-  shared_examples 'an invalid input' do
-    let(:expected_hash) { input_hash }
+  describe 'validations' do
+    let(:required_config) { {} }
 
-    it 'fails validations' do
-      expect(config).not_to be_valid
-      expect(config.errors).to eq(expected_errors)
+    it_behaves_like 'BaseInput'
+  end
+
+  describe 'rules configurations' do
+    context 'when rules are valid' do
+      let(:config) do
+        {
+          rules: [
+            { if: '$[[ inputs.environment ]] == "production"', options: %w[option_a option_b], default: 'option_a' },
+            { options: %w[option_c option_d], default: 'option_c' }
+          ]
+        }
+      end
+
+      it 'is valid' do
+        expect(entry).to be_valid
+        expect(entry.errors).to be_empty
+      end
+
+      it 'processes and returns rules' do
+        expect(entry.input_rules).to eq(config[:rules])
+      end
     end
 
-    it 'returns the value' do
-      expect(config.value).to eq(expected_hash)
-    end
-  end
+    context 'with empty rules array' do
+      let(:config) { { rules: [] } }
 
-  context 'when has a string default value' do
-    let(:input_hash) { { default: 'bar' } }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when has a numeric default value' do
-    let(:input_hash) { { default: 6.66 } }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when has a boolean default value' do
-    let(:input_hash) { { default: true } }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when has a description value' do
-    let(:input_hash) { { description: 'bar' } }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when is a required input' do
-    let(:input_hash) { nil }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when given a valid type' do
-    where(:input_type) { ::Gitlab::Ci::Config::Interpolation::Inputs.input_types }
-
-    with_them do
-      let(:input_hash) { { type: input_type } }
-
-      it_behaves_like 'a valid input'
-    end
-  end
-
-  context 'when the input has RegEx validation' do
-    let(:input_hash) { { regex: '\w+' } }
-
-    it_behaves_like 'a valid input'
-  end
-
-  context 'when given an invalid type' do
-    let(:input_hash) { { type: 'datetime' } }
-    let(:expected_errors) { ['foo input type unknown value: datetime'] }
-
-    it_behaves_like 'an invalid input'
-  end
-
-  context 'when contains unknown keywords' do
-    let(:input_hash) { { test: 123 } }
-    let(:expected_errors) { ['foo config contains unknown keys: test'] }
-
-    it_behaves_like 'an invalid input'
-  end
-
-  context 'when has invalid name' do
-    let(:input_name) { [123] }
-    let(:input_hash) { {} }
-
-    let(:expected_errors) { ['123 key must be an alphanumeric string'] }
-
-    it_behaves_like 'an invalid input'
-  end
-
-  context 'when RegEx validation value is not a string' do
-    let(:input_hash) { { regex: [] } }
-    let(:expected_errors) { ['foo input regex should be a string'] }
-
-    it_behaves_like 'an invalid input'
-  end
-
-  context 'when the limit for allowed number of options is reached' do
-    let(:limit) { described_class::ALLOWED_OPTIONS_LIMIT }
-    let(:input_hash) { { default: 'value1', options: options  } }
-    let(:options) { Array.new(limit.next) { |i| "value#{i}" } }
-
-    describe '#valid?' do
-      it { is_expected.not_to be_valid }
+      it 'is valid' do
+        expect(entry).to be_valid
+        expect(entry.errors).to be_empty
+      end
     end
 
-    describe '#errors' do
-      it 'returns error about incorrect type' do
-        expect(config.errors).to contain_exactly(
-          "foo config cannot define more than #{limit} options")
+    describe 'invalid rules configurations' do
+      context 'when rules are not an array' do
+        let(:config) { { rules: 'invalid' } }
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+        end
+
+        it 'reports error about rules type' do
+          expect(entry.errors).to eq(['environment:rules config should be an array'])
+        end
+      end
+
+      context 'when rule is not a hash' do
+        let(:config) { { rules: ['invalid'] } }
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+        end
+
+        it 'reports error about rule type' do
+          expect(entry.errors).to eq(['`environment` input: should be a hash'])
+        end
+      end
+
+      context 'when rule contains invalid keys' do
+        let(:config) do
+          {
+            rules: [
+              { if: '$[[ inputs.env ]] == "prod"', invalid_key: 'value' }
+            ]
+          }
+        end
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+        end
+
+        it 'reports error about unknown keys' do
+          expect(entry.errors).to eq(['`environment` input: contains unknown keys: invalid_key'])
+        end
+      end
+
+      context "when rule has 'if', but no 'options' or 'default'" do
+        let(:config) do
+          {
+            rules: [{ if: '$[[ inputs.environment ]] == "production"' }]
+          }
+        end
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+        end
+
+        it 'reports error about missing options or default' do
+          error_message = "`environment` input: rule must define 'options' with at least one value and a 'default'"
+
+          expect(entry.errors).to eq([error_message])
+        end
+      end
+
+      context 'when rules conflict with other keys' do
+        context 'when rules and options are both present' do
+          let(:config) do
+            {
+              rules: [{ options: %w[option_a] }],
+              options: %w[option_b option_c]
+            }
+          end
+
+          it 'is not valid' do
+            expect(entry).not_to be_valid
+          end
+
+          it 'reports error about mutually exclusive keys' do
+            expect(entry.errors).to eq(['environment config these keys cannot be used together: rules, options'])
+          end
+        end
+
+        context 'when rules and default are both present' do
+          let(:config) do
+            {
+              rules: [{ options: %w[option_a], default: 'option_a' }],
+              default: 'value_b'
+            }
+          end
+
+          it 'is not valid' do
+            expect(entry).not_to be_valid
+          end
+
+          it 'reports error about mutually exclusive keys' do
+            expect(entry.errors).to eq(['environment config these keys cannot be used together: rules, default'])
+          end
+        end
       end
     end
   end

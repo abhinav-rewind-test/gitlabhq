@@ -22,16 +22,6 @@ RSpec.describe 'profiles/preferences/show' do
     end
   end
 
-  context 'navigation theme' do
-    before do
-      render
-    end
-
-    it 'has an id for anchoring' do
-      expect(rendered).to have_css('#navigation-theme')
-    end
-  end
-
   context 'syntax highlighting theme' do
     before do
       render

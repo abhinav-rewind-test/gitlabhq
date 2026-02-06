@@ -2,7 +2,8 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::GonHelper, feature_category: :shared do
+RSpec.describe Gitlab::GonHelper, feature_category: :navigation do
+  let_it_be(:organization) { create(:organization) }
   let(:helper) do
     Class.new do
       include Gitlab::GonHelper
@@ -27,7 +28,7 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
       end
     end
 
-    context 'when HTTP is enabled' do
+    context 'when HTTP is disabled' do
       let(:https) { false }
 
       it 'sets the secure flag to false' do
@@ -60,19 +61,6 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
       let(:environment) { 'staging' }
       let(:sentry_clientside_traces_sample_rate) { 0.5 }
 
-      context 'with legacy sentry configuration' do
-        before do
-          stub_config(sentry: { enabled: true, clientside_dsn: clientside_dsn, environment: environment })
-        end
-
-        it 'sets sentry dsn and environment from config' do
-          expect(gon).to receive(:sentry_dsn=).with(clientside_dsn)
-          expect(gon).to receive(:sentry_environment=).with(environment)
-
-          helper.add_gon_variables
-        end
-      end
-
       context 'with sentry settings' do
         before do
           stub_application_setting(sentry_enabled: true)
@@ -88,21 +76,60 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
 
           helper.add_gon_variables
         end
+      end
+    end
 
-        context 'when enable_new_sentry_integration is disabled' do
-          before do
-            stub_feature_flags(enable_new_sentry_integration: false)
-          end
+    context 'when current_organization is set', :with_current_organization do
+      subject(:add_gon_variables) { helper.add_gon_variables }
 
-          it 'does not set sentry dsn and environment from config' do
-            expect(gon).not_to receive(:sentry_dsn=).with(clientside_dsn)
-            expect(gon).not_to receive(:sentry_environment=).with(environment)
-            expect(gon).not_to receive(:sentry_clientside_traces_sample_rate=)
-              .with(sentry_clientside_traces_sample_rate)
+      before do
+        Current.organization = current_organization
+      end
 
-            helper.add_gon_variables
-          end
-        end
+      it 'exposes current_organization' do
+        expect(gon).to receive(:current_organization=).with(
+          current_organization.slice(:id, :name, :full_path, :web_url, :avatar_url)
+        )
+
+        add_gon_variables
+      end
+
+      it_behaves_like 'internal event not tracked'
+    end
+
+    context 'when current_organization is not set' do
+      it 'does not expose current_organization' do
+        expect(gon).not_to receive(:current_organization=)
+
+        helper.add_gon_variables
+      end
+    end
+
+    context 'when ui_for_organizations_enabled? is true' do
+      it 'does expose current_organization' do
+        expect(gon).not_to receive(:current_organization=)
+
+        helper.add_gon_variables
+      end
+    end
+
+    context 'when ui_for_organizations_enabled? is false', :ui_for_organizations_disabled do
+      it 'does not expose current_organization' do
+        expect(gon).not_to receive(:current_organization=)
+
+        helper.add_gon_variables
+      end
+    end
+
+    describe 'allow_immediate_namespaces_deletion' do
+      before do
+        allow(Gitlab::CurrentSettings).to receive(:allow_immediate_namespaces_deletion_for_user?).and_return(false)
+      end
+
+      it 'exposes allow_immediate_namespaces_deletion property' do
+        expect(gon).to receive(:allow_immediate_namespaces_deletion=).with(false)
+
+        helper.add_gon_variables
       end
     end
   end
@@ -156,7 +183,7 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
         .and_return(gon)
     end
 
-    it 'pushes a feature flag to the frontend with the provided value' do
+    it 'pushes a feature flag to the frontend with a true value' do
       expect(gon)
         .to receive(:push)
         .with({ features: { 'myFeatureFlag' => true } }, true)
@@ -164,12 +191,16 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
       helper.push_force_frontend_feature_flag(:my_feature_flag, true)
     end
 
-    it 'pushes a disabled feature flag if provided value is nil' do
+    it 'pushes a feature flag to the frontend with a false value' do
       expect(gon)
         .to receive(:push)
         .with({ features: { 'myFeatureFlag' => false } }, true)
 
-      helper.push_force_frontend_feature_flag(:my_feature_flag, nil)
+      helper.push_force_frontend_feature_flag(:my_feature_flag, false)
+    end
+
+    it 'raises an ArgumentError if argument is not a boolean' do
+      expect { helper.push_force_frontend_feature_flag(:my_feature_flag, Object.new) }.to raise_error ArgumentError
     end
   end
 
@@ -206,62 +237,42 @@ RSpec.describe Gitlab::GonHelper, feature_category: :shared do
     end
   end
 
+  describe '#push_application_setting' do
+    it 'pushes an application setting to the frontend' do
+      stub_application_setting(signup_enabled: true)
+
+      gon = class_double('Gon')
+      allow(helper)
+        .to receive(:gon)
+        .and_return(gon)
+
+      expect(gon)
+        .to receive(:push)
+        .with({ signup_enabled: true })
+
+      helper.push_application_setting(:signup_enabled)
+    end
+
+    it 'does not push if missing application setting entry' do
+      gon = class_double('Gon')
+      allow(helper)
+        .to receive(:gon)
+        .and_return(gon)
+
+      expect(gon)
+        .not_to receive(:push)
+        .with({ non_existent_application_setting: true })
+
+      helper.push_application_setting(:non_existent_application_setting)
+    end
+  end
+
   describe '#default_avatar_url' do
     it 'returns an absolute URL' do
       url = helper.default_avatar_url
 
       expect(url).to match(/^http/)
       expect(url).to match(/no_avatar.*png$/)
-    end
-  end
-
-  describe '#add_browsersdk_tracking' do
-    let(:gon) { double('gon').as_null_object }
-    let(:analytics_url) { 'https://analytics.gitlab.com' }
-    let(:is_gitlab_com) { true }
-
-    before do
-      allow(helper).to receive(:gon).and_return(gon)
-      allow(Gitlab).to receive(:com?).and_return(is_gitlab_com)
-    end
-
-    context 'when environment variables are set' do
-      before do
-        stub_env('GITLAB_ANALYTICS_URL', analytics_url)
-        stub_env('GITLAB_ANALYTICS_ID', 'analytics-id')
-      end
-
-      it 'sets the analytics_url and analytics_id' do
-        expect(gon).to receive(:analytics_url=).with(analytics_url)
-        expect(gon).to receive(:analytics_id=).with('analytics-id')
-
-        helper.add_browsersdk_tracking
-      end
-
-      context 'when Gitlab.com? is false' do
-        let(:is_gitlab_com) { false }
-
-        it "doesn't set the analytics_url and analytics_id" do
-          expect(gon).not_to receive(:analytics_url=)
-          expect(gon).not_to receive(:analytics_id=)
-
-          helper.add_browsersdk_tracking
-        end
-      end
-    end
-
-    context 'when environment variables are not set' do
-      before do
-        stub_env('GITLAB_ANALYTICS_URL', nil)
-        stub_env('GITLAB_ANALYTICS_ID', nil)
-      end
-
-      it "doesn't set the analytics_url and analytics_id" do
-        expect(gon).not_to receive(:analytics_url=)
-        expect(gon).not_to receive(:analytics_id=)
-
-        helper.add_browsersdk_tracking
-      end
     end
   end
 end

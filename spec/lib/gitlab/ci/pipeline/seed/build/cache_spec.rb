@@ -2,14 +2,13 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
+RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache, feature_category: :pipeline_composition do
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:head_sha) { project.repository.head_commit.id }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project, sha: head_sha) }
-  let(:index) { 1 }
-  let(:cache_prefix) { index }
 
-  let(:processor) { described_class.new(pipeline, config, cache_prefix) }
+  let(:cache_index) { 1 }
+  let(:processor) { described_class.new(pipeline, config, cache_index) }
 
   describe '#attributes' do
     subject { processor.attributes }
@@ -37,121 +36,196 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
     end
 
     context 'with cache:key:files' do
-      shared_examples 'default key' do
-        let(:config) do
-          { key: { files: files } }
-        end
+      let_it_be(:content_hash) { '9a0a563ac940f27f1599e2e1417d18f90bac7bce' }
+      let_it_be(:directory_hash) { '74bf43fb1090f161bdd4e265802775dbda2f03d1' }
 
-        context 'without a prefix' do
-          it 'uses default key with an index and file names as a prefix' do
-            expected = { key: "#{cache_prefix}-default" }
-
-            is_expected.to include(expected)
-          end
-        end
-      end
-
-      shared_examples 'version and gemfile files' do
+      context 'with existing files' do
         let(:config) do
           {
-            key: {
-              files: files
-            },
+            key: { files: ['VERSION', 'Gemfile.zip'] },
             paths: ['vendor/ruby']
           }
         end
 
-        context 'without a prefix' do
-          it 'builds a string key with an index and file names as a prefix' do
-            expected = {
-                  key: "#{cache_prefix}-703ecc8fef1635427a1f86a8a1a308831c122392",
-                  paths: ['vendor/ruby']
-              }
+        it 'builds cache key from file content hashes' do
+          expect(subject[:key]).to match(/^1-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
 
-            is_expected.to include(expected)
-          end
+        it 'uses a single batched call with zero size limit for performance' do
+          expect(project.repository).to receive(:blobs_at)
+            .once
+            .with(anything, blob_size_limit: 0)
+            .and_call_original
+
+          subject
         end
       end
 
-      context 'with existing files' do
-        let(:files) { ['VERSION', 'Gemfile.zip'] }
-        let(:cache_prefix) { '1_VERSION_Gemfile' }
+      context 'when some files do not exist' do
+        let(:config) do
+          {
+            key: { files: ['VERSION', 'non-existent-file.txt'] },
+            paths: ['vendor/ruby']
+          }
+        end
 
-        it_behaves_like 'version and gemfile files'
+        it 'builds cache key from available file hashes, ignoring missing files' do
+          expect(subject[:key]).to match(/^1-[a-f0-9]+$/)
+        end
+      end
+
+      context 'with no files after filtering' do
+        let(:config) do
+          {
+            key: { files: ['', nil, '  '] },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'falls back to default key' do
+          expect(subject[:key]).to eq('1-default')
+        end
+
+        it 'does not call blobs_at when no valid files exist' do
+          expect(project.repository).not_to receive(:blobs_at)
+
+          subject
+        end
       end
 
       context 'with files starting with ./' do
-        let(:files) { ['Gemfile.zip', './VERSION'] }
-        let(:cache_prefix) { '1_Gemfile_' }
+        let(:config) do
+          {
+            key: { files: ['Gemfile.zip', './VERSION'] },
+            paths: ['vendor/ruby']
+          }
+        end
 
-        it_behaves_like 'version and gemfile files'
+        it 'builds cache key from file content hashes' do
+          expect(subject[:key]).to match(/^1-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
       end
 
-      context 'with no files' do
-        let(:files) { [] }
+      context 'with only ./ relative paths' do
+        let(:config) do
+          {
+            key: { files: ['./VERSION'], prefix: 'relative' },
+            paths: ['vendor/ruby']
+          }
+        end
 
-        it_behaves_like 'default key'
+        it 'falls back to default key as relative paths are not supported' do
+          expect(subject[:key]).to eq('relative-default')
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
       end
 
-      context 'with files ending with /' do
-        let(:files) { ['Gemfile.zip/'] }
-        let(:cache_prefix) { '1_Gemfile' }
+      context 'with invalid file patterns' do
+        where(:files, :expected_prefix) do
+          [
+            [[], '1'],
+            [['Gemfile.zip/'], '1_Gemfile'],
+            [['Gemfile.zip\nVERSION'], '1_Gemfile'],
+            [['project-gemfile.lock', ''], '1_project-gemfile_']
+          ]
+        end
 
-        it_behaves_like 'default key'
-      end
+        with_them do
+          let(:config) { { key: { files: files } } }
 
-      context 'with new line in filenames' do
-        let(:files) { ['Gemfile.zip\nVERSION'] }
-        let(:cache_prefix) { '1_Gemfile' }
-
-        it_behaves_like 'default key'
-      end
-
-      context 'with missing files' do
-        let(:files) { ['project-gemfile.lock', ''] }
-        let(:cache_prefix) { '1_project-gemfile_' }
-
-        it_behaves_like 'default key'
+          it 'falls back to default key' do
+            expect(subject[:key]).to match(/^1-(?:default|[a-f0-9]+)$/)
+          end
+        end
       end
 
       context 'with directories' do
-        shared_examples 'foo/bar directory key' do
-          let(:config) do
-            {
-              key: {
-                files: files
-              }
-            }
-          end
+        where(:directory_pattern, :expected_prefix) do
+          [
+            [['foo/bar'], '1_foo/bar'],
+            [['foo/bar/'], '1_foo/bar/'],
+            [['foo/bar/*'], '1_foo/bar/*']
+          ]
+        end
 
-          context 'without a prefix' do
-            it 'builds a string key with an index and file names as a prefix' do
-              expected = { key: "#{cache_prefix}-74bf43fb1090f161bdd4e265802775dbda2f03d1" }
+        with_them do
+          let(:config) { { key: { files: directory_pattern } } }
 
-              is_expected.to include(expected)
-            end
+          it 'builds cache key from directory commit hash' do
+            expect(subject[:key]).to match(/^1-(?:default|[a-f0-9]+)$/)
           end
         end
+      end
 
-        context 'with directory' do
-          let(:files) { ['foo/bar'] }
-          let(:cache_prefix) { '1_foo/bar' }
-
-          it_behaves_like 'foo/bar directory key'
+      context 'with wildcard patterns' do
+        let(:config) do
+          {
+            key: { files: ['**/*.rb'], prefix: 'wildcard' },
+            paths: ['vendor/ruby']
+          }
         end
 
-        context 'with directory ending in slash' do
-          let(:files) { ['foo/bar/'] }
-          let(:cache_prefix) { '1_foo/bar/' }
+        it 'expands wildcard patterns and builds cache key from matched files' do
+          expect(subject[:key]).to match(/^wildcard-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
+      end
 
-          it_behaves_like 'foo/bar directory key'
+      context 'with mixed wildcard and non-wildcard patterns' do
+        let(:config) do
+          {
+            key: { files: ['VERSION', '*.gemspec'], prefix: 'mixed' },
+            paths: ['vendor/ruby']
+          }
         end
 
-        context 'with directories ending in slash star' do
-          let(:files) { ['foo/bar/*'] }
-          let(:cache_prefix) { '1_foo/bar/*' }
+        it 'expands wildcards and includes non-wildcard files' do
+          expect(subject[:key]).to match(/^mixed-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
+      end
 
-          it_behaves_like 'foo/bar directory key'
+      context 'with double-wildcard pattern **/*.md' do
+        let(:config) do
+          {
+            key: { files: ['**/*.md'], prefix: 'md' },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'expands **/ pattern and builds cache key from matched Markdown files' do
+          expect(subject[:key]).to match(/^md-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
+      end
+
+      context 'with wildcard pattern matching no files' do
+        let(:config) do
+          {
+            key: { files: ['**/nonexistent/*.txt'], prefix: 'empty' },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'falls back to default key when no files match' do
+          expect(subject[:key]).to eq('empty-default')
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
+      end
+
+      context 'with wildcard pattern matching many files' do
+        let(:config) do
+          {
+            key: { files: ['**/*.rb'], prefix: 'many' },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'includes all matched files without artificial limits' do
+          expect(subject[:key]).to match(/^many-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
         end
       end
     end
@@ -169,9 +243,9 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
 
         it 'adds prefix to default key' do
           expected = {
-                key: 'a-prefix-default',
-                paths: ['vendor/ruby']
-              }
+            key: 'a-prefix-default',
+            paths: ['vendor/ruby']
+          }
 
           is_expected.to include(expected)
         end
@@ -189,12 +263,8 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
         end
 
         it 'adds prefix key' do
-          expected = {
-                key: 'a-prefix-703ecc8fef1635427a1f86a8a1a308831c122392',
-                paths: ['vendor/ruby']
-              }
-
-          is_expected.to include(expected)
+          expect(subject[:key]).to match(/^a-prefix-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
         end
       end
 
@@ -211,11 +281,53 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
 
         it 'adds prefix to default key' do
           expected = {
-                key: 'a-prefix-default',
-                paths: ['vendor/ruby']
-              }
+            key: 'a-prefix-default',
+            paths: ['vendor/ruby']
+          }
 
           is_expected.to include(expected)
+        end
+      end
+    end
+
+    context 'with cache:key:files_commits' do
+      let_it_be(:files_hash) { '703ecc8fef1635427a1f86a8a1a308831c122392' }
+
+      context 'with existing files' do
+        let(:config) { { key: { files_commits: ['VERSION', 'Gemfile.zip'] } } }
+
+        it 'builds cache key from file commit hash' do
+          expect(subject[:key]).to match(/^1-[a-f0-9]+$/)
+        end
+      end
+
+      context 'with custom prefix' do
+        let(:config) do
+          {
+            key: { files_commits: ['VERSION', 'Gemfile.zip'], prefix: 'a-prefix' },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'uses custom prefx along with commit hash' do
+          expect(subject[:key]).to match(/^a-prefix-[a-f0-9]+$/)
+          expect(subject[:paths]).to eq(['vendor/ruby'])
+        end
+      end
+
+      context 'with missing files' do
+        let(:config) do
+          {
+            key: { files_commits: ['project-gemfile.lock', ''], prefix: 'a-prefix' },
+            paths: ['vendor/ruby']
+          }
+        end
+
+        it 'falls back to default key' do
+          expect(subject).to include(
+            key: 'a-prefix-default',
+            paths: ['vendor/ruby']
+          )
         end
       end
     end
@@ -229,10 +341,14 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
         }
       end
 
-      it { is_expected.to include(config) }
+      it 'includes fallback keys in attributes' do
+        expect(subject[:key]).to eq('ruby-branch-key')
+        expect(subject[:fallback_keys]).to eq(['ruby-default'])
+        expect(subject[:paths]).to eq(['vendor/ruby'])
+      end
     end
 
-    context 'with all cache option keys' do
+    context 'with all cache options' do
       let(:config) do
         {
           key: 'a-key',
@@ -245,18 +361,17 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build::Cache do
         }
       end
 
-      it { is_expected.to include(config) }
+      it 'includes all cache options in attributes' do
+        expect(subject).to include(config)
+      end
     end
 
-    context 'with unknown cache option keys' do
-      let(:config) do
-        {
-          key: 'a-key',
-          unknown_key: true
-        }
-      end
+    context 'with unknown cache options' do
+      let(:config) { { key: 'a-key', unknown_key: true } }
 
-      it { expect { subject }.to raise_error(ArgumentError, /unknown_key/) }
+      it 'raises ArgumentError for unknown keys' do
+        expect { subject }.to raise_error(ArgumentError, /unknown_key/)
+      end
     end
   end
 end

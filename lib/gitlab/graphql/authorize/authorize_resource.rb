@@ -32,7 +32,11 @@ module Gitlab
             @authorizes_object = true
           end
 
-          def raise_resource_not_available_error!(msg = RESOURCE_ACCESS_ERROR)
+          def raise_resource_not_available_error!(msg = RESOURCE_ACCESS_ERROR, extensions = {})
+            if extensions.present?
+              raise ::Gitlab::Graphql::Errors::ResourceNotAvailable.new(msg, extensions: extensions)
+            end
+
             raise ::Gitlab::Graphql::Errors::ResourceNotAvailable, msg
           end
 
@@ -64,7 +68,7 @@ module Gitlab
         def authorized_resource?(object)
           raise ConfigurationError, "#{self.class.name} has no authorizations" if self.class.authorization.none?
 
-          self.class.authorization.ok?(object, current_user)
+          self.class.authorization.ok?(object, current_user, scope_validator: context[:scope_validator])
         end
 
         def raise_resource_not_available_error!(...)

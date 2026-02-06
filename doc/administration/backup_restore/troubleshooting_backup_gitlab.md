@@ -1,30 +1,30 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Geo
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Troubleshooting GitLab backups
 ---
-
-# Troubleshooting GitLab backups
 
 When you back up GitLab, you might encounter the following issues.
 
 ## When the secrets file is lost
 
-If you didn't [back up the secrets file](../../administration/backup_restore/backup_gitlab.md#storing-configuration-files), you
+If you didn't [back up the secrets file](backup_gitlab.md#storing-configuration-files), you
 must complete several steps to get GitLab working properly again.
 
 The secrets file is responsible for storing the encryption key for the columns
 that contain required, sensitive information. If the key is lost, GitLab can't
 decrypt those columns, preventing access to the following items:
 
-- [CI/CD variables](../../ci/variables/index.md)
-- [Kubernetes / GCP integration](../../user/infrastructure/clusters/index.md)
-- [Custom Pages domains](../../user/project/pages/custom_domains_ssl_tls_certification/index.md)
+- [CI/CD variables](../../ci/variables/_index.md)
+- [Kubernetes / GCP integration](../../user/infrastructure/clusters/_index.md)
+- [Custom Pages domains](../../user/project/pages/custom_domains_ssl_tls_certification/_index.md)
 - [Project error tracking](../../operations/error_tracking.md)
-- [Runner authentication](../../ci/runners/index.md)
-- [Project mirroring](../../user/project/repository/mirror/index.md)
-- [Integrations](../../user/project/integrations/index.md)
+- [Runner authentication](../../ci/runners/_index.md)
+- [Project mirroring](../../user/project/repository/mirror/_index.md)
+- [Integrations](../../user/project/integrations/_index.md)
 - [Web hooks](../../user/project/integrations/webhooks.md)
+- [Deploy tokens](../../user/project/deploy_tokens/_index.md)
 
 In cases like CI/CD variables and runner authentication, you can experience
 unexpected behaviors, such as:
@@ -37,9 +37,9 @@ runner authentication, which is described in more detail in the following
 sections. After resetting the tokens, you should be able to visit your project
 and the jobs begin running again.
 
-WARNING:
-The steps in this section can potentially lead to **data loss** on the above listed items.
-Consider opening a [Support Request](https://support.gitlab.com/hc/en-us/requests/new) if you're a Premium or Ultimate customer.
+> [!warning]
+> The steps in this section can potentially lead to data loss on the previously listed items.
+> Consider opening a [Support Request](https://support.gitlab.com/hc/en-us/requests/new) if you're a Premium or Ultimate customer.
 
 ### Verify that all values can be decrypted
 
@@ -50,8 +50,8 @@ You can determine if your database contains values that can't be decrypted by us
 
 You must directly modify GitLab data to work around your lost secrets file.
 
-WARNING:
-Be sure to create a full database backup before attempting any changes.
+> [!warning]
+> Be sure to create a full database backup before attempting any changes.
 
 ### Disable user two-factor authentication (2FA)
 
@@ -63,25 +63,13 @@ after which users must reactivate 2FA.
 
 1. Enter the database console:
 
-   For the Linux package (Omnibus) GitLab 14.1 and earlier:
-
-   ```shell
-   sudo gitlab-rails dbconsole
-   ```
-
-   For the Linux package (Omnibus) GitLab 14.2 and later:
+   For the Linux package (Omnibus):
 
    ```shell
    sudo gitlab-rails dbconsole --database main
    ```
 
-   For self-compiled installations, GitLab 14.1 and earlier:
-
-   ```shell
-   sudo -u git -H bundle exec rails dbconsole -e production
-   ```
-
-   For self-compiled installations, GitLab 14.2 and later:
+   For self-compiled installations:
 
    ```shell
    sudo -u git -H bundle exec rails dbconsole -e production --database main
@@ -116,25 +104,13 @@ You may need to reconfigure or restart GitLab for the changes to take effect.
 
 1. Enter the database console:
 
-   For the Linux package (Omnibus) GitLab 14.1 and earlier:
-
-   ```shell
-   sudo gitlab-rails dbconsole
-   ```
-
-   For the Linux package (Omnibus) GitLab 14.2 and later:
+   For the Linux package (Omnibus):
 
    ```shell
    sudo gitlab-rails dbconsole --database main
    ```
 
-   For self-compiled installations, GitLab 14.1 and earlier:
-
-   ```shell
-   sudo -u git -H bundle exec rails dbconsole -e production
-   ```
-
-   For self-compiled installations, GitLab 14.2 and later:
+   For self-compiled installations:
 
    ```shell
    sudo -u git -H bundle exec rails dbconsole -e production --database main
@@ -142,9 +118,9 @@ You may need to reconfigure or restart GitLab for the changes to take effect.
 
 1. Clear all tokens for projects, groups, and the entire instance:
 
-   WARNING:
-   The final `UPDATE` operation stops the runners from being able to pick
-   up new jobs. You must register new runners.
+   > [!warning]
+   > The final `UPDATE` operation stops the runners from being able to pick
+   > up new jobs. You must register new runners.
 
    ```sql
    -- Clear project tokens
@@ -165,25 +141,13 @@ You may need to reconfigure or restart GitLab for the changes to take effect.
 
 1. Enter the database console:
 
-   For the Linux package (Omnibus) GitLab 14.1 and earlier:
-
-   ```shell
-   sudo gitlab-rails dbconsole
-   ```
-
-   For the Linux package (Omnibus) GitLab 14.2 and later:
+   For the Linux package (Omnibus):
 
    ```shell
    sudo gitlab-rails dbconsole --database main
    ```
 
-   For self-compiled installations, GitLab 14.1 and earlier:
-
-   ```shell
-   sudo -u git -H bundle exec rails dbconsole -e production
-   ```
-
-   For self-compiled installations, GitLab 14.2 and later:
+   For self-compiled installations:
 
    ```shell
    sudo -u git -H bundle exec rails dbconsole -e production --database main
@@ -211,7 +175,7 @@ lost data can be manually replaced.
 
 ### Fix integrations and webhooks
 
-If you've lost your secrets, the [integrations settings](../../user/project/integrations/index.md)
+If you've lost your secrets, the [integrations settings](../../user/project/integrations/_index.md)
 and [webhooks settings](../../user/project/integrations/webhooks.md) pages might display `500` error messages. Lost secrets might also produce `500` errors when you try to access a repository in a project with a previously configured integration or webhook.
 
 The fix is to truncate the affected tables (those containing encrypted columns).
@@ -220,25 +184,13 @@ You should verify that the secrets are the root cause before deleting any data.
 
 1. Enter the database console:
 
-   For the Linux package (Omnibus) GitLab 14.1 and earlier:
-
-   ```shell
-   sudo gitlab-rails dbconsole
-   ```
-
-   For the Linux package (Omnibus) GitLab 14.2 and later:
+   For the Linux package (Omnibus):
 
    ```shell
    sudo gitlab-rails dbconsole --database main
    ```
 
-   For self-compiled installations, GitLab 14.1 and earlier:
-
-   ```shell
-   sudo -u git -H bundle exec rails dbconsole -e production
-   ```
-
-   For self-compiled installations, GitLab 14.2 and later:
+   For self-compiled installations:
 
    ```shell
    sudo -u git -H bundle exec rails dbconsole -e production --database main
@@ -251,9 +203,17 @@ You should verify that the secrets are the root cause before deleting any data.
    TRUNCATE integrations, chat_names, issue_tracker_data, jira_tracker_data, slack_integrations, web_hooks, zentao_tracker_data, web_hook_logs CASCADE;
    ```
 
+## Container registry is not restored
+
+If you restore a backup from an environment that uses the [container registry](../../user/packages/container_registry/_index.md)
+to a newly installed environment where the container registry is not enabled, the container registry is not restored.
+
+To also restore the container registry, you need to [enable it](../packages/container_registry.md#enable-the-container-registry) in the new
+environment before you restore the backup.
+
 ## Container registry push failures after restoring from a backup
 
-If you use the [container registry](../../user/packages/container_registry/index.md),
+If you use the [container registry](../../user/packages/container_registry/_index.md),
 pushes to the registry may fail after restoring your backup on a Linux package (Omnibus)
 instance after restoring the registry data.
 
@@ -297,7 +257,7 @@ Backup failed
 If this happens, examine the following:
 
 - Confirm there is sufficient disk space for the Gzip operation. It's not uncommon for backups that
-  use the [default strategy](../../administration/backup_restore/backup_gitlab.md#backup-strategy-option) to require half the instance size
+  use the [default strategy](backup_gitlab.md#backup-strategy-option) to require half the instance size
   in free disk space during backup creation.
 - If NFS is being used, check if the mount option `timeout` is set. The
   default is `600`, and changing this to smaller values results in this error.
@@ -312,9 +272,9 @@ Problem: <class 'OSError: [Errno 36] File name too long:
 
 This problem stops the backup script from completing. To fix this problem, you must truncate the filenames causing the problem. A maximum of 246 characters, including the file extension, is permitted.
 
-WARNING:
-The steps in this section can potentially lead to **data loss**. All steps must be followed strictly in the order given.
-Consider opening a [Support Request](https://support.gitlab.com/hc/en-us/requests/new) if you're a Premium or Ultimate customer.
+> [!warning]
+> The steps in this section can potentially lead to data loss. All steps must be followed strictly in the order given.
+> Consider opening a [Support Request](https://support.gitlab.com/hc/en-us/requests/new) if you're a Premium or Ultimate customer.
 
 Truncating filenames to resolve the error involves:
 
@@ -336,8 +296,8 @@ To fix these files, you must clean up all remote uploaded files that are in the 
 
 1. If you are sure you want to delete these files and remove all non-referenced uploaded files, run:
 
-   WARNING:
-   The following action is **irreversible**.
+   > [!warning]
+   > The following action is irreversible.
 
    ```shell
    bundle exec rake gitlab:cleanup:remote_upload_files RAILS_ENV=production DRY_RUN=false
@@ -355,80 +315,68 @@ Truncate the filenames in the `uploads` table:
 
 1. Enter the database console:
 
-   For the Linux package (Omnibus) GitLab 14.2 and later:
+   For the Linux package (Omnibus):
 
    ```shell
    sudo gitlab-rails dbconsole --database main
    ```
 
-   For the Linux package (Omnibus) GitLab 14.1 and earlier:
-
-   ```shell
-   sudo gitlab-rails dbconsole
-   ```
-
-   For self-compiled installations, GitLab 14.2 and later:
+   For self-compiled installations:
 
    ```shell
    sudo -u git -H bundle exec rails dbconsole -e production --database main
-   ```
-
-   For self-compiled installations, GitLab 14.1 and earlier:
-
-   ```shell
-   sudo -u git -H bundle exec rails dbconsole -e production
    ```
 
 1. Search the `uploads` table for filenames longer than 246 characters:
 
    The following query selects the `uploads` records with filenames longer than 246 characters in batches of 0 to 10000. This improves the performance on large GitLab instances with tables having thousand of records.
 
-      ```sql
-      CREATE TEMP TABLE uploads_with_long_filenames AS
-      SELECT ROW_NUMBER() OVER(ORDER BY id) row_id, id, path
-      FROM uploads AS u
-      WHERE LENGTH((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1]) > 246;
+   ```sql
+   CREATE TEMP TABLE uploads_with_long_filenames AS
+   SELECT ROW_NUMBER() OVER(ORDER BY id) row_id, id, path
+   FROM uploads AS u
+   WHERE LENGTH((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1]) > 246;
 
-      CREATE INDEX ON uploads_with_long_filenames(row_id);
+   CREATE INDEX ON uploads_with_long_filenames(row_id);
 
-      SELECT
-         u.id,
-         u.path,
-         -- Current filename
-         (regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1] AS current_filename,
-         -- New filename
+   SELECT
+      u.id,
+      u.path,
+      -- Current filename
+      (regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1] AS current_filename,
+      -- New filename
+      CONCAT(
+         LEFT(SPLIT_PART((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1], '.', 1), 242),
+         COALESCE(SUBSTRING((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1] FROM '\.(?:.(?!\.))+$'))
+      ) AS new_filename,
+      -- New path
+      CONCAT(
+         COALESCE((regexp_match(u.path, '(.*\/).*'))[1], ''),
          CONCAT(
             LEFT(SPLIT_PART((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1], '.', 1), 242),
             COALESCE(SUBSTRING((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1] FROM '\.(?:.(?!\.))+$'))
-         ) AS new_filename,
-         -- New path
-         CONCAT(
-            COALESCE((regexp_match(u.path, '(.*\/).*'))[1], ''),
-            CONCAT(
-               LEFT(SPLIT_PART((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1], '.', 1), 242),
-               COALESCE(SUBSTRING((regexp_match(u.path, '[^\\/:*?"<>|\r\n]+$'))[1] FROM '\.(?:.(?!\.))+$'))
-            )
-         ) AS new_path
-      FROM uploads_with_long_filenames AS u
-      WHERE u.row_id > 0 AND u.row_id <= 10000;
-      ```
+         )
+      ) AS new_path
+   FROM uploads_with_long_filenames AS u
+   WHERE u.row_id > 0 AND u.row_id <= 10000;
+   ```
 
-      Output example:
+   Output example:
 
-      ```postgresql
-      -[ RECORD 1 ]----+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-      id               | 34
-      path             | public/@hashed/loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisit.txt
-      current_filename | loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisit.txt
-      new_filename     | loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelits.txt
-      new_path         | public/@hashed/loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelits.txt
-      ```
+   ```postgresql
+   -[ RECORD 1 ]----+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+   id               | 34
+   path             | public/@hashed/loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisit.txt
+   current_filename | loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisit.txt
+   new_filename     | loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelits.txt
+   new_path         | public/@hashed/loremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelitsedvulputatemisitloremipsumdolorsitametconsecteturadipiscingelitseddoeiusmodtemporincididuntutlaboreetdoloremagnaaliquaauctorelits.txt
+   ```
 
-      Where:
+   Where:
 
-      - `current_filename`: a filename that is currently more than 246 characters long.
-      - `new_filename`: a filename that has been truncated to 246 characters maximum.
-      - `new_path`: new path considering the `new_filename` (truncated).
+   - `current_filename`: a filename that is more than 246 characters long.
+   - `new_filename`: a filename that has been truncated to 246 characters maximum.
+   - `new_path`: new path considering the `new_filename` (truncated).
 
    After you validate the batch results, you must change the batch size (`row_id`) using the following sequence of numbers (10000 to 20000). Repeat this process until you reach the last record in the `uploads` table.
 
@@ -469,8 +417,8 @@ Truncate the filenames in the `uploads` table:
 
 1. Validate that the new filenames from the previous query are the expected ones. If you are sure you want to truncate the records found in the previous step to 246 characters, run the following:
 
-   WARNING:
-   The following action is **irreversible**.
+   > [!warning]
+   > The following action is irreversible.
 
    ```sql
    CREATE TEMP TABLE uploads_with_long_filenames AS

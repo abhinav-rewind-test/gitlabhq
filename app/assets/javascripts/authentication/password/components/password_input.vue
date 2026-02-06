@@ -32,14 +32,47 @@ export default {
       required: false,
       default: null,
     },
+    trackActionForErrors: {
+      type: String,
+      required: false,
+      default: null,
+    },
     autocomplete: {
       type: String,
       required: false,
       default: 'current-password',
     },
+    autofocus: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    required: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
     name: {
       type: String,
       required: true,
+    },
+    disabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    state: {
+      type: Boolean,
+      required: false,
+      default: null,
+    },
+    /**
+     * Can be used for v-model on this component
+     */
+    value: {
+      type: String,
+      required: false,
+      default: null,
     },
   },
   data() {
@@ -67,24 +100,31 @@ export default {
 </script>
 
 <template>
-  <div class="gl-field-error-anchor input-icon-wrapper">
+  <div class="gl-field-error-anchor gl-relative">
     <gl-form-input
       :id="id"
-      class="js-password-complexity-validation gl-pr-8!"
-      required
+      :value="value"
+      class="js-password-complexity-validation js-track-error !gl-pr-8"
+      :required="required"
       :autocomplete="autocomplete"
+      :autofocus="autofocus"
       :name="name"
       :minlength="minimumPasswordLength"
       :data-testid="testid"
+      :data-track-action-for-errors="trackActionForErrors"
       :title="title"
       :type="type"
+      :disabled="disabled"
+      :state="state"
+      v-on="$listeners"
     />
     <gl-button
       v-gl-tooltip="toggleVisibilityLabel"
-      class="input-icon-right !gl-right-0"
+      class="gl-absolute gl-right-0 gl-top-0"
       category="tertiary"
       :aria-label="toggleVisibilityLabel"
       :icon="toggleVisibilityIcon"
+      :disabled="disabled"
       @click="handleToggleVisibilityButtonClick"
     />
   </div>

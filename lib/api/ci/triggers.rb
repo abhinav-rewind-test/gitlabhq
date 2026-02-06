@@ -7,15 +7,16 @@ module API
 
       HTTP_GITLAB_EVENT_HEADER = "HTTP_#{::Gitlab::WebHooks::GITLAB_EVENT_HEADER}".underscore.upcase
 
-      feature_category :continuous_integration
+      feature_category :pipeline_composition
       urgency :low
 
       params do
         requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project',
-                      documentation: { example: 18 }
+          documentation: { example: 18 }
       end
       resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc 'Trigger a GitLab project pipeline' do
+          tags ['ci_triggers']
           success code: 201, model: Entities::Ci::Pipeline
           failure [
             { code: 400, message: 'Bad request' },
@@ -26,11 +27,12 @@ module API
         end
         params do
           requires :ref, type: String, desc: 'The commit sha or name of a branch or tag', allow_blank: false,
-                         documentation: { example: 'develop' }
+            documentation: { example: 'develop' }
           requires :token, type: String, desc: 'The unique token of trigger or job token',
-                           documentation: { example: '6d056f63e50fe6f8c5f8f4aa10edb7' }
+            documentation: { example: '6d056f63e50fe6f8c5f8f4aa10edb7' }
           optional :variables, type: Hash, desc: 'The list of variables to be injected into build',
-                               documentation: { example: { VAR1: "value1", VAR2: "value2" } }
+            documentation: { example: { VAR1: "value1", VAR2: "value2" } }
+          optional :inputs, type: Hash, desc: 'The list of inputs to be used to create the pipeline.'
         end
         post ":id/(ref/:ref/)trigger/pipeline", requirements: { ref: /.+/ } do
           Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/20758')
@@ -57,6 +59,7 @@ module API
         end
 
         desc 'Get trigger tokens list' do
+          tags ['ci_triggers']
           success code: 200, model: Entities::Trigger
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -68,18 +71,17 @@ module API
         params do
           use :pagination
         end
-        # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :read_trigger, boundary_type: :project
         get ':id/triggers' do
           authenticate!
           authorize! :admin_build, user_project
 
-          triggers = user_project.triggers.includes(:trigger_requests)
+          triggers = user_project.triggers.with_last_used
 
           present paginate(triggers), with: Entities::Trigger, current_user: current_user
         end
-        # rubocop: enable CodeReuse/ActiveRecord
-
         desc 'Get specific trigger token of a project' do
+          tags ['ci_triggers']
           success code: 200, model: Entities::Trigger
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -90,6 +92,7 @@ module API
         params do
           requires :trigger_id, type: Integer, desc: 'The trigger token ID', documentation: { example: 10 }
         end
+        route_setting :authorization, permissions: :read_trigger, boundary_type: :project
         get ':id/triggers/:trigger_id' do
           authenticate!
           authorize! :admin_build, user_project
@@ -101,6 +104,7 @@ module API
         end
 
         desc 'Create a trigger token' do
+          tags ['ci_triggers']
           success code: 201, model: Entities::Trigger
           failure [
             { code: 400, message: 'Bad request' },
@@ -111,8 +115,11 @@ module API
         end
         params do
           requires :description, type: String, desc: 'The trigger token description',
-                                 documentation: { example: 'my trigger token description' }
+            documentation: { example: 'my trigger token description' }
+          optional :expires_at, type: DateTime, desc: 'Timestamp of when the pipeline trigger token expires.',
+            documentation: { example: '2024-07-01' }
         end
+        route_setting :authorization, permissions: :create_trigger, boundary_type: :project
         post ':id/triggers' do
           authenticate!
           authorize! :manage_trigger, user_project
@@ -121,7 +128,8 @@ module API
             ::Ci::PipelineTriggers::CreateService.new(
               project: user_project,
               user: current_user,
-              description: declared_params(include_missing: false)[:description]
+              description: declared_params(include_missing: false)[:description],
+              expires_at: declared_params(include_missing: true)[:expires_at]
             ).execute
 
           if response.success?
@@ -134,6 +142,7 @@ module API
         end
 
         desc 'Update a trigger token' do
+          tags ['ci_triggers']
           success code: 200, model: Entities::Trigger
           failure [
             { code: 400, message: 'Bad request' },
@@ -146,6 +155,7 @@ module API
           requires :trigger_id, type: Integer,  desc: 'The trigger token ID'
           optional :description, type: String,  desc: 'The trigger token description'
         end
+        route_setting :authorization, permissions: :update_trigger, boundary_type: :project
         put ':id/triggers/:trigger_id' do
           authenticate!
 
@@ -168,7 +178,8 @@ module API
           end
         end
 
-        desc 'Delete a trigger' do
+        desc 'Delete a trigger token' do
+          tags ['ci_triggers']
           success code: 204
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -178,11 +189,12 @@ module API
           ]
         end
         params do
-          requires :trigger_id, type: Integer, desc: 'The trigger ID', documentation: { example: 10 }
+          requires :trigger_id, type: Integer, desc: 'The trigger token ID', documentation: { example: 10 }
         end
+        route_setting :authorization, permissions: :delete_trigger, boundary_type: :project
         delete ':id/triggers/:trigger_id' do
           authenticate!
-          authorize! :admin_build, user_project
+          authorize! :manage_trigger, user_project
 
           trigger = user_project.triggers.find(params.delete(:trigger_id))
           break not_found!('Trigger') unless trigger

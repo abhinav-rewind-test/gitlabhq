@@ -2,9 +2,9 @@
 
 require 'spec_helper'
 
-RSpec.describe 'No Password Alert', feature_category: :groups_and_projects do
-  let_it_be(:message_password_auth_enabled) { 'Your account is authenticated with SSO or SAML. To push and pull over HTTP with Git using this account, you must set a password or set up a Personal Access Token to use instead of a password. For more information, see Clone with HTTPS.' }
-  let_it_be(:message_password_auth_disabled) { 'Your account is authenticated with SSO or SAML. To push and pull over HTTP with Git using this account, you must set up a Personal Access Token to use instead of a password. For more information, see Clone with HTTPS.' }
+RSpec.describe 'No Password Alert', :with_current_organization, feature_category: :groups_and_projects do
+  let_it_be(:message_password_auth_enabled) { 'Your account is authenticated with SSO or SAML. To push and pull over HTTP with Git using this account, you must set a password or set up a personal access token to use instead of a password.' }
+  let_it_be(:message_password_auth_disabled) { 'Your account is authenticated with SSO or SAML. To push and pull over HTTP with Git using this account, you must set up a personal access token to use instead of a password.' }
 
   let(:project) { create(:project, :repository, namespace: user.namespace) }
 
@@ -40,21 +40,25 @@ RSpec.describe 'No Password Alert', feature_category: :groups_and_projects do
     end
 
     context 'when user has no personal access tokens' do
-      it 'has a personal access token alert' do
-        gitlab_sign_in_via('saml', user, 'my-uid')
-        visit project_path(project)
+      with_and_without_sign_in_form_vue do
+        it 'has a personal access token alert' do
+          gitlab_sign_in_via('saml', user, 'my-uid')
+          visit project_path(project)
 
-        expect(page).to have_content message_password_auth_disabled
+          expect(page).to have_content message_password_auth_disabled
+        end
       end
     end
 
     context 'when user has a personal access token' do
-      it 'shows no alert' do
-        create(:personal_access_token, user: user)
-        gitlab_sign_in_via('saml', user, 'my-uid')
-        visit project_path(project)
+      with_and_without_sign_in_form_vue do
+        it 'shows no alert' do
+          create(:personal_access_token, user: user)
+          gitlab_sign_in_via('saml', user, 'my-uid')
+          visit project_path(project)
 
-        expect(page).not_to have_content message_password_auth_disabled
+          expect(page).not_to have_content message_password_auth_disabled
+        end
       end
     end
   end

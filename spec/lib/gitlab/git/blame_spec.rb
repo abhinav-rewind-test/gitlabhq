@@ -8,15 +8,20 @@ RSpec.describe Gitlab::Git::Blame, feature_category: :source_code_management do
   let(:sha) { TestEnv::BRANCH_SHA['master'] }
   let(:path) { 'CONTRIBUTING.md' }
   let(:range) { nil }
-
-  subject(:blame) { described_class.new(repository, sha, path, range: range) }
+  let(:ignore_revisions_blob) { nil }
 
   let(:result) do
     [].tap do |data|
+      # rubocop:disable Style/MapIntoArray -- each is a custom method, it doesn't iterate on an array
       blame.each do |commit, line, previous_path, span|
         data << { commit: commit, line: line, previous_path: previous_path, span: span }
       end
+      # rubocop:enable Style/MapIntoArray
     end
+  end
+
+  subject(:blame) do
+    described_class.new(repository, sha, path, range: range, ignore_revisions_blob: ignore_revisions_blob)
   end
 
   describe 'blaming a file' do
@@ -82,6 +87,28 @@ RSpec.describe Gitlab::Git::Blame, feature_category: :source_code_management do
       end
     end
 
+    context 'when repository has SHA256 format' do
+      let_it_be(:user) { create(:user, :with_namespace) }
+
+      let(:project) { Projects::CreateService.new(user, opts).execute }
+      let(:opts) do
+        {
+          name: 'SHA256',
+          namespace_id: user.namespace.id,
+          initialize_with_readme: true,
+          repository_object_format: 'sha256'
+        }
+      end
+
+      let(:sha) { project.commit.sha }
+      let(:path) { 'README.md' }
+
+      it 'correctly blames file' do
+        expect(result).to be_present
+        expect(result.first[:commit].sha.size).to eq(64)
+      end
+    end
+
     context "renamed file" do
       let(:commit) { project.commit('blame-on-renamed') }
       let(:sha) { commit.id }
@@ -95,6 +122,26 @@ RSpec.describe Gitlab::Git::Blame, feature_category: :source_code_management do
         expect(result[2]).to include(line: 'Renamed as "filename"', previous_path: 'files/plain_text/initial-commit')
         expect(result[3]).to include(line: 'Renamed as renamed', previous_path: 'files/plain_text/"filename"')
         expect(result[4]).to include(line: 'Last edit, no rename', previous_path: path)
+      end
+    end
+
+    context 'with ignore_revisions_blob' do
+      let(:ignore_revisions_blob) { 'reference_to_a_blob' }
+      let(:commit_client_double) { instance_double(Gitlab::GitalyClient::CommitService, list_commits_by_oid: []) }
+
+      before do
+        allow(repository).to receive(:gitaly_commit_client).and_return(commit_client_double)
+      end
+
+      it 'requests raw blame with ignore_revisions_blob' do
+        expect(commit_client_double).to receive(:raw_blame).with(
+          sha,
+          path,
+          range: range,
+          ignore_revisions_blob: ignore_revisions_blob
+        ).and_return('')
+
+        blame
       end
     end
   end

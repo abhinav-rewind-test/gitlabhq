@@ -4,8 +4,16 @@ require 'spec_helper'
 
 RSpec.describe WorkItems::Widgets::Description do
   let_it_be(:user) { create(:user) }
+  let_it_be(:description) do
+    <<~DESC
+      - [ ] One
+      - [ ] Two
+      - [x] Three
+    DESC
+  end
+
   let_it_be(:work_item, refind: true) do
-    create(:work_item, description: 'Title', last_edited_at: 10.days.ago, last_edited_by: user)
+    create(:work_item, description: description, last_edited_at: 10.days.ago, last_edited_by: user)
   end
 
   describe '.type' do
@@ -51,7 +59,7 @@ RSpec.describe WorkItems::Widgets::Description do
           work_item.update!(last_edited_by: nil)
         end
 
-        it { is_expected.to eq(Users::Internal.ghost) }
+        it { is_expected.to eq(Users::Internal.in_organization(work_item.namespace.organization).ghost) }
       end
     end
 
@@ -62,5 +70,13 @@ RSpec.describe WorkItems::Widgets::Description do
 
       it { is_expected.to be_nil }
     end
+  end
+
+  describe '#task_completion_status' do
+    subject { described_class.new(work_item).task_completion_status }
+
+    expected_status = { completed_count: 1, count: 3 }
+
+    it { is_expected.to eq(expected_status) }
   end
 end

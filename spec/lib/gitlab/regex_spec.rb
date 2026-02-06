@@ -4,6 +4,7 @@ require 'fast_spec_helper'
 
 require_relative '../../../lib/gitlab/regex'
 require_relative '../../support/shared_examples/lib/gitlab/regex_shared_examples'
+require_relative '../../support/shared_examples/lib/gitlab/regex/packages_shared_examples'
 
 # All specs that can be run with fast_spec_helper only
 # See regex_requires_app_spec for tests that require the full spec_helper
@@ -36,6 +37,15 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     subject { described_class.project_name_regex }
 
     it_behaves_like 'project name regex'
+  end
+
+  describe '.oci_repository_path_regex' do
+    subject { described_class.oci_repository_path_regex }
+
+    it { is_expected.to match("my_project") }
+    it { is_expected.not_to match('_myproject') }
+    it { is_expected.not_to match('myproject_') }
+    it { is_expected.not_to match('_myproject_') }
   end
 
   describe '.group_name_regex' do
@@ -80,10 +90,12 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.not_to match('http://custom-url.com|click here') }
     it { is_expected.not_to match('custom-url.com|any-Charact3r$') }
     it { is_expected.not_to match("&lt;custom-url.com|any-Charact3r$&gt;") }
+    it { is_expected.not_to match('<<|' * 1000) }
 
     it { is_expected.to match('<http://custom-url.com|click here>') }
     it { is_expected.to match('<custom-url.com|any-Charact3r$>') }
     it { is_expected.to match('<any-Charact3r$|any-Charact3r$>') }
+    it { is_expected.to match(('<<|' * 1000) + '<https://gitlab.example|click here>') }
   end
 
   describe '.environment_name_regex' do
@@ -254,8 +266,19 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     subject { described_class.conan_revision_regex }
 
     it { is_expected.to match('0') }
+    it { is_expected.not_to match(nil) }
     it { is_expected.not_to match('foo') }
     it { is_expected.not_to match('!!()()') }
+  end
+
+  describe '.conan_revision_regex_v2' do
+    subject { described_class.conan_revision_regex_v2 }
+
+    it { is_expected.to match(OpenSSL::Digest.hexdigest('MD5', 'valid_MD5')) }
+    it { is_expected.to match(OpenSSL::Digest.hexdigest('SHA1', 'valid_SHA-1')) }
+    it { is_expected.not_to match('0') }
+    it { is_expected.not_to match('g' * 32) }
+    it { is_expected.not_to match('a' * 41) }
   end
 
   describe '.composer_dev_version_regex' do
@@ -303,25 +326,7 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
   describe '.package_name_regex' do
     subject { described_class.package_name_regex }
 
-    it { is_expected.to match('123') }
-    it { is_expected.to match('foo') }
-    it { is_expected.to match('foo/bar') }
-    it { is_expected.to match('@foo/bar') }
-    it { is_expected.to match('com/mycompany/app/my-app') }
-    it { is_expected.to match('my-package/1.0.0@my+project+path/beta') }
-    it { is_expected.not_to match('my-package/1.0.0@@@@@my+project+path/beta') }
-    it { is_expected.not_to match('$foo/bar') }
-    it { is_expected.not_to match('@foo/@/bar') }
-    it { is_expected.not_to match('@@foo/bar') }
-    it { is_expected.not_to match('my package name') }
-    it { is_expected.not_to match('!!()()') }
-    it { is_expected.not_to match("..\n..\foo") }
-
-    it 'has no backtracking issue' do
-      Timeout.timeout(1) do
-        expect(subject).not_to match("-" * 50000 + ";")
-      end
-    end
+    it_behaves_like 'package name regex'
   end
 
   describe '.maven_file_name_regex' do
@@ -369,7 +374,7 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
 
     it 'has no ReDos issues with long strings ending with an exclamation mark' do
       Timeout.timeout(5) do
-        expect(subject).not_to match('a' * 50000 + '!')
+        expect(subject).not_to match(('a' * 50000) + '!')
       end
     end
 
@@ -707,11 +712,27 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
   describe '.go_package_regex' do
     subject { described_class.go_package_regex }
 
+    let(:fifty_segment_tld) { "#{Array.new(50, 'segment').join('.')}.com/path" }
+    let(:fifty_one_segment_tld) { "#{Array.new(51, 'segment').join('.')}.com/path" }
+    let(:one_thousand_character_path) { "example.com/#{'a' * 1000}" }
+    let(:one_thousand_and_one_character_path) { "example.com/#{'a' * 1001}" }
+
     it { is_expected.to match('example.com') }
     it { is_expected.to match('example.com/foo') }
+    it { is_expected.to match('example.com/foo%2Fbar') }
     it { is_expected.to match('example.com/foo/bar') }
     it { is_expected.to match('example.com/foo/bar/baz') }
     it { is_expected.to match('tl.dr.foo.bar.baz') }
+    it { is_expected.to match('(tl.dr.foo.bar.baz)') }
+    it { is_expected.to match(' tl.dr.foo.bar.baz ') }
+    it { is_expected.to match(fifty_segment_tld) }
+    it { is_expected.to match(one_thousand_character_path) }
+
+    it { is_expected.not_to match('.tl.dr.foo.bar.baz') }
+    it { is_expected.not_to match('-tl.dr.foo.bar.baz') }
+    it { is_expected.not_to match('tl.dr.foo.bar.baz.') }
+    it { is_expected.not_to match(fifty_one_segment_tld) }
+    it { is_expected.not_to match(one_thousand_and_one_character_path) }
   end
 
   describe '.unbounded_semver_regex' do
@@ -759,8 +780,10 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.not_to match('..\..\foo') }
     it { is_expected.not_to match('%2f%2e%2e%2f%2essh%2fauthorized_keys') }
     it { is_expected.not_to match('$foo/bar') }
-    it { is_expected.not_to match('my file name') }
+    it { is_expected.not_to match('my package name') }
+    it { is_expected.not_to match('foo.bar.baz-2.0-20190901~47283-1') }
     it { is_expected.not_to match('!!()()') }
+    it { is_expected.not_to match('myfile@1.1.tar.gz') }
   end
 
   describe '.generic_package_file_name_regex' do
@@ -769,12 +792,18 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.to match('123') }
     it { is_expected.to match('foo') }
     it { is_expected.to match('foo.bar.baz-2.0-20190901.47283-1.jar') }
+    it { is_expected.to match('foo.bar.baz-2.0-20190901~47283-1') }
+    it { is_expected.to match('myfile@1.1.tar.gz') }
     it { is_expected.not_to match('../../foo') }
     it { is_expected.not_to match('..\..\foo') }
     it { is_expected.not_to match('%2f%2e%2e%2f%2essh%2fauthorized_keys') }
     it { is_expected.not_to match('$foo/bar') }
     it { is_expected.not_to match('my file name') }
     it { is_expected.not_to match('!!()()') }
+    it { is_expected.not_to match('~/../../filename') }
+    it { is_expected.not_to match('filename~') }
+    it { is_expected.not_to match('@filename') }
+    it { is_expected.not_to match('filename@') }
   end
 
   describe '.prefixed_semver_regex' do
@@ -976,11 +1005,11 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
     it { is_expected.to match('abcdefABCDEF1234567890abcdefABCDEF1234567890abcdefABCDEF12345678') }
     it { is_expected.not_to match('a' * 63) }
     it { is_expected.not_to match('a' * 65) }
-    it { is_expected.not_to match('a' * 63 + 'g') }
-    it { is_expected.not_to match('a' * 63 + '{') }
-    it { is_expected.not_to match('a' * 63 + '%') }
-    it { is_expected.not_to match('a' * 63 + '*') }
-    it { is_expected.not_to match('a' * 63 + '#') }
+    it { is_expected.not_to match(('a' * 63) + 'g') }
+    it { is_expected.not_to match(('a' * 63) + '{') }
+    it { is_expected.not_to match(('a' * 63) + '%') }
+    it { is_expected.not_to match(('a' * 63) + '*') }
+    it { is_expected.not_to match(('a' * 63) + '#') }
     it { is_expected.not_to match('') }
   end
 
@@ -1114,5 +1143,34 @@ RSpec.describe Gitlab::Regex, feature_category: :tooling do
       it { is_expected.not_to match(%(must start in first column <!--\ncomment\n-->)) }
       it { expect(subject.match(markdown)[:html_comment_block]).to eq expected }
     end
+  end
+
+  describe '.ml_model_file_name_regex' do
+    subject { described_class.ml_model_file_name_regex }
+
+    it { is_expected.to match('123') }
+    it { is_expected.to match('foo') }
+    it { is_expected.to match('foo+bar-2_0.pom') }
+    it { is_expected.to match('foo.bar.baz-2.0-20190901.47283-1.jar') }
+    it { is_expected.to match('maven-metadata.xml') }
+    it { is_expected.to match('1.0-SNAPSHOT') }
+    it { is_expected.not_to match('../../foo') }
+    it { is_expected.not_to match('..\..\foo') }
+    it { is_expected.not_to match('%2f%2e%2e%2f%2essh%2fauthorized_keys') }
+    it { is_expected.not_to match('$foo/bar') }
+    it { is_expected.to match('my file name') }
+    it { is_expected.to match('1.0-SNAPSHOT_v1_snapshot edited') }
+    it { is_expected.not_to match('!!()()') }
+  end
+
+  describe '.helm_index_app_version_quote_regex' do
+    subject { described_class.helm_index_app_version_quote_regex }
+
+    it { is_expected.to match('appVersion: master') }
+    it { is_expected.to match('appVersion: 4852e000') }
+    it { is_expected.to match('appVersion: v1.0.0') }
+    it { is_expected.not_to match('apiVersion: master') }
+    it { is_expected.not_to match('apiVersion: "4852e000"') }
+    it { is_expected.not_to match('apiVersion: \'v1.0.0\'') }
   end
 end

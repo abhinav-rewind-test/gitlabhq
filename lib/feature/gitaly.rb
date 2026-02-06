@@ -48,18 +48,20 @@ module Feature
       def user_actor(user = nil)
         return ::Feature::Gitaly::ActorWrapper.new(::User, user.id) if user.is_a?(::User)
 
-        user_id = Gitlab::ApplicationContext.current_context_attribute(:user_id)
+        user_id = Gitlab::ApplicationContext.current_context_attribute(Labkit::Fields::GL_USER_ID)
         ::Feature::Gitaly::ActorWrapper.new(::User, user_id) if user_id
       end
 
       def project_actor(container)
         return actor_wrapper(::Project, container.id) if container.is_a?(::Project)
-        return actor_wrapper(::Project, container.project.id) if container.is_a?(DesignManagement::Repository)
+
+        actor_wrapper(::Project, container.project.id) if container.is_a?(DesignManagement::Repository)
       end
 
       def group_actor(container)
         return actor_wrapper(::Group, container.namespace_id) if container.is_a?(::Project)
-        return actor_wrapper(::Group, container.project.namespace_id) if container.is_a?(DesignManagement::Repository)
+
+        actor_wrapper(::Group, container.project.namespace_id) if container.is_a?(DesignManagement::Repository)
       end
 
       private

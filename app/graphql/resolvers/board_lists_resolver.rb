@@ -11,18 +11,22 @@ module Resolvers
     authorizes_object!
 
     argument :id, Types::GlobalIDType[List],
-             required: false,
-             description: 'Find a list by its global ID.'
+      required: false,
+      description: 'Find a list by its global ID.'
 
     argument :issue_filters, Types::Boards::BoardIssueInputType,
-             required: false,
-             description: 'Filters applied when getting issue metadata in the board list.'
+      required: false,
+      description: 'Filters applied when getting issue metadata in the board list.'
 
     alias_method :board, :object
 
+    def self.complexity_multiplier(args) # rubocop:disable Lint/UnusedMethodArgument -- Leaving `args` to match the expected schema method definition and avoid method lookup issues in the test environment
+      0.005
+    end
+
     def resolve_with_lookahead(id: nil, issue_filters: {})
       lists = board_lists(id)
-      context.scoped_set!(:issue_filters, item_filters(issue_filters, board.resource_parent))
+      context.scoped_set!(:issue_filters, item_filters(issue_filters))
 
       List.preload_preferences_for_user(lists, current_user) if load_preferences?
 

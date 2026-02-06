@@ -6,8 +6,8 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
   let_it_be(:project) { create(:project) }
   let_it_be(:project_none) { create(:project) }
   let_it_be(:project_started) { create(:project) }
-  let(:project_finished) { create(:project, :with_export) }
-  let(:project_after_export) { create(:project, :with_export) }
+  let(:project_finished) { create(:project, :with_export, export_user: user) }
+  let(:project_after_export) { create(:project, :with_export, export_user: user) }
   let_it_be(:user) { create(:user) }
   let_it_be(:admin) { create(:admin) }
 
@@ -74,7 +74,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
       context 'when project export has started' do
         before do
-          create(:project_export_job, project: project_started, status: 1)
+          create(:project_export_job, project: project_started, status: 1, user: user)
         end
 
         it 'returns status started' do
@@ -98,7 +98,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
       context 'when project export is being regenerated' do
         before do
-          create(:project_export_job, project: project_finished, status: 1)
+          create(:project_export_job, project: project_finished, status: 1, user: user)
         end
 
         it 'returns status regeneration_in_progress' do
@@ -134,6 +134,11 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it_behaves_like 'get project export status ok'
+
+        it_behaves_like 'authorizing granular token permissions', :read_project_export do
+          let(:boundary_object) { project }
+          let(:request) { get api(path, personal_access_token: pat) }
+        end
       end
 
       context 'when user is a developer' do
@@ -167,11 +172,6 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
   end
 
   describe 'GET /projects/:project_id/export/download' do
-    it_behaves_like 'GET request permissions for admin mode' do
-      let(:path) { download_path_finished }
-      let(:failed_status_code) { :not_found }
-    end
-
     shared_examples_for 'get project export download not found' do
       it_behaves_like '404 response' do
         subject(:request) { get api(download_path, user) }
@@ -211,7 +211,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
       context 'when export object is not present' do
         before do
-          project_after_export.export_file.file.delete
+          project_after_export.export_file(user).file.delete
         end
 
         it 'returns 404' do
@@ -224,11 +224,11 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
       context 'when upload complete' do
         before do
-          project_after_export.remove_exports
+          project_after_export.remove_export_for_user(user)
         end
 
         it 'has removed the export' do
-          expect(project_after_export.export_file_exists?).to be_falsey
+          expect(project_after_export.export_file_exists?(user)).to be_falsey
         end
 
         it_behaves_like '404 response' do
@@ -272,33 +272,13 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
           end
 
           it 'prevents requesting project export' do
+            expect(Gitlab::ApplicationRateLimiter).to receive(:throttled?)
+              .with(:project_download_export, scope: [user, project]).and_call_original
+
             request
 
             expect(response).to have_gitlab_http_status(:too_many_requests)
             expect(json_response['message']['error']).to eq('This endpoint has been requested too many times. Try again later.')
-          end
-        end
-
-        context 'applies correct scope when throttling' do
-          before do
-            stub_application_setting(project_download_export_limit: 1)
-          end
-
-          it 'throttles downloads within same namespaces', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/413230' do
-            # simulate prior request to the same namespace, which increments the rate limit counter for that scope
-            Gitlab::ApplicationRateLimiter.throttled?(:project_download_export, scope: [user, project_finished.namespace])
-
-            get api(download_path_finished, user, admin_mode: true)
-            expect(response).to have_gitlab_http_status(:too_many_requests)
-          end
-
-          it 'allows downloads from different namespaces' do
-            # simulate prior request to a different namespace, which increments the rate limit counter for that scope
-            Gitlab::ApplicationRateLimiter.throttled?(:project_download_export,
-              scope: [user, create(:project, :with_export).namespace])
-
-            get api(download_path_finished, user, admin_mode: true)
-            expect(response).to have_gitlab_http_status(:ok)
           end
         end
       end
@@ -313,6 +293,11 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it_behaves_like 'get project download by strategy'
+
+        it_behaves_like 'authorizing granular token permissions', :download_project_export do
+          let(:boundary_object) { project_finished }
+          let(:request) { get api(download_path_finished, personal_access_token: pat) }
+        end
       end
 
       context 'when user is a developer' do
@@ -392,7 +377,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it 'starts' do
-          allow_any_instance_of(Gitlab::ImportExport::AfterExportStrategies::WebUploadStrategy).to receive(:send_file)
+          allow_any_instance_of(Import::AfterExportStrategies::WebUploadStrategy).to receive(:send_file)
 
           request do
             let(:params) { { 'upload[url]' => 'http://gitlab.com' } }
@@ -414,7 +399,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it 'starts' do
-          expect_any_instance_of(Gitlab::ImportExport::AfterExportStrategies::WebUploadStrategy).not_to receive(:send_file)
+          expect_any_instance_of(Import::AfterExportStrategies::WebUploadStrategy).not_to receive(:send_file)
 
           request
 
@@ -422,7 +407,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it 'removes previously exported archive file' do
-          expect(project).to receive(:remove_exports).once
+          expect(project).to receive(:remove_export_for_user).with(user).once
 
           request
         end
@@ -461,6 +446,32 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
           end
         end
 
+        context 'when export is already in progress' do
+          before do
+            allow_next_instance_of(Gitlab::ApplicationRateLimiter::BaseStrategy) do |strategy|
+              allow(strategy).to receive(:increment).and_return(0)
+            end
+          end
+
+          it '400 response if export already queued' do
+            create(:project_export_job, :queued, project: project, user: user)
+
+            request
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response["message"]).to include('An export is already running or queued for this project.')
+          end
+
+          it '400 response if export already started' do
+            create(:project_export_job, :started, project: project, user: user)
+
+            request
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response["message"]).to include('An export is already running or queued for this project.')
+          end
+        end
+
         context 'when rate limit is exceeded across projects' do
           before do
             allow_next_instance_of(Gitlab::ApplicationRateLimiter::BaseStrategy) do |strategy|
@@ -488,6 +499,11 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         it_behaves_like 'post project export start'
+
+        it_behaves_like 'authorizing granular token permissions', :create_project_export do
+          let(:boundary_object) { project }
+          let(:request) { post api(path, personal_access_token: pat) }
+        end
       end
 
       context 'when user is a developer' do
@@ -519,27 +535,18 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
       end
 
       context 'when overriding description' do
-        context 'when parallel_project_export feature flag is disabled' do
-          it 'starts export service', :sidekiq_might_not_need_inline do
-            stub_feature_flags(parallel_project_export: false)
+        let(:params) { { description: "Foo" } }
 
-            params = { description: "Foo" }
+        it 'enqueues CreateRelationExportsWorker' do
+          expect(Projects::ImportExport::CreateRelationExportsWorker).to receive(:perform_async).with(
+            project.first_owner.id,
+            project.id,
+            nil,
+            { description: "Foo", exported_by_admin: false }
+          )
 
-            expect_next_instance_of(Projects::ImportExport::ExportService) do |service|
-              expect(service).to receive(:execute)
-            end
-            post api(path, project.first_owner), params: params
-
-            expect(response).to have_gitlab_http_status(:accepted)
-          end
-        end
-
-        context 'when parallel_project_export feature flag is enabled' do
-          it 'enqueues CreateRelationExportsWorker' do
-            expect(Projects::ImportExport::CreateRelationExportsWorker).to receive(:perform_async)
-
-            post api(path, project.first_owner), params: params
-          end
+          post api(path, project.first_owner), params: params
+          expect(response).to have_gitlab_http_status(:accepted)
         end
       end
     end
@@ -568,15 +575,36 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
           expect(response).to have_gitlab_http_status(:accepted)
         end
 
+        it 'creates new audit event' do
+          expect(::Import::BulkImports::Audit::Auditor)
+            .to receive(:new)
+            .with(
+              event_name: ::Import::BulkImports::Audit::Events::EXPORT_INITIATED,
+              event_message: 'Direct Transfer relations export initiated',
+              current_user: user,
+              scope: project
+            )
+
+          post api(path, user)
+        end
+
         context 'when response is not success' do
-          it 'returns api error' do
+          before do
             allow_next_instance_of(BulkImports::ExportService) do |service|
               allow(service).to receive(:execute).and_return(ServiceResponse.error(message: 'error', http_status: :error))
             end
+          end
 
+          it 'returns api error' do
             post api(path, user)
 
             expect(response).to have_gitlab_http_status(:error)
+          end
+
+          it 'does not create audit event' do
+            expect(::Import::BulkImports::Audit::Auditor).not_to receive(:new)
+
+            post api(path, user)
           end
         end
 
@@ -592,12 +620,26 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
             expect(response).to have_gitlab_http_status(:accepted)
           end
         end
+
+        it_behaves_like 'authorizing granular token permissions', :create_project_relation_export do
+          let(:boundary_object) { project }
+          let(:request) { post api(path, personal_access_token: pat) }
+        end
       end
 
       describe 'GET /projects/:id/export_relations/download' do
         context 'when export request is not batched' do
-          let_it_be(:export) { create(:bulk_import_export, project: project, relation: 'labels') }
+          let_it_be(:export) { create(:bulk_import_export, project: project, relation: 'labels', user: user) }
           let_it_be(:upload) { create(:bulk_import_export_upload, export: export) }
+
+          it_behaves_like 'authorizing granular token permissions', :download_project_relation_export do
+            before do
+              upload.update!(export_file: fixture_file_upload('spec/fixtures/bulk_imports/gz/labels.ndjson.gz'))
+            end
+
+            let(:boundary_object) { project }
+            let(:request) { get api(download_path, personal_access_token: pat) }
+          end
 
           context 'when export file exists' do
             it 'downloads exported project relation archive' do
@@ -607,6 +649,21 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
               expect(response).to have_gitlab_http_status(:ok)
               expect(response.header['Content-Disposition']).to eq("attachment; filename=\"labels.ndjson.gz\"; filename*=UTF-8''labels.ndjson.gz")
+            end
+
+            it 'creates new audit event' do
+              upload.update!(export_file: fixture_file_upload('spec/fixtures/bulk_imports/gz/labels.ndjson.gz'))
+
+              expect(::Import::BulkImports::Audit::Auditor)
+                .to receive(:new)
+                .with(
+                  event_name: ::Import::BulkImports::Audit::Events::EXPORT_DOWNLOADED,
+                  event_message: 'Direct Transfer relation export downloaded',
+                  current_user: user,
+                  scope: project
+                )
+
+              get api(download_path, user)
             end
           end
 
@@ -631,7 +688,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
           context 'when export is batched' do
             let(:relation) { 'issues' }
 
-            let_it_be(:export) { create(:bulk_import_export, :batched, project: project, relation: 'issues') }
+            let_it_be(:export) { create(:bulk_import_export, :batched, project: project, relation: 'issues', user: user) }
 
             it 'returns 400' do
               export.update!(batched: true)
@@ -645,7 +702,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         context 'when export request is batched' do
-          let(:export) { create(:bulk_import_export, :batched, project: project, relation: 'labels') }
+          let(:export) { create(:bulk_import_export, :batched, project: project, relation: 'labels', user: user) }
           let(:upload) { create(:bulk_import_export_upload) }
           let!(:batch) { create(:bulk_import_export_batch, export: export, upload: upload) }
 
@@ -656,6 +713,21 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
             expect(response).to have_gitlab_http_status(:ok)
             expect(response.header['Content-Disposition']).to eq("attachment; filename=\"labels.ndjson.gz\"; filename*=UTF-8''labels.ndjson.gz")
+          end
+
+          it 'creates new audit event' do
+            upload.update!(export_file: fixture_file_upload('spec/fixtures/bulk_imports/gz/labels.ndjson.gz'))
+
+            expect(::Import::BulkImports::Audit::Auditor)
+              .to receive(:new)
+              .with(
+                event_name: ::Import::BulkImports::Audit::Events::EXPORT_BATCH_DOWNLOADED,
+                event_message: 'Direct Transfer relation export batch downloaded',
+                current_user: user,
+                scope: project
+              )
+
+            get api(download_path, user), params: { batched: true, batch_number: batch.batch_number }
           end
 
           context 'when request is to download not batched export' do
@@ -687,12 +759,22 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
             end
           end
         end
+
+        context 'when export is from an offline transfer export' do
+          let_it_be(:export) { create(:bulk_import_export, :offline, project: project, relation: 'labels', user: user) }
+
+          it 'returns 404' do
+            get api(download_path, user)
+
+            expect(response).to have_gitlab_http_status(:not_found)
+          end
+        end
       end
 
       describe 'GET /projects/:id/export_relations/status' do
-        let_it_be(:started_export) { create(:bulk_import_export, :started, project: project, relation: 'labels') }
-        let_it_be(:finished_export) { create(:bulk_import_export, :finished, project: project, relation: 'milestones') }
-        let_it_be(:failed_export) { create(:bulk_import_export, :failed, project: project, relation: 'project_badges') }
+        let_it_be(:started_export) { create(:bulk_import_export, :started, project: project, relation: 'labels', user: user) }
+        let_it_be(:finished_export) { create(:bulk_import_export, :finished, project: project, relation: 'milestones', user: user) }
+        let_it_be(:failed_export) { create(:bulk_import_export, :failed, project: project, relation: 'project_badges', user: user) }
 
         it 'returns a list of relation export statuses' do
           get api(status_path, user)
@@ -716,7 +798,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
 
         context 'when there is a batched export' do
           let_it_be(:batched_export) do
-            create(:bulk_import_export, :started, :batched, project: project, relation: 'issues', batches_count: 1)
+            create(:bulk_import_export, :started, :batched, project: project, relation: 'issues', batches_count: 1, user: user)
           end
 
           let_it_be(:batch) { create(:bulk_import_export_batch, objects_count: 5, export: batched_export) }
@@ -742,6 +824,52 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
               )
             )
           end
+        end
+
+        context 'when the export was started by another user' do
+          let_it_be(:other_user) { create(:user) }
+
+          before_all do
+            project.add_maintainer(other_user)
+          end
+
+          it 'returns not_found when a relation was specified' do
+            get api(status_path, other_user), params: { relation: 'labels' }
+
+            expect(response).to have_gitlab_http_status(:not_found)
+          end
+
+          it 'does not appear in the list of all statuses' do
+            get api(status_path, other_user)
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response).to be_empty
+          end
+        end
+
+        context 'when exports exist from offline transfer exports' do
+          let_it_be(:offline_self_export) do
+            create(:bulk_import_export, :pending, :offline, project: project, relation: 'self', user: user)
+          end
+
+          it 'returns not_found when a relation not yet exported by direct transfer was specified' do
+            get api(status_path, user), params: { relation: 'self' }
+
+            expect(response).to have_gitlab_http_status(:not_found)
+          end
+
+          it 'does not return offline transfer relation ExportService in the list of all statuses' do
+            get api(status_path, user)
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response.pluck('relation')).not_to include('self')
+            expect(json_response.pluck('status')).not_to include(-2)
+          end
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :read_project_relation_export do
+          let(:boundary_object) { project }
+          let(:request) { get api(status_path, personal_access_token: pat) }
         end
       end
 
@@ -781,7 +909,7 @@ RSpec.describe API::ProjectExport, :aggregate_failures, :clean_gitlab_redis_cach
         end
 
         describe 'GET /projects/:id/export_relations/download' do
-          let_it_be(:export) { create(:bulk_import_export, project: project, relation: 'labels') }
+          let_it_be(:export) { create(:bulk_import_export, project: project, relation: 'labels', user: user) }
           let_it_be(:upload) { create(:bulk_import_export_upload, export: export) }
 
           subject(:request) { get api(download_path, user) }

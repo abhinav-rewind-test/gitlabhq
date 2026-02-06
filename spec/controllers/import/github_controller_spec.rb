@@ -59,7 +59,7 @@ RSpec.describe Import::GithubController, feature_category: :importers do
         get :callback
 
         expect(controller).to redirect_to(new_import_url)
-        expect(flash[:alert]).to eq('Access denied to your GitHub account.')
+        expect(flash[:alert]).to eq('Invalid credentials')
       end
     end
 
@@ -77,7 +77,7 @@ RSpec.describe Import::GithubController, feature_category: :importers do
         get :callback, params: { state: "different-state" }
 
         expect(controller).to redirect_to(new_import_url)
-        expect(flash[:alert]).to eq('Access denied to your GitHub account.')
+        expect(flash[:alert]).to eq('Invalid credentials')
       end
 
       it "updates access token if state param is valid" do
@@ -100,20 +100,7 @@ RSpec.describe Import::GithubController, feature_category: :importers do
   end
 
   describe "POST personal_access_token" do
-    let(:experiment) { instance_double(ApplicationExperiment) }
-
     it_behaves_like 'a GitHub-ish import controller: POST personal_access_token'
-
-    it 'tracks default_to_import_tab experiment' do
-      allow(controller)
-        .to receive(:experiment)
-        .with(:default_to_import_tab, actor: user)
-        .and_return(experiment)
-
-      expect(experiment).to receive(:track).with(:authentication, property: :github)
-
-      post :personal_access_token
-    end
   end
 
   describe "GET status" do
@@ -125,10 +112,8 @@ RSpec.describe Import::GithubController, feature_category: :importers do
         end
 
         get :status, params: params, format: :json
-        fine_grained = assigns(:fine_grained)
 
         expect(response).to have_gitlab_http_status(:ok)
-        expect(fine_grained).to be false
         expect(json_response['imported_projects'].size).to eq 0
         expect(json_response['provider_repos'].size).to eq 0
         expect(json_response['incompatible_repos'].size).to eq 0
@@ -186,82 +171,40 @@ RSpec.describe Import::GithubController, feature_category: :importers do
       end
     end
 
-    context 'with invalid access token' do
+    context 'with invalid auth token' do
       let(:client_auth_success) { false }
       let(:client_scope_error) { false }
 
-      it "handles an invalid token" do
+      it "handles the error" do
         get :status, format: :json
 
         expect(session[:"#{provider}_access_token"]).to be_nil
-        expect(controller).to redirect_to(new_import_url)
-        expect(flash[:alert]).to eq("Access denied to your #{Gitlab::ImportSources.title(provider.to_s)} account.")
+        expect(json_response.dig("error", "redirect")).to eq(new_import_url)
+        expect(flash[:alert]).to eq("Invalid credentials")
       end
     end
 
-    context 'with invalid access token scope' do
+    context 'with invalid access token' do
       let(:client_auth_success) { false }
       let(:client_scope_error) { true }
+      let(:docs_link) do
+        ActionController::Base.helpers.link_to(
+          'Learn More',
+          help_page_url(
+            'user/project/import/github.md', anchor: 'use-a-github-personal-access-token'
+          ),
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        )
+      end
 
-      it "handles the invalid scopes" do
+      it "handles the error" do
         get :status, format: :json
 
         expect(session[:"#{provider}_access_token"]).to be_nil
         expect(controller).to redirect_to(new_import_url)
-        expect(flash[:alert]).to eq("Your GitHub access token does not have the correct scope to import. " \
-                                    "Please use a token with the 'repo' scope, and with the 'read:org' " \
-                                    "scope if importing collaborators.")
-      end
-    end
-
-    context 'with fine_grained personal access token' do
-      let(:client_auth_success) { true }
-      let(:provider_token) { 'github_pat_23542334' }
-
-      it "detects the fine grained token" do
-        get :status, format: :json
-
-        expect(session[:"#{provider}_access_token"]).to be(provider_token)
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(assigns(:fine_grained)).to be true
-      end
-    end
-
-    context 'with classic personal access token' do
-      let(:client_auth_success) { true }
-      let(:provider_token) { 'ghp_23542334' }
-
-      it 'sets fine_grained to false' do
-        get :status, format: :json
-
-        expect(session[:"#{provider}_access_token"]).to be(provider_token)
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(assigns(:fine_grained)).to be false
-      end
-    end
-
-    context 'with non-classic personal access token' do
-      let(:client_auth_success) { true }
-      let(:provider_token) { 'ghu_23542334' }
-
-      it 'sets fine grained to false' do
-        get :status, format: :json
-
-        expect(session[:"#{provider}_access_token"]).to be(provider_token)
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(assigns(:fine_grained)).to be false
-      end
-    end
-
-    context 'when a gitea import' do
-      let(:provider) { :gitea }
-      let(:provider_token) { 'github_pat_23542334' }
-
-      it 'skips fine_grained check' do
-        get :status, format: :json
-
-        expect(assigns(:fine_grained)).to be nil
-        expect(controller).not_to receive(:fine_grained?)
+        expect(flash[:alert]).to eq("Your GitHub personal access token does not have the required scope to import. " \
+                                    "#{docs_link}.")
       end
     end
 
@@ -393,9 +336,36 @@ RSpec.describe Import::GithubController, feature_category: :importers do
       allow_next_instance_of(Gitlab::GithubImport::ProjectRelationType) do |instance|
         allow(instance).to receive(:for).with("#{provider_username}/vim").and_return('owned')
       end
+
+      allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).and_return(false)
     end
 
-    it_behaves_like 'a GitHub-ish import controller: POST create'
+    it_behaves_like 'a GitHub-ish import controller: POST create' do
+      context 'when github importer is not enabled' do
+        before do
+          stub_application_setting(import_sources: [])
+        end
+
+        it 'returns 404' do
+          post :create, params: { target_namespace: user.namespace }, format: :json
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
+
+      context 'when request exceeds :github_import rate limits' do
+        before do
+          allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).with(:github_import, anything).and_return(true)
+        end
+
+        it 'throttles the endpoint' do
+          post :create, params: { target_namespace: user.namespace }, format: :json
+
+          expect(response).to have_gitlab_http_status(:too_many_requests)
+          expect(json_response['errors']).to eq('This endpoint has been requested too many times. Try again later.')
+        end
+      end
+    end
 
     it_behaves_like 'project import rate limiter'
   end
@@ -563,7 +533,7 @@ RSpec.describe Import::GithubController, feature_category: :importers do
 
         post :cancel_all
 
-        expect(json_response).to eq([
+        expect(json_response).to match_array([
           {
             'id' => project.id,
             'status' => 'success'

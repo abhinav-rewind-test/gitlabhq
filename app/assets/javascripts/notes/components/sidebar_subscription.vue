@@ -1,12 +1,13 @@
 <script>
-// eslint-disable-next-line no-restricted-imports
-import { mapActions } from 'vuex';
+import { mapActions } from 'pinia';
 import { TYPE_EPIC, TYPE_ISSUE } from '~/issues/constants';
 import { fetchPolicies } from '~/lib/graphql';
 import { confidentialityQueries } from '~/sidebar/queries/constants';
 import { defaultClient as gqlClient } from '~/graphql_shared/issuable_client';
+import { useNotes } from '~/notes/store/legacy_notes';
+import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
 
-export default {
+export default normalizeRender({
   props: {
     noteableData: {
       type: Object,
@@ -43,17 +44,17 @@ export default {
         fetchPolicy: fetchPolicies.CACHE_ONLY,
       })
       .subscribe((res) => {
-        const issuable = res.data?.workspace?.issuable;
+        const issuable = res.data?.namespace?.issuable;
         if (issuable) {
           this.setConfidentiality(issuable.confidential);
         }
       });
   },
   methods: {
-    ...mapActions(['setConfidentiality']),
+    ...mapActions(useNotes, ['setConfidentiality']),
   },
   render() {
     return null;
   },
-};
+});
 </script>

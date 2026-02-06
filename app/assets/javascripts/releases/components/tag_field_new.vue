@@ -4,7 +4,7 @@ import { GlButton, GlTruncate, GlIcon, GlFormGroup, GlPopover } from '@gitlab/ui
 import { mapState, mapActions, mapGetters } from 'vuex';
 import { __, s__ } from '~/locale';
 import { ESC_KEY } from '~/lib/utils/keys';
-
+import { getParameterByName } from '~/lib/utils/url_utility';
 import TagSearch from './tag_search.vue';
 import TagCreate from './tag_create.vue';
 
@@ -22,7 +22,7 @@ export default {
     return { id: 'release-tag-name', newTagName: '', show: false, isInputDirty: false };
   },
   computed: {
-    ...mapState('editNew', ['release', 'showCreateFrom']),
+    ...mapState('editNew', ['release']),
     ...mapGetters('editNew', ['validationErrors', 'isSearching', 'isCreating']),
     title() {
       return this.isCreating ? this.$options.i18n.createTitle : this.$options.i18n.selectTitle;
@@ -36,15 +36,11 @@ export default {
     buttonText() {
       return this.release?.tagName || s__('Release|Search or create tag name');
     },
-    buttonVariant() {
-      return this.showTagNameValidationError ? 'danger' : 'default';
-    },
-    createText() {
-      return this.newTagName ? this.$options.i18n.createTag : this.$options.i18n.typeNew;
-    },
   },
   mounted() {
-    this.newTagName = this.release?.tagName || '';
+    const selectedTagName = getParameterByName('tag_name');
+    this.newTagName = selectedTagName || this.release?.tagName || '';
+    this.updateReleaseTagName(this.newTagName);
   },
   methods: {
     ...mapActions('editNew', [
@@ -102,7 +98,7 @@ export default {
 <template>
   <div class="row">
     <gl-form-group
-      class="col-md-4 col-sm-10"
+      class="gl-col-md-4 gl-col-sm-10"
       :label="$options.i18n.label"
       :label-for="id"
       :optional-text="$options.i18n.required"
@@ -110,8 +106,8 @@ export default {
       :invalid-feedback="tagFeedback"
       optional
     >
-      <gl-button :id="id" class="gl-w-30 gl-px-0!" @click="showPopover">
-        <span class="gl-w-28 gl-display-flex gl-justify-content-space-between">
+      <gl-button :id="id" class="gl-w-30 !gl-px-0" @click="showPopover">
+        <span class="gl-flex gl-w-28 gl-justify-between">
           <gl-truncate :text="buttonText" class="gl-max-w-26" />
           <gl-icon class="gl-button-icon gl-new-dropdown-chevron" name="chevron-down" />
         </span>
@@ -120,7 +116,7 @@ export default {
         :show="show"
         :target="id"
         :title="title"
-        :css-classes="['gl-z-index-200', 'release-tag-selector']"
+        :css-classes="['gl-z-200', 'release-tag-selector']"
         placement="bottom"
         triggers="manual"
         container="content-body"
@@ -128,7 +124,7 @@ export default {
         @close-button-clicked="hidePopover"
         @hide.once="markInputAsDirty"
       >
-        <div class="gl-border-t-solid gl-border-t-1 gl-border-gray-200" @keyup="onPopoverKeyUp">
+        <div class="gl-border-t-1 gl-border-strong gl-border-t-solid" @keyup="onPopoverKeyUp">
           <tag-create
             v-if="isCreating"
             v-model="newTagName"

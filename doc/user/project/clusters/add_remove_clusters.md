@@ -1,36 +1,40 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Add a cluster using cluster certificates (deprecated)
 ---
 
-# Add a cluster using cluster certificates (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed
 
-> - [Deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/327908) in GitLab 14.0.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/327908) in GitLab 14.0.
-To create and manage a new cluster use [Infrastructure as Code](../../infrastructure/iac/index.md).
+{{< history >}}
+
+- [Deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/327908) in GitLab 14.0.
+
+{{< /history >}}
+
+> [!warning]
+> This feature was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/327908) in GitLab 14.0.
+> To create and manage a new cluster use [Infrastructure as Code](../../infrastructure/iac/_index.md).
 
 ## Disable a cluster
 
 When you successfully connect an existing cluster using cluster certificates, the cluster connection to GitLab becomes enabled. To disable it:
 
 1. Go to your:
-   - Project's **{cloud-gear}** **Operate > Kubernetes clusters** page, for a project-level cluster.
-   - Group's **{cloud-gear}** **Kubernetes** page, for a group-level cluster.
-   - The Admin Area's **Kubernetes** page, for an instance-level cluster.
+   - Project's {{< icon name="cloud-gear" >}} **Operate** > **Kubernetes clusters** page, for a project-level cluster.
+   - Group's {{< icon name="cloud-gear" >}} **Kubernetes** page, for a group-level cluster.
+   - The **Admin** area's **Kubernetes** page, for an instance-level cluster.
 1. Select the name of the cluster you want to disable.
 1. Toggle **GitLab Integration** off (in gray).
 1. Select **Save changes**.
 
 ## Remove a cluster
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/26815) in GitLab 12.6, you can remove cluster integrations and resources.
 
 When you remove a cluster integration, you only remove the cluster relationship
 to GitLab, not the cluster. To remove the cluster itself, go to your cluster's
@@ -53,9 +57,12 @@ To remove the Kubernetes cluster integration:
 
 ### Remove clusters by using the Rails console
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 [Start a Rails console session](../../../administration/operations/rails_console.md#starting-a-rails-console-session).
 

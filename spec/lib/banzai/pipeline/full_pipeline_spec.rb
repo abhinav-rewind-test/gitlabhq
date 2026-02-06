@@ -2,8 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning do
+RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :markdown do
+  include RepoHelpers
   using RSpec::Parameterized::TableSyntax
+
+  it_behaves_like 'sanitize pipeline'
 
   describe 'References' do
     let(:project) { create(:project, :public) }
@@ -25,6 +28,60 @@ RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning 
       markdown = "[#{link_label}](#{issue.to_reference})"
       result = described_class.to_html(markdown, project: project)
       expect(result).not_to include(link_label)
+    end
+
+    it 'prevents xss by not replacing the same reference in one anchor multiple times' do
+      reference_link = ::Gitlab::UrlBuilder.instance.issue_url(issue)
+      markdown = <<~TEXT
+        <div>
+        <a href="#{reference_link}<i>
+        <a alt='&quot;#{reference_link}'></a>
+        </i>">#{reference_link}<i>
+        <a alt='"#{reference_link}'></a></i></a>
+        </div>
+      TEXT
+
+      markdown.delete!("\n")
+
+      # Part of understanding this spec means knowing how the above is actually treated
+      # by the FullPipeline.  The PlainMarkdownPipeline runs first and produces the DOM
+      # which is actually operated on by the GfmPipeline.
+      #
+      # Here we recreate the PlainMarkdownPipeline's effects by themselves and assert the
+      # result, to clarify what the malicious input is interpreted as:
+
+      html_after_plain_markdown_pipeline = Banzai::Pipeline::PlainMarkdownPipeline.to_html(markdown, project:)
+      expect(html_after_plain_markdown_pipeline).to eq_html(<<-HTML, trim_text_nodes: true)
+        <div>
+          <a href="#{reference_link}&lt;i&gt;&lt;a%20alt='&quot;#{reference_link}'&gt;&lt;/a&gt;&lt;/i&gt;">
+            #{reference_link}
+            <i>
+              <a alt='"#{reference_link}'></a>
+            </i>
+          </a>
+        </div>
+      HTML
+
+      result = described_class.to_html(markdown, project: project)
+      expect(result).to include "<a alt='\"#{reference_link}'></a>"
+
+      # As above, we assert the full result to clarify the full result. We used to interpret
+      # this input as a valid reference link, which eventually lead to the original XSS whose
+      # fix this spec initially accompanied.
+      #
+      # We no longer do; we do not compare the full inner HTML of the link with the href
+      # attribute, but only its textual contents.
+      expect(result).to eq_html(<<-HTML, trim_text_nodes: true)
+        <div>
+          <a href="#{reference_link}&lt;i&gt;&lt;a%20alt='%22#{reference_link}'&gt;&lt;/a&gt;&lt;/i&gt;"
+             rel="nofollow noreferrer noopener" target="_blank">
+            #{reference_link}
+            <i>
+              <a alt='"#{reference_link}'></a>
+            </i>
+          </a>
+        </div>
+      HTML
     end
 
     it 'escapes the data-original attribute on a reference' do
@@ -53,13 +110,13 @@ RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning 
         <section data-footnotes class="footnotes">
         <ol>
         <li id="fn-1-#{identifier}">
-        <p>one <a href="#fnref-1-#{identifier}" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1" class="footnote-backref"><gl-emoji title="leftwards arrow with hook" data-name="leftwards_arrow_with_hook" data-unicode-version="1.1">↩</gl-emoji></a></p>
+        <p>one <a href="#fnref-1-#{identifier}" data-footnote-backref data-footnote-backref-idx="1" aria-label="Back to reference 1" title="Back to reference 1" class="footnote-backref">↩</a></p>
         </li>
         <li id="fn-%F0%9F%98%84second-#{identifier}">
-        <p>two <a href="#fnref-%F0%9F%98%84second-#{identifier}" data-footnote-backref data-footnote-backref-idx="2" aria-label="Back to reference 2" class="footnote-backref"><gl-emoji title="leftwards arrow with hook" data-name="leftwards_arrow_with_hook" data-unicode-version="1.1">↩</gl-emoji></a></p>
+        <p>two <a href="#fnref-%F0%9F%98%84second-#{identifier}" data-footnote-backref data-footnote-backref-idx="2" aria-label="Back to reference 2" title="Back to reference 2" class="footnote-backref">↩</a></p>
         </li>
         <li id="fn-_twenty-#{identifier}">
-        <p>twenty <a href="#fnref-_twenty-#{identifier}" data-footnote-backref data-footnote-backref-idx="3" aria-label="Back to reference 3" class="footnote-backref"><gl-emoji title="leftwards arrow with hook" data-name="leftwards_arrow_with_hook" data-unicode-version="1.1">↩</gl-emoji></a></p>
+        <p>twenty <a href="#fnref-_twenty-#{identifier}" data-footnote-backref data-footnote-backref-idx="3" aria-label="Back to reference 3" title="Back to reference 3" class="footnote-backref">↩</a></p>
         </li>
         </ol>
         </section>
@@ -148,7 +205,7 @@ RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning 
     end
 
     context 'with [[_TOC_]] as tag' do
-      it_behaves_like 'table of contents tag', '[[_TOC_]]', '[[<em>TOC</em>]]'
+      it_behaves_like 'table of contents tag', '[[_TOC_]]', '<a href="_TOC_" data-wikilink="true">_TOC_</a>'
     end
 
     context 'with [toc] as tag' do
@@ -162,6 +219,8 @@ RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning 
     let_it_be(:issue)   { create(:issue, project: project) }
 
     it 'does not convert an escaped reference' do
+      stub_commonmark_sourcepos_disabled
+
       markdown = "\\#{issue.to_reference}"
       output = described_class.to_html(markdown, project: project)
 
@@ -208,13 +267,118 @@ RSpec.describe Banzai::Pipeline::FullPipeline, feature_category: :team_planning 
     end
   end
 
-  describe 'cmark-gfm and autlolinks' do
-    it 'does not hang with significant number of unclosed image links' do
-      markdown = '![a ' * 300000
+  context 'when input is malicious' do
+    let_it_be(:markdown1) { '![a ' * 3 }
+    let_it_be(:markdown2) { "$1$\n" * 190000 }
+    let_it_be(:markdown3) { "[^1]\n[^1]:\n" * 100000 }
+    let_it_be(:markdown4) { "[](a)" * 190000 }
+    let_it_be(:markdown5) { "|x|x|x|x|x|\n-|-|-|-|-|\n|a|\n|a|\n|a|\n" * 6900 }
+    let_it_be(:markdown6) { "`a^2+b^2=c^2` + " * 56000 }
+    let_it_be(:markdown7) { ':y: ' * 190000 }
+    let_it_be(:markdown8) { '<img>' * 100000 }
 
-      expect do
-        Timeout.timeout(2.seconds) { described_class.to_html(markdown, project: nil) }
-      end.not_to raise_error
+    where(:payload, :markdown) do
+      "'![a ' * 3"                                        | ref(:markdown1)
+      '"$1$\n" * 190000'                                  | ref(:markdown2)
+      '"[^1]\n[^1]:\n" * 100000'                          | ref(:markdown3)
+      '"[](a)" * 190000'                                  | ref(:markdown4)
+      '"|x|x|x|x|x|\n-|-|-|-|-|\n|a|\n|a|\n|a|\n" * 6900' | ref(:markdown5)
+      '"`a^2+b^2=c^2` + " * 56000'                        | ref(:markdown5)
+      "':y: ' * 190000"                                   | ref(:markdown7)
+      "'<img>' * 100000"                                  | ref(:markdown8)
+    end
+
+    with_them do
+      it 'is not long running' do
+        expect do
+          Timeout.timeout(BANZAI_FILTER_TIMEOUT_MAX) { described_class.to_html(markdown, project: nil) }
+        end.not_to raise_error
+      end
+    end
+  end
+
+  describe 'when using include in code segements' do
+    let_it_be(:project)        { create(:project, :repository) }
+    let_it_be(:ref)            { 'markdown' }
+    let_it_be(:requested_path) { '/' }
+    let_it_be(:commit)         { project.commit(ref) }
+    let_it_be(:context) do
+      {
+        commit: commit,
+        project: project,
+        ref: ref,
+        text_source: :blob,
+        requested_path: requested_path,
+        no_sourcepos: true
+      }
+    end
+
+    let_it_be(:project_files) do
+      {
+        'diagram.puml' => "@startuml\nBob -> Sara : Hello\n@enduml",
+        'code.yaml' => "---\ntest: true"
+      }
+    end
+
+    let(:input) do
+      <<~MD
+        ```plantuml
+        ::include{file=diagram.puml}
+        ```
+        ```yaml
+        ::include{file=code.yaml}
+        ```
+      MD
+    end
+
+    around do |example|
+      create_and_delete_files(project, project_files, branch_name: ref) do
+        example.run
+      end
+    end
+
+    subject(:output) { described_class.call(input, context)[:output].to_html }
+
+    it 'renders PlanUML' do
+      stub_application_setting(plantuml_enabled: true, plantuml_url: "http://localhost:8080")
+
+      is_expected.to include 'http://localhost:8080/png/U9npA2v9B2efpStXSifFKj2rKmXEB4fKi5BmICt9oUToICrB0Se10EdD34a0'
+    end
+
+    it 'renders code' do
+      is_expected.to include 'language-yaml'
+      is_expected.to include '<span class="na">test</span>'
+      is_expected.to include '<span class="kc">true</span>'
+    end
+  end
+
+  describe 'math does not get rendered as link' do
+    [
+      "$[(a+b)c](d+e)$",
+      '$$[(a+b)c](d+e)$$',
+      '$`[(a+b)c](d+e)`$'
+    ].each do |input|
+      it "when using '#{input}' as input" do
+        result = described_class.call(input, project: nil)[:output]
+        expect(result.css('a').first).to be_nil
+      end
+    end
+  end
+
+  describe 'pathological input' do
+    it 'does not crash on deeply nested emphasis when run in a thread' do
+      thread = Thread.start do
+        n = 5000
+        markdown = ("*a **a " * n) + (" a** a*" * n)
+
+        rendered = described_class.to_html(markdown, project: nil)
+
+        # Nokogiri (libxml2) by default will limit parse depth to 256; we get
+        # the outer <p> tag, and then 127 each of the alternating <em> and <strong>.
+        expect(rendered).to include("<em").exactly(127).times
+        expect(rendered).to include("<strong").exactly(127).times
+      end
+      thread.join
     end
   end
 end

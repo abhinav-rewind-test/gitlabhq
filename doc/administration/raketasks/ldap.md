@@ -1,14 +1,17 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+gitlab_dedicated: no
+title: LDAP Rake tasks
 ---
 
-# LDAP Rake tasks
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 The following are LDAP-related Rake tasks.
 
@@ -19,17 +22,25 @@ The LDAP check Rake task tests the `bind_dn` and `password` credentials
 executed as part of the `gitlab:check` task, but can run independently
 using the command below.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:check
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:check
+```
 
-  ```shell
-  sudo -u git -H bundle exec rake gitlab:ldap:check RAILS_ENV=production
-  ```
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:check
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 By default, the task returns a sample of 100 LDAP users. Change this
 limit by passing a number to the check task:
@@ -40,32 +51,41 @@ rake gitlab:ldap:check[50]
 
 ## Run a group sync
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/14735) in GitLab 12.2.
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 The following task runs a [group sync](../auth/ldap/ldap_synchronization.md#group-sync) immediately.
 This is valuable when you'd like to update all configured group memberships against LDAP without
 waiting for the next scheduled group sync to be run.
 
-NOTE:
-If you'd like to change the frequency at which a group sync is performed,
-[adjust the cron schedule](../auth/ldap/ldap_synchronization.md#adjust-ldap-group-sync-schedule)
-instead.
+> [!note]
+> If you'd like to change the frequency at which a group sync is performed,
+> [adjust the cron schedule](../auth/ldap/ldap_synchronization.md#adjust-ldap-sync-schedule)
+> instead.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:group_sync
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:group_sync
+```
 
-  ```shell
-  bundle exec rake gitlab:ldap:group_sync
-  ```
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:group_sync
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ## Rename a provider
 
@@ -84,27 +104,35 @@ main:
   host: '_your_ldap_server'
   port: 389
   uid: 'sAMAccountName'
-  ...
+  # ...
 ```
 
 `main` is the LDAP server ID. Together, the unique provider is `ldapmain`.
 
-WARNING:
-If you input an incorrect new provider, users cannot sign in. If this happens,
-run the task again with the incorrect provider as the `old_provider` and the
-correct provider as the `new_provider`.
+> [!warning]
+> If you input an incorrect new provider, users cannot sign in. If this happens,
+> run the task again with the incorrect provider as the `old_provider` and the
+> correct provider as the `new_provider`.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:rename_provider[old_provider,new_provider]
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:rename_provider[old_provider,new_provider]
+```
 
-  ```shell
-  bundle exec rake gitlab:ldap:rename_provider[old_provider,new_provider] RAILS_ENV=production
-  ```
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:rename_provider[old_provider,new_provider]
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### Example
 
@@ -131,19 +159,27 @@ User identities were successfully updated
 If you do not specify an `old_provider` and `new_provider` the task prompts you
 for them:
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:rename_provider
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:rename_provider
+```
 
-  ```shell
-  bundle exec rake gitlab:ldap:rename_provider RAILS_ENV=production
-  ```
+{{< /tab >}}
 
-**Example output:**
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:rename_provider
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
+**Example output**:
 
 ```plaintext
 What is the old provider? Ex. 'ldapmain': ldapmain
@@ -159,26 +195,34 @@ sudo gitlab-rake gitlab:ldap:rename_provider[old_provider,new_provider] force=ye
 
 ## Secrets
 
-GitLab can use [LDAP configuration secrets](../auth/ldap/index.md#use-encrypted-credentials) to read from an encrypted file.
+GitLab can use [LDAP configuration secrets](../auth/ldap/_index.md#use-encrypted-credentials) to read from an encrypted file.
 The following Rake tasks are provided for updating the contents of the encrypted file.
 
 ### Show secret
 
 Show the contents of the current LDAP secrets.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:secret:show
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:secret:show
+```
 
-  ```shell
-  bundle exec rake gitlab:ldap:secret:show RAILS_ENV=production
-  ```
+{{< /tab >}}
 
-**Example output:**
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:secret:show
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
+
+**Example output**:
 
 ```plaintext
 main:
@@ -190,63 +234,79 @@ main:
 
 Opens the secret contents in your editor, and writes the resulting content to the encrypted secret file when you exit.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  sudo gitlab-rake gitlab:ldap:secret:edit EDITOR=vim
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+sudo gitlab-rake gitlab:ldap:secret:edit EDITOR=vim
+```
 
-  ```shell
-  bundle exec rake gitlab:ldap:secret:edit RAILS_ENV=production EDITOR=vim
-  ```
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+sudo RAILS_ENV=production EDITOR=vim -u git -H bundle exec rake gitlab:ldap:secret:edit
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### Write raw secret
 
 Write new secret content by providing it on STDIN.
 
-- Linux package installations:
+{{< tabs >}}
 
-  ```shell
-  echo -e "main:\n  password: '123'" | sudo gitlab-rake gitlab:ldap:secret:write
-  ```
+{{< tab title="Linux package (Omnibus)" >}}
 
-- Self-compiled installations:
+```shell
+echo -e "main:\n  password: '123'" | sudo gitlab-rake gitlab:ldap:secret:write
+```
 
-  ```shell
-  echo -e "main:\n  password: '123'" | bundle exec rake gitlab:ldap:secret:write RAILS_ENV=production
-  ```
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
+
+```shell
+echo -e "main:\n  password: '123'" | sudo RAILS_ENV=production -u git -H bundle exec rake gitlab:ldap:secret:write
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### Secrets examples
 
-**Editor example**
+- Editor example:
 
-The write task can be used in cases where the edit command does not work with your editor:
+  The write task can be used in cases where the edit command does not work with your editor:
 
-```shell
-# Write the existing secret to a plaintext file
-sudo gitlab-rake gitlab:ldap:secret:show > ldap.yaml
-# Edit the ldap file in your editor
-...
-# Re-encrypt the file
-cat ldap.yaml | sudo gitlab-rake gitlab:ldap:secret:write
-# Remove the plaintext file
-rm ldap.yaml
-```
+  ```shell
+  # Write the existing secret to a plaintext file
+  sudo gitlab-rake gitlab:ldap:secret:show > ldap.yaml
+  # Edit the ldap file in your editor
+  ...
+  # Re-encrypt the file
+  cat ldap.yaml | sudo gitlab-rake gitlab:ldap:secret:write
+  # Remove the plaintext file
+  rm ldap.yaml
+  ```
 
-**KMS integration example**
+- KMS integration example:
 
-It can also be used as a receiving application for content encrypted with a KMS:
+  It can also be used as a receiving application for content encrypted with a KMS:
 
-```shell
-gcloud kms decrypt --key my-key --keyring my-test-kms --plaintext-file=- --ciphertext-file=my-file --location=us-west1 | sudo gitlab-rake gitlab:ldap:secret:write
-```
+  ```shell
+  gcloud kms decrypt --key my-key --keyring my-test-kms --plaintext-file=- --ciphertext-file=my-file --location=us-west1 | sudo gitlab-rake gitlab:ldap:secret:write
+  ```
 
-**Google Cloud secret integration example**
+- Google Cloud secret integration example:
 
-It can also be used as a receiving application for secrets out of Google Cloud:
+  It can also be used as a receiving application for secrets out of Google Cloud:
 
-```shell
-gcloud secrets versions access latest --secret="my-test-secret" > $1 | sudo gitlab-rake gitlab:ldap:secret:write
-```
+  ```shell
+  gcloud secrets versions access latest --secret="my-test-secret" > $1 | sudo gitlab-rake gitlab:ldap:secret:write
+  ```

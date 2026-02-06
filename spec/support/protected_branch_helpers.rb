@@ -2,8 +2,15 @@
 
 module ProtectedBranchHelpers
   def set_allowed_to(operation, option = 'Maintainers', form: '.js-new-protected-branch')
+    # Maximize window to accommodate dropdown
+    page.driver.browser.manage.window.maximize
+
+    # Make sure dropdown is in view
+    execute_script("document.querySelector('#{form}').scrollIntoView({ block: 'start' })")
+
+    selector = ".js-allowed-to-#{operation}:not([disabled])"
     within(form) do
-      within_select(".js-allowed-to-#{operation}:not([disabled])") do
+      within_select(selector) do
         Array(option).each { |opt| click_on(opt) }
       end
     end
@@ -24,19 +31,26 @@ module ProtectedBranchHelpers
     set_allowed_to('push')
   end
 
-  def click_on_protect
-    click_on "Protect"
+  def click_on_protect(form: '.js-new-protected-branch')
+    within(form) do
+      click_on('Protect')
+    end
     wait_for_requests
   end
 
   def within_select(selector, &block)
-    select_input = find(selector)
+    # Wait for dropdown to be enabled before any interaction
+    select_input = find("#{selector}:not([aria-disabled='true'])")
+
     select_input.click
     wait_for_requests
 
-    within('.dropdown .dropdown-menu.show', &block)
+    # Explicitly wait for dropdown to exist before using within
+    dropdown_menu = find('.dropdown .dropdown-menu.show', visible: true)
+    within(dropdown_menu, &block)
 
-    # Enhanced select is used in EE, therefore an extra click is needed.
-    select_input.click if select_input['aria-expanded'] == 'true'
+    # In CE, the dropdown is closed automatically when an element is selected.
+    # Enhanced select is used in EE, therefore we escape to close the dropdown.
+    send_keys :escape if select_input['aria-expanded'] == 'true'
   end
 end

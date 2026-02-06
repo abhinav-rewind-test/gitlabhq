@@ -8,10 +8,9 @@ module Packages
       included do
         include Sortable
         include FileStoreMounter
-        include IgnorableColumns
 
         def self.container_foreign_key
-          "#{container_type}_id".to_sym
+          :"#{container_type}_id"
         end
 
         def self.distribution_class
@@ -21,8 +20,10 @@ module Packages
         belongs_to :component, class_name: "Packages::Debian::#{container_type.capitalize}Component", inverse_of: :files
         belongs_to :architecture, class_name: "Packages::Debian::#{container_type.capitalize}Architecture", inverse_of: :files, optional: true
 
-        enum file_type: { packages: 1, sources: 2, di_packages: 3 }
-        enum compression_type: { gz: 1, bz2: 2, xz: 3 }
+        delegate container_type, to: :component
+
+        enum :file_type, { packages: 1, sources: 2, di_packages: 3 }
+        enum :compression_type, { gz: 1, bz2: 2, xz: 3 }
 
         validates :component, presence: true
         validates :file_type, presence: true

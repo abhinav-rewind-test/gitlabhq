@@ -29,19 +29,22 @@ RSpec.describe Gitlab::Pagination::CursorBasedKeyset do
 
   describe '.enforced_for_type?' do
     let_it_be(:project) { create(:project) }
+    let_it_be(:current_user) { nil }
 
-    subject { described_class.enforced_for_type?(project, relation) }
+    subject { described_class.enforced_for_type?(project, relation, current_user) }
 
-    context 'when relation is Group' do
-      let(:relation) { Group.all }
-
-      it { is_expected.to be true }
+    where(:relation, :result) do
+      [
+        [Group.all, true],
+        [User.all, true],
+        [AuditEvent.all, false]
+      ]
     end
 
-    context 'when relation is AuditEvent' do
-      let(:relation) { AuditEvent.all }
-
-      it { is_expected.to be false }
+    with_them do
+      it "returns true only for enforced types" do
+        expect(subject).to be result
+      end
     end
 
     context 'when relation is Ci::Build' do
@@ -61,6 +64,36 @@ RSpec.describe Gitlab::Pagination::CursorBasedKeyset do
 
       context 'when feature fllag enforce_ci_builds_pagination_limit is disabled' do
         it { is_expected.to be false }
+      end
+    end
+
+    context 'when relation is Project' do
+      let_it_be(:relation) { Project.all }
+
+      context 'when current_user is nil' do
+        it { is_expected.to be(true) }
+
+        context 'when flag enforce_projects_pagination_limit is disabled' do
+          before do
+            stub_feature_flags(enforce_projects_pagination_limit: false)
+          end
+
+          it { is_expected.to be(false) }
+        end
+      end
+
+      context 'when current_user is defined' do
+        let_it_be(:current_user) { create(:user) }
+
+        it { is_expected.to be(false) }
+
+        context 'when flag enforce_projects_pagination_limit is disabled' do
+          before do
+            stub_feature_flags(enforce_projects_pagination_limit: false)
+          end
+
+          it { is_expected.to be(false) }
+        end
       end
     end
   end

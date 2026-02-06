@@ -4,20 +4,25 @@ module Organizations
   class CreateService < ::Organizations::BaseService
     def execute
       return error_no_permissions unless can?(current_user, :create_organization)
+      return error_feature_flag unless Feature.enabled?(:organization_switching, current_user)
 
       add_organization_owner_attributes
-      organization = Gitlab::Database::QueryAnalyzers::PreventCrossDatabaseModification
+      organization = Organization.new(params)
+
+      saved = Gitlab::Database::QueryAnalyzers::PreventCrossDatabaseModification
                        .allow_cross_database_modification_within_transaction(
                          url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/438757'
                        ) do
-        Organization.create(params)
+        organization.save
       end
 
-      if organization.persisted?
+      if saved
         ServiceResponse.success(payload: { organization: organization })
       else
         error_creating(organization)
       end
+    rescue Cells::TransactionRecord::Error
+      error_creating(organization)
     end
 
     private
@@ -34,6 +39,11 @@ module Organizations
       message = organization.errors.full_messages || _('Failed to create organization')
 
       ServiceResponse.error(message: Array(message))
+    end
+
+    def error_feature_flag
+      # Don't translate feature flag error because it's temporary.
+      ServiceResponse.error(message: ['Feature flag `organization_switching` is not enabled for this user.'])
     end
   end
 end

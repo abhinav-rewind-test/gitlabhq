@@ -3,7 +3,7 @@
 module Gitlab
   module Database
     module Partitioning
-      class SlidingListStrategy
+      class SlidingListStrategy < BaseStrategy
         attr_reader :model, :partitioning_key, :next_partition_if, :detach_partition_if, :analyze_interval
 
         delegate :table_name, to: :model
@@ -19,12 +19,16 @@ module Gitlab
         end
 
         def current_partitions
+          ensure_connection_set
+
           Gitlab::Database::PostgresPartition.for_parent_table(table_name).map do |partition|
             SingleNumericListPartition.from_sql(table_name, partition.name, partition.condition)
           end.sort
         end
 
         def missing_partitions
+          ensure_connection_set
+
           if no_partitions_exist?
             [initial_partition]
           elsif next_partition_if.call(active_partition)
@@ -35,14 +39,20 @@ module Gitlab
         end
 
         def initial_partition
+          ensure_connection_set
+
           SingleNumericListPartition.new(table_name, 1)
         end
 
         def next_partition
+          ensure_connection_set
+
           SingleNumericListPartition.new(table_name, active_partition.value + 1)
         end
 
         def extra_partitions
+          ensure_connection_set
+
           possibly_extra = current_partitions[0...-1] # Never consider the most recent partition
 
           extra = possibly_extra.take_while { |p| detach_partition_if.call(p) }
@@ -62,30 +72,56 @@ module Gitlab
           extra
         end
 
+        # The partition manager is initialized with both connections and creates
+        # partitions in both databases, but here we change the default on the model's
+        # connection, meaning that it will not respect the manager's connection config
+        # so we need to check that it's changing the default only when called
+        # with the model's connection. Also since we prevent writes in the other
+        # database, we should not change the default there.
+        #
         def after_adding_partitions
+          ensure_connection_set
+
+          if different_connection_names?
+            Gitlab::AppLogger.warn(
+              message: 'Skipping changing column default because connections mismatch',
+              event: :partition_manager_after_adding_partitions_connection_mismatch,
+              model_connection_name: Gitlab::Database.db_config_name(model.connection),
+              shared_connection_name: Gitlab::Database.db_config_name(Gitlab::Database::SharedModel.connection),
+              table_name: model.table_name
+            )
+
+            return
+          end
+
           active_value = active_partition.value
           model.connection.change_column_default(model.table_name, partitioning_key, active_value)
         end
 
         def active_partition
+          ensure_connection_set
+
           # The current partitions list is sorted, so the last partition has the highest value
           # This is the only partition that receives inserts.
           current_partitions.last
         end
 
         def no_partitions_exist?
+          ensure_connection_set
+
           current_partitions.empty?
         end
 
         def validate_and_fix
-          unless model.connection_db_config.name ==
-              Gitlab::Database.db_config_name(Gitlab::Database::SharedModel.connection)
+          ensure_connection_set
 
+          if different_connection_names?
             Gitlab::AppLogger.warn(
               message: 'Skipping fixing column default because connections mismatch',
               event: :partition_manager_validate_and_fix_connection_mismatch,
               model_connection_name: Gitlab::Database.db_config_name(model.connection),
-              shared_connection_name: Gitlab::Database.db_config_name(Gitlab::Database::SharedModel.connection)
+              shared_connection_name: Gitlab::Database.db_config_name(Gitlab::Database::SharedModel.connection),
+              table_name: model.table_name
             )
 
             return
@@ -127,6 +163,11 @@ module Gitlab
 
         private
 
+        def different_connection_names?
+          model.connection_db_config.name !=
+            Gitlab::Database.db_config_name(Gitlab::Database::SharedModel.connection)
+        end
+
         def current_default_value
           column_name = model.connection.quote(partitioning_key)
           table_name = model.connection.quote(model.table_name)
@@ -154,11 +195,11 @@ module Gitlab
         end
 
         def with_lock_retries(&block)
-          Gitlab::Database::WithLockRetries.new(
+          Gitlab::Database::Partitioning::WithPartitioningLockRetries.new(
             klass: self.class,
             logger: Gitlab::AppLogger,
             connection: model.connection
-          ).run(&block)
+          ).run(raise_on_exhaustion: true, &block)
         end
       end
     end

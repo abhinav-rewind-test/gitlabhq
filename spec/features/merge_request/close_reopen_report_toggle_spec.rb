@@ -8,18 +8,20 @@ RSpec.describe 'Issuables Close/Reopen/Report toggle', feature_category: :code_r
   let(:user) { create(:user) }
 
   context 'on a merge request' do
-    let(:container) { find('.detail-page-header-actions') }
+    let(:container) { find('.detail-page-header') }
     let(:project) { create(:project, :repository) }
     let(:issuable) { create(:merge_request, source_project: project) }
 
     before do
       project.add_maintainer(user)
-      login_as user
+      sign_in user
     end
 
     context 'when user has permission to update', :js do
       before do
         visit project_merge_request_path(project, issuable)
+
+        wait_for_requests
       end
 
       context 'close/reopen/report toggle' do

@@ -17,7 +17,7 @@ import HistoryItem from '~/vue_shared/components/registry/history_item.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import waitForPromises from 'helpers/wait_for_promises';
 import getPackagePipelines from '~/packages_and_registries/package_registry/graphql/queries/get_package_pipelines.query.graphql';
-import Tracking from '~/tracking';
+import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
 import {
   TRACKING_ACTION_CLICK_PIPELINE_LINK,
   TRACKING_ACTION_CLICK_COMMIT_LINK,
@@ -68,7 +68,6 @@ describe('Package History', () => {
   const findElementLink = (container) => container.findComponent(GlLink);
   const findElementTimeAgo = (container) => container.findComponent(TimeAgoTooltip);
   const findPackageHistoryAlert = () => wrapper.findComponent(GlAlert);
-  const findTitle = () => wrapper.findByTestId('title');
   const findTimeline = () => wrapper.findByTestId('timeline');
 
   it('renders the loading container when loading', () => {
@@ -83,16 +82,6 @@ describe('Package History', () => {
 
     expect(findPackageHistoryLoader().exists()).toBe(false);
     expect(Sentry.captureException).not.toHaveBeenCalled();
-  });
-
-  it('has the correct title', async () => {
-    mountComponent();
-    await waitForPromises();
-
-    const title = findTitle();
-
-    expect(title.exists()).toBe(true);
-    expect(title.text()).toBe('History');
   });
 
   it('has a timeline container', async () => {
@@ -127,10 +116,10 @@ describe('Package History', () => {
 
   describe.each`
     name                         | amount                         | icon          | text                                                                                                          | timeAgoTooltip             | link
-    ${'created-on'}              | ${HISTORY_PIPELINES_LIMIT + 2} | ${'clock'}    | ${'@gitlab-org/package-15 version 1.0.0 was first created'}                                                   | ${packageData().createdAt} | ${null}
+    ${'created-on'}              | ${HISTORY_PIPELINES_LIMIT + 2} | ${'clock'}    | ${'Version 1.0.0 was first created'}                                                                          | ${packageData().createdAt} | ${null}
     ${'first-pipeline-commit'}   | ${HISTORY_PIPELINES_LIMIT + 2} | ${'commit'}   | ${'Created by commit b83d6e39 on branch master'}                                                              | ${null}                    | ${onePipeline.commitPath}
     ${'first-pipeline-pipeline'} | ${HISTORY_PIPELINES_LIMIT + 2} | ${'pipeline'} | ${'Built by pipeline #1 triggered  by Administrator'}                                                         | ${onePipeline.createdAt}   | ${onePipeline.path}
-    ${'published'}               | ${HISTORY_PIPELINES_LIMIT + 2} | ${'package'}  | ${'Published to the baz project Package Registry'}                                                            | ${packageData().createdAt} | ${null}
+    ${'published'}               | ${HISTORY_PIPELINES_LIMIT + 2} | ${'package'}  | ${'Published to the baz project package registry'}                                                            | ${packageData().createdAt} | ${null}
     ${'archived'}                | ${HISTORY_PIPELINES_LIMIT + 2} | ${'history'}  | ${'Package has 1 archived update'}                                                                            | ${null}                    | ${null}
     ${'archived'}                | ${HISTORY_PIPELINES_LIMIT + 3} | ${'history'}  | ${'Package has 2 archived updates'}                                                                           | ${null}                    | ${null}
     ${'pipeline-entry'}          | ${HISTORY_PIPELINES_LIMIT + 2} | ${'pencil'}   | ${'Package updated by commit b83d6e39 on branch master, built by pipeline #3, and published to the registry'} | ${packageData().createdAt} | ${onePipeline.commitPath}
@@ -194,8 +183,12 @@ describe('Package History', () => {
     const category = 'UI::Packages';
 
     beforeEach(() => {
+      eventSpy = mockTracking(undefined, undefined, jest.spyOn);
       mountComponent();
-      eventSpy = jest.spyOn(Tracking, 'event');
+    });
+
+    afterEach(() => {
+      unmockTracking();
     });
 
     it('clicking pipeline link tracks the right action', () => {

@@ -12,15 +12,22 @@ export const initAdminNewRunner = (selector = '#js-admin-new-runner') => {
     return null;
   }
 
+  const { runnersPath } = el.dataset;
+
   const apolloProvider = new VueApollo({
     defaultClient: createDefaultClient(),
   });
 
   return new Vue({
     el,
+    name: 'AdminNewRunnerAppRoot',
     apolloProvider,
     render(h) {
-      return h(AdminNewRunnerApp);
+      return h(AdminNewRunnerApp, {
+        props: {
+          runnersPath,
+        },
+      });
     },
   });
 };

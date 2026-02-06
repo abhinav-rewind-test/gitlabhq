@@ -13,32 +13,13 @@ RSpec.shared_examples 'pipeline schedules checking variables permission' do
   end
 
   shared_examples 'success response' do
-    context 'when enforce_full_refs_for_pipeline_schedules is enabled' do
-      before do
-        stub_feature_flags(enforce_full_refs_for_pipeline_schedules: true)
-      end
-
-      it 'saves values with passed params' do
-        result = service.execute
-
-        expect(result.status).to eq(:success)
-        expect(result.payload).to have_attributes(
-          description: 'desc',
-          ref: "#{Gitlab::Git::BRANCH_REF_PREFIX}patch-x",
-          active: false,
-          cron: '*/1 * * * *',
-          cron_timezone: 'UTC'
-        )
-      end
-    end
-
     it 'saves values with passed params' do
       result = service.execute
 
       expect(result.status).to eq(:success)
       expect(result.payload).to have_attributes(
         description: 'desc',
-        ref: "patch-x",
+        ref: "#{Gitlab::Git::BRANCH_REF_PREFIX}patch-x",
         active: false,
         cron: '*/1 * * * *',
         cron_timezone: 'UTC'
@@ -91,7 +72,7 @@ RSpec.shared_examples 'pipeline schedules checking variables permission' do
 
     context 'when restrict_user_defined_variables is true' do
       before_all do
-        project.update!(restrict_user_defined_variables: true)
+        project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
       end
 
       it_behaves_like 'success response with variables'
@@ -123,7 +104,7 @@ RSpec.shared_examples 'pipeline schedules checking variables permission' do
 
     context 'when restrict_user_defined_variables is true' do
       before_all do
-        project.update!(restrict_user_defined_variables: true)
+        project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
       end
 
       it_behaves_like 'success response'

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Variables::Collection::Item, feature_category: :secrets_management do
+RSpec.describe Gitlab::Ci::Variables::Collection::Item, feature_category: :pipeline_composition do
   let(:variable_key) { 'VAR' }
   let(:variable_value) { 'something' }
   let(:expected_value) { variable_value }
@@ -108,10 +108,6 @@ RSpec.describe Gitlab::Ci::Variables::Collection::Item, feature_category: :secre
   end
 
   describe '#depends_on' do
-    let(:item) { Gitlab::Ci::Variables::Collection::Item.new(**variable) }
-
-    subject { item.depends_on }
-
     context 'table tests' do
       using RSpec::Parameterized::TableSyntax
 
@@ -141,6 +137,10 @@ RSpec.describe Gitlab::Ci::Variables::Collection::Item, feature_category: :secre
       end
 
       with_them do
+        let(:item) { Gitlab::Ci::Variables::Collection::Item.new(**variable) }
+
+        subject { item.depends_on }
+
         it 'contains referenced variable names' do
           is_expected.to eq(expected_depends_on)
         end
@@ -166,6 +166,15 @@ RSpec.describe Gitlab::Ci::Variables::Collection::Item, feature_category: :secre
 
     it 'supports using an active record resource' do
       variable = build(:ci_variable, key: 'CI_VAR', value: '123')
+      resource = described_class.fabricate(variable)
+
+      expect(resource).to be_a(described_class)
+      expect(resource).to eq(key: 'CI_VAR', value: '123', public: false, masked: false)
+    end
+
+    it 'supports using a Ci::PipelineVariableItem object' do
+      pipeline = instance_double(::Ci::Pipeline)
+      variable = ::Ci::PipelineVariableItem.new(pipeline: pipeline, key: 'CI_VAR', value: '123')
       resource = described_class.fabricate(variable)
 
       expect(resource).to be_a(described_class)

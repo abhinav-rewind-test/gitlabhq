@@ -33,7 +33,7 @@ describe('ProjectSelect', () => {
       loading: false,
       multiple: false,
       noResultsText: 'No matching results',
-      placement: 'left',
+      placement: 'bottom-start',
       searchPlaceholder: 'Search projects',
       searchable: true,
       searching: false,
@@ -83,11 +83,11 @@ describe('ProjectSelect', () => {
       await waitForPromises();
 
       allProjects.forEach((project, index) => {
-        expect(findAvatarLabeled(index).attributes()).toMatchObject({
+        expect(findAvatarLabeled(index).props()).toMatchObject({
           src: project.avatar_url,
-          'entity-id': String(project.id),
-          'entity-name': project.name_with_namespace,
-          size: '32',
+          entityId: project.id,
+          entityName: project.name_with_namespace,
+          size: 32,
         });
         expect(findAvatarLabeled(index).props('label')).toBe(project.name_with_namespace);
       });
@@ -105,7 +105,7 @@ describe('ProjectSelect', () => {
       await waitForPromises();
 
       // To be displayed in GlCollapsibleListbox once we implement
-      // https://gitlab.com/gitlab-org/gitlab-ui/-/issues/2132
+      // https://gitlab.com/gitlab-org/gitlab-services/design.gitlab.com/-/issues/2591
       // https://gitlab.com/gitlab-org/gitlab/-/issues/389974
       expect(findGlCollapsibleListbox().text()).toBe('No matching results');
     });

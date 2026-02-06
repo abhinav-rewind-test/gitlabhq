@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
-RSpec.describe Gitlab::Memory::Watchdog, :aggregate_failures, feature_category: :cloud_connector do
+RSpec.describe Gitlab::Memory::Watchdog, :aggregate_failures, feature_category: :durability_metrics do
   context 'watchdog' do
     let(:configuration) { instance_double(described_class::Configuration) }
     let(:handler) { instance_double(described_class::Handlers::NullHandler) }

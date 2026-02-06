@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state, feature_category: :webhooks do
   include StubRequests
 
+  let(:uuid_regex) { /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/ }
   let(:ellipsis) { '…' }
   let_it_be(:project) { create(:project) }
   let_it_be_with_reload(:project_hook) { create(:project_hook, project: project) }
@@ -77,6 +78,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
       {
         'Content-Type' => 'application/json',
         'User-Agent' => "GitLab/#{Gitlab::VERSION}",
+        'Idempotency-Key' => uuid_regex,
         'X-Gitlab-Webhook-UUID' => uuid,
         'X-Gitlab-Event' => 'Push Hook',
         'X-Gitlab-Event-UUID' => recursion_uuid,
@@ -173,6 +175,53 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
       end
     end
 
+    context 'when idempotency_key is provided' do
+      let(:idempotency_key) { SecureRandom.uuid }
+      let(:service_instance) { described_class.new(project_hook, data, :push_hooks, idempotency_key: idempotency_key) }
+
+      it 'POSTs to the webhook url and logs with the correct idempotency_key' do
+        stub_full_request(project_hook.interpolated_url, method: :post)
+
+        expect(service_instance).to receive(:queue_log_execution_with_retry).with(
+          hash_including(
+            url: project_hook.url,
+            request_headers: hash_including('Idempotency-Key' => idempotency_key)
+          ),
+          :ok
+        )
+
+        service_instance.execute
+
+        expect(WebMock)
+          .to have_requested(:post, stubbed_hostname(project_hook.interpolated_url))
+          .with(headers: { 'Idempotency-Key' => idempotency_key })
+          .once
+      end
+    end
+
+    context 'when idempotency_key is not provided' do
+      let(:service_instance) { described_class.new(project_hook, data, :push_hooks) }
+
+      it 'POSTs to the webhook url and logs with a newly generated idempotency key' do
+        stub_full_request(project_hook.interpolated_url, method: :post)
+
+        expect(service_instance).to receive(:queue_log_execution_with_retry).with(
+          hash_including(
+            url: project_hook.url,
+            request_headers: hash_including('Idempotency-Key' => uuid_regex)
+          ),
+          :ok
+        )
+
+        service_instance.execute
+
+        expect(WebMock)
+          .to have_requested(:post, stubbed_hostname(project_hook.interpolated_url))
+          .with(headers: { 'Idempotency-Key' => uuid_regex })
+          .once
+      end
+    end
+
     context 'with SystemHook' do
       let_it_be(:system_hook) { create(:system_hook) }
       let(:service_instance) { described_class.new(system_hook, data, :push_hooks) }
@@ -211,7 +260,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
         # which tests that we can serialize the data to the DB correctly.
         service = described_class.new(project_hook, data, :push_hooks, force: true)
 
-        expect { service.execute }.to change(::WebHookLog, :count).by(1)
+        expect { service.execute }.to change { ::WebHookLog.count }.by(1)
       end
     end
 
@@ -330,7 +379,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
 
     it 'handles exceptions' do
       exceptions = Gitlab::HTTP::HTTP_ERRORS + [
-        Gitlab::Json::LimitedEncoder::LimitExceeded, URI::InvalidURIError
+        Gitlab::Json::LimitedEncoder::LimitExceeded, URI::InvalidURIError, Zlib::DataError
       ]
 
       allow(Gitlab::WebHooks::RecursionDetection).to receive(:block?).and_return(false)
@@ -341,8 +390,10 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
 
         stub_full_request(project_hook.url, method: :post).to_raise(exception)
 
+        expect(WebHooks::LogExecutionWorker).to receive(:perform_async)
+          .with(project_hook.id, kind_of(Hash), 'error', '')
+
         expect(service_instance.execute).to have_attributes(status: :error, message: exception.to_s)
-        expect { service_instance.execute }.not_to raise_error
       end
     end
 
@@ -352,7 +403,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
       it 'handles exceptions' do
         expect(service_instance.execute).to have_attributes(
           status: :error,
-          message: 'bad URI(is not URI?): "http://server.com/my path/"'
+          message: 'bad URI (is not URI?): "http://server.com/my path/"'
         )
         expect { service_instance.execute }.not_to raise_error
       end
@@ -372,6 +423,104 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
     context 'when custom_webhook_template is set' do
       before do
         stub_full_request(project_hook.url, method: :post)
+      end
+
+      context 'when description contains a backslash' do
+        let(:data) do
+          { changes: { description: "\\This has a backslash" } }
+        end
+
+        before do
+          project_hook.custom_webhook_template = '{"description":"{{changes.description}}"}'
+        end
+
+        it 'escapes the backslash properly and delivers the webhook' do
+          service_instance.execute
+
+          expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+            .with(body: '{"description":"\\\\This has a backslash"}')
+            .once
+        end
+      end
+
+      context 'when description contains a double quote' do
+        let(:data) do
+          { changes: { description: '"This has a double quote' } }
+        end
+
+        before do
+          project_hook.custom_webhook_template = '{"description":"{{changes.description}}"}'
+        end
+
+        it 'escapes the double quote properly and delivers the webhook' do
+          service_instance.execute
+
+          expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+            .with(body: '{"description":"\"This has a double quote"}')
+            .once
+        end
+      end
+
+      context 'when template renders a non-primitive value (object)' do
+        let(:data) do
+          { complex: { string: 'value', boolean: true, number: 1, nil: nil, object: {}, array: [] } }
+        end
+
+        before do
+          project_hook.custom_webhook_template = '{"complex":{{complex}}}'
+        end
+
+        it 'serializes the object and delivers the webhook' do
+          service_instance.execute
+
+          expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+            .with(body: '{"complex":{"string":"value","boolean":true,"number":1,"nil":null,"object":{},"array":[]}}')
+            .once
+        end
+      end
+
+      context 'when template renders a non-primitive value (array)' do
+        let(:data) do
+          { complex: ['value', true, 1, nil, {}, []] }
+        end
+
+        before do
+          project_hook.custom_webhook_template = '{"complex":{{complex}}}'
+        end
+
+        it 'serializes the array and delivers the webhook' do
+          service_instance.execute
+
+          expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+            .with(body: '{"complex":["value",true,1,null,{},[]]}')
+            .once
+        end
+      end
+
+      context 'when serialization feature flag is disabled' do
+        before do
+          stub_feature_flags(custom_webhook_template_serialization: false)
+        end
+
+        context 'when description contains a backslash' do
+          let(:data) do
+            { changes: { description: "\\This has a backslash" } }
+          end
+
+          before do
+            project_hook.custom_webhook_template = '{"description":"{{changes.description}}"}'
+          end
+
+          it 'handles the error', :aggregate_failures do
+            expect(service_instance.execute).to have_attributes(
+              status: :error,
+              message: 'Error while parsing rendered custom webhook template: invalid escaped character ' \
+                       '(after description) at line 1, column 17 [parse.c:435] in ' \
+                       '\'{"description":"\\This has a backslash"}'
+            )
+            expect { service_instance.execute }.not_to raise_error
+          end
+        end
       end
 
       context 'when template is valid' do
@@ -404,20 +553,6 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
               .once
           end
         end
-
-        context 'when feature flag is disabled' do
-          before do
-            stub_feature_flags(custom_webhook_template: false)
-          end
-
-          it 'does not render custom template', :aggregate_failures do
-            service_instance.execute
-
-            expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
-              .with(headers: headers, body: '{"before":"oldrev","after":"newrev","ref":"ref"}')
-              .once
-          end
-        end
       end
 
       context 'when template is invalid' do
@@ -444,9 +579,57 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
           expect(service_instance.execute).to have_attributes(
             status: :error,
             message: 'Error while parsing rendered custom webhook template: quoted string not terminated ' \
-                     '(after test) at line 1, column 16 [parse.c:379] in \'{"test":"oldrev}'
+                     '(after test) at line 1, column 16 [parse.c:497] in \'{"test":"oldrev}'
           )
           expect { service_instance.execute }.not_to raise_error
+        end
+      end
+
+      context 'when template tries to access Array property' do
+        let(:data) do
+          { commits: [{ title: 'My commit title' }] }
+        end
+
+        before do
+          project_hook.custom_webhook_template = '{"test":"{{commits.title}}"}'
+        end
+
+        it 'handles the error', :aggregate_failures do
+          expect(service_instance.execute).to have_attributes(
+            status: :error,
+            message: 'Error while parsing rendered custom webhook template: ' \
+              'You may be trying to access an array value, which is not supported.'
+          )
+          expect { service_instance.execute }.not_to raise_error
+        end
+      end
+    end
+
+    context 'when custom_headers are set' do
+      let(:custom_headers) { { testing: 'blub', 'more-testing': 'whoops' } }
+
+      before do
+        stub_full_request(project_hook.url, method: :post)
+        project_hook.custom_headers = custom_headers
+      end
+
+      it 'sends request with custom headers' do
+        service_instance.execute
+
+        expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+          .with(headers: custom_headers.merge(headers))
+      end
+
+      context 'when overriding predefined headers' do
+        let(:custom_headers) do
+          { Gitlab::WebHooks::RecursionDetection::UUID::HEADER => 'some overriden value' }
+        end
+
+        it 'does not take user-provided value' do
+          service_instance.execute
+
+          expect(WebMock).to have_requested(:post, stubbed_hostname(project_hook.url))
+            .with(headers: Gitlab::WebHooks::RecursionDetection.header(project_hook))
         end
       end
     end
@@ -519,11 +702,11 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
         end
 
         it 'queues LogExecutionWorker correctly, resulting in a log record (integration-style test)', :sidekiq_inline do
-          expect { service_instance.execute }.to change(::WebHookLog, :count).by(1)
+          expect { service_instance.execute }.to change { ::WebHookLog.count }.by(1)
         end
 
         it 'does not log in the service itself' do
-          expect { service_instance.execute }.not_to change(::WebHookLog, :count)
+          expect { service_instance.execute }.not_to change { ::WebHookLog.count }
         end
       end
 
@@ -542,7 +725,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
                   response_status: 400
                 ).deep_stringify_keys
               ),
-              'failed',
+              'error',
               ''
             )
 
@@ -594,7 +777,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
 
       context 'with oversize response body' do
         let(:oversize_body) { 'a' * (described_class::RESPONSE_BODY_SIZE_LIMIT + 1) }
-        let(:stripped_body) { 'a' * (described_class::RESPONSE_BODY_SIZE_LIMIT - ellipsis.bytesize) + ellipsis }
+        let(:stripped_body) { ('a' * (described_class::RESPONSE_BODY_SIZE_LIMIT - ellipsis.bytesize)) + ellipsis }
 
         before do
           stub_full_request(project_hook.url, method: :post).to_return(status: 200, body: oversize_body)
@@ -648,7 +831,7 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
 
       context 'with oversize header' do
         let(:oversize_header) { 'a' * (described_class::RESPONSE_HEADERS_SIZE_LIMIT + 1) }
-        let(:stripped_header) { 'a' * (described_class::RESPONSE_HEADERS_SIZE_LIMIT - ellipsis.bytesize) + ellipsis }
+        let(:stripped_header) { ('a' * (described_class::RESPONSE_HEADERS_SIZE_LIMIT - ellipsis.bytesize)) + ellipsis }
         let(:response_headers) { { 'oversized-header' => oversize_header } }
         let(:expected_response_headers) { { 'Oversized-Header' => stripped_header } }
 
@@ -718,6 +901,20 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
         end
       end
     end
+
+    describe 'max response size' do
+      before do
+        stub_application_setting(max_http_response_size_limit: 1)
+        stub_full_request(project_hook.url, method: :post)
+      end
+
+      it 'sets max_bytes to max_http_response_size_limit' do
+        expect(Gitlab::HTTP).to receive(:post).with(project_hook.url,
+          hash_including(max_bytes: 1.megabyte)).and_call_original
+
+        service_instance.execute
+      end
+    end
   end
 
   describe '#async_execute' do
@@ -745,6 +942,10 @@ RSpec.describe WebHookService, :request_store, :clean_gitlab_redis_shared_state,
     context 'when rate limiting is configured' do
       let_it_be(:threshold) { 3 }
       let_it_be(:plan_limits) { create(:plan_limits, :default_plan, web_hook_calls: threshold) }
+
+      before do
+        stub_feature_flags(no_webhook_rate_limit: false)
+      end
 
       it 'queues a worker and tracks the call' do
         expect_to_rate_limit(project_hook, threshold: threshold)

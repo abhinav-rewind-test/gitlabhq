@@ -10,7 +10,13 @@ module QA
           element 'new-group-button'
         end
 
+        view 'app/assets/javascripts/groups/your_work/constants.js' do
+          element 'groups-empty-state'
+        end
+
         def has_group?(name)
+          return false if has_element?('groups-empty-state', wait: 5)
+
           has_filtered_group?(name)
         end
 
@@ -21,9 +27,13 @@ module QA
         end
 
         def click_new_group
+          dismiss_duo_chat_popup if respond_to?(:dismiss_duo_chat_popup)
+
           click_element('new-group-button')
         end
       end
     end
   end
 end
+
+QA::Page::Dashboard::Groups.prepend_mod_with('Page::Component::DuoChatCallout', namespace: QA)

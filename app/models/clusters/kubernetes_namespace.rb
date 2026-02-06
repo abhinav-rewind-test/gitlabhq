@@ -3,6 +3,7 @@
 module Clusters
   class KubernetesNamespace < ApplicationRecord
     include Gitlab::Kubernetes
+    include Gitlab::EncryptedAttribute
 
     self.table_name = 'clusters_kubernetes_namespaces'
 
@@ -23,11 +24,11 @@ module Clusters
 
     attr_encrypted :service_account_token,
       mode: :per_attribute_iv,
-      key: Settings.attr_encrypted_db_key_base_truncated,
+      key: :db_key_base_truncated,
       algorithm: 'aes-256-cbc'
 
     scope :has_service_account_token, -> { where.not(encrypted_service_account_token: nil) }
-    scope :with_environment_name, -> (name) { joins(:environment).where(environments: { name: name }) }
+    scope :with_environment_name, ->(name) { joins(:environment).where(environments: { name: name }) }
 
     def token_name
       "#{namespace}-token"

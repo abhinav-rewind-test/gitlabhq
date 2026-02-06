@@ -12,17 +12,23 @@ module Gitlab
 
         self.table_name = :batched_background_migration_jobs
 
+        MINIMUM_BATCH_SIZE = 1
+        BATCH_SIZE_DIVISOR = 2
+        MINIMUM_PAUSE_MS = 100
         MAX_ATTEMPTS = 3
+        MAX_SIDEKIQ_SHUTDOWN_FAILURES = 15
         MIN_BATCH_SIZE = 1
         SUB_BATCH_SIZE_REDUCE_FACTOR = 0.75
         SUB_BATCH_SIZE_THRESHOLD = 65
         STUCK_JOBS_TIMEOUT = 1.hour.freeze
         TIMEOUT_EXCEPTIONS = [ActiveRecord::StatementTimeout, ActiveRecord::ConnectionTimeoutError,
-                              ActiveRecord::AdapterTimeout, ActiveRecord::LockWaitTimeout,
-                              ActiveRecord::QueryCanceled].freeze
+          ActiveRecord::AdapterTimeout, ActiveRecord::LockWaitTimeout,
+          ActiveRecord::QueryCanceled].freeze
 
         belongs_to :batched_migration, foreign_key: :batched_background_migration_id
         has_many :batched_job_transition_logs, foreign_key: :batched_background_migration_job_id
+
+        validates :pause_ms, numericality: { greater_than_or_equal_to: MINIMUM_PAUSE_MS }
 
         scope :active, -> { with_statuses(:pending, :running) }
         scope :stuck, -> { active.where('updated_at <= ?', STUCK_JOBS_TIMEOUT.ago) }
@@ -65,6 +71,10 @@ module Gitlab
           after_transition any => :failed do |job, transition|
             exception, from_sub_batch = job.class.extract_transition_options(transition.args)
 
+            # For jobs that could not complete work within the shutdown timeout when Sidekiq
+            # is shutting down, do not count this as an attempt.
+            job.decrement!(:attempts) if job.handle_sidekiq_shutdown_failure?(exception)
+
             job.reduce_sub_batch_size! if from_sub_batch && job.can_reduce_sub_batch_size?
 
             job.split_and_retry! if job.can_split?(exception)
@@ -102,6 +112,8 @@ module Gitlab
         delegate :job_class, :table_name, :column_name, :job_arguments, :job_class_name,
           to: :batched_migration, prefix: :migration
 
+        delegate :sidekiq_shutdown_failures, to: :batched_job_transition_logs
+
         def self.extract_transition_options(args)
           error_hash = args.find { |arg| arg[:error].present? }
 
@@ -111,6 +123,24 @@ module Gitlab
           from_sub_batch = error_hash[:from_sub_batch]
 
           [exception, from_sub_batch]
+        end
+
+        def job_attributes
+          {
+            batch_table: migration_table_name,
+            batch_column: migration_column_name,
+            sub_batch_size: sub_batch_size,
+            pause_ms: pause_ms,
+            job_arguments: migration_job_arguments
+          }.tap do |attributes|
+            if migration_job_class.cursor?
+              attributes[:start_cursor] = min_cursor
+              attributes[:end_cursor] = max_cursor
+            else
+              attributes[:start_id] = min_value
+              attributes[:end_id] = max_value
+            end
+          end
         end
 
         def time_efficiency
@@ -135,47 +165,17 @@ module Gitlab
 
         def split_and_retry!
           with_lock do
-            raise SplitAndRetryError, 'Only failed jobs can be split' unless failed?
+            validate_split_preconditions!
 
-            new_batch_size = batch_size / 2
+            new_batch_size = batch_size / BATCH_SIZE_DIVISOR
+            next update!(attempts: 0) if new_batch_size < MINIMUM_BATCH_SIZE
 
-            next update!(attempts: 0) if new_batch_size < 1
+            midpoint = calculate_midpoint(new_batch_size)
 
-            batching_strategy = batched_migration.batch_class.new(connection: self.class.connection)
-            next_batch_bounds = batching_strategy.next_batch(
-              batched_migration.table_name,
-              batched_migration.column_name,
-              batch_min_value: min_value,
-              batch_size: new_batch_size,
-              job_arguments: batched_migration.job_arguments,
-              job_class: batched_migration.job_class
-            )
-            midpoint = next_batch_bounds.last
-
-            # We don't want the midpoint to go over the existing max_value because
-            # those IDs would already be in the next batched migration job.
-            # This could happen when a lot of records in the current batch are deleted.
-            #
-            # In this case, we just lower the batch size so that future calls to this
-            # method could eventually split the job if it continues to fail.
             if midpoint >= max_value
               update!(batch_size: new_batch_size, attempts: 0)
             else
-              old_max_value = max_value
-
-              update!(
-                batch_size: new_batch_size,
-                max_value: midpoint,
-                attempts: 0,
-                started_at: nil,
-                finished_at: nil,
-                metrics: {}
-              )
-
-              new_record = dup
-              new_record.min_value = midpoint.next
-              new_record.max_value = old_max_value
-              new_record.save!
+              split_job_at_midpoint(midpoint, new_batch_size)
             end
           end
         end
@@ -223,6 +223,60 @@ module Gitlab
           diff = initial_sub_batch_size - reduced_sub_batch_size
 
           (1.0 * diff / initial_sub_batch_size * 100).round(2) > SUB_BATCH_SIZE_THRESHOLD
+        end
+
+        def sidekiq_shutdown_failures_count
+          sidekiq_shutdown_failures.count
+        end
+
+        def handle_sidekiq_shutdown_failure?(exception)
+          return false unless exception.is_a?(Sidekiq::Shutdown)
+          return false unless attempts > 1
+          return false unless sidekiq_shutdown_failures_count <= MAX_SIDEKIQ_SHUTDOWN_FAILURES
+
+          true
+        end
+
+        private
+
+        def validate_split_preconditions!
+          raise SplitAndRetryError, 'Split and retry not yet supported for cursor based jobs' unless max_cursor.nil?
+          raise SplitAndRetryError, 'Only failed jobs can be split' unless failed?
+        end
+
+        def calculate_midpoint(new_batch_size)
+          batching_strategy = batched_migration.batch_class.new(connection: self.class.connection)
+          next_batch_bounds = batching_strategy.next_batch(
+            batched_migration.table_name,
+            batched_migration.column_name,
+            batch_min_value: min_value,
+            batch_size: new_batch_size,
+            job_arguments: batched_migration.job_arguments,
+            job_class: batched_migration.job_class
+          )
+          next_batch_bounds.last
+        end
+
+        def split_job_at_midpoint(midpoint, new_batch_size)
+          old_max_value = max_value
+
+          update!(
+            batch_size: new_batch_size,
+            max_value: midpoint,
+            attempts: 0,
+            started_at: nil,
+            finished_at: nil,
+            metrics: {}
+          )
+
+          create_continuation_job(midpoint, old_max_value)
+        end
+
+        def create_continuation_job(midpoint, old_max_value)
+          new_record = dup
+          new_record.min_value = midpoint.next
+          new_record.max_value = old_max_value
+          new_record.save!
         end
       end
     end

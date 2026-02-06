@@ -5,8 +5,8 @@ require 'spec_helper'
 RSpec.describe API::Branches, feature_category: :source_code_management do
   let_it_be(:user) { create(:user) }
 
-  let(:project) { create(:project, :repository, creator: user, path: 'my.project', create_branch: 'ends-with.txt') }
-  let(:guest) { create(:user).tap { |u| project.add_guest(u) } }
+  let(:project) { create(:project, :in_group, :repository, creator: user, path: 'my.project', create_branch: 'ends-with.txt') }
+  let(:guest) { create(:user, guest_of: project) }
   let(:branch_name) { 'feature' }
   let(:branch_sha) { '0b4bc9a49b562e85de7cc9e834518ea6828729b9' }
   let(:branch_with_dot) { 'ends-with.json' }
@@ -22,6 +22,20 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
 
   describe "GET /projects/:id/repository/branches", :use_clean_rails_redis_caching, :clean_gitlab_redis_shared_state do
     let(:route) { "/projects/#{project_id}/repository/branches" }
+
+    it_behaves_like 'authorizing granular token permissions', :read_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_repositories,
+      allow_public_access_for_enabled_project_features: :repository do
+      let(:request) do
+        get api(route), params: { job_token: target_job.token }
+      end
+    end
 
     shared_examples_for 'repository branches' do
       RSpec::Matchers.define :has_up_to_merged_branch_names_count do |expected|
@@ -166,6 +180,36 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
       end
     end
 
+    context 'when regex parameter is passed' do
+      context 'with branch exists' do
+        it 'returns correct branches' do
+          get api(route, user), params: { per_page: 100, regex: branch_name }
+
+          searched_branch_names = json_response.map { |branch| branch['name'] }
+          project_branch_names = project.repository.branch_names.grep(/#{branch_name}/)
+
+          expect(searched_branch_names).to match_array(project_branch_names)
+        end
+      end
+
+      context 'when branch does not exist' do
+        it 'returns an empty array' do
+          get api(route, user), params: { per_page: 100, regex: 'unknown_branch' }
+
+          expect(json_response).to eq []
+        end
+      end
+
+      context 'when regex is invalid' do
+        it 'returns 400 error' do
+          get api(route, user), params: { per_page: 100, regex: "(invalid" }
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['message']).to eq('Regex is invalid')
+        end
+      end
+    end
+
     context 'when search parameter is passed' do
       context 'and branch exists' do
         it 'returns correct branches' do
@@ -212,7 +256,7 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
 
       it_behaves_like 'repository branches'
 
-      context 'caching' do
+      describe 'caching' do
         it 'caches the query' do
           get api(route), params: { per_page: 1 }
 
@@ -242,6 +286,49 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
             get api(route), params: { per_page: 1 }
           end
         end
+
+        context 'when the default_branch changes' do
+          it 'requests for new value after 30 seconds' do
+            get api(route), params: { per_page: 1 }
+
+            default_branch = project.default_branch
+            another_branch = project.repository.branch_names.reject { |name| name == default_branch }.first
+
+            project.repository.change_head(another_branch)
+
+            travel_to 31.seconds.from_now do
+              expect(API::Entities::Branch).to receive(:represent)
+
+              get api(route), params: { per_page: 1 }
+            end
+          end
+        end
+
+        context "when the project's protected branches change" do
+          it 'request for new value instantly' do
+            get api(route), params: { per_page: 1 }
+
+            ProtectedBranches::CreateService.new(project, user, { name: '*' }).execute(skip_authorization: true)
+
+            expect(API::Entities::Branch).to receive(:represent)
+
+            get api(route), params: { per_page: 1 }
+          end
+        end
+      end
+    end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'returns the repository branches successfully' do
+        get api("/projects/#{project_id}/repository/branches", oauth_access_token: oauth_token), params: { per_page: 100 }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to match_response_schema('public_api/v4/branches')
+
+        branch_names = json_response.map { |branch| branch['name'] }
+        expect(branch_names).to match_array(project.repository.branch_names)
       end
     end
 
@@ -276,10 +363,79 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
         new_branch_name = 'protected-branch'
         ::Branches::CreateService.new(project, current_user).execute(new_branch_name, 'master')
         create(:protected_branch, name: new_branch_name, project: project)
+        create(:protected_branch, name: new_branch_name, project: nil, group: project.group)
 
         expect do
           get api(route, current_user), params: { per_page: 100 }
-        end.not_to exceed_query_limit(control).with_threshold(1)
+        end.not_to exceed_query_limit(control)
+      end
+    end
+
+    context 'with group protected branches' do
+      subject(:request) { get api(route, user) }
+
+      let!(:group_protected_branch) do
+        create(:protected_branch,
+          *access_levels,
+          project: nil,
+          group: project.group,
+          name: '*'
+        )
+      end
+
+      context 'maintainers allowed to push and merge' do
+        let(:access_levels) { [] }
+
+        it 'responds with correct attributes related to push and merge' do
+          request
+
+          expect(json_response.dig(0, 'developers_can_merge')).to be_falsey
+          expect(json_response.dig(0, 'developers_can_push')).to be_falsey
+          expect(json_response.dig(0, 'can_push')).to be_truthy
+        end
+
+        context 'and there is a more permissive project level protected branch' do
+          let!(:project_level_protected_branch) do
+            create(:protected_branch,
+              :developers_can_merge,
+              :developers_can_push,
+              project: project,
+              name: '*'
+            )
+          end
+
+          it 'responds with correct attributes related to push and merge' do
+            request
+
+            expect(json_response.dig(0, 'developers_can_merge')).to be_truthy
+            expect(json_response.dig(0, 'developers_can_push')).to be_truthy
+            expect(json_response.dig(0, 'can_push')).to be_truthy
+          end
+        end
+      end
+
+      context 'when developers can push and merge' do
+        let(:access_levels) { %i[developers_can_merge developers_can_push] }
+
+        it 'responds with correct attributes related to push and merge' do
+          request
+
+          expect(json_response.dig(0, 'developers_can_merge')).to be_truthy
+          expect(json_response.dig(0, 'developers_can_push')).to be_truthy
+          expect(json_response.dig(0, 'can_push')).to be_truthy
+        end
+      end
+
+      context 'when no one can push and merge' do
+        let(:access_levels) { %i[no_one_can_merge no_one_can_push] }
+
+        it 'responds with correct attributes related to push and merge' do
+          request
+
+          expect(json_response.dig(0, 'developers_can_merge')).to be_falsey
+          expect(json_response.dig(0, 'developers_can_push')).to be_falsey
+          expect(json_response.dig(0, 'can_push')).to be_falsey
+        end
       end
     end
 
@@ -292,6 +448,20 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
 
   describe "GET /projects/:id/repository/branches/:branch" do
     let(:route) { "/projects/#{project_id}/repository/branches/#{branch_name}" }
+
+    it_behaves_like 'authorizing granular token permissions', :read_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        head api(route, personal_access_token: pat)
+      end
+    end
 
     shared_examples_for 'repository branch' do
       context 'HEAD request' do
@@ -462,6 +632,13 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
   describe 'PUT /projects/:id/repository/branches/:branch/protect' do
     let(:route) { "/projects/#{project_id}/repository/branches/#{branch_name}/protect" }
 
+    it_behaves_like 'authorizing granular token permissions', :create_protected_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        put api(route, personal_access_token: pat)
+      end
+    end
+
     shared_examples_for 'repository new protected branch' do
       it 'protects a single branch' do
         put api(route, current_user)
@@ -629,6 +806,13 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
   describe 'PUT /projects/:id/repository/branches/:branch/unprotect' do
     let(:route) { "/projects/#{project_id}/repository/branches/#{branch_name}/unprotect" }
 
+    it_behaves_like 'authorizing granular token permissions', :delete_protected_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        put api(route, personal_access_token: pat)
+      end
+    end
+
     shared_examples_for 'repository unprotected branch' do
       context 'when branch is protected' do
         let!(:protected_branch) { create(:protected_branch, project: project, name: protected_branch_name) }
@@ -746,6 +930,13 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
   describe 'POST /projects/:id/repository/branches' do
     let(:route) { "/projects/#{project_id}/repository/branches" }
 
+    it_behaves_like 'authorizing granular token permissions', :create_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(route, personal_access_token: pat), params: { branch: 'feature1', ref: branch_sha }
+      end
+    end
+
     shared_examples_for 'repository new branch' do
       it 'creates a new branch' do
         post api(route, current_user), params: { branch: 'feature1', ref: branch_sha }
@@ -817,12 +1008,32 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
       expect(response).to have_gitlab_http_status(:bad_request)
       expect(json_response['message']).to eq(error_message)
     end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      it 'returns the repository branches successfully' do
+        post api(route, oauth_access_token: oauth_token), params: { branch: 'feature1', ref: branch_sha }
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(response).to match_response_schema('public_api/v4/branch')
+        expect(json_response['name']).to eq('feature1')
+        expect(json_response['commit']['id']).to eq(branch_sha)
+      end
+    end
   end
 
   describe 'DELETE /projects/:id/repository/branches/:branch' do
     before do
       allow_next_instance_of(Repository) do |instance|
         allow(instance).to receive(:rm_branch).and_return(true)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        delete api("/projects/#{project.id}/repository/branches/#{branch_name}", personal_access_token: pat)
       end
     end
 
@@ -865,6 +1076,13 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
       end
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_merged_branch do
+      let(:boundary_object) { project }
+      let(:request) do
+        delete api("/projects/#{project.id}/repository/merged_branches", personal_access_token: pat)
+      end
+    end
+
     it 'returns 202 with json body' do
       delete api("/projects/#{project.id}/repository/merged_branches", user)
 
@@ -876,6 +1094,18 @@ RSpec.describe API::Branches, feature_category: :source_code_management do
       delete api("/projects/#{project.id}/repository/merged_branches", guest)
 
       expect(response).to have_gitlab_http_status(:forbidden)
+    end
+
+    context 'when user is not authorized and project is public' do
+      before do
+        project.update!(visibility_level: Gitlab::VisibilityLevel::PUBLIC)
+      end
+
+      it 'returns a 403 error' do
+        delete api("/projects/#{project.id}/repository/merged_branches")
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
     end
   end
 end

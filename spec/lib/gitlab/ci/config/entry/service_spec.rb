@@ -140,7 +140,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
             it 'is not valid' do
               expect(entry).not_to be_valid
               expect(entry.errors.first)
-                .to match /port config contains unknown keys: invalid_key/
+                .to match(/port config contains unknown keys: invalid_key/)
             end
           end
         end
@@ -204,7 +204,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
         it 'is not valid' do
           expect(entry).not_to be_valid
           expect(entry.errors.first)
-            .to match %r{service executor opts '/docker/invalid' must be a valid 'schema'}
+            .to match %r{service executor opts object property at `/docker/invalid` is a disallowed additional property}
         end
       end
     end
@@ -216,7 +216,87 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
         it 'is not valid' do
           expect(entry).not_to be_valid
           expect(entry.errors.first)
-            .to match %r{service executor opts '/docker/platform' must be a valid 'string'}
+            .to match %r{service executor opts value at `/docker/platform` is not a string}
+        end
+      end
+    end
+
+    context 'when configuration has kubernetes options' do
+      let(:config) { { name: 'postgresql:9.5', kubernetes: kubernetes_opts } }
+
+      context "with user option" do
+        let(:kubernetes_opts) { { user: '1001' } }
+
+        it { is_expected.to be_valid }
+
+        describe '#value' do
+          it "returns kubernetes hash in value" do
+            expect(entry.value).to eq(
+              name: 'postgresql:9.5',
+              executor_opts: {
+                kubernetes: kubernetes_opts
+              }
+            )
+          end
+        end
+      end
+
+      context "with user option as int" do
+        let(:kubernetes_opts) { { user: 1001 } }
+
+        it { is_expected.to be_valid }
+
+        describe '#value' do
+          it "returns kubernetes hash in value" do
+            expect(entry.value).to eq(
+              name: 'postgresql:9.5',
+              executor_opts: {
+                kubernetes: kubernetes_opts
+              }
+            )
+          end
+        end
+      end
+
+      context "with uid:gid set" do
+        let(:kubernetes_opts) { { user: '1001:1001' } }
+
+        describe '#valid?' do
+          it 'is valid' do
+            expect(entry).to be_valid
+          end
+        end
+
+        describe '#value' do
+          it "returns value" do
+            expect(entry.value).to eq(
+              name: 'postgresql:9.5',
+              executor_opts: {
+                kubernetes: kubernetes_opts
+              }
+            )
+          end
+        end
+      end
+
+      context 'when kubernetes options have an invalid property' do
+        let(:kubernetes_opts) { { opt: 'invalid' } }
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+          expect(entry.errors.first)
+            .to match %r{service executor opts object property at `/kubernetes/opt` is a disallowed additional property}
+        end
+      end
+
+      context 'when kubernetes options user is not string' do
+        let(:kubernetes_opts) { { user: true } }
+
+        it 'is not valid' do
+          expect(entry).not_to be_valid
+          expect(entry.errors.first).to eq(
+            'service executor opts value at `/kubernetes/user` is not one of the types: ["string", "integer"]'
+          )
         end
       end
     end
@@ -224,11 +304,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
     context 'when configuration has pull_policy' do
       let(:config) { { name: 'postgresql:9.5', pull_policy: 'if-not-present' } }
 
-      describe '#valid?' do
-        it 'is valid' do
-          expect(entry).to be_valid
-        end
-      end
+      it { is_expected.to be_valid }
 
       describe '#value' do
         it "returns value" do
@@ -247,7 +323,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
     describe '#errors' do
       it 'saves errors' do
         expect(entry.errors.first)
-            .to match /config should be a hash or a string/
+            .to match(/config should be a hash or a string/)
       end
     end
 
@@ -264,7 +340,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
     describe '#errors' do
       it 'saves errors' do
         expect(entry.errors.first)
-            .to match /config contains unknown keys: non_existing/
+            .to match(/config contains unknown keys: non_existing/)
       end
     end
 
@@ -294,6 +370,22 @@ RSpec.describe Gitlab::Ci::Config::Entry::Service do
 
     it 'alias field is optional' do
       expect(entry).to be_valid
+    end
+  end
+
+  context 'when service command use the reference keyword' do
+    let(:config) do
+      { name: 'postgresql:9.5',
+        alias: 'db',
+        command: %w[!reference [.service-command] script] }
+    end
+
+    it 'is valid' do
+      expect(entry).to be_valid
+    end
+
+    it 'returns valid hash' do
+      expect(entry.value).to eq(config)
     end
   end
 end

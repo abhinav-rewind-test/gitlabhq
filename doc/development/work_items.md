@@ -1,9 +1,15 @@
 ---
 stage: Plan
 group: Project Management
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Work items and work item types
 ---
-# Work items and work item types
+
+Work items introduce a flexible model that standardizes and extends issue tracking capabilities in GitLab.
+With work items, you can define different types that can be customized with various widgets to meet
+specific needs - whether you're tracking bugs, incidents, test cases, or other units of work.
+This architectural documentation covers the development details and implementation strategies for
+work items and work item types.
 
 ## Challenges
 
@@ -64,7 +70,7 @@ Some terms have been used in the past but have since become confusing and are no
 | ---               | ---         | ---               | ---       |
 | issue type        | A former way to refer to classes of work item | _Tasks are an **issue type**_ | _Tasks are a **work item type**_ |
 
-### Migration strategy
+## Migration strategy
 
 WI model will be built on top of the existing `Issue` model and we'll gradually migrate `Issue`
 model code to the WI model.
@@ -90,11 +96,11 @@ move the `issue_type` to a separate table: `work_item_types`. The migration proc
 to `work_item_types` will involve creating the set of WITs for all root-level groups as described in
 [this epic](https://gitlab.com/groups/gitlab-org/-/epics/6536).
 
-NOTE:
-At first, defining a WIT will only be possible at the root-level group, which would then be inherited by subgroups.
-We will investigate the possibility of defining new WITs at subgroup levels at a later iteration.
+> [!note]
+> At first, defining a WIT will only be possible at the root-level group, which would then be inherited by subgroups.
+> We will investigate the possibility of defining new WITs at subgroup levels at a later iteration.
 
-### Introducing `work_item_types` table
+## Introducing `work_item_types` table
 
 For example, suppose there are three root-level groups with IDs: `11`, `12`, and `13`. Also,
 assume the following base types: `issue: 0`, `incident: 1`, `test_case: 2`.
@@ -119,7 +125,7 @@ What we will do to achieve this:
 1. Ensure we write to both `issues#issue_type` and `issues#work_item_type_id` columns for
    new or updated issues.
 1. Backfill the `work_item_type_id` column to point to the `work_item_types#id` corresponding
-   to issue's project root groups. For example:
+   to issue's project top-level groups. For example:
 
    ```ruby
    issue.project.root_group.work_item_types.where(base_type: issue.issue_type).first.id.
@@ -139,7 +145,7 @@ To introduce a new WIT there are two options:
   is created only when a customer opts in. However, this implies a lower discoverability
   of the newly introduced work item type.
 
-### Work item type widgets
+## Work item type widgets
 
 A widget is a single component that can exist on a work item. This component can be used on one or
 many work item types and can be lightly customized at the point of implementation.
@@ -162,7 +168,9 @@ Because any WIT can have any widget, we only need to define which widget is acti
 specific WIT. So, after switching the type of a specific work item, we display a different set
 of widgets.
 
-### Widgets metadata
+Read more about [work item widgets](work_items_widgets.md) and how to create a new one.
+
+## Widgets metadata
 
 In order to customize each WIT with corresponding active widgets we will need a data
 structure to map each WIT to specific widgets.
@@ -193,7 +201,7 @@ Until the architecture of WIT widgets is finalized, we are holding off on the cr
 types. If a new work item type is absolutely necessary, reach out to a
 member of the [Project Management Engineering Team](https://gitlab.com/gitlab-org/gitlab/-/issues/370599).
 
-### Creating a new work item type in the database
+## Creating a new work item type in the database
 
 We have completed the removal of the `issue_type` column from the issues table, in favor of using the new
 `work_item_types` table as described in [this epic](https://gitlab.com/groups/gitlab-org/-/epics/6536)).
@@ -209,13 +217,13 @@ The following MRs demonstrate how to introduce new `work_item_types`:
 - [MR example 1](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/127482)
 - [MR example 2](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/127917)
 
-#### Write a database migration
+### Write a database migration
 
 First, write a database migration that creates the new record in the `work_item_types` table.
 
 Keep the following in mind when you write your migration:
 
-- **Important:** Exclude new type from existing APIs.
+- **Important**: Exclude new type from existing APIs.
   - We probably want to exclude newly created work items of this type from showing
     up in existing features (like issue lists) until we fully release a feature. For this reason,
     we have to add a new type to
@@ -229,6 +237,13 @@ Keep the following in mind when you write your migration:
     [post deploy migration](database/post_deployment_migrations.md).
     This way, follow-up MRs that depend on the type being created can assume it exists right away,
     instead of having to wait for the next release.
+
+    **Important**: Because we use a regular migration, we need to make sure it does two things:
+
+    1. Don't exceed the [time guidelines](migration_style_guide.md#how-long-a-migration-should-take) of regular migrations.
+    1. Make sure the migration is [backwards-compatible](multi_version_compatibility.md).
+       This means that deployed code should continue to work even if the MR that introduced this migration is
+       rolled back and the migration is not.
 - Migrations should avoid failures.
   - We expect data related to `work_item_types` to be in a certain state when running the migration that will create a new
     type. At the moment, we write migrations that check the data and don't fail in the event we find
@@ -240,7 +255,6 @@ Keep the following in mind when you write your migration:
   - The migration adds the new work item type as well as the widget definitions that are required for each work item.
     The widgets you choose depend on the feature the new work item supports, but there are some that probably
     all new work items need, like `Description`.
-- Optional. Create hierarchy restrictions.
   - In one of the example MRs we also insert records in the `work_item_hierarchy_restrictions` table. This is only
     necessary if the new work item type is going to use the `Hierarchy` widget. In this table, you must add what
     work item type can have children and of what type. Also, you should specify the hierarchy depth for work items of the same
@@ -251,15 +265,20 @@ Keep the following in mind when you write your migration:
   - Similarly to the `Hierarchy` widget, the `Linked items` widget also supports rules defining which work item types can be
     linked to other types. A restriction can specify if the source type can be related to or blocking a target type. Current restrictions:
 
-  | Type       | Can be related to                        | Can block                                | Can be blocked by                        |
-  |------------|------------------------------------------|------------------------------------------|------------------------------------------|
-  | Epic       | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
-  | Issue      | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
-  | Task       | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
-  | Objective  | Epic, issue, task, objective, key result | Objective, key result                    | Epic, issue, task, objective, key result |
-  | Key result | Epic, issue, task, objective, key result | Objective, key result                    | Epic, issue, task, objective, key result |
+    | Type       | Can be related to                        | Can block                                | Can be blocked by                        |
+    |------------|------------------------------------------|------------------------------------------|------------------------------------------|
+    | Epic       | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
+    | Issue      | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
+    | Task       | Epic, issue, task, objective, key result | Epic, issue, task, objective, key result | Epic, issue, task                        |
+    | Objective  | Epic, issue, task, objective, key result | Objective, key result                    | Epic, issue, task, objective, key result |
+    | Key result | Epic, issue, task, objective, key result | Objective, key result                    | Epic, issue, task, objective, key result |
 
-##### Example of adding a ticket work item
+- Use shared examples for migrations specs.
+
+  There are different shared examples you should use for the different migration types (new work item type, new widget definition, etc) in
+  [`add_work_item_widget_shared_examples.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/14c0a4df57a562a7c2dd4baed98f26d208a2e6ce/spec/support/shared_examples/migrations/add_work_item_widget_shared_examples.rb).
+
+#### Example of adding a ticket work item
 
 The `Ticket` work item type already exists in the database, but we'll use it as an example migration.
 Note that for a new type you need to use a new name and ENUM value.
@@ -267,7 +286,7 @@ Note that for a new type you need to use a new name and ENUM value.
 ```ruby
 class AddTicketWorkItemType < Gitlab::Database::Migration[2.1]
   disable_ddl_transaction!
-  restrict_gitlab_migration gitlab_schema: :gitlab_main
+  restrict_gitlab_migration gitlab_schema: :gitlab_main_org
 
   ISSUE_ENUM_VALUE = 0
   # Enum value comes from the model where the enum is defined in
@@ -302,10 +321,6 @@ class AddTicketWorkItemType < Gitlab::Database::Migration[2.1]
     self.table_name = 'work_item_widget_definitions'
   end
 
-  class MigrationHierarchyRestriction < MigrationRecord
-    self.table_name = 'work_item_hierarchy_restrictions'
-  end
-
   def up
     existing_ticket_work_item_type = MigrationWorkItemType.find_by(base_type: TICKET_ENUM_VALUE, namespace_id: nil)
 
@@ -315,7 +330,7 @@ class AddTicketWorkItemType < Gitlab::Database::Migration[2.1]
       name: TICKET_NAME,
       namespace_id: nil,
       base_type: TICKET_ENUM_VALUE,
-      icon_name: 'issue-type-issue'
+      icon_name: 'work-item-issue'
     )
 
     return say('Ticket work item type create record failed, skipping creation') if new_ticket_work_item_type.new_record?
@@ -336,16 +351,6 @@ class AddTicketWorkItemType < Gitlab::Database::Migration[2.1]
     issue_type = MigrationWorkItemType.find_by(base_type: ISSUE_ENUM_VALUE, namespace_id: nil)
     return say('Issue work item type not found, skipping hierarchy restrictions creation') unless issue_type
 
-    # This part of the migration is only necessary if the new type uses the `Hierarchy` widget.
-    restrictions = [
-      { parent_type_id: new_ticket_work_item_type.id, child_type_id: new_ticket_work_item_type.id, maximum_depth: 1 },
-      { parent_type_id: new_ticket_work_item_type.id, child_type_id: issue_type.id, maximum_depth: 1 }
-    ]
-
-    MigrationHierarchyRestriction.upsert_all(
-      restrictions,
-      unique_by: :index_work_item_hierarchy_restrictions_on_parent_and_child
-    )
   end
 
   def down
@@ -356,21 +361,22 @@ class AddTicketWorkItemType < Gitlab::Database::Migration[2.1]
 end
 ```
 
-<!-- markdownlint-disable-next-line MD044 -->
-#### Update Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter
+### Update `Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter`
 
-The [BaseTypeImporter](https://gitlab.com/gitlab-org/gitlab/-/blob/f816a369d7d6bbd1d8d53d6c0bca4ca3389fdba7/lib/gitlab/database_importers/work_items/base_type_importer.rb)
+The [`BaseTypeImporter`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/database_importers/work_items/base_type_importer.rb)
 is where we can clearly visualize the structure of the types we have and what widgets are associated with each of them.
 `BaseTypeImporter` is the single source of truth for fresh GitLab installs and also our test suite. This should always
 reflect what we change with migrations.
 
-### Custom work item types
+**Important**: This importer should be updated whenever the corresponding database table is modified.
+
+## Custom work item types
 
 With the WIT widget metadata and the workflow around mapping WIT to specific
 widgets, we will be able to expose custom WITs to the users. Users will be able
 to create their own WITs and customize them with widgets from the predefined pool.
 
-### Custom widgets
+## Custom widgets
 
 The end goal is to allow users to define custom widgets and use these custom
 widgets on any WIT. But this is a much further iteration and requires additional
@@ -416,32 +422,161 @@ provide a smooth migration path of epics to WIT with minimal disruption to user 
 We will move towards work items, work item types, and custom widgets (CW) in an iterative process.
 For a rough outline of the work ahead of us, see [epic 6033](https://gitlab.com/groups/gitlab-org/-/epics/6033).
 
-## Redis HLL Counter Schema
+## Work item instrumentation
 
-We need a more scalable Redis counter schema for work items that is inclusive of Plan xMAU, Project Management xMAU, Certify xMAU, and
-Product Planning xMAU. We cannot aggregate and dedupe events across features within a group or at the stage level with
-our current Redis slot schema.
+Work item interactions are tracked using GitLab [internal events](internal_analytics/internal_event_instrumentation/_index.md) system,
+which feeds into Snowplow for analytics. A centralized instrumentation architecture provides consistent
+tracking across all work item types and interactions.
 
-All three Plan product groups will be using the same base object (`work item`). Each product group still needs to
-track MAU.
+### Architecture overview
 
-### Proposed aggregate counter schema
+The instrumentation system consists of three main components:
 
 ```mermaid
-graph TD
-    Event[Specific Interaction Counter] --> AC[Aggregate Counters]
-    AC --> Plan[Plan xMAU]
-    AC --> PM[Project Management xMAU]
-    AC --> PP[Product Planning xMAU]
-    AC --> Cer[Certify xMAU]
-    AC --> WI[Work Items Users]
+graph LR
+    accTitle: Work Items Instrumentation
+    accDescr: Visualization of the flow between work item services and instrumentation.
+    subgraph Services
+        US[UpdateService]
+        CS[CreateService]
+        Other[Other Services]
+    end
+
+    subgraph Instrumentation
+        TS[TrackingService]
+        EM[EventMappings]
+        EA[EventActions]
+    end
+
+    US -->|old_associations| TS
+    CS -->|explicit event| TS
+    Other -->|explicit event| TS
+    TS --> EM
+    EM --> EA
+    TS -->|track_internal_event| IE[Internal Events]
 ```
 
-### Implementation
+| Component | Purpose |
+|-----------|---------|
+| `EventActions` | Defines all trackable event constants (for example, `work_item_create`, `work_item_title_update`) |
+| `TrackingService` | Unified entry point for tracking; accepts either an explicit event or derives events from changes |
+| `EventMappings` | Declarative mappings from attribute and association changes to events |
 
-The new aggregate schema is already implemented and we are already tracking work item unique actions
-in [GitLab.com](https://gitlab.com).
+### Event properties
 
-For implementation details, this [MR](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/93231) can be used
-as a reference. The MR covers the definition of new unique actions, event tracking in the code and also
-adding the new unique actions to the required aggregate counters.
+All work item events include standardized properties for segmentation:
+
+| Property | Description |
+|----------|-------------|
+| `user` | The user performing the action |
+| `namespace` | The namespace containing the work item |
+| `project` | The project containing the work item (if applicable) |
+| `label` | The work item type name (for example, `Issue`, `Epic`, `Task`) |
+| `property` | The user's role in the namespace |
+
+### Integration patterns
+
+#### Explicit event tracking
+
+For discrete actions like create, delete, or clone, pass the event directly:
+
+```ruby
+Gitlab::WorkItems::Instrumentation::TrackingService.new(
+  work_item: work_item,
+  current_user: current_user,
+  event: Gitlab::WorkItems::Instrumentation::EventActions::CREATE
+).execute
+```
+
+#### Derived event tracking
+
+For updates where multiple fields may change, pass the previous state and let
+`EventMappings` determine which events to emit:
+
+```ruby
+# In associations_before_update, capture state before changes
+def associations_before_update(work_item)
+  super.merge(
+    confidential: work_item.confidential,
+    # ... other associations
+  )
+end
+
+# In after_update, track with old_associations
+Gitlab::WorkItems::Instrumentation::TrackingService.new(
+  work_item: work_item,
+  current_user: current_user,
+  old_associations: old_associations
+).execute
+```
+
+### Current events
+
+For the complete list of trackable work item events, see
+[`EventActions`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/work_items/instrumentation/event_actions.rb).
+
+### Add new event
+
+To add a new work item event:
+
+1. **Define your event and metrics** using the internal events CLI. Follow the
+   [quick start guide](internal_analytics/internal_event_instrumentation/quick_start.md#defining-event-and-metrics)
+   to generate the necessary YAML definitions.
+
+1. **Add the event constant** in `lib/gitlab/work_items/instrumentation/event_actions.rb`:
+
+   ```ruby
+   NEW_ACTION = 'work_item_new_action'
+
+   ALL_EVENTS = [
+     # ... existing events
+     NEW_ACTION
+   ].freeze
+   ```
+
+1. **Add mapping** (for update-derived events only) in `lib/gitlab/work_items/instrumentation/event_mappings.rb`:
+
+   For attribute changes:
+
+   ```ruby
+   ATTRIBUTE_MAPPINGS = [
+     # ... existing mappings
+     { event: EventActions::NEW_ACTION, key: 'attribute_name' }
+   ].freeze
+   ```
+
+   For association changes with custom comparison logic:
+
+   ```ruby
+   ASSOCIATION_MAPPINGS = [
+     # ... existing mappings
+     {
+       event: EventActions::NEW_ACTION,
+       key: :association_name,
+       compare: ->(old, new) { old != new }
+     }
+   ].freeze
+   ```
+
+1. **Call the tracking service** from the relevant service class.
+
+1. **Add specs** using the shared examples:
+
+   ```ruby
+   it_behaves_like 'tracks work item event', :work_item, :user, 'work_item_new_action'
+   ```
+
+For a minimal example of adding new event instrumentation after the YAML definitions are in place, see
+[MR !215447](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/215447) which adds two events
+with just 5 files changed and +28 lines.
+
+### Related files
+
+- Event constants: [`event_actions.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/work_items/instrumentation/event_actions.rb)
+- Tracking service: [`tracking_service.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/work_items/instrumentation/tracking_service.rb)
+- Event mappings: [`event_mappings.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/work_items/instrumentation/event_mappings.rb)
+- Shared examples: [`tracking_service_shared_examples.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/spec/support/shared_examples/work_items/tracking_service_shared_examples.rb)
+
+## Related topics
+
+- [Design management](../user/project/issues/design_management.md)

@@ -41,10 +41,8 @@ module QA
           method(:create_an_mr_with_large_files_and_many_mr_discussions)
         ]
 
-        threads_arr = []
-
-        methods_arr.each do |m|
-          threads_arr << Thread.new { m.call }
+        threads_arr = methods_arr.map do |m|
+          Thread.new { m.call }
         end
 
         threads_arr.each(&:join)
@@ -77,7 +75,7 @@ module QA
 
       def create_many_todos
         30.times do |i|
-          create_a_todo_api_req("#{@group_name}%2F#{@project_name}", "#{i + 1}")
+          create_a_todo_api_req("#{@group_name}%2F#{@project_name}", (i + 1).to_s)
         end
         @urls[:todos_page] = ENV['GITLAB_ADDRESS'] + "/dashboard/todos"
         $stdout.puts "Created many todos: #{@urls[:todos_page]}"
@@ -85,7 +83,7 @@ module QA
 
       def create_many_labels
         30.times do |i|
-          create_a_label_api_req("#{@group_name}%2F#{@project_name}", "label#{i}", "#{Faker::Color.hex_color}")
+          create_a_label_api_req("#{@group_name}%2F#{@project_name}", "label#{i}", Faker::Color.hex_color.to_s)
         end
         @urls[:labels_page] = @urls[:project_page] + "/labels"
         $stdout.puts "Created many labels: #{@urls[:labels_page]}"
@@ -126,7 +124,7 @@ module QA
 
         labels_list = (0..15).map { |i| "label#{i}" }.join(',')
         # Add description and labels
-        update_an_issue_api_req("#{@group_name}%2F#{@project_name}", issue_id, "#{Faker::Lorem.sentences(500).join(" ")}", labels_list)
+        update_an_issue_api_req("#{@group_name}%2F#{@project_name}", issue_id, Faker::Lorem.sentences(500).join(" ").to_s, labels_list)
         @urls[:large_issue] = @urls[:project_page] + "/issues/#{issue_id}"
         $stdout.puts "Created an issue with many discussions: #{@urls[:large_issue]}"
       end
@@ -180,15 +178,18 @@ module QA
       end
 
       def create_diff_note(iid, file_count, line_count, head_sha, start_sha, base_sha, line_type)
-        post Runtime::API::Request.new(@api_client, "/projects/#{@group_name}%2F#{@project_name}/merge_requests/#{iid}/discussions").url,
-          "" "body=\"Let us discuss\"&
+        url = Runtime::API::Request.new(@api_client,
+          "/projects/#{@group_name}%2F#{@project_name}/merge_requests/#{iid}/discussions").url
+        post url, <<~PARAMS
+          body="Let us discuss"&
           position[position_type]=text&
           position[new_path]=hello#{file_count}.txt&
           position[old_path]=hello#{file_count}.txt&
           position[#{line_type}]=#{line_count * 100}&
           position[head_sha]=#{head_sha}&
           position[start_sha]=#{start_sha}&
-          position[base_sha]=#{base_sha}" ""
+          position[base_sha]=#{base_sha}
+        PARAMS
       end
 
       def create_mr_with_many_commits

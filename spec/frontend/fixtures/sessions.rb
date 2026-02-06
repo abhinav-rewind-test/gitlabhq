@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Sessions (JavaScript fixtures)' do
+RSpec.describe 'Sessions (JavaScript fixtures)', feature_category: :system_access do
   include JavaScriptFixturesHelpers
 
   describe SessionsController, '(JavaScript fixtures)', type: :controller do
@@ -15,6 +15,13 @@ RSpec.describe 'Sessions (JavaScript fixtures)' do
     end
 
     it 'sessions/new.html' do
+      stub_feature_flags(sign_in_form_vue: false)
+      get :new
+
+      expect(response).to be_successful
+    end
+
+    it 'sessions/new_vue.html' do
       get :new
 
       expect(response).to be_successful

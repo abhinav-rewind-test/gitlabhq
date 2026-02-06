@@ -1,28 +1,30 @@
 ---
-stage: Service Management
-group: Respond
+stage: Analytics
+group: Platform Insights
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Understand and manage alerts in GitLab, including viewing alert lists, changing statuses, assigning alerts, triggering actions, and responding to on-call notifications.
+title: Alerts
 ---
 
-# Alerts
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Alerts are a critical entity in your incident management workflow. They represent a notable event that might indicate a service outage or disruption. GitLab provides a list view for triage and detail view for deeper investigation of what happened.
 
 ## Alert list
 
-Users with at least the Developer role can access the Alert list at **Monitor > Alerts** in your project's sidebar. The Alert list displays alerts sorted by start time, but you can change the sort order by selecting the headers in the Alert list.
+Users with at least the Developer role can access the Alert list at **Monitor** > **Alerts** in your project's sidebar. The Alert list displays alerts sorted by start time, but you can change the sort order by selecting the headers in the Alert list.
 
 The alert list displays the following information:
 
-![Alert List](img/alert_list_v13_1.png)
+![The alert list showing details about open alerts](img/alert_list_v13_1.png)
 
 - **Search**: The alert list supports a simple free text search on the title,
   description, monitoring tool, and service fields.
-  ([Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/213884) in GitLab 13.1.)
 - **Severity**: The current importance of a alert and how much attention it
   should receive. For a listing of all statuses, read [Alert Management severity](#alert-severity).
 - **Start time**: How long ago the alert fired. This field uses the standard
@@ -42,26 +44,26 @@ The alert list displays the following information:
 
 Each level of alert contains a uniquely shaped and color-coded icon to help you identify the severity of a particular alert. These severity icons help you immediately identify which alerts you should prioritize investigating:
 
-![Alert Management Severity System](img/alert_management_severity_v13_0.png)
+![Alert severity icons showing different colors and shapes for critical, high, medium, low, info, and unknown levels](img/alert_management_severity_v13_0.png)
 
 Alerts contain one of the following icons:
 
-<!-- vale gitlab.SubstitutionWarning = NO -->
+<!-- vale gitlab_base.SubstitutionWarning = NO -->
 
 | Severity | Icon                    | Color (hexadecimal) |
 |----------|-------------------------|---------------------|
-| Critical | **{severity-critical}** | `#8b2615`           |
-| High     | **{severity-high}**     | `#c0341d`           |
-| Medium   | **{severity-medium}**   | `#fca429`           |
-| Low      | **{severity-low}**      | `#fdbc60`           |
-| Info     | **{severity-info}**     | `#418cd8`           |
-| Unknown  | **{severity-unknown}**  | `#bababa`           |
+| Critical | {{< icon name="severity-critical" >}} | `#8b2615`           |
+| High     | {{< icon name="severity-high" >}}     | `#c0341d`           |
+| Medium   | {{< icon name="severity-medium" >}}   | `#fca429`           |
+| Low      | {{< icon name="severity-low" >}}      | `#fdbc60`           |
+| Info     | {{< icon name="severity-info" >}}     | `#418cd8`           |
+| Unknown  | {{< icon name="severity-unknown" >}}  | `#bababa`           |
 
-<!-- vale gitlab.SubstitutionWarning = YES -->
+<!-- vale gitlab_base.SubstitutionWarning = YES -->
 
 ## Alert details page
 
-Go to the Alert details view by visiting the [Alert list](alerts.md) and selecting an alert from the list. You need at least the Developer role to access alerts. Select any alert in the list to examine its alert details page.
+Go to the Alert details view by visiting the [Alert list](#alert-list) and selecting an alert from the list. You need at least the Developer role to access alerts. Select any alert in the list to examine its alert details page.
 
 Alerts provide **Overview** and **Alert details** tabs to give you the right amount of information you need.
 
@@ -70,9 +72,6 @@ Alerts provide **Overview** and **Alert details** tabs to give you the right amo
 The **Alert details** tab has two sections. The top section provides a short list of critical details such as the severity, start time, number of events, and originating monitoring tool. The second section displays the full alert payload.
 
 ### Metrics tab
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/217768) in GitLab 13.2.
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/340852) in GitLab 14.10. In GitLab 14.9 and earlier, this tab shows a metrics chart for alerts coming from Prometheus.
 
 In many cases, alerts are associated to metrics. You can upload screenshots of metric charts in the **Metrics** tab.
 
@@ -83,13 +82,11 @@ To do so, either:
 
 When you upload an image, you can add text to the image and link it to the original graph.
 
-![Text link modal](img/incident_metrics_tab_text_link_modal_v14_9.png)
+![An incident metrics tab with an option to add a text link](img/incident_metrics_tab_text_link_modal_v14_9.png)
 
 If you add a link, it is shown above the uploaded image.
 
 ### Activity feed tab
-
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/3066) in GitLab 13.1.
 
 The **Activity feed** tab is a log of activity on the alert. When you take action on an alert, this is logged as a system note. This gives you a linear timeline of the alert's investigation and assignment history.
 
@@ -100,7 +97,7 @@ The following actions result in a system note:
 - [Assignment of an alert to a user](#assign-an-alert)
 - [Escalation of an alert to on-call responders](paging.md#escalating-an-alert)
 
-![Alert Details Activity Feed](img/alert_detail_activity_feed_v13_5.png)
+![GitLab alert activity feed showing three system notes](img/alert_detail_activity_feed_v13_5.png)
 
 ## Alert actions
 
@@ -129,7 +126,7 @@ To change an alert's status:
 
 - From the [alert details page](#alert-details-page):
 
-  1. On the right sidebar, select **Edit**.
+  1. In the right sidebar, select **Edit**.
   1. Select a status.
 
 To stop email notifications for alert recurrences in projects with [email notifications enabled](paging.md#email-notifications-for-alerts), change the alert's status away from **Triggered**.
@@ -144,9 +141,12 @@ When you [close an incident](manage_incidents.md#close-an-incident) that is link
 
 #### As an on-call responder
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 On-call responders can respond to [alert pages](paging.md#escalating-an-alert) by changing the alert status.
 
@@ -160,25 +160,23 @@ In GitLab 15.1 and earlier, updating the status of an [alert with an associated 
 
 ### Assign an alert
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/3066) in GitLab 13.1.
-
 In large teams, where there is shared ownership of an alert, it can be difficult to track who is investigating and working on it. Assigning alerts eases collaboration and delegation by indicating which user is owning the alert. GitLab supports only a single assignee per alert.
 
 To assign an alert:
 
 1. Display the list of current alerts:
 
-   1. On the left sidebar, select **Search or go to** and find your project.
-   1. Select **Monitor > Alerts**.
+   1. In the top bar, select **Search or go to** and find your project.
+   1. Select **Monitor** > **Alerts**.
 
 1. Select your desired alert to display its details.
 
-   ![Alert Details View Assignees](img/alert_details_assignees_v13_1.png)
+   ![Alert details page with the right sidebar expanded, showing the Assignee dropdown list for assigning or unassigning users](img/alert_details_assignees_v13_1.png)
 
 1. If the right sidebar is not expanded, select
-   **Expand sidebar** (**{chevron-double-lg-right}**) to expand it.
+   **Expand sidebar** ({{< icon name="chevron-double-lg-right" >}}) to expand it.
 
-1. On the right sidebar, locate the **Assignee**, and then select **Edit**.
+1. In the right sidebar, locate the **Assignee**, and then select **Edit**.
    From the list, select each user you want to assign to the alert.
    GitLab creates a [to-do item](../../user/todos.md) for each user.
 
@@ -186,20 +184,18 @@ After completing their portion of investigating or fixing the alert, users can u
 
 ### Create a to-do item from an alert
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/3066) in GitLab 13.1.
-
 You can manually create a [to-do item](../../user/todos.md) for yourself from an alert, and view it later on your **To-Do List**.
 
-To add a to-do item, on the right sidebar, select **Add a to do**.
+To add a to-do item, in the right sidebar, select **Add a to-do item**.
 
 ### Trigger actions from alerts
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-> - Introduced in GitLab 13.1: incidents are not created automatically by default.
-> - Mapping common severity values from the alert payload [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/50871) in GitLab 13.9.
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Turn on creating [incidents](incidents.md) automatically whenever an alert is triggered.
 
@@ -209,14 +205,14 @@ Prerequisites:
 
 To configure the actions:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > Monitor**.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **Monitor**.
 1. Expand the **Alerts** section, then select the **Alert settings** tab.
 1. Select the **Create an incident** checkbox.
 1. Optional. To customize the incident, from the **Incident template**, select a template to be
    appended to the [incident summary](incidents.md#summary).
    If the dropdown list is empty,
-   [create an issue template](../../user/project/description_templates.md#create-an-issue-template) first.
+   [create an issue template](../../user/project/description_templates.md#create-a-description-template) first.
 1. Optional. To send [an email notification](paging.md#email-notifications-for-alerts), select the
    **Send a single email notification to Owners and Maintainers for new alerts** checkbox.
 1. Select **Save changes**.

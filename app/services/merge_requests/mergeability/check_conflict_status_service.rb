@@ -3,19 +3,26 @@
 module MergeRequests
   module Mergeability
     class CheckConflictStatusService < CheckBaseService
-      identifier :conflict
-      description 'Checks whether the merge request has a conflict'
+      set_identifier :conflict
+      set_description 'Checks whether the merge request has a conflict'
 
       def execute
-        if merge_request.can_be_merged?
+        # rubocop:disable Lint/DuplicateBranch -- Need to check this first
+        if Feature.enabled?(:validate_diff_sha_mr_head_sha, merge_request.project) &&
+            merge_request.source_branch_sha != merge_request.merge_request_diff&.head_commit_sha
+          checking
+        elsif merge_request.can_be_merged?
           success
-        else
+        elsif merge_request.cannot_be_merged?
           failure
+        else
+          checking
         end
+        # rubocop:enable Lint/DuplicateBranch
       end
 
       def skip?
-        false
+        params[:skip_conflict_check].present?
       end
 
       def cacheable?

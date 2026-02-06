@@ -9,8 +9,8 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
   let_it_be(:developer) { create(:user) }
   let_it_be(:reporter) { create(:user) }
   let_it_be(:current_user) { developer }
-  let_it_be(:group1) { create(:group).tap { |group| group.add_developer(developer) } }
-  let_it_be(:group2) { create(:group).tap { |group| group.add_developer(developer) } }
+  let_it_be(:group1) { create(:group, developers: developer) }
+  let_it_be(:group2) { create(:group, developers: developer, reporters: reporter) }
   let_it_be(:project_a) { create(:project, :repository, :public, group: group1) }
   let_it_be(:project_b) { create(:project, :repository, :private, group: group1) }
   let_it_be(:project_c) { create(:project, :repository, :public, group: group2) }
@@ -89,16 +89,17 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
   # we need to always provide at least one filter to the query so it doesn't fail
   let_it_be(:base_params) { { iids: issues.map { |issue| issue.iid.to_s } } }
 
+  let_it_be(:subscription) { create(:subscription, subscribable: issue_a, user: current_user, subscribed: true) }
+  let_it_be(:unsubscription) do
+    create(:subscription, subscribable: issue_b, user: current_user, subscribed: false)
+  end
+
   let(:issue_filter_params) { {} }
   let(:all_query_params) { base_params.merge(**issue_filter_params) }
   let(:fields) do
     <<~QUERY
       nodes { id }
     QUERY
-  end
-
-  before_all do
-    group2.add_reporter(reporter)
   end
 
   shared_examples 'query that requires at least one filter' do
@@ -155,70 +156,85 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
     it_behaves_like 'query that requires at least one filter'
   end
 
-  # All new specs should be added to the shared example if the change also
-  # affects the `issues` query at the root level of the API.
-  # Shared example also used in spec/requests/api/graphql/project/issues_spec.rb
-  it_behaves_like 'graphql issue list request spec' do
-    let_it_be(:external_user) { create(:user) }
-    let_it_be(:another_user) { reporter }
+  context 'with quarantine', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/5996' do
+    # All new specs should be added to the shared example if the change also
+    # affects the `issues` query at the root level of the API.
+    # Shared example also used in spec/requests/api/graphql/project/issues_spec.rb
+    it_behaves_like 'graphql issue list request spec' do
+      let_it_be(:external_user) { create(:user) }
+      let_it_be(:another_user) { reporter }
+      let_it_be(:project) { project_a } # Used for Service Desk issues creation in shared example
 
-    let(:public_projects) { [project_a, project_c] }
+      let(:public_projects) { [project_a, project_c] }
 
-    let(:issue_nodes_path) { %w[issues nodes] }
+      let(:issue_nodes_path) { %w[issues nodes] }
 
-    # filters
-    let(:expected_negated_assignee_issues) { [issue_b, issue_c, issue_d, issue_e] }
-    let(:voted_issues) { [issue_a, issue_c] }
-    let(:no_award_issues) { [issue_b, issue_d, issue_e] }
-    let(:locked_discussion_issues) { [issue_b, issue_d] }
-    let(:unlocked_discussion_issues) { [issue_a, issue_c, issue_e] }
-    let(:search_title_term) { 'matching issue' }
-    let(:title_search_issue) { issue_c }
-    let(:confidential_issues) { [issue_c, issue_e] }
-    let(:non_confidential_issues) { [issue_a, issue_b, issue_d] }
-    let(:public_non_confidential_issues) { [issue_a] }
+      # filters
+      let(:expected_negated_assignee_issues) { [issue_b, issue_c, issue_d, issue_e] }
+      let(:voted_issues) { [issue_a, issue_c] }
+      let(:no_award_issues) { [issue_b, issue_d, issue_e] }
+      let(:locked_discussion_issues) { [issue_b, issue_d] }
+      let(:unlocked_discussion_issues) { [issue_a, issue_c, issue_e] }
+      let(:search_title_term) { 'matching issue' }
+      let(:title_search_issue) { issue_c }
+      let(:confidential_issues) { [issue_c, issue_e] }
+      let(:non_confidential_issues) { [issue_a, issue_b, issue_d] }
+      let(:public_non_confidential_issues) { [issue_a] }
+      let(:subscribed_issues) { [issue_a] }
+      let(:unsubscribed_issues) { [issue_b] }
 
-    # sorting
-    let(:data_path) { [:issues] }
-    let(:expected_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-    let(:expected_priority_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
-    let(:expected_due_date_sorted_desc) { [issue_c, issue_b, issue_a, issue_e, issue_d] }
-    let(:expected_due_date_sorted_asc) { [issue_e, issue_a, issue_b, issue_c, issue_d] }
-    let(:expected_relative_position_sorted_asc) { [issue_a, issue_b, issue_d, issue_c, issue_e] }
-    let(:expected_label_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-    let(:expected_label_priority_sorted_desc) { [issue_a, issue_e, issue_d, issue_c, issue_b] }
-    let(:expected_milestone_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
-    let(:expected_milestone_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
+      # sorting
+      let(:data_path) { [:issues] }
+      let(:expected_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+      let(:expected_priority_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
+      let(:expected_due_date_sorted_desc) { [issue_c, issue_b, issue_a, issue_e, issue_d] }
+      let(:expected_due_date_sorted_asc) { [issue_e, issue_a, issue_b, issue_c, issue_d] }
+      let(:expected_relative_position_sorted_asc) { [issue_a, issue_b, issue_d, issue_c, issue_e] }
+      let(:expected_label_priority_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+      let(:expected_label_priority_sorted_desc) { [issue_a, issue_e, issue_d, issue_c, issue_b] }
+      let(:expected_milestone_sorted_asc) { [issue_c, issue_e, issue_d, issue_a, issue_b] }
+      let(:expected_milestone_sorted_desc) { [issue_a, issue_d, issue_e, issue_c, issue_b] }
 
-    # N+1 queries
-    let(:same_project_issue1) { issue_d }
-    let(:same_project_issue2) { issue_e }
+      # N+1 queries
+      let(:same_project_issue1) { issue_d }
+      let(:same_project_issue2) { issue_e }
 
-    before_all do
-      create(:award_emoji, :upvote, user: developer, awardable: issue_a)
-      create(:award_emoji, :upvote, user: developer, awardable: issue_c)
-    end
+      before_all do
+        create(:award_emoji, :upvote, user: developer, awardable: issue_a)
+        create(:award_emoji, :upvote, user: developer, awardable: issue_c)
+      end
 
-    def pagination_query(params)
-      graphql_query_for(
-        :issues,
-        base_params.merge(**params.to_h),
-        "#{page_info} nodes { id }"
-      )
+      def pagination_query(params)
+        graphql_query_for(
+          :issues,
+          base_params.merge(**params.to_h),
+          "#{page_info} nodes { id }"
+        )
+      end
     end
   end
 
   context 'when fetching issues from multiple projects' do
-    it 'avoids N+1 queries', :use_sql_query_cache do
+    let(:fields) do
+      <<~QUERY
+        nodes {
+          id
+          reference
+        }
+      QUERY
+    end
+
+    it 'avoids N+1 queries', :use_sql_query_cache,
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9485' do
       post_query # warm-up
 
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) { post_query }
       expect_graphql_errors_to_be_empty
 
-      new_private_project = create(:project, :private).tap { |project| project.add_developer(current_user) }
+      new_private_project = create(:project, :private, developers: current_user)
       create(:issue, project: new_private_project)
 
-      private_group = create(:group, :private).tap { |group| group.add_developer(current_user) }
+      private_group = create(:group, :private, developers: current_user)
       private_project = create(:project, :private, group: private_group)
       create(:issue, project: private_project)
 
@@ -238,6 +254,10 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
       def request
         post_graphql(query({ search: 'test' }), current_user: developer)
       end
+
+      def request_with_second_scope
+        post_graphql(query({ search: 'test' }), current_user: reporter)
+      end
     end
 
     it_behaves_like 'rate limited endpoint', rate_limit_key: :search_rate_limit_unauthenticated, graphql: true do
@@ -249,6 +269,10 @@ RSpec.describe 'getting an issue list at root level', feature_category: :team_pl
 
       def request
         post_graphql(query({ search: 'test' }))
+      end
+
+      def request_with_second_scope
+        post_graphql(query({ search: 'different_test' }), headers: { 'REMOTE_ADDR' => '1.2.3.4' })
       end
     end
   end

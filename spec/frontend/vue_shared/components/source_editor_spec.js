@@ -163,5 +163,21 @@ describe('Source Editor component', () => {
         expect(mockInstance.setValue).not.toHaveBeenCalled();
       });
     });
+
+    it('applies the v-dynamic-height directive to the editor element when useDynamicHeight is true', () => {
+      createComponent({ useDynamicHeight: true });
+
+      const editorDiv = wrapper.find('[data-testid="source-editor-container"]');
+
+      expect(editorDiv.attributes('dynamicheight')).toBeDefined();
+    });
+
+    it('does not the v-dynamic-height directive to the editor element when useDynamicHeight is false', () => {
+      createComponent({ useDynamicHeight: false });
+
+      const editorDiv = wrapper.find('[data-testid="source-editor-container"]');
+
+      expect(editorDiv.attributes('dynamicheight')).toBeUndefined();
+    });
   });
 });

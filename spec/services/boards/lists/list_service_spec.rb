@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Boards::Lists::ListService, feature_category: :team_planning do
+RSpec.describe Boards::Lists::ListService, feature_category: :portfolio_management do
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group) }
 
@@ -13,12 +13,15 @@ RSpec.describe Boards::Lists::ListService, feature_category: :team_planning do
       let_it_be(:milestone) { create(:milestone, group: group) }
       let_it_be(:assignee_list) do
         list = build(:list, board: board, user_id: user.id, list_type: List.list_types[:assignee], position: 0)
+        list.send(:ensure_group_or_project) # Necessary as this is called on a before_validation callback
         list.save!(validate: false)
         list
       end
 
       let_it_be(:milestone_list) do
-        list = build(:list, board: board, milestone_id: milestone.id, list_type: List.list_types[:milestone], position: 1) # rubocop:disable Layout/LineLength
+        list = build(:list, board: board, milestone_id: milestone.id, list_type: List.list_types[:milestone],
+          position: 1)
+        list.send(:ensure_group_or_project) # Necessary as this is called on a before_validation callback
         list.save!(validate: false)
         list
       end

@@ -26,10 +26,12 @@ module API
         desc 'Get all project boards' do
           detail 'This feature was introduced in 8.13'
           success Entities::Board
+          tags ['boards']
         end
         params do
           use :pagination
         end
+        route_setting :authorization, permissions: :read_issue_board, boundary_type: :project
         get '/' do
           authorize!(:read_issue_board, user_project)
           present paginate(board_parent.boards.with_associations), with: Entities::Board
@@ -38,7 +40,9 @@ module API
         desc 'Find a project board' do
           detail 'This feature was introduced in 10.4'
           success Entities::Board
+          tags ['boards']
         end
+        route_setting :authorization, permissions: :read_issue_board, boundary_type: :project
         get '/:board_id' do
           authorize!(:read_issue_board, user_project)
           present board, with: Entities::Board
@@ -47,10 +51,12 @@ module API
         desc 'Create a project board' do
           detail 'This feature was introduced in 10.4'
           success Entities::Board
+          tags ['boards']
         end
         params do
           requires :name, type: String, desc: 'The board name'
         end
+        route_setting :authorization, permissions: :create_issue_board, boundary_type: :project
         post '/' do
           authorize!(:admin_issue_board, board_parent)
 
@@ -60,10 +66,12 @@ module API
         desc 'Update a project board' do
           detail 'This feature was introduced in 11.0'
           success Entities::Board
+          tags ['boards']
         end
         params do
           use :update_params
         end
+        route_setting :authorization, permissions: :update_issue_board, boundary_type: :project
         put '/:board_id' do
           authorize!(:admin_issue_board, board_parent)
 
@@ -73,8 +81,9 @@ module API
         desc 'Delete a project board' do
           detail 'This feature was introduced in 10.4'
           success Entities::Board
+          tags ['boards']
         end
-
+        route_setting :authorization, permissions: :delete_issue_board, boundary_type: :project
         delete '/:board_id' do
           authorize!(:admin_issue_board, board_parent)
 
@@ -89,10 +98,12 @@ module API
         desc 'Get the lists of a project board' do
           detail 'Does not include `done` list. This feature was introduced in 8.13'
           success Entities::List
+          tags ['boards']
         end
         params do
           use :pagination
         end
+        route_setting :authorization, permissions: :read_issue_board_list, boundary_type: :project
         get '/lists' do
           authorize!(:read_issue_board, user_project)
           present paginate(board_lists), with: Entities::List
@@ -101,10 +112,12 @@ module API
         desc 'Get a list of a project board' do
           detail 'This feature was introduced in 8.13'
           success Entities::List
+          tags ['boards']
         end
         params do
           requires :list_id, type: Integer, desc: 'The ID of a list'
         end
+        route_setting :authorization, permissions: :read_issue_board_list, boundary_type: :project
         get '/lists/:list_id' do
           authorize!(:read_issue_board, user_project)
           present board_lists.find(params[:list_id]), with: Entities::List
@@ -113,10 +126,12 @@ module API
         desc 'Create a new board list' do
           detail 'This feature was introduced in 8.13'
           success Entities::List
+          tags ['boards']
         end
         params do
           use :list_creation_params
         end
+        route_setting :authorization, permissions: :create_issue_board_list, boundary_type: :project
         post '/lists' do
           authorize!(:admin_issue_board_list, user_project)
 
@@ -126,11 +141,13 @@ module API
         desc 'Moves a board list to a new position' do
           detail 'This feature was introduced in 8.13'
           success Entities::List
+          tags ['boards']
         end
         params do
           requires :list_id,  type: Integer, desc: 'The ID of a list'
           requires :position, type: Integer, desc: 'The position of the list'
         end
+        route_setting :authorization, permissions: :update_issue_board_list, boundary_type: :project
         put '/lists/:list_id' do
           list = board_lists.find(params[:list_id])
 
@@ -142,10 +159,12 @@ module API
         desc 'Delete a board list' do
           detail 'This feature was introduced in 8.13'
           success Entities::List
+          tags ['boards']
         end
         params do
           requires :list_id, type: Integer, desc: 'The ID of a board list'
         end
+        route_setting :authorization, permissions: :delete_issue_board_list, boundary_type: :project
         delete "/lists/:list_id" do
           authorize!(:admin_issue_board_list, user_project)
           list = board_lists.find(params[:list_id])

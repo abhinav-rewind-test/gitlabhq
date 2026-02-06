@@ -2,9 +2,8 @@
 stage: none
 group: Documentation Guidelines
 info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+title: Task topic type
 ---
-
-# Task topic type
 
 A task gives instructions for how to complete a procedure.
 
@@ -13,7 +12,8 @@ A task gives instructions for how to complete a procedure.
 Tasks should be in this format:
 
 ```markdown
-# Title (starts with an active verb, like "Create a widget" or "Delete a widget")
+title: Title (starts with an active verb, like "Create a widget" or "Delete a widget")
+---
 
 Do this task when you want to...
 
@@ -35,32 +35,30 @@ Task result (optional). Next steps (optional).
 Here is an example.
 
 ```markdown
-# Create an issue
+title: Create an issue
+---
 
 Create an issue when you want to track bugs or future work.
 
 Prerequisites:
 
-- You must have at least the Developer role for the project.
+- The Developer, Maintainer, or Owner role for the project.
 
 To create an issue:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Plan > Issues**.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Plan** > **Issues**.
 1. In the upper-right corner, select **New issue**.
 1. Complete the fields. (If you have reference content that lists each field, link to it here.)
 1. Select **Create issue**.
 
-The issue is created. You can view it by going to **Plan > Issues**.
+The issue is created. You can view it by going to **Plan** > **Issues**.
 ```
 
 ## Task topic titles
 
 For the title text, use the structure `active verb` + `noun`.
 For example, `Create an issue`.
-
-If several tasks on a page share prerequisites, you can create a separate
-topic with the title `Prerequisites`.
 
 ## When a task has only one step
 
@@ -71,7 +69,8 @@ for lists.
 For example:
 
 ```markdown
-# Create a merge request
+title: Create a merge request
+---
 
 To create a merge request:
 
@@ -95,7 +94,8 @@ When this situation occurs:
 Here is an example.
 
 ```markdown
-# Change the default branch name
+title: Change the default branch name
+---
 
 You can change the default branch name for the instance or group.
 If the name is set for the instance, you can override it for a group.
@@ -104,7 +104,7 @@ If the name is set for the instance, you can override it for a group.
 
 Prerequisites:
 
-- You must have at least the Maintainer role for the instance.
+- Administrator access.
 
 To change the default branch name for an instance:
 
@@ -115,7 +115,7 @@ To change the default branch name for an instance:
 
 Prerequisites:
 
-- You must have at least the Developer role for the group.
+- The Developer, Maintainer, or Owner role for the group.
 
 To change the default branch name for a group:
 
@@ -138,7 +138,7 @@ When this situation occurs:
 - If someone feels strongly that you mention the API, at the end
   of the UI task, add this sentence:
 
-  `To create an issue, you can also [use the API](link).`
+  `To create an issue, you can also [use the API](link.md).`
 
 ## Task introductions
 
@@ -151,12 +151,50 @@ For example, `To create an issue:`
 
 ## Task prerequisites
 
-As a best practice, if the task requires the user to have a role other than Guest,
-put the minimum role in the prerequisites. See [the Word list](../styleguide/word_list.md) for
+If the task requires the user to have a role other than Guest,
+list all applicable roles in the prerequisites. See [the Word list](../styleguide/word_list.md) for
 how to write the phrase for each role.
+
+If the task can only be performed by an administrator, put `Administrator access.` in the prerequisites.
 
 `Prerequisites` must always be plural, even if the list includes only one item.
 
+Do not list subscriptions or add-ons in the prerequisites. These should only be included
+in the [product availability details](../styleguide/availability_details.md).
+
+If several tasks on a page share prerequisites, you can create a separate
+topic with the title `Prerequisites`.
+
+### Writing prerequisite statements
+
+As much as possible, follow these patterns when writing prerequisites.
+
+- Use a list of nouns, assuming an unspoken `You must have:` as the introduction.
+- Use a list of verbs, assuming an unspoken `You must:` as the introduction.
+
+For example, for a list of nouns:
+
+```markdown
+Prerequisites:
+
+- A valid GitLab account.
+- Docker installed locally.
+- The Maintainer or Owner role for the project.
+```
+
+For a list of verbs:
+
+```markdown
+Prerequisites:
+
+- Enable Cloud Logging API on your Google Cloud project.
+- Configure dependency scanning on your target projects.
+- Create a service account with appropriate permissions.
+```
+
+Try to avoid phrases like `Ensure that` or `You must have`.
+
 ## Related topics
 
-- [How to write task steps](../styleguide/index.md#navigation)
+- [How to write task steps](../styleguide/_index.md#navigation)
+- [Before and after example](concept.md#example)

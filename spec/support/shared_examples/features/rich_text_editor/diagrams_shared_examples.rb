@@ -14,7 +14,8 @@ RSpec.shared_examples 'rich text editor - diagrams' do
       type_in_content_editor ['graph TD;', :enter, '  JohnDoe12 --> HelloWorld34']
     end
 
-    it 'renders and updates the diagram correctly in a sandboxed iframe' do
+    it 'renders and updates the diagram correctly in a sandboxed iframe',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24075' do
       iframe = find(content_editor_testid).find('iframe')
       expect(iframe['src']).to include('/-/sandbox/mermaid')
 
@@ -36,7 +37,7 @@ RSpec.shared_examples 'rich text editor - diagrams' do
     end
 
     it 'toggles the diagram when preview button is clicked',
-      quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/397682' do
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17043' do
       find('[data-testid="preview-diagram"]').click
 
       expect(find(content_editor_testid)).not_to have_selector('iframe')

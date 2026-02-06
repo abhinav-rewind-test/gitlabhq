@@ -1,7 +1,7 @@
 import { GlSprintf, GlModal, GlFormGroup, GlFormCheckbox, GlLoadingIcon } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
-import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
+import axios from '~/lib/utils/axios_utils';
 import { extendedWrapper } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { HTTP_STATUS_NOT_FOUND, HTTP_STATUS_OK } from '~/lib/utils/http_status';
@@ -23,6 +23,14 @@ const mockNotificationSettingsResponses = {
       new_note: true,
     },
   },
+  defaultWithUknownEvent: {
+    level: 'custom',
+    events: {
+      new_release: true,
+      new_note: false,
+      event_without_frontend_translation: true,
+    },
+  },
 };
 
 const mockToastShow = jest.fn();
@@ -35,7 +43,7 @@ describe('CustomNotificationsModal', () => {
     const { injectedProperties = {}, props = {} } = options;
     return extendedWrapper(
       shallowMount(CustomNotificationsModal, {
-        props: {
+        propsData: {
           ...props,
         },
         provide: {
@@ -88,7 +96,7 @@ describe('CustomNotificationsModal', () => {
 
         mockAxios
           .onGet(endpointUrl)
-          .reply(HTTP_STATUS_OK, mockNotificationSettingsResponses.default);
+          .reply(HTTP_STATUS_OK, mockNotificationSettingsResponses.defaultWithUknownEvent);
 
         wrapper = createComponent();
 
@@ -98,18 +106,24 @@ describe('CustomNotificationsModal', () => {
       });
 
       it.each`
-        index | eventId          | eventName        | enabled  | loading
-        ${0}  | ${'new_release'} | ${'New release'} | ${true}  | ${false}
-        ${1}  | ${'new_note'}    | ${'New note'}    | ${false} | ${false}
+        index | eventId          | eventName               | enabled  | loading
+        ${0}  | ${'new_note'}    | ${'Comment is added'}   | ${false} | ${false}
+        ${1}  | ${'new_release'} | ${'Release is created'} | ${true}  | ${false}
       `(
         'renders a checkbox for "$eventName" with checked=$enabled',
         ({ index, eventName, enabled, loading }) => {
           const checkbox = findCheckboxAt(index);
           expect(checkbox.text()).toContain(eventName);
-          expect(checkbox.vm.$attrs.checked).toBe(enabled);
+          expect(checkbox.props('checked')).toBe(enabled);
           expect(checkbox.findComponent(GlLoadingIcon).exists()).toBe(loading);
         },
       );
+
+      it('does not render a checkbox without a known translation (i.e., blank)', () => {
+        findAllCheckboxes().wrappers.forEach((checkbox) => {
+          expect(checkbox.text()).not.toMatch(/^\s*$/);
+        });
+      });
     });
   });
 
@@ -163,8 +177,8 @@ describe('CustomNotificationsModal', () => {
         expect(axios.get).toHaveBeenCalledWith(endpointUrl);
         expect(wrapper.vm.isLoading).toBe(false);
         expect(wrapper.vm.events).toEqual([
-          { id: 'new_release', enabled: true, name: 'New release', loading: false },
-          { id: 'new_note', enabled: false, name: 'New note', loading: false },
+          { id: 'new_note', enabled: false, name: 'Comment is added', loading: false },
+          { id: 'new_release', enabled: true, name: 'Release is created', loading: false },
         ]);
       });
 
@@ -214,7 +228,7 @@ describe('CustomNotificationsModal', () => {
 
           await waitForPromises();
 
-          findCheckboxAt(1).vm.$emit('change', true);
+          findCheckboxAt(0).vm.$emit('change', true);
 
           await waitForPromises();
 
@@ -223,8 +237,8 @@ describe('CustomNotificationsModal', () => {
           });
 
           expect(wrapper.vm.events).toEqual([
-            { id: 'new_release', enabled: true, name: 'New release', loading: false },
-            { id: 'new_note', enabled: true, name: 'New note', loading: false },
+            { id: 'new_note', enabled: true, name: 'Comment is added', loading: false },
+            { id: 'new_release', enabled: true, name: 'Release is created', loading: false },
           ]);
         },
       );

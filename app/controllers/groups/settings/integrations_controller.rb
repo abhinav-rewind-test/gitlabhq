@@ -5,10 +5,7 @@ module Groups
     class IntegrationsController < Groups::ApplicationController
       include ::Integrations::Actions
 
-      before_action :authorize_admin_group!
-      before_action only: [:edit] do
-        push_frontend_feature_flag(:jira_multiple_project_keys, group)
-      end
+      before_action :authorize_admin_integrations!
 
       feature_category :integrations
 
@@ -17,7 +14,7 @@ module Groups
       def index
         @integrations = Integration
           .find_or_initialize_all_non_project_specific(Integration.for_group(group))
-          .sort_by(&:title)
+          .sort_by { |int| int.title.downcase }
       end
 
       def edit

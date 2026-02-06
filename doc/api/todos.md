@@ -1,20 +1,22 @@
 ---
-stage: Plan
-group: Project Management
+stage: Growth
+group: Engagement
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: GitLab To-Do List API
 ---
 
-# GitLab To-Do List API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Interact with [to-do items](../user/todos.md) using the REST API.
+{{< /details >}}
 
-## Get a list of to-do items
+Use this API to interact with [to-do items](../user/todos.md).
 
-Returns a list of to-do items. When no filter is applied, it
+## List all to-do items
+
+Lists all to-do items. When no filter is applied, it
 returns all pending to-do items for the current user. Different filters allow the
 user to refine the request.
 
@@ -31,10 +33,12 @@ Parameters:
 | `project_id` | integer | no | The ID of a project                                                                                                                                                                                |
 | `group_id` | integer | no | The ID of a group                                                                                                                                                                                  |
 | `state` | string | no | The state of the to-do item. Can be either `pending` or `done`                                                                                                                                     |
-| `type` | string | no | The type of to-do item. Can be either `Issue`, `MergeRequest`, `Commit`, `Epic`, `DesignManagement::Design` or `AlertManagement::Alert`                                                            |
+| `type` | string | no | The type of to-do item. Can be either `Issue`, `MergeRequest`, `Commit`, `Epic`, `DesignManagement::Design`, `AlertManagement::Alert`, `Project`, `Namespace`, `Vulnerability` or `WikiPage::Meta`  |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/todos"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/todos"
 ```
 
 Example Response:
@@ -208,7 +212,9 @@ Parameters:
 | `id` | integer | yes | The ID of to-do item |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/todos/130/mark_as_done"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/todos/130/mark_as_done"
 ```
 
 Example Response:
@@ -300,5 +306,7 @@ POST /todos/mark_as_done
 ```
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/todos/mark_as_done"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/todos/mark_as_done"
 ```

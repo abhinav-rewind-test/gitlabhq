@@ -59,7 +59,7 @@ export default {
       skip() {
         return this.searchKey.length === 1 || !this.isVisible;
       },
-      update: (data) => data.workspace?.labels?.nodes || [],
+      update: (data) => data.namespace?.labels?.nodes || [],
       error() {
         createAlert({ message: __('Error fetching labels.') });
       },
@@ -88,27 +88,15 @@ export default {
     },
   },
   methods: {
+    // Public method, don't remove!
+    // eslint-disable-next-line vue/no-unused-properties
+    selectFirstItem() {
+      if (this.shouldHighlightFirstItem) {
+        this.handleLabelClick(this.visibleLabels[0]);
+      }
+    },
     isLabelSelected(label) {
       return this.localSelectedLabelsIds.includes(getIdFromGraphQLId(label.id));
-    },
-    /**
-     * This method scrolls item from dropdown into
-     * the view if it is off the viewable area of the
-     * container.
-     */
-    scrollIntoViewIfNeeded() {
-      const highlightedLabel = this.$refs.labelsListContainer.querySelector('.is-focused');
-
-      if (highlightedLabel) {
-        const container = this.$refs.labelsListContainer.getBoundingClientRect();
-        const label = highlightedLabel.getBoundingClientRect();
-
-        if (label.bottom > container.bottom) {
-          this.$refs.labelsListContainer.scrollTop += label.bottom - container.bottom;
-        } else if (label.top < container.top) {
-          this.$refs.labelsListContainer.scrollTop -= container.top - label.top;
-        }
-      }
     },
     updateSelectedLabels(label) {
       let labels;
@@ -130,11 +118,6 @@ export default {
     onDropdownAppear() {
       this.isVisible = true;
     },
-    selectFirstItem() {
-      if (this.shouldHighlightFirstItem) {
-        this.handleLabelClick(this.visibleLabels[0]);
-      }
-    },
     handleFocus(event, index) {
       if (index === 0 && event.target.classList.contains('is-focused')) {
         event.target.classList.remove('is-focused');
@@ -155,7 +138,7 @@ export default {
       <div ref="labelsListContainer" data-testid="dropdown-content">
         <gl-loading-icon
           v-if="labelsFetchInProgress"
-          class="labels-fetch-loading gl-align-items-center gl-w-full gl-h-full gl-mb-3"
+          class="labels-fetch-loading gl-mb-3 gl-h-full gl-w-full gl-items-center"
           size="sm"
         />
         <template v-else>
@@ -167,8 +150,8 @@ export default {
             :active="shouldHighlightFirstItem && index === 0"
             active-class="is-focused"
             data-testid="labels-list"
-            @focus.native.capture="handleFocus($event, index)"
-            @click.native.capture.stop="handleLabelClick(label)"
+            @focus.capture.native="handleFocus($event, index)"
+            @click.capture.native.stop="handleLabelClick(label)"
           >
             <label-item :label="label" />
           </gl-dropdown-item>

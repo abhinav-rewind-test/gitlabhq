@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe IconsHelper do
   let(:icons_path) { ActionController::Base.helpers.image_path("icons.svg") }
+  let(:illustrations_full_path) { ActionController::Base.helpers.image_path("illustrations.svg") }
 
   describe 'sprite_icon_path' do
     it 'returns relative path' do
@@ -30,6 +31,31 @@ RSpec.describe IconsHelper do
     end
   end
 
+  describe 'illustrations_path' do
+    it 'returns relative path' do
+      expect(illustrations_path).to eq(illustrations_full_path)
+    end
+
+    it 'only calls image_path once when called multiple times' do
+      expect(ActionController::Base.helpers).to receive(:image_path).once.and_call_original
+
+      2.times { illustrations_path }
+    end
+
+    context 'when an asset_host is set in the config it will return an absolute local URL' do
+      let(:asset_host) { 'http://assets' }
+
+      before do
+        allow(ActionController::Base).to receive(:asset_host).and_return(asset_host)
+      end
+
+      it 'returns an absolute URL on that asset host' do
+        expect(illustrations_path)
+          .to eq ActionController::Base.helpers.image_path("illustrations.svg", host: Gitlab.config.gitlab.url)
+      end
+    end
+  end
+
   describe 'sprite_icon' do
     icon_name = 'clock'
 
@@ -48,9 +74,19 @@ RSpec.describe IconsHelper do
         .to eq "<svg class=\"s72\" data-testid=\"#{icon_name}-icon\"><use href=\"#{icons_path}##{icon_name}\"></use></svg>"
     end
 
+    it 'returns svg icon html + size + variant classes' do
+      expect(sprite_icon(icon_name, size: 72, variant: 'subtle').to_s)
+        .to eq "<svg class=\"s72 gl-fill-icon-subtle\" data-testid=\"#{icon_name}-icon\"><use href=\"#{icons_path}##{icon_name}\"></use></svg>"
+    end
+
     it 'returns svg icon html + size classes + additional class' do
       expect(sprite_icon(icon_name, size: 72, css_class: 'icon-danger').to_s)
         .to eq "<svg class=\"s72 icon-danger\" data-testid=\"#{icon_name}-icon\"><use href=\"#{icons_path}##{icon_name}\"></use></svg>"
+    end
+
+    it 'returns svg icon html with aria label' do
+      expect(sprite_icon(icon_name, size: nil, aria_label: 'label').to_s)
+        .to eq "<svg data-testid=\"#{icon_name}-icon\" aria-label=\"label\"><use href=\"#{icons_path}##{icon_name}\"></use></svg>"
     end
 
     it 'returns a file icon' do
@@ -60,29 +96,61 @@ RSpec.describe IconsHelper do
         .to eq "<svg class=\"s#{IconsHelper::DEFAULT_ICON_SIZE}\" data-testid=\"coffee-icon\"><use href=\"#{file_icons_path}#coffee\"></use></svg>"
     end
 
+    context 'with color parameter' do
+      it 'returns svg icon html with inline color style' do
+        expect(sprite_icon(icon_name, color: '#1f75cb').to_s).to include "style=\"fill: #1f75cb;\""
+      end
+
+      it 'returns svg icon html with all parameters including color' do
+        expect(sprite_icon(icon_name, size: 24, css_class: 'test-class', variant: 'danger', color: '#123456', aria_label: 'test label').to_s)
+          .to eq "<svg class=\"s24 gl-fill-icon-danger test-class\" data-testid=\"#{icon_name}-icon\" aria-label=\"test label\" style=\"fill: #123456;\"><use href=\"#{icons_path}##{icon_name}\"></use></svg>"
+      end
+
+      it 'does not add style attribute when color is nil or an empty string' do
+        expect(sprite_icon(icon_name, color: nil).to_s).not_to include "style"
+        expect(sprite_icon(icon_name, color: '').to_s).not_to include "style"
+      end
+
+      it 'caches icons with different colors separately' do
+        icon1 = sprite_icon(icon_name, color: '#ff0000')
+        icon2 = sprite_icon(icon_name, color: '#00ff00')
+
+        expect(icon1.to_s).to include('style="fill: #ff0000;"')
+        expect(icon2.to_s).to include('style="fill: #00ff00;"')
+      end
+    end
+
     describe 'non existing icon' do
+      let(:helper) do
+        Class.new do
+          include IconsHelper
+        end.new
+      end
+
       non_existing = 'non_existing_icon_sprite'
 
       it 'raises in development mode' do
         stub_rails_env('development')
 
-        expect { sprite_icon(non_existing) }.to raise_error(ArgumentError, /is not a known icon/)
-        expect { sprite_icon(non_existing, file_icon: true) }.to raise_error(ArgumentError, /is not a known icon/)
+        expect(helper).to receive(:parse_sprite_definition).with('icons.json').once.and_call_original
+        expect(helper).to receive(:parse_sprite_definition).with('file_icons/file_icons.json').once.and_call_original
+        expect { helper.sprite_icon(non_existing) }.to raise_error(ArgumentError, /is not a known icon/)
+        expect { helper.sprite_icon(non_existing, file_icon: true) }.to raise_error(ArgumentError, /is not a known icon/)
       end
 
       it 'raises in test mode' do
         stub_rails_env('test')
 
-        expect { sprite_icon(non_existing) }.to raise_error(ArgumentError, /is not a known icon/)
-        expect { sprite_icon(non_existing, file_icon: true) }.to raise_error(ArgumentError, /is not a known icon/)
+        expect(helper).to receive(:parse_sprite_definition).with('icons.json').once.and_call_original
+        expect(helper).to receive(:parse_sprite_definition).with('file_icons/file_icons.json').once.and_call_original
+        expect { helper.sprite_icon(non_existing) }.to raise_error(ArgumentError, /is not a known icon/)
+        expect { helper.sprite_icon(non_existing, file_icon: true) }.to raise_error(ArgumentError, /is not a known icon/)
       end
 
       it 'does not raise in production mode' do
         stub_rails_env('production')
 
-        expect_file_not_to_read(Rails.root.join('node_modules/@gitlab/svgs/dist/icons.json'))
-        expect_file_not_to_read(Rails.root.join('node_modules/@gitlab/svgs/dist/file_icons/file_icons.json'))
-
+        expect(helper).not_to receive(:parse_sprite_definition)
         expect { sprite_icon(non_existing) }.not_to raise_error
         expect { sprite_icon(non_existing, file_icon: true) }.not_to raise_error
       end
@@ -110,8 +178,8 @@ RSpec.describe IconsHelper do
   end
 
   describe 'file_type_icon_class' do
-    it 'returns folder-o class' do
-      expect(file_type_icon_class('folder', 0, 'folder_name')).to eq 'folder-o'
+    it 'returns folder class' do
+      expect(file_type_icon_class('folder', 0, 'folder_name')).to eq 'folder'
     end
 
     it 'returns share class' do
@@ -245,7 +313,8 @@ RSpec.describe IconsHelper do
   describe 'gl_loading_icon' do
     it 'returns the default spinner markup' do
       expect(gl_loading_icon.to_s)
-        .to eq '<div class="gl-spinner-container" role="status"><span aria-label="Loading" class="gl-spinner gl-spinner-sm gl-spinner-dark gl-vertical-align-text-bottom!"></span></div>'
+        .to eq '<div class="gl-spinner-container" role="status"><span aria-hidden class="gl-spinner gl-spinner-sm gl-spinner-dark !gl-align-text-bottom"></span><span class="gl-sr-only !gl-absolute">Loading</span>
+</div>'
     end
 
     context 'when css_class is provided' do

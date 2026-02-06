@@ -10,7 +10,7 @@ export const searchArrayToFilterTokens = (search) =>
   search.map((s) => keyValueToFilterToken(FILTERED_SEARCH_TERM, s));
 
 export const extractFilterAndSorting = (queryObject) => {
-  const { type, search, version, sort, orderBy } = queryObject;
+  const { type, search, version, status, sort, orderBy } = queryObject;
   const filters = [];
   const sorting = {};
 
@@ -20,8 +20,12 @@ export const extractFilterAndSorting = (queryObject) => {
   if (version) {
     filters.push(keyValueToFilterToken('version', version));
   }
+  if (status) {
+    filters.push(keyValueToFilterToken('status', status));
+  }
   if (search) {
-    filters.push(...searchArrayToFilterTokens(search));
+    const searchArray = Array.isArray(search) ? search : [search];
+    filters.push(...searchArrayToFilterTokens(searchArray));
   }
   if (sort) {
     sorting.sort = sort;
@@ -38,6 +42,32 @@ export const extractPageInfo = (queryObject) => {
     before,
     after,
   };
+};
+
+export const getNextPageParams = (cursor, first) => ({
+  after: cursor,
+  before: undefined,
+  first,
+  last: undefined,
+});
+
+export const getPreviousPageParams = (cursor, last) => ({
+  after: undefined,
+  before: cursor,
+  first: undefined,
+  last,
+});
+
+export const getPageParams = (pageInfo = {}, pageSize) => {
+  if (pageInfo.before) {
+    return getPreviousPageParams(pageInfo.before, pageSize);
+  }
+
+  if (pageInfo.after) {
+    return getNextPageParams(pageInfo.after, pageSize);
+  }
+
+  return {};
 };
 
 export const beautifyPath = (path) => (path ? path.split('/').join(' / ') : '');

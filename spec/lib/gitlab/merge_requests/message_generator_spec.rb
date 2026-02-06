@@ -16,7 +16,7 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
   end
 
   let(:current_user) { create(:user, name: 'John Doe', email: 'john.doe@example.com') }
-  let(:author) { project.creator }
+  let(:author) { current_user }
   let(:source_branch) { 'feature' }
   let(:merge_request_description) { "Merge Request Description\nNext line" }
   let(:merge_request_title) { 'Bugfix' }
@@ -260,7 +260,7 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
 
     context 'when project has template with CRLF newlines' do
       let(message_template_name) do
-        "Merge branch '%{source_branch}' into '%{target_branch}'\r\n\r\n%{title}\r\n\r\n%{description}\r\n\r\nSee merge request %{reference}" # rubocop: disable Layout/LineLength
+        "Merge branch '%{source_branch}' into '%{target_branch}'\r\n\r\n%{title}\r\n\r\n%{description}\r\n\r\nSee merge request %{reference}"
       end
 
       it 'converts it to LF newlines' do
@@ -330,6 +330,26 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
 
           it 'is mr title' do
             expect(result_message).to eq 'Message: Bugfix'
+          end
+        end
+      end
+
+      context 'when project has merge commit template with first_multiline_commit_description' do
+        let(message_template_name) { <<~MSG.rstrip }
+          Message: %{first_multiline_commit_description}
+        MSG
+
+        it 'uses first multiline commit description' do
+          expect(result_message).to eq <<~MSG.rstrip
+            Message: Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
+          MSG
+        end
+
+        context 'when branch has no multiline commits' do
+          let(:source_branch) { 'spooky-stuff' }
+
+          it 'is empty' do
+            expect(result_message).to eq 'Message: '
           end
         end
       end
@@ -679,11 +699,13 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
         description:%{description}
         first_commit:%{first_commit}
         first_multiline_commit:%{first_multiline_commit}
+        first_multiline_commit_description:%{first_multiline_commit_description}
         url:%{url}
         reviewed_by:%{reviewed_by}
         approved_by:%{approved_by}
         merged_by:%{merged_by}
         co_authored_by:%{co_authored_by}
+        merge_request_author:%{merge_request_author}
         all_commits:%{all_commits}
       MSG
 
@@ -701,11 +723,13 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
           first_multiline_commit:Feature added
 
           Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
+          first_multiline_commit_description:Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
           url:#{Gitlab::UrlBuilder.build(merge_request)}
           reviewed_by:
           approved_by:
           merged_by:#{current_user.name} <#{current_user.commit_email_or_default}>
           co_authored_by:Co-authored-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
+          merge_request_author:John Doe <john.doe@example.com>
           all_commits:* Feature added
 
           Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
@@ -793,6 +817,27 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
         end
       end
     end
+
+    context 'when project has merge commit template with merge_request_author' do
+      let(:source_branch) { 'signed-commits' }
+      let(:merge_commit_template) { <<~MSG.rstrip }
+        %{title}
+
+        %{merge_request_author}
+      MSG
+
+      context 'when author is one of the commit authors' do
+        let(:author) { create(:user, name: 'Nannie Bernhard', email: 'nannie.bernhard@example.com') }
+
+        it 'uses the merge request author' do
+          expect(result_message).to eq <<~MSG.rstrip
+            Bugfix
+
+            Nannie Bernhard <nannie.bernhard@example.com>
+          MSG
+        end
+      end
+    end
   end
 
   describe '#squash_commit_message' do
@@ -823,6 +868,23 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
             Co-authored-by: Winnie Hellmann <winnie@gitlab.com>
           MSG
         end
+      end
+    end
+
+    context 'when project has merge commit template with merge_request_author' do
+      let(:author) { create(:user, name: 'Nannie Bernhard', email: 'nannie.bernhard@example.com') }
+      let(:squash_commit_template) { <<~MSG.rstrip }
+        %{title}
+
+        %{merge_request_author}
+      MSG
+
+      it 'uses the merge request author' do
+        expect(result_message).to eq <<~MSG.rstrip
+          Bugfix
+
+          Nannie Bernhard <nannie.bernhard@example.com>
+        MSG
       end
     end
   end
@@ -865,10 +927,12 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
         description:%{description}
         first_commit:%{first_commit}
         first_multiline_commit:%{first_multiline_commit}
+        first_multiline_commit_description:%{first_multiline_commit_description}
         url:%{url}
         approved_by:%{approved_by}
         merged_by:%{merged_by}
         co_authored_by:%{co_authored_by}
+        merge_request_author:%{merge_request_author}
         all_commits:%{all_commits}
       MSG
 
@@ -885,10 +949,12 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
           first_multiline_commit:Feature added
 
           Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
+          first_multiline_commit_description:Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
           url:
           approved_by:
           merged_by:
           co_authored_by:Co-authored-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
+          merge_request_author:
           all_commits:* Feature added
 
           Signed-off-by: Dmitriy Zaporozhets <dmitriy.zaporozhets@gmail.com>
@@ -907,10 +973,12 @@ RSpec.describe Gitlab::MergeRequests::MessageGenerator, feature_category: :code_
             description:
             first_commit:
             first_multiline_commit:Bugfix
+            first_multiline_commit_description:
             url:
             approved_by:
             merged_by:
             co_authored_by:
+            merge_request_author:
             all_commits:
           MSG
         end

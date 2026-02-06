@@ -38,18 +38,21 @@ var (
 	)
 )
 
-type HttpResponseWriter struct {
+// HTTPResponseWriter wraps an http.ResponseWriter to track Git HTTP metrics
+type HTTPResponseWriter struct {
 	helper.CountingResponseWriter
 }
 
-func NewHttpResponseWriter(rw http.ResponseWriter) *HttpResponseWriter {
+// NewHTTPResponseWriter creates a new HTTPResponseWriter that tracks Git HTTP session metrics
+func NewHTTPResponseWriter(rw http.ResponseWriter) *HTTPResponseWriter {
 	gitHTTPSessionsActive.Inc()
-	return &HttpResponseWriter{
+	return &HTTPResponseWriter{
 		CountingResponseWriter: helper.NewCountingResponseWriter(rw),
 	}
 }
 
-func (w *HttpResponseWriter) Log(r *http.Request, writtenIn int64) {
+// Log records Git HTTP request metrics including bytes transferred and service type
+func (w *HTTPResponseWriter) Log(r *http.Request, writtenIn int64) {
 	service := getService(r)
 	agent := getRequestAgent(r)
 

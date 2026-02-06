@@ -49,7 +49,7 @@ RSpec.describe Gitlab::Auth::IpRateLimiter, :use_clean_rails_memory_store_cachin
 
     context 'with a whitelisted netmask' do
       before do
-        options[:ip_whitelist] = ['127.0.0.1', '10.2.2.0/24', 'bad']
+        options[:ip_whitelist] = ['bad1', '127.0.0.1', '10.2.2.0/24', 'bad2']
         stub_rack_attack_setting(options)
       end
 
@@ -107,8 +107,20 @@ RSpec.describe Gitlab::Auth::IpRateLimiter, :use_clean_rails_memory_store_cachin
       it { is_expected.to be_truthy }
     end
 
+    context 'when mapped ip is in the trusted list' do
+      let(:ip) { '::ffff:127.0.0.1' }
+
+      it { is_expected.to be_truthy }
+    end
+
     context 'when ip is not in the trusted list' do
       let(:ip) { '10.0.0.1' }
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when mapped ip is not in the trusted list' do
+      let(:ip) { '::ffff:10.0.0.1' }
 
       it { is_expected.to be_falsey }
     end

@@ -1,5 +1,5 @@
 #import "~/graphql_shared/fragments/page_info.fragment.graphql"
-#import "~/issues/list/queries/issue.fragment.graphql"
+#import "~/issues/dashboard/queries/issue.fragment.graphql"
 
 query getDashboardIssues(
   $hideUsers: Boolean = false
@@ -9,12 +9,18 @@ query getDashboardIssues(
   $state: IssuableState
   $assigneeId: String
   $assigneeUsernames: [String!]
+  $assigneeWildcardId: AssigneeWildcardId
   $authorUsername: String
+  $closedAfter: Time
+  $closedBefore: Time
   $confidential: Boolean
+  $createdAfter: Time
+  $createdBefore: Time
   $labelName: [String]
   $milestoneTitle: [String]
   $milestoneWildcardId: MilestoneWildcardId
   $myReactionEmoji: String
+  $subscribed: SubscriptionStatus
   $types: [IssueType!]
   $in: [IssuableSearchableField!]
   $not: NegatedIssueFilterInput
@@ -23,10 +29,6 @@ query getDashboardIssues(
   $beforeCursor: String
   $firstPageSize: Int
   $lastPageSize: Int
-  $createdAfter: Time
-  $createdBefore: Time
-  $closedAfter: Time
-  $closedBefore: Time
 ) {
   issues(
     search: $search
@@ -34,12 +36,18 @@ query getDashboardIssues(
     state: $state
     assigneeId: $assigneeId
     assigneeUsernames: $assigneeUsernames
+    assigneeWildcardId: $assigneeWildcardId
     authorUsername: $authorUsername
+    closedAfter: $closedAfter
+    closedBefore: $closedBefore
     confidential: $confidential
+    createdAfter: $createdAfter
+    createdBefore: $createdBefore
     labelName: $labelName
     milestoneTitle: $milestoneTitle
     milestoneWildcardId: $milestoneWildcardId
     myReactionEmoji: $myReactionEmoji
+    subscribed: $subscribed
     types: $types
     in: $in
     not: $not
@@ -48,10 +56,6 @@ query getDashboardIssues(
     before: $beforeCursor
     first: $firstPageSize
     last: $lastPageSize
-    createdAfter: $createdAfter
-    createdBefore: $createdBefore
-    closedAfter: $closedAfter
-    closedBefore: $closedBefore
   ) @persist {
     nodes {
       __persist

@@ -10,7 +10,7 @@ RSpec.describe 'User Cluster', :js, feature_category: :environment_management do
 
   before do
     group.add_maintainer(user)
-    gitlab_sign_in(user)
+    sign_in(user)
 
     allow(Groups::ClustersController).to receive(:STATUS_POLLING_INTERVAL) { 100 }
     allow_next_instance_of(Clusters::Kubernetes::CreateOrUpdateNamespaceService) do |instance|
@@ -25,7 +25,8 @@ RSpec.describe 'User Cluster', :js, feature_category: :environment_management do
     before do
       visit group_clusters_path(group)
 
-      click_link 'Connect a cluster (deprecated)'
+      click_button(class: 'gl-new-dropdown-toggle', text: 'Create a cluster')
+      click_link 'Connect a cluster (certificate - deprecated)'
     end
 
     context 'when user filled form with valid parameters' do
@@ -83,7 +84,7 @@ RSpec.describe 'User Cluster', :js, feature_category: :environment_management do
   end
 
   context 'when user does have a cluster and visits cluster page' do
-    let(:cluster) { create(:cluster, :provided_by_user, cluster_type: :group_type, groups: [group]) }
+    let(:cluster) { create(:cluster, :provided_by_user, :group, groups: [group]) }
 
     before do
       visit group_cluster_path(group, cluster)
@@ -129,7 +130,7 @@ RSpec.describe 'User Cluster', :js, feature_category: :environment_management do
         # signs out the user with `maintainer` role in the project
         gitlab_sign_out
 
-        gitlab_sign_in(admin)
+        sign_in(admin)
         enable_admin_mode!(admin)
 
         visit group_clusters_path(group)
@@ -137,7 +138,9 @@ RSpec.describe 'User Cluster', :js, feature_category: :environment_management do
 
       it 'can visit the clusters index page', :aggregate_failures do
         expect(page).to have_title("Kubernetes Clusters · #{group.name} · #{_('GitLab')}")
-        expect(page).to have_content('Connect a cluster')
+
+        click_button(class: 'gl-new-dropdown-toggle', text: 'Create a cluster')
+        expect(page).to have_content('Connect a cluster (certificate - deprecated)')
       end
     end
   end

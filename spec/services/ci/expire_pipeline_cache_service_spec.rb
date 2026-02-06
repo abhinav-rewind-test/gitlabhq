@@ -18,6 +18,7 @@ RSpec.describe Ci::ExpirePipelineCacheService, feature_category: :continuous_int
       graphql_pipeline_path = "/api/graphql:pipelines/id/#{pipeline.id}"
       graphql_pipeline_sha_path = "/api/graphql:pipelines/sha/#{pipeline.sha}"
       graphql_project_on_demand_scan_counts_path = "/api/graphql:on_demand_scan/counts/#{project.full_path}"
+      graphql_project_pipelines_path = "/api/graphql:project_pipelines/#{project.id}"
 
       expect_touched_etag_caching_paths(
         pipelines_path,
@@ -25,7 +26,8 @@ RSpec.describe Ci::ExpirePipelineCacheService, feature_category: :continuous_int
         pipeline_path,
         graphql_pipeline_path,
         graphql_pipeline_sha_path,
-        graphql_project_on_demand_scan_counts_path
+        graphql_project_on_demand_scan_counts_path,
+        graphql_project_pipelines_path
       )
 
       subject.execute(pipeline)
@@ -116,9 +118,33 @@ RSpec.describe Ci::ExpirePipelineCacheService, feature_category: :continuous_int
       control = ActiveRecord::QueryRecorder.new { subject.execute(pipeline) }
 
       create(:ci_sources_pipeline, pipeline: pipeline)
-      create(:ci_sources_pipeline, source_job: create(:ci_build, pipeline: pipeline))
+      create(:ci_sources_pipeline, source_job: create(:ci_build, pipeline: pipeline, ci_stage: create(:ci_stage)))
 
       expect { subject.execute(pipeline) }.not_to exceed_query_limit(control)
+    end
+  end
+
+  context 'when pipeline does not have sha' do
+    let(:pipeline_without_sha) { create(:ci_pipeline, project: project) }
+
+    before do
+      pipeline_without_sha.update_column(:sha, nil)
+    end
+
+    it 'does not raise an error' do
+      expect { subject.execute(pipeline_without_sha) }.not_to raise_error
+    end
+  end
+
+  context 'when pipeline does not have commit' do
+    let(:pipeline_without_commit) { create(:ci_pipeline, project: project) }
+
+    before do
+      allow(pipeline_without_commit).to receive(:commit).and_return(nil)
+    end
+
+    it 'does not raise an error' do
+      expect { subject.execute(pipeline_without_commit) }.not_to raise_error
     end
   end
 

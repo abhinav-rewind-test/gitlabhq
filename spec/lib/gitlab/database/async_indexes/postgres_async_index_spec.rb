@@ -73,8 +73,8 @@ RSpec.describe Gitlab::Database::AsyncIndexes::PostgresAsyncIndex, type: :model,
   end
 
   describe 'scopes' do
-    let_it_be(:async_index_creation) { create(:postgres_async_index) }
-    let_it_be(:async_index_destruction) { create(:postgres_async_index, :with_drop) }
+    let_it_be(:async_index_creation) { create(:postgres_async_index, attempts: 0) }
+    let_it_be(:async_index_destruction) { create(:postgres_async_index, :with_drop, attempts: 0) }
 
     describe '.to_create' do
       subject { described_class.to_create }
@@ -96,6 +96,27 @@ RSpec.describe Gitlab::Database::AsyncIndexes::PostgresAsyncIndex, type: :model,
       subject { described_class.ordered.limit(1) }
 
       it { is_expected.to contain_exactly(async_index_destruction) }
+    end
+
+    describe '.retriable' do
+      subject(:retriable) { described_class.retriable }
+
+      it { is_expected.to contain_exactly(async_index_creation, async_index_destruction) }
+
+      context 'when max attempts is reached' do
+        before do
+          stub_const("#{described_class}::MAX_ATTEMPTS", 1)
+          async_index_creation.update!(attempts: 2)
+        end
+
+        it { is_expected.to contain_exactly(async_index_destruction) }
+      end
+    end
+
+    describe '.queued' do
+      subject(:queued) { described_class.queued }
+
+      it { is_expected.to contain_exactly(async_index_creation, async_index_destruction) }
     end
   end
 

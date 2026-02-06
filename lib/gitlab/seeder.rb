@@ -17,7 +17,7 @@ module Gitlab
 
       included do
         scope :not_mass_generated, -> do
-          where.not("path LIKE '#{MASS_INSERT_GROUP_START}%'")
+          where.not("namespaces.path LIKE '#{sanitize_sql_like(MASS_INSERT_GROUP_START)}%'")
         end
       end
     end
@@ -27,7 +27,7 @@ module Gitlab
 
       included do
         scope :not_mass_generated, -> do
-          where.not("path LIKE '#{MASS_INSERT_PROJECT_START}%'")
+          where.not("projects.path LIKE '#{sanitize_sql_like(MASS_INSERT_PROJECT_START)}%'")
         end
       end
     end
@@ -37,7 +37,10 @@ module Gitlab
 
       included do
         scope :not_mass_generated, -> do
-          where.not("username LIKE '#{MASS_INSERT_USER_START}%' OR username LIKE '#{REPORTED_USER_START}%'")
+          where.not(
+            "username LIKE '#{sanitize_sql_like(MASS_INSERT_USER_START)}%' OR " \
+              "username LIKE '#{sanitize_sql_like(REPORTED_USER_START)}%'"
+          )
         end
       end
     end
@@ -91,12 +94,31 @@ module Gitlab
       without_database_logging do
         without_statement_timeout do
           without_new_note_notifications do
-            yield
+            # Request store benefits development seeders the most because it
+            # saves us about 30% of seeding time, and production seeds are minimal.
+            if Rails.env.development?
+              Gitlab::SafeRequestStore.ensure_request_store do
+                sidekiq_strict_mode = Sidekiq::Config::DEFAULTS[:on_complex_arguments]
+                disable_request_limits = ENV['GITALY_DISABLE_REQUEST_LIMITS']
+                # We need this because seeders shouldn't be limited by Gitaly
+                # since we're not actually in a request-response environment.
+                ENV['GITALY_DISABLE_REQUEST_LIMITS'] = 'true'
+                # Strict args just print annoying warnings during seeding.
+                # At this point, the developer can't do anything about this.
+                Sidekiq.strict_args!(false)
+                yield
+              ensure
+                ENV['GITALY_DISABLE_REQUEST_LIMITS'] = disable_request_limits
+                Sidekiq.strict_args!(sidekiq_strict_mode)
+              end
+            else
+              yield
+            end
           end
         end
       end
 
-      puts "\nOK".color(:green)
+      puts Rainbow("\nOK").green
     ensure
       SeedFu.quiet = false
       ActionMailer::Base.perform_deliveries = old_perform_deliveries

@@ -22,7 +22,7 @@ export const fetchConflictsData = async ({ commit, dispatch }, conflictsPath) =>
 };
 
 export const setConflictsData = async ({ commit }, data) => {
-  const files = decorateFiles(data.files);
+  const files = decorateFiles(data);
   commit(types.SET_CONFLICTS_DATA, { ...data, files });
 };
 
@@ -33,7 +33,7 @@ export const submitResolvedConflicts = async ({ commit, getters }, resolveConfli
     window.location.assign(data.redirect_to);
   } catch (e) {
     commit(types.SET_SUBMIT_STATE, false);
-    createAlert({ message: __('Failed to save merge conflicts resolutions. Please try again!') });
+    createAlert({ message: __('Failed to save merge conflict resolutions. Please try again.') });
   }
 };
 

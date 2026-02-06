@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'User views open merge requests', feature_category: :code_review_workflow do
+RSpec.describe 'User views open merge requests', :js, feature_category: :code_review_workflow do
   let_it_be(:user) { create(:user) }
 
   shared_examples_for 'shows merge requests' do
@@ -80,8 +80,8 @@ RSpec.describe 'User views open merge requests', feature_category: :code_review_
         end
 
         it 'shows pipeline status' do
-          page.within('.mr-list') do
-            expect(page).to have_link('Pipeline: pending')
+          page.within('.issuable-list') do
+            expect(page).to have_link('Pending')
           end
         end
       end

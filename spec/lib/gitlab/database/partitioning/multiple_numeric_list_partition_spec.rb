@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Gitlab::Database::Partitioning::MultipleNumericListPartition, feature_category: :database do
   describe '.from_sql' do
-    subject(:parsed_partition) { described_class.from_sql(table, partition_name, definition) }
+    subject(:parsed_partition) { described_class.from_sql(table, partition_name, definition, schema: nil) }
 
     let(:table) { 'partitioned_table' }
 
@@ -86,18 +86,28 @@ RSpec.describe Gitlab::Database::Partitioning::MultipleNumericListPartition, fea
   describe '#data_size' do
     it 'returns the partition size' do
       partition = Gitlab::Database::PostgresPartition.for_parent_table(:p_ci_builds).last
-      parsed_partition = described_class.from_sql(:p_ci_builds, partition.name, partition.condition)
+      parsed_partition = described_class.from_sql(:p_ci_builds, partition.name, partition.condition,
+        schema: partition.schema)
 
       expect(parsed_partition.data_size).not_to eq(0)
     end
   end
 
-  describe '#to_sql' do
+  describe '#to_create_sql' do
     subject(:partition) { described_class.new('table', 10) }
 
-    it 'generates SQL' do
-      sql = 'CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."table_10" PARTITION OF "table" FOR VALUES IN (10)'
-      expect(partition.to_sql).to eq(sql)
+    it 'generates SQL to create a table using LIKE' do
+      sql = 'CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."table_10" (LIKE "table" INCLUDING ALL)'
+      expect(partition.to_create_sql).to eq(sql)
+    end
+  end
+
+  describe '#to_attach_sql' do
+    subject(:partition) { described_class.new('table', 10) }
+
+    it 'generates SQL to attach a partition' do
+      sql = 'ALTER TABLE "table" ATTACH PARTITION "gitlab_partitions_dynamic"."table_10" FOR VALUES IN (10)'
+      expect(partition.to_attach_sql).to eq(sql)
     end
   end
 
@@ -107,6 +117,36 @@ RSpec.describe Gitlab::Database::Partitioning::MultipleNumericListPartition, fea
     it 'generates SQL' do
       sql = 'ALTER TABLE "table" DETACH PARTITION "gitlab_partitions_dynamic"."table_10"'
       expect(partition.to_detach_sql).to eq(sql)
+    end
+  end
+
+  describe '#before?' do
+    let(:database_partition) { described_class.new('table', 10) }
+
+    subject(:before) { database_partition.before?(partition_id) }
+
+    context 'when partition_id is before the max partition value' do
+      let(:partition_id)  { 9 }
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when partition_id is after the max partition value' do
+      let(:partition_id) { 11 }
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
+  describe '#fully_qualified_partition' do
+    it 'uses the explicit partition name if provided' do
+      parsed_partition = described_class.new('table', 1, partition_name: 'some_other_name')
+
+      expect(parsed_partition.fully_qualified_partition).to eq('"gitlab_partitions_dynamic"."some_other_name"')
+    end
+
+    it 'defaults to the table name followed by the partition value' do
+      expect(described_class.new('table', 1).fully_qualified_partition).to eq('"gitlab_partitions_dynamic"."table_1"')
     end
   end
 end

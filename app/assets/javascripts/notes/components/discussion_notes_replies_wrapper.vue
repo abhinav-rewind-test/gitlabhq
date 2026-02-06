@@ -1,12 +1,13 @@
 <script>
 import { normalizeChildren } from '~/lib/utils/vue3compat/normalize_children';
+import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
 /**
  * Wrapper for discussion notes replies section.
  *
  * This is a functional component using the render method because in some cases
  * the wrapper is not needed and we want to simply render along the children.
  */
-export default {
+export default normalizeRender({
   functional: true,
   props: {
     isDiffDiscussion: {
@@ -21,7 +22,7 @@ export default {
         'li',
         {
           class:
-            'discussion-collapsible gl-border-solid gl-border-gray-100 gl-border-1 gl-rounded-base gl-border-top-0',
+            'discussion-collapsible gl-border-solid gl-border-default gl-border-1 gl-rounded-base gl-border-t-0',
         },
         [h('ul', { class: 'notes' }, children)],
       );
@@ -29,5 +30,5 @@ export default {
 
     return normalizeChildren(children);
   },
-};
+});
 </script>

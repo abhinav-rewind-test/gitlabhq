@@ -33,8 +33,6 @@ RSpec.describe 'Merge request > User resolves Draft', :js, feature_category: :co
     before do
       create(:ci_build, pipeline: pipeline)
 
-      stub_feature_flags(merge_blocked_component: false)
-
       sign_in(user)
       visit project_merge_request_path(project, merge_request)
       wait_for_requests
@@ -42,7 +40,7 @@ RSpec.describe 'Merge request > User resolves Draft', :js, feature_category: :co
 
     it 'retains merge request data after clicking Resolve WIP status' do
       expect(page.find('.ci-widget-content')).to have_content("Pipeline ##{pipeline.id}")
-      expect(page).to have_content "Merge blocked: Select Mark as ready to remove it from Draft status."
+      expect(page).to have_content "Set to auto-merge"
 
       page.within('.mr-state-widget') do
         click_button('Mark as ready')
@@ -54,7 +52,7 @@ RSpec.describe 'Merge request > User resolves Draft', :js, feature_category: :co
       # merge request widget refreshes, which masks missing elements
       # that should already be present.
       expect(page.find('.ci-widget-content', wait: 0)).to have_content("Pipeline ##{pipeline.id}")
-      expect(page).not_to have_content("Merge blocked: Select Mark as ready to remove it from Draft status.")
+      expect(page).to have_content("Set to auto-merge")
     end
   end
 end

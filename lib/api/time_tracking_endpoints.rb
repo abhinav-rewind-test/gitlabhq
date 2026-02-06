@@ -11,15 +11,15 @@ module API
         end
 
         def issuable_key
-          "#{issuable_name}_iid".to_sym
+          :"#{issuable_name}_iid"
         end
 
         def admin_issuable_key
-          "admin_#{issuable_name}".to_sym
+          :"admin_#{issuable_name}"
         end
 
         def read_issuable_key
-          "read_#{issuable_name}".to_sym
+          :"read_#{issuable_name}"
         end
 
         def load_issuable
@@ -52,7 +52,7 @@ module API
 
       issuable_name            = name.end_with?('Issues') ? 'issue' : 'merge_request'
       issuable_collection_name = issuable_name.pluralize
-      issuable_key             = "#{issuable_name}_iid".to_sym
+      issuable_key             = :"#{issuable_name}_iid"
 
       desc "Set a time estimate for a #{issuable_name}" do
         detail "Sets an estimated time of work for this #{issuable_name}."
@@ -68,6 +68,7 @@ module API
         requires issuable_key, type: Integer, desc: "The internal ID of the #{issuable_name}."
         requires :duration, type: String, desc: 'The duration in human format.', documentation: { example: '3h30m' }
       end
+      route_setting :authorization, permissions: :"create_#{issuable_name}_time_estimate", boundary_type: :project
       post ":id/#{issuable_collection_name}/:#{issuable_key}/time_estimate" do
         authorize! admin_issuable_key, load_issuable
 
@@ -93,6 +94,7 @@ module API
       params do
         requires issuable_key, type: Integer, desc: "The internal ID of the #{issuable_name}."
       end
+      route_setting :authorization, permissions: :"reset_#{issuable_name}_time_estimate", boundary_type: :project
       post ":id/#{issuable_collection_name}/:#{issuable_key}/reset_time_estimate" do
         authorize! admin_issuable_key, load_issuable
 
@@ -113,6 +115,7 @@ module API
         requires issuable_key, type: Integer, desc: "The internal ID of the #{issuable_name}."
         requires :duration, type: String, desc: 'The duration in human format.'
       end
+      route_setting :authorization, permissions: :"add_#{issuable_name}_spent_time", boundary_type: :project
       post ":id/#{issuable_collection_name}/:#{issuable_key}/add_spent_time" do
         authorize! admin_issuable_key, load_issuable
 
@@ -140,6 +143,7 @@ module API
       params do
         requires issuable_key, type: Integer, desc: "The internal ID of the #{issuable_name}"
       end
+      route_setting :authorization, permissions: :"reset_#{issuable_name}_spent_time", boundary_type: :project
       post ":id/#{issuable_collection_name}/:#{issuable_key}/reset_spent_time" do
         authorize! admin_issuable_key, load_issuable
 
@@ -159,6 +163,7 @@ module API
       params do
         requires issuable_key, type: Integer, desc: "The internal ID of the #{issuable_name}"
       end
+      route_setting :authorization, permissions: :"read_#{issuable_name}_time_statistic", boundary_type: :project
       get ":id/#{issuable_collection_name}/:#{issuable_key}/time_stats" do
         authorize! read_issuable_key, load_issuable
 

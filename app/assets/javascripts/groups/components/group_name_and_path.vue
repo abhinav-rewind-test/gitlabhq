@@ -8,11 +8,7 @@ import {
   GlAlert,
   GlButton,
   GlButtonGroup,
-  GlDropdown,
-  GlDropdownItem,
-  GlDropdownText,
-  GlTruncate,
-  GlSearchBoxByType,
+  GlCollapsibleListbox,
 } from '@gitlab/ui';
 import { debounce } from 'lodash';
 
@@ -34,7 +30,7 @@ export default {
   i18n: {
     inputs: {
       name: {
-        placeholder: __('My awesome group'),
+        placeholder: __('My group'),
         description: s__(
           'Groups|Must start with letter, digit, emoji, or underscore. Can also contain periods, dashes, spaces, and parentheses.',
         ),
@@ -54,7 +50,7 @@ export default {
         validFeedback: s__('Groups|Group path is available.'),
       },
     },
-    apiLoadingMessage: s__('Groups|Checking group URL availability...'),
+    apiLoadingMessage: s__('Groups|Checking group URL availability…'),
     apiErrorMessage: __(
       'An error occurred while checking group path. Please refresh and try again.',
     ),
@@ -75,31 +71,7 @@ export default {
     GlAlert,
     GlButton,
     GlButtonGroup,
-    GlDropdown,
-    GlDropdownItem,
-    GlDropdownText,
-    GlTruncate,
-    GlSearchBoxByType,
-  },
-  apollo: {
-    currentUserGroups: {
-      query: searchGroupsWhereUserCanCreateSubgroups,
-      variables() {
-        return {
-          search: this.search,
-        };
-      },
-      update(data) {
-        return data.currentUser?.groups?.nodes || [];
-      },
-      skip() {
-        const hasNotEnoughSearchCharacters =
-          this.search.length > 0 && this.search.length < MINIMUM_SEARCH_LENGTH;
-
-        return this.shouldSkipQuery || hasNotEnoughSearchCharacters;
-      },
-      debounce: DEBOUNCE_DELAY,
-    },
+    GlCollapsibleListbox,
   },
   inject: ['fields', 'basePath', 'newSubgroup', 'mattermostEnabled'],
   data() {
@@ -114,8 +86,9 @@ export default {
       pathInvalidFeedback: null,
       activeApiRequestAbortController: null,
       search: '',
-      currentUserGroups: {},
-      shouldSkipQuery: true,
+      isLoading: false,
+      isSearchLoading: false,
+      currentUserGroups: null,
       selectedGroup: {
         id: this.fields.parentId.value,
         fullPath: this.fields.parentFullPath.value,
@@ -123,6 +96,14 @@ export default {
     };
   },
   computed: {
+    groupItems() {
+      return this.currentUserGroups && this.currentUserGroups.length
+        ? this.currentUserGroups.map((group) => ({
+            value: group.id,
+            text: group.fullPath,
+          }))
+        : [];
+    },
     inputLabels() {
       return {
         name: this.newSubgroup ? s__('Groups|Subgroup name') : s__('Groups|Group name'),
@@ -142,6 +123,12 @@ export default {
     },
     isEditingGroup() {
       return this.fields.groupId.value !== '';
+    },
+    isInitialLoading() {
+      return this.isLoading && !this.isSearchLoading;
+    },
+    shouldShowEmptyState() {
+      return this.currentUserGroups && this.currentUserGroups.length === 0;
     },
   },
   watch: {
@@ -170,6 +157,23 @@ export default {
     ],
   },
   methods: {
+    async fetchGroups(searchTerm = '') {
+      try {
+        const { data } = await this.$apollo.query({
+          query: searchGroupsWhereUserCanCreateSubgroups,
+          variables: {
+            search: searchTerm,
+          },
+        });
+        this.currentUserGroups = data.currentUser?.groups?.nodes || [];
+      } finally {
+        this.isLoading = false;
+        this.isSearchLoading = false;
+      }
+    },
+    debouncedFetchGroups: debounce(function fetchGroups(searchTerm) {
+      this.fetchGroups(searchTerm);
+    }, DEBOUNCE_DELAY),
     async checkPathAvailability() {
       if (!this.path) return Promise.reject();
 
@@ -256,19 +260,32 @@ export default {
       this.pathFeedbackState = false;
     },
     handleDropdownShown() {
-      if (this.shouldSkipQuery) {
-        this.shouldSkipQuery = false;
+      if (!this.currentUserGroups) {
+        this.isLoading = true;
+        this.debouncedFetchGroups();
+      }
+    },
+    handleSearchInput(searchValue) {
+      this.search = searchValue.trim();
+
+      // Don't search if not enough characters
+      if (this.search.length > 0 && this.search.length < MINIMUM_SEARCH_LENGTH) {
+        return;
       }
 
-      this.$refs.search.focusInput();
+      this.isSearchLoading = true;
+      this.debouncedFetchGroups(this.search);
     },
-    handleDropdownItemClick({ id, fullPath }) {
-      this.selectedGroup = {
-        id: getIdFromGraphQLId(id),
-        fullPath,
-      };
+    handleDropdownItemClick(selectedItemValue) {
+      const selectedGroup = this.currentUserGroups.find((group) => group.id === selectedItemValue);
+      if (selectedGroup) {
+        this.selectedGroup = {
+          id: getIdFromGraphQLId(selectedGroup.id),
+          fullPath: selectedGroup.fullPath,
+        };
 
-      this.debouncedValidatePath();
+        this.debouncedValidatePath();
+      }
     },
   },
 };
@@ -292,7 +309,7 @@ export default {
       <gl-form-input
         :id="fields.name.id"
         v-model="name"
-        class="gl-field-error-ignore gl-h-auto!"
+        class="gl-field-error-ignore !gl-h-auto"
         required
         :name="fields.name.name"
         :placeholder="$options.i18n.inputs.name.placeholder"
@@ -312,57 +329,43 @@ export default {
     </gl-alert>
 
     <div :class="newSubgroup && 'row gl-mb-3'">
-      <gl-form-group v-if="newSubgroup" class="col-sm-6 gl-pr-0" :label="inputLabels.subgroupPath">
+      <gl-form-group
+        v-if="newSubgroup"
+        class="gl-col-sm-6 gl-pr-0"
+        :label="inputLabels.subgroupPath"
+      >
         <div class="input-group gl-flex-nowrap">
           <gl-button-group class="gl-w-full">
-            <gl-button class="js-group-namespace-button gl-text-truncate gl-flex-grow-0!" label>
+            <gl-button class="js-group-namespace-button !gl-grow-0 gl-truncate" label>
               {{ basePath }}
             </gl-button>
 
-            <gl-dropdown
-              class="js-group-namespace-dropdown gl-flex-grow-1"
-              toggle-class="gl-rounded-top-right-base! gl-rounded-bottom-right-base! gl-w-20"
+            <gl-collapsible-listbox
+              ref="search"
+              data-testid="select_group_dropdown_item"
+              :items="groupItems"
+              :loading="isInitialLoading"
+              :searching="isSearchLoading"
+              :toggle-text="selectedGroup.fullPath"
+              searchable
+              :search-placeholder="__('Search groups')"
+              :no-results-text="shouldShowEmptyState ? __('No matches found') : ''"
+              class="gl-grow"
+              block
               @shown="handleDropdownShown"
-            >
-              <template #button-text>
-                <gl-truncate
-                  v-if="selectedGroup.fullPath"
-                  :text="selectedGroup.fullPath"
-                  position="start"
-                  with-tooltip
-                />
-              </template>
-
-              <gl-search-box-by-type
-                ref="search"
-                v-model.trim="search"
-                :is-loading="$apollo.queries.currentUserGroups.loading"
-              />
-
-              <template v-if="!$apollo.queries.currentUserGroups.loading">
-                <template v-if="currentUserGroups.length">
-                  <gl-dropdown-item
-                    v-for="group of currentUserGroups"
-                    :key="group.id"
-                    data-testid="select_group_dropdown_item"
-                    @click="handleDropdownItemClick(group)"
-                  >
-                    {{ group.fullPath }}
-                  </gl-dropdown-item>
-                </template>
-                <gl-dropdown-text v-else>{{ __('No matches found') }}</gl-dropdown-text>
-              </template>
-            </gl-dropdown>
+              @select="handleDropdownItemClick"
+              @search="handleSearchInput"
+            />
           </gl-button-group>
 
-          <div class="gl-align-self-center gl-pl-5">
-            <span class="gl-display-none gl-md-display-inline">/</span>
+          <div class="gl-self-center gl-pl-5">
+            <span class="gl-hidden @md/panel:gl-inline">/</span>
           </div>
         </div>
       </gl-form-group>
 
       <gl-form-group
-        :class="newSubgroup && 'col-sm-6'"
+        :class="newSubgroup && 'gl-col-sm-6'"
         :label="inputLabels.path"
         :label-for="fields.path.id"
         :description="pathDescription"
@@ -378,7 +381,7 @@ export default {
           </template>
           <gl-form-input
             :id="fields.path.id"
-            class="gl-field-error-ignore gl-h-auto!"
+            class="gl-field-error-ignore !gl-h-auto"
             :name="fields.path.name"
             :value="computedPath"
             :placeholder="$options.i18n.inputs.path.placeholder"

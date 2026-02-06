@@ -13,9 +13,13 @@ module Banzai
       #   :only_path          - Generate path-only links.
       class ReferenceFilter < HTML::Pipeline::Filter
         include RequestStoreReferenceCache
-        include OutputSafety
+        include Concerns::OutputSafety
+        prepend Concerns::PipelineTimingCheck
+        include Concerns::HtmlWriter
+        include Concerns::TextReplacer
 
-        REFERENCE_TYPE_DATA_ATTRIBUTE = 'data-reference-type='
+        REFERENCE_TYPE_ATTRIBUTE = :reference_type
+        REFERENCE_TYPE_DATA_ATTRIBUTE_NAME = "data-#{REFERENCE_TYPE_ATTRIBUTE.to_s.dasherize}".freeze
 
         class << self
           # Implement in child class
@@ -47,15 +51,14 @@ module Banzai
 
           nodes.each_with_index do |node, index|
             if text_node?(node)
-              replace_text_when_pattern_matches(node, index, object_reference_pattern) do |content|
+              replace_node_when_text_matches(node, index, object_reference_pattern) do |content|
                 object_link_filter(content, object_reference_pattern)
               end
             elsif element_node?(node)
-              yield_valid_link(node) do |link, inner_html|
-                if link =~ ref_pattern_start
-                  replace_link_node_with_href(node, index, link) do
-                    object_link_filter(link, object_reference_pattern, link_content: inner_html)
-                  end
+              yield_valid_link(node) do |link, _text, inner_html|
+                if ref_pattern_start.match?(link)
+                  html = object_link_filter(link, ref_pattern_start, link_content_html: inner_html)
+                  replace_node_with_html(node, index, html) if html
                 end
               end
             end
@@ -64,19 +67,48 @@ module Banzai
           doc
         end
 
-        # Public: Find references in text (like `!123` for merge requests)
+        # Public: Find references in text (like `!123` for merge requests).
         #
-        #   references_in(text) do |match, id, project_ref, matches|
-        #     object = find_object(project_ref, id)
-        #     "<a href=...>#{object.to_reference}</a>"
+        # Simplified usage (see AbstractReferenceFilter#object_link_filter for a full example):
+        #
+        #   references_in(text) do |match_text, id, project_ref, namespace_ref, matches|
+        #     object = find_object(namespace_ref, project_ref, id)
+        #     if object
+        #       write_opening_tag("a", {
+        #         "href" => "...",
+        #         # ... other attributes ...
+        #       }) << CGI.escapeHTML(object.to_reference) << "</a>"
+        #     else
+        #       CGI.escapeHTML(match_text)
+        #     end
         #   end
         #
-        # text - String text to search.
+        # text - String text to make replacements in.  This is the content of a DOM text
+        # node, and *cannot* be returned without modification.
         #
-        # Yields the String match, the Integer referenced object ID, an optional String
-        # of the external project reference, and all of the matchdata.
+        # Yields each String text match as the first argument; the remaining arguments
+        # depend on the particular subclass of ReferenceFilter being used. The block
+        # must return HTML, and not text.
         #
-        # Returns a String replaced with the return of the block.
+        # Returns a HTML String replaced with replacements made, or nil if no replacements
+        # were made.
+        #
+        # Notes:
+        #
+        # * The input is text -- we expect to match e.g. &1 or %"Git 2.5" without having to
+        #   deal with HTML entities, as our object reference patterns are not compatible
+        #   with entities.
+        #
+        # * Likewise, any strings yielded to the block are text, but the block must return
+        #   HTML, whether it's a successful resolution or not.  Any text input used in the
+        #   block must be escaped for return.
+        #
+        # * The return value is HTML, as the whole point is to create links (and possibly other
+        #   elements).  Care must be taken that any input text is escaped before reaching
+        #   the output.  This must be respected in all subclasses of ReferenceFilter.
+        #
+        # See AbstractReferenceFilter#references_in for a reference implementation that safely
+        # handles user input.
         def references_in(text, pattern = object_reference_pattern)
           raise NotImplementedError, "#{self.class} must implement method: #{__callee__}"
         end
@@ -99,6 +131,10 @@ module Banzai
           @nodes ||= each_node.to_a
         end
 
+        def nodes?
+          @nodes.present?
+        end
+
         def object_class
           self.class.object_class
         end
@@ -117,7 +153,7 @@ module Banzai
 
         private
 
-        # Returns a data attribute String to attach to a reference link
+        # Returns a Hash of attributes to attach to a reference link
         #
         # attributes - Hash, where the key becomes the data attribute name and the
         #              value is the data attribute value
@@ -125,28 +161,23 @@ module Banzai
         # Examples:
         #
         #   data_attribute(project: 1, issue: 2)
-        #   # => "data-reference-type=\"SomeReferenceFilter\" data-project=\"1\" data-issue=\"2\""
+        #   # => {"data-reference-type" => "SomeReferenceFilter", "data-container" => "body",
+        #         "data-placement" => "top", "data-project" => 1, "data-issue" => 2}
         #
         #   data_attribute(project: 3, merge_request: 4)
-        #   # => "data-reference-type=\"SomeReferenceFilter\" data-project=\"3\" data-merge-request=\"4\""
+        #   # => {"data-reference-type" => "SomeReferenceFilter", "data-container" => "body",
+        #         "data-placement" => "top", "data-project" => 3, "data-merge-request" => 4}
         #
-        # Returns a String
+        # Returns a Hash
         def data_attribute(attributes = {})
-          attributes = attributes.reject { |_, v| v.nil? }
-
-          # "data-reference-type=" attribute got moved into a constant because we need
-          # to use it on ReferenceRewriter class to detect if the markdown contains any reference
-          reference_type_attribute = "#{REFERENCE_TYPE_DATA_ATTRIBUTE}#{escape_once(self.class.reference_type)} "
+          attributes = attributes.compact
 
           attributes[:container] ||= 'body'
           attributes[:placement] ||= 'top'
+          attributes[REFERENCE_TYPE_ATTRIBUTE] = self.class.reference_type
           attributes.delete(:original) if context[:no_original_data]
 
-          attributes.map do |key, value|
-            %(data-#{key.to_s.dasherize}="#{escape_once(value)}")
-          end
-            .join(' ')
-            .prepend(reference_type_attribute)
+          attributes.transform_keys { |k| "data-#{k.to_s.dasherize}" }
         end
 
         def ignore_ancestor_query
@@ -182,50 +213,44 @@ module Banzai
           "#{gfm_klass} has-tooltip"
         end
 
-        # Yields the link's URL and inner HTML whenever the node is a valid <a> tag.
+        # Yields the link's URL, inner text, and inner HTML whenever the node is a valid <a> tag.
+        #
+        # We expect that the URL and inner *text* will be equal when the link was a result of
+        # an autolink in Markdown. For example:
+        #
+        # ```markdown
+        # <https://gitlab.com/x?y="z"&fox>
+        # ```
+        #
+        # produces the HTML:
+        #
+        # ```html
+        # <a href="https://gitlab.com/x?y=%22z%22&amp;fox">https://gitlab.com/x?y=&quot;z&quot;&amp;fox</a>
+        # ```
+        #
+        # The href DOM attribute, after percent-decoding, is 'https://gitlab.com/x?y="z"&fox'.
+        # The node's inner text is identical: 'https://gitlab.com/x?y="z"&fox'.
+        # The node's inner HTML is 'https://gitlab.com/x?y=&quot;z&quot;&amp;fox'.
         def yield_valid_link(node)
-          link = unescape_link(node.attr('href').to_s)
-          inner_html = node.inner_html
+          # We cannot use CGI.unescape here because it also converts `+` to spaces.
+          # We need to keep the `+` for expanded reference formats; we want to only
+          # percent-decode here.
+          link = Addressable::URI.unescape(node.attr('href').to_s)
 
           return unless link.force_encoding('UTF-8').valid_encoding?
 
-          yield link, inner_html
+          yield link, node.text, node.inner_html
         end
 
-        def unescape_link(href)
-          # We cannot use CGI.unescape here because it also converts `+` to spaces.
-          # We need to keep the `+` for expanded reference formats.
-          Addressable::URI.unescape(href)
-        end
+        # Replaces a node with HTML obtained by yielding node.text, iff node.text matches the given pattern.
+        # Doesn't replace anything if the block returns nil.
+        def replace_node_when_text_matches(node, index, pattern)
+          node_text = node.text
 
-        def unescape_html_entities(text)
-          CGI.unescapeHTML(text.to_s)
-        end
+          return unless pattern.match?(node_text)
 
-        def escape_html_entities(text)
-          CGI.escapeHTML(text.to_s)
-        end
-
-        def replace_text_when_pattern_matches(node, index, pattern)
-          return if pattern.is_a?(Gitlab::UntrustedRegexp) && !pattern.match?(node.text)
-          return if pattern.is_a?(Regexp) && !(pattern =~ node.text)
-
-          content = node.to_html
-          html = yield content
-
-          replace_text_with_html(node, index, html) unless html == content
-        end
-
-        def replace_link_node_with_text(node, index)
-          html = yield
-
-          replace_text_with_html(node, index, html) unless html == node.text
-        end
-
-        def replace_link_node_with_href(node, index, link)
-          html = yield
-
-          replace_text_with_html(node, index, html) unless html == link
+          html = yield node_text
+          replace_node_with_html(node, index, html) if html
         end
 
         def text_node?(node)
@@ -248,7 +273,7 @@ module Banzai
           @object_sym ||= object_name.to_sym
         end
 
-        def object_link_filter(text, pattern, link_content: nil, link_reference: false)
+        def object_link_filter(text, pattern, link_content_html: nil, link_reference: false)
           raise NotImplementedError, "#{self.class} must implement method: #{__callee__}"
         end
 
@@ -259,11 +284,9 @@ module Banzai
           ]}
         end
 
-        def replace_text_with_html(node, index, html)
-          replace_and_update_new_nodes(node, index, html)
-        end
+        def replace_node_with_html(node, index, html)
+          return if node.to_html == html
 
-        def replace_and_update_new_nodes(node, index, html)
           previous_node = node.previous
           next_node = node.next
           parent_node = node.parent
@@ -295,10 +318,24 @@ module Banzai
 
         # Once Filter completes replacing nodes, we update nodes with @new_nodes
         def update_nodes!
+          # if we haven't loaded `nodes` yet, don't do it here
+          return unless nodes?
+
           @new_nodes.sort_by { |index, _new_nodes| -index }.each do |index, new_nodes|
             nodes[index, 1] = new_nodes
           end
           result[:reference_filter_nodes] = nodes
+        end
+
+        # `original` is used to restore the original input in ReferenceRedactor when necessary.
+        # It always contains safe HTML --- if the original match was on a link, it is the
+        # inner HTML of the <a> tag (after sanitization, etc.).  If not, we escape the plain text
+        # match.
+        def data_attributes_for(match_text, link_content_html, **attrs)
+          {
+            **attrs,
+            original: link_content_html || CGI.escapeHTML(match_text)
+          }
         end
       end
     end

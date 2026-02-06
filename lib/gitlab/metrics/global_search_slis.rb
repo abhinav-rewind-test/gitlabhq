@@ -3,6 +3,10 @@
 module Gitlab
   module Metrics
     module GlobalSearchSlis
+      include Gitlab::Metrics::SliConfig
+
+      puma_enabled!
+
       class << self
         # The following targets are the 99.95th percentile of code searches
         # gathered on 25-10-2022
@@ -13,6 +17,7 @@ module Gitlab
         ADVANCED_CONTENT_TARGET_S = 2.452
         ADVANCED_CODE_TARGET_S = 15.52
         ZOEKT_TARGET_S = 15.52
+        DEFAULT_TARGET_S = 5
 
         def initialize_slis!
           Gitlab::Metrics::Sli::Apdex.initialize_sli(:global_search, possible_labels)
@@ -48,6 +53,8 @@ module Gitlab
             ADVANCED_CODE_TARGET_S
           elsif search_type == 'zoekt' && code_search?(search_scope)
             ZOEKT_TARGET_S
+          else
+            DEFAULT_TARGET_S
           end
         end
 
@@ -60,12 +67,12 @@ module Gitlab
         end
 
         def search_scopes
-          Gitlab::Search::AbuseDetection::ALLOWED_SCOPES
+          ::Search::Scopes.all_scope_names
         end
 
         def endpoint_ids
           api_endpoints = ['GET /api/:version/search', 'GET /api/:version/projects/:id/(-/)search',
-                           'GET /api/:version/groups/:id/(-/)search']
+            'GET /api/:version/groups/:id/(-/)search']
           web_endpoints = ['SearchController#show']
 
           endpoints = []

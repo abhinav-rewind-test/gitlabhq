@@ -16,6 +16,9 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
       - second_stage
 
     first_stage_job_name:
+      tags:
+        - TAG_1
+        - TAG_2
       stage: first_stage
       image: hello_world
       script:
@@ -139,7 +142,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
       end
 
       it 'logs the authorization' do
-        expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline authorized', project_id: project.id, user_id: user.id)
+        expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline authorized', project_id: project.id)
 
         perform!
       end
@@ -152,12 +155,19 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
 
           builds = payload['builds']
           expect(builds.count).to eq(2)
+
+          expect(builds[0]['name']).to eq('first_stage_job_name')
           expect(builds[0]['services']).to be_nil
           expect(builds[0]['stage']).to eq('first_stage')
+          expect(builds[0]['tag_list']).to match_array(%w[TAG_1 TAG_2])
+          expect(builds[0]['script']).to match_array(["echo 'hello'"])
           expect(builds[0]['image']).to eq('hello_world')
+          expect(builds[1]['name']).to eq('second_stage_job_name')
           expect(builds[1]['services']).to eq(['postgres'])
           expect(builds[1]['stage']).to eq('second_stage')
           expect(builds[1]['image']).to be_nil
+          expect(builds[1]['tag_list']).to be_nil
+          expect(builds[1]['script']).to match_array(["echo 'first hello'", "echo 'second hello'"])
         end
 
         perform!
@@ -275,7 +285,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
       it_behaves_like 'successful external authorization'
     end
 
-    context 'when validation returns 500 Internal Server Error' do
+    context 'when validation returns an HTTP 500 Error' do
       before do
         stub_request(:post, validation_service_url).to_return(status: 500, body: "{}")
       end
@@ -320,7 +330,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
       it 'logs the authorization' do
         allow(Gitlab::AppLogger).to receive(:info)
 
-        expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline not authorized', project_id: project.id, user_id: user.id)
+        expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline not authorized', project_id: project.id)
 
         perform!
       end
@@ -344,7 +354,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Validate::External, feature_category
         end
 
         it 'logs the authorization' do
-          expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline not authorized', project_id: project.id, user_id: user.id)
+          expect(Gitlab::AppLogger).to receive(:info).with(message: 'Pipeline not authorized', project_id: project.id)
 
           perform!
         end

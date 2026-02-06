@@ -3,14 +3,6 @@
 module AvatarsHelper
   DEFAULT_AVATAR_PATH = 'no_avatar.png'
 
-  def group_icon(group, options = {})
-    source_icon(group, options)
-  end
-
-  def topic_icon(topic, options = {})
-    source_icon(topic, options)
-  end
-
   # Takes both user and email and returns the avatar_icon by
   # user (preferred) or email.
   def avatar_icon_for(user = nil, email = nil, size = nil, scale = 2, only_path: true)
@@ -41,7 +33,9 @@ module AvatarsHelper
     return gravatar_icon(nil, size, scale) unless user
     return default_avatar if blocked_or_unconfirmed?(user) && !can_admin?(current_user)
 
-    user_avatar = user.avatar_url(size: size, only_path: only_path)
+    image_size = !size.nil? ? size * 2 : size
+
+    user_avatar = user.avatar_url(size: image_size, only_path: only_path)
     user_avatar || default_avatar
   end
 
@@ -55,7 +49,7 @@ module AvatarsHelper
   end
 
   def author_avatar(commit_or_event, options = {})
-    options[:css_class] ||= "gl-display-none gl-sm-display-inline-block"
+    options[:css_class] ||= "gl-hidden @sm/panel:gl-inline-block"
 
     if Feature.enabled?(:cached_author_avatar_helper, options.delete(:project))
       Gitlab::AvatarCache.by_email(commit_or_event.author_email, commit_or_event.author_name, options) do

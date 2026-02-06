@@ -6,12 +6,9 @@ class Groups::BoardsController < Groups::ApplicationController
   include Gitlab::Utils::StrongMemoize
 
   before_action do
-    push_frontend_feature_flag(:board_multi_select, group)
-    push_frontend_feature_flag(:display_work_item_epic_issue_sidebar, group)
-    experiment(:prominent_create_board_btn, subject: current_user) do |e|
-      e.control {}
-      e.candidate {}
-    end.run
+    push_force_frontend_feature_flag(:work_item_tasks_on_boards,
+      !!group&.work_item_tasks_on_boards_feature_flag_enabled?)
+    push_frontend_feature_flag(:notifications_todos_buttons, current_user)
   end
 
   feature_category :team_planning

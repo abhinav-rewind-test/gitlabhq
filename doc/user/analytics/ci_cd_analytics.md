@@ -1,148 +1,112 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: CI Platform
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: CI/CD analytics
 ---
 
-# CI/CD analytics
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Use the CI/CD analytics page to view pipeline success rates and duration, and the history of DORA metrics over time.
+{{< /details >}}
 
-## Pipeline success and duration charts
+Use CI/CD analytics to gain insights into your pipeline performance and success rates.
 
-CI/CD analytics shows the history of your pipeline successes and failures, as well as how long each pipeline
-ran.
-
-Pipeline statistics are gathered by collecting all available pipelines for the
-project, regardless of status. The data available for each individual day is based
-on when the pipeline was created.
-
-The total pipeline calculation includes child
-pipelines and pipelines that failed with an invalid YAML. To filter pipelines based on other attributes, use the [Pipelines API](../../api/pipelines.md#list-project-pipelines).
-
-View successful pipelines:
-
-![Successful pipelines](img/pipelines_success_chart.png)
-
-View pipeline duration history:
-
-![Pipeline duration](img/pipelines_duration_chart.png)
+The CI/CD analytics page provides visualizations for critical CI/CD pipeline metrics directly in the GitLab UI.
+These visualizations can help development teams quickly understand the health and efficiency of their software development process.
 
 ## View CI/CD analytics
 
-You can view CI/CD analytics for a group or project.
+{{< history >}}
 
-### For a group
+- [Updated](https://gitlab.com/gitlab-org/gitlab/-/issues/353607) in GitLab 18.0 to improve analytics by using ClickHouse as the data source when available.
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< /history >}}
 
 To view CI/CD analytics:
 
-1. On the left sidebar, select **Search or go to** and find your group.
-1. Select **Analyze > CI/CD analytics**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Analyze** > **CI/CD analytics**.
 
-### For a project
+## Pipeline metrics
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+You can view the history of your pipeline successes and failures, and how long each pipeline ran.
+Pipeline statistics are gathered by collecting all available pipelines for the
+project, regardless of status. The data available for each individual day is based
+on when the pipeline started.
 
-To view CI/CD analytics:
+CI/CD analytics displays key metrics about your pipelines:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > CI/CD analytics**.
+- **Total pipeline runs**: The total number of pipelines that have run in the selected time period. The total pipeline calculation includes child pipelines and pipelines that failed with an invalid YAML.
+  To filter pipelines based on other attributes, use the [Pipelines API](../../api/pipelines.md#list-project-pipelines).
+- **Median duration**: The median time it takes for pipelines to complete.
+- **Failure rate**: The percentage of pipelines that failed.
+- **Success rate**: The percentage of pipelines that completed successfully.
+- **Other rate**: The percentage of pipelines that were skipped or canceled.
 
-## View DORA deployment frequency chart
+## Filter your results
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+You can filter the analytics data to focus on specific areas:
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/275991) in GitLab 13.8.
+- **Source**: Filter by pipeline trigger source.
+- **Branch**: Filter by the branch where the pipeline ran.
+- **Date range**: Select the time period to analyze (for example, last week).
 
-The [deployment frequency](dora_metrics.md#deployment-frequency) charts show information about the deployment
-frequency to the `production` environment. The environment must be part of the
-[production deployment tier](../../ci/environments/index.md#deployment-tier-of-environments)
-for its deployment information to appear on the graphs.
+Filtering allows you to analyze the performance of specific workflow components or compare different branches.
 
-Deployment frequency is one of the four DORA metrics that DevOps teams use for measuring excellence in software delivery.
+## Pipeline duration chart
 
-The deployment frequency chart is available for groups and projects.
+The duration chart shows how your pipeline execution times changed over time. The chart displays:
 
-To view the deployment frequency chart:
+- **Median (50th percentile)**: The typical pipeline duration.
+- **95th percentile**: 95% of pipelines complete in this time or less, while only 5% take longer.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > CI/CD analytics**.
-1. Select the **Deployment frequency** tab.
+This visualization helps you identify trends in pipeline duration, which can help you determine your CI/CD process efficiency over time.
 
-![Deployment frequency](img/deployment_frequency_charts_v13_12.png)
+## Pipeline status chart
 
-## View DORA lead time for changes chart
+The status chart shows the distribution of pipeline statuses over time:
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- **Successful**: Pipelines that completed without errors.
+- **Failed**: Pipelines that did not complete successfully due to errors.
+- **Other**: Pipelines with other statuses (canceled, skipped).
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/250329) in GitLab 13.11.
+This visualization helps you track the stability of your pipelines and identify periods with higher failure rates.
 
-The [lead time for changes](dora_metrics.md#lead-time-for-changes) chart shows information about how long it takes for
-merge requests to be deployed to a production environment. This chart is available for groups and projects.
+## CI/CD job performance metrics
 
-- Small lead times indicate fast, efficient deployment
-  processes.
-- For time periods in which no merge requests were deployed, the charts render a
-  red, dashed line.
+{{< details >}}
 
-Lead time for changes is one of the four DORA metrics that DevOps teams use for measuring excellence in software delivery.
+- Tier: Premium, Ultimate
+- Offering: GitLab.com
+- Status: Limited availability
 
-To view the lead time for changes chart:
+{{< /details >}}
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > CI/CD analytics**.
-1. Select the **Lead time** tab.
+{{< history >}}
 
-![Lead time](img/lead_time_chart_v13_11.png)
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/work_items/18548) in GitLab 18.9 as limited availability.
 
-## View DORA time to restore service chart
+{{< /history >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+> [!note]
+> Not available by default on GitLab Self-Managed or GitLab Dedicated.
+> To view CI/CD job performance metrics on GitLab Self-Managed and GitLab Dedicated instances, you must configure [ClickHouse](../../integration/clickhouse.md).
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/356959) in GitLab 15.1
+CI/CD job performance trends enable developers to identify inefficient or problematic CI/CD jobs quickly. By including these capabilities
+directly in the GitLab UI, developers have the context to pinpoint and fix CI/CD performance problems
 
-The [time to restore service](dora_metrics.md#time-to-restore-service) chart shows information about the median time an incident was open in a production environment. This chart is available for groups and projects.
+Job performance metrics let you identify bottlenecks, monitor job reliability, and focus optimization efforts on jobs with the highest
+impact on overall pipeline duration.
 
-Time to restore service is one of the four DORA metrics that DevOps teams use for measuring excellence in software delivery.
+The job performance section displays metrics for each job in your pipelines for the selected time period:
 
-To view the time to restore service chart:
+- **Job name**: Name of the CI/CD job.
+- **P50 duration** (median): Typical execution time for this job. Half of job runs complete faster, half take longer.
+- **P95 duration**: 95% of job runs complete within this time. Use this metric to identify outliers and worst-case scenarios.
+- **Failure rate**: Percentage of job runs that failed. Higher rates indicate reliability issues and require investigation.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > CI/CD analytics**.
-1. Select the **Time to restore service** tab.
-
-![Lead time](img/time_to_restore_service_charts_v15_1.png)
-
-## View DORA change failure rate chart
-
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/357072) in GitLab 15.2
-
-The [change failure rate](dora_metrics.md#change-failure-rate) chart shows information about the percentage of deployments that cause an incident in a production environment. This chart is available for groups and projects.
-
-Change failure rate is one of the four DORA metrics that DevOps teams use for measuring excellence in software delivery.
-
-To view the change failure rate chart:
-
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > CI/CD analytics**.
-1. Select the **Change failure rate** tab.
+By default, the table sorts by mean duration (longest running jobs first). The table shows 10 jobs per page with pagination controls.
+You can select any column header to sort by that metric, or use the search bar to find specific jobs by name.

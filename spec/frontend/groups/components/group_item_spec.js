@@ -1,21 +1,13 @@
-import { GlPopover } from '@gitlab/ui';
 import waitForPromises from 'helpers/wait_for_promises';
 import GroupFolder from '~/groups/components/group_folder.vue';
 import GroupItem from 'jh_else_ce/groups/components/group_item.vue';
 import ItemActions from '~/groups/components/item_actions.vue';
+import VisibilityIconButton from '~/vue_shared/components/visibility_icon_button.vue';
 import eventHub from '~/groups/event_hub';
 import { getGroupItemMicrodata } from '~/groups/store/utils';
 import * as urlUtilities from '~/lib/utils/url_utility';
-import { ITEM_TYPE } from '~/groups/constants';
-import {
-  VISIBILITY_LEVEL_PRIVATE_STRING,
-  VISIBILITY_LEVEL_INTERNAL_STRING,
-  VISIBILITY_LEVEL_PUBLIC_STRING,
-  GROUP_VISIBILITY_TYPE,
-  PROJECT_VISIBILITY_TYPE,
-} from '~/visibility_level/constants';
-import { helpPagePath } from '~/helpers/help_page_helper';
-import { mountExtended, extendedWrapper } from 'helpers/vue_test_utils_helper';
+import { VISIBILITY_LEVEL_PRIVATE_STRING } from '~/visibility_level/constants';
+import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { mockParentGroupItem, mockChildren } from '../mock_data';
 
 const createComponent = (
@@ -56,7 +48,7 @@ describe('GroupItemComponent', () => {
         const classes = ['is-open', 'has-children', 'has-description', 'being-removed'];
         const { rowClass } = wrapper.vm;
 
-        expect(Object.keys(rowClass).length).toBe(classes.length);
+        expect(Object.keys(rowClass)).toHaveLength(classes.length);
         Object.keys(rowClass).forEach((className) => {
           expect(classes.indexOf(className)).toBeGreaterThan(-1);
         });
@@ -68,33 +60,17 @@ describe('GroupItemComponent', () => {
         const group = { ...mockParentGroupItem };
 
         group.childrenCount = 5;
+        group.hasChildren = true;
         wrapper = createComponent({ group });
 
         expect(wrapper.vm.hasChildren).toBe(true);
         wrapper.destroy();
 
         group.childrenCount = 0;
+        group.hasChildren = false;
         wrapper = createComponent({ group });
 
         expect(wrapper.vm.hasChildren).toBe(false);
-        wrapper.destroy();
-      });
-    });
-
-    describe('hasAvatar', () => {
-      it('should return boolean value representing if group has any avatar present', () => {
-        const group = { ...mockParentGroupItem };
-
-        group.avatarUrl = null;
-        wrapper = createComponent({ group });
-
-        expect(wrapper.vm.hasAvatar).toBe(false);
-        wrapper.destroy();
-
-        group.avatarUrl = '/uploads/group_avatar.png';
-        wrapper = createComponent({ group });
-
-        expect(wrapper.vm.hasAvatar).toBe(true);
         wrapper.destroy();
       });
     });
@@ -117,49 +93,39 @@ describe('GroupItemComponent', () => {
         wrapper.destroy();
       });
     });
+  });
 
-    describe('visibilityTooltip', () => {
-      describe('if item represents group', () => {
-        it.each`
-          visibilityLevel                     | visibilityTooltip
-          ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${GROUP_VISIBILITY_TYPE[VISIBILITY_LEVEL_PUBLIC_STRING]}
-          ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${GROUP_VISIBILITY_TYPE[VISIBILITY_LEVEL_INTERNAL_STRING]}
-          ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${GROUP_VISIBILITY_TYPE[VISIBILITY_LEVEL_PRIVATE_STRING]}
-        `(
-          'should return corresponding text when visibility level is $visibilityLevel',
-          ({ visibilityLevel, visibilityTooltip }) => {
-            const group = { ...mockParentGroupItem };
+  describe('visibilityIconButton', () => {
+    describe('if item represents a group', () => {
+      it('should display the visibility icon with appropriate props', () => {
+        const group = { ...mockParentGroupItem };
 
-            group.type = 'group';
-            group.visibility = visibilityLevel;
-            wrapper = createComponent({ group });
+        group.type = 'group';
+        group.visibility = VISIBILITY_LEVEL_PRIVATE_STRING;
+        wrapper = createComponent({ group });
 
-            expect(wrapper.vm.visibilityTooltip).toBe(visibilityTooltip);
-            wrapper.destroy();
-          },
-        );
+        expect(wrapper.findComponent(VisibilityIconButton).props()).toEqual({
+          isGroup: true,
+          tooltipPlacement: 'bottom',
+          visibilityLevel: VISIBILITY_LEVEL_PRIVATE_STRING,
+        });
       });
+    });
 
-      describe('if item represents project', () => {
-        it.each`
-          visibilityLevel                     | visibilityTooltip
-          ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${PROJECT_VISIBILITY_TYPE[VISIBILITY_LEVEL_PUBLIC_STRING]}
-          ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${PROJECT_VISIBILITY_TYPE[VISIBILITY_LEVEL_INTERNAL_STRING]}
-          ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${PROJECT_VISIBILITY_TYPE[VISIBILITY_LEVEL_PRIVATE_STRING]}
-        `(
-          'should return corresponding text when visibility level is $visibilityLevel',
-          ({ visibilityLevel, visibilityTooltip }) => {
-            const group = { ...mockParentGroupItem };
+    describe('if item represents a project', () => {
+      it('should display the visibility icon with appropriate props', () => {
+        const group = { ...mockParentGroupItem };
 
-            group.type = 'project';
-            group.lastActivityAt = '2017-04-09T18:40:39.101Z';
-            group.visibility = visibilityLevel;
-            wrapper = createComponent({ group });
+        group.type = 'project';
+        group.lastActivityAt = '2017-04-09T18:40:39.101Z';
+        group.visibility = VISIBILITY_LEVEL_PRIVATE_STRING;
+        wrapper = createComponent({ group });
 
-            expect(wrapper.vm.visibilityTooltip).toBe(visibilityTooltip);
-            wrapper.destroy();
-          },
-        );
+        expect(wrapper.findComponent(VisibilityIconButton).props()).toEqual({
+          isGroup: false,
+          tooltipPlacement: 'bottom',
+          visibilityLevel: VISIBILITY_LEVEL_PRIVATE_STRING,
+        });
       });
     });
   });
@@ -197,6 +163,7 @@ describe('GroupItemComponent', () => {
         jest.spyOn(urlUtilities, 'visitUrl').mockImplementation();
         const group = { ...mockParentGroupItem };
         group.childrenCount = 0;
+        group.hasChildren = false;
         wrapper = createComponent({ group });
         jest.spyOn(eventHub, '$emit').mockImplementation(() => {});
 
@@ -213,7 +180,7 @@ describe('GroupItemComponent', () => {
 
     describe('for a group pending deletion', () => {
       beforeEach(() => {
-        group = { ...mockParentGroupItem, pendingRemoval: true };
+        group = { ...mockParentGroupItem, markedForDeletion: true };
         wrapper = createComponent({ group });
       });
 
@@ -227,7 +194,7 @@ describe('GroupItemComponent', () => {
 
     describe('for a group not scheduled for deletion', () => {
       beforeEach(() => {
-        group = { ...mockParentGroupItem, pendingRemoval: false };
+        group = { ...mockParentGroupItem, markedForDeletion: false };
         wrapper = createComponent({ group });
       });
 
@@ -279,7 +246,6 @@ describe('GroupItemComponent', () => {
       expect(vm.$el.querySelector('.title a.no-expand')).toBeDefined();
 
       expect(visibilityIconEl).not.toBe(null);
-      expect(visibilityIconEl.getAttribute('title')).toBe(vm.visibilityTooltip);
 
       expect(vm.$el.querySelector('.access-type')).toBeDefined();
       expect(vm.$el.querySelector('.description')).toBeDefined();
@@ -322,105 +288,6 @@ describe('GroupItemComponent', () => {
       `('does set correct $selector', ({ selector, propValue } = {}) => {
         expect(wrapper.find(selector).attributes('itemprop')).toBe(propValue);
       });
-    });
-  });
-
-  describe('visibility warning popover', () => {
-    const findPopover = () => wrapper.findComponent(GlPopover);
-
-    const itDoesNotRenderVisibilityWarningPopover = () => {
-      it('does not render visibility warning popover', () => {
-        expect(findPopover().exists()).toBe(false);
-      });
-    };
-
-    describe('when showing groups', () => {
-      beforeEach(() => {
-        wrapper = createComponent();
-      });
-
-      itDoesNotRenderVisibilityWarningPopover();
-    });
-
-    describe('when `action` prop is not `shared`', () => {
-      beforeEach(() => {
-        wrapper = createComponent({
-          group: mockParentGroupItem,
-          parentGroup: mockChildren[0],
-          action: 'subgroups_and_projects',
-        });
-      });
-
-      itDoesNotRenderVisibilityWarningPopover();
-    });
-
-    describe('when showing projects', () => {
-      describe.each`
-        itemVisibility                      | currentGroupVisibility              | isPopoverShown
-        ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${false}
-        ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${false}
-        ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${false}
-        ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${false}
-        ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${true}
-        ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${true}
-        ${VISIBILITY_LEVEL_PRIVATE_STRING}  | ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${false}
-        ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${false}
-        ${VISIBILITY_LEVEL_PUBLIC_STRING}   | ${VISIBILITY_LEVEL_INTERNAL_STRING} | ${true}
-      `(
-        'when item visibility is $itemVisibility and parent group visibility is $currentGroupVisibility',
-        ({ itemVisibility, currentGroupVisibility, isPopoverShown }) => {
-          beforeEach(() => {
-            wrapper = createComponent(
-              {
-                group: {
-                  ...mockParentGroupItem,
-                  visibility: itemVisibility,
-                  type: ITEM_TYPE.PROJECT,
-                },
-                parentGroup: mockChildren[0],
-                action: 'shared',
-              },
-              {
-                currentGroupVisibility,
-              },
-            );
-          });
-
-          if (isPopoverShown) {
-            it('renders visibility warning popover with `Learn more` link', () => {
-              const popover = extendedWrapper(findPopover());
-
-              expect(popover.exists()).toBe(true);
-
-              expect(
-                popover.findByRole('link', { name: GroupItem.i18n.learnMore }).attributes('href'),
-              ).toBe(
-                helpPagePath('user/project/members/share_project_with_groups', {
-                  anchor: 'sharing-projects-with-groups-of-a-higher-restrictive-visibility-level',
-                }),
-              );
-            });
-          } else {
-            itDoesNotRenderVisibilityWarningPopover();
-          }
-        },
-      );
-    });
-
-    it('sets up popover `target` prop correctly', () => {
-      wrapper = createComponent({
-        group: {
-          ...mockParentGroupItem,
-          visibility: VISIBILITY_LEVEL_PUBLIC_STRING,
-          type: ITEM_TYPE.PROJECT,
-        },
-        parentGroup: mockChildren[0],
-        action: 'shared',
-      });
-
-      expect(findPopover().props('target')()).toEqual(
-        wrapper.findByRole('button', { name: GroupItem.i18n.popoverTitle }).element,
-      );
     });
   });
 });

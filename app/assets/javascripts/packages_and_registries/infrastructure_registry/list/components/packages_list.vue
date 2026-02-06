@@ -17,6 +17,11 @@ export default {
     PackagesListRow,
   },
   mixins: [Tracking.mixin()],
+  inject: {
+    isGroupPage: {
+      default: false,
+    },
+  },
   data() {
     return {
       itemToBeDeleted: null,
@@ -27,7 +32,6 @@ export default {
       perPage: (state) => state.pagination.perPage,
       totalItems: (state) => state.pagination.total,
       page: (state) => state.pagination.page,
-      isGroupPage: (state) => state.config.isGroupPage,
       isLoading: 'isLoading',
     }),
     ...mapGetters({ list: 'getList' }),
@@ -42,6 +46,7 @@ export default {
     isListEmpty() {
       return !this.list || this.list.length === 0;
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       return {
         category: TRACK_CATEGORY,
@@ -67,7 +72,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-display-flex gl-flex-direction-column">
+  <div class="gl-flex gl-flex-col">
     <slot v-if="isListEmpty && !isLoading" name="empty-state"></slot>
 
     <div v-else-if="isLoading">
@@ -75,23 +80,23 @@ export default {
     </div>
 
     <template v-else>
-      <div data-testid="packages-table">
-        <packages-list-row
-          v-for="packageEntity in list"
-          :key="packageEntity.id"
-          :package-entity="packageEntity"
-          :package-link="packageEntity._links.web_path"
-          :is-group="isGroupPage"
-          @packageToDelete="setItemToBeDeleted"
-        />
-      </div>
+      <ul data-testid="packages-table" class="gl-pl-0">
+        <li v-for="packageEntity in list" :key="packageEntity.id" class="gl-list-none">
+          <packages-list-row
+            :package-entity="packageEntity"
+            :package-link="packageEntity._links.web_path"
+            :is-group="isGroupPage"
+            @packageToDelete="setItemToBeDeleted"
+          />
+        </li>
+      </ul>
 
       <gl-pagination
         v-model="currentPage"
         :per-page="perPage"
         :total-items="totalItems"
         align="center"
-        class="gl-w-full gl-mt-3"
+        class="gl-mt-3 gl-w-full"
       />
 
       <delete-package-modal

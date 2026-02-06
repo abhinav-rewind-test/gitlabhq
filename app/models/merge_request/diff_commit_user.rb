@@ -20,19 +20,21 @@ class MergeRequest::DiffCommitUser < ApplicationRecord
   end
 
   # Creates a new row, or returns an existing one if a row already exists.
-  def self.find_or_create(name, email)
-    find_or_create_by!(name: name, email: email)
+  def self.find_or_create(name, email, organization_id)
+    find_or_create_by!(name: name, email: email, organization_id: organization_id)
   rescue ActiveRecord::RecordNotUnique
     retry
   end
 
-  # Finds many (name, email) pairs in bulk.
-  def self.bulk_find(pairs)
+  # Finds many (name, email, organization_id) triples in bulk.
+  def self.bulk_find(input)
     queries = {}
     rows = []
 
-    pairs.each do |(name, email)|
-      queries[[name, email]] = where(name: name, email: email).to_sql
+    input.each do |item|
+      name, email, organization_id = item
+      conditions = { name: name, email: email, organization_id: organization_id }
+      queries[conditions.values] = where(conditions).to_sql
     end
 
     # We may end up having to query many users. To ensure we don't hit any
@@ -44,52 +46,65 @@ class MergeRequest::DiffCommitUser < ApplicationRecord
     rows
   end
 
-  # Finds or creates rows for the given pairs of names and Emails.
+  # Finds or creates rows for the given input.
   #
-  # The `names_and_emails` argument must be an Array/Set of tuples like so:
+  # The input argument must be:
+  # - Array/Set of triples like [[name, email, organization_id], ...]
   #
-  #     [
-  #       [name, email],
-  #       [name, email],
-  #       ...
-  #     ]
-  #
-  # This method expects that the names and Emails have already been trimmed to
+  # This method expects that the names and emails have already been trimmed to
   # at most 512 characters.
   #
-  # The return value is a Hash that maps these tuples to instances of this
-  # model.
-  def self.bulk_find_or_create(pairs)
+  # The return value is a Hash that maps input to instances of this model.
+  def self.bulk_find_or_create(input)
     mapping = {}
-    create = []
 
-    # Over time, fewer new rows need to be created. We take advantage of that
-    # here by first finding all rows that already exist, using a limited number
-    # of queries (in most cases only one query will be needed).
-    bulk_find(pairs).each do |row|
-      mapping[[row.name, row.email]] = row
+    # Find existing records with exact matches
+    existing_records = bulk_find(input)
+
+    existing_records.each do |row|
+      # Map all found records with triples
+      mapping[[row.name, row.email, row.organization_id]] = row
     end
 
-    pairs.each do |(name, email)|
-      create << { name: name, email: email } unless mapping[[name, email]]
-    end
+    # Create missing records
+    create_missing_records(input, mapping)
 
-    return mapping if create.empty?
-
-    # Sometimes we may need to insert new users into the table. We do this in
-    # bulk, so we only need one INSERT for all missing users.
-    insert_all(create, returning: %w[id name email]).each do |row|
-      mapping[[row['name'], row['email']]] =
-        new(id: row['id'], name: row['name'], email: row['email'])
-    end
-
-    # It's possible for (name, email) pairs to be inserted concurrently,
-    # resulting in the above insert not returning anything. Here we get any
-    # remaining users that were created concurrently.
-    bulk_find(pairs.reject { |pair| mapping.key?(pair) }).each do |row|
-      mapping[[row.name, row.email]] = row
-    end
+    # Handle concurrent inserts
+    handle_concurrent_inserts(input, mapping)
 
     mapping
   end
+
+  def self.create_missing_records(input, mapping)
+    create = []
+
+    # Collect records that need to be created
+    input.each do |name, email, organization_id|
+      next if mapping[[name, email, organization_id]]
+
+      create << { name: name, email: email, organization_id: organization_id }
+    end
+
+    return if create.empty?
+
+    # Bulk insert new records
+    insert_all(create, returning: %w[id name email organization_id]).each do |row|
+      # Use triples as keys
+      mapping[[row['name'], row['email'], row['organization_id']]] =
+        new(id: row['id'], name: row['name'], email: row['email'], organization_id: row['organization_id'])
+    end
+  end
+
+  def self.handle_concurrent_inserts(input, mapping)
+    # Find any records that were created concurrently
+    missing_triples = input.reject { |item| mapping.key?(item) }
+    return if missing_triples.empty?
+
+    bulk_find(missing_triples).each do |row|
+      mapping[[row.name, row.email, row.organization_id]] = row
+    end
+  end
+
+  private_class_method :create_missing_records,
+    :handle_concurrent_inserts
 end

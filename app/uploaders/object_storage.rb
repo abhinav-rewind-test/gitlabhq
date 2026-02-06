@@ -12,6 +12,7 @@ module ObjectStorage
   UnknownStoreError = Class.new(StandardError)
   ObjectStorageUnavailable = Class.new(StandardError)
   MissingFinalStorePathRootId = Class.new(StandardError)
+  InvalidHashFunction = Class.new(StandardError)
 
   class ExclusiveLeaseTaken < StandardError
     def initialize(lease_key)
@@ -61,6 +62,9 @@ module ObjectStorage
   end
 
   TMP_UPLOAD_PATH = 'tmp/uploads'
+
+  SUPPORTED_HASH_FUNCTIONS = %w[md5 sha1 sha256 sha512].freeze
+  SUPPORTED_HASH_FUNCTIONS_FIPS = (SUPPORTED_HASH_FUNCTIONS - %w[md5]).freeze
 
   module Store
     LOCAL = 1
@@ -177,7 +181,7 @@ module ObjectStorage
         [CarrierWave.generate_cache_id, SecureRandom.hex].join('-')
       end
 
-      def generate_final_store_path(root_id:)
+      def generate_final_store_path(root_hash:)
         hash = Digest::SHA2.hexdigest(SecureRandom.uuid)
 
         # We prefix '@final' to prevent clashes and make the files easily recognizable
@@ -186,27 +190,42 @@ module ObjectStorage
 
         # We generate a hashed path of the root ID (e.g. Project ID) to distribute directories instead of
         # filling up one root directory with a bunch of files.
-        Gitlab::HashedPath.new(sub_path, root_hash: root_id).to_s
+        Gitlab::HashedPath.new(sub_path, root_hash: root_hash).to_s
       end
 
+      # final_store_path_config is only used if use_final_store_path is set to true
+      # Two keys are available:
+      # - :root_hash. The root hash used in Gitlab::HashedPath for the path generation.
+      # - :override_path. If set, the path generation is skipped and this value is used instead.
+      #                   Make sure that this value is unique for each upload.
       def workhorse_authorize(
         has_length:,
         maximum_size: nil,
+        upload_hash_functions: nil,
         use_final_store_path: false,
-        final_store_path_root_id: nil)
+        final_store_path_config: {})
         {}.tap do |hash|
           if self.direct_upload_to_object_store?
             hash[:RemoteObject] = workhorse_remote_upload_options(
               has_length: has_length,
               maximum_size: maximum_size,
               use_final_store_path: use_final_store_path,
-              final_store_path_root_id: final_store_path_root_id
+              final_store_path_config: final_store_path_config
             )
           else
             hash[:TempPath] = workhorse_local_upload_path
           end
 
-          hash[:UploadHashFunctions] = %w[sha1 sha256 sha512] if ::Gitlab::FIPS.enabled?
+          # If UploadHashFunctions is not specified, all available functions
+          # will be used: md5, sha1, sha256, sha512.
+          if upload_hash_functions.present?
+            validate_hash_functions!(upload_hash_functions)
+
+            hash[:UploadHashFunctions] = upload_hash_functions
+          elsif ::Gitlab::FIPS.enabled?
+            hash[:UploadHashFunctions] = SUPPORTED_HASH_FUNCTIONS_FIPS
+          end
+
           hash[:MaximumSize] = maximum_size if maximum_size.present?
         end
       end
@@ -231,13 +250,18 @@ module ObjectStorage
         has_length:,
         maximum_size: nil,
         use_final_store_path: false,
-        final_store_path_root_id: nil)
+        final_store_path_config: {})
         return unless direct_upload_to_object_store?
 
         if use_final_store_path
-          raise MissingFinalStorePathRootId unless final_store_path_root_id.present?
+          id = if final_store_path_config[:override_path].present?
+                 final_store_path_config[:override_path]
+               else
+                 raise MissingFinalStorePathRootId unless final_store_path_config[:root_hash].present?
 
-          id = generate_final_store_path(root_id: final_store_path_root_id)
+                 generate_final_store_path(root_hash: final_store_path_config[:root_hash])
+               end
+
           upload_path = with_bucket_prefix(id)
           prepare_pending_direct_upload(id)
         else
@@ -257,6 +281,17 @@ module ObjectStorage
           path
         )
       end
+
+      private
+
+      def validate_hash_functions!(requested_functions)
+        supported_functions = ::Gitlab::FIPS.enabled? ? SUPPORTED_HASH_FUNCTIONS_FIPS : SUPPORTED_HASH_FUNCTIONS
+        invalid_functions = requested_functions - supported_functions
+
+        return unless invalid_functions.present?
+
+        raise InvalidHashFunction, "Unsupported hash functions: #{invalid_functions.join(', ')}"
+      end
     end
 
     class OpenFile
@@ -268,13 +303,26 @@ module ObjectStorage
       # Even though :size is not in IO_METHODS, we do need it.
       def_delegators :@file, :size
 
-      def initialize(file)
+      def initialize(file, original_filename: nil)
         @file = file
+        @original_filename = original_filename
       end
 
       def file_path
         @file.path
       end
+
+      def original_filename
+        @original_filename || File.basename(file_path) if file_path.present?
+      end
+    end
+
+    def proxy_download_enabled?
+      self.class.proxy_download_enabled?
+    end
+
+    def direct_download_enabled?
+      self.class.direct_download_enabled?
     end
 
     # allow to configure and overwrite the filename
@@ -302,6 +350,7 @@ module ObjectStorage
     # rubocop:disable Gitlab/ModuleWithInstanceVariables
     def object_store=(value)
       @object_store = value || Store::LOCAL
+      model[store_serialization_column] = @object_store if sync_model_object_store? && persist_object_store?
       @storage = storage_for(object_store)
     end
     # rubocop:enable Gitlab/ModuleWithInstanceVariables
@@ -327,7 +376,7 @@ module ObjectStorage
     end
 
     def use_open_file(unlink_early: true)
-      Tempfile.open(path) do |file|
+      Tempfile.open(filename) do |file|
         file.unlink if unlink_early
         file.binmode
 
@@ -341,7 +390,7 @@ module ObjectStorage
 
         file.seek(0, IO::SEEK_SET)
 
-        yield OpenFile.new(file)
+        yield OpenFile.new(file, original_filename: filename)
       ensure
         file.unlink unless unlink_early
       end
@@ -489,7 +538,7 @@ module ObjectStorage
       # instead of using custom upload directory,
       # using tmp/cache makes this implementation way easier than it is today
       CarrierWave::Storage::Fog::File.new(self, storage_for(Store::REMOTE), file_path).tap do |file|
-        raise RemoteStoreError, 'Missing file' unless file.exists?
+        raise RemoteStoreError, 'Missing file' if check_remote_file_existence_on_upload? && !file.exists?
 
         # Remote stored file, we force to store on remote storage
         self.object_store = Store::REMOTE

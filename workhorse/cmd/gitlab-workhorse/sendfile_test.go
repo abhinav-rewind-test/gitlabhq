@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/gitlab-org/labkit/log"
 
@@ -33,17 +34,17 @@ func TestAllowedLfsDownload(t *testing.T) {
 func allowedXSendfileDownload(t *testing.T, contentFilename string, filePath string) {
 	contentPath := path.Join(t.TempDir(), contentFilename)
 	// Prepare test server and backend
-	ts := testhelper.TestServerWithHandler(regexp.MustCompile(`.`), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testhelper.TestServerWithHandler(t, regexp.MustCompile(`.`), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.WithFields(log.Fields{"method": r.Method, "url": r.URL}).Info("UPSTREAM")
 
-		require.Equal(t, "X-Sendfile", r.Header.Get("X-Sendfile-Type"))
+		assert.Equal(t, "X-Sendfile", r.Header.Get("X-Sendfile-Type"))
 
 		w.Header().Set("X-Sendfile", contentPath)
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, contentFilename))
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(200)
 	}))
-	defer ts.Close()
+
 	ws := startWorkhorseServer(t, ts.URL)
 
 	contentBytes := []byte("content")
@@ -63,16 +64,16 @@ func allowedXSendfileDownload(t *testing.T, contentFilename string, filePath str
 
 func deniedXSendfileDownload(t *testing.T, contentFilename string, filePath string) {
 	// Prepare test server and backend
-	ts := testhelper.TestServerWithHandler(regexp.MustCompile(`.`), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testhelper.TestServerWithHandler(t, regexp.MustCompile(`.`), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.WithFields(log.Fields{"method": r.Method, "url": r.URL}).Info("UPSTREAM")
 
-		require.Equal(t, "X-Sendfile", r.Header.Get("X-Sendfile-Type"))
+		assert.Equal(t, "X-Sendfile", r.Header.Get("X-Sendfile-Type"))
 
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, contentFilename))
 		w.WriteHeader(200)
 		fmt.Fprint(w, "Denied")
 	}))
-	defer ts.Close()
+
 	ws := startWorkhorseServer(t, ts.URL)
 
 	resp, err := http.Get(fmt.Sprintf("%s/%s", ws.URL, filePath))

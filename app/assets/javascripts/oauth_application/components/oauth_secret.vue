@@ -2,7 +2,7 @@
 import { GlButton, GlModal } from '@gitlab/ui';
 import { createAlert, VARIANT_SUCCESS, VARIANT_WARNING } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
-import InputCopyToggleVisibility from '~/vue_shared/components/form/input_copy_toggle_visibility.vue';
+import InputCopyToggleVisibility from '~/vue_shared/components/input_copy_toggle_visibility/input_copy_toggle_visibility.vue';
 import {
   CONFIRM_MODAL,
   CONFIRM_MODAL_TITLE,
@@ -45,6 +45,11 @@ export default {
         },
       };
     },
+    formInputGroupProps() {
+      return {
+        dataTestId: 'oauth-secret-field',
+      };
+    },
   },
   created() {
     if (!this.secret) {
@@ -76,20 +81,21 @@ export default {
 </script>
 
 <template>
-  <div class="gl-display-flex gl-flex-wrap gl-gap-5">
+  <div class="gl-flex gl-flex-wrap gl-gap-5">
     <input-copy-toggle-visibility
       v-if="secret"
+      :form-input-group-props="formInputGroupProps"
       :copy-button-title="$options.COPY_SECRET"
       :value="secret"
       readonly
-      class="gl-mt-n3 gl-mb-0"
+      class="-gl-mt-3 gl-mb-0"
     >
       <template #description>
         {{ $options.DESCRIPTION_SECRET }}
       </template>
     </input-copy-toggle-visibility>
 
-    <gl-button category="secondary" class="gl-align-self-start" @click="displayModal">{{
+    <gl-button category="secondary" class="gl-self-start" @click="displayModal">{{
       $options.RENEW_SECRET
     }}</gl-button>
 

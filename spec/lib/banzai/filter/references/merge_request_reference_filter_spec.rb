@@ -14,8 +14,8 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Merge #{merge.to_reference}</#{elem}>"
-      expect(reference_filter(act).to_html).to eq exp
+      act = "<#{elem}>Merge #{merge.to_reference}</#{elem}>"
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -66,15 +66,15 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
     end
 
     it 'ignores invalid merge IDs' do
-      exp = act = "Merge #{invalidate_reference(reference)}"
+      act = "Merge #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
 
     it 'ignores out-of-bounds merge request IDs on the referenced project' do
-      exp = act = "Merge !#{Gitlab::Database::MAX_INT_VALUE + 1}"
+      act = "Merge !#{Gitlab::Database::MAX_INT_VALUE + 1}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
 
     it 'has the MR title in the title attribute' do
@@ -181,9 +181,9 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
     end
 
     it 'ignores invalid merge IDs on the referenced project' do
-      exp = act = "Merge #{invalidate_reference(reference)}"
+      act = "Merge #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -214,9 +214,9 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
     end
 
     it 'ignores invalid merge IDs on the referenced project' do
-      exp = act = "Merge #{invalidate_reference(reference)}"
+      act = "Merge #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -247,14 +247,15 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
     end
 
     it 'ignores invalid merge IDs on the referenced project' do
-      exp = act = "Merge #{invalidate_reference(reference)}"
+      act = "Merge #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   context 'URL reference for a commit' do
-    let(:mr) { create(:merge_request) }
+    let(:mr_project) { create(:project, :public, :repository) }
+    let(:mr) { create(:merge_request, source_project: mr_project) }
     let(:reference) do
       urls.project_merge_request_url(mr.project, mr) + "/diffs?commit_id=#{mr.diff_head_sha}"
     end
@@ -268,7 +269,7 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
         .to eq reference
     end
 
-    it 'commit ref tag is valid' do
+    it 'commit ref tag is valid', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6683' do
       doc = reference_filter("See #{reference}")
       commit_ref_tag = doc.css('a').first.css('span.gfm.gfm-commit')
 
@@ -313,9 +314,89 @@ RSpec.describe Banzai::Filter::References::MergeRequestReferenceFilter, feature_
     it 'links to a valid reference' do
       reference = "#{project.full_path}!#{merge.iid}"
 
-      result = reference_filter("See #{reference}", { project: nil, group: create(:group) } )
+      result = reference_filter("See #{reference}", { project: nil, group: create(:group) })
 
       expect(result.css('a').first.attr('href')).to eq(urls.project_merge_request_url(project, merge))
+    end
+  end
+
+  context 'checking N+1' do
+    let(:merge_request1) { create(:merge_request, source_project: project, source_branch: 'branch1') }
+    let(:merge_request2) { create(:merge_request, source_project: project, source_branch: 'branch2') }
+
+    it 'does not have a N+1 query problem' do
+      single_reference = "Merge request #{merge_request1.to_reference}"
+      multiple_references = "Merge requests #{merge_request1.to_reference} and #{merge_request2.to_reference}"
+
+      control = ActiveRecord::QueryRecorder.new { reference_filter(single_reference).to_html }
+
+      expect { reference_filter(multiple_references).to_html }.not_to exceed_query_limit(control)
+    end
+  end
+
+  describe '#find_commit_by_sha' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let(:filter) { described_class.new('', project: project) }
+    let(:commit_sha) { 'b83d6e391c22777fca1ed3012fce84f633d7fed0' }
+
+    context 'with feature flag enabled' do
+      it 'preloads all commits metadata' do
+        expect(filter).to receive(:preloaded_all_commits).with(merge_request).and_call_original
+
+        filter.send(:find_commit_by_sha, merge_request, commit_sha)
+      end
+
+      it 'caches preloaded commits per merge request' do
+        expect(filter).to receive(:preloaded_all_commits).once.and_call_original
+
+        filter.send(:find_commit_by_sha, merge_request, commit_sha)
+        filter.send(:find_commit_by_sha, merge_request, 'another_sha')
+      end
+
+      it 'finds the correct commit by sha' do
+        commit = filter.send(:find_commit_by_sha, merge_request, commit_sha)
+
+        expect(commit).not_to be_nil
+        expect(commit.sha).to eq(commit_sha)
+      end
+    end
+
+    context 'with feature flag disabled' do
+      before do
+        stub_feature_flags(merge_request_diff_commits_dedup: false)
+      end
+
+      it 'does not preload commits metadata' do
+        expect(filter).not_to receive(:preloaded_all_commits)
+        expect(merge_request).to receive(:all_commits).and_call_original
+
+        filter.send(:find_commit_by_sha, merge_request, commit_sha)
+      end
+    end
+  end
+
+  describe '#preloaded_all_commits' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let(:filter) { described_class.new('', project: project) }
+
+    it 'preloads commit metadata associations' do
+      commits = merge_request.all_commits
+
+      result = filter.send(:preloaded_all_commits, merge_request)
+      expect(result).to eq(commits)
+
+      if result.any?
+        expect { result.first.commit_author }.not_to raise_error
+        expect { result.first.committer }.not_to raise_error
+      end
+    end
+
+    it 'returns all commits' do
+      commits = filter.send(:preloaded_all_commits, merge_request)
+
+      expect(commits).to eq(merge_request.all_commits)
     end
   end
 end

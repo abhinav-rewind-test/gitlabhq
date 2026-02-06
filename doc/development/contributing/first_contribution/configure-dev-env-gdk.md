@@ -1,21 +1,18 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Install the GDK development environment
 ---
-
-# Install the GDK development environment
 
 If you want to contribute to the GitLab codebase and want a development environment in which to test
 your changes, you can use [the GitLab Development Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit),
 a local version of GitLab that's yours to play with.
 
-The GDK is a local development environment that includes an installation of self-managed GitLab,
+The GDK is a local development environment that includes an installation of GitLab Self-Managed,
 sample projects, and administrator access with which you can test functionality.
 
-![GDK](../img/gdk_home.png)
-
-If you prefer to use GDK in a local virtual machine, use the steps in [Configure GDK-in-a-box](configure-dev-env-gdk-in-a-box.md)
+If you prefer to use GDK in a local container, use the steps in [Configure GDK-in-a-box](configure-dev-env-gdk-in-a-box.md)
 
 [View an interactive demo of this step](https://gitlab.navattic.com/xtk20s8x).
 
@@ -32,16 +29,14 @@ also set aside some time for troubleshooting.
 It might seem like a lot of work, but after you have the GDK running,
 you'll be able to make any changes.
 
-![GitLab in GDK](../img/gdk_home.png)
-
 To install the GDK:
 
 1. Ensure you're on
    [one of the supported platforms](https://gitlab.com/gitlab-org/gitlab-development-kit/-/tree/main/#supported-platforms).
-1. Confirm that [Git](../../../topics/git/how_to_install_git/index.md) is installed,
+1. Confirm that [Git](../../../topics/git/how_to_install_git/_index.md) is installed,
    and that you have a source code editor.
 1. Choose the directory where you want to install the GDK.
-   The installation script installs the application to a new subdirectory called `gitlab-development-kit`.
+   The installation script installs the application to a new subdirectory called `gdk`.
 
    Keep the directory name short. Some users encounter issues with long directory names.
 
@@ -49,7 +44,7 @@ To install the GDK:
    In this example, create and change to the `dev` directory:
 
    ```shell
-   mkdir ~/dev && cd "$_"
+   mkdir ~/dev && cd ~/dev
    ```
 
 1. Run the one-line installation command:
@@ -58,7 +53,12 @@ To install the GDK:
    curl "https://gitlab.com/gitlab-org/gitlab-development-kit/-/raw/main/support/install" | bash
    ```
 
-1. For the message `Where would you like to install the GDK? [./gitlab-development-kit]`,
+   This script clones the GitLab Development Kit (GDK) repository into a new subdirectory, and sets up necessary dependencies using the `mise` version manager (including Ruby, Node.js, PostgreSQL, Redis, and more).
+
+   > [!note]
+   > If you're using another tool version manager for those dependencies, refer to the [tool version manager](#use-a-different-tool-version-manager) to avoid conflicts.
+
+1. For the message `Where would you like to install the GDK? [./gdk]`,
    press <kbd>Enter</kbd> to accept the default location.
 1. For the message `Which GitLab repo URL would you like to clone?`, enter the GitLab community fork URL:
 
@@ -73,18 +73,24 @@ To install the GDK:
    If you have any problems with the installation, you can use this output as
    part of [troubleshooting](#troubleshoot-gdk).
 
-1. After the installation is complete,
-   copy the `source` command from the message corresponding to your shell
-   from the message `INFO: To make sure GDK commands are available in this shell`:
+1. After the installation is complete, you might need to activate `mise`:
+
+   For `bash`:
 
    ```shell
-   source ~/.asdf/asdf.sh
+   eval "$(mise activate bash)"
+   ```
+
+   For `zsh`:
+
+   ```shell
+   eval "$(mise activate zsh)"
    ```
 
 1. Go to the directory where the GDK was installed:
 
    ```shell
-   cd gitlab-development-kit
+   cd gdk
    ```
 
 1. Run `gdk truncate-legacy-tables` to ensure that the data in the main and CI databases are truncated,
@@ -115,25 +121,52 @@ To install the GDK:
 
 If you have an existing GDK installation, you should update it to use the community fork.
 
-1. Delete the existing `gitlab-development-kit/gitlab` directory.
+1. Delete the existing `gdk/gitlab` directory.
 1. Clone the community fork into that location:
 
    ```shell
-   cd gitlab-development-kit
+   cd gdk
    git clone https://gitlab.com/gitlab-community/gitlab.git
    ```
 
 To confirm it was successful:
 
-1. Ensure the `gitlab-development-kit/gitlab` directory exists.
-1. Go to the top `gitlab-development-kit` directory and run `gdk stop` and `gdk start`.
+1. Ensure the `gdk/gitlab` directory exists.
+1. Go to the top `gdk` directory and run `gdk stop` and `gdk start`.
 
 If you get errors, run `gdk doctor` to troubleshoot.
 For more advanced troubleshooting, continue to the [Troubleshoot GDK](#troubleshoot-gdk) section.
 
+## Use a different tool version manager
+
+If you are using a different tool version manager in your system, you may encounter issues as only `mise` as a tool version manager is officially supported.
+
+When using `asdf` as your tool version manager, you can use the following command to migrate to `mise`:
+
+1. Run the migration command:
+
+   ```shell
+   gdk rake mise:migrate
+   ```
+
+Refer to the [migration instructions](https://gitlab-org.gitlab.io/gitlab-development-kit/howto/mise/#how-to-migrate) for more information.
+
+In case you want to continue using a different tool version manager, you need to configure the GDK for it.
+
+1. Set GDK not to use the default tool version manager:
+
+   ```shell
+   gdk config set tool_version_manager.enabled false
+   ```
+
 ## Troubleshoot GDK
 
-If you encounter issues, go to the `gitlab-development-kit/gitlab`
+> [!note]
+> For more advanced troubleshooting, see
+> the [troubleshooting documentation](https://gitlab.com/gitlab-org/gitlab-development-kit/-/tree/main/doc/troubleshooting)
+> and the [#contribute channel on Discord](https://discord.com/channels/778180511088640070/997442331202564176).
+
+If you encounter issues, go to the `gdk/gitlab`
 directory and run `gdk doctor`.
 
 If `gdk doctor` returns Node or Ruby-related errors, run:
@@ -142,10 +175,6 @@ If `gdk doctor` returns Node or Ruby-related errors, run:
 yarn install && bundle install
 bundle exec rails db:migrate RAILS_ENV=development
 ```
-
-For more advanced troubleshooting, see
-the [troubleshooting documentation](https://gitlab.com/gitlab-org/gitlab-development-kit/-/tree/main/doc/troubleshooting)
-and the [#contribute channel on Discord](https://discord.com/channels/778180511088640070/997442331202564176).
 
 ## Change the code
 

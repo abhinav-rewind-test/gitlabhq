@@ -69,7 +69,7 @@ module Types
         define_singleton_method(:as) do |new_name|
           if @renamed && graphql_name != new_name
             raise "Conflicting names for ID of #{model_name}: " \
-                  "#{graphql_name} and #{new_name}"
+              "#{graphql_name} and #{new_name}"
           end
 
           @renamed = true
@@ -77,7 +77,7 @@ module Types
           self
         end
 
-        define_singleton_method(:coerce_result) do |gid, ctx|
+        define_singleton_method(:coerce_result) do |gid, _ctx|
           global_id = ::Gitlab::GlobalId.as_global_id(gid, model_name: model_name)
 
           next global_id.to_s if suitable?(global_id)

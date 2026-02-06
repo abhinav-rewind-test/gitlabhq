@@ -12,7 +12,9 @@ module Gitlab
     NO_ACCESS      = 0
     MINIMAL_ACCESS = 5
     GUEST          = 10
+    PLANNER        = 15
     REPORTER       = 20
+    SECURITY_MANAGER = 25
     DEVELOPER      = 30
     MAINTAINER     = 40
     OWNER          = 50
@@ -28,7 +30,9 @@ module Gitlab
     # Default project creation level
     NO_ONE_PROJECT_ACCESS = 0
     MAINTAINER_PROJECT_ACCESS = 1
-    DEVELOPER_MAINTAINER_PROJECT_ACCESS = 2
+    DEVELOPER_PROJECT_ACCESS = 2
+    ADMINISTRATOR_PROJECT_ACCESS = 3
+    OWNER_PROJECT_ACCESS = 4
 
     # Default subgroup creation level
     OWNER_SUBGROUP_ACCESS = 0
@@ -37,17 +41,33 @@ module Gitlab
     class << self
       delegate :values, to: :options
 
+      def level_encompasses?(current_access_level:, level_to_assign:)
+        # Roles that don't follow the inherited hierarchy can only be assigned by owners
+        # or by users with the same role
+        non_hierarchy_roles = [PLANNER, SECURITY_MANAGER]
+
+        return current_access_level.in?([OWNER, level_to_assign]) if non_hierarchy_roles.include?(level_to_assign)
+
+        level_to_assign.to_i <= current_access_level.to_i
+      end
+
       def all_values
         options_with_owner.values
+      end
+
+      def all_keys
+        options_with_owner.keys
       end
 
       def options
         {
           "Guest" => GUEST,
+          "Planner" => PLANNER,
           "Reporter" => REPORTER,
+          "Security Manager" => (Gitlab::Security::SecurityManagerConfig.enabled? ? SECURITY_MANAGER : nil),
           "Developer" => DEVELOPER,
           "Maintainer" => MAINTAINER
-        }
+        }.compact
       end
 
       def options_with_owner
@@ -62,17 +82,29 @@ module Gitlab
         )
       end
 
-      def sym_options
+      def option_descriptions
         {
-          guest: GUEST,
-          reporter: REPORTER,
-          developer: DEVELOPER,
-          maintainer: MAINTAINER
-        }
+          NO_ACCESS => s_('MemberRole|The None role is assigned to the invited group users of a shared project when project sharing is disabled in group setting.'),
+          GUEST => s_('MemberRole|The Guest role is for users who need visibility into a project or group but should not have the ability to make changes, such as external stakeholders.'),
+          PLANNER => s_('The Planner role is suitable for team members who need to manage projects and track work items but do not need to contribute code.'),
+          REPORTER => s_('MemberRole|The Reporter role is suitable for team members who need to stay informed about a project or group but do not actively contribute code.'),
+          SECURITY_MANAGER => (Gitlab::Security::SecurityManagerConfig.enabled? ? s_('MemberRole|The Security Manager role is for security team members who need to view and manage security features for the group or project.') : nil),
+          DEVELOPER => s_('MemberRole|The Developer role gives users access to contribute code while restricting sensitive administrative actions.'),
+          MAINTAINER => s_('MemberRole|The Maintainer role is primarily used for managing code reviews, approvals, and administrative settings for projects. This role can also manage project memberships.'),
+          OWNER => s_('MemberRole|The Owner role is typically assigned to the individual or team responsible for managing and maintaining the group or creating the project. This role has the highest level of administrative control, and can manage all aspects of the group or project, including managing other Owners.')
+        }.compact
+      end
+
+      def sym_options
+        options.transform_keys { |key| key.downcase.tr(' ', '_').to_sym }
       end
 
       def sym_options_with_owner
         sym_options.merge(owner: OWNER)
+      end
+
+      def sym_options_with_admin
+        sym_options_with_owner.merge(admin: ADMIN)
       end
 
       def protection_options
@@ -105,31 +137,54 @@ module Gitlab
         ]
       end
 
+      def global_protection_levels
+        [
+          {
+            label: s_('DefaultBranchProtection|Not protected'),
+            help_text: s_('DefaultBranchProtection|Both developers and maintainers can push new commits, force push, or delete the branch.'),
+            value: false
+          },
+          {
+            label: s_('DefaultBranchProtection|Protected'),
+            help_text: s_('DefaultBranchProtection|Once a repository is created this branch will be protected.'),
+            value: true
+          }
+        ]
+      end
+
       def protection_values
         protection_options.map { |option| option[:value] }
       end
 
-      def human_access(access)
+      def human_access(access, _member_role = nil)
         options_with_owner.key(access)
       end
 
-      def human_access_with_none(access)
+      def role_description(access)
+        option_descriptions[access]
+      end
+
+      def human_access_with_none(access, _member_role = nil)
         options_with_none.key(access)
       end
 
       def project_creation_options
         {
           s_('ProjectCreationLevel|No one') => NO_ONE_PROJECT_ACCESS,
+          s_('ProjectCreationLevel|Administrators') => ADMINISTRATOR_PROJECT_ACCESS,
+          s_('ProjectCreationLevel|Owners') => OWNER_PROJECT_ACCESS,
           s_('ProjectCreationLevel|Maintainers') => MAINTAINER_PROJECT_ACCESS,
-          s_('ProjectCreationLevel|Developers + Maintainers') => DEVELOPER_MAINTAINER_PROJECT_ACCESS
+          s_('ProjectCreationLevel|Developers') => DEVELOPER_PROJECT_ACCESS
         }
       end
 
       def project_creation_string_options
         {
           'noone' => NO_ONE_PROJECT_ACCESS,
+          'owner' => OWNER_PROJECT_ACCESS,
           'maintainer' => MAINTAINER_PROJECT_ACCESS,
-          'developer' => DEVELOPER_MAINTAINER_PROJECT_ACCESS
+          'developer' => DEVELOPER_PROJECT_ACCESS,
+          'administrator' => ADMINISTRATOR_PROJECT_ACCESS
         }
       end
 
@@ -170,6 +225,10 @@ module Gitlab
 
     def human_access
       Gitlab::Access.human_access(access_field)
+    end
+
+    def role_description
+      Gitlab::Access.role_description(access_field)
     end
 
     def human_access_with_none

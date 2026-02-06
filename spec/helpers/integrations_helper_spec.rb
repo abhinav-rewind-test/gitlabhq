@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe IntegrationsHelper, feature_category: :integrations do
+  using RSpec::Parameterized::TableSyntax
+
   let_it_be_with_refind(:project) { create(:project) }
 
   shared_examples 'is defined for each integration event' do
@@ -56,7 +58,8 @@ RSpec.describe IntegrationsHelper, feature_category: :integrations do
       [
         :id,
         :project_id,
-        :show_active,
+        :group_id,
+        :manual_activation,
         :activated,
         :activate_disabled,
         :type,
@@ -171,6 +174,56 @@ RSpec.describe IntegrationsHelper, feature_category: :integrations do
     subject { helper.integration_overrides_data(integration) }
 
     it { is_expected.to include(*fields) }
+  end
+
+  describe '#integration_list_data' do
+    let(:integration) { build(:jenkins_integration, project: project) }
+    let(:integrations) { [integration] }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(build(:user))
+    end
+
+    subject { helper.integration_list_data(integrations, project: project) }
+
+    it 'returns a hash with integrations' do
+      parsed = Gitlab::Json.safe_parse(subject[:integrations])
+      expect(parsed.first).to include('title' => integration.title)
+    end
+
+    it 'returns a hash with is_admin flag' do
+      expect(subject[:is_admin]).to eq('false')
+    end
+
+    context 'when current_user is a regular user' do
+      before do
+        allow(helper).to receive(:current_user).and_return(build(:user))
+      end
+
+      it 'returns is_admin as false' do
+        expect(subject[:is_admin]).to eq('false')
+      end
+    end
+
+    context 'when current_user is an admin' do
+      before do
+        allow(helper).to receive(:current_user).and_return(build(:admin))
+      end
+
+      it 'returns is_admin as true' do
+        expect(subject[:is_admin]).to eq('true')
+      end
+    end
+
+    context 'when current_user is nil' do
+      before do
+        allow(helper).to receive(:current_user).and_return(nil)
+      end
+
+      it 'returns is_admin as empty string' do
+        expect(subject[:is_admin]).to eq('')
+      end
+    end
   end
 
   describe '#serialize_integration' do
@@ -339,15 +392,13 @@ RSpec.describe IntegrationsHelper, feature_category: :integrations do
     where(:issue_type, :expected_i18n_issue_type) do
       "issue"           | _('Issue')
       "incident"        | _('Incident')
-      "test_case"       | _('Test case')
-      "requirement"     | _('Requirement')
       "task"            | _('Task')
       "ticket"          | _('Service Desk Ticket')
     end
 
     with_them do
       before do
-        issue.assign_attributes(work_item_type: WorkItems::Type.default_by_type(issue_type))
+        issue.assign_attributes(work_item_type_id: build(:work_item_system_defined_type, issue_type).id)
         issue.save!(validate: false)
       end
 
@@ -381,6 +432,36 @@ RSpec.describe IntegrationsHelper, feature_category: :integrations do
       end
 
       it { expect(described_class.integration_todo_target_type(todo.target_type)).to eq(expected_i18n_target_type) }
+    end
+  end
+
+  describe '#integration_webhook_event_human_name' do
+    where(:event, :mapping) do
+      :repository_update_events | 'Repository update events'
+      :push_events | 'Push events'
+      :tag_push_events | 'Tag push events'
+      :note_events | 'Comments'
+      :confidential_note_events | 'Confidential comments'
+      :issues_events | 'Issue events'
+      :confidential_issues_events | 'Confidential issue events'
+      :subgroup_events | 'Subgroup events'
+      :member_events | 'Member events'
+      :merge_requests_events | 'Merge request events'
+      :job_events | 'Job events'
+      :pipeline_events | 'Pipeline events'
+      :wiki_page_events | 'Wiki page events'
+      :deployment_events | 'Deployment events'
+      :feature_flag_events | 'Feature flag events'
+      :releases_events | 'Releases events'
+      :milestone_events | 'Milestone events'
+      :resource_access_token_events | 'Project or group access token events'
+      :vulnerability_events | 'Vulnerability events'
+    end
+
+    with_them do
+      it 'maps to a human name' do
+        expect(described_class.integration_webhook_event_human_name(event)).to eq(mapping)
+      end
     end
   end
 end

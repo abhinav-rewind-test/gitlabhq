@@ -17,7 +17,7 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
   # similar to the API "GET /groups/:id"
   describe "Query group(fullPath)" do
     def group_query(group)
-      fields = all_graphql_fields_for('Group', excluded: %w[runners])
+      fields = all_graphql_fields_for('Group', excluded: %w[runners ciQueueingHistory securityCategories])
       # TODO: Set required timelogs args elsewhere https://gitlab.com/gitlab-org/gitlab/-/issues/325499
       fields.selection['timelogs(startDate: "2021-03-01" endDate: "2021-03-30")'] = fields.selection.delete('timelogs')
 
@@ -119,6 +119,40 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
           names = graphql_data['group']['descendantGroups']['nodes'].map { |n| n['name'] }
           expect(names).to match_array(descendants.map(&:name))
         end
+
+        context 'when filtering group\'s descendant groups by ids' do
+          let(:fields) { %w[nodes { name }] }
+
+          let(:query) do
+            graphql_query_for(
+              'group',
+              { 'fullPath' => public_group.full_path },
+              query_graphql_field('descendantGroups', { ids: subgroup1.to_global_id.to_s }, fields)
+            )
+          end
+
+          it 'returns all descendant groups user has access to' do
+            post_graphql(query, current_user: admin)
+
+            names = graphql_data['group']['descendantGroups']['nodes'].map { |n| n['name'] }
+            expect(names).to match_array([subgroup1.name])
+          end
+        end
+      end
+    end
+
+    context 'when marked_for_deletion_on filter is applied' do
+      let(:marked_for_deletion_on) { Date.parse('2024-01-01') }
+      let(:group) do
+        create(:group_with_deletion_schedule, marked_for_deletion_on: marked_for_deletion_on, owners: user2)
+      end
+
+      it 'returns groups with marked_for_deletion_on' do
+        post_graphql(group_query(group), current_user: user2)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(graphql_data['group']['id']).to eq(group.to_global_id.to_s)
+        expect(graphql_data['group']['markedForDeletionOn']).to eq(marked_for_deletion_on.iso8601)
       end
     end
 
@@ -243,6 +277,88 @@ RSpec.describe 'getting group information', :with_license, feature_category: :gr
         let(:current_user) { nil }
 
         it_behaves_like 'public group in which the user has no membership'
+      end
+    end
+
+    describe 'project statistics' do
+      it 'returns nil for each statistic because they are not supported in this query' do
+        post_graphql(group_query(private_group), current_user: admin)
+
+        expect(graphql_data_at(:group, :project_statistics)).to include({
+          "buildArtifactsSize" => nil,
+          "lfsObjectsSize" => nil,
+          "packagesSize" => nil,
+          "pipelineArtifactsSize" => nil,
+          "repositorySize" => nil,
+          "snippetsSize" => nil,
+          "storageSize" => nil,
+          "uploadsSize" => nil,
+          "wikiSize" => nil
+        })
+      end
+    end
+
+    context 'with general settings' do
+      let(:omniauth_provider_config_oidc) do
+        GitlabSettings::Options.new(
+          name: 'openid_connect',
+          label: 'OpenID Connect',
+          step_up_auth: {
+            namespace: {
+              id_token: {
+                required: {
+                  acr: 'gold'
+                }
+              }
+            }
+          }
+        )
+      end
+
+      before do
+        stub_omniauth_setting(enabled: true, providers: [omniauth_provider_config_oidc])
+      end
+
+      context 'when user has admin permission' do
+        before do
+          private_group.add_owner(user2)
+          private_group.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+        end
+
+        it 'includes namespaceSettings with stepUpAuthRequiredOauthProvider' do
+          query = graphql_query_for(
+            'group',
+            { 'fullPath' => private_group.full_path },
+            <<~FIELDS
+              namespaceSettings {
+                stepUpAuthRequiredOauthProvider
+              }
+            FIELDS
+          )
+
+          post_graphql(query, current_user: user2)
+
+          expect(graphql_data_at(:group, :namespaceSettings, :stepUpAuthRequiredOauthProvider))
+            .to eq('openid_connect')
+        end
+      end
+
+      context 'when user lacks admin permission' do
+        before do
+          private_group.add_developer(user2)
+        end
+
+        it 'returns nil for namespaceSettings' do
+          query = graphql_query_for(
+            'group',
+            { 'fullPath' => private_group.full_path },
+            'namespaceSettings { stepUpAuthRequiredOauthProvider }'
+          )
+
+          post_graphql(query, current_user: user2)
+
+          expect(graphql_data_at(:group, :namespaceSettings)).to be_nil
+        end
       end
     end
   end

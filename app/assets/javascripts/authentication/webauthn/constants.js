@@ -3,7 +3,7 @@ import { helpPagePath } from '~/helpers/help_page_helper';
 
 export const I18N_BUTTON_REGISTER = __('Register device');
 export const I18N_BUTTON_SETUP = __('Set up new device');
-export const I18N_BUTTON_TRY_AGAIN = __('Try again?');
+export const I18N_BUTTON_TRY_AGAIN = __('Try again');
 export const I18N_DEVICE_NAME = __('Device name');
 export const I18N_DEVICE_NAME_DESCRIPTION = __(
   'Excluding USB security keys, you should include the browser name together with the device name.',
@@ -14,9 +14,6 @@ export const I18N_ERROR_HTTP = __(
 );
 export const I18N_ERROR_UNSUPPORTED_BROWSER = __(
   "Your browser doesn't support WebAuthn. Please use a supported browser, e.g. Chrome (67+) or Firefox (60+).",
-);
-export const I18N_INFO_TEXT = __(
-  'Your device needs to be set up. Plug it in (if needed) and click the button on the left.',
 );
 export const I18N_NOTICE = __(
   'You must save your recovery codes after you first register a two-factor authenticator, so you do not lose access to your account. %{linkStart}See the documentation on managing your WebAuthn device for more information.%{linkEnd}',
@@ -42,5 +39,5 @@ export const WEBAUTHN_AUTHENTICATE = 'authenticate';
 export const WEBAUTHN_REGISTER = 'register';
 export const WEBAUTHN_DOCUMENTATION_PATH = helpPagePath(
   'user/profile/account/two_factor_authentication',
-  { anchor: 'set-up-a-webauthn-device' },
+  { anchor: 'register-a-webauthn-device' },
 );

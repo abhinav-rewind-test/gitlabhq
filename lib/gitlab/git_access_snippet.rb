@@ -46,8 +46,8 @@ module Gitlab
     private
 
     # TODO: Implement EE/Geo https://gitlab.com/gitlab-org/gitlab/issues/205629
-    override :check_custom_action
-    def check_custom_action
+    override :check_custom_ssh_action!
+    def check_custom_ssh_action!
       # snippets never return custom actions, such as geo replication.
     end
 
@@ -81,13 +81,6 @@ module Gitlab
       if snippet.blank?
         raise NotFoundError, error_message(:snippet_not_found)
       end
-    end
-
-    override :can_read_project?
-    def can_read_project?
-      return true if user&.migration_bot?
-
-      super
     end
 
     override :can_download?
@@ -126,13 +119,6 @@ module Gitlab
     override :user_access
     def user_access
       @user_access ||= UserAccessSnippet.new(user, snippet: snippet)
-    end
-
-    override :check_size_limit?
-    def check_size_limit?
-      return false if user&.migration_bot?
-
-      super
     end
   end
 end

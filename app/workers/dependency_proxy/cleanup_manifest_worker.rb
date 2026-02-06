@@ -3,15 +3,14 @@
 module DependencyProxy
   class CleanupManifestWorker
     include ApplicationWorker
+    include CronjobChildWorker
     include ::Packages::CleanupArtifactWorker
     include Gitlab::Utils::StrongMemoize
 
-    data_consistency :always
-
-    sidekiq_options retry: 3
+    data_consistency :sticky
 
     queue_namespace :dependency_proxy_manifest
-    feature_category :dependency_proxy
+    feature_category :virtual_registry
     urgency :low
     worker_resource_boundary :unknown
     idempotent!

@@ -13,7 +13,7 @@ RSpec.describe 'getting incident timeline events', feature_category: :incident_m
   let_it_be(:incident) { create(:incident, project: project) }
   let_it_be(:another_incident) { create(:incident, project: project) }
   let_it_be(:promoted_from_note) { create(:note, project: project, noteable: incident) }
-  let_it_be(:issue_url) { project_issue_url(private_project, issue) }
+  let_it_be(:issue_url) { ::Gitlab::UrlBuilder.instance.issue_url(issue) }
   let_it_be(:issue_ref) { "#{private_project.full_path}##{issue.iid}" }
   let_it_be(:issue_link) { %(<a href="#{issue_url}">#{issue_url}</a>) }
 
@@ -72,6 +72,7 @@ RSpec.describe 'getting incident timeline events', feature_category: :incident_m
 
   before do
     project.add_guest(current_user)
+    stub_feature_flags(hide_incident_management_features: false)
     post_graphql(query, current_user: current_user)
   end
 

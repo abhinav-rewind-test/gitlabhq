@@ -26,7 +26,7 @@ RSpec.describe 'User views releases', :js, feature_category: :continuous_deliver
 
   shared_examples 'when the project does not have releases' do
     before do
-      project.releases.delete_all
+      project.releases.delete_all(:delete_all)
       visit project_releases_path(project)
     end
 
@@ -97,7 +97,7 @@ RSpec.describe 'User views releases', :js, feature_category: :continuous_deliver
 
       shared_examples 'releases sort order' do
         it "sorts the releases #{description}" do
-          card_titles = page.all('.release-block .card-title', minimum: expected_releases.count)
+          card_titles = page.all('[data-testid="release-block"] [data-testid="crud-title"]', minimum: expected_releases.count)
 
           card_titles.each_with_index do |title, index|
             expect(title).to have_content(expected_releases[index].name)
@@ -111,7 +111,7 @@ RSpec.describe 'User views releases', :js, feature_category: :continuous_deliver
         it_behaves_like 'releases sort order'
       end
 
-      context "when the page is sorted by created_at ascending " do
+      context "when the page is sorted by created_at ascending" do
         let(:expected_releases) { [release_v2, release_v1, release_v3] }
 
         before do
@@ -133,7 +133,7 @@ RSpec.describe 'User views releases', :js, feature_category: :continuous_deliver
     it 'renders release info except for Git-related data' do
       visit project_releases_path(project)
 
-      within('.release-block', match: :first) do
+      within_testid('release-block', match: :first) do
         expect(page).to have_content(release_v3.description)
         expect(page).to have_content(release_v3.tag)
         expect(page).to have_content(release_v3.name)

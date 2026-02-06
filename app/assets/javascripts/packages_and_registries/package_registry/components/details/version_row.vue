@@ -4,15 +4,14 @@ import {
   GlFormCheckbox,
   GlIcon,
   GlLink,
-  GlSprintf,
   GlTooltipDirective,
   GlTruncate,
 } from '@gitlab/ui';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import PackageTags from '~/packages_and_registries/shared/components/package_tags.vue';
+import PublishMessage from '~/packages_and_registries/shared/components/publish_message.vue';
 import PublishMethod from '~/packages_and_registries/shared/components/publish_method.vue';
 import ListItem from '~/vue_shared/components/registry/list_item.vue';
-import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import {
   DELETE_PACKAGE_TEXT,
   ERRORED_PACKAGE_TEXT,
@@ -28,12 +27,11 @@ export default {
     GlFormCheckbox,
     GlIcon,
     GlLink,
-    GlSprintf,
     GlTruncate,
     PackageTags,
+    PublishMessage,
     PublishMethod,
     ListItem,
-    TimeAgoTooltip,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -59,13 +57,19 @@ export default {
     errorStatusRow() {
       return this.packageEntity?.status === PACKAGE_ERROR_STATUS;
     },
+    errorPackageStyle() {
+      return {
+        'gl-text-danger': this.errorStatusRow,
+        'gl-font-normal': this.errorStatusRow,
+      };
+    },
     dropdownItems() {
       return [
         {
           text: this.$options.i18n.deletePackage,
           action: () => this.$emit('delete'),
+          variant: 'danger',
           extraAttrs: {
-            class: 'gl-text-red-500!',
             'data-testid': 'action-delete',
           },
         },
@@ -92,23 +96,29 @@ export default {
       />
     </template>
     <template #left-primary>
-      <div class="gl-display-flex gl-align-items-center gl-mr-3 gl-min-w-0">
-        <gl-link v-if="containsWebPathLink" class="gl-text-body gl-min-w-0" :href="packageLink">
-          <gl-truncate :text="packageEntity.name" />
+      <div class="gl-mr-5 gl-flex gl-min-w-0 gl-items-center gl-gap-3" data-testid="package-name">
+        <gl-link
+          v-if="containsWebPathLink"
+          class="gl-min-w-0 gl-break-all gl-text-default"
+          :class="errorPackageStyle"
+          :href="packageLink"
+        >
+          {{ packageEntity.name }}
         </gl-link>
-        <gl-truncate v-else :text="packageEntity.name" />
+        <span v-else :class="errorPackageStyle">
+          {{ packageEntity.name }}
+        </span>
 
-        <package-tags
+        <div
           v-if="packageEntity.tags.nodes && packageEntity.tags.nodes.length"
-          class="gl-ml-3"
-          :tags="packageEntity.tags.nodes"
-          hide-label
-          :tag-display-limit="1"
-        />
+          class="gl-flex gl-gap-2"
+        >
+          <package-tags :tags="packageEntity.tags.nodes" hide-label :tag-display-limit="1" />
+        </div>
       </div>
     </template>
     <template #left-secondary>
-      <div v-if="errorStatusRow" class="gl-text-red-500">
+      <div v-if="errorStatusRow" class="gl-text-danger">
         <gl-icon
           v-gl-tooltip="{ title: $options.i18n.erroredPackageText }"
           name="warning"
@@ -118,7 +128,7 @@ export default {
       </div>
       <gl-truncate
         v-else
-        class="gl-max-w-15 gl-md-max-w-26"
+        class="gl-max-w-15 @md/panel:gl-max-w-26"
         :text="packageEntity.version"
         :with-tooltip="true"
       />
@@ -129,13 +139,7 @@ export default {
     </template>
 
     <template #right-secondary>
-      <span>
-        <gl-sprintf :message="__('Created %{timestamp}')">
-          <template #timestamp>
-            <time-ago-tooltip :time="packageEntity.createdAt" />
-          </template>
-        </gl-sprintf>
-      </span>
+      <publish-message :publish-date="packageEntity.createdAt" />
     </template>
 
     <template v-if="packageEntity.userPermissions.destroyPackage" #right-action>

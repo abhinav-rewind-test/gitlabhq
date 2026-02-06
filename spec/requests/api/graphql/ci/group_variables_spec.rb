@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Query.group(fullPath).ciVariables', feature_category: :secrets_management do
+RSpec.describe 'Query.group(fullPath).ciVariables', feature_category: :pipeline_composition do
   include GraphqlHelpers
 
   let_it_be(:group) { create(:group) }
@@ -20,6 +20,7 @@ RSpec.describe 'Query.group(fullPath).ciVariables', feature_category: :secrets_m
               value
               variableType
               protected
+              hidden
               masked
               raw
               environmentScope
@@ -55,7 +56,35 @@ RSpec.describe 'Query.group(fullPath).ciVariables', feature_category: :secrets_m
         'variableType' => 'ENV_VAR',
         'masked' => false,
         'protected' => true,
+        'hidden' => false,
         'raw' => true,
+        'environmentScope' => 'staging'
+      })
+    end
+
+    it "sets the value to null if the variable is hidden" do
+      variable = create(:ci_group_variable,
+        group: group,
+        key: 'TEST_VAR',
+        value: 'TestValue',
+        masked: true,
+        hidden: true,
+        protected: true,
+        raw: false,
+        environment_scope: 'staging')
+
+      post_graphql(query, current_user: user)
+
+      expect(graphql_data.dig('group', 'ciVariables', 'limit')).to be(30000)
+      expect(graphql_data.dig('group', 'ciVariables', 'nodes')).to contain_exactly({
+        'id' => variable.to_global_id.to_s,
+        'key' => 'TEST_VAR',
+        'value' => nil,
+        'variableType' => 'ENV_VAR',
+        'masked' => true,
+        'protected' => true,
+        'hidden' => true,
+        'raw' => false,
         'environmentScope' => 'staging'
       })
     end

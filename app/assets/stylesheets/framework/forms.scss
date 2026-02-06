@@ -4,8 +4,8 @@ textarea {
 
 input {
   border-radius: $border-radius-base;
-  color: $gl-text-color;
-  background-color: $input-bg;
+  @apply gl-text-default;
+  background-color: var(--gl-control-background-color-default);
 }
 
 input[type='text'].danger {
@@ -13,28 +13,6 @@ input[type='text'].danger {
   border-color: $red-400;
   text-shadow: 0 1px 1px $white;
 }
-
-/**
- * When form input type is number, Firefox & Safari show the up/down arrows
- * on the right side of the input persistently, while Chrome shows it only
- * on hover or focus, this fix allows us to hide the arrows in all browsers.
- * You can conditionally add/remove `hide-spinners` class to have consistent
- * behaviour across browsers.
- */
-
-/* stylelint-disable property-no-vendor-prefix */
-input[type='number'].hide-spinners {
-  -moz-appearance: textfield;
-  appearance: textfield;
-
-  &::-webkit-inner-spin-button,
-  &::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    appearance: none;
-    margin: 0;
-  }
-}
-/* stylelint-enable property-no-vendor-prefix */
 
 /**
  * When form input type is search, browsers add a clear input button inside
@@ -54,18 +32,12 @@ input[type='search'] {
 }
 /* stylelint-enable property-no-vendor-prefix */
 
-.datetime-controls {
-  select {
-    width: 100px;
-  }
-}
-
 .form-actions {
-  margin-top: 0;
-  margin-bottom: -$gl-padding;
-  padding: $gl-padding;
-  background-color: $gray-light;
-  border-top: 1px solid $border-color;
+  @apply gl-mt-0;
+  @apply -gl-mb-5;
+  @apply gl-p-5;
+  @apply gl-bg-subtle;
+  @apply gl-border-t;
 }
 
 label {
@@ -85,34 +57,25 @@ label {
   }
 }
 
-.label-wrapper {
-  display: block;
-  margin: 0;
-}
-
-.inline-input-group {
-  width: 250px;
-}
-
 .custom-form-control {
   width: 150px;
 }
 
-@include media-breakpoint-up(sm) {
+@include gl-container-width-up(sm, panel) {
   .custom-form-control {
     width: 150px;
   }
 }
 
 /* Medium devices (desktops, 992px and up) */
-@include media-breakpoint-up(md) {
+@include gl-container-width-up(md, panel) {
   .custom-form-control {
     width: 170px;
   }
 }
 
 /* Large devices (large desktops, 1200px and up) */
-@include media-breakpoint-up(lg) {
+@include gl-container-width-up(lg, panel) {
   .custom-form-control {
     width: 200px;
   }
@@ -123,11 +86,10 @@ label {
   margin-right: 0;
 
   .form-control {
-    background: $white;
     font-family: $monospace-font;
   }
 
-  @include media-breakpoint-down(xs) {
+  @include gl-container-width-down(sm, panel) {
     padding: 0 $gl-padding;
   }
 }
@@ -138,13 +100,15 @@ label {
 
 .form-control {
   @include box-shadow(none);
-  border-radius: $border-radius-default;
+  background: var(--gl-control-background-color-default);
+  @apply gl-text-default;
+  border-radius: var(--gl-control-border-radius);
   padding: $gl-vert-padding $gl-input-padding;
 
   &.input-short {
     width: $input-short-width;
 
-    @include media-breakpoint-up(md) {
+    @include gl-container-width-up(md, panel) {
       width: $input-short-md-width;
     }
   }
@@ -153,8 +117,10 @@ label {
 .form-control,
 [contenteditable=true] {
   &:focus {
-    border-color: $gray-400;
-    @include gl-focus;
+    background: var(--gl-control-background-color-default);
+    border-color: var(--gl-control-border-color-default);
+    @apply gl-text-default;
+    @apply gl-focus;
   }
 }
 
@@ -173,20 +139,11 @@ label {
   }
 }
 
-.form-control-inline {
-  display: inline;
-}
-
 .form-control::placeholder {
-  color: $gl-text-color-tertiary;
+  color: var(--gl-control-placeholder-color);
 }
 
 .input-group {
-  .input-group-prepend,
-  .input-group-append {
-    background-color: $input-group-addon-bg;
-  }
-
   .input-group-prepend:not(:first-child):not(:last-child),
   .input-group-append:not(:first-child):not(:last-child) {
     border-left: 0;
@@ -194,9 +151,9 @@ label {
   }
 }
 
-.form-text.text-muted {
+.form-text {
   margin-bottom: 0;
-  margin-top: #{$grid-size / 2};
+  margin-top: #{$grid-size * 0.5};
   font-size: $gl-font-size;
 
   .invisible {
@@ -206,8 +163,9 @@ label {
 
 .gl-field-error,
 .invalid-feedback {
-  color: $red-500;
+  @apply gl-text-danger;
   font-size: $gl-font-size;
+  margin-top: 0.5rem; // Match Pajamas error message spacing
 }
 
 .gl-show-field-errors {
@@ -236,15 +194,11 @@ label {
   }
 
   .gl-field-success-message {
-    color: $green-600;
+    @apply gl-text-success;
   }
 
   .gl-field-error-message {
-    color: $red-500;
-  }
-
-  .gl-field-hint {
-    color: $gl-text-color;
+    @apply gl-text-danger;
   }
 }
 
@@ -264,22 +218,8 @@ label {
   }
 }
 
-.input-icon-wrapper,
 .select-wrapper {
   position: relative;
-}
-
-.input-icon-wrapper > .input-icon-right {
-  position: absolute;
-  right: 0.8em;
-  top: 50%;
-  transform: translateY(-50%);
-  color: $gray-400;
-}
-
-.input-md {
-  max-width: $input-md-width;
-  width: 100%;
 }
 
 .input-lg {
@@ -293,11 +233,7 @@ label {
 
 .add-issuable-form-input-wrapper {
   &.focus {
-    border-color: var(--gray-700, $gray-700);
-
-    input {
-      box-shadow: none;
-    }
+    border-color: var(--gl-control-border-color-focus);
   }
 
   .gl-show-field-errors &.form-control:not(textarea) {
@@ -307,5 +243,5 @@ label {
 
 .add-issuable-form-input-wrapper.focus,
 .issue-token-remove-button:focus {
-  @include gl-focus;
+  @apply gl-focus;
 }

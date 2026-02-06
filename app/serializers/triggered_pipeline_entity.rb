@@ -6,10 +6,12 @@ class TriggeredPipelineEntity < Grape::Entity
   MAX_EXPAND_DEPTH = 3
 
   expose :id
-  expose :user, using: UserEntity
+  expose :iid
   expose :active?, as: :active
   expose :coverage, unless: proc { options[:disable_coverage] }
+  expose :name
   expose :source
+  expose :user, using: UserEntity
 
   expose :source_job do
     expose :name do |pipeline|
@@ -29,16 +31,16 @@ class TriggeredPipelineEntity < Grape::Entity
 
     expose :stages,
       using: StageEntity,
-      if: -> (_, opts) { can_read_details? && expand?(opts) }
+      if: ->(_, opts) { can_read_details? && expand?(opts) }
   end
 
   expose :triggered_by_pipeline,
     as: :triggered_by, with: TriggeredPipelineEntity,
-    if: -> (_, opts) { can_read_details? && expand_for_path?(opts) }
+    if: ->(_, opts) { can_read_details? && expand_for_path?(opts) }
 
   expose :triggered_pipelines_with_preloads,
     as: :triggered, using: TriggeredPipelineEntity,
-    if: -> (_, opts) { can_read_details? && expand_for_path?(opts) }
+    if: ->(_, opts) { can_read_details? && expand_for_path?(opts) }
 
   expose :project, using: ProjectEntity
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Git::Push do
+RSpec.describe Gitlab::Git::Push, feature_category: :source_code_management do
   let_it_be(:project) { create(:project, :repository) }
 
   let(:oldrev) { project.commit('HEAD~2').id }
@@ -130,8 +130,8 @@ RSpec.describe Gitlab::Git::Push do
 
       it 'returns modified paths' do
         expect(subject.modified_paths).to eq ['bar/branch-test.txt',
-                                              'files/js/commit.coffee',
-                                              'with space/README.md']
+          'files/js/commit.coffee',
+          'with space/README.md']
       end
     end
 
@@ -140,6 +140,64 @@ RSpec.describe Gitlab::Git::Push do
 
       it 'raises an error' do
         expect { subject.modified_paths }.to raise_error(ArgumentError)
+      end
+    end
+  end
+
+  describe '#changed_paths' do
+    context 'when a push is a branch update' do
+      let(:newrev) { '498214d' }
+      let(:oldrev) { '281d3a7' }
+
+      it 'returns changed paths' do
+        expect(subject.changed_paths.as_json).to eq [Gitlab::Git::ChangedPath.new(
+          new_blob_id: "93e123ac8a3e6a0b600953d7598af629dec7b735",
+          new_mode: "100644",
+          old_blob_id: "0000000000000000000000000000000000000000",
+          old_mode: "0",
+          old_path: "bar/branch-test.txt",
+          path: "bar/branch-test.txt",
+          status: :ADDED,
+          commit_id: ""
+        ),
+          Gitlab::Git::ChangedPath.new(
+            new_blob_id: "85bc2f9753afd5f4fc5d7c75f74f8d526f26b4f3",
+            new_mode: "100644",
+            old_blob_id: "0000000000000000000000000000000000000000",
+            old_mode: "0",
+            old_path: "files/js/commit.coffee",
+            path: "files/js/commit.coffee",
+            status: :ADDED,
+            commit_id: ""
+          ),
+          Gitlab::Git::ChangedPath.new(
+            new_blob_id: "0000000000000000000000000000000000000000",
+            new_mode: "0",
+            old_blob_id: "5f53439ca4b009096571d3c8bc3d09d30e7431b3",
+            old_mode: "100644",
+            old_path: "files/js/commit.js.coffee",
+            path: "files/js/commit.js.coffee",
+            status: :DELETED,
+            commit_id: ""
+          ),
+          Gitlab::Git::ChangedPath.new(
+            new_blob_id: "8c3014aceae45386c3c026a7ea4a1f68660d51d6",
+            new_mode: "100644",
+            old_blob_id: "0000000000000000000000000000000000000000",
+            old_mode: "0",
+            old_path: "with space/README.md",
+            path: "with space/README.md",
+            status: :ADDED,
+            commit_id: ""
+          )].as_json
+      end
+    end
+
+    context 'when a push is not a branch update' do
+      let(:oldrev) { Gitlab::Git::SHA1_BLANK_SHA }
+
+      it 'raises an error' do
+        expect { subject.changed_paths }.to raise_error(ArgumentError)
       end
     end
   end

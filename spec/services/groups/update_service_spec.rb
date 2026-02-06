@@ -64,7 +64,7 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
             context 'with path updates' do
               it 'does not allow the update' do
                 expect(subject).to be false
-                expect(public_group.errors[:base].first).to match(/Docker images in their Container Registry/)
+                expect(public_group.errors[:base].first).to match(/Docker images in their container registry/)
               end
             end
 
@@ -93,7 +93,7 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
 
             it 'does not allow path updates' do
               expect(subject).to be false
-              expect(public_group.errors[:base].first).to match(/Docker images in their Container Registry/)
+              expect(public_group.errors[:base].first).to match(/Docker images in their container registry/)
             end
           end
         end
@@ -148,66 +148,166 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
       end
     end
 
-    context 'crm_enabled param' do
-      context 'when no existing crm_settings' do
-        it 'when param not present, leave crm enabled' do
-          params = {}
+    context 'crm params' do
+      let(:params) { {} }
 
+      context 'when no existing crm_settings' do
+        it 'when params not present, leave crm enabled' do
           described_class.new(public_group, user, params).execute
           updated_group = public_group.reload
 
           expect(updated_group.crm_enabled?).to be_truthy
         end
 
-        it 'when param set false, disables crm' do
+        it 'when crm_enabled param set false, disables crm' do
           params = { crm_enabled: false }
 
           described_class.new(public_group, user, params).execute
           updated_group = public_group.reload
 
           expect(updated_group.crm_enabled?).to be_falsy
+        end
+
+        it 'when crm_source_group_id present, updates crm_group' do
+          params = { crm_source_group_id: internal_group.id }
+
+          described_class.new(public_group, user, params).execute
+          updated_group = public_group.reload
+
+          expect(updated_group.crm_enabled?).to be_truthy
+          expect(updated_group.crm_group).to eq(internal_group)
+        end
+
+        context 'when crm_source_group_id blank and issues have contacts' do
+          let(:params) { { crm_source_group_id: '' } }
+
+          before do
+            allow(public_group).to receive(:has_issues_with_contacts?).and_return(true)
+          end
+
+          it 'does not return an error' do
+            described_class.new(public_group, user, params).execute
+
+            expect(public_group.errors).to be_empty
+          end
         end
       end
 
       context 'with existing crm_settings' do
-        it 'when param set true, enables crm' do
-          params = { crm_enabled: true }
-          create(:crm_settings, group: public_group, enabled: false)
+        let(:init_enabled) { true }
 
+        before do
+          create(:crm_settings, group: public_group, enabled: init_enabled)
+        end
+
+        context 'when crm initially disabled' do
+          let(:init_enabled) { false }
+
+          context 'when crm_enabled param set true' do
+            let(:params) { { crm_enabled: true } }
+
+            it 'enables crm' do
+              described_class.new(public_group, user, params).execute
+
+              updated_group = public_group.reload
+              expect(updated_group.crm_enabled?).to be_truthy
+            end
+          end
+
+          it 'when crm_enabled param not present, crm remains disabled' do
+            described_class.new(public_group, user, params).execute
+
+            updated_group = public_group.reload
+            expect(updated_group.crm_enabled?).to be_falsy
+          end
+        end
+
+        context 'when crm_enabled param set false' do
+          let(:init_enabled) { true }
+          let(:params) { { crm_enabled: false } }
+
+          it 'disables crm' do
+            described_class.new(public_group, user, params).execute
+
+            updated_group = public_group.reload
+            expect(updated_group.crm_enabled?).to be_falsy
+          end
+        end
+
+        it 'when crm_enabled param not present, crm remains enabled' do
           described_class.new(public_group, user, params).execute
 
           updated_group = public_group.reload
           expect(updated_group.crm_enabled?).to be_truthy
         end
 
-        it 'when param set false, disables crm' do
-          params = { crm_enabled: false }
-          create(:crm_settings, group: public_group, enabled: true)
+        context 'when crm_source_group_id unchanged' do
+          let(:params) { { crm_source_group_id: public_group.id.to_s } }
 
-          described_class.new(public_group, user, params).execute
+          let!(:issue) { create(:issue, project: create(:project, group: public_group)) }
+          let!(:contact) { create(:contact, group: public_group) }
+          let!(:issue_contact) { create(:issue_customer_relations_contact, issue: issue, contact: contact) }
 
-          updated_group = public_group.reload
-          expect(updated_group.crm_enabled?).to be_falsy
+          it 'does not trigger contact source validation' do
+            public_group.crm_settings.update!(source_group_id: public_group.id)
+
+            described_class.new(public_group, user, params).execute
+
+            expect(public_group.errors).to be_empty
+          end
         end
 
-        it 'when param not present, crm remains disabled' do
-          params = {}
-          create(:crm_settings, group: public_group, enabled: false)
+        context 'when crm_source_group_id changed' do
+          let(:params) { { crm_source_group_id: internal_group.id } }
 
-          described_class.new(public_group, user, params).execute
+          it 'updates crm_group' do
+            described_class.new(public_group, user, params).execute
+            updated_group = public_group.reload
 
-          updated_group = public_group.reload
-          expect(updated_group.crm_enabled?).to be_falsy
+            expect(updated_group.crm_enabled?).to be_truthy
+            expect(updated_group.crm_settings.source_group).to eq(internal_group)
+            expect(updated_group.crm_group).to eq(internal_group)
+          end
         end
 
-        it 'when param not present, crm remains enabled' do
-          params = {}
-          create(:crm_settings, group: public_group, enabled: true)
+        context 'when crm_source_group_id blank' do
+          let(:params) { { crm_source_group_id: '' } }
 
-          described_class.new(public_group, user, params).execute
+          it 'clears source_group and resets crm_group' do
+            described_class.new(public_group, user, params).execute
+            updated_group = public_group.reload
 
-          updated_group = public_group.reload
-          expect(updated_group.crm_enabled?).to be_truthy
+            expect(updated_group.crm_enabled?).to be_truthy
+            expect(updated_group.crm_settings.source_group).to be_nil
+            expect(updated_group.crm_group).to eq(public_group)
+          end
+        end
+      end
+
+      context 'when changing source' do
+        let(:params) { { crm_source_group_id: internal_group.id } }
+
+        context 'when issues do not have contacts' do
+          it 'updates crm_group' do
+            described_class.new(public_group, user, params).execute
+            updated_group = public_group.reload
+
+            expect(updated_group.crm_group).to eq(internal_group)
+          end
+        end
+
+        context 'when issues do have contacts' do
+          let!(:issue) { create(:issue, project: create(:project, group: public_group)) }
+          let!(:contact) { create(:contact, group: public_group) }
+          let!(:issue_contact) { create(:issue_customer_relations_contact, issue: issue, contact: contact) }
+
+          it 'returns an error and does not update crm_group' do
+            described_class.new(public_group, user, params).execute
+            updated_group = public_group.reload
+
+            expect(public_group.errors).to contain_exactly('Contact source cannot be changed when issues already have contacts assigned from a different source.')
+            expect(updated_group.crm_group).to eq(public_group)
+          end
         end
       end
     end
@@ -374,19 +474,70 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
     end
   end
 
-  context 'when updating #emails_disabled' do
-    let(:service) { described_class.new(internal_group, user, emails_disabled: true) }
+  context 'when updating #emails_enabled' do
+    let(:service) { described_class.new(internal_group, user, emails_enabled: false) }
 
     it 'updates the attribute' do
       internal_group.add_member(user, Gitlab::Access::OWNER)
 
-      expect { service.execute }.to change { internal_group.emails_disabled }.to(true)
+      expect { service.execute }.to change { internal_group.emails_enabled }.to(false)
     end
 
     it 'does not update when not group owner' do
       internal_group.add_member(user, Gitlab::Access::MAINTAINER)
 
-      expect { service.execute }.not_to change { internal_group.emails_disabled }
+      expect { service.execute }.not_to change { internal_group.emails_enabled }
+    end
+  end
+
+  context 'when updating #max_artifacts_size' do
+    let(:params) { { max_artifacts_size: 10 } }
+
+    let(:service) do
+      described_class.new(internal_group, user, **params)
+    end
+
+    before do
+      internal_group.add_owner(user)
+    end
+
+    context 'for users who have the ability to update max_artifacts_size', :enable_admin_mode do
+      let(:user) { create(:admin) }
+
+      it 'updates max_artifacts_size' do
+        expect { service.execute }.to change { internal_group.max_artifacts_size }.from(nil).to(10)
+      end
+    end
+
+    context 'for users who do not have the ability to update max_artifacts_size' do
+      it 'does not update max_artifacts_size' do
+        expect { service.execute }.not_to change { internal_group.max_artifacts_size }
+      end
+    end
+  end
+
+  context 'when updating #allow_runner_registration_token' do
+    let(:params) { { allow_runner_registration_token: false } }
+    let!(:internal_group) { create(:group, :internal, :allow_runner_registration_token) }
+
+    let(:service) do
+      described_class.new(internal_group, user, **params)
+    end
+
+    context 'for users who have the ability to update allow_runner_registration_token' do
+      before do
+        internal_group.add_owner(user)
+      end
+
+      it 'updates allow_runner_registration_token' do
+        expect { service.execute }.to change { internal_group.allow_runner_registration_token }.from(true).to(false)
+      end
+    end
+
+    context 'for users who do not have the ability to update allow_runner_registration_token' do
+      it 'does not update allow_runner_registration_token' do
+        expect { service.execute }.not_to change { internal_group.allow_runner_registration_token }
+      end
     end
   end
 
@@ -422,25 +573,152 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
     end
   end
 
+  describe 'when updating namespace setting #step_up_auth_required_oauth_provider' do
+    let_it_be_with_reload(:group) { create(:group, :private) }
+    let_it_be(:user) { create(:user, owner_of: group) }
+
+    let(:ommiauth_provider_config_oidc) do
+      GitlabSettings::Options.new(
+        name: 'openid_connect',
+        step_up_auth: {
+          namespace: {
+            id_token: {
+              required: {
+                acr: 'gold'
+              }
+            }
+          }
+        }
+      )
+    end
+
+    let(:ommiauth_provider_config_oidc_aad) do
+      GitlabSettings::Options.new(
+        name: 'openid_connect_aad',
+        step_up_auth: {
+          namespace: {
+            id_token: {
+              required: {
+                acr: 'gold'
+              }
+            }
+          }
+        }
+      )
+    end
+
+    let(:params) { {} }
+
+    subject(:execute_update) { update_group(group, user, params) }
+
+    before do
+      stub_omniauth_setting(enabled: true, providers: [ommiauth_provider_config_oidc, ommiauth_provider_config_oidc_aad])
+      allow(Devise).to receive(:omniauth_providers).and_return([ommiauth_provider_config_oidc.name, ommiauth_provider_config_oidc_aad.name])
+    end
+
+    context 'when updating with valid provider' do
+      let(:params) { { step_up_auth_required_oauth_provider: 'openid_connect' } }
+
+      it 'successfully updates the setting' do
+        expect(execute_update).to be_truthy
+        expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to eq('openid_connect')
+      end
+
+      context 'when feature flag is disabled' do
+        before do
+          stub_feature_flags(omniauth_step_up_auth_for_namespace: false)
+        end
+
+        it 'does not update the setting when feature flag is disabled' do
+          expect(execute_update).to be_truthy
+          expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to be_nil
+        end
+      end
+    end
+
+    context 'when updating to disabled (nil)' do
+      let(:params) { { step_up_auth_required_oauth_provider: nil } }
+
+      before do
+        group.namespace_settings.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+      end
+
+      it 'successfully disables step-up auth' do
+        expect(execute_update).to be_truthy
+        expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to be_nil
+      end
+    end
+
+    context 'when updating to disabled (empty string)' do
+      let(:params) { { step_up_auth_required_oauth_provider: '' } }
+
+      before do
+        group.namespace_settings.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+      end
+
+      it 'successfully disables step-up auth' do
+        expect(execute_update).to be_truthy
+        expect(group.reload.namespace_settings.step_up_auth_required_oauth_provider).to be_nil
+      end
+    end
+
+    context 'when updating with invalid provider' do
+      let(:params) { { step_up_auth_required_oauth_provider: 'invalid_provider' } }
+
+      it 'fails to update with validation error' do
+        expect(execute_update).to be_falsey
+      end
+    end
+
+    context 'with inheritance from parent group' do
+      let_it_be_with_reload(:grandparent_group) { group }
+      let_it_be_with_reload(:parent_group) { create(:group, :private, parent: grandparent_group) }
+      let_it_be_with_reload(:group) { create(:group, :private, parent: parent_group) }
+      let_it_be(:user) { create(:user, owner_of: group) }
+
+      before do
+        grandparent_group.namespace_settings.update!(step_up_auth_required_oauth_provider: 'openid_connect')
+      end
+
+      context 'when updating to disabled (nil)' do
+        let(:params) { { step_up_auth_required_oauth_provider: nil } }
+
+        it { is_expected.to be_truthy }
+      end
+
+      context 'when updating with valid provider' do
+        let(:params) { { step_up_auth_required_oauth_provider: 'openid_connect_aad' } }
+
+        it { is_expected.to be_falsey }
+
+        it 'does not change step_up_auth_required_oauth_provider value' do
+          expect { execute_update }
+            .to not_change { group.reload.namespace_settings.step_up_auth_required_oauth_provider }
+            .and not_change { group.reload.namespace_settings.step_up_auth_required_oauth_provider_from_self_or_inherited }
+        end
+      end
+    end
+  end
+
   context 'updating default_branch_protection' do
     let(:service) do
-      described_class.new(internal_group, user, default_branch_protection: Gitlab::Access::PROTECTION_NONE)
+      described_class.new(internal_group, user, default_branch_protection: Gitlab::Access::PROTECTION_DEV_CAN_PUSH)
     end
 
     let(:settings) { internal_group.namespace_settings }
-    let(:expected_settings) { Gitlab::Access::BranchProtection.protection_none.stringify_keys }
+    let(:expected_settings) { Gitlab::Access::BranchProtection.protection_partial.stringify_keys }
 
     context 'for users who have the ability to update default_branch_protection' do
       it 'updates default_branch_protection attribute' do
         internal_group.add_owner(user)
 
-        expect { service.execute }.to change { internal_group.default_branch_protection }.from(Gitlab::Access::PROTECTION_FULL).to(Gitlab::Access::PROTECTION_NONE)
+        expect { service.execute }.to change { internal_group.default_branch_protection }.from(Gitlab::Access::PROTECTION_FULL).to(Gitlab::Access::PROTECTION_DEV_CAN_PUSH)
       end
 
       it 'updates default_branch_protection_defaults to match default_branch_protection' do
         internal_group.add_owner(user)
 
-        expect { service.execute }.to change { settings.default_branch_protection_defaults  }.from({}).to(expected_settings)
+        expect { service.execute }.to change { settings.default_branch_protection_defaults  }.from(Gitlab::Access::BranchProtection.protection_none.stringify_keys).to(expected_settings)
       end
     end
 
@@ -466,7 +744,7 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
       it 'updates default_branch_protection attribute' do
         internal_group.add_owner(user)
 
-        expect { service.execute }.to change { internal_group.default_branch_protection_defaults }.from({}).to(expected_settings)
+        expect { service.execute }.to change { internal_group.default_branch_protection_defaults }.from(Gitlab::Access::BranchProtection.protection_none.deep_stringify_keys).to(expected_settings)
       end
     end
 
@@ -474,97 +752,6 @@ RSpec.describe Groups::UpdateService, feature_category: :groups_and_projects do
       it 'does not update the attribute' do
         expect { service.execute }.not_to change { internal_group.default_branch_protection_defaults }
         expect { service.execute }.not_to change { internal_group.namespace_settings.default_branch_protection_defaults }
-      end
-    end
-  end
-
-  context 'when setting enable_namespace_descendants_cache' do
-    let(:params) { { enable_namespace_descendants_cache: true } }
-
-    subject(:result) { described_class.new(public_group, user, params).execute }
-
-    context 'when the group_hierarchy_optimization feature flag is enabled' do
-      before do
-        stub_feature_flags(group_hierarchy_optimization: true)
-      end
-
-      context 'when enabling the setting' do
-        it 'creates the initial Namespaces::Descendants record' do
-          expect { result }.to change { public_group.reload.namespace_descendants.present? }.from(false).to(true)
-
-          expect(public_group.namespace_descendants.outdated_at).to be_present
-        end
-      end
-
-      context 'when accidentally enabling the setting again' do
-        it 'does nothing' do
-          namespace_descendants = create(:namespace_descendants, namespace: public_group)
-
-          expect { result }.not_to change { namespace_descendants.reload }
-        end
-      end
-
-      context 'when disabling the setting' do
-        before do
-          params[:enable_namespace_descendants_cache] = false
-        end
-
-        it 'removes the Namespaces::Descendants record' do
-          create(:namespace_descendants, namespace: public_group)
-
-          expect { result }.to change { public_group.reload.namespace_descendants }.to(nil)
-        end
-
-        context 'when the Namespaces::Descendants record is missing' do
-          it 'does not raise error' do
-            expect { result }.not_to raise_error
-          end
-        end
-      end
-    end
-
-    context 'when the group_hierarchy_optimization feature flag is disabled' do
-      before do
-        stub_feature_flags(group_hierarchy_optimization: false)
-      end
-
-      it 'does nothing' do
-        expect { result }.not_to change { public_group.reload.namespace_descendants.present? }.from(false)
-      end
-    end
-  end
-
-  context 'EventStore' do
-    let(:service) { described_class.new(group, user, **params) }
-    let(:root_group) { create(:group, path: 'root') }
-    let(:group) do
-      create(:group, parent: root_group, path: 'old-path').tap { |g| g.add_owner(user) }
-    end
-
-    context 'when changing a group path' do
-      let(:new_path) { SecureRandom.hex }
-      let(:params) { { path: new_path } }
-
-      it 'publishes a GroupPathChangedEvent' do
-        old_path = group.full_path
-
-        expect { service.execute }
-          .to publish_event(Groups::GroupPathChangedEvent)
-          .with(
-            group_id: group.id,
-            root_namespace_id: group.root_ancestor.id,
-            old_path: old_path,
-            new_path: "root/#{new_path}"
-          )
-      end
-    end
-
-    context 'when not changing a group path' do
-      let(:params) { { name: 'very-new-name' } }
-
-      it 'does not publish a GroupPathChangedEvent' do
-        expect { service.execute }
-          .not_to publish_event(Groups::GroupPathChangedEvent)
       end
     end
   end

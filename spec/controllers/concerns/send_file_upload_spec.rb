@@ -33,6 +33,10 @@ RSpec.describe SendFileUpload, feature_category: :user_profile do
       end
 
       def current_user; end
+
+      def request
+        ActionDispatch::Request.new({})
+      end
     end
   end
 
@@ -108,6 +112,15 @@ RSpec.describe SendFileUpload, feature_category: :user_profile do
 
           subject
         end
+
+        context 'when width has an invalid format' do
+          it 'does not write workhorse command header' do
+            expect(controller).to receive(:params).at_least(:once).and_return(width: ['wrong'])
+            expect(headers).not_to receive(:store).with(Gitlab::Workhorse::SEND_DATA_HEADER, /^send-scaled-img:/)
+
+            subject
+          end
+        end
       end
 
       context 'with width that is not allowed' do
@@ -135,6 +148,15 @@ RSpec.describe SendFileUpload, feature_category: :user_profile do
 
           subject
         end
+      end
+    end
+
+    shared_examples 'sets SSRF parameters for the Workhorse send-url instruction' do
+      specify do
+        expect(Gitlab::Workhorse).to receive(:send_url).with(an_instance_of(String), **ssrf_params)
+          .and_call_original
+
+        subject
       end
     end
 
@@ -203,6 +225,39 @@ RSpec.describe SendFileUpload, feature_category: :user_profile do
 
           subject
         end
+
+        context 'with ssrf_params' do
+          let(:ssrf_params) { { ssrf_filter: true } }
+          let(:params) { super().merge(ssrf_params: ssrf_params) }
+
+          before do
+            allow(controller).to receive(:headers).and_return({})
+            allow(controller).to receive(:head).with(:ok)
+          end
+
+          it_behaves_like 'sets SSRF parameters for the Workhorse send-url instruction'
+        end
+
+        context 'when sanitize_content_type option is true' do
+          let(:params) { { attachment: filename, sanitize_content_type: true } }
+          let(:filename) { 'test.html' }
+          let(:content_type) { 'text/html' }
+          let(:headers) { double }
+
+          before do
+            allow(Gitlab::ContentTypes).to receive(:sanitize_content_type).and_return(content_type)
+            allow(controller).to receive(:headers).and_return(headers)
+            allow(headers).to receive(:store)
+            allow(controller).to receive(:head).with(:ok)
+          end
+
+          it 'sends a file with a sanitized content-type' do
+            expected_headers = /response-content-disposition=attachment%3B%20filename%3D%22test.html%22%3B%20filename%2A%3DUTF-8%27%27test.html&response-content-type=text%2Fhtml/
+            expect(Gitlab::Workhorse).to receive(:send_url).with(expected_headers).and_call_original
+
+            subject
+          end
+        end
       end
     end
 
@@ -235,6 +290,19 @@ RSpec.describe SendFileUpload, feature_category: :user_profile do
         end
 
         it_behaves_like 'proxied file'
+
+        context 'with ssrf_params' do
+          let(:ssrf_params) { { ssrf_filter: true } }
+          let(:params) { { ssrf_params: ssrf_params } }
+          let(:headers) { {} }
+
+          before do
+            allow(controller).to receive(:headers).and_return(headers)
+            allow(controller).to receive(:head).with(:ok)
+          end
+
+          it_behaves_like 'sets SSRF parameters for the Workhorse send-url instruction'
+        end
       end
 
       context 'and proxying is disabled' do

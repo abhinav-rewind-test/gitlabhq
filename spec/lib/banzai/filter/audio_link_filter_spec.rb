@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::AudioLinkFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::AudioLinkFilter, feature_category: :markdown do
   def filter(doc, contexts = {})
     contexts.reverse_merge!({
       project: project
@@ -17,7 +17,7 @@ RSpec.describe Banzai::Filter::AudioLinkFilter, feature_category: :team_planning
     %(<img src="#{path}"/>)
   end
 
-  let(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository) }
 
   shared_examples 'an audio element' do
     let(:image) { link_to_image(src) }
@@ -28,14 +28,10 @@ RSpec.describe Banzai::Filter::AudioLinkFilter, feature_category: :team_planning
       expect(container.name).to eq 'span'
       expect(container['class']).to eq 'media-container audio-container'
 
-      audio, link = container.children
+      audio = container.children.first
 
       expect(audio.name).to eq 'audio'
       expect(audio['src']).to eq src
-
-      expect(link.name).to eq 'a'
-      expect(link['href']).to eq src
-      expect(link['target']).to eq '_blank'
     end
   end
 
@@ -103,12 +99,12 @@ RSpec.describe Banzai::Filter::AudioLinkFilter, feature_category: :team_planning
 
       expect(container['class']).to eq 'media-container audio-container'
 
-      audio, link = container.children
+      audio = container.children.first
 
       expect(audio['src']).to eq proxy_src
       expect(audio['data-canonical-src']).to eq canonical_src
-
-      expect(link['href']).to eq proxy_src
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

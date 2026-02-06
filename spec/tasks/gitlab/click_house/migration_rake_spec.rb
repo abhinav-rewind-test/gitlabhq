@@ -3,13 +3,25 @@
 require 'spec_helper'
 
 RSpec.describe 'gitlab:clickhouse', click_house: :without_migrations, feature_category: :database do
-  include ClickHouseTestHelpers
+  include ClickHouseSchemaHelpers
 
   # We don't need to delete data since we don't modify Postgres data
   self.use_transactional_tests = false
 
   before(:all) do
     Rake.application.rake_require 'tasks/gitlab/click_house/migration'
+  end
+
+  it 'creates and drops the database' do
+    run_rake_task('gitlab:clickhouse:create:main')
+
+    expect(main_database_exists?).to be true
+
+    run_rake_task('gitlab:clickhouse:drop:main')
+
+    expect(main_database_exists?).to be false
+
+    run_rake_task('gitlab:clickhouse:create:main')
   end
 
   it 'migrates and rolls back the database' do

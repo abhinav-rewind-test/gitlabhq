@@ -76,7 +76,7 @@ export default {
     userId: s__('UserProfile|Copy user ID: %{id}'),
     userIdCopied: s__('UserProfile|User ID copied to clipboard'),
     rssSubscribe: s__('UserProfile|Subscribe'),
-    reportToAdmin: s__('ReportAbuse|Report abuse to administrator'),
+    reportToAdmin: s__('ReportAbuse|Report abuse'),
   },
 };
 </script>
@@ -88,6 +88,8 @@ export default {
       icon="ellipsis_v"
       category="tertiary"
       no-caret
+      text-sr-only
+      :toggle-text="__('More actions')"
       :items="dropdownItems"
     />
     <abuse-category-selector

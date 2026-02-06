@@ -2,8 +2,8 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectness, :aggregate_failures,
-  :ci_partitionable, feature_category: :continuous_integration do
+RSpec.describe Ci::CreatePipelineService, :aggregate_failures,
+  feature_category: :continuous_integration do
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:user)    { project.first_owner }
 
@@ -37,11 +37,12 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
   end
 
   let(:pipeline) { service.execute(:push).payload }
-  let(:current_partition_id) { ci_testing_partition_id_for_check_constraints }
+  let(:current_partition_id) { ci_testing_partition_id }
 
   before do
     stub_ci_pipeline_yaml_file(config)
     allow(Ci::Pipeline).to receive(:current_partition_value) { current_partition_id }
+    project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
   end
 
   it 'assigns partition_id to pipeline' do
@@ -59,19 +60,6 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
     processables_partition_ids = pipeline.processables.map(&:partition_id).uniq
 
     expect(processables_partition_ids).to eq([current_partition_id])
-  end
-
-  it 'assigns partition_id to metadata' do
-    metadata_partition_ids = pipeline.processables.map { |job| job.metadata.partition_id }.uniq
-
-    expect(metadata_partition_ids).to eq([current_partition_id])
-  end
-
-  it 'correctly assigns partition and environment' do
-    metadata = find_metadata('deploy')
-
-    expect(metadata.partition_id).to eq(current_partition_id)
-    expect(metadata.expanded_environment_name).to eq('review/deploy')
   end
 
   context 'with pipeline variables' do

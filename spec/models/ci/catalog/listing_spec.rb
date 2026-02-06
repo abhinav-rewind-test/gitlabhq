@@ -6,23 +6,23 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
   let_it_be(:user) { create(:user) }
   let_it_be(:namespace) { create(:group) }
   let_it_be(:public_namespace_project) do
-    create(:project, :public, namespace: namespace, name: 'A public namespace project', star_count: 10)
+    create(:project, :public, namespace: namespace, name: 'A public namespace project', star_count: 10, reporters: user)
   end
 
   let_it_be(:public_project) do
-    create(:project, :public, name: 'B public test project', star_count: 20)
+    create(:project, :public, name: 'B public test project', star_count: 20, reporters: user)
   end
 
   let_it_be(:namespace_project_a) do
-    create(:project, namespace: namespace, name: 'Test namespace project', star_count: 30)
+    create(:project, namespace: namespace, name: 'Test namespace project', star_count: 30, reporters: user)
   end
 
   let_it_be(:namespace_project_b) do
-    create(:project, namespace: namespace, name: 'X namespace Project', star_count: 40)
+    create(:project, namespace: namespace, name: 'X namespace Project', star_count: 40, reporters: user)
   end
 
   let_it_be(:project_noaccess) { create(:project, namespace: namespace, name: 'Project with no access') }
-  let_it_be(:internal_project) { create(:project, :internal, name: 'Internal project') }
+  let_it_be(:internal_project) { create(:project, :internal, name: 'Internal project', owners: user) }
 
   let_it_be(:private_project) do
     create(:project, namespace: namespace, name: 'B Project', description: 'Rspec test framework')
@@ -30,23 +30,29 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
 
   let(:list) { described_class.new(user) }
 
-  before_all do
-    namespace_project_a.add_reporter(user)
-    namespace_project_b.add_reporter(user)
-    public_namespace_project.add_reporter(user)
-    public_project.add_reporter(user)
-    internal_project.add_owner(user)
-  end
-
   describe '#resources' do
     subject(:resources) { list.resources(**params) }
 
     let(:params) { {} }
 
-    let_it_be(:public_resource_a) { create(:ci_catalog_resource, :published, project: public_namespace_project) }
-    let_it_be(:public_resource_b) { create(:ci_catalog_resource, :published, project: public_project) }
-    let_it_be(:internal_resource) { create(:ci_catalog_resource, :published, project: internal_project) }
-    let_it_be(:private_namespace_resource) { create(:ci_catalog_resource, :published, project: namespace_project_a) }
+    let_it_be(:public_resource_a) do
+      create(:ci_catalog_resource, :published, project: public_namespace_project,
+        last_30_day_usage_count: 100, verification_level: 100)
+    end
+
+    let_it_be(:public_resource_b) do
+      create(:ci_catalog_resource, :published, project: public_project,
+        last_30_day_usage_count: 70, verification_level: 100)
+    end
+
+    let_it_be(:internal_resource) do
+      create(:ci_catalog_resource, :published, project: internal_project, last_30_day_usage_count: 80)
+    end
+
+    let_it_be(:private_namespace_resource) do
+      create(:ci_catalog_resource, :published, project: namespace_project_a, last_30_day_usage_count: 90)
+    end
+
     let_it_be(:unpublished_resource) { create(:ci_catalog_resource, project: namespace_project_b) }
 
     it 'by default returns all resources visible to the current user' do
@@ -87,6 +93,87 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
         is_expected.to contain_exactly(public_resource_a, public_resource_b, internal_resource,
           private_namespace_resource)
       end
+
+      # rubocop:disable RSpec/MultipleMemoizedHelpers -- Inherits helpers from parent context
+      context 'with min_access_level parameter' do
+        let_it_be(:access_level_user) { create(:user) }
+        let_it_be(:maintainer_project) { create(:project, :private, name: 'maintainer project') }
+        let_it_be(:developer_project) { create(:project, :private, name: 'developer project') }
+        let_it_be(:reporter_project) { create(:project, :private, name: 'reporter project') }
+        let_it_be(:owner_project) { create(:project, :private, name: 'owner project') }
+        let_it_be(:maintainer_resource) { create(:ci_catalog_resource, :published, project: maintainer_project) }
+        let_it_be(:developer_resource) { create(:ci_catalog_resource, :published, project: developer_project) }
+        let_it_be(:reporter_resource) { create(:ci_catalog_resource, :published, project: reporter_project) }
+        let_it_be(:owner_resource) { create(:ci_catalog_resource, :published, project: owner_project) }
+
+        let(:list) { described_class.new(access_level_user) }
+
+        before_all do
+          maintainer_project.add_maintainer(access_level_user)
+          developer_project.add_developer(access_level_user)
+          reporter_project.add_reporter(access_level_user)
+          owner_project.add_owner(access_level_user)
+        end
+
+        context 'when min_access_level is MAINTAINER' do
+          let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::MAINTAINER } }
+
+          it 'returns only resources where user has maintainer or higher access' do
+            is_expected.to contain_exactly(maintainer_resource, owner_resource)
+          end
+        end
+
+        context 'when min_access_level is DEVELOPER' do
+          let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::DEVELOPER } }
+
+          it 'returns resources where user has developer or higher access' do
+            is_expected.to contain_exactly(developer_resource, maintainer_resource, owner_resource)
+          end
+        end
+
+        context 'when min_access_level is REPORTER' do
+          let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::REPORTER } }
+
+          it 'returns resources where user has reporter or higher access' do
+            is_expected.to contain_exactly(reporter_resource, developer_resource, maintainer_resource, owner_resource)
+          end
+        end
+
+        context 'when min_access_level is OWNER' do
+          let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::OWNER } }
+
+          it 'returns only resources where user has owner access' do
+            is_expected.to contain_exactly(owner_resource)
+          end
+        end
+
+        context 'when min_access_level is nil' do
+          let(:params) { { scope: :namespaces, min_access_level: nil } }
+
+          it 'returns all visible resources regardless of access level' do
+            is_expected.to include(reporter_resource, developer_resource, maintainer_resource, owner_resource)
+          end
+        end
+
+        context 'when combining min_access_level with other filters' do
+          context 'with search parameter' do
+            let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::MAINTAINER, search: 'maintainer' } }
+
+            it 'returns resources matching both filters' do
+              is_expected.to contain_exactly(maintainer_resource)
+            end
+          end
+
+          context 'with sort parameter' do
+            let(:params) { { scope: :namespaces, min_access_level: Gitlab::Access::MAINTAINER, sort: :name_asc } }
+
+            it 'returns filtered resources in sorted order' do
+              expect(resources.pluck(:name)).to eq(['maintainer project', 'owner project'])
+            end
+          end
+        end
+      end
+      # rubocop:enable RSpec/MultipleMemoizedHelpers
     end
 
     context 'with a sort parameter' do
@@ -164,6 +251,86 @@ RSpec.describe Ci::Catalog::Listing, feature_category: :pipeline_composition do
 
         it 'contains catalog resource sorted by star_count ascending' do
           is_expected.to eq([internal_resource, public_resource_a, public_resource_b, private_namespace_resource])
+        end
+      end
+
+      context 'when the sort is usage_count descending' do
+        let_it_be(:sort) { :usage_count_desc }
+
+        it 'contains catalog resources sorted by last_30_day_usage_count descending' do
+          is_expected.to eq([public_resource_a, private_namespace_resource, internal_resource, public_resource_b])
+        end
+      end
+
+      context 'when the sort is usage_count ascending' do
+        let_it_be(:sort) { :usage_count_asc }
+
+        it 'contains catalog resources sorted by last_30_day_usage_count ascending' do
+          is_expected.to eq([public_resource_b, internal_resource, private_namespace_resource, public_resource_a])
+        end
+      end
+    end
+
+    context 'when filtering by topics' do
+      let_it_be(:topic_ruby) { create(:topic, name: 'ruby') }
+      let_it_be(:topic_rails) { create(:topic, name: 'rails') }
+      let_it_be(:topic_gitlab) { create(:topic, name: 'gitlab') }
+
+      let(:params) { { topics: topic_names } }
+
+      before_all do
+        create(:project_topic, project: public_namespace_project, topic: topic_ruby)
+        create(:project_topic, project: public_namespace_project, topic: topic_rails)
+        create(:project_topic, project: public_project, topic: topic_gitlab)
+      end
+
+      context 'with multiple topics' do
+        let(:topic_names) { %w[ruby gitlab] }
+
+        it 'returns resources with projects matching any of the given topic names' do
+          is_expected.to contain_exactly(public_resource_a, public_resource_b)
+        end
+      end
+
+      context 'with overlapping topics' do
+        let(:topic_names) { %w[ruby rails] }
+
+        it 'returns a resource only once even if it matches multiple topics' do
+          is_expected.to contain_exactly(public_resource_a)
+        end
+      end
+
+      context 'when combining topic filter with other filters' do
+        context 'with search parameter' do
+          let(:params) { { topics: %w[ruby], search: 'public' } }
+
+          it 'returns resources matching both filters' do
+            is_expected.to contain_exactly(public_resource_a)
+          end
+        end
+
+        context 'with verification level' do
+          let(:params) { { topics: %w[ruby], verification_level: :gitlab_maintained } }
+
+          it 'returns resources matching both filters' do
+            is_expected.to contain_exactly(public_resource_a)
+          end
+        end
+
+        context 'with scope parameter' do
+          let(:params) { { topics: %w[ruby], scope: :namespaces } }
+
+          it 'returns resources matching both filters' do
+            is_expected.to contain_exactly(public_resource_a)
+          end
+        end
+      end
+
+      context 'with a verification_level parameter' do
+        let(:params) { { verification_level: :gitlab_maintained } }
+
+        it 'returns the resources with matching verification level' do
+          is_expected.to contain_exactly(public_resource_a, public_resource_b)
         end
       end
     end

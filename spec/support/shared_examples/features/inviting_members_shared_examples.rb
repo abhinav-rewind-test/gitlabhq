@@ -44,7 +44,7 @@ RSpec.shared_examples 'inviting members' do |snowplow_invite_label|
 
     invite_member('test@example.com', role: 'Reporter')
 
-    click_link 'Invited'
+    click_link 'Pending invitations'
 
     page.within find_invited_member_row('test@example.com') do
       expect(page).to have_button('Reporter')
@@ -68,7 +68,7 @@ RSpec.shared_examples 'inviting members' do |snowplow_invite_label|
       expect(page).to have_button('Reporter')
     end
 
-    click_link 'Invited'
+    click_link 'Pending invitations'
 
     page.within find_invited_member_row('test@example.com') do
       expect(page).to have_button('Reporter')
@@ -77,9 +77,9 @@ RSpec.shared_examples 'inviting members' do |snowplow_invite_label|
 
   context 'when member is already a member by username' do
     it 'updates the member for that user', :js do
-      visit members_page_path
+      entity.add_developer(user2)
 
-      invite_member(user2.name, role: 'Developer')
+      visit members_page_path
 
       invite_member(user2.name, role: 'Reporter')
 
@@ -96,10 +96,9 @@ RSpec.shared_examples 'inviting members' do |snowplow_invite_label|
   context 'when member is already a member by email' do
     it 'updates the member for that email', :js do
       email = 'test@example.com'
+      entity.add_developer(email)
 
       visit members_page_path
-
-      invite_member(email, role: 'Developer')
 
       invite_member(email, role: 'Reporter')
 
@@ -107,7 +106,7 @@ RSpec.shared_examples 'inviting members' do |snowplow_invite_label|
 
       page.refresh
 
-      click_link 'Invited'
+      click_link 'Pending invitations'
 
       page.within find_invited_member_row(email) do
         expect(page).to have_button('Reporter')

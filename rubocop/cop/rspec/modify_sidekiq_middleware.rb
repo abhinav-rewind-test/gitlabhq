@@ -5,8 +5,7 @@ require 'rubocop-rspec'
 module RuboCop
   module Cop
     module RSpec
-      # This cop checks for `Sidekiq::Testing.server_middleware`
-      # usage in specs.
+      # Checks for `Sidekiq::Testing.server_middleware` usage in specs.
       #
       # @example
       #
@@ -30,6 +29,7 @@ module RuboCop
           helper instead
         MSG
 
+        # @!method modifies_sidekiq_middleware?(node)
         def_node_search :modifies_sidekiq_middleware?, <<~PATTERN
           (send
             (const
@@ -40,8 +40,7 @@ module RuboCop
           return unless modifies_sidekiq_middleware?(node)
 
           add_offense(node) do |corrector|
-            corrector.replace(node.loc.expression,
-                              'with_sidekiq_server_middleware')
+            corrector.replace(node, 'with_sidekiq_server_middleware')
           end
         end
       end

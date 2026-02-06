@@ -1,5 +1,5 @@
 import {
-  MEMBER_TYPES,
+  MEMBERS_TAB_TYPES,
   MEMBER_STATE_CREATED,
   MEMBER_MODEL_TYPE_GROUP_MEMBER,
 } from '~/members/constants';
@@ -11,7 +11,14 @@ export const member = {
   canOverride: false,
   isOverridden: false,
   isDirectMember: false,
-  accessLevel: { integerValue: 50, stringValue: 'Owner' },
+  isInheritedMember: true,
+  isSharedMember: false,
+  accessLevel: {
+    integerValue: 50,
+    stringValue: 'Owner',
+    description:
+      'The Owner role is typically assigned to the individual or team responsible for managing and maintaining the group or creating the project. This role has the highest level of administrative control, and can manage all aspects of the group or project, including managing other Owners.',
+  },
   source: {
     id: 178,
     fullName: 'Foo Bar',
@@ -38,25 +45,37 @@ export const member = {
   },
   id: 238,
   createdAt: '2020-07-17T16:22:46.923Z',
+  requestAcceptedAt: '2020-07-27T16:22:46.923Z',
+  inviteAcceptedAt: null,
   expiresAt: null,
   usingLicense: false,
   groupSso: false,
   groupManagedAccount: false,
   enterpriseUserOfThisGroup: false,
   validRoles: {
+    'Minimal Access': 5,
     Guest: 10,
+    Planner: 15,
     Reporter: 20,
     Developer: 30,
     Maintainer: 40,
     Owner: 50,
-    'Minimal access': 5,
   },
   customRoles: [],
-  customPermissions: [],
+  createdBy: {
+    id: 102,
+    name: 'John Smith',
+    webUrl: 'https://gitlab.com/john_smith',
+  },
 };
 
 export const group = {
-  accessLevel: { integerValue: 10, stringValue: 'Guest' },
+  accessLevel: {
+    integerValue: 10,
+    stringValue: 'Guest',
+    description:
+      'The Guest role is for users who need visibility into a project or group but should not have the ability to make changes, such as external stakeholders.',
+  },
   sharedWithGroup: {
     id: 24,
     name: 'Commit451',
@@ -73,7 +92,12 @@ export const group = {
 };
 
 export const privateGroup = {
-  accessLevel: { integerValue: 10, stringValue: 'Guest' },
+  accessLevel: {
+    integerValue: 10,
+    stringValue: 'Guest',
+    description:
+      'The Guest role is for users who need visibility into a project or group but should not have the ability to make changes, such as external stakeholders.',
+  },
   isSharedWithGroupPrivate: true,
   sharedWithGroup: {
     id: 24,
@@ -114,10 +138,15 @@ export const accessRequest = {
 
 export const members = [member];
 
-export const membersJsonString = JSON.stringify(members);
-
-export const directMember = { ...member, isDirectMember: true };
-export const inheritedMember = { ...member, isDirectMember: false };
+export const directMember = { ...member, isDirectMember: true, isInheritedMember: false };
+export const inheritedMember = member;
+export const sharedMember = { ...member, isSharedMember: true, isInheritedMember: false };
+export const updateableMember = {
+  ...directMember,
+  canUpdate: true,
+  memberPath: 'user/path/238',
+  namespace: 'user',
+};
 
 export const member2faEnabled = { ...member, user: { ...member.user, twoFactorEnabled: true } };
 
@@ -138,7 +167,7 @@ export const pagination = {
 };
 
 export const dataAttribute = JSON.stringify({
-  [MEMBER_TYPES.user]: {
+  [MEMBERS_TAB_TYPES.user]: {
     members,
     pagination: paginationData,
     member_path: '/groups/foo-bar/-/group_members/:id',

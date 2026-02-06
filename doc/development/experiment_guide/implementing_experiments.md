@@ -1,10 +1,9 @@
 ---
 stage: Growth
 group: Acquisition
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Implementing an A/B/n experiment
 ---
-
-# Implementing an A/B/n experiment
 
 ## Implementing an experiment
 
@@ -41,7 +40,15 @@ In addition, when an experiment runs, an event is tracked for
 the experiment `:assignment`. We cover more about events, tracking, and
 the client layer later.
 
-In local development, you can make the experiment active by using the feature flag
+## Testing experiments locally
+
+### Prerequisites
+
+- [Enable SaaS mode](../ee_features.md#simulate-a-saas-instance) in your local development environment
+
+### Running the experiment
+
+You can make the experiment active by using the feature flag
 interface. You can also target specific cases by providing the relevant experiment
 to the call to enable the feature flag:
 
@@ -55,32 +62,41 @@ include Gitlab::Experiment::Dsl
 Feature.enable(:pill_color, experiment(:pill_color, actor: User.first))
 ```
 
+GitLab implements a [custom rollout mechanism](https://gitlab.com/gitlab-org/gitlab/-/blob/13be37aa2cf7123950ac5d9f51e442e19856eaf3/config/initializers/gitlab_experiment.rb#L16-16)
+by extending the `gitlab-experiment` gem's [percent rollout strategy](https://gitlab.com/gitlab-org/ruby/gems/gitlab-experiment/-/blob/master/lib/gitlab/experiment/rollout/percent.rb).
+
+If the feature flag is disabled, the experiment isn't running at all. Users follow
+the default code path without any variant assignment or tracking.
+
+If the feature flag is enabled, the configured percentage is distributed among non-control
+variants, with control receiving the remaining percentage. Users are actively
+assigned to variants and tracked as experiment participants.
+
 To roll out your experiment feature flag on an environment, run
 the following command using ChatOps (which is covered in more depth in the
-[Feature flags in development of GitLab](../feature_flags/index.md) documentation).
+[Feature flags in development of GitLab](../feature_flags/_index.md) documentation).
 This command creates a scenario where half of everyone who encounters
 the experiment would be assigned the _control_, 25% would be assigned the _red_
 variant, and 25% would be assigned the _blue_ variant:
 
-```slack
+```plaintext
 /chatops run feature set pill_color 50 --actors
 ```
 
 For an even distribution in this example, change the command to set it to 66% instead
 of 50.
 
-NOTE:
 To immediately stop running an experiment, use the
 `/chatops run feature set pill_color false` command.
 
-WARNING:
-We strongly recommend using the `--actors` flag when using the ChatOps commands,
-as anything else may give odd behaviors due to how the caching of variant assignment is
-handled.
+> [!warning]
+> We strongly recommend using the `--actors` flag when using the ChatOps commands,
+> as anything else may give odd behaviors due to how the caching of variant assignment is
+> handled.
 
 We can also implement this experiment in a HAML file with HTML wrappings:
 
-```haml
+```ruby
 #cta-interface
   - experiment(:pill_color, actor: current_user) do |e|
     - e.control do
@@ -135,17 +151,16 @@ results of the experience we've rendered to that context key. These concepts are
 somewhat abstract and hard to understand initially, but this approach enables us to
 communicate about experiments as something that's wider than just user behavior.
 
-NOTE:
 Using `actor:` uses cookies if the `current_user` is nil. If you don't need
 cookies though - meaning that the exposed functionality would only be visible to
 authenticated users - `{ user: current_user }` would be just as effective.
 
-WARNING:
-The caching of variant assignment is done by using this context, and so consider
-your impact on the cache size when defining your experiment. If you use
-`{ time: Time.current }` you would be inflating the cache size every time the
-experiment is run. Not only that, your experiment would not be "sticky" and events
-wouldn't be resolvable.
+> [!warning]
+> The caching of variant assignment is done by using this context, and so consider
+> your impact on the cache size when defining your experiment. If you use
+> `{ time: Time.current }` you would be inflating the cache size every time the
+> experiment is run. Not only that, your experiment would not be "sticky" and events
+> wouldn't be resolvable.
 
 ### Advanced experimentation
 
@@ -193,9 +208,9 @@ experiment(:pill_color, actor: current_user) do |e|
 end
 ```
 
-NOTE:
-When passing a block to the `experiment` method, it is implicitly invoked as
-if `run` has been called.
+> [!note]
+> When passing a block to the `experiment` method, it is implicitly invoked as
+> if `run` has been called.
 
 #### Segmentation rules
 
@@ -227,9 +242,9 @@ defined. The first segmentation rule to produce a truthy result assigns the vari
 In our example, any user named `'Richard'`, regardless of account age, is always
 assigned the _red_ variant. If you want the opposite logic, flip the order.
 
-NOTE:
-Keep in mind when defining segmentation rules: after a truthy result, the remaining
-segmentation rules are skipped to achieve optimal performance.
+> [!note]
+> Keep in mind when defining segmentation rules: after a truthy result, the remaining
+> segmentation rules are skipped to achieve optimal performance.
 
 #### Exclusion rules
 
@@ -238,7 +253,7 @@ if a context should even be considered as something we should include in the exp
 and track events toward. Exclusion means we don't care about the events in relation
 to the given context.
 
-These examples exclude all users named `'Richard'`, *and* any account
+These examples exclude all users named `'Richard'`, and any account
 older than 2 weeks old. Not only are they given the control behavior - which could
 be nothing - but no events are tracked in these cases as well.
 
@@ -300,13 +315,13 @@ is run), and we track an event for them, they are assigned a variant and see
 that variant if they ever encountered the experiment later, when an `:assignment`
 event would be tracked at that time for them.
 
-NOTE:
-GitLab tries to be sensitive and respectful of our customers regarding tracking,
-so our experimentation library allows us to implement an experiment without ever tracking identifying
-IDs. It's not always possible, though, based on experiment reporting requirements.
-You may be asked from time to time to track a specific record ID in experiments.
-The approach is largely up to the PM and engineer creating the implementation.
-No recommendations are provided here at this time.
+> [!note]
+> GitLab tries to be sensitive and respectful of our customers regarding tracking,
+> so our experimentation library allows us to implement an experiment without ever tracking identifying
+> IDs. It's not always possible, though, based on experiment reporting requirements.
+> You may be asked from time to time to track a specific record ID in experiments.
+> The approach is largely up to the PM and engineer creating the implementation.
+> No recommendations are provided here at this time.
 
 ## Experiments in the client layer
 
@@ -365,5 +380,5 @@ export default {
 </template>
 ```
 
-NOTE:
-When there is no experiment data in the `window.gl.experiments` object for the given experiment name, the `control` slot is used, if it exists.
+> [!note]
+> When there is no experiment data in the `window.gl.experiments` object for the given experiment name, the `control` slot is used, if it exists.

@@ -2,13 +2,18 @@
 // Since app/assets/javascripts/packages_and_registries/shared/components/registry_breadcrumb.vue
 // can only handle two levels of breadcrumbs, but we have three levels here.
 // So we extended the registry_breadcrumb.vue component with harbor_registry_breadcrumb.vue to support multiple levels of breadcrumbs
-import { GlBreadcrumb, GlIcon } from '@gitlab/ui';
+import { GlBreadcrumb } from '@gitlab/ui';
 import { isArray, last } from 'lodash';
 
 export default {
   components: {
     GlBreadcrumb,
-    GlIcon,
+  },
+  props: {
+    staticBreadcrumbs: {
+      type: Array,
+      required: true,
+    },
   },
   computed: {
     rootRoute() {
@@ -36,7 +41,7 @@ export default {
         });
       }
 
-      return routeInfoList;
+      return [...this.staticBreadcrumbs, ...routeInfoList];
     },
     isLoaded() {
       return this.isRootRoute || last(this.currentRoute).text;
@@ -51,18 +56,13 @@ export default {
       if (!this.isRootRoute) {
         crumbs = crumbs.concat(this.currentRoute);
       }
-      return crumbs;
+
+      return [...this.staticBreadcrumbs, ...crumbs];
     },
   },
 };
 </script>
 
 <template>
-  <gl-breadcrumb :key="isLoaded" :items="allCrumbs">
-    <template #separator>
-      <span class="gl-mx-n5">
-        <gl-icon name="chevron-lg-right" :size="8" />
-      </span>
-    </template>
-  </gl-breadcrumb>
+  <gl-breadcrumb v-if="isLoaded" :items="allCrumbs" />
 </template>

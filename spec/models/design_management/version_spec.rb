@@ -7,6 +7,7 @@ RSpec.describe DesignManagement::Version do
   describe 'relations' do
     it { is_expected.to have_many(:actions) }
     it { is_expected.to have_many(:designs).through(:actions) }
+    it { is_expected.to belong_to(:author).class_name('User').inverse_of(:design_management_versions) }
 
     it 'constrains the designs relation correctly' do
       design = create(:design)
@@ -32,6 +33,7 @@ RSpec.describe DesignManagement::Version do
     it { is_expected.to validate_presence_of(:sha) }
     it { is_expected.to validate_presence_of(:designs) }
     it { is_expected.to validate_presence_of(:issue) }
+    it { is_expected.to validate_presence_of(:namespace) }
     it { is_expected.to validate_uniqueness_of(:sha).scoped_to(:issue_id).case_insensitive }
   end
 
@@ -102,7 +104,7 @@ RSpec.describe DesignManagement::Version do
 
       it 'has an appropriate cause' do
         expect { call_with_empty_actions }
-          .to raise_error(have_attributes(cause: ActiveRecord::RecordInvalid))
+          .to raise_error(have_attributes(cause: ActiveRecord::StatementInvalid))
       end
 
       it 'provides extra data sentry can consume' do
@@ -180,6 +182,7 @@ RSpec.describe DesignManagement::Version do
       version = described_class.create_for_designs(actions, 'abc', author)
 
       expect(version.issue).to eq(issue)
+      expect(version.namespace).to eq(issue.namespace)
     end
 
     it 'correctly associates the version with the author' do

@@ -15,6 +15,10 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
         it_behaves_like 'Debian packages GET request', :success
       end
+
+      it_behaves_like 'updating personal access token last used' do
+        let(:auth_headers) { basic_auth_header(user.username, personal_access_token.token) }
+      end
     end
 
     context 'with invalid parameter' do
@@ -23,11 +27,28 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
       it_behaves_like 'Debian packages GET request', :bad_request, /^distribution is invalid$/
     end
 
+    shared_examples 'granular token permissions authorizable' do |permission, expected_success_status: :success|
+      it_behaves_like 'authorizing granular token permissions', permission, expected_success_status: expected_success_status do
+        let(:container) { private_container }
+        let(:boundary_object) { private_container }
+        let(:headers) { basic_auth_header(user.username, pat.token) }
+        let(:request) do
+          get api(url), headers: headers, params: api_params
+        end
+
+        before do
+          private_container.add_developer(user)
+        end
+      end
+    end
+
     describe 'GET projects/:id/packages/debian/dists/*distribution/Release.gpg' do
       let(:url) { "/projects/#{container.id}/packages/debian/dists/#{distribution.codename}/Release.gpg" }
 
       it_behaves_like 'Debian packages read endpoint', 'GET', :success, /^-----BEGIN PGP SIGNATURE-----/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_release
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/Release' do
@@ -35,6 +56,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages read endpoint', 'GET', :success, /^Codename: fixture-distribution\n$/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_release
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/InRelease' do
@@ -42,6 +65,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages read endpoint', 'GET', :success, /^-----BEGIN PGP SIGNED MESSAGE-----/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_release
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/binary-:architecture/Packages' do
@@ -51,6 +76,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index endpoint', /Description: This is an incomplete Packages file/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/binary-:architecture/Packages.gz' do
@@ -67,6 +94,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index sha256 endpoint', /^Other SHA256$/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/source/Sources' do
@@ -76,6 +105,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index endpoint', /^Description: This is an incomplete Sources file$/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/source/by-hash/SHA256/:file_sha256' do
@@ -86,6 +117,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index sha256 endpoint', /^Other SHA256$/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/debian-installer/binary-:architecture/Packages' do
@@ -95,6 +128,8 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index endpoint', /Description: This is an incomplete D-I Packages file/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/dists/*distribution/:component/debian-installer/binary-:architecture/Packages.gz' do
@@ -111,12 +146,14 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'Debian packages index sha256 endpoint', /^Other SHA256$/
       it_behaves_like 'accept GET request on private project with access to package registry for everyone'
+
+      it_behaves_like 'granular token permissions authorizable', :download_debian_distribution_packages_index
     end
 
     describe 'GET projects/:id/packages/debian/pool/:codename/:letter/:package_name/:package_version/:file_name' do
       using RSpec::Parameterized::TableSyntax
 
-      let(:url) { "/projects/#{container.id}/packages/debian/pool/#{package.debian_distribution.codename}/#{letter}/#{package.name}/#{package.version}/#{file_name}" }
+      let(:url) { "/projects/#{container.id}/packages/debian/pool/#{package.distribution.codename}/#{letter}/#{package.name}/#{package.version}/#{file_name}" }
       let(:file_name) { params[:file_name] }
 
       where(:file_name, :success_body) do
@@ -141,6 +178,20 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
       it_behaves_like 'accept GET request on private project with access to package registry for everyone' do
         let(:file_name) { 'sample_1.2.3~alpha2.dsc' }
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :download_debian_package do
+        let(:file_name) { 'sample_1.2.3~alpha2.dsc' }
+        let(:container) { private_container }
+        let(:boundary_object) { private_container }
+        let(:headers) { basic_auth_header(user.username, pat.token) }
+        let(:request) do
+          get api(url), headers: headers, params: api_params
+        end
+
+        before do
+          private_container.add_developer(user)
+        end
       end
     end
 
@@ -191,6 +242,34 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
 
         it_behaves_like 'Debian packages write endpoint', 'upload', :created, nil
       end
+
+      it_behaves_like 'updating personal access token last used' do
+        let(:containers) { { private: private_container, public: public_container } }
+        let(:container) { containers[:private] }
+        let(:file_name) { 'libsample0_1.2.3~alpha2_amd64.deb' }
+        let(:auth_headers) { basic_auth_header(user.username, personal_access_token.token) }
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :upload_debian_package do
+        let(:file_name) { 'libsample0_1.2.3~alpha2_amd64.deb' }
+        let(:container) { private_container }
+        let(:boundary_object) { private_container }
+        let(:headers) { workhorse_headers.merge(basic_auth_header(user.username, pat.token)) }
+        let(:request) do
+          workhorse_finalize(
+            api(url),
+            method: method,
+            file_key: :file,
+            params: api_params,
+            headers: headers,
+            send_rewritten_field: true
+          )
+        end
+
+        before do
+          private_container.add_developer(user)
+        end
+      end
     end
 
     describe 'PUT projects/:id/packages/debian/:file_name/authorize' do
@@ -199,6 +278,13 @@ RSpec.describe API::DebianProjectPackages, feature_category: :package_registry d
       let(:url) { "/projects/#{container.id}/packages/debian/#{file_name}/authorize" }
 
       it_behaves_like 'Debian packages write endpoint', 'upload authorize', :created, nil
+
+      it_behaves_like 'updating personal access token last used' do
+        let(:containers) { { private: private_container, public: public_container } }
+        let(:container) { containers[:private] }
+        let(:file_name) { 'libsample0_1.2.3~alpha2_amd64.deb' }
+        let(:auth_headers) { basic_auth_header(user.username, personal_access_token.token) }
+      end
     end
   end
 end

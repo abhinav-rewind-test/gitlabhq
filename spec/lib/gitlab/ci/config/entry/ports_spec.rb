@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::Ports do
   let(:entry) { described_class.new(config) }
@@ -42,26 +42,30 @@ RSpec.describe Gitlab::Ci::Config::Entry::Ports do
 
       context 'have the same name' do
         let(:config) do
-          [{ number: 80, protocol: 'http', name: 'foobar' },
-           { number: 81, protocol: 'http', name: 'foobar' }]
+          [
+            { number: 80, protocol: 'http', name: 'foobar' },
+            { number: 81, protocol: 'http', name: 'foobar' }
+          ]
         end
 
         describe '#valid?' do
           it 'is invalid' do
-            expect(entry.errors.first).to match /each port name must be different/
+            expect(entry.errors.first).to match(/each port name must be different/)
           end
         end
       end
 
       context 'have the same port' do
         let(:config) do
-          [{ number: 80, protocol: 'http', name: 'foobar' },
-           { number: 80, protocol: 'http', name: 'foobar1' }]
+          [
+            { number: 80, protocol: 'http', name: 'foobar' },
+            { number: 80, protocol: 'http', name: 'foobar1' }
+          ]
         end
 
         describe '#valid?' do
           it 'is invalid' do
-            expect(entry.errors.first).to match /each port number can only be referenced once/
+            expect(entry.errors.first).to match(/each port number can only be referenced once/)
           end
         end
       end

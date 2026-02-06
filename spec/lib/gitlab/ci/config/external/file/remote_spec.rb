@@ -5,8 +5,11 @@ require 'spec_helper'
 RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pipeline_composition do
   include StubRequests
 
+  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:user) { project.owner }
+
   let(:variables) { Gitlab::Ci::Variables::Collection.new([{ 'key' => 'GITLAB_TOKEN', 'value' => 'secret_file', 'masked' => true }]) }
-  let(:context_params) { { sha: '12345', variables: variables } }
+  let(:context_params) { { project: project, sha: project.commit.sha, user: user, variables: variables } }
   let(:context) { Gitlab::Ci::Config::External::Context.new(**context_params) }
   let(:params) { { remote: location } }
   let(:remote_file) { described_class.new(params, context) }
@@ -94,11 +97,29 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
 
       it { is_expected.to be_falsy }
     end
+
+    context 'when integrity is specified' do
+      let(:params) { { remote: location, integrity: integrity_hash } }
+
+      before do
+        stub_full_request(location).to_return(body: remote_file_content)
+      end
+
+      context 'with matching integrity hash' do
+        let(:integrity_hash) { "sha256-#{Base64.strict_encode64(Digest::SHA256.digest(remote_file_content))}" }
+
+        it { is_expected.to be_truthy }
+      end
+
+      context 'with non-matching integrity hash' do
+        let(:integrity_hash) { "sha256-#{Base64.strict_encode64(Digest::SHA256.digest('different content'))}" }
+
+        it { is_expected.to be_falsy }
+      end
+    end
   end
 
-  # When the FF ci_parallel_remote_includes is removed,
-  # convert this `shared_context` to `describe` and remove `rubocop:disable`.
-  shared_context "#content" do # rubocop:disable RSpec/ContextWording -- This is temporary until the FF is removed.
+  describe "#content" do
     subject(:content) do
       remote_file.preload_content
       remote_file.content
@@ -147,14 +168,155 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
     end
   end
 
-  it_behaves_like "#content"
-
-  context 'when the FF ci_parallel_remote_includes is disabled' do
-    before do
-      stub_feature_flags(ci_parallel_remote_includes: false)
+  describe '#fetch_with_error_handling' do
+    subject(:content) do
+      remote_file.preload_content
+      remote_file.content
     end
 
-    it_behaves_like "#content"
+    shared_examples 'non-retryable error' do
+      it 'fails immediately without retry' do
+        expect(content).to be_nil
+        expect(remote_file).not_to have_received(:sleep)
+      end
+
+      it 'adds error message' do
+        content
+        expect(remote_file.errors).not_to be_empty
+      end
+    end
+
+    shared_examples 'succeeds on retry with exponential backoff' do
+      it 'retries and returns content' do
+        expect(content).to eq(remote_file_content)
+      end
+
+      it 'waits between retries with exponential backoff' do
+        content
+        expect(remote_file).to have_received(:sleep).with(1).once
+      end
+    end
+
+    shared_examples 'fails after retrying with exponential backoff' do
+      it 'fails after max attempts' do
+        expect(content).to be_nil
+      end
+
+      it 'waits between retries with exponential backoff' do
+        content
+        expect(remote_file).to have_received(:sleep).with(1).once
+        expect(remote_file).to have_received(:sleep).with(2).once
+      end
+
+      it 'adds error message' do
+        content
+        expect(remote_file.errors).not_to be_empty
+      end
+    end
+
+    context 'with exponential backoff retry' do
+      before do
+        allow(remote_file).to receive(:sleep)
+      end
+
+      context 'when retryable errors succeed on retry' do
+        [SocketError, Timeout::Error, Gitlab::HTTP::Error].each do |error_class|
+          context "when #{error_class.name} occurs then succeeds" do
+            before do
+              call_count = 0
+              allow_next_instance_of(HTTParty::Request) do |instance|
+                allow(instance).to receive(:perform) do
+                  call_count += 1
+                  raise error_class if call_count == 1
+
+                  instance_double(HTTParty::Response, code: 200, body: remote_file_content)
+                end
+              end
+            end
+
+            it_behaves_like 'succeeds on retry with exponential backoff'
+
+            it 'clears memoization on retry' do
+              allow(remote_file).to receive(:clear_memoization).and_call_original
+              content
+              expect(remote_file).to have_received(:clear_memoization).with(:fetch_async_content).once
+            end
+          end
+        end
+
+        context 'when 5xx error occurs then succeeds' do
+          before do
+            stub_full_request(location)
+              .to_return(status: 500, body: 'Server Error').then
+              .to_return(status: 200, body: remote_file_content)
+          end
+
+          it_behaves_like 'succeeds on retry with exponential backoff'
+
+          it 'clears memoization on retry' do
+            allow(remote_file).to receive(:clear_memoization).and_call_original
+            content
+            expect(remote_file).to have_received(:clear_memoization).with(:fetch_async_content).once
+          end
+        end
+      end
+
+      context 'when retryable errors fail after all retries' do
+        [SocketError, Timeout::Error, Gitlab::HTTP::Error].each do |error_class|
+          context "when #{error_class.name} occurs on all attempts" do
+            before do
+              allow_next_instance_of(HTTParty::Request) do |instance|
+                allow(instance).to receive(:perform).and_raise(error_class)
+              end
+            end
+
+            it_behaves_like 'fails after retrying with exponential backoff'
+          end
+        end
+
+        context 'when 5xx error occurs on all attempts' do
+          before do
+            stub_full_request(location).to_return(status: 503, body: 'Service Unavailable')
+          end
+
+          it_behaves_like 'fails after retrying with exponential backoff'
+        end
+      end
+
+      context 'when non-retryable errors occur' do
+        context 'when 4xx error occurs' do
+          before do
+            stub_full_request(location).to_return(status: 404, body: 'Not Found')
+          end
+
+          it_behaves_like 'non-retryable error'
+        end
+
+        context 'when Errno::ECONNREFUSED occurs' do
+          before do
+            stub_full_request(location).to_raise(Errno::ECONNREFUSED)
+          end
+
+          it_behaves_like 'non-retryable error'
+        end
+
+        context 'when Gitlab::HTTP::BlockedUrlError occurs' do
+          let(:location) { 'http://127.0.0.1/config.yml' }
+
+          it_behaves_like 'non-retryable error'
+        end
+
+        context 'when response is nil' do
+          before do
+            allow_next_instance_of(HTTParty::Request) do |instance|
+              allow(instance).to receive(:perform).and_return(nil)
+            end
+          end
+
+          it_behaves_like 'non-retryable error'
+        end
+      end
+    end
   end
 
   describe '#preload_content' do
@@ -201,7 +363,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
       let(:location) { 'not-valid://gitlab.com/gitlab-org/gitlab-foss/blob/1234/?secret_file.yml' }
 
       it 'returns an error message describing invalid address' do
-        expect(subject).to eq('Remote file `not-valid://gitlab.com/gitlab-org/gitlab-foss/blob/1234/?xxxxxxxxxxx.yml` does not have a valid address!')
+        expect(subject).to eq('Remote file `not-valid://gitlab.com/gitlab-org/gitlab-foss/blob/1234/?[MASKED]xxx.yml` does not have a valid address!')
       end
     end
 
@@ -211,7 +373,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
       end
 
       it 'returns error message about a timeout' do
-        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.xxxxxxxxxxx.yml` could not be fetched because of a timeout error!')
+        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml` could not be fetched after 3 attempts because of a timeout error!')
       end
     end
 
@@ -221,7 +383,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
       end
 
       it 'returns error message about a HTTP error' do
-        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.xxxxxxxxxxx.yml` could not be fetched because of HTTP error!')
+        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml` could not be fetched after 3 attempts because of HTTP error!')
       end
     end
 
@@ -231,7 +393,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
       end
 
       it 'returns error message about a timeout' do
-        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.xxxxxxxxxxx.yml` could not be fetched because of HTTP code `404` error!')
+        expect(subject).to eq('Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml` could not be fetched after 1 attempt because of HTTP code `404` error!')
       end
     end
 
@@ -256,6 +418,20 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
         expect(subject).to eq "Remote file could not be fetched because Connection refused!"
       end
     end
+
+    context 'when integrity check fails' do
+      let(:params) { { remote: location, integrity: "sha256-#{Base64.strict_encode64(Digest::SHA256.digest('different content'))}" } }
+
+      before do
+        stub_full_request(location).to_return(body: remote_file_content)
+      end
+
+      it 'returns error message about integrity check failure' do
+        expect(error_message).to eq(
+          'Remote file `https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml` failed integrity check!'
+        )
+      end
+    end
   end
 
   describe '#expand_context' do
@@ -275,17 +451,17 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
 
     subject(:metadata) { remote_file.metadata }
 
-    it {
+    it do
       is_expected.to eq(
-        context_project: nil,
-        context_sha: '12345',
+        context_project: project.full_path,
+        context_sha: project.commit.sha,
         type: :remote,
-        location: 'https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.xxxxxxxxxxx.yml',
-        raw: 'https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.xxxxxxxxxxx.yml',
+        location: 'https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml',
+        raw: 'https://gitlab.com/gitlab-org/gitlab-foss/blob/1234/.[MASKED]xxx.yml',
         blob: nil,
         extra: {}
       )
-    }
+    end
   end
 
   describe '#to_hash' do
@@ -301,10 +477,12 @@ RSpec.describe Gitlab::Ci::Config::External::File::Remote, feature_category: :pi
     context 'with a valid remote file' do
       it 'returns the content as a hash' do
         expect(to_hash).to eql(
-          before_script: ["apt-get update -qq && apt-get install -y -qq sqlite3 libsqlite3-dev nodejs",
-                          "ruby -v",
-                          "which ruby",
-                          "bundle install --jobs $(nproc)  \"${FLAGS[@]}\""]
+          before_script: [
+            "apt-get update -qq && apt-get install -y -qq sqlite3 libsqlite3-dev nodejs",
+            "ruby -v",
+            "which ruby",
+            "bundle install --jobs $(nproc)  \"${FLAGS[@]}\""
+          ]
         )
       end
     end

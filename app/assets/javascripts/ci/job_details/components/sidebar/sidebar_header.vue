@@ -20,6 +20,11 @@ export default {
     newIssue: __('New issue'),
     retryJobLabel: s__('Job|Retry'),
     runAgainJobButtonLabel: s__('Job|Run again'),
+    forceCancelJobButtonLabel: s__('Job|Force cancel'),
+    forceCancelJobButtonTooltip: s__('Job|Force cancel a job stuck in canceling state'),
+    forceCancelJobConfirmText: s__(
+      'Job|Are you sure you want to force cancel this job? This will immediately mark the job as canceled, even if the job is still running.',
+    ),
   },
   forwardDeploymentFailureModalId,
   directives: {
@@ -62,6 +67,7 @@ export default {
       default: () => ({}),
     },
   },
+  emits: ['update-variables'],
   data() {
     return {
       job: {},
@@ -76,6 +82,9 @@ export default {
     canShowJobRetryButton() {
       return this.restJob.retry_path && !this.$apollo.queries.job.loading;
     },
+    jobConfirmationMessage() {
+      return this.restJob.status.action.confirmation_message;
+    },
     isManualJob() {
       return this.job?.manualJob;
     },
@@ -88,7 +97,8 @@ export default {
           this.restJob.new_issue_path ||
           this.restJob.terminal_path ||
           this.restJob.retry_path ||
-          this.restJob.cancel_path,
+          this.restJob.cancel_path ||
+          this.restJob.force_cancel_path,
       );
     },
   },
@@ -99,9 +109,9 @@ export default {
 </script>
 
 <template>
-  <div class="gl-py-3!">
-    <div class="gl-display-flex gl-justify-content-space-between gl-gap-3">
-      <div class="gl-display-flex gl-gap-3">
+  <div class="gl-mr-2 gl-py-5 @lg/panel:gl-mb-4 @lg/panel:gl-mr-4 @lg/panel:gl-py-6">
+    <div class="gl-flex gl-justify-end gl-gap-3">
+      <div class="gl-flex gl-gap-3">
         <template v-if="jobHasPath">
           <gl-button
             v-if="restJob.erase_path"
@@ -124,7 +134,7 @@ export default {
             category="secondary"
             variant="confirm"
             data-testid="job-new-issue"
-            icon="issue-new"
+            icon="work-item-new"
           />
           <gl-button
             v-if="restJob.terminal_path"
@@ -139,15 +149,16 @@ export default {
           <job-sidebar-retry-button
             v-if="canShowJobRetryButton"
             v-gl-tooltip.bottom
-            :title="buttonTitle"
-            :aria-label="buttonTitle"
+            :retry-button-title="buttonTitle"
             :is-manual-job="isManualJob"
             :category="retryButtonCategory"
             :href="restJob.retry_path"
+            :confirmation-message="jobConfirmationMessage"
+            :job-name="restJob.name"
             :modal-id="$options.forwardDeploymentFailureModalId"
             variant="confirm"
             data-testid="retry-button"
-            @updateVariablesClicked="$emit('updateVariables')"
+            @update-variables-clicked="$emit('update-variables')"
           />
           <gl-button
             v-if="restJob.cancel_path"
@@ -161,12 +172,27 @@ export default {
             data-testid="cancel-button"
             rel="nofollow"
           />
+          <gl-button
+            v-if="restJob.force_cancel_path"
+            v-gl-tooltip.bottom
+            :title="$options.i18n.forceCancelJobButtonTooltip"
+            :aria-label="$options.i18n.forceCancelJobButtonLabel"
+            :href="restJob.force_cancel_path"
+            :data-confirm="$options.i18n.forceCancelJobConfirmText"
+            data-confirm-btn-variant="danger"
+            variant="danger"
+            data-method="post"
+            data-testid="force-cancel-button"
+            rel="nofollow"
+          >
+            {{ $options.i18n.forceCancelJobButtonLabel }}
+          </gl-button>
         </template>
       </div>
       <gl-button
         :aria-label="$options.i18n.toggleSidebar"
         category="secondary"
-        class="gl-lg-display-none"
+        class="@lg/panel:gl-hidden"
         icon="chevron-double-lg-right"
         @click="toggleSidebar"
       />

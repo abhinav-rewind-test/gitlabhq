@@ -10,14 +10,16 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
   let_it_be(:project_c) { create(:project, name: 'C', description: 'B', star_count: 30) }
 
   let_it_be_with_reload(:resource_a) do
-    create(:ci_catalog_resource, project: project_a, latest_released_at: '2023-02-01T00:00:00Z')
+    create(:ci_catalog_resource, project: project_a, latest_released_at: '2023-02-01T00:00:00Z',
+      last_30_day_usage_count: 150, verification_level: 100)
   end
 
   let_it_be(:resource_b) do
-    create(:ci_catalog_resource, project: project_b, latest_released_at: '2023-01-01T00:00:00Z')
+    create(:ci_catalog_resource, project: project_b, latest_released_at: '2023-01-01T00:00:00Z',
+      last_30_day_usage_count: 100, verification_level: 10)
   end
 
-  let_it_be(:resource_c) { create(:ci_catalog_resource, project: project_c) }
+  let_it_be(:resource_c) { create(:ci_catalog_resource, project: project_c, verification_level: 50) }
 
   it { is_expected.to belong_to(:project) }
 
@@ -28,7 +30,7 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
 
   it do
     is_expected.to(
-      have_many(:component_usages).class_name('Ci::Catalog::Resources::Components::Usage')
+      have_many(:component_last_usages).class_name('Ci::Catalog::Resources::Components::LastUsage')
         .with_foreign_key(:catalog_resource_id))
   end
 
@@ -47,9 +49,9 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
 
   it { is_expected.to define_enum_for(:state).with_values({ unpublished: 0, published: 1 }) }
 
-  it do
+  it 'defines verification levels matching the source of truth in VerifiedNamespace' do
     is_expected.to define_enum_for(:verification_level)
-      .with_values({ unverified: 0, gitlab: 1 })
+      .with_values(::Namespaces::VerifiedNamespace::VERIFICATION_LEVELS)
   end
 
   describe '.for_projects' do
@@ -144,6 +146,58 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
     end
   end
 
+  describe 'order_by_last_30_day_usage_count_desc' do
+    it 'returns catalog resources sorted by last 30-day usage count in descending order' do
+      ordered_resources = described_class.order_by_last_30_day_usage_count_desc
+
+      expect(ordered_resources).to eq([resource_a, resource_b, resource_c])
+    end
+  end
+
+  describe 'order_by_last_30_day_usage_count_asc' do
+    it 'returns catalog resources sorted by last 30-day usage count in ascending order' do
+      ordered_resources = described_class.order_by_last_30_day_usage_count_asc
+
+      expect(ordered_resources).to eq([resource_c, resource_b, resource_a])
+    end
+  end
+
+  describe '.for_verification_level' do
+    it 'returns catalog resources for required verification_level' do
+      verified_resources = described_class
+        .for_verification_level(Namespaces::VerifiedNamespace::VERIFICATION_LEVELS[:gitlab_maintained])
+
+      expect(verified_resources).to eq([resource_a])
+    end
+  end
+
+  describe '.with_topics' do
+    let_it_be(:topic_ruby) { create(:topic, name: 'ruby') }
+    let_it_be(:topic_rails) { create(:topic, name: 'rails') }
+    let_it_be(:topic_gitlab) { create(:topic, name: 'gitlab') }
+
+    before_all do
+      create(:project_topic, project: project_a, topic: topic_ruby)
+      create(:project_topic, project: project_a, topic: topic_rails)
+      create(:project_topic, project: project_b, topic: topic_gitlab)
+    end
+
+    it 'returns resources with projects matching any of the given topic names' do
+      expect(described_class.with_topics(%w[ruby gitlab]))
+        .to contain_exactly(resource_a, resource_b)
+    end
+
+    it 'returns a resource only once even if it matches multiple topics' do
+      expect(described_class.with_topics(%w[ruby rails]))
+        .to contain_exactly(resource_a)
+    end
+
+    it 'returns no resources when searching for non-existent topics' do
+      expect(described_class.with_topics(%w[nonexistent]))
+        .to be_empty
+    end
+  end
+
   describe 'authorized catalog resources' do
     let_it_be(:namespace) { create(:group) }
     let_it_be(:other_namespace) { create(:group) }
@@ -216,6 +270,135 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
         it 'does not return any resources' do
           expect(resources).to be_empty
         end
+      end
+    end
+
+    # rubocop:disable RSpec/MultipleMemoizedHelpers -- Inherits helpers from parent context
+    describe '.visible_to_user_with_access_level' do
+      let_it_be(:access_level_user) { create(:user) }
+      let_it_be(:maintainer_project) { create(:project, :private) }
+      let_it_be(:developer_project) { create(:project, :private) }
+      let_it_be(:reporter_project) { create(:project, :private) }
+      let_it_be(:guest_project) { create(:project, :private) }
+      let_it_be(:owner_project) { create(:project, :private) }
+      let_it_be(:maintainer_resource) { create(:ci_catalog_resource, project: maintainer_project) }
+      let_it_be(:developer_resource) { create(:ci_catalog_resource, project: developer_project) }
+      let_it_be(:reporter_resource) { create(:ci_catalog_resource, project: reporter_project) }
+      let_it_be(:guest_resource) { create(:ci_catalog_resource, project: guest_project) }
+      let_it_be(:owner_resource) { create(:ci_catalog_resource, project: owner_project) }
+
+      subject(:resources) { described_class.visible_to_user_with_access_level(access_level_user, min_access_level) }
+
+      before_all do
+        maintainer_project.add_maintainer(access_level_user)
+        developer_project.add_developer(access_level_user)
+        reporter_project.add_reporter(access_level_user)
+        guest_project.add_guest(access_level_user)
+        owner_project.add_owner(access_level_user)
+      end
+
+      context 'when min_access_level is MAINTAINER' do
+        let(:min_access_level) { Gitlab::Access::MAINTAINER }
+
+        it 'returns only resources where user has maintainer or higher access' do
+          expect(resources).to contain_exactly(maintainer_resource, owner_resource)
+        end
+      end
+
+      context 'when min_access_level is DEVELOPER' do
+        let(:min_access_level) { Gitlab::Access::DEVELOPER }
+
+        it 'returns resources where user has developer or higher access' do
+          expect(resources).to contain_exactly(developer_resource, maintainer_resource, owner_resource)
+        end
+      end
+
+      context 'when min_access_level is REPORTER' do
+        let(:min_access_level) { Gitlab::Access::REPORTER }
+
+        it 'returns resources where user has reporter or higher access' do
+          expect(resources).to contain_exactly(reporter_resource, developer_resource, maintainer_resource,
+            owner_resource)
+        end
+      end
+
+      context 'when min_access_level is GUEST' do
+        let(:min_access_level) { Gitlab::Access::GUEST }
+
+        it 'returns resources where user has guest or higher access' do
+          expect(resources).to contain_exactly(guest_resource, reporter_resource, developer_resource,
+            maintainer_resource, owner_resource)
+        end
+      end
+
+      context 'when min_access_level is OWNER' do
+        let(:min_access_level) { Gitlab::Access::OWNER }
+
+        it 'returns only resources where user has owner access' do
+          expect(resources).to contain_exactly(owner_resource)
+        end
+      end
+
+      context 'when min_access_level is nil' do
+        let(:min_access_level) { nil }
+
+        it 'falls back to visible_to_user behavior' do
+          expect(resources).to contain_exactly(guest_resource, reporter_resource, developer_resource,
+            maintainer_resource, owner_resource)
+        end
+      end
+
+      context 'when user is nil' do
+        subject(:resources) { described_class.visible_to_user_with_access_level(nil, Gitlab::Access::MAINTAINER) }
+
+        it 'returns none' do
+          expect(resources).to be_empty
+        end
+      end
+
+      context 'with a different user' do
+        let_it_be(:different_user) { create(:user) }
+        let_it_be(:different_user_project) { create(:project, :private) }
+        let_it_be(:different_user_resource) { create(:ci_catalog_resource, project: different_user_project) }
+
+        subject(:resources) { described_class.visible_to_user_with_access_level(different_user, Gitlab::Access::GUEST) }
+
+        before_all do
+          different_user_project.add_guest(different_user)
+        end
+
+        it "returns resources where the different user has guest or higher access" do
+          expect(resources).to contain_exactly(different_user_resource)
+        end
+      end
+    end
+    # rubocop:enable RSpec/MultipleMemoizedHelpers
+  end
+
+  describe '#archived' do
+    using RSpec::Parameterized::TableSyntax
+
+    let_it_be_with_reload(:root_group) { create(:group) }
+    let_it_be_with_reload(:subgroup) { create(:group, parent: root_group) }
+    let_it_be_with_reload(:project) { create(:project, namespace: subgroup) }
+    let_it_be_with_reload(:resource) { create(:ci_catalog_resource, project: project) }
+
+    where(:project_archived, :subgroup_archived, :root_group_archived, :expected_result) do
+      false | false | false | false
+      true  | false | false | true
+      false | true  | false | true
+      false | false | true  | true
+    end
+
+    with_them do
+      before do
+        project.update!(archived: project_archived)
+        subgroup.update!(archived: subgroup_archived)
+        root_group.update!(archived: root_group_archived)
+      end
+
+      it 'returns the expected archived status' do
+        expect(resource.archived).to eq(expected_result)
       end
     end
   end
@@ -299,21 +482,13 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
     let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
 
     let_it_be_with_refind(:january_release) do
-      release = create(:release, :with_catalog_resource_version, project: project, tag: 'v1',
+      create(:release, :with_catalog_resource_version, project: project, tag: '1.0.0',
         released_at: '2023-01-01T00:00:00Z')
-
-      release.catalog_resource_version.update!(version: '1.0.0')
-
-      release
     end
 
     let_it_be_with_refind(:february_release) do
-      release = create(:release, :with_catalog_resource_version, project: project, tag: 'v2',
+      create(:release, :with_catalog_resource_version, project: project, tag: '2.0.0',
         released_at: '2023-02-01T00:00:00Z')
-
-      release.catalog_resource_version.update!(version: '2.0.0')
-
-      release
     end
 
     it 'has the expected latest_released_at value' do
@@ -322,10 +497,8 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
 
     context 'when a new catalog resource version is created' do
       it 'updates the latest_released_at value' do
-        march_release = create(:release, :with_catalog_resource_version, project: project, tag: 'v3',
+        march_release = create(:release, :with_catalog_resource_version, project: project, tag: '3.0.0',
           released_at: '2023-03-01T00:00:00Z')
-
-        march_release.catalog_resource_version.update!(version: '3.0.0')
 
         expect(resource.reload.latest_released_at).to eq(march_release.released_at)
       end
@@ -343,7 +516,7 @@ RSpec.describe Ci::Catalog::Resource, feature_category: :pipeline_composition do
       it 'updates the latest_released_at value' do
         january_release.update!(released_at: '2024-03-01T00:00:00Z')
 
-        january_release.catalog_resource_version.update!(version: '4.0.0')
+        january_release.catalog_resource_version.update!(semver: '4.0.0')
 
         expect(resource.reload.latest_released_at).to eq(january_release.released_at)
       end

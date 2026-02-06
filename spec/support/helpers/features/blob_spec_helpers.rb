@@ -11,7 +11,10 @@ module Features
     end
 
     def edit_in_web_ide
-      click_button 'Edit'
+      within_testid('code-dropdown') do
+        click_button 'Code'
+      end
+
       click_link_or_button 'Web IDE'
     end
   end

@@ -17,12 +17,17 @@ module WikiHelper
     add_to_breadcrumbs(_('Wiki'), wiki_path(page.wiki))
   end
 
-  def link_to_wiki_page(page, **options)
-    link_to page.human_title, wiki_page_path(page.wiki, page), **options
-  end
-
   def wiki_sidebar_toggle_button
-    render Pajamas::ButtonComponent.new(icon: 'chevron-double-lg-left', button_options: { class: 'sidebar-toggle js-sidebar-wiki-toggle' })
+    css_classes = 'js-sidebar-wiki-toggle-open wiki-sidebar-toggle toggle-action-open gl-mr-2'
+    css_classes += ' @lg/panel:gl-hidden' if Feature.enabled?(:wiki_floating_sidebar_toggle, @wiki.container)
+
+    render Pajamas::ButtonComponent.new(
+      category: :tertiary,
+      icon: Feature.enabled?(:wiki_floating_sidebar_toggle, @wiki.container) ? 'sidebar' : 'list-bulleted',
+      button_options: {
+        class: css_classes,
+        "aria-label": _('Toggle sidebar')
+      })
   end
 
   # Produces a pure text breadcrumb for a given page.
@@ -37,15 +42,24 @@ module WikiHelper
       .join(' / ')
   end
 
+  def wiki_breadcrumb_items(page_slug)
+    parts = page_slug.split('/').reject(&:empty?)
+    parts.pop
+
+    parts.each_with_index.map do |_, i|
+      slug = parts[0..i].join('/')
+      basename = File.basename(slug)
+      title = WikiPage.unhyphenize(basename)
+      title = 'Home' if title.casecmp('home') == 0
+
+      { text: title, href: wiki_page_path(@wiki, slug) }
+    end
+  end
+
   def wiki_breadcrumb_collapsed_links(page_slug)
-    page_slug_split = page_slug.split('/')
-    page_slug_split.pop(1)
-    current_slug = ""
-    page_slug_split
-      .map do |dir_or_page|
-        current_slug = "#{current_slug}#{dir_or_page}/"
-        add_to_breadcrumb_collapsed_links link_to(WikiPage.unhyphenize(dir_or_page).capitalize, wiki_page_path(@wiki, current_slug)), location: :after
-      end
+    wiki_breadcrumb_items(page_slug).each do |item|
+      add_to_breadcrumb_collapsed_links(item, location: :after)
+    end
   end
 
   def wiki_attachment_upload_url
@@ -65,42 +79,67 @@ module WikiHelper
 
     link_options = { action: action, direction: reversed_direction }
 
-    render Pajamas::ButtonComponent.new(href: wiki_path(wiki, **link_options), icon: "sort-#{icon_class}", button_options: { class: link_class, title: title })
+    render Pajamas::ButtonComponent.new(
+      href: wiki_path(wiki, **link_options),
+      icon: "sort-#{icon_class}",
+      button_options: { class: link_class, title: title }
+    )
+  end
+
+  def wiki_404_messages
+    title = s_("Wiki404|This page doesn't exist")
+    writable_body = s_("Wiki404|Would you like to create it?")
+    readonly_body = s_('Wiki404|Use the sidebar to find a different page.')
+
+    {
+      writable: { title: title, body: writable_body },
+      readonly: { title: title, body: readonly_body }
+    }
   end
 
   def wiki_empty_state_messages(wiki)
     case wiki.container
     when Project
-      writable_body = s_("WikiEmpty|A wiki is where you can store all the details about your project. This can include why you've created it, its principles, how to use it, and so on.")
-      writable_body += s_("WikiEmpty| Have a Confluence wiki already? Use that instead.") if show_enable_confluence_integration?(wiki.container)
+      writable_body = s_(
+        "WikiEmpty|Use GitLab Wiki to collaborate on documentation in a project or group. " \
+          "You can store wiki pages written in markup formats like Markdown or AsciiDoc in a " \
+          "separate Git repository, and access the wiki through Git, the GitLab web interface, or the API."
+      )
+
+      if show_enable_confluence_integration?(wiki.container)
+        writable_body += s_("WikiEmpty| Have a Confluence wiki already? Use that instead.")
+      end
 
       {
         writable: {
-          title: s_('WikiEmpty|The wiki lets you write documentation for your project'),
+          title: s_('WikiEmpty|Get started with wikis'),
           body: writable_body
         },
-        issuable: {
-          title: s_('WikiEmpty|This project has no wiki pages'),
-          body: s_('WikiEmptyIssueMessage|You must be a project member in order to add wiki pages. If you have suggestions for how to improve the wiki for this project, consider opening an issue in the %{issues_link}.')
-        },
         readonly: {
-          title: s_('WikiEmpty|This project has no wiki pages'),
-          body: s_('WikiEmpty|You must be a project member in order to add wiki pages.')
+          title: s_('WikiEmpty|This wiki doesn\'t have any content yet'),
+          body: s_(
+            'WikiEmpty|You can use GitLab Wiki to collaborate on documentation in a project or group. ' \
+              'You can store wiki pages written in markup formats like Markdown or AsciiDoc in a ' \
+              'separate Git repository, and access the wiki through Git, the GitLab web interface, or the API.'
+          )
         }
       }
     when Group
       {
         writable: {
-          title: s_('WikiEmpty|The wiki lets you write documentation for your group'),
-          body: s_("WikiEmpty|A wiki is where you can store all the details about your group. This can include why you've created it, its principles, how to use it, and so on.")
-        },
-        issuable: {
-          title: s_('WikiEmpty|This group has no wiki pages'),
-          body: s_('WikiEmptyIssueMessage|You must be a group member in order to add wiki pages. If you have suggestions for how to improve the wiki for this group, consider opening an issue in the %{issues_link}.')
+          title: s_('WikiEmpty|Get started with wikis'),
+          body: s_(
+            "WikiEmpty|Use GitLab Wiki to collaborate on documentation in a project or group. " \
+              "You can store wiki pages written in markup formats like Markdown or AsciiDoc in a " \
+              "separate Git repository, and access the wiki through Git, the GitLab web interface, or the API."
+          )
         },
         readonly: {
-          title: s_('WikiEmpty|This group has no wiki pages'),
-          body: s_('WikiEmpty|You must be a group member in order to add wiki pages.')
+          title: s_('WikiEmpty|This wiki doesn\'t have any content yet'),
+          body: s_('WikiEmpty|You can use GitLab Wiki to collaborate on documentation in a project or group. ' \
+            'You can store wiki pages written in markup formats like Markdown or AsciiDoc in a ' \
+            'separate Git repository, and access the wiki through Git, the GitLab web interface, or the API.'
+                  )
         }
       }
     else
@@ -135,7 +174,11 @@ module WikiHelper
   private
 
   def wiki_page_render_api_endpoint_params(page)
-    { id: page.container.id, slug: ERB::Util.url_encode(page.slug), params: { version: page.version.id } }
+    {
+      id: page.container.id,
+      slug: ERB::Util.url_encode(page.slug).gsub(/%2f/i, '/'),
+      params: { version: page.version.id }
+    }
   end
 
   def wiki_page_info(page, uploads_path: '')
@@ -143,14 +186,15 @@ module WikiHelper
       last_commit_sha: page.last_commit_sha,
       persisted: page.persisted?,
       title: page.title,
-      content: page.raw_content || '',
+      content: page.content || '',
+      front_matter: page.front_matter || {},
       format: page.format.to_s,
       uploads_path: uploads_path,
       slug: page.slug,
       path: wiki_page_path(page.wiki, page),
       wiki_path: wiki_path(page.wiki),
-      help_path: help_page_path('user/project/wiki/index'),
-      markdown_help_path: help_page_path('user/markdown'),
+      help_path: help_page_path('user/project/wiki/_index.md'),
+      markdown_help_path: help_page_path('user/markdown.md'),
       markdown_preview_path: wiki_page_path(page.wiki, page, action: :preview_markdown),
       create_path: wiki_path(page.wiki, action: :create)
     }

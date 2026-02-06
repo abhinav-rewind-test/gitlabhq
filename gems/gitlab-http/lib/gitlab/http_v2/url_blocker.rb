@@ -80,6 +80,45 @@ module Gitlab
             ascii_only: ascii_only
           )
 
+          unless deny_all_requests_except_allowed || dns_rebind_protection || !allow_local_network || !allow_localhost
+            return Result.new(uri, nil, true)
+          end
+
+          validate_resolved_uri(uri,
+            allow_localhost: allow_localhost,
+            allow_local_network: allow_local_network,
+            extra_allowed_uris: extra_allowed_uris,
+            deny_all_requests_except_allowed: deny_all_requests_except_allowed,
+            dns_rebind_protection: dns_rebind_protection,
+            outbound_local_requests_allowlist: outbound_local_requests_allowlist)
+        end
+
+        def blocked_url?(url, **kwargs)
+          validate!(url, **kwargs)
+
+          false
+        rescue BlockedUrlError
+          true
+        end
+
+        # For backwards compatibility, Returns an array with [<uri>, <original-hostname>].
+        # Issue for refactoring: https://gitlab.com/gitlab-org/gitlab/-/issues/410890
+        def validate!(...)
+          result = validate_url_with_proxy!(...)
+          [result.uri, result.hostname]
+        end
+
+        private
+
+        def validate_resolved_uri(
+          uri,
+          allow_localhost:,
+          allow_local_network:,
+          extra_allowed_uris:,
+          deny_all_requests_except_allowed:,
+          dns_rebind_protection:,
+          outbound_local_requests_allowlist:
+        )
           begin
             address_info = get_address_info(uri)
           rescue SocketError
@@ -121,23 +160,6 @@ module Gitlab
 
           protected_uri_with_hostname
         end
-
-        def blocked_url?(url, **kwargs)
-          validate!(url, **kwargs)
-
-          false
-        rescue BlockedUrlError
-          true
-        end
-
-        # For backwards compatibility, Returns an array with [<uri>, <original-hostname>].
-        # Issue for refactoring: https://gitlab.com/gitlab-org/gitlab/-/issues/410890
-        def validate!(...)
-          result = validate_url_with_proxy!(...)
-          [result.uri, result.hostname]
-        end
-
-        private
 
         # Returns the given URI with IP address as hostname and the original hostname respectively
         # in an Array.
@@ -221,12 +243,6 @@ module Gitlab
 
           # Do not enforce if proxy is used
           return false if http_proxy_env?
-
-          # In the test suite we use a lot of mocked urls that are either invalid or
-          # don't exist. In order to avoid modifying a ton of tests and factories
-          # we allow invalid urls unless the environment variable RSPEC_ALLOW_INVALID_URLS
-          # is not true
-          return false if Rails.env.test? && ENV['RSPEC_ALLOW_INVALID_URLS'] == 'true'
 
           true
         end

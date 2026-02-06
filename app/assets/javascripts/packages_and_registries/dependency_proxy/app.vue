@@ -13,13 +13,12 @@ import {
   GlTooltipDirective,
 } from '@gitlab/ui';
 import { __, s__, n__, sprintf } from '~/locale';
-import Api from '~/api';
+import { deleteDependencyProxyCacheList } from '~/api/packages_api';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
 import TitleArea from '~/vue_shared/components/registry/title_area.vue';
 import ManifestsList from '~/packages_and_registries/dependency_proxy/components/manifests_list.vue';
 import { GRAPHQL_PAGE_SIZE } from '~/packages_and_registries/dependency_proxy/constants';
-import { getPageParams } from '~/packages_and_registries/dependency_proxy/utils';
-import { extractPageInfo } from '~/packages_and_registries/shared/utils';
+import { getPageParams } from '~/packages_and_registries/shared/utils';
 
 import getDependencyProxyDetailsQuery from '~/packages_and_registries/dependency_proxy/graphql/queries/get_dependency_proxy_details.query.graphql';
 
@@ -80,6 +79,9 @@ export default {
     },
   },
   computed: {
+    loading() {
+      return this.$apollo.queries.group.loading;
+    },
     queryVariables() {
       return { fullPath: this.groupPath, first: GRAPHQL_PAGE_SIZE, ...this.pageParams };
     },
@@ -87,8 +89,8 @@ export default {
       return this.group.dependencyProxyManifests?.pageInfo;
     },
     pageParams() {
-      const pageInfo = extractPageInfo(this.$route.query);
-      return getPageParams(pageInfo);
+      const { before, after } = this.$route.query;
+      return getPageParams({ before, after }, GRAPHQL_PAGE_SIZE);
     },
     manifests() {
       return this.group.dependencyProxyManifests?.nodes ?? [];
@@ -136,7 +138,7 @@ export default {
     },
     async submit() {
       try {
-        await Api.deleteDependencyProxyCacheList(this.groupId);
+        await deleteDependencyProxyCacheList(this.groupId);
 
         this.deleteCacheAlertMessage = this.$options.i18n.deleteCacheAlertMessageSuccess;
         this.showDeleteCacheAlert = true;
@@ -162,14 +164,15 @@ export default {
           :toggle-text="__('More actions')"
           :text-sr-only="true"
           category="tertiary"
-          placement="right"
+          placement="bottom-end"
           no-caret
         >
-          <gl-disclosure-dropdown-item v-gl-modal-directive="$options.confirmClearCacheModal">
+          <gl-disclosure-dropdown-item
+            v-gl-modal-directive="$options.confirmClearCacheModal"
+            variant="danger"
+          >
             <template #list-item>
-              <span class="gl-text-red-500">
-                {{ $options.i18n.clearCache }}
-              </span>
+              {{ $options.i18n.clearCache }}
             </template>
           </gl-disclosure-dropdown-item>
         </gl-disclosure-dropdown>
@@ -194,7 +197,7 @@ export default {
         readonly
         :value="dependencyProxyImagePrefix"
         select-on-click
-        class="gl-layout-w-limited"
+        class="gl-max-w-limited"
         data-testid="proxy-url"
       >
         <template #append>
@@ -213,12 +216,12 @@ export default {
         </span>
       </template>
     </gl-form-group>
-    <gl-skeleton-loader v-else-if="$apollo.queries.group.loading" />
+    <gl-skeleton-loader v-else-if="loading" />
 
     <manifests-list
       :dependency-proxy-image-prefix="dependencyProxyImagePrefix"
-      :loading="$apollo.queries.group.loading"
       :manifests="manifests"
+      :loading="loading"
       :pagination="pageInfo"
       @prev-page="fetchPreviousPage"
       @next-page="fetchNextPage"

@@ -11,14 +11,14 @@ import { marked } from 'marked';
 import CodeBlockHighlighted from '~/vue_shared/components/code_block_highlighted.vue';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { sanitize } from '~/lib/dompurify';
-import { markdownConfig } from '~/lib/utils/text_utility';
+import { strictMarkdownConfig } from '~/lib/utils/text_utility';
 import { __ } from '~/locale';
-import ModalCopyButton from '~/vue_shared/components/modal_copy_button.vue';
+import SimpleCopyButton from '~/vue_shared/components/simple_copy_button.vue';
 
 export default {
   components: {
     CodeBlockHighlighted,
-    ModalCopyButton,
+    SimpleCopyButton,
   },
   directives: {
     SafeHtml,
@@ -64,7 +64,7 @@ export default {
   },
   methods: {
     getSafeHtml(markdown) {
-      return sanitize(marked.parse(markdown), markdownConfig);
+      return sanitize(marked.parse(markdown), strictMarkdownConfig);
     },
     setHoverOn(key) {
       this.hoverMap = { ...this.hoverMap, [key]: true };
@@ -96,14 +96,14 @@ export default {
         @mouseenter="setHoverOn(`code-${index}`)"
         @mouseleave="setHoverOff(`code-${index}`)"
       >
-        <modal-copy-button
+        <simple-copy-button
           v-if="hoverMap[`code-${index}`]"
           :title="$options.i18n.copyCodeTitle"
           :text="block.text"
-          class="gl-absolute gl-top-3 gl-right-3 gl-z-index-1 gl-transition-duration-medium"
+          class="gl-absolute gl-right-3 gl-top-3 gl-z-1 gl-duration-medium"
         />
         <code-block-highlighted
-          class="gl-border gl-rounded-0! gl-p-4 gl-mb-0 gl-overflow-y-auto"
+          class="gl-border gl-mb-0 gl-overflow-y-auto !gl-rounded-none gl-p-4"
           :language="block.lang || $options.fallbackLanguage"
           :code="block.text"
         />
@@ -118,3 +118,20 @@ export default {
     </template>
   </div>
 </template>
+
+<style scoped lang="scss">
+/* This is to override a margin caused by bootstrap */
+.non-gfm-markdown-block {
+  :deep(p:last-of-type) {
+    margin-bottom: 0;
+  }
+  /* All code blocks here should break to avoid overflow issues in consumer components */
+  :deep(code) {
+    word-break: break-all;
+  }
+
+  :deep(pre) {
+    white-space: pre-wrap;
+  }
+}
+</style>

@@ -45,9 +45,7 @@ module Projects
                      authorizable_group_members
                    end
 
-        if include_membership_from_project_group_shares?
-          avenues << members_from_project_group_shares
-        end
+        avenues << members_from_project_group_shares if include_membership_from_project_group_shares?
 
         avenues
       end
@@ -73,13 +71,13 @@ module Projects
         members = []
 
         project.project_group_links.each_batch(of: BATCH_SIZE) do |relation|
-          members_per_batch = []
-
-          relation.includes(:group).each do |link| # rubocop: disable CodeReuse/ActiveRecord
-            members_per_batch << link.group.authorizable_members_with_parents.select(*user_id_and_access_level_for_project_group_shares(link))
+          members_per_batch = relation.includes(:group).map do |link| # rubocop: disable CodeReuse/ActiveRecord
+            link.group
+              .authorizable_members_with_parents
+              .select(*user_id_and_access_level_for_project_group_shares(link))
           end
 
-          members << Member.from_union(members_per_batch)
+          members << Member.from_union(members_per_batch).select(:user_id, :access_level)
         end
 
         Member.from_union(members)
@@ -93,6 +91,7 @@ module Projects
 
         Member
           .from(generate_from_statement([[user_id, access_level]])) # rubocop: disable CodeReuse/ActiveRecord
+          .select(:user_id, :access_level)
           .limit(1)
       end
 

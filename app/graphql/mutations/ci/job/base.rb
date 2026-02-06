@@ -7,12 +7,8 @@ module Mutations
         JobID = ::Types::GlobalIDType[::Ci::Build]
 
         argument :id, JobID,
-                 required: true,
-                 description: 'ID of the job to mutate.'
-
-        def find_object(id:)
-          GlobalID::Locator.locate(id)
-        end
+          required: true,
+          description: 'ID of the job to mutate.'
       end
     end
   end

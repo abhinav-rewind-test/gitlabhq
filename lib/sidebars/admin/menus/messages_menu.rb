@@ -16,7 +16,7 @@ module Sidebars
 
         override :sprite_icon
         def sprite_icon
-          'messages'
+          'bullhorn'
         end
 
         override :active_routes
@@ -27,3 +27,5 @@ module Sidebars
     end
   end
 end
+
+Sidebars::Admin::Menus::MessagesMenu.prepend_mod_with('Sidebars::Admin::Menus::MessagesMenu')

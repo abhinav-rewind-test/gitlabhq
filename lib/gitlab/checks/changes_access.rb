@@ -5,18 +5,20 @@ module Gitlab
     class ChangesAccess
       include Gitlab::Utils::StrongMemoize
 
-      ATTRIBUTES = %i[user_access project protocol changes logger].freeze
+      ATTRIBUTES = %i[user_access project protocol changes logger push_options gitaly_context].freeze
 
       attr_reader(*ATTRIBUTES)
 
       def initialize(
-        changes, user_access:, project:, protocol:, logger:
+        changes, user_access:, project:, protocol:, logger:, push_options:, gitaly_context:
       )
         @changes = changes
         @user_access = user_access
         @project = project
         @protocol = protocol
         @logger = logger
+        @push_options = push_options
+        @gitaly_context = gitaly_context
       end
 
       def validate!
@@ -101,7 +103,9 @@ module Gitlab
               project: project,
               protocol: protocol,
               logger: logger,
-              commits: commits
+              commits: commits,
+              gitaly_context: gitaly_context,
+              push_options: push_options
             )
           end
       end
@@ -117,7 +121,8 @@ module Gitlab
 
       def bulk_access_checks!
         Gitlab::Checks::LfsCheck.new(self).validate!
-        Gitlab::Checks::GlobalFileSizeCheck.new(self).validate!
+        Gitlab::Checks::FileSizeLimitCheck.new(self).validate!
+        Gitlab::Checks::IntegrationsCheck.new(self).validate!
       end
 
       def blank_rev?(rev)

@@ -14,7 +14,15 @@ class JiraConnect::SubscriptionsController < JiraConnect::ApplicationController
 
     # *.jira.com is needed for some legacy Jira Cloud instances, new ones will use *.atlassian.net
     # https://support.atlassian.com/organization-administration/docs/ip-addresses-and-domains-for-atlassian-cloud-products/
-    p.frame_ancestors(*(ALLOWED_IFRAME_ANCESTORS + Gitlab.config.jira_connect.additional_iframe_ancestors))
+    frame_ancestors = ALLOWED_IFRAME_ANCESTORS + Gitlab.config.jira_connect.additional_iframe_ancestors
+
+    # Add the specific Jira installation's domain (handles custom Jira domains)
+    if current_jira_installation&.display_url.present? &&
+        current_jira_installation.display_url != current_jira_installation.base_url
+      frame_ancestors << current_jira_installation.display_url
+    end
+
+    p.frame_ancestors(*frame_ancestors)
     p.script_src(*script_src_values)
     p.style_src(*style_src_values)
   end
@@ -46,14 +54,12 @@ class JiraConnect::SubscriptionsController < JiraConnect::ApplicationController
   end
 
   def destroy
-    subscription = current_jira_installation.subscriptions.find(params[:id])
+    result = destroy_service.execute
 
-    if !jira_user&.jira_admin?
-      render json: { error: 'forbidden' }, status: :forbidden
-    elsif subscription.destroy
+    if result.success?
       render json: { success: true }
     else
-      render json: { error: subscription.errors.full_messages.join(', ') }, status: :unprocessable_entity
+      render json: { error: result.message }, status: result[:reason]
     end
   end
 
@@ -67,7 +73,18 @@ class JiraConnect::SubscriptionsController < JiraConnect::ApplicationController
   end
 
   def create_service
-    JiraConnectSubscriptions::CreateService.new(current_jira_installation, current_user, namespace_path: params['namespace_path'], jira_user: jira_user)
+    JiraConnectSubscriptions::CreateService.new(
+      current_jira_installation,
+      current_user,
+      namespace_path: params['namespace_path'],
+      jira_user: jira_user
+    )
+  end
+
+  def destroy_service
+    subscription = current_jira_installation.subscriptions.find(params[:id])
+
+    JiraConnectSubscriptions::DestroyService.new(subscription, jira_user)
   end
 
   def allow_rendering_in_iframe

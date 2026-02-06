@@ -10,6 +10,8 @@ module API
 
     feature_category :system_access
 
+    helpers ::API::Helpers::PersonalAccessTokensHelpers
+
     %w[project group].each do |source_type|
       resource source_type.pluralize, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc 'Get list of all access tokens for the specified resource' do
@@ -20,13 +22,15 @@ module API
         end
         params do
           requires :id, types: [String, Integer], desc: "ID or URL-encoded path of the #{source_type}"
+          use :access_token_params
         end
+        route_setting :authorization, permissions: :read_resource_access_token, boundary_type: source_type.to_sym
         get ":id/access_tokens" do
           resource = find_source(source_type, params[:id])
 
           next unauthorized! unless current_user.can?(:read_resource_access_tokens, resource)
 
-          tokens = PersonalAccessTokensFinder.new({ user: resource.bots, impersonation: false }).execute.preload_users
+          tokens = PersonalAccessTokensFinder.new(declared(params, include_missing: false).merge({ user: resource.bots, impersonation: false })).execute.preload_users
 
           resource.members.load
           present paginate(tokens), with: Entities::ResourceAccessToken, resource: resource
@@ -41,6 +45,7 @@ module API
           requires :id, types: [String, Integer], desc: "ID or URL-encoded path of the #{source_type}"
           requires :token_id, type: String, desc: "The ID of the token"
         end
+        route_setting :authorization, permissions: :read_resource_access_token, boundary_type: source_type.to_sym
         get ":id/access_tokens/:token_id" do
           resource = find_source(source_type, params[:id])
 
@@ -48,9 +53,7 @@ module API
 
           token = find_token(resource, params[:token_id])
 
-          if token.nil?
-            next not_found!("Could not find #{source_type} access token with token_id: #{params[:token_id]}")
-          end
+          next not_found!("#{source_type} Access Token") if token.nil?
 
           resource.members.load
           present token, with: Entities::ResourceAccessToken, resource: resource
@@ -69,13 +72,12 @@ module API
           requires :id, type: String, desc: "The #{source_type} ID"
           requires :token_id, type: String, desc: "The ID of the token"
         end
+        route_setting :authorization, permissions: :delete_resource_access_token, boundary_type: source_type.to_sym
         delete ':id/access_tokens/:token_id' do
           resource = find_source(source_type, params[:id])
           token = find_token(resource, params[:token_id])
 
-          if token.nil?
-            next not_found!("Could not find #{source_type} access token with token_id: #{params[:token_id]}")
-          end
+          next not_found!("#{source_type} Access Token") if token.nil?
 
           service = ::ResourceAccessTokens::RevokeService.new(
             current_user,
@@ -92,24 +94,22 @@ module API
           success Entities::ResourceAccessTokenWithToken
         end
         params do
+          use :create_personal_access_token_params
           requires :id,
             type: String,
             desc: "The #{source_type} ID",
             documentation: { example: 2 }
-          requires :name,
-            type: String,
-            desc: "Resource access token name",
-            documentation: { example: 'test' }
           requires :scopes,
             type: Array[String],
             values: ::Gitlab::Auth.resource_bot_scopes.map(&:to_s),
             desc: "The permissions of the token",
             documentation: { example: %w[api read_repository] }
-          requires :expires_at,
+          optional :expires_at,
             type: Date,
-            desc: "The expiration date of the token",
-            default: PersonalAccessToken::MAX_PERSONAL_ACCESS_TOKEN_LIFETIME_IN_DAYS.days.from_now,
-            documentation: { example: '"2021-01-31' }
+            desc: "The expiration date of the token. If 'Require personal access token expiry' is enabled, you must provide a valid value, if not, the token will never expire.",
+            documentation: {
+              example: '2026-02-14T17:26:19.810Z'
+            }
           optional :access_level,
             type: Integer,
             values: ALLOWED_RESOURCE_ACCESS_LEVELS.values,
@@ -117,13 +117,14 @@ module API
             desc: "The access level of the token in the #{source_type}",
             documentation: { example: 40 }
         end
+        route_setting :authorization, permissions: :create_resource_access_token, boundary_type: source_type.to_sym
         post ':id/access_tokens' do
           resource = find_source(source_type, params[:id])
 
           token_response = ::ResourceAccessTokens::CreateService.new(
             current_user,
             resource,
-            declared_params
+            declared(params, include_missing: false)
           ).execute
 
           if token_response.success?
@@ -142,10 +143,11 @@ module API
           requires :id, type: String, desc: "The #{source_type} ID"
           requires :token_id, type: String, desc: "The ID of the token"
           optional :expires_at,
-                   type: Date,
-                   desc: "The expiration date of the token",
-                   documentation: { example: '2021-01-31' }
+            type: Date,
+            desc: "The expiration date of the token",
+            documentation: { example: '2021-01-31' }
         end
+        route_setting :authorization, permissions: :rotate_resource_access_token, boundary_type: source_type.to_sym
         post ':id/access_tokens/:token_id/rotate' do
           resource = find_source(source_type, params[:id])
 
@@ -154,14 +156,14 @@ module API
 
           if token
             response = if source_type == "project"
-                         ::ProjectAccessTokens::RotateService.new(current_user, token, resource)
-                                   .execute(declared_params)
+                         ::ProjectAccessTokens::RotateService.new(
+                           current_user, token, resource, declared_params).execute
                        elsif source_type == "group"
-                         ::GroupAccessTokens::RotateService.new(current_user, token, resource)
-                                   .execute(declared_params)
+                         ::GroupAccessTokens::RotateService.new(
+                           current_user, token, resource, declared_params).execute
                        else
-                         ::PersonalAccessTokens::RotateService.new(current_user, token)
-                                     .execute(declared_params)
+                         ::PersonalAccessTokens::RotateService.new(
+                           current_user, token, nil, declared_params).execute
                        end
 
             if response.success?

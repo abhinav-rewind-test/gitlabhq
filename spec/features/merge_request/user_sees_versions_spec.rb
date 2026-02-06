@@ -26,12 +26,12 @@ RSpec.describe 'Merge request > User sees versions', :js, feature_category: :cod
 
   shared_examples 'allows commenting' do |file_name:, line_text:, comment:|
     it do
-      page.within find_by_scrolling('.diff-file', text: file_name) do
+      page.within find_in_page_or_panel_by_scrolling('.diff-file', text: file_name) do
         line_code_element = page.find('.diff-grid-row', text: line_text)
-
         # scrolling to element's bottom is required in order for .hover action to work
         # otherwise, the element could be hidden underneath a sticky header
-        scroll_to_elements_bottom(line_code_element)
+        scroll_to_panel_elements_bottom(line_code_element)
+
         line_code_element.hover
         find_by_testid('left-comment-button', visible: true).click
 
@@ -150,7 +150,10 @@ RSpec.describe 'Merge request > User sees versions', :js, feature_category: :cod
         file: ".gitmodules",
         old_line: 4,
         new_line: 4,
-        diff_refs: merge_request_diff3.compare_with(merge_request_diff1.head_commit_sha).diff_refs
+        diff_refs: ::MergeRequests::MergeRequestDiffComparison
+                    .new(merge_request_diff3)
+                    .compare_with(merge_request_diff1.head_commit_sha)
+                    .diff_refs
       )
       outdated_diff_note = create(:diff_note_on_merge_request, project: project, noteable: merge_request, position: position)
       outdated_diff_note.position = outdated_diff_note.original_position
@@ -183,6 +186,32 @@ RSpec.describe 'Merge request > User sees versions', :js, feature_category: :cod
       file_name: '.gitmodules',
       line_text: '[submodule "gitlab-shell"]',
       comment: 'Typo, please fix.'
+  end
+
+  it 'downloads diff file from older version' do
+    visit diffs_project_merge_request_path(
+      project,
+      merge_request,
+      diff_id: merge_request_diff3.id,
+      start_sha: '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9',
+      format: :diff
+    )
+
+    changed_files = page.text.lines.count { |line| line.start_with? 'diff --git' }
+    expect(changed_files).to eq(4)
+  end
+
+  it 'downloads patch file from older version' do
+    visit diffs_project_merge_request_path(
+      project,
+      merge_request,
+      diff_id: merge_request_diff3.id,
+      start_sha: '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9',
+      format: :patch
+    )
+
+    changed_files = page.text.lines.count { |line| line.start_with? 'diff --git' }
+    expect(changed_files).to eq(4)
   end
 
   describe 'compare with same version' do
@@ -250,5 +279,9 @@ RSpec.describe 'Merge request > User sees versions', :js, feature_category: :cod
       file_name: 'files/ruby/popen.rb',
       line_text: 'RuntimeError',
       comment: 'Typo, please fix.'
+  end
+
+  def find_in_page_or_panel_by_scrolling(selector, **options)
+    find_in_panel_by_scrolling(selector, **options)
   end
 end

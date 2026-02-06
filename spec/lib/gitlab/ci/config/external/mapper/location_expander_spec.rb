@@ -21,23 +21,29 @@ RSpec.describe Gitlab::Ci::Config::External::Mapper::LocationExpander, feature_c
 
     context 'when there are project files' do
       let(:locations) do
-        [{ project: 'gitlab-org/gitlab-1', file: ['builds.yml', 'tests.yml'] },
-         { project: 'gitlab-org/gitlab-2', file: 'deploy.yml' }]
+        [
+          { project: 'gitlab-org/gitlab-1', file: ['builds.yml', 'tests.yml'] },
+          { project: 'gitlab-org/gitlab-2', file: 'deploy.yml' }
+        ]
       end
 
       it 'returns expanded locations' do
         is_expected.to eq(
-          [{ project: 'gitlab-org/gitlab-1', file: 'builds.yml' },
-           { project: 'gitlab-org/gitlab-1', file: 'tests.yml' },
-           { project: 'gitlab-org/gitlab-2', file: 'deploy.yml' }]
+          [
+            { project: 'gitlab-org/gitlab-1', file: 'builds.yml' },
+            { project: 'gitlab-org/gitlab-1', file: 'tests.yml' },
+            { project: 'gitlab-org/gitlab-2', file: 'deploy.yml' }
+          ]
         )
       end
     end
 
     context 'when there are local files' do
       let(:locations) do
-        [{ local: 'builds/*.yml' },
-         { local: 'tests.yml' }]
+        [
+          { local: 'builds/*.yml' },
+          { local: 'tests.yml' }
+        ]
       end
 
       let(:project_files) do
@@ -52,10 +58,33 @@ RSpec.describe Gitlab::Ci::Config::External::Mapper::LocationExpander, feature_c
 
       it 'returns expanded locations' do
         is_expected.to eq(
-          [{ local: 'builds/1.yml' },
-           { local: 'builds/2.yml' },
-           { local: 'tests.yml' }]
+          [
+            { local: 'builds/1.yml' },
+            { local: 'builds/2.yml' },
+            { local: 'tests.yml' }
+          ]
         )
+      end
+
+      context 'when wildcard paths include additional keys' do
+        let(:locations) do
+          [
+            { local: 'config/*.yml', inputs: { workflow: 'debug' }, rules: [{ if: '$VARIABLE' }] }
+          ]
+        end
+
+        let(:project_files) do
+          { 'config/build.yml' => 'a', 'config/test.yml' => 'b' }
+        end
+
+        it 'preserves additional keys like inputs and rules for each expanded file' do
+          is_expected.to eq(
+            [
+              { local: 'config/build.yml', inputs: { workflow: 'debug' }, rules: [{ if: '$VARIABLE' }] },
+              { local: 'config/test.yml', inputs: { workflow: 'debug' }, rules: [{ if: '$VARIABLE' }] }
+            ]
+          )
+        end
       end
     end
 

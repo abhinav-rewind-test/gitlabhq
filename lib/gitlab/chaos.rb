@@ -11,7 +11,7 @@ module Gitlab
 
       retainer = []
       # Add `n` 1mb chunks of memory to the retainer array
-      memory_mb.times { retainer << "x" * 1.megabyte }
+      memory_mb.times { retainer << ("x" * 1.megabyte) }
 
       duration_left = [start_time + duration_s - Time.now, 0].max
       Kernel.sleep(duration_left)
@@ -41,6 +41,13 @@ module Gitlab
     # sleep will sleep for the specified duration
     def self.sleep(duration_s)
       Kernel.sleep(duration_s)
+    end
+
+    def self.db_sleep(duration_s)
+      raise ArgumentError, "Duration must be a positive number" unless duration_s.is_a?(Numeric) && duration_s > 0
+      raise ArgumentError, "Duration cannot exceed 300 seconds" if duration_s > 300
+
+      ApplicationRecord.connection.execute(ApplicationRecord.sanitize_sql_array(["SELECT PG_SLEEP(?)", duration_s]))
     end
 
     # Kill will send the given signal to the current process.

@@ -142,11 +142,7 @@ RSpec.describe Projects::MergeRequests::DiffsController, feature_category: :code
   let(:merge_request) { create(:merge_request_with_diffs, target_project: project, source_project: project) }
 
   let_it_be_with_reload(:user) { create(:user) }
-  let_it_be(:other_project) { create(:project) }
-
-  before_all do
-    other_project.add_maintainer(user)
-  end
+  let_it_be(:other_project) { create(:project, maintainers: user) }
 
   before do
     project.add_maintainer(user) if maintainer
@@ -154,12 +150,12 @@ RSpec.describe Projects::MergeRequests::DiffsController, feature_category: :code
   end
 
   describe 'GET show' do
-    def go(extra_params = {})
+    def go(extra_params = {}, format: 'json')
       params = {
         namespace_id: project.namespace.to_param,
         project_id: project,
         id: merge_request.iid,
-        format: 'json'
+        format: format
       }
 
       get :show, params: params.merge(extra_params)
@@ -177,6 +173,22 @@ RSpec.describe Projects::MergeRequests::DiffsController, feature_category: :code
           end
 
           go
+        end
+
+        describe 'as diff' do
+          it 'triggers workhorse to serve the request' do
+            go(format: :diff)
+
+            expect(response.headers[Gitlab::Workhorse::SEND_DATA_HEADER]).to start_with('git-diff:')
+          end
+        end
+
+        describe 'as patch' do
+          it 'triggers workhorse to serve the request' do
+            go(format: :patch)
+
+            expect(response.headers[Gitlab::Workhorse::SEND_DATA_HEADER]).to start_with('git-format-patch:')
+          end
         end
       end
 
@@ -739,22 +751,9 @@ RSpec.describe Projects::MergeRequests::DiffsController, feature_category: :code
       end
     end
 
-    context 'when collapse_generated_diff_files FF is enabled' do
-      it 'sets generated' do
-        go
-        expect(json_response["diff_files"][0]["viewer"]["generated"]).to eq(false)
-      end
-    end
-
-    context 'when collapse_generated_diff_files FF is disabled' do
-      before do
-        stub_feature_flags(collapse_generated_diff_files: false)
-      end
-
-      it 'sets generated as nil' do
-        go
-        expect(json_response["diff_files"][0]["viewer"]["generated"]).to be_nil
-      end
+    it 'sets generated' do
+      go
+      expect(json_response["diff_files"][0]["viewer"]["generated"]).to eq(false)
     end
   end
 end

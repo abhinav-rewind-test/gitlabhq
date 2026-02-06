@@ -13,7 +13,24 @@ class SnippetRepository < ApplicationRecord
 
   belongs_to :snippet, inverse_of: :snippet_repository
 
+  belongs_to :organization,
+    class_name: 'Organizations::Organization',
+    foreign_key: 'snippet_organization_id',
+    inverse_of: :snippet_repositories,
+    optional: true
+
+  belongs_to :project,
+    class_name: 'Project',
+    foreign_key: 'snippet_project_id',
+    inverse_of: :snippet_repositories,
+    optional: true
+
   delegate :repository, :repository_storage, to: :snippet
+
+  before_validation :ensure_sharding_keys
+
+  validates_with ExactlyOnePresentValidator, fields: :sharding_keys,
+    message: ->(_fields) { _('must belong to either an organization or a project') }
 
   class << self
     def find_snippet(disk_path)
@@ -43,13 +60,25 @@ class SnippetRepository < ApplicationRecord
 
   private
 
+  def sharding_keys
+    [:organization, :project]
+  end
+
+  def ensure_sharding_keys
+    compact_sharding_keys = sharding_keys.filter_map { |key| public_send(key) } # rubocop:disable GitlabSecurity/PublicSend -- values come from the sharding_keys method, not runtime values
+    return if compact_sharding_keys.size == 1
+
+    self.organization = snippet&.organization if snippet&.organization_id.present?
+    self.project = snippet&.project if snippet&.project_id.present?
+  end
+
   def capture_git_error(&block)
     yield block
   rescue Gitlab::Git::Index::IndexError,
-         Gitlab::Git::CommitError,
-         Gitlab::Git::PreReceiveError,
-         Gitlab::Git::CommandError,
-         ArgumentError => e
+    Gitlab::Git::CommitError,
+    Gitlab::Git::PreReceiveError,
+    Gitlab::Git::CommandError,
+    ArgumentError => e
 
     logger.error(message: "Snippet git error. Reason: #{e.message}", snippet: snippet.id)
 

@@ -10,16 +10,21 @@ module Types
         graphql_name 'WorkItemWidgetAwardEmoji'
         description 'Represents the emoji reactions widget'
 
-        implements Types::WorkItems::WidgetInterface
+        implements ::Types::WorkItems::WidgetInterface
 
         field :award_emoji,
           ::Types::AwardEmojis::AwardEmojiType.connection_type,
           null: true,
-          description: 'Emoji reactions on the work item.'
+          description: 'Emoji reactions on the work item.',
+          skip_type_authorization: [:read_emoji]
         field :downvotes,
           GraphQL::Types::Int,
           null: false,
           description: 'Number of downvotes the work item has received.'
+        field :new_custom_emoji_path,
+          GraphQL::Types::String,
+          null: true,
+          description: 'Path to create a new custom emoji.'
         field :upvotes,
           GraphQL::Types::Int,
           null: false,
@@ -34,8 +39,16 @@ module Types
           BatchLoaders::AwardEmojiVotesBatchLoader
             .load_upvotes(object.work_item, awardable_class: 'Issue')
         end
+
+        def new_custom_emoji_path
+          return unless context[:current_user]
+
+          object.new_custom_emoji_path(context[:current_user])
+        end
       end
       # rubocop:enable Graphql/AuthorizeTypes
     end
   end
 end
+
+Types::WorkItems::Widgets::AwardEmojiType.prepend_mod

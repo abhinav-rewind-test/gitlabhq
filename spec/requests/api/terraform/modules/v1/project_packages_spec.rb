@@ -24,7 +24,7 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
     let(:url) { api("/projects/#{project.id}/packages/terraform/modules/mymodule/mysystem/1.0.0/file/authorize") }
     let(:headers) { {} }
 
-    subject { put(url, headers: headers) }
+    subject(:api_request) { put(url, headers: headers) }
 
     context 'with valid project' do
       where(:visibility, :user_role, :member, :token_header, :token_type, :shared_examples_name, :expected_status) do
@@ -79,6 +79,36 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
         it_behaves_like params[:shared_examples_name], params[:user_role], params[:expected_status], params[:member]
       end
     end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { workhorse_headers.merge('PRIVATE-TOKEN' => personal_access_token.token) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_terraform_module do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:headers) { workhorse_headers.merge('PRIVATE-TOKEN' => pat.token) }
+      let(:request) { api_request }
+    end
+
+    context 'for use_final_store_path' do
+      let(:headers) { workhorse_headers.merge('PRIVATE-TOKEN' => personal_access_token.token) }
+
+      before do
+        project.add_developer(user)
+      end
+
+      it 'sends use_final_store_path with true' do
+        expect(::Packages::PackageFileUploader).to receive(:workhorse_authorize).with(
+          hash_including(use_final_store_path: true, final_store_path_config: { root_hash: project.id })
+        ).and_call_original
+
+        api_request
+      end
+    end
   end
 
   describe 'PUT /api/v4/projects/:project_id/packages/terraform/modules/:module_name/:module_system/:module_version/file' do
@@ -106,7 +136,7 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
     shared_examples 'creating a package' do
       it 'creates a package' do
         expect { api_request }
-          .to change { project.packages.count }.by(1)
+          .to change { ::Packages::TerraformModule::Package.for_projects(project).count }.by(1)
           .and change { Packages::PackageFile.count }.by(1)
         expect(response).to have_gitlab_http_status(:created)
       end
@@ -115,8 +145,8 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
     shared_examples 'not creating a package' do |expected_status|
       it 'does not create a package' do
         expect { api_request }
-          .to change { project.packages.count }.by(0)
-          .and change { Packages::PackageFile.count }.by(0)
+          .to not_change { ::Packages::TerraformModule::Package.for_projects(project).count }
+          .and not_change { Packages::PackageFile.count }
         expect(response).to have_gitlab_http_status(expected_status)
       end
     end
@@ -169,19 +199,18 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
       with_them do
         let(:user_headers) { user_role == :anonymous ? {} : { token_header => token } }
         let(:snowplow_gitlab_standard_context) do
-          { project: project, namespace: project.namespace, user: snowplow_user,
-            property: 'i_package_terraform_module_user' }
-        end
+          context = { project: project, namespace: project.namespace, property: 'i_package_terraform_module_user' }
 
-        let(:snowplow_user) do
           case token_type
           when :deploy_token
-            deploy_token
+            # Deploy tokens should not be tracked as users
           when :job_token
-            job.user
+            context[:user] = job.user
           else
-            user
+            context[:user] = user
           end
+
+          context
         end
 
         before do
@@ -262,6 +291,20 @@ RSpec.describe API::Terraform::Modules::V1::ProjectPackages, feature_category: :
           end
         end
       end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { workhorse_headers.merge('PRIVATE-TOKEN' => personal_access_token.token) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :upload_terraform_module do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:headers) { workhorse_headers.merge('PRIVATE-TOKEN' => pat.token) }
+      let(:request) { api_request }
     end
   end
 end

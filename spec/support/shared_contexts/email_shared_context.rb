@@ -170,15 +170,21 @@ RSpec.shared_examples 'note handler shared examples' do |forwardable|
 
     it 'adds all attachments' do
       expect_next_instance_of(Gitlab::Email::AttachmentUploader) do |uploader|
-        expect(uploader).to receive(:execute).with(upload_parent: project, uploader_class: FileUploader).and_return(
-          [
-            {
-              url: 'uploads/image.png',
-              alt: 'image',
-              markdown: markdown
-            }
-          ]
-        )
+        expect(uploader).to receive(:execute)
+                            .with(
+                              upload_parent: project,
+                              uploader_class: FileUploader,
+                              author: user
+                            )
+                            .and_return(
+                              [
+                                {
+                                  url: 'uploads/image.png',
+                                  alt: 'image',
+                                  markdown: markdown
+                                }
+                              ]
+                            )
       end
 
       receiver.execute
@@ -191,19 +197,19 @@ RSpec.shared_examples 'note handler shared examples' do |forwardable|
 
   context 'when the service desk' do
     let(:project) { create(:project, :public, service_desk_enabled: true) }
-    let(:support_bot) { Users::Internal.support_bot }
+    let(:support_bot) { ::Users::Internal.in_organization(project.organization_id).support_bot }
     let(:noteable) { create(:issue, project: project, author: support_bot, title: 'service desk issue') }
     let!(:note) { create(:note, project: project, noteable: noteable) }
     let(:email_raw) { with_quick_actions }
 
     let!(:sent_notification) do
-      allow(Gitlab::ServiceDesk).to receive(:enabled?).with(project: project).and_return(true)
-      SentNotification.record_note(note, support_bot.id, mail_key)
+      allow(::ServiceDesk).to receive(:enabled?).with(project).and_return(true)
+      SentNotification.record_note(note, support_bot.id, { reply_key: mail_key })
     end
 
     context 'is enabled' do
       before do
-        allow(Gitlab::ServiceDesk).to receive(:enabled?).with(project: project).and_return(true)
+        allow(::ServiceDesk).to receive(:enabled?).with(project).and_return(true)
         project.project_feature.update!(issues_access_level: issues_access_level)
       end
 
@@ -267,8 +273,8 @@ RSpec.shared_examples 'note handler shared examples' do |forwardable|
 
     context 'is disabled', unless: forwardable do
       before do
-        allow(Gitlab::ServiceDesk).to receive(:enabled?).and_return(false)
-        allow(Gitlab::ServiceDesk).to receive(:enabled?).with(project: project).and_return(false)
+        allow(::ServiceDesk).to receive(:enabled?).and_return(false)
+        allow(::ServiceDesk).to receive(:enabled?).with(project).and_return(false)
       end
 
       it 'does not create a comment' do

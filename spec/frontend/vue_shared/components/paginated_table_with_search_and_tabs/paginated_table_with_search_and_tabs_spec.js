@@ -1,4 +1,4 @@
-import { GlAlert, GlBadge, GlPagination, GlTabs, GlTab } from '@gitlab/ui';
+import { GlAlert, GlBadge, GlKeysetPagination, GlTabs, GlTab } from '@gitlab/ui';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import Tracking from '~/tracking';
@@ -12,7 +12,6 @@ import {
 import FilteredSearchBar from '~/vue_shared/components/filtered_search_bar/filtered_search_bar_root.vue';
 import UserToken from '~/vue_shared/components/filtered_search_bar/tokens/user_token.vue';
 import PageWrapper from '~/vue_shared/components/paginated_table_with_search_and_tabs/paginated_table_with_search_and_tabs.vue';
-import mockItems from './mocks/items.json';
 import mockFilters from './mocks/items_filters.json';
 
 const EmptyStateSlot = {
@@ -64,7 +63,6 @@ describe('AlertManagementEmptyState', () => {
         projectPath: '/link',
       },
       propsData: {
-        items: [],
         itemsCount: {},
         pageInfo: {},
         statusTabs: [],
@@ -93,10 +91,9 @@ describe('AlertManagementEmptyState', () => {
   const EmptyState = () => wrapper.find('.empty-state');
   const ItemsTable = () => wrapper.find('.gl-table');
   const ErrorAlert = () => wrapper.findComponent(GlAlert);
-  const Pagination = () => wrapper.findComponent(GlPagination);
   const ActionButton = () => wrapper.find('.header-actions > button');
   const findFilteredSearchBar = () => wrapper.findComponent(FilteredSearchBar);
-  const findPagination = () => wrapper.findComponent(GlPagination);
+  const findPagination = () => wrapper.findComponent(GlKeysetPagination);
   const findStatusFilterTabs = () => wrapper.findAllComponents(GlTab);
   const findStatusTabs = () => wrapper.findComponent(GlTabs);
   const findStatusFilterBadge = () => wrapper.findAllComponents(GlBadge);
@@ -156,7 +153,7 @@ describe('AlertManagementEmptyState', () => {
 
     it('renders a table of items if items are present', () => {
       mountComponent({
-        props: { showItems: true, items: mockItems },
+        props: { showItems: true },
       });
 
       expect(ItemsTable().exists()).toBe(true);
@@ -167,7 +164,7 @@ describe('AlertManagementEmptyState', () => {
         props: { pageInfo: { hasNextPage: true } },
       });
 
-      expect(Pagination().exists()).toBe(true);
+      expect(findPagination().exists()).toBe(true);
     });
 
     it('renders the filter set with the tokens according to the prop filterSearchTokens', () => {
@@ -182,7 +179,7 @@ describe('AlertManagementEmptyState', () => {
   describe('Status Filter Tabs', () => {
     beforeEach(() => {
       mountComponent({
-        props: { items: mockItems, itemsCount, statusTabs: ITEMS_STATUS_TABS },
+        props: { itemsCount, statusTabs: ITEMS_STATUS_TABS },
       });
     });
 
@@ -210,78 +207,57 @@ describe('AlertManagementEmptyState', () => {
     beforeEach(() => {
       mountComponent({
         props: {
-          items: mockItems,
           itemsCount,
           statusTabs: ITEMS_STATUS_TABS,
-          pageInfo: { hasNextPage: true },
+          pageInfo: {
+            hasNextPage: true,
+            hasPreviousPage: false,
+            startCursor: 'start-cursor',
+            endCursor: 'end-cursor',
+          },
         },
       });
     });
 
-    it('should render pagination', () => {
-      expect(wrapper.findComponent(GlPagination).exists()).toBe(true);
-    });
-
-    describe('prevPage', () => {
-      it('returns prevPage button', async () => {
-        findPagination().vm.$emit('input', 3);
-
-        await nextTick();
-        expect(findPagination().findAll('.page-item').at(0).text()).toBe('Previous');
-      });
-
-      it('returns prevPage number', async () => {
-        findPagination().vm.$emit('input', 3);
-
-        await nextTick();
-        expect(findPagination().props('prevPage')).toBe(2);
-      });
-
-      it('returns 0 when it is the first page', async () => {
-        findPagination().vm.$emit('input', 1);
-
-        await nextTick();
-        expect(findPagination().props('prevPage')).toBe(0);
+    it('should render pagination with correct props', () => {
+      expect(findPagination().exists()).toBe(true);
+      expect(findPagination().props()).toMatchObject({
+        hasNextPage: true,
+        hasPreviousPage: false,
       });
     });
 
-    describe('nextPage', () => {
-      it('returns nextPage button', async () => {
-        findPagination().vm.$emit('input', 3);
-
-        await nextTick();
-        expect(findPagination().findAll('.page-item').at(1).text()).toBe('Next');
-      });
-
-      it('returns nextPage number', async () => {
+    it.each`
+      event     | pageInfo                                                                                               | expectedCursor
+      ${'next'} | ${{ hasNextPage: true, hasPreviousPage: false, startCursor: 'start-cursor', endCursor: 'end-cursor' }} | ${{ nextPageCursor: 'end-cursor' }}
+      ${'prev'} | ${{ hasNextPage: true, hasPreviousPage: true, startCursor: 'start-cursor', endCursor: 'end-cursor' }}  | ${{ prevPageCursor: 'start-cursor' }}
+    `(
+      'emits page-changed event with cursor when $event is clicked',
+      async ({ event, pageInfo, expectedCursor }) => {
         mountComponent({
           props: {
-            items: mockItems,
             itemsCount,
             statusTabs: ITEMS_STATUS_TABS,
-            pageInfo: { hasNextPage: true },
+            pageInfo,
           },
         });
-        findPagination().vm.$emit('input', 1);
 
-        await nextTick();
-        expect(findPagination().props('nextPage')).toBe(2);
-      });
+        const emittedBefore = wrapper.emitted('page-changed')?.length || 0;
 
-      it('returns `null` when currentPage is already last page', async () => {
-        findStatusTabs().vm.$emit('input', 1);
-        findPagination().vm.$emit('input', 1);
+        findPagination().vm.$emit(event);
         await nextTick();
-        expect(findPagination().props('nextPage')).toBeNull();
-      });
-    });
+
+        const emittedEvents = wrapper.emitted('page-changed');
+        expect(emittedEvents.length).toBeGreaterThan(emittedBefore);
+        expect(emittedEvents[emittedEvents.length - 1][0]).toMatchObject(expectedCursor);
+      },
+    );
   });
 
   describe('Filtered search component', () => {
     beforeEach(() => {
       mountComponent({
         props: {
-          items: mockItems,
           itemsCount,
           statusTabs: ITEMS_STATUS_TABS,
           filterSearchKey: 'items',

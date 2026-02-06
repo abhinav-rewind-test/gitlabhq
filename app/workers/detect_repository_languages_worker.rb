@@ -3,14 +3,14 @@
 class DetectRepositoryLanguagesWorker # rubocop:disable Scalability/IdempotentWorker
   include ApplicationWorker
 
-  data_consistency :always
+  data_consistency :sticky
   include ExceptionBacktrace
   include ExclusiveLeaseGuard
 
   sidekiq_options retry: 1
   feature_category :source_code_management
 
-  LEASE_TIMEOUT = 300
+  LEASE_TIMEOUT = 600
 
   attr_reader :project
 

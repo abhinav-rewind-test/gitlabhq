@@ -57,22 +57,6 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
           expect(fork_button['class']).to include('disabled')
         end
       end
-
-      context 'user has exceeded personal project limit' do
-        before do
-          user.update!(projects_limit: 0)
-        end
-
-        it 'disables fork button on project page' do
-          visit project_path(project)
-
-          path = new_project_fork_path(project)
-
-          fork_button = find_link 'Fork'
-          expect(fork_button['href']).to include(path)
-          expect(fork_button['class']).to include('disabled')
-        end
-      end
     end
 
     context 'when the user has not already forked the project', :js do
@@ -96,10 +80,10 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
         :forking_access_level, forking_access_level)
     end
 
-    context 'forking is enabled' do
+    context 'forking is enabled', :js do
       let(:forking_access_level) { ProjectFeature::ENABLED }
 
-      it 'enables fork button', :js do
+      it 'enables fork button' do
         visit project_path(project)
 
         fork_button = find_link 'Fork'
@@ -109,7 +93,6 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
       it 'renders new project fork page' do
         visit new_project_fork_path(project)
 
-        expect(page.status_code).to eq(200)
         expect(page).to have_text(fork_page_text)
       end
     end
@@ -157,12 +140,12 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
         end
       end
 
-      context 'user is a team member' do
+      context 'user is a team member', :js do
         before do
           project.add_developer(user)
         end
 
-        it 'enables fork button', :js do
+        it 'enables fork button' do
           visit project_path(project)
 
           fork_button = find_link 'Fork'
@@ -174,7 +157,6 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
         it 'renders new project fork page' do
           visit new_project_fork_path(project)
 
-          expect(page.status_code).to eq(200)
           expect(page).to have_text(fork_page_text)
         end
       end
@@ -225,8 +207,8 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
     it 'shows the filled in info forked project on the forks page' do
       fork_name = 'some-name'
       visit new_project_fork_path(project)
-      fill_in('fork-name', with: fork_name, fill_options: { clear: :backspace })
-      fill_in('fork-slug', with: fork_name, fill_options: { clear: :backspace })
+      fill_in('fork-name', with: fork_name)
+      fill_in('fork-slug', with: fork_name)
       submit_form
       wait_for_requests
 
@@ -237,7 +219,8 @@ RSpec.describe 'Project fork', feature_category: :source_code_management do
       end
     end
 
-    context 'when user is a maintainer in multiple groups' do
+    context 'when user is a maintainer in multiple groups',
+      quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/444482' do
       before do
         create(:group_member, :maintainer, user: user, group: group2)
       end

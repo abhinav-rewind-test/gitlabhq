@@ -8,18 +8,6 @@ module ContainerRegistry
     CANCEL_RESPONSE_STATUS_HEADER = 'status'
     GITLAB_REPOSITORIES_PATH = '/gitlab/v1/repositories'
 
-    IMPORT_RESPONSES = {
-      200 => :already_imported,
-      202 => :ok,
-      400 => :bad_request,
-      401 => :unauthorized,
-      404 => :not_found,
-      409 => :already_being_imported,
-      424 => :pre_import_failed,
-      425 => :already_being_imported,
-      429 => :too_many_imports
-    }.freeze
-
     RENAME_RESPONSES = {
       202 => :accepted,
       204 => :ok,
@@ -27,7 +15,8 @@ module ContainerRegistry
       401 => :unauthorized,
       404 => :not_found,
       409 => :name_taken,
-      422 => :too_many_subrepositories
+      422 => :too_many_subrepositories,
+      501 => :rename_not_supported
     }.freeze
 
     REGISTRY_GITLAB_V1_API_FEATURE = 'gitlab_v1_api'
@@ -39,9 +28,11 @@ module ContainerRegistry
     UnsuccessfulResponseError = Class.new(StandardError)
 
     def self.supports_gitlab_api?
-      with_dummy_client(return_value_if_disabled: false) do |client|
-        client.supports_gitlab_api?
-      end
+      with_dummy_client(return_value_if_disabled: false, &:supports_gitlab_api?)
+    end
+
+    def self.statistics
+      with_dummy_client(return_value_if_disabled: {}, token_config: { type: :statistics_token }, &:statistics)
     end
 
     def self.deduplicated_size(path)
@@ -67,11 +58,37 @@ module ContainerRegistry
       end
     end
 
-    def self.rename_base_repository_path(path, name:, dry_run: false)
-      downcased_path = path&.downcase
+    def self.rename_base_repository_path(path, name:, project:, dry_run: false)
+      raise ArgumentError, 'incomplete parameters given' unless path.present? && name.present?
 
-      with_dummy_client(token_config: { type: :push_pull_nested_repositories_token, path: downcased_path }) do |client|
-        client.rename_base_repository_path(downcased_path, name: name&.downcase, dry_run: dry_run)
+      downcased_path = path.downcase
+
+      token_config = {
+        type: :push_pull_nested_repositories_token,
+        path: downcased_path,
+        project: project
+      }
+
+      with_dummy_client(token_config:) do |client|
+        client.rename_base_repository_path(downcased_path, name: name.downcase, dry_run: dry_run)
+      end
+    end
+
+    def self.move_repository_to_namespace(path, namespace:, project:, dry_run: false)
+      raise ArgumentError, 'incomplete parameters given' unless path.present? && namespace.present?
+
+      downcased_path = path.downcase
+      downcased_namespace = namespace.downcase
+
+      token_config = {
+        type: :push_pull_move_repositories_access_token,
+        path: downcased_path,
+        new_path: downcased_namespace,
+        project: project
+      }
+
+      with_dummy_client(token_config:) do |client|
+        client.move_repository_to_namespace(downcased_path, namespace: downcased_namespace, dry_run: dry_run)
       end
     end
 
@@ -118,46 +135,6 @@ module ContainerRegistry
       false
     end
 
-    # Deprecated. Will be removed as part of https://gitlab.com/gitlab-org/gitlab/-/issues/409873.
-    def pre_import_repository(path)
-      response = start_import_for(path, pre: true)
-      IMPORT_RESPONSES.fetch(response.status, :error)
-    end
-
-    # Deprecated. Will be removed as part of https://gitlab.com/gitlab-org/gitlab/-/issues/409873.
-    def import_repository(path)
-      response = start_import_for(path, pre: false)
-      IMPORT_RESPONSES.fetch(response.status, :error)
-    end
-
-    # Deprecated. Will be removed as part of https://gitlab.com/gitlab-org/gitlab/-/issues/409873.
-    def cancel_repository_import(path, force: false)
-      response = with_import_token_faraday do |faraday_client|
-        faraday_client.delete(import_url_for(path)) do |req|
-          req.params['force'] = true if force
-        end
-      end
-
-      status = IMPORT_RESPONSES.fetch(response.status, :error)
-      actual_state = response.body[CANCEL_RESPONSE_STATUS_HEADER]
-
-      { status: status, migration_state: actual_state }
-    end
-
-    # Deprecated. Will be removed as part of https://gitlab.com/gitlab-org/gitlab/-/issues/409873.
-    def import_status(path)
-      with_import_token_faraday do |faraday_client|
-        response = faraday_client.get(import_url_for(path))
-
-        # Temporary solution for https://gitlab.com/gitlab-org/gitlab/-/issues/356085#solutions
-        # this will trigger a `retry_pre_import`
-        break 'pre_import_failed' unless response.success?
-
-        body_hash = response_body(response)
-        body_hash&.fetch('status') || 'error'
-      end
-    end
-
     # https://gitlab.com/gitlab-org/container-registry/-/blob/master/docs/spec/gitlab/api.md#get-repository-details
     def repository_details(path, sizing: nil)
       with_token_faraday do |faraday_client|
@@ -172,7 +149,7 @@ module ContainerRegistry
     end
 
     # https://gitlab.com/gitlab-org/container-registry/-/blob/master/docs/spec/gitlab/api.md#list-repository-tags
-    def tags(path, page_size: 100, last: nil, before: nil, name: nil, sort: nil, referrers: nil)
+    def tags(path, page_size: 100, last: nil, before: nil, name: nil, sort: nil, referrers: nil, referrer_type: nil)
       limited_page_size = [page_size, MAX_TAGS_PAGE_SIZE].min
       with_token_faraday do |faraday_client|
         url = "#{GITLAB_REPOSITORIES_PATH}/#{path}/tags/list/"
@@ -183,6 +160,7 @@ module ContainerRegistry
           req.params['name'] = name if name.present?
           req.params['sort'] = sort if sort
           req.params['referrers'] = 'true' if referrers
+          req.params['referrer_type'] = referrer_type if referrer_type
         end
 
         unless response.success?
@@ -240,11 +218,41 @@ module ContainerRegistry
     # with a successful rename, it will be 'group/subgroup/newname'
     # https://gitlab.com/gitlab-org/container-registry/-/blob/master/docs/spec/gitlab/api.md#rename-base-repository
     def rename_base_repository_path(path, name:, dry_run: false)
+      patch_repository(path, { name: name }, dry_run: dry_run)
+    end
+
+    # Given a path 'group/subgroup/project' and a namespace 'group/subgroup_2'
+    # with a successful move, it will be 'group/subgroup_2/project'
+    # https://gitlab.com/gitlab-org/container-registry/-/blob/master/docs/spec/gitlab/api.md#renamemove-origin-repository
+    def move_repository_to_namespace(path, namespace:, dry_run: false)
+      patch_repository(path, { namespace: namespace }, dry_run: dry_run)
+    end
+
+    # https://gitlab.com/gitlab-org/container-registry/-/blob/master/docs/spec/gitlab/api.md?ref_type=heads#get-registry-statistics
+    # example output: {"release"=>{"ext_features"=>"tag_delete", "version"=>"v4.20"}, "database"=>{"enabled"=>true}}
+    def statistics
+      with_token_faraday do |faraday_client|
+        req = faraday_client.get('/gitlab/v1/statistics/')
+        result = response_body(req)
+
+        break {} unless result.present?
+
+        {
+          features: result.dig('release', 'ext_features')&.split(',') || [],
+          version: result.dig('release', 'version'),
+          db_enabled: result.dig('database', 'enabled')
+        }
+      end
+    end
+
+    private
+
+    def patch_repository(path, body, dry_run: false)
       with_token_faraday do |faraday_client|
         url = "#{GITLAB_REPOSITORIES_PATH}/#{path}/"
         response = faraday_client.patch(url) do |req|
           req.params['dry_run'] = dry_run
-          req.body = { name: name }
+          req.body = body
         end
 
         unless response.success?
@@ -260,33 +268,8 @@ module ContainerRegistry
       end
     end
 
-    private
-
-    def start_import_for(path, pre:)
-      with_import_token_faraday do |faraday_client|
-        faraday_client.put(import_url_for(path)) do |req|
-          req.params['import_type'] = pre ? 'pre' : 'final'
-        end
-      end
-    end
-
     def with_token_faraday
       yield faraday
-    end
-
-    def with_import_token_faraday
-      yield faraday_with_import_token
-    end
-
-    def faraday_with_import_token(timeout_enabled: true)
-      @faraday_with_import_token ||= faraday_base(timeout_enabled: timeout_enabled) do |conn|
-        # initialize the connection with the :import_token instead of :token
-        initialize_connection(conn, @options.merge(token: @options[:import_token]), &method(:configure_connection))
-      end
-    end
-
-    def import_url_for(path)
-      "/gitlab/v1/import/#{path}/"
     end
 
     # overrides the default configuration
@@ -297,3 +280,5 @@ module ContainerRegistry
     end
   end
 end
+
+ContainerRegistry::GitlabApiClient.prepend_mod

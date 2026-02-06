@@ -1,31 +1,34 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Uploads administration
+description: Administer uploads storage.
 ---
 
-# Uploads administration
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 Uploads represent all user data that may be sent to GitLab as a single file. For example, avatars and note attachments are uploads. Uploads are integral to GitLab functionality and therefore cannot be disabled.
 
-NOTE:
-Attachments added to comments or descriptions are deleted **only** when the parent project or group
-is deleted. Attachments remain in file storage even when the comment or resource (like issue, merge
-request, epic) where they were uploaded is deleted.
+> [!note]
+> Attachments added to comments or descriptions are deleted **only** when the parent project or group
+> is deleted. Attachments remain in file storage even when the comment or resource (like issue, merge
+> request, epic) where they were uploaded is deleted.
 
 ## Using local storage
 
 This is the default configuration. To change the location where the uploads are
 stored locally, use the steps in this section based on your installation method:
 
-NOTE:
-For historical reasons, uploads for the whole instance (for example the [favicon](../administration/appearance.md#customize-the-favicon)) are stored in a base directory,
-which by default is `uploads/-/system`. Changing the base
-directory on an existing GitLab installation is strongly discouraged.
+> [!note]
+> For historical reasons, uploads for the whole instance (for example the [favicon](appearance.md#customize-the-favicon)) are stored in a base directory,
+> which by default is `uploads/-/system`. Changing the base
+> directory on an existing GitLab installation is strongly discouraged.
 
 For Linux package installations:
 
@@ -60,9 +63,12 @@ _The uploads are stored by default in
 
 ## Using object storage
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 If you don't want to use the local disk where GitLab is installed to store the
 uploads, you can use an object storage provider like AWS S3 instead.
@@ -72,9 +78,9 @@ This configuration relies on valid AWS credentials to be configured already.
 
 ### Object Storage Settings
 
-In GitLab 13.2 and later, you should use the
-[consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form).
-This section describes the earlier configuration format.
+This section describes the storage-specific configuration format.
+You should use the
+[consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form) instead.
 
 For self-compiled installations, the following settings are nested under `uploads:` and then `object_store:`. On Linux
 package installations, they are prefixed by `uploads_object_store_`.

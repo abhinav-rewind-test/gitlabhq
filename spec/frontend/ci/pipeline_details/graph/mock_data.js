@@ -1,6 +1,12 @@
+// Fixture located at spec/frontend/fixtures/pipeline_details.rb
 import mockPipelineResponse from 'test_fixtures/pipelines/pipeline_details.json';
 import { unwrapPipelineData } from '~/ci/pipeline_details/graph/utils';
-import { BUILD_KIND, BRIDGE_KIND, RETRY_ACTION_TITLE } from '~/ci/pipeline_details/graph/constants';
+import {
+  BUILD_KIND,
+  BRIDGE_KIND,
+  RETRY_ACTION_TITLE,
+  MANUAL_ACTION_TITLE,
+} from '~/ci/pipeline_details/graph/constants';
 
 // We mock this instead of using fixtures for performance reason.
 const mockPipelineResponseCopy = JSON.parse(JSON.stringify(mockPipelineResponse));
@@ -10,17 +16,43 @@ const groups = new Array(100).fill({
 mockPipelineResponseCopy.data.project.pipeline.stages.nodes[0].groups.nodes = groups;
 export const mockPipelineResponseWithTooManyJobs = mockPipelineResponseCopy;
 
+export const mockPipelinePermissions = {
+  data: {
+    project: {
+      __typename: 'Project',
+      id: 'gid://gitlab/Project/1',
+      pipeline: {
+        __typename: 'Pipeline',
+        id: 'gid://gitlab/Ci::Pipeline/123',
+        userPermissions: {
+          __typename: 'PipelinePermissions',
+          updatePipeline: true,
+        },
+        downstream: {
+          __typename: 'PipelineConnection',
+          nodes: [],
+        },
+        upstream: {
+          __typename: 'Pipeline',
+          id: 'gid://gitlab/Ci::Pipeline/122',
+          userPermissions: {
+            __typename: 'PipelinePermissions',
+            updatePipeline: false,
+          },
+        },
+      },
+    },
+  },
+};
+
 export const downstream = {
   nodes: [
     {
       id: 175,
-      iid: '31',
+      iid: '38',
       path: '/root/elemenohpee/-/pipelines/175',
       retryable: true,
       cancelable: false,
-      userPermissions: {
-        updatePipeline: true,
-      },
       status: {
         id: '70',
         group: 'success',
@@ -50,9 +82,6 @@ export const downstream = {
       path: '/root/abcd-dag/-/pipelines/181',
       retryable: true,
       cancelable: false,
-      userPermissions: {
-        updatePipeline: true,
-      },
       status: {
         id: '72',
         group: 'success',
@@ -85,9 +114,6 @@ export const upstream = {
   path: '/root/abcd-dag/-/pipelines/161',
   retryable: true,
   cancelable: false,
-  userPermissions: {
-    updatePipeline: true,
-  },
   status: {
     id: '74',
     group: 'success',
@@ -118,16 +144,9 @@ export const wrappedPipelineReturn = {
         iid: '38',
         complete: true,
         usesNeeds: true,
-        userPermissions: {
-          __typename: 'PipelinePermissions',
-          updatePipeline: true,
-        },
         downstream: {
           retryable: true,
           cancelable: false,
-          userPermissions: {
-            updatePipeline: true,
-          },
           __typename: 'PipelineConnection',
           nodes: [],
         },
@@ -137,9 +156,6 @@ export const wrappedPipelineReturn = {
           path: '/root/elemenohpee/-/pipelines/174',
           retryable: true,
           cancelable: false,
-          userPermissions: {
-            updatePipeline: true,
-          },
           __typename: 'Pipeline',
           status: {
             __typename: 'DetailedStatus',
@@ -198,15 +214,12 @@ export const wrappedPipelineReturn = {
                           id: '83',
                           kind: BUILD_KIND,
                           name: 'build_n',
-                          scheduledAt: null,
                           needs: {
                             __typename: 'CiBuildNeedConnection',
                             nodes: [],
                           },
-                          previousStageJobsOrNeeds: {
-                            __typename: 'CiJobConnection',
-                            nodes: [],
-                          },
+                          scheduled: false,
+                          scheduledAt: null,
                           status: {
                             __typename: 'DetailedStatus',
                             id: '84',
@@ -216,6 +229,7 @@ export const wrappedPipelineReturn = {
                             label: 'passed',
                             hasDetails: true,
                             detailsPath: '/root/elemenohpee/-/jobs/1662',
+                            deploymentDetailsPath: null,
                             group: 'success',
                             action: {
                               __typename: 'StatusAction',
@@ -224,6 +238,7 @@ export const wrappedPipelineReturn = {
                               icon: 'retry',
                               path: '/root/elemenohpee/-/jobs/1662/retry',
                               title: 'Retry',
+                              confirmationMessage: null,
                             },
                           },
                         },
@@ -293,6 +308,26 @@ export const delayedJob = {
   },
 };
 
+export const bridgeJob = {
+  id: 4255,
+  name: 'test',
+  kind: BRIDGE_KIND,
+  status: {
+    icon: 'status_manual',
+    text: 'Manual',
+    label: 'manual action',
+    tooltip: 'View deployment details page',
+    group: 'manual',
+    deploymentDetailsPath: 'path/to/deployment',
+    hasDetails: false,
+    action: {
+      icon: null,
+      title: null,
+      path: null,
+    },
+  },
+};
+
 export const mockJob = {
   id: 4256,
   name: 'test',
@@ -354,6 +389,20 @@ export const triggerJob = {
   },
 };
 
+export const triggerManualJob = {
+  ...triggerJob,
+  status: {
+    ...triggerJob.status,
+    action: {
+      icon: 'play',
+      title: MANUAL_ACTION_TITLE,
+      path: '/root/ci-mock/builds/4259/play',
+      method: 'post',
+      confirmationMessage: null,
+    },
+  },
+};
+
 export const triggerJobWithRetryAction = {
   ...triggerJob,
   status: {
@@ -363,6 +412,7 @@ export const triggerJobWithRetryAction = {
       title: RETRY_ACTION_TITLE,
       path: '/root/ci-mock/builds/4259/retry',
       method: 'post',
+      confirmationMessage: null,
     },
   },
 };

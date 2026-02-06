@@ -34,26 +34,28 @@ module API
           { code: 404, message: 'Project Not Found' }
         ]
         is_array true
-        tags %w[project_packages]
+        tags %w[packages]
       end
       params do
         use :pagination
         optional :order_by, type: String, values: %w[created_at name version type], default: 'created_at',
-                            desc: 'Return packages ordered by `created_at`, `name`, `version` or `type` fields.'
+          desc: 'Return packages ordered by `created_at`, `name`, `version` or `type` fields.'
         optional :sort, type: String, values: %w[asc desc], default: 'asc',
-                        desc: 'Return packages sorted in `asc` or `desc` order.'
+          desc: 'Return packages sorted in `asc` or `desc` order.'
         optional :package_type, type: String, values: Packages::Package.package_types.keys,
-                                desc: 'Return packages of a certain type'
+          desc: 'Return packages of a certain type'
         optional :package_name, type: String,
-                                desc: 'Return packages with this name'
+          desc: 'Return packages with this name'
         optional :package_version, type: String,
-                                desc: 'Return packages with this version'
+          desc: 'Return packages with this version'
         optional :include_versionless, type: Boolean,
-                                       desc: 'Returns packages without a version'
+          desc: 'Returns packages without a version'
         optional :status, type: String, values: Packages::Package.statuses.keys,
-                          desc: 'Return packages with specified status'
+          desc: 'Return packages with specified status'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_package, boundary_type: :project,
+        job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
       get ':id/packages' do
         packages = ::Packages::PackagesFinder.new(
           user_project,
@@ -70,14 +72,16 @@ module API
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[project_packages]
+        tags %w[packages]
       end
       params do
         requires :package_id, type: Integer, desc: 'The ID of a package'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_package, boundary_type: :project,
+        job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
       get ':id/packages/:package_id' do
-        render_api_error!('Package not found', 404) unless package.default?
+        render_api_error!('Package not found', 404) unless package.detailed_info?
 
         present package, with: ::API::Entities::Package, user: current_user, namespace: user_project.namespace
       end
@@ -90,7 +94,7 @@ module API
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[project_packages]
+        tags %w[packages]
       end
       params do
         use :pagination
@@ -98,12 +102,16 @@ module API
         optional :cursor, type: String, desc: 'Cursor for obtaining the next set of records'
         # Overrides the original definition to add the `values: 1..20` restriction
         optional :per_page, type: Integer, default: 20,
-                            desc: 'Number of items per page', documentation: { example: 20 },
-                            values: 1..20
+          desc: 'Number of items per page', documentation: { example: 20 },
+          values: 1..20
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_package_pipeline, boundary_type: :project,
+        job_token_policies: :read_pipelines, allow_public_access_for_enabled_project_features: :package_registry
       get ':id/packages/:package_id/pipelines' do
-        not_found!('Package not found') unless package.default?
+        not_found!('Package not found') unless package.detailed_info?
+
+        authorize! :read_pipeline, user_project unless current_user&.from_ci_job_token?
 
         params[:pagination] = 'keyset' # keyset is the only available pagination
         pipelines = paginate_with_strategies(
@@ -123,14 +131,27 @@ module API
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[project_packages]
+        tags %w[packages]
       end
       params do
         requires :package_id, type: Integer, desc: 'The ID of a package'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :delete_package, boundary_type: :project,
+        job_token_policies: :admin_packages
       delete ':id/packages/:package_id' do
         authorize_destroy_package!(user_project)
+
+        if Feature.enabled?(:packages_protected_packages_delete, user_project)
+          service_response =
+            Packages::Protection::CheckRuleExistenceService.for_delete(
+              project: user_project,
+              current_user: current_user,
+              params: { package_name: package.name, package_type: package.package_type }
+            ).execute
+
+          forbidden!('Package is deletion protected.') if service_response[:protection_rule_exists?]
+        end
 
         destroy_conditionally!(package) do |package|
           ::Packages::MarkPackageForDestructionService.new(container: package, current_user: current_user).execute

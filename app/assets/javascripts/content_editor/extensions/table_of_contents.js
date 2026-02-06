@@ -25,7 +25,7 @@ export default Node.create({
       'div',
       {
         class:
-          'table-of-contents gl-border-1 gl-border-solid gl-text-center gl-border-gray-100 gl-mb-5',
+          'table-of-contents gl-border-1 gl-border-solid gl-text-center gl-border-default gl-mb-5',
       },
       __('Table of contents'),
     ];
@@ -36,7 +36,10 @@ export default Node.create({
 
   addCommands() {
     return {
-      insertTableOfContents: () => ({ commands }) => commands.insertContent({ type: this.name }),
+      insertTableOfContents:
+        () =>
+        ({ commands }) =>
+          commands.insertContent({ type: this.name }),
     };
   },
 

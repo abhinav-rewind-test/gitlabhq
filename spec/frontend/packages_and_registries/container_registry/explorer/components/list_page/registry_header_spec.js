@@ -28,9 +28,18 @@ describe('registry_header', () => {
       stubs: {
         GlSprintf,
         TitleArea,
+        MetadataContainerScanning: true,
+        ContainerScanningCounts: true,
       },
       propsData,
       slots,
+      provide() {
+        return {
+          config: {
+            isGroupPage: false,
+          },
+        };
+      },
     });
     await nextTick();
   };
@@ -71,6 +80,7 @@ describe('registry_header', () => {
           expect(findImagesCountSubHeader().props()).toMatchObject({
             text: '1 Image repository',
             icon: 'container-image',
+            size: 'xl',
           });
         });
 
@@ -126,16 +136,6 @@ describe('registry_header', () => {
           const text = findExpirationPolicySubHeader();
           expect(text.exists()).toBe(false);
         });
-      });
-    });
-  });
-
-  describe('info messages', () => {
-    describe('default message', () => {
-      it('is correctly bound to title_area props', () => {
-        mountComponent({ helpPagePath: 'foo' });
-
-        expect(findTitleArea().props('infoMessages')).toEqual([]);
       });
     });
   });

@@ -6,6 +6,16 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   include MarkupHelper
   include BadgesHelper
 
+  before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+    stub_feature_flags(work_item_legacy_url: true)
+    # create AI Setting singleton record to prevent N+1
+    Ai::Setting.instance if Gitlab.ee?
+  end
+
   # Override simple_sanitize for our testing purposes
   def simple_sanitize(str)
     str
@@ -23,7 +33,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context "with a standard user" do
-      let(:user) { create(:user) }
+      let_it_be(:user) { create(:user) }
 
       before do
         allow(self).to receive(:current_user).and_return(user)
@@ -63,8 +73,10 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       shared_examples 'for users' do
         let_it_be(:another_user) { create(:user, name: 'Jane Doe') }
         let(:term) { 'jane' }
+        let_it_be(:project) { create(:project, developers: user) }
 
         it 'returns users matching the term' do
+          project.add_developer(another_user)
           result = search_autocomplete_opts(term)
           expect(result.size).to eq(1)
           expect(result.first[:id]).to eq(another_user.id)
@@ -97,21 +109,29 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
             it 'includes users with matching public emails' do
               public_email_user
+              project.add_developer(public_email_user)
+
               expect(ids).to include(public_email_user.id)
             end
 
             it 'includes users in forbidden states' do
               banned_user
+              project.add_developer(banned_user)
+
               expect(ids).to include(banned_user.id)
             end
 
             it 'includes users without matching public emails but with matching private emails' do
               private_email_user
+              project.add_developer(private_email_user)
+
               expect(ids).to include(private_email_user.id)
             end
 
             it 'includes users matching on secondary email' do
               secondary_email
+              project.add_developer(user_with_other_email)
+
               expect(ids).to include(secondary_email.user_id)
             end
           end
@@ -123,28 +143,42 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
             it 'includes users with matching public emails' do
               public_email_user
+              project.add_developer(public_email_user)
+
               expect(ids).to include(public_email_user.id)
             end
 
             it 'does not include users in forbidden states' do
               banned_user
+              project.add_developer(banned_user)
+
               expect(ids).not_to include(banned_user.id)
             end
 
             it 'does not include users without matching public emails but with matching private emails' do
               private_email_user
+              project.add_developer(private_email_user)
+
               expect(ids).not_to include(private_email_user.id)
             end
 
             it 'does not include users matching on secondary email' do
               secondary_email
+              project.add_developer(secondary_email)
+
               expect(ids).not_to include(secondary_email.user_id)
             end
           end
         end
 
         context 'with limiting' do
-          let!(:users) { create_list(:user, 6, name: 'Jane Doe') }
+          let_it_be(:users) { create_list(:user, 6, name: 'Jane Doe') }
+
+          before do
+            users.each do |user|
+              project.add_developer(user)
+            end
+          end
 
           it 'only returns the first 5 users' do
             result = search_autocomplete_opts(term)
@@ -169,110 +203,160 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         expect(result.keys).to match_array(%i[category id value label url avatar_url])
       end
 
-      it 'includes the users recently viewed issues and project with correct order', :aggregate_failures do
-        recent_issues = instance_double(::Gitlab::Search::RecentIssues)
-        expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
-        project1 = create(:project, :with_avatar, namespace: user.namespace)
-        project2 = create(:project, namespace: user.namespace)
-        issue1 = create(:issue, title: 'issue 1', project: project1)
-        issue2 = create(:issue, title: 'issue 2', project: project2)
-        project = create(:project, title: 'the search term')
-        project.add_developer(user)
+      context 'for recently reviewed items' do
+        let(:search_term) { 'the search term' }
+        let(:recent_issues) { instance_double(::Gitlab::Search::RecentIssues) }
+        let(:recent_merge_requests) { instance_double(::Gitlab::Search::RecentMergeRequests) }
 
-        expect(recent_issues).to receive(:search).with('the search term').and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
+        let_it_be(:project1) { create(:project, namespace: user.namespace) }
+        let_it_be(:project2) { create(:project) }
 
-        results = search_autocomplete_opts("the search term")
+        it 'includes the users recently viewed issues and project with correct order', :aggregate_failures do
+          project = create(:project, :with_avatar, title: 'the search term')
+          project.add_developer(user)
 
-        expect(results.count).to eq(3)
+          issue1 = create(:issue, title: 'issue 1', project: project)
+          issue2 = create(:issue, title: 'issue 2', project: project2)
 
-        expect(results[0]).to include({
-          category: 'Recent issues',
-          id: issue1.id,
-          label: 'issue 1',
-          url: Gitlab::Routing.url_helpers.project_issue_path(issue1.project, issue1),
-          avatar_url: project1.avatar_url
-        })
+          expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
+          expect(recent_issues).to receive(:search).with(search_term)
+            .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
 
-        expect(results[1]).to include({
-          category: 'Recent issues',
-          id: issue2.id,
-          label: 'issue 2',
-          url: Gitlab::Routing.url_helpers.project_issue_path(issue2.project, issue2),
-          avatar_url: '' # This project didn't have an avatar so set this to ''
-        })
+          results = search_autocomplete_opts(search_term)
 
-        expect(results[2]).to include({
-          category: 'Projects',
-          id: project.id,
-          label: project.full_name,
-          url: Gitlab::Routing.url_helpers.project_path(project)
-        })
-      end
+          expect(results.count).to eq(3)
 
-      it 'includes the users recently viewed issues with the exact same name', :aggregate_failures do
-        recent_issues = instance_double(::Gitlab::Search::RecentIssues)
-        expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
-        project1 = create(:project, namespace: user.namespace)
-        project2 = create(:project, namespace: user.namespace)
-        issue1 = create(:issue, title: 'issue same_name', project: project1)
-        issue2 = create(:issue, title: 'issue same_name', project: project2)
+          expect(results[0]).to include({
+            category: 'Recent issues',
+            id: issue1.id,
+            label: 'issue 1',
+            url: ::Gitlab::UrlBuilder.instance.issue_path(issue1),
+            avatar_url: project.avatar_url
+          })
 
-        expect(recent_issues).to receive(:search).with('the search term').and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
+          expect(results[1]).to include({
+            category: 'Recent issues',
+            id: issue2.id,
+            label: 'issue 2',
+            url: ::Gitlab::UrlBuilder.instance.issue_path(issue2),
+            avatar_url: '' # This project didn't have an avatar so set this to ''
+          })
 
-        results = search_autocomplete_opts("the search term")
+          expect(results[2]).to include({
+            category: 'Projects',
+            id: project.id,
+            label: project.full_name,
+            url: Gitlab::Routing.url_helpers.project_path(project)
+          })
+        end
 
-        expect(results.count).to eq(2)
+        it 'includes the users recently viewed issues with the exact same name', :aggregate_failures do
+          expect(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
+          project3 = create(:project, :with_avatar, namespace: user.namespace)
+          issue1 = create(:issue, title: 'issue same_name', project: project3)
+          issue2 = create(:issue, title: 'issue same_name', project: project2)
 
-        expect(results[0]).to include({
-          category: 'Recent issues',
-          id: issue1.id,
-          label: 'issue same_name',
-          url: Gitlab::Routing.url_helpers.project_issue_path(issue1.project, issue1),
-          avatar_url: '' # This project didn't have an avatar so set this to ''
-        })
+          expect(recent_issues).to receive(:search).with(search_term)
+            .and_return(Issue.id_in_ordered([issue1.id, issue2.id]))
 
-        expect(results[1]).to include({
-          category: 'Recent issues',
-          id: issue2.id,
-          label: 'issue same_name',
-          url: Gitlab::Routing.url_helpers.project_issue_path(issue2.project, issue2),
-          avatar_url: '' # This project didn't have an avatar so set this to ''
-        })
-      end
+          results = search_autocomplete_opts(search_term)
 
-      it 'includes the users recently viewed merge requests', :aggregate_failures do
-        recent_merge_requests = instance_double(::Gitlab::Search::RecentMergeRequests)
-        expect(::Gitlab::Search::RecentMergeRequests).to receive(:new).with(user: user).and_return(recent_merge_requests)
-        project1 = create(:project, :with_avatar, namespace: user.namespace)
-        project2 = create(:project, namespace: user.namespace)
-        merge_request1 = create(:merge_request, :unique_branches, title: 'Merge request 1', target_project: project1, source_project: project1)
-        merge_request2 = create(:merge_request, :unique_branches, title: 'Merge request 2', target_project: project2, source_project: project2)
+          expect(results.count).to eq(2)
 
-        expect(recent_merge_requests).to receive(:search).with('the search term').and_return(MergeRequest.id_in_ordered([merge_request1.id, merge_request2.id]))
+          expect(results[0]).to include({
+            category: 'Recent issues',
+            id: issue1.id,
+            label: 'issue same_name',
+            url: ::Gitlab::UrlBuilder.instance.issue_path(issue1),
+            avatar_url: project3.avatar_url
+          })
 
-        results = search_autocomplete_opts("the search term")
+          expect(results[1]).to include({
+            category: 'Recent issues',
+            id: issue2.id,
+            label: 'issue same_name',
+            url: ::Gitlab::UrlBuilder.instance.issue_path(issue2),
+            avatar_url: '' # This project didn't have an avatar so set this to ''
+          })
+        end
 
-        expect(results.count).to eq(2)
+        it 'includes the users recently viewed merge requests', :aggregate_failures do
+          expect(::Gitlab::Search::RecentMergeRequests).to receive(:new).with(user: user)
+            .and_return(recent_merge_requests)
 
-        expect(results[0]).to include({
-          category: 'Recent merge requests',
-          id: merge_request1.id,
-          label: 'Merge request 1',
-          url: Gitlab::Routing.url_helpers.project_merge_request_path(merge_request1.project, merge_request1),
-          avatar_url: project1.avatar_url
-        })
+          merge_request1 = create(:merge_request, :unique_branches,
+            title: 'Merge request 1', target_project: project1, source_project: project1)
+          merge_request2 = create(:merge_request, :unique_branches,
+            title: 'Merge request 2', target_project: project2, source_project: project2)
 
-        expect(results[1]).to include({
-          category: 'Recent merge requests',
-          id: merge_request2.id,
-          label: 'Merge request 2',
-          url: Gitlab::Routing.url_helpers.project_merge_request_path(merge_request2.project, merge_request2),
-          avatar_url: '' # This project didn't have an avatar so set this to ''
-        })
+          expect(recent_merge_requests).to receive(:search).with(search_term)
+            .and_return(MergeRequest.id_in_ordered([merge_request1.id, merge_request2.id]))
+
+          results = search_autocomplete_opts(search_term)
+
+          expect(results.count).to eq(2)
+
+          expect(results[0]).to include({
+            category: 'Recent merge requests',
+            id: merge_request1.id,
+            label: 'Merge request 1',
+            url: Gitlab::Routing.url_helpers.project_merge_request_path(merge_request1.project, merge_request1),
+            avatar_url: '' # This project didn't have an avatar so set this to ''
+          })
+
+          expect(results[1]).to include({
+            category: 'Recent merge requests',
+            id: merge_request2.id,
+            label: 'Merge request 2',
+            url: Gitlab::Routing.url_helpers.project_merge_request_path(merge_request2.project, merge_request2),
+            avatar_url: '' # This project didn't have an avatar so set this to ''
+          })
+        end
+
+        it 'does not have an N+1 for recently viewed issues' do
+          issue1 = create(:issue, title: 'issue 1', project: project1)
+          issue2 = create(:issue, title: 'issue 2', project: project2)
+          issue_ids = [issue1.id, issue2.id]
+
+          allow(::Gitlab::Search::RecentIssues).to receive(:new).with(user: user).and_return(recent_issues)
+          expect(recent_issues).to receive(:search).with(search_term).and_return(Issue.id_in_ordered(issue_ids))
+
+          control = ActiveRecord::QueryRecorder.new(skip_cached: true) { search_autocomplete_opts(search_term) }
+
+          issue_ids += create_list(:issue, 3).map(&:id)
+          expect(recent_issues).to receive(:search).with(search_term).and_return(Issue.id_in_ordered(issue_ids))
+
+          # Threshold of 6 allows for 2 additional queries per new issue (3 new issues = 6 queries)
+          # These queries are needed for URL determination logic (work_item_type, namespace checks)
+          # introduced by the URL centralization in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213411
+          # and temparory until full migration to Work Items URLs
+          expect { search_autocomplete_opts(search_term) }.to issue_same_number_of_queries_as(control).with_threshold(6)
+        end
+
+        it 'does not have an N+1 for recently viewed merge_requests' do
+          merge_request1 = create(:merge_request, :unique_branches,
+            title: 'Merge request 1', target_project: project1, source_project: project1)
+          merge_request2 = create(:merge_request, :unique_branches,
+            title: 'Merge request 2', target_project: project2, source_project: project2)
+          merge_request_ids = [merge_request1.id, merge_request2.id]
+
+          expect(::Gitlab::Search::RecentMergeRequests).to receive(:new).with(user: user)
+            .and_return(recent_merge_requests).twice
+          expect(recent_merge_requests).to receive(:search).with(search_term)
+            .and_return(MergeRequest.id_in_ordered(merge_request_ids))
+
+          control = ActiveRecord::QueryRecorder.new(skip_cached: true) { search_autocomplete_opts(search_term) }
+
+          merge_request_ids += create_list(:merge_request, 3, :unique_branches).map(&:id)
+          expect(recent_merge_requests).to receive(:search).with(search_term)
+            .and_return(MergeRequest.id_in_ordered(merge_request_ids))
+
+          expect { search_autocomplete_opts(search_term) }.to issue_same_number_of_queries_as(control)
+        end
       end
 
       it "does not include the public group" do
-        group = create(:group)
+        group = build_stubbed(:group)
         expect(search_autocomplete_opts(group.name).size).to eq(0)
       end
 
@@ -303,7 +387,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
         context 'when user does not have access to project' do
           it 'does not include issues by iid' do
-            issue = create(:issue, project: @project)
+            issue = build_stubbed(:issue, project: @project)
             results = search_autocomplete_opts("\##{issue.iid}")
 
             expect(results.count).to eq(0)
@@ -326,7 +410,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
               category: 'In this project',
               id: issue.id,
               label: "test title (##{issue.iid})",
-              url: ::Gitlab::Routing.url_helpers.project_issue_path(issue.project, issue),
+              url: ::Gitlab::UrlBuilder.instance.issue_path(issue),
               avatar_url: '' # project has no avatar
             })
           end
@@ -346,7 +430,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'with an admin user' do
-      let(:admin) { create(:admin) }
+      let(:admin) { build_stubbed(:admin) }
 
       before do
         allow(self).to receive(:current_user).and_return(admin)
@@ -380,7 +464,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     let_it_be(:user) { create(:user, name: 'User') }
     let_it_be(:group) { create(:group, name: 'Group') }
     let_it_be(:project) { create(:project, name: 'Project') }
-    let!(:issue) { create(:issue, project: project) }
+    let_it_be(:issue) { create(:issue, project: project) }
     let(:issue_iid) { "\##{issue.iid}" }
 
     before do
@@ -414,7 +498,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
     context 'with a search scope' do
       let(:term) { 'bla' }
-      let(:scope) { 'project' }
+      let(:scope) { 'projects' }
 
       it 'returns only scope-specific results' do
         expect(self).to receive(:scope_specific_results).with(term, scope).and_return([])
@@ -426,6 +510,18 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         resource_results(term, scope: scope)
       end
     end
+
+    context 'when global_search_users_enabled setting is disabled' do
+      before do
+        stub_application_setting(global_search_users_enabled: false)
+      end
+
+      it 'does not return results' do
+        results = resource_results('use')
+
+        expect(results).to be_empty
+      end
+    end
   end
 
   describe 'scope_specific_results' do
@@ -435,18 +531,21 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     let_it_be(:project) { create(:project, name: 'Searched') }
     let_it_be(:issue) { create(:issue, title: 'Searched', project: project) }
 
-    before do
-      allow(self).to receive(:current_user).and_return(user)
-      allow_next_instance_of(Gitlab::Search::RecentIssues) do |recent_issues|
-        allow(recent_issues).to receive(:search).and_return([issue])
-      end
+    before_all do
       project.add_developer(user)
     end
 
+    before do
+      allow(self).to receive(:current_user).and_return(user)
+      allow_next_instance_of(Gitlab::Search::RecentIssues) do |recent_issues|
+        allow(recent_issues).to receive(:search).and_return(Issue.id_in(issue.id))
+      end
+    end
+
     where(:scope, :category) do
-      'user'    | 'Users'
-      'project' | 'Projects'
-      'issue'   | 'Recent issues'
+      'users'    | 'Users'
+      'projects' | 'Projects'
+      'issues'   | 'Recent issues'
     end
 
     with_them do
@@ -462,12 +561,59 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         expect(scope_specific_results('sea', 'other')).to eq([])
       end
     end
+
+    context 'when global_search_users_enabled setting is disabled' do
+      before do
+        stub_application_setting(global_search_users_enabled: false)
+      end
+
+      it 'does not return results' do
+        results = scope_specific_results('sea', 'users')
+
+        expect(results).to be_empty
+      end
+    end
+  end
+
+  describe 'groups_autocomplete' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:group_1) { create(:group, name: 'test 1') }
+    let_it_be(:group_2) { create(:group, name: 'test 2') }
+    let(:search_term) { 'test' }
+
+    before do
+      allow(self).to receive(:current_user).and_return(user)
+    end
+
+    context 'when the user does not have access to groups' do
+      it 'does not return any results' do
+        expect(groups_autocomplete(search_term)).to eq([])
+      end
+    end
+
+    context 'when the user has access to one group' do
+      before do
+        group_2.add_developer(user)
+      end
+
+      it 'returns the group' do
+        expect(groups_autocomplete(search_term).pluck(:id)).to eq([group_2.id])
+      end
+
+      context 'when the search term is Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+        let(:search_term) { 'te' }
+
+        it 'returns the group' do
+          expect(groups_autocomplete(search_term).pluck(:id)).to eq([group_2.id])
+        end
+      end
+    end
   end
 
   describe 'projects_autocomplete' do
     let_it_be(:user) { create(:user) }
-    let_it_be(:project_1) { create(:project, name: 'test 1') }
-    let_it_be(:project_2) { create(:project, name: 'test 2') }
+    let_it_be(:project_1) { create(:project, name: 'test 1', star_count: 5) }
+    let_it_be(:project_2) { create(:project, name: 'test 2', star_count: 2) }
     let(:search_term) { 'test' }
 
     before do
@@ -481,12 +627,31 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     end
 
     context 'when the user has access to one project' do
-      before do
+      before_all do
         project_2.add_developer(user)
       end
 
       it 'returns the project' do
         expect(projects_autocomplete(search_term).pluck(:id)).to eq([project_2.id])
+      end
+
+      it 'orders by star_count descending' do
+        project_1.add_developer(user)
+
+        expect(projects_autocomplete(search_term).pluck(:id)).to eq([project_1.id, project_2.id])
+
+        project_1.update!(star_count: 2)
+        project_2.update!(star_count: 5)
+
+        expect(projects_autocomplete(search_term).pluck(:id)).to eq([project_2.id, project_1.id])
+      end
+
+      context 'when the search term is Gitlab::Search::Params::MIN_TERM_LENGTH characters long' do
+        let(:search_term) { 'te' }
+
+        it 'returns the project' do
+          expect(projects_autocomplete(search_term).pluck(:id)).to eq([project_2.id])
+        end
       end
 
       context 'when a project namespace matches the search term but the project does not' do
@@ -524,20 +689,22 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       it 'uses the correct singular label' do
         collection = Kaminari.paginate_array([:foo]).page(1).per(10)
 
-        expect(search_entries_info(collection, scope, 'foo')).to eq("Showing 1 #{label} for <span>&nbsp;<code>foo</code>&nbsp;</span>")
+        expect(helper.search_entries_info(collection, scope, 'foo'))
+         .to eq("Showing 1 #{label} for <span> <code>foo</code> </span>")
       end
 
       it 'uses the correct plural label' do
         collection = Kaminari.paginate_array([:foo] * 23).page(1).per(10)
 
-        expect(search_entries_info(collection, scope, 'foo')).to eq("Showing 1 - 10 of 23 #{label.pluralize} for <span>&nbsp;<code>foo</code>&nbsp;</span>")
+        expect(helper.search_entries_info(collection, scope, 'foo'))
+          .to eq("Showing 1 - 10 of 23 #{label.pluralize} for <span> <code>foo</code> </span>")
       end
     end
 
     it 'raises an error for unrecognized scopes' do
       expect do
         collection = Kaminari.paginate_array([:foo]).page(1).per(10)
-        search_entries_info(collection, 'unknown', 'foo')
+        helper.search_entries_info(collection, 'unknown', 'foo')
       end.to raise_error(RuntimeError)
     end
   end
@@ -546,8 +713,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     let!(:group) { build(:group) }
     let!(:project) { build(:project, group: group) }
 
-    context 'global search' do
-      let(:message) { search_entries_empty_message('projects', '<h1>foo</h1>', nil, nil) }
+    context 'for global search' do
+      let(:message) { helper.search_entries_empty_message('projects', '<h1>foo</h1>', nil, nil) }
 
       it 'returns the formatted entry message' do
         expect(message).to eq("We couldn&#39;t find any projects matching <code>&lt;h1&gt;foo&lt;/h1&gt;</code>")
@@ -555,8 +722,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'group search' do
-      let(:message) { search_entries_empty_message('projects', '<h1>foo</h1>', group, nil) }
+    context 'for group search' do
+      let(:message) { helper.search_entries_empty_message('projects', '<h1>foo</h1>', group, nil) }
 
       it 'returns the formatted entry message' do
         expect(message).to start_with('We couldn&#39;t find any projects matching <code>&lt;h1&gt;foo&lt;/h1&gt;</code> in group <a')
@@ -564,8 +731,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'project search' do
-      let(:message) { search_entries_empty_message('projects', '<h1>foo</h1>', group, project) }
+    context 'for project search' do
+      let(:message) { helper.search_entries_empty_message('projects', '<h1>foo</h1>', group, project) }
 
       it 'returns the formatted entry message' do
         expect(message).to start_with('We couldn&#39;t find any projects matching <code>&lt;h1&gt;foo&lt;/h1&gt;</code> in project <a')
@@ -575,7 +742,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'search_filter_input_options' do
-    context 'project' do
+    context 'for project' do
       before do
         @project = create(:project, :repository)
       end
@@ -599,13 +766,13 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'group' do
+    context 'for group' do
       before do
         @group = create(:group, name: 'group')
       end
 
       it 'does not includes project-id' do
-        expect(search_filter_input_options('')[:data]['project-id']).to eq(nil)
+        expect(search_filter_input_options('')[:data]['project-id']).to be_nil
       end
 
       it 'includes group endpoints' do
@@ -614,10 +781,10 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'dashboard' do
+    context 'for dashboard' do
       it 'does not include group-id and project-id' do
-        expect(search_filter_input_options('')[:data]['project-id']).to eq(nil)
-        expect(search_filter_input_options('')[:data]['group-id']).to eq(nil)
+        expect(search_filter_input_options('')[:data]['project-id']).to be_nil
+        expect(search_filter_input_options('')[:data]['group-id']).to be_nil
       end
 
       it 'includes dashboard endpoints' do
@@ -628,7 +795,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe 'search_history_storage_prefix' do
-    context 'project' do
+    context 'for project' do
       it 'returns project full_path' do
         @project = create(:project, :repository)
 
@@ -636,7 +803,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'group' do
+    context 'for group' do
       it 'returns group full_path' do
         @group = create(:group, :nested, name: 'group-name')
 
@@ -644,7 +811,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
     end
 
-    context 'dashboard' do
+    context 'for dashboard' do
       it 'returns dashboard' do
         expect(search_history_storage_prefix).to eq("dashboard")
       end
@@ -660,65 +827,8 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
       issues = create_list(:issue, 4, project: @project)
 
-      description_with_issues = description + ' ' + issues.map { |issue| "##{issue.iid}" }.join(' ')
+      description_with_issues = "#{description} #{issues.map { |issue| "##{issue.iid}" }.join(' ')}"
       expect { search_md_sanitize(description_with_issues) }.not_to exceed_all_query_limit(control)
-    end
-  end
-
-  describe 'search_filter_link' do
-    it 'renders a search filter link for the current scope' do
-      @scope = 'projects'
-      @search_results = double
-
-      expect(@search_results).to receive(:formatted_count).with('projects').and_return('23')
-
-      link = search_filter_link('projects', 'Projects')
-
-      expect(link).to have_css('li.active')
-      expect(link).to have_link('Projects', href: search_path(scope: 'projects'))
-      expect(link).to have_css('span.badge.badge-pill:not(.js-search-count):not(.hidden):not([data-url])', text: '23')
-    end
-
-    it 'renders a search filter link for another scope' do
-      link = search_filter_link('projects', 'Projects')
-      count_path = search_count_path(scope: 'projects')
-
-      expect(link).to have_css('li:not([class="active"])')
-      expect(link).to have_link('Projects', href: search_path(scope: 'projects'))
-      expect(link).to have_css("span.badge.badge-pill.js-search-count.hidden[data-url='#{count_path}']", text: '')
-    end
-
-    it 'merges in the current search params and given params' do
-      expect(self).to receive(:params).and_return(
-        ActionController::Parameters.new(
-          search: 'hello',
-          scope: 'ignored',
-          other_param: 'ignored'
-        )
-      )
-
-      link = search_filter_link('projects', 'Projects', search: { project_id: 23 })
-
-      expect(link).to have_link('Projects', href: search_path(scope: 'projects', search: 'hello', project_id: 23))
-    end
-
-    it 'restricts the params' do
-      expect(self).to receive(:params).and_return(
-        ActionController::Parameters.new(
-          search: 'hello',
-          unknown: 42
-        )
-      )
-
-      link = search_filter_link('projects', 'Projects')
-
-      expect(link).to have_link('Projects', href: search_path(scope: 'projects', search: 'hello'))
-    end
-
-    it 'assigns given data attributes on the list container' do
-      link = search_filter_link('projects', 'Projects', data: { foo: 'bar' })
-
-      expect(link).to have_css('li[data-foo="bar"]')
     end
   end
 
@@ -726,7 +836,6 @@ RSpec.describe SearchHelper, feature_category: :global_search do
     using RSpec::Parameterized::TableSyntax
 
     let_it_be(:project) { create(:project, :repository) }
-
     let(:default_branch) { project.default_branch }
     let(:params) { { repository_ref: ref, project_id: project_id } }
 
@@ -747,95 +856,55 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#highlight_and_truncate_issuable' do
-    let(:description) { 'hello world' }
-    let(:issue) { create(:issue, description: description) }
-    let(:user) { create(:user) }
+    let_it_be(:issue) { create(:issue) }
+    let(:highlight_and_truncate) { highlight_and_truncate_issuable(issue, 'test', {}) }
 
     before do
-      allow(self).to receive(:current_user).and_return(user)
+      allow(self).to receive(:current_user).and_return(build(:user))
     end
 
-    subject { highlight_and_truncate_issuable(issue, 'test', {}) }
+    it 'calls simple_search_highlight_and_truncate' do
+      expect(self).to receive(:simple_search_highlight_and_truncate).with(issue.description, 'test')
 
-    context 'when description is not present' do
-      let(:description) { nil }
+      highlight_and_truncate
+    end
+  end
 
-      it 'does nothing' do
-        expect(self).not_to receive(:simple_search_highlight_and_truncate)
+  describe '#simple_search_highlight_and_truncate' do
+    using RSpec::Parameterized::TableSyntax
 
-        subject
-      end
+    where(:text, :expected) do
+      '' | nil
+      nil | nil
+      123 | nil
+      'test' | '<mark>test</mark>'
+      'charset ëòä test' | 'charset ëòä <mark>test</mark>'
+      '<span style="color: blue;">this test should not be blue</span>' | 'this <mark>test</mark> should not be blue'
+      '<a href="#" onclick="alert(\'XSS\')">Click Me test</a>' | '<a href="#">Click Me <mark>test</mark></a>'
+      '<script type="text/javascript">alert(\'Another XSS\');</script> test' | ' <mark>test</mark>'
+      'Lorem test ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec.' | 'Lorem <mark>test</mark> ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Don...'
+      '<img src="https://random.foo.com/test.png" width="128" height="128" />some image' | 'some image'
+      '<h2 data-sourcepos="11:1-11:26" dir="auto"><a id="user-content-additional-information" class="anchor" href="#additional-information" aria-hidden="true"></a>Additional information test:</h2><textarea data-update-url="/freepascal.org/fpc/source/-/issues/6163.json" dir="auto" data-testid="textarea" class="hidden js-task-list-field"></textarea>' | '<a class="anchor" href="#additional-information"></a>Additional information <mark>test</mark>:'
     end
 
-    context 'when description present' do
-      using RSpec::Parameterized::TableSyntax
-
-      where(:description, :expected) do
-        'test'                                                                 | '<span class="gl-text-gray-900 gl-font-weight-bold">test</span>'
-        '<span style="color: blue;">this test should not be blue</span>'       | 'this <span class="gl-text-gray-900 gl-font-weight-bold">test</span> should not be blue'
-        '<a href="#" onclick="alert(\'XSS\')">Click Me test</a>'               | '<a href="#">Click Me <span class="gl-text-gray-900 gl-font-weight-bold">test</span></a>'
-        '<script type="text/javascript">alert(\'Another XSS\');</script> test' | ' <span class="gl-text-gray-900 gl-font-weight-bold">test</span>'
-        'Lorem test ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec.' | 'Lorem <span class="gl-text-gray-900 gl-font-weight-bold">test</span> ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Don...'
-        '<img src="https://random.foo.com/test.png" width="128" height="128" />some image' | 'some image'
-        '<h2 data-sourcepos="11:1-11:26" dir="auto"><a id="user-content-additional-information" class="anchor" href="#additional-information" aria-hidden="true"></a>Additional information test:</h2><textarea data-update-url="/freepascal.org/fpc/source/-/issues/6163.json" dir="auto" data-testid="textarea" class="hidden js-task-list-field"></textarea>' | '<a class="anchor" href="#additional-information"></a>Additional information <span class="gl-text-gray-900 gl-font-weight-bold">test</span>:'
-      end
-
-      with_them do
-        it 'sanitizes, truncates, and highlights the search term' do
-          expect(subject).to eq(expected)
-        end
+    with_them do
+      it 'sanitizes, truncates, and highlights the search term' do
+        expect(simple_search_highlight_and_truncate(text, 'test')).to eq(expected)
       end
     end
   end
 
   describe '#search_service' do
-    using RSpec::Parameterized::TableSyntax
-
-    subject { search_service }
+    let(:params) { { include_archived: true } }
 
     before do
       allow(self).to receive(:current_user).and_return(:the_current_user)
     end
 
-    shared_context 'with inputs' do
-      where(:input, :expected) do
-        '0'       | false
-        '1'       | true
-        'yes'     | true
-        'no'      | false
-        'true'    | true
-        'false'   | false
-        true      | true
-        false     | false
-      end
-    end
+    it 'instantiates a new SearchService with current_user and params' do
+      expect(::SearchService).to receive(:new).with(:the_current_user, { include_archived: true })
 
-    describe 'for confidential' do
-      let(:params) { { confidential: input } }
-
-      include_context 'with inputs'
-
-      with_them do
-        it 'transforms param' do
-          expect(::SearchService).to receive(:new).with(:the_current_user, { confidential: expected })
-
-          subject
-        end
-      end
-    end
-
-    describe 'for include_archived' do
-      let(:params) { { include_archived: input } }
-
-      include_context 'with inputs'
-
-      with_them do
-        it 'transforms param' do
-          expect(::SearchService).to receive(:new).with(:the_current_user, { include_archived: expected })
-
-          subject
-        end
-      end
+      search_service
     end
   end
 
@@ -874,7 +943,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#search_sort_options' do
-    let(:user) { create(:user) }
+    let(:user) { build_stubbed(:user) }
 
     mock_created_sort = [
       {
@@ -905,14 +974,11 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   end
 
   describe '#header_search_context' do
-    let(:user) { create(:user) }
+    let(:user) { build_stubbed(:user) }
     let(:can_download) { false }
-
     let_it_be(:group) { nil }
     let_it_be(:project) { nil }
-
     let(:scope) { nil }
-
     let(:ref) { nil }
     let(:snippet) { nil }
 
@@ -922,29 +988,34 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       @ref = ref
       @snippet = snippet
 
-      allow(self).to receive(:current_user).and_return(user)
-      allow(self).to receive(:search_scope).and_return(scope)
-      allow(self).to receive(:can?).and_return(can_download)
+      allow(self).to receive_messages(current_user: user, search_scope: scope, can?: can_download)
     end
 
-    context 'no group or project data' do
+    context 'when no group or project data' do
       it 'does not add :group, :group_metadata, or :scope to hash' do
-        expect(header_search_context[:group]).to eq(nil)
-        expect(header_search_context[:group_metadata]).to eq(nil)
-        expect(header_search_context[:scope]).to eq(nil)
+        expect(header_search_context[:group]).to be_nil
+        expect(header_search_context[:group_metadata]).to be_nil
+        expect(header_search_context[:scope]).to be_nil
       end
 
       it 'does not add :project, :project_metadata, :code_search, or :ref' do
-        expect(header_search_context[:project]).to eq(nil)
-        expect(header_search_context[:project_metadata]).to eq(nil)
-        expect(header_search_context[:code_search]).to eq(nil)
-        expect(header_search_context[:ref]).to eq(nil)
+        expect(header_search_context[:project]).to be_nil
+        expect(header_search_context[:project_metadata]).to be_nil
+        expect(header_search_context[:code_search]).to be_nil
+        expect(header_search_context[:ref]).to be_nil
       end
     end
 
-    context 'group data' do
+    context 'when group data' do
       let_it_be(:group) { create(:group) }
-      let(:group_metadata) { { issues_path: issues_group_path(group), mr_path: merge_requests_group_path(group) } }
+
+      let(:group_metadata) do
+        {
+          issues_path: issues_group_path(group),
+          mr_path: merge_requests_group_path(group, assignee_username: user.username)
+        }
+      end
+
       let(:scope) { 'issues' }
 
       it 'adds the :group, :group_metadata, and :scope correctly to hash' do
@@ -954,21 +1025,33 @@ RSpec.describe SearchHelper, feature_category: :global_search do
       end
 
       it 'does not add :project, :project_metadata, :code_search, or :ref' do
-        expect(header_search_context[:project]).to eq(nil)
-        expect(header_search_context[:project_metadata]).to eq(nil)
-        expect(header_search_context[:code_search]).to eq(nil)
-        expect(header_search_context[:ref]).to eq(nil)
+        expect(header_search_context[:project]).to be_nil
+        expect(header_search_context[:project_metadata]).to be_nil
+        expect(header_search_context[:code_search]).to be_nil
+        expect(header_search_context[:ref]).to be_nil
       end
     end
 
-    context 'project data' do
+    context 'when project data' do
       let_it_be(:project_group) { create(:group) }
       let_it_be(:project) { create(:project, group: project_group) }
-      let(:project_metadata) { { issues_path: project_issues_path(project), mr_path: project_merge_requests_path(project) } }
-      let(:group_metadata) { { issues_path: issues_group_path(project_group), mr_path: merge_requests_group_path(project_group) } }
+      let(:project_metadata) do
+        {
+          issues_path: project_issues_path(project),
+          mr_path: project_merge_requests_path(project, assignee_username: user.username)
+        }
+      end
+
+      let(:group_metadata) do
+        {
+          issues_path: issues_group_path(project_group),
+          mr_path: merge_requests_group_path(project_group, assignee_username: user.username)
+        }
+      end
 
       it 'adds the :group and :group-metadata from the project correctly to hash' do
-        expect(header_search_context[:group]).to eq({ id: project_group.id, name: project_group.name, full_name: project_group.full_name })
+        expect(header_search_context[:group])
+          .to eq(id: project_group.id, name: project_group.name, full_name: project_group.full_name)
         expect(header_search_context[:group_metadata]).to eq(group_metadata)
       end
 
@@ -977,18 +1060,19 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         expect(header_search_context[:project_metadata]).to eq(project_metadata)
       end
 
-      context 'feature issues is not available' do
+      context 'when feature issues is not available' do
         let(:feature_available) { false }
-        let(:project_metadata) { { mr_path: project_merge_requests_path(project) } }
 
         before do
           allow(project).to receive(:feature_available?).and_call_original
           allow(project).to receive(:feature_available?).with(:issues, current_user).and_return(feature_available)
+          allow(project).to receive(:feature_available?).with(:merge_requests,
+            current_user).and_return(feature_available)
         end
 
-        it 'adds the :project and :project-metadata correctly to hash' do
+        it 'adds the :project and :project-metadata without mr_path' do
           expect(header_search_context[:project]).to eq({ id: project.id, name: project.name })
-          expect(header_search_context[:project_metadata]).to eq(project_metadata)
+          expect(header_search_context[:project_metadata]).to eq({})
         end
       end
 
@@ -997,19 +1081,19 @@ RSpec.describe SearchHelper, feature_category: :global_search do
 
         it 'adds :scope and false :code_search to hash' do
           expect(header_search_context[:scope]).to eq(scope)
-          expect(header_search_context[:code_search]).to eq(false)
+          expect(header_search_context[:code_search]).to be(false)
         end
       end
 
       context 'without scope' do
         it 'adds code_search true to hash and not :scope' do
-          expect(header_search_context[:scope]).to eq(nil)
-          expect(header_search_context[:code_search]).to eq(true)
+          expect(header_search_context[:scope]).to be_nil
+          expect(header_search_context[:code_search]).to be(true)
         end
       end
     end
 
-    context 'ref data' do
+    context 'for ref data' do
       let_it_be(:project) { create(:project) }
       let(:ref) { 'test-branch' }
 
@@ -1025,23 +1109,23 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         let(:can_download) { false }
 
         it 'does not add the :ref to hash' do
-          expect(header_search_context[:ref]).to eq(nil)
+          expect(header_search_context[:ref]).to be_nil
         end
       end
     end
 
-    context 'snippet' do
+    context 'for snippet' do
       context 'when searching from snippets' do
-        let(:snippet) { create(:snippet) }
+        let(:snippet) { create(:project_snippet) }
 
         it 'adds :for_snippets true correctly to hash' do
-          expect(header_search_context[:for_snippets]).to eq(true)
+          expect(header_search_context[:for_snippets]).to be(true)
         end
       end
 
       context 'when not searching from snippets' do
         it 'adds :for_snippets nil correctly to hash' do
-          expect(header_search_context[:for_snippets]).to eq(nil)
+          expect(header_search_context[:for_snippets]).to be_nil
         end
       end
     end
@@ -1090,15 +1174,15 @@ RSpec.describe SearchHelper, feature_category: :global_search do
         allow(self).to receive(:current_user).and_return(build(:user))
         allow(search_service).to receive(:show_snippets?).and_return(true)
         allow_next_instance_of(Search::Navigation) do |search_nav|
-          allow(search_nav).to receive(:tab_enabled_for_project?).and_return(true)
-          allow(search_nav).to receive(:feature_flag_tab_enabled?).and_return(true)
+          allow(search_nav).to receive_messages(tab_enabled_for_project?: true)
         end
 
         @project = nil
       end
 
       it 'returns items in order' do
-        expect(Gitlab::Json.parse(search_navigation_json).keys).to eq(%w[projects blobs issues merge_requests wiki_blobs commits notes milestones users snippet_titles])
+        expect(Gitlab::Json.parse(search_navigation_json).keys)
+          .to eq(%w[projects blobs issues merge_requests wiki_blobs commits notes milestones users snippet_titles])
       end
     end
   end
@@ -1106,7 +1190,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '.search_filter_link_json' do
     using RSpec::Parameterized::TableSyntax
 
-    context 'data' do
+    context 'with data' do
       where(:scope, :label, :data, :search, :active_scope) do
         "projects"       | "Projects"                | { testid: 'projects-tab' } | nil                  | "projects"
         "snippet_titles" | "Snippets"                | nil                        | { snippets: "test" } | "code"
@@ -1138,7 +1222,7 @@ RSpec.describe SearchHelper, feature_category: :global_search do
           expected[:count] = dummy_count if current_scope
           expected[:count_link] = "test count link" unless current_scope
 
-          expect(search_filter_link_json(scope, label, data, search)).to eq(expected)
+          expect(search_filter_link_json(scope, label, data, search, nil)).to eq(expected)
         end
       end
     end
@@ -1147,9 +1231,306 @@ RSpec.describe SearchHelper, feature_category: :global_search do
   describe '#wiki_blob_link' do
     let_it_be(:project) { create :project, :wiki_repo }
     let(:wiki_blob) do
-      Gitlab::Search::FoundBlob.new({ path: 'test', basename: 'test', ref: 'master', data: 'foo', startline: 2, project: project, project_id: project.id })
+      Gitlab::Search::FoundBlob.new(path: 'test', basename: 'test', ref: 'master',
+        data: 'foo', startline: 2, project: project, project_id: project.id)
     end
 
-    it { expect(wiki_blob_link(wiki_blob)).to eq("/#{project.namespace.path}/#{project.path}/-/wikis/#{wiki_blob.path}") }
+    it 'returns link' do
+      expect(wiki_blob_link(wiki_blob)).to eq("/#{project.namespace.path}/#{project.path}/-/wikis/#{wiki_blob.path}")
+    end
+  end
+
+  describe '#should_show_zoekt_results?' do
+    before do
+      allow(self).to receive(:current_user).and_return(nil)
+    end
+
+    it 'returns false for any scope and search type' do
+      expect(should_show_zoekt_results?(:some_scope, :some_type)).to be false
+    end
+  end
+
+  describe '#formatted_count' do
+    context 'when @timeout is set' do
+      it 'returns "0"' do
+        @timeout = true
+        @scope = 'projects'
+
+        expect(formatted_count(@scope)).to eq("0")
+      end
+    end
+
+    context 'when @search_results is defined' do
+      it 'delegates formatted_count to @search_results' do
+        @scope = 'projects'
+        @search_results = double
+
+        allow(@search_results).to receive(:formatted_count).with(@scope)
+        expect(@search_results).to receive(:formatted_count).with(@scope)
+
+        formatted_count(@scope)
+      end
+    end
+
+    context 'when @search_results is not defined' do
+      it 'returns "0"' do
+        @scope = 'projects'
+        expect(formatted_count(@scope)).to eq("0")
+      end
+    end
+  end
+
+  describe '#parse_navigation' do
+    let(:navigation) do
+      {
+        projects: {
+          sort: 1,
+          label: "Projects",
+          data: { testid: "projects-tab" },
+          condition: true
+        },
+        blobs: {
+          sort: 2,
+          label: "Code",
+          data: { testid: "code-tab" },
+          condition: true
+        },
+        epics: {
+          sort: 3,
+          label: "Epics",
+          condition: true
+        },
+        issues: {
+          sort: 4, label: "Work items", condition: true, sub_items: {
+            issue: {
+              scope: "issues",
+              label: "Issue",
+              type: :issue,
+              condition: true
+            },
+            incident: {
+              scope: "issues",
+              label: "Incident",
+              type: :incident,
+              condition: true
+            },
+            test_case: {
+              scope: "issues",
+              label: "Test Case",
+              type: :test_case,
+              condition: true
+            },
+            requirement: {
+              scope: "issues",
+              label: "Requirement",
+              type: :requirement,
+              condition: true
+            },
+            task: {
+              scope: "issues",
+              label: "Task",
+              type: :task,
+              condition: true
+            },
+            objective: {
+              scope: "issues",
+              label: "Objective",
+              type: :objective,
+              condition: true
+            },
+            key_result: {
+              scope: "issues",
+              label: "Key Result",
+              type: :key_result,
+              condition: true
+            },
+            epic: {
+              scope: "issues",
+              label: "Epic",
+              type: :epic,
+              condition: true
+            },
+            ticket: {
+              scope: "issues",
+              label: "Ticket",
+              type: :ticket,
+              condition: true
+            }
+          }
+        },
+        merge_requests: {
+          sort: 5,
+          label: "Merge requests",
+          condition: true
+        },
+        wiki_blobs: {
+          sort: 6,
+          label: "Wiki",
+          condition: true
+        },
+        commits: {
+          sort: 7,
+          label: "Commits",
+          condition: true
+        },
+        notes: {
+          sort: 8,
+          label: "Comments",
+          condition: true
+        },
+        milestones: {
+          sort: 9,
+          label: "Milestones",
+          condition: true
+        },
+        users: {
+          sort: 10,
+          label: "Users",
+          condition: true
+        },
+        snippet_titles: {
+          sort: 11,
+          label: "Snippets",
+          condition: false
+        }
+      }
+    end
+
+    context 'with positive conditions' do
+      let(:parse) { parse_navigation(navigation) }
+
+      it 'includes items where condition is true' do
+        expect(parse.keys).to include(:projects, :blobs, :epics, :issues, :merge_requests, :wiki_blobs, :commits,
+          :notes, :milestones, :users)
+      end
+
+      it 'excludes items where condition is false' do
+        expect(parse.keys).not_to include(:snippet_titles)
+      end
+
+      it 'includes correct data for a navigation item' do
+        expect(parse[:projects]).to eq(
+          scope: "projects",
+          label: "Projects",
+          data: { testid: "projects-tab" },
+          active: false,
+          count_link: "/search/count?scope=projects",
+          link: "/search?scope=projects"
+        )
+      end
+    end
+  end
+
+  describe '#blob_data_oversize_message' do
+    it 'returns the correct message for empty files' do
+      expect(helper.blob_data_oversize_message).to eq('The file could not be displayed because it is empty.')
+    end
+  end
+
+  describe '#search_scope' do
+    let(:user) { build_stubbed(:user) }
+
+    before do
+      allow(helper).to receive_messages(current_user: user, current_controller?: false)
+    end
+
+    context 'when custom default search scope is set' do
+      before do
+        stub_application_setting(default_search_scope: 'issues')
+      end
+
+      it 'returns nil' do
+        expect(helper.search_scope).to be_nil
+      end
+    end
+
+    context 'when custom default search scope is not set' do
+      before do
+        stub_application_setting(default_search_scope: ::ApplicationSetting::SEARCH_SCOPE_SYSTEM_DEFAULT)
+      end
+
+      context 'when on issues controller' do
+        it 'returns issues' do
+          allow(helper).to receive(:current_controller?).with(:issues).and_return(true)
+
+          expect(helper.search_scope).to eq('issues')
+        end
+      end
+
+      context 'when on merge_requests controller' do
+        it 'returns merge_requests' do
+          allow(helper).to receive(:current_controller?).with(:merge_requests).and_return(true)
+
+          expect(helper.search_scope).to eq('merge_requests')
+        end
+      end
+
+      context 'when on wikis controller' do
+        it 'returns wiki_blobs' do
+          allow(helper).to receive(:current_controller?).with(:wikis).and_return(true)
+
+          expect(helper.search_scope).to eq('wiki_blobs')
+        end
+      end
+
+      context 'when on commits controller' do
+        it 'returns commits' do
+          allow(helper).to receive(:current_controller?).with(:commits).and_return(true)
+
+          expect(helper.search_scope).to eq('commits')
+        end
+      end
+
+      context 'when on groups controller' do
+        let(:controller_double) { instance_double(GroupsController) }
+
+        before do
+          allow(helper).to receive(:current_controller?).with(:groups).and_return(true)
+          allow(helper).to receive(:controller).and_return(controller_double)
+        end
+
+        context 'when action is issues' do
+          it 'returns issues' do
+            allow(controller_double).to receive(:action_name).and_return('issues')
+
+            expect(helper.search_scope).to eq('issues')
+          end
+        end
+
+        context 'when action is merge_requests' do
+          it 'returns merge_requests' do
+            allow(controller_double).to receive(:action_name).and_return('merge_requests')
+
+            expect(helper.search_scope).to eq('merge_requests')
+          end
+        end
+
+        context 'when action is show' do
+          it 'returns nil' do
+            allow(controller_double).to receive(:action_name).and_return('show')
+
+            expect(helper.search_scope).to be_nil
+          end
+        end
+
+        context 'when action is edit' do
+          it 'returns nil' do
+            allow(controller_double).to receive(:action_name).and_return('edit')
+
+            expect(helper.search_scope).to be_nil
+          end
+        end
+      end
+
+      context 'when on other controllers' do
+        before do
+          allow(helper).to receive(:current_controller?).and_return(false)
+        end
+
+        it 'returns nil' do
+          expect(helper.search_scope).to be_nil
+        end
+      end
+    end
   end
 end

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ApplicationWorker, feature_category: :shared do
+RSpec.describe ApplicationWorker, feature_category: :sidekiq do
   # We depend on the lazy-load characteristic of rspec. If the worker is loaded
   # before setting up, it's likely to go wrong. Consider this catcha:
   # before do
@@ -26,7 +26,7 @@ RSpec.describe ApplicationWorker, feature_category: :shared do
   before do
     # Set up Sidekiq.default_configuration's Thread.current[:sidekiq_redis_pool].
     # Creating a RedisConnection during spec's runtime will perform Sidekiq.info which messes with our spec expectations.
-    Sidekiq.redis(&:ping)
+    Gitlab::SidekiqSharding::Validator.allow_unrouted_sidekiq_calls { Sidekiq.redis(&:ping) }
 
     allow(Feature).to receive(:enabled?).and_call_original
     allow(Feature).to receive(:enabled?).with(:route_to_main, type: :ops).and_return(true)
@@ -509,6 +509,60 @@ RSpec.describe ApplicationWorker, feature_category: :shared do
     end
   end
 
+  describe '.deferred' do
+    around do |example|
+      Sidekiq::Testing.fake!(&example)
+    end
+
+    context 'when the worker is not marked as deferred' do
+      it 'all deferred-related keys are nil' do
+        worker.perform_async
+        expect(Sidekiq::Queues[worker.queue].first['deferred']).to eq nil
+        expect(Sidekiq::Queues[worker.queue].first['deferred_by']).to eq nil
+        expect(Sidekiq::Queues[worker.queue].first['deferred_count']).to eq nil
+      end
+    end
+
+    context 'when the worker is marked as deferred' do
+      it 'correctly sets options' do
+        worker.deferred(1, :feature_flag).perform_async
+        expect(Sidekiq::Queues[worker.queue].first['deferred']).to eq true
+        expect(Sidekiq::Queues[worker.queue].first['deferred_by']).to eq "feature_flag"
+        expect(Sidekiq::Queues[worker.queue].first['deferred_count']).to eq 1
+      end
+
+      it 'sets defaults if no arguments are passed' do
+        worker.deferred.perform_async
+        expect(Sidekiq::Queues[worker.queue].first['deferred']).to eq true
+        expect(Sidekiq::Queues[worker.queue].first['deferred_by']).to eq nil
+        expect(Sidekiq::Queues[worker.queue].first['deferred_count']).to eq 0
+      end
+    end
+  end
+
+  describe '.concurrency_limit_resume' do
+    around do |example|
+      Sidekiq::Testing.fake!(&example)
+    end
+
+    context 'when the worker is not marked as deferred' do
+      it 'concurrency_limit_resume key is nil' do
+        worker.perform_async
+        expect(Sidekiq::Queues[worker.queue].first['concurrency_limit_resume']).to eq nil
+      end
+    end
+
+    context 'when the concurrency limited worker is marked as resume' do
+      let(:buffered_at) { 1 }
+
+      it 'sets resume and buffered_at attributes' do
+        worker.concurrency_limit_resume(buffered_at).perform_async
+        expect(Sidekiq::Queues[worker.queue].first['concurrency_limit_resume']).to eq(true)
+        expect(Sidekiq::Queues[worker.queue].first['concurrency_limit_buffered_at']).to eq(buffered_at)
+      end
+    end
+  end
+
   describe '.with_status' do
     around do |example|
       Sidekiq::Testing.fake!(&example)
@@ -553,6 +607,41 @@ RSpec.describe ApplicationWorker, feature_category: :shared do
     end
   end
 
+  describe '.rescheduled_once' do
+    around do |example|
+      Sidekiq::Testing.fake!(&example)
+    end
+
+    it 'sets rescheduled_once in job hash' do
+      worker.rescheduled_once.perform_async
+
+      expect(Sidekiq::Queues[worker.queue].first).to include('rescheduled_once' => true)
+    end
+
+    it 'does not set rescheduled_once key if .rescheduled_once is not called' do
+      worker.perform_async
+
+      expect(Sidekiq::Queues[worker.queue].first).not_to include('rescheduled_once' => true)
+    end
+  end
+
+  describe '.with_ip_address_state' do
+    around do |example|
+      Sidekiq::Testing.fake!(&example)
+    end
+
+    let(:ip_address) { '1.1.1.1' }
+
+    it 'sets IP state' do
+      allow(::Gitlab::IpAddressState).to receive(:current).and_return(ip_address)
+
+      worker.with_ip_address_state.perform_async
+
+      expect(Sidekiq::Queues[worker.queue].first).to include('ip_address_state' => ip_address)
+      expect(Sidekiq::Queues[worker.queue].length).to eq(1)
+    end
+  end
+
   context 'when using perform_async/in/at' do
     let(:shard_pool) { 'dummy_pool' }
     let(:shard_name) { 'shard_name' }
@@ -584,6 +673,64 @@ RSpec.describe ApplicationWorker, feature_category: :shared do
           operation
         end
       end
+    end
+
+    context 'with ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper' do
+      let(:worker) { ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper }
+
+      context 'when calling perform_async with setter' do
+        subject(:operation) { worker.set(testing: true).perform_async({ 'job_class' => ActionMailer::MailDeliveryJob }) }
+
+        it_behaves_like 'uses shard router'
+      end
+
+      context 'when calling perform_async with setter without job_class' do
+        subject(:operation) { worker.set(testing: true).perform_async }
+
+        it_behaves_like 'uses shard router'
+      end
+
+      context 'when calling perform_in with setter' do
+        subject(:operation) { worker.set(testing: true).perform_in(1, { 'job_class' => ActionMailer::MailDeliveryJob }) }
+
+        it_behaves_like 'uses shard router'
+      end
+
+      context 'when calling perform_in with setter without job_class' do
+        subject(:operation) { worker.set(testing: true).perform_in(1) }
+
+        it_behaves_like 'uses shard router'
+      end
+
+      context 'when calling perform_at with setter' do
+        subject(:operation) { worker.set(testing: true).perform_at(1, { 'job_class' => ActionMailer::MailDeliveryJob }) }
+
+        it_behaves_like 'uses shard router'
+      end
+
+      context 'when calling perform_at with setter without job_class' do
+        subject(:operation) { worker.set(testing: true).perform_at(1) }
+
+        it_behaves_like 'uses shard router'
+      end
+    end
+
+    context 'when calling perform_async with setter' do
+      subject(:operation) { worker.set(testing: true).perform_async }
+
+      it_behaves_like 'uses shard router'
+    end
+
+    context 'when calling perform_in with setter' do
+      subject(:operation) { worker.set(testing: true).perform_in(1) }
+
+      it_behaves_like 'uses shard router'
+    end
+
+    context 'when calling perform_at with setter' do
+      subject(:operation) { worker.set(testing: true).perform_at(1) }
+
+      it_behaves_like 'uses shard router'
     end
 
     context 'when calling perform_async' do

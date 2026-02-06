@@ -1,10 +1,18 @@
 # frozen_string_literal: true
 
 class DescriptionVersion < ApplicationRecord
+  include FromUnion
+
+  attr_accessor :preloaded_issuable
+
   belongs_to :issue
   belongs_to :merge_request
+  belongs_to :namespace
 
-  validate :exactly_one_issuable
+  validates :namespace, presence: true
+  validates_with ExactlyOnePresentValidator, fields: :issuable_id_attrs
+
+  before_validation :ensure_namespace_id
 
   delegate :resource_parent, to: :issuable
 
@@ -13,21 +21,19 @@ class DescriptionVersion < ApplicationRecord
   end
 
   def issuable
+    return preloaded_issuable if preloaded_issuable
+
     issue || merge_request
   end
 
   private
 
-  def exactly_one_issuable
-    issuable_count = self.class.issuable_attrs.count { |attr| self["#{attr}_id"] }
+  def ensure_namespace_id
+    self.namespace_id = Gitlab::Issuable::NamespaceGetter.new(issuable, allow_nil: true).namespace_id
+  end
 
-    if issuable_count != 1
-      errors.add(
-        :base,
-        _("Exactly one of %{attributes} is required") %
-          { attributes: self.class.issuable_attrs.join(', ') }
-      )
-    end
+  def issuable_id_attrs
+    self.class.issuable_attrs.map { |attr| :"#{attr}_id" }
   end
 end
 

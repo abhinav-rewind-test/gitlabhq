@@ -7,7 +7,7 @@ module Labels
     # rubocop: disable CodeReuse/ActiveRecord
     def execute(label)
       return unless project.group &&
-          label.is_a?(ProjectLabel)
+        label.is_a?(ProjectLabel)
 
       ProjectLabel.transaction do
         # use the existing group label if it exists
@@ -44,15 +44,13 @@ module Labels
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def label_ids_for_merge(group_label)
       LabelsFinder
         .new(current_user, title: group_label.title, group_id: project.group.id)
         .execute(skip_authorization: true)
-        .where.not(id: group_label)
+        .id_not_in(group_label)
         .select(:id, :project_id, :group_id, :type) # Can't use pluck() to avoid object-creation because of the batching
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     # rubocop: disable CodeReuse/ActiveRecord
     def update_issuables(group_label, label_ids)

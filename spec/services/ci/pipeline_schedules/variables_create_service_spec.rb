@@ -2,19 +2,20 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::PipelineSchedules::VariablesCreateService, feature_category: :continuous_integration do
+RSpec.describe Ci::PipelineSchedules::VariablesCreateService, feature_category: :pipeline_composition do
   let_it_be(:reporter) { create(:user) }
   let_it_be_with_reload(:user) { create(:user) }
   let_it_be_with_reload(:developer) { create(:user) }
-  let_it_be_with_reload(:project) { create(:project, :public, :repository) }
+  let_it_be_with_reload(:project) do
+    create(:project, :public, :repository, maintainers: user, developers: developer, reporters: reporter)
+  end
+
   let_it_be_with_reload(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project, owner: user) }
 
   subject(:service) { described_class.new(pipeline_schedule, user, params) }
 
-  before_all do
-    project.add_maintainer(user)
-    project.add_developer(developer)
-    project.add_reporter(reporter)
+  before do
+    project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
   end
 
   describe 'execute' do
@@ -39,7 +40,7 @@ RSpec.describe Ci::PipelineSchedules::VariablesCreateService, feature_category: 
       subject(:service) { described_class.new(pipeline_schedule, developer, {}) }
 
       before do
-        project.update!(restrict_user_defined_variables: true)
+        project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
       end
 
       it 'returns ServiceResponse.error' do

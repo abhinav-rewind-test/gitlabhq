@@ -1,6 +1,6 @@
 <script>
-import { GlBadge, GlTooltipDirective, GlIcon } from '@gitlab/ui';
-import { sprintf, __ } from '~/locale';
+import { GlTooltipDirective, GlIcon } from '@gitlab/ui';
+import { sprintf, s__ } from '~/locale';
 
 /**
  * Renders CI icon based on API response shared between all places where it is used.
@@ -19,7 +19,6 @@ import { sprintf, __ } from '~/locale';
 
 export default {
   components: {
-    GlBadge,
     GlIcon,
   },
   directives: {
@@ -31,7 +30,7 @@ export default {
       required: true,
       validator(status) {
         const { icon } = status;
-        return typeof icon === 'string' && icon.startsWith('status_');
+        return typeof icon === 'string' && icon.startsWith('status');
       },
     },
     showStatusText: {
@@ -51,22 +50,43 @@ export default {
     },
   },
   computed: {
-    title() {
-      if (this.showTooltip) {
-        // show tooltip only when not showing text already
-        return !this.showStatusText ? this.status?.text : null;
-      }
-      return null;
-    },
-    ariaLabel() {
-      return sprintf(__('Status: %{status}'), { status: this.status?.text });
-    },
     href() {
       // href can come from GraphQL (camelCase) or REST API (snake_case)
       if (this.useLink) {
         return this.status.detailsPath || this.status.details_path;
       }
       return null;
+    },
+    fullText() {
+      return sprintf(s__('CICD|Status: %{status}'), {
+        status: this.status?.text,
+      });
+    },
+    attributes() {
+      const attributes = {
+        text: this.showStatusText ? this.status.text : null,
+        tooltip: !this.showStatusText && this.showTooltip ? this.fullText : null,
+      };
+
+      // text for screen readers when text is not shown
+      const accessibleText = !this.showStatusText ? this.fullText : null;
+
+      if (this.href) {
+        // render a link with aria-label
+        return {
+          is: 'a',
+          href: this.href,
+          ariaLabel: accessibleText,
+          ...attributes,
+        };
+      }
+
+      // render a span with screen reader only text
+      return {
+        is: 'span',
+        srOnlyText: accessibleText,
+        ...attributes,
+      };
     },
     icon() {
       if (this.status.icon) {
@@ -95,21 +115,26 @@ export default {
 };
 </script>
 <template>
-  <gl-badge
-    v-gl-tooltip
-    class="ci-icon gl-p-2"
+  <component
+    :is="attributes.is"
+    v-gl-tooltip.viewport.left
+    class="ci-icon gl-inline-flex gl-items-center gl-text-sm"
     :class="`ci-icon-variant-${variant}`"
     :variant="variant"
-    :title="title"
-    :aria-label="ariaLabel"
-    :href="href"
-    size="md"
+    :title="attributes.tooltip"
+    :aria-label="attributes.ariaLabel"
+    :href="attributes.href"
     data-testid="ci-icon"
     @click="$emit('ciStatusBadgeClick')"
   >
     <span class="ci-icon-gl-icon-wrapper"><gl-icon :name="icon" /></span
-    ><span v-if="showStatusText" class="gl-mx-2 gl-white-space-nowrap" data-testid="ci-icon-text">{{
-      status.text
+    ><span
+      v-if="attributes.text"
+      class="gl-ml-2 gl-mr-3 gl-self-center gl-whitespace-nowrap gl-leading-1"
+      data-testid="ci-icon-text"
+      >{{ attributes.text }}</span
+    ><span v-if="attributes.srOnlyText" class="gl-sr-only" data-testid="ci-icon-sr-text">{{
+      attributes.srOnlyText
     }}</span>
-  </gl-badge>
+  </component>
 </template>

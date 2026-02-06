@@ -223,7 +223,6 @@ export default {
   methods: {
     ...mapActions('details', [
       'startPollingStacktrace',
-      'updateStatus',
       'setStatus',
       'updateResolveStatus',
       'updateIgnoreStatus',
@@ -298,11 +297,11 @@ export default {
       </gl-alert>
 
       <div
-        class="error-details-header gl-border-b gl-display-flex gl-flex-direction-column gl-md-flex-direction-row gl-py-3 gl-justify-content-space-between"
+        class="error-details-header gl-border-b gl-flex gl-flex-col gl-justify-between gl-py-3 @md/panel:gl-flex-row"
       >
         <div
           v-if="!loadingStacktrace && stacktrace"
-          class="gl-my-auto gl-text-truncate"
+          class="gl-my-auto gl-truncate"
           data-testid="reported-text"
         >
           <gl-sprintf :message="__('Reported %{timeAgo} by %{reportedBy}')">
@@ -315,7 +314,7 @@ export default {
           </gl-sprintf>
         </div>
         <div>
-          <div class="gl-display-none gl-md-display-inline-flex">
+          <div class="gl-hidden @md/panel:gl-inline-flex">
             <gl-button
               :loading="updatingIgnoreStatus"
               data-testid="update-ignore-status-btn"
@@ -346,7 +345,7 @@ export default {
               ref="sentryIssueForm"
               :action="projectIssuesPath"
               method="POST"
-              class="gl-display-inline-block gl-ml-3"
+              class="gl-ml-3 gl-inline-block"
             >
               <gl-form-input class="hidden" name="issue[title]" :value="issueTitle" />
               <input name="issue[description]" :value="issueDescription" type="hidden" />
@@ -371,8 +370,8 @@ export default {
           <gl-disclosure-dropdown
             block
             :toggle-text="__('Options')"
-            toggle-class="gl-md-display-none"
-            placement="right"
+            toggle-class="@md/panel:gl-hidden"
+            placement="bottom-end"
             :disabled="issueUpdateInProgress"
             :items="dropdownItems"
           />
@@ -380,13 +379,13 @@ export default {
       </div>
       <div>
         <tooltip-on-truncate :title="error.title" truncate-target="child" placement="top">
-          <h2 class="gl-text-truncate">{{ error.title }}</h2>
+          <h2 class="gl-truncate">{{ error.title }}</h2>
         </tooltip-on-truncate>
         <template v-if="error.tags">
           <gl-badge v-if="error.tags.level" :variant="errorSeverityVariant" class="gl-mr-3">
             {{ errorLevel }}
           </gl-badge>
-          <gl-badge v-if="error.tags.logger" variant="muted">{{ error.tags.logger }} </gl-badge>
+          <gl-badge v-if="error.tags.logger" variant="neutral">{{ error.tags.logger }} </gl-badge>
         </template>
 
         <error-details-info :error="error" />

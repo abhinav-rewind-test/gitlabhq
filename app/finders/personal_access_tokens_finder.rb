@@ -17,16 +17,21 @@ class PersonalAccessTokensFinder
     tokens = by_users(tokens)
     tokens = by_impersonation(tokens)
     tokens = by_state(tokens)
-    tokens = by_owner_type(tokens)
     tokens = by_revoked_state(tokens)
     tokens = by_created_before(tokens)
     tokens = by_created_after(tokens)
+    tokens = by_expires_before(tokens)
+    tokens = by_expires_after(tokens)
     tokens = by_last_used_before(tokens)
     tokens = by_last_used_after(tokens)
     tokens = by_search(tokens)
+    tokens = by_organization(tokens)
+    tokens = by_group(tokens)
     tokens = tokens.allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/436657")
 
-    sort(tokens)
+    by_user_types_with_in_operator_optimization(
+      sort(tokens)
+    )
   end
 
   private
@@ -35,18 +40,12 @@ class PersonalAccessTokensFinder
 
   def by_current_user(tokens)
     return tokens if current_user.nil? || current_user.can_admin_all_resources?
-    return PersonalAccessToken.none unless Ability.allowed?(current_user, :read_user_personal_access_tokens, params[:user])
+
+    unless Ability.allowed?(current_user, :read_user_personal_access_tokens, params[:user])
+      return PersonalAccessToken.none
+    end
 
     tokens
-  end
-
-  def by_owner_type(tokens)
-    case @params[:owner_type]
-    when 'human'
-      tokens.owner_is_human
-    else
-      tokens
-    end
   end
 
   def by_user(tokens)
@@ -94,7 +93,7 @@ class PersonalAccessTokensFinder
   def by_revoked_state(tokens)
     return tokens unless params.has_key?(:revoked)
 
-    params[:revoked] ? tokens.revoked : tokens.not_revoked
+    Gitlab::Utils.to_boolean(params[:revoked]) ? tokens.revoked : tokens.not_revoked
   end
 
   def by_created_before(tokens)
@@ -107,6 +106,18 @@ class PersonalAccessTokensFinder
     return tokens unless params[:created_after]
 
     tokens.created_after(params[:created_after])
+  end
+
+  def by_expires_before(tokens)
+    return tokens unless params[:expires_before]
+
+    tokens.expires_before(params[:expires_before])
+  end
+
+  def by_expires_after(tokens)
+    return tokens unless params[:expires_after]
+
+    tokens.expires_after(params[:expires_after])
   end
 
   def by_last_used_before(tokens)
@@ -125,5 +136,48 @@ class PersonalAccessTokensFinder
     return tokens unless params[:search]
 
     tokens.search(params[:search])
+  end
+
+  def by_organization(tokens)
+    return tokens unless params[:organization]
+
+    tokens.in_organization(params[:organization])
+  end
+
+  def by_group(tokens)
+    return tokens unless params[:group]
+
+    tokens.for_group(params[:group])
+  end
+
+  def by_user_types_with_in_operator_optimization(tokens)
+    user_types = Array(params[:user_types]).map(&:to_sym)
+    owner_type = @params[:owner_type]&.to_sym
+    user_types = Array(owner_type) if owner_type
+    user_types_values = user_types.filter_map { |user_type| HasUserType::USER_TYPES[user_type] }
+
+    return tokens if user_types_values.empty?
+    return tokens.for_user_types(user_types_values) if user_types_values.one?
+
+    user_types_values_string = user_types_values.map { |user_type_value| "(#{user_type_value})" }.join(', ')
+
+    # rubocop:disable CodeReuse/ActiveRecord -- https://docs.gitlab.com/development/database/efficient_in_operator_queries/
+    array_scope = PersonalAccessToken.select(:user_type).from("(VALUES #{user_types_values_string}) tbl(user_type)")
+
+    array_mapping_scope = ->(user_type_expression) do
+      PersonalAccessToken.where(PersonalAccessToken.arel_table[:user_type].eq(user_type_expression))
+    end
+
+    finder_query = ->(_expression, id_expression) do
+      PersonalAccessToken.where(PersonalAccessToken.arel_table[:id].eq(id_expression))
+    end
+    # rubocop:enable CodeReuse/ActiveRecord
+
+    Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder.new(
+      scope: tokens,
+      array_scope: array_scope,
+      array_mapping_scope: array_mapping_scope,
+      finder_query: finder_query
+    ).execute
   end
 end

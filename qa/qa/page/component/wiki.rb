@@ -10,20 +10,19 @@ module QA
           super
 
           base.view 'app/views/shared/wikis/show.html.haml' do
-            element 'wiki-page-title'
-            element 'wiki-edit-button'
+            element 'wiki-app'
           end
 
           base.view 'app/views/shared/wikis/_wiki_content.html.haml' do
             element 'wiki-page-content'
           end
 
-          base.view 'app/views/shared/wikis/_main_links.html.haml' do
-            element 'new-page-button'
-          end
-
           base.view 'app/views/shared/empty_states/_wikis.html.haml' do
             element 'wiki-empty-state'
+          end
+
+          base.view 'app/assets/javascripts/wikis/components/wiki_sidebar_toggle.vue' do
+            element 'wiki-sidebar-toggle'
           end
         end
 
@@ -32,7 +31,8 @@ module QA
         end
 
         def click_new_page
-          click_element('new-page-button')
+          click_element('wiki-more-dropdown')
+          click_element('page-new-button')
         end
 
         def click_page_history
@@ -45,7 +45,7 @@ module QA
         end
 
         def has_title?(title)
-          has_element?('wiki-page-title', title)
+          has_element?('page-heading', title)
         end
 
         def has_content?(content)
@@ -70,6 +70,10 @@ module QA
           within_element('wiki-page-content') do
             has_css?("img[src$='#{image_file_name}']")
           end
+        end
+
+        def expand_sidebar_if_collapsed
+          click_element('wiki-sidebar-toggle') if has_css?('.wiki-sidebar.sidebar-collapsed', wait: 1)
         end
       end
     end

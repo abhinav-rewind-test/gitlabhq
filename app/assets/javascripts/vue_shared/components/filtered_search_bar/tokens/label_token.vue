@@ -79,7 +79,8 @@ export default {
       return label.name || label.title;
     },
     updateListOfAllLabels() {
-      this.labels.forEach((label) => {
+      const dedupedLabels = this.dedupeLabels(this.labels);
+      dedupedLabels.forEach((label) => {
         if (!this.findLabelById(label.id)) {
           this.allLabels.push(label);
         }
@@ -93,7 +94,8 @@ export default {
           // We'd want to avoid doing this check but
           // labels.json and /groups/:id/labels & /projects/:id/labels
           // return response differently.
-          this.labels = Array.isArray(res) ? res : res.data;
+          const rawLabels = Array.isArray(res) ? res : res.data;
+          this.labels = this.dedupeLabels(rawLabels);
           this.updateListOfAllLabels();
 
           if (this.config.fetchLatestLabels) {
@@ -116,7 +118,8 @@ export default {
           // We'd want to avoid doing this check but
           // labels.json and /groups/:id/labels & /projects/:id/labels
           // return response differently.
-          this.labels = Array.isArray(res) ? res : res.data;
+          const rawLabels = Array.isArray(res) ? res : res.data;
+          this.labels = this.dedupeLabels(rawLabels);
           this.updateListOfAllLabels();
         })
         .catch(() =>
@@ -124,6 +127,17 @@ export default {
             message: __('There was a problem fetching latest labels.'),
           }),
         );
+    },
+    dedupeLabels(labels) {
+      const seen = new Set();
+      return labels.filter((label) => {
+        const labelName = this.getLabelName(label);
+        if (seen.has(labelName)) {
+          return false;
+        }
+        seen.add(labelName);
+        return true;
+      });
     },
   },
 };
@@ -138,6 +152,7 @@ export default {
     :suggestions="labels"
     :get-active-token-value="getActiveLabel"
     :default-suggestions="defaultLabels"
+    :value-identifier="getLabelName"
     v-bind="$attrs"
     @fetch-suggestions="fetchLabels"
     v-on="$listeners"
@@ -151,18 +166,18 @@ export default {
           :background-color="getLabelBackgroundColor(label)"
           :scoped="showScopedLabel(label)"
           :title="label"
-          size="sm"
         />
       </gl-intersperse>
       <template v-else>
+        <template v-if="!activeTokenValue">{{ inputValue }}</template>
         <gl-label
+          v-else
           class="js-no-trigger"
           :background-color="
             getLabelBackgroundColor(activeTokenValue ? getLabelName(activeTokenValue) : inputValue)
           "
           :scoped="showScopedLabel(activeTokenValue ? getLabelName(activeTokenValue) : inputValue)"
           :title="activeTokenValue ? getLabelName(activeTokenValue) : inputValue"
-          size="sm"
       /></template>
     </template>
     <template #suggestions-list="{ suggestions, selections = [] }">
@@ -172,17 +187,18 @@ export default {
         :value="getLabelName(label)"
       >
         <div
-          class="gl-display-flex gl-align-items-center"
+          class="gl-flex gl-items-center"
           :class="{ 'gl-pl-6': !selections.includes(label.title) }"
         >
           <gl-icon
             v-if="selections.includes(label.title)"
             name="check"
-            class="gl-mr-3 gl-text-secondary gl-flex-shrink-0"
+            class="gl-mr-3 gl-shrink-0"
+            variant="subtle"
           />
           <span
             :style="{ backgroundColor: label.color }"
-            class="gl-display-inline-block gl-mr-3 gl-p-3"
+            class="gl-mr-3 gl-inline-block gl-p-3"
           ></span>
           <div>{{ getLabelName(label) }}</div>
         </div>

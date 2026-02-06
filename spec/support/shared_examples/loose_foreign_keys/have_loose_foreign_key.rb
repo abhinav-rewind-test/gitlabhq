@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'it has loose foreign keys' do
+  include LooseForeignKeysHelper
+
   let(:factory_name) { nil }
+  let(:factory_attributes) { {} }
+  let(:worker_class) { nil }
   let(:table_name) { described_class.table_name }
   let(:connection) { described_class.connection }
   let(:fully_qualified_table_name) { "#{connection.current_schema}.#{table_name}" }
@@ -11,6 +15,10 @@ RSpec.shared_examples 'it has loose foreign keys' do
     LooseForeignKeys::DeletedRecord.using_connection(connection) do
       example.run
     end
+  end
+
+  before do
+    allow(Gitlab::Database::SharedModel).to receive(:using_connection).and_yield
   end
 
   it 'has at least one loose foreign key definition' do
@@ -32,7 +40,7 @@ RSpec.shared_examples 'it has loose foreign keys' do
   end
 
   it 'records record deletions' do
-    model = create(factory_name) # rubocop: disable Rails/SaveBang
+    model = create(factory_name, **factory_attributes)
 
     # using delete to avoid cross-database modification errors when associations with dependent option are present
     model.delete
@@ -43,46 +51,124 @@ RSpec.shared_examples 'it has loose foreign keys' do
   end
 
   it 'cleans up record deletions' do
-    model = create(factory_name) # rubocop: disable Rails/SaveBang
+    model = create(factory_name, **factory_attributes)
+    model_id = model.id
 
     expect { model.delete }.to change { deleted_records.count }.by(1)
 
-    LooseForeignKeys::ProcessDeletedRecordsService.new(connection: connection).execute
+    process_loose_foreign_key_deletions(record: model, worker_class: worker_class)
 
-    expect(deleted_records.status_pending.count).to be(0)
-    expect(deleted_records.status_processed.count).to be(1)
+    expect(deleted_records.where(primary_key_value: model_id).status_pending.count).to eq(0)
+    expect(deleted_records.where(primary_key_value: model_id).status_processed.count).to eq(1)
   end
 end
 
-RSpec.shared_examples 'cleanup by a loose foreign key' do
-  include LooseForeignKeysHelper
-
-  let(:foreign_key_definition) do
-    foreign_keys_for_parent = Gitlab::Database::LooseForeignKeys.definitions_by_table[parent.class.table_name]
-    foreign_keys_for_parent.find { |definition| definition.from_table == model.class.table_name }
-  end
-
-  def find_model
-    query = model.class
-    # handle composite primary keys
-    connection = model.class.connection
-    connection.primary_keys(model.class.table_name).each do |primary_key|
-      query = query.where(primary_key => model.public_send(primary_key))
-    end
-    query.first
-  end
+RSpec.shared_examples 'cleanup by a loose foreign key' do |on_delete: nil|
+  include_context 'for loose foreign keys'
 
   it 'cleans up (delete or nullify) the model' do
+    expect(foreign_key_definition.on_delete).to eq(on_delete.to_sym) if on_delete.present?
+
+    lfk_debug_log("##+ Additional Debug Logs for LFK flakiness +##")
+    lfk_debug_log("## Parent: #{parent.inspect} ##")
     parent.delete
+    lfk_debug_log("## Parent deleted ##")
 
     expect(find_model).to be_present
 
-    process_loose_foreign_key_deletions(record: parent)
+    begin
+      if find_model
+        lfk_debug_log("## Find Model: #{find_model.inspect} ##")
+      else
+        lfk_debug_log("## Find Model not present ##")
+      end
+    rescue NoMethodError
+      lfk_debug_log("## Inspect causes an NoMethodError for this class. Find Model: #{find_model.class} #{find_model.id} ##")
+    end
+
+    debug_print_outstanding_lfk_records
+
+    start_process_loose_foreign_key_deletions = Time.now
+    process_loose_foreign_key_deletions(record: parent, worker_class: foreign_key_definition.options[:worker_class])
+    lfk_debug_log("## LFK's processed for parent in #{Time.now - start_process_loose_foreign_key_deletions} seconds##")
+
+    debug_print_outstanding_lfk_records
 
     if foreign_key_definition.on_delete.eql?(:async_delete)
       expect(find_model).not_to be_present
     else
       expect(find_model[foreign_key_definition.column]).to eq(nil)
     end
+
+    lfk_debug_log("##- Additional Debug Logs for LFK flakiness end -##")
+  end
+
+  def lfk_debug_enabled?
+    ENV['LFK_DEBUG'] == 'true'
+  end
+
+  def lfk_debug_log(message)
+    puts(message) if lfk_debug_enabled?
+  end
+
+  def debug_print_outstanding_lfk_records
+    return unless lfk_debug_enabled?
+
+    Gitlab::Database::SharedModel.using_connection(parent.connection) do
+      lfk_deleted_records = []
+      Gitlab::Database::LooseForeignKeys.definitions_by_table.each_key do |table|
+        fully_qualified_table_name = "#{parent.connection.current_schema}.#{table}"
+        lfk_deleted_records << LooseForeignKeys::DeletedRecord.load_batch_for_table(fully_qualified_table_name, 1000)
+      end
+      lfk_deleted_records.flatten!
+      lfk_debug_log("## #{lfk_deleted_records.count} LFK Deleted records found for parent ##")
+      lfk_debug_log("## #{lfk_deleted_records.inspect} ##")
+    end
+  end
+
+  # rubocop:disable Cop/AvoidReturnFromBlocks -- Intentional Short Circuit
+  def any_outstanding_lfk_records?(parent)
+    Gitlab::Database::SharedModel.using_connection(parent.connection) do
+      Gitlab::Database::LooseForeignKeys.definitions_by_table.each_key do |table|
+        fully_qualified_table_name = "#{parent.connection.current_schema}.#{table}"
+        return true if LooseForeignKeys::DeletedRecord.load_batch_for_table(fully_qualified_table_name, 1000).any?
+      end
+    end
+
+    false
+  end
+  # rubocop:enable Cop/AvoidReturnFromBlocks
+end
+
+RSpec.shared_examples 'update by a loose foreign key' do
+  let(:options) { foreign_key_definition.options }
+
+  include_context 'for loose foreign keys'
+
+  it 'updates the model' do
+    unless foreign_key_definition.on_delete.eql?(:update_column_to)
+      raise ArgumentError, 'Loose foreign key definition should have `update_column_to` on_delete option'
+    end
+
+    parent.delete
+
+    process_loose_foreign_key_deletions(record: parent)
+
+    expect(find_model.read_attribute_before_type_cast(options[:target_column])).to eq(options[:target_value])
+  end
+end
+
+RSpec.shared_examples 'loose foreign key with custom delete limit' do
+  let(:table_name) { described_class.table_name }
+
+  include_context 'for loose foreign keys'
+
+  it 'has loose foreign key definition with custom delete limit' do
+    definitions = Gitlab::Database::LooseForeignKeys.definitions_by_table[table_name]
+    definition = definitions.find do |definition|
+      definition.from_table == from_table && definition.to_table == table_name
+    end
+
+    expect(definition.options[:delete_limit]).to eq(delete_limit)
   end
 end

@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
-match '/api/graphql', via: [:get, :post], to: 'graphql#execute'
-mount GraphiQL::Rails::Engine, at: '/-/graphql-explorer', graphql_path: Gitlab::Utils.append_path(Gitlab.config.gitlab.relative_url_root, '/api/graphql')
+unless @organization_scoped_routes
+  match '/api/graphql', via: [:get, :post], to: 'graphql#execute'
+  match '/api/glql', via: [:get, :post], to: 'glql/base#execute'
+  get '/-/graphql-explorer', to: API::Graphql::GraphqlExplorerController.action(:show)
 
-::API::API.logger Rails.logger # rubocop:disable Gitlab/RailsLogger
-mount ::API::API => '/'
+  ::API::API.logger Rails.logger
+  mount ::API::API => '/'
+end

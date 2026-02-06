@@ -180,12 +180,12 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
     end
 
     it 'limits search results based on the third page' do
-      expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + per_page * 2)
+      expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + (per_page * 2))
       results.objects(blob_type, page: 3, per_page: per_page)
     end
 
     it 'uses the per_page value when passed' do
-      expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + 10 * 2)
+      expect(file_finder).to receive(:find).with(query, content_match_cutoff: count_limit + (10 * 2))
       results.objects(blob_type, page: 3, per_page: 10)
     end
   end
@@ -573,19 +573,6 @@ RSpec.describe Gitlab::ProjectSearchResults, feature_category: :global_search do
       create(:group_member, :developer, user: user_1, group: group)
 
       expect(objects).to contain_exactly(user_1)
-    end
-
-    context 'when multiple projects provided' do
-      let_it_be(:project_2) { create(:project, namespace: group) }
-
-      subject(:results) { described_class.new(user, query, project: [project, project_2], repository_ref: repository_ref, filters: filters) }
-
-      it 'returns users belonging to projects matching the search query' do
-        create(:project_member, :developer, user: user_1, project: project)
-        create(:project_member, :developer, user: user_3, project: project_2)
-
-        expect(objects).to contain_exactly(user_1, user_3)
-      end
     end
   end
 end

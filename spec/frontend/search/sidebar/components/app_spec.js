@@ -1,14 +1,8 @@
-import { shallowMount } from '@vue/test-utils';
 import Vue from 'vue';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
-import {
-  SEARCH_TYPE_ZOEKT,
-  SEARCH_TYPE_ADVANCED,
-  SEARCH_TYPE_BASIC,
-} from '~/search/sidebar/constants';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { MOCK_QUERY } from 'jest/search/mock_data';
-import { toggleSuperSidebarCollapsed } from '~/super_sidebar/super_sidebar_collapsed_state_manager';
 import GlobalSearchSidebar from '~/search/sidebar/components/app.vue';
 import IssuesFilters from '~/search/sidebar/components/issues_filters.vue';
 import MergeRequestsFilters from '~/search/sidebar/components/merge_requests_filters.vue';
@@ -33,7 +27,7 @@ describe('GlobalSearchSidebar', () => {
     currentScope: jest.fn(() => 'issues'),
   };
 
-  const createComponent = (initialState = {}, glFeatures = {}) => {
+  const createComponent = (initialState = {}) => {
     const store = new Vuex.Store({
       state: {
         urlQuery: MOCK_QUERY,
@@ -42,11 +36,8 @@ describe('GlobalSearchSidebar', () => {
       getters: getterSpies,
     });
 
-    wrapper = shallowMount(GlobalSearchSidebar, {
+    wrapper = shallowMountExtended(GlobalSearchSidebar, {
       store,
-      provide: {
-        glFeatures,
-      },
     });
   };
 
@@ -62,6 +53,11 @@ describe('GlobalSearchSidebar', () => {
   const findScopeSidebarNavigation = () => wrapper.findComponent(ScopeSidebarNavigation);
   const findDomElementListener = () => wrapper.findComponent(DomElementListener);
   const findAllScopesStartFilters = () => wrapper.findComponent(AllScopesStartFilters);
+  const findFiltersContainer = () => wrapper.findByTestId('search-filters');
+
+  beforeEach(() => {
+    delete window.gon;
+  });
 
   describe('renders properly', () => {
     describe('always', () => {
@@ -92,50 +88,38 @@ describe('GlobalSearchSidebar', () => {
       ${'wiki_blobs'}     | ${findWikiBlobsFilters}
       ${'wiki_blobs'}     | ${findAllScopesStartFilters}
     `('with sidebar scope: $scope', ({ scope, filter }) => {
-      describe.each([SEARCH_TYPE_BASIC, SEARCH_TYPE_ADVANCED])(
-        'with search_type %s',
-        (searchType) => {
-          beforeEach(() => {
-            getterSpies.currentScope = jest.fn(() => scope);
-            createComponent({ urlQuery: { scope }, searchType });
-          });
+      describe.each(['basic', 'advanced'])('with search_type %s', (searchType) => {
+        beforeEach(() => {
+          getterSpies.currentScope = jest.fn(() => scope);
+          createComponent({ urlQuery: { scope }, searchType });
+        });
 
-          it(`renders correctly ${filter.name.replace('find', '')}`, () => {
-            expect(filter().exists()).toBe(true);
-          });
-        },
-      );
+        it(`renders correctly ${filter.name.replace('find', '')}`, () => {
+          expect(filter().exists()).toBe(true);
+        });
+      });
     });
 
     describe.each`
-      scope      | filter              | searchType              | searchAddArchivedFilterToZoekt | isShown
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_BASIC}    | ${true}                        | ${false}
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_BASIC}    | ${false}                       | ${false}
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_ADVANCED} | ${true}                        | ${true}
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_ADVANCED} | ${false}                       | ${true}
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_ZOEKT}    | ${true}                        | ${true}
-      ${'blobs'} | ${findBlobsFilters} | ${SEARCH_TYPE_ZOEKT}    | ${false}                       | ${false}
-    `(
-      'sidebar blobs scope:',
-      ({ scope, filter, searchType, searchAddArchivedFilterToZoekt, isShown }) => {
-        beforeEach(() => {
-          getterSpies.currentScope = jest.fn(() => scope);
-          createComponent(
-            {
-              urlQuery: { scope },
-              searchType,
-            },
-            { searchAddArchivedFilterToZoekt },
-          );
+      scope      | searchType    | isShown
+      ${'blobs'} | ${'basic'}    | ${false}
+      ${'blobs'} | ${'advanced'} | ${true}
+      ${'blobs'} | ${'zoekt'}    | ${true}
+    `('sidebar blobs scope:', ({ scope, searchType, isShown }) => {
+      beforeEach(() => {
+        getterSpies.currentScope = jest.fn(() => scope);
+        createComponent({
+          urlQuery: { scope },
+          searchType,
         });
+      });
 
-        it(`does ${
-          isShown ? '' : 'not '
-        }render filter BlobsFilters when search_type ${searchType} and searchAddArchivedFilterToZoekt ${searchAddArchivedFilterToZoekt}`, () => {
-          expect(filter().exists()).toBe(isShown);
-        });
-      },
-    );
+      it(`does ${
+        isShown ? '' : 'not '
+      }render filter BlobsFilters when search_type ${searchType}`, () => {
+        expect(findBlobsFilters().exists()).toBe(isShown);
+      });
+    });
 
     describe('with sidebar scope: projects', () => {
       beforeEach(() => {
@@ -160,15 +144,23 @@ describe('GlobalSearchSidebar', () => {
     });
   });
 
-  it('toggles super sidebar when button is clicked', () => {
-    createComponent();
-    const elListener = findDomElementListener();
+  describe('filters', () => {
+    it('renders filters container', () => {
+      createComponent();
+      expect(findFiltersContainer().exists()).toBe(true);
+    });
+  });
 
-    expect(toggleSuperSidebarCollapsed).not.toHaveBeenCalled();
+  describe('toggleFilters method', () => {
+    it('toggles gl-hidden class on filters container', () => {
+      createComponent();
+      const elListener = findDomElementListener();
 
-    elListener.vm.$emit('click');
-
-    expect(toggleSuperSidebarCollapsed).toHaveBeenCalledTimes(1);
-    expect(elListener.props('selector')).toBe('#js-open-mobile-filters');
+      expect(findFiltersContainer().classes()).toContain('gl-hidden');
+      elListener.vm.$emit('click');
+      expect(findFiltersContainer().classes()).not.toContain('gl-hidden');
+      elListener.vm.$emit('click');
+      expect(findFiltersContainer().classes()).toContain('gl-hidden');
+    });
   });
 });

@@ -1,18 +1,21 @@
 <script>
 import { GlTableLite, GlTooltipDirective } from '@gitlab/ui';
+import DuoWorkflowAction from 'ee_component/ai/components/duo_workflow_action.vue';
 import { cleanLeadingSeparator } from '~/lib/utils/url_utility';
 import { s__, __ } from '~/locale';
 import Tracking from '~/tracking';
 import { PIPELINE_ID_KEY, PIPELINE_IID_KEY, TRACKING_CATEGORIES } from '~/ci/constants';
 import { keepLatestDownstreamPipelines } from '~/ci/pipeline_details/utils/parsing_utils';
-import LegacyPipelineMiniGraph from '~/ci/pipeline_mini_graph/legacy_pipeline_mini_graph.vue';
 import PipelineFailedJobsWidget from '~/ci/pipelines_page/components/failure_widget/pipeline_failed_jobs_widget.vue';
+import PipelineMiniGraph from '~/ci/pipeline_mini_graph/pipeline_mini_graph.vue';
+import { FIX_PIPELINE_AGENT_PRIVILEGES } from '~/duo_agent_platform/constants';
 import PipelineOperations from '../pipelines_page/components/pipeline_operations.vue';
 import PipelineTriggerer from '../pipelines_page/components/pipeline_triggerer.vue';
 import PipelineUrl from '../pipelines_page/components/pipeline_url.vue';
 import PipelineStatusBadge from '../pipelines_page/components/pipeline_status_badge.vue';
 
-const HIDE_TD_ON_MOBILE = 'gl-display-none! gl-lg-display-table-cell!';
+// Query should correspond to the `stacked` value of this table: `md`.
+const HIDE_WHEN_STACKED = '@max-md/panel:!gl-hidden';
 
 /**
  * Pipelines Table
@@ -32,14 +35,16 @@ const HIDE_TD_ON_MOBILE = 'gl-display-none! gl-lg-display-table-cell!';
  */
 
 export default {
+  name: 'PipelinesTable',
   components: {
     GlTableLite,
-    LegacyPipelineMiniGraph,
     PipelineFailedJobsWidget,
+    PipelineMiniGraph,
     PipelineOperations,
     PipelineStatusBadge,
     PipelineTriggerer,
     PipelineUrl,
+    DuoWorkflowAction,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -49,16 +54,19 @@ export default {
     useFailedJobsWidget: {
       default: false,
     },
+    mergeRequestPath: {
+      default: null,
+    },
   },
   props: {
-    pipelines: {
-      type: Array,
-      required: true,
-    },
-    updateGraphDropdown: {
+    isCreatingPipeline: {
       type: Boolean,
       required: false,
       default: false,
+    },
+    pipelines: {
+      type: Array,
+      required: true,
     },
     pipelineIdType: {
       type: String,
@@ -69,87 +77,139 @@ export default {
       },
     },
   },
+  emits: ['cancel-pipeline', 'refresh-pipelines-table', 'retry-pipeline'],
   computed: {
     tableFields() {
       return [
         {
           key: 'status',
           label: s__('Pipeline|Status'),
-          columnClass: 'gl-w-15p',
+          columnClass: 'gl-w-3/20',
           tdClass: this.tdClasses,
           thAttr: { 'data-testid': 'status-th' },
         },
         {
           key: 'pipeline',
           label: __('Pipeline'),
-          tdClass: `${this.tdClasses}`,
-          columnClass: 'gl-w-30p',
+          tdClass: this.tdClasses,
+          columnClass: 'gl-w-5/20',
           thAttr: { 'data-testid': 'pipeline-th' },
         },
         {
           key: 'triggerer',
           label: s__('Pipeline|Created by'),
-          tdClass: `${this.tdClasses} ${HIDE_TD_ON_MOBILE}`,
-          columnClass: 'gl-w-15p',
+          tdClass: [this.tdClasses, HIDE_WHEN_STACKED],
+          columnClass: 'gl-w-3/20',
           thAttr: { 'data-testid': 'triggerer-th' },
         },
         {
           key: 'stages',
           label: s__('Pipeline|Stages'),
           tdClass: this.tdClasses,
-          columnClass: 'gl-w-quarter',
+          columnClass: this.mergeRequestPath ? 'gl-w-3/20' : 'gl-w-4/20',
           thAttr: { 'data-testid': 'stages-th' },
         },
         {
           key: 'actions',
           tdClass: this.tdClasses,
-          columnClass: 'gl-w-20p',
+          columnClass: this.mergeRequestPath ? 'gl-w-6/20' : 'gl-w-5/20',
           thAttr: { 'data-testid': 'actions-th' },
         },
       ];
     },
     tdClasses() {
-      return this.useFailedJobsWidget ? 'gl-pb-0! gl-border-none!' : 'pl-p-5!';
+      return '!gl-border-none';
     },
     pipelinesWithDetails() {
+      let { pipelines } = this;
+
+      if (this.isCreatingPipeline) {
+        pipelines = [{ isLoading: true }, ...this.pipelines];
+      }
+
       if (this.useFailedJobsWidget) {
-        return this.pipelines.map((p) => {
-          return { ...p, _showDetails: true };
+        pipelines = pipelines.map((p) => {
+          return this.failedJobsCount(p) > 0 ? { ...p, _showDetails: true } : p;
         });
       }
 
-      return this.pipelines;
+      return pipelines;
     },
   },
   methods: {
+    displayFailedJobsWidget(item) {
+      return !item.isLoading && this.useFailedJobsWidget;
+    },
+    failedJobsCount(pipeline) {
+      return pipeline?.failed_builds_count || pipeline?.failedJobsCount || 0;
+    },
     getDownstreamPipelines(pipeline) {
-      const downstream = pipeline.triggered;
+      const downstream = pipeline.triggered || pipeline?.downstream?.nodes;
+
       return keepLatestDownstreamPipelines(downstream);
     },
     getProjectPath(item) {
-      return cleanLeadingSeparator(item.project.full_path);
+      return cleanLeadingSeparator(item.project.full_path || item.project.fullPath);
     },
-    failedJobsCount(pipeline) {
-      return pipeline?.failed_builds_count || 0;
+    getStages(item) {
+      return item?.details?.stages || item?.stages?.nodes || [];
+    },
+    onCancelPipeline(pipeline) {
+      this.$emit('cancel-pipeline', pipeline);
     },
     onRefreshPipelinesTable() {
       this.$emit('refresh-pipelines-table');
     },
     onRetryPipeline(pipeline) {
-      // This emit is only used by the `legacy_pipelines_table_wrapper`.
       this.$emit('retry-pipeline', pipeline);
     },
-    onCancelPipeline(pipeline) {
-      // This emit is only used by the `legacy_pipelines_table_wrapper`.
-      this.$emit('cancel-pipeline', pipeline);
+    rowClass(item) {
+      return this.displayFailedJobsWidget(item) && this.failedJobsCount(item) > 0
+        ? ''
+        : '!gl-border-b';
     },
     trackPipelineMiniGraph() {
       this.track('click_minigraph', { label: TRACKING_CATEGORIES.table });
+    },
+    isFailed(item) {
+      return item?.details?.status?.group === 'failed' || item?.detailedStatus?.name === 'FAILED';
+    },
+    getPipelinePath(item) {
+      if (item.path) {
+        return `${gon.gitlab_url}${item.path}`;
+      }
+      return null;
+    },
+    currentBranch(item) {
+      const mergeRequestSourceBranch =
+        item.merge_request?.source_branch || item.mergeRequest?.sourceBranch;
+      const refName = item.ref?.name || item.ref;
+      return mergeRequestSourceBranch || refName || null;
+    },
+    showDuoWorkflowAction(item) {
+      return this.isFailed(item) && this.mergeRequestPath && this.currentBranch(item);
+    },
+    getAdditionalContext(item) {
+      return [
+        {
+          Category: 'merge_request',
+          Content: JSON.stringify({
+            url: this.mergeRequestPath,
+          }),
+        },
+        {
+          Category: 'pipeline',
+          Content: JSON.stringify({
+            source_branch: this.currentBranch(item),
+          }),
+        },
+      ];
     },
   },
   TBODY_TR_ATTR: {
     'data-testid': 'pipeline-table-row',
   },
+  FIX_PIPELINE_AGENT_PRIVILEGES,
 };
 </script>
 <template>
@@ -158,12 +218,15 @@ export default {
       :fields="tableFields"
       :items="pipelinesWithDetails"
       :tbody-tr-attr="$options.TBODY_TR_ATTR"
-      stacked="lg"
+      :tbody-tr-class="rowClass"
+      details-td-class="!gl-pt-2"
+      stacked="md"
       fixed
     >
       <template #head(actions)>
-        <span class="gl-display-block gl-lg-display-none!">{{ s__('Pipeline|Actions') }}</span>
-        <slot name="table-header-actions"></slot>
+        <slot name="table-header-actions">
+          <span class="gl-block gl-text-right">{{ s__('Pipeline|Actions') }}</span>
+        </slot>
       </template>
 
       <template #table-colgroup="{ fields }">
@@ -171,50 +234,75 @@ export default {
       </template>
 
       <template #cell(status)="{ item }">
-        <pipeline-status-badge :pipeline="item" />
+        <div v-if="item.isLoading" ref="status">
+          <div class="gl-animate-skeleton-loader gl-h-7 gl-w-full gl-rounded-base"></div>
+        </div>
+        <pipeline-status-badge v-else :pipeline="item" />
       </template>
 
       <template #cell(pipeline)="{ item }">
-        <pipeline-url
-          :pipeline="item"
-          :pipeline-id-type="pipelineIdType"
-          ref-color="gl-text-black-normal"
-        />
+        <div v-if="item.isLoading">
+          <div class="gl-animate-skeleton-loader gl-mb-2 gl-h-4 gl-w-full gl-rounded-base"></div>
+          <div class="gl-animate-skeleton-loader gl-h-4 gl-w-1/2 gl-rounded-base"></div>
+        </div>
+        <pipeline-url v-else :pipeline="item" :pipeline-id-type="pipelineIdType" />
       </template>
 
       <template #cell(triggerer)="{ item }">
-        <pipeline-triggerer :pipeline="item" />
+        <div v-if="item.isLoading" class="gl-ml-3">
+          <div class="gl-animate-skeleton-loader gl-h-7 gl-w-7 gl-rounded-full"></div>
+        </div>
+        <pipeline-triggerer v-else :pipeline="item" />
       </template>
 
       <template #cell(stages)="{ item }">
-        <legacy-pipeline-mini-graph
+        <div v-if="item.isLoading">
+          <div class="gl-animate-skeleton-loader gl-h-6 gl-w-full gl-rounded-pill"></div>
+        </div>
+        <pipeline-mini-graph
+          v-else
           :downstream-pipelines="getDownstreamPipelines(item)"
           :pipeline-path="item.path"
-          :stages="item.details.stages"
-          :update-dropdown="updateGraphDropdown"
+          :pipeline-stages="getStages(item)"
           :upstream-pipeline="item.triggered_by"
           @miniGraphStageClick="trackPipelineMiniGraph"
         />
       </template>
 
       <template #cell(actions)="{ item }">
+        <div v-if="item.isLoading">
+          <div class="gl-animate-skeleton-loader gl-h-6 gl-w-full gl-rounded-lg"></div>
+        </div>
         <pipeline-operations
+          v-else
           :pipeline="item"
           @cancel-pipeline="onCancelPipeline"
           @refresh-pipelines-table="onRefreshPipelinesTable"
           @retry-pipeline="onRetryPipeline"
-        />
+        >
+          <template #duo-workflow-action>
+            <duo-workflow-action
+              v-if="showDuoWorkflowAction(item)"
+              :project-path="getProjectPath(item)"
+              :goal="getPipelinePath(item)"
+              :hover-message="__('Fix pipeline with Duo')"
+              :agent-privileges="$options.FIX_PIPELINE_AGENT_PRIVILEGES"
+              :source-branch="currentBranch(item)"
+              :additional-context="getAdditionalContext(item)"
+              workflow-definition="fix_pipeline/v1"
+              size="medium"
+            />
+          </template>
+        </pipeline-operations>
       </template>
 
       <template #row-details="{ item }">
         <pipeline-failed-jobs-widget
-          v-if="useFailedJobsWidget"
-          :failed-jobs-count="failedJobsCount(item)"
-          :is-pipeline-active="item.active"
-          :pipeline-iid="item.iid"
+          v-if="displayFailedJobsWidget(item)"
+          :pipeline-iid="item.iid.toString()"
           :pipeline-path="item.path"
           :project-path="getProjectPath(item)"
-          class="gl-ml-n4 gl-mt-n3 gl-mb-n1"
+          class="-gl-my-3 -gl-ml-4"
         />
       </template>
     </gl-table-lite>

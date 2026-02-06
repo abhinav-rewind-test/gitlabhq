@@ -1,36 +1,39 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Verify', :runner, product_group: :pipeline_security do
+  RSpec.describe 'Verify', feature_category: :pipeline_composition do
     describe 'Pass dotenv variables to downstream via bridge' do
       let(:executor) { "qa-runner-#{Faker::Alphanumeric.alphanumeric(number: 8)}" }
       let(:upstream_var) { Faker::Alphanumeric.alphanumeric(number: 8) }
       let(:group) { create(:group) }
       let(:upstream_project) { create(:project, group: group, name: 'upstream-project-with-bridge') }
       let(:downstream_project) { create(:project, group: group, name: 'downstream-project-with-bridge') }
-
-      let!(:runner) do
-        Resource::GroupRunner.fabricate! do |runner|
-          runner.name = executor
-          runner.tags = [executor]
-          runner.group = group
-        end
-      end
+      let!(:runner) { create(:group_runner, group: group, name: executor, tags: [executor]) }
 
       before do
-        Flow::Login.sign_in
+        upstream_project.change_pipeline_variables_minimum_override_role('developer')
+        downstream_project.change_pipeline_variables_minimum_override_role('developer')
+
         add_ci_file(downstream_project, downstream_ci_file)
         add_ci_file(upstream_project, upstream_ci_file)
-        upstream_project.visit!
-        Flow::Pipeline.visit_latest_pipeline(status: 'Passed')
+
+        Flow::Login.sign_in
+        Flow::Pipeline.wait_for_pipeline_creation_via_api(project: upstream_project)
+        Flow::Pipeline.wait_for_latest_pipeline_to_have_status(project: upstream_project, status: 'success')
+
+        # Wait for downstream pipeline to be created and succeed via API before UI verification
+        # This reduces flakiness from runner availability delays
+        Flow::Pipeline.wait_for_pipeline_creation_via_api(project: downstream_project)
+        Flow::Pipeline.wait_for_latest_pipeline_to_have_status(project: downstream_project, status: 'success')
+
+        upstream_project.visit_latest_pipeline
       end
 
       after do
         runner.remove_via_api!
-        [upstream_project, downstream_project].each(&:remove_via_api!)
       end
 
-      it 'runs the pipeline with composed config', :reliable,
+      it 'runs the pipeline with composed config',
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/348088' do
         Page::Project::Pipeline::Show.perform do |parent_pipeline|
           Support::Waiter.wait_until { parent_pipeline.has_linked_pipeline? }
@@ -39,7 +42,8 @@ module QA
         end
 
         Page::Project::Job::Show.perform do |show|
-          expect(show).to have_passed(timeout: 360)
+          # Reduced timeout since we already verified success via API in before block
+          expect(show).to have_passed(timeout: 60)
           expect(show.output).to have_content(upstream_var)
         end
       end

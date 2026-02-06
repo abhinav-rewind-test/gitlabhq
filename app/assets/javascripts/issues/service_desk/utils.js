@@ -2,23 +2,24 @@ import {
   OPERATOR_OR,
   TOKEN_TYPE_LABEL,
 } from '~/vue_shared/components/filtered_search_bar/constants';
-import { isSpecialFilter, isNotEmptySearchToken } from '~/issues/list/utils';
+import { isAssigneeIdParam, isNotEmptySearchToken } from '~/work_items/list/utils';
 import {
   ALTERNATIVE_FILTER,
   NORMAL_FILTER,
-  SPECIAL_FILTER,
   URL_PARAM,
-} from '~/issues/list/constants';
+  WILDCARD_FILTER,
+  wildcardFilterValues,
+} from '~/work_items/list/constants';
 import { filtersMap } from './constants';
 
 const getFilterType = ({ type, value: { data, operator } }) => {
   const isUnionedLabel = type === TOKEN_TYPE_LABEL && operator === OPERATOR_OR;
 
-  if (isUnionedLabel) {
+  if (isUnionedLabel || isAssigneeIdParam(type, data)) {
     return ALTERNATIVE_FILTER;
   }
-  if (isSpecialFilter(type, data)) {
-    return SPECIAL_FILTER;
+  if (wildcardFilterValues.includes(data)) {
+    return WILDCARD_FILTER;
   }
   return NORMAL_FILTER;
 };

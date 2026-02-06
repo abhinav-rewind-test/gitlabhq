@@ -1,25 +1,37 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Release links API
 ---
 
-# Release links API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> Support for [GitLab CI/CD job token](../../ci/jobs/ci_job_token.md) authentication [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/250819) in GitLab 15.1.
+{{< /details >}}
 
-Use this API to manipulate GitLab [Release](../../user/project/releases/index.md)
-links. For manipulating other Release assets, see [Release API](index.md).
+{{< history >}}
 
-GitLab supports links to `http`, `https`, and `ftp` assets.
+- [Added](https://gitlab.com/gitlab-org/gitlab/-/issues/250819) authentication with a [GitLab CI/CD job token](../../ci/jobs/ci_job_token.md) in GitLab 15.1.
 
-## List links of a release
+{{< /history >}}
 
-Get assets as links from a release.
+Use this API to interact with links to [releases](../../user/project/releases/_index.md).
+
+GitLab supports asset links with the following protocols:
+
+- `http`
+- `https`
+- `ftp`
+
+> [!note]
+> To interact with project releases directly, see the [project release API](_index.md).
+
+## List all release links
+
+Lists all assets as links from a release.
 
 ```plaintext
 GET /projects/:id/releases/:tag_name/assets/links
@@ -27,7 +39,7 @@ GET /projects/:id/releases/:tag_name/assets/links
 
 | Attribute     | Type           | Required | Description                             |
 | ------------- | -------------- | -------- | --------------------------------------- |
-| `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding). |
+| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths). |
 | `tag_name`    | string         | yes      | The tag associated with the Release. |
 
 Example request:
@@ -55,9 +67,9 @@ Example response:
 ]
 ```
 
-## Get a release link
+## Retrieve a release link
 
-Get an asset as a link from a release.
+Retrieves a specified asset as a link from a release.
 
 ```plaintext
 GET /projects/:id/releases/:tag_name/assets/links/:link_id
@@ -65,7 +77,7 @@ GET /projects/:id/releases/:tag_name/assets/links/:link_id
 
 | Attribute     | Type           | Required | Description                             |
 | ------------- | -------------- | -------- | --------------------------------------- |
-| `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding). |
+| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths). |
 | `tag_name`    | string         | yes      | The tag associated with the Release. |
 | `link_id`    | integer         | yes      | The ID of the link. |
 
@@ -88,7 +100,7 @@ Example response:
 
 ## Create a release link
 
-Creates an asset as a link from a release.
+Creates an asset link for a specified release.
 
 ```plaintext
 POST /projects/:id/releases/:tag_name/assets/links
@@ -96,11 +108,10 @@ POST /projects/:id/releases/:tag_name/assets/links
 
 | Attribute            | Type           | Required | Description                                                                                                               |
 |----------------------|----------------|----------|---------------------------------------------------------------------------------------------------------------------------|
-| `id`                 | integer/string | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding).                                        |
+| `id`                 | integer or string | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths).                                        |
 | `tag_name`           | string         | yes      | The tag associated with the Release.                                                                                      |
 | `name`               | string         | yes      | The name of the link. Link names must be unique in the release.                                                           |
 | `url`                | string         | yes      | The URL of the link. Link URLs must be unique in the release.                                                             |
-| `filepath`           | string         | no       | Deprecated: Use `direct_asset_path` instead.                                                                              |
 | `direct_asset_path`  | string         | no       | Optional path for a [direct asset link](../../user/project/releases/release_fields.md#permanent-links-to-release-assets). |
 | `link_type`          | string         | no       | The type of the link: `other`, `runbook`, `image`, `package`. Defaults to `other`.                                        |
 
@@ -129,7 +140,7 @@ Example response:
 
 ## Update a release link
 
-Updates an asset as a link from a release.
+Updates a specified asset link for a release.
 
 ```plaintext
 PUT /projects/:id/releases/:tag_name/assets/links/:link_id
@@ -137,17 +148,16 @@ PUT /projects/:id/releases/:tag_name/assets/links/:link_id
 
 | Attribute            | Type           | Required | Description                                                                                                               |
 | -------------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `id`                 | integer/string | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding). |
+| `id`                 | integer or string | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths). |
 | `tag_name`           | string         | yes      | The tag associated with the Release. |
 | `link_id`            | integer        | yes      | The ID of the link. |
 | `name`               | string         | no       | The name of the link. |
 | `url`                | string         | no       | The URL of the link. |
-| `filepath`           | string         | no       | Deprecated: Use `direct_asset_path` instead. |
 | `direct_asset_path`  | string         | no       | Optional path for a [direct asset link](../../user/project/releases/release_fields.md#permanent-links-to-release-assets). |
 | `link_type`          | string         | no       | The type of the link: `other`, `runbook`, `image`, `package`. Defaults to `other`. |
 
-NOTE:
-You have to specify at least one of `name` or `url`
+> [!note]
+> You have to specify at least one of `name` or `url`
 
 Example request:
 
@@ -170,7 +180,7 @@ Example response:
 
 ## Delete a release link
 
-Deletes an asset as a link from a release.
+Deletes a specified asset link from a release.
 
 ```plaintext
 DELETE /projects/:id/releases/:tag_name/assets/links/:link_id
@@ -178,7 +188,7 @@ DELETE /projects/:id/releases/:tag_name/assets/links/:link_id
 
 | Attribute     | Type           | Required | Description                             |
 | ------------- | -------------- | -------- | --------------------------------------- |
-| `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding). |
+| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths). |
 | `tag_name`    | string         | yes      | The tag associated with the Release. |
 | `link_id`    | integer         | yes      | The ID of the link. |
 

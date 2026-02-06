@@ -37,7 +37,7 @@ RSpec.describe 'getting Issue counts by status', feature_category: :team_plannin
       end
 
       it_behaves_like 'a working graphql query'
-      it { expect(issue_counts).to be nil }
+      it { expect(issue_counts).to be_nil }
     end
 
     context 'with project permissions' do
@@ -53,6 +53,34 @@ RSpec.describe 'getting Issue counts by status', feature_category: :team_plannin
           'opened' => 1,
           'closed' => 1
         )
+      end
+
+      context 'when filtering by assignees' do
+        let_it_be(:some_issue) { create(:issue, project: project, assignees: [create(:user, username: "greatuser")]) }
+
+        context 'when assignee is provided' do
+          let(:params) { { 'assigneeUsernames' => ["greatuser"] } }
+
+          it 'returns the correct counts for each status' do
+            expect(issue_counts).to eq(
+              'all' => 1,
+              'opened' => 1,
+              'closed' => 0
+            )
+          end
+        end
+
+        context 'when nil assignee is provided' do
+          let(:params) { { 'assigneeUsernames' => nil } }
+
+          it 'returns the correct counts for each status and does not error' do
+            expect(issue_counts).to eq(
+              'all' => 3,
+              'opened' => 2,
+              'closed' => 1
+            )
+          end
+        end
       end
     end
   end

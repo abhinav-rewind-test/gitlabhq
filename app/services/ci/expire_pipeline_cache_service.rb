@@ -68,6 +68,10 @@ module Ci
       url_helpers.graphql_etag_project_on_demand_scan_counts_path(project)
     end
 
+    def graphql_project_pipelines_path(project)
+      url_helpers.graphql_etag_project_pipelines_path(project)
+    end
+
     # Updates ETag caches of a pipeline.
     #
     # This logic resides in a separate method so that EE can more easily extend
@@ -79,12 +83,15 @@ module Ci
       project = pipeline.project
 
       etag_paths = [
+        # rails path
         project_pipelines_path(project),
+        # graphql path
+        graphql_project_pipelines_path(project),
         new_merge_request_pipelines_path(project),
         graphql_project_on_demand_scan_counts_path(project)
       ]
 
-      etag_paths << commit_pipelines_path(project, pipeline.commit) unless pipeline.commit.nil?
+      etag_paths << commit_pipelines_path(project, pipeline.commit) if pipeline.sha && pipeline.commit.present?
 
       each_pipelines_merge_request_path(pipeline) do |path|
         etag_paths << path
@@ -93,7 +100,7 @@ module Ci
       pipeline.upstream_and_all_downstreams.includes(project: [:route, { namespace: :route }]).each do |relative_pipeline| # rubocop: disable CodeReuse/ActiveRecord
         etag_paths << project_pipeline_path(relative_pipeline.project, relative_pipeline)
         etag_paths << graphql_pipeline_path(relative_pipeline)
-        etag_paths << graphql_pipeline_sha_path(relative_pipeline.sha)
+        etag_paths << graphql_pipeline_sha_path(relative_pipeline.sha) if relative_pipeline.sha
       end
 
       store.touch(*etag_paths)

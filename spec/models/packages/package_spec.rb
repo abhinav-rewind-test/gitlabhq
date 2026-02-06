@@ -1,7 +1,8 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 
-RSpec.describe Packages::Package, type: :model, feature_category: :package_registry do
+RSpec.describe Packages::Package, feature_category: :package_registry do
   include SortingHelper
   using RSpec::Parameterized::TableSyntax
 
@@ -16,65 +17,16 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     it { is_expected.to have_many(:dependency_links).inverse_of(:package) }
     it { is_expected.to have_many(:tags).inverse_of(:package) }
     it { is_expected.to have_many(:build_infos).inverse_of(:package) }
-    it { is_expected.to have_many(:installable_nuget_package_files).inverse_of(:package) }
-    it { is_expected.to have_one(:conan_metadatum).inverse_of(:package) }
-    it { is_expected.to have_one(:maven_metadatum).inverse_of(:package) }
-    it { is_expected.to have_one(:debian_publication).inverse_of(:package).class_name('Packages::Debian::Publication') }
-    it { is_expected.to have_one(:debian_distribution).through(:debian_publication).source(:distribution).inverse_of(:packages).class_name('Packages::Debian::ProjectDistribution') }
-    it { is_expected.to have_one(:nuget_metadatum).inverse_of(:package) }
-    it { is_expected.to have_one(:npm_metadatum).inverse_of(:package) }
-    it { is_expected.to have_one(:rpm_metadatum).inverse_of(:package) }
-    it { is_expected.to have_one(:terraform_module_metadatum).inverse_of(:package) }
-    it { is_expected.to have_many(:nuget_symbols).inverse_of(:package) }
-  end
-
-  describe '.with_debian_codename' do
-    let_it_be(:publication) { create(:debian_publication) }
-
-    subject { described_class.with_debian_codename(publication.distribution.codename).to_a }
-
-    it { is_expected.to contain_exactly(publication.package) }
-  end
-
-  describe '.with_debian_codename_or_suite' do
-    let_it_be(:distribution1) { create(:debian_project_distribution, :with_suite) }
-    let_it_be(:distribution2) { create(:debian_project_distribution, :with_suite) }
-
-    let_it_be(:package1) { create(:debian_package, published_in: distribution1) }
-    let_it_be(:package2) { create(:debian_package, published_in: distribution2) }
-
-    context 'with a codename' do
-      subject { described_class.with_debian_codename_or_suite(distribution1.codename).to_a }
-
-      it { is_expected.to contain_exactly(package1) }
-    end
-
-    context 'with a suite' do
-      subject { described_class.with_debian_codename_or_suite(distribution2.suite).to_a }
-
-      it { is_expected.to contain_exactly(package2) }
-    end
-  end
-
-  describe '.with_composer_target' do
-    let!(:package1) { create(:composer_package, :with_metadatum, sha: '123') }
-    let!(:package2) { create(:composer_package, :with_metadatum, sha: '123') }
-    let!(:package3) { create(:composer_package, :with_metadatum, sha: '234') }
-
-    subject { described_class.with_composer_target('123').to_a }
-
-    it 'selects packages with the specified sha' do
-      expect(subject).to include(package1)
-      expect(subject).to include(package2)
-      expect(subject).not_to include(package3)
-    end
   end
 
   describe '.sort_by_attribute' do
     let_it_be(:group) { create(:group, :public) }
-    let_it_be(:project) { create(:project, :public, namespace: group, name: 'project A') }
+    let_it_be(:project) { create(:project, :public, namespace: group, name: 'project A', path: 'project-a') }
 
-    let!(:package1) { create(:npm_package, project: project, version: '3.1.0', name: "@#{project.root_namespace.path}/foo1") }
+    let!(:package1) do
+      create(:npm_package, project: project, version: '3.1.0', name: "@#{project.root_namespace.path}/foo1")
+    end
+
     let!(:package2) { create(:nuget_package, project: project, version: '2.0.4') }
     let(:package3) { create(:maven_package, project: project, version: '1.1.1', name: 'zzz') }
 
@@ -85,19 +37,21 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     end
 
     RSpec.shared_examples 'package sorting by attribute' do |order_by|
-      subject { described_class.where(id: packages.map(&:id)).sort_by_attribute("#{order_by}_#{sort}").to_a }
+      subject { described_class.where(id: packages.map(&:id)).sort_by_attribute("#{order_by}_#{sort}") }
 
-      context "sorting by #{order_by}" do
-        context 'ascending order' do
+      let(:packages_desc) { packages.reverse }
+
+      context "when sorting by #{order_by}" do
+        context 'for ascending order' do
           let(:sort) { 'asc' }
 
           it { is_expected.to eq packages }
         end
 
-        context 'descending order' do
+        context 'for descending order' do
           let(:sort) { 'desc' }
 
-          it { is_expected.to eq packages.reverse }
+          it { is_expected.to eq(packages_desc) }
         end
       end
     end
@@ -118,11 +72,21 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       let(:packages) { [package3, package1, package2] }
     end
 
-    it_behaves_like 'package sorting by attribute', 'project_path' do
-      let(:another_project) { create(:project, :public, namespace: group, name: 'project B') }
-      let!(:package4) { create(:npm_package, project: another_project, version: '3.1.0', name: "@#{project.root_namespace.path}/bar") }
+    it_behaves_like 'package sorting by attribute', 'project_name' do
+      let_it_be(:another_project) { create(:project, :public, namespace: group, name: 'project B') }
+      let_it_be(:package4) { create(:generic_package, project: another_project) }
 
-      let(:packages) { [package1, package2, package3, package4] }
+      let(:packages) { [package1, package4] }
+    end
+
+    it_behaves_like 'package sorting by attribute', 'project_path' do
+      let_it_be(:another_project) { create(:project, :public, namespace: group, name: 'project B', path: 'project-b') }
+      let_it_be(:package4) do
+        create(:npm_package, project: another_project, version: '3.1.0', name: "@#{project.root_namespace.path}/bar")
+      end
+
+      let(:packages) { [package3, package2, package1, package4] }
+      let(:packages_desc) { [package4, package3, package2, package1] }
     end
   end
 
@@ -133,590 +97,24 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
 
     let(:projects) { ::Project.id_in([package1.project_id, package2.project_id]) }
 
-    subject { described_class.for_projects(projects.select(:id)) }
+    subject(:for_projects) { described_class.for_projects(projects.select(:id)) }
 
     it 'returns package1 and package2' do
-      expect(projects).not_to receive(:any?)
-
-      expect(subject).to match_array([package1, package2])
+      expect(for_projects).to match_array([package1, package2])
     end
   end
 
   describe 'validations' do
-    subject { build(:package) }
+    subject { build(:maven_package) }
 
     it { is_expected.to validate_presence_of(:project) }
     it { is_expected.to validate_uniqueness_of(:name).scoped_to(:project_id, :version, :package_type) }
 
-    describe '#name' do
-      it { is_expected.to allow_value("my/domain/com/my-app").for(:name) }
-      it { is_expected.to allow_value("my.app-11.07.2018").for(:name) }
-      it { is_expected.not_to allow_value("my(dom$$$ain)com.my-app").for(:name) }
-
-      context 'conan package' do
-        subject { build_stubbed(:conan_package) }
-
-        let(:fifty_one_characters) { 'f_b' * 17 }
-
-        it { is_expected.to allow_value('foo+bar').for(:name) }
-        it { is_expected.to allow_value('foo_bar').for(:name) }
-        it { is_expected.to allow_value('foo.bar').for(:name) }
-        it { is_expected.not_to allow_value(fifty_one_characters).for(:name) }
-        it { is_expected.not_to allow_value('+foobar').for(:name) }
-        it { is_expected.not_to allow_value('.foobar').for(:name) }
-        it { is_expected.not_to allow_value('%foo%bar').for(:name) }
-      end
-
-      context 'debian package' do
-        subject { build(:debian_package) }
-
-        it { is_expected.to allow_value('0ad').for(:name) }
-        it { is_expected.to allow_value('g++').for(:name) }
-        it { is_expected.not_to allow_value('a_b').for(:name) }
-      end
-
-      context 'debian incoming' do
-        subject { create(:debian_incoming) }
-
-        # Only 'incoming' is accepted
-        it { is_expected.to allow_value('incoming').for(:name) }
-        it { is_expected.not_to allow_value('0ad').for(:name) }
-        it { is_expected.not_to allow_value('g++').for(:name) }
-        it { is_expected.not_to allow_value('a_b').for(:name) }
-      end
-
-      context 'generic package' do
-        subject { build_stubbed(:generic_package) }
-
-        it { is_expected.to allow_value('123').for(:name) }
-        it { is_expected.to allow_value('foo').for(:name) }
-        it { is_expected.to allow_value('foo.bar.baz-2.0-20190901.47283-1').for(:name) }
-        it { is_expected.not_to allow_value('../../foo').for(:name) }
-        it { is_expected.not_to allow_value('..\..\foo').for(:name) }
-        it { is_expected.not_to allow_value('%2f%2e%2e%2f%2essh%2fauthorized_keys').for(:name) }
-        it { is_expected.not_to allow_value('$foo/bar').for(:name) }
-        it { is_expected.not_to allow_value('my file name').for(:name) }
-        it { is_expected.not_to allow_value('!!().for(:name)().for(:name)').for(:name) }
-      end
-
-      context 'helm package' do
-        subject { build(:helm_package) }
-
-        it { is_expected.to allow_value('prometheus').for(:name) }
-        it { is_expected.to allow_value('rook-ceph').for(:name) }
-        it { is_expected.not_to allow_value('a+b').for(:name) }
-        it { is_expected.not_to allow_value('Hé').for(:name) }
-      end
-
-      context 'nuget package' do
-        subject { build_stubbed(:nuget_package) }
-
-        it { is_expected.to allow_value('My.Package').for(:name) }
-        it { is_expected.to allow_value('My.Package.Mvc').for(:name) }
-        it { is_expected.to allow_value('MyPackage').for(:name) }
-        it { is_expected.to allow_value('My.23.Package').for(:name) }
-        it { is_expected.to allow_value('My23Package').for(:name) }
-        it { is_expected.to allow_value('runtime.my-test64.runtime.package.Mvc').for(:name) }
-        it { is_expected.to allow_value('my_package').for(:name) }
-        it { is_expected.not_to allow_value('My/package').for(:name) }
-        it { is_expected.not_to allow_value('../../../my_package').for(:name) }
-        it { is_expected.not_to allow_value('%2e%2e%2fmy_package').for(:name) }
-      end
-
-      context 'npm package' do
-        subject { build_stubbed(:npm_package) }
-
-        it { is_expected.to allow_value("@group-1/package").for(:name) }
-        it { is_expected.to allow_value("@any-scope/package").for(:name) }
-        it { is_expected.to allow_value("unscoped-package").for(:name) }
-        it { is_expected.not_to allow_value("@inv@lid-scope/package").for(:name) }
-        it { is_expected.not_to allow_value("@scope/../../package").for(:name) }
-        it { is_expected.not_to allow_value("@scope%2e%2e%fpackage").for(:name) }
-        it { is_expected.not_to allow_value("@scope/sub/package").for(:name) }
-      end
-
-      context 'terraform module package' do
-        subject { build_stubbed(:terraform_module_package) }
-
-        it { is_expected.to allow_value('my-module/my-system').for(:name) }
-        it { is_expected.to allow_value('my/module').for(:name) }
-        it { is_expected.not_to allow_value('my-module').for(:name) }
-        it { is_expected.not_to allow_value('My-Module').for(:name) }
-        it { is_expected.not_to allow_value('my_module').for(:name) }
-        it { is_expected.not_to allow_value('my.module').for(:name) }
-        it { is_expected.not_to allow_value('../../../my-module').for(:name) }
-        it { is_expected.not_to allow_value('%2e%2e%2fmy-module').for(:name) }
-      end
-    end
-
-    describe '#version' do
-      RSpec.shared_examples 'validating version to be SemVer compliant for' do |factory_name|
-        context "for #{factory_name}" do
-          subject { build_stubbed(factory_name) }
-
-          it { is_expected.to allow_value('1.2.3').for(:version) }
-          it { is_expected.to allow_value('1.2.3-beta').for(:version) }
-          it { is_expected.to allow_value('1.2.3-alpha.3').for(:version) }
-          it { is_expected.not_to allow_value('1').for(:version) }
-          it { is_expected.not_to allow_value('1.2').for(:version) }
-          it { is_expected.not_to allow_value('1./2.3').for(:version) }
-          it { is_expected.not_to allow_value('../../../../../1.2.3').for(:version) }
-          it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-        end
-      end
-
-      context 'conan package' do
-        subject { build_stubbed(:conan_package) }
-
-        let(:fifty_one_characters) { '1.2' * 17 }
-
-        it { is_expected.to allow_value('1.2').for(:version) }
-        it { is_expected.to allow_value('1.2.3-beta').for(:version) }
-        it { is_expected.to allow_value('1.2.3-pre1+build2').for(:version) }
-        it { is_expected.not_to allow_value('1').for(:version) }
-        it { is_expected.not_to allow_value(fifty_one_characters).for(:version) }
-        it { is_expected.not_to allow_value('1./2.3').for(:version) }
-        it { is_expected.not_to allow_value('.1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('+1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-      end
-
-      context 'composer package' do
-        it_behaves_like 'validating version to be SemVer compliant for', :composer_package
-
-        it { is_expected.to allow_value('dev-master').for(:version) }
-        it { is_expected.to allow_value('2.x-dev').for(:version) }
-      end
-
-      context 'debian package' do
-        subject { build(:debian_package) }
-
-        it { is_expected.to allow_value('2:4.9.5+dfsg-5+deb10u1').for(:version) }
-        it { is_expected.not_to allow_value('1_0').for(:version) }
-      end
-
-      context 'debian incoming' do
-        subject { create(:debian_incoming) }
-
-        it { is_expected.to allow_value(nil).for(:version) }
-        it { is_expected.not_to allow_value('2:4.9.5+dfsg-5+deb10u1').for(:version) }
-        it { is_expected.not_to allow_value('1_0').for(:version) }
-      end
-
-      context 'maven package' do
-        subject { build_stubbed(:maven_package) }
-
-        it { is_expected.to allow_value('0').for(:version) }
-        it { is_expected.to allow_value('1').for(:version) }
-        it { is_expected.to allow_value('10').for(:version) }
-        it { is_expected.to allow_value('1.0').for(:version) }
-        it { is_expected.to allow_value('1.3.350.v20200505-1744').for(:version) }
-        it { is_expected.to allow_value('1.1-beta-2').for(:version) }
-        it { is_expected.to allow_value('1.2-SNAPSHOT').for(:version) }
-        it { is_expected.to allow_value('12.1.2-2-1').for(:version) }
-        it { is_expected.to allow_value('1.2.3-beta').for(:version) }
-        it { is_expected.to allow_value('10.2.3-beta').for(:version) }
-        it { is_expected.to allow_value('2.0.0.v200706041905-7C78EK9E_EkMNfNOd2d8qq').for(:version) }
-        it { is_expected.to allow_value('1.2-alpha-1-20050205.060708-1').for(:version) }
-        it { is_expected.to allow_value('703220b4e2cea9592caeb9f3013f6b1e5335c293').for(:version) }
-        it { is_expected.to allow_value('RELEASE').for(:version) }
-        it { is_expected.not_to allow_value('..1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3..beta').for(:version) }
-        it { is_expected.not_to allow_value('  1.2.3').for(:version) }
-        it { is_expected.not_to allow_value("1.2.3  \r\t").for(:version) }
-        it { is_expected.not_to allow_value("\r\t 1.2.3").for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4/../../').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4%2e%2e%').for(:version) }
-        it { is_expected.not_to allow_value('../../../../../1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-      end
-
-      context 'pypi package' do
-        subject { create(:pypi_package) }
-
-        it { is_expected.to allow_value('0.1').for(:version) }
-        it { is_expected.to allow_value('2.0').for(:version) }
-        it { is_expected.to allow_value('1.2.0').for(:version) }
-        it { is_expected.to allow_value('0100!0.0').for(:version) }
-        it { is_expected.to allow_value('00!1.2').for(:version) }
-        it { is_expected.to allow_value('1.0a').for(:version) }
-        it { is_expected.to allow_value('1.0-a').for(:version) }
-        it { is_expected.to allow_value('1.0.a1').for(:version) }
-        it { is_expected.to allow_value('1.0a1').for(:version) }
-        it { is_expected.to allow_value('1.0-a1').for(:version) }
-        it { is_expected.to allow_value('1.0alpha1').for(:version) }
-        it { is_expected.to allow_value('1.0b1').for(:version) }
-        it { is_expected.to allow_value('1.0beta1').for(:version) }
-        it { is_expected.to allow_value('1.0rc1').for(:version) }
-        it { is_expected.to allow_value('1.0pre1').for(:version) }
-        it { is_expected.to allow_value('1.0preview1').for(:version) }
-        it { is_expected.to allow_value('1.0.dev1').for(:version) }
-        it { is_expected.to allow_value('1.0.DEV1').for(:version) }
-        it { is_expected.to allow_value('1.0.post1').for(:version) }
-        it { is_expected.to allow_value('1.0.rev1').for(:version) }
-        it { is_expected.to allow_value('1.0.r1').for(:version) }
-        it { is_expected.to allow_value('1.0c2').for(:version) }
-        it { is_expected.to allow_value('2012.15').for(:version) }
-        it { is_expected.to allow_value('1.0+5').for(:version) }
-        it { is_expected.to allow_value('1.0+abc.5').for(:version) }
-        it { is_expected.to allow_value('1!1.1').for(:version) }
-        it { is_expected.to allow_value('1.0c3').for(:version) }
-        it { is_expected.to allow_value('1.0rc2').for(:version) }
-        it { is_expected.to allow_value('1.0c1').for(:version) }
-        it { is_expected.to allow_value('1.0b2-346').for(:version) }
-        it { is_expected.to allow_value('1.0b2.post345').for(:version) }
-        it { is_expected.to allow_value('1.0b2.post345.dev456').for(:version) }
-        it { is_expected.to allow_value('1.2.rev33+123456').for(:version) }
-        it { is_expected.to allow_value('1.1.dev1').for(:version) }
-        it { is_expected.to allow_value('1.0b1.dev456').for(:version) }
-        it { is_expected.to allow_value('1.0a12.dev456').for(:version) }
-        it { is_expected.to allow_value('1.0b2').for(:version) }
-        it { is_expected.to allow_value('1.0.dev456').for(:version) }
-        it { is_expected.to allow_value('1.0c1.dev456').for(:version) }
-        it { is_expected.to allow_value('1.0.post456').for(:version) }
-        it { is_expected.to allow_value('1.0.post456.dev34').for(:version) }
-        it { is_expected.to allow_value('1.2+123abc').for(:version) }
-        it { is_expected.to allow_value('1.2+abc').for(:version) }
-        it { is_expected.to allow_value('1.2+abc123').for(:version) }
-        it { is_expected.to allow_value('1.2+abc123def').for(:version) }
-        it { is_expected.to allow_value('1.2+1234.abc').for(:version) }
-        it { is_expected.to allow_value('1.2+123456').for(:version) }
-        it { is_expected.to allow_value('1.2.r32+123456').for(:version) }
-        it { is_expected.to allow_value('1!1.2.rev33+123456').for(:version) }
-        it { is_expected.to allow_value('1.0a12').for(:version) }
-        it { is_expected.to allow_value('1.2.3-45+abcdefgh').for(:version) }
-        it { is_expected.to allow_value('v1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-45-abcdefgh').for(:version) }
-        it { is_expected.not_to allow_value('..1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('  1.2.3').for(:version) }
-        it { is_expected.not_to allow_value("1.2.3  \r\t").for(:version) }
-        it { is_expected.not_to allow_value("\r\t 1.2.3").for(:version) }
-        it { is_expected.not_to allow_value('1./2.3').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4/../../').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4%2e%2e%').for(:version) }
-        it { is_expected.not_to allow_value('../../../../../1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-      end
-
-      context 'generic package' do
-        subject { build_stubbed(:generic_package) }
-
-        it { is_expected.to validate_presence_of(:version) }
-        it { is_expected.to allow_value('1.2.3').for(:version) }
-        it { is_expected.to allow_value('1.3.350').for(:version) }
-        it { is_expected.to allow_value('1.3.350-20201230123456').for(:version) }
-        it { is_expected.to allow_value('1.2.3-rc1').for(:version) }
-        it { is_expected.to allow_value('1.2.3g').for(:version) }
-        it { is_expected.to allow_value('1.2').for(:version) }
-        it { is_expected.to allow_value('1.2.bananas').for(:version) }
-        it { is_expected.to allow_value('v1.2.4-build').for(:version) }
-        it { is_expected.to allow_value('d50d836eb3de6177ce6c7a5482f27f9c2c84b672').for(:version) }
-        it { is_expected.to allow_value('this_is_a_string_only').for(:version) }
-        it { is_expected.not_to allow_value('..1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('  1.2.3').for(:version) }
-        it { is_expected.not_to allow_value("1.2.3  \r\t").for(:version) }
-        it { is_expected.not_to allow_value("\r\t 1.2.3").for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4/../../').for(:version) }
-        it { is_expected.not_to allow_value('1.2.3-4%2e%2e%').for(:version) }
-        it { is_expected.not_to allow_value('../../../../../1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('').for(:version) }
-        it { is_expected.not_to allow_value(nil).for(:version) }
-      end
-
-      context 'helm package' do
-        subject { build_stubbed(:helm_package) }
-
-        it { is_expected.not_to allow_value(nil).for(:version) }
-        it { is_expected.not_to allow_value('').for(:version) }
-        it { is_expected.to allow_value('v1.2.3').for(:version) }
-        it { is_expected.to allow_value('1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('v1.2').for(:version) }
-      end
-
-      it_behaves_like 'validating version to be SemVer compliant for', :npm_package
-      it_behaves_like 'validating version to be SemVer compliant for', :terraform_module_package
-
-      context 'nuget package' do
-        subject { build_stubbed(:nuget_package) }
-
-        it { is_expected.to allow_value('1.2').for(:version) }
-        it { is_expected.to allow_value('1.2.3').for(:version) }
-        it { is_expected.to allow_value('1.2.3.4').for(:version) }
-        it { is_expected.to allow_value('1.2.3-beta').for(:version) }
-        it { is_expected.to allow_value('1.2.3-alpha.3').for(:version) }
-        it { is_expected.not_to allow_value('1').for(:version) }
-        it { is_expected.not_to allow_value('1./2.3').for(:version) }
-        it { is_expected.not_to allow_value('../../../../../1.2.3').for(:version) }
-        it { is_expected.not_to allow_value('%2e%2e%2f1.2.3').for(:version) }
-      end
-    end
-
-    describe '#npm_package_already_taken' do
-      context 'maven package' do
-        let!(:package) { create(:maven_package) }
-
-        it 'will allow a package of the same name' do
-          new_package = build(:maven_package, name: package.name)
-
-          expect(new_package).to be_valid
-        end
-      end
-
-      context 'npm package' do
-        let_it_be(:group) { create(:group) }
-        let_it_be(:project) { create(:project, namespace: group) }
-        let_it_be(:second_project) { create(:project, namespace: group) }
-
-        let(:package) { build(:npm_package, project: project, name: name) }
-
-        shared_examples 'validating the first package' do
-          it 'validates the first package' do
-            expect(package).to be_valid
-          end
-        end
-
-        shared_examples 'validating the second package' do
-          it 'validates the second package' do
-            package.save!
-
-            expect(second_package).to be_valid
-          end
-        end
-
-        shared_examples 'not validating the second package' do |field_with_error:|
-          it 'does not validate the second package' do
-            package.save!
-
-            expect(second_package).not_to be_valid
-            case field_with_error
-            when :base
-              expect(second_package.errors.messages[:base]).to eq ['Package already exists']
-            when :name
-              expect(second_package.errors.messages[:name]).to eq ['has already been taken']
-            else
-              raise ArgumentError, "field #{field_with_error} not expected"
-            end
-          end
-        end
-
-        shared_examples 'validating both if the first package is pending destruction' do
-          before do
-            package.status = :pending_destruction
-          end
-
-          it_behaves_like 'validating the first package'
-          it_behaves_like 'validating the second package'
-        end
-
-        context 'following the naming convention' do
-          let(:name) { "@#{group.path}/test" }
-
-          context 'with the second package in the project of the first package' do
-            let(:second_package) { build(:npm_package, project: project, name: second_package_name, version: second_package_version) }
-
-            context 'with no duplicated name' do
-              let(:second_package_name) { "@#{group.path}/test2" }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicated name' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicate name and duplicated version' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { package.version }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'not validating the second package', field_with_error: :name
-              it_behaves_like 'validating both if the first package is pending destruction'
-            end
-          end
-
-          context 'with the second package in a different project than the first package' do
-            let(:second_package) { build(:npm_package, project: second_project, name: second_package_name, version: second_package_version) }
-
-            context 'with no duplicated name' do
-              let(:second_package_name) { "@#{group.path}/test2" }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicated name' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicate name and duplicated version' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { package.version }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'not validating the second package', field_with_error: :base
-              it_behaves_like 'validating both if the first package is pending destruction'
-            end
-          end
-        end
-
-        context 'not following the naming convention' do
-          let(:name) { '@foobar/test' }
-
-          context 'with the second package in the project of the first package' do
-            let(:second_package) { build(:npm_package, project: project, name: second_package_name, version: second_package_version) }
-
-            context 'with no duplicated name' do
-              let(:second_package_name) { "@foobar/test2" }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicated name' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicate name and duplicated version' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { package.version }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'not validating the second package', field_with_error: :name
-              it_behaves_like 'validating both if the first package is pending destruction'
-            end
-          end
-
-          context 'with the second package in a different project than the first package' do
-            let(:second_package) { build(:npm_package, project: second_project, name: second_package_name, version: second_package_version) }
-
-            context 'with no duplicated name' do
-              let(:second_package_name) { "@foobar/test2" }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicated name' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { '5.0.0' }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-            end
-
-            context 'with duplicate name and duplicated version' do
-              let(:second_package_name) { package.name }
-              let(:second_package_version) { package.version }
-
-              it_behaves_like 'validating the first package'
-              it_behaves_like 'validating the second package'
-              it_behaves_like 'validating both if the first package is pending destruction'
-            end
-          end
-        end
-      end
-    end
-
-    context "recipe uniqueness for conan packages" do
-      let_it_be(:package) { create(:conan_package) }
-
-      it "will allow a conan package with same project, name, version and package_type" do
-        new_package = build(:conan_package, project: package.project, name: package.name, version: package.version)
-        new_package.conan_metadatum.package_channel = 'beta'
-        expect(new_package).to be_valid
-      end
-
-      it "will not allow a conan package with same recipe (name, version, metadatum.package_channel, metadatum.package_username, and package_type)" do
-        new_package = build(:conan_package, project: package.project, name: package.name, version: package.version)
-        expect(new_package).not_to be_valid
-        expect(new_package.errors.to_a).to include("Package recipe already exists")
-      end
-
-      context 'with pending destruction package' do
-        let_it_be(:package) { create(:conan_package, :pending_destruction) }
-
-        it 'will allow a conan package with same recipe (name, version, metadatum.package_channel, metadatum.package_username, and package_type)' do
-          new_package = build(:conan_package, project: package.project, name: package.name, version: package.version)
-          expect(new_package).to be_valid
-        end
-      end
-    end
-
-    describe '#valid_composer_global_name' do
-      let_it_be(:package) { create(:composer_package) }
-
-      context 'with different name and different project' do
-        let(:new_package) { build(:composer_package, name: 'different_name') }
-
-        it { expect(new_package).to be_valid }
-      end
-
-      context 'with same name and different project' do
-        let(:new_package) { build(:composer_package, name: package.name) }
-
-        it 'will not validate second package' do
-          expect(new_package).not_to be_valid
-          expect(new_package.errors.to_a).to include('Name is already taken by another project')
-        end
-
-        context 'with pending destruction package' do
-          let_it_be(:package) { create(:composer_package, :pending_destruction) }
-
-          it { expect(new_package).to be_valid }
-        end
-      end
-    end
-
-    describe "uniqueness for package type debian" do
-      let!(:package) { create(:debian_package) }
-
-      it "will not allow a Debian package with same project, name, version and distribution" do
-        new_package = build(:debian_package, project: package.project, name: package.name, version: package.version)
-        new_package.debian_publication.distribution = package.debian_publication.distribution
-        expect(new_package).not_to be_valid
-        expect(new_package.errors.to_a).to include('Name has already been taken')
-      end
-
-      it "will not allow a Debian package with same project, name, version, but no distribution" do
-        new_package = build(:debian_package, project: package.project, name: package.name, version: package.version, published_in: nil)
-        expect(new_package).not_to be_valid
-        expect(new_package.errors.to_a).to include('Name has already been taken')
-      end
-
-      context 'with pending_destruction package' do
-        let!(:package) { create(:debian_package, :pending_destruction) }
-
-        it "will allow a Debian package with same project, name, version and distribution" do
-          new_package = build(:debian_package, project: package.project, name: package.name, version: package.version)
-          new_package.debian_publication.distribution = package.debian_publication.distribution
-          expect(new_package).to be_valid
-        end
-      end
-    end
-
-    Packages::Package.package_types.keys.without('conan').each do |pt|
-      context "project id, name, version and package type uniqueness for package type #{pt}" do
+    Packages::Package.package_types.keys.without('conan', 'composer').each do |pt|
+      context "for project id, name, version and package type uniqueness for package type #{pt}" do
         let(:package) { create("#{pt}_package") }
 
-        it "will not allow a #{pt} package with same project, name, version and package_type" do
+        it "does not allow a #{pt} package with same project, name, version and package_type" do
           new_package = build("#{pt}_package", project: package.project, name: package.name, version: package.version)
           expect(new_package).not_to be_valid
           expect(new_package.errors.to_a).to include("Name has already been taken")
@@ -725,8 +123,33 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
         context 'with pending_destruction package' do
           let!(:package) { create("#{pt}_package", :pending_destruction) }
 
-          it "will allow a #{pt} package with same project, name, version and package_type" do
+          it "allows a #{pt} package with same project, name, version and package_type" do
             new_package = build("#{pt}_package", project: package.project, name: package.name, version: package.version)
+            expect(new_package).to be_valid
+          end
+        end
+      end
+    end
+
+    context 'when composer' do
+      context 'for project id, name, version and package type uniqueness for package composer type' do
+        let_it_be_with_reload(:package) { create(:composer_package_sti) }
+
+        let_it_be(:new_package) do
+          build(:composer_package_sti, project: package.project, name: package.name, version: package.version)
+        end
+
+        it 'does not allow a composer package with same project, name, version and package_type' do
+          expect(new_package).not_to be_valid
+          expect(new_package.errors.to_a).to include('Name has already been taken')
+        end
+
+        context 'with pending_destruction package' do
+          before_all do
+            package.pending_destruction!
+          end
+
+          it 'allows a composer package with same project, name, version and package_type' do
             expect(new_package).to be_valid
           end
         end
@@ -742,7 +165,8 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     subject(:destroy!) { package.destroy! }
 
     it 'updates the project statistics' do
-      expect(project_statistics).to receive(:increment_counter).with(:packages_size, have_attributes(amount: -package_file.size))
+      expect(project_statistics).to receive(:increment_counter)
+        .with(:packages_size, have_attributes(amount: -package_file.size))
 
       destroy!
     end
@@ -752,42 +176,15 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     let!(:package) { create(:npm_package) }
     let!(:package_file) { package.package_files.first }
 
-    subject { described_class }
-
-    it 'finds a package with correct arguiments' do
-      expect(subject.by_name_and_file_name(package.name, package_file.file_name)).to eq(package)
+    it 'finds a package with correct arguments' do
+      expect(described_class.by_name_and_file_name(package.name, package_file.file_name)).to eq(package)
     end
 
-    it 'will raise error if not found' do
-      expect { subject.by_name_and_file_name('foo', 'foo-5.5.5.tgz') }.to raise_error(ActiveRecord::RecordNotFound)
+    it 'raises error if not found' do
+      expect do
+        described_class.by_name_and_file_name('foo', 'foo-5.5.5.tgz')
+      end.to raise_error(ActiveRecord::RecordNotFound)
     end
-  end
-
-  describe '.debian_incoming_package!' do
-    let!(:debian_package) { create(:debian_package) }
-    let!(:debian_processing_incoming) { create(:debian_incoming, :processing) }
-
-    subject { described_class.debian_incoming_package! }
-
-    context 'when incoming exists' do
-      let!(:debian_incoming) { create(:debian_incoming) }
-
-      it { is_expected.to eq(debian_incoming) }
-    end
-
-    context 'when incoming not found' do
-      it { expect { subject }.to raise_error(ActiveRecord::RecordNotFound) }
-    end
-  end
-
-  describe '.with_package_type' do
-    let!(:package1) { create(:terraform_module_package) }
-    let!(:package2) { create(:npm_package) }
-    let(:package_type) { :terraform_module }
-
-    subject { described_class.with_package_type(package_type) }
-
-    it { is_expected.to eq([package1]) }
   end
 
   describe '.without_package_type' do
@@ -800,10 +197,10 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     it { is_expected.to eq([package1]) }
   end
 
-  context 'version scopes' do
-    let!(:package1) { create(:npm_package, version: '1.0.0') }
-    let!(:package2) { create(:npm_package, version: '1.0.1') }
-    let!(:package3) { create(:npm_package, version: '1.0.1') }
+  context 'for version scopes' do
+    let_it_be(:package1) { create(:npm_package, version: '1.0.0') }
+    let_it_be(:package2) { create(:npm_package, version: '1.0.1') }
+    let_it_be(:package3) { create(:npm_package, version: '1.0.1') }
 
     describe '.has_version' do
       subject { described_class.has_version }
@@ -825,6 +222,16 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       end
     end
 
+    describe '.with_version_like' do
+      let(:version_pattern) { '%.0.1%' }
+
+      subject { described_class.with_version_like(version_pattern) }
+
+      it 'includes packages with the version pattern' do
+        is_expected.to match_array([package2, package3])
+      end
+    end
+
     describe '.without_version_like' do
       let(:version_pattern) { '%.0.0%' }
 
@@ -833,59 +240,6 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       it 'includes packages without the version pattern' do
         is_expected.to match_array([package2, package3])
       end
-    end
-  end
-
-  context 'conan scopes' do
-    let!(:package) { create(:conan_package) }
-
-    describe '.with_conan_channel' do
-      subject { described_class.with_conan_channel('stable') }
-
-      it 'includes only packages with specified version' do
-        is_expected.to include(package)
-      end
-    end
-
-    describe '.with_conan_username' do
-      subject do
-        described_class.with_conan_username(
-          Packages::Conan::Metadatum.package_username_from(full_path: package.project.full_path)
-        )
-      end
-
-      it 'includes only packages with specified version' do
-        is_expected.to match_array([package])
-      end
-    end
-
-    describe '.preload_conan_metadatum' do
-      subject { described_class.preload_conan_metadatum }
-
-      it 'loads conan metadatum' do
-        expect(subject.first.association(:conan_metadatum)).to be_loaded
-      end
-    end
-  end
-
-  describe '.with_npm_scope' do
-    let_it_be(:package1) { create(:npm_package, name: '@test/foobar') }
-    let_it_be(:package2) { create(:npm_package, name: '@test2/foobar') }
-    let_it_be(:package3) { create(:npm_package, name: 'foobar') }
-
-    subject { described_class.with_npm_scope('test') }
-
-    it { is_expected.to contain_exactly(package1) }
-  end
-
-  describe '.without_nuget_temporary_name' do
-    let!(:package1) { create(:nuget_package) }
-    let!(:package2) { create(:nuget_package, name: Packages::Nuget::TEMPORARY_PACKAGE_NAME) }
-
-    subject { described_class.without_nuget_temporary_name }
-
-    it 'does not include nuget temporary packages' do
-      expect(subject).to eq([package1])
     end
   end
 
@@ -918,28 +272,29 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     end
 
     describe '.with_name_like' do
-      subject { described_class.with_name_like(name_term) }
+      where(:name_term, :case_sensitive, :result) do
+        'foobar' | false | [ref(:package1), ref(:package2)]
+        '%ar'    | false | [ref(:package1), ref(:package2)]
+        'foo%'   | false | [ref(:package1), ref(:package2)]
+        '%ooba%' | false | [ref(:package1), ref(:package2)]
 
-      context 'with downcase name' do
-        let(:name_term) { 'foobar' }
-
-        it { is_expected.to match_array([package1, package2]) }
+        'foobar' | true  | [ref(:package2)]
+        '%ar'    | true  | [ref(:package1), ref(:package2)]
+        '%Bar'   | true  | [ref(:package1)]
+        'foo%'   | true  | [ref(:package2)]
+        '%ooba%' | true  | [ref(:package2)]
+        '%ooBa%' | true  | [ref(:package1)]
+        'Foo%'   | true  | [ref(:package1)]
       end
 
-      context 'with prefix wildcard' do
-        let(:name_term) { '%ar' }
+      with_them do
+        subject { described_class.with_name_like(name_term, case_sensitive:) }
 
-        it { is_expected.to match_array([package1, package2]) }
+        it { is_expected.to match_array(result) }
       end
 
-      context 'with suffix wildcard' do
-        let(:name_term) { 'foo%' }
-
-        it { is_expected.to match_array([package1, package2]) }
-      end
-
-      context 'with surrounding wildcards' do
-        let(:name_term) { '%ooba%' }
+      context 'when case_sensitive is not set' do
+        subject { described_class.with_name_like('foobar') }
 
         it { is_expected.to match_array([package1, package2]) }
       end
@@ -951,14 +306,6 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       subject { described_class.search_by_name(query) }
 
       it { is_expected.to match_array([package1, package2]) }
-    end
-
-    describe '.with_normalized_pypi_name' do
-      let_it_be(:pypi_package) { create(:pypi_package, name: 'Foo.bAr---BAZ_buz') }
-
-      subject { described_class.with_normalized_pypi_name('foo-bar-baz-buz') }
-
-      it { is_expected.to match_array([pypi_package]) }
     end
 
     describe '.with_case_insensitive_version' do
@@ -977,55 +324,26 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       it { is_expected.to match_array([nuget_package]) }
     end
 
-    describe '.with_nuget_version_or_normalized_version' do
-      let_it_be(:nuget_package) { create(:nuget_package, :with_metadatum, version: '1.0.7+r3456') }
-
-      before do
-        nuget_package.nuget_metadatum.update_column(:normalized_version, '1.0.7')
-      end
-
-      subject { described_class.with_nuget_version_or_normalized_version(version, with_normalized: with_normalized) }
-
-      where(:version, :with_normalized, :expected) do
-        '1.0.7'       | true  | [ref(:nuget_package)]
-        '1.0.7'       | false | []
-        '1.0.7+r3456' | true  | [ref(:nuget_package)]
-        '1.0.7+r3456' | false | [ref(:nuget_package)]
-      end
-
-      with_them do
-        it { is_expected.to match_array(expected) }
-      end
-    end
-
-    context 'status scopes' do
+    context 'for status scopes' do
       let_it_be(:default_package) { create(:maven_package, :default) }
       let_it_be(:hidden_package) { create(:maven_package, :hidden) }
       let_it_be(:processing_package) { create(:maven_package, :processing) }
       let_it_be(:error_package) { create(:maven_package, :error) }
+      let_it_be(:deprecated_package) { create(:maven_package, :deprecated) }
 
       describe '.displayable' do
         subject { described_class.displayable }
 
         it 'does not include non-displayable packages', :aggregate_failures do
           is_expected.to include(error_package)
+          is_expected.to include(deprecated_package)
           is_expected.not_to include(hidden_package)
           is_expected.not_to include(processing_package)
         end
       end
 
       describe '.installable' do
-        subject { described_class.installable }
-
-        it 'does not include non-installable packages', :aggregate_failures do
-          is_expected.not_to include(error_package)
-          is_expected.not_to include(processing_package)
-        end
-
-        it 'includes installable packages', :aggregate_failures do
-          is_expected.to include(default_package)
-          is_expected.to include(hidden_package)
-        end
+        it_behaves_like 'installable packages', :maven_package
       end
 
       describe '.with_status' do
@@ -1040,50 +358,49 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
 
   describe '.select_distinct_name' do
     let_it_be(:nuget_package) { create(:nuget_package) }
-    let_it_be(:nuget_packages) { create_list(:nuget_package, 3, name: nuget_package.name, project: nuget_package.project) }
-    let_it_be(:maven_package) { create(:maven_package) }
-    let_it_be(:maven_packages) { create_list(:maven_package, 3, name: maven_package.name, project: maven_package.project) }
+    let_it_be(:nuget_packages) do
+      create_list(:nuget_package, 3, name: nuget_package.name, project: nuget_package.project)
+    end
 
-    subject { described_class.select_distinct_name }
+    let_it_be(:maven_package) { create(:maven_package) }
+    let_it_be(:maven_packages) do
+      create_list(:maven_package, 3, name: maven_package.name, project: maven_package.project)
+    end
+
+    subject(:packages) { described_class.select_distinct_name }
 
     it 'returns only distinct names' do
-      packages = subject
-
       expect(packages.size).to eq(2)
       expect(packages.pluck(:name)).to match_array([nuget_package.name, maven_package.name])
     end
   end
 
-  context 'sorting' do
-    let_it_be(:project) { create(:project, name: 'aaa') }
-    let_it_be(:project2) { create(:project, name: 'bbb') }
-    let_it_be(:package1) { create(:package, project: project) }
-    let_it_be(:package2) { create(:package, project: project2) }
-    let_it_be(:package3) { create(:package, project: project2) }
-    let_it_be(:package4) { create(:package, project: project) }
+  context 'for sorting' do
+    let_it_be(:project) { create(:project, path: 'aaa') }
+    let_it_be(:project2) { create(:project, path: 'bbb') }
+    let_it_be(:package1) { create(:generic_package, project: project) }
+    let_it_be(:package2) { create(:generic_package, project: project2) }
 
     it 'orders packages by their projects name ascending' do
-      expect(described_class.order_project_name).to eq([package1, package4, package2, package3])
+      expect(described_class.order_project_name).to eq([package1, package2])
     end
 
     it 'orders packages by their projects name descending' do
-      expect(described_class.order_project_name_desc).to eq([package2, package3, package1, package4])
+      expect(described_class.order_project_name_desc).to eq([package2, package1])
     end
 
-    shared_examples 'order_project_path scope' do
-      it 'orders packages by their projects path asc, then package id asc' do
-        expect(described_class.order_project_path).to eq([package1, package4, package2, package3])
+    context 'with additional packages' do
+      let_it_be(:package3) { create(:generic_package, project: project2) }
+      let_it_be(:package4) { create(:generic_package, project: project) }
+
+      it 'orders packages by their projects path asc, then package id desc' do
+        expect(described_class.order_project_path).to eq([package4, package1, package3, package2])
       end
-    end
 
-    shared_examples 'order_project_path_desc scope' do
       it 'orders packages by their projects path desc, then package id desc' do
         expect(described_class.order_project_path_desc).to eq([package3, package2, package4, package1])
       end
     end
-
-    it_behaves_like 'order_project_path scope'
-    it_behaves_like 'order_project_path_desc scope'
   end
 
   describe '.order_by_package_file' do
@@ -1092,38 +409,15 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     let_it_be(:package2) { create(:maven_package, project: project) }
 
     it 'orders packages their associated package_file\'s created_at date', :aggregate_failures do
-      expect(project.packages.order_by_package_file).to match_array([package1, package1, package1, package2, package2, package2])
+      expect(::Packages::Maven::Package.for_projects(project).order_by_package_file).to match_array(
+        [package1, package1, package1, package2, package2, package2]
+      )
 
       create(:package_file, :xml, package: package1)
 
-      expect(project.packages.order_by_package_file).to match_array([package1, package1, package1, package2, package2, package2, package1])
-    end
-  end
-
-  describe '.keyset_pagination_order' do
-    let(:join_class) { nil }
-    let(:column_name) { nil }
-    let(:direction) { nil }
-
-    subject { described_class.keyset_pagination_order(join_class: join_class, column_name: column_name, direction: direction) }
-
-    it { expect { subject }.to raise_error(NoMethodError) }
-
-    context 'with valid params' do
-      let(:join_class) { Project }
-      let(:column_name) { :name }
-
-      context 'ascending direction' do
-        let(:direction) { :asc }
-
-        it { is_expected.to eq('"projects"."name" ASC NULLS LAST, "packages_packages"."id" ASC') }
-      end
-
-      context 'descending direction' do
-        let(:direction) { :desc }
-
-        it { is_expected.to eq('"projects"."name" DESC NULLS FIRST, "packages_packages"."id" DESC') }
-      end
+      expect(::Packages::Maven::Package.for_projects(project).order_by_package_file).to match_array(
+        [package1, package1, package1, package2, package2, package2, package1]
+      )
     end
   end
 
@@ -1131,11 +425,47 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     let_it_be(:package) { create(:npm_package) }
     let_it_be(:tags) { create_list(:packages_tag, 2, package: package) }
 
-    subject { described_class.preload_tags }
+    subject(:packages) { described_class.preload_tags }
 
     it 'preloads tags' do
-      expect(subject.first.association(:tags)).to be_loaded
+      expect(packages.first.association(:tags)).to be_loaded
     end
+  end
+
+  describe '.preload_project' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:package) { create_list(:npm_package, 2, project: project) }
+
+    subject(:packages) { described_class.preload_project }
+
+    it 'preloads project' do
+      expect(packages.first.association(:project)).to be_loaded
+    end
+  end
+
+  describe '.preload_pipelines_with_user_project_namespace_route' do
+    let_it_be(:project) { create(:project) }
+
+    let_it_be(:package) do
+      create(:generic_package, pipelines: [create(:ci_pipeline, project: project)], project: project)
+    end
+
+    subject(:execute) { described_class.preload_pipelines_with_user_project_namespace_route.id_in(package.id) }
+
+    it 'preloads pipelines with user, project, namespace and route' do
+      record = execute.first
+      pipeline = record.pipelines.first
+
+      expect(record.association(:pipelines)).to be_loaded
+      expect(pipeline.association(:user)).to be_loaded
+      expect(pipeline.association(:project)).to be_loaded
+      expect(pipeline.project.association(:namespace)).to be_loaded
+      expect(pipeline.project.namespace.association(:route)).to be_loaded
+    end
+  end
+
+  describe '.installable_statuses' do
+    it_behaves_like 'installable statuses'
   end
 
   describe '#versions' do
@@ -1158,13 +488,13 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
   describe '#pipeline' do
     let_it_be_with_refind(:package) { create(:maven_package) }
 
-    context 'package without pipeline' do
+    context 'for package without pipeline' do
       it 'returns nil if there is no pipeline' do
         expect(package.pipeline).to be_nil
       end
     end
 
-    context 'package with pipeline' do
+    context 'for package with pipeline' do
       let_it_be(:pipeline) { create(:ci_pipeline) }
 
       before do
@@ -1182,11 +512,11 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
 
     subject { package.pipelines }
 
-    context 'package without pipeline' do
+    context 'for package without pipeline' do
       it { is_expected.to be_empty }
     end
 
-    context 'package with pipeline' do
+    context 'for package with pipeline' do
       let_it_be(:pipeline) { create(:ci_pipeline) }
       let_it_be(:pipeline2) { create(:ci_pipeline) }
 
@@ -1213,67 +543,7 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
         tags.each { |t| create(:packages_tag, name: t, package: package) }
       end
 
-      it { is_expected.to contain_exactly(*tags) }
-    end
-  end
-
-  describe '#debian_incoming?' do
-    let(:package) { build(:package) }
-
-    subject { package.debian_incoming? }
-
-    it { is_expected.to eq(false) }
-
-    context 'with debian_incoming' do
-      let(:package) { create(:debian_incoming) }
-
-      it { is_expected.to eq(true) }
-    end
-
-    context 'with debian_package' do
-      let(:package) { create(:debian_package) }
-
-      it { is_expected.to eq(false) }
-    end
-  end
-
-  describe '#debian_package?' do
-    let(:package) { build(:package) }
-
-    subject { package.debian_package? }
-
-    it { is_expected.to eq(false) }
-
-    context 'with debian_incoming' do
-      let(:package) { create(:debian_incoming) }
-
-      it { is_expected.to eq(false) }
-    end
-
-    context 'with debian_package' do
-      let(:package) { create(:debian_package) }
-
-      it { is_expected.to eq(true) }
-    end
-  end
-
-  describe '#infrastructure_package?' do
-    let(:package) { create(:package) }
-
-    subject { package.infrastructure_package? }
-
-    it { is_expected.to eq(false) }
-
-    context 'with generic package' do
-      let(:package) { create(:generic_package) }
-
-      it { is_expected.to eq(false) }
-    end
-
-    context 'with terraform module package' do
-      let(:package) { create(:terraform_module_package) }
-
-      it { is_expected.to eq(true) }
+      it { is_expected.to match_array(tags) }
     end
   end
 
@@ -1285,7 +555,7 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
                           "#{pt}_max_file_size"
                         end
 
-      context "File size limits for #{pt}" do
+      context "with file size limits for #{pt}" do
         let(:package) { create("#{pt}_package") }
 
         it "plan_limits includes column #{plan_limit_name}" do
@@ -1325,81 +595,16 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     end
   end
 
-  describe '#sync_maven_metadata' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:package) { create(:maven_package) }
-
-    subject { package.sync_maven_metadata(user) }
-
-    shared_examples 'not enqueuing a sync worker job' do
-      it 'does not enqueue a sync worker job' do
-        expect(::Packages::Maven::Metadata::SyncWorker)
-          .not_to receive(:perform_async)
-
-        subject
-      end
-    end
-
-    it 'enqueues a sync worker job' do
-      expect(::Packages::Maven::Metadata::SyncWorker)
-        .to receive(:perform_async).with(user.id, package.project.id, package.name)
-
-      subject
-    end
-
-    context 'with no user' do
-      let(:user) { nil }
-
-      it_behaves_like 'not enqueuing a sync worker job'
-    end
-
-    context 'with a versionless maven package' do
-      let_it_be(:package) { create(:maven_package, version: nil) }
-
-      it_behaves_like 'not enqueuing a sync worker job'
-    end
-
-    context 'with a non maven package' do
-      let_it_be(:package) { create(:npm_package) }
-
-      it_behaves_like 'not enqueuing a sync worker job'
-    end
-  end
-
-  describe '#sync_npm_metadata_cache' do
-    let_it_be(:package) { create(:npm_package) }
-
-    subject { package.sync_npm_metadata_cache }
-
-    it 'enqueues a sync worker job' do
-      expect(::Packages::Npm::CreateMetadataCacheWorker)
-        .to receive(:perform_async).with(package.project_id, package.name)
-
-      subject
-    end
-
-    context 'with a non npm package' do
-      let_it_be(:package) { create(:maven_package) }
-
-      it 'does not enqueue a sync worker job' do
-        expect(::Packages::Npm::CreateMetadataCacheWorker)
-          .not_to receive(:perform_async)
-
-        subject
-      end
-    end
-  end
-
   describe '#mark_package_files_for_destruction' do
     let_it_be(:package) { create(:npm_package, :pending_destruction) }
 
-    subject { package.mark_package_files_for_destruction }
+    subject(:mark_package_files_for_destruction) { package.mark_package_files_for_destruction }
 
     it 'enqueues a sync worker job' do
       expect(::Packages::MarkPackageFilesForDestructionWorker)
         .to receive(:perform_async).with(package.id)
 
-      subject
+      mark_package_files_for_destruction
     end
 
     context 'for a package non pending destruction' do
@@ -1409,22 +614,22 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
         expect(::Packages::MarkPackageFilesForDestructionWorker)
         .not_to receive(:perform_async).with(package.id)
 
-        subject
+        mark_package_files_for_destruction
       end
     end
   end
 
   describe '#create_build_infos!' do
-    let_it_be(:package) { create(:package) }
+    let_it_be(:package) { create(:generic_package) }
     let_it_be(:pipeline) { create(:ci_pipeline) }
 
-    let(:build) { double(pipeline: pipeline) }
+    let(:build) { instance_double(Ci::Build, pipeline:) }
 
-    subject { package.create_build_infos!(build) }
+    subject(:create_build_infos) { package.create_build_infos!(build) }
 
     context 'with a valid build' do
       it 'creates a build info' do
-        expect { subject }.to change { ::Packages::BuildInfo.count }.by(1)
+        expect { create_build_infos }.to change { ::Packages::BuildInfo.count }.by(1)
 
         last_build = ::Packages::BuildInfo.last
         expect(last_build.package).to eq(package)
@@ -1435,7 +640,7 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
         let_it_be(:build_info) { create(:package_build_info, package: package, pipeline: pipeline) }
 
         it 'does not create a build info' do
-          expect { subject }.not_to change { ::Packages::BuildInfo.count }
+          expect { create_build_infos }.not_to change { ::Packages::BuildInfo.count }
         end
       end
     end
@@ -1444,93 +649,53 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
       let(:build) { nil }
 
       it 'does not create a build info' do
-        expect { subject }.not_to change { ::Packages::BuildInfo.count }
+        expect { create_build_infos }.not_to change { ::Packages::BuildInfo.count }
       end
     end
 
     context 'with a build without a pipeline' do
-      let(:build) { double(pipeline: nil) }
+      let(:build) { instance_double(Ci::Build, pipeline: nil) }
 
       it 'does not create a build info' do
-        expect { subject }.not_to change { ::Packages::BuildInfo.count }
+        expect { create_build_infos }.not_to change { ::Packages::BuildInfo.count }
       end
     end
   end
 
   context 'with identical pending destruction package' do
-    described_class.package_types.keys.each do |package_format|
+    described_class.package_types.each_key do |package_format|
       context "for package format #{package_format}" do
         let_it_be(:package_pending_destruction) { create("#{package_format}_package", :pending_destruction) }
 
-        let(:new_package) { build("#{package_format}_package", name: package_pending_destruction.name, version: package_pending_destruction.version, project: package_pending_destruction.project) }
+        let(:new_package) do
+          build(
+            "#{package_format}_package",
+            name: package_pending_destruction.name,
+            version: package_pending_destruction.version,
+            project: package_pending_destruction.project
+          )
+        end
 
         it { expect(new_package).to be_valid }
       end
     end
   end
 
-  describe '#normalized_pypi_name' do
-    let_it_be(:package) { create(:pypi_package) }
-
-    subject { package.normalized_pypi_name }
-
-    where(:package_name, :normalized_name) do
-      'ASDF' | 'asdf'
-      'a.B_c-d' | 'a-b-c-d'
-      'a-------b....c___d' | 'a-b-c-d'
-    end
-
-    with_them do
-      before do
-        package.update_column(:name, package_name)
-      end
-
-      it { is_expected.to eq(normalized_name) }
-    end
-  end
-
-  describe '#normalized_nuget_version' do
-    let_it_be(:package) { create(:nuget_package, :with_metadatum, version: '1.0') }
-    let(:normalized_version) { '1.0.0' }
-
-    subject { package.normalized_nuget_version }
-
-    before do
-      package.nuget_metadatum.update_column(:normalized_version, normalized_version)
-    end
-
-    it { is_expected.to eq(normalized_version) }
-  end
-
-  describe "#publish_creation_event" do
+  describe '#publish_creation_event' do
     let_it_be(:project) { create(:project) }
 
-    let(:version) { '-' }
-    let(:package_type) { :generic }
+    let(:package) { build_stubbed(:ml_model_package) }
 
-    subject { described_class.create!(project: project, name: 'incoming', version: version, package_type: package_type) }
-
-    context 'when package is generic' do
-      it 'publishes an event' do
-        expect { subject }
-          .to publish_event(::Packages::PackageCreatedEvent)
-                .with({
-                  project_id: project.id,
-                  id: kind_of(Numeric),
-                  name: "incoming",
-                  version: "-",
-                  package_type: 'generic'
-                })
-      end
-    end
-
-    context 'when package is not generic' do
-      let(:package_type) { :debian }
-      let(:version) { 1 }
-
-      it 'does not create event' do
-        expect { subject }.not_to publish_event(::Packages::PackageCreatedEvent)
-      end
+    it 'publishes an event' do
+      expect { package.publish_creation_event }
+        .to publish_event(::Packages::PackageCreatedEvent)
+              .with({
+                project_id: package.project_id,
+                id: package.id,
+                name: package.name,
+                version: package.version,
+                package_type: package.package_type
+              })
     end
   end
 
@@ -1546,6 +711,7 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
     described_class
       .package_types
       .keys
+      .without('composer')
       .map(&:to_sym)
       .each do |package_format|
       if described_class.inheritance_column_to_class_map[package_format].nil?
@@ -1565,6 +731,49 @@ RSpec.describe Packages::Package, type: :model, feature_category: :package_regis
           end
         end
       end
+    end
+
+    context 'when composer' do
+      let(:package) { create(:composer_package_sti, project: project) }
+
+      it 'maps to the correct class' do
+        is_expected.to eq(Packages::Composer::Sti::Package)
+      end
+    end
+  end
+
+  describe '.package_type_to_class!' do
+    let(:package_type) { :npm }
+
+    subject(:execute) { described_class.package_type_to_class!(package_type) }
+
+    it { is_expected.to eq(::Packages::Npm::Package) }
+
+    context 'when package_type is not valid' do
+      let(:package_type) { :zig }
+
+      it 'raises ArgumentError' do
+        expect { execute }.to raise_error(ArgumentError, "'#{package_type}' is not a valid package_type")
+      end
+    end
+  end
+
+  describe '#detailed_info?' do
+    subject { package.detailed_info? }
+
+    where(:status, :result) do
+      :default             | true
+      :deprecated          | true
+      :hidden              | false
+      :processing          | false
+      :error               | false
+      :pending_destruction | false
+    end
+
+    with_them do
+      let(:package) { build(:maven_package, status: status) }
+
+      it { is_expected.to eq(result) }
     end
   end
 end

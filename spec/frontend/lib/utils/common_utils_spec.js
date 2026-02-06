@@ -1,4 +1,11 @@
 import * as commonUtils from '~/lib/utils/common_utils';
+import { setHTMLFixture } from 'helpers/fixtures';
+import setWindowLocation from 'helpers/set_window_location_helper';
+import { scrollPastCoveringElements } from '~/lib/utils/sticky';
+import { getCoveringElement, observeIntersectionOnce } from '~/lib/utils/viewport';
+
+jest.mock('~/lib/utils/viewport');
+jest.mock('~/lib/utils/sticky');
 
 describe('common_utils', () => {
   describe('getPagePath', () => {
@@ -52,122 +59,71 @@ describe('common_utils', () => {
   });
 
   describe('handleLocationHash', () => {
+    const hash = '#target';
+    const getTarget = () => document.querySelector(hash);
+
+    let scrollIntoView;
+
     beforeEach(() => {
-      jest.spyOn(window.document, 'getElementById');
+      scrollIntoView = jest.spyOn(Element.prototype, 'scrollIntoView');
+      setHTMLFixture(`<div id="target"></div><div id="user-content-h1"></div>`);
     });
 
-    afterEach(() => {
-      window.history.pushState({}, null, '');
+    it('scrolls to target element', async () => {
+      observeIntersectionOnce.mockResolvedValue({ isIntersecting: false });
+      getCoveringElement.mockResolvedValue(null);
+      setWindowLocation(hash);
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(scrollPastCoveringElements).toHaveBeenCalledWith(getTarget());
     });
 
-    function expectGetElementIdToHaveBeenCalledWith(elementId) {
-      expect(window.document.getElementById).toHaveBeenCalledWith(elementId);
-    }
-
-    it('decodes hash parameter', () => {
-      window.history.pushState({}, null, '#random-hash');
-      commonUtils.handleLocationHash();
-
-      expectGetElementIdToHaveBeenCalledWith('random-hash');
-      expectGetElementIdToHaveBeenCalledWith('user-content-random-hash');
+    it('scrolls to covered target element', async () => {
+      observeIntersectionOnce.mockResolvedValue({ isIntersecting: true });
+      getCoveringElement.mockResolvedValue({});
+      setWindowLocation(hash);
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(scrollPastCoveringElements).toHaveBeenCalledWith(getTarget());
     });
 
-    it('decodes cyrillic hash parameter', () => {
-      window.history.pushState({}, null, '#definição');
-      commonUtils.handleLocationHash();
-
-      expectGetElementIdToHaveBeenCalledWith('definição');
-      expectGetElementIdToHaveBeenCalledWith('user-content-definição');
+    it('scrolls to user content target element', async () => {
+      scrollPastCoveringElements.mockResolvedValue();
+      observeIntersectionOnce.mockResolvedValue({ isIntersecting: false });
+      getCoveringElement.mockResolvedValue(null);
+      setWindowLocation('#h1');
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(scrollPastCoveringElements).toHaveBeenCalledWith(
+        document.querySelector('#user-content-h1'),
+      );
     });
 
-    it('decodes encoded cyrillic hash parameter', () => {
-      window.history.pushState({}, null, '#defini%C3%A7%C3%A3o');
-      commonUtils.handleLocationHash();
-
-      expectGetElementIdToHaveBeenCalledWith('definição');
-      expectGetElementIdToHaveBeenCalledWith('user-content-definição');
+    it('does nothing if hash is not present', async () => {
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
 
-    it(`does not scroll when ${commonUtils.NO_SCROLL_TO_HASH_CLASS} is set on target`, () => {
-      jest.spyOn(window, 'scrollBy');
-
-      document.body.innerHTML += `
-        <div id="parent">
-          <a href="#test">Link</a>
-          <div style="height: 2000px;"></div>
-          <div id="test" style="height: 2000px;" class="${commonUtils.NO_SCROLL_TO_HASH_CLASS}"></div>
-        </div>
-      `;
-
-      window.history.pushState({}, null, '#test');
-      commonUtils.handleLocationHash();
-      jest.runOnlyPendingTimers();
-
-      try {
-        expect(window.scrollBy).not.toHaveBeenCalled();
-      } finally {
-        document.getElementById('parent').remove();
-      }
+    it('does nothing if target does not exist', async () => {
+      setHTMLFixture(``);
+      setWindowLocation(hash);
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
 
-    it('scrolls element into view', () => {
-      document.body.innerHTML += `
-        <div id="parent">
-          <div style="height: 2000px;"></div>
-          <div id="test" style="height: 2000px;"></div>
-        </div>
-      `;
-
-      window.history.pushState({}, null, '#test');
-      commonUtils.handleLocationHash();
-
-      expectGetElementIdToHaveBeenCalledWith('test');
-
-      expect(window.scrollY).toBe(document.getElementById('test').offsetTop);
-
-      document.getElementById('parent').remove();
+    it('does nothing if target has js-no-scroll-to-hash class', async () => {
+      getTarget().classList.add('js-no-scroll-to-hash');
+      setWindowLocation(hash);
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
 
-    it('scrolls user content element into view', () => {
-      document.body.innerHTML += `
-        <div id="parent">
-          <div style="height: 2000px;"></div>
-          <div id="user-content-test" style="height: 2000px;"></div>
-        </div>
-      `;
-
-      window.history.pushState({}, null, '#test');
-      commonUtils.handleLocationHash();
-
-      expectGetElementIdToHaveBeenCalledWith('test');
-      expectGetElementIdToHaveBeenCalledWith('user-content-test');
-
-      expect(window.scrollY).toBe(document.getElementById('user-content-test').offsetTop);
-
-      document.getElementById('parent').remove();
-    });
-
-    it('scrolls to element with offset from navbar', () => {
-      jest.spyOn(window, 'scrollBy');
-      document.body.innerHTML += `
-        <div id="parent">
-          <div class="header-logged-out" style="position: fixed; top: 0; height: 50px;"></div>
-          <div style="height: 2000px; margin-top: 50px;"></div>
-          <div id="user-content-test" style="height: 2000px;"></div>
-        </div>
-      `;
-
-      window.history.pushState({}, null, '#test');
-      commonUtils.handleLocationHash();
-      jest.advanceTimersByTime(1);
-
-      expectGetElementIdToHaveBeenCalledWith('test');
-      expectGetElementIdToHaveBeenCalledWith('user-content-test');
-
-      expect(window.scrollY).toBe(document.getElementById('user-content-test').offsetTop - 50);
-      expect(window.scrollBy).toHaveBeenCalledWith(0, -50);
-
-      document.getElementById('parent').remove();
+    it('does nothing if target is already visible and is not covered', async () => {
+      observeIntersectionOnce.mockResolvedValue({ isIntersecting: true });
+      getCoveringElement.mockResolvedValue(null);
+      setWindowLocation(hash);
+      await commonUtils.handleLocationHash();
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
   });
 
@@ -192,98 +148,6 @@ describe('common_utils', () => {
       expect(commonUtils.buildUrlWithCurrentLocation('?page=2')).toEqual(
         `${window.location.pathname}?page=2`,
       );
-    });
-  });
-
-  describe('scrollToElement*', () => {
-    let elem;
-    const windowHeight = 550;
-    const elemTop = 100;
-    const id = 'scroll_test';
-
-    beforeEach(() => {
-      elem = document.createElement('div');
-      elem.id = id;
-      document.body.appendChild(elem);
-      window.innerHeight = windowHeight;
-      window.mrTabs = { currentAction: 'show' };
-      jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
-      jest.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: elemTop });
-    });
-
-    afterEach(() => {
-      window.scrollTo.mockRestore();
-      Element.prototype.getBoundingClientRect.mockRestore();
-      elem.remove();
-    });
-
-    describe('scrollToElement with HTMLElement', () => {
-      it('scrolls to element', () => {
-        commonUtils.scrollToElement(elem);
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elemTop,
-        });
-      });
-
-      it('scrolls to element with offset', () => {
-        const offset = 50;
-        commonUtils.scrollToElement(elem, { offset });
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elemTop + offset,
-        });
-      });
-    });
-
-    describe('scrollToElement with Selector', () => {
-      it('scrolls to element', () => {
-        commonUtils.scrollToElement(`#${id}`);
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elemTop,
-        });
-      });
-
-      it('scrolls to element with offset', () => {
-        const offset = 50;
-        commonUtils.scrollToElement(`#${id}`, { offset });
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elemTop + offset,
-        });
-      });
-    });
-
-    describe('scrollToElementWithContext', () => {
-      // This is what the implementation of scrollToElementWithContext
-      // scrolls to, in case we change tha implementation
-      // it needs to be adjusted
-      const elementTopWithContext = elemTop - windowHeight * 0.1;
-
-      it('with HTMLElement scrolls with context', () => {
-        commonUtils.scrollToElementWithContext(elem);
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elementTopWithContext,
-        });
-      });
-
-      it('with Selector scrolls with context', () => {
-        commonUtils.scrollToElementWithContext(`#${id}`);
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elementTopWithContext,
-        });
-      });
-
-      it('passes through behaviour', () => {
-        commonUtils.scrollToElementWithContext(`#${id}`, { behavior: 'smooth' });
-        expect(window.scrollTo).toHaveBeenCalledWith({
-          behavior: 'smooth',
-          top: elementTopWithContext,
-        });
-      });
     });
   });
 
@@ -414,6 +278,46 @@ describe('common_utils', () => {
     });
   });
 
+  describe('isMetaKey', () => {
+    it('should identify ctrlKey click on Windows/Linux', () => {
+      const e = {
+        metaKey: false,
+        ctrlKey: true,
+      };
+
+      expect(commonUtils.isMetaKey(e)).toBe(true);
+    });
+
+    it('should identify metaKey click on macOS', () => {
+      const e = {
+        metaKey: true,
+        ctrlKey: false,
+      };
+
+      expect(commonUtils.isMetaKey(e)).toBe(true);
+    });
+
+    it('should not identify shiftKey click as meta key', () => {
+      const e = {
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: true,
+      };
+
+      expect(commonUtils.isMetaKey(e)).toBe(false);
+    });
+
+    it('should not identify altKey click as meta key', () => {
+      const e = {
+        metaKey: false,
+        ctrlKey: false,
+        altKey: true,
+      };
+
+      expect(commonUtils.isMetaKey(e)).toBe(false);
+    });
+  });
+
   describe('isMetaClick', () => {
     it('should identify meta click on Windows/Linux', () => {
       const e = {
@@ -443,6 +347,46 @@ describe('common_utils', () => {
       };
 
       expect(commonUtils.isMetaClick(e)).toBe(true);
+    });
+  });
+
+  describe('isMetaEnterKeyPair', () => {
+    it('should identify meta + enter click on Windows/Linux', () => {
+      const e = {
+        metaKey: false,
+        ctrlKey: true,
+        key: 'Enter',
+      };
+
+      expect(commonUtils.isMetaEnterKeyPair(e)).toBe(true);
+    });
+
+    it('should identify meta + enter click on macOS', () => {
+      const e = {
+        metaKey: true,
+        ctrlKey: false,
+        key: 'Enter',
+      };
+
+      expect(commonUtils.isMetaEnterKeyPair(e)).toBe(true);
+    });
+
+    it('should not return true if meta click without enter on Windows/Linux', () => {
+      const e = {
+        metaKey: false,
+        ctrlKey: true,
+      };
+
+      expect(commonUtils.isMetaEnterKeyPair(e)).toBe(false);
+    });
+
+    it('should not return true if meta click without enter on macOS', () => {
+      const e = {
+        metaKey: true,
+        ctrlKey: false,
+      };
+
+      expect(commonUtils.isMetaEnterKeyPair(e)).toBe(false);
     });
   });
 
@@ -551,6 +495,14 @@ describe('common_utils', () => {
     it('should set svg className when passed', () => {
       expect(commonUtils.spriteIcon('test', 'first-icon-class second-icon-class')).toEqual(
         '<svg class="first-icon-class second-icon-class"><use xlink:href="icons.svg#test" /></svg>',
+      );
+    });
+
+    it('should set color in style attribute when passed', () => {
+      expect(
+        commonUtils.spriteIcon('test', 'first-icon-class second-icon-class', '#BADA55'),
+      ).toEqual(
+        '<svg class="first-icon-class second-icon-class" style="color: #BADA55;"><use xlink:href="icons.svg#test" /></svg>',
       );
     });
   });
@@ -1092,12 +1044,16 @@ describe('common_utils', () => {
   });
 
   describe('isScopedLabel', () => {
-    it('returns true when `::` is present in title', () => {
+    it('returns true when `::` is present in label title', () => {
       expect(commonUtils.isScopedLabel({ title: 'foo::bar' })).toBe(true);
     });
 
+    it('returns true when `::` is present in label name', () => {
+      expect(commonUtils.isScopedLabel({ name: 'foo::bar' })).toBe(true);
+    });
+
     it('returns false when `::` is not present', () => {
-      expect(commonUtils.isScopedLabel({ title: 'foobar' })).toBe(false);
+      expect(commonUtils.isScopedLabel({ title: 'foobar', name: 'foobar' })).toBe(false);
     });
   });
 

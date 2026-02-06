@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Package' do
+  RSpec.describe 'Package', feature_category: :container_registry do
     describe 'SaaS Container Registry', :smoke,
-      only: { subdomain: :staging }, product_group: :container_registry do
+      only: { subdomain: :staging } do
       before do
         Flow::Login.sign_in
       end
@@ -12,7 +12,7 @@ module QA
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/412799',
         quarantine: {
           type: :test_environment,
-          issue: "https://gitlab.com/gitlab-org/gitlab/-/issues/435585"
+          issue: "https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24026"
         } do
         project = build(:project, path_with_namespace: 'gitlab-qa/container-registry-sanity').reload!
         project.visit!

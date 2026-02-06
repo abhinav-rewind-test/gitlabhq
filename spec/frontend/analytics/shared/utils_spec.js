@@ -1,13 +1,15 @@
-import metricsData from 'test_fixtures/projects/analytics/value_stream_analytics/summary.json';
 import {
-  filterBySearchTerm,
   extractFilterQueryParameters,
   extractPaginationQueryParameters,
-  getDataZoomOption,
-  prepareTimeMetricsData,
+  filterBySearchTerm,
+  generateAnalyticsDashboardLink,
+  generateAnalyticsDashboardsIndexLink,
+  generateMetricLink,
   generateValueStreamsDashboardLink,
+  getDataZoomOption,
+  overviewMetricsRequestParams,
+  formatBigInt,
 } from '~/analytics/shared/utils';
-import { slugify } from '~/lib/utils/text_utility';
 import { objectToQuery } from '~/lib/utils/url_utility';
 
 describe('filterBySearchTerm', () => {
@@ -181,62 +183,171 @@ describe('getDataZoomOption', () => {
   });
 });
 
-describe('prepareTimeMetricsData', () => {
-  let prepared;
-  const [first, second] = metricsData;
-  delete second.identifier; // testing the case when identifier is missing
+describe('generateAnalyticsDashboardsIndexLink', () => {
+  it.each`
+    namespacePath                | isGroup  | result
+    ${'fake-group'}              | ${true}  | ${'/groups/fake-group/-/analytics/dashboards'}
+    ${'fake-group/fake-project'} | ${false} | ${'/fake-group/fake-project/-/analytics/dashboards'}
+  `(
+    'generates the dashboards index link when namespacePath=$namespacePath and isGroup=$isGroup',
+    ({ namespacePath, isGroup, result }) => {
+      expect(generateAnalyticsDashboardsIndexLink({ namespacePath, isGroup })).toBe(result);
+    },
+  );
 
-  const firstIdentifier = first.identifier;
-  const secondIdentifier = slugify(second.title);
+  describe('with a relative url root set', () => {
+    beforeEach(() => {
+      gon.relative_url_root = '/foobar';
+    });
 
-  beforeEach(() => {
-    prepared = prepareTimeMetricsData([first, second], {
-      [firstIdentifier]: { description: 'Is a value that is good' },
+    afterEach(() => {
+      gon.relative_url_root = '';
+    });
+
+    it.each`
+      namespacePath                | isGroup  | result
+      ${'fake-group'}              | ${true}  | ${'/foobar/groups/fake-group/-/analytics/dashboards'}
+      ${'fake-group/fake-project'} | ${false} | ${'/foobar/fake-group/fake-project/-/analytics/dashboards'}
+    `('includes a relative path if one is set', ({ namespacePath, isGroup, result }) => {
+      expect(generateAnalyticsDashboardsIndexLink({ namespacePath, isGroup })).toBe(result);
     });
   });
+});
 
-  it('will add a `identifier` based on the title', () => {
-    expect(prepared).toMatchObject([
-      { identifier: firstIdentifier },
-      { identifier: secondIdentifier },
-    ]);
-  });
+describe('generateAnalyticsDashboardLink', () => {
+  it.each`
+    namespacePath                | isGroup  | dashboardSlug                | result
+    ${'fake-group'}              | ${true}  | ${'duo_and_sdlc_trends'}     | ${'/groups/fake-group/-/analytics/dashboards/duo_and_sdlc_trends'}
+    ${'fake-group/fake-project'} | ${false} | ${'value_streams_dashboard'} | ${'/fake-group/fake-project/-/analytics/dashboards/value_streams_dashboard'}
+  `(
+    'generates the dashboard link when namespacePath=$namespacePath, isGroup=$isGroup, and dashboardSlug=$dashboardSlug',
+    ({ namespacePath, isGroup, dashboardSlug, result }) => {
+      expect(generateAnalyticsDashboardLink({ namespacePath, isGroup, dashboardSlug })).toBe(
+        result,
+      );
+    },
+  );
 
-  it('will add a `label` key', () => {
-    expect(prepared).toMatchObject([{ label: 'New issues' }, { label: 'Commits' }]);
-  });
+  describe('with a relative url root set', () => {
+    beforeEach(() => {
+      gon.relative_url_root = '/foobar';
+    });
 
-  it('will add a popover description using the key if it is provided', () => {
-    expect(prepared).toMatchObject([
-      { description: 'Is a value that is good' },
-      { description: '' },
-    ]);
+    afterEach(() => {
+      gon.relative_url_root = '';
+    });
+
+    it.each`
+      namespacePath                | isGroup  | dashboardSlug                | result
+      ${'fake-group'}              | ${true}  | ${'duo_and_sdlc_trends'}     | ${'/foobar/groups/fake-group/-/analytics/dashboards/duo_and_sdlc_trends'}
+      ${'fake-group/fake-project'} | ${false} | ${'value_streams_dashboard'} | ${'/foobar/fake-group/fake-project/-/analytics/dashboards/value_streams_dashboard'}
+    `(
+      'includes a relative path if one is set',
+      ({ namespacePath, isGroup, dashboardSlug, result }) => {
+        expect(generateAnalyticsDashboardLink({ namespacePath, isGroup, dashboardSlug })).toBe(
+          result,
+        );
+      },
+    );
   });
 });
 
 describe('generateValueStreamsDashboardLink', () => {
   it.each`
-    groupPath              | projectPaths                                      | result
-    ${''}                  | ${[]}                                             | ${''}
-    ${'groups/fake-group'} | ${[]}                                             | ${'/groups/fake-group/-/analytics/dashboards/value_streams_dashboard'}
-    ${'groups/fake-group'} | ${['fake-path/project_1']}                        | ${'/groups/fake-group/-/analytics/dashboards/value_streams_dashboard?query=fake-path/project_1'}
-    ${'groups/fake-group'} | ${['fake-path/project_1', 'fake-path/project_2']} | ${'/groups/fake-group/-/analytics/dashboards/value_streams_dashboard?query=fake-path/project_1,fake-path/project_2'}
+    namespacePath                | isProjectNamespace | result
+    ${''}                        | ${null}            | ${''}
+    ${'fake-group'}              | ${false}           | ${'/groups/fake-group/-/analytics/dashboards/value_streams_dashboard'}
+    ${'fake-group/fake-project'} | ${true}            | ${'/fake-group/fake-project/-/analytics/dashboards/value_streams_dashboard'}
   `(
-    'generates the dashboard link when groupPath=$groupPath and projectPaths=$projectPaths',
-    ({ groupPath, projectPaths, result }) => {
-      expect(generateValueStreamsDashboardLink(groupPath, projectPaths)).toBe(result);
+    'generates the dashboard link when namespacePath=$namespacePath and isProjectNamespace=$isProjectNamespace',
+    ({ namespacePath, isProjectNamespace, result }) => {
+      expect(generateValueStreamsDashboardLink(namespacePath, isProjectNamespace)).toBe(result);
     },
   );
 
-  describe('with a relative url rool set', () => {
+  describe('with a relative url root set', () => {
     beforeEach(() => {
       gon.relative_url_root = '/foobar';
     });
 
-    it('with includes a relative path if one is set', () => {
-      expect(generateValueStreamsDashboardLink('groups/fake-path', ['project_1'])).toBe(
-        '/foobar/groups/fake-path/-/analytics/dashboards/value_streams_dashboard?query=project_1',
-      );
+    afterEach(() => {
+      gon.relative_url_root = '';
     });
+
+    it.each`
+      namespacePath                | isProjectNamespace | result
+      ${'fake-group'}              | ${false}           | ${'/foobar/groups/fake-group/-/analytics/dashboards/value_streams_dashboard'}
+      ${'fake-group/fake-project'} | ${true}            | ${'/foobar/fake-group/fake-project/-/analytics/dashboards/value_streams_dashboard'}
+    `('includes a relative path if one is set', ({ namespacePath, isProjectNamespace, result }) => {
+      expect(generateValueStreamsDashboardLink(namespacePath, isProjectNamespace)).toBe(result);
+    });
+  });
+});
+
+describe('generateMetricLink', () => {
+  const groupNamespacePath = 'test';
+  const projectNamespacePath = 'test/project';
+
+  it.each`
+    isProjectNamespace | relativeUrlRoot | namespacePath           | result
+    ${false}           | ${undefined}    | ${groupNamespacePath}   | ${`/groups/${groupNamespacePath}/-/issues_analytics`}
+    ${true}            | ${undefined}    | ${projectNamespacePath} | ${`/${projectNamespacePath}/-/analytics/issues_analytics`}
+    ${false}           | ${'/path'}      | ${groupNamespacePath}   | ${`/path/groups/${groupNamespacePath}/-/issues_analytics`}
+    ${true}            | ${'/path'}      | ${projectNamespacePath} | ${`/path/${projectNamespacePath}/-/analytics/issues_analytics`}
+  `(
+    'generates metric link as expected',
+    ({ isProjectNamespace, relativeUrlRoot, namespacePath, result }) => {
+      gon.relative_url_root = relativeUrlRoot;
+
+      expect(generateMetricLink({ metricId: 'issues', isProjectNamespace, namespacePath })).toBe(
+        result,
+      );
+    },
+  );
+
+  it.each`
+    metricId     | namespacePath
+    ${'issues'}  | ${null}
+    ${undefined} | ${groupNamespacePath}
+  `(
+    'returns an empty string when metricId=$metricId and namespacePath=$namespacePath',
+    ({ metricId, namespacePath }) => {
+      expect(generateMetricLink({ metricId, namespacePath })).toBe('');
+    },
+  );
+});
+
+describe('overviewMetricsRequestParams', () => {
+  it('returns empty object when no params provided', () => {
+    expect(overviewMetricsRequestParams()).toEqual({});
+  });
+
+  it.each`
+    requestParam           | value                   | expected
+    ${'created_after'}     | ${'2024-01-01'}         | ${'startDate'}
+    ${'created_before'}    | ${'2024-12-31'}         | ${'endDate'}
+    ${'label_name'}        | ${['bug', 'feature']}   | ${'labelNames'}
+    ${'assignee_username'} | ${['user1', 'user2']}   | ${'assigneeUsernames'}
+    ${'author_username'}   | ${'Author A'}           | ${'authorUsername'}
+    ${'milestone_title'}   | ${'some new milestone'} | ${'milestoneTitle'}
+  `('correctly transforms the $requestParam parameter', ({ requestParam, value, expected }) => {
+    const result = overviewMetricsRequestParams({ [requestParam]: value });
+    expect(result[expected]).toBe(value);
+  });
+});
+
+describe('formatBigInt', () => {
+  const largeNumber = '12345678901234567890'; // Larger than MAX_SAFE_INTEGER
+
+  it.each`
+    input             | output
+    ${'1234'}         | ${'1,234'}
+    ${largeNumber}    | ${'12,345,678,901,234,567,890'}
+    ${'0'}            | ${'0'}
+    ${'not-a-number'} | ${'-'}
+    ${null}           | ${'-'}
+    ${undefined}      | ${'-'}
+  `('formats $input as "$output"', ({ input, output }) => {
+    expect(formatBigInt(input)).toBe(output);
   });
 });

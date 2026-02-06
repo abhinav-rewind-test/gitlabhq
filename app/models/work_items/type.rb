@@ -6,14 +6,13 @@
 # 3. an emoji, with the format of `:smile:`
 module WorkItems
   class Type < ApplicationRecord
+    include Gitlab::Utils::StrongMemoize
+
+    DEFAULT_TYPES_NOT_SEEDED = Class.new(StandardError)
+
     self.table_name = 'work_item_types'
 
     include CacheMarkdownField
-    include ReactiveCaching
-
-    self.reactive_cache_work_type = :no_dependency
-    self.reactive_cache_refresh_interval = 10.minutes
-    self.reactive_cache_lifetime = 1.hour
 
     # type name is used in restrictions DB seeder to assure restrictions for
     # default types are pre-filled
@@ -33,104 +32,225 @@ module WorkItems
     # This constant is used by the DB seeder
     # TODO - where to add new icon names created?
     BASE_TYPES = {
-      issue: { name: TYPE_NAMES[:issue], icon_name: 'issue-type-issue', enum_value: 0 },
-      incident: { name: TYPE_NAMES[:incident], icon_name: 'issue-type-incident', enum_value: 1 },
-      test_case: { name: TYPE_NAMES[:test_case], icon_name: 'issue-type-test-case', enum_value: 2 }, ## EE-only
-      requirement: { name: TYPE_NAMES[:requirement], icon_name: 'issue-type-requirements', enum_value: 3 }, ## EE-only
-      task: { name: TYPE_NAMES[:task], icon_name: 'issue-type-task', enum_value: 4 },
-      objective: { name: TYPE_NAMES[:objective], icon_name: 'issue-type-objective', enum_value: 5 }, ## EE-only
-      key_result: { name: TYPE_NAMES[:key_result], icon_name: 'issue-type-keyresult', enum_value: 6 }, ## EE-only
-      epic: { name: TYPE_NAMES[:epic], icon_name: 'issue-type-epic', enum_value: 7 }, ## EE-only
-      ticket: { name: TYPE_NAMES[:ticket], icon_name: 'issue-type-issue', enum_value: 8 }
+      issue: { name: TYPE_NAMES[:issue], icon_name: 'work-item-issue', enum_value: 0, id: 1 },
+      incident: { name: TYPE_NAMES[:incident], icon_name: 'work-item-incident', enum_value: 1, id: 2 },
+      test_case: { name: TYPE_NAMES[:test_case], icon_name: 'work-item-test-case', enum_value: 2, id: 3 }, ## EE-only
+      requirement: { name: TYPE_NAMES[:requirement], icon_name: 'work-item-requirement', enum_value: 3, id: 4 }, ## EE
+      task: { name: TYPE_NAMES[:task], icon_name: 'work-item-task', enum_value: 4, id: 5 },
+      objective: { name: TYPE_NAMES[:objective], icon_name: 'work-item-objective', enum_value: 5, id: 6 }, ## EE-only
+      key_result: { name: TYPE_NAMES[:key_result], icon_name: 'work-item-keyresult', enum_value: 6, id: 7 }, ## EE-only
+      epic: { name: TYPE_NAMES[:epic], icon_name: 'work-item-epic', enum_value: 7, id: 8 }, ## EE-only
+      ticket: { name: TYPE_NAMES[:ticket], icon_name: 'work-item-ticket', enum_value: 8, id: 9 }
     }.freeze
 
-    # A list of types user can change between - both original and new
-    # type must be included in this list. This is needed for legacy issues
-    # where it's possible to switch between issue and incident.
-    CHANGEABLE_BASE_TYPES = %w[issue incident test_case].freeze
+    EE_BASE_TYPES = %w[epic key_result objective requirement].freeze
+
+    ignore_column :correct_id, remove_with: '18.1', remove_after: '2025-05-15'
 
     cache_markdown_field :description, pipeline: :single_line
 
-    enum base_type: BASE_TYPES.transform_values { |value| value[:enum_value] }
+    enum :base_type, BASE_TYPES.transform_values { |value| value[:enum_value] }
 
-    belongs_to :namespace, optional: true
-    has_many :work_items, class_name: 'Issue', foreign_key: :work_item_type_id, inverse_of: :work_item_type
     has_many :widget_definitions, foreign_key: :work_item_type_id, inverse_of: :work_item_type
     has_many :enabled_widget_definitions, -> { where(disabled: false) }, foreign_key: :work_item_type_id,
       inverse_of: :work_item_type, class_name: 'WorkItems::WidgetDefinition'
-    has_many :child_restrictions, class_name: 'WorkItems::HierarchyRestriction', foreign_key: :parent_type_id,
-      inverse_of: :parent_type
-    has_many :allowed_child_types_by_name, -> { order_by_name_asc },
-      through: :child_restrictions, class_name: 'WorkItems::Type',
-      foreign_key: :child_type_id, source: :child_type
+    has_many :user_preferences,
+      class_name: 'WorkItems::UserPreference',
+      inverse_of: :work_item_type
 
     before_validation :strip_whitespace
-    after_save :clear_reactive_cache!
 
     # TODO: review validation rules
     # https://gitlab.com/gitlab-org/gitlab/-/issues/336919
     validates :name, presence: true
-    validates :name, uniqueness: { case_sensitive: false, scope: [:namespace_id] }
+    validates :name, custom_uniqueness: { unique_sql: 'TRIM(BOTH FROM lower(?))' }
     validates :name, length: { maximum: 255 }
     validates :icon_name, length: { maximum: 255 }
 
-    scope :default, -> { where(namespace: nil) }
     scope :order_by_name_asc, -> { order(arel_table[:name].lower.asc) }
     scope :by_type, ->(base_type) { where(base_type: base_type) }
+    scope :with_widget_definition_preload, -> { preload(:enabled_widget_definitions) }
 
     def self.default_by_type(type)
-      found_type = find_by(namespace_id: nil, base_type: type)
-      return found_type if found_type
+      found_type = find_by(base_type: type)
+      return found_type if found_type || !WorkItems::Type.base_types.key?(type.to_s)
 
-      Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter.upsert_types
-      Gitlab::DatabaseImporters::WorkItems::HierarchyRestrictionsImporter.upsert_restrictions
-      Gitlab::DatabaseImporters::WorkItems::RelatedLinksRestrictionsImporter.upsert_restrictions
-      find_by(namespace_id: nil, base_type: type)
+      error_message = <<~STRING
+        Default work item types have not been created yet. Make sure the DB has been seeded successfully.
+        See related documentation in
+        https://docs.gitlab.com/omnibus/settings/database.html#seed-the-database-fresh-installs-only
+
+        If you have additional questions, you can ask in
+        https://gitlab.com/gitlab-org/gitlab/-/issues/423483
+      STRING
+
+      raise DEFAULT_TYPES_NOT_SEEDED, error_message
     end
 
     def self.default_issue_type
       default_by_type(:issue)
     end
 
-    def self.allowed_types_for_issues
-      base_types.keys.excluding('objective', 'key_result', 'epic', 'ticket')
-    end
-
-    def default?
-      namespace.blank?
-    end
-
     # resource_parent is used in EE
     def widgets(_resource_parent)
-      enabled_widget_definitions.filter_map(&:widget_class)
+      enabled_widget_definitions.filter(&:widget_class)
+    end
+
+    def widget_classes(resource_parent)
+      widgets(resource_parent).map(&:widget_class)
     end
 
     def supports_assignee?(resource_parent)
-      widgets(resource_parent).include?(::WorkItems::Widgets::Assignees)
+      widget_classes(resource_parent).include?(::WorkItems::Widgets::Assignees)
     end
 
     def supports_time_tracking?(resource_parent)
-      widgets(resource_parent).include?(::WorkItems::Widgets::TimeTracking)
+      widget_classes(resource_parent).include?(::WorkItems::Widgets::TimeTracking)
     end
 
-    def default_issue?
-      name == WorkItems::Type::TYPE_NAMES[:issue]
+    def allowed_child_types_by_name
+      child_type_ids = WorkItems::TypesFramework::SystemDefined::HierarchyRestriction
+        .where(parent_type_id: id)
+        .map(&:child_type_id)
+
+      WorkItems::Type.where(id: child_type_ids).order_by_name_asc
     end
 
-    def calculate_reactive_cache
-      allowed_child_types_by_name
+    def allowed_parent_types_by_name
+      parent_type_ids = WorkItems::TypesFramework::SystemDefined::HierarchyRestriction
+        .where(child_type_id: id)
+        .map(&:parent_type_id)
+      WorkItems::Type.where(id: parent_type_ids).order_by_name_asc
     end
 
-    def allowed_child_types(cache: false)
-      cached_data = cache ? with_reactive_cache { |query_data| query_data } : nil
+    def supported_conversion_types(resource_parent, user)
+      type_names = supported_conversion_base_types(resource_parent, user) - [base_type]
+      WorkItems::Type.by_type(type_names).order_by_name_asc
+    end
 
-      cached_data || allowed_child_types_by_name
+    def unavailable_widgets_on_conversion(target_type, resource_parent)
+      source_widgets = widgets(resource_parent)
+      target_widgets = target_type.widgets(resource_parent)
+      target_widget_types = target_widgets.map(&:widget_type).to_set
+      source_widgets.reject { |widget| target_widget_types.include?(widget.widget_type) }
+    end
+
+    def allowed_child_types(authorize: false, resource_parent: nil)
+      types = allowed_child_types_by_name
+
+      return types unless authorize
+
+      authorized_types(types, resource_parent, :child)
+    end
+
+    def allowed_parent_types(authorize: false, resource_parent: nil)
+      types = allowed_parent_types_by_name
+
+      return types unless authorize
+
+      authorized_types(types, resource_parent, :parent)
+    end
+
+    def descendant_types
+      descendant_types = []
+      next_level_child_types = allowed_child_types
+
+      loop do
+        descendant_types += next_level_child_types
+
+        # We remove types that we've already seen to avoid circular dependencies
+        next_level_child_types = next_level_child_types.flat_map(&:allowed_child_types) - descendant_types
+
+        break if next_level_child_types.empty?
+      end
+
+      descendant_types.uniq
+    end
+    strong_memoize_attr :descendant_types
+
+    # Temporary method for adding configuration thought the API
+    def supports_roadmap_view?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def use_legacy_view?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def can_promote_to_objective?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def show_project_selector?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def supports_move_action?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def service_desk?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def incident_management?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def configurable?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def creatable?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def visible_in_settings?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def archived?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def filterable?
+      nil
+    end
+
+    # Temporary method for adding configuration thought the API
+    def only_for_group?
+      nil
+    end
+
+    def enabled?
+      true
     end
 
     private
 
     def strip_whitespace
       name&.strip!
+    end
+
+    # resource_parent is used in EE
+    def supported_conversion_base_types(_resource_parent, _user)
+      WorkItems::Type.base_types.keys.excluding(*EE_BASE_TYPES)
+    end
+
+    # overridden in EE to check for EE-specific restrictions
+    def authorized_types(types, _resource_parent, _relation)
+      types
     end
   end
 end

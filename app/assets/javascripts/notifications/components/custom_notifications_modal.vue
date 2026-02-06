@@ -1,5 +1,6 @@
 <script>
 import { GlModal, GlSprintf, GlLink, GlLoadingIcon, GlFormGroup, GlFormCheckbox } from '@gitlab/ui';
+import { sortBy } from 'lodash';
 import Api from '~/api';
 import { i18n } from '../constants';
 
@@ -47,16 +48,16 @@ export default {
     };
   },
   methods: {
-    open() {
-      this.$refs.modal.show();
-    },
     buildEvents(events) {
-      return Object.keys(events).map((key) => ({
+      const eventKeys = Object.keys(events).filter((key) => key in this.$options.i18n.eventNames);
+      const rawEvents = eventKeys.map((key) => ({
         id: key,
         enabled: Boolean(events[key]),
         name: this.$options.i18n.eventNames[key] || '',
         loading: false,
       }));
+
+      return sortBy(rawEvents, 'name');
     },
     async onOpen() {
       if (!this.events.length) {
@@ -82,7 +83,7 @@ export default {
       const index = this.events.findIndex((e) => e.id === event.id);
 
       // update loading state for the given event
-      this.$set(this.events, index, { ...this.events[index], loading: true });
+      this.events.splice(index, 1, { ...this.events[index], loading: true });
 
       try {
         const {
@@ -112,7 +113,7 @@ export default {
   >
     <div class="container-fluid">
       <div class="row">
-        <div class="col-lg-4">
+        <div class="gl-col-lg-4">
           <h4 class="gl-mt-0" data-testid="modalBodyTitle">
             {{ $options.i18n.customNotificationsModal.bodyTitle }}
           </h4>
@@ -122,7 +123,7 @@ export default {
             </template>
           </gl-sprintf>
         </div>
-        <div class="col-lg-8">
+        <div class="gl-col-lg-8">
           <gl-loading-icon v-if="isLoading" size="lg" class="gl-mt-3" />
           <template v-else>
             <gl-form-group v-for="event in events" :key="event.id">

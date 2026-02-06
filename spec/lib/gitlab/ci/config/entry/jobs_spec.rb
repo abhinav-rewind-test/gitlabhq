@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::Jobs do
   let(:entry) { described_class.new(config) }
 
   let(:config) do
     {
-      '.hidden_job'.to_sym => { script: 'something' },
-      '.hidden_bridge'.to_sym => { trigger: 'my/project' },
+      ".hidden_job": { script: 'something' },
+      ".hidden_bridge": { trigger: 'my/project' },
       regular_job: { script: 'something' },
       my_trigger: { trigger: 'my/project' }
     }
@@ -65,23 +65,24 @@ RSpec.describe Gitlab::Ci::Config::Entry::Jobs do
         end
 
         context 'when job is invalid' do
-          let(:config) { { rspec: nil } }
+          let(:config) { { rspec_Mix_UPPER: nil } }
 
           it 'reports error' do
-            expect(entry.errors).to include 'jobs rspec config should implement a script: or a trigger: keyword'
+            expect(entry.errors)
+              .to include 'jobs rspec_mix_upper config should implement the script:, run:, or trigger: keyword'
           end
 
           context 'when the job name cannot be cast directly to a symbol' do
             let(:config) { { true => nil } }
 
             it 'properly parses the job name without raising a NoMethodError' do
-              expect(entry.errors).to include 'jobs true config should implement a script: or a trigger: keyword'
+              expect(entry.errors).to include 'jobs true config should implement the script:, run:, or trigger: keyword'
             end
           end
         end
 
         context 'when no visible jobs present' do
-          let(:config) { { '.hidden'.to_sym => { script: [] } } }
+          let(:config) { { ".hidden": { script: [] } } }
 
           it 'returns error about no visible jobs defined' do
             expect(entry.errors)

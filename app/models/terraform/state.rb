@@ -4,6 +4,7 @@ module Terraform
   class State < ApplicationRecord
     include UsageStatistics
     include AfterCommitQueue
+    include Gitlab::InternalEventsTracking
 
     HEX_REGEXP = %r{\A\h+\z}
     UUID_LENGTH = 32
@@ -24,11 +25,12 @@ module Terraform
       inverse_of: :terraform_state
 
     scope :ordered_by_name, -> { order(:name) }
-    scope :with_name, -> (name) { where(name: name) }
+    scope :with_name, ->(name) { where(name: name) }
 
     validates :project_id, :name, presence: true
     validates :uuid, presence: true, uniqueness: true, length: { is: UUID_LENGTH },
       format: { with: HEX_REGEXP, message: 'only allows hex characters' }
+    validates :name, length: { maximum: 255 }
 
     attribute :uuid, default: -> { SecureRandom.hex(UUID_LENGTH / 2) }
 
@@ -49,6 +51,20 @@ module Terraform
         create_new_version!(data: data, version: version, build: build)
       else
         migrate_legacy_version!(data: data, version: version, build: build)
+      end
+
+      if reload_latest_version.encryption_enabled?
+        track_internal_event(
+          'terraform_state_stored_with_encryption',
+          project: project,
+          user: locked_by_user
+        )
+      else
+        track_internal_event(
+          'terraform_state_stored_without_encryption',
+          project: project,
+          user: locked_by_user
+        )
       end
     end
 
@@ -76,7 +92,7 @@ module Terraform
     # recreated: https://gitlab.com/gitlab-org/gitlab/-/issues/258960
     def migrate_legacy_version!(data:, version:, build:)
       current_file = latest_version.file.read
-      current_version = parse_serial(current_file) || version - 1
+      current_version = parse_serial(current_file) || (version - 1)
 
       update!(versioning_enabled: true)
 
@@ -90,8 +106,8 @@ module Terraform
       new_version.save!
     end
 
-    def parse_serial(file)
-      Gitlab::Json.parse(file)["serial"]
+    def parse_serial(data)
+      ::Gitlab::Terraform::StateParser.extract_serial(data)
     rescue JSON::ParserError
     end
   end

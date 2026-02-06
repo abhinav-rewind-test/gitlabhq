@@ -16,7 +16,23 @@ FactoryBot.define do
 
     trait :with_artifact do
       artifact do
-        association(:generic_package, name: instance.package_name, version: instance.package_version || '1',
+        association(:ml_model_package, name: instance.package_name, version: 'candidate_1',
+          project: project)
+      end
+    end
+
+    trait :with_generic_package do
+      artifact do
+        association(:generic_package, name: instance.package_name, version: '1',
+          project: project)
+      end
+    end
+
+    trait :with_ml_model do
+      artifact do
+        instance.package_name
+        instance.package_version
+        association(:ml_model_package, name: instance.package_name, version: 'candidate_1',
           project: project)
       end
     end

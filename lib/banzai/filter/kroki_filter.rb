@@ -9,6 +9,7 @@ module Banzai
     # HTML that replaces all diagrams supported by Kroki with the corresponding img tags.
     # If the source content is large then the hidden attribute is added to the img tag.
     class KrokiFilter < HTML::Pipeline::Filter
+      prepend Concerns::PipelineTimingCheck
       include ActionView::Helpers::TagHelper
 
       MAX_CHARACTER_LIMIT = 2000
@@ -31,7 +32,7 @@ module Banzai
           diagram_type = node.parent['data-canonical-lang'] || node['data-canonical-lang']
           next unless diagram_selectors.include?(diagram_type)
 
-          diagram_src = node.content
+          diagram_src = node.content.chomp
           image_src = create_image_src(diagram_type, diagram_format, diagram_src)
           img_tag = Nokogiri::HTML::DocumentFragment.parse(content_tag(:img, nil, src: image_src))
           img_tag = img_tag.children.first

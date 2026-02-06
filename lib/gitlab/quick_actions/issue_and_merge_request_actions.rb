@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+# This module is used to define quick actions for issues and merge requests.
+#
+
 module Gitlab
   module QuickActions
     module IssueAndMergeRequestActions
@@ -7,7 +10,10 @@ module Gitlab
       include Gitlab::QuickActions::Dsl
 
       included do
-        # Issue, MergeRequest: quick actions definitions
+        ########################################################################
+        #
+        # /assign
+        #
         desc { _('Assign') }
         explanation do |users|
           _('Assigns %{assignee_users_sentence}.') % { assignee_users_sentence: assignee_users_sentence(users) }
@@ -42,6 +48,10 @@ module Gitlab
           end
         end
 
+        ########################################################################
+        #
+        # /unassign
+        #
         desc do
           if quick_action_target.allows_multiple_assignees?
             _('Remove all or specific assignees')
@@ -81,6 +91,10 @@ module Gitlab
           end
         end
 
+        ########################################################################
+        #
+        # /milestone
+        #
         desc { _('Set milestone') }
         explanation do |milestone|
           _("Sets the milestone to %{milestone_reference}.") % { milestone_reference: milestone.to_reference(full: true, absolute_path: true) } if milestone
@@ -89,20 +103,24 @@ module Gitlab
           _("Set the milestone to %{milestone_reference}.") % { milestone_reference: milestone.to_reference } if milestone
         end
         params '%"milestone"'
-        types Issue, MergeRequest
+        types Issue, MergeRequest, WorkItem
         condition do
           quick_action_target.supports_milestone? &&
             current_user.can?(:"set_#{quick_action_target.to_ability_name}_metadata", quick_action_target) &&
-            find_milestones(project, state: 'active').any?
+            find_milestones(container, state: 'active').any?
         end
         parse_params do |milestone_param|
           extract_references(milestone_param, :milestone).first ||
-            find_milestones(project, title: milestone_param.strip).first
+            find_milestones(container, title: milestone_param.strip).first
         end
         command :milestone do |milestone|
           @updates[:milestone_id] = milestone.id if milestone
         end
 
+        ########################################################################
+        #
+        # /remove_milestone
+        #
         desc { _('Remove milestone') }
         explanation do
           _("Removes %{milestone_reference} milestone.") % { milestone_reference: quick_action_target.milestone.to_reference(full: true, absolute_path: true) }
@@ -121,18 +139,25 @@ module Gitlab
           @updates[:milestone_id] = nil
         end
 
-        desc { _('Copy labels and milestone from other issue or merge request in this project') }
+        ########################################################################
+        #
+        # /copy_metadata
+        #
+        desc { _('Copy labels and milestone from other work item or merge request in the same namespace') }
         explanation do |source_issuable|
           _("Copy labels and milestone from %{source_issuable_reference}.") % { source_issuable_reference: source_issuable.to_reference }
         end
-        params '#issue | !merge_request'
-        types Issue, MergeRequest
+        params '#item | !merge_request | URL'
+        types Issue, MergeRequest, WorkItem
         condition do
           current_user.can?(:"set_#{quick_action_target.to_ability_name}_metadata", quick_action_target)
         end
         parse_params do |issuable_param|
           extract_references(issuable_param, :issue).first ||
-            extract_references(issuable_param, :merge_request).first
+            extract_references(issuable_param, :work_item).first ||
+            extract_references(issuable_param, :epic).first ||
+            extract_references(issuable_param, :merge_request).first ||
+            failed_parse(_("Failed to find work item or merge request"))
         end
         command :copy_metadata do |source_issuable|
           if can_copy_metadata?(source_issuable)
@@ -143,6 +168,10 @@ module Gitlab
           end
         end
 
+        ########################################################################
+        #
+        # /estimate
+        #
         desc { _('Set time estimate') }
         explanation do |time_estimate|
           next unless time_estimate
@@ -173,6 +202,10 @@ module Gitlab
           @updates[:time_estimate] = time_estimate
         end
 
+        ########################################################################
+        #
+        # /spend, /spent, /spend_time
+        #
         desc { _('Add or subtract spent time') }
         explanation do |time_spent, time_spent_date|
           spend_time_message(time_spent, time_spent_date, false)
@@ -195,7 +228,7 @@ module Gitlab
             current_user.can?(:"admin_#{quick_action_target.to_ability_name}", quick_action_target)
         end
         parse_params do |raw_time_date|
-          Gitlab::QuickActions::SpendTimeAndDateSeparator.new(raw_time_date).execute
+          Gitlab::QuickActions::SpendTimeAndDateSeparator.new(raw_time_date, current_user.timezone).execute
         end
         command :spend, :spent, :spend_time do |time_spent, time_spent_date, category|
           if time_spent
@@ -208,6 +241,10 @@ module Gitlab
           end
         end
 
+        ########################################################################
+        #
+        # /remove_estimate, /remove_time_estimate
+        #
         desc { _('Remove time estimate') }
         explanation { _('Removes time estimate.') }
         execution_message { _('Removed time estimate.') }
@@ -220,6 +257,10 @@ module Gitlab
           @updates[:time_estimate] = 0
         end
 
+        ########################################################################
+        #
+        # /remove_time_spent
+        #
         desc { _('Remove spent time') }
         explanation { _('Removes spent time.') }
         execution_message { _('Removed spent time.') }
@@ -232,6 +273,10 @@ module Gitlab
           @updates[:spend_time] = { duration: :reset, user_id: current_user.id }
         end
 
+        ########################################################################
+        #
+        # /lock
+        #
         desc { _("Lock the discussion") }
         explanation { _("Locks the discussion.") }
         execution_message { _("Locked the discussion.") }
@@ -245,6 +290,10 @@ module Gitlab
           @updates[:discussion_locked] = true
         end
 
+        ########################################################################
+        #
+        # /unlock
+        #
         desc { _("Unlock the discussion") }
         explanation { _("Unlocks the discussion.") }
         execution_message { _("Unlocked the discussion.") }
@@ -278,7 +327,17 @@ module Gitlab
         end
 
         def can_copy_metadata?(source_issuable)
-          source_issuable.present? && source_issuable.project_id == quick_action_target.project_id
+          source_issuable.present? && find_namespace(source_issuable) == find_namespace(quick_action_target)
+        end
+
+        def find_namespace(item)
+          case item
+          # WorkItem check should be before Issue, as WorkItem is a subclass of Issue
+          when WorkItem
+            item.namespace.owner_entity
+          when MergeRequest, Issue
+            item.project
+          end
         end
 
         def format_time_estimate(time_estimate)

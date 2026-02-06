@@ -2,10 +2,11 @@ import Dropzone from 'dropzone';
 import $ from 'jquery';
 import { escape } from 'lodash';
 import './behaviors/preview_markdown';
-import { spriteIcon } from '~/lib/utils/common_utils';
+import { spriteIcon, insertText } from '~/lib/utils/common_utils';
 import { getFilename } from '~/lib/utils/file_upload';
 import { truncate } from '~/lib/utils/text_utility';
 import { n__, __ } from '~/locale';
+import { getLimitedMediaDimensions } from '~/lib/utils/media_utils';
 import PasteMarkdownTable from './behaviors/markdown/paste_markdown_table';
 import axios from './lib/utils/axios_utils';
 import csrf from './lib/utils/csrf';
@@ -23,6 +24,13 @@ function getErrorMessage(res) {
   }
 
   return res.message;
+}
+
+async function transformImageMarkdown(md, file) {
+  const dimensions = await getLimitedMediaDimensions(file);
+  if (!dimensions) return md;
+  // eslint-disable-next-line @gitlab/require-i18n-strings
+  return `${md}{width=${dimensions.width} height=${dimensions.height}}`;
 }
 
 export default function dropzoneInput(form, config = { parallelUploads: 2 }) {
@@ -84,12 +92,13 @@ export default function dropzoneInput(form, config = { parallelUploads: 2 }) {
       form.find('.div-dropzone-hover').css('opacity', 0);
       formTextarea.focus();
     },
-    success(header, response) {
+    async success(header, response) {
       const processingFileCount = this.getQueuedFiles().length + this.getUploadingFiles().length;
       const shouldPad = processingFileCount >= 1;
 
       addFileToForm(response.link.url, header.size);
-      pasteText(response.link.markdown, shouldPad);
+      const md = await transformImageMarkdown(response.link.markdown, header);
+      pasteText(md, shouldPad);
     },
     error: (file, errorMessage = __('Attaching the file failed.'), xhr) => {
       // If 'error' event is fired by dropzone, the second parameter is error message.
@@ -209,16 +218,9 @@ export default function dropzoneInput(form, config = { parallelUploads: 2 }) {
       formattedText += '\n\n';
     }
     const textarea = child.get(0);
-    const caretStart = textarea.selectionStart;
-    const caretEnd = textarea.selectionEnd;
-    const textEnd = $(child).val().length;
-    const beforeSelection = $(child).val().substring(0, caretStart);
-    const afterSelection = $(child).val().substring(caretEnd, textEnd);
-    $(child).val(beforeSelection + formattedText + afterSelection);
-    textarea.setSelectionRange(caretStart + formattedText.length, caretEnd + formattedText.length);
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    insertText(textarea, formattedText);
     formTextarea.get(0).dispatchEvent(new Event('input'));
-    return formTextarea.trigger('input');
+    formTextarea.trigger('input');
   };
 
   addFileToForm = (path) => {
@@ -237,14 +239,14 @@ export default function dropzoneInput(form, config = { parallelUploads: 2 }) {
   const insertToTextArea = (filename, url) => {
     const $child = $(child);
     const textarea = $child.get(0);
-    const caretStart = textarea.selectionStart;
-    const caretEnd = textarea.selectionEnd;
     const formattedText = `{{${filename}}}`;
-    $child.val((index, val) => val.replace(formattedText, url));
-    textarea.setSelectionRange(
-      caretStart - formattedText.length + url.length,
-      caretEnd - formattedText.length + url.length,
-    );
+
+    const replaceStart = textarea.value.indexOf(formattedText);
+    if (replaceStart !== -1) {
+      const replaceEnd = replaceStart + formattedText.length;
+      textarea.setSelectionRange(replaceStart, replaceEnd);
+    }
+    insertText(textarea, url);
     $child.trigger('change');
   };
 
@@ -256,9 +258,8 @@ export default function dropzoneInput(form, config = { parallelUploads: 2 }) {
 
     axios
       .post(uploadsPath, formData)
-      .then(({ data }) => {
-        const md = data.link.markdown;
-
+      .then(async ({ data }) => {
+        const md = await transformImageMarkdown(data.link.markdown, item);
         insertToTextArea(filename, md);
         closeSpinner();
       })

@@ -3,6 +3,8 @@
 module Gitlab
   module ImportExport
     class SnippetRepoRestorer < RepoRestorer
+      include ::Import::Framework::ProgressTracking
+
       attr_reader :snippet, :user
 
       SnippetRepositoryError = Class.new(StandardError)
@@ -16,13 +18,31 @@ module Gitlab
       end
 
       def restore
-        if File.exist?(path_to_bundle)
-          create_repository_from_bundle
-        else
-          create_repository_from_db
-        end
+        with_progress_tracking(**progress_tracking_options(snippet)) do
+          unless File.exist?(path_to_bundle)
+            @shared.logger.info(
+              message: '[Snippet Import] Missing repository bundle',
+              project_id: snippet.project_id,
+              relation_key: 'snippets',
+              error_messages: "Repository bundle for snippet #{snippet.id} not found"
+            )
 
-        true
+            ::ImportFailure.create(
+              source: 'SnippetRepoRestorer#restore',
+              relation_key: 'snippets',
+              exception_class: 'MissingBundleFile',
+              exception_message: "Repository bundle for snippet #{snippet.id} not found",
+              correlation_id_value: Labkit::Correlation::CorrelationId.current_or_new_id,
+              project_id: snippet.project_id
+            )
+
+            next true
+          end
+
+          create_repository_from_bundle
+
+          true
+        end
       rescue StandardError => e
         shared.error(e)
         false
@@ -47,12 +67,8 @@ module Gitlab
         end
       end
 
-      def create_repository_from_db
-        Gitlab::BackgroundMigration::BackfillSnippetRepositories.new.perform_by_ids([snippet.id])
-
-        unless snippet.reset.snippet_repository
-          raise SnippetRepositoryError, _("Error creating repository for snippet with id %{snippet_id}") % { snippet_id: snippet.id }
-        end
+      def progress_tracking_options(snippet)
+        { scope: { project_id: snippet.project_id }, data: snippet.id }
       end
     end
   end

@@ -11,6 +11,7 @@ module Gitlab
           @project = project
           @formatter = Gitlab::ImportFormatter.new
           @user_finder = UserFinder.new(project)
+          @mentions_converter = Gitlab::Import::MentionsConverter.new('bitbucket', project)
           @object = hash.with_indifferent_access
         end
 
@@ -18,10 +19,6 @@ module Gitlab
           return if skip
 
           log_info(import_stage: 'import_pull_request', message: 'starting', iid: object[:iid])
-
-          description = ''
-          description += author_line
-          description += object[:description] if object[:description]
 
           attributes = {
             iid: object[:iid],
@@ -36,7 +33,10 @@ module Gitlab
             state_id: MergeRequest.available_states[object[:state]],
             author_id: author_id,
             created_at: object[:created_at],
-            updated_at: object[:updated_at]
+            updated_at: object[:updated_at],
+            # MergeRequestHelpers#create_merge_request_without_hooks requires
+            # that we pass the enum integer value rather than the key.
+            imported_from: ::Import::HasImportSource::IMPORT_SOURCES[:bitbucket]
           }
 
           creator = Gitlab::Import::MergeRequestCreator.new(project)
@@ -48,6 +48,8 @@ module Gitlab
             merge_request.reviewer_ids = reviewers
             merge_request.save!
 
+            create_merge_request_metrics(merge_request)
+
             metrics.merge_requests_counter.increment
           end
 
@@ -58,7 +60,7 @@ module Gitlab
 
         private
 
-        attr_reader :object, :project, :formatter, :user_finder
+        attr_reader :object, :project, :formatter, :user_finder, :mentions_converter
 
         def skip
           return false unless object[:source_and_target_project_different]
@@ -69,10 +71,18 @@ module Gitlab
           true
         end
 
+        def description
+          description = ''
+          description += author_line
+          description += object[:description] if object[:description]
+
+          mentions_converter.convert(description)
+        end
+
         def author_line
           return '' if find_user_id
 
-          formatter.author_line(object[:author])
+          formatter.author_line(object[:author_nickname])
         end
 
         def find_user_id
@@ -80,7 +90,26 @@ module Gitlab
         end
 
         def author_id
-          user_finder.gitlab_user_id(project, object[:author])
+          @author_id ||= user_finder.gitlab_user_id(project, object[:author])
+        end
+
+        def create_merge_request_metrics(merge_request)
+          return if object[:closed_by].nil?
+
+          case object[:state]
+          when 'merged'
+            merge_request.metrics.merged_by_id = closed_by_id
+          when 'closed'
+            merge_request.metrics.latest_closed_by_id = closed_by_id
+          else
+            return
+          end
+
+          merge_request.metrics.save!
+        end
+
+        def closed_by_id
+          user_finder.gitlab_user_id(project, object[:closed_by])
         end
 
         def reviewers

@@ -28,8 +28,9 @@ class MergeRequestPollCachedWidgetEntity < IssuableEntity
     merge_request.default_squash_commit_message(user: request.current_user)
   end
 
-  expose :commits_without_merge_commits, using: MergeRequestWidgetCommitEntity do |merge_request|
-    merge_request.recent_commits.without_merge_commits
+  expose :commits_without_merge_commits do |_|
+    # Deprecated: This value was unused
+    []
   end
 
   expose :diff_head_sha do |merge_request|
@@ -49,8 +50,8 @@ class MergeRequestPollCachedWidgetEntity < IssuableEntity
     end
   end
 
-  expose :actual_head_pipeline, as: :pipeline, if: -> (mr, _) { presenter(mr).can_read_pipeline? } do |merge_request, options|
-    MergeRequests::PipelineEntity.represent(merge_request.actual_head_pipeline, options)
+  expose :actual_head_pipeline, as: :pipeline, if: ->(mr, _) { presenter(mr).can_read_pipeline? } do |merge_request, options|
+    MergeRequests::PipelineEntity.represent(merge_request.diff_head_pipeline, options)
   end
 
   expose :merge_pipeline, if: ->(mr, _) { mr.merged? && can?(request.current_user, :read_pipeline, mr.target_project) } do |merge_request, options|
@@ -89,17 +90,11 @@ class MergeRequestPollCachedWidgetEntity < IssuableEntity
     diffs_project_merge_request_path(merge_request.project, merge_request)
   end
 
-  expose :squash_enabled_by_default do |merge_request|
-    presenter(merge_request).project.squash_enabled_by_default?
-  end
+  expose :squash_enabled_by_default?, as: :squash_enabled_by_default
 
-  expose :squash_readonly do |merge_request|
-    presenter(merge_request).project.squash_readonly?
-  end
+  expose :squash_readonly?, as: :squash_readonly
 
-  expose :squash_on_merge do |merge_request|
-    presenter(merge_request).squash_on_merge?
-  end
+  expose :squash_on_merge?, as: :squash_on_merge
 
   expose :api_approvals_path do |merge_request|
     presenter(merge_request).api_approvals_path
@@ -144,11 +139,11 @@ class MergeRequestPollCachedWidgetEntity < IssuableEntity
   end
 
   expose :blob_path do
-    expose :head_path, if: -> (mr, _) { mr.source_branch_sha } do |merge_request|
+    expose :head_path, if: ->(mr, _) { mr.source_branch_sha } do |merge_request|
       project_blob_path(merge_request.project, merge_request.source_branch_sha)
     end
 
-    expose :base_path, if: -> (mr, _) { mr.diff_base_sha } do |merge_request|
+    expose :base_path, if: ->(mr, _) { mr.diff_base_sha } do |merge_request|
       project_blob_path(merge_request.project, merge_request.diff_base_sha)
     end
   end
@@ -160,7 +155,7 @@ class MergeRequestPollCachedWidgetEntity < IssuableEntity
       status_name = "favicon_status_#{merge_request.state}"
       Gitlab::Favicon.mr_status_overlay(status_name)
     else
-      pipeline = merge_request.actual_head_pipeline
+      pipeline = merge_request.diff_head_pipeline
       status = pipeline&.detailed_status(request.current_user)
       Gitlab::Favicon.ci_status_overlay(status.favicon) if status
     end

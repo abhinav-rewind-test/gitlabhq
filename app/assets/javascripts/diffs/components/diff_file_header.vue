@@ -1,54 +1,56 @@
 <script>
 import {
   GlTooltipDirective,
-  GlIcon,
   GlBadge,
   GlButton,
   GlButtonGroup,
-  GlDropdown,
-  GlDropdownItem,
-  GlDropdownDivider,
+  GlDisclosureDropdown,
+  GlDisclosureDropdownItem,
+  GlDisclosureDropdownGroup,
   GlFormCheckbox,
   GlLoadingIcon,
+  GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
 import { escape } from 'lodash';
-// eslint-disable-next-line no-restricted-imports
-import { mapActions, mapGetters, mapState } from 'vuex';
+import { mapActions, mapState } from 'pinia';
+import { keysFor, MR_TOGGLE_REVIEW } from '~/behaviors/shortcuts/keybindings';
+import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
 import SafeHtml from '~/vue_shared/directives/safe_html';
-import { IdState } from 'vendor/vue-virtual-scroller';
-import { scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import { truncateSha } from '~/lib/utils/text_utility';
+import { sanitize } from '~/lib/dompurify';
 import { __, s__, sprintf } from '~/locale';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-
 import { createFileUrl, fileContentsId } from '~/diffs/components/diff_row_utils';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { useNotes } from '~/notes/store/legacy_notes';
+import { useCodeReview } from '~/diffs/stores/code_review';
 import { DIFF_FILE_AUTOMATIC_COLLAPSE } from '../constants';
+import diffsEventHub from '../event_hub';
 import { DIFF_FILE_HEADER } from '../i18n';
 import { collapsedType, isCollapsed } from '../utils/diff_file';
-import { reviewable } from '../utils/file_reviews';
-
 import DiffStats from './diff_stats.vue';
+
+const createHotkeyHtml = (key) => `<kbd class="flat gl-ml-1" aria-hidden=true>${key}</kbd>`;
 
 export default {
   components: {
     ClipboardButton,
-    GlIcon,
     DiffStats,
     GlBadge,
+    GlDisclosureDropdown,
+    GlDisclosureDropdownItem,
+    GlDisclosureDropdownGroup,
     GlButton,
     GlButtonGroup,
-    GlDropdown,
-    GlDropdownItem,
-    GlDropdownDivider,
     GlFormCheckbox,
     GlLoadingIcon,
+    GlAnimatedChevronRightDownIcon,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
     SafeHtml,
   },
-  mixins: [IdState({ idProp: (vm) => vm.diffFile.file_hash }), glFeatureFlagsMixin()],
   i18n: {
     ...DIFF_FILE_HEADER,
     compareButtonLabel: __('Compare submodule commit revisions'),
@@ -98,21 +100,10 @@ export default {
       required: false,
       default: false,
     },
-    pinned: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-  },
-  idState() {
-    return {
-      moreActionsShown: false,
-    };
   },
   computed: {
-    ...mapState('diffs', ['latestDiff']),
-    ...mapGetters('diffs', ['diffHasExpandedDiscussions', 'diffHasDiscussions']),
-    ...mapGetters(['getNoteableData']),
+    ...mapState(useLegacyDiffs, ['diffHasExpandedDiscussions', 'diffHasDiscussions']),
+    ...mapState(useNotes, ['getNoteableData']),
     diffContentIDSelector() {
       return fileContentsId(this.diffFile);
     },
@@ -135,10 +126,10 @@ export default {
         const truncatedOldSha = escape(truncateSha(this.diffFile.submodule_compare.old_sha));
         const truncatedNewSha = escape(truncateSha(this.diffFile.submodule_compare.new_sha));
         return sprintf(
-          __('Compare %{oldCommitId}...%{newCommitId}'),
+          __('Compare %{old_commit} to %{new_commit}'),
           {
-            oldCommitId: `<span class="commit-sha">${truncatedOldSha}</span>`,
-            newCommitId: `<span class="commit-sha">${truncatedNewSha}</span>`,
+            old_commit: `<span class="commit-sha">${truncatedOldSha}</span>`,
+            new_commit: `<span class="commit-sha">${truncatedNewSha}</span>`,
           },
           false,
         );
@@ -161,9 +152,6 @@ export default {
     },
     isCollapsed() {
       return isCollapsed(this.diffFile, { fileByFile: this.viewDiffsFileByFile });
-    },
-    collapseIcon() {
-      return this.expanded ? 'chevron-down' : 'chevron-right';
     },
     viewFileButtonText() {
       const truncatedContentSha = escape(truncateSha(this.diffFile.content_sha));
@@ -202,7 +190,7 @@ export default {
       );
     },
     isReviewable() {
-      return reviewable(this.diffFile);
+      return Boolean(this.diffFile.code_review_id) && Boolean(this.diffFile.file_identifier_hash);
     },
     externalUrlLabel() {
       return sprintf(__('View on %{url}'), { url: this.diffFile.formatted_external_url });
@@ -213,28 +201,88 @@ export default {
     showCommentButton() {
       return this.getNoteableData.current_user.can_create_note;
     },
+    viewFileDropdownItem() {
+      return {
+        text: this.viewFileButtonText,
+        href: this.diffFile.view_path,
+        extraAttrs: {
+          target: '_blank',
+        },
+      };
+    },
+    editInSingleFileEditorDropdownItem() {
+      return {
+        text: __('Edit in single-file editor'),
+        action: this.showForkMessage,
+        href: this.diffFile.can_modify_blob ? this.diffFile.edit_path : undefined,
+        extraAttrs: {
+          class: 'js-edit-blob',
+        },
+      };
+    },
+    openInWebIdeDropdownItem() {
+      return {
+        text: __('Open in Web IDE'),
+        href: this.diffFile.ide_edit_path,
+        extraAttrs: {
+          target: '_blank',
+          'data-testid': 'edit-in-ide-button',
+          class: 'js-ide-edit-blob',
+        },
+      };
+    },
+    viewReplacedFileDropdownItem() {
+      return {
+        text: this.viewReplacedFileButtonText,
+        href: this.diffFile.replaced_view_path,
+        extraAttrs: {
+          target: '_blank',
+        },
+      };
+    },
+    toggleDiscussionDropdownItem() {
+      return {
+        text: __('Hide comments on this file'),
+        action: () => this.toggleFileDiscussionWrappers(this.diffFile),
+      };
+    },
+
+    toggleDiffDropdownItem() {
+      return {
+        text: this.expandDiffToFullFileTitle,
+        action: () => this.toggleFullDiff(this.diffFile.file_path),
+        extraAttrs: {
+          disabled: this.diffFile.isLoadingFullFile,
+        },
+      };
+    },
   },
   methods: {
-    ...mapActions('diffs', [
+    ...mapActions(useLegacyDiffs, [
       'toggleFileDiscussionWrappers',
       'toggleFullDiff',
       'setCurrentFileHash',
-      'reviewFile',
       'setFileCollapsedByUser',
       'setFileForcedOpen',
       'toggleFileCommentForm',
-      'unpinFile',
     ]),
+    fileReviewTooltip() {
+      const { description } = MR_TOGGLE_REVIEW;
+      const keys = keysFor(MR_TOGGLE_REVIEW);
+      return shouldDisableShortcuts()
+        ? description
+        : sanitize(`${description} ${createHotkeyHtml(keys[0])}`);
+    },
     handleToggleFile() {
+      diffsEventHub.$emit('setFileActive', this.diffFile.file_hash);
       this.setFileForcedOpen({
         filePath: this.diffFile.file_path,
         forced: false,
       });
       this.$emit('toggleFile');
     },
-    showForkMessage(e) {
+    showForkMessage() {
       if (this.canCurrentUserFork && !this.diffFile.can_modify_blob) {
-        e.preventDefault();
         this.$emit('showForkMessage');
       }
     },
@@ -252,17 +300,20 @@ export default {
         }
       }
     },
-    setMoreActionsShown(val) {
-      this.idState.moreActionsShown = val;
-    },
     toggleReview(newReviewedStatus) {
+      // this is the easiest way to hide an already open tooltip that triggers on focus
+      document.activeElement.blur();
       const autoCollapsed =
         this.isCollapsed && collapsedType(this.diffFile) === DIFF_FILE_AUTOMATIC_COLLAPSE;
       const open = this.expanded;
       const closed = !open;
       const reviewed = newReviewedStatus;
 
-      this.reviewFile({ file: this.diffFile, reviewed });
+      // diffFile.id is generated on the frontend, code_review_id is generated on the backend
+      // we need to leave only code_review_id as our single source of truth
+      // this is done to prevent legacy id from persisting in the local storage
+      useCodeReview().removeId(this.diffFile.id);
+      useCodeReview().setReviewed(this.diffFile.code_review_id, reviewed);
 
       if (reviewed && autoCollapsed) {
         this.setFileCollapsedByUser({
@@ -286,40 +337,26 @@ export default {
 <template>
   <div
     ref="header"
-    :class="{
-      'gl-z-dropdown-menu!': idState.moreActionsShown,
-    }"
-    class="js-file-title file-title file-title-flex-parent gl-border"
+    class="js-file-title file-title file-title-flex-parent"
     data-testid="file-title-container"
     :data-qa-file-name="filePath"
     @click.self="handleToggleFile"
   >
     <div class="file-header-content">
       <gl-button
-        v-if="pinned"
-        v-gl-tooltip.hover.focus
-        :title="__('Unpin the file')"
-        :aria-label="__('Unpin the file')"
-        icon="thumbtack"
-        size="small"
+        v-if="collapsible"
+        ref="collapseButton"
         class="btn-icon gl-mr-2"
         category="tertiary"
-        data-testid="unpin-button"
-        @click="unpinFile"
-      />
-      <gl-button
-        v-else-if="collapsible"
-        ref="collapseButton"
-        class="gl-mr-2"
-        category="tertiary"
         size="small"
-        :icon="collapseIcon"
         :aria-label="labelToggleFile"
         @click.stop="handleToggleFile"
-      />
+      >
+        <gl-animated-chevron-right-down-icon :is-on="expanded" />
+      </gl-button>
       <a
         :v-once="!viewDiffsFileByFile"
-        class="gl-mr-2 gl-text-decoration-none! gl-word-break-all"
+        class="gl-mr-2 gl-break-all !gl-no-underline"
         :href="titleLink"
         data-testid="file-title"
         @click="handleFileNameClick"
@@ -368,7 +405,7 @@ export default {
         v-if="isModeChanged"
         ref="fileMode"
         v-gl-tooltip.hover.focus
-        class="mr-1"
+        class="gl-mr-2 gl-text-subtle"
         :title="$options.i18n.fileModeTooltip"
       >
         {{ diffFile.a_mode }} → {{ diffFile.b_mode }}
@@ -381,7 +418,7 @@ export default {
 
     <div
       v-if="!diffFile.submodule && addMergeRequestButtons"
-      class="file-actions d-flex gl-align-items-center gl-ml-auto gl-align-self-start"
+      class="file-actions gl-ml-auto gl-flex gl-items-center gl-self-start"
     >
       <diff-stats
         :diff-file="diffFile"
@@ -390,10 +427,9 @@ export default {
       />
       <gl-form-checkbox
         v-if="isReviewable && showLocalFileReviews"
-        v-gl-tooltip.hover.focus
+        v-gl-tooltip.hover.focus.left.html="fileReviewTooltip"
         data-testid="fileReviewCheckbox"
-        class="gl-mr-5 gl-mb-n3 gl-display-flex gl-align-items-center"
-        :title="$options.i18n.fileReviewTooltip"
+        class="-gl-mb-3 gl-mr-5 gl-flex gl-items-center"
         :checked="reviewed"
         @change="toggleReview"
       >
@@ -407,11 +443,11 @@ export default {
         icon="comment"
         category="tertiary"
         size="small"
-        class="gl-mr-3 btn-icon"
+        class="btn-icon gl-mr-3"
         data-testid="comment-files-button"
         @click="toggleFileCommentForm(diffFile.file_path)"
       />
-      <gl-button-group class="gl-pt-0!">
+      <gl-button-group class="!gl-pt-0">
         <gl-button
           v-if="diffFile.external_url"
           ref="externalLink"
@@ -425,95 +461,78 @@ export default {
           data-track-property="diff_toggle_external"
           icon="external-link"
         />
-        <gl-dropdown
+        <gl-disclosure-dropdown
           v-gl-tooltip.hover.focus="$options.i18n.optionsDropdownTitle"
+          no-caret
+          icon="ellipsis_v"
           size="small"
           category="tertiary"
           right
           toggle-class="btn-icon js-diff-more-actions"
-          class="gl-pt-0!"
           data-testid="options-dropdown-button"
-          lazy
-          @show="setMoreActionsShown(true)"
-          @hidden="setMoreActionsShown(false)"
         >
-          <template #button-content>
-            <gl-icon name="ellipsis_v" class="mr-0" />
-            <span class="sr-only">{{ $options.i18n.optionsDropdownTitle }}</span>
-          </template>
-          <gl-dropdown-item ref="viewButton" :href="diffFile.view_path" target="_blank">
-            {{ viewFileButtonText }}
-          </gl-dropdown-item>
+          <gl-disclosure-dropdown-item ref="viewButton" :item="viewFileDropdownItem" />
           <template v-if="showEditButton">
-            <gl-dropdown-item
-              v-if="diffFile.edit_path"
+            <gl-disclosure-dropdown-item
+              v-if="diffFile.edit_path && (diffFile.can_modify_blob || canCurrentUserFork)"
               ref="editButton"
-              :href="diffFile.edit_path"
-              class="js-edit-blob"
-              @click="showForkMessage"
-            >
-              {{ __('Edit in single-file editor') }}
-            </gl-dropdown-item>
-            <gl-dropdown-item
-              v-if="diffFile.edit_path"
+              :item="editInSingleFileEditorDropdownItem"
+            />
+            <gl-disclosure-dropdown-item
+              v-if="diffFile.ide_edit_path"
               ref="ideEditButton"
-              :href="diffFile.ide_edit_path"
-              class="js-ide-edit-blob"
-              data-testid="edit-in-ide-button"
-              target="_blank"
-            >
-              {{ __('Open in Web IDE') }}
-            </gl-dropdown-item>
-            <gl-dropdown-item
+              :item="openInWebIdeDropdownItem"
+            />
+            <gl-disclosure-dropdown-item
               v-if="diffFile.replaced_view_path"
               ref="replacedFileButton"
-              :href="diffFile.replaced_view_path"
-              target="_blank"
-            >
-              {{ viewReplacedFileButtonText }}
-            </gl-dropdown-item>
+              :item="viewReplacedFileDropdownItem"
+            />
           </template>
 
           <template v-if="!isCollapsed">
-            <gl-dropdown-divider
+            <gl-disclosure-dropdown-group
               v-if="!diffFile.is_fully_expanded || diffHasDiscussions(diffFile)"
-            />
-
-            <gl-dropdown-item
-              v-if="diffHasDiscussions(diffFile)"
-              ref="toggleDiscussionsButton"
-              data-testid="toggle-comments-button"
-              @click="toggleFileDiscussionWrappers(diffFile)"
+              bordered
             >
-              <template v-if="diffHasExpandedDiscussions(diffFile)">
-                {{ __('Hide comments on this file') }}
-              </template>
-              <template v-else>
-                {{ __('Show comments on this file') }}
-              </template>
-            </gl-dropdown-item>
-            <gl-dropdown-item
-              v-if="!diffFile.is_fully_expanded"
-              ref="expandDiffToFullFileButton"
-              :disabled="diffFile.isLoadingFullFile"
-              @click="toggleFullDiff(diffFile.file_path)"
-            >
-              <gl-loading-icon v-if="diffFile.isLoadingFullFile" size="sm" inline />
-              {{ expandDiffToFullFileTitle }}
-            </gl-dropdown-item>
+              <gl-disclosure-dropdown-item
+                v-if="diffHasDiscussions(diffFile)"
+                ref="toggleDiscussionsButton"
+                :item="toggleDiscussionDropdownItem"
+              >
+                <template #list-item>
+                  <template v-if="diffHasExpandedDiscussions(diffFile)">
+                    {{ __('Hide comments on this file') }}
+                  </template>
+                  <template v-else>
+                    {{ __('Show comments on this file') }}
+                  </template>
+                </template>
+              </gl-disclosure-dropdown-item>
+              <gl-disclosure-dropdown-item
+                v-if="!diffFile.is_fully_expanded"
+                ref="expandDiffToFullFileButton"
+                :item="toggleDiffDropdownItem"
+              >
+                <template #list-item>
+                  <gl-loading-icon v-if="diffFile.isLoadingFullFile" size="sm" inline />
+                  {{ expandDiffToFullFileTitle }}
+                </template>
+              </gl-disclosure-dropdown-item>
+            </gl-disclosure-dropdown-group>
           </template>
-        </gl-dropdown>
+        </gl-disclosure-dropdown>
       </gl-button-group>
     </div>
 
     <div
       v-if="diffFile.submodule_compare"
-      class="file-actions d-none d-sm-flex gl-align-items-center gl-flex-wrap"
+      class="file-actions gl-hidden gl-flex-wrap gl-items-center @sm/panel:gl-flex"
     >
       <gl-button
         v-gl-tooltip.hover
         v-safe-html="submoduleDiffCompareLinkText"
-        class="submodule-compare"
+        class="submodule-compare gl-inline-block"
         :title="$options.i18n.compareButtonLabel"
         :aria-label="$options.i18n.compareButtonLabel"
         :href="diffFile.submodule_compare.url"

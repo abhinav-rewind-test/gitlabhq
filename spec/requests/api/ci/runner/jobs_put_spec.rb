@@ -2,17 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_category: :runner do
+RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_category: :runner_core do
   include StubGitlabCalls
   include RedisHelpers
   include WorkhorseHelpers
 
-  let(:registration_token) { 'abcdefg123456' }
-
   before do
-    stub_feature_flags(ci_enable_live_trace: true)
+    stub_application_setting(ci_job_live_trace_enabled: true)
     stub_gitlab_calls
-    stub_application_setting(runners_registration_token: registration_token)
     allow_any_instance_of(::Ci::Runner).to receive(:cache_attributes)
   end
 
@@ -21,13 +18,14 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
     let_it_be(:project) { create(:project, namespace: group, shared_runners_enabled: false) }
     let_it_be(:pipeline) { create(:ci_pipeline, project: project, ref: 'master') }
     let_it_be(:runner) { create(:ci_runner, :project, projects: [project]) }
-    let_it_be(:runner_manager) { create(:ci_runner_machine, runner: runner) }
+    let_it_be_with_reload(:runner_manager) { create(:ci_runner_machine, runner: runner) }
     let_it_be(:user) { create(:user) }
 
     describe 'PUT /api/v4/jobs/:id' do
       let_it_be_with_reload(:job) do
         create(:ci_build, :pending, :trace_live, pipeline: pipeline, project: project, user: user,
-          runner_id: runner.id, runner_manager: runner_manager)
+          runner_id: runner.id, runner_manager: runner_manager,
+          options: { allow_failure_criteria: { exit_codes: [1] } })
       end
 
       before do
@@ -42,9 +40,24 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
         let(:request) { update_job(state: 'success') }
       end
 
+      it_behaves_like 'rate limited endpoint', rate_limit_key: :runner_jobs_api do
+        let(:job2) do
+          create(:ci_build, :pending, user: user, project: project, pipeline: pipeline, runner_id: runner.id)
+        end
+
+        def request
+          update_job
+        end
+
+        def request_with_second_scope
+          update_job(job2.id, job2.token)
+        end
+      end
+
       it 'updates runner info' do
-        expect { update_job(state: 'success') }.to change { runner.reload.contacted_at }
-                                               .and change { runner_manager.reload.contacted_at }
+        expect { update_job(state: 'success') }
+          .to change { runner.reload.contacted_at }
+          .and change { runner_manager.reload.contacted_at }
       end
 
       context 'when status is given' do
@@ -52,6 +65,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
           update_job(state: 'success')
 
           expect(job.reload).to be_success
+          expect(response.header).to have_key('Job-Status')
           expect(response.header).not_to have_key('X-GitLab-Trace-Update-Interval')
         end
 
@@ -60,7 +74,20 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
           expect(job.reload).to be_failed
           expect(job).to be_unknown_failure
+          expect(response.header).to have_key('Job-Status')
           expect(response.header).not_to have_key('X-GitLab-Trace-Update-Interval')
+        end
+
+        describe 'composite identity', :request_store, :sidekiq_inline do
+          it 'is propagated to downstream Sidekiq workers' do
+            expect(::Gitlab::Auth::Identity).to receive(:link_from_job).and_call_original
+            expect(::Gitlab::Auth::Identity).to receive(:sidekiq_restore!).at_least(:once).and_call_original
+            expect(::PipelineProcessWorker).to receive(:perform_async).and_call_original
+
+            update_job(state: 'failed')
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
         end
 
         context 'when runner sends an unrecognized field in a payload' do
@@ -74,7 +101,7 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
           # GitLab is installed.
           #
           it 'ignores unrecognized fields' do
-            update_job(state: 'success', 'unknown': 'something')
+            update_job(state: 'success', unknown: 'something')
 
             expect(job.reload).to be_success
           end
@@ -82,11 +109,6 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
         context 'when an exit_code is provided' do
           context 'when the exit_codes are acceptable' do
-            before do
-              job.options[:allow_failure_criteria] = { exit_codes: [1] }
-              job.save!
-            end
-
             it 'accepts an exit code' do
               update_job(state: 'failed', exit_code: 1)
 
@@ -96,9 +118,9 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
             end
           end
 
-          context 'when the exit_codes are not defined' do
+          context 'when the exit_codes are not acceptable' do
             it 'ignore the exit code' do
-              update_job(state: 'failed', exit_code: 1)
+              update_job(state: 'failed', exit_code: 2)
 
               expect(job.reload).to be_failed
               expect(job.allow_failure).to be_falsy
@@ -147,7 +169,29 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
           it { expect(job.reload).to be_unmet_prerequisites }
         end
 
+        context 'when failure_reason is job_router_failure' do
+          before do
+            update_job(state: 'failed', failure_reason: 'job_router_failure')
+          end
+
+          context 'without custom message' do
+            it 'updates the job status' do
+              expect(job.reload).to be_failed
+              expect(job.failure_reason).to eq('job_router_failure')
+            end
+
+            it 'does not create a job message' do
+              expect(job.reload.job_messages.count).to eq(0)
+            end
+          end
+        end
+
         context 'when unmigrated live trace chunks exist' do
+          let(:job) do
+            create(:ci_build, :pending, :trace_live, pipeline: pipeline, project: project, user: user,
+              runner_id: runner.id, runner_manager: runner_manager)
+          end
+
           context 'when checksum is present' do
             context 'when live trace chunk is still live' do
               it 'responds with 202' do
@@ -155,6 +199,8 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
 
                 expect(job.pending_state).to be_present
                 expect(response).to have_gitlab_http_status(:accepted)
+                expect(response.header).to have_key('Job-Status')
+                expect(response.header['Job-Status']).to eq('running')
                 expect(response.header['X-GitLab-Trace-Update-Interval']).to be > 0
               end
             end
@@ -227,6 +273,39 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
         end
       end
 
+      context 'when job is canceled' do
+        before do
+          job.cancel!
+        end
+
+        it 'returns :forbidden with the job status' do
+          update_job(state: 'running')
+
+          job.reload
+          expect(response).to have_gitlab_http_status(:forbidden)
+          expect(response.header['Job-Status']).to eq 'canceled'
+          expect(job).to be_canceled
+        end
+      end
+
+      context 'when job is canceling' do
+        before do
+          attributes = attributes_for(:ci_runner_machine, :cancel_gracefully_feature).slice(:runtime_features)
+          runner_manager.update!(attributes)
+
+          job.cancel!
+        end
+
+        it 'returns :ok with the job status' do
+          update_job(state: 'running')
+
+          job.reload
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response.header['Job-Status']).to eq 'canceling'
+          expect(job).to be_canceling
+        end
+      end
+
       context 'when job does not exist anymore' do
         it 'returns 403 Forbidden' do
           update_job(non_existing_record_id, state: 'success')
@@ -235,9 +314,65 @@ RSpec.describe API::Ci::Runner, :clean_gitlab_redis_shared_state, feature_catego
         end
       end
 
+      context 'when job token JWT has expired' do
+        let!(:jwt_token) { ::Ci::JobToken::Jwt.encode(job) }
+
+        it 'returns 403 Forbidden' do
+          travel_to(3.hours.from_now) do
+            update_job(job.id, jwt_token, state: 'success')
+          end
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+        end
+
+        it 'fails the job with job_token_expired reason' do
+          travel_to(3.hours.from_now) do
+            expect { update_job(job.id, jwt_token, state: 'success') }
+              .to change { job.reload.status }.from('running').to('failed')
+
+            expect(response.header['Job-Status']).to eq('failed')
+            expect(job.failure_reason).to eq('job_token_expired')
+          end
+        end
+
+        it 'logs the job failure' do
+          expect(Gitlab::AppLogger).to receive(:info).with(a_hash_including(
+            job_id: job.id,
+            job_user_id: job.user_id,
+            job_project_id: job.project_id,
+            message: "Job failed due to expired JWT"
+          ))
+
+          travel_to(3.hours.from_now) do
+            update_job(job.id, jwt_token, state: 'success')
+          end
+        end
+
+        context 'when fail_job_on_expired_token feature flag is disabled' do
+          before do
+            stub_feature_flags(fail_job_on_expired_token: false)
+          end
+
+          it 'does not fail the job' do
+            travel_to(3.hours.from_now) do
+              expect(Gitlab::AppLogger).to receive(:info).with(a_hash_including(
+                job_id: job.id,
+                job_user_id: job.user_id,
+                job_project_id: job.project_id,
+                message: "Job forbidden due to expired JWT"
+              ))
+
+              expect { update_job(job.id, jwt_token, state: 'success') }.not_to change { job.reload.status }
+
+              expect(response).to have_gitlab_http_status(:forbidden)
+              expect(response.header['Job-Status']).to eq('running')
+            end
+          end
+        end
+      end
+
       def update_job(job_id = job.id, token = job.token, **params)
-        new_params = params.merge(token: token)
-        put api("/jobs/#{job_id}"), params: new_params
+        put api("/jobs/#{job_id}"), params: params.merge(token: token)
       end
 
       def update_job_after_time(update_interval = 20.minutes, state = 'running')

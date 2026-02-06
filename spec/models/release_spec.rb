@@ -3,10 +3,10 @@
 require 'spec_helper'
 
 RSpec.describe Release, feature_category: :release_orchestration do
-  let_it_be(:user)    { create(:user) }
+  let_it_be(:user) { create(:user) }
   let_it_be(:project) { create(:project, :public, :repository) }
 
-  let(:release) { create(:release, project: project, author: user) }
+  let_it_be_with_reload(:release) { create(:release, project: project, author: user) }
 
   it { expect(release).to be_valid }
 
@@ -23,6 +23,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
   describe 'validation' do
     it { is_expected.to validate_presence_of(:project) }
     it { is_expected.to validate_presence_of(:tag) }
+    it { is_expected.to validate_length_of(:name).is_at_most(255) }
 
     context 'when a release exists in the database without a name' do
       it 'does not require name' do
@@ -49,7 +50,6 @@ RSpec.describe Release, feature_category: :release_orchestration do
 
     describe 'scopes' do
       let_it_be(:another_project) { create(:project) }
-      let_it_be(:release) { create(:release, project: project, author: user, tag: 'v1') }
       let_it_be(:another_release) { create(:release, project: another_project, tag: 'v2') }
 
       describe '.for_projects' do
@@ -178,7 +178,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
 
       context 'when there are no releases' do
         it 'returns nil' do
-          project.releases.delete_all
+          project.releases.delete_all(:delete_all)
 
           expect(latest).to eq(nil)
         end
@@ -214,8 +214,8 @@ RSpec.describe Release, feature_category: :release_orchestration do
 
       context 'when there are no releases' do
         it 'returns empty response' do
-          project.releases.delete_all
-          project2.releases.delete_all
+          project.releases.delete_all(:delete_all)
+          project2.releases.delete_all(:delete_all)
 
           expect(latest_for_projects).to be_empty
         end
@@ -279,7 +279,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
           { links_attributes: [{ name: 'test', url: 'https://www.google.com/' }] }
         end
 
-        it 'creates a link successfuly' do
+        it 'creates a link successfully' do
           is_expected.to eq(true)
 
           expect(release.links.count).to eq(1)
@@ -315,7 +315,7 @@ RSpec.describe Release, feature_category: :release_orchestration do
           { links_attributes: [{ id: link1.id, _destroy: true }] }
         end
 
-        it 'removes the link successfuly' do
+        it 'removes the link successfully' do
           is_expected.to eq(true)
 
           expect(release.links.count).to eq(1)
@@ -380,7 +380,8 @@ RSpec.describe Release, feature_category: :release_orchestration do
     let_it_be(:resource) { create(:ci_catalog_resource, project: project) }
 
     let_it_be_with_reload(:release) do
-      create(:release, :with_catalog_resource_version, project: project, tag: 'v1', released_at: '2023-01-01T00:00:00Z')
+      create(:release, :with_catalog_resource_version, project: project, tag: 'v1.2.3',
+        released_at: '2023-01-01T00:00:00Z')
     end
 
     let(:version) { release.catalog_resource_version }
@@ -398,6 +399,35 @@ RSpec.describe Release, feature_category: :release_orchestration do
         expect(version).not_to receive(:sync_with_release!)
 
         release.update!(released_at: '2023-01-01T00:00:00Z')
+      end
+    end
+  end
+
+  describe '#related_deployments' do
+    let_it_be(:release) { create(:release, project: project, tag: 'v1.0.0') }
+    let_it_be(:ref) { release.tag }
+    let_it_be(:environment) { create(:environment, project: project) }
+    let_it_be_with_reload(:deployment) { create(:deployment, environment: environment, ref: ref) }
+
+    it 'returns deployments for the release tag in the available environments' do
+      expect(release.related_deployments).to contain_exactly(deployment)
+    end
+
+    context 'when environment is not available' do
+      before do
+        environment.stop
+      end
+
+      it 'does not return deployments' do
+        expect(release.related_deployments).to be_empty
+      end
+    end
+
+    context 'when deployment ref does not match the release tag' do
+      it 'does not return deployments' do
+        deployment.update!(ref: 'other-tag')
+
+        expect(release.related_deployments).to be_empty
       end
     end
   end

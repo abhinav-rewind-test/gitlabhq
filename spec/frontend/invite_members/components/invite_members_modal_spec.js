@@ -14,6 +14,7 @@ import UserLimitNotification from '~/invite_members/components/user_limit_notifi
 import {
   MEMBERS_MODAL_CELEBRATE_INTRO,
   MEMBERS_MODAL_CELEBRATE_TITLE,
+  MEMBERS_MODAL_ROLE_SELECT_LABEL,
   MEMBERS_PLACEHOLDER,
   MEMBERS_TO_PROJECT_CELEBRATE_INTRO_TEXT,
   EXPANDED_ERRORS,
@@ -23,7 +24,7 @@ import {
   INVALID_FEEDBACK_MESSAGE_DEFAULT,
 } from '~/invite_members/constants';
 import eventHub from '~/invite_members/event_hub';
-import ContentTransition from '~/vue_shared/components/content_transition.vue';
+import ContentTransition from '~/invite_members/components/content_transition.vue';
 import axios from '~/lib/utils/axios_utils';
 import {
   HTTP_STATUS_BAD_REQUEST,
@@ -32,9 +33,10 @@ import {
 } from '~/lib/utils/http_status';
 import {
   displaySuccessfulInvitationAlert,
-  reloadOnInvitationSuccess,
+  reloadOnMemberInvitationSuccess,
 } from '~/invite_members/utils/trigger_successful_invite_alert';
 import { captureException } from '~/ci/runner/sentry_utils';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import { GROUPS_INVITATIONS_PATH, invitationsApiResponse } from '../mock_data/api_responses';
 import {
   propsData,
@@ -68,11 +70,12 @@ describe('InviteMembersModal', () => {
       property,
     });
 
-  const createComponent = (props = {}, stubs = {}) => {
+  const createComponent = (props = {}, stubs = {}, provide = {}) => {
     wrapper = shallowMountExtended(InviteMembersModal, {
       provide: {
         newProjectPath,
         name: propsData.name,
+        ...provide,
       },
       propsData: {
         usersLimitDataset: {},
@@ -111,8 +114,10 @@ describe('InviteMembersModal', () => {
     usersLimitDataset = {},
     activeTrialDataset = {},
     stubs = {},
+    provide = {},
+    // eslint-disable-next-line max-params
   ) => {
-    createComponent({ usersLimitDataset, activeTrialDataset, isProject: false }, stubs);
+    createComponent({ usersLimitDataset, activeTrialDataset, isProject: false }, stubs, provide);
   };
 
   beforeEach(() => {
@@ -133,13 +138,13 @@ describe('InviteMembersModal', () => {
   const findUserLimitAlert = () => wrapper.findComponent(UserLimitNotification);
   const findAccordion = () => wrapper.findComponent(GlCollapse);
   const findErrorsIcon = () => wrapper.findComponent(GlIcon);
+  const findSeatOveragesAlert = () => wrapper.findByTestId('seat-overages-alert');
   const expectedErrorMessage = (index, errorType) => {
     const [username, message] = Object.entries(errorType.parsedMessage)[index];
     return `${username}: ${message}`;
   };
   const findActionButton = () => wrapper.findByTestId('invite-modal-submit');
   const findCancelButton = () => wrapper.findByTestId('invite-modal-cancel');
-
   const emitClickFromModal = (findButton) => () =>
     findButton().vm.$emit('click', { preventDefault: jest.fn() });
 
@@ -153,7 +158,7 @@ describe('InviteMembersModal', () => {
   const findMembersSelect = () => wrapper.findComponent(MembersTokenSelect);
   const findCelebrationEmoji = () => wrapper.findComponent(GlEmoji);
   const triggerOpenModal = async ({ mode = 'default', source } = {}) => {
-    eventHub.$emit('openModal', { mode, source });
+    eventHub.$emit('open-modal', { mode, source });
     await nextTick();
   };
   const triggerMembersTokenSelect = async (val) => {
@@ -177,6 +182,40 @@ describe('InviteMembersModal', () => {
 
       expect(findBase().props('accessLevels')).toMatchObject({
         validRoles: propsData.accessLevels,
+      });
+    });
+
+    it('sets the group role select label', () => {
+      createInviteMembersToProjectWrapper();
+
+      expect(findBase().props('roleSelectLabel')).toBe(MEMBERS_MODAL_ROLE_SELECT_LABEL);
+    });
+
+    describe('when inviting users to a project', () => {
+      it('set accessExpirationHelpLink for projects', () => {
+        createInviteMembersToProjectWrapper();
+
+        expect(findBase().props('accessExpirationHelpLink')).toBe(
+          helpPagePath('user/project/members/_index', { anchor: 'add-users-to-a-project' }),
+        );
+      });
+    });
+
+    describe('when inviting users to a group', () => {
+      it('set accessExpirationHelpLink for groups', () => {
+        createInviteMembersToGroupWrapper();
+
+        expect(findBase().props('accessExpirationHelpLink')).toBe(
+          helpPagePath('user/group/_index', { anchor: 'add-users-to-a-group' }),
+        );
+      });
+    });
+
+    describe('hasErrorDuringInvite prop', () => {
+      it('does not pass hasErrorDuringInvite prop when function returns null', () => {
+        createInviteMembersToProjectWrapper();
+
+        expect(findBase().props('hasErrorDuringInvite')).toBeUndefined();
       });
     });
   });
@@ -341,7 +380,7 @@ describe('InviteMembersModal', () => {
         createInviteMembersToGroupWrapper();
       });
 
-      it('displays an error', async () => {
+      it('displays error for empty invite submission and then clears when resolved', async () => {
         clickInviteButton();
 
         await waitForPromises();
@@ -353,6 +392,53 @@ describe('InviteMembersModal', () => {
         await triggerMembersTokenSelect([user1]);
 
         expect(membersFormGroupInvalidFeedback()).toBe('');
+      });
+    });
+
+    describe('when user types text but has not selected anyone yet', () => {
+      beforeEach(() => {
+        createInviteMembersToGroupWrapper();
+      });
+
+      it('shows error message when clicking submit with untyped text', async () => {
+        findMembersSelect().vm.$emit('tokenization-state-change', true);
+        await nextTick();
+
+        clickInviteButton();
+        await waitForPromises();
+
+        expect(findEmptyInvitesAlert().exists()).toBe(true);
+        expect(membersFormGroupInvalidFeedback()).toBe(MEMBERS_PLACEHOLDER);
+        expect(findMembersSelect().props('exceptionState')).toBe(false);
+
+        findMembersSelect().vm.$emit('tokenization-state-change', false);
+        await triggerMembersTokenSelect([user1]);
+
+        expect(membersFormGroupInvalidFeedback()).toBe('');
+      });
+
+      it('shows error when user selects a member then types another without selecting', async () => {
+        await triggerMembersTokenSelect([user1]);
+        expect(membersFormGroupInvalidFeedback()).toBe('');
+
+        findMembersSelect().vm.$emit('tokenization-state-change', true);
+        await nextTick();
+
+        clickInviteButton();
+        await waitForPromises();
+
+        expect(findEmptyInvitesAlert().exists()).toBe(true);
+        expect(membersFormGroupInvalidFeedback()).toBe(MEMBERS_PLACEHOLDER);
+        expect(findMembersSelect().props('exceptionState')).toBe(false);
+
+        findMembersSelect().vm.$emit('tokenization-state-change', false);
+        await nextTick();
+
+        await triggerMembersTokenSelect([user1, user2]);
+        await nextTick();
+
+        expect(membersFormGroupInvalidFeedback()).toBe('');
+        expect(findEmptyInvitesAlert().exists()).toBe(false);
       });
     });
 
@@ -370,8 +456,8 @@ describe('InviteMembersModal', () => {
           expect(displaySuccessfulInvitationAlert).toHaveBeenCalled();
         });
 
-        it('calls reloadOnInvitationSuccess', () => {
-          expect(reloadOnInvitationSuccess).toHaveBeenCalled();
+        it('calls reloadOnMemberInvitationSuccess', () => {
+          expect(reloadOnMemberInvitationSuccess).toHaveBeenCalled();
         });
 
         it('does not show the toast message', () => {
@@ -397,15 +483,15 @@ describe('InviteMembersModal', () => {
           });
 
           it('displays the successful toastMessage', () => {
-            expect(showToast).toHaveBeenCalledWith('Members were successfully added');
+            expect(showToast).toHaveBeenCalledWith('Members were successfully added.');
           });
 
           it('does not call displaySuccessfulInvitationAlert on mount', () => {
             expect(displaySuccessfulInvitationAlert).not.toHaveBeenCalled();
           });
 
-          it('does not call reloadOnInvitationSuccess', () => {
-            expect(reloadOnInvitationSuccess).not.toHaveBeenCalled();
+          it('does not call reloadOnMemberInvitationSuccess', () => {
+            expect(reloadOnMemberInvitationSuccess).not.toHaveBeenCalled();
           });
         });
       });
@@ -553,15 +639,15 @@ describe('InviteMembersModal', () => {
           });
 
           it('displays the successful toastMessage', () => {
-            expect(showToast).toHaveBeenCalledWith('Members were successfully added');
+            expect(showToast).toHaveBeenCalledWith('Members were successfully added.');
           });
 
           it('does not call displaySuccessfulInvitationAlert on mount', () => {
             expect(displaySuccessfulInvitationAlert).not.toHaveBeenCalled();
           });
 
-          it('does not call reloadOnInvitationSuccess', () => {
-            expect(reloadOnInvitationSuccess).not.toHaveBeenCalled();
+          it('does not call reloadOnMemberInvitationSuccess', () => {
+            expect(reloadOnMemberInvitationSuccess).not.toHaveBeenCalled();
           });
         });
       });
@@ -679,8 +765,8 @@ describe('InviteMembersModal', () => {
             expect(displaySuccessfulInvitationAlert).not.toHaveBeenCalled();
           });
 
-          it('does not call reloadOnInvitationSuccess', () => {
-            expect(reloadOnInvitationSuccess).not.toHaveBeenCalled();
+          it('does not call reloadOnMemberInvitationSuccess', () => {
+            expect(reloadOnMemberInvitationSuccess).not.toHaveBeenCalled();
           });
         });
       });
@@ -803,15 +889,15 @@ describe('InviteMembersModal', () => {
           });
 
           it('displays the successful toastMessage', () => {
-            expect(showToast).toHaveBeenCalledWith('Members were successfully added');
+            expect(showToast).toHaveBeenCalledWith('Members were successfully added.');
           });
 
           it('does not call displaySuccessfulInvitationAlert on mount', () => {
             expect(displaySuccessfulInvitationAlert).not.toHaveBeenCalled();
           });
 
-          it('does not call reloadOnInvitationSuccess', () => {
-            expect(reloadOnInvitationSuccess).not.toHaveBeenCalled();
+          it('does not call reloadOnMemberInvitationSuccess', () => {
+            expect(reloadOnMemberInvitationSuccess).not.toHaveBeenCalled();
           });
 
           it('tracks successful invite when source is known', () => {
@@ -827,6 +913,49 @@ describe('InviteMembersModal', () => {
           clickInviteButton();
 
           expect(Api.inviteGroupMembers).toHaveBeenCalledWith(propsData.id, singleUserPostData);
+        });
+      });
+    });
+
+    describe('blocked seat overage error notifications', () => {
+      it('shows the notification alert when seat overage limit is reached and the purchase seats href is present', async () => {
+        createInviteMembersToGroupWrapper({}, {}, {}, { addSeatsHref: 'url_to_add_seats' });
+        await triggerMembersTokenSelect([user1]);
+        mockInvitationsApi(HTTP_STATUS_CREATED, invitationsApiResponse.ERROR_SEAT_LIMIT_REACHED);
+        clickInviteButton();
+        await waitForPromises();
+
+        expect(findSeatOveragesAlert().exists()).toBe(true);
+      });
+
+      it('does not show the notification alert when seat overage limit is reached and the purchase seats href is absent', async () => {
+        createInviteMembersToGroupWrapper();
+        await triggerMembersTokenSelect([user1]);
+        mockInvitationsApi(HTTP_STATUS_CREATED, invitationsApiResponse.ERROR_SEAT_LIMIT_REACHED);
+        clickInviteButton();
+        await waitForPromises();
+
+        expect(findSeatOveragesAlert().exists()).toBe(false);
+      });
+
+      describe('when hasBsoEnabled is true', () => {
+        beforeEach(() => {
+          createInviteMembersToGroupWrapper(
+            {},
+            {},
+            {},
+            { addSeatsHref: 'url_to_add_seats', hasBsoEnabled: true },
+          );
+        });
+
+        it('shows the seat limit reached label for the primary button', async () => {
+          await triggerMembersTokenSelect([user1]);
+          mockInvitationsApi(HTTP_STATUS_CREATED, invitationsApiResponse.ERROR_SEAT_LIMIT_REACHED);
+          clickInviteButton();
+          await waitForPromises();
+
+          expect(findSeatOveragesAlert().exists()).toBe(true);
+          expect(findSeatOveragesAlert().props('primaryButtonText')).toBe('Learn how to add seats');
         });
       });
     });

@@ -24,6 +24,7 @@ export const GROUPS_RESPONSE_MOCK = {
           id: 'gid://gitlab/Group/33',
           name: 'Flightjs',
           fullName: 'Flightjs',
+          fullPath: 'Flightjs',
           avatarUrl: null,
           __typename: 'Group',
         },
@@ -31,11 +32,46 @@ export const GROUPS_RESPONSE_MOCK = {
           id: 'gid://gitlab/Group/34',
           name: 'Flight 2',
           fullName: 'Flight2',
+          fullPath: 'Flight2',
           avatarUrl: null,
           __typename: 'Group',
         },
       ],
       __typename: 'GroupConnection',
+    },
+  },
+};
+
+export const DEPLOY_KEYS_RESPONSE_MOCK = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/7',
+      availableDeployKeys: {
+        nodes: [
+          {
+            id: 'gid://gitlab/DeployKey/1',
+            title: 'My deploy key',
+            user: {
+              name: 'Administrator',
+              id: 'gid://gitlab/User/15',
+              __typename: 'AccessLevelUser',
+            },
+            __typename: 'AccessLevelDeployKey',
+          },
+          {
+            id: 'gid://gitlab/DeployKey/2',
+            title: 'My deploy key 2',
+            user: {
+              name: 'Administrator',
+              id: 'gid://gitlab/User/15',
+              __typename: 'AccessLevelUser',
+            },
+            __typename: 'AccessLevelDeployKey',
+          },
+        ],
+        __typename: 'AccessLevelDeployKeyConnection',
+      },
+      __typename: 'Project',
     },
   },
 };

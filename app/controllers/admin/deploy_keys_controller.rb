@@ -7,15 +7,16 @@ class Admin::DeployKeysController < Admin::ApplicationController
   feature_category :continuous_delivery
   urgency :low
 
-  def index
-  end
+  def index; end
 
   def new
     @deploy_key = deploy_keys.new
   end
 
   def create
-    @deploy_key = DeployKeys::CreateService.new(current_user, create_params.merge(public: true)).execute
+    @deploy_key = DeployKeys::CreateService.new(current_user,
+      create_params.merge(public: true, organization: Current.organization)).execute
+
     if @deploy_key.persisted?
       redirect_to admin_deploy_keys_path
     else
@@ -23,8 +24,7 @@ class Admin::DeployKeysController < Admin::ApplicationController
     end
   end
 
-  def edit
-  end
+  def edit; end
 
   def update
     if deploy_key.update(update_params)
@@ -47,7 +47,7 @@ class Admin::DeployKeysController < Admin::ApplicationController
   protected
 
   def deploy_key
-    @deploy_key ||= deploy_keys.find(params[:id])
+    @deploy_key ||= deploy_keys.find(params.permit(:id)[:id])
   end
 
   def deploy_keys

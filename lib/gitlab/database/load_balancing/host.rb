@@ -7,12 +7,13 @@ module Gitlab
       class Host
         attr_reader :pool, :last_checked_at, :intervals, :load_balancer, :host, :port
 
-        delegate :connection, :release_connection, :enable_query_cache!, :disable_query_cache!, :query_cache_enabled, to: :pool
+        delegate :release_connection, :enable_query_cache!, :disable_query_cache!, :query_cache_enabled, :clear_query_cache, :discarded?, to: :pool
 
         CONNECTION_ERRORS = [
           ActionView::Template::Error,
           ActiveRecord::StatementInvalid,
           ActiveRecord::ConnectionNotEstablished,
+          ActiveRecord::StatementTimeout,
           PG::Error
         ].freeze
 
@@ -53,6 +54,10 @@ module Gitlab
           END
         SQL
 
+        REPLICATION_LAG_QUERY = <<~SQL.squish.freeze
+          SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::float as lag
+        SQL
+
         # host - The address of the database.
         # load_balancer - The LoadBalancer that manages this Host.
         def initialize(host, load_balancer, port: nil)
@@ -66,10 +71,16 @@ module Gitlab
           )
           @online = true
           @last_checked_at = Time.zone.now
+          @lag_time = nil
+          @lag_size = nil
 
           # Randomly somewhere in between interval and 2*interval we'll refresh the status of the host
           interval = load_balancer.configuration.replica_check_interval
           @intervals = (interval..(interval * 2)).step(0.5).to_a
+        end
+
+        def connection
+          pool.lease_connection
         end
 
         # Disconnects the pool, once all connections are no longer in use.
@@ -92,7 +103,7 @@ module Gitlab
         # Returns true if the pool was disconnected, false if not.
         def try_disconnect
           if pool.connections.none?(&:in_use?)
-            pool.disconnect!
+            pool_disconnect!
             return true
           end
 
@@ -100,6 +111,10 @@ module Gitlab
         end
 
         def force_disconnect!
+          pool_disconnect!
+        end
+
+        def pool_disconnect!
           pool.disconnect!
         end
 
@@ -112,11 +127,15 @@ module Gitlab
           )
 
           @online = false
-          @pool.disconnect!
+          pool_disconnect!
         end
 
         # Returns true if the host is online.
         def online?
+          # Avoid using a discarded connection pool because attempting
+          # to use it will fail. After the main process forks, all of
+          # its connection pools are discarded from Rails' ForkTracker.
+          return false if discarded?
           return @online unless check_replica_status?
 
           was_online = @online
@@ -128,7 +147,9 @@ module Gitlab
               event: :host_online,
               message: 'Host is online after replica status check',
               db_host: @host,
-              db_port: @port
+              db_port: @port,
+              lag_time: @lag_time,
+              lag_size: @lag_size
             )
           # Always log if the host goes offline
           elsif !@online
@@ -136,7 +157,9 @@ module Gitlab
               event: :host_offline,
               message: 'Host is offline after replica status check',
               db_host: @host,
-              db_port: @port
+              db_port: @port,
+              lag_time: @lag_time,
+              lag_size: @lag_size
             )
           end
 
@@ -161,11 +184,31 @@ module Gitlab
         end
 
         def replication_lag_below_threshold?
-          if (lag_time = replication_lag_time)
-            lag_time <= load_balancer.configuration.max_replication_lag_time
-          else
-            false
+          @lag_time = replication_lag_time
+          return false unless @lag_time
+          return true if @lag_time <= load_balancer.configuration.max_replication_lag_time
+
+          if ignore_replication_lag_time?
+            ::Gitlab::Database::LoadBalancing::Logger.info(
+              event: :replication_lag_ignored,
+              lag_time: @lag_time,
+              message: 'Replication lag is treated as low because of load_balancer_ignore_replication_lag_time feature flag'
+            )
+
+            return true
           end
+
+          if double_replication_lag_time? && @lag_time <= (load_balancer.configuration.max_replication_lag_time * 2)
+            ::Gitlab::Database::LoadBalancing::Logger.info(
+              event: :replication_lag_below_double,
+              lag_time: @lag_time,
+              message: 'Replication lag is treated as low because of load_balancer_double_replication_lag_time feature flag'
+            )
+
+            return true
+          end
+
+          false
         end
 
         # Returns true if the replica has replicated enough data to be useful.
@@ -178,8 +221,8 @@ module Gitlab
           # of the replica is small enough for the replica to be useful. We
           # only do this if we haven't replicated in a while so we only need
           # to connect to the primary when truly necessary.
-          if (lag_size = replication_lag_size)
-            lag_size <= load_balancer.configuration.max_replication_difference
+          if (@lag_size = replication_lag_size)
+            @lag_size <= load_balancer.configuration.max_replication_difference
           else
             false
           end
@@ -190,7 +233,7 @@ module Gitlab
         #
         # This method will return nil if no lag time could be calculated.
         def replication_lag_time
-          row = query_and_release('SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::float as lag')
+          row = query_and_release(REPLICATION_LAG_QUERY)
 
           row['lag'].to_f if row.any?
         end
@@ -234,12 +277,47 @@ module Gitlab
           lag.present? && lag.to_i <= 0
         end
 
-        def query_and_release(sql)
+        def query_and_release(...)
+          pool.disable_query_cache do
+            if low_timeout_for_host_queries?
+              query_and_release_fast_timeout(...)
+            else
+              query_and_release_old(...)
+            end
+          end
+        end
+
+        def query_and_release_old(sql)
           connection.select_all(sql).first || {}
         rescue StandardError
           {}
         ensure
           release_connection
+        end
+
+        def query_and_release_fast_timeout(sql)
+          # If we "set local" the timeout in a transaction that was already open we would taint the outer
+          # transaction with that timeout.
+          # However, we don't ever run transactions on replicas, and we only do these health checks on replicas.
+          # Double-check that we're not in a transaction, but this path should never happen.
+          if connection.transaction_open?
+            Gitlab::Database::LoadBalancing::Logger.warn(
+              event: :health_check_in_transaction,
+              message: "Attempt to run a health check query inside of a transaction"
+            )
+            return query_and_release_old(sql)
+          end
+
+          begin
+            connection.transaction do
+              connection.exec_query("SET LOCAL statement_timeout TO '100ms';")
+              connection.select_all(sql).first || {}
+            end
+          rescue StandardError
+            {}
+          ensure
+            release_connection
+          end
         end
 
         private
@@ -256,6 +334,18 @@ module Gitlab
         # We fallback gracefully to the query that does not correctly handle logical replicas for such configurations.
         def latest_lsn_query
           @latest_lsn_query ||= can_track_logical_lsn? ? LATEST_LSN_WITH_LOGICAL_QUERY : LATEST_LSN_WITHOUT_LOGICAL_QUERY
+        end
+
+        def ignore_replication_lag_time?
+          Feature.enabled?(:load_balancer_ignore_replication_lag_time, type: :ops)
+        end
+
+        def double_replication_lag_time?
+          Feature.enabled?(:load_balancer_double_replication_lag_time, type: :ops)
+        end
+
+        def low_timeout_for_host_queries?
+          Feature.enabled?(:load_balancer_low_statement_timeout, Feature.current_pod)
         end
       end
     end

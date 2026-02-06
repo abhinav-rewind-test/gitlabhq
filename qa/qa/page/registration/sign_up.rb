@@ -4,40 +4,58 @@ module QA
   module Page
     module Registration
       class SignUp < Page::Base
-        view 'app/views/devise/shared/_signup_box_form.html.haml' do
+        view 'app/views/devise/registrations/_signup_box_form.html.haml' do
           element 'new-user-first-name-field'
           element 'new-user-last-name-field'
           element 'new-user-email-field'
-          element 'new-user-password-field'
           element 'new-user-register-button'
+        end
+
+        view 'app/views/devise/registrations/_password_input.html.haml' do
+          element 'new-user-password-field'
         end
 
         view 'app/helpers/registrations_helper.rb' do
           element 'new-user-username-field'
         end
 
-        def fill_new_user_first_name_field(first_name)
-          fill_element 'new-user-first-name-field', first_name
+        def self.path
+          '/users/sign_up'
         end
 
-        def fill_new_user_last_name_field(last_name)
-          fill_element 'new-user-last-name-field', last_name
-        end
+        # Register a user
+        # @param [Resource::User] user the user to register
+        def register_user(user)
+          raise ArgumentError, 'User must be of type Resource::User' unless user.is_a? Resource::User
 
-        def fill_new_user_username_field(username)
-          fill_element 'new-user-username-field', username
-        end
+          fill_element 'new-user-first-name-field', user.first_name
+          fill_element 'new-user-last-name-field', user.last_name
+          fill_element 'new-user-username-field', user.username
+          fill_element 'new-user-email-field', user.email
+          fill_element 'new-user-password-field', user.password
 
-        def fill_new_user_email_field(email)
-          fill_element 'new-user-email-field', email
-        end
+          Support::Waiter.wait_until(sleep_interval: 0.5) do
+            page.has_content?("Username is available.")
 
-        def fill_new_user_password_field(password)
-          fill_element 'new-user-password-field', password
-        end
+            network_password_requirements.each do |requirement|
+              page_has_success_requirement?(requirement) if page.has_content?(requirement, wait: 0.5)
+            end
+          end
 
-        def click_new_user_register_button
           click_element 'new-user-register-button' if has_element?('new-user-register-button')
+        end
+
+        private
+
+        def network_password_requirements
+          [
+            'Cannot use common phrases (e.g. "password")',
+            'Cannot include your name, username, or email'
+          ]
+        end
+
+        def page_has_success_requirement?(requirement)
+          has_element?('password-rule-text', class: 'gl-text-success', text: requirement)
         end
       end
     end

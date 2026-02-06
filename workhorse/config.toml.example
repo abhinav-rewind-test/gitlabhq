@@ -5,6 +5,27 @@
 
 [redis]
 URL = "unix:/home/git/gitlab/redis/redis.socket"
+# Optional: Sentinel configuration for Redis high availability
+#   sentinel = ["redis://sentinel1.example.com:26379", "redis://sentinel2.example.com:26379"]
+#   sentinel_master = "mymaster"
+#   sentinel_username = "sentinel-user"
+#   sentinel_password = "sentinel-password"
+
+# Optional: TLS configuration for Redis client connections
+# [redis.tls]
+#   certificate = "/path/to/client/certificate.crt"
+#   key = "/path/to/client/private/key.key"
+#   ca_certificate = "/path/to/ca/certificate.crt"
+#   min_version = "tls1.2"
+#   max_version = "tls1.3"
+
+# Optional: TLS configuration for Sentinel connections
+# [Sentinel.tls]
+#   certificate = "/path/to/client/certificate.crt"
+#   key = "/path/to/client/private/key.key"
+#   ca_certificate = "/path/to/ca/certificate.crt"
+#   min_version = "tls1.2"
+#   max_version = "tls1.3"
 
 [object_storage]
   provider = "AWS" # Allowed options: AWS, AzureRM, Google
@@ -40,3 +61,62 @@ URL = "unix:/home/git/gitlab/redis/redis.socket"
   key = "/path/to/private/key"
   min_version = "tls1.2"
   max_version = "tls1.3"
+
+[circuit_breaker]
+  enabled = true
+  timeout = 60
+  interval = 180
+  max_requests = 1
+  consecutive_failures = 5
+
+# Health check listener configuration
+# Enables a dedicated health check endpoint for readiness probes
+[health_check_listener]
+  # Network type for the health check listener (tcp, tcp4, tcp6, unix)
+  network = "tcp"
+  # Address to bind the health check server to
+  addr = "localhost:8182"
+
+  # URL to check Puma's readiness endpoint
+  # Readiness indicates if the service is ready to accept traffic
+  # If not specified, authBackend + /-/readiness is used.
+  readiness_probe_url = "http://localhost:8080/-/readiness"
+
+  # Optional: URL to check Puma's control server for readiness checks
+  # Uncomment to enable control server checks
+  # puma_control_url = "http://localhost:9293"
+
+  # How often to perform health checks
+  check_interval = "10s"
+
+  # Duration to skip Rails readiness checks after a successful request
+  # This helps reduce load on the Rails server by avoiding redundant checks
+  # when recent requests have been successful. (disabled by default)
+  # rails_skip_interval = "0s"
+
+  # Timeout for individual health check requests
+  timeout = "5s"
+
+  # How long to remain not ready after receiving shutdown signal
+  # This allows load balancers to drain traffic before shutdown
+  graceful_shutdown_delay = "10s"
+
+  # Number of consecutive failures before marking as not ready (readiness only)
+  max_consecutive_failures = 1
+
+  # Number of consecutive successes required to become ready (readiness only)
+  min_successful_probes = 1
+
+  # Optional: Load shedding configuration
+  # When enabled, Workhorse will return 503 Service Unavailable when Puma's
+  # request backlog exceeds the configured threshold. This helps protect Puma
+  # from being overwhelmed and allows NGINX to retry requests to other instances.
+  # Set to 0 (default) to disable load shedding.
+  # load_shed_backlog_threshold = 50
+
+  # Optional: Retry-After header value in seconds when shedding load
+  # In Kubernetes with multiple pods, use 0 to allow NGINX to immediately
+  # retry to a different pod. For single instances, use 1-2 to give Puma
+  # time to process queued requests.
+  # Default: 0 (immediate retry, recommended for Kubernetes)
+  # load_shed_retry_after_seconds = 0

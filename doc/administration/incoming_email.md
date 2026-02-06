@@ -2,13 +2,17 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+gitlab_dedicated: no
+title: Incoming email
+description: Configure incoming email.
 ---
 
-# Incoming email
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 GitLab has several features based on receiving incoming email messages:
 
@@ -20,7 +24,7 @@ GitLab has several features based on receiving incoming email messages:
 - [New merge request by email](../user/project/merge_requests/creating_merge_requests.md#by-sending-an-email):
   allow GitLab users to create a new merge request by sending an email to a
   user-specific email address.
-- [Service Desk](../user/project/service_desk/index.md): provide email support to
+- [Service Desk](../user/project/service_desk/_index.md): provide email support to
   your customers through GitLab.
 
 ## Requirements
@@ -47,12 +51,12 @@ Gmail, Google Apps, Yahoo! Mail, Outlook.com, and iCloud, as well as the
 Microsoft Exchange Server [does not support sub-addressing](#microsoft-exchange-server),
 and Microsoft Office 365 [does not support sub-addressing by default](#microsoft-office-365).
 
-NOTE:
-If your provider or server supports email sub-addressing, we recommend using it.
-A dedicated email address only supports Reply by Email functionality.
-A catch-all mailbox supports the same features as sub-addressing as of GitLab 11.7,
-but sub-addressing is still preferred because only one email address is used,
-leaving a catch-all available for other purposes beyond GitLab.
+> [!note]
+> If your provider or server supports email sub-addressing, we recommend using it.
+> A dedicated email address only supports Reply by Email functionality.
+> A catch-all mailbox supports the same features as sub-addressing,
+> but sub-addressing is still preferred because only one email address is used,
+> leaving a catch-all available for other purposes beyond GitLab.
 
 ### Catch-all mailbox
 
@@ -60,7 +64,7 @@ A [catch-all mailbox](https://en.wikipedia.org/wiki/Catch-all) for a domain
 receives all email messages addressed to the domain that do not match any addresses that
 exist on the mail server.
 
-As of GitLab 11.7, catch-all mailboxes support the same features as
+Catch-all mailboxes support the same features as
 email sub-addressing, but email sub-addressing remains our recommendation so that you
 can reserve your catch-all mailbox for other purposes.
 
@@ -68,31 +72,40 @@ can reserve your catch-all mailbox for other purposes.
 
 To set up this solution, you must create a dedicated email
 address to receive your users' replies to GitLab notifications. However,
-this method only supports replies, and not the other features of [incoming email](#incoming-email).
+this method only supports replies, and not the other features of incoming email.
 
 ## Accepted headers
 
-> - Accepting `Received` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/81489) in GitLab 14.9.
-> - Accepting `Cc` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/348572) in GitLab 16.5.
+{{< history >}}
+
+- Accepting `Cc` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/348572) in GitLab 16.5.
+- Accepting `X-Original-To` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/149874) in GitLab 17.0.
+- Accepting `X-Forwarded-To` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/168716) in GitLab 17.6.
+- Accepting `X-Delivered-To` headers [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/170221) in GitLab 17.6.
+
+{{< /history >}}
 
 Email is processed correctly when a configured email address is present in one of the following headers
 (sorted in the order they are checked):
 
 - `To`
 - `Delivered-To`
+- `X-Delivered-To`
 - `Envelope-To` or `X-Envelope-To`
 - `Received`
+- `X-Original-To`
+- `X-Forwarded-To`
 - `Cc`
 
 The `References` header is also accepted, however it is used specifically to relate email responses to existing discussion threads. It is not used for creating issues by email.
 
-In GitLab 14.6 and later, [Service Desk](../user/project/service_desk/index.md)
+In GitLab 14.6 and later, [Service Desk](../user/project/service_desk/_index.md)
 also checks accepted headers.
 
-Usually, the "To" field contains the email address of the primary receiver.
+Usually, the `To` field contains the email address of the primary receiver.
 However, it might not include the configured GitLab email address if:
 
-- The address is in the "BCC" field.
+- The address is in the `BCC` field.
 - The email was forwarded.
 
 The `Received` header can contain multiple email addresses. These are checked in the order that they appear.
@@ -116,7 +129,7 @@ and use [an application password](https://support.google.com/mail/answer/185833)
 
 If you want to use Office 365, and two-factor authentication is enabled, make sure
 you're using an
-[app password](https://support.microsoft.com/en-us/account-billing/manage-app-passwords-for-two-step-verification-d6dc8c6d-4bf7-4851-ad95-6d07799387e9)
+[app password](https://support.microsoft.com/en-us/account-billing/app-passwords-for-a-work-or-school-account-d6dc8c6d-4bf7-4851-ad95-6d07799387e9)
 instead of the regular password for the mailbox.
 
 To set up a basic Postfix mail server with IMAP access on Ubuntu, follow the
@@ -124,18 +137,18 @@ To set up a basic Postfix mail server with IMAP access on Ubuntu, follow the
 
 ### Security concerns
 
-WARNING:
-Be careful when choosing the domain used for receiving incoming email.
+> [!warning]
+> Be careful when choosing the domain used for receiving incoming email.
 
 For example, suppose your top-level company domain is `hooli.com`.
-All employees in your company have an email address at that domain via Google
-Apps, and your company's private Slack instance requires a valid `@hooli.com`
+All employees in your company have an email address at that domain through Google
+Workspace, and your company's private Slack instance requires a valid `@hooli.com`
 email address to sign up.
 
 If you also host a public-facing GitLab instance at `hooli.com` and set your
-incoming email domain to `hooli.com`, an attacker could abuse the "Create new
-issue by email" or
-"[Create new merge request by email](../user/project/merge_requests/creating_merge_requests.md#by-sending-an-email)"
+incoming email domain to `hooli.com`, an attacker could abuse the Create new
+issue by email or
+[Create new merge request by email](../user/project/merge_requests/creating_merge_requests.md#by-sending-an-email)
 features by using a project's unique address as the email when signing up for
 Slack. This would send a confirmation email, which would create a new issue or
 merge request on the project owned by the attacker, allowing them to select the
@@ -151,23 +164,21 @@ Alternatively, use a dedicated domain for GitLab email communications such as
 See GitLab issue [#30366](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/30366)
 for a real-world example of this exploit.
 
-WARNING:
-Use a mail server that has been configured to reduce
-spam.
-A Postfix mail server that is running on a default configuration, for example,
-can result in abuse. All messages received on the configured mailbox are processed
-and messages that are not intended for the GitLab instance receive a reject notice.
-If the sender's address is spoofed, the reject notice is delivered to the spoofed
-`FROM` address, which can cause the mail server's IP or domain to appear on a block
-list.
+> [!warning]
+> Use a mail server that has been configured to reduce spam.
+> A Postfix mail server that is running on a default configuration, for example,
+> can result in abuse. All messages received on the configured mailbox are processed
+> and messages that are not intended for the GitLab instance receive a reject notice.
+> If the sender's address is spoofed, the reject notice is delivered to the spoofed
+> `FROM` address, which can cause the mail server's IP or domain to appear on a block list.
 
-WARNING:
-Users can use the incoming email features without having to use two-factor authentication (2FA) to authenticate themselves first. This applies even if you have [enforced two-factor authentication](../security/two_factor_authentication.md) for your instance.
+Users can use the incoming email features without having to use two-factor authentication (2FA) to authenticate themselves first.
+This applies even if you have [enforced two-factor authentication](../security/two_factor_authentication.md) for your instance.
 
 ### Linux package installations
 
 1. Find the `incoming_email` section in `/etc/gitlab/gitlab.rb`, enable the feature
-    and fill in the details for your specific IMAP server and email account (see [examples](#configuration-examples) below).
+   and fill in the details for your specific IMAP server and email account (see [examples](#configuration-examples) below).
 
 1. Reconfigure GitLab for the changes to take effect:
 
@@ -201,8 +212,8 @@ Reply by email should now be working.
    gem install gitlab-mail_room
    ```
 
-   NOTE: This step is necessary to avoid thread deadlocks and to support the latest MailRoom features. See
-   [this explanation](../development/emails.md#mailroom-gem-updates) for more details.
+   > [!note]
+   > This step is necessary to avoid thread deadlocks and to support the latest MailRoom features.
 
 1. Find the `incoming_email` section in `config/gitlab.yml`, enable the feature
    and fill in the details for your specific IMAP server and email account (see [examples](#configuration-examples) below).
@@ -367,8 +378,8 @@ incoming_email:
 
 Example configuration for Gmail/Google Workspace. Assumes mailbox `gitlab-incoming@gmail.com`.
 
-NOTE:
-`incoming_email_email` cannot be a Gmail alias account.
+> [!note]
+> `incoming_email_email` cannot be a Gmail alias account.
 
 Example for Linux package installations:
 
@@ -526,7 +537,7 @@ incoming_email:
     ssl: true
 
     # If you are using Microsoft Graph instead of IMAP, set this to false to retain
-    # messages in the inbox since deleted messages are auto-expunged after some time.
+    # messages in the inbox because deleted messages are auto-expunged after some time.
     delete_after_delivery: true
 
     # Whether to expunge (permanently remove) messages from the mailbox when they are marked as deleted after delivery
@@ -535,9 +546,9 @@ incoming_email:
 
 ##### Dedicated email address
 
-NOTE:
-Supports [Reply by Email](reply_by_email.md) only.
-Cannot support [Service Desk](../user/project/service_desk/index.md).
+> [!note]
+> Supports [Reply by Email](reply_by_email.md) only.
+> Cannot support [Service Desk](../user/project/service_desk/_index.md).
 
 Assumes the dedicated email address `incoming@exchange.example.com`.
 
@@ -590,7 +601,7 @@ incoming_email:
     ssl: true
 
     # If you are using Microsoft Graph instead of IMAP, set this to false to retain
-    # messages in the inbox since deleted messages are auto-expunged after some time.
+    # messages in the inbox because deleted messages are auto-expunged after some time.
     delete_after_delivery: true
 
     # Whether to expunge (permanently remove) messages from the mailbox when they are marked as deleted after delivery
@@ -603,10 +614,10 @@ Example configurations for Microsoft Office 365 with IMAP enabled.
 
 ##### Sub-addressing mailbox
 
-NOTE:
-As of September 2020 sub-addressing support
-[has been added to Office 365](https://support.microsoft.com/en-us/office/uservoice-pages-430e1a78-e016-472a-a10f-dc2a3df3450a). This feature is not
-enabled by default, and must be enabled through PowerShell.
+> [!note]
+> As of September 2020 sub-addressing support
+> [has been added to Office 365](https://support.microsoft.com/en-us/office/uservoice-pages-430e1a78-e016-472a-a10f-dc2a3df3450a). This feature is not
+> enabled by default, and must be enabled through PowerShell.
 
 This series of PowerShell commands enables [sub-addressing](#email-sub-addressing)
 at the organization level in Office 365. This allows all mailboxes in the organization
@@ -614,14 +625,14 @@ to receive sub-addressed mail.
 
 To enable sub-addressing:
 
-1. Download and install the `ExchangeOnlineManagement` module from the [PowerShell gallery](https://www.powershellgallery.com/packages/ExchangeOnlineManagement/2.0.5).
+1. Download and install the `ExchangeOnlineManagement` module from the [PowerShell gallery](https://www.powershellgallery.com/packages/ExchangeOnlineManagement/3.7.1).
 1. In PowerShell, run the following commands:
 
    ```powershell
    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
    Import-Module ExchangeOnlineManagement
    Connect-ExchangeOnline
-   Set-OrganizationConfig -AllowPlusAddressInRecipients $true
+   Set-OrganizationConfig -DisablePlusAddressInRecipients $false
    Disconnect-ExchangeOnline
    ```
 
@@ -747,9 +758,9 @@ incoming_email:
 
 ##### Dedicated email address
 
-NOTE:
-Supports [Reply by Email](reply_by_email.md) only.
-Cannot support [Service Desk](../user/project/service_desk/index.md).
+> [!note]
+> Supports [Reply by Email](reply_by_email.md) only.
+> Cannot support [Service Desk](../user/project/service_desk/_index.md).
 
 This example for Linux package installations assumes the dedicated email address `incoming@office365.example.com`:
 
@@ -802,10 +813,8 @@ incoming_email:
 
 #### Microsoft Graph
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/214900) in GitLab 13.11.
-
 GitLab can read incoming email using the Microsoft Graph API instead of
-IMAP. Because [Microsoft is deprecating IMAP usage with Basic Authentication](https://techcommunity.microsoft.com/t5/exchange-team-blog/announcing-oauth-2-0-support-for-imap-and-smtp-auth-protocols-in/ba-p/1330432), the Microsoft Graph API is be required for new Microsoft Exchange Online mailboxes.
+IMAP. Because [Microsoft is deprecating IMAP usage with Basic Authentication](https://techcommunity.microsoft.com/blog/exchange/announcing-oauth-2-0-support-for-imap-and-smtp-auth-protocols-in-exchange-online/1330432), the Microsoft Graph API is be required for new Microsoft Exchange Online mailboxes.
 
 To configure GitLab for Microsoft Graph, you need to register an
 OAuth 2.0 application in your Azure Active Directory that has the
@@ -823,7 +832,7 @@ Record the following when you configure your OAuth 2.0 application:
 
 For MailRoom to work as a service account, the application you create
 in Azure Active Directory requires that you set the `Mail.ReadWrite` property
-to read/write mail in *all* mailboxes.
+to read/write mail in all mailboxes.
 
 To mitigate security concerns, we recommend configuring an application access
 policy which limits the mailbox access for all accounts, as described in
@@ -833,7 +842,11 @@ This example for Linux package installations assumes you're using the following 
 
 ##### Configure Microsoft Graph
 
-> - Alternative Azure deployments [introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/5978) in GitLab 14.9.
+{{< history >}}
+
+- Alternative Azure deployments [introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/5978) in GitLab 14.9.
+
+{{< /history >}}
 
 ```ruby
 gitlab_rails['incoming_email_enabled'] = true
@@ -877,7 +890,11 @@ The Microsoft Graph API is not yet supported in self-compiled installations. See
 
 ### Use encrypted credentials
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108279) in GitLab 15.9.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108279) in GitLab 15.9.
+
+{{< /history >}}
 
 Instead of having the incoming email credentials stored in plaintext in the configuration files, you can optionally
 use an encrypted file for the incoming email credentials.
@@ -892,9 +909,9 @@ The supported configuration items for the encrypted file are:
 - `user`
 - `password`
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. If initially your incoming email configuration in `/etc/gitlab/gitlab.rb` looked like:
 
@@ -923,12 +940,16 @@ The supported configuration items for the encrypted file are:
    sudo gitlab-ctl reconfigure
    ```
 
-:::TabTitle Helm chart (Kubernetes)
+{{< /tab >}}
+
+{{< tab title="Helm chart (Kubernetes)" >}}
 
 Use a Kubernetes secret to store the incoming email password. For more information,
-read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets.html#imap-password-for-incoming-emails).
+read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets/#imap-password-for-incoming-emails).
 
-:::TabTitle Docker
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
 
 1. If initially your incoming email configuration in `docker-compose.yml` looked like:
 
@@ -966,7 +987,9 @@ read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secre
    docker compose up -d
    ```
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. If initially your incoming email configuration in `/home/git/gitlab/config/gitlab.yml` looked like:
 
@@ -1001,22 +1024,24 @@ read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secre
    sudo service gitlab restart
    ```
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ## Troubleshooting
 
 ### Email ingestion doesn't work in 16.6.0
 
-GitLab self-managed `16.6.0` introduced a regression that prevents `mail_room` (email ingestion) from starting.
+In GitLab 16.6, a regression prevents `mail_room` (email ingestion) from starting.
 Service Desk and other reply-by-email features don't work.
-[Issue 432257](https://gitlab.com/gitlab-org/gitlab/-/issues/432257) tracks fixing this problem.
+This issue was fixed in 16.6.1. See [issue 432257](https://gitlab.com/gitlab-org/gitlab/-/issues/432257) for details.
 
 The workaround is to run the following commands in your GitLab installation
 to patch the affected files:
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 ```shell
 curl --output /tmp/mailroom.patch --url "https://gitlab.com/gitlab-org/gitlab/-/merge_requests/137279.diff"
@@ -1024,7 +1049,9 @@ patch -p1 -d /opt/gitlab/embedded/service/gitlab-rails < /tmp/mailroom.patch
 gitlab-ctl restart mailroom
 ```
 
-:::TabTitle Docker
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
 
 ```shell
 curl --output /tmp/mailroom.patch --url "https://gitlab.com/gitlab-org/gitlab/-/merge_requests/137279.diff"
@@ -1033,4 +1060,22 @@ patch -p1 < /tmp/mailroom.patch
 gitlab-ctl restart mailroom
 ```
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
+
+### Incoming emails are rejected by providers with email address limit
+
+Your GitLab instance might not receive incoming emails, because some email providers impose a
+64-character limit on the local part of the email address (before the `@`).
+All emails from addresses that exceed this limit are rejected emails.
+
+As a workaround, maintain a shorter path:
+
+- Ensure that the local part configured before `%{key}` in `incoming_email_address` is as short as
+  possible, and not longer than 31 characters.
+- Place the designated projects at a higher group hierarchy.
+- Rename [groups](../user/group/manage.md#change-a-groups-path) and
+  [project](../user/project/working_with_projects.md#rename-a-repository) to shorter names.
+
+Track this feature in [issue 460206](https://gitlab.com/gitlab-org/gitlab/-/issues/460206).

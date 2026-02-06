@@ -12,6 +12,49 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     travel_to(Time.current) { example.run }
   end
 
+  describe 'TAGS and BRANCHES scope' do
+    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:branch_pipeline) { create(:ci_pipeline, project: project, ref: 'feature') }
+    let_it_be(:tag_pipeline) { create(:ci_pipeline, project: project, ref: 'v1.0.0', tag: true) }
+
+    let(:scope) { '' }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines(scope: #{scope}) {
+              nodes {
+                ref
+              }
+            }
+          }
+        }
+      )
+    end
+
+    context 'when the scope is branch pipelines' do
+      let(:scope) { 'BRANCHES' }
+
+      it 'returns all branch pipelines' do
+        post_graphql(query, current_user: user)
+
+        expect(graphql_data_at(:project, :pipelines, :nodes, :ref))
+          .to contain_exactly(eq(pipeline.ref), eq(branch_pipeline.ref))
+      end
+    end
+
+    context 'when the scope is tag pipelines' do
+      let(:scope) { 'TAGS' }
+
+      it 'returns all tag pipelines' do
+        post_graphql(query, current_user: user)
+
+        expect(graphql_data_at(:project, :pipelines, :nodes, :ref)).to contain_exactly(eq(tag_pipeline.ref))
+      end
+    end
+  end
+
   describe 'sha' do
     let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
 
@@ -309,6 +352,52 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     end
   end
 
+  describe 'errorMessages' do
+    let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+    let_it_be(:error_message) { create(:ci_pipeline_message, pipeline: pipeline, content: 'error', severity: :error) }
+
+    let(:pipelines_graphql_data) { graphql_data.dig(*%w[project pipelines nodes]).first }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines {
+              nodes {
+                errorMessages {
+                  nodes {
+                    content
+                  }
+                }
+              }
+            }
+          }
+        }
+      )
+    end
+
+    it 'returns pipeline errors' do
+      post_graphql(query, current_user: user)
+
+      expect(pipelines_graphql_data['errorMessages']['nodes']).to contain_exactly(
+        a_hash_including('content' => 'error')
+      )
+    end
+
+    it 'avoids N+1 queries' do
+      control_count = ActiveRecord::QueryRecorder.new do
+        post_graphql(query, current_user: create(:user))
+      end
+
+      pipeline_2 = create(:ci_pipeline, project: project)
+      create(:ci_pipeline_message, pipeline: pipeline_2, content: 'error')
+
+      expect do
+        post_graphql(query, current_user: create(:user))
+      end.not_to exceed_query_limit(control_count)
+    end
+  end
+
   describe 'warningMessages' do
     let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
     let_it_be(:warning_message) { create(:ci_pipeline_message, pipeline: pipeline, content: 'warning') }
@@ -322,7 +411,9 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
             pipelines {
               nodes {
                 warningMessages {
-                  content
+                  nodes {
+                    content
+                  }
                 }
               }
             }
@@ -334,21 +425,21 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     it 'returns pipeline warnings' do
       post_graphql(query, current_user: user)
 
-      expect(pipelines_graphql_data['warningMessages']).to contain_exactly(
+      expect(pipelines_graphql_data['warningMessages']['nodes']).to contain_exactly(
         a_hash_including('content' => 'warning')
       )
     end
 
     it 'avoids N+1 queries' do
       control_count = ActiveRecord::QueryRecorder.new do
-        post_graphql(query, current_user: user)
+        post_graphql(query, current_user: create(:user))
       end
 
       pipeline_2 = create(:ci_pipeline, project: project)
       create(:ci_pipeline_message, pipeline: pipeline_2, content: 'warning')
 
       expect do
-        post_graphql(query, current_user: user)
+        post_graphql(query, current_user: create(:user))
       end.not_to exceed_query_limit(control_count)
     end
   end
@@ -383,10 +474,10 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
 
       pipelines_data = graphql_data.dig('project', 'pipelines', 'nodes')
 
-      job_names = pipelines_data.map do |pipeline_data|
+      job_names = pipelines_data.flat_map do |pipeline_data|
         jobs_data = pipeline_data.dig('jobs', 'nodes')
         jobs_data.map { |job_data| job_data['name'] }
-      end.flatten
+      end
 
       expect(job_names).to contain_exactly('SAST Job 1')
     end
@@ -470,7 +561,28 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
               nodes {
                 downstream {
                   nodes {
+                    id
                     iid
+                    path
+                    cancelable
+                    retryable
+                    status: detailedStatus {
+                      id
+                      group
+                      label
+                      icon
+                      text
+                    }
+                    sourceJob {
+                      id
+                      name
+                      retried
+                    }
+                    project {
+                      id
+                      name
+                      fullPath
+                    }
                   }
                 }
               }
@@ -490,7 +602,7 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     it_behaves_like 'a working graphql query'
 
     it 'returns the downstream pipelines of a pipeline' do
-      downstream_pipelines_graphql_data = pipelines_graphql_data.map { |pip| pip['downstream']['nodes'] }.flatten
+      downstream_pipelines_graphql_data = pipelines_graphql_data.flat_map { |pip| pip['downstream']['nodes'] }
 
       expect(
         downstream_pipelines_graphql_data.map { |pip| pip['iid'].to_i }
@@ -498,11 +610,13 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     end
 
     context 'when fetching the downstream pipelines from the pipeline' do
-      it 'avoids N+1 queries' do
+      it 'avoids N+1 queries', :use_sql_query_cache, :request_store do
         first_user = create(:user)
         second_user = create(:user)
 
-        control_count = ActiveRecord::QueryRecorder.new do
+        # warm up
+        post_graphql(query, current_user: first_user)
+        control_count = ActiveRecord::QueryRecorder.new(skip_cached: false) do
           post_graphql(query, current_user: first_user)
         end
 
@@ -516,9 +630,11 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
         downsteam_pipeline_3b = create(:ci_pipeline, project: downstream_project, user: first_user)
         create(:ci_sources_pipeline, source_pipeline: pipeline_2, pipeline: downsteam_pipeline_3b)
 
+        # warm up
+        post_graphql(query, current_user: second_user)
         expect do
           post_graphql(query, current_user: second_user)
-        end.not_to exceed_query_limit(control_count)
+        end.to issue_same_number_of_queries_as(control_count)
       end
     end
   end
@@ -555,6 +671,51 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
     end
   end
 
+  describe 'type' do
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user, merge_request: merge_request) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines {
+              nodes {
+                type
+              }
+            }
+          }
+        }
+      )
+    end
+
+    let(:pipelines_graphql_data) { graphql_data.dig(*%w[project pipelines nodes]).first }
+
+    it 'returns the correct pipeline type' do
+      post_graphql(query, current_user: user)
+
+      expect(pipelines_graphql_data).to include(
+        'type' => eq(pipeline.type)
+      )
+    end
+
+    it 'avoids N+1 queries' do
+      first_user = create(:user)
+      second_user = create(:user)
+
+      control_count = ActiveRecord::QueryRecorder.new do
+        post_graphql(query, current_user: first_user)
+      end
+
+      create(:ci_pipeline, project: project, merge_request: merge_request)
+      create(:ci_pipeline, project: project, merge_request: merge_request)
+
+      expect do
+        post_graphql(query, current_user: second_user)
+      end.not_to exceed_query_limit(control_count)
+    end
+  end
+
   describe 'filtering' do
     let(:query) do
       %(
@@ -585,6 +746,70 @@ RSpec.describe 'Query.project(fullPath).pipelines', feature_category: :continuou
 
         expect(pipeline_ids).to match_array(oldish_pipeline.to_global_id.to_s)
       end
+    end
+  end
+
+  describe 'hasManualActions and hasScheduledActions' do
+    let_it_be(:merge_request) { create(:merge_request, source_project: project) }
+    let_it_be(:pipeline_with_manual) do
+      create(:ci_pipeline, project: project, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:manual_build) { create(:ci_build, :manual, pipeline: pipeline_with_manual) }
+    let_it_be(:pipeline_with_scheduled) do
+      create(:ci_pipeline, project: project, user: user, merge_request: merge_request)
+    end
+
+    let_it_be(:scheduled_build) { create(:ci_build, :scheduled, pipeline: pipeline_with_scheduled) }
+    let_it_be(:pipeline_with_neither) do
+      create(:ci_pipeline, project: project, user: user, merge_request: merge_request)
+    end
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pipelines {
+              nodes {
+                hasManualActions
+                hasScheduledActions
+              }
+            }
+          }
+        }
+      )
+    end
+
+    it 'avoids N+1 queries' do
+      first_user = create(:user)
+      second_user = create(:user)
+
+      control_count = ActiveRecord::QueryRecorder.new do
+        post_graphql(query, current_user: first_user)
+      end
+
+      pipeline_4 = create(:ci_pipeline, project: project, merge_request: merge_request)
+      create(:ci_build, :manual, pipeline: pipeline_4)
+
+      pipeline_5 = create(:ci_pipeline, project: project, merge_request: merge_request)
+      create(:ci_build, :scheduled, pipeline: pipeline_5)
+
+      expect do
+        post_graphql(query, current_user: second_user)
+      end.not_to exceed_query_limit(control_count)
+    end
+
+    it 'returns correct values for manual actions' do
+      post_graphql(query, current_user: user)
+
+      expect(graphql_data_at(:project, :pipelines, :nodes, :has_manual_actions)).to contain_exactly(false, false, true)
+    end
+
+    it 'returns correct values for scheduled actions' do
+      post_graphql(query, current_user: user)
+
+      expect(graphql_data_at(:project, :pipelines, :nodes,
+        :has_scheduled_actions)).to contain_exactly(false, true, false)
     end
   end
 end

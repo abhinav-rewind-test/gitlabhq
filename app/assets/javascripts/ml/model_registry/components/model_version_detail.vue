@@ -1,61 +1,72 @@
 <script>
-import { convertToGraphQLId } from '~/graphql_shared/utils';
-import { TYPENAME_PACKAGES_PACKAGE } from '~/graphql_shared/constants';
-import * as i18n from '../translations';
-import CandidateDetail from './candidate_detail.vue';
+import IssuableDescription from '~/vue_shared/issuable/show/components/issuable_description.vue';
+import { s__ } from '~/locale';
 
 export default {
   name: 'ModelVersionDetail',
   components: {
-    PackageFiles: () =>
-      import('~/packages_and_registries/package_registry/components/details/package_files.vue'),
-    CandidateDetail,
+    IssuableDescription,
   },
   props: {
     modelVersion: {
       type: Object,
       required: true,
     },
+    taskListUpdatePath: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    dataUpdateUrl: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    canEditRequirement: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    enableTaskList: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   computed: {
-    packageId() {
-      return convertToGraphQLId(TYPENAME_PACKAGES_PACKAGE, this.modelVersion.packageId);
-    },
-    projectPath() {
-      return this.modelVersion.projectPath;
-    },
-    packageType() {
-      return 'ml_model';
+    issuable() {
+      return {
+        titleHtml: this.modelVersion.name,
+        descriptionHtml: this.modelVersion.descriptionHtml,
+      };
     },
   },
-  i18n,
+  i18n: {
+    EMPTY_VERSION_CARD_DESCRIPTION: s__(
+      'MlModelRegistry|No description available. To add a description, click "Edit model version" above.',
+    ),
+  },
 };
 </script>
 
 <template>
-  <div>
-    <h3 class="gl-font-lg gl-mt-5">{{ $options.i18n.DESCRIPTION_LABEL }}</h3>
-
-    <div v-if="modelVersion.description">
-      {{ modelVersion.description }}
-    </div>
-    <div v-else class="gl-text-secondary">
-      {{ $options.i18n.NO_DESCRIPTION_PROVIDED_LABEL }}
-    </div>
-
-    <template v-if="modelVersion.packageId">
-      <package-files
-        :package-id="packageId"
-        :project-path="projectPath"
-        :package-type="packageType"
+  <div class="issue-details issuable-details gl-mt-5">
+    <div
+      v-if="modelVersion.descriptionHtml"
+      class="detail-page-description js-detail-page-description"
+    >
+      <issuable-description
+        data-testid="description"
+        :issuable="issuable"
+        :enable-task-list="enableTaskList"
+        :can-edit="canEditRequirement"
+        :data-update-url="dataUpdateUrl"
+        :task-list-update-path="taskListUpdatePath"
+        class="gl-leading-20"
       />
-    </template>
-
-    <div class="gl-mt-5">
-      <span class="gl-font-weight-bold">{{ $options.i18n.MLFLOW_ID_LABEL }}:</span>
-      {{ modelVersion.candidate.info.eid }}
     </div>
-
-    <candidate-detail :candidate="modelVersion.candidate" :show-info-section="false" />
+    <div v-else class="gl-text-subtle" data-testid="emptyDescriptionState">
+      {{ $options.i18n.EMPTY_VERSION_CARD_DESCRIPTION }}
+    </div>
   </div>
 </template>

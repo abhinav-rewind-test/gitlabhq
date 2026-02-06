@@ -46,6 +46,10 @@ RSpec.describe Snippets::UpdateService, feature_category: :source_code_managemen
           expect(subject).to be_error
         end
 
+        it 'responds with a reason' do
+          expect(subject.reason).to eq(described_class::SNIPPET_ACCESS_ERROR)
+        end
+
         it 'does not update snippet to public visibility' do
           original_visibility = snippet.visibility_level
 
@@ -54,7 +58,7 @@ RSpec.describe Snippets::UpdateService, feature_category: :source_code_managemen
         end
       end
 
-      context 'when user is an admin' do
+      context 'when user is an admin', :enable_admin_mode do
         let(:updater) { admin }
 
         it 'responds with success' do
@@ -84,18 +88,15 @@ RSpec.describe Snippets::UpdateService, feature_category: :source_code_managemen
     end
 
     shared_examples 'snippet update data is tracked' do
-      let(:counter) { Gitlab::UsageDataCounters::SnippetCounter }
+      let(:event) { 'update_snippet' }
+      let(:category) { 'Snippets::UpdateService' }
 
-      it 'increments count when create succeeds' do
-        expect { subject }.to change { counter.read(:update) }.by 1
-      end
+      it_behaves_like 'internal event tracking'
 
       context 'when update fails' do
         let(:extra_opts) { { title: '' } }
 
-        it 'does not increment count' do
-          expect { subject }.not_to change { counter.read(:update) }
-        end
+        it_behaves_like 'internal event not tracked'
       end
     end
 

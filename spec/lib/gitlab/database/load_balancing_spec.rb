@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validate_connection, feature_category: :cell do
+RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validate_connection, feature_category: :database do
   describe '.base_models' do
     it 'returns the models to apply load balancing to' do
       models = described_class.base_models
@@ -153,6 +153,10 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
       end
     end
 
+    def current_session
+      ::Gitlab::Database::LoadBalancing::SessionMap.current(model.load_balancer)
+    end
+
     where(:queries, :include_transaction, :expected_results) do
       [
         # Read methods
@@ -235,7 +239,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_primary
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
+            current_session.use_primary do
               model.first
               model.where(name: 'test1').to_a
             end
@@ -248,7 +252,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         [
           -> {
             model.first
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
+            current_session.use_primary!
             model.where(name: 'test1').to_a
           },
           false, [:replica, :primary]
@@ -257,7 +261,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries does not affect read queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_replicas_for_read_queries do
               model.where(name: 'test1').to_a
             end
           },
@@ -267,7 +271,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries does not affect write queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_replicas_for_read_queries do
               model.create!(name: 'test1')
             end
           },
@@ -277,7 +281,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries does not affect ambiguous queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_replicas_for_read_queries do
               model.connection.exec_query("SELECT 1")
             end
           },
@@ -287,8 +291,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries ignores use_primary! for read queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_primary!
+            current_session.use_replicas_for_read_queries do
               model.where(name: 'test1').to_a
             end
           },
@@ -298,8 +302,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries adheres use_primary! for write queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_primary!
+            current_session.use_replicas_for_read_queries do
               model.create!(name: 'test1')
             end
           },
@@ -309,8 +313,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries adheres use_primary! for ambiguous queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_primary!
+            current_session.use_replicas_for_read_queries do
               model.connection.exec_query('SELECT 1')
             end
           },
@@ -320,8 +324,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries ignores use_primary blocks
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
-              ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.use_primary do
+              current_session.use_replicas_for_read_queries do
                 model.where(name: 'test1').to_a
               end
             end
@@ -332,8 +336,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries ignores a session already performed write
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.write!
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
+            current_session.write!
+            current_session.use_replicas_for_read_queries do
               model.where(name: 'test1').to_a
             end
           },
@@ -343,7 +347,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.first
               model.where(name: 'test1').to_a
             end
@@ -354,7 +358,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # fallback_to_replicas_for_ambiguous_queries for read-only transaction
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.transaction do
                 model.first
                 model.where(name: 'test1').to_a
@@ -367,7 +371,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # A custom read query inside fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.connection.exec_query("SELECT 1")
             end
           },
@@ -377,7 +381,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # A custom read query inside a transaction fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.transaction do
                 model.connection.exec_query("SET LOCAL statement_timeout = 5000")
                 model.count
@@ -391,7 +395,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         [
           -> {
             model.create!(name: 'Test1')
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.connection.exec_query("SELECT 1")
             end
           },
@@ -401,8 +405,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # fallback_to_replicas_for_ambiguous_queries after use_primary!
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.use_primary!
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.connection.exec_query("SELECT 1")
             end
           },
@@ -412,8 +416,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # fallback_to_replicas_for_ambiguous_queries inside use_primary
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
-              ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.use_primary do
+              current_session.fallback_to_replicas_for_ambiguous_queries do
                 model.connection.exec_query("SELECT 1")
               end
             end
@@ -424,8 +428,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_primary inside fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
-              ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
+              current_session.use_primary do
                 model.connection.exec_query("SELECT 1")
               end
             end
@@ -436,7 +440,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # A write query inside fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.fallback_to_replicas_for_ambiguous_queries do
               model.connection.exec_query("SELECT 1")
               model.delete_all
               model.connection.exec_query("SELECT 1")
@@ -448,8 +452,8 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         # use_replicas_for_read_queries incorporates with fallback_to_replicas_for_ambiguous_queries
         [
           -> {
-            ::Gitlab::Database::LoadBalancing::Session.current.use_replicas_for_read_queries do
-              ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+            current_session.use_replicas_for_read_queries do
+              current_session.fallback_to_replicas_for_ambiguous_queries do
                 model.connection.exec_query('SELECT 1')
                 model.where(name: 'test1').to_a
               end
@@ -500,7 +504,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
           # replica even when the current session is stuck to the primary.
           [
             -> {
-              ::Gitlab::Database::LoadBalancing::Session.current.use_primary!
+              current_session.use_primary!
               model.connection.clear_cache!
               model.connection.schema_cache.add('users')
               model.connection.pool.release_connection
@@ -531,7 +535,7 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
       end
 
       with_them do
-        it 'redirects queries to the right roles' do
+        it 'redirects queries to the right roles', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/520708' do
           roles = []
 
           # If we don't run any queries, the pool may be a NullPool. This can
@@ -561,7 +565,9 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
     context 'a write inside a transaction inside fallback_to_replicas_for_ambiguous_queries block' do
       it 'raises an exception' do
         expect do
-          ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
+          ::Gitlab::Database::LoadBalancing::SessionMap
+            .current(model.load_balancer)
+            .fallback_to_replicas_for_ambiguous_queries do
             model.transaction do
               model.first
               model.create!(name: 'hello')
@@ -570,5 +576,193 @@ RSpec.describe Gitlab::Database::LoadBalancing, :suppress_gitlab_schemas_validat
         end.to raise_error(Gitlab::Database::LoadBalancing::ConnectionProxy::WriteInsideReadOnlyTransactionError)
       end
     end
+
+    context 'incident 6271', :request_store do
+      before(:all) do
+        ActiveRecord::Schema.define do
+          create_table :_test_load_balancing_test_ci, force: true do |t|
+            t.string :name, null: true
+          end
+        end
+      end
+
+      after(:all) do
+        ActiveRecord::Schema.define do
+          drop_table :_test_load_balancing_test_ci, force: true
+        end
+      end
+
+      let(:ci_model) do
+        Class.new(Ci::ApplicationRecord) do
+          self.table_name = "_test_load_balancing_test_ci"
+        end
+      end
+
+      context 'host confusion' do
+        it 'does not release a replica host during a web request with no queries when sticking' do
+          expect(model.load_balancer).not_to receive(:release_host)
+          # This sticks a host to the current request store
+          model.load_balancer.host
+
+          model.with_connection { |_conn| } # rubocop:disable Lint/EmptyBlock -- This is testing the block side effects
+        end
+
+        it 'does not release a replica host during a web request with a nested bare connection lease' do
+          expect(model.load_balancer).not_to receive(:release_host)
+
+          model.with_connection do |_conn|
+            model.lease_connection.select_all("select 1")
+          end
+        end
+
+        it 'does not release a replica host with a nested with_connection block' do
+          expect(model.load_balancer).not_to receive(:release_host)
+
+          model.with_connection do |_conn|
+            model.with_connection do |conn|
+              conn.select_all("select 1")
+            end
+          end
+        end
+
+        it 'does not release when mixing requests across load balancers' do
+          expect(model.load_balancer).not_to receive(:release_host)
+          expect(ci_model.load_balancer).not_to receive(:release_host)
+
+          model.with_connection do |main_conn|
+            ci_model.with_connection do |ci_conn|
+              ci_conn.select_all("select 1")
+            end
+            main_conn.select_all("select 1")
+          end
+        end
+      end
+
+      context 'query caching' do
+        before do
+          # We only try to cache when this is true, so mock it to true
+          allow(Rails.application.executor).to receive(:active?).and_return(true)
+        end
+
+        it 'clears query caching after a #release_hosts call' do
+          # This test relies on :database_replica only allocating 1 host to the replica list
+          current_host = model.load_balancer.host
+
+          expect(count_queries do
+            model.first
+          end).to eq({ cached: 0, queries: 1 })
+
+          expect(count_queries do
+            model.first
+          end).to eq({ cached: 1, queries: 0 })
+
+          model.load_balancer.release_host
+
+          expect(count_queries do
+            model.first
+          end).to eq({ cached: 0, queries: 1 })
+
+          # If we didn't cycle back to the same host, this test could pass without truly checking the caching behavior
+          expect(model.load_balancer.host).to eq(current_host)
+        end
+      end
+    end
+  end
+
+  describe 'LoadBalancing integration tests without any replicas' do
+    around do |ex|
+      cache_was_enabled_per_db = Gitlab::Database.database_base_models.values.index_with do |model|
+        model.connection_pool.query_cache_enabled
+      end
+
+      Gitlab::Database.database_base_models.each_value do |model|
+        model.connection_pool.disable_query_cache!
+      end
+
+      ex.run
+
+      cache_was_enabled_per_db.each do |model, was_enabled|
+        if was_enabled
+          model.connection_pool.enable_query_cache!
+        else
+          model.connection_pool.disable_query_cache!
+        end
+      end
+    end
+
+    it 'manages the host query cache through the default rails lifecycle with a single database connection' do
+      skip_if_database_exists(:ci)
+
+      enabled_pools = ActiveRecord::QueryCache.run
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 0, queries: 2 })
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 2, queries: 0 })
+
+      # Clear just one pool to demonstrate they are shared
+
+      Ci::ApplicationRecord.connection_pool.clear_query_cache
+
+      # Depending on if the test db is configured as a single pool for main and ci or 2 pools for main and ci with the
+      # same backing db, cached will either be 1 or 0 here. Either way proves the point of this test, and it's difficult
+      # to check which scenario we're in.
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to satisfy { |r| r[:cached] < 2 && r[:queries] > 0 }
+
+      ActiveRecord::QueryCache.complete(enabled_pools)
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 0, queries: 2 })
+    end
+
+    it 'manages the host query cache through the default rails lifecycle with multiple databases set up' do
+      skip_if_shared_database(:ci)
+
+      enabled_pools = ActiveRecord::QueryCache.run
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 0, queries: 2 })
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 2, queries: 0 })
+
+      # Clear just one pool to demonstrate they are seperate
+
+      Ci::ApplicationRecord.connection_pool.clear_query_cache
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 1, queries: 1 })
+
+      ActiveRecord::QueryCache.complete(enabled_pools)
+
+      expect(count_queries do
+        Project.first
+        Ci::Build.first
+      end).to eq({ cached: 0, queries: 2 })
+    end
+  end
+
+  def count_queries
+    recorder = ActiveRecord::QueryRecorder.new(skip_cached: true) do
+      yield
+    end
+
+    { queries: recorder.count, cached: recorder.cached_count }
   end
 end

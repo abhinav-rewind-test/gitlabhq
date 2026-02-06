@@ -55,7 +55,8 @@ module Projects
       ensure_registry_tags_can_be_handled
 
       result = ContainerRegistry::GitlabApiClient.rename_base_repository_path(
-        full_path_before, name: project_path)
+        full_path_before, name: project_path, project: project
+      )
 
       return if result == :ok
 
@@ -97,7 +98,6 @@ module Projects
 
     def update_repository_configuration
       project.reload_repository!
-      project.set_full_path
       project.track_project_repository
     end
 

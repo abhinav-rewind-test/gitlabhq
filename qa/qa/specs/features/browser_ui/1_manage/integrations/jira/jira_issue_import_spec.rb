@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Manage', :reliable do
-    describe 'Jira issue import', :jira, :orchestrated, :requires_admin, product_group: :import_and_integrate do
+  RSpec.describe 'Manage', feature_category: :importers do
+    describe 'Jira issue import', :jira, :orchestrated, :requires_admin do
       let(:jira_project_key) { "JITD" }
       let(:jira_issue_title) { "[#{jira_project_key}-1] Jira to GitLab Test Issue" }
       let(:jira_issue_description) { "This issue is for testing importing Jira issues to GitLab." }
@@ -14,8 +14,8 @@ module QA
         set_up_jira_integration
         import_jira_issues
 
-        Page::Project::Menu.perform(&:go_to_issues)
-        Page::Project::Issue::Index.perform do |issues_page|
+        Page::Project::Menu.perform(&:go_to_work_items)
+        Page::Project::WorkItem::Index.perform do |issues_page|
           expect { issues_page }.to eventually_have_content(jira_issue_title).within(
             max_attempts: 5, sleep_interval: 1, reload_page: issues_page
           )
@@ -24,7 +24,7 @@ module QA
 
         expect(page).to have_content(jira_issue_description)
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           expect(issue).to have_label(jira_issue_label_1)
           expect(issue).to have_label(jira_issue_label_2)
         end
@@ -48,12 +48,12 @@ module QA
         end
 
         expect(page).not_to have_text("Url is blocked")
-        expect(page).to have_text("Jira settings saved and active.")
+        expect(page).to have_text("Jira issues settings saved and active.")
       end
 
       def import_jira_issues
-        Page::Project::Menu.perform(&:go_to_issues)
-        Page::Project::Issue::Index.perform(&:go_to_jira_import_form)
+        Page::Project::Menu.perform(&:go_to_work_items)
+        Page::Project::WorkItem::Index.perform(&:go_to_jira_import_form)
 
         Page::Project::Issue::JiraImport.perform do |form|
           form.select_project_and_import(jira_project_key)

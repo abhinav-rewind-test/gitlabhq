@@ -7,6 +7,7 @@ import JobsTableTabs from '~/ci/jobs_page/components/jobs_table_tabs.vue';
 import JobsFilteredSearch from '~/ci/common/private/jobs_filtered_search/app.vue';
 import JobsTableEmptyState from '~/ci/jobs_page/components/jobs_table_empty_state.vue';
 import { createAlert } from '~/alert';
+import { InternalEvents } from '~/tracking';
 import {
   TOKEN_TYPE_STATUS,
   TOKEN_TYPE_JOBS_RUNNER_TYPE,
@@ -19,6 +20,7 @@ import {
   JOBS_FETCH_ERROR_MSG,
   LOADING_ARIA_LABEL,
   CANCELABLE_JOBS_ERROR_MSG,
+  VIEW_ADMIN_JOBS_PAGELOAD,
 } from './constants';
 import JobsSkeletonLoader from './components/jobs_skeleton_loader.vue';
 import GetAllJobs from './graphql/queries/get_all_jobs.query.graphql';
@@ -26,6 +28,7 @@ import GetAllJobsCount from './graphql/queries/get_all_jobs_count.query.graphql'
 import getCancelableJobs from './graphql/queries/get_cancelable_jobs_count.query.graphql';
 
 export default {
+  name: 'AdminJobsTableApp',
   i18n: {
     jobsCountErrorMsg: JOBS_COUNT_ERROR_MESSAGE,
     jobsFetchErrorMsg: JOBS_FETCH_ERROR_MSG,
@@ -33,7 +36,7 @@ export default {
     cancelableJobsErrorMsg: CANCELABLE_JOBS_ERROR_MSG,
   },
   filterSearchBoxStyles:
-    'gl-my-0 gl-p-5 gl-bg-gray-10 gl-text-gray-900 gl-border-b gl-border-gray-100',
+    'gl-my-0 gl-p-5 gl-bg-subtle gl-text-default gl-border-b gl-border-default',
   components: {
     JobsSkeletonLoader,
     JobsTableEmptyState,
@@ -44,7 +47,7 @@ export default {
     GlIntersectionObserver,
     GlLoadingIcon,
   },
-  mixins: [glFeatureFlagsMixin()],
+  mixins: [glFeatureFlagsMixin(), InternalEvents.mixin()],
   inject: {
     jobStatuses: {
       default: null,
@@ -57,6 +60,10 @@ export default {
     emptyStateSvgPath: {
       default: '',
       required: false,
+    },
+    canUpdateAllJobs: {
+      default: false,
+      required: true,
     },
   },
   apollo: {
@@ -88,6 +95,7 @@ export default {
         this.error = this.$options.i18n.jobsCountErrorMsg;
       },
     },
+    // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     cancelable: {
       query: getCancelableJobs,
       update(data) {
@@ -155,12 +163,15 @@ export default {
       this.count = newCount;
     },
   },
+  mounted() {
+    this.trackEvent(VIEW_ADMIN_JOBS_PAGELOAD);
+  },
   methods: {
     updateHistoryAndFetchCount(filterParams = {}) {
       this.$apollo.queries.jobsCount.refetch(filterParams);
 
       updateHistory({
-        url: setUrlParams(filterParams, window.location.href, true),
+        url: setUrlParams(filterParams, { url: window.location.href, clearParams: true }),
       });
     },
     fetchJobsByStatus(scope) {
@@ -234,13 +245,14 @@ export default {
     <jobs-table-tabs
       :all-jobs-count="count"
       :loading="loading"
-      :show-cancel-all-jobs-button="isCancelable"
+      :show-cancel-all-jobs-button="canUpdateAllJobs && isCancelable"
       @fetchJobsByStatus="fetchJobsByStatus"
     />
 
     <div v-if="showFilteredSearch" :class="$options.filterSearchBoxStyles">
       <jobs-filtered-search
         :query-string="validatedQueryString"
+        admin
         @filterJobsBySearch="filterJobsBySearch"
       />
     </div>

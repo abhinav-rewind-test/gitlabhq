@@ -53,3 +53,5 @@ module Projects
     end
   end
 end
+
+Projects::Registry::RepositoriesController.prepend_mod

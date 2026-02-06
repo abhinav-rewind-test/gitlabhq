@@ -18,7 +18,14 @@ module Issues
     private
 
     def associations_to_preload
-      [:work_item_type, :author, :assignees, :timelogs, :milestone, { project: { namespace: :route } }]
+      [
+        :work_item_type,
+        :author,
+        :assignees,
+        :timelogs,
+        :milestone,
+        { project: { namespace: :route } }
+      ]
     end
 
     def header_to_value_hash
@@ -26,23 +33,23 @@ module Issues
         'Title' => 'title',
         'Description' => 'description',
         'Issue ID' => 'iid',
-        'URL' => -> (issue) { issue_url(issue) },
-        'State' => -> (issue) { issue.closed? ? 'Closed' : 'Open' },
+        'URL' => ->(issue) { issue_url(issue) },
+        'State' => ->(issue) { issue.closed? ? 'Closed' : 'Open' },
         'Author' => 'author_name',
-        'Author Username' => -> (issue) { issue.author&.username },
-        'Assignee' => -> (issue) { issue.assignees.map(&:name).join(', ') },
-        'Assignee Username' => -> (issue) { issue.assignees.map(&:username).join(', ') },
-        'Confidential' => -> (issue) { issue.confidential? ? 'Yes' : 'No' },
-        'Locked' => -> (issue) { issue.discussion_locked? ? 'Yes' : 'No' },
-        'Due Date' => -> (issue) { issue.due_date&.to_fs(:csv) },
-        'Created At (UTC)' => -> (issue) { issue.created_at&.to_fs(:csv) },
-        'Updated At (UTC)' => -> (issue) { issue.updated_at&.to_fs(:csv) },
-        'Closed At (UTC)' => -> (issue) { issue.closed_at&.to_fs(:csv) },
-        'Milestone' => -> (issue) { issue.milestone&.title },
-        'Weight' => -> (issue) { issue.weight },
-        'Labels' => -> (issue) { issue_labels(issue) },
+        'Author Username' => ->(issue) { issue.author&.username },
+        'Assignee' => ->(issue) { issue.assignees.map(&:name).join(', ') },
+        'Assignee Username' => ->(issue) { issue.assignees.map(&:username).join(', ') },
+        'Confidential' => ->(issue) { issue.confidential? ? 'Yes' : 'No' },
+        'Locked' => ->(issue) { issue.discussion_locked? ? 'Yes' : 'No' },
+        'Due Date' => ->(issue) { issue.due_date&.to_fs(:csv) },
+        'Created At (UTC)' => ->(issue) { issue.created_at&.to_fs(:csv) },
+        'Updated At (UTC)' => ->(issue) { issue.updated_at&.to_fs(:csv) },
+        'Closed At (UTC)' => ->(issue) { issue.closed_at&.to_fs(:csv) },
+        'Milestone' => ->(issue) { issue.milestone&.title },
+        'Weight' => ->(issue) { issue.weight },
+        'Labels' => ->(issue) { issue_labels(issue) },
         'Time Estimate' => ->(issue) { issue.time_estimate.to_fs(:csv) },
-        'Time Spent' => -> (issue) { issue_time_spent(issue) }
+        'Time Spent' => ->(issue) { issue_time_spent(issue) }
       }
     end
 
@@ -50,11 +57,9 @@ module Issues
       @labels[issue.id]
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def issue_time_spent(issue)
       issue.timelogs.sum(&:time_spent)
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def preload_associations_in_batches?
       Feature.enabled?(:export_csv_preload_in_batches, resource_parent)

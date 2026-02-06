@@ -6,8 +6,8 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
   include HttpBasicAuthHelpers
 
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user, developer_projects: [project]) }
-  let_it_be(:maintainer) { create(:user, maintainer_projects: [project]) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:maintainer) { create(:user, maintainer_of: project) }
   let_it_be(:user_without_access) { create(:user) }
 
   let_it_be_with_reload(:state) { create(:terraform_state, project: project) }
@@ -98,6 +98,11 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
     context 'job token authentication' do
       let(:auth_header) { job_basic_auth_header(job) }
 
+      it_behaves_like 'enforcing job token policies', :read_terraform_state do
+        let_it_be(:user) { maintainer }
+        let(:auth_header) { job_basic_auth_header(target_job) }
+      end
+
       context 'with maintainer permissions' do
         let(:job) { create(:ci_build, status: :running, project: project, user: maintainer) }
 
@@ -141,10 +146,10 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
         let(:current_user) { user_without_access }
         let(:job) { create(:ci_build, status: :running, user: current_user) }
 
-        it 'returns not found status' do
+        it 'returns forbidden status' do
           request
 
-          expect(response).to have_gitlab_http_status(:not_found)
+          expect(response).to have_gitlab_http_status(:forbidden)
         end
       end
     end
@@ -152,6 +157,11 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
 
   describe 'DELETE /projects/:id/terraform/state/:name/versions/:serial' do
     subject(:request) { delete api(state_version_path), headers: auth_header }
+
+    it_behaves_like 'enforcing job token policies', :admin_terraform_state do
+      let_it_be(:user) { maintainer }
+      let(:auth_header) { job_basic_auth_header(target_job) }
+    end
 
     it_behaves_like 'it depends on value of the `terraform_state.enabled` config', { success_status: :no_content }
 
@@ -188,7 +198,7 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
         let(:version_serial) { -1 }
 
         it 'does not delete a version' do
-          expect { request }.to change { Terraform::StateVersion.count }.by(0)
+          expect { request }.not_to change { Terraform::StateVersion.count }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
@@ -199,7 +209,7 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
       let(:current_user) { developer }
 
       it 'returns forbidden status' do
-        expect { request }.to change { Terraform::StateVersion.count }.by(0)
+        expect { request }.not_to change { Terraform::StateVersion.count }
 
         expect(response).to have_gitlab_http_status(:forbidden)
       end
@@ -209,7 +219,7 @@ RSpec.describe API::Terraform::StateVersion, feature_category: :infrastructure_a
       let(:current_user) { user_without_access }
 
       it 'returns not found status' do
-        expect { request }.to change { Terraform::StateVersion.count }.by(0)
+        expect { request }.not_to change { Terraform::StateVersion.count }
 
         expect(response).to have_gitlab_http_status(:not_found)
       end

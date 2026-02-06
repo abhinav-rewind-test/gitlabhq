@@ -110,7 +110,7 @@ RSpec.describe ApplicationSettings::UpdateService, feature_category: :shared do
     end
   end
 
-  describe 'markdown cache invalidators', feature_category: :team_planning do
+  describe 'markdown cache invalidators', feature_category: :markdown do
     shared_examples 'invalidates markdown cache' do |attribute|
       let(:params) { attribute }
 
@@ -144,7 +144,7 @@ RSpec.describe ApplicationSettings::UpdateService, feature_category: :shared do
     end
   end
 
-  describe 'performance bar settings', feature_category: :cloud_connector do
+  describe 'performance bar settings', feature_category: :performance_tooling do
     using RSpec::Parameterized::TableSyntax
 
     where(
@@ -255,19 +255,19 @@ RSpec.describe ApplicationSettings::UpdateService, feature_category: :shared do
     end
 
     it 'does not validate labels if external authorization gets disabled' do
-      expect_any_instance_of(described_class).not_to receive(:validate_classification_label)
+      expect_any_instance_of(described_class).not_to receive(:validate_classification_label_param!)
 
       described_class.new(application_settings, admin, { external_authorization_service_enabled: false }).execute
     end
 
     it 'does validate labels if external authorization gets enabled' do
-      expect_any_instance_of(described_class).to receive(:validate_classification_label)
+      expect_any_instance_of(described_class).to receive(:validate_classification_label_param!)
 
       described_class.new(application_settings, admin, { external_authorization_service_enabled: true }).execute
     end
 
     it 'does validate labels if external authorization is left unchanged' do
-      expect_any_instance_of(described_class).to receive(:validate_classification_label)
+      expect_any_instance_of(described_class).to receive(:validate_classification_label_param!)
 
       described_class.new(application_settings, admin, { external_authorization_service_default_label: 'new-label' }).execute
     end
@@ -321,6 +321,17 @@ RSpec.describe ApplicationSettings::UpdateService, feature_category: :shared do
     let(:params) { { default_branch_protection: ::Gitlab::Access::PROTECTION_DEV_CAN_MERGE } }
 
     it "updates default_branch_protection_defaults from the default_branch_protection param" do
+      default_value = ::Gitlab::Access::BranchProtection.protected_fully.deep_stringify_keys
+
+      expect { subject.execute }.to change { application_settings.default_branch_protection_defaults }.from(default_value).to(expected)
+    end
+  end
+
+  context 'when default_branch_protection_defaults is updated' do
+    let(:expected) { ::Gitlab::Access::BranchProtection.protected_against_developer_pushes.stringify_keys }
+    let(:params) { { default_branch_protection_defaults: expected.deep_stringify_keys } }
+
+    it "updates default_branch_protection_defaults from the default_branch_protection_defaults param" do
       default_value = ::Gitlab::Access::BranchProtection.protected_fully.deep_stringify_keys
 
       expect { subject.execute }.to change { application_settings.default_branch_protection_defaults }.from(default_value).to(expected)
@@ -512,8 +523,20 @@ RSpec.describe ApplicationSettings::UpdateService, feature_category: :shared do
     context 'when it goes from enabled to disabled' do
       let(:params) { { require_admin_approval_after_user_signup: false } }
 
-      it 'calls ApproveBlockedPendingApprovalUsersWorker' do
-        expect(ApproveBlockedPendingApprovalUsersWorker).to receive(:perform_async)
+      describe 'when auto approval is enabled' do
+        let(:params) { { require_admin_approval_after_user_signup: false, auto_approve_pending_users: 'true' } }
+
+        it 'calls ApproveBlockedPendingApprovalUsersWorker' do
+          expect(ApproveBlockedPendingApprovalUsersWorker).to receive(:perform_async)
+
+          subject.execute
+        end
+      end
+
+      it 'does not call ApproveBlockedPendingApprovalUsersWorker' do
+        application_settings.update!(require_admin_approval_after_user_signup: false)
+
+        expect(ApproveBlockedPendingApprovalUsersWorker).not_to receive(:perform_async)
 
         subject.execute
       end

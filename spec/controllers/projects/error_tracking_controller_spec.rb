@@ -4,14 +4,11 @@ require 'spec_helper'
 
 RSpec.describe Projects::ErrorTrackingController do
   let_it_be(:project) { create(:project) }
-  let_it_be(:user) { create(:user) }
-
-  before_all do
-    project.add_maintainer(user)
-  end
+  let_it_be(:user) { create(:user, maintainer_of: project) }
 
   before do
     sign_in(user)
+    stub_feature_flags(hide_error_tracking_features: false)
   end
 
   describe 'GET #index' do
@@ -44,6 +41,21 @@ RSpec.describe Projects::ErrorTrackingController do
           get :index, params: project_params
 
           expect(response).to redirect_to(new_user_session_path)
+        end
+      end
+
+      describe 'when the hide_error_tracking_features feature flag is enabled' do
+        before do
+          stub_feature_flags(hide_error_tracking_features: true)
+          get :index, params: project_params
+        end
+
+        shared_examples 'returns 404 Not Found' do
+          include_examples 'returning response status', :not_found
+        end
+
+        describe 'GET #index' do
+          it_behaves_like 'returns 404 Not Found'
         end
       end
     end
@@ -205,6 +217,20 @@ RSpec.describe Projects::ErrorTrackingController do
       allow(ErrorTracking::IssueDetailsService)
         .to receive(:new).with(project, user, permitted_params)
         .and_return(issue_details_service)
+    end
+
+    context 'when hide_error_tracking_features feature flag is enabled' do
+      before do
+        stub_feature_flags(hide_error_tracking_features: true)
+      end
+
+      it 'returns 404 and does not call the service' do
+        expect(ErrorTracking::IssueDetailsService).not_to receive(:new)
+
+        get :details, params: issue_params(issue_id: issue_id, format: :json)
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
     end
 
     describe 'format json' do

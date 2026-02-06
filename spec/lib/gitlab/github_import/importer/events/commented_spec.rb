@@ -3,18 +3,26 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::GithubImport::Importer::Events::Commented, feature_category: :importers do
+  include Import::UserMappingHelper
+
   subject(:importer) { described_class.new(project, client) }
 
-  let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:project) do
+    create(
+      :project, :in_group, :github_import,
+      :import_user_mapping_enabled
+    )
+  end
 
-  let(:client) { instance_double('Gitlab::GithubImport::Client') }
+  let_it_be(:source_user) { generate_source_user(project, 1000) }
+
+  let(:client) { instance_double('Gitlab::GithubImport::Client', web_endpoint: 'https://github.com') }
   let(:issuable) { create(:issue, project: project) }
 
   let(:issue_event) do
     Gitlab::GithubImport::Representation::IssueEvent.new(
       id: 1196850910,
-      actor: { id: user.id, login: user.username },
+      actor: { id: source_user.source_user_identifier, login: source_user.source_username },
       event: 'commented',
       created_at: '2022-07-27T14:41:11Z',
       updated_at: '2022-07-27T14:41:11Z',
@@ -23,17 +31,9 @@ RSpec.describe Gitlab::GithubImport::Importer::Events::Commented, feature_catego
     )
   end
 
-  let(:extended_events) { true }
-
   before do
     allow_next_instance_of(Gitlab::GithubImport::IssuableFinder) do |finder|
       allow(finder).to receive(:database_id).and_return(issuable.id)
-    end
-    allow_next_instance_of(Gitlab::GithubImport::UserFinder) do |finder|
-      allow(finder).to receive(:find).with(user.id, user.username).and_return(user.id)
-    end
-    allow_next_instance_of(Gitlab::GithubImport::Settings) do |setting|
-      allow(setting).to receive(:extended_events?).and_return(extended_events)
     end
   end
 
@@ -43,17 +43,10 @@ RSpec.describe Gitlab::GithubImport::Importer::Events::Commented, feature_catego
 
       expect(issuable.notes.last).to have_attributes(
         note: 'This is my note',
-        author_id: user.id,
-        noteable_type: issuable.class.name.to_s
+        author_id: source_user.mapped_user_id,
+        noteable_type: issuable.class.name.to_s,
+        imported_from: 'github'
       )
-    end
-
-    context 'when extended_events is disabled' do
-      let(:extended_events) { false }
-
-      it 'does not create a note' do
-        expect { importer.execute(issue_event) }.not_to change { Note.count }
-      end
     end
   end
 

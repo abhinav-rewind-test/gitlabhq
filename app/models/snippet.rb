@@ -13,13 +13,14 @@ class Snippet < ApplicationRecord
   include Editable
   include Gitlab::SQL::Pattern
   include FromUnion
-  include IgnorableColumns
   include HasRepository
   include CanMoveRepositoryStorage
   include AfterCommitQueue
   extend ::Gitlab::Utils::Override
   include CreatedAtFilterable
   include EachBatch
+  include Import::HasImportSource
+  include Gitlab::EncryptedAttribute
 
   MAX_FILE_COUNT = 10
 
@@ -31,10 +32,8 @@ class Snippet < ApplicationRecord
 
   redact_field :description
 
-  # Aliases to make application_helper#edited_time_ago_with_tooltip helper work properly with snippets.
-  # See https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/10392/diffs#note_28719102
+  # Alias for Editable module
   alias_attribute :last_edited_at, :updated_at
-  alias_attribute :last_edited_by, :updated_by
 
   # If file_name changes, it invalidates content
   alias_method :default_content_html_invalidator, :content_html_invalidated?
@@ -44,6 +43,7 @@ class Snippet < ApplicationRecord
 
   belongs_to :author, class_name: 'User'
   belongs_to :project
+  belongs_to :organization, class_name: 'Organizations::Organization'
   alias_method :resource_parent, :project
 
   has_many :notes, as: :noteable, dependent: :destroy # rubocop:disable Cop/ActiveRecordDependent
@@ -65,6 +65,9 @@ class Snippet < ApplicationRecord
   validates :content, presence: true
   validates :content, bytesize: { maximum: -> { Gitlab::CurrentSettings.snippet_size_limit } }, if: :content_changed?
 
+  validates_with ExactlyOnePresentValidator, fields: [:project, :organization],
+    message: ->(_fields) { _('must belong to either a project or an organization') }
+
   after_create :create_statistics
 
   # Scopes
@@ -80,6 +83,10 @@ class Snippet < ApplicationRecord
   scope :with_repository_storage_moves, -> { joins(:repository_storage_moves) }
   scope :inc_projects_namespace_route, -> { includes(project: [:route, :namespace]) }
 
+  scope :in_organization, ->(organization_id) do
+    where.not(project_id: nil).or(where(project_id: nil, organization_id: organization_id))
+  end
+
   scope :without_created_by_banned_user, -> do
     where_not_exists(Users::BannedUser.where('snippets.author_id = banned_users.user_id'))
   end
@@ -93,7 +100,7 @@ class Snippet < ApplicationRecord
   attr_spammable :description, spam_description: true
 
   attr_encrypted :secret_token,
-    key: Settings.attr_encrypted_db_key_base_truncated,
+    key: :db_key_base_truncated,
     mode: :per_attribute_iv,
     algorithm: 'aes-256-cbc'
 
@@ -247,7 +254,20 @@ class Snippet < ApplicationRecord
   end
 
   def hook_attrs
-    attributes.merge('url' => Gitlab::UrlBuilder.build(self))
+    {
+      id: id,
+      title: title,
+      description: description,
+      content: content,
+      author_id: author_id,
+      project_id: project_id,
+      created_at: created_at,
+      updated_at: updated_at,
+      file_name: file_name,
+      type: type,
+      visibility_level: visibility_level,
+      url: Gitlab::UrlBuilder.build(self)
+    }
   end
 
   def file_name
@@ -276,12 +296,6 @@ class Snippet < ApplicationRecord
 
   def to_ability_name
     'snippet'
-  end
-
-  def valid_secret_token?(token)
-    return false unless token && secret_token
-
-    ActiveSupport::SecurityUtils.secure_compare(token.to_s, secret_token.to_s)
   end
 
   def as_json(options = {})
@@ -372,7 +386,7 @@ class Snippet < ApplicationRecord
   end
 
   def hidden_due_to_author_ban?
-    Feature.enabled?(:hide_snippets_of_banned_users) && author.banned?
+    author.banned?
   end
 end
 

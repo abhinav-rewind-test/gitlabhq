@@ -1,19 +1,33 @@
 <script>
 import { GlAlert, GlButton, GlForm, GlFormGroup, GlFormTextarea } from '@gitlab/ui';
-import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { isEmpty } from 'lodash';
+import { generateDescriptionAction } from 'ee_else_ce/ai/editor_actions/generate_description';
 import { helpPagePath } from '~/helpers/help_page_helper';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { getDraft, clearDraft, updateDraft } from '~/lib/utils/autosave';
+import { getParameterByName, updateHistory, removeParams } from '~/lib/utils/url_utility';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { __, s__ } from '~/locale';
 import EditedAt from '~/issues/show/components/edited.vue';
 import Tracking from '~/tracking';
 import MarkdownEditor from '~/vue_shared/components/markdown/markdown_editor.vue';
-import { autocompleteDataSources, markdownPreviewPath } from '../utils';
-import updateWorkItemMutation from '../graphql/update_work_item.mutation.graphql';
-import groupWorkItemByIidQuery from '../graphql/group_work_item_by_iid.query.graphql';
+import { trackSavedUsingEditor } from '~/vue_shared/components/markdown/tracking';
+import {
+  findDescriptionWidget,
+  newWorkItemId,
+  newWorkItemFullPath,
+  autocompleteDataSources,
+} from '~/work_items/utils';
+import projectPermissionsQuery from '../graphql/ai_permissions_for_project.query.graphql';
 import workItemByIidQuery from '../graphql/work_item_by_iid.query.graphql';
-import { i18n, TRACKING_CATEGORY_SHOW, WIDGET_TYPE_DESCRIPTION } from '../constants';
+import workItemDescriptionTemplateQuery from '../graphql/work_item_description_template.query.graphql';
+import namespacePathsQuery from '../graphql/namespace_paths.query.graphql';
+import { i18n, NEW_WORK_ITEM_IID, TRACKING_CATEGORY_SHOW, ROUTES } from '../constants';
 import WorkItemDescriptionRendered from './work_item_description_rendered.vue';
+import WorkItemDescriptionTemplateListbox from './work_item_description_template_listbox.vue';
+
+const paramName = 'description_template';
+const oldParamNameFromPreWorkItems = 'issuable_template';
 
 export default {
   components: {
@@ -25,28 +39,35 @@ export default {
     GlFormTextarea,
     MarkdownEditor,
     WorkItemDescriptionRendered,
+    WorkItemDescriptionTemplateListbox,
   },
   mixins: [Tracking.mixin()],
-  inject: ['isGroup'],
   props: {
+    description: {
+      type: String,
+      required: false,
+      default: '',
+    },
     fullPath: {
       type: String,
       required: true,
     },
     workItemId: {
       type: String,
-      required: true,
+      required: false,
+      default: '',
     },
     workItemIid: {
       type: String,
-      required: true,
+      required: false,
+      default: '',
     },
-    disableInlineEditing: {
+    editMode: {
       type: Boolean,
       required: false,
       default: false,
     },
-    editMode: {
+    autofocus: {
       type: Boolean,
       required: false,
       default: false,
@@ -56,15 +77,52 @@ export default {
       required: false,
       default: false,
     },
+    showButtonsBelowField: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
+    newWorkItemType: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    withoutHeadingAnchors: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isCreateFlow: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isGroup: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    hideFullscreenMarkdownButton: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    truncationEnabled: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   markdownDocsPath: helpPagePath('user/markdown'),
   data() {
     return {
       workItem: {},
+      wasEdited: false,
       isEditing: this.editMode,
       isSubmitting: false,
       isSubmittingWithKeydown: false,
-      descriptionText: '',
+      descriptionText: this.description,
+      initialDescriptionText: this.description,
       conflictedDescription: '',
       formFieldProps: {
         'aria-label': __('Description'),
@@ -72,35 +130,135 @@ export default {
         id: 'work-item-description',
         name: 'work-item-description',
       },
+      selectedTemplate: null,
+      descriptionTemplate: null,
+      appliedTemplate: '',
+      showTemplateApplyWarning: false,
+      workspacePermissions: {},
+      markdownPaths: {},
+      enableEditFromRedirect: getParameterByName('edit') === 'true',
     };
   },
   apollo: {
     workItem: {
-      query() {
-        return this.isGroup ? groupWorkItemByIidQuery : workItemByIidQuery;
+      query: workItemByIidQuery,
+      skip() {
+        return !this.workItemIid;
       },
       variables() {
         return {
-          fullPath: this.fullPath,
+          fullPath: this.workItemFullPath,
           iid: this.workItemIid,
         };
       },
       update(data) {
-        return data.workspace.workItems.nodes[0];
+        return data?.namespace?.workItem || {};
       },
       result() {
         if (this.isEditing) {
-          this.checkForConflicts();
+          if (this.createFlow || this.enableEditFromRedirect) {
+            this.startEditing();
+          } else {
+            this.checkForConflicts();
+          }
         }
       },
       error() {
         this.$emit('error', i18n.fetchError);
       },
     },
+    descriptionTemplate: {
+      query: workItemDescriptionTemplateQuery,
+      skip() {
+        return !this.selectedTemplate?.projectId;
+      },
+      variables() {
+        return {
+          name: this.selectedTemplate.name,
+          projectId: this.selectedTemplate.projectId,
+          fromNamespace: this.fullPath,
+        };
+      },
+      update(data) {
+        return data.workItemDescriptionTemplateContent.content;
+      },
+      result() {
+        const isDirty = this.descriptionText !== this.workItemDescription?.description;
+        const isUnchangedTemplate = this.descriptionText === this.appliedTemplate;
+        const hasContent = this.descriptionText.trim() !== '';
+        if (this.descriptionTemplate === this.descriptionText) {
+          return;
+        }
+
+        if (!isUnchangedTemplate && (isDirty || hasContent)) {
+          this.showTemplateApplyWarning = true;
+        } else {
+          this.applyTemplate();
+        }
+      },
+      error(e) {
+        Sentry.captureException(e);
+        this.$emit('error', s__('WorkItem|Unable to find selected template.'));
+      },
+    },
+    workspacePermissions: {
+      query() {
+        return projectPermissionsQuery;
+      },
+      variables() {
+        return {
+          fullPath: this.fullPath,
+        };
+      },
+      update(data) {
+        return data.namespace || {};
+      },
+      skip() {
+        return this.isGroup;
+      },
+      error(error) {
+        Sentry.captureException(error);
+      },
+    },
+    markdownPaths: {
+      query: namespacePathsQuery,
+      variables() {
+        return {
+          fullPath: this.fullPath,
+          iidForAutocompleteSources: this.workItemIid,
+          iidForMarkdownPreview:
+            this.workItemIid === NEW_WORK_ITEM_IID ? undefined : this.workItemIid,
+          workItemTypeId: this.workItem?.workItemType?.id,
+        };
+      },
+      update(data) {
+        return data?.namespace?.markdownPaths || {};
+      },
+      skip() {
+        return !this.fullPath || !this.workItemIid || !this.workItem?.workItemType?.id;
+      },
+      error(error) {
+        Sentry.captureException(error);
+      },
+    },
   },
   computed: {
+    createFlow() {
+      return this.workItemId === newWorkItemId(this.newWorkItemType);
+    },
+    editorAiActions() {
+      const { id, userPermissions } = this.workspacePermissions;
+      return userPermissions?.generateDescription
+        ? [generateDescriptionAction({ resourceId: id })]
+        : [];
+    },
+    workItemFullPath() {
+      return this.createFlow
+        ? newWorkItemFullPath(this.fullPath, this.newWorkItemType)
+        : this.fullPath;
+    },
     autosaveKey() {
-      return this.workItemId;
+      return this.workItemId || `new-${this.workItemType}-description-draft`;
     },
     canEdit() {
       return this.workItem?.userPermissions?.updateWorkItem || false;
@@ -108,6 +266,7 @@ export default {
     hasConflicts() {
       return Boolean(this.conflictedDescription);
     },
+    // eslint-disable-next-line vue/no-unused-properties
     tracking() {
       return {
         category: TRACKING_CATEGORY_SHOW,
@@ -116,9 +275,7 @@ export default {
       };
     },
     workItemDescription() {
-      const descriptionWidget = this.workItem?.widgets?.find(
-        (widget) => widget.type === WIDGET_TYPE_DESCRIPTION,
-      );
+      const descriptionWidget = findDescriptionWidget(this.workItem);
       return {
         ...descriptionWidget,
         description: descriptionWidget?.description || '',
@@ -126,6 +283,9 @@ export default {
     },
     workItemType() {
       return this.workItem?.workItemType?.name;
+    },
+    taskCompletionStatus() {
+      return this.workItemDescription?.taskCompletionStatus;
     },
     lastEditedAt() {
       return this.workItemDescription?.lastEditedAt;
@@ -136,30 +296,51 @@ export default {
     lastEditedByPath() {
       return this.workItemDescription?.lastEditedBy?.webPath;
     },
-    markdownPreviewPath() {
-      const {
-        fullPath,
-        isGroup,
-        workItem: { iid },
-      } = this;
-      return markdownPreviewPath({ fullPath, iid, isGroup });
-    },
-    autocompleteDataSources() {
-      const {
-        fullPath,
-        isGroup,
-        workItem: { iid },
-      } = this;
-      return autocompleteDataSources({ fullPath, iid, isGroup });
-    },
     saveButtonText() {
       return this.editMode ? __('Save changes') : __('Save');
     },
     formGroupClass() {
       return {
-        'gl-border-t gl-pt-6': !this.disableInlineEditing,
-        'gl-mb-5 common-note-form': true,
+        'common-note-form': true,
       };
+    },
+    showEditedAt() {
+      return (this.taskCompletionStatus || this.lastEditedAt) && !this.editMode;
+    },
+    descriptionTemplateContent() {
+      return this.descriptionTemplate || '';
+    },
+    canResetTemplate() {
+      const hasAppliedTemplate = this.appliedTemplate !== '';
+      const hasEditedTemplate = this.descriptionText !== this.appliedTemplate;
+      return hasAppliedTemplate && hasEditedTemplate;
+    },
+    isNewWorkItemRoute() {
+      return this.$route?.name === ROUTES.new;
+    },
+    restrictedToolBarItems() {
+      if (this.hideFullscreenMarkdownButton) {
+        return ['full-screen'];
+      }
+      return [];
+    },
+    enableTruncation() {
+      /* truncationEnabled uses the local storage based setting,
+         wasEdited is a localized override for when user actions on this work item
+         should result in a full description shown. */
+      return this.truncationEnabled && !this.wasEdited;
+    },
+    markdownPathsLoaded() {
+      return !isEmpty(this.markdownPaths);
+    },
+    uploadsPath() {
+      return this.markdownPaths.uploadsPath;
+    },
+    markdownPreviewPath() {
+      return this.markdownPaths.markdownPreviewPath;
+    },
+    autocompleteDataSources() {
+      return autocompleteDataSources(this.markdownPaths.autocompleteSourcesPath);
     },
   },
   watch: {
@@ -168,21 +349,59 @@ export default {
     },
     editMode(newValue) {
       this.isEditing = newValue;
+      this.selectedTemplate = null;
+      this.appliedTemplate = '';
+      this.showTemplateApplyWarning = false;
       if (newValue) {
         this.startEditing();
       }
     },
   },
+  mounted() {
+    const DEFAULT_TEMPLATE_NAME = 'default';
+    const templateNameFromRoute =
+      this.$route?.query[paramName] || this.$route?.query[oldParamNameFromPreWorkItems];
+    const templateName = !this.isNewWorkItemRoute
+      ? DEFAULT_TEMPLATE_NAME
+      : templateNameFromRoute || DEFAULT_TEMPLATE_NAME;
+
+    // Ensure that template is set during Create Flow only if any of the following is true:
+    // - Template name is present in URL.
+    // - Description is empty.
+    if (this.isCreateFlow && (templateNameFromRoute || this.descriptionText.trim() === '')) {
+      this.selectedTemplate = {
+        name: templateName,
+        projectId: null,
+        category: null,
+      };
+    }
+  },
   methods: {
     checkForConflicts() {
-      if (this.descriptionText !== this.workItemDescription?.description) {
+      if (this.initialDescriptionText.trim() !== this.workItemDescription?.description.trim()) {
         this.conflictedDescription = this.workItemDescription?.description;
       }
     },
     async startEditing() {
       this.isEditing = true;
+      this.wasEdited = true;
 
-      this.descriptionText = getDraft(this.autosaveKey) || this.workItemDescription?.description;
+      if (this.createFlow || this.enableEditFromRedirect) {
+        this.descriptionText = this.workItemDescription?.description;
+        if (this.enableEditFromRedirect) {
+          updateHistory({ url: removeParams(['edit']) });
+        }
+        this.enableEditFromRedirect = false;
+      } else {
+        const draftDescription = getDraft(this.autosaveKey) || '';
+        if (draftDescription.trim() !== '') {
+          this.descriptionText = draftDescription;
+        } else {
+          this.descriptionText = this.workItemDescription?.description;
+        }
+      }
+
+      this.initialDescriptionText = this.descriptionText;
 
       await this.$nextTick();
 
@@ -207,6 +426,8 @@ export default {
       this.isEditing = false;
       this.$emit('cancelEditing');
       clearDraft(this.autosaveKey);
+      this.conflictedDescription = '';
+      this.initialDescriptionText = this.descriptionText;
     },
     onInput() {
       if (this.isSubmittingWithKeydown) {
@@ -222,88 +443,170 @@ export default {
         this.isSubmittingWithKeydown = true;
       }
 
-      if (this.disableInlineEditing) {
-        this.$emit('updateWorkItem');
-        return;
+      if (this.$refs.markdownEditor) {
+        trackSavedUsingEditor(
+          this.$refs.markdownEditor.isContentEditorActive,
+          'WorkItem_Description',
+        );
       }
 
-      this.isSubmitting = true;
+      this.$emit('updateWorkItem', { clearDraft: () => clearDraft(this.autosaveKey) });
 
-      try {
-        this.track('updated_description');
-
-        const {
-          data: { workItemUpdate },
-        } = await this.$apollo.mutate({
-          mutation: updateWorkItemMutation,
-          variables: {
-            input: {
-              id: this.workItem.id,
-              descriptionWidget: {
-                description: this.descriptionText,
-              },
-            },
-          },
-        });
-
-        if (workItemUpdate.errors?.length) {
-          throw new Error(workItemUpdate.errors[0]);
-        }
-
-        this.isEditing = false;
-        clearDraft(this.autosaveKey);
-        this.conflictedDescription = '';
-      } catch (error) {
-        this.$emit('error', error.message);
-        Sentry.captureException(error);
-      }
-
-      this.isSubmitting = false;
+      this.conflictedDescription = '';
+      this.initialDescriptionText = this.descriptionText;
     },
-    setDescriptionText(newText) {
+    setDescriptionText(newText, onMountInit = false) {
       this.descriptionText = newText;
-      if (this.disableInlineEditing) {
+      // Ensure that we don't update the draft on mount during create mode as
+      // it will otherwise overwrite localStorage and previously saved data
+      // will be lost. See vue_shared/components/markdown/markdown_editor.vue
+      // mounted hook where onMountInit boolean is passed with $emit('input').
+      if (!onMountInit || !this.isCreateFlow) {
         this.$emit('updateDraft', this.descriptionText);
       }
       updateDraft(this.autosaveKey, this.descriptionText);
     },
     handleDescriptionTextUpdated(newText) {
+      this.wasEdited = true;
       this.descriptionText = newText;
-      if (this.disableInlineEditing) {
-        this.$emit('updateDraft', this.descriptionText);
-      }
+      this.$emit('updateDraft', this.descriptionText);
       this.updateWorkItem();
+    },
+    handleSelectTemplate(templateData) {
+      this.selectedTemplate = templateData;
+    },
+    resetQueryParams() {
+      if (!this.isNewWorkItemRoute) {
+        return;
+      }
+
+      const params = new URLSearchParams(this.$route?.query);
+      params.delete(paramName);
+      params.delete(oldParamNameFromPreWorkItems);
+      if (this.selectedTemplate && this.isNewWorkItemRoute) {
+        params.set(paramName, this.selectedTemplate.name);
+      }
+
+      this.$router.replace({
+        query: Object.fromEntries(params),
+      });
+    },
+    applyTemplate() {
+      this.appliedTemplate = this.descriptionTemplateContent;
+      this.setDescriptionText(this.descriptionTemplateContent);
+      this.onInput();
+      this.showTemplateApplyWarning = false;
+      this.resetQueryParams();
+    },
+    cancelApplyTemplate() {
+      this.selectedTemplate = null;
+      this.descriptionTemplate = null;
+      this.showTemplateApplyWarning = false;
+      this.resetQueryParams();
+    },
+    handleClearTemplate() {
+      if (this.appliedTemplate) {
+        this.setDescriptionText('');
+        this.selectedTemplate = null;
+        this.descriptionTemplate = null;
+        this.appliedTemplate = '';
+      }
+    },
+    handleResetTemplate() {
+      if (this.canResetTemplate) {
+        this.setDescriptionText(this.appliedTemplate);
+        this.onInput();
+      }
+    },
+    handleEscape() {
+      // Don't cancel if autosuggest open in plain text editor
+      if (
+        !this.$refs.markdownEditor.$el
+          .querySelector('textarea')
+          ?.classList.contains('at-who-active')
+      ) {
+        if (this.isCreateFlow) {
+          this.$emit('cancelCreate');
+        } else {
+          this.cancelEditing();
+        }
+      }
     },
   },
 };
 </script>
 
 <template>
-  <div>
+  <div data-testid="work-item-description-wrapper">
     <gl-form v-if="isEditing" @submit.prevent="updateWorkItem" @reset.prevent="cancelEditing">
       <gl-form-group
         :class="formGroupClass"
         :label="__('Description')"
-        :label-sr-only="disableInlineEditing"
         label-for="work-item-description"
       >
+        <work-item-description-template-listbox
+          :full-path="fullPath"
+          :template="selectedTemplate"
+          @selectTemplate="handleSelectTemplate"
+          @clear="handleClearTemplate"
+          @reset="handleResetTemplate"
+        />
+        <gl-alert
+          v-if="showTemplateApplyWarning"
+          :dismissible="false"
+          variant="warning"
+          class="gl-mt-2"
+          data-testid="description-template-warning"
+        >
+          <p>
+            {{
+              s__(
+                'WorkItem|Applying a template will replace the existing description. Any changes you have made will be lost.',
+              )
+            }}
+          </p>
+          <template #actions>
+            <gl-button variant="confirm" data-testid="template-apply" @click="applyTemplate"
+              >{{ s__('WorkItem|Apply template') }}
+            </gl-button>
+            <gl-button
+              category="secondary"
+              class="gl-ml-3"
+              data-testid="template-cancel"
+              @click="cancelApplyTemplate"
+              >{{ s__('WorkItem|Cancel') }}
+            </gl-button>
+          </template>
+        </gl-alert>
         <markdown-editor
-          class="gl-mb-5"
+          v-if="markdownPathsLoaded"
+          ref="markdownEditor"
           :value="descriptionText"
           :render-markdown-path="markdownPreviewPath"
           :markdown-docs-path="$options.markdownDocsPath"
           :form-field-props="formFieldProps"
           :quick-actions-docs-path="$options.quickActionsDocsPath"
           :autocomplete-data-sources="autocompleteDataSources"
+          :restricted-tool-bar-items="restrictedToolBarItems"
+          :uploads-path="uploadsPath"
+          :editor-ai-actions="editorAiActions"
           enable-autocomplete
           supports-quick-actions
-          autofocus
+          supports-table-of-contents
+          :autofocus="autofocus"
+          class="gl-mt-3"
           @input="setDescriptionText"
           @keydown.meta.enter="updateWorkItem"
           @keydown.ctrl.enter="updateWorkItem"
+          @keydown.esc.stop="handleEscape"
         />
-        <div class="gl-display-flex">
-          <gl-alert v-if="hasConflicts" :dismissible="false" variant="danger" class="gl-w-full">
+        <div class="gl-flex">
+          <gl-alert
+            v-if="hasConflicts"
+            :dismissible="false"
+            variant="danger"
+            class="gl-mt-5 gl-w-full"
+          >
             <p>
               {{
                 s__(
@@ -312,11 +615,12 @@ export default {
               }}
             </p>
             <details class="gl-mb-5">
-              <summary class="gl-text-blue-500">{{ s__('WorkItem|View current version') }}</summary>
+              <summary class="gl-text-link">{{ s__('WorkItem|View current version') }}</summary>
               <gl-form-textarea
-                class="js-gfm-input js-autosize markdown-area gl-font-monospace!"
+                class="js-gfm-input js-autosize markdown-area !gl-font-monospace"
                 data-testid="conflicted-description"
                 readonly
+                no-resize
                 :value="conflictedDescription"
               />
             </details>
@@ -338,7 +642,7 @@ export default {
               </gl-button>
             </template>
           </gl-alert>
-          <template v-else>
+          <div v-else-if="showButtonsBelowField" class="gl-mt-5 gl-flex gl-gap-3">
             <gl-button
               category="primary"
               variant="confirm"
@@ -347,23 +651,30 @@ export default {
               type="submit"
               >{{ saveButtonText }}
             </gl-button>
-            <gl-button category="secondary" class="gl-ml-3" data-testid="cancel" type="reset"
+            <gl-button category="secondary" data-testid="cancel" type="reset"
               >{{ __('Cancel') }}
             </gl-button>
-          </template>
+          </div>
         </div>
       </gl-form-group>
     </gl-form>
     <work-item-description-rendered
       v-else
-      :disable-inline-editing="disableInlineEditing"
+      :full-path="fullPath"
       :work-item-description="workItemDescription"
+      :work-item-id="workItemId"
+      :work-item-type="workItemType"
       :can-edit="canEdit"
+      :enable-truncation="enableTruncation"
+      :is-group="isGroup"
+      :is-updating="isSubmitting"
+      :without-heading-anchors="withoutHeadingAnchors"
       @startEditing="startEditing"
       @descriptionUpdated="handleDescriptionTextUpdated"
     />
     <edited-at
-      v-if="lastEditedAt && !editMode"
+      v-if="showEditedAt"
+      :task-completion-status="taskCompletionStatus"
       :updated-at="lastEditedAt"
       :updated-by-name="lastEditedByName"
       :updated-by-path="lastEditedByPath"

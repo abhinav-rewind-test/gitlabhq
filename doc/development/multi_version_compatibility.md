@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Backwards compatibility across updates
 ---
-
-# Backwards compatibility across updates
 
 GitLab deployments can be broken down into many components. Updating GitLab is not atomic. Therefore, **many components must be backwards-compatible**.
 
@@ -23,13 +22,13 @@ For example when [changing arguments](sidekiq/compatibility_across_updates.md#ch
 
 Is it ok if these jobs don't get executed for several hours because [Sidekiq nodes are not yet updated](sidekiq/compatibility_across_updates.md#adding-new-workers)?
 
-### When modifying JavaScript
+### When modifying JavaScript/Vue
 
-Is it ok when a browser has the new JavaScript code, but the Rails code is running the previous monthly release on:
+If the Rails code changes (Rails controller, REST API or GraphQL API) were merged and released in the previous monthly release, JavaScript can make a request to that Rails code without issues.
 
-- the REST API?
-- the GraphQL API?
-- internal APIs in controllers?
+If the Rails code changes (Rails controller, REST API or GraphQL API) have not yet been released, JavaScript can make a request to that Rails code but it needs to be behind a default disabled feature flag or able to fail gracefully. For example if you add a GraphQL query in 18.3 you need to wait until 18.4 to use that query on the frontend without a feature flag.
+
+When adding GraphQL fields to an existing query you can use the [`@gl_introduced` directive](api_graphql_styleguide.md#mitigation) to fail gracefully. When adding fields to REST APIs you can fail gracefully by falling back to the old field if the new field doesn't exist in the response.
 
 ### When adding a pre-deployment migration
 
@@ -52,8 +51,8 @@ Is it ok that some nodes have the new Rails version, but some nodes have the old
 Backward compatibility problems during updates are often very subtle. This is why it is worth
 familiarizing yourself with:
 
-- [Update instructions](../update/index.md)
-- [Reference architectures](../administration/reference_architectures/index.md)
+- [Upgrade instructions](../update/_index.md)
+- [Reference architectures](../administration/reference_architectures/_index.md)
 - [GitLab.com's architecture](https://handbook.gitlab.com/handbook/engineering/infrastructure/production/architecture/)
 - [GitLab.com's upgrade pipeline](https://gitlab.com/gitlab-org/release/docs/blob/master/general/deploy/gitlab-com-deployer.md#upgrade-pipeline-default)
 
@@ -75,9 +74,30 @@ In this example, you can imagine that we are updating by one monthly release. Bu
 
 This example is not exhaustive. GitLab can be deployed in many different ways. Even each update step is not atomic. For example, with rolling deploys, nodes within a group are temporarily on different versions. You should assume that a lot of time passes between update steps. This is often true on GitLab.com.
 
+## GitLab Next
+
+GitLab.com runs a [canary stage](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/canary-stage) that runs the next version that is going to be deployed to production. This means that we
+run multiple versions of GitLab for an extended period of time.
+
+We route a small percentage of traffic to canary to test out the next version. Users can also opt-in to GitLab next by [setting a cookie](https://next.gitlab.com/). We also route paths starting with `gitlab-org` or `gitlab-com` to canary and this often exposes a lot of multi-version compatibility issues that last until the version in canary is deployed to production which can take several hours.
+
+The problem occurs because API requests do not start with the same path prefix, so these API requests made from newer canary frontend code end up on the older main nodes.
+
+Here's an example of how it could happen with a GraphQL request:
+
+```mermaid
+sequenceDiagram
+    Client browser->>Canary node: GET /gitlab-org/gitlab/-/issues/1
+    Canary node-->>Client browser: HTML page with canary JS
+    Client browser->>Main node: POST /api/graphql with query including newFieldAddedInCanary
+    Main node-->>Client browser: Returns error due to unrecognized field
+```
+
+Users can work around the problem by setting the canary cookie so that both requests end up on the canary nodes. But we cannot rely on this workaround so we need our code to be backwards-compatible.
+
 ## How long must code be backwards-compatible?
 
-For users following [zero-downtime update instructions](../update/index.md#upgrading-without-downtime), the answer is one monthly release. For example:
+For users following [zero-downtime update instructions](../update/zero_downtime.md), the answer is one monthly release. For example:
 
 - 13.11 => 13.12
 - 13.12 => 14.0
@@ -85,7 +105,7 @@ For users following [zero-downtime update instructions](../update/index.md#upgra
 
 For GitLab.com, there can be multiple tiny version updates per day, so GitLab.com doesn't constrain how far changes must be backwards-compatible.
 
-Many users [skip some monthly releases](../update/index.md#upgrading-to-a-new-major-version), for example:
+Many users skip some monthly releases, for example:
 
 - 13.0 => 13.12
 
@@ -93,7 +113,7 @@ These users accept some downtime during the update. Unfortunately we can't ignor
 
 ## What kind of components can GitLab be broken down into?
 
-The [50,000 reference architecture](../administration/reference_architectures/50k_users.md) runs GitLab on 48+ nodes. GitLab.com is [bigger than that](https://handbook.gitlab.com/handbook/engineering/infrastructure/production/architecture/), plus a portion of the [infrastructure runs on Kubernetes](https://handbook.gitlab.com/handbook/engineering/infrastructure/production/architecture/#gitlab-com-architecture), plus there is a ["canary" stage which receives updates first](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/canary-stage/).
+The [1000 RPS or 50,000 user reference architecture](../administration/reference_architectures/50k_users.md) runs GitLab on 48+ nodes. GitLab.com is [bigger than that](https://handbook.gitlab.com/handbook/engineering/infrastructure/production/architecture/), plus a portion of the [infrastructure runs on Kubernetes](https://handbook.gitlab.com/handbook/engineering/infrastructure/production/architecture/#gitlab-com-architecture), plus there is a ["canary" stage which receives updates first](https://handbook.gitlab.com/handbook/engineering/infrastructure/environments/canary-stage/).
 
 But the problem isn't just that there are many nodes. The bigger problem is that a deployment can be divided into different contexts. And GitLab.com is not the only one that does this. Some possible divisions:
 
@@ -110,7 +130,7 @@ During an update, there will be [two different versions of GitLab running in dif
 
 ## Doesn't the order of update steps matter?
 
-Yes! We have specific instructions for [zero-downtime updates](../update/index.md#upgrading-without-downtime) because it allows us to ignore some permutations of compatibility. This is why we don't worry about Rails code making DB calls to an old PostgreSQL database schema.
+Yes! We have specific instructions for [zero-downtime updates](../update/zero_downtime.md) because it allows us to ignore some permutations of compatibility. This is why we don't worry about Rails code making DB calls to an old PostgreSQL database schema.
 
 ## You've identified a potential backwards compatibility problem, what can you do about it?
 
@@ -123,7 +143,7 @@ For major or minor version updates of Rails or Puma:
 
 ### Feature flags
 
-[Feature flags](feature_flags/index.md) are a tool, not a strategy, for handling backward compatibility problems.
+[Feature flags](feature_flags/_index.md) are a tool, not a strategy, for handling backward compatibility problems.
 
 For example, it is safe to add a new feature with frontend and API changes, if both
 frontend and API changes are disabled by default. This can be done with multiple
@@ -148,7 +168,7 @@ As an example, when adding a new feature with frontend and API changes, it may b
 
 ### Expand and contract pattern
 
-One way to guarantee zero downtime updates for on-premise instances is following the
+One way to guarantee zero-downtime updates for on-premise instances is following the
 [expand and contract pattern](https://martinfowler.com/bliki/ParallelChange.html).
 
 This means that every breaking change is broken down in three phases: expand, migrate, and contract.
@@ -157,7 +177,7 @@ This means that every breaking change is broken down in three phases: expand, mi
 1. **migrate**: all consumers are updated to make use of the new implementation.
 1. **contract**: backward compatibility is removed.
 
-Those three phases **must be part of different milestones**, to allow zero downtime updates.
+Those three phases **must be part of different milestones**, to allow zero-downtime updates.
 
 Depending on the support level for the feature, the contract phase could be delayed until the next major release.
 
@@ -232,7 +252,7 @@ If we look at this schema from a database point of view, we can see two deployme
 And these deployments align perfectly with application changes.
 
 1. At the beginning we have `Version N` on `Schema A`.
-1. Then we have a _long_ transition period with both `Version N` and `Version N+1` on `Schema B`.
+1. Then we have a long transition period with both `Version N` and `Version N+1` on `Schema B`.
 1. When we only have `Version N+1` on `Schema B` the schema changes again.
 1. Finally we have `Version N+1` on `Schema C`.
 
@@ -270,7 +290,7 @@ and set this column to `false`. The old servers were still updating the old colu
 that updated the new column from the old one. For the new servers though, they were only updating the new column and that same trigger
 was now working against us and setting it back to the wrong value.
 
-For more information, see [the relevant issue](https://gitlab.com/gitlab-com/gl-infra/reliability/-/issues/9176).
+For more information, see [the relevant issue](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/9176).
 
 ### Sidebar wasn't loading for some users
 
@@ -315,7 +335,7 @@ variable `CI_NODE_TOTAL` being an integer failed. This was caused because after 
    instead of sending an integer value (for example, 9), it sent a serialized
    `Hash` value (`{:number=>9, :total=>9}`).
 
-If you look at the [deployment pipeline](https://ops.gitlab.net/gitlab-com/gl-infra/deployer/-/pipelines/202212),
+If you look at the [deployment pipeline](https://ops.gitlab.net/gitlab-com/gl-infra/deployer),
 you see all nodes were updated in parallel:
 
 ![GitLab.com deployment pipeline](img/deployment_pipeline_v13_3.png)

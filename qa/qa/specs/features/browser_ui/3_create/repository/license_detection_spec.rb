@@ -1,12 +1,8 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Create' do
-    describe 'Repository License Detection', product_group: :source_code do
-      after do
-        project.remove_via_api!
-      end
-
+  RSpec.describe 'Create', feature_category: :source_code_management do
+    describe 'Repository License Detection' do
       let(:project) { create(:project) }
 
       shared_examples 'project license detection' do
@@ -19,7 +15,8 @@ module QA
           project.visit!
 
           Page::Project::Show.perform do |project|
-            Support::Waiter.wait_until(reload_page: project, message: 'Waiting for licence') do
+            Support::Waiter.wait_until(reload_page: project, retry_on_exception: true,
+              message: 'Waiting for licence') do
               project.has_license?(rendered_license_name)
             end
           end

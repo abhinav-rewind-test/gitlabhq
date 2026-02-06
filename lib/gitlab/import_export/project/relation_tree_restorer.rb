@@ -7,7 +7,23 @@ module Gitlab
         # Relations which cannot be saved at project level (and have a group assigned)
         GROUP_MODELS = [GroupLabel, Milestone, Epic].freeze
 
+        def restore_single_relation(relation_key, extra_track_scope: {})
+          bulk_insert_without_cache_or_touch do
+            process_relation!(relation_key, relations[relation_key], extra_track_scope: extra_track_scope)
+          end
+        end
+
+        def relation_factory_params(relation_key, relation_index, data_hash)
+          super.merge({ import_source: ::Import::SOURCE_PROJECT_EXPORT_IMPORT })
+        end
+
         private
+
+        def relations
+          relations = super
+          relations.delete("vulnerabilities") if Feature.disabled?(:import_vulnerabilities, user)
+          relations
+        end
 
         def group_models
           GROUP_MODELS

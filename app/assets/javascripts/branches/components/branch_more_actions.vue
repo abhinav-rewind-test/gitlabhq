@@ -45,6 +45,11 @@ export default {
     deleteBranch: s__('Branches|Delete branch'),
     deleteProtectedBranch: s__('Branches|Delete protected branch'),
   },
+  data() {
+    return {
+      isDropdownVisible: false,
+    };
+  },
   computed: {
     deleteBranchText() {
       return this.isProtectedBranch
@@ -70,8 +75,9 @@ export default {
           action: () => {
             this.openModal();
           },
+          variant: 'danger',
           extraAttrs: {
-            class: 'js-delete-branch-button gl-text-red-500!',
+            class: 'js-delete-branch-button',
             'aria-label': this.deleteBranchText,
             'data-testid': 'delete-branch-button',
           },
@@ -80,10 +86,13 @@ export default {
 
       return items;
     },
+    moreActionsTooltip() {
+      return !this.isDropdownVisible ? this.$options.i18n.toggleText : '';
+    },
   },
   methods: {
     openModal() {
-      eventHub.$emit('openModal', {
+      eventHub.$emit('open-modal', {
         branchName: this.branchName,
         defaultBranchName: this.defaultBranchName,
         deletePath: this.deletePath,
@@ -91,23 +100,28 @@ export default {
         merged: this.merged,
       });
     },
+    showDropdown() {
+      this.isDropdownVisible = true;
+    },
+    hideDropdown() {
+      this.isDropdownVisible = false;
+    },
   },
 };
 </script>
 
 <template>
   <gl-disclosure-dropdown
-    v-gl-tooltip.hover.top="{
-      title: $options.i18n.toggleText,
-      boundary: 'viewport',
-    }"
+    v-gl-tooltip.top.viewport="moreActionsTooltip"
     :items="dropdownItems"
     :toggle-text="$options.i18n.toggleText"
     icon="ellipsis_v"
     category="tertiary"
-    placement="right"
+    placement="bottom-end"
     data-testid="branch-more-actions"
     text-sr-only
     no-caret
+    @shown="showDropdown"
+    @hidden="hideDropdown"
   />
 </template>

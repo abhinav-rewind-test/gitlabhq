@@ -105,7 +105,7 @@ module Integrations
 
         failed_jobs = builds.select do |build|
           # Select jobs which doesn't have a successful retry
-          build[:status] == 'failed' && !succeeded_job_names.include?(build[:name])
+          build[:status] == 'failed' && succeeded_job_names.exclude?(build[:name])
         end
 
         failed_jobs.uniq { |job| job[:name] }.reverse
@@ -130,7 +130,7 @@ module Integrations
       def yaml_error_field
         {
           title: s_("ChatMessage|Invalid CI config YAML file"),
-          value: pipeline.yaml_errors,
+          value: pipeline.error_messages,
           short: false
         }
       end
@@ -240,10 +240,10 @@ module Integrations
         failed_links = failed.map { |job| job_link(job) }
 
         unless truncated.blank?
-          failed_links << s_("ChatMessage|and [%{count} more](%{pipeline_failed_jobs_url})") % {
+          failed_links << (s_("ChatMessage|and [%{count} more](%{pipeline_failed_jobs_url})") % {
             count: truncated.size,
             pipeline_failed_jobs_url: pipeline_failed_jobs_url
-          }
+          })
         end
 
         failed_links.join(I18n.t(:'support.array.words_connector'))

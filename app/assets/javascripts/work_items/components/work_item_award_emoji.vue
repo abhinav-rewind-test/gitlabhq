@@ -3,29 +3,33 @@ import { produce } from 'immer';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 
 import { getIdFromGraphQLId, convertToGraphQLId } from '~/graphql_shared/utils';
+import { s__ } from '~/locale';
 import AwardsList from '~/vue_shared/components/awards_list.vue';
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
 
-import groupWorkItemAwardEmojiQuery from '../graphql/group_award_emoji.query.graphql';
+import { EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN } from '~/emoji/constants';
 import projectWorkItemAwardEmojiQuery from '../graphql/award_emoji.query.graphql';
 import updateAwardEmojiMutation from '../graphql/update_award_emoji.mutation.graphql';
-import {
-  EMOJI_THUMBSDOWN,
-  EMOJI_THUMBSUP,
-  WIDGET_TYPE_AWARD_EMOJI,
-  DEFAULT_PAGE_SIZE_EMOJIS,
-  I18N_WORK_ITEM_FETCH_AWARD_EMOJI_ERROR,
-} from '../constants';
+import { DEFAULT_PAGE_SIZE_EMOJIS } from '../constants';
+import { findAwardEmojiWidget } from '../utils';
 
 export default {
-  defaultAwards: [EMOJI_THUMBSUP, EMOJI_THUMBSDOWN],
-  isLoggedIn: isLoggedIn(),
+  defaultAwards: [EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN],
   components: {
     AwardsList,
   },
-  inject: ['isGroup'],
   props: {
+    workItemArchived: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    workItemDiscussionLocked: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
     workItemId: {
       type: String,
       required: true,
@@ -42,10 +46,14 @@ export default {
   },
   data() {
     return {
+      newCustomEmojiPath: '',
       isLoading: false,
     };
   },
   computed: {
+    canAwardEmoji() {
+      return isLoggedIn() && !this.workItemArchived && !this.workItemDiscussionLocked;
+    },
     currentUserId() {
       return window.gon.current_user_id;
     },
@@ -68,6 +76,9 @@ export default {
         },
       }));
     },
+    customEmojiPath() {
+      return this.newCustomEmojiPath;
+    },
     pageInfo() {
       return this.awardEmoji?.pageInfo;
     },
@@ -76,10 +87,9 @@ export default {
     },
   },
   apollo: {
+    // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     awardEmoji: {
-      query() {
-        return this.isGroup ? groupWorkItemAwardEmojiQuery : projectWorkItemAwardEmojiQuery;
-      },
+      query: projectWorkItemAwardEmojiQuery,
       variables() {
         return {
           iid: this.workItemIid,
@@ -89,8 +99,7 @@ export default {
         };
       },
       update(data) {
-        const widgets = data.workspace?.workItems?.nodes[0].widgets;
-        return widgets?.find((widget) => widget.type === WIDGET_TYPE_AWARD_EMOJI).awardEmoji || {};
+        return findAwardEmojiWidget(data.namespace?.workItem).awardEmoji || {};
       },
       skip() {
         return !this.workItemIid;
@@ -101,12 +110,19 @@ export default {
         } else {
           this.isLoading = false;
         }
-        if (data) {
-          this.$emit('emoji-updated', data.workspace?.workItems?.nodes[0]);
+        if (data?.namespace) {
+          this.newCustomEmojiPath =
+            findAwardEmojiWidget(data.namespace?.workItem)?.newCustomEmojiPath || '';
+          this.$emit('emoji-updated', data.namespace?.workItem);
         }
       },
       error() {
-        this.$emit('error', I18N_WORK_ITEM_FETCH_AWARD_EMOJI_ERROR);
+        this.$emit(
+          'error',
+          s__(
+            'WorkItem|Something went wrong while fetching work item award emojis. Please try again.',
+          ),
+        );
       },
     },
   },
@@ -121,7 +137,12 @@ export default {
           },
         });
       } catch {
-        this.$emit('error', I18N_WORK_ITEM_FETCH_AWARD_EMOJI_ERROR);
+        this.$emit(
+          'error',
+          s__(
+            'WorkItem|Something went wrong while fetching work item award emojis. Please try again.',
+          ),
+        );
       }
     },
     isEmojiPresentForCurrentUser(name) {
@@ -166,7 +187,7 @@ export default {
     },
     updateWorkItemAwardEmojiWidgetCache({ cache, name, toggledOn }) {
       const query = {
-        query: this.isGroup ? groupWorkItemAwardEmojiQuery : projectWorkItemAwardEmojiQuery,
+        query: projectWorkItemAwardEmojiQuery,
         variables: {
           fullPath: this.workItemFullpath,
           iid: this.workItemIid,
@@ -177,9 +198,10 @@ export default {
       const sourceData = cache.readQuery(query);
 
       const newData = produce(sourceData, (draftState) => {
-        const { widgets } = draftState.workspace.workItems.nodes[0];
-        const widgetAwardEmoji = widgets.find((widget) => widget.type === WIDGET_TYPE_AWARD_EMOJI);
-        widgetAwardEmoji.awardEmoji.nodes = this.getAwardEmojiNodes(name, toggledOn);
+        const widgetAwardEmoji = findAwardEmojiWidget(draftState.namespace?.workItem);
+        if (widgetAwardEmoji && widgetAwardEmoji.awardEmoji) {
+          widgetAwardEmoji.awardEmoji.nodes = this.getAwardEmojiNodes(name, toggledOn);
+        }
       });
 
       cache.writeQuery({ ...query, data: newData });
@@ -236,12 +258,13 @@ export default {
 </script>
 
 <template>
-  <div v-if="!isLoading" class="gl-mt-3">
+  <div v-if="!isLoading">
     <awards-list
       :awards="awards"
-      :can-award-emoji="$options.isLoggedIn"
+      :can-award-emoji="canAwardEmoji"
       :current-user-id="currentUserId"
       :default-awards="$options.defaultAwards"
+      :custom-emoji-path="customEmojiPath"
       selected-class="selected"
       @award="handleAward"
     />

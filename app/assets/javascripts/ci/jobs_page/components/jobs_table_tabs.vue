@@ -3,8 +3,10 @@ import { GlBadge, GlTab, GlTabs, GlLoadingIcon } from '@gitlab/ui';
 import { s__ } from '~/locale';
 import CancelJobs from '~/ci/admin/jobs_table/components/cancel_jobs.vue';
 import { limitedCounterWithDelimiter } from '~/lib/utils/text_utility';
+import { BRIDGE_KIND } from '../constants';
 
 export default {
+  name: 'JobsTableTabs',
   components: {
     GlBadge,
     GlTab,
@@ -35,6 +37,11 @@ export default {
       required: false,
       default: false,
     },
+    filters: {
+      type: Object,
+      required: false,
+      default: () => {},
+    },
   },
   computed: {
     tabs() {
@@ -44,7 +51,7 @@ export default {
           count: limitedCounterWithDelimiter(this.allJobsCount),
           scope: null,
           testId: 'jobs-all-tab',
-          showBadge: true,
+          showBadge: this.filters?.kind !== BRIDGE_KIND,
         },
         {
           text: s__('Jobs|Finished'),
@@ -62,7 +69,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-display-flex align-items-lg-center">
+  <div class="gl-flex @lg/panel:gl-items-center">
     <gl-tabs content-class="gl-py-0" class="gl-w-full">
       <gl-tab
         v-for="tab in tabs"
@@ -76,13 +83,13 @@ export default {
           <span>{{ tab.text }}</span>
           <gl-loading-icon v-if="showLoadingIcon && tab.showBadge" class="gl-ml-2" />
 
-          <gl-badge v-else-if="tab.showBadge" size="sm" class="gl-tab-counter-badge">
+          <gl-badge v-else-if="tab.showBadge" class="gl-tab-counter-badge">
             {{ tab.count }}
           </gl-badge>
         </template>
       </gl-tab>
     </gl-tabs>
-    <div class="gl-flex-grow-1"></div>
+    <div class="gl-grow"></div>
     <cancel-jobs v-if="showCancelAllJobsButton" :url="url" />
   </div>
 </template>

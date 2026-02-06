@@ -111,6 +111,22 @@ export const mockRunningPipelineHeaderData = {
   },
 };
 
+export const pipelineHeaderFailedNoPermissions = {
+  data: {
+    project: {
+      id: '1',
+      pipeline: {
+        ...pipelineHeaderFailed.data.project.pipeline,
+        userPermissions: {
+          destroyPipeline: false,
+          cancelPipeline: false,
+          updatePipeline: false,
+        },
+      },
+    },
+  },
+};
+
 export const users = [
   {
     id: 1,
@@ -545,8 +561,8 @@ export const mockPipeline = (projectPath) => {
           path: '/root',
         },
         author_gravatar_url: '',
-        commit_url: `/${projectPath}/fd6df5b3229e213c97d308844a6f3e7fd71e8f8c`,
-        commit_path: `/${projectPath}/commit/fd6df5b3229e213c97d308844a6f3e7fd71e8f8c`,
+        commit_url: `/${projectPath}/aabbccdd`,
+        commit_path: `/${projectPath}/commit/aabbccdd`,
       },
       project: {
         full_path: `/${projectPath}`,
@@ -1187,5 +1203,46 @@ export const failedRetryMutationResponse = {
       errors: ['New Error'],
       __typename: 'JobRetryPayload',
     },
+  },
+};
+
+export const mockPipelineStatusUpdatedResponse = {
+  data: {
+    ciPipelineStatusUpdated: {
+      id: 'gid://gitlab/Ci::Pipeline/1257',
+      retryable: false,
+      cancelable: false,
+      __typename: 'Pipeline',
+      detailedStatus: {
+        detailsPath: '/root/simple-ci-project/-/pipelines/1257',
+        deploymentDetailsPath: null,
+        icon: 'status_success',
+        id: 'success-1255-1255',
+        label: 'passed',
+        text: 'Passed',
+        favicon: '/assets/ci_favicons/favicon_status_success.png',
+        __typename: 'DetailedStatus',
+      },
+      status: 'SUCCESS',
+      userPermissions: {
+        destroyPipeline: true,
+        updatePipeline: true,
+        cancelPipeline: true,
+        __typename: 'PipelinePermissions',
+      },
+      errorMessages: {
+        nodes: [],
+        __typename: 'PipelineMessageConnection',
+      },
+      finishedAt: '2025-08-22T15:21:42Z',
+      queuedDuration: 160408,
+      duration: 7210,
+    },
+  },
+};
+
+export const mockPipelineStatusNullResponse = {
+  data: {
+    ciPipelineStatusUpdated: null,
   },
 };

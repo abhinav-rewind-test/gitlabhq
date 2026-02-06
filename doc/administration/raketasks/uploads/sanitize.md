@@ -1,16 +1,18 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Uploads sanitize Rake tasks
 ---
 
-# Uploads sanitize Rake tasks
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-In GitLab 11.9 and later, EXIF data is automatically stripped from JPG or TIFF image uploads.
+{{< /details >}}
+
+EXIF data is automatically stripped from JPG or TIFF image uploads.
 
 EXIF data may contain sensitive information (for example, GPS location), so you
 can remove EXIF data from existing images that were uploaded to an earlier version of GitLab.

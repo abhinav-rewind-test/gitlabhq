@@ -23,10 +23,11 @@ class AbuseReportsController < ApplicationController
   end
 
   def create
-    @abuse_report = AbuseReport.new(report_params)
-    @abuse_report.reporter = current_user
+    abuse_report_service = AntiAbuse::AbuseReport::CreateService.new(report_params.merge(reporter: current_user))
+    response = abuse_report_service.execute
 
-    if @abuse_report.save
+    if response.success?
+      @abuse_report = response.payload
       @abuse_report.notify
 
       Gitlab::Tracking.event(
@@ -41,19 +42,21 @@ class AbuseReportsController < ApplicationController
     elsif report_params[:user_id].present?
       render :new
     else
-      redirect_to root_path, alert: _("Cannot create the abuse report. The reported user was invalid. Please try again or contact support.")
+      redirect_to root_path,
+        alert: _("Cannot create the abuse report. The reported user was invalid. Please try again or contact support.")
     end
   end
 
   private
 
   def report_params
-    params.require(:abuse_report).permit(:message, :user_id, :category, :reported_from_url, :screenshot, links_to_spam: [])
+    params.require(:abuse_report).permit(:message, :user_id, :category, :reported_from_url, :screenshot,
+      links_to_spam: [])
   end
 
   # rubocop: disable CodeReuse/ActiveRecord
   def set_user
-    @user = User.find_by(id: params[:user_id])
+    @user = User.find_by(id: params.permit(:user_id)[:user_id])
 
     if @user.nil?
       redirect_to root_path, alert: _("Cannot create the abuse report. The user has been deleted.")

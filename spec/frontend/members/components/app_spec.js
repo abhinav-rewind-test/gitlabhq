@@ -3,13 +3,16 @@ import { shallowMount } from '@vue/test-utils';
 import Vue, { nextTick } from 'vue';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
-import * as commonUtils from '~/lib/utils/common_utils';
+import waitForPromises from 'helpers/wait_for_promises';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import MembersApp from '~/members/components/app.vue';
 import FilterSortContainer from '~/members/components/filter_sort/filter_sort_container.vue';
 import MembersTable from '~/members/components/table/members_table.vue';
-import { MEMBER_TYPES, TAB_QUERY_PARAM_VALUES } from '~/members/constants';
+import { MEMBERS_TAB_TYPES, TAB_QUERY_PARAM_VALUES } from '~/members/constants';
 import { RECEIVE_MEMBER_ROLE_ERROR, HIDE_ERROR } from '~/members/store/mutation_types';
 import mutations from '~/members/store/mutations';
+
+jest.mock('~/lib/utils/scroll_utils');
 
 describe('MembersApp', () => {
   Vue.use(Vuex);
@@ -20,7 +23,7 @@ describe('MembersApp', () => {
   const createComponent = (state = {}, options = {}) => {
     store = new Vuex.Store({
       modules: {
-        [MEMBER_TYPES.group]: {
+        [MEMBERS_TAB_TYPES.group]: {
           namespaced: true,
           state: {
             showError: true,
@@ -34,7 +37,7 @@ describe('MembersApp', () => {
 
     wrapper = shallowMount(MembersApp, {
       propsData: {
-        namespace: MEMBER_TYPES.group,
+        namespace: MEMBERS_TAB_TYPES.group,
         tabQueryParamValue: TAB_QUERY_PARAM_VALUES.group,
       },
       store,
@@ -45,10 +48,6 @@ describe('MembersApp', () => {
   const findAlert = () => wrapper.findComponent(GlAlert);
   const findFilterSortContainer = () => wrapper.findComponent(FilterSortContainer);
 
-  beforeEach(() => {
-    commonUtils.scrollToElement = jest.fn();
-  });
-
   afterEach(() => {
     store = null;
   });
@@ -57,7 +56,7 @@ describe('MembersApp', () => {
     it('renders and scrolls to error alert', async () => {
       createComponent({ showError: false, errorMessage: '' });
 
-      store.commit(`${MEMBER_TYPES.group}/${RECEIVE_MEMBER_ROLE_ERROR}`, {
+      store.commit(`${MEMBERS_TAB_TYPES.group}/${RECEIVE_MEMBER_ROLE_ERROR}`, {
         error: new Error('Network Error'),
       });
 
@@ -69,7 +68,10 @@ describe('MembersApp', () => {
       expect(alert.text()).toBe(
         "An error occurred while updating the member's role, please try again.",
       );
-      expect(commonUtils.scrollToElement).toHaveBeenCalledWith(alert.element);
+
+      await waitForPromises();
+
+      expect(scrollToElement).toHaveBeenCalledWith(alert.element);
     });
   });
 
@@ -77,12 +79,12 @@ describe('MembersApp', () => {
     it('does not render and scroll to error alert', async () => {
       createComponent();
 
-      store.commit(`${MEMBER_TYPES.group}/${HIDE_ERROR}`);
+      store.commit(`${MEMBERS_TAB_TYPES.group}/${HIDE_ERROR}`);
 
       await nextTick();
 
       expect(findAlert().exists()).toBe(false);
-      expect(commonUtils.scrollToElement).not.toHaveBeenCalled();
+      expect(scrollToElement).not.toHaveBeenCalled();
     });
   });
 

@@ -2,7 +2,6 @@
 
 module Issues
   class ReferencedMergeRequestsService < Issues::BaseService
-    # rubocop: disable CodeReuse/ActiveRecord
     def execute(issue)
       referenced = referenced_merge_requests(issue)
       closed_by = closed_by_merge_requests(issue)
@@ -14,12 +13,11 @@ module Issues
 
       [sort_by_iid(referenced), sort_by_iid(closed_by)]
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def referenced_merge_requests(issue)
       merge_requests = extract_merge_requests(issue)
 
-      cross_project_filter = -> (merge_requests) do
+      cross_project_filter = ->(merge_requests) do
         merge_requests.select { |mr| mr.target_project == project }
       end
 
@@ -40,7 +38,10 @@ module Issues
 
       return [] if merge_requests.empty?
 
-      ids = MergeRequestsClosingIssues.where(merge_request_id: merge_requests.map(&:id), issue_id: issue.id).pluck(:merge_request_id)
+      ids = MergeRequestsClosingIssues.where(
+        merge_request_id: merge_requests.map(&:id),
+        issue_id: issue.id
+      ).pluck(:merge_request_id)
       merge_requests.select { |mr| mr.id.in?(ids) }
     end
     # rubocop: enable CodeReuse/ActiveRecord

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'webauthn/fake_client'
 
 class FakeWebauthnDevice
@@ -11,10 +12,16 @@ class FakeWebauthnDevice
   end
 
   def respond_to_webauthn_registration
-    app_id = @page.evaluate_script('gon.webauthn.app_id')
+    app_id = WebAuthn.configuration.origin
     challenge = @page.evaluate_script('gon.webauthn.options.challenge')
 
-    json_response = webauthn_device(app_id).create(challenge: challenge).to_json # rubocop:disable Rails/SaveBang
+    options = {
+      challenge: challenge,
+      user_verified: true,
+      extensions: { "credProps" => { "rk" => true } }
+    }
+
+    json_response = webauthn_device(app_id).create(**options).to_json # rubocop:disable Rails/SaveBang
     @page.execute_script <<~JS
       var result = #{json_response};
       result.getClientExtensionResults = () => ({});
@@ -24,7 +31,7 @@ class FakeWebauthnDevice
     JS
   end
 
-  def respond_to_webauthn_authentication
+  def respond_to_webauthn_authentication(passkey: nil)
     app_id = @page.evaluate_script('JSON.parse(gon.webauthn.options).extensions.appid')
     challenge = @page.evaluate_script('JSON.parse(gon.webauthn.options).challenge')
 
@@ -45,7 +52,7 @@ class FakeWebauthnDevice
         return Promise.resolve(result);
       };
     JS
-    @page.click_button(_('Try again?'))
+    @page.click_button(_('Try again?')) unless passkey
   end
 
   def fake_webauthn_authentication

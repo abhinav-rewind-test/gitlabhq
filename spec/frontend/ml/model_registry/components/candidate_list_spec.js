@@ -1,12 +1,13 @@
 import Vue from 'vue';
+import { GlEmptyState, GlButton } from '@gitlab/ui';
 import VueApollo from 'vue-apollo';
 import { mount } from '@vue/test-utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import CandidateList from '~/ml/model_registry/components/candidate_list.vue';
-import SearchableList from '~/ml/model_registry/components/searchable_list.vue';
-import CandidateListRow from '~/ml/model_registry/components/candidate_list_row.vue';
+import SearchableTable from '~/ml/model_registry/components/searchable_table.vue';
+import CandidatesTable from '~/ml/model_registry/components/candidates_table.vue';
 import getModelCandidatesQuery from '~/ml/model_registry/graphql/queries/get_model_candidates.query.graphql';
 import { GRAPHQL_PAGE_SIZE } from '~/ml/model_registry/constants';
 import {
@@ -22,8 +23,8 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
   let wrapper;
   let apolloProvider;
 
-  const findSearchableList = () => wrapper.findComponent(SearchableList);
-  const findAllRows = () => wrapper.findAllComponents(CandidateListRow);
+  const findSearchableTable = () => wrapper.findComponent(SearchableTable);
+  const findEmptyState = () => wrapper.findComponent(GlEmptyState);
 
   const mountComponent = ({
     props = {},
@@ -35,8 +36,11 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
     wrapper = mount(CandidateList, {
       apolloProvider,
       propsData: {
-        modelId: 2,
+        modelId: 'gid://gitlab/Ml::Model/2',
         ...props,
+      },
+      stubs: {
+        SearchableTable,
       },
     });
   };
@@ -53,7 +57,13 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
     });
 
     it('shows empty state', () => {
-      expect(wrapper.text()).toContain('This model has no candidates');
+      expect(findEmptyState().props('description')).toBe(
+        'Use runs to track performance, parameters, and metadata',
+      );
+      expect(findEmptyState().props('title')).toBe('No runs associated with this model');
+      expect(findEmptyState().findComponent(GlButton).attributes('href')).toBe(
+        '/help/user/project/ml/experiment_tracking/mlflow_client.md#logging-runs-to-a-model',
+      );
     });
   });
 
@@ -66,8 +76,8 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
     });
 
     it('is displayed', () => {
-      expect(findSearchableList().props('errorMessage')).toBe(
-        'Failed to load model candidates with error: Failure!',
+      expect(findSearchableTable().props('errorMessage')).toBe(
+        'Failed to load model runs with error: Failure!',
       );
     });
 
@@ -82,22 +92,20 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
       await waitForPromises();
     });
 
+    it('does not show emptystate', () => {
+      expect(findEmptyState().exists()).toBe(false);
+    });
+
+    it('passes CandidatesTable to table prop', () => {
+      expect(findSearchableTable().props('table')).toBe(CandidatesTable);
+    });
+
     it('Passes items to list', () => {
-      expect(findSearchableList().props('items')).toEqual(graphqlCandidates);
+      expect(findSearchableTable().props('items')).toEqual(graphqlCandidates);
     });
 
     it('displays package version rows', () => {
-      expect(findAllRows()).toHaveLength(graphqlCandidates.length);
-    });
-
-    it('binds the correct props', () => {
-      expect(findAllRows().at(0).props()).toMatchObject({
-        candidate: expect.objectContaining(graphqlCandidates[0]),
-      });
-
-      expect(findAllRows().at(1).props()).toMatchObject({
-        candidate: expect.objectContaining(graphqlCandidates[1]),
-      });
+      expect(findSearchableTable().props('items')).toHaveLength(graphqlCandidates.length);
     });
   });
 
@@ -109,8 +117,12 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
       await waitForPromises();
     });
 
+    it('calls query only once on setup', () => {
+      expect(resolver).toHaveBeenCalledTimes(1);
+    });
+
     it('when list emits fetch-page fetches the next set of records', async () => {
-      findSearchableList().vm.$emit('fetch-page', {
+      findSearchableTable().vm.$emit('fetch-page', {
         after: 'eyJpZCI6IjIifQ',
         first: 30,
         id: 'gid://gitlab/Ml::Model/2',
@@ -118,9 +130,11 @@ describe('ml/model_registry/components/candidate_list.vue', () => {
 
       await waitForPromises();
 
-      expect(resolver).toHaveBeenLastCalledWith(
-        expect.objectContaining({ after: graphqlPageInfo.endCursor, first: GRAPHQL_PAGE_SIZE }),
-      );
+      expect(resolver).toHaveBeenLastCalledWith({
+        after: graphqlPageInfo.endCursor,
+        first: GRAPHQL_PAGE_SIZE,
+        id: 'gid://gitlab/Ml::Model/2',
+      });
     });
   });
 });

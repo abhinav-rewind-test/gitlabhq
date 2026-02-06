@@ -6,9 +6,10 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
   include ProjectForksHelper
 
   let_it_be_with_refind(:user) { create(:user) }
-  let_it_be_with_refind(:project) { create(:project) }
+  let_it_be_with_refind(:project) { create(:project, :repository) }
 
-  let(:pipeline) { create(:ci_pipeline, project: project) }
+  let(:sha) { project.repository.commit.sha }
+  let(:pipeline) { create(:ci_pipeline, sha: sha, project: project) }
   let(:build_stage) { create(:ci_stage, name: 'build', position: 0, pipeline: pipeline) }
   let(:test_stage) { create(:ci_stage, name: 'test', position: 1, pipeline: pipeline) }
   let(:deploy_stage) { create(:ci_stage, name: 'deploy', position: 2, pipeline: pipeline) }
@@ -22,6 +23,19 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
       create(:protected_branch, :developers_can_merge, name: pipeline.ref, project: project)
     end
 
+    shared_examples 'does not write to ci_builds_metadata' do
+      it 'does not write to ci_builds_metadata' do
+        expect { service.execute(pipeline) }.to not_change { Ci::BuildMetadata.count }
+      end
+    end
+
+    it 'clears the finished_at timestamp' do
+      pipeline.update!(finished_at: 1.hour.ago)
+
+      expect { service.execute(pipeline) }
+        .to change { pipeline.reload.finished_at }.to(nil)
+    end
+
     context 'when there are already retried jobs present' do
       before do
         create_build('rspec', :canceled, build_stage, retried: true)
@@ -33,6 +47,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
         expect { service.execute(pipeline) }
           .to change { CommitStatus.count }.by(1)
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when there are failed builds in the last stage' do
@@ -49,6 +65,15 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
         expect(build('rspec 3')).to be_pending
         expect(pipeline.reload).to be_running
       end
+
+      it 'preloads the job definition instances' do
+        expected_count = 3 # 1 select + 2 inserts
+
+        expect { service.execute(pipeline) }
+          .to match_query_count(expected_count).for_model(Ci::JobDefinitionInstance)
+      end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when there are failed or canceled builds in the first stage' do
@@ -80,6 +105,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
         expect(build('rspec 3').user).to eq(user)
         expect(build('spinach 1').user).to eq(user)
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when there is failed build present which was run on failure' do
@@ -105,6 +132,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
 
         expect(statuses.find_by(name: 'report 1', status: 'failed')).to be_retried
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when there is a failed test in a DAG' do
@@ -138,7 +167,11 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
           expect(build('test')).to be_pending
           expect(build('deploy')).to be_pending
         end
+
+        it_behaves_like 'does not write to ci_builds_metadata'
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when the last stage was skipped' do
@@ -158,6 +191,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
         expect(build('report 4')).to be_created
         expect(pipeline.reload).to be_running
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when pipeline contains manual actions' do
@@ -187,6 +222,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
             expect(build('staging').user).to eq(user)
             expect(build('rspec 2').user).to eq(user)
           end
+
+          it_behaves_like 'does not write to ci_builds_metadata'
         end
       end
 
@@ -206,6 +243,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
             expect(build('verify')).to be_created
             expect(pipeline.reload).to be_running
           end
+
+          it_behaves_like 'does not write to ci_builds_metadata'
         end
 
         context 'when pipeline retry should block pipeline immediately' do
@@ -224,6 +263,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
             expect(build('verify')).to be_created
             expect(pipeline.reload).to be_blocked
           end
+
+          it_behaves_like 'does not write to ci_builds_metadata'
         end
       end
 
@@ -242,6 +283,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
           expect(build('staging')).to be_created
           expect(pipeline.reload).to be_running
         end
+
+        it_behaves_like 'does not write to ci_builds_metadata'
       end
 
       context 'when there is a created manual action in the last stage' do
@@ -257,6 +300,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
           expect(build('staging')).to be_created
           expect(pipeline.reload).to be_running
         end
+
+        it_behaves_like 'does not write to ci_builds_metadata'
       end
 
       context 'when there is a created manual action in the first stage' do
@@ -272,6 +317,8 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
           expect(build('staging')).to be_manual
           expect(pipeline.reload).to be_running
         end
+
+        it_behaves_like 'does not write to ci_builds_metadata'
       end
 
       context 'when there is a failed manual action' do
@@ -322,28 +369,21 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
       end
     end
 
-    context 'when the pipeline is a downstream pipeline and the bridge is depended' do
-      let!(:bridge) { create(:ci_bridge, :strategy_depend, status: 'success') }
-
+    shared_examples 'updates the bridge status when authorized' do
       before do
         create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge)
       end
 
-      context 'without permission' do
-        it 'does nothing to the bridge' do
+      context 'without authorization' do
+        it 'does not change the bridge status' do
           expect { service.execute(pipeline) }.to not_change { bridge.reload.status }
            .and not_change { bridge.reload.user }
         end
       end
 
-      context 'with permission' do
-        let!(:bridge_pipeline) { create(:ci_pipeline, project: create(:project)) }
-        let!(:bridge) do
-          create(:ci_bridge, :strategy_depend, status: 'success', pipeline: bridge_pipeline)
-        end
-
+      context 'with authorization' do
         before do
-          bridge_pipeline.project.add_maintainer(user)
+          downstream_pipeline.project.add_maintainer(user)
         end
 
         it 'marks source bridge as pending' do
@@ -353,6 +393,45 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
         it 'assigns the current user to the source bridge' do
           expect { service.execute(pipeline) }.to change { bridge.reload.user }.to(user)
         end
+
+        context 'when the bridge record has been modified by another process' do
+          before do
+            allow(pipeline).to receive(:reset_source_bridge!).and_raise(ActiveRecord::StaleObjectError)
+          end
+
+          it 'returns an error response' do
+            response = service.execute(pipeline)
+
+            expect(response.http_status).to eq(:conflict)
+            expect(response.message).to eq('Error updating stale job')
+          end
+
+          context 'when the rescue_stale_object_errors_in_pipeline_processing feature flag is disabled' do
+            before do
+              stub_feature_flags(rescue_stale_object_errors_in_pipeline_processing: false)
+            end
+
+            it 'raises an error' do
+              expect { service.execute(pipeline) }.to raise_error(ActiveRecord::StaleObjectError)
+            end
+          end
+        end
+      end
+    end
+
+    context 'when the pipeline is a downstream pipeline and the bridge status has a strategy' do
+      let!(:downstream_pipeline) { create(:ci_pipeline, project: create(:project)) }
+
+      context 'when the strategy is `depend`' do
+        let!(:bridge) { create(:ci_bridge, :strategy_depend, status: 'success', pipeline: downstream_pipeline) }
+
+        it_behaves_like 'updates the bridge status when authorized'
+      end
+
+      context 'when the strategy is `mirror`' do
+        let!(:bridge) { create(:ci_bridge, :strategy_mirror, status: 'success', pipeline: downstream_pipeline) }
+
+        it_behaves_like 'updates the bridge status when authorized'
       end
     end
 
@@ -374,14 +453,32 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
 
         expect(pipeline.reload).to be_running
       end
+
+      it_behaves_like 'does not write to ci_builds_metadata'
     end
 
     context 'when user is not allowed to retry build' do
       before do
         build = create(:ci_build, pipeline: pipeline, status: :failed)
         allow_next_instance_of(Ci::RetryJobService) do |service|
-          allow(service).to receive(:can?).with(user, :update_build, build).and_return(false)
+          allow(service).to receive(:can?).with(user, :retry_job, build).and_return(false)
         end
+      end
+
+      it 'returns an error' do
+        response = service.execute(pipeline)
+
+        expect(response.http_status).to eq(:forbidden)
+        expect(response.errors).to include('403 Forbidden')
+        expect(pipeline.reload).not_to be_running
+      end
+    end
+
+    context 'when the pipeline is archived' do
+      let(:pipeline) { create(:ci_pipeline, project: project, created_at: 1.day.ago) }
+
+      before do
+        stub_application_setting(archive_builds_in_seconds: 3600)
       end
 
       it 'returns an error' do
@@ -445,9 +542,10 @@ RSpec.describe Ci::RetryPipelineService, '#execute', feature_category: :continuo
 
   context 'when maintainer is allowed to push to forked project' do
     let(:user) { create(:user) }
-    let(:project) { create(:project, :public) }
-    let(:forked_project) { fork_project(project) }
-    let(:pipeline) { create(:ci_pipeline, project: forked_project, ref: 'fixes') }
+    let(:project) { create(:project, :public, :repository) }
+    let(:forked_project) { fork_project(project, nil, repository: true) }
+    let(:sha) { forked_project.repository.commit.sha }
+    let(:pipeline) { create(:ci_pipeline, sha: sha, project: forked_project, ref: 'fixes') }
 
     before do
       project.add_maintainer(user)

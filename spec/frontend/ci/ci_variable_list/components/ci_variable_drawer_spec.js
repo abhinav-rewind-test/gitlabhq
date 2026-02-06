@@ -4,10 +4,13 @@ import {
   GlFormCombobox,
   GlFormGroup,
   GlFormInput,
-  GlFormSelect,
+  GlCollapsibleListbox,
   GlLink,
   GlModal,
   GlSprintf,
+  GlFormRadio,
+  GlFormRadioGroup,
+  GlPopover,
 } from '@gitlab/ui';
 import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { helpPagePath } from '~/helpers/help_page_helper';
@@ -20,9 +23,13 @@ import {
   EDIT_VARIABLE_ACTION,
   EVENT_ACTION,
   variableOptions,
+  VISIBILITY_HIDDEN,
+  VISIBILITY_MASKED,
+  VISIBILITY_VISIBLE,
   projectString,
   variableTypes,
 } from '~/ci/ci_variable_list/constants';
+import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
 import { mockTracking } from 'helpers/tracking_helper';
 import { mockVariablesWithScopes } from '../mocks';
 
@@ -46,11 +53,13 @@ describe('CI Variable Drawer', () => {
 
   const defaultProps = {
     areEnvironmentsLoading: false,
+    areHiddenVariablesAvailable: true,
     areScopedVariablesAvailable: true,
     environments: mockEnvironments,
     hideEnvironmentScope: false,
     selectedVariable: {},
     mode: ADD_VARIABLE_ACTION,
+    raw: true,
   };
 
   const defaultProvide = {
@@ -87,36 +96,211 @@ describe('CI Variable Drawer', () => {
   const findDrawer = () => wrapper.findComponent(GlDrawer);
   const findEnvironmentScopeDropdown = () => wrapper.findComponent(CiEnvironmentsDropdown);
   const findExpandedCheckbox = () => wrapper.findByTestId('ci-variable-expanded-checkbox');
-  const findFlagsDocsLink = () => wrapper.findByTestId('ci-variable-flags-docs-link');
   const findKeyField = () => wrapper.findComponent(GlFormCombobox);
-  const findMaskedCheckbox = () => wrapper.findByTestId('ci-variable-masked-checkbox');
+  const findVisibilityRadioButtons = () => wrapper.findAllComponents(GlFormRadio);
+  const findVisibilityRadioGroup = () => wrapper.findComponent(GlFormRadioGroup);
   const findProtectedCheckbox = () => wrapper.findByTestId('ci-variable-protected-checkbox');
   const findValueField = () => wrapper.findByTestId('ci-variable-value');
-  const findValueLabel = () => wrapper.findByTestId('ci-variable-value-label');
+  const findInvalidMaskedValueErrorsWrapper = () => wrapper.find('.invalid-feedback');
+  const findInvalidMaskedValueErrorList = () => findInvalidMaskedValueErrorsWrapper().find('ul');
+  const findHiddenVariableTip = () => wrapper.findByTestId('hidden-variable-tip');
   const findTitle = () => findDrawer().find('h2');
-  const findTypeDropdown = () => wrapper.findComponent(GlFormSelect);
+  const findTypeDropdown = () => wrapper.findComponent(GlCollapsibleListbox);
   const findVariablesPrecedenceDocsLink = () =>
     wrapper.findByTestId('ci-variable-precedence-docs-link');
+  const findVariablesMaskedValueDocsLink = () =>
+    wrapper.findByTestId('ci-variable-masked-value-docs-link');
+  const findVisibilityLabelHelpContainer = () =>
+    wrapper.findByTestId('visibility-popover-container');
+  const findVisibilityLabelHelpPopover = () =>
+    findVisibilityLabelHelpContainer().findComponent(GlPopover);
+  const findEnvironmentsLabelHelpContainer = () =>
+    wrapper.findByTestId('environments-popover-container');
+  const findEnvironmentsLabelHelpPopover = () =>
+    findEnvironmentsLabelHelpContainer().findComponent(GlPopover);
+  const findFullScreenToggleButton = () => wrapper.findByTestId('ci-variable-fullscreen-toggle');
 
   describe('template', () => {
     beforeEach(() => {
       createComponent({ stubs: { GlFormGroup, GlLink, GlSprintf } });
     });
 
-    it('renders docs link for variables precendece', () => {
+    it('renders docs link for variables precedence', () => {
       expect(findVariablesPrecedenceDocsLink().attributes('href')).toBe(
-        helpPagePath('ci/variables/index', { anchor: 'cicd-variable-precedence' }),
+        helpPagePath('ci/variables/_index', { anchor: 'cicd-variable-precedence' }),
       );
     });
 
-    it('renders docs link for flags', () => {
-      expect(findFlagsDocsLink().attributes('href')).toBe(
-        helpPagePath('ci/variables/index', { anchor: 'define-a-cicd-variable-in-the-ui' }),
+    it('renders docs link for masked CI/CD variable requirements', () => {
+      createComponent({ mountFn: mountExtended });
+
+      expect(findVariablesMaskedValueDocsLink().attributes('href')).toBe(
+        helpPagePath('ci/variables/_index', { anchor: 'mask-a-cicd-variable' }),
       );
     });
 
     it('value field is resizable', () => {
       expect(findValueField().props('noResize')).toBe(false);
+    });
+
+    describe('environments label', () => {
+      it('has a help icon', () => {
+        const helpIcon = findEnvironmentsLabelHelpContainer().findComponent(HelpIcon);
+
+        expect(helpIcon.exists()).toBe(true);
+      });
+
+      it('has a popover', () => {
+        const popover = findEnvironmentsLabelHelpPopover();
+
+        expect(popover.exists()).toBe(true);
+        expect(popover.props()).toMatchObject({
+          target: 'environments-popover-target',
+          container: 'environments-popover-container',
+        });
+      });
+
+      describe('popover', () => {
+        it('renders the correct content', () => {
+          const popover = findEnvironmentsLabelHelpPopover();
+
+          expect(popover.text()).toContain(
+            'You can use a specific environment name like production, or include a wildcard (*) to match multiple environments, like review*.  Learn how to restrict CI/CD variables to specific environments for better security.',
+          );
+        });
+
+        it('renders the documentation link', () => {
+          const popover = findEnvironmentsLabelHelpPopover();
+          const link = popover.findComponent(GlLink);
+          const documentationLink = helpPagePath('ci/environments/_index', {
+            anchor: 'limit-the-environment-scope-of-a-cicd-variable',
+          });
+
+          expect(link.attributes('href')).toBe(documentationLink);
+        });
+      });
+    });
+
+    describe('visibility label', () => {
+      it('has a help icon', () => {
+        const helpIcon = findVisibilityLabelHelpContainer().findComponent(HelpIcon);
+
+        expect(helpIcon.exists()).toBe(true);
+      });
+
+      it('has a popover', () => {
+        const popover = findVisibilityLabelHelpPopover();
+
+        expect(popover.exists()).toBe(true);
+        expect(popover.props()).toMatchObject({
+          target: 'visibility-popover-target',
+          container: 'visibility-popover-container',
+        });
+      });
+
+      describe('popover', () => {
+        it('renders the correct content', () => {
+          const popover = findVisibilityLabelHelpPopover();
+
+          expect(popover.text()).toContain(
+            "Set the visibility level for the variable's value. The Masked and hidden option is only available for new variables. You cannot update an existing variable to be hidden.",
+          );
+        });
+
+        it('renders the documentation link', () => {
+          const popover = findVisibilityLabelHelpPopover();
+          const link = popover.findComponent(GlLink);
+          const documentationLink = helpPagePath('ci/variables/_index', {
+            anchor: 'hide-a-cicd-variable',
+          });
+
+          expect(link.attributes('href')).toBe(documentationLink);
+        });
+      });
+    });
+  });
+
+  describe('when selected variable changes', () => {
+    beforeEach(() => {
+      createComponent({
+        props: { selectedVariable: mockProjectVariable },
+      });
+    });
+
+    describe('when selected variable is not empty', () => {
+      const newVariable = mockVariablesWithScopes(projectString)[1];
+
+      it('updates the variable key', async () => {
+        expect(findKeyField().props('value')).toBe(mockProjectVariable.key);
+
+        await wrapper.setProps({
+          selectedVariable: newVariable,
+        });
+        expect(findKeyField().props('value')).toBe(newVariable.key);
+      });
+
+      it('updates the variable value', async () => {
+        expect(findValueField().props('value')).toBe(mockProjectVariable.value);
+
+        await wrapper.setProps({
+          selectedVariable: newVariable,
+        });
+        expect(findValueField().props('value')).toBe(newVariable.value);
+      });
+
+      it('updates the visibility value', async () => {
+        expect(findVisibilityRadioGroup().attributes('checked')).toBe(VISIBILITY_VISIBLE);
+
+        await wrapper.setProps({
+          selectedVariable: { ...newVariable, masked: true, hidden: true },
+        });
+        expect(findVisibilityRadioGroup().attributes('checked')).toBe(VISIBILITY_HIDDEN);
+      });
+
+      it('updates the protected value', async () => {
+        expect(findProtectedCheckbox().attributes('checked')).toBeDefined();
+
+        await wrapper.setProps({
+          selectedVariable: { ...newVariable, protected: false },
+        });
+        expect(findProtectedCheckbox().attributes('checked')).toBeUndefined();
+      });
+    });
+
+    describe('when selected variable is empty', () => {
+      const newVariable = {};
+
+      it('resets the variable key', async () => {
+        expect(findKeyField().props('value')).toBe(mockProjectVariable.key);
+
+        await wrapper.setProps({
+          selectedVariable: newVariable,
+        });
+        expect(findKeyField().props('value')).toBe('');
+      });
+
+      it('resets the variable value', async () => {
+        expect(findValueField().props('value')).toBe(mockProjectVariable.value);
+
+        await wrapper.setProps({
+          selectedVariable: newVariable,
+        });
+        expect(findValueField().props('value')).toBe('');
+      });
+
+      it('updates the protected value to true if isProtectedByDefault', async () => {
+        expect(findProtectedCheckbox().attributes('checked')).toBeDefined();
+
+        await wrapper.setProps({
+          selectedVariable: { ...mockProjectVariable, protected: false },
+        });
+        expect(findProtectedCheckbox().attributes('checked')).toBeUndefined();
+
+        await wrapper.setProps({
+          selectedVariable: newVariable,
+        });
+        expect(findProtectedCheckbox().attributes('checked')).toBeDefined();
+      });
     });
   });
 
@@ -127,7 +311,7 @@ describe('CI Variable Drawer', () => {
       });
 
       it('adds each type option as a dropdown item', () => {
-        expect(findTypeDropdown().findAll('option')).toHaveLength(variableOptions.length);
+        expect(findTypeDropdown().props('items')).toHaveLength(variableOptions.length);
 
         variableOptions.forEach((v) => {
           expect(findTypeDropdown().text()).toContain(v.text);
@@ -135,21 +319,19 @@ describe('CI Variable Drawer', () => {
       });
 
       it('is set to environment variable by default', () => {
-        expect(findTypeDropdown().findAll('option').at(0).attributes('value')).toBe(
-          variableTypes.envType,
-        );
+        expect(findTypeDropdown().props('items')[0].value).toBe(variableTypes.envType);
       });
 
       it('renders the selected variable type', () => {
         createComponent({
-          mountFn: mountExtended,
+          mountFn: shallowMountExtended,
           props: {
             areEnvironmentsLoading: true,
             selectedVariable: mockProjectVariableFileType,
           },
         });
 
-        expect(findTypeDropdown().element.value).toBe(variableTypes.fileType);
+        expect(findTypeDropdown().props('selected')).toBe(variableTypes.fileType);
       });
     });
 
@@ -186,7 +368,85 @@ describe('CI Variable Drawer', () => {
         });
 
         expect(findEnvironmentScopeDropdown().exists()).toBe(false);
-        expect(findDisabledEnvironmentScopeDropdown().attributes('readonly')).toBe('readonly');
+        expect(findDisabledEnvironmentScopeDropdown().attributes('readonly')).toBeDefined();
+      });
+    });
+
+    describe('visibility section', () => {
+      it('renders two radio buttons when areHiddenVariablesAvailable is false', () => {
+        createComponent({
+          props: { areHiddenVariablesAvailable: false },
+        });
+
+        expect(findVisibilityRadioButtons()).toHaveLength(2);
+      });
+
+      it('renders three radio buttons when areHiddenVariablesAvailable is true', () => {
+        createComponent({
+          props: { areHiddenVariablesAvailable: true },
+        });
+
+        expect(findVisibilityRadioButtons()).toHaveLength(3);
+      });
+
+      describe('radio button behavior', () => {
+        beforeEach(() => {
+          createComponent({ props: { areHiddenVariablesAvailable: true } });
+        });
+
+        it('is set to masked by default', () => {
+          expect(findVisibilityRadioGroup().attributes('checked')).toBe(VISIBILITY_MASKED);
+        });
+
+        it.each`
+          description            | masked   | hidden   | expectedVisibility
+          ${'visible'}           | ${false} | ${false} | ${VISIBILITY_VISIBLE}
+          ${'masked'}            | ${true}  | ${false} | ${VISIBILITY_MASKED}
+          ${'masked and hidden'} | ${true}  | ${true}  | ${VISIBILITY_HIDDEN}
+        `(
+          'selects $description visibility when masked is $masked and hidden is $hidden',
+          async ({ masked, hidden, expectedVisibility }) => {
+            await createComponent({
+              props: {
+                selectedVariable: {
+                  ...mockProjectVariableFileType,
+                  ...{ masked, hidden },
+                },
+                mode: EDIT_VARIABLE_ACTION,
+              },
+            });
+
+            expect(findVisibilityRadioGroup().attributes('checked')).toBe(expectedVisibility);
+          },
+        );
+
+        it('is updated on variable update', async () => {
+          await createComponent({
+            props: {
+              selectedVariable: {
+                ...mockProjectVariableFileType,
+                masked: false,
+              },
+            },
+          });
+
+          expect(findVisibilityRadioGroup().attributes('checked')).toBe(VISIBILITY_VISIBLE);
+          await wrapper.setProps({ mutationResponse: { message: 'Success', hasError: false } });
+
+          expect(findVisibilityRadioGroup().attributes('checked')).toBe(VISIBILITY_MASKED);
+        });
+      });
+
+      it('is disabled when editing a hidden variable', () => {
+        createComponent({
+          props: {
+            areHiddenVariablesAvailable: true,
+            selectedVariable: { ...mockProjectVariable, hidden: true },
+            mode: EDIT_VARIABLE_ACTION,
+          },
+        });
+
+        expect(findVisibilityRadioGroup().attributes().disabled).toBe('true');
       });
     });
 
@@ -217,74 +477,62 @@ describe('CI Variable Drawer', () => {
       });
     });
 
-    describe('masked flag', () => {
-      beforeEach(() => {
-        createComponent();
-      });
-
-      it('is false by default', () => {
-        expect(findMaskedCheckbox().attributes('checked')).toBeUndefined();
-      });
-
-      it('inherits value of selected variable when editing', () => {
-        createComponent({
-          props: {
-            selectedVariable: mockProjectVariableFileType,
-            mode: EDIT_VARIABLE_ACTION,
-          },
-        });
-
-        expect(findMaskedCheckbox().attributes('checked')).toBeDefined();
-      });
-    });
-
     describe('expanded flag', () => {
       beforeEach(() => {
         createComponent();
       });
 
-      it('is true by default when adding a variable', () => {
-        expect(findExpandedCheckbox().attributes('checked')).toBeDefined();
+      it('is false by default when adding a variable', () => {
+        expect(findExpandedCheckbox().attributes('checked')).toBeUndefined();
       });
 
       it('inherits value of selected variable when editing', () => {
         createComponent({
           props: {
-            selectedVariable: mockProjectVariableFileType,
+            selectedVariable: mockProjectVariable,
             mode: EDIT_VARIABLE_ACTION,
           },
         });
 
-        expect(findExpandedCheckbox().attributes('checked')).toBeUndefined();
+        expect(findExpandedCheckbox().attributes('checked')).toBe('true');
       });
 
       it("sets the variable's raw value", async () => {
-        await findKeyField().vm.$emit('input', 'NEW_VARIABLE');
-        await findExpandedCheckbox().vm.$emit('change');
-        await findConfirmBtn().vm.$emit('click');
+        findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+        findExpandedCheckbox().vm.$emit('change', true);
+        findConfirmBtn().vm.$emit('click');
+
+        await nextTick();
 
         const sentRawValue = wrapper.emitted('add-variable')[0][0].raw;
         expect(sentRawValue).toBe(!defaultProps.raw);
       });
 
       it('shows help text when variable is not expanded (will be evaluated as raw)', async () => {
+        expect(findExpandedCheckbox().attributes('checked')).toBeUndefined();
+        expect(findDrawer().text()).toContain('Variable value will be evaluated as raw string.');
+
+        findExpandedCheckbox().vm.$emit('change', true);
+
+        await nextTick();
+
         expect(findExpandedCheckbox().attributes('checked')).toBeDefined();
         expect(findDrawer().text()).not.toContain(
           'Variable value will be evaluated as raw string.',
         );
-
-        await findExpandedCheckbox().vm.$emit('change');
-
-        expect(findExpandedCheckbox().attributes('checked')).toBeUndefined();
-        expect(findDrawer().text()).toContain('Variable value will be evaluated as raw string.');
       });
 
       it('shows help text when variable is expanded and contains the $ character', async () => {
+        findExpandedCheckbox().vm.$emit('change', true);
+        await nextTick();
+
         expect(findDrawer().text()).not.toContain(
           'Unselect "Expand variable reference" if you want to use the variable value as a raw string.',
         );
 
-        await findValueField().vm.$emit('input', '$NEW_VALUE');
+        findValueField().vm.$emit('input', '$NEW_VALUE');
+
+        await nextTick();
 
         expect(findDrawer().text()).toContain(
           'Unselect "Expand variable reference" if you want to use the variable value as a raw string.',
@@ -312,9 +560,11 @@ describe('CI Variable Drawer', () => {
         ${'multiline\nkey'}      | ${keyFeedbackMessage} | ${'true'}
       `('key validation', ({ key, feedbackMessage, submitButtonDisabledState }) => {
         it(`validates key ${key} correctly`, async () => {
-          await findKeyField().vm.$emit('input', key);
+          findKeyField().vm.$emit('input', key);
 
-          expect(findConfirmBtn().attributes('disabled')).toBe(submitButtonDisabledState);
+          await nextTick();
+
+          expect(findConfirmBtn().attributes().disabled).toBe(submitButtonDisabledState);
           expect(wrapper.text()).toContain(feedbackMessage);
         });
       });
@@ -326,7 +576,9 @@ describe('CI Variable Drawer', () => {
       });
 
       it('can submit empty value', async () => {
-        await findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+        findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+
+        await nextTick();
 
         // value is empty by default
         expect(findConfirmBtn().attributes('disabled')).toBeUndefined();
@@ -343,75 +595,81 @@ describe('CI Variable Drawer', () => {
         shortAndMultiLineAndUnsupportedChar: 'short\n!',
         multiLineAndUnsupportedChar: 'multiline\nvalue!',
       };
+      const maskedValidationIssuesTitle = 'Unable to create masked variable because:';
       const maskedValidationIssuesText = {
-        short: 'The value must have at least 8 characters.',
-        multiLine:
-          'This value cannot be masked because it contains the following characters: whitespace characters.',
-        unsupportedChar:
-          'This value cannot be masked because it contains the following characters: |.',
-        unsupportedDollarChar:
-          'This value cannot be masked because it contains the following characters: $.',
-        twoUnsupportedChars:
-          'This value cannot be masked because it contains the following characters: |, !.',
-        threeUnsupportedChars:
-          'This value cannot be masked because it contains the following characters: %, |, !.',
+        short: 'The value must have 8 characters.',
+        multiLine: 'The value cannot contain the following characters: whitespace characters.',
+        unsupportedChar: 'The value cannot contain the following characters: |.',
+        unsupportedDollarChar: 'The value cannot contain the following characters: $.',
+        twoUnsupportedChars: 'The value cannot contain the following characters: |, !.',
+        threeUnsupportedChars: 'The value cannot contain the following characters: %, |, !.',
         shortAndMultiLine:
-          'This value cannot be masked because it contains the following characters: whitespace characters. The value must have at least 8 characters.',
+          'The value cannot contain the following characters: whitespace characters.The value must have 8 characters.',
         shortAndUnsupportedChar:
-          'This value cannot be masked because it contains the following characters: !. The value must have at least 8 characters.',
+          'The value cannot contain the following characters: !.The value must have 8 characters.',
         shortAndMultiLineAndUnsupportedChar:
-          'This value cannot be masked because it contains the following characters: ! and whitespace characters. The value must have at least 8 characters.',
+          'The value cannot contain the following characters: ! and whitespace characters.The value must have 8 characters.',
         multiLineAndUnsupportedChar:
-          'This value cannot be masked because it contains the following characters: ! and whitespace characters.',
+          'The value cannot contain the following characters: ! and whitespace characters.',
       };
 
       describe.each`
-        value                                                | canSubmit | trackingErrorProperty | validationIssueKey
-        ${'secretValue'}                                     | ${true}   | ${null}               | ${''}
-        ${'~v@lid:symbols.'}                                 | ${true}   | ${null}               | ${''}
-        ${invalidValues.short}                               | ${false}  | ${null}               | ${'short'}
-        ${invalidValues.multiLine}                           | ${false}  | ${'\n'}               | ${'multiLine'}
-        ${'dollar$ign'}                                      | ${false}  | ${'$'}                | ${'unsupportedDollarChar'}
-        ${invalidValues.unsupportedChar}                     | ${false}  | ${'|'}                | ${'unsupportedChar'}
-        ${invalidValues.twoUnsupportedChars}                 | ${false}  | ${'|!'}               | ${'twoUnsupportedChars'}
-        ${invalidValues.threeUnsupportedChars}               | ${false}  | ${'%|!'}              | ${'threeUnsupportedChars'}
-        ${invalidValues.shortAndMultiLine}                   | ${false}  | ${'\n'}               | ${'shortAndMultiLine'}
-        ${invalidValues.shortAndUnsupportedChar}             | ${false}  | ${'!'}                | ${'shortAndUnsupportedChar'}
-        ${invalidValues.shortAndMultiLineAndUnsupportedChar} | ${false}  | ${'\n!'}              | ${'shortAndMultiLineAndUnsupportedChar'}
-        ${invalidValues.multiLineAndUnsupportedChar}         | ${false}  | ${'\n!'}              | ${'multiLineAndUnsupportedChar'}
+        value                                                | canSubmit | expanded | trackingErrorProperty | validationIssueKey
+        ${'secretValue'}                                     | ${true}   | ${false} | ${null}               | ${''}
+        ${'~v@lid:symbols.'}                                 | ${true}   | ${false} | ${null}               | ${''}
+        ${'dollar$ign'}                                      | ${true}   | ${false} | ${null}               | ${''}
+        ${'dollar$ign'}                                      | ${false}  | ${true}  | ${'$'}                | ${'unsupportedDollarChar'}
+        ${invalidValues.short}                               | ${false}  | ${false} | ${null}               | ${'short'}
+        ${invalidValues.multiLine}                           | ${false}  | ${false} | ${'\n'}               | ${'multiLine'}
+        ${invalidValues.unsupportedChar}                     | ${true}   | ${false} | ${null}               | ${''}
+        ${invalidValues.unsupportedChar}                     | ${false}  | ${true}  | ${'|'}                | ${'unsupportedChar'}
+        ${invalidValues.twoUnsupportedChars}                 | ${true}   | ${false} | ${null}               | ${''}
+        ${invalidValues.twoUnsupportedChars}                 | ${false}  | ${true}  | ${'|!'}               | ${'twoUnsupportedChars'}
+        ${invalidValues.threeUnsupportedChars}               | ${true}   | ${false} | ${null}               | ${''}
+        ${invalidValues.threeUnsupportedChars}               | ${false}  | ${true}  | ${'%|!'}              | ${'threeUnsupportedChars'}
+        ${invalidValues.shortAndMultiLine}                   | ${false}  | ${false} | ${'\n'}               | ${'shortAndMultiLine'}
+        ${invalidValues.shortAndUnsupportedChar}             | ${false}  | ${false} | ${null}               | ${'short'}
+        ${invalidValues.shortAndUnsupportedChar}             | ${false}  | ${true}  | ${'!'}                | ${'shortAndUnsupportedChar'}
+        ${invalidValues.shortAndMultiLineAndUnsupportedChar} | ${false}  | ${false} | ${'\n'}               | ${'shortAndMultiLine'}
+        ${invalidValues.shortAndMultiLineAndUnsupportedChar} | ${false}  | ${true}  | ${'\n'}               | ${'shortAndMultiLineAndUnsupportedChar'}
+        ${invalidValues.multiLineAndUnsupportedChar}         | ${false}  | ${false} | ${'\n'}               | ${'multiLine'}
+        ${invalidValues.multiLineAndUnsupportedChar}         | ${false}  | ${true}  | ${'\n'}               | ${'multiLineAndUnsupportedChar'}
       `(
         'masking requirements',
-        ({ value, canSubmit, trackingErrorProperty, validationIssueKey }) => {
+        ({ value, canSubmit, expanded, trackingErrorProperty, validationIssueKey }) => {
           beforeEach(() => {
-            createComponent();
+            createComponent({ mountFn: mountExtended });
 
             trackingSpy = mockTracking(undefined, wrapper.element, jest.spyOn);
             findKeyField().vm.$emit('input', 'NEW_VARIABLE');
             findValueField().vm.$emit('input', value);
-            findMaskedCheckbox().vm.$emit('input', true);
+            findVisibilityRadioGroup().vm.$emit('change', VISIBILITY_MASKED);
+
+            findExpandedCheckbox().setChecked(expanded);
           });
 
-          itif(canSubmit)(`can submit when value is ${value}`, () => {
+          itif(canSubmit)(`can submit when value is ${value} and expanded=${expanded}`, () => {
             /* eslint-disable jest/no-standalone-expect */
-            expect(findValueLabel().attributes('invalid-feedback')).toBe('');
+            expect(findInvalidMaskedValueErrorList().text()).toBe('');
             expect(findConfirmBtn().attributes('disabled')).toBeUndefined();
             /* eslint-enable jest/no-standalone-expect */
           });
 
           itif(!canSubmit)(
-            `shows validation errors and disables submit button when value is ${value}`,
+            `shows validation errors and disables submit button when value is ${value} and expanded=${expanded}`,
             () => {
               const validationIssueText = maskedValidationIssuesText[validationIssueKey] || '';
+              const errorText = findInvalidMaskedValueErrorsWrapper().text();
 
               /* eslint-disable jest/no-standalone-expect */
-              expect(findValueLabel().attributes('invalid-feedback')).toBe(validationIssueText);
+              expect(errorText).toBe(`${maskedValidationIssuesTitle} ${validationIssueText}`);
               expect(findConfirmBtn().attributes('disabled')).toBeDefined();
               /* eslint-enable jest/no-standalone-expect */
             },
           );
 
           itif(trackingErrorProperty)(
-            `sends the correct variable validation tracking event when value is ${value}`,
+            `sends the correct variable validation tracking event when value is ${value} and expanded=${expanded}`,
             () => {
               /* eslint-disable jest/no-standalone-expect */
               expect(trackingSpy).toHaveBeenCalledTimes(1);
@@ -424,7 +682,7 @@ describe('CI Variable Drawer', () => {
           );
 
           itif(!trackingErrorProperty)(
-            `does not send the the correct variable validation tracking event when value is ${value}`,
+            `does not send the the correct variable validation tracking event when value is ${value} and expanded=${expanded}`,
             () => {
               // eslint-disable-next-line jest/no-standalone-expect
               expect(trackingSpy).toHaveBeenCalledTimes(0);
@@ -435,18 +693,101 @@ describe('CI Variable Drawer', () => {
 
       it('only sends the tracking event once', async () => {
         trackingSpy = mockTracking(undefined, wrapper.element, jest.spyOn);
-        await findKeyField().vm.$emit('input', 'NEW_VARIABLE');
-        await findMaskedCheckbox().vm.$emit('input', true);
+        findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+        findVisibilityRadioGroup().vm.$emit('change', VISIBILITY_MASKED);
+        findExpandedCheckbox().vm.$emit('change', true);
+
+        await nextTick();
 
         expect(trackingSpy).toHaveBeenCalledTimes(0);
 
-        await findValueField().vm.$emit('input', 'unsupported|char');
+        findValueField().vm.$emit('input', 'unsupported|char');
+
+        await nextTick();
 
         expect(trackingSpy).toHaveBeenCalledTimes(1);
 
-        await findValueField().vm.$emit('input', 'dollar$ign');
+        findValueField().vm.$emit('input', 'dollar$ign');
+
+        await nextTick();
 
         expect(trackingSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('when creating a hidden variable, value field behaves like a masked variable', async () => {
+        createComponent({ mountFn: mountExtended });
+
+        findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+        findValueField().vm.$emit('input', '~v@lid:symbols.');
+        findVisibilityRadioGroup().vm.$emit('change', VISIBILITY_HIDDEN);
+        findExpandedCheckbox().setChecked(true);
+
+        await nextTick();
+
+        expect(findHiddenVariableTip().exists()).toBe(false);
+        expect(findInvalidMaskedValueErrorList().text()).toBe('');
+        expect(findConfirmBtn().attributes('disabled')).toBeUndefined();
+
+        findValueField().vm.$emit('input', 'dollar$ign');
+
+        await nextTick();
+
+        expect(findHiddenVariableTip().exists()).toBe(false);
+        expect(findInvalidMaskedValueErrorList().text()).not.toBe('');
+        expect(findConfirmBtn().attributes('disabled')).toBeDefined();
+      });
+
+      it('when editing a hidden variable, value field is replaced with a hint', () => {
+        createComponent({
+          props: {
+            mode: EDIT_VARIABLE_ACTION,
+            selectedVariable: { ...mockProjectVariable, hidden: true },
+          },
+        });
+
+        expect(findValueField().exists()).toBe(false);
+        expect(findHiddenVariableTip().text()).toBe('The value is masked and hidden permanently.');
+      });
+
+      describe('full-screen toggle', () => {
+        beforeEach(() => {
+          createComponent();
+        });
+
+        it('renders the full-screen toggle button with correct initial state', () => {
+          const button = findFullScreenToggleButton();
+
+          expect(button.props('icon')).toBe('maximize');
+          expect(button.attributes('aria-label')).toBe('Go full screen');
+          expect(button.attributes('title')).toBe('Go full screen');
+        });
+
+        it('toggles icon, aria-label, and title when button is clicked', async () => {
+          const button = findFullScreenToggleButton();
+
+          await button.vm.$emit('click');
+
+          expect(button.props('icon')).toBe('minimize');
+          expect(button.attributes('aria-label')).toBe('Exit full screen');
+          expect(button.attributes('title')).toBe('Exit full screen');
+
+          await button.vm.$emit('click');
+
+          expect(button.props('icon')).toBe('maximize');
+          expect(button.attributes('aria-label')).toBe('Go full screen');
+          expect(button.attributes('title')).toBe('Go full screen');
+        });
+
+        it('does not show full-screen button when editing a hidden variable', () => {
+          createComponent({
+            props: {
+              mode: EDIT_VARIABLE_ACTION,
+              selectedVariable: { ...mockProjectVariable, hidden: true },
+            },
+          });
+
+          expect(findFullScreenToggleButton().exists()).toBe(false);
+        });
       });
     });
   });
@@ -464,7 +805,9 @@ describe('CI Variable Drawer', () => {
 
       expect(wrapper.emitted('close-form')).toBeUndefined();
 
-      await findDrawer().vm.$emit('close');
+      findDrawer().vm.$emit('close');
+
+      await nextTick();
 
       expect(wrapper.emitted('close-form')).toHaveLength(1);
     });
@@ -484,22 +827,24 @@ describe('CI Variable Drawer', () => {
       });
 
       it('dispatches the add-variable event without closing the form', async () => {
-        await findDescriptionField().vm.$emit('input', 'NEW_DESCRIPTION');
-        await findKeyField().vm.$emit('input', 'NEW_VARIABLE');
-        await findProtectedCheckbox().vm.$emit('input', false);
-        await findExpandedCheckbox().vm.$emit('input', true);
-        await findMaskedCheckbox().vm.$emit('input', true);
-        await findValueField().vm.$emit('input', 'NEW_VALUE');
-
+        findDescriptionField().vm.$emit('input', 'NEW_DESCRIPTION');
+        findKeyField().vm.$emit('input', 'NEW_VARIABLE');
+        findProtectedCheckbox().vm.$emit('input', false);
+        findExpandedCheckbox().vm.$emit('change', true);
+        findVisibilityRadioGroup().vm.$emit('change', VISIBILITY_MASKED);
+        findValueField().vm.$emit('input', 'NEW_VALUE');
         findConfirmBtn().vm.$emit('click');
 
-        expect(wrapper.emitted('add-variable')).toEqual([
+        await nextTick();
+
+        expect(wrapper.emitted('add-variable')).toMatchObject([
           [
             {
               environmentScope: '*',
               description: 'NEW_DESCRIPTION',
               key: 'NEW_VARIABLE',
               masked: true,
+              hidden: false,
               protected: false,
               raw: false, // opposite of expanded
               value: 'NEW_VALUE',
@@ -508,6 +853,7 @@ describe('CI Variable Drawer', () => {
           ],
         ]);
         expect(wrapper.emitted('close-form')).toBeUndefined();
+        expect(wrapper.findComponent(GlDrawer).element.scrollTo).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -525,8 +871,10 @@ describe('CI Variable Drawer', () => {
       });
 
       it('dispatches the edit-variable event', async () => {
-        await findValueField().vm.$emit('input', 'EDITED_VALUE');
-        await findDescriptionField().vm.$emit('input', 'EDITED_DESCRIPTION');
+        findValueField().vm.$emit('input', 'EDITED_VALUE');
+        findDescriptionField().vm.$emit('input', 'EDITED_DESCRIPTION');
+
+        await nextTick();
 
         findConfirmBtn().vm.$emit('click');
 
@@ -577,8 +925,10 @@ describe('CI Variable Drawer', () => {
       });
 
       it('sets the environment scope', async () => {
-        await findEnvironmentScopeDropdown().vm.$emit('select-environment', 'staging');
-        await findConfirmBtn().vm.$emit('click');
+        findEnvironmentScopeDropdown().vm.$emit('select-environment', 'staging');
+        findConfirmBtn().vm.$emit('click');
+
+        await nextTick();
 
         expect(wrapper.emitted('update-variable')).toEqual([
           [
@@ -591,7 +941,9 @@ describe('CI Variable Drawer', () => {
       });
 
       it('bubbles up the search event', async () => {
-        await findEnvironmentScopeDropdown().vm.$emit('search-environment-scope', 'staging');
+        findEnvironmentScopeDropdown().vm.$emit('search-environment-scope', 'staging');
+
+        await nextTick();
 
         expect(wrapper.emitted('search-environment-scope')[1]).toEqual(['staging']);
       });

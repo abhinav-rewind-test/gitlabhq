@@ -14,11 +14,25 @@ RSpec.describe JiraConnect::SubscriptionsController, feature_category: :integrat
 
     let(:content_type) { 'text/html' }
 
-    context 'without JWT' do
-      let(:jwt) { nil }
-
+    shared_examples 'returns 403' do
       it 'returns 403' do
         expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+
+    context 'with invalid JWT' do
+      context 'without JWT' do
+        let(:jwt) { nil }
+
+        it_behaves_like 'returns 403'
+      end
+
+      context 'with invalid qsh and non-JSON format' do
+        let(:content_type) { 'text/html' }
+        let(:qsh) { 'invalid-qsh' }
+        let(:jwt) { Atlassian::Jwt.encode({ iss: installation.client_key, qsh: qsh }, installation.shared_secret) }
+
+        it_behaves_like 'returns 403'
       end
     end
 
@@ -40,7 +54,7 @@ RSpec.describe JiraConnect::SubscriptionsController, feature_category: :integrat
         let(:content_type) { 'application/json' }
 
         it 'renders the relevant data as JSON', :aggregate_failures do
-          expect(json_response).to include('groups_path' => api_v4_groups_path(params: { min_access_level: Gitlab::Access::MAINTAINER, skip_groups: [subscription.namespace_id] }))
+          expect(json_response).to include('groups_path' => api_v4_groups_path(params: { min_access_level: Gitlab::Access::MAINTAINER, skip_groups: subscription.namespace_id.to_s }))
           expect(json_response).to include(
             'subscriptions' => [
               'group' => {
@@ -68,6 +82,14 @@ RSpec.describe JiraConnect::SubscriptionsController, feature_category: :integrat
           end
         end
       end
+
+      context 'with HTML format' do
+        let(:content_type) { 'text/html' }
+
+        it 'returns 200' do
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
     end
   end
 
@@ -81,9 +103,7 @@ RSpec.describe JiraConnect::SubscriptionsController, feature_category: :integrat
 
     subject { post :create, params: { jwt: jwt, namespace_path: group.path, format: :json } }
 
-    context 'without JWT' do
-      let(:jwt) { nil }
-
+    shared_examples 'returns 403' do
       it 'returns 403' do
         sign_in(user)
 
@@ -91,6 +111,24 @@ RSpec.describe JiraConnect::SubscriptionsController, feature_category: :integrat
 
         expect(response).to have_gitlab_http_status(:forbidden)
       end
+    end
+
+    context 'without JWT' do
+      let(:jwt) { nil }
+
+      it_behaves_like 'returns 403'
+    end
+
+    context 'with oversized JWT' do
+      let(:jwt) { 'x' * 9.kilobytes }
+
+      it_behaves_like 'returns 403'
+    end
+
+    context 'with empty JWT' do
+      let(:jwt) { '' }
+
+      it_behaves_like 'returns 403'
     end
 
     context 'with valid JWT' do

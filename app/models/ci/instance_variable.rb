@@ -11,19 +11,24 @@ module Ci
     self.limit_name = 'ci_instance_level_variables'
     self.limit_scope = Limitable::GLOBAL_SCOPE
 
-    alias_attribute :secret_value, :value
-
     validates :description, length: { maximum: 255 }, allow_blank: true
     validates :key, uniqueness: {
-      message: -> (object, data) { _("(%{value}) has already been taken") }
+      message: ->(object, data) { _("(%{value}) has already been taken") }
     }
 
     validates :value, length: {
       maximum: 10_000,
-      too_long: -> (object, data) do
+      too_long: ->(object, data) do
         _('The value of the provided variable exceeds the %{count} character limit')
       end
-    }
+    }, if: :env_var?
+
+    validates :value, length: {
+      maximum: 50_000,
+      too_long: ->(object, data) do
+        _('The value of the provided variable exceeds the %{count} character limit')
+      end
+    }, if: :file?
 
     scope :unprotected, -> { where(protected: false) }
 

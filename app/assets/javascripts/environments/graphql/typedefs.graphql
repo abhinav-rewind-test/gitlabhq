@@ -1,4 +1,5 @@
 #import "~/graphql_shared/client/page_info.typedefs.graphql"
+#import "~/kubernetes_dashboard/graphql/typedefs.graphql"
 
 type LocalEnvironment {
   id: Int!
@@ -57,43 +58,11 @@ type LocalErrors {
   errors: [String!]!
 }
 
-type k8sPodStatus {
-  phase: String
-}
-
-type k8sPodMetadata {
-  name: String
-  namespace: String
-  creationTimestamp: String
-}
-
-type LocalK8sPods {
-  status: k8sPodStatus
-  metadata: k8sPodMetadata
-}
-
 input LocalConfiguration {
   basePath: String
   baseOptions: JSON
 }
 
-type k8sServiceMetadata {
-  name: String
-  namespace: String
-  creationTimestamp: String
-}
-
-type k8sServiceSpec {
-  type: String
-  clusterIP: String
-  externalIP: String
-  ports: JSON
-}
-
-type LocalK8sServices {
-  metadata: k8sServiceMetadata
-  spec: k8sServiceSpec
-}
 type k8sNamespaceMetadata {
   name: String
 }
@@ -101,9 +70,31 @@ type LocalK8sNamespaces {
   metadata: k8sNamespaceMetadata
 }
 
-type LocalFluxResourceStatus {
+type LocalFluxResourceConditions {
+  message: String
+  reason: String
   status: String
   type: String
+}
+
+type LocalFluxResourceInventoryItem {
+  id: String
+}
+
+type LocalFluxKustomization {
+  kind: String
+  metadata: LocalWorkloadMetadata
+  status: JSON
+  spec: JSON
+  conditions: [LocalFluxResourceConditions]
+  inventory: [LocalFluxResourceInventoryItem]
+}
+type LocalFluxHelmRelease {
+  kind: String
+  metadata: LocalWorkloadMetadata
+  status: JSON
+  spec: JSON
+  conditions: [LocalFluxResourceConditions]
 }
 
 type K8sResources {
@@ -112,6 +103,32 @@ type K8sResources {
 }
 type K8sResource {
   connectionStatus: String
+}
+type LocalK8sDeploymentMetadata {
+  name: String
+}
+
+type LocalK8sDeployment {
+  metadata: LocalK8sDeploymentMetadata
+  status: JSON
+}
+
+type K8sLogsData {
+  logs: [String]
+  error: JSON
+}
+
+type K8sEvent {
+  lastTimestamp: String
+  eventTime: String
+  message: String
+  reason: String
+  source: JSON
+  type: String
+}
+
+type k8sWatcher {
+  watcher: JSON
 }
 
 extend type Query {
@@ -123,19 +140,32 @@ extend type Query {
   environmentToStop: LocalEnvironment
   isEnvironmentStopping(environment: LocalEnvironmentInput): Boolean
   isLastDeployment(environment: LocalEnvironmentInput): Boolean
-  k8sPods(configuration: LocalConfiguration, namespace: String): [LocalK8sPods]
-  k8sServices(configuration: LocalConfiguration): [LocalK8sServices]
+  k8sPods(configuration: LocalConfiguration, namespace: String): [LocalWorkloadItem]
+  k8sServices(configuration: LocalConfiguration, namespace: String): [LocalWorkloadItem]
   k8sConnection(configuration: LocalConfiguration): K8sResources
-  fluxKustomizationStatus(
+  fluxKustomization(
+    configuration: LocalConfiguration
+    fluxResourcePath: String
+  ): LocalFluxKustomization
+  fluxHelmRelease(configuration: LocalConfiguration, fluxResourcePath: String): LocalFluxHelmRelease
+  k8sDeployments(configuration: LocalConfiguration, namespace: String): [LocalK8sDeployment]
+  k8sLogs(configuration: LocalConfiguration, namespace: String, podName: String): [K8sLogsData]
+  k8sEvents(
     configuration: LocalConfiguration
     namespace: String
-    environmentName: String
-  ): LocalFluxResourceStatus
-  fluxHelmReleaseStatus(
+    involvedObjectName: String
+  ): [K8sEvent]
+  k8sPodLogsWatcher(
     configuration: LocalConfiguration
     namespace: String
-    environmentName: String
-  ): LocalFluxResourceStatus
+    podName: String
+    containerName: String
+  ): k8sWatcher
+}
+
+input ResourceTypeParam {
+  resourceType: String
+  connectionParams: JSON
 }
 
 extend type Mutation {
@@ -146,11 +176,22 @@ extend type Mutation {
   reconnectToCluster(
     configuration: LocalConfiguration
     namespace: String
-    resourceType: String
+    resourceTypeParam: ResourceTypeParam
   ): LocalErrors
   setEnvironmentToDelete(environment: LocalEnvironmentInput): LocalErrors
   setEnvironmentToRollback(environment: LocalEnvironmentInput): LocalErrors
   setEnvironmentToStop(environment: LocalEnvironmentInput): LocalErrors
   setEnvironmentToChangeCanary(environment: LocalEnvironmentInput, weight: Int): LocalErrors
   action(environment: LocalEnvironmentInput): LocalErrors
+  deleteKubernetesPod(
+    configuration: LocalConfiguration
+    namespace: String
+    podName: String
+  ): LocalErrors
+  abortPodLogsStream(
+    configuration: LocalConfiguration
+    namespace: String
+    podName: String
+    containerName: String
+  ): LocalErrors
 }

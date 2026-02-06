@@ -2,17 +2,16 @@
 stage: none
 group: Documentation Guidelines
 info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
-description: 'Writing styles, markup, formatting, and other standards for GitLab Documentation.'
+description: Writing styles, markup, formatting, and other standards for GitLab Documentation.
+title: Recommended word list
 ---
-
-# Recommended word list
 
 To help ensure consistency in the documentation, the Technical Writing team
 recommends these word choices. In addition:
 
 - The GitLab handbook contains a list of
   [top misused terms](https://handbook.gitlab.com/handbook/communication/top-misused-terms/).
-- The documentation [style guide](../styleguide#language) includes details
+- The documentation [style guide](_index.md#language) includes details
   about language and capitalization.
 - The GitLab handbook provides guidance on the [use of third-party trademarks](https://handbook.gitlab.com/handbook/legal/policies/product-third-party-trademarks-guidelines/#process-for-adding-third-party-trademarks-to-gitlab).
 
@@ -24,7 +23,8 @@ For guidance not on this page, we defer to these style guides:
 <!-- vale off -->
 
 <!-- Disable trailing punctuation in heading rule https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md026---trailing-punctuation-in-heading -->
-<!-- markdownlint-disable MD026 -->
+<!-- Proper names should have the correct capitalization rule https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md#md044---proper-names-should-have-the-correct-capitalization -->
+<!-- markdownlint-disable MD026 MD044 -->
 
 ## `.gitlab-ci.yml` file
 
@@ -35,22 +35,52 @@ When possible, use the full phrase: **the `.gitlab-ci.yml` file**
 Although users can specify another name for their CI/CD configuration file,
 in most cases, use **the `.gitlab-ci.yml` file** instead.
 
-## `&`
+## `&` (ampersand)
 
 Do not use Latin abbreviations. Use **and** instead, unless you are documenting a UI element that uses an `&`.
 
 ## `@mention`
 
-Try to avoid **`@mention`**. Say **mention** instead, and consider linking to the
-[mentions topic](../../../user/discussions/index.md#mentions).
+Try to avoid **@mention**. Say **mention** instead, and consider linking to the
+[mentions topic](../../../user/discussions/_index.md#mentions).
 Don't use backticks.
 
 ## 2FA, two-factor authentication
 
 Spell out **two-factor authentication** in sentence case for the first use and in topic titles, and **2FA**
-thereafter. If the first word in a sentence, do not capitalize `factor` or `authentication`. For example:
+thereafter. If the first word in a sentence, do not capitalize **factor** or **authentication**.
+For example:
 
 - Two-factor authentication (2FA) helps secure your account. Set up 2FA when you first sign in.
+
+## ability, able
+
+Try to avoid using **ability** or **able** because they can be ambiguous.
+The usage of these words is similar to [allow and enable](#allow-enable).
+
+Instead of talking about the abilities of the user, or
+the capabilities of the product, be direct and specific.
+
+You can, however, use these terms when you're talking about security, or
+preventing someone from being able to complete a task in the UI.
+
+Do not confuse **ability** or **able** with [permissions](#permissions) or [roles](#roles).
+
+Use:
+
+- You cannot change this setting.
+- To change this setting, you must have the Developer, Maintainer, or Owner role.
+- Confirm you can sign in.
+- The external load balancer cannot connect.
+- Option to delete branches introduced in GitLab 17.1.
+
+Instead of:
+
+- You are not able to change this setting.
+- You must have the ability to change this setting.
+- Verify you are able to sign in.
+- The external load balancer will not be able to connect.
+- Ability to delete branches introduced in GitLab 17.1.
 
 ## above
 
@@ -77,9 +107,25 @@ When you create a user, you choose an access level: **Regular**, **Auditor**, or
 
 Capitalize these words when you refer to the UI. Otherwise use lowercase.
 
+When a specific access level is required, use one of these patterns:
+
+- You must have **at least** the administrator access level.
+- You must have the administrator access level **or higher**.
+- You must be an administrator.
+
+When there is no specific access level, use **minimum** access level as a noun phrase. For example:
+
+- The **minimum** access level for push is the minimum role required to push a package.
+
+Use **higher** and **lower** to describe the hierarchy:
+
+- **Higher** access levels have more permissions.
+- Administrator is a **higher** access level than regular.
+- Regular is a **lower** access level than administrator.
+
 ## add
 
-Use **add** when an object already exists. If the object does not exist yet, use [**create](#create) instead.
+Use **add** when an object already exists. If the object does not exist yet, use [**create**](#create) instead.
 **Add** is the opposite of [remove](#remove).
 
 For example:
@@ -91,11 +137,20 @@ Do not confuse **add** with [**create**](#create).
 
 Do not use **Add new**.
 
-## Admin Area
+## Admin area
 
-Use title case for **Admin Area**. The UI uses title case.
+Use:
 
-Do not use **administrator area**, **administration area**, or other variants.
+- **Admin** area, to describe this area of the UI.
+- **Admin** for the UI button.
+
+Instead of:
+
+- **Admin area** (with both words as bold)
+- **Admin Area** (with **Area** capitalized)
+- **Admin** Area (with Area capitalized)
+- **administrator area**
+- or other variants
 
 ## Admin Mode
 
@@ -103,16 +158,19 @@ Use title case for **Admin Mode**. The UI uses title case.
 
 ## administrator
 
-Use **administrator access** instead of **admin** when talking about a user's access level.
+Use **administrator access** instead of **admin** when talking about a user's access level
+to instance-wide settings on GitLab Self-Managed or GitLab Dedicated.
 
-![admin access level](img/admin_access_level.png)
+For GitLab.com, instead of **administrator**, use [**Owner**](#owner) to refer to the most powerful
+access level for groups or projects.
 
 An **administrator** is not a [role](#roles) or [permission](#permissions).
 
+On GitLab Self-Managed and GitLab Dedicated, users can be administrators and modify instance-wide settings.
 Use:
 
-- To do this thing, you must be an administrator.
-- To do this thing, you must have administrator access.
+- Administrator access.
+- You must have administrator access.
 
 Instead of:
 
@@ -122,7 +180,7 @@ Instead of:
 
 Use lowercase for **advanced search** to refer to the faster, more efficient search across the entire GitLab instance.
 
-## agent
+## agent for Kubernetes
 
 Use lowercase to refer to the [GitLab agent for Kubernetes](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent).
 For example:
@@ -133,6 +191,25 @@ For example:
 
 Do not use title case for **GitLab Agent** or **GitLab Agent for Kubernetes**.
 
+Use **GitLab agent for Kubernetes** if **agent** on its own is not clear,
+or to distinguish it from other types of agents.
+
+When referring to the specific component in technical contexts, use `agentk` in backticks.
+
+## agent for workspace
+
+Use lowercase **agent for workspace** when referring to the component that runs
+in a workspace and is used to access the workspace. Do not use title case for **Workspace**. For example:
+
+- The agent for workspace handles GitLab integration tasks in the workspace.
+- Configure the agent for workspace to connect your development environment.
+
+When referring to the specific component in technical contexts, use `agentw` in backticks.
+
+Do not confuse with [agent for Kubernetes](#agent-for-kubernetes).
+Use **agent for workspace** if **agent** on its own is not clear,
+or to distinguish it from other types of agents.
+
 ## agent access token
 
 The token generated when you create an agent for Kubernetes. Use **agent access token**, not:
@@ -141,13 +218,53 @@ The token generated when you create an agent for Kubernetes. Use **agent access 
 - secret token
 - authentication token
 
+## Agentic Chat, GitLab Duo Chat (Agentic)
+
+GitLab Duo Chat (Agentic) is an enhanced version of [GitLab Duo Chat (Classic)](#chat-gitlab-duo-chat-classic).
+
+For capitalization, use **Agentic Chat**.
+
+On first use, use **GitLab Duo Chat (Agentic)**.
+Thereafter, use **Chat** or **GitLab Duo Chat**.
+
+Do not use **Duo Agentic Chat**.
+
+## agnostic
+
+Instead of **agnostic**, use **platform-independent** or **vendor-neutral**.
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
+
 ## AI, artificial intelligence
 
 Use **AI**. Do not spell out **artificial intelligence**.
 
-## AI-powered DevSecOps platform
+## AI agent
 
-If preceded by GitLab, capitalize **Platform**. For example, the GitLab AI-powered DevSecOps Platform.
+When writing about AI, the **agent** is an entity that performs actions for the user.
+
+You can use **AI agent** if **agent** on its own is not clear,
+or to distinguish it from other types of agents.
+
+Use lowercase for **agent** on its own. Use title case for the agent name, for example, **Code Review Agent**.
+
+When you're interacting with an AI agent, a [**session**](#session) is running.
+The user can stop a session.
+
+One or more AI agents can be part of a [**flow**](#flows), where they are orchestrated to work together on a problem.
+
+Different types of agents exist, including [foundational agents](#foundational-agent).
+
+## AI Catalog
+
+Use title case for **AI Catalog**. Do not use **AI catalog** (lowercase), and do not hyphenate.
+
+## AI Gateway
+
+Use title case for **AI Gateway**. Do not use **AI Gateway** (lowercase), and do not hyphenate.
+
+## AI-powered, AI-native
+
+Use **AI-native** instead of **AI-powered**. For example, **Code Suggestions is an AI-native feature**.
 
 ## air gap, air-gapped
 
@@ -157,7 +274,8 @@ Use **offline environment** to describe installations that have physical barrier
 
 ## allow, enable
 
-Try to avoid **allow** and **enable**, unless you are talking about security-related features.
+Try to avoid **allow** and **enable**, unless you are talking about security-related features or the
+state of a feature flag.
 
 Use:
 
@@ -178,7 +296,22 @@ However, if the UI has different capitalization, make the documentation match th
 
 For example:
 
-- You can view merge request analytics for a project. They are displayed on the Merge Request Analytics dashboard.
+- You can view merge request analytics for a project. They are displayed in the Merge Request Analytics dashboard.
+
+## ancestor
+
+To refer to a [parent item](#parent) that's one or more level above in the hierarchy,
+use **ancestor**.
+
+Do not use **grandparent**.
+
+Examples:
+
+- An ancestor group, a group in the project's hierarchy.
+- An ancestor epic, an epic in the issue's hierarchy.
+- A group and all its ancestors.
+
+See also: [child](#child), [descendant](#descendant), and [subgroup](#subgroup).
 
 ## and/or
 
@@ -191,7 +324,7 @@ Do not use **and so on**. Instead, be more specific. For more information, see t
 
 ## area
 
-Use [**section**](#section) instead of **area**. The only exception is [the Admin Area](#admin-area).
+Use [**section**](#section) instead of **area**. The only exception is [the **Admin** area](#admin-area).
 
 ## as
 
@@ -219,6 +352,28 @@ Instead, use **assign**. For example:
 - Assign the issue to an epic.
 - Assign a user to the issue.
 
+## authenticate
+
+Try to use the most suitable preposition when you use **authenticate** as a verb.
+
+Use **authenticate with** when referring to a system or provider that
+performs the authentication, like a token or a service like OAuth.
+
+For example:
+
+- Authenticate with a deploy token.
+- Authenticate with your credentials.
+- Authenticate with OAuth.
+- The runner uses an authentication token to authenticate with GitLab.
+
+Use **authenticate against** when referring to a resource that contains
+credentials that are checked for validation.
+
+For example:
+
+- The client authenticates against the LDAP directory.
+- The script authenticates against the local user database.
+
 ## authenticated user
 
 Use **authenticated user** instead of other variations, like **signed in user** or **logged in user**.
@@ -237,16 +392,20 @@ Try to avoid **below** when referring to an example or table in a documentation 
 
 - In the following example, the dog has fleas.
 
-## Beta
+## beta
 
-Use uppercase for **Beta**. For example: **The XYZ feature is in Beta.** or **This Beta release is ready to test.**
+Use lowercase for **beta**. For example:
 
-You might also want to link to [this topic](../../../policy/experiment-beta-support.md#beta)
-when writing about Beta features.
+- The feature is in beta.
+- This is a beta feature.
+- This beta release is ready to test.
+
+You might also want to link to [this topic](../../../policy/development_stages_support.md#beta)
+when writing about beta features.
 
 ## blacklist
 
-Do not use **blacklist**. Another option is **denylist**. ([Vale](../testing/vale.md) rule: [`InclusionCultural.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionCultural.yml))
+Do not use **blacklist**. Another option is **denylist**. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## board
 
@@ -276,7 +435,7 @@ Do not use the terms **feature branch** or **merge request branch**. Be as speci
 
 ## bullet
 
-Don't refer to individual items in an ordered or unordered list as **bullets**. Use **list item** instead. If you need to be less ambiguous, you can use:
+Don't refer to individual items in an ordered or unordered list as **bullets**. Use **list item** instead. To be less ambiguous, you can use:
 
 - **Ordered list item** for items in an ordered list.
 - **Unordered list item** for items in an unordered list.
@@ -293,18 +452,45 @@ Instead of:
 
 - Select the **Run pipelines** button.
 
+## canceled, cancelled
+
+Use **canceled** (one L) instead of **cancelled** (two Ls).
+
+Similarly, use **canceling** instead of **cancelling**.
+
+Use two Ls for the noun **cancellation**.
+
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
+
 ## cannot, can not
 
 Use **cannot** instead of **can not**.
 
-See also [contractions](index.md#contractions).
+See also [contractions](_index.md#contractions).
 
-## Chat, GitLab Duo Chat
+## card
 
-Use **Chat** with a capital `c` for **Chat** or **GitLab Duo Chat**.
+Although the UI term might be **card**, do not use it in the documentation.
+Avoid the descriptor if you can.
 
-On first use on a page, use **GitLab Duo Chat**.
-Thereafter, use **Chat** by itself.
+Use:
+
+- By **Seat utilization**, select **Assign seats**.
+
+Instead of:
+
+- In the **Seat utilization** card, select **Assign seats**.
+
+## Chat, GitLab Duo Chat (Classic)
+
+GitLab Duo Chat (Classic) differs from [GitLab Duo Chat (Agentic)](#agentic-chat-gitlab-duo-chat-agentic).
+
+For capitalization, use **Classic Chat** or **GitLab Duo Chat (Classic)**.
+
+On first use, use **GitLab Duo Chat (Classic)**.
+Thereafter, use **Chat** or **GitLab Duo Chat**.
+
+Do not use **Duo Chat**.
 
 ## checkbox
 
@@ -320,7 +506,7 @@ If you must refer to the checkbox, you can say it is selected or cleared. For ex
 - Ensure the **Protect environment** checkbox is cleared.
 - Ensure the **Protect environment** checkbox is selected.
 
-(For `deselect`, [Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+(For `deselect`, [Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## checkout, check out
 
@@ -329,13 +515,31 @@ Use **check out** as a verb. For the Git command, use `checkout`.
 - Use `git checkout` to check out a branch locally.
 - Check out the files you want to edit.
 
+## cherry-pick, cherry pick
+
+Use the hyphenated version of **cherry-pick**. Do not use **cherry pick**.
+
+## child
+
+Always use as a compound noun.
+
+Examples:
+
+- child issue
+- child epic
+- child objective
+- child key result
+- child pipeline
+
+See also: [descendant](#descendant), [parent](#parent) and [subgroup](#subgroup).
+
 ## CI, CD
 
 When talking about GitLab features, use **CI/CD**. Do not use **CI** or **CD** alone.
 
 ## CI/CD
 
-**CI/CD** is always uppercase. No need to spell it out on first use.
+**CI/CD** is always uppercase. You are not required to spell it out on first use.
 
 You can omit **CI/CD** when the context is clear, especially after the first use. For example:
 
@@ -346,42 +550,128 @@ You can omit **CI/CD** when the context is clear, especially after the first use
 
 Do not use **CI/CD minutes**. This term was renamed to [**compute minutes**](#compute-minutes).
 
+## classic
+
+Some GitLab Duo features are non-agentic. These features should be described in the documentation
+with **(Classic)** after the feature name. For example:
+
+- GitLab Duo Chat (Classic)
+- GitLab Duo Vulnerability Resolution (Classic)
+
+You can also use a phrase that includes **classic** as lowercase. For example:
+
+- This new agentic feature is different from the classic version.
+
 ## click
 
 Do not use **click**. Instead, use **select** with buttons, links, menu items, and lists.
 **Select** applies to more devices, while **click** is more specific to a mouse.
 
-## cloud native
+However, you can make an exception for **right-click** and **click-through demo**.
+
+## cloud licensing
+
+Avoid the phrase **cloud licensing**, except when you have to describe the process
+of synchronizing an activation code over the internet.
+
+If you can, rather focus on the fact that this subscription is synchronized with GitLab.
+
+For example:
+
+- Your instance must be able to synchronize your subscription data with GitLab.
+
+## cloud-native
 
 When you're talking about using a Kubernetes cluster to host GitLab, you're talking about a **cloud-native version of GitLab**.
 This version is different than the larger, more monolithic **Linux package** that is used to deploy GitLab.
 
 You can also use **cloud-native GitLab** for short. It should be hyphenated and lowercase.
 
-## Code explanation
+## code completion
 
-Use sentence case for **Code explanation**.
+Code Suggestions has evolved to include two primary features:
 
-On first mention on a page, use **GitLab Duo Code explanation**.
-Thereafter, use **Code explanation** by itself.
+- **code completion**
+- **code generation**
 
-## Code review summary
+Use lowercase for **code completion**. Do not use **GitLab Duo Code Completion**.
+GitLab Duo is reserved for Code Suggestions only.
 
-Use sentence case for **Code review summary**.
+**Code completion** must always be singular.
 
-On first mention on a page, use **GitLab Duo Code review summary**.
-Thereafter, use **Code review summary** by itself.
+Example:
+
+- Use code completion to populate the file.
+
+## Code Explanation
+
+Use title case for **Code Explanation**.
+
+On first mention on a page, use **GitLab Duo Code Explanation**.
+Thereafter, use **Code Explanation** by itself.
+
+## code generation
+
+Code Suggestions has evolved to include two primary features:
+
+- **code completion**
+- **code generation**
+
+Use lowercase for **code generation**. Do not use **GitLab Duo Code Generation**.
+GitLab Duo is reserved for Code Suggestions only.
+
+**Code generation** must always be singular.
+
+Examples:
+
+- Use code generation to create code based on your comments.
+- Adjust your code generation results by adding code comments to your file.
+
+## Code Owner, code owner, `CODEOWNER`
+
+Use **Code Owners** to refer to the feature name or concept. For example:
+
+- Use the Code Owners approval rules to protect your code.
+
+Use **code owner** or **code owners**, lowercase, to refer to a person or group with code ownership responsibilities.
+For example:
+
+- Assign a code owner to the project.
+- Contact the code owner for a review.
+
+Do not use **codeowner**, **CodeOwner**, or **code-owner**.
+
+Use `CODEOWNERS`, uppercase and in backticks, to refer to the filename. For example:
+
+- Edit the `CODEOWNERS` file to define the code ownership rules.
+
+## Code Review Summary
+
+Use title case for **Code Review Summary**.
+
+On first mention on a page, use **GitLab Duo Code Review Summary**.
+Thereafter, use **Code Review Summary** by itself.
 
 ## Code Suggestions
 
 Use title case for **Code Suggestions**. On first mention on a page, use **GitLab Duo Code Suggestions**.
 
-**Code Suggestions** should always be plural, and is capitalized even if it's generic.
+**Code Suggestions**, the feature, should always end in an `s`. However, write like it
+is singular. For example:
+
+- Code Suggestions is turned on for the instance.
+
+When generically referring to the suggestions that the feature outputs, use lowercase.
 
 Examples:
 
 - Use Code Suggestions to display suggestions as you type. (This phrase describes the feature.)
-- As you type, Code Suggestions are displayed. (This phrase is generic but still uses capital letters.)
+- As you type, suggestions are displayed. (This phrase is generic.)
+
+**Code Suggestions** has evolved to include two primary features:
+
+- [**code completion**](#code-completion)
+- [**code generation**](#code-generation)
 
 ## collapse
 
@@ -391,7 +681,7 @@ Use **collapse** instead of **close** when you are talking about expanding or co
 
 Use **From the command line** to introduce commands.
 
-Hyphenate when using as an adjective. For example, **a command-line tool**.
+Hyphenate when you use it as an adjective. For example, **a command-line tool**.
 
 ## compute
 
@@ -399,8 +689,8 @@ Use **compute** for the resources used by runners to run CI/CD jobs.
 
 Related terms:
 
-- [**compute minutes**](#compute-minutes): How compute usage is calculated. For example, `400 compute minutes`.
-- [**compute quota**](../../../ci/pipelines/cicd_minutes.md): The limit of compute minutes that a namespace can use each month.
+- [**compute minutes**](#compute-minutes): How compute usage is calculated. For example, 400 compute minutes.
+- [**compute quota**](../../../ci/pipelines/compute_minutes.md): The limit of compute minutes that a namespace can use each month.
 - **compute usage**: The number of compute minutes that the namespace has used from the monthly quota.
 
 ## compute minutes
@@ -417,7 +707,7 @@ For more information, see [epic 2150](https://gitlab.com/groups/gitlab-com/-/epi
 
 ## configuration
 
-When you update a collection of settings, call it a **configuration**.
+When you edit a collection of settings, call it a **configuration**.
 
 ## configure
 
@@ -431,13 +721,13 @@ For example:
 
 Use **confirmation dialog** to describe the dialog that asks you to confirm an action. For example:
 
-- On the confirmation dialog, select **OK**.
+- In the confirmation dialog, select **OK**.
 
 Do not use **confirmation box** or **confirmation dialog box**. See also [**dialog**](#dialog).
 
 ## container registry
 
-When documenting the GitLab container registry features and functionality, use lowercase.
+When documenting the GitLab **container registry** features and functionality, use lowercase.
 
 Use:
 
@@ -446,7 +736,7 @@ Use:
 
 ## create
 
-Use **create** when an object does not exist and you are creating it for the first time.  **Create** is the opposite of [delete](#delete).
+Use **create** when an object does not exist and you are creating it for the first time. **Create** is the opposite of [delete](#delete).
 
 For example:
 
@@ -456,10 +746,20 @@ Do not confuse **create** with [**add**](#add).
 
 Do not use **create new**. The word **create** implies that the object is new, and the extra word is not necessary.
 
+## credits, GitLab Credits
+
+Use **GitLab Credits** (uppercase) to refer to the usage-based billing feature.
+Use **credits** (lowercase) to refer to the unit of measurement.
+
+For example:
+
+- GitLab Credits are the standardized consumption unit used for usage-based billing.
+- You can view your credit usage in the GitLab Credits dashboard.
+
 ## currently
 
 Do not use **currently** when talking about the product or its features. The documentation describes the product as it is today.
-([Vale](../testing/vale.md) rule: [`CurrentStatus.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/CurrentStatus.yml))
+([Vale](../testing/vale.md) rule: [`CurrentStatus.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/CurrentStatus.yml))
 
 ## custom role
 
@@ -481,12 +781,17 @@ Instead of:
 - Data are collected.
 - The data show a performance increase.
 
+## deadline
+
+Do not use **deadline**. Use **due date** instead.
+
 ## default role
 
 Use **default role** when referring to the following predefined roles that have
 no customized permissions added:
 
 - Guest
+- Planner
 - Reporter
 - Developer
 - Maintainer
@@ -510,23 +815,37 @@ Use title case for the GitLab Dependency Proxy.
 
 Use lowercase for **deploy board**.
 
+## descendant
+
+To refer to a [child item](#child) that's one or more level below in the hierarchy,
+use **descendant**.
+
+Do not use **grandchild**.
+
+Examples:
+
+- A descendant project, a project in the group's hierarchy.
+- A descendant issue, an issue in the epic's hierarchy.
+- A group and all its descendants.
+
+See also: [ancestor](#ancestor), [child](#child), and [subgroup](#subgroup).
+
 ## Developer
 
-When writing about the Developer role:
+When writing about the Developer role, use a capital **D**.
 
-- Use a capital **D**.
-- Do not use bold.
-- Do not use the phrase, **if you are a developer** to mean someone who is assigned the Developer
-  role. Instead, write it out. For example, **if you are assigned the Developer role**.
-- To describe a situation where the Developer role is the minimum required:
-  - Use: at least the Developer role
-  - Instead of: the Developer role or higher
+Write it out:
+
+- Use: if you are assigned the Developer role
+- Instead of: if you are a developer
+
+When the Developer role is the minimum required role, use:
+
+- the Developer, Maintainer, or Owner role
+
+Do not use bold.
 
 Do not use **Developer permissions**. A user who is assigned the Developer role has a set of associated permissions.
-
-## DevSecOps platform
-
-If preceded by GitLab, capitalize **Platform**. For example, the GitLab DevSecOps Platform.
 
 ## dialog
 
@@ -542,27 +861,35 @@ Use **dialog** rather than any of these alternatives:
 
 See also [**confirmation dialog**](#confirmation-dialog). For more information, see the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/d/dialog-box-dialog-dialogue).
 
-When the dialog is the location of an action, use **on** as a preposition. For example:
+Before you use this term, confirm whether **dialog** or [**drawer**](#drawer) is
+the correct term for your use case.
 
-- On the **Grant permission** dialog, select **Group**.
+When the dialog is the location of an action, use **in** as a preposition. For example:
 
-See also [**on**](#on).
+- In the **Grant permission** dialog, select **Group**.
+
+See also [**in, on**](#in-on).
 
 ## disable
 
-See the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/d/disable-disabled) for guidance on **disable**.
-Use **inactive** or **off** instead.
+Do not use **disable** to describe making a setting or feature unavailable. Use alternatives like **turn off**, **hide**,
+**make unavailable**, or **remove** instead.
+
+To describe a state, use **off**, **inactive**, or **unavailable**.
+
+This guidance is based on the
+[Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/d/disable-disabled).
 
 ## disallow
 
-Use **prevent** instead of **disallow**. ([Vale](../testing/vale.md) rule: [`Substitutions.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Substitutions.yml))
+Use **prevent** instead of **disallow**. ([Vale](../testing/vale.md) rule: [`Substitutions.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Substitutions.yml))
 
-## Discussion summary
+## Discussion Summary
 
-Use sentence case for **Discussion summary**.
+Use title case for **Discussion Summary**.
 
-On first mention on a page, use **GitLab Duo Discussion summary**.
-Thereafter, use **Discussion summary** by itself.
+On first mention on a page, use **GitLab Duo Discussion Summary**.
+Thereafter, use **Discussion Summary** by itself.
 
 ## Docker-in-Docker, `dind`
 
@@ -583,6 +910,22 @@ Use **download** to describe saving data to a user's device. For details, see
 [the Microsoft style guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/d/download).
 
 Do not confuse download with [export](#export).
+
+## drawer
+
+Use **drawer** to describe a [drawer UI component](../drawers.md) that:
+
+- Appears from the right side of the screen.
+- Displays context-specific information or actions without the user having to
+  leave the current page.
+
+To see examples of drawers:
+
+- Go to the [Technical Writing Pipeline Editor](https://gitlab.com/gitlab-org/technical-writing/team-tasks/-/ci/editor?branch_name=main) and select **Help** ({{< icon name="information-o" >}}).
+- Open GitLab Duo Chat.
+
+Before you use this term, confirm whether **drawer** or [**dialog**](#dialog) is
+the correct term for your use case.
 
 ## dropdown list
 
@@ -610,26 +953,54 @@ Instead of:
 
 Do not use **easily**. If the user doesn't find the process to be easy, we lose their trust.
 
-## e.g.
+## edit
 
-Do not use Latin abbreviations. Use **for example**, **such as**, **for instance**, or **like** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/LatinTerms.yml))
+Use **edit** for UI documentation and user actions.
 
-## ellipsis
+For example:
 
-When documenting UI text, if the UI includes an ellipsis, do not include the ellipsis in the documentation.
-For more information, see the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/punctuation/ellipses).
+- To edit your profile settings, select **Edit**.
+
+For API documentation and programmatic changes, use **[update](#update)**.
+
+## editor extensions
+
+Use lowercase **editor extensions** when referring to the broader category of extensions offered by
+GitLab. However, if the UI has different capitalization, make the documentation match the UI.
+
+Individual extensions have their own names. For example, GitLab for VS Code and
+[GitLab Duo Plugin for JetBrains IDEs](#gitlab-duo-plugin-for-jetbrains-ides).
 
 Use:
 
-- **Create new**
+- Configure GitLab editor extensions in your IDE.
+- Code Suggestions is available in the following editor extensions.
+- In the left sidebar, select **Settings** > **General**, and then expand **Editor Extensions**.
+
+## e.g.
+
+Do not use Latin abbreviations. Use **for example**, **such as**, **for instance**, or **like** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/LatinTerms.yml))
+
+## ellipsis, ellipses
+
+Avoid ellipses when you can. If you must include them, for example as part of a code block or other CLI response,
+use three periods with no space (`...`) instead of the `&hellip;` HTML entity or the `&#8230;` HTML code.
+
+For more information, see [code blocks](_index.md#code-blocks).
+
+Do not include any ellipses when documenting UI text. For example, use:
+
+- **Search or go to**
 
 Instead of:
 
-- **Create new...**
+- **Search or go to...**
+
+For more information, see the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/punctuation/ellipses).
 
 ## email
 
-Do not use **e-mail** with a hyphen. When plural, use **emails** or **email messages**. ([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+Do not use **e-mail** with a hyphen. When plural, use **emails** or **email messages**. ([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## email address
 
@@ -641,8 +1012,12 @@ Use **emoji** to refer to the plural form of **emoji**.
 
 ## enable
 
-See the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/e/enable-enables) for guidance on **enable**.
-Use **active** or **on** instead.
+Do not use **enable** to describe making a setting or feature available. Use **turn on** instead.
+
+To describe a state, use **on** or **active**.
+
+This guidance is based on the
+[Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/d/disable-disabled).
 
 ## enter
 
@@ -680,22 +1055,28 @@ Try to avoid **etc.**. Be as specific as you can. Do not use
 
 Use:
 
-- You can update objects, like merge requests and issues.
+- You can edit objects, like merge requests and issues.
 
 Instead of:
 
-- You can update objects, like merge requests, issues, etc.
+- You can edit objects, like merge requests, issues, etc.
 
 ## expand
 
 Use **expand** instead of **open** when you are talking about expanding or collapsing a section in the UI.
 
-## Experiment
+## experiment
 
-Use uppercase for **Experiment**. For example: **The XYZ feature is an Experiment.** or **This Experiment is ready to test.**
+Use lowercase for **experiment**. For example:
 
-You might also want to link to [this topic](../../../policy/experiment-beta-support.md#experiment)
-when writing about Experiment features.
+- This feature is an experiment.
+- These features are experiments.
+- This experiment is ready to test.
+
+If you must, you can use **experimental**.
+
+You might also want to link to [this topic](../../../policy/development_stages_support.md#experiment)
+when writing about experimental features.
 
 ## export
 
@@ -716,11 +1097,11 @@ Do not confuse with [download](#download).
 ## FAQ
 
 We want users to find information quickly, and they rarely search for the term **FAQ**.
-Information in FAQs belongs with other similar information, under an easily searchable topic title.
+Information in FAQs belongs with other similar information, under a searchable topic title.
 
 ## feature
 
-You should rarely need to use the word **feature**. Instead, explain what GitLab does.
+You should rarely use the word **feature**. Instead, explain what GitLab does.
 For example, use:
 
 - Use merge requests to incorporate changes into the target branch.
@@ -745,21 +1126,21 @@ Instead of:
 
 - In the **Variable name** field, enter `my text`.
 
-However, you can make an exception when you are writing a task and you need to refer to all
+However, you can make an exception when you are writing a task and you want to refer to all
 of the fields at once. For example:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > CI/CD**.
+1. In the top bar, select **Search or go to**.
+1. Select **Settings** > **CI/CD**.
 1. Expand **General pipelines**.
 1. Complete the fields.
 
-Learn more about [documenting multiple fields at once](index.md#documenting-multiple-fields-at-once).
+Learn more about [documenting multiple fields at once](_index.md#documenting-multiple-fields-at-once).
 
 ## filename
 
-Use one word for **filename**. When using filename as a variable, use `<filename>`.
+Use one word for **filename**. When you use filename as a variable, use `<filename>`.
 
-([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## filter
 
@@ -767,6 +1148,18 @@ When you are viewing a list of items, like issues or merge requests, you filter 
 the available attributes. For example, you might filter by assignee or reviewer.
 
 Filtering is different from [searching](#search).
+
+## flows
+
+GitLab provides multiple **flows** that are run by [agents](#ai-agent).
+
+Use lowercase for **flow** on its own.
+
+Use title case for the flow name, for example, **Convert to CI/CD Pipeline Flow**.
+
+Do not use **agent flow**.
+
+You choose a flow. You start a [**session**](#session).
 
 ## foo
 
@@ -783,78 +1176,189 @@ The **upstream project** (also known as the **source project**) and the **fork**
 If the **fork relationship** is removed, the
 **fork** is **unlinked** from the **upstream project**.
 
+## foundational agent
+
+Foundational agents are a type of [agent](#ai-agent).
+
+Use lowercase for **foundational agents** in general.
+
+- In the documentation, use title case for the agent name, for example, **the Planner Agent**.
+- In the UI, use title case, but do not include the word **Agent**. For example, **Planner**.
+
+## Free
+
+Use **Free**, in uppercase, for the subscription tier. When you refer to **Free**
+in the context of other subscription tiers, follow [the subscription tier](#subscription-tier) guidance.
+
 ## full screen
 
 Use two words for **full screen**.
-([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## future tense
 
-When possible, use present tense instead of future tense. For example, use **after you execute this command, GitLab displays the result** instead of **after you execute this command, GitLab will display the result**. ([Vale](../testing/vale.md) rule: [`FutureTense.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/FutureTense.yml))
+When possible, use present tense instead of future tense. For example, use **after you execute this command, GitLab displays the result** instead of **after you execute this command, GitLab will display the result**. ([Vale](../testing/vale.md) rule: [`FutureTense.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/FutureTense.yml))
 
-## GB, gigabytes
+## GB, GiB, gigabytes, gibibytes
 
-For **GB** and **MB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
+For **GB** and **GiB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
+
+## generally available, general availability
+
+Use lowercase for **generally available** and **general availability**.
+For example:
+
+- This feature is generally available.
+
+Use **generally available** more often. For example,
+do not say:
+
+- This feature has reached general availability.
+
+Do not use **GA** to abbreviate general availability.
 
 ## Geo
 
 Use title case for **Geo**.
 
-## Git suggestions
-
-Use sentence case for **Git suggestions**.
-
-On first mention on a page, use **GitLab Duo Git suggestions**.
-Thereafter, use **Git suggestions** by itself.
-
 ## GitLab
 
 Do not make **GitLab** possessive (GitLab's). This guidance follows [GitLab Trademark Guidelines](https://handbook.gitlab.com/handbook/marketing/brand-and-product-marketing/brand/brand-activation/trademark-guidelines/).
 
+Do not put **GitLab** next to the name of another third-party tool or brand.
+For example, do not use:
+
+- GitLab Chrome extension
+- GitLab Kubernetes agent
+
+Instead, use:
+
+- GitLab extension for Chrome
+- GitLab agent for Kubernetes
+
+Putting the brand names next to each other can imply ownership or partnership, which we don't want to do,
+unless we've gone through a legal review and have been told to promote the partnership.
+
+This guidance follows the [Use of Third-party Trademarks](https://handbook.gitlab.com/handbook/legal/policies/product-third-party-trademarks-guidelines/#dos--donts-for-use-of-third-party-trademarks-in-gitlab).
+
+## GitLab AI vendor model
+
+Use **GitLab AI vendor model** to refer to a [language model](#language-model-large-language-model)
+that is hosted by a third-party provider, and that customers access by using the GitLab
+[AI Gateway](#ai-gateway) through the [Cloud Connector](../../cloud_connector/architecture.md).
+
+Do not use this term when the [language model is hosted by a customer](#self-hosted-model),
+or when the customer uses the [GitLab Duo Self-Hosted](#gitlab-duo-self-hosted)
+feature.
+
 ## GitLab Dedicated
 
-Use **GitLab Dedicated** to refer to the product offering. It refers to a GitLab instance that's hosted and managed by GitLab for customers.
+Use **GitLab Dedicated** to refer to the product offering.
+It refers to a GitLab instance that's hosted and managed by GitLab for customers.
 
 GitLab Dedicated can be referred to as a single-tenant SaaS service.
 
 Do not use **Dedicated** by itself. Always use **GitLab Dedicated**.
 
+## GitLab Dedicated for Government
+
+Use **GitLab Dedicated for Government** to refer to the government-specific offering.
+It refers to a GitLab instance that's hosted and managed by GitLab for government agencies and organizations requiring FedRAMP compliance.
+
+GitLab Dedicated for Government is a single-tenant SaaS service, similar to GitLab Dedicated but optimized for government requirements.
+
+Do not use **Dedicated for Government** by itself. Always use **GitLab Dedicated for Government**.
+
 ## GitLab Duo
 
 Do not use **Duo** by itself. Always use **GitLab Duo**.
 
-On first use on a page, use **GitLab Duo `<featurename>`**. As of Dec, 2023,
-the following are the names of GitLab Duo features:
+On first use on a page, use **GitLab Duo `<featurename>`**. As of Jan, 2026,
+the following are the names of classic GitLab Duo features:
 
 - GitLab Duo Chat
+- GitLab Duo Code Explanation
+- GitLab Duo Code Review
+- GitLab Duo Code Review Summary
 - GitLab Duo Code Suggestions
-- GitLab Duo Suggested Reviewers
-- GitLab Duo Value stream forecasting
-- GitLab Duo Discussion summary
-- GitLab Duo Merge request summary
-- GitLab Duo Code review summary
-- GitLab Duo Code explanation
-- GitLab Duo Vulnerability explanation
-- GitLab Duo Vulnerability resolution
-- GitLab Duo Test generation
-- GitLab Duo Git suggestions
-- GitLab Duo Root cause analysis
-- GitLab Duo Issue description generation
+- GitLab Duo for the CLI
+- GitLab Duo Issue Description Generation
+- GitLab Duo Issue Discussion Summary
+- GitLab Duo Merge Commit Message Generation
+- GitLab Duo Merge Request Summary
+- GitLab Duo and SDLC trends
+- GitLab Duo Product Analytics
+- GitLab Duo Root Cause Analysis
+- GitLab Duo Self-Hosted
+- GitLab Duo Test Generation
+- GitLab Duo Vulnerability Explanation
+- GitLab Duo Vulnerability Resolution
 
-After the first use, use the feature name without **GitLab Duo**.
+Excluding GitLab Duo Self-Hosted, after the first use, use the feature name
+without **GitLab Duo**.
+
+You can add **(Classic)** after the feature name when comparing it to an agentic version.
+For more information, see [classic](#classic).
+
+## GitLab Duo Agent Platform
+
+Use **GitLab Duo Agent Platform**. After first use, use **Agent Platform**.
+
+Do not use **Duo Agent Platform** or **DAP**.
+
+## GitLab Duo Core
+
+Use **GitLab Duo Core** for the add-on. Do not use **Duo Core** by itself.
+
+You can also use **the GitLab Duo Core add-on** but omit **add-on** when you can.
+
+In marketing materials, like release posts or blogs, use
+**Premium and Ultimate with GitLab Duo** instead of **GitLab Duo Core**.
+For example:
+
+- [Blog: Unlocking AI for every GitLab Premium and Ultimate customer](https://about.gitlab.com/blog/gitlab-premium-with-duo/)
+- [Release post: Group and project controls for Premium and Ultimate with GitLab Duo](https://about.gitlab.com/releases/2025/07/17/gitlab-18-2-released/#group-and-project-controls-for-premium-and-ultimate-with-gitlab-duo)
+
+## GitLab Duo Enterprise
+
+Always use **GitLab Duo Enterprise** for the add-on. Do not use **Duo Enterprise** unless approved by legal.
+
+You can use **the GitLab Duo Enterprise add-on** (with this capitalization) but you are not required to use **add-on**
+and should leave it off when you can.
+
+## GitLab Duo plugin for JetBrains IDEs
+
+Use **GitLab Duo plugin for JetBrains IDEs** to refer to the extension. You can also use **Plugins for JetBrains IDEs**
+or **Plugins for JetBrains**.
+
+Do not use **GitLab plugin**. Ensure you include **GitLab Duo** in the name.
 
 ## GitLab Duo Pro
 
 Always use **GitLab Duo Pro** for the add-on. Do not use **Duo Pro** unless approved by legal.
 
-You can use **the GitLab Duo Pro add-on** (with this capitalization) but you do not need to use **add-on**
+You can use **the GitLab Duo Pro add-on** (with this capitalization) but you are not required to use **add-on**
 and should leave it off when you can.
+
+## GitLab Duo Self-Hosted
+
+When referring to the feature, always write **GitLab Duo Self-Hosted** in full
+and in title case, unless you are
+[referring to a language model that's hosted by a customer, rather than GitLab](#self-hosted-model).
+
+Do not use **Self-Hosted** by itself.
 
 ## GitLab Flavored Markdown
 
 When possible, spell out [**GitLab Flavored Markdown**](../../../user/markdown.md).
 
 If you must abbreviate, do not use **GFM**. Use **GLFM** instead.
+
+## GitLab for Eclipse plugin, Eclipse
+
+Use **GitLab for Eclipse plugin** to refer to the editor extension.
+
+Use **Eclipse** to refer to the IDE.
 
 ## GitLab Helm chart, GitLab chart
 
@@ -868,8 +1372,18 @@ Do not use **the `gitlab` chart**, **the GitLab Chart**, or **the cloud-native c
 You use the **GitLab Helm chart** to deploy **cloud-native GitLab** in a Kubernetes cluster.
 
 If you use it in a context of describing the
-[different installation methods](index.md#how-to-document-different-installation-methods).
+[different installation methods](_index.md#how-to-document-different-installation-methods)
 use `Helm chart (Kubernetes)`.
+
+## GitLab Operator
+
+You use **GitLab Operator** to install GitLab.
+
+Do not use **the Operator** or **Operator**.
+
+If you use it in a context of describing the
+[different installation methods](_index.md#how-to-document-different-installation-methods)
+use **GitLab Operator (Kubernetes)**.
 
 ## GitLab Pages
 
@@ -891,47 +1405,92 @@ See also:
 
 ## GitLab SaaS
 
-**GitLab SaaS** refers to both [GitLab.com](#gitlabcom) (multi-tenant SaaS) as well as [GitLab Dedicated](#gitlab-dedicated) (single-tenant SaaS).
+**GitLab SaaS** refers to both [GitLab.com](#gitlabcom) (multi-tenant SaaS) and [GitLab Dedicated](#gitlab-dedicated) (single-tenant SaaS).
 
 Try to avoid **GitLab SaaS** and instead, refer to the [specific offering](#offerings) instead.
 
-## GitLab self-managed
+## GitLab Self-Managed
 
-Use **GitLab self-managed** to refer to the product offering. It refers to a GitLab instance managed by customers themselves.
+Use **GitLab Self-Managed** to refer to an installation of GitLab that customers manage.
+
+Use the descriptor of **instance** as needed. Do not use **installation**.
+
+Use:
+
+- GitLab Self-Managed
+- a GitLab Self-Managed instance
+
+Instead of:
+
+- A GitLab Self-Managed installation
+- A Self-Managed GitLab installation
+- A self-managed GitLab installation
+- A GitLab instance that is GitLab Self-Managed
+
+You can use **instance** on its own to describe GitLab Self-Managed. For example:
+
+- On your instance, ensure the port is open.
+- Verify that the instance is publicly accessible.
+
+See also [self-managed](#self-managed).
 
 ## GitLab.com
 
 Use **GitLab.com** to refer to the URL or product offering. GitLab.com is the instance that's managed by GitLab.
+
+## GitLab Workflow extension for VS Code
+
+Use **GitLab Workflow extension for VS Code** to refer to the extension.
+You can also use **GitLab Workflow for VS Code** or **GitLab Workflow**.
+
+For terms in VS Code, see [VS Code user interface](#vs-code-user-interface).
+
+## GraphiQL
+
+Use **GraphiQL** or **GraphQL explorer** to refer to this tool.
+
+In most cases, you should use **GraphiQL** on its own with no descriptor.
+
+Do not use:
+
+- GraphiQL explorer tool
+- GraphiQL explorer
+
+## group access token
+
+Use sentence case for **group access token**.
+
+Capitalize the first word when you refer to the UI.
+
+## Guest
+
+When writing about the Guest role, use a capital **G**.
+
+Write it out:
+
+- Use: if you are assigned the Guest role
+- Instead of: if you are a guest
+
+When the Guest role is the minimum required role, use:
+
+- the Guest, Planner, Reporter, Developer, Maintainer, or Owner role
+
+Do not use bold.
+
+Do not use **Guest permissions**. A user who is assigned the Guest role has a set of associated permissions.
 
 ## guide
 
 We want to speak directly to users. On `docs.gitlab.com`, do not use **guide** as part of a page title.
 For example, **Snowplow Guide**. Instead, speak about the feature itself, and how to use it. For example, **Use Snowplow to do xyz**.
 
-## Guest
-
-When writing about the Guest role:
-
-- Use a capital **G**.
-- Write it out:
-  - Use: if you are assigned the Guest role
-  - Instead of: if you are a guest
-
-- When the Guest role is the minimum required role:
-  - Use: at least the Guest role
-  - Instead of: the Guest role or higher
-
-Do not use bold.
-
-Do not use **Guest permissions**. A user who is assigned the Guest role has a set of associated permissions.
-
 ## handy
 
-Do not use **handy**. If the user doesn't find the feature or process to be handy, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Simplicity.yml))
+Do not use **handy**. If the user doesn't find the feature or process to be handy, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Simplicity.yml))
 
 ## high availability, HA
 
-Do not use **high availability** or **HA**, except in the GitLab [reference architectures](../../../administration/reference_architectures/index.md#high-availability-ha). Instead, direct readers to the reference architectures for more information about configuring GitLab for handling greater amounts of users.
+Do not use **high availability** or **HA**, except in the GitLab [reference architectures](../../../administration/reference_architectures/_index.md#high-availability-ha). Instead, direct readers to the reference architectures for more information about configuring GitLab for handling greater amounts of users.
 
 Do not use phrases like **high availability setup** to mean a multiple node environment. Instead, use **multi-node setup** or similar.
 
@@ -966,11 +1525,26 @@ Do not use first-person singular. Use **you** or rewrite the phrase instead.
 
 ## i.e.
 
-Do not use Latin abbreviations. Use **that is** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/LatinTerms.yml))
+Do not use Latin abbreviations. Use **that is** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/LatinTerms.yml))
+
+## in, on
+
+Use **in** as a preposition when describing UI element locations. For example:
+
+- In the left sidebar, select **Settings** > **CI/CD**.
+- In the **Grant permission** dialog, select **Group**.
+- In the upper-right corner, select your avatar.
+
+Use **on** only for:
+
+- Physical objects: Use the arrow keys on your keyboard.
+- Pages as surfaces: On the **Settings** page, you can configure multiple options.
+
+Do not use **from**.
 
 ## in order to
 
-Do not use **in order to**. Use **to** instead. ([Vale](../testing/vale.md) rule: [`Wordy.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Wordy.yml))
+Do not use **in order to**. Use **to** instead. ([Vale](../testing/vale.md) rule: [`Wordy.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Wordy.yml))
 
 ## indexes, indices
 
@@ -980,8 +1554,7 @@ However, for Elasticsearch, use [**indices**](https://www.elastic.co/blog/what-i
 
 ## Installation from source
 
-When referring to the installation method using the self-compiled code, refer to it
-as **self-compiled**.
+To refer to the installation method that uses the self-compiled code, use **self-compiled**.
 
 Use:
 
@@ -992,7 +1565,7 @@ Instead of:
 - For installations from source...
 
 For more information, see the
-[different installation methods](index.md#how-to-document-different-installation-methods).
+[different installation methods](_index.md#how-to-document-different-installation-methods).
 
 ## -ing words
 
@@ -1003,6 +1576,11 @@ and more precise terms are usually available. For example:
 - Instead of **Delete files using the Edit button**, use **Use the Edit button to delete files**.
 - Instead of **Replicating your server is required**, use **You must replicate your server**.
 
+## IP address
+
+Use **IP address** when referring to addresses used with Internet Protocol (IP). Do not refer to an IP address as an
+**IP**.
+
 ## issue
 
 Use lowercase for **issue**.
@@ -1011,21 +1589,23 @@ Use lowercase for **issue**.
 
 Use lowercase for **issue board**.
 
-## Issue description generation
+## Issue Description Generation
 
-Use sentence case for **Issue description generation**.
+Use title case for **Issue Description Generation**.
 
-On first mention on a page, use **GitLab Duo Issue description generation**.
-Thereafter, use **Issue description generation** by itself.
+On first mention on a page, use **GitLab Duo Issue Description Generation**.
+Thereafter, use **Issue Description Generation** by itself.
+
+## Issue Discussion Summary
+
+Use title case for **Issue Discussion Summary**.
+
+On first mention on a page, use **GitLab Duo Issue Discussion Summary**.
+Thereafter, use **Issue Discussion Summary** by itself.
 
 ## issue weights
 
 Use lowercase for **issue weights**.
-
-## IP address
-
-Use **IP address** when refering to addresses used with Internet Protocal (IP). Do not refer to an IP address as an
-**IP**.
 
 ## it
 
@@ -1048,6 +1628,10 @@ Do not use **build** to be synonymous with **job**. A job is defined in the `.gi
 
 If you want to use **CI** with the word **job**, use **CI/CD job** rather than **CI job**.
 
+## KB, KiB, kilobytes, kibibytes
+
+For **KB** and **KiB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
+
 ## Kubernetes executor
 
 GitLab Runner can run jobs on a Kubernetes cluster. To do this, GitLab Runner uses the Kubernetes executor.
@@ -1060,6 +1644,13 @@ When referring to this feature, use:
 Do not use:
 
 - GitLab Runner Kubernetes executor, because this can infringe on the Kubernetes trademark.
+
+## language model, large language model
+
+When referring to language models, be precise. Not all language models are large,
+and not all models are language models. When in doubt, ask a developer or PM for confirmation.
+
+You can use LLM to refer to a large language model if you spell it out on first use.
 
 ## later
 
@@ -1075,19 +1666,28 @@ Instead of:
 - In GitLab 14.1 and above...
 - In GitLab 14.1 and newer...
 
-## list
+## level
 
-Do not use **list** when referring to a [**dropdown list**](#dropdown-list).
-Use the full phrase **dropdown list** instead.
+If you can, avoid **level** in the context of an instance, project, or group.
+
+Use:
+
+- This setting is turned on for the instance.
+- This setting is turned on for the group and its subgroups.
+- This setting is turned on for projects.
+
+Instead of:
+
+- This setting is turned on at the instance level.
+- This setting is turned on at the group level.
+- This is a project-level setting.
 
 ## license
 
-When writing about licenses:
+Licenses are different than subscriptions.
 
-- Do not use variations such as **cloud license**, **offline license**, or **legacy license**.
-- Do not use interchangeably with **subscription**:
-  - A license grants users access to the subscription they purchased, and contains information such as the number of seats they purchased and subscription dates.
-  - A subscription is the subscription tier that the user purchases.
+- A license grants users access to the subscription they purchased. The license includes information like the number of seats and subscription dates.
+- A subscription is the subscription tier that the user purchases.
 
 Use:
 
@@ -1099,9 +1699,41 @@ Instead of:
 - Buy a license.
 - Purchase a license.
 
+Avoid the terms [**cloud license** or **cloud licensing**](#cloud-licensing) if possible.
+
+The following terms are displayed in the UI and in emails. You can use them when necessary:
+
+- **Online license** - a license synchronized with GitLab
+- **Offline license** - a license not synchronized with GitLab
+- **Legacy license** - a license created before synchronization was possible
+
+You can also use the terms **legacy license file** and **offline license file** when
+describing the files that customers receive by email as part of the overall
+licensing and synchronization process.
+
+However, if you can, rather than the relying on the term, use the more specific description instead.
+
+## lifecycle, life cycle, life-cycle
+
+Use one word for **lifecycle**. Do not use **life cycle** or **life-cycle**.
+
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
+
 ## limitations
 
-Do not use **limitations**. Use **known issues** instead.
+Do not use **Limitations** as a topic title. For more information,
+see [reference topic titles](../topic_types/reference.md#reference-topic-titles).
+
+If you must, you can use the title **Known issues**.
+
+## list
+
+Do not use **list** when referring to a [**dropdown list**](#dropdown-list).
+Use the full phrase **dropdown list** instead.
+
+Also, do not use **list** when referring to a page. For example, the **Issues** page
+is populated with a list of issues. However, you should call it the **Issues** page,
+and not the **Issues** list.
 
 ## log in, log on
 
@@ -1114,6 +1746,19 @@ Do not use:
 Use [sign in](#sign-in-sign-in) instead.
 
 However, if the user interface has **Log in**, you should match the UI.
+
+## limited availability
+
+Use lowercase for **limited availability**. For example:
+
+- This feature has limited availability.
+- Hosted runners are in limited availability.
+
+Do not use:
+
+- This feature has reached limited availability.
+
+Do not use **LA** to abbreviate limited availability.
 
 ## logged-in user, logged in user
 
@@ -1142,16 +1787,16 @@ becoming inconsistent if we try to be more precise.
 
 ## Maintainer
 
-When writing about the Maintainer role:
+When writing about the Maintainer role, use a capital **M**.
 
-- Use a capital **M**.
-- Write it out.
-  - Use: if you are assigned the Maintainer role
-  - Instead of: if you are a maintainer
+Write it out:
 
-- When the Maintainer role is the minimum required role:
-  - Use: at least the Maintainer role
-  - Instead of: the Maintainer role or higher
+- Use: if you are assigned the Maintainer role
+- Instead of: if you are a maintainer
+
+When the Maintainer role is the minimum required role, use:
+
+- the Maintainer or Owner role
 
 Do not use bold.
 
@@ -1159,16 +1804,16 @@ Do not use **Maintainer permissions**. A user who is assigned the Maintainer rol
 
 ## mankind
 
-Do not use **mankind**. Use **people** or **humanity** instead. ([Vale](../testing/vale.md) rule: [`InclusionGender.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionGender.yml))
+Do not use **mankind**. Use **people** or **humanity** instead. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## manpower
 
-Do not use **manpower**. Use words like **workforce** or **GitLab team members**. ([Vale](../testing/vale.md) rule: [`InclusionGender.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionGender.yml))
+Do not use **manpower**. Use words like **workforce** or **GitLab team members**. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## master
 
 Do not use **master**. Use **main** when you need a sample [default branch name](#branch).
-([Vale](../testing/vale.md) rule: [`InclusionCultural.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionCultural.yml))
+([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## may, might
 
@@ -1190,14 +1835,21 @@ Instead of:
 - The `committed_date` and `authored_date` fields are generated from different sources, and may not be identical.
 - A typical pipeline might consist of four stages, executed in the following order:
 
-## MB, megabytes
+## MB, MiB, megabytes, mebibytes
 
-For **MB** and **GB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
+For **MB** and **MiB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
 
 ## member
 
 When you add a [user account](#user-account) to a group or project,
 the user account becomes a **member**.
+
+## Merge Commit Message Generation
+
+Use title case for **Merge Commit Message Generation**.
+
+On first mention on a page, use **GitLab Duo Merge Commit Message Generation**.
+Thereafter, use **Merge Commit Message Generation** by itself.
 
 ## merge request branch
 
@@ -1205,14 +1857,14 @@ Do not use **merge request branch**. See [branch](#branch).
 
 ## merge requests
 
-Use lowercase for **merge requests**. If you use **MR** as the acronym, spell it out on first use.
+Use lowercase for **merge requests**. Avoid the acronym **MR**, but if you must use it, spell it out on first use.
 
-## Merge request summary
+## Merge Request Summary
 
-Use sentence case for **Merge request summary**.
+Use title case for **Merge Request Summary**.
 
-On first mention on a page, use **GitLab Duo Merge request summary**.
-Thereafter, use **Merge request summary** by itself.
+On first mention on a page, use **GitLab Duo Merge Request Summary**.
+Thereafter, use **Merge Request Summary** by itself.
 
 ## milestones
 
@@ -1235,10 +1887,36 @@ Do not use bold.
 
 Do not use **Minimal Access permissions**. A user who is assigned the Minimal Access role has a set of associated permissions.
 
+## model registry
+
+When documenting the GitLab model registry features and functionality, use lowercase.
+
+Use:
+
+- The GitLab model registry supports A, B, and C.
+- You can publish a model to your project's model registry.
+
+## models
+
+For usage, see [language models](#language-model-large-language-model).
+
 ## n/a, N/A, not applicable
 
 When possible, use **not applicable**. Spelling out the phrase helps non-English speaking users and avoids
 capitalization inconsistencies.
+
+## namespace
+
+Use **namespace** when distinguishing between personal and group namespaces.
+Don't use **namespace** as a synonym for **group** or **top-level group**.
+
+On GitLab.com, top-level group Owners have full control over their groups and projects.
+Regular users can't have administrator access, as GitLab.com is managed by the GitLab team.
+
+For example:
+
+- You can do this thing in a personal namespace or a group namespace.
+- You must have the Owner role for the top-level group.
 
 ## navigate
 
@@ -1247,7 +1925,7 @@ Do not use **navigate**. Use **go** instead. For example:
 - Go to this webpage.
 - Open a terminal and go to the `runner` directory.
 
-([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## need to
 
@@ -1288,6 +1966,14 @@ Instead of:
 - In GitLab 14.4 and above...
 - In GitLab 14.4 and newer...
 
+## node
+
+An individual server in a GitLab site. A single site can contain multiple nodes. Do not use
+**primary** or **secondary** to describe a node. Use **primary site** or **secondary site** instead.
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
+
+See also [**primary, secondary**](#primary-secondary).
+
 ## normal, normally
 
 Don't use **normal** to mean the usual, typical, or standard way of doing something.
@@ -1304,7 +1990,7 @@ Instead of:
 - Normally, you specify a certificate.
 - Follow the normal Git workflow.
 
-([Vale](../testing/vale.md) rule: [`Normal.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Normal.yml))
+([Vale](../testing/vale.md) rule: [`Normal.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Normal.yml))
 
 ## note that
 
@@ -1323,10 +2009,11 @@ Instead of:
 The current product offerings are:
 
 - [GitLab.com](#gitlabcom)
-- [GitLab self-managed](#gitlab-self-managed)
+- [GitLab Self-Managed](#self-managed)
 - [GitLab Dedicated](#gitlab-dedicated)
+- [GitLab Dedicated for Government](#gitlab-dedicated-for-government)
 
-The [tier badges](index.md#available-product-tier-badges) reflect these offerings.
+The [availability details](availability_details.md) reflect these offerings.
 
 ## older
 
@@ -1355,16 +2042,7 @@ Instead of:
 - For installations that use Omnibus GitLab...
 
 For more information, see the
-[different installation methods](index.md#how-to-document-different-installation-methods).
-
-## on
-
-When documenting high-level UI elements, use **on** as a preposition. For example:
-
-- On the left sidebar, select **Settings > CI/CD**.
-- On the **Grant permission** dialog, select **Group**.
-
-Do not use **from** or **in**. For more information, see the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/f/from-vs-on).
+[different installation methods](_index.md#how-to-document-different-installation-methods).
 
 ## once
 
@@ -1382,14 +2060,46 @@ Instead of:
 
 Put the word **only** next to the word it modifies.
 
+In the following example, **only** modifies the noun **projects**.
+The meaning is that you can create one type of project--a private project.
+
 - You can create only private projects.
 
-In this example, **only** modifies the noun **projects**. The sentence means you can create one type of project--a private project.
+In the following example, **only** modifies the verb **create**.
+The meaning is that you can't perform other actions,
+like deleting private projects, or adding users to them.
 
 - You can only create private projects.
 
-In this example, **only** modifies the verb **create**. This sentence means that you can't perform other actions,
-like deleting private projects, or adding users to them.
+## optional
+
+If something is optional, such as a command argument, parameter value,
+or a file, use **Optional** followed by a period. For optional topics,
+append **(optional)** to the topic title.
+
+For example:
+
+```markdown
+### This is a topic (optional)
+
+- `value`: Optional. Use it to do something.
+```
+
+Follow the same guidance for [optional task steps](_index.md#optional-steps).
+
+## organizations
+
+When referring to the **organizations** top-level entity:
+
+- Use lowercase.
+- Use the plural form of the word.
+
+Use **organization** when referring to an individual organization.
+
+For example:
+
+- Use organizations to manage users, projects, and groups.
+- Add users to your organization.
 
 ## override
 
@@ -1406,17 +2116,17 @@ For example, a log file might overwrite a log file of the same name.
 
 ## Owner
 
-When writing about the Owner role:
+When writing about the Owner role, use a capital **O**.
 
-- Use a capital **O**.
-- Write it out.
-  - Use: if you are assigned the Owner role
-  - Instead of: if you are an owner
+Write it out:
+
+- Use: if you are assigned the Owner role
+- Instead of: if you are an owner
 
 Do not use bold.
 
 Do not use **Owner permissions**. A user who is assigned the Owner role has a set of associated permissions.
-An Owner is the highest role a user can have.
+An Owner is the most powerful role a user can have, other than an administrator.
 
 ## package registry
 
@@ -1431,14 +2141,60 @@ Use:
 
 If you write a phrase like, "On the **Issues** page," ensure steps for how to get to the page are nearby. Otherwise, people might not know what the **Issues** page is.
 
-The page name should be visible in the UI at the top of the page.
-If it is not, you should be able to get the name from the breadcrumb.
+The page name should be visible in the UI at the top of the page,
+or included in the breadcrumb.
 
 The docs should match the case in the UI, and the page name should be bold. For example:
 
 - On the **Test cases** page, ...
 
+## panel
+
+Use **panel** to refer to a main area of the GitLab UI
+that is not fixed on the side of the screen. The content of a panel changes depending on the context.
+
+See also: [names for UI elements](_index.md#names-for-ui-elements), [**top bar**, and **sidebar**](#sidebar-top-bar).
+
+## parent
+
+Always use as a compound noun.
+
+Do not use **direct [ancestor](#ancestor)** or **ascendant**.
+
+Examples:
+
+- parent directory
+- parent group
+- parent project
+- parent commit
+- parent issue
+- parent item
+- parent epic
+- parent objective
+- parent pipeline
+
+See also: [child](#child), and [subgroup](#subgroup).
+
+## per
+
+Do not use **per** because it can have several different meanings.
+
+Use the specific prepositional phrase instead:
+
+- for each
+- through
+- by
+- every
+- according to
+
 ## permissions
+
+When comparing the permissions required for certain actions, use **more** or **fewer**.
+For example:
+
+- The Guest role has fewer permissions than the Developer role.
+- To get more permissions, you must have a different role.
+- The Owner role has the most permissions.
 
 Do not use [**roles**](#roles) and **permissions** interchangeably. Each user is assigned a role. Each role includes a set of permissions.
 
@@ -1446,7 +2202,26 @@ Permissions are not the same as [**access levels**](#access-level).
 
 ## personal access token
 
-Use lowercase for **personal access token**.
+Use sentence case for **personal access token**.
+
+Capitalize the first word when you refer to the UI.
+
+## Planner
+
+When writing about the Planner role, use a capital **P**.
+
+Write it out:
+
+- Use: if you are assigned the Planner role
+- Instead of: if you are a planner
+
+When the Planner role is the minimum required role, use:
+
+- the Planner, Reporter, Developer, Maintainer, or Owner role
+
+Do not use bold.
+
+Do not use **Planner permissions**. A user who is assigned the Planner role has a set of associated permissions.
 
 ## please
 
@@ -1455,14 +2230,14 @@ Do not use **please** in the product documentation.
 In UI text, use **please** when we've inconvenienced the user. For more information,
 see the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/p/please).
 
-## Premium
-
-Use **Premium**, in uppercase, for the subscription tier.  When you refer to **Premium**
-in the context of other subscription tiers, follow [the subscription tier](#subscription-tier) guidance.
-
 ## preferences
 
 Use **preferences** to describe user-specific, system-level settings like theme and layout.
+
+## Premium
+
+Use **Premium**, in uppercase, for the subscription tier. When you refer to **Premium**
+in the context of other subscription tiers, follow [the subscription tier](#subscription-tier) guidance.
 
 ## prerequisites
 
@@ -1480,9 +2255,28 @@ Use **press** when talking about keyboard keys. For example:
 
 - To stop the command, press <kbd>Control</kbd>+<kbd>C</kbd>.
 
+## primary, secondary
+
+Use as adjectives, not as nouns, to reduce confusion. For example:
+
+- primary database, secondary database
+- primary site, secondary site (for Geo)
+
+See [**primary node** or **secondary node**](#node).
+
 ## profanity
 
-Do not use profanity. Doing so may negatively affect other users and contributors, which is contrary to the GitLab value of [Diversity, Inclusion, and Belonging](https://handbook.gitlab.com/handbook/values/#diversity-inclusion).
+Do not use profanity. Doing so might negatively affect other users and contributors, which is contrary to the GitLab value of [Diversity, Inclusion, and Belonging](https://handbook.gitlab.com/handbook/values/#diversity-inclusion).
+
+## project
+
+See [repository, project](#repository-project).
+
+## project access token
+
+Use sentence case for **project access token**.
+
+Capitalize the first word when you refer to the UI.
 
 ## provision
 
@@ -1495,6 +2289,10 @@ For example, you might write something like:
 ## push rules
 
 Use lowercase for **push rules**.
+
+## quite
+
+Do not use **quite** because it's wordy.
 
 ## `README` file
 
@@ -1513,9 +2311,15 @@ we would talk to a colleague, and to avoid differentiation between `we` and `the
 - Set the variable. (It's required.)
 - You can set the variable. (It's optional.)
 
+See also [recommended steps](_index.md#recommended-steps).
+
 ## register
 
 Use **register** instead of **sign up** when talking about creating an account.
+
+## reindex
+
+Use **reindex** instead of **re-index** when talking about search.
 
 ## remove
 
@@ -1525,35 +2329,41 @@ When an object is completely deleted, use [**delete**](#delete) instead.
 
 ## Reporter
 
-When writing about the Reporter role:
+When writing about the Reporter role, use a capital **R**.
 
-- Use a capital **R**.
-- Write it out.
-  - Use: if you are assigned the Reporter role
-  - Instead of: if you are a reporter
+Write it out:
 
-- When the Reporter role is the minimum required role:
-  - Use: at least the Reporter role
-  - Instead of: the Reporter role or higher
+- Use: if you are assigned the Reporter role
+- Instead of: if you are a reporter
+
+When the Reporter role is the minimum required role, use:
+
+- the Reporter, Developer, Maintainer, or Owner role
 
 Do not use bold.
 
 Do not use **Reporter permissions**. A user who is assigned the Reporter role has a set of associated permissions.
 
+## repository, project
+
+A GitLab project contains, among other things, a Git repository.
+
+Use **repository** when referring to the Git data and Git-specific operations, such as commits,
+branches, tags, and actions like cloning, fetching, pushing, or pulling.
+
+Use **project** when referring to the GitLab user interface for managing the repository, wikis,
+issues, [forks](#fork), settings, and other features.
+
+For example:
+
+- Push your changes to the upstream repository.
+- Create a fork of the upstream project.
+- Rename the default branch in the repository.
+- Transfer the project to a different group.
+
 ## Repository Mirroring
 
 Use title case for **Repository Mirroring**.
-
-## resolution, resolve
-
-Use **resolution** when the troubleshooting solution fixes the issue permanently.
-A resolution usually involves file and code changes to correct the problem.
-For example:
-
-- To resolve this issue, update the `.gitlab-ci.yml` file.
-- One resolution is to update the `.gitlab-ci.yml` file.
-
-See also [workaround](#workaround).
 
 ## requirements
 
@@ -1567,6 +2377,17 @@ Do not use **requirements**.
 ## reset
 
 Use **reset** to describe the action associated with resetting an item to a new state.
+
+## resolution, resolve
+
+Use **resolution** when the troubleshooting solution fixes the issue permanently.
+A resolution usually involves file and code changes to correct the problem.
+For example:
+
+- To resolve this issue, edit the `.gitlab-ci.yml` file.
+- One resolution is to edit the `.gitlab-ci.yml` file.
+
+See also [workaround](#workaround).
 
 ## respectively
 
@@ -1591,24 +2412,38 @@ Use lowercase for **review app**.
 
 ## roles
 
+A user has a role **for** a project or group.
+
+Use:
+
+- You must have the Owner role for the group.
+
+Instead of:
+
+- You must have the Owner role of the group.
+
+When referring to the role a user must have to perform an action, list all applicable roles, starting with the minimum:
+
+- You must have the Developer, Maintainer, or Owner role.
+
 Do not use **roles** and [**permissions**](#permissions) interchangeably. Each user is assigned a role. Each role includes a set of permissions.
 
-There are two types of roles: [custom](#custom-role) and [default](#default-role).
+Two types of roles exist: [custom](#custom-role) and [default](#default-role).
 
 Roles are not the same as [**access levels**](#access-level).
-
-## Root cause analysis
-
-Use sentence case for **Root cause analysis**.
-
-On first mention on a page, use **GitLab Duo Root cause analysis**.
-Thereafter, use **Root cause analysis** by itself.
 
 ## roll back
 
 Use **roll back** for changing a GitLab version to an earlier one.
 
 Do not use **roll back** for licensing or subscriptions. Use **change the subscription tier** instead.
+
+## Root Cause Analysis
+
+Use title case for **Root Cause Analysis**.
+
+On first mention on a page, use **GitLab Duo Root Cause Analysis**.
+Thereafter, use **Root Cause Analysis** by itself.
 
 ## runner, runners
 
@@ -1637,6 +2472,34 @@ Use **runner authentication token** instead of variations like **runner token**,
 Runners are assigned runner authentication tokens when they are created, and use them to authenticate with GitLab when
 they execute jobs.
 
+## Runner SaaS, SaaS runners
+
+Do not use **Runner SaaS** or **SaaS runners**.
+
+Use **GitLab-hosted runners** as the main feature name that describes runners hosted on GitLab.com and GitLab Dedicated.
+
+To specify offerings and operating systems use:
+
+- **hosted runners for GitLab.com**
+- **hosted runners for GitLab Dedicated**
+- **hosted runners on Linux for GitLab.com**
+- **hosted runners on Windows for GitLab.com**
+
+Do not use **hosted runners** without the **GitLab-** prefix or without the offering or operating system.
+
+## rules
+
+When describing rules and their behavior, use:
+
+- **Restrictive** to describe rules that limit or constrain actions.
+- **Permissive** to describe rules that allow or enable actions.
+
+For example:
+
+- This rule is more restrictive than the default setting.
+- Permissive rules allow broader access.
+- When multiple rules match, the most restrictive rule applies.
+
 ## (s)
 
 Do not use **(s)** to make a word optionally plural. It can slow down comprehension. For example:
@@ -1653,17 +2516,17 @@ If you can select multiples of something, then write the word as plural.
 
 ## sanity check
 
-Do not use **sanity check**. Use **check for completeness** instead. ([Vale](../testing/vale.md) rule: [`InclusionAbleism.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionAbleism.yml))
+Do not use **sanity check**. Use **check for completeness** instead. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## scalability
 
 Do not use **scalability** when talking about increasing GitLab performance for additional users. The words scale or scaling
 are sometimes acceptable, but references to increasing GitLab performance for additional users should direct readers
-to the GitLab [reference architectures](../../../administration/reference_architectures/index.md) page.
+to the GitLab [reference architectures](../../../administration/reference_architectures/_index.md) page.
 
 ## search
 
-When you search, you type a string in the search box on the left sidebar.
+When you search, you type a string in the search box on the top bar.
 The search results are displayed on a search page.
 
 Searching is different from [filtering](#filter).
@@ -1672,9 +2535,9 @@ Searching is different from [filtering](#filter).
 
 When referring to the subscription billing model:
 
-- For GitLab SaaS, use **seats**. Customers purchase seats. Users occupy seats when they are invited
-  to a group, with some [exceptions](../../../subscriptions/gitlab_com/index.md#how-seat-usage-is-determined).
-- For GitLab self-managed, use **users**. Customers purchase subscriptions for a specified number of **users**.
+- For GitLab.com, use **seats**. Customers purchase seats. Users occupy seats when they are invited
+  to a group, with some [exceptions](../../../subscriptions/manage_users_and_seats.md#gitlabcom-billing-and-usage).
+- For GitLab Self-Managed, use **users**. Customers purchase subscriptions for a specified number of **users**.
 
 ## section
 
@@ -1697,13 +2560,46 @@ Instead of:
 Use **select** with buttons, links, menu items, and lists. **Select** applies to more devices,
 while **click** is more specific to a mouse.
 
+However, you can make an exception for **right-click** and **click-through demo**.
+
+## self-hosted model
+
+Use **self-hosted model** (lowercase) to refer to a language model that's hosted by a customer, rather than GitLab.
+
+The language model might be an LLM (large language model), but it might not be.
+
+## Self-Hosted
+
+To avoid confusion with [**GitLab Self-Managed**](#gitlab-self-managed),
+when referring to the [**GitLab Duo Self-Hosted** feature](#gitlab-duo-self-hosted),
+do not use **Self-Hosted** by itself.
+
+Always write **GitLab Duo Self-Hosted** in full and in title case, unless you are
+[referring to a language model that's hosted by a customer, rather than GitLab](#self-hosted-model).
+
 ## self-managed
 
-Use **self-managed** to refer to a customer's installation of GitLab. Do not use **self-hosted**.
+Use **GitLab Self-Managed** to refer to a customer's installation of GitLab.
+
+- Do not use **self-hosted**.
+
+See [GitLab Self-Managed](#gitlab-self-managed).
 
 ## Service Desk
 
 Use title case for **Service Desk**.
+
+## session
+
+When an [agent](#ai-agent) is working on a [**flow**](#flows), a **session** is running.
+The session can start and stop.
+
+Do not use **AI session** or **agent session**.
+
+## settings
+
+A **setting** changes the default behavior of the product. A **setting** consists of a key/value pair,
+typically represented by a label with one or more options.
 
 ## setup, set up
 
@@ -1718,10 +2614,14 @@ Do not confuse **set up** with [**configure**](#configure).
 1. Set up your installation.
 1. Configure your installation.
 
-## settings
+## sidebar, top bar
 
-A **setting** changes the default behavior of the product. A **setting** consists of a key/value pair,
-typically represented by a label with one or more options.
+Use **sidebar** to refer to the fixed areas on the left and right of the GitLab UI.
+Use **top bar** to refer to the top fixed area that contains the search box and a user's avatar.
+
+For the main areas that change depending on the context, use [**panel**](#panel).
+
+See also: [names for UI elements](_index.md#names-for-ui-elements).
 
 ## sign in, sign-in
 
@@ -1754,7 +2654,7 @@ Use **authenticated user** instead of **signed-in user** or **signed in user**.
 
 ## simply, simple
 
-Do not use **simply** or **simple**. If the user doesn't find the process to be simple, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Simplicity.yml))
+Do not use **simply** or **simple**. If the user doesn't find the process to be simple, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Simplicity.yml))
 
 ## since
 
@@ -1770,18 +2670,18 @@ Instead of:
 
 ## slashes
 
-Instead of **and/or**, use **or** or re-write the sentence. This rule also applies to other slashes, like **follow/unfollow**. Some exceptions (like **CI/CD**) are allowed.
+Instead of **and/or**, use **or** or re-write the sentence. This rule also applies to other slashes, like **follow/unfollow**. Some exceptions (like **CI/CD**) are allowed. ([Vale](../testing/vale.md) rule: [`WordSlashWord.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/WordSlashWord.yml))
 
 ## slave
 
-Do not use **slave**. Another option is **secondary**. ([Vale](../testing/vale.md) rule: [`InclusionCultural.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionCultural.yml))
+Do not use **slave**. Another option is **secondary**. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
 
 ## storages
 
 In the context of:
 
 - Gitaly, storage is physical and must be called a **storage**.
-- Gitaly Cluster, storage can be either:
+- Gitaly Cluster (Praefect), storage can be either:
   - Virtual and must be called a **virtual storage**.
   - Physical and must be called a **physical storage**.
 
@@ -1790,9 +2690,9 @@ Gitaly storages have physical paths and virtual storages have virtual paths.
 ## subgroup
 
 Use **subgroup** (no hyphen) instead of **sub-group**.
-Also, avoid using alternative terms for subgroups, such as **child group** or **low-level group**.
+Also, avoid alternative terms for subgroups, such as **child group** or **low-level group**.
 
-([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
 ## subscription tier
 
@@ -1811,7 +2711,7 @@ To describe tiers:
 
 ## Suggested Reviewers
 
-Use title case for **Suggested Reviewers**. On first mention on a page, use **GitLab Duo Suggested Reviewers**.
+Use title case for **Suggested Reviewers**.
 
 **Suggested Reviewers** should always be plural, and is capitalized even if it's generic.
 
@@ -1820,19 +2720,16 @@ Examples:
 - Suggested Reviewers can recommend a person to review your merge request. (This phrase describes the feature.)
 - As you type, Suggested Reviewers are displayed. (This phrase is generic but still uses capital letters.)
 
-## that
+## TB, TiB, terabytes, tebibytes
 
-Do not use **that** when describing a noun. For example:
+For **TB** and **TiB**, follow the [Microsoft guidance](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
 
-Use:
+## tab
 
-- The file you save...
+Use bold for tab names. For example:
 
-Instead of:
-
-- The file **that** you save...
-
-See also [this, these, that, those](#this-these-that-those).
+- The **Pipelines** tab
+- The **Overview** tab
 
 ## terminal
 
@@ -1848,16 +2745,30 @@ talking about non-specific modules. For example:
 
 - You can publish a Terraform module to your project's Terraform Module Registry.
 
-## Test generation
+## Test Generation
 
-Use sentence case for **Test generation**.
+Use title case for **Test Generation**.
 
-On first mention on a page, use **GitLab Duo Test generation**.
-Thereafter, use **Test generation** by itself.
+On first mention on a page, use **GitLab Duo Test Generation**.
+Thereafter, use **Test Generation** by itself.
 
 ## text box
 
 Use **text box** instead of **field** or **box** when referring to the UI element.
+
+## that
+
+Do not use **that** when describing a noun. For example:
+
+Use:
+
+- The file you save...
+
+Instead of:
+
+- The file **that** you save...
+
+See also [this, these, that, those](#this-these-that-those).
 
 ## there is, there are
 
@@ -1890,21 +2801,21 @@ Always follow these words with a noun. For example:
 - Use: **That droid** is the one you are looking for.
 - Instead of: **That** is the one you are looking for.
 
-- Use: **Those settings** need to be configured. (Or even better, **Configure those settings.**)
+- Use: **Those settings** must be configured. (Or even better, **Configure those settings.**)
 - Instead of: **Those** need to be configured.
 
 ## to which, of which
 
 Try to avoid **to which** and **of which**, and let the preposition dangle at the end of the sentence instead.
-For examples, see [Prepositions](index.md#prepositions).
+For examples, see [Prepositions](_index.md#prepositions).
 
 ## to-do item
 
-Use lowercase and hyphenate **to-do** item. ([Vale](../testing/vale.md) rule: [`ToDo.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/ToDo.yml))
+Use lowercase and hyphenate **to-do** item. ([Vale](../testing/vale.md) rule: [`ToDo.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/ToDo.yml))
 
 ## To-Do List
 
-Use title case for **To-Do List**. ([Vale](../testing/vale.md) rule: [`ToDo.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/ToDo.yml))
+Use title case for **To-Do List**. ([Vale](../testing/vale.md) rule: [`ToDo.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/ToDo.yml))
 
 ## toggle
 
@@ -1912,9 +2823,23 @@ You **turn on** or **turn off** a toggle. For example:
 
 - Turn on the **blah** toggle.
 
+## top-level group
+
+Use lowercase for **top-level group** (hyphenated).
+
+Do not use **root group**.
+
 ## TFA, two-factor authentication
 
 Use [**2FA** and **two-factor authentication**](#2fa-two-factor-authentication) instead.
+
+## turn on, turn off
+
+Use **turn on** and **turn off** instead of **enable** or **disable**.
+
+For details, see [the Microsoft style guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/t/turn-on-turn-off).
+
+See also [enable](#enable) and [disable](#disable).
 
 ## type
 
@@ -1942,18 +2867,22 @@ See the [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-
 ## units of measurement
 
 Use a space between the number and the unit of measurement. For example, **128 GB**.
-([Vale](../testing/vale.md) rule: [`Units.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Units.yml))
+([Vale](../testing/vale.md) rule: [`Units.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Units.yml))
 
 For more information, see the
 [Microsoft Style Guide](https://learn.microsoft.com/en-us/style-guide/a-z-word-list-term-collections/term-collections/bits-bytes-terms).
 
 ## update
 
-Use **update** for installing a newer **patch** version of the software only. For example:
+Use **update** for installing a newer **patch** version of the software,
+or for documenting API and programmatic changes.
+
+For example:
 
 - Update GitLab from 14.9 to 14.9.1.
+- Use this endpoint to update user permissions.
 
-Do not use **update** for any other case. Instead, use **upgrade**.
+Do not use **update** for any other case. Instead, use **[upgrade](#upgrade)** or **[edit](#edit)**.
 
 ## upgrade
 
@@ -1985,7 +2914,7 @@ For more information, see the [Microsoft Style Guide](https://learn.microsoft.co
 
 ## useful
 
-Do not use **useful**. If the user doesn't find the process to be useful, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Simplicity.yml))
+Do not use **useful**. If the user doesn't find the process to be useful, we lose their trust. ([Vale](../testing/vale.md) rule: [`Simplicity.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/Simplicity.yml))
 
 ## user account
 
@@ -2008,31 +2937,59 @@ For example:
 ## utilize
 
 Do not use **utilize**. Use **use** instead. It's more succinct and easier for non-native English speakers to understand.
-([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/SubstitutionWarning.yml))
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
 
-## Value stream forecasting
+## version, v
 
-Use sentence case for **Value stream forecasting**. On first mention on a page, use **GitLab Duo Value stream forecasting**.
+To describe versions of GitLab, use **GitLab `<version number>`**. For example:
 
-Thereafter, use **Value stream forecasting** by itself.
+- You must have GitLab 16.0 or later.
+
+To describe other software, use the same style as the documentation for that software.
+For example:
+
+- In Kubernetes 1.4, you can...
+
+Pay attention to spacing by the letter **v**. In semantic versioning, no space exists after the **v**. For example:
+
+- v1.2.3
 
 ## via
 
-Do not use Latin abbreviations. Use **with**, **through**, or **by using** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/LatinTerms.yml))
+Do not use Latin abbreviations. Use **with**, **through**, or **by using** instead. ([Vale](../testing/vale.md) rule: [`LatinTerms.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/LatinTerms.yml))
 
-## Vulnerability resolution
+## virtual registry
 
-Use sentence case for **Vulnerability resolution**.
+Use lowercase for **virtual registry**.
 
-On first mention on a page, use **GitLab Duo Vulnerability resolution**.
-Thereafter, use **Vulnerability resolution** by itself.
+On first mention on a page, use **GitLab virtual registry**.
+Thereafter, use **virtual registry** by itself.
 
-## Vulnerability explanation
+Use:
 
-Use sentence case for **Vulnerability explanation**.
+- The GitLab virtual registry supports A, B, and C.
+- You can configure your applications to use one virtual registry instead
+  of multiple upstream registries.
 
-On first mention on a page, use **GitLab Duo Vulnerability explanation**.
-Thereafter, use **Vulnerability explanation** by itself.
+## VS Code user interface
+
+When describing the user interface of VS Code and the Web IDE, follow the usage and capitalization of the
+[VS Code documentation](https://code.visualstudio.com/docs/getstarted/userinterface), such as Command Palette
+and Primary Side Bar.
+
+## Vulnerability Explanation
+
+Use title case for **Vulnerability Explanation**.
+
+On first mention on a page, use **GitLab Duo Vulnerability Explanation**.
+Thereafter, use **Vulnerability Explanation** by itself.
+
+## Vulnerability Resolution
+
+Use title case for **Vulnerability Resolution**.
+
+On first mention on a page, use **GitLab Duo Vulnerability Resolution**.
+Thereafter, use **Vulnerability Resolution** by itself.
 
 ## we
 
@@ -2046,15 +3003,9 @@ Instead of:
 
 - We created a feature for you to add widgets.
 
-## workaround
+## Web IDE user interface
 
-Use **workaround** when the troubleshooting solution is a temporary fix.
-A workaround is usually an immediate fix and might have ongoing issues.
-For example:
-
-- The workaround is to temporarily pin your template to the deprecated version.
-
-See also [resolution](#resolution-resolve).
+See [VS Code user interface](#vs-code-user-interface).
 
 ## while
 
@@ -2077,17 +3028,36 @@ Do not use **whilst**. Use [while](#while) instead. **While** is more succinct a
 
 ## whitelist
 
-Do not use **whitelist**. Another option is **allowlist**. ([Vale](../testing/vale.md) rule: [`InclusionCultural.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/InclusionCultural.yml))
+Do not use **whitelist**. Another option is **allowlist**. ([Vale](../testing/vale.md) rule: [`InclusiveLanguage.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/InclusiveLanguage.yml))
+
+## within
+
+When possible, do not use **within**. Use **in** instead, unless you are referring to a time frame, limit, or boundary. For example:
+
+- The upgrade occurs within the four-hour maintenance window.
+- The Wi-Fi signal is accessible within a 30-foot radius.
+
+([Vale](../testing/vale.md) rule: [`SubstitutionWarning.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab_base/SubstitutionWarning.yml))
+
+## workaround
+
+Use **workaround** when the troubleshooting solution is a temporary fix.
+A workaround is usually an immediate fix and might have ongoing issues.
+For example:
+
+- The workaround is to temporarily pin your template to the deprecated version.
+
+See also [resolution](#resolution-resolve).
 
 ## yet
 
 Do not use **yet** when talking about the product or its features. The documentation describes the product as it is today.
 
-Sometimes you might need to use **yet** when writing a task. If you use
+Sometimes you might want to use **yet** when writing a task. If you use
 **yet**, ensure the surrounding phrases are written
 in present tense, active voice.
 
-[View guidance about how to write about future features](../versions.md#promising-features-in-future-versions).
+[View guidance about how to write about future features](_index.md#promising-features-in-future-versions).
 
 ## you, your, yours
 
@@ -2108,17 +3078,18 @@ Instead of:
 ## you can
 
 When possible, start sentences with an active verb instead of **you can**.
+
 For example:
 
 - Use code review analytics to view merge request data.
 - Create a board to organize your team tasks.
 - Configure variables to restrict pushes to a repository.
-- Add links to external accounts you have, like Skype and Twitter.
+- Add links to external accounts you have, like Discord and X (formerly Twitter).
 
 Use **you can** for optional actions. For example:
 
-- Use code review analytics to view metrics per merge request. You can also use the API.
-- Enter the name and value pairs. You can add up to 20 pairs per streaming destination.
+- Use code review analytics to view metrics for each merge request. You can also use the API.
+- Enter the name and value pairs. You can add up to 20 pairs for each streaming destination.
 
 <!-- vale on -->
 <!-- markdownlint-enable -->

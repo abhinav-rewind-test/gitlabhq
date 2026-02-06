@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Commit do
+RSpec.describe Commit, feature_category: :source_code_management do
   let_it_be(:project) { create(:project, :public, :repository) }
   let_it_be(:personal_snippet) { create(:personal_snippet, :repository) }
   let_it_be(:project_snippet) { create(:project_snippet, :repository) }
@@ -17,6 +17,7 @@ RSpec.describe Commit do
     it { is_expected.to include_module(Referable) }
     it { is_expected.to include_module(StaticModel) }
     it { is_expected.to include_module(Presentable) }
+    it { is_expected.to include_module(GlobalID::Identification) }
   end
 
   describe '.lazy' do
@@ -113,6 +114,28 @@ RSpec.describe Commit do
       it 'is equal to itself' do
         expect(commit.diff_refs).to eq(commit.diff_refs)
       end
+    end
+  end
+
+  describe '#diff_stats' do
+    it 'returns diff stats' do
+      stats = commit.diff_stats
+
+      expect(stats).to be_a(Gitlab::Git::DiffStatsCollection)
+      expect(stats.count).to be > 0
+    end
+
+    it 'calls repository.diff_stats with correct parameters' do
+      expect(project.repository)
+        .to receive(:diff_stats).with(commit.diff_refs.base_sha, commit.diff_refs.head_sha).and_call_original
+
+      commit.diff_stats
+    end
+
+    it 'returns nil when diff_refs is nil' do
+      allow(commit).to receive(:diff_refs).and_return(nil)
+
+      expect(commit.diff_stats).to be_nil
     end
   end
 
@@ -241,6 +264,15 @@ RSpec.describe Commit do
         expect(recorder.count).to be_zero
       end
     end
+
+    context 'when author_email is nil' do
+      let(:git_commit) { RepoHelpers.sample_commit.tap { |c| c.author_email = nil } }
+      let(:commit) { described_class.new(git_commit, build(:project)) }
+
+      it 'returns nil' do
+        expect(commit.author).to be_nil
+      end
+    end
   end
 
   describe '#committer' do
@@ -335,7 +367,7 @@ RSpec.describe Commit do
       '1234567' | true
       '123456' | false
       '1' | false
-      '0' * 40 | true
+      ('0' * 40) | true
       'c1acaa58bbcbc3eafe538cb8274ba387047b69f8' | true
       'H1acaa58bbcbc3eafe538cb8274ba387047b69f8' | false
       nil | false
@@ -408,10 +440,10 @@ RSpec.describe Commit do
     end
 
     it "does not truncates a message with a newline after 80 but less 100 characters" do
-      message = <<eos
+      message = <<EOS
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec sodales id felis id blandit.
 Vivamus egestas lacinia lacus, sed rutrum mauris.
-eos
+EOS
 
       allow(commit).to receive(:safe_message).and_return(message)
       expect(commit.title).to eq(message.split("\n").first)
@@ -460,20 +492,20 @@ eos
     end
 
     it 'returns description of commit message if title less than 100 characters' do
-      message = <<eos
+      message = <<EOS
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec sodales id felis id blandit.
 Vivamus egestas lacinia lacus, sed rutrum mauris.
-eos
+EOS
 
       allow(commit).to receive(:safe_message).and_return(message)
       expect(commit.description).to eq('Vivamus egestas lacinia lacus, sed rutrum mauris.')
     end
 
     it 'returns full commit message if commit title more than 100 characters' do
-      message = <<eos
+      message = <<EOS
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec sodales id felis id blandit. Vivamus egestas lacinia lacus, sed rutrum mauris.
 Vivamus egestas lacinia lacus, sed rutrum mauris.
-eos
+EOS
 
       allow(commit).to receive(:safe_message).and_return(message)
       expect(commit.description).to eq(message)
@@ -596,6 +628,25 @@ eos
         it 'does not include details of the merged commits' do
           expect(merge_commit.cherry_pick_message(user)).to end_with("(cherry picked from commit #{merge_commit.sha})")
         end
+      end
+    end
+  end
+
+  describe '#parents' do
+    subject(:parents) { commit.parents }
+
+    it 'loads commits for parents' do
+      expect(parents).to all be_kind_of(described_class)
+      expect(parents.map(&:id)).to match_array(commit.parent_ids)
+    end
+
+    context 'when parent id cannot be loaded' do
+      before do
+        allow(commit).to receive(:parent_ids).and_return(["invalid"])
+      end
+
+      it 'returns an empty array' do
+        expect(parents).to eq([])
       end
     end
   end
@@ -995,6 +1046,85 @@ eos
       let(:ref_containing) { ->(limit: 0, excluded_tipped: false) { commit.tags_containing(exclude_tipped: excluded_tipped, limit: limit) } }
 
       it_behaves_like 'containing ref names'
+    end
+  end
+
+  describe '#has_encoded_file_paths?' do
+    before do
+      allow(commit).to receive(:raw_diffs).and_return(raw_diffs)
+    end
+
+    context 'when there are diffs with encoded_file_path as true' do
+      let(:raw_diffs) do
+        [
+          instance_double(Gitlab::Git::Diff, encoded_file_path: true),
+          instance_double(Gitlab::Git::Diff, encoded_file_path: false)
+        ]
+      end
+
+      it 'returns true' do
+        expect(commit.has_encoded_file_paths?).to eq(true)
+      end
+    end
+
+    context 'when there are no diffs with encoded_file_path as true' do
+      let(:raw_diffs) do
+        [
+          instance_double(Gitlab::Git::Diff, encoded_file_path: false),
+          instance_double(Gitlab::Git::Diff, encoded_file_path: false)
+        ]
+      end
+
+      it 'returns false' do
+        expect(commit.has_encoded_file_paths?).to eq(false)
+      end
+    end
+  end
+
+  describe '#valid_full_sha' do
+    before do
+      allow(commit).to receive(:id).and_return(value)
+    end
+
+    let(:sha) { '5716ca5987cbf97d6bb54920bea6adde242d87e6' }
+
+    context 'when commit id does not match the full sha pattern' do
+      let(:value) { sha[0, Gitlab::Git::Commit::SHA1_LENGTH - 1] } # doesn't match Gitlab::Git::Commit::FULL_SHA_PATTERN because length is less than 40
+
+      it 'returns nil' do
+        expect(commit.valid_full_sha).to be_empty
+      end
+    end
+
+    context 'when commit id matches the full sha pattern' do
+      let(:value) { sha }
+
+      it 'returns the sha as a string' do
+        expect(commit.valid_full_sha).to eq(sha)
+      end
+    end
+  end
+
+  describe '#first_diffs_slice' do
+    let_it_be(:sha) { "913c66a37b4a45b9769037c55c2d238bd0942d2e" }
+    let_it_be(:commit) { project.commit_by(oid: sha) }
+    let_it_be(:limit) { 5 }
+
+    subject(:first_diffs_slice) { commit.first_diffs_slice(limit) }
+
+    it 'returns limited diffs' do
+      expect(first_diffs_slice.count).to eq(limit)
+    end
+  end
+
+  describe '#diffs_for_streaming' do
+    it 'returns a diff file collection commit' do
+      expect(commit.diffs_for_streaming).to be_a_kind_of(Gitlab::Diff::FileCollection::Commit)
+    end
+
+    it_behaves_like 'diffs for streaming' do
+      let(:repository) { commit.repository }
+      let(:resource) { commit }
     end
   end
 end

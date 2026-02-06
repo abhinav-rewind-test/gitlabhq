@@ -4,6 +4,7 @@ import {
   GlDisclosureDropdownGroup,
 } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import moreActionsDropdown from '~/groups_projects/components/more_actions_dropdown.vue';
 
 describe('moreActionsDropdown', () => {
@@ -11,6 +12,9 @@ describe('moreActionsDropdown', () => {
 
   const createComponent = ({ provideData = {}, propsData = {} } = {}) => {
     wrapper = shallowMountExtended(moreActionsDropdown, {
+      directives: {
+        GlTooltip: createMockDirective('gl-tooltip'),
+      },
       provide: {
         isGroup: false,
         groupOrProjectId: 1,
@@ -34,51 +38,36 @@ describe('moreActionsDropdown', () => {
   const showDropdown = () => {
     findDropdown().vm.$emit('show');
   };
+  const findDropdownTooltip = () => getBinding(findDropdown().element, 'gl-tooltip');
   const findDropdownGroup = () => wrapper.findComponent(GlDisclosureDropdownGroup);
   const findGroupSettings = () => wrapper.findByTestId('settings-group-link');
   const findProjectSettings = () => wrapper.findByTestId('settings-project-link');
 
   describe('copy id', () => {
-    describe('project namespace type', () => {
-      beforeEach(async () => {
+    it.each`
+      isGroup  | id    | expectedTestId       | unexpectedTestId     | expectedText
+      ${false} | ${22} | ${'copy-project-id'} | ${'copy-group-id'}   | ${'Copy project ID: 22'}
+      ${true}  | ${11} | ${'copy-group-id'}   | ${'copy-project-id'} | ${'Copy group ID: 11'}
+    `(
+      'when isGroup is $isGroup',
+      async ({ isGroup, id, expectedTestId, unexpectedTestId, expectedText }) => {
         createComponent({
           provideData: {
-            groupOrProjectId: 22,
+            isGroup,
+            groupOrProjectId: id,
           },
         });
+
         await showDropdown();
-      });
 
-      it('has correct test id `copy-project-id`', () => {
-        expect(wrapper.findByTestId('copy-project-id').exists()).toBe(true);
-        expect(wrapper.findByTestId('copy-group-id').exists()).toBe(false);
-      });
+        const element = wrapper.findByTestId(expectedTestId);
+        const nonexistentElement = wrapper.findByTestId(unexpectedTestId);
 
-      it('renders copy project id with correct id', () => {
-        expect(wrapper.findByTestId('copy-project-id').text()).toBe('Copy project ID: 22');
-      });
-    });
-
-    describe('group namespace type', () => {
-      beforeEach(async () => {
-        createComponent({
-          provideData: {
-            isGroup: true,
-            groupOrProjectId: 11,
-          },
-        });
-        await showDropdown();
-      });
-
-      it('has correct test id `copy-group-id`', () => {
-        expect(wrapper.findByTestId('copy-project-id').exists()).toBe(false);
-        expect(wrapper.findByTestId('copy-group-id').exists()).toBe(true);
-      });
-
-      it('renders copy group id with correct id', () => {
-        expect(wrapper.findByTestId('copy-group-id').text()).toBe('Copy group ID: 11');
-      });
-    });
+        expect(element.exists()).toBe(true);
+        expect(nonexistentElement.exists()).toBe(false);
+        expect(element.text()).toBe(expectedText);
+      },
+    );
   });
 
   describe('dropdown group', () => {
@@ -101,6 +90,12 @@ describe('moreActionsDropdown', () => {
         },
       });
       expect(findDropdownGroup().exists()).toBe(true);
+    });
+
+    it('renders tooltip', () => {
+      createComponent();
+
+      expect(findDropdownTooltip().value).toBe('More actions');
     });
   });
 

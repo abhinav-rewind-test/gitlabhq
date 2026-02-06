@@ -1,3 +1,4 @@
+import { GlAnimatedChevronLgDownUpIcon } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { shallowMountExtended, mountExtended } from 'helpers/vue_test_utils_helper';
@@ -8,8 +9,10 @@ import StatusIcon from '~/vue_merge_request_widget/components/widget/status_icon
 import ActionButtons from '~/vue_merge_request_widget/components/widget/action_buttons.vue';
 import Widget from '~/vue_merge_request_widget/components/widget/widget.vue';
 import WidgetContentRow from '~/vue_merge_request_widget/components/widget/widget_content_row.vue';
+import ReportListItem from '~/merge_requests/reports/components/report_list_item.vue';
 import * as logger from '~/lib/logger';
 import axios from '~/lib/utils/axios_utils';
+import { parseBoolean } from '~/lib/utils/common_utils';
 import { HTTP_STATUS_OK } from '~/lib/utils/http_status';
 
 jest.mock('~/vue_merge_request_widget/components/widget/telemetry', () => ({
@@ -27,10 +30,16 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
   const findExpandedSection = () => wrapper.findByTestId('widget-extension-collapsed-section');
   const findActionButtons = () => wrapper.findComponent(ActionButtons);
   const findToggleButton = () => wrapper.findByTestId('toggle-button');
+  const findToggleChevron = () => findToggleButton().findComponent(GlAnimatedChevronLgDownUpIcon);
   const findHelpPopover = () => wrapper.findComponent(HelpPopover);
   const findDynamicScroller = () => wrapper.findByTestId('dynamic-content-scroller');
 
-  const createComponent = async ({ propsData, slots, mountFn = shallowMountExtended } = {}) => {
+  const createComponent = async ({
+    propsData,
+    slots,
+    mountFn = shallowMountExtended,
+    provide = {},
+  } = {}) => {
     wrapper = mountFn(Widget, {
       propsData: {
         isCollapsible: false,
@@ -44,10 +53,12 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
         ...propsData,
       },
       slots,
+      provide,
       stubs: {
         StatusIcon,
         ActionButtons,
         ContentRow: WidgetContentRow,
+        RouterLink: true,
       },
     });
 
@@ -105,18 +116,14 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
       createComponent({
         propsData: {
           statusIconName: 'warning',
+          fetchCollapsedData: jest.fn().mockResolvedValue({}),
         },
       });
 
+      await nextTick();
       expect(wrapper.text()).toContain('Loading');
       await axios.waitForAll();
       expect(wrapper.text()).not.toContain('Loading');
-    });
-
-    it('validates widget name', () => {
-      expect(() => {
-        assertProps(Widget, { widgetName: 'InvalidWidgetName' });
-      }).toThrow();
     });
   });
 
@@ -199,7 +206,34 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
       expect(wrapper.findByTestId('widget-extension-top-level-summary').text()).toBe('Hello world');
     });
 
-    it.todo('displays content property when content slot is not provided');
+    it('displays content property when content slot is not provided', async () => {
+      const content = [
+        {
+          id: 'row-1',
+          header: ['Header 1', 'Subheader 1'],
+          text: 'Content text 1',
+        },
+        {
+          id: 'row-2',
+          header: ['Header 2'],
+          text: 'Content text 2',
+        },
+      ];
+
+      await createComponent({
+        mountFn: mountExtended,
+        propsData: {
+          isCollapsible: true,
+          content,
+        },
+      });
+
+      findToggleButton().vm.$emit('click');
+      await waitForPromises();
+
+      expect(wrapper.findByText('Content text 1').exists()).toBe(true);
+      expect(wrapper.findByText('Content text 2').exists()).toBe(true);
+    });
 
     it('displays the summary slot when provided', async () => {
       createComponent({
@@ -274,6 +308,27 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
       expect(findToggleButton().attributes('aria-label')).toBe('Show details');
     });
 
+    it('displays the chevron correctly when toggle is clicked', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+        },
+        slots: {
+          content: '<b>More complex content</b>',
+        },
+      });
+
+      // Vue compat doesn't know about component props if it extends other component
+      expect(
+        findToggleChevron().props('isOn') ?? parseBoolean(findToggleChevron().attributes('is-on')),
+      ).toBe(false);
+
+      findToggleButton().vm.$emit('click');
+      await nextTick();
+      expect(
+        findToggleChevron().props('isOn') ?? parseBoolean(findToggleChevron().attributes('is-on')),
+      ).toBe(true);
+    });
     it('does not display the content slot until toggle is clicked', async () => {
       await createComponent({
         propsData: {
@@ -423,7 +478,8 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
 
     it('when full report is clicked it should call the respective telemetry event', async () => {
       expect(wrapper.vm.telemetryHub.fullReportClicked).not.toHaveBeenCalled();
-      wrapper.findByText('Full report').vm.$emit('click');
+
+      wrapper.findByTestId('extension-actions-button').vm.$emit('click');
       await nextTick();
       expect(wrapper.vm.telemetryHub.fullReportClicked).toHaveBeenCalledTimes(1);
     });
@@ -474,6 +530,220 @@ describe('~/vue_merge_request_widget/components/widget/widget.vue', () => {
       findToggleButton().vm.$emit('click');
       await waitForPromises();
       expect(wrapper.findByText('Main text for the row').exists()).toBe(true);
+    });
+  });
+
+  describe('when mrReportsTab is enabled', () => {
+    beforeEach(() => {
+      window.gl = { mrWidgetData: { reportsTabPath: 'reportsTabPath' } };
+      window.mrTabs = { tabShown: jest.fn() };
+      jest.spyOn(window.history, 'replaceState');
+    });
+
+    it('does not render toggle button', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+        },
+        provide: { glFeatures: { mrReportsTab: true } },
+      });
+
+      expect(findToggleButton().exists()).toBe(false);
+    });
+
+    it('renders view reports action button', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+        },
+        provide: { glFeatures: { mrReportsTab: true } },
+      });
+
+      expect(findActionButtons().props('tertiaryButtons')).toEqual([
+        expect.objectContaining({ href: 'reportsTabPath/test', text: 'View report' }),
+      ]);
+    });
+
+    it('calls mrTabs.tabShown when clicking action button', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+        },
+        provide: { glFeatures: { mrReportsTab: true } },
+      });
+
+      wrapper.findByTestId('extension-actions-button').vm.$emit('click', { preventDefault() {} });
+
+      await nextTick();
+
+      expect(window.mrTabs.tabShown).toHaveBeenCalledWith('reports');
+      expect(window.history.replaceState).toHaveBeenCalledWith(null, null, 'reportsTabPath/test');
+    });
+  });
+
+  describe('when reportsTabSidebar is true', () => {
+    it('renders ReportListItem', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+        },
+        provide: { reportsTabSidebar: true },
+      });
+
+      expect(wrapper.findComponent(ReportListItem).exists()).toBe(true);
+    });
+
+    it('passes path as route name when path is provided', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+          path: 'security-reports',
+        },
+        provide: { reportsTabSidebar: true },
+      });
+
+      const reportListItem = wrapper.findComponent(ReportListItem);
+      expect(reportListItem.props('to') || reportListItem.attributes('to')).toBe(
+        'security-reports',
+      );
+    });
+
+    it('falls back to report route when path is not provided', async () => {
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          summary: { title: 'Hello world' },
+        },
+        provide: { reportsTabSidebar: true },
+      });
+
+      const reportListItem = wrapper.findComponent(ReportListItem);
+      expect(reportListItem.props('to') || reportListItem.attributes('to')).toBe('report');
+    });
+  });
+
+  describe('loading states', () => {
+    it('shows loading icon when loadingState is status_icon', async () => {
+      await createComponent({
+        propsData: {
+          loadingState: 'status_icon',
+        },
+      });
+
+      expect(findStatusIcon().props('isLoading')).toBe(true);
+    });
+
+    it('shows loading text when loadingState is collapsed', async () => {
+      await createComponent({
+        propsData: {
+          loadingState: 'collapsed',
+          loadingText: 'Custom loading text',
+        },
+      });
+
+      expect(wrapper.text()).toContain('Custom loading text');
+    });
+
+    it('emits is-loading event when loading state changes', async () => {
+      const fetchCollapsedData = jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ headers: {}, status: HTTP_STATUS_OK, data: {} }));
+
+      createComponent({ propsData: { fetchCollapsedData } });
+
+      expect(wrapper.emitted('is-loading')).toBeUndefined();
+
+      await waitForPromises();
+      expect(wrapper.emitted('is-loading')).toEqual([[false]]);
+    });
+  });
+
+  describe('error handling', () => {
+    it('displays custom error text when provided', () => {
+      createComponent({
+        propsData: {
+          hasError: true,
+          errorText: 'Custom error message',
+        },
+      });
+
+      expect(wrapper.findByText('Custom error message').exists()).toBe(true);
+    });
+
+    it('shows failed status icon when there is a summary error', async () => {
+      createComponent({
+        propsData: {
+          fetchCollapsedData: jest.fn().mockRejectedValue('Error'),
+        },
+      });
+
+      await waitForPromises();
+      expect(findStatusIcon().props('iconName')).toBe('failed');
+    });
+
+    it('displays content error when expanded data fetch fails', async () => {
+      const fetchExpandedData = jest.fn().mockRejectedValue('Expanded error');
+
+      await createComponent({
+        propsData: {
+          isCollapsible: true,
+          fetchExpandedData,
+        },
+      });
+
+      findToggleButton().vm.$emit('click');
+      await waitForPromises();
+
+      expect(wrapper.findByText('Failed to load').exists()).toBe(true);
+    });
+  });
+
+  describe('widget name validation', () => {
+    it('accepts valid widget names starting with Widget', () => {
+      expect(() => {
+        assertProps(Widget, { widgetName: 'WidgetSecurity', isCollapsible: false });
+      }).not.toThrow();
+    });
+
+    it('rejects widget names not starting with Widget', () => {
+      expect(() => {
+        assertProps(Widget, { widgetName: 'SecurityWidget' });
+      }).toThrow();
+    });
+  });
+
+  describe('poll management', () => {
+    it('stops polling when component is unmounted', async () => {
+      const fetchCollapsedData = jest
+        .fn()
+        .mockReturnValue(
+          Promise.resolve({ headers: { 'POLL-INTERVAL': 3000 }, status: HTTP_STATUS_OK, data: {} }),
+        );
+
+      createComponent({ propsData: { fetchCollapsedData } });
+
+      // Poll 10 times
+      for (let i = 0; i < 10; i += 1) {
+        expect(fetchCollapsedData).toHaveBeenCalledTimes(i + 1);
+        // eslint-disable-next-line no-await-in-loop
+        await waitForPromises();
+        jest.advanceTimersByTime(3000);
+      }
+
+      fetchCollapsedData.mockClear();
+
+      wrapper.destroy();
+
+      // Wait another round
+      await waitForPromises();
+      jest.advanceTimersByTime(3000);
+
+      expect(fetchCollapsedData).not.toHaveBeenCalled();
     });
   });
 });

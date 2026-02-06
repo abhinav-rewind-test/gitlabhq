@@ -3,8 +3,16 @@
 module Projects
   class AutocompleteService < BaseService
     include LabelsAsHash
+    include Routing::WikiHelper
+
+    SEARCH_LIMIT = 5
+
     def issues
-      IssuesFinder.new(current_user, project_id: project.id, state: 'opened').execute.select([:iid, :title])
+      relation = IssuesFinder.new(current_user, project_id: project.id, state: 'opened').execute
+      relation = relation.gfm_autocomplete_search(params[:search]).limit(SEARCH_LIMIT) if params[:search]
+      relation
+        .with_work_item_type
+        .select([:iid, :title, :namespace_id, 'work_item_types.icon_name'])
     end
 
     def milestones
@@ -30,7 +38,21 @@ module Projects
     end
 
     def snippets
-      SnippetsFinder.new(current_user, project: project).execute.select([:id, :title])
+      SnippetsFinder.new(
+        current_user,
+        organization_id: params[:organization_id],
+        project: project
+      ).execute.select([:id, :title])
+    end
+
+    def wikis
+      wiki = Wiki.for_container(project, current_user)
+      return [] unless can?(current_user, :read_wiki, wiki.container)
+
+      wiki
+        .list_pages(limit: 5000, load_content: true, size_limit: 512)
+        .reject { |page| page.slug.start_with?('templates/', 'uploads/') }
+        .map { |page| { path: wiki_page_path(page.wiki, page), slug: page.slug, title: page.human_title } }
     end
 
     def contacts(target)
@@ -51,7 +73,7 @@ module Projects
     end
 
     def labels_as_hash(target)
-      super(target, project_id: project.id, include_ancestor_groups: true)
+      super(target, project_id: project.id, include_ancestor_groups: true, archived: false)
     end
   end
 end

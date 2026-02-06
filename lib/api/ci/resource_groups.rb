@@ -17,8 +17,8 @@ module API
 
       params do
         requires :id,
-                 types: [String, Integer],
-                 desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
+          types: [String, Integer],
+          desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
       end
       resource :projects, requirements: ::API::API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc 'Get all resource groups for a project' do
@@ -33,6 +33,7 @@ module API
         params do
           use :pagination
         end
+        route_setting :authorization, permissions: :read_resource_group, boundary_type: :project
         get ':id/resource_groups' do
           authorize! :read_resource_group, user_project
 
@@ -50,10 +51,33 @@ module API
         params do
           requires :key, type: String, desc: 'The key of the resource group'
         end
+        route_setting :authorization, permissions: :read_resource_group, boundary_type: :project
         get ':id/resource_groups/:key', requirements: RESOURCE_GROUP_ENDPOINT_REQUIREMENTS do
           authorize! :read_resource_group, resource_group
 
           present resource_group, with: Entities::Ci::ResourceGroup
+        end
+
+        desc 'Show current job for a specific resource group' do
+          success Entities::Ci::JobBasic
+          failure [
+            { code: 401, message: 'Unauthorized' },
+            { code: 404, message: 'Not found' }
+          ]
+          tags ci_resource_groups_tags
+        end
+        params do
+          requires :key, type: String, desc: 'The key of the resource group'
+        end
+        route_setting :authorization, permissions: [:read_resource_group, :read_job], boundary_type: :project
+        get ':id/resource_groups/:key/current_job', requirements: RESOURCE_GROUP_ENDPOINT_REQUIREMENTS do
+          authorize! :read_resource_group, resource_group
+          authorize! :read_build, user_project
+
+          current_processable = resource_group
+            .current_processable
+
+          present current_processable, with: Entities::Ci::JobBasic
         end
 
         desc 'List upcoming jobs for a specific resource group' do
@@ -70,6 +94,7 @@ module API
 
           use :pagination
         end
+        route_setting :authorization, permissions: [:read_resource_group, :read_job], boundary_type: :project
         get ':id/resource_groups/:key/upcoming_jobs', requirements: RESOURCE_GROUP_ENDPOINT_REQUIREMENTS do
           authorize! :read_resource_group, resource_group
           authorize! :read_build, user_project
@@ -95,10 +120,11 @@ module API
           requires :key, type: String, desc: 'The key of the resource group'
 
           optional :process_mode,
-                   type: String,
-                   desc: 'The process mode of the resource group',
-                   values: ::Ci::ResourceGroup.process_modes.keys
+            type: String,
+            desc: 'The process mode of the resource group',
+            values: ::Ci::ResourceGroup.process_modes.keys
         end
+        route_setting :authorization, permissions: :update_resource_group, boundary_type: :project
         put ':id/resource_groups/:key', requirements: RESOURCE_GROUP_ENDPOINT_REQUIREMENTS do
           authorize! :update_resource_group, resource_group
 

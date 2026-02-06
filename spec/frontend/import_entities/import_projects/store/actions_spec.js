@@ -242,6 +242,32 @@ describe('import_projects store actions', () => {
           expect(requestedUrl).toBe(`${MOCK_ENDPOINT}?after=endTest`);
         });
       });
+
+      describe('when provider is "bitbucket"', () => {
+        beforeEach(() => {
+          localState.provider = PROVIDERS.BITBUCKET;
+        });
+
+        it('includes cursor in url query params', async () => {
+          let requestedUrl;
+          mock.onGet().reply((config) => {
+            requestedUrl = config.url;
+            return [HTTP_STATUS_OK, payload];
+          });
+
+          const localStateWithPage = { ...localState, pageInfo: { endCursor: 'endTest' } };
+
+          await testAction(
+            fetchRepos,
+            null,
+            localStateWithPage,
+            expect.any(Array),
+            expect.any(Array),
+          );
+
+          expect(requestedUrl).toBe(`${MOCK_ENDPOINT}?after=endTest`);
+        });
+      });
     });
 
     it('correctly keeps current page on an unsuccessful request', () => {
@@ -285,6 +311,31 @@ describe('import_projects store actions', () => {
           fetchRepos,
           null,
           { ...localState, filter: { some_filter: 'filter' } },
+          [
+            { type: REQUEST_REPOS },
+            { type: SET_PAGE, payload: 1 },
+            {
+              type: RECEIVE_REPOS_SUCCESS,
+              payload: convertObjectPropsToCamelCase(payload, { deep: true }),
+            },
+          ],
+          [],
+        );
+      });
+    });
+
+    describe('when ciCdOnly is enabled', () => {
+      it.each`
+        description                               | expectedUrl                             | expectedState
+        ${'includes ci_cd_only parameter'}        | ${'ci_cd_only=true'}                    | ${{ ciCdOnly: true }}
+        ${'combines ciCdOnly with other filters'} | ${'some_filter=filter&ci_cd_only=true'} | ${{ filter: { some_filter: 'filter' }, ciCdOnly: true }}
+      `('$description in request', ({ expectedUrl, expectedState }) => {
+        mock.onGet(`${TEST_HOST}/endpoint.json?${expectedUrl}`).reply(HTTP_STATUS_OK, payload);
+
+        return testAction(
+          fetchRepos,
+          null,
+          { ...localState, ...expectedState },
           [
             { type: REQUEST_REPOS },
             { type: SET_PAGE, payload: 1 },

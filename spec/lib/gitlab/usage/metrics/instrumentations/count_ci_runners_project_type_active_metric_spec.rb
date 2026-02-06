@@ -2,15 +2,15 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Usage::Metrics::Instrumentations::CountCiRunnersProjectTypeActiveMetric, feature_category: :runner do
-  let(:project) { build(:project) }
+RSpec.describe Gitlab::Usage::Metrics::Instrumentations::CountCiRunnersProjectTypeActiveMetric, feature_category: :runner_core do
+  let_it_be(:project) { create(:project) }
+
   let(:expected_value) { 1 }
 
   before do
-    create(:ci_runner,
-      :project,
-      projects: [project]
-    )
+    create(:ci_runner)
+    create(:ci_runner, :project, projects: [project])
+    create(:ci_runner, :project, :paused, projects: [project])
   end
 
   it_behaves_like 'a correct instrumented metric value', { time_frame: 'all', data_source: 'database' }

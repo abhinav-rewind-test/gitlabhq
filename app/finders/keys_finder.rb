@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 class KeysFinder
   delegate :find, :find_by_id, to: :execute
 
@@ -17,6 +18,10 @@ class KeysFinder
   def execute
     keys = by_key_type
     keys = by_users(keys)
+    keys = by_created_before(keys)
+    keys = by_created_after(keys)
+    keys = by_expires_before(keys)
+    keys = by_expires_after(keys)
     keys = sort(keys)
 
     by_fingerprint(keys)
@@ -44,11 +49,35 @@ class KeysFinder
     keys.for_user(params[:users])
   end
 
+  def by_created_before(keys)
+    return keys unless params[:created_before]
+
+    keys.created_before(params[:created_before])
+  end
+
+  def by_created_after(keys)
+    return keys unless params[:created_after]
+
+    keys.created_after(params[:created_after])
+  end
+
+  def by_expires_before(keys)
+    return keys unless params[:expires_before]
+
+    keys.expires_before(params[:expires_before])
+  end
+
+  def by_expires_after(keys)
+    return keys unless params[:expires_after]
+
+    keys.expires_after(params[:expires_after])
+  end
+
   def by_fingerprint(keys)
     return keys unless params[:fingerprint].present?
     raise InvalidFingerprint unless valid_fingerprint_param?
 
-    keys.find_by(fingerprint_query) # rubocop: disable CodeReuse/ActiveRecord
+    keys.find_by(fingerprint_query) # rubocop:disable CodeReuse/ActiveRecord -- find_by needed for fingerprint lookup
   end
 
   def valid_fingerprint_param?

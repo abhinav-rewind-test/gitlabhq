@@ -7,7 +7,7 @@ RSpec.describe 'getting project fork details', feature_category: :source_code_ma
   include ProjectForksHelper
 
   let_it_be(:project) { create(:project, :public, :repository_private, :repository) }
-  let_it_be(:current_user) { create(:user, maintainer_projects: [project]) }
+  let_it_be(:current_user) { create(:user, maintainer_of: project) }
   let_it_be(:forked_project) { fork_project(project, current_user, repository: true) }
 
   let(:ref) { 'feature' }
@@ -68,9 +68,9 @@ RSpec.describe 'getting project fork details', feature_category: :source_code_ma
 
     before do
       forked_project.update!({
-                               repository_access_level: 'private',
-                               merge_requests_access_level: 'private'
-                             })
+        repository_access_level: 'private',
+        merge_requests_access_level: 'private'
+      })
     end
 
     it 'does not return fork details' do

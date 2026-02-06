@@ -13,8 +13,7 @@ import { stubComponent } from 'helpers/stub_component';
 import { mountExtended, extendedWrapper } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
-import Tracking from '~/tracking';
-import { s__ } from '~/locale';
+import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
 import { createAlert } from '~/alert';
 import {
   packageFiles as packageFilesMock,
@@ -33,20 +32,16 @@ import {
   DELETE_PACKAGE_FILES_ERROR_MESSAGE,
   GRAPHQL_PACKAGE_FILES_PAGE_SIZE,
 } from '~/packages_and_registries/package_registry/constants';
-import { NEXT, PREV } from '~/vue_shared/components/pagination/constants';
 import PackageFiles from '~/packages_and_registries/package_registry/components/details/package_files.vue';
 import FileIcon from '~/vue_shared/components/file_icon.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
-import { scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import getPackageFiles from '~/packages_and_registries/package_registry/graphql/queries/get_package_files.query.graphql';
 import destroyPackageFilesMutation from '~/packages_and_registries/package_registry/graphql/mutations/destroy_package_files.mutation.graphql';
 
 Vue.use(VueApollo);
 jest.mock('~/alert');
-jest.mock('~/lib/utils/common_utils', () => ({
-  ...jest.requireActual('~/lib/utils/common_utils'),
-  scrollToElement: jest.fn(),
-}));
+jest.mock('~/lib/utils/scroll_utils');
 
 describe('Package Files', () => {
   let wrapper;
@@ -69,7 +64,7 @@ describe('Package Files', () => {
   const findFirstToggleDetailsButton = () => findFirstRow().findByTestId('toggle-details-button');
   const findFirstRowShaComponent = (id) => wrapper.findByTestId(id);
   const findCheckAllCheckbox = () => wrapper.findByTestId('package-files-checkbox-all');
-  const findAllRowCheckboxes = () => wrapper.findAllByTestId('package-files-checkbox');
+  const findAllRowCheckboxes = () => wrapper.find('tbody').findAllComponents(GlFormCheckbox);
 
   const files = packageFilesMock();
   const [file] = files;
@@ -82,6 +77,7 @@ describe('Package Files', () => {
     packageType = 'NPM',
     projectPath = 'gitlab-test',
     canDelete = true,
+    deleteAllFiles = false,
     stubs,
     resolver = jest.fn().mockResolvedValue(packageFilesQuery({ files: [file] })),
     filesDeleteMutationResolver = jest.fn().mockResolvedValue(packageDestroyFilesMutation()),
@@ -97,6 +93,7 @@ describe('Package Files', () => {
       apolloProvider,
       propsData: {
         canDelete,
+        deleteAllFiles,
         packageId,
         packageType,
         projectPath,
@@ -155,7 +152,7 @@ describe('Package Files', () => {
 
       expect(findPackageFilesAlert().exists()).toBe(true);
       expect(findPackageFilesAlert().text()).toBe(
-        s__('PackageRegistry|Something went wrong while fetching package assets.'),
+        'Something went wrong while fetching package assets.',
       );
       expect(Sentry.captureException).toHaveBeenCalled();
     });
@@ -171,17 +168,22 @@ describe('Package Files', () => {
         startCursor,
         hasNextPage,
         hasPreviousPage,
-        prevText: PREV,
-        nextText: NEXT,
         disabled: false,
       });
     });
   });
 
   describe('link', () => {
-    beforeEach(async () => {
+    let trackingSpy;
+
+    beforeEach(() => {
+      trackingSpy = mockTracking(undefined, undefined, jest.spyOn);
       createComponent();
-      await waitForPromises();
+      return waitForPromises();
+    });
+
+    afterEach(() => {
+      unmockTracking();
     });
 
     it('exists', () => {
@@ -193,11 +195,9 @@ describe('Package Files', () => {
     });
 
     it('tracks "download-file" event on click', () => {
-      const eventSpy = jest.spyOn(Tracking, 'event');
-
       findFirstRowDownloadLink().vm.$emit('click');
 
-      expect(eventSpy).toHaveBeenCalledWith(
+      expect(trackingSpy).toHaveBeenCalledWith(
         eventCategory,
         DOWNLOAD_PACKAGE_ASSET_TRACKING_ACTION,
         expect.any(Object),
@@ -275,7 +275,7 @@ describe('Package Files', () => {
         createComponent({ canDelete });
         await waitForPromises();
 
-        expect(findFirstActionMenu().exists()).toBe(false);
+        expect(findFirstRow().findComponent(GlDisclosureDropdown).exists()).toBe(false);
       });
     });
   });
@@ -305,14 +305,15 @@ describe('Package Files', () => {
 
         const first = findAllRowCheckboxes().at(0);
 
-        await first.setChecked(true);
+        await first.find('input').setChecked(true);
 
         expect(findDeleteSelectedButton().props('disabled')).toBe(false);
       });
 
       describe('select all checkbox', () => {
         it('will toggle between selecting all and deselecting all files', async () => {
-          const getChecked = () => findAllRowCheckboxes().filter((x) => x.element.checked === true);
+          const getChecked = () =>
+            findAllRowCheckboxes().filter((x) => x.props('checked') === true);
 
           createComponent({ resolver: jest.fn().mockResolvedValue(packageFilesQuery()) });
           await waitForPromises();
@@ -364,7 +365,7 @@ describe('Package Files', () => {
 
         const first = findAllRowCheckboxes().at(0);
 
-        await first.setChecked(true);
+        await first.find('input').setChecked(true);
 
         await findDeleteSelectedButton().trigger('click');
 
@@ -390,55 +391,121 @@ describe('Package Files', () => {
         );
       });
 
-      describe('emits delete-all-files event', () => {
-        it('with right content for last file in package', async () => {
-          createComponent({
-            resolver: jest.fn().mockResolvedValue(
-              packageFilesQuery({
-                files: [file],
-                extendPagination: {
-                  hasNextPage: false,
-                },
-              }),
-            ),
+      describe('When deleteAllFiles is disabled', () => {
+        const deleteAllFiles = false;
+
+        describe('emits delete-all-files event', () => {
+          it('with right content for last file in package', async () => {
+            createComponent({
+              deleteAllFiles,
+              resolver: jest.fn().mockResolvedValue(
+                packageFilesQuery({
+                  files: [file],
+                  extendPagination: {
+                    hasPreviousPage: false,
+                    hasNextPage: false,
+                  },
+                }),
+              ),
+            });
+            await waitForPromises();
+            const first = findAllRowCheckboxes().at(0);
+
+            await first.find('input').setChecked(true);
+
+            await findDeleteSelectedButton().trigger('click');
+
+            expect(showMock).toHaveBeenCalledTimes(0);
+
+            expect(wrapper.emitted('delete-all-files')).toHaveLength(1);
+            expect(wrapper.emitted('delete-all-files')[0]).toEqual([
+              DELETE_LAST_PACKAGE_FILE_MODAL_CONTENT,
+            ]);
           });
-          await waitForPromises();
-          const first = findAllRowCheckboxes().at(0);
 
-          await first.setChecked(true);
+          it('with right content for all files in package', async () => {
+            createComponent({
+              deleteAllFiles,
+              resolver: jest.fn().mockResolvedValue(
+                packageFilesQuery({
+                  extendPagination: {
+                    hasPreviousPage: false,
+                    hasNextPage: false,
+                  },
+                }),
+              ),
+            });
+            await waitForPromises();
 
-          await findDeleteSelectedButton().trigger('click');
+            await findCheckAllCheckbox().setChecked(true);
 
-          expect(showMock).toHaveBeenCalledTimes(0);
+            await findDeleteSelectedButton().trigger('click');
 
-          expect(wrapper.emitted('delete-all-files')).toHaveLength(1);
-          expect(wrapper.emitted('delete-all-files')[0]).toEqual([
-            DELETE_LAST_PACKAGE_FILE_MODAL_CONTENT,
-          ]);
+            expect(showMock).toHaveBeenCalledTimes(0);
+
+            expect(wrapper.emitted('delete-all-files')).toHaveLength(1);
+            expect(wrapper.emitted('delete-all-files')[0]).toEqual([
+              DELETE_ALL_PACKAGE_FILES_MODAL_CONTENT,
+            ]);
+          });
         });
+      });
 
-        it('with right content for all files in package', async () => {
-          createComponent({
-            resolver: jest.fn().mockResolvedValue(
-              packageFilesQuery({
-                extendPagination: {
-                  hasNextPage: false,
-                },
-              }),
-            ),
+      describe('When deleteAllFiles is enabled', () => {
+        const deleteAllFiles = true;
+
+        describe('deletes and does not emit delete-all-files event', () => {
+          it('with right content for last file in package', async () => {
+            createComponent({
+              deleteAllFiles,
+              resolver: jest.fn().mockResolvedValue(
+                packageFilesQuery({
+                  files: [file],
+                  extendPagination: {
+                    hasPreviousPage: false,
+                    hasNextPage: false,
+                  },
+                }),
+              ),
+            });
+            await waitForPromises();
+            const first = findAllRowCheckboxes().at(0);
+
+            await first.find('input').setChecked(true);
+
+            await findDeleteSelectedButton().trigger('click');
+
+            expect(showMock).toHaveBeenCalledTimes(1);
+            expect(findDeleteFilesModal().text()).toMatchInterpolatedText(
+              'You are about to delete foo-1.0.1.tgz. This is a destructive action that may render your package unusable. Are you sure?',
+            );
+            expect(wrapper.emitted('delete-all-files')).toBeUndefined();
           });
-          await waitForPromises();
 
-          await findCheckAllCheckbox().setChecked(true);
+          it('with right content for all files in package', async () => {
+            createComponent({
+              deleteAllFiles,
+              resolver: jest.fn().mockResolvedValue(
+                packageFilesQuery({
+                  extendPagination: {
+                    hasPreviousPage: false,
+                    hasNextPage: false,
+                  },
+                }),
+              ),
+            });
+            await waitForPromises();
 
-          await findDeleteSelectedButton().trigger('click');
+            await findCheckAllCheckbox().setChecked(true);
 
-          expect(showMock).toHaveBeenCalledTimes(0);
+            await findDeleteSelectedButton().trigger('click');
 
-          expect(wrapper.emitted('delete-all-files')).toHaveLength(1);
-          expect(wrapper.emitted('delete-all-files')[0]).toEqual([
-            DELETE_ALL_PACKAGE_FILES_MODAL_CONTENT,
-          ]);
+            expect(showMock).toHaveBeenCalledTimes(1);
+            expect(findDeleteFilesModal().text()).toMatchInterpolatedText(
+              'You are about to delete 2 assets. This operation is irreversible.',
+            );
+            expect(wrapper.emitted('delete-all-files')).toBeUndefined();
+          });
         });
       });
     });
@@ -530,7 +597,7 @@ describe('Package Files', () => {
     const doDeleteFile = async () => {
       const first = findAllRowCheckboxes().at(0);
 
-      await first.setChecked(true);
+      await first.find('input').setChecked(true);
 
       await findDeleteSelectedButton().trigger('click');
 
@@ -716,7 +783,6 @@ describe('Package Files', () => {
       });
     });
   });
-
   describe('additional details', () => {
     describe('details toggle button', () => {
       it('exists', async () => {
@@ -795,6 +861,44 @@ describe('Package Files', () => {
 
         expect(findFirstRowShaComponent('md5').exists()).toBe(false);
       });
+    });
+  });
+
+  describe('upload slot', () => {
+    const resolver = jest.fn().mockResolvedValue(packageFilesQuery({ files: [file] }));
+    const findUploadSlot = () => wrapper.findByTestId('upload-slot');
+
+    beforeEach(async () => {
+      createComponent({
+        resolver,
+        options: {
+          scopedSlots: {
+            upload(props) {
+              return this.$createElement('div', {
+                attrs: {
+                  'data-testid': 'upload-slot',
+                  ...props,
+                },
+                on: {
+                  click: () => {
+                    return props.refetch();
+                  },
+                },
+              });
+            },
+          },
+        },
+      });
+      await waitForPromises();
+    });
+
+    it('should render slot content', () => {
+      expect(findUploadSlot().attributes()).toMatchObject({ refetch: expect.anything() });
+    });
+
+    it('should refetch when clicked', async () => {
+      await findUploadSlot().trigger('click');
+      expect(resolver).toHaveBeenCalledTimes(2);
     });
   });
 });

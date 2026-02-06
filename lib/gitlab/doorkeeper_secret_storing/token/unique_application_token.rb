@@ -10,7 +10,11 @@ module Gitlab
         # Maintains compatibility with ::Doorkeeper::OAuth::Helpers::UniqueToken
         # Returns a secure random token, prefixed with a GitLab identifier.
         def self.generate(*)
-          format(OAUTH_APPLICATION_SECRET_PREFIX_FORMAT, token: SecureRandom.hex(32))
+          format(prefix_for_oauth_application_secret, token: SecureRandom.hex(32))
+        end
+
+        def self.prefix_for_oauth_application_secret
+          ::Authn::TokenField::PrefixHelper.prepend_instance_prefix(OAUTH_APPLICATION_SECRET_PREFIX_FORMAT)
         end
       end
     end

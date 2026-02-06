@@ -3,10 +3,11 @@ import { mountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { useFakeDate } from 'helpers/fake_date';
 import SetStatusForm from '~/set_status_modal/set_status_form.vue';
-import { NEVER_TIME_RANGE } from '~/set_status_modal/constants';
+import { NEVER_TIME_RANGE, STATUS_MAX_LENGTH } from '~/set_status_modal/constants';
 import EmojiPicker from '~/emoji/components/picker.vue';
 import { timeRanges } from '~/vue_shared/constants';
 import GfmAutoComplete from 'ee_else_ce/gfm_auto_complete';
+import { EMOJI_THUMBS_UP } from '~/emoji/constants';
 
 const [thirtyMinutes, , , oneDay] = timeRanges;
 
@@ -15,7 +16,7 @@ describe('SetStatusForm', () => {
 
   const defaultPropsData = {
     defaultEmoji: 'speech_balloon',
-    emoji: 'thumbsup',
+    emoji: EMOJI_THUMBS_UP,
     message: 'Foo bar',
     availability: false,
   };
@@ -74,6 +75,12 @@ describe('SetStatusForm', () => {
 
       expect(findMessageInput().element.value).toBe(defaultPropsData.message);
     });
+
+    it(`caps message at ${STATUS_MAX_LENGTH} characters`, async () => {
+      await createComponent();
+
+      expect(findMessageInput().attributes('maxlength')).toBe(STATUS_MAX_LENGTH.toString());
+    });
   });
 
   describe('clear status after dropdown toggle button text', () => {
@@ -88,7 +95,8 @@ describe('SetStatusForm', () => {
             },
           });
 
-          expect(wrapper.findByRole('button', { name: '11:00 AM' }).exists()).toBe(true);
+          // Combobox is named externally by the parent GlFormGroup <label>
+          expect(wrapper.findByRole('combobox').text()).toBe('11:00 AM');
         });
       });
 
@@ -100,9 +108,8 @@ describe('SetStatusForm', () => {
             },
           });
 
-          expect(wrapper.findByRole('button', { name: 'Dec 6, 2022, 11:00 AM' }).exists()).toBe(
-            true,
-          );
+          // Combobox is named externally by the parent GlFormGroup <label>
+          expect(wrapper.findByRole('combobox').text()).toBe('Dec 6, 2022, 11:00 AM');
         });
       });
 
@@ -116,7 +123,8 @@ describe('SetStatusForm', () => {
               },
             });
 
-            expect(wrapper.findByRole('button', { name: '12:30 AM' }).exists()).toBe(true);
+            // Combobox is named externally by the parent GlFormGroup <label>
+            expect(wrapper.findByRole('combobox').text()).toBe('12:30 AM');
           });
         });
 
@@ -129,9 +137,8 @@ describe('SetStatusForm', () => {
               },
             });
 
-            expect(wrapper.findByRole('button', { name: 'Dec 6, 2022, 12:00 AM' }).exists()).toBe(
-              true,
-            );
+            // Combobox is named externally by the parent GlFormGroup <label>
+            expect(wrapper.findByRole('combobox').text()).toBe('Dec 6, 2022, 12:00 AM');
           });
         });
       });
@@ -141,7 +148,8 @@ describe('SetStatusForm', () => {
       it('displays `Never`', async () => {
         await createComponent();
 
-        expect(wrapper.findByRole('button', { name: NEVER_TIME_RANGE.label }).exists()).toBe(true);
+        // Combobox is named externally by the parent GlFormGroup <label>
+        expect(wrapper.findByRole('combobox').text()).toBe(NEVER_TIME_RANGE.label);
       });
     });
   });

@@ -41,6 +41,13 @@ RSpec.describe API::MergeRequestDiffs, 'MergeRequestDiffs', feature_category: :s
         let(:url) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions" }
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_merge_request_diff do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions", personal_access_token: pat)
+      end
+    end
   end
 
   describe 'GET /projects/:id/merge_requests/:merge_request_iid/versions/:version_id' do
@@ -53,6 +60,16 @@ RSpec.describe API::MergeRequestDiffs, 'MergeRequestDiffs', feature_category: :s
       expect(json_response['id']).to eq(merge_request_diff.id)
       expect(json_response['head_commit_sha']).to eq(merge_request_diff.head_commit_sha)
       expect(json_response['diffs'].size).to eq(merge_request_diff.diffs.size)
+    end
+
+    it 'returns commits' do
+      get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/#{merge_request_diff.id}", user)
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response.dig('commits', 0)).to include(
+        'author_name' => 'Job van der Voort',
+        'parent_ids' => %w[1b12f15a11fc6e62177bef08f47bc7b5ce50b141 498214de67004b1da3d820901307bed2a68a8ef6]
+      )
     end
 
     context 'when unidiff format is requested' do
@@ -86,10 +103,31 @@ RSpec.describe API::MergeRequestDiffs, 'MergeRequestDiffs', feature_category: :s
     end
 
     context 'caching merge request diffs', :use_clean_rails_redis_caching do
-      it 'is performed' do
+      let(:merge_request_raw_diff) { merge_request_diff.diffs.diffs.first }
+      let(:expected_diff) { merge_request_raw_diff.diff }
+      let(:expected_unidiff) { merge_request_raw_diff.unidiff }
+
+      it 'creates different cache keys for diff/unidiff modes' do
         get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/#{merge_request_diff.id}", user)
 
-        expect(Rails.cache.fetch(merge_request_diff.cache_key)).to be_present
+        expected_diff_key = [::API::Entities::MergeRequestDiffFull, merge_request_diff.cache_key, false].join(":")
+        expect(Rails.cache.fetch(expected_diff_key)).to be_present
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response.dig('diffs', 0, 'diff')).to eq(expected_diff)
+
+        get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/#{merge_request_diff.id}", user), params: { unidiff: true }
+
+        expected_unidiff_key = [::API::Entities::MergeRequestDiffFull, merge_request_diff.cache_key, true].join(":")
+        expect(Rails.cache.fetch(expected_unidiff_key)).to be_present
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response.dig('diffs', 0, 'diff')).to eq(expected_unidiff)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_merge_request_diff do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/#{merge_request.merge_request_diffs.first.id}", personal_access_token: pat)
       end
     end
   end

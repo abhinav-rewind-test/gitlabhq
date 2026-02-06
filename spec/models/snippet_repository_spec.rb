@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe SnippetRepository, feature_category: :snippets do
+RSpec.describe SnippetRepository, feature_category: :source_code_management do
   let_it_be(:user) { create(:user) }
 
   let(:snippet) { create(:personal_snippet, :repository, author: user) }
@@ -12,6 +12,128 @@ RSpec.describe SnippetRepository, feature_category: :snippets do
   describe 'associations' do
     it { is_expected.to belong_to(:shard) }
     it { is_expected.to belong_to(:snippet) }
+    it { is_expected.to belong_to(:organization) }
+    it { is_expected.to belong_to(:project) }
+  end
+
+  # This is for the cells related sharding keys:
+  #   snippet_project_id and snippet_organization_id
+  describe 'sharding key validations' do
+    let_it_be(:organization) { create(:organization) }
+    let_it_be(:project) { create(:project, organization: organization) }
+    let_it_be(:personal_snippet) { create(:personal_snippet, organization: organization) }
+    let_it_be(:project_snippet) { create(:project_snippet, project: project) }
+
+    describe 'validations' do
+      context 'when both sharding keys are present' do
+        it 'is invalid' do
+          snippet_repo = build(:snippet_repository,
+            snippet: personal_snippet,
+            organization: organization,
+            project: project)
+
+          expect(snippet_repo).not_to be_valid
+          expect(snippet_repo.errors[:base]).to include('must belong to either an organization or a project')
+        end
+      end
+
+      context 'when neither sharding key is present' do
+        it 'is invalid' do
+          personal_snippet.organization_id = nil
+
+          snippet_repo = build(:snippet_repository,
+            snippet: personal_snippet,
+            organization: nil,
+            project: nil)
+
+          expect(snippet_repo).not_to be_valid
+          expect(snippet_repo.errors[:base]).to include('must belong to either an organization or a project')
+        end
+      end
+
+      context 'when only organization is present' do
+        it 'is valid' do
+          snippet_repo = build(:snippet_repository,
+            snippet: personal_snippet,
+            organization: organization,
+            project: nil)
+
+          expect(snippet_repo).to be_valid
+        end
+      end
+
+      context 'when only project is present' do
+        it 'is valid' do
+          snippet_repo = build(:snippet_repository,
+            snippet: project_snippet,
+            organization: nil,
+            project: project)
+
+          expect(snippet_repo).to be_valid
+        end
+      end
+    end
+
+    describe 'before_validation callbacks' do
+      let_it_be(:other_organization) { create(:organization) }
+      let_it_be(:other_project) { create(:project) }
+
+      context 'for personal snippet' do
+        it 'automatically assigns organization from snippet' do
+          snippet_repo = build(:snippet_repository, snippet: personal_snippet)
+
+          expect(snippet_repo.organization).to be_nil
+          snippet_repo.valid?
+          expect(snippet_repo.organization).to eq(personal_snippet.organization)
+        end
+
+        # This is an edge case because the key would initially be based on the
+        # snippet's key, but the test exists to prove that we early return if
+        # the key exists.
+        context 'when one sharding key is already set' do
+          it 'retains the same key' do
+            snippet_repo = build(
+              :snippet_repository,
+              snippet: personal_snippet,
+              organization: other_organization
+            )
+
+            expect(snippet_repo.organization).not_to be_nil
+            snippet_repo.valid?
+            expect(snippet_repo.organization).not_to eq(personal_snippet.organization)
+            expect(snippet_repo.organization).to eq(other_organization)
+          end
+        end
+      end
+
+      context 'for project snippet' do
+        it 'automatically assigns project from snippet' do
+          snippet_repo = build(:snippet_repository, snippet: project_snippet)
+
+          expect(snippet_repo.project).to be_nil
+          snippet_repo.valid?
+          expect(snippet_repo.project).to eq(project_snippet.project)
+        end
+      end
+
+      # This is an edge case because the key would initially be based on the
+      # snippet's key, but the test exists to prove that we early return if
+      # the key exists.
+      context 'when one sharding key is already set' do
+        it 'retains the same key' do
+          snippet_repo = build(
+            :snippet_repository,
+            snippet: project_snippet,
+            project: other_project
+          )
+
+          expect(snippet_repo.project).not_to be_nil
+          snippet_repo.valid?
+          expect(snippet_repo.project).not_to eq(project_snippet.project)
+          expect(snippet_repo.project).to eq(other_project)
+        end
+      end
+    end
   end
 
   it_behaves_like 'shardable scopes' do
@@ -21,7 +143,7 @@ RSpec.describe SnippetRepository, feature_category: :snippets do
 
   describe '.find_snippet' do
     it 'finds snippet by disk path' do
-      snippet = create(:snippet, author: user)
+      snippet = create(:project_snippet, author: user)
       snippet.track_snippet_repository(snippet.repository.storage)
 
       expect(described_class.find_snippet(snippet.disk_path)).to eq(snippet)
@@ -318,5 +440,12 @@ RSpec.describe SnippetRepository, feature_category: :snippets do
 
   def first_blob(snippet)
     snippet.repository.blob_at('master', snippet.repository.ls_files(snippet.default_branch).first)
+  end
+
+  context 'with loose foreign key on snippet_repositories.shard_id' do
+    it_behaves_like 'cleanup by a loose foreign key' do
+      let_it_be(:parent) { create(:shard) }
+      let_it_be(:model) { create(:snippet_repository, shard: parent) }
+    end
   end
 end

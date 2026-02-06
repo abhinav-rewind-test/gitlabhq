@@ -1,8 +1,9 @@
-import { isUndefined, uniqueId } from 'lodash';
+import { isUndefined } from 'lodash';
 import { s__ } from '~/locale';
 import showGlobalToast from '~/vue_shared/plugins/global_toast';
 import { convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
 import { getParameterByName, setUrlParams } from '~/lib/utils/url_utility';
+import { BASE_ROLES } from '~/access_level/constants';
 import {
   FIELDS,
   DEFAULT_SORT,
@@ -28,7 +29,7 @@ export const generateBadges = ({ member, isCurrentUser, canManageMembers }) => [
   {
     show: member.user?.isBot,
     text: I18N_USER_BOT,
-    variant: 'muted',
+    variant: 'neutral',
   },
   {
     show: member.user?.twoFactorEnabled && (canManageMembers || isCurrentUser),
@@ -44,14 +45,12 @@ export const generateBadges = ({ member, isCurrentUser, canManageMembers }) => [
  *   @param {Map<string, number>} member.validRoles
  */
 export const roleDropdownItems = ({ validRoles }) => {
-  const staticRoleDropdownItems = Object.entries(validRoles).map(([name, value]) => ({
-    accessLevel: value,
-    memberRoleId: null, // The value `null` is need to downgrade from custom role to static role. See: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/133430#note_1595153555
-    text: name,
-    value: uniqueId('role-static-'),
-  }));
+  const accessLevels = new Set(Object.values(validRoles));
+  // Filter by only the roles that can be assigned to the user. For example, a user in a sub-group can't be assigned a
+  // role lower than the one they have in a parent group.
+  const roles = BASE_ROLES.filter(({ accessLevel }) => accessLevels.has(accessLevel));
 
-  return { flatten: staticRoleDropdownItems, formatted: staticRoleDropdownItems };
+  return { flatten: roles, formatted: roles };
 };
 
 /**
@@ -64,15 +63,11 @@ export const roleDropdownItems = ({ validRoles }) => {
 export const initialSelectedRole = (flattenDropdownItems, member) => {
   return flattenDropdownItems.find(
     ({ accessLevel }) => accessLevel === member.accessLevel.integerValue,
-  )?.value;
+  );
 };
 
 export const isGroup = (member) => {
   return Boolean(member.sharedWithGroup);
-};
-
-export const isDirectMember = (member) => {
-  return member.isDirectMember;
 };
 
 export const isCurrentUser = (member, currentUserId) => {
@@ -80,18 +75,18 @@ export const isCurrentUser = (member, currentUserId) => {
 };
 
 export const canRemove = (member) => {
-  return isDirectMember(member) && member.canRemove;
+  return member.isDirectMember && member.canRemove;
 };
 
 export const canRemoveBlockedByLastOwner = (member, canManageMembers) =>
-  isDirectMember(member) && canManageMembers && member.isLastOwner;
+  member.isDirectMember && canManageMembers && member.isLastOwner;
 
 export const canResend = (member) => {
   return Boolean(member.invite?.canResend);
 };
 
 export const canUpdate = (member, currentUserId) => {
-  return !isCurrentUser(member, currentUserId) && isDirectMember(member) && member.canUpdate;
+  return !isCurrentUser(member, currentUserId) && member.isDirectMember && member.canUpdate;
 };
 
 export const parseSortParam = (sortableFields) => {
@@ -137,7 +132,10 @@ export const buildSortHref = ({
     filterParams[filteredSearchBarSearchParam] = getParameterByName(filteredSearchBarSearchParam);
   }
 
-  return setUrlParams({ ...filterParams, sort: sortParam }, window.location.href, true);
+  return setUrlParams(
+    { ...filterParams, sort: sortParam },
+    { url: window.location.href, clearParams: true },
+  );
 };
 
 // Defined in `ee/app/assets/javascripts/members/utils.js`
@@ -158,23 +156,21 @@ export const parseDataAttributes = (el) => {
   });
 };
 
-export const baseRequestFormatter = (basePropertyName, accessLevelPropertyName) => ({
-  accessLevel,
-  memberRoleId,
-  ...otherProperties
-}) => {
-  const accessLevelProperty = !isUndefined(accessLevel)
-    ? { [accessLevelPropertyName]: accessLevel }
-    : {};
+export const baseRequestFormatter =
+  (basePropertyName, accessLevelPropertyName) =>
+  ({ accessLevel, memberRoleId, ...otherProperties }) => {
+    const accessLevelProperty = !isUndefined(accessLevel)
+      ? { [accessLevelPropertyName]: accessLevel }
+      : {};
 
-  return {
-    [basePropertyName]: {
-      ...accessLevelProperty,
-      member_role_id: memberRoleId ?? null,
-      ...otherProperties,
-    },
+    return {
+      [basePropertyName]: {
+        ...accessLevelProperty,
+        member_role_id: memberRoleId ?? null,
+        ...otherProperties,
+      },
+    };
   };
-};
 
 export const groupLinkRequestFormatter = baseRequestFormatter(
   GROUP_LINK_BASE_PROPERTY_NAME,

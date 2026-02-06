@@ -54,6 +54,7 @@ class FeatureFlagOptionParser
 
   Options = Struct.new(
     :name,
+    :description,
     :type,
     :group,
     :milestone,
@@ -79,6 +80,10 @@ class FeatureFlagOptionParser
         # commit` interface
         opts.on('--amend', 'Amend the previous commit') do |value|
           options.amend = value
+        end
+
+        opts.on('-d', '--description [string]', String, 'Short description for the feature flag') do |value|
+          options.description = value
         end
 
         opts.on('-f', '--force', 'Overwrite an existing entry') do |value|
@@ -279,7 +284,7 @@ class FeatureFlagOptionParser
       return unless TYPES.dig(options.type, :rollout_issue)
 
       issue_new_url = "https://gitlab.com/gitlab-org/gitlab/-/issues/new"
-      issue_title = "[Feature flag] Rollout of `#{options.name}`"
+      issue_title = "[FF] `#{options.name}` -- #{options.description}"
       issue_new_url = issue_new_url + "?" + URI.encode_www_form('issue[title]' => issue_title)
       group_name = find_group_by_label(options.group)
 
@@ -406,6 +411,7 @@ class FeatureFlagCreator
   end
 
   def execute
+    assert_clipboard_command!
     assert_feature_branch!
     assert_name!
     assert_existing_feature_flag!
@@ -442,6 +448,7 @@ class FeatureFlagCreator
   def config_hash
     {
       'name'              => options.name,
+      'description'       => options.description,
       'feature_issue_url' => options.feature_issue_url,
       'introduced_by_url' => options.introduced_by_url,
       'rollout_issue_url' => options.rollout_issue_url,
@@ -465,6 +472,12 @@ class FeatureFlagCreator
     fail_with "git add failed" unless system(*%W[git add #{file_path}])
 
     Kernel.exec(*%w[git commit --amend])
+  end
+
+  def assert_clipboard_command!
+    return if FeatureFlagOptionParser.copy_to_clipboard_command
+
+    fail_with "Could not find a copy to clipboard command. On Linux, please install xclip or xsel (or wl-clipboard under Wayland). On macOS, make sure pbcopy is available."
   end
 
   def assert_feature_branch!

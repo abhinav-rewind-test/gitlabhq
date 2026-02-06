@@ -5,21 +5,29 @@ module Resolvers
     class TypesResolver < BaseResolver
       include LooksAhead
 
-      type Types::WorkItems::TypeType.connection_type, null: true
+      type ::Types::WorkItems::TypeType.connection_type, null: true
 
-      argument :name, Types::IssueTypeEnum,
-               description: 'Filter work item types by the given name.',
-               required: false
+      argument :name,
+        ::Types::IssueTypeEnum,
+        description: "Filter work item types by the given name.",
+        required: false
 
-      def resolve_with_lookahead(name: nil)
+      argument :only_available,
+        ::GraphQL::Types::Boolean,
+        description: "When true, returns only the available work item types for the current user.",
+        required: false,
+        experiment: { milestone: "18.6" }
+
+      def resolve_with_lookahead(name: nil, only_available: false)
         context.scoped_set!(:resource_parent, object)
 
-        # This will require a finder in the future when groups/projects get their work item types
-        # All groups/projects use the default types for now
-        base_scope = ::WorkItems::Type.default
-        base_scope = base_scope.by_type(name) if name
+        result = ::WorkItems::TypesFinder
+          .new(container: object)
+          .execute(name: name, only_available: only_available)
 
-        apply_lookahead(base_scope.order_by_name_asc)
+        result = result.then { |types| apply_lookahead(types) } unless result.is_a?(Array)
+
+        result
       end
 
       private
@@ -27,12 +35,6 @@ module Resolvers
       def preloads
         {
           widget_definitions: :enabled_widget_definitions
-        }
-      end
-
-      def nested_preloads
-        {
-          widget_definitions: { allowed_child_types: :allowed_child_types_by_name }
         }
       end
     end

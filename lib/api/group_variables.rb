@@ -5,8 +5,8 @@ module API
     include PaginationParams
 
     before { authenticate! }
-    before { authorize! :admin_group, user_group }
-    feature_category :secrets_management
+    before { authorize! :admin_cicd_variables, user_group }
+    feature_category :pipeline_composition
 
     helpers ::API::Helpers::VariablesHelpers
 
@@ -23,8 +23,12 @@ module API
       params do
         use :pagination
       end
+      route_setting :authorization, permissions: :read_variable, boundary_type: :group
       get ':id/variables', urgency: :low do
         variables = user_group.variables
+
+        audit_all_variables_access(user_group)
+
         present paginate(variables), with: Entities::Ci::Variable
       end
 
@@ -36,10 +40,13 @@ module API
       params do
         requires :key, type: String, desc: 'The key of the variable'
       end
-      get ':id/variables/:key' do
+      route_setting :authorization, permissions: :read_variable, boundary_type: :group
+      get ':id/variables/:key', urgency: :low do
         variable = find_variable(user_group, params)
 
         break not_found!('GroupVariable') unless variable
+
+        audit_single_variable_access(variable, user_group)
 
         present variable, with: Entities::Ci::Variable
       end
@@ -50,13 +57,15 @@ module API
         tags %w[ci_variables]
       end
       route_setting :log_safety, { safe: %w[key], unsafe: %w[value] }
+      route_setting :authorization, permissions: :create_variable, boundary_type: :group
       params do
         requires :key, type: String, desc: 'The ID of a group or URL-encoded path of the group owned by the
         authenticated user'
         requires :value, type: String, desc: 'The value of a variable'
-        optional :protected, type: String, desc: 'Whether the variable is protected'
-        optional :masked, type: String, desc: 'Whether the variable is masked'
-        optional :raw, type: String, desc: 'Whether the variable will be expanded'
+        optional :protected, type: Boolean, desc: 'Whether the variable is protected'
+        optional :masked_and_hidden, type: Boolean, desc: 'Whether the variable is masked and hidden'
+        optional :masked, type: Boolean, desc: 'Whether the variable is masked'
+        optional :raw, type: Boolean, desc: 'Whether the variable will be expanded'
         optional :variable_type, type: String, values: ::Ci::GroupVariable.variable_types.keys, desc: 'The type of the variable. Default: env_var'
         optional :environment_scope, type: String, desc: 'The environment scope of a variable'
         optional :description, type: String, desc: 'The description of the variable'
@@ -88,12 +97,13 @@ module API
         tags %w[ci_variables]
       end
       route_setting :log_safety, { safe: %w[key], unsafe: %w[value] }
+      route_setting :authorization, permissions: :update_variable, boundary_type: :group
       params do
         optional :key, type: String, desc: 'The key of a variable'
         optional :value, type: String, desc: 'The value of a variable'
-        optional :protected, type: String, desc: 'Whether the variable is protected'
-        optional :masked, type: String, desc: 'Whether the variable is masked'
-        optional :raw, type: String, desc: 'Whether the variable will be expanded'
+        optional :protected, type: Boolean, desc: 'Whether the variable is protected'
+        optional :masked, type: Boolean, desc: 'Whether the variable is masked'
+        optional :raw, type: Boolean, desc: 'Whether the variable will be expanded'
         optional :variable_type, type: String, values: ::Ci::GroupVariable.variable_types.keys, desc: 'The type of the variable. Default: env_var'
         optional :environment_scope, type: String, desc: 'The environment scope of a variable'
         optional :description, type: String, desc: 'The description of the variable'
@@ -149,6 +159,7 @@ module API
       params do
         requires :key, type: String, desc: 'The key of a variable'
       end
+      route_setting :authorization, permissions: :delete_variable, boundary_type: :group
       delete ':id/variables/:key' do
         variable = find_variable(user_group, params)
         break not_found!('GroupVariable') unless variable

@@ -2,20 +2,23 @@
 
 class JiraConnectInstallation < ApplicationRecord
   include Gitlab::Routing
+  include Gitlab::EncryptedAttribute
 
   attr_encrypted :shared_secret,
     mode: :per_attribute_iv,
     algorithm: 'aes-256-gcm',
-    key: Settings.attr_encrypted_db_key_base_32
+    key: :db_key_base_32
 
   has_many :subscriptions, class_name: 'JiraConnectSubscription'
+  belongs_to :organization, class_name: 'Organizations::Organization'
 
   validates :client_key, presence: true, uniqueness: true
   validates :shared_secret, presence: true
   validates :base_url, presence: true, public_url: true
+  validates :display_url, public_url: true, allow_blank: true
   validates :instance_url, public_url: true, allow_blank: true
 
-  scope :for_project, -> (project) {
+  scope :for_project, ->(project) {
     distinct
       .joins(:subscriptions)
       .where(jira_connect_subscriptions: {
@@ -52,6 +55,12 @@ class JiraConnectInstallation < ApplicationRecord
     return unless proxy?
 
     Gitlab::Utils.append_path(instance_url, jira_connect_events_uninstalled_path)
+  end
+
+  def create_branch_url
+    return unless proxy?
+
+    Gitlab::Utils.append_path(instance_url, new_jira_connect_branch_path)
   end
 
   def proxy?

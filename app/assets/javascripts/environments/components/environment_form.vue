@@ -16,7 +16,7 @@ import {
   ENVIRONMENT_EDIT_HELP_TEXT,
 } from 'ee_else_ce/environments/constants';
 import csrf from '~/lib/utils/csrf';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import MarkdownEditor from '~/vue_shared/components/markdown/markdown_editor.vue';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import getUserAuthorizedAgents from '../graphql/queries/user_authorized_agents.query.graphql';
 import EnvironmentFluxResourceSelector from './environment_flux_resource_selector.vue';
@@ -33,12 +33,13 @@ export default {
     GlSprintf,
     EnvironmentFluxResourceSelector,
     EnvironmentNamespaceSelector,
+    MarkdownEditor,
   },
-  mixins: [glFeatureFlagsMixin()],
   inject: {
     protectedEnvironmentSettingsPath: { default: '' },
     projectPath: { default: '' },
     kasTunnelUrl: { default: '' },
+    markdownPreviewPath: { default: '' },
   },
   props: {
     environment: {
@@ -60,6 +61,10 @@ export default {
     },
   },
   i18n: {
+    agentSelectorHelp: s__(
+      'Environments|Select an agent with Kubernetes access to the project or group.',
+    ),
+    agentSelectorLinkText: s__('Environments|How do I grant Kubernetes access?'),
     header: __('Environments'),
     helpNewMessage: ENVIRONMENT_NEW_HELP_TEXT,
     helpEditMessage: ENVIRONMENT_EDIT_HELP_TEXT,
@@ -67,6 +72,11 @@ export default {
     nameFeedback: __('This field is required'),
     nameDisabledHelp: __("You cannot rename an environment after it's created."),
     nameDisabledLinkText: __('How do I rename an environment?'),
+    descriptionLabel: __('Description'),
+    descriptionPlaceholder: s__('Environments|Write a description or drag your files here…'),
+    descriptionHelpText: s__(
+      'Environments|The description is displayed to anyone who can see this environment.',
+    ),
     urlLabel: __('External URL'),
     urlFeedback: __('The URL should start with http:// or https://'),
     agentLabel: s__('Environments|GitLab agent'),
@@ -75,10 +85,13 @@ export default {
     cancel: __('Cancel'),
     reset: __('Reset'),
   },
-  environmentsHelpPagePath: helpPagePath('ci/environments/index.md'),
-  renamingDisabledHelpPagePath: helpPagePath('ci/environments/index.md', {
+  agentSelectorHelpPagePath: helpPagePath('user/clusters/agent/user_access.md'),
+  environmentsHelpPagePath: helpPagePath('ci/environments/_index.md'),
+  renamingDisabledHelpPagePath: helpPagePath('ci/environments/_index.md', {
     anchor: 'rename-an-environment',
   }),
+  markdownDocsPath: helpPagePath('user/markdown'),
+  restrictedToolbarItems: ['full-screen'],
   data() {
     return {
       visited: {
@@ -90,13 +103,9 @@ export default {
       selectedAgentId: this.environment.clusterAgentId,
       agentSearchTerm: '',
       selectedNamespace: this.environment.kubernetesNamespace,
-      kubernetesError: '',
     };
   },
   computed: {
-    loadingNamespacesList() {
-      return this.$apollo.queries.k8sNamespaces.loading;
-    },
     isNameDisabled() {
       return Boolean(this.environment.id);
     },
@@ -132,14 +141,11 @@ export default {
         item.text.toLowerCase().includes(lowerCasedSearchTerm),
       );
     },
-    showNamespaceSelector() {
+    showNamespaceAndResourceSelectors() {
       return Boolean(this.selectedAgentId);
     },
-    showFluxResourceSelector() {
-      return Boolean(this.selectedNamespace && this.selectedAgentId);
-    },
     k8sAccessConfiguration() {
-      if (!this.showNamespaceSelector) {
+      if (!this.showNamespaceAndResourceSelectors) {
         return null;
       }
       return {
@@ -151,6 +157,13 @@ export default {
           ...csrf.headers,
         },
         credentials: 'include',
+      };
+    },
+    descriptionFieldProps() {
+      return {
+        'aria-label': this.$options.i18n.descriptionLabel,
+        placeholder: this.$options.i18n.descriptionPlaceholder,
+        id: 'environment_description',
       };
     },
   },
@@ -166,6 +179,11 @@ export default {
     },
     visit(field) {
       this.visited[field] = true;
+    },
+    updateDescription($event) {
+      if (this.environment.description !== $event) {
+        this.onChange({ ...this.environment, description: $event });
+      }
     },
     getAgentsList() {
       this.$apollo.addSmartQuery('userAccessAuthorizedAgents', {
@@ -198,10 +216,10 @@ export default {
 </script>
 <template>
   <div>
-    <h1 class="page-title gl-font-size-h-display">
+    <h1 class="page-title gl-text-size-h-display">
       {{ title }}
     </h1>
-    <div class="row col-12">
+    <div class="row gl-col-12">
       <h4 class="gl-mt-0">
         {{ $options.i18n.header }}
       </h4>
@@ -249,6 +267,24 @@ export default {
           />
         </gl-form-group>
         <gl-form-group
+          :label="$options.i18n.descriptionLabel"
+          :description="$options.i18n.descriptionHelpText"
+          label-for="environment_description"
+          :state="valid.description"
+        >
+          <div class="common-note-form gfm-form">
+            <markdown-editor
+              :value="environment.description"
+              :render-markdown-path="markdownPreviewPath"
+              :form-field-props="descriptionFieldProps"
+              :restricted-tool-bar-items="$options.restrictedToolbarItems"
+              :markdown-docs-path="$options.markdownDocsPath"
+              :disabled="loading"
+              @input="updateDescription"
+            />
+          </div>
+        </gl-form-group>
+        <gl-form-group
           :label="$options.i18n.urlLabel"
           :state="valid.url"
           :invalid-feedback="$options.i18n.urlFeedback"
@@ -283,32 +319,39 @@ export default {
             @select="onAgentChange"
             @reset="onChange({ ...environment, clusterAgentId: null })"
           />
+          <template #description>
+            {{ $options.i18n.agentSelectorHelp }}
+            <gl-link :href="$options.agentSelectorHelpPagePath" target="_blank"
+              >{{ $options.i18n.agentSelectorLinkText }}
+            </gl-link>
+          </template>
         </gl-form-group>
 
-        <environment-namespace-selector
-          v-if="showNamespaceSelector"
-          :namespace="selectedNamespace"
-          :configuration="k8sAccessConfiguration"
-          @change="
-            onChange({ ...environment, kubernetesNamespace: $event, fluxResourcePath: null })
-          "
-        />
+        <template v-if="showNamespaceAndResourceSelectors">
+          <environment-namespace-selector
+            :namespace="selectedNamespace"
+            :configuration="k8sAccessConfiguration"
+            @change="
+              onChange({ ...environment, kubernetesNamespace: $event, fluxResourcePath: null })
+            "
+          />
 
-        <environment-flux-resource-selector
-          v-if="showFluxResourceSelector"
-          :namespace="selectedNamespace"
-          :configuration="k8sAccessConfiguration"
-          :flux-resource-path="environment.fluxResourcePath"
-          @change="onChange({ ...environment, fluxResourcePath: $event })"
-        />
+          <environment-flux-resource-selector
+            :namespace="selectedNamespace"
+            :configuration="k8sAccessConfiguration"
+            :flux-resource-path="environment.fluxResourcePath"
+            @change="onChange({ ...environment, fluxResourcePath: $event })"
+          />
+        </template>
 
-        <div class="gl-mr-6">
+        <div class="gl-flex gl-gap-3">
           <gl-button
             :loading="loading"
             type="submit"
             variant="confirm"
             name="commit"
             class="js-no-auto-disable"
+            data-testid="save-environment"
             >{{ $options.i18n.save }}</gl-button
           >
           <gl-button :href="cancelPath">{{ $options.i18n.cancel }}</gl-button>

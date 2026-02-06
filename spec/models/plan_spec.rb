@@ -2,7 +2,35 @@
 
 require 'spec_helper'
 
-RSpec.describe Plan do
+RSpec.describe Plan, feature_category: :subscription_management do
+  describe 'validations' do
+    describe 'plan_name_uid' do
+      it 'validates presence on create' do
+        plan = described_class.new(name: 'unknown_plan')
+
+        expect(plan.valid?(:create)).to be_falsey
+        expect(plan.errors[:plan_name_uid]).to include("can't be blank")
+      end
+
+      it 'validates uniqueness on create' do
+        existing = create(:default_plan)
+        duplicate = described_class.new(name: 'default', plan_name_uid: existing.plan_name_uid)
+
+        expect(duplicate.valid?(:create)).to be_falsey
+        expect(duplicate.errors[:plan_name_uid]).to include('has already been taken')
+      end
+    end
+  end
+
+  describe 'plan_name_uid assignment' do
+    it 'is automatically set for known plans' do
+      plan = described_class.new(name: 'default', title: 'Default')
+      plan.save!
+
+      expect(plan.plan_name_uid).to eq('default')
+    end
+  end
+
   describe 'scopes', :aggregate_failures do
     let_it_be(:default_plan) { create(:default_plan) }
 
@@ -20,7 +48,7 @@ RSpec.describe Plan do
 
     Plan.default_plans.each do |plan|
       context "when '#{plan}'" do
-        let(:plan) { build("#{plan}_plan".to_sym) }
+        let(:plan) { build(:"#{plan}_plan") }
 
         it { is_expected.to be_truthy }
       end
@@ -60,5 +88,27 @@ RSpec.describe Plan do
     it 'successfully updates the limits' do
       expect(plan.actual_limits.update!(ci_instance_level_variables: 100)).to be_truthy
     end
+  end
+
+  describe '#ids_for_names' do
+    let_it_be(:default_plan) { create(:default_plan) }
+
+    subject(:plan) { described_class.ids_for_names([default_plan.name]) }
+
+    it { is_expected.to eq([default_plan.id]) }
+  end
+
+  describe '#names_for_ids' do
+    let_it_be(:default_plan) { create(:default_plan) }
+
+    subject(:plan) { described_class.names_for_ids([default_plan.id]) }
+
+    it { is_expected.to eq([default_plan.name]) }
+  end
+
+  describe '#ultimate_or_ultimate_trial_plans?' do
+    subject(:plan) { build(:default_plan).ultimate_or_ultimate_trial_plans? }
+
+    it { is_expected.to be_falsey }
   end
 end

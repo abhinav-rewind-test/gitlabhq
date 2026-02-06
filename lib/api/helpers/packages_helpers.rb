@@ -7,7 +7,6 @@ module API
       include ::Gitlab::Utils::StrongMemoize
 
       MAX_PACKAGE_FILE_SIZE = 50.megabytes.freeze
-      ALLOWED_REQUIRED_PERMISSIONS = %i[read_package read_group].freeze
 
       def require_packages_enabled!
         not_found! unless ::Gitlab.config.packages.enabled
@@ -15,6 +14,10 @@ module API
 
       def require_dependency_proxy_enabled!
         not_found! unless ::Gitlab.config.dependency_proxy.enabled
+      end
+
+      def authorize_admin_package!(subject = user_project)
+        authorize!(:admin_package, subject)
       end
 
       def authorize_read_package!(subject = user_project)
@@ -31,25 +34,33 @@ module API
 
       def authorize_packages_access!(subject = user_project, required_permission = :read_package)
         require_packages_enabled!
-        return forbidden! unless required_permission.in?(ALLOWED_REQUIRED_PERMISSIONS)
 
-        if required_permission == :read_package
+        case required_permission
+        when :read_package
           authorize_read_package!(subject)
-        else
+        when :read_package_within_public_registries
+          authorize!(required_permission, subject.packages_policy_subject)
+        when :read_group
           authorize!(required_permission, subject)
+        else
+          forbidden!
         end
       end
 
-      def authorize_workhorse!(subject: user_project, has_length: true, maximum_size: MAX_PACKAGE_FILE_SIZE)
+      def authorize_workhorse!(
+        subject: user_project,
+        has_length: true,
+        maximum_size: MAX_PACKAGE_FILE_SIZE,
+        use_final_store_path: false
+      )
         authorize_upload!(subject)
-
-        Gitlab::Workhorse.verify_api_request!(headers)
 
         status 200
         content_type Gitlab::Workhorse::INTERNAL_API_CONTENT_TYPE
 
-        params = { has_length: has_length }
+        params = { has_length: has_length, use_final_store_path: use_final_store_path }
         params[:maximum_size] = maximum_size unless has_length
+        params[:final_store_path_config] = { root_hash: subject.id } if use_final_store_path
         ::Packages::PackageFileUploader.workhorse_authorize(**params)
       end
 
@@ -76,6 +87,8 @@ module API
 
         return forbidden! unless authorized_project_scope?(project)
 
+        project && authorize_job_token_policies!(project) && return
+
         return project if can?(current_user, :read_package, project&.packages_policy_subject)
         # guest users can have :read_project but not :read_package
         return forbidden! if can?(current_user, :read_project, project)
@@ -86,11 +99,17 @@ module API
       strong_memoize_attr :user_project_with_read_package
 
       def track_package_event(action, scope, **args)
-        service = ::Packages::CreateEventService.new(nil, current_user, event_name: action, scope: scope)
+        service = ::Packages::CreateEventService.new(
+          args[:project],
+          current_user,
+          namespace: args[:namespace],
+          event_name: action,
+          scope: scope
+        )
         service.execute
 
         category = args.delete(:category) || self.options[:for].name
-        args[:user] = current_user if current_user
+        args[:user] = current_user if current_user.is_a?(User)
         event_name = "i_package_#{scope}_user"
         ::Gitlab::Tracking.event(
           category,
@@ -102,30 +121,66 @@ module API
         )
 
         if action.to_s == 'push_package' && service.originator_type == :deploy_token
-          track_snowplow_event("push_package_by_deploy_token", category, args)
+          track_snowplow_event(
+            'push_package_by_deploy_token',
+            'package_pushed_using_deploy_token',
+            category,
+            args
+          )
         elsif action.to_s == 'pull_package' && service.originator_type == :guest
-          track_snowplow_event("pull_package_by_guest", category, args)
+          track_snowplow_event(
+            'pull_package_by_guest',
+            'package_pulled_by_guest',
+            category,
+            args
+          )
         end
       end
 
-      def present_package_file!(package_file, supports_direct_download: true)
-        package_file.package.touch_last_downloaded_at
-        present_carrierwave_file!(package_file.file, supports_direct_download: supports_direct_download)
+      def present_package_file!(
+        package_file,
+        supports_direct_download: true,
+        content_disposition: nil,
+        content_type: nil,
+        extra_response_headers: {}
+      )
+        package_file.package.touch_last_downloaded_at unless request.head?
+
+        present_carrierwave_file!(
+          package_file.file,
+          supports_direct_download: supports_direct_download,
+          content_disposition: content_disposition,
+          content_type: content_type,
+          extra_response_headers: extra_response_headers,
+          extra_send_url_params: ::Packages::SsrfProtection.params_for(package_file.package)
+        )
+      end
+
+      def protect_package!(package_name, package_type)
+        service_response =
+          ::Packages::Protection::CheckRuleExistenceService.for_push(
+            project: user_project,
+            current_user: current_user,
+            params: { package_name: package_name, package_type: package_type }
+          ).execute
+
+        bad_request!(service_response.message) if service_response.error?
+        forbidden!('Package protected.') if service_response[:protection_rule_exists?]
       end
 
       private
 
-      def track_snowplow_event(action_name, category, args)
+      def track_snowplow_event(action_name, snowplow_event_name, category, args)
         event_name = "i_package_#{action_name}"
         key_path = "counts.package_events_i_package_#{action_name}"
-        service_ping_context = Gitlab::Usage::MetricDefinition.context_for(key_path).to_context
+        context = Gitlab::Tracking::ServicePingContext.new(data_source: :redis, event: snowplow_event_name).to_context
 
         Gitlab::Tracking.event(
           category,
           action_name,
           property: event_name,
           label: key_path,
-          context: [service_ping_context],
+          context: [context],
           **args
         )
       end

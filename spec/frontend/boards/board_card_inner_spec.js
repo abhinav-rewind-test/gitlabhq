@@ -6,13 +6,20 @@ import createMockApollo from 'helpers/mock_apollo_helper';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
-import IssuableBlockedIcon from '~/vue_shared/components/issuable_blocked_icon/issuable_blocked_icon.vue';
+import UserAvatarLink from '~/vue_shared/components/user_avatar/user_avatar_link.vue';
 import BoardCardInner from '~/boards/components/board_card_inner.vue';
 import isShowingLabelsQuery from '~/graphql_shared/client/is_showing_labels.query.graphql';
 import WorkItemTypeIcon from '~/work_items/components/work_item_type_icon.vue';
+import WorkItemRelationshipIcons from '~/work_items/components/shared/work_item_relationship_icons.vue';
 import { TYPE_ISSUE } from '~/issues/constants';
 import { updateHistory } from '~/lib/utils/url_utility';
-import { mockLabelList, mockIssue, mockIssueFullPath, mockIssueDirectNamespace } from './mock_data';
+import {
+  mockLabelList,
+  mockIssue,
+  mockIssueFullPath,
+  mockIssueDirectNamespace,
+  mockMilestone,
+} from './mock_data';
 
 jest.mock('~/lib/utils/url_utility');
 
@@ -34,14 +41,21 @@ describe('Board card component', () => {
     description: 'test',
   };
 
+  const itemWithNoLinkedItems = {
+    ...mockIssue,
+    blockedByCount: 0,
+  };
+
   let wrapper;
   let issue;
   let list;
 
-  const findIssuableBlockedIcon = () => wrapper.findComponent(IssuableBlockedIcon);
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
+  const findConfidentialIcon = () => wrapper.findByTestId('confidential-icon');
   const findHiddenIssueIcon = () => wrapper.findByTestId('hidden-icon');
   const findWorkItemIcon = () => wrapper.findComponent(WorkItemTypeIcon);
+  const findUserAvatar = () => wrapper.findComponent(UserAvatarLink);
+  const findRelationshipIcons = () => wrapper.findComponent(WorkItemRelationshipIcons);
 
   const mockApollo = createMockApollo();
 
@@ -75,6 +89,7 @@ describe('Board card component', () => {
         allowSubEpics: false,
         issuableType: TYPE_ISSUE,
         isGroupBoard,
+        disabled: false,
       },
     });
   };
@@ -104,7 +119,7 @@ describe('Board card component', () => {
   });
 
   it('does not render confidential icon', () => {
-    expect(wrapper.find('.confidential-icon').exists()).toBe(false);
+    expect(findConfidentialIcon().exists()).toBe(false);
   });
 
   it('does not render hidden issue icon', () => {
@@ -121,8 +136,15 @@ describe('Board card component', () => {
     expect(findWorkItemIcon().props('workItemType')).toBe(issue.type);
   });
 
+  it('renders issue ID with # when work item icon is present', () => {
+    createWrapper({ props: { showWorkItemTypeIcon: true } });
+    expect(findWorkItemIcon().exists()).toBe(true);
+    expect(wrapper.find('[data-testid="work-item-id-text"]').text()).toBe(`#${issue.iid}`);
+  });
+
   it('renders issue ID with #', () => {
-    expect(wrapper.find('.board-card-number').text()).toContain(`#${issue.iid}`);
+    expect(findWorkItemIcon().exists()).toBe(false);
+    expect(wrapper.find('[data-testid="work-item-id-text"]').text()).toBe(`#${issue.iid}`);
   });
 
   it('does not render assignee', () => {
@@ -145,31 +167,40 @@ describe('Board card component', () => {
     expect(wrapper.find('.board-item-path').attributes('title')).toBe(mockIssueFullPath);
   });
 
-  describe('blocked', () => {
-    it('renders blocked icon if issue is blocked', () => {
-      createWrapper({
-        props: {
-          item: {
-            ...issue,
-            blocked: true,
-          },
-        },
-      });
-
-      expect(findIssuableBlockedIcon().exists()).toBe(true);
+  describe('milestone', () => {
+    it('does not render milestone if issue has no milestone', () => {
+      expect(wrapper.findByTestId('issue-milestone').exists()).toBe(false);
     });
 
-    it('does not show blocked icon if issue is not blocked', () => {
+    it('renders milestone if issue has a milestone assigned', () => {
       createWrapper({
         props: {
           item: {
             ...issue,
-            blocked: false,
+            milestone: mockMilestone,
           },
         },
       });
 
-      expect(findIssuableBlockedIcon().exists()).toBe(false);
+      expect(wrapper.findByTestId('issue-milestone').exists()).toBe(true);
+    });
+  });
+
+  describe('item relationships', () => {
+    it.each`
+      state                            | assertion | item
+      ${'rendered if item has'}        | ${true}   | ${mockIssue}
+      ${'not rendered if item has no'} | ${false}  | ${itemWithNoLinkedItems}
+    `('relationship icons are $state linked work items', ({ assertion, item }) => {
+      issue = {
+        ...item,
+        labels: [list.label],
+        assignees: [],
+        weight: 1,
+      };
+      createWrapper({ props: issue });
+
+      expect(findRelationshipIcons().exists()).toBe(assertion);
     });
   });
 
@@ -186,7 +217,7 @@ describe('Board card component', () => {
     });
 
     it('renders confidential icon', () => {
-      expect(wrapper.find('.confidential-icon').exists()).toBe(true);
+      expect(findConfidentialIcon().exists()).toBe(true);
     });
   });
 
@@ -224,9 +255,6 @@ describe('Board card component', () => {
             item: {
               ...wrapper.props('item'),
               assignees: [user],
-              updateData(newData) {
-                Object.assign(this, newData);
-              },
             },
           },
         });
@@ -248,25 +276,25 @@ describe('Board card component', () => {
         expect(wrapper.find('.board-card-assignee img').exists()).toBe(true);
       });
 
-      it('renders the avatar using avatarUrl property', async () => {
-        wrapper.props('item').updateData({
-          ...wrapper.props('item'),
-          assignees: [
-            {
-              id: '1',
-              name: 'test',
-              state: 'active',
-              username: 'test_name',
-              avatarUrl: 'test_image_from_avatar_url',
+      it('renders the avatar using avatarUrl property', () => {
+        createWrapper({
+          props: {
+            item: {
+              ...wrapper.props('item'),
+              assignees: [
+                {
+                  id: '1',
+                  name: 'test',
+                  state: 'active',
+                  username: 'test_name',
+                  avatarUrl: 'test_image_from_avatar_url',
+                },
+              ],
             },
-          ],
+          },
         });
 
-        await nextTick();
-
-        expect(wrapper.find('.board-card-assignee img').attributes('src')).toBe(
-          'test_image_from_avatar_url?width=24',
-        );
+        expect(findUserAvatar().props('imgSrc')).toBe('test_image_from_avatar_url');
       });
     });
 
@@ -291,10 +319,7 @@ describe('Board card component', () => {
       });
 
       it('displays defaults avatar if users avatar is null', () => {
-        expect(wrapper.find('.board-card-assignee img').exists()).toBe(true);
-        expect(wrapper.find('.board-card-assignee img').attributes('src')).toBe(
-          'default_avatar?width=24',
-        );
+        expect(findUserAvatar().props('imgSrc')).toBe('default_avatar');
       });
     });
   });
@@ -331,7 +356,7 @@ describe('Board card component', () => {
     });
 
     it('renders all three assignees', () => {
-      expect(wrapper.findAll('.board-card-assignee .gl-avatar').length).toEqual(3);
+      expect(wrapper.findAll('.board-card-assignee .gl-avatar')).toHaveLength(3);
     });
 
     describe('more than three assignees', () => {
@@ -359,7 +384,7 @@ describe('Board card component', () => {
       });
 
       it('renders two assignees', () => {
-        expect(wrapper.findAll('.board-card-assignee .gl-avatar').length).toEqual(2);
+        expect(wrapper.findAll('.board-card-assignee .gl-avatar')).toHaveLength(2);
       });
 
       it('renders 99+ avatar counter', async () => {
@@ -394,7 +419,7 @@ describe('Board card component', () => {
     });
 
     it('does not render list label but renders all other labels', () => {
-      expect(wrapper.findAllComponents(GlLabel).length).toBe(1);
+      expect(wrapper.findAllComponents(GlLabel)).toHaveLength(1);
       const label = wrapper.findComponent(GlLabel);
       expect(label.props('title')).toEqual(label1.title);
       expect(label.props('description')).toEqual(label1.description);
@@ -406,7 +431,7 @@ describe('Board card component', () => {
 
       await nextTick();
 
-      expect(wrapper.findAllComponents(GlLabel).length).toBe(1);
+      expect(wrapper.findAllComponents(GlLabel)).toHaveLength(1);
       expect(wrapper.text()).not.toContain('closed');
     });
   });
@@ -435,7 +460,7 @@ describe('Board card component', () => {
       });
 
       it('emits setFilters event', () => {
-        expect(wrapper.emitted('setFilters').length).toBe(1);
+        expect(wrapper.emitted('setFilters')).toHaveLength(1);
       });
     });
 

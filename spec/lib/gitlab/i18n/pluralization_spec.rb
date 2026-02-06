@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# require 'fast_spec_helper' -- this no longer runs under fast_spec_helper
 require 'fast_spec_helper'
 require 'rspec-parameterized'
 require 'rails/version'

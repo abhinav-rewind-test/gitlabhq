@@ -4,20 +4,13 @@ export const GITALY_UNAVAILABLE_CODE = 'unavailable';
 export const TREE_PAGE_LIMIT = 1000; // the maximum amount of items per page
 export const TREE_PAGE_SIZE = 100; // the amount of items to be fetched per (batch) request
 
-export const COMMIT_BATCH_SIZE = 25; // we request commit data in batches of 25
+export const FTB_MAX_DEPTH = 20; // Max directory depth to expand recursively (e.g., dir_1/dir_2/.../dir_20)
+export const FTB_MAX_PAGES = 5; // Max number of paginated pages to fetch while expanding a directory
 
-export const SECONDARY_OPTIONS_TEXT = __('Cancel');
-export const COMMIT_LABEL = __('Commit message');
-export const TARGET_BRANCH_LABEL = __('Target branch');
-export const TOGGLE_CREATE_MR_LABEL = __('Start a new merge request with these changes');
-export const NEW_BRANCH_IN_FORK = __(
-  'GitLab will create a branch in your fork and start a merge request.',
-);
+export const COMMIT_BATCH_SIZE = 25; // we request commit data in batches of 25
 
 export const COMMIT_MESSAGE_SUBJECT_MAX_LENGTH = 52;
 export const COMMIT_MESSAGE_BODY_MAX_LENGTH = 72;
-
-export const LIMITED_CONTAINER_WIDTH_CLASS = 'limit-container-width';
 
 export const I18N_COMMIT_DATA_FETCH_ERROR = __('An error occurred while fetching commit data.');
 
@@ -80,6 +73,7 @@ export const DEFAULT_BLOB_INFO = {
 export const JSON_LANGUAGE = 'json';
 export const OPENAPI_FILE_TYPE = 'openapi';
 export const TEXT_FILE_TYPE = 'text';
+export const EMPTY_FILE = 'empty';
 
 export const LFS_STORAGE = 'lfs';
 
@@ -110,3 +104,21 @@ export const POLLING_INTERVAL_BACKOFF = 2;
 export const CONFLICTS_MODAL_ID = 'fork-sync-conflicts-modal';
 
 export const FORK_UPDATED_EVENT = 'fork:updated';
+export const EVENT_FILE_SIZE_LIMIT_EXCEEDED = 'repository_file_size_limit_exceeded';
+
+export const FILE_EXTENSION_MAPPING_HLJS = {
+  '.gleam': 'gleam',
+  '.glimmer': 'glimmer',
+  '.gjs': 'glimmer-javascript',
+  '.gts': 'glimmer-javascript',
+  '.veryl': 'veryl',
+  '.tf': 'hcl',
+  '.tfvars': 'hcl',
+};
+
+export const FILE_TREE_BROWSER_VISIBILITY = 'file_tree_browser_visibility';
+
+export const EVENT_EXPAND_FILE_TREE_BROWSER_ON_REPOSITORY_PAGE =
+  'expand_file_tree_browser_on_repository_page';
+export const EVENT_COLLAPSE_FILE_TREE_BROWSER_ON_REPOSITORY_PAGE =
+  'collapse_file_tree_browser_on_repository_page';

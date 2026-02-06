@@ -6,7 +6,7 @@ RSpec.describe ExtractsRef::RefExtractor, feature_category: :source_code_managem
   include RepoHelpers
 
   let_it_be(:owner) { create(:user) }
-  let_it_be(:container) { create(:snippet, :repository, author: owner) }
+  let_it_be(:container) { create(:project_snippet, :repository, author: owner) }
 
   let(:ref) { sample_commit[:id] }
   let(:path) { sample_commit[:line_code_path] }
@@ -18,6 +18,16 @@ RSpec.describe ExtractsRef::RefExtractor, feature_category: :source_code_managem
     ref_names = ['master', 'foo/bar/baz', 'v1.0.0', 'v2.0.0', 'release/app', 'release/app/v1.0.0']
 
     allow(container.repository).to receive(:ref_names).and_return(ref_names)
+  end
+
+  describe '#initialize' do
+    let(:params) { { id: 1, ref: 2, path: 3, ref_type: 4 } }
+
+    it 'does not mutate provided params' do
+      ref_extractor
+
+      expect(params).to eq(id: 1, ref: 2, path: 3, ref_type: 4)
+    end
   end
 
   describe '#extract_vars!' do

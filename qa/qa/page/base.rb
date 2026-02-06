@@ -59,10 +59,10 @@ module QA
         assert_no_selector(element_selector_css(name))
       end
 
-      def refresh(skip_finished_loading_check: false)
+      def refresh
         page.refresh
 
-        wait_for_requests(skip_finished_loading_check: skip_finished_loading_check)
+        wait_for_requests
       end
 
       def wait_until(
@@ -70,7 +70,6 @@ module QA
         sleep_interval: 0.1,
         reload: true,
         raise_on_failure: true,
-        skip_finished_loading_check_on_refresh: false,
         message: nil
       )
         Support::Waiter.wait_until(
@@ -79,14 +78,14 @@ module QA
           raise_on_failure: raise_on_failure,
           message: message
         ) do
-          yield || (reload && refresh(skip_finished_loading_check: skip_finished_loading_check_on_refresh) && false)
+          yield || (reload && refresh && false)
         end
       end
 
       def retry_until(max_attempts: 3, reload: false, sleep_interval: 0, raise_on_failure: true, message: nil, &block)
         Support::Retrier.retry_until(
           max_attempts: max_attempts,
-          reload_page: (reload && self),
+          reload_page: reload && self,
           sleep_interval: sleep_interval,
           raise_on_failure: raise_on_failure,
           message: message,
@@ -97,7 +96,7 @@ module QA
       def retry_on_exception(max_attempts: 3, reload: false, sleep_interval: 0.5, message: nil, &block)
         Support::Retrier.retry_on_exception(
           max_attempts: max_attempts,
-          reload_page: (reload && self),
+          reload_page: reload && self,
           sleep_interval: sleep_interval,
           message: message,
           &block
@@ -139,8 +138,7 @@ module QA
       end
 
       def find_element(name, **kwargs)
-        skip_finished_loading_check = kwargs.delete(:skip_finished_loading_check)
-        wait_for_requests(skip_finished_loading_check: skip_finished_loading_check)
+        wait_for_requests
 
         element_selector = element_selector_css(name, reject_capybara_query_keywords(kwargs))
         find(element_selector, **only_capybara_query_keywords(kwargs))
@@ -165,7 +163,7 @@ module QA
           raise ArgumentError, "Please use :minimum, :maximum, :count, or :between so that all is more reliable"
         end
 
-        wait_for_requests(skip_finished_loading_check: !!kwargs.delete(:skip_finished_loading_check))
+        wait_for_requests
 
         all(element_selector_css(name), **kwargs)
       end
@@ -239,8 +237,7 @@ module QA
 
       # replace with (..., page = self.class)
       def click_element(name, page = nil, **kwargs)
-        skip_finished_loading_check = kwargs.delete(:skip_finished_loading_check)
-        wait_for_requests(skip_finished_loading_check: skip_finished_loading_check)
+        wait_for_requests
 
         wait = kwargs.delete(:wait) || Capybara.default_max_wait_time
         text = kwargs.delete(:text)
@@ -273,12 +270,26 @@ module QA
       end
 
       def fill_element(name, content)
-        # `click_element_coordinates` is used to ensure the element is focused.
-        # Without it, flakiness can occur on pages with GitLab keyboard shortcuts enabled,
-        # where certain keys trigger actions when typed elsewhere on the page.
-        click_element_coordinates(name)
-
         find_element(name).set(content)
+      end
+
+      # fill in editor element, whether plain text or rich text
+      def fill_editor_element(name, content)
+        element = find_element name
+
+        if element.tag_name == 'textarea'
+          element.set content
+        else
+          mod = page.driver.browser.capabilities.platform_name.include?("mac") ? :command : :control
+          prosemirror = element.find '[contenteditable].ProseMirror'
+          prosemirror.send_keys [mod, 'a']
+          prosemirror.send_keys :delete
+          prosemirror.send_keys content
+
+          # Wait for the hidden input field to be updated
+          # The hidden field contains markdown serialized by RTE
+          has_field?(type: 'hidden', with: content, wait: 3)
+        end
       end
 
       def select_element(name, value)
@@ -300,7 +311,7 @@ module QA
         text = kwargs.delete(:text)
         klass = kwargs.delete(:class)
         visible = kwargs.delete(:visible)
-        visible = visible.nil? && true
+        visible = true if visible.nil?
 
         try_find_element = ->(wait) do
           if disabled.nil?
@@ -317,7 +328,7 @@ module QA
         # don't want any overhead
         return true if wait > 1 && try_find_element.call(1)
 
-        wait_for_requests(skip_finished_loading_check: !!kwargs.delete(:skip_finished_loading_check))
+        wait_for_requests
         try_find_element.call(wait)
       end
 
@@ -334,6 +345,12 @@ module QA
         wait_for_requests
 
         page.has_text?(text, wait: wait)
+      end
+
+      def has_field?(type:, with:, wait: Capybara.default_max_wait_time)
+        wait_for_requests
+
+        page.has_field?(type: type, with: with, wait: wait)
       end
 
       def has_no_text?(text, wait: Capybara.default_max_wait_time)
@@ -396,7 +413,7 @@ module QA
       end
 
       def within_element(name, **kwargs, &block)
-        wait_for_requests(skip_finished_loading_check: !!kwargs.delete(:skip_finished_loading_check))
+        wait_for_requests
         text = kwargs.delete(:text)
 
         page.within(element_selector_css(name, kwargs), text: text, &block)
@@ -446,6 +463,14 @@ module QA
       end
 
       class << self
+        def skip_selectors_check!
+          @check_selectors = false
+        end
+
+        def check_selectors?
+          @check_selectors.nil? ? true : @check_selectors
+        end
+
         def path
           raise NotImplementedError
         end
@@ -455,6 +480,7 @@ module QA
         end
 
         def errors
+          return [] unless check_selectors?
           return ["Page class does not have views / elements defined!"] if views.empty?
 
           views.flat_map(&:errors)
@@ -541,7 +567,11 @@ module QA
 
       def wait_for_gitlab_to_respond
         wait_until(sleep_interval: 5, message: '502 - GitLab is taking too much time to respond') do
-          Capybara.page.has_no_text?('GitLab is taking too much time to respond')
+          Capybara.page.has_no_text?(/GitLab is taking too much time to respond|Waiting for GitLab to boot/)
+        rescue Capybara::ElementNotFound
+          # In Chrome 138 we occasionally get `Unable to find xpath "/html"`
+          # https://github.com/teamcapybara/capybara/issues/2800
+          false
         end
       end
     end

@@ -10,7 +10,7 @@ module Gitlab
       attr_accessor :old_path, :new_path, :a_mode, :b_mode, :diff
 
       # Stats properties
-      attr_accessor :new_file, :renamed_file, :deleted_file, :generated
+      attr_accessor :new_file, :renamed_file, :deleted_file, :generated, :encoded_file_path
 
       alias_method :new_file?, :new_file
       alias_method :deleted_file?, :deleted_file
@@ -43,6 +43,7 @@ module Gitlab
         deleted_file
         too_large
         generated
+        encoded_file_path
       ].freeze
 
       BINARY_NOTICE_PATTERN = %r{Binary files (.*) and (.*) differ}
@@ -96,7 +97,7 @@ module Gitlab
         #    as generated.
         def filter_diff_options(options, default_options = {})
           allowed_options = [:ignore_whitespace_change, :max_files, :max_lines,
-                             :limits, :expanded, :collect_all_paths, :generated_files]
+            :limits, :expanded, :collect_all_paths, :generated_files, :offset_index]
 
           if default_options
             actual_defaults = default_options.dup
@@ -253,7 +254,7 @@ module Gitlab
         return @overflow if defined?(@overflow)
 
         # If overflow is not defined, we're
-        # not recieveing a diff from Gitaly
+        # not receiving a diff from Gitaly
         # and overflow has no meaning
         false
       end
@@ -297,14 +298,16 @@ module Gitlab
         @diff = gitaly_diff.try(:patch).present? ? encode!(gitaly_diff.patch) : ''
         @new_path = encode!(gitaly_diff.to_path.dup)
         @old_path = encode!(gitaly_diff.from_path.dup)
-        @a_mode = gitaly_diff.old_mode.to_s(8)
-        @b_mode = gitaly_diff.new_mode.to_s(8)
+        @a_mode = gitaly_diff.old_mode.to_i.to_s(8)
+        @b_mode = gitaly_diff.new_mode.to_i.to_s(8)
         @new_file = Gitlab::Git.blank_ref?(gitaly_diff.from_id)
         @renamed_file = gitaly_diff.from_path != gitaly_diff.to_path
         @deleted_file = Gitlab::Git.blank_ref?(gitaly_diff.to_id)
         @too_large = gitaly_diff.too_large if gitaly_diff.respond_to?(:too_large)
         gitaly_overflow = gitaly_diff.try(:overflow_marker)
         @overflow = Diff.collect_patch_overage? && gitaly_overflow
+        @encoded_file_path = file_path_encoded?(gitaly_diff.to_path, @new_path) ||
+          file_path_encoded?(gitaly_diff.from_path, @old_path)
 
         collapse! if gitaly_diff.respond_to?(:collapsed) && gitaly_diff.collapsed
         # Diffs exceeding limits returned from gitaly when "collect_all_paths" are enabled
@@ -323,6 +326,18 @@ module Gitlab
         elsif collapsed? || collapse_generated_file?
           collapse!
         end
+      end
+
+      def file_path_encoded?(raw_path, encoded_path)
+        return false unless raw_path && encoded_path
+
+        # We need to compare paths in the same encoding as they won't be equal
+        # and return false positive when compared using different encoding.
+        #
+        # If the `encoded_path` was cleaned up (invalid UTF-8 characters were
+        # removed) during encoding, we can then consider that the file paths are
+        # no longer equal.
+        raw_path != encoded_path.dup.force_encoding(raw_path.encoding)
       end
     end
   end

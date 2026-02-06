@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'yaml'
 require_relative 'suggestor'
 
 module Tooling
@@ -14,7 +15,7 @@ module Tooling
         For the following files, a review from the [Data team and Analytics Instrumentation team](https://gitlab.com/groups/gitlab-org/analytics-section/analytics-instrumentation/engineers/-/group_members?with_inherited_permissions=exclude) is recommended
         Please check the ~"analytics instrumentation" [Service Ping guide](https://docs.gitlab.com/ee/development/service_ping/) or the [Snowplow guide](https://docs.gitlab.com/ee/development/snowplow/).
 
-        For MR review guidelines, see the [Internal Analytics review guidelines](https://docs.gitlab.com/ee/development/internal_analytics/review_guidelines.html).
+        For MR review guidelines, see the [Internal Analytics review guidelines](https://docs.gitlab.com/development/internal_analytics/review_guidelines/).
 
         %<changed_files>s
 
@@ -27,17 +28,24 @@ module Tooling
 
       CHANGED_USAGE_DATA_MESSAGE = <<~MSG
         Notice that implementing metrics directly in usage_data.rb has been deprecated.
-        Please use [Instrumentation Classes](https://docs.gitlab.com/ee/development/internal_analytics/metrics/metrics_instrumentation.html) instead.
+        Please use [Instrumentation Classes](https://docs.gitlab.com/development/internal_analytics/metrics/metrics_instrumentation/) instead.
       MSG
 
       CHANGE_DEPRECATED_DATA_SOURCE_MESSAGE = <<~MSG
-        Redis and RedisHLL tracking is deprecated, consider using Internal Events tracking instead https://docs.gitlab.com/ee/development/internal_analytics/internal_event_instrumentation/quick_start.html#defining-event-and-metrics
+        Redis and RedisHLL tracking is deprecated, consider using Internal Events tracking instead https://docs.gitlab.com/development/internal_analytics/internal_event_instrumentation/quick_start/#defining-event-and-metrics
+      MSG
+
+      PII_WARNING = <<~MSG
+        Make sure the additional properties don't contain any sensitive information, like customer data or personal data.
+        For more information, see the Data Classification Standard at https://about.gitlab.com/handbook/security/data-classification-standard/
       MSG
 
       WORKFLOW_LABELS = [
         APPROVED_LABEL,
         REVIEW_LABEL
       ].freeze
+
+      STATUS_REMOVED_REGEX = /^\+?status: removed\s?$/
 
       def check!
         analytics_instrumentation_paths_to_review = helper.changes.by_category(:analytics_instrumentation).files
@@ -77,7 +85,149 @@ module Tooling
         end
       end
 
+      def check_removed_metric_fields!
+        modified_config_files.each do |filename|
+          metric_removed = false
+          has_removed_url = false
+          has_removed_milestone = false
+          helper.changed_lines(filename).each do |mod_line, _i|
+            metric_removed = true if mod_line == '+status: removed'
+            has_removed_url = true if /^\+removed_by_url:\s.+/.match?(mod_line)
+            has_removed_milestone = true if /^\+milestone_removed:\s.+/.match?(mod_line)
+          end
+
+          next unless metric_removed
+          next if has_removed_url && has_removed_milestone
+
+          comment_removed_metric(filename, has_removed_url, has_removed_milestone)
+        end
+      end
+
+      def warn_about_migrated_redis_keys_specs!
+        override_files_changes = ["lib/gitlab/usage_data_counters/hll_redis_key_overrides.yml",
+          "lib/gitlab/usage_data_counters/total_counter_redis_key_overrides.yml"].map do |filename|
+          helper.changed_lines(filename).filter { |line| line.start_with?("+") }
+        end
+        return if override_files_changes.flatten.none?
+
+        return if modified_spec_files.any? do |filename|
+          helper.changed_lines(filename).any? do |mod_line, _i|
+            /^\+.*it_behaves_like ('|")migrated internal event('|")/.match?(mod_line)
+          end
+        end
+
+        warn "Redis keys overrides were added. Please consider cover keys merging with specs. See the [related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/475191) for details"
+      end
+
+      def warn_about_potential_pii_tracking
+        file_list = helper.modified_files.concat(helper.added_files).select do |f|
+          f.end_with?(".rb") && !f.end_with?("_spec.rb")
+        end
+
+        file_list.each do |file_name|
+          add_suggestion(
+            filename: file_name,
+            regex: /\+\s*additional_properties\s*[:=]\s*{/,
+            comment_text: PII_WARNING
+          )
+        end
+      end
+
+      def prohibit_key_path_changes!
+        modified_config_files.each do |filename|
+          helper.changed_lines(filename).each do |mod_line, _i|
+            next unless /^-\s*key_path:.*$/.match?(mod_line)
+
+            add_suggestion(
+              filename: filename,
+              regex: /key_path/,
+              comment_text: 'Key path is changed. This is an extremely dangerous action and can lead to data loss. See the [metrics lifecycle](https://docs.gitlab.com/development/internal_analytics/metrics/metrics_lifecycle/#change-an-existing-metric) for more information'
+            )
+          end
+        end
+      end
+
+      def verify_fe_tracking_params
+        js_files = helper.all_changed_files.select { |filename| filename.end_with?(".js", ".vue") }
+
+        js_files.each do |filename|
+          changes = helper.changed_lines(filename)
+
+          # Join all added lines, remove + prefix and clean whitespace to simplify searching
+          added_content = changes
+            .select { |line| line.start_with?('+') }
+            .map { |line| line[1..] }
+            .join('')
+            .gsub(/\s+/, ' ')
+            .strip
+
+          # Find all trackEvent calls in the simplified content
+          added_content.scan(/trackEvent\(['"]([^'"]+)['"](?:,\s*\{([^}]+)\})?/) do |event_name, hash_content|
+            tracked_properties = hash_content ? hash_content.scan(/(\w+):/).flatten : []
+
+            # Find event definition file and extract additional_properties
+            def_folders = %w[config/events ee/config/events]
+            event_file_path = nil
+
+            def_folders.each do |folder|
+              potential_path = File.join(folder, "#{event_name}.yml")
+              if File.exist?(potential_path)
+                event_file_path = potential_path
+                break
+              end
+            end
+
+            if event_file_path
+              event_definition = YAML.load_file(event_file_path)
+              additional_properties = event_definition['additional_properties'] || {}
+
+              # Check if additional_properties contains all tracked_properties
+              additional_property_keys = additional_properties.keys
+              missing_keys = tracked_properties - additional_property_keys
+              unless missing_keys.empty?
+                add_suggestion(
+                  filename: filename,
+                  regex: /#{event_name}/,
+                  comment_text: "Tracked properties #{missing_keys} are not defined in additional_properties in #{event_file_path}\n Please add the missing properties to the event definition."
+                )
+              end
+            end
+          end
+        end
+      end
+
       private
+
+      def modified_config_files
+        helper.modified_files.select { |f| f.include?('config/metrics') && f.end_with?('yml') }
+      end
+
+      def modified_spec_files
+        helper.modified_files.select { |f| f.include?('spec/') && f.end_with?('_spec.rb') }
+      end
+
+      def comment_removed_metric(filename, has_removed_url, has_removed_milestone)
+        mr_has_milestone = !helper.mr_milestone.nil?
+        milestone = mr_has_milestone ? helper.mr_milestone['title'] : '[PLEASE SET MILESTONE]'
+        comment_text = mr_has_milestone ? nil : "Please set the `milestone_removed` value manually"
+
+        replacement = "status: removed\n"
+        if !has_removed_url && !has_removed_milestone
+          replacement += "removed_by_url: #{helper.mr_web_url}\nmilestone_removed: '#{milestone}'"
+        elsif !has_removed_url
+          replacement += "removed_by_url: #{helper.mr_web_url}"
+          comment_text = nil
+        elsif !has_removed_milestone
+          replacement += "milestone_removed: '#{milestone}'"
+        end
+
+        add_suggestion(
+          filename: filename,
+          regex: STATUS_REMOVED_REGEX,
+          replacement: replacement,
+          comment_text: comment_text
+        )
+      end
 
       def convert_to_table(items)
         message = "Scope | Affected files |\n"

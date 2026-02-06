@@ -42,6 +42,12 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
               variableType
             }
           }
+          inputs {
+            nodes {
+              name
+              value
+            }
+          }
         }
         errors
       QL
@@ -51,16 +57,13 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
   let(:pipeline_schedule_parameters) { {} }
   let(:mutation_response) { graphql_mutation_response(:pipeline_schedule_update) }
 
-  before do
-    stub_feature_flags(enforce_full_refs_for_pipeline_schedules: false)
-  end
-
   context 'when unauthorized' do
     it_behaves_like 'a mutation on an unauthorized resource'
   end
 
   context 'when authorized' do
     before_all do
+      project.update!(ci_pipeline_variables_minimum_override_role: :developer)
       project.add_developer(current_user)
     end
 
@@ -131,43 +134,58 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
       end
     end
 
+    context 'when the pipeline schedule has inputs' do
+      let_it_be(:input_for_update) do
+        create(
+          :ci_pipeline_schedule_input, name: 'input_for_update', value: 'value', pipeline_schedule: pipeline_schedule
+        )
+      end
+
+      let_it_be(:input_for_destroy) do
+        create(
+          :ci_pipeline_schedule_input, name: 'input_for_destroy', value: 'value', pipeline_schedule: pipeline_schedule
+        )
+      end
+
+      let(:pipeline_schedule_parameters) do
+        {
+          inputs: [
+            { name: 'new_input', value: 'value' },
+            { name: 'input_for_update', value: 'new_value' },
+            { name: 'input_for_destroy', value: 'value', destroy: true }
+          ]
+        }
+      end
+
+      it 'adds, updates, and deletes inputs' do
+        post_graphql_mutation(mutation, current_user: current_user)
+
+        expect(response).to have_gitlab_http_status(:success)
+
+        expect(mutation_response['errors']).to be_empty
+        expect(mutation_response['pipelineSchedule']['inputs']['nodes'])
+          .to contain_exactly(
+            { 'name' => 'new_input', 'value' => 'value' },
+            { 'name' => 'input_for_update', 'value' => 'new_value' }
+          )
+      end
+    end
+
     context 'when failure' do
       context 'when params are invalid' do
+        let(:ref) { '' }
         let(:pipeline_schedule_parameters) do
           {
             description: '',
             cron: 'abc',
             cronTimezone: 'cCc',
-            ref: '',
+            ref: ref,
             active: true,
             variables: []
           }
         end
 
-        context 'when enforce_full_refs_for_pipeline_schedules is enabled' do
-          before do
-            stub_feature_flags(enforce_full_refs_for_pipeline_schedules: true)
-          end
-
-          it 'returns the errors' do
-            post_graphql_mutation(mutation, current_user: current_user)
-
-            expect(response).to have_gitlab_http_status(:success)
-
-            expect(mutation_response['errors'])
-              .to match_array(
-                [
-                  "Cron  is invalid syntax",
-                  "Cron timezone  is invalid syntax",
-                  "Ref can't be blank",
-                  "Description can't be blank",
-                  "Ref is ambiguous"
-                ]
-              )
-          end
-        end
-
-        it 'returns the errors' do
+        it 'only returns the ref error' do
           post_graphql_mutation(mutation, current_user: current_user)
 
           expect(response).to have_gitlab_http_status(:success)
@@ -175,12 +193,28 @@ RSpec.describe 'PipelineScheduleUpdate', feature_category: :continuous_integrati
           expect(mutation_response['errors'])
             .to match_array(
               [
-                "Cron  is invalid syntax",
-                "Cron timezone  is invalid syntax",
-                "Ref can't be blank",
-                "Description can't be blank"
+                "Ref is ambiguous"
               ]
             )
+        end
+
+        context 'when ref is valid' do
+          let(:ref) { "#{Gitlab::Git::TAG_REF_PREFIX}some_tag" }
+
+          it 'returns the rest of the errors' do
+            post_graphql_mutation(mutation, current_user: current_user)
+
+            expect(response).to have_gitlab_http_status(:success)
+
+            expect(mutation_response['errors'])
+              .to match_array(
+                [
+                  "Cron syntax is invalid",
+                  "Cron timezone syntax is invalid",
+                  "Description can't be blank"
+                ]
+              )
+          end
         end
       end
 

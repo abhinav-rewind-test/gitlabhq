@@ -1,14 +1,17 @@
-import { GlEmptyState, GlKeysetPagination, GlLoadingIcon, GlTableLite } from '@gitlab/ui';
+import { GlAvatar, GlEmptyState, GlKeysetPagination, GlLoadingIcon } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import getGroupAchievementsResponse from 'test_fixtures/graphql/get_group_achievements_response.json';
 import getGroupAchievementsEmptyResponse from 'test_fixtures/graphql/get_group_achievements_empty_response.json';
 import getGroupAchievementsPaginatedResponse from 'test_fixtures/graphql/get_group_achievements_paginated_response.json';
-import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import AchievementsApp from '~/achievements/components/achievements_app.vue';
+import UserAvatarList from '~/vue_shared/components/user_avatar/user_avatar_list.vue';
 import getGroupAchievementsQuery from '~/achievements/components/graphql/get_group_achievements.query.graphql';
+import CrudComponent from '~/vue_shared/components/crud_component.vue';
+import AwardButton from '~/achievements/components/award_button.vue';
 
 Vue.use(VueApollo);
 
@@ -17,25 +20,34 @@ describe('Achievements app', () => {
   let fakeApollo;
   let queryHandler;
 
+  const findAwardButton = () => wrapper.findComponent(AwardButton);
   const findEmptyState = () => wrapper.findComponent(GlEmptyState);
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
   const findNewAchievementButton = () => wrapper.findByTestId('new-achievement-button');
   const findPagingControls = () => wrapper.findComponent(GlKeysetPagination);
-  const findTable = () => wrapper.findComponent(GlTableLite);
 
   const mountComponent = ({
     canAdminAchievement = true,
+    canAwardAchievement = true,
+    crudStub = false,
+    mountFunction = shallowMountExtended,
     queryResponse = getGroupAchievementsResponse,
   } = {}) => {
     queryHandler = jest.fn().mockResolvedValue(queryResponse);
     fakeApollo = createMockApollo([[getGroupAchievementsQuery, queryHandler]]);
-    wrapper = shallowMountExtended(AchievementsApp, {
+    wrapper = mountFunction(AchievementsApp, {
       provide: {
         canAdminAchievement,
+        canAwardAchievement,
         groupFullPath: 'flightjs',
+        gitlabLogoPath: '/assets/gitlab_logo.png',
       },
       apolloProvider: fakeApollo,
-      stubs: ['router-link', 'router-view'],
+      stubs: {
+        CrudComponent: crudStub,
+        'router-link': true,
+        'router-view': true,
+      },
     });
     return waitForPromises();
   };
@@ -47,15 +59,59 @@ describe('Achievements app', () => {
   });
 
   describe('on successful load', () => {
-    it('should render table with expected props', async () => {
+    it('should render the right number of achievements', async () => {
       await mountComponent();
 
-      const { items } = findTable().vm.$attrs;
+      const achievements = wrapper.findAllComponents(CrudComponent);
 
-      expect(findTable().exists()).toBe(true);
-      expect(items).toContainEqual(expect.objectContaining({ name: 'Hero' }));
-      expect(items).toContainEqual(expect.objectContaining({ name: 'Star' }));
-      expect(items).toContainEqual(expect.objectContaining({ name: 'Legend' }));
+      expect(achievements).toHaveLength(3);
+    });
+
+    it('should render the correct achievement name and avatar (when present)', async () => {
+      await mountComponent({ mountFunction: mountExtended });
+
+      const achievements = wrapper.findAllComponents(CrudComponent);
+
+      expect(achievements.at(0).text()).toContain('Legend');
+      expect(achievements.at(0).findComponent(GlAvatar).props('src')).toMatch(/\/dk.png$/);
+    });
+
+    it('should render the correct achievement name and avatar (when not present)', async () => {
+      await mountComponent({ mountFunction: mountExtended });
+
+      const achievements = wrapper.findAllComponents(CrudComponent);
+
+      expect(achievements.at(1).text()).toContain('Star');
+      expect(achievements.at(1).findComponent(GlAvatar).props('src')).toBe(
+        '/assets/gitlab_logo.png',
+      );
+    });
+
+    describe('when not awarded', () => {
+      it('should render not yet awarded message', async () => {
+        await mountComponent({ mountFunction: mountExtended });
+
+        const achievements = wrapper.findAllComponents(CrudComponent);
+
+        expect(achievements.at(1).text()).toContain('Not yet awarded');
+      });
+    });
+
+    describe('when awarded', () => {
+      it('should mount user avatar list with expected props', async () => {
+        await mountComponent({ mountFunction: mountExtended });
+
+        const achievements = wrapper.findAllComponents(CrudComponent);
+        const avatarList = achievements.at(0).findComponent(UserAvatarList);
+
+        expect(avatarList.exists()).toBe(true);
+        expect(avatarList.props('items')).toEqual(
+          expect.arrayContaining([
+            getGroupAchievementsResponse.data.group.achievements.nodes[0].uniqueUsers.nodes[0],
+            getGroupAchievementsResponse.data.group.achievements.nodes[0].uniqueUsers.nodes[1],
+          ]),
+        );
+      });
     });
 
     describe('new achievement button', () => {
@@ -72,6 +128,27 @@ describe('Achievements app', () => {
           await mountComponent({ canAdminAchievement: false });
 
           expect(findNewAchievementButton().exists()).toBe(false);
+        });
+      });
+    });
+
+    describe('award button', () => {
+      describe('when user can award_achievement', () => {
+        it('should render', async () => {
+          await mountComponent({ crudStub: { template: '<div><slot name="actions" /></div>' } });
+
+          expect(findAwardButton().exists()).toBe(true);
+        });
+      });
+
+      describe('when user can not award_achievement', () => {
+        it('should not render', async () => {
+          await mountComponent({
+            canAwardAchievement: false,
+            crudStub: { template: '<div><slot name="actions" /></div>' },
+          });
+
+          expect(findAwardButton().exists()).toBe(false);
         });
       });
     });

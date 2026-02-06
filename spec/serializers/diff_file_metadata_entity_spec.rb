@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe DiffFileMetadataEntity do
+RSpec.describe DiffFileMetadataEntity, feature_category: :code_review_workflow do
   let(:merge_request) { create(:merge_request_with_diffs) }
   let(:diff_file) { merge_request.merge_request_diff.diffs.raw_diff_files.first }
   let(:options) { {} }
@@ -22,6 +22,7 @@ RSpec.describe DiffFileMetadataEntity do
         :submodule,
         :file_identifier_hash,
         :file_hash,
+        :code_review_id,
         :conflict_type
       )
     end

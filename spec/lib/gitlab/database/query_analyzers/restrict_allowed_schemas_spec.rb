@@ -16,8 +16,9 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas,
           expected_allowed_gitlab_schemas: {
             no_schema: :dml_not_allowed,
             gitlab_main: :success,
-            gitlab_main_clusterwide: :success,
+            gitlab_main_user: :success,
             gitlab_main_cell: :success,
+            gitlab_main_org: :success,
             gitlab_ci: :dml_access_denied # cross-schema access
           }
         },
@@ -26,8 +27,9 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas,
           expected_allowed_gitlab_schemas: {
             no_schema: :dml_not_allowed,
             gitlab_main: :success,
-            gitlab_main_clusterwide: :success,
+            gitlab_main_user: :success,
             gitlab_main_cell: :success,
+            gitlab_main_org: :success,
             gitlab_ci: :dml_access_denied # cross-schema access
           }
         },
@@ -36,8 +38,9 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas,
           expected_allowed_gitlab_schemas: {
             no_schema: :dml_not_allowed,
             gitlab_main: :success,
-            gitlab_main_clusterwide: :success,
+            gitlab_main_user: :success,
             gitlab_main_cell: :success,
+            gitlab_main_org: :success,
             gitlab_ci: :dml_access_denied # cross-schema access
           }
         },
@@ -46,8 +49,9 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas,
           expected_allowed_gitlab_schemas: {
             no_schema: :dml_not_allowed,
             gitlab_main: :success,
-            gitlab_main_clusterwide: :success,
+            gitlab_main_user: :success,
             gitlab_main_cell: :success,
+            gitlab_main_org: :success,
             gitlab_ci: :dml_access_denied # cross-schema access
           }
         },
@@ -78,6 +82,14 @@ RSpec.describe Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas,
         },
         "for CREATE TRIGGER" => {
           sql: "CREATE TRIGGER check_projects BEFORE UPDATE ON projects FOR EACH ROW EXECUTE PROCEDURE check_projects_update()",
+          expected_allowed_gitlab_schemas: {
+            no_schema: :success,
+            gitlab_main: :ddl_not_allowed,
+            gitlab_ci: :ddl_not_allowed
+          }
+        },
+        "for CREATE VIEW" => {
+          sql: "CREATE VIEW my_view AS SELECT * FROM issues",
           expected_allowed_gitlab_schemas: {
             no_schema: :success,
             gitlab_main: :ddl_not_allowed,

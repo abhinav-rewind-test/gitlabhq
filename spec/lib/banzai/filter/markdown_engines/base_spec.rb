@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
-RSpec.describe Banzai::Filter::MarkdownEngines::Base, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::MarkdownEngines::Base, feature_category: :markdown do
   it 'raise error if render not implemented' do
     engine = described_class.new({})
 

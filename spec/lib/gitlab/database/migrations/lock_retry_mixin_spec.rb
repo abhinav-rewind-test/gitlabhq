@@ -28,10 +28,6 @@ RSpec.describe Gitlab::Database::Migrations::LockRetryMixin, feature_category: :
       end
     end
 
-    describe '#enable_lock_retries?' do
-      it_behaves_like 'delegable', :enable_lock_retries?
-    end
-
     describe '#with_lock_retries_used!' do
       it_behaves_like 'delegable', :with_lock_retries_used!
     end
@@ -113,7 +109,9 @@ RSpec.describe Gitlab::Database::Migrations::LockRetryMixin, feature_category: :
 
       let(:migration) do
         Class.new(Gitlab::Database::Migration[2.2]) do
-          milestone 16.10
+          milestone '16.10'
+
+          @_defining_file = 'db/migrate/1_test.rb'
 
           def change
             # no-op
@@ -129,7 +127,7 @@ RSpec.describe Gitlab::Database::Migrations::LockRetryMixin, feature_category: :
         expect(receiver).not_to receive(:ddl_transaction)
 
         expect_next_instance_of(Gitlab::Database::WithLockRetries) do |retries|
-          expect(retries).to receive(:run).with(raise_on_exhaustion: false, &p)
+          expect(retries).to receive(:run).with(raise_on_exhaustion: true, &p)
         end
 
         subject.ddl_transaction(migration, &p)

@@ -3,7 +3,6 @@ import { GlIcon, GlDisclosureDropdown, GlDisclosureDropdownItem } from '@gitlab/
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { formatTime } from '~/lib/utils/datetime_utility';
 import { __, s__, sprintf } from '~/locale';
-import eventHub from '../event_hub';
 import actionMutation from '../graphql/mutations/action.mutation.graphql';
 
 export default {
@@ -18,11 +17,6 @@ export default {
       required: false,
       default: () => [],
     },
-    graphql: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
   },
   data() {
     return {
@@ -31,7 +25,7 @@ export default {
   },
   computed: {
     title() {
-      return __('Deploy to...');
+      return __('Deploy to…');
     },
     actionItems() {
       return this.actions.map((actionItem) => ({
@@ -61,13 +55,8 @@ export default {
       }
 
       this.isLoading = true;
-
-      if (this.graphql) {
-        await this.$apollo.mutate({ mutation: actionMutation, variables: { action } });
-        this.isLoading = false;
-      } else {
-        eventHub.$emit('postAction', { endpoint: action.playPath });
-      }
+      await this.$apollo.mutate({ mutation: actionMutation, variables: { action } });
+      this.isLoading = false;
     },
 
     isActionDisabled(action) {
@@ -105,8 +94,8 @@ export default {
       data-testid="manual-action-link"
     >
       <template #list-item>
-        <span class="gl-flex-grow-1">{{ item.text }}</span>
-        <span v-if="item.scheduledAt" class="gl-text-gray-500 gl-float-right">
+        <span class="gl-grow">{{ item.text }}</span>
+        <span v-if="item.scheduledAt" class="gl-float-right gl-text-subtle">
           <gl-icon name="clock" />
           {{ remainingTime(item) }}
         </span>

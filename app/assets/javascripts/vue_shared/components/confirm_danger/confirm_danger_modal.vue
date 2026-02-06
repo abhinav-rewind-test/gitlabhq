@@ -61,6 +61,11 @@ export default {
       required: false,
       default: false,
     },
+    modalTitle: {
+      type: String,
+      required: false,
+      default: CONFIRM_DANGER_MODAL_TITLE,
+    },
   },
   data() {
     return { confirmationPhrase: '' };
@@ -101,6 +106,11 @@ export default {
     equalString(a, b) {
       return a.trim().toLowerCase() === b.trim().toLowerCase();
     },
+    focusConfirmInput() {
+      this.$nextTick(() => {
+        this.$refs.confirmInput.focus();
+      });
+    },
   },
   i18n: {
     CONFIRM_DANGER_MODAL_BUTTON,
@@ -116,12 +126,13 @@ export default {
     :visible="visible"
     :modal-id="modalId"
     :data-testid="modalId"
-    :title="$options.i18n.CONFIRM_DANGER_MODAL_TITLE"
+    :title="modalTitle"
     :action-primary="actionPrimary"
     :action-cancel="actionCancel"
     size="sm"
     @primary="$emit('confirm', $event)"
     @change="$emit('change', $event)"
+    @shown="focusConfirmInput()"
   >
     <gl-alert
       v-if="confirmDangerMessage"
@@ -135,22 +146,27 @@ export default {
         {{ confirmDangerMessage }}
       </span>
     </gl-alert>
-    <p data-testid="confirm-danger-warning">{{ additionalInformation }}</p>
-    <p data-testid="confirm-danger-phrase">
-      <gl-sprintf :message="$options.i18n.CONFIRM_DANGER_PHRASE_TEXT">
-        <template #phrase_code>
-          <code>{{ phrase }}</code>
-        </template>
-      </gl-sprintf>
-    </p>
-    <gl-form-group :state="isValid">
+    <slot name="modal-body">
+      <p data-testid="confirm-danger-warning">
+        {{ additionalInformation }}
+      </p>
+    </slot>
+    <div class="gl-flex gl-flex-wrap">
+      <label data-testid="confirm-danger-phrase" for="confirm_name_input" class="gl-mb-1 gl-w-full">
+        <gl-sprintf :message="$options.i18n.CONFIRM_DANGER_PHRASE_TEXT" />
+      </label>
+      <code class="gl-max-w-fit">{{ phrase }}</code>
+    </div>
+    <gl-form-group :state="isValid" class="gl-mb-0">
       <gl-form-input
         id="confirm_name_input"
+        ref="confirmInput"
         v-model="confirmationPhrase"
         class="form-control"
         data-testid="confirm-danger-field"
         type="text"
       />
     </gl-form-group>
+    <slot name="modal-footer"></slot>
   </gl-modal>
 </template>

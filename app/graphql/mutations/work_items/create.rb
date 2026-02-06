@@ -7,6 +7,7 @@ module Mutations
 
       include Mutations::SpamProtection
       include FindsNamespace
+      include Mutations::WorkItems::SharedArguments
       include Mutations::WorkItems::Widgetable
 
       description "Creates a work item."
@@ -14,44 +15,78 @@ module Mutations
       authorize :create_work_item
 
       MUTUALLY_EXCLUSIVE_ARGUMENTS_ERROR = 'Please provide either projectPath or namespacePath argument, but not both.'
-      DISABLED_FF_ERROR = 'namespace_level_work_items feature flag is disabled. Only project paths allowed.'
 
-      argument :confidential, GraphQL::Types::Boolean,
-               required: false,
-               description: 'Sets the work item confidentiality.'
-      argument :description, GraphQL::Types::String,
-               required: false,
-               description: copy_field_description(Types::WorkItemType, :description),
-               deprecated: { milestone: '16.9', reason: 'use description widget instead' }
-      argument :description_widget, ::Types::WorkItems::Widgets::DescriptionInputType,
-               required: false,
-               description: 'Input for description widget.'
-      argument :hierarchy_widget, ::Types::WorkItems::Widgets::HierarchyCreateInputType,
-               required: false,
-               description: 'Input for hierarchy widget.'
-      argument :milestone_widget, ::Types::WorkItems::Widgets::MilestoneInputType,
-               required: false,
-               description: 'Input for milestone widget.'
-      argument :namespace_path, GraphQL::Types::ID,
-               required: false,
-               description: 'Full path of the namespace(project or group) the work item is created in.'
-      argument :project_path, GraphQL::Types::ID,
-               required: false,
-               description: 'Full path of the project the work item is associated with.',
-               deprecated: {
-                 reason: 'Please use namespace_path instead. That will cover for both projects and groups',
-                 milestone: '15.10'
-               }
-      argument :title, GraphQL::Types::String,
-               required: true,
-               description: copy_field_description(Types::WorkItemType, :title)
-      argument :work_item_type_id, ::Types::GlobalIDType[::WorkItems::Type],
-               required: true,
-               description: 'Global ID of a work item type.'
+      def self.authorization_scopes
+        super + [:ai_workflows]
+      end
 
-      field :work_item, Types::WorkItemType,
-            null: true,
-            description: 'Created work item.'
+      argument :create_source,
+        GraphQL::Types::String,
+        required: false,
+        description: 'Source which triggered the creation of the work item. Used only for tracking purposes.'
+      argument :created_at, Types::TimeType,
+        required: false,
+        description: 'Timestamp when the work item was created. Available only for admins and project owners.'
+      argument :crm_contacts_widget,
+        ::Types::WorkItems::Widgets::CrmContactsCreateInputType,
+        required: false,
+        description: 'Input for CRM contacts widget.'
+      argument :description,
+        GraphQL::Types::String,
+        required: false,
+        description: copy_field_description(Types::WorkItemType, :description),
+        deprecated: { milestone: '16.9', reason: 'use description widget instead' }
+      argument :discussions_to_resolve,
+        ::Types::WorkItems::ResolveDiscussionsInputType,
+        required: false,
+        description: 'Information required to resolve discussions in a noteable, when the work item is created.',
+        prepare: ->(attributes, _ctx) { attributes.to_h }
+      argument :hierarchy_widget,
+        ::Types::WorkItems::Widgets::HierarchyCreateInputType,
+        required: false,
+        description: 'Input for hierarchy widget.'
+      argument :labels_widget,
+        ::Types::WorkItems::Widgets::LabelsCreateInputType,
+        required: false,
+        description: 'Input for labels widget.'
+      argument :linked_items_widget,
+        ::Types::WorkItems::Widgets::LinkedItemsCreateInputType,
+        required: false,
+        description: 'Input for linked items widget.'
+      argument :namespace_path,
+        GraphQL::Types::ID,
+        required: false,
+        description: 'Full path of the namespace(project or group) the work item is created in.'
+      argument :project_path,
+        GraphQL::Types::ID,
+        required: false,
+        description: 'Full path of the project the work item is associated with.',
+        deprecated: {
+          reason: 'Please use namespacePath instead. That will cover for both projects and groups',
+          milestone: '15.10'
+        }
+      argument :start_and_due_date_widget,
+        ::Types::WorkItems::Widgets::StartAndDueDateUpdateInputType,
+        required: false,
+        description: 'Input for start and due date widget.'
+      argument :title,
+        GraphQL::Types::String,
+        required: true,
+        description: copy_field_description(Types::WorkItemType, :title)
+      argument :work_item_type_id,
+        ::Types::GlobalIDType[::WorkItems::Type],
+        required: true,
+        description: 'Global ID of a work item type.'
+
+      field :work_item,
+        ::Types::WorkItemType,
+        null: true, scopes: [:api, :ai_workflows],
+        description: 'Created work item.'
+
+      field :errors, [GraphQL::Types::String],
+        null: false,
+        scopes: [:api, :ai_workflows],
+        description: 'Errors encountered during the mutation.'
 
       def ready?(**args)
         if args.slice(:project_path, :namespace_path)&.length != 1
@@ -62,12 +97,17 @@ module Mutations
       end
 
       def resolve(project_path: nil, namespace_path: nil, **attributes)
+        Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/578961')
+
         container_path = project_path || namespace_path
         container = authorized_find!(container_path)
-        check_feature_available!(container)
+        params = params_with_work_item_type(attributes, container).merge(author_id: current_user.id,
+          scope_validator: context[:scope_validator])
+        params = params_with_resolve_discussion_params(params)
+        type = params[:work_item_type]
+        raise_resource_not_available_error! unless type
 
-        params = global_id_compatibility_params(attributes).merge(author_id: current_user.id)
-        type = ::WorkItems::Type.find(attributes[:work_item_type_id])
+        check_feature_available!(container, type, params)
         widget_params = extract_widget_params!(type, params, container)
 
         create_result = ::WorkItems::CreateService.new(
@@ -87,16 +127,49 @@ module Mutations
 
       private
 
-      def check_feature_available!(container)
-        return unless container.is_a?(::Group) && Feature.disabled?(:namespace_level_work_items, container)
+      # Overridden on EE
+      def check_feature_available!(container, type, params)
+        return unless container.is_a?(::Group)
 
-        raise Gitlab::Graphql::Errors::ArgumentError, DISABLED_FF_ERROR
+        if params[:merge_request_to_resolve_discussions_object]
+          raise Gitlab::Graphql::Errors::ArgumentError,
+            _('Only project level work items can be created to resolve noteable discussions')
+        end
+
+        return if container.allowed_work_item_type?(type.base_type)
+
+        raise_resource_not_available_error!
       end
 
-      def global_id_compatibility_params(params)
-        params[:work_item_type_id] = params[:work_item_type_id]&.model_id
+      def params_with_resolve_discussion_params(attributes)
+        discussion_attributes = attributes.delete(:discussions_to_resolve)
+        return attributes if discussion_attributes.blank?
 
-        params
+        noteable = discussion_attributes[:noteable_id].find
+        unless noteable.is_a?(::MergeRequest)
+          raise Gitlab::Graphql::Errors::ArgumentError,
+            _('Only Merge Requests are allowed as a noteable to resolve discussions of at the moment.')
+        end
+
+        if discussion_attributes[:discussion_id].present?
+          discussion = noteable.find_discussion(discussion_attributes[:discussion_id])
+          raise_resource_not_available_error! unless discussion&.can_resolve?(current_user)
+        else
+          raise_resource_not_available_error! unless noteable.discussions_can_be_resolved_by?(current_user)
+        end
+
+        attributes[:discussion_to_resolve] = discussion_attributes[:discussion_id]
+        attributes[:merge_request_to_resolve_discussions_object] = noteable
+        attributes
+      end
+
+      def params_with_work_item_type(attributes, container)
+        work_item_type_gid = attributes.delete(:work_item_type_id)
+        work_item_type = ::WorkItems::TypesFramework::Provider.new(container).find_by_gid(work_item_type_gid)
+
+        attributes[:work_item_type] = work_item_type
+
+        attributes
       end
     end
   end

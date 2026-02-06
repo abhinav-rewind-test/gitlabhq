@@ -19,15 +19,15 @@ RSpec.describe Projects::ImportExport::RelationExportService, feature_category: 
 
     allow(project_export_job.project.import_export_shared).to receive(:export_path).and_return(export_path)
     allow(project_export_job.project.import_export_shared).to receive(:archive_path).and_return(archive_path)
-    allow(FileUtils).to receive(:remove_entry).with(any_args).and_call_original
+    allow(FileUtils).to receive(:rm_rf).with(any_args).and_call_original
   end
 
   describe '#execute' do
     let(:relation) { 'labels' }
 
     it 'removes temporary paths used to export files' do
-      expect(FileUtils).to receive(:remove_entry).with(export_path)
-      expect(FileUtils).to receive(:remove_entry).with(archive_path)
+      expect(FileUtils).to receive(:rm_rf).with(export_path)
+      expect(FileUtils).to receive(:rm_rf).with(archive_path)
 
       service.execute
     end
@@ -39,15 +39,9 @@ RSpec.describe Projects::ImportExport::RelationExportService, feature_category: 
         end
       end
 
-      it 'flags export as failed' do
-        service.execute
-
-        expect(relation_export.failed?).to eq(true)
-      end
-
-      it 'logs failed message' do
+      it 'raises error and logs failed message' do
         expect_next_instance_of(Gitlab::Export::Logger) do |logger|
-          expect(logger).to receive(:error).with(
+          expect(logger).to receive(:warn).with(
             export_error: '',
             message: 'Project relation export failed',
             relation: relation_export.relation,
@@ -57,37 +51,7 @@ RSpec.describe Projects::ImportExport::RelationExportService, feature_category: 
           )
         end
 
-        service.execute
-      end
-    end
-
-    context 'when an exception is raised' do
-      before do
-        allow_next_instance_of(Gitlab::ImportExport::Project::RelationSaver) do |saver|
-          allow(saver).to receive(:save).and_raise('Error!')
-        end
-      end
-
-      it 'flags export as failed' do
-        service.execute
-
-        expect(relation_export.failed?).to eq(true)
-        expect(relation_export.export_error).to eq('Error!')
-      end
-
-      it 'logs exception error message' do
-        expect_next_instance_of(Gitlab::Export::Logger) do |logger|
-          expect(logger).to receive(:error).with(
-            export_error: 'Error!',
-            message: 'Project relation export failed',
-            relation: relation_export.relation,
-            project_export_job_id: project_export_job.id,
-            project_id: project_export_job.project.id,
-            project_name: project_export_job.project.name
-          )
-        end
-
-        service.execute
+        expect { service.execute }.to raise_error(Gitlab::ImportExport::Error)
       end
     end
 
@@ -117,6 +81,26 @@ RSpec.describe Projects::ImportExport::RelationExportService, feature_category: 
 
           expect(relation_export.finished?).to eq(true)
           expect(relation_export.upload.export_file.filename).to eq("#{relation}.tar.gz")
+        end
+
+        it 'sets project_relation_export_id on upload' do
+          service.execute
+
+          expect(relation_export.upload.project_relation_export_id).to eq(relation_export.id)
+        end
+
+        context 'when upload already exists from previous failed attempt' do
+          it 'reuses existing upload record and updates it' do
+            existing_upload = create(:relation_export_upload, relation_export: relation_export)
+            existing_upload_id = existing_upload.id
+
+            service.execute
+
+            expect(relation_export.reload.upload.id).to eq(existing_upload_id)
+            expect(relation_export.upload).to be_present
+            expect(relation_export.upload.export_file.filename).to eq("#{relation}.tar.gz")
+            expect(relation_export.upload.project_relation_export_id).to eq(relation_export.id)
+          end
         end
       end
     end

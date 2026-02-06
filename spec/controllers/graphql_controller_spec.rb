@@ -4,9 +4,12 @@ require 'spec_helper'
 
 RSpec.describe GraphqlController, feature_category: :integrations do
   include GraphqlHelpers
+  include Auth::DpopTokenHelper
 
   # two days is enough to make timezones irrelevant
   let_it_be(:last_activity_on) { 2.days.ago.to_date }
+
+  let(:app_context) { Gitlab::ApplicationContext.current }
 
   describe 'rescue_from' do
     let_it_be(:message) { 'green ideas sleep furiously' }
@@ -80,6 +83,26 @@ RSpec.describe GraphqlController, feature_category: :integrations do
       )
       expect(response).to have_gitlab_http_status(:service_unavailable)
       expect(response.headers['Retry-After']).to be(50)
+    end
+
+    it 'handles Issuables::GroupMembersFilterable::TooManyGroupMembersError' do
+      allow(controller).to receive(:execute) do
+        raise Issuables::GroupMembersFilterable::TooManyGroupMembersError, "anything"
+      end
+
+      post :execute
+
+      expect(response).to have_gitlab_http_status(:unprocessable_entity)
+    end
+
+    it 'handles Issuables::GroupMembersFilterable::TooManyAssignedIssuesError' do
+      allow(controller).to receive(:execute) do
+        raise Issuables::GroupMembersFilterable::TooManyAssignedIssuesError, "anything"
+      end
+
+      post :execute
+
+      expect(response).to have_gitlab_http_status(:unprocessable_entity)
     end
   end
 
@@ -254,6 +277,17 @@ RSpec.describe GraphqlController, feature_category: :integrations do
         post :execute
       end
 
+      context 'when query is not a string type' do
+        it 'returns an unsupported type error' do
+          post :execute, as: :json, params: { query: true }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response).to include(
+            'errors' => include(a_hash_including('message' => /Expected one of/))
+          )
+        end
+      end
+
       context 'if using the GitLab CLI' do
         it 'call trackable for the old UserAgent' do
           agent = 'GLab - GitLab CLI'
@@ -323,6 +357,34 @@ RSpec.describe GraphqlController, feature_category: :integrations do
 
           expect(response).to have_gitlab_http_status(:unauthorized)
           expect_graphql_errors_to_include('Invalid token')
+        end
+      end
+
+      context 'with an expired token' do
+        let(:token) { create(:personal_access_token, :expired, user: user, scopes: [:api]) }
+
+        it_behaves_like 'invalid token'
+
+        it 'registers token_expire in application context' do
+          subject
+
+          expect(app_context['meta.auth_fail_reason']).to eq('token_expired')
+          expect(app_context['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{token.id}")
+          expect(app_context['meta.auth_fail_requested_scopes']).to include('api read_api')
+        end
+      end
+
+      context 'with a revoked token' do
+        let(:token) { create(:personal_access_token, :revoked, user: user, scopes: [:api]) }
+
+        it_behaves_like 'invalid token'
+
+        it 'registers token_expire in application context' do
+          subject
+
+          expect(app_context['meta.auth_fail_reason']).to eq('token_revoked')
+          expect(app_context['meta.auth_fail_token_id']).to eq("PersonalAccessToken/#{token.id}")
+          expect(app_context['meta.auth_fail_requested_scopes']).to include('api read_api')
         end
       end
 
@@ -420,6 +482,57 @@ RSpec.describe GraphqlController, feature_category: :integrations do
         end
       end
 
+      context 'when using composite identity OAuth token', :request_store do
+        let(:service_account) do
+          create(:user, :service_account, composite_identity_enforced: true, organization: create(:organization))
+        end
+
+        let(:scoped_user) { create(:user, last_activity_on: last_activity_on) }
+        let(:oauth_app) { create(:oauth_application) }
+        let(:oauth_token) do
+          create(:oauth_access_token,
+            application: oauth_app,
+            resource_owner: service_account,
+            scopes: "api user:#{scoped_user.id}",
+            organization: service_account.organization)
+        end
+
+        let(:query) { '{ currentUser { id username } }' }
+
+        subject do
+          request.headers['Authorization'] = "Bearer #{oauth_token.plaintext_token}"
+          post :execute, params: { query: query }
+        end
+
+        it 'authenticates successfully and returns the scoped user' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response.dig('data', 'currentUser', 'username')).to eq(scoped_user.username)
+        end
+
+        it 'sets current_user to the scoped user, not the service account' do
+          subject
+
+          expect(controller.current_user).to eq(scoped_user)
+          expect(controller.current_user).not_to eq(service_account)
+        end
+
+        it "sets context's sessionless value as true" do
+          subject
+
+          expect(assigns(:context)[:is_sessionless_user]).to be true
+        end
+
+        it 'updates the scoped users last_activity_on field' do
+          expect { subject }.to change { scoped_user.reload.last_activity_on }
+        end
+
+        it 'does not update the service account last_activity_on field' do
+          expect { subject }.not_to change { service_account.reload.last_activity_on }
+        end
+      end
+
       it 'updates the users last_activity_on field' do
         expect { subject }.to change { user.reload.last_activity_on }
       end
@@ -430,10 +543,19 @@ RSpec.describe GraphqlController, feature_category: :integrations do
         expect(assigns(:context)[:is_sessionless_user]).to be true
       end
 
+      it 'assigns access_token in the context' do
+        subject
+
+        expect(assigns(:context)[:access_token]).to eq(token)
+      end
+
       it "assigns username in ApplicationContext" do
         subject
 
-        expect(Gitlab::ApplicationContext.current).to include('meta.user' => user.username)
+        expect(app_context).to include('meta.user' => user.username)
+        expect(app_context.keys).not_to include('meta.auth_fail_reason',
+          'meta.auth_fail_token_id',
+          'meta.auth_fail_requested_scopes')
       end
 
       it 'calls the track api when trackable method' do
@@ -513,8 +635,17 @@ RSpec.describe GraphqlController, feature_category: :integrations do
       it "does not assign a username in ApplicationContext" do
         subject
 
-        expect(Gitlab::ApplicationContext.current.key?('meta.user')).to be false
+        expect(app_context.key?('meta.user')).to be false
+        expect(app_context.keys).not_to include('meta.auth_fail_reason',
+          'meta.auth_fail_token_id',
+          'meta.auth_fail_requested_scopes')
       end
+    end
+
+    it 'includes Current.organization context' do
+      post :execute
+
+      expect(assigns(:context)[:current_organization]).to eq(current_organization)
     end
 
     it 'includes request object in context' do
@@ -536,7 +667,7 @@ RSpec.describe GraphqlController, feature_category: :integrations do
     end
 
     context 'when querying an IntrospectionQuery', :use_clean_rails_memory_store_caching do
-      let_it_be(:query) { File.read(Rails.root.join('spec/fixtures/api/graphql/introspection.graphql')) }
+      let_it_be(:query) { CachedIntrospectionQuery.query_string }
 
       context 'in dev or test env' do
         before do
@@ -605,7 +736,7 @@ RSpec.describe GraphqlController, feature_category: :integrations do
         end
 
         it 'hits the cache even if the whitespace in the query differs' do
-          query_1 = File.read(Rails.root.join('spec/fixtures/api/graphql/introspection.graphql'))
+          query_1 = CachedIntrospectionQuery.query_string
           query_2 = "#{query_1}  " # add a couple of spaces to change the fingerprint
 
           expect(GitlabSchema).to receive(:execute).exactly(:once)
@@ -615,11 +746,144 @@ RSpec.describe GraphqlController, feature_category: :integrations do
         end
       end
 
-      it 'fails if the GraphiQL gem version is not 1.8.0' do
-        # We cache the IntrospectionQuery based on the default IntrospectionQuery by GraphiQL. If this spec fails,
-        # GraphiQL has been updated, so we should check whether the IntropsectionQuery we cache is still valid.
-        # It is stored in `app/graphql/cached_introspection_query.rb#query_string`
-        expect(GraphiQL::Rails::VERSION).to eq("1.8.0")
+      context 'when performing a multiplex query as an IntrospectionQuery' do
+        let(:user) { create(:user) }
+        let_it_be(:query) do
+          <<~GQL
+            mutation IntrospectionQuery{createSnippet(input:{title:"test" description:"test" visibilityLevel:public blobActions:[{action:create previousPath:"test" filePath:"test" content:"test new file"}]}){errors clientMutationId snippet{webUrl}}}
+          GQL
+        end
+
+        before do
+          sign_in(user)
+        end
+
+        it 'does not perform a mutation' do
+          expect do
+            get :execute,
+              params: { query: query, operationName: 'IntrospectionQuery', _json: ["[query]=query {__typename}"] }
+          end.not_to change {
+            Snippet.count
+          }
+        end
+
+        it 'does not call GitlabSchema.execute' do
+          expect(GitlabSchema).not_to receive(:execute)
+          expect(GitlabSchema).to receive(:multiplex)
+
+          get :execute,
+            params: { query: query, operationName: 'IntrospectionQuery', _json: ["[query]=query {__typename}"] }
+        end
+      end
+    end
+
+    context 'when X_GITLAB_DISABLE_SQL_QUERY_LIMIT is set' do
+      let(:issue_url) { "http://some/issue/url" }
+      let(:limit) { 205 }
+
+      context 'and it specifies a new query limit' do
+        let(:header_value) { "#{limit},#{issue_url}" }
+
+        it 'respects the new query limit' do
+          expect(Gitlab::QueryLimiting).to receive(:disable!).with(issue_url, new_threshold: limit)
+
+          request.env['HTTP_X_GITLAB_DISABLE_SQL_QUERY_LIMIT'] = header_value
+
+          post :execute
+        end
+      end
+
+      context 'and it does not specify a new limit' do
+        let(:header_value) { issue_url }
+
+        it 'disables limit' do
+          expect(Gitlab::QueryLimiting).to receive(:disable!).with(issue_url)
+
+          request.env['HTTP_X_GITLAB_DISABLE_SQL_QUERY_LIMIT'] = header_value
+
+          post :execute
+        end
+      end
+    end
+
+    describe 'DPoP authentication' do
+      context 'when :dpop_authentication FF is disabled' do
+        let(:user) { create(:user, last_activity_on: last_activity_on) }
+        let(:personal_access_token) { create(:personal_access_token, user: user, scopes: [:api]) }
+
+        it 'does not check for DPoP token' do
+          stub_feature_flags(dpop_authentication: false)
+
+          post :execute, params: { access_token: personal_access_token.token }
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
+
+      context 'when :dpop_authentication FF is enabled' do
+        before do
+          stub_feature_flags(dpop_authentication: true)
+        end
+
+        context 'when DPoP is disabled for the user' do
+          let(:user) { create(:user, last_activity_on: last_activity_on) }
+          let(:personal_access_token) { create(:personal_access_token, user: user, scopes: [:api]) }
+
+          it 'does not check for DPoP token' do
+            post :execute, params: { access_token: personal_access_token.token }
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'when DPoP is enabled for the user' do
+          let_it_be(:user) { create(:user, last_activity_on: last_activity_on, dpop_enabled: true) }
+          let_it_be(:personal_access_token) { create(:personal_access_token, user: user, scopes: [:api]) }
+          let_it_be(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:api]) }
+          let_it_be(:dpop_proof) { generate_dpop_proof_for(user) }
+
+          context 'when cookie-based authentication is used' do
+            it 'does not invoke DPoP' do
+              sign_in(user)
+
+              post :execute
+
+              expect(response).to have_gitlab_http_status(:ok)
+            end
+          end
+
+          context 'when API is called with an OAuth token' do
+            it 'does not invoke DPoP' do
+              request.headers["Authorization"] = "Bearer #{oauth_token.plaintext_token}"
+              post :execute
+              expect(response).to have_gitlab_http_status(:ok)
+            end
+          end
+
+          context 'with a missing DPoP token' do
+            it 'returns 401' do
+              post :execute, params: { access_token: personal_access_token.token }
+              expect(response).to have_gitlab_http_status(:unauthorized)
+              expect(json_response["errors"][0]["message"]).to eq("DPoP validation error: DPoP header is missing")
+            end
+          end
+
+          context 'with a valid DPoP token' do
+            it 'returns 200' do
+              request.headers["dpop"] = dpop_proof.proof
+              post :execute, params: { access_token: personal_access_token.token }
+              expect(response).to have_gitlab_http_status(:ok)
+            end
+          end
+
+          context 'with a malformed DPoP token' do
+            it 'returns 401' do
+              request.headers["dpop"] = "invalid"
+              post :execute, params: { access_token: personal_access_token.token } # -- We need the entire error message
+              expect(json_response["errors"][0]["message"])
+                .to eq("DPoP validation error: Malformed JWT, unable to decode. Not enough or too many segments")
+              expect(response).to have_gitlab_http_status(:unauthorized)
+            end
+          end
+        end
       end
     end
   end
@@ -714,6 +978,7 @@ RSpec.describe GraphqlController, feature_category: :integrations do
 
       expect(controller).to have_received(:append_info_to_payload)
       expect(log_payload.dig(:metadata, :graphql)).to match_array(expected_logs)
+      expect(log_payload.dig(:metadata, :referer)).to be_nil
     end
 
     it 'appends the exception in case of errors' do
@@ -724,7 +989,42 @@ RSpec.describe GraphqlController, feature_category: :integrations do
       post :execute, params: { _json: graphql_queries }
 
       expect(controller).to have_received(:append_info_to_payload)
-      expect(log_payload.dig(:exception_object)).to eq(exception)
+      expect(log_payload[:exception_object]).to eq(exception)
+    end
+
+    context 'when JSON metadata is present in request environment' do
+      let(:json_metadata) do
+        {
+          'max_depth' => 5,
+          'max_array_count' => 100,
+          'max_hash_count' => 50,
+          'total_elements' => 200
+        }
+      end
+
+      before do
+        # Simulate JSON validation middleware setting metadata in request environment
+        request.env[::Gitlab::Middleware::JsonValidation::RACK_ENV_METADATA_KEY] = json_metadata
+      end
+
+      it 'includes JSON metadata in the payload with json_ prefix' do
+        post :execute, params: { query: '{ __typename }' }
+
+        expect(controller).to have_received(:append_info_to_payload)
+        expect(log_payload[:json_max_depth]).to eq(5)
+        expect(log_payload[:json_max_array_count]).to eq(100)
+        expect(log_payload[:json_max_hash_count]).to eq(50)
+        expect(log_payload[:json_total_elements]).to eq(200)
+      end
+    end
+
+    context 'when JSON metadata is not present in request environment' do
+      it 'does not include JSON metadata in the payload' do
+        post :execute, params: { query: '{ __typename }' }
+
+        expect(controller).to have_received(:append_info_to_payload)
+        expect(log_payload.keys.grep(/^json_/)).to be_empty
+      end
     end
   end
 end

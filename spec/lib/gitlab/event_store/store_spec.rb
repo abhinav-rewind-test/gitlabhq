@@ -217,8 +217,8 @@ RSpec.describe Gitlab::EventStore::Store, feature_category: :shared do
     context 'when event has subscribed workers with condition' do
       let(:store) do
         described_class.new do |s|
-          s.subscribe worker, to: event_klass, if: -> (event) { event.data[:name] == 'Bob' }
-          s.subscribe another_worker, to: event_klass, if: -> (event) { event.data[:name] == 'Alice' }
+          s.subscribe worker, to: event_klass, if: ->(event) { event.data[:name] == 'Bob' }
+          s.subscribe another_worker, to: event_klass, if: ->(event) { event.data[:name] == 'Alice' }
         end
       end
 
@@ -363,6 +363,16 @@ RSpec.describe Gitlab::EventStore::Store, feature_category: :shared do
         expect(worker_instance).to receive(:handle_event).once.with(second_event)
 
         subject
+      end
+    end
+
+    context 'when using handle_event_in' do
+      it 'schedules the event with correct parameters' do
+        constructed_event = event_klass.new(data: event_data)
+
+        expect(worker).to receive(:perform_in).with(5.minutes, event_name, event_data)
+
+        worker_instance.handle_event_in(5.minutes, constructed_event)
       end
     end
   end

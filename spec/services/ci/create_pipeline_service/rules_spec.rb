@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 require 'spec_helper'
 
-RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectness, feature_category: :pipeline_composition do
+RSpec.describe Ci::CreatePipelineService, feature_category: :pipeline_composition do
+  include Ci::PipelineMessageHelpers
+
   let(:project)     { create(:project, :repository) }
   let(:user)        { project.first_owner }
   let(:ref)         { 'refs/heads/master' }
@@ -13,6 +15,10 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
 
   let(:base_initialization_params) { { ref: ref, before: '00000000', after: project.commit(ref).sha, variables_attributes: nil } }
   let(:initialization_params)      { base_initialization_params }
+
+  before do
+    project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
+  end
 
   context 'job:rules' do
     let(:regular_job) { find_job('regular-job') }
@@ -115,6 +121,141 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       end
     end
 
+    context 'exists with patterns' do
+      let(:config) do
+        <<-YAML
+        job1:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - 'docs/*.md' # does not match
+              - 'config/*.rb' # matches
+
+        job2:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - 'docs/*.md' # does not match
+              - '**/app.rb' # matches
+
+        job3:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - 'config/*.yml' # does not match
+              - '**/app.rb' # matches
+
+        job4:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - '**/app.rb' # matches
+        YAML
+      end
+
+      context 'with matches' do
+        let_it_be(:project_files) do
+          {
+            'config/app.rb' => '',
+            'hello1.yml' => '',
+            'hello2.yml' => ''
+          }
+        end
+
+        let_it_be(:project) do
+          create(:project, :custom_repo, files: project_files)
+        end
+
+        let_it_be(:number_of_project_files) { project_files.size }
+
+        it 'creates all jobs' do
+          expect(pipeline).to be_persisted
+          expect(build_names).to contain_exactly('job1', 'job2', 'job3', 'job4')
+        end
+
+        context 'on checking cache', :request_store do
+          it 'does not evaluate the same glob more than once' do
+            expect(File).to receive(:fnmatch?)
+              .with('docs/*.md', anything, anything)
+              .exactly(number_of_project_files).times # it iterates all files
+              .and_call_original
+            expect(File).to receive(:fnmatch?)
+              .with('config/*.rb', anything, anything)
+              .once # it iterates once and finds the file
+              .and_call_original
+            expect(File).to receive(:fnmatch?)
+              .with('config/*.yml', anything, anything)
+              .exactly(number_of_project_files).times # it iterates all files
+              .and_call_original
+            expect(File).to receive(:fnmatch?)
+              .with('**/app.rb', anything, anything)
+              .once # it iterates once and finds the file
+              .and_call_original
+
+            expect(pipeline).to be_persisted
+            expect(build_names).to contain_exactly('job1', 'job2', 'job3', 'job4')
+          end
+        end
+      end
+    end
+
+    context 'exists with variables' do
+      let(:config) do
+        <<-YAML
+        variables:
+          VAR_DIRECTORY: "config"
+          VAR_FILE: "app.rb"
+          VAR_COMBINED: "config/app.rb"
+          VAR_COMBINED_NO_MATCH: "temp/app.rb"
+          VAR_NESTED: $VAR_DIRECTORY/$VAR_FILE
+
+        job1:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - $VAR_DIRECTORY/$VAR_FILE # matches
+
+        job2:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - $VAR_COMBINED # matches
+
+        job3:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - $VAR_COMBINED_NO_MATCH # does not match
+
+        job4:
+          script: echo Hello, World!
+          rules:
+            - exists:
+              - $VAR_NESTED
+        YAML
+      end
+
+      context 'with matches' do
+        let_it_be(:project_files) do
+          {
+            'config/app.rb' => '',
+            'some_file.rb' => ''
+          }
+        end
+
+        let_it_be(:project) do
+          create(:project, :custom_repo, files: project_files)
+        end
+
+        let_it_be(:number_of_project_files) { project_files.size }
+
+        it 'creates all relevant jobs' do
+          expect(pipeline).to be_persisted
+          expect(build_names).to contain_exactly('job1', 'job2', 'job4')
+        end
+      end
+    end
+
     context 'with allow_failure and exit_codes', :aggregate_failures do
       let(:config) do
         <<-EOY
@@ -158,8 +299,8 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       end
 
       it 'removes exit_codes if allow_failure is specified' do
-        expect(find_job('job-1').options.dig(:allow_failure_criteria)).to be_nil
-        expect(find_job('job-2').options.dig(:allow_failure_criteria)).to be_nil
+        expect(find_job('job-1').options[:allow_failure_criteria]).to be_nil
+        expect(find_job('job-2').options[:allow_failure_criteria]).to be_nil
         expect(find_job('job-3').options.dig(:allow_failure_criteria, :exit_codes)).to eq([42])
       end
     end
@@ -543,7 +684,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       context 'and matches' do
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[README.md])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'README.md')])
           end
         end
 
@@ -569,7 +710,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       context 'and matches the second rule' do
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[app.rb])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'app.rb')])
           end
         end
 
@@ -587,7 +728,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       context 'and does not match' do
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[useless_script.rb])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'useless_script.rb')])
           end
         end
 
@@ -602,6 +743,10 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let_it_be(:project) { create(:project, :empty_repo) }
         let_it_be(:user)    { project.first_owner }
 
+        let(:initialization_params) { base_initialization_params.merge(before: nil) }
+        let(:changed_file) { 'file2.txt' }
+        let(:ref) { 'feature_2' }
+
         before_all do
           project.repository.add_branch(user, 'feature_1', 'master')
 
@@ -615,10 +760,6 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
             user, 'file2.txt', 'file 2', message: 'Create file2.txt', branch_name: 'feature_2'
           )
         end
-
-        let(:initialization_params) { base_initialization_params.merge(before: nil) }
-        let(:changed_file) { 'file2.txt' }
-        let(:ref) { 'feature_2' }
 
         context 'for jobs rules' do
           let(:config) do
@@ -660,6 +801,104 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
 
               it 'does not create job1' do
                 expect(build_names).to contain_exactly('job2')
+              end
+            end
+          end
+
+          context 'for jobs rules with variables' do
+            let(:config) do
+              <<-EOY
+              variables:
+                VALID_BRANCH_NAME: feature_1
+                FEATURE_BRANCH_NAME_PREFIX: feature_
+                INVALID_BRANCH_NAME: invalid-branch
+                VALID_FILENAME: file2.txt
+                INVALID_FILENAME: file1.txt
+                VALID_BASENAME: file2
+                VALID_NESTED_VARIABLE: ${VALID_BASENAME}.txt
+              job1:
+                script: exit 0
+                rules:
+                  - changes:
+                      paths: [#{changed_file}]
+                      compare_to: #{compare_to}
+
+              job2:
+                script: exit 0
+              EOY
+            end
+
+            context 'when there is no such compare_to ref' do
+              let(:compare_to) { '${INVALID_BRANCH_NAME}' }
+
+              it 'returns an error' do
+                expect(pipeline.errors.full_messages).to eq(
+                  ['Failed to parse rule for job1: rules:changes:compare_to is not a valid ref']
+                )
+              end
+            end
+
+            context 'when the compare_to ref exists' do
+              let(:compare_to) { '${FEATURE_BRANCH_NAME_PREFIX}1' }
+
+              context 'when the rule in job1 matches' do
+                it 'creates job1 and job2' do
+                  expect(build_names).to contain_exactly('job1', 'job2')
+                end
+              end
+
+              context 'when the rule in job1 does not match' do
+                let(:changed_file) { 'file1.txt' }
+
+                it 'does not create job1' do
+                  expect(build_names).to contain_exactly('job2')
+                end
+              end
+            end
+
+            context 'when the compare_to variable does not exist' do
+              let(:compare_to) { '$NON_EXISTENT_VAR' }
+
+              it 'returns an error' do
+                expect(pipeline.errors.full_messages).to eq(
+                  ['Failed to parse rule for job1: rules:changes:compare_to is not a valid ref']
+                )
+              end
+            end
+
+            context 'when paths is defined by a variable' do
+              let(:compare_to) { '${VALID_BRANCH_NAME}' }
+
+              context 'when the variable does not exist' do
+                let(:changed_file) { '$NON_EXISTENT_VAR' }
+
+                it 'does not create job1' do
+                  expect(build_names).to contain_exactly('job2')
+                end
+              end
+
+              context 'when the variable contains a matching filename' do
+                let(:changed_file) { '$VALID_FILENAME' }
+
+                it 'creates both jobs' do
+                  expect(build_names).to contain_exactly('job1', 'job2')
+                end
+              end
+
+              context 'when the variable does not contain a matching filename' do
+                let(:changed_file) { '$INVALID_FILENAME' }
+
+                it 'does not create job1' do
+                  expect(build_names).to contain_exactly('job2')
+                end
+              end
+
+              context 'when the variable is nested and contains a matching filename' do
+                let(:changed_file) { '$VALID_NESTED_VARIABLE' }
+
+                it 'creates both jobs' do
+                  expect(build_names).to contain_exactly('job1', 'job2')
+                end
               end
             end
           end
@@ -734,7 +973,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       context 'and changes: matches before if' do
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[README.md])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'README.md')])
           end
         end
 
@@ -805,7 +1044,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
       context 'with if matches and changes matches' do
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[app.rb])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'app.rb')])
           end
         end
 
@@ -827,7 +1066,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
 
         before do
           allow_next_instance_of(Ci::Pipeline) do |pipeline|
-            allow(pipeline).to receive(:modified_paths).and_return(%w[README.md])
+            allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'README.md')])
           end
         end
 
@@ -1173,7 +1412,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/wip' }
 
         it 'invalidates the pipeline with a workflow rules error' do
-          expect(pipeline.errors[:base]).to include('Pipeline filtered out by workflow rules.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.workflow_rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1182,7 +1421,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/fix' }
 
         it 'invalidates the pipeline with a workflow rules error' do
-          expect(pipeline.errors[:base]).to include('Pipeline filtered out by workflow rules.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.workflow_rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1239,7 +1478,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/feature_conflict' }
 
         it 'invalidates the pipeline with a workflow rules error' do
-          expect(pipeline.errors[:base]).to include('Pipeline filtered out by workflow rules.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.workflow_rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1265,8 +1504,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/master' }
 
         it 'invalidates the pipeline with an empty jobs error' do
-          expect(pipeline.errors[:base]).to include('Pipeline will not run for the selected trigger. ' \
-            'The rules configuration prevented any jobs from being added to the pipeline.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1284,7 +1522,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/fix' }
 
         it 'invalidates the pipeline with a workflow rules error' do
-          expect(pipeline.errors[:base]).to include('Pipeline filtered out by workflow rules.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.workflow_rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1293,7 +1531,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         let(:ref) { 'refs/heads/wip' }
 
         it 'invalidates the pipeline with a workflow rules error' do
-          expect(pipeline.errors[:base]).to include('Pipeline filtered out by workflow rules.')
+          expect(pipeline.errors[:base]).to include(sanitize_message(Ci::Pipeline.workflow_rules_failure_message))
           expect(pipeline).not_to be_persisted
         end
       end
@@ -1467,7 +1705,7 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         context 'when matches' do
           before do
             allow_next_instance_of(Ci::Pipeline) do |pipeline|
-              allow(pipeline).to receive(:modified_paths).and_return(%w[file1.md])
+              allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'file1.md')])
             end
           end
 
@@ -1480,12 +1718,12 @@ RSpec.describe Ci::CreatePipelineService, :yaml_processor_feature_flag_corectnes
         context 'when does not match' do
           before do
             allow_next_instance_of(Ci::Pipeline) do |pipeline|
-              allow(pipeline).to receive(:modified_paths).and_return(%w[unknown])
+              allow(pipeline).to receive(:changed_paths).and_return([instance_double(Gitlab::Git::ChangedPath, path: 'unknown')])
             end
           end
 
           it 'creates the pipeline with a job' do
-            expect(pipeline.errors.full_messages).to eq(['Pipeline filtered out by workflow rules.'])
+            expect(pipeline.errors.full_messages).to eq([sanitize_message(Ci::Pipeline.workflow_rules_failure_message)])
             expect(response).to be_error
             expect(pipeline).not_to be_persisted
           end

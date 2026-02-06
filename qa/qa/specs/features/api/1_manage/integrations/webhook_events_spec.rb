@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Manage' do
+  RSpec.describe 'Manage', feature_category: :importers do
     describe(
       'WebHooks integration',
       :requires_admin,
       :integrations,
       :orchestrated,
-      product_group: :import_and_integrate
+      feature_flag: { name: :auto_disabling_web_hooks }
     ) do
       before(:context) do
         toggle_local_requests(true)
@@ -105,7 +105,7 @@ module QA
         it 'hook is auto-disabled',
           testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/389595', quarantine: {
             type: :flaky,
-            issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/431976'
+            issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/18789'
           } do
           Resource::ProjectWebHook.setup(fail_mock, session: session, issues: true) do |webhook, smocker|
             hook_trigger_times.times do

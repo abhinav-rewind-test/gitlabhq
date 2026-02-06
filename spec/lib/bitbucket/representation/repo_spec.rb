@@ -52,5 +52,38 @@ RSpec.describe Bitbucket::Representation::Repo, feature_category: :importers do
       data = { 'links' => { 'clone' => [{ 'name' => 'https', 'href' => 'https://bibucket.org/test/test.git' }] } }
       expect(described_class.new(data).clone_url('abc')).to eq('https://x-token-auth:abc@bibucket.org/test/test.git')
     end
+
+    context 'when auth type is basic' do
+      it 'builds url with basic auth' do
+        data = { 'links' => { 'clone' => [{ 'name' => 'https', 'href' => 'https://bibucket.org/test/test.git' }] } }
+        expect(described_class.new(data).clone_url('foo:bar', auth_type: :basic)).to eq('https://foo:bar@bibucket.org/test/test.git')
+      end
+    end
+
+    context 'when links are missing' do
+      it 'returns nil' do
+        data = {}
+        expect(described_class.new(data).clone_url('abc')).to be_nil
+      end
+    end
+
+    context 'when clone links are missing' do
+      it 'returns nil' do
+        data = { 'links' => {} }
+        expect(described_class.new(data).clone_url('abc')).to be_nil
+      end
+    end
+
+    context 'when https link is missing' do
+      it 'returns nil' do
+        data = { 'links' => { 'clone' => [{ 'name' => 'ssh', 'href' => 'git@bibucket.org:test/test.git' }] } }
+        expect(described_class.new(data).clone_url('abc')).to be_nil
+      end
+    end
+  end
+
+  describe '#error' do
+    it { expect(described_class.new({ 'error' => { 'message' => 'error!' } }).error).to eq({ 'message' => 'error!' }) }
+    it { expect(described_class.new({}).error).to eq(nil) }
   end
 end

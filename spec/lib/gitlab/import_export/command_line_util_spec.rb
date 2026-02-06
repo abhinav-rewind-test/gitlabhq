@@ -149,7 +149,9 @@ RSpec.describe Gitlab::ImportExport::CommandLineUtil, feature_category: :importe
         end
 
         it 'streams the contents via Gitlab::HTTP' do
-          expect(Gitlab::HTTP).to receive(:get).with(url, hash_including(stream_body: true))
+          expect(Gitlab::HTTP).to receive(:get).with(url,
+            hash_including(stream_body: true, headers: { "Accept-Encoding" => "identity" })
+          )
 
           Tempfile.create('test') do |file|
             subject.download(url, file.path)
@@ -176,7 +178,7 @@ RSpec.describe Gitlab::ImportExport::CommandLineUtil, feature_category: :importe
           let(:status) { HTTP::Status.const_get(code, false) }
 
           it 'logs the redirect' do
-            expect(Gitlab::Import::Logger).to receive(:warn)
+            expect(::Import::Framework::Logger).to receive(:warn)
 
             Tempfile.create('test') do |file|
               subject.download(url, file.path)

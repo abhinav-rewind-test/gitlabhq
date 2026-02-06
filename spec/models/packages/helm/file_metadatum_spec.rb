@@ -2,9 +2,10 @@
 
 require 'spec_helper'
 
-RSpec.describe Packages::Helm::FileMetadatum, type: :model do
+RSpec.describe Packages::Helm::FileMetadatum, type: :model, feature_category: :package_registry do
   describe 'relationships' do
     it { is_expected.to belong_to(:package_file) }
+    it { is_expected.to belong_to(:project) }
   end
 
   describe 'validations' do
@@ -54,6 +55,56 @@ RSpec.describe Packages::Helm::FileMetadatum, type: :model do
         is_expected.not_to allow_value({ version: 'v1.0', apiVersion: 'v2' }).for(:metadata)
         is_expected.not_to allow_value({ name: 'foo', apiVersion: 'v2' }).for(:metadata)
         is_expected.not_to allow_value({ name: 'foo', version: 'v1.0' }).for(:metadata)
+      end
+    end
+
+    describe '.for_package_files' do
+      let_it_be(:metadatum1) { create(:helm_file_metadatum) }
+      let_it_be(:metadatum2) { create(:helm_file_metadatum) }
+      let_it_be(:metadatum3) { create(:helm_file_metadatum) }
+
+      let(:package_files) do
+        ::Packages::PackageFile.id_in([metadatum1.package_file_id, metadatum2.package_file_id])
+      end
+
+      subject(:for_package_files) { described_class.for_package_files(package_files.select(:id)) }
+
+      it 'returns metadatum1 and metadatum2' do
+        expect(for_package_files).to match_array([metadatum1, metadatum2])
+      end
+    end
+
+    describe '.select_distinct_channel_and_project' do
+      let_it_be(:channel) { 'stable' }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:metadatum1) { create(:helm_file_metadatum, channel: channel, project_id: project.id) }
+      let_it_be(:metadatum2) { create(:helm_file_metadatum, channel: channel, project_id: project.id) }
+      let_it_be(:metadatum3) { create(:helm_file_metadatum, channel: channel, project_id: project.id) }
+
+      subject(:select_distinct_channel_and_project) { described_class.select_distinct_channel_and_project }
+
+      it 'returns de-duplicated record' do
+        expect(select_distinct_channel_and_project.size).to eq(1)
+      end
+
+      it 'returns records with selected channel attributes' do
+        expect(select_distinct_channel_and_project[0]).to have_attributes(
+          channel: channel, package_file_id: nil, project_id: project.id
+        )
+      end
+    end
+
+    describe '.preload_projects' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:metadatum) { create(:helm_file_metadatum, project: project) }
+
+      subject(:preload_projects) { described_class.preload_projects }
+
+      it 'preloads projects', :aggregate_failures do
+        record = preload_projects.first
+
+        expect(record.association(:project)).to be_loaded
+        expect(record.project).to eq(project)
       end
     end
   end

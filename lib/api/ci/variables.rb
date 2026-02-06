@@ -6,9 +6,9 @@ module API
       include PaginationParams
 
       before { authenticate! }
-      before { authorize! :admin_build, user_project }
+      before { authorize! :admin_cicd_variables, user_project }
 
-      feature_category :secrets_management
+      feature_category :pipeline_composition
 
       helpers ::API::Helpers::VariablesHelpers
 
@@ -24,8 +24,12 @@ module API
         params do
           use :pagination
         end
+        route_setting :authorization, permissions: :read_variable, boundary_type: :project
         get ':id/variables', urgency: :low do
           variables = user_project.variables
+
+          audit_all_variables_access(user_project)
+
           present paginate(variables), with: Entities::Ci::Variable
         end
 
@@ -40,14 +44,15 @@ module API
             optional :environment_scope, type: String, desc: 'The environment scope of a variable'
           end
         end
-        # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :read_variable, boundary_type: :project
         get ':id/variables/:key', urgency: :low do
           variable = find_variable(user_project, params)
           not_found!('Variable') unless variable
 
+          audit_single_variable_access(variable, user_project)
+
           present variable, with: Entities::Ci::Variable
         end
-        # rubocop: enable CodeReuse/ActiveRecord
 
         desc 'Create a new variable in a project' do
           success Entities::Ci::Variable
@@ -60,11 +65,13 @@ module API
           requires :value, type: String, desc: 'The value of a variable'
           optional :protected, type: Boolean, desc: 'Whether the variable is protected'
           optional :masked, type: Boolean, desc: 'Whether the variable is masked'
+          optional :masked_and_hidden, type: Boolean, desc: 'Whether the variable is masked and hidden'
           optional :raw, type: Boolean, desc: 'Whether the variable will be expanded'
           optional :variable_type, type: String, values: ::Ci::Variable.variable_types.keys, desc: 'The type of the variable. Default: env_var'
           optional :environment_scope, type: String, desc: 'The environment_scope of the variable'
           optional :description, type: String, desc: 'The description of the variable'
         end
+        route_setting :authorization, permissions: :create_variable, boundary_type: :project
         post ':id/variables' do
           variable = ::Ci::ChangeVariableService.new(
             container: user_project,
@@ -98,7 +105,7 @@ module API
           end
           optional :description, type: String, desc: 'The description of the variable'
         end
-        # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :update_variable, boundary_type: :project
         put ':id/variables/:key' do
           variable = find_variable(user_project, params)
           not_found!('Variable') unless variable
@@ -115,7 +122,6 @@ module API
             render_validation_error!(variable)
           end
         end
-        # rubocop: enable CodeReuse/ActiveRecord
 
         desc 'Delete an existing variable from a project' do
           success Entities::Ci::Variable
@@ -128,7 +134,7 @@ module API
             optional :environment_scope, type: String, desc: 'The environment scope of the variable'
           end
         end
-        # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :delete_variable, boundary_type: :project
         delete ':id/variables/:key' do
           variable = find_variable(user_project, params)
           not_found!('Variable') unless variable
@@ -141,7 +147,6 @@ module API
 
           no_content!
         end
-        # rubocop: enable CodeReuse/ActiveRecord
       end
     end
   end

@@ -6,7 +6,7 @@ RSpec.describe "Remove items linked to a work item", feature_category: :portfoli
   include GraphqlHelpers
 
   let_it_be(:project) { create(:project, :private) }
-  let_it_be(:guest) { create(:user).tap { |user| project.add_guest(user) } }
+  let_it_be(:guest) { create(:user, guest_of: project) }
   let_it_be(:work_item) { create(:work_item, project: project) }
   let_it_be(:related1) { create(:work_item, project: project) }
   let_it_be(:related2) { create(:work_item, project: project) }
@@ -52,9 +52,24 @@ RSpec.describe "Remove items linked to a work item", feature_category: :portfoli
   context 'when user has permissions to read the work item' do
     let(:current_user) { guest }
 
+    before do
+      tracking_service_double = instance_double(
+        Gitlab::WorkItems::Instrumentation::TrackingService,
+        execute: true
+      )
+
+      allow(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).and_return(
+        tracking_service_double)
+    end
+
     it 'unlinks the work items' do
       expect do
-        post_graphql_mutation(mutation, current_user: current_user)
+        post_graphql(
+          mutation.query,
+          current_user: current_user,
+          variables: mutation.variables,
+          headers: { 'X-GITLAB-DISABLE-SQL-QUERY-LIMIT' => '120,https://gitlab.com/gitlab-org/gitlab/-/issues/585126' }
+        )
       end.to change { WorkItems::RelatedWorkItemLink.count }.by(-2)
 
       expect(response).to have_gitlab_http_status(:success)
@@ -107,14 +122,6 @@ RSpec.describe "Remove items linked to a work item", feature_category: :portfoli
       let(:ids_to_unlink) { [] }
 
       it_behaves_like 'a mutation that returns top-level errors', errors: ['workItemsIds cannot be empty']
-    end
-
-    context 'when `linked_work_items` feature flag is disabled' do
-      before do
-        stub_feature_flags(linked_work_items: false)
-      end
-
-      it_behaves_like 'a mutation that returns a top-level access error'
     end
   end
 end

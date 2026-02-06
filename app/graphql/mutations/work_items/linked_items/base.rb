@@ -10,7 +10,7 @@ module Mutations
         argument :id, ::Types::GlobalIDType[::WorkItem],
           required: true, description: 'Global ID of the work item.'
 
-        field :work_item, Types::WorkItemType,
+        field :work_item, ::Types::WorkItemType,
           null: true, description: 'Updated work item.'
 
         field :message, GraphQL::Types::String,
@@ -32,8 +32,6 @@ module Mutations
 
         def resolve(**args)
           work_item = authorized_find!(id: args.delete(:id))
-          raise_resource_not_available_error! unless work_item.resource_parent.linked_work_items_feature_flag_enabled?
-
           service_response = update_links(work_item, args)
 
           {

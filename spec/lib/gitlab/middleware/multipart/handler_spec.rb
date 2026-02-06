@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Middleware::Multipart::Handler do
+RSpec.describe Gitlab::Middleware::Multipart::Handler, feature_category: :shared do
   using RSpec::Parameterized::TableSyntax
 
   let_it_be(:env) { Rack::MockRequest.env_for('/', method: 'post', params: {}) }
@@ -17,11 +17,16 @@ RSpec.describe Gitlab::Middleware::Multipart::Handler do
         ::JobArtifactUploader.workhorse_upload_path,
         ::LfsObjectUploader.workhorse_upload_path,
         ::DependencyProxy::FileUploader.workhorse_upload_path,
+        ::Terraform::StateUploader.workhorse_local_upload_path,
+        ::Packages::Npm::PackageFileUploader.workhorse_local_upload_path,
+        ::Repositories::CommitsUploader.workhorse_local_upload_path,
         File.join(Rails.root, 'public/uploads/tmp')
       ]
     end
 
-    let_it_be(:expected_with_packages_path) { expected_allowed_paths + [::Packages::PackageFileUploader.workhorse_upload_path] }
+    let_it_be(:expected_with_packages_path) do
+      expected_allowed_paths + [::Packages::PackageFileUploader.workhorse_upload_path]
+    end
 
     subject { described_class.new(env, message).send(:allowed_paths) }
 

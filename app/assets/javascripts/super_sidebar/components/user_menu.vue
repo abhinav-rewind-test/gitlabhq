@@ -1,23 +1,30 @@
 <script>
 import {
   GlAvatar,
+  GlIcon,
   GlDisclosureDropdown,
   GlDisclosureDropdownGroup,
   GlDisclosureDropdownItem,
   GlButton,
   GlModalDirective,
+  GlTooltipDirective,
 } from '@gitlab/ui';
+import UserMenuUpgradeSubscription from 'ee_component/super_sidebar/components/user_menu_upgrade_subscription.vue';
 import SafeHtml from '~/vue_shared/directives/safe_html';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { s__, __, sprintf } from '~/locale';
 import Tracking from '~/tracking';
-import PersistentUserCallout from '~/persistent_user_callout';
 import { SET_STATUS_MODAL_ID } from '~/set_status_modal/constants';
-import { USER_MENU_TRACKING_DEFAULTS, DROPDOWN_Y_OFFSET, IMPERSONATING_OFFSET } from '../constants';
+import axios from '~/lib/utils/axios_utils';
+import { visitUrl } from '~/lib/utils/url_utility';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { logError } from '~/lib/logger';
+import { USER_MENU_TRACKING_DEFAULTS, DROPDOWN_Y_OFFSET } from '../constants';
 import UserMenuProfileItem from './user_menu_profile_item.vue';
+import UserCounts from './user_counts.vue';
 
 // Left offset required for the dropdown to be aligned with the super sidebar
-const DROPDOWN_X_OFFSET_BASE = -211;
-const DROPDOWN_X_OFFSET_IMPERSONATING = DROPDOWN_X_OFFSET_BASE + IMPERSONATING_OFFSET;
+const DROPDOWN_X_OFFSET_BASE = -192;
 
 export default {
   SET_STATUS_MODAL_ID,
@@ -26,21 +33,26 @@ export default {
     editStatus: s__('SetStatusModal|Edit status'),
     editProfile: s__('CurrentUser|Edit profile'),
     preferences: s__('CurrentUser|Preferences'),
-    buyPipelineMinutes: s__('CurrentUser|Buy Pipeline minutes'),
+    buyPipelineMinutes: s__('CurrentUser|Buy compute minutes'),
     oneOfGroupsRunningOutOfPipelineMinutes: s__('CurrentUser|One of your groups is running out'),
     gitlabNext: s__('CurrentUser|Switch to GitLab Next'),
-    startTrial: s__('CurrentUser|Start an Ultimate trial'),
+
+    adminArea: s__('Navigation|Admin'),
     enterAdminMode: s__('CurrentUser|Enter Admin Mode'),
     leaveAdminMode: s__('CurrentUser|Leave Admin Mode'),
+    stopImpersonating: __('Stop impersonating'),
     signOut: __('Sign out'),
   },
   components: {
     GlAvatar,
+    GlIcon,
     GlDisclosureDropdown,
     GlDisclosureDropdownGroup,
     GlDisclosureDropdownItem,
     GlButton,
+    UserCounts,
     UserMenuProfileItem,
+    UserMenuUpgradeSubscription,
     SetStatusModal: () =>
       import(
         /* webpackChunkName: 'statusModalBundle' */ '~/set_status_modal/set_status_modal_wrapper.vue'
@@ -49,8 +61,9 @@ export default {
   directives: {
     SafeHtml,
     GlModal: GlModalDirective,
+    GlTooltip: GlTooltipDirective,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [Tracking.mixin(), glFeatureFlagsMixin()],
   inject: ['isImpersonating'],
   props: {
     data: {
@@ -71,33 +84,29 @@ export default {
     toggleText() {
       return sprintf(__('%{user} user’s menu'), { user: this.data.name });
     },
-    statusItem() {
-      const { busy, customized } = this.data.status;
-
-      const statusLabel =
-        busy || customized ? this.$options.i18n.editStatus : this.$options.i18n.setStatus;
-
+    isAdmin() {
+      return this.data?.admin_mode?.user_is_admin;
+    },
+    adminLinkItem() {
       return {
-        text: statusLabel,
+        text: this.$options.i18n.adminArea,
+        href: this.data.admin_url,
+      };
+    },
+    statusLabel() {
+      const { busy, customized } = this.data.status;
+      return busy || customized ? this.$options.i18n.editStatus : this.$options.i18n.setStatus;
+    },
+    statusItem() {
+      return {
+        text: this.statusLabel,
         extraAttrs: {
           ...USER_MENU_TRACKING_DEFAULTS,
           'data-track-label': 'user_edit_status',
         },
       };
     },
-    trialItem() {
-      return {
-        text: this.$options.i18n.startTrial,
-        href: this.data.trial.url,
-        extraAttrs: {
-          ...USER_MENU_TRACKING_DEFAULTS,
-          'data-track-label': 'start_trial',
-        },
-      };
-    },
-    showTrialItem() {
-      return this.data.trial?.has_start_trial;
-    },
+
     editProfileItem() {
       return {
         text: this.$options.i18n.editProfile,
@@ -128,7 +137,6 @@ export default {
         warningText: this.$options.i18n.oneOfGroupsRunningOutOfPipelineMinutes,
         href: this.data.pipeline_minutes?.buy_pipeline_minutes_path,
         extraAttrs: {
-          class: 'js-follow-link',
           ...USER_MENU_TRACKING_DEFAULTS,
           'data-track-label': 'buy_pipeline_minutes',
         },
@@ -165,19 +173,15 @@ export default {
         },
       };
     },
-    signOutGroup() {
+    signOutItem() {
       return {
-        items: [
-          {
-            text: this.$options.i18n.signOut,
-            href: this.data.sign_out_link,
-            extraAttrs: {
-              'data-method': 'post',
-              'data-testid': 'sign-out-link',
-              class: 'sign-out-link',
-            },
-          },
-        ],
+        text: this.$options.i18n.signOut,
+        href: this.data.sign_out_link,
+        extraAttrs: {
+          'data-method': 'post',
+          'data-testid': 'sign-out-link',
+          class: 'sign-out-link',
+        },
       };
     },
     statusModalData() {
@@ -199,13 +203,11 @@ export default {
         'current-clear-status-after': clearAfter || '',
       };
     },
-    buyPipelineMinutesCalloutData() {
-      return this.showNotificationDot
-        ? {
-            'data-feature-id': this.data.pipeline_minutes.callout_attrs.feature_id,
-            'data-dismiss-endpoint': this.data.pipeline_minutes.callout_attrs.dismiss_endpoint,
-          }
-        : {};
+    showAdminButton() {
+      return (
+        this.isAdmin &&
+        (!this.data.admin_mode.admin_mode_feature_enabled || this.data.admin_mode.admin_mode_active)
+      );
     },
     showEnterAdminModeItem() {
       return (
@@ -227,8 +229,11 @@ export default {
     dropdownOffset() {
       return {
         mainAxis: DROPDOWN_Y_OFFSET,
-        crossAxis: this.isImpersonating ? DROPDOWN_X_OFFSET_IMPERSONATING : DROPDOWN_X_OFFSET_BASE,
+        crossAxis: DROPDOWN_X_OFFSET_BASE,
       };
+    },
+    hasEmoji() {
+      return this.data?.status?.emoji;
     },
   },
   mounted() {
@@ -244,25 +249,43 @@ export default {
     onShow() {
       this.initBuyCIMinsCallout();
     },
-    closeDropdown() {
+    openStatusModal() {
+      this.setStatusModalReady = true;
       this.$refs.userDropdown.close();
     },
     initBuyCIMinsCallout() {
-      if (this.showNotificationDot) {
-        PersistentUserCallout.factory(this.$refs?.buyPipelineMinutesNotificationCallout.$el);
-      }
+      const el = this.$refs?.buyPipelineMinutesNotificationCallout?.$el;
+      el?.addEventListener('click', this.onBuyCIMinutesItemClick);
     },
-    /* We're not sure this event is tracked by anyone
-      whether it stays will depend on the outcome of this discussion:
-      https://gitlab.com/gitlab-org/gitlab/-/issues/402713#note_1343072135 */
-    trackBuyCIMins() {
-      if (this.addBuyPipelineMinutesMenuItem) {
-        const {
-          'track-action': trackAction,
-          'track-label': label,
-          'track-property': property,
-        } = this.data.pipeline_minutes.tracking_attrs;
-        this.track(trackAction, { label, property });
+    async onBuyCIMinutesItemClick(event) {
+      /* NOTE: We're not sure this event is tracked by anyone
+       * whether it stays will depend on the outcome of this discussion:
+       * https://gitlab.com/gitlab-org/gitlab/-/issues/402713#note_1343072135
+       */
+      const {
+        'track-action': trackAction,
+        'track-label': label,
+        'track-property': property,
+      } = this.data.pipeline_minutes.tracking_attrs;
+      this.track(trackAction, { label, property });
+
+      // Proceed to the URL if the notification dot is not shown
+      if (!this.showNotificationDot) return;
+
+      event.preventDefault();
+      const href = this.data.pipeline_minutes?.buy_pipeline_minutes_path;
+      const featureId = this.data.pipeline_minutes.callout_attrs.feature_id;
+      const dismissEndpoint = this.data.pipeline_minutes.callout_attrs.dismiss_endpoint;
+
+      try {
+        // dismiss the notification dot Callout
+        await axios.post(dismissEndpoint, { feature_name: featureId });
+      } catch (error) {
+        logError(error);
+        Sentry.captureException(error);
+      } finally {
+        // visit the URL whether the callout notification is dismissed or not
+        visitUrl(href);
       }
     },
     trackSignOut() {
@@ -276,10 +299,24 @@ export default {
 </script>
 
 <template>
-  <div>
+  <div class="gl-flex gl-rounded-[1rem]">
+    <gl-button
+      v-if="isImpersonating"
+      v-gl-tooltip.bottom
+      :href="data.stop_impersonation_path"
+      :title="$options.i18n.stopImpersonating"
+      :aria-label="$options.i18n.stopImpersonating"
+      icon="incognito"
+      class="-gl-mr-7 !gl-rounded-full !gl-bg-neutral-200 !gl-pl-3 !gl-pr-8 dark:!gl-bg-alpha-light-24"
+      category="tertiary"
+      data-method="delete"
+      data-testid="stop-impersonation-btn"
+    />
+
     <gl-disclosure-dropdown
       ref="userDropdown"
       :dropdown-offset="dropdownOffset"
+      class="super-sidebar-user-dropdown gl-relative"
       data-testid="user-dropdown"
       :auto-close="false"
       @shown="onShow"
@@ -287,12 +324,17 @@ export default {
       <template #toggle>
         <gl-button
           category="tertiary"
-          class="user-bar-dropdown-toggle btn-with-notification"
+          class="btn-with-notification !gl-rounded-full !gl-border-none !gl-px-0"
+          :href="data.link_to_profile"
           data-testid="user-menu-toggle"
+          data-track-action="click_dropdown"
+          data-track-label="user_profile_menu"
+          data-track-property="nav_core_menu"
+          @click.exact.prevent
         >
           <span class="gl-sr-only">{{ toggleText }}</span>
           <gl-avatar
-            :size="24"
+            :size="32"
             :entity-name="data.name"
             :src="avatarUrl"
             aria-hidden="true"
@@ -306,87 +348,144 @@ export default {
           >
           </span>
         </gl-button>
+
+        <div
+          v-if="hasEmoji"
+          class="gl-absolute -gl-bottom-1 -gl-right-1 gl-flex gl-h-5 gl-w-5 gl-cursor-pointer gl-items-center gl-justify-center gl-rounded-full gl-bg-neutral-0 gl-text-sm gl-shadow-sm"
+          :title="data.status.message"
+        >
+          <gl-emoji
+            :data-name="data.status.emoji"
+            class="super-topbar-status-emoji gl-pointer-events-none gl-text-[9px]"
+          />
+        </div>
       </template>
 
       <gl-disclosure-dropdown-group>
         <user-menu-profile-item :user="data" />
       </gl-disclosure-dropdown-group>
 
+      <gl-disclosure-dropdown-item
+        class="gl-border-t gl-flex gl-pt-2 md:gl-hidden"
+        data-testid="user-counts-item"
+      >
+        <user-counts
+          :sidebar-data="data"
+          class="gl-w-full"
+          counter-class="gl-button btn btn-default btn-default-tertiary"
+        />
+      </gl-disclosure-dropdown-item>
+
       <gl-disclosure-dropdown-group bordered>
         <gl-disclosure-dropdown-item
-          v-if="setStatusModalReady && statusModalData"
+          v-if="statusModalData"
           v-gl-modal="$options.SET_STATUS_MODAL_ID"
           :item="statusItem"
           data-testid="status-item"
-          @action="closeDropdown"
-        />
-
-        <gl-disclosure-dropdown-item
-          v-if="showTrialItem"
-          :item="trialItem"
-          data-testid="start-trial-item"
+          @action="openStatusModal"
         >
           <template #list-item>
-            {{ trialItem.text }}
-            <gl-emoji data-name="rocket" />
+            <gl-icon name="slight-smile" variant="subtle" class="gl-mr-2" />
+            <span>{{ statusLabel }}</span>
           </template>
         </gl-disclosure-dropdown-item>
 
-        <gl-disclosure-dropdown-item :item="editProfileItem" data-testid="edit-profile-item" />
-
-        <gl-disclosure-dropdown-item :item="preferencesItem" data-testid="preferences-item" />
-
-        <gl-disclosure-dropdown-item
-          v-if="addBuyPipelineMinutesMenuItem"
-          ref="buyPipelineMinutesNotificationCallout"
-          :item="buyPipelineMinutesItem"
-          v-bind="buyPipelineMinutesCalloutData"
-          data-testid="buy-pipeline-minutes-item"
-          @action="trackBuyCIMins"
-        >
+        <gl-disclosure-dropdown-item :item="editProfileItem" data-testid="edit-profile-item">
           <template #list-item>
-            <span class="gl-display-flex gl-flex-direction-column">
-              <span>{{ buyPipelineMinutesItem.text }} <gl-emoji data-name="clock9" /></span>
-              <span
-                v-if="data.pipeline_minutes.show_with_subtext"
-                class="gl-font-sm small gl-pt-2 gl-text-orange-800"
-                >{{ buyPipelineMinutesItem.warningText }}</span
-              >
-            </span>
+            <gl-icon name="profile" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.editProfile }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
+
+        <gl-disclosure-dropdown-item :item="preferencesItem" data-testid="preferences-item">
+          <template #list-item>
+            <gl-icon name="preferences" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.preferences }}</span>
           </template>
         </gl-disclosure-dropdown-item>
 
         <gl-disclosure-dropdown-item
-          v-if="data.gitlab_com_but_not_canary"
-          :item="gitlabNextItem"
-          data-testid="gitlab-next-item"
-        />
+          v-if="showAdminButton"
+          :item="adminLinkItem"
+          class="xl:gl-hidden"
+          data-testid="admin-link"
+        >
+          <template #list-item>
+            <gl-icon name="admin" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.adminArea }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
 
         <gl-disclosure-dropdown-item
           v-if="showEnterAdminModeItem"
           :item="enterAdminModeItem"
           data-testid="enter-admin-mode-item"
-        />
+        >
+          <template #list-item>
+            <gl-icon name="lock" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.enterAdminMode }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
         <gl-disclosure-dropdown-item
           v-if="showLeaveAdminModeItem"
           :item="leaveAdminModeItem"
           data-testid="leave-admin-mode-item"
-        />
+        >
+          <template #list-item>
+            <gl-icon name="lock-open" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.leaveAdminMode }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
+      </gl-disclosure-dropdown-group>
+
+      <user-menu-upgrade-subscription v-if="data.upgrade_link" :upgrade-link="data.upgrade_link" />
+
+      <gl-disclosure-dropdown-group v-if="addBuyPipelineMinutesMenuItem" bordered>
+        <gl-disclosure-dropdown-item
+          v-if="addBuyPipelineMinutesMenuItem"
+          ref="buyPipelineMinutesNotificationCallout"
+          :item="buyPipelineMinutesItem"
+          data-testid="buy-pipeline-minutes-item"
+        >
+          <template #list-item>
+            <gl-icon name="credit-card" variant="subtle" class="gl-mr-2" />
+            <span>{{ buyPipelineMinutesItem.text }}</span>
+            <span
+              v-if="data.pipeline_minutes.show_with_subtext"
+              class="gl-block gl-pt-2 gl-text-sm gl-text-warning"
+              >{{ buyPipelineMinutesItem.warningText }}</span
+            >
+          </template>
+        </gl-disclosure-dropdown-item>
+      </gl-disclosure-dropdown-group>
+
+      <gl-disclosure-dropdown-group v-if="data.gitlab_com_but_not_canary" bordered>
+        <gl-disclosure-dropdown-item :item="gitlabNextItem" data-testid="gitlab-next-item">
+          <template #list-item>
+            <gl-icon name="trigger-source" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.gitlabNext }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
       </gl-disclosure-dropdown-group>
 
       <gl-disclosure-dropdown-group
         v-if="data.can_sign_out"
         bordered
-        :group="signOutGroup"
         data-testid="sign-out-group"
         @action="trackSignOut"
-      />
+      >
+        <gl-disclosure-dropdown-item :item="signOutItem">
+          <template #list-item>
+            <gl-icon name="power" variant="subtle" class="gl-mr-2" />
+            <span>{{ $options.i18n.signOut }}</span>
+          </template>
+        </gl-disclosure-dropdown-item>
+      </gl-disclosure-dropdown-group>
     </gl-disclosure-dropdown>
     <set-status-modal
-      v-if="statusModalData"
+      v-if="setStatusModalReady"
       default-emoji="speech_balloon"
       v-bind="statusModalData"
-      @mounted="setStatusModalReady = true"
     />
   </div>
 </template>

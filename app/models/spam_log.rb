@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
-class SpamLog < MainClusterwide::ApplicationRecord
+class SpamLog < ApplicationRecord
   belongs_to :user
+  belongs_to :organization, class_name: 'Organizations::Organization', optional: true
+
+  populate_sharding_key :organization_id, source: :user
 
   validates :user, presence: true
 

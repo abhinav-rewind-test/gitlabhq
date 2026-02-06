@@ -1,19 +1,12 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Verify', :runner do
-    describe 'Pipeline with raw variables in YAML', product_group: :pipeline_security do
-      let(:executor) { "qa-runner-#{Time.now.to_i}" }
+  RSpec.describe 'Verify', feature_category: :pipeline_composition do
+    describe 'Pipeline with raw variables in YAML' do
+      let(:executor) { "qa-runner-#{SecureRandom.hex(6)}" }
       let(:pipeline_job_name) { 'rspec' }
       let(:project) { create(:project, name: 'project-with-raw-variable-pipeline') }
-
-      let!(:runner) do
-        Resource::ProjectRunner.fabricate! do |runner|
-          runner.project = project
-          runner.name = executor
-          runner.tags = [executor]
-        end
-      end
+      let!(:runner) { create(:project_runner, project: project, name: executor, tags: [executor]) }
 
       let!(:commit_ci_file) do
         create(:commit, project: project, commit_message: 'Add .gitlab-ci.yml', actions: [
@@ -66,18 +59,17 @@ module QA
       before do
         Flow::Login.sign_in
         project.visit!
-        Flow::Pipeline.visit_latest_pipeline(status: 'Passed')
-        Page::Project::Pipeline::Show.perform do |show|
-          show.click_job(pipeline_job_name)
-        end
+        Flow::Pipeline.wait_for_pipeline_creation_via_api(project: project)
+        Flow::Pipeline.wait_for_latest_pipeline_to_have_status(project: project, status: 'success')
+        project.visit_job(pipeline_job_name)
       end
 
       after do
-        runner&.remove_via_api!
+        runner.remove_via_api!
       end
 
       it(
-        'expands variables according to expand: true/false', :reliable,
+        'expands variables according to expand: true/false', :smoke,
         :aggregate_failures,
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/381487'
       ) do

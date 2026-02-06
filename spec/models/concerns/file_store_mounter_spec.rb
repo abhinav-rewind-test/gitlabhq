@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe FileStoreMounter, :aggregate_failures do
+RSpec.describe FileStoreMounter, :aggregate_failures, feature_category: :shared do
   let(:uploader_class) do
     Class.new do
       def object_store
@@ -36,13 +36,13 @@ RSpec.describe FileStoreMounter, :aggregate_failures do
         expect(test_class).to receive(:define_method).with("store_#{file_field}_now!")
 
         if skip_store_file
-          expect(test_class).to receive(:skip_callback).with(:save, :after, "store_#{file_field}!".to_sym)
+          expect(test_class).to receive(:skip_callback).with(:save, :after, :"store_#{file_field}!")
           expect(test_class).not_to receive(:after_save)
         else
           expect(test_class).not_to receive(:skip_callback)
           expect(test_class)
             .to receive(:after_save)
-                  .with("update_#{file_field}_store".to_sym, if: "saved_change_to_#{file_field}?".to_sym)
+                  .with(:"update_#{file_field}_store", if: :"saved_change_to_#{file_field}?")
         end
 
         mount_file_store_uploader
@@ -73,9 +73,20 @@ RSpec.describe FileStoreMounter, :aggregate_failures do
 
       it 'calls update column' do
         expect(instance).to receive(:file).and_return(uploader_instance)
+        expect(instance).to receive(:[]).with('file_store').and_return(nil)
         expect(instance).to receive(:update_column).with('file_store', :object_store)
 
         update_file_store
+      end
+
+      context 'when the model file store is set to the same value' do
+        it 'does not call update column' do
+          expect(instance).to receive(:file).and_return(uploader_instance)
+          expect(instance).to receive(:[]).with('file_store').and_return(:object_store)
+          expect(instance).not_to receive(:update_column)
+
+          update_file_store
+        end
       end
     end
 

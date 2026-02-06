@@ -11,6 +11,84 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
     project.add_maintainer(user)
   end
 
+  context 'unauthenticated user' do
+    let_it_be(:project) { create(:project, :repository, :public) }
+
+    context 'GET show' do
+      context 'without path' do
+        let(:id) { "master" }
+
+        it 'is successful' do
+          get :show, params: { namespace_id: project.namespace, project_id: project, id: id }
+
+          expect(assigns(:commits)).to be_present
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
+
+      context "with path provided" do
+        let(:id) { "master/README.md" }
+
+        it "requires authentication" do
+          get :show, params: { namespace_id: project.namespace, project_id: project, id: id }
+
+          expect(assigns(:commits)).to be_nil
+          expect(response).to redirect_to(new_user_session_path)
+        end
+
+        context 'when "require_login_for_commit_tree" FF is disabled' do
+          before do
+            stub_feature_flags(require_login_for_commit_tree: false)
+          end
+
+          it 'is successful' do
+            get :show, params: { namespace_id: project.namespace, project_id: project, id: id }
+
+            expect(assigns(:commits)).to be_present
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+      end
+    end
+
+    context 'GET signatures' do
+      context 'without path' do
+        let(:id) { "master" }
+
+        it 'is successful' do
+          get :signatures, params: { namespace_id: project.namespace, project_id: project, id: id, format: :json }
+
+          expect(assigns(:commits)).to be_present
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
+
+      context "with path provided" do
+        let(:id) { "master/README.md" }
+
+        it "requires authentication" do
+          get :signatures, params: { namespace_id: project.namespace, project_id: project, id: id, format: :json }
+
+          expect(assigns(:commits)).to be_nil
+          expect(response).to have_gitlab_http_status(:unauthorized)
+        end
+
+        context 'when "require_login_for_commit_tree" FF is disabled' do
+          before do
+            stub_feature_flags(require_login_for_commit_tree: false)
+          end
+
+          it 'is successful' do
+            get :signatures, params: { namespace_id: project.namespace, project_id: project, id: id, format: :json }
+
+            expect(assigns(:commits)).to be_present
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+      end
+    end
+  end
+
   context 'signed in' do
     before do
       sign_in(user)
@@ -27,11 +105,34 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
     end
 
     describe "GET show" do
+      let(:params) { { namespace_id: project.namespace, project_id: project, id: id, ref_type: ref_type } }
+      let(:ref_type) { nil }
+      let(:request) do
+        get(:show, params: params)
+      end
+
       render_views
 
       context 'with file path' do
+        include_context 'with ambiguous refs for controllers'
+
         before do
-          get :show, params: { namespace_id: project.namespace, project_id: project, id: id }
+          request
+        end
+
+        context 'when the ref is ambiguous' do
+          let(:ref) { 'ambiguous_ref' }
+          let(:ref_type) { 'tags' }
+          let(:path) { 'README.md' }
+          let(:id) { "#{ref}/#{path}" }
+
+          it_behaves_like '#set_is_ambiguous_ref when ref is ambiguous'
+        end
+
+        describe '#set_is_ambiguous_ref with no ambiguous ref' do
+          let(:id) { 'master/README.md' }
+
+          it_behaves_like '#set_is_ambiguous_ref when ref is not ambiguous'
         end
 
         context "valid branch, valid file" do
@@ -62,6 +163,16 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
           let(:id) { 'branch with space/README.md' }
 
           it { is_expected.to respond_with(:not_found) }
+        end
+      end
+
+      context 'when branch has only empty commits' do
+        let(:id) { 'empty-branch' }
+
+        it 'allows to see commits' do
+          request
+
+          is_expected.to respond_with(:success)
         end
       end
 
@@ -138,7 +249,9 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
             let(:request_params) { base_request_params.merge(committed_before: '2020-01-01') }
             let(:repository_params) { base_repository_params.merge(before: 1577836800) }
 
-            it_behaves_like 'repository commits call'
+            Time.use_zone('America/Los_Angeles') do
+              it_behaves_like 'repository commits call'
+            end
           end
 
           context 'is invalid' do
@@ -161,7 +274,9 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
             let(:request_params) { base_request_params.merge(committed_after: '2020-01-01') }
             let(:repository_params) { base_repository_params.merge(after: 1577836800) }
 
-            it_behaves_like 'repository commits call'
+            Time.use_zone('America/Los_Angeles') do
+              it_behaves_like 'repository commits call'
+            end
           end
 
           context 'is invalid' do
@@ -173,14 +288,16 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
         end
       end
 
-      it 'loads tags for commits' do
-        expect_next_instance_of(CommitCollection) do |collection|
-          expect(collection).to receive(:load_tags)
+      describe 'loading tags' do
+        it 'loads tags for commits' do
+          expect_next_instance_of(CommitCollection) do |collection|
+            expect(collection).to receive(:load_tags)
+          end
+
+          get :show, params: { namespace_id: project.namespace, project_id: project, id: 'master/README.md' }
+
+          expect(response).to have_gitlab_http_status(:ok)
         end
-
-        get :show, params: { namespace_id: project.namespace, project_id: project, id: 'master/README.md' }
-
-        expect(response).to have_gitlab_http_status(:ok)
       end
 
       context 'when tag has a non-ASCII encoding' do
@@ -203,11 +320,33 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
 
           it "renders as atom" do
             expect(response).to be_successful
+            expect(response.body).to include('<entry>')
             expect(response.media_type).to eq('application/atom+xml')
           end
 
           it 'renders summary with type=html' do
             expect(response.body).to include('<summary type="html">')
+          end
+        end
+
+        context 'when ref_type is provided' do
+          let(:ref_type) { 'heads' }
+
+          before do
+            get :show,
+              params: { namespace_id: project.namespace, project_id: project, id: "master.atom", ref_type: ref_type }
+          end
+
+          it "renders as atom" do
+            expect(response).to be_successful
+            expect(response.body).to include('<entry>')
+            expect(response.media_type).to eq('application/atom+xml')
+          end
+
+          context 'when there is no reference for provided ref_type' do
+            let(:ref_type) { 'tags' }
+
+            it { is_expected.to respond_with(:not_found) }
           end
         end
 
@@ -258,9 +397,7 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
     describe "GET /commits/:id/signatures" do
       render_views
 
-      before do
-        expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original unless id.include?(' ')
-
+      let(:send_request) do
         get :signatures, params: {
           namespace_id: project.namespace,
           project_id: project,
@@ -268,16 +405,59 @@ RSpec.describe Projects::CommitsController, feature_category: :source_code_manag
         }, format: :json
       end
 
+      before do
+        expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original unless id.include?(' ')
+      end
+
       context "valid branch" do
         let(:id) { 'master' }
 
-        it { is_expected.to respond_with(:success) }
+        it 'returns a successful response' do
+          send_request
+
+          is_expected.to respond_with(:success)
+        end
       end
 
       context "invalid branch format" do
         let(:id) { 'some branch' }
 
-        it { is_expected.to respond_with(:not_found) }
+        it 'returns a not found response' do
+          send_request
+
+          is_expected.to respond_with(:not_found)
+        end
+      end
+
+      context 'with signature message' do
+        let(:id) { 'master' }
+        let(:commit) { repository.commit('5937ac0a7beb003549fc5fd26fc247adbce4a52e') }
+        let(:signature) { json_response['signatures'].find { |s| s['commit_sha'] == commit.id } }
+
+        it 'returns a signature message' do
+          send_request
+
+          expect(signature).to be_present
+
+          expect(signature['html']).to include('GPG Key ID')
+          expect(signature['html']).to include('This commit was signed with an unverified signature')
+        end
+
+        context 'when commit has an unsupported signature type' do
+          before do
+            allow(Gitlab::Gpg::Commit).to receive(:new).and_call_original
+            expect_next_instance_of(Gitlab::Gpg::Commit, commit) do |gpg_commit|
+              expect(gpg_commit).to receive(:signature).and_return(nil)
+            end
+          end
+
+          it 'returns a unsupported signature message' do
+            send_request
+
+            expect(signature).to be_present
+            expect(signature['html']).to include('Unsupported signature')
+          end
+        end
       end
     end
   end

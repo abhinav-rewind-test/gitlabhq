@@ -1,5 +1,5 @@
-import { GlAlert, GlFormSelect, GlLink, GlToken, GlButton } from '@gitlab/ui';
-import { mount } from '@vue/test-utils';
+import { GlAlert, GlFormSelect, GlLink, GlToken, GlButton, GlFormGroup } from '@gitlab/ui';
+import { shallowMount } from '@vue/test-utils';
 import MockAdapter from 'axios-mock-adapter';
 import Vue, { nextTick } from 'vue';
 import { last } from 'lodash';
@@ -40,6 +40,7 @@ describe('Feature flags strategy', () => {
 
   const findStrategyParameters = () => wrapper.findComponent(StrategyParameters);
   const findDocsLinks = () => wrapper.findAllComponents(GlLink);
+  const findToken = () => wrapper.findComponent(GlToken);
 
   const factory = (
     opts = {
@@ -52,7 +53,7 @@ describe('Feature flags strategy', () => {
   ) => {
     axiosMock = new MockAdapter(axios);
     axiosMock.onGet(TEST_HOST).reply(HTTP_STATUS_OK, []);
-    wrapper = mount(Strategy, { store: createStore({ projectId: '1' }), ...opts });
+    wrapper = shallowMount(Strategy, { store: createStore({ projectId: '1' }), ...opts });
   };
 
   beforeEach(() => {
@@ -65,7 +66,7 @@ describe('Feature flags strategy', () => {
 
   describe('helper links', () => {
     const propsData = { strategy: {}, index: 0, userLists: [userList] };
-    factory({ propsData, provide });
+    factory({ propsData, provide, stubs: { GlFormGroup } });
 
     it('should display 2 helper links', () => {
       const links = findDocsLinks();
@@ -94,7 +95,7 @@ describe('Feature flags strategy', () => {
     });
 
     it('should set the select to match the strategy name', () => {
-      expect(wrapper.findComponent(GlFormSelect).element.value).toBe(name);
+      expect(wrapper.findComponent(GlFormSelect).attributes('value')).toBe(name);
     });
 
     it('should emit a change if the parameters component does', () => {
@@ -140,7 +141,7 @@ describe('Feature flags strategy', () => {
       });
 
       it('should revert to all-environments scope when last scope is removed', async () => {
-        const token = wrapper.findComponent(GlToken);
+        const token = findToken();
         token.vm.$emit('close');
         await nextTick();
         expect(wrapper.findAllComponents(GlToken)).toHaveLength(0);
@@ -150,6 +151,37 @@ describe('Feature flags strategy', () => {
             parameters: { percentage: '50', groupId: PERCENT_ROLLOUT_GROUP_ID },
             scopes: [{ environmentScope: '*' }],
           },
+        ]);
+      });
+    });
+
+    describe('with a single environment scope defined and existing feature flag', () => {
+      let strategy;
+      beforeEach(() => {
+        strategy = {
+          name: ROLLOUT_STRATEGY_PERCENT_ROLLOUT,
+          parameters: { percentage: '50', groupId: 'default' },
+          scopes: [{ environmentScope: 'production', id: 1, shouldBeDestroyed: false }],
+        };
+        const propsData = { strategy, index: 0 };
+        factory({ propsData, provide });
+      });
+
+      it('should revert single environment scope when last scope is removed', async () => {
+        findToken().vm.$emit('close');
+        await nextTick();
+
+        expect(wrapper.emitted('change')).toEqual([
+          [
+            {
+              name: ROLLOUT_STRATEGY_PERCENT_ROLLOUT,
+              parameters: { percentage: '50', groupId: PERCENT_ROLLOUT_GROUP_ID },
+              scopes: [
+                { environmentScope: 'production', id: 1, shouldBeDestroyed: true },
+                { environmentScope: '*' },
+              ],
+            },
+          ],
         ]);
       });
     });
@@ -169,7 +201,7 @@ describe('Feature flags strategy', () => {
 
       it('should change the parameters if a different strategy is chosen', async () => {
         const select = wrapper.findComponent(GlFormSelect);
-        select.setValue(ROLLOUT_STRATEGY_ALL_USERS);
+        select.vm.$emit('change', ROLLOUT_STRATEGY_ALL_USERS);
         await nextTick();
         expect(last(wrapper.emitted('change'))).toEqual([
           {
@@ -185,7 +217,7 @@ describe('Feature flags strategy', () => {
         dropdown.vm.$emit('add', 'production');
         await nextTick();
         expect(wrapper.findAllComponents(GlToken)).toHaveLength(1);
-        expect(wrapper.findComponent(GlToken).text()).toBe('production');
+        expect(findToken().text()).toBe('production');
       });
 
       it('should display all selected scopes', async () => {
@@ -237,7 +269,7 @@ describe('Feature flags strategy', () => {
         dropdown.vm.$emit('add', 'production');
         await nextTick();
         expect(wrapper.findAllComponents(GlToken)).toHaveLength(1);
-        expect(wrapper.findComponent(GlToken).text()).toBe('production');
+        expect(findToken().text()).toBe('production');
       });
 
       it('should display all selected scopes', async () => {

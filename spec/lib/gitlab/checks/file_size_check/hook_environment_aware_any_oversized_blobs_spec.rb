@@ -29,16 +29,12 @@ RSpec.describe Gitlab::Checks::FileSizeCheck::HookEnvironmentAwareAnyOversizedBl
     end
 
     context 'with hook env' do
-      context 'with hook environment' do
-        let(:git_env) do
-          {
-            'GIT_OBJECT_DIRECTORY_RELATIVE' => "objects",
-            'GIT_ALTERNATE_OBJECT_DIRECTORIES_RELATIVE' => ['/dir/one', '/dir/two']
-          }
-        end
-
+      context 'with hook environment', :request_store do
         before do
-          allow(Gitlab::Git::HookEnv).to receive(:all).with(repository.gl_repository).and_return(git_env)
+          ::Gitlab::Git::HookEnv.set(project.repository.gl_repository,
+            project.repository.raw_repository.relative_path,
+            'GIT_OBJECT_DIRECTORY_RELATIVE' => 'objects',
+            'GIT_ALTERNATE_OBJECT_DIRECTORIES_RELATIVE' => ['/dir/one', '/dir/two'])
         end
 
         it 'returns an emtpy array' do
@@ -48,26 +44,30 @@ RSpec.describe Gitlab::Checks::FileSizeCheck::HookEnvironmentAwareAnyOversizedBl
         context 'when the file is over the limit' do
           let(:file_size_limit) { 0 }
 
-          context 'when the blob does not exist in the repo' do
-            before do
-              allow(repository.gitaly_commit_client).to receive(:object_existence_map).and_return(Hash.new { false })
+          shared_examples 'filters the blobs' do
+            context 'when the blob does not exist in the repo' do
+              before do
+                allow(repository.gitaly_commit_client).to receive(:object_existence_map).and_return(Hash.new { false })
+              end
+
+              it 'returns an array with the blobs that are over the limit' do
+                expect(subject.size).to eq(1)
+                expect(subject.first).to be_kind_of(Gitlab::Git::Blob)
+              end
             end
 
-            it 'returns an array with the blobs that are over the limit' do
-              expect(subject.size).to eq(1)
-              expect(subject.first).to be_kind_of(Gitlab::Git::Blob)
+            context 'when the blob exists in the repo' do
+              before do
+                allow(repository.gitaly_commit_client).to receive(:object_existence_map).and_return(Hash.new { true })
+              end
+
+              it 'filters out the blobs in the repo' do
+                expect(subject).to eq([])
+              end
             end
           end
 
-          context 'when the blob exists in the repo' do
-            before do
-              allow(repository.gitaly_commit_client).to receive(:object_existence_map).and_return(Hash.new { true })
-            end
-
-            it 'filters out the blobs in the repo' do
-              expect(subject).to eq([])
-            end
-          end
+          it_behaves_like 'filters the blobs'
         end
       end
     end

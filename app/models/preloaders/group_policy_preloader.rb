@@ -8,6 +8,13 @@ module Preloaders
     end
 
     def execute
+      return if groups.blank?
+
+      ActiveRecord::Associations::Preloader.new(
+        records: groups,
+        associations: [:organization, :namespace_settings_with_ancestors_inherited_settings]
+      ).call
+
       Preloaders::UserMaxAccessLevelInGroupsPreloader.new(groups, current_user).execute
     end
 

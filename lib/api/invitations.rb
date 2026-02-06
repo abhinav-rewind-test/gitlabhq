@@ -16,6 +16,10 @@ module API
       end
     end
 
+    # rubocop: disable Cop/InjectEnterpriseEditionModule -- params helper needs to be included before the endpoints
+    prepend_mod_with('API::Invitations')
+    # rubocop: enable Cop/InjectEnterpriseEditionModule
+
     %w[group project].each do |source_type|
       params do
         requires :id, type: String, desc: "The #{source_type} ID"
@@ -35,6 +39,7 @@ module API
 
           use :invitation_params_ee
         end
+        route_setting :authorization, permissions: :create_invitation, boundary_type: source_type.to_sym
         post ":id/invitations", urgency: :low do
           ::Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/354016')
 
@@ -42,9 +47,9 @@ module API
 
           source = find_source(source_type, params[:id])
 
-          authorize_admin_source_member!(source_type, source)
+          authorize_invite_source_member!(source_type, source)
 
-          create_service_params = params.merge(source: source)
+          create_service_params = declared_params.merge(source: source)
 
           ::Members::InviteService.new(current_user, create_service_params).execute
         end
@@ -61,6 +66,7 @@ module API
           optional :query, type: String, desc: 'A query string to search for members'
           use :pagination
         end
+        route_setting :authorization, permissions: :read_invitation, boundary_type: source_type.to_sym
         get ":id/invitations" do
           source = find_source(source_type, params[:id])
           query = params[:query]
@@ -83,6 +89,7 @@ module API
 
           use :invitation_params_ee
         end
+        route_setting :authorization, permissions: :update_invitation, boundary_type: source_type.to_sym
         put ":id/invitations/:email", requirements: { email: %r{[^/]+} } do
           source = find_source(source_type, params.delete(:id))
           invite_email = params[:email]
@@ -97,7 +104,7 @@ module API
           bad_request! unless update_params.any?
 
           result = ::Members::UpdateService
-            .new(current_user, update_params)
+            .new(current_user, update_params.merge({ source: source }))
             .execute(invite)
 
           updated_member = result[:members].first
@@ -121,6 +128,7 @@ module API
         params do
           requires :email, type: String, desc: 'The email address of the invitation'
         end
+        route_setting :authorization, permissions: :delete_invitation, boundary_type: source_type.to_sym
         delete ":id/invitations/:email", requirements: { email: %r{[^/]+} } do
           source = find_source(source_type, params[:id])
           invite_email = params[:email]
@@ -139,5 +147,3 @@ module API
     end
   end
 end
-
-API::Members.prepend_mod

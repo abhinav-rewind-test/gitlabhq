@@ -1,17 +1,16 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Gotchas
 ---
-
-# Gotchas
 
 The purpose of this guide is to document potential "gotchas" that contributors
 might encounter or should avoid during development of GitLab CE and EE.
 
 ## Do not read files from app/assets directory
 
-In GitLab 10.8 and later, Omnibus has [dropped the `app/assets` directory](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/2456),
+Omnibus GitLab has [dropped the `app/assets` directory](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/2456),
 after asset compilation. The `ee/app/assets`, `vendor/assets` directories are dropped as well.
 
 This means that reading files from that directory fails in Omnibus-installed GitLab instances:
@@ -127,9 +126,16 @@ end
        Using `any_instance` to stub a method (elasticsearch_indexing) that has been defined on a prepended module (EE::ApplicationSetting) is not supported.
   ```
 
-### Alternative: `expect_next_instance_of`, `allow_next_instance_of`, `expect_next_found_instance_of` or `allow_next_found_instance_of`
+### Alternatives
 
-Instead of writing:
+Instead, use any of these:
+
+- `expect_next_instance_of`
+- `allow_next_instance_of`
+- `expect_next_found_instance_of`
+- `allow_next_found_instance_of`
+
+For example:
 
 ```ruby
 # Don't do this:
@@ -164,7 +170,7 @@ end
 ```
 
 Since Active Record is not calling the `.new` method on model classes to instantiate the objects,
-you should use `expect_next_found_instance_of` or `allow_next_found_instance_of` mock helpers to setup mock on objects returned by Active Record query & finder methods._
+you should use `expect_next_found_instance_of` or `allow_next_found_instance_of` mock helpers to set up mock on objects returned by Active Record query & finder methods._
 
 It is also possible to set mocks and expectations for multiple instances of the same Active Record model by using the `expect_next_found_(number)_instances_of` and `allow_next_found_(number)_instances_of` helpers, like so;
 
@@ -200,7 +206,7 @@ refresh_service.execute(oldrev, newrev, ref)
 
 See ["Why is it bad style to `rescue Exception => e` in Ruby?"](https://stackoverflow.com/questions/10048173/why-is-it-bad-style-to-rescue-exception-e-in-ruby).
 
-This rule is [enforced automatically by RuboCop](https://gitlab.com/gitlab-org/gitlab-foss/blob/8-4-stable/.rubocop.yml#L911-914)._
+This rule is [enforced automatically by RuboCop](https://gitlab.com/gitlab-org/gitlab-foss/blob/8-4-stable/.rubocop.yml#L911-914).
 
 ## Do not use inline JavaScript in views
 
@@ -221,7 +227,7 @@ Assets that need to be served to the user are stored under the `app/assets` dire
 However, you cannot access the content of any file from within `app/assets` from the application code, as we do not include that folder in production installations as a [space saving measure](https://gitlab.com/gitlab-org/omnibus-gitlab/-/commit/ca049f990b223f5e1e412830510a7516222810be).
 
 ```ruby
-support_bot = Users::Internal.support_bot
+support_bot = Users::Internal.in_organization(organization).support_bot
 
 # accessing a file from the `app/assets` folder
 support_bot.avatar = Rails.root.join('app', 'assets', 'images', 'bot_avatars', 'support_bot.png').open

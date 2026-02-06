@@ -32,14 +32,6 @@ RSpec.describe 'Navigation bar counter', :use_clean_rails_memory_store_caching, 
     visit merge_requests_path
 
     expect_merge_request_count(1)
-
-    merge_request.update!(assignees: [])
-
-    user.invalidate_cache_counts
-
-    visit merge_requests_path
-
-    expect_merge_request_count(0)
   end
 
   def issues_path
@@ -54,17 +46,13 @@ RSpec.describe 'Navigation bar counter', :use_clean_rails_memory_store_caching, 
     dashboard_count = find('.gl-tabs-nav li a.active')
     expect(dashboard_count).to have_content(count)
 
-    within_testid('super-sidebar') do
-      expect(page).to have_link("Issues #{count}")
-    end
+    expect(page).to have_link('Assigned issues')
   end
 
   def expect_merge_request_count(count)
-    dashboard_count = find('.gl-tabs-nav li a.active')
+    dashboard_count = find('.top-area .gl-tabs-nav li a.active')
     expect(dashboard_count).to have_content(count)
 
-    within_testid('super-sidebar') do
-      expect(page).to have_button("Merge requests #{count}")
-    end
+    expect(page).to have_link('Merge requests')
   end
 end

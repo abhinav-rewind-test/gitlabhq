@@ -1,28 +1,55 @@
 <script>
-import { GlDisclosureDropdown, GlAvatar, GlIcon, GlLoadingIcon } from '@gitlab/ui';
-import getCurrentUserOrganizations from '~/organizations/shared/graphql/queries/organizations.query.graphql';
+import {
+  GlDisclosureDropdown,
+  GlAvatar,
+  GlIcon,
+  GlLoadingIcon,
+  GlLink,
+  GlBadge,
+  GlButton,
+} from '@gitlab/ui';
+import getCurrentUserOrganizations from '~/organizations/shared/graphql/queries/current_user_organizations.query.graphql';
 import { AVATAR_SHAPE_OPTION_RECT } from '~/vue_shared/constants';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { defaultOrganization } from '~/organizations/mock_data';
-import { s__ } from '~/locale';
+import { s__, __ } from '~/locale';
+import { helpPagePath } from '~/helpers/help_page_helper';
 
 export default {
   AVATAR_SHAPE_OPTION_RECT,
   ITEM_LOADING: {
     id: 'loading',
     text: 'loading',
-    extraAttrs: { disabled: true, class: 'gl-shadow-none!' },
+    extraAttrs: { disabled: true, class: '!gl-shadow-none' },
   },
   ITEM_EMPTY: {
     id: 'empty',
     text: s__('Organization|No organizations available to switch to.'),
-    extraAttrs: { disabled: true, class: 'gl-shadow-none! gl-text-secondary' },
+    extraAttrs: { disabled: true, class: '!gl-shadow-none gl-text-subtle' },
   },
   i18n: {
     currentOrganization: s__('Organization|Current organization'),
     switchOrganizations: s__('Organization|Switch organizations'),
+    improveOrganizations: {
+      helpImprove: s__('Organization|Help improve Organizations'),
+      newFeatureExplanation: s__(
+        'Organization|Organizations is a new feature. Help us make it better by',
+      ),
+      callToAction: s__('Organization|sharing your experience'),
+    },
+    switchingNotSupportedMessage: s__(
+      'Organization|Switching between organizations is not currently supported.',
+    ),
+    learnMore: __('Learn more'),
+    projectStatus: __('Experiment'),
   },
-  components: { GlDisclosureDropdown, GlAvatar, GlIcon, GlLoadingIcon },
+  switchingOrganizationsDocsPath: helpPagePath('user/organization/_index.md', {
+    anchor: 'switch-organizations',
+  }),
+  feedbackUrl:
+    'https://gitlab.com/gitlab-com/gl-infra/tenant-scale/organizations/organizations-internal-feedback/-/issues/1',
+  components: { GlDisclosureDropdown, GlAvatar, GlIcon, GlLoadingIcon, GlLink, GlBadge, GlButton },
+  mixins: [glFeatureFlagsMixin()],
   data() {
     return {
       organizations: {},
@@ -36,7 +63,12 @@ export default {
         return data.currentUser.organizations;
       },
       skip() {
-        return !this.dropdownShown;
+        // In Cells 1.0 users will not be able to switch organizations.
+        // This means we don't need to fetch available organizations.
+        // In Cells 1.5 we will update this to fetch the organizations.
+        // See https://docs.gitlab.com/ee/architecture/blueprints/cells/iterations/cells-1.0.html#features-on-gitlabcom-that-are-not-supported-on-cells
+        // and https://docs.gitlab.com/ee/architecture/blueprints/cells/iterations/cells-1.5.html
+        return !this.organizationSwitchingEnabled || !this.dropdownShown;
       },
       error() {
         this.organizations = {
@@ -47,13 +79,14 @@ export default {
     },
   },
   computed: {
+    organizationSwitchingEnabled() {
+      return gon?.features?.organizationSwitching;
+    },
     loading() {
       return this.$apollo.queries.organizations.loading;
     },
     currentOrganization() {
-      // TODO - use `gon.current_organization` when backend supports it.
-      // https://gitlab.com/gitlab-org/gitlab/-/issues/437095
-      return defaultOrganization;
+      return window.gon.current_organization;
     },
     nodes() {
       return this.organizations.nodes || [];
@@ -81,22 +114,36 @@ export default {
         ];
       }
 
-      const items = this.nodes
-        .map((node) => ({
-          id: getIdFromGraphQLId(node.id),
-          text: node.name,
-          href: node.webUrl,
-          avatarUrl: node.avatarUrl,
-        }))
-        .filter((item) => item.id !== this.currentOrganization.id);
+      // In Cells 1.0 users will not be able to switch organizations.
+      // This means we don't render available organizations.
+      // See https://docs.gitlab.com/ee/architecture/blueprints/cells/iterations/cells-1.0.html#features-on-gitlabcom-that-are-not-supported-on-cells
+      // and https://docs.gitlab.com/ee/architecture/blueprints/cells/iterations/cells-1.5.html
+      if (this.organizationSwitchingEnabled) {
+        const items = this.nodes
+          .map((node) => ({
+            id: getIdFromGraphQLId(node.id),
+            text: node.name,
+            href: node.webUrl,
+            avatarUrl: node.avatarUrl,
+          }))
+          .filter((item) => item.id !== this.currentOrganization.id);
 
-      return [
-        currentOrganizationGroup,
-        {
-          name: this.$options.i18n.switchOrganizations,
-          items: items.length ? items : [this.$options.ITEM_EMPTY],
-        },
-      ];
+        return [
+          currentOrganizationGroup,
+          {
+            name: this.$options.i18n.switchOrganizations,
+            items: items.length ? items : [this.$options.ITEM_EMPTY],
+          },
+        ];
+      }
+
+      return [currentOrganizationGroup];
+    },
+    dropdownOffset() {
+      return {
+        mainAxis: 4,
+        crossAxis: 22,
+      };
     },
   },
   methods: {
@@ -110,15 +157,13 @@ export default {
 <template>
   <gl-disclosure-dropdown
     :items="items"
-    class="gl-display-block"
-    placement="center"
+    class="super-sidebar-org-switcher-dropdown gl-block"
+    placement="bottom"
+    :dropdown-offset="dropdownOffset"
     @shown="onShown"
   >
     <template #toggle>
-      <button
-        class="organization-switcher-button gl-display-flex gl-align-items-center gl-gap-3 gl-p-3 gl-rounded-base gl-border-none gl-line-height-1 gl-w-full"
-        data-testid="toggle-button"
-      >
+      <gl-button class="organization-switcher-button !gl-px-2" data-testid="toggle-button">
         <gl-avatar
           :size="24"
           :shape="$options.AVATAR_SHAPE_OPTION_RECT"
@@ -126,15 +171,24 @@ export default {
           :entity-name="currentOrganization.name"
           :src="currentOrganization.avatar_url"
         />
-        <span>{{ currentOrganization.name }}</span>
+        <span class="gl-max-w-10 gl-grow gl-truncate sm:gl-max-w-15">{{
+          currentOrganization.name
+        }}</span>
         <gl-icon class="gl-button-icon gl-new-dropdown-chevron" name="chevron-down" />
-      </button>
+      </gl-button>
+    </template>
+
+    <template #group-label="{ group }">
+      {{ group.name }}
+      <gl-badge v-if="group.name === $options.i18n.currentOrganization">
+        {{ $options.i18n.projectStatus }}
+      </gl-badge>
     </template>
 
     <template #list-item="{ item }">
       <gl-loading-icon v-if="item.id === $options.ITEM_LOADING.id" />
       <span v-else-if="item.id === $options.ITEM_EMPTY.id">{{ item.text }}</span>
-      <div v-else class="gl-display-flex gl-align-items-center gl-gap-3">
+      <div v-else class="-gl-m-2 gl-flex gl-items-center gl-gap-3">
         <gl-avatar
           :size="24"
           :shape="$options.AVATAR_SHAPE_OPTION_RECT"
@@ -143,6 +197,42 @@ export default {
           :src="item.avatarUrl"
         />
         <span>{{ item.text }}</span>
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="gl-border-t gl-mt-2 gl-border-t-dropdown gl-px-4 gl-pt-3">
+        <div v-if="!organizationSwitchingEnabled">
+          <div class="gl-text-sm gl-font-bold">
+            {{ $options.i18n.switchOrganizations }}
+          </div>
+          <div class="gl-py-3">
+            <p class="gl-m-0 gl-text-sm gl-text-subtle">
+              {{ $options.i18n.switchingNotSupportedMessage }}
+              <gl-link
+                class="gl-text-sm"
+                :href="$options.switchingOrganizationsDocsPath"
+                data-testid="switching-docs-link"
+                >{{ $options.i18n.learnMore }}</gl-link
+              >.
+            </p>
+          </div>
+        </div>
+
+        <div v-else>
+          <div class="gl-text-sm gl-font-bold">
+            {{ $options.i18n.improveOrganizations.helpImprove }}
+          </div>
+          <div class="gl-py-3">
+            <p class="gl-m-0 gl-text-sm gl-text-subtle">
+              {{ $options.i18n.improveOrganizations.newFeatureExplanation }}
+              <gl-link class="gl-text-sm" data-testid="feedback-url" :href="$options.feedbackUrl">{{
+                $options.i18n.improveOrganizations.callToAction
+              }}</gl-link
+              >.
+            </p>
+          </div>
+        </div>
       </div>
     </template>
   </gl-disclosure-dropdown>

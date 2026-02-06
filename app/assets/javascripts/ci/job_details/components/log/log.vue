@@ -2,12 +2,13 @@
 <script>
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions } from 'vuex';
-import { scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import { getLocationHash } from '~/lib/utils/url_utility';
 import LogLine from './line.vue';
 import LogLineHeader from './line_header.vue';
 
 export default {
+  name: 'JobLog',
   components: {
     LogLineHeader,
     LogLine,
@@ -20,6 +21,9 @@ export default {
       default: () => [],
     },
   },
+  emits: {
+    'toggle-collapsible-line': () => true,
+  },
   computed: {
     ...mapState(['jobLog', 'jobLogSections', 'isJobLogComplete']),
     highlightedLines() {
@@ -30,23 +34,30 @@ export default {
     if (window.location.hash) {
       const lineNumber = getLocationHash();
 
-      this.unwatchJobLog = this.$watch('jobLog', async () => {
-        if (this.jobLog.length) {
-          await this.$nextTick();
+      this.unwatchJobLog = this.$watch(
+        'jobLog',
+        async () => {
+          if (this.jobLog.length) {
+            await this.$nextTick();
 
-          const el = document.getElementById(lineNumber);
-          scrollToElement(el);
-          this.unwatchJobLog();
-        }
-      });
+            const el = document.getElementById(lineNumber);
+            const topBarHeight = document.querySelector('.js-job-log-top-bar')?.offsetHeight || 0;
+            scrollToElement(el, { offset: topBarHeight * -1 });
+
+            this.unwatchJobLog();
+          }
+        },
+        { immediate: true },
+      );
     }
 
     this.setupFullScreenListeners();
   },
   methods: {
-    ...mapActions(['toggleCollapsibleLine', 'scrollBottom', 'setupFullScreenListeners']),
+    ...mapActions(['toggleCollapsibleLine', 'setupFullScreenListeners']),
     handleOnClickCollapsibleLine(section) {
       this.toggleCollapsibleLine(section);
+      this.$emit('toggle-collapsible-line');
     },
     isLineVisible(line) {
       const { lineNumber, section } = line;
@@ -69,7 +80,7 @@ export default {
 };
 </script>
 <template>
-  <code class="job-log gl-display-block" data-testid="job-log-content">
+  <code class="job-log gl-block" data-testid="job-log-content">
     <template v-for="line in jobLog">
       <template v-if="isLineVisible(line)">
         <log-line-header
@@ -81,7 +92,7 @@ export default {
           :duration="jobLogSections[line.section].duration"
           :hide-duration="jobLogSections[line.section].hideDuration"
           :is-highlighted="isHighlighted(line)"
-          @toggleLine="handleOnClickCollapsibleLine(line.section)"
+          @toggle-line="handleOnClickCollapsibleLine(line.section)"
         />
         <log-line
           v-else
@@ -93,7 +104,7 @@ export default {
       </template>
     </template>
 
-    <div v-if="!isJobLogComplete" class="js-log-animation loader-animation pt-3 pl-3">
+    <div v-if="!isJobLogComplete" class="loader-animation gl-pl-5 gl-pt-5">
       <div class="dot"></div>
       <div class="dot"></div>
       <div class="dot"></div>

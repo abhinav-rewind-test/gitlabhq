@@ -8,9 +8,9 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
   let_it_be(:parent_group) { create(:group, :public) }
   let_it_be(:child_group) { create(:group, :public, parent: parent_group) }
   let_it_be(:project) { create(:project, :public, :repository, group: child_group) }
-  let_it_be(:user1) { create(:user, developer_projects: [project]) }
-  let_it_be(:user2) { create(:user, developer_projects: [project]) }
-  let_it_be(:user3) { create(:user, developer_projects: [project]) }
+  let_it_be(:user1) { create(:user, developer_of: project) }
+  let_it_be(:user2) { create(:user, developer_of: project) }
+  let_it_be(:user3) { create(:user, developer_of: project) }
   let_it_be(:forked_project) { fork_project(project, user1, repository: true) }
   let_it_be(:parent_group_milestone) { create(:milestone, group: parent_group, title: 'ParentGroupMilestone1.0') }
   let_it_be(:child_group_milestone) { create(:milestone, group: child_group, title: 'ChildGroupMilestone1.0') }
@@ -22,6 +22,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
   let(:title) { 'my title' }
   let(:draft_title) { 'Draft: my title' }
   let(:draft) { true }
+  let(:squash) { true }
   let(:description) { 'my description' }
   let(:multiline_description) do
     <<~MD.chomp
@@ -105,6 +106,16 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
     end
   end
 
+  shared_examples_for 'a service that can set a merge request to be squashed' do
+    subject(:last_mr) { MergeRequest.last }
+
+    it 'sets the squash property' do
+      service.execute
+
+      expect(last_mr.squash).to eq(squash)
+    end
+  end
+
   shared_examples_for 'a service that can set the milestone of a merge request' do
     subject(:last_mr) { MergeRequest.last }
 
@@ -115,7 +126,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
     end
   end
 
-  shared_examples_for 'a service that can set the merge request to merge when pipeline succeeds' do
+  shared_examples_for 'a service that can set the merge request to auto merge' do
     subject(:last_mr) { MergeRequest.last }
 
     let(:change) { Gitlab::ChangesList.new(changes).changes.first }
@@ -124,7 +135,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
       service.execute
 
       expect(last_mr.auto_merge_enabled).to eq(true)
-      expect(last_mr.auto_merge_strategy).to eq(AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS)
+      expect(last_mr.auto_merge_strategy).to eq(AutoMergeService::STRATEGY_MERGE_WHEN_CHECKS_PASS)
       expect(last_mr.merge_user).to eq(user1)
       expect(last_mr.merge_params['sha']).to eq(change[:newrev])
     end
@@ -199,6 +210,48 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
     it_behaves_like 'with the project default branch'
   end
 
+  describe '`auto_merge` push option' do
+    let(:push_options) { { auto_merge: true } }
+
+    context 'with a new branch' do
+      let(:changes) { new_branch_changes }
+
+      it_behaves_like 'a service that does not create a merge request'
+
+      it 'adds an error to the service' do
+        service.execute
+
+        expect(service.errors).to include(error_mr_required)
+      end
+
+      context 'when coupled with the `create` push option' do
+        let(:push_options) { { create: true, auto_merge: true } }
+
+        it_behaves_like 'a service that can create a merge request'
+        it_behaves_like 'a service that can set the merge request to auto merge'
+      end
+    end
+
+    context 'with an existing branch but no open MR' do
+      let(:changes) { existing_branch_changes }
+
+      it_behaves_like 'a service that does not create a merge request'
+
+      it 'adds an error to the service' do
+        service.execute
+
+        expect(service.errors).to include(error_mr_required)
+      end
+
+      context 'when coupled with the `create` push option' do
+        let(:push_options) { { create: true, auto_merge: true } }
+
+        it_behaves_like 'a service that can create a merge request'
+        it_behaves_like 'a service that can set the merge request to auto merge'
+      end
+    end
+  end
+
   describe '`merge_when_pipeline_succeeds` push option' do
     let(:push_options) { { merge_when_pipeline_succeeds: true } }
 
@@ -217,7 +270,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
         let(:push_options) { { create: true, merge_when_pipeline_succeeds: true } }
 
         it_behaves_like 'a service that can create a merge request'
-        it_behaves_like 'a service that can set the merge request to merge when pipeline succeeds'
+        it_behaves_like 'a service that can set the merge request to auto merge'
       end
     end
 
@@ -236,7 +289,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
         let(:push_options) { { create: true, merge_when_pipeline_succeeds: true } }
 
         it_behaves_like 'a service that can create a merge request'
-        it_behaves_like 'a service that can set the merge request to merge when pipeline succeeds'
+        it_behaves_like 'a service that can set the merge request to auto merge'
       end
     end
 
@@ -245,7 +298,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
       let!(:merge_request) { create(:merge_request, source_project: project, source_branch: source_branch) }
 
       it_behaves_like 'a service that does not create a merge request'
-      it_behaves_like 'a service that can set the merge request to merge when pipeline succeeds'
+      it_behaves_like 'a service that can set the merge request to auto merge'
     end
 
     it_behaves_like 'with a deleted branch'
@@ -303,6 +356,23 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
 
     it_behaves_like 'with a deleted branch'
     it_behaves_like 'with the project default branch'
+  end
+
+  describe 'pushing from default branch' do
+    let(:changes) { default_branch_changes }
+
+    context 'with target branch specified' do
+      let(:push_options) { { create: true, target: target_branch } }
+
+      it_behaves_like 'a service that can create a merge request'
+      it_behaves_like 'a service that can set the target of a merge request'
+    end
+
+    context 'without target branch specified' do
+      let(:push_options) { { create: true } }
+
+      it_behaves_like 'a service that does nothing'
+    end
   end
 
   describe '`target` push option' do
@@ -557,6 +627,71 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
     it_behaves_like 'with the project default branch'
   end
 
+  describe '`squash` push option' do
+    let(:push_options) { { squash: squash } }
+
+    context 'with a new branch' do
+      let(:changes) { new_branch_changes }
+
+      it_behaves_like 'a service that does not create a merge request'
+
+      it 'adds an error to the service' do
+        service.execute
+
+        expect(service.errors).to include(error_mr_required)
+      end
+
+      context 'when coupled with the `create` push option' do
+        let(:push_options) { { create: true, squash: squash } }
+
+        it_behaves_like 'a service that can create a merge request'
+        it_behaves_like 'a service that can set a merge request to be squashed'
+
+        context 'when squash is false' do
+          let(:squash) { false }
+
+          it_behaves_like 'a service that can set a merge request to be squashed'
+        end
+      end
+    end
+
+    context 'with an existing branch but no open MR' do
+      let(:changes) { existing_branch_changes }
+
+      it_behaves_like 'a service that does not create a merge request'
+
+      it 'adds an error to the service' do
+        service.execute
+
+        expect(service.errors).to include(error_mr_required)
+      end
+
+      context 'when coupled with the `create` push option' do
+        let(:push_options) { { create: true, squash: squash } }
+
+        it_behaves_like 'a service that can create a merge request'
+        it_behaves_like 'a service that can set a merge request to be squashed'
+
+        context 'when squash is false' do
+          let(:squash) { false }
+
+          it_behaves_like 'a service that can set a merge request to be squashed'
+        end
+      end
+    end
+
+    context 'with an existing branch that has a merge request open' do
+      let(:changes) { existing_branch_changes }
+      let!(:merge_request) { create(:merge_request, source_project: project, source_branch: source_branch) }
+
+      it_behaves_like 'a service that does not create a merge request'
+      it_behaves_like 'a service that can set a merge request to be squashed'
+    end
+
+    it_behaves_like 'with a deleted branch'
+    it_behaves_like 'with the project default branch'
+  end
+
   describe '`label` push option' do
     let(:push_options) { { label: { label1 => 1, label2 => 1 } } }
 
@@ -769,8 +904,8 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
 
     context 'when passing in usernames' do
       # makes sure that usernames starting with numbers aren't treated as IDs
-      let(:user2) { create(:user, username: '123user', developer_projects: [project]) }
-      let(:user3) { create(:user, username: '999user', developer_projects: [project]) }
+      let(:user2) { create(:user, username: '123user', developer_of: project) }
+      let(:user3) { create(:user, username: '999user', developer_of: project) }
       let(:assigned) { { user2.username => 1, user3.username => 1 } }
 
       it_behaves_like 'with an existing branch that has a merge request open in foss'
@@ -924,7 +1059,7 @@ RSpec.describe MergeRequests::PushOptionsHandlerService, feature_category: :sour
   end
 
   describe 'when MRs are not enabled' do
-    let(:project) { create(:project, :public, :repository).tap { |pr| pr.add_developer(user1) } }
+    let(:project) { create(:project, :public, :repository, developers: user1) }
     let(:push_options) { { create: true } }
     let(:changes) { new_branch_changes }
 

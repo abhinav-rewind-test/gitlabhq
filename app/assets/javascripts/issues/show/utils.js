@@ -189,6 +189,36 @@ export const deleteTaskListItem = (description, sourcepos) => {
   };
 };
 
+export const disableTaskListItem = (description, sourcepos) => {
+  const descriptionLines = description.split(NEWLINE);
+  const startIndex = getSourceposRows(sourcepos)[0];
+
+  if (descriptionLines[startIndex].includes('[ ]')) {
+    descriptionLines[startIndex] = descriptionLines[startIndex].replace('[ ]', '[~]');
+  } else if (descriptionLines[startIndex].includes('[x]')) {
+    descriptionLines[startIndex] = descriptionLines[startIndex].replace('[x]', '[~]');
+  } else if (descriptionLines[startIndex].includes('[X]')) {
+    descriptionLines[startIndex] = descriptionLines[startIndex].replace('[X]', '[~]');
+  }
+
+  return {
+    newDescription: descriptionLines.join(NEWLINE),
+  };
+};
+
+export const enableTaskListItem = (description, sourcepos) => {
+  const descriptionLines = description.split(NEWLINE);
+  const startIndex = getSourceposRows(sourcepos)[0];
+
+  if (descriptionLines[startIndex].includes('[~]')) {
+    descriptionLines[startIndex] = descriptionLines[startIndex].replace('[~]', '[ ]');
+  }
+
+  return {
+    newDescription: descriptionLines.join(NEWLINE),
+  };
+};
+
 /**
  * Given a title and description for a task:
  *
@@ -227,4 +257,29 @@ export const extractTaskTitleAndDescription = (taskTitle, taskDescription) => {
     title: taskTitle,
     description: taskDescription,
   };
+};
+
+/**
+ * Insert an element, such as a dropdown, next to a checkbox
+ * in an issue/work item description rendered from markdown.
+ *
+ * @param element Element to insert
+ * @param listItem The list item containing the checkbox
+ */
+export const insertNextToTaskListItemText = (element, listItem) => {
+  const children = Array.from(listItem.children);
+  const paragraph = children.find((el) => el.tagName === 'P');
+  const list = children.find((el) => el.classList.contains('task-list'));
+
+  if (paragraph) {
+    // If there's a `p` element, then it's a multi-paragraph task item
+    // and the task text exists within the `p` element as the last child
+    paragraph.append(element);
+  } else if (list) {
+    // Otherwise, the task item can have a child list which exists directly after the task text
+    list.insertAdjacentElement('beforebegin', element);
+  } else {
+    // Otherwise, the task item is a simple one where the task text exists as the last child
+    listItem.append(element);
+  }
 };

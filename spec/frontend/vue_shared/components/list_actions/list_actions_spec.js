@@ -1,7 +1,15 @@
-import { GlDisclosureDropdown } from '@gitlab/ui';
+import {
+  GlDisclosureDropdown,
+  GlDisclosureDropdownItem,
+  GlDisclosureDropdownGroup,
+} from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import ListActions from '~/vue_shared/components/list_actions/list_actions.vue';
-import { ACTION_EDIT, ACTION_DELETE } from '~/vue_shared/components/list_actions/constants';
+import {
+  ACTION_COPY_ID,
+  ACTION_EDIT,
+  ACTION_DELETE,
+} from '~/vue_shared/components/list_actions/constants';
 
 describe('ListActions', () => {
   let wrapper;
@@ -15,7 +23,7 @@ describe('ListActions', () => {
         action: () => {},
       },
     },
-    availableActions: [ACTION_EDIT, ACTION_DELETE],
+    availableActions: [ACTION_COPY_ID, ACTION_EDIT, ACTION_DELETE],
   };
 
   const createComponent = ({ propsData = {} } = {}) => {
@@ -28,56 +36,58 @@ describe('ListActions', () => {
   };
 
   const findDropdown = () => wrapper.findComponent(GlDisclosureDropdown);
-  const getDropdownItemsProp = () => findDropdown().props('items');
+  const getDropdownItems = () =>
+    findDropdown()
+      .findAllComponents(GlDisclosureDropdownItem)
+      .wrappers.map((dropdownItem) => dropdownItem.props('item'));
 
   it('allows extending of base actions', () => {
     createComponent();
 
-    expect(getDropdownItemsProp()).toEqual([
+    expect(getDropdownItems()).toEqual([
+      {
+        text: 'Copy ID',
+      },
       {
         text: 'Edit',
         href: '/-/edit',
       },
       {
         text: 'Delete',
-        extraAttrs: {
-          class: 'gl-text-red-500!',
-        },
+        variant: 'danger',
         action: expect.any(Function),
       },
     ]);
   });
 
   it('allows adding custom actions', () => {
-    const ACTION_LEAVE = 'leave';
+    const ACTION_CUSTOM = 'custom';
 
     createComponent({
       propsData: {
         actions: {
           ...defaultPropsData.actions,
-          [ACTION_LEAVE]: {
-            text: 'Leave project',
+          [ACTION_CUSTOM]: {
+            text: 'Custom',
             action: () => {},
           },
         },
-        availableActions: [ACTION_EDIT, ACTION_LEAVE, ACTION_DELETE],
+        availableActions: [ACTION_EDIT, ACTION_CUSTOM, ACTION_DELETE],
       },
     });
 
-    expect(getDropdownItemsProp()).toEqual([
+    expect(getDropdownItems()).toEqual([
       {
         text: 'Edit',
         href: '/-/edit',
       },
       {
-        text: 'Leave project',
+        text: 'Custom',
         action: expect.any(Function),
       },
       {
         text: 'Delete',
-        extraAttrs: {
-          class: 'gl-text-red-500!',
-        },
+        variant: 'danger',
         action: expect.any(Function),
       },
     ]);
@@ -90,7 +100,7 @@ describe('ListActions', () => {
       },
     });
 
-    expect(getDropdownItemsProp()).toEqual([
+    expect(getDropdownItems()).toEqual([
       {
         text: 'Edit',
         href: '/-/edit',
@@ -98,26 +108,16 @@ describe('ListActions', () => {
     ]);
   });
 
-  it('displays actions in the order set in `availableActions` prop', () => {
-    createComponent({
-      propsData: {
-        availableActions: [ACTION_DELETE, ACTION_EDIT],
-      },
-    });
-
-    expect(getDropdownItemsProp()).toEqual([
-      {
-        text: 'Delete',
-        extraAttrs: {
-          class: 'gl-text-red-500!',
+  describe('when there are no danger actions', () => {
+    it('does not show dropdown group', () => {
+      createComponent({
+        propsData: {
+          availableActions: [ACTION_EDIT],
         },
-        action: expect.any(Function),
-      },
-      {
-        text: 'Edit',
-        href: '/-/edit',
-      },
-    ]);
+      });
+
+      expect(wrapper.findComponent(GlDisclosureDropdownGroup).exists()).toBe(false);
+    });
   });
 
   it('renders `GlDisclosureDropdown` with expected appearance related props', () => {
@@ -128,7 +128,7 @@ describe('ListActions', () => {
       noCaret: true,
       toggleText: 'Actions',
       textSrOnly: true,
-      placement: 'right',
+      placement: 'bottom-end',
       category: 'tertiary',
     });
   });

@@ -1,24 +1,33 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Create', :orchestrated, :repository_storage, :requires_admin, product_group: :source_code do
+  RSpec.describe 'Create', :orchestrated, :repository_storage, :requires_admin,
+    feature_category: :source_code_management do
     describe 'Gitaly repository storage' do
-      let(:user) { Resource::User.fabricate_or_use(Runtime::Env.gitlab_qa_username_1, Runtime::Env.gitlab_qa_password_1) }
+      let(:user) { create(:user, :with_personal_access_token) }
       let(:parent_project) { create(:project, :with_readme, name: 'parent-project') }
-      let(:fork_project) { create(:fork, user: user, upstream: parent_project).project }
+      let(:fork_project) { create(:fork, user: user, upstream: parent_project) }
 
       before do
         parent_project.add_member(user)
       end
 
-      it 'creates a 2nd fork after moving the parent project', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347787' do
+      it 'creates a 2nd fork after moving the parent project',
+        testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347787',
+        quarantine: {
+          type: :flaky,
+          issue: "https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/18791"
+        } do
         Flow::Login.sign_in(as: user)
 
         fork_project.visit!
 
         parent_project.change_repository_storage(QA::Runtime::Env.additional_repository_storage)
 
-        second_fork_project = create(:fork, name: "second-fork-of-#{parent_project.name}", user: user, upstream: parent_project).project
+        second_fork_project = create(:fork,
+          name: "second-fork-of-#{parent_project.name}",
+          user: user,
+          upstream: parent_project)
 
         Resource::Repository::ProjectPush.fabricate! do |push|
           push.project = second_fork_project

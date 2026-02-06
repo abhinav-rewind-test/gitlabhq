@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
+import { scrollTo } from '~/lib/utils/scroll_utils';
 import appComponent from '~/groups/components/app.vue';
 import eventHub from '~/groups/event_hub';
 import GroupsService from '~/groups/service/groups_service';
@@ -33,6 +34,7 @@ const $toast = {
   show: jest.fn(),
 };
 jest.mock('~/alert');
+jest.mock('~/lib/utils/scroll_utils');
 
 describe('AppComponent', () => {
   let wrapper;
@@ -49,7 +51,7 @@ describe('AppComponent', () => {
       propsData: {
         store,
         service,
-        containerId: 'js-groups-tree',
+        containerId: 'js-groups-list-with-filtered-search',
         ...propsData,
       },
       scopedSlots: {
@@ -57,9 +59,6 @@ describe('AppComponent', () => {
       },
       mocks: {
         $toast,
-      },
-      provide: {
-        emptySearchIllustration: '/assets/illustrations/empty-state/empty-search-md.svg',
       },
     });
     vm = wrapper.vm;
@@ -71,7 +70,7 @@ describe('AppComponent', () => {
     setWindowLocation('?filter=foobar');
 
     document.body.innerHTML = `
-      <div id="js-groups-tree">
+      <div id="js-groups-list-with-filtered-search">
         <div class="empty-state hidden" data-testid="legacy-empty-state">
           <p>There are no projects shared with this group yet</p>
         </div>
@@ -112,10 +111,9 @@ describe('AppComponent', () => {
       it('should show an alert when request fails', () => {
         mock.onGet('/dashboard/groups.json').reply(HTTP_STATUS_BAD_REQUEST);
 
-        jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
         return vm.fetchGroups({}).then(() => {
           expect(vm.isLoading).toBe(false);
-          expect(window.scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 });
+          expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 }, wrapper.element);
           expect(createAlert).toHaveBeenCalledWith({
             message: 'An error occurred. Please try again.',
           });
@@ -165,10 +163,10 @@ describe('AppComponent', () => {
         jest.spyOn(vm, 'updateGroups');
       });
 
-      it('should fetch groups for provided page details and update window state', () => {
+      it('without filter should fetch groups for provided page details, update window state, and call setGroups', () => {
         jest.spyOn(urlUtilities, 'mergeUrlParams');
         jest.spyOn(window.history, 'replaceState').mockImplementation(() => {});
-        jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
+        jest.spyOn(vm.store, 'setGroups').mockImplementation(() => {});
 
         const fetchPagePromise = vm.fetchPage({
           page: 2,
@@ -186,7 +184,7 @@ describe('AppComponent', () => {
 
         return fetchPagePromise.then(() => {
           expect(vm.isLoading).toBe(false);
-          expect(window.scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 });
+          expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 }, wrapper.element);
           expect(urlUtilities.mergeUrlParams).toHaveBeenCalledWith({ page: 2 }, expect.any(String));
           expect(window.history.replaceState).toHaveBeenCalledWith(
             {
@@ -196,7 +194,42 @@ describe('AppComponent', () => {
             expect.any(String),
           );
 
-          expect(vm.updateGroups).toHaveBeenCalled();
+          expect(vm.store.setGroups).toHaveBeenCalledWith(mockGroups);
+        });
+      });
+
+      it('with filter should fetch groups for provided page details, update window state, and call setGroups', () => {
+        jest.spyOn(urlUtilities, 'mergeUrlParams');
+        jest.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        jest.spyOn(vm.store, 'setGroups').mockImplementation(() => {});
+
+        const fetchPagePromise = vm.fetchPage({
+          page: 2,
+          filterGroupsBy: 'search',
+          sortBy: null,
+        });
+
+        expect(vm.isLoading).toBe(true);
+        expect(vm.fetchGroups).toHaveBeenCalledWith({
+          page: 2,
+          filterGroupsBy: 'search',
+          sortBy: null,
+          updatePagination: true,
+        });
+
+        return fetchPagePromise.then(() => {
+          expect(vm.isLoading).toBe(false);
+          expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 }, wrapper.element);
+          expect(urlUtilities.mergeUrlParams).toHaveBeenCalledWith({ page: 2 }, expect.any(String));
+          expect(window.history.replaceState).toHaveBeenCalledWith(
+            {
+              page: expect.any(String),
+            },
+            expect.any(String),
+            expect.any(String),
+          );
+
+          expect(vm.store.setGroups).toHaveBeenCalledWith(mockGroups);
         });
       });
     });
@@ -274,12 +307,12 @@ describe('AppComponent', () => {
       it('updates props which show modal confirmation dialog', () => {
         const group = { ...mockParentGroupItem };
 
-        expect(vm.groupLeaveConfirmationMessage).toBe('');
+        expect(vm.groupLeaveConfirmationTitle).toBe('');
         vm.showLeaveGroupModal(group, mockParentGroupItem);
 
         expect(vm.isModalVisible).toBe(true);
-        expect(vm.groupLeaveConfirmationMessage).toBe(
-          `Are you sure you want to leave the "${group.fullName}" group?`,
+        expect(vm.groupLeaveConfirmationTitle).toBe(
+          `Are you sure you want to leave "${group.fullName}"?`,
         );
       });
     });
@@ -301,14 +334,13 @@ describe('AppComponent', () => {
         const notice = `You left the "${childGroupItem.fullName}" group.`;
         jest.spyOn(vm.service, 'leaveGroup').mockResolvedValue({ data: { notice } });
         jest.spyOn(vm.store, 'removeGroup');
-        jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
         vm.leaveGroup();
 
         expect(vm.targetGroup.isBeingRemoved).toBe(true);
         expect(vm.service.leaveGroup).toHaveBeenCalledWith(vm.targetGroup.leavePath);
         return waitForPromises().then(() => {
-          expect(window.scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 });
+          expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 0 }, wrapper.element);
           expect(vm.store.removeGroup).toHaveBeenCalledWith(vm.targetGroup, vm.targetParentGroup);
           expect($toast.show).toHaveBeenCalledWith(notice);
         });
@@ -366,38 +398,31 @@ describe('AppComponent', () => {
         expect(vm.store.setGroups).toHaveBeenCalledWith(mockGroups);
       });
 
-      it('should call setSearchedGroups on store if method was called with fromSearch param', () => {
-        jest.spyOn(vm.store, 'setSearchedGroups').mockImplementation(() => {});
+      it('should call setGroups on store if method was called with fromSearch param', () => {
+        jest.spyOn(vm.store, 'setGroups').mockImplementation(() => {});
 
         vm.updateGroups(mockGroups, true);
 
-        expect(vm.store.setSearchedGroups).toHaveBeenCalledWith(mockGroups);
+        expect(vm.store.setGroups).toHaveBeenCalledWith(mockGroups);
       });
 
       describe.each`
-        groups        | fromSearch | shouldRenderEmptyState | shouldRenderSearchEmptyState
-        ${[]}         | ${false}   | ${true}                | ${false}
-        ${mockGroups} | ${false}   | ${false}               | ${false}
-        ${[]}         | ${true}    | ${false}               | ${true}
-      `(
-        'when `groups` is $groups, and `fromSearch` is $fromSearch',
-        ({ groups, fromSearch, shouldRenderEmptyState, shouldRenderSearchEmptyState }) => {
-          it(`${shouldRenderEmptyState ? 'renders' : 'does not render'} empty state`, async () => {
-            createShallowComponent();
+        groups        | shouldRenderEmptyState
+        ${[]}         | ${true}
+        ${mockGroups} | ${false}
+      `('when `groups` is $groups', ({ groups, shouldRenderEmptyState }) => {
+        it(`${shouldRenderEmptyState ? 'renders' : 'does not render'} empty state`, async () => {
+          createShallowComponent();
 
-            await waitForPromises();
+          await waitForPromises();
 
-            vm.updateGroups(groups, fromSearch);
+          vm.updateGroups(groups);
 
-            await nextTick();
+          await nextTick();
 
-            expect(wrapper.findByTestId('empty-state').exists()).toBe(shouldRenderEmptyState);
-            expect(wrapper.findByTestId('search-empty-state').exists()).toBe(
-              shouldRenderSearchEmptyState,
-            );
-          });
-        },
-      );
+          expect(wrapper.findByTestId('empty-state').exists()).toBe(shouldRenderEmptyState);
+        });
+      });
     });
   });
 
@@ -411,8 +436,6 @@ describe('AppComponent', () => {
       expect(eventHub.$on).toHaveBeenCalledWith('fetchPage', expect.any(Function));
       expect(eventHub.$on).toHaveBeenCalledWith('toggleChildren', expect.any(Function));
       expect(eventHub.$on).toHaveBeenCalledWith('showLeaveGroupModal', expect.any(Function));
-      expect(eventHub.$on).toHaveBeenCalledWith('updatePagination', expect.any(Function));
-      expect(eventHub.$on).toHaveBeenCalledWith('updateGroups', expect.any(Function));
       expect(eventHub.$on).toHaveBeenCalledWith(
         'fetchFilteredAndSortedGroups',
         expect.any(Function),
@@ -431,8 +454,6 @@ describe('AppComponent', () => {
       expect(eventHub.$off).toHaveBeenCalledWith('fetchPage', expect.any(Function));
       expect(eventHub.$off).toHaveBeenCalledWith('toggleChildren', expect.any(Function));
       expect(eventHub.$off).toHaveBeenCalledWith('showLeaveGroupModal', expect.any(Function));
-      expect(eventHub.$off).toHaveBeenCalledWith('updatePagination', expect.any(Function));
-      expect(eventHub.$off).toHaveBeenCalledWith('updateGroups', expect.any(Function));
       expect(eventHub.$off).toHaveBeenCalledWith(
         'fetchFilteredAndSortedGroups',
         expect.any(Function),
@@ -496,8 +517,14 @@ describe('AppComponent', () => {
       const findGlModal = wrapper.findComponent(GlModal);
 
       expect(findGlModal.exists()).toBe(true);
-      expect(findGlModal.attributes('title')).toBe('Are you sure?');
+      expect(findGlModal.attributes('title')).toBe('');
       expect(findGlModal.props('actionPrimary').text).toBe('Leave group');
+      expect(findGlModal.text()).toContain('When you leave this group:');
+      expect(findGlModal.text()).toContain('You lose access to all projects within this group');
+      expect(findGlModal.text()).toContain(
+        'Your assigned issues and merge requests remain, but you cannot view or modify them',
+      );
+      expect(findGlModal.text()).toContain('You need an invitation to rejoin');
     });
   });
 });

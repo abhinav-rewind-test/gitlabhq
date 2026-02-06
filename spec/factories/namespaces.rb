@@ -9,14 +9,21 @@ FactoryBot.define do
 
     path { name.downcase.gsub(/\s/, '_') }
 
-    owner { association(:user, strategy: :build, namespace: instance, username: path) }
+    owner { association(:user, strategy: :build, namespace: instance, username: path, organization: organization) }
+
+    after(:build) do |namespace, evaluator|
+      namespace.organization ||= evaluator.parent&.organization ||
+        # We create an organization next even though we are building here. We need to ensure
+        # that an organization exists so other entities can belong to the same organization
+        create(:common_organization)
+    end
 
     after(:create) do |namespace, evaluator|
       # simulating ::Namespaces::ProcessSyncEventsWorker because most tests don't run Sidekiq inline
       # Note: we need to get refreshed `traversal_ids` it is updated via SQL query
       #       in `Namespaces::Traversal::Linear#sync_traversal_ids` (see the NOTE in that method).
       #       We cannot use `.reload` because it cleans other on-the-fly attributes.
-      namespace.create_ci_namespace_mirror!(traversal_ids: Namespace.find(namespace.id).traversal_ids) unless namespace.ci_namespace_mirror
+      namespace.create_ci_namespace_mirror(traversal_ids: Namespace.find(namespace.id).traversal_ids) unless namespace.ci_namespace_mirror
     end
 
     trait :with_aggregation_schedule do
@@ -37,8 +44,21 @@ FactoryBot.define do
       end
     end
 
+    trait :allow_runner_registration_token do
+      after(:create) do |namespace|
+        create(:namespace_settings, namespace: namespace) unless namespace.namespace_settings
+        namespace.namespace_settings.update!(allow_runner_registration_token: true)
+      end
+    end
+
     trait :shared_runners_disabled do
       shared_runners_enabled { false }
+    end
+
+    trait :archived do
+      after(:create) do |namespace|
+        namespace.namespace_settings.update!(archived: true)
+      end
     end
   end
 end

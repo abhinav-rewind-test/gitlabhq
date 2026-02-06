@@ -7,13 +7,8 @@ export default () => {
   const selector = '#js-error_tracking';
 
   const domEl = document.querySelector(selector);
-  const {
-    indexPath,
-    enableErrorTrackingLink,
-    illustrationPath,
-    projectPath,
-    listPath,
-  } = domEl.dataset;
+  const { indexPath, enableErrorTrackingLink, illustrationPath, projectPath, listPath } =
+    domEl.dataset;
   let {
     errorTrackingEnabled,
     userCanEnableErrorTracking,
@@ -29,6 +24,7 @@ export default () => {
   // eslint-disable-next-line no-new
   new Vue({
     el: selector,
+    name: 'ErrorTrackingListRoot',
     components: {
       ErrorTrackingList,
     },

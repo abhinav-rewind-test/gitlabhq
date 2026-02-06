@@ -1,21 +1,35 @@
 import { GlLoadingIcon, GlEmptyState } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
-import { organizations } from '~/organizations/mock_data';
+import currentUserOrganizationsGraphQlResponse from 'test_fixtures/graphql/organizations/current_user_organizations.query.graphql.json';
 import OrganizationsView from '~/organizations/shared/components/organizations_view.vue';
 import OrganizationsList from '~/organizations/shared/components/list/organizations_list.vue';
-import { MOCK_NEW_ORG_URL, MOCK_ORG_EMPTY_STATE_SVG } from '../mock_data';
+import { MOCK_NEW_ORG_URL } from '../mock_data';
+
+jest.mock(
+  '@gitlab/svgs/dist/illustrations/empty-state/empty-organizations-md.svg?url',
+  () => 'empty-organizations-md.svg',
+);
 
 describe('OrganizationsView', () => {
   let wrapper;
 
-  const createComponent = (props = {}) => {
+  const {
+    data: {
+      currentUser: {
+        organizations: { nodes: organizations },
+      },
+    },
+  } = currentUserOrganizationsGraphQlResponse;
+
+  const createComponent = (props = {}, provide = {}) => {
     wrapper = shallowMount(OrganizationsView, {
       propsData: {
         ...props,
       },
       provide: {
         newOrganizationUrl: MOCK_NEW_ORG_URL,
-        organizationsEmptyStateSvgPath: MOCK_ORG_EMPTY_STATE_SVG,
+        canCreateOrganization: true,
+        ...provide,
       },
     });
   };
@@ -25,10 +39,10 @@ describe('OrganizationsView', () => {
   const findGlEmptyState = () => wrapper.findComponent(GlEmptyState);
 
   describe.each`
-    description                                    | loading  | orgsData         | emptyStateSvg               | emptyStateUrl
-    ${'when loading'}                              | ${true}  | ${[]}            | ${false}                    | ${false}
-    ${'when not loading and has organizations'}    | ${false} | ${organizations} | ${false}                    | ${false}
-    ${'when not loading and has no organizations'} | ${false} | ${[]}            | ${MOCK_ORG_EMPTY_STATE_SVG} | ${MOCK_NEW_ORG_URL}
+    description                                    | loading  | orgsData         | emptyStateSvg                   | emptyStateUrl
+    ${'when loading'}                              | ${true}  | ${[]}            | ${false}                        | ${false}
+    ${'when not loading and has organizations'}    | ${false} | ${organizations} | ${false}                        | ${false}
+    ${'when not loading and has no organizations'} | ${false} | ${[]}            | ${'empty-organizations-md.svg'} | ${MOCK_NEW_ORG_URL}
   `('$description', ({ loading, orgsData, emptyStateSvg, emptyStateUrl }) => {
     beforeEach(() => {
       createComponent({ loading, organizations: { nodes: orgsData, pageInfo: {} } });
@@ -52,6 +66,20 @@ describe('OrganizationsView', () => {
       expect(
         findGlEmptyState().exists() && findGlEmptyState().attributes('primarybuttonlink'),
       ).toBe(emptyStateUrl);
+    });
+  });
+
+  describe('when `canCreateOrganization` feature flag is false', () => {
+    beforeEach(() => {
+      createComponent(
+        { loading: false, organizations: { nodes: [], pageInfo: {} } },
+        { canCreateOrganization: false },
+      );
+    });
+
+    it('does not render `New organization` button in empty state', () => {
+      expect(findGlEmptyState().attributes('primarybuttonlink')).toBeUndefined();
+      expect(findGlEmptyState().attributes('primarybuttontext')).toBeUndefined();
     });
   });
 

@@ -12,16 +12,16 @@ module Mutations
       authorize :reposition_note
 
       argument :id,
-                Types::GlobalIDType[DiffNote],
-                loads: Types::Notes::NoteType,
-                as: :note,
-                required: true,
-                description: 'Global ID of the DiffNote to update.'
+        Types::GlobalIDType[DiffNote],
+        loads: Types::Notes::NoteType,
+        as: :note,
+        required: true,
+        description: 'Global ID of the DiffNote to update.'
 
       argument :position,
-                Types::Notes::UpdateDiffImagePositionInputType,
-                required: true,
-                description: copy_field_description(Types::Notes::NoteType, :position)
+        Types::Notes::UpdateDiffImagePositionInputType,
+        required: true,
+        description: copy_field_description(Types::Notes::NoteType, :position)
 
       def resolve(note:, position:)
         authorize!(note)
@@ -48,10 +48,7 @@ module Mutations
       # In addition to accepting a `DiffNote` Global ID we also need to
       # perform this check.
       def pre_update_checks!(note, _position)
-        unless note.position&.on_image?
-          raise Gitlab::Graphql::Errors::ResourceNotAvailable,
-                'Resource is not an ImageDiffNote'
-        end
+        raise_resource_not_available_error! 'Resource is not an ImageDiffNote' unless note.position&.on_image?
       end
 
       def note_params(old_position, new_position)

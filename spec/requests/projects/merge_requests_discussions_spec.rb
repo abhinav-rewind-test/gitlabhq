@@ -67,9 +67,10 @@ RSpec.describe 'merge requests discussions', feature_category: :source_code_mana
       shared_examples 'cache miss' do
         it 'does not hit a warm cache' do
           expect_next_instance_of(DiscussionSerializer) do |serializer|
-            expect(serializer).to receive(:represent) do |arg|
-              expect(arg.notes).to contain_exactly(*changed_notes)
-            end.and_call_original
+            expect(serializer).to receive(:represent).and_wrap_original do |method, arg|
+              expect(arg.first.notes).to contain_exactly(*changed_notes)
+              method.call(arg)
+            end
           end
 
           send_request
@@ -236,7 +237,7 @@ RSpec.describe 'merge requests discussions', feature_category: :source_code_mana
 
       context 'when author role changes' do
         before do
-          Members::UpdateService.new(owner, access_level: Gitlab::Access::GUEST).execute(author_membership)
+          Members::UpdateService.new(owner, access_level: Gitlab::Access::GUEST, source: project).execute(author_membership)
         end
 
         it_behaves_like 'cache miss' do
@@ -246,7 +247,7 @@ RSpec.describe 'merge requests discussions', feature_category: :source_code_mana
 
       context 'when current_user role changes' do
         before do
-          Members::UpdateService.new(owner, access_level: Gitlab::Access::GUEST).execute(project.member(user))
+          Members::UpdateService.new(owner, access_level: Gitlab::Access::GUEST, source: project).execute(project.member(user))
         end
 
         it_behaves_like 'cache miss' do

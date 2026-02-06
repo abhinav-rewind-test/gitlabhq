@@ -40,7 +40,7 @@ RSpec.describe Gitlab::Ci::Config::Interpolation::Block, feature_category: :pipe
 
       it 'returns the access error' do
         expect(subject).not_to be_valid
-        expect(subject.errors.first).to eq('unknown interpolation key: `undefined`')
+        expect(subject.errors.first).to eq('unknown interpolation provided: `undefined` in `inputs.undefined`')
       end
     end
 
@@ -99,6 +99,18 @@ RSpec.describe Gitlab::Ci::Config::Interpolation::Block, feature_category: :pipe
   describe '#length' do
     it 'returns the length of the interpolation block' do
       expect(subject.length).to eq(block.length)
+    end
+  end
+
+  context 'when block contains matrix expression' do
+    let(:data) { 'matrix.PROVIDER' }
+    let(:block) { '$[[ matrix.PROVIDER ]]' }
+    let(:ctx) { { inputs: {} } }
+
+    it 'skips interpolation and returns the original block' do
+      expect(subject).to be_valid
+      expect(subject.value).to eq('$[[ matrix.PROVIDER ]]')
+      expect(subject.errors).to be_empty
     end
   end
 end

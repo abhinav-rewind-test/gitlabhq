@@ -28,6 +28,11 @@ module Integrations
         description: -> { _('Send notifications for broken pipelines.') },
         help: 'Do not send notifications for successful pipelines.'
 
+      field :notify_only_when_pipeline_status_changes,
+        type: :checkbox,
+        section: Integration::SECTION_TYPE_CONFIGURATION,
+        description: -> { _('Send notifications only when the pipeline status changes.') }
+
       field :branches_to_be_notified,
         type: :select,
         section: Integration::SECTION_TYPE_CONFIGURATION,
@@ -53,8 +58,8 @@ module Integrations
             'The default value is `match_any`.')
         },
         choices: [
-          ['Match any of the labels', Integrations::BaseChatNotification::MATCH_ANY_LABEL],
-          ['Match all of the labels', Integrations::BaseChatNotification::MATCH_ALL_LABELS]
+          ['Match any of the labels', Integrations::Base::ChatNotification::MATCH_ANY_LABEL],
+          ['Match all of the labels', Integrations::Base::ChatNotification::MATCH_ALL_LABELS]
         ]
     end
   end

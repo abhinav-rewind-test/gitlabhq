@@ -1,17 +1,17 @@
 ---
 stage: Verify
 group: Pipeline Execution
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
-description: >-
-  How to configure the Diffblue Cover GitLab integration - Cover Pipeline for
-  GitLab
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: How to configure the Diffblue Cover GitLab integration - Cover Pipeline for GitLab
+title: Diffblue Cover
 ---
 
-# Diffblue Cover
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can integrate the [Diffblue Cover](https://www.diffblue.com/) reinforcement learning AI tool into your CI/CD pipelines, to automatically write and maintain Java unit tests for your GitLab projects.
 The Diffblue Cover Pipeline for GitLab integration allows you to automatically:
@@ -33,40 +33,38 @@ To integrate Diffblue Cover into your pipeline:
 
 ### Configure Diffblue Cover
 
-1. On the left sidebar, select **Search or go to** and find your project.
+1. On the top bar, select **Search or go to** and find your project.
    - If you want to test the integration with a sample project, you can [import](../user/project/import/repo_by_url.md)
      the Diffblue [Spring PetClinic sample project](https://github.com/diffblue/demo-spring-petclinic).
-1. Select **Settings > Integrations**.
+1. Select **Settings** > **Integrations**.
 1. Find **Diffblue Cover** and select **Configure**.
 1. Complete the fields:
 
    - Select the **Active** checkbox.
    - Enter your Diffblue Cover **License key** provided in your welcome email or by your organization.
-     If needed, select the [**Try Diffblue Cover**](https://www.diffblue.com/try-cover/gitlab) link to sign up for a free trial.
+     If needed, select the [**Try Diffblue Cover**](https://www.diffblue.com/try-cover/gitlab/) link to sign up for a free trial.
    - Enter details of your GitLab access token (**Name** and **Secret**) to allow Diffblue Cover to access your project.
      In general, use a GitLab [project access token](../user/project/settings/project_access_tokens.md) with the `Developer` role, plus `api` and `write_repository` scopes.
      If necessary you can use a [group access token](../user/group/settings/group_access_tokens.md) or a [personal access token](../user/profile/personal_access_tokens.md), again with the `Developer` role, plus `api` and `write_repository` scopes.
 
-     NOTE:
-     Using an access token with excessive permissions is a security risk.
-     If you use a Personal access token, consider creating a dedicated user with access limited to just the project, minimizing the impact of the token being leaked.
+     > [!note]
+     > Using an access token with excessive permissions is a security risk.
+     > If you use a Personal access token, consider creating a dedicated user with access limited to just the project, minimizing the impact of the token being leaked.
 
 1. Select **Save changes**.
    Your Diffblue Cover integration is now <mark style="color:green;">**Active**</mark> and ready for use in your project.
 
 ### Configure a pipeline
 
-Here we'll create a merge request pipeline for the project that will download the latest version of Diffblue Cover, build the project, write Java unit tests for the project, and commit the changes to the branch.
+Create a merge request pipeline for the project that downloads the latest version of Diffblue Cover, builds the project, writes Java unit tests for the project, and commits the changes to the branch.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Build > Pipeline editor**.
-1. Select **Configure pipeline** to create the `.gitlab-ci.yml` file.
-1. Select **Browse templates** and find the `Diffblue-Cover.gitlab-ci.yml` template file.
-1. Select the file and copy the contents to your project's `.gitlab-ci.yml` file.
+1. On the top bar, select **Search or go to** and find your project.
+1. Copy the contents of the [`Diffblue-Cover.gitlab-ci.yml` template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Diffblue-Cover.gitlab-ci.yml)
+   into your project's `.gitlab-ci.yml` file.
 
-   NOTE:
-   When using the Diffblue Cover pipeline template with your own project and existing pipeline file, add the Diffblue template content to your file and modify as needed.
-   For more information, see [Cover Pipeline for GitLab](https://docs.diffblue.com/features/cover-pipeline/cover-pipeline-for-gitlab) in the Diffblue documentation.
+   > [!note]
+   > When using the Diffblue Cover pipeline template with your own project and existing pipeline file, add the Diffblue template content to your file and modify as needed.
+   > For more information, see [Cover Pipeline for GitLab](https://docs.diffblue.com/features/cover-pipeline/cover-pipeline-for-gitlab) in the Diffblue documentation.
 
 1. Enter a commit message.
 1. Enter a new **Branch** name. For example, `add-diffblue-cover-pipeline`.
@@ -84,7 +82,7 @@ Here we'll create a merge request pipeline for the project that will download th
 When performing subsequent code changes to a project, the merge request pipeline will run Diffblue Cover but will only update the associated tests.
 The resulting diff can then be analyzed to check the new behavior, catch regressions, and spot any unplanned behavioral changes to the code.
 
-![Code Change Diff](img/diffblue_cover_diff_v16_8.png)
+![Merge request diff showing code changes with test additions in green and removals in red.](img/diffblue_cover_diff_v16_8.png)
 
 ## Next steps
 

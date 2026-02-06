@@ -20,6 +20,14 @@ module API
 
         conflict!("There are multiple variables with provided parameters. Please use 'filter[environment_scope]'")
       end
+
+      def audit_single_variable_access(variable, scope)
+        # overridden in EE
+      end
+
+      def audit_all_variables_access(scope)
+        # overridden in EE
+      end
     end
   end
 end

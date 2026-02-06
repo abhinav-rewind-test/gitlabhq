@@ -23,16 +23,16 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
   end
 
   describe '.known_events' do
-    let(:ce_event) { { name: "ce_event" } }
-    let(:ce_event2) { { name: "ce_event2" } }
-    let(:removed_ce_event) { { name: "removed_ce_event" } }
+    let(:ce_event) { "ce_event" }
+    let(:ce_event2) { "ce_event2" }
+    let(:removed_ce_event) { "removed_ce_event" }
     let(:metric_definition) do
       Gitlab::Usage::MetricDefinition.new('ce_metric',
         {
           key_path: 'ce_metric_weekly',
           status: 'active',
           options: {
-            events: [ce_event[:name]]
+            events: [ce_event]
           }
         })
     end
@@ -42,7 +42,7 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
         {
           key_path: 'ce_metric_weekly2',
           status: 'active',
-          events: [ce_event2.merge(unique: 'user')]
+          events: [{ name: ce_event2, unique: 'user' }]
         })
     end
 
@@ -52,7 +52,7 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
           key_path: 'removed_ce_metric_weekly',
           status: 'removed',
           options: {
-            events: [removed_ce_event[:name]]
+            events: [removed_ce_event]
           }
         })
     end
@@ -95,14 +95,14 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
 
     let(:known_events) do
       [
-        { name: weekly_event },
-        { name: daily_event },
-        { name: category_productivity_event },
-        { name: compliance_slot_event },
-        { name: no_slot },
-        { name: different_aggregation },
-        { name: event_overridden_for_user }
-      ].map(&:with_indifferent_access)
+        weekly_event,
+        daily_event,
+        category_productivity_event,
+        compliance_slot_event,
+        no_slot,
+        different_aggregation,
+        event_overridden_for_user
+      ].to_set
     end
 
     before do
@@ -251,7 +251,7 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
             it "raises an error with an instructive message" do
               expect do
                 described_class.track_event('g_analytics_productivity', values: entity1, property_name: 'project')
-              end.to raise_error(described_class::UnfinishedEventMigrationError, /migration\.html/)
+              end.to raise_error(described_class::UnfinishedEventMigrationError, /migration\.md/)
             end
           end
 
@@ -383,7 +383,7 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
           it "raises an error with an instructive message" do
             expect do
               described_class.unique_events(event_names: 'g_analytics_productivity', property_name: 'project', start_date: 7.days.ago, end_date: Date.current)
-            end.to raise_error(described_class::UnfinishedEventMigrationError, /migration\.html/)
+            end.to raise_error(described_class::UnfinishedEventMigrationError, /migration\.md/)
           end
         end
 
@@ -420,7 +420,7 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
     using RSpec::Parameterized::TableSyntax
 
     let(:weekly_event) { 'i_search_total' }
-    let(:redis_event) { described_class.send(:event_for, weekly_event) }
+    let(:redis_event) { { name: weekly_event } }
     let(:week_one) { "{#{described_class::REDIS_SLOT}}_i_search_total-2020-52" }
     let(:week_two) { "{#{described_class::REDIS_SLOT}}_i_search_total-2020-53" }
     let(:week_three) { "{#{described_class::REDIS_SLOT}}_i_search_total-2021-01" }
@@ -457,66 +457,10 @@ RSpec.describe Gitlab::UsageDataCounters::HLLRedisCounter, :clean_gitlab_redis_s
     end
   end
 
-  describe '.calculate_events_union' do
-    let(:time_range) { { start_date: 7.days.ago, end_date: DateTime.current } }
-    let(:known_events) do
-      [
-        { name: 'g_compliance_dashboard' },
-        { name: 'g_project_management_epic_created' },
-        { name: 'g_project_management_epic_closed' },
-        { name: 'g_project_management_epic_reopened' },
-        { name: 'g_project_management_epic_issue_added' },
-        { name: 'g_analytics_insights' }
-      ].map(&:with_indifferent_access)
-    end
-
-    before do
-      allow(described_class).to receive(:known_events).and_return(known_events)
-
-      described_class.track_event('g_compliance_dashboard', values: entity1, time: 2.days.ago, property_name: :user)
-      described_class.track_event('g_compliance_dashboard', values: entity2, time: 2.days.ago, property_name: :user)
-      described_class.track_event('g_compliance_dashboard', values: entity3, time: 2.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_created', values: entity1, time: 2.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_created', values: entity2, time: 3.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_created', values: entity3, time: 3.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_closed', values: entity1, time: 3.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_closed', values: entity2, time: 3.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_reopened', values: entity2, time: 3.days.ago, property_name: :user)
-
-      # legacy event
-      described_class.track_event('g_analytics_insights', values: entity1, time: 3.days.ago)
-      described_class.track_event('g_analytics_insights', values: entity2, time: 3.days.ago)
-
-      # events out of time scope
-      described_class.track_event('g_project_management_epic_created', values: entity4, time: 8.days.ago, property_name: :user)
-
-      # events in different slots
-      described_class.track_event('g_project_management_epic_issue_added', values: entity1, time: 2.days.ago, property_name: :user)
-      described_class.track_event('g_project_management_epic_issue_added', values: entity2, time: 2.days.ago, property_name: :user)
-    end
-
-    it 'calculates union of given events', :aggregate_failures do
-      expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_project_management_epic_issue_added], property_name: nil))).to eq 2
-      expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_compliance_dashboard g_project_management_epic_created g_project_management_epic_closed], property_name: nil))).to eq 3
-    end
-
-    context "with property_name" do
-      it 'calculates union of given events', :aggregate_failures do
-        expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_project_management_epic_issue_added], property_name: 'user.id'))).to eq 2
-        expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_compliance_dashboard g_project_management_epic_created g_project_management_epic_closed], property_name: 'user.id'))).to eq 3
-      end
-
-      context "with a legacy event" do
-        it 'ignores the property_name and uses original redis key for the event', :aggregate_failures do
-          expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_analytics_insights], property_name: 'user.id'))).to eq 2
-          expect(described_class.calculate_events_union(**time_range.merge(event_names: %w[g_analytics_insights], property_name: 'project.id'))).to eq 2
-        end
-      end
-    end
-
-    it 'returns fallback value if there are no keys for given events' do
-      expect(Gitlab::Redis::HLL).not_to receive(:count)
-      expect(described_class.calculate_events_union(event_names: %w[g_compliance_dashboard g_project_management_epic_created g_project_management_epic_closed], start_date: Date.current, end_date: 4.weeks.ago, property_name: nil)).to eq(-1)
+  describe '.legacy_event?' do
+    it 'returns true only for legacy event names' do
+      expect(described_class.legacy_event?('g_analytics_insights')).to be true
+      expect(described_class.legacy_event?('g_project_management_epic_reopened')).to be false
     end
   end
 

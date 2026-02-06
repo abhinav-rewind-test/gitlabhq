@@ -6,8 +6,15 @@ RSpec.shared_examples 'groups routing' do
   let(:group_path) { 'projects.abc123' }
   let!(:group) { create(:group, path: group_path) }
 
-  it "to #show" do
+  specify "to #show" do
     expect(get("/groups/#{group_path}")).to route_to('groups#show', id: group_path)
+    expect(get("/groups/#{group_path}/-/shared")).to route_to('groups#show', id: group_path)
+    expect(get("/groups/#{group_path}/-/shared_groups")).to route_to('groups#show', id: group_path)
+    expect(get("/groups/#{group_path}/-/inactive")).to route_to('groups#show', id: group_path)
+  end
+
+  specify "to #destroy" do
+    expect(delete("/groups/#{group_path}")).to route_to('groups#destroy', id: group_path)
   end
 
   it "also supports nested groups" do
@@ -19,31 +26,31 @@ RSpec.shared_examples 'groups routing' do
     expect(get("/#{group_path}")).to route_to('groups#show', id: group_path)
   end
 
-  it "to #details" do
+  specify "to #details" do
     expect(get("/groups/#{group_path}/-/details")).to route_to('groups#details', id: group_path)
   end
 
-  it "to #activity" do
+  specify "to #activity" do
     expect(get("/groups/#{group_path}/-/activity")).to route_to('groups#activity', id: group_path)
   end
 
-  it "to #issues" do
+  specify "to #issues" do
     expect(get("/groups/#{group_path}/-/issues")).to route_to('groups#issues', id: group_path)
   end
 
-  it "to #members" do
+  specify "to #members" do
     expect(get("/groups/#{group_path}/-/group_members")).to route_to('groups/group_members#index', group_id: group_path)
   end
 
-  it "to #labels" do
+  specify "to #labels" do
     expect(get("/groups/#{group_path}/-/labels")).to route_to('groups/labels#index', group_id: group_path)
   end
 
-  it "to #milestones" do
+  specify "to #milestones" do
     expect(get("/groups/#{group_path}/-/milestones")).to route_to('groups/milestones#index', group_id: group_path)
   end
 
-  it "to #runner_setup_scripts" do
+  specify "to #runner_setup_scripts" do
     expect(get("/groups/#{group_path}/-/settings/ci_cd/runner_setup_scripts")).to route_to('groups/settings/ci_cd#runner_setup_scripts', group_id: group_path)
   end
 
@@ -71,14 +78,26 @@ RSpec.shared_examples 'groups routing' do
   end
 
   it 'routes to the usage quotas controller' do
-    expect(get("groups/#{group_path}/-/usage_quotas")).to route_to("groups/usage_quotas#index", group_id: group_path)
+    expect(get("groups/#{group_path}/-/usage_quotas")).to route_to("groups/usage_quotas#root", group_id: group_path)
   end
 end
 
-RSpec.describe "Groups", "routing" do
+RSpec.describe "Groups", "routing", feature_category: :groups_and_projects do
   context 'complex group path with dot' do
     include_examples 'groups routing' do
       let(:group_path) { 'complex.group-namegit' }
+    end
+  end
+
+  context 'with path ending with .html' do
+    include_examples 'groups routing' do
+      let(:group_path) { 'group.html' }
+    end
+  end
+
+  context 'with path ending with .json' do
+    include_examples 'groups routing' do
+      let(:group_path) { 'group.json' }
     end
   end
 
@@ -151,6 +170,12 @@ RSpec.describe "Groups", "routing" do
         expect(get('/v2/gitlabhq/dependency_proxy/containers/foo/bar/blobs/abc12345'))
           .to route_to('groups/dependency_proxy_for_containers#blob', group_id: 'gitlabhq', image: 'foo/bar', sha: 'abc12345')
       end
+    end
+  end
+
+  describe Groups::RedirectController, 'routing' do
+    specify 'to #redirect_from_id' do
+      expect(get('/-/g/1')).to route_to('groups/redirect#redirect_from_id', id: '1')
     end
   end
 end

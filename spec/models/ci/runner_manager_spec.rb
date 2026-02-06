@@ -3,6 +3,9 @@
 require 'spec_helper'
 
 RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :model do
+  let_it_be(:group) { create(:group) }
+  let_it_be(:project) { create(:project, group: group) }
+
   it_behaves_like 'having unique enum values'
 
   it_behaves_like 'it has loose foreign keys' do
@@ -18,35 +21,108 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     it { is_expected.to validate_presence_of(:runner) }
     it { is_expected.to validate_presence_of(:system_xid) }
     it { is_expected.to validate_length_of(:system_xid).is_at_most(64) }
+    it { is_expected.to validate_presence_of(:runner_type).on(:create) }
+    it { is_expected.to validate_presence_of(:organization_id).on([:create, :update]) }
     it { is_expected.to validate_length_of(:version).is_at_most(2048) }
     it { is_expected.to validate_length_of(:revision).is_at_most(255) }
     it { is_expected.to validate_length_of(:platform).is_at_most(255) }
     it { is_expected.to validate_length_of(:architecture).is_at_most(255) }
     it { is_expected.to validate_length_of(:ip_address).is_at_most(1024) }
 
-    context 'when runner has config' do
-      it 'is valid' do
-        runner_manager = build(:ci_runner_machine, config: { gpus: "all" })
+    context 'when runner manager is instance type', :aggregate_failures do
+      let(:runner_manager) { build(:ci_runner_machine, runner_type: :instance_type) }
 
-        expect(runner_manager).to be_valid
+      it { expect(runner_manager).to be_valid }
+
+      context 'when organization_id is present' do
+        let(:runner_manager) do
+          build(:ci_runner_machine, runner: build(:ci_runner, organization_id: non_existing_record_id))
+        end
+
+        it 'is invalid' do
+          expect(runner_manager).to be_invalid
+          expect(runner_manager.errors.full_messages).to contain_exactly(
+            'Runner manager cannot have organization_id assigned')
+        end
       end
     end
 
-    context 'when runner has an invalid config' do
-      it 'is invalid' do
-        runner_manager = build(:ci_runner_machine, config: { test: 1 })
+    describe 'config' do
+      context 'when runner has config' do
+        it 'is valid' do
+          runner_manager = build(:ci_runner_machine, config: { gpus: "all" })
 
-        expect(runner_manager).not_to be_valid
+          expect(runner_manager).to be_valid
+        end
+      end
+
+      context 'when runner has an invalid config' do
+        it 'is invalid' do
+          runner_manager = build(:ci_runner_machine, config: { test: 1 })
+
+          expect(runner_manager).not_to be_valid
+        end
+      end
+    end
+
+    describe 'runtime features' do
+      context 'when runner has runtime features' do
+        it 'is valid' do
+          runner_manager = build(:ci_runner_machine, runtime_features: { cancelable: true })
+
+          expect(runner_manager).to be_valid
+        end
+      end
+
+      context 'when runner has an runtime features' do
+        it 'is invalid' do
+          runner_manager = build(:ci_runner_machine, runtime_features: { cancelable: 1 })
+
+          expect(runner_manager).not_to be_valid
+        end
+      end
+    end
+
+    describe 'labels' do
+      context 'when runner has labels' do
+        let(:runner_manager) { build(:ci_runner_machine, labels: labels) }
+
+        context 'with valid labels' do
+          let(:labels) { { 'environment' => 'production', 'team' => 'backend' } }
+
+          it { expect(runner_manager).to be_valid }
+        end
+
+        context 'with empty labels' do
+          let(:labels) { {} }
+
+          it { expect(runner_manager).to be_valid }
+        end
+
+        context 'when no labels are specified' do
+          let(:runner_manager) { build(:ci_runner_machine) }
+
+          it 'defaults to empty hash' do
+            expect(runner_manager.labels).to eq({})
+          end
+        end
       end
     end
   end
 
-  describe 'status scopes' do
-    let_it_be(:runner) { create(:ci_runner, :instance) }
+  describe 'status scopes', :freeze_time do
+    before_all do
+      freeze_time # Freeze time before `let_it_be` runs, so that runner statuses are frozen during execution
+    end
 
-    let_it_be(:offline_runner_manager) { create(:ci_runner_machine, runner: runner, contacted_at: 2.hours.ago) }
-    let_it_be(:online_runner_manager) { create(:ci_runner_machine, runner: runner, contacted_at: 1.second.ago) }
-    let_it_be(:never_contacted_runner_manager) { create(:ci_runner_machine, runner: runner, contacted_at: nil) }
+    after :all do
+      unfreeze_time
+    end
+
+    let_it_be(:runner) { create(:ci_runner, :instance) }
+    let_it_be(:never_contacted_runner_manager) { create(:ci_runner_machine, :unregistered, runner: runner) }
+    let_it_be(:offline_runner_manager) { create(:ci_runner_machine, :offline, runner: runner) }
+    let_it_be(:online_runner_manager) { create(:ci_runner_machine, :almost_offline, runner: runner) }
 
     describe '.online' do
       subject(:runner_managers) { described_class.online }
@@ -101,6 +177,27 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     include_examples 'runner with status scope'
   end
 
+  describe '.ip_address_exists?' do
+    let(:existing_ip_address) { '127.0.0.1' }
+    let(:ip_address_to_find) { existing_ip_address }
+
+    subject { described_class.ip_address_exists?(ip_address_to_find) }
+
+    before do
+      create(:ci_runner_machine, ip_address: existing_ip_address)
+    end
+
+    context 'when the ip address exists' do
+      it { is_expected.to be(true) }
+    end
+
+    context 'when the ip address does not exist' do
+      let(:ip_address_to_find) { '10.0.0.1' }
+
+      it { is_expected.to be(false) }
+    end
+  end
+
   describe '.available_statuses' do
     subject { described_class.available_statuses }
 
@@ -128,6 +225,12 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
 
     context 'with single runner' do
       let(:runner_arg) { runner_a }
+
+      it { is_expected.to contain_exactly(runner_manager_a1, runner_manager_a2) }
+    end
+
+    context 'with numeric id for single runner' do
+      let(:runner_arg) { runner_a.id }
 
       it { is_expected.to contain_exactly(runner_manager_a1, runner_manager_a2) }
     end
@@ -199,21 +302,33 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     end
   end
 
-  describe '.with_running_builds' do
-    subject(:scope) { described_class.with_running_builds }
+  describe '.with_executing_builds' do
+    subject(:scope) { described_class.with_executing_builds }
 
     let_it_be(:runner) { create(:ci_runner) }
-    let_it_be(:runner_manager1) { create(:ci_runner_machine, runner: runner) }
-    let_it_be(:runner_manager2) { create(:ci_runner_machine, runner: runner) }
-
-    before_all do
-      create(:ci_runner_machine_build, runner_manager: runner_manager1,
-        build: create(:ci_build, :success, runner: runner))
-      create(:ci_runner_machine_build, runner_manager: runner_manager2,
-        build: create(:ci_build, :running, runner: runner))
+    let_it_be(:runner_managers_by_status) do
+      Ci::HasStatus::AVAILABLE_STATUSES.index_with { |_status| create(:ci_runner_machine, runner: runner) }
     end
 
-    it { is_expected.to contain_exactly runner_manager2 }
+    let_it_be(:busy_runner_managers) do
+      Ci::HasStatus::EXECUTING_STATUSES.map { |status| runner_managers_by_status[status] }
+    end
+
+    context 'with no builds running' do
+      it { is_expected.to be_empty }
+    end
+
+    context 'with builds' do
+      before_all do
+        Ci::HasStatus::AVAILABLE_STATUSES.each do |status|
+          runner_manager = runner_managers_by_status[status]
+          build = create(:ci_build, status, runner: runner)
+          create(:ci_runner_machine_build, runner_manager: runner_manager, build: build)
+        end
+      end
+
+      it { is_expected.to match_array(busy_runner_managers) }
+    end
   end
 
   describe '.order_id_desc' do
@@ -224,6 +339,17 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
 
     specify { expect(described_class.all).to eq([runner_manager1, runner_manager2]) }
     it { is_expected.to eq([runner_manager2, runner_manager1]) }
+  end
+
+  describe '.order_contacted_at_desc', :freeze_time do
+    subject(:scope) { described_class.order_contacted_at_desc }
+
+    let_it_be(:runner_manager1) { create(:ci_runner_machine, contacted_at: 1.second.ago) }
+    let_it_be(:runner_manager2) { create(:ci_runner_machine, contacted_at: 3.seconds.ago) }
+    let_it_be(:runner_manager3) { create(:ci_runner_machine, contacted_at: nil) }
+    let_it_be(:runner_manager4) { create(:ci_runner_machine, contacted_at: 2.seconds.ago) }
+
+    it { is_expected.to eq([runner_manager1, runner_manager4, runner_manager2, runner_manager3]) }
   end
 
   describe '.with_upgrade_status' do
@@ -328,60 +454,74 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     end
   end
 
-  describe '#status', :freeze_time do
-    let(:runner_manager) { build(:ci_runner_machine, created_at: 8.days.ago) }
+  describe '#status', :freeze_time, :clean_gitlab_redis_cache do
+    let(:runner_manager) { build(:ci_runner_machine, *Array.wrap(traits)) }
 
-    subject { runner_manager.status }
+    subject(:status) { runner_manager.status }
 
-    context 'if never connected' do
-      before do
-        runner_manager.contacted_at = nil
+    context 'if unregistered' do
+      let(:traits) { :unregistered }
+
+      it { is_expected.to eq(:never_contacted) }
+
+      context 'if stale' do
+        let(:traits) { %i[unregistered stale] }
+
+        it { is_expected.to eq(:stale) }
       end
 
-      it { is_expected.to eq(:stale) }
-
       context 'if created recently' do
-        before do
-          runner_manager.created_at = 1.day.ago
-        end
+        let(:traits) { %i[unregistered online] }
 
-        it { is_expected.to eq(:never_contacted) }
+        it { is_expected.to eq(:offline) }
+
+        context "when cache contains 'finished' creation_state" do
+          before do
+            Gitlab::Redis::Cache.with do |redis|
+              cache_key = runner_manager.send(:cache_attribute_key)
+              redis.set(cache_key, Gitlab::Json.dump(creation_state: :finished))
+            end
+          end
+
+          it { is_expected.to eq(:online) }
+        end
       end
     end
 
-    context 'if contacted 1s ago' do
-      before do
-        runner_manager.contacted_at = 1.second.ago
-      end
+    context 'if contacted just now' do
+      let(:traits) { :online }
+
+      it { is_expected.to eq(:online) }
+    end
+
+    context 'if almost offline' do
+      let(:traits) { :almost_offline }
 
       it { is_expected.to eq(:online) }
     end
 
     context 'if contacted recently' do
-      before do
-        runner_manager.contacted_at = 2.hours.ago
-      end
+      let(:traits) { :offline }
 
       it { is_expected.to eq(:offline) }
     end
 
-    context 'if contacted long time ago' do
-      before do
-        runner_manager.contacted_at = 7.days.ago
-      end
+    context 'if stale' do
+      let(:traits) { :stale }
 
       it { is_expected.to eq(:stale) }
     end
   end
 
   describe '#heartbeat', :freeze_time do
-    let(:runner_manager) { create(:ci_runner_machine, version: '15.0.0') }
+    let(:runner_manager) { create(:ci_runner_machine, version: '15.0.0', updated_at: 1.day.ago) }
     let(:executor) { 'shell' }
     let(:values) do
       {
         ip_address: '8.8.8.8',
         architecture: '18-bit',
         config: { gpus: "all" },
+        runtime_features: { cancelable: true },
         executor: executor,
         version: version
       }
@@ -391,9 +531,9 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
       runner_manager.heartbeat(values)
     end
 
-    context 'when database was updated recently' do
+    context 'when database was updated recently', :clean_gitlab_redis_cache do
       before do
-        runner_manager.contacted_at = Time.current
+        runner_manager.update!(contacted_at: Time.current)
       end
 
       context 'when version is changed' do
@@ -409,12 +549,13 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
           expect(Ci::Runners::ProcessRunnerVersionUpdateWorker).to have_received(:perform_async).with(version).once
         end
 
-        it 'updates cache' do
+        it 'updates Redis cache but not database' do
+          expect(runner_manager).not_to receive(:update_columns)
           expect_redis_update
 
-          heartbeat
-
-          expect(runner_manager.runner_version).to be_nil
+          expect { heartbeat }
+            .to not_change { runner_manager.reload.read_attribute(:updated_at) }
+            .and not_change { runner_manager.runner_version }.from(nil)
         end
 
         context 'when fetching runner releases is disabled' do
@@ -436,7 +577,7 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
         end
 
         it 'updates only ip_address' do
-          expect_redis_update(values.merge(contacted_at: Time.current))
+          expect_redis_update(values.merge(contacted_at: Time.current, creation_state: :finished))
 
           heartbeat
         end
@@ -453,10 +594,24 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
           end
         end
       end
+
+      context 'with labels specified' do
+        let(:values) do
+          { labels: { 'environment' => 'production', 'team' => 'backend' } }
+        end
+
+        it 'updates labels' do
+          expect_redis_update(values.merge(contacted_at: Time.current, creation_state: :finished))
+
+          heartbeat
+        end
+      end
     end
 
     context 'when database was not updated recently' do
       before do
+        # Set contacted_at in memory to a value larger than UPDATE_CONTACT_COLUMN_EVERY
+        # This ensures persist_cached_data? returns true
         runner_manager.contacted_at = 2.hours.ago
 
         allow(Ci::Runners::ProcessRunnerVersionUpdateWorker).to receive(:perform_async).with(version)
@@ -488,27 +643,48 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
           expect(Ci::Runners::ProcessRunnerVersionUpdateWorker).to have_received(:perform_async)
             .with(version).once
         end
+
+        context 'when labels are provided' do
+          let(:values) do
+            {
+              ip_address: '8.8.8.8',
+              architecture: '18-bit',
+              config: { gpus: "all" },
+              runtime_features: { cancelable: true },
+              executor: executor,
+              version: version,
+              labels: { 'environment' => 'production', 'team' => 'backend' }
+            }
+          end
+
+          it 'updates labels in database' do
+            expect_redis_update
+            expect { heartbeat }.to change { runner_manager.reload.read_attribute(:labels) }
+              .from({}).to({ 'environment' => 'production', 'team' => 'backend' })
+              .and change { runner_manager.reload.read_attribute(:updated_at) }
+          end
+        end
       end
 
       context 'with unchanged runner_manager version' do
         let(:version) { runner_manager.version }
 
-        it 'does not schedule ci_runner_versions update' do
-          heartbeat
+        it 'does not schedule ci_runner_versions update but updates timestamp' do
+          expect { heartbeat }.to change { runner_manager.reload.read_attribute(:updated_at) }
 
           expect(Ci::Runners::ProcessRunnerVersionUpdateWorker).not_to have_received(:perform_async)
         end
 
-        Ci::Runner::EXECUTOR_NAME_TO_TYPES.each_key do |executor|
+        described_class::EXECUTOR_NAME_TO_TYPES.each_key do |executor|
           context "with #{executor} executor" do
             let(:executor) { executor }
 
-            it 'updates with expected executor type' do
+            it 'updates with expected executor type and current timestamp' do
               expect_redis_update
 
-              heartbeat
-
-              expect(runner_manager.reload.read_attribute(:executor_type)).to eq(expected_executor_type)
+              expect { heartbeat }
+                .to change { runner_manager.reload.read_attribute(:executor_type) }.to(expected_executor_type)
+                .and change { runner_manager.reload.read_attribute(:updated_at) }.to(Time.current)
             end
 
             def expected_executor_type
@@ -520,13 +696,125 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
         context 'with an unknown executor type' do
           let(:executor) { 'some-unknown-type' }
 
-          it 'updates with unknown executor type' do
+          it 'updates with unknown executor type and current timestamp' do
             expect_redis_update
 
-            heartbeat
+            expect { heartbeat }.to change { runner_manager.reload.read_attribute(:updated_at) }
 
             expect(runner_manager.reload.read_attribute(:executor_type)).to eq('unknown')
           end
+        end
+
+        context 'with labels specified' do
+          let(:values) do
+            { labels: { 'environment' => 'production', 'team' => 'backend' } }
+          end
+
+          it 'updates labels and current timestamp' do
+            expect_redis_update
+
+            expect { heartbeat }.to change { runner_manager.reload.read_attribute(:updated_at) }
+
+            expect(runner_manager.reload.read_attribute(:labels)).to eq(values[:labels])
+          end
+        end
+      end
+
+      context 'when no attributes have changed' do
+        let(:version) { runner_manager.version } # Same version as current
+        let(:values) { {} } # No new values
+
+        it 'updates contacted_at in Redis cache' do
+          expect_redis_update(
+            contacted_at: Time.current,
+            creation_state: :finished
+          )
+
+          heartbeat
+        end
+
+        it 'updates contacted_at in database but not updated_at' do
+          expect(runner_manager).to receive(:update_columns).and_call_original
+
+          expect { heartbeat }
+            .to change { runner_manager.reload.read_attribute(:contacted_at) }
+            .and not_change { runner_manager.reload.read_attribute(:updated_at) }
+        end
+      end
+
+      context 'when only contacted_at would change' do
+        let(:version) { runner_manager.version }
+        let(:values) do
+          {
+            # All values match current state
+            version: runner_manager.version,
+            architecture: runner_manager.architecture,
+            ip_address: runner_manager.ip_address
+          }
+        end
+
+        it 'updates contacted_at in Redis cache' do
+          expect_redis_update
+
+          heartbeat
+        end
+
+        it 'updates contacted_at in database but not updated_at' do
+          expect { heartbeat }
+            .to change { runner_manager.reload.read_attribute(:contacted_at) }
+            .and not_change { runner_manager.reload.read_attribute(:updated_at) }
+        end
+
+        it 'does not update unchanged columns in SQL' do
+          recorder = ActiveRecord::QueryRecorder.new do
+            heartbeat
+          end
+
+          update_queries = recorder.log.select { |q| q.include?('UPDATE') }
+          expect(update_queries).not_to include(match(/version/))
+          expect(update_queries).not_to include(match(/architecture/))
+          expect(update_queries).not_to include(match(/ip_address/))
+        end
+      end
+
+      context 'when version changes' do
+        let(:version) { '15.0.1' }
+
+        before do
+          allow(Ci::Runners::ProcessRunnerVersionUpdateWorker).to receive(:perform_async).with(version)
+        end
+
+        it 'updates both Redis cache and database' do
+          expect_redis_update
+
+          expect { heartbeat }
+            .to change { runner_manager.reload.read_attribute(:version) }.to(version)
+            .and change { runner_manager.reload.read_attribute(:updated_at) }
+        end
+
+        it 'calls update_columns' do
+          expect(runner_manager).to receive(:update_columns).and_call_original
+
+          heartbeat
+        end
+      end
+
+      context 'when labels change' do
+        let(:version) { runner_manager.version }
+        let(:values) do
+          {
+            labels: { 'environment' => 'production', 'team' => 'backend' },
+            version: version
+          }
+        end
+
+        it 'updates both Redis cache and database' do
+          expect_redis_update
+
+          expect { heartbeat }
+            .to change { runner_manager.reload.read_attribute(:labels) }
+            .from({}).to({ 'environment' => 'production', 'team' => 'backend' })
+            .and change { runner_manager.reload.read_attribute(:updated_at) }
         end
       end
     end
@@ -545,6 +833,8 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
                           .and change { runner_manager.reload.read_attribute(:architecture) }
                           .and change { runner_manager.reload.read_attribute(:config) }
                           .and change { runner_manager.reload.read_attribute(:executor_type) }
+                          .and change { runner_manager.reload.read_attribute(:runtime_features) }
+                          .and change { runner_manager.reload.read_attribute(:updated_at) }
     end
   end
 
@@ -556,12 +846,26 @@ RSpec.describe Ci::RunnerManager, feature_category: :fleet_visibility, type: :mo
     it { is_expected.to be_empty }
 
     context 'with an existing build' do
-      let!(:build) { create(:ci_build) }
+      let!(:existing_build) { create(:ci_build) }
       let!(:runner_machine_build) do
-        create(:ci_runner_machine_build, runner_manager: runner_manager, build: build)
+        create(:ci_runner_machine_build, runner_manager: runner_manager, build: existing_build)
       end
 
-      it { is_expected.to contain_exactly build }
+      it { is_expected.to contain_exactly existing_build }
+    end
+  end
+
+  describe '#supports_after_script_on_cancel?' do
+    let(:runner_manager) { build_stubbed(:ci_runner_machine) }
+
+    subject { runner_manager.supports_after_script_on_cancel? }
+
+    it { is_expected.to be false }
+
+    context 'when the feature is available' do
+      let(:runner_manager) { build_stubbed(:ci_runner_machine, :cancel_gracefully_feature) }
+
+      it { is_expected.to be true }
     end
   end
 end

@@ -18,7 +18,16 @@ export default {
     TitleArea,
     MetadataItem,
     GlLink,
+    MetadataContainerScanning: () =>
+      import(
+        'ee_component/packages_and_registries/container_registry/explorer/components/list_page/metadata_container_scanning.vue'
+      ),
+    ContainerScanningCounts: () =>
+      import(
+        'ee_component/packages_and_registries/container_registry/explorer/components/list_page/container_scanning_counts.vue'
+      ),
   },
+  inject: ['config'],
   props: {
     expirationPolicy: {
       type: Object,
@@ -28,11 +37,6 @@ export default {
     imagesCount: {
       type: Number,
       default: 0,
-      required: false,
-    },
-    helpPagePath: {
-      type: String,
-      default: '',
       required: false,
     },
     hideExpirationPolicyData: {
@@ -96,7 +100,12 @@ export default {
       <slot name="commands"></slot>
     </template>
     <template v-if="imagesCount" #metadata-count>
-      <metadata-item data-testid="images-count" icon="container-image" :text="imagesCountText" />
+      <metadata-item
+        data-testid="images-count"
+        icon="container-image"
+        :text="imagesCountText"
+        size="xl"
+      />
     </template>
     <template #metadata-exp-policies>
       <metadata-item
@@ -109,6 +118,13 @@ export default {
       <gl-link v-if="showCleanupPolicyLink" class="gl-ml-2" :href="cleanupPoliciesSettingsPath">{{
         $options.i18n.SET_UP_CLEANUP
       }}</gl-link>
+    </template>
+    <template v-if="!config.isGroupPage" #metadata-container-scanning>
+      <metadata-container-scanning />
+    </template>
+
+    <template v-if="!config.isGroupPage">
+      <container-scanning-counts />
     </template>
   </title-area>
 </template>

@@ -19,6 +19,10 @@ module Gitlab
           raise NotImplementedError, 'subclass must implement'
         end
 
+        def print_job_progress(batch_name, job)
+          # Subclasses can implement to print job progress
+        end
+
         def run_jobs(for_duration:)
           jobs_to_run = jobs_by_migration_name
           return if jobs_to_run.empty?
@@ -35,27 +39,41 @@ module Gitlab
 
         private
 
+        # rubocop:disable Rails/Output -- This runs only in pipelines and should output to the pipeline log
         def run_jobs_for_migration(migration_name:, jobs:, run_until:)
-          per_background_migration_result_dir = File.join(@result_dir, migration_name)
+          puts("Sampling jobs for #{migration_name}")
 
+          per_background_migration_result_dir = File.join(@result_dir, migration_name)
           instrumentation = Instrumentation.new(result_dir: per_background_migration_result_dir,
-                                                observer_classes: observers)
+            observer_classes: observers)
 
           batch_names = (1..).each.lazy.map { |i| "batch_#{i}" }
 
+          has_yielded_any = false
           jobs.each do |j|
+            has_yielded_any = true
             break if run_until <= Time.current
+
+            batch_name = batch_names.next
+
+            print_job_progress(batch_name, j)
 
             meta = { job_meta: job_meta(j) }
 
             instrumentation.observe(version: nil,
-                                    name: batch_names.next,
-                                    connection: connection,
-                                    meta: meta) do
+              name: batch_name,
+              connection: connection,
+              meta: meta) do
               run_job(j)
             end
           end
+
+          return if has_yielded_any
+
+          instrumentation.observe_no_batches_processed
+          puts 'No jobs to run'
         end
+        # rubocop:enable Rails/Output
 
         def job_meta(_job)
           {}

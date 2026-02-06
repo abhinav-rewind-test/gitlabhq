@@ -21,6 +21,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
   describe 'GET /deploy_keys' do
     it_behaves_like 'GET request permissions for admin mode'
 
+    it_behaves_like 'authorizing granular token permissions', :read_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { :instance }
+      let(:request) { get api(path, personal_access_token: pat) }
+    end
+
     context 'when unauthenticated' do
       it 'returns authentication error' do
         get api(path)
@@ -34,6 +40,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
 
       def make_api_request(params = {})
         get api(path, personal_access_token: pat), params: params
+      end
+
+      before do
+        allow_next_instance_of(Gitlab::ExclusiveLease) do |instance|
+          allow(instance).to receive(:try_obtain).and_return(true)
+        end
       end
 
       it 'returns all deploy keys' do
@@ -110,12 +122,88 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
     end
   end
 
+  describe 'POST /deploy_keys' do
+    let_it_be(:path) { '/deploy_keys' }
+
+    it_behaves_like 'POST request permissions for admin mode' do
+      let(:params) { attributes_for :another_key }
+      let(:failed_status_code) { :forbidden }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { :instance }
+      let(:request) { post api(path, personal_access_token: pat), params: attributes_for(:another_key) }
+    end
+
+    context 'when unauthenticated' do
+      it 'returns authentication error' do
+        post api(path), params: attributes_for(:another_key)
+
+        expect(response).to have_gitlab_http_status(:unauthorized)
+      end
+    end
+
+    context 'when authenticated as admin' do
+      let_it_be(:pat) { create(:personal_access_token, :admin_mode, user: admin) }
+
+      let(:params) { attributes_for(:another_key) }
+
+      it 'creates a new deploy key' do
+        expect do
+          post api(path, personal_access_token: pat), params: params
+        end.to change { DeployKey.count }.by(1)
+
+        expect(response).to have_gitlab_http_status(:created)
+
+        key = DeployKey.find_by(title: params[:title])
+        expect(key.organization).to eq(current_organization)
+      end
+
+      it 'does not create an invalid ssh key' do
+        post api(path, personal_access_token: pat), params: { title: 'invalid key' }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq('key is missing')
+      end
+
+      it 'does not create a key without title' do
+        post api(path, personal_access_token: pat), params: { key: 'some key' }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq('title is missing')
+      end
+
+      it 'returns Bad Request when deploy key is duplicated' do
+        post api(path, personal_access_token: pat), params: { key: deploy_key.key, title: deploy_key.title }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']['fingerprint_sha256']).to eq(['has already been taken'])
+      end
+
+      it 'accepts optional expires_at parameter' do
+        expires_at = 2.days.since
+        attrs = params.merge(expires_at: expires_at.iso8601)
+        post api(path, personal_access_token: pat), params: attrs
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(Time.parse(json_response['expires_at'])).to be_like_time(expires_at)
+      end
+    end
+  end
+
   describe 'GET /projects/:id/deploy_keys' do
     let(:deploy_key) { create(:deploy_key, public: true, user: admin) }
 
     it_behaves_like 'GET request permissions for admin mode' do
       let(:path) { project_path }
       let(:failed_status_code) { :not_found }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project }
+      let(:request) { get api(project_path, personal_access_token: pat) }
     end
 
     def perform_request
@@ -149,6 +237,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
 
     it_behaves_like 'GET request permissions for admin mode' do
       let(:failed_status_code) { :not_found }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project }
+      let(:request) { get api(path, personal_access_token: pat) }
     end
 
     it 'returns a single key' do
@@ -189,6 +283,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
       let(:failed_status_code) { :not_found }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :create_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project }
+      let(:request) { post api(project_path, personal_access_token: pat), params: attributes_for(:another_key) }
+    end
+
     it 'does not create an invalid ssh key' do
       post api(project_path, admin, admin_mode: true), params: { title: 'invalid key' }
 
@@ -213,6 +313,7 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
       new_key = project.deploy_keys.last
       expect(new_key.key).to eq(key_attrs[:key])
       expect(new_key.user).to eq(admin)
+      expect(new_key.organization).to eq(current_organization)
     end
 
     it 'returns an existing ssh key when attempting to add a duplicate' do
@@ -241,12 +342,13 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
     end
 
     it 'accepts expires_at parameter' do
-      key_attrs = attributes_for(:another_key).merge(expires_at: 2.days.since.iso8601)
+      expires_at = 2.days.since
+      key_attrs = attributes_for(:another_key).merge(expires_at: expires_at.iso8601)
 
       post api(project_path, admin, admin_mode: true), params: key_attrs
 
       expect(response).to have_gitlab_http_status(:created)
-      expect(Time.parse(json_response['expires_at'])).to be_like_time(2.days.since)
+      expect(Time.parse(json_response['expires_at'])).to be_like_time(expires_at)
     end
   end
 
@@ -258,6 +360,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
     it_behaves_like 'PUT request permissions for admin mode' do
       let(:params) { { title: 'new title', can_push: true } }
       let(:failed_status_code) { :not_found }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :update_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project }
+      let(:request) { put api(path, personal_access_token: pat), params: { can_push: true } }
     end
 
     subject do
@@ -426,6 +534,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
       let(:failed_status_code) { :not_found }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project }
+      let(:request) { delete api(path, personal_access_token: pat) }
+    end
+
     it 'removes existing key from project' do
       expect do
         delete api(path, admin, admin_mode: true)
@@ -488,6 +602,12 @@ RSpec.describe API::DeployKeys, :aggregate_failures, feature_category: :continuo
 
     it_behaves_like 'POST request permissions for admin mode' do
       let(:failed_status_code) { :not_found }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :enable_deploy_key do
+      let(:user) { admin }
+      let(:boundary_object) { project2 }
+      let(:request) { post api(path, personal_access_token: pat) }
     end
 
     context 'when the user can admin the project' do

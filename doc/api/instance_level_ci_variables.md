@@ -1,27 +1,38 @@
 ---
 stage: Verify
-group: Pipeline Security
+group: Pipeline Authoring
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Instance-level CI/CD variables API
 ---
 
-# Instance-level CI/CD variables API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+Use this API to interact with [CI/CD variables](../ci/variables/_index.md#for-an-instance) for your instance.
 
 ## List all instance variables
 
-> - `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+{{< history >}}
 
-Get the list of all instance-level variables.
+- `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+
+{{< /history >}}
+
+Lists all instance-level variables. Use the `page` and `per_page` [pagination](rest/_index.md#offset-based-pagination)
+parameters to control the pagination of results.
 
 ```plaintext
 GET /admin/ci/variables
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/admin/ci/variables"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/ci/variables"
 ```
 
 ```json
@@ -47,11 +58,15 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
 ]
 ```
 
-## Show instance variable details
+## Retrieve instance variable details
 
-> - `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+{{< history >}}
 
-Get the details of a specific instance-level variable.
+- `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+
+{{< /history >}}
+
+Retrieves details of a specific instance-level variable.
 
 ```plaintext
 GET /admin/ci/variables/:key
@@ -62,7 +77,9 @@ GET /admin/ci/variables/:key
 | `key`     | string  | Yes      | The `key` of a variable |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/admin/ci/variables/TEST_VARIABLE_1"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/ci/variables/TEST_VARIABLE_1"
 ```
 
 ```json
@@ -79,11 +96,15 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
 
 ## Create instance variable
 
-> - `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+{{< history >}}
 
-Create a new instance-level variable.
+- `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
 
-The [maximum number of instance-level variables](../administration/instance_limits.md#number-of-instance-level-variables) can be changed.
+{{< /history >}}
+
+Creates a new instance-level variable.
+
+The [maximum number of instance-level variables](../administration/instance_limits.md#cicd-variable-limits) can be changed.
 
 ```plaintext
 POST /admin/ci/variables
@@ -100,8 +121,11 @@ POST /admin/ci/variables
 | `variable_type` | string  | No       | The type of the variable. Available types are: `env_var` (default) and `file`. |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/admin/ci/variables" --form "key=NEW_VARIABLE" --form "value=new value"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/ci/variables" \
+  --form "key=NEW_VARIABLE" \
+  --form "value=new value"
 ```
 
 ```json
@@ -118,9 +142,13 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
 
 ## Update instance variable
 
-> - `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+{{< history >}}
 
-Update an instance-level variable.
+- `description` parameter [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418331) in GitLab 16.8.
+
+{{< /history >}}
+
+Updates an instance-level variable.
 
 ```plaintext
 PUT /admin/ci/variables/:key
@@ -137,8 +165,10 @@ PUT /admin/ci/variables/:key
 | `variable_type` | string  | No       | The type of the variable. Available types are: `env_var` (default) and `file`. |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/admin/ci/variables/NEW_VARIABLE" --form "value=updated value"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/ci/variables/NEW_VARIABLE" \
+  --form "value=updated value"
 ```
 
 ```json
@@ -153,9 +183,9 @@ curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" \
 }
 ```
 
-## Remove instance variable
+## Delete instance variable
 
-Remove an instance-level variable.
+Deletes an instance-level variable.
 
 ```plaintext
 DELETE /admin/ci/variables/:key
@@ -166,5 +196,7 @@ DELETE /admin/ci/variables/:key
 | `key`     | string | Yes      | The `key` of a variable |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/admin/ci/variables/VARIABLE_1"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/ci/variables/VARIABLE_1"
 ```

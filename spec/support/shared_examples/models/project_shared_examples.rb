@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.shared_examples 'returns true if project is inactive' do
+RSpec.shared_examples 'returns true if project is dormant' do
   using RSpec::Parameterized::TableSyntax
 
   where(:storage_size, :last_activity_at, :expected_result) do
@@ -21,7 +21,7 @@ RSpec.shared_examples 'returns true if project is inactive' do
     end
 
     it 'returns expected result' do
-      expect(project.inactive?).to eq(expected_result)
+      expect(project.dormant?).to eq(expected_result)
     end
   end
 end
@@ -58,5 +58,53 @@ RSpec.shared_examples 'checks parent group feature flag' do
     end
 
     it { is_expected.to be_truthy }
+  end
+end
+
+RSpec.shared_examples 'checks parent group and self feature flag' do
+  it_behaves_like 'checks parent group feature flag'
+
+  context 'when feature flag is enabled for the project' do
+    before do
+      stub_feature_flags(feature_flag => subject_project)
+    end
+
+    context 'when project belongs to a group' do
+      let(:subject_project) { group_project }
+
+      it { is_expected.to be_truthy }
+    end
+
+    context 'when project does not belong to a group' do
+      let(:subject_project) do
+        create(:project, namespace: create(:namespace))
+      end
+
+      it { is_expected.to be_truthy }
+    end
+  end
+end
+
+RSpec.shared_examples 'refreshes project.lfs_file_locks_changed_epoch value' do
+  it 'updates the lfs_file_locks_changed_epoch value', :clean_gitlab_redis_cache do
+    travel_to(1.hour.ago) { project.refresh_lfs_file_locks_changed_epoch }
+
+    original_epoch = project.lfs_file_locks_changed_epoch
+
+    subject
+
+    expect(project.lfs_file_locks_changed_epoch).to be > original_epoch
+  end
+end
+
+RSpec.shared_examples 'does not refresh project.lfs_file_locks_changed_epoch' do
+  it 'does not update the lfs_file_locks_changed_epoch value', :clean_gitlab_redis_cache do
+    travel_to(1.hour.ago) { project.refresh_lfs_file_locks_changed_epoch }
+
+    original_epoch = project.lfs_file_locks_changed_epoch
+
+    subject
+
+    expect(project.lfs_file_locks_changed_epoch).to eq original_epoch
   end
 end

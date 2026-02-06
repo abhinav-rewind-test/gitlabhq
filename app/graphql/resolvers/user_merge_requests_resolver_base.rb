@@ -5,28 +5,33 @@ module Resolvers
     include ResolvesProject
 
     argument :group_id,
-             type: ::Types::GlobalIDType[::Group],
-             required: false,
-             description: <<~DESC
+      type: ::Types::GlobalIDType[::Group],
+      required: false,
+      description: <<~DESC
                The global ID of the group the authored merge requests should be in.
                Merge requests in subgroups are included.
-             DESC
+      DESC
 
     argument :project_path,
-             type: GraphQL::Types::String,
-             required: false,
-             description: <<~DESC
+      type: GraphQL::Types::String,
+      required: false,
+      description: <<~DESC
                The full-path of the project the authored merge requests should be in.
                Incompatible with projectId.
-             DESC
+      DESC
 
     argument :project_id,
-             type: ::Types::GlobalIDType[::Project],
-             required: false,
-             description: <<~DESC
+      type: ::Types::GlobalIDType[::Project],
+      required: false,
+      description: <<~DESC
                The global ID of the project the authored merge requests should be in.
                Incompatible with projectPath.
-             DESC
+      DESC
+
+    argument :include_archived, GraphQL::Types::Boolean,
+      required: false,
+      default_value: false,
+      description: "Merge requests from archived projects."
 
     attr_reader :project
     alias_method :user, :object
@@ -77,6 +82,7 @@ module Resolvers
     def prepare_args(args)
       args.delete(:project_id)
       args.delete(:project_path)
+      args[:non_archived] = args.delete(:include_archived) != true
     end
   end
 end

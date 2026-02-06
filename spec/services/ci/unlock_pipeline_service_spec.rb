@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::UnlockPipelineService, :unlock_pipelines, :clean_gitlab_redis_shared_state, feature_category: :build_artifacts do
+RSpec.describe Ci::UnlockPipelineService, :unlock_pipelines, :clean_gitlab_redis_shared_state, feature_category: :job_artifacts do
   describe '#execute', :aggregate_failures do
     let(:service) { described_class.new(pipeline) }
 
@@ -37,28 +37,6 @@ RSpec.describe Ci::UnlockPipelineService, :unlock_pipelines, :clean_gitlab_redis
           unlocked_job_artifacts: pipeline.job_artifacts.count,
           unlocked_pipeline_artifacts: pipeline.pipeline_artifacts.count
         )
-      end
-
-      context 'when disable_ci_partition_pruning is disabled' do
-        before do
-          stub_feature_flags(disable_ci_partition_pruning: false)
-        end
-
-        it 'unlocks the pipeline and all its artifacts' do
-          expect { execute }
-            .to change { pipeline.reload.locked }.from('artifacts_locked').to('unlocked')
-            .and change { pipeline.reload.job_artifacts.all?(&:artifact_unlocked?) }.to(true)
-            .and change { pipeline.reload.pipeline_artifacts.all?(&:artifact_unlocked?) }.to(true)
-
-          expect(execute).to eq(
-            status: :success,
-            skipped_already_leased: false,
-            skipped_already_unlocked: false,
-            exec_timeout: false,
-            unlocked_job_artifacts: pipeline.job_artifacts.count,
-            unlocked_pipeline_artifacts: pipeline.pipeline_artifacts.count
-          )
-        end
       end
 
       context 'and pipeline is already unlocked' do
@@ -115,7 +93,9 @@ RSpec.describe Ci::UnlockPipelineService, :unlock_pipelines, :clean_gitlab_redis
           before do
             mock_relation = instance_double('Ci::JobArtifact::ActiveRecord_Relation')
             allow(Ci::JobArtifact).to receive(:where).and_call_original
-            allow(Ci::JobArtifact).to receive(:where).with(id: [last_artifact.id]).and_return(mock_relation)
+            allow(Ci::JobArtifact).to receive(:where)
+                                        .with(id: [last_artifact.id], partition_id: last_artifact.partition_id)
+                                        .and_return(mock_relation)
             allow(mock_relation).to receive(:update_all).and_raise('An error')
           end
 

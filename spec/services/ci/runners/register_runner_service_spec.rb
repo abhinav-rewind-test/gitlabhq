@@ -2,17 +2,17 @@
 
 require 'spec_helper'
 
-RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_category: :fleet_visibility do
+RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', :freeze_time, feature_category: :runner_core do
   let(:registration_token) { 'abcdefg123456' }
   let(:token) {}
   let(:args) { {} }
   let(:runner) { execute.payload[:runner] }
-  let(:allow_runner_registration_token) { true }
 
   before do
-    stub_application_setting(runners_registration_token: registration_token)
-    stub_application_setting(valid_runner_registrars: ApplicationSetting::VALID_RUNNER_REGISTRAR_TYPES)
-    stub_application_setting(allow_runner_registration_token: allow_runner_registration_token)
+    stub_application_setting(
+      runners_registration_token: registration_token,
+      valid_runner_registrars: ApplicationSetting::VALID_RUNNER_REGISTRAR_TYPES
+    )
   end
 
   subject(:execute) { described_class.new(token, args).execute }
@@ -22,6 +22,10 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
       expect(execute).to be_error
       expect(execute.message).to eq 'runner registration disallowed'
       expect(execute.reason).to eq :runner_registration_disallowed
+    end
+
+    it 'does not track runner creation' do
+      expect { execute }.not_to trigger_internal_events('create_ci_runner')
     end
   end
 
@@ -33,6 +37,10 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
       expect(execute.message).to eq 'invalid token supplied'
       expect(execute.http_status).to eq :forbidden
     end
+
+    it 'does not track runner creation' do
+      expect { execute }.not_to trigger_internal_events('create_ci_runner')
+    end
   end
 
   context 'when invalid token is provided' do
@@ -42,6 +50,10 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
       expect(execute).to be_error
       expect(execute.message).to eq 'invalid token supplied'
       expect(execute.http_status).to eq :forbidden
+    end
+
+    it 'does not track runner creation' do
+      expect { execute }.not_to trigger_internal_events('create_ci_runner')
     end
   end
 
@@ -61,8 +73,24 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
         expect(runner).to be_instance_type
       end
 
+      it 'tracks internal events', :clean_gitlab_redis_shared_state do
+        expect { execute }
+          .to trigger_internal_events('create_ci_runner')
+          .with(additional_properties: {
+            label: 'instance_type',
+            property: 'registration_token'
+          }).and increment_usage_metrics(
+            'counts.count_total_ci_runners_created_with_token'
+          )
+      end
+
       context 'when registering instance runners is disallowed' do
-        let(:allow_runner_registration_token) { false }
+        before do
+          stub_application_setting(
+            allow_runner_registration_token: false,
+            runners_registration_token: nil
+          )
+        end
 
         it_behaves_like 'runner registration is disallowed'
       end
@@ -77,19 +105,11 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
             tag_list: %w[tag1 tag2],
             access_level: 'ref_protected',
             maximum_timeout: 600,
-            name: 'some name',
-            version: 'some version',
-            revision: 'some revision',
-            platform: 'some platform',
-            architecture: 'some architecture',
-            ip_address: '10.0.0.1',
-            config: {
-              gpus: 'some gpu config'
-            }
+            name: 'some name'
           }
         end
 
-        it 'creates runner with specified values', :aggregate_failures do
+        it 'creates runner with relevant values', :aggregate_failures do
           expect(execute).to be_success
 
           expect(runner).to be_an_instance_of(::Ci::Runner)
@@ -103,14 +123,23 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
           expect(runner.access_level).to eq args[:access_level]
           expect(runner.maximum_timeout).to eq args[:maximum_timeout]
           expect(runner.name).to eq args[:name]
-          expect(runner.version).to eq args[:version]
-          expect(runner.revision).to eq args[:revision]
-          expect(runner.platform).to eq args[:platform]
-          expect(runner.architecture).to eq args[:architecture]
-          expect(runner.ip_address).to eq args[:ip_address]
 
           expect(Ci::Runner.tagged_with('tag1')).to include(runner)
           expect(Ci::Runner.tagged_with('tag2')).to include(runner)
+        end
+
+        it 'does not track runner creation with maintenance note' do
+          expect { execute }.not_to trigger_internal_events('set_runner_maintenance_note')
+        end
+
+        context 'when maintenance note is specified' do
+          let(:args) { { maintenance_note: 'a note' } }
+
+          it 'tracks runner creation with maintenance note' do
+            expect { execute }
+              .to trigger_internal_events('set_runner_maintenance_note')
+              .with(additional_properties: { label: 'instance_type' })
+          end
         end
       end
 
@@ -129,9 +158,10 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
     end
 
     context 'when project registration token is used' do
-      let_it_be(:project) { create(:project, :with_namespace_settings) }
+      let_it_be_with_reload(:project) { create(:project, :allow_runner_registration_token) }
 
-      let(:token) { project.runners_token }
+      # Ensure we have a valid token to start with (runners_token is nil when allow_runner_registration_token is false)
+      let!(:token) { project.runners_token }
       let(:allow_group_runner_registration_token) { true }
 
       before do
@@ -149,8 +179,39 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
         expect(runner).to be_project_type
       end
 
+      it 'does not track runner creation with maintenance note' do
+        expect { execute }.not_to trigger_internal_events('set_runner_maintenance_note')
+      end
+
+      it 'tracks internal events', :clean_gitlab_redis_shared_state do
+        expect { execute }
+          .to trigger_internal_events('create_ci_runner')
+          .with(project: project, additional_properties: {
+            label: 'project_type',
+            property: 'registration_token'
+          }).and increment_usage_metrics(
+            'redis_hll_counters.count_distinct_project_id_from_create_ci_runner_monthly',
+            'redis_hll_counters.count_distinct_project_id_from_create_ci_runner_weekly'
+          )
+      end
+
+      context 'when maintenance note is specified' do
+        let(:args) { { maintenance_note: 'a note' } }
+
+        it 'tracks runner creation with maintenance note' do
+          expect { execute }
+            .to trigger_internal_events('set_runner_maintenance_note')
+            .with(project: project, additional_properties: { label: 'project_type' })
+        end
+      end
+
       context 'with runner registration disabled at instance level' do
-        let(:allow_runner_registration_token) { false }
+        before do
+          stub_application_setting(
+            allow_runner_registration_token: false,
+            runners_registration_token: nil
+          )
+        end
 
         it_behaves_like 'runner registration is disallowed'
       end
@@ -163,7 +224,7 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
 
       context 'when it exceeds the application limits' do
         before do
-          create(:ci_runner, runner_type: :project_type, projects: [project], contacted_at: 1.second.ago)
+          create(:ci_runner, :project, :online, projects: [project])
           create(:plan_limits, :default_plan, ci_registered_project_runners: 1)
         end
 
@@ -181,7 +242,7 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
 
       context 'when abandoned runners cause application limits to not be exceeded' do
         before do
-          create(:ci_runner, runner_type: :project_type, projects: [project], created_at: 14.months.ago, contacted_at: 13.months.ago)
+          create(:ci_runner, :project, :stale, projects: [project])
           create(:plan_limits, :default_plan, ci_registered_project_runners: 1)
         end
 
@@ -208,9 +269,10 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
     end
 
     context 'when group registration token is used' do
-      let_it_be_with_refind(:group) { create(:group) }
+      let_it_be_with_reload(:group) { create(:group, :allow_runner_registration_token) }
 
-      let(:token) { group.runners_token }
+      # Ensure we have a valid token to start with (runners_token is nil when allow_runner_registration_token is false)
+      let!(:token) { group.runners_token }
       let(:allow_group_runner_registration_token) { true }
 
       before do
@@ -228,8 +290,39 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
         expect(runner).to be_group_type
       end
 
+      it 'does not track runner creation with maintenance note' do
+        expect { execute }.not_to trigger_internal_events('set_runner_maintenance_note')
+      end
+
+      it 'tracks internal events', :clean_gitlab_redis_shared_state do
+        expect { execute }
+          .to trigger_internal_events('create_ci_runner')
+          .with(namespace: group, additional_properties: {
+            label: 'group_type',
+            property: 'registration_token'
+          }).and increment_usage_metrics(
+            'redis_hll_counters.count_distinct_namespace_id_from_create_ci_runner_monthly',
+            'redis_hll_counters.count_distinct_namespace_id_from_create_ci_runner_weekly'
+          )
+      end
+
+      context 'when maintenance note is specified' do
+        let(:args) { { maintenance_note: 'a note' } }
+
+        it 'tracks runner creation with maintenance note' do
+          expect { execute }
+            .to trigger_internal_events('set_runner_maintenance_note')
+            .with(namespace: group, additional_properties: { label: 'group_type' })
+        end
+      end
+
       context 'with runner registration disabled at instance level' do
-        let(:allow_runner_registration_token) { false }
+        before do
+          stub_application_setting(
+            allow_runner_registration_token: false,
+            runners_registration_token: nil
+          )
+        end
 
         it_behaves_like 'runner registration is disallowed'
       end
@@ -242,7 +335,7 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
 
       context 'when it exceeds the application limits' do
         before do
-          create(:ci_runner, runner_type: :group_type, groups: [group], contacted_at: nil, created_at: 1.month.ago)
+          create(:ci_runner, :unregistered, :created_within_stale_deadline, :group, groups: [group])
           create(:plan_limits, :default_plan, ci_registered_group_runners: 1)
         end
 
@@ -260,8 +353,8 @@ RSpec.describe ::Ci::Runners::RegisterRunnerService, '#execute', feature_categor
 
       context 'when abandoned runners cause application limits to not be exceeded' do
         before do
-          create(:ci_runner, runner_type: :group_type, groups: [group], created_at: 4.months.ago, contacted_at: 3.months.ago)
-          create(:ci_runner, runner_type: :group_type, groups: [group], contacted_at: nil, created_at: 4.months.ago)
+          create(:ci_runner, :group, :stale, groups: [group])
+          create(:ci_runner, :group, :stale, :unregistered, groups: [group])
           create(:plan_limits, :default_plan, ci_registered_group_runners: 1)
         end
 

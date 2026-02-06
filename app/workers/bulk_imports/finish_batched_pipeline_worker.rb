@@ -10,13 +10,22 @@ module BulkImports
 
     idempotent!
     deduplicate :until_executing
-    data_consistency :always # rubocop:disable SidekiqLoadBalancing/WorkerDataConsistency
+    data_consistency :sticky
     feature_category :importers
 
     version 2
 
     def perform(pipeline_tracker_id)
-      @tracker = Tracker.find(pipeline_tracker_id)
+      @tracker = Tracker.find_by_id(pipeline_tracker_id)
+      unless @tracker
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          pipeline_tracker_id: pipeline_tracker_id,
+          message: 'Tracker not found'
+        )
+        return
+      end
+
       @context = ::BulkImports::Pipeline::Context.new(tracker)
 
       return unless tracker.batched? && tracker.started?

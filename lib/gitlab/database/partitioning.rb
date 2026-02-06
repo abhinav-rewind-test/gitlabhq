@@ -16,8 +16,16 @@ module Gitlab
           end
         end
 
+        def clear_registered_models
+          @registered_models = Set.new
+        end
+
         def register_tables(tables)
           registered_tables.merge(tables)
+        end
+
+        def clear_registered_tables
+          @registered_tables = Set.new
         end
 
         def sync_partitions_ignore_db_error(analyze: false)
@@ -26,7 +34,12 @@ module Gitlab
           # ignore - happens when Rake tasks yet have to create a database, e.g. for testing
         end
 
-        def sync_partitions(models_to_sync = registered_for_sync, only_on: nil, analyze: true)
+        def sync_partitions(
+          models_to_sync = registered_for_sync,
+          only_on: nil,
+          analyze: true,
+          owner_db_only: Rails.env.production?
+        )
           return if Feature.enabled?(:disallow_database_ddl_feature_flags, type: :ops)
 
           return unless Feature.enabled?(:partition_manager_sync_partitions, type: :ops)
@@ -37,8 +50,9 @@ module Gitlab
             PartitionManager.new(model).sync_partitions(analyze: analyze)
           end
 
-          unless only_on
+          unless owner_db_only || only_on
             models_to_sync.each do |model|
+              # Skip because Gitlab::Database::EachDatabase already synced this to all dbs
               next if model < ::Gitlab::Database::SharedModel && !(model < TableWithoutModel)
 
               model_connection_name = model.connection_db_config.name

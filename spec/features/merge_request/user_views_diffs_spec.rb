@@ -15,7 +15,7 @@ RSpec.describe 'User views diffs', :js, feature_category: :code_review_workflow 
 
     wait_for_requests
 
-    find('.js-toggle-tree-list').click
+    find_by_testid('file-tree-button').click
   end
 
   shared_examples 'unfold diffs' do
@@ -52,15 +52,15 @@ RSpec.describe 'User views diffs', :js, feature_category: :code_review_workflow 
     find('.js-show-diff-settings').click
 
     expect(page).to have_css('.tab-content #diffs.active')
-    expect(page).to have_css('#parallel-diff-btn', count: 1)
-    expect(page).to have_css('#inline-diff-btn', count: 1)
+    expect(page).to have_selector('li', text: 'Side-by-side')
+    expect(page).to have_selector('li', text: 'Inline')
   end
 
   it 'hides loading spinner after load' do
     expect(page).not_to have_selector('.mr-loading-status .loading', visible: true)
   end
 
-  it 'expands all diffs', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/333628' do
+  it 'expands all diffs', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9314' do
     first('.diff-toggle-caret').click
 
     expect(page).to have_button('Expand all')
@@ -83,11 +83,11 @@ RSpec.describe 'User views diffs', :js, feature_category: :code_review_workflow 
     end
 
     it 'toggles container class' do
-      expect(page).not_to have_css('.content-wrapper > .container-fluid.container-limited')
+      expect(page).not_to have_css('.project-highlight-puc.container-fluid.container-limited')
 
       click_link 'Commits'
 
-      expect(page).to have_css('.content-wrapper > .container-fluid.container-limited')
+      expect(page).to have_css('.project-highlight-puc.container-fluid.container-limited')
     end
 
     include_examples 'unfold diffs'

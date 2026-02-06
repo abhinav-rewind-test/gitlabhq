@@ -1,12 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Rename table without downtime
 ---
-
-# Rename table without downtime
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/54354) in GitLab 13.12.
 
 With our database helper methods built into GitLab, it's possible to rename a database table without downtime.
 
@@ -55,21 +52,26 @@ Note that, in this release (N.M), the `tickets` database table does not exist ye
 
 ### Release N.M+1: Rename the database table
 
-Consider the next release as "Release N.M".
+Consider the next release as "Release N.M+1".
 
-Execute a standard migration (not a post-migration):
+1. Execute a standard migration (not a post-migration):
 
-```ruby
-  def up
-    rename_table_safely(:issues, :tickets)
-  end
+   ```ruby
+      def up
+        rename_table_safely(:issues, :tickets)
+      end
 
-  def down
-    undo_rename_table_safely(:issues, :tickets)
-  end
-```
+      def down
+        undo_rename_table_safely(:issues, :tickets)
+      end
+    ```
 
-**Important notes:**
+<!-- vale gitlab_base.Substitutions = NO -->
+1. Rename the table's [dictionary file](database_dictionary.md) (under `db/docs`) with the new name (like `db/docs/tickets.yml` in this example). Update `introduced_by_url` and `milestone` attributes.
+<!-- vale gitlab_base.Substitutions = YES -->
+1. Create an entry for the interim view (with the old table's name) in `db/docs/deleted_views`. This is because the view gets deleted by [`finalize_table_rename`](https://gitlab.com/gitlab-org/gitlab/-/blob/33dabf39e75ef01cd0914ed44f0954c8b72d5fe3/lib/gitlab/database/rename_table_helpers.rb#L20) in the post-deployment migration of the same merge request.
+
+**Important notes**:
 
 - Let other developers know that the table is going to be renamed.
   - Ping the `@gl-database` group in your merge request.
@@ -86,6 +88,14 @@ Execute a standard migration (not a post-migration):
 - As the index names might change, verify that the model does not use bulk insert
   (for example, `insert_all` and `upsert_all`) with the `unique_by: index_name` option.
   Renaming an index while using these methods may break functionality.
+- For tables with composite primary keys: The database view does not preserve composite primary key metadata. Explicitly set `self.primary_key` in the model before deploying the rename migration:
+
+```ruby
+  class ModelName < ApplicationRecord
+    self.primary_key = [:column1, :column2, :column3]
+  end
+```
+
 - Modify the model code to point to the new database table. Do this by
   renaming the model directly or setting the `self.table_name` variable.
 
@@ -103,7 +113,7 @@ At this point, we don't have applications using the old database table name in t
      end
    ```
 
-1. Additionally the table definition from `TABLES_TO_BE_RENAMED` **must** be removed.
+1. The table name **must** be removed from `TABLES_TO_BE_RENAMED`.
 
    To do so, edit the `TABLES_TO_BE_RENAMED` constant in `lib/gitlab/database.rb`:
 

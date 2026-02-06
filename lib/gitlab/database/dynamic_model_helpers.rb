@@ -5,18 +5,25 @@ module Gitlab
     module DynamicModelHelpers
       BATCH_SIZE = 1_000
 
-      def define_batchable_model(table_name, connection:, primary_key: nil)
-        klass = Class.new(ActiveRecord::Base) do
+      def define_batchable_model(table_name, connection:, primary_key: nil, base_class: ActiveRecord::Base)
+        klass = Class.new(base_class) do
           include EachBatch
 
           self.table_name = table_name
           self.inheritance_column = :_type_disabled
+
+          # The method is used by ActiveRecord for its schema cache.
+          # We need to override this to point to our given connection.
+          def self.connection_pool
+            connection.pool
+          end
         end
 
         klass.primary_key = primary_key if connection.primary_keys(table_name).length > 1
         klass.connection = connection
         klass
       end
+      module_function :define_batchable_model
 
       def each_batch(table_name, connection:, scope: ->(table) { table.all }, of: BATCH_SIZE, **opts)
         if transaction_open?

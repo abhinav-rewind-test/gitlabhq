@@ -2,6 +2,7 @@
 
 module Ci
   class BridgePolicy < CommitStatusPolicy
+    include Ci::ProcessablePolicy
     include Ci::DeployablePolicy
 
     condition(:can_update_downstream_branch) do
@@ -13,6 +14,6 @@ module Ci
                             .can_update_branch?(@subject.target_revision_ref)
     end
 
-    rule { can_update_downstream_branch }.enable :play_job
+    rule { ~can_update_downstream_branch }.prevent :play_job
   end
 end

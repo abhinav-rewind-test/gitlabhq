@@ -25,6 +25,7 @@ class LabelsFinder < UnionFinder
     items = by_subscription(items)
     items = by_search(items)
     items = by_locked_labels(items)
+    items = by_archived(items)
 
     items = items.with_preloaded_container if @preload_parent_association
     sort(items)
@@ -54,9 +55,7 @@ class LabelsFinder < UnionFinder
         end
       end
     else
-      if group?
-        item_ids << Label.where(group_id: group_ids_for(group))
-      end
+      item_ids << Label.where(group_id: group_ids_for(group)) if group?
 
       item_ids << Label.where(group_id: projects.group_ids)
       item_ids << Label.where(project_id: ids_user_can_read_labels(projects)) unless only_group_labels?
@@ -66,21 +65,11 @@ class LabelsFinder < UnionFinder
   end
   # rubocop: enable CodeReuse/ActiveRecord
 
-  def similarity_enabled
-    if project?
-      Feature.enabled?(:label_similarity_sort, project)
-    else
-      Feature.enabled?(:label_similarity_sort, group)
-    end
-  end
-
   # rubocop: disable CodeReuse/ActiveRecord
   def sort(items)
     return items.reorder(title: :asc) unless params[:sort]
 
-    if params[:sort] == 'relevance' && params[:search].present? && similarity_enabled
-      return items.sorted_by_similarity_desc(params[:search])
-    end
+    return items.sorted_by_similarity_desc(params[:search]) if params[:sort] == 'relevance' && params[:search].present?
 
     items.order_by(params[:sort])
   end
@@ -98,11 +87,28 @@ class LabelsFinder < UnionFinder
   def by_search(labels)
     return labels unless search?
 
-    labels.search(params[:search])
+    labels.search(params[:search], search_in: params[:search_in])
   end
 
   def by_subscription(labels)
     labels.optionally_subscribed_by(subscriber_id)
+  end
+
+  def by_archived(labels)
+    group_actor = group? ? group : project&.group
+
+    return labels unless Feature.enabled?(:labels_archive, group_actor)
+    return labels unless filter_by_archived?
+
+    # When called from GraphQL, :archived will be boolean.
+    # When called from LabelsController, :archived will be a string ('true' / 'false')
+    archived = Gitlab::Utils.to_boolean(params[:archived])
+
+    labels.archived(archived)
+  end
+
+  def filter_by_archived?
+    params.has_key?(:archived) && [nil, ''].exclude?(params[:archived])
   end
 
   def by_locked_labels(items)
@@ -152,7 +158,6 @@ class LabelsFinder < UnionFinder
     @project
   end
 
-  # rubocop: disable CodeReuse/ActiveRecord
   def projects
     return @projects if defined?(@projects)
 
@@ -170,12 +175,11 @@ class LabelsFinder < UnionFinder
                   end
     end
 
-    @projects = @projects.where(id: params[:project_ids]) if projects?
-    @projects = @projects.reorder(nil)
+    @projects = @projects.id_in(params[:project_ids]) if projects?
+    @projects = @projects.without_order
 
     @projects
   end
-  # rubocop: enable CodeReuse/ActiveRecord
 
   def read_permission
     :read_label

@@ -3,12 +3,17 @@ import { GlBadge } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapGetters } from 'vuex';
 import SafeHtml from '~/vue_shared/directives/safe_html';
-import { integrationFormSectionComponents, billingPlanNames } from '~/integrations/constants';
+import {
+  integrationFormSectionComponents,
+  billingPlanNames,
+} from 'ee_else_ce/integrations/constants';
+import SettingsSection from '~/vue_shared/components/settings/settings_section.vue';
 
 export default {
   name: 'IntegrationFormSection',
   components: {
     GlBadge,
+    SettingsSection,
     IntegrationSectionConfiguration: () =>
       import(
         /* webpackChunkName: 'integrationSectionConfiguration' */ '~/integrations/edit/components/sections/configuration.vue'
@@ -21,9 +26,17 @@ export default {
       import(
         /* webpackChunkName: 'integrationSectionJiraIssues' */ '~/integrations/edit/components/sections/jira_issues.vue'
       ),
+    IntegrationSectionJiraIssueCreation: () =>
+      import(
+        /* webpackChunkName: 'integrationSectionJiraIssues' */ '~/integrations/edit/components/sections/jira_issue_creation.vue'
+      ),
     IntegrationSectionJiraTrigger: () =>
       import(
         /* webpackChunkName: 'integrationSectionJiraTrigger' */ '~/integrations/edit/components/sections/jira_trigger.vue'
+      ),
+    IntegrationSectionJiraVerification: () =>
+      import(
+        /* webpackChunkName: 'integrationSectionJiraVerification' */ 'ee_component/integrations/edit/components/sections/jira_verification.vue'
       ),
     IntegrationSectionTrigger: () =>
       import(
@@ -37,13 +50,17 @@ export default {
       import(
         /* webpackChunkName: 'IntegrationSectionGooglePlay' */ '~/integrations/edit/components/sections/google_play.vue'
       ),
-    IntegrationSectionGoogleCloudArtifactRegistry: () =>
+    IntegrationSectionGoogleArtifactManagement: () =>
       import(
-        /* webpackChunkName: 'IntegrationSectionGoogleCloudArtifactRegistry' */ 'ee_component/integrations/edit/components/sections/google_cloud_artifact_registry.vue'
+        /* webpackChunkName: 'IntegrationSectionGoogleArtifactManagement' */ 'ee_component/integrations/edit/components/sections/google_artifact_management.vue'
       ),
     IntegrationSectionGoogleCloudIAM: () =>
       import(
         /* webpackChunkName: 'IntegrationSectionGoogleCloudIAM' */ 'ee_component/integrations/edit/components/sections/google_cloud_iam.vue'
+      ),
+    IntegrationSectionAmazonQ: () =>
+      import(
+        /* webpackChunkName: 'IntegrationSectionAmazonQ' */ 'ee_component/integrations/edit/components/sections/amazon_q.vue'
       ),
   },
   directives: {
@@ -72,22 +89,26 @@ export default {
 };
 </script>
 <template>
-  <section>
-    <h4 class="gl-mt-0">
-      {{ section.title
-      }}<gl-badge
+  <settings-section
+    heading-classes="gl-inline-flex gl-flex-wrap gl-gap-x-3 gl-gap-y-2 gl-items-center"
+  >
+    <template v-if="section.title" #heading>
+      {{ section.title }}
+      <gl-badge
         v-if="section.plan"
         :href="propsSource.aboutPricingUrl"
         target="_blank"
         rel="noopener noreferrer"
         variant="tier"
         icon="license"
-        class="gl-ml-3"
       >
         {{ $options.billingPlanNames[section.plan] }}
       </gl-badge>
-    </h4>
-    <p v-safe-html="section.description"></p>
+    </template>
+
+    <template #description>
+      <span v-safe-html="section.description"></span>
+    </template>
 
     <component
       :is="$options.integrationFormSectionComponents[section.type]"
@@ -96,5 +117,5 @@ export default {
       @toggle-integration-active="$emit('toggle-integration-active', $event)"
       @request-jira-issue-types="$emit('request-jira-issue-types', $event)"
     />
-  </section>
+  </settings-section>
 </template>

@@ -3,7 +3,9 @@
 require 'spec_helper'
 
 RSpec.describe NotificationRecipient, feature_category: :team_planning do
-  let(:user) { create(:user) }
+  include ExternalAuthorizationServiceHelpers
+
+  let_it_be_with_reload(:user) { create(:user) }
   let(:project) { create(:project, namespace: user.namespace) }
   let(:target) { create(:issue, project: project) }
 
@@ -11,6 +13,16 @@ RSpec.describe NotificationRecipient, feature_category: :team_planning do
 
   describe '#notifiable?' do
     let(:recipient) { described_class.new(user, :mention, target: target, project: project) }
+
+    context 'when user has a composite identity' do
+      before do
+        user.update!(composite_identity_enforced: true, user_type: :service_account)
+      end
+
+      it 'returns false' do
+        expect(recipient.notifiable?).to eq false
+      end
+    end
 
     context 'when emails are disabled' do
       it 'returns false if group disabled' do
@@ -40,7 +52,7 @@ RSpec.describe NotificationRecipient, feature_category: :team_planning do
       end
     end
 
-    context 'when recipient email is blocked', :clean_gitlab_redis_rate_limiting do
+    context 'when recipient email is blocked', :freeze_time, :clean_gitlab_redis_rate_limiting do
       before do
         allow(Gitlab::ApplicationRateLimiter).to receive(:rate_limits)
           .and_return(
@@ -60,11 +72,9 @@ RSpec.describe NotificationRecipient, feature_category: :team_planning do
       end
 
       context 'with temporary failures' do
-        before do
-          2.times { Gitlab::ApplicationRateLimiter.throttled?(:temporary_email_failure, scope: user.email) }
-        end
-
         it 'returns false' do
+          2.times { Gitlab::ApplicationRateLimiter.throttled?(:temporary_email_failure, scope: user.email) }
+
           expect(recipient.notifiable?).to eq(false)
         end
       end
@@ -76,9 +86,25 @@ RSpec.describe NotificationRecipient, feature_category: :team_planning do
       allow(user).to receive(:can?).and_call_original
     end
 
-    context 'user cannot read cross project' do
+    context 'when external authorization service denies access' do
+      let(:target) { project }
+
+      before do
+        enable_external_authorization_service_check
+        external_service_deny_access(user, project)
+      end
+
       it 'returns false' do
-        expect(user).to receive(:can?).with(:read_cross_project).and_return(false)
+        expect(recipient.has_access?).to eq false
+      end
+    end
+
+    context 'user cannot read project' do
+      let(:target) { project }
+
+      it 'returns false' do
+        expect(user).to receive(:can?).with(:read_project, project).and_return(false)
+        expect(user).not_to receive(:can?).with(:read_cross_project)
         expect(recipient.has_access?).to eq false
       end
     end
@@ -150,6 +176,52 @@ RSpec.describe NotificationRecipient, feature_category: :team_planning do
         it 'considers notification setting from lowest group member in hierarchy' do
           expect(subject.notification_setting.source).to eq(moved_group)
         end
+      end
+    end
+  end
+
+  describe '#custom_enabled?' do
+    let(:notification_setting) { user.notification_settings_for(project) }
+
+    where(:custom_action, :setting_updates, :expected_result, :description) do
+      [
+        [:new_issue, { new_issue: true }, true, 'issue event enabled'],
+        [:new_issue, { new_issue: false }, false, 'issue event disabled'],
+        [:new_work_item, { new_issue: true }, true, 'issue event enabled'],
+        [:new_work_item, { new_issue: false }, false, 'issue event disabled'],
+        [:close_issue, { close_issue: true }, true, 'close_issue enabled'],
+        [:close_work_item, { close_issue: true }, true, 'close_issue enabled'],
+        [:reassign_issue, { reassign_issue: true }, true, 'reassign_issue enabled'],
+        [:reassign_work_item, { reassign_issue: true }, true, 'reassign_issue enabled'],
+        [:reopen_issue, { reopen_issue: true }, true, 'reopen_issue enabled'],
+        [:reopen_work_item, { reopen_issue: true }, true, 'reopen_issue enabled'],
+        [:issue_due, { issue_due: true }, true, 'issue_due enabled'],
+        [:work_item_due, { issue_due: true }, true, 'issue_due enabled'],
+        [:new_epic, { new_epic: true }, true, 'epic event enabled'],
+        [:new_epic, { new_epic: false, new_issue: true }, true, 'epic event disabled but issue enabled'],
+        [:new_epic, { new_epic: false, new_issue: false }, false, 'both epic and issue events disabled'],
+        [:fixed_pipeline, { success_pipeline: true }, true, 'success_pipeline enabled']
+      ]
+    end
+
+    with_them do
+      let(:recipient) do
+        described_class.new(
+          user,
+          :custom,
+          custom_action: custom_action,
+          target: target,
+          project: project
+        )
+      end
+
+      before do
+        user.notification_settings_for(project).custom!
+        notification_setting.update!(setting_updates)
+      end
+
+      it "for action #{params[:custom_action]} returns #{params[:expected_result]} when #{params[:description]}" do
+        expect(recipient.custom_enabled?).to eq(expected_result)
       end
     end
   end

@@ -8,7 +8,8 @@ import './commons';
 import './behaviors';
 
 // lib/utils
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
+import { setGlTooltipDefaultContainer } from '@gitlab/ui';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { initRails } from '~/lib/utils/rails_ujs';
 import * as popovers from '~/popovers';
 import * as tooltips from '~/tooltips';
@@ -28,12 +29,17 @@ import initPersistentUserCallouts from './persistent_user_callouts';
 import { initUserTracking, initDefaultTrackers } from './tracking';
 import GlFieldErrors from './gl_field_errors';
 import initUserPopovers from './user_popovers';
+import initWorkItemAttributePopovers from './work_item_attribute_popovers';
 import initBroadcastNotifications from './broadcast_notification';
 import { initCopyCodeButton } from './behaviors/copy_code';
 import initGitlabVersionCheck from './gitlab_version_check';
-
+import { initExpireSessionModal } from './authentication/sessions';
+import initPanelHeightCalc from './panel_height_calc';
 import 'ee_else_ce/main_ee';
 import 'jh_else_ce/main_jh';
+
+// a custom container helps us avoid performance issues from inserting tooltips as the last element on <body>
+setGlTooltipDefaultContainer('#js-tooltips-container');
 
 logHelloDeferred();
 
@@ -71,7 +77,7 @@ window.addEventListener(
 
 gl.lazyLoader = new LazyLoader({
   scrollContainer: window,
-  observerNode: '#content-body',
+  observerNode: 'body',
 });
 
 initRails();
@@ -85,11 +91,14 @@ function deferredInitialisation() {
   initLogoAnimation();
   initPortraitLogoDetection();
   initUserPopovers();
+  initWorkItemAttributePopovers();
   initBroadcastNotifications();
   initPersistentUserCallouts();
   initDefaultTrackers();
   initCopyCodeButton();
   initGitlabVersionCheck();
+  initExpireSessionModal();
+  initPanelHeightCalc();
 
   addSelectOnFocusBehaviour('.js-select-on-focus');
 
@@ -113,7 +122,7 @@ function deferredInitialisation() {
 
 const $body = $('body');
 const $document = $(document);
-const bootstrapBreakpoint = bp.getBreakpointSize();
+const currentBreakpoint = PanelBreakpointInstance.getBreakpointSize();
 
 initUserTracking();
 initLayoutNav();
@@ -139,7 +148,7 @@ $body.on('click', 'a[href^="#"]', function clickHashLinkCallback() {
 const isBoardsOrMR = /((projects|groups):boards:show|projects:merge_requests:)/.test(
   document.body.dataset.page,
 );
-if (!isBoardsOrMR && (bootstrapBreakpoint === 'sm' || bootstrapBreakpoint === 'xs')) {
+if (!isBoardsOrMR && (currentBreakpoint === 'sm' || currentBreakpoint === 'xs')) {
   const $rightSidebar = $('.js-right-sidebar[data-auto-collapse]');
   const $layoutPage = $('.layout-page');
 
@@ -227,7 +236,7 @@ requestIdleCallback(deferredInitialisation);
 
 // initialize hiding of tooltip after clicking on dropdown's links and buttons
 document
-  .querySelectorAll('a[data-toggle="dropdown"], button[data-toggle="dropdown"]')
+  .querySelectorAll('a[data-toggle="dropdown"], button[data-toggle="dropdown"], a.has-tooltip')
   .forEach((element) => {
     element.addEventListener('click', () => tooltips.hide(element));
   });

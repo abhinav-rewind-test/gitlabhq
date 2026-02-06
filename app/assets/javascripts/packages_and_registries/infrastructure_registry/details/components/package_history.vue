@@ -38,11 +38,6 @@ export default {
       required: true,
     },
   },
-  data() {
-    return {
-      showDescription: false,
-    };
-  },
   computed: {
     pipelines() {
       return this.packageEntity.pipelines || [];
@@ -77,7 +72,7 @@ export default {
 
 <template>
   <div class="issuable-discussion">
-    <h3 class="gl-font-lg" data-testid="title">{{ __('History') }}</h3>
+    <h3 class="gl-text-lg" data-testid="title">{{ __('History') }}</h3>
     <ul class="timeline main-notes-list notes gl-mb-4" data-testid="timeline">
       <history-item icon="clock" data-testid="created-on">
         <gl-sprintf :message="$options.i18n.createdOn">

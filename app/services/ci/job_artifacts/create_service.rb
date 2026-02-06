@@ -6,6 +6,8 @@ module Ci
       include Gitlab::Utils::UsageData
 
       LSIF_ARTIFACT_TYPE = 'lsif'
+      SCIP_ARTIFACT_TYPE = 'scip'
+      ARTIFACT_HASH_FUNCTIONS = %w[sha256].freeze
 
       OBJECT_STORAGE_ERRORS = [
         Errno::EIO,
@@ -23,14 +25,20 @@ module Ci
         result = validate_requirements(artifact_type: artifact_type, filesize: filesize)
         return result unless result[:status] == :success
 
-        headers = JobArtifactUploader.workhorse_authorize(
+        authorize_params = {
           has_length: false,
           maximum_size: max_size(artifact_type),
           use_final_store_path: true,
-          final_store_path_root_id: project.id
-        )
+          final_store_path_config: { root_hash: project.id }
+        }
 
-        if lsif?(artifact_type)
+        if Feature.enabled?(:skip_unused_job_artifact_hash_calculation, project)
+          authorize_params[:upload_hash_functions] = ARTIFACT_HASH_FUNCTIONS
+        end
+
+        headers = JobArtifactUploader.workhorse_authorize(**authorize_params)
+
+        if lsif?(artifact_type) || scip?(artifact_type)
           headers[:ProcessLsif] = true
           track_usage_event('i_source_code_code_intelligence', project.id)
         end
@@ -64,6 +72,7 @@ module Ci
 
       def validate_requirements(artifact_type:, filesize:)
         return too_large_error if too_large?(artifact_type, filesize)
+        return scip_not_enabled_error if scip_not_enabled?(artifact_type)
 
         success
       end
@@ -76,12 +85,24 @@ module Ci
         type == LSIF_ARTIFACT_TYPE
       end
 
+      def scip?(type)
+        type == SCIP_ARTIFACT_TYPE
+      end
+
       def max_size(type)
         Ci::JobArtifact.max_artifact_size(type: type, project: project)
       end
 
+      def scip_not_enabled?(type)
+        type == SCIP_ARTIFACT_TYPE && !Feature.enabled?(:scip_code_intelligence, project)
+      end
+
       def too_large_error
         error('file size has reached maximum size limit', :payload_too_large)
+      end
+
+      def scip_not_enabled_error
+        error('SCIP artifact type is not enabled', :bad_request)
       end
 
       def build_artifact(artifacts_file, params, metadata_file)
@@ -108,16 +129,21 @@ module Ci
       end
 
       def build_metadata_artifact(job_artifact, metadata_file)
+        exposed_as = job.options.dig(:artifacts, :expose_as)
+        exposed_paths = job.options.dig(:artifacts, :paths) if exposed_as
+
         Ci::JobArtifact.new(
-          job: job_artifact.job,
-          project: job_artifact.project,
+          job: job,
+          project: project,
           expire_at: job_artifact.expire_at,
           locked: job_artifact.locked,
           file: metadata_file,
           file_type: :metadata,
           file_format: :gzip,
           file_sha256: metadata_file.sha256,
-          accessibility: job_artifact.accessibility
+          accessibility: job_artifact.accessibility,
+          exposed_as: exposed_as,
+          exposed_paths: exposed_paths
         )
       end
 

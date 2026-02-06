@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# This concern is specifically for /search related endpoints(SearchController). Avoid using this for other controllers.
 module SearchRateLimitable
   extend ActiveSupport::Concern
 
@@ -21,10 +22,6 @@ module SearchRateLimitable
   def safe_search_scope
     # Sometimes search scope can have abusive length or invalid keyword. We don't want
     # to send those to redis for rate limit checks, so we guard against that here.
-    params[:scope] unless abuse_detected?
-  end
-
-  def abuse_detected?
-    Gitlab::Search::Params.new(params, detect_abuse: true).abusive?
+    params[:scope] unless Gitlab::Search::Params.new(params).abusive?
   end
 end

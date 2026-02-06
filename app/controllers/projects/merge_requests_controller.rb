@@ -13,13 +13,14 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   include Gitlab::Cache::Helpers
   include MergeRequestsHelper
   include ParseCommitDate
+  include RapidDiffs::Resource
 
   prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:rss) }
   skip_before_action :merge_request, only: [:index, :bulk_update, :export_csv]
-  before_action :apply_diff_view_cookie!, only: [:show, :diffs]
-  before_action :disable_query_limiting, only: [:assign_related_issues, :update]
+  before_action :apply_diff_view_cookie!, only: [:show, :diffs, :rapid_diffs]
+  before_action :disable_query_limiting, only: [:assign_related_issues, :update, :show]
   before_action :authorize_update_issuable!, only: [:close, :edit, :update, :remove_wip, :sort]
-  before_action :authorize_read_actual_head_pipeline!, only: [
+  before_action :authorize_read_diff_head_pipeline!, only: [
     :test_reports,
     :exposed_artifacts,
     :coverage_reports,
@@ -33,31 +34,31 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   before_action :authenticate_user!, only: [:assign_related_issues]
   before_action :check_user_can_push_to_source_branch!, only: [:rebase]
 
-  before_action only: :index do
-    push_frontend_feature_flag(:mr_approved_filter, type: :ops)
-    push_frontend_feature_flag(:mr_merge_user_filter, type: :development)
+  before_action only: [:index, :show] do
+    push_frontend_feature_flag(:show_merge_request_status_draft, current_user)
   end
 
-  before_action only: [:show, :diffs] do
-    push_frontend_feature_flag(:core_security_mr_widget_counts, project)
-    push_frontend_feature_flag(:mr_experience_survey, project)
-    push_frontend_feature_flag(:ci_job_failures_in_mr, project)
+  before_action only: [:show, :diffs, :rapid_diffs, :reports] do
     push_frontend_feature_flag(:mr_pipelines_graphql, project)
+    push_frontend_feature_flag(:ci_pipeline_creation_requests_realtime, project)
+    push_frontend_feature_flag(:ci_pipeline_statuses_updated_subscription, project)
     push_frontend_feature_flag(:notifications_todos_buttons, current_user)
-    push_frontend_feature_flag(:merge_blocked_component, current_user)
-    push_frontend_feature_flag(:mention_autocomplete_backend_filtering, project)
-    push_frontend_feature_flag(:pinned_file, project)
   end
 
-  around_action :allow_gitaly_ref_name_caching, only: [:index, :show, :diffs, :discussions]
+  before_action do
+    push_frontend_feature_flag(:merge_widget_stop_polling, current_user)
+  end
 
-  after_action :log_merge_request_show, only: [:show, :diffs]
+  around_action :allow_gitaly_ref_name_caching, only: [:index, :show, :diffs, :rapid_diffs, :discussions]
+
+  after_action :log_merge_request_show, only: [:show, :diffs, :rapid_diffs]
 
   feature_category :code_review_workflow, [
     :assign_related_issues, :bulk_update, :cancel_auto_merge,
     :commit_change_content, :commits, :context_commits, :destroy,
     :discussions, :edit, :index, :merge, :rebase, :remove_wip,
-    :show, :diffs, :toggle_award_emoji, :toggle_subscription, :update
+    :show, :diffs, :rapid_diffs, :toggle_award_emoji, :toggle_subscription, :update,
+    :versions
   ]
 
   feature_category :code_testing, [:test_reports, :coverage_reports]
@@ -65,12 +66,14 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   feature_category :code_testing, [:accessibility_reports]
   feature_category :infrastructure_as_code, [:terraform_reports]
   feature_category :continuous_integration, [:pipeline_status, :pipelines, :exposed_artifacts]
+  feature_category :continuous_delivery, [:ci_environments_status]
 
   urgency :high, [:export_csv]
   urgency :low, [
     :index,
     :show,
     :diffs,
+    :rapid_diffs,
     :commits,
     :bulk_update,
     :edit,
@@ -86,9 +89,12 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     :test_reports,
     :codequality_mr_diff_reports,
     :codequality_reports,
-    :terraform_reports
+    :terraform_reports,
+    :versions
   ]
   urgency :low, [:pipeline_status, :pipelines, :exposed_artifacts]
+
+  helper_method :rapid_diffs_page_enabled?
 
   def index
     @merge_requests = @issuables
@@ -104,6 +110,12 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def diffs
+    show_merge_request
+  end
+
+  def rapid_diffs
+    return render_404 unless rapid_diffs_page_enabled?
+
     show_merge_request
   end
 
@@ -143,6 +155,8 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   def pipelines
     set_pipeline_variables
+    # Capture total count before pagination to ensure accurate count regardless of current page
+    @pipelines_count = @pipelines.count
     @pipelines = @pipelines.page(params[:page])
 
     Gitlab::PollingInterval.set_header(response, interval: 10_000)
@@ -158,10 +172,11 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
           disable_manual_and_scheduled_actions: true,
           preload: true,
           preload_statuses: false,
-          preload_downstream_statuses: false
+          preload_downstream_statuses: false,
+          disable_stage_actions: true
         ),
       count: {
-        all: @pipelines.count
+        all: @pipelines_count
       }
     }
   end
@@ -356,6 +371,20 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     redirect_to(index_path, notice: message)
   end
 
+  def versions
+    return render_404 unless ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :wip)
+
+    viewable_merge_request_diffs = @merge_request.viewable_recent_merge_request_diffs
+
+    render json: RapidDiffs::MergeRequestDiffEntity.represent(
+      viewable_merge_request_diffs,
+      merge_request: @merge_request,
+      merge_request_diffs: viewable_merge_request_diffs,
+      merge_request_diff: @merge_request.merge_request_diff,
+      path_extra_options: { rapid_diffs: true }
+    )
+  end
+
   protected
 
   alias_method :subscribable_resource, :merge_request
@@ -381,15 +410,30 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   private
 
+  def set_issuables_index
+    return if request.format.html?
+
+    super
+  end
+
   def show_merge_request
     close_merge_request_if_no_source_project
     @merge_request.check_mergeability(async: true)
 
+    # We need to handle the exception that the auto merge was missed
+    # For example, the approval group was changed and now the approvals are passing
+    if @merge_request.auto_merge_enabled? && @merge_request.mergeability_checks_pass?
+      Gitlab::EventStore.publish(
+        MergeRequests::MergeableEvent.new(
+          data: { merge_request_id: @merge_request.id }
+        )
+      )
+    end
+
+    display_limit_warnings
+
     respond_to do |format|
       format.html do
-        # use next to appease Rubocop
-        next render('invalid') if target_branch_missing?
-
         render_html_page
       end
 
@@ -436,7 +480,13 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     @note = @project.notes.new(noteable: @merge_request)
 
     @noteable = @merge_request
-    @commits_count = @merge_request.commits_count + @merge_request.context_commits_count
+
+    @commits_count = if @merge_request.preparing?
+                       0
+                     else
+                       @merge_request.commits_count.to_i + @merge_request.context_commits_count.to_i
+                     end
+
     @diffs_count = get_diffs_count
     @issuable_sidebar = serializer.represent(@merge_request, serializer: 'sidebar')
     @current_user_data = Gitlab::Json
@@ -451,14 +501,9 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     @update_current_user_path = expose_path(api_v4_user_preferences_path)
     @endpoint_metadata_url = endpoint_metadata_url(@project, @merge_request)
     @endpoint_diff_batch_url = endpoint_diff_batch_url(@project, @merge_request)
+    @linked_file_url = linked_file_url(@project, @merge_request) if params[:file]
 
-    if params[:pin] && Feature.enabled?(:pinned_file, @project)
-      @pinned_file_url = pinned_file_url(@project, @merge_request)
-    end
-
-    if merge_request.diffs_batch_cache_with_max_age?
-      @diffs_batch_cache_key = @merge_request.merge_head_diff&.patch_id_sha
-    end
+    @diffs_batch_cache_key = @merge_request.diffs_batch_cache_key
 
     set_pipeline_variables
 
@@ -468,8 +513,10 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def get_diffs_count
+    return @commit.raw_diffs.size if commit
     return @merge_request.context_commits_diff.raw_diffs.size if show_only_context_commits?
     return @merge_request.merge_request_diffs.find_by_id(params[:diff_id])&.size if params[:diff_id]
+    return @merge_request.merge_head_diff.size if @merge_request.diffable_merge_ref? && params[:start_sha].blank?
 
     @merge_request.diff_size
   end
@@ -493,13 +540,6 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def merge!
-    # Disable the CI check if auto_merge_strategy is specified since we have
-    # to wait until CI completes to know
-    skipped_checks = @merge_request.skipped_mergeable_checks(
-      auto_merge_requested: auto_merge_requested?,
-      auto_merge_strategy: params[:auto_merge_strategy]
-    )
-
     return :failed unless @merge_request.mergeable?(**skipped_checks)
 
     squashing = params.fetch(:squash, false)
@@ -523,7 +563,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
         AutoMergeService.new(project, current_user, merge_params)
           .execute(
             merge_request,
-            params[:auto_merge_strategy] || AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS
+            auto_merge_strategy
           )
       end
     else
@@ -607,8 +647,8 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     ::Gitlab::Search::RecentMergeRequests.new(user: current_user).log_view(@merge_request)
   end
 
-  def authorize_read_actual_head_pipeline!
-    render_404 unless can?(current_user, :read_build, merge_request.actual_head_pipeline)
+  def authorize_read_diff_head_pipeline!
+    render_404 unless can?(current_user, :read_build, merge_request.diff_head_pipeline)
   end
 
   def show_whitespace
@@ -626,18 +666,18 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     params = request
       .query_parameters
       .merge(view: 'inline', diff_head: true, w: show_whitespace, page: '0', per_page: per_page)
-    params[:ck] = merge_request.merge_head_diff&.patch_id_sha if merge_request.diffs_batch_cache_with_max_age?
+    params[:ck] = merge_request.diffs_batch_cache_key if merge_request.diffs_batch_cache_key
 
     diffs_batch_project_json_merge_request_path(project, merge_request, 'json', params)
   end
 
-  def pinned_file_url(project, merge_request)
+  def linked_file_url(project, merge_request)
     diff_by_file_hash_namespace_project_merge_request_path(
       format: 'json',
       id: merge_request.iid,
       namespace_id: project&.namespace.to_param,
       project_id: project&.path,
-      file_hash: params[:pin],
+      file_hash: params[:file],
       diff_head: true
     )
   end
@@ -649,6 +689,58 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
     payload[:metadata] ||= {}
     payload[:metadata]['meta.diffs_files_count'] = @merge_request.merge_request_diff.files_count
+  end
+
+  def display_limit_warnings
+    if @merge_request.reached_versions_limit?
+      flash[:alert] = format(
+        _("This merge request has reached the maximum limit of %{limit} versions and cannot be updated further. " \
+          "Close this merge request and create a new one instead."), limit: MergeRequest::DIFF_VERSION_LIMIT)
+      return
+    end
+
+    return unless @merge_request.reached_diff_commits_limit?
+
+    flash[:alert] =
+      _("This merge request has too many diff commits, and can't be updated. " \
+        "Close this merge request and create a new one.")
+  end
+
+  def diffs_resource(diff_options = {})
+    @merge_request.latest_diffs(diff_options)
+  end
+
+  def diff_file_component(base_args)
+    ::RapidDiffs::MergeRequestDiffFileComponent.new(
+      **base_args.merge({ merge_request: @merge_request })
+    )
+  end
+
+  def complete_diff_path
+    merge_request_path(merge_request, format: :diff)
+  end
+
+  def email_format_path
+    merge_request_path(merge_request, format: :patch)
+  end
+
+  def rapid_diffs_page_enabled?
+    ::Feature.enabled?(:rapid_diffs_on_mr_show, current_user, type: :wip) &&
+      params[:rapid_diffs] == 'true'
+  end
+
+  def skipped_checks
+    if auto_merge_requested?
+      @merge_request.skipped_auto_merge_checks(
+        auto_merge_strategy: auto_merge_strategy
+      )
+    else
+      {}
+    end
+  end
+
+  def auto_merge_strategy
+    params[:auto_merge_strategy] || merge_request.default_auto_merge_strategy
   end
 end
 

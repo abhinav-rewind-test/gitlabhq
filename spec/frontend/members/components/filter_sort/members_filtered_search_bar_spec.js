@@ -3,12 +3,13 @@ import Vue from 'vue';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
 import setWindowLocation from 'helpers/set_window_location_helper';
-import { redirectTo } from '~/lib/utils/url_utility'; // eslint-disable-line import/no-deprecated
+import { visitUrl } from '~/lib/utils/url_utility';
 import MembersFilteredSearchBar from '~/members/components/filter_sort/members_filtered_search_bar.vue';
 import {
-  MEMBER_TYPES,
+  MEMBERS_TAB_TYPES,
   FILTERED_SEARCH_TOKEN_TWO_FACTOR,
   FILTERED_SEARCH_TOKEN_WITH_INHERITED_PERMISSIONS,
+  FILTERED_SEARCH_MAX_ROLE,
 } from '~/members/constants';
 import { FILTERED_SEARCH_TERM } from '~/vue_shared/components/filtered_search_bar/constants';
 import FilteredSearchBar from '~/vue_shared/components/filtered_search_bar/filtered_search_bar_root.vue';
@@ -19,7 +20,7 @@ jest.mock('~/lib/utils/url_utility', () => {
   return {
     __esModule: true,
     ...urlUtility,
-    redirectTo: jest.fn(),
+    visitUrl: jest.fn(),
   };
 });
 
@@ -31,12 +32,12 @@ describe('MembersFilteredSearchBar', () => {
   const createComponent = ({ state = {}, provide = {} } = {}) => {
     const store = new Vuex.Store({
       modules: {
-        [MEMBER_TYPES.user]: {
+        [MEMBERS_TAB_TYPES.user]: {
           namespaced: true,
           state: {
             filteredSearchBar: {
               show: true,
-              tokens: [FILTERED_SEARCH_TOKEN_TWO_FACTOR.type],
+              tokens: [FILTERED_SEARCH_TOKEN_TWO_FACTOR.type, FILTERED_SEARCH_MAX_ROLE.type],
               searchParam: 'search',
               placeholder: 'Filter members',
               recentSearchesStorageKey: 'group_members',
@@ -51,7 +52,8 @@ describe('MembersFilteredSearchBar', () => {
       provide: {
         sourceId: 1,
         canManageMembers: true,
-        namespace: MEMBER_TYPES.user,
+        namespace: MEMBERS_TAB_TYPES.user,
+        availableRoles: [],
         ...provide,
       },
       store,
@@ -74,7 +76,22 @@ describe('MembersFilteredSearchBar', () => {
     it('includes tokens set in `filteredSearchBar.tokens`', () => {
       createComponent();
 
-      expect(findFilteredSearchBar().props('tokens')).toEqual([FILTERED_SEARCH_TOKEN_TWO_FACTOR]);
+      expect(findFilteredSearchBar().props('tokens')).toEqual([
+        FILTERED_SEARCH_TOKEN_TWO_FACTOR,
+        FILTERED_SEARCH_MAX_ROLE,
+      ]);
+    });
+
+    it('sets the provided `availableRoles` as options to the `max_role` token', () => {
+      const availableRoles = { title: 'Guest', value: 'static-10' };
+
+      createComponent({ provide: { availableRoles } });
+
+      const maxRoleToken = findFilteredSearchBar()
+        .props('tokens')
+        .find((token) => token.type === FILTERED_SEARCH_MAX_ROLE.type);
+
+      expect(maxRoleToken.options).toEqual(availableRoles);
     });
 
     describe('when `canManageMembers` is false', () => {
@@ -97,9 +114,9 @@ describe('MembersFilteredSearchBar', () => {
           },
         });
 
-        expect(findFilteredSearchBar().props('tokens')).toEqual([
-          FILTERED_SEARCH_TOKEN_WITH_INHERITED_PERMISSIONS,
-        ]);
+        expect(findFilteredSearchBar().props('tokens')).not.toContain(
+          FILTERED_SEARCH_TOKEN_TWO_FACTOR,
+        );
       });
     });
   });
@@ -168,7 +185,7 @@ describe('MembersFilteredSearchBar', () => {
         { type: FILTERED_SEARCH_TOKEN_TWO_FACTOR.type, value: { data: 'enabled', operator: '=' } },
       ]);
 
-      expect(redirectTo).toHaveBeenCalledWith('https://localhost/?two_factor=enabled'); // eslint-disable-line import/no-deprecated
+      expect(visitUrl).toHaveBeenCalledWith('https://localhost/?two_factor=enabled');
     });
 
     it('adds search query param', () => {
@@ -179,10 +196,7 @@ describe('MembersFilteredSearchBar', () => {
         { type: FILTERED_SEARCH_TERM, value: { data: 'foobar' } },
       ]);
 
-      // eslint-disable-next-line import/no-deprecated
-      expect(redirectTo).toHaveBeenCalledWith(
-        'https://localhost/?two_factor=enabled&search=foobar',
-      );
+      expect(visitUrl).toHaveBeenCalledWith('https://localhost/?two_factor=enabled&search=foobar');
     });
 
     it('adds search query param with multiple words', () => {
@@ -193,8 +207,7 @@ describe('MembersFilteredSearchBar', () => {
         { type: FILTERED_SEARCH_TERM, value: { data: 'foo bar baz' } },
       ]);
 
-      // eslint-disable-next-line import/no-deprecated
-      expect(redirectTo).toHaveBeenCalledWith(
+      expect(visitUrl).toHaveBeenCalledWith(
         'https://localhost/?two_factor=enabled&search=foo+bar+baz',
       );
     });
@@ -209,8 +222,7 @@ describe('MembersFilteredSearchBar', () => {
         { type: FILTERED_SEARCH_TERM, value: { data: 'foobar' } },
       ]);
 
-      // eslint-disable-next-line import/no-deprecated
-      expect(redirectTo).toHaveBeenCalledWith(
+      expect(visitUrl).toHaveBeenCalledWith(
         'https://localhost/?two_factor=enabled&search=foobar&sort=name_asc',
       );
     });
@@ -224,7 +236,7 @@ describe('MembersFilteredSearchBar', () => {
         { type: FILTERED_SEARCH_TERM, value: { data: 'foobar' } },
       ]);
 
-      expect(redirectTo).toHaveBeenCalledWith('https://localhost/?search=foobar&tab=invited'); // eslint-disable-line import/no-deprecated
+      expect(visitUrl).toHaveBeenCalledWith('https://localhost/?search=foobar&tab=invited');
     });
   });
 });

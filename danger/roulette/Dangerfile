@@ -12,11 +12,7 @@ MARKDOWN
 
 POST_TABLE_MESSAGE = <<MARKDOWN
 
-**Please check reviewer's status!**
-- ![available](https://gitlab-org.gitlab.io/gitlab-roulette/status-svg/_success.svg) Reviewer is available!
-- ![unavailable](https://gitlab-org.gitlab.io/gitlab-roulette/status-svg/_alert.svg) Reviewer is unavailable!
-
-Please refer to [documentation page](https://docs.gitlab.com/ee/development/code_review.html#reviewer-roulette)
+Please refer to [documentation page](https://docs.gitlab.com/development/code_review/#reviewer-roulette)
 for guidance on how you can benefit from the Reviewer Roulette, or use the
 [GitLab Review Workload Dashboard](https://gitlab-org.gitlab.io/gitlab-roulette/)
 to find other available reviewers.
@@ -47,8 +43,6 @@ OPTIONAL_REVIEW_TEMPLATE = '%{role} review is optional for %{category}'
 NOT_AVAILABLE_TEMPLATES = {
   default: 'No %{role} available',
   analytics_instrumentation: group_not_available_template('#g_analyze_analytics_instrumentation', '@gitlab-org/analytics-section/analytics-instrumentation/engineers'),
-  import_integrate_be: group_not_available_template('#g_manage_import_and_integrate', '@gitlab-org/manage/import-and-integrate'),
-  import_integrate_fe: group_not_available_template('#g_manage_import_and_integrate', '@gitlab-org/manage/import-and-integrate'),
   remote_development_be: group_not_available_template('#f_remote_development', '@gitlab-org/maintainers/remote-development/backend')
 }.freeze
 
@@ -62,7 +56,7 @@ def note_for_spin_role(spin, role, category)
       spin.public_send(role)&.markdown_name(author: roulette.team_mr_author) # rubocop:disable GitlabSecurity/PublicSend
     end
 
-  note || template % { role: role }
+  note || (template % { role: role })
 end
 
 def markdown_row_for_spin(category, spin)

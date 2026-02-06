@@ -50,10 +50,10 @@ RSpec.shared_examples 'variable list drawer' do
     end
   end
 
-  it 'defaults to unmasked, expanded' do
+  it 'defaults to masked, not expanded' do
     open_drawer
 
-    fill_variable('NEW_KEY')
+    fill_variable('NEW_KEY', 'NEW_VALUE')
     click_add_variable
 
     wait_for_requests
@@ -61,8 +61,8 @@ RSpec.shared_examples 'variable list drawer' do
     page.within('[data-testid="ci-variable-table"]') do
       key_column = first(".js-ci-variable-row:nth-child(1) td[data-label='#{s_('CiVariables|Key')}']")
 
-      expect(key_column).not_to have_content(s_('CiVariables|Masked'))
-      expect(key_column).to have_content(s_('CiVariables|Expanded'))
+      expect(key_column).to have_content(s_('CiVariables|Masked'))
+      expect(key_column).not_to have_content(s_('CiVariables|Expanded'))
     end
   end
 
@@ -113,7 +113,7 @@ RSpec.shared_examples 'variable list drawer' do
 
     fill_variable('EDITED_KEY', 'EDITED_VALUE', 'EDITED_DESCRIPTION')
     toggle_protected
-    toggle_masked
+    set_visible
     toggle_expanded
     find_by_testid('ci-variable-confirm-button').click
 
@@ -127,7 +127,8 @@ RSpec.shared_examples 'variable list drawer' do
 
       # form is NOT reset (unlike when adding a variable)
       expect(find('[data-testid="ci-variable-protected-checkbox"]')).to be_checked
-      expect(find('[data-testid="ci-variable-masked-checkbox"]')).not_to be_checked
+      expect(find('[data-testid="ci-variable-visible-radio"]')).to be_checked
+      expect(find('[data-testid="ci-variable-masked-radio"]')).not_to be_checked
       expect(find('[data-testid="ci-variable-expanded-checkbox"]')).not_to be_checked
       expect(page).to have_field(s_('CiVariables|Key'), with: 'EDITED_KEY')
       expect(page).to have_field(s_('CiVariables|Description'), with: 'EDITED_DESCRIPTION')
@@ -194,11 +195,12 @@ RSpec.shared_examples 'variable list drawer' do
   it 'shows validation error for unmaskable values' do
     open_drawer
 
-    toggle_masked
+    set_masked
+    toggle_expanded
     fill_variable('EMPTY_MASK_KEY', '???')
 
-    expect(page).to have_content('This value cannot be masked because it contains the following characters: ?.')
-    expect(page).to have_content('The value must have at least 8 characters.')
+    expect(page).to have_content('The value cannot contain the following characters: ?.')
+    expect(page).to have_content('The value must have 8 characters.')
 
     page.within('[data-testid="ci-variable-drawer"]') do
       expect(find_button('Add variable', disabled: true)).to be_present
@@ -290,15 +292,21 @@ RSpec.shared_examples 'variable list drawer' do
     end
   end
 
-  def toggle_masked
-    page.within('[data-testid="ci-variable-drawer"]') do
-      find('[data-testid="ci-variable-masked-checkbox"]').click
-    end
-  end
-
   def toggle_expanded
     page.within('[data-testid="ci-variable-drawer"]') do
       find('[data-testid="ci-variable-expanded-checkbox"]').click
+    end
+  end
+
+  def set_masked
+    page.within('[data-testid="ci-variable-drawer"]') do
+      find('[data-testid="ci-variable-masked-radio"]').click
+    end
+  end
+
+  def set_visible
+    page.within('[data-testid="ci-variable-drawer"]') do
+      find('[data-testid="ci-variable-visible-radio"]').click
     end
   end
 end

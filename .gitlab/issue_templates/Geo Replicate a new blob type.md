@@ -146,7 +146,8 @@ The Geo primary site needs to checksum every replicable so secondaries can verif
     VERIFICATION_STATE_INDEX_NAME = "index_cool_widget_states_on_verification_state"
     PENDING_VERIFICATION_INDEX_NAME = "index_cool_widget_states_pending_verification"
     FAILED_VERIFICATION_INDEX_NAME = "index_cool_widget_states_failed_verification"
-    NEEDS_VERIFICATION_INDEX_NAME = "index_cool_widget_states_needs_verification"
+    NEEDS_VERIFICATION_INDEX_NAME = "index_cool_widget_states_needs_verification_id"
+    VERIFICATION_STARTED_INDEX_NAME = "index_cool_widget_states_on_verification_started"
 
     def up
       create_table :cool_widget_states do |t|
@@ -171,8 +172,11 @@ The Geo primary site needs to checksum every replicable so secondaries can verif
           where: "(verification_state = 3)",
           order: { verification_retry_at: 'ASC NULLS FIRST' },
           name: FAILED_VERIFICATION_INDEX_NAME
-        t.index :verification_state,
-          where: "(verification_state = 0 OR verification_state = 3)",
+        t.index [:cool_widget_id, :verification_started_at],
+          where: "(verification_state = 1)",
+          name: VERIFICATION_STARTED_INDEX_NAME
+        t.index :cool_widget_id,
+          where: "((verification_state = 0) OR (verification_state = 3))",
           name: NEEDS_VERIFICATION_INDEX_NAME
       end
     end
@@ -243,27 +247,19 @@ That's all of the required database changes.
 
     has_one :cool_widget_state, autosave: false, inverse_of: :cool_widget, class_name: 'Geo::CoolWidgetState'
 
-    after_save :save_verification_details
-
-    # Override the `all` default if not all records can be replicated. For an
-    # example of an existing Model that needs to do this, see
-    # `EE::MergeRequestDiff`.
-    # scope :available_replicables, -> { all }
-
-    scope :available_verifiables, -> { joins(:cool_widget_state) }
-
-    scope :checksummed, -> {
-      joins(:cool_widget_state).where.not(cool_widget_states: { verification_checksum: nil })
-    }
-
-    scope :not_checksummed, -> {
-      joins(:cool_widget_state).where(cool_widget_states: { verification_checksum: nil })
-    }
-
     scope :with_verification_state, ->(state) {
       joins(:cool_widget_state)
         .where(cool_widget_states: { verification_state: verification_state_value(state) })
     }
+
+    # Add this scope if your replicable belongs to a group
+    scope :group_id_in, ->(ids) { joins(:group).merge(::Namespace.id_in(ids)) }
+
+    # OR add this scope if your replicable belongs to a project
+    # scope :project_id_in, ->(ids) { where(project_id: ids) }
+
+    # OR add this scope if your replicable belongs to an organization
+    # scope :organization_id_in, ->(ids) { where(organization_id: ids) }
 
     def verification_state_object
       cool_widget_state
@@ -274,15 +270,14 @@ That's all of the required database changes.
       extend ::Gitlab::Utils::Override
       ...
 
-      # @param primary_key_in [Range, CoolWidget] arg to pass to primary_key_in scope
-      # @return [ActiveRecord::Relation<CoolWidget>] everything that should be synced
-      #         to this node, restricted by primary key
-      def replicables_for_current_secondary(primary_key_in)
-        # This issue template does not help you write this method.
-        #
-        # This method is called only on Geo secondary sites. It is called when
-        # we want to know which records to replicate. This is not easy to automate
-        # because for example:
+      override :selective_sync_scope
+      def selective_sync_scope(node, **params)
+        # This issue template does not help you write this method. It only shows
+        # some patterns used in our codebase. Search the codebase for other examples,
+        # and consult a Geo expert if needed.
+       
+        # This method is called when we want to know which records to replicate. 
+        # This is not easy to automate because for example:
         #
         # * The "selective sync" feature allows admins to choose which namespaces
         #   to replicate, per secondary site. Most Models are scoped to a
@@ -290,12 +285,44 @@ That's all of the required database changes.
         #   between Models.
         # * The "selective sync" feature allows admins to choose which shards to
         #   replicate, per secondary site. Repositories are associated with
-        #   shards. Most blob types are not, but Project Uploads are.
+        #   shards. But, most blob types are not.
+         # * The "selective sync" feature allows admins to choose which organizations
+        #   to replicate, per secondary site.
         # * Remote stored replicables are not replicated, by default. But the
         #   setting `sync_object_storage` enables replication of remote stored
         #   replicables.
-        #
-        # Search the codebase for examples, and consult a Geo expert if needed.
+          
+        replicables = params.fetch(:replicables, all)
+        replicables = replicables.primary_key_in(params[:primary_key_in]) if params[:primary_key_in].present?
+
+        return replicables unless node.selective_sync?
+
+        if node.selective_sync_by_namespaces?
+          # For group-owned replicables, filter by namespaces selected for selective sync
+          # If your replicable is associated with a group/namespace, use this pattern:
+          replicables.group_id_in(node.namespaces_for_group_owned_replicables.select(:id))
+
+          # For project-owned replicables, use this pattern instead:
+          # replicables.project_id_in(node.projects.select(:id))
+        elsif node.selective_sync_by_organizations?
+          # For organization-owned replicables, filter by organizations selected for selective sync
+          organization_ids = node.organizations.pluck_primary_key
+          return none if organization_ids.empty?
+
+          replicables.organization_id_in(organization_ids)
+
+          # If your replicable can belong to both organizations AND groups/projects,
+          # you may need to combine multiple conditions. See ee/app/models/ee/upload.rb for an example:
+          # namespace_ids = node.namespaces_for_group_owned_replicables.select(:id)
+          # project_ids = ::Project.selective_sync_scope(node).select(:id)
+          #
+          # replicables
+          #   .where(organization_id: organization_ids)
+          #   .or(replicables.where(namespace_id: namespace_ids))
+          #   .or(replicables.where(project_id: project_ids))
+        else
+          raise ::Geo::Errors::UnknownSelectiveSyncType.new(selective_sync_type: node.selective_sync_type)
+        end
       end
 
       override :verification_state_model_key
@@ -317,18 +344,82 @@ That's all of the required database changes.
   end
   ```
 
-- [ ] Implement `CoolWidget.replicables_for_current_secondary` above.
-- [ ] Ensure `CoolWidget.replicables_for_current_secondary` is well-tested. Search the codebase for `replicables_for_current_secondary` to find examples of parameterized table specs. You may need to add more `FactoryBot` traits.
+- [ ] Implement `CoolWidget.selective_sync_scope` above.
+- [ ] Ensure `CoolWidget.selective_sync_scope` is well-tested. See the test examples below.
 - [ ] Add the following shared examples to `ee/spec/models/ee/cool_widget_spec.rb`:
 
   ```ruby
-    include_examples 'a replicable model with a separate table for verification state' do
+  describe 'Geo replication', feature_category: :geo_replication do
+    describe 'associations' do
+      it 'has one verification state table class' do
+        is_expected
+          .to have_one(:cool_widget_state)
+          .class_name('Geo::CoolWidgetState')
+          .inverse_of(:cool_widget)
+          .autosave(false)
+      end
+    end
+
+    include_examples 'a verifiable model for verification state' do
       let(:verifiable_model_record) { build(:cool_widget) } # add extra params if needed to make sure the record is in `Geo::ReplicableModel.verifiables` scope
       let(:unverifiable_model_record) { build(:cool_widget) } # add extra params if needed to make sure the record is NOT included in `Geo::ReplicableModel.verifiables` scope
     end
+
+    describe 'replication/verification' do
+      # For group-owned replicables:
+      let_it_be(:group_1) { create(:group, organization: create(:organization)) }
+      let_it_be(:group_2) { create(:group, organization: create(:organization)) }
+      let_it_be(:nested_group_1) { create(:group, parent: group_1) }
+
+      # Cool Widget for the root group
+      let!(:first_replicable_and_in_selective_sync) do
+        create(:cool_widget, group: group_1)
+      end
+
+      # Cool Widget for a subgroup
+      let!(:second_replicable_and_in_selective_sync) do
+        create(:cool_widget, group: nested_group_1)
+      end
+
+      # Cool Widget for a subgroup and on object storage
+      let!(:third_replicable_on_object_storage_and_in_selective_sync) do
+        create(:cool_widget, :remote_store, group: group_1)
+      end
+
+      # Cool Widget for a group not in selective sync
+      let!(:last_replicable_and_not_in_selective_sync) do
+        create(:cool_widget, group: group_2)
+      end
+
+      # For project-owned replicables, use this pattern instead:
+      # let_it_be(:project_1) { create(:project, group: group_1) }
+      # let_it_be(:project_2) { create(:project, group: nested_group_1) }
+      # let_it_be(:project_3) { create(:project, namespace: group_2) }
+      #
+      # let!(:first_replicable_and_in_selective_sync) do
+      #   create(:cool_widget, project: project_1)
+      # end
+      # ... etc
+
+      # For organization-owned replicables, use this pattern instead:
+      # let_it_be(:organization_1) { create(:organization) }
+      # let_it_be(:organization_2) { create(:organization) }
+      #
+      # let!(:first_replicable_and_in_selective_sync) do
+      #   create(:cool_widget, organization: organization_1)
+      # end
+      # ... etc
+      # 
+      
+      include_examples 'Geo Framework selective sync behavior'
+    end
+  end
   ```
 
 - [ ] Create `ee/app/replicators/geo/cool_widget_replicator.rb`. Implement the `#carrierwave_uploader` method which should return a `CarrierWave::Uploader`, and implement the class method `.model` to return the `CoolWidget` class:
+  - Implement the `replicable_title` and `replicable_title_plural` methods to
+    return the human-readable singular and pluralized title of the replicable,
+    which will be displayed in the UI and Rails console
 
   ```ruby
   # frozen_string_literal: true
@@ -340,6 +431,16 @@ That's all of the required database changes.
 
       def self.model
         ::CoolWidget
+      end
+
+      # @return [String] human-readable title.
+      def self.replicable_title
+        s_('Geo|Cool Widget')
+      end
+
+      # @return [String] pluralized human-readable title.
+      def self.replicable_title_plural
+        s_('Geo|Cool Widgets')
       end
 
       def carrierwave_uploader
@@ -398,10 +499,15 @@ That's all of the required database changes.
       include ::Geo::ReplicableRegistry
       include ::Geo::VerifiableRegistry
 
-      MODEL_CLASS = ::CoolWidget
-      MODEL_FOREIGN_KEY = :cool_widget_id
-
       belongs_to :cool_widget, class_name: 'CoolWidget'
+
+      def self.model_class
+        ::CoolWidget
+      end
+
+      def self.model_foreign_key
+        :cool_widget_id
+      end
     end
   end
   ```
@@ -555,7 +661,7 @@ That's all of the required database changes.
   end
   ```
 
-- [ ] Add `[:cool_widget, :remote_store]` to `skipped` in `spec/models/factories_spec.rb`
+- [ ] Add `[:cool_widget, :remote_store]` to `skipped` in `spec/support/shared_examples/lint_factories_shared_examples.rb`
 
 #### Step 2. Implement metrics gathering
 
@@ -606,7 +712,7 @@ The GraphQL API is used by `Admin > Geo > Replication Details` views, and is dir
         resolver: ::Resolvers::Geo::CoolWidgetRegistriesResolver,
         description: 'Find Cool Widget registries on this Geo node. '\
                      'Ignored if `geo_cool_widget_replication` feature flag is disabled.',
-        alpha: { milestone: '15.5' } # Update the milestone
+        experiment: { milestone: '15.5' } # Update the milestone
   ```
 
 - [ ] Add the new `cool_widget_registries` field name to the `expected_fields` array in `ee/spec/graphql/types/geo/geo_node_type_spec.rb`.
@@ -796,7 +902,7 @@ As illustrated by the above two examples, batch destroy logic cannot be handled 
 When requesting review from database reviewers:
 
 - [ ] Include a comment mentioning that the change is based on a documented template.
-- [ ] `replicables_for_current_secondary` and `available_replicables` may differ per Model. If their queries are new, then add [query plans](https://docs.gitlab.com/ee/development/database_review.html#query-plans) to the MR description. An easy place to gather SQL queries is your GDK's `log/test.log` when running tests of these methods.
+- [ ] `selective_sync_scope` and `available_replicables` may differ per Model. If their queries are new, then add [query plans](https://docs.gitlab.com/development/database_review/#query-plans) to the MR description. An easy place to gather SQL queries is your GDK's `log/test.log` when running tests of these methods.
 
 ### Release Geo support of Cool Widgets
 
@@ -813,7 +919,7 @@ When requesting review from database reviewers:
         resolver: ::Resolvers::Geo::CoolWidgetRegistriesResolver,
         description: 'Find Cool Widget registries on this Geo node. '\
                      'Ignored if `geo_cool_widget_replication` feature flag is disabled.',
-        alpha: { milestone: '15.5' } # Update the milestone
+        experiment: { milestone: '15.5' } # Update the milestone
   ```
 
 - [ ] Run `bundle exec rake gitlab:graphql:compile_docs` after the step above to regenerate the GraphQL docs.

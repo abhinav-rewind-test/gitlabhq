@@ -1,12 +1,11 @@
 <script>
-import { GlBadge, GlIcon, GlTooltipDirective } from '@gitlab/ui';
+import { GlBadge, GlTooltipDirective } from '@gitlab/ui';
 import { issuableTypeText } from '~/issues/constants';
 import { __, sprintf } from '~/locale';
 
 export default {
   components: {
     GlBadge,
-    GlIcon,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -32,8 +31,13 @@ export default {
 </script>
 
 <template>
-  <gl-badge v-gl-tooltip :title="title" variant="warning" data-testid="locked-badge">
-    <gl-icon name="lock" />
-    <span class="gl-sr-only">{{ __('Locked') }}</span>
-  </gl-badge>
+  <gl-badge
+    v-gl-tooltip
+    icon="lock"
+    :title="title"
+    :aria-label="title"
+    variant="warning"
+    data-testid="locked-badge"
+    class="gl-shrink-0"
+  />
 </template>

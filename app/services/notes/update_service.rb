@@ -6,23 +6,32 @@ module Notes
       return note unless note.editable? && params.present?
 
       old_mentioned_users = note.mentioned_users(current_user).to_a
+      self.old_note_body = note.note
 
       note.assign_attributes(params)
 
       return note unless note.valid?
 
-      track_note_edit_usage_for_issues(note) if note.for_issue?
+      if note.for_issue?
+        track_note_edit_usage_for_issues(note)
+        track_work_item_note_update(note.noteable)
+      end
+
       track_note_edit_usage_for_merge_requests(note) if note.for_merge_request?
 
       only_commands = false
 
       quick_actions_service = QuickActionsService.new(project, current_user)
       if quick_actions_service.supported?(note)
-        content, update_params, message = quick_actions_service.execute(note, {})
+        content, update_params, message, command_names = quick_actions_service.execute(note, {})
 
         only_commands = content.empty?
 
         note.note = content
+        status = ::Notes::QuickActionsStatus.new(
+          command_names: command_names, commands_only: only_commands)
+        status.add_message(message)
+        note.quick_actions_status = status
       end
 
       update_note(note, only_commands)
@@ -51,26 +60,37 @@ module Notes
         end
       end
 
+      if note.for_wiki_page?
+        track_internal_event(
+          'update_wiki_page_note',
+          project: project,
+          namespace: note.noteable.namespace,
+          user: updated_by_user
+        )
+      end
+
       note
     end
 
     private
 
+    attr_accessor :old_note_body
+
+    def updated_by_user
+      @_updated_by_user ||= Gitlab::Auth::Identity.invert_composite_identity(current_user)
+    end
+
     def update_note(note, only_commands)
       return unless note.note_changed?
 
-      note.assign_attributes(last_edited_at: Time.current, updated_by: current_user)
+      note.assign_attributes(last_edited_at: Time.current, updated_by: updated_by_user)
       note.check_for_spam(action: :update, user: current_user) unless only_commands
     end
 
     def delete_note(note, message)
-      # We must add the error after we call #save because errors are reset
-      # when #save is called
-      note.errors.add(:commands_only, message.presence || _('Commands did not apply'))
-      # Allow consumers to detect problems applying commands
-      note.errors.add(:commands, _('Commands did not apply')) unless message.present?
+      note.quick_actions_status.add_error(_('Commands did not apply')) if message.blank?
 
-      Notes::DestroyService.new(project, current_user).execute(note)
+      Notes::DestroyService.new(project, current_user).execute(note, old_note_body: old_note_body)
     end
 
     def update_suggestions(note)
@@ -83,7 +103,7 @@ module Notes
 
       # We need to refresh the previous suggestions call cache
       # in order to get the new records.
-      note.reset
+      note.suggestions.reset
     end
 
     def update_todos(note, old_mentioned_users)
@@ -102,7 +122,7 @@ module Notes
     def execute_note_webhook(note)
       return unless note.project && note.previous_changes.include?('note')
 
-      note_data = Gitlab::DataBuilder::Note.build(note, note.author)
+      note_data = Gitlab::DataBuilder::Note.build(note, note.author, :update)
       is_confidential = note.confidential?(include_noteable: true)
       hooks_scope = is_confidential ? :confidential_note_hooks : :note_hooks
 
@@ -111,6 +131,14 @@ module Notes
 
     def track_note_edit_usage_for_merge_requests(note)
       Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter.track_edit_comment_action(note: note)
+    end
+
+    def track_work_item_note_update(work_item)
+      ::Gitlab::WorkItems::Instrumentation::TrackingService.new(
+        work_item: work_item,
+        current_user: current_user,
+        event: Gitlab::WorkItems::Instrumentation::EventActions::NOTE_UPDATE
+      ).execute
     end
   end
 end

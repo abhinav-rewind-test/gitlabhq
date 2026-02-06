@@ -10,36 +10,42 @@ module Mutations
       include Gitlab::InternalEventsTracking
 
       argument :id, ::Types::GlobalIDType[::Snippet],
-               required: true,
-               description: 'Global ID of the snippet to update.'
+        required: true,
+        description: 'Global ID of the snippet to update.'
 
       argument :title, GraphQL::Types::String,
-               required: false,
-               description: 'Title of the snippet.'
+        required: false,
+        description: 'Title of the snippet.'
 
       argument :description, GraphQL::Types::String,
-               required: false,
-               description: 'Description of the snippet.'
+        required: false,
+        description: 'Description of the snippet.'
 
       argument :visibility_level, Types::VisibilityLevelsEnum,
-               description: 'Visibility level of the snippet.',
-               required: false
+        description: 'Visibility level of the snippet.',
+        required: false
 
       argument :blob_actions, [Types::Snippets::BlobActionInputType],
-               description: 'Actions to perform over the snippet repository and blobs.',
-               required: false
+        description: 'Actions to perform over the snippet repository and blobs.',
+        required: false
 
       def resolve(id:, **args)
         snippet = authorized_find!(id: id)
 
         process_args_for_params!(args)
 
-        service = ::Snippets::UpdateService.new(project: snippet.project, current_user: current_user, params: args, perform_spam_check: true)
+        service = ::Snippets::UpdateService.new(
+          project: snippet.project,
+          current_user: current_user,
+          params: args,
+          perform_spam_check: true
+        )
         service_response = service.execute(snippet)
 
-        # TODO: DRY this up - From here down, this is all duplicated with Mutations::Snippets::Create#resolve, except for
-        #    `snippet.reset`, which is required in order to return the object in its non-dirty, unmodified, database state
-        #    See issue here: https://gitlab.com/gitlab-org/gitlab/-/issues/300250
+        # TODO: DRY this up - From here down, this is all duplicated with Mutations::Snippets::Create#resolve, except
+        # for `snippet.reset`, which is required in order to return the object in its non-dirty, unmodified, database
+        # state.
+        # See issue here: https://gitlab.com/gitlab-org/gitlab/-/issues/300250.
 
         # Only when the user is not an api user and the operation was successful
         if !api_user? && service_response.success?

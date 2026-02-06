@@ -1,6 +1,7 @@
 <script>
-import { GlIcon, GlTooltipDirective, GlSprintf } from '@gitlab/ui';
+import { GlTooltipDirective, GlSprintf } from '@gitlab/ui';
 import { sprintf } from '~/locale';
+import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
 import mergeRequestQueryVariablesMixin from '../../mixins/merge_request_query_variables';
 import missingBranchQuery from '../../queries/states/missing_branch.query.graphql';
 import {
@@ -16,12 +17,13 @@ export default {
     GlTooltip: GlTooltipDirective,
   },
   components: {
-    GlIcon,
     GlSprintf,
     StatusIcon,
+    HelpIcon,
   },
   mixins: [mergeRequestQueryVariablesMixin],
   apollo: {
+    // `state` is used here to manage Apollo query result,
     state: {
       query: missingBranchQuery,
       variables() {
@@ -37,6 +39,7 @@ export default {
     },
   },
   data() {
+    // eslint-disable-next-line vue/no-unused-properties -- `state` is tied to an Apollo query
     return { state: {} };
   },
   computed: {
@@ -62,9 +65,9 @@ export default {
   <div class="mr-widget-body media">
     <status-icon :show-disabled-button="true" status="failed" />
 
-    <div class="media-body space-children">
+    <div class="media-body">
       <span class="js-branch-text" data-testid="widget-content">
-        <span class="gl-font-weight-bold">
+        <span class="gl-font-bold">
           <gl-sprintf :message="warning">
             <template #code="{ content }">
               <code>{{ content }}</code>
@@ -72,13 +75,7 @@ export default {
           </gl-sprintf>
         </span>
         {{ restore }}
-        <gl-icon
-          v-gl-tooltip
-          :title="message"
-          :aria-label="message"
-          name="question-o"
-          class="gl-text-blue-600 gl-cursor-pointer"
-        />
+        <help-icon v-gl-tooltip :title="message" :aria-label="message" class="gl-cursor-pointer" />
       </span>
     </div>
   </div>

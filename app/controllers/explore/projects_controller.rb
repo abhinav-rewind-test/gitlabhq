@@ -15,10 +15,13 @@ class Explore::ProjectsController < Explore::ApplicationController
   before_action :set_non_archived_param
   before_action :set_sorting
 
-  # For background information on the limit, see:
-  #   https://gitlab.com/gitlab-org/gitlab/-/issues/38357
-  #   https://gitlab.com/gitlab-org/gitlab/-/issues/262682
   before_action only: [:index, :trending, :starred] do
+    push_frontend_feature_flag(:explore_projects_vue, current_user)
+    push_frontend_feature_flag(:retire_trending_projects, current_user)
+
+    # For background information on the limit, see:
+    #   https://gitlab.com/gitlab-org/gitlab/-/issues/38357
+    #   https://gitlab.com/gitlab-org/gitlab/-/issues/262682
     limit_pages(PAGE_LIMIT)
   end
 
@@ -44,11 +47,19 @@ class Explore::ProjectsController < Explore::ApplicationController
   end
 
   def trending
+    if Feature.enabled?(:retire_trending_projects, current_user)
+      respond_to do |format|
+        format.html { redirect_to active_explore_projects_path }
+        format.json { redirect_to active_explore_projects_path(format: :json), status: :found }
+      end
+      return
+    end
+
     params[:trending] = true
     @projects = load_projects
 
     respond_to do |format|
-      format.html
+      format.html { render :index }
       format.json do
         render json: {
           html: view_to_html_string("explore/projects/_projects", projects: @projects)
@@ -59,10 +70,18 @@ class Explore::ProjectsController < Explore::ApplicationController
 
   # rubocop: disable CodeReuse/ActiveRecord
   def starred
+    if Feature.enabled?(:explore_projects_vue, current_user)
+      respond_to do |format|
+        format.html { redirect_to active_explore_projects_path(sort: 'stars_desc') }
+        format.json { redirect_to active_explore_projects_path(sort: 'stars_desc', format: :json), status: :found }
+      end
+      return
+    end
+
     @projects = load_projects.reorder('star_count DESC')
 
     respond_to do |format|
-      format.html
+      format.html { render :index }
       format.json do
         render json: {
           html: view_to_html_string("explore/projects/_projects", projects: @projects)
@@ -73,7 +92,6 @@ class Explore::ProjectsController < Explore::ApplicationController
   # rubocop: enable CodeReuse/ActiveRecord
 
   def topics
-    load_project_counts
     load_topics
   end
 
@@ -96,35 +114,38 @@ class Explore::ProjectsController < Explore::ApplicationController
 
   private
 
-  def load_project_counts
-    @all_user_projects = ProjectsFinder.new(params: { non_public: true }, current_user: current_user).execute
-    @all_starred_projects = ProjectsFinder.new(params: { starred: true }, current_user: current_user).execute
-  end
-
   def load_projects
-    load_project_counts
-
     finder_params = {
       minimum_search_length: MIN_SEARCH_LENGTH,
-      not_aimed_for_deletion: true
+      not_aimed_for_deletion: true,
+      current_organization: current_organization
     }
 
     projects = ProjectsFinder.new(current_user: current_user, params: params.merge(finder_params)).execute
 
     projects = preload_associations(projects)
-    projects = projects.page(params[:page]).without_count
+    projects = projects.page(pagination_params[:page]).without_count
 
     prepare_projects_for_rendering(projects)
   end
 
   def load_topics
-    @topics = Projects::TopicsFinder.new(params: params.permit(:search)).execute.page(params[:page]).without_count
+    @topics = Projects::TopicsFinder.new(
+      params: params.permit(:search),
+      organization_id: current_organization&.id
+    ).execute.page(pagination_params[:page]).without_count
   end
 
   def load_topic
-    topic_name = Feature.enabled?(:explore_topics_cleaned_path) ? URI.decode_www_form_component(params[:topic_name]) : params[:topic_name]
+    topic_name = if Feature.enabled?(:explore_topics_cleaned_path)
+                   URI.decode_www_form_component(params[:topic_name])
+                 else
+                   params[:topic_name]
+                 end
 
-    @topic = Projects::Topic.find_by_name_case_insensitive(topic_name)
+    return unless current_organization
+
+    @topic = Projects::Topic.in_organization(current_organization.id).find_by_name_case_insensitive(topic_name)
   end
 
   # rubocop: disable CodeReuse/ActiveRecord
@@ -147,7 +168,6 @@ class Explore::ProjectsController < Explore::ApplicationController
   end
 
   def page_out_of_bounds(error)
-    load_project_counts
     @max_page_number = error.message
 
     respond_to do |format|
@@ -164,11 +184,16 @@ class Explore::ProjectsController < Explore::ApplicationController
   end
 
   def show_alert_if_search_is_disabled
-    if current_user || params[:name].blank? && params[:search].blank? || !html_request? || Feature.disabled?(:disable_anonymous_project_search, type: :ops)
+    if current_user || (params[:name].blank? && params[:search].blank?) || !html_request? || Feature.disabled?(
+      :disable_anonymous_project_search, type: :ops)
       return
     end
 
     flash.now[:notice] = _('You must sign in to search for specific projects.')
+  end
+
+  def current_organization
+    ::Current.organization
   end
 end
 

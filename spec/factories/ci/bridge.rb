@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'deployable'
+require Rails.root.join('spec/support/helpers/ci/job_factory_helpers')
 
 FactoryBot.define do
   factory :ci_bridge, class: 'Ci::Bridge', parent: :ci_processable do
@@ -17,6 +18,8 @@ FactoryBot.define do
     end
 
     transient do
+      # We default options to a non-blank value so that `Ci::Metadatable.degenerated?` is false
+      options { { trigger: {} } }
       downstream { nil }
       upstream { nil }
     end
@@ -25,16 +28,18 @@ FactoryBot.define do
       bridge.project ||= bridge.pipeline.project
 
       if evaluator.downstream.present?
-        bridge.options = bridge.options.to_h.merge(
+        updated_options = bridge.options.deep_merge(
           trigger: { project: evaluator.downstream.full_path }
         )
       end
 
       if evaluator.upstream.present?
-        bridge.options = bridge.options.to_h.merge(
+        updated_options = (updated_options || bridge.options).deep_merge(
           bridge_needs: { pipeline: evaluator.upstream.full_path }
         )
       end
+
+      Ci::JobFactoryHelpers.mutate_temp_job_definition(bridge, options: updated_options) if updated_options
     end
 
     trait :retried do
@@ -80,6 +85,10 @@ FactoryBot.define do
     trait :skipped do
       started
       status { 'skipped' }
+    end
+
+    trait :strategy_mirror do
+      options { { trigger: { strategy: 'mirror' } } }
     end
 
     trait :strategy_depend do

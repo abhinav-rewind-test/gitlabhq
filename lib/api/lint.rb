@@ -3,6 +3,11 @@
 module API
   class Lint < ::API::Base
     feature_category :pipeline_composition
+    include APIGuard
+
+    allow_access_with_scope :ai_workflows, if: ->(request) do
+      request.post?
+    end
 
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'Validates a CI YAML configuration with a namespace' do
@@ -28,10 +33,13 @@ module API
         mutually_exclusive :ref, :dry_run_ref
       end
 
+      route_setting :authorization, permissions: :read_ci_config, boundary_type: :project
       get ':id/ci/lint', urgency: :low do
         authorize_read_code!
 
         not_found! 'Repository' if user_project.empty_repo?
+
+        unauthorized!("This endpoint requires an API authentication") if current_user && !::Current.token_info
 
         content_ref = params[:content_ref] || params[:sha] || user_project.repository.root_ref_sha
         dry_run_ref = params[:dry_run_ref] || params[:ref] || user_project.default_branch
@@ -42,7 +50,7 @@ module API
         content = user_project.repository.blob_data_at(commit.sha, user_project.ci_config_path_or_default)
         result = Gitlab::Ci::Lint
           .new(project: user_project, current_user: current_user, sha: commit.sha)
-          .validate(content, dry_run: params[:dry_run], ref: dry_run_ref)
+          .legacy_validate(content, dry_run: params[:dry_run], ref: dry_run_ref)
 
         present result, with: Entities::Ci::Lint::Result, current_user: current_user, include_jobs: params[:include_jobs]
       end
@@ -62,12 +70,13 @@ module API
         optional :ref, type: String, desc: 'When dry_run is true, sets the branch or tag to use. Defaults to the project’s default branch when not set'
       end
 
+      route_setting :authorization, permissions: :validate_ci_config, boundary_type: :project
       post ':id/ci/lint', urgency: :low do
         authorize! :create_pipeline, user_project
 
         result = Gitlab::Ci::Lint
           .new(project: user_project, current_user: current_user)
-          .validate(params[:content], dry_run: params[:dry_run], ref: params[:ref] || user_project.default_branch)
+          .legacy_validate(params[:content], dry_run: params[:dry_run], ref: params[:ref] || user_project.default_branch)
 
         status 200
         present result, with: Entities::Ci::Lint::Result, current_user: current_user, include_jobs: params[:include_jobs]

@@ -1,32 +1,47 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Compliance
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: REST API to retrieve GitLab audit events for instances, groups, and projects.
+title: Audit events API
 ---
 
-# Audit Events API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/121) in GitLab 12.4.
-> - [Author Email added to the response body](https://gitlab.com/gitlab-org/gitlab/-/issues/386322) in GitLab 15.9.
+{{< /details >}}
 
-## Instance Audit Events
+{{< history >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- [Author Email added to the response body](https://gitlab.com/gitlab-org/gitlab/-/issues/386322) in GitLab 15.9.
 
-Use this API to retrieve instance audit events.
+{{< /history >}}
 
-To retrieve audit events using the API, you must [authenticate yourself](rest/index.md#authentication) as an Administrator.
+## Instance audit events
 
-### Retrieve all instance audit events
+{{< details >}}
 
-> - Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/367528) in GitLab 15.11.
-> - Entity type `Gitlab::Audit::InstanceScope` for instance audit events [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418185) in GitLab 16.2.
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+Use this API to retrieve [instance audit events](../administration/compliance/audit_event_reports.md).
+
+To retrieve audit events using the API, you must [authenticate yourself](rest/authentication.md) as an Administrator.
+
+### List all instance audit events
+
+{{< history >}}
+
+- Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/367528) in GitLab 15.11.
+- Entity type `Gitlab::Audit::InstanceScope` for instance audit events [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/418185) in GitLab 16.2.
+
+{{< /history >}}
+
+Lists all available instance audit events, limited to a maximum of 30 days for each query.
 
 ```plaintext
 GET /audit_events
@@ -39,13 +54,20 @@ GET /audit_events
 | `entity_type` | string | no | Return audit events for the given entity type. Valid values are: `User`, `Group`, `Project`, or `Gitlab::Audit::InstanceScope`. |
 | `entity_id` | integer | no | Return audit events for the given entity ID. Requires `entity_type` attribute to be present.                    |
 
-This endpoint supports both offset-based and [keyset-based](rest/index.md#keyset-based-pagination) pagination. You should use keyset-based
+> [!warning]
+> Offset-based pagination was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/186194) in GitLab 17.8
+> and is planned for removal in 19.0. Use [keyset-based](rest/_index.md#keyset-based-pagination) pagination instead.
+> This change is a breaking change.
+
+This endpoint supports both offset-based and [keyset-based](rest/_index.md#keyset-based-pagination) pagination. You should use keyset-based
 pagination when requesting consecutive pages of results.
 
-Read more on [pagination](rest/index.md#pagination).
+Read more on [pagination](rest/_index.md#pagination).
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/audit_events"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/audit_events"
 ```
 
 Example response:
@@ -132,7 +154,9 @@ Example response:
 ]
 ```
 
-### Retrieve single instance audit event
+### Retrieve an instance audit event
+
+Retrieves a specified instance audit event.
 
 ```plaintext
 GET /audit_events/:id
@@ -143,7 +167,9 @@ GET /audit_events/:id
 | `id` | integer | yes | The ID of the audit event |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/audit_events/1"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/audit_events/1"
 ```
 
 Example response:
@@ -168,23 +194,38 @@ Example response:
 }
 ```
 
-## Group Audit Events
+## Group audit events
 
-> - Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/333968) in GitLab 15.2.
+{{< history >}}
 
-Use this API to retrieve group audit events.
+- Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/333968) in GitLab 15.2.
+
+{{< /history >}}
+
+Use this API to retrieve [group audit events](../user/compliance/audit_events.md#group-audit-events).
 
 A user with:
 
 - The Owner role can retrieve group audit events of all users.
 - The Developer or Maintainer role is limited to group audit events based on their individual actions.
 
-This endpoint supports both offset-based and [keyset-based](rest/index.md#keyset-based-pagination) pagination. Keyset-based
+> [!warning]
+> Offset-based pagination was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/186194) in GitLab 17.8
+> and is planned for removal in 19.0. Use [keyset-based](rest/_index.md#keyset-based-pagination) pagination instead.
+> This change is a breaking change.
+
+This endpoint supports both offset-based and [keyset-based](rest/_index.md#keyset-based-pagination) pagination. Keyset-based
 pagination is recommended when requesting consecutive pages of results.
 
-### Retrieve all group audit events
+### List all group audit events
 
-> - Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/333968) in GitLab 15.2.
+{{< history >}}
+
+- Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/333968) in GitLab 15.2.
+
+{{< /history >}}
+
+Lists all audit events for a specified group.
 
 ```plaintext
 GET /groups/:id/audit_events
@@ -192,17 +233,19 @@ GET /groups/:id/audit_events
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `created_after` | string | no | Return group audit events created on or after the given time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ)`  |
 | `created_before` | string | no | Return group audit events created on or before the given time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) |
 
 By default, `GET` requests return 20 results at a time because the API results
 are paginated.
 
-Read more on [pagination](rest/index.md#pagination).
+Read more on [pagination](rest/_index.md#pagination).
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/groups/60/audit_events"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/groups/60/audit_events"
 ```
 
 Example response:
@@ -246,9 +289,9 @@ Example response:
 ]
 ```
 
-### Retrieve a specific group audit event
+### Retrieve a group audit event
 
-Only available to group owners and administrators.
+Retrieves an audit event for a specified group. Only available to group owners and administrators.
 
 ```plaintext
 GET /groups/:id/audit_events/:audit_event_id
@@ -256,11 +299,13 @@ GET /groups/:id/audit_events/:audit_event_id
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `audit_event_id` | integer | yes | The ID of the audit event |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/groups/60/audit_events/2"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/groups/60/audit_events/2"
 ```
 
 Example response:
@@ -285,18 +330,22 @@ Example response:
 }
 ```
 
-## Project Audit Events
+## Project audit events
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/219238) in GitLab 13.1.
-
-Use this API to retrieve project audit events.
+Use this API to retrieve [project audit events](../user/compliance/audit_events.md#project-audit-events).
 
 A user with a Maintainer role (or above) can retrieve project audit events of all users.
 A user with a Developer role is limited to project audit events based on their individual actions.
 
-### Retrieve all project audit events
+### List all project audit events
 
-> - Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/367528) in GitLab 15.10.
+{{< history >}}
+
+- Support for keyset pagination [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/367528) in GitLab 15.10.
+
+{{< /history >}}
+
+Lists all audit events for a specified project.
 
 ```plaintext
 GET /projects/:id/audit_events
@@ -304,17 +353,24 @@ GET /projects/:id/audit_events
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id` | integer or string | yes | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `created_after` | string | no | Return project audit events created on or after the given time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`)  |
 | `created_before` | string | no | Return project audit events created on or before the given time. Format: ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`) |
 
-By default, `GET` requests return 20 results at a time because the API results are paginated.
-When requesting consecutive pages of results, you should use [keyset pagination](rest/index.md#keyset-based-pagination).
+> [!warning]
+> Offset-based pagination was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/186194) in GitLab 17.8
+> and is planned for removal in 19.0. Use [keyset-based](rest/_index.md#keyset-based-pagination) pagination instead.
+> This change is a breaking change.
 
-Read more on [pagination](rest/index.md#pagination).
+By default, `GET` requests return 20 results at a time because the API results are paginated.
+When requesting consecutive pages of results, you should use [keyset pagination](rest/_index.md#keyset-based-pagination).
+
+Read more on [pagination](rest/_index.md#pagination).
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/projects/7/audit_events"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/projects/7/audit_events"
 ```
 
 Example response:
@@ -362,9 +418,9 @@ Example response:
 ]
 ```
 
-### Retrieve a specific project audit event
+### Retrieve a project audit event
 
-Only available to users with at least the Maintainer role for the project.
+Retrieves an audit event for a specified project. Only available to users with the Maintainer or Owner role for the project.
 
 ```plaintext
 GET /projects/:id/audit_events/:audit_event_id
@@ -372,11 +428,13 @@ GET /projects/:id/audit_events/:audit_event_id
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id` | integer or string | yes | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `audit_event_id` | integer | yes | The ID of the audit event |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/projects/7/audit_events/5"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/projects/7/audit_events/5"
 ```
 
 Example response:

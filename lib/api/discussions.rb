@@ -3,8 +3,14 @@
 module API
   class Discussions < ::API::Base
     include PaginationParams
+    include APIGuard
+
     helpers ::API::Helpers::NotesHelpers
     helpers ::RendersNotes
+
+    allow_access_with_scope :ai_workflows, if: ->(request) do
+      request.get? || request.head? || request.post?
+    end
 
     before { authenticate! }
 
@@ -12,7 +18,11 @@ module API
       '/projects/:id/merge_requests/:noteable_id/discussions',
       '/projects/:id/merge_requests/:noteable_id/discussions/:discussion_id',
       '/projects/:id/merge_requests/:noteable_id/discussions/:discussion_id/notes',
-      '/projects/:id/merge_requests/:noteable_id/discussions/:discussion_id/notes/:note_id'
+      '/projects/:id/merge_requests/:noteable_id/discussions/:discussion_id/notes/:note_id',
+      '/projects/:id/issues/:noteable_id/discussions',
+      '/projects/:id/issues/:noteable_id/discussions/:discussion_id',
+      '/projects/:id/issues/:noteable_id/discussions/:discussion_id/notes',
+      '/projects/:id/issues/:noteable_id/discussions/:discussion_id/notes/:note_id'
     ]
 
     Helpers::DiscussionsHelpers.feature_category_per_noteable_type.each do |noteable_type, feature_category|
@@ -28,6 +38,7 @@ module API
       resource parent_type.pluralize.to_sym, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc "Get a list of #{notable_name} discussions" do
           success Entities::Discussion
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -45,6 +56,7 @@ module API
 
         desc "Get a single #{notable_name} discussion" do
           success Entities::Discussion
+          tags ['discussions']
         end
         params do
           requires :discussion_id, type: String, desc: 'The ID of a discussion'
@@ -65,6 +77,7 @@ module API
 
         desc "Create a new #{notable_name} discussion" do
           success Entities::Discussion
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -72,7 +85,7 @@ module API
           optional :created_at, type: String, desc: 'The creation date of the note'
 
           if [Commit, MergeRequest].include?(noteable_type)
-            optional :position, type: Hash do
+            optional :position, type: Hash, desc: 'Position when creating a note' do
               requires :base_sha, type: String, desc: 'Base commit SHA in the source branch'
               requires :start_sha, type: String, desc: 'SHA referencing commit in target branch'
               requires :head_sha, type: String, desc: 'SHA referencing HEAD of this merge request'
@@ -88,17 +101,17 @@ module API
 
               if noteable_type == MergeRequest
                 optional :line_range, type: Hash, desc: 'Multi-line start and end' do
-                  optional :start, type: Hash do
+                  optional :start, type: Hash, desc: 'Start line for a multi-line note' do
                     optional :line_code, type: String, desc: 'Start line code for multi-line note'
                     optional :type, type: String, desc: 'Start line type for multi-line note'
-                    optional :old_line, type: String, desc: 'Start old_line line number'
-                    optional :new_line, type: String, desc: 'Start new_line line number'
+                    optional :old_line, type: Integer, desc: 'Start old_line line number'
+                    optional :new_line, type: Integer, desc: 'Start new_line line number'
                   end
-                  optional :end, type: Hash do
+                  optional :end, type: Hash, desc: 'End line for a multi-line note' do
                     optional :line_code, type: String, desc: 'End line code for multi-line note'
                     optional :type, type: String, desc: 'End line type for multi-line note'
-                    optional :old_line, type: String, desc: 'End old_line line number'
-                    optional :new_line, type: String, desc: 'End new_line line number'
+                    optional :old_line, type: Integer, desc: 'End old_line line number'
+                    optional :new_line, type: Integer, desc: 'End new_line line number'
                   end
                 end
               end
@@ -122,15 +135,13 @@ module API
 
           note = create_note(noteable, opts)
 
-          if note.persisted?
+          process_note_creation_result(note) do
             present note.discussion, with: Entities::Discussion
-          else
-            bad_request!("Note #{note.errors.messages}")
           end
         end
-
         desc "Get comments in a single #{notable_name} discussion" do
           success Entities::Discussion
+          tags ['discussions']
         end
         params do
           requires :discussion_id, type: String, desc: 'The ID of a discussion'
@@ -149,6 +160,7 @@ module API
 
         desc "Add a comment to a #{notable_name} discussion" do
           success Entities::Note
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -160,6 +172,7 @@ module API
           noteable = find_noteable(noteable_type, params[:noteable_id])
           notes = readable_discussion_notes(noteable, params[:discussion_id])
           first_note = notes.first
+          validator = ::Gitlab::Auth::ScopeValidator.new(current_user, Gitlab::Auth::RequestAuthenticator.new(request))
 
           break not_found!("Discussion") if notes.empty?
 
@@ -171,19 +184,23 @@ module API
             note: params[:body],
             type: 'DiscussionNote',
             in_reply_to_discussion_id: params[:discussion_id],
-            created_at: params[:created_at]
+            created_at: params[:created_at],
+            scope_validator: validator
           }
-          note = create_note(noteable, opts)
+          begin
+            note = create_note(noteable, opts)
+          rescue QuickActions::InterpretService::QuickActionsNotAllowedError => error
+            forbidden!(error.message)
+          end
 
-          if note.persisted?
+          process_note_creation_result(note) do
             present note, with: Entities::Note
-          else
-            bad_request!("Note #{note.errors.messages}")
           end
         end
 
         desc "Get a comment in a #{notable_name} discussion" do
           success Entities::Note
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -198,6 +215,7 @@ module API
 
         desc "Edit a comment in a #{notable_name} discussion" do
           success Entities::Note
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -219,6 +237,7 @@ module API
 
         desc "Delete a comment in a #{notable_name} discussion" do
           success Entities::Note
+          tags ['discussions']
         end
         params do
           requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -234,6 +253,7 @@ module API
         if Noteable.resolvable_types.include?(noteable_type.to_s)
           desc "Resolve/unresolve an existing #{notable_name} discussion" do
             success Entities::Discussion
+            tags ['discussions']
           end
           params do
             requires :noteable_id, type: notable_id_type, desc: "The ID of the #{notable_name}"
@@ -256,7 +276,7 @@ module API
           .with_discussion_ids(discussion_ids)
           .inc_relations_for_view(noteable)
           .includes(:noteable)
-          .fresh
+          .order_created_at_id_asc
 
         # Without RendersActions#prepare_notes_for_rendering,
         # Note#system_note_visible_for? will attempt to render

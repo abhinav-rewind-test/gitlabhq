@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_category: :acquisition do
+RSpec.describe 'Group or Project invitations', :with_current_organization, :aggregate_failures, feature_category: :acquisition do
   let_it_be(:owner) { create(:user, name: 'John Doe') }
   # private will ensure we really have access to the group when we land on the group page
   let_it_be(:group) { create(:group, :private, name: 'Owned') }
@@ -11,7 +11,6 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
   let(:group_invite) { group.group_members.invite.last }
 
   before do
-    stub_feature_flags(arkose_labs_signup_challenge: false)
     stub_application_setting(require_admin_approval_after_user_signup: false)
     project.add_maintainer(owner)
     group.add_owner(owner)
@@ -27,22 +26,27 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
 
     context 'when signed out' do
       context 'when analyzing the redirects and forms from invite link click' do
-        before do
-          visit invite_path(group_invite.raw_invite_token)
-        end
-
         it 'renders sign up page with sign up notice' do
+          visit invite_path(group_invite.raw_invite_token)
+
           expect(page).to have_current_path(new_user_registration_path, ignore_query: true)
           expect(page).to have_content('To accept this invitation, create an account or sign in')
         end
 
-        it 'pre-fills the "Username or primary email" field on the sign in box with the invite_email from the invite' do
-          click_link 'Sign in'
+        with_and_without_sign_in_form_vue do
+          it 'pre-fills the "Username or primary email" field on the sign in box with the ' \
+          'invite_email from the invite' do
+            visit invite_path(group_invite.raw_invite_token)
 
-          expect(find_field('Username or primary email').value).to eq(group_invite.invite_email)
+            click_link 'Sign in'
+
+            expect(find_field('Username or primary email').value).to eq(group_invite.invite_email)
+          end
         end
 
         it 'shows the Email to be the invite_email from the invite' do
+          visit invite_path(group_invite.raw_invite_token)
+
           expect(find_by_testid('invite-email').text).to eq(group_invite.invite_email)
         end
       end
@@ -50,17 +54,19 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
       context 'when invite is sent before account is created;ldap or service sign in for manual acceptance edge case' do
         let(:user) { create(:user, email: 'user@example.com') }
 
-        context 'when invite clicked and not signed in' do
-          before do
-            visit invite_path(group_invite.raw_invite_token, invite_type: Emails::Members::INITIAL_INVITE)
-          end
+        with_and_without_sign_in_form_vue do
+          context 'when invite clicked and not signed in' do
+            before do
+              visit invite_path(group_invite.raw_invite_token, invite_type: ::Members::InviteMailer::INITIAL_INVITE)
+            end
 
-          it 'sign in, grants access and redirects to group page' do
-            click_link 'Sign in'
+            it 'sign in, grants access and redirects to group page' do
+              click_link 'Sign in'
 
-            gitlab_sign_in(user, remember: true, visit: false)
+              gitlab_sign_in(user, remember: true, visit: false)
 
-            expect_to_be_on_group_page(group)
+              expect_to_be_on_group_page(group)
+            end
           end
         end
 
@@ -88,7 +94,8 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
             end
 
             it 'accepts invite' do
-              expect(page).to have_content('You have been granted Developer access to group Owned.')
+              expect(page)
+                .to have_content('You have been granted access to the Owned group with the following role: Developer.')
             end
           end
         end
@@ -132,7 +139,7 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
     let(:new_user) { build_stubbed(:user) }
     let(:invite_email) { new_user.email }
     let(:group_invite) { create(:group_member, :invited, group: group, invite_email: invite_email, created_by: owner) }
-    let(:extra_params) { { invite_type: Emails::Members::INITIAL_INVITE } }
+    let(:extra_params) { { invite_type: ::Members::InviteMailer::INITIAL_INVITE } }
 
     before do
       stub_application_setting_enum('email_confirmation_setting', 'hard')
@@ -168,7 +175,8 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
             fill_in_sign_up_form(new_user, invite: true)
 
             expect(page).to have_current_path(group_path(group), ignore_query: true)
-            expect(page).to have_content('You have been granted Owner access to group Owned.')
+            expect(page)
+              .to have_content('You have been granted access to the Owned group with the following role: Owner.')
           end
         end
       end
@@ -193,7 +201,6 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
               category: 'RegistrationsController',
               action: 'accepted',
               label: 'invite_email',
-              property: group_invite.id.to_s,
               user: group_invite.reload.user
             )
           end
@@ -228,10 +235,11 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
 
         expect(page).to have_current_path(new_user_registration_path, ignore_query: true)
 
-        fill_in_sign_up_form(new_user, 'Register', invite: true)
+        fill_in_sign_up_form(new_user, invite: true)
 
         expect(page).to have_current_path(group_path(group))
-        expect(page).to have_content('You have been granted Owner access to group Owned.')
+        expect(page)
+          .to have_content('You have been granted access to the Owned group with the following role: Owner.')
       end
     end
 
@@ -245,26 +253,28 @@ RSpec.describe 'Group or Project invitations', :aggregate_failures, feature_cate
       end
     end
 
-    context 'when inviting a registered user by a secondary email address' do
-      let(:user) { create(:user) }
-      let(:secondary_email) { create(:email, user: user) }
+    with_and_without_sign_in_form_vue do
+      context 'when inviting a registered user by a secondary email address' do
+        let(:user) { create(:user) }
+        let(:secondary_email) { create(:email, user: user) }
 
-      before do
-        create(:group_member, :invited, group: group, invite_email: secondary_email.email, created_by: owner)
-        gitlab_sign_in(user)
-      end
+        before do
+          create(:group_member, :invited, group: group, invite_email: secondary_email.email, created_by: owner)
+          gitlab_sign_in(user)
+        end
 
-      it 'does not accept the pending invitation and does not redirect to the group path' do
-        expect(page).not_to have_current_path(group_path(group), ignore_query: true)
-        expect(group.reload).not_to have_user(user)
-      end
+        it 'does not accept the pending invitation and does not redirect to the group path' do
+          expect(page).not_to have_current_path(group_path(group), ignore_query: true)
+          expect(group.reload).not_to have_user(user)
+        end
 
-      context 'when the secondary email address is confirmed' do
-        let(:secondary_email) { create(:email, :confirmed, user: user) }
+        context 'when the secondary email address is confirmed' do
+          let(:secondary_email) { create(:email, :confirmed, user: user) }
 
-        it 'accepts the pending invitation and redirects to the group path' do
-          expect(page).to have_current_path(group_path(group), ignore_query: true)
-          expect(group.reload).to have_user(user)
+          it 'accepts the pending invitation and redirects to the group path' do
+            expect(page).to have_current_path(group_path(group), ignore_query: true)
+            expect(group.reload).to have_user(user)
+          end
         end
       end
     end

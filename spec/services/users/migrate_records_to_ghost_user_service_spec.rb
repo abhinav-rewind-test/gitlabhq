@@ -8,6 +8,7 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
   let!(:user) { create(:user) }
   let(:service) { described_class.new(user, admin, execution_tracker) }
   let(:execution_tracker) { instance_double(::Gitlab::Utils::ExecutionTracker, over_limit?: false) }
+  let(:ghost_user) { Users::Internal.in_organization(user.organization_id).ghost }
 
   let_it_be(:admin) { create(:admin) }
   let_it_be(:project) { create(:project, :repository) }
@@ -90,6 +91,12 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
       end
     end
 
+    context 'for label change events' do
+      include_examples 'migrating records to the ghost user', ResourceLabelEvent, [:user] do
+        let(:created_record) { create(:resource_label_event, issue: create(:issue), user: user) }
+      end
+    end
+
     context 'for abuse reports' do
       include_examples 'migrating records to the ghost user', AbuseReport do
         let(:created_record) { create(:abuse_report, reporter: user, user: create(:user)) }
@@ -104,17 +111,17 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
           let(:awardable) { create(:issue) }
 
           let!(:existing_award_emoji) do
-            create(:award_emoji, user: Users::Internal.ghost, name: "thumbsup", awardable: awardable)
+            create(:award_emoji, user: ghost_user, name: AwardEmoji::THUMBS_UP, awardable: awardable)
           end
 
-          let!(:award_emoji) { create(:award_emoji, user: user, name: "thumbsup", awardable: awardable) }
+          let!(:award_emoji) { create(:award_emoji, user: user, name: AwardEmoji::THUMBS_UP, awardable: awardable) }
 
           it "migrates the award emoji regardless" do
             service.execute
 
             migrated_record = AwardEmoji.find_by_id(award_emoji.id)
 
-            expect(migrated_record.user).to eq(Users::Internal.ghost)
+            expect(migrated_record.user).to eq(ghost_user)
           end
 
           it "does not leave the migrated award emoji in an invalid state" do
@@ -130,7 +137,7 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
 
     context 'for snippets' do
       include_examples 'migrating records to the ghost user', Snippet do
-        let(:created_record) { create(:snippet, project: project, author: user) }
+        let(:created_record) { create(:project_snippet, project: project, author: user) }
       end
     end
 
@@ -140,9 +147,30 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
       end
     end
 
+    context 'for todos' do
+      include_examples 'migrating records to the ghost user', Todo, [:author] do
+        let(:issue) { create(:issue, project: project, author: user) }
+        let(:created_record) do
+          create(
+            :todo,
+            project: issue.project,
+            user: create(:user),
+            author: user,
+            target: issue
+          )
+        end
+      end
+    end
+
     context 'for releases' do
       include_examples 'migrating records to the ghost user', Release, [:author] do
         let(:created_record) { create(:release, author: user) }
+      end
+    end
+
+    context 'for timelogs' do
+      include_examples 'migrating records to the ghost user', Timelog, [:user] do
+        let(:created_record) { create(:timelog, user: user) }
       end
     end
 
@@ -150,6 +178,18 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
       include_examples 'migrating records to the ghost user', Achievements::UserAchievement,
         [:awarded_by_user, :revoked_by_user] do
         let(:created_record) { create(:user_achievement, awarded_by_user: user, revoked_by_user: user) }
+      end
+    end
+
+    context 'for pipelines' do
+      include_examples 'migrating records to the ghost user', Ci::Pipeline, [:user] do
+        let(:created_record) { create(:ci_pipeline, project: project, user: user) }
+      end
+    end
+
+    context 'for builds' do
+      include_examples 'migrating records to the ghost user', Ci::Build, [:user] do
+        let(:created_record) { create(:ci_build, project: project, user: user) }
       end
     end
 
@@ -185,7 +225,13 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
     context 'for batched nullify' do
       # rubocop:disable Layout/LineLength
       def nullify_in_batches_regexp(table, column, user, batch_size: 100)
-        %r{^UPDATE "#{table}" SET "#{column}" = NULL WHERE "#{table}"."id" IN \(SELECT "#{table}"."id" FROM "#{table}" WHERE "#{table}"."#{column}" = #{user.id} LIMIT #{batch_size}\)}
+        %r{^UPDATE "#{table}" SET "#{column}" = NULL WHERE \("#{table}"."id"\) IN \(SELECT "#{table}"."id" FROM "#{table}" WHERE "#{table}"."#{column}" = #{user.id} LIMIT #{batch_size}\)}
+      end
+      # rubocop:enable Layout/LineLength
+
+      # rubocop:disable Layout/LineLength -- long regex
+      def delete_all_in_batches_regexp(table, column, user, batch_size: 1000)
+        %r{^DELETE FROM "#{table}" WHERE \("#{table}"."id"\) IN \(SELECT "#{table}"."id" FROM "#{table}" WHERE "#{table}"."#{column}" = #{user.id} LIMIT #{batch_size}\)}
       end
       # rubocop:enable Layout/LineLength
 
@@ -196,46 +242,47 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
       end
 
       it 'nullifies associations marked as `dependent: :nullify` and'\
-         'destroys the associations marked as `dependent: :destroy`, in batches', :aggregate_failures do
+         'destroys the associations marked as `dependent: :destroy`, in batches and'\
+         'deletes associations marked as delete_all', :aggregate_failures do
         # associations to be nullified
         issue = create(:issue, closed_by: user, updated_by: user)
-        resource_label_event = create(:resource_label_event, user: user)
         resource_state_event = create(:resource_state_event, user: user)
         created_project = create(:project, creator: user)
 
         # associations to be destroyed
-        todos = create_list(:todo, 2, project: issue.project, user: user, author: user, target: issue)
-        event = create(:event, project: issue.project, author: user)
+        pats = create_list(:personal_access_token, 2, user: user)
+
+        # associations to be delete_all'd
+        create_list(:todo, 2, project: issue.project, user: user, author: create(:user), target: issue)
+        create(:event, project: issue.project, author: user)
+
+        expect(user).to receive(:delete_dependent_associations_in_batches).and_call_original
 
         query_recorder = ActiveRecord::QueryRecorder.new do
           service.execute
         end
 
         issue.reload
-        resource_label_event.reload
         resource_state_event.reload
         created_project.reload
 
         expect(issue.closed_by).to be_nil
         expect(issue.updated_by_id).to be_nil
-        expect(resource_label_event.user_id).to be_nil
         expect(resource_state_event.user_id).to be_nil
         expect(created_project.creator_id).to be_nil
-        expect(user.authored_todos).to be_empty
         expect(user.todos).to be_empty
         expect(user.authored_events).to be_empty
 
         expected_queries = [
           nullify_in_batches_regexp(:issues, :updated_by_id, user),
           nullify_in_batches_regexp(:issues, :closed_by_id, user),
-          nullify_in_batches_regexp(:resource_label_events, :user_id, user),
           nullify_in_batches_regexp(:resource_state_events, :user_id, user),
-          nullify_in_batches_regexp(:projects, :creator_id, user)
+          nullify_in_batches_regexp(:projects, :creator_id, user),
+          delete_all_in_batches_regexp(:todos, :user_id, user),
+          delete_all_in_batches_regexp(:events, :author_id, user)
         ]
 
-        expected_queries += delete_in_batches_regexps(:todos, :user_id, user, todos)
-        expected_queries += delete_in_batches_regexps(:todos, :author_id, user, todos)
-        expected_queries += delete_in_batches_regexps(:events, :author_id, user, [event])
+        expected_queries += delete_in_batches_regexps(:personal_access_tokens, :user_id, user, pats)
 
         expect(query_recorder.log).to include(*expected_queries)
       end
@@ -345,7 +392,7 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
         service.execute
 
         expect(gitlab_shell.repository_exists?(repo.shard_name, "#{repo.disk_path}.git")).to be(true)
-        expect(Users::Internal.ghost.snippets).to include(repo.snippet)
+        expect(ghost_user.snippets).to include(repo.snippet)
       end
 
       context 'when an error is raised deleting snippets' do
@@ -370,7 +417,7 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
     end
 
     context 'when hard_delete option is given' do
-      it 'will not ghost certain records' do
+      it 'does not ghost certain records' do
         issue = create(:issue, author: user)
 
         service.execute(hard_delete: true)
@@ -384,8 +431,8 @@ RSpec.describe Users::MigrateRecordsToGhostUserService, feature_category: :user_
         service.execute(hard_delete: true)
         user_achievement.reload
 
-        expect(user_achievement.revoked_by_user).to eq(Users::Internal.ghost)
-        expect(user_achievement.awarded_by_user).to eq(Users::Internal.ghost)
+        expect(user_achievement.revoked_by_user).to eq(ghost_user)
+        expect(user_achievement.awarded_by_user).to eq(ghost_user)
       end
     end
   end

@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Package', :object_storage, product_group: :package_registry do
+  RSpec.describe 'Package', :object_storage, feature_category: :package_registry, quarantine: {
+    issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/14566',
+    type: :flaky
+  } do
     describe 'NuGet project level endpoint', :external_api_calls do
       include Support::Helpers::MaskToken
 
       let(:project) { create(:project, :private, name: 'nuget-package-project', template_name: 'dotnetcore') }
-      let(:personal_access_token) { Resource::PersonalAccessToken.fabricate! }
+      let(:personal_access_token) { Resource::PersonalAccessToken.fabricate_via_api!.token }
       let(:project_deploy_token) do
         create(:project_deploy_token,
           name: 'package-deploy-token',
@@ -22,16 +25,18 @@ module QA
 
       let!(:runner) do
         create(:project_runner,
-          name: "qa-runner-#{Time.now.to_i}",
+          name: "qa-runner-#{SecureRandom.hex(6)}",
           tags: ["runner-for-#{project.name}"],
           executor: :docker,
           project: project)
       end
 
+      before do
+        Flow::Login.sign_in
+      end
+
       after do
         runner.remove_via_api!
-        package.remove_via_api!
-        project.remove_via_api!
       end
 
       where do
@@ -39,17 +44,17 @@ module QA
           'using a personal access token' => {
             authentication_token_type: :personal_access_token,
             maven_header_name: 'Private-Token',
-            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/354351'
+            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/556461'
           },
           'using a project deploy token' => {
             authentication_token_type: :project_deploy_token,
             maven_header_name: 'Deploy-Token',
-            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/354352'
+            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/556459'
           },
           'using a ci job token' => {
             authentication_token_type: :ci_job_token,
             maven_header_name: 'Job-Token',
-            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/354353'
+            testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/556460'
           }
         }
       end
@@ -77,15 +82,12 @@ module QA
           end
         end
 
-        it 'publishes a nuget package and installs', :blocking, testcase: params[:testcase] do
-          Flow::Login.sign_in
-
-          Support::Retrier.retry_on_exception(max_attempts: 3, sleep_interval: 2) do
-            create(:commit, project: project, actions: [
-              {
-                action: 'update',
-                file_path: '.gitlab-ci.yml',
-                content: <<~YAML
+        it 'publishes a nuget package and installs', testcase: params[:testcase] do
+          create(:commit, project: project, actions: [
+            {
+              action: 'update',
+              file_path: '.gitlab-ci.yml',
+              content: <<~YAML
                   stages:
                     - deploy
                     - install
@@ -114,46 +116,36 @@ module QA
                       - if: '$CI_COMMIT_BRANCH == "#{project.default_branch}"'
                     tags:
                       - "runner-for-#{project.name}"
-                YAML
-              },
-              {
-                action: 'update',
-                file_path: 'dotnetcore.csproj',
-                content: <<~XML
+              YAML
+            },
+            {
+              action: 'update',
+              file_path: 'dotnetcore.csproj',
+              content: <<~XML
                   <Project Sdk="Microsoft.NET.Sdk">
                     <PropertyGroup>
                       <OutputType>Exe</OutputType>
                       <TargetFramework>net5.0</TargetFramework>
                     </PropertyGroup>
                   </Project>
-                XML
-              }
-            ])
-          end
+              XML
+            }
+          ])
 
           project.visit!
-          Flow::Pipeline.visit_latest_pipeline
+          Flow::Pipeline.wait_for_pipeline_creation_via_api(project: project, size: 2)
 
-          Page::Project::Pipeline::Show.perform do |pipeline|
-            pipeline.click_job('deploy')
-          end
-
+          project.visit_job('deploy')
           Page::Project::Job::Show.perform do |job|
             expect(job).to be_successful(timeout: 800)
           end
 
-          page.go_back
-
-          Page::Project::Pipeline::Show.perform do |pipeline|
-            pipeline.click_job('install')
-          end
-
+          project.visit_job('install')
           Page::Project::Job::Show.perform do |job|
             expect(job).to be_successful(timeout: 800)
           end
 
           Page::Project::Menu.perform(&:go_to_package_registry)
-
           Page::Project::Packages::Index.perform do |index|
             expect(index).to have_package(package.name)
           end

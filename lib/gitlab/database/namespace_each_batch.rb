@@ -16,7 +16,7 @@ module Gitlab
     # # Build the cursor object that will be used for tracking our position in the tree hierarchy.
     # cursor = { current_id: 9970, depth: [9970] }
     #
-    # # Instantiate the object.
+    # # Instantiate the object to iterate over all namespaces.
     # iterator = Gitlab::Database::NamespaceEachBatch.new(namespace_class: Namespace, cursor: cursor)
     #
     # iterator.each_batch(of: 100) do |ids|
@@ -35,11 +35,17 @@ module Gitlab
     # # Building an iterator that only returns groups:
     # iterator = Gitlab::Database::NamespaceEachBatch.new(namespace_class: Group, cursor: cursor)
     #
+    # # Building an iterator that only returns project namespaces:
+    # iterator = Gitlab::Database::NamespaceEachBatch.new(namespace_class: Namespaces::ProjectNamespace, cursor: cursor)
     class NamespaceEachBatch
       PROJECTIONS = %w[current_id depth ids count index].freeze
+      TYPE_MAPPING = {
+        'Namespaces::ProjectNamespace' => 'Project'
+      }.freeze
 
       def initialize(namespace_class:, cursor:)
-        @namespace_class = namespace_class
+        @namespace_class = derive_namespace_class(namespace_class)
+        @type = derive_type(namespace_class)
         set_cursor!(cursor)
       end
 
@@ -54,7 +60,8 @@ module Gitlab
           first_iteration = false
           current_cursor = new_cursor
 
-          yield ids, new_cursor
+          # Skip empty batches when filtering by type, but continue iteration
+          yield ids, new_cursor if ids.present?
 
           break if new_cursor[:depth].empty?
         end
@@ -62,7 +69,17 @@ module Gitlab
 
       private
 
-      attr_reader :namespace_class, :cursor, :namespace_id
+      attr_reader :namespace_class, :cursor, :namespace_id, :type
+
+      def derive_namespace_class(klass)
+        return klass if klass == Group
+
+        Namespace
+      end
+
+      def derive_type(klass)
+        TYPE_MAPPING[klass.name]
+      end
 
       def load_batch(cursor:, of:, first_iteration: false)
         recursive_scope = build_recursive_query(cursor, of, first_iteration)
@@ -117,8 +134,6 @@ module Gitlab
       #
       # rubocop: enable Style/AsciiComments
       def build_recursive_query(cursor, of, first_iteration)
-        ids = first_iteration ? cursor[:current_id] : ''
-
         recursive_cte = Gitlab::SQL::RecursiveCTE.new(:result,
           union_args: {
             remove_order: false,
@@ -126,9 +141,9 @@ module Gitlab
           })
 
         recursive_cte << base_namespace_class.select(
-          Arel.sql(cursor[:current_id].to_s).as('current_id'),
-          Arel.sql("ARRAY[#{cursor[:depth].join(',')}]::int[]").as('depth'),
-          Arel.sql("ARRAY[#{ids}]::int[]").as('ids'),
+          Arel.sql("#{cursor[:current_id]}::bigint").as('current_id'),
+          Arel.sql("ARRAY[#{cursor[:depth].join(',')}]::bigint[]").as('depth'),
+          Arel.sql(initial_ids_expression(cursor[:current_id], first_iteration)).as('ids'),
           Arel.sql('1::bigint AS count'),
           Arel.sql('0::bigint AS index')
         ).from('(VALUES (1)) AS initializer_row')
@@ -157,17 +172,43 @@ module Gitlab
         Namespace.where(id: cursor[:current_id])
       end
 
+      def initial_ids_expression(current_id, first_iteration)
+        return "ARRAY[]::bigint[]" unless first_iteration
+
+        if type.nil?
+          "ARRAY[#{current_id}]::bigint[]"
+        else
+          "(SELECT CASE WHEN type = #{Namespace.connection.quote(type)} " \
+            "THEN ARRAY[#{current_id}]::bigint[] " \
+            "ELSE ARRAY[]::bigint[] END FROM #{base_namespace_table} WHERE id = #{current_id})"
+        end
+      end
+
+      def type_filtered_ids_append(table_alias = base_namespace_table)
+        if type.nil?
+          "cte.ids || #{table_alias}.id::bigint"
+        else
+          "CASE WHEN #{table_alias}.type = #{Namespace.connection.quote(type)} " \
+            "THEN cte.ids || #{table_alias}.id::bigint " \
+            "ELSE cte.ids END"
+        end
+      end
+
+      def lateral_query_columns
+        type.nil? ? %i[id] : %i[id type]
+      end
+
       def walk_down
         lateral_query = namespace_class
-          .select(:id)
+          .select(*lateral_query_columns)
           .where('parent_id = cte.current_id')
           .order(:id)
           .limit(1)
 
         base_namespace_class.select(
           base_namespace_class.arel_table[:id].as('current_id'),
-          Arel.sql("cte.depth || #{base_namespace_table}.id").as('depth'),
-          Arel.sql("cte.ids || #{base_namespace_table}.id").as('ids'),
+          Arel.sql("cte.depth || #{base_namespace_table}.id::bigint").as('depth'),
+          Arel.sql(type_filtered_ids_append).as('ids'),
           Arel.sql('cte.count + 1').as('count'),
           Arel.sql('1::bigint AS index')
         ).from("cte, LATERAL (#{lateral_query.to_sql}) #{base_namespace_table}")
@@ -175,7 +216,7 @@ module Gitlab
 
       def next_elements
         lateral_query = namespace_class
-          .select(:id)
+          .select(*lateral_query_columns)
           .where("#{base_namespace_table}.parent_id = cte.depth[array_length(cte.depth, 1) - 1]")
           .where("#{base_namespace_table}.id > cte.depth[array_length(cte.depth, 1)]")
           .order(:id)
@@ -183,8 +224,8 @@ module Gitlab
 
         base_namespace_class.select(
           base_namespace_class.arel_table[:id].as('current_id'),
-          Arel.sql("cte.depth[:array_length(cte.depth, 1) - 1] || #{base_namespace_table}.id").as('depth'),
-          Arel.sql("cte.ids || #{base_namespace_table}.id").as('ids'),
+          Arel.sql("cte.depth[:array_length(cte.depth, 1) - 1] || #{base_namespace_table}.id::bigint").as('depth'),
+          Arel.sql(type_filtered_ids_append).as('ids'),
           Arel.sql('cte.count + 1').as('count'),
           Arel.sql('2::bigint AS index')
         ).from("cte, LATERAL (#{lateral_query.to_sql}) #{base_namespace_table}")
@@ -198,7 +239,7 @@ module Gitlab
           Arel.sql('cte.count + 1').as('count'),
           Arel.sql('3::bigint AS index')
         ).from('cte')
-          .where('cte.depth <> ARRAY[]::int[]')
+          .where("cte.depth <> '{}'")
           .limit(1)
       end
 

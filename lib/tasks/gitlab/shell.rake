@@ -30,8 +30,7 @@ namespace :gitlab do
         File.open("config.yml", "w+") { |f| f.puts config.to_yaml }
 
         [
-          %w[bin/install],
-          %w[make build]
+          %w[make make_necessary_dirs build]
         ].each do |cmd|
           unless Kernel.system(*cmd)
             raise "command failed: #{cmd.join(' ')}"
@@ -69,12 +68,12 @@ namespace :gitlab do
 
     Key.auth.find_in_batches(batch_size: 1000) do |keys|
       unless authorized_keys.batch_add_keys(keys)
-        puts "Failed to add keys...".color(:red)
+        puts Rainbow("Failed to add keys...").red
         exit 1
       end
     end
   rescue Gitlab::TaskAbortedByUserError
-    puts "Quitting...".color(:red)
+    puts Rainbow("Quitting...").red
     exit 1
   end
 end

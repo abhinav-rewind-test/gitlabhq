@@ -10,10 +10,12 @@ module Ci
         @current_user = current_user
       end
 
-      def resources(sort: nil, search: nil, scope: :all)
+      def resources(sort: nil, search: nil, scope: :all, verification_level: nil, topics: nil, min_access_level: nil)
         relation = Ci::Catalog::Resource.published.includes(:project)
-        relation = by_scope(relation, scope)
+        relation = by_scope(relation, scope, min_access_level)
         relation = by_search(relation, search)
+        relation = by_verification_level(relation, verification_level)
+        relation = by_topics(relation, topics)
 
         case sort.to_s
         when 'name_desc' then relation.order_by_name_desc
@@ -22,6 +24,8 @@ module Ci
         when 'latest_released_at_asc' then relation.order_by_latest_released_at_asc
         when 'created_at_asc' then relation.order_by_created_at_asc
         when 'created_at_desc' then relation.order_by_created_at_desc
+        when 'usage_count_asc' then relation.order_by_last_30_day_usage_count_asc
+        when 'usage_count_desc' then relation.order_by_last_30_day_usage_count_desc
         when 'star_count_asc' then relation.order_by_star_count(:asc)
         else
           relation.order_by_star_count(:desc)
@@ -49,12 +53,24 @@ module Ci
         relation.search(search)
       end
 
-      def by_scope(relation, scope)
+      def by_scope(relation, scope, min_access_level)
         if scope == :namespaces
-          relation.visible_to_user(current_user)
+          relation.visible_to_user_with_access_level(current_user, min_access_level)
         else
           relation.public_or_visible_to_user(current_user)
         end
+      end
+
+      def by_verification_level(relation, level)
+        return relation unless level
+
+        relation.for_verification_level(level)
+      end
+
+      def by_topics(relation, topics)
+        return relation if topics.blank?
+
+        relation.with_topics(topics)
       end
     end
   end

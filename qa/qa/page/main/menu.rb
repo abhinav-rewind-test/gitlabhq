@@ -9,14 +9,17 @@ module QA
         include SubMenus::CreateNewMenu
         include SubMenus::SuperSidebar::GlobalSearchModal
         include SubMenus::Explore
-        include SubMenus::Help
 
         view 'app/assets/javascripts/super_sidebar/components/super_sidebar.vue' do
           element 'super-sidebar', required: true
         end
 
-        view 'app/assets/javascripts/super_sidebar/components/user_bar.vue' do
+        view 'app/assets/javascripts/super_sidebar/components/super_topbar.vue' do
           element 'canary-badge-link'
+        end
+
+        view 'app/assets/javascripts/super_sidebar/components/brand_logo.vue' do
+          element 'brand-header-default-logo'
         end
 
         view 'app/assets/javascripts/super_sidebar/components/user_menu.vue' do
@@ -24,14 +27,18 @@ module QA
           element 'user-avatar-content', required: !Runtime::Env.phone_layout?
           element 'sign-out-link'
           element 'edit-profile-link'
+          element 'preferences-item'
         end
 
         view 'app/assets/javascripts/super_sidebar/components/user_menu_profile_item.vue' do
           element 'user-profile-link'
         end
 
-        view 'app/assets/javascripts/super_sidebar/components/user_bar.vue' do
+        view 'app/assets/javascripts/super_sidebar/components/user_menu.vue' do
           element 'stop-impersonation-btn'
+        end
+
+        view 'app/assets/javascripts/super_sidebar/components/user_counts.vue' do
           element 'issues-shortcut-button', required: !Runtime::Env.phone_layout?
           element 'merge-requests-shortcut-button', required: !Runtime::Env.phone_layout?
           element 'todos-shortcut-button', required: !Runtime::Env.phone_layout?
@@ -71,8 +78,16 @@ module QA
           click_element(option_name)
         end
 
+        def go_to_merge_request_dashboard
+          click_element('merge-requests-shortcut-button')
+        end
+
         def go_to_todos
           click_element('todos-shortcut-button')
+        end
+
+        def go_to_homepage
+          click_element('brand-header-default-logo')
         end
 
         def signed_in?
@@ -133,6 +148,12 @@ module QA
           end
         end
 
+        def click_user_preferences_link
+          within_user_menu do
+            click_element('preferences-item')
+          end
+        end
+
         def has_personal_area?(wait: Capybara.default_max_wait_time)
           has_element?('user-avatar-content', wait: wait)
         end
@@ -141,8 +162,11 @@ module QA
           has_no_element?('user-avatar-content', wait: wait)
         end
 
-        def click_stop_impersonation_link
+        def stop_impersonation
           click_element('stop-impersonation-btn')
+          wait_until(max_duration: 10, reload: false) do
+            has_no_element?('stop-impersonation-btn')
+          end
         end
 
         # To verify whether the user has been directed to a canary web node
@@ -158,11 +182,9 @@ module QA
         private
 
         def within_user_menu(&block)
-          within_element('super-sidebar') do
-            click_element 'user-avatar-content' unless has_element?('user-profile-link', wait: 1)
+          click_element 'user-avatar-content' unless has_element?('user-profile-link', wait: 1)
 
-            within_element('user-dropdown', &block)
-          end
+          within_element('user-dropdown', &block)
         end
       end
     end

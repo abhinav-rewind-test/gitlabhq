@@ -43,7 +43,7 @@ export default {
       'footerCreateLabelTitle',
       'footerManageLabelTitle',
     ]),
-    ...mapGetters(['selectedLabelsList', 'isDropdownVariantSidebar', 'isDropdownVariantEmbedded']),
+    ...mapGetters(['isDropdownVariantSidebar', 'isDropdownVariantEmbedded']),
     visibleLabels() {
       if (this.searchKey) {
         return fuzzaldrinPlus.filter(this.labels, this.searchKey, {
@@ -165,15 +165,15 @@ export default {
     >
       <div
         v-if="isDropdownVariantSidebar || isDropdownVariantEmbedded"
-        class="dropdown-title gl-display-flex gl-align-items-center gl-pt-0 gl-pb-3!"
+        class="dropdown-title gl-flex gl-items-center !gl-pb-3 gl-pt-0"
         data-testid="dropdown-title"
       >
-        <span class="flex-grow-1">{{ labelsListTitle }}</span>
+        <span class="!gl-grow">{{ labelsListTitle }}</span>
         <gl-button
           :aria-label="__('Close')"
           category="tertiary"
           size="small"
-          class="dropdown-header-button gl-p-0!"
+          class="dropdown-header-button !gl-p-0"
           icon="close"
           @click="toggleDropdownContents"
         />
@@ -189,10 +189,10 @@ export default {
       <div ref="labelsListContainer" class="dropdown-content" data-testid="dropdown-content">
         <gl-loading-icon
           v-if="labelsFetchInProgress"
-          class="labels-fetch-loading gl-align-items-center gl-w-full gl-h-full"
+          class="labels-fetch-loading gl-h-full gl-w-full gl-items-center"
           size="lg"
         />
-        <ul v-else class="list-unstyled gl-mb-0 gl-word-break-word">
+        <ul v-else data-testid="label-items" class="list-unstyled gl-mb-0 gl-break-anywhere">
           <label-item
             v-for="(label, index) in visibleLabels"
             :key="label.id"
@@ -215,7 +215,7 @@ export default {
         <ul class="list-unstyled">
           <li v-if="allowLabelCreate">
             <gl-link
-              class="gl-display-flex gl-w-full flex-row text-break-word label-item"
+              class="label-item gl-flex gl-w-full !gl-flex-row gl-break-all"
               data-testid="create-label-link"
               @click="handleCreateLabelClick"
             >
@@ -223,10 +223,7 @@ export default {
             </gl-link>
           </li>
           <li v-if="labelsManagePath">
-            <gl-link
-              :href="labelsManagePath"
-              class="gl-display-flex flex-row text-break-word label-item"
-            >
+            <gl-link :href="labelsManagePath" class="label-item gl-flex !gl-flex-row gl-break-all">
               {{ footerManageLabelTitle }}
             </gl-link>
           </li>

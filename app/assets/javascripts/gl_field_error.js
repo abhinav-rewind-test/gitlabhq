@@ -1,4 +1,5 @@
 import $ from 'jquery';
+import { uuids } from '~/lib/utils/uuids';
 import { sanitize } from '~/lib/dompurify';
 import { __ } from '~/locale';
 
@@ -65,8 +66,13 @@ export default class GlFieldError {
     this.inputDomElement = this.inputElement.get(0);
     this.form = formErrors;
     this.errorMessage = this.inputElement.attr('title') || __('This field is required.');
+    // eslint-disable-next-line prefer-destructuring
+    this.errorMessageId = uuids()[0];
     this.fieldErrorElement = $(
-      `<p class='${errorMessageClass} hidden'>${sanitize(this.errorMessage)}</p>`,
+      `<p
+        id=${this.errorMessageId}
+        class='${errorMessageClass} hidden'
+      >${sanitize(this.errorMessage)}</p>`,
     );
 
     this.state = {
@@ -124,8 +130,8 @@ export default class GlFieldError {
     // For UX, wait til after first invalid submission to check each keyup
     // eslint-disable-next-line @gitlab/no-global-event-off
     this.inputElement
-      .off('keyup.fieldValidator')
-      .on('keyup.fieldValidator', this.updateValidity.bind(this));
+      .off('input.fieldValidator')
+      .on('input.fieldValidator', this.updateValidity.bind(this));
   }
 
   /* Get or set current input value */
@@ -154,6 +160,7 @@ export default class GlFieldError {
 
   renderInvalid() {
     this.inputElement.addClass(inputErrorClass);
+    this.inputElement.attr('aria-describedby', this.errorMessageId);
     this.scopedSiblings.addClass('hidden');
     this.inputElement.parents('.form-group').find(validInputHintClass).addClass('hidden');
     return this.fieldErrorElement.removeClass('hidden');
@@ -166,6 +173,7 @@ export default class GlFieldError {
       this.accessCurrentValue(trimmedInput);
     }
     this.inputElement.removeClass(inputErrorClass);
+    this.inputElement.removeAttr('aria-describedby');
     this.scopedSiblings.addClass('hidden');
     this.fieldErrorElement.addClass('hidden');
   }

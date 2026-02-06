@@ -27,6 +27,14 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Metrics, feature_category: :continuo
     expect(step.break?).to be false
   end
 
+  it 'increments the metrics' do
+    expect(::Gitlab::Ci::Pipeline::Metrics.pipelines_created_counter)
+      .to receive(:increment)
+      .with({ partition_id: instance_of(Integer), source: 'push' })
+
+    run_chain
+  end
+
   context 'with pipeline name' do
     it 'creates snowplow event' do
       run_chain
@@ -50,6 +58,37 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Metrics, feature_category: :continuo
       run_chain
 
       expect_no_snowplow_event
+    end
+  end
+
+  context 'with inputs' do
+    let(:inputs) do
+      {
+        deploy_strategy: 'manual',
+        job_stage: 'deploy',
+        test_script: 'echo "test"'
+      }
+    end
+
+    let(:command) do
+      Gitlab::Ci::Pipeline::Chain::Command.new(
+        project: project,
+        current_user: user,
+        origin_ref: 'master',
+        inputs: inputs
+      )
+    end
+
+    it 'tracks the usage of inputs' do
+      expect { run_chain }.to trigger_internal_events('create_pipeline_with_inputs').with(
+        project: pipeline.project,
+        user: pipeline.user,
+        additional_properties: {
+          label: 'push',
+          property: 'unknown_source',
+          value: 3
+        }
+      )
     end
   end
 end

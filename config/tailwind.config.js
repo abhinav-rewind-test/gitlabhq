@@ -2,25 +2,16 @@ const tailwindDefaults = require('@gitlab/ui/tailwind.defaults');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  presets: [tailwindDefaults],
+  darkMode: ['variant', ['&:where(.dark *)']],
   content: [
     './{ee,jh,}/app/assets/javascripts/**/*.{vue,js}',
     '!./app/assets/javascripts/locale/',
     './{ee,jh,}/app/helpers/**/*.rb',
     './{ee,jh,}/app/components/**/*.{haml,rb}',
     './{ee,jh,}/app/views/**/*.haml',
-    './node_modules/@gitlab/ui/dist/**/*.{vue,js}',
-  ],
-  presets: [tailwindDefaults],
-  corePlugins: [
-    'appearance',
-    'content',
-    'float',
-    'inset',
-    'isolation',
-    'mixBlendMode',
-    'position',
-    'tableLayout',
-    'userSelect',
+    './node_modules/@gitlab/ui/src/**/*.{vue,js}',
+    './node_modules/@gitlab/duo-ui/dist/**/*.{vue,js}',
   ],
   blocklist: [
     // Prevents an irrelevant util from being generated.
@@ -28,4 +19,17 @@ module.exports = {
     // this from happening. For now, we are simply blocking the only problematic occurrence.
     '[link:page-slug]',
   ],
+  corePlugins: {
+    container: false,
+  },
+  theme: {
+    extend: {
+      containers: {
+        sm: '576px',
+        md: '768px',
+        lg: '992px',
+        xl: '1200px',
+      },
+    },
+  },
 };

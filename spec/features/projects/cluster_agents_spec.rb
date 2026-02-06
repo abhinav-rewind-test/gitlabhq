@@ -12,10 +12,10 @@ RSpec.describe 'ClusterAgents', :js, feature_category: :environment_management d
   before do
     allow(Gitlab::Kas).to receive(:enabled?).and_return(true)
     allow_next_instance_of(Gitlab::Kas::Client) do |client|
-      allow(client).to receive(:get_connected_agents_by_agent_ids).and_return([])
+      allow(client).to receive(:get_connected_agentks_by_agent_ids).and_return([])
     end
 
-    gitlab_sign_in(user)
+    sign_in(user)
   end
 
   context 'when user does not have any agents and visits the index page' do
@@ -26,7 +26,8 @@ RSpec.describe 'ClusterAgents', :js, feature_category: :environment_management d
       visit project_clusters_path(empty_project)
     end
 
-    it 'displays empty state', :aggregate_failures do
+    it 'displays empty state', :aggregate_failures,
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16781' do
       expect(page).to have_selector('[data-testid="cluster-agent-empty-state"]')
     end
   end
@@ -37,7 +38,8 @@ RSpec.describe 'ClusterAgents', :js, feature_category: :environment_management d
         visit project_clusters_path(project)
       end
 
-      it 'displays a table with agent', :aggregate_failures do
+      it 'displays a table with agent', :aggregate_failures,
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16782' do
         expect(page).to have_content(agent.name)
         expect(page).to have_selector('[data-testid="cluster-agent-list-table"] tbody tr', count: 1)
       end
@@ -48,7 +50,8 @@ RSpec.describe 'ClusterAgents', :js, feature_category: :environment_management d
         visit project_cluster_agent_path(project, agent.name)
       end
 
-      it 'displays agent information', :aggregate_failures do
+      it 'displays agent information', :aggregate_failures,
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/8416' do
         expect(page).to have_content(agent.name)
       end
 
@@ -56,7 +59,8 @@ RSpec.describe 'ClusterAgents', :js, feature_category: :environment_management d
         expect(page).to have_content('Activity')
       end
 
-      it 'displays agent tokens tab', :aggregate_failures do
+      it 'displays agent tokens tab', :aggregate_failures,
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/7095' do
         expect(page).to have_content('Access tokens')
         click_link 'Access tokens'
         expect(page).to have_content(token.description)

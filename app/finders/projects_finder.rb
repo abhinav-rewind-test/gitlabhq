@@ -30,10 +30,15 @@
 #     not_aimed_for_deletion: boolean
 #     full_paths: string[]
 #     organization: Scope the groups to the Organizations::Organization
-#
+#     language: int
+#     language_name: string
+#     active: boolean - Whether to include projects that are not archived.
+#     namespace_path: string - Full path of the project's namespace (group or user).
 class ProjectsFinder < UnionFinder
   include CustomAttributesFilter
   include UpdatedAtFilter
+  include Projects::SearchFilter
+  include Gitlab::Utils::StrongMemoize
 
   attr_accessor :params
   attr_reader :current_user, :project_ids_relation
@@ -47,6 +52,8 @@ class ProjectsFinder < UnionFinder
   end
 
   def execute
+    return Project.none if params[:namespace_path].present? && namespace_id.nil?
+
     user = params.delete(:user)
     collection =
       if user
@@ -55,15 +62,15 @@ class ProjectsFinder < UnionFinder
         init_collection
       end
 
-    if Feature.enabled?(:hide_projects_of_banned_users)
-      collection = without_created_and_owned_by_banned_user(collection)
-    end
+    collection = by_organization(collection)
 
     use_cte = params.delete(:use_cte)
     collection = Project.wrap_with_cte(collection) if use_cte
     collection = filter_projects(collection)
 
-    sort(collection).allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/427628")
+    sort(collection)
+      .with_project_namespace_details
+      .allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/427628")
   end
 
   private
@@ -78,6 +85,7 @@ class ProjectsFinder < UnionFinder
 
   # EE would override this to add more filters
   def filter_projects(collection)
+    collection = by_namespace_path(collection)
     collection = by_deleted_status(collection)
     collection = by_ids(collection)
     collection = by_full_paths(collection)
@@ -88,6 +96,7 @@ class ProjectsFinder < UnionFinder
     collection = by_topics(collection)
     collection = by_topic_id(collection)
     collection = by_search(collection)
+    collection = by_active(collection)
     collection = by_archived(collection)
     collection = by_custom_attributes(collection)
     collection = by_not_aimed_for_deletion(collection)
@@ -96,7 +105,9 @@ class ProjectsFinder < UnionFinder
     collection = by_language(collection)
     collection = by_feature_availability(collection)
     collection = by_updated_at(collection)
-    collection = by_organization(collection)
+    collection = by_marked_for_deletion_on(collection)
+    collection = by_aimed_for_deletion(collection)
+    collection = by_last_repository_check_failed(collection)
     by_repository_storage(collection)
   end
 
@@ -142,7 +153,7 @@ class ProjectsFinder < UnionFinder
 
     public_visibility_levels = Gitlab::VisibilityLevel.levels_for_user(current_user)
 
-    !public_visibility_levels.include?(params[:visibility_level].to_i)
+    public_visibility_levels.exclude?(params[:visibility_level].to_i)
   end
 
   def owned_projects?
@@ -176,6 +187,10 @@ class ProjectsFinder < UnionFinder
     params[:full_paths].present? ? items.where_full_path_in(params[:full_paths], preload_routes: false) : items
   end
 
+  def by_namespace_path(items)
+    params[:namespace_path].present? ? items.in_namespace(namespace_id) : items
+  end
+
   def union(items)
     find_union(items, Project).with_route
   end
@@ -202,33 +217,36 @@ class ProjectsFinder < UnionFinder
     return items unless params[:topic].present?
 
     topics = params[:topic].instance_of?(String) ? params[:topic].split(',') : params[:topic]
-    topics.map(&:strip).uniq.reject(&:empty?).each do |topic|
-      items = items.with_topic_by_name(topic)
-    end
+    sanitized_topics = topics.map(&:strip).uniq.reject(&:empty?)
 
-    items
+    items.contains_all_topic_names(sanitized_topics)
   end
 
   def by_topic_id(items)
     return items unless params[:topic_id].present?
 
-    topic = Projects::Topic.find_by(id: params[:topic_id]) # rubocop: disable CodeReuse/ActiveRecord
-    return Project.none unless topic
+    topic = Projects::Topic.find_by_id(params[:topic_id])
+    return items.none unless topic
 
     items.with_topic(topic)
   end
 
-  def by_search(items)
-    params[:search] ||= params[:name]
+  def by_marked_for_deletion_on(items)
+    return items unless params[:marked_for_deletion_on].present?
 
-    return items if Feature.enabled?(:disable_anonymous_project_search, type: :ops) && current_user.nil?
-    return items.none if params[:search].present? && params[:minimum_search_length].present? && params[:search].length < params[:minimum_search_length].to_i
+    items.marked_for_deletion_on(params[:marked_for_deletion_on])
+  end
 
-    items.optionally_search(params[:search], include_namespace: params[:search_namespaces].present?)
+  def by_aimed_for_deletion(items)
+    if ::Gitlab::Utils.to_boolean(params[:aimed_for_deletion])
+      items.self_or_ancestors_aimed_for_deletion
+    else
+      items
+    end
   end
 
   def by_not_aimed_for_deletion(items)
-    params[:not_aimed_for_deletion].present? ? items.not_aimed_for_deletion : items
+    params[:not_aimed_for_deletion].present? ? items.self_and_ancestors_not_aimed_for_deletion : items
   end
 
   def by_last_activity_after(items)
@@ -256,33 +274,34 @@ class ProjectsFinder < UnionFinder
   end
 
   def by_language(items)
-    if params[:language].present?
-      items.with_programming_language_id(params[:language])
-    else
-      items
-    end
+    return items.with_programming_language_id(params[:language]) if params[:language].present?
+    return items.with_programming_language(params[:language_name]) if params[:language_name].present?
+
+    items
+  end
+
+  def should_sort_by_similarity?
+    params[:search].present? && (params[:sort].nil? || params[:sort].to_s == 'similarity')
   end
 
   def sort(items)
-    return items.projects_order_id_desc unless params[:sort]
+    return items.sorted_by_similarity_desc(params[:search]) if should_sort_by_similarity?
 
-    if params[:sort] == 'similarity' && params[:search].present?
-      return items.sorted_by_similarity_desc(params[:search])
-    end
+    return items.projects_order_id_desc unless params[:sort]
 
     items.sort_by_attribute(params[:sort])
   end
 
   def by_archived(projects)
     if params[:non_archived]
-      projects.non_archived
-    elsif params.key?(:archived)
+      projects.self_and_ancestors_non_archived
+    elsif params.key?(:archived) && !params[:archived].nil?
       if params[:archived] == 'only'
-        projects.archived
+        projects.self_or_ancestors_archived
       elsif Gitlab::Utils.to_boolean(params[:archived])
         projects
       else
-        projects.non_archived
+        projects.self_and_ancestors_non_archived
       end
     else
       projects
@@ -302,17 +321,29 @@ class ProjectsFinder < UnionFinder
     items.in_organization(organization)
   end
 
+  def by_active(items)
+    return items if params[:active].nil?
+
+    params[:active] ? items.self_and_ancestors_active : items.self_or_ancestors_inactive
+  end
+
+  def by_last_repository_check_failed(items)
+    return items if params[:last_repository_check_failed].nil?
+    return items.last_repository_check_failed if params[:last_repository_check_failed]
+
+    items.last_repository_check_not_failed
+  end
+
   def finder_params
     return {} unless min_access_level?
 
     { min_access_level: params[:min_access_level] }
   end
 
-  def without_created_and_owned_by_banned_user(projects)
-    return projects if current_user&.can?(:admin_all_resources)
-
-    projects.without_created_and_owned_by_banned_user
+  def namespace_id
+    Namespace.find_by_full_path(params[:namespace_path])&.id
   end
+  strong_memoize_attr :namespace_id
 end
 
 ProjectsFinder.prepend_mod_with('ProjectsFinder')

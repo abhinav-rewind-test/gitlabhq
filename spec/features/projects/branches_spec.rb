@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe 'Branches', feature_category: :source_code_management do
   let_it_be(:user) { create(:user) }
   let_it_be(:project) { create(:project, :public, :repository) }
-  let(:repository) { project.repository }
+  let_it_be(:repository) { project.repository }
 
   context 'when logged in as reporter' do
     before do
@@ -69,6 +69,20 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
 
           expect(page).to have_content(sorted_branches(repository, count: 6, sort_by: :updated_desc, state: 'active'))
         end
+
+        it 'sorts the branches by oldest updated', :js do
+          visit project_branches_filtered_path(project, state: 'active')
+
+          click_button 'Updated date'
+          within_testid 'branches-dropdown' do
+            first('span', text: 'Oldest updated').click
+          end
+
+          expect(page).to have_content(sorted_branches(repository, count: 6, sort_by: :updated_asc, state: 'active'))
+          expect(page).to have_current_path(
+            [project_branches_path(project, state: 'active'), 'sort=updated_asc'].join('&')
+          )
+        end
       end
 
       describe 'Stale branches page' do
@@ -76,6 +90,20 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
           visit project_branches_filtered_path(project, state: 'stale')
 
           expect(page).to have_content(sorted_branches(repository, count: 4, sort_by: :updated_asc, state: 'stale'))
+        end
+
+        it 'sorts the branches by oldest updated', :js do
+          visit project_branches_filtered_path(project, state: 'stale')
+
+          click_button 'Oldest updated'
+          within_testid 'branches-dropdown' do
+            first('span', text: 'Updated date').click
+          end
+
+          expect(page).to have_content(sorted_branches(repository, count: 4, sort_by: :updated_desc, state: 'stale'))
+          expect(page).to have_current_path(
+            [project_branches_path(project, state: 'stale'), 'sort=updated_desc'].join('&')
+          )
         end
       end
 
@@ -165,15 +193,32 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
         end
 
         expect(page).to have_content(sorted_branches(repository, count: 20, sort_by: :updated_asc))
+        expect(page).to have_current_path(
+          [project_branches_path(project, state: 'all'), 'sort=updated_asc'].join('&')
+        )
       end
 
       it 'avoids a N+1 query in branches index' do
         new_branches_count = 20
         sql_queries_count_threshold = 10
 
-        control = ActiveRecord::QueryRecorder.new { visit project_branches_path(project) }
+        control = ActiveRecord::QueryRecorder.new { visit project_branches_filtered_path(project, state: 'all') }
 
-        (1..new_branches_count).each { |number| repository.add_branch(user, "new-branch-#{number}", 'master') }
+        (1..new_branches_count).each do |number|
+          branch = repository.add_branch(user, "new-branch-#{number}", 'master')
+          # ensure pipelines do not cause N+1 queries
+          create(
+            :ci_pipeline, :canceled,
+            project: project, user: user,
+            ref: branch.name, sha: branch.target,
+            created_at: 1.hour.ago
+          )
+          create(
+            :ci_pipeline, :success,
+            project: project, user: user,
+            ref: branch.name, sha: branch.target
+          )
+        end
 
         expect { visit project_branches_filtered_path(project, state: 'all') }
           .not_to exceed_query_limit(control).with_threshold(sql_queries_count_threshold)
@@ -248,6 +293,7 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
 
     context 'when the project is archived' do
       let(:project) { create(:project, :public, :repository, :archived) }
+      let(:repository) { project.repository }
 
       it 'does not show the merge request button when the project is archived' do
         visit project_branches_path(project)
@@ -270,6 +316,50 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
     end
   end
 
+  describe 'merge request badge', :js do
+    let_it_be(:project) { create(:project, :public, :repository) }
+    let_it_be(:repository) { project.repository }
+    let_it_be(:merge_request) do
+      create(
+        :merge_request,
+        source_project: project,
+        target_project: project,
+        target_branch: 'master',
+        source_branch: 'feature'
+      )
+    end
+
+    before_all do
+      project.project_feature.update_column(:merge_requests_access_level, ProjectFeature::PRIVATE)
+    end
+
+    context 'when user has access to merge requests' do
+      before do
+        project.add_maintainer(user)
+
+        sign_in(user)
+
+        visit project_branches_path(project)
+      end
+
+      it 'shows merge request badge' do
+        expect(page).to have_selector('.gl-badge', text: merge_request.to_reference)
+      end
+    end
+
+    context 'when user does not have access to merge requests' do
+      before do
+        sign_in(user)
+
+        visit project_branches_path(project)
+      end
+
+      it 'shows merge request badge' do
+        expect(page).not_to have_selector('.gl-badge', text: merge_request.to_reference)
+      end
+    end
+  end
+
   context 'when logged out' do
     before do
       visit project_branches_path(project)
@@ -284,26 +374,38 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
 
   context 'with one or more pipeline', :js do
     let_it_be(:project) { create(:project, :public, :empty_repo) }
+    let_it_be(:repository) { project.repository }
 
     before do
       sha = create_file(branch_name: "branch")
-      create(:ci_pipeline,
-        project: project,
-        user: user,
-        ref: "branch",
-        sha: sha,
-        status: :success,
-        created_at: 5.months.ago)
+      # Older pipeline
+      create(
+        :ci_pipeline, :failed,
+        project: project, user: user,
+        ref: "branch", sha: sha,
+        created_at: 6.months.ago
+      )
+      # Latest pipeline (Success)
+      create(
+        :ci_pipeline, :success,
+        project: project, user: user,
+        ref: "branch", sha: sha,
+        created_at: 5.months.ago
+      )
+      # Pipeline for tag with matching ref and sha
+      create(
+        :ci_pipeline, :tag, :failed,
+        project: project, user: user,
+        ref: "branch", sha: sha,
+        created_at: 4.months.ago
+      )
       visit project_branches_path(project)
     end
 
-    it 'shows pipeline status when available' do
+    it 'shows the latest pipeline status or a placeholder for each branch', :aggregate_failures do
       page.within first('.all-branches li') do
         expect(page).to have_css '[data-testid="status_success_borderless-icon"]'
       end
-    end
-
-    it 'displays a placeholder when not available' do
       page.all('.all-branches li') do |li|
         expect(li).to have_css '.pipeline-status svg.s24'
       end
@@ -395,9 +497,7 @@ RSpec.describe 'Branches', feature_category: :source_code_management do
   end
 
   def view_branch_rules
-    page.within('.nav-controls') do
-      click_link s_("Branches|View branch rules")
-    end
+    find_by_testid('view-branch-rules').click
     wait_for_requests
   end
 end

@@ -2,8 +2,6 @@
 key_path: redis_hll_counters.ci_templates.p_ci_templates_implicit_jobs_license_scanning_latest_weekly
 description: Weekly counts for implicit License Scanning CI Latest template (Jobs
   folder)
-product_section: sec
-product_stage: secure
 product_group: composition_analysis
 value_type: number
 status: removed
@@ -13,10 +11,7 @@ time_frame: 7d
 data_source: redis_hll
 data_category: optional
 instrumentation_class: RedisHLLMetric
-distribution:
-- ce
-- ee
-tier:
+tiers:
 - free
 - premium
 - ultimate

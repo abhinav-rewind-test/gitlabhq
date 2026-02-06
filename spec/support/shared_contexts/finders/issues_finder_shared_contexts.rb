@@ -63,9 +63,9 @@ RSpec.shared_context 'Issues or WorkItems Finder context' do |factory|
     )
   end
 
-  let_it_be(:award_emoji1) { create(:award_emoji, name: 'thumbsup', user: user, awardable: item1) }
-  let_it_be(:award_emoji2) { create(:award_emoji, name: 'thumbsup', user: user2, awardable: item2) }
-  let_it_be(:award_emoji3) { create(:award_emoji, name: 'thumbsdown', user: user, awardable: item3) }
+  let_it_be(:award_emoji1) { create(:award_emoji, name: AwardEmoji::THUMBS_UP, user: user, awardable: item1) }
+  let_it_be(:award_emoji2) { create(:award_emoji, name: AwardEmoji::THUMBS_UP, user: user2, awardable: item2) }
+  let_it_be(:award_emoji3) { create(:award_emoji, name: AwardEmoji::THUMBS_DOWN, user: user, awardable: item3) }
 
   let(:items_model) { factory.to_s.camelize.constantize }
 end
@@ -76,7 +76,8 @@ RSpec.shared_context '{Issues|WorkItems}Finder#execute context' do |factory|
   let!(:label_link2) { create(:label_link, label: label2, target: item3) }
   let(:search_user) { user }
   let(:params) { {} }
-  let(:items) { described_class.new(search_user, params.reverse_merge(scope: scope, state: 'opened')).execute }
+  let(:finder) { described_class.new(search_user, params.reverse_merge(scope: scope, state: 'opened')) }
+  let(:items) { finder.execute }
 
   before_all do
     project1.add_maintainer(user)

@@ -54,9 +54,6 @@ export default {
     };
   },
   computed: {
-    selectedProjectId() {
-      return this.selectedProject?.id;
-    },
     showAlert() {
       return Boolean(this.alertParams?.message);
     },
@@ -87,7 +84,7 @@ export default {
       this.displayAlert({
         message: I18N_NEW_BRANCH_PERMISSION_ALERT,
         variant: 'warning',
-        link: helpPagePath('user/permissions', { anchor: 'project-members-permissions' }),
+        link: helpPagePath('user/permissions', { anchor: 'project-permissions' }),
         dismissible: false,
       });
     },

@@ -1,26 +1,44 @@
 #import "~/graphql_shared/fragments/page_info.fragment.graphql"
 #import "ee_else_ce/work_items/graphql/notes/work_item_note.fragment.graphql"
 
-query workItemNotesByIid($fullPath: ID!, $iid: String, $after: String, $pageSize: Int) {
-  workspace: project(fullPath: $fullPath) {
+# @feature_category: team_planning
+query workItemNotesByIid(
+  $fullPath: ID!
+  $iid: String!
+  $after: String
+  $pageSize: Int
+  $sort: WorkItemDiscussionsSort
+) {
+  namespace(fullPath: $fullPath) {
     id
-    workItems(iid: $iid) {
-      nodes {
+    workItem(iid: $iid) {
+      id
+      iid
+      namespace {
         id
-        iid
-        widgets {
-          ... on WorkItemWidgetNotes {
-            type
-            discussions(first: $pageSize, after: $after, filter: ALL_NOTES) {
-              pageInfo {
-                ...PageInfo
-              }
-              nodes {
+      }
+      widgets(onlyTypes: [NOTES]) {
+        ... on WorkItemWidgetNotes {
+          type
+          discussionLocked
+          discussions(first: $pageSize, after: $after, filter: ALL_NOTES, sort: $sort) {
+            pageInfo {
+              ...PageInfo
+            }
+            nodes {
+              id
+              resolved
+              resolvable
+              resolvedBy {
                 id
-                notes {
-                  nodes {
-                    ...WorkItemNote
-                  }
+                name
+              }
+              userPermissions {
+                resolveNote
+              }
+              notes {
+                nodes {
+                  ...WorkItemNote
                 }
               }
             }

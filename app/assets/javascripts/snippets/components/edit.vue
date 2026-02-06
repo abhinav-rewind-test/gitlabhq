@@ -4,14 +4,13 @@ import { GlButton, GlLoadingIcon, GlFormInput, GlFormGroup } from '@gitlab/ui';
 
 import eventHub from '~/blob/components/eventhub';
 import { createAlert } from '~/alert';
-import { redirectTo, joinPaths } from '~/lib/utils/url_utility'; // eslint-disable-line import/no-deprecated
+import { visitUrl, joinPaths } from '~/lib/utils/url_utility';
 import { __, sprintf } from '~/locale';
 import {
   SNIPPET_MARK_EDIT_APP_START,
   SNIPPET_MEASURE_BLOBS_CONTENT,
 } from '~/performance/constants';
 import { performanceMarkAndMeasure } from '~/performance/utils';
-import FormFooterActions from '~/vue_shared/components/form/form_footer_actions.vue';
 
 import { SNIPPET_CREATE_MUTATION_ERROR, SNIPPET_UPDATE_MUTATION_ERROR } from '../constants';
 import { getSnippetMixin } from '../mixins/snippets';
@@ -20,6 +19,7 @@ import UpdateSnippetMutation from '../mutations/update_snippet.mutation.graphql'
 import { markBlobPerformance } from '../utils/blob';
 import { getErrorMessage } from '../utils/error';
 
+import FormFooterActions from './form_footer_actions.vue';
 import SnippetBlobActionsEdit from './snippet_blob_actions_edit.vue';
 import SnippetDescriptionEdit from './snippet_description_edit.vue';
 import SnippetVisibilityEdit from './snippet_visibility_edit.vue';
@@ -193,7 +193,7 @@ export default {
           if (errors?.length) {
             this.alertAPIFailure(errors[0]);
           } else {
-            redirectTo(baseObj.snippet.webUrl); // eslint-disable-line import/no-deprecated
+            visitUrl(baseObj.snippet.webUrl);
           }
         })
         .catch((e) => {
@@ -220,7 +220,7 @@ export default {
       v-if="isLoading"
       :label="__('Loading snippet')"
       size="lg"
-      class="loading-animation prepend-top-20 gl-mb-6"
+      class="loading-animation gl-mb-6 gl-mt-5"
     />
     <template v-else>
       <gl-form-group
@@ -266,7 +266,7 @@ export default {
           >
         </template>
         <template #append>
-          <gl-button type="cancel" data-testid="snippet-cancel-btn" :href="cancelButtonHref">
+          <gl-button data-testid="snippet-cancel-btn" :href="cancelButtonHref">
             {{ __('Cancel') }}
           </gl-button>
         </template>

@@ -1,16 +1,15 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Design Patterns
 ---
-
-# Design Patterns
 
 This page covers suggested design patterns and also anti-patterns.
 
-NOTE:
-When adding a design pattern to this document, be sure to clearly state the **problem it solves**.
-When adding a design anti-pattern, clearly state **the problem it prevents**.
+> [!note]
+> When adding a design pattern to this document, be sure to clearly state the **problem it solves**.
+> When adding a design anti-pattern, clearly state **the problem it prevents**.
 
 ## Patterns
 
@@ -25,8 +24,8 @@ generally be avoided.
 Throughout the GitLab codebase, there may be historic uses of these anti-patterns. [Use discretion](https://handbook.gitlab.com/handbook/engineering/development/principles/#balance-refactoring-and-velocity)
 when figuring out whether or not to refactor, when touching code that uses one of these legacy patterns.
 
-NOTE:
-For new features, anti-patterns are not necessarily prohibited, but it is **strongly suggested** to find another approach.
+> [!note]
+> For new features, anti-patterns are not necessarily prohibited, but it is **strongly suggested** to find another approach.
 
 ### Shared Global Object
 
@@ -143,7 +142,7 @@ This is because of the limitations of languages like Java where everything has t
 in a class. In JavaScript we have things like object and function literals where we can solve
 many problems with a module that exports utility functions.
 
-#### When could the Singleton pattern be actually appropriate?**
+#### When could the Singleton pattern be actually appropriate?
 
 Singletons solve the problem of enforcing there to be only 1 instance of a thing. It's possible
 that a Singleton could be appropriate in the following rare cases:

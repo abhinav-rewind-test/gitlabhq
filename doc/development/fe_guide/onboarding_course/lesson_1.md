@@ -1,10 +1,9 @@
 ---
-stage: manage
-group: foundations
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: none
+group: unassigned
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Lesson 1
 ---
-
-# Lesson 1
 
 <div class="video-fallback">
   See the video: <a href="https://www.youtube.com/watch?v=k4C3-FKvZyI">Lesson 1 intro</a>.
@@ -63,10 +62,11 @@ For the latest installation instructions, refer to the [GitLab Development Kit d
 Here's a step-by-step summary:
 
 1. Prerequisites:
-   - 16 GB RAM. If you have less, consider [using Gitpod](#using-gitpod-instead-of-running-the-gdk-locally)
+   - 16 GB RAM.
    - Ensure that Git is installed on your machine.
    - Install a code editor, such as Visual Studio Code.
-   - [Create an account](https://gitlab.com/users/sign_up) or [sign in](https://gitlab.com/users/sign_in) on GitLab.com and join the [community members group](https://gitlab.com/gitlab-community/meta#request-access-to-community-forks).
+   - [Create an account](https://gitlab.com/users/sign_up) or [sign in](https://gitlab.com/users/sign_in) on GitLab.com and start your
+     [contributor onboarding](https://contributors.gitlab.com/start).
 1. Installation:
    - Choose a directory to install the GitLab Development Kit (GDK).
    - Open your terminal and go to the chosen directory.
@@ -91,37 +91,6 @@ Here's a step-by-step summary:
 
 Remember to consult the documentation or seek community support if you have any further questions or issues.
 
-## Using Gitpod instead of running the GDK locally
-
-<div class="video-fallback">
-  See the video: <a href="https://www.youtube.com/watch?v=RI2kM5_oii4">Using Gitpod with GitLab</a>.
-</div>
-<figure class="video-container">
-  <iframe src="https://www.youtube-nocookie.com/embed/RI2kM5_oii4" frameborder="0" allowfullscreen> </iframe>
-</figure>
-
-Gitpod is a service that allows you to run a virtual machine, specifically the GitLab Development Kit (GDK), on the Gitpod server instead of running it on your own machine.
-It provides a web-based Integrated Development Environment (IDE) where you can edit code and see the GDK in action.
-Gitpod is useful for quickly getting a GDK environment up and running, for making small merge requests without installing the GDK locally, or for running GDK on a machine that may not have enough resources.
-
-To use Gitpod:
-
-1. Go to the [GitLab community fork website](https://gitlab.com/gitlab-community/gitlab), select **Edit**, then select **Gitpod**.
-1. Configure your settings, such as the editor (VS Code desktop or browser) and the context (usually the `main` or `master` branch).
-1. Select **Open** to create your Gitpod workspace. This process may take up to 20 minutes. The GitLab Development Kit (GDK) will be installed in the Gitpod workspace. This installation is faster than downloading and installing the full GDK locally.
-
-After the workspace is created, you'll find your chosen IDE running in your browser. You can also connect it to your desktop IDE if preferred.
-Treat Gitpod just like you would use VS Code locally. Create branches, make code changes, commit them, and push them back to the community fork.
-
-Other tips:
-
-- Remember to push your code regularly to avoid the workspace timing out. Idle workspaces are eventually destroyed.
-- Customize your Gitpod workspace settings if needed, such as making your instance of GitLab frontend publicly available.
-- If you run out of minutes, contact the support team on the Discord server.
-- Troubleshoot issues by using commands like `gdk start` and `gdk status` in the Gitpod workspace as you would if it was running locally.
-
-By following these steps, you can leverage Gitpod to efficiently develop with the GitLab Development Kit without the need for local installation.
-
 ## Navigating the GitLab codebase
 
 <div class="video-fallback">
@@ -137,18 +106,18 @@ Here we'll explore a step-by-step process for finding files and finding where th
 
 If you already know the file you are going to work on and now you want to find where it is rendered:
 
-1. Start by gathering clues to understand the file’s purpose. Look for relevant information within the file itself, such as keywords or specific content that might indicate its context.
+1. Start by gathering clues to understand the file's purpose. Look for relevant information within the file itself, such as keywords or specific content that might indicate its context.
 1. You can also examine the file path (or folder structure) to gain insights into where the file might be rendered.
    A lot of routing in GitLab is very similar to the folder structure.
 1. If you can work out which feature (or one of the features) that this component is used in, you can then leverage the GitLab user documentation to find out how to go to the feature page.
 1. Follow the component hierarchy, do a global search for the filename to identify the parent component that renders the component.
    Continue to follow the hierarchy of components to trace back to a feature you recognize or can search for in the GitLab user docs.
 1. You can use `git blame` with an extension like GitLens to find a recent MR where this file was changed.
-   Most MR’s have a "How to validate" section that you can follow, if the MR doesn't have one, look for the previous change and until you find one that have validation steps.
+   Most MR's have a "How to validate" section that you can follow, if the MR doesn't have one, look for the previous change and until you find one that have validation steps.
 
 If you know which page you need to fix and you want to find the file path, here are some things you can try:
 
-- Look for content that is unique and doesn’t contain variables so that you can search for the translation variable.
+- Look for content that is unique and doesn't contain variables so that you can search for the translation variable.
 - Try using Vue Dev Tools to find the component name.
 - Look for unique identifiers like a `data-testid`,`id` or a unique looking CSS class in the HTML of the component and then search globally the codebase for those identifying strings.
 
@@ -168,8 +137,8 @@ When writing a merge request there are some important things to be aware of:
 - At least 2 other engineers are going to review your code. For the sake of efficiency (much like the code itself you have written) it is best to take a little while longer to get your MR right so that it is quicker and easier for others to read.
 - The MRs that you create on GitLab are available to the public. This means you can add a link to MRs you are particularly proud of to your portfolio page when looking for a job.
 - Since an MR is a technical document, you should try to implement a technical writing style.
-  If you don’t know what that is, here is a highly recommended short course from [Google on Technical writing](https://developers.google.com/tech-writing/one).
-  If you are also contributing to the documentation at GitLab, there is a [Technical Writing Fundamentals course available here from GitLab](https://handbook.gitlab.com/handbook/product/ux/technical-writing/fundamentals/).
+  If you don't know what that is, here is a highly recommended short course from [Google on Technical writing](https://developers.google.com/tech-writing/one).
+  If you are also contributing to the documentation at GitLab, there is a [Technical Writing Fundamentals course available here from GitLab](https://university.gitlab.com/courses/gitlab-technical-writing-fundamentals).
 
 ## Live coding
 

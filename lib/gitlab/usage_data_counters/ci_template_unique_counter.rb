@@ -9,11 +9,19 @@ module Gitlab::UsageDataCounters
         expanded_template_name = expand_template_name(template)
         return unless expanded_template_name
 
-        event_name = ci_template_event_name(expanded_template_name, config_source)
-        Gitlab::UsageDataCounters::HLLRedisCounter.track_event(event_name, values: project.id)
-
         namespace = project.namespace
-        Gitlab::InternalEvents.track_event('ci_template_included', namespace: namespace, project: project, user: user)
+        implicit = config_source.to_s == 'auto_devops_source'
+
+        Gitlab::InternalEvents.track_event(
+          'ci_template_included',
+          namespace: namespace,
+          project: project,
+          user: user,
+          additional_properties: {
+            label: template_to_event_name(expanded_template_name),
+            property: implicit.to_s
+          }
+        )
       end
 
       def ci_templates(relative_base = 'lib/gitlab/ci/templates')

@@ -5,7 +5,7 @@ require 'rubocop-rspec'
 module RuboCop
   module Cop
     module RSpec
-      # This cop checks for ENV assignment in specs
+      # Checks for ENV assignment in specs
       #
       # @example
       #
@@ -23,6 +23,7 @@ module RuboCop
 
         MESSAGE = "Don't assign to ENV, use `stub_env` instead."
 
+        # @!method env_assignment?(node)
         def_node_search :env_assignment?, <<~PATTERN
           (send (const nil? :ENV) :[]= ...)
         PATTERN
@@ -33,7 +34,7 @@ module RuboCop
           return unless env_assignment?(node)
 
           add_offense(node, message: MESSAGE) do |corrector|
-            corrector.replace(node.loc.expression, stub_env(env_key(node), env_value(node)))
+            corrector.replace(node, stub_env(env_key(node), env_value(node)))
           end
         end
 

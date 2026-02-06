@@ -15,8 +15,7 @@ module QA
           end
 
           base.view 'app/assets/javascripts/snippets/components/snippet_description_edit.vue' do
-            element 'snippet-description-field'
-            element 'description-placeholder', required: true
+            element 'snippet-description-field', required: true
           end
 
           base.view 'app/assets/javascripts/snippets/components/snippet_blob_edit.vue' do
@@ -43,8 +42,7 @@ module QA
         end
 
         def fill_description(description)
-          click_element 'description-placeholder'
-          fill_element 'snippet-description-field', description
+          fill_editor_element 'snippet-description-field', description
         end
 
         def set_visibility(visibility)
@@ -76,6 +74,7 @@ module QA
         end
 
         def click_create_snippet_button
+          sleep 1 # debounce delay
           click_element_coordinates('submit-button')
           wait_until(reload: false) do
             has_no_element?('snippet-title-input-field')

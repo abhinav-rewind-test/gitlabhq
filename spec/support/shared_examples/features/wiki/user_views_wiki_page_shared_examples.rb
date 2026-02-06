@@ -37,15 +37,18 @@ RSpec.shared_examples 'User views a wiki page' do
         click_on('Create page')
       end
 
+      wait_for_requests
+    end
+
+    it 'gives feedback that the page was created' do
       expect(page).to have_content('Wiki page was successfully created.')
     end
 
     it 'shows the history of a page that has a path', :js do
       expect(page).to have_current_path(%r{one/two/three-test})
 
-      first(:link, text: 'three').click
-
       more_actions_dropdown.click
+
       click_on('Page history')
 
       expect(page).to have_current_path(%r{one/two/three-test})
@@ -57,21 +60,24 @@ RSpec.shared_examples 'User views a wiki page' do
 
     it 'shows an old version of a page', :js do
       expect(page).to have_current_path(%r{one/two/three-test})
+
+      click_button('Open sidebar') if page.has_button?('Open sidebar', wait: 1)
+
       expect(find('.wiki-pages')).to have_content('three')
 
       first(:link, text: 'three').click
 
-      expect(find('[data-testid="wiki-page-title"]')).to have_content('three')
+      expect(find('[data-testid="page-heading"]')).to have_content('three')
 
       click_on('Edit')
 
       expect(page).to have_current_path(%r{one/two/three-test})
-      expect(page).to have_content('Edit Page')
+      expect(page).to have_css('#wiki_title')
 
       fill_in('Content', with: 'Updated Wiki Content')
       click_on('Save changes')
 
-      expect(page).to have_content('Wiki page was successfully updated.')
+      expect(page).to have_content('Updated Wiki Content')
 
       more_actions_dropdown.click
       click_on('Page history')
@@ -89,6 +95,8 @@ RSpec.shared_examples 'User views a wiki page' do
   context 'when a page does not have history' do
     before do
       visit(wiki_page_path(wiki, wiki_page))
+
+      click_button('Open sidebar') if page.has_button?('Open sidebar', wait: 1)
     end
 
     it 'shows all the pages' do
@@ -109,13 +117,16 @@ RSpec.shared_examples 'User views a wiki page' do
       end
     end
 
-    it 'shows the creation page if file does not exist' do
+    it 'shows the page doesn\'t exist if file does not exist' do
       expect(page).to have_link('image', href: "#{wiki.wiki_base_path}/#{path}")
-
       click_on('image')
 
       expect(page).to have_current_path(%r{wikis/#{path}})
-      expect(page).to have_content('New Page')
+      expect(page).to have_content("This page doesn't exist")
+
+      click_link("Create this page…")
+
+      expect(page).to have_content('New page')
     end
   end
 
@@ -151,7 +162,7 @@ RSpec.shared_examples 'User views a wiki page' do
         expect(page).to have_link('Inline', href: "#{diff_path}&view=inline")
         expect(page).to have_link('Side-by-side', href: "#{diff_path}&view=parallel")
         expect(page).to have_link("View page @ #{commit.short_id}", href: wiki_page_path(wiki, wiki_page, version_id: commit))
-        expect(page).to have_css('.diff-file[data-blob-diff-path="%s"]' % diff_path)
+        expect(page).to have_css(".diff-file[data-blob-diff-path=\"#{diff_path}\"]")
       end
 
       it 'links to the correct diffs' do
@@ -209,13 +220,14 @@ RSpec.shared_examples 'User views a wiki page' do
     let(:title) { '<foo> !@#$%^&*()[]{}=_+\'"\\|<>? <bar>' }
 
     before do
-      wiki_page.update(title: title ) # rubocop:disable Rails/SaveBang
+      wiki_page.update(title: title) # rubocop:disable Rails/SaveBang
     end
 
     it 'preserves the special characters' do
       visit(wiki_page_path(wiki, wiki_page))
+      click_button('Open sidebar') if page.has_button?('Open sidebar', wait: 1)
 
-      expect(page).to have_css('[data-testid="wiki-page-title"]', text: title)
+      expect(page).to have_css('[data-testid="page-heading"]', text: title)
       expect(page).to have_css('.wiki-pages li', text: title)
     end
   end
@@ -230,7 +242,7 @@ RSpec.shared_examples 'User views a wiki page' do
     it 'safely displays the page' do
       visit(wiki_page_path(wiki, wiki_page))
 
-      expect(page).to have_selector('[data-testid="wiki-page-title"]', text: title)
+      expect(page).to have_selector('[data-testid="page-heading"]', text: title)
       expect(page).to have_content('foo bar')
     end
   end
@@ -244,6 +256,29 @@ RSpec.shared_examples 'User views a wiki page' do
       visit(wiki_page_path(wiki, wiki_page, action: :history))
 
       expect(page).to have_content('<script>alert(true)<script>')
+    end
+  end
+
+  context 'when a page has headings', :js do
+    before do
+      wiki_page.update(content: "# Heading 1\n\n## Heading 1.1\n\n### Heading 1.1.1\n\n# Heading 2") # rubocop:disable Rails/SaveBang -- not an ActiveRecord
+    end
+
+    it 'displays the table of contents for the page', quarantine: {
+      issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24078',
+      type: :flaky
+    } do
+      visit(wiki_page_path(wiki, wiki_page))
+      click_button('Open sidebar') if page.has_button?('Open sidebar', wait: 1)
+
+      within '.js-wiki-toc' do
+        expect(page).to have_content('On this page')
+
+        expect(page).to have_content('Heading 1')
+        expect(page).to have_content('Heading 1.1')
+        expect(page).to have_content('Heading 1.1.1')
+        expect(page).to have_content('Heading 2')
+      end
     end
   end
 
@@ -277,6 +312,6 @@ RSpec.shared_examples 'User views a wiki page' do
 
     click_link "Create your first page"
 
-    expect(page).to have_content('New Page')
+    expect(page).to have_content('New page')
   end
 end

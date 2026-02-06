@@ -1,14 +1,16 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Plan
+group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Engineering Workflow Management (EWM)
 ---
 
-# Engineering Workflow Management (EWM)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 The EWM integration allows you to go from GitLab to EWM work items mentioned in merge request
 descriptions and commit messages.
@@ -18,8 +20,8 @@ This IBM product was [formerly named Rational Team Concert (RTC)](https://jazz.n
 
 To enable the EWM integration, in a project:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > Integrations**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **Integrations**.
 1. Select **EWM**.
 1. Under **Enable integration**, select the **Active** checkbox.
 1. Fill in the required fields:

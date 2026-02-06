@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Runtime, feature_category: :cloud_connector do
+RSpec.describe Gitlab::Runtime, feature_category: :durability_metrics do
   shared_examples "valid runtime" do |runtime, max_threads|
     it "identifies itself" do
       expect(subject.identify).to eq(runtime)
@@ -22,6 +22,7 @@ RSpec.describe Gitlab::Runtime, feature_category: :cloud_connector do
 
   before do
     allow(described_class).to receive(:process_name).and_return('ruby')
+    hide_const('::Puma::Server')
     stub_rails_env('production')
   end
 

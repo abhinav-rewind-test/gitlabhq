@@ -24,7 +24,7 @@ RSpec.describe Gitlab::LegacyGithubImport::ProjectCreator do
       allow(project).to receive(:add_import_job)
     end
 
-    stub_application_setting(import_sources: ['github'])
+    stub_application_setting(import_sources: %w[github gitea])
   end
 
   describe '#execute' do
@@ -35,7 +35,7 @@ RSpec.describe Gitlab::LegacyGithubImport::ProjectCreator do
     it 'handle GitHub credentials' do
       project = service.execute
 
-      expect(project.import_url).to eq('https://asdffg@gitlab.com/asd/vim.git')
+      expect(project.unsafe_import_url).to eq('https://asdffg@gitlab.com/asd/vim.git')
       expect(project.safe_import_url).to eq('https://*****@gitlab.com/asd/vim.git')
       expect(project.import_data.credentials).to eq(user: 'asdffg', password: nil)
     end

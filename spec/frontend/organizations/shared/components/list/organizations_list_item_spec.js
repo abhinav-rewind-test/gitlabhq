@@ -1,16 +1,24 @@
 import { GlAvatarLabeled } from '@gitlab/ui';
+import currentUserOrganizationsGraphQlResponse from 'test_fixtures/graphql/organizations/current_user_organizations.query.graphql.json';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import OrganizationsListItem from '~/organizations/shared/components/list/organizations_list_item.vue';
-import { organizations } from '~/organizations/mock_data';
-
-const MOCK_ORGANIZATION = organizations[0];
 
 describe('OrganizationsListItem', () => {
   let wrapper;
 
+  const {
+    data: {
+      currentUser: {
+        organizations: {
+          nodes: [organization],
+        },
+      },
+    },
+  } = currentUserOrganizationsGraphQlResponse;
+
   const defaultProps = {
-    organization: MOCK_ORGANIZATION,
+    organization,
   };
 
   const createComponent = (props = {}) => {
@@ -32,12 +40,12 @@ describe('OrganizationsListItem', () => {
     });
 
     it('renders GlAvatarLabeled with correct data', () => {
-      expect(findGlAvatarLabeled().attributes()).toMatchObject({
-        'entity-id': getIdFromGraphQLId(MOCK_ORGANIZATION.id).toString(),
-        'entity-name': MOCK_ORGANIZATION.name,
-        src: MOCK_ORGANIZATION.avatarUrl,
-        label: MOCK_ORGANIZATION.name,
-        labellink: MOCK_ORGANIZATION.webUrl,
+      expect(findGlAvatarLabeled().props()).toMatchObject({
+        entityId: getIdFromGraphQLId(organization.id),
+        entityName: organization.name,
+        src: organization.avatarUrl,
+        label: organization.name,
+        labelLink: organization.webUrl,
       });
     });
   });
@@ -47,7 +55,7 @@ describe('OrganizationsListItem', () => {
 
     describe('is a HTML description', () => {
       beforeEach(() => {
-        createComponent({ organization: { ...MOCK_ORGANIZATION, descriptionHtml } });
+        createComponent({ organization: { ...organization, descriptionHtml } });
       });
 
       it('renders HTML description', () => {
@@ -58,7 +66,7 @@ describe('OrganizationsListItem', () => {
     describe('is not a HTML description', () => {
       beforeEach(() => {
         createComponent({
-          organization: { ...MOCK_ORGANIZATION, descriptionHtml: null },
+          organization: { ...organization, descriptionHtml: null },
         });
       });
 

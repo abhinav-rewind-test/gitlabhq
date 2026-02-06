@@ -76,7 +76,7 @@ module Gitlab
         user_pb = ::Spamcheck::User.new
         user_pb.username = user.username
         user_pb.id = user.id
-        user_pb.org = user.organization || ''
+        user_pb.org = user.user_detail_organization || ''
         user_pb.created_at = convert_to_pb_timestamp(user.created_at)
         user_pb.abuse_metadata = Google::Protobuf::Map.new(:string, :float, user.abuse_metadata)
 
@@ -107,7 +107,7 @@ module Gitlab
 
       def convert_to_pb_timestamp(ar_timestamp)
         Google::Protobuf::Timestamp.new(seconds: ar_timestamp.to_time.to_i,
-                                        nanos: ar_timestamp.to_time.nsec)
+          nanos: ar_timestamp.to_time.nsec)
       end
 
       def client_creds(url)
@@ -120,8 +120,8 @@ module Gitlab
 
       def grpc_client
         @grpc_client ||= ::Spamcheck::SpamcheckService::Stub.new(@endpoint_url, @creds,
-                                                        interceptors: interceptors,
-                                                        timeout: DEFAULT_TIMEOUT_SECS)
+          interceptors: interceptors,
+          timeout: DEFAULT_TIMEOUT_SECS)
       end
 
       def interceptors

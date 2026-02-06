@@ -10,9 +10,12 @@ import DeploymentTargetSelect from './components/deployment_target_select.vue';
 export function initNewProjectCreation() {
   const el = document.querySelector('.js-new-project-creation');
 
+  if (!el) {
+    return null;
+  }
+
   const {
     pushToCreateProjectCommand,
-    workingWithProjectsHelpPath,
     newProjectGuidelines,
     hasErrors,
     isCiCdAvailable,
@@ -35,12 +38,12 @@ export function initNewProjectCreation() {
   };
 
   const provide = {
-    workingWithProjectsHelpPath,
     pushToCreateProjectCommand,
   };
 
   return new Vue({
     el,
+    name: 'NewProjectCreationAppRoot',
     provide,
     render(h) {
       return h(NewProjectCreationApp, { props });
@@ -61,6 +64,7 @@ export function initNewProjectUrlSelect() {
     (el) =>
       new Vue({
         el,
+        name: 'NewProjectUrlSelectRoot',
         apolloProvider: new VueApollo({
           defaultClient: createDefaultClient(),
         }),
@@ -87,6 +91,7 @@ export function initDeploymentTargetSelect() {
 
   return new Vue({
     el,
+    name: 'DeploymentTargetSelectRoot',
     render: (createElement) => createElement(DeploymentTargetSelect),
   });
 }

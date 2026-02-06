@@ -6,12 +6,22 @@ class Key < ApplicationRecord
   include ShaAttribute
   include Expirable
   include FromUnion
+  include Todoable
+  include CreatedAtFilterable
+  include Cells::Claimable
+
+  cells_claims_attribute :key, type: CLAIMS_BUCKET_TYPE::SSH_KEYS, feature_flag: :cells_claims_keys
+
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::ORGANIZATION, subject_key: :organization_id
 
   sha256_attribute :fingerprint_sha256
 
   belongs_to :user
+  belongs_to :organization, class_name: 'Organizations::Organization'
 
   has_many :ssh_signatures, class_name: 'CommitSignatures::SshSignature'
+
+  has_many :todos, as: :target, dependent: :destroy # rubocop:disable Cop/ActiveRecordDependent -- Polymorphic association
 
   before_validation :generate_fingerprint
 
@@ -34,7 +44,8 @@ class Key < ApplicationRecord
 
   delegate :name, :email, to: :user, prefix: true
 
-  enum usage_type: {
+  attribute :usage_type, :integer, limit: 2
+  enum :usage_type, {
     auth_and_signing: 0,
     auth: 1,
     signing: 2
@@ -51,7 +62,7 @@ class Key < ApplicationRecord
   alias_attribute :name, :title
 
   scope :preload_users, -> { preload(:user) }
-  scope :for_user, -> (user) { where(user: user) }
+  scope :for_user, ->(user) { where(user: user) }
   scope :order_last_used_at_desc, -> { reorder(arel_table[:last_used_at].desc.nulls_last) }
   scope :auth, -> { where(usage_type: [:auth, :auth_and_signing]) }
   scope :signing, -> { where(usage_type: [:signing, :auth_and_signing]) }
@@ -60,8 +71,15 @@ class Key < ApplicationRecord
   scope :expired_today_and_not_notified, -> { where(["date(expires_at AT TIME ZONE 'UTC') = CURRENT_DATE AND expiry_notification_delivered_at IS NULL"]) }
   scope :expiring_soon_and_not_notified, -> { where(["date(expires_at AT TIME ZONE 'UTC') > CURRENT_DATE AND date(expires_at AT TIME ZONE 'UTC') < ? AND before_expiry_notification_delivered_at IS NULL", DAYS_TO_EXPIRE.days.from_now.to_date]) }
 
+  scope :expires_before, ->(date) { where(arel_table[:expires_at].lteq(date)) }
+  scope :expires_after, ->(date) { where(arel_table[:expires_at].gteq(date)) }
+
   def self.regular_keys
-    where(type: ['Key', nil])
+    where(type: regular_key_types)
+  end
+
+  def self.regular_key_types
+    [nil, 'Key']
   end
 
   def key=(value)
@@ -99,7 +117,7 @@ class Key < ApplicationRecord
   def add_to_authorized_keys
     return unless Gitlab::CurrentSettings.authorized_keys_enabled?
 
-    AuthorizedKeysWorker.perform_async(:add_key, shell_id, key)
+    AuthorizedKeysWorker.perform_async('add_key', shell_id, key)
   end
 
   # rubocop: disable CodeReuse/ServiceClass
@@ -111,7 +129,7 @@ class Key < ApplicationRecord
   def remove_from_authorized_keys
     return unless Gitlab::CurrentSettings.authorized_keys_enabled?
 
-    AuthorizedKeysWorker.perform_async(:remove_key, shell_id)
+    AuthorizedKeysWorker.perform_async('remove_key', shell_id)
   end
 
   # rubocop: disable CodeReuse/ServiceClass
@@ -142,6 +160,18 @@ class Key < ApplicationRecord
     super || auth_and_signing?
   end
 
+  def readable_by?(user)
+    user_id == user.id
+  end
+
+  def to_reference
+    fingerprint
+  end
+
+  def regular_key?
+    type.in?(self.class.regular_key_types)
+  end
+
   private
 
   def generate_fingerprint
@@ -158,7 +188,7 @@ class Key < ApplicationRecord
     return unless public_key.banned?
 
     help_page_url = Rails.application.routes.url_helpers.help_page_url(
-      'security/ssh_keys_restrictions',
+      'security/ssh_keys_restrictions.md',
       anchor: 'block-banned-or-compromised-keys'
     )
 
@@ -171,6 +201,10 @@ class Key < ApplicationRecord
 
   def expiration
     errors.add(:key, message: 'has expired') if expired?
+  end
+
+  def unique_attributes
+    [:key]
   end
 end
 

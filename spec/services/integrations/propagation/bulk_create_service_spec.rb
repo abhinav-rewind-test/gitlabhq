@@ -17,7 +17,7 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
     %w[
       id project_id group_id inherit_from_id instance template
       created_at updated_at
-      encrypted_properties encrypted_properties_iv
+      encrypted_properties encrypted_properties_iv organization_id project_id group_id
     ]
   end
 
@@ -35,7 +35,12 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
     end
 
     context 'when integration has data fields' do
-      let(:excluded_attributes) { %w[id service_id integration_id created_at updated_at] }
+      let(:excluded_attributes) do
+        %w[
+          id service_id integration_id created_at updated_at
+          organization_id group_id project_id
+        ]
+      end
 
       it 'updates the data fields from inherited integrations' do
         execute_service
@@ -51,6 +56,24 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
           created_at: eq(Time.current),
           updated_at: eq(Time.current)
         )
+      end
+    end
+
+    context 'when integration has organization' do
+      let(:excluded_attributes) do
+        %w[
+          id project_id group_id inherit_from_id instance template
+          created_at updated_at
+          encrypted_properties encrypted_properties_iv organization_id
+          group_id project_id
+        ]
+      end
+
+      it 'does not propagate organization' do
+        execute_service
+
+        expect(instance_integration.organization).not_to be_nil
+        expect(created_integration.organization).to be_nil
       end
     end
 
@@ -100,32 +123,23 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
         expect(created_integration.reload.slack_integration).to be_nil
       end
     end
-
-    context 'when flag is disabled' do
-      before do
-        stub_feature_flags(gitlab_for_slack_app_instance_and_group_level: false)
-      end
-
-      it 'does not create associated SlackIntegration record' do
-        execute_service
-
-        expect(created_integration.reload.slack_integration).to be_nil
-      end
-    end
   end
 
   context 'with an instance-level integration' do
+    let_it_be(:organization) { create(:common_organization) }
     let(:integration) { instance_integration }
     let(:inherit_from_id) { integration.id }
 
     let_it_be_with_reload(:instance_slack_integration) do
       create(:gitlab_slack_application_integration, :instance,
+        organization_id: organization.id,
         slack_integration: build(:slack_integration,
           team_id: 'instance_team_id',
           team_name: 'instance_team_name',
           alias: 'instance_alias',
           bot_access_token: 'instance_bot_access_token',
-          authorized_scope_names: %w[instance_scope1 instance_scope2]
+          authorized_scope_names: %w[instance_scope1 instance_scope2],
+          organization_id: organization.id
         )
       )
     end
@@ -141,6 +155,24 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
       it_behaves_like 'creates GitLab for Slack app data successfully' do
         let(:integration) { instance_slack_integration }
         let(:expected_alias) { project.full_path }
+
+        it 'sets the project ID on the newly created slack integration' do
+          execute_service
+
+          expect(created_integration.slack_integration.project_id).to eq(project.id)
+          expect(created_integration.slack_integration.group_id).to be_nil
+          expect(created_integration.slack_integration.organization_id).to be_nil
+        end
+
+        it 'sets project_id on the new slack_integrations_scopes records' do
+          execute_service
+
+          slack_integration_scopes = created_integration.slack_integration.slack_integrations_scopes
+
+          expect(slack_integration_scopes).to all(
+            have_attributes(project_id: project.id, group_id: nil, organization_id: nil)
+          )
+        end
       end
     end
 
@@ -155,6 +187,24 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
       it_behaves_like 'creates GitLab for Slack app data successfully' do
         let(:integration) { instance_slack_integration }
         let(:expected_alias) { group.full_path }
+
+        it 'sets the group ID on the newly created slack integration' do
+          execute_service
+
+          expect(created_integration.slack_integration.project_id).to be_nil
+          expect(created_integration.slack_integration.group_id).to eq(group.id)
+          expect(created_integration.slack_integration.organization_id).to be_nil
+        end
+
+        it 'sets group_id on the new slack_integrations_scopes records' do
+          execute_service
+
+          slack_integration_scopes = created_integration.slack_integration.slack_integrations_scopes
+
+          expect(slack_integration_scopes).to all(
+            have_attributes(project_id: nil, group_id: group.id, organization_id: nil)
+          )
+        end
       end
     end
   end
@@ -170,7 +220,9 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
           team_name: 'group_team_name',
           alias: 'group_alias',
           bot_access_token: 'group_bot_access_token',
-          authorized_scope_names: %w[group_scope1 group_scope2]
+          authorized_scope_names: %w[group_scope1 group_scope2],
+          organization: nil,
+          group: group
         )
       )
     end
@@ -185,6 +237,14 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
 
       it_behaves_like 'creates integration successfully'
 
+      it 'sets project_id in data_fields' do
+        execute_service
+
+        expect(created_integration.data_fields.project_id).to eq(project.id)
+        expect(created_integration.data_fields.group_id).to be_nil
+        expect(created_integration.data_fields.organization_id).to be_nil
+      end
+
       context 'with different foreign key of data_fields' do
         let(:integration) { create(:zentao_integration, :group, group: group) }
 
@@ -194,6 +254,14 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
       it_behaves_like 'creates GitLab for Slack app data successfully' do
         let(:integration) { group_slack_integration }
         let(:expected_alias) { project.full_path }
+
+        it 'sets the project ID on the newly created slack integration' do
+          execute_service
+
+          expect(created_integration.slack_integration.project_id).to eq(project.id)
+          expect(created_integration.slack_integration.group_id).to be_nil
+          expect(created_integration.slack_integration.organization_id).to be_nil
+        end
       end
     end
 
@@ -207,6 +275,14 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
 
       it_behaves_like 'creates integration successfully'
 
+      it 'sets group_id in data_fields' do
+        execute_service
+
+        expect(created_integration.data_fields.group_id).to eq(subgroup.id)
+        expect(created_integration.data_fields.project_id).to be_nil
+        expect(created_integration.data_fields.organization_id).to be_nil
+      end
+
       context 'with different foreign key of data_fields' do
         let(:integration) do
           create(:zentao_integration, :group, group: group, inherit_from_id: instance_integration.id)
@@ -218,6 +294,41 @@ RSpec.describe Integrations::Propagation::BulkCreateService, feature_category: :
       it_behaves_like 'creates GitLab for Slack app data successfully' do
         let(:integration) { group_slack_integration }
         let(:expected_alias) { subgroup.full_path }
+
+        it 'sets the group ID on the newly created slack integration' do
+          execute_service
+
+          expect(created_integration.group_id).to eq(subgroup.id)
+          expect(created_integration.project_id).to be_nil
+          expect(created_integration.organization_id).to be_nil
+        end
+      end
+    end
+
+    context 'when there are multiple integrations to create' do
+      let!(:groups) { create_list(:group, 5, parent: group) }
+      let!(:projects) { create_list(:project, 5, group: group) }
+      let!(:integration) { create(:jira_integration, :group, group: group, inherit_from_id: instance_integration.id) }
+
+      it 'sets correct foreign key to propagated integration data_fields' do
+        described_class.new(integration, Project.where(id: projects.map(&:id)), 'project').execute
+        described_class.new(integration, Group.where(id: groups.map(&:id)), 'group').execute
+
+        groups.each do |subgroup|
+          integration = Integration.find_by(group: subgroup)
+
+          expect(integration.data_fields.group_id).to eq(integration.group_id)
+          expect(integration.data_fields.project_id).to eq(integration.project_id)
+          expect(integration.data_fields.organization_id).to eq(integration.organization_id)
+        end
+
+        projects.each do |project|
+          integration = Integration.find_by(project: project)
+
+          expect(integration.data_fields.group_id).to eq(integration.group_id)
+          expect(integration.data_fields.project_id).to eq(integration.project_id)
+          expect(integration.data_fields.organization_id).to eq(integration.organization_id)
+        end
       end
     end
   end

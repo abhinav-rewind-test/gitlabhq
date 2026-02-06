@@ -4,8 +4,7 @@ module API
     helpers Gitlab::Golang
     helpers ::API::Helpers::PackagesHelpers
 
-    GO_PROXY_TAGS = %w[go_proxy].freeze
-
+    GO_PROXY_TAGS = %w[packages].freeze
     feature_category :package_registry
     urgency :low
 
@@ -68,7 +67,7 @@ module API
       requires :module_name, type: String, desc: 'The name of the Go module', coerce_with: ->(val) { CGI.unescape(val) }
     end
     route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true,
-                                   authenticate_non_public: true
+      authenticate_non_public: true
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       before do
         authorize_read_package!(project)
@@ -80,6 +79,8 @@ module API
             'See `go help goproxy`, GET $GOPROXY/<module>/@v/list. This feature was introduced in GitLab 13.1.'
           tags GO_PROXY_TAGS
         end
+        route_setting :authorization, permissions: :read_go_module, boundary_type: :project,
+          job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
         get 'list' do
           mod = find_module
 
@@ -96,6 +97,8 @@ module API
         params do
           requires :module_version, type: String, desc: 'The version of the Go module'
         end
+        route_setting :authorization, permissions: :read_go_module, boundary_type: :project,
+          job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
         get ':module_version.info', requirements: MODULE_VERSION_REQUIREMENTS do
           ver = find_version
 
@@ -110,6 +113,8 @@ module API
         params do
           requires :module_version, type: String, desc: 'The version of the Go module'
         end
+        route_setting :authorization, permissions: :download_go_module, boundary_type: :project,
+          job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
         get ':module_version.mod', requirements: MODULE_VERSION_REQUIREMENTS do
           ver = find_version
 
@@ -125,6 +130,8 @@ module API
         params do
           requires :module_version, type: String, desc: 'The version of the Go module'
         end
+        route_setting :authorization, permissions: :download_go_module, boundary_type: :project,
+          job_token_policies: :read_packages, allow_public_access_for_enabled_project_features: :package_registry
         get ':module_version.zip', requirements: MODULE_VERSION_REQUIREMENTS do
           ver = find_version
 

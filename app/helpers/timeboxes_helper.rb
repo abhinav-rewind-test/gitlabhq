@@ -18,7 +18,7 @@ module TimeboxesHelper
 
   def milestone_badge_variant(milestone)
     if milestone.closed?
-      :danger
+      :info
     elsif milestone.expired?
       :warning
     elsif milestone.upcoming?
@@ -39,25 +39,12 @@ module TimeboxesHelper
   end
 
   def milestones_issues_path(opts = {})
-    if @project
-      project_issues_path(@project, opts)
-    elsif @group
-      issues_group_path(@group, opts)
-    else
-      issues_dashboard_path(opts)
-    end
+    milestones_path_for_type(:issues, opts)
   end
 
   def milestones_browse_issuables_path(milestone, type:, state: nil)
     opts = { milestone_title: milestone.title, state: state }
-
-    if @project
-      polymorphic_path([@project, type], opts)
-    elsif @group
-      polymorphic_url([type, @group], opts)
-    else
-      polymorphic_url([type, :dashboard], opts)
-    end
+    milestones_path_for_type(type, opts)
   end
 
   def milestone_issues_by_label_count(milestone, label, state:)
@@ -91,7 +78,7 @@ module TimeboxesHelper
   def milestone_progress_bar(milestone)
     render Pajamas::ProgressComponent.new(
       value: milestone.percent_complete,
-      variant: :success
+      variant: :primary
     )
   end
 
@@ -128,13 +115,9 @@ module TimeboxesHelper
 
     content = []
 
-    if opened > 0
-      content << n_("1 open issue", "%{issues} open issues", opened) % { issues: opened }
-    end
+    content << (n_("1 open issue", "%{issues} open issues", opened) % { issues: opened }) if opened > 0
 
-    if closed > 0
-      content << n_("1 closed issue", "%{issues} closed issues", closed) % { issues: closed }
-    end
+    content << (n_("1 closed issue", "%{issues} closed issues", closed) % { issues: closed }) if closed > 0
 
     content.join('<br />').html_safe
   end
@@ -146,9 +129,32 @@ module TimeboxesHelper
 
     content = []
 
-    content << n_("1 open merge request", "%{merge_requests} open merge requests", merge_requests.opened.count) % { merge_requests: merge_requests.opened.count } if merge_requests.opened.any?
-    content << n_("1 closed merge request", "%{merge_requests} closed merge requests", merge_requests.closed.count) % { merge_requests: merge_requests.closed.count } if merge_requests.closed.any?
-    content << n_("1 merged merge request", "%{merge_requests} merged merge requests", merge_requests.merged.count) % { merge_requests: merge_requests.merged.count } if merge_requests.merged.any?
+    if merge_requests.opened.any?
+      content << (
+        n_(
+          "1 open merge request", "%{merge_requests} open merge requests",
+          merge_requests.opened.count
+        ) % { merge_requests: merge_requests.opened.count }
+      )
+    end
+
+    if merge_requests.closed.any?
+      content << (
+        n_(
+          "1 closed merge request", "%{merge_requests} closed merge requests",
+          merge_requests.closed.count
+        ) % { merge_requests: merge_requests.closed.count }
+      )
+    end
+
+    if merge_requests.merged.any?
+      content << (
+        n_(
+          "1 merged merge request", "%{merge_requests} merged merge requests",
+          merge_requests.merged.count
+        ) % { merge_requests: merge_requests.merged.count }
+      )
+    end
 
     content.join('<br />').html_safe
   end
@@ -170,6 +176,12 @@ module TimeboxesHelper
     [recent_releases, total_count, more_count]
   end
 
+  def milestone_releases_tooltip_list(releases, more_count = 0)
+    list = releases.map(&:name).join(", ")
+    list += format(_(", and %{number} more"), number: more_count) if more_count > 0
+    list
+  end
+
   def milestone_tooltip_due_date(milestone)
     if milestone.due_date
       "#{milestone.due_date.to_fs(:medium)} (#{remaining_days_in_words(milestone.due_date, milestone.start_date)})"
@@ -180,19 +192,33 @@ module TimeboxesHelper
 
   def timebox_date_range(timebox)
     if timebox.start_date && timebox.due_date
-      s_("DateRange|%{start_date}–%{end_date}") % { start_date: l(timebox.start_date, format: Date::DATE_FORMATS[:medium]),
-                                                    end_date: l(timebox.due_date, format: Date::DATE_FORMATS[:medium]) }
+      s_("DateRange|%{start_date}–%{end_date}") % {
+        start_date: l(timebox.start_date, format: Date::DATE_FORMATS[:medium]),
+        end_date: l(timebox.due_date, format: Date::DATE_FORMATS[:medium])
+      }
     elsif timebox.due_date
       if timebox.due_date.past?
-        _("expired on %{timebox_due_date}") % { timebox_due_date: l(timebox.due_date, format: Date::DATE_FORMATS[:medium]) }
+        _("expired on %{timebox_due_date}") % {
+          timebox_due_date: l(timebox.due_date,
+            format: Date::DATE_FORMATS[:medium])
+        }
       else
-        _("expires on %{timebox_due_date}") % { timebox_due_date: l(timebox.due_date, format: Date::DATE_FORMATS[:medium]) }
+        _("expires on %{timebox_due_date}") % {
+          timebox_due_date: l(timebox.due_date,
+            format: Date::DATE_FORMATS[:medium])
+        }
       end
     elsif timebox.start_date
       if timebox.start_date.past?
-        _("started on %{timebox_start_date}") % { timebox_start_date: l(timebox.start_date, format: Date::DATE_FORMATS[:medium]) }
+        _("started on %{timebox_start_date}") % {
+          timebox_start_date: l(timebox.start_date,
+            format: Date::DATE_FORMATS[:medium])
+        }
       else
-        _("starts on %{timebox_start_date}") % { timebox_start_date: l(timebox.start_date, format: Date::DATE_FORMATS[:medium]) }
+        _("starts on %{timebox_start_date}") % {
+          timebox_start_date: l(timebox.start_date,
+            format: Date::DATE_FORMATS[:medium])
+        }
       end
     end
   end
@@ -216,28 +242,11 @@ module TimeboxesHelper
     group_milestone_path(milestone.group, milestone.iid, milestone: params)
   end
 
-  def group_or_project_milestone_path(milestone)
-    params =
-      if milestone.group_milestone?
-        { milestone: { title: milestone.title } }
-      else
-        { title: milestone.title }
-      end
-
-    milestone_path(milestone.milestone, params)
-  end
-
   def edit_milestone_path(milestone)
     if milestone.group_milestone?
       edit_group_milestone_path(milestone.group, milestone)
     elsif milestone.project_milestone?
       edit_project_milestone_path(milestone.project, milestone)
-    end
-  end
-
-  def can_admin_project_milestones?
-    strong_memoize(:can_admin_project_milestones) do
-      can?(current_user, :admin_milestone, @project)
     end
   end
 
@@ -256,16 +265,43 @@ module TimeboxesHelper
     limit = Milestone::DISPLAY_ISSUES_LIMIT
     link_options = { milestone_title: @milestone.title }
 
-    message = _('Showing %{limit} of %{total_count} issues. ') % { limit: limit, total_count: total_count }
-    message += link_to(_('View all issues'), milestones_issues_path(link_options))
+    message = _('Showing %{limit} of %{total_count} items. ') % { limit: limit, total_count: total_count }
+    message += link_to(_('View all'), milestones_issues_path(link_options))
 
     message.html_safe
+  end
+
+  def milestone_work_items_icon
+    resource_parent = @project || @group
+    resource_parent&.work_items_consolidated_list_enabled?(current_user) ? 'work-items' : 'work-item-issue'
   end
 
   private
 
   def milestone_visible_issues_count(milestone)
     @milestone_visible_issues_count ||= milestone.issues_visible_to_user(current_user).size
+  end
+
+  def milestones_path_for_type(type, opts)
+    if @project
+      if use_work_items_for_issues?(type, @project)
+        project_work_items_path(@project, opts)
+      else
+        polymorphic_path([@project, type], opts)
+      end
+    elsif @group
+      if use_work_items_for_issues?(type, @group)
+        group_work_items_path(@group, opts)
+      else
+        polymorphic_path([type, @group], opts)
+      end
+    else
+      polymorphic_path([type, :dashboard], opts)
+    end
+  end
+
+  def use_work_items_for_issues?(type, resource_parent)
+    type == :issues && resource_parent&.work_items_consolidated_list_enabled?(current_user)
   end
 end
 

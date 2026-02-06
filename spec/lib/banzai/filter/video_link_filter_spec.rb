@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::VideoLinkFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::VideoLinkFilter, feature_category: :markdown do
   def filter(doc, contexts = {})
     contexts.reverse_merge!({
       project: project
@@ -21,7 +21,7 @@ RSpec.describe Banzai::Filter::VideoLinkFilter, feature_category: :team_planning
     %(<img #{attrs}/>)
   end
 
-  let(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository) }
 
   shared_examples 'a video element' do
     let(:image) { link_to_image(src, height, width) }
@@ -32,18 +32,13 @@ RSpec.describe Banzai::Filter::VideoLinkFilter, feature_category: :team_planning
       expect(container.name).to eq 'span'
       expect(container['class']).to eq 'media-container video-container'
 
-      video, link = container.children
+      video = container.children.first
 
       expect(video.name).to eq 'video'
       expect(video['src']).to eq src
       expect(video['height']).to eq height if height
       expect(video['width']).to eq width if width
-      expect(video['width']).to eq '400' unless width || height
       expect(video['preload']).to eq 'metadata'
-
-      expect(link.name).to eq 'a'
-      expect(link['href']).to eq src
-      expect(link['target']).to eq '_blank'
     end
   end
 
@@ -135,12 +130,12 @@ RSpec.describe Banzai::Filter::VideoLinkFilter, feature_category: :team_planning
 
       expect(container['class']).to eq 'media-container video-container'
 
-      video, link = container.children
+      video = container.children.first
 
       expect(video['src']).to eq proxy_src
       expect(video['data-canonical-src']).to eq canonical_src
-
-      expect(link['href']).to eq proxy_src
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

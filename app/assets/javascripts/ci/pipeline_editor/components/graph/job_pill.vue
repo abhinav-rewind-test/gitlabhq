@@ -1,4 +1,5 @@
 <script>
+import { s__, sprintf } from '~/locale';
 import TooltipOnTruncate from '~/vue_shared/components/tooltip_on_truncate/tooltip_on_truncate.vue';
 
 export default {
@@ -24,17 +25,8 @@ export default {
       required: false,
       default: false,
     },
-    handleMouseOver: {
-      type: Function,
-      required: false,
-      default: () => {},
-    },
-    handleMouseLeave: {
-      type: Function,
-      required: false,
-      default: () => {},
-    },
   },
+  emits: ['on-mouse-enter', 'on-mouse-leave'],
   computed: {
     id() {
       return `${this.jobName}-${this.pipelineId}`;
@@ -42,8 +34,11 @@ export default {
     jobPillClasses() {
       return [
         { 'gl-opacity-3': this.isFadedOut },
-        { 'gl-bg-gray-50 gl-inset-border-1-gray-200': this.isHovered },
+        { 'gl-bg-strong gl-shadow-inner-1-gray-200': this.isHovered },
       ];
+    },
+    label() {
+      return sprintf(s__('Pipelines|%{jobName} job'), { jobName: this.jobName });
     },
   },
   methods: {
@@ -59,15 +54,19 @@ export default {
 <template>
   <div class="gl-w-full">
     <tooltip-on-truncate :title="jobName" truncate-target="child" placement="top">
-      <div
+      <button
         :id="id"
-        class="gl-bg-white gl-inset-border-1-gray-100 gl-text-center gl-text-truncate gl-rounded-6 gl-mb-3 gl-px-5 gl-py-3 gl-relative gl-z-index-1 gl-transition-duration-slow gl-transition-timing-function-ease"
+        class="gl-relative gl-z-1 gl-mb-3 gl-w-full gl-truncate gl-rounded-6 gl-border-none gl-bg-default gl-px-5 gl-py-3 gl-shadow-inner-1-gray-100 gl-duration-slow gl-ease-ease"
         :class="jobPillClasses"
+        :aria-label="label"
+        type="button"
+        @focus="onMouseEnter"
+        @blur="onMouseLeave"
         @mouseover="onMouseEnter"
         @mouseleave="onMouseLeave"
       >
         {{ jobName }}
-      </div>
+      </button>
     </tooltip-on-truncate>
   </div>
 </template>

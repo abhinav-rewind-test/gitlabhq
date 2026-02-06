@@ -6,18 +6,33 @@ module Sidekiq
 
     def self.skipping_transaction_check(&block)
       previous_skip_transaction_check = self.skip_transaction_check
-      Thread.current[:sidekiq_worker_skip_transaction_check] = true
+      set_skip_transaction_check_flag(true)
+
       yield
     ensure
-      Thread.current[:sidekiq_worker_skip_transaction_check] = previous_skip_transaction_check
+      set_skip_transaction_check_flag(previous_skip_transaction_check)
+    end
+
+    def self.set_skip_transaction_check_flag(flag = nil)
+      return @sidekiq_worker_skip_transaction_check = flag if ::Rails.env.test?
+
+      Thread.current[:sidekiq_worker_skip_transaction_check] = flag
     end
 
     def self.skip_transaction_check
+      # When transactional tests are in use, Rails ensures all application threads
+      # get the same connection so they can all see the data in the
+      # uncommited transaction.
+      # So we use a class instance variable so that skipping transaction checks apply to all threads.
+      return @sidekiq_worker_skip_transaction_check if ::Rails.env.test?
+
       Thread.current[:sidekiq_worker_skip_transaction_check]
     end
 
     def self.inside_transaction?
-      ::ApplicationRecord.inside_transaction? || ::Ci::ApplicationRecord.inside_transaction?
+      ::ApplicationRecord.inside_transaction? ||
+        Gitlab::Database.database_base_models.values
+          .reject { |c| c == ActiveRecord::Base }.any?(&:inside_transaction?)
     end
 
     def self.raise_exception_for_being_inside_a_transaction?

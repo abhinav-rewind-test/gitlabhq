@@ -12,6 +12,7 @@ module QA
             super
 
             base.view 'app/assets/javascripts/invite_members/components/invite_modal_base.vue' do
+              element 'modal-base-intro-text'
               element 'invite-modal-submit'
               element 'access-level-dropdown'
               element 'invite-modal'
@@ -31,6 +32,8 @@ module QA
           end
 
           def open_invite_members_modal
+            dismiss_duo_chat_popup if respond_to?(:dismiss_duo_chat_popup)
+
             click_element 'invite-members-button'
           end
 
@@ -76,6 +79,7 @@ module QA
           private
 
           def set_access_level(access_level)
+            click_element 'modal-base-intro-text'
             within_element('access-level-dropdown') do
               expand_select_list
               select_item access_level

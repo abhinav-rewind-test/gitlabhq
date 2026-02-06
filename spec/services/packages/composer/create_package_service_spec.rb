@@ -19,10 +19,9 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
   describe '#execute' do
     let(:tag) { nil }
     let(:branch) { nil }
+    let(:created_package) { ::Packages::Composer::Sti::Package.last }
 
     subject { described_class.new(project, user, params).execute }
-
-    let(:created_package) { Packages::Package.composer.last }
 
     context 'without an existing package' do
       context 'with a branch' do
@@ -30,13 +29,13 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
 
         it 'creates the package' do
           expect { subject }
-            .to change { Packages::Package.composer.count }.by(1)
+            .to change { ::Packages::Composer::Sti::Package.count }.by(1)
             .and change { Packages::Composer::Metadatum.count }.by(1)
 
           expect(created_package.name).to eq package_name
           expect(created_package.version).to eq 'dev-master'
-          expect(created_package.composer_metadatum.target_sha).to eq branch.target
-          expect(created_package.composer_metadatum.composer_json.to_json).to eq json
+          expect(created_package.target_sha).to eq branch.target
+          expect(created_package.composer_json.to_json).to eq json
         end
 
         it_behaves_like 'assigns the package creator' do
@@ -56,7 +55,7 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
 
         it 'creates the package' do
           expect { subject }
-            .to change { Packages::Package.composer.count }.by(1)
+            .to change { ::Packages::Composer::Sti::Package.count }.by(1)
             .and change { Packages::Composer::Metadatum.count }.by(1)
 
           expect(created_package.name).to eq package_name
@@ -82,14 +81,14 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
 
         it 'does not create a new package' do
           expect { subject }
-            .to change { Packages::Package.composer.count }.by(0)
-            .and change { Packages::Composer::Metadatum.count }.by(0)
+            .to not_change { ::Packages::Composer::Sti::Package.count }
+            .and not_change { Packages::Composer::Metadatum.count }
         end
       end
 
       context 'belonging to another project' do
-        let(:other_project) { create(:project) }
-        let!(:other_package) { create(:composer_package, name: package_name, version: 'dev-master', project: other_project) }
+        let_it_be(:other_project) { create(:project) }
+        let_it_be_with_reload(:other_package) { create(:composer_package_sti, name: package_name, version: 'dev-master', project: other_project) }
 
         it 'fails with an error' do
           expect { subject }
@@ -97,11 +96,13 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
         end
 
         context 'with pending_destruction package' do
-          let!(:other_package) { create(:composer_package, :pending_destruction, name: package_name, version: 'dev-master', project: other_project) }
+          before_all do
+            other_package.pending_destruction!
+          end
 
           it 'creates the package' do
             expect { subject }
-              .to change { Packages::Package.composer.count }.by(1)
+              .to change { ::Packages::Composer::Sti::Package.count }.by(1)
               .and change { Packages::Composer::Metadatum.count }.by(1)
           end
         end
@@ -109,11 +110,11 @@ RSpec.describe Packages::Composer::CreatePackageService, feature_category: :pack
 
       context 'same name but of different type' do
         let(:other_project) { create(:project) }
-        let!(:other_package) { create(:package, name: package_name, version: 'dev-master', project: other_project) }
+        let!(:other_package) { create(:generic_package, name: package_name, version: 'dev-master', project: other_project) }
 
         it 'creates the package' do
           expect { subject }
-            .to change { Packages::Package.composer.count }.by(1)
+            .to change { ::Packages::Composer::Sti::Package.count }.by(1)
             .and change { Packages::Composer::Metadatum.count }.by(1)
         end
       end

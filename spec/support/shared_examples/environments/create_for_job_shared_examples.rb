@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'create environment for job' do
-  let!(:job) { build(factory_type, project: project, pipeline: pipeline, **attributes) }
+  let!(:job) { build(factory_type, project: project, pipeline: pipeline, user: user, **attributes) }
   let(:merge_request) {} # rubocop:disable Lint/EmptyBlock
 
   describe '#execute' do
@@ -24,6 +24,21 @@ RSpec.shared_examples 'create environment for job' do
         end
       end
 
+      it 'creates an associated job environment record' do
+        subject
+
+        job.save!
+
+        expect(job.job_environment).to be_valid
+        expect(job.job_environment).to have_attributes(
+          project: project,
+          environment: instance_of(Environment),
+          pipeline: job.pipeline,
+          expanded_environment_name: job.persisted_environment.name,
+          options: job.environment_options_for_permanent_storage
+        )
+      end
+
       context 'when environment has already existed' do
         let!(:environment) do
           create(:environment,
@@ -40,6 +55,29 @@ RSpec.shared_examples 'create environment for job' do
 
           expect(subject).to be_persisted
           expect(subject).to eq(environment)
+        end
+
+        it 'creates an associated job environment record' do
+          subject
+
+          job.save!
+
+          expect(job.job_environment).to be_valid
+          expect(job.job_environment).to have_attributes(
+            project: project,
+            environment: environment,
+            pipeline: job.pipeline,
+            expanded_environment_name: environment.name,
+            options: job.environment_options_for_permanent_storage
+          )
+        end
+
+        it_behaves_like 'internal event tracking' do
+          let(:event) { 'create_job_with_environment' }
+          let(:category) { described_class.name }
+          let(:additional_properties) do
+            { label: job.environment_action, value: environment.id, property: environment.tier }
+          end
         end
       end
     end
@@ -103,16 +141,17 @@ RSpec.shared_examples 'create environment for job' do
     context 'when job has deployment tier attribute' do
       let(:attributes) do
         {
-          environment: 'customer-portal',
+          environment: environment_name,
           options: {
             environment: {
-              name: 'customer-portal',
+              name: environment_name,
               deployment_tier: deployment_tier
             }
           }
         }
       end
 
+      let(:environment_name) { 'customer-portal' }
       let(:deployment_tier) { 'production' }
 
       context 'when environment has not been created yet' do
@@ -131,8 +170,9 @@ RSpec.shared_examples 'create environment for job' do
         context 'when deployment tier is unknown' do
           let(:deployment_tier) { 'unknown' }
 
-          it 'raises an error' do
-            expect { subject }.to raise_error(ArgumentError, "'unknown' is not a valid tier")
+          it "is not a valid tier" do
+            is_expected.not_to be_valid
+            expect(subject.errors[:tier].first).to eq('is not included in the list')
           end
         end
       end
@@ -145,6 +185,125 @@ RSpec.shared_examples 'create environment for job' do
         it 'does not overwrite the specified deployment tier' do
           # This is to be updated when a deployment succeeded i.e. Deployments::UpdateEnvironmentService.
           is_expected.to be_staging
+        end
+      end
+    end
+
+    context 'when job has a cluster agent attribute' do
+      let_it_be(:agent) { create(:cluster_agent, project: project) }
+
+      let(:environment_name) { 'production' }
+      let(:expected_environment_name) { 'production' }
+      let(:expected_auto_stop_in) { nil }
+      let(:agent_path) { "#{project.full_path}:#{agent.name}" }
+      let(:attributes) do
+        {
+          environment: environment_name,
+          options: {
+            environment: {
+              name: environment_name,
+              kubernetes: {
+                agent: agent_path,
+                namespace: 'example-namespace'
+              }
+            }
+          }
+        }
+      end
+
+      let(:authorizations) { [ci_access_authorization] }
+      let(:ci_access_authorization) do
+        create(:agent_ci_access_project_authorization,
+          resource_management_enabled: true,
+          project: project,
+          agent: agent
+        )
+      end
+
+      before do
+        allow_next_instance_of(Clusters::Agents::Authorizations::CiAccess::Finder, project) do |finder|
+          allow(finder).to receive(:execute).and_return(authorizations)
+        end
+      end
+
+      it_behaves_like 'returning a correct environment'
+
+      context 'when the agent has resource management enabled' do
+        before do
+          allow(agent).to receive(:resource_management_enabled?).and_return(true)
+        end
+
+        it 'creates an environment with the specified cluster agent' do
+          expect { subject }.to change { Environment.count }.by(1)
+
+          expect(subject).to be_a(Environment)
+          expect(subject).to be_persisted
+          expect(subject.cluster_agent).to eq(agent)
+        end
+
+        context 'when the agent is not configured for resource_management' do
+          let(:ci_access_authorization) do
+            create(:agent_ci_access_project_authorization,
+              project: project,
+              agent: agent,
+              config: {} # resource_management is not enabled
+            )
+          end
+
+          it 'creates an environment without the specified cluster agent' do
+            expect { subject }.to change { Environment.count }.by(1)
+
+            expect(subject).to be_a(Environment)
+            expect(subject).to be_persisted
+            expect(subject.cluster_agent).to be_nil
+          end
+        end
+
+        context 'when the agent is not authorized for this project' do
+          let(:authorizations) { [] }
+
+          it 'creates an environment without the specified cluster agent' do
+            expect { subject }.to change { Environment.count }.by(1)
+
+            expect(subject).to be_a(Environment)
+            expect(subject).to be_persisted
+            expect(subject.cluster_agent).to be_nil
+          end
+        end
+
+        context 'when the environment already exists' do
+          context 'when the environment does not have a cluster agent' do
+            let(:environment) { create(:environment, project: project, name: environment_name) }
+
+            it 'updates the environment with the specified cluster agent' do
+              expect { subject }.to change { environment.reload.cluster_agent }.from(nil).to(agent)
+            end
+          end
+
+          context 'when the environment has a associated cluster agent' do
+            let_it_be(:another_agent) { create(:cluster_agent, project: project) }
+            let(:environment) do
+              create(:environment, project: project, name: environment_name, cluster_agent: another_agent)
+            end
+
+            it 'does not update the environment' do
+              expect { subject }.not_to change { environment.reload.cluster_agent }
+            end
+          end
+        end
+      end
+
+      context 'when the agent does not have resource management enabled' do
+        before do
+          allow(agent).to receive(:resource_management_enabled).and_return(false)
+        end
+
+        it 'creates an environment without the specified cluster agent' do
+          expect { subject }.to change { Environment.count }.by(1)
+
+          expect(subject).to be_a(Environment)
+          expect(subject).to be_persisted
+          expect(subject.cluster_agent).to be_nil
         end
       end
     end
@@ -219,7 +378,7 @@ RSpec.shared_examples 'create environment for job' do
 
           expect(environment).to be_present
           expect(job.persisted_environment.name).to eq('review/master')
-          expect(job.metadata.expanded_environment_name).to eq('review/master')
+          expect(job.expanded_environment_name).to eq('review/master')
         end
 
         context 'and the pipeline is for a merge request' do
@@ -243,7 +402,7 @@ RSpec.shared_examples 'create environment for job' do
 
           expect(environment).to be_present
           expect(job.persisted_environment.name).to eq('review/master')
-          expect(job.metadata.expanded_environment_name).to eq('review/master')
+          expect(job.expanded_environment_name).to eq('review/master')
         end
 
         context 'and the pipeline is for a merge request' do
@@ -273,6 +432,17 @@ RSpec.shared_examples 'create environment for job' do
     end
 
     context 'when a pipeline contains a teardown job' do
+      before_all do
+        Ci::ApplicationRecord.connection.execute(<<~SQL)
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_100"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (100);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_101"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (101);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_102"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (102);
+        SQL
+      end
+
       let!(:job) { build(factory_type, :stop_review_app, project: project) }
 
       it 'ensures environment existence for the job' do
@@ -280,7 +450,17 @@ RSpec.shared_examples 'create environment for job' do
 
         expect(environment).to be_present
         expect(job.persisted_environment.name).to eq('review/master')
-        expect(job.metadata.expanded_environment_name).to eq('review/master')
+        expect(job.expanded_environment_name).to eq('review/master')
+      end
+
+      context 'when job metadata exists' do
+        before do
+          job.metadata = build(:ci_build_metadata, project: project)
+        end
+
+        it 'does not change metadata.expanded_environment_name' do
+          expect { subject }.to not_change { job.metadata.expanded_environment_name }
+        end
       end
     end
 

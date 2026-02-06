@@ -27,7 +27,17 @@ module SubmoduleHelper
       [
         url_helpers.namespace_project_path(namespace, project),
         url_helpers.namespace_project_tree_path(namespace, project, submodule_item_id),
-        (url_helpers.namespace_project_compare_path(namespace, project, to: submodule_item_id, from: old_submodule_item_id) if old_submodule_item_id)
+        (
+
+          if old_submodule_item_id
+            url_helpers.namespace_project_compare_path(
+              namespace, project,
+              to: submodule_item_id,
+              from: old_submodule_item_id
+            )
+          end
+
+        )
       ]
     elsif relative_self_url?(url)
       relative_self_links(url, submodule_item_id, old_submodule_item_id, repository.project)
@@ -45,13 +55,16 @@ module SubmoduleHelper
   protected
 
   def extract_namespace_project(url)
+    # Remove comments and trailing content first, before any URL parsing
+    url = url.split(' ').first
+
     namespace_fragment, _, project = url.rpartition('/')
     namespace = namespace_fragment.rpartition(%r{[:/]}).last
 
     return [nil, nil] unless project.present? && namespace.present?
 
     gitlab_hosts = [Gitlab.config.gitlab.url,
-                    Gitlab.config.gitlab_shell.ssh_path_prefix]
+      Gitlab.config.gitlab_shell.ssh_path_prefix]
 
     matching_host = gitlab_hosts.find do |host|
       url.start_with?(host)
@@ -83,7 +96,7 @@ module SubmoduleHelper
   def self_url?(url, namespace, project)
     url_no_dotgit = url.chomp('.git')
     return true if url_no_dotgit == [Gitlab.config.gitlab.url, '/', namespace, '/',
-                                     project].join('')
+      project].join('')
 
     url_with_dotgit = "#{url_no_dotgit}.git"
     url_with_dotgit == Gitlab::RepositoryUrlBuilder.build([namespace, '/', project].join(''))
@@ -139,7 +152,13 @@ module SubmoduleHelper
       [
         url_helpers.namespace_project_path(target_namespace_path, submodule_base),
         url_helpers.namespace_project_tree_path(target_namespace_path, submodule_base, commit),
-        (url_helpers.namespace_project_compare_path(target_namespace_path, submodule_base, to: commit, from: old_commit) if old_commit)
+
+        (if old_commit
+           url_helpers.namespace_project_compare_path(
+             target_namespace_path, submodule_base, to: commit, from: old_commit
+           )
+         end)
+
       ]
     rescue ActionController::UrlGenerationError
       [nil, nil, nil]

@@ -18,7 +18,7 @@ RSpec.shared_examples 'graphql issue list request spec' do
 
   describe 'filters' do
     let(:mutually_exclusive_error) do
-      'only one of [assigneeUsernames, assigneeUsername, assigneeWildcardId] arguments is allowed at the same time.'
+      'Only one of [assigneeUsernames, assigneeUsername, assigneeWildcardId] arguments is allowed at the same time.'
     end
 
     before_all do
@@ -34,6 +34,22 @@ RSpec.shared_examples 'graphql issue list request spec' do
           post_query
 
           expect_graphql_errors_to_include(Types::IssuableStateEnum::INVALID_LOCKED_MESSAGE)
+        end
+      end
+    end
+
+    context 'when filtering by milestone' do
+      context 'when both negated milestone_id and milestone_wildcard_id filters are provided' do
+        let(:issue_filter_params) do
+          { not: { milestone_title: 'some_milestone', milestone_wildcard_id: :STARTED } }
+        end
+
+        it 'returns a mutually exclusive param error' do
+          post_query
+
+          expect_graphql_errors_to_include(
+            'Only one of [milestoneTitle, milestoneWildcardId] arguments is allowed at the same time.'
+          )
         end
       end
     end
@@ -136,20 +152,6 @@ RSpec.shared_examples 'graphql issue list request spec' do
           expect_graphql_errors_to_be_empty
         end
       end
-
-      context 'when feature flag is disabled' do
-        let(:issue_filter_params) { { or: { assignee_usernames: [current_user.username] } } }
-
-        it 'returns an error' do
-          stub_feature_flags(or_issuable_queries: false)
-
-          post_query
-
-          expect_graphql_errors_to_include(
-            "'or' arguments are only allowed when the `or_issuable_queries` feature flag is enabled."
-          )
-        end
-      end
     end
 
     context 'when filtering by a blank negated argument' do
@@ -166,12 +168,12 @@ RSpec.shared_examples 'graphql issue list request spec' do
       using RSpec::Parameterized::TableSyntax
 
       where(:value, :issue_list) do
-        'thumbsup'   | lazy { voted_issues }
-        'ANY'        | lazy { voted_issues }
-        'any'        | lazy { voted_issues }
-        'AnY'        | lazy { voted_issues }
-        'NONE'       | lazy { no_award_issues }
-        'thumbsdown' | lazy { [] }
+        AwardEmoji::THUMBS_UP   | lazy { voted_issues }
+        'ANY'                   | lazy { voted_issues }
+        'any'                   | lazy { voted_issues }
+        'AnY'                   | lazy { voted_issues }
+        'NONE'                  | lazy { no_award_issues }
+        AwardEmoji::THUMBS_DOWN | lazy { [] }
       end
 
       with_them do
@@ -193,6 +195,36 @@ RSpec.shared_examples 'graphql issue list request spec' do
         let(:user) { current_user }
         let(:issuable) { title_search_issue }
         let(:ids) { issue_ids }
+      end
+    end
+
+    context 'when filtering by subscribed' do
+      context 'with no filtering' do
+        it 'returns all items' do
+          post_query
+
+          expect(issue_ids).to match_array(to_gid_list(issues))
+        end
+      end
+
+      context 'with user filters for subscribed items' do
+        let(:issue_filter_params) { { subscribed: :EXPLICITLY_SUBSCRIBED } }
+
+        it 'returns only subscribed items' do
+          post_query
+
+          expect(issue_ids).to match_array(to_gid_list(subscribed_issues))
+        end
+      end
+
+      context 'with user filters out subscribed items' do
+        let(:issue_filter_params) { { subscribed: :EXPLICITLY_UNSUBSCRIBED } }
+
+        it 'returns only unsubscribed items' do
+          post_query
+
+          expect(issue_ids).to match_array(to_gid_list(unsubscribed_issues))
+        end
       end
     end
 
@@ -231,6 +263,30 @@ RSpec.shared_examples 'graphql issue list request spec' do
             expect(issue_ids).to match_array(to_gid_list(public_non_confidential_issues))
           end
         end
+      end
+    end
+
+    # Querying Service Desk issues uses `support-bot` `author_username`.
+    # This is a workaround that selects both legacy Service Desk issues and ticket work items
+    # until we migrated Service Desk issues to work items of type ticket.
+    # Will be removed with https://gitlab.com/gitlab-org/gitlab/-/issues/505024
+    context 'when filtering by Service Desk issues/tickets' do
+      # Use items only for this context because it's temporary. This way we don't need to modify other examples.
+      let_it_be(:service_desk_issue) { create(:issue, project: project, author: create(:support_bot)) }
+
+      # don't use support bot because this isn't a req for ticket WIT
+      let_it_be(:ticket) { create(:work_item, :ticket, project: project, author: current_user) }
+      # Get work item as issue because this query only returns issues.
+      let_it_be(:service_desk_items) { [service_desk_issue, Issue.find(ticket.id)] }
+
+      let_it_be(:base_params) { { iids: service_desk_items.map { |issue| issue.iid.to_s } } }
+
+      let(:issue_filter_params) { { author_username: 'support-bot' } }
+
+      it 'returns Service Desk issue and ticket work item' do
+        post_query
+
+        expect(issue_ids).to match_array(to_gid_list(service_desk_items))
       end
     end
   end
@@ -363,7 +419,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
       post_query
     end
 
-    context 'when requesting `user_notes_count` and `user_discussions_count`' do
+    context 'when requesting `user_notes_count` and `user_discussions_count`',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17052' do
       let(:requested_fields) { 'userNotesCount userDiscussionsCount' }
 
       before do
@@ -385,7 +442,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
       include_examples 'N+1 query check'
     end
 
-    context 'when requesting `timelogs`' do
+    context 'when requesting `timelogs`',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17054' do
       let(:requested_fields) { 'timelogs { nodes { timeSpent } }' }
 
       before do
@@ -413,8 +471,8 @@ RSpec.shared_examples 'graphql issue list request spec' do
       let(:requested_fields) { 'upvotes downvotes' }
 
       before do
-        create_list(:award_emoji, 2, name: 'thumbsup', awardable: issue_a)
-        create_list(:award_emoji, 2, name: 'thumbsdown', awardable: issue_b)
+        create_list(:award_emoji, 2, name: AwardEmoji::THUMBS_UP, awardable: issue_a)
+        create_list(:award_emoji, 2, name: AwardEmoji::THUMBS_DOWN, awardable: issue_b)
       end
 
       include_examples 'N+1 query check'
@@ -543,7 +601,7 @@ RSpec.shared_examples 'graphql issue list request spec' do
 
   context 'when fetching escalation status' do
     let_it_be(:escalation_status) { create(:incident_management_issuable_escalation_status, issue: issue_a) }
-    let_it_be(:incident_type) { WorkItems::Type.default_by_type(:incident) }
+    let_it_be(:incident_type) { build(:work_item_system_defined_type, :incident) }
 
     let(:fields) do
       <<~QUERY
@@ -593,32 +651,48 @@ RSpec.shared_examples 'graphql issue list request spec' do
       QUERY
     end
 
-    it 'avoids N+1 queries' do
-      control = ActiveRecord::QueryRecorder.new { post_query }
-
-      create(:alert_management_alert, :with_incident, project: public_projects.first)
-
-      expect { post_query }.not_to exceed_query_limit(control)
-    end
-
-    it 'returns the alert data' do
-      post_query
-
-      alert_titles = issues_data.map { |issue| issue.dig('alertManagementAlert', 'title') }
-      expected_titles = issues.map { |issue| issue.alert_management_alerts.first&.title }
-
-      expect(alert_titles).to contain_exactly(*expected_titles)
-    end
-
-    it 'returns the alerts data' do
-      post_query
-
-      alert_titles = issues_data.map { |issue| issue.dig('alertManagementAlerts', 'nodes') }
-      expected_titles = issues.map do |issue|
-        issue.alert_management_alerts.map { |alert| { 'title' => alert.title } }
+    context 'when the feature flag is disabled' do
+      before do
+        stub_feature_flags(hide_incident_management_features: false)
       end
 
-      expect(alert_titles).to contain_exactly(*expected_titles)
+      it 'avoids N+1 queries' do
+        control = ActiveRecord::QueryRecorder.new { post_query }
+
+        create(:alert_management_alert, :with_incident, project: public_projects.first)
+
+        expect { post_query }.not_to exceed_query_limit(control)
+      end
+
+      it 'returns the alert data' do
+        post_query
+
+        alert_titles = issues_data.map { |issue| issue.dig('alertManagementAlert', 'title') }
+        expected_titles = issues.map { |issue| issue.alert_management_alerts.first&.title }
+
+        expect(alert_titles).to contain_exactly(*expected_titles)
+      end
+
+      it 'returns the alerts data' do
+        post_query
+
+        alert_titles = issues_data.map { |issue| issue.dig('alertManagementAlerts', 'nodes') }
+        expected_titles = issues.map do |issue|
+          issue.alert_management_alerts.map { |alert| { 'title' => alert.title } }
+        end
+
+        expect(alert_titles).to contain_exactly(*expected_titles)
+      end
+    end
+
+    context 'when the feature flag is enabled' do
+      it 'does not return alert data' do
+        post_query
+
+        alert_titles = issues_data.pluck('alertManagementAlerts')
+
+        expect(alert_titles).to all(be_nil)
+      end
     end
   end
 
@@ -674,13 +748,13 @@ RSpec.shared_examples 'graphql issue list request spec' do
     end
 
     def response_label_ids(response_data)
-      response_data.map do |node|
+      response_data.flat_map do |node|
         node['labels']['nodes'].pluck('id')
-      end.flatten
+      end
     end
 
     def labels_as_global_ids(issues)
-      issues.map(&:labels).flatten.map(&:to_global_id).map(&:to_s)
+      issues.flat_map { |issue| issue.labels.map { |label| label.to_global_id.to_s } }
     end
 
     it 'avoids N+1 queries', :aggregate_failures do
@@ -723,13 +797,13 @@ RSpec.shared_examples 'graphql issue list request spec' do
     end
 
     def response_assignee_ids(response_data)
-      response_data.map do |node|
+      response_data.flat_map do |node|
         node['assignees']['nodes'].pluck('id')
-      end.flatten
+      end
     end
 
     def assignees_as_global_ids(issues)
-      issues.map(&:assignees).flatten.map(&:to_global_id).map(&:to_s)
+      issues.flat_map(&:assignees).map(&:to_global_id).map(&:to_s)
     end
 
     it 'avoids N+1 queries', :aggregate_failures do

@@ -1,16 +1,15 @@
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
-
 import {
   addClassIfElementExists,
-  canScrollUp,
-  canScrollDown,
+  canScrollUp, // eslint-disable-line import/no-deprecated
+  canScrollDown, // eslint-disable-line import/no-deprecated
   getContentWrapperHeight,
   parseBooleanDataAttributes,
   isElementVisible,
-  getParents,
   getParentByTagName,
   setAttributes,
   replaceCommentsWith,
+  waitForElement,
 } from '~/lib/utils/dom_utils';
 
 const TEST_MARGIN = 5;
@@ -58,6 +57,7 @@ describe('DOM Utils', () => {
     [1, 100].forEach((scrollTop) => {
       it(`is true if scrollTop is > 0 (${scrollTop})`, () => {
         expect(
+          // eslint-disable-next-line import/no-deprecated
           canScrollUp({
             scrollTop,
           }),
@@ -68,6 +68,7 @@ describe('DOM Utils', () => {
     [0, -10].forEach((scrollTop) => {
       it(`is false if scrollTop is <= 0 (${scrollTop})`, () => {
         expect(
+          // eslint-disable-next-line import/no-deprecated
           canScrollUp({
             scrollTop,
           }),
@@ -77,6 +78,7 @@ describe('DOM Utils', () => {
 
     it('is true if scrollTop is > margin', () => {
       expect(
+        // eslint-disable-next-line import/no-deprecated
         canScrollUp(
           {
             scrollTop: TEST_MARGIN + 1,
@@ -88,6 +90,7 @@ describe('DOM Utils', () => {
 
     it('is false if scrollTop is <= margin', () => {
       expect(
+        // eslint-disable-next-line import/no-deprecated
         canScrollUp(
           {
             scrollTop: TEST_MARGIN,
@@ -110,23 +113,23 @@ describe('DOM Utils', () => {
     });
 
     it('is true if element can be scrolled down', () => {
-      expect(canScrollDown(element)).toBe(true);
+      expect(canScrollDown(element)).toBe(true); // eslint-disable-line import/no-deprecated
     });
 
     it('is false if element cannot be scrolled down', () => {
       element.scrollHeight -= 1;
 
-      expect(canScrollDown(element)).toBe(false);
+      expect(canScrollDown(element)).toBe(false); // eslint-disable-line import/no-deprecated
     });
 
     it('is true if element can be scrolled down, with margin given', () => {
       element.scrollHeight += TEST_MARGIN;
 
-      expect(canScrollDown(element, TEST_MARGIN)).toBe(true);
+      expect(canScrollDown(element, TEST_MARGIN)).toBe(true); // eslint-disable-line import/no-deprecated
     });
 
     it('is false if element cannot be scrolled down, with margin given', () => {
-      expect(canScrollDown(element, TEST_MARGIN)).toBe(false);
+      expect(canScrollDown(element, TEST_MARGIN)).toBe(false); // eslint-disable-line import/no-deprecated
     });
   });
 
@@ -196,20 +199,6 @@ describe('DOM Utils', () => {
       it(`returns ${visible} when ${paramDescription}`, () => {
         expect(isElementVisible(element)).toBe(visible);
       });
-    });
-  });
-
-  describe('getParents', () => {
-    it('gets all parents of an element', () => {
-      const el = document.createElement('div');
-      el.innerHTML = '<p><span><strong><mark>hello world';
-
-      expect(getParents(el.querySelector('mark'))).toEqual([
-        el.querySelector('strong'),
-        el.querySelector('span'),
-        el.querySelector('p'),
-        el,
-      ]);
     });
   });
 
@@ -283,6 +272,61 @@ describe('DOM Utils', () => {
       expect(div.innerHTML).toBe(
         '<h1> hi there <comment> some comment </comment> <p> <comment> another comment </comment></p></h1>',
       );
+    });
+  });
+
+  describe('waitForElement', () => {
+    const fixture = '<div class="wrapper"></div>';
+    const mockElementSelector = 'some-selector';
+    const mockElement = document.createElement('div');
+    mockElement.classList.add(mockElementSelector);
+
+    beforeEach(() => setHTMLFixture(fixture));
+
+    afterEach(() => resetHTMLFixture());
+
+    it('resolves immediately if element is already in the DOM', async () => {
+      document.querySelector('.wrapper').appendChild(mockElement);
+      const result = await waitForElement(`.${mockElementSelector}`);
+
+      expect(result).toBe(mockElement);
+    });
+
+    it('resolves after element is added to the DOM', async () => {
+      const waitForElementPromise = waitForElement(`.${mockElementSelector}`);
+      document.querySelector('.wrapper').appendChild(mockElement);
+      const result = await waitForElementPromise;
+
+      expect(result).toBe(mockElement);
+    });
+
+    describe('if no element found', () => {
+      const mockDisconnect = jest.fn();
+      let OriginalMutationObserver;
+      const timeoutDelay = 100;
+      class MutationObserverMock {
+        constructor() {
+          this.observe = jest.fn();
+          this.disconnect = mockDisconnect;
+        }
+      }
+
+      beforeEach(() => {
+        OriginalMutationObserver = global.MutationObserver;
+        global.MutationObserver = MutationObserverMock;
+      });
+
+      afterEach(() => {
+        global.MutationObserver = OriginalMutationObserver;
+      });
+
+      it('disconnects the observer and rejects the promise after the timeout delay', async () => {
+        const waitForElementPromise = waitForElement('.some-unavailable-element', timeoutDelay);
+        jest.advanceTimersByTime(timeoutDelay);
+
+        expect(mockDisconnect).toHaveBeenCalled();
+        await expect(waitForElementPromise).rejects.toMatch('Timeout: Element not found');
+      });
     });
   });
 });

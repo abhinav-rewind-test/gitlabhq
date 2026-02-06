@@ -11,6 +11,8 @@ RSpec.shared_examples 'Model disables STI' do
     models.each do |model|
       next unless model
       next unless model < ApplicationRecord
+      next unless model.name # skip unnamed/anonymous models
+      next if model.table_name&.start_with?('_test') # skip test models that define the tables in specs
       next if model == model.base_class
       next if model.allow_legacy_sti_class
 
@@ -21,7 +23,7 @@ RSpec.shared_examples 'Model disables STI' do
   end
 end
 
-RSpec.shared_examples 'STI disabled', type: :model do # rubocop:disable RSpec/SharedGroupsMetadata -- Shared example is run within every spec tagged `type: :model`
+RSpec.shared_context 'with STI disabled' do
   include_examples 'Model disables STI' do
     let(:models) { [described_class] }
   end

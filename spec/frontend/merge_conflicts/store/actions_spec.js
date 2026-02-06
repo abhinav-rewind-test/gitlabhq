@@ -1,5 +1,5 @@
-import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
+import axios from '~/lib/utils/axios_utils';
 import Cookies from '~/lib/utils/cookies';
 import { HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
@@ -127,7 +127,7 @@ describe('merge conflicts actions', () => {
         [],
       );
       expect(createAlert).toHaveBeenCalledWith({
-        message: 'Failed to save merge conflicts resolutions. Please try again!',
+        message: 'Failed to save merge conflict resolutions. Please try again.',
       });
     });
   });

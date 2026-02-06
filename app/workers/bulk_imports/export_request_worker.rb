@@ -5,7 +5,7 @@ module BulkImports
     include ApplicationWorker
 
     idempotent!
-    data_consistency :always
+    data_consistency :sticky
     feature_category :importers
     sidekiq_options dead: false, retry: 5
     worker_has_external_dependencies!
@@ -15,7 +15,15 @@ module BulkImports
     end
 
     def perform(entity_id)
-      @entity = BulkImports::Entity.find(entity_id)
+      @entity = BulkImports::Entity.find_by_id(entity_id)
+      unless @entity
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          entity_id: entity_id,
+          message: 'Entity not found'
+        )
+        return
+      end
 
       set_source_xid
       request_export
@@ -26,8 +34,24 @@ module BulkImports
     end
 
     def perform_failure(exception, entity_id)
-      @entity = BulkImports::Entity.find(entity_id)
+      @entity = BulkImports::Entity.find_by_id(entity_id)
 
+      unless @entity
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          entity_id: entity_id,
+          message: 'Entity not found (failure)'
+        )
+        return
+      end
+
+      Gitlab::ErrorTracking.track_exception(
+        exception,
+        message: 'Export request failed',
+        entity_id: entity_id,
+        worker: self.class.name,
+        source_type: @entity.source_type
+      )
       log_and_fail(exception)
     end
 
@@ -69,9 +93,9 @@ module BulkImports
 
     def entity_source_xid
       response = graphql_client.execute(
-        graphql_client.parse(entity_query.to_s),
-        { full_path: entity.source_full_path }
-      ).original_hash
+        query: entity_query.to_s,
+        variables: { full_path: entity.source_full_path }
+      )
 
       ::GlobalID.parse(response.dig(*entity_query.data_path, 'id')).model_id
     rescue StandardError => e

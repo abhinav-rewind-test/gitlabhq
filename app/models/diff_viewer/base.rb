@@ -56,6 +56,8 @@ module DiffViewer
 
     def collapsed?
       return @collapsed if defined?(@collapsed)
+      # diff_file.collapsed? returns false when the diff is part of a collection with only one diff
+      # and it was auto-expanded by Gitlab::Git::DiffCollection's expand_diff? check
       return @collapsed = true if diff_file.collapsed?
 
       @collapsed = !diff_file.expanded? && collapse_limit && diff_file.raw_size > collapse_limit
@@ -66,6 +68,10 @@ module DiffViewer
       return @too_large = true if diff_file.too_large?
 
       @too_large = size_limit && diff_file.raw_size > size_limit
+    end
+
+    def expandable?
+      !too_large? && text?
     end
 
     def binary_detected_after_load?
@@ -88,7 +94,7 @@ module DiffViewer
     def render_error_message
       return unless render_error
 
-      _("This %{viewer} could not be displayed because %{reason}. You can %{options} instead.") %
+      _("%{viewer} could not be displayed: %{reason}. Options to address this: %{options}.") %
         {
           viewer: switcher_title,
           reason: render_error_reason,

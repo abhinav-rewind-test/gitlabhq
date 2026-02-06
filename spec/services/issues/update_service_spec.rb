@@ -2,12 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning do
+RSpec.describe Issues::UpdateService, :mailer, :request_store, feature_category: :team_planning do
   let_it_be(:user) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
   let_it_be(:guest) { create(:user) }
-  let_it_be(:group) { create(:group, :public) }
+  let_it_be(:group) { create(:group, :public, maintainers: user, developers: [user2, user3], guests: guest) }
   let_it_be(:project, reload: true) { create(:project, :repository, group: group) }
   let_it_be(:label) { create(:label, title: 'a', project: project) }
   let_it_be(:label2) { create(:label, title: 'b', project: project) }
@@ -18,19 +18,15 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
   let(:issue) do
     create(
       :issue,
+      :unchanged,
       title: 'Old title',
       description: "for #{user2.to_reference}",
       assignee_ids: [user3.id],
       project: project,
-      author: create(:user)
+      author: create(:user),
+      created_at: Time.current - 1.day,
+      updated_at: Time.current - 1.day
     )
-  end
-
-  before_all do
-    group.add_maintainer(user)
-    group.add_developer(user2)
-    group.add_developer(user3)
-    group.add_guest(guest)
   end
 
   describe 'execute' do
@@ -109,7 +105,108 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
         expect(issue.issue_customer_relations_contacts.last.contact).to eq contact
       end
 
+      it 'publishes created event' do
+        expect { update_issue(opts) }
+          .to publish_event(::WorkItems::WorkItemUpdatedEvent).with(
+            id: issue.id,
+            namespace_id: issue.namespace_id,
+            updated_attributes: %w[title updated_at description milestone_id updated_by_id due_date lock_version title_html description_html last_edited_at last_edited_by_id discussion_locked]
+          )
+      end
+
+      context 'for work_item_description' do
+        let_it_be_with_reload(:issue) { create(:issue, :with_work_item_description, description: "old") }
+
+        context 'when the issue already has a work item description record' do
+          it_behaves_like 'syncs successfully to work_item_description' do
+            subject { update_issue(opts) }
+          end
+        end
+
+        context 'when the issue has no work item description record' do
+          let_it_be_with_reload(:issue) { create(:issue) }
+
+          it_behaves_like 'syncs successfully to work_item_description' do
+            subject { update_issue(opts) }
+          end
+        end
+
+        context 'when title changes' do
+          let(:opts) { { title: "change" } }
+
+          it 'upserts to sync lock_version' do
+            expect(WorkItems::Description).to receive(:upsert).and_call_original
+
+            update_issue(opts)
+
+            expect(issue.reload.lock_version).to eq(issue.work_item_description.lock_version)
+          end
+        end
+
+        context 'when no description related data changes' do
+          let(:opts) { { state_event: "close" } }
+
+          it 'does not upsert' do
+            expect(WorkItems::Description).not_to receive(:upsert)
+
+            update_issue(opts)
+          end
+        end
+
+        context 'when upserting has no effect' do
+          before do
+            allow(WorkItems::Description).to receive(:upsert).and_return(ActiveRecord::Result.new([], []))
+          end
+
+          it 'does not save the updates on the record and tracks the error' do
+            expect(Gitlab::AppLogger).to receive(:info).with(
+              hash_including(
+                issue_id: issue.id,
+                message: /^Failed to upsert work_item_description/i
+              )
+            )
+            expect(Gitlab::AppLogger).to receive(:info).and_call_original
+
+            expect { update_issue(opts) }.to not_change { issue.reload.description }
+              .and not_change { issue.state_id }
+          end
+        end
+      end
+
+      context 'with lock_version' do
+        let(:opts) do
+          {
+            description: 'Also please fix',
+            label_ids: [label.id]
+          }
+        end
+
+        context 'when given lock_version is valid' do
+          before do
+            opts[:lock_version] = issue.lock_version
+          end
+
+          it 'updates the issue successfully' do
+            update_issue(opts)
+
+            expect(issue).to be_valid
+          end
+        end
+
+        context 'when given lock_version is stale' do
+          before do
+            opts[:lock_version] = issue.lock_version - 1
+          end
+
+          it 'raises a stale object error' do
+            expect { update_issue(opts) }.to raise_error ActiveRecord::StaleObjectError
+          end
+        end
+      end
+
       it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+        let(:trigger_call_counter) { 2 }
+
         subject(:execute_service) { update_issue(opts) }
       end
 
@@ -401,6 +498,38 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
         expect(issue.relative_position).to be_between(issue1.relative_position, issue2.relative_position)
       end
 
+      context 'when updating state_event' do
+        context 'when state_event is close' do
+          let(:opts) { { state_event: 'close' } }
+
+          it 'closes the issue' do
+            expect { update_issue(opts) }
+              .to change(issue, :state).from('opened').to('closed')
+          end
+
+          it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+            subject(:execute_service) { update_issue(opts) }
+          end
+        end
+
+        context 'when state_event is reopen' do
+          let(:opts) { { state_event: 'reopen' } }
+
+          before do
+            issue.close!
+          end
+
+          it 'reopens the issue' do
+            expect { update_issue(opts) }
+              .to change(issue, :state).from('closed').to('opened')
+          end
+
+          it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+            subject(:execute_service) { update_issue(opts) }
+          end
+        end
+      end
+
       context 'when moving issue between issues from different projects' do
         let(:group) { create(:group) }
         let(:subgroup) { create(:group, parent: group) }
@@ -435,6 +564,8 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
 
       context 'when current user cannot admin issues in the project' do
         it 'filters out params that cannot be set without the :admin_issue permission' do
+          issue.update!(author: guest)
+
           described_class.new(
             container: project, current_user: guest, params: opts.merge(
               confidential: true,
@@ -485,9 +616,9 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
         end
 
         it 'creates system note about title change' do
-          note = find_note('changed title')
+          note = find_note('<p>changed title')
 
-          expect(note.note).to eq 'changed title from **{-Old-} title** to **{+New+} title**'
+          expect(note.note).to eq '<p>changed title from <code class="idiff"><span class="idiff left right deletion">Old</span> title</code> to <code class="idiff"><span class="idiff left right addition">New</span> title</code></p>'
         end
 
         it 'creates system note about discussion lock' do
@@ -537,6 +668,22 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
             expect(issue.referenced_users).to be_empty
             expect(issue.valid?).to be false
           end
+        end
+      end
+
+      context 'when issue does not have due date' do
+        let(:due_date) { Time.zone.today }
+        let(:update_params) { { due_date: due_date } }
+
+        # https://gitlab.com/gitlab-org/gitlab/-/issues/517311
+        it 'updates the issue dates with fixed start and due date', :sidekiq_inline do
+          expect { update_issue(update_params) }
+            .to change { issue.due_date }.to(due_date)
+
+          expect(issue.dates_source).not_to be_nil
+          expect(issue.dates_source.due_date).to be(due_date)
+          expect(issue.dates_source.due_date_is_fixed).to be(true)
+          expect(issue.dates_source.start_date_is_fixed).to be(true)
         end
       end
     end
@@ -781,6 +928,14 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
 
           update_issue(milestone_id: milestone.id)
         end
+
+        context 'when also closing the issue' do
+          it 'creates a milestone resource event' do
+            expect do
+              update_issue(milestone_id: create(:milestone, project: project).id, state_event: 'close')
+            end.to change { ResourceMilestoneEvent.count }.by(1)
+          end
+        end
       end
 
       context 'when the milestone is changed' do
@@ -891,10 +1046,9 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
         it 'does not check for spam on task status change' do
           params = {
             update_task: {
-              index: 1,
               checked: false,
               line_source: '- [x] Task 1',
-              line_number: 1
+              line_sourcepos: '1:4-1:4'
             }
           }
           service = described_class.new(container: project, current_user: user, params: params)
@@ -904,15 +1058,32 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
           service.execute(issue)
         end
 
+        it_behaves_like 'syncs successfully to work_item_description' do
+          before do
+            update_issue(description: "- [x] Task 1\n- [X] Task 2")
+          end
+
+          let(:params) do
+            {
+              update_task: {
+                checked: false,
+                line_source: '- [x] Task 1',
+                line_sourcepos: '1:4-1:4'
+              }
+            }
+          end
+
+          subject { described_class.new(container: project, current_user: user, params: params).execute(issue) }
+        end
+
         # At the moment of writting old associations are not necessary for update_task
         # and doing this will prevent fetching associations from the DB and comparing old and new labels
         it 'does not pass old_associations to the after_update method' do
           params = {
             update_task: {
-              index: 1,
               checked: false,
               line_source: '- [x] Task 1',
-              line_number: 1
+              line_sourcepos: '1:4-1:4'
             }
           }
           service = described_class.new(container: project, current_user: user, params: params)
@@ -1092,6 +1263,32 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
         update_issue(assignee_ids: [create(:user).id])
 
         expect(issue.reload.assignees).to eq([user3])
+      end
+
+      context 'when assignee is a service account with composite_identity_enforced' do
+        let_it_be(:new_assignee) { create(:user, :service_account, composite_identity_enforced: true, developer_of: project) }
+
+        it 'assigns the user' do
+          expect(::Gitlab::Auth::Identity).to receive(:link_from_scoped_user).and_call_original
+
+          update_issue(assignee_ids: [new_assignee.id])
+
+          expect(issue.reload.assignees).to eq([new_assignee])
+        end
+      end
+
+      context 'when assignee is a regular user account with composite_identity_enforced' do
+        let_it_be(:new_assignee) { create(:user, developer_of: project) }
+
+        before do
+          new_assignee.composite_identity_enforced!
+          allow(User).to receive(:id_in).and_return([new_assignee])
+        end
+
+        it 'does not link the identities' do
+          expect(::Gitlab::Auth::Identity).not_to receive(:link_from_scoped_user)
+          update_issue(assignee_ids: [new_assignee.id])
+        end
       end
 
       context "when issuable feature is private" do
@@ -1366,67 +1563,95 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
       end
     end
 
-    context 'move issue to another project' do
-      let(:target_project) { create(:project) }
+    context 'move issue to another project or group' do
+      shared_examples 'move issue to another project' do
+        let_it_be(:target_project) { create(:project) }
 
-      context 'valid project' do
-        before do
-          target_project.add_maintainer(user)
+        context 'valid project' do
+          before do
+            target_project.add_maintainer(user)
+          end
+
+          it 'calls the move service with the proper issue and project' do
+            expect_next_instance_of(::WorkItems::DataSync::MoveService) do |service|
+              expect(service).to receive(:execute).and_call_original
+            end
+
+            new_issue = update_issue(target_container: target_project)
+
+            expect(new_issue.project).to eq(target_project)
+            expect(new_issue.title).to eq(issue.title)
+          end
         end
+      end
 
-        it 'calls the move service with the proper issue and project' do
-          move_stub = instance_double(Issues::MoveService)
-          allow(Issues::MoveService).to receive(:new).and_return(move_stub)
-          allow(move_stub).to receive(:execute).with(issue, target_project).and_return(issue)
+      it_behaves_like 'move issue to another project'
 
-          expect(move_stub).to receive(:execute).with(issue, target_project)
+      context 'when target container is a group' do
+        context 'without access to the group' do
+          let_it_be(:target_container) { create(:group) }
 
-          update_issue(target_project: target_project)
+          it 'does not call any clone service' do
+            expect(WorkItems::DataSync::MoveService).not_to receive(:new)
+
+            update_issue(target_container: target_container)
+          end
         end
       end
     end
 
     context 'clone an issue' do
-      context 'valid project' do
-        let(:target_project) { create(:project) }
+      shared_examples 'clone an issue' do
+        context 'clone' do
+          let_it_be(:target_project) { create(:project) }
 
-        before do
-          target_project.add_maintainer(user)
+          before do
+            target_project.add_maintainer(user)
+          end
+
+          it 'calls the move service with the proper issue and project' do
+            expect_next_instance_of(::WorkItems::DataSync::CloneService) do |service|
+              expect(service).to receive(:execute).and_call_original
+            end
+
+            new_issue = update_issue(target_clone_container: target_project)
+
+            expect(new_issue.project).to eq(target_project)
+            expect(new_issue.title).to eq(issue.title)
+          end
+
+          context 'clone an issue with notes' do
+            it 'calls the move service with the proper issue and project' do
+              expect_next_instance_of(::WorkItems::DataSync::CloneService) do |service|
+                expect(service).to receive(:execute).and_call_original
+              end
+
+              new_issue = update_issue(target_clone_container: target_project, clone_with_notes: true)
+
+              expect(new_issue.project).to eq(target_project)
+              expect(new_issue.title).to eq(issue.title)
+              expect(new_issue.notes.count).to eq(issue.notes.count)
+            end
+          end
         end
+      end
 
-        it 'calls the move service with the proper issue and project' do
-          clone_stub = instance_double(Issues::CloneService)
-          allow(Issues::CloneService).to receive(:new).and_return(clone_stub)
-          allow(clone_stub).to receive(:execute).with(issue, target_project, with_notes: nil).and_return(issue)
+      it_behaves_like 'clone an issue'
 
-          expect(clone_stub).to receive(:execute).with(issue, target_project, with_notes: nil)
+      context 'when target container is a group' do
+        context 'without access to the group' do
+          let_it_be(:target_container) { create(:group) }
 
-          update_issue(target_clone_project: target_project)
+          it 'does not call any clone service' do
+            expect(WorkItems::DataSync::CloneService).not_to receive(:new)
+
+            update_issue(target_clone_container: target_container, clone_with_notes: true)
+          end
         end
       end
     end
 
-    context 'clone an issue with notes' do
-      context 'valid project' do
-        let(:target_project) { create(:project) }
-
-        before do
-          target_project.add_maintainer(user)
-        end
-
-        it 'calls the move service with the proper issue and project' do
-          clone_stub = instance_double(Issues::CloneService)
-          allow(Issues::CloneService).to receive(:new).and_return(clone_stub)
-          allow(clone_stub).to receive(:execute).with(issue, target_project, with_notes: true).and_return(issue)
-
-          expect(clone_stub).to receive(:execute).with(issue, target_project, with_notes: true)
-
-          update_issue(target_clone_project: target_project, clone_with_notes: true)
-        end
-      end
-    end
-
-    context 'when moving an issue ' do
+    context 'when changing relative position of an issue ' do
       it 'raises an error for invalid move ids' do
         opts = { move_between_ids: [9000, non_existing_record_id] }
 
@@ -1437,7 +1662,7 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
 
     it_behaves_like 'issuable update service' do
       let(:open_issuable) { issue }
-      let(:closed_issuable) { create(:closed_issue, project: project) }
+      let(:closed_issuable) { create(:closed_issue, :unchanged, project: project) }
     end
 
     context 'broadcasting issue assignee updates' do
@@ -1463,6 +1688,13 @@ RSpec.describe Issues::UpdateService, :mailer, feature_category: :team_planning 
     it_behaves_like 'issuable record that supports quick actions' do
       let(:existing_issue) { create(:issue, project: project) }
       let(:issuable) { described_class.new(container: project, current_user: user, params: params).execute(existing_issue) }
+    end
+
+    it_behaves_like 'issuable record does not run quick actions when not editing description' do
+      let(:label) { create(:label, project: project) }
+      let(:assignee) { create(:user, maintainer_of: project) }
+      let(:existing_issue) { create(:issue, project: project, description: old_description) }
+      let(:updated_issuable) { described_class.new(container: project, current_user: user, params: params).execute(existing_issue) }
     end
   end
 end

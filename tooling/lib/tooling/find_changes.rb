@@ -1,6 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# We need to take some precautions when using the `gitlab` gem in this project.
+#
+# See https://docs.gitlab.com/ee/development/pipelines/internals.html#using-the-gitlab-ruby-gem-in-the-canonical-project.
 require 'gitlab'
 require_relative 'helpers/predictive_tests_helper'
 
@@ -22,10 +25,24 @@ module Tooling
       raise ArgumentError, ':from can only be :api or :changed_files' unless
         %i[api changed_files].include?(from)
 
-      @gitlab_token                       = ENV['PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE'] || ''
-      @gitlab_endpoint                    = ENV['CI_API_V4_URL']
-      @mr_project_path                    = ENV['CI_MERGE_REQUEST_PROJECT_PATH']
-      @mr_iid                             = ENV['CI_MERGE_REQUEST_IID']
+      @gitlab_endpoint = ENV['CI_API_V4_URL']
+
+      @gitlab_token =
+        if ENV['FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH']
+          # We set FIND_CHANGES_API_TOKEN in the security FOSS project so it
+          # can request the security EE project to retrieve the changed files.
+          ENV['FIND_CHANGES_API_TOKEN']
+        else
+          ENV['PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE']
+        end || ''
+
+      @mr_project_path =
+        ENV['FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH'] ||
+        ENV['CI_MERGE_REQUEST_PROJECT_PATH']
+      @mr_iid =
+        ENV['FIND_CHANGES_MERGE_REQUEST_IID'] ||
+        ENV['CI_MERGE_REQUEST_IID']
+
       @changed_files_pathname             = changed_files_pathname
       @predictive_tests_pathname          = predictive_tests_pathname
       @frontend_fixtures_mapping_pathname = frontend_fixtures_mapping_pathname
@@ -35,16 +52,10 @@ module Tooling
     end
 
     def execute
-      if changed_files_pathname.nil?
-        raise ArgumentError, "A path to the changed files file must be given as :changed_files_pathname"
-      end
+      changes = from_api? ? file_changes + frontend_fixture_files : frontend_fixture_files
+      return changes if changed_files_pathname.nil?
 
-      case @from
-      when :api
-        write_array_to_file(changed_files_pathname, file_changes + frontend_fixture_files, append: false)
-      else
-        write_array_to_file(changed_files_pathname, frontend_fixture_files, append: true)
-      end
+      write_array_to_file(changed_files_pathname, changes, append: from_api? ? false : true)
     end
 
     def only_allowed_files_changed
@@ -56,6 +67,10 @@ module Tooling
     attr_reader :gitlab_token, :gitlab_endpoint, :mr_project_path,
       :mr_iid, :changed_files_pathname, :predictive_tests_pathname,
       :frontend_fixtures_mapping_pathname, :file_filter, :api_path_attributes
+
+    def from_api?
+      @from == :api
+    end
 
     def gitlab
       @gitlab ||= begin
@@ -84,15 +99,13 @@ module Tooling
     end
 
     def file_changes
-      @file_changes ||=
-        case @from
-        when :api
-          mr_changes.changes.select(&file_filter).flat_map do |change|
-            change.to_h.values_at(*api_path_attributes)
-          end.uniq
-        else
-          read_array_from_file(changed_files_pathname)
-        end
+      @file_changes ||= if from_api?
+                          mr_changes.changes.select(&file_filter).flat_map do |change|
+                            change.to_h.values_at(*api_path_attributes)
+                          end.uniq
+                        else
+                          read_array_from_file(changed_files_pathname)
+                        end
     end
 
     def mr_changes

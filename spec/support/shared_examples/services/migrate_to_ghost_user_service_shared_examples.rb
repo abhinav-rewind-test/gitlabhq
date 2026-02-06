@@ -12,6 +12,8 @@ RSpec.shared_examples "migrating a deleted user's associated records to the ghos
     end
   end
 
+  let(:ghost_user) { Users::Internal.in_organization(project.organization).ghost }
+
   before do
     project.add_developer(user)
   end
@@ -38,16 +40,16 @@ RSpec.shared_examples "migrating a deleted user's associated records to the ghos
       migrated_record = record_class.find_by_id(record.id)
 
       migrated_fields.each do |field|
-        expect(migrated_record.public_send(field)).to eq(Users::Internal.ghost)
+        expect(migrated_record.public_send(field)).to eq(ghost_user)
       end
     end
 
-    it 'will only migrate specific records during a hard_delete' do
+    it 'only migrates specific records during a hard_delete' do
       service.execute(hard_delete: true)
 
       migrated_record = record_class.find_by_id(record.id)
 
-      check_user = always_ghost ? Users::Internal.ghost : user
+      check_user = always_ghost ? ghost_user : user
 
       migrated_fields.each do |field|
         expect(migrated_record.public_send(field)).to eq(check_user)
@@ -78,7 +80,7 @@ RSpec.shared_examples "migrating a deleted user's associated records to the ghos
       end
 
       it "blocks the user before #{record_class_name} migration begins" do
-        expect(service).to receive("migrate_#{record_class_name.parameterize(separator: '_').pluralize}".to_sym) do
+        expect(service).to receive(:"migrate_#{record_class_name.parameterize(separator: '_').pluralize}") do
           expect(user.reload).to be_blocked
         end
 

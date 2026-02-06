@@ -7,7 +7,11 @@ module Files
     def initialize(*args)
       super
 
-      git_user = Gitlab::Git::User.from_gitlab(current_user) if current_user.present?
+      if current_user.present?
+        git_user = Gitlab::Git::User.from_gitlab(
+          Gitlab::Auth::Identity.invert_composite_identity(current_user)
+        )
+      end
 
       @author_email = commit_email(git_user)
       @author_name = params[:author_name] || git_user&.name
@@ -18,7 +22,10 @@ module Files
       @previous_path = params[:previous_path]
 
       @file_content = params[:file_content]
-      @file_content = Base64.decode64(@file_content) if params[:file_content_encoding] == 'base64'
+
+      if params[:file_content_encoding] == 'base64' && @file_content.present?
+        @file_content = Base64.decode64(@file_content)
+      end
 
       @execute_filemode = params[:execute_filemode]
     end
@@ -38,6 +45,12 @@ module Files
     end
 
     private
+
+    def validate!
+      super
+
+      raise_error(_('You must provide a commit message')) if @commit_message.to_s.empty?
+    end
 
     def get_last_commit_for_path(ref:, path:)
       Gitlab::Git::Commit.last_for_path(@start_project.repository, ref, path, literal_pathspec: true)

@@ -8,12 +8,13 @@ module Gitlab
         # Performs CI config file interpolation, and surfaces all possible interpolation errors.
         #
         class Interpolator
-          attr_reader :config, :args, :variables, :errors
+          attr_reader :config, :args, :yaml_context, :external_context, :errors
 
-          def initialize(config, args, variables)
+          def initialize(config, args, yaml_context, external_context)
             @config = config
-            @args = args.to_h
-            @variables = variables
+            @args = args.nil? ? {} : args
+            @yaml_context = yaml_context
+            @external_context = external_context
             @errors = []
             @interpolated = false
           end
@@ -38,6 +39,7 @@ module Gitlab
 
           def interpolate!
             return @errors.push(config.error) unless config.valid?
+            return @errors.push(_('Given inputs must be a hash')) unless args.is_a?(Hash)
 
             if inputs_without_header?
               return @errors.push(
@@ -48,6 +50,8 @@ module Gitlab
 
             return @errors.concat(header.errors) unless header.valid?
             return @errors.concat(inputs.errors) unless inputs.valid?
+
+            return if @errors.any?
             return @errors.concat(context.errors) unless context.valid?
             return @errors.concat(template.errors) unless template.valid?
 
@@ -67,7 +71,7 @@ module Gitlab
           end
 
           def header
-            @entry ||= Header::Root.new(config.header).tap do |header|
+            @entry ||= Header::Root.new(config.header || {}).tap do |header|
               header.key = 'header'
 
               header.compose!
@@ -79,7 +83,19 @@ module Gitlab
           end
 
           def spec
-            @spec ||= header.inputs_value
+            @spec ||= begin
+              full_spec = header.spec_entry.value || {}
+              if full_spec[:include].present? && external_context
+                processor = External::Header::Processor.new(full_spec, external_context)
+                processed_spec = processor.perform
+                processed_spec[:inputs] || {}
+              else
+                full_spec[:inputs] || {}
+              end
+            end
+          rescue External::Header::Processor::IncludeError => e
+            @errors.push(e.message)
+            {}
           end
 
           def inputs
@@ -87,11 +103,17 @@ module Gitlab
           end
 
           def context
-            @context ||= Context.new({ inputs: inputs.to_hash }, variables: variables)
+            @context ||= Context.new(
+              { inputs: inputs.to_hash, component: component_data }, variables: yaml_context.variables
+            )
           end
 
           def template
             @template ||= Template.new(content, context)
+          end
+
+          def component_data
+            yaml_context.component.slice(*header.spec_component_value)
           end
         end
       end

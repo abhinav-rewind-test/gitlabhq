@@ -7,8 +7,12 @@ Vue.use(VueApollo);
 
 export default () => {
   const el = document.getElementById('js-deploy-keys');
+
+  if (!el) return false;
+
   return new Vue({
     el,
+    name: 'DeployKeysAppRoot',
     apolloProvider: createApolloProvider({
       enabledKeysEndpoint: el.dataset.enabledEndpoint,
       availableProjectKeysEndpoint: el.dataset.availableProjectEndpoint,

@@ -2,6 +2,7 @@
 
 class Groups::ApplicationController < ApplicationController
   include RoutableActions
+  include EnforcesStepUpAuthenticationForNamespace
   include ControllerWithCrossProjectAccessCheck
   include SortingHelper
   include SortingPreference
@@ -10,12 +11,11 @@ class Groups::ApplicationController < ApplicationController
 
   skip_before_action :authenticate_user!
   before_action :group
+  before_action :enforce_step_up_auth_for_namespace
   before_action :set_sorting
   requires_cross_project_access
 
-  before_action do
-    push_namespace_setting(:math_rendering_limits_enabled, @group)
-  end
+  before_action :set_group_markdown_flags
 
   private
 
@@ -51,6 +51,10 @@ class Groups::ApplicationController < ApplicationController
     render_403 unless can?(current_user, :admin_group_member, group)
   end
 
+  def authorize_owner_access!
+    render_403 unless can?(current_user, :owner_access, group)
+  end
+
   def authorize_billings_page!
     render_404 unless can?(current_user, :read_billing, group)
   end
@@ -73,8 +77,8 @@ class Groups::ApplicationController < ApplicationController
     false
   end
 
-  def validate_root_group!
-    render_404 unless group.root?
+  def validate_crm_group!
+    render_404 unless group.crm_group?
   end
 
   def authorize_action!(action)
@@ -97,6 +101,18 @@ class Groups::ApplicationController < ApplicationController
     else
       super
     end
+  end
+
+  def enforce_step_up_auth_for_namespace
+    # Use @group instance variable instead of calling group method
+    # to avoid triggering find_routable! when the :group before_action was skipped
+    enforce_step_up_auth_for(@group)
+  end
+
+  def set_group_markdown_flags
+    push_namespace_setting(:math_rendering_limits_enabled, @group)
+    push_force_frontend_feature_flag(:allow_iframes_in_markdown,
+      @group&.allow_iframes_in_markdown_feature_flag_enabled? == true)
   end
 end
 

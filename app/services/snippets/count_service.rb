@@ -34,14 +34,19 @@
 # Either a project or an author *must* be supplied.
 module Snippets
   class CountService
-    def initialize(current_user, author: nil, project: nil)
+    def initialize(current_user, organization_id: nil, author: nil, project: nil)
       if !author && !project
         raise(
           ArgumentError, 'Must provide either an author or a project'
         )
       end
 
-      @snippets_finder = SnippetsFinder.new(current_user, author: author, project: project)
+      @snippets_finder = SnippetsFinder.new(
+        current_user,
+        organization_id: organization_id,
+        author: author,
+        project: project
+      )
     end
 
     def execute
@@ -62,14 +67,19 @@ module Snippets
     # rubocop: disable CodeReuse/ActiveRecord
     def snippet_counts
       @snippets_finder.execute
-        .reorder(nil)
-        .select("
-          count(case when snippets.visibility_level=#{Snippet::PUBLIC} and snippets.secret is FALSE then 1 else null end) as are_public,
-          count(case when snippets.visibility_level=#{Snippet::INTERNAL} then 1 else null end) as are_internal,
-          count(case when snippets.visibility_level=#{Snippet::PRIVATE} then 1 else null end) as are_private,
-          count(case when visibility_level=#{Snippet::PUBLIC} OR visibility_level=#{Snippet::INTERNAL} then 1 else null end) as are_public_or_internal,
+        .without_order
+        .select(<<~SQL)
+          count(case when snippets.visibility_level=#{Snippet::PUBLIC}
+            and snippets.secret is FALSE then 1 else null end) as are_public,
+          count(case when snippets.visibility_level=#{Snippet::INTERNAL}
+            then 1 else null end) as are_internal,
+          count(case when snippets.visibility_level=#{Snippet::PRIVATE}
+            then 1 else null end) as are_private,
+          count(case when visibility_level=#{Snippet::PUBLIC}
+            OR visibility_level=#{Snippet::INTERNAL}
+            then 1 else null end) as are_public_or_internal,
           count(*) as total
-        ")
+        SQL
         .take
     end
     # rubocop: enable CodeReuse/ActiveRecord

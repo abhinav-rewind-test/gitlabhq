@@ -3,12 +3,7 @@
 module QA
   module Resource
     class File < Base
-      attr_accessor :author_email,
-        :author_name,
-        :content,
-        :commit_message,
-        :name,
-        :start_branch
+      attr_accessor :content, :commit_message, :name, :start_branch
       attr_writer :branch
 
       attribute :project do
@@ -43,8 +38,9 @@ module QA
         Page::File::Form.perform do |form|
           form.add_name(@name)
           form.add_content(@content)
+          form.click_commit_changes_in_header
           form.add_commit_message(@commit_message)
-          form.commit_changes
+          form.commit_changes_through_modal
         end
       end
 
@@ -60,8 +56,6 @@ module QA
         {
           branch: branch,
           start_branch: start_branch,
-          author_email: @author_email || Runtime::User.default_email,
-          author_name: @author_name || Runtime::User.username,
           content: content,
           commit_message: commit_message
         }

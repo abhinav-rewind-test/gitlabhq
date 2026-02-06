@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Danger bot
 ---
-
-# Danger bot
 
 The GitLab CI/CD pipeline includes a `danger-review` job that uses [Danger](https://github.com/danger/danger)
 to perform a variety of automated checks on the code under test.
@@ -76,7 +75,7 @@ often face similar challenges, after all. Think about how you could fulfill the
 same need while ensuring everyone can benefit from the work, and do that instead
 if you can.
 
-If a standard tool (for example, `rubocop`) exists for a task, it's better to
+If a standard tool (for example, RuboCop) exists for a task, it's better to
 use it directly, rather than calling it by using Danger. Running and debugging
 the results of those tools locally is easier if Danger isn't involved, and
 unless you're using some Danger-specific functionality, there's no benefit to
@@ -122,8 +121,8 @@ to revert the change before merging!
 
 #### Adding labels via Danger
 
-NOTE:
-This is applicable to all the projects that use the [`gitlab-dangerfiles` gem](https://rubygems.org/gems/gitlab-dangerfiles).
+> [!note]
+> This is applicable to all the projects that use the [`gitlab-dangerfiles` gem](https://rubygems.org/gems/gitlab-dangerfiles).
 
 Danger is often used to improve MR hygiene by adding labels. Instead of calling the
 API directly in your `Dangerfile`, add the labels to `helper.labels_to_add` array (with `helper.labels_to_add << label`
@@ -153,9 +152,7 @@ To enable the Dangerfile on another existing GitLab project, complete the follow
 
    ```yaml
    include:
-     - project: 'gitlab-org/quality/pipeline-common'
-       file:
-         - '/ci/danger-review.yml'
+     - component: ${CI_SERVER_FQDN}/gitlab-org/components/danger-review/danger-review@1.2.0
        rules:
          - if: $CI_SERVER_HOST == "gitlab.com"
    ```
@@ -179,9 +176,9 @@ at GitLab so far:
 - [Reviewer roulette](code_review.md#reviewer-roulette)
 - Single codebase effort
 
-## Limitations
+## Known issues
 
-If working on a personal fork, Danger is run but it's output is not added to a
+When you work on a personal fork, Danger is run but its output is not added to a
 merge request comment and labels are not applied.
 This happens because the secret variable from the canonical project is not shared
 to forks.
@@ -195,9 +192,9 @@ Contributors can configure Danger for their forks with the following steps:
 
 1. Create a [personal API token](https://gitlab.com/-/user_settings/personal_access_tokens?name=GitLab+Dangerbot&scopes=api)
    that has the `api` scope set (don't forget to copy it to the clipboard).
-1. In your fork, add a [project CI/CD variable](../ci/variables/index.md#for-a-project)
+1. In your fork, add a [project CI/CD variable](../ci/variables/_index.md#for-a-project)
    called `DANGER_GITLAB_API_TOKEN` with the token copied in the previous step.
-1. Make the variable [masked](../ci/variables/index.md#mask-a-cicd-variable) so it
+1. Make the variable [masked](../ci/variables/_index.md#mask-a-cicd-variable) so it
    doesn't show up in the job logs. The variable cannot be
-   [protected](../ci/variables/index.md#protect-a-cicd-variable), because it needs
+   [protected](../ci/variables/_index.md#protect-a-cicd-variable), because it needs
    to be present for all branches.

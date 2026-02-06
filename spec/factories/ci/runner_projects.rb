@@ -5,10 +5,11 @@ FactoryBot.define do
     project
 
     after(:build) do |runner_project, evaluator|
-      unless runner_project.runner.present?
-        runner_project.runner = build(
-          :ci_runner, :project, runner_projects: [runner_project]
-        )
+      if runner_project.runner.nil?
+        runner_project.project = evaluator.project
+        runner_project.runner =
+          build(:ci_runner, :project, runner_projects: [runner_project],
+            organization_id: runner_project.project.organization_id)
       end
     end
   end

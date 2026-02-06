@@ -4,7 +4,8 @@ require 'spec_helper'
 
 RSpec.describe AbuseReportsController, feature_category: :insider_threat do
   let(:reporter) { create(:user) }
-  let(:user)     { create(:user) }
+  let(:current_organization) { reporter.organization }
+  let(:user) { create(:user) }
   let(:abuse_category) { 'spam' }
 
   let(:attrs) do
@@ -110,6 +111,13 @@ RSpec.describe AbuseReportsController, feature_category: :insider_threat do
         expect do
           post abuse_reports_path(abuse_report: attrs)
         end.to change { AbuseReport.count }.by(1)
+      end
+
+      it 'sets organization_id from the reporter' do
+        post abuse_reports_path(abuse_report: attrs)
+
+        abuse_report = AbuseReport.last
+        expect(abuse_report.organization_id).to eq(reporter.organization_id)
       end
 
       it 'calls notify' do

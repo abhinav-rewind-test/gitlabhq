@@ -2,8 +2,9 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Status::Build::Factory do
-  let(:user) { create(:user) }
+RSpec.describe Gitlab::Ci::Status::Build::Factory, feature_category: :continuous_integration do
+  let_it_be(:user, freeze: true) { create(:user) }
+
   let(:project) { build.project }
   let(:status) { factory.fabricate! }
   let(:factory) { described_class.new(build, user) }
@@ -50,7 +51,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
     it 'matches correct extended statuses' do
       expect(factory.extended_statuses)
         .to eq [Gitlab::Ci::Status::Build::Erased,
-                Gitlab::Ci::Status::Build::Retryable]
+          Gitlab::Ci::Status::Build::Retryable]
     end
 
     it 'fabricates a retryable build status' do
@@ -78,7 +79,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
       it 'matches correct extended statuses' do
         expect(factory.extended_statuses)
           .to eq [Gitlab::Ci::Status::Build::Retryable,
-                  Gitlab::Ci::Status::Build::Failed]
+            Gitlab::Ci::Status::Build::Failed]
       end
 
       it 'fabricates a failed build status' do
@@ -90,7 +91,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
         expect(status.icon).to eq 'status_failed'
         expect(status.favicon).to eq 'favicon_status_failed'
         expect(status.label).to eq s_('CiStatusLabel|failed')
-        expect(status.status_tooltip).to eq "#{s_('CiStatusLabel|failed')} - (unknown failure)"
+        expect(status.status_tooltip).to eq "#{s_('CiStatusLabel|Failed')} - (unknown failure)"
         expect(status).to have_details
         expect(status).to have_action
       end
@@ -106,8 +107,8 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
       it 'matches correct extended statuses' do
         expect(factory.extended_statuses)
           .to eq [Gitlab::Ci::Status::Build::Retryable,
-                  Gitlab::Ci::Status::Build::Failed,
-                  Gitlab::Ci::Status::Build::FailedAllowed]
+            Gitlab::Ci::Status::Build::Failed,
+            Gitlab::Ci::Status::Build::FailedAllowed]
       end
 
       it 'fabricates a failed but allowed build status' do
@@ -121,7 +122,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
         expect(status.label).to eq 'failed (allowed to fail)'
         expect(status).to have_details
         expect(status).to have_action
-        expect(status.action_title).to include 'Retry'
+        expect(status.action_title).to include 'Run again'
         expect(status.action_path).to include 'retry'
       end
     end
@@ -136,7 +137,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
       it 'matches correct extended statuses' do
         expect(factory.extended_statuses)
           .to eq [Gitlab::Ci::Status::Build::Retryable,
-                  Gitlab::Ci::Status::Build::FailedUnmetPrerequisites]
+            Gitlab::Ci::Status::Build::FailedUnmetPrerequisites]
       end
 
       it 'fabricates a failed with unmet prerequisites build status' do
@@ -150,7 +151,7 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
         expect(status.label).to eq s_('CiStatusLabel|failed')
         expect(status).to have_details
         expect(status).to have_action
-        expect(status.action_title).to include 'Retry'
+        expect(status.action_title).to include 'Run again'
         expect(status.action_path).to include 'retry'
       end
     end
@@ -272,9 +273,11 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
 
       it 'matches correct extended statuses' do
         expect(factory.extended_statuses)
-          .to eq [Gitlab::Ci::Status::Build::Manual,
-                  Gitlab::Ci::Status::Build::Play,
-                  Gitlab::Ci::Status::Build::Action]
+          .to eq [
+            Gitlab::Ci::Status::Build::Manual,
+            Gitlab::Ci::Status::Build::Play,
+            Gitlab::Ci::Status::Build::Action
+          ]
       end
 
       it 'fabricates action detailed status' do
@@ -320,9 +323,11 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
 
       it 'matches correct extended statuses' do
         expect(factory.extended_statuses)
-          .to eq [Gitlab::Ci::Status::Build::Manual,
-                  Gitlab::Ci::Status::Build::Stop,
-                  Gitlab::Ci::Status::Build::Action]
+          .to eq [
+            Gitlab::Ci::Status::Build::Manual,
+            Gitlab::Ci::Status::Build::Stop,
+            Gitlab::Ci::Status::Build::Action
+          ]
       end
 
       it 'fabricates action detailed status' do
@@ -358,9 +363,11 @@ RSpec.describe Gitlab::Ci::Status::Build::Factory do
 
     it 'matches correct extended statuses' do
       expect(factory.extended_statuses)
-        .to eq [Gitlab::Ci::Status::Build::Scheduled,
-                Gitlab::Ci::Status::Build::Unschedule,
-                Gitlab::Ci::Status::Build::Action]
+        .to eq [
+          Gitlab::Ci::Status::Build::Scheduled,
+          Gitlab::Ci::Status::Build::Unschedule,
+          Gitlab::Ci::Status::Build::Action
+        ]
     end
 
     it 'fabricates action detailed status' do

@@ -19,15 +19,15 @@ RSpec.describe Gitlab::Diff::Formatters::TextFormatter do
     base.merge(old_line: 1, new_line: 2)
   end
 
+  # Specific text formatter examples
+  let!(:formatter) { described_class.new(attrs) }
+  let(:attrs) { base }
+
   it_behaves_like "position formatter" do
     let(:base_attrs) { base }
 
     let(:attrs) { complete }
   end
-
-  # Specific text formatter examples
-  let!(:formatter) { described_class.new(attrs) }
-  let(:attrs) { base }
 
   describe '#line_age' do
     subject { formatter.line_age }
@@ -47,8 +47,8 @@ RSpec.describe Gitlab::Diff::Formatters::TextFormatter do
 
   describe "#==" do
     it "is false when the line_range changes" do
-      formatter_1 = described_class.new(base.merge(line_range: { "start": { "line_code" => "foo" }, "end": { "line_code" => "bar" } }))
-      formatter_2 = described_class.new(base.merge(line_range: { "start": { "line_code" => "foo" }, "end": { "line_code" => "baz" } }))
+      formatter_1 = described_class.new(base.merge(line_range: { start: { "line_code" => "foo" }, end: { "line_code" => "bar" } }))
+      formatter_2 = described_class.new(base.merge(line_range: { start: { "line_code" => "foo" }, end: { "line_code" => "baz" } }))
 
       expect(formatter_1).not_to eq(formatter_2)
     end

@@ -5,15 +5,24 @@ module Banzai
     # HTML filter that renders `color` followed by a color "chip".
     #
     class ColorFilter < HTML::Pipeline::Filter
+      prepend Concerns::PipelineTimingCheck
+
       COLOR_CHIP_CLASS = 'gfm-color_chip'
 
       CSS   = 'code'
       XPATH = Gitlab::Utils::Nokogiri.css_to_xpath(CSS).freeze
+      BACKSLASH_PREFIX = '\\'
 
       def call
         doc.xpath(XPATH).each do |node|
-          color = ColorParser.parse(node.content)
-          node << color_chip(color) if color
+          unescaped = node.content.delete_prefix(BACKSLASH_PREFIX)
+          color = ColorParser.parse(unescaped)
+
+          if node.content.start_with?(BACKSLASH_PREFIX) && color
+            node.content = unescaped
+          elsif color
+            node << color_chip(color)
+          end
         end
 
         doc

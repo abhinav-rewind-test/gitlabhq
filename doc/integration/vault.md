@@ -1,14 +1,16 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Vault authentication with GitLab OpenID Connect
 ---
 
-# Vault authentication with GitLab OpenID Connect
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 [Vault](https://www.vaultproject.io/) is a secrets management application offered by HashiCorp.
 It allows you to store and manage sensitive information such as secret environment
@@ -22,7 +24,7 @@ GitLab by using our OpenID authentication feature.
 
 ## Prerequisites
 
-1. [Install Vault](https://developer.hashicorp.com/vault/docs/install).
+1. [Install Vault](https://developer.hashicorp.com/vault/install).
 1. Run Vault.
 
 ## Get the OpenID Connect client ID and secret from GitLab
@@ -30,7 +32,7 @@ GitLab by using our OpenID authentication feature.
 First you must create a GitLab application to obtain an application ID and secret
 for authenticating into Vault. To do this, sign in to GitLab and follow these steps:
 
-1. On the left sidebar, select your avatar.
+1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
 1. On the left sidebar, select **Applications**.
 1. Fill out the application **Name** and [**Redirect URI**](https://developer.hashicorp.com/vault/docs/auth/jwt#redirect-uris).
@@ -38,7 +40,7 @@ for authenticating into Vault. To do this, sign in to GitLab and follow these st
 1. Select **Save application**.
 1. Copy the **Client ID** and **Client Secret**, or keep the page open for reference.
 
-![GitLab OAuth provider](img/gitlab_oauth_vault_v12_6.png)
+![GitLab as an OAuth provider](img/gitlab_oauth_vault_v12_6.png)
 
 ## Enable OpenID Connect on Vault
 
@@ -110,19 +112,19 @@ Replace:
 
 The `oidc_scopes` field must include `openid`.
 
-This configuration is saved under the name of the role you are creating. In this
-example, we are creating a `demo` role.
+This configuration is saved under the name of the role you are creating. This
+example creates a `demo` role.
 
-WARNING:
-If you're using a public GitLab instance, such as GitLab.com, you must specify
-the `bound_claims` to allow access only to members of your group or project.
-Otherwise, anyone with a public account can access your Vault instance.
+> [!warning]
+> If you're using a public GitLab instance, such as GitLab.com, you must specify
+> the `bound_claims` to allow access only to members of your group or project.
+> Otherwise, anyone with a public account can access your Vault instance.
 
 ## Sign in to Vault
 
 1. Go to your Vault UI. For example: [http://127.0.0.1:8200/ui/vault/auth?with=oidc](http://127.0.0.1:8200/ui/vault/auth?with=oidc).
 1. If the `OIDC` method is not selected, open the dropdown list and select it.
-1. Select **Sign in With GitLab**, which opens a modal window:
+1. Select **Sign in With GitLab**, which opens a dialog:
 
    ![Sign in to Vault with GitLab](img/sign_into_vault_with_gitlab_v12_6.png)
 
@@ -143,7 +145,7 @@ You can also sign in to Vault using the [Vault CLI](https://developer.hashicorp.
 
    This command sets:
 
-   - `role=demo` so Vault knows which configuration we'd like to sign in with.
+   - `role=demo` so Vault knows which configuration you'd like to sign in with.
    - `-method=oidc` to set Vault to use the `OIDC` sign-in method.
    - `port=8250` to set the port that GitLab should redirect to. This port
      number must match the port given to GitLab when listing

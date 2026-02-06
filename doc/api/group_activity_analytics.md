@@ -1,18 +1,22 @@
 ---
-stage: Plan
+stage: Analytics
 group: Optimize
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Group activity analytics API
 ---
 
-# Group Activity Analytics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/26460) in GitLab 12.9.
+{{< /details >}}
 
-## Get count of recently created issues for group
+Use this API to retrieve information about group activities. For more information, see [group activity analytics](../user/group/manage.md#group-activity-analytics).
+
+## Retrieve count of recently created issues for a group
+
+Retrieves the count of recently created issues for a specified group.
 
 ```plaintext
 GET /analytics/group_activity/issues_count
@@ -36,7 +40,9 @@ Example response:
 { "issues_count": 10 }
 ```
 
-## Get count of recently created merge requests for group
+## Retrieve count of recently created merge requests for a group
+
+Retrieves the count of recently created merge requests for a specified group.
 
 ```plaintext
 GET /analytics/group_activity/merge_requests_count
@@ -60,7 +66,9 @@ Example response:
 { "merge_requests_count": 10 }
 ```
 
-## Get count of members recently added to group
+## Retrieve count of members recently added to a group
+
+Retrieves the count of members recently added to a specified group.
 
 ```plaintext
 GET /analytics/group_activity/new_members_count

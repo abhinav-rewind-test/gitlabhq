@@ -81,6 +81,14 @@ production: &base
 
     allowed_hosts: []
 
+    # ActionCable allowed request origins
+    # Customize if you browse your GitLab application through multiple URLs
+    # If you have GitLab Geo enabled, then add the external URLs of every site:
+    action_cable_allowed_origins:
+      #- https://unified.url
+      #- https://primary-external.url (if different from the above)
+      #- https://secondary-external.url (if different from the above)
+
     # Trusted Proxies
     # Customize if you have GitLab behind a reverse proxy which is running on a different machine.
     # Add the IP address for your reverse proxy to the list, otherwise users will appear signed in from that address.
@@ -95,7 +103,8 @@ production: &base
 
     ## Date & Time settings
     # Uncomment and customize if you want to change the default time zone of GitLab application.
-    # To see all available zones, run `bundle exec rake time:zones:all RAILS_ENV=production`
+    # To see all available time zones in a valid format, run `timedatectl list-timezones`
+    # on a Linux host, or 'TZInfo::Timezone.all_identifiers' in a Rails console.
     # time_zone: 'UTC'
 
     ## Email settings
@@ -105,6 +114,7 @@ production: &base
     email_from: example@example.com
     email_display_name: GitLab
     email_reply_to: noreply@example.com
+    email_subject_prefix: ''
     email_subject_suffix: ''
     email_smime:
       # Uncomment and set to true if you need to enable email S/MIME signing (default: false)
@@ -128,16 +138,25 @@ production: &base
     ## Default theme ID
     ##   1 - Indigo
     ##   2 - Gray
-    ##   3 - Light Gray
+    ##   3 - Neutral
     ##   4 - Blue
     ##   5 - Green
-    ##   6 - Light Indigo
-    ##   7 - Light Blue
-    ##   8 - Light Green
     ##   9 - Red
-    ##   10 - Light Red
-    ##   11 - Dark Mode (alpha)
-    # default_theme: 1 # default: 1
+    # default_theme: 3 # default: 3
+    ## Default color mode ID
+    ##   1 - Light
+    ##   2 - Dark
+    ##   3 - Automatic
+    # default_color_mode: 3 # default: 3
+
+    ## Custom html header tags
+    # In some cases some custom header tags are needed
+    # e.g., to add the EU cookie consent
+    # Tip: you must add the externals source to the content_security_policy as
+    #      well, typically the script_src and style_src.
+    # custom_html_header_tags: |
+    #   <script src="https://example.com/cookie-consent.js"></script>
+    #   <link rel="stylesheet" href="https://example.com/cookie-consent.css"/>
 
     ## Automatic issue closing
     # If a commit message matches this regular expression, all issues referenced from the matched text will be closed.
@@ -158,6 +177,10 @@ production: &base
     ## Webhook settings
     # Number of seconds to wait for HTTP response after sending webhook HTTP POST request (default: 10)
     # webhook_timeout: 10
+
+    ## Session cookie settings
+    # signed_cookie_salt: 'signed cookie'
+    # authenticated_encrypted_cookie_salt: 'authenticated encrypted cookie'
 
     ## HTTP client settings
     http_client:
@@ -190,6 +213,36 @@ production: &base
     # WARNING: setting this to true means that the root password will be printed in
     # plaintext. This can be a security risk.
     # display_initial_root_password: false
+
+    ## Product Usage Data
+    # This setting enables or disables product usage data in the GitLab instance.
+    # It will be read on initial installation only. Once GitLab is up and running,
+    # this setting should be toggled from the admin pages in the UI.
+    # initial_gitlab_product_usage_data: true
+
+  ## Openbao settings
+  ## Configure OpenBao server URLs for secrets management
+  ## Two URLs can be configured to support different network architectures:
+  ##
+  ## - url: External URL used by GitLab Runners and external clients
+  ##   This URL should be accessible from outside the cluster/network
+  ##   Example: https://vault.company.com:8200
+  ##
+  ## - internal_url: Internal URL used by Rails application for direct communication
+  ##   This URL is used for Rails-to-OpenBao communication within the cluster/network
+  ##   Provides better performance and security for internal connections
+  ##   Example: https://vault.company-internal.com:8200
+  ##
+  ## If internal_url is not specified, the Rails application will use the external URL
+  ## If neither is specified, defaults to GitLab's host with port 8200
+  # openbao:
+    # url: https://vault.company.com:8200  # External URL for runners and external clients
+    # internal_url: https://vault.company-internal.com:8200 # Internal URL for Rails application
+    # authentication_token_secret_file_path: /home/git/gitlab/.gitlab_openbao_authentication_token_secret
+
+  ## Custom claim values for JWT ID Tokens
+  # ci_id_tokens:
+    # issuer_url: <custom-issuer-url>
 
   # Allows delivery of emails using Microsoft Graph API with OAuth 2.0 client credentials flow.
   microsoft_graph_mailer:
@@ -476,6 +529,7 @@ production: &base
     artifacts_server: true # Set to false if you want to disable online view of HTML artifacts
     # external_http: ["1.1.1.1:80", "[2001::1]:80"] # If defined, enables custom domain support in GitLab Pages
     # external_https: ["1.1.1.1:443", "[2001::1]:443"] # If defined, enables custom domain and certificate support in GitLab Pages
+    # custom_domain_mode: http # Configure Pages to enable custom domain: `http` or `https`
 
     # File that contains the shared secret key for verifying access for gitlab-pages.
     # Default is '.gitlab_pages_secret' relative to Rails.root (i.e. root of the GitLab app).
@@ -582,10 +636,6 @@ production: &base
     schedule_migrate_external_diffs_worker:
       cron: "15 * * * *"
 
-    # Update CI Platform Metrics daily
-    ci_platform_metrics_update_cron_worker:
-      cron: "47 9 * * *"
-
     # Periodically update ci_runner_versions table with up-to-date versions and status.
     ci_runner_versions_reconciliation_worker:
       cron: "@daily"
@@ -593,6 +643,10 @@ production: &base
     # Periodically clean up stale runner machines.
     ci_runners_stale_machines_cleanup_worker:
       cron: "36 * * * *"
+
+    # Periodically queue syncing of finished pipelines from p_ci_finished_pipeline_ch_sync_events to ClickHouse
+    ci_click_house_finished_pipelines_sync_worker:
+      cron: "*/4 * * * *"
 
   # GitLab EE only jobs. These jobs are automatically enabled for an EE
   # installation, and ignored for a CE installation.
@@ -616,6 +670,11 @@ production: &base
     ldap_group_sync_worker:
       cron: "0 * * * *"
 
+    # Periodically sync LDAP Duo add-on seat assignments.
+    # NOTE: This will only take effect if LDAP is enabled
+    ldap_add_on_seat_sync_worker:
+      cron: "0 2 * * *"
+
     # GitLab Geo metrics update worker
     # NOTE: This will only take effect if Geo is enabled
     geo_metrics_update_worker:
@@ -625,11 +684,6 @@ production: &base
     # NOTE: This will only take effect if Geo is enabled (primary node only)
     geo_prune_event_log_worker:
       cron: "*/5 * * * *"
-
-    # GitLab Geo repository sync worker
-    # NOTE: This will only take effect if Geo is enabled (secondary nodes only)
-    geo_repository_sync_worker:
-      cron: "*/1 * * * *"
 
     # GitLab Geo registry backfill worker
     # NOTE: This will only take effect if Geo is enabled (secondary nodes only)
@@ -731,6 +785,22 @@ production: &base
   #
   # 3. Auth settings
   # ==========================
+
+  ## Authentication settings
+  authn:
+    ## IAM Service settings
+    # The IAM Service handles OAuth flows with external providers and forwards
+    # authenticated user data to GitLab Rails.
+    iam_service:
+      # Enable OAuth access token authentication from IAM Service
+      # enabled: false
+
+      # IAM Service URL
+      # url: http://localhost:8084
+
+      # Expected JWT audience (must match 'aud' claim in tokens)
+      # Set to 'gitlab-rails' or your GitLab instance identifier
+      # audience: gitlab-rails
 
   ## LDAP settings
   # You can test connections and inspect a sample of the LDAP users with login
@@ -915,6 +985,12 @@ production: &base
         #
         admin_group: ''
 
+        # LDAP group of users who should have Duo Add-on seats assigned in GitLab
+        #
+        #   Ex. ['DuoGroup1', 'DuoGroup2']
+        #
+        duo_add_on_groups: []
+
         # LDAP group of users who should be marked as external users in GitLab
         #
         #   Ex. ['Contractors', 'Interns']
@@ -1014,7 +1090,7 @@ production: &base
 
   ## OmniAuth settings
   omniauth:
-    # Allow login via Twitter, Google, etc. using OmniAuth providers
+    # Allow login via Google, GitHub, etc. using OmniAuth providers
     # enabled: true
 
     # Uncomment this to automatically sign in with a specific omniauth provider's without
@@ -1022,7 +1098,7 @@ production: &base
     # auto_sign_in_with_provider: saml
 
     # Sync user's profile from the specified Omniauth providers every time the user logs in (default: empty).
-    # Define the allowed providers using an array, e.g. ["saml", "twitter"],
+    # Define the allowed providers using an array, e.g. ["saml", "google_oauth2"],
     # or as true/false to allow all providers or none.
     # When authenticating using LDAP, the user's email is always synced.
     # sync_profile_from_provider: []
@@ -1035,7 +1111,7 @@ production: &base
 
     # CAUTION!
     # This allows users to login without having a user account first. Define the allowed providers
-    # using an array, e.g. ["saml", "twitter"], or as true/false to allow all providers or none.
+    # using an array, e.g. ["saml", "google_oauth2"], or as true/false to allow all providers or none.
     # User accounts will be created automatically when authentication was successful.
     allow_single_sign_on: ["saml"]
 
@@ -1057,10 +1133,10 @@ production: &base
 
     # Allow users with existing accounts to sign in and auto link their account via OmniAuth
     # login, without having to do a manual login first and manually add OmniAuth. Links on email.
-    # Define the allowed providers using an array, e.g. ["saml", "twitter"], or as true/false to
+    # Define the allowed providers using an array, e.g. ["saml", "google_oauth2"], or as true/false to
     # allow all providers or none.
     # (default: false)
-    auto_link_user: ["saml", "twitter"]
+    auto_link_user: ["saml", "google_oauth2"]
 
     # Set different Omniauth providers as external so that all users creating accounts
     # via these providers will not be able to have access to internal projects. You
@@ -1071,11 +1147,11 @@ production: &base
 
     # CAUTION!
     # This allows users to login with the specified providers without two factor. Define the allowed providers
-    # using an array, e.g. ["twitter", 'google_oauth2'], or as true/false to allow all providers or none.
+    # using an array, e.g. ["saml", 'google_oauth2'], or as true/false to allow all providers or none.
     # This option should only be configured for providers which already have two factor.
     # This configration dose not apply to SAML.
     # (default: false)
-    allow_bypass_two_factor: ["twitter", 'google_oauth2']
+    allow_bypass_two_factor: ["saml", "google_oauth2"]
 
     ## Auth providers
     # Uncomment the following lines and fill in the data of the auth provider you want to use
@@ -1097,9 +1173,6 @@ production: &base
       # - { name: 'bitbucket',
       #     app_id: 'YOUR_APP_ID',
       #     app_secret: 'YOUR_APP_SECRET' }
-      # - { name: 'dingtalk',
-      #     app_id: 'YOUR_APP_ID',
-      #     app_secret: 'YOUR_APP_SECRET' }
       # - { name: 'gitlab',
       #     app_id: 'YOUR_APP_ID',
       #     app_secret: 'YOUR_APP_SECRET',
@@ -1108,12 +1181,6 @@ production: &base
       #     app_id: 'YOUR_APP_ID',
       #     app_secret: 'YOUR_APP_SECRET',
       #     args: { access_type: 'offline', approval_prompt: '' } }
-      # - { name: 'facebook',
-      #     app_id: 'YOUR_APP_ID',
-      #     app_secret: 'YOUR_APP_SECRET' }
-      # - { name: 'twitter',
-      #     app_id: 'YOUR_APP_ID',
-      #     app_secret: 'YOUR_APP_SECRET' }
       # - { name: 'jwt',
       #     args: {
       #       secret: 'YOUR_APP_SECRET',
@@ -1129,6 +1196,7 @@ production: &base
       #     label: 'Our SAML Provider',
       #     groups_attribute: 'Groups',
       #     external_groups: ['Contractors', 'Freelancers'],
+      #     duo_add_on_groups: ['Developers', 'Freelancers'],
       #     args: {
       #             assertion_consumer_service_url: 'https://gitlab.example.com/users/auth/saml/callback',
       #             idp_cert_fingerprint: '43:51:43:a1:b5:fc:8b:b7:0a:3a:a9:b1:0f:66:73:a8',
@@ -1196,10 +1264,21 @@ production: &base
 
   # Gitaly settings
   gitaly:
+    # In some cases, when Gitaly returns an error GitLab can backoff 
+    # and retry the request, before giving up and returning an error 
+    # to the client.
+    # The 2 configuration below allows to tweak that retry configuration:
+    # `client_max_attempts`: the maximum number of retry attempt
+    # `client_max_backoff`: the maximum amount of time the client will
+    #                       retry, expressed as a string (ex: 2s, 1m, etc)
+    # client_max_attempts: 4
+    # client_max_backoff: '1.4s'
+
     # Default Gitaly authentication token. Can be overridden per storage. Can
     # be left blank when Gitaly is running locally on a Unix socket, which
     # is the normal way to deploy Gitaly.
     token:
+
 
   #
   # 4. Advanced settings
@@ -1210,6 +1289,9 @@ production: &base
     storages: # You must have at least a `default` storage path.
       default:
         gitaly_address: unix:/home/git/gitlab/tmp/sockets/private/gitaly.socket # TCP connections are supported too (e.g. tcp://host:port). TLS connections are also supported using the system certificate pool (eg: tls://host:port).
+        # For DNS-based load balancing with TLS, use: dns+tls://[authority_host]:[authority_port]/[host]:[port]
+        # The host:port portion will be used as the TLS server name for SNI.
+        # Example: dns+tls://1.1.1.1/gitaly.example.com:8075
         # gitaly_token: 'special token' # Optional: override global gitaly.token for this storage.
 
   ## Backup settings
@@ -1220,7 +1302,7 @@ production: &base
     # keep_time: 604800   # default: 0 (forever) (in seconds)
     # pg_schema: public     # default: nil, it means that all schemas will be backed up
     # upload:
-    #   # Fog storage connection settings, see https://fog.io/storage/ .
+    #   # Fog storage connection settings, see https://fog.github.io/storage/ .
     #   connection:
     #     provider: AWS
     #     region: eu-west-1
@@ -1272,6 +1354,26 @@ production: &base
     # Default is '.gitlab_workhorse_secret' relative to Rails.root (i.e. root of the GitLab app).
     # secret_file: /home/git/gitlab/.gitlab_workhorse_secret
 
+  database_traffic_capture:
+    config:
+      storage:
+        connector:
+          provider: Gcs
+          project_id: 'my-project'
+          bucket: 'my-bucket'
+
+  cell:
+    # enabled: false
+    # id: null
+    # name: null
+    # database:
+    #   skip_sequence_alteration: false
+    # topology_service_client:
+    #   address: topology-service.gitlab.example.com:443
+    #   ca_file: /home/git/gitlab/config/topology-service-ca.pem
+    #   certificate_file: /home/git/gitlab/config/topology-service-cert.pem
+    #   private_key_file: /home/git/gitlab/config/topology-service-key.pem
+
   gitlab_kas:
     # enabled: true
     # File that contains the secret key for verifying access for gitlab-kas.
@@ -1287,10 +1389,8 @@ production: &base
     # The URL to the Kubernetes API proxy (used by GitLab users)
     # external_k8s_proxy_url: https://localhost:8154 # default: nil
 
-  suggested_reviewers:
-    # File that contains the secret key for verifying access to GitLab internal API for Suggested Reviewers.
-    # Default is '.gitlab_suggested_reviewers_secret' relative to Rails.root (i.e. root of the GitLab app).
-    # secret_file: /home/git/gitlab/.gitlab_suggested_reviewers_secret
+    # The client timeout in seconds for the KAS API (used by the GitLab backend)
+    # client_timeout_seconds: 5
 
   zoekt:
     # Files that contain username and password for basic auth for Zoekt
@@ -1437,6 +1537,8 @@ development:
 
 test:
   <<: *base
+  object_store:
+    enabled: false
   gravatar:
     enabled: true
   external_diffs:
@@ -1602,9 +1704,6 @@ test:
       - { name: 'bitbucket',
           app_id: 'YOUR_APP_ID',
           app_secret: 'YOUR_APP_SECRET' }
-      - { name: 'dingtalk',
-          app_id: 'YOUR_APP_ID',
-          app_secret: 'YOUR_APP_SECRET' }
       - { name: 'gitlab',
           app_id: 'YOUR_APP_ID',
           app_secret: 'YOUR_APP_SECRET',
@@ -1613,12 +1712,6 @@ test:
           app_id: 'YOUR_APP_ID',
           app_secret: 'YOUR_APP_SECRET',
           args: { access_type: 'offline', approval_prompt: '' } }
-      - { name: 'facebook',
-          app_id: 'YOUR_APP_ID',
-          app_secret: 'YOUR_APP_SECRET' }
-      - { name: 'twitter',
-          app_id: 'YOUR_APP_ID',
-          app_secret: 'YOUR_APP_SECRET' }
       - { name: 'jwt',
           app_secret: 'YOUR_APP_SECRET',
           args: {
@@ -1644,7 +1737,8 @@ test:
           app_id: 'YOUR_CLIENT_ID',
           app_secret: 'YOUR_CLIENT_SECRET',
           args: { scope: 'offline_access read:jira-user read:jira-work', prompt: 'consent' }
-      }
+        }
+      - { name: 'openid_connect' }
   ldap:
     enabled: false
     servers:
@@ -1661,6 +1755,9 @@ test:
   prometheus:
     enabled: true
     server_address: 'localhost:9090'
+
+  registry:
+    enabled: false
 
 staging:
   <<: *base

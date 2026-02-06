@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Clusters::AgentToken, feature_category: :deployment_management do
+  include ::TokenAuthenticatableMatchers
+
   it { is_expected.to belong_to(:agent).class_name('Clusters::Agent').required }
   it { is_expected.to belong_to(:created_by_user).class_name('User').optional }
   it { is_expected.to validate_length_of(:description).is_at_most(1024) }
@@ -75,6 +77,15 @@ RSpec.describe Clusters::AgentToken, feature_category: :deployment_management do
   end
 
   describe '#token' do
+    shared_examples 'has a prefix' do
+      it 'starts with prefix' do
+        agent_token = build(:cluster_agent_token, token_encrypted: nil)
+        agent_token.save!
+
+        expect(agent_token.token).to start_with expected_prefix
+      end
+    end
+
     it 'is generated on save' do
       agent_token = build(:cluster_agent_token, token_encrypted: nil)
       expect(agent_token.token).to be_nil
@@ -89,11 +100,8 @@ RSpec.describe Clusters::AgentToken, feature_category: :deployment_management do
       expect(agent_token.token.length).to be >= 50
     end
 
-    it 'has a prefix' do
-      agent_token = build(:cluster_agent_token, token_encrypted: nil)
-      agent_token.save!
-
-      expect(agent_token.token).to start_with described_class::TOKEN_PREFIX
+    it_behaves_like 'has a prefix' do
+      let(:expected_prefix) { described_class::TOKEN_PREFIX }
     end
 
     it 'is revoked on revoke!' do
@@ -103,6 +111,51 @@ RSpec.describe Clusters::AgentToken, feature_category: :deployment_management do
       agent_token.revoke!
 
       expect(agent_token.active?).to be_falsey
+    end
+
+    context 'with instance prefix configured' do
+      let(:instance_prefix) { 'instanceprefix' }
+      let(:expected_prefix) { "#{instance_prefix}-#{described_class::TOKEN_PREFIX}" }
+
+      before do
+        stub_application_setting(instance_token_prefix: instance_prefix)
+      end
+
+      it_behaves_like 'has a prefix' do
+        let(:expected_prefix) { "#{instance_prefix}-#{described_class::TOKEN_PREFIX}" }
+      end
+
+      context 'with feature flag custom_prefix_for_all_token_types disabled' do
+        before do
+          stub_feature_flags(custom_prefix_for_all_token_types: false)
+        end
+
+        it_behaves_like 'has a prefix' do
+          let(:expected_prefix) { described_class::TOKEN_PREFIX }
+        end
+      end
+    end
+
+    include_context "with token authenticatable routable token context"
+
+    describe "encrypted routable token" do
+      let(:agent_token) { create(:cluster_agent_token) }
+      let(:token_owner_record) { agent_token }
+      let(:expected_token_prefix) { described_class::TOKEN_PREFIX }
+
+      let(:expected_routing_payload) do
+        "c:1\n" \
+          "o:#{agent_token.agent.project.organization.id.to_s(36)}\n" \
+          "p:#{agent_token.project.id.to_s(36)}"
+      end
+
+      subject(:token) { token_owner_record.token }
+
+      it_behaves_like "an encrypted routable token" do
+        let(:expected_token) { token }
+        let(:expected_random_bytes) { random_bytes }
+        let(:expected_encrypted_token) { token_owner_record.token_encrypted }
+      end
     end
   end
 

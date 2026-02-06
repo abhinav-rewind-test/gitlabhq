@@ -9,10 +9,9 @@ module Gitlab
 
           TimeoutError = Class.new(StandardError)
 
-          include ::Gitlab::Utils::StrongMemoize
-
           attr_reader :project, :sha, :user, :parent_pipeline, :variables, :pipeline_config, :parallel_requests,
-            :pipeline, :expandset, :execution_deadline, :logger, :max_includes, :max_total_yaml_size_bytes
+            :pipeline, :expandset, :execution_deadline, :logger, :max_includes, :max_total_yaml_size_bytes,
+            :pipeline_policy_context, :component_data
 
           attr_accessor :total_file_size_in_bytes
 
@@ -21,9 +20,10 @@ module Gitlab
           # We try to keep the number of parallel HTTP requests to a minimum to avoid overloading IO.
           MAX_PARALLEL_REMOTE_REQUESTS = 4
 
+          # rubocop:disable Metrics/ParameterLists -- all arguments needed
           def initialize(
             project: nil, pipeline: nil, sha: nil, user: nil, parent_pipeline: nil, variables: nil,
-            pipeline_config: nil, logger: nil
+            pipeline_config: nil, logger: nil, pipeline_policy_context: nil, component_data: nil
           )
             @project = project
             @pipeline = pipeline
@@ -32,6 +32,8 @@ module Gitlab
             @parent_pipeline = parent_pipeline
             @variables = variables || Ci::Variables::Collection.new
             @pipeline_config = pipeline_config
+            @pipeline_policy_context = pipeline_policy_context
+            @component_data = component_data || {}
             @expandset = []
             @parallel_requests = []
             @execution_deadline = 0
@@ -42,6 +44,7 @@ module Gitlab
             @total_file_size_in_bytes = 0
             yield self if block_given?
           end
+          # rubocop:enable Metrics/ParameterLists
 
           def top_level_worktree_paths
             strong_memoize(:top_level_worktree_paths) do
@@ -61,6 +64,18 @@ module Gitlab
             end
           end
 
+          def variables_hash_expanded
+            strong_memoize(:variables_hash_expanded) do
+              variables_sorted_and_expanded.to_hash
+            end
+          end
+
+          def variables_sorted_and_expanded
+            strong_memoize(:variables_sorted_and_expanded) do
+              variables.sort_and_expand_all
+            end
+          end
+
           def mutate(attrs = {})
             self.class.new(**attrs) do |ctx|
               ctx.pipeline = pipeline
@@ -70,6 +85,7 @@ module Gitlab
               ctx.max_includes = max_includes
               ctx.max_total_yaml_size_bytes = max_total_yaml_size_bytes
               ctx.parallel_requests = parallel_requests
+              ctx.component_data = component_data
             end
           end
 
@@ -122,7 +138,7 @@ module Gitlab
           protected
 
           attr_writer :pipeline, :expandset, :execution_deadline, :logger, :max_includes, :max_total_yaml_size_bytes,
-            :parallel_requests
+            :parallel_requests, :component_data
 
           private
 

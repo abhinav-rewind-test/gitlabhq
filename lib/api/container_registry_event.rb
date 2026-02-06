@@ -30,7 +30,11 @@ module API
         failure [
           { code: 401, message: 'Invalid Token' }
         ]
-        tags %w[container_registry_event]
+        tags %w[container_registry]
+      end
+
+      rescue_from ContainerRegistry::Path::InvalidRegistryPathError do
+        render_api_error!('Invalid repository path', 400)
       end
 
       # This endpoint is used by Docker Registry to push a set of event

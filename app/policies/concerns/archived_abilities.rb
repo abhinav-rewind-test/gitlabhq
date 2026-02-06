@@ -5,6 +5,7 @@ module ArchivedAbilities
 
   ARCHIVED_ABILITIES = %i[
     admin_tag
+    change_namespace
     push_code
     push_to_delete_protected_branch
     request_access
@@ -38,6 +39,7 @@ module ArchivedAbilities
     cluster
     release
     timelog
+    package
   ].freeze
 
   class_methods do

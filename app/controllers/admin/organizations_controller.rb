@@ -2,16 +2,21 @@
 
 module Admin
   class OrganizationsController < ApplicationController
-    feature_category :cell
+    include ::Organizations::OrganizationHelper
+
+    feature_category :organization
 
     before_action :check_feature_flag!
+    before_action only: [:index] do
+      push_frontend_feature_flag(:organization_switching, current_user)
+    end
 
     def index; end
 
     private
 
     def check_feature_flag!
-      access_denied! unless Feature.enabled?(:ui_for_organizations, current_user)
+      access_denied! unless ui_for_organizations_enabled?
     end
   end
 end

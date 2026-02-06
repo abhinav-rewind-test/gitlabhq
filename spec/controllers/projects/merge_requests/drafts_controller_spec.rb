@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 
 RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :code_review_workflow do
@@ -62,7 +63,17 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
     end
 
     it 'creates a draft note' do
+      expect(Banzai::Renderer).to receive(:render).once.and_call_original
+
       expect { create_draft_note }.to change { DraftNote.count }.by(1)
+    end
+
+    it 'creates an internal draft note' do
+      create_draft_note(draft_overrides: { internal: true })
+
+      draft_note = DraftNote.find_by(author: user)
+
+      expect(draft_note.internal).to eq(true)
     end
 
     it 'creates draft note with position' do
@@ -94,6 +105,20 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
       expect(json_response['note_html']).to match(/#{user2.to_reference}/)
       expect(json_response['references']['commands']).to match(/Assigns/)
       expect(json_response['references']['users']).to include(user2.username)
+    end
+
+    it 'does not render tables of contents in draft nodes' do
+      note = <<~MARKDOWN
+        [[_TOC_]]
+
+        # Bonjour
+        ## Zdravo
+        ### Здраво
+      MARKDOWN
+      create_draft_note(draft_overrides: { note: note })
+
+      expect(json_response['note_html']).to include('TOC')
+      expect(json_response['note_html']).not_to include('<h1 id')
     end
 
     context 'in a thread' do
@@ -138,7 +163,7 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
             overrides: { in_reply_to_discussion_id: discussion.reply_id },
             draft_overrides: { resolve_discussion: true, note: 'A note' }
           )
-        end.to change { DraftNote.count }.by(0)
+        end.to not_change { DraftNote.count }
       end
     end
 
@@ -200,6 +225,16 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
 
         expect(response).to have_gitlab_http_status(:unprocessable_entity)
         expect(response.body).to eq('{"errors":"Error 1 and Error 2"}')
+      end
+    end
+
+    context 'when type is present in draft note params' do
+      it 'assign note_type to draft note' do
+        create_draft_note(draft_overrides: { type: 'DiscussionNote' })
+
+        draft_note = DraftNote.find_by(author: user)
+
+        expect(draft_note.note_type).to eq('DiscussionNote')
       end
     end
   end
@@ -351,7 +386,9 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
     end
 
     it 'does nothing if there are no draft notes' do
-      expect { post :publish, params: params }.to change { Note.count }.by(0).and change { DraftNote.count }.by(0)
+      expect { post :publish, params: params }
+        .to not_change { Note.count }
+        .and not_change { DraftNote.count }
     end
 
     it 'publishes a draft note with quick actions and applies them', :sidekiq_inline do
@@ -392,6 +429,16 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
       # discussion is memoized and reload doesn't clear the memoization
       expect(Note.find(note.id).discussion.notes.last.note).to eq(draft_reply.note)
       expect(Note.find(diff_note.id).discussion.notes.last.note).to eq(diff_draft_reply.note)
+    end
+
+    it 'publishes draft notes by ID' do
+      draft1 = create(:draft_note, merge_request: merge_request, author: user)
+      create(:draft_note, merge_request: merge_request, author: user)
+
+      expect { post :publish, params: params.merge!(ids: [draft1.id]) }.to change { Note.count }.by(1)
+        .and change { DraftNote.count }.by(-1)
+
+      expect(response).to have_gitlab_http_status(:ok)
     end
 
     it 'can publish just a single draft note' do
@@ -575,7 +622,7 @@ RSpec.describe Projects::MergeRequests::DraftsController, feature_category: :cod
       it 'does not allow editing draft note belonging to someone else' do
         draft = create_draft
 
-        expect { delete :destroy, params: params.merge(id: draft.id) }.to change { DraftNote.count }.by(0)
+        expect { delete :destroy, params: params.merge(id: draft.id) }.to not_change { DraftNote.count }
         expect(response).to have_gitlab_http_status(:not_found)
       end
     end

@@ -13,12 +13,12 @@ module DesignManagement
     belongs_to :design, class_name: "DesignManagement::Design", inverse_of: :actions
     belongs_to :version, class_name: "DesignManagement::Version", inverse_of: :actions
 
-    enum event: { creation: 0, modification: 1, deletion: 2 }
+    enum :event, { creation: 0, modification: 1, deletion: 2 }
 
     # we assume sequential ordering.
     scope :ordered, -> { order(version_id: :asc) }
-    scope :by_design, -> (design) { where(design: design) }
-    scope :by_event, -> (event) { where(event: event) }
+    scope :by_design, ->(design) { where(design: design) }
+    scope :by_event, ->(event) { where(event: event) }
     scope :with_version, -> { preload(:version) }
 
     # For each design, only select the most recent action
@@ -42,6 +42,10 @@ module DesignManagement
       else
         raise ArgumentError, "Expected a DesignManagement::Version, got #{version}"
       end
+    end
+
+    def uploads_sharding_key
+      { namespace_id: namespace_id }
     end
   end
 end

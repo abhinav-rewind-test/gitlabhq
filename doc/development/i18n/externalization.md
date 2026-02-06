@@ -1,20 +1,17 @@
 ---
-stage: Manage
-group: Import and Integrate
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: none
+group: Localization
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Internationalization for GitLab
 ---
-
-# Internationalization for GitLab
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/10669) in GitLab 9.2.
 
 For working with internationalization (i18n),
 [GNU gettext](https://www.gnu.org/software/gettext/) is used given it's the most
 used tool for this task and there are many applications that help us work with it.
 
-NOTE:
-All `rake` commands described on this page must be run on a GitLab instance. This instance is
-usually the GitLab Development Kit (GDK).
+> [!note]
+> All `rake` commands described on this page must be run on a GitLab instance. This instance is
+> usually the GitLab Development Kit (GDK).
 
 ## Setting up the GitLab Development Kit (GDK)
 
@@ -51,6 +48,10 @@ The following tools are used:
   which is available for macOS, GNU/Linux, and Windows.
 
 ## Preparing a page for translation
+
+You must mark strings as translatable with the following available helpers. Keep in mind that
+strings are translated in tools where their context of use might not be obvious. Consider
+[namespacing](#namespaces) domain-specific strings to provide more context to the translators.
 
 There are four file types:
 
@@ -105,17 +106,37 @@ validates :group_id, uniqueness: { scope: [:project_id], message: -> (object, da
 
 Messages in the API (`lib/api/` or `app/graphql`) do not need to be externalized.
 
+#### Rails model error messages
+
+When adding error messages in Rails models, avoid adding errors to specific attributes if the error message
+is a complete sentence. Rails automatically humanizes attribute names and prepends them to error messages,
+which creates split sentences that are difficult to translate.
+
+For example, avoid this:
+
+```ruby
+# Bad: Rails prepends "Squash option" to the message
+errors.add(:squash_option, _('cannot be used with wildcard branch rules. Use an exact branch name.'))
+```
+
+Instead, add the error to :base with a complete sentence:
+
+```ruby
+# Good: Complete sentence that translators can work with
+errors.add(:base, _('Squash option cannot be used with wildcard branch rules. Use an exact branch name.'))
+```
+
 ### HAML files
 
 Given the following content in HAML:
 
-```haml
+```ruby
 %h1 Hello world!
 ```
 
 You can mark that content for translation with:
 
-```haml
+```ruby
 %h1= _("Hello world!")
 ```
 
@@ -215,7 +236,44 @@ expect(findText()).toBe('Lorem ipsum dolor sit');
 
 #### Recommendations
 
-If strings are reused throughout a component, it can be useful to define these strings as variables. We recommend defining an `i18n` property on the component's `$options` object. If there is a mixture of many-use and single-use strings in the component, consider using this approach to create a local [Single Source of Truth](https://handbook.gitlab.com/handbook/values/#single-source-of-truth) for externalized strings.
+Put translations as close as possible to where they are used.
+Preferably, use inline translations over variables with translations.
+The best description for a translation is its key.
+This improves code readability and helps with the cognitive load of preserving code context.
+Also, it makes refactoring easier as we do not have to maintain variables in addition to the translations.
+
+```javascript
+// Bad. A variable is defined far from where it is used
+const TITLE = __('Organisations');
+
+function transform() {
+  return TITLE;
+}
+
+// Good.
+function transform() {
+  return __('Organisations');
+}
+```
+
+##### Shared translations
+
+Sometimes a translation can be used in several places in a file or a module. In this case, we can use variables that share translations, but with the following considerations:
+
+- Inline translations have better code clarity. Do not use the DRY principle as the only driver for putting translations into variables.
+- Be cautious when inserting or joining translations. For more information, see
+  [using variables to insert text dynamically](#using-variables-to-insert-text-dynamically).
+- If two translations share the same English key, it doesn't mean those two places have the same translation in other languages. Consider using [namespaces](#namespaces) where appropriate.
+
+If using variables with translations is preferred in a particular case, follow these guidelines on how to declare and place them.
+
+In JavaScript files, declare a constant with the translation:
+
+```javascript
+const ORGANISATIONS_TITLE = __('Organisations');
+```
+
+In Vue Single-File Components, you can define an `i18n` property in the component's `$options` object.
 
 ```javascript
 <script>
@@ -233,10 +291,7 @@ If strings are reused throughout a component, it can be useful to define these s
 </template>
 ```
 
-If we are reusing the same translated string in multiple components, it is tempting to add them to a `constants.js` file instead and import them across our components. However, there are multiple pitfalls to this approach:
-
-- It creates distance between the HTML template and the copy, adding an additional level of complexity while navigating our codebase.
-- The benefit of having a reusable variable is to have one easy place to go to update a value, but for copy it is quite common to have similar strings that aren't quite the same.
+In modules, if we reuse the same translation in multiple files, we can add them to a `constants.js` or a `i18n.js` file and import those translations across the module. However, this adds yet another level of complexity to our codebase and thus should be used with caution.
 
 Another practice to avoid when exporting copy strings is to import them in specs. While it might seem like a much more efficient test (if we change the copy, the test will still pass!) it creates additional problems:
 
@@ -311,7 +366,7 @@ use `%{created_at}` in Ruby but `%{createdAt}` in JavaScript. Make sure to
     ...
     computed: {
       userWelcome() {
-        sprintf(__('Hello %{username}'), { username: this.user.name });
+        return sprintf(__('Hello %{username}'), { username: this.user.name });
       }
     }
     ...
@@ -333,7 +388,7 @@ use `%{created_at}` in Ruby but `%{createdAt}` in JavaScript. Make sure to
 
   If you need to use markup within the translation, use `sprintf` and stop it
   from escaping placeholder values by passing `false` as its third argument.
-  You **must** escape any interpolated dynamic values yourself, for instance
+  You must escape any interpolated dynamic values yourself, for instance
   using `escape` from `lodash`.
 
   ```javascript
@@ -506,10 +561,30 @@ A namespace:
   area, rather than arbitrary ones.
 - Gives a linguistic context to help the translator.
 
-In some cases, namespaces don't make sense. For example, for ubiquitous UI words and phrases such as
-"Cancel" or phrases like "Save changes," a namespace could be counterproductive.
+Some languages are more contextual than English.
+For example, `cancel` can be translated in different ways depending on how it's used.
+To define the context of use, always add a namespace to UI text in English.
 
 Namespaces should be PascalCase.
+
+When choosing namespaces, prefer granular subcategories over broad categories to provide
+better context.
+Instead of using generic namespaces like `Feature|`, consider more specific subcategories that
+describe the feature area or action context.
+This is especially important for generic-looking strings that could be ambiguous without
+proper context.
+
+For example:
+
+- Use `WorkItemsStatusConfigure|Add to` instead of `WorkItems|Add to`.
+- Use `MergeRequestReviewActions|Approve` instead of `MergeRequest|Approve`.
+- Use `ProjectSettingsGeneral|Delete` instead of `Project|Delete`.
+
+This approach helps translators understand:
+
+- The specific UI context where the string appears.
+- The intended action or purpose.
+- How the string relates to other similar strings in the same feature area.
 
 - In Ruby/HAML:
 
@@ -569,11 +644,11 @@ instead:
 
 - In Ruby/HAML:
 
-   ```ruby
-   safe_format(_('In &lt; 1 hour'))
+  ```ruby
+  safe_format(_('In &lt; 1 hour'))
 
-   # => 'In < 1 hour'
-   ```
+  # => 'In < 1 hour'
+  ```
 
 - In JavaScript:
 
@@ -653,12 +728,12 @@ This makes use of [`Intl.DateTimeFormat`](https://developer.mozilla.org/en-US/do
 
 - In Ruby/HAML, there are two ways of adding format to dates and times:
 
-  - **Using the `l` helper**: for example, `l(active_session.created_at, format: :short)`. We have
+  - Using the `l` helper: for example, `l(active_session.created_at, format: :short)`. We have
     some predefined formats for [dates](https://gitlab.com/gitlab-org/gitlab/-/blob/4ab54c2233e91f60a80e5b6fa2181e6899fdcc3e/config/locales/en.yml#L54)
     and [times](https://gitlab.com/gitlab-org/gitlab/-/blob/4ab54c2233e91f60a80e5b6fa2181e6899fdcc3e/config/locales/en.yml#L262).
     If you need to add a new format, because other parts of the code could benefit from it, add it
     to the file [`en.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/locales/en.yml).
-  - **Using `strftime`**: for example, `milestone.start_date.strftime('%b %-d')`. We use `strftime`
+  - Using `strftime`: for example, `milestone.start_date.strftime('%b %-d')`. We use `strftime`
     in case none of the formats defined in [`en.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/locales/en.yml)
     match the date/time specifications we need, and if there's no need to add it as a new format
     because it's very particular (for example, it's only used in a single view).
@@ -868,6 +943,80 @@ s__(NAMESPACE, LABEL);
 n__(LABEL_SINGULAR, LABEL_PLURAL, appleCount);
 ```
 
+### Using variables to insert text dynamically
+
+When text values are used in translatable strings as variables, special care must be taken to ensure grammatical correctness across different languages.
+
+#### Risks and challenges
+
+When using variables to add text into translatable strings, several localization challenges can arise:
+
+- Gender agreement: Languages with grammatical gender may require different forms of articles, adjectives or pronouns depending on the gender of the inserted noun. For example, in French, articles, adjectives and some past participles must agree with the noun's gender and position in the sentence.
+
+- Case and declension: In languages with cases (like German), the inserted text may need different forms depending on its grammatical role in the sentence.
+
+- Word order: Different languages have different word order requirements, and inserted text may need to appear in different positions in the sentence for natural-sounding translations.
+
+#### Best practices
+
+1. Avoid adding text as variables when possible:
+   - Instead of one string with a variable, create unique strings for each case. For example:
+
+```ruby
+    # Instead of:
+    s_('WorkItem|Adds this %{workItemType} as related to %{relatedWorkItemType}')
+
+    # Create separate strings:
+    s_('WorkItem|Adds this task as related to incident')
+    s_('WorkItem|Adds this incident as related to task')
+```
+
+1. Use topic-comment structure over sentence-like arrangement:
+   When variable use cannot be avoided, consider restructuring the message to use a topic-comment arrangement rather than a full sentence:
+
+```ruby
+   # Instead of a sentence with inserted variables:
+   s_('WorkItem|Adds this %{workItemType} as related to %{relatedWorkItemType}')
+
+   # Use topic-comment structure:
+   s_('WorkItem|Related items: %{workItemType} → %{relatedWorkItemType}')
+```
+
+### Combining patterns
+
+You can combine translation helper functions to handle complex scenarios that require
+multiple features like namespacing, pluralization, and parameter substitution.
+
+For example:
+
+```ruby
+   ns_('BulkImport|%{count} placeholder user has been created.', 'BulkImport|%{count} placeholder users have been created.', @success_count)
+```
+
+## Case transformation in translatable strings
+
+Different languages have different capitalization rules that may not match English. For example, in German all nouns are capitalized regardless of their position in the sentence. Avoid using `downcase` or `toLocaleLowerCase()` on translatable strings. Let translators control text.
+
+- Context-dependent cases:
+
+While the `toLocaleLowerCase()` method is locale-aware, it cannot handle context-specific capitalization needs. For example:
+
+```ruby
+    # This forces lowercase, but it may not work for many languages:
+    job_type = "CI/CD Pipeline".toLocaleLowerCase()
+    s_("Jobs|Starting a new %{job_type}") % { job_type: job_type }
+
+    # In German this would incorrectly show:
+    # "Starting a new ci/cd pipeline"
+    # When it should be:
+    # "Starting a new CI/CD Pipeline"  (Pipeline is a noun and must be capitalized)
+
+    # In French it might show:
+    # "Starting a new ci/cd pipeline"
+    # When it should be:
+    # "Démarrer un nouveau pipeline CI/CD"  (technical terms might keep original case)
+```
+
 ## Updating the PO files with the new content
 
 Now that the new content is marked for translation, run this command to update the
@@ -932,9 +1081,8 @@ A new language should only be added as an option in User Preferences once at lea
 strings have been translated and approved. Even though a larger number of strings may have been
 translated, only the approved translations display in the GitLab UI.
 
-NOTE:
-[Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/221012) in GitLab 13.3:
-Languages with less than 2% of translations are not available in the UI.
+> [!note]
+> Languages with less than 2% of translations are not available in the UI.
 
 Suppose you want to add translations for a new language, for example, French:
 

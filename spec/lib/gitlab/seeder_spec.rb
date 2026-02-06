@@ -2,21 +2,21 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Seeder do
-  describe Namespace do
-    subject { described_class }
-
+RSpec.describe Gitlab::Seeder, feature_category: :tooling do
+  describe 'scopes' do
     it 'has not_mass_generated scope' do
-      expect { described_class.not_mass_generated }.to raise_error(NoMethodError)
-
       Gitlab::Seeder.quiet do
         expect { Namespace.not_mass_generated }.not_to raise_error
+        expect { Project.not_mass_generated }.not_to raise_error
+        expect { User.not_mass_generated }.not_to raise_error
       end
     end
 
-    it 'includes NamespaceSeed module' do
+    it 'includes Seed modules' do
       Gitlab::Seeder.quiet do
-        is_expected.to include_module(Gitlab::Seeder::NamespaceSeed)
+        expect(Namespace).to include_module(Gitlab::Seeder::NamespaceSeed)
+        expect(Project).to include_module(Gitlab::Seeder::ProjectSeed)
+        expect(User).to include_module(Gitlab::Seeder::UserSeed)
       end
     end
   end
@@ -25,7 +25,8 @@ RSpec.describe Gitlab::Seeder do
     let(:database_base_models) do
       {
         main: ActiveRecord::Base,
-        ci: Ci::ApplicationRecord
+        ci: Ci::ApplicationRecord,
+        sec: SecApplicationRecord
       }
     end
 
@@ -34,12 +35,14 @@ RSpec.describe Gitlab::Seeder do
         .and_return(database_base_models.with_indifferent_access)
 
       described_class.quiet do
-        expect(ApplicationRecord.logger).to be_nil
-        expect(Ci::ApplicationRecord.logger).to be_nil
+        database_base_models.each do |name, model|
+          expect(model.logger).to be_nil if database_exists?(name)
+        end
       end
 
-      expect(ApplicationRecord.logger).not_to be_nil
-      expect(Ci::ApplicationRecord.logger).not_to be_nil
+      database_base_models.each do |name, model|
+        expect(model.logger).not_to be_nil if database_exists?(name)
+      end
     end
 
     it 'disables mail deliveries' do
@@ -66,6 +69,22 @@ RSpec.describe Gitlab::Seeder do
       end
 
       notification_service.new_note(note)
+    end
+
+    it 'does not enable SafeRequestStore in production' do
+      allow(Rails.env).to receive(:development?).and_return(false)
+      expect(Gitlab::SafeRequestStore).not_to receive(:ensure_request_store)
+      described_class.quiet { 1 }
+    end
+
+    it 'enables the SafeRequestStore in development' do
+      allow(Rails.env).to receive(:development?).and_return(true)
+      expect(Gitlab::SafeRequestStore).to receive(:ensure_request_store).and_call_original
+      original_value = ENV['GITALY_DISABLE_REQUEST_LIMITS']
+      described_class.quiet do
+        expect(ENV['GITALY_DISABLE_REQUEST_LIMITS']).to eq('true')
+      end
+      expect(ENV['GITALY_DISABLE_REQUEST_LIMITS']).to eq(original_value)
     end
   end
 

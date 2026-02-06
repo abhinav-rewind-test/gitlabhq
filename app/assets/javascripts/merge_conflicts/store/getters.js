@@ -72,7 +72,7 @@ export const isReadyToCommit = (state) => {
 
 export const getCommitButtonText = (state) => {
   const initial = s__('MergeConflict|Commit to source branch');
-  const inProgress = s__('MergeConflict|Committing...');
+  const inProgress = s__('MergeConflict|Committing…');
 
   return state.isSubmitting ? inProgress : initial;
 };
@@ -112,6 +112,8 @@ export const fileTextTypePresent = (state) => {
   return state.conflictsData?.files.some((f) => f.type === CONFLICT_TYPES.TEXT);
 };
 
-export const getFileIndex = (state) => ({ blobPath }) => {
-  return state.conflictsData.files.findIndex((f) => f.blobPath === blobPath);
-};
+export const getFileIndex =
+  (state) =>
+  ({ blobPath }) => {
+    return state.conflictsData.files.findIndex((f) => f.blobPath === blobPath);
+  };

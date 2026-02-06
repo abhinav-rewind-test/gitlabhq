@@ -19,15 +19,20 @@
     "wiki_page_events",
     "job_events",
     "deployment_events",
+    "feature_flag_events",
     "releases_events",
     "alert_status",
     "disabled_until",
     "emoji_events",
     "custom_webhook_template",
-    "resource_access_token_events"
+    "resource_access_token_events",
+    "branch_filter_strategy"
   ],
   "optional": [
-    "url_variables"
+    "url_variables",
+    "custom_headers",
+    "name",
+    "description"
   ],
   "properties": {
     "id": {
@@ -38,6 +43,18 @@
     },
     "url": {
       "type": "string"
+    },
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "created_at": {
       "type": "string",
@@ -94,13 +111,22 @@
     "deployment_events": {
       "type": "boolean"
     },
+    "feature_flag_events": {
+      "type": "boolean"
+    },
     "releases_events": {
+      "type": "boolean"
+    },
+    "milestone_events": {
       "type": "boolean"
     },
     "emoji_events": {
       "type": "boolean"
     },
     "resource_access_token_events": {
+      "type": "boolean"
+    },
+    "vulnerability_events": {
       "type": "boolean"
     },
     "alert_status": {
@@ -137,6 +163,24 @@
         "string",
         "null"
       ]
+    },
+    "custom_headers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "branch_filter_strategy": {
+      "type": "string"
     }
   },
   "additionalProperties": false

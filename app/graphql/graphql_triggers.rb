@@ -1,6 +1,59 @@
 # frozen_string_literal: true
 
 module GraphqlTriggers
+  def self.ci_job_processed_with_artifacts(job)
+    return unless Feature.enabled?(:ci_job_created_subscription, job.project)
+
+    GitlabSchema.subscriptions.trigger(:ci_job_processed, { project_id: job.project.to_gid, with_artifacts: true }, job)
+  end
+
+  def self.ci_job_processed(job)
+    return unless Feature.enabled?(:ci_job_created_subscription, job.project)
+
+    GitlabSchema.subscriptions.trigger(:ci_job_processed, { project_id: job.project.to_gid }, job)
+  end
+
+  def self.ci_job_status_updated(job)
+    GitlabSchema.subscriptions.trigger(:ci_job_status_updated, { job_id: job.to_gid }, job)
+  end
+
+  def self.ci_stage_updated(job)
+    stage_gid = GlobalID.new("gid://gitlab/Ci::Stage/#{job.stage_id}")
+    GitlabSchema.subscriptions.trigger(:ci_stage_updated, { stage_id: stage_gid }, job)
+  end
+
+  def self.ci_pipeline_status_updated(pipeline)
+    GitlabSchema.subscriptions.trigger(:ci_pipeline_status_updated, { pipeline_id: pipeline.to_gid }, pipeline)
+  end
+
+  def self.ci_pipeline_statuses_updated(pipeline)
+    return unless Feature.enabled?(:ci_pipeline_statuses_updated_subscription, pipeline.project)
+
+    GitlabSchema.subscriptions.trigger(
+      :ci_pipeline_statuses_updated,
+      { project_id: pipeline.project.to_gid },
+      pipeline
+    )
+  end
+
+  def self.ci_pipeline_schedule_status_updated(schedule)
+    GitlabSchema.subscriptions.trigger(
+      :ci_pipeline_schedule_status_updated,
+      { project_id: schedule.project.to_gid },
+      schedule
+    )
+  end
+
+  def self.ci_pipeline_creation_requests_updated(merge_request)
+    return unless Feature.enabled?(:ci_pipeline_creation_requests_realtime, merge_request.project)
+
+    GitlabSchema.subscriptions.trigger(
+      :ci_pipeline_creation_requests_updated,
+      { merge_request_id: merge_request.to_gid },
+      merge_request
+    )
+  end
+
   def self.issuable_assignees_updated(issuable)
     GitlabSchema.subscriptions.trigger(:issuable_assignees_updated, { issuable_id: issuable.to_gid }, issuable)
   end
@@ -71,6 +124,18 @@ module GraphqlTriggers
     work_item = work_item.becomes(::WorkItem) if work_item.is_a?(::Issue) # rubocop:disable Cop/AvoidBecomes
 
     ::GitlabSchema.subscriptions.trigger('workItemUpdated', { work_item_id: work_item.to_gid }, work_item)
+  end
+
+  def self.issuable_todo_updated(issuable)
+    return unless issuable.respond_to?(:to_gid)
+
+    ::GitlabSchema.subscriptions.trigger(
+      :issuable_todo_updated, { issuable_id: issuable.to_gid }, issuable
+    )
+  end
+
+  def self.user_merge_request_updated(user, merge_request)
+    GitlabSchema.subscriptions.trigger(:user_merge_request_updated, { user_id: user.to_gid }, merge_request)
   end
 end
 

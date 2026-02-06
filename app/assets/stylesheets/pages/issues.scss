@@ -12,19 +12,19 @@
 
 .issue-token-reference {
   margin-right: 1px;
-  background-color: $gray-lighter;
+  @apply gl-bg-subtle;
   transition: background $general-hover-transition-duration $general-hover-transition-curve, color $general-hover-transition-duration $general-hover-transition-curve;
 
   .issue-token:hover &,
   .issue-token-link:focus > & {
-    background-color: $gray-normal;
+    @apply gl-bg-strong;
     color: $blue-800;
     text-decoration: none;
   }
 }
 
 .issue-token-title {
-  background-color: $gray-normal;
+  @apply gl-bg-strong;
   transition: background $general-hover-transition-duration $general-hover-transition-curve;
 
   .issue-token:hover &,
@@ -34,7 +34,7 @@
 }
 
 .issue-token-remove-button {
-  background-color: $gray-normal;
+  @apply gl-bg-strong;
   transition: background $general-hover-transition-duration $general-hover-transition-curve;
 
   &:hover,
@@ -65,11 +65,11 @@ ul.related-merge-requests > li gl-emoji {
   }
 
   &.closed {
-    color: $red-500;
+    @apply gl-text-danger;
   }
 
   &.open {
-    color: $green-500;
+    @apply gl-text-success;
   }
 }
 
@@ -77,11 +77,11 @@ ul.related-merge-requests > li gl-emoji {
 .issue {
   &.closed,
   &.merged {
-    background: $gray-10;
+    @apply gl-bg-subtle;
   }
 }
 
-@include media-breakpoint-down(xs) {
+@include gl-container-width-down(sm, panel) {
   .detail-page-header {
     .issuable-meta {
       line-height: 18px;
@@ -100,7 +100,7 @@ ul.related-merge-requests > li gl-emoji {
     }
   }
 
-  @include media-breakpoint-down(xs) {
+  @include gl-container-width-down(sm, panel) {
     width: 100%;
 
     > div:not(:last-child) {
@@ -127,7 +127,7 @@ ul.related-merge-requests > li gl-emoji {
   .btn-group:not(.hidden) {
     display: flex;
 
-    @include media-breakpoint-down(xs) {
+    @include gl-container-width-down(sm, panel) {
       .btn.btn-confirm {
         justify-content: flex-start;
 
@@ -149,22 +149,6 @@ ul.related-merge-requests > li gl-emoji {
     transform: translateY(0);
     display: none;
     margin-top: 4px;
-
-    // override dropdown item styles
-    .btn.btn-confirm {
-      @include btn-default;
-      @include btn-blue;
-
-      border-width: 1px;
-      line-height: $line-height-base;
-      width: auto;
-
-      &.disabled {
-        background-color: $gray-light;
-        border-color: $gray-100;
-        color: $gl-text-color-disabled;
-      }
-    }
   }
 }
 
@@ -173,21 +157,7 @@ ul.related-merge-requests > li gl-emoji {
   display: block;
 }
 
-.issue-sort-dropdown {
-  .btn-group {
-    width: 100%;
-  }
-
-  .reverse-sort-btn {
-    color: $gl-text-color-secondary;
-
-    &.disabled {
-      color: $gl-text-color-disabled;
-    }
-  }
-}
-
-@include media-breakpoint-up(sm) {
+@include gl-container-width-up(sm, panel) {
   .emoji-block .row {
     display: flex;
 
@@ -204,31 +174,9 @@ ul.related-merge-requests > li gl-emoji {
   }
 }
 
-@include media-breakpoint-up(lg) {
+@include gl-container-width-up(lg, panel) {
   .new-branch-col {
     text-align: right;
-  }
-}
-
-.issue-details {
-  .card-title {
-    a.anchor {
-      left: -16px;
-      top: 4px;
-      outline: none;
-
-      &::after {
-        @include gl-dark-invert-keep-hue;
-        content: url('icon_anchor.svg');
-        visibility: hidden;
-      }
-    }
-
-    &:hover > a.anchor::after {
-      position: relative;
-      top: -3px;
-      visibility: visible;
-    }
   }
 }
 
@@ -237,6 +185,20 @@ ul.related-merge-requests > li gl-emoji {
   right: var(--application-bar-right);
   width: auto;
   top: $calc-application-header-height;
+
+  .right-sidebar-collapsed & {
+    padding-right: $right-sidebar-collapsed-width;
+  }
+
+  .right-sidebar-expanded & {
+    padding-right: $right-sidebar-width;
+  }
+}
+
+// stylelint-disable-next-line gitlab/no-gl-class
+.work-item-drawer .gl-drawer-header-sticky,
+.issue-sticky-header {
+  @include translucent-glass-background;
 }
 
 .limit-container-width {
@@ -248,14 +210,16 @@ ul.related-merge-requests > li gl-emoji {
 .issue-sticky-header-text {
   padding: 0 $container-margin;
 
-  @include media-breakpoint-up(xl) {
+  @include gl-container-width-up(xl, panel) {
     padding: 0 $container-margin-xl;
   }
 }
 
+// These are composite classes for use with Vue Transition
+// https://vuejs.org/guide/built-ins/transition
 .issuable-header-slide-enter-active,
 .issuable-header-slide-leave-active {
-  @include gl-transition-medium;
+  @apply gl-transition-all;
 }
 
 .issuable-header-slide-enter,
@@ -270,17 +234,30 @@ ul.related-merge-requests > li gl-emoji {
 .md-header-preview {
   z-index: 1;
   position: sticky;
-  top: calc(#{$calc-application-header-height} + var(--issuable-sticky-header-height, 0px));
+  // note: only either --work-item-sticky-header-height or
+  // --issuable-sticky-header-height will be defined.
+  // --issuable-sticky-header-height is maintained for incidents, all other
+  // work items use --work-item-sticky-header-height.
+  top: calc(#{$calc-application-header-height} + var(--work-item-sticky-header-height, 0px) + var(--issuable-sticky-header-height, 0px) - 2px);
+  margin-left: 1px;
+  @apply gl-bg-default;
 }
 
 .detail-page-description .md-header {
   top: $calc-application-header-height;
 }
 
+// stylelint-disable-next-line gitlab/no-gl-class
 .gl-drawer .md-header {
   top: 0;
 }
 
+// stylelint-disable-next-line gitlab/no-gl-class
 .gl-modal .md-header {
   top: -$gl-padding-8;
+}
+
+// Issue markdown header if no sticky header is present
+.work-item-detail:not(:has(.issue-sticky-header)) .md-header {
+  top: 0;
 }

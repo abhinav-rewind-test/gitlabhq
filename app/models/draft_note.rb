@@ -4,8 +4,9 @@ class DraftNote < ApplicationRecord
   include Gitlab::Utils::StrongMemoize
   include Sortable
   include ShaAttribute
+  include BulkInsertSafe
 
-  PUBLISH_ATTRS = %i[noteable_id noteable_type type note].freeze
+  PUBLISH_ATTRS = %i[noteable type note internal].freeze
   DIFF_ATTRS = %i[position original_position change_position commit_id].freeze
 
   sha_attribute :commit_id
@@ -27,6 +28,15 @@ class DraftNote < ApplicationRecord
   validates :discussion_id, allow_nil: true, format: { with: /\A\h{40}\z/ }
   validates :line_code, length: { maximum: 255 }, allow_nil: true
 
+  validates :position, :original_position, :change_position,
+    'notes/position_serialized_size': { max_bytesize: 100.kilobytes }
+
+  enum :note_type, {
+    Note: 0,
+    DiffNote: 1,
+    DiscussionNote: 2
+  }
+
   scope :authored_by, ->(u) { where(author_id: u.id) }
 
   delegate :file_path, :file_hash, :file_identifier_hash, to: :diff_file, allow_nil: true
@@ -35,6 +45,18 @@ class DraftNote < ApplicationRecord
     where.not(position: nil)
       .select(:position)
       .map(&:position)
+  end
+
+  def self.bulk_insert_and_keep_commits!(items, **options)
+    inserted_records = bulk_insert!(items, **options)
+
+    keep_commits_for_records(items)
+
+    inserted_records
+  end
+
+  def self.keep_commits_for_records(records)
+    records.find(&:on_diff?)&.keep_around_commits
   end
 
   def project
@@ -76,10 +98,13 @@ class DraftNote < ApplicationRecord
   end
 
   def type
+    return note_type if note_type.present?
     return 'DiffNote' if on_diff?
     return 'DiscussionNote' if discussion_id.present?
 
-    'Note'
+    # Default to DiscussionNote to make all draft notes resolvable when published,
+    # matching the UI behavior where all review comments are resolvable threads.
+    'DiscussionNote'
   end
 
   def references
@@ -103,6 +128,7 @@ class DraftNote < ApplicationRecord
     params = slice(*attrs)
     params[:in_reply_to_discussion_id] = discussion_id if discussion_id.present?
     params[:review_id] = review.id if review.present?
+    params.except("internal") if on_diff?
 
     params
   end

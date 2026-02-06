@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.shared_examples 'rejected container repository access' do |user_type, status|
+RSpec.shared_examples 'rejected container repository access' do |user_type, status, body_message = nil|
   context "for #{user_type}" do
     let(:api_user) { users[user_type] }
 
@@ -8,6 +8,8 @@ RSpec.shared_examples 'rejected container repository access' do |user_type, stat
       subject
 
       expect(response).to have_gitlab_http_status(status)
+
+      expect(Gitlab::Json.parse(response.body)['message']).to eq(body_message) if body_message
     end
   end
 end
@@ -94,7 +96,7 @@ RSpec.shared_examples 'handling network errors with the container registry' do
     subject
 
     expect(response).to have_gitlab_http_status(:service_unavailable)
-    expect(json_response['message']).to include('We are having trouble connecting to the Container Registry')
+    expect(json_response['message']).to include('We are having trouble connecting to the container registry')
   end
 end
 
@@ -106,7 +108,7 @@ RSpec.shared_examples 'handling graphql network errors with the container regist
   it 'returns a connection error' do
     subject
 
-    expect_graphql_errors_to_include('We are having trouble connecting to the Container Registry')
+    expect_graphql_errors_to_include('We are having trouble connecting to the container registry')
   end
 end
 
@@ -119,91 +121,5 @@ RSpec.shared_examples 'not hitting graphql network errors with the container reg
     subject
 
     expect_graphql_errors_to_be_empty
-  end
-end
-
-RSpec.shared_examples 'reconciling migration_state' do
-  shared_examples 'enforcing states coherence to' do |expected_migration_state|
-    it 'leaves the repository in the expected migration_state' do
-      expect(repository.gitlab_api_client).not_to receive(:pre_import_repository)
-      expect(repository.gitlab_api_client).not_to receive(:import_repository)
-
-      subject
-
-      expect(repository.reload.migration_state).to eq(expected_migration_state)
-    end
-  end
-
-  shared_examples 'retrying the pre_import' do
-    it 'retries the pre_import' do
-      expect(repository).to receive(:migration_pre_import).and_return(:ok)
-
-      expect { subject }.to change { repository.reload.migration_state }.to('pre_importing')
-    end
-  end
-
-  shared_examples 'retrying the import' do
-    it 'retries the import' do
-      expect(repository).to receive(:migration_import).and_return(:ok)
-
-      expect { subject }.to change { repository.reload.migration_state }.to('importing')
-    end
-  end
-
-  context 'native response' do
-    let(:status) { 'native' }
-
-    it 'finishes the import' do
-      expect { subject }
-        .to change { repository.reload.migration_state }.to('import_done')
-        .and change { repository.reload.migration_skipped_reason }.to('native_import')
-    end
-  end
-
-  context 'import_in_progress response' do
-    let(:status) { 'import_in_progress' }
-
-    it_behaves_like 'enforcing states coherence to', 'importing'
-  end
-
-  context 'import_complete response' do
-    let(:status) { 'import_complete' }
-
-    it 'finishes the import' do
-      expect { subject }.to change { repository.reload.migration_state }.to('import_done')
-    end
-  end
-
-  %w[import_canceled import_failed].each do |status|
-    context "#{status} response" do
-      let(:status) { status }
-
-      it_behaves_like 'retrying the import'
-    end
-  end
-
-  context 'pre_import_in_progress response' do
-    let(:status) { 'pre_import_in_progress' }
-
-    it_behaves_like 'enforcing states coherence to', 'pre_importing'
-  end
-
-  context 'pre_import_complete response' do
-    let(:status) { 'pre_import_complete' }
-
-    it 'finishes the pre_import and starts the import' do
-      expect(repository).to receive(:finish_pre_import).and_call_original
-      expect(repository).to receive(:migration_import).and_return(:ok)
-
-      expect { subject }.to change { repository.reload.migration_state }.to('importing')
-    end
-  end
-
-  %w[pre_import_canceled pre_import_failed].each do |status|
-    context "#{status} response" do
-      let(:status) { status }
-
-      it_behaves_like 'retrying the pre_import'
-    end
   end
 end

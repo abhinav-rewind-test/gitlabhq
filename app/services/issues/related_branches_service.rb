@@ -5,6 +5,8 @@
 module Issues
   class RelatedBranchesService < Issues::BaseService
     def execute(issue)
+      return [] unless can?(current_user, :read_code, project)
+
       branch_names_with_mrs = branches_with_merge_request_for(issue)
       branches = branches_with_iid_of(issue).reject { |b| branch_names_with_mrs.include?(b[:name]) }
 
@@ -16,7 +18,8 @@ module Issues
     def branch_data(branch)
       {
         name: branch[:name],
-        pipeline_status: pipeline_status(branch)
+        pipeline_status: pipeline_status(branch),
+        compare_path: branch_path(branch)
       }
     end
 
@@ -40,10 +43,17 @@ module Issues
       project.repository.list_refs(
         [Gitlab::Git::BRANCH_REF_PREFIX + "#{issue.iid}-*"]
       ).each_with_object([]) do |ref, results|
-        if ref.name.match?(branch_ref_regex)
-          results << { name: ref.name.delete_prefix(Gitlab::Git::BRANCH_REF_PREFIX), target: ref.target }
-        end
+        next unless ref.name.match?(branch_ref_regex)
+
+        branch_name = Gitlab::EncodingHelper.encode_utf8_with_escaping!(
+          ref.name.delete_prefix(Gitlab::Git::BRANCH_REF_PREFIX)
+        )
+        results << { name: branch_name, target: ref.target }
       end
+    end
+
+    def branch_path(branch)
+      Gitlab::Routing.url_helpers.project_compare_path(project, from: project.default_branch, to: branch[:name])
     end
   end
 end

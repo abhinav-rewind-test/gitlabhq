@@ -1,36 +1,42 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Geo
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Geo Nodes API (deprecated)
 ---
 
-# Geo Nodes API (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-WARNING:
-The Geo Nodes API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/369140) in GitLab 16.0
-and is planned for removal in v5 of the API. Use the [Geo Sites API](geo_sites.md) instead.
-This change is a breaking change.
+{{< /details >}}
 
-To interact with Geo node endpoints, you must authenticate yourself as an
-administrator.
+> [!warning]
+> The Geo Nodes API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/369140) in GitLab 16.0
+> and is planned for removal in v5 of the API. Use the [Geo Sites API](geo_sites.md) instead.
+> This change is a breaking change.
 
-## Create a new Geo node
+Use this API to manage [Geo nodes](../administration/geo/_index.md).
 
-Creates a new Geo node.
+Prerequisites:
+
+- You must be an administrator.
+
+## Create a Geo node
+
+Creates a Geo node.
 
 ```plaintext
 POST /geo_nodes
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes" \
-     --request POST \
-     -d "name=himynameissomething" \
-     -d "url=https://another-node.example.com/"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/geo_nodes" \
+  -d "name=himynameissomething" \
+  -d "url=https://another-node.example.com/"
 ```
 
 | Attribute                   | Type    | Required | Description                                                      |
@@ -72,7 +78,6 @@ Example response:
   "sync_object_storage": false,
   "clone_protocol": "http",
   "web_edit_url": "https://primary.example.com/admin/geo/sites/3/edit",
-  "web_geo_projects_url": "https://secondary.example.com/admin/geo/projects",
   "web_geo_replication_details_url": "https://secondary.example.com/admin/geo/sites/3/replication/lfs_objects",
   "_links": {
      "self": "https://primary.example.com/api/v4/geo_nodes/3",
@@ -82,18 +87,18 @@ Example response:
 }
 ```
 
-WARNING:
-The `web_geo_projects_url` attribute is in its end-of-life process. It is [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/80106)
-in GitLab 14.9.
+## List all Geo nodes
 
-## Retrieve configuration about all Geo nodes
+Lists all Geo nodes.
 
 ```plaintext
 GET /geo_nodes
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/geo_nodes"
 ```
 
 Example response:
@@ -143,7 +148,6 @@ Example response:
     "sync_object_storage": true,
     "clone_protocol": "http",
     "web_edit_url": "https://primary.example.com/admin/geo/sites/2/edit",
-    "web_geo_projects_url": "https://secondary.example.com/admin/geo/projects",
     "web_geo_replication_details_url": "https://secondary.example.com/admin/geo/sites/2/replication/lfs_objects",
     "_links": {
       "self":"https://primary.example.com/api/v4/geo_nodes/2",
@@ -154,18 +158,14 @@ Example response:
 ]
 ```
 
-WARNING:
-The `web_geo_projects_url` attribute is in its end-of-life process. It is [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/80106)
-in GitLab 14.9.
+## Retrieve a Geo node
 
-## Retrieve configuration about a specific Geo node
-
-```plaintext
-GET /geo_nodes/:id
-```
+Retrieves a specified Geo node.
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes/1"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/geo_nodes/1"
 ```
 
 Example response:
@@ -197,9 +197,9 @@ Example response:
 }
 ```
 
-## Edit a Geo node
+## Update a Geo node
 
-Updates settings of an existing Geo node.
+Updates a specified Geo node.
 
 ```plaintext
 PUT /geo_nodes/:id
@@ -244,7 +244,6 @@ Example response:
   "sync_object_storage": true,
   "clone_protocol": "http",
   "web_edit_url": "https://primary.example.com/admin/geo/sites/2/edit",
-  "web_geo_projects_url": "https://secondary.example.com/admin/geo/projects",
   "web_geo_replication_details_url": "https://secondary.example.com/admin/geo/sites/2/replication/lfs_objects",
   "_links": {
     "self":"https://primary.example.com/api/v4/geo_nodes/2",
@@ -254,13 +253,9 @@ Example response:
 }
 ```
 
-WARNING:
-The `web_geo_projects_url` attribute is in its end-of-life process. It is [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/80106)
-in GitLab 14.9.
-
 ## Delete a Geo node
 
-Removes the Geo node.
+Deletes a Geo node.
 
 ```plaintext
 DELETE /geo_nodes/:id
@@ -305,14 +300,18 @@ Example response:
 }
 ```
 
-## Retrieve status about all Geo nodes
+## List all Geo node statuses
+
+Lists all Geo node statuses.
 
 ```plaintext
 GET /geo_nodes/status
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes/status"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/geo_nodes/status"
 ```
 
 Example response:
@@ -626,6 +625,18 @@ Example response:
     "package_files_verification_failed_count": 0,
     "package_files_synced_in_percentage": "100.00%",
     "package_files_verified_in_percentage": "100.00%",
+    "packages_nuget_symbols_count": 5,
+    "packages_nuget_symbols_checksum_total_count": 5,
+    "packages_nuget_symbols_checksummed_count": 5,
+    "packages_nuget_symbols_checksum_failed_count": 0,
+    "packages_nuget_symbols_synced_count": 5,
+    "packages_nuget_symbols_failed_count": 0,
+    "packages_nuget_symbols_registry_count": 5,
+    "packages_nuget_symbols_verification_total_count": 5,
+    "packages_nuget_symbols_verified_count": 5,
+    "packages_nuget_symbols_verification_failed_count": 0,
+    "packages_nuget_symbols_synced_in_percentage": "100.00%",
+    "packages_nuget_symbols_verified_in_percentage": "100.00%",
     "terraform_state_versions_count": 5,
     "terraform_state_versions_checksum_total_count": 5,
     "terraform_state_versions_checksummed_count": 5,
@@ -750,14 +761,14 @@ Example response:
 ]
 ```
 
-## Retrieve status about a specific Geo node
+## Retrieve a Geo node status
 
-```plaintext
-GET /geo_nodes/:id/status
-```
+Retrieves a specified Geo node status.
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes/2/status"
+curl \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/geo_nodes/2/status"
 ```
 
 Example response:
@@ -970,48 +981,5 @@ Example response:
 }
 ```
 
-NOTE:
-The `health_status` parameter can only be in an "Healthy" or "Unhealthy" state, while the `health` parameter can be empty, "Healthy", or contain the actual error message.
-
-## Retrieve project sync or verification failures that occurred on the current node
-
-This only works on a secondary node.
-
-```plaintext
-GET /geo_nodes/current/failures
-```
-
-| Attribute | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `type`         | string  | no | Type of failed objects (`repository`/`wiki`) |
-| `failure_type` | string | no | Type of failures (`sync`/`checksum_mismatch`/`verification`) |
-
-This endpoint uses [Pagination](rest/index.md#pagination).
-
-```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/geo_nodes/current/failures"
-```
-
-Example response:
-
-```json
-[
-  {
-    "project_id": 3,
-    "last_repository_synced_at": "2017-10-31 14:25:55 UTC",
-    "last_repository_successful_sync_at": "2017-10-31 14:26:04 UTC",
-    "last_wiki_synced_at": "2017-10-31 14:26:04 UTC",
-    "last_wiki_successful_sync_at": "2017-10-31 14:26:11 UTC",
-    "repository_retry_count": null,
-    "wiki_retry_count": 1,
-    "last_repository_sync_failure": null,
-    "last_wiki_sync_failure": "Error syncing Wiki repository",
-    "last_repository_verification_failure": "",
-    "last_wiki_verification_failure": "",
-    "repository_verification_checksum_sha": "da39a3ee5e6b4b0d32e5bfef9a601890afd80709",
-    "wiki_verification_checksum_sha": "da39a3ee5e6b4b0d3255bfef9ef0189aafd80709",
-    "repository_checksum_mismatch": false,
-    "wiki_checksum_mismatch": false
-  }
-]
-```
+> [!note]
+> The `health_status` parameter can only be in a "Healthy" or "Unhealthy" state, while the `health` parameter can be empty, "Healthy", or contain the actual error message.

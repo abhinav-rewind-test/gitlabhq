@@ -132,6 +132,13 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
         end
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        get api("/groups/#{group.id}/labels", personal_access_token: pat)
+      end
+    end
   end
 
   describe 'GET :id/labels/:label_id' do
@@ -143,6 +150,13 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       expect(json_response['color']).to be_color(group_label1.color)
       expect(json_response['description']).to eq(group_label1.description)
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        get api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", personal_access_token: pat)
+      end
+    end
   end
 
   describe 'POST /groups/:id/labels' do
@@ -151,13 +165,15 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
         params: {
           name: valid_new_label_title,
           color: '#FFAABB',
-          description: 'test'
+          description: 'test',
+          archived: true
         }
 
       expect(response).to have_gitlab_http_status(:created)
       expect(json_response['name']).to eq(valid_new_label_title)
       expect(json_response['color']).to be_color('#FFAABB')
       expect(json_response['description']).to eq('test')
+      expect(json_response['archived']).to be_truthy
     end
 
     it 'returns created label when only required params are given' do
@@ -194,6 +210,17 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
 
       expect(response).to have_gitlab_http_status(:conflict)
       expect(json_response['message']).to eq('Label already exists')
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        post api("/groups/#{group.id}/labels", personal_access_token: pat),
+          params: {
+            name: valid_new_label_title,
+            color: '#FFAABB'
+          }
+      end
     end
   end
 
@@ -232,6 +259,20 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       let(:request) { api("/groups/#{group.id}/labels", user) }
       let(:params) { { name: group_label1.name } }
     end
+
+    context 'with valid label params' do
+      let(:api_path) { api("/groups/#{group.id}/labels", user) }
+      let(:label_title) { valid_new_label_title }
+
+      it_behaves_like 'ignores archived param when feature flag is disabled'
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        delete api("/groups/#{group.id}/labels", personal_access_token: pat), params: { name: group_label1.name }
+      end
+    end
   end
 
   describe 'DELETE /groups/:id/labels/:label_id' do
@@ -261,6 +302,13 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
 
     it_behaves_like '412 response' do
       let(:request) { api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", user) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        delete api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", personal_access_token: pat)
+      end
     end
   end
 
@@ -316,8 +364,20 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       put api("/groups/#{group.id}/labels", user), params: { name: group_label1.name }
 
       expect(response).to have_gitlab_http_status(:bad_request)
-      expect(json_response['error']).to eq('new_name, color, description are missing, '\
+      expect(json_response['error']).to eq('new_name, color, description, archived are missing, '\
                                            'at least one parameter must be provided')
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :update_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        put api("/groups/#{group.id}/labels", personal_access_token: pat),
+          params: {
+            name: group_label1.name,
+            new_name: valid_new_label_title,
+            color: '#FFFFFF'
+          }
+      end
     end
   end
 
@@ -363,8 +423,27 @@ RSpec.describe API::GroupLabels, feature_category: :team_planning do
       put api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", user)
 
       expect(response).to have_gitlab_http_status(:bad_request)
-      expect(json_response['error']).to eq('new_name, color, description are missing, '\
+      expect(json_response['error']).to eq('new_name, color, description, archived are missing, '\
                                            'at least one parameter must be provided')
+    end
+
+    context 'when updating archived status' do
+      let(:api_path) { api("/groups/#{group.id}/labels/#{group_label1.id}", user) }
+
+      let(:label) { group_label1 }
+
+      it_behaves_like 'updating labels archived status'
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :update_label do
+      let(:boundary_object) { group }
+      let(:request) do
+        put api("/groups/#{group.id}/labels/#{valid_group_label_title_1_esc}", personal_access_token: pat),
+          params: {
+            new_name: valid_new_label_title,
+            color: '#FFFFFF'
+          }
+      end
     end
   end
 

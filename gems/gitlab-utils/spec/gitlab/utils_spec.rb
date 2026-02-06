@@ -21,6 +21,10 @@ RSpec.describe Gitlab::Utils, feature_category: :shared do
     it 'returns false if path is not allowed' do
       expect(allowlisted?('/test/test', allowed_paths)).to be(false)
     end
+
+    it 'returns false if path is in different case' do
+      expect(allowlisted?('/Foo/bar', allowed_paths)).to be(false)
+    end
   end
 
   describe '.decode_path' do
@@ -43,15 +47,22 @@ RSpec.describe Gitlab::Utils, feature_category: :shared do
   end
 
   describe '.slugify' do
-    {
-      'TEST' => 'test',
-      'project_with_underscores' => 'project-with-underscores',
-      'namespace/project' => 'namespace-project',
-      'a' * 70 => 'a' * 63,
-      'test_trailing_' => 'test-trailing'
-    }.each do |original, expected|
-      it "slugifies #{original} to #{expected}" do
-        expect(slugify(original)).to eq(expected)
+    where(:original, :allow_dots, :expected) do
+      'TEST'                     | false | 'test'
+      'project_with_underscores' | false | 'project-with-underscores'
+      'namespace/project'        | false | 'namespace-project'
+      ('a' * 70)                 | false | ('a' * 63)
+      'test_trailing_'           | false | 'test-trailing'
+      '17.9'                     | false | '17-9'
+      '..17.9..'                 | true  | '17.9'
+      '-.-.17.9-.-.'             | true  | '17.9'
+      '17..9'                    | true  | '17..9'
+      '17.9'                     | nil   | '17-9'
+    end
+
+    with_them do
+      it "slugifies path according to settings" do
+        expect(slugify(original, allow_dots: allow_dots)).to eq(expected)
       end
     end
   end
@@ -523,6 +534,376 @@ RSpec.describe Gitlab::Utils, feature_category: :shared do
 
     it 'does not raise an exception when not running within a concurrent Ruby thread' do
       expect { raise_if_concurrent_ruby! }.not_to raise_error
+    end
+  end
+
+  describe '.to_rails_log_level' do
+    context 'with valid user input' do
+      where(:input, :expected_level) do
+        ::Logger::DEBUG   | :debug
+        ::Logger::INFO    | :info
+        ::Logger::WARN    | :warn
+        ::Logger::ERROR   | :error
+        ::Logger::FATAL   | :fatal
+        ::Logger::UNKNOWN | :unknown
+        0                 | :debug
+        1                 | :info
+        2                 | :warn
+        3                 | :error
+        4                 | :fatal
+        5                 | :unknown
+        '0'               | :debug
+        '1'               | :info
+        '2'               | :warn
+        '3'               | :error
+        '4'               | :fatal
+        '5'               | :unknown
+        'debug'           | :debug
+        'info'            | :info
+        'warn'            | :warn
+        'error'           | :error
+        'fatal'           | :fatal
+        'unknown'         | :unknown
+        'DEBUG'           | :debug
+        'INFO'            | :info
+        'WARN'            | :warn
+        'ERROR'           | :error
+        'FATAL'           | :fatal
+        'UNKNOWN'         | :unknown
+        :debug            | :debug
+        :info             | :info
+        :warn             | :warn
+        :error            | :error
+        :fatal            | :fatal
+        :unknown          | :unknown
+      end
+
+      with_them do
+        it 'returns the corresponding Rails log level' do
+          expect(described_class.to_rails_log_level(input)).to eq(expected_level)
+        end
+
+        it 'ignores the fallback' do
+          expect(described_class.to_rails_log_level(input, :debug)).to eq(expected_level)
+        end
+      end
+    end
+
+    context 'with invalid user input' do
+      context 'without a fallback' do
+        where(:input, :fallback, :expected_level) do
+          6     | nil | :info
+          'foo' | nil | :info
+          ''    | nil | :info
+          nil   | nil | :info
+        end
+
+        with_them do
+          it 'returns :info' do
+            expect(described_class.to_rails_log_level(input, fallback)).to eq(expected_level)
+          end
+        end
+      end
+
+      context 'with a valid fallback' do
+        where(:input, :fallback, :expected_level) do
+          6     | :debug          | :debug
+          'foo' | :debug          | :debug
+          ''    | :debug          | :debug
+          nil   | :debug          | :debug
+          6     | :info           | :info
+          'foo' | :info           | :info
+          ''    | :info           | :info
+          nil   | :info           | :info
+          6     | ::Logger::DEBUG | :debug
+          'foo' | 'warn'          | :warn
+          ''    | 'ERROR'         | :error
+        end
+
+        with_them do
+          it 'returns the fallback' do
+            expect(described_class.to_rails_log_level(input, fallback)).to eq(expected_level)
+          end
+        end
+      end
+
+      context 'with an invalid fallback' do
+        where(:input, :fallback, :expected_level) do
+          6     | 6     | :info
+          'foo' | 'foo' | :info
+          ''    | ''    | :info
+          nil   | nil   | :info
+        end
+
+        with_them do
+          it 'returns :info' do
+            expect(described_class.to_rails_log_level(input, fallback)).to eq(expected_level)
+          end
+        end
+      end
+    end
+  end
+
+  describe '.deep_sort_hash' do
+    it 'is an alias for .deep_sort_hashes' do
+      expect(JSON.generate(described_class.deep_sort_hash({ b: 2, a: 1 })))
+        .to eq(JSON.generate({ a: 1, b: 2 }))
+    end
+  end
+
+  describe '.deep_sort_hashes' do
+    it 'recursively sorts a hash with symbol keys' do
+      hash = {
+        z: "record-z",
+        e: { y: "nested-record-y", a: "nested-record-a", b: "nested-record-b" },
+        c: {
+          m: { p: "doubly-nested-record-p", o: "doubly-nested-record-o" },
+          k: { v: "doubly-nested-record-v", u: "doubly-nested-record-u" }
+        }
+      }
+      expect(JSON.generate(described_class.deep_sort_hashes(hash))).to eq(JSON.generate({
+        c: {
+          k: { u: "doubly-nested-record-u", v: "doubly-nested-record-v" },
+          m: { o: "doubly-nested-record-o", p: "doubly-nested-record-p" }
+
+        },
+        e: { a: "nested-record-a", b: "nested-record-b", y: "nested-record-y" },
+        z: "record-z"
+      }))
+    end
+
+    it 'recursively sorts a hash with mixed string and symbol keys' do
+      hash = {
+        z: "record-z",
+        'e' => { y: "nested-record-y", 'a' => "nested-record-a", 'b' => "nested-record-b" },
+        c: {
+          'm' => { p: "doubly-nested-record-p", 'o' => "doubly-nested-record-o" },
+          k: { 'v' => "doubly-nested-record-v", u: "doubly-nested-record-u" }
+        }
+      }
+      expect(JSON.generate(described_class.deep_sort_hashes(hash))).to eq(JSON.generate({
+        c: {
+          k: { u: "doubly-nested-record-u", 'v' => "doubly-nested-record-v" },
+          'm' => { 'o' => "doubly-nested-record-o", p: "doubly-nested-record-p" }
+        },
+        'e' => { 'a' => "nested-record-a", 'b' => "nested-record-b", y: "nested-record-y" },
+        z: "record-z"
+      }))
+    end
+
+    it 'recursively sorts a hash with nested hashes/arrays and mixed string/symbol keys' do
+      item = {
+        z: "record-z",
+        'e' => [
+          {
+            y: "nested-record-y",
+            'b' => "nested-record-b",
+            c: [{ 'z' => "this should remain the first element in the c: array" }, "a"]
+          },
+          "This non-Array/non-Hash object should remain the second element in the 'e' array",
+          { 'a' => "this should remain the third element in the 'e' array" }
+        ],
+        c: {
+          'm' => { p: "doubly-nested-record-p", 'o' => "doubly-nested-record-o" },
+          k: { 'v' => "doubly-nested-record-v", u: "doubly-nested-record-u" }
+        }
+      }
+      expect(JSON.generate(described_class.deep_sort_hashes(item))).to eq(JSON.generate({
+        c: {
+          k: { u: "doubly-nested-record-u", 'v' => "doubly-nested-record-v" },
+          'm' => { 'o' => "doubly-nested-record-o", p: "doubly-nested-record-p" }
+        },
+        'e' => [
+          {
+            'b' => "nested-record-b",
+            c: [{ 'z' => "this should remain the first element in the c: array" }, "a"],
+            y: "nested-record-y"
+          },
+          "This non-Array/non-Hash object should remain the second element in the 'e' array",
+          { 'a' => "this should remain the third element in the 'e' array" }
+        ],
+        z: "record-z"
+      }))
+    end
+
+    it 'recursively sorts an array with deeply nested hashes/arrays and mixed string/symbol keys' do
+      item = [
+        {
+          z: "record-z",
+          'e' => [
+            {
+              y: "nested-record-y",
+              'b' => "nested-record-b",
+              c: [{ 'z' => "this should remain the first element in the c: array" }, "a"]
+            },
+            "This non-Array/non-Hash object should remain the second element in the 'e' array",
+            { 'a' => "this should remain the third element in the 'e' array" }
+          ],
+          c: {
+            'm' => { p: "doubly-nested-record-p", 'o' => "doubly-nested-record-o" },
+            k: { 'v' => "doubly-nested-record-v", u: "doubly-nested-record-u" }
+          }
+        },
+        { "bb" => "bb", aa: "aa" },
+        { v: [[{ r: 2, q: 1 }, { t: 4, s: 3 }]] }
+      ]
+      actual = JSON.generate({ a: described_class.deep_sort_hashes(item) })
+      expected = JSON.generate({ a: [
+        {
+          c: {
+            k: { u: "doubly-nested-record-u", 'v' => "doubly-nested-record-v" },
+            'm' => { 'o' => "doubly-nested-record-o", p: "doubly-nested-record-p" }
+          },
+          'e' => [
+            {
+              'b' => "nested-record-b",
+              c: [{ 'z' => "this should remain the first element in the c: array" }, "a"],
+              y: "nested-record-y"
+            },
+            "This non-Array/non-Hash object should remain the second element in the 'e' array",
+            { 'a' => "this should remain the third element in the 'e' array" }
+          ],
+          z: "record-z"
+        },
+        { aa: "aa", "bb" => "bb" },
+        { v: [[{ q: 1, r: 2 }, { s: 3, t: 4 }]] }
+      ] })
+      expect(actual).to eq(expected)
+    end
+  end
+
+  describe '.param_key' do
+    where(:name, :result) do
+      'User'                                | 'user'
+      'SecureFile'                          | 'secure_file'
+      'Ci::SecureFile'                      | 'ci_secure_file'
+      'Gitlab::Ci::Reports::Security::Flag' | 'gitlab_ci_reports_security_flag'
+      'A::B::SomeClass'                     | 'a_b_some_class'
+      'HTTPSConnection'                     | 'https_connection'
+      'API::V4::ProjectsController'         | 'api_v4_projects_controller'
+      'OAuth2Provider'                      | 'o_auth2_provider'
+      'Special_Module::TestClass'           | 'special_module_test_class'
+    end
+
+    with_them do
+      context 'with defined classes' do
+        before do
+          stub_const(name, Class.new)
+        end
+
+        let(:klass) { name.constantize }
+
+        it 'converts class name to snake_case' do
+          expect(described_class.param_key(klass)).to eq(result)
+        end
+      end
+    end
+
+    context 'with anonymous classes' do
+      let(:klass) { Class.new }
+
+      it 'raises an error for anonymous classes' do
+        expect { described_class.param_key(klass) }.to raise_error(NoMethodError, /undefined method.*for nil/)
+      end
+    end
+  end
+
+  describe '.uuid_v7' do
+    # Helper method to get current time with precision based on extra_timestamp_bits
+    def current_uuid7_time(extra_timestamp_bits: 0)
+      denominator = (1 << extra_timestamp_bits).to_r
+      Process.clock_gettime(Process::CLOCK_REALTIME, :nanosecond)
+        .then { |ns| ((ns / 1_000_000r) * denominator).floor / denominator }
+        .then { |ms| Time.at(ms / 1000r, in: "+00:00") }
+    end
+
+    # Helper method to extract timestamp from UUID v7
+    def get_uuid7_time(uuid, extra_timestamp_bits: 0)
+      denominator     = (1 << extra_timestamp_bits) * 1000r
+      extra_chars     = extra_timestamp_bits / 4
+      last_char_bits  = extra_timestamp_bits % 4
+      extra_chars    += 1 if last_char_bits != 0
+      timestamp_re    = /\A(\h{8})-(\h{4})-7(\h{#{extra_chars}})/
+      timestamp_chars = uuid.match(timestamp_re).captures.join
+      timestamp       = timestamp_chars.to_i(16)
+      timestamp     >>= 4 - last_char_bits unless last_char_bits == 0
+      timestamp /= denominator
+      Time.at(timestamp, in: "+00:00")
+    end
+
+    context 'without extra_timestamp_bits' do
+      it 'generates a valid UUID v7 with correct format' do
+        uuid = described_class.uuid_v7
+        expect(uuid).to match(/\A\h{8}-\h{4}-7\h{3}-[89ab]\h{3}-\h{12}\z/)
+      end
+
+      it 'generates UUID with timestamp within expected range' do
+        t1 = current_uuid7_time
+        uuid = described_class.uuid_v7
+        t3 = current_uuid7_time
+
+        t2 = get_uuid7_time(uuid)
+
+        expect(t1).to be <= t2
+        expect(t2).to be <= t3
+      end
+
+      it 'generates unique UUIDs' do
+        uuid1 = described_class.uuid_v7
+        uuid2 = described_class.uuid_v7
+
+        expect(uuid1).not_to eq(uuid2)
+      end
+    end
+
+    context 'with extra_timestamp_bits' do
+      where(:extra_timestamp_bits) do
+        (0..12).to_a
+      end
+
+      with_them do
+        it 'generates valid UUID v7 with correct format' do
+          uuid = described_class.uuid_v7(extra_timestamp_bits: extra_timestamp_bits)
+          expect(uuid).to match(/\A\h{8}-\h{4}-7\h{3}-[89ab]\h{3}-\h{12}\z/)
+        end
+
+        it 'generates UUID with timestamp within expected range' do
+          t1 = current_uuid7_time(extra_timestamp_bits: extra_timestamp_bits)
+          uuid = described_class.uuid_v7(extra_timestamp_bits: extra_timestamp_bits)
+          t3 = current_uuid7_time(extra_timestamp_bits: extra_timestamp_bits)
+
+          t2 = get_uuid7_time(uuid, extra_timestamp_bits: extra_timestamp_bits)
+
+          expect(t1).to be <= t2
+          expect(t2).to be <= t3
+        end
+      end
+    end
+
+    context 'with invalid extra_timestamp_bits' do
+      it 'raises ArgumentError for negative values' do
+        expect { described_class.uuid_v7(extra_timestamp_bits: -1) }
+          .to raise_error(ArgumentError, 'extra_timestamp_bits must be in 0..12, got: -1')
+      end
+
+      it 'raises ArgumentError for values greater than 12' do
+        expect { described_class.uuid_v7(extra_timestamp_bits: 13) }
+          .to raise_error(ArgumentError, 'extra_timestamp_bits must be in 0..12, got: 13')
+      end
+
+      it 'raises ArgumentError for non-integer values' do
+        expect { described_class.uuid_v7(extra_timestamp_bits: 'invalid') }
+          .to raise_error(ArgumentError)
+      end
+    end
+
+    context 'with monotonicity' do
+      it 'maintains order for UUIDs with maximum extra_timestamp_bits' do
+        uuids = Array.new(5) { described_class.uuid_v7(extra_timestamp_bits: 12) }
+        timestamps = uuids.map { |uuid| get_uuid7_time(uuid, extra_timestamp_bits: 12) }
+
+        expect(timestamps).to eq(timestamps.sort)
+      end
     end
   end
 end

@@ -13,12 +13,13 @@ module MergeRequests
 
       return success unless save_approval(approval)
 
+      update_reviewer_state(merge_request, current_user, 'approved')
+
       reset_approvals_cache(merge_request)
 
       merge_request_activity_counter.track_approve_mr_action(user: current_user, merge_request: merge_request)
 
       trigger_merge_request_merge_status_updated(merge_request)
-      trigger_merge_request_reviewers_updated(merge_request)
       trigger_merge_request_approval_state_updated(merge_request)
 
       # Approval side effects (things not required to be done immediately but
@@ -28,7 +29,8 @@ module MergeRequests
       # Workers can subscribe to the `MergeRequests::ApprovedEvent`.
       Gitlab::EventStore.publish(
         MergeRequests::ApprovedEvent.new(
-          data: { current_user_id: current_user.id, merge_request_id: merge_request.id }
+          data: { current_user_id: current_user.id, merge_request_id: merge_request.id,
+                  approved_at: approval.created_at.iso8601 }
         )
       )
 

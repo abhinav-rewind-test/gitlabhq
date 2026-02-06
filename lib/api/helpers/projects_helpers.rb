@@ -30,6 +30,7 @@ module API
         optional :wiki_access_level, type: String, values: %w[disabled private enabled], desc: 'Wiki access level. One of `disabled`, `private` or `enabled`'
         optional :builds_access_level, type: String, values: %w[disabled private enabled], desc: 'Builds access level. One of `disabled`, `private` or `enabled`'
         optional :snippets_access_level, type: String, values: %w[disabled private enabled], desc: 'Snippets access level. One of `disabled`, `private` or `enabled`'
+        optional :package_registry_access_level, type: String, values: %w[disabled private enabled public], desc: 'Controls visibility of the package registry. One of `disabled`, `private`, `enabled` or `public`. `private` will make the package registry accessible only to project members (reporter role and above). `enabled` will make the package registry accessible to everyone who has access to the project. `public` will make the package registry accessible to everyone. `disabled` will disable the package registry'
         optional :pages_access_level, type: String, values: %w[disabled private enabled public], desc: 'Pages access level. One of `disabled`, `private`, `enabled` or `public`'
         optional :analytics_access_level, type: String, values: %w[disabled private enabled], desc: 'Analytics access level. One of `disabled`, `private` or `enabled`'
         optional :container_registry_access_level, type: String, values: %w[disabled private enabled], desc: 'Controls visibility of the container registry. One of `disabled`, `private` or `enabled`. `private` will make the container registry accessible only to project members (reporter role and above). `enabled` will make the container registry accessible to everyone who has access to the project. `disabled` will disable the container registry'
@@ -50,10 +51,12 @@ module API
         optional :enforce_auth_checks_on_uploads, type: Boolean, desc: 'Enforce auth check on uploads'
         optional :shared_runners_enabled, type: Boolean, desc: 'Flag indication if shared runners are enabled for that project'
         optional :group_runners_enabled, type: Boolean, desc: 'Flag indication if group runners are enabled for that project'
+        optional :resource_group_default_process_mode,  type: String, desc: 'The process mode of the resource group', values: ProjectCiCdSetting.resource_group_default_process_modes.keys
         optional :resolve_outdated_diff_discussions, type: Boolean, desc: 'Automatically resolve merge request diff threads on lines changed with a push'
         optional :remove_source_branch_after_merge, type: Boolean, desc: 'Remove the source branch by default after merge'
+        optional :packages_enabled, type: Boolean, desc: 'Deprecated: Use :package_registry_access_level instead. Enable project packages feature'
         optional :container_registry_enabled, type: Boolean, desc: 'Deprecated: Use :container_registry_access_level instead. Flag indication if the container registry is enabled for that project'
-        optional :container_expiration_policy_attributes, type: Hash do
+        optional :container_expiration_policy_attributes, type: Hash, desc: 'Object that contains information on the container expiration policy' do
           use :optional_container_expiration_policy_params
         end
         optional :lfs_enabled, type: Boolean, desc: 'Flag indication if Git LFS is enabled for that project'
@@ -73,16 +76,15 @@ module API
         optional :merge_commit_template, type: String, desc: 'Template used to create merge commit message'
         optional :squash_commit_template, type: String, desc: 'Template used to create squash commit message'
         optional :issue_branch_template, type: String, desc: 'Template used to create a branch from an issue'
-        optional :initialize_with_readme, type: Boolean, desc: "Initialize a project with a README.md"
         optional :auto_devops_enabled, type: Boolean, desc: 'Flag indication if Auto DevOps is enabled'
         optional :auto_devops_deploy_strategy, type: String, values: %w[continuous manual timed_incremental], desc: 'Auto Deploy strategy'
         optional :autoclose_referenced_issues, type: Boolean, desc: 'Flag indication if referenced issues auto-closing is enabled'
         optional :repository_storage, type: String, desc: 'Which storage shard the repository is on. Available only to admins'
-        optional :packages_enabled, type: Boolean, desc: 'Enable project packages feature'
         optional :squash_option, type: String, values: %w[never always default_on default_off], desc: 'Squash default for project. One of `never`, `always`, `default_on`, or `default_off`.'
         optional :mr_default_target_self, type: Boolean, desc: 'Merge requests of this forked project targets itself by default'
         optional :warn_about_potentially_unwanted_characters, type: Boolean, desc: 'Warn about potentially unwanted characters'
-        optional :repository_object_format, type: String, values: %w[sha1 sha256], desc: 'The object format of the project repository'
+        optional :merge_request_title_regex, type: String, desc: 'The regex the Merge Request must adhere to'
+        optional :merge_request_title_regex_description, type: String, desc: 'The description for the regex the Merge Request must adhere to'
       end
 
       params :optional_project_params_ee do
@@ -93,11 +95,17 @@ module API
         use :optional_project_params_ee
       end
 
+      params :optional_create_project_params_ce do
+        optional :repository_object_format, type: String, values: %w[sha1 sha256], desc: 'The object format of the project repository'
+        optional :initialize_with_readme, type: Boolean, desc: "Initialize a project with a README.md"
+      end
+
       params :optional_create_project_params_ee do
       end
 
       params :optional_create_project_params do
         use :optional_project_params
+        use :optional_create_project_params_ce
         use :optional_create_project_params_ee
       end
 
@@ -112,6 +120,11 @@ module API
         optional :ci_allow_fork_pipelines_to_run_in_parent_project, type: Boolean, desc: 'Allow fork merge request pipelines to run in parent project'
         optional :ci_separated_caches, type: Boolean, desc: 'Enable or disable separated caches based on branch protection.'
         optional :restrict_user_defined_variables, type: Boolean, desc: 'Restrict use of user-defined variables when triggering a pipeline'
+        optional :ci_pipeline_variables_minimum_override_role, values: %w[no_one_allowed developer maintainer owner], type: String, desc: 'Limit ability to override CI/CD variables when triggering a pipeline to only users with at least the set minimum role'
+        optional :ci_push_repository_for_job_token_allowed, type: Boolean, desc: "Allow pushing to this project's repository by authenticating with a CI/CD job token generated in this project."
+        optional :ci_id_token_sub_claim_components, type: Array[String], desc: 'Claims that will be used to build the sub claim in id tokens'
+        optional :ci_delete_pipelines_in_seconds, type: Integer, desc: 'Pipelines older than the configured time are deleted'
+        optional :max_artifacts_size, type: Integer, desc: "Set the maximum file size for each job's artifacts"
       end
 
       params :optional_update_params_ee do
@@ -131,6 +144,10 @@ module API
         optional :enabled, type: Boolean, desc: 'Flag indication if container expiration policy is enabled'
       end
 
+      params :share_project_params_ee do
+        # Overriden in EE
+      end
+
       def self.update_params_at_least_one_of
         [
           :allow_merge_on_skipped_pipeline,
@@ -145,6 +162,7 @@ module API
           :ci_config_path,
           :ci_default_git_depth,
           :ci_allow_fork_pipelines_to_run_in_parent_project,
+          :ci_id_token_sub_claim_components,
           :ci_forward_deployment_enabled,
           :ci_forward_deployment_rollback_allowed,
           :ci_separated_caches,
@@ -162,9 +180,12 @@ module API
           :merge_requests_template,
           :merge_trains_enabled,
           :merge_method,
+          :merge_request_title_regex,
+          :merge_request_title_regex_description,
           :name,
           :only_allow_merge_if_all_discussions_are_resolved,
           :only_allow_merge_if_pipeline_succeeds,
+          :package_registry_access_level,
           :pages_access_level,
           :path,
           :printing_merge_request_link_enabled,
@@ -180,6 +201,7 @@ module API
           :squash_option,
           :shared_runners_enabled,
           :group_runners_enabled,
+          :resource_group_default_process_mode,
           :snippets_access_level,
           :tag_list,
           :topics,
@@ -204,6 +226,10 @@ module API
           :model_experiments_access_level,
           :model_registry_access_level,
           :warn_about_potentially_unwanted_characters,
+          :ci_pipeline_variables_minimum_override_role,
+          :ci_push_repository_for_job_token_allowed,
+          :ci_delete_pipelines_in_seconds,
+          :max_artifacts_size,
 
           # TODO: remove in API v5, replaced by *_access_level
           :issues_enabled,
@@ -215,8 +241,7 @@ module API
         ]
       end
 
-      def filter_attributes_using_license!(attrs)
-      end
+      def filter_attributes_using_license!(attrs); end
 
       def validate_git_import_url!(import_url)
         return if import_url.blank?

@@ -2,10 +2,14 @@
 import { GlLoadingIcon } from '@gitlab/ui';
 import { s__ } from '~/locale';
 import { createAlert } from '~/alert';
+import { reportToSentry } from '~/ci/utils';
+import { getQueryHeaders } from '../graph/utils';
+import { POLL_INTERVAL } from '../graph/constants';
 import GetFailedJobsQuery from './graphql/queries/get_failed_jobs.query.graphql';
 import FailedJobsTable from './components/failed_jobs_table.vue';
 
 export default {
+  name: 'PipelineFailedJobsApp',
   components: {
     GlLoadingIcon,
     FailedJobsTable,
@@ -17,10 +21,17 @@ export default {
     pipelineIid: {
       default: '',
     },
+    graphqlResourceEtag: {
+      default: '',
+    },
   },
   apollo: {
     failedJobs: {
+      context() {
+        return getQueryHeaders(this.graphqlResourceEtag);
+      },
       query: GetFailedJobsQuery,
+      pollInterval: POLL_INTERVAL,
       variables() {
         return {
           fullPath: this.projectPath,
@@ -39,8 +50,9 @@ export default {
           };
         });
       },
-      error() {
+      error(error) {
         createAlert({ message: s__('Jobs|There was a problem fetching the failed jobs.') });
+        reportToSentry(this.$options.name, error);
       },
     },
   },

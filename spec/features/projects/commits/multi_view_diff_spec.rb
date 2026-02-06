@@ -19,6 +19,7 @@ RSpec.describe 'Multiple view Diffs', :js, feature_category: :source_code_manage
   let(:feature_flag_on) { false }
 
   before do
+    stub_feature_flags(rapid_diffs_on_commit_show: false)
     visit path
 
     wait_for_all_requests
@@ -31,7 +32,7 @@ RSpec.describe 'Multiple view Diffs', :js, feature_category: :source_code_manage
       let(:ref) { '54fcc214b94e78d7a41a9a8fe6d87a5e59500e51' }
 
       it 'does not change display for non-ipynb' do
-        expect(page).to have_selector line_with_content('new', 1)
+        expect(page).to have_selector line_with_content('new', 1), visible: :all
       end
     end
 
@@ -41,7 +42,7 @@ RSpec.describe 'Multiple view Diffs', :js, feature_category: :source_code_manage
       it 'does not change display for non-ipynb' do
         page.find('#parallel-diff-btn').click
 
-        expect(page).to have_selector line_with_content('new', 1)
+        expect(page).to have_selector line_with_content('new', 1), visible: :all
       end
     end
   end
@@ -82,12 +83,12 @@ RSpec.describe 'Multiple view Diffs', :js, feature_category: :source_code_manage
         page.find('#parallel-diff-btn').click
       end
 
-      it 'lines without mapping cannot receive comments' do
+      it 'lines without mapping cannot receive comments', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16783' do
         expect(page).not_to have_selector('td.line_content.nomappinginraw ~ td.diff-line-num > .add-diff-note')
         expect(page).to have_selector('td.line_content:not(.nomappinginraw) ~ td.diff-line-num > .add-diff-note')
       end
 
-      it 'lines numbers without mapping are empty' do
+      it 'lines numbers without mapping are empty', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16784' do
         expect(page).not_to have_selector('td.nomappinginraw + td.diff-line-num')
         expect(page).to have_selector('td.nomappinginraw + td.diff-line-num', visible: false)
       end

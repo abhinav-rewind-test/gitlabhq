@@ -19,6 +19,7 @@ module Gitlab
         def default_directives
           directives = default_directives_defaults
 
+          allow_vite_dev_server(directives)
           allow_development_tooling(directives)
           allow_websocket_connections(directives)
           allow_lfs(directives)
@@ -27,9 +28,7 @@ module Gitlab
           allow_sentry(directives)
           allow_framed_gitlab_paths(directives)
           allow_customersdot(directives)
-          allow_review_apps(directives)
           csp_level_3_backport(directives)
-          add_browsersdk_tracking(directives)
 
           directives
         end
@@ -48,7 +47,7 @@ module Gitlab
             'media_src' => "'self' data: blob: http: https:",
             'script_src' => ContentSecurityPolicy::Directives.script_src,
             'style_src' => ContentSecurityPolicy::Directives.style_src,
-            'worker_src' => "#{Gitlab::Utils.append_path(Gitlab.config.gitlab.url, 'assets/')} blob: data:",
+            'worker_src' => ContentSecurityPolicy::Directives.worker_src,
             'object_src' => "'none'",
             'report_uri' => nil
           }
@@ -74,6 +73,26 @@ module Gitlab
           append_to_directive(directives, 'connect_src', "#{http_url} #{ws_url}")
         end
 
+        def allow_vite_dev_server(directives)
+          return unless Rails.env.development? || Rails.env.test?
+
+          protocol = ViteRuby.config.https ? 'wss' : 'ws'
+          ws_origin = "#{protocol}://#{ViteRuby.config.host_with_port}"
+          # We need both Websocket and HTTP URLs because Vite will attempt to ping
+          # the HTTP URL if the Websocket isn't available:
+          # https://github.com/vitejs/vite/blob/899d9b1d272b7057aafc6fa01570d40f288a473b/packages/vite/src/client/client.ts#L320-L327
+          hmr_ws_url = Gitlab::Utils.append_path(ws_origin, 'assets/vite/')
+          http_path = Gitlab::Utils.append_path(ViteRuby.config.origin, 'assets/vite/')
+
+          # http_path is used for openInEditorHost feature
+          # https://devtools.vuejs.org/getting-started/open-in-editor#customize-request
+
+          append_to_directive(directives, 'connect_src', "#{hmr_ws_url} #{http_path}")
+          append_to_directive(directives, 'worker_src', http_path)
+          append_to_directive(directives, 'style_src', http_path)
+          append_to_directive(directives, 'font_src', http_path)
+        end
+
         def allow_letter_opener(directives)
           url = Gitlab::Utils.append_path(Gitlab.config.gitlab.url, '/rails/letter_opener/')
           append_to_directive(directives, 'frame_src', url)
@@ -82,16 +101,6 @@ module Gitlab
         def allow_snowplow_micro(directives)
           url = URI.join(Gitlab::Tracking::Destinations::SnowplowMicro.new.uri, '/').to_s
           append_to_directive(directives, 'connect_src', url)
-        end
-
-        def add_browsersdk_tracking(directives)
-          return if directives.blank?
-          return unless Gitlab.com? && ENV['GITLAB_ANALYTICS_URL'].present?
-
-          default_connect_src = directives['connect-src'] || directives['default-src']
-          connect_src_values = Array.wrap(default_connect_src) | [ENV['GITLAB_ANALYTICS_URL']]
-
-          append_to_directive(directives, 'connect_src', connect_src_values.join(' '))
         end
 
         def allow_lfs(directives)
@@ -133,24 +142,11 @@ module Gitlab
         end
 
         def allow_sentry(directives)
-          allow_legacy_sentry(directives) if legacy_sentry_configured?
           return unless sentry_client_side_dsn_enabled?
 
           sentry_uri = URI(Gitlab::CurrentSettings.sentry_clientside_dsn)
 
           append_to_directive(directives, 'connect_src', "#{sentry_uri.scheme}://#{sentry_uri.host}")
-        end
-
-        def allow_legacy_sentry(directives)
-          # Support for Sentry setup via configuration files will be removed in 16.0
-          # in favor of Gitlab::CurrentSettings.
-          sentry_uri = URI(Gitlab.config.sentry.clientside_dsn)
-
-          append_to_directive(directives, 'connect_src', "#{sentry_uri.scheme}://#{sentry_uri.host}")
-        end
-
-        def legacy_sentry_configured?
-          Gitlab.config.sentry&.enabled && Gitlab.config.sentry&.clientside_dsn
         end
 
         def sentry_client_side_dsn_enabled?
@@ -170,13 +166,6 @@ module Gitlab
           return unless customersdot_host
 
           append_to_directive(directives, 'frame_src', customersdot_host)
-        end
-
-        def allow_review_apps(directives)
-          return unless ENV['REVIEW_APPS_ENABLED'].presence
-
-          # Allow-listed to allow POSTs to https://gitlab.com/api/v4/projects/278964/merge_requests/:merge_request_iid/visual_review_discussions
-          append_to_directive(directives, 'connect_src', 'https://gitlab.com/api/v4/projects/278964/merge_requests/')
         end
 
         # The follow contains workarounds to patch Safari's lack of support for CSP Level 3

@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
 require 'yaml'
 require 'digest/sha2'
 require 'did_you_mean'
@@ -18,18 +17,17 @@ module RuboCop
 
     # List of feature categories which are not defined in config/feature_categories.yml
     # https://docs.gitlab.com/ee/development/feature_categorization/#tooling-feature-category
-    # https://docs.gitlab.com/ee/development/feature_categorization/#shared-feature-category
-    CUSTOM_CATEGORIES = %w[
+    RSPEC_CATEGORIES = %w[
       tooling
-      shared
+      test_platform
     ].to_set.freeze
 
     def self.available
       @available ||= YAML.load_file(CONFIG_PATH).to_set
     end
 
-    def self.available_with_custom
-      @available_with_custom ||= available.union(CUSTOM_CATEGORIES)
+    def self.available_for_rspec
+      @available_rspec ||= available.union(RSPEC_CATEGORIES)
     end
 
     # Used by RuboCop to invalidate its cache if the contents of
@@ -50,7 +48,7 @@ module RuboCop
       if value_node
         if !value_node.sym_type?
           yield MSG_SYMBOL
-        elsif !categories.include?(value_node.value.to_s) # rubocop:disable Rails/NegateInclude
+        elsif !categories.include?(value_node.value.to_s)
           yield format_message(value_node.value, document_link: document_link)
         end
       else

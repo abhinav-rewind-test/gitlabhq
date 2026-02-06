@@ -12,7 +12,7 @@ class EnvironmentStatus
   delegate :deployable, to: :deployment, allow_nil: true
 
   def self.for_merge_request(mr, user)
-    build_environments_status(mr, user, mr.actual_head_pipeline)
+    build_environments_status(mr, user, mr.diff_head_pipeline)
   end
 
   def self.after_merge_request(mr, user)
@@ -56,12 +56,6 @@ class EnvironmentStatus
     end
   end
 
-  def has_metrics?
-    strong_memoize(:has_metrics) do
-      deployment_metrics.has_metrics?
-    end
-  end
-
   def changes
     strong_memoize(:changes) do
       has_route_map? ? changed_files.map { |file| build_change(file) }.compact : []
@@ -80,10 +74,6 @@ class EnvironmentStatus
   private
 
   PAGE_EXTENSIONS = /\A\.(s?html?|php|asp|cgi|pl)\z/i
-
-  def deployment_metrics
-    @deployment_metrics ||= DeploymentMetrics.new(project, deployment)
-  end
 
   def build_change(file)
     public_path = project.public_path_for_source_path(file.new_path, sha)

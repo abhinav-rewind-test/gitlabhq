@@ -28,6 +28,11 @@ export default {
       required: false,
       default: '',
     },
+    compositeIdentityEnforced: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   computed: {
     hasPronouns() {
@@ -35,6 +40,9 @@ export default {
     },
     isBusy() {
       return isUserBusy(this.availability);
+    },
+    isAgent() {
+      return this.compositeIdentityEnforced;
     },
   },
 };
@@ -44,15 +52,23 @@ export default {
     <gl-sprintf :message="s__('UserAvailability|%{author}%{badgeStart}Busy%{badgeEnd}')">
       <template #author
         ><span>{{ name }}</span
-        ><span v-if="hasPronouns" class="gl-text-gray-500 gl-font-sm gl-font-weight-normal gl-ml-1"
+        ><span v-if="hasPronouns" class="gl-ml-1 gl-text-sm gl-font-normal gl-text-subtle"
           >({{ pronouns }})</span
         ></template
       >
       <template #badge="{ content }">
-        <gl-badge v-if="isBusy" size="sm" variant="warning" class="gl-ml-2">
+        <gl-badge v-if="isBusy" variant="warning" class="gl-ml-2" data-testid="busy-badge">
           {{ content }}
         </gl-badge>
       </template>
     </gl-sprintf>
+    <gl-badge
+      v-if="isAgent"
+      variant="neutral"
+      class="gl-ml-2"
+      data-testid="user-name-with-status-agent-badge"
+    >
+      {{ __('AI') }}
+    </gl-badge>
   </span>
 </template>

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Diff::File do
+RSpec.describe Gitlab::Diff::File, feature_category: :source_code_management do
   include RepoHelpers
 
   let_it_be(:project) { create(:project, :repository) }
@@ -51,6 +51,22 @@ RSpec.describe Gitlab::Diff::File do
     ).execute
 
     project.commit(branch_name).diffs.diff_files.first
+  end
+
+  describe 'linked attribute' do
+    it 'defaults to false' do
+      expect(diff_file.linked).to be(false)
+    end
+
+    it 'can be set to true' do
+      diff_file.linked = true
+      expect(diff_file.linked).to be(true)
+    end
+
+    it 'can be set to false' do
+      diff_file.linked = false
+      expect(diff_file.linked).to be(false)
+    end
   end
 
   describe 'delegated methods' do
@@ -161,6 +177,16 @@ RSpec.describe Gitlab::Diff::File do
       context 'when not modified' do
         it 'is nil' do
           expect(diff_file).to receive(:modified_file?).and_return(false)
+
+          expect(diff_file.rendered).to be_nil
+        end
+      end
+
+      context 'when notebook parsing fails' do
+        it 'returns nil' do
+          rendered_diff_file = instance_double(Gitlab::Diff::Rendered::Notebook::DiffFile)
+          allow(Gitlab::Diff::Rendered::Notebook::DiffFile).to receive(:new).and_return(rendered_diff_file)
+          allow(rendered_diff_file).to receive(:rendered).and_return(nil)
 
           expect(diff_file.rendered).to be_nil
         end
@@ -287,36 +313,16 @@ RSpec.describe Gitlab::Diff::File do
   end
 
   describe '#old_blob and #new_blob' do
-    context 'when increase_diff_file_performance is on' do
-      let(:diff_file) do
-        described_class.new(diff, diff_refs: commit.diff_refs, repository: project.repository, max_blob_size: max_blob_size)
-      end
+    let(:diff_file) do
+      described_class.new(diff, diff_refs: commit.diff_refs, repository: project.repository, max_blob_size: max_blob_size)
+    end
 
-      let(:max_blob_size) { 1000 }
+    let(:max_blob_size) { 1000 }
 
-      before do
-        stub_feature_flags(increase_diff_file_performance: true)
-      end
+    context 'when the blobs are truncated' do
+      let(:max_blob_size) { 10 }
 
-      context 'when the blobs are truncated' do
-        let(:max_blob_size) { 10 }
-
-        it 'returns the truncated blobs' do
-          items = [
-            [diff_file.new_content_sha, diff_file.new_path], [diff_file.old_content_sha, diff_file.old_path]
-          ]
-
-          expect(project.repository).to receive(:blobs_at).with(items, blob_size_limit: max_blob_size).and_call_original
-
-          old_data = diff_file.old_blob.data
-          data = diff_file.new_blob.data
-
-          expect(old_data.size).to eq(max_blob_size)
-          expect(data.size).to eq(max_blob_size)
-        end
-      end
-
-      it 'returns blob of base commit and the new commit' do
+      it 'returns the truncated blobs' do
         items = [
           [diff_file.new_content_sha, diff_file.new_path], [diff_file.old_content_sha, diff_file.old_path]
         ]
@@ -326,32 +332,38 @@ RSpec.describe Gitlab::Diff::File do
         old_data = diff_file.old_blob.data
         data = diff_file.new_blob.data
 
-        expect(old_data).to include('raise "System commands must be given as an array of strings"')
-        expect(data).to include('raise RuntimeError, "System commands must be given as an array of strings"')
+        expect(old_data.size).to eq(max_blob_size)
+        expect(data.size).to eq(max_blob_size)
       end
     end
 
-    context 'when increase_diff_file_performance is off' do
-      let(:diff_file) do
-        described_class.new(diff, diff_refs: commit.diff_refs, repository: project.repository)
-      end
+    it 'returns blob of base commit and the new commit' do
+      items = [
+        [diff_file.new_content_sha, diff_file.new_path], [diff_file.old_content_sha, diff_file.old_path]
+      ]
 
-      before do
-        stub_feature_flags(increase_diff_file_performance: false)
-      end
+      expect(project.repository).to receive(:blobs_at).with(items, blob_size_limit: max_blob_size).and_call_original
 
-      it 'returns blob of base commit and the new commit' do
+      old_data = diff_file.old_blob.data
+      data = diff_file.new_blob.data
+
+      expect(old_data).to include('raise "System commands must be given as an array of strings"')
+      expect(data).to include('raise RuntimeError, "System commands must be given as an array of strings"')
+    end
+
+    context 'when max_blob_size is nil' do
+      let(:max_blob_size) { nil }
+
+      it 'uses highlight limit' do
         items = [
           [diff_file.new_content_sha, diff_file.new_path], [diff_file.old_content_sha, diff_file.old_path]
         ]
 
-        expect(project.repository).to receive(:blobs_at).with(items, blob_size_limit: Gitlab::Git::Blob::MAX_DATA_DISPLAY_SIZE).and_call_original
+        expect(project.repository)
+          .to receive(:blobs_at).with(items, blob_size_limit: Gitlab::Highlight.file_size_limit).and_call_original
 
-        old_data = diff_file.old_blob.data
-        data = diff_file.new_blob.data
-
-        expect(old_data).to include('raise "System commands must be given as an array of strings"')
-        expect(data).to include('raise RuntimeError, "System commands must be given as an array of strings"')
+        diff_file.old_blob
+        diff_file.new_blob
       end
     end
   end
@@ -368,7 +380,6 @@ RSpec.describe Gitlab::Diff::File do
           message: 'Add attributes',
           actions: [{ action: :update, file_path: '.gitattributes', content: "*.md -diff\n" }]
         )
-        project.repository.copy_gitattributes('master')
       end
 
       it "returns true for files that do not have attributes" do
@@ -483,6 +494,12 @@ RSpec.describe Gitlab::Diff::File do
   describe '#file_identifier_hash' do
     it 'returns a hash of file_identifier' do
       expect(diff_file.file_identifier_hash).to eq(Digest::SHA1.hexdigest(diff_file.file_identifier))
+    end
+  end
+
+  describe '#code_review_id' do
+    it 'returns a hash' do
+      expect(diff_file.code_review_id).to match(/\A[0-9a-f]{40}\z/)
     end
   end
 
@@ -912,8 +929,16 @@ RSpec.describe Gitlab::Diff::File do
     end
 
     describe '#content_changed?' do
-      it 'returns false' do
-        expect(diff_file).not_to be_content_changed
+      it 'returns true' do
+        expect(diff_file).to be_content_changed
+      end
+
+      context 'when head_sha is nil' do
+        let(:blank_diff_refs) { Gitlab::Diff::DiffRefs.new(base_sha: Gitlab::Git::SHA1_BLANK_SHA, head_sha: nil) }
+
+        it 'returns true' do
+          expect(diff_file).to be_content_changed
+        end
       end
     end
   end
@@ -948,7 +973,7 @@ RSpec.describe Gitlab::Diff::File do
 
       it 'returns raw diff up to given line index' do
         allow(diff_file).to receive(:raw_diff) { raw_diff }
-        diff_line = instance_double(Gitlab::Diff::Line, index: 4)
+        diff_line = instance_double(Gitlab::Diff::Line, index: 5)
 
         diff_hunk = <<~EOS
           @@ -6,12 +6,18 @@ module Popen
@@ -1156,6 +1181,231 @@ RSpec.describe Gitlab::Diff::File do
 
           expect(diff_file.fully_expanded?).to be_truthy
         end
+      end
+    end
+  end
+
+  describe '#ai_reviewable?' do
+    let(:diffable?) { true }
+    let(:text?) { true }
+
+    before do
+      allow(diff_file).to receive(:diffable?).and_return(diffable?)
+      allow(diff_file).to receive(:text?).and_return(text?)
+    end
+
+    subject(:ai_reviewable?) { diff_file.ai_reviewable? }
+
+    it { is_expected.to eq(true) }
+
+    context 'when not diffable' do
+      let(:diffable?) { false }
+
+      it { is_expected.to eq(false) }
+    end
+
+    context 'when not text' do
+      let(:text?) { false }
+
+      it { is_expected.to eq(false) }
+    end
+  end
+
+  describe '#diffable_text?' do
+    subject(:diffable_text?) { diff_file.diffable_text? }
+
+    it 'returns true for text diffs' do
+      expect(diffable_text?).to eq(true)
+    end
+
+    it 'returns false for non text files' do
+      allow(diff_file).to receive(:text?).and_return(false)
+      expect(diffable_text?).to eq(false)
+    end
+
+    it 'returns false for non diffable files' do
+      allow(diff_file).to receive(:diffable?).and_return(false)
+      expect(diffable_text?).to eq(false)
+    end
+
+    it 'returns false for too large' do
+      allow(diff_file).to receive(:too_large?).and_return(true)
+      expect(diffable_text?).to eq(false)
+    end
+  end
+
+  describe '#whitespace_only?' do
+    subject(:whitespace_only?) { diff_file.whitespace_only? }
+
+    it 'returns true for non-collapsed empty diffs' do
+      allow(diff_file).to receive(:collapsed?).and_return(false)
+      allow(diff_file).to receive(:diff_lines_for_serializer).and_return(nil)
+      allow(diff_file).to receive(:added_lines).and_return(2)
+      allow(diff_file).to receive(:removed_lines).and_return(2)
+      expect(whitespace_only?).to eq(true)
+    end
+
+    context 'when file is binary' do
+      before do
+        allow(diff_file).to receive(:text?).and_return(false)
+      end
+
+      it 'returns false without triggering syntax highlighting' do
+        expect(diff_file).not_to receive(:diff_lines_for_serializer)
+        expect(whitespace_only?).to be false
+      end
+    end
+  end
+
+  describe '#image_diff?' do
+    subject(:image_diff?) { diff_file.image_diff? }
+
+    it 'returns true for image diffs' do
+      allow(diff_file).to receive_messages(different_type?: false, external_storage_error?: false)
+      allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
+      expect(image_diff?).to eq(true)
+    end
+
+    it 'returns false for different types' do
+      allow(diff_file).to receive_messages(different_type?: true, external_storage_error?: false)
+      allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
+      expect(image_diff?).to eq(false)
+    end
+
+    it 'returns false for storage error' do
+      allow(diff_file).to receive_messages(different_type?: false, external_storage_error?: true)
+      allow(DiffViewer::Image).to receive(:can_render?).and_return(true)
+      expect(image_diff?).to eq(false)
+    end
+  end
+
+  describe '#modified_file?' do
+    subject(:modified_file?) { diff_file.modified_file? }
+
+    before do
+      allow(diff_file).to receive_messages(new_file?: false, deleted_file?: false, content_changed?: false)
+    end
+
+    it 'returns true for new file' do
+      allow(diff_file).to receive(:new_file?).and_return(true)
+      expect(modified_file?).to eq(true)
+    end
+
+    it 'returns true for deleted file' do
+      allow(diff_file).to receive(:deleted_file?).and_return(true)
+      expect(modified_file?).to eq(true)
+    end
+
+    it 'returns true for changed file' do
+      allow(diff_file).to receive(:content_changed?).and_return(true)
+      expect(modified_file?).to eq(true)
+    end
+  end
+
+  describe '#diff_lines_with_match_tail' do
+    subject(:lines) { diff_file.diff_lines_with_match_tail }
+
+    it { expect(lines.last.type).to eq('match') }
+  end
+
+  describe '#viewer_hunks' do
+    it { expect(diff_file.viewer_hunks).to all(be_instance_of(Gitlab::Diff::ViewerHunk)) }
+  end
+
+  describe '#rendered?' do
+    it { expect(diff_file.rendered?).to be_falsy }
+  end
+
+  describe '#no_preview?' do
+    subject(:no_preview?) { diff_file.no_preview? }
+
+    it 'returns true for collapsed file' do
+      allow(diff_file).to receive(:collapsed?).and_return(true)
+      expect(no_preview?).to eq(true)
+    end
+
+    it 'returns true for unmodified file' do
+      allow(diff_file).to receive(:modified_file?).and_return(false)
+      expect(no_preview?).to eq(true)
+    end
+
+    it 'returns false for submodule' do
+      allow(diff_file).to receive(:submodule?).and_return(true)
+      expect(no_preview?).to eq(false)
+    end
+
+    context 'with empty files' do
+      it 'returns true for empty file without content change' do
+        allow(diff_file).to receive_messages(empty?: true, content_changed?: false)
+        expect(no_preview?).to eq(true)
+      end
+
+      it 'returns false for empty file with content change' do
+        allow(diff_file).to receive_messages(empty?: true, content_changed?: true)
+        expect(no_preview?).to eq(false)
+      end
+    end
+  end
+
+  describe '#expand_to_full!' do
+    context 'when blob is text' do
+      let(:commit) { project.commit_by(oid: '570e7b2abdd848b95f2f578043fc23bd6f6fd24d') }
+      let(:diff_file) { commit.diffs(expanded: true).diff_file_with_new_path('files/ruby/popen.rb') }
+
+      it 'expands to show full blob content' do
+        original_diff_lines_count = diff_file.diff_lines.count
+        diff_file.expand_to_full!
+        expanded_lines_count = diff_file.highlighted_diff_lines.count
+
+        expect(expanded_lines_count).to be > original_diff_lines_count
+      end
+
+      it 'includes deleted lines in the expanded output' do
+        diff_file.expand_to_full!
+
+        deleted_lines = diff_file.highlighted_diff_lines.select { |line| line.type == 'old' }
+        expect(deleted_lines).not_to be_empty
+      end
+
+      it 'positions deletions correctly' do
+        diff_file.expand_to_full!
+
+        lines = diff_file.highlighted_diff_lines
+        old_lines = lines.select { |l| l.type == 'old' && l.old_pos }
+        old_positions = old_lines.map(&:old_pos)
+
+        expect(old_positions).to eq(old_positions.sort)
+      end
+
+      it 'preserves line codes on changed lines for commenting' do
+        diff_file.expand_to_full!
+
+        expanded_lines = diff_file.highlighted_diff_lines
+        changed_lines = expanded_lines.select { |l| l.added? || l.removed? }
+
+        # All changed lines should have line codes for commenting
+        expect(changed_lines).to all(have_attributes(line_code: be_present))
+      end
+
+      it 'returns true after expand_to_full is called' do
+        diff_file.expand_to_full!
+
+        expect(diff_file.manually_expanded?).to eq(true)
+      end
+
+      it 'returns false before expand_to_ful is called' do
+        expect(diff_file.manually_expanded?).to eq(false)
+      end
+    end
+
+    context 'when blob is binary' do
+      let(:commit) { project.commit_by(oid: '913c66a37b4a45b9769037c55c2d238bd0942d2e') }
+      let(:diff_file) { commit.diffs.diff_files.find(&:binary?) }
+
+      it 'does not expand the diff file' do
+        expect(diff_file).not_to receive(:highlighted_diff_lines=)
+
+        diff_file.expand_to_full!
       end
     end
   end

@@ -3,6 +3,10 @@
 module Gitlab
   module Metrics
     class RequestsRackMiddleware
+      include Gitlab::Metrics::SliConfig
+
+      puma_enabled!
+
       HTTP_METHODS = {
         "delete" => %w[200 202 204 303 400 401 403 404 500 503],
         "get" => %w[200 204 301 302 303 304 307 400 401 403 404 410 422 429 500 503],
@@ -23,9 +27,9 @@ module Gitlab
       # with an explosion in unused metric combinations, but we want the
       # most common ones to be always present.
       FEATURE_CATEGORIES_TO_INITIALIZE = ['system_access',
-                                          'code_review_workflow', 'continuous_integration',
-                                          'not_owned', 'source_code_management',
-                                          FEATURE_CATEGORY_DEFAULT].freeze
+        'code_review_workflow', 'continuous_integration',
+        'not_owned', 'source_code_management',
+        FEATURE_CATEGORY_DEFAULT].freeze
 
       REQUEST_URGENCY_KEY = 'gitlab.request_urgency'
 
@@ -43,14 +47,14 @@ module Gitlab
 
       def self.http_request_duration_seconds
         ::Gitlab::Metrics.histogram(:http_request_duration_seconds, 'Request handling execution time',
-                                    {}, [0.05, 0.1, 0.25, 0.5, 0.7, 1, 2.5, 5, 10, 25])
+          {}, [0.05, 0.1, 0.25, 0.5, 0.7, 1, 2.5, 5, 10, 25])
       end
 
       def self.http_health_requests_total
         ::Gitlab::Metrics.counter(:http_health_requests_total, 'Health endpoint request count')
       end
 
-      def self.initialize_metrics
+      def self.initialize_slis!
         # This initialization is done to avoid gaps in scraped metrics after
         # restarts. It makes sure all counters/histograms are available at
         # process start.

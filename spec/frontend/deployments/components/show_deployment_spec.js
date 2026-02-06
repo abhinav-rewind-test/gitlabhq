@@ -9,6 +9,7 @@ import { toggleQueryPollingByVisibility } from '~/graphql_shared/utils';
 import ShowDeployment from '~/deployments/components/show_deployment.vue';
 import DeploymentHeader from '~/deployments/components/deployment_header.vue';
 import DeploymentDeployBlock from '~/deployments/components/deployment_deploy_block.vue';
+import DeploymentAside from '~/deployments/components/deployment_aside.vue';
 import deploymentQuery from '~/deployments/graphql/queries/deployment.query.graphql';
 import environmentQuery from '~/deployments/graphql/queries/environment.query.graphql';
 import waitForPromises from 'helpers/wait_for_promises';
@@ -23,6 +24,7 @@ const PROJECT_PATH = 'group/project';
 const ENVIRONMENT_NAME = mockEnvironmentFixture.data.project.environment.name;
 const DEPLOYMENT_IID = mockDeploymentFixture.data.project.deployment.iid;
 const GRAPHQL_ETAG_KEY = 'project/environments';
+const PROTECTED_ENVIRONMENTS_SETTINGS_PATH = '/settings/ci_cd#js-protected-environments-settings';
 
 describe('~/deployments/components/show_deployment.vue', () => {
   let wrapper;
@@ -47,6 +49,8 @@ describe('~/deployments/components/show_deployment.vue', () => {
         environmentName: ENVIRONMENT_NAME,
         deploymentIid: DEPLOYMENT_IID,
         graphqlEtagKey: GRAPHQL_ETAG_KEY,
+        protectedEnvironmentsAvailable: true,
+        protectedEnvironmentsSettingsPath: PROTECTED_ENVIRONMENTS_SETTINGS_PATH,
       },
       stubs: {
         GlSprintf,
@@ -86,6 +90,20 @@ describe('~/deployments/components/show_deployment.vue', () => {
     });
   });
 
+  describe('loading', () => {
+    beforeEach(() => {
+      createComponent();
+    });
+
+    it('shows the header component in a loading state', () => {
+      expect(findHeader().props('loading')).toBe(true);
+    });
+
+    it('shows the aside component in a loading state', () => {
+      expect(wrapper.findComponent(DeploymentAside).props('loading')).toBe(true);
+    });
+  });
+
   describe('page', () => {
     beforeEach(() => {
       deploymentQueryResponse.mockResolvedValue(mockDeploymentFixture);
@@ -120,7 +138,7 @@ describe('~/deployments/components/show_deployment.vue', () => {
       return createComponent();
     });
 
-    it('should set up a toggle visiblity hook on mount', () => {
+    it('should set up a toggle visibility hook on mount', () => {
       expect(toggleQueryPollingByVisibility).toHaveBeenCalled();
     });
   });

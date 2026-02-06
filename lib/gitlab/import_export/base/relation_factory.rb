@@ -5,10 +5,11 @@ module Gitlab
     module Base
       class RelationFactory
         include Gitlab::Utils::StrongMemoize
+        include Import::UsernameMentionRewriter
 
         IMPORTED_OBJECT_MAX_RETRIES = 5
 
-        OVERRIDES = {}.freeze
+        OVERRIDES = { user_contributions: :user, merge_schedule: 'MergeRequests::MergeSchedule', merge_data: 'MergeRequests::MergeData' }.freeze
         EXISTING_OBJECT_RELATIONS = %i[].freeze
 
         # This represents all relations that have unique key on `project_id` or `group_id`
@@ -31,7 +32,7 @@ module Gitlab
 
         TOKEN_RESET_MODELS = %i[Project Namespace Group Ci::Trigger Ci::Build Ci::Runner ProjectHook ErrorTracking::ProjectErrorTrackingSetting].freeze
 
-        attr_reader :relation_name, :importable
+        attr_reader :relation_name, :relation_hash, :importable
 
         def self.create(*args, **kwargs)
           new(*args, **kwargs).create
@@ -41,12 +42,16 @@ module Gitlab
           # There are scenarios where the model is pluralized (e.g.
           # MergeRequest::Metrics), and we don't want to force it to singular
           # with #classify.
+          overridden_relation = OVERRIDES.with_indifferent_access[relation_name]
+          relation_name = overridden_relation if overridden_relation
+
           relation_name.to_s.classify.constantize
         rescue NameError
           relation_name.to_s.constantize
         end
 
-        def initialize(relation_sym:, relation_index:, relation_hash:, members_mapper:, object_builder:, user:, importable:, excluded_keys: [])
+        # rubocop:disable Metrics/ParameterLists -- Keyword arguments are not adding complexity to initializer
+        def initialize(relation_sym:, relation_index:, relation_hash:, members_mapper:, object_builder:, user:, importable:, import_source:, excluded_keys: [], original_users_map: nil, rewrite_mentions: false)
           @relation_sym = relation_sym
           @relation_name = self.class.overrides[relation_sym]&.to_sym || relation_sym
           @relation_index = relation_index
@@ -55,9 +60,12 @@ module Gitlab
           @object_builder = object_builder
           @user = user
           @importable = importable
+          @import_source = import_source
           @imported_object_retries = 0
           @relation_hash[importable_column_name] = @importable.id
           @original_user = {}
+          @original_users_map = original_users_map
+          @rewrite_mentions = rewrite_mentions
 
           # Remove excluded keys from relation_hash
           # We don't do this in the parsed_relation_hash because of the 'transformed attributes'
@@ -67,6 +75,7 @@ module Gitlab
           # from the object attributes and the export will fail.
           @relation_hash.except!(*excluded_keys)
         end
+        # rubocop:enable Metrics/ParameterLists
 
         # Creates an object from an actual model with name "relation_sym" with params from
         # the relation_hash, updating references with new object IDs, mapping users using
@@ -77,6 +86,8 @@ module Gitlab
 
           setup_base_models
           setup_models
+
+          return if @relation_hash.empty?
 
           generate_imported_object
         end
@@ -158,9 +169,9 @@ module Gitlab
         end
 
         def remove_encrypted_attributes!
-          return unless relation_class.respond_to?(:attr_encrypted_attributes) && relation_class.attr_encrypted_attributes.any?
+          return unless relation_class.respond_to?(:attr_encrypted_encrypted_attributes) && relation_class.attr_encrypted_encrypted_attributes.any?
 
-          relation_class.attr_encrypted_attributes.each_key do |key|
+          relation_class.attr_encrypted_encrypted_attributes.each_key do |key|
             @relation_hash[key.to_s] = nil
           end
         end
@@ -180,6 +191,14 @@ module Gitlab
         def imported_object
           if existing_or_new_object.respond_to?(:importing)
             existing_or_new_object.importing = true
+          end
+
+          if existing_or_new_object.respond_to?(:imported_from)
+            existing_or_new_object.imported_from = @import_source
+          end
+
+          if @original_users_map.is_a?(Hash) && @original_user.present?
+            @original_users_map[existing_or_new_object] = @original_user
           end
 
           existing_or_new_object
@@ -319,12 +338,14 @@ module Gitlab
 
         def missing_author_note(updated_at, author_name)
           timestamp = updated_at.split('.').first
-          "*By #{author_name} on #{timestamp} (imported from GitLab)*"
+          "*By #{author_name} on #{timestamp}*"
         end
 
         def existing_object?
           strong_memoize(:_existing_object) do
-            self.class.existing_object_relations.include?(@relation_name) || unique_relation?
+            self.class.existing_object_relations.include?(@relation_name) ||
+              self.class.existing_object_relations.include?(@relation_sym) ||
+              unique_relation?
           end
         end
 

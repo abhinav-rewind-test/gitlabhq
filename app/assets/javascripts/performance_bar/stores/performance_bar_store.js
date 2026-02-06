@@ -1,11 +1,12 @@
 import { mergeUrlParams } from '~/lib/utils/url_utility';
-import { __ } from '~/locale';
+import { sprintf, s__ } from '~/locale';
 
 export default class PerformanceBarStore {
   constructor() {
     this.requests = [];
   }
 
+  // eslint-disable-next-line max-params
   addRequest(requestId, requestUrl, operationName, requestParams, methodVerb) {
     if (this.findRequest(requestId)) {
       this.updateRequestBatchedQueriesCount(requestId);
@@ -39,15 +40,23 @@ export default class PerformanceBarStore {
     const existingRequest = this.findRequest(requestId);
     existingRequest.queriesInBatch += 1;
 
-    const oldDisplayName = existingRequest.displayName;
+    const originalDisplayName = existingRequest.displayName;
     const regex = /\d+ queries batched/;
-    if (regex.test(oldDisplayName)) {
-      existingRequest.displayName = oldDisplayName.replace(
+    if (regex.test(originalDisplayName)) {
+      existingRequest.displayName = originalDisplayName.replace(
         regex,
-        `${existingRequest.queriesInBatch} queries batched`,
+        sprintf(s__('PerformanceBar|%{queryCount} queries batched'), {
+          queryCount: existingRequest.queriesInBatch,
+        }),
       );
     } else {
-      existingRequest.displayName += __(` [${existingRequest.queriesInBatch} queries batched]`);
+      existingRequest.displayName = sprintf(
+        s__('PerformanceBar|%{originalDisplayName} [%{queryCount} queries batched]'),
+        {
+          originalDisplayName,
+          queryCount: existingRequest.queriesInBatch,
+        },
+      );
     }
   }
 

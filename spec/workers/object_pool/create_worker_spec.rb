@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ObjectPool::CreateWorker, feature_category: :shared do
+RSpec.describe ObjectPool::CreateWorker, feature_category: :source_code_management do
   let(:pool) { create(:pool_repository, :scheduled) }
 
   subject { described_class.new }
@@ -21,12 +21,10 @@ RSpec.describe ObjectPool::CreateWorker, feature_category: :shared do
         pool.create_object_pool
       end
 
-      it 'cleans up the pool' do
-        expect do
-          subject.perform(pool.id)
-        end.to raise_error(GRPC::FailedPrecondition)
+      it 'marks the pool as ready' do
+        subject.perform(pool.id)
 
-        expect(pool.reload.failed?).to be(true)
+        expect(pool.reload).to be_ready
       end
     end
 
@@ -40,7 +38,7 @@ RSpec.describe ObjectPool::CreateWorker, feature_category: :shared do
           subject.perform(pool.id)
         end.to raise_error(GRPC::Internal)
 
-        expect(pool.reload.failed?).to be(true)
+        expect(pool.reload).to be_failed
       end
     end
 

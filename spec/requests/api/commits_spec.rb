@@ -6,18 +6,19 @@ require 'mime/types'
 RSpec.describe API::Commits, feature_category: :source_code_management do
   include ProjectForksHelper
   include SessionHelpers
+  include WorkhorseHelpers
 
   let_it_be(:user) { create(:user) }
   let_it_be(:project) { create(:project, :repository, creator: user, path: 'my.project') }
-  let_it_be(:guest) { create(:user).tap { |u| project.add_guest(u) } }
-  let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
+  let_it_be(:guest) { create(:user, guest_of: project) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   let(:branch_with_dot) { project.repository.find_branch('ends-with.json') }
   let(:branch_with_slash) { project.repository.find_branch('improve/awesome') }
   let(:project_id) { project.id }
   let(:current_user) { nil }
   let(:group) { create(:group, :public) }
-  let(:inherited_guest) { create(:user).tap { |u| group.add_guest(u) } }
+  let(:inherited_guest) { create(:user, guest_of: group) }
 
   before do
     project.add_maintainer(user)
@@ -90,6 +91,23 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           it_behaves_like 'project commits'
 
+          it_behaves_like 'authorizing granular token permissions', :read_commit do
+            let(:boundary_object) { project }
+            let(:request) do
+              get api(route, personal_access_token: pat)
+            end
+          end
+
+          context 'when repository does not have commits' do
+            let_it_be(:project) { create(:project, :empty_repo) }
+
+            it 'returns an empty array' do
+              get api("/projects/#{project_id}/repository/commits", user)
+
+              expect(json_response).to eq([])
+            end
+          end
+
           context "since optional parameter" do
             it "returns project commits since provided parameter" do
               commits = project.repository.commits("master", limit: 2)
@@ -156,6 +174,38 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             it_behaves_like 'project commits'
           end
 
+          context 'with a range of refs' do
+            let(:route) { "/projects/#{project_id}/repository/commits?ref_name=#{Gitlab::Git::SHA1_EMPTY_TREE_ID}..HEAD" }
+
+            it_behaves_like 'project commits'
+          end
+
+          context 'with HEAD' do
+            let(:route) { "/projects/#{project_id}/repository/commits?ref_name=HEAD" }
+
+            it_behaves_like 'project commits'
+          end
+
+          context 'with incorrect ref_name parameter' do
+            context 'when starts with -' do
+              let(:route) { "/projects/#{project_id}/repository/commits?ref_name=-main" }
+
+              it_behaves_like '400 response' do
+                let(:request) { get api(route, user) }
+                let(:message) { 'ref_name is invalid' }
+              end
+            end
+
+            context 'when includes a whitespace' do
+              let(:route) { "/projects/#{project_id}/repository/commits?ref_name=main branch" }
+
+              it_behaves_like '400 response' do
+                let(:request) { get api(route, user) }
+                let(:message) { 'ref_name is invalid' }
+              end
+            end
+          end
+
           context 'with author parameter' do
             let(:params) { { author: 'Zaporozhets' } }
 
@@ -202,6 +252,36 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           end
 
           context "path optional parameter" do
+            it "returns current directory commits when provided path parameter is '.'" do
+              path = '.'
+
+              get api("/projects/#{project_id}/repository/commits?path=#{path}", user)
+
+              expect(json_response.size).to eq(20)
+              expect(json_response.first["id"]).to eq("498214de67004b1da3d820901307bed2a68a8ef6")
+              expect(response).to include_limited_pagination_headers
+            end
+
+            it "returns default project commits when provided path parameter is '/'" do
+              path = '/'
+
+              get api("/projects/#{project_id}/repository/commits?path=#{path}", user)
+
+              expect(json_response.size).to eq(20)
+              expect(json_response.first["id"]).to eq("b83d6e391c22777fca1ed3012fce84f633d7fed0")
+              expect(response).to include_limited_pagination_headers
+            end
+
+            it "returns project commits matching provided path parameter that starts with '/'" do
+              path = '/files/ruby/popen.rb'
+
+              get api("/projects/#{project_id}/repository/commits?path=#{path}", user)
+
+              expect(json_response.size).to eq(3)
+              expect(json_response.first["id"]).to eq("570e7b2abdd848b95f2f578043fc23bd6f6fd24d")
+              expect(response).to include_limited_pagination_headers
+            end
+
             it "returns project commits matching provided path parameter" do
               path = 'files/ruby/popen.rb'
 
@@ -267,6 +347,29 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             end
           end
 
+          context 'with ref_name + path params' do
+            let(:params) { { ref_name: ref_name, path: 'files/ruby/popen.rb' } }
+            let(:ref_name) { 'master' }
+
+            it 'returns project commits matching provided path parameter' do
+              get api("/projects/#{project_id}/repository/commits", user), params: params
+
+              expect(json_response.size).to eq(3)
+              expect(json_response.first["id"]).to eq("570e7b2abdd848b95f2f578043fc23bd6f6fd24d")
+              expect(response).to include_limited_pagination_headers
+            end
+
+            context 'when ref_name does not exist' do
+              let(:ref_name) { 'does-not-exist' }
+
+              it 'returns an empty response' do
+                get api("/projects/#{project_id}/repository/commits", user), params: params
+
+                expect(json_response).to eq([])
+              end
+            end
+          end
+
           context 'with pagination params' do
             let(:page) { 1 }
             let(:per_page) { 5 }
@@ -281,6 +384,12 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
               expect(response).to include_limited_pagination_headers
               expect(response.headers['Link']).to match(/page=1&per_page=5/)
               expect(response.headers['Link']).to match(/page=2&per_page=5/)
+            end
+
+            it 'does not include the last page link' do
+              request
+
+              expect(response.headers['Link']).not_to include("rel=\"last\"")
             end
 
             context 'viewing the first page' do
@@ -483,50 +592,217 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           end
         end
       end
+
+      context 'when authenticated with a token that has the ai_workflows scope' do
+        let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+        let(:commits) { project.repository.commits("master", limit: 2) }
+
+        before do
+          get api("/projects/#{project_id}/repository/commits", oauth_access_token: oauth_token)
+        end
+
+        it 'is successful' do
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response.first["id"]).to eq(commits.first.id)
+        end
+      end
     end
   end
 
-  describe "POST /projects/:id/repository/commits" do
-    let!(:url) { "/projects/#{project_id}/repository/commits" }
+  describe 'POST /projects/:id/repository/commits/authorize' do
+    include_context 'workhorse headers'
 
-    context 'when unauthenticated', 'and project is public' do
-      let_it_be(:project) { create(:project, :public, :repository) }
-      let(:params) do
-        {
-          branch: 'master',
-          commit_message: 'message',
-          actions: [
-            {
-              action: 'create',
-              file_path: '/test.rb',
-              content: 'puts 8'
-            }
-          ]
-        }
-      end
+    let(:url) { "/projects/#{project_id}/repository/commits/authorize" }
 
-      it_behaves_like '401 response' do
-        let(:request) { post api(url), params: params }
+    subject(:request) { post api(url, user), headers: workhorse_headers }
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_commit do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(url, personal_access_token: pat), headers: workhorse_headers
       end
     end
 
-    it 'returns a 403 unauthorized for user without permissions' do
-      post api(url, guest)
+    context 'with workhorse headers' do
+      it 'authorizes the upload' do
+        request
 
-      expect(response).to have_gitlab_http_status(:forbidden)
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response.media_type).to eq(Gitlab::Workhorse::INTERNAL_API_CONTENT_TYPE)
+        expect(json_response['TempPath']).to be_present
+        expect(json_response['MaximumSize']).to eq(300.megabytes)
+      end
+
+      it 'uses the correct upload path' do
+        request
+
+        expect(json_response['TempPath']).to eq(::Repositories::CommitsUploader.workhorse_local_upload_path)
+      end
     end
 
-    it 'returns a 400 bad request if no params are given' do
-      post api(url, user)
+    context 'without workhorse headers' do
+      it 'returns forbidden' do
+        post api(url, user)
 
-      expect(response).to have_gitlab_http_status(:bad_request)
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+  end
+
+  describe 'POST /projects/:id/repository/commits' do
+    include_context 'for workhorse body uploads'
+
+    let_it_be(:file_path_sequencer) { FactoryBot::Sequence.new(:new_file_path) { |n| "files/test/#{n}.rb" } }
+    let!(:url) { api("/projects/#{project_id}/repository/commits", user) }
+    let(:params) do
+      {
+        branch: 'master',
+        commit_message: 'message',
+        actions: [
+          {
+            action: 'create',
+            file_path: '/test.rb',
+            content: 'puts 8'
+          }
+        ]
+      }
     end
 
-    describe 'create' do
-      let_it_be(:sequencer) { FactoryBot::Sequence.new(:new_file_path) { |n| "files/test/#{n}.rb" } }
+    shared_examples 'param validations' do
+      shared_examples 'returns bad request - validation error' do |expected_message|
+        it 'returns error' do
+          workhorse_body_upload(url, params)
 
-      let(:new_file_path) { sequencer.next }
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['message']).to eq("400 Bad request - #{expected_message}")
+        end
+      end
+
+      context 'without workhorse headers' do
+        let(:workhorse_headers) { {} }
+
+        it 'returns forbidden' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+        end
+      end
+
+      context 'when unauthenticated', 'and project is public' do
+        let_it_be(:project) { create(:project, :public, :repository) }
+        let!(:url) { api("/projects/#{project_id}/repository/commits", nil) }
+
+        it_behaves_like '401 response' do
+          let(:request) { workhorse_body_upload(url, params) }
+        end
+      end
+
+      context 'with a user without permissions' do
+        let!(:url) { api("/projects/#{project_id}/repository/commits", guest) }
+
+        it 'returns a 403 unauthorized' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+        end
+      end
+
+      it 'returns a 400 bad request if no params are given' do
+        workhorse_body_upload(url, {})
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+      end
+
+      context 'missing branch' do
+        let(:params) { super().except(:branch) }
+
+        it_behaves_like 'returns bad request - validation error', "branch is required"
+      end
+
+      context 'blank branch' do
+        let(:params) { super().merge(branch: '') }
+
+        it_behaves_like 'returns bad request - validation error', "branch is required"
+      end
+
+      context 'missing commit_message' do
+        let(:params) { super().except(:commit_message) }
+
+        it_behaves_like 'returns bad request - validation error', "commit_message is required"
+      end
+
+      context 'missing actions' do
+        let(:params) { super().except(:actions) }
+
+        it_behaves_like 'returns bad request - validation error', "Provide at least one action, or set allow_empty to true"
+      end
+
+      context 'when actions is not an array' do
+        let(:params) { super().merge(actions: 'not an array') }
+
+        it_behaves_like 'returns bad request - validation error', "actions must be an array"
+      end
+
+      context 'actions validation' do
+        context 'missing action' do
+          let(:params) { super().merge(actions: [{ file_path: '/test.rb', content: 'puts 8' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][action] is required"
+        end
+
+        context 'missing file_path' do
+          let(:params) { super().merge(actions: [{ action: 'create', content: 'puts 8' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][file_path] is required"
+        end
+
+        context 'invalid action' do
+          let(:params) { super().merge(actions: [{ action: 'invalid', file_path: '/test.rb', content: 'puts 8' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][action] must be one of: create, update, move, delete, chmod"
+        end
+
+        context 'update action missing content' do
+          let(:params) { super().merge(actions: [{ action: 'update', file_path: '/test.rb' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][content] is required for update action"
+        end
+
+        context 'move action missing previous_path' do
+          let(:params) { super().merge(actions: [{ action: 'move', file_path: '/new_test.rb', content: 'puts 8' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][previous_path] is required for move action"
+        end
+
+        context 'invalid encoding' do
+          let(:params) do
+            super().merge(actions: [{ action: 'create', file_path: '/test.rb', content: 'puts 8', encoding: 'invalid' }])
+          end
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][encoding] must be text or base64"
+        end
+
+        context 'chmod action missing execute_filemode' do
+          let(:params) { super().merge(actions: [{ action: 'chmod', file_path: '/test.rb' }]) }
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][execute_filemode] is required for chmod action"
+        end
+
+        context 'chmod action with invalid execute_filemode' do
+          let(:params) do
+            super().merge(actions: [{ action: 'chmod', file_path: '/test.rb', execute_filemode: 'invalid' }])
+          end
+
+          it_behaves_like 'returns bad request - validation error', "actions[0][execute_filemode] must be a boolean"
+        end
+      end
+    end
+
+    shared_examples 'create actions' do
+      let(:new_file_path) { file_path_sequencer.next }
       let(:message) { 'Created a new file with a very very looooooooooooooooooooooooooooooooooooooooooooooong commit message' }
+      let(:create_content) { 'puts 8' }
+
       let(:invalid_c_params) do
         {
           branch: 'master',
@@ -549,7 +825,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             {
               action: 'create',
               file_path: new_file_path,
-              content: 'puts 8'
+              content: create_content
             }
           ]
         }
@@ -569,8 +845,12 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         }
       end
 
-      shared_examples_for "successfully creates the commit" do
-        it "creates the commit" do
+      shared_examples_for 'successfully creates the commit' do
+        before do
+          workhorse_body_upload(url, params)
+        end
+
+        it 'creates the commit' do
           expect(response).to have_gitlab_http_status(:created)
           expect(json_response['title']).to eq(message)
           expect(json_response['committer_name']).to eq(user.name)
@@ -578,76 +858,315 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         end
       end
 
-      context 'when using access token authentication' do
-        it 'does not increment the usage counters' do
-          expect(::Gitlab::UsageDataCounters::WebIdeCounter).not_to receive(:increment_commits_count)
-          expect(::Gitlab::InternalEvents).not_to receive(:track_event)
+      context 'when using oauth access token authentication' do
+        let!(:url) { api("/projects/#{project_id}/repository/commits", user, oauth_access_token: oauth_token) }
 
-          post api(url, user), params: valid_c_params
+        subject(:request) { workhorse_body_upload(url, valid_c_params) }
+
+        context 'when using Web IDE OAuth token', :snowplow, :clean_gitlab_redis_sessions do
+          let(:web_ide_oauth_app) { create(:oauth_application, name: 'GitLab Web IDE', trusted: true, confidential: false, scopes: "api") }
+          let(:oauth_token) { create(:oauth_access_token, user: user, application: web_ide_oauth_app) }
+
+          before do
+            allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
+            stub_application_setting(web_ide_oauth_application: web_ide_oauth_app)
+          end
+
+          it_behaves_like 'internal event tracking' do
+            let(:event) { 'create_commit_from_web_ide' }
+            let(:namespace) { project.namespace.reload }
+          end
+
+          it_behaves_like 'internal event tracking' do
+            let(:event) { 'g_edit_by_web_ide' }
+            let(:namespace) { project.namespace.reload }
+          end
+        end
+
+        context 'when using non-Web IDE OAuth token' do
+          let(:other_oauth_app) { create(:oauth_application, name: "Other App", scopes: "api") }
+          let(:oauth_token) { create(:oauth_access_token, user: user, application: other_oauth_app) }
+          let(:web_ide_oauth_app) { create(:oauth_application, name: 'GitLab Web IDE', trusted: true, confidential: false, scopes: "api") }
+
+          before do
+            allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
+            stub_application_setting(web_ide_oauth_application: web_ide_oauth_app)
+          end
+
+          it 'does not increment the usage counters' do
+            expect(::Gitlab::InternalEvents).not_to receive(:track_event)
+
+            request
+          end
+        end
+
+        context 'when Web IDE OAuth application is not configured' do
+          let(:oauth_token) { create(:oauth_access_token, user: user) }
+
+          before do
+            stub_application_setting({ web_ide_oauth_application: nil })
+          end
+
+          it 'does not increment the usage counters' do
+            expect(::Gitlab::InternalEvents).not_to receive(:track_event)
+
+            request
+          end
+        end
+      end
+
+      context 'when using OAuth token with nil application' do
+        let(:oauth_token) { create(:oauth_access_token, user: user, application: nil, scopes: 'api') }
+
+        it 'successfully creates the commit without raising NoMethodError' do
+          workhorse_body_upload(url, valid_c_params)
+
+          expect(response).to have_gitlab_http_status(:created)
+          expect(json_response['title']).to eq(message)
+        end
+      end
+
+      context 'when using personal access token', :snowplow, :clean_gitlab_redis_sessions do
+        let(:personal_access_token) { create(:personal_access_token, scopes: ['api'], user: user) }
+        let(:web_ide_oauth_app) { create(:oauth_application, name: 'GitLab Web IDE', trusted: true, confidential: false, scopes: "api") }
+
+        let!(:url) { api("/projects/#{project_id}/repository/commits", user, personal_access_token: personal_access_token) }
+
+        before do
+          allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
+          stub_application_setting(web_ide_oauth_application: web_ide_oauth_app)
+
+          workhorse_body_upload(url, valid_c_params)
+        end
+
+        it 'does not increment the usage counters' do
+          expect(::Gitlab::InternalEvents).not_to receive(:track_event)
+        end
+
+        it 'sends successful response code' do
+          expect(response).to have_gitlab_http_status(:created)
         end
       end
 
       context 'when using warden', :snowplow, :clean_gitlab_redis_sessions do
         before do
-          stub_session('warden.user.user.key' => [[user.id], user.authenticatable_salt])
+          stub_session(session_data: { 'warden.user.user.key' => [[user.id], user.authenticatable_salt] })
+          workhorse_body_upload(url, valid_c_params)
         end
 
-        subject { post api(url), params: valid_c_params }
+        it 'does not increment the usage counters' do
+          expect(::Gitlab::InternalEvents).not_to receive(:track_event)
+        end
+      end
 
-        it 'increments usage counters' do
-          expect(::Gitlab::UsageDataCounters::WebIdeCounter).to receive(:increment_commits_count)
-
-          subject
+      context 'when actions does not touch files' do
+        let(:base_params) do
+          {
+            branch: 'master',
+            commit_message: 'message'
+          }
         end
 
-        it_behaves_like 'internal event tracking' do
-          let(:event) { 'g_edit_by_web_ide' }
-          let(:namespace) { project.namespace.reload }
+        shared_examples 'warns the user' do
+          it 'returns a 400 with the proper message' do
+            expect(response).to have_gitlab_http_status(:bad_request)
+
+            msg = "400 Bad request - Provide at least one action, or set allow_empty to true"
+            expect(json_response['message']).to eq(msg)
+          end
         end
 
-        context 'counts.web_ide_commits Snowplow event tracking' do
-          it_behaves_like 'Snowplow event tracking' do
-            let(:action) { :commit }
-            let(:category) { described_class.to_s }
-            let(:namespace) { project.namespace.reload }
-            let(:label) { 'counts.web_ide_commits' }
-            let(:context) do
-              [Gitlab::Usage::MetricDefinition.context_for('counts.web_ide_commits').to_context.to_json]
+        shared_examples 'creates an empty commit' do
+          it 'returns 200 and creates the empty commit' do
+            expect(response).to have_gitlab_http_status(:created)
+            expect(json_response['title']).to eq('message')
+            expect(json_response['stats']['additions']).to eq(0)
+            expect(json_response['stats']['deletions']).to eq(0)
+            expect(json_response['stats']['total']).to eq(0)
+          end
+        end
+
+        context 'when actions is empty' do
+          let(:params) { base_params.merge(actions: [], allow_empty: allow_empty) }
+
+          context 'when allow_empty is true' do
+            let(:allow_empty) { true }
+
+            before do
+              workhorse_body_upload(url, params)
             end
+
+            include_examples 'creates an empty commit'
+          end
+
+          context 'when allow_empty is false' do
+            let(:allow_empty) { false }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
+          end
+
+          context 'when allow_empty is nil' do
+            let(:allow_empty) { nil }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
+          end
+
+          context 'when allow_empty is not passed' do
+            let(:params) { base_params.merge(actions: []) }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
+          end
+        end
+
+        context 'when actions is not passed' do
+          let(:params) { base_params.merge(allow_empty: allow_empty) }
+
+          context 'when allow_empty is true' do
+            let(:allow_empty) { true }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'creates an empty commit'
+          end
+
+          context 'when allow_empty is false' do
+            let(:allow_empty) { false }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
+          end
+
+          context 'when allow_empty is nil' do
+            let(:allow_empty) { nil }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
+          end
+
+          context 'when allow_empty is not passed' do
+            let(:params) { base_params }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'warns the user'
           end
         end
       end
 
       context 'a new file in project repo' do
         context 'when user is a direct project member' do
-          before do
-            post api(url, user), params: valid_c_params
-          end
+          let(:params) { valid_c_params }
 
           it_behaves_like 'successfully creates the commit'
         end
 
-        context 'when user is an inherited member from the group' do
+        context 'when user is an inherited guest from the group' do
+          let!(:url) { api("/projects/#{project.id}/repository/commits", inherited_guest) }
+
           context 'when project is public with private repository' do
             let(:project) { create(:project, :public, :repository, :repository_private, group: group) }
 
-            context 'and user is a guest' do
-              it_behaves_like '403 response' do
-                let(:request) { post api(url, inherited_guest), params: valid_c_params }
-                let(:message) { '403 Forbidden' }
-              end
+            it_behaves_like '403 response' do
+              let(:request) { workhorse_body_upload(url, valid_c_params) }
+              let(:message) { '403 Forbidden' }
             end
           end
 
           context 'when project is private' do
             let(:project) { create(:project, :private, :repository, group: group) }
 
-            context 'and user is a guest' do
-              it_behaves_like '403 response' do
-                let(:request) { post api(url, inherited_guest), params: valid_c_params }
-                let(:message) { '403 Forbidden' }
-              end
+            it_behaves_like '403 response' do
+              let(:request) { workhorse_body_upload(url, valid_c_params) }
+              let(:message) { '403 Forbidden' }
             end
+          end
+        end
+
+        context 'when creating a commit with file actions' do
+          let(:base_params) do
+            {
+              branch: 'master',
+              commit_message: message,
+              actions: [
+                {
+                  action: 'create',
+                  file_path: new_file_path,
+                  content: 'puts 8'
+                }
+              ]
+            }
+          end
+
+          shared_examples 'creates a commit' do
+            it 'creates the commit' do
+              expect(response).to have_gitlab_http_status(:created)
+              expect(json_response['title']).to eq(message)
+              expect(json_response['stats']['additions']).to eq(1)
+              expect(json_response['stats']['deletions']).to eq(0)
+              expect(json_response['stats']['total']).to eq(1)
+            end
+          end
+
+          context 'when allow_empty is true' do
+            let(:params) { base_params.merge(allow_empty: true) }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'creates a commit'
+          end
+
+          context 'when allow_empty is false' do
+            let(:params) { base_params.merge(allow_empty: false) }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'creates a commit'
+          end
+
+          context 'when allow_empty is nil' do
+            let(:params) { base_params.merge(allow_empty: nil) }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'creates a commit'
+          end
+
+          context 'when allow_empty is missing' do
+            let(:params) { base_params }
+
+            before do
+              workhorse_body_upload(url, params)
+            end
+
+            include_examples 'creates a commit'
           end
         end
       end
@@ -656,16 +1175,14 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         let!(:project) { create(:project, :empty_repo) }
 
         context 'when params are valid' do
-          before do
-            post api(url, user), params: valid_c_params
-          end
+          let(:params) { valid_c_params }
 
-          it_behaves_like "successfully creates the commit"
+          it_behaves_like 'successfully creates the commit'
         end
 
         context 'when branch name is invalid' do
           before do
-            post api(url, user), params: valid_c_params.merge(branch: 'wrong:name')
+            workhorse_body_upload(url, valid_c_params.merge(branch: 'wrong:name'))
           end
 
           it { expect(response).to have_gitlab_http_status(:bad_request) }
@@ -673,24 +1190,22 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
       end
 
       context 'a new file with utf8 chars in project repo' do
-        before do
-          post api(url, user), params: valid_utf8_c_params
-        end
+        let(:params) { valid_utf8_c_params }
 
-        it_behaves_like "successfully creates the commit"
+        it_behaves_like 'successfully creates the commit'
       end
 
       it 'returns a 400 bad request if file exists' do
-        post api(url, user), params: invalid_c_params
+        workhorse_body_upload(url, invalid_c_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
 
       context 'with project path containing a dot in URL' do
-        let(:url) { "/projects/#{CGI.escape(project.full_path)}/repository/commits" }
+        let(:url) { api("/projects/#{CGI.escape(project.full_path)}/repository/commits", user) }
 
         it 'a new file in project repo' do
-          post api(url, user), params: valid_c_params
+          workhorse_body_upload(url, valid_c_params)
 
           expect(response).to have_gitlab_http_status(:created)
         end
@@ -703,16 +1218,16 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
         before do
           valid_c_params[:start_branch] = 'master'
-          valid_c_params[:branch] = 'patch'
+          valid_c_params[:branch] = new_branch_name
         end
 
         context 'when the API user is a guest' do
           let(:public_project) { create(:project, :public, :repository) }
-          let(:url) { "/projects/#{public_project.id}/repository/commits" }
-          let(:guest) { create(:user).tap { |u| public_project.add_guest(u) } }
+          let(:url) { api("/projects/#{public_project.id}/repository/commits", guest) }
+          let(:guest) { create(:user, guest_of: public_project) }
 
           it 'returns a 403' do
-            post api(url, guest), params: valid_c_params
+            workhorse_body_upload(url, valid_c_params)
 
             expect(response).to have_gitlab_http_status(:forbidden)
           end
@@ -720,7 +1235,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           context 'when start_project is provided' do
             context 'when posting to a forked project the user owns' do
               let(:forked_project) { fork_project(public_project, guest, namespace: guest.namespace, repository: true) }
-              let(:url) { "/projects/#{forked_project.id}/repository/commits" }
+              let(:url) { api("/projects/#{forked_project.id}/repository/commits", guest) }
 
               context 'identified by Integer (id)' do
                 before do
@@ -728,7 +1243,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 end
 
                 it 'adds a new commit to forked_project and returns a 201', :sidekiq_might_not_need_inline do
-                  expect_request_with_status(201) { post api(url, guest), params: valid_c_params }
+                  expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
                     .to change { last_commit_id(forked_project, valid_c_params[:branch]) }
                     .and not_change { last_commit_id(public_project, valid_c_params[:start_branch]) }
                 end
@@ -740,7 +1255,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 end
 
                 it 'adds a new commit to forked_project and returns a 201', :sidekiq_might_not_need_inline do
-                  expect_request_with_status(201) { post api(url, guest), params: valid_c_params }
+                  expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
                     .to change { last_commit_id(forked_project, valid_c_params[:branch]) }
                     .and not_change { last_commit_id(public_project, valid_c_params[:start_branch]) }
                 end
@@ -754,7 +1269,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 end
 
                 it 'returns a 400' do
-                  post api(url, guest), params: valid_c_params
+                  workhorse_body_upload(url, valid_c_params)
 
                   expect(response).to have_gitlab_http_status(:bad_request)
                   expect(json_response['message']).to eq("A branch called 'master' already exists. Switch to that branch in order to make changes")
@@ -766,7 +1281,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                   end
 
                   it 'adds a new commit to forked_project and returns a 201' do
-                    expect_request_with_status(201) { post api(url, guest), params: valid_c_params }
+                    expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
                       .to change { last_commit_id(forked_project, valid_c_params[:branch]) }
                       .and not_change { last_commit_id(public_project, valid_c_params[:branch]) }
                   end
@@ -787,7 +1302,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 end
 
                 it 'fetches the start_sha from the original project to use as parent commit and returns a 201' do
-                  expect_request_with_status(201) { post api(url, guest), params: valid_c_params }
+                  expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
                     .to change { last_commit_id(forked_project, valid_c_params[:branch]) }
                     .and not_change { last_commit_id(forked_project, 'master') }
 
@@ -800,7 +1315,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             context 'when project repository access becomes restricted after being forked' do
               let!(:fork_owner) { create(:user) }
               let!(:forked_project) { fork_project(public_project, fork_owner, namespace: fork_owner.namespace, repository: true) }
-              let(:url) { "/projects/#{forked_project.id}/repository/commits" }
+              let(:url) { api("/projects/#{forked_project.id}/repository/commits", fork_owner) }
 
               before do
                 # Restrict repository visibility of the public project
@@ -810,7 +1325,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 public_project.save!
 
                 valid_c_params[:start_branch] = 'master'
-                valid_c_params[:branch] = 'patch'
+                valid_c_params[:branch] = new_branch_name
                 valid_c_params[:start_project] = public_project.id
               end
 
@@ -823,7 +1338,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
               end
 
               it 'returns a 403' do
-                post api(url, fork_owner), params: valid_c_params
+                workhorse_body_upload(url, valid_c_params)
 
                 expect(response).to have_gitlab_http_status(:forbidden)
               end
@@ -834,7 +1349,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
               let_it_be(:fork_owner) { create(:user) }
               let_it_be(:fork_owner_membership) { private_project.add_developer(fork_owner) }
               let_it_be(:forked_project) { fork_project(private_project, fork_owner, namespace: fork_owner.namespace, repository: true) }
-              let(:url) { "/projects/#{forked_project.id}/repository/commits" }
+              let(:url) { api("/projects/#{forked_project.id}/repository/commits", fork_owner) }
 
               before do
                 # Restrict user from repository
@@ -842,12 +1357,12 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
                 Sidekiq::Worker.drain_all
 
                 valid_c_params[:start_branch] = 'master'
-                valid_c_params[:branch] = 'patch'
+                valid_c_params[:branch] = new_branch_name
                 valid_c_params[:start_project] = private_project.id
               end
 
               it 'returns a 404' do
-                post api(url, fork_owner), params: valid_c_params
+                workhorse_body_upload(url, valid_c_params)
 
                 expect(response).to have_gitlab_http_status(:not_found)
               end
@@ -855,16 +1370,16 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
             context 'when the target project is not part of the fork network of start_project' do
               let(:unrelated_project) { create(:project, :public, :repository, creator: guest) }
-              let(:url) { "/projects/#{unrelated_project.id}/repository/commits" }
+              let(:url) { api("/projects/#{unrelated_project.id}/repository/commits", guest) }
 
               before do
                 valid_c_params[:start_branch] = 'master'
-                valid_c_params[:branch] = 'patch'
+                valid_c_params[:branch] = new_branch_name
                 valid_c_params[:start_project] = public_project.id
               end
 
               it 'returns a 403' do
-                post api(url, guest), params: valid_c_params
+                workhorse_body_upload(url, valid_c_params)
 
                 expect(response).to have_gitlab_http_status(:forbidden)
               end
@@ -873,16 +1388,16 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           context 'when posting to a forked project the user does not have write access' do
             let(:forked_project) { fork_project(public_project, user, namespace: user.namespace, repository: true) }
-            let(:url) { "/projects/#{forked_project.id}/repository/commits" }
+            let(:url) { api("/projects/#{forked_project.id}/repository/commits", guest) }
 
             before do
               valid_c_params[:start_branch] = 'master'
-              valid_c_params[:branch] = 'patch'
+              valid_c_params[:branch] = new_branch_name
               valid_c_params[:start_project] = public_project.id
             end
 
             it 'returns a 403' do
-              post api(url, guest), params: valid_c_params
+              workhorse_body_upload(url, valid_c_params)
 
               expect(response).to have_gitlab_http_status(:forbidden)
             end
@@ -899,15 +1414,15 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           it 'returns a 400 if start_branch is also provided' do
             valid_c_params[:start_branch] = 'master'
-            post api(url, user), params: valid_c_params
+            workhorse_body_upload(url, valid_c_params)
 
             expect(response).to have_gitlab_http_status(:bad_request)
-            expect(json_response['error']).to eq('start_branch, start_sha are mutually exclusive')
+            expect(json_response['message']).to include('start_branch, start_sha are mutually exclusive')
           end
 
           it 'returns a 400 if branch already exists' do
             valid_c_params[:branch] = 'master'
-            post api(url, user), params: valid_c_params
+            workhorse_body_upload(url, valid_c_params)
 
             expect(response).to have_gitlab_http_status(:bad_request)
             expect(json_response['message']).to eq("A branch called 'master' already exists. Switch to that branch in order to make changes")
@@ -915,7 +1430,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           it 'returns a 400 if start_sha does not exist' do
             valid_c_params[:start_sha] = '1' * 40
-            post api(url, user), params: valid_c_params
+            workhorse_body_upload(url, valid_c_params)
 
             expect(response).to have_gitlab_http_status(:bad_request)
             expect(json_response['message']).to eq("Cannot find start_sha '#{valid_c_params[:start_sha]}'")
@@ -923,14 +1438,14 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           it 'returns a 400 if start_sha is not a full SHA' do
             valid_c_params[:start_sha] = start_sha.slice(0, 7)
-            post api(url, user), params: valid_c_params
+            workhorse_body_upload(url, valid_c_params)
 
             expect(response).to have_gitlab_http_status(:bad_request)
             expect(json_response['message']).to eq("Invalid start_sha '#{valid_c_params[:start_sha]}'")
           end
 
           it 'uses the start_sha as parent commit and returns a 201' do
-            expect_request_with_status(201) { post api(url, user), params: valid_c_params }
+            expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
               .to change { last_commit_id(project, valid_c_params[:branch]) }
               .and not_change { last_commit_id(project, 'master') }
 
@@ -945,7 +1460,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             end
 
             it 'uses the start_sha as parent commit and returns a 201' do
-              expect_request_with_status(201) { post api(url, user), params: valid_c_params }
+              expect_request_with_status(201) { workhorse_body_upload(url, valid_c_params) }
                 .to change { last_commit_id(project, valid_c_params[:branch]) }
 
               last_commit = project.repository.find_branch(valid_c_params[:branch]).dereferenced_target
@@ -954,22 +1469,71 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           end
         end
       end
+
+      context 'when authenticated with a token that has the ai_workflows scope' do
+        let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+        let!(:url) { api("/projects/#{project_id}/repository/commits", user, oauth_access_token: oauth_token) }
+        let(:params) { valid_c_params }
+
+        it_behaves_like 'successfully creates the commit'
+      end
+
+      context 'rate limiting for large commit content' do
+        context 'when file size is above threshold' do
+          before do
+            stub_const('Repositories::CommitsUploader::MAX_RATE_LIMITED_REQUEST_SIZE', 1.byte)
+          end
+
+          it 'applies rate limiting' do
+            allow_next_instance_of(described_class) do |controller|
+              expect(controller).to receive(:check_rate_limit!).with(:user_large_commit_request, scope: user)
+            end
+
+            workhorse_body_upload(url, valid_c_params)
+          end
+        end
+
+        it 'does not apply rate limiting when file size is below threshold' do
+          allow_next_instance_of(described_class) do |controller|
+            expect(controller).not_to receive(:check_rate_limit!)
+          end
+
+          workhorse_body_upload(url, valid_c_params)
+        end
+      end
+
+      context 'with empty content' do
+        let(:create_content) { '' }
+        let(:params) { valid_c_params }
+
+        it_behaves_like 'successfully creates the commit'
+      end
+
+      context 'with content encoding' do
+        it 'defaults to text' do
+          expect(::Files::MultiService).to receive(:new).with(
+            anything, anything, a_hash_including(actions: array_including(hash_including(encoding: 'text')))
+          )
+
+          workhorse_body_upload(url, valid_c_params)
+        end
+
+        context 'base64 content encoding' do
+          let(:valid_c_params) { super().tap { |p| p[:actions].first[:encoding] = 'base64' } }
+
+          it 'uses base64' do
+            expect(::Files::MultiService).to receive(:new).with(
+              anything, anything, a_hash_including(actions: array_including(hash_including(encoding: 'base64')))
+            )
+
+            workhorse_body_upload(url, valid_c_params)
+          end
+        end
+      end
     end
 
-    describe 'delete' do
+    shared_examples 'delete actions' do
       let(:message) { 'Deleted file' }
-      let(:invalid_d_params) do
-        {
-          branch: 'markdown',
-          commit_message: message,
-          actions: [
-            {
-              action: 'delete',
-              file_path: 'doc/api/projects.md'
-            }
-          ]
-        }
-      end
 
       let(:valid_d_params) do
         {
@@ -978,27 +1542,27 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           actions: [
             {
               action: 'delete',
-              file_path: 'doc/api/users.md'
+              file_path: file_to_delete
             }
           ]
         }
       end
 
       it 'an existing file in project repo' do
-        post api(url, user), params: valid_d_params
+        workhorse_body_upload(url, valid_d_params)
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['title']).to eq(message)
       end
 
       it 'returns a 400 bad request if file does not exist' do
-        post api(url, user), params: invalid_d_params
+        workhorse_body_upload(url, valid_d_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
     end
 
-    describe 'move' do
+    shared_examples 'move actions' do
       let(:message) { 'Moved file' }
       let(:invalid_m_params) do
         {
@@ -1022,8 +1586,8 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           actions: [
             {
               action: 'move',
-              file_path: 'VERSION.txt',
-              previous_path: 'VERSION',
+              file_path: file_path,
+              previous_path: previous_path,
               content: '6.7.0.pre'
             }
           ]
@@ -1031,21 +1595,23 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
       end
 
       it 'an existing file in project repo' do
-        post api(url, user), params: valid_m_params
+        workhorse_body_upload(url, valid_m_params)
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['title']).to eq(message)
       end
 
       it 'returns a 400 bad request if file does not exist' do
-        post api(url, user), params: invalid_m_params
+        workhorse_body_upload(url, invalid_m_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
     end
 
-    describe 'update' do
+    shared_examples 'update actions' do
       let(:message) { 'Updated file' }
+      let(:content) { 'puts 8' }
+
       let(:invalid_u_params) do
         {
           branch: 'master',
@@ -1054,7 +1620,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             {
               action: 'update',
               file_path: 'foo/bar.baz',
-              content: 'puts 8'
+              content: content
             }
           ]
         }
@@ -1068,75 +1634,38 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
             {
               action: 'update',
               file_path: 'files/ruby/popen.rb',
-              content: 'puts 8'
+              content: content
             }
           ]
         }
       end
 
       it 'an existing file in project repo' do
-        post api(url, user), params: valid_u_params
+        workhorse_body_upload(url, valid_u_params)
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['title']).to eq(message)
       end
 
       it 'returns a 400 bad request if file does not exist' do
-        post api(url, user), params: invalid_u_params
+        workhorse_body_upload(url, invalid_u_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
-    end
 
-    describe 'chmod' do
-      let(:message) { 'Chmod +x file' }
-      let(:file_path) { 'files/ruby/popen.rb' }
-      let(:execute_filemode) { true }
-      let(:params) do
-        {
-          branch: 'master',
-          commit_message: message,
-          actions: [
-            {
-              action: 'chmod',
-              file_path: file_path,
-              execute_filemode: execute_filemode
-            }
-          ]
-        }
-      end
+      context 'with empty content' do
+        let(:content) { nil }
 
-      it 'responds with success' do
-        post api(url, user), params: params
-
-        expect(response).to have_gitlab_http_status(:created)
-        expect(json_response['title']).to eq(message)
-      end
-
-      context 'when execute_filemode is false' do
-        let(:execute_filemode) { false }
-
-        it 'responds with success' do
-          post api(url, user), params: params
+        it 'creates the commit' do
+          workhorse_body_upload(url, valid_u_params)
 
           expect(response).to have_gitlab_http_status(:created)
           expect(json_response['title']).to eq(message)
         end
       end
-
-      context "when the file doesn't exists" do
-        let(:file_path) { 'foo/bar.baz' }
-
-        it "responds with 400" do
-          post api(url, user), params: params
-
-          expect(response).to have_gitlab_http_status(:bad_request)
-          expect(json_response['message']).to eq("A file with this name doesn't exist")
-        end
-      end
     end
 
-    describe 'multiple operations' do
+    shared_examples 'multiple operations' do
       let(:project) { create(:project, :repository, creator: user, path: 'my.project') }
       let(:message) { 'Multiple actions' }
       let(:invalid_mo_params) do
@@ -1208,7 +1737,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
       end
 
       it 'is committed as one in project repo and includes stats' do
-        post api(url, user), params: valid_mo_params
+        workhorse_body_upload(url, valid_mo_params)
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['title']).to eq(message)
@@ -1216,54 +1745,68 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
       end
 
       it "doesn't include the commit stats when stats is false" do
-        post api(url, user), params: valid_mo_params.merge(stats: false)
+        workhorse_body_upload(url, valid_mo_params.merge(stats: false))
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response).not_to include 'stats'
       end
 
       it 'return a 400 bad request if there are any issues' do
-        post api(url, user), params: invalid_mo_params
+        workhorse_body_upload(url, invalid_mo_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
     end
 
-    context 'when action is missing' do
+    shared_examples 'chmod actions' do
+      let(:message) { 'Chmod +x file' }
+      let(:file_path) { 'files/ruby/popen.rb' }
+      let(:execute_filemode) { true }
       let(:params) do
         {
           branch: 'master',
-          commit_message: 'Invalid',
-          actions: [{ action: nil, file_path: 'files/ruby/popen.rb' }]
+          commit_message: message,
+          actions: [
+            {
+              action: 'chmod',
+              file_path: file_path,
+              execute_filemode: execute_filemode
+            }
+          ]
         }
       end
 
-      it 'responds with 400 bad request' do
-        post api(url, user), params: params
+      it 'responds with success' do
+        workhorse_body_upload(url, params)
 
-        expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response['error']).to eq('actions[0][action] is empty')
+        expect(response).to have_gitlab_http_status(:created)
+        expect(json_response['title']).to eq(message)
+      end
+
+      context 'when execute_filemode is false' do
+        let(:execute_filemode) { false }
+
+        it 'responds with success' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:created)
+          expect(json_response['title']).to eq(message)
+        end
+      end
+
+      context "when the file doesn't exists" do
+        let(:file_path) { 'foo/bar.baz' }
+
+        it "responds with 400" do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['message']).to eq("A file with this name doesn't exist")
+        end
       end
     end
 
-    context 'when action is not supported' do
-      let(:params) do
-        {
-          branch: 'master',
-          commit_message: 'Invalid',
-          actions: [{ action: 'unknown', file_path: 'files/ruby/popen.rb' }]
-        }
-      end
-
-      it 'responds with 400 bad request' do
-        post api(url, user), params: params
-
-        expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response['error']).to eq('actions[0][action] does not have a valid value')
-      end
-    end
-
-    context 'when committing into a fork as a maintainer' do
+    shared_examples 'committing into a fork as a maintainer' do
       include_context 'merge request allowing collaboration'
 
       let(:project_id) { forked_project.id }
@@ -1283,15 +1826,245 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
       end
 
       it 'allows pushing to the source branch of the merge request', :sidekiq_might_not_need_inline do
-        post api(url, user), params: push_params('feature')
+        workhorse_body_upload(url, push_params('feature'))
 
         expect(response).to have_gitlab_http_status(:created)
       end
 
       it 'denies pushing to another branch' do
-        post api(url, user), params: push_params('other-branch')
+        workhorse_body_upload(url, push_params('other-branch'))
 
         expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+
+    shared_examples 'does not filter content type in logs' do |content_type|
+      let(:params) do
+        {
+          branch: 'master',
+          commit_message: 'hello world',
+          actions: [
+            {
+              action: 'create',
+              file_path: 'foo/bar/baz.txt',
+              content: 'puts 8'
+            }
+          ]
+        }
+      end
+
+      it 'does not filter content-type in logs' do
+        expect(::API::API::LOGGER).to receive(:info).with(
+          hash_including(params: hash_including("Content-Type" => content_type))
+        )
+
+        workhorse_body_upload(url, params)
+      end
+    end
+
+    context 'with json encoding' do
+      it_behaves_like 'param validations'
+      it_behaves_like 'update actions'
+      it_behaves_like 'multiple operations'
+      it_behaves_like 'chmod actions'
+      it_behaves_like 'committing into a fork as a maintainer'
+      it_behaves_like 'does not filter content type in logs', 'application/json'
+
+      it 'returns a 400 bad request with invalid json' do
+        perform_workhorse_json_body_upload(url, 'not valid json {')
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+      end
+
+      context 'for create actions' do
+        let(:new_branch_name) { 'json-patch' }
+
+        it_behaves_like 'create actions'
+      end
+
+      context 'for delete actions' do
+        let(:file_to_delete) { 'CONTRIBUTING.md' }
+
+        it_behaves_like 'delete actions'
+      end
+
+      context 'for move actions' do
+        let(:file_path) { 'VERSION.txt' }
+        let(:previous_path) { 'VERSION' }
+
+        it_behaves_like 'move actions'
+      end
+
+      context 'without a file size parameter' do
+        it 'rate limits the request' do
+          allow_next_instance_of(described_class) do |controller|
+            expect(controller).to receive(:check_rate_limit!).with(:user_large_commit_request, scope: user)
+          end
+
+          perform_workhorse_json_body_upload(url, params.to_json, params: { 'file.size': nil })
+        end
+      end
+
+      context 'when the local file is not present' do
+        it 'returns a bad request' do
+          perform_workhorse_json_body_upload(url, params.to_json, params: { 'file.path': '' })
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+        end
+      end
+    end
+
+    context 'with multipart form encoding' do
+      let(:body_encoding) { :multipart_form }
+
+      it_behaves_like 'param validations'
+      it_behaves_like 'update actions'
+      it_behaves_like 'multiple operations'
+      it_behaves_like 'chmod actions'
+      it_behaves_like 'committing into a fork as a maintainer'
+      it_behaves_like 'does not filter content type in logs', 'multipart/form-data; boundary=XXX'
+
+      context 'for create actions' do
+        let(:new_branch_name) { 'multipart-form-patch' }
+
+        it_behaves_like 'create actions'
+      end
+
+      context 'for delete actions' do
+        let(:file_to_delete) { 'MAINTENANCE.md' }
+
+        it_behaves_like 'delete actions'
+      end
+
+      context 'for move actions' do
+        let(:file_path) { 'PROCESS.txt' }
+        let(:previous_path) { 'PROCESS.md' }
+
+        it_behaves_like 'move actions'
+      end
+
+      context 'with a file upload' do
+        let(:file) do
+          Tempfile.new('name').tap do |f|
+            f.write('file content')
+          end
+        end
+
+        let(:params) { super().merge(actions: [{ action: 'create', file_path: '/test.rb', content: file }]) }
+
+        it 'returns bad request' do
+          workhorse_body_upload(url, params)
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          msg = "400 Bad request - This endpoint does not support form encoded file uploads"
+          expect(json_response['message']).to eq(msg)
+        end
+      end
+    end
+
+    context 'with form encoding' do
+      let(:body_encoding) { :form }
+
+      it_behaves_like 'param validations'
+      it_behaves_like 'update actions'
+      it_behaves_like 'multiple operations'
+      it_behaves_like 'chmod actions'
+      it_behaves_like 'committing into a fork as a maintainer'
+
+      context 'for create actions' do
+        let(:new_branch_name) { 'form-patch' }
+
+        it_behaves_like 'create actions'
+      end
+
+      context 'for delete actions' do
+        let(:file_to_delete) { 'README.md' }
+
+        it_behaves_like 'delete actions'
+      end
+
+      context 'for move actions' do
+        let(:file_path) { 'Gemfile_2.zip' }
+        let(:previous_path) { 'Gemfile.zip' }
+
+        it_behaves_like 'move actions'
+      end
+
+      context 'with an invalid form encoding' do
+        context 'with a query limit error' do
+          it 'returns bad request' do
+            expect(Rack::Utils).to receive(:parse_nested_query).twice.and_call_original
+            expect(Rack::Utils).to receive(:parse_nested_query).with("").and_raise(Rack::QueryParser::QueryLimitError)
+
+            workhorse_body_upload(url, {})
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to include('Invalid form data exceeded query limit')
+          end
+        end
+
+        context 'with a parameter type error' do
+          it 'returns bad request' do
+            expect(Rack::Utils).to receive(:parse_nested_query).twice.and_call_original
+            expect(Rack::Utils).to receive(:parse_nested_query).with("").and_raise(Rack::QueryParser::ParameterTypeError)
+
+            workhorse_body_upload(url, {})
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to include('Invalid parameter type')
+          end
+        end
+
+        context 'with a invalid parameter error' do
+          it 'returns bad request' do
+            expect(Rack::Utils).to receive(:parse_nested_query).twice.and_call_original
+            expect(Rack::Utils).to receive(:parse_nested_query).with("").and_raise(Rack::QueryParser::InvalidParameterError)
+
+            workhorse_body_upload(url, {})
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to include('Invalid parameter')
+          end
+        end
+      end
+    end
+
+    context 'with an invalid encoding' do
+      it 'returns bad request' do
+        perform_workhorse_json_body_upload(url, "", params: { 'Content-Type': 'application/octet-stream' })
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to include('Unsupported Content-Type: application/octet-stream')
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_commit do
+      let(:url) { "/projects/#{project_id}/repository/commits" }
+      let(:boundary_object) { project }
+
+      let(:granular_commit_params) do
+        {
+          branch: 'master',
+          commit_message: 'Created via granular PAT',
+          actions: [
+            {
+              action: 'create',
+              file_path: "files/test/granular-#{SecureRandom.hex(4)}.rb",
+              content: 'puts 8'
+            }
+          ]
+        }
+      end
+
+      let(:request) do
+        workhorse_body_upload(
+          api("/projects/#{project_id}/repository/commits", personal_access_token: pat),
+          granular_commit_params
+        )
+      end
+
+      before do
+        project.add_developer(user)
       end
     end
   end
@@ -1362,6 +2135,53 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response.map { |r| [r['type'], r['name']] }.compact).to eq(refs)
       end
+
+      it 'applies per_page limit to Gitaly calls' do
+        expect_next_instance_of(Gitlab::Repositories::ContainingCommitFinder, project.repository, commit_id, limit: 51, type: 'all') do |finder|
+          expect(finder).to receive(:execute).and_call_original
+        end
+
+        get api(route, current_user), params: { type: 'all', per_page: 50 }
+        expect(response).to have_gitlab_http_status(:ok)
+
+        expect(response).to include_limited_pagination_headers
+        expect(response.headers).not_to include('X-Total', 'X-Total-Pages')
+        expected_page_number = 2
+        expect(response).to include_offset_url_params_in_next_link(expected_page_number)
+      end
+
+      context 'when second page is requested' do
+        it 'fetches enough records to display the second page' do
+          expect_next_instance_of(Gitlab::Repositories::ContainingCommitFinder, project.repository, commit_id, limit: 101, type: 'all') do |finder|
+            expect(finder).to receive(:execute).and_call_original
+          end
+
+          get api(route, current_user), params: { type: 'all', per_page: 50, page: 2 }
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+
+        it 'returns correct response headers for last page' do
+          expect_next_instance_of(Gitlab::Repositories::ContainingCommitFinder, project.repository, commit_id, limit: 101, type: 'all') do |finder|
+            expect(finder).to receive(:execute).and_call_original
+          end
+
+          get api(route, current_user), params: { type: 'all', per_page: 50, page: 2 }
+          expect(response).to have_gitlab_http_status(:ok)
+
+          expect(response.headers).not_to include('X-Total', 'X-Total-Pages')
+          expect(response.headers['Link']).not_to include('rel="next"')
+          expect(response.headers['Link']).to include('rel="prev"')
+          expect(response.headers['x-next-page']).to eq('')
+          expect(response.headers['x-prev-page']).to include('1')
+        end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit_ref do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
     end
   end
 
@@ -1369,6 +2189,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
     let(:commit) { project.repository.commit }
     let(:commit_id) { commit.id }
     let(:route) { "/projects/#{project_id}/repository/commits/#{commit_id}" }
+
+    it_behaves_like 'enforcing job token policies', :read_repositories,
+      allow_public_access_for_enabled_project_features: [:repository] do
+      let(:request) do
+        get api(route), params: { job_token: target_job.token }
+      end
+    end
 
     shared_examples_for 'ref commit' do
       it 'returns the ref last commit' do
@@ -1378,7 +2205,7 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         expect(response).to match_response_schema('public_api/v4/commit/detail')
         expect(json_response['id']).to eq(commit.id)
         expect(json_response['short_id']).to eq(commit.short_id)
-        expect(json_response['title']).to eq(commit.title)
+        expect(json_response['title']).to eq(commit.full_title)
         expect(json_response['message']).to eq(commit.safe_message)
         expect(json_response['author_name']).to eq(commit.author_name)
         expect(json_response['author_email']).to eq(commit.author_email)
@@ -1613,6 +2440,28 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         it_behaves_like 'ref with unaccessible pipeline'
       end
     end
+
+    context 'when authenticated', 'with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+      let(:commit) { project.repository.commit }
+      let(:commit_id) { commit.id }
+
+      before do
+        get api(route, oauth_access_token: oauth_token)
+      end
+
+      it 'is successful' do
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['id']).to eq(commit.id)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
   end
 
   describe 'GET /projects/:id/repository/commits/:sha/diff' do
@@ -1730,6 +2579,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         end
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit_diff do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
   end
 
   describe 'GET /projects/:id/repository/commits/:sha/comments' do
@@ -1772,6 +2628,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         it_behaves_like '404 response' do
           let(:request) { get api(route, current_user) }
         end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit_comment do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
       end
     end
 
@@ -1841,7 +2704,17 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           create(:diff_note_on_commit, project: project, author: create(:user))
 
-          expect { get api(route, current_user) }.not_to exceed_query_limit(control)
+          result = ActiveRecord::QueryRecorder.new { get api(route, current_user) }
+
+          notes_query = /SELECT "note_diff_files".*/
+          authors_query = /SELECT "users".*/
+
+          aggregate_failures "preloads authors and notes_diff_files" do
+            expect(result.occurrences_starting_with(authors_query).count)
+              .to eq(control.occurrences_starting_with(authors_query).count)
+            expect(result.occurrences_starting_with(notes_query).count)
+              .to eq(control.occurrences_starting_with(notes_query).count)
+          end
         end
       end
     end
@@ -1869,6 +2742,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
     let(:commit) { project.repository.commit }
     let(:commit_id) { commit.id }
     let(:route) { "/projects/#{project_id}/repository/commits/#{commit_id}/sequence" }
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit_sequence do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
 
     context 'when commit does not exist' do
       let(:commit_id) { 'unknown' }
@@ -1918,9 +2798,11 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
           expect(response).to have_gitlab_http_status(:created)
           expect(response).to match_response_schema('public_api/v4/commit/basic')
-          expect(json_response['title']).to eq(commit.title)
-          expect(json_response['message']).to eq(commit.cherry_pick_message(user))
-          expect(json_response['author_name']).to eq(commit.author_name)
+          expect(json_response['title']).to eq(commit.full_title)
+          expect(json_response['message']).to eq(
+            "#{commit.cherry_pick_message(user)}\n\nCo-authored-by: #{commit.author_name} <#{commit.author_email}>"
+          )
+          expect(json_response['author_name']).to eq(user.name)
           expect(json_response['committer_name']).to eq(user.name)
         end
 
@@ -2090,6 +2972,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :cherry_pick_commit do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(route, personal_access_token: pat), params: { branch: branch }
+      end
+    end
   end
 
   describe 'POST :id/repository/commits/:sha/revert' do
@@ -2098,6 +2987,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
     let(:commit)    { project.commit(commit_id) }
     let(:branch)    { 'master' }
     let(:route)     { "/projects/#{project_id}/repository/commits/#{commit_id}/revert" }
+
+    it_behaves_like 'authorizing granular token permissions', :revert_commit do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(route, personal_access_token: pat), params: { branch: branch }
+      end
+    end
 
     shared_examples_for 'ref revert' do
       context 'when ref exists' do
@@ -2304,6 +3200,17 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         expect(json_response['line_type']).to eq('new')
       end
 
+      it 'creates a tag with /tag quick action' do
+        path = project.repository.commit.raw_diffs.first.new_path
+        post api(route, current_user), params: { note: '/tag quick-action-tag-test some commit message', path: path, line: 1, line_type: 'new' }
+
+        expect(response).to have_gitlab_http_status(:accepted)
+        expect(json_response['commands_changes']).to be_present
+        expect(json_response.dig('commands_changes', 'tag_message')).to eq('some commit message')
+        expect(json_response.dig('commands_changes', 'tag_name')).to eq('quick-action-tag-test')
+        expect(json_response['summary']).to eq(['Tagged this commit to quick-action-tag-test with "some commit message".'])
+      end
+
       it 'correctly adds a note for the "old" line type' do
         commit    = project.repository.commit("markdown")
         commit_id = commit.id
@@ -2371,6 +3278,13 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
         end
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :create_commit_comment do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(route, personal_access_token: pat), params: { note: note }
+      end
+    end
   end
 
   describe 'GET /projects/:id/repository/commits/:sha/merge_requests' do
@@ -2378,6 +3292,14 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
     let(:merged_mr) { create(:merge_request, source_project: project, source_branch: 'master', target_branch: 'feature') }
     let(:commit) { merged_mr.merge_request_diff.commits.last }
+
+    it_behaves_like 'enforcing job token policies', :read_repositories,
+      allow_public_access_for_enabled_project_features: [:repository, :merge_requests] do
+      let(:request) do
+        get api("/projects/#{project.id}/repository/commits/#{commit.id}/merge_requests"),
+          params: { job_token: target_job.token }
+      end
+    end
 
     def perform_request(user)
       get api("/projects/#{project.id}/repository/commits/#{commit.id}/merge_requests", user)
@@ -2423,9 +3345,41 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
 
       control = ActiveRecord::QueryRecorder.new { perform_request(user) }
 
-      create(:merge_request, :closed, source_project: project, source_branch: 'master', target_branch: 'feature')
+      # 5 queries are intermittently seen to update user_preferences, and select scan_result_policy_violations
+      query_buffer = 5
 
-      expect { perform_request(user) }.not_to exceed_query_limit(control)
+      # Make query_buffer + 1 new merge requests to ensure an n + 1 introduces more than query_buffer queries
+      (query_buffer + 1).times do
+        create(:merge_request, :closed, source_project: project, source_branch: 'master', target_branch: 'feature')
+      end
+
+      expect { perform_request(user) }.not_to exceed_query_limit(control).with_threshold(query_buffer)
+    end
+
+    context 'merge-requests filtered by state' do
+      it 'returns the correct opened merge-request' do
+        get api("/projects/#{project.id}/repository/commits/#{commit.id}/merge_requests?state=opened", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_limited_pagination_headers
+        expect(json_response.length).to eq(1)
+        expect(json_response[0]['id']).to eq(merged_mr.id)
+      end
+
+      it 'does not found closed merge-request' do
+        get api("/projects/#{project.id}/repository/commits/#{commit.id}/merge_requests?state=closed", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_limited_pagination_headers
+        expect(json_response.length).to eq(0)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_commit_merge_request do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}/repository/commits/#{commit.id}/merge_requests", personal_access_token: pat)
+      end
     end
   end
 
@@ -2531,6 +3485,14 @@ RSpec.describe API::Commits, feature_category: :source_code_management do
           expect(Time.parse(json_response['key']['created_at'])).to be_like_time(key.created_at)
           expect(Time.parse(json_response['key']['expires_at'])).to be_like_time(key.expires_at)
           expect(json_response['commit_source']).to eq('gitaly')
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_commit_signature do
+        let(:boundary_object) { project }
+        let(:user) { create(:user, email: commit.committer_email) }
+        let(:request) do
+          get api(route, personal_access_token: pat)
         end
       end
     end

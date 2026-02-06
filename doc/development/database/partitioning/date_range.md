@@ -1,12 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Date range partitioning
 ---
-
-# Date range partitioning
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/32240) in GitLab 13.1.
 
 ## Description
 
@@ -17,8 +14,7 @@ partitioning to work well, most queries must access data in a
 certain date range.
 
 For a more concrete example, consider using the `audit_events` table.
-It was the first table to be partitioned in the application database
-(scheduled for deployment with the GitLab 13.5 release). This
+It was the first table to be partitioned in the application database. This
 table tracks audit entries of security events that happen in the
 application. In almost all cases, users want to see audit activity that
 occurs in a certain time frame. As a result, date-range partitioning
@@ -59,9 +55,9 @@ CREATE TABLE audit_events (
 PARTITION BY RANGE(created_at);
 ```
 
-NOTE:
-The primary key of a partitioned table must include the partition key as
-part of the primary key definition.
+> [!note]
+> The primary key of a partitioned table must include the partition key as
+> part of the primary key definition.
 
 And we might have a list of partitions for the table, such as:
 
@@ -103,6 +99,52 @@ substantial. Partitioning should only be leveraged if the access patterns
 of the data support the partitioning strategy, otherwise performance
 suffers.
 
+## Time-range Partitioning Strategies
+
+GitLab supports two strategies for time-range partitioning:
+
+- Daily partitioning
+- Monthly partitioning
+
+### Using Time-range Partitioning
+
+To use time-range partitioning in your model, include the `PartitionedTable` module and configure the partition settings:
+
+```ruby
+class WebHookLog < ApplicationRecord
+  include PartitionedTable
+
+  partitioned_by :created_at, strategy: :monthly, retain_for: 1.month
+end
+```
+
+### Available Strategies
+
+#### Daily Strategy (`:daily`)
+
+The daily strategy creates one partition per day:
+
+```ruby
+partitioned_by :created_at, strategy: :daily, retain_for: 7.days
+```
+
+#### Monthly Strategy (`:monthly`)
+
+The monthly strategy creates one partition per month:
+
+```ruby
+partitioned_by :created_at, strategy: :monthly, retain_for: 3.months, analyze_interval: 3.days
+```
+
+### Configuration Options
+
+- `column`: The column to partition on (required, must be a timestamp or date column)
+- `strategy`: Either `:daily` or `:monthly` (required)
+- `retain_for`: Duration to retain partitions (optional)
+- `analyze_interval`: How often to run ANALYZE on new partitions (optional)
+
+Choose `:daily` for high-volume tables that need fine-grained partitioning, or `:monthly` for tables with moderate data volume where daily partitioning would be excessive.
+
 ## Example
 
 ### Step 1: Creating the partitioned copy (Release N)
@@ -130,7 +172,38 @@ class PartitionAuditEvents < Gitlab::Database::Migration[2.1]
 end
 ```
 
-After this has executed, any inserts, updates, or deletes in the
+Next, register the temporary partitioned table in
+`config/initializers/postgres_partitioning.rb`. This registration ensures the
+partition manager creates new partitions as the trigger syncs data. For example:
+
+```ruby
+Gitlab::Database::Partitioning.register_tables(
+  [
+    {
+      limit_connection_names: %i[main],
+      table_name: 'audit_events_partitioned_table_name',
+      partitioned_column: :created_at, strategy: :monthly
+    }
+  ]
+)
+```
+
+The example includes the following:
+
+- `table_name`: The name of your temporary partitioned table
+  (for example, `audit_events_b8088ecbd2`).
+- `partitioned_column`: The column used for partitioning.
+- `strategy`: Either `:daily` or `:monthly`.
+
+> [!warning]
+> Do not add `retain_for` to this registration, even if your data should be deleted after a certain period.
+> During the backfill, the partition manager might detach old partitions if `retain_for` is set,
+> causing the backfill to fail when it tries to copy data into detached partitions.
+> Add `retain_for` to your model only after the table swap is complete (Step 4).
+
+After the table swap is complete (Step 4), you can remove this registration.
+
+After the migration has executed, any inserts, updates, or deletes in the
 original table are also duplicated in the new table. For updates and
 deletes, the operation only has an effect if the corresponding row
 exists in the partitioned table.
@@ -149,32 +222,40 @@ class BackfillPartitionAuditEvents < Gitlab::Database::Migration[2.1]
 
   disable_ddl_transaction!
 
-  restrict_gitlab_migration gitlab_schema: :gitlab_main
+  restrict_gitlab_migration gitlab_schema: :gitlab_main_org
+  MIGRATION = 'BackfillPartitionedAuditEvents'
 
   def up
-    enqueue_partitioning_data_migration :audit_events
+    enqueue_partitioning_data_migration :audit_events, MIGRATION
   end
 
   def down
-    cleanup_partitioning_data_migration :audit_events
+    cleanup_partitioning_data_migration :audit_events, MIGRATION
   end
 end
 ```
 
+Batched background migrations are tracked under `db/docs/batched_background_migrations/`
+and require unique names. Create a subclass of `BackfillPartitionedTable` in
+`lib/gitlab/background_migration/` and reference it in your migration:
+
+```ruby
+class BackfillPartitionedAuditEvents < BackfillPartitionedTable; end
+```
+
 This step [queues a batched background migration](../batched_background_migrations.md#enqueue-a-batched-background-migration) internally with BATCH_SIZE and SUB_BATCH_SIZE as `50,000` and `2,500`. Refer [Batched Background migrations guide](../batched_background_migrations.md) for more details.
 
-### Step 3: Post-backfill cleanup (Release N+1)
+### Step 3: Post-backfill cleanup (Release after a required stop post Step 2)
 
-This step must occur at least one release after the release that
-includes step (2). This gives time for the background
-migration to execute properly in self-managed installations. In this step,
+> [!warning]
+> A [required stop](../required_stops.md) must occur between steps 2 and 3 to allow the background migration from step 2 to complete successfully
+> in GitLab Self-Managed instances.
+
+In this step,
 add another post-deployment migration that cleans up after the
 background migration. This includes forcing any remaining jobs to
 execute, and copying data that may have been missed, due to dropped or
 failed jobs.
-
-WARNING:
-A required stop must occur between steps 2 and 3 to allow the background migration from step 2 to complete successfully.
 
 Once again, continuing the example, this migration would look like:
 
@@ -184,7 +265,7 @@ class CleanupPartitionedAuditEventsBackfill < Gitlab::Database::Migration[2.1]
 
   disable_ddl_transaction!
 
-  restrict_gitlab_migration gitlab_schema: :gitlab_main
+  restrict_gitlab_migration gitlab_schema: :gitlab_main_org
 
   def up
     finalize_backfilling_partitioned_table :audit_events
@@ -235,3 +316,18 @@ After this migration completes:
 - The sync trigger created earlier is dropped.
 
 The partitioned table is now ready for use by the application.
+
+If you registered the temporary partitioned table in `config/initializers/postgres_partitioning.rb`
+(as described in Step 1), remove that registration now because the temporary table no longer exists after swap.
+
+To retain your data for a specific period only, add `retain_for` to your model:
+
+```ruby
+class ProjectDailyStatistic < ApplicationRecord
+  include PartitionedTable
+
+  partitioned_by :date, strategy: :monthly, retain_for: 3.months
+end
+```
+
+This ensures old partitions are automatically dropped by the partition manager.

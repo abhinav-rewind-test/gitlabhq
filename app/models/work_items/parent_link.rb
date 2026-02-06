@@ -3,10 +3,11 @@
 module WorkItems
   class ParentLink < ApplicationRecord
     include RelativePositioning
+    include EachBatch
 
     self.table_name = 'work_item_parent_links'
 
-    MAX_CHILDREN = 100
+    MAX_CHILDREN = 5000
 
     belongs_to :work_item
     belongs_to :work_item_parent, class_name: 'WorkItem'
@@ -17,7 +18,7 @@ module WorkItems
     validate :validate_cyclic_reference
     validate :validate_max_children
     validate :validate_confidentiality
-    validate :check_existing_related_link
+    validate :check_existing_related_link, on: :create
 
     scope :for_parents, ->(parent_ids) { where(work_item_parent_id: parent_ids) }
     scope :for_children, ->(children_ids) { where(work_item: children_ids) }
@@ -50,7 +51,7 @@ module WorkItems
     private
 
     def validate_max_children
-      return unless work_item_parent
+      return unless work_item_parent && work_item_parent_id_changed?
 
       max = persisted? ? MAX_CHILDREN : MAX_CHILDREN - 1
       if work_item_parent.child_links.count > max
@@ -62,31 +63,28 @@ module WorkItems
       return unless work_item_parent && work_item
 
       if work_item_parent.confidential? && !work_item.confidential?
-        errors.add :work_item, _("cannot assign a non-confidential work item to a confidential "\
-                                 "parent. Make the work item confidential and try again.")
+        errors.add :work_item, format(
+          _("cannot assign a non-confidential %{work_item_type} to a confidential " \
+                    "parent. Make the %{work_item_type} confidential and try again."),
+          work_item_type: work_item.work_item_type.name.downcase
+        )
       end
     end
 
     def validate_hierarchy_restrictions
       return unless work_item && work_item_parent
 
-      restriction = ::WorkItems::HierarchyRestriction
-        .find_by_parent_type_id_and_child_type_id(work_item_parent.work_item_type_id, work_item.work_item_type_id)
+      restriction = ::WorkItems::TypesFramework::SystemDefined::HierarchyRestriction.find_by(
+        parent_type_id: work_item_parent.work_item_type_id,
+        child_type_id: work_item.work_item_type_id
+      )
 
       if restriction.nil?
-        errors.add :work_item, _('is not allowed to add this type of parent')
+        errors.add :work_item, _("it's not allowed to add this type of parent item")
         return
       end
 
       validate_depth(restriction.maximum_depth)
-      validate_cross_hierarchy(restriction.cross_hierarchy_enabled)
-    end
-
-    def validate_cross_hierarchy(cross_hierarchy_enabled)
-      return if cross_hierarchy_enabled
-      return if work_item.resource_parent == work_item_parent.resource_parent
-
-      errors.add :work_item_parent, _('parent must be in the same project or group as child.')
     end
 
     def validate_depth(depth)
@@ -106,7 +104,7 @@ module WorkItems
       end
 
       if work_item_parent.ancestors.detect { |ancestor| work_item.id == ancestor.id }
-        errors.add :work_item, _('is already present in ancestors')
+        errors.add :work_item, _("it's already present in this item's hierarchy")
       end
     end
 

@@ -6,7 +6,7 @@ query alertAssignees(
   $fullPath: ID!
   $iid: String!
 ) {
-  workspace: project(fullPath: $fullPath) {
+  namespace: project(fullPath: $fullPath) {
     id
     issuable: alertManagementAlert(domain: $domain, iid: $iid) {
       id
@@ -15,6 +15,7 @@ query alertAssignees(
         nodes {
           ...User
           ...UserAvailability
+          compositeIdentityEnforced @gl_introduced(version: "18.8.0")
         }
       }
     }

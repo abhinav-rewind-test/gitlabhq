@@ -6,11 +6,12 @@ module API
       module Mlflow
         class RegisteredModel < Grape::Entity
           expose :name
-          expose :creation_timestamp, documentation: { type: Integer }
-          expose :last_updated_timestamp, documentation: { type: Integer }
+          expose :creation_timestamp, documentation: { type: 'Integer' }
+          expose :last_updated_timestamp, documentation: { type: 'Integer' }
           expose :description
           expose(:user_id) { |model| model.user_id.to_s }
           expose :metadata, as: :tags, using: KeyValue
+          expose :versions, as: :latest_versions
 
           private
 

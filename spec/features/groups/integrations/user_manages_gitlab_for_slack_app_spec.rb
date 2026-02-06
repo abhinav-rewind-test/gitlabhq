@@ -22,18 +22,6 @@ RSpec.describe 'User manages the group-level GitLab for Slack app integration', 
     wait_for_requests
   end
 
-  context 'when the flag is disabled' do
-    before do
-      stub_feature_flags(gitlab_for_slack_app_instance_and_group_level: false)
-    end
-
-    it 'hides the integration' do
-      visit_group_integrations
-
-      expect(page).not_to have_content('GitLab for Slack app')
-    end
-  end
-
   it 'shows the workspace name but not the alias and does not allow the user to edit it' do
     visit_slack_application_form
 
@@ -73,7 +61,11 @@ RSpec.describe 'User manages the group-level GitLab for Slack app integration', 
       end
 
       within_modal do
-        expect(page).to have_content('Are you sure you want to unlink this Slack Workspace from this integration?')
+        expect(page).to have_content(
+          'Are you sure you want to unlink this Slack Workspace from this integration? ' \
+            'All projects inheriting these settings will also be unlinked. ' \
+            'Groups and projects using custom settings will not be affected.'
+        )
         click_button('Remove')
       end
 

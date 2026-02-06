@@ -2,7 +2,7 @@
 <script>
 import { GlIcon, GlTooltipDirective } from '@gitlab/ui';
 import $ from 'jquery';
-import { debounce, unescape } from 'lodash';
+import { debounce, isEqual, unescape } from 'lodash';
 import { createAlert } from '~/alert';
 import GLForm from '~/gl_form';
 import SafeHtml from '~/vue_shared/directives/safe_html';
@@ -10,7 +10,6 @@ import axios from '~/lib/utils/axios_utils';
 import { stripHtml } from '~/lib/utils/text_utility';
 import { __, sprintf } from '~/locale';
 import Suggestions from '~/vue_shared/components/markdown/suggestions.vue';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
 import { MARKDOWN_EDITOR_READY_EVENT } from '~/vue_shared/constants';
 import markdownEditorEventHub from '~/vue_shared/components/markdown/eventhub';
@@ -32,7 +31,6 @@ export default {
     SafeHtml,
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [glFeatureFlagsMixin()],
   props: {
     /**
      * This prop should be bound to the value of the `<textarea>` element
@@ -56,22 +54,22 @@ export default {
       required: false,
       default: '',
     },
+    newCommentTemplatePaths: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
     enablePreview: {
       type: Boolean,
       required: false,
       default: true,
     },
-    addSpacingClasses: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
-    removeBorder: {
+    supportsQuickActions: {
       type: Boolean,
       required: false,
       default: false,
     },
-    supportsQuickActions: {
+    supportsTableOfContents: {
       type: Boolean,
       required: false,
       default: false,
@@ -146,9 +144,20 @@ export default {
       required: false,
       default: false,
     },
+    editorAiActions: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
+    immersive: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   data() {
     return {
+      glForm: null,
       markdownPreview: '',
       referencedCommands: '',
       referencedUsers: [],
@@ -191,14 +200,6 @@ export default {
 
       return '';
     },
-    lineNumber() {
-      let lineNumber;
-      if (this.line) {
-        const { new_line: newLine, old_line: oldLine } = this.line;
-        lineNumber = newLine || oldLine;
-      }
-      return lineNumber;
-    },
     lineType() {
       return this.line ? this.line.type : '';
     },
@@ -234,6 +235,7 @@ export default {
     textareaValue: {
       immediate: true,
       handler(textareaValue, oldVal) {
+        this.hidePreview();
         const all = /@all([^\w._-]|$)/;
         const hasAll = all.test(textareaValue);
         const hadAll = all.test(oldVal);
@@ -258,23 +260,33 @@ export default {
         }
       },
     },
+    autocompleteDataSources: {
+      immediate: true,
+      handler(newDataSources, oldDataSources) {
+        if (!isEqual(newDataSources, oldDataSources) && this.glForm) {
+          this.glForm.updateAutocompleteDataSources(newDataSources);
+        }
+      },
+    },
   },
   mounted() {
-    // GLForm class handles all the toolbar buttons
-    // eslint-disable-next-line no-new
-    new GLForm(
+    this.glForm = new GLForm(
       $(this.$refs['gl-form']),
       {
         emojis: this.enableAutocomplete,
         members: this.enableAutocomplete,
         issues: this.enableAutocomplete,
+        issuesAlternative: this.enableAutocomplete,
+        workItems: this.enableAutocomplete,
         mergeRequests: this.enableAutocomplete,
         epics: this.enableAutocomplete,
+        epicsAlternative: this.enableAutocomplete,
         milestones: this.enableAutocomplete,
         labels: this.enableAutocomplete,
         snippets: this.enableAutocomplete,
         vulnerabilities: this.enableAutocomplete,
         contacts: this.enableAutocomplete,
+        statuses: this.enableAutocomplete,
       },
       true,
       this.autocompleteDataSources,
@@ -283,9 +295,8 @@ export default {
     markdownEditorEventHub.$emit(MARKDOWN_EDITOR_READY_EVENT);
   },
   beforeDestroy() {
-    const glForm = $(this.$refs['gl-form']).data('glForm');
-    if (glForm) {
-      glForm.destroy();
+    if (this.glForm) {
+      this.glForm.destroy();
     }
   },
   methods: {
@@ -309,13 +320,15 @@ export default {
         this.renderMarkdown();
       }
     },
+
     hidePreview() {
       this.markdownPreview = '';
       this.previewMarkdown = false;
     },
 
     fetchMarkdown() {
-      return axios.post(this.markdownPreviewPath, { text: this.textareaValue }).then(({ data }) => {
+      const params = { text: this.textareaValue, no_header_anchors: !this.supportsTableOfContents };
+      return axios.post(this.markdownPreviewPath, params).then(({ data }) => {
         const { references } = data;
         if (references) {
           this.referencedCommands = references.commands;
@@ -338,8 +351,13 @@ export default {
     }, 400),
 
     renderMarkdown(data = {}) {
+      const { references } = data;
+      if (!references) {
+        this.referencedCommands = '';
+      }
+
       this.markdownPreviewLoading = false;
-      this.markdownPreview = data.body || __('Nothing to preview.');
+      this.markdownPreview = data.body || data.html || __('Nothing to preview.');
 
       this.$nextTick()
         .then(() => {
@@ -361,10 +379,13 @@ export default {
 <template>
   <div
     ref="gl-form"
-    class="js-vue-markdown-field md-area position-relative gfm-form"
+    class="js-vue-markdown-field md-area gfm-form !gl-relative"
+    :class="{ 'immersive !gl-border-none !gl-bg-inherit': immersive, 'gl-relative': !immersive }"
     :data-uploads-path="uploadsPath"
   >
+    <slot v-if="immersive" name="header"></slot>
     <markdown-header
+      :editor-ai-actions="editorAiActions"
       :preview-markdown="previewMarkdown"
       :line-content="lineContent"
       :can-suggest="canSuggest"
@@ -373,31 +394,54 @@ export default {
       :suggestion-start-index="suggestionsStartIndex"
       :uploads-path="uploadsPath"
       :markdown-preview-path="markdownPreviewPath"
+      :new-comment-template-paths-prop="newCommentTemplatePaths"
       :drawio-enabled="drawioEnabled"
       :supports-quick-actions="supportsQuickActions"
       data-testid="markdownHeader"
       :restricted-tool-bar-items="restrictedToolBarItems"
+      :immersive="immersive"
       @showPreview="showPreview"
       @hidePreview="hidePreview"
       @handleSuggestDismissed="() => $emit('handleSuggestDismissed')"
-    />
+    >
+      <template #header-buttons>
+        <slot name="header-buttons"></slot>
+        <div class="gl-grow">
+          <markdown-toolbar
+            v-if="immersive"
+            :markdown-docs-path="markdownDocsPath"
+            :can-attach-file="canAttachFile"
+            :show-comment-tool-bar="showCommentToolBar"
+            :show-content-editor-switcher="showContentEditorSwitcher"
+            @enableContentEditor="$emit('enableContentEditor')"
+          />
+        </div>
+      </template>
+    </markdown-header>
     <div v-show="!previewMarkdown" class="md-write-holder">
       <div class="zen-backdrop">
         <slot name="textarea"></slot>
         <a
-          class="zen-control zen-control-leave js-zen-leave gl-text-gray-500"
+          v-gl-tooltip.placement.left
+          class="zen-control zen-control-leave js-zen-leave gl-button btn-default-tertiary btn-icon btn-sm"
           href="#"
-          :aria-label="__('Leave zen mode')"
-        >
-          <gl-icon :size="16" name="minimize" />
-        </a>
-        <markdown-toolbar
-          :markdown-docs-path="markdownDocsPath"
-          :can-attach-file="canAttachFile"
-          :show-comment-tool-bar="showCommentToolBar"
-          :show-content-editor-switcher="showContentEditorSwitcher"
-          @enableContentEditor="$emit('enableContentEditor')"
-        />
+          :title="__('Exit full screen')"
+          :aria-label="__('Exit full screen')"
+          ><gl-icon variant="subtle" :size="24" name="minimize"
+        /></a>
+        <div class="gl-border-t">
+          <markdown-toolbar
+            v-if="!immersive"
+            :markdown-docs-path="markdownDocsPath"
+            :can-attach-file="canAttachFile"
+            :show-comment-tool-bar="showCommentToolBar"
+            :show-content-editor-switcher="showContentEditorSwitcher"
+            :class="{ showContentEditorSwitcher: 'gl-border-t' }"
+            @enableContentEditor="$emit('enableContentEditor')"
+          >
+            <template #toolbar><slot name="toolbar"></slot></template>
+          </markdown-toolbar>
+        </div>
       </div>
     </div>
     <div
@@ -420,7 +464,7 @@ export default {
     <div
       v-if="referencedCommands && previewMarkdown && !markdownPreviewLoading"
       v-safe-html:[$options.safeHtmlConfig]="referencedCommands"
-      class="referenced-commands gl-mx-2 gl-mb-2 gl-px-4 gl-rounded-bottom-left-base gl-rounded-bottom-right-base"
+      class="referenced-commands gl-mx-2 gl-mb-2 gl-rounded-bl-base gl-rounded-br-base gl-px-4"
       data-testid="referenced-commands"
     ></div>
     <div v-if="shouldShowReferencedUsers" class="referenced-users">

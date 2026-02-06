@@ -14,7 +14,7 @@ export default () => {
 
   if (!el) return null;
 
-  const { hiddenInputId } = el.dataset;
+  const { hiddenInputId, organizationId } = el.dataset;
   const hiddenInput = document.getElementById(hiddenInputId);
 
   const selected = hiddenInput.value
@@ -26,11 +26,13 @@ export default () => {
 
   return new Vue({
     el,
+    name: 'TopicsTokenSelectorRoot',
     apolloProvider,
     render(createElement) {
       return createElement(TopicsTokenSelector, {
         props: {
           selected,
+          organizationId,
         },
         on: {
           update(tokens) {

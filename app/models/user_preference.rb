@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
-class UserPreference < MainClusterwide::ApplicationRecord
+class UserPreference < ApplicationRecord
+  include IgnorableColumns
+  include SafelyChangeColumnDefault
+
+  ignore_column :new_ui_enabled, remove_after: '2026-01-09', remove_with: '18.9'
+
   # We could use enums, but Rails 4 doesn't support multiple
   # enum options with same name for multiple fields, also it creates
   # extra methods that aren't really needed here.
@@ -8,11 +13,19 @@ class UserPreference < MainClusterwide::ApplicationRecord
   TIME_DISPLAY_FORMATS = { system: 0, non_iso_format: 1, iso_format: 2 }.freeze
 
   belongs_to :user
-  belongs_to :home_organization, class_name: "Organizations::Organization", optional: true
+
+  columns_changing_default :text_editor_type
+
+  ignore_columns :early_access_program_participant, :early_access_program_tracking,
+    remove_with: '18.10', remove_after: '2026-03-13'
 
   scope :with_user, -> { joins(:user) }
   scope :gitpod_enabled, -> { where(gitpod_enabled: true) }
 
+  validates :dark_color_scheme_id, allow_nil: true, inclusion: {
+    in: Gitlab::ColorSchemes.valid_ids,
+    message: ->(*) { format(_("%{placeholder} is not a valid color scheme"), { placeholder: '%{value}' }) }
+  }
   validates :issue_notes_filter, :merge_request_notes_filter, inclusion: { in: NOTES_FILTERS.values }, presence: true
   validates :tab_width, numericality: {
     only_integer: true,
@@ -22,26 +35,36 @@ class UserPreference < MainClusterwide::ApplicationRecord
   validates :diffs_deletion_color, :diffs_addition_color,
     format: { with: ColorsHelper::HEX_COLOR_PATTERN },
     allow_blank: true
+  validate :timezone_valid, if: -> { timezone_changed? }
 
   validates :time_display_relative, allow_nil: false, inclusion: { in: [true, false] }
   validates :render_whitespace_in_code, allow_nil: false, inclusion: { in: [true, false] }
   validates :pass_user_identities_to_ci_jwt, allow_nil: false, inclusion: { in: [true, false] }
-
   validates :pinned_nav_items, json_schema: { filename: 'pinned_nav_items' }
+  validates :early_access_studio_participant, allow_nil: false, inclusion: { in: [true, false] }
 
   validates :time_display_format, inclusion: { in: TIME_DISPLAY_FORMATS.values }, presence: true
+  validates :extensions_marketplace_opt_in_url, length: { maximum: 512 }
 
-  validate :user_belongs_to_home_organization, if: :home_organization_changed?
+  validates :work_items_display_settings, json_schema: { filename: 'user_preference_work_items_display_settings' }
 
+  attribute :dark_color_scheme_id, default: -> { Gitlab::CurrentSettings.default_dark_syntax_highlighting_theme }
   attribute :tab_width, default: -> { Gitlab::TabWidth::DEFAULT }
   attribute :time_display_relative, default: true
   attribute :time_display_format, default: 0
   attribute :render_whitespace_in_code, default: false
   attribute :project_shortcut_buttons, default: true
   attribute :keyboard_shortcuts_enabled, default: true
-  attribute :use_web_ide_extension_marketplace, default: false
+  attribute :dpop_enabled, default: false
+  attribute :text_editor_type, default: 2
 
-  enum visibility_pipeline_id_type: { id: 0, iid: 1 }
+  enum :visibility_pipeline_id_type, { id: 0, iid: 1 }, scopes: false
+
+  enum :text_editor_type, { not_set: 0, plain_text_editor: 1, rich_text_editor: 2 }
+  enum :extensions_marketplace_opt_in_status, Enums::WebIde::ExtensionsMarketplaceOptInStatus.statuses
+  enum :organization_groups_projects_display, { projects: 0, groups: 1 }
+
+  enum :merge_request_dashboard_list_type, { action_based: 0, role_based: 1 }
 
   class << self
     def notes_filters
@@ -71,19 +94,6 @@ class UserPreference < MainClusterwide::ApplicationRecord
     self[notes_filter_field_for(resource)]
   end
 
-  def tab_width
-    read_attribute(:tab_width) || self.class.column_defaults['tab_width']
-  end
-
-  def tab_width=(value)
-    if value.nil?
-      default = self.class.column_defaults['tab_width']
-      super(default)
-    else
-      super(value)
-    end
-  end
-
   class << self
     def time_display_formats
       {
@@ -94,49 +104,43 @@ class UserPreference < MainClusterwide::ApplicationRecord
     end
   end
 
-  def time_display_relative
-    value = read_attribute(:time_display_relative)
-    return value unless value.nil?
-
-    self.class.column_defaults['time_display_relative']
+  def extensions_marketplace_opt_in_url
+    # To support existing records, this can be `nil` and it defaults to `https://open-vsx.org`
+    super || 'https://open-vsx.org'
   end
 
-  def time_display_relative=(value)
+  def dpop_enabled=(value)
     if value.nil?
-      default = self.class.column_defaults['time_display_relative']
+      default = self.class.column_defaults['dpop_enabled']
       super(default)
     else
       super(value)
     end
   end
 
-  def render_whitespace_in_code
-    value = read_attribute(:render_whitespace_in_code)
-    return value unless value.nil?
-
-    self.class.column_defaults['render_whitespace_in_code']
+  def text_editor
+    text_editor_type
   end
 
-  def render_whitespace_in_code=(value)
-    if value.nil?
-      default = self.class.column_defaults['render_whitespace_in_code']
-      super(default)
-    else
-      super(value)
-    end
+  def text_editor=(value)
+    self.text_editor_type = value
+  end
+
+  def default_text_editor_enabled
+    text_editor == "rich_text_editor" || text_editor == "plain_text_editor"
+  end
+
+  def default_text_editor_enabled=(value)
+    self.text_editor = value ? "rich_text_editor" : "not_set"
+  end
+
+  def timezone=(value)
+    value = nil if value == ''
+
+    super(value)
   end
 
   private
-
-  def user_belongs_to_home_organization
-    # If we don't ignore the default organization id below then all users need to have their corresponding entry
-    # with default organization id as organization id in the `organization_users` table.
-    # Otherwise, the user won't be able to set the default organization as the home organization.
-    return if home_organization.default?
-    return if home_organization.user?(user)
-
-    errors.add(:user, _("is not part of the given organization"))
-  end
 
   def notes_filter_field_for(resource)
     field_key =
@@ -147,6 +151,14 @@ class UserPreference < MainClusterwide::ApplicationRecord
       end
 
     "#{field_key}_notes_filter"
+  end
+
+  def timezone_valid
+    return if timezone.nil?
+
+    return if ActiveSupport::TimeZone[timezone].present?
+
+    errors.add(:timezone, "timezone is not valid")
   end
 end
 

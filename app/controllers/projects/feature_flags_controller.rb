@@ -30,8 +30,7 @@ class Projects::FeatureFlagsController < Projects::ApplicationController
     end
   end
 
-  def new
-  end
+  def new; end
 
   def show
     respond_to do |format|
@@ -57,8 +56,7 @@ class Projects::FeatureFlagsController < Projects::ApplicationController
     end
   end
 
-  def edit
-  end
+  def edit; end
 
   def update
     result = FeatureFlags::UpdateService.new(project, current_user, update_params).execute(feature_flag)
@@ -104,13 +102,13 @@ class Projects::FeatureFlagsController < Projects::ApplicationController
       :version,
       scopes_attributes: [
         :environment_scope, :active,
-        strategies: [:name, parameters: [:groupId, :percentage, :userIds]]
+        { strategies: [:name, { parameters: [:groupId, :percentage, :userIds] }] }
       ],
       strategies_attributes: [
         :name,
         :user_list_id,
-        parameters: [:groupId, :percentage, :userIds, :rollout, :stickiness],
-        scopes_attributes: [:environment_scope]
+        { parameters: [:groupId, :percentage, :userIds, :rollout, :stickiness],
+          scopes_attributes: [:environment_scope] }
       ]
     )
   end
@@ -125,15 +123,15 @@ class Projects::FeatureFlagsController < Projects::ApplicationController
         :environment_scope,
         :active,
         :_destroy,
-        strategies: [:name, parameters: [:groupId, :percentage, :userIds]]
+        { strategies: [:name, { parameters: [:groupId, :percentage, :userIds] }] }
       ],
       strategies_attributes: [
         :id,
         :name,
         :user_list_id,
         :_destroy,
-        parameters: [:groupId, :percentage, :userIds, :rollout, :stickiness],
-        scopes_attributes: [:id, :environment_scope, :_destroy]
+        { parameters: [:groupId, :percentage, :userIds, :rollout, :stickiness],
+          scopes_attributes: [:id, :environment_scope, :_destroy] }
       ]
     )
   end

@@ -17,7 +17,8 @@ module API
         resource :experiments do
           desc 'Fetch experiment by experiment_id' do
             success Entities::Ml::Mlflow::GetExperiment
-            detail 'https://www.mlflow.org/docs/1.28.0/rest-api.html#get-experiment'
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#get-experiment'
+            tags ['mlops']
           end
           params do
             optional :experiment_id, type: String, default: '', desc: 'Experiment ID, in reference to the project'
@@ -28,7 +29,8 @@ module API
 
           desc 'Fetch experiment by experiment_name' do
             success Entities::Ml::Mlflow::GetExperiment
-            detail 'https://www.mlflow.org/docs/1.28.0/rest-api.html#get-experiment-by-name'
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#get-experiment-by-name'
+            tags ['mlops']
           end
           params do
             optional :experiment_name, type: String, default: '', desc: 'Experiment name'
@@ -39,7 +41,8 @@ module API
 
           desc 'List experiments' do
             success Entities::Ml::Mlflow::ListExperiment
-            detail 'https://www.mlflow.org/docs/latest/rest-api.html#list-experiments'
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#search-experiments'
+            tags ['mlops']
           end
           get 'list', urgency: :low do
             response = { experiments: experiment_repository.all }
@@ -49,7 +52,8 @@ module API
 
           desc 'Search experiments' do
             success Entities::Ml::Mlflow::ListExperiment
-            detail 'https://www.mlflow.org/docs/latest/rest-api.html#list-experiments'
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#search-experiments'
+            tags ['mlops']
           end
           params do
             optional :max_results,
@@ -85,7 +89,8 @@ module API
 
           desc 'Create experiment' do
             success Entities::Ml::Mlflow::NewExperiment
-            detail 'https://www.mlflow.org/docs/1.28.0/rest-api.html#create-experiment'
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#create-experiment'
+            tags ['mlops']
           end
           params do
             requires :name, type: String, desc: 'Experiment name'
@@ -101,8 +106,8 @@ module API
 
           desc 'Sets a tag for an experiment.' do
             summary 'Sets a tag for an experiment. '
-
-            detail  'https://www.mlflow.org/docs/1.28.0/rest-api.html#set-experiment-tag'
+            tags ['mlops']
+            detail 'https://www.mlflow.org/docs/2.19.0/rest-api.html#set-experiment-tag'
           end
           params do
             requires :experiment_id, type: String, desc: 'ID of the experiment.'
@@ -113,6 +118,23 @@ module API
             bad_request! unless experiment_repository.add_tag!(experiment, params[:key], params[:value])
 
             {}
+          end
+
+          desc 'Delete an experiment.' do
+            summary 'Delete an experiment.'
+            tags ['mlops']
+            detail 'https://mlflow.org/docs/2.19.0/rest-api.html#delete-experiment'
+          end
+          params do
+            requires :experiment_id, type: String, desc: 'ID of the experiment.'
+          end
+          post 'delete', urgency: :low do
+            destroy = ::Ml::DestroyExperimentService.new(experiment).execute
+            if destroy.success?
+              present({})
+            else
+              render_api_error!(destroy.message.first, 400)
+            end
           end
         end
       end

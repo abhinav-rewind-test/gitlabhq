@@ -16,19 +16,19 @@ class ProjectMember < Member
   default_scope { where(source_type: SOURCE_TYPE) } # rubocop:disable Cop/DefaultScope
 
   scope :in_project, ->(project) { where(source_id: project.id) }
+  scope :in_projects, ->(project_ids) { where(source_id: project_ids) }
   scope :in_namespaces, ->(groups) do
     joins('INNER JOIN projects ON projects.id = members.source_id')
       .where(projects: { namespace_id: groups.select(:id) })
   end
+  scope :with_roles, ->(roles) { where(access_level: roles) }
 
   class << self
     def truncate_teams(project_ids)
       ProjectMember.transaction do
         members = ProjectMember.where(source_id: project_ids)
 
-        members.each do |member|
-          member.destroy
-        end
+        members.each(&:destroy)
       end
 
       true
@@ -42,25 +42,9 @@ class ProjectMember < Member
 
     # For those who get to see a modal with a role dropdown, here are the options presented
     def permissible_access_level_roles(current_user, project)
-      # This method is a stopgap in preparation for https://gitlab.com/gitlab-org/gitlab/-/issues/364087
-      if Ability.allowed?(current_user, :manage_owners, project)
-        Gitlab::Access.options_with_owner
-      else
-        ProjectMember.access_level_roles
-      end
-    end
+      return {} if current_user.nil?
 
-    def permissible_access_level_roles_for_project_access_token(current_user, project)
-      if Ability.allowed?(current_user, :manage_owners, project)
-        Gitlab::Access.options_with_owner
-      else
-        max_access_level = project.team.max_member_access(current_user.id)
-        return {} unless max_access_level.present?
-
-        ProjectMember.access_level_roles.filter do |_, value|
-          value <= max_access_level
-        end
-      end
+      project.roles_user_can_assign(current_user)
     end
 
     def access_level_roles
@@ -112,7 +96,8 @@ class ProjectMember < Member
     self.member_namespace_id = project&.project_namespace_id
   end
 
-  def post_destroy_hook
+  override :post_destroy_member_hook
+  def post_destroy_member_hook
     if expired?
       event_service.expired_leave_project(self.project, self.user)
     else

@@ -145,11 +145,13 @@ Because life would be :zzz: without Emoji, right? :rocket:
 
 Get ready for the Emoji :bomb: : :+1: :-1: :ok_hand: :wave: :v: :raised_hand: :muscle:
 
-### TableOfContentsFilter
+### TableOfContentsTagFilter
 
-All headers in this document should be linkable. Try it.
+A table of contents should be inserted here
 
-### AutolinkFilter
+[toc]
+
+### Autolinking in MarkdownFilter
 
 These are all plain text that should get turned into links:
 
@@ -175,7 +177,7 @@ External links get a `rel="nofollow noreferrer"` and `target="_blank"` attribute
 
 ### Reference Filters (e.g., <%= issue.to_reference %>)
 
-References should be parseable even inside _<%= merge_request.to_reference %>_ emphasis.
+References should be parsable even inside _<%= merge_request.to_reference %>_ emphasis.
 
 #### UserReferenceFilter
 
@@ -280,6 +282,16 @@ Note: work item references use `#`, which get built as an issue link.
 - Group milestone by name in quotes: <%= group_milestone.to_reference(format: :name) %>
 - Group milestone by URL is ignore: <%= urls.milestone_url(group_milestone) %>
 
+#### WikiPageReferenceFilter
+- Wiki page: <%= wiki_page.to_reference %>
+- Wiki page in another project: <%= xwiki_page.to_reference(project) %>
+- Ignored in code: `<%= wiki_page.to_reference %>`
+- Ignored in links: [Link to <%= wiki_page.to_reference %>](#wiki-page-link)
+- Ignored when backslash escaped: \<%= wiki_page.to_reference %>
+- Wiki page by URL: <%= urls.project_wiki_url(project, wiki_page) %>
+- Link to wiki page by reference: [Wiki page](<%= wiki_page.to_reference %>)
+- Link to wiki page by URL: [Wiki page](<%= urls.project_wiki_url(project, wiki_page) %>)
+
 ##### AlertReferenceFilter
 - Alert: <%= alert.to_reference %>
 - Alert in another project: <%= xalert.to_reference(project) %>
@@ -344,7 +356,7 @@ $$
 html
 </h1>
 
-### Gollum Tags
+### Wikilink / Gollum Tags
 
 - [[linked-resource]]
 - [[link-text|linked-resource]]
@@ -450,3 +462,15 @@ Bob -> Sara : Hello
 ![Sized Image](app/assets/images/touch-icon-ipad.png){width=75% height=100}
 
 ![Sized Video](/assets/videos/gitlab-demo.mp4){width=75% height=100}
+
+### Description Lists
+
+Fruit
+: Orange
+: Apple
+
+Vegetables
+
+: Tomato
+
+: Celery

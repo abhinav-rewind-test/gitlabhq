@@ -139,16 +139,15 @@ module CascadingProjectSettingAttribute
   def cascaded_ancestor_value(attribute)
     return unless direct_ancestor_present?
 
-    # rubocop:disable GitlabSecurity/SqlInjection -- model attribute, not user input
     NamespaceSetting
       .select(attribute)
       .joins(
-        "join unnest(ARRAY[#{namespace_ancestor_ids_joined}]) with ordinality t(namespace_id, ord) USING (namespace_id)"
+        "join unnest(ARRAY[#{namespace_ancestor_ids_joined}]::bigint[]) with ordinality t(namespace_id, ord)
+         USING (namespace_id)"
       )
       .where("#{attribute} IS NOT NULL")
       .order('t.ord')
       .limit(1).first&.read_attribute(attribute)
-    # rubocop:enable GitlabSecurity/SqlInjection
   end
 
   def application_setting_value(attribute)

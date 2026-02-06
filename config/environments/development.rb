@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'gitlab/middleware/strip_cookies'
+
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb
 
@@ -19,15 +21,14 @@ Rails.application.configure do
     config.action_controller.perform_caching = false
   end
 
-  # Show a warning when a large data set is loaded into memory
-  config.active_record.warn_on_records_fetched_greater_than = 1000
-
   # Raise an error on page load if there are pending migrations
   config.active_record.migration_error = :page_load
 
   # Only use best-standards-support built into browsers
   config.action_dispatch.best_standards_support = :builtin
 
+  # Configure static asset server for e2e:test-on-gdk
+  config.assets.compile = !Gitlab::Utils.to_boolean(ENV['GITLAB_DEVELOPMENT_USE_PRECOMPILED_ASSETS'], default: false)
   # There is no need to check if assets are precompiled locally
   # To debug AssetNotPrecompiled errors locally, set CHECK_PRECOMPILED_ASSETS to true
   config.assets.check_precompiled_asset = Gitlab::Utils.to_boolean(ENV['CHECK_PRECOMPILED_ASSETS'], default: false)
@@ -66,7 +67,8 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
   # Don't make a mess when bootstrapping a development environment
   config.action_mailer.perform_deliveries = (ENV['BOOTSTRAP'] != '1')
-  config.action_mailer.preview_path = GitlabEdition.path_glob('app/mailers/previews')
+
+  config.action_mailer.preview_paths = [GitlabEdition.path_glob('app/mailers/previews')]
 
   config.eager_load = false
 
@@ -91,11 +93,6 @@ Rails.application.configure do
     config.file_watcher = ActiveSupport::EventedFileUpdateChecker
   end
 
-  # BetterErrors live shell (REPL) on every stack frame
-  BetterErrors::Middleware.allow_ip!("127.0.0.1/0")
-  # Disable REPL due to security concerns.
-  BetterErrors.binding_of_caller_available = false
-
   # Reassign some performance related settings when we profile the app
   if Gitlab::Utils.to_boolean(ENV['RAILS_PROFILE'].to_s)
     warn "Hot-reloading is disabled as you are running with RAILS_PROFILE enabled"
@@ -105,7 +102,11 @@ Rails.application.configure do
     config.active_record.verbose_query_logs = false
     config.action_view.cache_template_loading = true
     config.action_view.annotate_rendered_view_with_filenames = false
-
-    config.middleware.delete BetterErrors::Middleware
   end
+
+  config.middleware.insert_before(
+    ActionDispatch::Cookies, Gitlab::Middleware::StripCookies, paths: [%r{^/assets/}]
+  )
+
+  config.log_level = Gitlab::Utils.to_rails_log_level(ENV["GITLAB_LOG_LEVEL"], :debug)
 end

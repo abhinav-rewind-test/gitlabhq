@@ -2,11 +2,18 @@
 
 module LooseForeignKeys
   class ProcessDeletedRecordsService
-    BATCH_SIZE = 1000
+    BATCH_SIZE = 500
 
-    def initialize(connection:, modification_tracker: LooseForeignKeys::ModificationTracker.new)
+    def initialize(
+      connection:,
+      logger: Sidekiq.logger,
+      modification_tracker: LooseForeignKeys::ModificationTracker.new,
+      worker_class: LooseForeignKeys::CleanupWorker
+    )
       @connection = connection
       @modification_tracker = modification_tracker
+      @logger = logger
+      @worker_class = worker_class
     end
 
     def execute
@@ -30,6 +37,8 @@ module LooseForeignKeys
             parent_table: table,
             loose_foreign_key_definitions: loose_foreign_key_definitions,
             deleted_parent_records: records,
+            connection: connection,
+            logger: logger,
             modification_tracker: modification_tracker)
           .execute
 
@@ -54,15 +63,17 @@ module LooseForeignKeys
 
     private
 
-    attr_reader :connection, :modification_tracker
+    attr_reader :connection, :logger, :modification_tracker
 
     def db_config_name
       ::Gitlab::Database.db_config_name(connection)
     end
 
     def load_batch_for_table(table)
-      fully_qualified_table_name = "#{current_schema}.#{table}"
-      LooseForeignKeys::DeletedRecord.load_batch_for_table(fully_qualified_table_name, BATCH_SIZE)
+      Gitlab::Database::SharedModel.using_connection(connection) do
+        fully_qualified_table_name = "#{current_schema}.#{table}"
+        LooseForeignKeys::DeletedRecord.load_batch_for_table(fully_qualified_table_name, BATCH_SIZE)
+      end
     end
 
     def current_schema
@@ -70,7 +81,10 @@ module LooseForeignKeys
     end
 
     def tracked_tables
-      @tracked_tables ||= Gitlab::Database::LooseForeignKeys.definitions_by_table.keys.shuffle
+      @tracked_tables ||= Gitlab::Database::LooseForeignKeys.definitions_by_table.keys.shuffle.select do |tracked_table|
+        definitions = Gitlab::Database::LooseForeignKeys.definitions_by_table[tracked_table]
+        definitions.any? { |definition| definition.options[:worker_class] == @worker_class }
+      end
     end
   end
 end

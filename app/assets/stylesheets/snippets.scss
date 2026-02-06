@@ -4,15 +4,16 @@
   @import 'highlight/embedded';
   @import 'framework/images';
 
-  $border-style: 1px solid $border-color;
+  $border-style: 1px solid $gl-border-color-default;
 
   font-family: $regular-font;
   font-size: $gl-font-size;
   line-height: $code-line-height;
-  color: $gl-text-color;
+  @apply gl-text-default;
   margin: 20px;
   font-weight: $gl-font-weight-normal;
 
+  // stylelint-disable-next-line gitlab/no-gl-class
   .gl-snippet-icon {
     display: inline-block;
     background: url('ext_snippet_icons/ext_snippet_icons.png') no-repeat;
@@ -22,9 +23,13 @@
     height: 16px;
     background-size: cover;
 
+    // stylelint-disable-next-line gitlab/no-gl-class
     &.gl-snippet-icon-doc-code { background-position: 0 0;  }
+    // stylelint-disable-next-line gitlab/no-gl-class
     &.gl-snippet-icon-doc-text {  background-position: 0 -16px; }
+    // stylelint-disable-next-line gitlab/no-gl-class
     &.gl-snippet-icon-download {  background-position: 0 -32px; }
+    // stylelint-disable-next-line gitlab/no-gl-class
     &.gl-snippet-icon-copy-to-clipboard {  background-position: 0 -48px; }
   }
 
@@ -39,7 +44,7 @@
 
   .file-content.code {
     border: $border-style;
-    border-radius: 0 0 $border-radius-default $border-radius-default;
+    border-radius: 0 0 $gl-border-radius-lg $gl-border-radius-lg;
     display: flex;
     box-shadow: none;
     margin: 0;
@@ -81,7 +86,7 @@
         font-size: $code-font-size;
         line-height: $code-line-height;
         white-space: nowrap;
-        color: $t-gray-a-24;
+        @apply gl-text-alpha-dark-24;
         min-width: 30px;
       }
 
@@ -100,12 +105,12 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    background-color: $gray-light;
+    background-color: $gl-background-color-subtle;
     border: $border-style;
     border-bottom: 0;
     padding: $gl-padding;
     margin: 0;
-    border-radius: $border-radius-default $border-radius-default 0 0;
+    border-radius: $gl-border-radius-lg $gl-border-radius-lg 0 0;
 
     .file-header-content {
       max-width: 75%;
@@ -117,7 +122,7 @@
 
       .gitlab-embedded-snippets-title {
         text-decoration: none;
-        color: $gl-text-color;
+        @apply gl-text-heading;
         word-break: break-word;
 
         &:hover {
@@ -136,6 +141,7 @@
       }
     }
 
+    // stylelint-disable-next-line gitlab/no-gl-class
     img,
     .gl-snippet-icon {
       display: inline-block;
@@ -157,17 +163,17 @@
       border-right: 0;
 
       &:hover {
-        background-color: $gray-50;
+        background-color: $gl-background-color-strong;
         border-color: $gray-100;
         text-decoration: none;
       }
 
       &:first-child {
-        border-radius: $border-radius-default 0 0 $border-radius-default;
+        border-radius: $gl-border-radius-lg 0 0 $gl-border-radius-lg;
       }
 
       &:last-child {
-        border-radius: 0 $border-radius-default $border-radius-default 0;
+        border-radius: 0 $gl-border-radius-lg $gl-border-radius-lg 0;
         border-right: $border-style;
       }
     }

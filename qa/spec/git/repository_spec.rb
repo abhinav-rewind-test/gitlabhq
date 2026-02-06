@@ -1,15 +1,14 @@
 # frozen_string_literal: true
 
 RSpec.describe QA::Git::Repository do
-  include QA::Support::Helpers::StubEnv
-
   shared_context 'unresolvable git directory' do
     let(:logger) { instance_double(Logger, info: nil, debug: nil) }
+    let(:default_user) { QA::Resource::User.new }
     let(:repo_uri) { 'http://foo/bar.git' }
-    let(:repo_uri_with_credentials) { 'http://root@foo/bar.git' }
+    let(:repo_uri_with_credentials) { "http://#{default_user.username}@foo/bar.git" }
     let(:env_vars) { [%q(HOME="temp")] }
     let(:extra_env_vars) { [] }
-    let(:run_params) { { env: env_vars + extra_env_vars, sleep_internal: 0, log_prefix: "Git: " } }
+    let(:run_params) { { raise_on_failure: true, env: env_vars + extra_env_vars, sleep_internal: 0, log_prefix: "Git: " } }
     let(:repository) do
       described_class.new(command_retry_sleep_interval: 0).tap do |r|
         r.uri = repo_uri
@@ -21,9 +20,10 @@ RSpec.describe QA::Git::Repository do
     let(:tmp_netrc_dir) { Dir.mktmpdir }
 
     before do
-      stub_env('GITLAB_USERNAME', 'root')
       allow(repository).to receive(:tmp_home_dir).and_return(tmp_netrc_dir)
       allow(QA::Runtime::Logger).to receive(:logger).and_return(logger)
+      allow(QA::Runtime::User::Store).to receive(:test_user).and_return(default_user)
+      allow(default_user).to receive(:git_repo_credential).and_return(default_user.password)
     end
 
     around do |example|
@@ -45,7 +45,7 @@ RSpec.describe QA::Git::Repository do
 
     context 'when command is successful' do
       it 'returns the #run command Result output' do
-        expect(repository).to receive(:run).with(command, run_params.merge(max_attempts: 3)).and_return(result)
+        expect(repository).to receive(:run).with(command, run_params.merge(max_attempts: 3, timeout: timeout)).and_return(result)
 
         expect(call_method).to eq(command_return)
       end
@@ -74,6 +74,31 @@ RSpec.describe QA::Git::Repository do
     end
   end
 
+  shared_examples 'command with no retries' do
+    let(:result_output) { +'Command successful' }
+    let(:result) { described_class::Result.new(any_args, 0, result_output) }
+    let(:command_return) { result_output }
+
+    context 'when command is successful' do
+      it 'returns the #run command Result output' do
+        expect(repository).to receive(:run).with(command, run_params.merge(max_attempts: 1, timeout: timeout)).and_return(result)
+
+        expect(call_method).to eq(command_return)
+      end
+    end
+
+    context 'when command is not successful' do
+      it 'raises a CommandError exception' do
+        expect(Open3).to receive(:capture2e).and_return([+'FAILURE', double(exitstatus: 42)]).once
+
+        expect do
+          call_method
+        end.to raise_error(QA::Support::Run::CommandError,
+          /The command .* failed \(42\) with the following output:\nFAILURE/)
+      end
+    end
+  end
+
   context 'with default credentials' do
     include_context 'unresolvable git directory' do
       before do
@@ -85,6 +110,7 @@ RSpec.describe QA::Git::Repository do
       let(:opts) { '' }
       let(:call_method) { repository.clone }
       let(:command) { "git clone #{opts} #{repo_uri_with_credentials} ./" }
+      let(:timeout) { nil }
 
       context 'when no opts is given' do
         it_behaves_like 'command with retries'
@@ -103,6 +129,7 @@ RSpec.describe QA::Git::Repository do
       it_behaves_like 'command with retries' do
         let(:call_method) { repository.shallow_clone }
         let(:command) { "git clone --depth 1 #{repo_uri_with_credentials} ./" }
+        let(:timeout) { nil }
       end
     end
 
@@ -111,6 +138,7 @@ RSpec.describe QA::Git::Repository do
         let(:tag_name) { 'v1.0' }
         let(:call_method) { repository.delete_tag(tag_name) }
         let(:command) { "git push origin --delete #{tag_name}" }
+        let(:timeout) { nil }
       end
     end
 
@@ -118,6 +146,7 @@ RSpec.describe QA::Git::Repository do
       let(:branch) { QA::Runtime::Env.default_branch }
       let(:call_method) { repository.push_changes }
       let(:command) { "git push #{repo_uri_with_credentials} #{branch}" }
+      let(:timeout) { 60 }
 
       context 'when no branch is given' do
         it_behaves_like 'command with retries'
@@ -128,6 +157,12 @@ RSpec.describe QA::Git::Repository do
 
         it_behaves_like 'command with retries' do
           let(:call_method) { repository.push_changes(branch) }
+        end
+      end
+
+      context 'when max_attempts is exactly 1' do
+        it_behaves_like 'command with no retries' do
+          let(:call_method) { repository.push_changes(max_attempts: 1) }
         end
       end
 
@@ -145,6 +180,13 @@ RSpec.describe QA::Git::Repository do
           it_behaves_like 'command with retries' do
             let(:push_options) { '-o merge_request.merge_when_pipeline_succeeds' }
             let(:call_method) { repository.push_changes(push_options: { merge_when_pipeline_succeeds: true }) }
+          end
+        end
+
+        context 'when set to auto merge' do
+          it_behaves_like 'command with retries' do
+            let(:push_options) { '-o merge_request.auto_merge' }
+            let(:call_method) { repository.push_changes(push_options: { auto_merge: true }) }
           end
         end
 
@@ -196,7 +238,7 @@ RSpec.describe QA::Git::Repository do
       [0, 1, 2].each do |version|
         it "configures git to use protocol version #{version}" do
           expect(repository).to receive(:run).with("git config protocol.version #{version}",
-            run_params.merge(max_attempts: 1))
+            run_params.merge(max_attempts: 1, timeout: nil))
 
           repository.git_protocol = version
         end
@@ -218,6 +260,7 @@ RSpec.describe QA::Git::Repository do
         let(:result_output) { +'packet: ls-remote< version 2' }
         let(:command_return) { '2' }
         let(:extra_env_vars) { ["GIT_TRACE_PACKET=1"] }
+        let(:timeout) { nil }
       end
 
       it "reports the detected version" do
@@ -244,7 +287,7 @@ RSpec.describe QA::Git::Repository do
     describe '#use_default_credentials' do
       it 'adds credentials to .netrc' do
         expect(File.read(File.join(tmp_netrc_dir, '.netrc')))
-          .to eq("machine foo login #{QA::Runtime::User.default_username} password #{QA::Runtime::User.default_password}\n")
+          .to eq("machine foo login #{default_user.username} password #{default_user.git_repo_credential}\n")
       end
     end
   end

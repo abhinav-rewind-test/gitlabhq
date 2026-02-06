@@ -1,26 +1,39 @@
 ---
-stage: Monitor
-group: Product Analytics
+stage: Analytics
+group: Platform Insights
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Use Cube to query the GitLab Product analytics API. Send queries, generate access tokens, and retrieve analytics metadata.
+title: Product analytics API
 ---
 
-# Product analytics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed
+- Status: Beta
 
-> - Introduced in GitLab 15.4 [with a flag](../administration/feature_flags.md) named `cube_api_proxy`. Disabled by default.
-> - `cube_api_proxy` removed and replaced with `product_analytics_internal_preview` in GitLab 15.10.
-> - `product_analytics_internal_preview` replaced with `product_analytics_dashboards` in GitLab 15.11.
+{{< /details >}}
 
-FLAG:
-On self-managed GitLab and GitLab Dedicated, by default this feature is not available. To make it available per project or for your entire instance, an administrator can [enable the feature flag](../administration/feature_flags.md) named `cube_api_proxy`.
-On GitLab.com, this feature is available.
-This feature is not ready for production use.
+{{< history >}}
 
-NOTE:
-Make sure to define the `cube_api_base_url` and `cube_api_key` application settings first using [the API](settings.md).
+- Introduced in GitLab 15.4 [with a flag](../administration/feature_flags/_index.md) named `cube_api_proxy`. Disabled by default.
+- `cube_api_proxy` removed and replaced with `product_analytics_internal_preview` in GitLab 15.10.
+- `product_analytics_internal_preview` replaced with `product_analytics_dashboards` in GitLab 15.11.
+- `product_analytics_dashboards` [enabled](https://gitlab.com/gitlab-org/gitlab/-/issues/398653) by default in GitLab 16.11.
+- Feature flag `product_analytics_dashboards` [removed](https://gitlab.com/gitlab-org/gitlab/-/issues/454059) in GitLab 17.1.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/167296) to beta in GitLab 17.5 [with a flag](../administration/feature_flags/_index.md) named `product_analytics_features`.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+> This feature is not ready for production use.
+
+Use this API to track user behavior and application usage.
+
+> [!note]
+> Make sure to define the `cube_api_base_url` and `cube_api_key` application settings first using [the API](settings.md).
 
 ## Send query request to Cube
 
@@ -40,8 +53,8 @@ POST /projects/:id/product_analytics/request/dry-run
 
 The body of the load request must be a valid Cube query.
 
-NOTE:
-When measuring `TrackedEvents`, you must use `TrackedEvents.*` for `dimensions` and `timeDimensions`. The same rule applies when measuring `Sessions`.
+> [!note]
+> When measuring `TrackedEvents`, you must use `TrackedEvents.*` for `dimensions` and `timeDimensions`. The same rule applies when measuring `Sessions`.
 
 #### Tracked events example
 
@@ -114,15 +127,3 @@ GET /projects/:id/product_analytics/request/meta
 | Attribute | Type             | Required | Description                                                   |
 | --------- |------------------| -------- |---------------------------------------------------------------|
 | `id`      | integer          | yes      | The ID of a project that the current user has read access to. |
-
-## List a project's funnels
-
-List all funnels for a project. For example:
-
-```plaintext
-GET /projects/:id/product_analytics/funnels
-```
-
-| Attribute | Type             | Required | Description                                                        |
-| --------- |------------------| -------- |--------------------------------------------------------------------|
-| `id`      | integer          | yes      | The ID of a project that the current user has the Developer role for. |

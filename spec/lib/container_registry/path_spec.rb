@@ -19,8 +19,8 @@ RSpec.describe ContainerRegistry::Path do
 
       it 'return all project path like node in reverse order' do
         expect(subject.nodes).to eq %w[path/to/some/project
-                                       path/to/some
-                                       path/to]
+          path/to/some
+          path/to]
       end
     end
 
@@ -157,6 +157,17 @@ RSpec.describe ContainerRegistry::Path do
 
       it 'returns nil' do
         expect(subject.repository_project).to be_nil
+      end
+    end
+
+    context 'when initialized with a project' do
+      subject { described_class.new(path, project: project) }
+
+      let(:project) { create(:project) }
+      let(:path) { 'any_path' }
+
+      it 'returns initialized project' do
+        expect(subject.repository_project).to eq project
       end
     end
 

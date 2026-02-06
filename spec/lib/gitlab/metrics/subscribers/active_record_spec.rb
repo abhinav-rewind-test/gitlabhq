@@ -19,26 +19,18 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
       it 'has expected keys' do
         expect(described_class.load_balancing_metric_counter_keys).to include(
-          :db_replica_count,
-          :db_primary_count,
           :db_main_count,
           :db_main_replica_count,
           :db_ci_count,
           :db_ci_replica_count,
-          :db_replica_cached_count,
-          :db_primary_cached_count,
           :db_main_cached_count,
           :db_main_replica_cached_count,
           :db_ci_cached_count,
           :db_ci_replica_cached_count,
-          :db_replica_wal_count,
-          :db_primary_wal_count,
           :db_main_wal_count,
           :db_main_replica_wal_count,
           :db_ci_wal_count,
           :db_ci_replica_wal_count,
-          :db_replica_wal_cached_count,
-          :db_primary_wal_cached_count,
           :db_main_wal_cached_count,
           :db_main_replica_wal_cached_count,
           :db_ci_wal_cached_count,
@@ -56,20 +48,12 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
       it 'has expected keys' do
         expect(described_class.load_balancing_metric_counter_keys).to include(
-          :db_replica_count,
-          :db_primary_count,
           :db_main_count,
           :db_main_replica_count,
-          :db_replica_cached_count,
-          :db_primary_cached_count,
           :db_main_cached_count,
           :db_main_replica_cached_count,
-          :db_replica_wal_count,
-          :db_primary_wal_count,
           :db_main_wal_count,
           :db_main_replica_wal_count,
-          :db_replica_wal_cached_count,
-          :db_primary_wal_cached_count,
           :db_main_wal_cached_count,
           :db_main_replica_wal_cached_count,
           :db_main_txn_count
@@ -92,6 +76,46 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
     end
   end
 
+  describe '.load_balancing_roles_metric_counter_keys' do
+    context 'multiple databases' do
+      before do
+        skip_if_multiple_databases_not_setup(:ci)
+      end
+
+      it 'has expected keys' do
+        expect(described_class.load_balancing_roles_metric_counter_keys).to include(
+          :db_replica_count,
+          :db_primary_count,
+          :db_replica_cached_count,
+          :db_primary_cached_count,
+          :db_replica_wal_count,
+          :db_primary_wal_count,
+          :db_replica_wal_cached_count,
+          :db_primary_wal_cached_count
+        )
+      end
+    end
+
+    context 'single database' do
+      before do
+        skip_if_multiple_databases_are_setup
+      end
+
+      it 'has expected keys' do
+        expect(described_class.load_balancing_roles_metric_counter_keys).to include(
+          :db_replica_count,
+          :db_primary_count,
+          :db_replica_cached_count,
+          :db_primary_cached_count,
+          :db_replica_wal_count,
+          :db_primary_wal_count,
+          :db_replica_wal_cached_count,
+          :db_primary_wal_cached_count
+        )
+      end
+    end
+  end
+
   describe '.load_balancing_metric_duration_keys' do
     context 'multiple databases' do
       before do
@@ -100,8 +124,6 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
       it 'has expected keys' do
         expect(described_class.load_balancing_metric_duration_keys).to include(
-          :db_replica_duration_s,
-          :db_primary_duration_s,
           :db_main_duration_s,
           :db_main_replica_duration_s,
           :db_ci_duration_s,
@@ -121,8 +143,6 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
       it 'has expected keys' do
         expect(described_class.load_balancing_metric_duration_keys).to include(
-          :db_replica_duration_s,
-          :db_primary_duration_s,
           :db_main_duration_s,
           :db_main_replica_duration_s,
           :db_main_txn_duration_s,
@@ -136,6 +156,34 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
           :db_ci_replica_duration_s,
           :db_ci_txn_duration_s,
           :db_ci_txn_max_duration_s
+        )
+      end
+    end
+  end
+
+  describe '.load_balancing_roles_metric_duration_keys' do
+    context 'multiple databases' do
+      before do
+        skip_if_multiple_databases_not_setup(:ci)
+      end
+
+      it 'has expected keys' do
+        expect(described_class.load_balancing_roles_metric_duration_keys).to include(
+          :db_replica_duration_s,
+          :db_primary_duration_s
+        )
+      end
+    end
+
+    context 'single database' do
+      before do
+        skip_if_multiple_databases_are_setup
+      end
+
+      it 'has expected keys' do
+        expect(described_class.load_balancing_roles_metric_duration_keys).to include(
+          :db_replica_duration_s,
+          :db_primary_duration_s
         )
       end
     end
@@ -163,9 +211,16 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
       it do
         expect { subscriber.transaction(event) }
           .to change { ::Gitlab::Metrics::Subscribers::ActiveRecord.db_counter_payload[:db_main_txn_count] }.by(1)
-          .and change { ::Gitlab::Metrics::Subscribers::ActiveRecord.db_counter_payload[:db_txn_count] }.by(1)
         expect(::Gitlab::Metrics::Subscribers::ActiveRecord.db_counter_payload[:db_main_txn_duration_s]).to be >= 0
         expect(::Gitlab::Metrics::Subscribers::ActiveRecord.db_counter_payload[:db_main_txn_max_duration_s]).to be >= 0
+      end
+    end
+
+    shared_examples 'captures max transaction duration in request store' do
+      it do
+        subscriber.transaction(event)
+
+        expect(::Gitlab::SafeRequestStore[:txn_duration]['main']).to be >= 0
       end
     end
 
@@ -189,6 +244,7 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
       end
 
       it_behaves_like 'logs transaction info'
+      it_behaves_like 'captures max transaction duration in request store'
     end
 
     context 'when web transaction is available' do
@@ -213,6 +269,7 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
       end
 
       it_behaves_like 'logs transaction info'
+      it_behaves_like 'captures max transaction duration in request store'
     end
 
     context 'when background transaction is available' do
@@ -237,6 +294,7 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
       end
 
       it_behaves_like 'logs transaction info'
+      it_behaves_like 'captures max transaction duration in request store'
     end
   end
 
@@ -269,6 +327,7 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
         'SQL' | 'WITH archived_rows AS (SELECT * FROM users WHERE archived = true) INSERT INTO products_log SELECT * FROM archived_rows' | true | true | false
         'SQL' | 'DELETE FROM users where id = 10' | true | true | false
         'SQL' | 'INSERT INTO project_ci_cd_settings (project_id) SELECT id FROM projects' | true | true | false
+        'SQL' | "INSERT INTO blah (id, blah) VALUES (1, '/* this looks like a SELECT */ SELECT 1')" | true | true | false
         'SQL' | 'UPDATE users SET admin = true WHERE id = 10' | true | true | false
         'CACHE' | 'SELECT * FROM users WHERE id = 10' | true | false | true
         'SCHEMA' | "SELECT attr.attname FROM pg_attribute attr INNER JOIN pg_constraint cons ON attr.attrelid = cons.conrelid AND attr.attnum = any(cons.conkey) WHERE cons.contype = 'p' AND cons.conrelid = '\"projects\"'::regclass" | false | false | false
@@ -290,6 +349,14 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
         it_behaves_like 'record ActiveRecord metrics'
         it_behaves_like 'store ActiveRecord info in RequestStore', :primary
+
+        context 'when omit_aggregated_db_log_fields disabled' do
+          before do
+            stub_feature_flags(omit_aggregated_db_log_fields: false)
+          end
+
+          it_behaves_like 'store ActiveRecord info in RequestStore', :primary, include_aggregated: true
+        end
       end
     end
 
@@ -354,6 +421,7 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
           before do
             allow(Gitlab::Database::LoadBalancing).to receive(:db_role_for_connection).and_return(:replica)
             allow(connection).to receive_message_chain(:pool, :db_config, :name).and_return(db_config_name)
+            allow(connection).to receive(:pool).and_call_original
           end
 
           it 'queries connection db role' do
@@ -366,6 +434,14 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
           it_behaves_like 'record ActiveRecord metrics', :replica
           it_behaves_like 'store ActiveRecord info in RequestStore', :replica
+
+          context 'when omit_aggregated_db_log_fields disabled' do
+            before do
+              stub_feature_flags(omit_aggregated_db_log_fields: false)
+            end
+
+            it_behaves_like 'store ActiveRecord info in RequestStore', :replica, include_aggregated: true
+          end
         end
 
         context 'query using a connection to a primary' do
@@ -383,6 +459,14 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
 
           it_behaves_like 'record ActiveRecord metrics', :primary
           it_behaves_like 'store ActiveRecord info in RequestStore', :primary
+
+          context 'when omit_aggregated_db_log_fields disabled' do
+            before do
+              stub_feature_flags(omit_aggregated_db_log_fields: false)
+            end
+
+            it_behaves_like 'store ActiveRecord info in RequestStore', :primary, include_aggregated: true
+          end
         end
 
         context 'query using a connection to an unknown source' do
@@ -399,31 +483,16 @@ RSpec.describe Gitlab::Metrics::Subscribers::ActiveRecord do
           end
 
           it 'does not record DB role metrics' do
-            expect(transaction).not_to receive(:increment).with("gitlab_transaction_db_primary_count_total".to_sym, any_args)
-            expect(transaction).not_to receive(:increment).with("gitlab_transaction_db_replica_count_total".to_sym, any_args)
+            expect(transaction).not_to receive(:increment).with(:gitlab_transaction_db_primary_count_total, any_args)
+            expect(transaction).not_to receive(:increment).with(:gitlab_transaction_db_replica_count_total, any_args)
 
-            expect(transaction).not_to receive(:increment).with("gitlab_transaction_db_primary_cached_count_total".to_sym, any_args)
-            expect(transaction).not_to receive(:increment).with("gitlab_transaction_db_replica_cached_count_total".to_sym, any_args)
+            expect(transaction).not_to receive(:increment).with(:gitlab_transaction_db_primary_cached_count_total, any_args)
+            expect(transaction).not_to receive(:increment).with(:gitlab_transaction_db_replica_cached_count_total, any_args)
 
-            expect(transaction).not_to receive(:observe).with("gitlab_sql_primary_duration_seconds".to_sym, any_args)
-            expect(transaction).not_to receive(:observe).with("gitlab_sql_replica_duration_seconds".to_sym, any_args)
+            expect(transaction).not_to receive(:observe).with(:gitlab_sql_primary_duration_seconds, any_args)
+            expect(transaction).not_to receive(:observe).with(:gitlab_sql_replica_duration_seconds, any_args)
 
             subscriber.sql(event)
-          end
-
-          it 'does not store DB roles into into RequestStore' do
-            Gitlab::SafeRequestStore.ensure_request_store do
-              subscriber.sql(event)
-
-              expect(described_class.db_counter_payload).to include(
-                db_primary_cached_count: 0,
-                db_primary_count: 0,
-                db_primary_duration_s: 0,
-                db_replica_cached_count: 0,
-                db_replica_count: 0,
-                db_replica_duration_s: 0
-              )
-            end
           end
         end
       end

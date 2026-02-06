@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-require 'rails'
+ENV["RAILS_ENV"] = 'test' # rubocop: disable RSpec/EnvAssignment -- this was not set when running tests
+
 require 'rspec/mocks'
 
 require 'gitlab/rspec/all'
 require 'gitlab/http_v2'
 require 'gitlab/http_v2/configuration'
 require 'gitlab/stub_requests'
-require 'webmock/rspec'
 
-ENV["RSPEC_ALLOW_INVALID_URLS"] = 'true' # rubocop: disable RSpec/EnvAssignment
+require 'webmock/rspec'
 
 RSpec.configure do |config|
   config.include StubENV
@@ -45,6 +45,10 @@ Gitlab::HTTP_V2.configure do |config|
   end
 
   config.silent_mode_log_info_proc = ->(message, http_method) do
+    # no-op
+  end
+
+  config.log_with_level_proc = ->(log_level, message_params) do
     # no-op
   end
 end

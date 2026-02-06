@@ -11,13 +11,16 @@ module Gitlab
       # sanitize 6.0 requires only a context argument. Do not add any default
       # arguments to this method.
       def sanitize_unsafe_links(env)
-        remove_unsafe_links(env)
+        # sanitize calls this with every node, so no need to check child nodes
+        remove_unsafe_links(env, sanitize_children: false)
       end
 
-      def remove_unsafe_links(env, remove_invalid_links: true)
+      def remove_unsafe_links(env, remove_invalid_links: true, sanitize_children: true)
         node = env[:node]
 
         sanitize_node(node: node, remove_invalid_links: remove_invalid_links)
+
+        return unless sanitize_children
 
         # HTML entities such as <video></video> have scannable attrs in
         #   children elements, which also need to be sanitized.
@@ -43,25 +46,28 @@ module Gitlab
         UNSAFE_PROTOCOLS.none?(scheme)
       end
 
+      def permit_url?(url, remove_invalid_links: true)
+        uri = Addressable::URI.parse(url)
+        uri = uri.normalize
+
+        return true unless uri.scheme
+        return true if safe_protocol?(uri.scheme)
+
+        false
+      rescue Addressable::URI::InvalidURIError, Addressable::IDNA::PunycodeBigOutput
+        return false if remove_invalid_links
+
+        true
+      end
+
       private
 
       def sanitize_node(node:, remove_invalid_links: true)
         ATTRS_TO_SANITIZE.each do |attr|
           next unless node.has_attribute?(attr)
 
-          begin
-            node[attr] = node[attr].strip
-
-            uri = Addressable::URI.parse(node[attr])
-            uri = uri.normalize
-
-            next unless uri.scheme
-            next if safe_protocol?(uri.scheme)
-
-            node.remove_attribute(attr)
-          rescue Addressable::URI::InvalidURIError
-            node.remove_attribute(attr) if remove_invalid_links
-          end
+          node[attr] = node[attr].strip
+          node.remove_attribute(attr) unless permit_url?(node[attr], remove_invalid_links:)
         end
       end
     end

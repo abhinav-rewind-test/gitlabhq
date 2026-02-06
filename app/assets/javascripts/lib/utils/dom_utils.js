@@ -1,4 +1,5 @@
 import { has } from 'lodash';
+import { __ } from '~/locale';
 import { isInIssuePage, isInMRPage, isInEpicPage } from './common_utils';
 
 /**
@@ -17,8 +18,14 @@ export const addClassIfElementExists = (element, className) => {
 
 export const isInVueNoteablePage = () => isInIssuePage() || isInEpicPage() || isInMRPage();
 
+/**
+ * @deprecated Use `isScrolledToBottom` from `~/lib/utils/scroll_utils.js`
+ */
 export const canScrollUp = ({ scrollTop }, margin = 0) => scrollTop > margin;
 
+/**
+ * @deprecated Use `isScrolledToTop` from `~/lib/utils/scroll_utils.js`
+ */
 export const canScrollDown = ({ scrollTop, offsetHeight, scrollHeight }, margin = 0) =>
   scrollTop + offsetHeight < scrollHeight - margin;
 
@@ -66,18 +73,6 @@ export const parseBooleanDataAttributes = ({ dataset }, names) =>
  */
 export const isElementVisible = (element) =>
   Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
-
-export const getParents = (element) => {
-  const parents = [];
-  let parent = element.parentNode;
-
-  do {
-    parents.push(parent);
-    parent = parent.parentNode;
-  } while (parent);
-
-  return parents;
-};
 
 export const getParentByTagName = (element, tagName) => {
   let parent = element.parentNode;
@@ -138,4 +133,57 @@ export const replaceCommentsWith = (el, tagName) => {
 
     commentNode = iterator.nextNode();
   }
+};
+
+/**
+ * Wait for an element to become available in the DOM
+ * @param {String} selector - the query selector for the target element
+ * @param {Number} timeoutDelay - how long to wait before timing out
+ * @returns {Promise} A promise that resolves when the element becomes available
+ */
+export const waitForElement = (selector, timeoutDelay = 5000) =>
+  new Promise((resolve, reject) => {
+    let element;
+
+    const findElement = () => {
+      // Set `element` here to prevent unnecessary DOM lookups
+      if (!element) element = document.querySelector(selector);
+      return element;
+    };
+
+    if (findElement()) {
+      resolve(findElement());
+    } else {
+      let timeout;
+      const observer = new MutationObserver(() => {
+        if (findElement()) {
+          observer.disconnect();
+          clearTimeout(timeout);
+          resolve(findElement());
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+      timeout = setTimeout(() => {
+        observer.disconnect();
+        reject(__('Timeout: Element not found'));
+      }, timeoutDelay); // disconnect if no element was found
+    }
+  });
+
+/**
+ * Observes element once and destroys the observer
+ * Use this to replace synchronous .getBoundingClientRect() calls because it doesn't force a reflow
+ * https://toruskit.com/blog/how-to-get-element-bounds-without-reflow
+ * https://gist.github.com/paulirish/5d52fb081b3570c81e3a
+ *
+ * @param {Element} element - the target element
+ * @param {Function} callback - function to be executed asynchronously
+ */
+export const observeElementOnce = (element, callback) => {
+  const observer = new IntersectionObserver((entries) => {
+    callback(entries);
+    observer.disconnect();
+  });
+  observer.observe(element);
 };

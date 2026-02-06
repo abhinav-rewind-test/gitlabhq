@@ -23,7 +23,6 @@ module Types
       #   end
       #
       # Disabling descriptions rubocop for a false positive here
-      # rubocop: disable Graphql/Descriptions
       #
       def declarative_enum(enum_mod, use_name: true, use_description: true)
         graphql_name(enum_mod.name) if use_name
@@ -33,14 +32,13 @@ module Types
           value(key.to_s.upcase, value: key.to_s, description: content[:description])
         end
       end
-      # rubocop: enable Graphql/Descriptions
 
       # Helper to define an enum member for each element of a Rails AR enum
       def from_rails_enum(enum, description:)
         enum.each_key do |name|
           value name.to_s.upcase,
-                value: name,
-                description: format(description, name: name)
+            value: name,
+            description: format(description, name: name)
         end
       end
 
@@ -65,7 +63,7 @@ module Types
       end
 
       def authorized?(object, context)
-        authorization.ok?(object, context[:current_user])
+        authorization.ok?(object, context[:current_user], scope_validator: context[:scope_validator])
       end
     end
   end

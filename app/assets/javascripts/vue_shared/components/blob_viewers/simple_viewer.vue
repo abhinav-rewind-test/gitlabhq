@@ -1,7 +1,11 @@
 <script>
 import SafeHtml from '~/vue_shared/directives/safe_html';
+import { getParameterByName } from '~/lib/utils/url_utility';
+import { parseBoolean } from '~/lib/utils/common_utils';
+import { __ } from '~/locale';
+import { createAlert } from '~/alert';
 import Blame from '../source_viewer/components/blame_info.vue';
-import { calculateBlameOffset, shouldRender, toggleBlameClasses } from '../source_viewer/utils';
+import { calculateBlameOffset, shouldRender, toggleBlameLineBorders } from '../source_viewer/utils';
 import blameDataQuery from '../source_viewer/queries/blame_data.query.graphql';
 import ViewerMixin from './mixins';
 import { HIGHLIGHT_CLASS_NAME, MAX_BLAME_LINES } from './constants';
@@ -16,10 +20,18 @@ export default {
   },
   mixins: [ViewerMixin],
   inject: ['blobHash'],
+  i18n: {
+    blameErrorMessage: __('Unable to load blame information. Please try again.'),
+  },
   props: {
     blobPath: {
       type: String,
       required: true,
+    },
+    shouldPreloadBlame: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
     showBlame: {
       type: Boolean,
@@ -77,9 +89,15 @@ export default {
     },
   },
   watch: {
+    shouldPreloadBlame: {
+      handler(shouldPreload) {
+        if (!shouldPreload) return;
+        this.requestBlameInfo(this.fromLine, this.toLine);
+      },
+    },
     showBlame: {
       handler(isVisible) {
-        toggleBlameClasses(this.blameData, isVisible);
+        toggleBlameLineBorders(this.blameData, isVisible);
         this.requestBlameInfo(this.fromLine, this.toLine);
       },
       immediate: true,
@@ -87,7 +105,7 @@ export default {
     blameData: {
       handler(blameData) {
         if (!this.showBlame) return;
-        toggleBlameClasses(blameData, true);
+        toggleBlameLineBorders(blameData, true);
       },
       immediate: true,
     },
@@ -116,55 +134,68 @@ export default {
       }
     },
     async requestBlameInfo(fromLine, toLine) {
-      if (!this.showBlame) return;
+      if (!this.showBlame && !this.shouldPreloadBlame) return;
 
-      const { data } = await this.$apollo.query({
-        query: blameDataQuery,
-        variables: {
-          ref: this.currentRef,
-          fullPath: this.projectPath,
-          filePath: this.blobPath,
-          fromLine,
-          toLine,
-        },
-      });
+      try {
+        const { data } = await this.$apollo.query({
+          query: blameDataQuery,
+          variables: {
+            ref: this.currentRef,
+            fullPath: this.projectPath,
+            filePath: this.blobPath,
+            fromLine,
+            toLine,
+            ignoreRevs: parseBoolean(getParameterByName('ignore_revs')),
+          },
+        });
 
-      const blob = data?.project?.repository?.blobs?.nodes[0];
-      const blameGroups = blob?.blame?.groups;
-      const isDuplicate = this.blameData.includes(blameGroups[0]);
-      if (blameGroups && !isDuplicate) this.blameData.push(...blameGroups);
-      if (this.toLine < this.lineNumbers) {
-        this.fromLine += MAX_BLAME_LINES;
-        this.toLine += MAX_BLAME_LINES;
-        this.requestBlameInfo(this.fromLine, this.toLine);
+        const blob = data?.project?.repository?.blobs?.nodes[0];
+        const blameGroups = blob?.blame?.groups;
+        const isDuplicate = this.blameData.includes(blameGroups[0]);
+        if (blameGroups && !isDuplicate) this.blameData.push(...blameGroups);
+        if (this.toLine < this.lineNumbers) {
+          this.fromLine += MAX_BLAME_LINES;
+          this.toLine += MAX_BLAME_LINES;
+          this.requestBlameInfo(this.fromLine, this.toLine);
+        }
+      } catch (error) {
+        const errorMessage =
+          error.graphQLErrors?.[0]?.message || this.$options.i18n.blameErrorMessage;
+        createAlert({
+          message: errorMessage,
+          parent: this.$refs.fileContent?.parentElement,
+          dismissible: false,
+          captureError: true,
+          error,
+        });
       }
     },
   },
-  userColorScheme: window.gon.user_color_scheme,
 };
 </script>
 <template>
   <div>
+    <div class="flash-container gl-mb-3"></div>
     <div
-      class="file-content code js-syntax-highlight gl-display-flex"
-      :class="$options.userColorScheme"
+      ref="fileContent"
+      class="file-content code code-syntax-highlight-theme js-syntax-highlight gl-flex"
     >
-      <blame v-if="showBlame && blameInfoForRange.length" :blame-info="blameInfoForRange" />
-      <div class="line-numbers gl-px-0!">
-        <div
-          v-for="line in lineNumbers"
-          :key="line"
-          class="gl-display-flex diff-line-num line-links"
-        >
+      <blame
+        v-if="showBlame && blameInfoForRange.length"
+        :blame-info="blameInfoForRange"
+        :project-path="projectPath"
+      />
+      <div class="line-numbers !gl-px-0">
+        <div v-for="line in lineNumbers" :key="line" class="diff-line-num line-links gl-flex">
           <a
             v-if="showBlameLink"
-            class="gl-select-none gl-shadow-none! file-line-blame gl-mx-n2"
+            class="file-line-blame -gl-mx-2 gl-select-none !gl-shadow-none"
             :href="`${blamePath}#L${line}`"
           ></a>
           <a
             :id="`L${line}`"
             :key="line"
-            class="gl-select-none gl-shadow-none! file-line-num"
+            class="file-line-num gl-select-none !gl-shadow-none"
             :href="`#L${line}`"
             :data-line-number="line"
             @click="scrollToLine(`#LC${line}`)"
@@ -173,12 +204,10 @@ export default {
           </a>
         </div>
       </div>
-      <div
-        class="blob-content gl-display-flex gl-flex-direction-column gl-overflow-y-auto gl-w-full"
-      >
+      <div class="blob-content gl-flex gl-w-full gl-flex-col gl-overflow-y-auto">
         <pre
-          class="code highlight gl-p-0!"
-        ><code v-safe-html="content" :data-blob-hash="blobHash" ></code></pre>
+          class="code highlight !gl-p-0"
+        ><code v-safe-html="content" :data-blob-hash="blobHash"></code></pre>
       </div>
     </div>
   </div>

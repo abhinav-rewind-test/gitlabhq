@@ -1,14 +1,16 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Verify
+group: Pipeline Execution
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Atlassian Bamboo
 ---
 
-# Atlassian Bamboo
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can automatically trigger builds in Atlassian Bamboo when you push changes
 to your project in GitLab.
@@ -19,7 +21,7 @@ build plan before you configure the integration in GitLab.
 
 ## Configure Bamboo
 
-1. In Bamboo, go to a build plan and choose **Actions > Configure plan**.
+1. In Bamboo, go to a build plan and choose **Actions** > **Configure plan**.
 1. Select the **Triggers** tab.
 1. Select **Add trigger**.
 1. Enter a description like `GitLab trigger`.
@@ -40,12 +42,12 @@ integration in GitLab.
 
 ## Configure GitLab
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > Integrations**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **Integrations**.
 1. Select **Atlassian Bamboo**.
 1. Ensure the **Active** checkbox is selected.
 1. Enter the base URL of your Bamboo server. For example, `https://bamboo.example.com`.
-1. Optional. Clear the **Enable SSL verification** checkbox to disable [SSL verification](index.md#ssl-verification).
+1. Optional. Clear the **Enable SSL verification** checkbox to disable [SSL verification](_index.md#ssl-verification).
 1. Enter the [build key](#identify-the-bamboo-build-plan-build-key) from your Bamboo
    build plan.
 1. If necessary, enter a username and password for a Bamboo user that has
@@ -66,7 +68,7 @@ Bamboo. For example, `https://bamboo.example.com/browse/PROJ-PLAN`.
 
 ## Update Bamboo build status in GitLab
 
-You can use a script that uses the [commit status API](../../../api/commits.md#set-the-pipeline-status-of-a-commit)
+You can use a script that uses the [commit status API](../../../api/commits.md#set-commit-pipeline-status)
 and Bamboo build variables to:
 
 - Update the commit with the build status.
@@ -74,7 +76,7 @@ and Bamboo build variables to:
 
 For example:
 
-1. Create an [access token](../../../api/rest/index.md#personalprojectgroup-access-tokens) in GitLab with `:api` permissions.
+1. Create a [personal access token](../../profile/personal_access_tokens.md) with the scope set to `api`.
 1. Save the token as a `$GITLAB_TOKEN` variable in Bamboo.
 1. Add the following script as a final task to the Bamboo plan's jobs:
 
@@ -84,7 +86,7 @@ For example:
    # Script to update CI status on GitLab.
    # Add this script as final inline script task in a Bamboo job.
    #
-   # General documentation: https://docs.gitlab.com/ee/user/project/integrations/bamboo.html
+   # General documentation: https://docs.gitlab.com/user/project/integrations/bamboo/
    # Fix inspired from https://gitlab.com/gitlab-org/gitlab/-/issues/34744
 
    # Stop at first error
@@ -101,7 +103,7 @@ For example:
 
    repo_url="${bamboo_planRepository_repositoryUrl}"
 
-   # Check if we use SSH or HTTPS
+   # Check if SSH or HTTPS is in use
    protocol=${repo_url::4}
    if [ "$protocol" == "git@" ]; then
      repo=${repo_url:${#protocol}};

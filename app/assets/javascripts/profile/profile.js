@@ -5,6 +5,7 @@ import axios from '~/lib/utils/axios_utils';
 import { parseBoolean } from '~/lib/utils/common_utils';
 import { parseRailsFormFields } from '~/lib/utils/forms';
 import { Rails } from '~/lib/utils/rails_ujs';
+import { smoothScrollTop } from '~/lib/utils/scroll_utils';
 import UserProfileSetStatusWrapper from '~/set_status_modal/user_profile_set_status_wrapper.vue';
 
 export default class Profile {
@@ -14,6 +15,7 @@ export default class Profile {
     this.setRepoRadio();
     this.bindEvents();
     this.initAvatarGlCrop();
+    this.form.attr('data-testid', 'form-ready');
   }
 
   initAvatarGlCrop() {
@@ -76,7 +78,8 @@ export default class Profile {
         });
       })
       .then(() => {
-        window.scrollTo(0, 0);
+        smoothScrollTop(self.form[0]);
+
         // Enable submit button after requests ends
         self.form.find(':input[disabled]').enable();
       })

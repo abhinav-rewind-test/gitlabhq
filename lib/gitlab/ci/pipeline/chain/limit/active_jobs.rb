@@ -15,7 +15,7 @@ module Gitlab
             def perform!
               return unless limits.exceeded?(LIMIT_NAME, count_jobs_in_alive_pipelines)
 
-              error(MESSAGE, drop_reason: :job_activity_limit_exceeded)
+              error(MESSAGE, failure_reason: :job_activity_limit_exceeded)
 
               Gitlab::AppLogger.info(
                 class: self.class.name,
@@ -47,16 +47,8 @@ module Gitlab
 
             def count_jobs_in_alive_pipelines
               strong_memoize(:count_jobs_in_alive_pipelines) do
-                count_persisted_jobs_in_all_alive_pipelines + count_current_pipeline_jobs
+                command.current_pipeline_size + command.jobs_count_in_alive_pipelines
               end
-            end
-
-            def count_current_pipeline_jobs
-              command.pipeline_seed.size
-            end
-
-            def count_persisted_jobs_in_all_alive_pipelines
-              project.all_pipelines.jobs_count_in_alive_pipelines
             end
           end
         end

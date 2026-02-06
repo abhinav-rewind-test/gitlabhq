@@ -1,4 +1,4 @@
-import { GlModal } from '@gitlab/ui';
+import { GlModal, GlForm } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import setWindowLocation from 'helpers/set_window_location_helper';
@@ -47,7 +47,10 @@ describe('BoardForm', () => {
   const findForm = () => wrapper.findByTestId('board-form');
   const findFormWrapper = () => wrapper.findByTestId('board-form-wrapper');
   const findDeleteConfirmation = () => wrapper.findByTestId('delete-confirmation-message');
+  const findDeleteLastBoardMessage = () => wrapper.findByTestId('delete-last-board-message');
   const findInput = () => wrapper.find('#board-new-name');
+  const findInputFormWrapper = () => wrapper.findComponent(GlForm);
+  const findDeleteButton = () => wrapper.findByTestId('delete-board-button');
 
   const defaultHandlers = {
     createBoardMutationHandler: jest.fn().mockResolvedValue({
@@ -83,7 +86,12 @@ describe('BoardForm', () => {
     ]);
   };
 
-  const createComponent = ({ props, provide, handlers = defaultHandlers } = {}) => {
+  const createComponent = ({
+    props,
+    provide,
+    handlers = defaultHandlers,
+    stubs = { GlForm },
+  } = {}) => {
     wrapper = shallowMountExtended(BoardForm, {
       apolloProvider: createMockApolloProvider(handlers),
       propsData: { ...defaultProps, ...props },
@@ -94,6 +102,7 @@ describe('BoardForm', () => {
         ...provide,
       },
       attachTo: document.body,
+      stubs,
     });
   };
 
@@ -113,7 +122,7 @@ describe('BoardForm', () => {
     });
 
     it('displays board scope title', () => {
-      expect(findModal().attributes('title')).toBe('Board scope');
+      expect(findModal().attributes('title')).toBe('Board configuration');
     });
 
     it('does not display a form', () => {
@@ -175,14 +184,14 @@ describe('BoardForm', () => {
       const fillForm = () => {
         findInput().value = 'Test name';
         findInput().trigger('input');
-        findInput().trigger('keyup.enter', { metaKey: true });
+        findInputFormWrapper().trigger('submit');
       };
 
       it('does not call API if board name is empty', async () => {
         createComponent({
           props: { canAdminBoard: true, currentPage: formType.new },
         });
-        findInput().trigger('keyup.enter', { metaKey: true });
+        findInputFormWrapper().trigger('submit');
 
         await waitForPromises();
 
@@ -242,7 +251,7 @@ describe('BoardForm', () => {
       });
 
       it('shows a correct title about creating a board', () => {
-        expect(findModal().attributes('title')).toBe('Edit board');
+        expect(findModal().attributes('title')).toBe('Configure board');
       });
 
       it('passes correct primary action text and variant', () => {
@@ -257,6 +266,19 @@ describe('BoardForm', () => {
       it('renders form wrapper', () => {
         expect(findFormWrapper().exists()).toBe(true);
       });
+      it('emits showBoardModal with delete when clicking on delete board button', () => {
+        createComponent({
+          props: {
+            currentPage: formType.edit,
+            showDelete: true,
+            canAdminBoard: true,
+          },
+          stubs: { GlModal },
+        });
+
+        findDeleteButton().vm.$emit('click');
+        expect(wrapper.emitted('showBoardModal')).toEqual([[formType.delete]]);
+      });
     });
 
     it('calls GraphQL mutation with correct parameters when issues are not grouped', async () => {
@@ -265,7 +287,7 @@ describe('BoardForm', () => {
         props: { canAdminBoard: true, currentPage: formType.edit },
       });
 
-      findInput().trigger('keyup.enter', { metaKey: true });
+      findInputFormWrapper().trigger('submit');
 
       await waitForPromises();
 
@@ -277,7 +299,7 @@ describe('BoardForm', () => {
 
       await waitForPromises();
       expect(global.window.location.href).not.toContain('?group_by=epic');
-      expect(wrapper.emitted('updateBoard').length).toBe(1);
+      expect(wrapper.emitted('updateBoard')).toHaveLength(1);
       expect(wrapper.emitted('updateBoard')).toEqual([
         [
           {
@@ -294,7 +316,7 @@ describe('BoardForm', () => {
         props: { canAdminBoard: true, currentPage: formType.edit },
       });
 
-      findInput().trigger('keyup.enter', { metaKey: true });
+      findInputFormWrapper().trigger('submit');
 
       await waitForPromises();
 
@@ -317,7 +339,7 @@ describe('BoardForm', () => {
         },
       });
 
-      findInput().trigger('keyup.enter', { metaKey: true });
+      findInputFormWrapper().trigger('submit');
 
       await waitForPromises();
 
@@ -344,11 +366,38 @@ describe('BoardForm', () => {
       expect(findDeleteConfirmation().exists()).toBe(true);
     });
 
+    it('lets user know they are deleting the last board when isLastBoard is true', () => {
+      createComponent({
+        props: { canAdminBoard: true, currentPage: formType.delete, isLastBoard: true },
+      });
+      expect(findDeleteLastBoardMessage().exists()).toBe(true);
+    });
+
+    it.each`
+      parentType   | expected
+      ${'project'} | ${'project'}
+      ${'group'}   | ${'group'}
+      ${null}      | ${'Because this is the only board here'}
+    `(
+      'tells the user they are deleting the last board in the $expected when the parentType is $parentType',
+      ({ parentType, expected }) => {
+        createComponent({
+          props: {
+            canAdminBoard: true,
+            currentPage: formType.delete,
+            isLastBoard: true,
+            parentType,
+          },
+        });
+        expect(findDeleteLastBoardMessage().text()).toContain(expected);
+      },
+    );
+
     it('calls a correct GraphQL mutation and redirects to correct page after deleting board', async () => {
       createComponent({
         props: { canAdminBoard: true, currentPage: formType.delete },
       });
-      findModal().vm.$emit('primary');
+      findModal().vm.$emit('primary', { preventDefault: jest.fn() });
 
       await waitForPromises();
 
@@ -369,7 +418,7 @@ describe('BoardForm', () => {
         },
       });
 
-      findModal().vm.$emit('primary');
+      findModal().vm.$emit('primary', { preventDefault: jest.fn() });
 
       await waitForPromises();
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Admin::Users::User', feature_category: :user_management do
+RSpec.describe 'Admin::Users::User', feature_category: :user_management, quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24859' do
   include Features::AdminUsersHelpers
   include Spec::Support::Helpers::ModalHelpers
 
@@ -23,12 +23,28 @@ RSpec.describe 'Admin::Users::User', feature_category: :user_management do
       expect(page).to have_content("ID: #{user.id}")
       expect(page).to have_content("Namespace ID: #{user.namespace_id}")
 
+      within_testid('admin-can-create-top-level-groups') do
+        expect(page).to have_content('Yes')
+      end
+
       click_user_dropdown_toggle(user.id)
 
       expect(page).to have_button('Block')
       expect(page).to have_button('Deactivate')
       expect(page).to have_button('Delete user')
       expect(page).to have_button('Delete user and contributions')
+    end
+
+    context 'when user is placeholder' do
+      let_it_be(:user) { create(:user, :placeholder) }
+
+      it 'shows that user cannot create top-level groups' do
+        visit admin_user_path(user)
+
+        within_testid('admin-can-create-top-level-groups') do
+          expect(page).to have_content('No')
+        end
+      end
     end
 
     context 'when blocking/unblocking the user' do
@@ -131,8 +147,8 @@ RSpec.describe 'Admin::Users::User', feature_category: :user_management do
         visit admin_user_path(locked_user)
       end
 
-      it "displays `(Locked)` next to user's name" do
-        expect(page).to have_content("#{locked_user.name} (Locked)")
+      it "displays `Locked` next to user's name" do
+        expect(page).to have_content("#{locked_user.name} #{locked_user.email} Locked")
       end
 
       it 'allows a user to be unlocked from the `User administration dropdown', :js do
@@ -140,7 +156,7 @@ RSpec.describe 'Admin::Users::User', feature_category: :user_management do
           click_action_in_user_dropdown(locked_user.id, 'Unlock')
         end
 
-        expect(page).not_to have_content("#{locked_user.name} (Locked)")
+        expect(page).not_to have_content("#{locked_user.name} Locked")
       end
     end
 

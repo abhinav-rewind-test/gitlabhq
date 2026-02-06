@@ -10,14 +10,13 @@ FactoryBot.define do
       create(:board, project: projects[0])
       create(:jira_integration, project: projects[0])
       create(:jira_integration, :without_properties_callback, project: projects[1])
-      create(:jira_integration, :jira_cloud_service, project: projects[2])
+      create(:jira_integration, :jira_cloud, project: projects[2])
       create(:jira_integration, :without_properties_callback, project: projects[3], properties: { url: 'https://mysite.atlassian.net' })
       jira_label = create(:label, project: projects[0])
       create(:jira_import_state, :finished, project: projects[0], label: jira_label, failed_to_import_count: 2, imported_issues_count: 7, total_issue_count: 9)
       create(:jira_import_state, :finished, project: projects[1], label: jira_label, imported_issues_count: 3, total_issue_count: 3)
       create(:jira_import_state, :finished, project: projects[1], label: jira_label, imported_issues_count: 3)
       create(:jira_import_state, :scheduled, project: projects[1], label: jira_label)
-      create(:prometheus_integration, project: projects[1])
       create(:jenkins_integration, project: projects[1])
 
       # slack
@@ -35,11 +34,9 @@ FactoryBot.define do
       create(:custom_issue_tracker_integration, project: projects[2], active: true)
       create(:project_error_tracking_setting, project: projects[0])
       create(:project_error_tracking_setting, project: projects[1], enabled: false)
-      alert_bot_issues = create_list(:incident, 2, project: projects[0], author: Users::Internal.alert_bot)
+      create_list(:incident, 2, project: projects[0], author: Users::Internal.alert_bot)
       create_list(:incident, 2, project: projects[1], author: Users::Internal.alert_bot)
-      issues = create_list(:issue, 4, project: projects[0])
-      create_list(:prometheus_alert, 2, project: projects[0])
-      create(:prometheus_alert, project: projects[1])
+      create_list(:issue, 4, project: projects[0])
       create(:merge_request, :simple, :with_terraform_reports, source_project: projects[0])
       create(:merge_request, :rebased, :with_terraform_reports, source_project: projects[0])
       create(:merge_request, :simple, :with_terraform_reports, source_project: projects[1])
@@ -59,38 +56,30 @@ FactoryBot.define do
       create(:alert_management_http_integration, project: projects[0], name: 'DataCat')
       create(:alert_management_http_integration, :inactive, project: projects[1], name: 'DataFox')
 
-      # Alert Issues
-      create(:alert_management_alert, issue: issues[0], project: projects[0])
-      create(:alert_management_alert, issue: alert_bot_issues[0], project: projects[0])
-
       # Kubernetes agents
       create(:cluster_agent, project: projects[0])
-      create(:cluster_agent_token, agent: create(:cluster_agent, project: projects[1]) )
+      create(:cluster_agent_token, agent: create(:cluster_agent, project: projects[1]))
 
       # Enabled clusters
-      gcp_cluster = create(:cluster_provider_gcp, :created).cluster
-      create(:cluster_provider_aws, :created)
-      create(:cluster_platform_kubernetes)
-      create(:cluster, :management_project, management_project: projects[0])
+      gcp_cluster = create(:cluster, provider_type: :gcp, projects: [projects[0]])
+      aws_cluster = create(:cluster, provider_type: :aws, projects: [projects[1]])
+      kubernetes_cluster = create(:cluster, provider_type: :user, projects: [projects[2]])
+      create(:cluster_provider_gcp, :created, cluster: gcp_cluster)
+      create(:cluster_provider_aws, :created, cluster: aws_cluster)
+      create(:cluster_platform_kubernetes, cluster: kubernetes_cluster)
+      create(:cluster, :management_project, projects: [projects[3]], management_project: projects[0])
       create(:cluster, :group)
       create(:cluster, :instance, :production_environment)
 
       # Disabled clusters
-      create(:cluster, :disabled)
+      create(:cluster, :disabled, projects: [projects[0]], environment_scope: 'disabled')
       create(:cluster, :group, :disabled)
       create(:cluster, :instance, :disabled)
 
-      # Cluster Integrations
-      create(:clusters_integrations_prometheus, cluster: gcp_cluster)
-
-      create(:grafana_integration, project: projects[0], enabled: true)
-      create(:grafana_integration, project: projects[1], enabled: true)
-      create(:grafana_integration, project: projects[2], enabled: false)
-
-      create(:package, project: projects[0], created_at: 3.days.ago)
-      create(:package, project: projects[0], created_at: 3.days.ago)
-      create(:package, project: projects[1], created_at: 3.days.ago)
-      create(:package, created_at: 2.months.ago, project: projects[1])
+      create(:generic_package, project: projects[0], created_at: 3.days.ago)
+      create(:generic_package, project: projects[0], created_at: 3.days.ago)
+      create(:generic_package, project: projects[1], created_at: 3.days.ago)
+      create(:generic_package, created_at: 2.months.ago, project: projects[1])
 
       # User Preferences
       create(:user_preference, gitpod_enabled: true)

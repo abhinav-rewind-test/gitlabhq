@@ -1,26 +1,28 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Stages of Auto DevOps
 ---
 
-# Stages of Auto DevOps
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-The following sections describe the stages of [Auto DevOps](index.md).
+{{< /details >}}
+
+The following sections describe the stages of [Auto DevOps](_index.md).
 Read them carefully to understand how each one works.
 
 ## Auto Build
 
-NOTE:
-Auto Build is not supported if Docker in Docker is not available for your GitLab Runners, like in OpenShift clusters. The OpenShift support in GitLab is tracked [in a dedicated epic](https://gitlab.com/groups/gitlab-org/-/epics/2068).
+> [!note]
+> Auto Build is not supported if Docker in Docker is not available for your GitLab Runners, like in OpenShift clusters. The OpenShift support in GitLab is tracked [in a dedicated epic](https://gitlab.com/groups/gitlab-org/-/epics/2068).
 
 Auto Build creates a build of the application using an existing `Dockerfile` or
 Heroku buildpacks. The resulting Docker image is pushed to the
-[Container Registry](../../user/packages/container_registry/index.md), and tagged
+[Container Registry](../../user/packages/container_registry/_index.md), and tagged
 with the commit SHA or tag.
 
 ### Auto Build using a Dockerfile
@@ -39,16 +41,13 @@ your own `Dockerfile`, you must either:
 
 ### Auto Build using Cloud Native Buildpacks
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/28165) in GitLab 12.10.
-> - Auto Build using Cloud Native Buildpacks by default was [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/63351) in GitLab 14.0.
-
 Auto Build builds an application using a project's `Dockerfile` if present. If no
 `Dockerfile` is present, Auto Build builds your application using
 [Cloud Native Buildpacks](https://buildpacks.io) to detect and build the
 application into a Docker image. The feature uses the
 [`pack` command](https://github.com/buildpacks/pack).
 The default [builder](https://buildpacks.io/docs/for-app-developers/concepts/builder/)
-is `heroku/buildpacks:18` but a different builder can be selected using
+is `heroku/buildpacks:22` but a different builder can be selected using
 the CI/CD variable `AUTO_DEVOPS_BUILD_IMAGE_CNB_BUILDER`.
 
 Each buildpack requires your project's repository to contain certain files for
@@ -64,15 +63,12 @@ language:
 For the requirements of other languages and frameworks, read the
 [Heroku buildpacks documentation](https://devcenter.heroku.com/articles/buildpacks#officially-supported-buildpacks).
 
-NOTE:
-Auto Test still uses Herokuish, as test suite detection is not
-yet part of the Cloud Native Buildpack specification. For more information, see
-[issue 212689](https://gitlab.com/gitlab-org/gitlab/-/issues/212689).
+> [!note]
+> Auto Test still uses Herokuish, as test suite detection is not
+> yet part of the Cloud Native Buildpack specification. For more information, see
+> [issue 212689](https://gitlab.com/gitlab-org/gitlab/-/issues/212689).
 
 #### Mount volumes into the build container
-
-> - [Introduced](https://gitlab.com/gitlab-org/cluster-integration/auto-build-image/-/merge_requests/65) in GitLab 14.2.
-> - Multiple volume support (or `auto-build-image` v1.6.0) [introduced](https://gitlab.com/gitlab-org/cluster-integration/auto-build-image/-/merge_requests/80) in GitLab 14.6.
 
 The variable `BUILDPACK_VOLUMES` can be used to pass volume mount definitions to the
 `pack` command. The mounts are passed to `pack build` using `--volume` arguments.
@@ -93,28 +89,6 @@ buildjob:
 
 Read more about defining volumes in the [`pack build` documentation](https://buildpacks.io/docs/for-platform-operators/how-to/integrate-ci/pack/cli/pack_build/).
 
-<!--- start_remove The following content will be removed on remove_date: '2024-08-22' -->
-
-### Auto Build using Herokuish (deprecated)
-
-> - [Replaced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/63351) with Cloud Native Buildpacks in GitLab 14.0.
-
-WARNING:
-Support for Herokuish was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108234) in GitLab 15.8,
-and is planned for removal in 17.0. Use [Cloud Native Buildpacks](#moving-from-herokuish-to-cloud-native-buildpacks) instead.
-
-Prior to GitLab 14.0, [Herokuish](https://github.com/gliderlabs/herokuish) was
-the default build method for projects without a `Dockerfile`. Herokuish can
-still be used by setting the CI/CD variable `AUTO_DEVOPS_BUILD_IMAGE_CNB_ENABLED`
-to `false`.
-
-NOTE:
-If Auto Build fails despite the project meeting the buildpack requirements, set
-a project CI/CD variable `TRACE=true` to enable verbose logging, which may help you
-troubleshoot.
-
-<!--- end_remove -->
-
 ### Moving from Herokuish to Cloud Native Buildpacks
 
 Builds using Cloud Native Buildpacks support the same options as builds using
@@ -130,15 +104,7 @@ Herokuish, with the following caveats:
   Instead, custom commands should be prefixed with `/cnb/lifecycle/launcher`
   to receive the correct execution environment.
 
-<!--- start_remove The following content will be removed on remove_date: '2024-08-22' -->
-
-## Auto Test (deprecated)
-
-WARNING:
-Support for Herokuish was
-[deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108234)
-in GitLab 15.8, and is planned for removal in 17.0. Because Auto Test uses
-Herokuish, Auto Test is also deprecated.
+## Auto Test
 
 Auto Test runs the appropriate tests for your application using
 [Herokuish](https://github.com/gliderlabs/herokuish) and
@@ -151,16 +117,15 @@ Check the [currently supported languages](#currently-supported-languages).
 Auto Test uses tests you already have in your application. If there are no
 tests, it's up to you to add them.
 
-<!-- vale gitlab.Spelling = NO -->
+<!-- vale gitlab_base.Spelling = NO -->
 
-NOTE:
-Not all buildpacks supported by [Auto Build](#auto-build) are supported by Auto Test.
-Auto Test uses [Herokuish](https://gitlab.com/gitlab-org/gitlab/-/issues/212689), *not*
-Cloud Native Buildpacks, and only buildpacks that implement the
-[Testpack API](https://devcenter.heroku.com/articles/testpack-api) are supported.
+> [!note]
+> Not all buildpacks supported by [Auto Build](#auto-build) are supported by Auto Test.
+> Auto Test uses [Herokuish](https://gitlab.com/gitlab-org/gitlab/-/issues/212689), *not*
+> Cloud Native Buildpacks, and only buildpacks that implement the
+> [Testpack API](https://devcenter.heroku.com/articles/testpack-api) are supported.
 
-<!-- vale gitlab.Spelling = YES -->
-<!--- end_remove -->
+<!-- vale gitlab_base.Spelling = YES -->
 
 ### Currently supported languages
 
@@ -187,12 +152,16 @@ The supported buildpacks are:
 - buildpack-nginx
 ```
 
-If your application needs a buildpack that is not in the above list, you
+If your application needs a buildpack that is not in the previous list, you
 might want to use a [custom buildpack](customize.md#custom-buildpacks).
 
 ## Auto Code Quality
 
-> - [Moved](https://gitlab.com/gitlab-org/gitlab/-/issues/212499) from GitLab Starter to GitLab Free in 13.2.
+{{< history >}}
+
+- [Moved](https://gitlab.com/gitlab-org/gitlab/-/issues/212499) from GitLab Starter to GitLab Free in 13.2.
+
+{{< /history >}}
 
 Auto Code Quality uses the
 [Code Quality image](https://gitlab.com/gitlab-org/ci-cd/codequality) to run
@@ -203,70 +172,72 @@ out. The merge request widget also displays any
 
 ## Auto SAST
 
-> - Introduced in [GitLab Ultimate](https://about.gitlab.com/pricing/) 10.3.
-> - Select functionality made available in all tiers beginning in 13.1
+{{< history >}}
 
-Static Application Security Testing (SAST) runs static
+- Introduced in [GitLab Ultimate](https://about.gitlab.com/pricing/) 10.3.
+- Select functionality made available in all tiers beginning in 13.1
+
+{{< /history >}}
+
+Static application security testing (SAST) runs static
 analysis on the current code, and checks for potential security issues. The
-Auto SAST stage requires [GitLab Runner](https://docs.gitlab.com/runner/) 11.5 or above.
+Auto SAST stage requires [GitLab Runner](https://docs.gitlab.com/runner/) 11.5 or later.
 
 After creating the report, it's uploaded as an artifact which you can later
 download and check out. The merge request widget also displays any security
 warnings on [Ultimate](https://about.gitlab.com/pricing/) licenses.
 
-For more information, see
-[Static Application Security Testing (SAST)](../../user/application_security/sast/index.md).
+For more information, see [SAST](../../user/application_security/sast/_index.md).
 
-## Auto Secret Detection
+## Auto secret detection
 
-> - Introduced in GitLab 13.1.
-> - Select functionality [made available](../../user/application_security/secret_detection/pipeline/index.md#requirements) in all tiers in GitLab 13.3
-
-Secret Detection uses the
-[Secret Detection Docker image](https://gitlab.com/gitlab-org/security-products/analyzers/secrets) to run Secret Detection on the current code, and checks for leaked secrets. Auto Secret Detection requires [GitLab Runner](https://docs.gitlab.com/runner/) 11.5 or above.
+Secret detection uses the
+[secret detection Docker image](https://gitlab.com/gitlab-org/security-products/analyzers/secrets) to scan the current code and check for leaked secrets.
 
 After creating the report, it's uploaded as an artifact which you can later
 download and evaluate. The merge request widget also displays any security
 warnings on [Ultimate](https://about.gitlab.com/pricing/) licenses.
 
-For more information, see [Secret Detection](../../user/application_security/secret_detection/index.md).
+For more information, see [secret detection](../../user/application_security/secret_detection/_index.md).
 
-## Auto Dependency Scanning
+## Auto dependency scanning
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-Dependency Scanning runs analysis on the project's dependencies and checks for potential security issues.
-The Auto Dependency Scanning stage is skipped on licenses other than
-[Ultimate](https://about.gitlab.com/pricing/) and requires
-[GitLab Runner](https://docs.gitlab.com/runner/) 11.5 or above.
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+Dependency scanning analyzes the project's dependencies and checks for potential security issues.
+The Auto dependency scanning stage is skipped on licenses other than
+[Ultimate](https://about.gitlab.com/pricing/).
 
 After creating the report, it's uploaded as an artifact which you can later download and
 check out. The merge request widget displays any security warnings detected,
 
 For more information, see
-[Dependency Scanning](../../user/application_security/dependency_scanning/index.md).
+[dependency scanning](../../user/application_security/dependency_scanning/_index.md).
 
-## Auto Container Scanning
+## Auto container scanning
 
 Vulnerability static analysis for containers uses [Trivy](https://aquasecurity.github.io/trivy/latest/)
-to check for potential security issues in Docker images. The Auto Container Scanning stage is
+to check for potential security issues in Docker images. The auto container scanning stage is
 skipped on licenses other than [Ultimate](https://about.gitlab.com/pricing/).
 
 After creating the report, it's uploaded as an artifact which you can later download and
 check out. The merge request displays any detected security issues.
 
 For more information, see
-[Container Scanning](../../user/application_security/container_scanning/index.md).
+[container scanning](../../user/application_security/container_scanning/_index.md).
 
 ## Auto Review Apps
 
-This is an optional step, since many projects don't have a Kubernetes cluster
+This is an optional step because many projects don't have a Kubernetes cluster
 available. If the [requirements](requirements.md) are not met, the job is
 silently skipped.
 
-[Review Apps](../../ci/review_apps/index.md) are temporary application environments based on the
+[Review apps](../../ci/review_apps/_index.md) are temporary application environments based on the
 branch's code so developers, designers, QA, product managers, and other
 reviewers can actually see and interact with code changes as part of the review
 process. Auto Review Apps create a Review App for each branch.
@@ -286,24 +257,27 @@ Helm, which you can [customize](customize.md#custom-helm-chart). The application
 into the [Kubernetes namespace](../../user/project/clusters/deploy_to_cluster.md#deployment-variables)
 for the environment.
 
-In GitLab 11.4 and later, [local Tiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036) is
+[Local Tiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036) is
 used. Previous versions of GitLab had a Tiller installed in the project
 namespace.
 
-WARNING:
-Your apps should *not* be manipulated outside of Helm (using Kubernetes directly).
-This can cause confusion with Helm not detecting the change and subsequent
-deploys with Auto DevOps can undo your changes. Also, if you change something
-and want to undo it by deploying again, Helm may not detect that anything changed
-in the first place, and thus not realize that it needs to re-apply the old configuration.
+> [!warning]
+> Your apps should not be manipulated outside of Helm (using Kubernetes directly).
+> This can cause confusion with Helm not detecting the change and subsequent
+> deploys with Auto DevOps can undo your changes. Also, if you change something
+> and want to undo it by deploying again, Helm may not detect that anything changed
+> in the first place, and thus not realize that it needs to re-apply the old configuration.
 
 ## Auto DAST
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-Dynamic Application Security Testing (DAST) uses the popular open source tool
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+Dynamic application security testing (DAST) uses the popular open source tool
 [OWASP ZAProxy](https://github.com/zaproxy/zaproxy) to analyze the current code
 and check for potential security issues. The Auto DAST stage is skipped on
 licenses other than [Ultimate](https://about.gitlab.com/pricing/).
@@ -314,41 +288,42 @@ licenses other than [Ultimate](https://about.gitlab.com/pricing/).
 - On feature branches, DAST scans the [review app](#auto-review-apps).
 
 After the DAST scan completes, any security warnings are displayed
-on the [Security Dashboard](../../user/application_security/security_dashboard/index.md)
+on the [Security Dashboard](../../user/application_security/security_dashboard/_index.md)
 and the merge request widget.
 
 For more information, see
-[Dynamic Application Security Testing (DAST)](../../user/application_security/dast/index.md).
+[DAST](../../user/application_security/dast/_index.md).
 
 ### Overriding the DAST target
 
 To use a custom target instead of the auto-deployed review apps,
 set a `DAST_WEBSITE` CI/CD variable to the URL for DAST to scan.
 
-WARNING:
-If [DAST Full Scan](../../user/application_security/dast/proxy-based.md#full-scan) is
-enabled, GitLab strongly advises **not**
-to set `DAST_WEBSITE` to any staging or production environment. DAST Full Scan
-actively attacks the target, which can take down your application and lead to
-data loss or corruption.
+> [!warning]
+> If [DAST Full Scan](../../user/application_security/dast/browser/_index.md) is
+> enabled, GitLab strongly advises **not**
+> to set `DAST_WEBSITE` to any staging or production environment. DAST Full Scan
+> actively attacks the target, which can take down your application and lead to
+> data loss or corruption.
 
-### Disabling Auto DAST
+### Skipping Auto DAST
 
-You can disable DAST:
+You can skip DAST jobs:
 
 - On all branches by setting the `DAST_DISABLED` CI/CD variable to `"true"`.
 - Only on the default branch by setting the `DAST_DISABLED_FOR_DEFAULT_BRANCH`
   variable to `"true"`.
 - Only on feature branches by setting `REVIEW_DISABLED` variable to
-  `"true"`. This also disables the Review App.
+  `"true"`. This also skips the Review App.
 
 ## Auto Browser Performance Testing
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-> - Introduced in GitLab 10.4.
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Auto [Browser Performance Testing](../../ci/testing/browser_performance_testing.md)
 measures the browser performance of a web page with the
@@ -369,11 +344,12 @@ Any browser performance differences between the source and target branches are a
 
 ## Auto Load Performance Testing
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-> - Introduced in GitLab 13.2.
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Auto [Load Performance Testing](../../ci/testing/load_performance_testing.md)
 measures the server performance of an application with the
@@ -390,7 +366,7 @@ Any load performance test result differences between the source and target branc
 
 ## Auto Deploy
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/216008) in GitLab 13.6, you have the choice to deploy to [Amazon Elastic Compute Cloud (Amazon EC2)](https://aws.amazon.com/ec2/) in addition to a Kubernetes cluster.
+You have the choice to deploy to [Amazon Elastic Compute Cloud (Amazon EC2)](https://aws.amazon.com/ec2/) in addition to a Kubernetes cluster.
 
 Auto Deploy is an optional step for Auto DevOps. If the [requirements](requirements.md) are not met, the job is skipped.
 
@@ -413,29 +389,20 @@ chart to deploy the application into the
 [Kubernetes namespace](../../user/project/clusters/deploy_to_cluster.md#deployment-variables)
 for the environment.
 
-In GitLab 11.4 and later, a
-[local Tiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036) is
+[Local Tiller](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22036) is
 used. Previous versions of GitLab had a Tiller installed in the project
 namespace.
 
-WARNING:
-Your apps should *not* be manipulated outside of Helm (using Kubernetes directly).
-This can cause confusion with Helm not detecting the change and subsequent
-deploys with Auto DevOps can undo your changes. Also, if you change something
-and want to undo it by deploying again, Helm may not detect that anything changed
-in the first place, and thus not realize that it needs to re-apply the old configuration.
-
-WARNING:
-GitLab 14.0 [renews the Auto Deploy template](https://gitlab.com/gitlab-org/gitlab/-/issues/232788).
-This might cause an unexpected failure on your Auto DevOps project due to the breaking changes on
-the v2 `auto-deploy-image`. Follow [the upgrade guide](upgrading_auto_deploy_dependencies.md#upgrade-guide)
-to upgrade your environments before upgrading to GitLab 14.0.
+> [!warning]
+> Your apps should not be manipulated outside of Helm (using Kubernetes directly).
+> This can cause confusion with Helm not detecting the change and subsequent
+> deploys with Auto DevOps can undo your changes. Also, if you change something
+> and want to undo it by deploying again, Helm may not detect that anything changed
+> in the first place, and thus not realize that it needs to re-apply the old configuration.
 
 ### GitLab deploy tokens
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/19507) in GitLab 11.0.
-
-[GitLab Deploy Tokens](../../user/project/deploy_tokens/index.md#gitlab-deploy-token)
+[GitLab Deploy Tokens](../../user/project/deploy_tokens/_index.md#gitlab-deploy-token)
 are created for internal and private projects when Auto DevOps is enabled, and the
 Auto DevOps settings are saved. You can use a Deploy Token for permanent access to
 the registry. After you manually revoke the GitLab Deploy Token, it isn't
@@ -444,21 +411,17 @@ automatically created.
 If the GitLab Deploy Token can't be found, `CI_REGISTRY_PASSWORD` is
 used.
 
-NOTE:
-`CI_REGISTRY_PASSWORD` is only valid during deployment. Kubernetes can
-successfully pull the container image during deployment, but if the image must
-be pulled again, such as after pod eviction, Kubernetes cannot do so
-as it attempts to fetch the image using `CI_REGISTRY_PASSWORD`.
+> [!note]
+> `CI_REGISTRY_PASSWORD` is only valid during deployment. Kubernetes can
+> successfully pull the container image during deployment, but if the image must
+> be pulled again, such as after pod eviction, Kubernetes cannot do so
+> as it attempts to fetch the image using `CI_REGISTRY_PASSWORD`.
 
 ### Kubernetes 1.16+
 
-> - [Introduced](https://gitlab.com/gitlab-org/charts/auto-deploy-app/-/merge_requests/51) in GitLab 12.8.
-> - Support for deploying a PostgreSQL version that supports Kubernetes 1.16+ was [introduced](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/merge_requests/49) in GitLab 12.9.
-> - Supported out of the box for new deployments as of GitLab 13.0.
-
-WARNING:
-The default value for the `deploymentApiVersion` setting was changed from
-`extensions/v1beta` to `apps/v1` in [GitLab 13.0](https://gitlab.com/gitlab-org/charts/auto-deploy-app/-/issues/47).
+> [!warning]
+> The default value for the `deploymentApiVersion` setting was changed from
+> `extensions/v1beta` to `apps/v1`.
 
 In Kubernetes 1.16 and later, a number of
 [APIs were removed](https://kubernetes.io/blog/2019/07/18/api-deprecations-in-1-16/),
@@ -469,30 +432,15 @@ To use Auto Deploy on a Kubernetes 1.16+ cluster:
 1. If you are deploying your application for the first time in GitLab 13.0 or
    later, no configuration should be required.
 
-1. In GitLab 12.10 and earlier, set the following in the [`.gitlab/auto-deploy-values.yaml` file](customize.md#customize-helm-chart-values):
-
-   ```yaml
-   deploymentApiVersion: apps/v1
-   ```
-
 1. If you have an in-cluster PostgreSQL database installed with
    `AUTO_DEVOPS_POSTGRES_CHANNEL` set to `1`, follow the
    [guide to upgrade PostgreSQL](upgrading_postgresql.md).
 
-1. If you are deploying your application for the first time and are using
-   GitLab 12.9 or 12.10, set `AUTO_DEVOPS_POSTGRES_CHANNEL` to `2`.
-
-WARNING:
-In GitLab 12.9 and 12.10, opting into
-`AUTO_DEVOPS_POSTGRES_CHANNEL` version `2` deletes the version `1` PostgreSQL
-database. Follow the [guide to upgrading PostgreSQL](upgrading_postgresql.md)
-to back up and restore your database before opting into version `2` (On
-GitLab 13.0, an additional CI/CD variable is required to trigger the database
-deletion).
+> [!warning]
+> Follow the [guide to upgrading PostgreSQL](upgrading_postgresql.md)
+> to back up and restore your database before opting into version `2`.
 
 ### Migrations
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/21955) in GitLab 11.4
 
 You can configure database initialization and migrations for PostgreSQL to run
 within the application pod by setting the project CI/CD variables `DB_INITIALIZE` and
@@ -519,10 +467,7 @@ For example, in a Rails application in an image built with
 
 Unless your repository contains a `Dockerfile`, your image is built with
 Cloud Native Buildpacks, and you must prefix commands run in these images with
-`/cnb/lifecycle/launcher`, (or `/bin/herokuish procfile exec` when
-using [Herokuish](#auto-build-using-herokuish-deprecated))
-to replicate the environment where your
-application runs.
+`/cnb/lifecycle/launcher` to replicate the environment where your application runs.
 
 ### Upgrade auto-deploy-app Chart
 
@@ -571,34 +516,25 @@ workers:
 
 ### Running commands in the container
 
-Applications built with [Auto Build](#auto-build) using Herokuish, the default
-unless your repository contains [a custom Dockerfile](#auto-build-using-a-dockerfile),
-may require commands to be wrapped as follows:
-
-```shell
-/bin/herokuish procfile exec $COMMAND
-```
-
-Some of the reasons you may need to wrap commands:
-
-- Attaching using `kubectl exec`.
-- Using the GitLab [Web Terminal](../../ci/environments/index.md#web-terminals-deprecated).
-
-For example, to start a Rails console from the application root directory, run:
-
-```shell
-/bin/herokuish procfile exec bin/rails c
-```
-
-When using Cloud Native Buildpacks, instead of `/bin/herokuish procfile exec`, use
+Unless your repository contains [a custom Dockerfile](#auto-build-using-a-dockerfile), applications built with [Auto Build](#auto-build)
+might require commands to be wrapped as follows:
 
 ```shell
 /cnb/lifecycle/launcher $COMMAND
 ```
 
-## Auto Code Intelligence
+Some of the reasons you may need to wrap commands:
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/216438) in GitLab 13.5.
+- Attaching using `kubectl exec`.
+- Using the GitLab [Web Terminal](../../ci/environments/_index.md#web-terminals-deprecated).
+
+For example, to start a Rails console from the application root directory, run:
+
+```shell
+/cnb/lifecycle/launcher procfile exec bin/rails c
+```
+
+## Auto Code Intelligence
 
 [GitLab code intelligence](../../user/project/code_intelligence.md) adds
 code navigation features common to interactive development environments (IDE),
@@ -610,4 +546,4 @@ for updates.
 
 This stage is enabled by default. You can disable it by adding the
 `CODE_INTELLIGENCE_DISABLED` CI/CD variable. Read more about
-[disabling Auto DevOps jobs](../../topics/autodevops/cicd_variables.md#job-disabling-variables).
+[disabling Auto DevOps jobs](cicd_variables.md#job-skipping-variables).

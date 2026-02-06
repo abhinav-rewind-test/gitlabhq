@@ -19,15 +19,15 @@ module Gitlab
         # /merge
         #
         desc do
-          if preferred_strategy = preferred_auto_merge_strategy(quick_action_target)
-            _("Merge automatically (%{strategy})") % { strategy: preferred_strategy.humanize }
+          if strategy = preferred_auto_merge_strategy(quick_action_target)
+            auto_merge_strategy_copy(strategy, :desc)
           else
             _("Merge immediately")
           end
         end
         explanation do
-          if preferred_strategy = preferred_auto_merge_strategy(quick_action_target)
-            _("Schedules to merge this merge request (%{strategy}).") % { strategy: preferred_strategy.humanize }
+          if strategy = preferred_auto_merge_strategy(quick_action_target)
+            auto_merge_strategy_copy(strategy, :explanation)
           else
             _('Merges this merge request immediately.')
           end
@@ -37,8 +37,8 @@ module Gitlab
             _("The `/merge` quick action requires the SHA of the head of the branch.")
           elsif params[:merge_request_diff_head_sha] != quick_action_target.diff_head_sha
             _("Branch has been updated since the merge was requested.")
-          elsif preferred_strategy = preferred_auto_merge_strategy(quick_action_target)
-            _("Scheduled to merge this merge request (%{strategy}).") % { strategy: preferred_strategy.humanize }
+          elsif strategy = preferred_auto_merge_strategy(quick_action_target)
+            auto_merge_strategy_copy(strategy, :feedback)
           else
             _('Merged this merge request.')
           end
@@ -194,25 +194,38 @@ module Gitlab
         command :submit_review do |state = "reviewed"|
           next if params[:review_id]
 
+          pending_comments_count = quick_action_target.draft_notes.authored_by(current_user).count
           result = DraftNotes::PublishService.new(quick_action_target, current_user).execute
 
           reviewer_state = state.strip.presence
 
+          @execution_message[:submit_review] = if result[:status] == :success
+                                                 [_('Submitted the current review.')]
+                                               else
+                                                 [result[:message]]
+                                               end
+
+          @additional_properties[:submit_review] = {
+            is_reviewer: quick_action_target.find_reviewer(current_user).present?.to_s,
+            pending_comments: pending_comments_count,
+            state: reviewer_state
+          }
+
           if reviewer_state === 'approve'
-            ::MergeRequests::ApprovalService
+            approval_success = ::MergeRequests::ApprovalService
               .new(project: quick_action_target.project, current_user: current_user)
               .execute(quick_action_target)
+
+            @execution_message[:submit_review] << if approval_success
+                                                    _('Approved the current merge request.')
+                                                  else
+                                                    _('Failed to approve the current merge request.')
+                                                  end
           elsif MergeRequestReviewer.states.key?(reviewer_state)
             ::MergeRequests::UpdateReviewerStateService
               .new(project: quick_action_target.project, current_user: current_user)
               .execute(quick_action_target, reviewer_state)
           end
-
-          @execution_message[:submit_review] = if result[:status] == :success
-                                                 _('Submitted the current review.')
-                                               else
-                                                 result[:message]
-                                               end
         end
 
         ########################################################################
@@ -248,11 +261,30 @@ module Gitlab
           quick_action_target.persisted? && quick_action_target.eligible_for_approval_by?(current_user) && !quick_action_target.merged?
         end
         command :approve do
+          pending_comments_count = quick_action_target.draft_notes.authored_by(current_user).count
+
+          @execution_message[:approve] = []
+
+          if pending_comments_count > 0 && params[:review_id].blank?
+            result = DraftNotes::PublishService.new(quick_action_target, current_user).execute
+
+            @execution_message[:approve] = if result[:status] == :success
+                                             [_('Submitted the current review.')]
+                                           else
+                                             [result[:message]]
+                                           end
+          end
+
           success = ::MergeRequests::ApprovalService.new(project: quick_action_target.project, current_user: current_user).execute(quick_action_target)
 
           next unless success
 
-          @execution_message[:approve] = _('Approved the current merge request.')
+          @additional_properties[:approve] = {
+            is_reviewer: quick_action_target.find_reviewer(current_user).present?.to_s,
+            pending_comments: pending_comments_count
+          }
+
+          @execution_message[:approve] << _('Approved the current merge request.')
         end
 
         ########################################################################
@@ -270,9 +302,9 @@ module Gitlab
 
           next unless success
 
-          ::MergeRequests::UpdateReviewerStateService
-            .new(project: quick_action_target.project, current_user: current_user)
-            .execute(quick_action_target, "unreviewed")
+          @additional_properties[:unapprove] = {
+            is_reviewer: quick_action_target.find_reviewer(current_user).present?.to_s
+          }
 
           @execution_message[:unapprove] = _('Unapproved the current merge request.')
         end
@@ -290,16 +322,32 @@ module Gitlab
         end
         explanation do |users|
           reviewers = reviewers_to_add(users)
-          _('Assigns %{reviewer_users_sentence} as %{reviewer_text}.') % { reviewer_users_sentence: reviewer_users_sentence(users),
+          if reviewers.blank?
+            _("Failed to assign a reviewer because no user was specified.")
+          else
+            _('Assigns %{reviewer_users_sentence} as %{reviewer_text}.') % { reviewer_users_sentence: reviewer_users_sentence(users),
                                                                            reviewer_text: 'reviewer'.pluralize(reviewers.size) }
+          end
         end
         execution_message do |users = nil|
           reviewers = reviewers_to_add(users)
           if reviewers.blank?
             _("Failed to assign a reviewer because no user was specified.")
           else
-            _('Assigned %{reviewer_users_sentence} as %{reviewer_text}.') % { reviewer_users_sentence: reviewer_users_sentence(users),
-                                                                              reviewer_text: 'reviewer'.pluralize(reviewers.size) }
+            processed_users = process_reviewer_users(users)
+            processed_msg = process_reviewer_users_message
+
+            if processed_users.present?
+              [
+                processed_msg,
+                _('Assigned %{reviewer_users_sentence} as %{reviewer_text}.') % {
+                  reviewer_users_sentence: reviewer_users_sentence(processed_users),
+                  reviewer_text: 'reviewer'.pluralize(processed_users.size)
+                }
+              ].compact.join(' ')
+            else
+              processed_msg
+            end
           end
         end
         params do
@@ -312,14 +360,82 @@ module Gitlab
         parse_params do |reviewer_param|
           extract_users(reviewer_param)
         end
-        command :assign_reviewer, :reviewer, :request_review do |users|
-          next if users.empty?
+        command :assign_reviewer, :reviewer do |users|
+          processed_users = process_reviewer_users(users)
+
+          next if processed_users.empty?
 
           if quick_action_target.allows_multiple_reviewers?
             @updates[:reviewer_ids] ||= quick_action_target.reviewers.map(&:id)
-            @updates[:reviewer_ids] |= users.map(&:id)
+            @updates[:reviewer_ids] |= processed_users.map(&:id)
           else
-            @updates[:reviewer_ids] = [users.first.id]
+            @updates[:reviewer_ids] = [processed_users.first.id]
+          end
+        end
+
+        ########################################################################
+        #
+        # /request_review
+        #
+        desc do
+          _('Request a review')
+        end
+        explanation do |users|
+          if users.blank?
+            _("Failed to request a review because no user was specified.")
+          else
+            _('Requests a review from %{reviewer_users_sentence}.') % { reviewer_users_sentence: reviewer_users_sentence(users) }
+          end
+        end
+        execution_message do |users = nil|
+          if users.blank?
+            _("Failed to request a review because no user was specified.")
+          else
+            processed_users = process_reviewer_users(users)
+            processed_msg = process_reviewer_users_message
+
+            if processed_users.present?
+              [
+                processed_msg,
+                _('Requested a review from %{reviewer_users_sentence}.') % {
+                  reviewer_users_sentence: reviewer_users_sentence(processed_users)
+                }
+              ].compact.join(' ')
+            else
+              processed_msg
+            end
+          end
+        end
+        params do
+          quick_action_target.allows_multiple_reviewers? ? '@user1 @user2' : '@user'
+        end
+        types MergeRequest
+        condition do
+          current_user.can?(:"admin_#{quick_action_target.to_ability_name}", project)
+        end
+        parse_params do |reviewer_param|
+          extract_users(reviewer_param)
+        end
+        command :request_review do |users|
+          processed_users = process_reviewer_users(users)
+
+          next if processed_users.empty?
+
+          @updates[:reviewer_ids] ||= quick_action_target.reviewers.map(&:id)
+
+          service = ::MergeRequests::RequestReviewService.new(
+            project: quick_action_target.project,
+            current_user: current_user
+          )
+
+          reviewers_to_add(processed_users).each do |user|
+            if @updates[:reviewer_ids].include?(user.id)
+              # Request a new review from the reviewer if they are already assigned
+              service.execute(quick_action_target, user)
+            else
+              # Assign the user as a reviewer if they are not already
+              @updates[:reviewer_ids] << user.id
+            end
           end
         end
 
@@ -349,8 +465,7 @@ module Gitlab
         end
         types MergeRequest
         condition do
-          quick_action_target.persisted? &&
-            reviewers_to_remove?(@updates) &&
+          reviewers_to_remove?(@updates) &&
             current_user.can?(:"admin_#{quick_action_target.to_ability_name}", project)
         end
         parse_params do |unassign_reviewer_param|
@@ -358,12 +473,53 @@ module Gitlab
           extract_users(unassign_reviewer_param) if quick_action_target.allows_multiple_reviewers?
         end
         command :unassign_reviewer, :remove_reviewer do |users = nil|
+          current_reviewers = quick_action_target.reviewers
+          # if preceding commands have been executed already, we need to use the updated reviewer_ids
+          current_reviewers = User.find(@updates[:reviewer_ids]) if @updates[:reviewer_ids].present?
+
           if quick_action_target.allows_multiple_reviewers? && users&.any?
             @updates[:reviewer_ids] ||= quick_action_target.reviewers.map(&:id)
             @updates[:reviewer_ids] -= users.map(&:id)
           else
             @updates[:reviewer_ids] = []
           end
+
+          removed_reviewers = current_reviewers.select { |user| @updates[:reviewer_ids].exclude?(user.id) }
+          # only generate the message here if the change would not be traceable otherwise
+          # because all reviewers have been assigned and removed immediately
+          if removed_reviewers.present? && !reviewers_to_remove?(@updates)
+            @execution_message[:unassign_reviewer] = _("Removed %{reviewer_text} %{reviewer_references}.") %
+              { reviewer_text: 'reviewer'.pluralize(removed_reviewers.size), reviewer_references: removed_reviewers.map(&:to_reference).to_sentence }
+          end
+        end
+
+        desc { _('Ship merge request (run pipeline and set auto-merge)') }
+        explanation { _('Ship merge request by creating a pipeline and set auto-merge.') }
+        types MergeRequest
+        condition do
+          ::MergeRequests::ShipMergeRequestWorker.allowed?(
+            merge_request: quick_action_target,
+            current_user: current_user)
+        end
+        command :ship do
+          ::MergeRequests::ShipMergeRequestWorker.perform_async(
+            current_user.id,
+            quick_action_target.id
+          )
+
+          @execution_message[:ship] = _('Actions to ship this merge request have been scheduled.')
+        end
+
+        desc { _('Run a pipeline') }
+        explanation { _('Run a new pipeline for this merge request') }
+        types MergeRequest
+        condition do
+          create_pipeline_service.allowed?(quick_action_target)
+        end
+        command :run_pipeline do
+          create_pipeline_service.execute_async(quick_action_target)
+
+          @execution_message[:run_pipeline] = _('New pipeline has been triggered and will appear shortly.')
         end
       end
 
@@ -403,12 +559,37 @@ module Gitlab
         quick_action_target.reviewers.any? || updates&.dig(:reviewer_ids)&.any?
       end
 
+      def auto_merge_strategy_copy(_strategy, type)
+        case type
+        when :desc then _('Set to auto-merge')
+        when :explanation then _('Sets this merge request to auto-merge when ready.')
+        when :feedback then _('Set to auto-merge.')
+        end
+      end
+
       def merge_orchestration_service
         @merge_orchestration_service ||= ::MergeRequests::MergeOrchestrationService.new(project, current_user)
       end
 
+      def create_pipeline_service
+        @create_pipeline_service ||= ::MergeRequests::CreatePipelineService.new(
+          project: quick_action_target.project,
+          current_user: current_user,
+          params: { allow_duplicate: true })
+      end
+
       def preferred_auto_merge_strategy(merge_request)
         merge_orchestration_service.preferred_auto_merge_strategy(merge_request)
+      end
+
+      # Overriden in EE
+      def process_reviewer_users(users)
+        users
+      end
+
+      # Overriden in EE
+      def process_reviewer_users_message
+        nil
       end
     end
   end

@@ -1,46 +1,69 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Create
+group: Import
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Import API
+description: "Import repositories from GitHub or Bitbucket Server with the REST API."
 ---
 
-# Import API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Use the Import API to import repositories from GitHub or Bitbucket Server.
+{{< /details >}}
+
+{{< history >}}
+
+- Reassigning contributions to a personal namespace owner when importing to a personal namespace [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/525342) in GitLab 18.3 [with a flag](../administration/feature_flags/_index.md) named `user_mapping_to_personal_namespace_owner`. Disabled by default.
+- Reassigning contributions to a personal namespace owner when importing to a personal namespace [generally available](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/211626) in GitLab 18.6. Feature flag `user_mapping_to_personal_namespace_owner` removed.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+Use this API to [import repositories from external sources](../user/import/_index.md).
+
+> [!note]
+> User contribution mapping is not supported when you import projects to a [personal namespace](../user/namespace/_index.md#types-of-namespaces).
+> When you import to a personal namespace, all contributions are assigned to the personal namespace owner and they cannot be reassigned.
 
 ## Import repository from GitHub
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/381902) in GitLab 15.8, GitLab no longer automatically creates namespaces or groups if the namespace or group name specified in `target_namespace` doesn't exist. GitLab also no longer falls back to using the user's personal namespace if the namespace or group name is taken or `target_namespace` is blank.
-> - Requirement for Maintainer role instead of Developer role introduced in GitLab 16.0 and backported to GitLab 15.11.1 and GitLab 15.10.5.
-> - `collaborators_import` key in `optional_stages` was [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/398154) in GitLab 16.0.
-> - Feature flag `github_import_extended_events` was introduced in GitLab 16.8. Disabled by default. This flag improves the performance of imports but disables the `single_endpoint_issue_events_import` optional stage.
-> - Feature flag `github_import_extended_events` was [enabled on GitLab.com and self-managed](https://gitlab.com/gitlab-org/gitlab/-/issues/435089) in GitLab 16.9.
+{{< history >}}
 
-Import your projects from GitHub to GitLab using the API.
+- Requirement for Maintainer role instead of Developer role introduced in GitLab 16.0 and backported to GitLab 15.11.1 and GitLab 15.10.5.
+- `collaborators_import` key in `optional_stages` was [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/398154) in GitLab 16.0.
+- Feature flag `github_import_extended_events` was introduced in GitLab 16.8. Disabled by default. This flag improves the performance of imports but disables the `single_endpoint_issue_events_import` optional stage.
+- Feature flag `github_import_extended_events` was [enabled on GitLab.com and GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/issues/435089) in GitLab 16.9.
+- Improved import performance made [generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/435089) in GitLab 16.11. Feature flag `github_import_extended_events` removed.
+
+{{< /history >}}
+
+Imports a repository from GitHub to GitLab.
 
 Prerequisites:
 
 - [Prerequisites for GitHub importer](../user/project/import/github.md#prerequisites).
 - The namespace set in `target_namespace` must exist.
-- The namespace can be your user namespace or an existing group that you have at least the Maintainer role for.
+- The namespace can be your user namespace or an existing group that you have the Maintainer or Owner role for.
 
 ```plaintext
 POST /import/github
 ```
 
-| Attribute                  | Type    | Required | Description                                                                                                                                                                         |
-|----------------------------|---------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `personal_access_token`    | string  | yes      | GitHub personal access token                                                                                                                                                        |
-| `repo_id`                  | integer | yes      | GitHub repository ID                                                                                                                                                                |
-| `new_name`                 | string  | no       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. |
-| `target_namespace`         | string  | yes      | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. In GitLab 15.8 and later, must not be blank                                                     |
-| `github_hostname`          | string  | no  | Custom GitHub Enterprise hostname. Do not set for GitHub.com.                                                                                                                       |
-| `optional_stages`          | object  | no  | [Additional items to import](../user/project/import/github.md#select-additional-items-to-import). [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/373705) in GitLab 15.5 |
-| `timeout_strategy`          | string | no  | Strategy for handling import timeouts. Valid values are `optimistic` (continue to next stage of import) or `pessimistic` (fail immediately). Defaults to `pessimistic`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/422979) in GitLab 16.5. |
+| Attribute               | Type    | Required | Description |
+|-------------------------|---------|----------|-------------|
+| `personal_access_token` | string  | Yes      | GitHub personal access token. |
+| `repo_id`               | integer | Yes      | GitHub repository ID. |
+| `target_namespace`      | string  | Yes      | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. Must not be blank. |
+| `github_hostname`       | string  | No       | Custom GitHub Enterprise hostname. Do not set for GitHub.com. From GitLab 16.5 to GitLab 17.1, you must include the path `/api/v3`. |
+| `new_name`              | string  | No       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. |
+| `optional_stages`       | object  | No       | [Additional items to import](../user/project/import/github.md#select-additional-items-to-import). |
+| `pagination_limit`      | integer | No       | Number of items retrieved per API request to GitHub. The default value is 100 items per page. For project imports from large repositories, a lower number can reduce the risk of GitHub API endpoints returning `500` or `502` errors. However, a smaller page size increases migration times. |
+| `timeout_strategy`      | string  | No       | Strategy for handling import timeouts. Valid values are `optimistic` (continue to next stage of import) or `pessimistic` (fail immediately). Defaults to `pessimistic`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/422979) in GitLab 16.5. |
 
 ```shell
 curl --request POST \
@@ -54,7 +77,6 @@ curl --request POST \
     "new_name": "NEW-NAME",
     "github_hostname": "https://github.example.com",
     "optional_stages": {
-      "single_endpoint_issue_events_import": true,
       "single_endpoint_notes_import": true,
       "attachments_import": true,
       "collaborators_import": true
@@ -64,11 +86,10 @@ curl --request POST \
 
 The following keys are available for `optional_stages`:
 
-- `single_endpoint_issue_events_import`, for issue and pull request events import. If the `github_import_extended_events` feature flag is enabled, this optional stage
-  is unavailable.
-- `single_endpoint_notes_import`, for an alternative and more thorough comments import.
 - `attachments_import`, for Markdown attachments import.
 - `collaborators_import`, for importing direct repository collaborators who are not outside collaborators.
+- `single_endpoint_issue_events_import`, for issue and pull request events import. This optional stage was removed in GitLab 16.9.
+- `single_endpoint_notes_import`, for an alternative and more thorough comments import.
 
 For more information, see [Select additional items to import](../user/project/import/github.md#select-additional-items-to-import).
 
@@ -92,27 +113,24 @@ Example response:
 
 ### Import a public project through the API using a group access token
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/362683) in GitLab 15.7, projects are not imported into a [bot user's](../user/group/settings/group_access_tokens.md#bot-users-for-groups) namespace in any circumstances. Projects imported into a bot user's namespace could not be deleted by users with valid tokens, which represented a security risk.
-
 When you import a project from GitHub to GitLab through the API using a group access
 token:
 
-- The GitLab project inherits the original project's visibility settings. As a result, the project is publicly accessible if the original project is public.
+- The GitLab project inherits the original project's visibility settings. As a result, the project is
+  publicly accessible if the original project is public.
 - If the `path` or `target_namespace` does not exist, the project import fails.
 
 ### Cancel GitHub project import
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/364783) in GitLab 15.5.
-
-Cancel an in-progress GitHub project import using the API.
+Cancels an in-progress GitHub project import.
 
 ```plaintext
 POST /import/github/cancel
 ```
 
-| Attribute  | Type    | Required | Description         |
-|------------|---------|----------|---------------------|
-| `project_id`   | integer | yes      | GitLab project ID     |
+| Attribute    | Type    | Required | Description |
+|--------------|---------|----------|-------------|
+| `project_id` | integer | Yes      | GitLab project ID. |
 
 ```shell
 curl --request POST \
@@ -147,12 +165,8 @@ Returns the following status codes:
 
 ### Import GitHub gists into GitLab snippets
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/371099) in GitLab 15.8 [with a flag](../administration/feature_flags.md) named `github_import_gists`. Disabled by default. Enabled on GitLab.com.
-> - [Enabled on self-managed](https://gitlab.com/gitlab-org/gitlab/-/issues/386579) in GitLab 15.10.
-> - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/386579) in GitLab 15.11. Feature flag `github_import_gists` removed.
-
-You can use the GitLab API to import personal GitHub gists (with up to 10 files) into personal GitLab snippets.
-GitHub gists with more than 10 files are skipped. You should manually migrate these GitHub gists.
+Imports personal GitHub gists into GitLab snippets.
+You can import gists with up to 10 files. GitHub gists with more than 10 files are skipped. You should manually migrate these GitHub gists.
 
 If any gists couldn't be imported, an email is sent with a list of gists that were not imported.
 
@@ -160,9 +174,9 @@ If any gists couldn't be imported, an email is sent with a list of gists that we
 POST /import/github/gists
 ```
 
-| Attribute  | Type    | Required | Description         |
-|------------|---------|----------|---------------------|
-| `personal_access_token`   | string | yes      | GitHub personal access token     |
+| Attribute               | Type   | Required | Description |
+|-------------------------|--------|----------|-------------|
+| `personal_access_token` | string | Yes      | GitHub personal access token. |
 
 ```shell
 curl --request POST \
@@ -183,7 +197,7 @@ Returns the following status codes:
 
 ## Import repository from Bitbucket Server
 
-Import your projects from Bitbucket Server to GitLab using the API.
+Imports a repository from Bitbucket Server to GitLab.
 
 The Bitbucket Project Key is only used for finding the repository in Bitbucket.
 You must specify a `target_namespace` if you want to import the repository to a GitLab group.
@@ -191,22 +205,22 @@ If you do not specify `target_namespace`, the project imports to your personal u
 
 Prerequisites:
 
-- For more information, see [prerequisites for Bitbucket Server importer](../user/project/import/bitbucket_server.md).
+- For more information, see [prerequisites for Bitbucket Server importer](../user/import/bitbucket_server.md).
 
 ```plaintext
 POST /import/bitbucket_server
 ```
 
-| Attribute  | Type    | Required | Description         |
-|------------|---------|----------|---------------------|
-| `bitbucket_server_url` | string | yes | Bitbucket Server URL |
-| `bitbucket_server_username` | string | yes | Bitbucket Server Username |
-| `personal_access_token` | string | yes | Bitbucket Server personal access token/password |
-| `bitbucket_server_project` | string | yes | Bitbucket Project Key |
-| `bitbucket_server_repo` | string | yes | Bitbucket Repository Name |
-| `new_name` | string | no | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. Between GitLab 15.1 and GitLab 16.9, the project path [was copied](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/88845) from Bitbucket instead. In GitLab 16.10, the behavior was [changed back](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/145793) to the original behavior. |
-| `target_namespace` | string | no | Namespace to import repository into. Supports subgroups like `/namespace/subgroup` |
-| `timeout_strategy`          | string | no  | Strategy for handling import timeouts. Valid values are `optimistic` (continue to next stage of import) or `pessimistic` (fail immediately). Defaults to `pessimistic`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/422979) in GitLab 16.5. |
+| Attribute                   | Type   | Required | Description |
+|-----------------------------|--------|----------|-------------|
+| `bitbucket_server_project`  | string | Yes      | Bitbucket project key. |
+| `bitbucket_server_repo`     | string | Yes      | Bitbucket repository name. |
+| `bitbucket_server_url`      | string | Yes      | Bitbucket Server URL. |
+| `bitbucket_server_username` | string | Yes      | Bitbucket Server username. |
+| `personal_access_token`     | string | Yes      | Bitbucket Server personal access token or password. |
+| `new_name`                  | string | No       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. In GitLab 16.9 and earlier, the project path [was copied](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/88845) from Bitbucket instead. In GitLab 16.10, the behavior was [changed back](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/145793) to the original behavior. |
+| `target_namespace`          | string | No       | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. |
+| `timeout_strategy`          | string | No       | Strategy for handling import timeouts. Valid values are `optimistic` (continue to next stage of import) or `pessimistic` (fail immediately). Defaults to `pessimistic`. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/422979) in GitLab 16.5. |
 
 ```shell
 curl --request POST \
@@ -222,6 +236,80 @@ curl --request POST \
     "new_name": "NEW-NAME"
 }'
 ```
+
+## Import repository from Bitbucket Cloud
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/215036) in GitLab 17.0.
+- Support for Bitbucket Cloud API tokens [added](https://gitlab.com/gitlab-org/gitlab/-/work_items/575583) in GitLab 18.9.
+
+{{< /history >}}
+
+Imports a repository from Bitbucket Cloud to GitLab.
+
+Prerequisites:
+
+- The [prerequisites for Bitbucket Cloud importer](../user/import/bitbucket_cloud.md).
+- One of the following:
+  - A [Bitbucket Cloud app password](../user/import/bitbucket_cloud.md#generate-a-bitbucket-cloud-app-password). Bitbucket Cloud app passwords
+    [are deprecated](https://www.atlassian.com/blog/bitbucket/bitbucket-cloud-transitions-to-api-tokens-enhancing-security-with-app-password-deprecation).
+  - A [Bitbucket Cloud API token](#bitbucket-cloud-api-token-scopes) with the required scopes.
+
+```plaintext
+POST /import/bitbucket
+```
+
+| Attribute                | Type   | Required | Description |
+|:-------------------------|:-------|:---------|:------------|
+| `bitbucket_username`     | string | No       | Bitbucket Cloud username. Required when using app password authentication. |
+| `bitbucket_app_password` | string | No       | Bitbucket Cloud app password. Required when using app password authentication. |
+| `bitbucket_email`        | string | No       | Bitbucket Cloud email. Required when using API token authentication. |
+| `bitbucket_api_token`    | string | No       | Bitbucket Cloud API token. Required when using API token authentication. |
+| `repo_path`              | string | Yes      | Path to repository. |
+| `target_namespace`       | string | Yes      | Namespace to import repository into. Supports subgroups like `/namespace/subgroup`. |
+| `new_name`               | string | No       | Name of the new project. Also used as the new path so must not start or end with a special character and must not contain consecutive special characters. |
+
+Example using app password:
+
+```shell
+curl --request POST \
+  --url "https://gitlab.example.com/api/v4/import/bitbucket" \
+  --header "content-type: application/json" \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --data '{
+    "bitbucket_username": "bitbucket_username",
+    "bitbucket_app_password": "bitbucket_app_password",
+    "repo_path": "username/my_project",
+    "target_namespace": "my_group/my_subgroup",
+    "new_name": "new_project_name"
+}'
+```
+
+Example using API token:
+
+```shell
+curl --request POST \
+  --url "https://gitlab.example.com/api/v4/import/bitbucket" \
+  --header "content-type: application/json" \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --data '{
+    "bitbucket_email": "email@example.com",
+    "bitbucket_api_token": "your_bitbucket_api_token",
+    "repo_path": "username/my_project",
+    "target_namespace": "my_group/my_subgroup",
+    "new_name": "new_project_name"
+}'
+```
+
+### Bitbucket Cloud API token scopes
+
+If you're using a Bitbucket Cloud API token for authentication, the token must have the following scopes:
+
+- `read:repository:bitbucket`
+- `read:pullrequest:bitbucket`
+- `read:issue:bitbucket`
+- `read:wiki:bitbucket`
 
 ## Related topics
 

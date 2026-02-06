@@ -10,17 +10,35 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
 
   let(:context) { Gitlab::Ci::Config::External::Context.new(**context_params) }
   let(:external_resource) { described_class.new(params, context) }
-  let(:params) { { component: 'gitlab.com/acme/components/my-component@1.0' } }
+  let(:params) { { component: 'gitlab.com/acme/components/my-component@1.0.0' } }
   let(:fetch_service) { instance_double(::Ci::Components::FetchService) }
-  let(:response) { ServiceResponse.error(message: 'some error message') }
 
   let(:context_params) do
     {
       project: context_project,
-      sha: '12345',
+      sha: 'context_sha',
       user: user,
       variables: project_variables
     }
+  end
+
+  let(:content) do
+    <<~COMPONENT
+    job:
+      script: echo
+    COMPONENT
+  end
+
+  let(:response) do
+    ServiceResponse.success(payload: {
+      content: content,
+      path: 'templates/my_component.yml',
+      project: project,
+      sha: 'my_component_sha',
+      name: 'my_component',
+      version: nil,
+      reference: nil
+    })
   end
 
   before do
@@ -89,22 +107,6 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
       end
 
       context 'when component is found' do
-        let(:content) do
-          <<~COMPONENT
-          job:
-            script: echo
-          COMPONENT
-        end
-
-        let(:response) do
-          ServiceResponse.success(payload: {
-            content: content,
-            path: 'templates/component.yml',
-            project: project,
-            sha: '12345'
-          })
-        end
-
         it 'is valid' do
           expect(subject).to be_truthy
           expect(external_resource.content).to eq(content)
@@ -118,28 +120,60 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
             expect(external_resource.error_message).to match(/Invalid configuration format/)
           end
         end
+
+        context 'when component uses spec:include' do
+          let(:content) do
+            <<~YAML
+              spec:
+                include:
+                  - local: /shared-inputs.yml
+              ---
+              job:
+                script: echo
+            YAML
+          end
+
+          it 'is invalid because spec:include is not supported in components' do
+            expect(subject).to be_falsy
+            expect(external_resource.error_message).to eq(
+              "Component `gitlab.com/acme/components/my-component@1.0.0` cannot use `spec:include`. " \
+                "This keyword is not supported in components"
+            )
+          end
+        end
+
+        context 'when component has spec but no include' do
+          let(:content) do
+            <<~YAML
+              spec:
+                inputs:
+                  env:
+                    default: prod
+              ---
+              job:
+                script: echo
+            YAML
+          end
+
+          it 'is valid' do
+            expect(subject).to be_truthy
+          end
+        end
+
+        context 'when content is empty' do
+          let(:content) { '' }
+
+          it 'does not add spec:include errors' do
+            expect(subject).to be_falsy
+            expect(external_resource.error_message.to_s).not_to include('spec:include')
+          end
+        end
       end
     end
   end
 
   describe '#content' do
     context 'when component is valid' do
-      let(:content) do
-        <<~COMPONENT
-        job:
-        script: echo
-        COMPONENT
-      end
-
-      let(:response) do
-        ServiceResponse.success(payload: {
-          content: content,
-          path: 'templates/component.yml',
-          project: project,
-          sha: '12345'
-        })
-      end
-
       it 'tracks the event' do
         expect(::Gitlab::UsageDataCounters::HLLRedisCounter).to receive(:track_event).with('cicd_component_usage',
           values: external_resource.context.user.id)
@@ -159,7 +193,9 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
     end
 
     context 'when component is invalid' do
-      let(:content) { 'the-content' }
+      let(:response) do
+        ServiceResponse.error(message: 'Content not found')
+      end
 
       it 'does not track the event' do
         expect(::Gitlab::UsageDataCounters::HLLRedisCounter).not_to receive(:track_event)
@@ -172,46 +208,47 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
   describe '#metadata' do
     subject(:metadata) { external_resource.metadata }
 
-    let(:response) do
-      ServiceResponse.success(payload: { path: 'my-component/template.yml', project: project, sha: '12345' })
-    end
-
     it 'returns the metadata' do
       is_expected.to include(
         context_project: context_project.full_path,
         context_sha: context.sha,
         type: :component,
-        location: 'gitlab.com/acme/components/my-component@1.0',
-        blob: a_string_ending_with("#{project.full_path}/-/blob/12345/my-component/template.yml"),
+        location: 'gitlab.com/acme/components/my-component@1.0.0',
+        blob: a_string_ending_with("#{project.full_path}/-/blob/my_component_sha/templates/my_component.yml"),
         raw: nil,
-        extra: {}
+        extra: {},
+        component: {
+          project: project,
+          sha: 'my_component_sha',
+          name: 'my_component',
+          version: nil,
+          reference: nil
+        }
       )
     end
   end
 
   describe '#expand_context' do
-    let(:response) do
-      ServiceResponse.success(payload: { path: 'templates/component.yml', project: project, sha: '12345' })
-    end
-
     subject { external_resource.send(:expand_context_attrs) }
 
     it 'inherits user and variables while changes project and sha' do
       is_expected.to include(
         project: project,
-        sha: '12345',
+        sha: 'my_component_sha',
         user: context.user,
-        variables: context.variables)
+        variables: context.variables,
+        component_data: {
+          name: 'my_component',
+          sha: 'my_component_sha',
+          version: nil,
+          reference: nil
+        }
+      )
     end
   end
 
   describe '#to_hash' do
     context 'when interpolation is being used' do
-      let(:response) do
-        ServiceResponse.success(payload: { content: content, path: 'templates/component.yml', project: project,
-                                           sha: '12345' })
-      end
-
       let(:content) do
         <<~YAML
           spec:
@@ -224,12 +261,34 @@ RSpec.describe Gitlab::Ci::Config::External::File::Component, feature_category: 
       end
 
       let(:params) do
-        { component: 'gitlab.com/acme/components/my-component@1.0', with: { env: 'production' } }
+        { component: 'gitlab.com/acme/components/my-component@1.0', inputs: { env: 'production' } }
       end
 
       it 'correctly interpolates the content' do
         expect(external_resource.to_hash).to eq({ deploy: { script: 'deploy production' } })
       end
+    end
+  end
+
+  describe '#load_and_validate_expanded_hash!' do
+    let(:logger) { instance_double(::Gitlab::Ci::Pipeline::Logger, :instrument) }
+
+    let(:context_params) do
+      {
+        project: context_project,
+        sha: 'context_sha',
+        user: user,
+        variables: project_variables,
+        logger: logger
+      }
+    end
+
+    it 'tracks the content load time' do
+      expect(logger).to receive(:instrument).once.ordered.with(:config_file_fetch_component_content).and_yield
+      expect(logger).to receive(:instrument).once.ordered.with(:config_file_fetch_content_hash).and_yield
+      expect(logger).to receive(:instrument).once.ordered.with(:config_file_expand_content_includes).and_yield
+
+      external_resource.load_and_validate_expanded_hash!
     end
   end
 end

@@ -2,15 +2,15 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Associate a Zoom meeting with an issue
 ---
 
-# Associate a Zoom meeting with an issue
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/16609) in GitLab 12.4.
+{{< /details >}}
 
 To communicate synchronously for incidents management,
 you can associate a Zoom meeting with an issue.
@@ -20,8 +20,8 @@ team members can join swiftly without requesting a link.
 
 ## Adding a Zoom meeting to an issue
 
-To associate a Zoom meeting with an issue, you can use GitLab
-[quick actions](../quick_actions.md#issues-merge-requests-and-epics).
+To associate a Zoom meeting with an issue, you can use the
+[`/zoom` quick action](../quick_actions.md#zoom).
 
 In an issue, leave a comment using the `/zoom` quick action followed by a valid Zoom link:
 
@@ -34,7 +34,7 @@ a system alert notifies you of its successful addition.
 The issue's description is automatically edited to include the Zoom link, and a button
 appears right under the issue's title.
 
-![Link Zoom Call in Issue](img/zoom_quickaction_button_v16_6.png)
+![GitLab issue view showing a Join Zoom meeting button](img/zoom_quickaction_button_v16_6.png)
 
 You are only allowed to attach a single Zoom meeting to an issue. If you attempt
 to add a second Zoom meeting using the `/zoom` quick action, it doesn't work. You
@@ -50,6 +50,8 @@ Similarly to adding a Zoom meeting, you can remove it with a quick action:
 ```shell
 /remove_zoom
 ```
+
+You can also use the [`/remove_zoom` quick action](../quick_actions.md#remove_zoom).
 
 If you have at least the Reporter role,
 a system alert notifies you that the meeting URL was successfully removed.

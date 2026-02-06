@@ -20,15 +20,11 @@ export default {
       default: '',
     },
   },
-  docsLink: helpPagePath('development/service_ping/index.md'),
+  docsLink: helpPagePath('development/internal_analytics/service_ping/_index'),
 };
 </script>
 <template>
-  <gl-empty-state
-    :title="s__('ServicePing|Service ping is off')"
-    :svg-path="svgPath"
-    :svg-height="null"
-  >
+  <gl-empty-state :title="s__('ServicePing|Service ping is off')" :svg-path="svgPath">
     <template #description>
       <gl-sprintf
         v-if="!isAdmin"

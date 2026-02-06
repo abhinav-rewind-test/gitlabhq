@@ -1,24 +1,26 @@
 ---
-stage: Govern
-group: Compliance
+stage: Create
+group: Code Review
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Export merge requests to CSV
 ---
 
-# Export merge requests to CSV
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Export all the data collected from a project's merge requests into a comma-separated values (CSV) file.
 
 To export merge requests to a CSV file:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Code > Merge requests**.
+1. On the top bar, select **Search or go to** and find your project.
+1. In the left sidebar, select **Code** > **Merge requests**.
 1. Add any searches or filters. This can help you keep the size of the CSV file under the 15 MB limit. The limit ensures
    the file can be emailed to a variety of email providers.
-1. Select **Actions** (**{ellipsis_v}**) **> Export as CSV**.
+1. Select **Actions** ({{< icon name="ellipsis_v" >}}) > **Export as CSV**.
 1. Confirm the correct number of merge requests are to be exported.
 1. Select **Export merge requests**.
 
@@ -48,7 +50,3 @@ The following table shows the attributes in the CSV file.
 | Milestone ID       | ID of the merge request milestone                            |
 | Created At (UTC)   | Formatted as `YYYY-MM-DD HH:MM:SS`                           |
 | Updated At (UTC)   | Formatted as `YYYY-MM-DD HH:MM:SS`                           |
-
-In GitLab 14.7 and earlier, the first two columns were `MR ID` and `URL`,
-which [caused an issue](https://gitlab.com/gitlab-org/gitlab/-/issues/34769)
-when importing back into GitLab.

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :build_artifacts do
+RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :job_artifacts do
   let(:coverage_report) { create(:ci_pipeline_artifact, :with_coverage_report) }
 
   describe 'associations' do
@@ -51,6 +51,33 @@ RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :build_arti
   end
 
   describe 'scopes' do
+    describe '.with_file_types' do
+      let_it_be(:pipeline) { create(:ci_pipeline) }
+
+      let_it_be(:coverage_artifact) do
+        create(:ci_pipeline_artifact, :with_coverage_report, pipeline: pipeline)
+      end
+
+      let_it_be(:codequality_artifact) do
+        create(:ci_pipeline_artifact, :with_codequality_mr_diff_report, pipeline: pipeline)
+      end
+
+      let_it_be(:pipeline_variables_artifact) do
+        create(:ci_pipeline_artifact, :with_pipeline_variables, pipeline: pipeline)
+      end
+
+      it 'returns artifacts with the specified file types' do
+        expect(described_class.with_file_types(:code_coverage)).to contain_exactly(coverage_artifact)
+        expect(described_class.with_file_types(:code_quality_mr_diff)).to contain_exactly(codequality_artifact)
+        expect(described_class.with_file_types(:pipeline_variables)).to contain_exactly(pipeline_variables_artifact)
+      end
+
+      it 'returns artifacts with multiple file types' do
+        expect(described_class.with_file_types([:code_coverage, :pipeline_variables]))
+          .to contain_exactly(coverage_artifact, pipeline_variables_artifact)
+      end
+    end
+
     describe '.unlocked' do
       subject(:pipeline_artifacts) { described_class.unlocked }
 
@@ -97,6 +124,28 @@ RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :build_arti
       it 'sets the size in bytesize' do
         expect(coverage_report_multibyte.size).to eq(14)
       end
+    end
+  end
+
+  it_behaves_like 'object storable' do
+    let(:locally_stored) do
+      ci_pipeline_artifact = create(:ci_pipeline_artifact)
+
+      if ci_pipeline_artifact.file_store == ObjectStorage::Store::REMOTE
+        ci_pipeline_artifact.update_column(described_class::STORE_COLUMN, ObjectStorage::Store::LOCAL)
+      end
+
+      ci_pipeline_artifact
+    end
+
+    let(:remotely_stored) do
+      ci_pipeline_artifact = create(:ci_pipeline_artifact)
+
+      if ci_pipeline_artifact.file_store == ObjectStorage::Store::LOCAL
+        ci_pipeline_artifact.update_column(described_class::STORE_COLUMN, ObjectStorage::Store::REMOTE)
+      end
+
+      ci_pipeline_artifact
     end
   end
 
@@ -192,6 +241,24 @@ RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :build_arti
 
       it 'returns nil' do
         expect(pipeline_artifact).to be_nil
+      end
+    end
+
+    context 'when file_type is pipeline_variables' do
+      let(:file_type) { :pipeline_variables }
+
+      context 'when pipeline artifact has a pipeline variables artifact' do
+        let!(:pipeline_variables_artifact) { create(:ci_pipeline_artifact, :with_pipeline_variables) }
+
+        it 'returns a pipeline artifact with a pipeline variables artifact' do
+          expect(pipeline_artifact.file_type).to eq('pipeline_variables')
+        end
+      end
+
+      context 'when pipeline artifact does not have a pipeline variables artifact' do
+        it 'returns nil' do
+          expect(pipeline_artifact).to be_nil
+        end
       end
     end
   end
@@ -310,14 +377,14 @@ RSpec.describe Ci::PipelineArtifact, type: :model, feature_category: :build_arti
     end
   end
 
-  describe 'partitioning', :ci_partitionable do
+  describe 'partitioning' do
     include Ci::PartitioningHelpers
 
     let(:pipeline) { create(:ci_pipeline) }
     let(:pipeline_artifact) { create(:ci_pipeline_artifact, pipeline: pipeline) }
 
     before do
-      stub_current_partition_id
+      stub_current_partition_id(ci_testing_partition_id)
     end
 
     it 'assigns the same partition id as the one that pipeline has' do

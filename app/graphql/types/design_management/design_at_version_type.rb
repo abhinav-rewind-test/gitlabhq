@@ -6,7 +6,7 @@ module Types
       graphql_name 'DesignAtVersion'
 
       description 'A design pinned to a specific version. ' \
-                  'The image field reflects the design as of the associated version'
+        'The image field reflects the design as of the associated version'
 
       authorize :read_design
 
@@ -16,14 +16,14 @@ module Types
       implements ::Types::DesignManagement::DesignFields
 
       field :version,
-            Types::DesignManagement::VersionType,
-            null: false,
-            description: 'Version this design-at-versions is pinned to.'
+        Types::DesignManagement::VersionType,
+        null: false,
+        description: 'Version the design-at-versions is pinned to.'
 
       field :design,
-            Types::DesignManagement::DesignType,
-            null: false,
-            description: 'Underlying design.'
+        Types::DesignManagement::DesignType,
+        null: false,
+        description: 'Underlying design.'
 
       def cached_stateful_version(_parent)
         version

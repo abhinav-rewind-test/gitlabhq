@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Sidebars::UserSettings::Menus::AccessTokensMenu, feature_category: :navigation do
   it_behaves_like 'User settings menu',
     link: '/-/user_settings/personal_access_tokens',
-    title: _('Access Tokens'),
+    title: 'Personal access tokens',
     icon: 'token',
     active_routes: { controller: :personal_access_tokens }
 
@@ -14,7 +14,7 @@ RSpec.describe Sidebars::UserSettings::Menus::AccessTokensMenu, feature_category
 
     let_it_be(:user) { build(:user) }
 
-    context 'when personal access tokens are disabled' do
+    context 'when personal access tokens are disabled in the instance' do
       before do
         allow(::Gitlab::CurrentSettings).to receive_messages(personal_access_tokens_disabled?: true)
       end

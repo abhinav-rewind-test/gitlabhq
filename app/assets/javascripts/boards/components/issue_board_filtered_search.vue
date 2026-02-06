@@ -8,7 +8,7 @@ import { joinPaths } from '~/lib/utils/url_utility';
 import issueBoardFilters from 'ee_else_ce/boards/issue_board_filters';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
-import { __ } from '~/locale';
+import { __, s__ } from '~/locale';
 import {
   OPERATORS_IS_NOT,
   OPERATORS_IS,
@@ -34,17 +34,17 @@ import EmojiToken from '~/vue_shared/components/filtered_search_bar/tokens/emoji
 import LabelToken from '~/vue_shared/components/filtered_search_bar/tokens/label_token.vue';
 import MilestoneToken from '~/vue_shared/components/filtered_search_bar/tokens/milestone_token.vue';
 import ReleaseToken from '~/vue_shared/components/filtered_search_bar/tokens/release_token.vue';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import {
+  WORK_ITEM_TYPE_ENUM_INCIDENT,
+  WORK_ITEM_TYPE_ENUM_ISSUE,
+  WORK_ITEM_TYPE_ENUM_TASK,
+  WORK_ITEM_TYPE_ENUM_TICKET,
+} from '~/work_items/constants';
 
 export default {
-  types: {
-    ISSUE: 'ISSUE',
-    INCIDENT: 'INCIDENT',
-  },
-  i18n: {
-    incident: __('Incident'),
-    issue: __('Issue'),
-  },
   components: { BoardFilteredSearch },
+  mixins: [glFeatureFlagMixin()],
   inject: ['isSignedIn', 'releasesFetchPath', 'fullPath', 'isGroupBoard'],
   props: {
     board: {
@@ -64,9 +64,30 @@ export default {
   },
   computed: {
     tokensCE() {
-      const { issue, incident } = this.$options.i18n;
-      const { types } = this.$options;
       const { fetchLabels } = issueBoardFilters(this.$apollo, this.fullPath, this.isGroupBoard);
+
+      const typeOptions = [
+        { icon: 'work-item-issue', value: WORK_ITEM_TYPE_ENUM_ISSUE, title: s__('WorkItem|Issue') },
+        {
+          icon: 'work-item-incident',
+          value: WORK_ITEM_TYPE_ENUM_INCIDENT,
+          title: s__('WorkItem|Incident'),
+        },
+      ];
+
+      if (this.glFeatures.workItemTasksOnBoards) {
+        typeOptions.push({
+          icon: 'work-item-task',
+          value: WORK_ITEM_TYPE_ENUM_TASK,
+          title: s__('WorkItem|Task'),
+        });
+      }
+
+      typeOptions.push({
+        icon: 'work-item-ticket',
+        value: WORK_ITEM_TYPE_ENUM_TICKET,
+        title: s__('WorkItem|Ticket'),
+      });
 
       const tokens = [
         {
@@ -101,6 +122,7 @@ export default {
           operators: OPERATORS_IS_NOT,
           token: LabelToken,
           unique: false,
+          recentSuggestionsStorageKey: `${this.fullPath}-board-recent-tokens-label`,
           symbol: '~',
           fetchLabels,
         },
@@ -154,15 +176,12 @@ export default {
           fullPath: this.fullPath,
         },
         {
-          icon: 'issues',
+          icon: 'work-item-issue',
           title: TOKEN_TITLE_TYPE,
           type: TOKEN_TYPE_TYPE,
           token: GlFilteredSearchToken,
           unique: true,
-          options: [
-            { icon: 'issue-type-issue', value: types.ISSUE, title: issue },
-            { icon: 'issue-type-incident', value: types.INCIDENT, title: incident },
-          ],
+          options: typeOptions,
         },
         {
           type: TOKEN_TYPE_RELEASE,

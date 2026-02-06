@@ -5,7 +5,17 @@ module UploadsActions
   include Gitlab::Utils::StrongMemoize
   include SendFileUpload
 
+  # Starting with version 2, Markdown upload URLs use project / group IDs instead of paths
+  ID_BASED_UPLOAD_PATH_VERSION = 2
+
   UPLOAD_MOUNTS = %w[avatar attachment file logo pwa_icon header_logo favicon screenshot].freeze
+
+  # We need to avoid setting certain formats. For example, using the :js format
+  # would trigger Rails' cross-origin JavaScript protection. To avoid this, we use
+  # the :text format for JS files instead.
+  CUSTOM_REQUEST_FORMAT_MAPPING = {
+    js: :text
+  }.freeze
 
   included do
     prepend_before_action :set_request_format_from_path_extension
@@ -17,7 +27,7 @@ module UploadsActions
   end
 
   def create
-    uploader = UploadService.new(model, params[:file], uploader_class).execute
+    uploader = UploadService.new(model, params[:file], uploader_class, uploaded_by_user_id: current_user&.id).execute
 
     respond_to do |format|
       if uploader
@@ -77,12 +87,14 @@ module UploadsActions
   # behavior when serving uploads.
   def set_request_format_from_path_extension
     path = request.headers['action_dispatch.original_path'] || request.headers['PATH_INFO']
-
-    return unless match = path&.match(/\.(\w+)\z/)
+    match = path&.match(/\.(\w+)\z/)
+    return unless match
 
     format = Mime[match.captures.first]
 
-    request.format = format.symbol if format
+    return if format.blank?
+
+    request.format = CUSTOM_REQUEST_FORMAT_MAPPING[format.symbol] || format.symbol
   end
 
   def content_disposition
@@ -117,7 +129,8 @@ module UploadsActions
 
   # rubocop: disable CodeReuse/ActiveRecord
   def build_uploader_from_upload
-    return unless uploader = build_uploader
+    uploader = build_uploader
+    return unless uploader
 
     upload_paths = uploader.upload_paths(params[:filename])
     upload = Upload.find_by(model: model, uploader: uploader_class.to_s, path: upload_paths)
@@ -140,9 +153,21 @@ module UploadsActions
   end
 
   def bypass_auth_checks_on_uploads?
-    return false if target_project && !target_project.public? && target_project.enforce_auth_checks_on_uploads?
+    return false if private_project_with_auth_checks?
 
     action_name == 'show' && embeddable?
+  end
+
+  def private_project_with_auth_checks?
+    target_project &&
+      !target_project.public? &&
+      target_project.enforce_auth_checks_on_uploads?
+  end
+
+  def upload_version_at_least?(version)
+    return unless uploader && uploader.upload
+
+    uploader.upload.version >= version
   end
 
   def target_project

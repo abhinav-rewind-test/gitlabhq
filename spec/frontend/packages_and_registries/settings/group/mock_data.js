@@ -28,12 +28,15 @@ export const packageSettings = {
 
 export const dependencyProxySettings = (extend) => ({
   enabled: true,
+  identity: 'foo',
+  __typename: 'DependencyProxySetting',
   ...extend,
 });
 
 export const dependencyProxyImageTtlPolicy = (extend) => ({
   ttl: 90,
   enabled: true,
+  __typename: 'DependencyProxyImageTtlPolicy',
   ...extend,
 });
 
@@ -42,12 +45,13 @@ export const groupPackageSettingsMock = {
     group: {
       id: '1',
       fullPath: 'foo_group_path',
+      __typename: 'Group',
+      dependencyProxySetting: dependencyProxySettings(),
+      dependencyProxyImageTtlPolicy: dependencyProxyImageTtlPolicy(),
       packageSettings: {
         ...packageSettings,
         __typename: 'PackageSettings',
       },
-      dependencyProxySetting: dependencyProxySettings(),
-      dependencyProxyImageTtlPolicy: dependencyProxyImageTtlPolicy(),
     },
   },
 };

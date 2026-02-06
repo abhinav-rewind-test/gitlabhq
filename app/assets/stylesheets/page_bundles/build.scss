@@ -10,14 +10,12 @@
     border-radius: 2px 2px 0 0;
     color: var(--orange-600, $orange-600);
     background-color: var(--orange-50, $orange-50);
-    border: 1px solid var(--border-color, $border-color);
+    border: 1px solid var(--gl-border-color-default);
   }
 
   .top-bar {
-    @include build-log-top-bar(50px);
-    z-index: 2;
-    border-radius: $border-radius-default $border-radius-default 0 0;
-    box-shadow: 0 -4px 0 0 var(--white);
+    @include job-log-top-bar;
+    @include translucent-glass-background(var(--gl-background-color-section));
 
     &.has-archived-block {
       top: calc(#{$calc-application-header-height} + 28px);
@@ -43,48 +41,13 @@
       @include build-controllers(15px, center, false, 0, inline, 0);
     }
   }
-
-  .environment-information {
-    border: 1px solid var(--border-color, $border-color);
-    padding: 8px $gl-padding 12px;
-    border-radius: $border-radius-default;
-  }
-
-  .build-loader-animation {
-    @include build-loader-animation;
-    float: left;
-    padding-left: $gl-padding-8;
-  }
-}
-
-.build-header {
-  .page-content-header {
-    padding: 10px 0 9px;
-  }
-
-  .header-content {
-    a {
-      color: var(--gl-text-color, $gl-text-color);
-
-      &:hover {
-        color: var(--blue-600, $blue-600);
-        text-decoration: none;
-      }
-    }
-  }
-
-  .avatar {
-    float: none;
-    margin-right: 2px;
-    margin-left: 2px;
-  }
 }
 
 .right-sidebar.build-sidebar {
   padding: 0;
   top: $calc-application-header-height;
 
-  @include media-breakpoint-up(lg) {
+  @include gl-container-width-up(lg, panel) {
     border-left-width: 0;
   }
 
@@ -99,48 +62,35 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .trigger-build-variable {
-    font-weight: $gl-font-weight-normal;
-    color: var(--gray-950, $gray-950);
-  }
-
   .trigger-build-value {
     padding: 2px 4px;
     color: var(--black, $black);
-  }
-
-  .trigger-variables-table-cell {
-    font-size: $gl-font-size-small;
-    line-height: $gl-line-height;
-    border: 1px solid $gray-100;
-    padding: $gl-padding-4 6px;
-    width: 50%;
-    vertical-align: top;
   }
 
   .blocks-container {
     width: 289px;
   }
 
-  .block {
-    width: 262px;
-  }
-
   .builds-container {
     overflow: auto;
 
     .icon-arrow-right {
-      left: 8px;
-      top: 12px;
+      @apply gl-top-3;
+      @apply gl-left-3;
     }
 
     .build-job {
       &.retried {
-        background-color: var(--gray-10, $gray-10);
+        @apply gl-bg-subtle;
       }
 
       &:hover {
-        background-color: var(--gray-50, $gray-50);
+        @apply gl-bg-strong;
+      }
+
+      a:focus {
+        @apply gl-relative;
+        @apply gl-z-2;
       }
     }
   }
@@ -166,17 +116,37 @@
   }
 }
 
+.with-job-sidebar-expanded {
+  padding-right: 0;
+}
+
+@include gl-container-width-up(lg, panel) {
+  .with-job-sidebar-expanded {
+    padding-right: $right-sidebar-width;
+  }
+}
+
 .job-log {
   font-family: $monospace-font;
   padding: $gl-padding-8 $input-horizontal-padding;
   margin: 0 0 $gl-padding-8;
-  font-size: 13px;
+  font-size: $code-font-size-fixed;
   word-break: break-all;
   word-wrap: break-word;
   color: color-yiq($builds-log-bg);
-  border-radius: 0 0 $border-radius-default $border-radius-default;
-  @include gl-min-h-8;
+  @apply gl-min-h-8;
+  @apply gl-rounded-t-none;
+  @apply gl-rounded-b-lg;
+  @apply gl-border-l;
+  @apply gl-border-r;
+  @apply gl-border-section;
   background-color: $builds-log-bg;
+
+  // stylelint-disable-next-line gitlab/no-gl-class
+  .gl-dark & {
+    @apply gl-bg-subtle;
+    @apply gl-shadow-lg;
+  }
 }
 
 .build-log-container:fullscreen {
@@ -188,24 +158,66 @@
 }
 
 .job-log-line {
-  padding: 1px $gl-padding-8 1px $job-log-line-padding;
-  min-height: $gl-line-height-20;
+  display: flex;
+  // 1px vertical spacing so
+  // job log items don't stack
+  padding: 1px $gl-padding-8;
 }
 
 .job-log-line-number {
-  color: $gray-500;
-  padding: 0 1em 0 $gl-padding-8;
+  @apply gl-text-neutral-400;
+  @apply dark:gl-text-neutral-300;
+  @apply gl-relative;
+  padding-right: $gl-padding-8;
+  margin-right: $gl-padding-8;
   min-width: $job-line-number-width;
-  margin-left: -$job-line-number-margin;
   user-select: none;
-  display: inline-block;
   text-align: right;
 
   &:hover,
   &:active,
   &:visited {
     text-decoration: underline;
-    color: $gray-500;
+    @apply gl-text-neutral-400;
+    @apply dark:gl-text-neutral-300;
+  }
+
+  &::before {
+    content: ' ';
+    display: block;
+    // min accessibility height for the touch target
+    height: 24px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    // this transform is used to center the line number in the line
+    transform: translateY(-2.25px);
+  }
+
+}
+
+.job-log-time {
+  padding-right: $gl-padding-8;
+  margin-right: $gl-padding-8;
+  @apply gl-text-neutral-400;
+  @apply dark:gl-text-neutral-300;
+  user-select: none;
+  flex-shrink: 0;
+
+  display: none;
+  @include gl-container-width-up(sm, panel){
+    display: block;
+  }
+}
+
+.job-log-line-content {
+  flex-grow: 1;
+  white-space: pre-wrap;
+
+  span {
+    // Our default 1.5 line-height leave gaps between lines with `xterm-bg` backgrounds classes.
+    // Add extra padding to fill the line. Helps with ANSI art.
+    padding: 1.25px 0;
   }
 }
 
@@ -215,12 +227,47 @@
   align-items: flex-start;
 
   &:hover {
-    background-color: rgba($white, 0.2);
+    background-color: var(--gl-color-alpha-light-8);
   }
 
   .arrow {
-    margin-left: -$job-arrow-margin;
+    left: 0;
   }
+}
+
+.job-log-line-highlight {
+  $highlight-border-size: 2px;
+  $highlight-extra-x-padding: 2px;
+  $highlight-x-padding: $gl-padding-8 + $highlight-extra-x-padding;
+  $highlight-border: $highlight-border-size solid currentColor;
+  $highlight-x-margin: -#{$highlight-border-size + $highlight-extra-x-padding};
+
+  border-left: $highlight-border;
+  border-right: $highlight-border;
+
+  padding-left: $highlight-x-padding;
+  padding-right: $highlight-x-padding;
+
+  margin-left: $highlight-x-margin;
+  margin-right: $highlight-x-margin;
+
+  @apply gl-bg-alpha-light-8;
+  @apply dark:gl-bg-alpha-light-4;
+
+  .arrow {
+    left: $highlight-extra-x-padding;
+  }
+}
+
+.rca-bar-component {
+  bottom: $calc-application-footer-height; // Note: this should be removed once paneled architecture is in GA
+}
+
+.rca-bar-component.rca-bar-component-fullscreen {
+  left: 0;
+  width: 100%;
+  padding-left: .5rem;
+  transition: left 0.3s ease, width 0.3s ease, padding 0.3s ease;
 }
 
 .loader-animation {

@@ -17,6 +17,23 @@ module Integrations
       },
       required: true
 
+    field :exclude_service_accounts,
+      type: :checkbox,
+      title: 'Exclude service accounts',
+      help: -> {
+        docs_link = ActionController::Base.helpers.link_to(
+          _('service accounts'),
+          Rails.application.routes.url_helpers.help_page_url('user/profile/service_accounts.md'),
+          target: '_blank', rel: 'noopener noreferrer')
+
+        safe_format(
+          s_('BeyondIdentityService|If enabled, Beyond Identity will not check commits from %{docs_link}.'),
+          docs_link: docs_link)
+      },
+      description: -> {
+        s_('BeyondIdentityService|If enabled, Beyond Identity will not check commits from service accounts.')
+      }
+
     def self.title
       'Beyond Identity'
     end
@@ -26,13 +43,10 @@ module Integrations
     end
 
     def self.help
-      docs_link = ActionController::Base.helpers.link_to(
-        _('Learn more'),
-        Rails.application.routes.url_helpers.help_page_url('user/project/integrations/beyond_identity'),
-        target: '_blank', rel: 'noopener noreferrer')
-
-      format(_('Verify that GPG keys are authorized by Beyond Identity Authenticator. %{docs_link}').html_safe, # rubocop:disable Rails/OutputSafety -- It is fine to call html_safe here
-        docs_link: docs_link.html_safe) # rubocop:disable Rails/OutputSafety -- It is fine to call html_safe here
+      build_help_page_url(
+        'user/project/integrations/beyond_identity.md',
+        s_('Verify that GPG keys are authorized by Beyond Identity Authenticator.')
+      )
     end
 
     def self.to_param
@@ -43,8 +57,12 @@ module Integrations
       %w[]
     end
 
-    def inheritable?
-      false
+    def self.activated_for_instance?
+      !!::Integrations::BeyondIdentity.for_instance.first&.activated?
+    end
+
+    def self.instance_specific?
+      true
     end
 
     def execute(params)

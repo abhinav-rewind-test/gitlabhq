@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::Release::Assets::Links do
   let(:entry) { described_class.new(config) }
@@ -40,7 +40,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Release::Assets::Links do
 
           it 'reports error' do
             expect(entry.errors)
-              .to include 'links config should be a array'
+              .to include 'links config should be an array'
           end
         end
 
@@ -49,7 +49,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Release::Assets::Links do
 
           it 'reports error' do
             expect(entry.errors)
-              .to include "links config should be a array"
+              .to include "links config should be an array"
           end
         end
 
@@ -58,7 +58,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Release::Assets::Links do
 
           it 'reports error' do
             expect(entry.errors)
-              .to include 'links config should be a array'
+              .to include 'links config should be an array'
           end
         end
       end

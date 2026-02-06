@@ -3,10 +3,22 @@
 # rubocop:disable Rails/ActiveRecordAliases
 class WikiPage
   include Gitlab::Utils::StrongMemoize
+  include Referable
 
   PageChangedError = Class.new(StandardError)
   PageRenameError = Class.new(StandardError)
   FrontMatterTooLong = Class.new(StandardError)
+
+  # Reserved wiki page slugs that conflict with wiki routes.
+  # These cannot be used as the first path component of a wiki page title.
+  # See config/routes/wiki.rb for the routes that define these reserved paths.
+  RESERVED_SLUGS = %w[
+    pages
+    templates
+    new
+    git_access
+    -
+  ].freeze
 
   include ActiveModel::Validations
   include ActiveModel::Conversion
@@ -35,6 +47,54 @@ class WikiPage
     name.gsub(/-+/, ' ')
   end
 
+  def self.extensible_reference_prefix
+    '[wiki_page:'
+  end
+
+  def self.reference_prefix
+    ':'
+  end
+
+  def self.reference_postfix
+    ']'
+  end
+
+  def self.reference_pattern
+    @reference_pattern ||= %r{
+      #{Regexp.escape(extensible_reference_prefix)}
+      (#{namespace_reference_pattern}#{Regexp.escape(reference_prefix)})?
+        (?<wiki_page>
+          [^\s]+
+        )
+      #{Regexp.escape(reference_postfix)}
+    }x
+  end
+
+  def self.namespace_reference_pattern
+    @namespace_reference_pattern ||= %r{
+      (?<!#{Gitlab::PathRegex::PATH_START_CHAR})
+      ((?<group_or_project_namespace>#{Gitlab::PathRegex::FULL_NAMESPACE_FORMAT_REGEX}))
+    }x
+  end
+
+  def self.link_reference_pattern
+    @link_reference_pattern ||= project_or_group_link_reference_pattern(
+      'wikis',
+      namespace_reference_pattern,
+      %r{(?<wiki_page>[\/\w-]+)}
+    )
+  end
+
+  def to_reference(from = nil, **_params)
+    base = container.to_reference_base(from, full: true)
+
+    "[wiki_page:#{base}:#{slug}]" if base.present?
+  end
+
+  def reference_link_text(_from = nil)
+    human_title
+  end
+
   def to_key
     [:slug]
   end
@@ -42,6 +102,7 @@ class WikiPage
   validates :title, presence: true
   validate :validate_path_limits, if: :title_changed?
   validate :validate_content_size_limit, if: :content_changed?
+  validate :validate_reserved_slug, if: :title_changed?
 
   # The GitLab Wiki instance.
   attr_reader :wiki
@@ -71,6 +132,10 @@ class WikiPage
     set_attributes if persisted?
   end
 
+  def find_or_create_meta
+    WikiPage::Meta.find_or_create(slug, self)
+  end
+
   # The escaped URL path of this page.
   def slug
     attributes[:slug].presence || ::Wiki.preview_slug(title, format)
@@ -80,7 +145,7 @@ class WikiPage
   alias_method :to_param, :slug
 
   def human_title
-    return front_matter_title if Feature.enabled?(:wiki_front_matter_title, container) && front_matter_title.present?
+    return front_matter_title if front_matter_title.present?
     return 'Home' if title == Wiki::HOMEPAGE
 
     title
@@ -94,6 +159,10 @@ class WikiPage
   # Sets the title of this page.
   def title=(new_title)
     attributes[:title] = new_title
+  end
+
+  def sluggified_title
+    Wiki.sluggified_title(title)
   end
 
   def front_matter_title
@@ -317,6 +386,8 @@ class WikiPage
   end
 
   def version_commit_timestamp
+    return version&.committed_date if version.is_a?(Commit)
+
     version&.commit&.committed_date
   end
 
@@ -333,7 +404,6 @@ class WikiPage
   end
 
   def update_front_matter(attrs)
-    return unless Gitlab::WikiPages::FrontMatterParser.enabled?(container)
     return unless attrs.has_key?(:front_matter)
 
     fm_yaml = serialize_front_matter(attrs[:front_matter])
@@ -344,7 +414,7 @@ class WikiPage
 
   def parsed_content
     strong_memoize(:parsed_content) do
-      Gitlab::WikiPages::FrontMatterParser.new(raw_content, container).parse
+      Gitlab::WikiPages::FrontMatterParser.new(raw_content).parse
     end
   end
 
@@ -385,7 +455,7 @@ class WikiPage
       return false
     end
 
-    @page = wiki.find_page(::Wiki.sluggified_title(title)).page
+    @page = wiki.find_page(sluggified_title).page
     set_attributes
 
     true
@@ -420,6 +490,18 @@ class WikiPage
       current_value: ActiveSupport::NumberHelper.number_to_human_size(current_value),
       max_size: ActiveSupport::NumberHelper.number_to_human_size(max_size)
     })
+  end
+
+  def validate_reserved_slug
+    return unless title.present?
+
+    # Only block exact matches of reserved slugs at the top level.
+    # Paths like "templates/my-template" are allowed because the wiki templates
+    # feature requires pages under the templates/ directory.
+    slug = title.downcase
+    return unless RESERVED_SLUGS.include?(slug)
+
+    errors.add(:title, _("'%{slug}' is a reserved name") % { slug: slug })
   end
 end
 

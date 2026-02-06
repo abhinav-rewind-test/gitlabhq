@@ -17,7 +17,13 @@ import { EVENT_ISSUABLE_VUE_APP_CHANGE } from '~/issuable/constants';
 import { keysFor, ISSUABLE_EDIT_DESCRIPTION } from '~/behaviors/shortcuts/keybindings';
 import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
 import { sanitize } from '~/lib/dompurify';
-import { STATUS_CLOSED, TYPE_ISSUE, issuableTypeText } from '~/issues/constants';
+import {
+  STATUS_CLOSED,
+  TYPE_ISSUE,
+  TYPE_INCIDENT,
+  TYPE_TICKET,
+  issuableTypeText,
+} from '~/issues/constants';
 import { ISSUE_STATE_EVENT_CLOSE, ISSUE_STATE_EVENT_REOPEN } from '~/issues/show/constants';
 import { capitalizeFirstCharacter } from '~/lib/utils/text_utility';
 import { isLoggedIn } from '~/lib/utils/common_utils';
@@ -35,6 +41,7 @@ import issuesEventHub from '../event_hub';
 import promoteToEpicMutation from '../queries/promote_to_epic.mutation.graphql';
 import updateIssueMutation from '../queries/update_issue.mutation.graphql';
 import DeleteIssueModal from './delete_issue_modal.vue';
+import HeaderActionsConfidentialityToggle from './header_actions_confidentiality_toggle.vue';
 
 const trackingMixin = Tracking.mixin({ label: 'delete_issue' });
 
@@ -53,9 +60,9 @@ export default {
       'Something went wrong while promoting the issue to an epic. Please try again.',
     ),
     promoteSuccessMessage: __(
-      'The issue was successfully promoted to an epic. Redirecting to epic...',
+      'The issue was successfully promoted to an epic. Redirecting to epic…',
     ),
-    reportAbuse: __('Report abuse to administrator'),
+    reportAbuse: __('Report abuse'),
     referenceFetchError: __('An error occurred while fetching reference'),
     copyReferenceText: __('Copy reference'),
   },
@@ -70,6 +77,7 @@ export default {
     AbuseCategorySelector,
     SidebarSubscriptionsWidget,
     IssuableLockForm,
+    HeaderActionsConfidentialityToggle,
   },
   directives: {
     GlModal: GlModalDirective,
@@ -99,9 +107,11 @@ export default {
     return {
       isReportAbuseDrawerOpen: false,
       isUserSignedIn: isLoggedIn(),
+      isDesktopDropdownVisible: false,
     };
   },
   apollo: {
+    // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     issuableReference: {
       query: issueReferenceQuery,
       variables() {
@@ -111,7 +121,7 @@ export default {
         };
       },
       update(data) {
-        return data.workspace?.issuable?.reference || '';
+        return data.namespace?.issuable?.reference || '';
       },
       error(error) {
         createAlert({ message: this.$options.i18n.referenceFetchError });
@@ -122,10 +132,6 @@ export default {
   computed: {
     ...mapState(['isToggleStateButtonLoading']),
     ...mapGetters(['openState', 'getBlockedByIssues']),
-    ...mapGetters(['getNoteableData']),
-    isLocked() {
-      return this.getNoteableData.discussion_locked;
-    },
     isClosed() {
       return this.openState === STATUS_CLOSED;
     },
@@ -150,9 +156,6 @@ export default {
         issueType: capitalizeFirstCharacter(this.issueTypeText),
       });
     },
-    newIssueTypeText() {
-      return sprintf(__('New related %{issueType}'), { issueType: this.issueTypeText });
-    },
     showToggleIssueStateButton() {
       const canClose = !this.isClosed && this.canUpdateIssue;
       const canReopen = this.isClosed && this.canReopenIssue;
@@ -176,14 +179,18 @@ export default {
       });
     },
     showLockIssueOption() {
-      return this.issueType === TYPE_ISSUE && this.isUserSignedIn;
+      return (
+        [TYPE_ISSUE, TYPE_TICKET].includes(this.issueType) &&
+        this.isUserSignedIn &&
+        this.canUpdateIssue
+      );
     },
     showMovedSidebarOptions() {
       return this.isUserSignedIn;
     },
     newIssueItem() {
       return {
-        text: this.newIssueTypeText,
+        text: __('New related item'),
         href: this.newIssuePath,
       };
     },
@@ -203,6 +210,22 @@ export default {
         ? description
         : sanitize(`${description} <kbd class="flat gl-ml-1" aria-hidden=true>${key}</kbd>`);
     },
+    showDropdownTooltip() {
+      return !this.isDesktopDropdownVisible ? this.dropdownText : '';
+    },
+    promoteToEpicItem() {
+      return {
+        text: __('Promote to epic'),
+        extraAttrs: {
+          disabled: this.isToggleStateButtonLoading,
+        },
+      };
+    },
+    showConfidentialityToggle() {
+      return (
+        [TYPE_ISSUE, TYPE_INCIDENT, TYPE_TICKET].includes(this.issueType) && this.canUpdateIssue
+      );
+    },
   },
   created() {
     eventHub.$on('toggle.issuable.state', this.toggleIssueState);
@@ -212,7 +235,6 @@ export default {
   },
   methods: {
     ...mapActions(['toggleStateButtonLoading']),
-    ...mapActions(['updateLockedAttribute']),
     toggleIssueState() {
       if (!this.isClosed && this.getBlockedByIssues?.length) {
         this.$refs.blockedByIssuesModal.show();
@@ -308,14 +330,23 @@ export default {
       this.$refs.issuableActionsDropdownMobile?.close();
       this.$refs.issuableActionsDropdownDesktop?.close();
     },
+    showDesktopDropdown() {
+      this.isDesktopDropdownVisible = true;
+    },
+    hideDesktopDropdown() {
+      this.isDesktopDropdownVisible = false;
+    },
   },
   TYPE_ISSUE,
 };
 </script>
 
 <template>
-  <div class="detail-page-header-actions gl-display-flex gl-align-self-start gl-sm-gap-3">
-    <div class="gl-md-display-none! gl-w-full">
+  <div
+    class="detail-page-header-actions gl-mt-1 gl-flex gl-w-full gl-self-start @sm/panel:gl-gap-3 @md/panel:gl-w-auto"
+    data-testid="issue-header"
+  >
+    <div class="gl-w-full @md/panel:!gl-hidden">
       <gl-disclosure-dropdown
         v-if="hasMobileDropdown"
         ref="issuableActionsDropdownMobile"
@@ -325,7 +356,7 @@ export default {
         :auto-close="false"
         data-testid="mobile-dropdown"
         :loading="isToggleStateButtonLoading"
-        placement="left"
+        placement="bottom-end"
       >
         <template v-if="showMovedSidebarOptions && !glFeatures.notificationsTodosButtons">
           <sidebar-subscriptions-widget
@@ -349,12 +380,18 @@ export default {
           <template #list-item>{{ buttonText }}</template>
         </gl-disclosure-dropdown-item>
         <gl-disclosure-dropdown-item v-if="canCreateIssue" :item="newIssueItem" />
-        <gl-disclosure-dropdown-item v-if="canPromoteToEpic" @action="promoteToEpic">
-          <template #list-item>{{ __('Promote to epic') }}</template>
-        </gl-disclosure-dropdown-item>
+        <gl-disclosure-dropdown-item
+          v-if="canPromoteToEpic"
+          :item="promoteToEpicItem"
+          @action="promoteToEpic"
+        />
         <template v-if="showLockIssueOption">
           <issuable-lock-form :is-editable="false" data-testid="lock-issue-toggle" />
         </template>
+        <header-actions-confidentiality-toggle
+          v-if="showConfidentialityToggle"
+          @closeActionsDropdown="closeActionsDropdown"
+        />
         <gl-disclosure-dropdown-item
           :data-clipboard-text="issuableReference"
           class="js-copy-reference"
@@ -381,11 +418,10 @@ export default {
           <gl-dropdown-divider />
           <gl-disclosure-dropdown-item
             v-gl-modal="$options.deleteModalId"
+            variant="danger"
             @action="track('click_dropdown')"
           >
-            <template #list-item>
-              <span class="gl-text-red-500">{{ deleteButtonText }}</span>
-            </template>
+            <template #list-item>{{ deleteButtonText }}</template>
           </gl-disclosure-dropdown-item>
         </template>
         <gl-disclosure-dropdown-item
@@ -404,7 +440,7 @@ export default {
       :title="editTooltip"
       :aria-label="$options.i18n.editTitleAndDescription"
       :aria-keyshortcuts="editShortcutKey"
-      class="js-issuable-edit gl-display-none! gl-md-display-block!"
+      class="js-issuable-edit !gl-hidden @md/panel:!gl-block"
       data-testid="edit-button"
       @click="edit"
     >
@@ -415,11 +451,10 @@ export default {
       v-if="hasDesktopDropdown"
       id="new-actions-header-dropdown"
       ref="issuableActionsDropdownDesktop"
-      v-gl-tooltip.hover
-      class="gl-display-none gl-md-display-inline-flex!"
+      v-gl-tooltip="showDropdownTooltip"
+      class="gl-hidden @md/panel:!gl-inline-flex"
       icon="ellipsis_v"
       category="tertiary"
-      placement="left"
       :toggle-text="dropdownText"
       text-sr-only
       :title="dropdownText"
@@ -427,6 +462,8 @@ export default {
       :auto-close="false"
       data-testid="desktop-dropdown"
       no-caret
+      @shown="showDesktopDropdown"
+      @hidden="hideDesktopDropdown"
     >
       <template v-if="showMovedSidebarOptions && !glFeatures.notificationsTodosButtons">
         <sidebar-subscriptions-widget
@@ -447,15 +484,17 @@ export default {
       <gl-disclosure-dropdown-item v-if="canCreateIssue && isUserSignedIn" :item="newIssueItem" />
       <gl-disclosure-dropdown-item
         v-if="canPromoteToEpic"
-        :disabled="isToggleStateButtonLoading"
+        :item="promoteToEpicItem"
         data-testid="promote-button"
         @action="promoteToEpic"
-      >
-        <template #list-item>{{ __('Promote to epic') }}</template>
-      </gl-disclosure-dropdown-item>
+      />
       <template v-if="showLockIssueOption">
         <issuable-lock-form :is-editable="false" data-testid="lock-issue-toggle" />
       </template>
+      <header-actions-confidentiality-toggle
+        v-if="showConfidentialityToggle"
+        @closeActionsDropdown="closeActionsDropdown"
+      />
       <gl-disclosure-dropdown-item
         :data-clipboard-text="issuableReference"
         class="js-copy-reference"
@@ -493,7 +532,7 @@ export default {
           @action="track('click_dropdown')"
         >
           <template #list-item>
-            <span class="text-danger">
+            <span class="gl-text-danger">
               {{ deleteButtonText }}
             </span>
           </template>

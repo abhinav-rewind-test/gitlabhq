@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'shared/projects/_project.html.haml' do
+RSpec.describe 'shared/projects/_project.html.haml', feature_category: :groups_and_projects do
   let_it_be(:project) { create(:project) }
 
   before do
@@ -10,7 +10,7 @@ RSpec.describe 'shared/projects/_project.html.haml' do
     allow(view).to receive(:can?) { true }
   end
 
-  it 'renders creator avatar if project has a creator' do
+  it 'renders creator avatar if project has a creator', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/472013' do
     render 'shared/projects/project', use_creator_avatar: true, project: project
 
     expect(rendered).to have_selector('img.gl-avatar')

@@ -38,6 +38,7 @@ RSpec.describe API::GroupExport, feature_category: :importers do
         end
 
         upload.export_file = fixture_file_upload('spec/fixtures/group_export.tar.gz', "`/tar.gz")
+        upload.user = user
         upload.save!
       end
 
@@ -63,11 +64,12 @@ RSpec.describe API::GroupExport, feature_category: :importers do
 
       context 'when object is not present' do
         let(:other_group) { create(:group, :with_export) }
+        let!(:export) { create(:import_export_upload, user: user, group: other_group) }
         let(:other_download_path) { "/groups/#{other_group.id}/export/download" }
 
         before do
           other_group.add_owner(user)
-          other_group.export_file.file.delete
+          other_group.export_file(user).file.delete
         end
 
         it 'returns 404' do
@@ -76,6 +78,11 @@ RSpec.describe API::GroupExport, feature_category: :importers do
           expect(response).to have_gitlab_http_status(:not_found)
           expect(json_response['message']).to eq('The group export file is not available yet')
         end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :download_group_export do
+        let(:boundary_object) { group }
+        let(:request) { get api(download_path, personal_access_token: pat) }
       end
     end
 
@@ -98,7 +105,8 @@ RSpec.describe API::GroupExport, feature_category: :importers do
           .and_return(Gitlab::ApplicationRateLimiter.rate_limits[:group_download_export][:threshold].call + 1)
       end
 
-      it 'throttles the endpoint', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/448732' do
+      it 'throttles the endpoint',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24871' do
         get api(download_path, user)
 
         expect(json_response["message"])
@@ -118,6 +126,39 @@ RSpec.describe API::GroupExport, feature_category: :importers do
         post api(path, user)
 
         expect(response).to have_gitlab_http_status(:accepted)
+      end
+
+      it 'calls the service correctly' do
+        expect_next_instance_of(Groups::ImportExport::ExportService,
+          group: group,
+          user: user,
+          exported_by_admin: false
+        ) do |service|
+          expect(service).to receive(:async_execute).and_return(true)
+        end
+
+        post api(path, user)
+      end
+
+      context 'when user is an admin', :enable_admin_mode do
+        let_it_be(:user) { create(:admin) }
+
+        it 'calls the service correctly' do
+          expect_next_instance_of(Groups::ImportExport::ExportService,
+            group: group,
+            user: user,
+            exported_by_admin: true
+          ) do |service|
+            expect(service).to receive(:async_execute).and_return(true)
+          end
+
+          post api(path, user)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :start_group_export do
+        let(:boundary_object) { group }
+        let(:request) { post api(path, personal_access_token: pat) }
       end
     end
 
@@ -186,15 +227,36 @@ RSpec.describe API::GroupExport, feature_category: :importers do
         expect(response).to have_gitlab_http_status(:accepted)
       end
 
+      it 'creates new audit event' do
+        expect(::Import::BulkImports::Audit::Auditor)
+          .to receive(:new)
+          .with(
+            event_name: ::Import::BulkImports::Audit::Events::EXPORT_INITIATED,
+            event_message: 'Direct Transfer relations export initiated',
+            current_user: user,
+            scope: group
+          )
+
+        post api(path, user)
+      end
+
       context 'when response is not success' do
-        it 'returns api error' do
+        before do
           allow_next_instance_of(BulkImports::ExportService) do |service|
             allow(service).to receive(:execute).and_return(ServiceResponse.error(message: 'error', http_status: :error))
           end
+        end
 
+        it 'returns api error' do
           post api(path, user)
 
           expect(response).to have_gitlab_http_status(:error)
+        end
+
+        it 'does not create audit event' do
+          expect(::Import::BulkImports::Audit::Auditor).not_to receive(:new)
+
+          post api(path, user)
         end
       end
 
@@ -214,7 +276,7 @@ RSpec.describe API::GroupExport, feature_category: :importers do
 
     describe 'GET /groups/:id/export_relations/download' do
       context 'when export request is not batched' do
-        let(:export) { create(:bulk_import_export, group: group, relation: 'labels') }
+        let(:export) { create(:bulk_import_export, group: group, relation: 'labels', user: user) }
         let(:upload) { create(:bulk_import_export_upload, export: export) }
 
         context 'when export file exists' do
@@ -224,6 +286,21 @@ RSpec.describe API::GroupExport, feature_category: :importers do
             get api(download_path, user)
 
             expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'creates new audit event' do
+            upload.update!(export_file: fixture_file_upload('spec/fixtures/bulk_imports/gz/labels.ndjson.gz'))
+
+            expect(::Import::BulkImports::Audit::Auditor)
+              .to receive(:new)
+              .with(
+                event_name: ::Import::BulkImports::Audit::Events::EXPORT_DOWNLOADED,
+                event_message: 'Direct Transfer relation export downloaded',
+                current_user: user,
+                scope: group
+              )
+
+            get api(download_path, user)
           end
         end
 
@@ -241,7 +318,7 @@ RSpec.describe API::GroupExport, feature_category: :importers do
         context 'when export is batched' do
           let(:relation) { 'milestones' }
 
-          let_it_be(:export) { create(:bulk_import_export, :batched, group: group, relation: 'milestones') }
+          let_it_be(:export) { create(:bulk_import_export, :batched, group: group, relation: 'milestones', user: user) }
 
           it 'returns 400' do
             export.update!(batched: true)
@@ -255,7 +332,7 @@ RSpec.describe API::GroupExport, feature_category: :importers do
       end
 
       context 'when export request is batched' do
-        let(:export) { create(:bulk_import_export, :batched, group: group, relation: 'labels') }
+        let(:export) { create(:bulk_import_export, :batched, group: group, relation: 'labels', user: user) }
         let(:upload) { create(:bulk_import_export_upload) }
         let!(:batch) { create(:bulk_import_export_batch, export: export, upload: upload) }
 
@@ -267,6 +344,21 @@ RSpec.describe API::GroupExport, feature_category: :importers do
           expect(response).to have_gitlab_http_status(:ok)
           expect(response.header['Content-Disposition'])
             .to eq("attachment; filename=\"labels.ndjson.gz\"; filename*=UTF-8''labels.ndjson.gz")
+        end
+
+        it 'creates new audit event' do
+          upload.update!(export_file: fixture_file_upload('spec/fixtures/bulk_imports/gz/labels.ndjson.gz'))
+
+          expect(::Import::BulkImports::Audit::Auditor)
+            .to receive(:new)
+            .with(
+              event_name: ::Import::BulkImports::Audit::Events::EXPORT_BATCH_DOWNLOADED,
+              event_message: 'Direct Transfer relation export batch downloaded',
+              current_user: user,
+              scope: group
+            )
+
+          get api(download_path, user), params: { batched: true, batch_number: batch.batch_number }
         end
 
         context 'when request is to download not batched export' do
@@ -298,12 +390,25 @@ RSpec.describe API::GroupExport, feature_category: :importers do
           end
         end
       end
+
+      context 'when export is from an offline transfer export' do
+        let_it_be(:export) { create(:bulk_import_export, :offline, group: group, relation: 'labels', user: user) }
+
+        it 'returns 404' do
+          get api(download_path, user)
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
     end
 
     describe 'GET /groups/:id/export_relations/status' do
-      let_it_be(:started_export) { create(:bulk_import_export, :started, group: group, relation: 'labels') }
-      let_it_be(:finished_export) { create(:bulk_import_export, :finished, group: group, relation: 'milestones') }
-      let_it_be(:failed_export) { create(:bulk_import_export, :failed, group: group, relation: 'badges') }
+      let_it_be(:started_export) { create(:bulk_import_export, :started, group: group, relation: 'labels', user: user) }
+      let_it_be(:finished_export) do
+        create(:bulk_import_export, :finished, group: group, relation: 'milestones', user: user)
+      end
+
+      let_it_be(:failed_export) { create(:bulk_import_export, :failed, group: group, relation: 'badges', user: user) }
 
       it 'returns a list of relation export statuses' do
         get api(status_path, user)
@@ -327,7 +432,15 @@ RSpec.describe API::GroupExport, feature_category: :importers do
 
       context 'when there is a batched export' do
         let_it_be(:batched_export) do
-          create(:bulk_import_export, :started, :batched, group: group, relation: 'boards', batches_count: 1)
+          create(
+            :bulk_import_export,
+            :started,
+            :batched,
+            group: group,
+            relation: 'boards',
+            batches_count: 1,
+            user: user
+          )
         end
 
         let_it_be(:batch) { create(:bulk_import_export_batch, objects_count: 5, export: batched_export) }
@@ -352,6 +465,47 @@ RSpec.describe API::GroupExport, feature_category: :importers do
               )
             )
           )
+        end
+      end
+
+      context 'when the export was started by another user' do
+        let_it_be(:other_user) { create(:user) }
+
+        before_all do
+          group.add_owner(other_user)
+        end
+
+        it 'returns not_found when a relation was specified' do
+          get api(status_path, other_user), params: { relation: 'labels' }
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+
+        it 'does not appear in the list of all statuses' do
+          get api(status_path, other_user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response).to be_empty
+        end
+      end
+
+      context 'when exports exist from offline transfer exports' do
+        let_it_be(:offline_self_export) do
+          create(:bulk_import_export, :pending, :offline, group: group, relation: 'self', user: user)
+        end
+
+        it 'returns not_found when a relation not yet exported by direct transfer was specified' do
+          get api(status_path, user), params: { relation: 'self' }
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+
+        it 'does not return offline transfer relation ExportService in the list of all statuses' do
+          get api(status_path, user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response.pluck('relation')).not_to include('self')
+          expect(json_response.pluck('status')).not_to include(-2)
         end
       end
     end

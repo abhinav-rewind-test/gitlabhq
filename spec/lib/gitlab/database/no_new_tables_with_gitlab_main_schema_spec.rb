@@ -4,17 +4,15 @@ require 'spec_helper'
 
 RSpec.describe 'new tables with gitlab_main schema', feature_category: :cell do
   # During the development of Cells, we will be moving tables from the `gitlab_main` schema
-  # to either the `gitlab_main_clusterwide` or `gitlab_main_cell` schema.
+  # to either the `gitlab_main_org`, or another schema in
+  # https://docs.gitlab.com/development/cells/#available-cells--organization-schemas.
   # As part of this process, starting from milestone 16.7, it will be a mandatory requirement that
   # all newly created tables are associated with one of these two schemas.
   # Any attempt to set the `gitlab_main` schema for a new table will result in a failure of this spec.
 
   # Specific tables can be exempted from this requirement, and such tables must be added to the `exempted_tables` list.
   let!(:exempted_tables) do
-    [
-      "audit_events_instance_amazon_s3_configurations", # https://gitlab.com/gitlab-org/gitlab/-/issues/431327
-      "sbom_source_packages"                            # https://gitlab.com/gitlab-org/gitlab/-/issues/437718
-    ]
+    []
   end
 
   let!(:starting_from_milestone) { 16.7 }
@@ -40,19 +38,17 @@ RSpec.describe 'new tables with gitlab_main schema', feature_category: :cell do
   def error_message(table_name)
     <<~HEREDOC
       The table `#{table_name}` has been added with `gitlab_main` schema.
-      Starting from GitLab #{starting_from_milestone}, we expect new tables to use either the `gitlab_main_cell` or the
-      `gitlab_main_clusterwide` schema.
+      Starting from GitLab #{starting_from_milestone}, we expect new tables to use either the `gitlab_main_org` or the
+      `gitlab_main_cell_local`, or `gitlab_main_user` schema.
 
-      To choose an appropriate schema for this table from among `gitlab_main_cell` and `gitlab_main_clusterwide`, please refer
-      to our guidelines at https://docs.gitlab.com/ee/development/database/multiple_databases.html#guidelines-on-choosing-between-gitlab_main_cell-and-gitlab_main_clusterwide-schema, or consult with the Tenant Scale group.
-
-      Please see issue https://gitlab.com/gitlab-org/gitlab/-/issues/424990 to understand why this change is being enforced.
+      To choose an appropriate schema for this table, please refer
+      to our guidelines at https://docs.gitlab.com/ee/development/cells/#available-cells--organization-schemas or consult with the Tenant Scale group.
     HEREDOC
   end
 
   def tables_having_gitlab_main_schema(starting_from_milestone:)
     gitlab_main_schema_tables.filter_map do |entry|
-      entry.table_name if entry.milestone.to_f >= starting_from_milestone
+      entry.table_name if entry.milestone_greater_than_or_equal_to?(starting_from_milestone)
     end
   end
 

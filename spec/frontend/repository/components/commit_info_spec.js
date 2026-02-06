@@ -1,8 +1,10 @@
 import { nextTick } from 'vue';
-import { GlButton } from '@gitlab/ui';
+import { GlButton, GlSprintf } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import CommitInfo from '~/repository/components/commit_info.vue';
+import TimeagoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import UserAvatarLink from '~/vue_shared/components/user_avatar/user_avatar_link.vue';
+import UserAvatarImage from '~/vue_shared/components/user_avatar/user_avatar_image.vue';
 
 let wrapper;
 const commit = {
@@ -18,13 +20,18 @@ const findTextExpander = () => wrapper.findComponent(GlButton);
 const findUserLink = () => wrapper.findByText(commit.author.name);
 const findCommitterWrapper = () => wrapper.findByTestId('committer');
 const findUserAvatarLink = () => wrapper.findComponent(UserAvatarLink);
-const findAuthorName = () => wrapper.findByText(`${commit.authorName} authored`);
+const findUserAvatarImages = () => wrapper.findAllComponents(UserAvatarImage);
+const findTimeagoTooltips = () => wrapper.findAllComponents(TimeagoTooltip);
 const findCommitRowDescription = () => wrapper.find('pre');
 const findTitleHtml = () => wrapper.findByText(commit.titleHtml);
 
-const createComponent = async ({ commitMock = {}, prevBlameLink, span = 3 } = {}) => {
+const createComponent = async ({ commitMock = {}, span = 3 } = {}) => {
   wrapper = shallowMountExtended(CommitInfo, {
-    propsData: { commit: { ...commit, ...commitMock }, prevBlameLink, span },
+    propsData: {
+      commit: { ...commit, ...commitMock },
+      span,
+    },
+    stubs: { GlSprintf },
   });
 
   await nextTick();
@@ -44,7 +51,6 @@ describe('Repository last commit component', () => {
 
     expect(findUserLink().exists()).toBe(false);
     expect(findUserAvatarLink().exists()).toBe(false);
-    expect(findAuthorName().exists()).toBe(true);
   });
 
   it('truncates author name when commit spans less than 3 lines', () => {
@@ -52,14 +58,16 @@ describe('Repository last commit component', () => {
 
     expect(findCommitterWrapper().classes()).toEqual([
       'committer',
-      'gl-flex-basis-full',
-      'gl-display-inline-flex',
+      'gl-basis-full',
+      'gl-truncate',
+      'gl-text-sm',
+      'gl-inline-flex',
     ]);
     expect(findUserLink().classes()).toEqual([
       'commit-author-link',
       'js-user-link',
-      'gl-display-inline-block',
-      'gl-text-truncate',
+      'gl-inline-block',
+      'gl-truncate',
     ]);
   });
 
@@ -77,12 +85,12 @@ describe('Repository last commit component', () => {
 
     it('strips the first newline of the description', () => {
       expect(findCommitRowDescription().html()).toBe(
-        '<pre class="commit-row-description gl-mb-3 gl-white-space-pre-wrap">Update ADOPTERS.md</pre>',
+        '<pre class="commit-row-description gl-mb-3 gl-whitespace-pre-wrap">Update ADOPTERS.md</pre>',
       );
     });
 
     it('renders commit description collapsed by default', () => {
-      expect(findCommitRowDescription().classes('gl-display-block!')).toBe(false);
+      expect(findCommitRowDescription().classes('!gl-block')).toBe(false);
       expect(findTextExpander().classes('open')).toBe(false);
       expect(findTextExpander().props('selected')).toBe(false);
     });
@@ -91,31 +99,53 @@ describe('Repository last commit component', () => {
       findTextExpander().vm.$emit('click');
       await nextTick();
 
-      expect(findCommitRowDescription().classes('gl-display-block!')).toBe(true);
+      expect(findCommitRowDescription().classes('!gl-block')).toBe(true);
       expect(findTextExpander().classes('open')).toBe(true);
       expect(findTextExpander().props('selected')).toBe(true);
-    });
-  });
-
-  describe('previous blame link', () => {
-    const prevBlameLink = '<a>Previous blame link</a>';
-
-    it('renders a previous blame link when it is present', () => {
-      createComponent({ prevBlameLink });
-
-      expect(wrapper.html()).toContain(prevBlameLink);
-    });
-
-    it('does not render a previous blame link when it is not present', () => {
-      createComponent({ prevBlameLink: null });
-
-      expect(wrapper.html()).not.toContain(prevBlameLink);
     });
   });
 
   it('sets correct CSS class if the commit message is empty', () => {
     createComponent({ commitMock: { message: '' } });
 
-    expect(findTitleHtml().classes()).toContain('gl-font-style-italic');
+    expect(findTitleHtml().classes()).toContain('gl-italic');
+  });
+
+  describe('when committer is different from author', () => {
+    const commitMockWithDifferentCommitter = {
+      author: { name: 'John Doe', email: 'john@example.com' },
+      committerName: 'Jane Smith',
+      committerEmail: 'jane@example.com',
+      committerAvatarUrl: 'https://committer-avatar.com/avatar.jpg',
+      committedDate: '2019-02-01',
+    };
+
+    beforeEach(() => createComponent({ commitMock: commitMockWithDifferentCommitter }));
+
+    it('displays committer information when committer differs from author', () => {
+      const text = findCommitterWrapper().text();
+
+      expect(text).toContain('John Doe');
+      expect(text).toContain('authored');
+      expect(text).toContain('and');
+      expect(text).toContain('Jane Smith');
+      expect(text).toContain('committed');
+    });
+
+    it('displays committer avatar when committer avatar URL is provided', () => {
+      expect(findUserAvatarImages().at(0).props()).toMatchObject({
+        size: 16,
+        imgSrc: commitMockWithDifferentCommitter.committerAvatarUrl,
+      });
+    });
+
+    it('displays both authored and committed dates', () => {
+      const timeagoTooltips = findTimeagoTooltips();
+
+      expect(timeagoTooltips.at(0).props('time')).toBe(commit.authoredDate);
+      expect(timeagoTooltips.at(1).props('time')).toBe(
+        commitMockWithDifferentCommitter.committedDate,
+      );
+    });
   });
 });

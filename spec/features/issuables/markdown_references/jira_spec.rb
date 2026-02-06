@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe "Jira", :js, feature_category: :team_planning do
+RSpec.describe "Jira", :js, feature_category: :markdown do
   let(:user) { create(:user) }
   let(:actual_project) { create(:project, :public, :repository) }
   let(:merge_request) { create(:merge_request, target_project: actual_project, source_project: actual_project) }
@@ -56,7 +56,7 @@ RSpec.describe "Jira", :js, feature_category: :team_planning do
       if referenced_issues.include?(issue_actual_project)
         visit(issue_path(issue_actual_project))
 
-        page.within("#notes") do
+        page.within('.work-item-notes') do
           expect(page).to have_content("#{user.name} mentioned in merge request #{merge_request.to_reference}")
         end
       end
@@ -64,7 +64,7 @@ RSpec.describe "Jira", :js, feature_category: :team_planning do
       if referenced_issues.include?(issue_other_project)
         visit(issue_path(issue_other_project))
 
-        page.within("#notes") do
+        page.within('.work-item-notes') do
           expect(page).to have_content("#{user.name} mentioned in merge request #{merge_request.to_reference(other_project)}")
         end
       end

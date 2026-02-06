@@ -1,61 +1,86 @@
-import { nextTick } from 'vue';
+import Vue, { nextTick } from 'vue';
 import { shallowMount } from '@vue/test-utils';
-import { Mousetrap } from '~/lib/mousetrap';
+import { PiniaVuePlugin } from 'pinia';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import DiffsFileTree from '~/diffs/components/diffs_file_tree.vue';
 import TreeList from '~/diffs/components/tree_list.vue';
 import PanelResizer from '~/vue_shared/components/panel_resizer.vue';
-import { SET_SHOW_TREE_LIST } from '~/diffs/store/mutation_types';
-import createDiffsStore from '../create_diffs_store';
+import { getCookie, removeCookie, setCookie } from '~/lib/utils/common_utils';
+import { TREE_LIST_WIDTH_STORAGE_KEY } from '~/diffs/constants';
+import { useLocalStorageSpy } from 'helpers/local_storage_helper';
+import FileBrowserHeight from '~/diffs/components/file_browser_height.vue';
+import { extendedWrapper } from 'helpers/vue_test_utils_helper';
+import * as panels from '~/lib/utils/panels';
+
+Vue.use(PiniaVuePlugin);
 
 describe('DiffsFileTree', () => {
   let wrapper;
-  let store;
+  let breakpointChangeCallback;
+  let mockBreakpointSize;
 
-  const createComponent = ({ renderDiffFiles = true, showTreeList = true } = {}) => {
-    store = createDiffsStore();
-    store.commit(`diffs/${SET_SHOW_TREE_LIST}`, showTreeList);
-    wrapper = shallowMount(DiffsFileTree, {
-      store,
-      propsData: {
-        renderDiffFiles,
-      },
-    });
+  useLocalStorageSpy();
+
+  const createComponent = (propsData = {}) => {
+    wrapper = extendedWrapper(
+      shallowMount(DiffsFileTree, {
+        propsData,
+      }),
+    );
   };
 
-  describe('visibility', () => {
-    describe('when renderDiffFiles and showTreeList are true', () => {
-      beforeEach(() => {
-        createComponent();
-      });
+  const mockBreakpointInstance = (breakpointSize = 'lg') => {
+    mockBreakpointSize = breakpointSize;
 
-      it('tree list is visible', () => {
-        expect(wrapper.findComponent(TreeList).exists()).toBe(true);
-      });
+    jest.spyOn(PanelBreakpointInstance, 'isBreakpointDown').mockImplementation((bp) => {
+      const breakpoints = ['xl', 'lg', 'md', 'sm', 'xs'];
+      const currentIndex = breakpoints.indexOf(mockBreakpointSize);
+      const targetIndex = breakpoints.indexOf(bp);
+      return currentIndex >= targetIndex;
     });
 
-    describe('when renderDiffFiles and showTreeList are false', () => {
-      beforeEach(() => {
-        createComponent({ renderDiffFiles: false, showTreeList: false });
-      });
-
-      it('tree list is hidden', () => {
-        expect(wrapper.findComponent(TreeList).exists()).toBe(false);
-      });
+    jest.spyOn(PanelBreakpointInstance, 'addBreakpointListener').mockImplementation((callback) => {
+      breakpointChangeCallback = callback;
     });
+
+    jest.spyOn(PanelBreakpointInstance, 'removeBreakpointListener');
+  };
+
+  const triggerBreakpointChange = (newBreakpoint) => {
+    mockBreakpointSize = newBreakpoint;
+    breakpointChangeCallback(newBreakpoint);
+  };
+
+  beforeAll(() => {
+    global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = 100;
   });
 
-  it('emits toggled event', async () => {
-    createComponent();
-    store.commit(`diffs/${SET_SHOW_TREE_LIST}`, false);
-    await nextTick();
-    expect(wrapper.emitted('toggled')).toStrictEqual([[]]);
+  afterAll(() => {
+    global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = undefined;
   });
 
-  it('toggles when "f" hotkey is pressed', async () => {
+  beforeEach(() => {
+    mockBreakpointInstance('lg');
+    jest.spyOn(panels, 'getPanelElement').mockReturnValue(null);
+  });
+
+  it('renders inside file browser height', () => {
     createComponent();
-    Mousetrap.trigger('f');
-    await nextTick();
-    expect(wrapper.findComponent(TreeList).exists()).toBe(false);
+    expect(wrapper.findComponent(FileBrowserHeight).exists()).toBe(true);
+  });
+
+  it('re-emits clickFile event', () => {
+    const obj = {};
+    createComponent();
+    wrapper.findComponent(TreeList).vm.$emit('clickFile', obj);
+    expect(wrapper.emitted('clickFile')).toStrictEqual([[obj]]);
+  });
+
+  it('re-emits toggleFolder event', () => {
+    const obj = {};
+    createComponent();
+    wrapper.findComponent(TreeList).vm.$emit('toggleFolder', obj);
+    expect(wrapper.emitted('toggleFolder')).toStrictEqual([[obj]]);
   });
 
   describe('size', () => {
@@ -84,13 +109,6 @@ describe('DiffsFileTree', () => {
       checkWidth(200);
     });
 
-    it('sets width of tree list', () => {
-      createComponent({}, ({ state }) => {
-        state.diffs.treeEntries = { 111: { type: 'blob', fileHash: '111', path: '111.js' } };
-      });
-      checkWidth(320);
-    });
-
     it('updates width', async () => {
       const WIDTH = 500;
       createComponent();
@@ -112,5 +130,180 @@ describe('DiffsFileTree', () => {
       await nextTick();
       expect(wrapper.findComponent(TreeList).props('hideFileStats')).toBe(false);
     });
+
+    describe('persistence', () => {
+      beforeEach(() => {
+        removeCookie(TREE_LIST_WIDTH_STORAGE_KEY);
+        window.localStorage.clear();
+      });
+
+      it('recovers width value from cookies', () => {
+        setCookie(TREE_LIST_WIDTH_STORAGE_KEY, '250');
+        createComponent();
+        checkWidth(250);
+      });
+
+      it('recovers width value from local storage', () => {
+        window.localStorage.setItem(TREE_LIST_WIDTH_STORAGE_KEY, '260');
+        createComponent();
+        checkWidth(260);
+      });
+
+      it('stores width value in cookies', async () => {
+        createComponent();
+        wrapper.findComponent(PanelResizer).vm.$emit('resize-end', 350);
+        await nextTick();
+        expect(getCookie(TREE_LIST_WIDTH_STORAGE_KEY)).toBe('350');
+      });
+    });
+  });
+
+  describe('floating resize', () => {
+    const getRootStyle = () =>
+      window.getComputedStyle(wrapper.findByTestId('file-browser-tree').element);
+    const getWrapperStyle = () =>
+      window.getComputedStyle(wrapper.findByTestId('file-browser-floating-wrapper').element);
+
+    it('applies cached sizings on resize start', async () => {
+      const panelTop = 50;
+      const elementTop = 100;
+      jest.spyOn(panels, 'getPanelElement').mockReturnValue({
+        getBoundingClientRect: () => ({ top: panelTop }),
+      });
+      jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+        height: 200,
+        top: elementTop,
+      }));
+      createComponent({ floatingResize: true });
+      wrapper.findComponent(PanelResizer).vm.$emit('resize-start');
+      await nextTick();
+      const style = getWrapperStyle();
+      expect(style.height).toBe('200px');
+      expect(style.width).toBe('350px');
+      expect(style.top).toBe(`${elementTop - panelTop}px`);
+    });
+
+    it('resizes wrapper element', async () => {
+      createComponent({ floatingResize: true });
+      wrapper.findComponent(PanelResizer).vm.$emit('resize-start');
+      await nextTick();
+      wrapper.findComponent(PanelResizer).vm.$emit('update:size', 140);
+      await nextTick();
+      const rootStyle = getRootStyle();
+      const style = getWrapperStyle();
+      expect(rootStyle.width).toBe('350px');
+      expect(style.width).toBe('140px');
+    });
+
+    it('sets sizings on resize end', async () => {
+      createComponent({ floatingResize: true });
+      wrapper.findComponent(PanelResizer).vm.$emit('resize-start');
+      await nextTick();
+      wrapper.findComponent(PanelResizer).vm.$emit('update:size', 140);
+      await nextTick();
+      wrapper.findComponent(PanelResizer).vm.$emit('resize-end', 140);
+      await nextTick();
+      const rootStyle = getRootStyle();
+      const style = getWrapperStyle();
+      expect(rootStyle.width).toBe('140px');
+      expect(style.width).toBe('');
+      expect(style.top).toBe('');
+    });
+
+    it('sets sizings after timeout', async () => {
+      createComponent({ floatingResize: true });
+      wrapper.findComponent(PanelResizer).vm.$emit('resize-start');
+      await nextTick();
+      wrapper.findComponent(PanelResizer).vm.$emit('update:size', 140);
+      await nextTick();
+      jest.advanceTimersByTime(100);
+      await nextTick();
+      const rootStyle = getRootStyle();
+      const style = getWrapperStyle();
+      expect(rootStyle.width).toBe('140px');
+      expect(style.width).toBe('140px');
+    });
+  });
+
+  it('passes down props to tree list', async () => {
+    const groupBlobsListItems = false;
+    const loadedFiles = { foo: true };
+    const totalFilesCount = '20';
+    const rowHeight = 30;
+    const currentDiffFileId = 'foo';
+    const linkedFilePath = '/linked';
+    jest.spyOn(window, 'getComputedStyle').mockReturnValue({
+      getPropertyValue() {
+        return `${rowHeight}px`;
+      },
+    });
+    createComponent({
+      loadedFiles,
+      totalFilesCount,
+      groupBlobsListItems,
+      currentDiffFileId,
+      linkedFilePath,
+    });
+    await nextTick();
+    await nextTick();
+    expect(wrapper.findComponent(TreeList).props('loadedFiles')).toBe(loadedFiles);
+    expect(wrapper.findComponent(TreeList).props('totalFilesCount')).toBe(totalFilesCount);
+    expect(wrapper.findComponent(TreeList).props('rowHeight')).toBe(rowHeight);
+    expect(wrapper.findComponent(TreeList).props('groupBlobsListItems')).toBe(groupBlobsListItems);
+    expect(wrapper.findComponent(TreeList).props('currentDiffFileId')).toBe(currentDiffFileId);
+    expect(wrapper.findComponent(TreeList).props('linkedFilePath')).toBe(linkedFilePath);
+  });
+
+  describe('when screen is wide enough', () => {
+    beforeEach(() => {
+      mockBreakpointInstance('lg');
+    });
+
+    it('passes enableStickyHeight as true to FileBrowserHeight', () => {
+      createComponent();
+      expect(wrapper.findComponent(FileBrowserHeight).props('enableStickyHeight')).toBe(true);
+    });
+
+    it('swaps to narrow view when breakpoint changes', async () => {
+      createComponent();
+      await nextTick();
+
+      triggerBreakpointChange('sm');
+      await nextTick();
+
+      expect(wrapper.findComponent(FileBrowserHeight).props('enableStickyHeight')).toBe(false);
+    });
+  });
+
+  describe('when screen is narrow', () => {
+    beforeEach(() => {
+      mockBreakpointInstance('sm');
+    });
+
+    it('passes enableStickyHeight as false to FileBrowserHeight', async () => {
+      createComponent();
+      await nextTick();
+      await nextTick();
+      expect(wrapper.findComponent(FileBrowserHeight).props('enableStickyHeight')).toBe(false);
+    });
+
+    it('swaps to widescreen view when breakpoint changes', async () => {
+      createComponent();
+      await nextTick();
+
+      triggerBreakpointChange('lg');
+      await nextTick();
+
+      expect(wrapper.findComponent(FileBrowserHeight).props('enableStickyHeight')).toBe(true);
+    });
+  });
+
+  it('unsubscribes from breakpoint changes on destroy', () => {
+    mockBreakpointInstance('lg');
+    createComponent();
+
+    wrapper.destroy();
+
+    expect(PanelBreakpointInstance.removeBreakpointListener).toHaveBeenCalled();
   });
 });

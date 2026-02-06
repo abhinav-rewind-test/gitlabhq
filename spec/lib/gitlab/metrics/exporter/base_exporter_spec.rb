@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Metrics::Exporter::BaseExporter, feature_category: :cloud_connector do
+RSpec.describe Gitlab::Metrics::Exporter::BaseExporter, feature_category: :durability_metrics do
   let(:settings) { double('settings') }
   let(:log_enabled) { false }
   let(:exporter) { described_class.new(settings, log_enabled: log_enabled, log_file: 'test_exporter.log') }
@@ -166,7 +166,8 @@ RSpec.describe Gitlab::Metrics::Exporter::BaseExporter, feature_category: :cloud
       end
 
       describe '#start' do
-        it "doesn't start running server", quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/438765' do
+        it "doesn't start running server",
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/25437' do
           expect(::WEBrick::HTTPServer).not_to receive(:new)
 
           exporter.start
@@ -216,7 +217,7 @@ RSpec.describe Gitlab::Metrics::Exporter::BaseExporter, feature_category: :cloud
       # in separate thread
       allow_any_instance_of(::WEBrick::HTTPServer)
         .to receive(:start).and_wrap_original do |m, *args|
-        Thread.new do
+        @server_thread = Thread.new do
           m.call(*args)
         rescue IOError
           # is raised as we close listeners
@@ -224,8 +225,17 @@ RSpec.describe Gitlab::Metrics::Exporter::BaseExporter, feature_category: :cloud
       end
     end
 
+    attr_reader :server_thread
+
     after do
       exporter.stop
+
+      next unless server_thread
+
+      server_thread.join(0.05)
+      raise '`exporter.stop` should terminate `server_thread`' if server_thread.alive?
+    ensure
+      server_thread.kill.join if server_thread
     end
 
     with_them do

@@ -4,11 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Groups::Settings::SlacksController, feature_category: :integrations do
   let_it_be(:group) { create(:group) }
-  let_it_be(:user) { create(:user) }
-
-  before_all do
-    group.add_owner(user)
-  end
+  let_it_be(:user) { create(:user, owner_of: group) }
 
   before do
     sign_in(user)
@@ -20,7 +16,6 @@ RSpec.describe Groups::Settings::SlacksController, feature_category: :integratio
     let(:destroy_path) { group_settings_slack_path(group) }
     let(:service) { Integrations::SlackInstallation::GroupService }
     let(:propagates_on_destroy) { true }
-    let(:flag_protected) { true }
 
     let(:redirect_url) do
       edit_group_settings_integration_path(

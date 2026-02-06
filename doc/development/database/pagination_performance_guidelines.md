@@ -1,10 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Pagination performance guidelines
 ---
-
-# Pagination performance guidelines
 
 The following document gives a few ideas for improving the pagination (sorting) performance. These apply both on [offset](pagination_guidelines.md#offset-pagination) and [keyset](pagination_guidelines.md#keyset-pagination) pagination.
 
@@ -39,8 +38,81 @@ SELECT issues.* FROM issues ORDER BY created_at, id;
 
 This change makes the order distinct so we have "stable" sorting.
 
-NOTE:
-To make the query efficient, we need an index covering both columns: `(created_at, id)`. The order of the columns **should match** the columns in the `ORDER BY` clause.
+> [!note]
+> To make the query efficient, we need an index covering both columns: `(created_at, id)`. The order of the columns **should match** the columns in the `ORDER BY` clause.
+
+### Incremental sorting
+
+In PostgreSQL 13 incremental sorting was added which can help introducing a tie-breaker column to the `ORDER BY` clause without adding or replacing an index. Also, with incremental sorting, introducing a new keyset-paginated database query can happen before the new index is built (async indexes). Incremental sorting is enabled by default.
+
+Consider the following database query:
+
+```sql
+SELECT *
+FROM merge_requests
+WHERE author_id = 1
+ORDER BY created_at ASC
+LIMIT 20
+```
+
+The query will read 20 rows using the following index:
+
+```plaintext
+"index_merge_requests_on_author_id_and_created_at" btree (author_id, created_at)
+```
+
+Using this query with keyset pagination is not possible because the `created_at` column is not unique. Let's add a tie-breaker column:
+
+```sql
+SELECT *
+FROM merge_requests
+WHERE author_id = 1
+ORDER BY created_at ASC, id ASC
+LIMIT 20
+```
+
+Execution plan:
+
+```plaintext
+ Limit  (cost=1.99..30.97 rows=20 width=910) (actual time=1.217..1.220 rows=20 loops=1)
+   Buffers: shared hit=33 read=2
+   I/O Timings: read=0.983 write=0.000
+   ->  Incremental Sort  (cost=1.99..919.33 rows=633 width=910) (actual time=1.215..1.216 rows=20 loops=1)
+         Sort Key: merge_requests.created_at, merge_requests.id
+         Buffers: shared hit=33 read=2
+         I/O Timings: read=0.983 write=0.000
+         ->  Index Scan using index_merge_requests_on_author_id_and_created_at on public.merge_requests  (cost=0.57..890.84 rows=633 width=910) (actual time=0.038..1.139 rows=22 loops=1)
+               Index Cond: (merge_requests.author_id = 1)
+               Buffers: shared hit=24 read=2
+               I/O Timings: read=0.983 write=0.000
+```
+
+As you can see the query read 22 rows using the same index. The database compared the 20th, 21th and 22th value of the `created_at` column and determined that the 22th value differ thus checking the next record is not needed. In this example the 20th and 21th column had the same `created_at` value.
+
+Incremental sorting works well with timestamp columns where duplicated values are unlikely hence the incremental sorting will perform badly or won't be used at all when the column has very few distinct values (like an enum).
+
+As an example, when incremental sorting is disabled, the database reads all merge requests records by the author and sorts data in memory.
+
+```sql
+set enable_incremental_sort=off;
+```
+
+```plaintext
+ Limit  (cost=907.69..907.74 rows=20 width=910) (actual time=2.911..2.917 rows=20 loops=1)
+   Buffers: shared hit=1004
+   ->  Sort  (cost=907.69..909.27 rows=633 width=910) (actual time=2.908..2.911 rows=20 loops=1)
+         Sort Key: created_at, id
+         Sort Method: top-N heapsort  Memory: 52kB
+         Buffers: shared hit=1004
+         ->  Index Scan using index_merge_requests_on_author_id_and_created_at on merge_requests  (cost=0.57..890.84 rows=633 width=910) (actual time=0.042..1.974 rows=1111 loops=1)
+               Index Cond: (author_id = 1)
+               Buffers: shared hit=1111
+ Planning Time: 0.386 ms
+ Execution Time: 3.000 ms
+(11 rows)
+```
+
+In this example the database read 1111 rows and sorted the rows in memory.
 
 ## Ordering by joined table column
 
@@ -72,8 +144,8 @@ LIMIT 20
 OFFSET 0
 ```
 
-NOTE:
-The query requires an index on `issue_metrics` table with the following column configuration: `(project_id, first_mentioned_in_commit_at DESC, issue_id DESC)`.
+> [!note]
+> The query requires an index on `issue_metrics` table with the following column configuration: `(project_id, first_mentioned_in_commit_at DESC, issue_id DESC)`.
 
 ## Filtering
 
@@ -97,14 +169,6 @@ Since `project_id` is a foreign key, we might have the following index available
 ```sql
 "index_issues_on_project_id" btree (project_id)
 ```
-
-GitLab 13.11 has the following index definition on the `issues` table:
-
-```sql
-"index_issues_on_project_id_and_iid" UNIQUE, btree (project_id, iid)
-```
-
-This index fully covers the database query and the pagination.
 
 ### By group
 
@@ -215,8 +279,8 @@ We might be tempted to add an index on `project_id`, `confidential`, and `iid` t
 
 On the other hand, if we implemented a special filter where we only show confidential issues, we need the index. Finding 20 confidential issues might require the database to scan hundreds of rows or, in the worst case, all issues in the project.
 
-NOTE:
-Be aware of the data distribution and the table access patterns (how features work) when introducing a new database index. Sampling production data might be necessary to make the right decision.
+> [!note]
+> Be aware of the data distribution and the table access patterns (how features work) when introducing a new database index. Sampling production data might be necessary to make the right decision.
 
 #### Columns in a different database table
 
@@ -249,8 +313,8 @@ Example database (oversimplified) execution plan:
 
 1. The database parses the SQL query and detects the `JOIN`.
 1. The database splits the query into two subqueries.
-    - `SELECT "issue_assignees".* FROM "issue_assignees" WHERE "issue_assignees"."user_id" = 10`
-    - `SELECT "issues".* FROM "issues" WHERE "issues"."project_id" = 5`
+   - `SELECT "issue_assignees".* FROM "issue_assignees" WHERE "issue_assignees"."user_id" = 10`
+   - `SELECT "issues".* FROM "issues" WHERE "issues"."project_id" = 5`
 1. The database estimates the number of rows and the costs to run these queries.
 1. The database executes the cheapest query first.
 1. Using the query result, load the rows from the other table (from the other query) using the `JOIN` column and filter the rows further.
@@ -278,7 +342,7 @@ Running the query in production for the GitLab project produces the following ex
 
 The query looks up the `assignees` first, filtered by the `user_id` (`user_id = 4156052`) and it finds 215 rows. Using those 215 rows, the database looks up the 215 associated issue rows by the primary key. Notice that the filter on the `project_id` column is not backed by an index.
 
-In most cases, we are lucky that the joined relation does not return too many rows, therefore, we end up with a relatively efficient database query that accesses a small number of rows. As the database grows, these queries might start to behave differently. Let's say the number `issue_assignees` records for a particular user is very high, in the millions. This join query does not perform well, and it likely times out.
+In most cases, joined relations do not return too many rows, and we end up with a relatively efficient database query that accesses a small number of rows. As the database grows, these queries might start to behave differently. For example, a user with a very high number of `issue_assignees` records might cause this join query to perform poorly and time out.
 
 A similar problem could be a double join, where the filter exists in the 2nd `JOIN` query. Example: `Issue -> LabelLink -> Label(name=bug)`.
 
@@ -321,5 +385,5 @@ The query now performs well for any number of `issue_assignees` records, however
 - The new database query is very specific to the assignee search and needs complex backend code to build it.
   - If the assignee is filtered by the user, then order by a different column, remove the `project_id` filter, etc.
 
-NOTE:
-Currently we're not doing these kinds of denormalization at GitLab.
+> [!note]
+> Currently we're not doing these kinds of denormalization at GitLab.

@@ -1,8 +1,6 @@
 ---
 key_path: counts_monthly.ci_builds
 description: Total monthly (28D) ci builds in Gitlab repositories for all project and project types
-product_section: ops
-product_stage: verify
 product_group: pipeline_execution
 value_type: number
 status: active
@@ -14,10 +12,7 @@ data_category: operational
 instrumentation_class: CountAllCiBuildsMetric
 performance_indicator_type:
 - customer_health_score
-distribution:
-- ce
-- ee
-tier:
+tiers:
 - free
 - premium
 - ultimate

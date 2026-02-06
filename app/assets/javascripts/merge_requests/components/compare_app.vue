@@ -102,7 +102,7 @@ export default {
 
 <template>
   <div>
-    <div class="clearfix">
+    <div class="gl-clearfix">
       <div class="merge-request-select gl-pl-0">
         <compare-dropdown
           :static-data="staticProjectData"
@@ -126,26 +126,23 @@ export default {
           :toggle-class="toggleClass.branch"
           :data-qa-compare-side="compareSide"
           :disabled="disabled"
+          :aria-describedby="inputs.branch.ariaDescribedby"
           data-testid="compare-dropdown"
           @selected="selectBranch"
         />
       </div>
     </div>
-    <div
-      v-if="showCommitBox"
-      class="gl-bg-gray-50 gl-rounded-base gl-my-4"
-      data-testid="commit-box"
-    >
+    <div v-if="showCommitBox" class="gl-my-4 gl-rounded-base gl-bg-strong" data-testid="commit-box">
       <gl-loading-icon v-if="loading" class="gl-py-3" />
       <template v-else>
         <div
           v-if="!selectedBranch.value"
-          class="compare-commit-empty gl-display-flex gl-align-items-center gl-p-5"
+          class="compare-commit-empty gl-flex gl-items-center gl-p-5"
         >
           <gl-icon name="branch" class="gl-mr-3" />
           {{ __('Select a branch to compare') }}
         </div>
-        <ul v-safe-html="commitHtml" class="list-unstyled mr_source_commit"></ul>
+        <ul v-safe-html="commitHtml" class="list-unstyled mr-source-commit"></ul>
       </template>
     </div>
   </div>

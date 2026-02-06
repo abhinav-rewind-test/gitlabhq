@@ -6,18 +6,21 @@ module Mutations
       graphql_name 'MergeRequestSetDraft'
 
       argument :draft,
-               GraphQL::Types::Boolean,
-               required: true,
-               description: <<~DESC
+        GraphQL::Types::Boolean,
+        required: true,
+        description: <<~DESC
                  Whether or not to set the merge request as a draft.
-               DESC
+        DESC
 
       def resolve(project_path:, iid:, draft: nil)
         merge_request = authorized_find!(project_path: project_path, iid: iid)
         project = merge_request.project
 
-        ::MergeRequests::UpdateService.new(project: project, current_user: current_user, params: { wip_event: wip_event(draft) })
-          .execute(merge_request)
+        ::MergeRequests::UpdateService.new(
+          project: project,
+          current_user: current_user,
+          params: { wip_event: wip_event(draft) }
+        ).execute(merge_request)
 
         {
           merge_request: merge_request,

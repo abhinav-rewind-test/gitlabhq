@@ -3,6 +3,9 @@
 namespace :explore do
   resources :projects, only: [:index] do
     collection do
+      get :active, to: 'projects#index', as: :active
+      get :inactive, to: 'projects#index', as: :inactive
+      get :all, to: 'projects#index', as: :all
       get :trending
       get :starred
       get :topics
@@ -10,10 +13,16 @@ namespace :explore do
     end
   end
 
-  resources :groups, only: [:index]
+  resources :groups, only: [:index] do
+    collection do
+      get :active, to: 'groups#index', as: :active
+      get :inactive, to: 'groups#index', as: :inactive
+    end
+  end
+
   scope :catalog do
     get '/' => 'catalog#index', as: :catalog_index
-    get '/*full_path' => 'catalog#show', as: :catalog
+    get '/*full_path' => 'catalog#show', as: :catalog, constraints: { full_path: /.*/ }
   end
   resources :snippets, only: [:index]
   root to: 'projects#index'

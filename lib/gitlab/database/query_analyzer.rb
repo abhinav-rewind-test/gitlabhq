@@ -10,9 +10,58 @@ module Gitlab
     class QueryAnalyzer
       include ::Singleton
 
-      Parsed = Struct.new(
-        :sql, :connection, :pg, :event_name
-      )
+      class Parsed
+        include Gitlab::Utils::StrongMemoize
+
+        attr_reader :raw, :connection, :event_name, :error
+
+        def initialize(raw, connection, event_name, cached)
+          @raw = raw
+          @connection = connection
+          @event_name = normalize_event_name(event_name)
+          @cached = cached
+          @error = nil
+        end
+
+        # Returns true if the query was using the ActiveRecord Query Cache
+        def cached?
+          !!@cached
+        end
+
+        def sql
+          try_parse do
+            PgQuery.normalize(raw)
+          end
+        end
+        strong_memoize_attr :sql
+
+        def pg
+          try_parse do
+            PgQuery.parse(raw)
+          end
+        end
+        strong_memoize_attr :pg
+
+        private
+
+        def try_parse
+          return if error
+
+          yield
+        rescue PgQuery::ParseError => e
+          # Ignore PgQuery parse errors (due to depth limit or other reasons)
+          Gitlab::ErrorTracking.track_exception(e)
+          @error = e
+
+          nil
+        end
+
+        def normalize_event_name(event_name)
+          split_event_name = event_name.to_s.downcase.split(' ')
+
+          split_event_name.size > 1 ? split_event_name.from(1).join('_') : split_event_name.join('_')
+        end
+      end
 
       attr_reader :all_analyzers
 
@@ -28,7 +77,12 @@ module Gitlab
           # In some cases analyzer code might trigger another SQL call
           # to avoid stack too deep this detects recursive call of subscriber
           with_ignored_recursive_calls do
-            process_sql(event.payload[:sql], event.payload[:connection], event.payload[:name].to_s)
+            process_sql(
+              event.payload[:sql],
+              event.payload[:connection],
+              event.payload[:name].to_s,
+              event.payload[:cached]
+            )
           end
         end
       end
@@ -79,14 +133,14 @@ module Gitlab
         Thread.current[:query_analyzer_enabled_analyzers] ||= []
       end
 
-      def process_sql(sql, connection, event_name)
+      def process_sql(sql, connection, event_name, cached = false)
         analyzers = enabled_analyzers
         return unless analyzers&.any?
 
-        parsed = parse(sql, connection, event_name)
-        return unless parsed
+        parsed = Parsed.new(sql, connection, event_name, cached)
 
         analyzers.each do |analyzer|
+          next if analyzer.skip_cached?(parsed)
           next if analyzer.suppressed? && !analyzer.requires_tracking?(parsed)
 
           analyzer.analyze(parsed)
@@ -94,19 +148,6 @@ module Gitlab
           # We catch all standard errors to prevent validation errors to introduce fatal errors in production
           Gitlab::ErrorTracking.track_and_raise_for_dev_exception(e)
         end
-      end
-
-      def parse(sql, connection, event_name)
-        parsed = PgQuery.parse(sql)
-        return unless parsed
-
-        normalized = PgQuery.normalize(sql)
-        Parsed.new(normalized, connection, parsed, normalize_event_name(event_name))
-      rescue PgQuery::ParseError => e
-        # Ignore PgQuery parse errors (due to depth limit or other reasons)
-        Gitlab::ErrorTracking.track_exception(e)
-
-        nil
       end
 
       def with_ignored_recursive_calls
@@ -118,12 +159,6 @@ module Gitlab
         ensure
           Thread.current[:query_analyzer_recursive] = nil
         end
-      end
-
-      def normalize_event_name(event_name)
-        split_event_name = event_name.to_s.downcase.split(' ')
-
-        split_event_name.size > 1 ? split_event_name.from(1).join('_') : split_event_name.join('_')
       end
     end
   end

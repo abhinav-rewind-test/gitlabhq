@@ -5,6 +5,11 @@ class GpgKey < ApplicationRecord
   KEY_SUFFIX = '-----END PGP PUBLIC KEY BLOCK-----'
 
   include ShaAttribute
+  include Cells::Claimable
+
+  cells_claims_attribute :key, type: CLAIMS_BUCKET_TYPE::GPG_KEYS, feature_flag: :cells_claims_keys
+
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::USER, subject_key: :user_id
 
   sha_attribute :primary_keyid
   sha_attribute :fingerprint
@@ -14,6 +19,8 @@ class GpgKey < ApplicationRecord
   has_many :subkeys, class_name: 'GpgKeySubkey'
 
   scope :with_subkeys, -> { includes(:subkeys) }
+  scope :externally_invalid, -> { where(externally_verified: false) }
+  scope :externally_valid, -> { where(externally_verified: true) }
 
   validates :user, presence: true
 
@@ -54,10 +61,6 @@ class GpgKey < ApplicationRecord
 
   def key=(value)
     super(value&.strip)
-  end
-
-  def keyids
-    [keyid].concat(subkeys.map(&:keyid))
   end
 
   def user_infos
@@ -125,6 +128,10 @@ class GpgKey < ApplicationRecord
     gpg_subkeys[primary_keyid]&.each do |subkey_data|
       subkeys.create!(keyid: subkey_data[:keyid], fingerprint: subkey_data[:fingerprint])
     end
+  end
+
+  def unique_attributes
+    [:key]
   end
 end
 

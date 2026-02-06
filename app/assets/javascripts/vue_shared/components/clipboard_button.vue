@@ -1,6 +1,6 @@
 <script>
 /**
- * Falls back to the code used in `copy_to_clipboard.js`
+ * Falls back to the code used in `javascripts/behaviors/copy_to_clipboard.js`
  *
  * Renders a button with a clipboard icon that copies the content of `data-clipboard-text`
  * when clicked.
@@ -9,11 +9,12 @@
  * <clipboard-button
  *   title="Copy"
  *   text="Content to be copied"
- *    css-class="btn-transparent"
+ *   css-class="gl-border-0 gl-bg-transparent"
  * />
  */
 import { GlButton, GlTooltipDirective } from '@gitlab/ui';
 import { uniqueId } from 'lodash';
+import { sanitize } from '~/lib/dompurify';
 
 import { __ } from '~/locale';
 import {
@@ -85,6 +86,11 @@ export default {
       required: false,
       default: 'default',
     },
+    icon: {
+      type: String,
+      required: false,
+      default: 'copy-to-clipboard',
+    },
   },
   data() {
     return {
@@ -106,6 +112,9 @@ export default {
         container: this.tooltipContainer,
         boundary: this.tooltipBoundary,
       };
+    },
+    sanitizedLocalTitle() {
+      return sanitize(this.localTitle);
     },
   },
   created() {
@@ -131,16 +140,16 @@ export default {
   <gl-button
     :id="id"
     ref="copyButton"
-    v-gl-tooltip.hover.focus.click.viewport="tooltipDirectiveOptions"
+    v-gl-tooltip.hover.focus.click.viewport.html="tooltipDirectiveOptions"
     :class="cssClass"
-    :title="localTitle"
+    :title="sanitizedLocalTitle"
     :data-clipboard-text="clipboardText"
     data-clipboard-handle-tooltip="false"
     :category="category"
     :size="size"
-    icon="copy-to-clipboard"
+    :icon="icon"
     :variant="variant"
-    :aria-label="localTitle"
+    :aria-label="sanitizedLocalTitle"
     aria-live="polite"
     @[$options.CLIPBOARD_SUCCESS_EVENT]="updateTooltip($options.i18n.copied)"
     @[$options.CLIPBOARD_ERROR_EVENT]="updateTooltip($options.i18n.error)"

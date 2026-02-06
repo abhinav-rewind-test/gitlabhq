@@ -11,6 +11,7 @@ RSpec.describe LooksAhead do
   let_it_be(:issue_a) { create(:issue, author: the_user, labels: [label_a, label_b]) }
   let_it_be(:issue_b) { create(:issue, author: the_user, labels: [label_a]) }
   let_it_be(:issue_c) { create(:issue, author: the_user, labels: [label_b]) }
+  let_it_be(:issue_d) { create(:issue, author: the_user) }
 
   # Simplified schema to test lookahead
   let_it_be(:schema) do
@@ -19,6 +20,10 @@ RSpec.describe LooksAhead do
 
       def resolve_with_lookahead(**args)
         apply_lookahead(object.issues)
+      end
+
+      def unconditional_includes
+        [project: :group]
       end
 
       def preloads
@@ -56,15 +61,6 @@ RSpec.describe LooksAhead do
     end
   end
 
-  def query(doc = document)
-    GraphQL::Query.new(
-      schema,
-      document: doc,
-      context: { user_db: [the_user] },
-      variables: { username: the_user.username }
-    )
-  end
-
   let(:document) do
     GraphQL.parse <<-GRAPHQL
     query($username: String!){
@@ -87,6 +83,15 @@ RSpec.describe LooksAhead do
     GRAPHQL
   end
 
+  def query(doc = document)
+    GraphQL::Query.new(
+      schema,
+      document: doc,
+      context: { user_db: [the_user] },
+      variables: { username: the_user.username }
+    )
+  end
+
   def run_query(gql_query)
     query(GraphQL.parse(gql_query)).result
   end
@@ -94,7 +99,7 @@ RSpec.describe LooksAhead do
   shared_examples 'a working query on the test schema' do
     it 'has a good test setup', :aggregate_failures do
       expected_label_ids = [label_a, label_b].cycle.take(4).map(&:id)
-      issue_titles = [issue_a, issue_b, issue_c].map(&:title)
+      issue_titles = [issue_a, issue_b, issue_c, issue_d].map(&:title)
 
       res = query.result
 
@@ -110,7 +115,7 @@ RSpec.describe LooksAhead do
   it_behaves_like 'a working query on the test schema'
 
   it 'preloads labels on issues' do
-    expect(the_user.issues).to receive(:preload).with(:labels)
+    expect(the_user.issues).to receive(:preload).with({ project: :group }, :labels)
 
     query.result
   end
@@ -142,7 +147,7 @@ RSpec.describe LooksAhead do
     }
     GQL
 
-    expect { run_query(with_lookahead) }.to issue_fewer_queries_than { run_query(naive) }
+    expect { run_query(with_lookahead) }.to issue_same_number_of_queries_as { run_query(naive) }.or_fewer
   end
 
   private

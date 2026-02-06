@@ -17,21 +17,36 @@ const defaultProvide = {
 describe('Sidebar Header', () => {
   let wrapper;
 
-  const createComponent = ({ options = {}, props = {}, restJob = {} } = {}) => {
+  const createComponent = ({
+    options = {},
+    props = {},
+    restJob = {},
+    provide = { ...defaultProvide },
+  } = {}) => {
     wrapper = shallowMountExtended(SidebarHeader, {
       propsData: {
         ...props,
         jobId: mockId,
-        restJob,
+        restJob: {
+          name: 'My job',
+          status: {
+            action: {
+              confirmation_message: null,
+            },
+          },
+          ...restJob,
+        },
       },
-      provide: {
-        ...defaultProvide,
-      },
+      provide,
       ...options,
     });
   };
 
-  const createComponentWithApollo = ({ props = {}, restJob = {} } = {}) => {
+  const createComponentWithApollo = ({
+    props = {},
+    restJob = {},
+    provide = { ...defaultProvide },
+  } = {}) => {
     const getJobQueryResponse = jest.fn().mockResolvedValue(mockJobResponse);
 
     const requestHandlers = [[getJobQuery, getJobQueryResponse]];
@@ -46,12 +61,14 @@ describe('Sidebar Header', () => {
       props,
       restJob,
       options,
+      provide,
     });
 
     return waitForPromises();
   };
 
   const findCancelButton = () => wrapper.findByTestId('cancel-button');
+  const findForceCancelButton = () => wrapper.findByTestId('force-cancel-button');
   const findEraseButton = () => wrapper.findByTestId('job-log-erase-link');
   const findNewIssueButton = () => wrapper.findByTestId('job-new-issue');
   const findTerminalLink = () => wrapper.findByTestId('terminal-link');
@@ -90,6 +107,20 @@ describe('Sidebar Header', () => {
     it('should render terminal link', async () => {
       await createComponentWithApollo({ restJob: { terminal_path: 'terminal/path' } });
       expect(findTerminalLink().attributes('href')).toBe('terminal/path');
+    });
+
+    describe(`a build with force_cancel_path`, () => {
+      it('renders a force cancel button with flag', async () => {
+        const provide = {
+          ...defaultProvide,
+        };
+        await createComponentWithApollo({
+          restJob: { force_cancel_path: 'force_cancel/path' },
+          provide,
+        });
+        expect(findForceCancelButton().exists()).toBe(true);
+        expect(findForceCancelButton().attributes('href')).toBe('force_cancel/path');
+      });
     });
   });
 });

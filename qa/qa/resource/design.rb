@@ -4,7 +4,7 @@ module QA
   module Resource
     class Design < Base
       attribute :issue do
-        Issue.fabricate_via_api!
+        Resource::Issue.fabricate_via_api!
       end
 
       attributes :id,
@@ -20,7 +20,7 @@ module QA
       def fabricate!
         issue.visit!
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           issue.add_design(filepath)
         end
       end
@@ -106,6 +106,24 @@ module QA
       # @return [Hash]
       def transform_api_resource(api_resource)
         api_resource.key?(:designs) ? api_resource[:designs].first : api_resource
+      end
+
+      def process_api_response(parsed_response)
+        design_response = if parsed_response.key?(:designs)
+                            response = parsed_response
+                            response[:designs].each do |design|
+                              design[:id] = extract_graphql_id(design)
+                            end
+                            response
+                          elsif parsed_response.key?(:design_collection)
+                            response = parsed_response[:design_collection][:design]
+                            response[:id] = extract_graphql_id(response)
+                            response
+                          else
+                            parsed_response
+                          end
+
+        super(design_response)
       end
 
       private

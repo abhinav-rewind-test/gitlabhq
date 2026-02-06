@@ -47,12 +47,12 @@ export default {
 </script>
 
 <template>
-  <gl-form-group class="row" label-class="gl-display-none">
-    <label class="col-12 gl-display-flex gl-align-center">
+  <gl-form-group class="row" label-class="gl-hidden">
+    <label class="gl-col-12 gl-align-center gl-flex">
       {{ $options.i18n.fieldLabel }}
     </label>
-    <div class="col-12">
-      <div class="issuable-form-label-select-holder">
+    <div class="gl-col-12">
+      <div>
         <input
           v-for="selectedLabel in selectedLabels"
           :key="selectedLabel.id"

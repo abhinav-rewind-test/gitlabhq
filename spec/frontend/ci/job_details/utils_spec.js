@@ -1,4 +1,4 @@
-import { compactJobLog, filterAnnotations } from '~/ci/job_details/utils';
+import { compactJobLog, filterAnnotations, getLineText } from '~/ci/job_details/utils';
 import { mockJobLog } from 'jest/ci/jobs_mock_data';
 
 describe('Job utils', () => {
@@ -72,8 +72,7 @@ describe('Job utils', () => {
         {
           content: [
             {
-              text:
-                'Using docker image sha256:55106bf6ba7f452c38d01ea760affc6ceb67d4b60068ffadab98d1b7b007668c for ruby:2.7 with digest ruby@sha256:23d08a4bae1a12ee3fce017f83204fcf9a02243443e4a516e65e5ff73810a449 ...',
+              text: 'Using docker image sha256:55106bf6ba7f452c38d01ea760affc6ceb67d4b60068ffadab98d1b7b007668c for ruby:2.7 with digest ruby@sha256:23d08a4bae1a12ee3fce017f83204fcf9a02243443e4a516e65e5ff73810a449 ...',
             },
           ],
           lineNumber: 7,
@@ -175,8 +174,7 @@ describe('Job utils', () => {
         {
           content: [
             {
-              text:
-                'Using docker image sha256:55106bf6ba7f452c38d01ea760affc6ceb67d4b60068ffadab98d1b7b007668c for ruby:2.7 with digest ruby@sha256:23d08a4bae1a12ee3fce017f83204fcf9a02243443e4a516e65e5ff73810a449 ...',
+              text: 'Using docker image sha256:55106bf6ba7f452c38d01ea760affc6ceb67d4b60068ffadab98d1b7b007668c for ruby:2.7 with digest ruby@sha256:23d08a4bae1a12ee3fce017f83204fcf9a02243443e4a516e65e5ff73810a449 ...',
             },
           ],
           lineNumber: 19,
@@ -260,6 +258,34 @@ describe('Job utils', () => {
           url: 'https://url2.example.com/',
         },
       ]);
+    });
+  });
+
+  describe('getLineText', () => {
+    it('concatenates text from single content segment', () => {
+      const line = {
+        content: [{ text: 'Simple log message' }],
+      };
+
+      expect(getLineText(line)).toBe('Simple log message');
+    });
+    it('concatenates text from multiple content segments', () => {
+      const line = {
+        content: [
+          { text: '2025-07-22 21:41:21', style: 'term-fg-l-black' },
+          { text: ' ' },
+          { text: 'INF', style: 'term-fg-green' },
+          { text: ' ' },
+          { text: 'Ignoring old update for Nodegroup', style: 'term-bold' },
+          { text: ' ' },
+          { text: 'created=', style: 'term-fg-cyan' },
+          { text: '2025-05-27T22:18:02Z' },
+        ],
+      };
+
+      expect(getLineText(line)).toBe(
+        '2025-07-22 21:41:21 INF Ignoring old update for Nodegroup created=2025-05-27T22:18:02Z',
+      );
     });
   });
 });

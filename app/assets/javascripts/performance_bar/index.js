@@ -1,5 +1,3 @@
-import '../webpack';
-
 import { isEmpty } from 'lodash';
 import Vue from 'vue';
 import axios from '~/lib/utils/axios_utils';
@@ -7,6 +5,7 @@ import { numberToHumanSize } from '~/lib/utils/number_utils';
 import { s__ } from '~/locale';
 import Translate from '~/vue_shared/translate';
 
+import { transformRootToHostRules } from '~/performance_bar/transform_root_to_host_rules';
 import initPerformanceBarLog from './performance_bar_log';
 import PerformanceBarService from './services/performance_bar_service';
 import PerformanceBarStore from './stores/performance_bar_store';
@@ -35,6 +34,7 @@ const initPerformanceBar = (el) => {
         requestMethod: performanceBarData.requestMethod,
         peekUrl: performanceBarData.peekUrl,
         statsUrl: performanceBarData.statsUrl,
+        simulateSaas: performanceBarData.simulateSaas,
       };
     },
     mounted() {
@@ -62,6 +62,7 @@ const initPerformanceBar = (el) => {
           this.addRequest(urlOrRequestId, urlOrRequestId);
         }
       },
+      // eslint-disable-next-line max-params
       addRequest(requestId, requestUrl, operationName, requestParams, methodVerb) {
         if (!this.store.canTrackRequest(requestUrl)) {
           return;
@@ -151,9 +152,8 @@ const initPerformanceBar = (el) => {
           store: this.store,
           env: this.env,
           requestId: this.requestId,
-          requestMethod: this.requestMethod,
-          peekUrl: this.peekUrl,
           statsUrl: this.statsUrl,
+          simulateSaas: this.simulateSaas,
         },
         on: {
           'add-request': this.addRequestManually,
@@ -164,7 +164,18 @@ const initPerformanceBar = (el) => {
   });
 };
 
-initPerformanceBar(document.querySelector('#js-peek'));
-initPerformanceBarLog();
+export function getPerformanceBarNode() {
+  const shadowDomRoot = document.querySelector('#performance-bar-root')?.shadowRoot;
+  if (shadowDomRoot) {
+    transformRootToHostRules(shadowDomRoot);
+    return shadowDomRoot.querySelector('#js-peek');
+  }
+  return document.querySelector('#js-peek');
+}
 
-export default initPerformanceBar;
+export default function initPerformanceBarAndLog() {
+  const app = initPerformanceBar(getPerformanceBarNode());
+  initPerformanceBarLog();
+
+  return app;
+}

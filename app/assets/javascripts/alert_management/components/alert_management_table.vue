@@ -53,16 +53,16 @@ export default {
       key: 'severity',
       label: s__('AlertManagement|Severity'),
       variant: 'secondary',
-      thClass: `gl-w-eighth`,
+      thClass: `gl-w-1/8`,
       thAttr: TH_TEST_ID,
-      tdClass: `${tdClass} rounded-top text-capitalize sortable-cell`,
+      tdClass: `${tdClass} !gl-rounded-t-base !gl-capitalize sortable-cell`,
       sortable: true,
     },
     {
       key: 'startedAt',
       label: s__('AlertManagement|Start time'),
       variant: 'secondary',
-      thClass: `js-started-at w-15p`,
+      thClass: `js-started-at gl-w-3/20`,
       tdClass: `${tdClass} sortable-cell`,
       sortable: true,
     },
@@ -82,21 +82,21 @@ export default {
     {
       key: 'issue',
       label: s__('AlertManagement|Incident'),
-      thClass: 'gl-w-15p gl-pointer-events-none',
+      thClass: 'gl-w-3/20 gl-pointer-events-none',
       tdClass,
     },
     {
       key: 'assignees',
       label: s__('AlertManagement|Assignees'),
-      thClass: 'gl-w-eighth gl-pointer-events-none',
+      thClass: 'gl-w-1/8 gl-pointer-events-none',
       tdClass,
     },
     {
       key: 'status',
       label: s__('AlertManagement|Status'),
       variant: 'secondary',
-      thClass: `w-15p`,
-      tdClass: `${tdClass} rounded-bottom sortable-cell`,
+      thClass: `gl-w-3/20`,
+      tdClass: `${tdClass} !gl-rounded-b-base sortable-cell`,
       sortable: true,
     },
   ],
@@ -281,7 +281,7 @@ export default {
     <gl-alert v-if="showNoAlertsMsg" @dismiss="errorAlertDismissed">
       <gl-sprintf :message="$options.i18n.noAlertsMsg">
         <template #link="{ content }">
-          <gl-link class="gl-display-inline-block" :href="populatingAlertsHelpUrl" target="_blank">
+          <gl-link class="gl-inline-block" :href="populatingAlertsHelpUrl" target="_blank">
             {{ content }}
           </gl-link>
         </template>
@@ -291,9 +291,6 @@ export default {
     <paginated-table-with-search-and-tabs
       :show-error-msg="showErrorMsg"
       :i18n="$options.i18n"
-      :items="
-        alerts.list || [] /* eslint-disable-line @gitlab/vue-no-new-non-primitive-in-template */
-      "
       :page-info="alerts.pageInfo"
       :items-count="alertsCount"
       :status-tabs="$options.statusTabs"
@@ -340,11 +337,11 @@ export default {
         >
           <template #cell(severity)="{ item }">
             <div
-              class="d-inline-flex gl-align-items-center justify-content-between"
+              class="gl-inline-flex gl-items-center !gl-justify-between"
               data-testid="severityField"
             >
               <gl-icon
-                class="mr-2"
+                class="!gl-mr-3"
                 :size="12"
                 :name="`severity-${item.severity.toLowerCase()}`"
                 :class="`icon-${item.severity.toLowerCase()}`"
@@ -363,7 +360,7 @@ export default {
 
           <template #cell(alertLabel)="{ item }">
             <div
-              class="gl-max-w-full text-truncate"
+              class="gl-max-w-full gl-truncate"
               :title="`${item.iid} - ${item.title}`"
               data-testid="idField"
             >
@@ -430,7 +427,7 @@ export default {
           </template>
 
           <template #table-busy>
-            <gl-loading-icon size="lg" color="dark" class="mt-3" />
+            <gl-loading-icon size="lg" color="dark" class="!gl-mt-5" />
           </template>
         </gl-table>
       </template>

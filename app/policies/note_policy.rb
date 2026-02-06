@@ -8,11 +8,15 @@ class NotePolicy < BasePolicy
 
   condition(:is_author) { @user && @subject.author == @user }
   condition(:is_noteable_author) { @user && @subject.noteable.try(:author_id) == @user.id }
+  condition(:is_member) { parent_namespace&.member?(@user) }
 
   condition(:editable, scope: :subject) { @subject.editable? }
 
   condition(:can_read_noteable) { can?(:"read_#{@subject.noteable_ability_name}") }
   condition(:commit_is_deleted) { @subject.for_commit? && @subject.noteable.blank? }
+  condition(:for_personal_snippet) { @subject.for_personal_snippet? }
+
+  condition(:discussion_locked) { @subject.noteable&.try(:discussion_locked?) }
 
   condition(:for_design) { @subject.for_design? }
 
@@ -51,6 +55,14 @@ class NotePolicy < BasePolicy
     enable :resolve_note
   end
 
+  rule { is_noteable_author & for_personal_snippet }.policy do
+    enable :admin_note
+  end
+
+  rule { discussion_locked & ~is_member }.policy do
+    prevent :resolve_note
+  end
+
   rule { ~is_visible }.policy do
     prevent :read_note
     prevent :admin_note
@@ -79,29 +91,20 @@ class NotePolicy < BasePolicy
     enable :reposition_note
   end
 
+  rule { admin }.policy do
+    enable :read_note
+    enable :admin_note
+    enable :resolve_note
+    enable :reposition_note
+    enable :award_emoji
+  end
+
   def parent_namespace
     strong_memoize(:parent_namespace) do
       next if @subject.is_a?(PersonalSnippet)
       next @subject.noteable.group if @subject.noteable.is_a?(Epic)
 
       @subject.project
-    end
-  end
-
-  def access_level
-    return -1 if @user.nil?
-    return -1 unless parent_namespace
-
-    lookup_access_level!
-  end
-
-  def lookup_access_level!
-    return ::Gitlab::Access::REPORTER if alert_bot?
-
-    if parent_namespace.is_a?(Project)
-      parent_namespace.team.max_member_access(@user.id)
-    else
-      parent_namespace.max_member_access_for_user(@user)
     end
   end
 end

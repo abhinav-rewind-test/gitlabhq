@@ -40,16 +40,10 @@ if [[ "${UPLOAD_TO_CURRENT_SERVER}" = "true" ]] && [[ "${CI_PROJECT_ID}" = "${CA
   export UPLOAD_PACKAGE_FLAG="true"
 fi
 
-# Workhorse constants
-export GITLAB_WORKHORSE_BINARIES_LIST="gitlab-resize-image gitlab-zip-cat gitlab-zip-metadata gitlab-workhorse"
-export GITLAB_WORKHORSE_PACKAGE_FILES_LIST="${GITLAB_WORKHORSE_BINARIES_LIST} WORKHORSE_TREE"
-export GITLAB_WORKHORSE_TREE=${GITLAB_WORKHORSE_TREE:-$(git rev-parse HEAD:workhorse)}
-export GITLAB_WORKHORSE_PACKAGE="workhorse-${GITLAB_WORKHORSE_TREE}.tar.gz"
-export GITLAB_WORKHORSE_PACKAGE_URL="${API_PACKAGES_BASE_URL}/${GITLAB_WORKHORSE_FOLDER}/${GITLAB_WORKHORSE_TREE}/${GITLAB_WORKHORSE_PACKAGE}"
-
-# Assets constants
-export GITLAB_ASSETS_PATHS_LIST="cached-assets-hash.txt app/assets/javascripts/locale/**/app.js public/assets/"
-export GITLAB_ASSETS_PACKAGE_VERSION="v2" # bump this version each time GITLAB_ASSETS_PATHS_LIST is changed
+# Graphql Schema dump constants
+export GRAPHQL_SCHEMA_PACKAGE="graphql-schema.tar.gz"
+export GRAPHQL_SCHEMA_PATH="tmp/tests/graphql/"
+export GRAPHQL_SCHEMA_PACKAGE_URL="${API_PACKAGES_BASE_URL}/graphql-schema/master/${GRAPHQL_SCHEMA_PACKAGE}"
 
 export GITLAB_EDITION="ee"
 if [[ "${FOSS_ONLY:-no}" = "1" ]] || [[ "${CI_PROJECT_NAME}" = "gitlab-foss" ]]; then
@@ -60,64 +54,41 @@ if [[ "${CI_SERVER_HOST}" = "jihulab.com" ]]; then
   export GITLAB_EDITION="jh"
 fi
 
-export GITLAB_ASSETS_HASH="${GITLAB_ASSETS_HASH:-"NO_HASH"}"
-export GITLAB_ASSETS_PACKAGE="assets-${NODE_ENV}-${GITLAB_EDITION}-${GITLAB_ASSETS_HASH}-${GITLAB_ASSETS_PACKAGE_VERSION}.tar.gz"
-export GITLAB_ASSETS_PACKAGE_URL="${API_PACKAGES_BASE_URL}/assets/${NODE_ENV}-${GITLAB_EDITION}-${GITLAB_ASSETS_HASH}/${GITLAB_ASSETS_PACKAGE}"
-
 # Fixtures constants
 export FIXTURES_PATH="tmp/tests/frontend/**/*"
-export REUSE_FRONTEND_FIXTURES_ENABLED="${REUSE_FRONTEND_FIXTURES_ENABLED:-"true"}"
+export FIXTURES_PACKAGE="fixtures-${GLCI_FIXTURES_HASH:-$CI_COMMIT_SHA}.tar.gz"
+export FIXTURES_PACKAGE_URL="${API_PACKAGES_BASE_URL}/fixtures/${GLCI_FIXTURES_HASH:-$CI_COMMIT_SHA}/${FIXTURES_PACKAGE}"
 
-# Workhorse functions
-function gitlab_workhorse_archive_doesnt_exist() {
-  archive_doesnt_exist "${GITLAB_WORKHORSE_PACKAGE_URL}"
-}
+function setup_test_env() {
+  mkdir -p ${GLCI_CACHED_SERVICES_FOLDER} ${TMP_TEST_FOLDER}
 
-function create_gitlab_workhorse_package() {
-  create_package "${GITLAB_WORKHORSE_PACKAGE}" "${GITLAB_WORKHORSE_FOLDER}" "${TMP_TEST_FOLDER}"
-}
+  # move binaries from cache location to tmp test folder
+  echo "Moving cached binaries to '${TMP_TEST_FOLDER}'"
+  mv ${GLCI_CACHED_SERVICES_FOLDER}/* ${TMP_TEST_FOLDER}/ && echo "done!" || true
 
-function upload_gitlab_workhorse_package() {
-  upload_package "${GITLAB_WORKHORSE_PACKAGE}" "${GITLAB_WORKHORSE_PACKAGE_URL}"
-}
+  section_start "setup-test-env" "Setting up testing environment"; scripts/setup-test-env; section_end "setup-test-env";
+  section_start "gitaly-test-build" "Compiling Gitaly binaries"; scripts/gitaly-test-build; section_end "gitaly-test-build";  # Do not use 'bundle exec' here
 
-function download_and_extract_gitlab_workhorse_package() {
-  read_curl_package "${GITLAB_WORKHORSE_PACKAGE_URL}" | extract_package "${TMP_TEST_FOLDER}"
-}
+  # restore binaries cache folder before stripping binaries to avoid cache re-upload
+  echo "Restoring binaries cache folder"
+  mv ${TMP_TEST_FOLDER}/* ${GLCI_CACHED_SERVICES_FOLDER}/
+  # remove workhorse config_path file which is recreated on every run and taints cache
+  rm -f ${GLCI_CACHED_SERVICES_FOLDER}/gitlab-workhorse/config_path
+  # remove testdata folder which taints cache and causes re-upload
+  rm -rf ${GLCI_CACHED_SERVICES_FOLDER}/gitaly/internal/testhelper/testdata
+  # copy all files to be saved as artifacts
+  cp -r ${GLCI_CACHED_SERVICES_FOLDER}/* ${TMP_TEST_FOLDER}/
+  echo "done!"
 
-function select_gitlab_workhorse_essentials() {
-  local tmp_path="${CI_PROJECT_DIR}/tmp/${GITLAB_WORKHORSE_FOLDER}"
-  local original_gitlab_workhorse_path="${TMP_TEST_GITLAB_WORKHORSE_PATH}"
-
-  mkdir -p ${tmp_path}
-  cd ${original_gitlab_workhorse_path} && mv ${GITLAB_WORKHORSE_PACKAGE_FILES_LIST} ${tmp_path} && cd -
-  rm -rf ${original_gitlab_workhorse_path}
-
-  # Move the temp folder to its final destination
-  mv ${tmp_path} ${TMP_TEST_FOLDER}
+  strip_executable_binaries "${TMP_TEST_FOLDER}"
 }
 
 function strip_executable_binaries() {
   local path="$1"
 
+  echo "Stripping executable binaries for size reduction"
   find "$path" -executable -type f ! -size 0 -print0 | xargs -0 grep -IL . | xargs strip || true
-}
-
-# Assets functions
-function gitlab_assets_archive_doesnt_exist() {
-  archive_doesnt_exist "${GITLAB_ASSETS_PACKAGE_URL}"
-}
-
-function download_and_extract_gitlab_assets() {
-  read_curl_package "${GITLAB_ASSETS_PACKAGE_URL}" | extract_package
-}
-
-function create_gitlab_assets_package() {
-  create_package "${GITLAB_ASSETS_PACKAGE}" "${GITLAB_ASSETS_PATHS_LIST}"
-}
-
-function upload_gitlab_assets_package() {
-  upload_package "${GITLAB_ASSETS_PACKAGE}" "${GITLAB_ASSETS_PACKAGE_URL}"
+  echo "done!"
 }
 
 # Fixtures functions
@@ -143,54 +114,9 @@ function check_fixtures_download() {
   fi
 }
 
-function check_fixtures_reuse() {
-  if [[ "${REUSE_FRONTEND_FIXTURES_ENABLED}" != "true" ]]; then
-    echoinfo "INFO: Reusing frontend fixtures is disabled due to REUSE_FRONTEND_FIXTURES_ENABLED=${REUSE_FRONTEND_FIXTURES_ENABLED}."
-    rm -rf "tmp/tests/frontend";
-    return 1
-  fi
-
-  if [[ "${CI_PROJECT_NAME}" != "gitlab" ]] || [[ "${CI_JOB_NAME}" =~ "foss" ]]; then
-    echoinfo "INFO: Reusing frontend fixtures is only supported in EE."
-    rm -rf "tmp/tests/frontend";
-    return 1
-  fi
-
-  if [[ -d "tmp/tests/frontend" ]]; then
-    # Remove tmp/tests/frontend/ except on the first parallelized job so that depending
-    # jobs don't download the exact same artifact multiple times.
-    if [[ -n "${CI_NODE_INDEX:-}" ]] && [[ "${CI_NODE_INDEX:-}" -ne 1 ]]; then
-      echoinfo "INFO: Removing 'tmp/tests/frontend' as we're on node ${CI_NODE_INDEX:-}. Dependent jobs will use the artifacts from the first parallelized job.";
-      rm -rf "tmp/tests/frontend";
-    fi
-    return 0
-  else
-    echoinfo "INFO: 'tmp/tests/frontend' does not exist.";
-    return 1
-  fi
-}
-
-function create_fixtures_package() {
-  create_package "${FIXTURES_PACKAGE}" "${FIXTURES_PATH}"
-}
-
-function download_and_extract_fixtures() {
-  read_curl_package "${FIXTURES_PACKAGE_URL}" | extract_package
-}
-
-function export_fixtures_package_variables() {
-  export FIXTURES_PACKAGE="fixtures-${FIXTURES_SHA}.tar.gz"
-  export FIXTURES_PACKAGE_URL="${API_PACKAGES_BASE_URL}/fixtures/${FIXTURES_SHA}/${FIXTURES_PACKAGE}"
-}
-
-function export_fixtures_sha_for_download() {
-  export FIXTURES_SHA="${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_SHA}}"
-  export_fixtures_package_variables
-}
-
-function export_fixtures_sha_for_upload() {
-  export FIXTURES_SHA="${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}"
-  export_fixtures_package_variables
+function create_and_upload_graphql_schema_package() {
+  create_package "${GRAPHQL_SCHEMA_PACKAGE}" "${GRAPHQL_SCHEMA_PATH}"
+  upload_package "${GRAPHQL_SCHEMA_PACKAGE}" "${GRAPHQL_SCHEMA_PACKAGE_URL}"
 }
 
 function fixtures_archive_doesnt_exist() {
@@ -199,18 +125,77 @@ function fixtures_archive_doesnt_exist() {
   archive_doesnt_exist "${FIXTURES_PACKAGE_URL}"
 }
 
-function fixtures_directory_exists() {
-  local fixtures_directory="tmp/tests/frontend/"
-
-  if [[ -d "${fixtures_directory}" ]]; then
-    echo "${fixtures_directory} directory exists"
-    return 0
-  else
-    echo "${fixtures_directory} directory does not exist"
-    return 1
-  fi
+function create_fixtures_package() {
+  create_package "${FIXTURES_PACKAGE}" "${FIXTURES_PATH}"
 }
 
 function upload_fixtures_package() {
   upload_package "${FIXTURES_PACKAGE}" "${FIXTURES_PACKAGE_URL}"
+}
+
+# Dump auto-explain logs fingerprints
+export FINGERPRINTS_PACKAGE="query-fingerprints.tar.gz"
+export FINGERPRINTS_FILE="query_fingerprints.txt"
+export FINGERPRINTS_PACKAGE_URL="${API_PACKAGES_BASE_URL}/auto-explain-logs/master/${FINGERPRINTS_PACKAGE}"
+
+function extract_and_upload_fingerprints() {
+  echo "Extracting SQL query fingerprints from ${RSPEC_AUTO_EXPLAIN_LOG_PATH}"
+  ruby scripts/sql_fingerprint_extractor.rb "${RSPEC_AUTO_EXPLAIN_LOG_PATH}" "${FINGERPRINTS_FILE}.new"
+
+  # Check if any new fingerprints were found
+  new_count=$(wc -l < "${FINGERPRINTS_FILE}.new")
+  if [ "$new_count" -eq 0 ]; then
+    echo "No fingerprints found in current run, exiting early"
+    rm "${FINGERPRINTS_FILE}.new"
+    return 0
+  fi
+
+  echo "Found ${new_count} fingerprints in current run"
+
+  # Attempt to download the previous package directly
+  echo "Attempting to download previous fingerprints package..."
+  if curl -s -f "${FINGERPRINTS_PACKAGE_URL}" -o latest_fingerprints.tar.gz; then
+    echo "Previous fingerprints package downloaded successfully"
+
+    # Extract the package
+    mkdir -p temp_fingerprints
+    if tar -xzf latest_fingerprints.tar.gz -C temp_fingerprints; then
+
+      if [ -f "temp_fingerprints/${FINGERPRINTS_FILE}" ]; then
+        echo "Merging with existing fingerprints..."
+        # Combine both files and remove duplicates
+        cat "temp_fingerprints/${FINGERPRINTS_FILE}" "${FINGERPRINTS_FILE}.new" | sort | uniq > "${FINGERPRINTS_FILE}"
+
+        # Count and report stats
+        old_count=$(wc -l < "temp_fingerprints/${FINGERPRINTS_FILE}")
+        new_total=$(wc -l < "${FINGERPRINTS_FILE}")
+        added_count=$((new_total - old_count))
+
+        if [ "$added_count" -eq 0 ]; then
+          echo "No new unique fingerprints found, exiting early"
+          rm -rf temp_fingerprints latest_fingerprints.tar.gz "${FINGERPRINTS_FILE}.new" "${FINGERPRINTS_FILE}"
+          return 0
+        fi
+
+        echo "Previous fingerprints: ${old_count}"
+        echo "Newly added fingerprints: ${added_count}"
+        echo "Total unique fingerprints: ${new_total}"
+      else
+        echo "No fingerprints file found in package, using new ones only"
+        mv "${FINGERPRINTS_FILE}.new" "${FINGERPRINTS_FILE}"
+      fi
+    else
+      echo "Failed to extract package, using new fingerprints only"
+      mv "${FINGERPRINTS_FILE}.new" "${FINGERPRINTS_FILE}"
+    fi
+
+    # Clean up
+    rm -rf temp_fingerprints latest_fingerprints.tar.gz
+  else
+    echo "No previous fingerprints package found or unable to download, using new fingerprints only"
+    mv "${FINGERPRINTS_FILE}.new" "${FINGERPRINTS_FILE}"
+  fi
+
+  create_package "${FINGERPRINTS_PACKAGE}" "${FINGERPRINTS_FILE}"
+  upload_package "${FINGERPRINTS_PACKAGE}" "${FINGERPRINTS_PACKAGE_URL}"
 }

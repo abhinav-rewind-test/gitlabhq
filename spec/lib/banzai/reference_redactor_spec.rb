@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
+RSpec.describe Banzai::ReferenceRedactor, feature_category: :markdown do
   let(:user) { create(:user) }
   let(:project) { build(:project) }
   let(:redactor) { described_class.new(Banzai::RenderContext.new(project, user)) }
@@ -35,13 +35,17 @@ RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
       end
 
       context 'when data-original attribute provided' do
-        let(:original_content) { '&lt;script&gt;alert(1);&lt;/script&gt;' }
-
-        it 'replaces redacted reference with original content' do
-          doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue' data-original='#{original_content}'>bar</a>")
-          redactor.redact([doc])
-          expect(doc.to_html).to eq(original_content)
+        RSpec.shared_examples 'substitutes original content back in as-is' do |original_content|
+          it 'replaces redacted reference with original content' do
+            doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue'>bar</a>")
+            doc.css('a')[0]["data-original"] = original_content
+            redactor.redact([doc])
+            expect(doc.to_html).to eq(original_content)
+          end
         end
+
+        it_behaves_like 'substitutes original content back in as-is', '&lt;script&gt;alert(1);&lt;/script&gt;'
+        it_behaves_like 'substitutes original content back in as-is', '<code>foo</code>'
 
         it 'does not replace redacted reference with original content if href is given' do
           html = "<a href='https://www.gitlab.com' data-link-reference='true' class='gfm' data-reference-type='issue' data-reference-type='issue' data-original='Marge'>Marge</a>"
@@ -68,7 +72,8 @@ RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
       end
 
       it 'redacts an issue attached' do
-        doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue' data-issue='#{issue.id}'>foo</a>")
+        doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue'>foo</a>")
+        doc.css('a').first["data-issue"] = issue.id
 
         redactor.redact([doc])
 
@@ -76,7 +81,9 @@ RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
       end
 
       it 'redacts an external issue' do
-        doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue' data-external-issue='#{issue.id}' data-project='#{project.id}'>foo</a>")
+        doc = Nokogiri::HTML.fragment("<a class='gfm' href='https://www.gitlab.com' data-reference-type='issue'>foo</a>")
+        doc.css('a').first["data-external-issue"] = issue.id
+        doc.css('a').first["data-project"] = project.id
 
         redactor.redact([doc])
 
@@ -101,6 +108,18 @@ RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
         expect(redacted_data.map { |data| data[:visible_reference_count] }).to eq([1, 1])
         expect(doc1.to_html).to eq(doc1_html)
         expect(doc2.to_html).to eq(doc2_html)
+      end
+    end
+
+    context 'when reference is a gollum wiki page link that is not visible to user' do
+      it 'replaces redacted reference with original content' do
+        doc = Nokogiri::HTML.fragment('<a class="gfm" href="https://gitlab.com/path/to/project/-/wikis/foo" data-reference-type="wiki_page" data-gollum="true">foo</a>')
+
+        expect(redactor).to receive(:nodes_visible_to_user).and_return([])
+
+        redactor.redact([doc])
+
+        expect(doc.to_html).to eq('foo')
       end
     end
   end
@@ -143,16 +162,15 @@ RSpec.describe Banzai::ReferenceRedactor, feature_category: :team_planning do
       expect(result['title']).to eq(issue.title)
     end
 
-    it 'removes info from a cross project reference' do
+    it 'redacts cross project reference' do
       issue = create(:issue, project: other_project)
       link = create_link(issue)
       doc = Nokogiri::HTML.fragment(link)
 
       redactor.redact([doc])
-      result = doc.css('a').last
 
-      expect(result['class']).not_to include('has-tooltip')
-      expect(result['title']).to be_empty
+      expect(doc.css('a')).to be_empty
+      expect(doc.to_html).to eq(issue.to_reference)
     end
   end
 

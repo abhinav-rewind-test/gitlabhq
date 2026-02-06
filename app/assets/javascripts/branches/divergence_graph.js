@@ -4,9 +4,11 @@ import axios from '~/lib/utils/axios_utils';
 import { __ } from '~/locale';
 import DivergenceGraph from './components/divergence_graph.vue';
 
+// eslint-disable-next-line max-params
 export function createGraphVueApp(el, data, maxCommits, defaultBranch) {
   return new Vue({
     el,
+    name: 'DivergenceGraphRoot',
     render(h) {
       return h(DivergenceGraph, {
         props: {

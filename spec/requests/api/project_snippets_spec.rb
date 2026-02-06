@@ -7,8 +7,8 @@ RSpec.describe API::ProjectSnippets, :aggregate_failures, feature_category: :sou
 
   let_it_be(:project) { create(:project, :public) }
   let_it_be(:project_no_snippets) { create(:project, :snippets_disabled) }
-  let_it_be(:user) { create(:user, developer_projects: [project_no_snippets]) }
-  let_it_be(:admin) { create(:admin, developer_projects: [project_no_snippets]) }
+  let_it_be(:user) { create(:user, developer_of: project_no_snippets) }
+  let_it_be(:admin) { create(:admin, developer_of: project_no_snippets) }
   let_it_be(:public_snippet, reload: true) { create(:project_snippet, :public, :repository, project: project) }
 
   describe "GET /projects/:project_id/snippets/:id/user_agent_detail" do
@@ -61,6 +61,18 @@ RSpec.describe API::ProjectSnippets, :aggregate_failures, feature_category: :sou
       expect(json_response).to be_an Array
       expect(json_response.map { |snippet| snippet['id'] }).to contain_exactly(public_snippet.id, internal_snippet.id, private_snippet.id)
       expect(json_response.last).to have_key('web_url')
+    end
+
+    it 'passes organization_id to SnippetsFinder' do
+      project.add_developer(user)
+
+      expect(SnippetsFinder).to receive(:new)
+        .with(user, hash_including(organization_id: current_organization.id, project: project))
+        .and_call_original
+
+      get api("/projects/#{project.id}/snippets", user)
+
+      expect(response).to have_gitlab_http_status(:ok)
     end
 
     it 'hides private snippets from regular user' do
@@ -394,6 +406,29 @@ RSpec.describe API::ProjectSnippets, :aggregate_failures, feature_category: :sou
 
       expect(response).to have_gitlab_http_status(:not_found)
       expect(json_response['message']).to eq('404 Snippet Not Found')
+    end
+
+    context "when destruction fails" do
+      let(:error_message) { "some service error message" }
+      let(:error_response) do
+        ServiceResponse.error(
+          message: error_message,
+          reason: ::Snippets::DestroyService::FAILED_TO_DELETE_ERROR
+        )
+      end
+
+      before do
+        allow_next_instance_of(::Snippets::DestroyService) do |service|
+          allow(service).to receive(:execute).and_return(error_response)
+        end
+      end
+
+      it 'returns an error when DestroyService fails' do
+        delete api(path, admin, admin_mode: true)
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq({ "error" => error_message })
+      end
     end
 
     it_behaves_like '412 response' do

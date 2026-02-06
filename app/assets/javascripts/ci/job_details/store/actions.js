@@ -5,7 +5,6 @@ import { setFaviconOverlay, resetFavicon } from '~/lib/utils/favicon';
 import { HTTP_STATUS_FORBIDDEN } from '~/lib/utils/http_status';
 import Poll from '~/lib/utils/poll';
 import {
-  canScroll,
   isScrolledToBottom,
   isScrolledToTop,
   scrollDown,
@@ -163,7 +162,10 @@ export const receiveJobSuccess = ({ commit }, data = {}) => {
 export const receiveJobError = ({ commit }) => {
   commit(types.RECEIVE_JOB_ERROR);
   createAlert({
-    message: __('An error occurred while fetching the job.'),
+    message: __(
+      'An error occurred while fetching the job. The information presented below may not be accurate. Refresh the page to retrieve the latest job log.',
+    ),
+    dismissible: false,
   });
   resetFavicon();
 };
@@ -171,34 +173,28 @@ export const receiveJobError = ({ commit }) => {
 /**
  * Job Log
  */
-export const scrollTop = ({ dispatch }) => {
+export const scrollTop = () => {
   scrollUp();
-  dispatch('toggleScrollButtons');
 };
 
-export const scrollBottom = ({ dispatch }) => {
+export const scrollBottom = () => {
   scrollDown();
-  dispatch('toggleScrollButtons');
 };
 
 /**
  * Responsible for toggling the disabled state of the scroll buttons
  */
 export const toggleScrollButtons = ({ dispatch }) => {
-  if (canScroll()) {
-    if (isScrolledToTop()) {
-      dispatch('disableScrollTop');
-      dispatch('enableScrollBottom');
-    } else if (isScrolledToBottom()) {
-      dispatch('disableScrollBottom');
-      dispatch('enableScrollTop');
-    } else {
-      dispatch('enableScrollTop');
-      dispatch('enableScrollBottom');
-    }
-  } else {
-    dispatch('disableScrollBottom');
+  if (isScrolledToTop()) {
     dispatch('disableScrollTop');
+  } else {
+    dispatch('enableScrollTop');
+  }
+
+  if (isScrolledToBottom()) {
+    dispatch('disableScrollBottom');
+  } else {
+    dispatch('enableScrollBottom');
   }
 };
 
@@ -206,14 +202,6 @@ export const disableScrollBottom = ({ commit }) => commit(types.DISABLE_SCROLL_B
 export const disableScrollTop = ({ commit }) => commit(types.DISABLE_SCROLL_TOP);
 export const enableScrollBottom = ({ commit }) => commit(types.ENABLE_SCROLL_BOTTOM);
 export const enableScrollTop = ({ commit }) => commit(types.ENABLE_SCROLL_TOP);
-
-/**
- * While the automatic scroll down is active,
- * we show the scroll down button with an animation
- */
-export const toggleScrollAnimation = ({ commit }, toggle) =>
-  commit(types.TOGGLE_SCROLL_ANIMATION, toggle);
-
 export const requestJobLog = ({ commit }) => commit(types.REQUEST_JOB_LOG);
 
 export const fetchJobLog = ({ commit, dispatch, state }) => {
@@ -273,7 +261,10 @@ export const stopPollingJobLog = ({ state, commit }) => {
 export const receiveJobLogError = ({ dispatch }) => {
   dispatch('stopPollingJobLog');
   createAlert({
-    message: __('An error occurred while fetching the job log.'),
+    message: __(
+      'An error occurred while fetching the job log. The information presented below may not be accurate. Refresh the page to retrieve the latest job log.',
+    ),
+    dismissible: false,
   });
 };
 

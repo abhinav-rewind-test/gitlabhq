@@ -5,17 +5,18 @@ class Projects::MergeRequests::CreationsController < Projects::MergeRequests::Ap
   include DiffHelper
   include RendersCommits
   include ProductAnalyticsTracking
+  include Projects::TargetProjects
+  include RapidDiffs::Resource
 
   skip_before_action :merge_request
   before_action :authorize_create_merge_request_from!
   before_action :apply_diff_view_cookie!, only: [:diffs, :diff_for_path]
   before_action :build_merge_request, except: [:create]
+  before_action :start_user_experience_create_mr, only: [:create]
 
-  before_action only: [:new] do
-    if can?(current_user, :fill_in_merge_request_template, project)
-      push_frontend_feature_flag(:fill_in_mr_template, project)
-    end
-  end
+  feature_category :continuous_integration, [:pipelines]
+
+  helper_method :rapid_diffs_presenter
 
   urgency :low, [
     :new,
@@ -107,28 +108,25 @@ class Projects::MergeRequests::CreationsController < Projects::MergeRequests::Ap
     render layout: false
   end
 
-  def target_projects
-    render json: ProjectSerializer.new.represent(get_target_projects)
+  def diffs_resource(options = {})
+    @merge_request&.compare&.diffs(options)
   end
 
   private
 
-  def get_target_projects
-    MergeRequestTargetProjectFinder
-      .new(current_user: current_user, source_project: @project, project_feature: :repository)
-      .execute(include_routes: false, search: params[:search]).limit(20)
-  end
-
-  def build_merge_request
-    params[:merge_request] ||= ActionController::Parameters.new(source_project: @project)
-    new_params = merge_request_params.merge(diff_options: diff_options)
-
-    # Gitaly N+1 issue: https://gitlab.com/gitlab-org/gitlab-foss/issues/58096
-    Gitlab::GitalyClient.allow_n_plus_1_calls do
-      @merge_request = ::MergeRequests::BuildService
-        .new(project: project, current_user: current_user, params: new_params)
-        .execute
-    end
+  def rapid_diffs_presenter
+    @rapid_diffs_presenter ||= ::RapidDiffs::MergeRequestCreationPresenter.new(
+      @merge_request,
+      project: project,
+      diff_view: diff_view,
+      diff_options: diff_options,
+      request_params: {
+        merge_request: merge_request_params,
+        file_path: params[:file_path],
+        old_path: params[:old_path],
+        new_path: params[:new_path]
+      }
+    )
   end
 
   def define_new_vars
@@ -136,8 +134,12 @@ class Projects::MergeRequests::CreationsController < Projects::MergeRequests::Ap
     @target_project = @merge_request.target_project
     @source_project = @merge_request.source_project
 
+    recent_commits = @merge_request.recent_commits(
+      load_from_gitaly: true
+    ).with_latest_pipeline(@merge_request.source_branch)
+
     @commits = set_commits_for_rendering(
-      @merge_request.recent_commits.with_latest_pipeline(@merge_request.source_branch),
+      recent_commits,
       commits_count: @merge_request.commits_count
     )
 
@@ -179,7 +181,11 @@ class Projects::MergeRequests::CreationsController < Projects::MergeRequests::Ap
   end
 
   def incr_count_webide_merge_request
-    webide_source? && Gitlab::UsageDataCounters::WebIdeCounter.increment_merge_requests_count
+    webide_source? && Gitlab::InternalEvents.track_event(
+      'create_merge_request_from_web_ide',
+      project: project,
+      user: current_user
+    )
   end
 
   def tracking_project_source
@@ -188,6 +194,10 @@ class Projects::MergeRequests::CreationsController < Projects::MergeRequests::Ap
 
   def tracking_namespace_source
     @project.namespace
+  end
+
+  def start_user_experience_create_mr
+    Labkit::UserExperienceSli.start(:create_merge_request)
   end
 end
 

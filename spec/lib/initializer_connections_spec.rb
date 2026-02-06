@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe InitializerConnections do
-  describe '.raise_if_new_database_connection', :reestablished_active_record_base do
+  describe '.raise_if_new_database_connection', :reestablished_active_record_base, :delete do
     before do
       ActiveRecord::Base.connection_handler.clear_active_connections!
       ActiveRecord::Base.connection_handler.flush_idle_connections!
@@ -72,6 +72,62 @@ RSpec.describe InitializerConnections do
           Ci::ApplicationRecord.connection_pool
         end
       end.not_to raise_error
+    end
+  end
+
+  describe '.debug_database_queries' do
+    let(:block_result) { 'block_executed' }
+
+    before do
+      allow(Rails.logger).to receive(:debug)
+    end
+
+    shared_examples "debugging queries" do
+      it 'subscribes to active record notifications if skip is set to off' do
+        expect(ActiveSupport::Notifications).to receive(:subscribed)
+          .with(anything, "sql.active_record")
+          .and_call_original
+
+        described_class.debug_database_queries { block_result }
+      end
+    end
+
+    shared_examples "not debugging queries" do
+      it 'yields the block' do
+        expect(described_class.debug_database_queries { block_result }).to eq(block_result)
+      end
+    end
+
+    context 'in production mode' do
+      before do
+        allow(Rails.env).to receive(:production?).and_return(true)
+      end
+
+      it_behaves_like 'not debugging queries'
+
+      context 'with SKIP_DEBUG_INITIALIZE_CONNECTIONS=off' do
+        before do
+          stub_env('SKIP_DEBUG_INITIALIZE_CONNECTIONS', 'off')
+        end
+
+        it_behaves_like 'debugging queries'
+      end
+    end
+
+    context 'in non production mode' do
+      before do
+        allow(Rails.env).to receive(:production?).and_return(false)
+      end
+
+      it_behaves_like 'debugging queries'
+
+      context 'with SKIP_DEBUG_INITIALIZE_CONNECTIONS=on' do
+        before do
+          stub_env('SKIP_DEBUG_INITIALIZE_CONNECTIONS', 'on')
+        end
+
+        it_behaves_like 'not debugging queries'
+      end
     end
   end
 end

@@ -21,11 +21,12 @@ class InternalId < ApplicationRecord
   belongs_to :project
   belongs_to :namespace
 
-  enum usage: Enums::InternalId.usage_resources
+  enum :usage, Enums::InternalId.usage_resources
 
   validates :usage, presence: true
+  validates_with ExactlyOnePresentValidator, fields: [:project, :namespace]
 
-  scope :filter_by, -> (scope, usage) do
+  scope :filter_by, ->(scope, usage) do
     where(**scope, usage: usage)
   end
 
@@ -191,7 +192,7 @@ class InternalId < ApplicationRecord
 
       # `init` computes the maximum based on actual records. We use the
       # primary to make sure we have up to date results
-      Gitlab::Database::LoadBalancing::Session.current.use_primary do
+      Gitlab::Database::LoadBalancing::SessionMap.current(subject.load_balancer).use_primary do
         instance = subject.is_a?(::Class) ? nil : subject
 
         init.call(instance, scope) || 0

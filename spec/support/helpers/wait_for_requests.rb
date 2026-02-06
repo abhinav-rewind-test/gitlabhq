@@ -19,7 +19,7 @@ module WaitForRequests
     Gitlab::Testing::RequestBlockerMiddleware.allow_requests!
   end
 
-  # Slow down requests inside block by injecting `sleep 0.2` before each response
+  # Slow down requests inside block by injecting `sleep 1` before each response
   def slow_requests
     Gitlab::Testing::RequestBlockerMiddleware.slow_requests!
     yield
@@ -39,8 +39,8 @@ module WaitForRequests
   end
 
   # Wait for client-side AJAX requests
-  def wait_for_requests
-    wait_for('JS requests complete', max_wait_time: 2 * Capybara.default_max_wait_time) do
+  def wait_for_requests(max_wait_time: 2 * Capybara.default_max_wait_time)
+    wait_for('JS requests complete', max_wait_time: max_wait_time) do
       finished_all_js_requests?
     end
   end
@@ -72,6 +72,9 @@ module WaitForRequests
   end
 
   def finished_all_ajax_requests?
-    Capybara.page.evaluate_script('window.pendingRequests || window.pendingApolloRequests || window.pendingRailsUJSRequests || 0').zero? # rubocop:disable Style/NumericPredicate
+    Capybara
+      .page
+      .evaluate_script('window.pendingRequests || window.pendingApolloRequests || window.pendingRailsUJSRequests || 0')
+      .zero?
   end
 end

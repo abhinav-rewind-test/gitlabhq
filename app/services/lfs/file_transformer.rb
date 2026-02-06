@@ -45,7 +45,7 @@ module Lfs
     end
 
     def branch_to_base_off
-      @branch_to_base_off ||= (start_branch_name || branch_name)
+      @branch_to_base_off ||= start_branch_name || branch_name
     end
 
     class Result
@@ -72,7 +72,7 @@ module Lfs
     # rubocop: disable CodeReuse/ActiveRecord
     def create_lfs_object!(lfs_pointer_file, file_content, detect_content_type)
       LfsObject.find_or_create_by(oid: lfs_pointer_file.sha256, size: lfs_pointer_file.size) do |lfs_object|
-        lfs_object.file = if detect_content_type && (content_type = Gitlab::Utils::MimeType.from_string(file_content))
+        lfs_object.file = if detect_content_type && (content_type = ::Gitlab::Utils::MimeType.from_string(file_content))
                             CarrierWaveStringFile.new_file(
                               file_content: file_content,
                               filename: '',

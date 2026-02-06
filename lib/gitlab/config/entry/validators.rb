@@ -6,7 +6,8 @@ module Gitlab
       module Validators
         class AllowedKeysValidator < ActiveModel::EachValidator
           def validate_each(record, attribute, value)
-            unknown_keys = value.try(:keys).to_a - options[:in]
+            allowed_keys = Array(options[:in]).map(&:to_s)
+            unknown_keys = value.try(:keys).to_a.map(&:to_s) - allowed_keys
 
             if unknown_keys.any?
               record.errors.add(attribute, "contains unknown keys: " +
@@ -71,6 +72,8 @@ module Gitlab
 
         class AllowedArrayValuesValidator < ActiveModel::EachValidator
           def validate_each(record, attribute, value)
+            return unless value.is_a?(Array)
+
             unknown_values = value - options[:in]
             unless unknown_values.empty?
               record.errors.add(attribute, "contains unknown values: " +
@@ -152,6 +155,8 @@ module Gitlab
           include LegacyValidationHelpers
 
           def validate_each(record, attribute, value)
+            return if options[:variable] && contains_variable?(value)
+
             unless validate_duration(value, options[:parser])
               record.errors.add(attribute, 'should be a duration')
             end
@@ -161,6 +166,10 @@ module Gitlab
                 record.errors.add(attribute, 'should not exceed the limit')
               end
             end
+          end
+
+          def contains_variable?(value)
+            ExpandVariables::VARIABLES_REGEXP.match?(value.to_s)
           end
         end
 
@@ -322,7 +331,8 @@ module Gitlab
             raise unless type.is_a?(Class)
 
             unless value.is_a?(type)
-              message = options[:message] || "should be a #{type.name}"
+              article = type.name.match?(/\A[aeiou]/i) ? 'an' : 'a'
+              message = options[:message] || "should be #{article} #{type.name.downcase}"
               record.errors.add(attribute, message)
             end
           end
@@ -451,7 +461,7 @@ module Gitlab
           end
 
           def services_ports(current_data)
-            current_data.dig(:services).to_a.flat_map { |service| service.is_a?(Hash) ? service[:ports] : nil }
+            current_data[:services].to_a.flat_map { |service| service.is_a?(Hash) ? service[:ports] : nil }
           end
         end
 

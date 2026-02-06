@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Security::SecurityJobsFinder do
+RSpec.describe Security::SecurityJobsFinder, feature_category: :vulnerability_management do
   it_behaves_like ::Security::JobsFinder, described_class.allowed_job_types
 
   describe "#execute" do
-    let(:pipeline) { create(:ci_pipeline) }
+    let_it_be(:pipeline) { create(:ci_pipeline) }
     let(:finder) { described_class.new(pipeline: pipeline) }
 
     subject { finder.execute }

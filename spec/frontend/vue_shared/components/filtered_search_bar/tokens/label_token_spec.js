@@ -143,6 +143,31 @@ describe('LabelToken', () => {
         it('sets `loading` to false when request completes', () => {
           expect(findBaseToken().props('suggestionsLoading')).toBe(false);
         });
+
+        it('only shows each label title once', async () => {
+          const duplicateLabels = [
+            { id: 1, title: 'Example', color: '#FF0000', textColor: '#FFFFFF' },
+            { id: 2, title: 'Example', color: '#00FF00', textColor: '#000000' },
+            { id: 3, title: 'Unique Label', color: '#0000FF', textColor: '#FFFFFF' },
+          ];
+
+          wrapper = createComponent({
+            config: {
+              fetchLabels: jest.fn().mockResolvedValue({ data: duplicateLabels }),
+            },
+          });
+          await triggerFetchLabels(searchTerm);
+
+          const suggestions = findBaseToken().props('suggestions');
+          const labelTitles = suggestions.map((label) => label.title);
+
+          // Should only have one "Example" label
+          expect(labelTitles.filter((title) => title === 'Example')).toHaveLength(1);
+          // Should still have the unique label
+          expect(labelTitles).toContain('Unique Label');
+          // Total count should be 2 (one deduplicated "Example" + one "Unique Label")
+          expect(suggestions).toHaveLength(2);
+        });
       });
 
       describe('when request fails', () => {
@@ -199,6 +224,29 @@ describe('LabelToken', () => {
         mockRegularLabel.color,
       );
     });
+
+    it.each`
+      value                     | expectedText              | labelExists
+      ${'None'}                 | ${'None'}                 | ${false}
+      ${'Any'}                  | ${'Any'}                  | ${false}
+      ${mockRegularLabel.title} | ${mockRegularLabel.title} | ${true}
+    `(
+      'when "$value" is selected, shows "$expectedText" and presence of GlLabel is $labelExists',
+      async ({ value, expectedText, labelExists }) => {
+        wrapper = createComponent({
+          value: { data: value, operator: '=' },
+          config: {
+            initialLabels: mockLabels,
+          },
+        });
+
+        await nextTick();
+
+        const tokenSegments = findTokenSegments();
+        expect(tokenSegments.at(2).text()).toBe(expectedText);
+        expect(tokenSegments.at(2).findComponent(GlLabel).exists()).toBe(labelExists);
+      },
+    );
 
     it('renders provided defaultLabels as suggestions', async () => {
       wrapper = createComponent({

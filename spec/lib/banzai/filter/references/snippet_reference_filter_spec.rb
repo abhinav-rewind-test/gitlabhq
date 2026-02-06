@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_category: :markdown do
   include FilterSpecHelper
 
-  let(:project)   { create(:project, :public) }
-  let(:snippet)   { create(:project_snippet, project: project) }
+  let_it_be(:project) { create(:project, :public) }
+  let(:snippet) { create(:project_snippet, project: project) }
   let(:reference) { snippet.to_reference }
 
   it 'requires project context' do
@@ -15,8 +15,8 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Snippet #{reference}</#{elem}>"
-      expect(reference_filter(act).to_html).to eq exp
+      act = "<#{elem}>Snippet #{reference}</#{elem}>"
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -34,9 +34,9 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
     end
 
     it 'ignores invalid snippet IDs' do
-      exp = act = "Snippet #{invalidate_reference(reference)}"
+      act = "Snippet #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
 
     it 'includes a title attribute' do
@@ -107,17 +107,24 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
     end
 
     it 'ignores invalid snippet IDs on the referenced project' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
+    end
+
+    it 'ignores when attempting to reference a group with full path' do
+      create(:group, name: 'a_group')
+      act = "/a_group$12345"
+
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   context 'cross-project / same-namespace complete reference' do
-    let(:namespace) { create(:namespace) }
-    let(:project)   { create(:project, :public, namespace: namespace) }
-    let(:project2)  { create(:project, :public, namespace: namespace) }
-    let!(:snippet)  { create(:project_snippet, project: project2) }
+    let_it_be(:namespace) { create(:namespace) }
+    let_it_be(:project)   { create(:project, :public, namespace: namespace) }
+    let_it_be(:project2)  { create(:project, :public, namespace: namespace) }
+    let_it_be(:snippet)   { create(:project_snippet, project: project2) }
     let(:reference) { "#{project2.full_path}$#{snippet.id}" }
 
     it 'links to a valid reference' do
@@ -140,17 +147,17 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
     end
 
     it 'ignores invalid snippet IDs on the referenced project' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   context 'cross-project shorthand reference' do
-    let(:namespace) { create(:namespace) }
-    let(:project)   { create(:project, :public, namespace: namespace) }
-    let(:project2)  { create(:project, :public, namespace: namespace) }
-    let!(:snippet)  { create(:project_snippet, project: project2) }
+    let_it_be(:namespace) { create(:namespace) }
+    let_it_be(:project)   { create(:project, :public, namespace: namespace) }
+    let_it_be(:project2)  { create(:project, :public, namespace: namespace) }
+    let_it_be(:snippet)   { create(:project_snippet, project: project2) }
     let(:reference) { "#{project2.path}$#{snippet.id}" }
 
     it 'links to a valid reference' do
@@ -173,16 +180,16 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
     end
 
     it 'ignores invalid snippet IDs on the referenced project' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   context 'cross-project URL reference' do
-    let(:namespace) { create(:namespace, name: 'cross-reference') }
-    let(:project2)  { create(:project, :public, namespace: namespace) }
-    let(:snippet)   { create(:project_snippet, project: project2) }
+    let_it_be(:namespace) { create(:namespace, name: 'cross-reference') }
+    let_it_be(:project2)  { create(:project, :public, namespace: namespace) }
+    let_it_be(:snippet)   { create(:project_snippet, project: project2) }
     let(:reference) { urls.project_snippet_url(project2, snippet) }
 
     it 'links to a valid reference' do
@@ -208,22 +215,22 @@ RSpec.describe Banzai::Filter::References::SnippetReferenceFilter, feature_categ
     it 'links to a valid reference' do
       reference = "#{project.full_path}$#{snippet.id}"
 
-      result = reference_filter("See #{reference}", { project: nil, group: create(:group) } )
+      result = reference_filter("See #{reference}", { project: nil, group: create(:group) })
 
       expect(result.css('a').first.attr('href')).to eq(urls.project_snippet_url(project, snippet))
     end
 
     it 'ignores internal references' do
-      exp = act = "See $#{snippet.id}"
+      act = "See $#{snippet.id}"
 
-      expect(reference_filter(act, project: nil, group: create(:group)).to_html).to eq exp
+      expect(reference_filter(act, project: nil, group: create(:group)).to_html).to include act
     end
   end
 
   context 'checking N+1' do
-    let(:namespace2) { create(:namespace) }
-    let(:project2)   { create(:project, :public, namespace: namespace2) }
-    let(:snippet2)   { create(:project_snippet, project: project2) }
+    let_it_be(:namespace2) { create(:namespace) }
+    let_it_be(:project2)   { create(:project, :public, namespace: namespace2) }
+    let_it_be(:snippet2)   { create(:project_snippet, project: project2) }
     let(:reference2) { "#{project2.full_path}$#{snippet2.id}" }
 
     it 'does not have N+1 per multiple references per project', :use_sql_query_cache do

@@ -14,7 +14,9 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::ActiveJobs do
       project: project,
       current_user: user,
       save_incompleted: true,
-      pipeline_seed: pipeline_seed_double
+      pipeline_seed: pipeline_seed_double,
+      current_pipeline_size: pipeline_seed_double.size,
+      jobs_count_in_alive_pipelines: existing_pipeline.statuses.size
     )
   end
 

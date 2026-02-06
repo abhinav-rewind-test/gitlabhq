@@ -9,7 +9,7 @@ import {
   GlSearchBoxByType,
   GlTooltipDirective,
 } from '@gitlab/ui';
-import { __ } from '~/locale';
+import { __, s__ } from '~/locale';
 import SidebarParticipant from '~/sidebar/components/assignees/sidebar_participant.vue';
 import { TYPE_ISSUE, TYPE_MERGE_REQUEST } from '~/issues/constants';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
@@ -62,7 +62,18 @@ export default {
     },
     currentUser: {
       type: Object,
-      required: true,
+      required: false,
+      default: () => ({}),
+    },
+    customSearchUsersProcessor: {
+      type: Function,
+      required: false,
+      default: null,
+    },
+    customSearchUsersQuery: {
+      type: Object,
+      required: false,
+      default: null,
     },
     issuableType: {
       type: String,
@@ -111,10 +122,18 @@ export default {
         };
       },
       update(data) {
-        return data.workspace?.issuable?.participants.nodes.map((node) => ({
-          ...node,
-          canMerge: false,
-        }));
+        return data.namespace?.issuable?.participants.nodes.map((node) => {
+          const isDisabled = Boolean(node?.status?.disabledForDuoUsage);
+          return {
+            ...node,
+            canMerge: false,
+            isDisabled,
+            ...(isDisabled && {
+              disabledReason:
+                node?.status?.disabledForDuoUsageReason || s__('WorkItem|Cannot be assigned'),
+            }),
+          };
+        });
       },
       error() {
         this.$emit('error');
@@ -122,7 +141,7 @@ export default {
     },
     searchUsers: {
       query() {
-        return userSearchQueries[this.issuableType].query;
+        return this.customSearchUsersQuery || userSearchQueries[this.issuableType].query;
       },
       variables() {
         return this.searchUsersVariables;
@@ -131,13 +150,24 @@ export default {
         return !this.isEditing;
       },
       update(data) {
+        if (this.customSearchUsersProcessor !== null) {
+          return this.customSearchUsersProcessor(data);
+        }
         return (
-          data.workspace?.users
+          data.namespace?.users
             .filter((user) => user)
-            .map((user) => ({
-              ...user,
-              canMerge: user.mergeRequestInteraction?.canMerge || false,
-            })) || []
+            .map((user) => {
+              const isDisabled = Boolean(user?.status?.disabledForDuoUsage);
+              return {
+                ...user,
+                canMerge: user.mergeRequestInteraction?.canMerge || false,
+                isDisabled,
+                ...(isDisabled && {
+                  disabledReason:
+                    user?.status?.disabledForDuoUsageReason || s__('WorkItem|Cannot be assigned'),
+                }),
+              };
+            }) || []
         );
       },
       error() {
@@ -268,6 +298,7 @@ export default {
     focusSearch() {
       this.$refs.search.focusInput();
     },
+    // eslint-disable-next-line vue/no-unused-properties -- showDropdown() is part of the component's public API.
     showDropdown() {
       this.$refs.dropdown.show();
     },
@@ -311,7 +342,7 @@ export default {
 <template>
   <gl-dropdown ref="dropdown" :text="text" @toggle="$emit('toggle')" @shown="focusSearch">
     <template #header>
-      <p class="gl-font-weight-bold gl-text-center gl-mt-2 gl-mb-4">{{ headerText }}</p>
+      <p class="gl-mb-4 gl-mt-2 gl-text-center gl-font-bold">{{ headerText }}</p>
       <gl-dropdown-divider />
       <gl-search-box-by-type
         ref="search"
@@ -325,7 +356,7 @@ export default {
         v-if="isLoading"
         data-testid="loading-participants"
         size="md"
-        class="gl-absolute gl-left-0 gl-top-0 gl-right-0"
+        class="gl-absolute gl-left-0 gl-right-0 gl-top-0"
       />
       <template v-else>
         <template v-if="shouldShowParticipants">
@@ -334,9 +365,9 @@ export default {
             :is-checked="selectedIsEmpty"
             is-check-centered
             data-testid="unassign"
-            @click.native.capture.stop="unassign"
+            @click.capture.native.stop="unassign"
           >
-            <span :class="selectedIsEmpty ? 'gl-pl-0' : 'gl-pl-6'" class="gl-font-weight-bold">{{
+            <span :class="selectedIsEmpty ? 'gl-pl-0' : 'gl-pl-6'" class="gl-font-bold">{{
               $options.i18n.unassigned
             }}</span>
           </gl-dropdown-item>
@@ -351,7 +382,7 @@ export default {
           is-checked
           is-check-centered
           data-testid="selected-participant"
-          @click.native.capture.stop="unselect(item.username)"
+          @click.capture.native.stop="unselect(item.username)"
         >
           <sidebar-participant :user="item" :issuable-type="issuableType" selected />
         </gl-dropdown-item>
@@ -359,24 +390,24 @@ export default {
           <gl-dropdown-divider />
           <gl-dropdown-item
             data-testid="current-user"
-            @click.native.capture.stop="selectAssignee(currentUser)"
+            @click.capture.native.stop="selectAssignee(currentUser)"
           >
             <sidebar-participant
               :user="currentUser"
               :issuable-type="issuableType"
-              class="gl-pl-6!"
+              class="!gl-pl-6"
             />
           </gl-dropdown-item>
         </template>
         <gl-dropdown-item
           v-if="showAuthor"
           data-testid="issuable-author"
-          @click.native.capture.stop="selectAssignee(issuableAuthor)"
+          @click.capture.native.stop="selectAssignee(issuableAuthor)"
         >
           <sidebar-participant
             :user="issuableAuthor"
             :issuable-type="issuableType"
-            class="gl-pl-6!"
+            class="!gl-pl-6"
           />
         </gl-dropdown-item>
         <gl-dropdown-item
@@ -385,16 +416,17 @@ export default {
           v-gl-tooltip.left.viewport
           :title="tooltipText(unselectedUser)"
           boundary="viewport"
+          :disabled="unselectedUser.isDisabled"
           data-testid="unselected-participant"
-          @click.native.capture.stop="selectAssignee(unselectedUser)"
+          @click.capture.native.stop="!unselectedUser.isDisabled && selectAssignee(unselectedUser)"
         >
           <sidebar-participant
             :user="unselectedUser"
             :issuable-type="issuableType"
-            class="gl-pl-6!"
+            class="!gl-pl-6"
           />
         </gl-dropdown-item>
-        <gl-dropdown-item v-if="noUsersFound" data-testid="empty-results" class="gl-pl-6!">
+        <gl-dropdown-item v-if="noUsersFound" data-testid="empty-results" class="!gl-pl-6">
           {{ __('No matching results') }}
         </gl-dropdown-item>
       </template>

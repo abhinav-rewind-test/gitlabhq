@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe 'Direct upload support' do
   subject do
@@ -72,7 +72,7 @@ RSpec.describe 'Direct upload support' do
           let(:provider) { 'Aliyun' }
 
           it 'raises an error' do
-            expect { subject }.to raise_error /Object storage provider '#{provider}' is not supported when 'direct_upload' is used for '#{config_name}'/
+            expect { subject }.to raise_error(/Object storage provider '#{provider}' is not supported when 'direct_upload' is used for '#{config_name}'/)
           end
         end
 
@@ -85,7 +85,7 @@ RSpec.describe 'Direct upload support' do
           end
 
           it 'raises an error' do
-            expect { subject }.to raise_error /the 'connection' section is missing/
+            expect { subject }.to raise_error(/the 'connection' section is missing/)
           end
         end
       end

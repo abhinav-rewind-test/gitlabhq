@@ -1,10 +1,10 @@
 import { memoize } from 'lodash';
-import { EXPLICIT_NEEDS_PROPERTY, NEEDS_PROPERTY } from '../constants';
-import { createSankey } from '../dag/utils/drawing_utils';
+import { NEEDS_PROPERTY, ALL_JOBS_FROM_PREVIOUS_STAGE_PROPERTY } from '../constants';
+import { createSankey } from './drawing_utils';
 import { createNodeDict } from './index';
 
 /*
-  A peformant alternative to lodash's isEqual. Because findIndex always finds
+  A performant alternative to lodash's isEqual. Because findIndex always finds
   the first instance of a match, if the found index is not the first, we know
   it is in fact a duplicate.
 */
@@ -81,9 +81,12 @@ export const filterByAncestors = (links, nodeDict) =>
 
 export const parseData = (nodes, { needsKey = NEEDS_PROPERTY } = {}) => {
   const nodeDict = createNodeDict(nodes, { needsKey });
+  // Always use NEEDS_PROPERTY for ancestor traversal to avoid circular dependencies
+  const needsOnlyNodeDict =
+    needsKey === NEEDS_PROPERTY ? nodeDict : createNodeDict(nodes, { needsKey: NEEDS_PROPERTY });
   const allLinks = makeLinksFromNodes(nodes, nodeDict, { needsKey });
   const filteredLinks = allLinks.filter(deduplicate);
-  const links = filterByAncestors(filteredLinks, nodeDict);
+  const links = filterByAncestors(filteredLinks, needsOnlyNodeDict);
 
   return { nodes, links };
 };
@@ -107,16 +110,6 @@ export const getMaxNodes = (nodes) => {
 };
 
 /*
-  Because we cannot know if a node is part of a relationship until after we
-  generate the links with createSankey, this function is used after the first call
-  to find nodes that have no relations.
-*/
-
-export const removeOrphanNodes = (sankeyfiedNodes) => {
-  return sankeyfiedNodes.filter((node) => node.sourceLinks.length || node.targetLinks.length);
-};
-
-/*
   This utility accepts unwrapped pipeline data in the format returned from
   our standard pipeline GraphQL query and returns a list of names by layer
   for the layer view. It can be combined with the stageLookup on the pipeline
@@ -125,8 +118,10 @@ export const removeOrphanNodes = (sankeyfiedNodes) => {
 
 export const listByLayers = ({ stages }) => {
   const arrayOfJobs = stages.flatMap(({ groups }) => groups);
-  const parsedData = parseData(arrayOfJobs);
-  const explicitParsedData = parseData(arrayOfJobs, { needsKey: EXPLICIT_NEEDS_PROPERTY });
+  const needsOnlyParsedData = parseData(arrayOfJobs, { needsKey: NEEDS_PROPERTY });
+  const explicitParsedData = parseData(arrayOfJobs, {
+    needsKey: ALL_JOBS_FROM_PREVIOUS_STAGE_PROPERTY,
+  });
   const dataWithLayers = createSankey()(explicitParsedData);
 
   const pipelineLayers = dataWithLayers.nodes.reduce((acc, { layer, name }) => {
@@ -142,7 +137,7 @@ export const listByLayers = ({ stages }) => {
   }, []);
 
   return {
-    linksData: parsedData.links,
+    linksData: needsOnlyParsedData.links,
     numGroups: arrayOfJobs.length,
     pipelineLayers,
   };
@@ -173,10 +168,7 @@ export const generateColumnsFromLayersListMemoized = memoize(generateColumnsFrom
 
 export const keepLatestDownstreamPipelines = (downstreamPipelines = []) => {
   return downstreamPipelines.filter((pipeline) => {
-    if (pipeline.source_job) {
-      return !pipeline?.source_job?.retried || false;
-    }
-
-    return !pipeline?.sourceJob?.retried || false;
+    const sourceJob = pipeline.source_job ?? pipeline.sourceJob;
+    return !sourceJob?.retried;
   });
 };

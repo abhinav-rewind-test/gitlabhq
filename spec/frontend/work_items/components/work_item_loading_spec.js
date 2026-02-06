@@ -1,13 +1,11 @@
-import { GlSkeletonLoader } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import WorkItemLoading from '~/work_items/components/work_item_loading.vue';
+import WorkItemNotesLoading from '~/work_items/components/notes/work_item_notes_loading.vue';
 
 describe('Work Item Loading spec', () => {
   let wrapper;
 
   const findWorkItemTwoColumnLoading = () => wrapper.findByTestId('work-item-two-column-loading');
-  const findWorkItemSingleColumnLoading = () =>
-    wrapper.findByTestId('work-item-single-column-loading');
   const findWorkItemTitleMetaLoading = () => wrapper.findByTestId('work-title-and-meta-loading');
   const findWorkItemDescriptionLoading = () =>
     wrapper.findByTestId('work-item-description-loading');
@@ -17,31 +15,17 @@ describe('Work Item Loading spec', () => {
     wrapper.findByTestId('work-item-attributes-mdup-loading');
   const findWorkItemActivityPlaceholder = () =>
     wrapper.findByTestId('work-item-activity-placeholder-loading');
-  const findWorkItemNotesLoading = () => wrapper.findByTestId('work-item-notes-loading');
-  const findLoaders = () => findWorkItemAttributesXsSmLoading().findAllComponents(GlSkeletonLoader);
+  const findWorkItemNotesLoading = () => wrapper.findComponent(WorkItemNotesLoading);
+  const findLoaders = () =>
+    findWorkItemAttributesXsSmLoading().findAll('.gl-animate-skeleton-loader');
 
-  const createComponent = ({ twoColumnView = false } = {}) => {
-    wrapper = shallowMountExtended(WorkItemLoading, {
-      propsData: {
-        twoColumnView,
-      },
-    });
+  const createComponent = () => {
+    wrapper = shallowMountExtended(WorkItemLoading);
   };
-
-  describe('Work Item Single Column loading view', () => {
-    beforeEach(() => {
-      createComponent();
-    });
-
-    it('renders the single column loading', () => {
-      expect(findWorkItemSingleColumnLoading().exists()).toBe(true);
-      expect(findWorkItemTwoColumnLoading().exists()).toBe(false);
-    });
-  });
 
   describe('Work Item Two Column loading view', () => {
     beforeEach(() => {
-      createComponent({ twoColumnView: true });
+      createComponent();
     });
 
     it('renders the two column loading', () => {
@@ -59,7 +43,9 @@ describe('Work Item Loading spec', () => {
     it('renders the attributes loading skeleton', () => {
       expect(findWorkItemAttributesXsSmLoading().exists()).toBe(true);
       expect(findWorkItemAttributesMdUpLoading().exists()).toBe(true);
-      expect(findLoaders()).toHaveLength(WorkItemLoading.loader.attributesRepeat);
+      // there are two separate loaders for each attribute, one representing the label
+      // and the other representing the value
+      expect(findLoaders()).toHaveLength(WorkItemLoading.loader.attributesRepeat * 2);
     });
 
     it('renders the activity placeholder loading skeleton', () => {

@@ -22,7 +22,8 @@ version_attributes:
   - author_id
   - created_at
 
-action_attributes: # (None)
+action_attributes:
+  - namespace_id
 
 # IGNORE.
 # Add attributes that should not be copied to the `ignore_{model}_attributes` lists:
@@ -33,11 +34,14 @@ ignore_design_attributes:
   - iid
   - description_html
   - cached_markdown_version
+  - namespace_id
+  - imported_from
 
 ignore_version_attributes:
   - id
   - issue_id
   - sha
+  - namespace_id
 
 ignore_action_attributes:
   - id

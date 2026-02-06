@@ -30,45 +30,6 @@ function getStubProps(component) {
 }
 
 if (global.document) {
-  const compatConfig = {
-    MODE: 2,
-
-    GLOBAL_MOUNT: 'suppress-warning',
-    GLOBAL_EXTEND: 'suppress-warning',
-    GLOBAL_PROTOTYPE: 'suppress-warning',
-    RENDER_FUNCTION: 'suppress-warning',
-
-    INSTANCE_DESTROY: 'suppress-warning',
-    INSTANCE_DELETE: 'suppress-warning',
-
-    INSTANCE_ATTRS_CLASS_STYLE: 'suppress-warning',
-    INSTANCE_CHILDREN: 'suppress-warning',
-    INSTANCE_SCOPED_SLOTS: 'suppress-warning',
-    INSTANCE_LISTENERS: 'suppress-warning',
-    INSTANCE_EVENT_EMITTER: 'suppress-warning',
-    INSTANCE_EVENT_HOOKS: 'suppress-warning',
-    INSTANCE_SET: 'suppress-warning',
-    GLOBAL_OBSERVABLE: 'suppress-warning',
-    GLOBAL_SET: 'suppress-warning',
-    COMPONENT_FUNCTIONAL: 'suppress-warning',
-    COMPONENT_V_MODEL: 'suppress-warning',
-    COMPONENT_ASYNC: 'suppress-warning',
-    CUSTOM_DIR: 'suppress-warning',
-    OPTIONS_BEFORE_DESTROY: 'suppress-warning',
-    OPTIONS_DATA_MERGE: 'suppress-warning',
-    OPTIONS_DATA_FN: 'suppress-warning',
-    OPTIONS_DESTROYED: 'suppress-warning',
-    ATTR_FALSE_VALUE: 'suppress-warning',
-
-    COMPILER_V_ON_NATIVE: 'suppress-warning',
-    COMPILER_V_BIND_OBJECT_ORDER: 'suppress-warning',
-
-    CONFIG_WHITESPACE: 'suppress-warning',
-    CONFIG_OPTION_MERGE_STRATS: 'suppress-warning',
-    PRIVATE_APIS: 'suppress-warning',
-    WATCH_ARRAY: 'suppress-warning',
-  };
-
   let compatH;
   Vue.config.compilerOptions.whitespace = 'preserve';
   Vue.createApp({
@@ -81,14 +42,14 @@ if (global.document) {
     },
   }).mount(document.createElement('div'));
 
-  Vue.configureCompat(compatConfig);
-  installVTUCompat(VTU, fullCompatConfig, compatH);
-
-  jest.mock('vue', () => {
-    const actualVue = jest.requireActual('vue');
-    actualVue.configureCompat(compatConfig);
-    return actualVue;
-  });
+  installVTUCompat(
+    VTU,
+    {
+      ...fullCompatConfig,
+      WRAPPER_SET_VALUE_DOES_NOT_TRIGGER_CHANGE: false,
+    },
+    compatH,
+  );
 
   jest.mock('@vue/test-utils', () => {
     const actualVTU = jest.requireActual('@vue/test-utils');
@@ -98,7 +59,7 @@ if (global.document) {
       RouterLinkStub: {
         ...actualVTU.RouterLinkStub,
         render() {
-          const { default: defaultSlot } = this.$slots ?? {};
+          const { default: defaultSlot } = this.$scopedSlots ?? {};
           const defaultSlotFn =
             defaultSlot && typeof defaultSlot !== 'function' ? () => defaultSlot : defaultSlot;
           return actualVTU.RouterLinkStub.render.call({
@@ -109,19 +70,6 @@ if (global.document) {
       },
     };
   });
-
-  jest.mock('portal-vue', () => ({
-    __esModule: true,
-    default: {
-      install: jest.fn(),
-    },
-    Portal: {},
-    PortalTarget: {},
-    MountingPortal: {
-      template: '<h1>MOUNTING-PORTAL</h1>',
-    },
-    Wormhole: {},
-  }));
 
   VTU.config.global.renderStubDefaultSlot = true;
 
@@ -196,7 +144,7 @@ if (global.document) {
         const props = Object.fromEntries(
           Object.entries(this.$props)
             .filter(([prop]) => isPropertyValidOnDomNode(prop))
-            .map(([key, value]) => [key, typeof value === 'function' ? '[Function]' : value]),
+            .map(([key, value]) => [key, typeof value === 'function' ? ['[Function]'] : value]),
         );
 
         return Vue.h(`${stubTag || 'anonymous'}-stub`, props, slotContents);

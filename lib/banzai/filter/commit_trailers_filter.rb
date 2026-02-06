@@ -16,6 +16,7 @@ module Banzai
     class CommitTrailersFilter < HTML::Pipeline::Filter
       include ActionView::Helpers::TagHelper
       include AvatarsHelper
+      prepend Concerns::PipelineTimingCheck
 
       def call
         doc.xpath('descendant-or-self::text()').each do |node|
@@ -55,9 +56,9 @@ module Banzai
           next line unless Devise.email_regexp.match(author_email)
 
           author_name = chunks.join(' ').strip
-          trailer = "#{trailer.strip}:"
+          stripped_trailer = "#{trailer.strip}:"
 
-          "#{trailer} #{link_to_user_or_email(author_name, author_email, trailer)}\n"
+          "#{trailer}: #{link_to_user_or_email(author_name, author_email, stripped_trailer)}\n"
         end.join
       end
 

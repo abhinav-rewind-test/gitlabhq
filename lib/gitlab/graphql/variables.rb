@@ -3,10 +3,21 @@
 module Gitlab
   module Graphql
     class Variables
+      # See lib/gitlab/middleware/json_validation.rb (`DEFAULT_LIMITS`) for matching limits
+      PARSE_LIMITS = {
+        max_depth: 32,
+        max_array_size: 50000,
+        max_hash_size: 50000,
+        max_total_elements: 100000,
+        # Disabled by default because some GraphQL queries upload large payloads
+        max_json_size_bytes: 0
+      }.freeze
+
       Invalid = Class.new(Gitlab::Graphql::StandardGraphqlError)
 
-      def initialize(param)
+      def initialize(param, options = {})
         @param = param
+        @parse_limits = options[:parse_limits] ? PARSE_LIMITS.merge(options[:parse_limits]) : PARSE_LIMITS
       end
 
       def to_h
@@ -20,7 +31,7 @@ module Gitlab
         case ambiguous_param
         when String
           if ambiguous_param.present?
-            ensure_hash(Gitlab::Json.parse(ambiguous_param))
+            ensure_hash(parse_json(ambiguous_param))
           else
             {}
           end
@@ -36,8 +47,12 @@ module Gitlab
         else
           raise Invalid, "Unexpected parameter: #{ambiguous_param}"
         end
-      rescue JSON::ParserError => e
-        raise Invalid, e
+      end
+
+      def parse_json(user_input)
+        Gitlab::Json.safe_parse(user_input, parse_limits: @parse_limits)
+      rescue JSON::ParserError => ex
+        raise Invalid, ex
       end
     end
   end

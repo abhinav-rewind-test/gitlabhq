@@ -60,6 +60,8 @@ module Gitlab
 
           # 'make install' puts the binaries in #{dir}/bin but the init script expects them in dir
           FileUtils.mv(Dir["#{dir}/bin/*"], dir)
+          # remove empty bin directory
+          FileUtils.rm_rf("#{dir}/bin")
         end
 
         def make
@@ -106,13 +108,15 @@ module Gitlab
           config[:storage] = storage_paths.map { |name, _| { name: name, path: storage_paths[name].to_s } }
 
           runtime_dir = options[:runtime_dir] || File.join(gitaly_dir, 'run')
-          FileUtils.mkdir(runtime_dir) unless File.exist?(runtime_dir)
+          FileUtils.mkdir_p(runtime_dir)
           config[:runtime_dir] = runtime_dir
 
           config[:'gitlab-shell'] = { dir: Gitlab.config.gitlab_shell.path }
           config[:bin_dir] = File.expand_path(File.join(gitaly_dir, '_build', 'bin')) # binaries by default are in `_build/bin`
           config[:gitlab] = { url: Gitlab.config.gitlab.url }
+          config[:transactions] = { enabled: true } if options[:transactions_enabled]
           config[:logging] = { dir: Rails.root.join('log').to_s }
+          config[:logging][:level] = options[:logging_level] if options[:logging_level]
 
           TomlRB.dump(config)
         end
@@ -163,6 +167,8 @@ module Gitlab
             token: 'secret'
           }
 
+          config[:logging] = { level: options[:logging_level] } if options[:logging_level]
+
           if options[:per_repository]
             failover = { enabled: true, election_strategy: 'per_repository' }
             database = { host: options.fetch(:pghost),
@@ -171,7 +177,7 @@ module Gitlab
                          dbname: options.fetch(:dbname, 'praefect_test') }
 
             config.merge!(database: database,
-                          failover: failover)
+              failover: failover)
           else
             failover = { enabled: false, election_strategy: 'local' }
 

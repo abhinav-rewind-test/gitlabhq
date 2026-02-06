@@ -6,6 +6,7 @@ module DesignManagement
     include ShaAttribute
     include AfterCommitQueue
     include Gitlab::Utils::StrongMemoize
+    include EachBatch
     extend Gitlab::ExclusiveLeaseHelpers
 
     NotSameIssue = Class.new(StandardError)
@@ -33,7 +34,8 @@ module DesignManagement
     end
 
     belongs_to :issue
-    belongs_to :author, class_name: 'User'
+    belongs_to :author, class_name: 'User', inverse_of: :design_management_versions
+    belongs_to :namespace
     has_many :actions
     has_many :designs,
       through: :actions,
@@ -46,18 +48,19 @@ module DesignManagement
     validates :sha, uniqueness: { case_sensitive: false, scope: :issue_id }
     validates :author, presence: true
     validates :issue, presence: true, unless: :importing?
+    validates :namespace, presence: true
 
     sha_attribute :sha
 
     delegate :project, to: :issue
 
-    scope :for_designs, -> (designs) do
+    scope :for_designs, ->(designs) do
       where(id: DesignManagement::Action.where(design_id: designs).select(:version_id)).distinct
     end
-    scope :earlier_or_equal_to, -> (version) { where("(#{table_name}.id) <= ?", version) } # rubocop:disable GitlabSecurity/SqlInjection
+    scope :earlier_or_equal_to, ->(version) { where("(#{table_name}.id) <= ?", version) } # rubocop:disable GitlabSecurity/SqlInjection
     scope :ordered, -> { order(id: :desc) }
-    scope :for_issue, -> (issue) { where(issue: issue) }
-    scope :by_sha, -> (sha) { where(sha: sha) }
+    scope :for_issue, ->(issue) { where(issue: issue) }
+    scope :by_sha, ->(sha) { where(sha: sha) }
     scope :with_author, -> { includes(:author) }
 
     # This is the one true way to create a Version.
@@ -83,7 +86,7 @@ module DesignManagement
       raise NotSameIssue, 'All designs must belong to the same issue!' if not_uniq
 
       transaction do
-        version = new(sha: sha, issue_id: issue_id, author: author)
+        version = new(sha: sha, issue_id: issue_id, author: author, namespace: Issue.find_by_id(issue_id)&.namespace)
         version.save(validate: false) # We need it to have an ID. Validate later when designs are present
 
         rows = design_actions.map { |action| action.row_attrs(version) }
@@ -100,12 +103,13 @@ module DesignManagement
     end
 
     CREATION_TTL = 5.seconds
-    RETRY_DELAY = ->(num) { 0.2.seconds * num**2 }
+    RETRY_DELAY = ->(num) { 0.2.seconds * (num**2) }
+    LOCK_RETRY_COUNT = 5
 
     def self.with_lock(project_id, repository, &block)
       key = "with_lock:#{name}:{#{project_id}}"
 
-      in_lock(key, ttl: CREATION_TTL, retries: 5, sleep_sec: RETRY_DELAY) do |_retried|
+      in_lock(key, ttl: CREATION_TTL, retries: LOCK_RETRY_COUNT, sleep_sec: RETRY_DELAY) do |_retried|
         repository.create_if_not_exists
         yield
       end

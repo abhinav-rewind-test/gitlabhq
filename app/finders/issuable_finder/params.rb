@@ -52,13 +52,15 @@ class IssuableFinder
     def filter_by_upcoming_milestone?
       # Usage of `#upcoming` in milestone_title to be deprecated
       # https://gitlab.com/gitlab-org/gitlab/-/issues/336044
-      params[:milestone_title] == Milestone::Upcoming.name || params[:milestone_wildcard_id].to_s.downcase == FILTER_UPCOMING
+      params[:milestone_title] == Milestone::Upcoming.name ||
+        params[:milestone_wildcard_id].to_s.downcase == FILTER_UPCOMING
     end
 
     def filter_by_started_milestone?
       # Usage of `#started` in milestone_title to be deprecated
       # https://gitlab.com/gitlab-org/gitlab/-/issues/336044
-      params[:milestone_title] == Milestone::Started.name || params[:milestone_wildcard_id].to_s.downcase == FILTER_STARTED
+      params[:milestone_title] == Milestone::Started.name ||
+        params[:milestone_wildcard_id].to_s.downcase == FILTER_STARTED
     end
 
     def filter_by_no_release?
@@ -163,7 +165,7 @@ class IssuableFinder
 
     def current_user_related?
       scope = params[:scope]
-      scope == 'created_by_me' || scope == 'authored' || scope == 'assigned_to_me'
+      %w[created_by_me authored assigned_to_me reviews_for_me].include?(scope)
     end
 
     def find_group_projects

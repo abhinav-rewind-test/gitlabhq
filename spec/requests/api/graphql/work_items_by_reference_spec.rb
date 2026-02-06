@@ -13,6 +13,8 @@ RSpec.describe 'find work items by reference', feature_category: :portfolio_mana
   let_it_be(:work_item) { create(:work_item, :task, project: project2) }
   let_it_be(:private_work_item) { create(:work_item, :task, project: private_project2) }
 
+  let(:path) { project.full_path }
+
   let(:references) { [work_item.to_reference(full: true), private_work_item.to_reference(full: true)] }
 
   shared_examples 'response with matching work items' do
@@ -41,14 +43,16 @@ RSpec.describe 'find work items by reference', feature_category: :portfolio_mana
       control_count = ActiveRecord::QueryRecorder.new(skip_cached: false) do
         post_graphql(query, current_user: current_user)
       end
+
       expect(graphql_data_at('workItemsByReference', 'nodes').size).to eq(1)
 
       extra_work_items = create_list(:work_item, 2, :task, project: project2)
       refs = references + extra_work_items.map { |item| item.to_reference(full: true) }
 
-      expect do
-        post_graphql(query(refs: refs), current_user: current_user)
-      end.not_to exceed_all_query_limit(control_count)
+      # Issue to fix N+1 - https://gitlab.com/gitlab-org/gitlab/-/issues/548924
+      expect { post_graphql(query(refs: refs), current_user: current_user) }
+        .not_to exceed_all_query_limit(control_count).with_threshold(4)
+
       expect(graphql_data_at('workItemsByReference', 'nodes').size).to eq(3)
     end
   end
@@ -94,12 +98,13 @@ RSpec.describe 'find work items by reference', feature_category: :portfolio_mana
   end
 
   context 'when the context is a group' do
-    it 'returns empty result' do
-      group2.add_guest(current_user)
-      post_graphql(query(namespace_path: group2.full_path), current_user: current_user)
+    let_it_be(:task) { create(:work_item, :task, project: project2) }
 
-      expect_graphql_errors_to_be_empty
-      expect(graphql_data_at('workItemsByReference', 'nodes')).to be_empty
+    let(:references) { [work_item.to_reference(full: true), Gitlab::UrlBuilder.build(task)] }
+    let(:path) { group2.path }
+
+    it_behaves_like 'response with matching work items' do
+      let(:items) { [task, work_item] }
     end
   end
 
@@ -118,7 +123,7 @@ RSpec.describe 'find work items by reference', feature_category: :portfolio_mana
     end
   end
 
-  def query(namespace_path: project.full_path, refs: references)
+  def query(namespace_path: path, refs: references)
     fields = <<~GRAPHQL
       nodes {
         #{all_graphql_fields_for('WorkItem', max_depth: 2)}

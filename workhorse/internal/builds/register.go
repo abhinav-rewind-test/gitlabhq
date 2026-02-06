@@ -1,3 +1,4 @@
+// Package builds provides functionality for registering builds.
 package builds
 
 import (
@@ -5,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -56,6 +58,7 @@ var (
 
 type largeBodyError struct{ error }
 
+// WatchKeyHandler is a function type for watching keys in Redis.
 type WatchKeyHandler func(ctx context.Context, key, value string, timeout time.Duration) (redis.WatchKeyStatus, error)
 
 type runnerRequest struct {
@@ -72,26 +75,30 @@ func readRunnerBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 
 func readRequestBody(w http.ResponseWriter, r *http.Request, maxBodySize int64) ([]byte, error) {
 	limitedBody := http.MaxBytesReader(w, r.Body, maxBodySize)
-	defer limitedBody.Close()
+	defer func() {
+		if err := limitedBody.Close(); err != nil {
+			fmt.Printf("Failed to close request body: %v", err)
+		}
+	}()
 
 	return io.ReadAll(limitedBody)
 }
 
 func readRunnerRequest(r *http.Request, body []byte) (*runnerRequest, error) {
-	if !isApplicationJson(r) {
+	if !isApplicationJSON(r) {
 		return nil, errors.New("invalid content-type received")
 	}
 
-	var runnerRequest runnerRequest
-	err := json.Unmarshal(body, &runnerRequest)
+	var request runnerRequest
+	err := json.Unmarshal(body, &request)
 	if err != nil {
 		return nil, err
 	}
 
-	return &runnerRequest, nil
+	return &request, nil
 }
 
-func isApplicationJson(r *http.Request) bool {
+func isApplicationJSON(r *http.Request) bool {
 	contentType := r.Header.Get("Content-Type")
 	return helper.IsContentType("application/json", contentType)
 }
@@ -110,12 +117,21 @@ func watchForRunnerChange(ctx context.Context, watchHandler WatchKeyHandler, tok
 	return watchHandler(ctx, runnerBuildQueue+token, lastUpdate, duration)
 }
 
-func RegisterHandler(h http.Handler, watchHandler WatchKeyHandler, pollingDuration time.Duration) http.Handler {
+// RegisterHandler with key watch logic if polling is enabled.
+func RegisterHandler(h http.Handler, watchHandler WatchKeyHandler, pollingDuration time.Duration, shutdownChan <-chan struct{}) http.Handler {
 	if pollingDuration == 0 {
 		return h
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If we've shutdown, always return a 204 No Content so the runner will retry.
+		select {
+		case <-shutdownChan:
+			w.WriteHeader(http.StatusNoContent)
+			return
+		default:
+		}
+
 		w.Header().Set(runnerBuildQueueHeaderKey, runnerBuildQueueHeaderValue)
 
 		requestBody, err := readRunnerBody(w, r)
@@ -128,16 +144,8 @@ func RegisterHandler(h http.Handler, watchHandler WatchKeyHandler, pollingDurati
 
 		newRequest := cloneRequestWithNewBody(r, requestBody)
 
-		runnerRequest, err := readRunnerRequest(r, requestBody)
-		if err != nil {
-			registerHandlerBodyParseErrors.Inc()
-			proxyRegisterRequest(h, w, newRequest)
-			return
-		}
-
-		if runnerRequest.Token == "" || runnerRequest.LastUpdate == "" {
-			registerHandlerMissingValues.Inc()
-			proxyRegisterRequest(h, w, newRequest)
+		runnerRequest, shouldReturn := getRunnerRequest(r, requestBody, h, w, newRequest)
+		if shouldReturn {
 			return
 		}
 
@@ -177,6 +185,22 @@ func RegisterHandler(h http.Handler, watchHandler WatchKeyHandler, pollingDurati
 			w.WriteHeader(http.StatusNoContent)
 		}
 	})
+}
+
+func getRunnerRequest(r *http.Request, requestBody []byte, h http.Handler, w http.ResponseWriter, newRequest *http.Request) (*runnerRequest, bool) {
+	runnerRequest, err := readRunnerRequest(r, requestBody)
+	if err != nil {
+		registerHandlerBodyParseErrors.Inc()
+		proxyRegisterRequest(h, w, newRequest)
+		return nil, true
+	}
+
+	if runnerRequest.Token == "" || runnerRequest.LastUpdate == "" {
+		registerHandlerMissingValues.Inc()
+		proxyRegisterRequest(h, w, newRequest)
+		return nil, true
+	}
+	return runnerRequest, false
 }
 
 func cloneRequestWithNewBody(r *http.Request, body []byte) *http.Request {

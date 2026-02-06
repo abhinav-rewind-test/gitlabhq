@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_artifacts do
+RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :job_artifacts do
   let(:artifacts) { Ci::JobArtifact.where(id: [artifact_with_file.id, artifact_without_file.id]) }
   let(:skip_projects_on_refresh) { false }
   let(:service) do
@@ -50,7 +50,7 @@ RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_a
     it 'reports metrics for destroyed artifacts' do
       expect_next_instance_of(Gitlab::Ci::Artifacts::Metrics) do |metrics|
         expect(metrics).to receive(:increment_destroyed_artifacts_count).with(2).and_call_original
-        expect(metrics).to receive(:increment_destroyed_artifacts_bytes).with(107464).and_call_original
+        expect(metrics).to receive(:increment_destroyed_artifacts_bytes).with(ci_artifact_fixture_size).and_call_original
       end
 
       execute
@@ -71,7 +71,7 @@ RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_a
 
       let(:artifacts) do
         Ci::JobArtifact.where(id: [artifact_with_file.id, artifact_under_refresh_1.id, artifact_under_refresh_2.id,
-                                   artifact_under_refresh_3.id])
+          artifact_under_refresh_3.id])
       end
 
       before do
@@ -178,6 +178,29 @@ RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_a
       end
     end
 
+    context 'when an artifact belongs to an orphaned project' do
+      let(:artifacts) { Ci::JobArtifact.where(id: [orphaned_artifact.id]) }
+      let!(:orphaned_artifact) do
+        create(:ci_job_artifact, :zip)
+      end
+
+      before do
+        orphaned_artifact.update!(project_id: 0)
+      end
+
+      it 'deletes the artifact' do
+        expect { subject }.to change { Ci::JobArtifact.count }.by(-1)
+      end
+
+      context 'when skip_projects_on_refresh is set to true' do
+        let(:skip_projects_on_refresh) { true }
+
+        it 'deletes the artifact' do
+          expect { subject }.to change { Ci::JobArtifact.count }.by(-1)
+        end
+      end
+    end
+
     context 'when artifact belongs to a project not undergoing refresh' do
       context 'and skip_projects_on_refresh is set to false (default)' do
         it 'does not log any warnings', :aggregate_failures do
@@ -212,7 +235,7 @@ RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_a
 
         expect { execute }
           .to change { project_1.statistics.reload.build_artifacts_size }.by(expected_amount)
-          .and change { project_2.statistics.reload.build_artifacts_size }.by(0)
+          .and not_change { project_2.statistics.reload.build_artifacts_size }
       end
 
       it 'increments project statistics with artifact size as amount and job artifact id as ref' do
@@ -279,6 +302,31 @@ RSpec.describe Ci::JobArtifacts::DestroyBatchService, feature_category: :build_a
 
       it 'reports the number of destroyed artifacts' do
         is_expected.to eq(destroyed_artifacts_count: 0, destroyed_ids: [], statistics_updates: {}, status: :success)
+      end
+    end
+
+    context 'when second service loads artifacts before first service deletes them (race condition)' do
+      let(:artifact) { create(:ci_job_artifact, :zip) }
+      let(:artifacts) { Ci::JobArtifact.where(id: artifact.id) }
+
+      it 'creates duplicate DeletedObject records but both are cleaned up' do
+        service1 = described_class.new(artifacts, pick_up_at: Time.current)
+        service2 = described_class.new(artifacts, pick_up_at: Time.current)
+
+        result1 = service1.execute
+        result2 = service2.execute
+
+        expect(result1[:status]).to eq(:success)
+        expect(result2[:status]).to eq(:success)
+
+        # Both report destroyed count based on their stale in-memory data
+        expect(result1[:destroyed_artifacts_count]).to eq(1)
+        expect(result2[:destroyed_artifacts_count]).to eq(1)
+
+        expect(Ci::JobArtifact.exists?(artifact.id)).to be(false)
+
+        # Duplicate DeletedObject records are created but this is cleaned up in DeleteObjectsService
+        expect(Ci::DeletedObject.count).to eq(2)
       end
     end
   end

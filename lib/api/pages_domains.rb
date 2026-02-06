@@ -44,12 +44,20 @@ module API
 
       desc "Get all pages domains" do
         success Entities::PagesDomainBasic
+        tags %w[gitlab_pages]
       end
       params do
+        optional :domain, type: String, desc: 'The domain of the GitLab Pages site to filter on.'
         use :pagination
       end
-      get "domains" do
-        present paginate(PagesDomain.all), with: Entities::PagesDomainBasic
+      get "domains", requirements: PAGES_DOMAINS_ENDPOINT_REQUIREMENTS do
+        if params[:domain].present?
+          domain = PagesDomain.find_by_domain_case_insensitive(params[:domain])
+          not_found!('PagesDomain') unless domain
+          present [domain], with: Entities::PagesDomainBasic
+        else
+          present paginate(PagesDomain.all), with: Entities::PagesDomainBasic
+        end
       end
     end
 
@@ -63,12 +71,13 @@ module API
 
       desc 'Get all pages domains' do
         success Entities::PagesDomain
-        tags %w[pages_domains]
+        tags %w[gitlab_pages]
         is_array true
       end
       params do
         use :pagination
       end
+      route_setting :authorization, permissions: :read_pages_domain, boundary_type: :project
       # rubocop: disable CodeReuse/ActiveRecord
       get ":id/pages/domains" do
         authorize! :read_pages, user_project
@@ -79,10 +88,12 @@ module API
 
       desc 'Get a single pages domain' do
         success Entities::PagesDomain
+        tags %w[gitlab_pages]
       end
       params do
         requires :domain, type: String, desc: 'The domain'
       end
+      route_setting :authorization, permissions: :read_pages_domain, boundary_type: :project
       get ":id/pages/domains/:domain", requirements: PAGES_DOMAINS_ENDPOINT_REQUIREMENTS do
         authorize! :read_pages, user_project
 
@@ -91,6 +102,7 @@ module API
 
       desc 'Create a new pages domain' do
         success Entities::PagesDomain
+        tags %w[gitlab_pages]
       end
       params do
         requires :domain, type: String, desc: 'The domain'
@@ -99,18 +111,17 @@ module API
         optional :certificate, types: [File, String], desc: 'The certificate', as: :user_provided_certificate
         optional :key, types: [File, String], desc: 'The key', as: :user_provided_key
         optional :auto_ssl_enabled, allow_blank: false, type: Boolean, default: false,
-                                    desc: "Enables automatic generation of SSL certificates issued by Let's Encrypt for custom domains."
+          desc: "Enables automatic generation of SSL certificates issued by Let's Encrypt for custom domains."
         # rubocop:enable Scalability/FileUploads
         all_or_none_of :user_provided_certificate, :user_provided_key
       end
+      route_setting :authorization, permissions: :create_pages_domain, boundary_type: :project
       post ":id/pages/domains" do
         authorize! :update_pages, user_project
 
         pages_domain_params = declared(params, include_parent_namespaces: false)
 
-        pages_domain = ::PagesDomains::CreateService
-          .new(user_project, current_user, pages_domain_params)
-          .execute
+        pages_domain = ::Pages::Domains::CreateService.new(user_project, current_user, pages_domain_params).execute
 
         if pages_domain.persisted?
           present pages_domain, with: Entities::PagesDomain
@@ -119,7 +130,9 @@ module API
         end
       end
 
-      desc 'Updates a pages domain'
+      desc 'Updates a pages domain' do
+        tags %w[gitlab_pages]
+      end
       params do
         requires :domain, type: String, desc: 'The domain'
         # rubocop:todo Scalability/FileUploads
@@ -127,9 +140,10 @@ module API
         optional :certificate, types: [File, String], desc: 'The certificate', as: :user_provided_certificate
         optional :key, types: [File, String], desc: 'The key', as: :user_provided_key
         optional :auto_ssl_enabled, allow_blank: true, type: Boolean,
-                                    desc: "Enables automatic generation of SSL certificates issued by Let's Encrypt for custom domains."
+          desc: "Enables automatic generation of SSL certificates issued by Let's Encrypt for custom domains."
         # rubocop:enable Scalability/FileUploads
       end
+      route_setting :authorization, permissions: :update_pages_domain, boundary_type: :project
       put ":id/pages/domains/:domain", requirements: PAGES_DOMAINS_ENDPOINT_REQUIREMENTS do
         authorize! :update_pages, user_project
 
@@ -140,7 +154,7 @@ module API
           pages_domain_params.delete(:user_provided_key)
         end
 
-        service = ::PagesDomains::UpdateService.new(user_project, current_user, pages_domain_params)
+        service = ::Pages::Domains::UpdateService.new(user_project, current_user, pages_domain_params)
 
         if service.execute(pages_domain)
           present pages_domain, with: Entities::PagesDomain
@@ -149,16 +163,38 @@ module API
         end
       end
 
-      desc 'Delete a pages domain'
+      desc 'Verify a pages domain' do
+        success Entities::PagesDomain
+        tags %w[gitlab_pages]
+      end
+      params do
+        requires :domain, type: String, desc: 'The domain to verify'
+      end
+      route_setting :authorization, permissions: :verify_pages_domain, boundary_type: :project
+      put ":id/pages/domains/:domain/verify", requirements: PAGES_DOMAINS_ENDPOINT_REQUIREMENTS do
+        authorize! :update_pages, user_project
+
+        pages_domain = find_pages_domain!
+        result = ::VerifyPagesDomainService.new(pages_domain).execute
+
+        if result[:status] == :success
+          present pages_domain, with: Entities::PagesDomain
+        else
+          render_api_error!(result[:message], result[:http_status])
+        end
+      end
+
+      desc 'Delete a pages domain' do
+        tags %w[gitlab_pages]
+      end
       params do
         requires :domain, type: String, desc: 'The domain'
       end
+      route_setting :authorization, permissions: :delete_pages_domain, boundary_type: :project
       delete ":id/pages/domains/:domain", requirements: PAGES_DOMAINS_ENDPOINT_REQUIREMENTS do
         authorize! :update_pages, user_project
 
-        ::PagesDomains::DeleteService
-          .new(user_project, current_user)
-          .execute(pages_domain)
+        ::Pages::Domains::DeleteService.new(user_project, current_user).execute(pages_domain)
 
         no_content!
       end

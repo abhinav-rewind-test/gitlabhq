@@ -1,6 +1,4 @@
 <script>
-import { GlAlert } from '@gitlab/ui';
-import { s__, sprintf, n__ } from '~/locale';
 import PackagesListRow from '~/packages_and_registries/package_registry/components/list/package_list_row.vue';
 import PackagesListLoader from '~/packages_and_registries/shared/components/packages_list_loader.vue';
 import RegistryList from '~/packages_and_registries/shared/components/registry_list.vue';
@@ -12,7 +10,6 @@ import {
   REQUEST_DELETE_PACKAGES_TRACKING_ACTION,
   CANCEL_DELETE_PACKAGE_TRACKING_ACTION,
   CANCEL_DELETE_PACKAGES_TRACKING_ACTION,
-  PACKAGE_ERROR_STATUS,
   PACKAGE_TYPE_MAVEN,
   PACKAGE_TYPE_NPM,
   PACKAGE_TYPE_PYPI,
@@ -29,7 +26,6 @@ const forwardingFieldToPackageTypeMapping = {
 export default {
   name: 'PackagesList',
   components: {
-    GlAlert,
     DeleteModal,
     PackagesListLoader,
     PackagesListRow,
@@ -58,7 +54,6 @@ export default {
   data() {
     return {
       itemsToBeDeleted: [],
-      errorPackages: [],
     };
   },
   computed: {
@@ -69,12 +64,10 @@ export default {
       }
       return null;
     },
-    listTitle() {
-      return n__('%d package', '%d packages', this.list.length);
-    },
     isListEmpty() {
       return !this.list || this.list.length === 0;
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       const category = this.itemToBeDeleted
         ? packageTypeToTrackCategory(this.itemToBeDeleted.packageType)
@@ -82,15 +75,6 @@ export default {
       return {
         category,
       };
-    },
-    errorTitleAlert() {
-      return sprintf(
-        s__('PackageRegistry|There was an error publishing a %{packageName} package'),
-        { packageName: this.errorPackages[0].name },
-      );
-    },
-    showErrorPackageAlert() {
-      return this.errorPackages.length > 0;
     },
     packageTypesWithForwardingEnabled() {
       return Object.keys(this.groupSettings)
@@ -101,15 +85,6 @@ export default {
       const selectedPackageTypes = new Set(this.itemsToBeDeleted.map((item) => item.packageType));
       return this.packageTypesWithForwardingEnabled.some((type) => selectedPackageTypes.has(type));
     },
-  },
-  watch: {
-    list(newVal) {
-      this.errorPackages = newVal.filter((pkg) => pkg.status === PACKAGE_ERROR_STATUS);
-    },
-  },
-  created() {
-    this.errorPackages =
-      this.list.length > 0 ? this.list.filter((pkg) => pkg.status === PACKAGE_ERROR_STATUS) : [];
   },
   methods: {
     setItemsToBeDeleted(items) {
@@ -140,21 +115,12 @@ export default {
       }
       this.itemsToBeDeleted = [];
     },
-    showConfirmationModal() {
-      this.setItemsToBeDeleted([this.errorPackages[0]]);
-    },
-  },
-  i18n: {
-    errorMessageBodyAlert: s__(
-      'PackageRegistry|There was a timeout and the package was not published. Delete this package and try again.',
-    ),
-    deleteThisPackage: s__('PackageRegistry|Delete this package'),
   },
 };
 </script>
 
 <template>
-  <div class="gl-display-flex gl-flex-direction-column">
+  <div class="gl-flex gl-flex-col">
     <slot v-if="isListEmpty && !isLoading" name="empty-state"></slot>
 
     <div v-else-if="isLoading">
@@ -162,20 +128,10 @@ export default {
     </div>
 
     <template v-else>
-      <gl-alert
-        v-if="showErrorPackageAlert"
-        variant="danger"
-        :title="errorTitleAlert"
-        :primary-button-text="$options.i18n.deleteThisPackage"
-        @primaryAction="showConfirmationModal"
-        >{{ $options.i18n.errorMessageBodyAlert }}</gl-alert
-      >
       <registry-list
         data-testid="packages-table"
         :hidden-delete="!canDeletePackages"
-        :is-loading="isLoading"
         :items="list"
-        :title="listTitle"
         @delete="setItemsToBeDeleted"
       >
         <template #default="{ selectItem, isSelected, item, first }">

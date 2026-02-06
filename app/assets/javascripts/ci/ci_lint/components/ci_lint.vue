@@ -1,29 +1,32 @@
 <script>
-import { GlButton, GlFormCheckbox, GlIcon, GlLink, GlAlert } from '@gitlab/ui';
+import { GlButton, GlFormCheckbox, GlLink, GlAlert } from '@gitlab/ui';
 import CiLintResults from '~/ci/pipeline_editor/components/lint/ci_lint_results.vue';
-import lintCiMutation from '~/ci/pipeline_editor/graphql/mutations/client/lint_ci.mutation.graphql';
+import ciLintMutation from '~/ci/pipeline_editor/graphql/mutations/ci_lint.mutation.graphql';
 import SourceEditor from '~/vue_shared/components/source_editor.vue';
+import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
+import { CI_CONFIG_STATUS_VALID } from '~/ci/pipeline_editor/constants';
 
 export default {
+  name: 'CiLint',
   components: {
     GlButton,
     GlFormCheckbox,
-    GlIcon,
     GlLink,
     GlAlert,
     CiLintResults,
     SourceEditor,
+    HelpIcon,
   },
   props: {
-    endpoint: {
-      type: String,
-      required: true,
-    },
     lintHelpPagePath: {
       type: String,
       required: true,
     },
     pipelineSimulationHelpPagePath: {
+      type: String,
+      required: true,
+    },
+    projectFullPath: {
       type: String,
       required: true,
     },
@@ -51,19 +54,25 @@ export default {
     async lint() {
       this.loading = true;
       try {
-        const {
-          data: {
-            lintCI: { valid, errors, warnings, jobs },
+        const { data } = await this.$apollo.mutate({
+          mutation: ciLintMutation,
+          variables: {
+            projectPath: this.projectFullPath,
+            content: this.content,
+            dryRun: this.dryRun,
           },
-        } = await this.$apollo.mutate({
-          mutation: lintCiMutation,
-          variables: { endpoint: this.endpoint, content: this.content, dry: this.dryRun },
         });
 
+        const ciConfigData = data?.ciLint?.config || {};
+        const { errors, stages, warnings, status } = ciConfigData;
+
         this.showingResults = true;
-        this.isValid = valid;
+        this.isValid = status === CI_CONFIG_STATUS_VALID;
         this.errors = errors;
         this.warnings = warnings;
+        const jobs = stages.flatMap((stage) =>
+          (stage.groups || []).flatMap((group) => group.jobs || []),
+        );
         this.jobs = jobs;
       } catch (error) {
         this.apiError = error;
@@ -81,7 +90,7 @@ export default {
 
 <template>
   <div class="row">
-    <div class="col-sm-12">
+    <div class="gl-col-sm-12">
       <gl-alert
         v-if="shouldShowError"
         class="gl-mb-3"
@@ -90,15 +99,15 @@ export default {
         >{{ apiError }}</gl-alert
       >
       <div class="file-holder gl-mb-3">
-        <div class="js-file-title file-title clearfix">
+        <div class="js-file-title file-title gl-clearfix">
           {{ __('Contents of .gitlab-ci.yml') }}
         </div>
         <source-editor v-model="content" file-name="*.yml" />
       </div>
     </div>
 
-    <div class="col-sm-12 gl-display-flex gl-justify-content-space-between">
-      <div class="gl-display-flex gl-align-items-center">
+    <div class="gl-col-sm-12 gl-flex gl-justify-between">
+      <div class="gl-flex gl-items-center">
         <gl-button
           class="gl-mr-4"
           :loading="loading"
@@ -110,8 +119,7 @@ export default {
         >
         <gl-form-checkbox v-model="dryRun" data-testid="ci-lint-dryrun"
           >{{ __('Simulate a pipeline created for the default branch') }}
-          <gl-link :href="pipelineSimulationHelpPagePath" target="_blank"
-            ><gl-icon class="gl-text-blue-600" name="question-o" /></gl-link
+          <gl-link :href="pipelineSimulationHelpPagePath" target="_blank"><help-icon /></gl-link
         ></gl-form-checkbox>
       </div>
       <gl-button data-testid="ci-lint-clear" @click="clear">{{ __('Clear') }}</gl-button>
@@ -119,7 +127,7 @@ export default {
 
     <ci-lint-results
       v-if="showingResults"
-      class="col-sm-12 gl-mt-5"
+      class="gl-col-sm-12 gl-mt-5"
       :is-valid="isValid"
       :jobs="jobs"
       :errors="errors"

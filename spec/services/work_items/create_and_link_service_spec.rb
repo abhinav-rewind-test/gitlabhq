@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe WorkItems::CreateAndLinkService, feature_category: :portfolio_management do
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, group: group) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user) { create(:user, developer_of: project) }
   let_it_be(:related_work_item, refind: true) { create(:work_item, project: project) }
   let_it_be(:invalid_parent) { create(:work_item, :task, project: project) }
 
@@ -15,27 +15,30 @@ RSpec.describe WorkItems::CreateAndLinkService, feature_category: :portfolio_man
     {
       title: 'Awesome work item',
       description: 'please fix',
-      work_item_type_id: WorkItems::Type.default_by_type(:task).id
+      work_item_type_id: build(:work_item_system_defined_type, :task).id
     }
   end
 
   before_all do
-    project.add_developer(user)
+    # Ensure support bot user is created so creation doesn't count towards query limit
+    # and we don't try to obtain an exclusive lease within a transaction.
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+    create(:support_bot)
   end
 
   shared_examples 'successful work item and link creator' do
     it 'creates a work item successfully with links' do
       expect do
         service_result
-      end.to change(WorkItem, :count).by(1).and(
-        change(WorkItems::ParentLink, :count).by(1)
+      end.to change { WorkItem.count }.by(1).and(
+        change { WorkItems::ParentLink.count }.by(1)
       )
     end
 
     it 'copies confidential status from the parent' do
       expect do
         service_result
-      end.to change(WorkItem, :count).by(1)
+      end.to change { WorkItem.count }.by(1)
 
       created_task = WorkItem.last
 
@@ -52,7 +55,7 @@ RSpec.describe WorkItems::CreateAndLinkService, feature_category: :portfolio_man
       it 'creates a work item successfully with no links' do
         expect do
           service_result
-        end.to change(WorkItem, :count).by(1).and(
+        end.to change { WorkItem.count }.by(1).and(
           not_change(IssueLink, :count)
         )
       end
@@ -84,12 +87,12 @@ RSpec.describe WorkItems::CreateAndLinkService, feature_category: :portfolio_man
           expect do
             service_result
           end.to not_change(WorkItems::ParentLink, :count).and(
-            change(WorkItem, :count).by(1)
+            change { WorkItem.count }.by(1)
           )
         end
 
         it 'returns a link creation error message' do
-          expect(service_result.errors).to contain_exactly(/is not allowed to add this type of parent/)
+          expect(service_result.errors).to contain_exactly(/it's not allowed to add this type of parent item/)
         end
       end
     end

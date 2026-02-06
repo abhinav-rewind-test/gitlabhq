@@ -15,17 +15,20 @@ export default (el) => {
     projectEnvironmentsPath,
     protectedEnvironmentSettingsPath,
     projectPath,
+    markdownPreviewPath,
     environmentName,
     kasTunnelUrl,
   } = el.dataset;
 
   return new Vue({
     el,
+    name: 'EditEnvironmentRoot',
     apolloProvider: apolloProvider(),
     provide: {
       projectEnvironmentsPath,
       protectedEnvironmentSettingsPath,
       projectPath,
+      markdownPreviewPath,
       environmentName,
       kasTunnelUrl: removeLastSlashInUrlPath(kasTunnelUrl),
     },

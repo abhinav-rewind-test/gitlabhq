@@ -15,6 +15,7 @@ export const initGroupSelects = () => {
       parentId: parentGroupID,
       groupsFilter,
       label,
+      description,
       inputName,
       inputId,
       selected: initialSelection,
@@ -24,6 +25,7 @@ export const initGroupSelects = () => {
 
     return new Vue({
       el,
+      name: 'GroupSelectRoot',
       components: {
         GroupSelect,
       },
@@ -31,6 +33,7 @@ export const initGroupSelects = () => {
         return createElement(GroupSelect, {
           props: {
             label,
+            description,
             inputName,
             initialSelection,
             parentGroupID,

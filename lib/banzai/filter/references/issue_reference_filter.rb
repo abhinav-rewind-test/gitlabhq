@@ -15,17 +15,22 @@ module Banzai
         self.reference_type = :issue
         self.object_class   = Issue
 
-        def url_for_object(issue, project)
-          return issue_path(issue, project) if only_path?
+        def url_for_object(issue, _parent)
+          return issue_path(issue) if only_path?
 
-          issue_url(issue, project)
+          issue_url(issue)
         end
 
         def parent_records(parent, ids)
-          parent.issues.where(iid: ids.to_a).includes(:project, :namespace, :work_item_type)
+          # we are treating all group level issues as work items so those would be handled
+          # by the WorkItemReferenceFilter
+          return Issue.none if parent.is_a?(Group)
+
+          parent.issues.iid_in(ids.to_a)
+                .includes(:project, :namespace, :work_item_type, :author)
         end
 
-        def object_link_text_extras(issue, matches)
+        def object_link_content_html_extras(issue, matches)
           super + design_link_extras(issue, matches.named_captures['path'])
         end
 
@@ -33,8 +38,13 @@ module Banzai
           super
         end
 
-        def data_attributes_for(text, parent, object, **data)
-          super.merge(project_path: parent.full_path, iid: object.iid)
+        def data_attributes_for(original, parent, object, **data)
+          additional_attributes = { iid: object.iid, namespace_path: parent.full_path }
+          if parent.is_a?(Namespaces::ProjectNamespace) || parent.is_a?(Project)
+            additional_attributes[:project_path] = parent.full_path
+          end
+
+          super.merge(additional_attributes)
         end
 
         private
@@ -43,17 +53,17 @@ module Banzai
           { issue_type: issue.work_item_type.base_type }
         end
 
-        def issue_path(issue, project)
-          Gitlab::Routing.url_helpers.namespace_project_issue_path(namespace_id: project.namespace, project_id: project, id: issue.iid)
+        def issue_path(issue)
+          Gitlab::UrlBuilder.build(issue, only_path: true)
         end
 
-        def issue_url(issue, project)
-          Gitlab::Routing.url_helpers.namespace_project_issue_url(namespace_id: project.namespace, project_id: project, id: issue.iid)
+        def issue_url(issue)
+          Gitlab::UrlBuilder.build(issue)
         end
 
         def design_link_extras(issue, path)
           if path == '/designs' && read_designs?(issue)
-            ['designs']
+            [CGI.escapeHTML('designs')]
           else
             []
           end

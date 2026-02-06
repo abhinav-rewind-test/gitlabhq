@@ -49,14 +49,13 @@ export default {
       type: String,
       required: true,
     },
+    isReviewDropdown: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   computed: {
-    isNoteTypeComment() {
-      return this.noteType === constants.COMMENT;
-    },
-    isNoteTypeDiscussion() {
-      return this.noteType === constants.DISCUSSION;
-    },
     dropdownCommentButtonTitle() {
       const { comment, internalComment } = this.$options.i18n.submitButton;
 
@@ -69,10 +68,16 @@ export default {
     },
     commentButtonTitle() {
       const { comment, internalComment, startThread, startInternalThread } = this.$options.i18n;
+      const { saveThread, saveComment } = this.$options.i18n.addToReviewButton;
 
       if (this.isInternalNote) {
         return this.noteType === constants.COMMENT ? internalComment : startInternalThread;
       }
+
+      if (this.isReviewDropdown) {
+        return this.noteType === constants.COMMENT ? saveComment : saveThread;
+      }
+
       return this.noteType === constants.COMMENT ? comment : startThread;
     },
     startDiscussionDescription() {
@@ -108,7 +113,6 @@ export default {
           text: this.dropdownStartThreadButtonTitle,
           description: this.startDiscussionDescription,
           value: constants.DISCUSSION,
-          testid: 'discussion-menu-item',
         },
       ];
     },
@@ -125,20 +129,16 @@ export default {
 </script>
 
 <template>
-  <!--TODO: Replace button-group workaround once `split` option for new dropdowns is implemented.-->
-  <!-- See issue at https://gitlab.com/gitlab-org/gitlab-ui/-/issues/2263-->
   <gl-button-group
-    class="js-comment-button js-comment-submit-button comment-type-dropdown gl-w-full gl-mb-3 gl-md-w-auto gl-md-mb-0"
+    class="js-comment-button js-comment-submit-button comment-type-dropdown gl-mb-3 gl-w-full @sm/panel:gl-mb-0 @sm/panel:gl-w-auto"
     :data-track-label="trackingLabel"
     data-track-action="click_button"
     data-testid="comment-button"
   >
-    <gl-button variant="confirm" :disabled="disabled" @click="handleClick">
+    <gl-button type="submit" variant="confirm" :disabled="disabled" @click="handleClick">
       {{ commentButtonTitle }}
     </gl-button>
     <gl-collapsible-listbox
-      class="split"
-      toggle-class="gl-rounded-top-left-none! gl-rounded-bottom-left-none! gl-pl-1!"
       variant="confirm"
       text-sr-only
       :toggle-text="$options.i18n.toggleSrText"

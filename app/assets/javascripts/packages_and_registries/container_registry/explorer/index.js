@@ -1,16 +1,14 @@
-import { GlToast } from '@gitlab/ui';
 import Vue from 'vue';
 import { parseBoolean } from '~/lib/utils/common_utils';
 import PerformancePlugin from '~/performance/vue_performance_plugin';
 import Translate from '~/vue_shared/translate';
 import RegistryBreadcrumb from '~/packages_and_registries/shared/components/registry_breadcrumb.vue';
 import { injectVueAppBreadcrumbs } from '~/lib/utils/breadcrumbs';
-import { apolloProvider } from './graphql/index';
+import { apolloProvider } from 'ee_else_ce/packages_and_registries/container_registry/explorer/graphql';
 import RegistryExplorer from './pages/index.vue';
 import createRouter from './router';
 
 Vue.use(Translate);
-Vue.use(GlToast);
 
 Vue.use(PerformancePlugin, {
   components: [
@@ -35,27 +33,23 @@ export default () => {
     expirationPolicy,
     isGroupPage,
     isAdmin,
+    isMetadataDatabaseEnabled,
     showCleanupPolicyLink,
     showContainerRegistrySettings,
     showUnfinishedTagCleanupCallout,
     connectionError,
     invalidPathError,
+    securityConfigurationPath,
+    vulnerabilityReportPath,
     ...config
   } = el.dataset;
 
-  // This is a mini state to help the breadcrumb have the correct name in the details page
-  const breadCrumbState = Vue.observable({
-    name: '',
-    updateName(value) {
-      this.name = value;
-    },
-  });
-
-  const router = createRouter(endpoint, breadCrumbState);
+  const router = createRouter(endpoint);
 
   const attachMainComponent = () =>
     new Vue({
       el,
+      name: 'ContainerRegistryExplorerRoot',
       router,
       apolloProvider,
       components: {
@@ -63,7 +57,6 @@ export default () => {
       },
       provide() {
         return {
-          breadCrumbState,
           config: {
             ...config,
             expirationPolicy: expirationPolicy ? JSON.parse(expirationPolicy) : undefined,
@@ -74,6 +67,9 @@ export default () => {
             showUnfinishedTagCleanupCallout: parseBoolean(showUnfinishedTagCleanupCallout),
             connectionError: parseBoolean(connectionError),
             invalidPathError: parseBoolean(invalidPathError),
+            isMetadataDatabaseEnabled: parseBoolean(isMetadataDatabaseEnabled),
+            securityConfigurationPath,
+            vulnerabilityReportPath,
           },
           /* eslint-disable @gitlab/require-i18n-strings */
           dockerBuildCommand: `docker build -t ${config.repositoryUrl} .`,

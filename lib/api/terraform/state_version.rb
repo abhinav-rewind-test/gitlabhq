@@ -49,9 +49,10 @@ module API
               { code: 403, message: 'Forbidden' },
               { code: 404, message: 'Not found' }
             ]
-            tags %w[terraform_state]
+            tags %w[terraform]
           end
           route_setting :authentication, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+          route_setting :authorization, job_token_policies: :read_terraform_state
           get do
             find_version(params[:serial]) do |version|
               env['api.format'] = :binary # Bypass json serialization
@@ -67,9 +68,10 @@ module API
               { code: 403, message: 'Forbidden' },
               { code: 404, message: 'Not found' }
             ]
-            tags %w[terraform_state]
+            tags %w[terraform]
           end
           route_setting :authentication, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+          route_setting :authorization, job_token_policies: :admin_terraform_state
           delete do
             authorize! :admin_terraform_state, user_project
 

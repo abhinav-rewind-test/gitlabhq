@@ -92,6 +92,77 @@ RSpec.describe Gitlab::Database::Partitioning::IntRangeStrategy, feature_categor
       SQL
     end
 
+    context 'when the sequence does not start from 1' do
+      before do
+        sequence_name = model.sequence_name.split('.').last
+
+        allow(connection).to receive(:select_value)
+          .with(
+            "SELECT min_value FROM pg_sequences WHERE sequencename = $1",
+            :select_seq_start, [sequence_name]
+          ).and_return(100)
+      end
+
+      it 'returns missing partitions starting from the min_id' do
+        expect(missing_partitions.size).to eq(6)
+
+        expect(missing_partitions).to include(
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 100, 110),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 110, 120),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 120, 130),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 130, 140),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 140, 150),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 150, 160)
+        )
+      end
+    end
+
+    context 'when sequencename is nil' do
+      before do
+        allow(model).to receive(:sequence_name).and_return(nil)
+      end
+
+      it 'returns missing partitions starting from 1' do
+        expect(missing_partitions.size).to eq(6)
+
+        expect(missing_partitions).to include(
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1,  11),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 11, 21),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 21, 31),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 31, 41),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 41, 51),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 51, 61)
+        )
+      end
+    end
+
+    context 'when explicit sequence_name is provided' do
+      subject(:missing_partitions) do
+        described_class.new(model, partitioning_key, partition_size: 10, sequence_name: 'custom_seq').missing_partitions
+      end
+
+      before do
+        allow(connection).to receive(:select_value)
+          .with(
+            "SELECT min_value FROM pg_sequences WHERE sequencename = $1",
+            :select_seq_start, ['custom_seq']
+          ).and_return(1000000000000)
+      end
+
+      it 'returns missing partitions starting from the explicit sequence min_value' do
+        expect(missing_partitions.size).to eq(6)
+
+        expect(missing_partitions).to include(
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000000, 1000000000010),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000010, 1000000000020),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000020, 1000000000030),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000030, 1000000000040),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000040, 1000000000050),
+          Gitlab::Database::Partitioning::IntRangePartition.new(model.table_name, 1000000000050, 1000000000060)
+        )
+      end
+    end
+
     context 'when the current partitions are not completed' do
       before do
         connection.execute(<<~SQL)
@@ -106,7 +177,8 @@ RSpec.describe Gitlab::Database::Partitioning::IntRangeStrategy, feature_categor
           model.create!(external_id: 15)
         end
 
-        it 'returns missing partitions' do
+        it 'returns missing partitions',
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/18752' do
           expect(missing_partitions.size).to eq(7)
 
           expect(missing_partitions).to include(
@@ -233,11 +305,13 @@ RSpec.describe Gitlab::Database::Partitioning::IntRangeStrategy, feature_categor
     let(:partitioning_key) { :partition }
     let(:table_name) { :_test_partitioned_test }
     let(:partition_size) { 5 }
+    let(:analyze_interval) { 1.week }
 
     subject(:strategy) do
       described_class.new(
         model, partitioning_key,
-        partition_size: partition_size
+        partition_size: partition_size,
+        analyze_interval: analyze_interval
       )
     end
 
@@ -245,8 +319,57 @@ RSpec.describe Gitlab::Database::Partitioning::IntRangeStrategy, feature_categor
       expect(strategy).to have_attributes({
         model: model,
         partitioning_key: partitioning_key,
-        partition_size: partition_size
+        partition_size: partition_size,
+        analyze_interval: analyze_interval,
+        sequence_name: model.sequence_name
       })
+    end
+  end
+
+  describe 'attributes with sequence_name' do
+    let(:partitioning_key) { :partition }
+    let(:table_name) { :_test_partitioned_test }
+    let(:partition_size) { 5 }
+    let(:analyze_interval) { 1.week }
+    let(:sequence_name) { 'custom_sequence' }
+
+    subject(:strategy) do
+      described_class.new(
+        model, partitioning_key,
+        partition_size: partition_size,
+        analyze_interval: analyze_interval,
+        sequence_name: sequence_name
+      )
+    end
+
+    specify do
+      expect(strategy).to have_attributes({
+        model: model,
+        partitioning_key: partitioning_key,
+        partition_size: partition_size,
+        analyze_interval: analyze_interval,
+        sequence_name: sequence_name
+      })
+    end
+  end
+
+  describe '#after_adding_partitions' do
+    let(:partitioning_key) { double }
+
+    subject(:strategy) { described_class.new(model, partitioning_key, partition_size: 10) }
+
+    it 'is a no-op and does not raise an error' do
+      expect { strategy.after_adding_partitions }.not_to raise_error
+    end
+  end
+
+  describe '#validate_and_fix' do
+    let(:partitioning_key) { double }
+
+    subject(:strategy) { described_class.new(model, partitioning_key, partition_size: 10) }
+
+    it 'is a no-op and does not raise an error' do
+      expect { strategy.validate_and_fix }.not_to raise_error
     end
   end
 
@@ -282,7 +405,8 @@ RSpec.describe Gitlab::Database::Partitioning::IntRangeStrategy, feature_categor
       SQL
     end
 
-    it 'redirects to the new partition', :aggregate_failures do
+    it 'redirects to the new partition', :aggregate_failures,
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16818' do
       expect_range_partitions_for(table_name, {
         '1' => %w[1 3],
         '3' => %w[3 5]

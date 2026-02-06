@@ -1,8 +1,6 @@
 ---
 key_path: redis_hll_counters.quickactions.i_quickactions_blocked_by_weekly
 description: Count of MAU using the `/blocked_by` quick action
-product_section: dev
-product_stage: plan
 product_group: product_planning
 value_type: number
 status: active
@@ -16,7 +14,6 @@ options:
   events:
     - i_quickactions_blocked_by
 performance_indicator_type: []
-distribution:
-- ee
-tier:
-- starter
+tiers:
+- premium
+- ultimate

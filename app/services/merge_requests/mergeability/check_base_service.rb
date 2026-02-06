@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module MergeRequests
   module Mergeability
     class CheckBaseService
@@ -6,12 +7,12 @@ module MergeRequests
 
       class_attribute :identifier, :description
 
-      def self.identifier(new_identifier)
-        self.identifier = new_identifier
+      def self.set_identifier(value)
+        self.identifier = value
       end
 
-      def self.description(new_description)
-        self.description = new_description
+      def self.set_description(value)
+        self.description = value
       end
 
       def initialize(merge_request:, params:)
@@ -39,6 +40,11 @@ module MergeRequests
           .success(payload: default_payload(args))
       end
 
+      def checking(**args)
+        Gitlab::MergeRequests::Mergeability::CheckResult
+          .checking(payload: default_payload(args))
+      end
+
       def failure(**args)
         Gitlab::MergeRequests::Mergeability::CheckResult
           .failed(payload: default_payload(args))
@@ -47,6 +53,11 @@ module MergeRequests
       def inactive(**args)
         Gitlab::MergeRequests::Mergeability::CheckResult
           .inactive(payload: default_payload(args))
+      end
+
+      def warning(**args)
+        Gitlab::MergeRequests::Mergeability::CheckResult
+          .warning(payload: default_payload(args))
       end
 
       def default_payload(args)

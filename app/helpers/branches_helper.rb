@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
 module BranchesHelper
-  def project_branches
-    options_for_select(@project.repository.branch_names, @project.default_branch)
-  end
-
   def protected_branch?(project, branch)
     ProtectedBranch.protected?(project, branch.name)
   end
@@ -12,24 +8,28 @@ module BranchesHelper
   def access_levels_data(access_levels)
     return [] unless access_levels
 
-    access_levels.map do |level|
-      if level.type == :deploy_key
-        { id: level.id, type: level.type, deploy_key_id: level.deploy_key_id }
-      else
+    access_levels.filter_map do |level|
+      case level.type
+      when :role
         { id: level.id, type: :role, access_level: level.access_level }
+      when :deploy_key
+        { id: level.id, type: level.type, deploy_key_id: level.deploy_key_id }
       end
     end
   end
 
   def merge_request_status(merge_request)
     return unless merge_request.present?
-    return if merge_request.closed?
 
-    if merge_request.open? || merge_request.locked?
+    if merge_request.closed?
+      variant = :danger
+      mr_icon = 'merge-request-close'
+      mr_status = _('Closed')
+    elsif merge_request.open? || merge_request.locked?
       variant = :success
       variant = :warning if merge_request.draft?
 
-      mr_icon = 'merge-request-open'
+      mr_icon = 'merge-request'
       mr_status = _('Open')
     elsif merge_request.merged?
       variant = :info

@@ -1,20 +1,21 @@
 ---
-stage: Data Stores
-group: Tenant Scale
+stage: Tenant Scale
+group: Organizations
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Topics API
 ---
 
-# Topics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+- Status: Beta
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/340920) in GitLab 14.5.
+{{< /details >}}
 
-Interact with project topics using the REST API.
+Use this API to interact with project topics. For more information, see [project topics](../user/project/project_topics.md).
 
-## List topics
+## List all topics
 
 Returns a list of project topics in the GitLab instance ordered by number of associated projects.
 
@@ -34,7 +35,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl "https://gitlab.example.com/api/v4/topics?search=git"
+curl --request GET \
+  --url "https://gitlab.example.com/api/v4/topics?search=git"
 ```
 
 Example response:
@@ -47,6 +49,7 @@ Example response:
     "title": "GitLab",
     "description": "GitLab is an open source end-to-end software development platform with built-in version control, issue tracking, code review, CI/CD, and more.",
     "total_projects_count": 1000,
+    "organization_id": 1,
     "avatar_url": "http://www.gravatar.com/avatar/a0d477b3ea21970ce6ffcbb817b0b435?s=80&d=identicon"
   },
   {
@@ -55,6 +58,7 @@ Example response:
     "title": "Git",
     "description": "Git is a free and open source distributed version control system designed to handle everything from small to very large projects with speed and efficiency.",
     "total_projects_count": 900,
+    "organization_id": 1,
     "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon"
   },
   {
@@ -63,14 +67,15 @@ Example response:
     "title": "Git LFS",
     "description": null,
     "total_projects_count": 300,
+    "organization_id": 1,
     "avatar_url": null
   }
 ]
 ```
 
-## Get a topic
+## Retrieve a topic
 
-Get a project topic by ID.
+Retrieves a project topic by ID.
 
 ```plaintext
 GET /topics/:id
@@ -85,7 +90,8 @@ Supported attributes:
 Example request:
 
 ```shell
-curl "https://gitlab.example.com/api/v4/topics/1"
+curl --request GET \
+  --url "https://gitlab.example.com/api/v4/topics/1"
 ```
 
 Example response:
@@ -97,13 +103,14 @@ Example response:
   "title": "GitLab",
   "description": "GitLab is an open source end-to-end software development platform with built-in version control, issue tracking, code review, CI/CD, and more.",
   "total_projects_count": 1000,
+  "organization_id": 1,
   "avatar_url": "http://www.gravatar.com/avatar/a0d477b3ea21970ce6ffcbb817b0b435?s=80&d=identicon"
 }
 ```
 
-## List projects assigned to a topic
+## List all projects assigned to a topic
 
-Use the [Projects API](projects.md#list-all-projects) to list all projects assigned to a specific topic.
+Uses the [Projects API](projects.md#list-all-projects) to list all projects assigned to a specific topic.
 
 ```plaintext
 GET /projects?topic=<topic_name>
@@ -111,7 +118,7 @@ GET /projects?topic=<topic_name>
 
 ## Create a project topic
 
-Create a new project topic. Only available to administrators.
+Creates a new project topic. Only available to administrators.
 
 ```plaintext
 POST /topics
@@ -119,20 +126,21 @@ POST /topics
 
 Supported attributes:
 
-| Attribute     | Type    | Required               | Description |
-| ------------- | ------- | ---------------------- | ----------- |
-| `name`        | string  | Yes | Slug (name) |
-| `title`       | string  | Yes | Title       |
-| `avatar`      | file    | No | Avatar      |
-| `description` | string  | No | Description |
+| Attribute         | Type    | Required | Description                                                                                                                                                                                    |
+|-------------------|---------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`            | string  | Yes      | Slug (name)                                                                                                                                                                                    |
+| `title`           | string  | Yes      | Title                                                                                                                                                                                          |
+| `avatar`          | file    | No       | Avatar                                                                                                                                                                                         |
+| `description`     | string  | No       | Description                                                                                                                                                                                    |
+| `organization_id` | integer | No       | The organization ID for the topic. Warning: this attribute is experimental and a subject to change in future. For more information on organizations, see [Organizations API](organizations.md) |
 
 Example request:
 
 ```shell
 curl --request POST \
-     --data "name=topic1&title=Topic 1" \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics"
+    --data "name=topic1&title=Topic 1" \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics"
 ```
 
 Example response:
@@ -144,13 +152,14 @@ Example response:
   "title": "Topic 1",
   "description": null,
   "total_projects_count": 0,
+  "organization_id": 1,
   "avatar_url": null
 }
 ```
 
 ## Update a project topic
 
-Update a project topic. Only available to administrators.
+Updates a project topic. Only available to administrators.
 
 ```plaintext
 PUT /topics/:id
@@ -158,21 +167,21 @@ PUT /topics/:id
 
 Supported attributes:
 
-| Attribute     | Type    | Required               | Description         |
-| ------------- | ------- | ---------------------- | ------------------- |
-| `id`          | integer | Yes | ID of project topic |
-| `avatar`      | file    | No | Avatar              |
-| `description` | string  | No | Description         |
-| `name`        | string  | No | Slug (name)         |
-| `title`       | string  | No | Title               |
+| Attribute     | Type    | Required | Description         |
+|---------------|---------|----------|---------------------|
+| `id`          | integer | Yes      | ID of project topic |
+| `avatar`      | file    | No       | Avatar              |
+| `description` | string  | No       | Description         |
+| `name`        | string  | No       | Slug (name)         |
+| `title`       | string  | No       | Title               |
 
 Example request:
 
 ```shell
 curl --request PUT \
-     --data "name=topic1" \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics/1"
+    --data "name=topic1" \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics/1"
 ```
 
 Example response:
@@ -184,6 +193,7 @@ Example response:
   "title": "Topic 1",
   "description": null,
   "total_projects_count": 0,
+  "organization_id": 1,
   "avatar_url": null
 }
 ```
@@ -197,14 +207,12 @@ cURL to post data using the header `Content-Type: multipart/form-data`. The
 
 ```shell
 curl --request PUT \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics/1" \
-     --form "avatar=@/tmp/example.png"
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics/1" \
+    --form "avatar=@/tmp/example.png"
 ```
 
 ### Remove a topic avatar
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/348148) in GitLab 14.6.
 
 To remove a topic avatar, use a blank value for the `avatar` attribute.
 
@@ -212,14 +220,12 @@ Example request:
 
 ```shell
 curl --request PUT \
-     --data "avatar=" \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics/1"
+    --data "avatar=" \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics/1"
 ```
 
 ## Delete a project topic
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/80725) in GitLab 14.9.
 
 You must be an administrator to delete a project topic.
 When you delete a project topic, you also delete the topic assignment for projects.
@@ -230,21 +236,19 @@ DELETE /topics/:id
 
 Supported attributes:
 
-| Attribute     | Type    | Required               | Description         |
-| ------------- | ------- | ---------------------- | ------------------- |
-| `id`          | integer | Yes | ID of project topic |
+| Attribute | Type    | Required | Description         |
+|-----------|---------|----------|---------------------|
+| `id`      | integer | Yes      | ID of project topic |
 
 Example request:
 
 ```shell
 curl --request DELETE \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics/1"
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics/1"
 ```
 
 ## Merge topics
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/95501) in GitLab 15.4.
 
 You must be an administrator to merge a source topic into a target topic.
 When you merge topics, you delete the source topic and move all assigned projects to the target topic.
@@ -255,18 +259,21 @@ POST /topics/merge
 
 Supported attributes:
 
-| Attribute         | Type    | Required               | Description                |
-| ----------------- | ------- | ---------------------- | -------------------------- |
-| `source_topic_id` | integer | Yes | ID of source project topic |
-| `target_topic_id` | integer | Yes | ID of target project topic |
+| Attribute         | Type    | Required | Description                |
+|-------------------|---------|----------|----------------------------|
+| `source_topic_id` | integer | Yes      | ID of source project topic |
+| `target_topic_id` | integer | Yes      | ID of target project topic |
+
+> [!note]
+> The `source_topic_id` and `target_topic_id` must belong to the same organization.
 
 Example request:
 
 ```shell
 curl --request POST \
-     --data "source_topic_id=2&target_topic_id=1" \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/topics/merge"
+    --data "source_topic_id=2&target_topic_id=1" \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/topics/merge"
 ```
 
 Example response:
@@ -278,6 +285,7 @@ Example response:
   "title": "Topic 1",
   "description": null,
   "total_projects_count": 0,
+  "organization_id": 1,
   "avatar_url": null
 }
 ```

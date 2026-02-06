@@ -17,14 +17,10 @@ class Projects::CycleAnalyticsController < Projects::ApplicationController
     label: 'redis_hll_counters.analytics.analytics_total_unique_counts_monthly',
     destinations: %i[redis_hll snowplow]
 
-  feature_category :team_planning
+  feature_category :value_stream_management
   urgency :low
 
   before_action do
-    if project.licensed_feature_available?(:cycle_analytics_for_groups)
-      push_licensed_feature(:cycle_analytics_for_groups)
-    end
-
     if project.licensed_feature_available?(:group_level_analytics_dashboard)
       push_licensed_feature(:group_level_analytics_dashboard)
     end
@@ -35,12 +31,15 @@ class Projects::CycleAnalyticsController < Projects::ApplicationController
   end
 
   def show
-    @cycle_analytics = Analytics::CycleAnalytics::ProjectLevel.new(project: @project, options: options(cycle_analytics_project_params))
+    @cycle_analytics = Analytics::CycleAnalytics::ProjectLevel.new(
+      project: @project,
+      options: options(cycle_analytics_project_params)
+    )
     @request_params ||= ::Gitlab::Analytics::CycleAnalytics::RequestParams.new(all_cycle_analytics_params)
 
     respond_to do |format|
       format.html do
-        Gitlab::UsageDataCounters::CycleAnalyticsCounter.count(:views)
+        Gitlab::InternalEvents.track_event('view_cycle_analytics', project: @project, user: current_user)
 
         render :show
       end

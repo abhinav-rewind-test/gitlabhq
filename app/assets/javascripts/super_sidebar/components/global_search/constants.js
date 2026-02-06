@@ -24,3 +24,11 @@ export const SEARCH_MODAL_ID = 'super-sidebar-search-modal';
 export const SEARCH_INPUT_SELECTOR = 'input[role="searchbox"]';
 
 export const SEARCH_RESULTS_ITEM_SELECTOR = '.gl-new-dropdown-item';
+
+export const KEY_K = 'KeyK';
+
+export const KEY_N = 'KeyN';
+
+export const KEY_P = 'KeyP';
+
+export const GLOBAL_SEARCH_MODAL_CLASS = 'global-search-modal';

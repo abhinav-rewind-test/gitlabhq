@@ -4,6 +4,7 @@
 require 'uri'
 require 'net/http'
 require 'yaml'
+require 'json'
 
 url = URI("https://gitlab.com/gitlab-com/www-gitlab-com/raw/master/data/stages.yml")
 
@@ -17,8 +18,7 @@ response = http.request(request)
 stages_doc = YAML.safe_load(response.read_body)
 feature_categories = stages_doc["stages"].values
   .flat_map { |stage| stage["groups"].values }
-  .flat_map { |group| group["categories"] }
-  .select(&:itself)
+  .flat_map { |group| group.fetch("categories", []) + group.fetch("maintained_categories", []) }
   .uniq
   .sort
 
@@ -34,4 +34,13 @@ File.open("#{__dir__}/../config/feature_categories.yml", 'w') do |file|
     #
   HEADER_COMMENT
   file.write(feature_categories.to_yaml)
+end
+
+File.open("#{__dir__}/../config/feature_categories/schema.json", 'w') do |file|
+  feature_categories_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    type: 'string',
+    enum: feature_categories
+  }
+  file.puts JSON.pretty_generate(feature_categories_schema)
 end

@@ -4,10 +4,10 @@ require 'spec_helper'
 
 RSpec.describe AlertManagement::HttpIntegrationsFinder, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be_with_reload(:integration) { create(:alert_management_http_integration, project: project ) }
-  let_it_be(:extra_integration) { create(:alert_management_http_integration, project: project ) }
-  let_it_be(:prometheus_integration) { create(:alert_management_prometheus_integration, :inactive, project: project ) }
-  let_it_be(:extra_prometheus_integration) { create(:alert_management_prometheus_integration, project: project ) }
+  let_it_be_with_reload(:integration) { create(:alert_management_http_integration, project: project) }
+  let_it_be(:extra_integration) { create(:alert_management_http_integration, project: project) }
+  let_it_be(:prometheus_integration) { create(:alert_management_prometheus_integration, :inactive, project: project) }
+  let_it_be(:extra_prometheus_integration) { create(:alert_management_prometheus_integration, project: project) }
   let_it_be(:alt_project_integration) { create(:alert_management_http_integration) }
 
   let(:params) { {} }
@@ -66,14 +66,26 @@ RSpec.describe AlertManagement::HttpIntegrationsFinder, feature_category: :incid
         it { is_expected.to contain_exactly(prometheus_integration) }
       end
 
-      context 'but unknown' do
+      context 'but is unknown' do
         let(:params) { { type_identifier: :unknown } }
 
         it { is_expected.to contain_exactly(integration, prometheus_integration) }
       end
 
+      context 'but includes unknown' do
+        let(:params) { { type_identifier: [:http, :unknown] } }
+
+        it { is_expected.to contain_exactly(integration) }
+      end
+
       context 'but blank' do
         let(:params) { { type_identifier: nil } }
+
+        it { is_expected.to contain_exactly(integration, prometheus_integration) }
+      end
+
+      context 'but empty' do
+        let(:params) { { type_identifier: [] } }
 
         it { is_expected.to contain_exactly(integration, prometheus_integration) }
       end

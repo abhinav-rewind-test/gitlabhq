@@ -3,8 +3,8 @@
 module Ci
   class Stage < Ci::ApplicationRecord
     include Ci::Partitionable
-    include Importable
     include Ci::HasStatus
+    include Importable
     include Gitlab::OptimisticLocking
     include Presentable
 
@@ -12,12 +12,14 @@ module Ci
     self.primary_key = :id
     self.sequence_name = :ci_job_stages_id_seq
 
+    query_constraints :id, :partition_id
     partitionable scope: :pipeline, partitioned: true
 
-    enum status: Ci::HasStatus::STATUSES_ENUM
+    enum :status, Ci::HasStatus::STATUSES_ENUM
 
     belongs_to :project
-    belongs_to :pipeline
+    belongs_to :pipeline, ->(stage) { in_partition(stage) },
+      foreign_key: :pipeline_id, partition_foreign_key: :partition_id, inverse_of: :stages
 
     has_many :statuses,
       ->(stage) { in_partition(stage) },
@@ -63,6 +65,7 @@ module Ci
     scope :in_pipelines, ->(pipelines) { where(pipeline: pipelines) }
     scope :by_name, ->(names) { where(name: names) }
     scope :by_position, ->(positions) { where(position: positions) }
+    scope :preload_pipeline, -> { preload(:pipeline) }
 
     with_options unless: :importing? do
       validates :project, presence: true
@@ -118,7 +121,7 @@ module Ci
         transition any - [:success] => :success
       end
 
-      event :canceling do
+      event :start_cancel do
         transition any - [:canceling, :canceled] => :canceling
       end
 
@@ -135,10 +138,6 @@ module Ci
       end
     end
 
-    def self.use_partition_id_filter?
-      Ci::Pipeline.use_partition_id_filter?
-    end
-
     # rubocop: disable Metrics/CyclomaticComplexity -- breaking apart hurts readability, consider refactoring issue #439268
     def set_status(new_status)
       retry_optimistic_lock(self, name: 'ci_stage_set_status') do
@@ -151,7 +150,7 @@ module Ci
         when 'running' then run
         when 'success' then succeed
         when 'failed' then drop
-        when 'canceling' then canceling
+        when 'canceling' then start_cancel
         when 'canceled' then cancel
         when 'manual' then block
         when 'scheduled' then delay
@@ -177,13 +176,14 @@ module Ci
     end
 
     def number_of_warnings
-      BatchLoader.for(id).batch(default_value: 0) do |stage_ids, loader|
-        ::CommitStatus.where(stage_id: stage_ids)
+      BatchLoader.for([id, partition_id]).batch(default_value: 0) do |items, loader|
+        ::CommitStatus
+          .where([:stage_id, :partition_id] => items)
           .latest
           .failed_but_allowed
-          .group(:stage_id)
+          .group(:stage_id, :partition_id)
           .count
-          .each { |id, amount| loader.call(id, amount) }
+          .each { |item, amount| loader.call(item, amount) }
       end
     end
 
@@ -197,9 +197,41 @@ module Ci
       blocked? || skipped?
     end
 
+    # We only check jobs that are played by `Ci::PlayManualStageService`.
+    def confirm_manual_job?
+      manual_jobs = processables.manual
+      return false unless manual_jobs.exists?
+
+      manual_jobs.includes(:pipeline, :metadata, [deployment: [environment: :project]]).any? do |job|
+        job.playable? && job.manual_confirmation_message
+      end
+    end
+
     # This will be removed with ci_remove_ensure_stage_service
     def latest_stage_status
       statuses.latest.composite_status || 'skipped'
     end
+
+    def ordered_latest_statuses
+      statuses_list = statuses.in_order_of(:status, Ci::HasStatus::ORDERED_STATUSES).latest_ordered.to_a
+      preload_metadata(statuses_list.sort_by { |s| [Ci::HasStatus::ORDERED_STATUSES.index(s.status), s.sortable_name] })
+    end
+
+    def ordered_retried_statuses
+      preload_metadata(statuses.in_order_of(:status, Ci::HasStatus::ORDERED_STATUSES).retried_ordered)
+    end
+
+    private
+
+    def preload_metadata(statuses)
+      relations = [:metadata, :job_definition, :error_job_messages, :pipeline,
+        { downstream_pipeline: [:user, { project: [:route, { namespace: :route }] }] }]
+
+      ::Ci::Preloaders::CommitStatusPreloader.new(statuses).execute(relations)
+
+      statuses
+    end
   end
 end
+
+Ci::Stage.prepend_mod

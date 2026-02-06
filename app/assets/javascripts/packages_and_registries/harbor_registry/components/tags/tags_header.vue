@@ -31,9 +31,14 @@ export default {
   },
   computed: {
     tagCountText() {
-      if (isEmpty(this.pageInfo)) {
+      if (
+        isEmpty(this.pageInfo) ||
+        !Number.isInteger(this.pageInfo.total) ||
+        this.pageInfo.total === 0
+      ) {
         return EMPTY_TAG_LABEL;
       }
+
       return tagsCountText(this.pageInfo.total);
     },
   },
@@ -43,7 +48,7 @@ export default {
 <template>
   <title-area :metadata-loading="tagsLoading">
     <template #title>
-      <span class="gl-word-break-all" data-testid="title">
+      <span class="gl-break-all" data-testid="title">
         {{ artifactDetail.digest }}
       </span>
     </template>

@@ -57,7 +57,7 @@ module Gitlab
               end
             end
 
-            def validate_content!
+            def validate_content_presence!
               if content.nil?
                 errors.push("Project `#{masked_project_name}` file `#{masked_location}` does not exist!")
               elsif content.blank?
@@ -90,9 +90,15 @@ module Gitlab
                          .batch(key: context.user) do |projects, loader, args|
                 projects.uniq.each do |project|
                   context.logger.instrument(:config_file_project_validate_access) do
-                    loader.call(project, Ability.allowed?(args[:key], :download_code, project))
+                    loader.call(project, project_access_allowed?(args[:key], project))
                   end
                 end
+              end
+            end
+
+            def project_access_allowed?(user, project)
+              context.logger.instrument(:config_file_project_validate_access_download_code) do
+                Ability.allowed?(user, :download_code, project)
               end
             end
 
@@ -116,7 +122,7 @@ module Gitlab
                     loader.call([blob.commit_id, blob.path], blob.data)
                   end
                 end
-              rescue GRPC::NotFound, GRPC::Internal
+              rescue GRPC::NotFound, GRPC::Internal, GRPC::DeadlineExceeded
                 # no-op
               end
             end
@@ -179,3 +185,5 @@ module Gitlab
     end
   end
 end
+
+Gitlab::Ci::Config::External::File::Project.prepend_mod

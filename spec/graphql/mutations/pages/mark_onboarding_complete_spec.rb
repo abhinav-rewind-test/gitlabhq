@@ -3,21 +3,18 @@
 require 'spec_helper'
 
 RSpec.describe Mutations::Pages::MarkOnboardingComplete do
-  let_it_be(:project) { create(:project, :public, :repository) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:owner) { create(:user) }
+  include GraphqlHelpers
 
-  let(:mutation) { described_class.new(object: nil, context: { current_user: current_user }, field: nil) }
+  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:owner) { create(:user, owner_of: project) }
+
+  let(:mutation) { described_class.new(object: nil, context: query_context, field: nil) }
 
   let(:mutation_arguments) do
     {
       project_path: project.full_path
     }
-  end
-
-  before_all do
-    project.add_owner(owner)
-    project.add_developer(developer)
   end
 
   describe '#resolve' do

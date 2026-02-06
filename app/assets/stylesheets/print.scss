@@ -2,7 +2,7 @@
 @import 'framework/variables_overrides';
 
 @import '@gitlab/ui/src/scss/variables';
-@import '@gitlab/ui/src/scss/utility-mixins/index';
+@import '@gitlab/ui/src/scss/mixins';
 
 @media print {
   .md h1,
@@ -40,19 +40,19 @@
         content: ' ';
         height: 100%;
         width: 4px;
-        background-color: $gray-100;
+        background-color: $gl-border-color-default;
       }
 
       position: relative;
       font-size: inherit;
-      color: $gray-700;
+      @apply gl-text-subtle;
       padding-top: $gl-spacing-scale-3;
       padding-bottom: $gl-spacing-scale-3;
       padding-left: $gl-spacing-scale-6;
       margin-top: $gl-spacing-scale-3;
       margin-bottom: $gl-spacing-scale-3;
       margin-right: 0;
-      @include gl-inset-border-l-4-gray-100;
+      @apply gl-shadow-inner-l-4-gray-100;
       margin-left: 4px;
       border: 0 !important;
     }
@@ -60,10 +60,8 @@
 
   header,
   nav,
-  .nav-sidebar,
   .super-sidebar,
   .super-sidebar-overlay,
-  .profiler-results,
   .tree-ref-holder,
   .tree-holder .breadcrumb,
   .nav,
@@ -71,11 +69,11 @@
   ul.notes-form,
   .issuable-gutter-toggle,
   .gutter-toggle,
-  .issuable-details .content-block-small,
   .edit-link,
   .note-action-button,
   .right-sidebar,
   .flash-container,
+  .top-bar-fixed,
   copy-code,
   #js-peek {
     display: none !important;
@@ -99,7 +97,27 @@
     content: none !important;
   }
 
-  .with-performance-bar .layout-page {
+  .with-performance-bar .layout-page, .content-wrapper {
     padding-top: 0;
+  }
+
+  .panels-container .panel-content-inner,
+  .panels-container .vue-portal-target .work-item-drawer-content {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .panel-content {
+    height: auto !important;
+    overflow: visible !important;
+    contain: none !important;
+  }
+
+  .paneled-view {
+    overflow: visible !important;
+  }
+
+  .page-with-panels .layout-page {
+    height: auto !important;
   }
 }

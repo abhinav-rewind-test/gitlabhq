@@ -4,6 +4,8 @@ RSpec.shared_context 'with FOSS query type fields' do
   # extracted these fields into a shared variable so that we can define FOSS fields once and use them on EE spec as well
   let(:expected_foss_fields) do
     [
+      :admin_groups,
+      :admin_projects,
       :board_list,
       :ci_application_settings,
       :ci_config,
@@ -18,6 +20,7 @@ RSpec.shared_context 'with FOSS query type fields' do
       :gitpod_enabled,
       :group,
       :groups,
+      :integration_exclusions,
       :issue,
       :issues,
       :jobs,
@@ -44,11 +47,14 @@ RSpec.shared_context 'with FOSS query type fields' do
       :usage_trends_measurements,
       :user,
       :users,
+      :wiki_page,
       :work_item,
+      :work_item_description_template_content,
       :work_items_by_reference,
       :audit_event_definitions,
       :abuse_report,
-      :abuse_report_labels
+      :feature_flag_enabled,
+      :access_token_permissions
     ]
   end
 end

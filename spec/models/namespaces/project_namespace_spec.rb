@@ -2,7 +2,9 @@
 
 require 'spec_helper'
 
-RSpec.describe Namespaces::ProjectNamespace, type: :model do
+RSpec.describe Namespaces::ProjectNamespace, type: :model, feature_category: :groups_and_projects do
+  let_it_be(:organization) { create(:organization) }
+
   describe 'relationships' do
     it { is_expected.to have_one(:project).inverse_of(:project_namespace) }
 
@@ -46,7 +48,7 @@ RSpec.describe Namespaces::ProjectNamespace, type: :model do
     end
 
     context 'for new record when namespace exists' do
-      let(:project) { build(:project) }
+      let(:project) { build(:project, organization: organization) }
       let(:project_namespace) { project.project_namespace }
 
       it 'syncs the project attributes to project namespace' do
@@ -55,6 +57,7 @@ RSpec.describe Namespaces::ProjectNamespace, type: :model do
 
         described_class.create_from_project!(project)
         expect(project.project_namespace.name).to eq(project_name)
+        expect(project.project_namespace.organization_id).to eq(project.organization_id)
       end
 
       context 'when project has an unsaved project namespace' do
@@ -69,7 +72,7 @@ RSpec.describe Namespaces::ProjectNamespace, type: :model do
 
   describe '#sync_attributes_from_project' do
     context 'with existing project' do
-      let(:project) { create(:project) }
+      let(:project) { build(:project, organization: organization) }
       let(:project_namespace) { project.project_namespace }
       let(:project_new_namespace) { create(:namespace) }
       let(:project_new_path) { 'project-new-path' }
@@ -94,6 +97,7 @@ RSpec.describe Namespaces::ProjectNamespace, type: :model do
         expect(project_namespace.namespace).to eq(project_new_namespace)
         expect(project_namespace.namespace_id).to eq(project_new_namespace.id)
         expect(project_namespace.shared_runners_enabled).to eq(project_shared_runners_enabled)
+        expect(project_namespace.organization_id).to eq(project.organization_id)
       end
     end
 
@@ -105,6 +109,48 @@ RSpec.describe Namespaces::ProjectNamespace, type: :model do
       project_namespace.sync_attributes_from_project(project)
 
       expect(project_namespace.visibility_level).to eq(Gitlab::VisibilityLevel::PRIVATE)
+    end
+  end
+
+  describe '#all_projects' do
+    let(:project) { create(:project) }
+    let(:project_namespace) { project.project_namespace }
+
+    it 'returns single project relation' do
+      expect(project_namespace.all_projects).to be_a(ActiveRecord::Relation)
+      expect(project_namespace.all_projects).to match_array([project])
+    end
+  end
+
+  describe 'combine create and update within a single transaction' do
+    let(:issue) { build(:issue, spam: true) }
+
+    subject(:combined_calls) do
+      issue.project.update_attribute(:visibility_level, Gitlab::VisibilityLevel::PUBLIC)
+    end
+
+    it { expect { combined_calls }.not_to raise_error }
+  end
+
+  describe '#markdown_placeholders_feature_flag_enabled? is delegated' do
+    let(:project) { create(:project) }
+    let(:project_namespace) { project.project_namespace }
+
+    it 'delegates to project' do
+      expect(project_namespace.markdown_placeholders_feature_flag_enabled?).to be_truthy
+      expect(project_namespace.project.markdown_placeholders_feature_flag_enabled?).to be_truthy
+    end
+  end
+
+  describe '#max_member_access_for_user' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project) }
+    let_it_be(:project_namespace) { project.project_namespace }
+
+    it 'delegates to the project' do
+      expect(project).to receive(:max_member_access_for_user).with(user).and_return(Gitlab::Access::DEVELOPER)
+
+      expect(project_namespace.max_member_access_for_user(user)).to eq(Gitlab::Access::DEVELOPER)
     end
   end
 end

@@ -1,13 +1,13 @@
 <script>
-import { GlModal, GlAlert, GlSprintf, GlFormInput } from '@gitlab/ui';
-import uniqueId from 'lodash/uniqueId';
+import { GlAlert, GlSprintf } from '@gitlab/ui';
 import { __ } from '~/locale';
+import { numberToMetricPrefix } from '~/lib/utils/number_utils';
+import GroupsProjectsDeleteModal from '~/groups_projects/components/delete_modal.vue';
+import { RESOURCE_TYPES } from '~/groups_projects/constants';
 
 export default {
+  RESOURCE_TYPES,
   i18n: {
-    deleteProject: __('Delete project'),
-    title: __('Are you absolutely sure?'),
-    confirmText: __('Enter the following to confirm:'),
     isForkAlertTitle: __('You are about to delete this forked project containing:'),
     isNotForkAlertTitle: __('You are about to delete this project containing:'),
     isForkAlertBody: __('This process deletes the project repository and all related resources.'),
@@ -18,7 +18,7 @@ export default {
       'This project is %{strongStart}NOT%{strongEnd} a fork, and has the following:',
     ),
   },
-  components: { GlModal, GlAlert, GlSprintf, GlFormInput },
+  components: { GroupsProjectsDeleteModal, GlAlert, GlSprintf },
   model: {
     prop: 'visible',
     event: 'change',
@@ -32,6 +32,10 @@ export default {
       type: String,
       required: true,
     },
+    nameWithNamespace: {
+      type: String,
+      required: true,
+    },
     isFork: {
       type: Boolean,
       required: true,
@@ -42,78 +46,63 @@ export default {
       default: false,
     },
     issuesCount: {
-      type: [Number, String],
+      type: Number,
       required: false,
       default: null,
     },
     mergeRequestsCount: {
-      type: [Number, String],
+      type: Number,
       required: false,
       default: null,
     },
     forksCount: {
-      type: [Number, String],
+      type: Number,
       required: false,
       default: null,
     },
     starsCount: {
-      type: [Number, String],
+      type: Number,
       required: false,
       default: null,
     },
-  },
-  data() {
-    return {
-      userInput: null,
-      modalId: uniqueId('delete-project-modal-'),
-    };
+    markedForDeletion: {
+      type: Boolean,
+      required: true,
+    },
+    permanentDeletionDate: {
+      type: String,
+      required: true,
+    },
   },
   computed: {
-    confirmDisabled() {
-      return this.userInput !== this.confirmPhrase;
-    },
-    modalActionProps() {
-      return {
-        primary: {
-          text: __('Yes, delete project'),
-          attributes: {
-            variant: 'danger',
-            disabled: this.confirmDisabled,
-            loading: this.confirmLoading,
-            'data-testid': 'confirm-delete-button',
-          },
-        },
-        cancel: {
-          text: __('Cancel, keep project'),
-        },
-      };
+    hasStats() {
+      return (
+        this.issuesCount !== null ||
+        this.mergeRequestsCount !== null ||
+        this.forksCount !== null ||
+        this.starsCount !== null
+      );
     },
   },
-  watch: {
-    confirmLoading(isLoading, wasLoading) {
-      // If the button was loading and now no longer is
-      if (!isLoading && wasLoading) {
-        // Hide the modal
-        this.$emit('change', false);
-      }
-    },
+  methods: {
+    numberToMetricPrefix,
   },
 };
 </script>
 
 <template>
-  <gl-modal
+  <groups-projects-delete-modal
+    :resource-type="$options.RESOURCE_TYPES.PROJECT"
     :visible="visible"
-    :modal-id="modalId"
-    footer-class="gl-bg-gray-10 gl-p-5"
-    title-class="gl-text-red-500"
-    :action-primary="modalActionProps.primary"
-    :action-cancel="modalActionProps.cancel"
-    @primary.prevent="$emit('primary')"
+    :confirm-phrase="confirmPhrase"
+    :full-name="nameWithNamespace"
+    :confirm-loading="confirmLoading"
+    :marked-for-deletion="markedForDeletion"
+    :permanent-deletion-date="permanentDeletionDate"
+    @primary="$emit('primary')"
     @change="$emit('change', $event)"
   >
-    <template #modal-title>{{ $options.i18n.title }}</template>
-    <div>
+    <template #alert>
       <gl-alert class="gl-mb-5" variant="danger" :dismissible="false">
         <h4 v-if="isFork" class="gl-alert-title">
           {{ $options.i18n.isForkAlertTitle }}
@@ -121,27 +110,29 @@ export default {
         <h4 v-else class="gl-alert-title">
           {{ $options.i18n.isNotForkAlertTitle }}
         </h4>
-        <ul>
+        <ul v-if="hasStats" data-testid="project-delete-modal-stats">
           <li v-if="issuesCount !== null">
-            <gl-sprintf :message="n__('%d issue', '%d issues', issuesCount)">
-              <template #issuesCount>{{ issuesCount }}</template>
+            <gl-sprintf :message="n__('%{count} issue', '%{count} issues', issuesCount)">
+              <template #count>{{ numberToMetricPrefix(issuesCount) }}</template>
             </gl-sprintf>
           </li>
           <li v-if="mergeRequestsCount !== null">
             <gl-sprintf
-              :message="n__('%d merge requests', '%d merge requests', mergeRequestsCount)"
+              :message="
+                n__('%{count} merge request', '%{count} merge requests', mergeRequestsCount)
+              "
             >
-              <template #mergeRequestsCount>{{ mergeRequestsCount }}</template>
+              <template #count>{{ numberToMetricPrefix(mergeRequestsCount) }}</template>
             </gl-sprintf>
           </li>
           <li v-if="forksCount !== null">
-            <gl-sprintf :message="n__('%d fork', '%d forks', forksCount)">
-              <template #forksCount>{{ forksCount }}</template>
+            <gl-sprintf :message="n__('%{count} fork', '%{count} forks', forksCount)">
+              <template #count>{{ numberToMetricPrefix(forksCount) }}</template>
             </gl-sprintf>
           </li>
           <li v-if="starsCount !== null">
-            <gl-sprintf :message="n__('%d star', '%d stars', starsCount)">
-              <template #starsCount>{{ starsCount }}</template>
+            <gl-sprintf :message="n__('%{count} star', '%{count} stars', starsCount)">
+              <template #count>{{ numberToMetricPrefix(starsCount) }}</template>
             </gl-sprintf>
           </li>
         </ul>
@@ -152,19 +143,6 @@ export default {
           </template>
         </gl-sprintf>
       </gl-alert>
-      <p class="gl-mb-1">{{ $options.i18n.confirmText }}</p>
-      <p>
-        <code class="gl-white-space-pre-wrap">{{ confirmPhrase }}</code>
-      </p>
-
-      <gl-form-input
-        id="confirm_name_input"
-        v-model="userInput"
-        name="confirm_name_input"
-        type="text"
-        data-testid="confirm-name-field"
-      />
-      <slot name="modal-footer"></slot>
-    </div>
-  </gl-modal>
+    </template>
+  </groups-projects-delete-modal>
 </template>

@@ -4,7 +4,7 @@ import { GlLabel } from '@gitlab/ui';
 import { isScopedLabel } from '~/lib/utils/common_utils';
 
 export default {
-  name: 'DetailsWrapper',
+  name: 'ReferenceLabelWrapper',
   components: {
     NodeViewWrapper,
     GlLabel,
@@ -31,7 +31,6 @@ export default {
 <template>
   <node-view-wrapper as="span" :class="{ 'ProseMirror-selectednode': selected }">
     <gl-label
-      size="sm"
       :scoped="isScopedLabel"
       :background-color="node.attrs.color || $options.fallbackLabelBackgroundColor"
       :title="node.attrs.text"

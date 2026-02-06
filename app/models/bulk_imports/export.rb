@@ -4,14 +4,18 @@ module BulkImports
   class Export < ApplicationRecord
     include Gitlab::Utils::StrongMemoize
 
+    PENDING = -2
     STARTED = 0
     FINISHED = 1
     FAILED = -1
+    IN_PROGRESS_STATUSES = [PENDING, STARTED].freeze
 
     self.table_name = 'bulk_import_exports'
 
     belongs_to :project, optional: true
     belongs_to :group, optional: true
+    belongs_to :user, optional: true
+    belongs_to :offline_export, optional: true, class_name: 'Import::Offline::Export'
 
     has_one :upload, class_name: 'BulkImports::ExportUpload'
     has_many :batches, class_name: 'BulkImports::ExportBatch'
@@ -22,7 +26,13 @@ module BulkImports
 
     validate :portable_relation?
 
+    scope :for_status, ->(status) { where(status: status) }
+    scope :for_user, ->(user) { where(user: user) }
+    scope :for_user_and_relation, ->(user, relation) { where(user: user, relation: relation) }
+    scope :for_offline_export, ->(offline_export) { where(offline_export: offline_export) }
+
     state_machine :status, initial: :started do
+      state :pending, value: PENDING
       state :started, value: STARTED
       state :finished, value: FINISHED
       state :failed, value: FAILED
@@ -37,6 +47,12 @@ module BulkImports
 
       event :fail_op do
         transition any => :failed
+      end
+
+      after_transition any => :finished do |export|
+        if export.config.user_contributions_relation?(export.relation)
+          UserContributionsExportMapper.new(export.portable).clear_cache
+        end
       end
     end
 
@@ -67,6 +83,14 @@ module BulkImports
 
       upload.remove_export_file!
       upload.save!
+    end
+
+    def relation_has_user_contributions?
+      config.relation_has_user_contributions?(relation)
+    end
+
+    def offline?
+      offline_export_id.present?
     end
   end
 end

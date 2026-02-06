@@ -1,3 +1,4 @@
+// Package proxy provides functionality for configuring and using a proxy server.
 package proxy
 
 import (
@@ -24,6 +25,7 @@ var (
 	pool = newBufferPool()
 )
 
+// Proxy represents a proxy configuration with various settings.
 type Proxy struct {
 	Version                string
 	reverseProxy           *httputil.ReverseProxy
@@ -32,18 +34,21 @@ type Proxy struct {
 	forceTargetHostHeader  bool
 }
 
+// WithCustomHeaders is a function that returns a configuration function to set custom headers for a proxy.
 func WithCustomHeaders(customHeaders map[string]string) func(*Proxy) {
 	return func(proxy *Proxy) {
 		proxy.customHeaders = customHeaders
 	}
 }
 
+// WithForcedTargetHostHeader is a function that returns a configuration function to force the target host header for a proxy.
 func WithForcedTargetHostHeader() func(*Proxy) {
 	return func(proxy *Proxy) {
 		proxy.forceTargetHostHeader = true
 	}
 }
 
+// NewProxy creates a new Proxy instance with the provided options.
 func NewProxy(myURL *url.URL, version string, roundTripper http.RoundTripper, options ...func(*Proxy)) *Proxy {
 	p := Proxy{Version: version, AllowResponseBuffering: true, customHeaders: make(map[string]string)}
 
@@ -101,17 +106,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		nginx.AllowResponseBuffering(w)
 	}
 
-	// If the ultimate client disconnects when the response isn't fully written
-	// to them yet, httputil.ReverseProxy panics with a net/http.ErrAbortHandler
-	// error. We can catch and discard this to keep the error log clean
-	defer func() {
-		if err := recover(); err != nil {
-			if err != http.ErrAbortHandler {
-				panic(err)
-			}
-		}
-	}()
-
 	p.reverseProxy.ServeHTTP(w, r)
 }
 
@@ -123,16 +117,17 @@ func newBufferPool() *bufferPool {
 	return &bufferPool{
 		pool: sync.Pool{
 			New: func() any {
-				return make([]byte, bufferPoolSize)
+				buf := make([]byte, bufferPoolSize)
+				return &buf
 			},
 		},
 	}
 }
 
 func (bp *bufferPool) Get() []byte {
-	return bp.pool.Get().([]byte)
+	return *bp.pool.Get().(*[]byte)
 }
 
 func (bp *bufferPool) Put(v []byte) {
-	bp.pool.Put(v) //lint:ignore SA6002 we either allocate manually to satisfy the linter or let the compiler allocate for us and silence the linter
+	bp.pool.Put(&v)
 }

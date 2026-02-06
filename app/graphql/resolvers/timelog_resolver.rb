@@ -8,37 +8,37 @@ module Resolvers
     type ::Types::TimelogType.connection_type, null: false
 
     argument :start_date, Types::TimeType,
-             required: false,
-             description: 'List timelogs within a date range where the logged date is equal to or after startDate.'
+      required: false,
+      description: 'List timelogs within a date range where the logged date is equal to or after startDate.'
 
     argument :end_date, Types::TimeType,
-             required: false,
-             description: 'List timelogs within a date range where the logged date is equal to or before endDate.'
+      required: false,
+      description: 'List timelogs within a date range where the logged date is equal to or before endDate.'
 
     argument :start_time, Types::TimeType,
-             required: false,
-             description: 'List timelogs within a time range where the logged time is equal to or after startTime.'
+      required: false,
+      description: 'List timelogs within a time range where the logged time is equal to or after startTime.'
 
     argument :end_time, Types::TimeType,
-             required: false,
-             description: 'List timelogs within a time range where the logged time is equal to or before endTime.'
+      required: false,
+      description: 'List timelogs within a time range where the logged time is equal to or before endTime.'
 
     argument :project_id, ::Types::GlobalIDType[::Project],
-             required: false,
-             description: 'List timelogs for a project.'
+      required: false,
+      description: 'List timelogs for a project.'
 
     argument :group_id, ::Types::GlobalIDType[::Group],
-             required: false,
-             description: 'List timelogs for a group.'
+      required: false,
+      description: 'List timelogs for a group.'
 
     argument :username, GraphQL::Types::String,
-             required: false,
-             description: 'List timelogs for a user.'
+      required: false,
+      description: 'List timelogs for a user.'
 
     argument :sort, Types::TimeTracking::TimelogSortEnum,
-             description: 'List timelogs in a particular order.',
-             required: false,
-             default_value: :spent_at_asc
+      description: 'List timelogs in a particular order.',
+      required: false,
+      default_value: :spent_at_asc
 
     def resolve_with_lookahead(**args)
       validate_args!(object, args)
@@ -74,18 +74,27 @@ module Resolvers
     end
 
     def validate_args!(object, args)
-      # sort is always provided because of its default value so we
-      # should check the remaining args to make sure at least one filter
-      # argument was provided
-      cleaned_args = args.except(:sort)
+      unless has_parent?(object, args) || for_current_user?(args) || admin_user?
+        raise_argument_error('Non-admin users must provide a groupId, projectId, or current username')
+      end
 
-      if cleaned_args.empty? && object.nil?
-        raise_argument_error('Provide at least one argument')
-      elsif args[:start_time] && args[:start_date]
+      if args[:start_time] && args[:start_date]
         raise_argument_error('Provide either a start date or time, but not both')
       elsif args[:end_time] && args[:end_date]
         raise_argument_error('Provide either an end date or time, but not both')
       end
+    end
+
+    def has_parent?(object, args)
+      object || args[:group_id] || args[:project_id]
+    end
+
+    def for_current_user?(args)
+      args[:username].present? && args[:username] == current_user&.username
+    end
+
+    def admin_user?
+      current_user&.can_read_all_resources?
     end
 
     def parse_datetime_args(args)

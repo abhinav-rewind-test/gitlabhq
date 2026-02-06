@@ -1,6 +1,8 @@
-// eslint-disable-next-line no-restricted-imports
-import { mapGetters, mapActions, mapState } from 'vuex';
-import { scrollToElement, contentTop } from '~/lib/utils/common_utils';
+import { mapActions, mapState } from 'pinia';
+import { contentTop } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { useNotes } from '~/notes/store/legacy_notes';
 
 function isOverviewPage() {
   return window.mrTabs?.currentAction === 'show';
@@ -16,6 +18,12 @@ function getAllDiscussionElements() {
 }
 
 function hasReachedPageEnd() {
+  const panel = document.querySelector('.js-static-panel-inner');
+
+  if (panel) {
+    return panel.scrollHeight <= Math.ceil(panel.scrollTop + panel.clientHeight);
+  }
+
   return document.body.scrollHeight <= Math.ceil(window.scrollY + window.innerHeight);
 }
 
@@ -38,9 +46,8 @@ function getNextDiscussion() {
   if (hasReachedPageEnd()) {
     return firstDiscussion;
   }
-  const [nextClosestDiscussion, index, isActive] = findNextClosestVisibleDiscussion(
-    discussionElements,
-  );
+  const [nextClosestDiscussion, index, isActive] =
+    findNextClosestVisibleDiscussion(discussionElements);
   if (nextClosestDiscussion && !isActive) {
     return nextClosestDiscussion;
   }
@@ -62,6 +69,7 @@ function getPreviousDiscussion() {
   return lastDiscussion;
 }
 
+// eslint-disable-next-line max-params
 function handleJumpForBothPages(getDiscussion, ctx, fn, scrollOptions) {
   const discussion = getDiscussion();
 
@@ -83,18 +91,16 @@ function handleJumpForBothPages(getDiscussion, ctx, fn, scrollOptions) {
 
 export default {
   computed: {
-    ...mapGetters([
+    ...mapState(useNotes, [
       'nextUnresolvedDiscussionId',
       'previousUnresolvedDiscussionId',
       'getDiscussion',
+      'currentDiscussionId',
     ]),
-    ...mapState({
-      currentDiscussionId: (state) => state.notes.currentDiscussionId,
-    }),
   },
   methods: {
-    ...mapActions(['expandDiscussion', 'setCurrentDiscussionId']),
-    ...mapActions('diffs', ['scrollToFile', 'disableVirtualScroller']),
+    ...mapActions(useNotes, ['expandDiscussion', 'setCurrentDiscussionId']),
+    ...mapActions(useLegacyDiffs, ['scrollToFile', 'disableVirtualScroller']),
 
     async jumpToNextDiscussion(scrollOptions) {
       await this.disableVirtualScroller();
@@ -119,11 +125,8 @@ export default {
     },
 
     jumpToFirstUnresolvedDiscussion() {
-      this.setCurrentDiscussionId(null)
-        .then(() => {
-          this.jumpToNextDiscussion();
-        })
-        .catch(() => {});
+      this.setCurrentDiscussionId(null);
+      this.jumpToNextDiscussion();
     },
   },
 };

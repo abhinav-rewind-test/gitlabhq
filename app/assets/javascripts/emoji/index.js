@@ -20,7 +20,7 @@ export const state = Vue.observable({
 export const FALLBACK_EMOJI_KEY = 'grey_question';
 
 // Keep the version in sync with `lib/gitlab/emoji.rb`
-export const EMOJI_VERSION = '3';
+export const EMOJI_VERSION = '4';
 
 const isLocalStorageAvailable = AccessorUtilities.canUseLocalStorage();
 
@@ -77,32 +77,46 @@ async function loadEmojiWithNames() {
 }
 
 export async function loadCustomEmojiWithNames() {
-  const emojiData = { emojis: {}, names: [] };
+  return new Promise((resolve) => {
+    const emojiData = { emojis: {}, names: [] };
 
-  if (document.body?.dataset?.groupFullPath) {
-    const client = createApolloClient();
-    const { data } = await client.query({
-      query: customEmojiQuery,
-      variables: {
-        groupPath: document.body.dataset.groupFullPath,
-      },
-    });
+    if (document.body?.dataset?.groupFullPath) {
+      const client = createApolloClient();
+      const fetchEmojis = async (after = '') => {
+        const { data } = await client.query({
+          query: customEmojiQuery,
+          variables: {
+            groupPath: document.body.dataset.groupFullPath,
+            after,
+          },
+        });
+        const { pageInfo } = data?.group?.customEmoji || {};
 
-    data?.group?.customEmoji?.nodes?.forEach((e) => {
-      // Map the custom emoji into the format of the normal emojis
-      emojiData.emojis[e.name] = {
-        c: 'custom',
-        d: e.name,
-        e: undefined,
-        name: e.name,
-        src: e.url,
-        u: 'custom',
+        data?.group?.customEmoji?.nodes?.forEach((e) => {
+          // Map the custom emoji into the format of the normal emojis
+          emojiData.emojis[e.name] = {
+            c: 'custom',
+            d: e.name,
+            e: undefined,
+            name: e.name,
+            src: e.url,
+            u: 'custom',
+          };
+          emojiData.names.push(e.name);
+        });
+
+        if (pageInfo?.hasNextPage) {
+          return fetchEmojis(pageInfo.endCursor);
+        }
+
+        return resolve(emojiData);
       };
-      emojiData.names.push(e.name);
-    });
-  }
 
-  return emojiData;
+      fetchEmojis();
+    } else {
+      resolve(emojiData);
+    }
+  });
 }
 
 async function prepareEmojiMap() {
@@ -316,4 +330,42 @@ export function glEmojiTag(inputName, options) {
   return `<gl-emoji ${fallbackSrcAttribute}${fallbackSpriteAttribute}data-name="${escape(
     name,
   )}"></gl-emoji>`;
+}
+
+export const getEmojisForCategory = async (category) => {
+  await initEmojiMap.promise;
+
+  return Object.values(emojiMap).filter((e) => e.c === category);
+};
+
+/**
+ * Regex pattern to match emoji shortcodes that are properly delimited.
+ *
+ * Matches :emoji_name: only when:
+ * - Preceded by start of string (^), whitespace (\s), parenthesis (()), or bracket ([])
+ * - Followed by whitespace (\s), end of string ($), parenthesis (()), or bracket ([])
+ *
+ * This prevents rendering emojis embedded in code/class names like:
+ * - service::heart::utils (no match)
+ * - namespace::rocket::method (no match)
+ *
+ * But allows:
+ * - "Fix :bug: in code" (matches)
+ * - ":rocket: Deploy" (matches)
+ * - "Done (:tada:)" (matches)
+ *
+ * @type {RegExp}
+ */
+const EMOJI_SHORTCODE_PATTERN = /(^|\s|[[(]):([a-zA-Z0-9_+-]+):(?=\s|$|[\])])/g;
+
+/**
+ * Processes title string and converts emoji shortcodes to HTML
+ * @param {string} title - The title containing emoji shortcodes like :rocket:
+ * @returns {string} - HTML string with emoji images
+ */
+export function processEmojiInTitle(title) {
+  if (!title) return '';
+  return escape(title).replace(EMOJI_SHORTCODE_PATTERN, (match, prefix, emojiName) => {
+    return prefix + glEmojiTag(emojiName);
+  });
 }

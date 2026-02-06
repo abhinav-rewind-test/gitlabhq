@@ -47,6 +47,8 @@ class Projects::RefsController < Projects::ApplicationController
   end
 
   def logs_tree
+    authenticate_user! if require_auth?
+
     respond_to do |format|
       format.json do
         logs, next_offset = tree_summary.fetch_logs
@@ -60,6 +62,11 @@ class Projects::RefsController < Projects::ApplicationController
 
   private
 
+  def require_auth?
+    current_user.blank? && @ref != @project.default_branch_or_main &&
+      Feature.enabled?(:require_login_for_commit_tree, @project)
+  end
+
   def tree_summary
     ::Gitlab::TreeSummary.new(
       @commit, @project, current_user,
@@ -68,7 +75,7 @@ class Projects::RefsController < Projects::ApplicationController
   end
 
   def validate_ref_id
-    return not_found if permitted_params[:id].present? && permitted_params[:id] !~ Gitlab::PathRegex.git_reference_regex
+    not_found if permitted_params[:id].present? && permitted_params[:id] !~ Gitlab::PathRegex.git_reference_regex
   end
 
   def permitted_params

@@ -27,6 +27,11 @@ export default {
       required: false,
       default: () => [],
     },
+    useRouter: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
   data() {
     return {
@@ -45,20 +50,15 @@ export default {
       return `${cleanOrderBy}_${this.sorting?.sort}`.toUpperCase();
     },
   },
-  watch: {
-    $route(newValue, oldValue) {
-      if (newValue.fullPath !== oldValue.fullPath) {
-        this.updateDataFromUrl();
-        this.emitUpdate();
-      }
-    },
-  },
   mounted() {
-    this.updateDataFromUrl();
+    this.updateDataFromUrlAndEmitUpdate();
     this.mountRegistrySearch = true;
-    this.emitUpdate();
   },
   methods: {
+    updateDataFromUrlAndEmitUpdate() {
+      this.updateDataFromUrl();
+      this.emitUpdate();
+    },
     updateDataFromUrl() {
       const queryParams = getQueryParams(window.location.search);
       const { sorting, filters } = extractFilterAndSorting(queryParams);
@@ -95,7 +95,7 @@ export default {
 </script>
 
 <template>
-  <url-sync>
+  <url-sync :use-router="useRouter" @popstate="updateDataFromUrlAndEmitUpdate">
     <template #default="{ updateQuery }">
       <registry-search
         v-if="mountRegistrySearch"

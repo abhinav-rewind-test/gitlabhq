@@ -5,14 +5,34 @@ require 'spec_helper'
 RSpec.describe 'Incident details', :js, feature_category: :incident_management do
   include MergeRequestDiffHelpers
 
+  let_it_be(:payload) do
+    {
+      'title' => 'Alert title',
+      'start_time' => '2020-04-27T10:10:22.265949279Z',
+      'custom' => {
+        'alert' => {
+          'fields' => %w[one two]
+        }
+      },
+      'yet' => {
+        'another' => 73
+      }
+    }
+  end
+
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+
+  let_it_be(:alert) do
+    create(:alert_management_alert, project: project, payload: payload)
+  end
+
   let_it_be(:confidential_incident) do
     create(:incident, confidential: true, project: project, author: developer, description: 'Confidential')
   end
 
   let_it_be_with_reload(:incident) do
-    create(:incident, project: project, author: developer, description: 'description')
+    create(:incident, project: project, author: developer, description: 'description', alert_management_alert: alert)
   end
 
   let_it_be(:escalation_status) { create(:incident_management_issuable_escalation_status, issue: incident) }
@@ -21,11 +41,13 @@ RSpec.describe 'Incident details', :js, feature_category: :incident_management d
     create(:issue, project: project, author: developer, description: 'Issue description')
   end
 
-  before_all do
-    project.add_developer(developer)
-  end
-
   before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+    stub_feature_flags(hide_incident_management_features: false)
+
     sign_in(developer)
   end
 
@@ -48,9 +70,49 @@ RSpec.describe 'Incident details', :js, feature_category: :incident_management d
       page.within('.issuable-details') do
         incident_tabs = find_by_testid('incident-tabs')
 
-        expect(find('h1')).to have_content(incident.title)
-        expect(incident_tabs).to have_content('Summary')
-        expect(incident_tabs).to have_content(incident.description)
+        aggregate_failures 'shows title and Summary tab' do
+          expect(find('h1')).to have_content(incident.title)
+          expect(incident_tabs).to have_content('Summary')
+          expect(incident_tabs).to have_content(incident.description)
+        end
+
+        aggregate_failures 'shows the incident highlight bar' do
+          expect(incident_tabs).to have_content('Alert events: 1')
+          expect(incident_tabs).to have_content('Original alert: #1')
+        end
+
+        aggregate_failures 'when on summary tab (default tab)' do
+          hidden_items = find_all('.js-issue-widgets')
+
+          # Linked Issues/MRs + comment box + emoji block
+          expect(hidden_items.count).to eq(3)
+          expect(hidden_items).to all(be_visible)
+
+          edit_button = find_all('[aria-label="Edit title and description"]')
+          expect(edit_button).to all(be_visible)
+        end
+
+        aggregate_failures 'shows the Alert details tab' do
+          click_link 'Alert details'
+
+          expect(incident_tabs).to have_content('"title": "Alert title"')
+          expect(incident_tabs).to have_content('"yet.another": 73')
+
+          # does not show the linked issues and notes/comment components' do
+          hidden_items = find_all('.js-issue-widgets', wait: false)
+
+          # Linked Issues/MRs and comment box are hidden on page
+          expect(hidden_items.count).to eq(0)
+        end
+
+        aggregate_failures 'does not show the linked issues and notes/comment components for the Timeline tab' do
+          click_link 'Timeline'
+
+          hidden_items = find_all('.js-issue-widgets', wait: false)
+
+          # Linked Issues/MRs and comment box are hidden on page
+          expect(hidden_items.count).to eq(0)
+        end
       end
 
       # shows the right sidebar mounted with type issue
@@ -109,29 +171,19 @@ RSpec.describe 'Incident details', :js, feature_category: :incident_management d
     end
   end
 
-  it 'routes the user to the incident details page when the `issue_type` is set to incident' do
+  it 'routes the user to the incident details page when the issue is converted to an incident' do
     visit project_issue_path(project, issue)
-    wait_for_requests
 
-    project_path = "/#{project.full_path}"
-    click_button 'Edit title and description'
-    wait_for_requests
-
-    within_testid('issuable-form') do
-      click_button 'Issue'
-      find_by_testid('issue-type-list-item', text: 'Incident').click
-
-      click_button 'Save changes'
-    end
-
-    wait_for_requests
+    fill_in 'Add a reply', with: '/promote_to_incident'
+    click_button 'Comment'
 
     expect(issue.reload.issue_type).to eq('incident')
-    expect(page).to have_current_path("#{project_path}/-/issues/incident/#{issue.iid}")
-    expect(page).to have_content(issue.title)
+    expect(page).to have_css('h1', text: issue.title)
+    expect(page).to have_testid('work-item-type-icon', text: 'Incident')
   end
 
-  it 'routes the user to the issue details page when the `issue_type` is set to issue' do
+  it 'routes the user to the issue details page when the `issue_type` is set to issue',
+    quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/573019' do
     visit incident_project_issues_path(project, incident)
     wait_for_requests
 
@@ -156,10 +208,14 @@ RSpec.describe 'Incident details', :js, feature_category: :incident_management d
     visit incident_project_issues_path(project, confidential_incident)
     wait_for_requests
 
-    sticky_header = find_by_scrolling('[data-testid=issue-sticky-header]')
+    sticky_header = find_in_page_or_panel_by_scrolling('[data-testid=issue-sticky-header]')
 
     page.within(sticky_header) do
       expect(page).to have_text 'Confidential'
     end
+  end
+
+  def find_in_page_or_panel_by_scrolling(selector, **options)
+    find_in_panel_by_scrolling(selector, **options)
   end
 end

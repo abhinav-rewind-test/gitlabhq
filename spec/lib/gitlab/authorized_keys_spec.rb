@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::AuthorizedKeys do
   let(:logger) { double('logger').as_null_object }
@@ -259,7 +259,7 @@ RSpec.describe Gitlab::AuthorizedKeys do
   end
 
   def delete_authorized_keys_file
-    File.delete(tmp_authorized_keys_path) if File.exist?(tmp_authorized_keys_path)
+    FileUtils.rm_f(tmp_authorized_keys_path)
   end
 
   def tmp_authorized_keys_path

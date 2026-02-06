@@ -14,9 +14,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
   let(:current_stage) { instance_double(Gitlab::Ci::Pipeline::Seed::Stage, seeds_names: [attributes[:name]]) }
 
   let(:seed_build) { described_class.new(seed_context, attributes, previous_stages + [current_stage]) }
+  let(:seed_resource) { seed_build.to_resource }
 
   describe '#attributes' do
-    subject { seed_build.attributes }
+    subject(:seed_attributes) { seed_build.attributes }
 
     it { is_expected.to be_a(Hash) }
     it { is_expected.to include(:name, :project, :ref) }
@@ -30,7 +31,14 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
     context 'with job:when:delayed' do
       let(:attributes) { { name: 'rspec', ref: 'master', when: 'delayed', options: { start_in: '3 hours' } } }
 
-      it { is_expected.to include(when: 'delayed', options: { start_in: '3 hours' }) }
+      it { is_expected.to include(when: 'delayed') }
+
+      it 'assigns config attributes to job definition' do
+        expect(seed_resource.temp_job_definition).to have_attributes(
+          interruptible: false,
+          config: { options: { start_in: '3 hours' }, yaml_variables: [] }
+        )
+      end
     end
 
     context 'with job:rules:[when:]' do
@@ -47,11 +55,57 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
       end
     end
 
+    context 'with job:run attribute' do
+      let(:run_value) do
+        [
+          { name: 'step1', step: 'some_step_reference', env: { VAR1: 'value1', VAR2: 'value2' } },
+          { name: 'step2', script: "echo 'Hello, World!'", inputs: { input1: 'input_value1', input2: 'input_value1223' } }
+        ].map(&:deep_stringify_keys)
+      end
+
+      let(:attributes) do
+        {
+          name: 'rspec',
+          ref: 'master',
+          execution_config: {
+            run_steps: run_value
+          }
+        }
+      end
+
+      it 'includes execution_config attribute with run steps' do
+        expect(subject[:execution_config]).to an_object_having_attributes(
+          project: pipeline.project,
+          pipeline: pipeline,
+          run_steps: run_value
+        )
+      end
+
+      context 'when job:run attribute is not specified' do
+        let(:attributes) do
+          {
+            name: 'rspec',
+            ref: 'master'
+          }
+        end
+
+        it 'does not include execution_config attribute' do
+          expect(subject).not_to include(:execution_config)
+        end
+      end
+    end
+
     context 'with job:rules:[when:delayed]' do
       context 'is matched' do
         let(:attributes) { { name: 'rspec', ref: 'master', rules: [{ if: '$VAR == null', when: 'delayed', start_in: '3 hours' }] } }
 
-        it { is_expected.to include(when: 'delayed', options: { start_in: '3 hours' }) }
+        it { is_expected.to include(when: 'delayed') }
+
+        it 'assigns options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: { start_in: '3 hours' })
+          )
+        end
       end
 
       context 'is not matched' do
@@ -95,17 +149,31 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
 
     context 'with job:rules:[variables:]' do
       let(:attributes) do
-        { name: 'rspec',
+        {
+          name: 'rspec',
           ref: 'master',
-          job_variables: [{ key: 'VAR1', value: 'var 1' },
-                          { key: 'VAR2', value: 'var 2' }],
-          rules: [{ if: '$VAR == null', variables: { VAR1: 'new var 1', VAR3: 'var 3' } }] }
+          job_variables: [
+            { key: 'VAR1', value: 'var 1' },
+            { key: 'VAR2', value: 'var 2' }
+          ],
+          rules: [
+            {
+              if: '$VAR == null',
+              variables: {
+                VAR1: 'new var 1',
+                VAR3: 'var 3'
+              }
+            }
+          ]
+        }
       end
 
-      it do
-        is_expected.to include(yaml_variables: [{ key: 'VAR1', value: 'new var 1' },
-                                                { key: 'VAR3', value: 'var 3' },
-                                                { key: 'VAR2', value: 'var 2' }])
+      it 'assigns options to job definition' do
+        expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
+          [{ key: 'VAR1', value: 'new var 1' },
+            { key: 'VAR3', value: 'var 3' },
+            { key: 'VAR2', value: 'var 2' }]
+        )
       end
     end
 
@@ -116,10 +184,19 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         context 'when job has needs set' do
           context 'when rule evaluates to true' do
             let(:attributes) do
-              { name: 'rspec',
+              {
+                name: 'rspec',
                 ref: 'master',
                 needs_attributes: job_needs_attributes,
-                rules: [{ if: '$VAR == null', needs: { job: [{ name: 'build-job' }] } }] }
+                rules: [
+                  {
+                    if: '$VAR == null',
+                    needs: {
+                      job: [{ name: 'build-job' }]
+                    }
+                  }
+                ]
+              }
             end
 
             it 'overrides the job needs' do
@@ -129,10 +206,19 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
 
           context 'when rule evaluates to false' do
             let(:attributes) do
-              { name: 'rspec',
+              {
+                name: 'rspec',
                 ref: 'master',
                 needs_attributes: job_needs_attributes,
-                rules: [{ if: '$VAR == true', needs: { job: [{ name: 'build-job' }] } }] }
+                rules: [
+                  {
+                    if: '$VAR == true',
+                    needs: {
+                      job: [{ name: 'build-job' }]
+                    }
+                  }
+                ]
+              }
             end
 
             it 'keeps the job needs' do
@@ -142,19 +228,20 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
 
           context 'with subkeys: artifacts, optional' do
             let(:attributes) do
-              { name: 'rspec',
+              {
+                name: 'rspec',
                 ref: 'master',
-                rules:
-                [
-                  { if: '$VAR == null',
-                    needs: {
-                      job: [{
-                        name: 'build-job',
-                        optional: false,
-                        artifacts: true
-                      }]
-                    } }
-                ] }
+                rules: [{
+                  if: '$VAR == null',
+                  needs: {
+                    job: [{
+                      name: 'build-job',
+                      optional: false,
+                      artifacts: true
+                    }]
+                  }
+                }]
+              }
             end
 
             context 'when rule evaluates to true' do
@@ -172,14 +259,16 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         context 'with multiple rules' do
           context 'when a rule evaluates to true' do
             let(:attributes) do
-              { name: 'rspec',
+              {
+                name: 'rspec',
                 ref: 'master',
                 needs_attributes: job_needs_attributes,
                 rules: [
                   { if: '$VAR == true', needs: { job: [{ name: 'rspec-1' }] } },
                   { if: '$VAR2 == true', needs: { job: [{ name: 'rspec-2' }] } },
                   { if: '$VAR3 == null', needs: { job: [{ name: 'rspec' }, { name: 'lint' }] } }
-                ] }
+                ]
+              }
             end
 
             it 'overrides the job needs' do
@@ -189,14 +278,16 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
 
           context 'when all rules evaluates to false' do
             let(:attributes) do
-              { name: 'rspec',
+              {
+                name: 'rspec',
                 ref: 'master',
                 needs_attributes: job_needs_attributes,
                 rules: [
                   { if: '$VAR == true', needs: { job: [{ name: 'rspec-1' }] }  },
                   { if: '$VAR2 == true', needs: { job: [{ name: 'rspec-2' }] } },
                   { if: '$VAR3 == true', needs: { job: [{ name: 'rspec-3' }] } }
-                ] }
+                ]
+              }
             end
 
             it 'keeps the job needs' do
@@ -221,7 +312,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         let(:rules) { [{ if: '$VAR == null', interruptible: true }] }
 
         it 'overrides the job interruptible value' do
-          is_expected.to include(interruptible: true)
+          expect(seed_resource.temp_job_definition).to have_attributes(interruptible: true)
         end
 
         context 'when job does not have an interruptible value' do
@@ -234,7 +325,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           end
 
           it 'adds interruptible value to the job' do
-            is_expected.to include(interruptible: true)
+            expect(seed_resource.temp_job_definition).to have_attributes(interruptible: true)
           end
         end
 
@@ -242,7 +333,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           let(:rules) { [{ if: '$VAR == null' }] }
 
           it 'does not change the job interruptible value' do
-            is_expected.to include(interruptible: false)
+            expect(seed_resource.temp_job_definition).to have_attributes(interruptible: false)
           end
         end
       end
@@ -251,7 +342,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         let(:rules) { [{ if: '$VAR == true', interruptible: true }] }
 
         it 'does not change the job interruptible value' do
-          is_expected.to include(interruptible: false)
+          expect(seed_resource.temp_job_definition).to have_attributes(interruptible: false)
         end
       end
     end
@@ -267,7 +358,52 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
       end
 
       it { is_expected.to include(tag_list: ['static-tag', 'value', '$NO_VARIABLE']) }
-      it { is_expected.to include(yaml_variables: [{ key: 'VARIABLE', value: 'value' }]) }
+
+      it { expect(seed_resource.temp_job_definition.config).to include({ tag_list: ['static-tag', 'value', '$NO_VARIABLE'] }) }
+
+      it 'assigns yaml_variables to job definition' do
+        expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
+          [{ key: 'VARIABLE', value: 'value' }]
+        )
+      end
+    end
+
+    context 'with job:inputs' do
+      let(:attributes) do
+        {
+          name: 'rspec',
+          ref: 'master',
+          inputs: {
+            string_input: {
+              type: 'string',
+              default: 'default value'
+            },
+            number_input: {
+              type: 'number',
+              default: 666
+            }
+          }
+        }
+      end
+
+      it 'assigns inputs to job definition options' do
+        expect(seed_resource.temp_job_definition).to have_attributes(
+          config: a_hash_including(
+            options: a_hash_including(
+              inputs: {
+                string_input: {
+                  type: 'string',
+                  default: 'default value'
+                },
+                number_input: {
+                  type: 'number',
+                  default: 666
+                }
+              }
+            )
+          )
+        )
+      end
     end
 
     context 'with cache:key' do
@@ -281,7 +417,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         }
       end
 
-      it { is_expected.to include(options: { cache: [a_hash_including(key: 'a-value')] }) }
+      it 'assigns options to job definition' do
+        expect(seed_resource.temp_job_definition).to have_attributes(
+          config: a_hash_including(options: { cache: [a_hash_including(key: 'a-value')] })
+        )
+      end
 
       context 'with cache:key:files' do
         let(:attributes) do
@@ -296,14 +436,12 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           }
         end
 
-        it 'includes cache options' do
-          cache_options = {
-            options: {
-              cache: [a_hash_including(key: '0_VERSION-f155568ad0933d8358f66b846133614f76dd0ca4')]
-            }
-          }
-
-          is_expected.to include(cache_options)
+        it 'assigns cache options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: {
+              cache: [a_hash_including(key: '0_VERSION-30be75a2f82c8279268f1a442c1c60913cd11739')]
+            })
+          )
         end
       end
 
@@ -320,7 +458,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           }
         end
 
-        it { is_expected.to include(options: { cache: [a_hash_including( key: 'something-default' )] }) }
+        it 'assigns cache options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: { cache: [a_hash_including(key: 'something-default')] })
+          )
+        end
       end
 
       context 'with cache:key:files and prefix' do
@@ -337,14 +479,12 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           }
         end
 
-        it 'includes cache options' do
-          cache_options = {
-            options: {
-              cache: [a_hash_including(key: 'something-f155568ad0933d8358f66b846133614f76dd0ca4')]
-            }
-          }
-
-          is_expected.to include(cache_options)
+        it 'assigns cache options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: {
+              cache: [a_hash_including(key: 'something-30be75a2f82c8279268f1a442c1c60913cd11739')]
+            })
+          )
         end
       end
     end
@@ -380,7 +520,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
       end
 
       context 'when rules does not override allow_failure' do
-        it { is_expected.to match a_hash_including(options: options) }
+        it 'assigns options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: options)
+          )
+        end
       end
 
       context 'when rules set allow_failure to true' do
@@ -388,7 +532,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           [{ if: '$VAR == null', when: 'always', allow_failure: true }]
         end
 
-        it { is_expected.to match a_hash_including(options: { allow_failure_criteria: nil }) }
+        it 'assigns options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: { allow_failure_criteria: nil })
+          )
+        end
       end
 
       context 'when rules set allow_failure to false' do
@@ -396,7 +544,11 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           [{ if: '$VAR == null', when: 'always', allow_failure: false }]
         end
 
-        it { is_expected.to match a_hash_including(options: { allow_failure_criteria: nil }) }
+        it 'assigns options to job definition' do
+          expect(seed_resource.temp_job_definition).to have_attributes(
+            config: a_hash_including(options: { allow_failure_criteria: nil })
+          )
+        end
       end
     end
 
@@ -405,9 +557,9 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         { name: 'rspec',
           ref: 'master',
           yaml_variables: [{ key: 'VAR2', value: 'var 2' },
-                            { key: 'VAR3', value: 'var 3' }],
+            { key: 'VAR3', value: 'var 3' }],
           job_variables: [{ key: 'VAR2', value: 'var 2' },
-                          { key: 'VAR3', value: 'var 3' }],
+            { key: 'VAR3', value: 'var 3' }],
           root_variables_inheritance: root_variables_inheritance }
       end
 
@@ -423,7 +575,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           let(:root_variables_inheritance) { true }
 
           it 'returns calculated yaml variables' do
-            expect(subject[:yaml_variables]).to match_array(
+            expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
               [{ key: 'VAR1', value: 'var overridden pipeline 1' },
                 { key: 'VAR2', value: 'var 2' },
                 { key: 'VAR3', value: 'var 3' },
@@ -436,7 +588,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           let(:root_variables_inheritance) { false }
 
           it 'returns job variables' do
-            expect(subject[:yaml_variables]).to match_array(
+            expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
               [{ key: 'VAR2', value: 'var 2' },
                 { key: 'VAR3', value: 'var 3' }]
             )
@@ -447,7 +599,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           let(:root_variables_inheritance) { %w[VAR1 VAR2 VAR3] }
 
           it 'returns calculated yaml variables' do
-            expect(subject[:yaml_variables]).to match_array(
+            expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
               [{ key: 'VAR1', value: 'var overridden pipeline 1' },
                 { key: 'VAR2', value: 'var 2' },
                 { key: 'VAR3', value: 'var 3' }]
@@ -460,7 +612,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         let(:root_variables_inheritance) { true }
 
         it 'returns seed yaml variables' do
-          expect(subject[:yaml_variables]).to match_array(
+          expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
             [{ key: 'VAR2', value: 'var 2' },
               { key: 'VAR3', value: 'var 3' }])
         end
@@ -485,9 +637,9 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         end
 
         it 'recalculates the variables' do
-          expect(subject[:yaml_variables]).to contain_exactly(
-            { key: 'VAR1', value: 'overridden var 1' },
-            { key: 'VAR2', value: 'new var 2' }
+          expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
+            [{ key: 'VAR1', value: 'overridden var 1' },
+              { key: 'VAR2', value: 'new var 2' }]
           )
         end
       end
@@ -502,9 +654,9 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
         end
 
         it 'recalculates the variables' do
-          expect(subject[:yaml_variables]).to contain_exactly(
-            { key: 'VAR1', value: 'overridden var 1' },
-            { key: 'VAR2', value: 'overridden var 2' }
+          expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
+            [{ key: 'VAR1', value: 'overridden var 1' },
+              { key: 'VAR2', value: 'overridden var 2' }]
           )
         end
 
@@ -512,9 +664,176 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
           let(:root_variables_inheritance) { false }
 
           it 'does not recalculate the variables' do
-            expect(subject[:yaml_variables]).to contain_exactly({ key: 'VAR1', value: 'var 1' })
+            expect(seed_resource.temp_job_definition.config[:yaml_variables]).to match_array(
+              [{ key: 'VAR1', value: 'var 1' }]
+            )
           end
         end
+      end
+    end
+
+    describe 'job definition attributes generation' do
+      let(:attributes) do
+        {
+          name: 'rspec',
+          ref: 'master',
+          options: { script: ['echo test'] },
+          yaml_variables: [{ key: 'VAR', value: 'value' }],
+          interruptible: true
+        }
+      end
+
+      it 'sets correct attributes on temp_job_definition' do
+        job_def = seed_resource.temp_job_definition
+        expect(job_def.project_id).to eq(project.id)
+        expect(job_def.partition_id).to eq(pipeline.partition_id)
+        expect(job_def.config).to include(:options, :yaml_variables)
+      end
+
+      it 'assigns attributes to temp_job_definition instead of preserving in build' do
+        expect(seed_resource.metadata&.options).to be_nil
+        expect(seed_resource.metadata&.yaml_variables).to be_nil
+        expect(seed_resource.metadata&.interruptible).to be_nil
+        expect(seed_resource.temp_job_definition.config[:options]).to eq(attributes[:options])
+        expect(seed_resource.temp_job_definition.config[:yaml_variables]).to eq(attributes[:yaml_variables])
+        expect(seed_resource.temp_job_definition.interruptible).to eq(attributes[:interruptible])
+      end
+
+      context 'with id_tokens' do
+        let(:attributes) do
+          {
+            name: 'rspec',
+            ref: 'master',
+            id_tokens: {
+              TEST_TOKEN: { aud: 'https://gitlab.com' }
+            }
+          }
+        end
+
+        it 'includes id_tokens in temp_job_definition' do
+          expect(seed_resource.temp_job_definition.config[:id_tokens]).to eq(attributes[:id_tokens])
+        end
+      end
+
+      context 'with secrets' do
+        let(:attributes) do
+          {
+            name: 'rspec',
+            ref: 'master',
+            secrets: {
+              TEST_SECRET: {
+                gitlab_secrets_manager: { name: 'foo' }
+              }
+            }
+          }
+        end
+
+        it 'includes secrets in temp_job_definition' do
+          expect(seed_resource.temp_job_definition.config[:secrets]).to eq(attributes[:secrets])
+        end
+      end
+
+      context 'with execution_config (run steps)' do
+        let(:run_steps_value) do
+          [
+            { name: 'step1', step: 'gitlab.com/components/echo@v1.0.0', env: { VAR1: 'value1' } },
+            { name: 'step2', script: "echo 'Hello, World!'", inputs: { input1: 'input_value1' } }
+          ]
+        end
+
+        let(:attributes) do
+          {
+            name: 'rspec',
+            ref: 'master',
+            execution_config: {
+              run_steps: run_steps_value
+            }
+          }
+        end
+
+        it 'includes execution config data in temp_job_definition' do
+          expect(seed_resource.temp_job_definition.config[:run_steps]).to eq(run_steps_value)
+        end
+
+        it 'preserves original execution_config attribute' do
+          expect(seed_attributes[:execution_config]).to an_object_having_attributes(
+            project: pipeline.project,
+            pipeline: pipeline,
+            run_steps: run_steps_value.map(&:deep_stringify_keys)
+          )
+        end
+
+        context 'when execution_config is nil' do
+          let(:attributes) do
+            {
+              name: 'rspec',
+              ref: 'master'
+            }
+          end
+
+          it 'does not include execution config data in temp_job_definition' do
+            expect(seed_resource.temp_job_definition.config[:run_steps]).to be_nil
+          end
+        end
+      end
+
+      context 'with same configuration' do
+        let(:attributes2) do
+          {
+            name: 'test',
+            ref: 'master',
+            options: { script: ['echo test'] },
+            yaml_variables: [{ key: 'VAR', value: 'value' }],
+            interruptible: true
+          }
+        end
+
+        it 'generates same checksum for identical configs' do
+          seed2 = described_class.new(seed_context, attributes2, previous_stages + [current_stage])
+
+          checksum1 = seed_resource.temp_job_definition.checksum
+          checksum2 = seed2.to_resource.temp_job_definition.checksum
+
+          expect(checksum1).to eq(checksum2)
+        end
+      end
+
+      context 'with different configuration' do
+        let(:attributes2) do
+          {
+            name: 'test',
+            ref: 'master',
+            options: { script: ['echo different'] },
+            yaml_variables: [{ key: 'VAR', value: 'value' }],
+            interruptible: true
+          }
+        end
+
+        it 'generates different checksums for different configs' do
+          seed2 = described_class.new(seed_context, attributes2, previous_stages + [current_stage])
+
+          checksum1 = seed_resource.temp_job_definition.checksum
+          checksum2 = seed2.to_resource.temp_job_definition.checksum
+
+          expect(checksum1).not_to eq(checksum2)
+        end
+      end
+    end
+
+    describe 'propagating composite identity', :request_store do
+      let_it_be(:user) { create(:user) }
+
+      let(:attributes) do
+        { name: 'rspec', options: { test: 123 } }
+      end
+
+      before do
+        pipeline.update!(user: user)
+      end
+
+      it 'does not propagate composite identity by default' do
+        expect(seed_resource.temp_job_definition.config[:options].key?(:scoped_user_id)).to be(false)
+        expect(seed_attributes.key?(:scoped_user_id)).to be(false)
       end
     end
   end
@@ -975,7 +1294,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
             it { is_expected.to be_included }
 
             it 'correctly populates when:' do
-              expect(seed_build.attributes).to include(when: 'delayed', options: { start_in: '1 day' })
+              expect(seed_build.attributes).to include(when: 'delayed')
+              expect(seed_build.to_resource.temp_job_definition).to have_attributes(
+                config: a_hash_including(options: { start_in: '1 day' })
+              )
             end
           end
         end
@@ -1309,7 +1631,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Build, feature_category: :pipeline_co
 
       it "returns an error" do
         expect(subject.errors).to contain_exactly(
-          "'rspec' job needs 'build' job, but 'build' is not in any previous stage")
+          "'rspec' job needs 'build' job, but 'build' does not exist in the pipeline. " \
+            'This might be because of the only, except, or rules keywords. ' \
+            'To need a job that sometimes does not exist in the pipeline, use needs:optional.'
+        )
       end
 
       context 'when the needed job is optional' do

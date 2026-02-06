@@ -113,7 +113,8 @@ RSpec.describe AutocompleteController do
     end
 
     context 'user order' do
-      it 'shows exact matches first', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/375028' do
+      it 'shows exact matches first',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9309' do
         reported_user = create(:user, username: 'reported_user', name: 'Doug')
         user = create(:user, username: 'user', name: 'User')
         user1 = create(:user, username: 'user1', name: 'Ian')
@@ -238,15 +239,19 @@ RSpec.describe AutocompleteController do
       end
     end
 
-    it_behaves_like 'rate limited endpoint', rate_limit_key: :search_rate_limit do
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :autocomplete_users do
       let(:current_user) { user }
 
       def request
+        sign_in(current_user)
+
         get(:users, params: { search: 'foo@bar.com' })
       end
 
-      before do
-        sign_in(current_user)
+      def request_with_second_scope
+        sign_in(create(:admin))
+
+        get(:users, params: { search: 'foo@bar.com' })
       end
     end
   end
@@ -344,8 +349,8 @@ RSpec.describe AutocompleteController do
 
   context 'GET award_emojis', feature_category: :team_planning do
     let(:user2) { create(:user) }
-    let!(:award_emoji1) { create_list(:award_emoji, 2, user: user, name: 'thumbsup') }
-    let!(:award_emoji2) { create_list(:award_emoji, 1, user: user, name: 'thumbsdown') }
+    let!(:award_emoji1) { create_list(:award_emoji, 2, user: user, name: AwardEmoji::THUMBS_UP) }
+    let!(:award_emoji2) { create_list(:award_emoji, 1, user: user, name: AwardEmoji::THUMBS_DOWN) }
     let!(:award_emoji3) { create_list(:award_emoji, 3, user: user, name: 'star') }
     let!(:award_emoji4) { create_list(:award_emoji, 1, user: user, name: 'tea') }
 
@@ -373,9 +378,9 @@ RSpec.describe AutocompleteController do
 
         expect(json_response.count).to eq 4
         expect(json_response[0]).to match('name' => 'star')
-        expect(json_response[1]).to match('name' => 'thumbsup')
+        expect(json_response[1]).to match('name' => AwardEmoji::THUMBS_UP)
         expect(json_response[2]).to match('name' => 'tea')
-        expect(json_response[3]).to match('name' => 'thumbsdown')
+        expect(json_response[3]).to match('name' => AwardEmoji::THUMBS_DOWN)
       end
     end
   end

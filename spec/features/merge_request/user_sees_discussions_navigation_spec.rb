@@ -96,7 +96,7 @@ RSpec.describe 'Merge request > User sees discussions navigation', :js, feature_
         end
 
         it 'excludes resolved threads during navigation',
-          quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/383687' do
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24863' do
           goto_next_thread
           goto_next_thread
           goto_next_thread
@@ -115,7 +115,7 @@ RSpec.describe 'Merge request > User sees discussions navigation', :js, feature_
       context 'with collapsed threads' do
         before do
           page.within(first_discussion_selector) do
-            click_button 'Hide thread'
+            click_button text: 'Collapse replies'
           end
         end
 
@@ -181,7 +181,13 @@ RSpec.describe 'Merge request > User sees discussions navigation', :js, feature_
       it_behaves_like 'a page with no code discussions'
     end
 
-    context 'on pipelines page' do
+    context 'on pipelines page',
+      quarantine: {
+        issue: [
+          'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6901',
+          'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6900'
+        ]
+      } do
       before do
         visit project_merge_request_path(project, merge_request)
         click_link 'Pipelines'
@@ -192,13 +198,13 @@ RSpec.describe 'Merge request > User sees discussions navigation', :js, feature_
   end
 
   def goto_next_thread
-    click_button 'Next unresolved thread', obscured: false
+    click_button 'Next open thread', obscured: false
     # Wait for scroll
     sleep(1)
   end
 
   def goto_previous_thread
-    click_button 'Previous unresolved thread', obscured: false
+    click_button 'Previous open thread', obscured: false
     # Wait for scroll
     sleep(1)
   end

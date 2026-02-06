@@ -11,14 +11,14 @@ module Mutations
         DESC
 
         argument :body,
-                 GraphQL::Types::String,
-                 required: false,
-                 description: copy_field_description(Types::Notes::NoteType, :body)
+          GraphQL::Types::String,
+          required: false,
+          description: copy_field_description(Types::Notes::NoteType, :body)
 
         argument :position,
-                 Types::Notes::UpdateDiffImagePositionInputType,
-                 required: false,
-                 description: copy_field_description(Types::Notes::NoteType, :position)
+          Types::Notes::UpdateDiffImagePositionInputType,
+          required: false,
+          description: copy_field_description(Types::Notes::NoteType, :position)
 
         def ready?(**args)
           # As both arguments are optional, validate here that one of the
@@ -29,10 +29,10 @@ module Mutations
           # https://github.com/graphql/graphql-spec/blob/master/rfcs/InputUnion.md
           if args.values_at(:body, :position).compact.blank?
             raise Gitlab::Graphql::Errors::ArgumentError,
-                  'body or position arguments are required'
+              'body or position arguments are required'
           end
 
-          super(**args)
+          super
         end
 
         private
@@ -40,11 +40,11 @@ module Mutations
         def pre_update_checks!(note, _args)
           return if note.is_a?(DiffNote) && note.position.on_image?
 
-          raise Gitlab::Graphql::Errors::ResourceNotAvailable, 'Resource is not an ImageDiffNote'
+          raise_resource_not_available_error! 'Resource is not an ImageDiffNote'
         end
 
         def note_params(note, args)
-          super(note, args).merge(
+          super.merge(
             position: position_params(note, args)
           ).compact
         end

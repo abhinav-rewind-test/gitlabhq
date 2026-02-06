@@ -23,6 +23,18 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
       get api("/projects/#{project.id}/deployments", user), params: params
     end
 
+    it_behaves_like 'authorizing granular token permissions', :read_deployment do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/deployments", personal_access_token: pat) }
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_deployments,
+      allow_public_access_for_enabled_project_features: [:repository, :builds, :environments] do
+      let(:request) do
+        get api("/projects/#{source_project.id}/deployments"), params: { job_token: target_job.token }
+      end
+    end
+
     context 'as member of the project' do
       it 'returns projects deployments sorted by id asc' do
         perform_request
@@ -32,7 +44,7 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
         expect(json_response).to be_an Array
         expect(json_response.size).to eq(3)
         expect(json_response.first['iid']).to eq(deployment_1.iid)
-        expect(json_response.first['sha']).to match /\A\h{40}\z/
+        expect(json_response.first['sha']).to match(/\A\h{40}\z/)
         expect(json_response.second['iid']).to eq(deployment_2.iid)
         expect(json_response.last['iid']).to eq(deployment_3.iid)
       end
@@ -164,15 +176,29 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
     let_it_be(:deployment_with_bridge) { create(:deployment, :with_bridge, :success) }
     let_it_be(:deployment_with_build) { create(:deployment, :success) }
 
+    it_behaves_like 'authorizing granular token permissions', :read_deployment do
+      let(:project) { deployment_with_build.environment.project }
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/deployments/#{deployment_with_build.id}", personal_access_token: pat) }
+    end
+
     context 'as a member of the project' do
       shared_examples "returns project deployments" do
         let(:project) { deployment.environment.project }
+
+        it_behaves_like 'enforcing job token policies', :read_deployments,
+          allow_public_access_for_enabled_project_features: [:repository, :builds, :environments] do
+          let(:request) do
+            get api("/projects/#{source_project.id}/deployments/#{deployment.id}"),
+              params: { job_token: target_job.token }
+          end
+        end
 
         it 'returns the expected response' do
           get api("/projects/#{project.id}/deployments/#{deployment.id}", user)
 
           expect(response).to have_gitlab_http_status(:ok)
-          expect(json_response['sha']).to match /\A\h{40}\z/
+          expect(json_response['sha']).to match(/\A\h{40}\z/)
           expect(json_response['id']).to eq(deployment.id)
         end
       end
@@ -241,6 +267,38 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
       )
     end
 
+    it_behaves_like 'authorizing granular token permissions', :create_deployment do
+      let(:boundary_object) { project }
+      let(:request) do
+        post(
+          api("/projects/#{project.id}/deployments", personal_access_token: pat),
+          params: {
+            environment: 'staging',
+            sha: sha,
+            ref: 'master',
+            tag: false,
+            status: 'success'
+          }
+        )
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', [:admin_deployments, :admin_environments] do
+      let(:request) do
+        post(
+          api("/projects/#{source_project.id}/deployments"),
+          params: {
+            job_token: target_job.token,
+            environment: 'production',
+            sha: sha,
+            ref: 'master',
+            tag: false,
+            status: 'success'
+          }
+        )
+      end
+    end
+
     context 'as a maintainer' do
       it 'creates a new deployment' do
         post(
@@ -261,6 +319,70 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
         expect(json_response['environment']['name']).to eq('production')
       end
 
+      it 'errors when creating a deployment with an empty environment name', :aggregate_failures do
+        post(
+          api("/projects/#{project.id}/deployments", user),
+          params: {
+            environment: '',
+            sha: sha,
+            ref: 'master',
+            tag: false,
+            status: 'success'
+          }
+        )
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq('environment is empty')
+      end
+
+      it 'errors when creating a deployment with an empty sha', :aggregate_failures do
+        post(
+          api("/projects/#{project.id}/deployments", user),
+          params: {
+            environment: 'production',
+            sha: '',
+            ref: 'master',
+            tag: false,
+            status: 'success'
+          }
+        )
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq('sha is empty')
+      end
+
+      it 'errors when creating a deployment with an empty ref', :aggregate_failures do
+        post(
+          api("/projects/#{project.id}/deployments", user),
+          params: {
+            environment: 'production',
+            sha: sha,
+            ref: '',
+            tag: false,
+            status: 'success'
+          }
+        )
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq('ref is empty')
+      end
+
+      it 'errors when creating a deployment with an invalid sha', :aggregate_failures do
+        post(
+          api("/projects/#{project.id}/deployments", user),
+          params: {
+            environment: 'production',
+            sha: 'does not exist',
+            ref: 'master',
+            tag: false,
+            status: 'success'
+          }
+        )
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq({ "sha" => ["The commit does not exist"] })
+      end
+
       it 'errors when creating a deployment with an invalid ref', :aggregate_failures do
         post(
           api("/projects/#{project.id}/deployments", user),
@@ -277,7 +399,7 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
         expect(json_response['message']).to eq({ "ref" => ["The branch or tag does not exist"] })
       end
 
-      it 'errors when creating a deployment with an invalid name' do
+      it 'errors when creating a deployment with an invalid environment name' do
         post(
           api("/projects/#{project.id}/deployments", user),
           params: {
@@ -443,6 +565,21 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
       )
     end
 
+    it_behaves_like 'authorizing granular token permissions', :update_deployment do
+      let(:boundary_object) { project }
+      let(:request) do
+        put api("/projects/#{project.id}/deployments/#{deploy.id}", personal_access_token: pat),
+          params: { status: 'success' }
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :admin_deployments do
+      let(:request) do
+        put api("/projects/#{source_project.id}/deployments/#{deploy.id}"),
+          params: { status: 'success', job_token: target_job.token }
+      end
+    end
+
     context 'as a maintainer' do
       it 'returns a 403 when updating a deployment with a build' do
         deploy.update!(deployable: build)
@@ -575,6 +712,18 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
       )
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_deployment do
+      let(:boundary_object) { project }
+      let(:request) { delete api("/projects/#{project.id}/deployments/#{old_deploy.id}", personal_access_token: pat) }
+    end
+
+    it_behaves_like 'enforcing job token policies', :admin_deployments do
+      let(:request) do
+        delete api("/projects/#{source_project.id}/deployments/#{old_deploy.id}"),
+          params: { job_token: target_job.token }
+      end
+    end
+
     context 'as an maintainer' do
       it 'deletes a deployment' do
         delete api("/projects/#{project.id}/deployments/#{old_deploy.id}", user)
@@ -582,7 +731,7 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
         expect(response).to have_gitlab_http_status(:no_content)
       end
 
-      it 'will not delete a running deployment' do
+      it 'does not delete a running deployment' do
         delete api("/projects/#{project.id}/deployments/#{running_deploy.id}", user)
 
         expect(response).to have_gitlab_http_status(:bad_request)
@@ -626,6 +775,20 @@ RSpec.describe API::Deployments, feature_category: :continuous_delivery do
     let!(:deployment) { create(:deployment, :success, project: project) }
 
     subject { get api("/projects/#{project.id}/deployments/#{deployment.id}/merge_requests", user) }
+
+    it_behaves_like 'authorizing granular token permissions', [:read_deployment, :read_merge_request] do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}/deployments/#{deployment.id}/merge_requests", personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_deployments,
+      allow_public_access_for_enabled_project_features: [:repository, :builds, :environments] do
+      let(:request) do
+        get api("/projects/#{source_project.id}/deployments/#{deployment.id}/merge_requests"), params: { job_token: target_job.token }
+      end
+    end
 
     context 'when a user is not a member of the deployment project' do
       let(:user) { build(:user) }

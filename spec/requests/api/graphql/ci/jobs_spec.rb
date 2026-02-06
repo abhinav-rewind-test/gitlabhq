@@ -244,9 +244,7 @@ RSpec.describe 'Query.project.pipeline', feature_category: :continuous_integrati
           a_hash_including(
             'name' => 'docker 1 2',
             'needs' => { 'nodes' => [] },
-            'previousStageJobsOrNeeds' => { 'nodes' => [
-              a_hash_including('name' => 'my test job')
-            ] }
+            'previousStageJobsOrNeeds' => { 'nodes' => [a_hash_including('name' => 'my test job')] }
           ),
           a_hash_including(
             'name' => 'docker 2 2',
@@ -256,25 +254,23 @@ RSpec.describe 'Query.project.pipeline', feature_category: :continuous_integrati
           a_hash_including(
             'name' => 'rspec 1 2',
             'needs' => { 'nodes' => [] },
-            'previousStageJobsOrNeeds' => { 'nodes' => [
+            'previousStageJobsOrNeeds' => { 'nodes' => an_array_matching([
               a_hash_including('name' => 'docker 1 2'),
               a_hash_including('name' => 'docker 2 2')
-            ] }
+            ]) }
           ),
           a_hash_including(
             'name' => 'rspec 2 2',
             'needs' => { 'nodes' => [a_hash_including('name' => 'my test job')] },
-            'previousStageJobsOrNeeds' => { 'nodes' => [
-              a_hash_including('name' => 'my test job')
-            ] }
+            'previousStageJobsOrNeeds' => { 'nodes' => [a_hash_including('name' => 'my test job')] }
           ),
           a_hash_including(
             'name' => 'deploy',
             'needs' => { 'nodes' => [] },
-            'previousStageJobsOrNeeds' => { 'nodes' => [
+            'previousStageJobsOrNeeds' => { 'nodes' => an_array_matching([
               a_hash_including('name' => 'rspec 1 2'),
               a_hash_including('name' => 'rspec 2 2')
-            ] }
+            ]) }
           )
         )
       end
@@ -692,7 +688,7 @@ RSpec.describe 'previousStageJobs', feature_category: :pipeline_composition do
 
     expect do
       post_graphql(query, current_user: user2)
-    end.to issue_same_number_of_queries_as(control)
+    end.not_to exceed_query_limit(control)
 
     expect(graphql_data_previous_stage_jobs).to eq(
       'build_build' => [],

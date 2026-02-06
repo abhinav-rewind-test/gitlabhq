@@ -1,7 +1,6 @@
 import { GlSprintf } from '@gitlab/ui';
-import { GlBreakpointInstance } from '@gitlab/ui/dist/utils';
 import { nextTick } from 'vue';
-import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
+import ProtectedBadge from '~/vue_shared/components/badges/protected_badge.vue';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import PackageTags from '~/packages_and_registries/shared/components/package_tags.vue';
 import PackageTitle from '~/packages_and_registries/package_registry/components/details/package_title.vue';
@@ -37,9 +36,6 @@ describe('PackageTitle', () => {
         GlSprintf,
       },
       provide,
-      directives: {
-        GlResizeObserver: createMockDirective('gl-resize-observer'),
-      },
     });
     await nextTick();
   }
@@ -50,7 +46,6 @@ describe('PackageTitle', () => {
   const findPackageRef = () => wrapper.findByTestId('package-ref');
   const findPackageLastDownloadedAt = () => wrapper.findByTestId('package-last-downloaded-at');
   const findPackageTags = () => wrapper.findComponent(PackageTags);
-  const findPackageBadges = () => wrapper.findAllByTestId('tag-badge');
   const findSubHeaderText = () => wrapper.findByTestId('sub-header');
   const findSubHeaderTimeAgo = () => wrapper.findComponent(TimeAgoTooltip);
 
@@ -65,29 +60,6 @@ describe('PackageTitle', () => {
       await createComponent();
 
       expect(findPackageTags().exists()).toBe(true);
-    });
-
-    it('with tags on mobile', async () => {
-      jest.spyOn(GlBreakpointInstance, 'isDesktop').mockReturnValue(false);
-
-      await createComponent();
-
-      await nextTick();
-
-      expect(findPackageBadges()).toHaveLength(packageTags().length);
-    });
-
-    it('when the page is resized', async () => {
-      await createComponent();
-
-      expect(findPackageBadges()).toHaveLength(0);
-
-      jest.spyOn(GlBreakpointInstance, 'isDesktop').mockReturnValue(false);
-      const { value } = getBinding(wrapper.element, 'gl-resize-observer');
-      value();
-
-      await nextTick();
-      expect(findPackageBadges()).toHaveLength(packageTags().length);
     });
   });
 
@@ -123,7 +95,7 @@ describe('PackageTitle', () => {
     it('has a text showing version', async () => {
       await createComponent();
 
-      expect(findSubHeaderText().text()).toMatchInterpolatedText('v 1.0.0 published');
+      expect(findSubHeaderText().text()).toMatchInterpolatedText('v1.0.0 published');
     });
 
     it('has a time ago tooltip component', async () => {
@@ -227,6 +199,43 @@ describe('PackageTitle', () => {
         text: 'Last downloaded Aug 17, 2021',
         icon: 'download',
         size: 'm',
+      });
+    });
+  });
+
+  describe('badge "protected"', () => {
+    const createComponentForBadgeProtected = async ({
+      packageEntityProtectionRuleExists = true,
+    } = {}) => {
+      await createComponent(
+        {
+          ...packageWithTags,
+          protectionRuleExists: packageEntityProtectionRuleExists,
+        },
+        {
+          ...defaultProvide,
+        },
+      );
+    };
+
+    const findProtectedBadge = () => wrapper.findComponent(ProtectedBadge);
+
+    describe('when a protection rule exists for the given package', () => {
+      it('shows badge', () => {
+        createComponentForBadgeProtected();
+
+        expect(findProtectedBadge().exists()).toBe(true);
+        expect(findProtectedBadge().props('tooltipText')).toMatch(
+          'A protection rule exists for this package.',
+        );
+      });
+    });
+
+    describe('when no protection rule exists for the given package', () => {
+      it('does not show badge', () => {
+        createComponentForBadgeProtected({ packageEntityProtectionRuleExists: false });
+
+        expect(findProtectedBadge().exists()).toBe(false);
       });
     });
   });

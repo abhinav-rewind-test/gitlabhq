@@ -34,21 +34,13 @@ module TreeHelper
   def tree_edit_branch(project = @project, ref = @ref)
     return unless can_edit_tree?(project, ref)
 
-    if user_access(project).can_push_to_branch?(ref)
-      ref
-    else
-      patch_branch_name(ref)
-    end
+    patch_branch_name(ref)
   end
 
   # Generate a patch branch name that should look like:
   # `username-branchname-patch-epoch`
   # where `epoch` is the last 5 digits of the time since epoch (in
   # milliseconds)
-  #
-  # Note: this correlates with how the WebIDE formats the branch name
-  # and if this implementation changes, so should the `placeholderBranchName`
-  # definition in app/assets/javascripts/ide/stores/modules/commit/getters.js
   def patch_branch_name(ref)
     return unless current_user
 
@@ -68,23 +60,6 @@ module TreeHelper
       "A fork of this project has been created that you can make changes in, so you can submit a merge request.")
   end
 
-  def edit_in_new_fork_notice_action(action)
-    edit_in_new_fork_notice + _(" Try to %{action} this file again.") % { action: action }
-  end
-
-  def commit_in_fork_help
-    _("GitLab will create a branch in your fork and start a merge request.")
-  end
-
-  def commit_in_single_accessible_branch
-    branch_name = ERB::Util.html_escape(selected_branch)
-
-    message = _("Your changes can be committed to %{branch_name} because a merge "\
-                "request is open.") % { branch_name: "<strong>#{branch_name}</strong>" }
-
-    message.html_safe
-  end
-
   def path_breadcrumbs(max_links = 6)
     if @path.present?
       part_path = ""
@@ -96,7 +71,7 @@ module TreeHelper
         part_path = File.join(part_path, part) unless part_path.empty?
         part_path = part if part_path.empty?
 
-        next if parts.count > max_links && !parts.last(2).include?(part)
+        next if parts.count > max_links && parts.last(2).exclude?(part)
 
         yield(part, part_path)
       end
@@ -115,6 +90,7 @@ module TreeHelper
     attrs = {
       selected_branch: selected_branch,
       can_push_code: can?(current_user, :push_code, @project).to_s,
+      can_push_to_branch: user_access(@project).can_push_to_branch?(@ref).to_s,
       can_collaborate: can_collaborate_with_project?(@project).to_s,
       new_blob_path: project_new_blob_path(@project, @ref),
       upload_path: project_create_blob_path(@project, @ref),
@@ -132,75 +108,99 @@ module TreeHelper
       }
 
       attrs.merge!(
-        fork_new_blob_path: project_forks_path(@project, namespace_key: current_user.namespace.id, continue: continue_param),
-        fork_new_directory_path: project_forks_path(@project, namespace_key: current_user.namespace.id, continue: continue_param.merge({
-          to: request.fullpath,
-          notice: _("%{edit_in_new_fork_notice} Try to create a new directory again.") % { edit_in_new_fork_notice: edit_in_new_fork_notice }
-        })),
-        fork_upload_blob_path: project_forks_path(@project, namespace_key: current_user.namespace.id, continue: continue_param.merge({
-          to: request.fullpath,
-          notice: _("%{edit_in_new_fork_notice} Try to upload a file again.") % { edit_in_new_fork_notice: edit_in_new_fork_notice }
-        }))
+        fork_new_blob_path: project_forks_path(
+          @project,
+          namespace_key: current_user.namespace.id,
+          continue: continue_param
+        ),
+        fork_new_directory_path: project_forks_path(
+          @project,
+          namespace_key: current_user.namespace.id,
+          continue: continue_param.merge({
+            to: request.fullpath,
+            notice: _("%{edit_in_new_fork_notice} Try to create a new directory again.") % {
+              edit_in_new_fork_notice: edit_in_new_fork_notice
+            }
+          })
+        ),
+        fork_upload_blob_path: project_forks_path(
+          @project,
+          namespace_key: current_user.namespace.id,
+          continue: continue_param.merge({
+            to: request.fullpath,
+            notice: _("%{edit_in_new_fork_notice} Try to upload a file again.") % {
+              edit_in_new_fork_notice: edit_in_new_fork_notice
+            }
+          })
+        )
       )
     end
 
     attrs
   end
 
+  def compare_path(project, repository, ref)
+    return if ref.blank? || repository.root_ref == ref
+
+    project_compare_index_path(project, from: repository.root_ref, to: ref)
+  end
+
+  def vue_tree_header_app_data(project, repository, ref, pipeline, ref_type)
+    archive_prefix = ref ? "#{project.path}-#{ref.tr('/', '-')}" : ''
+
+    {
+      project_id: project.id,
+      ref: ref,
+      ref_type: @ref_type.to_s,
+      root_ref: repository.root_ref,
+      breadcrumbs: breadcrumb_data_attributes,
+      project_root_path: project_path(project),
+      project_path: project.full_path,
+      compare_path: compare_path(project, repository, ref),
+      web_ide_button_options: web_ide_button_data({ blob: nil }).merge(fork_modal_options(project, nil)).to_json,
+      web_ide_button_default_branch: project.default_branch_or_main,
+      ssh_url: ssh_enabled? ? ssh_clone_url_to_repo(project) : '',
+      http_url: http_enabled? ? http_clone_url_to_repo(project) : '',
+      xcode_url: show_xcode_link?(project) ? xcode_uri_to_repo(project) : '',
+      download_links: !project.empty_repo? ? download_links(project, ref, archive_prefix, ref_type).to_json : [],
+      download_artifacts: pipeline &&
+        (previous_artifacts(project, ref, pipeline.latest_builds_with_artifacts).to_json || []),
+      escaped_ref: ActionDispatch::Journey::Router::Utils.escape_path(ref),
+      show_no_ssh_key_message: ssh_enabled? ? show_no_ssh_key_message?(project).to_s : '',
+      user_settings_ssh_keys_path: ssh_enabled? ? user_settings_ssh_keys_path : ''
+    }
+  end
+
   def vue_file_list_data(project, ref)
     {
       project_path: project.full_path,
       project_short_path: project.path,
+      target_branch: selected_branch,
       ref: ref,
       escaped_ref: ActionDispatch::Journey::Router::Utils.escape_path(ref),
       full_name: project.name_with_namespace,
-      ref_type: @ref_type
+      ref_type: @ref_type,
+      has_revs_file: (!project.repository.ignore_revs_file_blob.nil?).to_s
     }
   end
 
-  def fork_modal_options(project, blob)
-    if show_edit_button?({ blob: blob })
-      fork_modal_id = "modal-confirm-fork-edit"
-    elsif show_web_ide_button?
-      fork_modal_id = "modal-confirm-fork-webide"
-    end
-
+  def code_dropdown_ide_data
     {
-      fork_path: new_namespace_project_fork_path(project_id: project.path, namespace_id: project.namespace.full_path),
-      fork_modal_id: fork_modal_id
-    }
-  end
-
-  def web_ide_button_data(options = {})
-    {
-      project_path: project_to_use.full_path,
-      ref: @ref,
-
-      is_fork: fork?,
-      needs_to_fork: needs_to_fork?,
-      gitpod_enabled: !current_user.nil? && current_user.gitpod_enabled,
-      is_blob: !options[:blob].nil?,
-
-      show_edit_button: show_edit_button?(options),
+      gitpod_enabled: current_user&.gitpod_enabled || false,
       show_web_ide_button: show_web_ide_button?,
       show_gitpod_button: show_gitpod_button?,
-      show_pipeline_editor_button: show_pipeline_editor_button?(@project, @path),
-
       web_ide_url: web_ide_url,
-      edit_url: edit_url(options),
-      pipeline_editor_url: project_ci_pipeline_editor_path(@project, branch_name: @ref),
-
-      gitpod_url: gitpod_url,
-      user_preferences_gitpod_path: profile_preferences_path(anchor: 'user_gitpod_enabled'),
-      user_profile_enable_gitpod_path: user_settings_profile_path(user: { gitpod_enabled: true })
+      gitpod_url: gitpod_url
     }
   end
 
-  def download_links(project, ref, archive_prefix)
+  def download_links(project, ref, archive_prefix, ref_type)
     Gitlab::Workhorse::ARCHIVE_FORMATS.map do |fmt|
       {
         text: fmt,
-        path: external_storage_url_or_path(project_archive_path(project, id: tree_join(ref, archive_prefix), format: fmt))
+        path: external_storage_url_or_path(
+          project_archive_path(project, id: tree_join(ref, archive_prefix), format: fmt, ref_type: ref_type)
+        )
       }
     end
   end
@@ -212,6 +212,20 @@ module TreeHelper
         path: project_archive_path(project, id: tree_join(ref, archive_prefix), format: fmt)
       }
     end
+  end
+
+  def compact_code_dropdown_data(project, ref, ref_type)
+    archive_prefix = ref ? "#{project.path}-#{ref.tr('/', '-')}" : ''
+    download_links = !project.empty_repo? ? download_links(project, ref, archive_prefix, ref_type).to_json : []
+    {
+      ssh_url: ssh_enabled? ? ssh_clone_url_to_repo(project) : '',
+      http_url: http_enabled? ? http_clone_url_to_repo(project) : '',
+      xcode_url: show_xcode_link?(project) ? xcode_uri_to_repo(project) : '',
+      ide_data: current_user&.namespace ? code_dropdown_ide_data.to_json : '',
+      directory_download_links: download_links,
+      show_no_ssh_key_message: ssh_enabled? ? show_no_ssh_key_message?(project).to_s : '',
+      user_settings_ssh_keys_path: ssh_enabled? ? user_settings_ssh_keys_path : ''
+    }
   end
 end
 

@@ -4,7 +4,10 @@ include:
       gem_name: "activerecord-gitlab"
   - local: .gitlab/ci/templates/gem.gitlab-ci.yml
     inputs:
-      gem_name: "click_house-client"
+      gem_name: "action_dispatch-draw_all"
+  - local: .gitlab/ci/templates/gem.gitlab-ci.yml
+    inputs:
+      gem_name: "bundler-checksum"
   - local: .gitlab/ci/templates/gem.gitlab-ci.yml
     inputs:
       gem_name: "gitlab-rspec"
@@ -34,9 +37,6 @@ include:
       gem_name: "gitlab-backup-cli"
   - local: .gitlab/ci/templates/gem.gitlab-ci.yml
     inputs:
-      gem_name: "gitlab-secret_detection"
-  - local: .gitlab/ci/templates/gem.gitlab-ci.yml
-    inputs:
       gem_name: "gitlab-database-load_balancing"
   - local: .gitlab/ci/templates/gem.gitlab-ci.yml
     inputs:
@@ -44,3 +44,12 @@ include:
   - local: .gitlab/ci/templates/gem.gitlab-ci.yml
     inputs:
       gem_name: "gitlab-housekeeper"
+  - local: .gitlab/ci/templates/gem.gitlab-ci.yml
+    inputs:
+      gem_name: "gitlab-active-context"
+  - local: .gitlab/ci/templates/gem.gitlab-ci.yml
+    inputs:
+      gem_name: "mail-smtp_pool"
+  - local: .gitlab/ci/templates/gem.gitlab-ci.yml
+    inputs:
+      gem_name: "gitlab-grape-openapi"

@@ -65,6 +65,7 @@ module QA
           end
 
           def save_changes
+            sleep 1 # debounce delay
             click_element_coordinates('submit-button')
             wait_until(reload: false) do
               has_no_element?('file-name-field')

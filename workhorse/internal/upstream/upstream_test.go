@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gitlab.com/gitlab-org/labkit/correlation"
 
 	apipkg "gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/config"
@@ -20,8 +22,9 @@ import (
 )
 
 const (
-	geoProxyEndpoint = "/api/v4/geo/proxy"
-	testDocumentRoot = "testdata/public"
+	geoProxyEndpoint             = "/api/v4/geo/proxy"
+	testDocumentRoot             = "testdata/public"
+	geoProxyDisabledResponseBody = `{"geo_enabled":false}`
 )
 
 type testCase struct {
@@ -49,7 +52,8 @@ func TestRouting(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			io.WriteString(w, regex)
 		})
-		return u.route("", regex, handler)
+		metadata := routeMetadata{regex, "", ""}
+		return u.route("", metadata, handler)
 	}
 
 	const (
@@ -58,13 +62,14 @@ func TestRouting(t *testing.T) {
 		main   = ""
 	)
 
+	shutdownChan := make(chan struct{})
 	u := newUpstream(config.Config{}, logrus.StandardLogger(), func(u *upstream) {
 		u.Routes = []routeEntry{
 			handle(u, foobar),
 			handle(u, quxbaz),
 			handle(u, main),
 		}
-	}, nil)
+	}, nil, nil, nil, shutdownChan, nil)
 	ts := httptest.NewServer(u)
 	defer ts.Close()
 
@@ -98,19 +103,19 @@ func TestPollGeoProxyApiStopsWhenExplicitlyDisabled(t *testing.T) {
 }
 
 func TestPollGeoProxyApiStopsWhenGeoNotEnabled(t *testing.T) {
-	remoteServer := startRemoteServer(t, "Geo primary")
+	remoteServer := startRemoteServer(t)
 
-	geoProxyEndpointResponseBody := `{"geo_enabled":false}`
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	response := geoProxyDisabledResponseBody
+	railsServer := startRailsServer(t, &response)
 
 	cfg := newUpstreamConfig(railsServer.URL)
 	roundTripper := roundtripper.NewBackendRoundTripper(cfg.Backend, "", 1*time.Minute, true)
-	remoteServerUrl := helper.URLMustParse(remoteServer.URL)
+	remoteServerURL := helper.URLMustParse(remoteServer.URL)
 
 	up := upstream{
 		Config:                *cfg,
 		RoundTripper:          roundTripper,
-		APIClient:             apipkg.NewAPI(remoteServerUrl, "", roundTripper),
+		APIClient:             apipkg.NewAPI(remoteServerURL, "", roundTripper),
 		enableGeoProxyFeature: true,
 		geoProxyPollSleep:     func(time.Duration) {},
 		geoPollerDone:         make(chan struct{}),
@@ -130,10 +135,10 @@ func TestPollGeoProxyApiStopsWhenGeoNotEnabled(t *testing.T) {
 func TestGeoProxyFeatureDisabledOnGeoSecondarySite(t *testing.T) {
 	// We could just not set up the primary, but then we'd have to assert
 	// that the internal API call isn't made. This is easier.
-	remoteServer := startRemoteServer(t, "Geo primary")
+	remoteServer := startRemoteServer(t)
 
 	geoProxyEndpointResponseBody := fmt.Sprintf(`{"geo_enabled":true,"geo_proxy_url":"%v"}`, remoteServer.URL)
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, false)
 
@@ -148,7 +153,7 @@ func TestGeoProxyFeatureDisabledOnGeoSecondarySite(t *testing.T) {
 
 func TestGeoProxyFeatureEnabledOnGeoSecondarySite(t *testing.T) {
 	testCases := []testCase{
-		{"push from secondary is forwarded", "/-/push_from_secondary/foo/bar.git/info/refs", "Geo primary received request to path /-/push_from_secondary/foo/bar.git/info/refs"},
+		{"request from secondary is forwarded", "/-/from_secondary/foo/bar.git/info/refs", "Geo primary received request to path /-/from_secondary/foo/bar.git/info/refs"},
 		{"LFS files are served locally", "/group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6", "Local Rails server received request to path /group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6"},
 		{"jobs request is forwarded", "/api/v4/jobs/request", "Geo primary received request to path /api/v4/jobs/request"},
 		{"health check is served locally", "/-/health", "Local Rails server received request to path /-/health"},
@@ -160,8 +165,8 @@ func TestGeoProxyFeatureEnabledOnGeoSecondarySite(t *testing.T) {
 
 // This test can be removed when the environment variable `GEO_SECONDARY_PROXY` is removed
 func TestGeoProxyFeatureDisabledOnNonGeoSecondarySite(t *testing.T) {
-	geoProxyEndpointResponseBody := `{"geo_enabled":false}`
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	response := geoProxyDisabledResponseBody
+	railsServer := startRailsServer(t, &response)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, false)
 
@@ -176,8 +181,8 @@ func TestGeoProxyFeatureDisabledOnNonGeoSecondarySite(t *testing.T) {
 }
 
 func TestGeoProxyFeatureEnabledOnNonGeoSecondarySite(t *testing.T) {
-	geoProxyEndpointResponseBody := `{"geo_enabled":false}`
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	response := geoProxyDisabledResponseBody
+	railsServer := startRailsServer(t, &response)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, true)
 
@@ -193,7 +198,7 @@ func TestGeoProxyFeatureEnabledOnNonGeoSecondarySite(t *testing.T) {
 
 func TestGeoProxyFeatureEnabledButWithAPIError(t *testing.T) {
 	geoProxyEndpointResponseBody := "Invalid response"
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, true)
 
@@ -208,15 +213,15 @@ func TestGeoProxyFeatureEnabledButWithAPIError(t *testing.T) {
 }
 
 func TestGeoProxyFeatureEnablingAndDisabling(t *testing.T) {
-	remoteServer := startRemoteServer(t, "Geo primary")
+	remoteServer := startRemoteServer(t)
 
 	geoProxyEndpointEnabledResponseBody := fmt.Sprintf(`{"geo_enabled":true,"geo_proxy_url":"%v"}`, remoteServer.URL)
 	geoProxyEndpointDisabledResponseBody := `{"geo_enabled":true}`
 	geoProxyEndpointResponseBody := geoProxyEndpointEnabledResponseBody
 
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
-	ws, waitForNextApiPoll := startWorkhorseServer(t, railsServer.URL, true)
+	ws, waitForNextAPIPoll := startWorkhorseServer(t, railsServer.URL, true)
 
 	testCasesLocal := []testCase{
 		{"LFS files are served locally", "/group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6", "Local Rails server received request to path /group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6"},
@@ -226,7 +231,7 @@ func TestGeoProxyFeatureEnablingAndDisabling(t *testing.T) {
 	}
 
 	testCasesProxied := []testCase{
-		{"push from secondary is forwarded", "/-/push_from_secondary/foo/bar.git/info/refs", "Geo primary received request to path /-/push_from_secondary/foo/bar.git/info/refs"},
+		{"request from secondary is forwarded", "/-/from_secondary/foo/bar.git/info/refs", "Geo primary received request to path /-/from_secondary/foo/bar.git/info/refs"},
 		{"LFS files are served locally", "/group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6", "Local Rails server received request to path /group/project.git/gitlab-lfs/objects/37446575700829a11278ad3a550f244f45d5ae4fe1552778fa4f041f9eaeecf6"},
 		{"jobs request is forwarded", "/api/v4/jobs/request", "Geo primary received request to path /api/v4/jobs/request"},
 		{"health check is served locally", "/-/health", "Local Rails server received request to path /-/health"},
@@ -239,13 +244,13 @@ func TestGeoProxyFeatureEnablingAndDisabling(t *testing.T) {
 	// Disable proxying and run tests. It's safe to write to
 	// geoProxyEndpointResponseBody because the polling goroutine is blocked.
 	geoProxyEndpointResponseBody = geoProxyEndpointDisabledResponseBody
-	waitForNextApiPoll()
+	waitForNextAPIPoll()
 
 	runTestCases(t, ws, testCasesLocal)
 
 	// Re-enable proxying and run tests
 	geoProxyEndpointResponseBody = geoProxyEndpointEnabledResponseBody
-	waitForNextApiPoll()
+	waitForNextAPIPoll()
 
 	runTestCases(t, ws, testCasesProxied)
 }
@@ -254,8 +259,8 @@ func TestGeoProxyUpdatesExtraDataWhenChanged(t *testing.T) {
 	var expectedGeoProxyExtraData string
 
 	remoteServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "1", r.Header.Get("Gitlab-Workhorse-Geo-Proxy"), "custom proxy header")
-		require.Equal(t, expectedGeoProxyExtraData, r.Header.Get("Gitlab-Workhorse-Geo-Proxy-Extra-Data"), "custom extra data header")
+		assert.Equal(t, "1", r.Header.Get("Gitlab-Workhorse-Geo-Proxy"), "custom proxy header")
+		assert.Equal(t, expectedGeoProxyExtraData, r.Header.Get("Gitlab-Workhorse-Geo-Proxy-Extra-Data"), "custom extra data header")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer remoteServer.Close()
@@ -266,25 +271,37 @@ func TestGeoProxyUpdatesExtraDataWhenChanged(t *testing.T) {
 	geoProxyEndpointResponseBody := geoProxyEndpointExtraData1
 	expectedGeoProxyExtraData = "data1"
 
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
-	ws, waitForNextApiPoll := startWorkhorseServer(t, railsServer.URL, true)
+	ws, waitForNextAPIPoll := startWorkhorseServer(t, railsServer.URL, true)
 
-	http.Get(ws.URL)
+	res, err := http.Get(ws.URL)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
+	defer res.Body.Close()
 
 	// Verify that the expected header changes after next updated poll.
 	geoProxyEndpointResponseBody = geoProxyEndpointExtraData2
 	expectedGeoProxyExtraData = "data2"
-	waitForNextApiPoll()
+	waitForNextAPIPoll()
 
-	http.Get(ws.URL)
+	res, err = http.Get(ws.URL)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
+	defer res.Body.Close()
 
 	// Validate that non-existing extra data results in empty header
 	geoProxyEndpointResponseBody = geoProxyEndpointExtraData3
 	expectedGeoProxyExtraData = ""
-	waitForNextApiPoll()
+	waitForNextAPIPoll()
 
-	http.Get(ws.URL)
+	res, err = http.Get(ws.URL)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
+	defer res.Body.Close()
 }
 
 func TestGeoProxySetsCustomHeader(t *testing.T) {
@@ -300,18 +317,22 @@ func TestGeoProxySetsCustomHeader(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			remoteServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				require.Equal(t, "1", r.Header.Get("Gitlab-Workhorse-Geo-Proxy"), "custom proxy header")
-				require.Equal(t, tc.extraData, r.Header.Get("Gitlab-Workhorse-Geo-Proxy-Extra-Data"), "custom proxy extra data header")
+				assert.Equal(t, "1", r.Header.Get("Gitlab-Workhorse-Geo-Proxy"), "custom proxy header")
+				assert.Equal(t, tc.extraData, r.Header.Get("Gitlab-Workhorse-Geo-Proxy-Extra-Data"), "custom proxy extra data header")
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer remoteServer.Close()
 
 			geoProxyEndpointResponseBody := fmt.Sprintf(tc.json, remoteServer.URL)
-			railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+			railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
 			ws, _ := startWorkhorseServer(t, railsServer.URL, true)
 
-			http.Get(ws.URL)
+			res, err := http.Get(ws.URL)
+			if err != nil {
+				fmt.Printf("Error: %v", err)
+			}
+			defer res.Body.Close()
 		})
 	}
 }
@@ -337,7 +358,6 @@ func runTestCasesPost(t *testing.T, ws *httptest.Server, testCases []testCasePos
 	t.Helper()
 	for _, tc := range testCases {
 		t.Run(tc.test.desc, func(t *testing.T) {
-
 			resp, err := http.Post(ws.URL+tc.test.path, tc.contentType, tc.body)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -352,10 +372,10 @@ func runTestCasesPost(t *testing.T, ws *httptest.Server, testCases []testCasePos
 }
 
 func runTestCasesWithGeoProxyEnabled(t *testing.T, testCases []testCase) {
-	remoteServer := startRemoteServer(t, "Geo primary")
+	remoteServer := startRemoteServer(t)
 
 	geoProxyEndpointResponseBody := fmt.Sprintf(`{"geo_enabled":true,"geo_proxy_url":"%v"}`, remoteServer.URL)
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, true)
 
@@ -363,10 +383,10 @@ func runTestCasesWithGeoProxyEnabled(t *testing.T, testCases []testCase) {
 }
 
 func runTestCasesWithGeoProxyEnabledPost(t *testing.T, testCases []testCasePost) {
-	remoteServer := startRemoteServer(t, "Geo primary")
+	remoteServer := startRemoteServer(t)
 
 	geoProxyEndpointResponseBody := fmt.Sprintf(`{"geo_enabled":true,"geo_proxy_url":"%v"}`, remoteServer.URL)
-	railsServer := startRailsServer(t, "Local Rails server", &geoProxyEndpointResponseBody)
+	railsServer := startRailsServer(t, &geoProxyEndpointResponseBody)
 
 	ws, _ := startWorkhorseServer(t, railsServer.URL, true)
 
@@ -382,9 +402,9 @@ func newUpstreamConfig(authBackend string) *config.Config {
 	}
 }
 
-func startRemoteServer(t *testing.T, serverName string) *httptest.Server {
+func startRemoteServer(t *testing.T) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := serverName + " received request to path " + r.URL.Path
+		body := "Geo primary received request to path " + r.URL.Path
 
 		w.WriteHeader(200)
 		fmt.Fprint(w, body)
@@ -397,7 +417,7 @@ func startRemoteServer(t *testing.T, serverName string) *httptest.Server {
 	return ts
 }
 
-func startRailsServer(t *testing.T, railsServerName string, geoProxyEndpointResponseBody *string) *httptest.Server {
+func startRailsServer(t *testing.T, geoProxyEndpointResponseBody *string) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body string
 
@@ -405,7 +425,7 @@ func startRailsServer(t *testing.T, railsServerName string, geoProxyEndpointResp
 			w.Header().Set("Content-Type", "application/vnd.gitlab-workhorse+json")
 			body = *geoProxyEndpointResponseBody
 		} else {
-			body = railsServerName + " received request to path " + r.URL.Path
+			body = "Local Rails server received request to path " + r.URL.Path
 		}
 
 		w.WriteHeader(200)
@@ -437,20 +457,21 @@ func startWorkhorseServer(t *testing.T, railsServerURL string, enableGeoProxyFea
 		configureRoutes(u)
 	}
 	cfg := newUpstreamConfig(railsServerURL)
-	upstreamHandler := newUpstream(*cfg, logrus.StandardLogger(), myConfigureRoutes, nil)
+	shutdownChan := make(chan struct{})
+	upstreamHandler := newUpstream(*cfg, logrus.StandardLogger(), myConfigureRoutes, nil, nil, nil, shutdownChan, nil)
 	ws := httptest.NewServer(upstreamHandler)
 
 	t.Cleanup(func() {
 		ws.Close()
 	})
 
-	waitForNextApiPoll := func() {}
+	waitForNextAPIPoll := func() {}
 
 	if enableGeoProxyFeature {
 		// Wait for geoProxySleep to be entered for the first time
 		<-geoProxySleepC
 
-		waitForNextApiPoll = func() {
+		waitForNextAPIPoll = func() {
 			// Cause geoProxySleep to return
 			geoProxySleepC <- struct{}{}
 
@@ -459,7 +480,98 @@ func startWorkhorseServer(t *testing.T, railsServerURL string, enableGeoProxyFea
 		}
 	}
 
-	return ws, waitForNextApiPoll
+	return ws, waitForNextAPIPoll
+}
+
+func TestAdoptCfRayHeaderCorrelation(t *testing.T) {
+	// Test that when AdoptCfRayHeader is enabled with PropagateCorrelationID,
+	// the correlation middleware adopts the Cf-Ray header
+	tests := []struct {
+		name                   string
+		propagateCorrelationID bool
+		adoptCfRayHeader       bool
+		cfRayHeader            string
+		xRequestID             string
+		expectedHeader         string
+	}{
+		{
+			name:                   "adopt Cf-Ray when both flags enabled and Cf-Ray present",
+			propagateCorrelationID: true,
+			adoptCfRayHeader:       true,
+			cfRayHeader:            "test-cf-ray-id",
+			xRequestID:             "test-request-id",
+			expectedHeader:         "test-cf-ray-id",
+		},
+		{
+			name:                   "fallback to X-Request-ID when Cf-Ray absent",
+			propagateCorrelationID: true,
+			adoptCfRayHeader:       true,
+			cfRayHeader:            "",
+			xRequestID:             "test-request-id",
+			expectedHeader:         "test-request-id",
+		},
+		{
+			name:                   "use X-Request-ID when adoptCfRayHeader disabled",
+			propagateCorrelationID: true,
+			adoptCfRayHeader:       false,
+			cfRayHeader:            "test-cf-ray-id",
+			xRequestID:             "test-request-id",
+			expectedHeader:         "test-request-id",
+		},
+		{
+			name:                   "generate new ID when propagation disabled",
+			propagateCorrelationID: false,
+			adoptCfRayHeader:       true,
+			cfRayHeader:            "test-cf-ray-id",
+			xRequestID:             "test-request-id",
+			expectedHeader:         "", // Will be generated
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := newUpstreamConfig("http://localhost:8080")
+			cfg.PropagateCorrelationID = tt.propagateCorrelationID
+			cfg.AdoptCfRayHeader = tt.adoptCfRayHeader
+
+			// Create a test handler that captures the correlation ID from context
+			var capturedCorrelationID string
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedCorrelationID = correlation.ExtractFromContext(r.Context())
+				w.WriteHeader(http.StatusOK)
+			})
+
+			shutdownChan := make(chan struct{})
+			upstreamHandler := newUpstream(*cfg, logrus.StandardLogger(), func(u *upstream) {
+				u.Routes = []routeEntry{
+					u.route("", routeMetadata{}, handler),
+				}
+			}, nil, nil, nil, shutdownChan, nil)
+
+			// Create a test request
+			req := httptest.NewRequest("GET", "/", nil)
+			if tt.cfRayHeader != "" {
+				req.Header.Set("Cf-Ray", tt.cfRayHeader)
+			}
+			if tt.xRequestID != "" {
+				req.Header.Set("X-Request-ID", tt.xRequestID)
+			}
+
+			// Execute the request
+			rr := httptest.NewRecorder()
+			upstreamHandler.ServeHTTP(rr, req)
+
+			// Verify the captured correlation ID
+			if tt.expectedHeader != "" {
+				require.Equal(t, tt.expectedHeader, capturedCorrelationID)
+			} else {
+				// When not propagating, a new ID is generated
+				require.NotEmpty(t, capturedCorrelationID)
+				require.NotEqual(t, tt.cfRayHeader, capturedCorrelationID)
+				require.NotEqual(t, tt.xRequestID, capturedCorrelationID)
+			}
+		})
+	}
 }
 
 func TestFixRemoteAddr(t *testing.T) {

@@ -45,8 +45,8 @@ export default {
 };
 </script>
 <template>
-  <history-item :icon="eventDetails.eventTypeIcon" class="gl-my-0! gl-px-0! gl-pb-0!">
-    <strong class="gl-pl-3 gl-font-lg">
+  <history-item :icon="eventDetails.eventTypeIcon" class="!gl-my-0 !gl-px-0 !gl-pb-0">
+    <strong class="gl-pl-3 gl-text-lg">
       <gl-sprintf :message="eventDetails.title"
         ><template v-if="eventDetails.titleIcon" #titleIcon
           ><gl-icon
@@ -57,19 +57,17 @@ export default {
           />
         </template>
         <template #tokenName>{{ eventDetails.agentToken.name }}</template></gl-sprintf
-      >
-    </strong>
-
-    <template #body>
-      <p class="gl-mt-2 gl-mb-0 gl-ml-3 gl-pb-3 gl-text-secondary" :class="bodyClass">
+      ></strong
+    ><template #body>
+      <p class="gl-mb-0 gl-ml-3 gl-mt-2 gl-pb-3 gl-text-subtle" :class="bodyClass">
         <gl-sprintf :message="eventDetails.body">
           <template #userName>
-            <span class="gl-font-weight-bold gl-text-body">{{ eventDetails.user.name }}</span>
+            <span class="gl-font-bold gl-text-default">{{ eventDetails.user.name }}</span>
             <gl-link :href="eventDetails.user.webUrl">@{{ eventDetails.user.username }}</gl-link>
           </template>
 
           <template #strong="{ content }">
-            <span class="gl-font-weight-bold gl-text-body"> {{ content }} </span>
+            <span class="gl-font-bold gl-text-default"> {{ content }} </span>
           </template>
         </gl-sprintf>
         <time-ago-tooltip :time="eventDetails.recordedAt" />

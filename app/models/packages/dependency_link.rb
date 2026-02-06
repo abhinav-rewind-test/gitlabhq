@@ -11,7 +11,7 @@ class Packages::DependencyLink < ApplicationRecord
   validates :dependency_type,
     uniqueness: { scope: %i[package_id dependency_id] }
 
-  enum dependency_type: { dependencies: 1, devDependencies: 2, bundleDependencies: 3, peerDependencies: 4 }
+  enum :dependency_type, { dependencies: 1, devDependencies: 2, bundleDependencies: 3, peerDependencies: 4 }
 
   scope :with_dependency_type, ->(dependency_type) { where(dependency_type: dependency_type) }
   scope :includes_dependency, -> { includes(:dependency) }
@@ -20,6 +20,7 @@ class Packages::DependencyLink < ApplicationRecord
   scope :preload_dependency, -> { preload(:dependency) }
   scope :preload_nuget_metadatum, -> { preload(:nuget_metadatum) }
   scope :select_dependency_id, -> { select(:dependency_id) }
+  scope :without_empty_nuget_dependencies, -> { joins(:dependency).merge(::Packages::Dependency.excluding_empty_nuget) }
 
   def self.dependency_ids_grouped_by_type(packages)
     inner_query = where(package_id: packages)

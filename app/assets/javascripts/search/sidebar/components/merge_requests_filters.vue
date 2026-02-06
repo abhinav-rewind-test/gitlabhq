@@ -1,26 +1,37 @@
 <script>
 // eslint-disable-next-line no-restricted-imports
-import { mapGetters } from 'vuex';
-import { statusFilterData } from './status_filter/data';
+import { mapGetters, mapState } from 'vuex';
+import { SEARCH_TYPE_ADVANCED } from '~/search/sidebar/constants';
 import StatusFilter from './status_filter/index.vue';
 import FiltersTemplate from './filters_template.vue';
-import { archivedFilterData } from './archived_filter/data';
+import LabelFilter from './label_filter/index.vue';
 import ArchivedFilter from './archived_filter/index.vue';
+import SourceBranchFilter from './source_branch_filter/index.vue';
+import TargetBranchFilter from './target_branch_filter/index.vue';
+import AuthorFilter from './author_filter/index.vue';
 
 export default {
   name: 'MergeRequestsFilters',
   components: {
     StatusFilter,
     FiltersTemplate,
+    LabelFilter,
     ArchivedFilter,
+    SourceBranchFilter,
+    TargetBranchFilter,
+    AuthorFilter,
   },
   computed: {
-    ...mapGetters(['currentScope']),
-    showArchivedFilter() {
-      return archivedFilterData.scopes.includes(this.currentScope);
+    ...mapGetters(['hasMissingProjectContext']),
+    ...mapState(['groupInitialJson', 'searchType']),
+    shouldShowBranchFilters() {
+      return !this.hasMissingProjectContext || this.groupInitialJson?.id;
     },
-    showStatusFilter() {
-      return Object.values(statusFilterData.scopes).includes(this.currentScope);
+    isAdvancedSearch() {
+      return this.searchType === SEARCH_TYPE_ADVANCED;
+    },
+    shouldShowAuthorFilter() {
+      return this.isAdvancedSearch;
     },
   },
 };
@@ -28,7 +39,11 @@ export default {
 
 <template>
   <filters-template>
-    <status-filter v-if="showStatusFilter" class="gl-mb-5" />
-    <archived-filter v-if="showArchivedFilter" class="gl-mb-5" />
+    <status-filter class="gl-mb-5" />
+    <archived-filter v-if="hasMissingProjectContext" class="gl-mb-5" />
+    <label-filter v-if="isAdvancedSearch" class="gl-mb-5" />
+    <source-branch-filter v-if="shouldShowBranchFilters" class="gl-mb-5" />
+    <target-branch-filter v-if="shouldShowBranchFilters" class="gl-mb-5" />
+    <author-filter v-if="shouldShowAuthorFilter" class="gl-mb-5" />
   </filters-template>
 </template>

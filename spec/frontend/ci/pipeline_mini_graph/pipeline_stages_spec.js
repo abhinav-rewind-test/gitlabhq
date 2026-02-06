@@ -1,63 +1,48 @@
 import { shallowMount } from '@vue/test-utils';
-import { pipelines } from 'test_fixtures/pipelines/pipelines.json';
-import LegacyPipelineStage from '~/ci/pipeline_mini_graph/legacy_pipeline_stage.vue';
 import PipelineStages from '~/ci/pipeline_mini_graph/pipeline_stages.vue';
+import PipelineStageDropdown from '~/ci/pipeline_mini_graph/pipeline_stage_dropdown.vue';
 
-const mockStages = pipelines[0].details.stages;
+import { pipelineStage } from './mock_data';
 
-describe('Pipeline Stages', () => {
+describe('PipelineStages', () => {
   let wrapper;
 
-  const findLegacyPipelineStages = () => wrapper.findAllComponents(LegacyPipelineStage);
-  const findPipelineStagesAt = (i) => findLegacyPipelineStages().at(i);
+  const defaultProps = {
+    stages: [pipelineStage],
+    isMergeTrain: false,
+  };
 
-  const createComponent = (props = {}) => {
+  const createComponent = ({ props = {} } = {}) => {
     wrapper = shallowMount(PipelineStages, {
       propsData: {
-        stages: mockStages,
+        ...defaultProps,
         ...props,
       },
     });
   };
 
-  it('renders stages', () => {
-    createComponent();
+  const findStages = () => wrapper.findAllComponents(PipelineStageDropdown);
 
-    expect(findLegacyPipelineStages()).toHaveLength(mockStages.length);
-  });
+  describe('when mounted', () => {
+    beforeEach(() => {
+      createComponent();
+    });
 
-  it('does not fail when stages are empty', () => {
-    createComponent({ stages: [] });
+    it('sends the necessary props to the stage', () => {
+      expect(findStages().at(0).props()).toMatchObject({
+        stage: defaultProps.stages[0],
+        isMergeTrain: defaultProps.isMergeTrain,
+      });
+    });
 
-    expect(wrapper.exists()).toBe(true);
-    expect(findLegacyPipelineStages()).toHaveLength(0);
-  });
+    it('emits jobActionExecuted', () => {
+      findStages().at(0).vm.$emit('jobActionExecuted');
+      expect(wrapper.emitted('jobActionExecuted')).toHaveLength(1);
+    });
 
-  it('update dropdown is false by default', () => {
-    createComponent();
-
-    expect(findPipelineStagesAt(0).props('updateDropdown')).toBe(false);
-    expect(findPipelineStagesAt(1).props('updateDropdown')).toBe(false);
-  });
-
-  it('update dropdown is set to true', () => {
-    createComponent({ updateDropdown: true });
-
-    expect(findPipelineStagesAt(0).props('updateDropdown')).toBe(true);
-    expect(findPipelineStagesAt(1).props('updateDropdown')).toBe(true);
-  });
-
-  it('is merge train is false by default', () => {
-    createComponent();
-
-    expect(findPipelineStagesAt(0).props('isMergeTrain')).toBe(false);
-    expect(findPipelineStagesAt(1).props('isMergeTrain')).toBe(false);
-  });
-
-  it('is merge train is set to true', () => {
-    createComponent({ isMergeTrain: true });
-
-    expect(findPipelineStagesAt(0).props('isMergeTrain')).toBe(true);
-    expect(findPipelineStagesAt(1).props('isMergeTrain')).toBe(true);
+    it('emits miniGraphStageClick', () => {
+      findStages().at(0).vm.$emit('miniGraphStageClick');
+      expect(wrapper.emitted('miniGraphStageClick')).toHaveLength(1);
+    });
   });
 });

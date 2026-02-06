@@ -1,70 +1,124 @@
+import { getScrollingElement } from '~/lib/utils/panels';
 import { contentTop } from './common_utils';
 
-const interactionEvents = ['mousedown', 'touchstart', 'keydown', 'wheel'];
-
-export function createResizeObserver() {
-  return new ResizeObserver((entries) => {
-    entries.forEach((entry) => {
-      entry.target.dispatchEvent(new CustomEvent(`ResizeUpdate`, { detail: { entry } }));
-    });
-  });
-}
-
 /**
- * Watches for change in size of a container element (e.g. for lazy-loaded images)
+ * Watches for change in size of a container element
+ * (e.g. lazy-loaded images or paginated notes)
  * and scrolls the target note to the top of the content area.
- * Stops watching after any user input. So if user opens sidebar or manually
- * scrolls the page we don't hijack their scroll position
+ *
+ * Stops watching if the target element is scrolled out of viewport
  *
  * @param {Object} options
  * @param {string} options.targetId - id of element to scroll to
  * @param {string} options.container - Selector of element containing target
- * @param {Element} options.component - Element containing target
  *
- * @return {ResizeObserver|null} - ResizeObserver instance if target looks like a note DOM ID
+ * @return {Function} - Cleanup function to stop watching
  */
 export function scrollToTargetOnResize({
   targetId = window.location.hash.slice(1),
   container = '#content-body',
-  containerId,
 } = {}) {
   if (!targetId) return null;
 
-  const ro = createResizeObserver();
-  const containerEl =
-    document.querySelector(`#${containerId}`) || document.querySelector(container);
-  let interactionListenersAdded = false;
+  const containerEl = document.querySelector(container);
+  const scrollingElement = getScrollingElement(containerEl);
 
-  function keepTargetAtTop(evt) {
-    const anchorEl = document.getElementById(targetId);
-    const scrollContainer = containerId ? evt.target : document.documentElement;
+  let targetElement = null;
+  let targetTop = 0;
+  let currentScrollPosition = 0;
+  let userScrollOffset = 0;
 
-    if (!anchorEl) return;
+  // start listening to scroll after the first keepTargetAtTop call
+  let scrollListenerEnabled = false;
+  let intersectionObserver = null;
 
-    const anchorTop = anchorEl.getBoundingClientRect().top + window.scrollY;
-    const top = anchorTop - contentTop();
-    scrollContainer.scrollTo({
-      top,
+  let { scrollHeight } = scrollingElement;
+
+  const ro = new ResizeObserver((entries) => {
+    entries.forEach(() => {
+      scrollHeight = scrollingElement.scrollHeight;
+      // eslint-disable-next-line no-use-before-define
+      keepTargetAtTop();
+    });
+  });
+
+  function handleScroll() {
+    const diff = scrollingElement.scrollHeight - scrollHeight;
+    if (Math.abs(diff) > 100) {
+      return;
+    }
+
+    targetTop = targetElement.getBoundingClientRect().top;
+    userScrollOffset = targetTop - contentTop();
+  }
+
+  function addScrollListener() {
+    scrollingElement.addEventListener('scroll', handleScroll, { passive: true });
+  }
+
+  function removeScrollListener() {
+    scrollingElement.removeEventListener('scroll', handleScroll);
+  }
+
+  function setupIntersectionObserver() {
+    intersectionObserver = new IntersectionObserver((entries) => {
+      const [entry] = entries;
+
+      // if element gets scrolled off screen then remove listeners
+      if (!entry.isIntersecting) {
+        // eslint-disable-next-line no-use-before-define
+        cleanup();
+      }
     });
 
-    if (!interactionListenersAdded) {
-      interactionEvents.forEach((event) =>
-        // eslint-disable-next-line no-use-before-define
-        document.addEventListener(event, removeListeners),
-      );
-      interactionListenersAdded = true;
+    intersectionObserver.observe(targetElement);
+  }
+
+  function keepTargetAtTop() {
+    const superTopbar = document.querySelector('.js-super-topbar');
+
+    // once the user has selected or focused on an element, skip auto-scrolling for them
+    if (![document.body, superTopbar].includes(document.activeElement)) return;
+
+    targetElement = document.getElementById(targetId);
+
+    // skip if the element hasn't loaded yet
+    if (!targetElement) return;
+
+    const anchorTop = targetElement.getBoundingClientRect().top;
+
+    currentScrollPosition = scrollingElement.scrollTop;
+
+    // Add scrollPosition as getBoundingClientRect is relative to viewport
+    // Add the accumulated scroll offset to maintain relative position
+    // subtract contentTop so it goes below sticky headers, rather than top of viewport
+    targetTop = anchorTop + currentScrollPosition - userScrollOffset - contentTop();
+
+    scrollingElement.scrollTo({ top: targetTop, behavior: 'instant' });
+
+    if (!scrollListenerEnabled) {
+      addScrollListener();
+      scrollListenerEnabled = true;
+    }
+
+    if (!intersectionObserver) {
+      setupIntersectionObserver();
     }
   }
 
-  function removeListeners() {
-    interactionEvents.forEach((event) => document.removeEventListener(event, removeListeners));
+  function cleanup() {
+    setTimeout(() => {
+      ro.unobserve(containerEl);
+      removeScrollListener();
 
-    ro.unobserve(containerEl);
-    containerEl.removeEventListener('ResizeUpdate', keepTargetAtTop);
+      if (intersectionObserver) {
+        intersectionObserver.unobserve(targetElement);
+        intersectionObserver.disconnect();
+      }
+    }, 1000);
   }
 
-  containerEl.addEventListener('ResizeUpdate', keepTargetAtTop);
-
   ro.observe(containerEl);
-  return ro;
+
+  return cleanup;
 }

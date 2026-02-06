@@ -2,14 +2,29 @@
 
 module Resolvers
   class BulkLabelsResolver < BaseResolver
-    include Gitlab::Graphql::Authorize::AuthorizeResource
-
     type Types::LabelType.connection_type, null: true
 
     def resolve
-      authorize!(object)
+      handle_bulk_loading_labels
+    end
 
-      BatchLoader::GraphQL.for(object.id).batch(key: object.class.name, cache: false) do |ids, loader, args|
+    def object
+      case super
+      when ::WorkItems::Widgets::Base
+        super.work_item
+      else
+        super
+      end
+    end
+
+    private
+
+    def handle_bulk_loading_labels
+      bulk_load_labels_for_object(object)
+    end
+
+    def bulk_load_labels_for_object(object)
+      BatchLoader::GraphQL.for(object.id).batch(key: object.class.name, cache: false) do |ids, loader, _args|
         labels = Label.for_targets(object.class.id_in(ids)).group_by(&:target_id)
 
         ids.each do |id|
@@ -17,11 +32,7 @@ module Resolvers
         end
       end
     end
-
-    private
-
-    def authorized_resource?(object)
-      Ability.allowed?(current_user, :read_label, object.issuing_parent)
-    end
   end
 end
+
+Resolvers::BulkLabelsResolver.prepend_mod

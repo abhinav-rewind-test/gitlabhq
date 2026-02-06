@@ -25,6 +25,7 @@ RSpec.describe Ci::Sources::Pipeline, feature_category: :continuous_integration 
 
   context 'loose foreign key on ci_sources_pipelines.source_project_id' do
     it_behaves_like 'cleanup by a loose foreign key' do
+      let(:lfk_column) { :source_project_id }
       let!(:parent) { create(:project, namespace: create(:group)) }
       let!(:model) { create(:ci_sources_pipeline, source_project: parent) }
     end
@@ -32,33 +33,50 @@ RSpec.describe Ci::Sources::Pipeline, feature_category: :continuous_integration 
 
   context 'loose foreign key on ci_sources_pipelines.project_id' do
     it_behaves_like 'cleanup by a loose foreign key' do
+      let(:lfk_column) { :project_id }
       let!(:parent) { create(:project, namespace: create(:group)) }
       let!(:model) { create(:ci_sources_pipeline, project: parent) }
     end
   end
 
-  describe 'partitioning', :ci_partitionable do
-    let!(:child_pipeline) { create(:ci_pipeline) }
-    let!(:parent_pipeline) { create(:ci_pipeline, upstream_of: child_pipeline) }
+  describe 'partitioning', :aggregate_failures do
+    include Ci::PartitioningHelpers
 
-    let(:current_partition) { ci_testing_partition_id_for_check_constraints }
-    let(:older_partition) { ci_testing_partition_id_for_check_constraints - 1 }
-
-    subject(:sources_pipeline) { child_pipeline.source_pipeline }
-
-    it 'assigns partition_id and source_partition_id from pipeline and source_job', :aggregate_failures do
-      expect(sources_pipeline.partition_id).to eq(current_partition)
-      expect(sources_pipeline.source_partition_id).to eq(current_partition)
+    before do
+      stub_current_partition_id(current_partition)
     end
 
-    context 'when the upstream pipeline is from an older partition' do
-      let!(:parent_pipeline) { create(:ci_pipeline, partition_id: older_partition, upstream_of: child_pipeline) }
+    let_it_be(:current_partition) { ci_testing_partition_id }
+    let_it_be(:older_partition) { ci_testing_partition_id - 1 }
+    let_it_be(:pipeline) { create(:ci_pipeline, partition_id: older_partition) }
 
-      it 'assigns partition_id from the current partition' do
-        expect(sources_pipeline.partition_id).to eq(current_partition)
+    context 'with child pipelines' do
+      # The partition_id value is actually populated from the Pipeline::Chain::AssignPartition step
+      let!(:child_pipeline) do
+        create(:ci_pipeline, child_of: pipeline, partition_id: older_partition)
       end
 
-      it 'assigns source_partition_id to the older partition of the source pipeline' do
+      subject(:sources_pipeline) { child_pipeline.source_pipeline }
+
+      it 'uses the same partition_id as the parent pipeline' do
+        expect(sources_pipeline.partition_id).to eq(older_partition)
+        expect(sources_pipeline.source_partition_id).to eq(older_partition)
+        expect(child_pipeline.partition_id).to eq(older_partition)
+      end
+    end
+
+    context 'with cross project pipelines' do
+      # Uses current partition by default
+      let!(:downstream) do
+        create(:ci_pipeline, project: create(:project), child_of: pipeline)
+      end
+
+      subject(:sources_pipeline) { downstream.source_pipeline }
+
+      it 'uses the current partition_id on new pipelines' do
+        expect(sources_pipeline.partition_id).to eq(current_partition)
+        expect(downstream.partition_id).to eq(current_partition)
+        expect(sources_pipeline.source_pipeline_id).to eq(pipeline.id)
         expect(sources_pipeline.source_partition_id).to eq(older_partition)
       end
     end

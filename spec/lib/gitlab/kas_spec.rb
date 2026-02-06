@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Kas do
+RSpec.describe Gitlab::Kas, feature_category: :deployment_management do
   let(:jwt_secret) { SecureRandom.random_bytes(described_class::SECRET_LENGTH) }
 
   before do
@@ -15,7 +15,7 @@ RSpec.describe Gitlab::Kas do
     context 'returns nil if fails to validate the JWT' do
       it 'when secret is wrong' do
         encoded_token = JWT.encode(payload, 'wrong secret', 'HS256')
-        headers = { described_class::INTERNAL_API_REQUEST_HEADER => encoded_token }
+        headers = { described_class::INTERNAL_API_KAS_REQUEST_HEADER => encoded_token }
 
         expect(described_class.verify_api_request(headers)).to be_nil
       end
@@ -23,7 +23,7 @@ RSpec.describe Gitlab::Kas do
       it 'when issuer is wrong' do
         payload['iss'] = 'wrong issuer'
         encoded_token = JWT.encode(payload, described_class.secret, 'HS256')
-        headers = { described_class::INTERNAL_API_REQUEST_HEADER => encoded_token }
+        headers = { described_class::INTERNAL_API_KAS_REQUEST_HEADER => encoded_token }
 
         expect(described_class.verify_api_request(headers)).to be_nil
       end
@@ -31,7 +31,7 @@ RSpec.describe Gitlab::Kas do
       it 'when audience is wrong' do
         payload['aud'] = 'wrong audience'
         encoded_token = JWT.encode(payload, described_class.secret, 'HS256')
-        headers = { described_class::INTERNAL_API_REQUEST_HEADER => encoded_token }
+        headers = { described_class::INTERNAL_API_KAS_REQUEST_HEADER => encoded_token }
 
         expect(described_class.verify_api_request(headers)).to be_nil
       end
@@ -39,7 +39,7 @@ RSpec.describe Gitlab::Kas do
 
     it 'returns the decoded JWT' do
       encoded_token = JWT.encode(payload, described_class.secret, 'HS256')
-      headers = { described_class::INTERNAL_API_REQUEST_HEADER => encoded_token }
+      headers = { described_class::INTERNAL_API_KAS_REQUEST_HEADER => encoded_token }
 
       expect(described_class.verify_api_request(headers)).to eq([
         { 'iss' => described_class::JWT_ISSUER, 'aud' => described_class::JWT_AUDIENCE },
@@ -184,23 +184,82 @@ RSpec.describe Gitlab::Kas do
     end
   end
 
-  describe '.version' do
-    it 'returns gitlab_kas version config' do
-      version_file = Rails.root.join(described_class::VERSION_FILE)
-
-      expect(described_class.version).to eq(version_file.read.chomp)
-    end
-  end
-
-  describe '.version_info' do
-    let(:version) { '15.6.0-rc1' }
-
-    before do
-      allow(described_class).to receive(:version).and_return(version)
+  describe 'version information' do
+    it 'returns valid version info' do
+      expect(described_class.display_version_info).to be_valid
+      expect(described_class.install_version_info).to be_valid
     end
 
-    it 'returns gitlab_kas version config, including suffix' do
-      expect(described_class.version_info.to_s).to eq(version)
+    context 'when getServerInfo is available' do
+      before do
+        allow_next_instance_of(Gitlab::Kas::ServerInfo) do |instance|
+          allow(instance).to receive(:version_info).and_return(Gitlab::VersionInfo.new(17, 11, 1, "-rc1"))
+        end
+      end
+
+      it 'uses fetched kas version info for display' do
+        expect(described_class.display_version_info).to be_valid
+        expect(described_class.display_version_info.to_s).to eq("17.11.1-rc1")
+      end
+
+      it 'uses fetched kas version with 0 patch and without suffix for agentk installation recommandation' do
+        expect(described_class.install_version_info).to be_valid
+        expect(described_class.install_version_info.to_s).to eq("17.11.0")
+      end
+    end
+
+    context 'when getServerInfo is unavailable' do
+      before do
+        allow_next_instance_of(Gitlab::Kas::ServerInfo) do |instance|
+          allow(instance).to receive(:version_info).and_return(nil)
+        end
+        # Skip the error tracking to avoid interference with the 'Rails.root.join' mock below
+        allow(Gitlab::ErrorTracking).to receive(:track_exception)
+      end
+
+      describe 'versioning according to the KAS version file content' do
+        before do
+          kas_version_file_double = instance_double(File, read: version_file_content)
+          allow(Rails.root).to receive(:join).with(Gitlab::Kas::VERSION_FILE).and_return(kas_version_file_double)
+        end
+
+        let(:version_file_content) { 'v16.10.1' }
+
+        it 'uses the KAS version file for both display and agentk insallation recommandationon' do
+          expected_version_string = version_file_content.sub('v', '')
+
+          expect(described_class.display_version_info.to_s).to eq expected_version_string
+          expect(described_class.install_version_info.to_s).to eq expected_version_string
+        end
+
+        context 'when the KAS version file content is a release candidate version' do
+          let(:version_file_content) { 'v16.10.1-rc42' }
+
+          it 'uses the KAS version file for both display and agentk installation recommandation' do
+            expected_version_string = version_file_content.sub('v', '')
+
+            expect(described_class.display_version_info.to_s).to eq expected_version_string
+            expect(described_class.install_version_info.to_s).to eq expected_version_string
+          end
+        end
+
+        context 'when the KAS version file content is a SHA' do
+          before do
+            allow(Gitlab).to receive(:version_info).and_return(gitlab_version_info)
+          end
+
+          let(:gitlab_version_info) { Gitlab::VersionInfo.parse('16.11.2') }
+          let(:version_file_content) { '5bbaac6e3d907fba9568a2e36aa1e521f589c897' }
+
+          it 'uses the Gitlab version without suffix for display' do
+            expect(described_class.display_version_info.to_s).to eq '16.11.2'
+          end
+
+          it 'uses the Gitlab version with 0 patch version for agentk installation recommandation' do
+            expect(described_class.install_version_info.to_s).to eq '16.11.0'
+          end
+        end
+      end
     end
   end
 
@@ -226,6 +285,38 @@ RSpec.describe Gitlab::Kas do
         expect(described_class).to receive(:write_secret)
 
         described_class.ensure_secret!
+      end
+    end
+  end
+
+  describe '.client_timeout_seconds' do
+    context 'when client_timeout_seconds is configured' do
+      before do
+        allow(Gitlab.config).to receive(:gitlab_kas).and_return({ 'client_timeout_seconds' => 15 })
+      end
+
+      it 'returns the configured timeout' do
+        expect(described_class.client_timeout_seconds).to eq(15)
+      end
+    end
+
+    context 'when client_timeout_seconds is not configured' do
+      before do
+        allow(Gitlab.config).to receive(:gitlab_kas).and_return({ 'client_timeout_seconds' => nil })
+      end
+
+      it 'returns the default timeout' do
+        expect(described_class.client_timeout_seconds).to eq(5) # Default timeout
+      end
+    end
+
+    context 'when the configuration is missing' do
+      before do
+        allow(Gitlab.config).to receive(:gitlab_kas).and_return(nil)
+      end
+
+      it 'returns the default timeout' do
+        expect(described_class.client_timeout_seconds).to eq(5) # Default timeout
       end
     end
   end

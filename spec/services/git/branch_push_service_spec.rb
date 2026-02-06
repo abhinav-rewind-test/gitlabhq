@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services: true, feature_category: :source_code_management do
+RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, :services, feature_category: :source_code_management do
   include RepoHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be_with_refind(:project) { create(:project, :repository) }
+  let_it_be_with_refind(:project) { create(:project, :repository, maintainers: user) }
 
   let(:blankrev) { Gitlab::Git::SHA1_BLANK_SHA }
   let(:oldrev)   { sample_commit.parent_id }
@@ -14,13 +14,11 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
   let(:branch)   { 'master' }
   let(:ref)      { "refs/heads/#{branch}" }
   let(:push_options) { nil }
-  let(:service) do
-    described_class
-      .new(project, user, change: { oldrev: oldrev, newrev: newrev, ref: ref }, push_options: push_options)
-  end
+  let(:gitaly_context) { nil }
+  let(:params) { { change: { oldrev: oldrev, newrev: newrev, ref: ref }, push_options: push_options, gitaly_context: gitaly_context } }
 
-  before do
-    project.add_maintainer(user)
+  let(:service) do
+    described_class.new(project, user, **params)
   end
 
   subject(:execute_service) do
@@ -75,12 +73,13 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
     end
   end
 
-  describe "Pipelines" do
+  describe "Pipelines", :sidekiq_inline do
     before do
       stub_ci_pipeline_to_return_yaml_file
     end
 
     it 'creates a pipeline with the right parameters' do
+      allow(Ci::CreatePipelineService).to receive(:new).and_call_original
       expect(Ci::CreatePipelineService).to receive(:new).with(
         project,
         user,
@@ -90,7 +89,8 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
           ref: ref,
           checkout_sha: SeedRepo::Commit::ID,
           variables_attributes: [],
-          push_options: {}
+          push_options: nil,
+          gitaly_context: nil
         }
       ).and_call_original
 
@@ -111,23 +111,14 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
         stub_ci_pipeline_yaml_file(config)
       end
 
-      it 'reports an error' do
-        allow(Gitlab::Runtime).to receive(:sidekiq?).and_return(true)
-        expect(Sidekiq.logger).to receive(:warn)
-
+      it 'does not create a pipeline' do
         expect { subject }.not_to change { Ci::Pipeline.count }
       end
 
       context 'with push options' do
         let(:push_options) { { 'mr' => { 'create' => true } } }
 
-        it 'sanitizes push options' do
-          allow(Gitlab::Runtime).to receive(:sidekiq?).and_return(true)
-          expect(Sidekiq.logger).to receive(:warn) do |args|
-            pipeline_params = args[:pipeline_params]
-            expect(pipeline_params.keys).to match_array(%i[before after ref variables_attributes checkout_sha])
-          end
-
+        it 'does not create a pipeline' do
           expect { subject }.not_to change { Ci::Pipeline.count }
         end
       end
@@ -155,43 +146,10 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
     it "when pushing a new branch for the first time" do
       expect(UpdateMergeRequestsWorker)
         .to receive(:perform_async)
-        .with(project.id, user.id, blankrev, newrev, ref, { 'push_options' => nil })
+        .with(project.id, user.id, blankrev, newrev, ref, { 'push_options' => nil, 'gitaly_context' => nil })
         .ordered
 
       subject
-    end
-  end
-
-  describe "Updates git attributes" do
-    context "for default branch" do
-      context "when first push" do
-        let(:oldrev) { blankrev }
-
-        it "calls the copy attributes method for the first push to the default branch" do
-          expect(project.repository).to receive(:copy_gitattributes).with('master')
-
-          subject
-        end
-      end
-
-      it "calls the copy attributes method for changes to the default branch" do
-        expect(project.repository).to receive(:copy_gitattributes).with(ref)
-
-        subject
-      end
-    end
-
-    context "for non-default branch" do
-      before do
-        # Make sure the "default" branch is different
-        allow(project).to receive(:default_branch).and_return('not-master')
-      end
-
-      it "does not call copy attributes method" do
-        expect(project.repository).not_to receive(:copy_gitattributes)
-
-        subject
-      end
     end
   end
 
@@ -214,112 +172,52 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
         expect(project.protected_branches.first.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
       end
 
-      context 'when feature flag `default_branch_protection_defaults` is disabled' do
-        before do
-          stub_feature_flags(default_branch_protection_defaults: false)
-        end
+      it "with default branch protection disabled" do
+        expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_none)
 
-        it "with default branch protection disabled" do
-          expect(project.namespace).to receive(:default_branch_protection).and_return(Gitlab::Access::PROTECTION_NONE)
-
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          subject
-          expect(project.protected_branches).to be_empty
-        end
-
-        it "with default branch protection set to 'developers can push'" do
-          expect(project.namespace).to receive(:default_branch_protection).and_return(Gitlab::Access::PROTECTION_DEV_CAN_PUSH)
-
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-
-          subject
-
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-          expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
-        end
-
-        it "with an existing branch permission configured" do
-          expect(project.namespace).to receive(:default_branch_protection).and_return(Gitlab::Access::PROTECTION_DEV_CAN_PUSH)
-
-          create(:protected_branch, :no_one_can_push, :developers_can_merge, project: project, name: 'master')
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          expect(ProtectedBranches::CreateService).not_to receive(:new)
-
-          subject
-
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::NO_ACCESS])
-          expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-        end
-
-        it "with default branch protection set to 'developers can merge'" do
-          expect(project.namespace).to receive(:default_branch_protection).and_return(Gitlab::Access::PROTECTION_DEV_CAN_MERGE)
-
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          subject
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.first.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
-          expect(project.protected_branches.first.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-        end
+        expect(project).to receive(:execute_hooks)
+        expect(project.default_branch).to eq("master")
+        subject
+        expect(project.protected_branches).to be_empty
       end
 
-      context 'when feature flag `default_branch_protection_defaults` is enabled' do
-        before do
-          stub_feature_flags(default_branch_protection_defaults: true)
-        end
+      it "with default branch protection set to 'developers can push'" do
+        expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_partial)
 
-        it "with default branch protection disabled" do
-          expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_none)
+        expect(project).to receive(:execute_hooks)
+        expect(project.default_branch).to eq("master")
 
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          subject
-          expect(project.protected_branches).to be_empty
-        end
+        subject
 
-        it "with default branch protection set to 'developers can push'" do
-          expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_partial)
+        expect(project.protected_branches).not_to be_empty
+        expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
+        expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
+      end
 
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
+      it "with an existing branch permission configured" do
+        expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_partial)
 
-          subject
+        create(:protected_branch, :no_one_can_push, :developers_can_merge, project: project, name: 'master')
+        expect(project).to receive(:execute_hooks)
+        expect(project.default_branch).to eq("master")
+        expect(ProtectedBranches::CreateService).not_to receive(:new)
 
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-          expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
-        end
+        subject
 
-        it "with an existing branch permission configured" do
-          expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protection_partial)
+        expect(project.protected_branches).not_to be_empty
+        expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::NO_ACCESS])
+        expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
+      end
 
-          create(:protected_branch, :no_one_can_push, :developers_can_merge, project: project, name: 'master')
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          expect(ProtectedBranches::CreateService).not_to receive(:new)
+      it "with default branch protection set to 'developers can merge'" do
+        expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protected_against_developer_pushes)
 
-          subject
-
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.last.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::NO_ACCESS])
-          expect(project.protected_branches.last.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-        end
-
-        it "with default branch protection set to 'developers can merge'" do
-          expect(project.namespace).to receive(:default_branch_protection_settings).and_return(Gitlab::Access::BranchProtection.protected_against_developer_pushes)
-
-          expect(project).to receive(:execute_hooks)
-          expect(project.default_branch).to eq("master")
-          subject
-          expect(project.protected_branches).not_to be_empty
-          expect(project.protected_branches.first.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
-          expect(project.protected_branches.first.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
-        end
+        expect(project).to receive(:execute_hooks)
+        expect(project.default_branch).to eq("master")
+        subject
+        expect(project.protected_branches).not_to be_empty
+        expect(project.protected_branches.first.push_access_levels.map(&:access_level)).to eq([Gitlab::Access::MAINTAINER])
+        expect(project.protected_branches.first.merge_access_levels.map(&:access_level)).to eq([Gitlab::Access::DEVELOPER])
       end
     end
 
@@ -354,7 +252,7 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
     end
 
     it "creates a note if a pushed commit mentions an issue", :sidekiq_might_not_need_inline do
-      expect(SystemNoteService).to receive(:cross_reference).with(issue, commit, commit_author)
+      expect(SystemNoteService).to receive(:cross_reference).with(issue, commit, user)
 
       subject
     end
@@ -362,17 +260,7 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
     it "only creates a cross-reference note if one doesn't already exist" do
       SystemNoteService.cross_reference(issue, commit, user)
 
-      expect(SystemNoteService).not_to receive(:cross_reference).with(issue, commit, commit_author)
-
-      subject
-    end
-
-    it "defaults to the pushing user if the commit's author is not known", :sidekiq_inline, :use_clean_rails_redis_caching do
-      allow(commit).to receive_messages(
-        author_name: 'unknown name',
-        author_email: 'unknown@email.com'
-      )
-      expect(SystemNoteService).to receive(:cross_reference).with(issue, commit, user)
+      expect(SystemNoteService).not_to receive(:cross_reference)
 
       subject
     end
@@ -385,7 +273,7 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
         allow(project.repository).to receive(:commits_between).with(blankrev, newrev).and_return([])
         allow(project.repository).to receive(:commits_between).with("master", newrev).and_return([commit])
 
-        expect(SystemNoteService).to receive(:cross_reference).with(issue, commit, commit_author)
+        expect(SystemNoteService).to receive(:cross_reference).with(issue, commit, user)
 
         subject
       end
@@ -481,7 +369,7 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
       end
 
       it "creates cross-reference notes", :sidekiq_inline, :use_clean_rails_redis_caching do
-        expect(SystemNoteService).to receive(:cross_reference).with(issue, closing_commit, commit_author)
+        expect(SystemNoteService).to receive(:cross_reference).with(issue, closing_commit, user)
         subject
       end
 
@@ -710,6 +598,9 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
 
   describe 'Hooks' do
     context 'run on a branch' do
+      let(:process_commit_worker_pool) { Gitlab::Git::ProcessCommitWorkerPool.new }
+      let(:params) { super().merge(process_commit_worker_pool: process_commit_worker_pool) }
+
       it 'delegates to Git::BranchHooksService' do
         expect_next_instance_of(::Git::BranchHooksService) do |hooks_service|
           expect(hooks_service.project).to eq(project)
@@ -719,7 +610,8 @@ RSpec.describe Git::BranchPushService, :use_clean_rails_redis_caching, services:
               oldrev: oldrev,
               newrev: newrev,
               ref: ref
-            }
+            },
+            process_commit_worker_pool: process_commit_worker_pool
           )
 
           expect(hooks_service).to receive(:execute)

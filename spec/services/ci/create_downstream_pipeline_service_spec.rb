@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category: :continuous_integration do
   include Ci::SourcePipelineHelpers
+  include Ci::PipelineMessageHelpers
 
   # Using let_it_be on user and projects for these specs can cause
   # spec-ordering failures due to the project-based permissions
@@ -25,13 +26,16 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
     }
   end
 
+  let(:yaml_variables) { nil }
+
   let(:bridge) do
     create(
       :ci_bridge,
       status: :pending,
       user: user,
       options: trigger,
-      pipeline: upstream_pipeline
+      pipeline: upstream_pipeline,
+      yaml_variables: yaml_variables
     )
   end
 
@@ -103,11 +107,11 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
   end
 
   context 'when user can create pipeline in a downstream project' do
-    let(:stub_config) { true }
+    let(:stub_ci_yaml) { true }
 
     before do
       downstream_project.add_developer(user)
-      stub_ci_pipeline_yaml_file(YAML.dump(rspec: { script: 'rspec' })) if stub_config
+      stub_ci_pipeline_yaml_file(YAML.dump(rspec: { script: 'rspec' })) if stub_ci_yaml
     end
 
     it 'creates only one new pipeline' do
@@ -137,9 +141,120 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       expect(bridge.reload).to be_success
     end
 
+    it 'returns and tracks an error for invalid status transitions' do
+      allow(bridge).to receive(:success!).and_raise(
+        StateMachines::InvalidTransition.new(
+          bridge,
+          Ci::Bridge.state_machines[:status],
+          'success'
+        )
+      )
+
+      expect(Gitlab::ErrorTracking).to receive(:track_exception).with(
+        instance_of(Ci::Bridge::InvalidTransitionError),
+        { bridge_id: bridge.id, downstream_pipeline_id: anything }
+      ) do |error|
+        expect(error.backtrace).to be_present
+      end
+
+      expect(subject).to be_error
+    end
+
     it 'triggers the upstream pipeline duration calculation', :sidekiq_inline do
       expect { subject }
         .to change { upstream_pipeline.reload.duration }.from(nil).to(an_instance_of(Integer))
+    end
+
+    context 'when the bridge contains `inputs` within its options' do
+      let(:stub_ci_yaml) { false }
+
+      let_it_be(:spec_inputs_config) do
+        <<~YAML
+          spec:
+            inputs:
+              stage:
+                default: deploy
+              suffix:
+                default: job
+          ---
+          test-$[[ inputs.suffix ]]:
+            stage: $[[ inputs.stage ]]
+            script: run tests
+        YAML
+      end
+
+      shared_examples 'creates a downstream pipeline with the inputs provided' do
+        it 'creates the correct jobs as per input specification' do
+          subject
+
+          expect(pipeline.builds.first.name).to eq('test-build')
+          expect(pipeline.builds.first.stage).to eq('deploy')
+          expect(pipeline.source_bridge).to eq bridge
+          expect(bridge.reload.sourced_pipeline.pipeline).to eq pipeline
+          expect(pipeline.triggered_by_pipeline).to eq upstream_pipeline
+        end
+      end
+
+      context 'when the downstream pipeline is for another project' do
+        let(:trigger) do
+          {
+            trigger: {
+              project: downstream_project.full_path,
+              file: '.gitlab-ci.yml',
+              inputs: {
+                stage: 'deploy',
+                suffix: 'build'
+              }
+            }
+          }
+        end
+
+        before do
+          downstream_project.repository.create_file(user, '.gitlab-ci.yml', spec_inputs_config, message: 'spec inputs',
+            branch_name: downstream_project.default_branch)
+        end
+
+        it_behaves_like 'creates a downstream pipeline with the inputs provided'
+
+        it 'tracks the usage of inputs' do
+          expect { subject }.to trigger_internal_events('create_pipeline_with_inputs').with(
+            category: 'Gitlab::Ci::Pipeline::Chain::Metrics',
+            additional_properties: { value: 2, label: 'pipeline', property: 'repository_source' },
+            project: downstream_project,
+            user: user
+          )
+        end
+      end
+
+      context 'when the downstream pipeline is for the same project' do
+        let(:trigger) do
+          {
+            trigger: {
+              include: {
+                local: 'child-pipeline.yml',
+                inputs: {
+                  stage: 'deploy',
+                  suffix: 'build'
+                }
+              }
+            }
+          }
+        end
+
+        before do
+          upstream_project.repository.create_file(user, 'child-pipeline.yml', spec_inputs_config, message: 'inputs',
+            branch_name: upstream_project.default_branch)
+          upstream_pipeline.update!(sha: upstream_project.commit.id)
+        end
+
+        it_behaves_like 'creates a downstream pipeline with the inputs provided'
+
+        it 'does not track the usage of inputs because the inputs are in the internal include' do
+          expect { subject }.not_to trigger_internal_events('create_pipeline_with_inputs')
+
+          subject
+        end
+      end
     end
 
     context 'when bridge job has already any downstream pipeline' do
@@ -184,7 +299,8 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         expect { subject }
           .to change { Ci::Pipeline.count }.by(1)
         expect(subject).to be_error
-        expect(subject.message).to match_array(["jobs job config should implement a script: or a trigger: keyword"])
+        expect(subject.message)
+          .to match_array(["jobs job config should implement the script:, run:, or trigger: keyword"])
       end
 
       it 'creates a new pipeline in a downstream project' do
@@ -230,6 +346,14 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
             echo: { script: 'echo' })
         end
 
+        let(:stub_ci_yaml) { false }
+
+        let(:trigger) do
+          {
+            trigger: { include: 'child-pipeline.yml' }
+          }
+        end
+
         shared_examples 'creates a child pipeline' do
           it 'creates only one new pipeline' do
             expect { subject }
@@ -259,7 +383,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
             expect(pipeline.target_sha).to eq(upstream_pipeline.target_sha)
             expect(pipeline.target_sha).to eq(upstream_pipeline.target_sha)
 
-            expect(pipeline.trigger_requests.last).to eq(bridge.trigger_request)
+            expect(pipeline.trigger).to eq(bridge.trigger)
           end
         end
 
@@ -268,14 +392,6 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
             user, 'child-pipeline.yml', file_content, message: 'message', branch_name: 'master')
 
           upstream_pipeline.update!(sha: upstream_project.commit.id)
-        end
-
-        let(:stub_config) { false }
-
-        let(:trigger) do
-          {
-            trigger: { include: 'child-pipeline.yml' }
-          }
         end
 
         it_behaves_like 'creates a child pipeline'
@@ -292,16 +408,27 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
           expect(subject).to be_success
         end
 
-        context 'when bridge uses "depend" strategy' do
+        context 'when bridge has strategy: depend' do
           let(:trigger) do
             {
               trigger: { include: 'child-pipeline.yml', strategy: 'depend' }
             }
           end
 
-          it 'update the bridge job to running status' do
+          it 'updates the bridge status to `running`' do
             expect { subject }.to change { bridge.status }.from('pending').to('running')
-            expect(subject).to be_success
+          end
+        end
+
+        context 'when bridge has strategy: mirror' do
+          let(:trigger) do
+            {
+              trigger: { include: 'child-pipeline.yml', strategy: 'mirror' }
+            }
+          end
+
+          it 'updates the bridge status to `running`' do
+            expect { subject }.to change { bridge.status }.from('pending').to('running')
           end
         end
 
@@ -407,10 +534,10 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         end
 
         context 'when downstream project does not allow user-defined variables for child pipelines' do
-          before do
-            bridge.yaml_variables = [{ key: 'BRIDGE', value: '$PIPELINE_VARIABLE-var', public: true }]
+          let(:yaml_variables) { [{ key: 'BRIDGE', value: '$PIPELINE_VARIABLE-var', public: true }] }
 
-            upstream_pipeline.project.update!(restrict_user_defined_variables: true)
+          before do
+            upstream_pipeline.project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
           end
 
           it 'creates a new pipeline allowing variables to be passed downstream' do
@@ -561,7 +688,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
     end
 
     context 'when downstream pipeline creation errors out' do
-      let(:stub_config) { false }
+      let(:stub_ci_yaml) { false }
 
       before do
         stub_ci_pipeline_yaml_file(YAML.dump(invalid: { yaml: 'error' }))
@@ -571,7 +698,8 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         expect { subject }
           .to change { Ci::Pipeline.count }.by(1)
         expect(subject).to be_error
-        expect(subject.message).to match_array(["jobs invalid config should implement a script: or a trigger: keyword"])
+        expect(subject.message)
+          .to match_array(["jobs invalid config should implement the script:, run:, or trigger: keyword"])
       end
 
       it 'creates a new pipeline in the downstream project' do
@@ -587,7 +715,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
     end
 
     context 'when bridge job status update raises state machine errors' do
-      let(:stub_config) { false }
+      let(:stub_ci_yaml) { false }
 
       before do
         stub_ci_pipeline_yaml_file(YAML.dump(invalid: { yaml: 'error' }))
@@ -597,13 +725,15 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       it 'returns the error' do
         expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
         expect(subject).to be_error
-        expect(subject.message).to eq('Can not run the bridge')
+        expect(subject.message).to eq('Can not run a failed bridge')
       end
     end
 
     context 'when bridge job has YAML variables defined' do
+      let(:yaml_variables) { [{ key: 'BRIDGE', value: 'var', public: true }] }
+
       before do
-        bridge.yaml_variables = [{ key: 'BRIDGE', value: 'var', public: true }]
+        downstream_project.update!(ci_pipeline_variables_minimum_override_role: :developer)
       end
 
       it 'passes bridge variables to downstream pipeline' do
@@ -624,8 +754,10 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       context 'when using YAML variables interpolation' do
+        let(:yaml_variables) { [{ key: 'BRIDGE', value: '$PIPELINE_VARIABLE-var', public: true }] }
+
         before do
-          bridge.yaml_variables = [{ key: 'BRIDGE', value: '$PIPELINE_VARIABLE-var', public: true }]
+          downstream_project.update!(ci_pipeline_variables_minimum_override_role: :developer)
         end
 
         it 'makes it possible to pass pipeline variable downstream' do
@@ -636,7 +768,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
 
         context 'when downstream project does not allow user-defined variables for multi-project pipelines' do
           before do
-            downstream_project.update!(restrict_user_defined_variables: true)
+            downstream_project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
           end
 
           it 'does not create a new pipeline' do
@@ -657,7 +789,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
 
             expect(bridge.reload).to be_failed
             expect(bridge.failure_reason).to eq('downstream_pipeline_creation_failed')
-            expect(bridge.options[:downstream_errors]).to eq(['Insufficient permissions to set pipeline variables'])
+            expect(bridge.downstream_errors).to eq(['Insufficient permissions to set pipeline variables'])
           end
         end
       end
@@ -731,11 +863,11 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       it 'does not create a pipeline and drops the bridge' do
         expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
         expect(subject).to be_error
-        expect(subject.message).to match_array(["Reference not found"])
+        expect(subject.message).to match_array(['Reference not found'])
 
         expect(bridge.reload).to be_failed
         expect(bridge.failure_reason).to eq('downstream_pipeline_creation_failed')
-        expect(bridge.options[:downstream_errors]).to eq(['Reference not found'])
+        expect(bridge.downstream_errors).to eq(['Reference not found'])
       end
     end
 
@@ -756,13 +888,12 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       it 'does not create a pipeline and drops the bridge' do
         expect { subject }.not_to change(downstream_project.ci_pipelines, :count)
         expect(subject).to be_error
-        expect(subject.message).to match_array(['Pipeline will not run for the selected trigger. ' \
-          'The rules configuration prevented any jobs from being added to the pipeline.'])
+        expect(subject.message).to match_array([sanitize_message(Ci::Pipeline.rules_failure_message)])
 
         expect(bridge.reload).to be_failed
         expect(bridge.failure_reason).to eq('downstream_pipeline_creation_failed')
-        expect(bridge.options[:downstream_errors]).to match_array(['Pipeline will not run for the selected trigger. ' \
-          'The rules configuration prevented any jobs from being added to the pipeline.'])
+        expect(bridge.downstream_errors).to match_array(
+          [sanitize_message(Ci::Pipeline.rules_failure_message)])
       end
     end
 
@@ -783,13 +914,13 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         expect { subject }.to change(downstream_project.ci_pipelines, :count).by(1)
         expect(subject).to be_error
         expect(subject.message).to eq(
-          ["test job: chosen stage does not exist; available stages are .pre, build, test, deploy, .post"]
+          ["test job: chosen stage testx does not exist; available stages are .pre, build, test, deploy, .post"]
         )
 
         expect(bridge.reload).to be_failed
         expect(bridge.failure_reason).to eq('downstream_pipeline_creation_failed')
-        expect(bridge.options[:downstream_errors]).to eq(
-          ['test job: chosen stage does not exist; available stages are .pre, build, test, deploy, .post']
+        expect(bridge.downstream_errors).to eq(
+          ['test job: chosen stage testx does not exist; available stages are .pre, build, test, deploy, .post']
         )
       end
     end
@@ -797,6 +928,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
     context 'when downstream pipeline has workflow rule' do
       before do
         stub_ci_pipeline_yaml_file(config)
+        downstream_project.update!(ci_pipeline_variables_minimum_override_role: :developer)
       end
 
       let(:config) do
@@ -811,9 +943,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       end
 
       context 'when passing the required variable' do
-        before do
-          bridge.yaml_variables = [{ key: 'my_var', value: 'var', public: true }]
-        end
+        let(:yaml_variables) { [{ key: 'my_var', value: 'var', public: true }] }
 
         it 'creates the pipeline' do
           expect { subject }.to change(downstream_project.ci_pipelines, :count).by(1)
@@ -850,7 +980,7 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
       let_it_be(:child)      { create(:ci_pipeline, child_of: parent) }
       let_it_be(:sibling)    { create(:ci_pipeline, child_of: parent) }
 
-      let(:project) { build(:project, :repository) }
+      let(:project) { create(:project, :repository) }
       let(:bridge) do
         create(:ci_bridge, status: :pending, user: user, options: trigger, pipeline: child, project: project)
       end
@@ -893,6 +1023,100 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
         end
       end
     end
+
+    context 'when trigger:include:artifact is used' do
+      let(:stub_ci_yaml) { false }
+
+      let!(:build_job) { create(:ci_build, pipeline: upstream_pipeline, name: 'build') }
+
+      let!(:deploy_artifact) do
+        create(:ci_job_artifact, :public, :archive, job: build_job, expire_at: build_job.artifacts_expire_at)
+      end
+
+      let(:trigger) do
+        { trigger: { include: [{ job: 'build', artifact: 'deploy.yml' }] } }
+      end
+
+      before do
+        # We need to create a metadata artifact, otherwise we can't extract the deploy.yml artifact.
+        create(:ci_job_artifact, :metadata, :public, job: build_job, expire_at: build_job.artifacts_expire_at)
+        build_job.reload
+
+        allow_next_instance_of(Gitlab::Ci::ArtifactFileReader) do |reader|
+          allow(reader).to receive(:read).with('deploy.yml', max_size: anything).and_return(artifact_content)
+        end
+      end
+
+      context 'when the artifact is a job definition' do
+        let(:artifact_content) do
+          <<~YAML
+            deploy:
+              script: run deploy
+          YAML
+        end
+
+        it 'creates the downstream pipeline successfully' do
+          expect { subject }.to change(Ci::Pipeline, :count).by(1)
+          expect(subject).to be_success
+
+          pipeline = subject.payload
+
+          expect(pipeline.builds.map(&:name)).to contain_exactly('deploy')
+        end
+      end
+
+      context 'when the artifact is an include definition' do
+        let(:artifact_content) do
+          <<~YAML
+            include: 'test.yml'
+          YAML
+        end
+
+        let(:test_content) do
+          <<~YAML
+            test:
+              script: run tests
+          YAML
+        end
+
+        before do
+          upstream_project.repository.create_file(
+            user, 'test.yml', test_content, message: 'message', branch_name: upstream_project.default_branch
+          )
+          upstream_pipeline.update!(sha: upstream_project.commit.id)
+        end
+
+        it 'creates the downstream pipeline successfully' do
+          expect { subject }.to change(Ci::Pipeline, :count).by(1)
+          expect(subject).to be_success
+
+          pipeline = subject.payload
+
+          expect(pipeline.builds.map(&:name)).to contain_exactly('test')
+        end
+
+        context 'when the include definition contains a variable' do
+          let(:artifact_content) do
+            <<~YAML
+              include: "$FILE_PATH.yml"
+            YAML
+          end
+
+          before do
+            upstream_project.variables.create!(key: 'FILE_PATH', value: 'test')
+          end
+
+          it 'creates the downstream pipeline successfully' do
+            expect { subject }.to change(Ci::Pipeline, :count).by(1)
+            expect(subject).to be_success
+
+            pipeline = subject.payload
+
+            expect(pipeline.builds.map(&:name)).to contain_exactly('test')
+          end
+        end
+      end
+    end
   end
 
   context 'when downstream pipeline creation fails with unexpected errors', :aggregate_failures do
@@ -906,10 +1130,90 @@ RSpec.describe Ci::CreateDownstreamPipelineService, '#execute', feature_category
     it 'drops the bridge without creating a pipeline' do
       expect { subject }
         .to raise_error(RuntimeError, /undefined failure/)
-        .and change { Ci::Pipeline.count }.by(0)
+        .and not_change { Ci::Pipeline.count }
 
       expect(bridge.reload).to be_failed
       expect(bridge.failure_reason).to eq('data_integrity_failure')
+    end
+  end
+
+  context 'when bridge is already running but has no downstream pipeline' do
+    let(:bridge) do
+      create(
+        :ci_bridge,
+        status: :running,
+        user: user,
+        options: trigger,
+        pipeline: upstream_pipeline
+      )
+    end
+
+    before do
+      downstream_project.add_developer(user)
+      stub_ci_pipeline_yaml_file(YAML.dump(rspec: { script: 'rspec' }))
+    end
+
+    it 'creates a downstream pipeline without attempting to transition the bridge' do
+      expect(bridge).not_to receive(:run)
+      expect { subject }.to change { Ci::Pipeline.count }.by(1)
+      expect(subject).to be_success
+    end
+
+    it 'creates the downstream pipeline successfully' do
+      expect(pipeline.user).to eq bridge.user
+      expect(pipeline.project).to eq downstream_project
+      expect(bridge.reload.sourced_pipeline.pipeline).to eq pipeline
+      expect(pipeline.triggered_by_pipeline).to eq upstream_pipeline
+      expect(pipeline.source_bridge).to eq bridge
+    end
+
+    it 'updates bridge status when downstream pipeline gets processed' do
+      expect(pipeline.reload).to be_created
+      expect(bridge.reload).to be_success
+    end
+
+    context 'when bridge already has a downstream pipeline' do
+      before do
+        bridge.create_sourced_pipeline!(
+          source_pipeline: bridge.pipeline,
+          source_project: bridge.project,
+          project: bridge.project,
+          pipeline: create(:ci_pipeline, project: bridge.project)
+        )
+      end
+
+      it 'does not create another pipeline' do
+        expect { subject }.not_to change { Ci::Pipeline.count }
+        expect(subject).to be_error
+        expect(subject.message).to eq("Already has a downstream pipeline")
+      end
+    end
+  end
+
+  context 'when bridge cannot transition to running state' do
+    let(:bridge) do
+      create(
+        :ci_bridge,
+        status: :success,
+        user: user,
+        options: trigger,
+        pipeline: upstream_pipeline
+      )
+    end
+
+    before do
+      downstream_project.add_developer(user)
+      stub_ci_pipeline_yaml_file(YAML.dump(rspec: { script: 'rspec' }))
+    end
+
+    it 'returns an error without creating a pipeline' do
+      expect { subject }.not_to change { Ci::Pipeline.count }
+      expect(subject).to be_error
+      expect(subject.message).to eq('Cannot run the bridge, status: success')
+    end
+
+    it 'does not change the bridge status' do
+      expect { subject }.not_to change { bridge.reload.status }
     end
   end
 end

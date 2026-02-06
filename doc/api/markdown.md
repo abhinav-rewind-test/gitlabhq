@@ -1,30 +1,31 @@
 ---
 stage: Plan
-group: Project Management
+group: Knowledge
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Markdown API
 ---
 
-# Markdown API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Convert Markdown content to HTML.
+{{< /details >}}
 
-Available only in APIv4.
+{{< history >}}
 
-## Required authentication
+- Introduced [required authentication](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/93727) in GitLab 15.3 [with a flag](../administration/feature_flags/_index.md) named `authenticate_markdown_api`. Enabled by default.
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/93727) in GitLab 15.3 [with a flag](../administration/feature_flags.md) named `authenticate_markdown_api`. Enabled by default.
+{{< /history >}}
 
-FLAG:
-On self-managed GitLab, by default this feature is enabled and authentication is required.
-To remove the requirement to authenticate, an administrator can
-[disable the feature flag](../administration/feature_flags.md) named `authenticate_markdown_api`.
-On GitLab.com, this feature is available. On GitLab Dedicated, this feature is available.
+Use this API to render [Markdown](../user/markdown.md) content as HTML.
 
-All API calls to the Markdown API must be [authenticated](rest/index.md#authentication).
+All requests to this API must be [authenticated](rest/authentication.md).
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+> This feature is available for testing, but not ready for production use.
 
 ## Render an arbitrary Markdown document
 

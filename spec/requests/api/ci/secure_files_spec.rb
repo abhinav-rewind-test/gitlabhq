@@ -5,7 +5,6 @@ require 'spec_helper'
 RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   before do
     stub_ci_secure_file_object_storage
-    stub_feature_flags(ci_secure_files_read_only: false)
   end
 
   let_it_be(:maintainer) { create(:user) }
@@ -13,7 +12,7 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   let_it_be(:guest) { create(:user) }
   let_it_be(:anonymous) { create(:user) }
   let_it_be(:unconfirmed) { create(:user, :unconfirmed) }
-  let_it_be(:project) { create(:project, creator_id: maintainer.id) }
+  let_it_be(:project) { create(:project, creator_id: maintainer.id, maintainers: maintainer, developers: developer, guests: guest) }
   let_it_be(:secure_file) { create(:ci_secure_file, project: project) }
 
   let(:file_params) do
@@ -23,67 +22,19 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
     }
   end
 
-  before_all do
-    project.add_maintainer(maintainer)
-    project.add_developer(developer)
-    project.add_guest(guest)
-  end
-
   describe 'GET /projects/:id/secure_files' do
-    context 'ci_secure_files_read_only feature flag' do
-      context 'when the flag is enabled' do
-        before do
-          stub_feature_flags(ci_secure_files_read_only: true)
-        end
-
-        it 'returns a 503 when attempting to upload a file' do
-          stub_feature_flags(ci_secure_files_read_only: true)
-
-          expect do
-            post api("/projects/#{project.id}/secure_files", maintainer), params: file_params
-          end.not_to change { project.secure_files.count }
-
-          expect(response).to have_gitlab_http_status(:service_unavailable)
-        end
-
-        it 'returns a 200 when downloading a file' do
-          stub_feature_flags(ci_secure_files_read_only: true)
-
-          get api("/projects/#{project.id}/secure_files", developer)
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(json_response).to be_a(Array)
-        end
+    it_behaves_like 'enforcing job token policies', :read_secure_files do
+      let_it_be(:user) { developer }
+      let(:request) do
+        get api("/projects/#{source_project.id}/secure_files"), params: { job_token: target_job.token }
       end
+    end
 
-      context 'when the feature is disabled at the instance level' do
-        before do
-          stub_config(ci_secure_files: { enabled: false })
-        end
-
-        it 'returns a 403 when attempting to upload a file' do
-          expect do
-            post api("/projects/#{project.id}/secure_files", maintainer), params: file_params
-          end.not_to change { project.secure_files.count }
-
-          expect(response).to have_gitlab_http_status(:forbidden)
-        end
-
-        it 'returns a 403 when downloading a file' do
-          get api("/projects/#{project.id}/secure_files", developer)
-
-          expect(response).to have_gitlab_http_status(:forbidden)
-        end
-      end
-
-      context 'when the flag is disabled' do
-        it 'returns a 201 when uploading a file when the ci_secure_files_read_only feature flag is disabled' do
-          expect do
-            post api("/projects/#{project.id}/secure_files", maintainer), params: file_params
-          end.to change { project.secure_files.count }.by(1)
-
-          expect(response).to have_gitlab_http_status(:created)
-        end
+    it_behaves_like 'authorizing granular token permissions', :read_secure_file do
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{project.id}/secure_files", personal_access_token: pat)
       end
     end
 
@@ -139,15 +90,31 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   end
 
   describe 'GET /projects/:id/secure_files/:secure_file_id' do
+    it_behaves_like 'enforcing job token policies', :read_secure_files do
+      let_it_be(:user) { developer }
+      let(:request) do
+        get api("/projects/#{source_project.id}/secure_files/#{secure_file.id}"),
+          params: { job_token: target_job.token }
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_secure_file do
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{project.id}/secure_files/#{secure_file.id}", personal_access_token: pat)
+      end
+    end
+
     context 'authenticated user with admin permissions' do
       it 'returns project secure file details' do
         get api("/projects/#{project.id}/secure_files/#{secure_file.id}", maintainer)
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response['name']).to eq(secure_file.name)
-        expect(json_response['expires_at']).to be nil
-        expect(json_response['metadata']).to be nil
-        expect(json_response['file_extension']).to be nil
+        expect(json_response['expires_at']).to be_nil
+        expect(json_response['metadata']).to be_nil
+        expect(json_response['file_extension']).to be_nil
       end
 
       it 'returns project secure file details with metadata when supported' do
@@ -203,6 +170,22 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   end
 
   describe 'GET /projects/:id/secure_files/:secure_file_id/download' do
+    it_behaves_like 'enforcing job token policies', :read_secure_files do
+      let_it_be(:user) { developer }
+      let(:request) do
+        get api("/projects/#{source_project.id}/secure_files/#{secure_file.id}/download"),
+          params: { job_token: target_job.token }
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :download_secure_file do
+      let(:boundary_object) { project }
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{project.id}/secure_files/#{secure_file.id}/download", personal_access_token: pat)
+      end
+    end
+
     context 'authenticated user with admin permissions' do
       it 'returns a secure file' do
         sample_file = fixture_file('ci_secure_files/upload-keystore.jks')
@@ -261,6 +244,22 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   end
 
   describe 'POST /projects/:id/secure_files' do
+    it_behaves_like 'enforcing job token policies', :admin_secure_files do
+      let_it_be(:user) { maintainer }
+      let(:request) do
+        post api("/projects/#{source_project.id}/secure_files"),
+          params: file_params.merge(job_token: target_job.token)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_secure_file do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        post api("/projects/#{project.id}/secure_files", personal_access_token: pat), params: file_params
+      end
+    end
+
     context 'authenticated user with admin permissions' do
       it 'creates a secure file' do
         expect do
@@ -411,6 +410,22 @@ RSpec.describe API::Ci::SecureFiles, feature_category: :mobile_devops do
   end
 
   describe 'DELETE /projects/:id/secure_files/:secure_file_id' do
+    it_behaves_like 'enforcing job token policies', :admin_secure_files do
+      let_it_be(:user) { maintainer }
+      let(:request) do
+        delete api("/projects/#{source_project.id}/secure_files/#{secure_file.id}"),
+          params: { job_token: target_job.token }
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_secure_file do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        delete api("/projects/#{project.id}/secure_files/#{secure_file.id}", personal_access_token: pat)
+      end
+    end
+
     context 'authenticated user with admin permissions' do
       it 'deletes the secure file' do
         expect do

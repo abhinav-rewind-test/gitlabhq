@@ -9,6 +9,7 @@ class Projects::ReleasesController < Projects::ApplicationController
   before_action :authorize_create_release!, only: :new
   before_action :validate_suffix_path, :fetch_latest_tag, only: :latest_permalink
 
+  prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:rss) }
   prepend_before_action(only: [:downloads]) do
     authenticate_sessionless_user!(:download)
   end
@@ -24,11 +25,21 @@ class Projects::ReleasesController < Projects::ApplicationController
       format.json do
         render json: ReleaseSerializer.new.represent(releases)
       end
+      format.atom do
+        @releases = releases
+        render layout: 'xml'
+      end
     end
   end
 
   def downloads
-    redirect_to link.url
+    parsed_redirect_uri = URI.parse(link.url)
+
+    if internal_url?(parsed_redirect_uri)
+      redirect_to link.url
+    else
+      render "projects/releases/redirect", locals: { redirect_uri: parsed_redirect_uri }, layout: false
+    end
   end
 
   def latest_permalink
@@ -73,5 +84,9 @@ class Projects::ReleasesController < Projects::ApplicationController
 
   def validate_suffix_path
     Gitlab::PathTraversal.check_path_traversal!(params[:suffix_path]) if params[:suffix_path]
+  end
+
+  def internal_url?(redirect_url)
+    redirect_url.host == Gitlab.config.gitlab.host && redirect_url.port == Gitlab.config.gitlab.port
   end
 end

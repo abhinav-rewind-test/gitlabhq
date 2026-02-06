@@ -1,9 +1,12 @@
 <script>
 import { GlBadge, GlTooltipDirective } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapActions, mapGetters, mapState } from 'vuex';
+import { mapActions } from 'pinia';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import NoteableNote from '~/notes/components/noteable_note.vue';
+import * as types from '~/batch_comments/stores/modules/batch_comments/mutation_types';
+import { clearDraft } from '~/lib/utils/autosave';
+import { useBatchComments } from '~/batch_comments/store';
+import { useNotes } from '~/notes/store/legacy_notes';
 
 export default {
   components: {
@@ -24,17 +27,29 @@ export default {
       required: false,
       default: null,
     },
+    autosaveKey: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
   data() {
     return {
-      isEditingDraft: false,
+      // diff files in virtual scroller can be culled when scrolling the page (their instances get destroyed)
+      // when a file reappears on the screen we need to restore draft's form: opened state and edited note text
+      // we can detect if a file was culled with an opened form by saving the form opened state on the draft object
+      // this can be used to force markdown editor to use autosaved content instead of an unedited draft note text
+      // https://gitlab.com/gitlab-org/gitlab/-/issues/436954
+      restoreFromAutosave: Boolean(this.draft.isEditing),
     };
   },
   computed: {
-    ...mapState('batchComments', ['isPublishing']),
-    ...mapGetters('batchComments', ['isPublishingDraft']),
     draftCommands() {
       return this.draft.references.commands;
+    },
+    autosaveDraftKey() {
+      if (!this.autosaveKey) return null;
+      return `${this.autosaveKey}/draft-note-${this.draft.id}`;
     },
   },
   mounted() {
@@ -43,25 +58,26 @@ export default {
     }
   },
   methods: {
-    ...mapActions('batchComments', [
+    ...mapActions(useBatchComments, [
       'deleteDraft',
       'updateDraft',
-      'publishSingleDraft',
       'scrollToDraft',
       'toggleResolveDiscussion',
     ]),
-    ...mapActions(['setSelectedCommentPositionHover']),
+    ...mapActions(useBatchComments, {
+      setDraftEditing: types.SET_DRAFT_EDITING,
+    }),
+    ...mapActions(useNotes, ['setSelectedCommentPositionHover']),
     update(data) {
       this.updateDraft(data);
     },
-    publishNow() {
-      this.publishSingleDraft(this.draft.id);
-    },
     handleEditing() {
-      this.isEditingDraft = true;
+      this.setDraftEditing({ draftId: this.draft.id, isEditing: true });
     },
     handleNotEditing() {
-      this.isEditingDraft = false;
+      this.restoreFromAutosave = false;
+      this.clearDraft();
+      this.setDraftEditing({ draftId: this.draft.id, isEditing: false });
     },
     handleMouseEnter(draft) {
       if (draft.position) {
@@ -75,6 +91,9 @@ export default {
         this.setSelectedCommentPositionHover();
       }
     },
+    clearDraft() {
+      if (this.autosaveDraftKey) clearDraft(this.autosaveDraftKey);
+    },
   },
   safeHtmlConfig: {
     ADD_TAGS: ['use', 'gl-emoji', 'copy-code'],
@@ -86,7 +105,11 @@ export default {
     :note="draft"
     :line="line"
     :discussion-root="true"
-    class="draft-note-component draft-note gl-mb-0!"
+    class="draft-note !gl-mb-0"
+    :autosave-key="autosaveDraftKey"
+    :restore-from-autosave="restoreFromAutosave"
+    anchor-prefix="draft"
+    data-testid="draft-note"
     @handleEdit="handleEditing"
     @cancelForm="handleNotEditing"
     @updateSuccess="handleNotEditing"
@@ -100,18 +123,17 @@ export default {
       <gl-badge
         v-gl-tooltip
         variant="warning"
-        size="sm"
         class="gl-mr-2"
         :title="__('Pending comments are hidden until you submit your review.')"
       >
         {{ __('Pending') }}
       </gl-badge>
     </template>
-    <template v-if="!isEditingDraft" #after-note-body>
+    <template v-if="!draft.isEditing" #after-note-body>
       <div
         v-if="draftCommands"
         v-safe-html:[$options.safeHtmlConfig]="draftCommands"
-        class="referenced-commands draft-note-commands"
+        class="draft-note-referenced-commands gl-mb-2 gl-ml-3 gl-text-sm gl-text-subtle"
       ></div>
     </template>
   </noteable-note>

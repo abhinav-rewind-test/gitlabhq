@@ -74,14 +74,6 @@ describe('Batch comments mutations', () => {
   });
 
   describe(types.RECEIVE_PUBLISH_REVIEW_SUCCESS, () => {
-    it('resets drafts', () => {
-      state.drafts.push('test');
-
-      mutations[types.RECEIVE_PUBLISH_REVIEW_SUCCESS](state);
-
-      expect(state.drafts).toEqual([]);
-    });
-
     it('sets isPublishing to false', () => {
       state.isPublishing = true;
 
@@ -124,6 +116,16 @@ describe('Batch comments mutations', () => {
       mutations[types.CLEAR_DRAFTS](state);
 
       expect(state.drafts).toEqual([]);
+    });
+  });
+
+  describe(types.SET_DRAFT_EDITING, () => {
+    it('sets draft editing mode', () => {
+      state.drafts.push({ id: 1, isEditing: false });
+
+      mutations[types.SET_DRAFT_EDITING](state, { draftId: 1, isEditing: true });
+
+      expect(state.drafts[0].isEditing).toBe(true);
     });
   });
 });

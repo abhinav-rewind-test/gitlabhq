@@ -17,6 +17,7 @@ RSpec.describe Gitlab::Git::Tag, feature_category: :source_code_management do
       it { expect(tag.has_signature?).to be_falsey }
       it { expect(tag.signature_type).to eq(:NONE) }
       it { expect(tag.signature).to be_nil }
+      it { expect(tag.lazy_cached_signature).to be_nil }
       it { expect(tag.user_name).to eq("Dmitriy Zaporozhets") }
       it { expect(tag.user_email).to eq("dmitriy.zaporozhets@gmail.com") }
       it { expect(tag.date).to eq(Time.at(1393491299).utc) }
@@ -32,9 +33,85 @@ RSpec.describe Gitlab::Git::Tag, feature_category: :source_code_management do
       it { expect(tag.has_signature?).to be_truthy }
       it { expect(tag.signature_type).to eq(:X509) }
       it { expect(tag.signature).not_to be_nil }
+      it { expect(tag.lazy_cached_signature).to be_nil }
       it { expect(tag.user_name).to eq("Roger Meier") }
       it { expect(tag.user_email).to eq("r.meier@siemens.com") }
       it { expect(tag.date).to eq(Time.at(1574261780).utc) }
+    end
+
+    describe 'gpg tag' do
+      let(:gitaly_commit_author) { create(:gitaly_commit_author, date: now) }
+      let(:now) { Google::Protobuf::Timestamp.new(seconds: 1574261780) }
+      let(:find_all_tags_double) { double(tags: [gitaly_tag]) }
+      let(:gitaly_tag) { create(:gitaly_tag, signature_type: :PGP, tagger: gitaly_commit_author, id: 'stubbed_id') }
+      let(:signature) { 'stubbed_signature' }
+      let(:gitaly_signature) do
+        Gitaly::GetTagSignaturesResponse::TagSignature.new(signature: signature, tag_id: gitaly_tag.id)
+      end
+
+      let(:get_tag_signature_double) { double(signatures: [gitaly_signature]) }
+      let(:tag) { repository.tags.first }
+
+      before do
+        allow(Gitlab::GitalyClient).to receive(:call).and_call_original
+        allow(Gitlab::GitalyClient).to receive(:call).with(repository.storage, :ref_service, :find_all_tags,
+          any_args).and_return([find_all_tags_double])
+        allow(Gitlab::GitalyClient).to receive(:call).with(repository.storage, :ref_service, :get_tag_signatures,
+          any_args).and_return([get_tag_signature_double])
+      end
+
+      it { expect(tag.signature_type).to eq(:PGP) }
+      it { expect(tag.has_signature?).to be_truthy }
+      it { expect(tag.signature).not_to be_nil }
+      it { expect(tag.lazy_cached_signature).to be_nil }
+      it { expect(tag.user_name).to eq(gitaly_commit_author.name) }
+      it { expect(tag.user_email).to eq(gitaly_commit_author.email) }
+      it { expect(tag.date).to eq(Time.at(1574261780).utc) }
+
+      context 'when render_gpg_signed_tags_verification_status is not enabled' do
+        before do
+          stub_feature_flags(render_gpg_signed_tags_verification_status: false)
+        end
+
+        it { expect(tag.signature).to be_nil }
+        it { expect(tag.lazy_cached_signature).to be_nil }
+      end
+    end
+
+    describe 'ssh signed tag' do
+      let(:gitaly_commit_author) { create(:gitaly_commit_author, email: 'test@example.com') }
+      let(:find_all_tags_double) { double(tags: [gitaly_tag]) }
+      let(:gitaly_tag) { create(:gitaly_tag, signature_type: :SSH, tagger: gitaly_commit_author, id: 'stubbed_id') }
+      let(:signature) { 'stubbed_ssh_signature' }
+      let(:gitaly_signature) do
+        Gitaly::GetTagSignaturesResponse::TagSignature.new(signature: signature, tag_id: gitaly_tag.id)
+      end
+
+      let(:get_tag_signature_double) { double(signatures: [gitaly_signature]) }
+      let(:tag) { repository.tags.first }
+
+      before do
+        allow(Gitlab::GitalyClient).to receive(:call).and_call_original
+        allow(Gitlab::GitalyClient).to receive(:call).with(repository.storage, :ref_service, :find_all_tags,
+          any_args).and_return([find_all_tags_double])
+        allow(Gitlab::GitalyClient).to receive(:call).with(repository.storage, :ref_service, :get_tag_signatures,
+          any_args).and_return([get_tag_signature_double])
+      end
+
+      it { expect(tag.signature_type).to eq(:SSH) }
+      it { expect(tag.has_signature?).to be_truthy }
+      it { expect(tag.signature).not_to be_nil }
+      it { expect(tag.lazy_cached_signature).not_to be_nil }
+      it { expect(tag.user_email).to eq('test@example.com') }
+
+      context 'when render_ssh_signed_tags_verification_status is not enabled' do
+        before do
+          stub_feature_flags(render_ssh_signed_tags_verification_status: false)
+        end
+
+        it { expect(tag.signature).to be_nil }
+        it { expect(tag.lazy_cached_signature).to be_nil }
+      end
     end
 
     it { expect(repository.tags.size).to be > 0 }
@@ -117,7 +194,7 @@ RSpec.describe Gitlab::Git::Tag, feature_category: :source_code_management do
         described_class.extract_signature_lazily(other_repository, tag_ids.first)
 
         expect(described_class).to receive(:batch_signature_extraction)
-          .with(repository, tag_ids)
+          .with(repository, tag_ids, timeout: Gitlab::GitalyClient.fast_timeout)
           .once
           .and_return({})
 
@@ -154,6 +231,26 @@ RSpec.describe Gitlab::Git::Tag, feature_category: :source_code_management do
     end
   end
 
+  describe '#date' do
+    subject { tag.date }
+
+    let(:tag) { repository.tags.first }
+
+    it 'returns a date' do
+      is_expected.to be_present
+    end
+
+    context 'when date is missing' do
+      before do
+        allow(tag).to receive(:tagger).and_return(double(date: nil))
+      end
+
+      it 'returns nil' do
+        is_expected.to be_nil
+      end
+    end
+  end
+
   describe "#cache_key" do
     subject { repository.tags.first }
 
@@ -164,6 +261,55 @@ RSpec.describe Gitlab::Git::Tag, feature_category: :source_code_management do
       digest = Digest::SHA1.hexdigest(["v1.0.0", "Initial release", subject.target, subject.target_commit.sha].join)
 
       expect(subject.cache_key).to eq("tag:#{digest}")
+    end
+  end
+
+  describe '#can_use_lazy_cached_signature?' do
+    let(:tag) { repository.tags.first }
+    let(:stubbed_signature_type) { :NONE }
+
+    subject { tag.can_use_lazy_cached_signature? }
+
+    before do
+      allow(tag).to receive(:signature_type).and_return(stubbed_signature_type)
+    end
+
+    it { is_expected.to be_falsey }
+
+    context 'when repository is not for a project' do
+      before do
+        allow(repository).to receive(:container).and_return(build(:project_snippet))
+      end
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when signed with gpg' do
+      let(:stubbed_signature_type) { :PGP }
+
+      it { is_expected.to be_truthy }
+
+      context 'when render_gpg_signed_tags_verification_status is not enabled' do
+        before do
+          stub_feature_flags(render_gpg_signed_tags_verification_status: false)
+        end
+
+        it { is_expected.to be_falsey }
+      end
+    end
+
+    context 'when signed with ssh' do
+      let(:stubbed_signature_type) { :SSH }
+
+      it { is_expected.to be_truthy }
+
+      context 'when render_ssh_signed_tags_verification_status is not enabled' do
+        before do
+          stub_feature_flags(render_ssh_signed_tags_verification_status: false)
+        end
+
+        it { is_expected.to be_falsey }
+      end
     end
   end
 end

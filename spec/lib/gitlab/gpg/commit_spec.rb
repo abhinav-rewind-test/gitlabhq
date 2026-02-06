@@ -21,7 +21,9 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
     {
       signature: GpgHelpers::User1.signed_commit_signature,
       signed_text: GpgHelpers::User1.signed_commit_base_data,
-      signer: signer
+      signer: signer,
+      author_email: user_email,
+      committer_email: user_email
     }
   end
 
@@ -38,12 +40,13 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
       it 'returns the cached signature on second call' do
         gpg_commit = described_class.new(commit)
 
-        expect(gpg_commit).to receive(:using_keychain).and_call_original
-        gpg_commit.signature
+        expect_next_instance_of(Gitlab::Gpg::Signature) do |signature|
+          expect(signature).to receive(:using_keychain).once.and_call_original
+        end
 
-        # consecutive call
-        expect(gpg_commit).not_to receive(:using_keychain).and_call_original
-        gpg_commit.signature
+        2.times do
+          gpg_commit.signature
+        end
       end
     end
 
@@ -356,8 +359,27 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
           gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
           gpg_key_user_name: nil,
           gpg_key_user_email: nil,
-          verification_status: 'verified_system'
+          verification_status: 'verified_system',
+          committer_email: user_email
         )
+      end
+
+      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+        before do
+          stub_feature_flags(check_for_mailmapped_commit_emails: false)
+        end
+
+        it 'returns a valid signature' do
+          expect(described_class.new(commit).signature).to have_attributes(
+            commit_sha: commit_sha,
+            project: project,
+            gpg_key: nil,
+            gpg_key_primary_keyid: GpgHelpers::User1.primary_keyid,
+            gpg_key_user_name: nil,
+            gpg_key_user_email: nil,
+            verification_status: 'verified_system'
+          )
+        end
       end
 
       it_behaves_like 'returns the cached signature on second call'
@@ -378,6 +400,37 @@ RSpec.describe Gitlab::Gpg::Commit, feature_category: :source_code_management do
       expect { described_class.new(commit).update_signature!(stored_signature) }.to(
         change { signature.reload.verification_status }.from('unknown_key').to('verified')
       )
+    end
+
+    context 'when signature is system verified and committer_email is nil' do
+      let(:signer) { :SIGNER_SYSTEM }
+
+      it 'update gpg_key_user_email with signature_data author_email' do
+        signature
+
+        stored_signature = CommitSignatures::GpgSignature.find_by_commit_sha(commit_sha)
+        stored_signature.update!(committer_email: nil)
+
+        expect { described_class.new(commit).update_signature!(stored_signature) }.to(
+          change { signature.reload.committer_email }.from(nil).to(user_email)
+        )
+      end
+
+      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+        before do
+          stub_feature_flags(check_for_mailmapped_commit_emails: false)
+        end
+
+        it 'does not update gpg_key_user_email with signature_data author_email' do
+          signature
+
+          stored_signature = CommitSignatures::GpgSignature.find_by_commit_sha(commit_sha)
+          stored_signature.update!(committer_email: nil)
+
+          expect { described_class.new(commit).update_signature!(stored_signature) }.to(
+            not_change { signature.reload.committer_email })
+        end
+      end
     end
   end
 end

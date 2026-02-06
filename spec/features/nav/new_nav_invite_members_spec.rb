@@ -12,7 +12,7 @@ RSpec.describe 'new navigation toggle', :js, feature_category: :navigation do
   end
 
   context 'when inside a group' do
-    let_it_be(:group) { create(:group).tap { |record| record.add_owner(user) } }
+    let_it_be(:group) { create(:group, owners: user) }
 
     before do
       visit group_path(group)
@@ -28,13 +28,14 @@ RSpec.describe 'new navigation toggle', :js, feature_category: :navigation do
   end
 
   context 'when inside a project' do
-    let_it_be(:project) { create(:project, :repository).tap { |record| record.add_owner(user) } }
+    let_it_be(:project) { create(:project, :repository, owners: user) }
 
     before do
       visit project_path(project)
     end
 
-    it 'the add menu contains invite members dropdown option and opens invite modal' do
+    it 'the add menu contains invite members dropdown option and opens invite modal',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/4245' do
       invite_members_from_menu
 
       page.within invite_modal_selector do

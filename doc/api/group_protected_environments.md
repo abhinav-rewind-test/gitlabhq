@@ -1,20 +1,29 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Group-level protected environments API
 ---
 
-# Group-level protected environments API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/215888) in GitLab 14.0. [Deployed behind the `group_level_protected_environments` flag](../administration/feature_flags.md), disabled by default.
-> - [Feature flag `group_level_protected_environments`](https://gitlab.com/gitlab-org/gitlab/-/issues/331085) removed in GitLab 14.3.
-> - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/331085) in GitLab 14.3.
+{{< /details >}}
 
-Read more about [group-level protected environments](../ci/environments/protected_environments.md#group-level-protected-environments).
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/215888) in GitLab 14.0. [Deployed behind the `group_level_protected_environments` flag](../administration/feature_flags/_index.md), disabled by default.
+- [Feature flag `group_level_protected_environments`](https://gitlab.com/gitlab-org/gitlab/-/issues/331085) removed in GitLab 14.3.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/331085) in GitLab 14.3.
+
+{{< /history >}}
+
+Use this API to interact with [group-level protected environments](../ci/environments/protected_environments.md#group-level-protected-environments).
+
+> [!note]
+> For protected environments, see [protected environments API](protected_environments.md)
 
 ## Valid access levels
 
@@ -37,10 +46,12 @@ GET /groups/:id/protected_environments
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) maintained by the authenticated user. |
+| `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group maintained by the authenticated user. |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/protected_environments/"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/protected_environments/"
 ```
 
 Example response:
@@ -73,11 +84,13 @@ GET /groups/:id/protected_environments/:name
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) maintained by the authenticated user. |
-| `name`    | string | yes    | The deployment tier of the protected environment. One of `production`, `staging`, `testing`, `development`, or `other`. Read more about [deployment tiers](../ci/environments/index.md#deployment-tier-of-environments).|
+| `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group maintained by the authenticated user. |
+| `name`    | string | yes    | The [deployment tier](../ci/environments/_index.md#deployment-tier-of-environments) of the protected environment. Possible values: `production`, `staging`, `testing`, `development`, or `other`.|
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/protected_environments/production"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/protected_environments/production"
 ```
 
 Example response:
@@ -108,17 +121,20 @@ POST /groups/:id/protected_environments
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id`      | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) maintained by the authenticated user. |
-| `name`    | string | yes    | The deployment tier of the protected environment. One of `production`, `staging`, `testing`, `development`, or `other`. Read more about [deployment tiers](../ci/environments/index.md#deployment-tier-of-environments).|
-| `deploy_access_levels`          | array          | yes | Array of access levels allowed to deploy, with each described by a hash. One of `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}` respectively. |
-| `required_approval_count` | integer        | no       | The number of approvals required to deploy to this environment. |
-| `approval_rules`                | array          | no  | Array of access levels allowed to approve, with each described by a hash. One of `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}` respectively. You can also specify the number of required approvals from the specified entity with `required_approvals` field. See [Multiple approval rules](../ci/environments/deployment_approvals.md#add-multiple-approval-rules) for more information. |
+| `id`      | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group maintained by the authenticated user. |
+| `name`    | string | yes    | The [deployment tier](../ci/environments/_index.md#deployment-tier-of-environments) of the protected environment. Possible values: `production`, `staging`, `testing`, `development`, or `other`.|
+| `deploy_access_levels`          | array          | yes | Array of access levels allowed to deploy, with each described by a hash. Possible values: `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}`. |
+| `approval_rules`                | array          | no  | Array of access levels allowed to approve, with each described by a hash. Possible values: `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}`. You can also specify the number of required approvals from the specified entity with `required_approvals` field. See [Multiple approval rules](../ci/environments/deployment_approvals.md#add-multiple-approval-rules) for more information. |
 
 The assignable `user_id` are the users who belong to the given group with the Maintainer role (or above).
 The assignable `group_id` are the subgroups under the given group.
 
 ```shell
-curl --header 'Content-Type: application/json' --request POST --data '{"name": "production", "deploy_access_levels": [{"group_id": 9899826}]}' --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/22034114/protected_environments"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments" \
+  --data '{"name": "production", "deploy_access_levels": [{"group_id": 9899826}]}'
 ```
 
 Example response:
@@ -142,10 +158,18 @@ Example response:
 An example with multiple approval rules:
 
 ```shell
-curl --header 'Content-Type: application/json' --request POST \
-     --data '{"name": "production", "deploy_access_levels": [{"group_id": 138}], "approval_rules": [{"group_id": 134}, {"group_id": 135, "required_approvals": 2}]}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/groups/128/protected_environments"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/128/protected_environments" \
+  --data '{
+    "name": "production",
+    "deploy_access_levels": [{"group_id": 138}],
+    "approval_rules": [
+      {"group_id": 134},
+      {"group_id": 135, "required_approvals": 2}
+    ]
+  }'
 ```
 
 In this configuration, the operator group `"group_id": 138` can execute the deployment job
@@ -154,7 +178,11 @@ to `production` only after the QA group `"group_id": 134` and security group
 
 ## Update a protected environment
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351854) in GitLab 15.4.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351854) in GitLab 15.4.
+
+{{< /history >}}
 
 Updates a single environment.
 
@@ -164,11 +192,11 @@ PUT /groups/:id/protected_environments/:name
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id`      | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) maintained by the authenticated user. |
-| `name`    | string | yes    | The deployment tier of the protected environment. One of `production`, `staging`, `testing`, `development`, or `other`. Read more about [deployment tiers](../ci/environments/index.md#deployment-tier-of-environments).|
-| `deploy_access_levels`          | array          | no | Array of access levels allowed to deploy, with each described by a hash. One of `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}` respectively. |
+| `id`      | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group maintained by the authenticated user. |
+| `name`    | string | yes    | The [deployment tier](../ci/environments/_index.md#deployment-tier-of-environments) of the protected environment. Possible values: `production`, `staging`, `testing`, `development`, or `other`.|
+| `deploy_access_levels`          | array          | no | Array of access levels allowed to deploy, with each described by a hash. Possible values: `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}`. |
 | `required_approval_count` | integer        | no       | The number of approvals required to deploy to this environment. |
-| `approval_rules`                | array          | no  | Array of access levels allowed to approve, with each described by a hash. One of `user_id`, `group_id` or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}` or `{access_level: integer}` respectively. You can also specify the number of required approvals from the specified entity with `required_approvals` field. See [Multiple approval rules](../ci/environments/deployment_approvals.md#add-multiple-approval-rules) for more information. |
+| `approval_rules`                | array          | no  | Array of access levels allowed to approve, with each described by a hash. Possible values: `user_id`, `group_id`, or `access_level`. They take the form of `{user_id: integer}`, `{group_id: integer}`, or `{access_level: integer}`. You can also specify the number of required approvals from the specified entity with `required_approvals` field. See [Multiple approval rules](../ci/environments/deployment_approvals.md#add-multiple-approval-rules) for more information. |
 
 To update:
 
@@ -182,10 +210,11 @@ To delete:
 ### Example: Create a `deploy_access_level` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"deploy_access_levels": [{"group_id": 9899829, access_level: 40}], "required_approval_count": 1}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"deploy_access_levels": [{"group_id": 9899829, "access_level": 40}]}'
 ```
 
 Example response:
@@ -210,9 +239,11 @@ Example response:
 ### Example: Update a `deploy_access_level` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"deploy_access_levels": [{"id": 12, "group_id": 22034120}], "required_approval_count": 2}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"deploy_access_levels": [{"id": 12, "group_id": 22034120}]}'
 ```
 
 ```json
@@ -235,9 +266,11 @@ curl --header 'Content-Type: application/json' --request PUT \
 ### Example: Delete a `deploy_access_level` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"deploy_access_levels": [{"id": 12, "_destroy": true}], "required_approval_count": 0}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"deploy_access_levels": [{"id": 12, "_destroy": true}]}'
 ```
 
 Example response:
@@ -253,10 +286,11 @@ Example response:
 ### Example: Create an `approval_rule` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"approval_rules": [{"group_id": 134, "required_approvals": 1}]}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" \
-     "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"approval_rules": [{"group_id": 134, "required_approvals": 1}]}'
 ```
 
 Example response:
@@ -281,9 +315,11 @@ Example response:
 ### Example: Update an `approval_rule` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"approval_rules": [{"id": 38, "group_id": 135, "required_approvals": 2}]}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"approval_rules": [{"id": 38, "group_id": 135, "required_approvals": 2}]}'
 ```
 
 ```json
@@ -306,9 +342,11 @@ curl --header 'Content-Type: application/json' --request PUT \
 ### Example: Delete an `approval_rule` record
 
 ```shell
-curl --header 'Content-Type: application/json' --request PUT \
-     --data '{"approval_rules": [{"id": 38, "_destroy": true}]}' \
-     --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/22034114/protected_environments/production" \
+  --data '{"approval_rules": [{"id": 38, "_destroy": true}]}'
 ```
 
 Example response:
@@ -330,11 +368,13 @@ DELETE /groups/:id/protected_environments/:name
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) maintained by the authenticated user. |
-| `name`    | string | yes    | The deployment tier of the protected environment. One of `production`, `staging`, `testing`, `development`, or `other`. Read more about [deployment tiers](../ci/environments/index.md#deployment-tier-of-environments).|
+| `id` | integer or string | yes | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group maintained by the authenticated user. |
+| `name`    | string | yes    | The [deployment tier](../ci/environments/_index.md#deployment-tier-of-environments) of the protected environment. Possible values: `production`, `staging`, `testing`, `development`, or `other`.|
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/5/protected_environments/staging"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/5/protected_environments/staging"
 ```
 
 The response should return a 200 code.

@@ -1,15 +1,20 @@
-import Vue from 'vue';
+import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
-import { shallowMount } from '@vue/test-utils';
-import { GlLoadingIcon, GlTab } from '@gitlab/ui';
+import { GlLoadingIcon, GlTab, GlSearchBoxByType, GlSprintf } from '@gitlab/ui';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import { stubComponent } from 'helpers/stub_component';
 import waitForPromises from 'helpers/wait_for_promises';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import KubernetesPods from '~/environments/environment_details/components/kubernetes/kubernetes_pods.vue';
 import WorkloadStats from '~/kubernetes_dashboard/components/workload_stats.vue';
 import WorkloadTable from '~/kubernetes_dashboard/components/workload_table.vue';
 import { useFakeDate } from 'helpers/fake_date';
-import { mockKasTunnelUrl } from '../../../mock_data';
-import { k8sPodsMock, k8sPodsStatsData, k8sPodsTableData } from '../../../graphql/mock_data';
+import { mockKasTunnelUrl } from 'jest/environments/mock_data';
+import {
+  k8sPodsMock,
+  mockPodStats,
+  mockPodsTableItems,
+} from 'jest/kubernetes_dashboard/graphql/mock_data';
 
 Vue.use(VueApollo);
 
@@ -24,10 +29,14 @@ describe('~/environments/environment_details/components/kubernetes/kubernetes_po
     },
   };
 
+  const resetPaginationSpy = jest.fn();
+
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
   const findTab = () => wrapper.findComponent(GlTab);
   const findWorkloadStats = () => wrapper.findComponent(WorkloadStats);
   const findWorkloadTable = () => wrapper.findComponent(WorkloadTable);
+  const findSearchBox = () => wrapper.findComponent(GlSearchBoxByType);
+  const findFilteredMessage = () => wrapper.findByTestId('pods-filtered-message');
 
   const createApolloProvider = () => {
     const mockResolvers = {
@@ -40,11 +49,17 @@ describe('~/environments/environment_details/components/kubernetes/kubernetes_po
   };
 
   const createWrapper = (apolloProvider = createApolloProvider()) => {
-    wrapper = shallowMount(KubernetesPods, {
+    wrapper = shallowMountExtended(KubernetesPods, {
       propsData: { namespace, configuration },
       apolloProvider,
       stubs: {
         GlTab,
+        GlSprintf,
+        WorkloadTable: stubComponent(WorkloadTable, {
+          methods: {
+            resetPagination: resetPaginationSpy,
+          },
+        }),
       },
     });
   };
@@ -62,14 +77,6 @@ describe('~/environments/environment_details/components/kubernetes/kubernetes_po
       expect(findLoadingIcon().exists()).toBe(true);
     });
 
-    it('emits loading state', async () => {
-      createWrapper();
-      expect(wrapper.emitted('loading')[0]).toEqual([true]);
-
-      await waitForPromises();
-      expect(wrapper.emitted('loading')[1]).toEqual([false]);
-    });
-
     it('hides the loading icon when the list of pods loaded', async () => {
       createWrapper();
       await waitForPromises();
@@ -85,27 +92,174 @@ describe('~/environments/environment_details/components/kubernetes/kubernetes_po
       createWrapper();
       await waitForPromises();
 
-      expect(findWorkloadStats().props('stats')).toEqual(k8sPodsStatsData);
+      expect(findWorkloadStats().props('stats')).toEqual(mockPodStats);
     });
 
     it('renders workload table with the correct data', async () => {
       createWrapper();
       await waitForPromises();
 
-      expect(findWorkloadTable().props('items')).toMatchObject(k8sPodsTableData);
+      expect(findWorkloadTable().props('items')).toMatchObject(mockPodsTableItems);
     });
 
-    it('emits a update-failed-state event for each pod', async () => {
+    it('provides correct actions data to the workload table', async () => {
       createWrapper();
       await waitForPromises();
 
-      expect(wrapper.emitted('update-failed-state')).toHaveLength(4);
-      expect(wrapper.emitted('update-failed-state')).toEqual([
-        [{ pods: false }],
-        [{ pods: false }],
-        [{ pods: false }],
-        [{ pods: true }],
-      ]);
+      const actions = [
+        {
+          name: 'delete-pod',
+          text: 'Delete pod',
+          icon: 'remove',
+          variant: 'danger',
+        },
+      ];
+      const items = findWorkloadTable().props('items');
+
+      items.forEach((item) => {
+        expect(item.actions).toEqual(actions);
+      });
+    });
+
+    it('emits a update-cluster-state event', async () => {
+      createWrapper();
+      await waitForPromises();
+
+      expect(wrapper.emitted('update-cluster-state')).toEqual([['error']]);
+    });
+
+    it('emits select-item event on item select', async () => {
+      createWrapper();
+      await waitForPromises();
+
+      expect(wrapper.emitted('select-item')).toBeUndefined();
+
+      findWorkloadTable().vm.$emit('select-item', mockPodsTableItems[0]);
+      expect(wrapper.emitted('select-item')).toEqual([[mockPodsTableItems[0]]]);
+    });
+
+    it('emits delete-pod event when receives it from the WorkloadTable component', async () => {
+      createWrapper();
+      await waitForPromises();
+      expect(wrapper.emitted('delete-pod')).toBeUndefined();
+
+      findWorkloadTable().vm.$emit('delete-pod', mockPodsTableItems[0]);
+      expect(wrapper.emitted('delete-pod')).toHaveLength(1);
+    });
+
+    it('filters pods when receives a stat select event', async () => {
+      createWrapper();
+      await waitForPromises();
+
+      const status = 'Failed';
+      findWorkloadStats().vm.$emit('select', status);
+      await nextTick();
+
+      const filteredPods = mockPodsTableItems.filter((pod) => pod.status === status);
+      expect(findWorkloadTable().props('items')).toMatchObject(filteredPods);
+    });
+
+    it('resets pagination when status filter changes', async () => {
+      createWrapper();
+      await waitForPromises();
+
+      const status = 'Failed';
+      findWorkloadStats().vm.$emit('select', status);
+      await nextTick();
+
+      expect(resetPaginationSpy).toHaveBeenCalled();
+    });
+
+    describe('searching pods', () => {
+      beforeEach(async () => {
+        createWrapper();
+        await waitForPromises();
+      });
+
+      it('filters pods when receives a search', async () => {
+        const searchTerm = 'pod-2';
+
+        findSearchBox().vm.$emit('input', searchTerm);
+        await nextTick();
+
+        const filteredPods = [
+          {
+            name: 'pod-2',
+            namespace: 'new-namespace',
+            status: 'Pending',
+            age: '1d',
+            labels: { key: 'value' },
+            annotations: { annotation: 'text', another: 'text' },
+            kind: 'Pod',
+            spec: {},
+          },
+        ];
+        expect(findWorkloadTable().props('items')).toMatchObject(filteredPods);
+      });
+
+      it('resets pagination when search changes', async () => {
+        const searchTerm = 'pod-2';
+        findSearchBox().vm.$emit('input', searchTerm);
+        await nextTick();
+
+        expect(resetPaginationSpy).toHaveBeenCalled();
+      });
+
+      it('shows the correct pod counters in the workload stats', async () => {
+        const searchTerm = 'pod-4';
+
+        findSearchBox().vm.$emit('input', searchTerm);
+        await nextTick();
+
+        const expectedStats = [
+          { title: 'Running', value: 0 },
+          { title: 'Pending', value: 0 },
+          { title: 'Succeeded', value: 0 },
+          { title: 'Failed', value: 2 },
+        ];
+
+        expect(findWorkloadStats().props('stats')).toEqual(expectedStats);
+      });
+
+      describe('when a status is selected', () => {
+        const searchTerm = 'pod';
+        const status = 'Pending';
+
+        beforeEach(async () => {
+          findWorkloadStats().vm.$emit('select', status);
+          await nextTick();
+        });
+
+        it('filter search results for the selected status', async () => {
+          findSearchBox().vm.$emit('input', searchTerm);
+          await nextTick();
+
+          const filteredPods = [
+            {
+              name: 'pod-2',
+              namespace: 'new-namespace',
+              status: 'Pending',
+              age: '1d',
+              labels: { key: 'value' },
+              annotations: { annotation: 'text', another: 'text' },
+              kind: 'Pod',
+              spec: {},
+            },
+          ];
+          expect(findWorkloadTable().props('items')).toMatchObject(filteredPods);
+        });
+
+        it('shows a message', async () => {
+          expect(findFilteredMessage().exists()).toBe(false);
+
+          findSearchBox().vm.$emit('input', searchTerm);
+          await nextTick();
+
+          expect(findFilteredMessage().text()).toBe(
+            `Showing search results with the status ${status}.`,
+          );
+        });
+      });
     });
   });
 

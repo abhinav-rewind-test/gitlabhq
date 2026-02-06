@@ -6,234 +6,21 @@ RSpec.describe Ci::Processable, feature_category: :continuous_integration do
   let_it_be(:project) { create(:project) }
   let_it_be_with_refind(:pipeline) { create(:ci_pipeline, project: project) }
 
+  describe 'associations' do
+    it { is_expected.to have_one(:trigger).through(:pipeline) }
+    it { is_expected.to have_one(:job_environment).class_name('Environments::Job').inverse_of(:job) }
+    it { is_expected.to have_one(:job_definition_instance) }
+    it { is_expected.to have_one(:job_definition).through(:job_definition_instance) }
+    it { is_expected.to have_many(:job_messages).class_name('Ci::JobMessage').inverse_of(:job) }
+    it { is_expected.to have_many(:error_job_messages).class_name('Ci::JobMessage').inverse_of(:job) }
+  end
+
   describe 'delegations' do
     subject { described_class.new }
 
     it { is_expected.to delegate_method(:merge_request?).to(:pipeline) }
     it { is_expected.to delegate_method(:merge_request_ref?).to(:pipeline) }
     it { is_expected.to delegate_method(:legacy_detached_merge_request_pipeline?).to(:pipeline) }
-  end
-
-  describe '#clone' do
-    let(:user) { create(:user) }
-
-    let(:new_processable) do
-      new_proc = processable.clone(current_user: user)
-      new_proc.save!
-
-      new_proc
-    end
-
-    let_it_be(:stage) { create(:ci_stage, project: project, pipeline: pipeline, name: 'test') }
-
-    shared_context 'processable bridge' do
-      let_it_be(:downstream_project) { create(:project, :repository) }
-
-      let_it_be_with_refind(:processable) do
-        create(:ci_bridge, :success,
-          pipeline: pipeline, downstream: downstream_project, description: 'a trigger job', stage_id: stage.id,
-          environment: 'production')
-      end
-
-      let(:clone_accessors) { ::Ci::Bridge.clone_accessors }
-      let(:reject_accessors) { [] }
-      let(:ignore_accessors) { [] }
-    end
-
-    shared_context 'processable build' do
-      let_it_be(:another_pipeline) { create(:ci_empty_pipeline, project: project) }
-
-      let_it_be_with_refind(:processable) do
-        create(
-          :ci_build, :failed, :picked, :expired, :erased, :queued, :coverage, :tags,
-          :allowed_to_fail, :on_tag, :triggered, :teardown_environment, :resource_group,
-          description: 'my-job', stage: 'test', stage_id: stage.id,
-          pipeline: pipeline, auto_canceled_by: another_pipeline,
-          scheduled_at: 10.seconds.since
-        )
-      end
-
-      let_it_be(:internal_job_variable) { create(:ci_job_variable, job: processable) }
-
-      let(:clone_accessors) do
-        %i[pipeline project ref tag options name allow_failure stage stage_idx trigger_request yaml_variables
-           when environment coverage_regex description tag_list protected needs_attributes job_variables_attributes
-           resource_group scheduling_type ci_stage partition_id id_tokens interruptible]
-      end
-
-      let(:reject_accessors) do
-        %i[id status user token_encrypted coverage runner artifacts_expire_at
-           created_at updated_at started_at finished_at queued_at erased_by
-           erased_at auto_canceled_by job_artifacts job_artifacts_archive
-           job_artifacts_metadata job_artifacts_trace job_artifacts_junit
-           job_artifacts_sast job_artifacts_secret_detection job_artifacts_dependency_scanning
-           job_artifacts_container_scanning job_artifacts_cluster_image_scanning job_artifacts_dast
-           job_artifacts_license_scanning
-           job_artifacts_performance job_artifacts_browser_performance job_artifacts_load_performance
-           job_artifacts_lsif job_artifacts_terraform job_artifacts_cluster_applications
-           job_artifacts_codequality job_artifacts_metrics scheduled_at
-           job_variables waiting_for_resource_at job_artifacts_metrics_referee
-           job_artifacts_network_referee job_artifacts_dotenv
-           job_artifacts_cobertura needs job_artifacts_accessibility
-           job_artifacts_requirements job_artifacts_coverage_fuzzing
-           job_artifacts_requirements_v2 job_artifacts_repository_xray
-           job_artifacts_api_fuzzing terraform_state_versions job_artifacts_cyclonedx
-           job_annotations job_artifacts_annotations].freeze
-      end
-
-      let(:ignore_accessors) do
-        %i[type namespace lock_version target_url base_tags trace_sections
-           commit_id deployment erased_by_id project_id project_mirror
-           runner_id tag_taggings taggings tags trigger_request_id
-           user_id auto_canceled_by_id retried failure_reason
-           sourced_pipelines sourced_pipeline artifacts_file_store artifacts_metadata_store
-           metadata runner_manager_build runner_manager runner_session trace_chunks upstream_pipeline_id
-           artifacts_file artifacts_metadata artifacts_size commands
-           resource resource_group_id processed security_scans author
-           pipeline_id report_results pending_state pages_deployments
-           queuing_entry runtime_metadata trace_metadata
-           dast_site_profile dast_scanner_profile stage_id dast_site_profiles_build
-           dast_scanner_profiles_build auto_canceled_by_partition_id].freeze
-      end
-
-      before_all do
-        # Create artifacts to check that the associations are rejected when cloning
-        Enums::Ci::JobArtifact.type_and_format_pairs.each do |file_type, file_format|
-          create(:ci_job_artifact, file_format, file_type: file_type, job: processable, expire_at: processable.artifacts_expire_at)
-        end
-
-        create(:ci_job_variable, :dotenv_source, job: processable)
-        create(:terraform_state_version, build: processable)
-        create(:ci_job_annotation, :external_link, job: processable)
-      end
-
-      before do
-        processable.update!(retried: false, status: :success)
-      end
-    end
-
-    shared_examples_for 'clones the processable' do
-      before_all do
-        processable.assign_attributes(stage: 'test', stage_id: stage.id, interruptible: true)
-        processable.save!
-
-        create(:ci_build_need, build: processable)
-      end
-
-      describe 'clone accessors' do
-        let(:forbidden_associations) do
-          Ci::Build.reflect_on_all_associations.each_with_object(Set.new) do |assoc, memo|
-            memo << assoc.name unless assoc.macro == :belongs_to
-          end
-        end
-
-        it 'clones the processable attributes', :aggregate_failures do
-          clone_accessors.each do |attribute|
-            expect(attribute).not_to be_in(forbidden_associations), "association #{attribute} must be `belongs_to`"
-            expect(processable.send(attribute)).not_to be_nil, "old processable attribute #{attribute} should not be nil"
-            expect(new_processable.send(attribute)).not_to be_nil, "new processable attribute #{attribute} should not be nil"
-            expect(new_processable.send(attribute)).to eq(processable.send(attribute)), "new processable attribute #{attribute} should match old processable"
-          end
-        end
-
-        it 'clones only the needs attributes' do
-          expect(new_processable.needs.size).to be(1)
-          expect(processable.needs.exists?).to be_truthy
-
-          expect(new_processable.needs_attributes).to match(processable.needs_attributes)
-          expect(new_processable.needs).not_to match(processable.needs)
-        end
-
-        context 'when the processable has protected: nil' do
-          before do
-            processable.update_attribute(:protected, nil)
-          end
-
-          it 'clones the protected job attribute' do
-            expect(new_processable.protected).to be_nil
-            expect(new_processable.protected).to eq processable.protected
-          end
-        end
-      end
-
-      describe 'reject accessors' do
-        it 'does not clone rejected attributes' do
-          reject_accessors.each do |attribute|
-            expect(new_processable.send(attribute)).not_to eq(processable.send(attribute)), "processable attribute #{attribute} should not have been cloned"
-          end
-        end
-      end
-
-      it 'creates a new processable that represents the old processable' do
-        expect(new_processable.name).to eq processable.name
-      end
-    end
-
-    context 'when the processable to be cloned is a bridge' do
-      include_context 'processable bridge'
-
-      it_behaves_like 'clones the processable'
-    end
-
-    context 'when the processable to be cloned is a build' do
-      include_context 'processable build'
-
-      it_behaves_like 'clones the processable'
-
-      it 'has the correct number of known attributes', :aggregate_failures do
-        processed_accessors = clone_accessors + reject_accessors
-        known_accessors = processed_accessors + ignore_accessors
-
-        current_accessors =
-          Ci::Build.attribute_names.map(&:to_sym) +
-          Ci::Build.attribute_aliases.keys.map(&:to_sym) +
-          Ci::Build.reflect_on_all_associations.map(&:name) +
-          [:tag_list, :needs_attributes, :job_variables_attributes, :id_tokens, :interruptible]
-
-        current_accessors.uniq!
-
-        expect(current_accessors).to include(*processed_accessors)
-        expect(known_accessors).to include(*current_accessors)
-      end
-
-      context 'when it has a deployment' do
-        let!(:processable) do
-          create(:ci_build, :with_deployment, :deploy_to_production, pipeline: pipeline, stage_id: stage.id, project: project)
-        end
-
-        it 'persists the expanded environment name' do
-          expect(new_processable.metadata.expanded_environment_name).to eq('production')
-        end
-      end
-
-      context 'when it has a dynamic environment' do
-        let_it_be(:other_developer) { create(:user).tap { |u| project.add_developer(u) } }
-
-        let(:environment_name) { 'review/$CI_COMMIT_REF_SLUG-$GITLAB_USER_ID' }
-
-        let!(:processable) do
-          create(:ci_build, :with_deployment,
-            environment: environment_name,
-            options: { environment: { name: environment_name } },
-            pipeline: pipeline, stage_id: stage.id, project: project,
-            user: other_developer)
-        end
-
-        it 're-uses the previous persisted environment' do
-          expect(processable.persisted_environment.name).to eq("review/#{processable.ref}-#{other_developer.id}")
-
-          expect(new_processable.persisted_environment.name).to eq("review/#{processable.ref}-#{other_developer.id}")
-        end
-      end
-
-      context 'when the processable has job variables' do
-        it 'only clones the internal job variables' do
-          expect(new_processable.job_variables.size).to eq(1)
-          expect(new_processable.job_variables.first.key).to eq(internal_job_variable.key)
-          expect(new_processable.job_variables.first.value).to eq(internal_job_variable.value)
-        end
-      end
-    end
   end
 
   describe '#retryable' do
@@ -275,6 +62,7 @@ RSpec.describe Ci::Processable, feature_category: :continuous_integration do
       context 'when processable is degenerated' do
         before do
           processable.degenerate!
+          processable.reload
         end
 
         it { is_expected.not_to be_retryable }
@@ -333,6 +121,59 @@ RSpec.describe Ci::Processable, feature_category: :continuous_integration do
           it { is_expected.not_to be_retryable }
         end
       end
+    end
+  end
+
+  describe '.fabricate' do
+    let(:build_attributes) { { options: { script: ['echo'] }, project_id: 1, partition_id: 99 } }
+
+    subject(:fabricate) { described_class.fabricate(build_attributes) }
+
+    it 'initializes with temp_job_definition' do
+      expect(fabricate.metadata&.config_options).to be_nil
+      expect(fabricate).to have_attributes(
+        temp_job_definition: instance_of(Ci::JobDefinition),
+        job_definition: nil
+      )
+      expect(fabricate.temp_job_definition.config).to eq({ options: build_attributes[:options] })
+      expect(fabricate.temp_job_definition.project_id).to eq(build_attributes[:project_id])
+      expect(fabricate.temp_job_definition.partition_id).to eq(build_attributes[:partition_id])
+    end
+  end
+
+  describe '#archived?' do
+    shared_examples 'an archivable job' do
+      it { is_expected.not_to be_archived }
+
+      context 'when job is degenerated' do
+        before do
+          job.degenerate!
+          job.reload
+        end
+
+        it { is_expected.to be_archived }
+      end
+
+      context 'when pipeline is archived' do
+        before do
+          pipeline.update!(created_at: 1.day.ago)
+          stub_application_setting(archive_builds_in_seconds: 3600)
+        end
+
+        it { is_expected.to be_archived }
+      end
+    end
+
+    context 'when job is a build' do
+      subject(:job) { create(:ci_build, pipeline: pipeline) }
+
+      it_behaves_like 'an archivable job'
+    end
+
+    context 'when job is a bridge' do
+      subject(:job) { create(:ci_bridge, pipeline: pipeline) }
+
+      it_behaves_like 'an archivable job'
     end
   end
 
@@ -434,8 +275,8 @@ RSpec.describe Ci::Processable, feature_category: :continuous_integration do
 
       it 'returns all needs attributes' do
         is_expected.to contain_exactly(
-          { 'artifacts' => true, 'name' => 'test1', 'optional' => false, 'partition_id' => build.partition_id },
-          { 'artifacts' => true, 'name' => 'test2', 'optional' => false, 'partition_id' => build.partition_id }
+          { 'artifacts' => true, 'name' => 'test1', 'optional' => false, 'partition_id' => build.partition_id, 'project_id' => build.project_id },
+          { 'artifacts' => true, 'name' => 'test2', 'optional' => false, 'partition_id' => build.partition_id, 'project_id' => build.project_id }
         )
       end
     end
@@ -560,6 +401,192 @@ RSpec.describe Ci::Processable, feature_category: :continuous_integration do
 
     it_behaves_like 'other manual actions for a job' do
       let(:factory_type) { :ci_bridge }
+    end
+  end
+
+  describe 'manual_job?' do
+    context 'when job is manual' do
+      subject { build(:ci_build, :manual) }
+
+      it { expect(subject.manual_job?).to be_truthy }
+    end
+
+    context 'when job is not manual' do
+      subject { build(:ci_build) }
+
+      it { expect(subject.manual_job?).to be_falsey }
+    end
+  end
+
+  describe 'manual_confirmation_message' do
+    context 'when job is manual' do
+      subject(:job) { build(:ci_build, :manual, :with_manual_confirmation) }
+
+      it 'return manual_confirmation from option' do
+        expect(job.manual_confirmation_message).to eq('Please confirm. Do you want to proceed?')
+      end
+
+      context "when job is not playable because it's archived" do
+        before do
+          allow(job).to receive(:archived?).and_return(true)
+        end
+
+        it { expect(job.manual_confirmation_message).to be_nil }
+      end
+    end
+
+    context 'when job is not manual' do
+      subject(:job) { build(:ci_build) }
+
+      it { expect(job.manual_confirmation_message).to be_nil }
+    end
+  end
+
+  describe 'state transition: any => [:failed]' do
+    using RSpec::Parameterized::TableSyntax
+
+    let!(:processable) { create(:ci_build, :running, pipeline: pipeline, user: create(:user)) }
+
+    before do
+      allow(processable).to receive(:can_auto_cancel_pipeline_on_job_failure?).and_return(can_auto_cancel_pipeline_on_job_failure)
+      allow(processable).to receive(:allow_failure?).and_return(allow_failure)
+    end
+
+    where(:can_auto_cancel_pipeline_on_job_failure, :allow_failure, :result) do
+      true  | true  | false
+      true  | false | true
+      false | true  | false
+      false | false | false
+    end
+
+    with_them do
+      it 'behaves as expected' do
+        if result
+          expect(processable.pipeline).to receive(:cancel_async_on_job_failure)
+        else
+          expect(processable.pipeline).not_to receive(:cancel_async_on_job_failure)
+        end
+
+        processable.drop!
+      end
+    end
+  end
+
+  describe 'job_dependencies_with_accessible_artifacts' do
+    context 'in the same project' do
+      let(:build) { create(:ci_build, :created, project: project, pipeline: pipeline) }
+      let(:build2) { create(:ci_build, :created, project: project, pipeline: pipeline) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: build2, accessibility: accessibility) }
+
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: build2) }
+      let!(:job_variable_2) { create(:ci_job_variable, job: build2) }
+
+      subject { build.job_dependencies_with_accessible_artifacts([build2]) }
+
+      context 'inherits only jobs whose artifacts are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject).to eq([build2]) }
+      end
+
+      context 'inherits jobs whose artifacts are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject).to eq([build2]) }
+      end
+    end
+
+    context 'in a different project' do
+      let_it_be(:public_project) { create(:project, :public) }
+      let(:build) { create(:ci_build, :created, project: project, pipeline: pipeline) }
+      let(:build2) { create(:ci_build, :created, project: public_project) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: build2, accessibility: accessibility) }
+
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: build2) }
+      let!(:job_variable_2) { create(:ci_job_variable, job: build2) }
+
+      subject { build.job_dependencies_with_accessible_artifacts([build2]) }
+
+      context 'inherits only jobs whose artifacts are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject).to eq([build2]) }
+      end
+
+      context 'does not inherit jobs whose artifacts are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject).to eq([]) }
+      end
+    end
+  end
+
+  describe '#trigger_short_token' do
+    let_it_be(:pipeline) { create(:ci_pipeline, :triggered, project: project) }
+    let_it_be(:stage) { create(:ci_stage, project: project, pipeline: pipeline, name: 'test') }
+    let_it_be(:processable) { create(:ci_build, :triggered, stage_id: stage.id, pipeline: pipeline) }
+
+    it 'delegates to trigger' do
+      expect(processable.trigger).to receive(:short_token)
+      processable.trigger_short_token
+    end
+  end
+
+  describe '#redis_state' do
+    let(:processable) { build_stubbed(:ci_processable, pipeline: pipeline) }
+
+    it 'is a memoized Ci::JobRedisState record' do
+      expect(processable.redis_state).to be_an_instance_of(Ci::JobRedisState)
+      expect(processable.strong_memoized?(:redis_state)).to be(true)
+    end
+  end
+
+  describe '#enqueue_immediately?', :clean_gitlab_redis_shared_state do
+    let(:processable) { build_stubbed(:ci_processable, pipeline: pipeline) }
+
+    [true, false].each do |value|
+      context "when enqueue_immediately is set to #{value}" do
+        before do
+          processable.redis_state.enqueue_immediately = value
+        end
+
+        it { expect(processable.enqueue_immediately?).to be(value) }
+      end
+    end
+  end
+
+  describe '#set_enqueue_immediately!', :clean_gitlab_redis_shared_state do
+    let(:processable) { build_stubbed(:ci_processable, pipeline: pipeline) }
+
+    it 'changes enqueue_immediately to true' do
+      expect { processable.set_enqueue_immediately! }
+        .to change { processable.enqueue_immediately? }.to(true)
+    end
+  end
+
+  describe '#source' do
+    shared_examples_for 'job_source processable' do
+      it 'defaults to the pipeline source name' do
+        expect(processable.source).to eq(processable.pipeline.source)
+      end
+
+      it 'returns the associated source name when present' do
+        create(:ci_build_source, job: processable, source: 'scan_execution_policy')
+
+        expect(processable.source).to eq('scan_execution_policy')
+      end
+    end
+
+    context 'when the processable is a bridge' do
+      let(:processable) { create(:ci_bridge, pipeline: pipeline) }
+
+      it_behaves_like 'job_source processable'
+    end
+
+    context 'when the processable is a build' do
+      let(:processable) { create(:ci_build, pipeline: pipeline) }
+
+      it_behaves_like 'job_source processable'
     end
   end
 end

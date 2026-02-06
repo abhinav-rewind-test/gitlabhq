@@ -4,21 +4,6 @@ html {
   }
 }
 
-body {
-  &.board-card-content {
-    background-color: $gray-darker;
-
-    .content-wrapper {
-      padding: 0;
-
-      .container-fluid,
-      .container-limited {
-        background-color: $gray-darker;
-      }
-    }
-  }
-}
-
 .container-fluid {
   &.limit-container-width {
     .flash-container.sticky {
@@ -27,6 +12,17 @@ body {
       margin-left: auto;
     }
   }
+}
+
+// this negates the effect of the wrapping element padding and scrollbar width on the 'main' element
+// it allows us to achieve width parity with the viewport inner width and reduce regressions when moving from media queries to container queries
+// scrollbar padding is added on the left side to avoid introducing page overflow
+.container-queries-enabled {
+  width: calc(100% + var(--container-padding-x) * 2 + var(--scrollbar-width, 0px));
+  padding-right: var(--container-padding-x);
+  padding-left: calc(var(--container-padding-x) + var(--scrollbar-width, 0px));
+  margin-right: calc(var(--container-padding-x) * -1);
+  margin-left: calc((var(--container-padding-x) + var(--scrollbar-width, 0px)) * -1);
 }
 
 .layout-page {
@@ -46,10 +42,10 @@ body {
   .content {
     margin: 0;
 
-    @include media-breakpoint-down(xs) { margin-top: 20px; }
+    @include gl-container-width-down(sm, panel) { margin-top: 20px; }
   }
 
-  @include media-breakpoint-down(xs) {
+  @include gl-container-width-down(sm, panel) {
     .container .title {
       padding-left: 15px !important;
     }
@@ -64,26 +60,19 @@ body {
   }
 }
 
+.alert-wrapper-top-space {
+  .gl-alert:first-child {
+    @apply gl-mt-3;
+  }
+}
+
 .alert-wrapper {
-  @include gl-media-breakpoint-up(xl) {
-    --gl-alert-padding-x: #{$gl-spacing-scale-3};
-    --gl-broadcast-message-padding-x: #{$gl-spacing-scale-3};
-  }
-
-  .alert {
-    margin-bottom: 0;
-
-    &:last-child {
-      margin-bottom: $gl-padding;
-    }
-  }
-
   .alert-link-group {
     float: right;
   }
 
   .flex-alert {
-    @include media-breakpoint-up(lg) {
+    @include gl-container-width-up(lg, panel) {
       display: flex;
 
       .alert-message {
@@ -97,37 +86,10 @@ body {
     }
   }
 
-  @include media-breakpoint-down(sm) {
+  @include gl-container-width-down(md, panel) {
     .alert-link-group {
       float: none;
       margin-top: $gl-padding-8;
-    }
-  }
-
-  /* Stripe the background colors so that adjacent alert-warnings are distinct from one another */
-  .alert-warning {
-    transition: background-color 0.15s, border-color 0.15s;
-    background-color: $orange-500;
-    border-color: $orange-500;
-
-    &:only-of-type {
-      background-color: $orange-500;
-      border-color: $orange-500;
-    }
-
-    + .alert-warning {
-      background-color: $orange-600;
-      border-color: $orange-600;
-
-      + .alert-warning {
-        background-color: $orange-700;
-        border-color: $orange-700;
-
-        + .alert-warning {
-          background-color: $orange-800;
-          border-color: $orange-800;
-        }
-      }
     }
   }
 }
@@ -147,8 +109,7 @@ body {
   align-items: stretch;
   overflow: hidden;
 
-  > #js-peek,
-  > .header-logged-out {
+  > #js-peek {
     position: static;
     top: auto;
   }
@@ -156,17 +117,6 @@ body {
   .flash-container {
     margin-top: 0;
     margin-bottom: 0;
-  }
-
-  .alert-wrapper .flash-container .flash-alert:last-child,
-  .alert-wrapper .flash-container .flash-notice:last-child {
-    margin-bottom: 0;
-  }
-
-  .content-wrapper {
-    padding-bottom: 0;
-    flex: 1;
-    min-height: 0;
   }
 }
 
@@ -179,10 +129,10 @@ body {
   padding-left: $gl-padding;
   padding-right: $gl-padding;
   box-shadow: none;
-  background-color: $gray-10;
-  border-left: 1px solid $gray-100;
+  @apply gl-bg-subtle;
+  @apply gl-border-l;
 
-  @include media-breakpoint-down(sm) {
+  @include gl-container-width-down(md, panel) {
     min-width: unset;
     width: 100%;
   }
@@ -194,5 +144,19 @@ body {
   .gl-drawer-body > * {
     padding-left: 0;
     padding-right: 0;
+  }
+}
+
+/*
+ * These are used by the `Tab width` user preference in
+ * `https://gitlab.com/-/profile/preferences`. The `css_class_for_user` method in
+ * `lib/gitlab/tab_width.rb` is used to add one of these classes to the `body` element.
+*/
+
+@for $i from 1 through 12 {
+  #{'.tab-width-#{$i}'} {
+    /* stylelint-disable-next-line property-no-vendor-prefix */
+    -moz-tab-size: $i;
+    tab-size: $i;
   }
 }

@@ -5,7 +5,8 @@ require 'spec_helper'
 RSpec.describe Gitlab::GithubGistsImport::Importer::GistImporter, feature_category: :importers do
   subject { described_class.new(gist_object, user.id) }
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:organization) { create(:organization) }
+  let_it_be_with_reload(:user) { create(:user, organizations: [organization]) }
   let(:created_at) { Time.utc(2022, 1, 9, 12, 15) }
   let(:updated_at) { Time.utc(2022, 5, 9, 12, 17) }
   let(:gist_file) { { file_name: '_Summary.md', file_content: 'File content' } }
@@ -52,6 +53,7 @@ RSpec.describe Gitlab::GithubGistsImport::Importer::GistImporter, feature_catego
 
         expect { subject.execute }.to change { user.snippets.count }.by(1)
         expect(user.snippets[0].attributes).to include expected_snippet_attrs
+        expect(user.snippets[0].organization_id).to eq(user.organization.id)
       end
     end
 
@@ -177,9 +179,9 @@ RSpec.describe Gitlab::GithubGistsImport::Importer::GistImporter, feature_catego
           expect(Gitlab::HTTP_V2::UrlBlocker)
             .to receive(:validate!)
             .with(url, ports: [80, 443], schemes: %w[http https git],
-                       allow_localhost: true, allow_local_network: true,
-                       deny_all_requests_except_allowed: true,
-                       outbound_local_requests_allowlist: [])
+              allow_localhost: true, allow_local_network: true,
+              deny_all_requests_except_allowed: true,
+              outbound_local_requests_allowlist: [])
             .and_raise(Gitlab::HTTP_V2::UrlBlocker::BlockedUrlError)
 
           expect { subject.execute }.to raise_error(Gitlab::HTTP_V2::UrlBlocker::BlockedUrlError)
@@ -200,9 +202,9 @@ RSpec.describe Gitlab::GithubGistsImport::Importer::GistImporter, feature_catego
           expect(Gitlab::HTTP_V2::UrlBlocker)
             .to receive(:validate!)
             .with(url, ports: [80, 443], schemes: %w[http https git],
-                       allow_localhost: false, allow_local_network: false,
-                       deny_all_requests_except_allowed: true,
-                       outbound_local_requests_allowlist: [])
+              allow_localhost: false, allow_local_network: false,
+              deny_all_requests_except_allowed: true,
+              outbound_local_requests_allowlist: [])
             .and_raise(Gitlab::HTTP_V2::UrlBlocker::BlockedUrlError)
 
           expect { subject.execute }.to raise_error(Gitlab::HTTP_V2::UrlBlocker::BlockedUrlError)

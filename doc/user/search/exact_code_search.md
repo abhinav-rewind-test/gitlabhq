@@ -1,64 +1,133 @@
 ---
-stage: Data Stores
+stage: AI-powered
 group: Global Search
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Exact code search
 ---
 
-# Exact code search
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed
-**Status:** Beta
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed
+- Status: Limited availability
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/105049) in GitLab 15.9 [with flags](../../administration/feature_flags.md) named `index_code_with_zoekt` and `search_code_with_zoekt`. Disabled by default.
+{{< /details >}}
 
-FLAG:
-On self-managed GitLab, by default this feature is not available.
-To make it available, an administrator can [enable the feature flags](../../administration/feature_flags.md) named `index_code_with_zoekt` and `search_code_with_zoekt`.
-On GitLab.com, this feature is available. On GitLab Dedicated, this feature is not available.
-The feature is not ready for production use.
+{{< history >}}
 
-WARNING:
-This feature is in [Beta](../../policy/experiment-beta-support.md#beta) and subject to change without notice.
-For more information, see [epic 9404](https://gitlab.com/groups/gitlab-org/-/epics/9404).
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/105049) as a [beta](../../policy/development_stages_support.md#beta) in GitLab 15.9 [with flags](../../administration/feature_flags/_index.md) named `index_code_with_zoekt` and `search_code_with_zoekt`. Disabled by default.
+- [Enabled on GitLab.com and GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/issues/388519) in GitLab 16.6.
+- Global code search [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/147077) in GitLab 16.11 [with a flag](../../administration/feature_flags/_index.md) named `zoekt_cross_namespace_search`. Disabled by default.
+- Feature flags `index_code_with_zoekt` and `search_code_with_zoekt` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/148378) in GitLab 17.1.
+- [Changed](https://gitlab.com/groups/gitlab-org/-/epics/17918) from beta to limited availability in GitLab 18.6.
+- Feature flag `zoekt_cross_namespace_search` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/213413) in GitLab 18.7.
 
-With exact code search, you can use regular expressions and exact strings to search for code in a project.
-You can use backslashes to escape special characters and double quotes to search for exact strings.
+{{< /history >}}
 
-Exact code search is powered by [Zoekt](https://github.com/sourcegraph/zoekt)
-and is used by default in groups where the feature is enabled.
+> [!warning]
+> This feature is in [limited availability](../../policy/development_stages_support.md#limited-availability).
+> For more information, see [epic 9404](https://gitlab.com/groups/gitlab-org/-/epics/9404).
+> Provide feedback in [issue 420920](https://gitlab.com/gitlab-org/gitlab/-/issues/420920).
+
+With exact code search, you can use exact match and regular expression modes
+to search for code in all GitLab or in a specific project.
+
+Exact code search is powered by Zoekt and is used by default
+in groups where the feature is enabled.
+
+## Use exact code search
+
+Prerequisites:
+
+- Exact code search must be enabled:
+  - For GitLab.com, exact code search is enabled by default in paid subscriptions.
+  - For GitLab Self-Managed, an administrator must
+    [install Zoekt](../../integration/zoekt/_index.md#install-zoekt) and
+    [enable exact code search](../../integration/zoekt/_index.md#enable-exact-code-search).
+
+To use exact code search:
+
+1. On the top bar, select **Search or go to**.
+1. In the search box, enter your search term.
+1. On the left sidebar, select **Code**.
+
+You can also use exact code search in a project or group.
+
+## Available scopes
+
+Scopes describe the type of data you're searching.
+The following scopes are available for exact code search:
+
+| Scope | Global <sup>1</sup> <sup>2</sup> |    Group    | Project     |
+|-------|:--------------------------------:|:-----------:|:-----------:|
+| Code  |           {{< no >}}             | {{< yes >}} | {{< yes >}} |
+
+**Footnotes**:
+
+1. An administrator can [disable global search scopes](_index.md#disable-global-search-scopes).
+   In GitLab 18.6 and earlier, to enable global search on GitLab Self-Managed,
+   an administrator must also enable the `zoekt_cross_namespace_search` feature flag.
+1. On GitLab.com, global search is not enabled.
 
 ## Zoekt search API
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/143666) in GitLab 16.9 [with a flag](../../administration/feature_flags.md) named `zoekt_search_api`. Enabled by default.
+{{< history >}}
 
-FLAG:
-On self-managed GitLab, by default this feature is available.
-To hide the feature, an administrator can [disable the feature flag](../../administration/feature_flags.md) named `zoekt_search_api`.
-On GitLab.com and GitLab Dedicated, this feature is not available.
-The feature is not ready for production use.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/143666) in GitLab 16.9 [with a flag](../../administration/feature_flags/_index.md) named `zoekt_search_api`. Enabled by default.
+- [Generally available](https://gitlab.com/gitlab-com/gl-infra/production/-/issues/17522) in GitLab 18.4. Feature flag `zoekt_search_api` removed.
 
-By default, the Zoekt search API is disabled on GitLab.com to avoid breaking changes.
+{{< /history >}}
 
-To request access to this feature, contact GitLab.
+With the Zoekt search API, you can use the search API for exact code search.
+To use advanced search or basic search instead, [specify a search type](_index.md#specify-a-search-type).
 
-## Syntax
+## Search modes
 
-This table shows some example queries for exact code search.
+{{< history >}}
 
-| Query                | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `foo`                | Returns files that contain `foo`.                                                 |
-| `foo file:^doc/`     | Returns files that contain `foo` in directories that start with `doc/`.           |
-| `"class foo"`        | Returns files that contain the exact string `class foo`.                          |
-| `class foo`          | Returns files that contain both `class` and `foo`.                                |
-| `foo or bar`         | Returns files that contain either `foo` or `bar`.                                 |
-| `class Foo`          | Returns files that contain `class` (case insensitive) and `Foo` (case sensitive). |
-| `class Foo case:yes` | Returns files that contain `class` and `Foo` (both case sensitive).               |
-| `foo -bar`           | Returns files that contain `foo` but not `bar`.                                   |
-| `foo file:js`        | Searches for `foo` in files with names that contain `js`.                         |
-| `foo -file:test`     | Searches for `foo` in files with names that do not contain `test`.                |
-| `foo lang:ruby`      | Searches for `foo` in Ruby source code.                                           |
-| `foo file:\.js$`     | Searches for `foo` in files with names that end with `.js`.                       |
-| `foo.*bar`           | Searches for strings that match the regular expression `foo.*bar`.                |
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/434417) in GitLab 16.8 [with a flag](../../administration/feature_flags/_index.md) named `zoekt_exact_search`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/436457) in GitLab 17.3. Feature flag `zoekt_exact_search` removed.
+
+{{< /history >}}
+
+GitLab has two search modes:
+
+- **Exact match mode**: returns results that exactly match the query.
+- **Regular expression mode**: supports regular and boolean expressions.
+
+The exact match mode is used by default.
+To switch to the regular expression mode, to the right of the search box,
+select **Use regular expression** ({{< icon name="regular-expression" >}}).
+
+### Syntax
+
+<!-- Remember to also update the table in `doc/drawers/exact_code_search_syntax.md` -->
+
+This table shows some example queries for exact match and regular expression modes.
+
+| Query                | Exact match mode                                        | Regular expression mode |
+| -------------------- | ------------------------------------------------------- | ----------------------- |
+| `"foo"`              | `"foo"`                                                 | `foo` |
+| `foo file:^doc/`     | `foo` in directories that start with `/doc`             | `foo` in directories that start with `/doc` |
+| `"class foo"`        | `"class foo"`                                           | `class foo` |
+| `class foo`          | `class foo`                                             | `class` and `foo` |
+| `foo or bar`         | `foo or bar`                                            | `foo` or `bar` |
+| `class Foo`          | `class Foo` (case-sensitive)                            | `class` (case-insensitive) and `Foo` (case-sensitive) |
+| `class Foo case:yes` | `class Foo` (case-sensitive)                            | `class` and `Foo` (both case-sensitive) |
+| `foo -bar`           | `foo -bar`                                              | `foo` but not `bar` |
+| `foo file:js`        | `foo` in files with names that contain `js`             | `foo` in files with names that contain `js` |
+| `foo -file:test`     | `foo` in files with names that do not contain `test`    | `foo` in files with names that do not contain `test` |
+| `foo lang:ruby`      | `foo` in Ruby source code                               | `foo` in Ruby source code |
+| `foo file:\.js$`     | `foo` in files with names that end with `.js`           | `foo` in files with names that end with `.js` |
+| `foo.*bar`           | `foo.*bar` (literal)                                    | `foo.*bar` (regular expression) |
+| `sym:foo`            | `foo` in symbols like class, method, and variable names | `foo` in symbols like class, method, and variable names |
+
+## Known issues
+
+- You can search only files smaller than 1 MB with less than `20_000` trigrams.
+  For more information, see [issue 455073](https://gitlab.com/gitlab-org/gitlab/-/issues/455073).
+- You can use exact code search only on the default branch of a project.
+  For more information, see [issue 403307](https://gitlab.com/gitlab-org/gitlab/-/issues/403307).
+- Multiple matches on a single line are counted as one result.
+- If you encounter results where newlines are not displayed correctly,
+  update `gitlab-zoekt` to version 1.5.0 or later.

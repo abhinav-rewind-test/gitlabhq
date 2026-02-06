@@ -2,9 +2,11 @@ import { __, s__, n__, sprintf } from '~/locale';
 
 export const PAGE_TITLE = s__('Artifacts|Artifacts');
 export const TOTAL_ARTIFACTS_SIZE = s__('Artifacts|Total artifacts size');
+export const TOTAL_ARTIFACTS_COUNT = s__('Artifacts|Total artifacts count');
 export const SIZE_UNKNOWN = __('Unknown');
 
 export const I18N_DOWNLOAD = __('Download');
+export const I18N_CHECKBOX = __('Select artifacts');
 export const I18N_BROWSE = s__('Artifacts|Browse');
 export const I18N_DELETE = __('Delete');
 export const I18N_EXPIRED = __('Expired');

@@ -59,10 +59,52 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
       put :update, params: params
 
       expect(response).to have_gitlab_http_status(:found)
-      expect(flash[:notice]).to include('was updated')
+      expect(flash[:notice]).to include('updated')
 
       expect(hook.reload.url_variables).to eq(
         'a' => 'updated',
+        'c' => 'new'
+      )
+    end
+
+    it 'adds, updates and deletes custom headers' do
+      hook.update!(custom_headers: { 'a' => 'bar', 'b' => 'woo' })
+
+      params[:hook] = {
+        custom_headers: [
+          { key: 'a', value: 'updated' },
+          { key: 'c', value: 'new' }
+        ]
+      }
+
+      put :update, params: params
+
+      expect(response).to have_gitlab_http_status(:found)
+      expect(flash[:notice]).to include('updated')
+
+      expect(hook.reload.custom_headers).to eq(
+        'a' => 'updated',
+        'c' => 'new'
+      )
+    end
+
+    it 'does not update custom headers with the secret mask' do
+      hook.update!(custom_headers: { 'a' => 'bar' })
+
+      params[:hook] = {
+        custom_headers: [
+          { key: 'a', value: WebHook::SECRET_MASK },
+          { key: 'c', value: 'new' }
+        ]
+      }
+
+      put :update, params: params
+
+      expect(response).to have_gitlab_http_status(:found)
+      expect(flash[:notice]).to include('updated')
+
+      expect(hook.reload.custom_headers).to eq(
+        'a' => 'bar',
         'c' => 'new'
       )
     end
@@ -177,7 +219,7 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
     it_behaves_like 'Web hook destroyer'
 
     context 'when user does not have permission' do
-      let(:user) { create(:user, developer_projects: [project]) }
+      let(:user) { create(:user, developer_of: project) }
 
       it 'renders a 404' do
         delete :destroy, params: params
@@ -232,7 +274,7 @@ RSpec.describe Projects::HooksController, feature_category: :webhooks do
     context 'when the endpoint receives requests above the limit', :freeze_time, :clean_gitlab_redis_rate_limiting do
       before do
         allow(Gitlab::ApplicationRateLimiter).to receive(:rate_limits)
-          .and_return(project_testing_hook: { threshold: 1, interval: 1.minute })
+          .and_return(web_hook_test: { threshold: 1, interval: 1.minute })
       end
 
       it 'prevents making test requests' do

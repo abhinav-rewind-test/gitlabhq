@@ -91,7 +91,7 @@ describe('Persisted Search', () => {
     ]);
   });
 
-  it('re-emits update event when route changes', async () => {
+  it('re-emits update event when url-sync emits popstate event', () => {
     mountComponent();
 
     extractFilterAndSorting.mockReturnValue({
@@ -103,7 +103,7 @@ describe('Persisted Search', () => {
       before: '456',
     });
 
-    await router.push({ query: { before: '456' } });
+    findUrlSync().vm.$emit('popstate');
 
     // there is always a first call on mounted that emits up default values
     expect(wrapper.emitted('update')[1]).toEqual([
@@ -199,6 +199,20 @@ describe('Persisted Search', () => {
     expect(findRegistrySearch().props()).toMatchObject({
       filters: defaultQueryParamsMock.filters,
       sorting: defaultQueryParamsMock.sorting,
+    });
+  });
+
+  describe('with useRouter prop', () => {
+    it('passes useRouter prop to UrlSync', () => {
+      mountComponent({ ...defaultProps, useRouter: true });
+
+      expect(findUrlSync().props('useRouter')).toBe(true);
+    });
+
+    it('does not pass useRouter to UrlSync when not set', () => {
+      mountComponent();
+
+      expect(findUrlSync().props('useRouter')).toBe(false);
     });
   });
 });

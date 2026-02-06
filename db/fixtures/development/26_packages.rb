@@ -22,7 +22,9 @@ class Gitlab::Seeder::Packages
         .with_indifferent_access
 
       Gitlab::ExclusiveLease.skipping_transaction_check do
-        ::Packages::Npm::CreatePackageService.new(project, project.creator, params).execute
+        Sidekiq::Worker.skipping_transaction_check do
+          ::Packages::Npm::CreatePackageService.new(project, project.creator, params).execute
+        end
       end
 
       print '.'
@@ -89,7 +91,7 @@ class Gitlab::Seeder::Packages
               'file.md5': '12345',
               recipe_revision: '0',
               package_revision: '0',
-              conan_package_reference: '123456789',
+              conan_package_reference: Digest::SHA1.hexdigest('0'),
               conan_file_type: :package_file
             }
             ::Packages::Conan::CreatePackageFileService.new(pkg, file, file_params).execute
@@ -108,7 +110,7 @@ class Gitlab::Seeder::Packages
 
       pkg = ::Packages::CreateTemporaryPackageService.new(
         project, project.creator, {}
-      ).execute(:nuget, name: Packages::Nuget::TEMPORARY_PACKAGE_NAME)
+      ).execute(::Packages::Nuget::Package, name: Packages::Nuget::TEMPORARY_PACKAGE_NAME)
       # when using ::Packages::CreateTemporaryPackageService, packages have a fixed name and a fixed version.
       pkg.update!(name: name, version: version)
 

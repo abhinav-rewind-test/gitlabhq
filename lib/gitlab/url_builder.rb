@@ -22,16 +22,17 @@ module Gitlab
           board_url(object, **options)
         when ::Ci::Build
           instance.project_job_url(object.project, object, **options)
+        when ::Ci::Pipeline
+          instance.project_pipeline_url(object.project, object, **options)
         when Commit
           commit_url(object, **options)
         when Compare
           compare_url(object, **options)
         when Group
           instance.group_canonical_url(object, **options)
-        when WorkItem
-          instance.work_item_url(object, **options)
+        # This also covers WorkItem due to inheritance
         when Issue
-          instance.issue_url(object, **options)
+          instance.work_item_url(object, **options)
         when MergeRequest
           instance.merge_request_url(object, **options)
         when Milestone
@@ -40,22 +41,30 @@ module Gitlab
           note_url(object, **options)
         when Release
           instance.release_url(object, **options)
-        when Organizations::Organization
-          instance.organization_url(object, **options)
+        when ::Organizations::Organization
+          instance.organization_root_url(object.path, **options)
         when Project
           instance.project_url(object, **options)
         when Snippet
           snippet_url(object, **options)
         when User
           instance.user_url(object, **options)
+        when Namespaces::UserNamespace
+          instance.user_url(object.owner, **options)
+        when Namespaces::ProjectNamespace
+          instance.project_url(object.project, **options)
         when Wiki
           wiki_url(object, **options)
         when WikiPage
           wiki_page_url(object.wiki, object, **options)
+        when WikiPage::Meta
+          wiki_page_url(object.container.wiki, object.canonical_slug, **options)
         when ::DesignManagement::Design
           design_url(object, **options)
         when ::Packages::Package
           package_url(object, **options)
+        when ::Key
+          instance.user_settings_ssh_key_url(object)
         else
           raise NotImplementedError, "No URL builder defined for #{object.inspect}"
         end
@@ -79,7 +88,13 @@ module Gitlab
       def compare_url(compare, **options)
         return '' unless compare.project
 
-        instance.project_compare_url(compare.project, **options.merge(compare.to_param))
+        compare_params = compare.to_param
+
+        if compare_params[:straight] == true
+          instance.project_compare_with_two_dots_url(compare.project, **options.merge(compare_params))
+        else
+          instance.project_compare_url(compare.project, **options.merge(compare_params))
+        end
       end
 
       def note_url(note, **options)
@@ -88,13 +103,15 @@ module Gitlab
 
           instance.project_commit_url(note.project, note.commit_id, anchor: dom_id(note), **options)
         elsif note.for_issue?
-          instance.issue_url(note.noteable, anchor: dom_id(note), **options)
+          instance.work_item_url(note.noteable, anchor: dom_id(note), **options)
         elsif note.for_merge_request?
           instance.merge_request_url(note.noteable, anchor: dom_id(note), **options)
         elsif note.for_snippet?
           instance.gitlab_snippet_url(note.noteable, anchor: dom_id(note), **options)
         elsif note.for_abuse_report?
           instance.admin_abuse_report_url(note.noteable, anchor: dom_id(note), **options)
+        elsif note.for_wiki_page?
+          instance.project_wiki_page_url(note.noteable, anchor: dom_id(note), **options)
         end
       end
 
@@ -143,10 +160,7 @@ module Gitlab
       def package_url(package, **options)
         project = package.project
 
-        if package.infrastructure_package?
-          return instance.project_infrastructure_registry_url(project, package,
-**options)
-        end
+        return instance.project_infrastructure_registry_url(project, package, **options) if package.terraform_module?
 
         instance.project_package_url(project, package, **options)
       end

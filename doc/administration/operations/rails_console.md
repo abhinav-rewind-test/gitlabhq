@@ -1,25 +1,27 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Rails console
 ---
 
-# Rails console
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 At the heart of GitLab is a web application
 [built using the Ruby on Rails framework](https://about.gitlab.com/blog/2018/10/29/why-we-use-rails-to-build-gitlab/).
-The [Rails console](https://guides.rubyonrails.org/command_line.html#rails-console).
+The [Rails console](https://guides.rubyonrails.org/command_line.html#rails-console)
 provides a way to interact with your GitLab instance from the command line, and also grants access to the amazing tools built right into Rails.
 
-WARNING:
-The Rails console interacts directly with GitLab. In many cases,
-there are no handrails to prevent you from permanently modifying, corrupting
-or destroying production data. If you would like to explore the Rails console
-with no consequences, you are strongly advised to do so in a test environment.
+> [!warning]
+> The Rails console interacts directly with GitLab. In many cases,
+> there are no handrails to prevent you from permanently modifying, corrupting
+> or destroying production data. If you would like to explore the Rails console
+> with no consequences, you are strongly advised to do so in a test environment.
 
 The Rails console is for GitLab system administrators who are troubleshooting
 a problem or need to retrieve some data that can only be done through direct
@@ -31,33 +33,54 @@ Rails experience is useful but not required.
 
 The process for starting a Rails console session depends on the type of GitLab installation.
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 ```shell
 sudo gitlab-rails console
 ```
 
-:::TabTitle Docker
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
 
 ```shell
 docker exec -it <container-id> gitlab-rails console
 ```
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 ```shell
 sudo -u git -H bundle exec rails console -e production
 ```
 
-:::TabTitle Helm chart (Kubernetes)
+{{< /tab >}}
 
-The console is in the toolbox pod. Refer to our [Kubernetes cheat sheet](https://docs.gitlab.com/charts/troubleshooting/kubernetes_cheat_sheet.html#gitlab-specific-kubernetes-information) for details.
+{{< tab title="Helm chart (Kubernetes)" >}}
 
-::EndTabs
+```shell
+# find the pod
+kubectl get pods --namespace <namespace> -lapp=toolbox
+
+# open the Rails console
+kubectl exec -it -c toolbox <toolbox-pod-name> -- gitlab-rails console
+```
+
+{{< /tab >}}
+
+{{< /tabs >}}
 
 To exit the console, type: `quit`.
+
+### Disable autocompletion
+
+Ruby autocompletion can slow down the terminal. If you want to:
+
+- Disable autocompletion, run `Reline.autocompletion = IRB.conf[:USE_AUTOCOMPLETE] = false`.
+- Re-enable autocompletion, run `Reline.autocompletion = IRB.conf[:USE_AUTOCOMPLETE] = true`.
 
 ## Enable Active Record logging
 
@@ -66,6 +89,14 @@ session by running:
 
 ```ruby
 ActiveRecord::Base.logger = Logger.new($stdout)
+```
+
+By default, the previous script logs to the standard output. You can specify a log file to redirect
+output to, by replacing `$stdout` with the desired file path. For example, this code logs everything
+to `/tmp/output.log`:
+
+```ruby
+ActiveRecord::Base.logger = Logger.new('/tmp/output.log')
 ```
 
 This shows information about database queries triggered by any Ruby code
@@ -139,7 +170,7 @@ Enter the following command on the rails console to display
 your command history.
 
 ```ruby
-puts Readline::HISTORY.to_a
+puts Reline::HISTORY.to_a
 ```
 
 You can then copy it to your clipboard and save for future reference.
@@ -255,7 +286,7 @@ Benchmark.bm do |x|
 end
 ```
 
-For more information, review [our developer documentation about benchmarks](../../development/performance.md#benchmarks).
+For more information, review our developer documentation about benchmarks.
 
 ## Active Record objects
 
@@ -321,7 +352,7 @@ D, [2020-03-05T17:03:24.696493 #910] DEBUG -- :   User Load (2.1ms)  SELECT "use
 
 Give the following a try:
 
-- `User.find_by(email: 'admin@example.com')`
+- `User.find_by(username: 'root')`
 - `User.where.not(admin: true)`
 - `User.where('created_at < ?', 7.days.ago)`
 
@@ -427,7 +458,7 @@ We also see that the save operation triggered some other action -- in this case
 a background job to deliver an email notification. This is an example of an
 [Active Record callback](https://guides.rubyonrails.org/active_record_callbacks.html)
 -- code which is designated to run in response to events in the Active Record
-object life cycle. This is also why using the Rails console is preferred when
+object lifecycle. This is also why using the Rails console is preferred when
 direct changes to data is necessary as changes made via direct database queries
 do not trigger these callbacks.
 
@@ -479,7 +510,7 @@ We can also add the bang (Ruby speak for `!`) to `.update`:
 user.update!(password: 'password', password_confirmation: 'hunter2')
 ```
 
-In Ruby, method names ending with `!` are commonly known as "bang methods". By
+In Ruby, method names ending with `!` are commonly known as "bang methods." By
 convention, the bang indicates that the method directly modifies the object it
 is acting on, as opposed to returning the transformed result and leaving the
 underlying object untouched. For Active Record methods that write to the
@@ -496,7 +527,7 @@ user.password_confirmation = 'hunter2'
 user.save!(validate: false)
 ```
 
-This is not recommended, as validations are usually put in place to ensure the
+This is not recommended because validations are usually put in place to ensure the
 integrity and consistency of user-provided data.
 
 A validation error prevents the entire object from being saved to
@@ -523,7 +554,7 @@ def disable_two_factor!
       otp_grace_period_started_at: nil,
       otp_backup_codes:            nil
     )
-    self.webauthn_registrations.destroy_all # rubocop: disable DestroyAll
+    self.second_factor_webauthn_registrations.destroy_all # rubocop: disable DestroyAll
   end
 end
 
@@ -606,14 +637,14 @@ back to a good state is direct manipulation via Rails console.
 
 ### Commonly used Active Record models and how to look up objects
 
-**Get a user by primary email address or username:**
+**Get a user by primary email address or username**:
 
 ```ruby
 User.find_by(email: 'admin@example.com')
 User.find_by(username: 'root')
 ```
 
-**Get a user by primary OR secondary email address:**
+**Get a user by primary OR secondary email address**:
 
 ```ruby
 User.find_by_any_email('user@example.com')
@@ -622,7 +653,7 @@ User.find_by_any_email('user@example.com')
 The `find_by_any_email` method is a custom method added by GitLab developers rather
 than a Rails-provided default method.
 
-**Get a collection of administrator users:**
+**Get a collection of administrator users**:
 
 ```ruby
 User.admins
@@ -631,7 +662,7 @@ User.admins
 `admins` is a [scope convenience method](https://guides.rubyonrails.org/active_record_querying.html#scopes)
 which does `where(admin: true)` under the hood.
 
-**Get a project by its path:**
+**Get a project by its path**:
 
 ```ruby
 Project.find_by_full_path('group/subgroup/project')
@@ -640,7 +671,7 @@ Project.find_by_full_path('group/subgroup/project')
 `find_by_full_path` is a custom method added by GitLab developers rather
 than a Rails-provided default method.
 
-**Get a project's issue or merge request by its numeric ID:**
+**Get a project's issue or merge request by its numeric ID**:
 
 ```ruby
 project = Project.find_by_full_path('group/subgroup/project')
@@ -651,13 +682,13 @@ project.merge_requests.find_by(iid: 42)
 `iid` means "internal ID" and is how we keep issue and merge request IDs
 scoped to each GitLab project.
 
-**Get a group by its path:**
+**Get a group by its path**:
 
 ```ruby
 Group.find_by_full_path('group/subgroup')
 ```
 
-**Get a group's related groups:**
+**Get a group's related groups**:
 
 ```ruby
 group = Group.find_by_full_path('group/subgroup')
@@ -669,7 +700,7 @@ group.parent
 group.children
 ```
 
-**Get a group's projects:**
+**Get a group's projects**:
 
 ```ruby
 group = Group.find_by_full_path('group/subgroup')
@@ -681,7 +712,7 @@ group.projects
 group.all_projects
 ```
 
-**Get CI pipeline or builds:**
+**Get CI pipeline or builds**:
 
 ```ruby
 Ci::Pipeline.find(4151)
@@ -692,7 +723,7 @@ The pipeline and job ID numbers increment globally across your GitLab
 instance, so there's no requirement to use an internal ID attribute to look them up,
 unlike with issues or merge requests.
 
-**Get the current application settings object:**
+**Get the current application settings object**:
 
 ```ruby
 ApplicationSetting.current
@@ -700,8 +731,8 @@ ApplicationSetting.current
 
 ### Open object in `irb`
 
-WARNING:
-Commands that change data can cause damage if not run correctly or under the right conditions. Always run commands in a test environment first and have a backup instance ready to restore.
+> [!warning]
+> Commands that change data can cause damage if not run correctly or under the right conditions. Always run commands in a test environment first and have a backup instance ready to restore.
 
 Sometimes it is easier to go through a method if you are in the context of the object. You can shim into the namespace of `Object` to let you open `irb` in the context of any object:
 
@@ -785,14 +816,14 @@ sudo gitlab-rails runner /scripts/helloworld.rb
 Some output in the console might be filtered by default to prevent leaks of certain values
 like variables, logs, or secrets. This output displays as `[FILTERED]`. For example:
 
-```plain_text
+```plaintext
 > Plan.default.actual_limits
 => ci_instance_level_variables: "[FILTERED]",
 ```
 
 To work around the filtering, read the values directly from the object. For example:
 
-```plain_text
+```plaintext
 > Plan.default.limits.ci_instance_level_variables
 => 25
 ```

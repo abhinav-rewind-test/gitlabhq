@@ -20,11 +20,9 @@ RSpec.describe Packages::Nuget::ExtractMetadataContentService, feature_category:
           dependencies = subject[:package_dependencies]
 
           expect(dependencies).to include(name: 'Moqi', version: '2.5.6')
-          expect(dependencies).to include(name: 'Castle.Core')
-          expect(dependencies).to include(name: 'Test.Dependency', version: '2.3.7',
-            target_framework: '.NETStandard2.0')
-          expect(dependencies).to include(name: 'Newtonsoft.Json', version: '12.0.3',
-            target_framework: '.NETStandard2.0')
+            .and include(name: 'Castle.Core')
+            .and include(name: 'Test.Dependency', version: '2.3.7', target_framework: '.NETStandard2.0')
+            .and include(name: 'Newtonsoft.Json', version: '12.0.3', target_framework: '.NETStandard2.0')
         end
       end
 
@@ -58,6 +56,20 @@ RSpec.describe Packages::Nuget::ExtractMetadataContentService, feature_category:
         }
 
         expect(subject.slice(*expected_metadata.keys)).to eq(expected_metadata)
+      end
+    end
+
+    context 'with empty dependency groups' do
+      let(:nuspec_filepath) { 'packages/nuget/with_empty_groups.nuspec' }
+
+      it 'extracts target frameworks with no dependencies' do
+        expect(subject[:package_dependencies])
+          .to include(name: "#{::Packages::Nuget::EMPTY_DEPENDENCY_PREFIX}-.NETFramework4.5",
+            target_framework: '.NETFramework4.5')
+          .and include(name: "#{::Packages::Nuget::EMPTY_DEPENDENCY_PREFIX}-.NETCore4.5",
+            target_framework: '.NETCore4.5')
+          .and include(name: 'System.Net.Http', version: '4.3.1', target_framework: '.NETStandard2.0')
+          .and include(name: 'Moqi', version: '2.5.6')
       end
     end
   end

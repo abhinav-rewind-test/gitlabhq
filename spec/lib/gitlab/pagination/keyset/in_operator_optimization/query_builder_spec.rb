@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder do
+RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder, feature_category: :database do
   let_it_be(:two_weeks_ago) { 2.weeks.ago }
   let_it_be(:three_weeks_ago) { 3.weeks.ago }
   let_it_be(:four_weeks_ago) { 4.weeks.ago }
@@ -37,13 +37,12 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     Class.new(ApplicationRecord) do
       self.table_name = 'issues'
 
-      include IgnorableColumns
-
       ignore_column :title, remove_with: '16.4', remove_after: '2023-08-22'
     end
   end
 
   let(:scope_model) { Issue }
+  let(:sql_type) { ->(model, column = 'id') { model.columns_hash[column].sql_type } }
   let(:created_records) { issues }
   let(:iterator) do
     Gitlab::Pagination::Keyset::Iterator.new(
@@ -98,8 +97,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { ignored_column_model.where(ignored_column_model.arel_table[:project_id].eq(id_expression)) },
-        finder_query: -> (id_expression) { ignored_column_model.where(ignored_column_model.arel_table[:id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { ignored_column_model.where(ignored_column_model.arel_table[:project_id].eq(id_expression)) },
+        finder_query: ->(id_expression) { ignored_column_model.where(ignored_column_model.arel_table[:id].eq(id_expression)) }
       }
     end
 
@@ -147,8 +146,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
-        finder_query: -> (id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
+        finder_query: ->(id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
       }
     end
 
@@ -186,14 +185,12 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
             order_expression: Issue.arel_table[:relative_position].desc.nulls_last,
             reversed_order_expression: Issue.arel_table[:relative_position].asc.nulls_first,
             order_direction: :desc,
-            nullable: :nulls_last,
-            distinct: false
+            nullable: :nulls_last
           ),
           Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
             attribute_name: :id,
             order_expression: Issue.arel_table[:id].desc,
-            nullable: :not_nullable,
-            distinct: true
+            nullable: :not_nullable
           )
         ])
     end
@@ -201,8 +198,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
-        finder_query: -> (_relative_position_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
+        finder_query: ->(_relative_position_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
       }
     end
 
@@ -225,8 +222,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
       let(:in_operator_optimization_options) do
         {
           array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-          array_mapping_scope: -> (id_expression) { Issue.merge(base_scope.dup).where(Issue.arel_table[:project_id].eq(id_expression)) },
-          finder_query: -> (_relative_position_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+          array_mapping_scope: ->(id_expression) { Issue.merge(base_scope.dup).where(Issue.arel_table[:project_id].eq(id_expression)) },
+          finder_query: ->(_relative_position_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
         }
       end
 
@@ -251,8 +248,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
-        finder_query: -> (_created_at_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
+        finder_query: ->(_created_at_expression, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
       }
     end
 
@@ -283,8 +280,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
       {
         scope: scope,
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
-        finder_query: -> (id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
+        finder_query: ->(id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
       }
     end
 
@@ -331,8 +328,8 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     options = {
       scope: scope,
       array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-      array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
-      finder_query: -> (id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+      array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) },
+      finder_query: ->(id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
     }
 
     expect { described_class.new(**options).execute }.to raise_error(/The order on the scope does not support keyset pagination/)
@@ -346,7 +343,7 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
           Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
             attribute_name: 'id_multiplied_by_ten',
             order_expression: Arel.sql('(id * 10)').asc,
-            sql_type: 'integer'
+            sql_type: sql_type.call(Issue)
           ),
           Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
             attribute_name: :id,
@@ -361,7 +358,7 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) }
       }
     end
 
@@ -381,13 +378,13 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
       let(:batch_size) { 3 }
 
       it 'raises error, loading complete rows are not supported with SQL expressions' do
-        in_operator_optimization_options[:finder_query] = -> (_, _) { Issue.select(:id, '(id * 10)').where(id: -1) }
+        in_operator_optimization_options[:finder_query] = ->(_, _) { Issue.select(:id, '(id * 10)').where(id: -1) }
 
         expect(in_operator_optimization_options[:finder_query]).not_to receive(:call)
 
         expect do
           iterator.each_batch(of: batch_size) { |records| records.to_a }
-        end.to raise_error /The "RecordLoaderStrategy" does not support/
+        end.to raise_error(/The "RecordLoaderStrategy" does not support/)
       end
     end
   end
@@ -403,25 +400,24 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     let(:in_operator_optimization_options) do
       {
         array_scope: Project.where(namespace_id: top_level_group.self_and_descendants.select(:id)).select(:id),
-        array_mapping_scope: -> (id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) }
+        array_mapping_scope: ->(id_expression) { Issue.where(Issue.arel_table[:project_id].eq(id_expression)) }
       }
     end
 
     context 'when directions are project.id DESC, issues.id ASC' do
       let(:order) do
         Gitlab::Pagination::Keyset::Order.build([
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: 'projects_id',
-                                                    order_expression: Issue.arel_table[:projects_id].asc,
-                                                    sql_type: 'integer',
-                                                    nullable: :not_nullable,
-                                                    distinct: false
-                                                  ),
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: :id,
-                                                    order_expression: Issue.arel_table[:id].asc
-                                                  )
-                                                ])
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: 'projects_id',
+            order_expression: Issue.arel_table[:projects_id].asc,
+            sql_type: sql_type.call(Project),
+            nullable: :not_nullable
+          ),
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: :id,
+            order_expression: Issue.arel_table[:id].asc
+          )
+        ])
       end
 
       let(:expected_order) { issues.sort_by { |issue| [issue.project_id, issue.id] } }
@@ -442,18 +438,17 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     context 'when directions are projects.id DESC, issues.id ASC' do
       let(:order) do
         Gitlab::Pagination::Keyset::Order.build([
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: 'projects_id',
-                                                    order_expression: Issue.arel_table[:projects_id].desc,
-                                                    sql_type: 'integer',
-                                                    nullable: :not_nullable,
-                                                    distinct: false
-                                                  ),
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: :id,
-                                                    order_expression: Issue.arel_table[:id].asc
-                                                  )
-                                                ])
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: 'projects_id',
+            order_expression: Issue.arel_table[:projects_id].desc,
+            sql_type: sql_type.call(Project),
+            nullable: :not_nullable
+          ),
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: :id,
+            order_expression: Issue.arel_table[:id].asc
+          )
+        ])
       end
 
       let(:expected_order) { issues.sort_by { |issue| [issue.project_id * -1, issue.id] } }
@@ -474,25 +469,23 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
     context 'when directions are projects.name ASC, projects.id ASC, issues.id ASC' do
       let(:order) do
         Gitlab::Pagination::Keyset::Order.build([
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: 'projects_name',
-                                                    order_expression: Issue.arel_table[:projects_name].asc,
-                                                    sql_type: 'character varying',
-                                                    nullable: :not_nullable,
-                                                    distinct: false
-                                                  ),
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: 'projects_name',
+            order_expression: Issue.arel_table[:projects_name].asc,
+            sql_type: sql_type.call(Project, 'name'),
+            nullable: :not_nullable
+          ),
                                                   Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
                                                     attribute_name: 'projects_id',
                                                     order_expression: Issue.arel_table[:projects_id].asc,
-                                                    sql_type: 'integer',
-                                                    nullable: :not_nullable,
-                                                    distinct: false
+                                                    sql_type: sql_type.call(Project),
+                                                    nullable: :not_nullable
                                                   ),
                                                   Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
                                                     attribute_name: :id,
                                                     order_expression: Issue.arel_table[:id].asc
                                                   )
-                                                ])
+        ])
       end
 
       let(:expected_order) { issues.sort_by { |issue| [issue.project.name, issue.project.id, issue.id] } }
@@ -512,18 +505,17 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::QueryBuilder 
 
       let(:order) do
         Gitlab::Pagination::Keyset::Order.build([
-                                                  Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
-                                                    attribute_name: 'projects_name',
-                                                    order_expression: Issue.arel_table[:projects_name].asc,
-                                                    sql_type: 'character varying',
-                                                    nullable: :nulls_last,
-                                                    distinct: false
-                                                  ),
+          Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
+            attribute_name: 'projects_name',
+            order_expression: Issue.arel_table[:projects_name].asc,
+            sql_type: sql_type.call(Project, 'name'),
+            nullable: :nulls_last
+          ),
                                                   Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
                                                     attribute_name: :id,
                                                     order_expression: Issue.arel_table[:id].asc
                                                   )
-                                                ])
+        ])
       end
 
       let(:expected_order) { issues.sort_by { |issue| [issue.id] } }

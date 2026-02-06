@@ -1,23 +1,31 @@
 <script>
 import { GlLink, GlSprintf } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapState } from 'vuex';
 import { s__ } from '~/locale';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import CodeInstruction from '~/vue_shared/components/registry/code_instruction.vue';
 
 export default {
-  name: 'ConanInstallation',
   components: {
     CodeInstruction,
     GlLink,
     GlSprintf,
   },
+  inject: ['gitlabHost', 'projectPath'],
+  props: {
+    packageName: {
+      type: String,
+      required: true,
+    },
+    packageVersion: {
+      type: String,
+      required: true,
+    },
+  },
   computed: {
-    ...mapState(['packageEntity', 'terraformHelpPath', 'gitlabHost', 'projectPath']),
     provisionInstructions() {
       return `module "my_module_name" {
-  source = "${this.gitlabHost}/${this.projectPath}/${this.packageEntity.name}"
-  version = "${this.packageEntity.version}"
+  source = "${this.gitlabHost}/${this.projectPath}/${this.packageName}"
+  version = "${this.packageVersion}"
 }`;
     },
     registrySetup() {
@@ -31,12 +39,15 @@ export default {
       'InfrastructureRegistry|For more information on the Terraform registry, %{linkStart}see our documentation%{linkEnd}.',
     ),
   },
+  terraformHelpPath: helpPagePath('user/packages/terraform_module_registry/_index', {
+    anchor: 'reference-a-terraform-module',
+  }),
 };
 </script>
 
 <template>
   <div>
-    <h3 class="gl-font-lg">{{ __('Provision instructions') }}</h3>
+    <h3 class="gl-text-lg">{{ __('Provision instructions') }}</h3>
 
     <code-instruction
       :label="
@@ -49,7 +60,7 @@ export default {
       multiline
     />
 
-    <h3 class="gl-font-lg">{{ __('Registry setup') }}</h3>
+    <h3 class="gl-text-lg">{{ __('Registry setup') }}</h3>
 
     <code-instruction
       :label="s__('InfrastructureRegistry|To authorize access to the Terraform registry:')"
@@ -59,7 +70,7 @@ export default {
     />
     <gl-sprintf :message="$options.i18n.helpText">
       <template #link="{ content }">
-        <gl-link :href="terraformHelpPath">{{ content }}</gl-link>
+        <gl-link :href="$options.terraformHelpPath">{{ content }}</gl-link>
       </template>
     </gl-sprintf>
   </div>

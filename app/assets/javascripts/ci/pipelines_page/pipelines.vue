@@ -1,8 +1,14 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
+/*
+  Important: This component is considered the legacy component,
+  and will be removed soon. If you add code to this one, please be sure
+  to mirror that functionality in `ci/pipelines_page/pipelines_graphql.vue`
+  https://gitlab.com/groups/gitlab-org/-/epics/16394
+*/
 import NO_PIPELINES_SVG from '@gitlab/svgs/dist/illustrations/empty-state/empty-pipeline-md.svg?url';
 import ERROR_STATE_SVG from '@gitlab/svgs/dist/illustrations/empty-state/empty-job-failed-md.svg?url';
-import { GlEmptyState, GlIcon, GlLoadingIcon, GlCollapsibleListbox } from '@gitlab/ui';
+import { GlCollapsibleListbox, GlEmptyState, GlIcon, GlLoadingIcon } from '@gitlab/ui';
 import { isEqual } from 'lodash';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { createAlert, VARIANT_INFO, VARIANT_WARNING } from '~/alert';
@@ -22,7 +28,8 @@ import { validateParams } from '~/ci/pipeline_details/utils';
 import NavigationTabs from '~/vue_shared/components/navigation_tabs.vue';
 import TablePagination from '~/vue_shared/components/pagination/table_pagination.vue';
 import { isLoggedIn } from '~/lib/utils/common_utils';
-import setSortPreferenceMutation from '~/issues/list/queries/set_sort_preference.mutation.graphql';
+import setSortPreferenceMutation from '~/issues/dashboard/queries/set_sort_preference.mutation.graphql';
+import ExternalConfigEmptyState from '~/ci/common/empty_state/external_config_empty_state.vue';
 import PipelinesService from './services/pipelines_service';
 import { ANY_TRIGGER_AUTHOR } from './constants';
 import NoCiEmptyState from './components/empty_state/no_ci_empty_state.vue';
@@ -30,6 +37,7 @@ import NavigationControls from './components/nav_controls.vue';
 import PipelinesFilteredSearch from './components/pipelines_filtered_search.vue';
 
 export default {
+  name: 'PipelinesList',
   components: {
     NoCiEmptyState,
     GlCollapsibleListbox,
@@ -41,8 +49,12 @@ export default {
     PipelinesFilteredSearch,
     PipelinesTable,
     TablePagination,
+    ExternalConfigEmptyState,
+    PipelineAccountVerificationAlert: () =>
+      import('ee_component/vue_shared/components/pipeline_account_verification_alert.vue'),
   },
   mixins: [PipelinesMixin, Tracking.mixin()],
+  inject: ['usesExternalConfig'],
   props: {
     store: {
       type: Object,
@@ -56,30 +68,12 @@ export default {
       type: Boolean,
       required: true,
     },
-    canCreatePipeline: {
-      type: Boolean,
-      required: true,
-    },
-    ciLintPath: {
-      type: String,
-      required: false,
-      default: null,
-    },
     resetCachePath: {
       type: String,
       required: false,
       default: null,
     },
     newPipelinePath: {
-      type: String,
-      required: false,
-      default: null,
-    },
-    projectId: {
-      type: String,
-      required: true,
-    },
-    defaultBranchName: {
       type: String,
       required: false,
       default: null,
@@ -115,6 +109,7 @@ export default {
 
     // without tabs
     emptyState: 'emptyState',
+    externalConfigEmptyState: 'externalConfigEmptyState',
   },
   scopes: {
     all: 'all',
@@ -125,7 +120,12 @@ export default {
   computed: {
     /**
      * `hasGitlabCi` handles both internal and external CI.
-     * The order on which  the checks are made in this method is
+     */
+    hasLocalCiConfig() {
+      return this.hasGitlabCi && !this.usesExternalConfig;
+    },
+    /**
+     * The order on which the checks are made in this method is
      * important to guarantee we handle all the corner cases.
      */
     stateToRender() {
@@ -143,8 +143,16 @@ export default {
         return stateMap.tableList;
       }
 
-      if ((this.scope !== 'all' && this.scope !== null) || this.hasGitlabCi) {
+      if (this.scope !== 'all' && this.scope !== null) {
         return stateMap.emptyTab;
+      }
+
+      if (this.hasLocalCiConfig) {
+        return stateMap.emptyTab;
+      }
+
+      if (this.usesExternalConfig) {
+        return stateMap.externalConfigEmptyState;
       }
 
       return stateMap.emptyState;
@@ -164,9 +172,7 @@ export default {
     },
 
     shouldRenderButtons() {
-      return (
-        (this.newPipelinePath || this.resetCachePath || this.ciLintPath) && this.shouldRenderTabs
-      );
+      return (this.newPipelinePath || this.resetCachePath) && this.shouldRenderTabs;
     },
 
     shouldRenderPagination() {
@@ -241,6 +247,7 @@ export default {
 
       this.track('click_filter_tabs', { label: TRACKING_CATEGORIES.tabs, property: scope });
     },
+    // eslint-disable-next-line vue/no-unused-properties -- successCallback() is part of the component's public API.
     successCallback(resp) {
       // Because we are polling & the user is interacting verify if the response received
       // matches the last request made
@@ -350,13 +357,18 @@ export default {
 };
 </script>
 <template>
-  <div class="pipelines-container">
+  <div class="pipelines-container gl-mt-2">
+    <pipeline-account-verification-alert class="gl-mt-5" />
     <div
       v-if="shouldRenderTabs || shouldRenderButtons"
       class="top-area scrolling-tabs-container inner-page-scroll-tabs gl-border-none"
     >
-      <div class="fade-left"><gl-icon name="chevron-lg-left" :size="12" /></div>
-      <div class="fade-right"><gl-icon name="chevron-lg-right" :size="12" /></div>
+      <div class="fade-left">
+        <gl-icon name="chevron-lg-left" :size="12" />
+      </div>
+      <div class="fade-right">
+        <gl-icon name="chevron-lg-right" :size="12" />
+      </div>
 
       <navigation-tabs
         v-if="shouldRenderTabs"
@@ -369,23 +381,24 @@ export default {
         v-if="shouldRenderButtons"
         :new-pipeline-path="newPipelinePath"
         :reset-cache-path="resetCachePath"
-        :ci-lint-path="ciLintPath"
         :is-reset-cache-button-loading="isResetCacheButtonLoading"
         @resetRunnersCache="handleResetRunnersCache"
       />
     </div>
 
-    <div v-if="stateToRender !== $options.stateMap.emptyState" class="gl-display-flex">
-      <div class="row-content-block gl-display-flex gl-flex-grow-1 gl-border-b-0">
+    <div v-if="shouldRenderTabs" class="gl-flex">
+      <div
+        class="row-content-block gl-flex gl-max-w-full gl-flex-grow gl-flex-wrap gl-gap-4 gl-border-b-0 @sm/panel:gl-flex-nowrap"
+      >
         <pipelines-filtered-search
-          class="gl-display-flex gl-flex-grow-1 gl-mr-4"
-          :project-id="projectId"
-          :default-branch-name="defaultBranchName"
+          class="gl-flex gl-max-w-full gl-flex-grow"
           :params="validatedParams"
           @filterPipelines="filterPipelines"
         />
         <gl-collapsible-listbox
           v-model="visibilityPipelineIdType"
+          class="gl-grow @sm/panel:gl-grow-0"
+          toggle-class="gl-grow"
           :toggle-text="selectedPipelineKeyOption.text"
           :items="$options.pipelineKeyOptions"
           @select="changeVisibilityPipelineIDType"
@@ -398,13 +411,16 @@ export default {
         v-if="stateToRender === $options.stateMap.loading"
         :label="s__('Pipelines|Loading Pipelines')"
         size="lg"
-        class="prepend-top-20"
+        class="gl-mt-5"
+      />
+      <external-config-empty-state
+        v-else-if="stateToRender === $options.stateMap.externalConfigEmptyState"
+        :new-pipeline-path="newPipelinePath"
       />
 
       <no-ci-empty-state
         v-else-if="stateToRender === $options.stateMap.emptyState"
         :empty-state-svg-path="$options.noPipelinesSvgPath"
-        :can-set-ci="canCreatePipeline"
       />
 
       <gl-empty-state
@@ -423,7 +439,6 @@ export default {
       <div v-else-if="stateToRender === $options.stateMap.tableList">
         <pipelines-table
           :pipelines="state.pipelines"
-          :update-graph-dropdown="updateGraphDropdown"
           :pipeline-id-type="selectedPipelineKeyOption.value"
           @cancel-pipeline="onCancelPipeline"
           @refresh-pipelines-table="onRefreshPipelinesTable"

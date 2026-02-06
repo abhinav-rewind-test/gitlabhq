@@ -11,10 +11,18 @@ module MergeRequests
       merge_request.source_project = @source_project
       merge_request.source_branch = params[:source_branch]
 
-      create(merge_request)
+      merge_after = params.delete(:merge_after)
+
+      created_merge_request = create(merge_request)
+
+      UpdateMergeScheduleService.new(created_merge_request, merge_after: merge_after).execute
+
+      created_merge_request
     end
 
     def after_create(issuable)
+      invalidate_all_users_cache_count(issuable)
+
       current_user_id = current_user.id
 
       issuable.run_after_commit do
@@ -65,7 +73,11 @@ module MergeRequests
     end
 
     def set_default_attributes!
-      # Implemented in EE
+      set_default_squash! unless params.key?(:squash) || params.key?('squash')
+    end
+
+    def set_default_squash!
+      params[:squash] = @project.squash_enabled_by_default?
     end
   end
 end

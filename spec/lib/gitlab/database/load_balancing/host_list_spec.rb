@@ -17,7 +17,7 @@ RSpec.describe Gitlab::Database::LoadBalancing::HostList do
   before do
     # each call generate a new replica pool
     allow(load_balancer).to receive(:create_replica_connection_pool) do
-      double(:replica_connection_pool)
+      double(:replica_connection_pool, discarded?: false)
     end
   end
 
@@ -136,6 +136,6 @@ RSpec.describe Gitlab::Database::LoadBalancing::HostList do
   end
 
   def expect_metrics(hosts)
-    expect(Gitlab::Metrics.registry.get(:db_load_balancing_hosts).get({})).to eq(hosts)
+    expect(Gitlab::Metrics.client.get(:db_load_balancing_hosts).get({})).to eq(hosts)
   end
 end

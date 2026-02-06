@@ -2,33 +2,29 @@
 stage: Package
 group: Package Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: NuGet API
 ---
 
-# NuGet API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-This is the API documentation for [NuGet Packages](../../user/packages/nuget_repository/index.md).
+{{< /details >}}
 
-WARNING:
-This API is used by the [NuGet package manager client](https://www.nuget.org/)
-and is generally not meant for manual consumption.
+Use this API to interact with the [NuGet package manager client](../../user/packages/nuget_repository/_index.md).
 
-For instructions on how to upload and install NuGet packages from the GitLab
-Package Registry, see the [NuGet package registry documentation](../../user/packages/nuget_repository/index.md).
+> [!warning]
+> This API is used by the [NuGet package manager client](https://www.nuget.org/)
+> and is generally not meant for manual consumption.
 
-NOTE:
 These endpoints do not adhere to the standard API authentication methods.
-See the [NuGet package registry documentation](../../user/packages/nuget_repository/index.md)
+See the [NuGet package registry documentation](../../user/packages/nuget_repository/_index.md)
 for details on which headers and token types are supported. Undocumented authentication methods might be removed in the future.
 
-## Package index
+## Retrieve a package index
 
-> - Introduced in GitLab 12.8.
-
-Returns the index for a given package, which includes a list of available versions:
+Retrieves the index for a specified package, which includes a list of available versions.
 
 ```plaintext
 GET projects/:id/packages/nuget/download/:package_name/index
@@ -40,7 +36,8 @@ GET projects/:id/packages/nuget/download/:package_name/index
 | `package_name` | string | yes      | The name of the package. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/index"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/index"
 ```
 
 Example response:
@@ -55,9 +52,7 @@ Example response:
 
 ## Download a package file
 
-> - Introduced in GitLab 12.8.
-
-Download a NuGet package file. The [metadata service](#metadata-service) provides this URL.
+Downloads a specified NuGet package file for a project. The [metadata service](#retrieve-package-metadata) provides this URL.
 
 ```plaintext
 GET projects/:id/packages/nuget/download/:package_name/:package_version/:package_filename
@@ -71,23 +66,32 @@ GET projects/:id/packages/nuget/download/:package_name/:package_version/:package
 | `package_filename`| string | yes      | The name of the file. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/1.3.0.17/mynugetpkg.1.3.0.17.nupkg"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/1.3.0.17/mynugetpkg.1.3.0.17.nupkg"
 ```
 
 Write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/1.3.0.17/mynugetpkg.1.3.0.17.nupkg" > MyNuGetPkg.1.3.0.17.nupkg
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/download/MyNuGetPkg/1.3.0.17/mynugetpkg.1.3.0.17.nupkg" > MyNuGetPkg.1.3.0.17.nupkg
 ```
 
 This writes the downloaded file to `MyNuGetPkg.1.3.0.17.nupkg` in the current directory.
 
+> [!note]
+> This API returns a `404` status when you use [group endpoints](#group-level). Use the NuGet package manager CLI to
+> [install packages](../../user/packages/nuget_repository/_index.md#install-a-package) with group endpoints to avoid this error.
+
 ## Upload a package file
 
-> - Introduced in GitLab 12.8 for NuGet v3 feed.
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/416404) in GitLab 16.2 for NuGet v2 feed.
+{{< history >}}
 
-Upload a NuGet package file:
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/416404) in GitLab 16.2 for NuGet v2 feed.
+
+{{< /history >}}
+
+Uploads a NuGet package file for a specified project.
 
 - For NuGet v3 feed:
 
@@ -114,7 +118,7 @@ Upload a NuGet package file:
   curl --request PUT \
       --form 'package=@path/to/mynugetpkg.1.3.0.17.nupkg' \
       --user <username>:<personal_access_token> \
-      "https://gitlab.example.com/api/v4/projects/1/packages/nuget/"
+      --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/"
   ```
 
 - For NuGet v2 feed:
@@ -123,14 +127,12 @@ Upload a NuGet package file:
   curl --request PUT \
       --form 'package=@path/to/mynugetpkg.1.3.0.17.nupkg' \
       --user <username>:<personal_access_token> \
-      "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2"
+      --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2"
   ```
 
 ## Upload a symbol package file
 
-> - Introduced in GitLab 12.8.
-
-Upload a NuGet symbol package file (`.snupkg`):
+Uploads a specified NuGet symbol package file (`.snupkg`) for a project.
 
 ```plaintext
 PUT projects/:id/packages/nuget/symbolpackage
@@ -147,7 +149,7 @@ PUT projects/:id/packages/nuget/symbolpackage
 curl --request PUT \
      --form 'package=@path/to/mynugetpkg.1.3.0.17.snupkg' \
      --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolpackage"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolpackage"
 ```
 
 ## Route prefix
@@ -163,7 +165,7 @@ The examples in this document all use the project-level prefix.
 ### Group-level
 
 ```plaintext
- /groups/:id/-/packages/nuget`
+/groups/:id/-/packages/nuget
 ```
 
 | Attribute | Type   | Required | Description |
@@ -173,7 +175,7 @@ The examples in this document all use the project-level prefix.
 ### Project-level
 
 ```plaintext
- /projects/:id/packages/nuget`
+/projects/:id/packages/nuget
 ```
 
 | Attribute | Type   | Required | Description |
@@ -184,8 +186,8 @@ The examples in this document all use the project-level prefix.
 
 ### V2 source feed/protocol
 
-Returns an XML document that represents the service index of the v2 NuGet source feed.
-Authentication is not required:
+Retrieves an XML document that represents the service index of the v2 NuGet source feed.
+Authentication is not required.
 
 ```plaintext
 GET <route-prefix>/v2
@@ -213,11 +215,14 @@ Example response:
 
 ### V3 source feed/protocol
 
-> - Introduced in GitLab 12.6.
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/214674) to be public in GitLab 16.1.
+{{< history >}}
 
-Returns a list of available API resources.
-Authentication is not required:
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/214674) to be public in GitLab 16.1.
+
+{{< /history >}}
+
+Retrieves a list of available API resources.
+Authentication is not required.
 
 ```plaintext
 GET <route-prefix>/index
@@ -226,7 +231,7 @@ GET <route-prefix>/index
 Example Request:
 
 ```shell
-curl "https://gitlab.example.com/api/v4/projects/1/packages/nuget/index"
+curl --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/index"
 ```
 
 Example response:
@@ -287,11 +292,9 @@ Example response:
 The URLs in the response have the same route prefix used to request them. If you request them with
 the group-level route, the returned URLs contain `/groups/:id/-`.
 
-## Metadata Service
+## Retrieve package metadata
 
-> - Introduced in GitLab 12.8.
-
-Returns metadata for a package:
+Retrieves metadata for a specified package.
 
 ```plaintext
 GET <route-prefix>/metadata/:package_name/index
@@ -302,7 +305,8 @@ GET <route-prefix>/metadata/:package_name/index
 | `package_name` | string | yes      | The name of the package. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/metadata/MyNuGetPkg/index"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/metadata/MyNuGetPkg/index"
 ```
 
 Example response:
@@ -339,11 +343,9 @@ Example response:
 }
 ```
 
-## Version Metadata Service
+## Retrieve version metadata
 
-> - Introduced in GitLab 12.8.
-
-Returns metadata for a specific package version:
+Retrieves metadata for a specified package version.
 
 ```plaintext
 GET <route-prefix>/metadata/:package_name/:package_version
@@ -355,7 +357,8 @@ GET <route-prefix>/metadata/:package_name/:package_version
 | `package_version` | string | yes      | The version of the package. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/metadata/MyNuGetPkg/1.3.0.17"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/metadata/MyNuGetPkg/1.3.0.17"
 ```
 
 Example response:
@@ -379,11 +382,9 @@ Example response:
 }
 ```
 
-## Search Service
+## Search for packages
 
-> - Introduced in GitLab 12.8.
-
-Given a query, search for NuGet packages in the repository:
+Searches for NuGet packages in the repository based on a specified query.
 
 ```plaintext
 GET <route-prefix>/query
@@ -397,7 +398,8 @@ GET <route-prefix>/query
 | `prerelease` | boolean | no       | Include prerelease versions. Defaults to `true` if no value is supplied. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/nuget/query?q=MyNuGet"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/query?q=MyNuGet"
 ```
 
 Example response:
@@ -429,11 +431,15 @@ Example response:
 }
 ```
 
-## Delete service
+## Delete a package
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/38275) in GitLab 16.5.
+{{< history >}}
 
-Delete a NuGet package:
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/38275) in GitLab 16.5.
+
+{{< /history >}}
+
+Deletes a specified NuGet package.
 
 ```plaintext
 DELETE projects/:id/packages/nuget/:package_name/:package_version
@@ -448,7 +454,7 @@ DELETE projects/:id/packages/nuget/:package_name/:package_version
 ```shell
 curl --request DELETE \
      --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/nuget/MyNuGetPkg/1.3.0.17"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/MyNuGetPkg/1.3.0.17"
 ```
 
 Possible request responses:
@@ -462,9 +468,13 @@ Possible request responses:
 
 ## Download a debugging symbol file `.pdb`
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/416178) in GitLab 16.7.
+{{< history >}}
 
-Download a debugging symbol file (`.pdb`):
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/416178) in GitLab 16.7.
+
+{{< /history >}}
+
+Downloads a specified debugging symbol file (`.pdb`).
 
 ```plaintext
 GET <route-prefix>/symbolfiles/:file_name/:signature/:file_name
@@ -477,13 +487,15 @@ GET <route-prefix>/symbolfiles/:file_name/:signature/:file_name
 | `Symbolchecksum` | string | yes      | Required header. The checksum of the file. |
 
 ```shell
-curl --header "Symbolchecksum: SHA256:<file_checksum>" "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolfiles/:file_name/:signature/:file_name"
+curl --header "Symbolchecksum: SHA256:<file_checksum>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolfiles/:file_name/:signature/:file_name"
 ```
 
 Write the output to a file:
 
 ```shell
-curl --header "Symbolchecksum: SHA256:<file_checksum>" "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolfiles/mynugetpkg.pdb/k813f89485474661234z7109cve5709eFFFFFFFF/mynugetpkg.pdb" > mynugetpkg.pdb
+curl --header "Symbolchecksum: SHA256:<file_checksum>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/symbolfiles/mynugetpkg.pdb/k813f89485474661234z7109cve5709eFFFFFFFF/mynugetpkg.pdb" > mynugetpkg.pdb
 ```
 
 Possible request responses:
@@ -497,7 +509,11 @@ Possible request responses:
 
 ## V2 Feed Metadata Endpoints
 
-> - Introduced in GitLab 16.3.
+{{< history >}}
+
+- Introduced in GitLab 16.3.
+
+{{< /history >}}
 
 ### $metadata endpoint
 
@@ -508,7 +524,7 @@ GET <route-prefix>/v2/$metadata
 ```
 
 ```shell
-curl "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/$metadata"
+curl --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/$metadata"
 ```
 
 Example response:
@@ -550,7 +566,11 @@ Example response:
 
 ### OData package entry endpoints
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/127667) in GitLab 16.4.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/127667) in GitLab 16.4.
+
+{{< /history >}}
 
 | Endpoint | Description |
 | -------- | ----------- |
@@ -559,7 +579,7 @@ Example response:
 | `GET projects/:id/packages/nuget/v2/Packages(Id='<package_name>',Version='<package_version>')` | Returns an OData XML document containing information about the package with the given name and version. |
 
 ```shell
-curl "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/Packages(Id='mynugetpkg',Version='1.0.0')"
+curl --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/Packages(Id='mynugetpkg',Version='1.0.0')"
 ```
 
 Example response:
@@ -576,14 +596,14 @@ Example response:
  </entry>
 ```
 
-NOTE:
-GitLab doesn't receive an authentication token for the `Packages()` and
-`FindPackagesByID()` endpoints, so the latest version of the package
-cannot be returned. You must provide the version when you install
-or upgrade a package with the NuGet v2 feed.
+> [!note]
+> GitLab doesn't receive an authentication token for the `Packages()` and
+> `FindPackagesByID()` endpoints, so the latest version of the package
+> cannot be returned. You must provide the version when you install
+> or upgrade a package with the NuGet v2 feed.
 
 ```shell
-curl "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/Packages()?$filter=(tolower(Id) eq 'mynugetpkg')"
+curl --url "https://gitlab.example.com/api/v4/projects/1/packages/nuget/v2/Packages()?$filter=(tolower(Id) eq 'mynugetpkg')"
 ```
 
 Example response:

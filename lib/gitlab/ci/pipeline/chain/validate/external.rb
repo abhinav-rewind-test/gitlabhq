@@ -18,9 +18,11 @@ module Gitlab
               pipeline_authorized = validate_external
 
               log_message = pipeline_authorized ? 'authorized' : 'not authorized'
-              Gitlab::AppLogger.info(message: "Pipeline #{log_message}", project_id: project.id, user_id: current_user.id)
+              Gitlab::AppLogger.info(message: "Pipeline #{log_message}", project_id: project.id)
 
-              error('External validation failed', drop_reason: :external_validation_failure) unless pipeline_authorized
+              return if pipeline_authorized
+
+              error('External validation failed', failure_reason: :external_validation_failure)
             end
 
             def break?
@@ -56,12 +58,18 @@ module Gitlab
                 'X-Gitlab-Token' => validation_service_token
               }.compact
 
-              Gitlab::HTTP.post(
-                validation_service_url,
-                timeout: validation_service_timeout,
-                headers: headers,
-                body: validation_service_payload.to_json
-              )
+              request_body = logger.instrument(:pipeline_validate_external_payload, once: true) do
+                validation_service_payload.to_json
+              end
+
+              logger.instrument(:pipeline_validate_external_request, once: true) do
+                Gitlab::HTTP.post(
+                  validation_service_url,
+                  timeout: validation_service_timeout,
+                  headers: headers,
+                  body: request_body
+                )
+              end
             end
 
             def validation_service_timeout
@@ -107,7 +115,7 @@ module Gitlab
                   type: pipeline.source
                 },
                 builds: builds_validation_payload,
-                total_builds_count: current_user.pipelines.builds_count_in_alive_pipelines
+                total_builds_count: current_user.pipelines.jobs_count_in_alive_pipelines
               }
             end
 
@@ -122,6 +130,7 @@ module Gitlab
                 stage: build[:stage],
                 image: build.dig(:options, :image, :name),
                 services: service_names(build),
+                tag_list: build[:tag_list],
                 script: [
                   build.dig(:options, :before_script),
                   build.dig(:options, :script),

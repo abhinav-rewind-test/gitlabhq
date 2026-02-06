@@ -5,16 +5,18 @@ module Projects
     class CiCdController < Projects::ApplicationController
       include RunnerSetupScripts
 
-      NUMBER_OF_RUNNERS_PER_PAGE = 20
-
       layout 'project_settings'
-      before_action :authorize_admin_pipeline!, except: :show
-      before_action :authorize_admin_cicd_variables!, only: :show
+      before_action :authorize_admin_pipeline!, except: [:reset_cache, :show, :update]
+      before_action :authorize_show_cicd_settings!, only: :show
+      before_action :authorize_update_cicd_settings!, only: :update
+      before_action :authorize_reset_cache!, only: :reset_cache
       before_action :check_builds_available!
-      before_action :define_variables
+      before_action :define_variables, only: :show
 
       before_action do
         push_frontend_feature_flag(:ci_variables_pages, current_user)
+        push_frontend_ability(ability: :admin_project, resource: @project, user: current_user)
+        push_frontend_ability(ability: :admin_protected_environments, resource: @project, user: current_user)
       end
 
       helper_method :highlight_badge
@@ -27,10 +29,12 @@ module Projects
         @variable_limit = ::Plan.default.actual_limits.project_ci_variables
 
         triggers = ::Ci::TriggerSerializer.new.represent(
-          @project.triggers, current_user: current_user, project: @project
+          @project.triggers.with_last_used, current_user: current_user, project: @project
         )
 
         @triggers_json = Gitlab::Json.dump(triggers)
+
+        audit_project_cicd_settings_access
 
         render
       end
@@ -39,7 +43,8 @@ module Projects
         Projects::UpdateService.new(project, current_user, update_params).tap do |service|
           result = service.execute
           if result[:status] == :success
-            flash[:toast] = _("Pipelines settings for '%{project_name}' were successfully updated.") % { project_name: @project.name }
+            flash[:toast] = safe_format(_("Pipelines settings for '%{project_name}' were successfully updated."),
+              project_name: @project.name)
 
             run_autodevops_pipeline(service)
 
@@ -73,7 +78,74 @@ module Projects
         private_runner_setup_scripts
       end
 
+      def export_job_token_authorizations
+        response = ::Ci::JobToken::ExportAuthorizationsService
+          .new(current_user: current_user, accessed_project: @project)
+          .execute
+
+        respond_to do |format|
+          format.csv do
+            if response.success?
+              send_data(response.payload.fetch(:data),
+                type: 'text/csv; charset=utf-8',
+                filename: response.payload.fetch(:filename))
+            else
+              flash[:alert] = _('Failed to generate export')
+
+              redirect_to project_settings_ci_cd_path(@project)
+            end
+          end
+        end
+      end
+
       private
+
+      def audit_project_cicd_settings_access
+        audit_context = {
+          name: 'project_ci_cd_settings_accessed',
+          author: current_user,
+          scope: project,
+          target: project,
+          message: 'User accessed CI/CD settings for project',
+          additional_details: {
+            project_path: project.full_path,
+            project_id: project.id,
+            ip_address: request.remote_ip,
+            timestamp: Time.current.iso8601,
+            action: 'project_ci_cd_settings_page_viewed'
+          }
+        }
+
+        ::Gitlab::Audit::Auditor.audit(audit_context)
+      end
+
+      def authorize_reset_cache!
+        return if can_any?(current_user, [
+          :admin_pipeline,
+          :admin_runners
+        ], project)
+
+        access_denied!
+      end
+
+      def authorize_show_cicd_settings!
+        return if can_any?(current_user, [
+          :admin_cicd_variables,
+          :admin_protected_environments,
+          :admin_runners
+        ], project)
+
+        access_denied!
+      end
+
+      def authorize_update_cicd_settings!
+        return if can_any?(current_user, [
+          :admin_pipeline,
+          :admin_protected_environments
+        ], project)
+
+        access_denied!
+      end
 
       def highlight_badge(name, content, language = nil)
         Gitlab::Highlight.highlight(name, content, language: language)
@@ -88,10 +160,18 @@ module Projects
           :runners_token, :builds_enabled, :build_allow_git_fetch,
           :build_timeout_human_readable, :public_builds, :ci_separated_caches,
           :auto_cancel_pending_pipelines, :ci_config_path, :auto_rollback_enabled,
-          auto_devops_attributes: [:id, :domain, :enabled, :deploy_strategy],
-          ci_cd_settings_attributes: [:default_git_depth, :forward_deployment_enabled, :forward_deployment_rollback_allowed]
+          :protect_merge_request_pipelines,
+          :ci_display_pipeline_variables,
+          { auto_devops_attributes: [:id, :domain, :enabled, :deploy_strategy],
+            ci_cd_settings_attributes: permitted_project_ci_cd_settings_params }
         ].tap do |list|
           list << :max_artifacts_size if can?(current_user, :update_max_artifacts_size, project)
+        end
+      end
+
+      def permitted_project_ci_cd_settings_params
+        [:default_git_depth, :forward_deployment_enabled, :forward_deployment_rollback_allowed].tap do |list|
+          list << :delete_pipelines_in_human_readable if can?(current_user, :destroy_pipeline, project)
         end
       end
 
@@ -111,30 +191,10 @@ module Projects
       end
 
       def define_variables
-        define_runners_variables
         define_ci_variables
         define_triggers_variables
         define_badges_variables
         define_auto_devops_variables
-      end
-
-      def define_runners_variables
-        @project_runners = @project.runners.ordered.page(params[:project_page]).per(NUMBER_OF_RUNNERS_PER_PAGE).with_tags
-
-        @assignable_runners = current_user
-          .ci_owned_runners
-          .assignable_for(project)
-          .ordered
-          .page(params[:specific_page]).per(NUMBER_OF_RUNNERS_PER_PAGE)
-          .with_tags
-
-        active_shared_runners = ::Ci::Runner.instance_type.active
-        @shared_runners_count = active_shared_runners.count
-        @shared_runners = active_shared_runners.page(params[:shared_runners_page]).per(NUMBER_OF_RUNNERS_PER_PAGE).with_tags
-
-        parent_group_runners = ::Ci::Runner.belonging_to_parent_groups_of_project(@project.id)
-        @group_runners_count = parent_group_runners.count
-        @group_runners = parent_group_runners.page(params[:group_runners_page]).per(NUMBER_OF_RUNNERS_PER_PAGE).with_tags
       end
 
       def define_ci_variables
@@ -145,7 +205,7 @@ module Projects
       end
 
       def define_triggers_variables
-        @triggers = @project.triggers
+        @triggers = @project.triggers.with_last_used
           .present(current_user: current_user)
 
         @trigger = ::Ci::Trigger.new
@@ -156,7 +216,7 @@ module Projects
         @ref = params[:ref] || @project.default_branch_or_main
 
         @badges = [Gitlab::Ci::Badge::Pipeline::Status,
-                   Gitlab::Ci::Badge::Coverage::Report]
+          Gitlab::Ci::Badge::Coverage::Report]
 
         @badges.map! do |badge|
           badge.new(@project, @ref).metadata

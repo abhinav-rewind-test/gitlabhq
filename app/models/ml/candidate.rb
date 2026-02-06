@@ -6,9 +6,11 @@ module Ml
     include Presentable
     include AtomicInternalId
 
-    enum status: { running: 0, scheduled: 1, finished: 2, failed: 3, killed: 4 }
+    enum :status, { running: 0, scheduled: 1, finished: 2, failed: 3, killed: 4 }
 
-    validates :eid, :experiment, presence: true
+    PACKAGE_PREFIX = 'candidate_'
+
+    validates :eid, :experiment, :project, presence: true
     validates :status, inclusion: { in: statuses.keys }
     validates :model_version_id, uniqueness: { allow_nil: true }
 
@@ -29,6 +31,8 @@ module Ml
       scope: :project,
       init: AtomicInternalId.project_init(self, :internal_id)
 
+    before_destroy :check_model_version
+
     scope :including_relationships, -> { includes(:latest_metrics, :params, :user, :package, :project, :ci_build) }
     scope :by_name, ->(name) { where("ml_candidates.name LIKE ?", "%#{sanitize_sql_like(name)}%") } # rubocop:disable GitlabSecurity/SqlInjection
     scope :without_model_version, -> { where(model_version: nil) }
@@ -46,8 +50,7 @@ module Ml
               Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
                 attribute_name: 'metric_value',
                 order_expression: metric_order_expression,
-                nullable: :nulls_last,
-                distinct: false
+                nullable: :nulls_last
               ),
               Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
                 attribute_name: 'id',
@@ -57,8 +60,11 @@ module Ml
         )
     end
 
-    alias_attribute :artifact, :package
+    alias_method :artifact, :package
+    alias_method :artifact=, :package=
+
     alias_attribute :iid, :internal_id
+    alias_method :iid=, :internal_id=
 
     delegate :package_name, to: :experiment
 
@@ -67,11 +73,15 @@ module Ml
     end
 
     def package_version
-      iid
+      package&.generic? ? iid : "#{PACKAGE_PREFIX}#{iid}"
     end
 
     def from_ci?
       ci_build_id.present?
+    end
+
+    def for_model?
+      experiment.for_model? && !model_version_id.present?
     end
 
     class << self
@@ -86,6 +96,21 @@ module Ml
 
         find_by(project_id: project_id, internal_id: iid)
       end
+
+      def with_project_id_and_id(project_id, id)
+        return unless project_id.present? && id.present?
+
+        find_by(project_id: project_id, id: id)
+      end
+    end
+
+    private
+
+    def check_model_version
+      return unless model_version_id
+
+      errors.add(:base, _("Cannot delete a candidate associated to a model version"))
+      throw :abort # rubocop:disable Cop/BanCatchThrow
     end
   end
 end

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   def invalidate_reference(reference)
@@ -14,17 +14,17 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
   end
 
   let(:project) { create(:project, :public) }
-  subject { project }
-
   let(:subject_name) { "project" }
   let(:reference) { get_reference(project) }
+
+  subject { project }
 
   it_behaves_like 'user reference or project reference'
 
   it 'ignores invalid projects' do
-    exp = act = "Hey #{invalidate_reference(reference)}"
+    act = "Hey #{invalidate_reference(reference)}"
 
-    expect(reference_filter(act).to_html).to eq(CGI.escapeHTML(exp))
+    expect(reference_filter(act).to_html).to include(CGI.escapeHTML(act))
   end
 
   context 'when invalid reference strings are very long' do
@@ -32,7 +32,7 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
       it 'fails fast for long strings' do
         # took well under 1 second in CI https://dev.gitlab.org/gitlab/gitlabhq/merge_requests/3267#note_172824
         expect do
-          Timeout.timeout(3.seconds) { reference_filter(ref_string).to_html }
+          Timeout.timeout(BANZAI_FILTER_TIMEOUT_MAX) { reference_filter(ref_string).to_html }
         end.not_to raise_error
       end
     end
@@ -49,14 +49,25 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Hey #{CGI.escapeHTML(reference)}</#{elem}>"
-      expect(reference_filter(act).to_html).to eq exp
+      act = "<#{elem}>Hey #{CGI.escapeHTML(reference)}</#{elem}>"
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   it 'includes default classes' do
     doc = reference_filter("Hey #{reference}")
     expect(doc.css('a').first.attr('class')).to eq 'gfm gfm-project has-tooltip'
+  end
+
+  it 'adds data-original for the redactor, preserving the input' do
+    entered = reference.upcase
+    expect(entered).not_to eq(reference)
+
+    doc = reference_filter("Hey #{entered}")
+    a = doc.css('a').first
+
+    expect(a.content).to eq(reference) # Text content is canonicalised (when visible) ...
+    expect(a.attr('data-original')).to eq_html(entered) # ... but original input is preserved for redaction.
   end
 
   context 'in group context' do
@@ -83,8 +94,10 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
 
   describe '#projects_hash' do
     it 'returns a Hash containing all Projects' do
-      document = Nokogiri::HTML.fragment("<p>#{get_reference(project)}</p>")
-      filter = described_class.new(document, project: project)
+      frag = Nokogiri::HTML.fragment("<p></p>")
+      frag.css('p').first.content = get_reference(project)
+
+      filter = described_class.new(frag, project: project)
 
       expect(filter.send(:projects_hash)).to eq({ project.full_path => project })
     end
@@ -92,10 +105,36 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
 
   describe '#projects' do
     it 'returns the projects mentioned in a document' do
-      document = Nokogiri::HTML.fragment("<p>#{get_reference(project)}</p>")
-      filter = described_class.new(document, project: project)
+      frag = Nokogiri::HTML.fragment("<p></p>")
+      frag.css('p').first.content = get_reference(project)
+
+      filter = described_class.new(frag, project: project)
 
       expect(filter.send(:projects)).to eq([project.full_path])
+    end
+
+    it 'correctly locates project mentions in hrefs' do
+      frag = Nokogiri::HTML.fragment("<p></p>")
+
+      a = frag.document.create_element('a')
+      frag.css('p').first.add_child(a)
+      a['href'] = get_reference(project)
+
+      filter = described_class.new(frag, project: project)
+
+      expect(filter.send(:projects)).to eq([project.full_path])
+    end
+
+    it 'does not locate project mentions where it ought not look' do
+      frag = Nokogiri::HTML.fragment("<p></p>")
+
+      a = frag.document.create_element('a')
+      frag.css('p').first.add_child(a)
+      a['data-elsewhere'] = get_reference(project)
+
+      filter = described_class.new(frag, project: project)
+
+      expect(filter.send(:projects)).to eq([])
     end
   end
 
@@ -119,7 +158,7 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
         reference_filter(markdown)
       end
 
-      expect(control.count).to eq 2
+      expect(control.count).to eq 1
 
       markdown = "#{normal_project_reference} #{invalidate_reference(normal_project_reference)} #{group_project_reference} #{nested_project_reference}"
 
@@ -127,5 +166,14 @@ RSpec.describe Banzai::Filter::References::ProjectReferenceFilter, feature_categ
         reference_filter(markdown)
       end.not_to exceed_all_query_limit(control)
     end
+  end
+
+  it_behaves_like 'limits the number of filtered items' do
+    let(:text) { "#{reference} #{reference} #{reference}" }
+    let(:ends_with) { "</a> #{CGI.escapeHTML(reference)}" }
+  end
+
+  it_behaves_like 'ReferenceFilter#references_in' do
+    let(:filter_instance) { described_class.new(nil, { project: nil }) }
   end
 end

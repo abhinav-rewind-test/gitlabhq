@@ -1,6 +1,4 @@
 .modal-header {
-  background-color: $modal-body-bg;
-
   .page-title,
   .modal-title {
     max-width: 100%;
@@ -33,7 +31,6 @@
 }
 
 .modal-body {
-  background-color: $modal-body-bg;
   line-height: $line-height-base;
   position: relative;
   min-height: $modal-body-height;
@@ -43,10 +40,6 @@
 
   .form-actions {
     margin: #{2 * $grid-size} #{-2 * $grid-size} #{-2 * $grid-size};
-  }
-
-  .text-danger:not(.dropdown-item) {
-    font-weight: $gl-font-weight-bold;
   }
 }
 
@@ -69,7 +62,7 @@
     margin-left: -1px;
   }
 
-  @include media-breakpoint-down(xs) {
+  @include gl-media-breakpoint-down(sm) {
     flex-direction: column;
 
     .btn-group .btn + .btn {
@@ -81,23 +74,24 @@
 
 body.modal-open {
   overflow: hidden;
+}
+
+body.modal-open {
   padding-right: 0 !important;
 }
 
 .modal {
-  background-color: $t-gray-a-24;
+  @apply gl-bg-overlay;
 
   .modal-content {
-    border-radius: $modal-border-radius;
+    @apply gl-rounded-2xl;
 
     > :first-child {
-      border-top-left-radius: $modal-border-radius;
-      border-top-right-radius: $modal-border-radius;
+      @apply gl-rounded-t-2xl;
     }
 
     > :last-child {
-      border-bottom-left-radius: $modal-border-radius;
-      border-bottom-right-radius: $modal-border-radius;
+      @apply gl-rounded-b-2xl;
     }
   }
 }

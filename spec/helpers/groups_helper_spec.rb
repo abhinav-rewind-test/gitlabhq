@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
   include ApplicationHelper
   include AvatarsHelper
+  include NumbersHelper
 
   describe '#group_icon_url' do
     it 'returns an url for the avatar' do
@@ -81,45 +82,30 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
   end
 
-  describe '#group_title' do
+  describe '#push_group_breadcrumbs' do
     let_it_be(:group) { create(:group) }
     let_it_be(:nested_group) { create(:group, parent: group) }
     let_it_be(:deep_nested_group) { create(:group, parent: nested_group) }
     let_it_be(:very_deep_nested_group) { create(:group, parent: deep_nested_group) }
 
-    subject { helper.group_title(very_deep_nested_group) }
+    subject { helper.push_group_breadcrumbs(very_deep_nested_group) }
 
-    context 'traversal queries' do
-      shared_examples 'correct ancestor order' do
-        it 'outputs the groups in the correct order' do
-          expect(subject)
-            .to match(%r{<li.*><a.*>#{deep_nested_group.name}.*</li>.*<a.*>#{very_deep_nested_group.name}</a>}m)
-        end
-      end
-
-      before do
-        very_deep_nested_group.reload # make sure traversal_ids are reloaded
-      end
-
-      include_examples 'correct ancestor order'
-    end
-
-    it 'enqueues the elements in the breadcrumb schema list' do
-      expect(helper).to receive(:push_to_schema_breadcrumb).with(group.name, group_path(group))
-      expect(helper).to receive(:push_to_schema_breadcrumb).with(nested_group.name, group_path(nested_group))
-      expect(helper).to receive(:push_to_schema_breadcrumb).with(deep_nested_group.name, group_path(deep_nested_group))
-      expect(helper).to receive(:push_to_schema_breadcrumb).with(very_deep_nested_group.name, group_path(very_deep_nested_group))
+    it 'enqueues the elements in the breadcrumb schema list in the correct order' do
+      expect(helper).to receive(:push_to_schema_breadcrumb).with(group.name, group_path(group), nil).ordered
+      expect(helper).to receive(:push_to_schema_breadcrumb).with(nested_group.name, group_path(nested_group), nil).ordered
+      expect(helper).to receive(:push_to_schema_breadcrumb).with(deep_nested_group.name, group_path(deep_nested_group), nil).ordered
+      expect(helper).to receive(:push_to_schema_breadcrumb).with(very_deep_nested_group.name, group_path(very_deep_nested_group), nil).ordered
 
       subject
     end
 
     it 'avoids N+1 queries' do
       control = ActiveRecord::QueryRecorder.new do
-        helper.group_title(nested_group)
+        helper.push_group_breadcrumbs(nested_group)
       end
 
       expect do
-        helper.group_title(very_deep_nested_group)
+        helper.push_group_breadcrumbs(very_deep_nested_group)
       end.not_to exceed_query_limit(control)
     end
   end
@@ -301,6 +287,56 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
   end
 
+  describe '#can_set_group_diff_preview_in_email?' do
+    let_it_be(:group) { create(:group, name: 'group') }
+    let_it_be(:subgroup) { create(:group, name: 'subgroup', parent: group) }
+
+    let_it_be(:current_user) { create(:user) }
+    let_it_be(:group_owner)  { create(:group_member, :owner, group: group, user: create(:user)).user }
+    let_it_be(:group_maintainer) { create(:group_member, :maintainer, group: group, user: create(:user)).user }
+
+    before do
+      group.update_attribute(:show_diff_preview_in_email, true)
+    end
+
+    it 'returns true for an owner of the group' do
+      allow(helper).to receive(:current_user) { group_owner }
+
+      expect(helper.can_set_group_diff_preview_in_email?(group)).to be_truthy
+    end
+
+    it 'returns false for a maintainer of the group' do
+      allow(helper).to receive(:current_user) { group_maintainer }
+
+      expect(helper.can_set_group_diff_preview_in_email?(group)).to be_falsey
+    end
+
+    it 'returns false for anyone else' do
+      allow(helper).to receive(:current_user) { current_user }
+
+      expect(helper.can_set_group_diff_preview_in_email?(group)).to be_falsey
+    end
+
+    context 'respects the settings of a parent group' do
+      context 'when a parent group has disabled diff previews' do
+        before do
+          group.update_attribute(:show_diff_preview_in_email, false)
+        end
+
+        it 'returns false for all users' do
+          allow(helper).to receive(:current_user) { group_owner }
+          expect(helper.can_set_group_diff_preview_in_email?(subgroup)).to be_falsey
+
+          allow(helper).to receive(:current_user) { group_maintainer }
+          expect(helper.can_set_group_diff_preview_in_email?(subgroup)).to be_falsey
+
+          allow(helper).to receive(:current_user) { current_user }
+          expect(helper.can_set_group_diff_preview_in_email?(subgroup)).to be_falsey
+        end
+      end
+    end
+  end
+
   describe '#can_update_default_branch_protection?' do
     let_it_be(:current_user) { create(:user) }
     let_it_be(:group) { create(:group) }
@@ -395,17 +431,22 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
   end
 
-  describe '#can_admin_service_accounts?', feature_category: :user_management do
+  describe '#can_invite_group_member?' do
     let_it_be(:user) { create(:user) }
     let_it_be(:group) { create(:group) }
 
     before do
       allow(helper).to receive(:current_user) { user }
-      group.add_owner(user)
     end
 
-    it 'returns false when current_user can not admin members' do
-      expect(helper.can_admin_service_accounts?(group)).to be(false)
+    it 'returns true when current_user can invite members' do
+      group.add_owner(user)
+
+      expect(helper.can_invite_group_member?(group)).to be(true)
+    end
+
+    it 'returns false when current_user can not invite members' do
+      expect(helper.can_invite_group_member?(group)).to be(false)
     end
   end
 
@@ -417,12 +458,17 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
   describe '#subgroup_creation_data' do
     let_it_be(:name) { 'parent group' }
+    let_it_be(:user) { build(:user) }
     let_it_be(:group) { build(:group, name: name) }
     let_it_be(:subgroup) { build(:group, parent: group) }
 
+    before do
+      allow(helper).to receive(:current_user) { user }
+    end
+
     context 'when group has a parent' do
       it 'returns expected hash' do
-        expect(subgroup_creation_data(subgroup)).to eq({
+        expect(helper.subgroup_creation_data(subgroup)).to include({
           import_existing_group_path: '/groups/new#import-group-pane',
           parent_group_name: name,
           parent_group_url: group_url(group),
@@ -433,7 +479,7 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
     context 'when group does not have a parent' do
       it 'returns expected hash' do
-        expect(subgroup_creation_data(group)).to eq({
+        expect(helper.subgroup_creation_data(group)).to include({
           import_existing_group_path: '/groups/new#import-group-pane',
           parent_group_name: nil,
           parent_group_url: nil,
@@ -461,39 +507,29 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
   end
 
-  describe '#group_overview_tabs_app_data' do
+  describe '#groups_show_app_data' do
     let_it_be(:group) { create(:group) }
     let_it_be(:user) { create(:user) }
     let_it_be(:initial_sort) { 'created_asc' }
 
     before do
       allow(helper).to receive(:current_user).and_return(user)
-
       allow(helper).to receive(:can?).with(user, :create_subgroup, group) { true }
       allow(helper).to receive(:can?).with(user, :create_projects, group) { true }
-      allow(helper).to receive(:project_list_sort_by).and_return(initial_sort)
+      allow(helper).to receive(:group_project_list_sort_by).and_return(initial_sort)
     end
 
-    it 'returns expected hash' do
-      expect(helper.group_overview_tabs_app_data(group)).to match(
+    it 'returns expected json' do
+      expect(Gitlab::Json.parse(helper.groups_show_app_data(group))).to match(
         {
-          group_id: group.id,
-          subgroups_and_projects_endpoint: including("/groups/#{group.path}/-/children.json"),
-          shared_projects_endpoint: including("/groups/#{group.path}/-/shared_projects.json"),
-          inactive_projects_endpoint: including("/groups/#{group.path}/-/children.json?archived=only"),
-          current_group_visibility: group.visibility,
-          initial_sort: initial_sort,
-          show_schema_markup: 'true',
-          new_subgroup_path: including("groups/new?parent_id=#{group.id}#create-group-pane"),
-          new_project_path: including("/projects/new?namespace_id=#{group.id}"),
-          new_subgroup_illustration: including('illustrations/subgroup-create-new-sm'),
-          new_project_illustration: including('illustrations/project-create-new-sm'),
-          empty_projects_illustration: including('illustrations/empty-state/empty-projects-md'),
-          empty_subgroup_illustration: including('illustrations/empty-state/empty-subgroup-md'),
-          empty_search_illustration: including('illustrations/empty-state/empty-search-md'),
-          render_empty_state: 'true',
-          can_create_subgroups: 'true',
-          can_create_projects: 'true'
+          'subgroups_and_projects_endpoint' => group_children_path(group, format: :json),
+          'initial_sort' => initial_sort,
+          'full_path' => group.full_path,
+          'new_subgroup_path' => "/groups/new?parent_id=#{group.id}#create-group-pane",
+          'new_project_path' => "/projects/new?namespace_id=#{group.id}",
+          'empty_projects_illustration' => including('illustrations/empty-state/empty-projects-md'),
+          'can_create_subgroups' => true,
+          'can_create_projects' => true
         }
       )
     end
@@ -528,6 +564,60 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
 
       it 'when user can not see the project' do
         expect(helper.show_group_readme?(group)).to be(false)
+      end
+    end
+  end
+
+  describe '#group_archive_settings_app_data' do
+    let_it_be(:group) { create(:group) }
+
+    subject { helper.group_archive_settings_app_data(group) }
+
+    it 'returns correct data' do
+      is_expected.to match({
+        resource_type: 'group',
+        resource_id: group.id,
+        resource_path: including(group.full_path),
+        marked_for_deletion: 'false'
+      })
+    end
+
+    context 'when group is marked for deletion' do
+      let_it_be(:group) { create(:group_with_deletion_schedule) }
+
+      it { is_expected.to match(hash_including(marked_for_deletion: 'true')) }
+    end
+  end
+
+  describe '#group_unarchive_settings_app_data' do
+    let_it_be_with_reload(:ancestor) { create(:group) }
+    let_it_be(:group) { create(:group, parent: ancestor) }
+
+    subject { helper.group_unarchive_settings_app_data(group) }
+
+    context 'when ancestor is not archived' do
+      it 'returns correct data' do
+        is_expected.to match({
+          resource_type: 'group',
+          resource_id: group.id,
+          resource_path: including(group.full_path),
+          ancestors_archived: 'false'
+        })
+      end
+    end
+
+    context 'when ancestor is archived' do
+      before do
+        ancestor.namespace_settings.update!(archived: true)
+      end
+
+      it 'returns correct data' do
+        is_expected.to match({
+          resource_type: 'group',
+          resource_id: group.id,
+          resource_path: including(group.full_path),
+          ancestors_archived: 'true'
+        })
       end
     end
   end
@@ -594,104 +684,6 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
     end
   end
 
-  describe '#access_level_roles_user_can_assign' do
-    subject { helper.access_level_roles_user_can_assign(group) }
-
-    let_it_be(:group) { create(:group) }
-    let_it_be_with_reload(:user) { create(:user) }
-
-    context 'when user is provided' do
-      before do
-        allow(helper).to receive(:current_user).and_return(user)
-      end
-
-      context 'when a user is a group member' do
-        before do
-          group.add_developer(user)
-        end
-
-        it 'returns only the roles the provided user can assign' do
-          expect(subject).to eq(
-            {
-              'Guest' => 10,
-              'Reporter' => 20,
-              'Developer' => 30
-            }
-          )
-        end
-      end
-
-      context 'when a user is an admin', :enable_admin_mode do
-        before do
-          user.update!(admin: true)
-        end
-
-        it 'returns all roles' do
-          expect(subject).to eq(
-            {
-              'Guest' => 10,
-              'Reporter' => 20,
-              'Developer' => 30,
-              'Maintainer' => 40,
-              'Owner' => 50
-            }
-          )
-        end
-      end
-
-      context 'when a user is not a group member' do
-        it 'returns the empty array' do
-          expect(subject).to be_empty
-        end
-      end
-
-      context 'when a user has different access for different groups in the hierarchy' do
-        let_it_be(:grand_parent) { create(:group) }
-        let_it_be(:parent) { create(:group, parent: grand_parent) }
-        let_it_be(:child) { create(:group, parent: parent) }
-        let_it_be(:grand_child) { create(:group, parent: child) }
-
-        before_all do
-          parent.add_developer(user)
-          child.add_maintainer(user)
-          grand_child.add_owner(user)
-        end
-
-        it 'returns the access levels that are peers or lower' do
-          expect(helper.access_level_roles_user_can_assign(grand_parent)).to be_empty
-          expect(helper.access_level_roles_user_can_assign(parent)).to eq({
-            'Guest' => ::Gitlab::Access::GUEST,
-            'Reporter' => ::Gitlab::Access::REPORTER,
-            'Developer' => ::Gitlab::Access::DEVELOPER
-          })
-          expect(helper.access_level_roles_user_can_assign(child)).to eq(::Gitlab::Access.options)
-          expect(helper.access_level_roles_user_can_assign(grand_child)).to eq(::Gitlab::Access.options_with_owner)
-        end
-      end
-
-      context 'when a group is linked to another' do
-        let_it_be(:other_group) { create(:group) }
-        let_it_be(:group_link) { create(:group_group_link, shared_group: group, shared_with_group: other_group, group_access: Gitlab::Access::MAINTAINER) }
-
-        before_all do
-          other_group.add_owner(user)
-        end
-
-        it { is_expected.to eq(::Gitlab::Access.options) }
-      end
-
-      context 'when user is not provided' do
-        before do
-          allow(helper).to receive(:current_user).and_return(nil)
-        end
-
-        it 'returns the empty array' do
-          expect(subject).to be_empty
-        end
-      end
-    end
-  end
-
   describe '#show_prevent_inviting_groups_outside_hierarchy_setting?' do
     let_it_be(:group) { create(:group) }
 
@@ -703,6 +695,96 @@ RSpec.describe GroupsHelper, feature_category: :groups_and_projects do
       subgroup = create(:group, parent: group)
 
       expect(helper.show_prevent_inviting_groups_outside_hierarchy_setting?(subgroup)).to eq(false)
+    end
+  end
+
+  describe '#groups_list_with_filtered_search_app_data' do
+    let_it_be(:endpoint) { '/groups' }
+
+    it 'returns expected json' do
+      expect(Gitlab::Json.parse(helper.groups_list_with_filtered_search_app_data(endpoint))).to eq(
+        {
+          'endpoint' => endpoint,
+          'initial_sort' => 'created_desc',
+          'base_path' => '/dashboard/groups'
+        }
+      )
+    end
+  end
+
+  describe '#group_merge_requests' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, namespace: group) }
+    let_it_be(:merge_request) { create(:merge_request, :simple, source_project: project, target_project: project) }
+
+    before do
+      group.add_owner(user)
+
+      allow(helper).to receive(:current_user).and_return(user)
+    end
+
+    it 'returns group merge requests' do
+      expect(helper.group_merge_requests(group)).to contain_exactly(merge_request)
+    end
+  end
+
+  describe '#step_up_auth_provider_options_for_select' do
+    using RSpec::Parameterized::TableSyntax
+
+    let_it_be(:group) { create(:group) }
+    let_it_be(:current_user) { create(:user, owner_of: group) }
+
+    let(:omniauth_provider_oidc) do
+      GitlabSettings::Options.new(
+        name: "openid_connect",
+        step_up_auth: {
+          namespace: {
+            id_token: {
+              required: {
+                acr: 'gold'
+              }
+            }
+          }
+        }
+      )
+    end
+
+    let(:omniauth_provider_oidc_only_namespace) do
+      GitlabSettings::Options.new(
+        name: "openid_connect_only_namespace",
+        label: "OpenID Connect (Only namespace)",
+        args: {
+          strategy_class: 'OmniAuth::Strategies::OpenIDConnect'
+        },
+        step_up_auth: {
+          namespace: {
+            id_token: {
+              required: {
+                acr: 'gold'
+              }
+            }
+          }
+        }
+      )
+    end
+
+    subject { helper.step_up_auth_provider_options_for_select }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(current_user)
+
+      stub_omniauth_setting(enabled: true, providers: providers)
+      allow(Devise).to receive(:omniauth_providers).and_return(providers.map(&:name))
+    end
+
+    where(:providers, :expected_options) do
+      [ref(:omniauth_provider_oidc), ref(:omniauth_provider_oidc_only_namespace)] | [['Openid connect', 'openid_connect'], ['OpenID Connect (Only namespace)', 'openid_connect_only_namespace']]
+      [ref(:omniauth_provider_oidc)] | [['Openid connect', 'openid_connect']]
+      [] | []
+    end
+    with_them do
+      it { is_expected.to match_array(expected_options) }
     end
   end
 end

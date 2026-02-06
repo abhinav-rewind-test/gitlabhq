@@ -1,11 +1,14 @@
 import { nextTick } from 'vue';
 import { GlFormInputGroup } from '@gitlab/ui';
 
-import InputCopyToggleVisibility from '~/vue_shared/components/form/input_copy_toggle_visibility.vue';
-import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
+import InputCopyToggleVisibility from '~/vue_shared/components/input_copy_toggle_visibility/input_copy_toggle_visibility.vue';
+import SimpleCopyButton from '~/vue_shared/components/simple_copy_button.vue';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { MOUSETRAP_COPY_KEYBOARD_SHORTCUT } from '~/lib/mousetrap';
+import { copyToClipboard } from '~/lib/utils/copy_to_clipboard';
+
+jest.mock('~/lib/utils/copy_to_clipboard');
 
 describe('InputCopyToggleVisibility', () => {
   let wrapper;
@@ -15,9 +18,6 @@ describe('InputCopyToggleVisibility', () => {
   const createComponent = ({ props, ...options } = {}) => {
     wrapper = mountExtended(InputCopyToggleVisibility, {
       propsData: props,
-      directives: {
-        GlTooltip: createMockDirective('gl-tooltip'),
-      },
       ...options,
     });
   };
@@ -32,15 +32,9 @@ describe('InputCopyToggleVisibility', () => {
     wrapper.findByRole('button', {
       name: InputCopyToggleVisibility.i18n.toggleVisibilityLabelHide,
     });
-  const findCopyButton = () => wrapper.findComponent(ClipboardButton);
-  const createCopyEvent = () => {
-    const event = new Event('copy', { cancelable: true });
-    Object.assign(event, { preventDefault: jest.fn(), clipboardData: { setData: jest.fn() } });
-
-    return event;
-  };
+  const findCopyButton = () => wrapper.findComponent(SimpleCopyButton);
   const triggerCopyShortcut = () => {
-    wrapper.vm.$options.mousetrap.trigger(MOUSETRAP_COPY_KEYBOARD_SHORTCUT);
+    wrapper.vm.mousetrap.trigger(MOUSETRAP_COPY_KEYBOARD_SHORTCUT);
   };
 
   function expectInputToBeMasked() {
@@ -51,17 +45,6 @@ describe('InputCopyToggleVisibility', () => {
     expect(findFormInput().classes()).not.toContain('input-copy-show-disc');
     expect(findFormInput().element.value).toBe(valueProp);
   }
-
-  const itDoesNotModifyCopyEvent = () => {
-    it('does not modify copy event', () => {
-      const event = createCopyEvent();
-
-      findFormInput().element.dispatchEvent(event);
-
-      expect(event.clipboardData.setData).not.toHaveBeenCalled();
-      expect(event.preventDefault).not.toHaveBeenCalled();
-    });
-  };
 
   describe('when `value` prop is passed', () => {
     beforeEach(() => {
@@ -76,16 +59,12 @@ describe('InputCopyToggleVisibility', () => {
       expectInputToBeMasked();
     });
 
-    it('emits `copy` event and sets clipboard when copying token via keyboard shortcut', async () => {
-      const writeTextSpy = jest.spyOn(global.navigator.clipboard, 'writeText');
-
-      expect(wrapper.emitted('copy')).toBeUndefined();
+    it('sets clipboard when copying token via keyboard shortcut', () => {
+      expect(copyToClipboard).not.toHaveBeenCalled();
 
       triggerCopyShortcut();
-      await nextTick();
 
-      expect(wrapper.emitted('copy')[0]).toEqual([]);
-      expect(writeTextSpy).toHaveBeenCalledWith(valueProp);
+      expect(copyToClipboard).toHaveBeenCalledTimes(1);
     });
 
     describe('copy button', () => {
@@ -93,18 +72,6 @@ describe('InputCopyToggleVisibility', () => {
         expect(findCopyButton().props()).toMatchObject({
           text: valueProp,
           title: 'Copy',
-        });
-      });
-
-      describe('when clicked', () => {
-        beforeEach(async () => {
-          await findCopyButton().trigger('click');
-        });
-
-        it('emits `copy` event', () => {
-          expect(wrapper.emitted()).toHaveProperty('copy');
-          expect(wrapper.emitted('copy')).toHaveLength(1);
-          expect(wrapper.emitted('copy')[0]).toEqual([]);
         });
       });
     });
@@ -117,6 +84,9 @@ describe('InputCopyToggleVisibility', () => {
           props: {
             value: valueProp,
             readonly: true,
+          },
+          directives: {
+            GlTooltip: createMockDirective('gl-tooltip'),
           },
         });
       });
@@ -185,8 +155,6 @@ describe('InputCopyToggleVisibility', () => {
         expectInputToBeRevealed();
       });
 
-      itDoesNotModifyCopyEvent();
-
       describe('when input is clicked', () => {
         it('selects input value', async () => {
           const mockSelect = jest.fn();
@@ -233,92 +201,121 @@ describe('InputCopyToggleVisibility', () => {
     });
 
     describe('and `value` prop is passed', () => {
+      describe('tooltip', () => {
+        beforeEach(() => {
+          createComponent({
+            props: {
+              value: valueProp,
+              readonly: false,
+            },
+            directives: {
+              GlTooltip: createMockDirective('gl-tooltip'),
+            },
+          });
+        });
+
+        it('renders a reveal button', () => {
+          const revealButton = findRevealButton();
+
+          expect(revealButton.exists()).toBe(true);
+
+          const tooltip = getBinding(revealButton.element, 'gl-tooltip');
+
+          expect(tooltip.value).toBe(InputCopyToggleVisibility.i18n.toggleVisibilityLabelReveal);
+        });
+
+        it('renders a hide button once revealed', async () => {
+          const revealButton = findRevealButton();
+          await revealButton.trigger('click');
+          await nextTick();
+
+          const hideButton = findHideButton();
+          expect(hideButton.exists()).toBe(true);
+
+          const tooltip = getBinding(hideButton.element, 'gl-tooltip');
+
+          expect(tooltip.value).toBe(InputCopyToggleVisibility.i18n.toggleVisibilityLabelHide);
+        });
+      });
+
+      describe('no tooltip', () => {
+        beforeEach(() => {
+          createComponent({
+            props: {
+              value: valueProp,
+              readonly: false,
+            },
+          });
+        });
+
+        it('emits `input` event when editing', () => {
+          expect(wrapper.emitted('input')).toBeUndefined();
+          const newVal = 'ding!';
+
+          const input = findFormInput();
+          input.element.value = newVal;
+          input.trigger('input');
+
+          expect(wrapper.emitted()).toHaveProperty('input');
+          expect(wrapper.emitted('input')).toHaveLength(1);
+          expect(wrapper.emitted('input')[0][0]).toBe(newVal);
+        });
+
+        it('copies updated value to clipboard after editing', async () => {
+          triggerCopyShortcut();
+
+          expect(copyToClipboard).toHaveBeenLastCalledWith(valueProp);
+
+          const updatedValue = 'wow amazing';
+          wrapper.setProps({ value: updatedValue });
+          await nextTick();
+
+          triggerCopyShortcut();
+
+          expect(copyToClipboard).toHaveBeenLastCalledWith(updatedValue);
+        });
+
+        describe('when input is clicked', () => {
+          it('shows the actual value', async () => {
+            const input = findFormInput();
+
+            expectInputToBeMasked();
+            await findFormInput().trigger('click');
+
+            expect(input.element.value).toBe(valueProp);
+          });
+
+          it('ensures the selection start/end are in the correct position once the actual value has been revealed', async () => {
+            const input = findFormInput();
+            const selectionStart = 2;
+            const selectionEnd = 4;
+
+            input.element.setSelectionRange(selectionStart, selectionEnd);
+            await input.trigger('click');
+
+            expect(input.element.selectionStart).toBe(selectionStart);
+            expect(input.element.selectionEnd).toBe(selectionEnd);
+          });
+        });
+      });
+    });
+
+    describe('and the input is invalid', () => {
       beforeEach(() => {
         createComponent({
           props: {
-            value: valueProp,
+            value: '',
             readonly: false,
+            formInputGroupProps: { state: false },
+          },
+          attrs: {
+            'invalid-feedback': 'Oh no, something is invalid',
           },
         });
       });
 
-      it('renders a reveal button', () => {
-        const revealButton = findRevealButton();
-
-        expect(revealButton.exists()).toBe(true);
-
-        const tooltip = getBinding(revealButton.element, 'gl-tooltip');
-
-        expect(tooltip.value).toBe(InputCopyToggleVisibility.i18n.toggleVisibilityLabelReveal);
-      });
-
-      it('renders a hide button once revealed', async () => {
-        const revealButton = findRevealButton();
-        await revealButton.trigger('click');
-        await nextTick();
-
-        const hideButton = findHideButton();
-        expect(hideButton.exists()).toBe(true);
-
-        const tooltip = getBinding(hideButton.element, 'gl-tooltip');
-
-        expect(tooltip.value).toBe(InputCopyToggleVisibility.i18n.toggleVisibilityLabelHide);
-      });
-
-      it('emits `input` event when editing', () => {
-        expect(wrapper.emitted('input')).toBeUndefined();
-        const newVal = 'ding!';
-
-        const input = findFormInput();
-        input.element.value = newVal;
-        input.trigger('input');
-
-        expect(wrapper.emitted()).toHaveProperty('input');
-        expect(wrapper.emitted('input')).toHaveLength(1);
-        expect(wrapper.emitted('input')[0][0]).toBe(newVal);
-      });
-
-      it('copies updated value to clipboard after editing', async () => {
-        const writeTextSpy = jest.spyOn(global.navigator.clipboard, 'writeText');
-
-        triggerCopyShortcut();
-        await nextTick();
-
-        expect(wrapper.emitted('copy')).toHaveLength(1);
-        expect(writeTextSpy).toHaveBeenCalledWith(valueProp);
-
-        const updatedValue = 'wow amazing';
-        wrapper.setProps({ value: updatedValue });
-        await nextTick();
-
-        triggerCopyShortcut();
-        await nextTick();
-
-        expect(wrapper.emitted('copy')).toHaveLength(2);
-        expect(writeTextSpy).toHaveBeenCalledWith(updatedValue);
-      });
-
-      describe('when input is clicked', () => {
-        it('shows the actual value', async () => {
-          const input = findFormInput();
-
-          expectInputToBeMasked();
-          await findFormInput().trigger('click');
-
-          expect(input.element.value).toBe(valueProp);
-        });
-
-        it('ensures the selection start/end are in the correct position once the actual value has been revealed', async () => {
-          const input = findFormInput();
-          const selectionStart = 2;
-          const selectionEnd = 4;
-
-          input.element.setSelectionRange(selectionStart, selectionEnd);
-          await input.trigger('click');
-
-          expect(input.element.selectionStart).toBe(selectionStart);
-          expect(input.element.selectionEnd).toBe(selectionEnd);
-        });
+      it('should add class to force validation message visibility', () => {
+        expect(wrapper.classes('input-copy-toggle-visibility-is-invalid')).toBe(true);
       });
     });
   });
@@ -341,8 +338,6 @@ describe('InputCopyToggleVisibility', () => {
     it('displays value', () => {
       expectInputToBeRevealed();
     });
-
-    itDoesNotModifyCopyEvent();
   });
 
   describe('when `showCopyButton` is `false`', () => {
@@ -403,10 +398,12 @@ describe('InputCopyToggleVisibility', () => {
     createComponent({
       props: {
         copyButtonTitle: 'Copy token',
+        copyButtonToastMessage: 'Token copied to clipboard.',
       },
     });
 
     expect(findCopyButton().props('title')).toBe('Copy token');
+    expect(findCopyButton().props('toastMessage')).toBe('Token copied to clipboard.');
   });
 
   it('renders slots in `gl-form-group`', () => {

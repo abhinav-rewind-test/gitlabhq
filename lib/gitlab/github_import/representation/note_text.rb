@@ -15,6 +15,8 @@ module Gitlab
 
         expose_attribute :record_db_id, :record_type, :text, :iid, :tag, :noteable_type
 
+        attr_accessor :object_type
+
         # Builds a note text representation from DB record of Note or Release.
         #
         # record - An instance of `Note`, `Release`, `Issue`, `MergeRequest` model
@@ -53,14 +55,6 @@ module Gitlab
           {
             db_id: record_db_id
           }.merge(record_type_specific_attribute)
-        end
-
-        def has_attachments?
-          attachments.present?
-        end
-
-        def attachments
-          @attachments ||= MarkdownText.fetch_attachments(text)
         end
 
         private

@@ -23,6 +23,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::Client, :clean_gitla
 
   before do
     stub_const('TestConcurrencyLimitWorker', worker_class)
+    stub_feature_flags(disable_sidekiq_concurrency_limit_middleware_TestConcurrencyLimitWorker: false)
   end
 
   describe '#call' do
@@ -40,10 +41,24 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::Client, :clean_gitla
       end
     end
 
+    context 'when per worker feature flag is enabled' do
+      before do
+        stub_feature_flags(disable_sidekiq_concurrency_limit_middleware_TestConcurrencyLimitWorker: true)
+      end
+
+      it 'schedules the job' do
+        expect(Gitlab::SidekiqMiddleware::ConcurrencyLimit::ConcurrencyLimitService).not_to receive(:add_to_queue!)
+
+        TestConcurrencyLimitWorker.perform_async('foo')
+
+        expect(TestConcurrencyLimitWorker.jobs.size).to eq(1)
+      end
+    end
+
     context 'when there are jobs in the queue' do
       before do
         allow(::Gitlab::SidekiqMiddleware::ConcurrencyLimit::ConcurrencyLimitService).to receive(:has_jobs_in_queue?)
-          .and_return(true)
+                                                                                           .and_return(true)
       end
 
       it 'defers the job' do
@@ -52,6 +67,12 @@ RSpec.describe Gitlab::SidekiqMiddleware::ConcurrencyLimit::Client, :clean_gitla
         TestConcurrencyLimitWorker.perform_async('foo')
 
         expect(TestConcurrencyLimitWorker.jobs.size).to eq(0)
+      end
+
+      it 'does not defer scheduled jobs' do
+        expect(Gitlab::SidekiqMiddleware::ConcurrencyLimit::ConcurrencyLimitService).not_to receive(:add_to_queue!)
+
+        TestConcurrencyLimitWorker.perform_in(10, 'foo')
       end
     end
   end

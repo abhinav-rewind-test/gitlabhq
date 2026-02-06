@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 namespace :gitlab do
-  require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
-
   namespace :cleanup do
     desc "GitLab | Cleanup | Block users that have been removed in LDAP"
     task block_removed_ldap_users: :gitlab_environment do
@@ -15,17 +13,17 @@ namespace :gitlab do
         print "#{user.name} (#{user.ldap_identity.extern_uid}) ..."
 
         if Gitlab::Auth::Ldap::Access.allowed?(user)
-          puts " [OK]".color(:green)
+          puts Rainbow(" [OK]").green
         elsif block_flag
           user.block! unless user.blocked?
-          puts " [BLOCKED]".color(:red)
+          puts Rainbow(" [BLOCKED]").red
         else
-          puts " [NOT IN LDAP]".color(:yellow)
+          puts Rainbow(" [NOT IN LDAP]").yellow
         end
       end
 
       unless block_flag
-        puts "To block these users run this command with BLOCK=true".color(:yellow)
+        puts Rainbow("To block these users run this command with BLOCK=true").yellow
       end
     end
 
@@ -37,7 +35,7 @@ namespace :gitlab do
       cleaner.run!(dry_run: dry_run?)
 
       if dry_run?
-        logger.info "To clean up these files run this command with DRY_RUN=false".color(:yellow)
+        logger.info Rainbow("To clean up these files run this command with DRY_RUN=false").yellow
       end
     end
 
@@ -47,7 +45,51 @@ namespace :gitlab do
       cleaner.run!(dry_run: dry_run?)
 
       if dry_run?
-        logger.info "To cleanup these files run this command with DRY_RUN=false".color(:yellow)
+        logger.info Rainbow("To cleanup these files run this command with DRY_RUN=false").yellow
+      end
+    end
+
+    desc 'GitLab | Cleanup | Clean orphan object storage files that do not exist in the db'
+    task untracked_object_storage_files: :environment do
+      buckets = ENV['BUCKETS']&.to_s&.split(',')&.map(&:strip)&.map(&:to_sym) || []
+      delete = ENV['DELETE'] == 'true'
+
+      available_buckets = Gitlab::Cleanup::ObjectStorageCleanerMapping.buckets
+
+      if buckets.empty?
+        logger.info "No buckets selected. Available bucket types: #{available_buckets.join(', ')}"
+        logger.info "To clean specific buckets, run with BUCKETS=type1,type2"
+        buckets = available_buckets
+      end
+
+      invalid_buckets = buckets - available_buckets
+      if invalid_buckets.any?
+        msg = "Invalid bucket types: #{invalid_buckets.join(', ')}. Available types: #{available_buckets.join(', ')}"
+        logger.warn Rainbow(msg).yellow
+        buckets -= invalid_buckets
+      end
+
+      logger.info "Processing the following bucket types: #{buckets.join(', ')}"
+      logger.info "DRY_RUN: #{dry_run?}"
+      logger.info "DELETE (rather than move to lost_and_found): #{delete}"
+
+      buckets.each do |bucket|
+        logger.info Rainbow("Processing bucket type: #{bucket}").cyan
+
+        cleaner_class = Gitlab::Cleanup::ObjectStorageCleanerMapping.cleaner_class_for(bucket)
+        cleaner = cleaner_class.new(logger: logger)
+        cleaner.run!(dry_run: dry_run?, delete: delete)
+
+        logger.info Rainbow("Completed processing bucket type: #{bucket}").green
+      rescue StandardError => e
+        logger.error Rainbow("Error processing bucket type #{bucket}: #{e.message}").red
+        logger.error e.backtrace.join("\n")
+      end
+
+      if dry_run?
+        logger.info Rainbow("This was a dry run. To actually clean up these files, run with DRY_RUN=false").yellow
+        logger.info Rainbow("By default, files will be moved to a lost_and_found directory.").yellow
+        logger.info Rainbow("To permanently delete files, run with DELETE=true").yellow
       end
     end
 
@@ -59,7 +101,7 @@ namespace :gitlab do
       cleaner.run!
 
       if dry_run?
-        logger.info "To clean up these files run this command with DRY_RUN=false".color(:yellow)
+        logger.info Rainbow("To clean up these files run this command with DRY_RUN=false").yellow
       end
     end
 
@@ -80,7 +122,9 @@ namespace :gitlab do
 
         generator.run!
 
-        logger.info "To delete these objects run gitlab:cleanup:delete_orphan_job_artifact_final_objects".color(:yellow)
+        logger.info(
+          Rainbow("To delete these objects run gitlab:cleanup:delete_orphan_job_artifact_final_objects").yellow
+        )
       rescue Gitlab::Cleanup::OrphanJobArtifactFinalObjects::GenerateList::UnsupportedProviderError => e
         abort %(#{e.message}
 Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
@@ -103,6 +147,22 @@ Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
       processor.run!
     end
 
+    desc 'GitLab | Cleanup | Rollback deleted final orphan job artifact objects (GCP only)'
+    task rollback_deleted_orphan_job_artifact_final_objects: :gitlab_environment do
+      warn_user_is_not_gitlab
+
+      force_restart = ENV['FORCE_RESTART'].present?
+      filename = ENV['FILENAME']
+
+      processor = Gitlab::Cleanup::OrphanJobArtifactFinalObjects::RollbackDeletedObjects.new(
+        force_restart: force_restart,
+        filename: filename,
+        logger: logger
+      )
+
+      processor.run!
+    end
+
     desc 'GitLab | Cleanup | Clean orphan LFS file references'
     task orphan_lfs_file_references: :gitlab_environment do
       warn_user_is_not_gitlab
@@ -110,7 +170,7 @@ Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
       project = find_project
 
       unless project
-        logger.info "Specify the project with PROJECT_ID={number} or PROJECT_PATH={namespace/project-name}".color(:red)
+        logger.info Rainbow("Specify the project with PROJECT_ID={number} or PROJECT_PATH={namespace/project-name}").red
         exit
       end
 
@@ -123,7 +183,7 @@ Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
       cleaner.run!
 
       if dry_run?
-        logger.info "To clean up these files run this command with DRY_RUN=false".color(:yellow)
+        logger.info Rainbow("To clean up these files run this command with DRY_RUN=false").yellow
       end
     end
 
@@ -154,7 +214,7 @@ Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
       # rubocop: disable Layout/LineLength
       MergeRequest
         .merged
-        .where(project: project)
+        .where(project_id: project.id)
         .each_batch(of: batch_size) do |mrs|
           matching_mrs = mrs.where(
             "merge_params LIKE '%force_remove_source_branch: ''1''%' OR merge_params LIKE '%should_remove_source_branch: ''1''%'"
@@ -167,7 +227,8 @@ Usage: rake "gitlab:cleanup:list_orphan_job_artifact_final_objects[provider]")
             next unless mr.source_branch_exists? && mr.can_remove_source_branch?(user)
 
             # Ensuring that only this MR exists for the source branch
-            if MergeRequest.where(project: project).where.not(id: mr.id).where(source_branch: mr.source_branch).exists?
+            if MergeRequest.where(project_id: project.id).where.not(id: mr.id)
+              .where(source_branch: mr.source_branch).exists?
               next
             end
 
@@ -201,7 +262,7 @@ new_sha: Gitlab::Git::SHA1_BLANK_SHA }
 
       number_of_removed_files = RemoveUnreferencedLfsObjectsWorker.new.perform
 
-      logger.info "Removed unreferenced LFS files: #{number_of_removed_files}".color(:green)
+      logger.info Rainbow("Removed unreferenced LFS files: #{number_of_removed_files}").green
     end
 
     namespace :sessions do
@@ -269,19 +330,18 @@ new_sha: Gitlab::Git::SHA1_BLANK_SHA }
       end
     end
 
-    # rubocop:disable Gitlab/RailsLogger
     def logger
       return @logger if defined?(@logger)
 
       @logger = if Rails.env.development? || Rails.env.production?
                   Logger.new($stdout).tap do |stdout_logger|
-                    stdout_logger.extend(ActiveSupport::Logger.broadcast(Rails.logger))
                     stdout_logger.level = debug? ? Logger::DEBUG : Logger::INFO
+
+                    ActiveSupport::BroadcastLogger.new(stdout_logger, Rails.logger, Rails.logger)
                   end
                 else
                   Rails.logger
                 end
     end
-    # rubocop:enable Gitlab/RailsLogger
   end
 end

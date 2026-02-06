@@ -2,12 +2,14 @@
 
 class SlackIntegration < ApplicationRecord
   include EachBatch
+  include Gitlab::EncryptedAttribute
 
   ALL_FEATURES = %i[commands notifications].freeze
 
   SCOPE_COMMANDS = 'commands'
   SCOPE_CHAT_WRITE = 'chat:write'
   SCOPE_CHAT_WRITE_PUBLIC = 'chat:write.public'
+  ORGANIZATION_ALIAS = 'gitlab-organization'
 
   # These scopes are requested when installing the app, additional scopes
   # will need reauthorization.
@@ -18,10 +20,13 @@ class SlackIntegration < ApplicationRecord
   ].freeze
 
   belongs_to :integration
+  belongs_to :project, optional: true
+  belongs_to :group, optional: true
+  belongs_to :organization, class_name: 'Organizations::Organization', optional: true
 
   attr_encrypted :bot_access_token,
     mode: :per_attribute_iv,
-    key: Settings.attr_encrypted_db_key_base_32,
+    key: :db_key_base_32,
     algorithm: 'aes-256-gcm',
     encode: false,
     encode_iv: false
@@ -33,6 +38,8 @@ class SlackIntegration < ApplicationRecord
     class_name: '::Integrations::SlackWorkspace::ApiScope',
     through: :slack_integrations_scopes
 
+  scope :preloaded_integration, -> { preload(:integration) }
+  scope :preload_integration_organization, -> { preloaded_integration.preload(integration: [:group, :project]) }
   scope :with_bot, -> { where.not(bot_user_id: nil) }
   scope :by_team, ->(team_id) { where(team_id: team_id) }
   scope :by_integration, ->(integration_ids) { where(integration_id: integration_ids) }
@@ -44,8 +51,17 @@ class SlackIntegration < ApplicationRecord
     length: 2..4096
   validates :user_id, presence: true
   validates :integration, presence: true
+  # Bot tokens follow the format: xoxb-#####-#####-##### (around 60 characters)
+  # A generous limit of 255 allows for potential future token format changes
+  validates :bot_access_token, length: { maximum: 255 }, if: :bot_access_token_changed?
 
   after_commit :update_active_status_of_integration, on: [:create, :destroy]
+
+  def self.organization_alias(organization_id)
+    raise ArgumentError, 'organization_id must be an Integer' unless organization_id.is_a?(Integer)
+
+    [SlackIntegration::ORGANIZATION_ALIAS, organization_id].join('-')
+  end
 
   def feature_available?(feature_name)
     case feature_name
@@ -71,7 +87,12 @@ class SlackIntegration < ApplicationRecord
   def authorized_scope_names=(names)
     names = Array.wrap(names).flat_map { |name| name.split(',') }.map(&:strip)
 
-    scopes = ::Integrations::SlackWorkspace::ApiScope.find_or_initialize_by_names(names)
+    # TODO: get `organization_id_from_parent` directly from SlackIntegration.
+    # The `organization_id_from_parent` should be moved to this model when sharding key is finalized
+    # https://gitlab.com/gitlab-org/gitlab/-/work_items/582748
+    scopes = ::Integrations::SlackWorkspace::ApiScope.find_or_initialize_by_names(
+      names, organization_id: integration.organization_id_from_parent
+    )
     self.slack_api_scopes = scopes
   end
 

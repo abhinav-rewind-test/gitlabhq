@@ -11,6 +11,7 @@ module ReactiveCaching
 
   WORK_TYPE = {
     no_dependency: ReactiveCachingWorker,
+    no_dependency_low_urgency: ReactiveCaching::LowUrgencyWorker,
     external_dependency: ExternalServiceReactiveCachingWorker
   }.freeze
 
@@ -26,7 +27,7 @@ module ReactiveCaching
     class_attribute :reactive_cache_worker_finder
 
     # defaults
-    self.reactive_cache_key = -> (record) { [model_name.singular, record.id] }
+    self.reactive_cache_key = ->(record) { [model_name.singular, record.id] }
     self.reactive_cache_lease_timeout = 2.minutes
     self.reactive_cache_refresh_interval = 1.minute
     self.reactive_cache_lifetime = 10.minutes
@@ -39,8 +40,7 @@ module ReactiveCaching
       raise NotImplementedError
     end
 
-    def reactive_cache_updated(*args)
-    end
+    def reactive_cache_updated(*args); end
 
     def with_reactive_cache(*args, &blk)
       unless within_reactive_cache_lifetime?(*args)
@@ -119,7 +119,7 @@ module ReactiveCaching
     def refresh_reactive_cache!(*args)
       clear_reactive_cache!(*args)
       keep_alive_reactive_cache!(*args)
-      worker_class.perform_async(self.class, id, *args)
+      worker_class.perform_async(self.class.name, id, *args)
     end
 
     def keep_alive_reactive_cache!(...)
@@ -152,11 +152,22 @@ module ReactiveCaching
     def enqueuing_update(*args)
       yield
 
-      worker_class.perform_in(self.class.reactive_cache_refresh_interval, self.class, id, *args)
+      background_update_worker.perform_in(self.class.reactive_cache_refresh_interval, self.class.name, id, *args)
     end
 
     def worker_class
       WORK_TYPE.fetch(self.class.reactive_cache_work_type.to_sym)
+    end
+
+    # Background refreshes use low urgency when worker has no dependencies
+    def background_update_worker
+      return worker_class unless self.class.reactive_cache_work_type.to_sym == :no_dependency
+
+      if Feature.enabled?(:low_urgency_reactive_caching_worker, Feature.current_request)
+        ReactiveCaching::LowUrgencyWorker
+      else
+        worker_class
+      end
     end
 
     def reactive_cache_limit_enabled?

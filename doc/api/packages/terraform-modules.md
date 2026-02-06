@@ -2,26 +2,25 @@
 stage: Package
 group: Package Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Terraform Module Registry API
 ---
 
-# Terraform Module Registry API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-This is the API documentation for the [Terraform Module Registry](../../user/packages/terraform_module_registry/index.md).
+{{< /details >}}
 
-WARNING:
-This API is used by the [Terraform CLI](https://www.terraform.io/)
-and is generally not meant for manual consumption. Undocumented authentication methods might be removed in the future.
+Use this API to interact with the [Terraform CLI](../../user/packages/terraform_module_registry/_index.md).
 
-For instructions on how to upload and install Terraform modules from the GitLab
-Terraform Module Registry, see the [Terraform Module Registry documentation](../../user/packages/terraform_module_registry/index.md).
+> [!warning]
+> This API is used by the [Terraform CLI](https://www.terraform.io/)
+> and is generally not meant for manual consumption. Undocumented authentication methods might be removed in the future.
 
 ## List available versions for a specific module
 
-Get a list of available versions for a specific module.
+List all available versions for a specified module.
 
 ```plaintext
 GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/versions
@@ -34,7 +33,8 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/
 | `module_system` | string | yes | The name of the module system or [provider](https://www.terraform.io/registry/providers). |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/versions"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/versions"
 ```
 
 Example response:
@@ -77,9 +77,9 @@ Example response:
 }
 ```
 
-## Latest version for a specific module
+## Retrieve latest version for a module
 
-Get information about the latest version for a given module.
+Retrieve information about the latest version for a specified module.
 
 ```plaintext
 GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system
@@ -92,7 +92,8 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system
 | `module_system` | string | yes | The name of the module system or [provider](https://www.terraform.io/registry/providers). |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local"
 ```
 
 Example response:
@@ -116,9 +117,9 @@ Example response:
 }
 ```
 
-## Get specific version for a specific module
+## Retrieve a specific version for a module
 
-Get information about a specific version for a given module.
+Retrieve information about a specific version for a specified module.
 
 ```plaintext
 GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/1.0.0
@@ -131,7 +132,8 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/
 | `module_system` | string | yes | The name of the module system or [provider](https://www.terraform.io/registry/providers). |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0"
 ```
 
 Example response:
@@ -155,9 +157,9 @@ Example response:
 }
 ```
 
-## Get URL for downloading latest module version
+## Retrieve download URL for latest module version
 
-Get the download URL for latest module version in `X-Terraform-Get` header
+Retrieve the download URL for the latest module version in the `X-Terraform-Get` header.
 
 ```plaintext
 GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/download
@@ -170,7 +172,8 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/
 | `module_system` | string | yes | The name of the module system or [provider](https://www.terraform.io/registry/providers). |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/download"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/download"
 ```
 
 Example response:
@@ -183,9 +186,9 @@ X-Terraform-Get: /api/v4/packages/terraform/modules/v1/group/hello-world/local/1
 
 Under the hood, this API endpoint redirects to `packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/:module_version/download`
 
-## Get URL for downloading specific module version
+## Retrieve download URL for a specific module version
 
-Get the download URL for a specific module version in `X-Terraform-Get` header
+Retrieve the download URL for a specified module version in the `X-Terraform-Get` header.
 
 ```plaintext
 GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/:module_version/download
@@ -199,7 +202,8 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/
 | `module_version` | string | yes | Specific module version to download. |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/download"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/download"
 ```
 
 Example response:
@@ -226,13 +230,16 @@ GET packages/terraform/modules/v1/:module_namespace/:module_name/:module_system/
 | `module_version` | string | yes | Specific module version to download. |
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/file"
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/file"
 ```
 
 To write the output to file:
 
 ```shell
-curl --header "Authorization: Bearer <personal_access_token>" "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/file" --output hello-world-local.tgz
+curl --header "Authorization: Bearer <personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/packages/terraform/modules/v1/group/hello-world/local/1.0.0/file" \
+  --output hello-world-local.tgz
 ```
 
 ### From a project
@@ -243,22 +250,27 @@ GET /projects/:id/packages/terraform/modules/:module_name/:module_system/:module
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id` | integer/string | yes | The ID or URL-encoded path of the project. |
+| `id` | integer or string | yes | The ID or URL-encoded path of the project. |
 | `module_name` | string | yes | The module name. |
 | `module_system` | string | yes | The name of the module system or [provider](https://www.terraform.io/registry/providers). |
 | `module_version` | string | no | Specific module version to download. If omitted, the latest version is downloaded. |
 
 ```shell
-curl --user "<username>:<personal_access_token>" "https://gitlab.example.com/api/v4/projects/1/packages/terraform/modules/hello-world/local/1.0.0"
+curl --user "<username>:<personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/terraform/modules/hello-world/local/1.0.0"
 ```
 
 To write the output to file:
 
 ```shell
-curl --user "<username>:<personal_access_token>" "https://gitlab.example.com/api/v4/projects/1/packages/terraform/modules/hello-world/local/1.0.0" --output hello-world-local.tgz
+curl --user "<username>:<personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/terraform/modules/hello-world/local/1.0.0" \
+  --output hello-world-local.tgz
 ```
 
 ## Upload module
+
+Upload a module for a specified project.
 
 ```plaintext
 PUT /projects/:id/packages/terraform/modules/:module-name/:module-system/:module-version/file
@@ -283,7 +295,7 @@ Tokens that can be used to authenticate:
 | Header          | Value |
 |-----------------|-------|
 | `PRIVATE-TOKEN` | A [personal access token](../../user/profile/personal_access_tokens.md) with `api` scope. |
-| `DEPLOY-TOKEN`  | A [deploy token](../../user/project/deploy_tokens/index.md) with `write_package_registry` scope. |
+| `DEPLOY-TOKEN`  | A [deploy token](../../user/project/deploy_tokens/_index.md) with `write_package_registry` scope. |
 | `JOB-TOKEN`     | A [job token](../../ci/jobs/ci_job_token.md). |
 
 Example response:

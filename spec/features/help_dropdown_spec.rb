@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe "Help Dropdown", :js, feature_category: :shared do
+  include VersionCheckHelpers
+
   let_it_be(:user) { create(:user) }
   let_it_be(:admin) { create(:admin) }
 
@@ -17,7 +19,7 @@ RSpec.describe "Help Dropdown", :js, feature_category: :shared do
 
         expect(page).not_to have_text('Your GitLab version')
         expect(page).not_to have_text("#{Gitlab.version_info.major}.#{Gitlab.version_info.minor}")
-        expect(page).not_to have_selector('.version-check-badge')
+        expect(page).not_to have_selector('[data-testid="check-version-badge"]')
         expect(page).not_to have_text('Up to date')
       end
     end
@@ -29,9 +31,7 @@ RSpec.describe "Help Dropdown", :js, feature_category: :shared do
         sign_in(admin)
         enable_admin_mode!(admin)
 
-        allow_next_instance_of(VersionCheck) do |instance|
-          allow(instance).to receive(:response).and_return({ "severity" => severity })
-        end
+        stub_version_check({ "severity" => severity })
         visit root_path
       end
 
@@ -42,8 +42,8 @@ RSpec.describe "Help Dropdown", :js, feature_category: :shared do
           expect(page).to have_text('Your GitLab version')
           expect(page).to have_text("#{Gitlab.version_info.major}.#{Gitlab.version_info.minor}")
 
-          within page.find_link(href: help_page_path('update/index')) do
-            expect(page).to have_selector(".version-check-badge.badge-#{severity}", text: ui_text)
+          within page.find_link(href: help_page_path('update/_index.md')) do
+            expect(page).to have_selector(".badge-#{severity}", text: ui_text)
           end
         end
       end

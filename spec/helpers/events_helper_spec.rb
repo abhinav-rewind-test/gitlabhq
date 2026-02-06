@@ -10,7 +10,7 @@ require 'spec_helper'
 # rubocop:disable RSpec/FactoryBot/AvoidCreate
 RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_profile do
   include Gitlab::Routing
-  include Banzai::Filter::OutputSafety
+  include Banzai::Filter::Concerns::OutputSafety
 
   let_it_be(:project) { create_default(:project).freeze }
   let_it_be(:project_with_repo) { create(:project, :public, :repository).freeze }
@@ -46,8 +46,8 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     let(:users_activity_page?) { true }
 
     before do
-      allow(helper).to receive(:current_path?).and_call_original
-      allow(helper).to receive(:current_path?).with('users#activity').and_return(users_activity_page?)
+      allow(helper).to receive(:current_controller?).and_call_original
+      allow(helper).to receive(:current_controller?).with('users').and_return(users_activity_page?)
     end
 
     context 'when on users activity page' do
@@ -87,8 +87,8 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     let(:users_activity_page?) { true }
 
     before do
-      allow(helper).to receive(:current_path?).and_call_original
-      allow(helper).to receive(:current_path?).with('users#activity').and_return(users_activity_page?)
+      allow(helper).to receive(:current_controller?).and_call_original
+      allow(helper).to receive(:current_controller?).with('users').and_return(users_activity_page?)
     end
 
     subject { helper.event_user_info(event) }
@@ -101,24 +101,6 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
       let(:users_activity_page?) { false }
 
       it { is_expected.to include('<div') }
-    end
-  end
-
-  describe '#event_target_path' do
-    subject { helper.event_target_path(event.present) }
-
-    context 'when target is a work item' do
-      let(:work_item) { create(:work_item) }
-      let(:event) { create(:event, target: work_item, target_type: 'WorkItem') }
-
-      it { is_expected.to eq(Gitlab::UrlBuilder.build(work_item, only_path: true)) }
-    end
-
-    context 'when target is not a work item' do
-      let(:issue) { create(:issue) }
-      let(:event) { create(:event, target: issue) }
-
-      it { is_expected.to eq([project, issue]) }
     end
   end
 
@@ -206,6 +188,41 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
       end
     end
 
+    context 'for work items' do
+      let(:work_item) { create(:work_item) }
+
+      it 'returns the url to the work item' do
+        event.target_type = work_item.class.name
+        event.target_id = work_item.id
+
+        expect(helper.event_feed_url(event)).to eq(Gitlab::UrlBuilder.build(work_item))
+      end
+    end
+
+    context 'for wiki page' do
+      # We need non-frozen project since wiki activity touches it
+      let_it_be(:project_2) { create(:project) }
+
+      let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project_2) }
+      let(:note) { create(:note, noteable: wiki_page_meta, project: project_2, author: user) }
+
+      before do
+        event.action = 6 # commented
+        event.project = project_2 # commented
+        event.target_type = note.class.name
+        event.target_id = note.id
+      end
+
+      it 'returns the wiki page URL' do
+        expect(helper.event_feed_url(event))
+          .to eq(project_wiki_url(project_2, wiki_page_meta.canonical_slug, anchor: dom_id(event.target)))
+      end
+
+      it 'contains the wiki page slug as link text' do
+        expect(helper.event_feed_title(event)).to include(wiki_page_meta.wiki_page.slug)
+      end
+    end
+
     context 'for merge request' do
       before do
         event.target = create(:merge_request, source_project: project_with_repo)
@@ -223,7 +240,9 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     it 'returns project commit url' do
       event.target = create(:note_on_commit, project: project_with_repo)
 
-      expect(helper.event_feed_url(event)).to eq(project_commit_url(event.project, event.note_target))
+      expect(helper.event_feed_url(event)).to eq(
+        project_commit_url(event.project, event.note_target, anchor: dom_id(event.target))
+      )
     end
 
     it 'returns event note target url' do
@@ -251,6 +270,24 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
         action: :pushed)
 
       expect(helper.event_feed_url(event)).to eq(nil)
+    end
+
+    it 'returns wiki page url' do
+      event = create(:wiki_page_event)
+
+      expect(helper.event_feed_url(event)).to eq(event_wiki_page_target_url(event))
+    end
+
+    it 'returns design url' do
+      event = create(:design_event)
+
+      expect(helper.event_feed_url(event)).to eq(design_url(event.design))
+    end
+
+    it 'returns project url' do
+      event = create(:project_created_event)
+
+      expect(helper.event_feed_url(event)).to eq(project_url(event.project))
     end
   end
 
@@ -296,7 +333,7 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     end
 
     context 'for non-matching events' do
-      let(:event) { create(:event, :created) }
+      let(:event) { create(:event, :created, target: nil, project: nil) }
 
       it 'returns no preposition' do
         expect(helper.event_preposition(event)).to be_nil
@@ -305,28 +342,38 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
   end
 
   describe '#event_wiki_page_target_url' do
-    let_it_be_with_reload(:project) { create(:project) }
-    let(:wiki_page) { create(:wiki_page, wiki: create(:project_wiki, project: project)) }
-    let(:event) { create(:wiki_page_event, project: project, wiki_page: wiki_page) }
+    let_it_be(:project) { create(:project) }
 
-    it 'links to the wiki page' do
-      url = helper.project_wiki_url(project, wiki_page.slug)
+    context 'for project wiki' do
+      let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
+      let(:event) { create(:event, target: wiki_page_meta, project: wiki_page_meta.project) }
 
-      expect(helper.event_wiki_page_target_url(event)).to eq(url)
-    end
-
-    context 'without canonical slug' do
-      let(:event) { create(:wiki_page_event, project: project) }
-
-      before do
-        event.target.slugs.update_all(canonical: false)
-        event.target.clear_memoization(:canonical_slug)
-      end
-
-      it 'links to the home page' do
-        url = helper.project_wiki_url(project, Wiki::HOMEPAGE)
+      it 'links to the wiki page' do
+        url = helper.project_wiki_url(wiki_page_meta.project, wiki_page_meta.canonical_slug)
 
         expect(helper.event_wiki_page_target_url(event)).to eq(url)
+      end
+
+      context 'without canonical slug' do
+        before do
+          event.target.slugs.update_all(canonical: false)
+          event.target.clear_memoization(:canonical_slug)
+        end
+
+        it 'links to the home page' do
+          url = helper.project_wiki_url(wiki_page_meta.project, Wiki::HOMEPAGE)
+
+          expect(helper.event_wiki_page_target_url(event)).to eq(url)
+        end
+      end
+    end
+
+    context 'for an event that has neither project nor group' do
+      let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
+      let(:event) { create(:event, target: wiki_page_meta, group: nil, project: nil) }
+
+      it 'returns nil' do
+        expect(helper.event_wiki_page_target_url(event)).to be_nil
       end
     end
   end
@@ -339,7 +386,7 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     it 'produces a suitable title chunk' do
       html = [
         "<span class=\"event-target-type \">wiki page </span>",
-        "<a title=\"#{title}\" class=\"has-tooltip event-target-link\" href=\"#{url}\">",
+        "<a title=\"#{title}\" class=\"event-target-link\" href=\"#{url}\">",
         title,
         "</a>"
       ].join
@@ -349,11 +396,11 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
 
     it 'produces a suitable title chunk on the user profile' do
       allow(helper).to receive(:user_profile_activity_classes).and_return(
-        'gl-font-weight-semibold gl-text-black-normal')
+        'gl-font-semibold gl-text-default')
 
       html = [
-        "<span class=\"event-target-type gl-font-weight-semibold gl-text-black-normal\">wiki page </span>",
-        "<a title=\"#{title}\" class=\"has-tooltip event-target-link\" href=\"#{url}\">",
+        "<span class=\"event-target-type gl-font-semibold gl-text-default\">wiki page </span>",
+        "<a title=\"#{title}\" class=\"event-target-link\" href=\"#{url}\">",
         title,
         "</a>"
       ].join
@@ -393,6 +440,16 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
       expect(subject).to eq("#{project_base_url}/-/issues/#{event.note_target.iid}#note_#{event.target.id}")
     end
 
+    context 'when group level work item' do
+      let(:work_item) { create(:work_item, :group_level, namespace: create(:group)) }
+      let(:note) { create(:note_on_work_item, namespace: work_item.namespace, noteable: work_item) }
+      let(:event) { create(:event, :closed, group: work_item.namespace, project: nil, target: note) }
+
+      it 'returns url to group level work item' do
+        expect(subject).to eq(group_work_item_url(event.group, event.target.noteable, anchor: dom_id(event.target)))
+      end
+    end
+
     it 'returns a merge request url' do
       event.target = create(:note_on_merge_request, note: 'LGTM!')
 
@@ -408,6 +465,18 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
         note_id  = event.target.id
 
         expect(subject).to eq("#{project_base_url}/-/issues/#{iid}/designs/#{filename}#note_#{note_id}")
+      end
+    end
+
+    context 'for wiki page notes' do
+      let(:event) { create(:event, :for_wiki_page_note) }
+      let(:project) { event.target.project }
+
+      it 'returns an appropriate URL' do
+        path = event.note_target.canonical_slug
+        note_id = event.target.id
+
+        expect(subject).to eq("#{project_base_url}/-/wikis/#{path}#note_#{note_id}")
       end
     end
   end
@@ -525,13 +594,13 @@ RSpec.describe EventsHelper, factory_default: :keep, feature_category: :user_pro
     let(:users_activity_page?) { true }
 
     before do
-      allow(helper).to receive(:current_path?).and_call_original
-      allow(helper).to receive(:current_path?).with('users#activity').and_return(users_activity_page?)
+      allow(helper).to receive(:current_controller?).and_call_original
+      allow(helper).to receive(:current_controller?).with('users').and_return(users_activity_page?)
     end
 
     context 'when on the user activity page' do
       it 'returns the expected class names' do
-        expect(helper.user_profile_activity_classes).to eq(' gl-font-weight-semibold gl-text-black-normal')
+        expect(helper.user_profile_activity_classes).to eq(' gl-font-semibold gl-text-default')
       end
     end
 

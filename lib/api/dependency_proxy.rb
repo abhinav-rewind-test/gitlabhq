@@ -4,7 +4,7 @@ module API
   class DependencyProxy < ::API::Base
     helpers ::API::Helpers::PackagesHelpers
 
-    feature_category :dependency_proxy
+    feature_category :virtual_registry
     urgency :low
 
     after_validation do
@@ -13,7 +13,7 @@ module API
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the group owned by the authenticated user'
+        desc: 'The ID or URL-encoded path of the group owned by the authenticated user'
     end
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'Purge the dependency proxy for a group' do
@@ -25,6 +25,7 @@ module API
         ]
         tags %w[dependency_proxy]
       end
+      route_setting :authorization, permissions: :delete_dependency_proxy_cache, boundary_type: :group
       delete ':id/dependency_proxy/cache' do
         not_found! unless user_group.dependency_proxy_feature_available?
 

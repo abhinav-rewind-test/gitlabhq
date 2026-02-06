@@ -4,7 +4,10 @@ module API
   class ProjectSnippets < ::API::Base
     include PaginationParams
 
-    before { check_snippets_enabled }
+    before do
+      check_snippets_enabled
+      set_current_organization
+    end
 
     feature_category :source_code_management
 
@@ -28,7 +31,7 @@ module API
         end
 
         def snippets_for_current_user
-          SnippetsFinder.new(current_user, project: user_project).execute
+          SnippetsFinder.new(current_user, organization_id: Current.organization.id, project: user_project).execute
         end
       end
 
@@ -37,7 +40,7 @@ module API
         failure [
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
         is_array true
       end
       params do
@@ -54,7 +57,7 @@ module API
         failure [
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :snippet_id, type: Integer, desc: 'The ID of a project snippet'
@@ -74,14 +77,14 @@ module API
           { code: 404, message: 'Not found' },
           { code: 422, message: 'Unprocessable entity' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :title, type: String, allow_blank: false, desc: 'The title of the snippet'
         optional :description, type: String, desc: 'The description of a snippet'
         requires :visibility, type: String,
-                              values: Gitlab::VisibilityLevel.string_values,
-                              desc: 'The visibility of the snippet'
+          values: Gitlab::VisibilityLevel.string_values,
+          desc: 'The visibility of the snippet'
         use :create_file_params
       end
       post ":id/snippets" do
@@ -97,7 +100,8 @@ module API
           present snippet, with: Entities::ProjectSnippet, current_user: current_user
         else
           with_captcha_check_rest_api(spammable: snippet) do
-            render_api_error!({ error: service_response.message }, service_response.http_status)
+            http_status = Helpers::Snippets::HttpResponseMap.status_for(service_response.reason)
+            render_api_error!({ error: service_response.message }, http_status)
           end
         end
       end
@@ -109,7 +113,7 @@ module API
           { code: 404, message: 'Not found' },
           { code: 422, message: 'Unprocessable entity' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :snippet_id, type: Integer, desc: 'The ID of a project snippet'
@@ -118,8 +122,8 @@ module API
         optional :file_name, type: String, desc: 'The file name of the snippet'
         optional :title, type: String, allow_blank: false, desc: 'The title of the snippet'
         optional :visibility, type: String,
-                              values: Gitlab::VisibilityLevel.string_values,
-                              desc: 'The visibility of the snippet'
+          values: Gitlab::VisibilityLevel.string_values,
+          desc: 'The visibility of the snippet'
 
         use :update_file_params
         use :minimum_update_params
@@ -143,7 +147,8 @@ module API
           present snippet, with: Entities::ProjectSnippet, current_user: current_user
         else
           with_captcha_check_rest_api(spammable: snippet) do
-            render_api_error!({ error: service_response.message }, service_response.http_status)
+            http_status = Helpers::Snippets::HttpResponseMap.status_for(service_response.reason)
+            render_api_error!({ error: service_response.message }, http_status)
           end
         end
       end
@@ -155,7 +160,7 @@ module API
           { code: 400, message: 'Validation error' },
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :snippet_id, type: Integer, desc: 'The ID of a project snippet'
@@ -172,9 +177,10 @@ module API
         destroy_conditionally!(snippet) do |snippet|
           service = ::Snippets::DestroyService.new(current_user, snippet)
           response = service.execute
+          http_status = Helpers::Snippets::HttpResponseMap.status_for(response.reason)
 
           if response.error?
-            render_api_error!({ error: response.message }, response.http_status)
+            render_api_error!({ error: response.message }, http_status)
           end
         end
       end
@@ -185,7 +191,7 @@ module API
         failure [
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :snippet_id, type: Integer, desc: 'The ID of a project snippet'
@@ -203,7 +209,7 @@ module API
         failure [
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         use :raw_file_params
@@ -221,7 +227,7 @@ module API
         failure [
           { code: 404, message: 'Not found' }
         ]
-        tags %w[project_snippets]
+        tags %w[snippets]
       end
       params do
         requires :snippet_id, type: Integer, desc: 'The ID of a project snippet'

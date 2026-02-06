@@ -5,12 +5,10 @@ module Gitlab
     class Config
       module Interpolation
         class Template
-          include Gitlab::Utils::StrongMemoize
-
           attr_reader :blocks, :ctx
 
           MAX_BLOCKS = 10_000
-          BLOCK_PATTERN = /(?<block>\$\[\[\s*(?<data>\S{1}.*?\S{1})\s*\]\])/
+          BLOCK_REGEXP = Gitlab::UntrustedRegexp.new('(?<block>\$\[\[\s*(?<data>\S{1}.*?\S{1})\s*\]\])')
           BLOCK_PREFIX = '$[['
 
           def initialize(config, ctx)
@@ -45,7 +43,7 @@ module Gitlab
               break if @errors.any?
               next node unless node_might_contain_interpolation_block?(node)
 
-              matches = node.scan(BLOCK_PATTERN)
+              matches = BLOCK_REGEXP.scan(node)
               next node if matches.empty?
 
               blocks = interpolate_blocks(matches)
@@ -54,7 +52,6 @@ module Gitlab
               get_interpolated_node_content!(node, blocks)
             end
           end
-          strong_memoize_attr :interpolate!
 
           def node_might_contain_interpolation_block?(node)
             node.is_a?(String) && node.include?(BLOCK_PREFIX)

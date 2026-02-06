@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'kroki rendering', :js, feature_category: :team_planning do
+RSpec.describe 'kroki rendering', :js, feature_category: :markdown do
   let_it_be(:project) { create(:project, :public) }
 
   before do
@@ -24,6 +24,8 @@ RSpec.describe 'kroki rendering', :js, feature_category: :team_planning do
     visit project_issue_path(project, issue)
 
     within('.description') do
+      click_button 'Read more'
+
       expect(page).to have_css('img')
       expect(page).not_to have_text 'Warning: Displaying this diagram might cause performance issues on this page.'
     end

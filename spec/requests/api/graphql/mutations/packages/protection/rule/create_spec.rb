@@ -6,7 +6,7 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
   include GraphqlHelpers
 
   let_it_be(:project) { create(:project) }
-  let_it_be(:user) { create(:user, maintainer_projects: [project]) }
+  let_it_be(:user) { create(:user, maintainer_of: project) }
 
   let(:package_protection_rule_attributes) { build_stubbed(:package_protection_rule, project: project) }
 
@@ -15,7 +15,8 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
       project_path: project.full_path,
       package_name_pattern: package_protection_rule_attributes.package_name_pattern,
       package_type: 'NPM',
-      push_protected_up_to_access_level: 'MAINTAINER'
+      minimum_access_level_for_delete: 'OWNER',
+      minimum_access_level_for_push: 'MAINTAINER'
     }
   end
 
@@ -26,7 +27,8 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
         id
         packageNamePattern
         packageType
-        pushProtectedUpToAccessLevel
+        minimumAccessLevelForDelete
+        minimumAccessLevelForPush
       }
       errors
       QUERY
@@ -54,9 +56,10 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
 
       expect(mutation_response_package_protection_rule).to include(
         'id' => be_present,
-        'packageNamePattern' => kwargs[:package_name_pattern],
-        'packageType' => kwargs[:package_type],
-        'pushProtectedUpToAccessLevel' => kwargs[:push_protected_up_to_access_level]
+        'packageNamePattern' => expected_attributes[:package_name_pattern],
+        'packageType' => expected_attributes[:package_type].upcase,
+        'minimumAccessLevelForDelete' => expected_attributes[:minimum_access_level_for_delete]&.upcase,
+        'minimumAccessLevelForPush' => expected_attributes[:minimum_access_level_for_push]&.upcase
       )
     end
 
@@ -65,9 +68,10 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
 
       expect(Packages::Protection::Rule.last).to have_attributes(
         project: project,
-        package_name_pattern: kwargs[:package_name_pattern],
-        package_type: kwargs[:package_type].downcase,
-        push_protected_up_to_access_level: kwargs[:push_protected_up_to_access_level].downcase
+        package_name_pattern: expected_attributes[:package_name_pattern],
+        package_type: expected_attributes[:package_type]&.downcase,
+        minimum_access_level_for_delete: expected_attributes[:minimum_access_level_for_delete]&.downcase,
+        minimum_access_level_for_push: expected_attributes[:minimum_access_level_for_push]&.downcase
       )
     end
   end
@@ -78,14 +82,38 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
     end
   end
 
-  it_behaves_like 'a successful response'
+  it_behaves_like 'a successful response' do
+    let(:expected_attributes) { kwargs }
+  end
+
+  context 'when feature flag `packages_protected_packages_delete` is disabled' do
+    before do
+      stub_feature_flags(packages_protected_packages_delete: false)
+    end
+
+    it_behaves_like 'a successful response' do
+      let(:expected_attributes) { kwargs.merge(minimum_access_level_for_delete: nil) }
+    end
+
+    context 'when minimum_access_level_for_push is nil' do
+      let(:kwargs) { super().merge(minimum_access_level_for_push: nil) }
+
+      it_behaves_like 'an erroneous response'
+
+      it 'returns an error' do
+        subject
+
+        expect(mutation_response_errors).to include(/must have at least a minimum access role for push or delete./)
+      end
+    end
+  end
 
   context 'with invalid kwargs leading to error from graphql' do
     let(:kwargs) do
       super().merge!(
         package_name_pattern: '',
         package_type: 'UNKNOWN_PACKAGE_TYPE',
-        push_protected_up_to_access_level: 'UNKNOWN_ACCESS_LEVEL'
+        minimum_access_level_for_push: 'UNKNOWN_ACCESS_LEVEL'
       )
     end
 
@@ -95,7 +123,7 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
       subject
 
       expect_graphql_errors_to_include(/was provided invalid value for packageType/)
-      expect_graphql_errors_to_include(/pushProtectedUpToAccessLevel/)
+      expect_graphql_errors_to_include(/minimumAccessLevelForPush/)
     end
   end
 
@@ -109,9 +137,38 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
     end
   end
 
+  context 'with invalid input fields `minimumAccessLevelForPush` and `minimumAccessLevelForDelete`' do
+    let(:kwargs) do
+      super().merge!(
+        minimum_access_level_for_push: 'INVALID_ACCESS_LEVEL',
+        minimum_access_level_for_delete: 'INVALID_ACCESS_LEVEL'
+      )
+    end
+
+    it_behaves_like 'an erroneous response'
+
+    it 'returns an error' do
+      subject
+
+      expect_graphql_errors_to_include([/minimumAccessLevelForPush/, /minimumAccessLevelForDelete/])
+    end
+  end
+
+  context 'with blank input fields `minimumAccessLevelForPush` and `minimumAccessLevelForDelete`' do
+    let(:kwargs) { super().merge(minimum_access_level_for_push: nil, minimum_access_level_for_delete: nil) }
+
+    it_behaves_like 'an erroneous response'
+
+    it 'returns an error' do
+      subject
+
+      expect(mutation_response_errors).to include('A rule must have at least a minimum access role for push or delete.')
+    end
+  end
+
   context 'with existing packages protection rule' do
     let_it_be(:existing_package_protection_rule) do
-      create(:package_protection_rule, project: project, push_protected_up_to_access_level: :maintainer)
+      create(:package_protection_rule, project: project, minimum_access_level_for_push: :maintainer)
     end
 
     let(:kwargs) { super().merge!(package_name_pattern: existing_package_protection_rule.package_name_pattern) }
@@ -128,25 +185,47 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
         super().merge!(package_name_pattern: "#{existing_package_protection_rule.package_name_pattern}-unique")
       end
 
-      it_behaves_like 'a successful response'
+      it_behaves_like 'a successful response' do
+        let(:expected_attributes) { kwargs }
+      end
     end
 
-    context 'when field `push_protected_up_to_access_level` is different than existing one' do
-      let(:kwargs) { super().merge!(push_protected_up_to_access_level: 'DEVELOPER') }
+    context 'when field `minimum_access_level_for_push` is different than existing one' do
+      let(:kwargs) { super().merge!(minimum_access_level_for_push: 'MAINTAINER') }
 
       it_behaves_like 'an erroneous response'
-
       it 'returns an error' do
         subject.tap { expect(mutation_response_errors).to include(/Package name pattern has already been taken/) }
       end
     end
   end
 
+  context 'with standalone wildcard pattern' do
+    let(:kwargs) do
+      {
+        project_path: project.full_path,
+        package_name_pattern: '*',
+        package_type: 'NPM',
+        minimum_access_level_for_push: 'MAINTAINER'
+      }
+    end
+
+    it_behaves_like 'a successful response' do
+      let(:expected_attributes) { kwargs.merge(minimum_access_level_for_delete: nil) }
+    end
+
+    it 'creates the package protection rule with wildcard pattern' do
+      subject
+
+      expect(mutation_response_package_protection_rule['packageNamePattern']).to eq('*')
+    end
+  end
+
   context 'when user does not have permission' do
     let_it_be(:anonymous) { create(:user) }
-    let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
-    let_it_be(:guest) { create(:user).tap { |u| project.add_guest(u) } }
-    let_it_be(:reporter) { create(:user).tap { |u| project.add_reporter(u) } }
+    let_it_be(:developer) { create(:user, developer_of: project) }
+    let_it_be(:guest) { create(:user, guest_of: project) }
+    let_it_be(:reporter) { create(:user, reporter_of: project) }
 
     where(:user) do
       [ref(:developer), ref(:reporter), ref(:guest), ref(:anonymous)]
@@ -158,18 +237,6 @@ RSpec.describe 'Creating the packages protection rule', :aggregate_failures, fea
       it 'returns an error' do
         subject.tap { expect_graphql_errors_to_include(/you don't have permission to perform this action/) }
       end
-    end
-  end
-
-  context "when feature flag ':packages_protected_packages' disabled" do
-    before do
-      stub_feature_flags(packages_protected_packages: false)
-    end
-
-    it_behaves_like 'an erroneous response'
-
-    it 'returns error of disabled feature flag' do
-      subject.tap { expect_graphql_errors_to_include(/'packages_protected_packages' feature flag is disabled/) }
     end
   end
 end

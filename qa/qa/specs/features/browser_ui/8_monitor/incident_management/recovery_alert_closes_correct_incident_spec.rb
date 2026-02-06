@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Monitor', product_group: :respond, quarantine: {
+  RSpec.describe 'Monitor', feature_category: :incident_management, quarantine: {
     type: :bug,
-    issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/395512'
+    issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24030'
   } do
     describe 'Recovery alert' do
       shared_examples 'triggers recovery alert' do

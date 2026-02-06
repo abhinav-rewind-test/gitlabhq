@@ -9,7 +9,7 @@ RSpec.describe Ci::BuildFinishedWorker, feature_category: :continuous_integratio
 
   describe '#perform' do
     context 'when build exists' do
-      let_it_be(:build) do
+      let_it_be_with_reload(:build) do
         create(:ci_build, :success, user: create(:user), pipeline: create(:ci_pipeline))
       end
 
@@ -40,82 +40,6 @@ RSpec.describe Ci::BuildFinishedWorker, feature_category: :continuous_integratio
           subject
         end
 
-        context 'when auto_cancel_on_job_failure is set to an invalid value' do
-          before do
-            allow(build.pipeline)
-              .to receive(:auto_cancel_on_job_failure)
-              .and_return('invalid value')
-          end
-
-          it 'raises an exception' do
-            expect { subject }.to raise_error(
-              ArgumentError, 'Unknown auto_cancel_on_job_failure value: invalid value')
-          end
-
-          context 'when auto_cancel_pipeline_on_job_failure feature flag is disabled' do
-            before do
-              stub_feature_flags(auto_cancel_pipeline_on_job_failure: false)
-            end
-
-            it 'does not raise an exception' do
-              expect { subject }.not_to raise_error
-            end
-          end
-        end
-
-        context 'when auto_cancel_on_job_failure is set to all' do
-          before do
-            build.pipeline.create_pipeline_metadata!(
-              project: build.pipeline.project, auto_cancel_on_job_failure: 'all'
-            )
-          end
-
-          it 'cancels the pipeline' do
-            expect(::Ci::UserCancelPipelineWorker).to receive(:perform_async)
-              .with(build.pipeline.id, build.pipeline.id, build.user.id)
-
-            subject
-          end
-
-          context 'when auto_cancel_pipeline_on_job_failure feature flag is disabled' do
-            before do
-              stub_feature_flags(auto_cancel_pipeline_on_job_failure: false)
-            end
-
-            it 'does not cancel the pipeline' do
-              expect(::Ci::UserCancelPipelineWorker).not_to receive(:perform_async)
-
-              subject
-            end
-          end
-        end
-
-        context 'when auto_cancel_on_job_failure is set to none' do
-          before do
-            build.pipeline.create_pipeline_metadata!(
-              project: build.pipeline.project, auto_cancel_on_job_failure: 'none'
-            )
-          end
-
-          it 'does not cancel the pipeline' do
-            expect(::Ci::UserCancelPipelineWorker).not_to receive(:perform_async)
-
-            subject
-          end
-
-          context 'when auto_cancel_pipeline_on_job_failure feature flag is disabled' do
-            before do
-              stub_feature_flags(auto_cancel_pipeline_on_job_failure: false)
-            end
-
-            it 'does not cancel the pipeline' do
-              expect(::Ci::UserCancelPipelineWorker).not_to receive(:perform_async)
-
-              subject
-            end
-          end
-        end
-
         context 'when a build can be auto-retried' do
           before do
             allow(build)
@@ -128,20 +52,6 @@ RSpec.describe Ci::BuildFinishedWorker, feature_category: :continuous_integratio
               .not_to receive(:perform_async)
 
             subject
-          end
-
-          context 'when auto_cancel_on_job_failure is set to all' do
-            before do
-              build.pipeline.create_pipeline_metadata!(
-                project: build.pipeline.project, auto_cancel_on_job_failure: 'all'
-              )
-            end
-
-            it 'does not cancel the pipeline' do
-              expect(::Ci::UserCancelPipelineWorker).not_to receive(:perform_async)
-
-              subject
-            end
           end
         end
       end
@@ -158,9 +68,56 @@ RSpec.describe Ci::BuildFinishedWorker, feature_category: :continuous_integratio
         end
       end
 
-      context 'when it has a token' do
+      context 'when pipeline is nil' do
+        before do
+          allow(build).to receive(:pipeline).and_return(nil)
+        end
+
+        it 'does not raise an error and does not schedule ChatNotificationWorker' do
+          expect(ChatNotificationWorker).not_to receive(:perform_async)
+
+          expect { subject }.not_to raise_error
+        end
+      end
+
+      context 'when it has a database token' do
+        before do
+          stub_feature_flags(ci_job_token_jwt: false)
+        end
+
         it 'removes the token' do
           expect { subject }.to change { build.reload.token }.to(nil)
+        end
+      end
+
+      context 'and all conditions are correct for publishing provenance' do
+        include_context 'with build, pipeline and artifacts'
+
+        it 'calls PublishProvenanceWorker when build is successful' do
+          expect(Ci::Slsa::PublishProvenanceWorker).to receive(:perform_async).with(build.id)
+
+          subject
+        end
+
+        context 'and the build fails' do
+          let_it_be(:status) { :failed }
+
+          it 'still calls PublishProvenanceWorker' do
+            expect(Ci::Slsa::PublishProvenanceWorker).to receive(:perform_async).with(build.id)
+
+            subject
+          end
+        end
+      end
+
+      context 'when provenance should not be published' do
+        it 'does not call PublishProvenanceWorker' do
+          expect(::SupplyChain).to receive(:publish_provenance_for_build?).with(build)
+            .and_return(false)
+
+          expect(Ci::Slsa::PublishProvenanceWorker).not_to receive(:perform_async)
+
+          subject
         end
       end
     end

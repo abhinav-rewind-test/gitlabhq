@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Search::AbuseValidators::NoAbusiveCoercionFromStringValidator do
   subject do
@@ -15,8 +15,8 @@ RSpec.describe Gitlab::Search::AbuseValidators::NoAbusiveCoercionFromStringValid
   using ::RSpec::Parameterized::TableSyntax
 
   where(:attribute_value, :valid?) do
-    ['this is an arry']     | false
-    { 'this': 'is a hash' } | false
+    ['this is an arry'] | false
+    { this: 'is a hash' } | false
     123                     | false
     456.78                  | false
     'now this is a string'  | true

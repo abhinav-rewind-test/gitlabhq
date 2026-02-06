@@ -3,15 +3,11 @@ import {
   SAST_SHORT_NAME,
   SAST_IAC_NAME,
   SAST_IAC_SHORT_NAME,
+  SECRET_PUSH_PROTECTION,
 } from '~/security_configuration/constants';
-import { __, s__ } from '~/locale';
 import { helpPagePath } from '~/helpers/help_page_helper';
 
-import {
-  REPORT_TYPE_SAST,
-  REPORT_TYPE_BREACH_AND_ATTACK_SIMULATION,
-  REPORT_TYPE_SAST_IAC,
-} from '~/vue_shared/security_reports/constants';
+import { REPORT_TYPE_SAST, REPORT_TYPE_SAST_IAC } from '~/vue_shared/security_reports/constants';
 
 export const testProjectPath = 'foo/bar';
 export const testProviderIds = [101, 102, 103];
@@ -22,61 +18,20 @@ export const testTrainingUrls = [
   'https://www.vendornamethree.com/url',
 ];
 
-const SAST_DESCRIPTION = __('Analyze your source code for known vulnerabilities.');
-const SAST_HELP_PATH = helpPagePath('user/application_security/sast/index');
-const SAST_CONFIG_HELP_PATH = helpPagePath('user/application_security/sast/index', {
+const SAST_DESCRIPTION = 'Analyze your source code for known vulnerabilities.';
+const SAST_HELP_PATH = helpPagePath('user/application_security/sast/_index');
+const SAST_CONFIG_HELP_PATH = helpPagePath('user/application_security/sast/_index', {
   anchor: 'configuration',
 });
 
-const BAS_BADGE_TEXT = s__('SecurityConfiguration|Incubating feature');
-const BAS_BADGE_TOOLTIP = s__(
-  'SecurityConfiguration|Breach and Attack Simulation is an incubating feature extending existing security testing by simulating adversary activity.',
-);
-const BAS_DESCRIPTION = s__(
-  'SecurityConfiguration|Simulate breach and attack scenarios against your running application by attempting to detect and exploit known vulnerabilities.',
-);
-const BAS_HELP_PATH = helpPagePath('user/application_security/breach_and_attack_simulation/index');
-const BAS_NAME = s__('SecurityConfiguration|Breach and Attack Simulation (BAS)');
-const BAS_SHORT_NAME = s__('SecurityConfiguration|BAS');
-const BAS_DAST_FEATURE_FLAG_DESCRIPTION = s__(
-  'SecurityConfiguration|Enable incubating Breach and Attack Simulation focused features such as callback attacks in your DAST scans.',
-);
-const BAS_DAST_FEATURE_FLAG_HELP_PATH = helpPagePath(
-  'user/application_security/breach_and_attack_simulation/index',
-  { anchor: 'extend-dynamic-application-security-testing-dast' },
-);
-const BAS_DAST_FEATURE_FLAG_NAME = s__(
-  'SecurityConfiguration|Out-of-Band Application Security Testing (OAST)',
-);
-
-const SAST_IAC_DESCRIPTION = __(
-  'Analyze your infrastructure as code configuration files for known vulnerabilities.',
-);
-const SAST_IAC_HELP_PATH = helpPagePath('user/application_security/iac_scanning/index');
-const SAST_IAC_CONFIG_HELP_PATH = helpPagePath('user/application_security/iac_scanning/index', {
+const SAST_IAC_DESCRIPTION =
+  'Analyze your infrastructure as code configuration files for known vulnerabilities.';
+const SAST_IAC_HELP_PATH = helpPagePath('user/application_security/iac_scanning/_index');
+const SAST_IAC_CONFIG_HELP_PATH = helpPagePath('user/application_security/iac_scanning/_index', {
   anchor: 'configuration',
 });
 
 export const securityFeatures = [
-  {
-    anchor: 'bas',
-    badge: {
-      alwaysDisplay: true,
-      text: BAS_BADGE_TEXT,
-      tooltipText: BAS_BADGE_TOOLTIP,
-      variant: 'info',
-    },
-    description: BAS_DESCRIPTION,
-    name: BAS_NAME,
-    helpPath: BAS_HELP_PATH,
-    secondary: {
-      configurationHelpPath: BAS_DAST_FEATURE_FLAG_HELP_PATH,
-      description: BAS_DAST_FEATURE_FLAG_DESCRIPTION,
-      name: BAS_DAST_FEATURE_FLAG_NAME,
-    },
-    shortName: BAS_SHORT_NAME,
-    type: REPORT_TYPE_BREACH_AND_ATTACK_SIMULATION,
-  },
   {
     name: SAST_IAC_NAME,
     shortName: SAST_IAC_SHORT_NAME,
@@ -135,30 +90,6 @@ export const getSecurityTrainingProvidersData = (providerOverrides = {}) => {
   };
 };
 
-export const dismissUserCalloutResponse = {
-  data: {
-    userCalloutCreate: {
-      errors: [],
-      userCallout: {
-        dismissedAt: '2022-02-02T04:36:57Z',
-        featureName: 'SECURITY_TRAINING_FEATURE_PROMOTION',
-      },
-    },
-  },
-};
-
-export const dismissUserCalloutErrorResponse = {
-  data: {
-    userCalloutCreate: {
-      errors: ['Something went wrong'],
-      userCallout: {
-        dismissedAt: '',
-        featureName: 'SECURITY_TRAINING_FEATURE_PROMOTION',
-      },
-    },
-  },
-};
-
 export const updateSecurityTrainingProvidersResponse = {
   data: {
     securityTrainingUpdate: {
@@ -194,10 +125,96 @@ export const securityFeaturesMock = [
   },
 ];
 
+export const secretPushProtectionMock = {
+  name: 'Secret push protection',
+  description: `Block secrets such as keys and API tokens from being pushed to your repositories.
+  'Secret push protection is triggered when commits are pushed to a repository. ' \
+  'If any secrets are detected, the push is blocked.`,
+  helpPath: SAST_HELP_PATH,
+  configurationHelpPath: helpPagePath(
+    'user/application_security/secret_detection/secret_push_protection/_index',
+  ),
+  type: SECRET_PUSH_PROTECTION,
+  available: true,
+};
+
+export const pipelineSecretDetectionMock = {
+  type: 'secret_detection',
+  name: 'Pipeline Secret Detection',
+  description: 'Analyze your source code and Git history for secrets by using CI/CD pipelines.',
+  available: true,
+  configured: false,
+  configurationHelpPath:
+    '/help/user/application_security/secret_detection/pipeline/_index.md#configuration',
+  helpPath: '/help/user/application_security/secret_detection/pipeline/_index.md',
+  canEnableByMergeRequest: false,
+  metaInfoPath: null,
+};
+
 export const provideMock = {
   upgradePath: '/upgrade',
   autoDevopsHelpPagePath: '/autoDevopsHelpPagePath',
   autoDevopsPath: '/autoDevopsPath',
   projectFullPath: 'namespace/project',
-  vulnerabilityTrainingDocsPath: 'user/application_security/vulnerabilities/index',
+  groupFullPath: 'namespace',
+  vulnerabilityTrainingDocsPath: 'user/application_security/vulnerabilities/_index',
+  licenseConfigurationSource: 'SBOM',
+  canReadAttributes: false,
+  canManageAttributes: false,
+  canApplyProfiles: true,
 };
+
+export const createTrackedRef = (overrides = {}) => ({
+  id: 'gid://gitlab/TrackedRef/1',
+  name: 'main',
+  refType: 'HEAD',
+  isDefault: false,
+  isProtected: false,
+  vulnerabilitiesCount: 0,
+  commit: {
+    id: 'gid://gitlab/Commit/1',
+    sha: 'df210850abc123',
+    shortId: 'df21085',
+    title: 'Commit message',
+    authoredDate: '2024-10-17T09:59:00Z',
+    webPath: '/project/-/commit/df21085',
+    ...overrides.commit,
+  },
+  ...overrides,
+});
+
+export const createMockTrackedRefsResponse = ({
+  nodes = [],
+  hasNextPage = false,
+  hasPreviousPage = false,
+  startCursor = null,
+  endCursor = null,
+} = {}) => ({
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/1',
+      __typename: 'Project',
+      securityTrackedRefs: {
+        nodes,
+        pageInfo: {
+          startCursor,
+          endCursor,
+          hasPreviousPage,
+          hasNextPage,
+        },
+        count: nodes.length,
+      },
+    },
+  },
+});
+
+export const createMockRestApiRef = (overrides = {}) => ({
+  name: 'main',
+  protected: true,
+  commit: {
+    id: 'abc123',
+    committed_date: '2024-11-05T10:00:00Z',
+    ...overrides.commit,
+  },
+  ...overrides,
+});

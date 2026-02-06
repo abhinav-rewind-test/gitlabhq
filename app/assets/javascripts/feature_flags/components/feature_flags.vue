@@ -1,12 +1,23 @@
 <script>
-import { GlAlert, GlBadge, GlButton, GlModalDirective, GlSprintf } from '@gitlab/ui';
+import {
+  GlAlert,
+  GlBadge,
+  GlButton,
+  GlLink,
+  GlModalDirective,
+  GlSprintf,
+  GlTooltipDirective,
+} from '@gitlab/ui';
 import { isEmpty } from 'lodash';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions } from 'vuex';
-
+import PageHeading from '~/vue_shared/components/page_heading.vue';
+import { n__, s__ } from '~/locale';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import { buildUrlWithCurrentLocation, historyPushState } from '~/lib/utils/common_utils';
 import { getParameterByName } from '~/lib/utils/url_utility';
 import TablePagination from '~/vue_shared/components/pagination/table_pagination.vue';
+import PromoPageLink from '~/vue_shared/components/promo_page_link/promo_page_link.vue';
 import ConfigureFeatureFlagsModal from './configure_feature_flags_modal.vue';
 import EmptyState from './empty_state.vue';
 import FeatureFlagsTable from './feature_flags_table.vue';
@@ -16,14 +27,18 @@ export default {
     ConfigureFeatureFlagsModal,
     EmptyState,
     FeatureFlagsTable,
+    PromoPageLink,
     GlAlert,
     GlBadge,
     GlButton,
+    GlLink,
     GlSprintf,
     TablePagination,
+    PageHeading,
   },
   directives: {
     GlModal: GlModalDirective,
+    GlTooltip: GlTooltipDirective,
   },
   inject: {
     userListPath: { default: '' },
@@ -35,7 +50,6 @@ export default {
   data() {
     return {
       page: getParameterByName('page') || '1',
-      shouldShowFeatureFlagsLimitWarning: this.featureFlagsLimitExceeded,
     };
   },
   computed: {
@@ -46,14 +60,13 @@ export default {
       'pageInfo',
       'isLoading',
       'hasError',
-      'options',
       'instanceId',
       'isRotating',
       'hasRotateError',
       'rotateEndpoint',
     ]),
     topAreaBaseClasses() {
-      return ['gl-display-flex', 'gl-flex-direction-column'];
+      return ['gl-flex', 'gl-flex-col'];
     },
     canUserRotateToken() {
       return this.rotateEndpoint !== '';
@@ -72,11 +85,38 @@ export default {
     shouldRenderErrorState() {
       return this.hasError && !this.isLoading;
     },
-    shouldRenderFeatureFlags() {
-      return !this.isLoading && this.featureFlags.length > 0 && !this.hasError;
-    },
     hasNewPath() {
       return !isEmpty(this.newFeatureFlagPath);
+    },
+    isFeatureFlagsLimitSet() {
+      return Boolean(Number(this.featureFlagsLimit));
+    },
+    countBadgeContents() {
+      return this.isFeatureFlagsLimitSet ? `${this.count}/${this.featureFlagsLimit}` : this.count;
+    },
+    countBadgeTooltipMessage() {
+      return this.isFeatureFlagsLimitSet
+        ? n__(
+            'FeatureFlags|Current plan allows for %d feature flag.',
+            'FeatureFlags|Current plan allows for %d feature flags.',
+            this.featureFlagsLimit,
+          )
+        : '';
+    },
+    countBadgeAriaLabel() {
+      return this.isFeatureFlagsLimitSet
+        ? `${this.countBadgeContents}. ${this.countBadgeTooltipMessage}`
+        : '';
+    },
+    limitExceededAlertMessage() {
+      return s__(
+        "FeatureFlags|You've reached your %{docLinkStart}feature flag limit%{docLinkEnd} (%{featureFlagsLimit}). To add more, delete at least one feature flag, or %{pricingLinkStart}upgrade to a higher tier%{pricingLinkEnd}.",
+      );
+    },
+    documentationLink() {
+      return helpPagePath('operations/feature_flags', {
+        anchor: 'maximum-number-of-feature-flags',
+      });
     },
   },
   created() {
@@ -109,33 +149,21 @@ export default {
       this.setFeatureFlagsOptions(parameters);
       this.fetchFeatureFlags();
     },
-    onDismissFeatureFlagsLimitWarning() {
-      this.shouldShowFeatureFlagsLimitWarning = false;
-    },
-    onNewFeatureFlagCLick() {
-      if (this.featureFlagsLimitExceeded) {
-        this.shouldShowFeatureFlagsLimitWarning = true;
-      }
-    },
   },
 };
 </script>
 <template>
   <div>
-    <gl-alert
-      v-if="shouldShowFeatureFlagsLimitWarning"
-      variant="warning"
-      @dismiss="onDismissFeatureFlagsLimitWarning"
-    >
-      <gl-sprintf
-        :message="
-          s__(
-            'FeatureFlags|Feature flags limit reached (%{featureFlagsLimit}). Delete one or more feature flags before adding new ones.',
-          )
-        "
-      >
+    <gl-alert v-if="featureFlagsLimitExceeded" :dismissible="false" variant="warning">
+      <gl-sprintf :message="limitExceededAlertMessage">
+        <template #docLink="{ content }">
+          <gl-link :href="documentationLink" target="_blank">{{ content }}</gl-link>
+        </template>
         <template #featureFlagsLimit>
           <span>{{ featureFlagsLimit }}</span>
+        </template>
+        <template #pricingLink="{ content }">
+          <promo-page-link path="/pricing" target="_blank">{{ content }}</promo-page-link>
         </template>
       </gl-sprintf>
     </gl-alert>
@@ -149,55 +177,33 @@ export default {
       @token="rotateInstanceId()"
     />
     <div :class="topAreaBaseClasses">
-      <div class="gl-display-flex gl-flex-direction-column gl-md-display-none!">
-        <gl-button
-          v-if="userListPath"
-          :href="userListPath"
-          variant="confirm"
-          category="tertiary"
-          class="gl-mb-3"
-        >
-          {{ s__('FeatureFlags|View user lists') }}
-        </gl-button>
-        <gl-button
-          v-if="canUserConfigure"
-          v-gl-modal="'configure-feature-flags'"
-          variant="confirm"
-          category="secondary"
-          data-testid="ff-configure-button"
-          class="gl-mb-3"
-        >
-          {{ s__('FeatureFlags|Configure') }}
-        </gl-button>
-
-        <gl-button
-          v-if="hasNewPath"
-          :href="featureFlagsLimitExceeded ? '' : newFeatureFlagPath"
-          variant="confirm"
-          data-testid="ff-new-button"
-          @click="onNewFeatureFlagCLick"
-        >
-          {{ s__('FeatureFlags|New feature flag') }}
-        </gl-button>
-      </div>
-      <div
-        class="gl-display-flex gl-align-items-baseline gl-flex-direction-row gl-justify-content-space-between gl-mt-6"
-      >
-        <div class="gl-display-flex gl-align-items-center">
-          <h2 class="page-title gl-font-size-h-display gl-my-0">
+      <page-heading>
+        <template #heading>
+          <span>
             {{ s__('FeatureFlags|Feature flags') }}
-          </h2>
-          <gl-badge v-if="count" class="gl-ml-4">{{ count }}</gl-badge>
-        </div>
-        <div
-          class="gl-display-none gl-md-display-flex gl-align-items-center gl-justify-content-end"
-        >
+          </span>
+          <button
+            v-if="count && isFeatureFlagsLimitSet"
+            v-gl-tooltip
+            class="gl-ml-3 gl-border-0 gl-bg-transparent gl-p-0 gl-align-middle gl-leading-0"
+            :title="countBadgeTooltipMessage"
+            :aria-label="countBadgeAriaLabel"
+            data-testid="ff-count-badge-wrapper"
+          >
+            <gl-badge data-testid="ff-count-badge">
+              {{ countBadgeContents }}
+            </gl-badge>
+          </button>
+          <gl-badge v-else-if="count" class="gl-ml-3 gl-align-middle" data-testid="ff-count-badge">
+            {{ count }}
+          </gl-badge>
+        </template>
+        <template #actions>
           <gl-button
             v-if="userListPath"
             :href="userListPath"
             variant="confirm"
             category="tertiary"
-            class="gl-mb-0 gl-mr-3"
             data-testid="ff-user-list-button"
           >
             {{ s__('FeatureFlags|View user lists') }}
@@ -205,25 +211,23 @@ export default {
           <gl-button
             v-if="canUserConfigure"
             v-gl-modal="'configure-feature-flags'"
-            variant="confirm"
-            category="secondary"
             data-testid="ff-configure-button"
-            class="gl-mb-0 gl-mr-3"
           >
             {{ s__('FeatureFlags|Configure') }}
           </gl-button>
 
           <gl-button
             v-if="hasNewPath"
-            :href="featureFlagsLimitExceeded ? '' : newFeatureFlagPath"
+            :href="newFeatureFlagPath"
+            :disabled="featureFlagsLimitExceeded"
             variant="confirm"
             data-testid="ff-new-button"
-            @click="onNewFeatureFlagCLick"
           >
             {{ s__('FeatureFlags|New feature flag') }}
-          </gl-button>
-        </div>
-      </div>
+          </gl-button></template
+        >
+      </page-heading>
+
       <empty-state
         :alerts="alerts"
         :is-loading="isLoading"
@@ -237,7 +241,7 @@ export default {
             'FeatureFlags|Feature flags allow you to configure your code into different flavors by dynamically toggling certain functionality.',
           )
         "
-        @dismissAlert="clearAlert"
+        @dismiss-alert="clearAlert"
       >
         <feature-flags-table :feature-flags="featureFlags" @toggle-flag="toggleFeatureFlag" />
       </empty-state>

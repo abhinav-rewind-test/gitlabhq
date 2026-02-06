@@ -2,13 +2,19 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Config::Normalizer do
+RSpec.describe Gitlab::Ci::Config::Normalizer, feature_category: :pipeline_composition do
   let(:job_name) { :rspec }
   let(:job_config) { { script: 'rspec', parallel: parallel_config, name: 'rspec', job_variables: variables_config } }
   let(:config) { { job_name => job_config } }
 
   describe '.normalize_jobs' do
-    subject { described_class.new(config).normalize_jobs }
+    around do |example|
+      Gitlab::Ci::Config::FeatureFlags.with_actor(nil) do
+        example.run
+      end
+    end
+
+    subject(:normalized_jobs) { described_class.new(config).normalize_jobs }
 
     shared_examples 'parallel dependencies' do
       context "when job has dependencies on parallelized jobs" do
@@ -344,6 +350,113 @@ RSpec.describe Gitlab::Ci::Config::Normalizer do
       let(:config) { nil }
 
       it { is_expected.to eq({}) }
+    end
+
+    context 'with matrix expressions in needs configuration' do
+      let(:build_job_config) do
+        {
+          script: 'echo build',
+          parallel: {
+            matrix: [
+              { 'OS' => ['linux'], 'ARCH' => %w[amd64 arm64] }
+            ]
+          }
+        }
+      end
+
+      let(:test_job_config) do
+        {
+          script: 'echo test',
+          parallel: {
+            matrix: [
+              { 'OS' => ['linux'], 'ARCH' => %w[amd64 arm64] }
+            ]
+          },
+          needs: {
+            job: [
+              {
+                name: 'build',
+                parallel: {
+                  matrix: [
+                    { 'OS' => ['$[[ matrix.OS ]]'], 'ARCH' => ['$[[ matrix.ARCH ]]'] }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      end
+
+      let(:config) do
+        {
+          build: build_job_config,
+          test: test_job_config
+        }
+      end
+
+      subject(:normalized_jobs) { described_class.new(config).normalize_jobs }
+
+      it 'interpolates matrix expressions in needs configuration' do
+        result = subject
+
+        # Should have 2 build jobs and 2 test jobs (linux + amd64/arm64)
+        expect(result.keys.map(&:to_s)).to include(
+          'build: [linux, amd64]', 'build: [linux, arm64]',
+          'test: [linux, amd64]', 'test: [linux, arm64]'
+        )
+
+        test_amd64 = result[:'test: [linux, amd64]']
+        test_arm64 = result[:'test: [linux, arm64]']
+
+        expect(test_amd64[:needs]).to eq({
+          job: [
+            { name: 'build: [linux, amd64]' }
+          ]
+        })
+
+        expect(test_arm64[:needs]).to eq({
+          job: [
+            { name: 'build: [linux, arm64]' }
+          ]
+        })
+      end
+
+      context 'with missing matrix variables' do
+        let(:test_job_config) do
+          {
+            script: 'echo test',
+            parallel: {
+              matrix: [
+                { 'OS' => ['linux'], 'ARCH' => %w[amd64 arm64] }
+              ]
+            },
+            needs: {
+              job: [
+                {
+                  name: 'build',
+                  parallel: {
+                    matrix: [
+                      { 'OS' => ['$[[ matrix.OS ]]'], 'MISSING' => ['$[[ matrix.NONEXISTENT ]]'] }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        end
+
+        it 'collects errors for missing matrix variables and leaves config unchanged' do
+          normalizer = described_class.new(config)
+          normalized_jobs = normalizer.normalize_jobs
+
+          test_job = normalized_jobs[:'test: [linux, amd64]']
+
+          expect(test_job[:needs][:job][0][:name]).to eq('build: [$[[ matrix.OS ]], $[[ matrix.NONEXISTENT ]]]')
+          expect(normalizer.errors).to contain_exactly(
+            "test job: 'NONEXISTENT' does not exist in matrix configuration"
+          )
+        end
+      end
     end
   end
 end

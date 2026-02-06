@@ -9,8 +9,13 @@
       "vendor/assets"
     ],
     "entrypointsDir": "javascripts/entrypoints",
-    "port": 3038,
-    "publicOutputDir": "vite-dev",
+    "additionalEntrypoints": [
+      "~/images/*",
+      "ee/images/*",
+      "jh/images/*"
+    ],
+    "skipProxy": true,
+    "publicOutputDir": "assets/vite",
     "devServerConnectTimeout": 3
   }
 }

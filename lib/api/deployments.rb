@@ -5,8 +5,7 @@ module API
   class Deployments < ::API::Base
     include PaginationParams
 
-    deployments_tags = %w[deployments]
-
+    deployments_tags = %w[deploy_resources]
     before { authenticate! }
 
     feature_category :continuous_delivery
@@ -69,6 +68,9 @@ module API
       end
 
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_deployment, boundary_type: :project,
+        job_token_policies: :read_deployments,
+        allow_public_access_for_enabled_project_features: [:repository, :builds, :environments]
       get ':id/deployments' do
         authorize! :read_deployment, user_project
 
@@ -94,6 +96,9 @@ module API
         requires :deployment_id, type: Integer, desc: 'The ID of the deployment'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_deployment, boundary_type: :project,
+        job_token_policies: :read_deployments,
+        allow_public_access_for_enabled_project_features: [:repository, :builds, :environments]
       get ':id/deployments/:deployment_id' do
         authorize! :read_deployment, user_project
 
@@ -115,14 +120,17 @@ module API
       params do
         requires :environment,
           type: String,
+          allow_blank: false,
           desc: 'The name of the environment to create the deployment for'
 
         requires :sha,
           type: String,
+          allow_blank: false,
           desc: 'The SHA of the commit that is deployed'
 
         requires :ref,
           type: String,
+          allow_blank: false,
           desc: 'The name of the branch or tag that is deployed'
 
         requires :tag,
@@ -135,10 +143,13 @@ module API
           values: %w[running success failed canceled]
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :create_deployment, boundary_type: :project,
+        job_token_policies: [:admin_deployments, :admin_environments]
       post ':id/deployments' do
         authorize!(:create_deployment, user_project)
         authorize!(:create_environment, user_project)
 
+        render_api_error!({ sha: ["The commit does not exist"] }, 400) unless user_project.commit(declared_params[:sha])
         render_api_error!({ ref: ["The branch or tag does not exist"] }, 400) unless user_project.commit(declared_params[:ref])
 
         environment = user_project
@@ -176,14 +187,14 @@ module API
       end
       params do
         requires :status,
-                 type: String,
-                 desc: 'The new status of the deployment. One of `running`, `success`, `failed`, or `canceled`',
-                 values: %w[running success failed canceled]
+          type: String,
+          desc: 'The new status of the deployment. One of `running`, `success`, `failed`, or `canceled`',
+          values: %w[running success failed canceled]
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :update_deployment, boundary_type: :project,
+        job_token_policies: :admin_deployments
       put ':id/deployments/:deployment_id' do
-        authorize!(:read_deployment, user_project)
-
         deployment = user_project.deployments.find(params[:deployment_id])
 
         authorize!(:update_deployment, deployment)
@@ -214,6 +225,8 @@ module API
         requires :deployment_id, type: Integer, desc: 'The ID of the deployment'
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :delete_deployment, boundary_type: :project,
+        job_token_policies: :admin_deployments
       delete ':id/deployments/:deployment_id' do
         deployment = user_project.deployments.find(params[:deployment_id])
 
@@ -248,6 +261,9 @@ module API
         use :merge_requests_base_params
       end
       route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: [:read_deployment, :read_merge_request], boundary_type: :project,
+        job_token_policies: :read_deployments,
+        allow_public_access_for_enabled_project_features: [:repository, :builds, :environments]
       get ':id/deployments/:deployment_id/merge_requests' do
         authorize! :read_deployment, user_project
 

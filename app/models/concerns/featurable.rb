@@ -35,6 +35,29 @@ module Featurable
     'public' => PUBLIC
   }).freeze
 
+  PAGES_ACCESS_LEVELS_BY_PROJECT_VISIBILITY = {
+    Gitlab::VisibilityLevel::PRIVATE => [
+      DISABLED,
+      PRIVATE,
+      PUBLIC
+      # 'Enabled' is not allowed for private projects
+      # because 'private' and 'enabled' pages access control settings have the same effect
+    ].freeze,
+    Gitlab::VisibilityLevel::INTERNAL => [
+      DISABLED,
+      PRIVATE,
+      ENABLED,
+      PUBLIC
+    ].freeze,
+    Gitlab::VisibilityLevel::PUBLIC => [
+      DISABLED,
+      PRIVATE,
+      ENABLED
+      # 'Public' is not allowed for public projects
+      # because 'enabled' and 'public' pages access control settings have the same effect
+    ].freeze
+  }.freeze
+
   class_methods do
     def set_available_features(available_features = [])
       @available_features ||= []
@@ -56,12 +79,12 @@ module Featurable
     def access_level_attribute(feature)
       feature = ensure_feature!(feature)
 
-      "#{feature}_access_level".to_sym
+      :"#{feature}_access_level"
     end
 
     def quoted_access_level_column(feature)
-      attribute = connection.quote_column_name(access_level_attribute(feature))
-      table = connection.quote_table_name(table_name)
+      attribute = adapter_class.quote_column_name(access_level_attribute(feature))
+      table = adapter_class.quote_table_name(table_name)
 
       "#{table}.#{attribute}"
     end
@@ -108,7 +131,7 @@ module Featurable
   private
 
   def allowed_access_levels
-    validator = lambda do |field|
+    validator = ->(field) do
       level = public_send(field) || ENABLED # rubocop:disable GitlabSecurity/PublicSend
       not_allowed = level > ENABLED
       self.errors.add(field, "cannot have public visibility level") if not_allowed

@@ -1,7 +1,7 @@
 <script>
 import { GlAvatarLabeled, GlBadge, GlIcon } from '@gitlab/ui';
 import { TYPE_ISSUE, TYPE_MERGE_REQUEST } from '~/issues/constants';
-import { __ } from '~/locale';
+import { __, s__ } from '~/locale';
 
 const AVAILABILITY_STATUS = {
   NOT_SET: 'NOT_SET',
@@ -34,12 +34,25 @@ export default {
     isBusy() {
       return this.user?.status?.availability === AVAILABILITY_STATUS.BUSY;
     },
+    isAgent() {
+      return this.user?.compositeIdentityEnforced;
+    },
+    isDisabled() {
+      return this.user?.status?.disabledForDuoUsage === true;
+    },
+    disabledReason() {
+      return this.user?.status?.disabledForDuoUsageReason || s__('WorkItem|Cannot be assigned');
+    },
     hasCannotMergeIcon() {
       return this.issuableType === TYPE_MERGE_REQUEST && !this.user.canMerge;
+    },
+    subLabel() {
+      return this.isDisabled ? this.disabledReason : `@${this.user.username}`;
     },
   },
   i18n: {
     busy: __('Busy'),
+    agent: __('AI'),
   },
 };
 </script>
@@ -48,9 +61,11 @@ export default {
   <gl-avatar-labeled
     :size="32"
     :label="user.name"
-    :sub-label="`@${user.username}`"
+    :sub-label="subLabel"
+    :is-disabled="isDisabled"
     :src="user.avatarUrl || user.avatar || user.avatar_url"
-    class="gl-align-items-center gl-relative sidebar-participant"
+    class="sidebar-participant gl-relative gl-items-center"
+    :class="{ 'sidebar-participant-disabled': isDisabled }"
   >
     <template #meta>
       <gl-icon
@@ -61,9 +76,14 @@ export default {
         :class="{ '!gl-left-6': selected }"
         :size="12"
       />
-      <gl-badge v-if="isBusy" size="sm" variant="warning" class="gl-ml-2">
+    </template>
+    <div class="gl-mt-2 gl-gap-1">
+      <gl-badge v-if="isBusy" variant="warning" data-testid="busy-badge">
         {{ $options.i18n.busy }}
       </gl-badge>
-    </template>
+      <gl-badge v-if="isAgent" variant="neutral" data-testid="sidebar-participant-agent-badge">
+        {{ $options.i18n.agent }}
+      </gl-badge>
+    </div>
   </gl-avatar-labeled>
 </template>

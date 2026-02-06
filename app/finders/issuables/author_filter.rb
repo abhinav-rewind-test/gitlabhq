@@ -2,6 +2,8 @@
 
 module Issuables
   class AuthorFilter < BaseFilter
+    include GroupMembersFilterable
+
     def filter(issuables)
       filtered = by_author(issuables)
       filtered = by_author_union(filtered)
@@ -14,7 +16,10 @@ module Issuables
       if params[:author_id].present?
         issuables.authored(params[:author_id])
       elsif params[:author_username].present?
-        issuables.authored(User.by_username(params[:author_username]))
+        filter_param =
+          extract_group_member_ids(params[:author_username]) || User.by_username(params[:author_username])
+
+        issuables.authored(filter_param)
           .allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/419221")
       else
         issuables
@@ -22,7 +27,7 @@ module Issuables
     end
 
     def by_author_union(issuables)
-      return issuables unless or_filters_enabled? && or_params&.fetch(:author_username, false).present?
+      return issuables unless or_params&.fetch(:author_username, false).present?
 
       issuables.authored(User.by_username(or_params[:author_username]))
         .allow_cross_joins_across_databases(url: "https://gitlab.com/gitlab-org/gitlab/-/issues/419221")

@@ -10,6 +10,7 @@ module Ci
       @params = params
       @group = params.delete(:group)
       @project = params.delete(:project)
+      @user = params.delete(:user)
       @current_user = current_user
     end
 
@@ -18,11 +19,15 @@ module Ci
                 project_runners
               elsif @group
                 group_runners
+              elsif @user
+                @user.ci_available_runners
               else
                 all_runners
               end
 
+      items = by_ids(items)
       items = search(items)
+      items = assignable_for_project(items)
       items = by_active(items)
       items = by_status(items)
       items = by_upgrade_status(items)
@@ -30,6 +35,7 @@ module Ci
       items = by_tag_list(items)
       items = by_creator_id(items)
       items = by_creator_username(items)
+      items = by_owner(items)
       items = by_version_prefix(items)
       items = request_tag_list(items)
 
@@ -44,28 +50,43 @@ module Ci
 
     attr_reader :group, :project
 
+    def by_ids(items)
+      return items unless @params[:id_in]
+
+      items.id_in(@params[:id_in])
+    end
+
+    def runner_type
+      @params[:type_type]&.to_sym
+    end
+
+    def membership
+      @params[:membership]&.to_sym
+    end
+
     def allowed_sorts
-      %w[contacted_asc contacted_desc created_at_asc created_at_desc created_date token_expires_at_asc token_expires_at_desc]
+      %w[
+        contacted_asc contacted_desc created_at_asc created_at_desc
+        created_date token_expires_at_asc token_expires_at_desc
+      ]
     end
 
     def all_runners
-      raise Gitlab::Access::AccessDeniedError unless @current_user&.can_admin_all_resources?
+      raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_admin_cicd)
 
       Ci::Runner.all
     end
 
     def group_runners
-      raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_group_runners, @group)
+      raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_runners, @group)
 
-      case @params[:membership]
+      case membership
       when :direct
         Ci::Runner.belonging_to_group(@group.id)
       when :descendants, nil
         Ci::Runner.belonging_to_group_or_project_descendants(@group.id)
       when :all_available
-        unless can?(@current_user, :read_group_all_available_runners, @group)
-          raise Gitlab::Access::AccessDeniedError
-        end
+        raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_group_all_available_runners, @group)
 
         Ci::Runner.usable_from_scope(@group)
       else
@@ -74,9 +95,16 @@ module Ci
     end
 
     def project_runners
-      raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_project_runners, @project)
+      raise Gitlab::Access::AccessDeniedError unless can?(@current_user, :read_runners, @project)
 
       ::Ci::Runner.owned_or_instance_wide(@project.id)
+    end
+
+    def assignable_for_project(items)
+      target_project = @params[:assignable_to_project]
+      return items unless target_project.present?
+
+      items.assignable_for(target_project)
     end
 
     def search(items)
@@ -111,7 +139,6 @@ module Ci
     end
 
     def by_runner_type(items)
-      runner_type = @params[:type_type].presence
       return items unless runner_type
 
       items.with_runner_type(runner_type)
@@ -121,7 +148,7 @@ module Ci
       tag_list = @params[:tag_name].presence
       return items unless tag_list
 
-      items.tagged_with(tag_list)
+      items.tagged_with(tag_list, like_search_enabled: true)
     end
 
     def by_creator_id(items)
@@ -139,6 +166,21 @@ module Ci
       return Ci::Runner.none unless creator_id
 
       items.with_creator_id(creator_id)
+    end
+
+    def by_owner(items)
+      return items unless @params[:owner_full_path].present?
+
+      routable = Routable.find_by_full_path(@params[:owner_full_path])
+
+      case routable
+      when ::Project
+        items.belonging_to_project(routable)
+      when ::Group
+        items.belonging_to_group(routable)
+      else
+        Ci::Runner.none
+      end
     end
 
     def by_version_prefix(items)

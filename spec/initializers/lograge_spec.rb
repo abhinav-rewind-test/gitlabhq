@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'lograge', type: :request, feature_category: :logging do
+RSpec.describe 'lograge', type: :request, feature_category: :observability do
   let(:headers) { { 'X-Request-ID' => 'new-correlation-id' } }
 
   let(:large_params) do
@@ -150,7 +150,8 @@ RSpec.describe 'lograge', type: :request, feature_category: :logging do
         event.payload[:exception_object] = exception
       end
 
-      it 'adds exception data to log', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446202' do
+      it 'adds exception data to log',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/25597' do
         subscriber.process_action(event)
 
         expect(log_data['exception.class']).to eq('RuntimeError')
@@ -207,16 +208,16 @@ RSpec.describe 'lograge', type: :request, feature_category: :logging do
     context 'with db payload' do
       let(:db_load_balancing_logging_keys) do
         %w[
-          db_primary_wal_count
-          db_replica_wal_count
-          db_primary_wal_cached_count
-          db_replica_wal_cached_count
-          db_replica_count
-          db_replica_cached_count
-          db_primary_count
-          db_primary_cached_count
-          db_primary_duration_s
-          db_replica_duration_s
+          db_main_wal_count
+          db_main_wal_count
+          db_main_wal_cached_count
+          db_main_wal_cached_count
+          db_main_count
+          db_main_cached_count
+          db_main_count
+          db_main_cached_count
+          db_main_duration_s
+          db_main_duration_s
         ]
       end
 
@@ -228,7 +229,7 @@ RSpec.describe 'lograge', type: :request, feature_category: :logging do
         it 'includes db counters' do
           subscriber.process_action(event)
 
-          expect(log_data).to include("db_count" => a_value >= 1, "db_write_count" => 0, "db_cached_count" => 0)
+          expect(log_data).to include("db_main_count" => a_value >= 1, "db_main_write_count" => 0, "db_main_cached_count" => 0)
         end
       end
 
@@ -236,7 +237,7 @@ RSpec.describe 'lograge', type: :request, feature_category: :logging do
         it 'does not include db counters' do
           subscriber.process_action(event)
 
-          expect(log_data).not_to include("db_count", "db_write_count", "db_cached_count")
+          expect(log_data).not_to include("db_main_count", "db_main_write_count", "db_main_cached_count")
         end
       end
 

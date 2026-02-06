@@ -1,41 +1,10 @@
 import Vue from 'vue';
 import { parseBoolean } from '~/lib/utils/common_utils';
 import { updateHistory, removeParams } from '~/lib/utils/url_utility';
-import ManageTwoFactorForm from './components/manage_two_factor_form.vue';
 import RecoveryCodes from './components/recovery_codes.vue';
+import TwoFactorActionConfirm from './components/two_factor_action_confirm.vue';
+import EmailOtpActionConfirm from './components/email_otp_action_confirm.vue';
 import { SUCCESS_QUERY_PARAM } from './constants';
-
-export const initManageTwoFactorForm = () => {
-  const el = document.querySelector('.js-manage-two-factor-form');
-
-  if (!el) {
-    return false;
-  }
-
-  const {
-    currentPasswordRequired,
-    profileTwoFactorAuthPath = '',
-    profileTwoFactorAuthMethod = '',
-    codesProfileTwoFactorAuthPath = '',
-    codesProfileTwoFactorAuthMethod = '',
-  } = el.dataset;
-
-  const isCurrentPasswordRequired = parseBoolean(currentPasswordRequired);
-
-  return new Vue({
-    el,
-    provide: {
-      isCurrentPasswordRequired,
-      profileTwoFactorAuthPath,
-      profileTwoFactorAuthMethod,
-      codesProfileTwoFactorAuthPath,
-      codesProfileTwoFactorAuthMethod,
-    },
-    render(createElement) {
-      return createElement(ManageTwoFactorForm);
-    },
-  });
-};
 
 export const initRecoveryCodes = () => {
   const el = document.querySelector('.js-2fa-recovery-codes');
@@ -44,15 +13,16 @@ export const initRecoveryCodes = () => {
     return false;
   }
 
-  const { codes = '[]', profileAccountPath = '' } = el.dataset;
+  const { codes, redirectPath } = el.dataset;
 
   return new Vue({
     el,
+    name: 'RecoveryCodesRoot',
     render(createElement) {
       return createElement(RecoveryCodes, {
         props: {
           codes: JSON.parse(codes),
-          profileAccountPath,
+          redirectPath,
         },
       });
     },
@@ -77,4 +47,57 @@ export const initClose2faSuccessMessage = () => {
     },
     { once: true },
   );
+};
+
+export const initTwoFactorConfirm = () => {
+  document.querySelectorAll('.js-two-factor-action-confirm').forEach((el) => {
+    const { modalTitle, buttonText, icon, message, method, passwordRequired, path, size, variant } =
+      el.dataset;
+
+    // eslint-disable-next-line no-new
+    new Vue({
+      el,
+      name: 'TwoFactorActionConfirmRoot',
+      render(createElement) {
+        return createElement(TwoFactorActionConfirm, {
+          props: {
+            modalTitle,
+            buttonText,
+            icon,
+            message,
+            method,
+            passwordRequired: parseBoolean(passwordRequired),
+            path,
+            size,
+            variant,
+          },
+        });
+      },
+    });
+  });
+};
+
+export const initEmailOtpConfirm = () => {
+  const el = document.getElementById('js-email-otp-action-confirm');
+
+  if (!el) {
+    return false;
+  }
+
+  const { helpText, disabled, emailOtpRequired, path } = el.dataset;
+
+  return new Vue({
+    el,
+    name: 'EmailOtpActionConfirmRoot',
+    render(createElement) {
+      return createElement(EmailOtpActionConfirm, {
+        props: {
+          helpText,
+          disabled: parseBoolean(disabled),
+          emailOtpRequired: parseBoolean(emailOtpRequired),
+          path,
+        },
+      });
+    },
+  });
 };

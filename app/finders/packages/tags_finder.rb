@@ -1,26 +1,23 @@
 # frozen_string_literal: true
-class Packages::TagsFinder
-  attr_reader :project, :package_name, :params
 
+class Packages::TagsFinder
   delegate :find_by_name, to: :execute
 
-  def initialize(project, package_name, params = {})
+  def initialize(project, package_name, packages_class)
     @project = project
     @package_name = package_name
-    @params = params
+    @packages_class = packages_class
   end
 
   def execute
-    packages = project.packages
-                      .with_name(package_name)
-    packages = packages.with_package_type(package_type) if package_type.present?
-
     Packages::Tag.for_package_ids(packages.select(:id))
   end
 
   private
 
-  def package_type
-    params[:package_type]
+  attr_reader :project, :package_name, :packages_class
+
+  def packages
+    packages_class.for_projects(project).with_name(package_name)
   end
 end

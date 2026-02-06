@@ -8,7 +8,10 @@ RSpec.describe ServiceDeskSettings::UpdateService, :aggregate_failures, feature_
       create(:service_desk_setting, outgoing_name: 'original name', custom_email: 'user@example.com')
     end
 
-    let_it_be(:credential) { create(:service_desk_custom_email_credential, project: settings.project) }
+    let_it_be(:credential) do
+      build(:service_desk_custom_email_credential, project: settings.project).save!(validate: false)
+    end
+
     let_it_be(:verification) { create(:service_desk_custom_email_verification, :finished, project: settings.project) }
     let_it_be(:user) { create(:user) }
 
@@ -18,7 +21,8 @@ RSpec.describe ServiceDeskSettings::UpdateService, :aggregate_failures, feature_
           outgoing_name: 'some name',
           project_key: 'foo',
           reopen_issue_on_external_participant_note: true,
-          add_external_participants_from_cc: true
+          add_external_participants_from_cc: true,
+          tickets_confidential_by_default: false
         }
       end
 
@@ -30,7 +34,8 @@ RSpec.describe ServiceDeskSettings::UpdateService, :aggregate_failures, feature_
           outgoing_name: 'some name',
           project_key: 'foo',
           reopen_issue_on_external_participant_note: true,
-          add_external_participants_from_cc: true
+          add_external_participants_from_cc: true,
+          tickets_confidential_by_default: false
         )
       end
 

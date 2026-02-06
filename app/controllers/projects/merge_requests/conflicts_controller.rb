@@ -25,13 +25,13 @@ class Projects::MergeRequests::ConflictsController < Projects::MergeRequests::Ap
         elsif @merge_request.can_be_merged?
           render json: {
             message: _('The merge conflicts for this merge request have already been resolved. ' \
-                       'Please return to the merge request.'),
+              'Please return to the merge request.'),
             type: 'error'
           }
         else
           render json: {
             message: _('The merge conflicts for this merge request cannot be resolved through GitLab. ' \
-                       'Please try to resolve them locally.'),
+              'Please try to resolve them locally.'),
             type: 'error'
           }
         end
@@ -80,7 +80,7 @@ class Projects::MergeRequests::ConflictsController < Projects::MergeRequests::Ap
   def authorize_can_resolve_conflicts!
     @conflicts_list = ::MergeRequests::Conflicts::ListService.new(@merge_request)
 
-    return render_404 unless @conflicts_list.can_be_resolved_by?(current_user)
+    render_404 unless @conflicts_list.can_be_resolved_by?(current_user)
   end
 
   def serializer

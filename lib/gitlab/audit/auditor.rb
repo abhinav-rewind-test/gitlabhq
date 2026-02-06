@@ -5,6 +5,8 @@ module Gitlab
     class Auditor
       attr_reader :scope, :name
 
+      include ::Gitlab::Audit::Logging
+
       PERMITTED_TARGET_CLASSES = [
         ::Operations::FeatureFlag
       ].freeze
@@ -50,11 +52,13 @@ module Gitlab
       def self.audit(context, &block)
         auditor = new(context)
 
-        return unless auditor.audit_enabled?
-
         if block
+          return yield unless auditor.audit_enabled?
+
           auditor.multiple_audit(&block)
         else
+          return unless auditor.audit_enabled?
+
           auditor.single_audit
         end
       end
@@ -71,16 +75,18 @@ module Gitlab
         @created_at = @context.fetch(:created_at, DateTime.current)
         @message = @context.fetch(:message, '')
         @additional_details = @context.fetch(:additional_details, {})
+        @additional_details[:event_name] = @name
         @ip_address = @context[:ip_address]
         @target_details = @context[:target_details]
         @authentication_event = @context.fetch(:authentication_event, false)
         @authentication_provider = @context[:authentication_provider]
+        @organization = @context[:organization]
 
         return if @is_audit_event_yaml_defined
 
         raise StandardError, "Audit event type YML file is not defined for #{@name}. Please read " \
-                             "https://docs.gitlab.com/ee/development/audit_event_guide/" \
-                             "#how-to-instrument-new-audit-events for adding a new audit event"
+          "https://docs.gitlab.com/ee/development/audit_event_guide/" \
+          "#how-to-instrument-new-audit-events for adding a new audit event"
       end
 
       def single_audit
@@ -101,6 +107,7 @@ module Gitlab
       def log_events_and_stream(events)
         log_authentication_event
         saved_events = log_to_database(events)
+        log_to_new_tables(saved_events, @name)
 
         # we only want to override events with saved_events when it successfully saves into database.
         # we are doing so to ensure events in memory reflects events saved in database and have id column.
@@ -151,7 +158,8 @@ module Gitlab
           user_name: @author.name,
           ip_address: Gitlab::RequestContext.instance.client_ip || @author.current_sign_in_ip,
           result: AuthenticationEvent.results[:success],
-          provider: @authentication_provider
+          provider: @authentication_provider,
+          organization: @organization
         }
       end
 
@@ -163,17 +171,21 @@ module Gitlab
         # Defined in EE
       end
 
-      def build_event(message)
-        AuditEvents::BuildService.new(
+      def build_event(message_or_attrs)
+        params = {
           author: @author,
           scope: @scope,
           target: @target,
           created_at: @created_at,
-          message: message,
+          message: message_or_attrs,
           additional_details: @additional_details,
           ip_address: @ip_address,
           target_details: @target_details
-        ).execute
+        }
+
+        params.merge!(message_or_attrs.slice(*params.keys)) if message_or_attrs.is_a?(Hash)
+
+        AuditEvents::BuildService.new(**params).execute
       end
 
       def log_to_database(events)
@@ -186,6 +198,8 @@ module Gitlab
         end
       rescue ActiveRecord::RecordInvalid => e
         ::Gitlab::ErrorTracking.track_exception(e, audit_operation: @name)
+
+        nil
       end
 
       def log_to_file(events)

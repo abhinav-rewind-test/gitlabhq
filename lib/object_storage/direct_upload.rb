@@ -68,7 +68,7 @@ module ObjectStorage
         workhorse_aws_hash
       elsif config.azure?
         workhorse_azure_hash
-      elsif Feature.enabled?(:workhorse_google_client) && config.google?
+      elsif config.google?
         workhorse_google_hash
       else
         {}
@@ -88,7 +88,8 @@ module ObjectStorage
             PathStyle: config.use_path_style?,
             UseIamProfile: config.use_iam_profile?,
             ServerSideEncryption: config.server_side_encryption,
-            SSEKMSKeyID: config.server_side_encryption_kms_key_id
+            SSEKMSKeyID: config.server_side_encryption_kms_key_id,
+            AwsSDK: "v2"
           }.compact
         }
       }
@@ -129,7 +130,9 @@ module ObjectStorage
     end
 
     def google_gocloud_url
-      "gs://#{bucket_name}"
+      url = "gs://#{bucket_name}"
+      url += "?universe_domain=#{config.universe_domain}" if config.universe_domain.present?
+      url
     end
 
     def use_workhorse_s3_client?

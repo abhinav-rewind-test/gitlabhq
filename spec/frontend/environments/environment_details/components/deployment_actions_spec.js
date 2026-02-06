@@ -30,7 +30,6 @@ describe('~/environments/environment_details/components/deployment_actions.vue',
       },
       isLast: true,
     },
-    retryUrl: 'deployment/retry',
   };
 
   const mockSetEnvironmentToRollback = jest.fn();
@@ -50,6 +49,8 @@ describe('~/environments/environment_details/components/deployment_actions.vue',
         actions,
         rollback,
         approvalEnvironment,
+        deploymentWebPath: 'deployment/web/path',
+        status: 'Success',
       },
     });
   };
@@ -90,6 +91,14 @@ describe('~/environments/environment_details/components/deployment_actions.vue',
       });
     });
 
+    describe('when there is no retry path available', () => {
+      it('should not show a rollback button', () => {
+        wrapper = createWrapper({ actions: [], rollback: rollbackData });
+        const button = findRollbackButton();
+        expect(button.exists()).toBe(false);
+      });
+    });
+
     describe.each([
       { isLast: true, buttonTitle: translations.redeployButtonTitle, icon: 'repeat' },
       { isLast: false, buttonTitle: translations.rollbackButtonTitle, icon: 'redo' },
@@ -99,8 +108,11 @@ describe('~/environments/environment_details/components/deployment_actions.vue',
         let rollback;
         beforeEach(() => {
           const lastDeployment = { ...rollbackData.lastDeployment, isLast };
-          rollback = { ...rollbackData };
-          rollback.lastDeployment = lastDeployment;
+          rollback = {
+            ...rollbackData,
+            retryUrl: 'deployment/retry',
+            lastDeployment,
+          };
           wrapper = createWrapper({ actions: [], rollback });
         });
 

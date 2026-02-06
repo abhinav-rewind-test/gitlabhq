@@ -82,10 +82,10 @@ RSpec.describe SystemNoteService, feature_category: :shared do
 
     it 'calls IssuableService' do
       expect_next_instance_of(::SystemNotes::IssuablesService) do |service|
-        expect(service).to receive(:request_review).with(reviewer)
+        expect(service).to receive(:request_review).with(reviewer, true)
       end
 
-      described_class.request_review(noteable, project, author, reviewer)
+      described_class.request_review(noteable, project, author, reviewer, true)
     end
   end
 
@@ -125,7 +125,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:relate_issuable).with(noteable_ref)
       end
 
-      described_class.relate_issuable(noteable, noteable_ref, double)
+      described_class.relate_issuable(noteable, noteable_ref, author)
     end
   end
 
@@ -142,7 +142,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:unrelate_issuable).with(noteable_ref)
       end
 
-      described_class.unrelate_issuable(noteable, noteable_ref, double)
+      described_class.unrelate_issuable(noteable, noteable_ref, author)
     end
   end
 
@@ -202,40 +202,6 @@ RSpec.describe SystemNoteService, feature_category: :shared do
       end
 
       described_class.abort_auto_merge(noteable, project, author, reason)
-    end
-  end
-
-  describe '.merge_when_pipeline_succeeds' do
-    it 'calls MergeRequestsService' do
-      sha = double
-
-      expect_next_instance_of(::SystemNotes::MergeRequestsService) do |service|
-        expect(service).to receive(:merge_when_pipeline_succeeds).with(sha)
-      end
-
-      described_class.merge_when_pipeline_succeeds(noteable, project, author, sha)
-    end
-  end
-
-  describe '.cancel_merge_when_pipeline_succeeds' do
-    it 'calls MergeRequestsService' do
-      expect_next_instance_of(::SystemNotes::MergeRequestsService) do |service|
-        expect(service).to receive(:cancel_merge_when_pipeline_succeeds)
-      end
-
-      described_class.cancel_merge_when_pipeline_succeeds(noteable, project, author)
-    end
-  end
-
-  describe '.abort_merge_when_pipeline_succeeds' do
-    it 'calls MergeRequestsService' do
-      reason = double
-
-      expect_next_instance_of(::SystemNotes::MergeRequestsService) do |service|
-        expect(service).to receive(:abort_merge_when_pipeline_succeeds).with(reason)
-      end
-
-      described_class.abort_merge_when_pipeline_succeeds(noteable, project, author, reason)
     end
   end
 
@@ -353,7 +319,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:cross_reference).with(mentioned_in)
       end
 
-      described_class.cross_reference(double, mentioned_in, double)
+      described_class.cross_reference(double, mentioned_in, author)
     end
   end
 
@@ -390,7 +356,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:noteable_moved).with(noteable_ref, direction)
       end
 
-      described_class.noteable_moved(double, double, noteable_ref, double, direction: direction)
+      described_class.noteable_moved(double, double, noteable_ref, author, direction: direction)
     end
   end
 
@@ -404,7 +370,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:noteable_cloned).with(noteable_ref, direction, created_at: created_at)
       end
 
-      described_class.noteable_cloned(double, double, noteable_ref, double, direction: direction, created_at: created_at)
+      described_class.noteable_cloned(double, double, noteable_ref, author, direction: direction, created_at: created_at)
     end
   end
 
@@ -585,7 +551,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:discussion_lock)
       end
 
-      described_class.discussion_lock(issuable, double)
+      described_class.discussion_lock(issuable, author)
     end
   end
 
@@ -631,6 +597,10 @@ RSpec.describe SystemNoteService, feature_category: :shared do
 
       described_class.approve_mr(noteable, author)
     end
+
+    it 'creates system note' do
+      expect { described_class.approve_mr(noteable, author) }.to change { Note.count }.by(1)
+    end
   end
 
   describe '.unapprove_mr' do
@@ -640,6 +610,10 @@ RSpec.describe SystemNoteService, feature_category: :shared do
       end
 
       described_class.unapprove_mr(noteable, author)
+    end
+
+    it 'creates system note' do
+      expect { described_class.approve_mr(noteable, author) }.to change { Note.count }.by(1)
     end
   end
 
@@ -804,7 +778,7 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:hierarchy_changed).with(work_item, 'relate')
       end
 
-      described_class.relate_work_item(noteable, work_item, double)
+      described_class.relate_work_item(noteable, work_item, author)
     end
   end
 
@@ -821,7 +795,35 @@ RSpec.describe SystemNoteService, feature_category: :shared do
         expect(service).to receive(:hierarchy_changed).with(work_item, 'unrelate')
       end
 
-      described_class.unrelate_work_item(noteable, work_item, double)
+      described_class.unrelate_work_item(noteable, work_item, author)
+    end
+  end
+
+  describe '.requested_changes' do
+    it 'calls MergeRequestsService' do
+      expect_next_instance_of(::SystemNotes::MergeRequestsService) do |service|
+        expect(service).to receive(:requested_changes)
+      end
+
+      described_class.requested_changes(noteable, author)
+    end
+
+    it 'creates system note' do
+      expect { described_class.approve_mr(noteable, author) }.to change { Note.count }.by(1)
+    end
+  end
+
+  describe '.reviewed' do
+    it 'calls MergeRequestsService' do
+      expect_next_instance_of(::SystemNotes::MergeRequestsService) do |service|
+        expect(service).to receive(:reviewed)
+      end
+
+      described_class.reviewed(noteable, author)
+    end
+
+    it 'creates system note' do
+      expect { described_class.reviewed(noteable, author) }.to change { Note.count }.by(1)
     end
   end
 end

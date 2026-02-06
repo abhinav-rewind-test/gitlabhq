@@ -1,14 +1,16 @@
 ---
-stage: Service Management
-group: Respond
+stage: Plan
+group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Configure Service Desk
 ---
 
-# Configure Service Desk
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed
+
+{{< /details >}}
 
 By default, Service Desk is active in new projects.
 If it's not active, you can do it in the project's settings.
@@ -16,18 +18,18 @@ If it's not active, you can do it in the project's settings.
 Prerequisites:
 
 - You must have at least the Maintainer role for the project.
-- On GitLab self-managed, you must [set up incoming email](../../../administration/incoming_email.md#set-it-up)
+- On GitLab Self-Managed, you must [set up incoming email](../../../administration/incoming_email.md#set-it-up)
   for the GitLab instance. You should use
   [email sub-addressing](../../../administration/incoming_email.md#email-sub-addressing),
   but you can also use [catch-all mailboxes](../../../administration/incoming_email.md#catch-all-mailbox).
   To do this, you must have administrator access.
-- You must have enabled [issue](../settings/project_features_permissions.md#configure-project-features-and-permissions)
+- You must have enabled [issue](../settings/_index.md#configure-project-features-and-permissions)
   tracker for the project.
 
 To enable Service Desk in your project:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn on the **Activate Service Desk** toggle.
 1. Optional. Complete the fields.
@@ -38,7 +40,16 @@ To enable Service Desk in your project:
 
 Service Desk is now enabled for this project.
 If anyone sends an email to the address available below **Email address to use for Service Desk**,
-GitLab creates a confidential issue with the email's content.
+GitLab creates a confidential ticket with the email's content.
+
+## Service Desk glossary
+
+This glossary provides definitions for terms related to Service Desk.
+
+| Term                                             | Definition |
+|--------------------------------------------------|------------|
+| [External participant](external_participants.md) | Users without a GitLab account that can interact with an issue or Service Desk ticket only by email. |
+| Requester                                        | External participant that created the Service Desk ticket or was added as requester using the [`/convert_to_ticket` quick action](using_service_desk.md#create-a-service-desk-ticket-in-gitlab-ui). |
 
 ## Improve your project's security
 
@@ -48,16 +59,20 @@ To improve your Service Desk project's security, you should:
 - [Enable Akismet](../../../integration/akismet.md) on your GitLab instance to add spam checking to this service.
   Unblocked email spam can result in many spam issues being created.
 
-## Customize emails sent to the requester
+## Customize emails sent to external participants
 
-> - Moved from GitLab Premium to GitLab Free in 13.2.
-> - `UNSUBSCRIBE_URL`, `SYSTEM_HEADER`, `SYSTEM_FOOTER`, and `ADDITIONAL_TEXT` placeholders [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/285512) in GitLab 15.9.
-> - `%{ISSUE_DESCRIPTION}` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/223751) in GitLab 16.0.
-> - `%{ISSUE_URL}` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/408793) in GitLab 16.1.
+{{< history >}}
 
-An email is sent to the requester when:
+- `UNSUBSCRIBE_URL`, `SYSTEM_HEADER`, `SYSTEM_FOOTER`, and `ADDITIONAL_TEXT` placeholders [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/285512) in GitLab 15.9.
+- `%{ISSUE_DESCRIPTION}` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/223751) in GitLab 16.0.
+- `%{ISSUE_URL}` [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/408793) in GitLab 16.1.
+
+{{< /history >}}
+
+An email is sent to external participants when:
 
 - A requester submits a new ticket by emailing Service Desk.
+- An external participant is added to a Service Desk ticket.
 - A new public comment is added on a Service Desk ticket.
   - Editing a comment does not trigger a new email to be sent.
 
@@ -67,14 +82,14 @@ For example, you can format the emails to include a header and footer in accorda
 organization's brand guidelines. You can also include the following placeholders to display dynamic
 content specific to the Service Desk ticket or your GitLab instance.
 
-| Placeholder            | `thank_you.md`         | `new_note.md`          | Description |
-|------------------------|------------------------|------------------------|-------------|
-| `%{ISSUE_ID}`          | **{check-circle}** Yes | **{check-circle}** Yes | Ticket IID. |
-| `%{ISSUE_PATH}`        | **{check-circle}** Yes | **{check-circle}** Yes | Project path appended with the ticket IID. |
-| `%{ISSUE_URL}`         | **{check-circle}** Yes | **{check-circle}** Yes | URL of the ticket. External participants can only view the ticket if the project is public and ticket is not confidential (Service Desk tickets are confidential by default). |
-| `%{ISSUE_DESCRIPTION}` | **{check-circle}** Yes | **{check-circle}** Yes | Ticket description. If a user has edited the description, it may contain sensitive information that is not intended to be delivered to external participants. Use this placeholder with care and ideally only if you never modify descriptions or your team is aware of the template design. |
-| `%{UNSUBSCRIBE_URL}`   | **{check-circle}** Yes | **{check-circle}** Yes | Unsubscribe URL. |
-| `%{NOTE_TEXT}`         | **{dotted-circle}** No | **{check-circle}** Yes | The new comment added to the ticket by a user. Take care to include this placeholder in `new_note.md`. Otherwise, the requesters may never see the updates on their Service Desk ticket. |
+| Placeholder            | `thank_you.md` and `new_participant` | `new_note.md`          | Description |
+|------------------------|--------------------------------------|------------------------|-------------|
+| `%{ISSUE_ID}`          | {{< yes >}}               | {{< yes >}} | Ticket IID. |
+| `%{ISSUE_PATH}`        | {{< yes >}}               | {{< yes >}} | Project path appended with the ticket IID. |
+| `%{ISSUE_URL}`         | {{< yes >}}               | {{< yes >}} | URL of the ticket. External participants can only view the ticket if the project is public and ticket is not confidential (Service Desk tickets are confidential by default). |
+| `%{ISSUE_DESCRIPTION}` | {{< yes >}}               | {{< yes >}} | Ticket description. If a user has edited the description, it may contain sensitive information that is not intended to be delivered to external participants. Use this placeholder with care and ideally only if you never modify ticket descriptions or your team is aware of the template design. |
+| `%{UNSUBSCRIBE_URL}`   | {{< yes >}}               | {{< yes >}} | Unsubscribe URL. Learn how to [unsubscribe as an external participant](external_participants.md#unsubscribing-from-notification-emails) and [use unsubscribe headers in notification emails from GitLab](../../profile/notifications.md#using-an-email-client-or-other-software). |
+| `%{NOTE_TEXT}`         | {{< no >}}                | {{< yes >}} | The new comment added to the ticket by a user. Take care to include this placeholder in `new_note.md`. Otherwise, the external participants may never see the updates on their Service Desk ticket. |
 
 ### Thank you email
 
@@ -84,6 +99,24 @@ Without additional configuration, GitLab sends the default thank you email.
 To create a custom thank you email template:
 
 1. In the `.gitlab/service_desk_templates/` directory of your repository, create a file named `thank_you.md`.
+1. Populate the Markdown file with text, [GitLab Flavored Markdown](../../markdown.md),
+   [some selected HTML tags](../../markdown.md#inline-html), and placeholders to customize the reply
+   to Service Desk requesters.
+
+### New participant email
+
+{{< history >}}
+
+- `new_participant` email [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/299261) in GitLab 17.0.
+
+{{< /history >}}
+
+When an [external participant](external_participants.md) is added to the ticket, GitLab sends a **new participant email** to let them know they are part of the conversation.
+Without additional configuration, GitLab sends the default new participant email.
+
+To create a custom new participant email template:
+
+1. In the `.gitlab/service_desk_templates/` directory of your repository, create a file named `new_participant.md`.
 1. Populate the Markdown file with text, [GitLab Flavored Markdown](../../markdown.md),
    [some selected HTML tags](../../markdown.md#inline-html), and placeholders to customize the reply
    to Service Desk requesters.
@@ -101,24 +134,31 @@ To keep your emails on brand, you can create a custom new note email template. T
    email. Be sure to include the `%{NOTE_TEXT}` in the template to make sure the email recipient can
    read the contents of the comment.
 
-### Instance-level email header, footer, and additional text
+### Instance-wide email header, footer, and additional text
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/344819) in GitLab 15.9.
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/344819) in GitLab 15.9.
+
+{{< /history >}}
 
 Instance administrators can add a header, footer or additional text to the GitLab instance and apply
-them to all emails sent from GitLab. If you're using a custom `thank_you.md` or `new_note.md`, to include
+them to all emails sent from GitLab. If you're using a custom `thank_you.md`, `new_participant.md` or `new_note.md`, to include
 this content, add `%{SYSTEM_HEADER}`, `%{SYSTEM_FOOTER}`, or `%{ADDITIONAL_TEXT}` to your templates.
 
 For more information, see [System header and footer messages](../../../administration/appearance.md#add-system-header-and-footer-messages) and [custom additional text](../../../administration/settings/email.md#custom-additional-text).
 
 ## Use a custom template for Service Desk tickets
 
-You can select one [description template](../description_templates.md#create-an-issue-template)
-**per project** to be appended to every new Service Desk ticket's description.
+You can select one [description template](../description_templates.md#create-a-description-template)
+**per project** to be appended to every new Service Desk ticket description.
 
 You can set description templates at various levels:
 
@@ -130,19 +170,19 @@ The templates are inherited. For example, in a project, you can also access temp
 
 Prerequisites:
 
-- You must have [created a description template](../description_templates.md#create-an-issue-template).
+- You must have [created a description template](../description_templates.md#create-a-description-template).
 
 To use a custom description template with Service Desk:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. From the dropdown list **Template to append to all Service Desk issues**, search or select your template.
 
 ## Support Bot user
 
-Behind the scenes, Service Desk works by the special Support Bot user creating issues.
-This user isn't a [billable user](../../../subscriptions/self_managed/index.md#billable-users),
+Behind the scenes, Service Desk works by the special Support Bot user creating tickets.
+This user isn't a [billable user](../../../subscriptions/manage_users_and_seats.md#criteria-for-non-billable-users),
 so it does not count toward the license limit count.
 
 In GitLab 16.0 and earlier, comments generated from Service Desk emails show `GitLab Support Bot`
@@ -152,26 +192,57 @@ This feature only applies to comments made in GitLab 16.1 and later.
 
 ### Change the Support Bot's display name
 
-You can change the display name of the Support Bot user. Emails sent from Service Desk have
+You can change the display name of the Support Bot user. Emails sent from Service Desk tickets have
 this name in the `From` header. The default display name is `GitLab Support Bot`.
 
 To edit the custom email display name:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Below **Email display name**, enter a new name.
 1. Select **Save changes**.
 
-## Reopen issues when an external participant comments
+## Default ticket visibility
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/8549) in GitLab 16.7
+{{< history >}}
 
-You can configure GitLab to reopen closed issues when an external participant adds
-a new comment on an issue by email. This also adds an internal comment that mentions
-the assignees of the issue and creates to-do items for them.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/33091) in GitLab 17.2.
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i>
+{{< /history >}}
+
+New tickets are confidential by default, so only project members with at least the Planner role
+can view them.
+
+In private and internal projects, you can configure GitLab so that new tickets are not confidential by default, and any project member can view them.
+
+In public projects, this setting is not available because new tickets are always confidential by default.
+
+Prerequisites:
+
+- You must have at least the Maintainer role for the project.
+
+To disable this setting:
+
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
+1. Expand **Service Desk**.
+1. Clear the **New tickets are confidential by default** checkbox.
+1. Select **Save changes**.
+
+## Reopen tickets when an external participant comments
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/8549) in GitLab 16.7
+
+{{< /history >}}
+
+You can configure GitLab to reopen closed tickets when an external participant adds
+a new comment on a ticket by email. This also adds an internal comment that mentions
+the assignees of the ticket and creates to-do items for them.
+
+<i class="fa-youtube-play" aria-hidden="true"></i>
 For a walkthrough, see [a short showcase video](https://youtu.be/163wDM1e43o).
 <!-- Video published on 2023-12-12 -->
 
@@ -181,33 +252,40 @@ Prerequisites:
 
 To enable this setting:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Select the **Reopen issues on a new note from an external participant** checkbox.
 1. Select **Save changes**.
 
 ## Custom email address
 
-DETAILS:
-**Status**: Beta
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/329990) in GitLab 16.3 [with a flag](../../../administration/feature_flags.md) named `service_desk_custom_email`. Disabled by default.
-> - [Enabled on GitLab.com and self-managed](https://gitlab.com/gitlab-org/gitlab/-/issues/387003) in GitLab 16.4.
-> - Ability to select the SMTP authentication method [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/429680) in GitLab 16.6.
-> - [Feature flag `service_desk_custom_email` removed](https://gitlab.com/gitlab-org/gitlab/-/issues/387003) in GitLab 16.7.
-> - Local network allowed for SMTP host on GitLab self-managed [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/435206) in GitLab 16.7
+- Status: Beta
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/329990) in GitLab 16.3 [with a flag](../../../administration/feature_flags/_index.md) named `service_desk_custom_email`. Disabled by default.
+- [Enabled on GitLab.com and GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/issues/387003) in GitLab 16.4.
+- Ability to select the SMTP authentication method [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/429680) in GitLab 16.6.
+- [Feature flag `service_desk_custom_email` removed](https://gitlab.com/gitlab-org/gitlab/-/issues/387003) in GitLab 16.7.
+- Local network allowed for SMTP host on GitLab Self-Managed [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/435206) in GitLab 16.7.
+
+{{< /history >}}
 
 Configure a custom email address to show as the sender of your support communication.
 Maintain brand identity and instill confidence among support requesters with a domain they recognize.
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i>
+<i class="fa-youtube-play" aria-hidden="true"></i>
 For an overview, see [a short showcase video](https://youtu.be/_moD5U3xcQs).
 <!-- Video published on 2023-09-12 -->
 
-This feature is in [Beta](../../../policy/experiment-beta-support.md#beta).
-A Beta feature is not production-ready, but is unlikely to change drastically
-before it's released. We encourage users to try Beta features and provide feedback
+This feature is in [beta](../../../policy/development_stages_support.md#beta).
+A beta feature is not production-ready, but is unlikely to change drastically
+before it's released. We encourage users to try beta features and provide feedback
 in [the feedback issue](https://gitlab.com/gitlab-org/gitlab/-/issues/416637).
 
 ### Prerequisites
@@ -227,8 +305,8 @@ The custom email address you want to use must meet all of the following requirem
 - You have SMTP credentials (ideally, you should use an app password).
   The username and password are stored in the database using the Advanced Encryption Standard (AES)
   with a 256-bit key.
-- The **SMTP host** must be resolvable from the network of your GitLab instance (on GitLab self-managed)
-  or the public internet (on GitLab SaaS).
+- The **SMTP host** must be resolvable from the network of your GitLab instance (on GitLab Self-Managed)
+  or the public internet (on GitLab.com).
 - You must have at least the Maintainer role for the project.
 - Service Desk must be configured for the project.
 
@@ -236,8 +314,8 @@ The custom email address you want to use must meet all of the following requirem
 
 Configure and verify a custom email address when you want to send Service Desk emails using your own email address.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk** and find the **Configure a custom email address** section.
 1. Note the presented Service Desk address of this project, and with your email provider
    (for example, Gmail), set up email forwarding from the custom email address to the
@@ -270,7 +348,7 @@ notification email with the verification result.
 If the verification failed, the email also contains details of the reason.
 
 If the verification was successful, the custom email address is ready to be used.
-You can now enable sending Service Desk emails via the custom email address.
+You can now enable sending Service Desk emails with the custom email address.
 
 #### Troubleshooting your configuration
 
@@ -278,29 +356,35 @@ When configuring a custom email you might encounter the following issues.
 
 ##### Invalid credentials
 
-You might get an error that states that invalid credentials were used.
+You might get an error that states:
 
-This occurs when the SMTP server returns that the authentication wasn't successful.
+```plaintext
+The given credentials (username and password) were rejected by the SMTP server,
+or you need to explicitly set an authentication method.
+```
 
-To troubleshoot this:
+This issue occurs when the SMTP server rejects the authentication credentials.
 
-1. Check your SMTP credentials, especially the username and password.
-1. Sometimes GitLab cannot automatically select an authentication method that the SMTP server supports. Either:
-   - Try the available authentication methods (**Plain**, **Login** and **CRAM-MD5**).
-   - Check which authentication methods your SMTP server supports, using the
-   [`swaks` command line tool](https://www.jetmore.org/john/code/swaks/):
-     1. Run the following command with your credentials and look for a line that starts with `250-AUTH`:
+To resolve this issue:
 
-        ```shell
-        swaks --to user@example.com \
-              --from support@example.com \
-              --auth-user support@example.com \
-              --server smtp@example.com:587 \
-              -tls-optional \
-              --auth-password your-app-password
-        ```
+1. Verify your username and password are correct.
+1. If GitLab cannot automatically select a supported authentication method, do one of the following:
+   - Test the available authentication methods: **Plain**, **Login**, and **CRAM-MD5**.
+   - Check which authentication methods your SMTP server supports by running this command on the GitLab server:
 
-     1. Select one of the supported authentication methods in the custom email setup form.
+     ```shell
+          swaks --to user@example.com \
+                --from support@example.com \
+                --auth-user support@example.com \
+                --server smtp@example.com:587 \
+                -tls-optional \
+                --auth-password your-app-password
+     ```
+
+     In the output, find the line that starts with `250-AUTH`,
+     then select one of the supported authentication methods in the custom email setup form.
+
+1. If you're using Microsoft 365 and the error persists, disable conditional access and repeat the previous steps.
 
 ##### Incorrect forwarding target
 
@@ -324,20 +408,20 @@ To troubleshoot this:
 
 ### Enable or disable the custom email address
 
-After the custom email address has been verified, administrators can enable or disable sending Service Desk emails via the custom email address.
+After the custom email address has been verified, administrators can enable or disable sending Service Desk emails with the custom email address.
 
 To **enable** the custom email address:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn on the **Enable custom email** toggle.
    Service Desk emails to external participants are sent using the SMTP credentials.
 
 To **disable** the custom email address:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Turn off the **Enable custom email** toggle.
    Because you set up email forwarding, emails to your custom email address continue to be processed and
@@ -371,8 +455,8 @@ Prerequisites:
 To configure a custom Service Desk email address with Google Workspace:
 
 1. [Configure a Google Workspace account](#configure-a-google-workspace-account).
-1. [Configure email forwarding](#configure-email-forwarding).
-1. [Configure custom email address](#configure-custom-email-address).
+1. [Configure email forwarding in Google Workspace](#configure-email-forwarding-in-google-workspace).
+1. [Configure custom email address using a Google Workspace account](#configure-custom-email-address-using-a-google-workspace-account).
 
 #### Configure a Google Workspace account
 
@@ -387,16 +471,16 @@ In Google Workspace:
    SMTP password.
    Store it in a secure place and remove spaces between the characters.
 
-Next, you must [configure email forwarding](#configure-email-forwarding).
+Next, you must [configure email forwarding in Google Workspace](#configure-email-forwarding-in-google-workspace).
 
-#### Configure email forwarding
+#### Configure email forwarding in Google Workspace
 
 The following steps require moving between GitLab and Google Workspace.
 
 In GitLab:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**
 1. Expand **Service Desk**.
 1. Note the email address below **Service Desk email address to forward emails to**.
 
@@ -423,14 +507,15 @@ In Google Workspace:
    from the dropdown list.
 1. At the bottom of the page, select **Save Changes**.
 
-Next, [configure a custom email address](#configure-a-custom-email-address) to use with Service Desk.
+Next, [configure custom email address using a Google Workspace account](#configure-custom-email-address-using-a-google-workspace-account)
+to use with Service Desk.
 
-#### Configure custom email address
+#### Configure custom email address using a Google Workspace account
 
 In GitLab:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**
 1. Expand **Service Desk** and find the custom email settings.
 1. Complete the fields:
    - **Custom email address**: Your custom email address.
@@ -443,27 +528,159 @@ In GitLab:
 1. After the [verification process](#verification) you should be able to
    [enable the custom email address](#enable-or-disable-the-custom-email-address).
 
+### Use Microsoft 365 (Exchange online) with your own domain
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/496396) in GitLab 17.5.
+
+{{< /history >}}
+
+Set up a custom email address for Service Desk when using Microsoft 365 (Exchange) with your own domain.
+
+Prerequisites:
+
+- You already have a Microsoft 365 account.
+- You can create new accounts for your tenant.
+
+To configure a custom Service Desk email address with Microsoft 365:
+
+1. [Configure a Microsoft 365 account](#configure-a-microsoft-365-account).
+1. [Configure email forwarding in Microsoft 365](#configure-email-forwarding-in-microsoft-365).
+1. [Configure custom email address using a Microsoft 365 account](#configure-custom-email-address-using-a-microsoft-365-account).
+
+#### Configure a Microsoft 365 account
+
+First, you must create and configure a Microsoft 365 account.
+In this guide, use a licensed user for the custom email mailbox.
+You can also experiment with other configuration options.
+
+In [Microsoft 365 admin center](https://admin.microsoft.com/Adminportal/Home#/homepage):
+
+1. Create a new account for the custom email address you'd like to use (for example, `support@example.com`).
+   1. Expand the **Users** section and select **Active users** from the menu.
+   1. Select **Add a user** and follow the instructions on the screen.
+1. In Microsoft Entra (previously named Active Directory), enable two-factor authentication for the account.
+1. [Allow users to create app passwords](https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-app-passwords).
+1. Enable **Authenticated SMTP** for the account.
+   1. Select the account from the list.
+   1. In the drawer select **Mail**.
+   1. Below **Email apps** select **Manage email apps**.
+   1. Check **Authenticated SMTP** and select **Save changes**.
+1. Depending on your overall Exchange online configuration you might need to configure the following:
+   1. Use Azure Cloud Shell to allow SMTP client authentication:
+
+      ```powershell
+      Set-TransportConfig -SmtpClientAuthenticationDisabled $false
+      ```
+
+   1. Use Azure Cloud Shell to allow
+      [legacy TLS clients using SMTP AUTH](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/opt-in-exchange-online-endpoint-for-legacy-tls-using-smtp-auth):
+
+      ```powershell
+      Set-TransportConfig -AllowLegacyTLSClients $true
+      ```
+
+   1. If you want to forward to an external recipient, see this guide on how to enable
+      [external email forwarding](https://learn.microsoft.com/en-gb/defender-office-365/outbound-spam-policies-external-email-forwarding).
+      You might also want to [create an outbound anti-spam policy](https://security.microsoft.com/antispam)
+      to allow forwarding to external recipients only for users who need it.
+1. Sign in to that account and activate two-factor authentication.
+   <!-- vale gitlab_base.SubstitutionWarning = NO -->
+   1. From the menu in the upper-right corner, select **View account** and [browse to **Security Info**](https://mysignins.microsoft.com/security-info).
+   <!-- vale gitlab_base.SubstitutionWarning = YES -->
+   1. Select **Add sign-in method** and select a method that works for you (authenticator app, phone or email).
+   1. Follow the instructions on the screen.
+<!-- vale gitlab_base.SubstitutionWarning = NO -->
+1. On the [**Security Info**](https://mysignins.microsoft.com/security-info) page,
+   create an app password that you can use as your SMTP password.
+<!-- vale gitlab_base.SubstitutionWarning = YES -->
+   1. Select **Add sign-in method** and select **App password** from the dropdown list.
+   1. Set a descriptive name for the app password, such as `GitLab SD`.
+   1. Select **Next**.
+   1. Copy the displayed password and store it in a secure place.
+   1. Optional. Ensure you can send emails using SMTP using the [`swaks` command line tool](https://www.jetmore.org/john/code/swaks/).
+   1. Run the following command with your credentials and use the app password as the `auth-password`:
+
+      ```shell
+      swaks --to your-email@example.com \
+            --from custom-email@example.com \
+            --auth-user custom-email@example.com \
+            --server smtp.office365.com:587 \
+            -tls-optional \
+            --auth-password <your_app_password>
+      ```
+
+Next, you must [configure email forwarding in Microsoft 365](#configure-email-forwarding-in-microsoft-365).
+
+#### Configure email forwarding in Microsoft 365
+
+The following steps require moving between GitLab and Microsoft 365 admin center.
+
+In GitLab:
+
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**
+1. Expand **Service Desk**.
+1. Note the email address below **Service Desk email address to forward emails to** without the
+   sub-address part.
+
+   Emails aren't forwarded if the recipient address contains a sub-address (for example reply
+   addresses generated by GitLab) and the forwarding email address contains a sub-address
+   (the **Service Desk email address to forward emails to**).
+
+   For example, `incoming+group-project-12346426-issue-@incoming.gitlab.com` becomes `incoming@incoming.gitlab.com`.
+   That's okay because Exchange online preserves the custom email address in the `To` header
+   after forwarding and GitLab can assign the correct project based on the custom email address.
+
+In [Microsoft 365 admin center](https://admin.microsoft.com/Adminportal/Home#/homepage):
+
+<!-- vale gitlab_base.SubstitutionWarning = NO -->
+1. Expand the **Users** section and select **Active users** from the menu.
+<!-- vale gitlab_base.SubstitutionWarning = YES -->
+1. Select the account you'd like to use for the custom email from the list.
+1. In the drawer select **Mail**.
+1. Below **Email forwarding** select **Manage email forwarding**.
+1. Check **Forward all emails sent to this mailbox**.
+1. Enter the Service Desk address from the custom email form in **Forwarding email address** without the sub-address part.
+1. Select **Save changes**.
+
+Next, [configure a custom email address using a Microsoft 365 account](#configure-custom-email-address-using-a-microsoft-365-account)
+to use with Service Desk.
+
+#### Configure custom email address using a Microsoft 365 account
+
+In GitLab:
+
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**
+1. Expand **Service Desk** and find the custom email settings.
+1. Complete the fields:
+   - **Custom email address**: Your custom email address.
+   - **SMTP host**: `smtp.office365.com`.
+   - **SMTP port**: `587`.
+   - **SMTP username**: Prefilled with the custom email address.
+   - **SMTP password**: The app password you previously created for the custom email account.
+   - **SMTP authentication method**: Login
+1. Select **Save and test connection**
+1. After the [verification process](#verification) you should be able to
+   [enable the custom email address](#enable-or-disable-the-custom-email-address).
+
 ### Known issues
 
 - Some service providers don't allow SMTP connections any more.
   Often you can enable them on a per user basis and create an app password.
-- Microsoft Exchange doesn't preserve the `From` header, so you cannot use a custom email from the same tenant.
-  As a workaround:
-  - On GitLab SaaS, use a transport rule to forward emails from the custom email address to the Service Desk email
-    from GitLab SaaS. Forwarding to an email address outside the current tenant preserves the original `From` header.
-  - On GitLab self-managed, use a subdomain or a different domain from another service provider for the
-    custom email address or the GitLab instance `incoming_email` or `service_desk_email`.
 
 ## Use an additional Service Desk alias email
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/2201) in GitLab 13.0.
-> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/284656) in GitLab 13.8.
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-You can use an additional alias email address for Service Desk on an instance level.
+{{< /details >}}
+
+You can use an additional alias email address for Service Desk for an instance.
 
 To do this, you must configure
 a [`service_desk_email`](#configure-service-desk-alias-email) in the instance configuration. You can also configure a
@@ -471,9 +688,9 @@ a [`service_desk_email`](#configure-service-desk-alias-email) in the instance co
 
 ### Configure Service Desk alias email
 
-NOTE:
-On GitLab.com a custom mailbox is already configured with `contact-project+%{key}@incoming.gitlab.com` as the email address. You can still configure the
-[custom suffix](#configure-a-suffix-for-service-desk-alias-email) in project settings.
+> [!note]
+> On GitLab.com a custom mailbox is already configured with `contact-project+%{key}@incoming.gitlab.com` as the email address. You can still configure the
+> [custom suffix](#configure-a-suffix-for-service-desk-alias-email) in project settings.
 
 Service Desk uses the [incoming email](../../../administration/incoming_email.md)
 configuration by default. However, to have a separate email address for Service Desk,
@@ -489,17 +706,17 @@ Prerequisites:
 
 To configure a custom mailbox for Service Desk with IMAP, add the following snippets to your configuration file in full:
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
-NOTE:
-In GitLab 15.3 and later, Service Desk uses `webhook` (internal API call) by default instead of enqueuing a Sidekiq job.
-To use `webhook` on a Linux package installation running GitLab 15.3, you must generate a secret file.
-For more information, see [merge request 5927](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/5927).
-In GitLab 15.4, reconfiguring a Linux package installation generates this secret file automatically, so no
-secret file configuration setting is needed.
-For more information, see [issue 1462](https://gitlab.com/gitlab-com/gl-infra/scalability/-/issues/1462).
+> [!note]
+> In GitLab 15.3 and later, Service Desk uses `webhook` (internal API call) by default instead of enqueuing a Sidekiq job.
+> To use `webhook` on a Linux package installation running GitLab 15.3, you must generate a secret file.
+> For more information, see [merge request 5927](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/5927).
+> In GitLab 15.4, reconfiguring a Linux package installation generates this secret file automatically, so no
+> secret file configuration setting is needed.
+> For more information, see [issue 1462](https://gitlab.com/gitlab-com/gl-infra/scalability/-/issues/1462).
 
 ```ruby
 gitlab_rails['service_desk_email_enabled'] = true
@@ -515,7 +732,9 @@ gitlab_rails['service_desk_email_ssl'] = true
 gitlab_rails['service_desk_email_start_tls'] = false
 ```
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 ```yaml
 service_desk_email:
@@ -535,14 +754,20 @@ service_desk_email:
   expunge_deleted: true
 ```
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 The configuration options are the same as for configuring
 [incoming email](../../../administration/incoming_email.md#set-it-up).
 
 #### Use encrypted credentials
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108279) in GitLab 15.9.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108279) in GitLab 15.9.
+
+{{< /history >}}
 
 Instead of having the Service Desk email credentials stored in plaintext in the configuration files, you can optionally
 use an encrypted file for the incoming email credentials.
@@ -557,9 +782,9 @@ The supported configuration items for the encrypted file are:
 - `user`
 - `password`
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. If initially your Service Desk configuration in `/etc/gitlab/gitlab.rb` looked like:
 
@@ -588,12 +813,16 @@ The supported configuration items for the encrypted file are:
    sudo gitlab-ctl reconfigure
    ```
 
-:::TabTitle Helm chart (Kubernetes)
+{{< /tab >}}
+
+{{< tab title="Helm chart (Kubernetes)" >}}
 
 Use a Kubernetes secret to store the Service Desk email password. For more information,
-read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets.html#imap-password-for-service-desk-emails).
+read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secrets/#imap-password-for-service-desk-emails).
 
-:::TabTitle Docker
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
 
 1. If initially your Service Desk configuration in `docker-compose.yml` looked like:
 
@@ -631,7 +860,9 @@ read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secre
    docker compose up -d
    ```
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. If initially your Service Desk configuration in `/home/git/gitlab/config/gitlab.yml` looked like:
 
@@ -666,20 +897,25 @@ read about [Helm IMAP secrets](https://docs.gitlab.com/charts/installation/secre
    sudo service gitlab restart
    ```
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 #### Microsoft Graph
 
-> - Alternative Azure deployments [introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/5978) in GitLab 14.9.
-> - [Introduced for self-compiled (source) installs](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/116494) in GitLab 15.11.
+{{< history >}}
+
+- [Introduced for self-compiled (source) installs](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/116494) in GitLab 15.11.
+
+{{< /history >}}
 
 `service_desk_email` can be configured to read Microsoft Exchange Online mailboxes with the Microsoft
 Graph API instead of IMAP. Set up an OAuth 2.0 application for Microsoft Graph
 [the same way as for incoming email](../../../administration/incoming_email.md#microsoft-graph).
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following lines, substituting
    the values you want:
@@ -713,15 +949,17 @@ Graph API instead of IMAP. Set up an OAuth 2.0 application for Microsoft Graph
   }
   ```
 
-:::TabTitle Helm chart (Kubernetes)
+{{< /tab >}}
 
-1. Create the [Kubernetes Secret containing the OAuth 2.0 application client secret](https://docs.gitlab.com/charts/installation/secrets.html#microsoft-graph-client-secret-for-service-desk-emails):
+{{< tab title="Helm chart (Kubernetes)" >}}
+
+1. Create the [Kubernetes Secret containing the OAuth 2.0 application client secret](https://docs.gitlab.com/charts/installation/secrets/#microsoft-graph-client-secret-for-service-desk-emails):
 
    ```shell
    kubectl create secret generic service-desk-email-client-secret --from-literal=secret=<YOUR-CLIENT_SECRET>
    ```
 
-1. Create the [Kubernetes Secret for the GitLab Service Desk email auth token](https://docs.gitlab.com/charts/installation/secrets.html#gitlab-service-desk-email-auth-token).
+1. Create the [Kubernetes Secret for the GitLab Service Desk email auth token](https://docs.gitlab.com/charts/installation/secrets/#gitlab-service-desk-email-auth-token).
    Replace `<name>` with the name of the [Helm release name](https://helm.sh/docs/intro/using_helm/) for the GitLab installation:
 
    ```shell
@@ -777,7 +1015,9 @@ configure the `azureAdEndpoint` and `graphEndpoint` settings. These fields are c
    helm upgrade -f gitlab_values.yaml gitlab gitlab/gitlab
    ```
 
-:::TabTitle Docker
+{{< /tab >}}
+
+{{< tab title="Docker" >}}
 
 1. Edit `docker-compose.yml`:
 
@@ -840,7 +1080,9 @@ configure the `azure_ad_endpoint` and `graph_endpoint` settings:
    docker compose up -d
    ```
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `/home/git/gitlab/config/gitlab.yml`:
 
@@ -883,7 +1125,9 @@ configure the `azure_ad_endpoint` and `graph_endpoint` settings:
          poll_interval: 60  # Optional
    ```
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### Configure a suffix for Service Desk alias email
 
@@ -898,8 +1142,8 @@ Prerequisites:
 
 - You must have configured a [Service Desk alias email](#configure-service-desk-alias-email).
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Service Desk**.
 1. Below **Email address suffix**, enter the suffix to use.
 1. Select **Save changes**.
@@ -926,9 +1170,9 @@ from the `incoming_email` and `service_desk_email` mailboxes.
 ### Helm chart (Kubernetes)
 
 The [GitLab Helm chart](https://docs.gitlab.com/charts/) is made up of multiple subcharts, and one of them is
-the [Mailroom subchart](https://docs.gitlab.com/charts/charts/gitlab/mailroom/index.html). Configure the
-[common settings for `incoming_email`](https://docs.gitlab.com/charts/installation/command-line-options.html#incoming-email-configuration)
-and the [common settings for `service_desk_email`](https://docs.gitlab.com/charts/installation/command-line-options.html#service-desk-email-configuration).
+the [Mailroom subchart](https://docs.gitlab.com/charts/charts/gitlab/mailroom/). Configure the
+[common settings for `incoming_email`](https://docs.gitlab.com/charts/installation/command-line-options/#incoming-email-configuration)
+and the [common settings for `service_desk_email`](https://docs.gitlab.com/charts/installation/command-line-options/#service-desk-email-configuration).
 
 ### Linux package (Omnibus)
 
@@ -943,40 +1187,44 @@ or completely separately.
 
    Find the `incoming_email` or `service_desk_email` section in `/etc/gitlab/gitlab.rb`:
 
-   ::Tabs
+   {{< tabs >}}
 
-   :::TabTitle `incoming_email`
+   {{< tab title="`incoming_email`" >}}
 
    ```ruby
    gitlab_rails['incoming_email_enabled'] = true
    gitlab_rails['incoming_email_address'] = "incoming+%{key}@example.com"
    ```
 
-   :::TabTitle `service_desk_email`
+   {{< /tab >}}
+
+   {{< tab title="`service_desk_email`" >}}
 
    ```ruby
    gitlab_rails['service_desk_email_enabled'] = true
    gitlab_rails['service_desk_email_address'] = "project_contact+%{key}@example.com"
    ```
 
-   ::EndTabs
+   {{< /tab >}}
+
+   {{< /tabs >}}
 
 1. GitLab offers two methods to transport emails from `mail_room` to the GitLab
    application. You can configure the `delivery_method` for each email setting individually:
-   1. Recommended: `webhook` (default in GitLab 15.3 and later) sends the email payload via an API POST request to your GitLab
+   1. Recommended: `webhook` (default in GitLab 15.3 and later) sends the email payload with an API POST request to your GitLab
       application. It uses a shared token to authenticate. If you choose this method,
       make sure the `mail_room` process can access the API endpoint and distribute the shared
       token across all application nodes.
 
-      ::Tabs
+      {{< tabs >}}
 
-      :::TabTitle `incoming_email`
+      {{< tab title="`incoming_email`" >}}
 
       ```ruby
       gitlab_rails['incoming_email_delivery_method'] = "webhook"
 
       # The URL that mail_room can contact. You can also use an internal URL or IP,
-      # just make sure mail_room can access the GitLab API via that address.
+      # just make sure mail_room can access the GitLab API with that address.
       # Do not end with "/".
       gitlab_rails['incoming_email_gitlab_url'] = "https://gitlab.example.com"
 
@@ -984,13 +1232,15 @@ or completely separately.
       gitlab_rails['incoming_email_secret_file'] = ".gitlab_mailroom_secret"
       ```
 
-      :::TabTitle `service_desk_email`
+      {{< /tab >}}
+
+      {{< tab title="`service_desk_email`" >}}
 
       ```ruby
       gitlab_rails['service_desk_email_delivery_method'] = "webhook"
 
       # The URL that mail_room can contact. You can also use an internal URL or IP,
-      # just make sure mail_room can access the GitLab API via that address.
+      # just make sure mail_room can access the GitLab API with that address.
       # Do not end with "/".
 
       gitlab_rails['service_desk_email_gitlab_url'] = "https://gitlab.example.com"
@@ -999,33 +1249,38 @@ or completely separately.
       gitlab_rails['service_desk_email_secret_file'] = ".gitlab_mailroom_secret"
       ```
 
-      ::EndTabs
+      {{< /tab >}}
 
-   1. [Deprecated in GitLab 16.0 and planned for removal in 17.0)](../../../update/deprecations.md#sidekiq-delivery-method-for-incoming_email-and-service_desk_email-is-deprecated):
-      If you experience issues with the `webhook` setup, use `sidekiq` to deliver the email payload directly to GitLab Sidekiq using Redis.
+      {{< /tabs >}}
 
-      ::Tabs
+   1. If you experience issues with the `webhook` setup, use `sidekiq` to deliver the email payload directly to GitLab Sidekiq using Redis.
 
-      :::TabTitle `incoming_email`
+      {{< tabs >}}
+
+      {{< tab title="`incoming_email`" >}}
 
       ```ruby
       # It uses the Redis configuration to directly add Sidekiq jobs
       gitlab_rails['incoming_email_delivery_method'] = "sidekiq"
       ```
 
-      :::TabTitle `service_desk_email`
+      {{< /tab >}}
+
+      {{< tab title="`service_desk_email`" >}}
 
       ```ruby
       # It uses the Redis configuration to directly add Sidekiq jobs
       gitlab_rails['service_desk_email_delivery_method'] = "sidekiq"
       ```
 
-      ::EndTabs
+      {{< /tab >}}
+
+      {{< /tabs >}}
 
 1. Disable `mail_room` on all nodes that should not run email ingestion. For example, in `/etc/gitlab/gitlab.rb`:
 
    ```ruby
-   mailroom['enabled'] = false
+   mailroom['enable'] = false
    ```
 
 1. [Reconfigure GitLab](../../../administration/restart_gitlab.md) for the changes to take effect.
@@ -1042,7 +1297,7 @@ move new unread emails to GitLab.
 1. Enable `mail_room` on this node. For example, in `/etc/gitlab/gitlab.rb`:
 
    ```ruby
-   mailroom['enabled'] = true
+   mailroom['enable'] = true
    ```
 
 1. [Reconfigure GitLab](../../../administration/restart_gitlab.md) on this node for the changes to take effect.

@@ -3,9 +3,10 @@
 require 'spec_helper'
 
 RSpec.describe API::GroupMilestones, feature_category: :team_planning do
-  let_it_be(:user) { create(:user) }
+  let_it_be(:organization) { create(:common_organization) }
+  let_it_be(:user) { create(:user, user_detail_organization: organization) }
   let_it_be_with_refind(:group) { create(:group, :private) }
-  let_it_be(:project) { create(:project, namespace: group) }
+  let_it_be(:project) { create(:project, namespace: group, organization: organization) }
   let_it_be(:group_member) { create(:group_member, group: group, user: user) }
   let_it_be(:closed_milestone) do
     create(:closed_milestone, group: group, title: 'version1', description: 'closed milestone')
@@ -27,11 +28,13 @@ RSpec.describe API::GroupMilestones, feature_category: :team_planning do
     end
   end
 
-  it_behaves_like 'group and project milestones', "/groups/:id/milestones"
+  it_behaves_like 'group and project milestones', "/groups/:id/milestones" do
+    let(:boundary_object) { group }
+  end
 
   describe 'GET /groups/:id/milestones' do
     context 'for REST only' do
-      let_it_be(:ancestor_group) { create(:group, :private) }
+      let_it_be(:ancestor_group) { create(:group, :private, organization: organization) }
       let_it_be(:ancestor_group_milestone) { create(:milestone, group: ancestor_group, updated_at: 2.days.ago) }
 
       before_all do
@@ -94,6 +97,10 @@ RSpec.describe API::GroupMilestones, feature_category: :team_planning do
           let(:user) { create(:user) }
 
           before do
+            # When a group has a project, users that have access to the group will get access to ancestor groups
+            # See https://gitlab.com/groups/gitlab-org/-/epics/9424
+            group.projects.delete_all
+
             group.add_guest(user)
           end
 

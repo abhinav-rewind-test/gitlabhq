@@ -4,9 +4,9 @@ class Projects::HooksController < Projects::ApplicationController
   include ::WebHooks::HookActions
 
   # Authorize
-  before_action :authorize_admin_project!, except: :destroy
-  before_action :authorize_destroy_project_hook!, only: :destroy
-  before_action -> { check_rate_limit!(:project_testing_hook, scope: [@project, current_user]) }, only: :test
+  before_action :authorize_read_hook!, only: [:index, :show]
+  before_action :authorize_admin_hook!, except: [:index, :show]
+  before_action -> { check_rate_limit!(:web_hook_test, scope: [@project, current_user]) }, only: :test
 
   respond_to :html
 
@@ -15,7 +15,7 @@ class Projects::HooksController < Projects::ApplicationController
   urgency :low, [:test]
 
   def test
-    trigger = params.fetch(:trigger, ::ProjectHook.triggers.each_value.first.to_s)
+    trigger = params.fetch(:trigger, 'push_events')
     result = TestHooks::ProjectService.new(hook, current_user, trigger).execute
 
     set_hook_execution_notice(result)
@@ -37,7 +37,11 @@ class Projects::HooksController < Projects::ApplicationController
     ProjectHook.triggers.values
   end
 
-  def authorize_destroy_project_hook!
-    render_404 unless can?(current_user, :destroy_web_hook, hook)
+  def authorize_admin_hook!
+    render_404 unless can?(current_user, :admin_web_hook, project)
+  end
+
+  def authorize_read_hook!
+    render_404 unless can?(current_user, :read_web_hook, project)
   end
 end

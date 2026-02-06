@@ -8,7 +8,14 @@ module Gitlab
         class PartitioningRoutingAnalyzer < Database::QueryAnalyzers::Base
           RoutingTableNotUsedError = Class.new(QueryAnalyzerError)
 
-          ENABLED_TABLES = %w[ci_builds ci_builds_metadata].freeze
+          ENABLED_TABLES = %w[
+            ci_builds
+            ci_builds_metadata
+            ci_job_artifacts
+            ci_pipeline_variables
+            ci_pipelines
+            ci_stages
+          ].freeze
 
           class << self
             def enabled?
@@ -17,6 +24,9 @@ module Gitlab
             end
 
             def analyze(parsed)
+              # This analyzer requires the PgQuery parsed query to be present
+              return unless parsed.pg
+
               analyze_legacy_tables_usage(parsed)
             end
 

@@ -73,6 +73,22 @@ RSpec.describe Notes::DestroyService, feature_category: :team_planning do
         described_class.new(repo_project, user).execute(note)
       end
 
+      it 'triggers GraphQL subscription mergeRequestMergeStatusUpdated' do
+        expect(GraphqlTriggers).to receive(:merge_request_merge_status_updated).with(note.noteable)
+
+        described_class.new(repo_project, user).execute(note)
+      end
+
+      context 'non-resolvable note' do
+        let_it_be(:note) { create(:note, project: repo_project, noteable: merge_request) }
+
+        it 'does not trigger GraphQL subscription mergeRequestMergeStatusUpdated' do
+          expect(GraphqlTriggers).not_to receive(:merge_request_merge_status_updated).with(note.noteable)
+
+          described_class.new(repo_project, user).execute(note)
+        end
+      end
+
       context 'noteable highlight cache clearing' do
         before do
           allow(note.position).to receive(:unfolded_diff?) { true }
@@ -105,6 +121,64 @@ RSpec.describe Notes::DestroyService, feature_category: :team_planning do
       )
 
       described_class.new(project, user).execute(note)
+    end
+
+    context 'wiki page note' do
+      let(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
+      let(:note) { create(:note, project: project, noteable: wiki_page_meta, author: user, note: "Old note") }
+
+      it_behaves_like 'internal event tracking' do
+        let(:event) { 'delete_wiki_page_note' }
+        let(:category) { described_class.name }
+        let(:namespace) { nil }
+
+        subject(:track_event) { described_class.new(project, user).execute(note) }
+      end
+    end
+
+    context 'instrumentation service for work items' do
+      def execute_note_service
+        described_class.new(project, user).execute(note)
+      end
+
+      context 'when note is on an issue' do
+        let(:note) { create(:note, project: project, noteable: issue, author: user) }
+
+        it_behaves_like 'tracks work item event', :issue, :user, Gitlab::WorkItems::Instrumentation::EventActions::NOTE_DESTROY, :execute_note_service
+      end
+
+      context 'when note is on a design' do
+        let_it_be(:design) { create(:design, issue: issue) }
+        let(:note) { create(:note, project: project, noteable: design, author: user) }
+
+        it_behaves_like 'tracks work item event', :issue, :user, Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_NOTE_DESTROY, :execute_note_service
+      end
+
+      context 'when note is not on an issue' do
+        let(:merge_request) { create(:merge_request, source_project: project) }
+        let(:note) { create(:note, project: project, noteable: merge_request, author: user) }
+
+        it_behaves_like 'does not track work item event', :execute_note_service
+      end
+
+      context 'when track_note_removal receives an unexpected event' do
+        let(:note) { create(:note, project: project, noteable: issue, author: user) }
+
+        it 'does not create tracking service for unexpected events' do
+          service = described_class.new(project, user)
+
+          expect(::Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new)
+            .with(hash_including(event: Gitlab::WorkItems::Instrumentation::EventActions::NOTE_DESTROY))
+            .and_call_original
+            .once
+
+          service.execute(note)
+
+          expect(::Gitlab::WorkItems::Instrumentation::TrackingService).not_to receive(:new)
+
+          service.send(:track_note_removal, issue, :unexpected_event_type)
+        end
+      end
     end
   end
 end

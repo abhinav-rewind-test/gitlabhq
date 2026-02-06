@@ -17,17 +17,18 @@ module Gitlab
             #
             pipeline.stages = @command.pipeline_seed.stages
 
-            if stage_names.empty?
-              return error(
-                'Pipeline will not run for the selected trigger. ' \
-                  'The rules configuration prevented any jobs from being added to the pipeline.',
-                drop_reason: :filtered_by_rules
-              )
+            if no_pipeline_to_create?
+              if force_pipeline_creation_to_continue?
+                @command.pipeline_creation_forced_to_continue = true
+              else
+                return error(
+                  ::Ci::Pipeline.rules_failure_message,
+                  failure_reason: :filtered_by_rules
+                )
+              end
             end
 
-            if pipeline.invalid?
-              return error('Failed to build the pipeline!')
-            end
+            return error('Failed to build the pipeline!') if pipeline.invalid?
 
             raise Populate::PopulateError if pipeline.persisted?
           end
@@ -38,14 +39,25 @@ module Gitlab
 
           private
 
+          def no_pipeline_to_create?
+            stage_names.empty?
+          end
+
           def stage_names
             # We filter out `.pre/.post` stages, as they alone are not considered
             # a complete pipeline:
             # https://gitlab.com/gitlab-org/gitlab/issues/198518
-            pipeline.stages.map(&:name) - ::Gitlab::Ci::Config::EdgeStagesInjector::EDGES
+            pipeline.stages.map(&:name) - ::Gitlab::Ci::Config::Stages::EDGES
+          end
+
+          # Overridden in EE
+          def force_pipeline_creation_to_continue?
+            false
           end
         end
       end
     end
   end
 end
+
+Gitlab::Ci::Pipeline::Chain::Populate.prepend_mod

@@ -2,8 +2,6 @@
 data_category: optional
 key_path: ldap_enabled
 description: Whether LDAP is enabled
-product_section: sec
-product_stage: govern
 product_group: authentication
 value_type: boolean
 status: active
@@ -13,12 +11,10 @@ instrumentation_class: GitlabConfigMetric
 options:
   config:
     ldap: enabled
-distribution:
-- ce
-- ee
-tier:
+tiers:
 - free
 - premium
 - ultimate
 performance_indicator_type: []
 milestone: "<13.9"
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/51974

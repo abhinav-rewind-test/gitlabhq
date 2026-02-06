@@ -1,9 +1,8 @@
 import { GlFormGroup, GlTruncate, GlPopover } from '@gitlab/ui';
-import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import { nextTick } from 'vue';
+import axios from '~/lib/utils/axios_utils';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import { __ } from '~/locale';
 import TagFieldNew from '~/releases/components/tag_field_new.vue';
 import TagSearch from '~/releases/components/tag_search.vue';
 import TagCreate from '~/releases/components/tag_create.vue';
@@ -12,6 +11,7 @@ import createEditNewModule from '~/releases/stores/modules/edit_new';
 import { CREATE } from '~/releases/stores/modules/edit_new/constants';
 import { createRefModule } from '~/ref/stores';
 import { i18n } from '~/releases/constants';
+import setWindowLocation from 'helpers/set_window_location_helper';
 
 const TEST_TAG_NAME = 'test-tag-name';
 const TEST_PROJECT_ID = '1234';
@@ -69,9 +69,25 @@ describe('releases/components/tag_field_new', () => {
     describe('rendering and behavior', () => {
       beforeEach(() => createComponent());
 
+      it('sets the tag name from tag_name query param when it is present', async () => {
+        setWindowLocation('?tag_name=v2.1');
+        createComponent();
+        await nextTick();
+
+        expect(findTagNameInputText().props('text')).toBe('v2.1');
+      });
+
+      it('sets the default tag when tag_name query param is not present', async () => {
+        setWindowLocation('');
+        createComponent();
+        await nextTick();
+
+        expect(findTagNameInputText().props('text')).toBe(TEST_TAG_NAME);
+      });
+
       it('renders a label', () => {
-        expect(findTagNameFormGroup().attributes().label).toBe(__('Tag name'));
-        expect(findTagNameFormGroup().props().optionalText).toBe(__('(required)'));
+        expect(findTagNameFormGroup().attributes().label).toBe('Tag name');
+        expect(findTagNameFormGroup().props().optionalText).toBe('(required)');
       });
 
       it('flips between search and create, passing the searched value', async () => {

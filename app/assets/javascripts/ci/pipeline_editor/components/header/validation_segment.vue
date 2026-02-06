@@ -49,6 +49,11 @@ export default {
       default: () => ({}),
     },
   },
+  data() {
+    return {
+      appStatus: EDITOR_APP_STATUS_LOADING,
+    };
+  },
   apollo: {
     appStatus: {
       query: getAppStatus,
@@ -78,9 +83,6 @@ export default {
     currentAppStatusConfig() {
       return this.APP_STATUS_CONFIG[this.appStatus] || {};
     },
-    hasLink() {
-      return this.appStatus !== EDITOR_APP_STATUS_EMPTY;
-    },
     helpPath() {
       return this.currentAppStatusConfig.link || this.ymlHelpPagePath;
     },
@@ -106,20 +108,18 @@ export default {
 </script>
 
 <template>
-  <div>
-    <template v-if="isLoading">
-      <gl-loading-icon size="sm" inline />
-      {{ $options.i18n.loading }}
-    </template>
-    <span v-else data-testid="validation-segment">
-      <span class="gl-max-w-full">
-        <gl-icon :name="icon" class="gl-mr-2" />
-        <gl-sprintf :message="message">
-          <template v-if="hasLink" #link="{ content }">
-            <gl-link :href="helpPath">{{ content }}</gl-link>
-          </template>
-        </gl-sprintf>
-      </span>
+  <div v-if="isLoading" class="gl-flex gl-items-center gl-gap-3">
+    <gl-loading-icon class="gl-mx-2" />
+    {{ $options.i18n.loading }}
+  </div>
+  <div v-else class="gl-flex gl-gap-3" data-testid="validation-segment">
+    <gl-icon :name="icon" class="gl-mx-2 gl-mt-1 gl-shrink-0" />
+    <span data-testid="validation-message">
+      <gl-sprintf :message="message">
+        <template #link="{ content }">
+          <gl-link :href="helpPath">{{ content }}</gl-link>
+        </template>
+      </gl-sprintf>
     </span>
   </div>
 </template>

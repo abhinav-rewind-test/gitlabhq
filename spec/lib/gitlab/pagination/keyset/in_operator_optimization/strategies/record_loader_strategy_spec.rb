@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::Strategies::RecordLoaderStrategy do
-  let(:finder_query) { -> (created_at_value, id_value) { model.where(model.arel_table[:id].eq(id_value)) } }
+  let(:finder_query) { ->(created_at_value, id_value) { model.where(model.arel_table[:id].eq(id_value)) } }
   let(:model) { Project }
 
   let(:keyset_scope) do
@@ -25,8 +25,6 @@ RSpec.describe Gitlab::Pagination::Keyset::InOperatorOptimization::Strategies::R
   let_it_be(:ignored_column_model) do
     Class.new(ApplicationRecord) do
       self.table_name = 'projects'
-
-      include IgnorableColumns
 
       ignore_column :name, remove_with: '16.4', remove_after: '2023-08-22'
     end

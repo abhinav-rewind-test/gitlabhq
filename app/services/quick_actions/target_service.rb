@@ -19,6 +19,14 @@ module QuickActions
 
     # rubocop: disable CodeReuse/ActiveRecord
     def work_item(type_iid)
+      if type_iid.blank?
+        parent = group_container? ? { namespace: group } : { project: project, namespace: project.project_namespace }
+        work_item_type_id = params[:work_item_type_id] ||
+          ::WorkItems::TypesFramework::Provider.new(parent[:namespace]).default_issue_type.id
+
+        return WorkItem.new(work_item_type_id: work_item_type_id, **parent)
+      end
+
       WorkItems::WorkItemsFinder.new(current_user, **parent_params).find_by(iid: type_iid)
     end
     # rubocop: enable CodeReuse/ActiveRecord

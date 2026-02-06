@@ -88,7 +88,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-display-flex gl-align-items-flex-start">
+  <div class="gl-flex gl-items-start">
     <template v-if="hasOneOption">
       <span v-for="(btn, index) in tertiaryButtons" :key="index">
         <gl-button
@@ -104,10 +104,10 @@ export default {
           :data-testid="btn.testId || 'extension-actions-button'"
           :variant="btn.variant || 'confirm'"
           :loading="btn.loading"
-          :disabled="btn.loading"
+          :disabled="btn.disabled || btn.loading"
           category="tertiary"
           size="small"
-          class="gl-md-display-block gl-float-left"
+          class="gl-float-left @md/panel:gl-inline-flex"
           @click="onClickAction(btn)"
         >
           {{ btn.text }}
@@ -118,7 +118,7 @@ export default {
           <span v-if="btn.popoverLink">
             <gl-sprintf :message="btn.popoverText">
               <template #link="{ content }">
-                <gl-link class="gl-font-sm" :href="btn.popoverLink" target="_blank">
+                <gl-link class="gl-text-sm" :href="btn.popoverLink" target="_blank">
                   {{ content }}</gl-link
                 >
               </template>
@@ -140,7 +140,7 @@ export default {
         category="tertiary"
         text-sr-only
         size="small"
-        class="gl-display-block gl-md-display-none!"
+        class="gl-block @md/panel:!gl-hidden"
         @action="onClickAction"
       />
       <span v-for="(btn, index) in tertiaryButtons" :key="index">
@@ -157,10 +157,10 @@ export default {
           :data-testid="btn.testId || 'extension-actions-button'"
           :variant="btn.variant || 'confirm'"
           :loading="btn.loading"
-          :disabled="btn.loading"
+          :disabled="btn.disabled || btn.loading"
           category="tertiary"
           size="small"
-          class="gl-display-none gl-md-display-block gl-float-left"
+          class="gl-float-left gl-hidden @md/panel:gl-inline-flex"
           @click="onClickAction(btn)"
         >
           {{ btn.text }}
@@ -171,7 +171,7 @@ export default {
           <span v-if="btn.popoverLink">
             <gl-sprintf :message="btn.popoverText">
               <template #link="{ content }">
-                <gl-link class="gl-font-sm" :href="btn.popoverLink" target="_blank">
+                <gl-link class="gl-text-sm" :href="btn.popoverLink" target="_blank">
                   {{ content }}</gl-link
                 >
               </template>

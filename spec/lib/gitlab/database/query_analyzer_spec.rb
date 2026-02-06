@@ -10,19 +10,24 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
   let(:disabled_analyzer) { double(:disabled_query_analyzer) }
 
   before do
-    allow(described_class.instance).to receive(:all_analyzers).and_return([analyzer, disabled_analyzer])
     allow(analyzer).to receive(:enabled?).and_return(true)
     allow(analyzer).to receive(:suppressed?).and_return(false)
     allow(analyzer).to receive(:begin!)
     allow(analyzer).to receive(:end!)
+    allow(analyzer).to receive(:skip_cached?, &:cached?)
     allow(disabled_analyzer).to receive(:enabled?).and_return(false)
   end
 
   context 'the hook is enabled by default in specs' do
+    before do
+      allow(described_class.instance).to receive(:all_analyzers).and_return([analyzer, disabled_analyzer])
+      allow(analyzer).to receive(:enabled?).and_return(true)
+    end
+
     it 'does process queries and gets normalized SQL' do
-      expect(analyzer).to receive(:enabled?).and_return(true)
       expect(analyzer).to receive(:analyze) do |parsed|
         expect(parsed.sql).to include("SELECT $1 FROM projects")
+        expect(parsed.raw).to include("SELECT 1 FROM projects")
         expect(parsed.pg.tables).to eq(%w[projects])
       end
 
@@ -32,7 +37,6 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
     end
 
     it 'does prevent recursive execution' do
-      expect(analyzer).to receive(:enabled?).and_return(true)
       expect(analyzer).to receive(:analyze) do
         Project.connection.execute("SELECT 1 FROM projects")
       end
@@ -41,9 +45,53 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
         Project.connection.execute("SELECT 1 FROM projects")
       end
     end
+
+    it 'skips cached queries' do
+      select_projects = 0
+
+      ActiveRecord::Base.cache do
+        expect(analyzer).to receive(:analyze).at_least(:once) do |parsed|
+          select_projects += 1 if parsed.raw.include?('SELECT 1 FROM "projects"')
+        end
+
+        described_class.instance.within do
+          Project.select(1).first
+          Project.select(1).first
+        end
+      end
+
+      expect(select_projects).to eq(1)
+    end
+
+    context 'when cached queries not skipped' do
+      before do
+        allow(analyzer).to receive(:skip_cached?).and_return(false)
+      end
+
+      it 'does not skip cached queries' do
+        select_projects = 0
+
+        ActiveRecord::Base.cache do
+          expect(analyzer).to receive(:analyze).at_least(:once) do |parsed|
+            select_projects += 1 if parsed.raw.include?('SELECT 1 FROM "projects"')
+          end
+
+          described_class.instance.within do
+            Project.select(1).first
+            Project.select(1).first
+          end
+        end
+
+        expect(select_projects).to eq(2)
+      end
+    end
   end
 
   describe '#within' do
+    before do
+      allow(described_class.instance).to receive(:all_analyzers).and_return([analyzer, disabled_analyzer])
+    end
+
     context 'when it is already initialized' do
       around do |example|
         described_class.instance.within do
@@ -119,6 +167,10 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
   end
 
   describe '#process_sql' do
+    before do
+      allow(described_class.instance).to receive(:all_analyzers).and_return([analyzer, disabled_analyzer])
+    end
+
     it 'does not analyze query if not enabled' do
       expect(analyzer).to receive(:enabled?).and_return(false)
       expect(analyzer).not_to receive(:analyze)
@@ -137,9 +189,12 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
     end
 
     it 'does track exception if query cannot be parsed' do
+      expect(Gitlab::ErrorTracking).to receive(:track_exception).once
       expect(analyzer).to receive(:enabled?).and_return(true)
-      expect(analyzer).not_to receive(:analyze)
-      expect(Gitlab::ErrorTracking).to receive(:track_exception)
+      expect(analyzer).to receive(:analyze) do |parsed|
+        expect(parsed.sql).to be_nil
+        expect(parsed.pg).to be_nil
+      end
 
       expect { process_sql("invalid query") }.not_to raise_error
     end
@@ -183,33 +238,80 @@ RSpec.describe Gitlab::Database::QueryAnalyzer, query_analyzers: false do
       expect { process_sql("SELECT 1 FROM projects") }.not_to raise_error
     end
 
+    context 'with different event names' do
+      where(:event, :parsed_event) do
+        'Project Load'                     | 'load'
+        'Namespaces::UserNamespace Create' | 'create'
+        'Project Update'                   | 'update'
+        'Project Destroy'                  | 'destroy'
+        'Project Pluck'                    | 'pluck'
+        'Project Insert'                   | 'insert'
+        'Project Delete All'               | 'delete_all'
+        'Project Exists?'                  | 'exists?'
+        nil                                | ''
+        'TRANSACTION'                      | 'transaction'
+        'SCHEMA'                           | 'schema'
+      end
+
+      with_them do
+        it 'parses event name correctly' do
+          expect(analyzer).to receive(:enabled?).and_return(true)
+          expect(analyzer).to receive(:analyze) do |parsed|
+            expect(parsed.event_name).to eq(parsed_event)
+          end
+
+          process_sql("SELECT 1 FROM projects", event)
+        end
+      end
+    end
+
     def process_sql(sql, event_name = 'load')
       described_class.instance.within do
         ApplicationRecord.load_balancer.read_write do |connection|
-          described_class.instance.send(:process_sql, sql, connection, event_name)
+          described_class.instance.send(:process_sql, sql, connection, event_name, false)
         end
       end
     end
   end
 
-  describe '#normalize_event_name' do
-    where(:event, :parsed_event) do
-      'Project Load'                     | 'load'
-      'Namespaces::UserNamespace Create' | 'create'
-      'Project Update'                   | 'update'
-      'Project Destroy'                  | 'destroy'
-      'Project Pluck'                    | 'pluck'
-      'Project Insert'                   | 'insert'
-      'Project Delete All'               | 'delete_all'
-      'Project Exists?'                  | 'exists?'
-      nil                                | ''
-      'TRANSACTION'                      | 'transaction'
-      'SCHEMA'                           | 'schema'
+  describe described_class::Parsed do
+    let(:raw) { 'SELECT 1 FROM projects' }
+    let(:connection) { double(:connection) }
+    let(:event_name) { 'Project Load' }
+    let(:cached) { false }
+    let(:parsed) { described_class.new(raw, connection, event_name, cached) }
+
+    it 'does not parse query twice' do
+      expect(PgQuery).to receive(:parse).once.and_call_original
+      expect(parsed.pg).not_to be_nil
+      expect(parsed.pg.query).to eq(raw)
     end
 
-    with_them do
-      it 'parses event name correctly' do
-        expect(described_class.instance.send(:normalize_event_name, event)).to eq(parsed_event)
+    it 'does not normalize query twice' do
+      expect(PgQuery).to receive(:normalize).once.and_call_original
+      expect(parsed.sql).not_to be_nil
+      expect(parsed.sql).to eq('SELECT $1 FROM projects')
+    end
+
+    context 'when SQL is invalid' do
+      let(:raw) { 'SELEC 1 FROM projects' }
+
+      it 'does not attempt to parse query twice' do
+        expect(PgQuery).to receive(:parse).once.and_call_original
+        expect([parsed.pg, parsed.pg]).to match_array([nil, nil])
+      end
+
+      it 'does not attempt to normalize query twice' do
+        expect(PgQuery).to receive(:normalize).once.and_call_original
+        expect([parsed.sql, parsed.sql]).to match_array([nil, nil])
+      end
+
+      it 'does not attempt to parse if normalize already failed' do
+        expect(PgQuery).to receive(:normalize).once.and_call_original
+        expect(PgQuery).not_to receive(:parse)
+        expect(parsed.sql).to be_nil
+        expect(parsed.pg).to be_nil
+        expect(parsed.error).to be_an_instance_of(PgQuery::ParseError)
       end
     end
   end

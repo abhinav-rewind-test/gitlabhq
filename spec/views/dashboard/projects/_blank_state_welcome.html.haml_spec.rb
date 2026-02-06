@@ -14,7 +14,7 @@ RSpec.describe 'dashboard/projects/_blank_state_welcome.html.haml' do
       it 'has a doc_url' do
         render
 
-        expect(rendered).to have_link(href: Gitlab::Saas.doc_url)
+        expect(rendered).to have_link(href: Gitlab.doc_url)
       end
 
       it "shows create project panel" do
@@ -22,10 +22,16 @@ RSpec.describe 'dashboard/projects/_blank_state_welcome.html.haml' do
 
         expect(rendered).to include(_('Create a project'))
       end
+
+      it 'links to starred explore projects' do
+        render
+
+        expect(rendered).to have_link(_('Explore public projects'), href: explore_projects_path)
+      end
     end
 
     context 'with project creation disabled' do
-      let_it_be(:user_projects_limit) { create(:user, projects_limit: 0 ) }
+      let_it_be(:user_projects_limit) { create(:user, projects_limit: 0) }
 
       before do
         allow(view).to receive(:current_user).and_return(user_projects_limit)
@@ -35,12 +41,6 @@ RSpec.describe 'dashboard/projects/_blank_state_welcome.html.haml' do
         render
 
         expect(rendered).not_to include(_('Create a project'))
-      end
-
-      it 'shows an alert' do
-        render
-
-        expect(rendered).to include(_("You see projects here when you're added to a group or project."))
       end
     end
   end
@@ -56,12 +56,6 @@ RSpec.describe 'dashboard/projects/_blank_state_welcome.html.haml' do
       render
 
       expect(rendered).not_to include(_('Create a project'))
-    end
-
-    it 'shows an alert' do
-      render
-
-      expect(rendered).to include(_("You see projects here when you're added to a group or project."))
     end
   end
 end

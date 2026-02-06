@@ -13,7 +13,7 @@ RSpec.describe 'Query.synthetic_note(noteable_id, sha)', feature_category: :team
     create(:resource_label_event, user: current_user, issue: issue, label: label, action: 'add', created_at: 2.days.ago)
   end
 
-  let(:label_note) { LabelNote.from_events([label_event]) }
+  let(:label_note) { LabelNote.from_events([label_event], resource: issue, resource_parent: project) }
   let(:global_id) { ::Gitlab::GlobalId.build(label_note, model_name: LabelNote.to_s, id: label_note.discussion_id) }
   let(:note_params) { { sha: label_note.discussion_id, noteable_id: global_id_of(issue) } }
   let(:note_data) { graphql_data['syntheticNote'] }
@@ -27,7 +27,7 @@ RSpec.describe 'Query.synthetic_note(noteable_id, sha)', feature_category: :team
     it 'returns nil' do
       post_graphql(query, current_user: current_user)
 
-      expect(note_data).to be nil
+      expect(note_data).to be_nil
     end
   end
 
@@ -43,15 +43,16 @@ RSpec.describe 'Query.synthetic_note(noteable_id, sha)', feature_category: :team
     end
 
     context 'and notes widget is not available' do
+      let(:issue) { create(:issue, project: project) }
+
       before do
-        WorkItems::Type.default_by_type(:issue).widget_definitions
-          .find_by_widget_type(:notes).update!(disabled: true)
+        stub_work_item_widget(issue, notes: false)
       end
 
       it 'returns nil' do
         post_graphql(query, current_user: current_user)
 
-        expect(note_data).to be nil
+        expect(note_data).to be_nil
       end
     end
   end

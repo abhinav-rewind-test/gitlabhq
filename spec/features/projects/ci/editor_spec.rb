@@ -18,16 +18,16 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
 
   let(:valid_content) do
     <<~YAML
-    ---
-    stages:
-      - Build
-      - Test
-    job_a:
-      script: echo hello
-      stage: Build
-    job_b:
-      script: echo hello from job b
-      stage: Test
+      ---
+      stages:
+        - Build
+        - Test
+      job_a:
+        script: echo hello
+        stage: Build
+      job_b:
+        script: echo hello from job b
+        stage: Test
     YAML
   end
 
@@ -71,7 +71,7 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
     end
 
     it 'renders the empty page', :aggregate_failures do
-      expect(page).to have_content 'Optimize your workflow with CI/CD Pipelines'
+      expect(page).to have_content 'Configure a pipeline to automate your builds, tests, and deployments'
       expect(page).to have_selector '[data-testid="create-new-ci-button"]'
     end
 
@@ -194,7 +194,7 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
     end
 
     it 'displays new branch as selected after commiting on a new branch' do
-      find('#source-branch-field').set('new_branch', clear: :backspace)
+      find('#source-branch-field').set('new_branch')
 
       page.within('#source-editor-') do
         find('textarea').send_keys '123'
@@ -210,14 +210,13 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
   end
 
   it 'user sees the Pipeline Editor page' do
-    expect(page).to have_content('Pipeline Editor')
+    expect(page).to have_content('Pipeline editor')
   end
 
   describe 'Branch Switcher' do
     def switch_to_branch(branch)
       # close button for the popover
       find_by_testid('close-button').click
-
       within_testid 'branch-selector' do
         toggle_listbox
         select_listbox_item(branch, exact_text: true)
@@ -237,11 +236,13 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
   describe 'Editor navigation' do
     context 'when no change is made' do
       it 'user can navigate away without a browser alert' do
-        expect(page).to have_content('Pipeline Editor')
+        expect(page).to have_content('Pipeline editor')
 
         click_link 'Pipelines'
 
-        expect(page).not_to have_content('Pipeline Editor')
+        page.within('#content-body') do
+          expect(page).not_to have_content('Pipeline editor')
+        end
       end
     end
 
@@ -255,24 +256,24 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
         end
       end
 
-      it 'user who tries to navigate away can cancel the action and keep their changes', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/410496' do
+      it 'user who tries to navigate away can cancel the action and keep their changes', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9336' do
         click_link 'Pipelines'
 
         page.driver.browser.switch_to.alert.dismiss
 
-        expect(page).to have_content('Pipeline Editor')
+        expect(page).to have_content('Pipeline editor')
 
         page.within('#source-editor-') do
           expect(page).to have_content("#{default_content}123")
         end
       end
 
-      it 'user who tries to navigate away can confirm the action and discard their change', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/410496' do
+      it 'user who tries to navigate away can confirm the action and discard their change', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9336' do
         click_link 'Pipelines'
 
         page.driver.browser.switch_to.alert.accept
 
-        expect(page).not_to have_content('Pipeline Editor')
+        expect(page).not_to have_content('Pipeline editor')
       end
 
       it 'user who creates a MR is taken to the merge request page without warnings' do
@@ -283,7 +284,7 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
 
         click_button 'Commit changes'
 
-        expect(page).not_to have_content('Pipeline Editor')
+        expect(page).not_to have_content('Pipeline editor')
         expect(page).to have_content('New merge request')
       end
     end
@@ -299,7 +300,7 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
 
     context 'when targetting any non-main branch' do
       before do
-        find('#source-branch-field').set('new_branch', clear: :backspace)
+        find('#source-branch-field').set('new_branch')
       end
 
       it 'shows the option to create a Merge request', :aggregate_failures do
@@ -309,8 +310,8 @@ RSpec.describe 'Pipeline Editor', :js, feature_category: :pipeline_composition d
     end
 
     it 'is preserved when changing tabs' do
-      find('#commit-message').set('message', clear: :backspace)
-      find('#source-branch-field').set('new_branch', clear: :backspace)
+      find('#commit-message').set('message')
+      find('#source-branch-field').set('new_branch')
 
       click_link 'Validate'
       click_link 'Edit'

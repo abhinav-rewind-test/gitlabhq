@@ -43,8 +43,7 @@ module NotesActions
     respond_to do |format|
       format.json do
         json = {
-          commands_changes: @note.commands_changes&.slice(:emoji_award, :time_estimate, :spend_time),
-          command_names: @note.command_names
+          commands_changes: @note.commands_changes&.slice(:emoji_award, :time_estimate, :spend_time)
         }
 
         if @note.persisted? && return_discussion?
@@ -59,8 +58,13 @@ module NotesActions
           json.merge!(note_json(@note))
         end
 
-        if @note.errors.present? && @note.errors.attribute_names != [:commands_only, :command_names]
-          render json: { errors: errors_on_create(@note.errors) }, status: :unprocessable_entity
+        quick_actions = @note.quick_actions_status
+        json[:quick_actions_status] = quick_actions.to_h if quick_actions
+
+        if @note.errors.present?
+          render json: { errors: errors_on_create(@note) }, status: :unprocessable_entity
+        elsif quick_actions&.error?
+          render json: { quick_actions_status: quick_actions.to_h }, status: :unprocessable_entity
         else
           render json: json
         end
@@ -84,7 +88,12 @@ module NotesActions
           render json: { errors: @note.errors.full_messages.to_sentence }, status: :unprocessable_entity
         else
           prepare_notes_for_rendering([@note])
-          render json: note_json(@note)
+
+          if use_rapid_diffs_serializer?
+            render json: { note: RapidDiffs::NoteEntity.represent(@note, rapid_diffs_serializer_options) }
+          else
+            render json: note_json(@note)
+          end
         end
       end
 
@@ -211,7 +220,7 @@ module NotesActions
   end
 
   def authorize_admin_note!
-    return access_denied! unless can?(current_user, :admin_note, note)
+    access_denied! unless can?(current_user, :admin_note, note)
   end
 
   def create_note_params
@@ -287,9 +296,15 @@ module NotesActions
   def note_serializer
     ProjectNoteSerializer.new(project: project, noteable: noteable, current_user: current_user)
   end
+  strong_memoize_attr :note_serializer
 
   def discussion_serializer
-    DiscussionSerializer.new(project: project, noteable: noteable, current_user: current_user, note_entity: ProjectNoteEntity)
+    DiscussionSerializer.new(
+      project: project,
+      noteable: noteable,
+      current_user: current_user,
+      note_entity: ProjectNoteEntity
+    )
   end
 
   def note_project
@@ -320,10 +335,22 @@ module NotesActions
     noteable.discussions_rendered_on_frontend?
   end
 
-  def errors_on_create(errors)
-    return { commands_only: errors.messages[:commands_only] } if errors.key?(:commands_only)
+  def use_rapid_diffs_serializer?
+    Gitlab::Utils.to_boolean(params[:rapid_diffs])
+  end
 
-    errors.full_messages.to_sentence
+  def rapid_diffs_serializer_options
+    {
+      request: EntityRequest.new(
+        project: project,
+        noteable: noteable,
+        current_user: current_user
+      )
+    }
+  end
+
+  def errors_on_create(note)
+    note.errors.full_messages.to_sentence
   end
 end
 

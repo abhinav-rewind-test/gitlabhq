@@ -1,5 +1,4 @@
 @import 'mixins_and_variables_and_functions';
-@import 'system_note_styles';
 
 .issuable-details {
   section {
@@ -31,33 +30,24 @@
 
 .detail-page-description {
   small {
-    color: var(--gray-500, $gray-500);
+    @apply gl-text-subtle;
   }
 }
 
 .edited-text {
-  color: var(--gray-500, $gray-500);
+  @apply gl-text-subtle;
+  @apply gl-text-sm;
   display: block;
   margin: 16px 0 0;
-  font-size: $gl-font-size-small;
 
   .author-link {
-    color: var(--gray-700, $gray-700);
-    font-size: $gl-font-size-small;
-  }
-}
-
-.user-item {
-  padding: 5px;
-  flex-basis: 20%;
-
-  .user-link {
-    display: inline-block;
+    @apply gl-text-default;
+    @apply gl-text-sm;
   }
 }
 
 .issuable-gutter-toggle {
-  @include media-breakpoint-down(sm) {
+  @include gl-container-width-down(md, panel) {
     margin-left: $btn-side-margin;
   }
 }
@@ -81,7 +71,7 @@
     width: 100%;
   }
 
-  @include media-breakpoint-down(sm) {
+  @include gl-container-width-down(md, panel) {
     margin-bottom: $gl-padding;
   }
 }
@@ -97,11 +87,40 @@
 }
 
 .merge-request-notification-toggle {
+  // stylelint-disable-next-line gitlab/no-gl-class
   .gl-toggle {
     margin-left: auto;
   }
 
+  // stylelint-disable-next-line gitlab/no-gl-class
   .gl-toggle-label {
     font-weight: $gl-font-weight-normal;
+  }
+}
+
+.comment-templates-modal {
+  padding: 3rem 0.5rem 0;
+
+  .modal-content {
+    @apply gl-max-h-[80vh];
+  }
+
+  // stylelint-disable-next-line gitlab/no-gl-class
+  &.gl-modal .modal-dialog {
+    align-items: flex-start;
+  }
+
+  @include gl-container-width-up(sm, panel) {
+    padding: 5rem 1rem 0;
+  }
+
+  [id*='gl-disclosure-dropdown-group'] {
+    padding-left: 0;
+  }
+
+  // stylelint-disable-next-line gitlab/no-gl-class
+  .comment-templates-options .gl-new-dropdown-item {
+    padding-left: 0;
+    padding-right: 0;
   }
 }

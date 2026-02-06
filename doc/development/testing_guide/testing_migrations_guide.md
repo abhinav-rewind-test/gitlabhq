@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Testing Rails migrations at GitLab
 ---
-
-# Testing Rails migrations at GitLab
 
 In order to reliably check Rails migrations, we need to test them against
 a database schema.
@@ -67,7 +66,7 @@ Since the migration files are not autoloaded by Rails, you must manually
 load the migration file. To do so, you can use the `require_migration!` helper method
 which can automatically load the correct migration file based on the spec filename.
 
-In GitLab 14.4 and later, you can use `require_migration!` to load migration files from spec files
+You can use `require_migration!` to load migration files from spec files
 that contain the schema version in the filename (for example,
 `2021101412150000_populate_foo_column_spec.rb`).
 
@@ -106,7 +105,7 @@ application code which can change after the migration has run, and cause the tes
 to fail. For example, to create a record in the `projects` table:
 
 ```ruby
-project = table(:projects).create!(id: 1, name: 'gitlab1', path: 'gitlab1')
+project = table(:projects).create!(name: 'gitlab1', path: 'gitlab1')
 ```
 
 #### `migrate!`
@@ -159,52 +158,6 @@ We have some custom matchers in
 [`spec/support/matchers/background_migrations_matchers.rb`](https://gitlab.com/gitlab-org/gitlab/blob/v14.1.0-ee/spec/support/matchers/background_migrations_matchers.rb)
 to verify background migrations were correctly scheduled from a post-deployment migration, and
 receive the correct number of arguments.
-
-All of them use the internal matcher `be_background_migration_with_arguments`, which verifies that
-the `#perform` method on your migration class doesn't crash when receiving the provided arguments.
-
-#### `be_scheduled_migration`
-
-Verifies that a Sidekiq job was queued with the expected class and arguments.
-
-This matcher usually makes sense if you're queueing jobs manually, rather than going through our helpers.
-
-```ruby
-# Migration
-BackgroundMigrationWorker.perform_async('MigrationClass', args)
-
-# Spec
-expect('MigrationClass').to be_scheduled_migration(*args)
-```
-
-#### `be_scheduled_migration_with_multiple_args`
-
-Verifies that a Sidekiq job was queued with the expected class and arguments.
-
-This works the same as `be_scheduled_migration`, except that the order is ignored when comparing
-array arguments.
-
-```ruby
-# Migration
-BackgroundMigrationWorker.perform_async('MigrationClass', ['foo', [3, 2, 1]])
-
-# Spec
-expect('MigrationClass').to be_scheduled_migration_with_multiple_args('foo', [1, 2, 3])
-```
-
-#### `be_scheduled_delayed_migration`
-
-Verifies that a Sidekiq job was queued with the expected delay, class, and arguments.
-
-This can also be used with `queue_background_migration_jobs_by_range_at_intervals` and related helpers.
-
-```ruby
-# Migration
-BackgroundMigrationWorker.perform_in(delay, 'MigrationClass', args)
-
-# Spec
-expect('MigrationClass').to be_scheduled_delayed_migration(delay, *args)
-```
 
 #### `have_scheduled_batched_migration`
 
@@ -313,75 +266,6 @@ RSpec.describe MigrateIncidentIssuesToIncidentType do
 end
 ```
 
-#### Example of a background migration scheduling test
-
-To test these you usually have to:
-
-- Create some records.
-- Run the migration.
-- Verify that the expected jobs were scheduled, with the correct set
-  of records, the correct batch size, interval, etc.
-
-The behavior of the background migration itself needs to be verified in a
-[separate test for the background migration class](#example-background-migration-test).
-
-This spec tests the
-[`db/post_migrate/20210701111909_backfill_issues_upvotes_count.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/v14.1.0-ee/db/post_migrate/20210701111909_backfill_issues_upvotes_count.rb)
-post-deployment migration. You can find the complete spec in
-[`spec/migrations/backfill_issues_upvotes_count_spec.rb`](https://gitlab.com/gitlab-org/gitlab/blob/v14.1.0-ee/spec/spec/migrations/backfill_issues_upvotes_count_spec.rb).
-
-```ruby
-require 'spec_helper'
-require_migration!
-
-RSpec.describe BackfillIssuesUpvotesCount do
-  let(:migration) { described_class.new }
-  let(:issues) { table(:issues) }
-  let(:award_emoji) { table(:award_emoji) }
-
-  let!(:issue1) { issues.create! }
-  let!(:issue2) { issues.create! }
-  let!(:issue3) { issues.create! }
-  let!(:issue4) { issues.create! }
-  let!(:issue4_without_thumbsup) { issues.create! }
-
-  let!(:award_emoji1) { award_emoji.create!( name: 'thumbsup', awardable_type: 'Issue', awardable_id: issue1.id) }
-  let!(:award_emoji2) { award_emoji.create!( name: 'thumbsup', awardable_type: 'Issue', awardable_id: issue2.id) }
-  let!(:award_emoji3) { award_emoji.create!( name: 'thumbsup', awardable_type: 'Issue', awardable_id: issue3.id) }
-  let!(:award_emoji4) { award_emoji.create!( name: 'thumbsup', awardable_type: 'Issue', awardable_id: issue4.id) }
-
-  it 'correctly schedules background migrations', :aggregate_failures do
-    stub_const("#{described_class.name}::BATCH_SIZE", 2)
-
-    Sidekiq::Testing.fake! do
-      freeze_time do
-        migrate!
-
-        expect(described_class::MIGRATION).to be_scheduled_migration(issue1.id, issue2.id)
-        expect(described_class::MIGRATION).to be_scheduled_migration(issue3.id, issue4.id)
-        expect(BackgroundMigrationWorker.jobs.size).to eq(2)
-      end
-    end
-  end
-end
-```
-
-## Testing a non-`ActiveRecord::Migration` class
-
-To test a non-`ActiveRecord::Migration` test (a background migration),
-you must manually provide a required schema version. Add a
-`schema` tag to a context that you want to switch the database schema within.
-
-If not set, `schema` defaults to `:latest`.
-
-Example:
-
-```ruby
-describe SomeClass, schema: 20170608152748 do
-  # ...
-end
-```
-
 ### Example background migration test
 
 This spec tests the
@@ -448,3 +332,7 @@ end
 
 These tests do not run within a database transaction, as we use a deletion database
 cleanup strategy. Do not depend on a transaction being present.
+
+When testing migrations that alter seeded data in `deletion_except_tables`, you may add the
+`:migration_with_transaction` metadata so the test runs within a transaction and the data
+is rolled back to their original values.

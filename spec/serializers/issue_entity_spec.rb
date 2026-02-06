@@ -2,12 +2,13 @@
 
 require 'spec_helper'
 
-RSpec.describe IssueEntity do
+RSpec.describe IssueEntity, feature_category: :team_planning do
   include Gitlab::Routing.url_helpers
 
-  let(:project)  { create(:project) }
+  let_it_be_with_reload(:group) { create(:group) }
+  let_it_be_with_reload(:project) { create(:project, namespace: group) }
+  let_it_be_with_reload(:user) { create(:user) }
   let(:resource) { create(:issue, project: project) }
-  let(:user)     { create(:user) }
 
   let(:request) { double('request', current_user: user) }
 
@@ -42,7 +43,7 @@ RSpec.describe IssueEntity do
   end
 
   describe 'current_user' do
-    it 'has the exprected permissions' do
+    it 'has the expected permissions' do
       expect(subject[:current_user]).to include(
         :can_create_note, :can_update, :can_set_issue_metadata, :can_award_emoji
       )
@@ -50,15 +51,17 @@ RSpec.describe IssueEntity do
   end
 
   context 'when issue got moved' do
-    let(:public_project) { create(:project, :public) }
-    let(:member) { create(:user) }
-    let(:non_member) { create(:user) }
-    let(:issue) { create(:issue, project: public_project) }
+    let_it_be(:public_project) { create(:project, :public) }
+    let_it_be(:member) { create(:user) }
+    let_it_be(:non_member) { create(:user) }
+    let_it_be(:issue) { create(:issue, project: public_project) }
 
-    before do
+    before_all do
       project.add_developer(member)
       public_project.add_developer(member)
-      Issues::MoveService.new(container: public_project, current_user: member).execute(issue, project)
+      ::WorkItems::DataSync::MoveService.new(
+        work_item: issue, current_user: member, target_namespace: project.project_namespace
+      ).execute
     end
 
     context 'when user cannot read target project' do
@@ -83,12 +86,12 @@ RSpec.describe IssueEntity do
   end
 
   context 'when issue got duplicated' do
-    let(:private_project) { create(:project, :private) }
-    let(:member) { create(:user) }
-    let(:issue) { create(:issue, project: project) }
-    let(:new_issue) { create(:issue, project: private_project) }
+    let_it_be(:private_project) { create(:project, :private) }
+    let_it_be(:member) { create(:user) }
+    let_it_be(:issue) { create(:issue, project: project) }
+    let_it_be(:new_issue) { create(:issue, project: private_project) }
 
-    before do
+    before_all do
       Issues::DuplicateService
         .new(container: project, current_user: member)
         .execute(issue, new_issue)
@@ -107,7 +110,7 @@ RSpec.describe IssueEntity do
     end
 
     context 'when user can read target project' do
-      before do
+      before_all do
         project.add_developer(member)
         private_project.add_developer(member)
       end
@@ -123,7 +126,7 @@ RSpec.describe IssueEntity do
   end
 
   context 'when issuable in active or archived project' do
-    before do
+    before_all do
       project.add_developer(user)
     end
 
@@ -135,12 +138,12 @@ RSpec.describe IssueEntity do
       it 'returns nil for archived project doc' do
         response = described_class.new(resource, request: request).as_json
 
-        expect(response[:archived_project_docs_path]).to be nil
+        expect(response[:archived_project_docs_path]).to be_nil
       end
     end
 
     context 'when project is archived' do
-      before do
+      before_all do
         project.update!(archived: true)
       end
 
@@ -149,7 +152,25 @@ RSpec.describe IssueEntity do
       end
 
       it 'returns archived project doc' do
-        expect(subject[:archived_project_docs_path]).to eq('/help/user/project/settings/index#archive-a-project')
+        expect(subject[:archived_project_docs_path]).to eq(
+          '/help/user/project/working_with_projects.md#delete-a-project'
+        )
+      end
+    end
+
+    context 'when project group is archived' do
+      before_all do
+        group.update!(archived: true)
+      end
+
+      it 'returns archived true' do
+        expect(subject[:is_project_archived]).to eq(true)
+      end
+
+      it 'returns archived project doc' do
+        expect(subject[:archived_project_docs_path]).to eq(
+          '/help/user/project/working_with_projects.md#delete-a-project'
+        )
       end
     end
   end
@@ -181,9 +202,9 @@ RSpec.describe IssueEntity do
       end
 
       context 'when user has guest role in project' do
-        let(:member) { create(:user) }
+        let_it_be(:member) { create(:user) }
 
-        before do
+        before_all do
           project.add_guest(member)
         end
 
@@ -196,9 +217,9 @@ RSpec.describe IssueEntity do
       end
 
       context 'when user has (at least) reporter role in project' do
-        let(:member) { create(:user) }
+        let_it_be(:member) { create(:user) }
 
-        before do
+        before_all do
           project.add_reporter(member)
         end
 

@@ -12,11 +12,18 @@ module Banzai
       def self.filters
         @filters ||= FilterArray[
           Filter::CodeLanguageFilter,
+          Filter::JsonTableFilter,
           Filter::PlantumlFilter,
-          # Must always be before the SanitizationFilter to prevent XSS attacks
           Filter::SpacedLinkFilter,
+          # ======== Sanitization boundary ========
+          # Items above this point must not be moved below this point, as they depend
+          # on running before SanitizationFilter and SanitizeLinkFilter for safety.
           Filter::SanitizationFilter,
+          Filter::SanitizeLinkFilter,
+          # =======================================
           Filter::KrokiFilter,
+          Filter::GollumTagsFilter,
+          Filter::WikiLinkGollumFilter,
           Filter::AssetProxyFilter,
           Filter::MathFilter,
           Filter::ColorFilter,
@@ -24,16 +31,17 @@ module Banzai
           Filter::AttributesFilter,
           Filter::VideoLinkFilter,
           Filter::AudioLinkFilter,
-          Filter::ImageLazyLoadFilter,
-          Filter::ImageLinkFilter,
-          Filter::TableOfContentsFilter,
+          Filter::IframeLinkFilter,
+          Filter::HeadingAccessibilityFilter,
           Filter::TableOfContentsTagFilter,
           Filter::AutolinkFilter,
-          Filter::ExternalLinkFilter,
           Filter::SuggestionFilter,
           Filter::FootnoteFilter,
           Filter::InlineDiffFilter,
           *reference_filters,
+          Filter::ImageLazyLoadFilter, # keep after reference filters
+          Filter::ImageLinkFilter, # keep after reference filters
+          Filter::ExternalLinkFilter, # keep after ImageLinkFilter
           Filter::EmojiFilter,
           Filter::CustomEmojiFilter,
           Filter::TaskListFilter,
@@ -57,7 +65,8 @@ module Banzai
           Filter::References::MilestoneReferenceFilter,
           Filter::References::AlertReferenceFilter,
           Filter::References::FeatureFlagReferenceFilter,
-          Filter::References::CommitReferenceFilter
+          Filter::References::CommitReferenceFilter,
+          Filter::References::WikiPageReferenceFilter
         ]
       end
 

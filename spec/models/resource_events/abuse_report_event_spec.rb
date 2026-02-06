@@ -10,11 +10,13 @@ RSpec.describe ResourceEvents::AbuseReportEvent, feature_category: :instance_res
   describe 'associations' do
     it { is_expected.to belong_to(:abuse_report).required }
     it { is_expected.to belong_to(:user).optional }
+    it { is_expected.to belong_to(:organization) }
   end
 
   describe 'validations' do
     it { is_expected.to be_valid }
     it { is_expected.to validate_presence_of(:action) }
+    it { is_expected.to validate_presence_of(:organization_id).on(:create) }
   end
 
   describe '#success_message' do

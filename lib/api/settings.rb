@@ -20,6 +20,7 @@ module API
     end
 
     desc 'Get the current application settings' do
+      tags ['instance']
       success Entities::ApplicationSetting
     end
     get "application/settings" do
@@ -27,6 +28,7 @@ module API
     end
 
     desc 'Modify application settings' do
+      tags ['instance']
       success Entities::ApplicationSetting
     end
     params do
@@ -44,6 +46,7 @@ module API
       optional :asset_proxy_secret_key, type: String, desc: 'Shared secret with the asset proxy server'
       optional :asset_proxy_whitelist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Deprecated: Use :asset_proxy_allowlist instead. Assets that match these domain(s) will NOT be proxied. Wildcards allowed. Your GitLab installation URL is automatically whitelisted.'
       optional :asset_proxy_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Assets that match these domain(s) will NOT be proxied. Wildcards allowed. Your GitLab installation URL is automatically allowed.'
+      optional :authn_data_retention_cleanup_enabled, type: Boolean, desc: 'Enable authentication data retention cleanup workers to enforce retention policies'
       optional :container_registry_token_expire_delay, type: Integer, desc: 'Authorization token duration (minutes)'
       optional :decompress_archive_file_timeout, type: Integer, desc: 'Default timeout for decompressing archived files, in seconds. Set to 0 to disable timeouts.'
       optional :default_artifacts_expire_in, type: String, desc: "Set the default expiration time for each job's artifacts"
@@ -52,12 +55,13 @@ module API
       optional :default_branch_protection, type: Integer, values: ::Gitlab::Access.protection_values, desc: 'Determine if developers can push to default branch'
       optional :default_branch_protection_defaults, type: Hash, desc: 'Determine if developers can push to default branch' do
         optional :allowed_to_push, type: Array, desc: 'An array of access levels allowed to push' do
-          requires :access_level, type: Integer, values: [::Gitlab::Access::DEVELOPER, ::Gitlab::Access::MAINTAINER], desc: 'A valid access level'
+          requires :access_level, type: Integer, values: ProtectedBranch::PushAccessLevel.allowed_access_levels, desc: 'A valid access level'
         end
         optional :allow_force_push, type: Boolean, desc: 'Allow force push for all users with push access.'
         optional :allowed_to_merge, type: Array, desc: 'An array of access levels allowed to merge' do
-          requires :access_level, type: Integer, values: [::Gitlab::Access::DEVELOPER, ::Gitlab::Access::MAINTAINER], desc: 'A valid access level'
+          requires :access_level, type: Integer, values: ProtectedBranch::MergeAccessLevel.allowed_access_levels, desc: 'A valid access level'
         end
+        optional :code_owner_approval_required, type: Boolean, desc: "Require approval from code owners"
         optional :developer_can_initial_push, type: Boolean, desc: 'Allow developers to initial push'
       end
       optional :default_group_visibility, type: String, values: Gitlab::VisibilityLevel.string_values, desc: 'The default group visibility'
@@ -68,10 +72,13 @@ module API
       optional :disable_feed_token, type: Boolean, desc: 'Disable display of RSS/Atom and Calendar `feed_tokens`'
       optional :disabled_oauth_sign_in_sources, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Disable certain OAuth sign-in sources'
       optional :domain_denylist_enabled, type: Boolean, desc: 'Enable domain denylist for sign ups'
-      optional :domain_denylist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Users with e-mail addresses that match these domain(s) will NOT be able to sign-up. Wildcards allowed. Use separate lines for multiple entries. Ex: domain.com, *.domain.com'
-      optional :domain_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'ONLY users with e-mail addresses that match these domain(s) will be able to sign-up. Wildcards allowed. Use separate lines for multiple entries. Ex: domain.com, *.domain.com'
+      optional :domain_denylist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Users with e-mail addresses that match these domain(s) will NOT be able to sign-up. Wildcards allowed. Enter multiple entries on separate lines. Ex: domain.com, *.domain.com'
+      optional :domain_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'ONLY users with e-mail addresses that match these domain(s) will be able to sign-up. Wildcards allowed. Enter multiple entries on separate lines. Ex: domain.com, *.domain.com'
+      optional :iframe_rendering_enabled, type: Boolean, desc: 'Allow rendering of iframes in Markdown.'
+      optional :iframe_rendering_allowlist, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Allowed iframe src host[:port] entries. Enter multiple entries separated by commas or on separate lines.'
+      optional :iframe_rendering_allowlist_raw, type: String, desc: 'Raw newline- or comma-separated list of allowed iframe src host[:port] entries.'
       optional :eks_integration_enabled, type: Boolean, desc: 'Enable integration with Amazon EKS'
-      given eks_integration_enabled: -> (val) { val } do
+      given eks_integration_enabled: ->(val) { val } do
         requires :eks_account_id, type: String, desc: 'Amazon account ID for EKS integration'
         requires :eks_access_key_id, type: String, desc: 'Access key ID for the EKS integration IAM user'
         requires :eks_secret_access_key, type: String, desc: 'Secret access key for the EKS integration IAM user'
@@ -108,12 +115,14 @@ module API
       end
       optional :html_emails_enabled, type: Boolean, desc: 'By default GitLab sends emails in HTML and plain text formats so mail clients can choose what format to use. Disable this option if you only want to send emails in plain text format.'
       optional :import_sources, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce,
-                                values: %w[github bitbucket bitbucket_server fogbugz git gitlab_project gitea manifest],
-                                desc: 'Enabled sources for code import during project creation. OmniAuth must be configured for GitHub, Bitbucket, and GitLab.com'
+        values: %w[github bitbucket bitbucket_server fogbugz git gitlab_project gitea manifest],
+        desc: 'Enabled sources for code import during project creation. OmniAuth must be configured for GitHub, Bitbucket, and GitLab.com'
       optional :invisible_captcha_enabled, type: Boolean, desc: 'Enable Invisible Captcha spam detection during signup.'
       optional :max_artifacts_size, type: Integer, desc: "Set the maximum file size for each job's artifacts"
       optional :max_attachment_size, type: Integer, desc: 'Maximum attachment size in MB'
       optional :max_export_size, type: Integer, desc: 'Maximum export size in MB'
+      optional :max_github_response_size_limit, type: Integer, desc: "Maximum allowed size in MB for GitHub API responses. 0 for unlimited."
+      optional :max_github_response_json_value_count, type: Integer, desc: "Maximum allowed object count for GitHub API responses. 0 for unlimited. Count is an estimate based on the number of : , { and [ occurrences in the response."
       optional :max_import_size, type: Integer, desc: 'Maximum import size in MB'
       optional :max_import_remote_file_size, type: Integer, desc: 'Maximum remote file size in MB for imports from external object storages'
       optional :max_decompressed_archive_size, type: Integer, desc: 'Maximum decompressed size in MB'
@@ -129,6 +138,7 @@ module API
       optional :performance_bar_allowed_group_path, type: String, desc: 'Path of the group that is allowed to toggle the performance bar.'
       optional :performance_bar_enabled, type: String, desc: 'Deprecated: Pass `performance_bar_allowed_group_path: nil` instead. Allow enabling the performance.' # support legacy names, can be removed in v6
       optional :personal_access_token_prefix, type: String, desc: 'Prefix to prepend to all personal access tokens'
+      optional :require_personal_access_token_expiry, type: Boolean, desc: 'Flag indicating if Personal / Group / Project access token expiry is required'
       optional :kroki_enabled, type: Boolean, desc: 'Enable Kroki'
       given kroki_enabled: ->(val) { val } do
         requires :kroki_url, type: String, desc: 'The Kroki server URL'
@@ -164,12 +174,12 @@ module API
       end
       optional :restricted_visibility_levels, type: Array[String], coerce_with: Validations::Types::CommaSeparatedToArray.coerce, desc: 'Selected levels cannot be used by non-admin users for groups, projects or snippets. If the public level is restricted, user profiles are only visible to logged in users.'
       optional :session_expire_delay, type: Integer, desc: 'Session duration in minutes. GitLab restart is required to apply changes.'
+      optional :session_expire_from_init, type: Boolean, desc: 'Expires sessions based off the creation date rather than last activity'
       optional :shared_runners_enabled, type: Boolean, desc: 'Enable shared runners for new projects'
       given shared_runners_enabled: ->(val) { val } do
         requires :shared_runners_text, type: String, desc: 'Shared runners text '
       end
       optional :valid_runner_registrars, type: Array[String], desc: 'List of types which are allowed to register a GitLab runner'
-      optional :sign_in_text, type: String, desc: 'The sign in text of the GitLab application'
       optional :signin_enabled, type: Boolean, desc: 'Flag indicating if password authentication is enabled for the web interface' # support legacy names, can be removed in v5
       optional :signup_enabled, type: Boolean, desc: 'Flag indicating if sign up is enabled'
       optional :sourcegraph_enabled, type: Boolean, desc: 'Enable Sourcegraph'
@@ -204,23 +214,33 @@ module API
       optional :floc_enabled, type: Grape::API::Boolean, desc: 'Enable FloC (Federated Learning of Cohorts)'
       optional :user_deactivation_emails_enabled, type: Boolean, desc: 'Send emails to users upon account deactivation'
       optional :suggest_pipeline_enabled, type: Boolean, desc: 'Enable pipeline suggestion banner'
+      optional :show_migrate_from_jenkins_banner, type: Boolean, desc: 'Enable Jenkins migration banner'
       optional :enable_artifact_external_redirect_warning_page, type: Boolean, desc: 'Show the external redirect page that warns you about user-generated content in GitLab Pages'
       optional :users_get_by_id_limit, type: Integer, desc: "Maximum number of calls to the /users/:id API per 10 minutes per user. Set to 0 for unlimited requests."
       optional :runner_token_expiration_interval, type: Integer, desc: 'Token expiration interval for shared runners, in seconds'
       optional :group_runner_token_expiration_interval, type: Integer, desc: 'Token expiration interval for group runners, in seconds'
       optional :project_runner_token_expiration_interval, type: Integer, desc: 'Token expiration interval for project runners, in seconds'
       optional :pipeline_limit_per_project_user_sha, type: Integer, desc: "Maximum number of pipeline creation requests allowed per minute per user and commit. Set to 0 for unlimited requests per minute."
+      optional :pipeline_limit_per_user, type: Integer, desc: "Maximum number of pipeline creation requests allowed per minute per user. Set to 0 for unlimited requests per minute."
       optional :jira_connect_application_key, type: String, desc: "ID of the OAuth application used to authenticate with the GitLab for Jira Cloud app."
       optional :jira_connect_public_key_storage_enabled, type: Boolean, desc: 'Enable public key storage for the GitLab for Jira Cloud app.'
       optional :jira_connect_proxy_url, type: String, desc: "URL of the GitLab instance used as a proxy for the GitLab for Jira Cloud app."
-      optional :bulk_import_concurrent_pipeline_batch_limit, type: Integer, desc: 'Maximum simultaneous Direct Transfer pipeline batches to process'
+      optional :bulk_import_concurrent_pipeline_batch_limit, type: Integer, desc: 'Maximum simultaneous direct transfer batch exports to process.'
+      optional :concurrent_relation_batch_export_limit, type: Integer, desc: 'Maximum number of simultaneous batch export jobs to process.'
       optional :bulk_import_enabled, type: Boolean, desc: 'Enable migrating GitLab groups and projects by direct transfer'
       optional :bulk_import_max_download_file, type: Integer, desc: 'Maximum download file size in MB when importing from source GitLab instances by direct transfer'
+      optional :autocomplete_users_limit, type: Integer, desc: 'Rate limit for authenticated requests to users autocomplete endpoint'
+      optional :autocomplete_users_unauthenticated_limit, type: Integer, desc: 'Rate limit for authenticated requests to users autocomplete endpoint'
+      optional :concurrent_github_import_jobs_limit, type: Integer, desc: 'Github Importer maximum number of simultaneous import jobs'
+      optional :concurrent_bitbucket_import_jobs_limit, type: Integer, desc: 'Bitbucket Cloud Importer maximum number of simultaneous import jobs'
+      optional :concurrent_bitbucket_server_import_jobs_limit, type: Integer, desc: 'Bitbucket Server Importer maximum number of simultaneous import jobs'
       optional :allow_runner_registration_token, type: Boolean, desc: 'Allow registering runners using a registration token'
       optional :ci_max_includes, type: Integer, desc: 'Maximum number of includes per pipeline'
+      optional :ci_job_live_trace_enabled, type: Boolean, desc: 'Turn on incremental logging for job logs.'
+      optional :git_push_pipeline_limit, type: Integer, desc: 'Set the limit for pipelines and branches that can be triggered when creating a Git push. Set to 0 to disable the limit'
       optional :security_policy_global_group_approvers_enabled, type: Boolean, desc: 'Query scan result policy approval groups globally'
       optional :slack_app_enabled, type: Grape::API::Boolean, desc: 'Enable the GitLab for Slack app'
-      given slack_app_enabled: -> (val) { val } do
+      given slack_app_enabled: ->(val) { val } do
         requires :slack_app_id, type: String, desc: 'The client ID of the GitLab for Slack app'
         requires :slack_app_secret, type: String, desc: 'The client secret of the GitLab for Slack app. Used for authenticating OAuth requests from the app'
         requires :slack_app_signing_secret, type: String, desc: 'The signing secret of the GitLab for Slack app. Used for authenticating API requests from the app'
@@ -230,12 +250,24 @@ module API
       optional :project_jobs_api_rate_limit, type: Integer, desc: 'Maximum authenticated requests to /project/:id/jobs per minute'
       optional :security_txt_content, type: String, desc: 'Public security contact information made available at https://gitlab.example.com/.well-known/security.txt'
       optional :downstream_pipeline_trigger_limit_per_project_user_sha, type: Integer, desc: 'Maximum number of downstream pipelines that can be triggered per minute (for a given project, user, and commit).'
+      optional :ai_action_api_rate_limit, type: Integer, desc: 'Maximum requests a user can make per 8 hours to aiAction endpoint'
+      optional :code_suggestions_api_rate_limit, type: Integer, desc: 'Maximum requests a user can make per minute to code suggestions endpoint'
+      optional :resource_usage_limits, type: JSON, desc: 'Definition for resource usage limits enforced in Sidekiq workers'
+      optional :ropc_without_client_credentials, type: Boolean, desc: 'Allows the use of Oauth ROPC flow without client credentials'
+      optional :vscode_extension_marketplace, type: Hash, desc: 'Settings for VS Code Extension Marketplace' do
+        optional :enabled, type: Boolean, desc: 'Enables VS Code Extension Marketplace for Web IDE and Workspaces'
+        optional :preset, type: String, desc: "The preset configuration of URL's for the VS Code Extension Marketplace"
+        optional :custom_values, type: Hash, desc: "VS Code Extension Marketplace URL's when preset is 'custom'"
+      end
+      optional :enable_language_server_restrictions, type: Boolean, desc: 'Enables enforcing language server restrictions'
+      optional :minimum_language_server_version, type: String, desc: 'The minimum language server version to accept requests from'
+      optional :terraform_state_encryption_enabled, type: Boolean, desc: 'Enable encryption for Terraform state files'
 
       Gitlab::SSHPublicKey.supported_types.each do |type|
         optional :"#{type}_key_restriction",
-                 type: Integer,
-                 values: KeyRestrictionValidator.supported_key_restrictions(type),
-                 desc: "Restrictions on the complexity of uploaded #{type.upcase} keys. A value of #{ApplicationSetting::FORBIDDEN_KEY_VALUE} disables all #{type.upcase} keys."
+          type: Integer,
+          values: KeyRestrictionValidator.supported_key_restrictions(type),
+          desc: "Restrictions on the complexity of uploaded #{type.upcase} keys. A value of #{ApplicationSetting::FORBIDDEN_KEY_VALUE} disables all #{type.upcase} keys."
       end
 
       use :optional_params_ee

@@ -7,15 +7,16 @@ module QA
         include Shared::CommitMessage
         include Layout::Flash
         include Page::Component::BlobContent
-
-        view 'app/assets/javascripts/repository/components/blob_button_group.vue' do
-          element 'lock-button'
-        end
+        include Shared::Editor
 
         view 'app/assets/javascripts/vue_shared/components/web_ide_link.vue' do
           element 'action-dropdown'
           element 'edit-menu-item', ':data-testid="`${action.key}-menu-item`"' # rubocop:disable QA/ElementWithPattern
           element 'webide-menu-item', ':data-testid="`${action.key}-menu-item`"' # rubocop:disable QA/ElementWithPattern
+        end
+
+        view 'app/assets/javascripts/repository/components/code_dropdown/compact_code_dropdown.vue' do
+          element 'code-dropdown'
         end
 
         def click_edit
@@ -27,8 +28,14 @@ module QA
           click_on 'Delete'
         end
 
-        def click_delete_file
-          click_on 'Delete file'
+        def double_click_code_token(text)
+          within_element('content') do
+            find('span', text: text, match: :first).double_click
+          end
+        end
+
+        def explain_code
+          click_element('question-icon')
         end
       end
     end

@@ -2,17 +2,19 @@
 stage: Growth
 group: Acquisition
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Free push limit
 ---
 
-# Free push limit
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com
+
+{{< /details >}}
 
 A 100 MiB per-file limit applies when pushing new files to any project in the Free tier.
 
-If a new file that is 100 MiB or large is pushed to a project in the Free tier, an error is displayed. For example:
+If a new file that is 100 MiB or larger is pushed to a project in the Free tier, an error is displayed. For example:
 
 ```shell
 Enumerating objects: 3, done.
@@ -26,7 +28,7 @@ remote: GitLab: You are attempting to check in one or more files which exceed th
 - 257cc5642cb1a054f08cc83f2d943e56fd3ebe99 (123 MiB)
 - 5716ca5987cbf97d6bb54920bea6adde242d87e6 (396 MiB)
 
-Please refer to https://docs.gitlab.com/ee/user/free_user_limit.html for further information.
+Please refer to https://docs.gitlab.com/user/free_user_limit/ for further information.
 To https://gitlab.com/group/my-project.git
  ! [remote rejected] main -> main (pre-receive hook declined)
 error: failed to push some refs to 'https://gitlab.com/group/my-project.git'
@@ -38,14 +40,16 @@ The error lists the unique IDs for files rather than their filename. To look up 
 tree -r | grep <id>
 ```
 
-Because Git is not designed to handle large non-text-based data well, you should use [Git LFS](../topics/git/lfs/index.md) for these files.
+Because Git is not designed to handle large non-text-based data well, you should use [Git LFS](../topics/git/lfs/_index.md) for these files.
 Git LFS is designed to work with Git to track large files.
 
-## Feedback
+## Troubleshooting
 
-If you have any feedback to share about this limit, do so in
-[issue 428188](https://gitlab.com/gitlab-org/gitlab/-/issues/428188).
+When trying to resolve the push limit, you might encounter the following issues.
 
-## Related topics
+### Error message displays after removing large file
 
-- [GitLab SaaS Free tier frequently asked questions](https://about.gitlab.com/pricing/faq-efficient-free-tier/).
+You might get the push limit error even after you have deleted the large file from
+your repository locally. To resolve this issue, try to remove the commit that introduced the large file.
+
+For more information, see [revert commits and modify history](../topics/git/undo.md#revert-commits-and-modify-history).

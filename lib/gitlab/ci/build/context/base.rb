@@ -7,10 +7,11 @@ module Gitlab
         class Base
           include Gitlab::Utils::StrongMemoize
 
-          attr_reader :pipeline
+          attr_reader :pipeline, :logger
 
-          def initialize(pipeline)
+          def initialize(pipeline, logger:)
             @pipeline = pipeline
+            @logger = logger
           end
 
           def variables
@@ -23,6 +24,23 @@ module Gitlab
             end
           end
 
+          def variables_hash_expanded
+            strong_memoize(:variables_hash_expanded) do
+              variables_sorted_and_expanded.to_hash
+            end
+          end
+
+          def variables_sorted_and_expanded
+            strong_memoize(:variables_sorted_and_expanded) do
+              # Call variables first to memoize and ensure only sort_and_expand_all is instrumented
+              variables
+
+              logger.instrument(:pipeline_seed_context_build_variables_sort_and_expand_all) do
+                variables.sort_and_expand_all
+              end
+            end
+          end
+
           def project
             pipeline.project
           end
@@ -31,28 +49,18 @@ module Gitlab
             pipeline.sha
           end
 
-          def top_level_worktree_paths
-            strong_memoize(:top_level_worktree_paths) do
-              project.repository.tree(sha).blobs.map(&:path)
-            end
-          end
-
-          def all_worktree_paths
-            strong_memoize(:all_worktree_paths) do
-              project.repository.ls_files(sha)
-            end
-          end
+          delegate :top_level_worktree_paths, :all_worktree_paths, to: :pipeline
 
           protected
 
           def pipeline_attributes
             {
               pipeline: pipeline,
+              partition_id: pipeline.partition_id,
               project: pipeline.project,
               user: pipeline.user,
               ref: pipeline.ref,
               tag: pipeline.tag,
-              trigger_request: pipeline.legacy_trigger,
               protected: pipeline.protected_ref?
             }
           end

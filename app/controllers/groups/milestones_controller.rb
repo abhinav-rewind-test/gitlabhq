@@ -35,18 +35,20 @@ class Groups::MilestonesController < Groups::ApplicationController
     end
   end
 
-  def show
-  end
+  def show; end
 
-  def edit
-  end
+  def edit; end
 
   def update
     Milestones::UpdateService.new(@milestone.parent, current_user, milestone_params).execute(@milestone)
 
     respond_to do |format|
       format.html do
-        redirect_to milestone_path(@milestone)
+        if @milestone.valid?
+          redirect_to milestone_path(@milestone)
+        else
+          render :edit
+        end
       end
 
       format.json do
@@ -68,7 +70,7 @@ class Groups::MilestonesController < Groups::ApplicationController
         render json: {
           errors: [
             format(
-              _("Someone edited this %{model_name} at the same time you did. Please refresh your browser and make sure your changes will not unintentionally remove theirs."), # rubocop:disable Layout/LineLength
+              _("Someone edited this %{model_name} at the same time you did. Please refresh your browser and make sure your changes will not unintentionally remove theirs."),
               model_name: _('milestone')
             )
           ]
@@ -89,7 +91,7 @@ class Groups::MilestonesController < Groups::ApplicationController
   private
 
   def authorize_admin_milestones!
-    return render_404 unless can?(current_user, :admin_milestone, group)
+    render_404 unless can?(current_user, :admin_milestone, group)
   end
 
   def milestone_params

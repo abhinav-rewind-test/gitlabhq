@@ -11,7 +11,7 @@ export default {
       return this.note.resolved;
     },
     resolveButtonTitle() {
-      return this.discussionResolved ? __('Unresolve thread') : __('Resolve thread');
+      return this.discussionResolved ? __('Reopen thread') : __('Resolve thread');
     },
   },
   methods: {
@@ -30,16 +30,23 @@ export default {
         endpoint = this.discussionResolvePath;
       }
 
-      return this.toggleResolveNote({ endpoint, isResolved, discussion })
+      return this.toggleResolveNote({
+        endpoint,
+        isResolved,
+        discussion,
+        discussionId: this.discussion?.id,
+      })
         .then(() => {
           this.isResolving = false;
         })
-        .catch(() => {
+        .catch((error) => {
           this.isResolving = false;
 
           const msg = __('Something went wrong while resolving this discussion. Please try again.');
           createAlert({
             message: msg,
+            error,
+            captureError: true,
             parent: this.$el,
           });
         });

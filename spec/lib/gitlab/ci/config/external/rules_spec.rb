@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe Gitlab::Ci::Config::External::Rules, feature_category: :pipeline_composition do
   let(:context) { double(variables_hash: {}) }
   let(:rule_hashes) {}
-  let(:pipeline) { instance_double(Ci::Pipeline) }
+  let(:pipeline) { instance_double(Ci::Pipeline, project: project, project_id: project.id, sha: 'sha') }
   let_it_be(:project) { create(:project, :custom_repo, files: { 'file.txt' => 'file' }) }
 
   subject(:rules) { described_class.new(rule_hashes) }
@@ -78,6 +78,7 @@ RSpec.describe Gitlab::Ci::Config::External::Rules, feature_category: :pipeline_
 
     context 'when there is a rule with exists:' do
       let(:rule_hashes) { [{ exists: 'file.txt' }] }
+      let(:pipeline) { instance_double(Ci::Pipeline, project: project, project_id: project.id, sha: 'sha', id: 1) }
 
       context 'when the file exists' do
         let(:context) { double(top_level_worktree_paths: ['file.txt']) }
@@ -98,10 +99,10 @@ RSpec.describe Gitlab::Ci::Config::External::Rules, feature_category: :pipeline_
       let(:rule_hashes) { [{ changes: ['file.txt'] }] }
 
       shared_examples 'when the pipeline has modified paths' do
-        let(:modified_paths) { ['file.txt'] }
+        let(:changed_paths) { [instance_double(Gitlab::Git::ChangedPath, path: 'file.txt')] }
 
         before do
-          allow(pipeline).to receive(:modified_paths).and_return(modified_paths)
+          allow(pipeline).to receive(:changed_paths).and_return(changed_paths)
         end
 
         context 'when the file has changed' do
@@ -111,7 +112,7 @@ RSpec.describe Gitlab::Ci::Config::External::Rules, feature_category: :pipeline_
         end
 
         context 'when the file has not changed' do
-          let(:modified_paths) { ['README.md'] }
+          let(:changed_paths) { [instance_double(Gitlab::Git::ChangedPath, path: 'README.md')] }
 
           it { is_expected.to eq(false) }
         end

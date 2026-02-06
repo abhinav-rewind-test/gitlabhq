@@ -10,7 +10,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
   end
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be_with_refind(:project) { create(:project, :repository) }
 
   let(:repository) { project.repository }
   let(:broken_repository) { create(:project, :broken_storage).repository }
@@ -57,6 +57,18 @@ RSpec.describe Repository, feature_category: :source_code_management do
       it { is_expected.to match_array(["'test'"]) }
     end
 
+    context 'when exclude_refs is provided' do
+      let(:opts) { { exclude_refs: ['master'] } }
+
+      it { is_expected.not_to include('master') }
+    end
+
+    context 'with limit + exclude_refs options' do
+      let(:opts) { { limit: 1, exclude_refs: ["'test'"] } }
+
+      it { is_expected.to match_array(["2-mb-file"]) }
+    end
+
     describe 'when storage is broken', :broken_storage do
       it 'raises a storage error' do
         expect_to_raise_storage_error do
@@ -78,6 +90,18 @@ RSpec.describe Repository, feature_category: :source_code_management do
       let(:opts) { { limit: 1 } }
 
       it { is_expected.to match_array(['v1.1.0']) }
+    end
+
+    context 'when exclude_refs is provided' do
+      let(:opts) { { exclude_refs: ['v1.1.0'] } }
+
+      it { is_expected.not_to include('v1.1.0') }
+    end
+
+    context 'with limit + exclude_refs options' do
+      let(:opts) { { limit: 1, exclude_refs: ["v1.1.0"] } }
+
+      it { is_expected.to match_array(["v1.1.1"]) }
     end
   end
 
@@ -226,6 +250,52 @@ RSpec.describe Repository, feature_category: :source_code_management do
     context 'when ref format is incorrect' do
       it 'returns false' do
         expect(repository.ref_exists?('refs/heads/invalid:master')).to be false
+      end
+    end
+  end
+
+  describe '#branch_or_tag?' do
+    using RSpec::Parameterized::TableSyntax
+
+    where(:ref, :result) do
+      'markdown'                   | true
+      'v1.1.1'                     | true
+      'xyz-invalid'                | false
+      'refs/heads/master'          | true
+      'refs/heads/invalid-xyz'     | false
+      'refs/tags/v1.0.0'           | true
+      'refs/tags/v9.8.7'           | false
+    end
+
+    subject(:branch_or_tag?) { repository.branch_or_tag?(ref) }
+
+    with_them do
+      it { is_expected.to eq(result) }
+    end
+
+    context 'when a refs/remotes ref is passed' do
+      let(:ref) { 'refs/remotes/origin/master' }
+
+      it { is_expected.to be_falsey }
+
+      context 'when the ref is a branch' do
+        let_it_be(:project) { create(:project, :repository) }
+
+        before do
+          repository.add_branch(user, 'refs/remotes/origin/master', 'master')
+        end
+
+        it { is_expected.to be_truthy }
+      end
+
+      context 'when the naked ref is a branch' do
+        let_it_be(:project) { create(:project, :repository) }
+
+        before do
+          repository.add_branch(user, 'origin/master', 'master')
+        end
+
+        it { is_expected.to be_falsey }
       end
     end
   end
@@ -615,59 +685,99 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
-  describe '#list_commits_by' do
-    it 'returns commits when no filter is applied' do
-      commit_ids = repository.list_commits_by(nil, 'master', limit: 2).map(&:id)
+  describe '#list_commits' do
+    it 'returns commits when no query is passed' do
+      commit_ids = repository.list_commits(ref: 'master', pagination_params: { limit: 2 }).map(&:id)
 
-      expect(commit_ids).to include(
-        'b83d6e391c22777fca1ed3012fce84f633d7fed0',
-        '498214de67004b1da3d820901307bed2a68a8ef6'
-      )
+      expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0 498214de67004b1da3d820901307bed2a68a8ef6])
     end
 
     it 'returns commits with messages containing a given string' do
-      commit_ids = repository.list_commits_by('test text', 'master').map(&:id)
+      commit_ids = repository.list_commits(query: 'test text', ref: 'master').map(&:id)
 
-      expect(commit_ids).to include(
-        'b83d6e391c22777fca1ed3012fce84f633d7fed0',
-        '498214de67004b1da3d820901307bed2a68a8ef6'
-      )
-      expect(commit_ids).not_to include('c84ff944ff4529a70788a5e9003c2b7feae29047')
+      expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0 498214de67004b1da3d820901307bed2a68a8ef6])
     end
 
     it 'is case insensitive' do
-      commit_ids = repository.list_commits_by('TEST TEXT', 'master').map(&:id)
+      commit_ids = repository.list_commits(query: 'TEST TEXT', ref: 'master').map(&:id)
 
-      expect(commit_ids).to include('b83d6e391c22777fca1ed3012fce84f633d7fed0')
+      expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0 498214de67004b1da3d820901307bed2a68a8ef6])
     end
 
     it 'returns commits based in before filter' do
-      commit_ids = repository.list_commits_by('test text', 'master', before: 1474828200).map(&:id)
-      expect(commit_ids).to include(
-        '498214de67004b1da3d820901307bed2a68a8ef6'
-      )
-      expect(commit_ids).not_to include('b83d6e391c22777fca1ed3012fce84f633d7fed0')
+      commit_ids = repository.list_commits(query: 'test text', ref: 'master', committed_before: 1474828200).map(&:id)
+
+      expect(commit_ids).to eq(%w[498214de67004b1da3d820901307bed2a68a8ef6])
     end
 
     it 'returns commits based in after filter' do
-      commit_ids = repository.list_commits_by('test text', 'master', after: 1474828200).map(&:id)
-      expect(commit_ids).to include(
-        'b83d6e391c22777fca1ed3012fce84f633d7fed0'
-      )
-      expect(commit_ids).not_to include('498214de67004b1da3d820901307bed2a68a8ef6')
+      commit_ids = repository.list_commits(query: 'test text', ref: 'master', committed_after: 1474828200).map(&:id)
+
+      expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0])
     end
 
     it 'returns commits based in author filter' do
-      commit_ids = repository.list_commits_by('test text', 'master', author: 'Job van der Voort').map(&:id)
-      expect(commit_ids).to include(
-        'b83d6e391c22777fca1ed3012fce84f633d7fed0'
-      )
-      expect(commit_ids).not_to include('498214de67004b1da3d820901307bed2a68a8ef6')
+      commit_ids = repository.list_commits(query: 'test text', ref: 'master', author: 'Job van der Voort').map(&:id)
+      expect(commit_ids).to eq(%w[b83d6e391c22777fca1ed3012fce84f633d7fed0])
+    end
+
+    it 'returns the correct page' do
+      commit_ids = repository.list_commits(
+        ref: 'master', pagination_params: { limit: 1, page_token: 'b83d6e391c22777fca1ed3012fce84f633d7fed0' }
+      ).map(&:id)
+
+      expect(commit_ids).to eq(%w[498214de67004b1da3d820901307bed2a68a8ef6])
+    end
+
+    describe 'pagination_params' do
+      let(:raw_repo) { repository.raw_repository }
+
+      before do
+        allow(raw_repo).to receive(:list_commits).and_call_original
+      end
+
+      context 'when a limit is supplied' do
+        it 'does not modify the limit' do
+          repository.list_commits(ref: 'master', pagination_params: { limit: 10 })
+          expect(raw_repo).to have_received(:list_commits).with(a_hash_including(pagination_params: { limit: 10 }))
+        end
+
+        context 'as nil' do
+          it 'sets the limit to 1000' do
+            repository.list_commits(ref: 'master', pagination_params: { limit: nil })
+            expect(raw_repo).to have_received(:list_commits).with(a_hash_including(pagination_params: { limit: 1000 }))
+          end
+        end
+      end
+
+      context 'when no limit is supplied' do
+        it 'sets the limit to 1000' do
+          repository.list_commits(ref: 'master')
+          expect(raw_repo)
+            .to have_received(:list_commits)
+            .with(a_hash_including(pagination_params: { page_token: nil, limit: 1000 }))
+        end
+      end
+
+      context 'when a page_token is passed' do
+        it 'does not modify it' do
+          repository.list_commits(ref: 'master', pagination_params: { page_token: 'page_token' })
+          expect(raw_repo)
+            .to have_received(:list_commits)
+            .with(a_hash_including(pagination_params: { page_token: 'page_token', limit: 1000 }))
+        end
+      end
+
+      context 'when there are more pages' do
+        it 'returns next_cursor' do
+          expect(repository.list_commits(ref: 'master', pagination_params: { limit: 10 }).next_cursor).to eq('54fcc214b94e78d7a41a9a8fe6d87a5e59500e51')
+        end
+      end
     end
 
     describe 'when storage is broken', :broken_storage do
       it 'raises a storage error' do
-        expect_to_raise_storage_error { broken_repository.list_commits_by('s') }
+        expect_to_raise_storage_error { broken_repository.list_commits(ref: 'master') }
       end
     end
   end
@@ -689,6 +799,33 @@ RSpec.describe Repository, feature_category: :source_code_management do
       subject { repository.blob_at(repository.find_branch('feature').target, 'README.md') }
 
       it { is_expected.to be_an_instance_of(::Blob) }
+    end
+  end
+
+  describe '#has_gitattributes?' do
+    let(:project) { create(:project, :repository) }
+
+    subject { repository.has_gitattributes? }
+
+    context 'when there is a .gitattributes file' do
+      before do
+        create_file_in_repo(project, 'master', 'master', '.gitattributes', 'some contents')
+      end
+
+      it { is_expected.to be_truthy }
+    end
+
+    context 'when there is not a .gitattributes file' do
+      before do
+        repository.delete_file(
+          project.creator,
+          '.gitattributes',
+          message: "Remove .gitattributes",
+          branch_name: project.default_branch_or_main
+        )
+      end
+
+      it { is_expected.to be_falsey }
     end
   end
 
@@ -781,7 +918,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
     let(:cache_key) { cache.cache_key(:merged_branch_names) }
 
     before do
-      allow(repository.raw_repository).to receive(:merged_branch_names).with(branch_names).and_return(already_merged)
+      allow(repository.raw_repository).to receive(:merged_branch_names).with(branch_names, include_identical: false).and_return(already_merged)
     end
 
     it { is_expected.to eq(already_merged) }
@@ -847,7 +984,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
     context "cache is partially complete" do
       before do
-        allow(repository.raw_repository).to receive(:merged_branch_names).with(["boop"]).and_return([])
+        allow(repository.raw_repository).to receive(:merged_branch_names).with(["boop"], hash_including(include_identical: anything)).and_return([])
         hash = write_hash.except("boop")
         cache.write(:merged_branch_names, hash)
       end
@@ -855,9 +992,40 @@ RSpec.describe Repository, feature_category: :source_code_management do
       it { is_expected.to eq(already_merged) }
 
       it "does fetch from the disk" do
-        expect(repository.raw_repository).to receive(:merged_branch_names).with(["boop"])
+        expect(repository.raw_repository).to receive(:merged_branch_names).with(["boop"], include_identical: false)
 
         subject
+      end
+    end
+
+    context "with include_identical" do
+      let(:root_ref) { repository.root_ref }
+      let(:identical_branch) { 'identical-branch' }
+      let(:stale_branch) { 'stale-branch' }
+
+      before do
+        allow(repository.raw_repository)
+          .to receive(:merged_branch_names)
+          .and_call_original
+
+        repository.create_branch(identical_branch, root_ref)
+        repository.create_branch(stale_branch, 'HEAD~1')
+      end
+
+      context 'when include_identical: true' do
+        it 'includes branches identical to root ref' do
+          merged = repository.merged_branch_names([identical_branch, stale_branch], include_identical: true)
+
+          expect(merged).to match_array([identical_branch, stale_branch])
+        end
+      end
+
+      context 'when include_identical: false' do
+        it 'excludes branches identical to root ref' do
+          merged = repository.merged_branch_names([identical_branch, stale_branch], include_identical: false)
+
+          expect(merged).to match_array([stale_branch])
+        end
       end
     end
 
@@ -1007,6 +1175,18 @@ RSpec.describe Repository, feature_category: :source_code_management do
       expect(repository.blob_at('master', 'new_dir/new_file.txt').data).to eq('File!')
     end
 
+    it 'line endings are not mutated' do
+      repository.create_file(
+        user, 'hello.txt', "Hello,\r\nWorld",
+        message: 'Add hello world',
+        branch_name: 'master'
+      )
+
+      blob = repository.blob_at('master', 'hello.txt')
+
+      expect(blob.data).to eq("Hello,\r\nWorld")
+    end
+
     context "when an author is specified" do
       it "uses the given email/name to set the commit's author" do
         expect do
@@ -1079,36 +1259,6 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
-  describe "#move_dir_files" do
-    it 'move directory files successfully' do
-      expect do
-        repository.move_dir_files(
-          user, 'files/new_js', 'files/js',
-          branch_name: 'master',
-          message: 'move directory images to new_images',
-          author_email: author_email,
-          author_name: author_name
-        )
-      end.to change { repository.count_commits(ref: 'master') }.by(1)
-      files = repository.ls_files('master')
-
-      expect(files).not_to include('files/js/application.js')
-      expect(files).to include('files/new_js/application.js')
-    end
-
-    it 'skips commit with same path' do
-      expect do
-        repository.move_dir_files(
-          user, 'files/js', 'files/js',
-          branch_name: 'master',
-          message: 'no commit',
-          author_email: author_email,
-          author_name: author_name
-        )
-      end.to change { repository.count_commits(ref: 'master') }.by(0)
-    end
-  end
-
   describe "#delete_file" do
     let(:project) { create(:project, :repository) }
 
@@ -1165,14 +1315,14 @@ RSpec.describe Repository, feature_category: :source_code_management do
     it 'properly handles when query is not present' do
       results = repository.search_files_by_content('', 'master')
 
-      expect(results).to match_array([])
+      expect(results).to be_empty
     end
 
     it 'properly handles query when repo is empty' do
       repository = create(:project, :empty_repo).repository
       results = repository.search_files_by_content('test', 'master')
 
-      expect(results).to match_array([])
+      expect(results).to be_empty
     end
 
     describe 'when storage is broken', :broken_storage do
@@ -1207,13 +1357,13 @@ RSpec.describe Repository, feature_category: :source_code_management do
     it 'properly handles when query is only slashes' do
       results = repository.search_files_by_name('//', 'master')
 
-      expect(results).to match_array([])
+      expect(results).to be_empty
     end
 
     it 'properly handles when query is not present' do
       results = repository.search_files_by_name('', 'master')
 
-      expect(results).to match_array([])
+      expect(results).to be_empty
     end
 
     it 'properly handles query when repo is empty' do
@@ -1221,7 +1371,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
       results = repository.search_files_by_name('test', 'master')
 
-      expect(results).to match_array([])
+      expect(results).to be_empty
     end
 
     describe 'when storage is broken', :broken_storage do
@@ -1305,6 +1455,18 @@ RSpec.describe Repository, feature_category: :source_code_management do
           'files/ruby/popen.rb',
           'files/ruby/regex.rb',
           'files/ruby/version_info.rb'
+        )
+      end
+    end
+
+    context 'when specifying a wildcard path with **/ that should match root level files' do
+      let(:path) { '**/*.md' }
+
+      it 'returns all matched files including those at root level' do
+        expect(result).to include(
+          'README.md',
+          'CONTRIBUTING.md',
+          'files/markdown/ruby-style-guide.md'
         )
       end
     end
@@ -1565,27 +1727,6 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
-  describe "#gitlab_ci_yml", :use_clean_rails_memory_store_caching do
-    let(:project) { create(:project, :repository) }
-
-    it 'returns valid file' do
-      files = [TestBlob.new('file'), TestBlob.new('.gitlab-ci.yml'), TestBlob.new('copying')]
-      expect(repository.tree).to receive(:blobs).and_return(files)
-
-      expect(repository.gitlab_ci_yml.path).to eq('.gitlab-ci.yml')
-    end
-
-    it 'returns nil if not exists' do
-      expect(repository.tree).to receive(:blobs).and_return([])
-      expect(repository.gitlab_ci_yml).to be_nil
-    end
-
-    it 'returns nil for empty repository' do
-      allow(repository).to receive(:root_ref).and_raise(Gitlab::Git::Repository::NoRepository)
-      expect(repository.gitlab_ci_yml).to be_nil
-    end
-  end
-
   describe "#jenkinsfile?" do
     let_it_be(:project) { create(:project, :repository) }
 
@@ -1711,7 +1852,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
     it "calls Gitaly's OperationService" do
       expect_any_instance_of(Gitlab::GitalyClient::OperationService)
-        .to receive(:user_create_branch).with(branch_name, user, target)
+        .to receive(:user_create_branch).with(branch_name, user, target, skip_ci: false)
         .and_return(nil)
 
       subject
@@ -1742,6 +1883,51 @@ RSpec.describe Repository, feature_category: :source_code_management do
         expect(repository).not_to receive(:expire_branches_cache)
 
         repository.add_branch(user, branch_name, target, expire_cache: false)
+      end
+    end
+
+    context 'skip_ci' do
+      context 'when skip_ci: true' do
+        it 'passes skip-ci: true gitaly context' do
+          allow(::Gitlab::GitalyClient).to receive(:call).and_call_original
+
+          repository.add_branch(user, branch_name, target, skip_ci: true)
+
+          expect(::Gitlab::GitalyClient).to have_received(:call)
+            .with(anything, anything, :user_create_branch, anything, gitaly_context: { 'skip-ci' => true }, timeout: anything)
+        end
+      end
+
+      context 'when skip_ci: false' do
+        it 'does not pass gitaly_context' do
+          allow(::Gitlab::GitalyClient).to receive(:call).and_call_original
+
+          repository.add_branch(user, branch_name, target, skip_ci: false)
+
+          expect(::Gitlab::GitalyClient).to have_received(:call)
+            .with(anything, anything, :user_create_branch, anything, timeout: anything)
+        end
+      end
+
+      context 'when skip_ci not provided' do
+        it 'does not pass gitaly_context' do
+          allow(::Gitlab::GitalyClient).to receive(:call).and_call_original
+
+          repository.add_branch(user, branch_name, target)
+
+          expect(::Gitlab::GitalyClient).to have_received(:call)
+            .with(anything, anything, :user_create_branch, anything, timeout: anything)
+        end
+      end
+    end
+
+    context 'when raise_on_invalid_ref is true' do
+      let(:branch_name) { 'master/123' }
+
+      subject { repository.add_branch(user, branch_name, target, raise_on_invalid_ref: true) }
+
+      it 'raises invalid ref exception' do
+        expect { subject }.to raise_error(Gitlab::Git::Repository::InvalidRef)
       end
     end
   end
@@ -1832,26 +2018,59 @@ RSpec.describe Repository, feature_category: :source_code_management do
   end
 
   describe '#branch_exists?' do
-    let(:branch) { repository.root_ref }
+    let(:branch) { 'feature' }
 
     subject { repository.branch_exists?(branch) }
 
-    it 'delegates to branch_names when the cache is empty' do
-      repository.expire_branches_cache
+    it 'batch loads requested refs' do
+      expect(repository).to receive(:list_refs).with(["refs/heads/#{branch}"]).and_call_original
 
-      expect(repository).to receive(:branch_names).and_call_original
       is_expected.to eq(true)
     end
 
-    it 'uses redis set caching when the cache is filled' do
-      repository.branch_names # ensure the branch name cache is filled
+    context 'when default branch is provided' do
+      let(:branch) { repository.root_ref }
 
-      expect(repository)
-        .to receive(:branch_names_include?)
-        .with(branch)
-        .and_call_original
+      it 'does not make list_refs query and rely on root_ref cache' do
+        expect(repository).not_to receive(:list_refs).with(["refs/heads/#{branch}"])
 
-      is_expected.to eq(true)
+        is_expected.to eq(true)
+      end
+    end
+
+    context 'when the branch name is in Japanise' do
+      let_it_be(:project) { create(:project, :repository) }
+      let(:branch) { '日本' }
+
+      before do
+        repository.add_branch(user, branch, 'master')
+      end
+
+      it { is_expected.to be_truthy }
+    end
+
+    context 'when "ref_existence_check_gitaly" is disabled' do
+      before do
+        stub_feature_flags(ref_existence_check_gitaly: false)
+      end
+
+      it 'delegates to branch_names when the cache is empty' do
+        repository.expire_branches_cache
+
+        expect(repository).to receive(:branch_names).and_call_original
+        is_expected.to eq(true)
+      end
+
+      it 'uses redis set caching when the cache is filled' do
+        repository.branch_names # ensure the branch name cache is filled
+
+        expect(repository)
+          .to receive(:branch_names_include?)
+                .with(branch)
+                .and_call_original
+
+        is_expected.to eq(true)
+      end
     end
   end
 
@@ -1860,40 +2079,235 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
     subject { repository.tag_exists?(tag) }
 
-    it 'delegates to tag_names when the cache is empty' do
-      repository.expire_tags_cache
+    it 'batch loads requested refs' do
+      expect(repository).to receive(:list_refs).with(["refs/tags/#{tag}"]).and_call_original
 
-      expect(repository).to receive(:tag_names).and_call_original
       is_expected.to eq(true)
     end
 
-    it 'uses redis set caching when the cache is filled' do
-      repository.tag_names # ensure the tag name cache is filled
+    context 'when "ref_existence_check_gitaly" is disabled' do
+      before do
+        stub_feature_flags(ref_existence_check_gitaly: false)
+      end
 
-      expect(repository)
-        .to receive(:tag_names_include?)
-        .with(tag)
-        .and_call_original
+      it 'delegates to tag_names when the cache is empty' do
+        repository.expire_tags_cache
 
-      is_expected.to eq(true)
+        expect(repository).to receive(:tag_names).and_call_original
+        is_expected.to eq(true)
+      end
+
+      it 'uses redis set caching when the cache is filled' do
+        repository.tag_names # ensure the tag name cache is filled
+
+        expect(repository)
+          .to receive(:tag_names_include?)
+                .with(tag)
+                .and_call_original
+
+        is_expected.to eq(true)
+      end
     end
   end
 
   describe '#branch_names', :clean_gitlab_redis_cache do
     let_it_be(:project) { create(:project, :repository) }
+    let(:repository) { project.repository }
+    let(:branch_names) { %w[main develop] }
 
-    let(:fake_branch_names) { ['foobar'] }
+    it 'bypasses cache and calls the uncached method directly' do
+      expect(repository).not_to receive(:cache_method_output_as_redis_set)
+      allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
 
-    it 'gets cached across Repository instances' do
-      allow(repository.raw_repository).to receive(:branch_names).once.and_return(fake_branch_names)
+      result = repository.branch_names
+      expect(result).to match_array(branch_names)
+    end
 
-      expect(repository.branch_names).to match_array(fake_branch_names)
+    it 'does not use caching mechanism' do
+      allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
 
-      fresh_repository = Project.find(project.id).repository
-      expect(fresh_repository.object_id).not_to eq(repository.object_id)
+      # Call multiple times to verify no caching
+      first_call = repository.branch_names
+      second_call = repository.branch_names
 
-      expect(fresh_repository.raw_repository).not_to receive(:branch_names)
-      expect(fresh_repository.branch_names).to match_array(fake_branch_names)
+      # Should call raw repository each time (no caching)
+      expect(repository.raw_repository).to have_received(:branch_names).twice
+      expect(first_call).to match_array(branch_names)
+      expect(second_call).to match_array(branch_names)
+    end
+
+    context 'when avoid_branch_names_cache feature flag is disabled' do
+      before do
+        stub_feature_flags(avoid_branch_names_cache: false)
+        repository.expire_branches_cache
+      end
+
+      it 'uses caching mechanism' do
+        expect(repository).to receive(:cache_method_output_as_redis_set).and_call_original
+        allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
+
+        repository.branch_names
+      end
+
+      it 'returns cached result on subsequent calls' do
+        allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
+
+        first_result = repository.branch_names
+        second_result = repository.branch_names
+
+        expect(first_result).to eq(second_result)
+        # Should only call the raw repository once due to caching
+        expect(repository.raw_repository).to have_received(:branch_names).once
+      end
+    end
+
+    context 'fallback behavior' do
+      it 'returns empty array when no branches exist' do
+        allow(repository.raw_repository).to receive(:branch_names).and_return([])
+
+        result = repository.branch_names
+        expect(result).to eq([])
+      end
+    end
+  end
+
+  context 'branch_names_include? method' do
+    let_it_be(:project) { create(:project, :repository) }
+    let(:repository) { project.repository }
+    let(:branch_names) { %w[main develop] }
+
+    it 'bypasses cache for include check' do
+      allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
+
+      expect(repository.branch_names_include?('main')).to be(true)
+      expect(repository.branch_names_include?('feature')).to be(false)
+
+      # Should call branch_names for each include check when cache is bypassed
+      expect(repository.raw_repository).to have_received(:branch_names).at_least(:twice)
+    end
+
+    context 'when avoid_branch_names_cache feature flag is disabled' do
+      before do
+        stub_feature_flags(avoid_branch_names_cache: false)
+        # Stub ref_existence_check_gitaly to ensure consistent test behavior
+        # This prevents the ref existence check from interfering with our cache testing
+        # by forcing include? method to use the branch_names cache path
+        stub_feature_flags(ref_existence_check_gitaly: false)
+      end
+
+      it 'uses caching for include check' do
+        allow(repository.raw_repository).to receive(:branch_names).and_return(branch_names)
+
+        # First call should populate cache
+        repository.branch_names
+
+        # Include check should use cached data
+        expect(repository.branch_names_include?('main')).to be(true)
+        expect(repository.branch_names_include?('feature')).to be(false)
+
+        # Should only call raw repository once due to caching
+        expect(repository.raw_repository).to have_received(:branch_names).once
+      end
+    end
+  end
+
+  describe '#tag_names', :clean_gitlab_redis_cache do
+    let_it_be(:project) { create(:project, :repository) }
+    let(:repository) { project.repository }
+    let(:tag_names) { %w[v1.0.0 v1.1.0] }
+
+    it 'bypasses cache and calls the uncached method directly' do
+      expect(repository).not_to receive(:cache_method_output_as_redis_set)
+      allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+      result = repository.tag_names
+      expect(result).to match_array(tag_names)
+    end
+
+    it 'does not use caching mechanism' do
+      allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+      first_call = repository.tag_names
+      second_call = repository.tag_names
+
+      # Should call raw repository each time (no caching)
+      expect(repository.raw_repository).to have_received(:tag_names).twice
+      expect(first_call).to match_array(tag_names)
+      expect(second_call).to match_array(tag_names)
+    end
+
+    context 'when avoid_tag_names_cache feature flag is disabled' do
+      before do
+        stub_feature_flags(avoid_tag_names_cache: false)
+        repository.expire_tags_cache
+      end
+
+      it 'uses caching mechanism' do
+        expect(repository).to receive(:cache_method_output_as_redis_set).and_call_original
+        allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+        repository.tag_names
+      end
+
+      it 'returns cached result on subsequent calls' do
+        allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+        first_result = repository.tag_names
+        second_result = repository.tag_names
+
+        expect(first_result).to eq(second_result)
+        # Should only call the raw repository once due to caching
+        expect(repository.raw_repository).to have_received(:tag_names).once
+      end
+    end
+
+    context 'fallback behavior' do
+      it 'returns empty array when no tags exist' do
+        allow(repository.raw_repository).to receive(:tag_names).and_return([])
+
+        result = repository.tag_names
+        expect(result).to eq([])
+      end
+    end
+  end
+
+  context 'tag_names_include? method' do
+    let_it_be(:project) { create(:project, :repository) }
+    let(:repository) { project.repository }
+    let(:tag_names) { %w[v1.0.0 v1.1.0] }
+
+    it 'bypasses cache for include check' do
+      allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+      expect(repository.tag_names_include?('v1.0.0')).to be(true)
+      expect(repository.tag_names_include?('v2.0.0')).to be(false)
+
+      # Should call tag_names for each include check when cache is bypassed
+      expect(repository.raw_repository).to have_received(:tag_names).at_least(:twice)
+    end
+
+    context 'when avoid_tag_names_cache feature flag is disabled' do
+      before do
+        stub_feature_flags(avoid_tag_names_cache: false)
+        # Stub ref_existence_check_gitaly to ensure consistent test behavior
+        # This prevents the ref existence check from interfering with our cache testing
+        # by forcing include? method to use the tag_names cache path
+        stub_feature_flags(ref_existence_check_gitaly: false)
+      end
+
+      it 'uses caching for include check' do
+        allow(repository.raw_repository).to receive(:tag_names).and_return(tag_names)
+
+        # First call should populate cache
+        repository.tag_names
+
+        # Include check should use cached data
+        expect(repository.tag_names_include?('v1.0.0')).to be(true)
+        expect(repository.tag_names_include?('v2.0.0')).to be(false)
+
+        # Should only call raw repository once due to caching
+        expect(repository.raw_repository).to have_received(:tag_names).once
+      end
     end
   end
 
@@ -1939,7 +2353,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
       end
 
       it 'returns empty array' do
-        expect(repository.blobs_at([%w[master foobar]])).to match_array([])
+        expect(repository.blobs_at([%w[master foobar]])).to be_empty
       end
     end
   end
@@ -2118,22 +2532,52 @@ RSpec.describe Repository, feature_category: :source_code_management do
       )
     end
 
-    it 'writes merge of source SHA and first parent ref to MR merge_ref_path' do
-      merge_commit_id = repository.merge_to_ref(
-        user,
+    let(:params) do
+      {
         source_sha: merge_request.diff_head_sha,
         branch: merge_request.target_branch,
         target_ref: merge_request.merge_ref_path,
         message: 'Custom message',
         first_parent_ref: merge_request.target_branch_ref
-      )
+      }
+    end
 
-      merge_commit = repository.commit(merge_commit_id)
+    subject(:merge_to_ref) do
+      repository.merge_to_ref(
+        user,
+        **params
+      )
+    end
+
+    it 'writes merge of source SHA and first parent ref to MR merge_ref_path' do
+      merge_commit = repository.commit(merge_to_ref)
 
       expect(merge_commit.message).to eq('Custom message')
       expect(merge_commit.author_name).to eq(user.name)
       expect(merge_commit.author_email).to eq(user.commit_email_or_default)
       expect(repository.blob_at(merge_commit.id, 'files/ruby/feature.rb')).to be_present
+    end
+
+    describe 'delegating to Repositories::WebBasedCommitSigningSetting for sign' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:expected_sign) { [true, false] }
+
+      with_them do
+        before do
+          allow_next_instance_of(Repositories::WebBasedCommitSigningSetting) do |instance|
+            allow(instance).to receive(:sign_commits?).and_return(expected_sign)
+          end
+        end
+
+        it 'calls UserMergeToRef with the expected value for sign' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_merge_to_ref).with(user, **params, expected_old_oid: '', sign: expected_sign)
+          end
+
+          subject
+        end
+      end
     end
   end
 
@@ -2310,74 +2754,196 @@ RSpec.describe Repository, feature_category: :source_code_management do
     let(:new_image_commit) { repository.commit('33f3729a45c02fc67d00adb1b8bca394b0e761d9') }
     let(:update_image_commit) { repository.commit('2f63565e7aac07bcdadb654e253078b727143ec4') }
     let(:message) { 'revert message' }
+    let(:branch_name) { 'master' }
+    let(:commit) { update_image_commit }
+
+    subject(:revert) { repository.revert(user, commit, branch_name, message) }
 
     context 'when there is a conflict' do
+      let(:commit) { new_image_commit }
+
       it 'raises an error' do
-        expect { repository.revert(user, new_image_commit, 'master', message) }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+        expect { revert }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
       end
     end
 
     context 'when commit was already reverted' do
-      it 'raises an error' do
-        repository.revert(user, update_image_commit, 'master', message)
+      before do
+        repository.revert(user, update_image_commit, branch_name, message)
+      end
 
-        expect { repository.revert(user, update_image_commit, 'master', message) }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+      it 'raises an error' do
+        expect { revert }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
       end
     end
 
     context 'when commit can be reverted' do
       it 'reverts the changes' do
-        expect(repository.revert(user, update_image_commit, 'master', message)).to be_truthy
+        expect(revert).to be_truthy
+      end
+
+      it 'sets target_sha to prevent race conditions' do
+        target_sha = repository.commit('master').id
+        expect(repository.raw_repository).to receive(:revert).with(a_hash_including(target_sha: target_sha))
+
+        revert
       end
     end
 
     context 'reverting a merge commit' do
-      it 'reverts the changes' do
+      before do
         merge_commit
-        expect(repository.blob_at_branch('master', 'files/ruby/feature.rb')).to be_present
+      end
 
-        repository.revert(user, merge_commit, 'master', message)
-        expect(repository.blob_at_branch('master', 'files/ruby/feature.rb')).not_to be_present
+      let(:commit) { merge_commit }
+
+      it 'reverts the changes' do
+        expect do
+          revert
+        end.to change {
+          repository.blob_at_branch('master', 'files/ruby/feature.rb').present?
+        }.from(true).to(false)
+      end
+
+      it 'sets target_sha to prevent race conditions' do
+        target_sha = repository.commit('master').id
+        expect(repository.raw_repository).to receive(:revert).with(a_hash_including(target_sha: target_sha))
+
+        revert
+      end
+    end
+
+    describe 'target_sha automatic detection' do
+      it 'automatically detects current branch SHA when branch_name is provided' do
+        branch = repository.find_branch('master')
+        expected_sha = branch.dereferenced_target.id
+
+        expect(repository.raw_repository).to receive(:revert).with(a_hash_including(target_sha: expected_sha))
+        revert
+      end
+
+      context 'when the branch does not exist' do
+        using RSpec::Parameterized::TableSyntax
+        where(:branch_name) { [nil, 'non-existent-branch', ''] }
+
+        with_them do
+          it 'sets target_sha to nil' do
+            expect(repository.raw_repository).to receive(:revert).with(a_hash_including(target_sha: nil))
+
+            revert
+          end
+        end
+      end
+    end
+
+    describe 'delegating to Repositories::WebBasedCommitSigningSetting for sign' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:expected_sign) { [true, false] }
+
+      with_them do
+        before do
+          allow_next_instance_of(Repositories::WebBasedCommitSigningSetting) do |instance|
+            allow(instance).to receive(:sign_commits?).and_return(expected_sign)
+          end
+        end
+
+        it 'calls UserRevert with the expected value for sign' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_revert).with(a_hash_including(sign: expected_sign))
+          end
+
+          subject
+        end
       end
     end
   end
 
   describe '#cherry_pick' do
     let(:project) { create(:project, :repository) }
-    let(:conflict_commit) { repository.commit('c642fe9b8b9f28f9225d7ea953fe14e74748d53b') }
-    let(:pickable_commit) { repository.commit('7d3b0f7cff5f37573aea97cebfd5692ea1689924') }
-    let(:pickable_merge) { repository.commit('e56497bb5f03a90a51293fc6d516788730953899') }
+    let(:commit) { repository.commit('7d3b0f7cff5f37573aea97cebfd5692ea1689924') }
+    let(:target_sha) { repository.commit(branch_name).id }
     let(:message) { 'cherry-pick message' }
+    let(:branch_name) { 'master' }
+
+    subject(:cherry_pick) { repository.cherry_pick(user, commit, branch_name, message) }
 
     context 'when there is a conflict' do
+      let(:commit) { repository.commit('c642fe9b8b9f28f9225d7ea953fe14e74748d53b') }
+
       it 'raises an error' do
-        expect { repository.cherry_pick(user, conflict_commit, 'master', message) }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+        expect { cherry_pick }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+      end
+
+      it 'sets target_sha' do
+        expect(repository.raw_repository).to receive(:cherry_pick).with(a_hash_including(target_sha: target_sha))
+        cherry_pick
       end
     end
 
-    context 'when commit was already cherry-picked' do
-      it 'raises an error' do
-        repository.cherry_pick(user, pickable_commit, 'master', message)
+    context 'when the commit is pickable' do
+      context 'when commit was already cherry-picked' do
+        before do
+          repository.cherry_pick(user, commit, 'master', message)
+        end
 
-        expect { repository.cherry_pick(user, pickable_commit, 'master', message) }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+        it 'raises an error' do
+          expect { cherry_pick }.to raise_error(Gitlab::Git::Repository::CreateTreeError)
+        end
+      end
+
+      context 'when commit can be cherry-picked' do
+        it 'cherry-picks the changes' do
+          expect(cherry_pick).to be_truthy
+        end
+      end
+
+      it 'sets target_sha' do
+        expect(repository.raw_repository).to receive(:cherry_pick).with(a_hash_including(target_sha: target_sha))
+        cherry_pick
       end
     end
 
-    context 'when commit can be cherry-picked' do
+    context 'when cherry-picking a merge commit' do
+      let(:branch_name) { 'improve/awesome' }
+      let(:commit) { repository.commit('e56497bb5f03a90a51293fc6d516788730953899') }
+
       it 'cherry-picks the changes' do
-        expect(repository.cherry_pick(user, pickable_commit, 'master', message)).to be_truthy
-      end
-    end
+        expect do
+          cherry_pick
+        end.to change {
+          repository.blob_at_branch('improve/awesome', 'foo/bar/.gitkeep')
+        }.from(nil)
 
-    context 'cherry-picking a merge commit' do
-      it 'cherry-picks the changes' do
-        expect(repository.blob_at_branch('improve/awesome', 'foo/bar/.gitkeep')).to be_nil
-
-        cherry_pick_commit_sha = repository.cherry_pick(user, pickable_merge, 'improve/awesome', message)
-        cherry_pick_commit_message = project.commit(cherry_pick_commit_sha).message
-
-        expect(repository.blob_at_branch('improve/awesome', 'foo/bar/.gitkeep')).not_to be_nil
+        cherry_pick_commit_message = project.commit(cherry_pick).message
         expect(cherry_pick_commit_message).to eq(message)
+      end
+
+      it 'sets target_sha' do
+        expect(repository.raw_repository).to receive(:cherry_pick).with(a_hash_including(target_sha: target_sha))
+        cherry_pick
+      end
+    end
+
+    describe 'delegating to Repositories::WebBasedCommitSigningSetting for sign' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:expected_sign) { [true, false] }
+
+      with_them do
+        before do
+          allow_next_instance_of(Repositories::WebBasedCommitSigningSetting) do |instance|
+            allow(instance).to receive(:sign_commits?).and_return(expected_sign)
+          end
+        end
+
+        it 'calls UserCherryPick with the expected value for sign' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_cherry_pick).with(a_hash_including(sign: expected_sign))
+          end
+
+          subject
+        end
       end
     end
   end
@@ -2483,7 +3049,6 @@ RSpec.describe Repository, feature_category: :source_code_management do
           :license_blob,
           :license_gitaly,
           :gitignore,
-          :gitlab_ci_yml,
           :branch_names,
           :tag_names,
           :branch_count,
@@ -2597,6 +3162,12 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
     it 'logs an event' do
       expect(repository).to receive(:repository_event).with(:create_repository)
+
+      repository.after_create
+    end
+
+    it 'calls after_create_repository' do
+      expect(repository.container).to receive(:after_create_repository)
 
       repository.after_create
     end
@@ -2716,12 +3287,33 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
   describe '#rm_branch' do
     let(:project) { create(:project, :repository) }
+    let(:branch_name) { 'feature' }
+    let(:target_sha) { repository.commit(branch_name).sha }
 
     it 'removes a branch' do
       expect(repository).to receive(:before_remove_branch)
       expect(repository).to receive(:after_remove_branch)
 
-      repository.rm_branch(user, 'feature')
+      repository.rm_branch(user, branch_name, target_sha: target_sha)
+    end
+
+    context 'when target_sha is not set' do
+      it 'removes a branch without target_sha' do
+        expect(repository).to receive(:before_remove_branch)
+        expect(repository).to receive(:after_remove_branch)
+
+        repository.rm_branch(user, branch_name)
+      end
+    end
+
+    context 'when target_sha is invalid' do
+      let(:invalid_sha) { 'invalidsha1234567890' }
+
+      it 'raises an error for invalid target_sha' do
+        expect do
+          repository.rm_branch(user, branch_name, target_sha: invalid_sha)
+        end.to raise_error(Gitlab::Git::CommandError)
+      end
     end
 
     context 'when pre hooks failed' do
@@ -2732,10 +3324,10 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
       it 'gets an error and does not delete the branch' do
         expect do
-          repository.rm_branch(user, 'feature')
+          repository.rm_branch(user, branch_name, target_sha: target_sha)
         end.to raise_error(Gitlab::Git::PreReceiveError)
 
-        expect(repository.find_branch('feature')).not_to be_nil
+        expect(repository.find_branch(branch_name)).not_to be_nil
       end
     end
   end
@@ -3344,12 +3936,13 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
     let(:order_by) { nil }
     let(:sort) { nil }
+    let(:ref) { nil }
 
     before do
-      allow(repository).to receive(:commits).with(nil, limit: 2000, offset: 0, skip_merges: true).and_return(stubbed_commits)
+      allow(repository).to receive(:commits).with(ref, limit: 2000, offset: 0, skip_merges: true).and_return(stubbed_commits)
     end
 
-    subject { repository.contributors(order_by: order_by, sort: sort) }
+    subject { repository.contributors(ref: ref, order_by: order_by, sort: sort) }
 
     def expect_contributors(*contributors)
       expect(subject.map(&:email)).to eq(contributors.map(&:email))
@@ -3433,6 +4026,24 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
       it 'returns the contributors unsorted' do
         expect_contributors(author_a, author_b, author_c)
+      end
+    end
+
+    context 'when passing a ref param' do
+      let(:ref) { 'ref' }
+      let(:author_d) { build(:author, email: 'johndoe@gitlab.com', name: 'John Doe') }
+      let(:stubbed_commits) do
+        [build(:commit, author: author_a),
+         build(:commit, author: author_a),
+         build(:commit, author: author_b),
+         build(:commit, author: author_c),
+         build(:commit, author: author_c),
+         build(:commit, author: author_c),
+         build(:commit, author: author_d)]
+      end
+
+      it 'returns the contributors for ref' do
+        expect_contributors(author_a, author_b, author_c, author_d)
       end
     end
   end
@@ -3539,34 +4150,6 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
         expect { repository.create_from_bundle(valid_bundle_path) }.to raise_error(::Gitlab::Git::BundleFile::InvalidBundleError)
       end
-    end
-  end
-
-  describe "#blobs_metadata" do
-    let_it_be(:project) { create(:project, :repository) }
-
-    def expect_metadata_blob(thing)
-      expect(thing).to be_a(Blob)
-      expect(thing.data).to be_empty
-    end
-
-    it "returns blob metadata in batch for HEAD" do
-      result = repository.blobs_metadata(["bar/branch-test.txt", "README.md", "does/not/exist"])
-
-      expect_metadata_blob(result.first)
-      expect_metadata_blob(result.second)
-      expect(result.size).to eq(2)
-    end
-
-    it "returns blob metadata for a specified ref" do
-      result = repository.blobs_metadata(["files/ruby/feature.rb"], "feature")
-
-      expect_metadata_blob(result.first)
-    end
-
-    it "performs a single gitaly call", :request_store do
-      expect { repository.blobs_metadata(["bar/branch-test.txt", "readme.txt", "does/not/exist"]) }
-        .to change { Gitlab::GitalyClient.get_request_count }.by(1)
     end
   end
 
@@ -3717,6 +4300,37 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
+  describe '#diffs_by_changed_paths' do
+    let(:diff_refs) do
+      Gitlab::Diff::DiffRefs.new(
+        base_sha: "913c66a37b4a45b9769037c55c2d238bd0942d2e",
+        head_sha: "874797c3a73b60d2187ed6e2fcabd289ff75171e"
+      )
+    end
+
+    it 'delegates diffs retrieval to BlobPairsService and verifies the returned diff files' do
+      expected_diff_files = [
+        instance_double(Gitlab::Diff::File, new_path: 'a.md'),
+        instance_double(Gitlab::Diff::File, new_path: 'b.md')
+      ]
+
+      allow_next_instance_of(Gitlab::Git::BlobPairsDiffs) do |svc|
+        allow(svc)
+          .to receive(:diffs_by_changed_paths)
+          .with(diff_refs, 0, 10)
+          .and_yield(expected_diff_files)
+      end
+
+      retrieved_diff_files = []
+
+      repository.diffs_by_changed_paths(diff_refs, 0, 10) do |diff_files|
+        retrieved_diff_files.concat(diff_files)
+      end
+
+      expect(retrieved_diff_files).to eq(expected_diff_files)
+    end
+  end
+
   describe '#change_head' do
     let_it_be(:project) { create(:project, :repository) }
 
@@ -3737,11 +4351,6 @@ RSpec.describe Repository, feature_category: :source_code_management do
         expect(repository).to receive(:before_change_head)
         expect(repository).to receive(:after_change_head)
 
-        repository.change_head(branch)
-      end
-
-      it 'copies the gitattributes' do
-        expect(repository).to receive(:copy_gitattributes).with(branch)
         repository.change_head(branch)
       end
 
@@ -3773,63 +4382,88 @@ RSpec.describe Repository, feature_category: :source_code_management do
     end
   end
 
-  describe '#remove_prohibited_branches' do
-    let(:branch_name) { '37fd3601be4c25497a39fa2e6a206e09e759d597' }
+  describe '#remove_prohibited_refs' do
+    context "when repository contains allowed and prohibited ref names" do
+      let(:mutable_project) { create(:project, :repository) }
+      let(:repository) { mutable_project.repository }
+      let(:raw_repository) { repository.raw }
+      let(:commit_id) { raw_repository.commit.id }
+      let(:prohibited_name) { '37fd3601be4c25497a39fa2e6a206e09e759d597' }
+      let(:prohibited_hex_64_name) { '5f50b1461c836081ed677f05e08d10dc7dc68631fa5767bc3e3946349b348275' }
+      let(:allowed_basic_name) { 'some-tag-name' }
+      let(:allowed_non_hex_40_name) { '37fd3601be4c25497a39fa2e6a206e09e759d59s' }
 
-    before do
-      allow(repository.raw_repository).to receive(:branch_names).and_return([branch_name])
-    end
+      before do
+        raw_repository.add_tag(prohibited_name, user: user, target: commit_id)
+        raw_repository.add_branch(prohibited_name, user: user, target: commit_id)
 
-    shared_examples 'deletes the branch' do
-      it 'deletes prohibited branch' do
-        expect(repository.raw_repository).to receive(:delete_branch).with(branch_name)
+        raw_repository.add_tag(allowed_basic_name, user: user, target: commit_id)
+        raw_repository.add_branch(allowed_basic_name, user: user, target: commit_id)
 
-        repository.remove_prohibited_branches
+        raw_repository.add_tag(prohibited_hex_64_name, user: user, target: commit_id)
+        raw_repository.add_branch(prohibited_hex_64_name, user: user, target: commit_id)
+
+        raw_repository.add_tag(allowed_non_hex_40_name, user: user, target: commit_id)
+        raw_repository.add_branch(allowed_non_hex_40_name, user: user, target: commit_id)
+      end
+
+      it 'only deletes prohibited refs' do
+        # Check everything exists before calling `remove_prohibited_refs`.
+        expect(repository.find_branch(allowed_basic_name)).not_to be_nil
+        expect(repository.find_tag(allowed_basic_name)).not_to be_nil
+
+        expect(repository.find_branch(prohibited_hex_64_name)).not_to be_nil
+        expect(repository.find_tag(prohibited_hex_64_name)).not_to be_nil
+
+        expect(repository.find_branch(allowed_non_hex_40_name)).not_to be_nil
+        expect(repository.find_tag(allowed_non_hex_40_name)).not_to be_nil
+
+        expect(repository.find_branch(prohibited_name)).not_to be_nil
+        expect(repository.find_tag(prohibited_name)).not_to be_nil
+
+        repository.remove_prohibited_refs
+
+        # Check allowed refs were not deleted.
+        expect(repository.find_branch(allowed_basic_name)).not_to be_nil
+        expect(repository.find_tag(allowed_basic_name)).not_to be_nil
+
+        expect(repository.find_branch(allowed_non_hex_40_name)).not_to be_nil
+        expect(repository.find_tag(allowed_non_hex_40_name)).not_to be_nil
+
+        # Check prohibited refs were deleted.
+        expect(repository.find_branch(prohibited_name)).to be_nil
+        expect(repository.find_tag(prohibited_name)).to be_nil
+
+        expect(repository.find_branch(prohibited_hex_64_name)).to be_nil
+        expect(repository.find_tag(prohibited_hex_64_name)).to be_nil
       end
     end
 
-    shared_examples 'does not delete branch' do
-      it 'returns without removing the branch' do
-        expect(repository.raw_repository).not_to receive(:delete_branch)
+    context "when repository contains no prohibited ref names" do
+      let(:mutable_project) { create(:project, :repository) }
+      let(:repository) { mutable_project.repository }
+      let(:raw_repository) { repository.raw }
+      let(:commit_id) { raw_repository.commit.id }
+      let(:allowed_basic_name) { 'some-tag-name' }
 
-        repository.remove_prohibited_branches
-      end
-    end
-
-    context 'when branch name is hexadecmal and 40-characters long' do
-      include_examples 'deletes the branch'
-    end
-
-    context 'when branch name is hexadecmal and 64-characters long' do
-      let(:branch_name) { '5f50b1461c836081ed677f05e08d10dc7dc68631fa5767bc3e3946349b348275' }
-
-      include_examples 'deletes the branch'
-    end
-
-    context 'when branch name is 40-characters long but not hexadecimal' do
-      let(:branch_name) { '37fd3601be4c25497a39fa2e6a206e09e759d59s' }
-
-      include_examples 'does not delete branch'
-    end
-
-    context 'when branch name is hexadecimal' do
-      context 'when branch name is less than 40-characters long' do
-        let(:branch_name) { '37fd3601be4c25497a39fa2e6a206e09e759d' }
-
-        include_examples 'does not delete branch'
+      before do
+        raw_repository.add_tag(allowed_basic_name, user: user, target: commit_id)
+        raw_repository.add_branch(allowed_basic_name, user: user, target: commit_id)
       end
 
-      context 'when branch name is more than 40-characters long' do
-        let(:branch_name) { '37fd3601be4c25497a39fa2e6a206e09e759dfdfd' }
+      it 'does not delete any branches' do
+        expect(repository.raw).not_to receive(:delete_refs)
 
-        include_examples 'does not delete branch'
+        expect { repository.remove_prohibited_refs }
+          .not_to change { raw_repository.branch_count }
       end
-    end
 
-    context 'when prohibited branch does not exist' do
-      let(:branch_name) { 'main' }
+      it 'does not delete any tags' do
+        expect(repository.raw).not_to receive(:delete_refs)
 
-      include_examples 'does not delete branch'
+        expect { repository.remove_prohibited_refs }
+          .not_to change { raw_repository.tag_count }
+      end
     end
 
     context 'when raw repository does not exist' do
@@ -3837,7 +4471,10 @@ RSpec.describe Repository, feature_category: :source_code_management do
         allow(repository).to receive(:exists?).and_return(false)
       end
 
-      include_examples 'does not delete branch'
+      it "does not attempt to find prohibited refs" do
+        expect(repository.raw).not_to receive(:list_refs)
+        repository.remove_prohibited_refs
+      end
     end
   end
 
@@ -3845,7 +4482,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
     let(:project) { create(:project, :repository) }
 
     it 'returns patch_id of given revisions' do
-      expect(repository.get_patch_id('HEAD~', 'HEAD')).to eq('45435e5d7b339dd76d939508c7687701d0c17fff')
+      expect(repository.get_patch_id('HEAD~', 'HEAD')).to eq('67cc1b19744f71ee68e5aa6aa0dbadf03a6ba912')
     end
 
     context 'when one of the param is invalid' do
@@ -3897,6 +4534,30 @@ RSpec.describe Repository, feature_category: :source_code_management do
       end
     end
 
+    context 'when a Gitlab::Git::CommandTimedOut is raised' do
+      before do
+        expect(repository.raw_repository)
+          .to receive(:get_patch_id).and_raise(Gitlab::Git::CommandTimedOut)
+      end
+
+      it 'returns nil' do
+        expect(repository.get_patch_id('HEAD', 'f' * 40)).to be_nil
+      end
+
+      it 'reports the exception' do
+        expect(Gitlab::ErrorTracking)
+          .to receive(:track_exception)
+          .with(
+            instance_of(Gitlab::Git::CommandTimedOut),
+            project_id: repository.project.id,
+            old_revision: 'HEAD',
+            new_revision: 'HEAD'
+          )
+
+        repository.get_patch_id('HEAD', 'HEAD')
+      end
+    end
+
     context 'when a Gitlab::Git::Repository::NoRepository is raised' do
       before do
         expect(repository.raw_repository)
@@ -3924,7 +4585,7 @@ RSpec.describe Repository, feature_category: :source_code_management do
 
   describe '#object_pool' do
     let_it_be(:primary_project) { create(:project, :empty_repo) }
-    let_it_be(:forked_project) { create(:project, :empty_repo) }
+    let_it_be(:forked_project) { create(:project, :fork_repository, forked_from_project: primary_project) }
 
     let(:repository) { primary_project.repository }
 
@@ -4162,6 +4823,186 @@ RSpec.describe Repository, feature_category: :source_code_management do
       let(:attrs) { [] }
 
       it { expect { file_attributes }.to raise_error(ArgumentError) }
+    end
+  end
+
+  describe '#commit_files' do
+    let_it_be_with_refind(:project) { create(:project, :repository) }
+    let(:target_sha) { repository.commit('master').sha }
+    let(:expected_params) do
+      [
+        user,
+       'master', # branch_name
+       'commit message', # commit_message
+       [], # actions
+       'author email', # author_email
+       'author name', # author_name
+       nil, # start_branch_name
+       nil, # start_repository
+       true, # force
+       nil, # start_sha
+       expected_sign, # sign
+       target_sha # target_sha
+      ]
+    end
+
+    let(:params) do
+      {
+        branch_name: 'master',
+        message: 'commit message',
+        author_name: 'author name',
+        author_email: 'author email',
+        actions: [],
+        force: true
+      }
+    end
+
+    let(:expected_sign) { true }
+
+    subject(:commit_files) do
+      repository.commit_files(user, **params)
+    end
+
+    it 'finds and passes the branches target_sha' do
+      expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+        expect(client).to receive(:user_commit_files).with(*expected_params)
+      end
+
+      commit_files
+    end
+
+    context 'with an empty branch' do
+      let_it_be(:project) { create(:project, :empty_repo) }
+
+      context 'when feature flag is enabled' do
+        before do
+          stub_feature_flags(commit_files_target_sha: true)
+        end
+
+        let(:target_sha) { repository.blank_ref }
+
+        it 'calls UserCommitFiles RPC' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_commit_files).with(*expected_params)
+          end
+
+          commit_files
+        end
+      end
+
+      context 'when feature flag is disabled' do
+        let(:project) { create(:project, :empty_repo) }
+        let(:target_sha) { nil }
+
+        before do
+          stub_feature_flags(commit_files_target_sha: false)
+        end
+
+        it 'calls UserCommitFiles RPC with nil target_sha' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_commit_files).with(*expected_params)
+          end
+
+          commit_files
+        end
+      end
+    end
+
+    describe 'delegating to Repositories::WebBasedCommitSigningSetting for sign' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:expected_sign) { [true, false] }
+
+      with_them do
+        before do
+          allow_next_instance_of(Repositories::WebBasedCommitSigningSetting) do |instance|
+            allow(instance).to receive(:sign_commits?).and_return(expected_sign)
+          end
+        end
+
+        it 'calls UserCommitFiles with the expected value for sign' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_commit_files).with(*expected_params)
+          end
+
+          subject
+        end
+      end
+    end
+  end
+
+  describe '#ignore_revs_file_blob' do
+    subject { repository.ignore_revs_file_blob }
+
+    context 'when there is a ignore revs file on the default branch' do
+      let(:file_content) { project.commit.id }
+      let(:project_files) do
+        { Gitlab::Blame::IGNORE_REVS_FILE_NAME => file_content }
+      end
+
+      around do |example|
+        create_and_delete_files(project, project_files) do
+          example.run
+        end
+      end
+
+      it { is_expected.to be_a_kind_of(Blob) }
+    end
+
+    it { is_expected.to be_nil }
+  end
+
+  describe '#redis_set_cache' do
+    subject(:redis_set_cache) { repository.send(:redis_set_cache) }
+
+    it { is_expected.to be_kind_of(Gitlab::Repositories::RebuildableSetCache) }
+
+    context 'when ref_cache_with_rebuild_queue is disabled' do
+      before do
+        stub_feature_flags(ref_cache_with_rebuild_queue: false)
+      end
+
+      it { is_expected.to be_kind_of(Gitlab::RepositorySetCache) }
+    end
+  end
+
+  describe '#squash' do
+    let(:merge_request) { build(:merge_request, source_project: project) }
+
+    subject(:squash) { repository.squash(user, merge_request, message) }
+
+    it 'delegates to raw repository' do
+      expect(repository.raw).to receive(:squash).with(user, {
+        start_sha: merge_request.diff_start_sha,
+        end_sha: merge_request.diff_head_sha,
+        author: merge_request.author,
+        message: message,
+        sign: true
+      })
+
+      squash
+    end
+
+    describe 'delegating to Repositories::WebBasedCommitSigningSetting for sign' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:expected_sign) { [true, false] }
+
+      with_them do
+        before do
+          allow_next_instance_of(Repositories::WebBasedCommitSigningSetting) do |instance|
+            allow(instance).to receive(:sign_commits?).and_return(expected_sign)
+          end
+        end
+
+        it 'calls UserSquash with the expected value for sign' do
+          expect_next_instance_of(Gitlab::GitalyClient::OperationService) do |client|
+            expect(client).to receive(:user_squash).with(user, a_hash_including(sign: expected_sign))
+          end
+
+          subject
+        end
+      end
     end
   end
 end

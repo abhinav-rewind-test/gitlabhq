@@ -19,13 +19,15 @@ module Gitlab
             end
 
             def content
-              fetch_with_error_handling do
-                if fetch_async_content
-                  fetch_async_content.value
-                else
-                  fetch_sync_content
-                end
-              end
+              body = fetch_response_body
+
+              return unless body
+
+              verify_integrity(body) if params[:integrity]
+
+              return if errors.any?
+
+              body
             end
             strong_memoize_attr :content
 
@@ -53,9 +55,15 @@ module Gitlab
 
             private
 
-            def fetch_async_content
-              return unless YamlProcessor::FeatureFlags.enabled?(:ci_parallel_remote_includes)
+            def fetch_response_body
+              response = fetch_with_error_handling do
+                fetch_async_content.value
+              end
 
+              response&.body
+            end
+
+            def fetch_async_content
               # It starts fetching the remote content in a separate thread and returns a lazy_response immediately.
               Gitlab::HTTP.get(location, async: true).tap do |lazy_response|
                 context.execute_remote_parallel_request(lazy_response)
@@ -63,30 +71,93 @@ module Gitlab
             end
             strong_memoize_attr :fetch_async_content
 
-            def fetch_sync_content
-              context.logger.instrument(:config_file_fetch_remote_content) do
-                Gitlab::HTTP.get(location)
+            def fetch_with_error_handling
+              max_attempts = 3
+              attempt = 0
+
+              loop do
+                attempt += 1
+                clear_memoization(:fetch_async_content) if attempt > 1
+
+                begin
+                  response = yield
+
+                  if response.nil?
+                    errors.push("Remote file `#{masked_location}` could not be fetched because the response was empty!")
+                    break
+                  end
+
+                  if response.code.to_i >= 400 && retry_or_add_error_for_response(response.code.to_i, attempt, max_attempts)
+                    next
+                  end
+
+                  return response if errors.none?
+                rescue SocketError
+                  if retry_or_add_error(attempt, max_attempts, "Remote file `#{masked_location}` could not be fetched after #{max_attempts} attempts because of a socket error!")
+                    next
+                  end
+                rescue Timeout::Error
+                  if retry_or_add_error(attempt, max_attempts, "Remote file `#{masked_location}` could not be fetched after #{max_attempts} attempts because of a timeout error!")
+                    next
+                  end
+                rescue Gitlab::HTTP::Error
+                  if retry_or_add_error(attempt, max_attempts, "Remote file `#{masked_location}` could not be fetched after #{max_attempts} attempts because of HTTP error!")
+                    next
+                  end
+                rescue Errno::ECONNREFUSED, Gitlab::HTTP::BlockedUrlError => e
+                  errors.push("Remote file could not be fetched because #{e}!")
+                end
+
+                break
               end
+
+              nil
             end
 
-            def fetch_with_error_handling
-              begin
-                response = yield
-              rescue SocketError
-                errors.push("Remote file `#{masked_location}` could not be fetched because of a socket error!")
-              rescue Timeout::Error
-                errors.push("Remote file `#{masked_location}` could not be fetched because of a timeout error!")
-              rescue Gitlab::HTTP::Error
-                errors.push("Remote file `#{masked_location}` could not be fetched because of HTTP error!")
-              rescue Errno::ECONNREFUSED, Gitlab::HTTP::BlockedUrlError => e
-                errors.push("Remote file could not be fetched because #{e}!")
+            def retry_or_add_error_for_response(code, attempt, max_attempts)
+              if should_retry_response?(code, attempt, max_attempts)
+                sleep(backoff_delay(attempt))
+                return true
               end
 
-              if response&.code.to_i >= 400
-                errors.push("Remote file `#{masked_location}` could not be fetched because of HTTP code `#{response.code}` error!")
+              errors.push("Remote file `#{masked_location}` could not be fetched after #{attempt} #{'attempt'.pluralize(attempt)} because of HTTP code `#{code}` error!")
+              false
+            end
+
+            def retry_or_add_error(attempt, max_attempts, error_message)
+              if should_retry_error?(attempt, max_attempts)
+                sleep(backoff_delay(attempt))
+                return true
               end
 
-              response.body if errors.none?
+              errors.push(error_message)
+              false
+            end
+
+            def should_retry_response?(code, attempt, max_attempts)
+              attempt < max_attempts && code >= 500
+            end
+
+            def should_retry_error?(attempt, max_attempts)
+              attempt < max_attempts
+            end
+
+            def backoff_delay(attempt)
+              # Returns exponential backoff delay in seconds
+              # After attempt 1 fails: 2^0 = 1s
+              # After attempt 2 fails: 2^1 = 2s
+              2**(attempt - 1)
+            end
+
+            def verify_integrity(content)
+              expected_hash = params[:integrity].delete_prefix('sha256-')
+              actual_hash = Base64.strict_encode64(
+                Digest::SHA256.digest(content)
+              )
+
+              unless Rack::Utils.secure_compare(actual_hash, expected_hash)
+                errors.push("Remote file `#{masked_location}` failed integrity check!")
+              end
             end
           end
         end

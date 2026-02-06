@@ -21,7 +21,6 @@ import {
   issuesPath,
   jiraProjects,
   jiraUsersResponse,
-  projectId,
   projectPath,
   userMappings as defaultUserMappings,
 } from '../mock_data';
@@ -66,7 +65,6 @@ describe('JiraImportForm', () => {
         issuesPath,
         jiraImports: imports,
         jiraProjects,
-        projectId,
         projectPath,
       },
       data: () => ({
@@ -199,12 +197,6 @@ describe('JiraImportForm', () => {
         wrapper = mountComponent({ mountFunction: mount });
 
         expect(getTable().findAll('tbody tr')).toHaveLength(2);
-      });
-
-      it('shows correct information in each cell', () => {
-        wrapper = mountComponent({ mountFunction: mount });
-
-        expect(getTable().element).toMatchSnapshot();
       });
 
       describe('when there is no Jira->GitLab user mapping', () => {

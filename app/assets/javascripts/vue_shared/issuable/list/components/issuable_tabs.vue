@@ -28,6 +28,11 @@ export default {
       required: false,
       default: false,
     },
+    maxCount: {
+      type: Number,
+      required: false,
+      default: null,
+    },
   },
   methods: {
     isTabActive(tabName) {
@@ -37,6 +42,10 @@ export default {
       return Number.isInteger(this.tabCounts[tab.name]);
     },
     formatNumber(count) {
+      if (this.maxCount) {
+        return count > this.maxCount ? `${this.maxCount}+` : count;
+      }
+
       return this.truncateCounts ? numberToMetricPrefix(count) : formatNumber(count);
     },
   },
@@ -46,7 +55,8 @@ export default {
 <template>
   <div class="top-area">
     <gl-tabs
-      class="gl-display-flex gl-flex-grow-1 gl-p-0 gl-m-0 mobile-separator issuable-state-filters"
+      v-if="tabs.length > 0"
+      class="mobile-separator issuable-state-filters gl-m-0 gl-flex gl-grow gl-p-0"
       nav-class="gl-border-b-0"
     >
       <gl-tab
@@ -61,8 +71,7 @@ export default {
           </span>
           <gl-badge
             v-if="tabCounts && isTabCountNumeric(tab)"
-            variant="muted"
-            size="sm"
+            variant="neutral"
             class="gl-tab-counter-badge"
           >
             {{ formatNumber(tabCounts[tab.name]) }}
@@ -70,7 +79,7 @@ export default {
         </template>
       </gl-tab>
     </gl-tabs>
-    <div class="nav-controls">
+    <div class="nav-controls gl-justify-end">
       <slot name="nav-actions"></slot>
     </div>
   </div>

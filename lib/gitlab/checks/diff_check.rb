@@ -67,11 +67,12 @@ module Gitlab
 
       # rubocop: disable CodeReuse/ActiveRecord
       def lfs_file_locks_validation
-        lambda do |paths|
+        ->(paths) do
           lfs_lock = project.lfs_file_locks.where(path: paths).where.not(user_id: user_access.user.id).take
 
           if lfs_lock
-            return "The path '#{lfs_lock.path}' is locked in Git LFS by #{lfs_lock.user.username}"
+            format(_("'%{lock_path}' is locked in Git LFS by @%{lock_user_name}"),
+              lock_path: lfs_lock.path, lock_user_name: lfs_lock.user.username)
           end
         end
       end

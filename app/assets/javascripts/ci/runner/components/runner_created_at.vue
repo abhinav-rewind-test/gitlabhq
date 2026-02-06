@@ -51,14 +51,14 @@ export default {
 };
 </script>
 <template>
-  <span v-if="message">
+  <span v-if="message" class="gl-text-left">
     <gl-sprintf :message="message">
       <template #timeAgo>
         <time-ago v-if="createdAt" :time="createdAt" />
       </template>
       <template #user>
         <gl-link
-          class="js-user-link gl-reset-color gl-font-weight-bold"
+          class="js-user-link gl-font-bold gl-text-inherit"
           :href="createdBy.webUrl"
           :data-user-id="createdById"
           :data-username="createdBy.username"

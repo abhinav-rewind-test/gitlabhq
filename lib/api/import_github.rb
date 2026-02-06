@@ -22,18 +22,23 @@ module API
         { code: 422, message: 'Unprocessable entity' },
         { code: 503, message: 'Service unavailable' }
       ]
-      tags ['project_import_github']
+      tags ['project_import']
     end
     params do
       requires :personal_access_token, type: String, desc: 'GitHub personal access token'
       requires :repo_id, type: Integer, desc: 'GitHub repository ID'
       optional :new_name, type: String, desc: 'New repo name'
       requires :target_namespace, type: String, allow_blank: false, desc: 'Namespace or group to import repository into'
-      optional :github_hostname, type: String, desc: 'Custom GitHub enterprise hostname'
+      optional :github_hostname, type: String, desc: 'Custom GitHub enterprise hostname. ' \
+                                                 'For example: https://github.example.com. From GitLab 16.5 to ' \
+                                                 'GitLab 17.1, you must include the path `/api/v3`.'
       optional :optional_stages, type: Hash, desc: 'Optional stages of import to be performed'
       optional :timeout_strategy, type: String, values: ::ProjectImportData::TIMEOUT_STRATEGIES,
         desc: 'Strategy for behavior on timeouts'
+      optional :pagination_limit, type: Integer, desc: 'Pagination limit', values: 1..100
     end
+    route_setting :authorization, permissions: :create_github_import,
+      boundaries: [{ boundary_type: :group, boundary_param: :target_namespace }, { boundary_type: :user }]
     post 'import/github' do
       result = Import::GithubService.new(client, current_user, params).execute(access_params, provider)
       if result[:status] == :success
@@ -54,11 +59,12 @@ module API
         { code: 404, message: 'Not found' },
         { code: 503, message: 'Service unavailable' }
       ]
-      tags ['project_import_github']
+      tags ['project_import']
     end
     params do
       requires :project_id, type: Integer, desc: 'ID of importing project to be canceled'
     end
+    route_setting :authorization, permissions: :cancel_github_import, boundary_type: :user
     post 'import/github/cancel' do
       project = Project.imported_from(provider.to_s).find(params[:project_id])
       result = Import::Github::CancelProjectImportService.new(project, current_user).execute
@@ -79,10 +85,12 @@ module API
         { code: 422, message: 'Unprocessable Entity' },
         { code: 429, message: 'Too Many Requests' }
       ]
+      tags ['imports']
     end
     params do
       requires :personal_access_token, type: String, desc: 'GitHub personal access token'
     end
+    route_setting :authorization, permissions: :create_github_gist_import, boundary_type: :user
     post 'import/github/gists' do
       authorize! :create_snippet
 

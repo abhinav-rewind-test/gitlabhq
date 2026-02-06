@@ -6,6 +6,9 @@ import {
   extractPageInfo,
   beautifyPath,
   getCommitLink,
+  getNextPageParams,
+  getPreviousPageParams,
+  getPageParams,
 } from '~/packages_and_registries/shared/utils';
 import { FILTERED_SEARCH_TERM } from '~/vue_shared/components/filtered_search_bar/constants';
 
@@ -41,21 +44,23 @@ describe('Packages And Registries shared utils', () => {
   });
   describe('extractFilterAndSorting', () => {
     it.each`
-      search     | type        | version    | sort     | orderBy  | result
-      ${['one']} | ${'myType'} | ${'1.0.1'} | ${'asc'} | ${'foo'} | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [{ type: 'type', value: { data: 'myType' } }, { type: 'version', value: { data: '1.0.1' } }, { type: FILTERED_SEARCH_TERM, value: { data: 'one' } }] }}
-      ${['one']} | ${null}     | ${null}    | ${'asc'} | ${'foo'} | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [{ type: FILTERED_SEARCH_TERM, value: { data: 'one' } }] }}
-      ${[]}      | ${null}     | ${null}    | ${'asc'} | ${'foo'} | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [] }}
-      ${null}    | ${null}     | ${null}    | ${'asc'} | ${'foo'} | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [] }}
-      ${null}    | ${null}     | ${null}    | ${null}  | ${'foo'} | ${{ sorting: { orderBy: 'foo' }, filters: [] }}
-      ${null}    | ${null}     | ${null}    | ${null}  | ${null}  | ${{ sorting: {}, filters: [] }}
+      search       | type         | version      | status       | sort         | orderBy      | result
+      ${['one']}   | ${'myType'}  | ${'1.0.1'}   | ${'DEFAULT'} | ${'asc'}     | ${'foo'}     | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [{ type: 'type', value: { data: 'myType' } }, { type: 'version', value: { data: '1.0.1' } }, { type: 'status', value: { data: 'DEFAULT' } }, { type: FILTERED_SEARCH_TERM, value: { data: 'one' } }] }}
+      ${['one']}   | ${undefined} | ${undefined} | ${undefined} | ${'asc'}     | ${'foo'}     | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [{ type: FILTERED_SEARCH_TERM, value: { data: 'one' } }] }}
+      ${'one'}     | ${undefined} | ${undefined} | ${undefined} | ${'asc'}     | ${'foo'}     | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [{ type: FILTERED_SEARCH_TERM, value: { data: 'one' } }] }}
+      ${[]}        | ${undefined} | ${undefined} | ${undefined} | ${'asc'}     | ${'foo'}     | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [] }}
+      ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${'asc'}     | ${'foo'}     | ${{ sorting: { sort: 'asc', orderBy: 'foo' }, filters: [] }}
+      ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${'foo'}     | ${{ sorting: { orderBy: 'foo' }, filters: [] }}
+      ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${undefined} | ${{ sorting: {}, filters: [] }}
     `(
       'returns sorting and filters objects in the correct form',
-      ({ search, type, version, sort, orderBy, result }) => {
+      ({ search, type, version, sort, status, orderBy, result }) => {
         const queryObject = {
           search,
           type,
           version,
           sort,
+          status,
           orderBy,
         };
         expect(extractFilterAndSorting(queryObject)).toStrictEqual(result);
@@ -75,6 +80,49 @@ describe('Packages And Registries shared utils', () => {
         before,
       };
       expect(extractPageInfo(queryObject)).toStrictEqual(result);
+    });
+  });
+
+  describe('getNextPageParams', () => {
+    it('should return the next page params with the provided cursor', () => {
+      const cursor = 'abc123';
+      expect(getNextPageParams(cursor, 20)).toEqual({
+        after: cursor,
+        first: 20,
+      });
+    });
+  });
+
+  describe('getPreviousPageParams', () => {
+    it('should return the previous page params with the provided cursor', () => {
+      const cursor = 'abc123';
+      expect(getPreviousPageParams(cursor, 20)).toEqual({
+        before: cursor,
+        last: 20,
+      });
+    });
+  });
+
+  describe('getPageParams', () => {
+    it('should return the previous page params if before cursor is available', () => {
+      const pageInfo = { before: 'abc123' };
+      expect(getPageParams(pageInfo, 20)).toEqual({
+        before: pageInfo.before,
+        last: 20,
+      });
+    });
+
+    it('should return the next page params if after cursor is available', () => {
+      const pageInfo = { after: 'abc123' };
+      expect(getPageParams(pageInfo, 20)).toEqual({
+        after: pageInfo.after,
+        first: 20,
+      });
+    });
+
+    it('should return an empty object if both before and after cursors are not available', () => {
+      const pageInfo = {};
+      expect(getPageParams(pageInfo, 20)).toEqual({});
     });
   });
 

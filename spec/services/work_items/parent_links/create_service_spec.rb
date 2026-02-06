@@ -5,13 +5,11 @@ require 'spec_helper'
 RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfolio_management do
   describe '#execute' do
     let_it_be(:user) { create(:user) }
-    let_it_be(:guest) { create(:user) }
     let_it_be(:project) { create(:project) }
     let_it_be(:work_item) { create(:work_item, project: project) }
     let_it_be(:task) { create(:work_item, :task, project: project) }
     let_it_be_with_reload(:task1) { create(:work_item, :task, project: project) }
     let_it_be_with_reload(:task2) { create(:work_item, :task, project: project) }
-    let_it_be(:guest_task) { create(:work_item, :task) }
     let_it_be(:invalid_task) { build_stubbed(:work_item, :task, id: non_existing_record_id) }
     let_it_be(:another_project) { (create :project) }
     let_it_be(:other_project_task) { create(:work_item, :task, iid: 100, project: another_project) }
@@ -21,10 +19,15 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
     let(:issuable_type) { :task }
     let(:params) { {} }
 
+    before_all do
+      # Ensure support bot user is created so creation doesn't count towards query limit
+      # and we don't try to obtain an exclusive lease within a transaction.
+      # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+      create(:support_bot)
+    end
+
     before do
-      project.add_reporter(user)
-      project.add_guest(guest)
-      guest_task.project.add_guest(user)
+      project.add_guest(user)
       another_project.add_reporter(user)
     end
 
@@ -36,7 +39,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       it 'no relationship is created' do
-        expect { subject }.not_to change(parent_link_class, :count)
+        expect { subject }.not_to change { parent_link_class.count }
       end
     end
 
@@ -55,7 +58,9 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
     end
 
     context 'when user has no permission to link work items' do
-      let(:params) { { issuable_references: [guest_task] } }
+      let(:work_item) { create(:work_item, project: project, confidential: true) }
+      let(:task) { create(:work_item, :task, project: project, confidential: true) }
+      let(:params) { { issuable_references: [task] } }
 
       it_behaves_like 'returns not found error'
     end
@@ -64,7 +69,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       let(:params) { { issuable_references: [work_item] } }
 
       it 'no relationship is created' do
-        expect { subject }.not_to change(parent_link_class, :count)
+        expect { subject }.not_to change { parent_link_class.count }
       end
     end
 
@@ -85,9 +90,9 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       subject { described_class.new(parent_item, user, { target_issuable: current_item }).execute }
 
       where(:adjacent_position, :expected_order) do
-        -100 | lazy { [adjacent, current_item] }
-        0    | lazy { [adjacent, current_item] }
-        100  | lazy { [adjacent, current_item] }
+        -100 | lazy { [current_item, adjacent] }
+        0    | lazy { [current_item, adjacent] }
+        100  | lazy { [current_item, adjacent] }
       end
 
       with_them do
@@ -96,7 +101,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
         end
 
         it 'sets relative positions' do
-          expect { subject }.to change(parent_link_class, :count).by(1)
+          expect { subject }.to change { parent_link_class.count }.by(1)
           expect(parent_item.work_item_children_by_relative_position).to eq(expected_order)
         end
       end
@@ -105,11 +110,76 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
     context 'when there are tasks to relate' do
       let(:params) { { issuable_references: [task1, task2] } }
 
+      it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+        let(:trigger_call_counter) { 4 }
+
+        subject(:execute_service) { described_class.new(work_item, user, params).execute }
+      end
+
       it 'creates relationships', :aggregate_failures do
-        expect { subject }.to change(parent_link_class, :count).by(2)
+        expect { subject }.to change { parent_link_class.count }.by(2)
 
         tasks_parent = parent_link_class.where(work_item: [task1, task2]).map(&:work_item_parent).uniq
         expect(tasks_parent).to match_array([work_item])
+      end
+
+      context 'when tasks had different parent before' do
+        let_it_be(:previous_parent) { create(:work_item, :issue, project: project) }
+
+        before do
+          create(:parent_link, work_item: task1, work_item_parent: previous_parent)
+          create(:parent_link, work_item: task2, work_item_parent: previous_parent)
+        end
+
+        it 'changes the parent and triggers event', :aggregate_failures do
+          expect { subject }.to publish_event(WorkItems::WorkItemUpdatedEvent)
+            .with({
+              id: previous_parent.id,
+              namespace_id: previous_parent.namespace.id,
+              updated_widgets: ["hierarchy_widget"]
+            })
+
+          new_parent = parent_link_class.where(work_item: [task1, task2]).map(&:work_item_parent).uniq
+          expect(new_parent).to match_array([work_item])
+        end
+      end
+
+      context 'when tasks had different parents before' do
+        let_it_be(:previous_parent1) { create(:work_item, :issue, project: project) }
+        let_it_be(:previous_parent2) { create(:work_item, :issue, project: project) }
+
+        before do
+          create(:parent_link, work_item: task1, work_item_parent: previous_parent1)
+          create(:parent_link, work_item: task2, work_item_parent: previous_parent2)
+        end
+
+        it 'changes the parent and triggers event', :aggregate_failures do
+          expect { subject }.to publish_event(WorkItems::WorkItemUpdatedEvent)
+            .with({
+              id: previous_parent1.id,
+              namespace_id: previous_parent1.namespace.id,
+              updated_widgets: ["hierarchy_widget"]
+            }).and publish_event(WorkItems::WorkItemUpdatedEvent)
+            .with({
+              id: previous_parent2.id,
+              namespace_id: previous_parent2.namespace.id,
+              updated_widgets: ["hierarchy_widget"]
+            })
+
+          new_parent = parent_link_class.where(work_item: [task1, task2]).map(&:work_item_parent).uniq
+          expect(new_parent).to match_array([work_item])
+        end
+      end
+
+      context 'when relative_position is set' do
+        let(:params) { { issuable_references: [task1, task2], relative_position: 1337 } }
+
+        it 'creates relationships with given relative_position' do
+          result = subject
+
+          expect(result[:created_references].first.relative_position).to eq(1337)
+          expect(result[:created_references].second.relative_position).to eq(1337)
+        end
       end
 
       it 'returns success status and created links', :aggregate_failures do
@@ -119,7 +189,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       it 'creates notes and records the events', :aggregate_failures do
-        expect { subject }.to change(WorkItems::ResourceLinkEvent, :count).by(2)
+        expect { subject }.to change { WorkItems::ResourceLinkEvent.count }.by(2)
 
         work_item_notes = work_item.notes.last(2)
         resource_link_events = WorkItems::ResourceLinkEvent.last(2)
@@ -153,7 +223,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
             end
 
             expect { subject }
-              .to change(WorkItems::ResourceLinkEvent, :count).by(1)
+              .to change { WorkItems::ResourceLinkEvent.count }.by(1)
               .and not_change(Note, :count)
 
             expect(WorkItems::ResourceLinkEvent.last).to have_attributes(
@@ -170,10 +240,16 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       context 'when task is already assigned' do
         let(:params) { { issuable_references: [task, task2] } }
 
+        it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+          subject(:execute_service) { described_class.new(work_item, user, params).execute }
+
+          let(:trigger_call_counter) { 2 }
+        end
+
         it 'creates links only for non related tasks', :aggregate_failures do
           expect { subject }
-            .to change(parent_link_class, :count).by(1)
-            .and change(WorkItems::ResourceLinkEvent, :count).by(1)
+            .to change { parent_link_class.count }.by(1)
+            .and change { WorkItems::ResourceLinkEvent.count }.by(1)
 
           expect(subject[:created_references].map(&:work_item_id)).to match_array([task2.id])
           expect(work_item.notes.last.note).to eq("added #{task2.to_reference} as child task")
@@ -195,23 +271,23 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
         let(:params) { { issuable_references: [task1, issue, other_project_task] } }
 
         it 'creates links only for valid children' do
-          expect { subject }.to change { parent_link_class.count }.by(1)
+          expect { subject }.to change { parent_link_class.count }.by(2)
         end
 
         it 'returns error status' do
-          error = "#{issue.to_reference} cannot be added: is not allowed to add this type of parent. " \
+          error = "#{issue.to_reference} cannot be added: it's not allowed to add this type of parent item. " \
             "#{other_project_task.to_reference} cannot be added: parent must be in the same project or group as child."
 
-          is_expected.to eq(service_error(error, http_status: 422))
+          is_expected.not_to eq(service_error(error, http_status: 422))
         end
 
-        it 'creates notes for valid links' do
+        it 'creates notes for valid links', :aggregate_failures do
           subject
 
-          expect(work_item.notes.last.note).to eq("added #{task1.to_reference} as child task")
+          expect(work_item.notes.last.note).to eq("added #{other_project_task.to_reference(full: true)} as child task")
           expect(task1.notes.last.note).to eq("added #{work_item.to_reference} as parent issue")
           expect(issue.notes).to be_empty
-          expect(other_project_task.notes).to be_empty
+          expect(other_project_task.notes).not_to be_empty
         end
       end
 
@@ -221,7 +297,7 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
         let(:params) { { target_issuable: task1 } }
 
         it 'returns error status' do
-          error = "#{task1.to_reference} cannot be added: is not allowed to add this type of parent"
+          error = "#{task1.to_reference} cannot be added: it's not allowed to add this type of parent item"
 
           is_expected.to eq(service_error(error, http_status: 422))
         end
@@ -242,25 +318,16 @@ RSpec.describe WorkItems::ParentLinks::CreateService, feature_category: :portfol
       end
 
       context 'when params include invalid ids' do
-        let(:params) { { issuable_references: [task1, guest_task] } }
+        let(:invalid_task) { create(:work_item, :task, project: project, confidential: true) }
+        let(:params) { { issuable_references: [task1, invalid_task] } }
 
         it 'creates links only for valid IDs' do
-          expect { subject }.to change(parent_link_class, :count).by(1)
+          expect { subject }.to change { parent_link_class.count }.by(1)
         end
       end
 
-      context 'when user is a guest' do
-        let(:user) { guest }
-
-        it_behaves_like 'returns not found error'
-      end
-
-      context 'when user is a guest assigned to the work item' do
-        let(:user) { guest }
-
-        before do
-          work_item.assignees = [guest]
-        end
+      context 'when user has no access' do
+        let(:work_item) { create(:work_item, project: project, confidential: true) }
 
         it_behaves_like 'returns not found error'
       end

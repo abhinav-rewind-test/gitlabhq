@@ -51,7 +51,7 @@ RSpec.describe Resolvers::ContainerRepositoryTagsResolver, feature_category: :co
       stub_container_registry_config(enabled: true)
     end
 
-    context 'when Gitlab API is supported', :saas do
+    context 'when Gitlab API is supported' do
       before do
         allow(repository).to receive(:tags_page).and_return({
           tags: [],
@@ -61,7 +61,7 @@ RSpec.describe Resolvers::ContainerRepositoryTagsResolver, feature_category: :co
           }
         })
 
-        allow(ContainerRegistry::GitlabApiClient).to receive(:supports_gitlab_api?).and_return(true)
+        allow(repository.gitlab_api_client).to receive(:supports_gitlab_api?).and_return(true)
       end
 
       context 'get the page size based on first and last param' do
@@ -83,26 +83,39 @@ RSpec.describe Resolvers::ContainerRepositoryTagsResolver, feature_category: :co
       context 'with parameters' do
         using RSpec::Parameterized::TableSyntax
 
-        where(:before, :after, :sort, :name, :first, :last, :sort_value, :referrers) do
-          nil  | nil  | 'NAME_DESC' | ''  | 10  | nil | '-name' | nil
-          'bb' | nil  | 'NAME_ASC'  | 'a' | nil | 5   | 'name'  | false
-          nil  | 'aa' | 'NAME_DESC' | 'a' | 10  | nil | '-name' | true
+        where(:referrers, :sort_string, :sort_value) do
+          nil   | nil                 | nil
+          true  | nil                 | nil
+          false | nil                 | nil
+          nil   | 'NAME_ASC'          | 'name'
+          nil   | 'NAME_DESC'         | '-name'
+          nil   | 'PUBLISHED_AT_ASC'  | 'published_at'
+          nil   | 'PUBLISHED_AT_DESC' | '-published_at'
+        end
+
+        let(:args) do
+          {
+            before: 'abc',
+            after: 'xyz',
+            sort: sort_string,
+            name: 'tag1',
+            first: 5,
+            last: 0,
+            referrers: referrers,
+            referrer_type: 'application/example'
+          }
         end
 
         with_them do
-          let(:args) do
-            { before: before, after: after, sort: sort, name: name,
-              first: first, last: last, referrers: referrers }.compact
-          end
-
-          it 'calls ContainerRepository#tags_page with correct parameters' do
+          it 'calls ContainerRepository#tags_page with the correct parameters' do
             expect(repository).to receive(:tags_page).with(
-              before: before,
-              last: after,
+              before: 'abc',
+              last: 'xyz',
               sort: sort_value,
-              name: name,
-              page_size: [first, last].map(&:to_i).max,
-              referrers: referrers
+              name: 'tag1',
+              page_size: 5,
+              referrers: referrers,
+              referrer_type: 'application/example'
             )
 
             resolver(args)
@@ -120,10 +133,25 @@ RSpec.describe Resolvers::ContainerRepositoryTagsResolver, feature_category: :co
 
     context 'when Gitlab API is not supported' do
       before do
-        allow(ContainerRegistry::GitlabApiClient).to receive(:supports_gitlab_api?).and_return(false)
+        allow(repository.gitlab_api_client).to receive(:supports_gitlab_api?).and_return(false)
       end
 
       it_behaves_like 'fetching via tags and filter in place'
+
+      context 'when Faraday connection error occurs' do
+        before do
+          allow(repository).to receive(:tags).and_raise(Faraday::Error, nil, nil)
+        end
+
+        it 'raises a ResourceNotAvailable error with appropriate message' do
+          expected_message = "Can't connect to the container registry. If this error persists, please review the \
+troubleshooting documentation."
+
+          expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ResourceNotAvailable, expected_message) do
+            resolver(args)
+          end
+        end
+      end
     end
 
     def resolver(args, opts = {})

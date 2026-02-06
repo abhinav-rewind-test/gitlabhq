@@ -2,32 +2,35 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Sorting and ordering issue lists
 ---
 
-# Sorting and ordering issue lists
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can sort a list of issues several ways.
 The available sorting options can change based on the context of the list.
 
 ## Sorting by blocking issues
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/34247/) in GitLab 13.7.
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 When you sort by **Blocking**, the issue list changes to sort descending by the
 number of issues each issue is [blocking](related_issues.md#blocking-issues).
 
-## Sorting by created date
+## Sorting by created, updated or closed date
 
-When you sort by **Created date**, the issue list changes to sort descending by the issue
-creation date. Issues created most recently are first.
+When you sort by **Created**, **Updated** or **Closed date**, the issue list changes to
+sort descending by the respective date and timestamp. Issues created, updated or closed most recently are first.
 
 ## Sorting by due date
 
@@ -46,14 +49,7 @@ For more information, see [issue 14523](https://gitlab.com/gitlab-org/gitlab/-/i
 
 To learn how to change label priority, see [Label priority](../labels.md#set-label-priority).
 
-## Sorting by updated date
-
-When you sort by **Updated date**, the issue list changes to sort by the time of a last
-update. Issues changed the most recently are shown first.
-
 ## Manual sorting
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/62178) in GitLab 12.2.
 
 When you sort by **Manual** order, you can change
 the order by dragging and dropping the issues. The changed order persists, and
@@ -103,8 +99,6 @@ To learn how to change label priority, see [Label priority](../labels.md#set-lab
 
 ## Sorting by title
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/67234) in GitLab 14.3.
-
 When you sort by **Title**, the issue order changes to sort alphabetically by the issue
 title in this order:
 
@@ -115,11 +109,18 @@ title in this order:
 
 ## Sorting by health status
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/377841) in GitLab 15.7.
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/377841) in GitLab 15.7.
+
+{{< /history >}}
 
 When you sort by **Health**, the issue list changes to sort by the
 [health status](managing_issues.md#health-status) of the issues
@@ -135,3 +136,23 @@ When in descending order, the issues are shown in the following order:
 When you sort by **Weight**, the issue list changes to sort ascending by the
 [issue weight](issue_weight.md).
 Issues with lowest weight are first, and issues without a weight are last.
+
+## Sorting by status
+
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/550262) in GitLab 18.5 [with a flag](../../../administration/feature_flags/_index.md) named `work_item_status_mvc2`. Enabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/576610) in GitLab 18.6. Feature flag `work_item_status_mvc2` removed.
+
+{{< /history >}}
+
+When you sort by **Status**, the issue list changes to sort ascending by the
+[issue status](../../work_items/status.md).
+Issues are first sorted by their status category. If two issues share the same category, the system falls back to sorting by issue ID.

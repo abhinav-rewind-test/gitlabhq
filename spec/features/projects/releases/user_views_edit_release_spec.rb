@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe 'User edits Release', :js, feature_category: :continuous_delivery do
+  include MobileHelpers
+
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:user) { create(:user) }
 
@@ -20,7 +22,7 @@ RSpec.describe 'User edits Release', :js, feature_category: :continuous_delivery
   end
 
   def fill_out_form_and_click(button_to_click)
-    fill_in 'release-title', with: 'Updated Release title', fill_options: { clear: :backspace }
+    fill_in 'release-title', with: 'Updated Release title'
     fill_in 'release-notes', with: 'Updated Release notes'
 
     click_link_or_button button_to_click
@@ -29,14 +31,14 @@ RSpec.describe 'User edits Release', :js, feature_category: :continuous_delivery
   end
 
   it 'renders the breadcrumbs' do
-    within('.breadcrumbs') do
-      expect(page).to have_content("#{project.creator.name} #{project.name} Releases #{release.name} Edit Release")
-
-      expect(page).to have_link(project.creator.name, href: user_path(project.creator))
-      expect(page).to have_link(project.name, href: project_path(project))
-      expect(page).to have_link(_('Releases'), href: project_releases_path(project))
-      expect(page).to have_link(release.name, href: project_release_path(project, release))
-      expect(page).to have_link('Edit Release', href: edit_project_release_path(project, release))
+    within_testid('breadcrumb-links') do
+      expect(page_breadcrumbs).to include(
+        { text: project.creator.name, href: user_path(project.creator) },
+        { text: project.name, href: project_path(project) },
+        { text: 'Releases', href: project_releases_path(project) },
+        { text: release.name, href: project_release_path(project, release) },
+        { text: 'Edit', href: edit_project_release_path(project, release) }
+      )
     end
   end
 

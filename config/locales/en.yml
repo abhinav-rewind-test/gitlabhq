@@ -25,18 +25,22 @@ en:
         invite_email: "The member's email address"
       personal_access_token:
         expires_at: "Expiration date"
+      project:
+        unsafe_import_url: "Import URL"
       project/error_tracking_setting:
         token: "Auth Token"
         project: "Project"
         api_url: "Sentry API URL"
       project/metrics_setting:
         external_dashboard_url: "External dashboard URL"
-      project/grafana_integration:
-        token: "Grafana HTTP API Token"
-        grafana_url: "Grafana API URL"
-        grafana_enabled: "Grafana integration enabled"
       service_desk_setting:
         project_key: "Project name suffix"
+      system_access/group_microsoft_application:
+        tenant_xid: "Tenant ID"
+        client_xid: "Client ID"
+        encrypted_client_secret: "Client secret"
+        login_endpoint: "Login API endpoint"
+        graph_endpoint: "Graph API endpoint"
       system_access/microsoft_application:
         tenant_xid: "Tenant ID"
         client_xid: "Client ID"
@@ -48,10 +52,15 @@ en:
         bio: 'Bio'
         linkedin: 'Linkedin'
         twitter: 'Twitter'
-        skype: 'Skype'
         location: 'Location'
         organization: 'Organization'
         website_url: 'Website url'
+    errors:
+      models:
+        user_preference:
+          attributes:
+            duo_default_namespace_id:
+              invalid: "specified does not allow you to execute a workflow."
   views:
     pagination:
       previous: "Prev"

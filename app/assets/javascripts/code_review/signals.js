@@ -13,7 +13,11 @@ function required(name) {
 }
 
 async function observeMergeRequestFinishingPreparation({ apollo, signaler }) {
-  const { namespace, project, id: iid } = getDerivedMergeRequestInformation({
+  const {
+    namespace,
+    project,
+    id: iid,
+  } = getDerivedMergeRequestInformation({
     endpoint: document.location.pathname,
   });
   const projectPath = `${namespace}/${project}`;
@@ -44,6 +48,8 @@ async function observeMergeRequestFinishingPreparation({ apollo, signaler }) {
         if (preparationUpdate.data.mergeRequestMergeStatusUpdated?.preparedAt) {
           signaler.$emit(EVT_MR_PREPARED);
           preparationSubscriber.unsubscribe();
+        } else {
+          signaler.$emit(EVT_MR_DIFF_GENERATED, currentStatus.data.project.mergeRequest);
         }
       });
     } else {

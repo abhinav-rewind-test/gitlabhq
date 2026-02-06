@@ -1,34 +1,41 @@
 ---
-stage: Data Stores
-group: Tenant Scale
-description: Project visibility, search, badges, layout.
+stage: Tenant Scale
+group: Organizations
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Project visibility, search, badges, layout.
+title: Organize work with projects
 ---
 
-# Organize work with projects
+In GitLab, a project is a broad container for all aspects of your development work. Projects
+contain a code repository, collaborative tools, project management features, and CI/CD capabilities.
+Use your project to organize all the data for your development project:
 
-In GitLab, you can create projects to host
-your codebase. You can also use projects to track issues, plan work,
-collaborate on code, and continuously build, test, and use
-built-in CI/CD to deploy your app.
+- Track issues
+- Plan work
+- Collaborate on code
+- Use CI/CD tools to continuously build, test, and deploy your application
 
 Projects can be available [publicly, internally, or privately](../public_access.md).
 GitLab does not limit the number of private projects you can create.
 
-- [Create a project](index.md)
+{{< cards >}}
+
+- [Getting started](../get_started/get_started_projects.md)
+- [Create a project](_index.md)
 - [Manage projects](working_with_projects.md)
 - [Project visibility](../public_access.md)
-- [Project settings](../project/settings/index.md)
-- [Project access tokens](../project/settings/project_access_tokens.md)
-- [Share projects](../project/members/share_project_with_groups.md)
-- [Reserved project and group names](../../user/reserved_names.md)
-- [Search](../../user/search/index.md)
-- [Badges](../../user/project/badges.md)
-- [Code intelligence](../../user/project/code_intelligence.md)
-- [Compliance](../../user/compliance/index.md)
-- [Description templates](../../user/project/description_templates.md)
-- [Deploy keys](../../user/project/deploy_keys/index.md)
-- [Deploy tokens](../../user/project/deploy_tokens/index.md)
-- [File finder](../../user/project/repository/file_finder.md)
-- [Migrating projects](../../user/project/import/index.md)
-- [Migrate projects by using file exports](../../user/project/settings/import_export.md)
+- [Project settings](working_with_projects.md)
+- [Description templates](description_templates.md)
+- [Deploy keys](deploy_keys/_index.md)
+- [Deploy tokens](deploy_tokens/_index.md)
+- [Reserved project and group names](../reserved_names.md)
+- [Search](../search/_index.md)
+- [Badges](badges.md)
+- [Project topics](project_topics.md)
+- [Code intelligence](code_intelligence.md)
+- [System notes](system_notes.md)
+- [Use a project as a Go package](use_project_as_go_package.md)
+- [Tutorial: Build a protected workflow for your project](../../tutorials/protected_workflow/_index.md)
+- [Troubleshooting](troubleshooting.md)
+
+{{< /cards >}}

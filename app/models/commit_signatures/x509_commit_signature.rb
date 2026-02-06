@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module CommitSignatures
   class X509CommitSignature < ApplicationRecord
     include CommitSignature
@@ -20,6 +21,16 @@ module CommitSignatures
 
     def signed_by_user
       commit&.committer
+    end
+
+    private
+
+    def emails_for_verification
+      verified_committer_emails & x509_certificate.all_emails
+    end
+
+    def verified_committer_emails
+      signed_by_user&.verified_emails || []
     end
   end
 end

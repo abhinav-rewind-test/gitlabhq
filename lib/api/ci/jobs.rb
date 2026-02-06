@@ -4,12 +4,15 @@ module API
   module Ci
     class Jobs < ::API::Base
       include PaginationParams
+      include APIGuard
 
       helpers ::API::Helpers::ProjectStatsRefreshConflictsHelpers
 
-      before { authenticate! }
+      allow_access_with_scope :ai_workflows, if: ->(request) { request.get? || request.head? }
 
       resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
+        before { authenticate! }
+
         params do
           requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
         end
@@ -17,20 +20,20 @@ module API
         helpers do
           params :optional_scope do
             optional :scope, type: Array[String], desc: 'The scope of builds to show',
-                             values: ::CommitStatus::AVAILABLE_STATUSES,
-                             coerce_with: ->(scope) {
-                               case scope
-                               when String
-                                 [scope]
-                               when ::Hash
-                                 scope.values
-                               when ::Array
-                                 scope
-                               else
-                                 ['unknown']
-                               end
-                             },
-                             documentation: { example: %w[pending running] }
+              values: ::CommitStatus::AVAILABLE_STATUSES,
+              coerce_with: ->(scope) {
+                case scope
+                when String
+                  [scope]
+                when ::Hash
+                  scope.values
+                when ::Array
+                  scope
+                else
+                  ['unknown']
+                end
+              },
+              documentation: { example: %w[pending running] }
           end
         end
 
@@ -42,20 +45,25 @@ module API
             { code: 404, message: 'Not found' }
           ]
           is_array true
+          tags ['ci_jobs']
         end
         params do
           use :optional_scope
+          optional :ref, type: String, desc: 'The branch name (ref) to filter jobs by', documentation: { example: 'feature-branch' }
           use :pagination
         end
         # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authentication, job_token_allowed: true
+        route_setting :authorization, job_token_policies: :read_jobs, permissions: :read_job, boundary_type: :project
         get ':id/jobs', urgency: :low, feature_category: :continuous_integration do
           check_rate_limit!(:jobs_index, scope: current_user)
 
           authorize_read_builds!
 
           builds = user_project.builds.order(id: :desc)
-          builds = filter_builds(builds, params[:scope])
-          builds = builds.preload(:user, :job_artifacts_archive, :job_artifacts, :runner, :tags, pipeline: :project)
+          builds = filter_builds_by_scope(builds, params[:scope])
+          builds = filter_builds_by_ref(builds, params[:ref])
+          builds = builds.eager_load_for_api
 
           present paginate_with_strategies(builds, user_project, paginator_params: { without_count: true }), with: Entities::Ci::Job
         end
@@ -68,10 +76,12 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         params do
           requires :job_id, type: Integer, desc: 'The ID of a job', documentation: { example: 88 }
         end
+        route_setting :authorization, permissions: :read_job, boundary_type: :project
         get ':id/jobs/:job_id', urgency: :low, feature_category: :continuous_integration do
           authorize_read_builds!
 
@@ -90,10 +100,13 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         params do
           requires :job_id, type: Integer, desc: 'The ID of a job', documentation: { example: 88 }
         end
+
+        route_setting :authorization, permissions: :read_job, boundary_type: :project
         get ':id/jobs/:job_id/trace', urgency: :low, feature_category: :continuous_integration do
           authorize_read_builds!
 
@@ -117,44 +130,65 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         params do
           requires :job_id, type: Integer, desc: 'The ID of a job', documentation: { example: 88 }
+          optional :force, type: Boolean, desc: 'Force cancellation for a job with a state of `canceling`', documentation: { example: true }
         end
+
+        route_setting :authorization, permissions: :cancel_job, boundary_type: :project
         post ':id/jobs/:job_id/cancel', urgency: :low, feature_category: :continuous_integration do
           authorize_cancel_builds!
 
           build = find_build!(params[:job_id])
           authorize!(:cancel_build, build)
 
-          build.cancel
+          if params[:force]
+            authorize!(:maintainer_access, build)
+            build.force_cancel
+          else
+            build.cancel
+          end
 
           present build, with: Entities::Ci::Job
         end
 
-        desc 'Retry a specific build of a project' do
+        desc 'Retry a specific job of a project' do
           success code: 201, model: Entities::Ci::Job
           failure [
             { code: 401, message: 'Unauthorized' },
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         params do
-          requires :job_id, type: Integer, desc: 'The ID of a build', documentation: { example: 88 }
+          requires :job_id, type: Integer, desc: 'The ID of a job', documentation: { example: 88 }
+          optional :inputs, type: Hash, desc: 'Input values for the job', documentation: { example: { 'environment' => 'production' } }
         end
+        # This endpoint can be used for retrying both builds and bridges.
+        route_setting :authorization, permissions: :retry_job, boundary_type: :project
         post ':id/jobs/:job_id/retry', urgency: :low, feature_category: :continuous_integration do
-          authorize_update_builds!
+          Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/473419')
 
-          build = find_build!(params[:job_id])
-          authorize!(:update_build, build)
+          job = find_job!(params[:job_id])
+          authorize!(:retry_job, job)
 
-          response = ::Ci::RetryJobService.new(@project, current_user).execute(build)
+          inputs = params[:inputs] || {}
+
+          if inputs.present? && !Feature.enabled?(:ci_job_inputs, @project)
+            forbidden!('The inputs parameter is not available')
+          end
+
+          response = ::Ci::RetryJobService.new(@project, current_user).execute(job, inputs: inputs)
 
           if response.success?
             present response[:job], with: Entities::Ci::Job
-          else
+          elsif response.payload[:reason] == :not_retryable
             forbidden!('Job is not retryable')
+          else
+            bad_request!(response.message)
           end
         end
 
@@ -166,13 +200,13 @@ module API
             { code: 404, message: 'Not found' },
             { code: 409, message: 'Conflict' }
           ]
+          tags ['ci_jobs']
         end
         params do
           requires :job_id, type: Integer, desc: 'The ID of a build', documentation: { example: 88 }
         end
+        route_setting :authorization, permissions: :erase_job, boundary_type: :project
         post ':id/jobs/:job_id/erase', urgency: :low, feature_category: :continuous_integration do
-          authorize_update_builds!
-
           build = find_build!(params[:job_id])
           authorize!(:erase_build, build)
           break forbidden!('Job is not erasable!') unless build.erasable?
@@ -193,16 +227,20 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         params do
           requires :job_id, type: Integer, desc: 'The ID of a Job', documentation: { example: 88 }
           optional :job_variables_attributes,
-                   type: Array, desc: 'User defined variables that will be included when running the job' do
+            type: Array, desc: 'User defined variables that will be included when running the job' do
             requires :key, type: String, desc: 'The name of the variable', documentation: { example: 'foo' }
             requires :value, type: String, desc: 'The value of the variable', documentation: { example: 'bar' }
           end
+          optional :job_inputs,
+            type: Hash, desc: 'Input values for the job', documentation: { example: { environment: 'production' } }
         end
 
+        route_setting :authorization, permissions: :play_job, boundary_type: :project
         post ':id/jobs/:job_id/play', urgency: :low, feature_category: :continuous_integration do
           authorize_read_builds!
 
@@ -212,7 +250,11 @@ module API
 
           bad_request!("Unplayable Job") unless job.playable?
 
-          job.play(current_user, params[:job_variables_attributes])
+          result = job.play(current_user, params[:job_variables_attributes], params[:job_inputs] || {})
+
+          bad_request!(result.message) if result.error?
+
+          job = result.payload[:job]
 
           status 200
 
@@ -225,6 +267,15 @@ module API
       end
 
       resource :job do
+        helpers ::API::Helpers::KasHelpers
+
+        before do
+          # Use primary for both main and non-main databases as authenticating in the scope of runners will load
+          # Ci::Build model and other standard authn related models like License, Project and User.
+          ::Gitlab::Database::LoadBalancing::SessionMap
+            .with_sessions.use_primary { authenticate! }
+        end
+
         desc 'Get current job using job token' do
           success code: 200, model: Entities::Ci::Job
           failure [
@@ -232,8 +283,10 @@ module API
             { code: 401, message: 'Unauthorized' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['ci_jobs']
         end
         route_setting :authentication, job_token_allowed: true
+        route_setting :authorization, skip_job_token_policies: true
         get '', feature_category: :continuous_integration, urgency: :low do
           validate_current_authenticated_job
 
@@ -248,8 +301,10 @@ module API
             { code: 401, message: 'Unauthorized' },
             { code: 404, message: 'Not found' }
           ]
+          tags ['agents']
         end
         route_setting :authentication, job_token_allowed: true
+        route_setting :authorization, skip_job_token_policies: true
         get '/allowed_agents', urgency: :default, feature_category: :deployment_management do
           validate_current_authenticated_job
 
@@ -268,8 +323,12 @@ module API
 
           agent_authorizations = ::Clusters::Agents::Authorizations::CiAccess::FilterService.new(
             ::Clusters::Agents::Authorizations::CiAccess::Finder.new(project).execute,
-            environment: persisted_environment&.name
+            { environment: persisted_environment&.name,
+              protected_ref: pipeline.protected_ref? },
+            pipeline.project
           ).execute
+
+          set_feature_flag_header(user: current_user, project: project)
 
           # See https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/blob/master/doc/kubernetes_ci_access.md#apiv4joballowed_agents-api
           {
@@ -285,7 +344,7 @@ module API
 
       helpers do
         # rubocop: disable CodeReuse/ActiveRecord
-        def filter_builds(builds, scope)
+        def filter_builds_by_scope(builds, scope)
           return builds if scope.nil? || scope.empty?
 
           available_statuses = ::CommitStatus::AVAILABLE_STATUSES
@@ -296,6 +355,12 @@ module API
           builds.where(status: available_statuses && scope)
         end
         # rubocop: enable CodeReuse/ActiveRecord
+
+        def filter_builds_by_ref(builds, ref)
+          return builds if ref.blank?
+
+          builds.with_ref(ref)
+        end
 
         def validate_current_authenticated_job
           # current_authenticated_job will be nil if user is using

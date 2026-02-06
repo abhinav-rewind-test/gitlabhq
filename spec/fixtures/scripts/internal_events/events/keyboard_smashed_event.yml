@@ -1,20 +1,19 @@
 ---
 description: random event string
 internal_events: true
+status: active
 action: random_name
 identifiers:
 - project
 - namespace
 - user
-product_section: core_platform
-product_stage: manage
-product_group: import_and_integrate
+product_group: import
+product_categories:
+- acquisition
 milestone: '16.6'
 introduced_by_url: TODO
-distributions:
-- ce
-- ee
 tiers:
 - free
 - premium
 - ultimate
+classification: duo

@@ -1,10 +1,9 @@
 ---
-stage: Govern
-group: Anti-Abuse
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Software Supply Chain Security
+group: Authorization
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Web UI spam protection and CAPTCHA support
 ---
-
-# Web UI spam protection and CAPTCHA support
 
 The approach for adding spam protection and CAPTCHA support to a new UI area of the GitLab application
 depends upon how the existing code is implemented.
@@ -15,8 +14,8 @@ Three different scenarios are supported. Two are used with JavaScript XHR/Fetch 
 for either Apollo or Axios, and one is used only with standard HTML form requests:
 
 1. A JavaScript-based submission (possibly via Vue)
-    1. Using Apollo (GraphQL API via Fetch/XHR request)
-    1. Using Axios (REST API via Fetch/XHR request)
+   1. Using Apollo (GraphQL API via Fetch/XHR request)
+   1. Using Axios (REST API via Fetch/XHR request)
 1. A standard HTML form submission (HTML request)
 
 Some parts of the implementation depend upon which of these scenarios you must support.
@@ -47,7 +46,7 @@ component. You can find all the relevant frontend code under `app/assets/javascr
 However, even though the actual handling of the request interception and
 modal is transparent, without any mandatory changes to the involved JavaScript or Vue components
 for the form or page, changes in request or error handling may be required. Changes are needed
-because the existing behavior may not work correctly: for example, if a failed or cancelled
+because the existing behavior may not work correctly: for example, if a failed or canceled
 CAPTCHA display interrupts the standard request flow or UI updates.
 Careful exploratory testing of all scenarios is important to uncover any potential
 problems.
@@ -82,12 +81,12 @@ changes required to the relevant backend controller actions (typically just `cre
    - The `needs_recaptcha` property on the model is set to true.
 1. Wrap the existing controller action return value (rendering or redirecting) in a block passed to
    a `#with_captcha_check_json_format` helper method, which transparently handles:
-    1. Check if CAPTCHA is enabled, and if so, proceeding with the next step.
-    1. Checking if there the model contains an error, and the `needs_recaptcha` flag is true.
-       - If yes: Add the appropriate spam or CAPTCHA fields to the JSON response, and return
-         a `409 - Conflict` HTTP status code.
-       - If no (if CAPTCHA is disabled or if no spam was detected): The standard request return
-         logic passed in the block is run.
+   1. Check if CAPTCHA is enabled, and if so, proceeding with the next step.
+   1. Checking if there the model contains an error, and the `needs_recaptcha` flag is true.
+      - If yes: Add the appropriate spam or CAPTCHA fields to the JSON response, and return
+        a `409 - Conflict` HTTP status code.
+      - If no (if CAPTCHA is disabled or if no spam was detected): The standard request return
+        logic passed in the block is run.
 
 Thanks to the abstractions, it's more straightforward to implement than it is to explain it.
 You don't have to worry much about the hidden details!

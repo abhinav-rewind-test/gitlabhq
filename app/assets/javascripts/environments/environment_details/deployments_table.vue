@@ -2,7 +2,7 @@
 import { GlTableLite } from '@gitlab/ui';
 import Commit from '~/vue_shared/components/commit.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
-import DeploymentStatusLink from './components/deployment_status_link.vue';
+import DeploymentStatusLink from '~/environments/components/deployment_status_link.vue';
 import DeploymentJob from './components/deployment_job.vue';
 import DeploymentTriggerer from './components/deployment_triggerer.vue';
 import DeploymentActions from './components/deployment_actions.vue';
@@ -33,7 +33,7 @@ export default {
       <col v-for="field in fields" :key="field.key" :class="field.columnClass" />
     </template>
     <template #cell(status)="{ item }">
-      <deployment-status-link :deployment-job="item.job" :status="item.status" />
+      <deployment-status-link :deployment="item" :deployment-job="item.job" :status="item.status" />
     </template>
     <template #cell(id)="{ item }">
       <strong data-testid="deployment-id">{{ item.id }}</strong>
@@ -54,12 +54,12 @@ export default {
         data-testid="deployment-created-at"
       />
     </template>
-    <template #cell(deployed)="{ item }">
+    <template #cell(finished)="{ item }">
       <time-ago-tooltip
-        v-if="item.deployed"
-        :time="item.deployed"
+        v-if="item.finished"
+        :time="item.finished"
         enable-truncation
-        data-testid="deployment-deployed-at"
+        data-testid="deployment-finished-at"
       />
     </template>
     <template #cell(actions)="{ item }">
@@ -67,6 +67,8 @@ export default {
         :actions="item.actions"
         :rollback="item.rollback"
         :approval-environment="item.deploymentApproval"
+        :deployment-web-path="item.webPath"
+        :status="item.status"
       />
     </template>
   </gl-table-lite>

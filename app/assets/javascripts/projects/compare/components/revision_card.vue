@@ -25,34 +25,34 @@ export default {
       required: false,
       default: null,
     },
-    projects: {
-      type: Array,
-      required: false,
-      default: null,
-    },
     selectedProject: {
       type: Object,
       required: true,
+    },
+    disableRepoDropdown: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
   },
 };
 </script>
 
 <template>
-  <div class="revision-card gl-flex-basis-half">
-    <h2 class="gl-font-base gl-mt-0">
-      {{ s__(`CompareRevisions|${revisionText}`) }}
+  <div class="revision-card gl-min-w-0 gl-basis-1/2">
+    <h2 class="gl-mt-0 gl-text-base">
+      {{ revisionText }}
     </h2>
-    <div class="gl-sm-display-flex gl-align-items-center gl-gap-3">
+    <div class="gl-flex gl-flex-col gl-gap-3 @sm/panel:gl-flex-row">
       <repo-dropdown
-        class="gl-sm-w-half"
+        class="gl-min-w-0 gl-max-w-full gl-basis-1/2"
         :params-name="paramsName"
-        :projects="projects"
         :selected-project="selectedProject"
+        :disabled="disableRepoDropdown"
         v-on="$listeners"
       />
       <revision-dropdown
-        class="gl-sm-w-half gl-mt-3 gl-sm-mt-0"
+        class="gl-min-w-0 gl-max-w-full gl-basis-1/2"
         :refs-project-path="refsProjectPath"
         :params-name="paramsName"
         :params-branch="paramsBranch"

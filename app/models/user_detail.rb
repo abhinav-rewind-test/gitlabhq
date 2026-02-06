@@ -1,32 +1,56 @@
 # frozen_string_literal: true
 
-class UserDetail < MainClusterwide::ApplicationRecord
-  include IgnorableColumns
+class UserDetail < ApplicationRecord
   extend ::Gitlab::Utils::Override
-
-  ignore_column :requires_credit_card_verification, remove_with: '16.1', remove_after: '2023-06-22'
-  ignore_column :onboarding_step_url, remove_with: '17.1', remove_after: '2024-05-16'
-
-  REGISTRATION_OBJECTIVE_PAIRS = { basics: 0, move_repository: 1, code_storage: 2, exploring: 3, ci: 4, other: 5, joining_team: 6 }.freeze
+  include Sanitizable
 
   belongs_to :user
+  belongs_to :bot_namespace, class_name: 'Namespace', optional: true, inverse_of: :bot_user_details
 
   validates :pronouns, length: { maximum: 50 }
   validates :pronunciation, length: { maximum: 255 }
   validates :job_title, length: { maximum: 200 }
   validates :bio, length: { maximum: 255 }, allow_blank: true
 
+  validates :email_otp, length: { is: 64 }, allow_nil: true
+  validates :email_otp_last_sent_to, length: { maximum: 511 }, allow_nil: true
+
+  validate :bot_namespace_user_type, if: :bot_namespace_id_changed?
+
+  ignore_column :skype, remove_after: '2025-09-18', remove_with: '18.4'
+  ignore_column :email_reset_offered_at, remove_after: '2026-01-16', remove_with: '18.8'
+
   DEFAULT_FIELD_LENGTH = 500
+
+  # specification for bluesky identifier https://web.plc.directory/spec/v0.1/did-plc
+  BLUESKY_VALIDATION_REGEX = /
+    \A            # beginning of string
+    did:plc:      # beginning of bluesky id
+    [a-z0-9]{24}  # 24 characters of word or digit
+    \z            # end of string
+  /x
 
   MASTODON_VALIDATION_REGEX = /
     \A            # beginning of string
     @?\b          # optional leading at
     ([\w\d.%+-]+) # character group to pick up words in user portion of username
     @             # separator between user and host
-    (             # beginning of charagter group for host portion
+    (             # beginning of character group for host portion
       [\w\d.-]+   # character group to pick up words in host portion of username
       \.\w{2,}    # pick up tld of host domain, 2 chars or more
     )\b           # end of character group to pick up words in host portion of username
+    \z            # end of string
+  /x
+
+  ORCID_VALIDATION_REGEX = /
+    \A            # beginning of string
+    (             #
+      [0-9]{4}-   # 4 digits spaced by dash
+    ){3}          # 3 times
+    (             #
+    [0-9]{3}      # end with 3 digits
+    )             #
+    [0-9X]        # followed by a fourth digit or an X
     \z            # end of string
   /x
 
@@ -34,21 +58,45 @@ class UserDetail < MainClusterwide::ApplicationRecord
   validate :discord_format
   validates :linkedin, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
   validates :location, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
+  validates :bluesky,
+    allow_blank: true,
+    format: { with: UserDetail::BLUESKY_VALIDATION_REGEX,
+              message: proc { s_('Profiles|must contain only a bluesky did:plc identifier.') } }
   validates :mastodon, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
   validate :mastodon_format
+  validates :orcid, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
+  validate :orcid_format
   validates :organization, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
-  validates :skype, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
   validates :twitter, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
   validates :website_url, length: { maximum: DEFAULT_FIELD_LENGTH }, url: true, allow_blank: true, if: :website_url_changed?
   validates :onboarding_status, json_schema: { filename: 'user_detail_onboarding_status' }
+  validates :github, length: { maximum: DEFAULT_FIELD_LENGTH }, allow_blank: true
 
-  before_validation :sanitize_attrs
+  # Use Sanitizable concern when feature flag is enabled
+  sanitizes! :bluesky, :discord, :linkedin, :mastodon, :orcid, :twitter, :website_url, :github,
+    if: -> { Feature.enabled?(:validate_sanitizable_user_details, user) }
+
+  # New sanitization for location/organization (when feature flag is enabled)
+  before_validation :sanitize_location_and_organization, if: -> { Feature.enabled?(:validate_sanitizable_user_details, user) }
+
+  # Legacy sanitization (when feature flag is disabled)
+  before_validation :sanitize_attrs, if: -> { Feature.disabled?(:validate_sanitizable_user_details, user) }
+
   before_save :prevent_nil_fields
 
-  enum registration_objective: REGISTRATION_OBJECTIVE_PAIRS, _suffix: true
+  # Exclude the hashed email_otp attribute
+  def serializable_hash(options = nil)
+    options = options.try(:dup) || {}
+    options[:except] = Array(options[:except]).dup
+    options[:except].concat [:email_otp]
+
+    super
+  end
+
+  private
 
   def sanitize_attrs
-    %i[discord linkedin mastodon skype twitter website_url].each do |attr|
+    %i[bluesky discord linkedin mastodon orcid twitter website_url github].each do |attr|
       value = self[attr]
       self[attr] = Sanitize.clean(value) if value.present?
     end
@@ -58,18 +106,34 @@ class UserDetail < MainClusterwide::ApplicationRecord
     end
   end
 
-  private
+  def sanitize_location_and_organization
+    %i[location organization].each do |attr|
+      value = self[attr]
+      # Use Sanitize.fragment (modern) instead of deprecated Sanitize.clean
+      # Apply special &amp; to & replacement for these fields
+      self[attr] = Sanitize.fragment(value).gsub('&amp;', '&') if value.present?
+    end
+  end
 
   def prevent_nil_fields
+    self.bluesky = '' if bluesky.nil?
     self.bio = '' if bio.nil?
     self.discord = '' if discord.nil?
     self.linkedin = '' if linkedin.nil?
     self.location = '' if location.nil?
     self.mastodon = '' if mastodon.nil?
     self.organization = '' if organization.nil?
-    self.skype = '' if skype.nil?
+    self.orcid = '' if orcid.nil?
     self.twitter = '' if twitter.nil?
     self.website_url = '' if website_url.nil?
+    self.github = '' if github.nil?
+  end
+
+  def bot_namespace_user_type
+    return if user.bot?
+    return if bot_namespace_id.nil?
+
+    errors.add(:bot_namespace, _('must only be set for bot user types'))
   end
 end
 
@@ -82,7 +146,13 @@ end
 def mastodon_format
   return if mastodon.blank? || mastodon =~ UserDetail::MASTODON_VALIDATION_REGEX
 
-  errors.add(:mastodon, _('must contain only a mastodon username.'))
+  errors.add(:mastodon, _('must contain only a mastodon handle.'))
+end
+
+def orcid_format
+  return if orcid.blank? || orcid =~ UserDetail::ORCID_VALIDATION_REGEX
+
+  errors.add(:orcid, _('must contain only a valid ORCID.'))
 end
 
 UserDetail.prepend_mod_with('UserDetail')

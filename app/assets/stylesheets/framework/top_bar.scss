@@ -3,8 +3,8 @@
 }
 
 .top-bar-fixed {
-  @include gl-inset-border-b-1-gray-100;
-  background-color: $body-bg;
+  @apply gl-bg-default;
+  @apply gl-border-b;
   position: fixed;
   left: var(--application-bar-left);
   right: var(--application-bar-right);
@@ -12,9 +12,17 @@
   width: calc(100% - var(--application-bar-left));
   z-index: $top-bar-z-index;
 
-  @media (prefers-reduced-motion: no-preference) {
-    transition: left $gl-transition-duration-medium,
-                right $gl-transition-duration-medium,
-                width $gl-transition-duration-medium;
+  @media (forced-colors: active) {
+    border-bottom: 1px solid;
   }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @apply gl-transition-[width,left,right];
+  }
+
+  @include translucent-glass-background;
+}
+
+.top-app-header {
+  top: $calc-application-header-height;
 }

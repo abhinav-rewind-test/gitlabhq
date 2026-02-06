@@ -11,9 +11,9 @@ RSpec.describe API::UserRunners, :aggregate_failures, feature_category: :fleet_v
 
     let_it_be(:group) { create(:group) }
     let_it_be(:project) { create(:project, namespace: group) }
-    let_it_be(:group_owner) { create(:user).tap { |user| group.add_owner(user) } }
-    let_it_be(:group_maintainer) { create(:user).tap { |user| group.add_maintainer(user) } }
-    let_it_be(:project_developer) { create(:user).tap { |user| project.add_developer(user) } }
+    let_it_be(:group_owner) { create(:user, owner_of: group) }
+    let_it_be(:group_maintainer) { create(:user, maintainer_of: group) }
+    let_it_be(:project_developer) { create(:user, developer_of: project) }
 
     let(:post_args) { { admin_mode: true } }
     let(:runner_attrs) { { runner_type: 'instance_type' } }
@@ -51,6 +51,12 @@ RSpec.describe API::UserRunners, :aggregate_failures, feature_category: :fleet_v
 
           expect(response).to have_gitlab_http_status(:created)
         end.to change { Ci::Runner.count }.by(1)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :create_runner do
+        let(:user) { current_user || token_user }
+        let(:boundary_object) { :user }
+        let(:request) { post api('/user/runners', personal_access_token: pat), params: runner_attrs }
       end
     end
 

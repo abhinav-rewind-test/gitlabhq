@@ -58,11 +58,28 @@ RSpec.describe MergeRequests::CloseService, feature_category: :code_review_workf
       end
 
       context 'when auto merge is enabled' do
-        let(:merge_request) { create(:merge_request, :merge_when_pipeline_succeeds) }
+        let(:merge_request) { create(:merge_request, :merge_when_checks_pass) }
 
         it 'cancels the auto merge' do
           expect(@merge_request).not_to be_auto_merge_enabled
         end
+      end
+    end
+
+    context 'when the merge request is merged concurrently in another process' do
+      it 'does not close the merge request' do
+        stale_instance = MergeRequest.find(merge_request.id)
+        fresh_instance = MergeRequest.find(merge_request.id)
+
+        fresh_instance.mark_as_merged!
+
+        result = service.execute(stale_instance)
+
+        expect(result).to eq(stale_instance)
+        expect(result).to be_merged
+        expect(result).not_to be_closed
+
+        expect(merge_request.reload).to be_merged
       end
     end
 
@@ -104,6 +121,14 @@ RSpec.describe MergeRequests::CloseService, feature_category: :code_review_workf
       execute
     end
 
+    it 'triggers deletion of related Pages deployments' do
+      expect(Pages::DeactivateMrDeploymentsWorker)
+        .to receive(:perform_async)
+          .with(merge_request.id)
+
+      execute
+    end
+
     it 'schedules CleanupRefsService' do
       expect(MergeRequests::CleanupRefsService).to receive(:schedule).with(merge_request)
 
@@ -133,6 +158,34 @@ RSpec.describe MergeRequests::CloseService, feature_category: :code_review_workf
         expect(GraphqlTriggers).not_to receive(:merge_request_merge_status_updated)
 
         execute
+      end
+    end
+
+    describe 'handling authorization' do
+      let(:service_with_skip) do
+        described_class.new(
+          project: project,
+          current_user: user,
+          params: { skip_authorization: true }
+        )
+      end
+
+      let(:service_without_skip) { described_class.new(project: project, current_user: guest) }
+
+      context 'when authorization is skipped' do
+        it 'closes MR' do
+          result = service_with_skip.execute(merge_request)
+
+          expect(result).to be_closed
+        end
+      end
+
+      context 'when authorization is not skipped' do
+        it 'does not close MR' do
+          result = service_without_skip.execute(merge_request)
+
+          expect(result).to be_open
+        end
       end
     end
   end

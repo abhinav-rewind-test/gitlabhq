@@ -29,6 +29,7 @@ export default () => {
   if (passwordPromptModalEl && field) {
     return new Vue({
       el: passwordPromptModalEl,
+      name: 'PasswordPromptModalRoot',
       data() {
         return {
           initialEmail: '',
@@ -49,7 +50,11 @@ export default () => {
       },
       render(createElement) {
         return createElement(PasswordPromptModal, {
-          props: { handleConfirmPassword },
+          on: {
+            submit: (password) => {
+              handleConfirmPassword(password);
+            },
+          },
         });
       },
     });

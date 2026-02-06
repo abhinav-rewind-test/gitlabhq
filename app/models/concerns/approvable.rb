@@ -10,7 +10,7 @@ module Approvable
 
     scope :without_approvals, -> { left_outer_joins(:approvals).where(approvals: { id: nil }) }
     scope :with_approvals, -> { joins(:approvals) }
-    scope :approved_by_users_with_ids, -> (*user_ids) do
+    scope :approved_by_users_with_ids, ->(*user_ids) do
       with_approvals
         .merge(Approval.with_user)
         .where(users: { id: user_ids })
@@ -18,7 +18,7 @@ module Approvable
         .group(:id)
         .having("COUNT(users.id) = ?", user_ids.size)
     end
-    scope :approved_by_users_with_usernames, -> (*usernames) do
+    scope :approved_by_users_with_usernames, ->(*usernames) do
       with_approvals
         .merge(Approval.with_user)
         .where(users: { username: usernames })
@@ -27,7 +27,7 @@ module Approvable
         .having("COUNT(users.id) = ?", usernames.size)
     end
 
-    scope :not_approved_by_users_with_usernames, -> (usernames) do
+    scope :not_approved_by_users_with_usernames, ->(usernames) do
       users = User.where(username: usernames).select(:id)
       app_table = Approval.arel_table
 
@@ -37,6 +37,10 @@ module Approvable
         .select('true')
         .arel.exists.not
       ).allow_cross_joins_across_databases(url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/422085')
+    end
+
+    scope :with_existing_approval, -> do
+      where_exists(Approval.where(arel_table[:id].eq(Approval.arel_table[:merge_request_id])))
     end
   end
 
@@ -62,6 +66,10 @@ module Approvable
 
   def eligible_for_unapproval_by?(user)
     user && approved_by?(user) && user.can?(:approve_merge_request, self)
+  end
+
+  def approvals_for_user_ids(user_ids)
+    approvals.where(user_id: user_ids)
   end
 end
 

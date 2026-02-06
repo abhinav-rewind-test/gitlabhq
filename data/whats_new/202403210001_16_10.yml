@@ -8,7 +8,7 @@
   gitlab-com: true
   available_in: [Free, Premium, Ultimate]
   documentation_link: https://docs.gitlab.com/ee/ci/components/#component-versions
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/component.png
+  image_url: https://about.gitlab.com/images/16_10/component.png
   published_at: 2024-03-21
   release: 16.10
 
@@ -20,7 +20,7 @@
   gitlab-com: false
   available_in: [Premium, Ultimate]
   documentation_link: https://docs.gitlab.com/ee/administration/geo/secondary_proxy/runners.html
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/systems_geo_runner_acceleration.png
+  image_url: https://about.gitlab.com/images/16_10/systems_geo_runner_acceleration.png
   published_at: 2024-03-21
   release: 16.10
 
@@ -33,8 +33,8 @@
   self-managed: true
   gitlab-com: true
   available_in: [Free, Premium, Ultimate]
-  documentation_link: https://docs.gitlab.com/ee/user/project/wiki/index.html#wiki-page-templates
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/wiki_templates.gif
+  documentation_link: https://docs.gitlab.com/ee/user/project/wiki/#wiki-page-templates
+  image_url: https://about.gitlab.com/images/16_10/wiki_templates.gif
   published_at: 2024-03-21
   release: 16.10
 
@@ -42,13 +42,13 @@
   description: |
     The [Contribution Analytics report](https://docs.gitlab.com/ee/user/group/contribution_analytics/) is now more performant and backed by an advanced analytics database using [ClickHouse](https://docs.gitlab.com/ee/architecture/blueprints/clickhouse_usage/#summary) on GitLab.com. This upgrade set the foundation for new extensive analytics and reporting features, allowing us to deliver high-performance analytics aggregations, filtering, and slicing across multiple dimensions. Support for self-managed customers to be able to add to this capability is proposed in [issue 441626](https://gitlab.com/gitlab-org/gitlab/-/issues/441626).
 
-    Although ClickHouse enhances GitLab's analytics capabilities, it's not meant to replace PostgreSQL or Redis, and the existing capabilities remain unchanged.
+    Although ClickHouse enhances GitLab analytics capabilities, it's not meant to replace PostgreSQL or Redis, and the existing capabilities remain unchanged.
   stage: plan
   self-managed: false
   gitlab-com: true
   available_in: [Ultimate]
   documentation_link: https://docs.gitlab.com/ee/user/group/contribution_analytics/
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/ca_ch16.10_2.png
+  image_url: https://about.gitlab.com/images/16_10/ca_ch16.10_2.png
   published_at: 2024-03-21
   release: 16.10
 
@@ -62,7 +62,7 @@
   gitlab-com: true
   available_in: [Premium, Ultimate]
   documentation_link: https://docs.gitlab.com/ee/user/ai_features.html#disable-gitlab-duo-features
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/Turn-off-GitLab-Duo-features.png
+  image_url: https://about.gitlab.com/images/16_10/Turn-off-GitLab-Duo-features.png
   published_at: 2024-03-21
   release: 16.10
 
@@ -78,6 +78,6 @@
   gitlab-com: true
   available_in: [Ultimate]
   documentation_link: https://docs.gitlab.com/ee/subscriptions/gitlab_dedicated/#available-features
-  image_url: https://release-16-10.about.gitlab-review.app/images/16_10/gitlab-dedicated.png
+  image_url: https://about.gitlab.com/images/16_10/gitlab-dedicated.png
   published_at: 2024-03-21
   release: 16.10

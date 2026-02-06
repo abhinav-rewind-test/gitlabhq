@@ -6,7 +6,7 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
   include ApiHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :public, :repository) }
+  let_it_be_with_reload(:project) { create(:project, :public, :repository) }
 
   let(:feature) { ProjectFeature::ENABLED }
 
@@ -77,9 +77,9 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
 
         expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original
 
-        # ListCommitsByOid, RepositoryExists, HasLocalBranches, ListCommitsByRefNames
+        # ListCommitsByOid, RepositoryExists, HasLocalBranches, ListCommitsByRefNames, ListRefs
         expect { get_pipelines_index_json }
-          .to change { Gitlab::GitalyClient.get_request_count }.by(4)
+          .to change { Gitlab::GitalyClient.get_request_count }.by(6)
       end
     end
 
@@ -612,47 +612,6 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
     end
   end
 
-  describe 'GET dag' do
-    let(:pipeline) { create(:ci_pipeline, project: project) }
-
-    it_behaves_like 'the show page', 'dag'
-  end
-
-  describe 'GET dag.json' do
-    let(:pipeline) { create(:ci_pipeline, project: project) }
-    let(:build_stage) { create(:ci_stage, name: 'build', pipeline: pipeline) }
-    let(:test_stage) { create(:ci_stage, name: 'test', pipeline: pipeline) }
-
-    before do
-      create_build(build_stage, 1, 'build')
-      create_build(test_stage, 2, 'test', scheduling_type: 'dag').tap do |job|
-        create(:ci_build_need, build: job, name: 'build')
-      end
-    end
-
-    it 'returns the pipeline with DAG serialization' do
-      get :dag, params: { namespace_id: project.namespace, project_id: project, id: pipeline }, format: :json
-
-      expect(response).to have_gitlab_http_status(:ok)
-
-      expect(json_response.fetch('stages')).not_to be_empty
-
-      build_stage = json_response['stages'].first
-      expect(build_stage.fetch('name')).to eq 'build'
-      expect(build_stage.fetch('groups').first.fetch('jobs'))
-        .to eq [{ 'name' => 'build', 'scheduling_type' => 'stage' }]
-
-      test_stage = json_response['stages'].last
-      expect(test_stage.fetch('name')).to eq 'test'
-      expect(test_stage.fetch('groups').first.fetch('jobs'))
-        .to eq [{ 'name' => 'test', 'scheduling_type' => 'dag', 'needs' => ['build'] }]
-    end
-
-    def create_build(stage, stage_idx, name, params = {})
-      create(:ci_build, pipeline: pipeline, ci_stage: stage, stage_idx: stage_idx, name: name, **params)
-    end
-  end
-
   describe 'GET builds' do
     let(:pipeline) { create(:ci_pipeline, project: project) }
 
@@ -733,13 +692,13 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
 
     def get_stage(name, params = {})
       get :stage, params: {
-**params.merge(
-  namespace_id: project.namespace,
-  project_id: project,
-  id: pipeline.id,
-  stage: name,
-  format: :json)
-}
+        **params.merge(
+          namespace_id: project.namespace,
+          project_id: project,
+          id: pipeline.id,
+          stage: name,
+          format: :json)
+      }
     end
   end
 
@@ -765,62 +724,37 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
   describe 'GET #charts' do
     let(:pipeline) { create(:ci_pipeline, project: project) }
 
-    [
-      {
-        chart_param: 'time-to-restore-service',
-        event: 'p_analytics_ci_cd_time_to_restore_service'
-      },
-      {
-        chart_param: 'change-failure-rate',
-        event: 'p_analytics_ci_cd_change_failure_rate'
-      }
-    ].each do |tab|
-      it_behaves_like 'tracking unique visits', :charts do
-        let(:request_params) { { namespace_id: project.namespace, project_id: project, id: pipeline.id, chart: tab[:chart_param] } }
-        let(:target_id) { ['p_analytics_pipelines', tab[:event]] }
-      end
+    using RSpec::Parameterized::TableSyntax
 
-      it_behaves_like 'Snowplow event tracking with RedisHLL context' do
-        subject { get :charts, params: request_params, format: :html }
-
-        let(:request_params) { { namespace_id: project.namespace, project_id: project, id: pipeline.id, chart: tab[:chart_param] } }
-        let(:category) { described_class.name }
-        let(:action) { 'perform_analytics_usage_action' }
-        let(:namespace) { project.namespace }
-        let(:label) { 'redis_hll_counters.analytics.analytics_total_unique_counts_monthly' }
-        let(:property) { 'p_analytics_pipelines' }
-      end
+    where(:chart, :event, :additional_metrics) do
+      ''                        | 'p_analytics_ci_cd_pipelines'               | ['analytics_unique_visits.p_analytics_ci_cd_pipelines']
+      'pipelines'               | 'p_analytics_ci_cd_pipelines'               | ['analytics_unique_visits.p_analytics_ci_cd_pipelines']
     end
 
-    [
-      {
-        chart_param: '',
-        event: 'p_analytics_ci_cd_pipelines'
-      },
-      {
-        chart_param: 'pipelines',
-        event: 'p_analytics_ci_cd_pipelines'
-      },
-      {
-        chart_param: 'deployment-frequency',
-        event: 'p_analytics_ci_cd_deployment_frequency'
-      },
-      {
-        chart_param: 'lead-time',
-        event: 'p_analytics_ci_cd_lead_time'
-      }
-    ].each do |tab|
+    with_them do
+      let!(:params) { { namespace_id: project.namespace, project_id: project, id: pipeline.id, chart: chart } }
+
       it_behaves_like 'tracking unique visits', :charts do
-        let(:request_params) { { namespace_id: project.namespace, project_id: project, id: pipeline.id, chart: tab[:chart_param] } }
-        let(:target_id) { ['p_analytics_pipelines', tab[:event]] }
+        let(:request_params) { params }
+        let(:target_id) { ['p_analytics_pipelines', event] }
       end
 
-      it_behaves_like 'internal event tracking' do
-        subject { get :charts, params: request_params, format: :html }
-
-        let(:request_params) { { namespace_id: project.namespace, project_id: project, id: pipeline.id, chart: tab[:chart_param] } }
-        let(:event) { tab[:event] }
-        let(:namespace) { project.namespace }
+      it 'tracks events and increment usage metrics', :clean_gitlab_redis_shared_state do
+        expect { get :charts, params: params, format: :html }
+          .to trigger_internal_events(event).with(project: project, user: user, category: 'InternalEventTracking')
+          .and increment_usage_metrics(
+            # These are currently double-counted --- what's up with this?; is it the mix of track_internal_events and track_events?
+            # Or that track_internal_events is being used with events which aren't actually internal_events?
+            'analytics_unique_visits.analytics_unique_visits_for_any_target',
+            'analytics_unique_visits.analytics_unique_visits_for_any_target_monthly',
+            'redis_hll_counters.analytics.analytics_total_unique_counts_monthly',
+            'redis_hll_counters.analytics.analytics_total_unique_counts_weekly'
+          ).by(2)
+          .and increment_usage_metrics(
+            "redis_hll_counters.analytics.#{event}_monthly",
+            "redis_hll_counters.analytics.#{event}_weekly",
+            *additional_metrics
+          ).by(1)
       end
     end
   end
@@ -890,12 +824,12 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
   end
 
   describe 'POST create.json' do
-    let(:project) { create(:project, :public, :repository) }
+    let(:pipeline_params) { { ref: 'master' } }
 
-    subject do
-      post :create, params: {
-        namespace_id: project.namespace, project_id: project, pipeline: { ref: 'master' }
-      }, format: :json
+    subject(:post_request) do
+      post :create,
+        params: { namespace_id: project.namespace, project_id: project, pipeline: pipeline_params },
+        format: :json
     end
 
     before do
@@ -941,12 +875,46 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
 
         expect(response).to have_gitlab_http_status(:bad_request)
         expect(json_response['errors']).to eq([
-                                                'test job: chosen stage does not exist; available stages are .pre, build, test, deploy, .post'
-                                              ])
+          'test job: chosen stage invalid does not exist; available stages are .pre, build, test, deploy, .post'
+        ])
         expect(json_response['warnings'][0]).to include(
           'jobs:build may allow multiple pipelines to run for a single action due to `rules:when`'
         )
         expect(json_response['total_warnings']).to eq(1)
+      end
+    end
+
+    context 'when using inputs' do
+      let(:inputs) do
+        {
+          deploy_strategy: 'blue-green',
+          job_stage: 'deploy',
+          test_script: ['echo "test"'],
+          test_rules: [
+            { if: '$CI_PIPELINE_SOURCE == "web"' }
+          ]
+        }
+      end
+
+      let(:pipeline_params) do
+        { ref: 'master', inputs: inputs }
+      end
+
+      before do
+        stub_ci_pipeline_yaml_file(
+          File.read(Rails.root.join('spec/lib/gitlab/ci/config/yaml/fixtures/complex-included-ci.yml'))
+        )
+      end
+
+      it 'uses inputs when creating the pipeline' do
+        expect { post_request }.to change { project.ci_pipelines.count }.by(1)
+
+        expect(response).to have_gitlab_http_status(:created)
+
+        pipeline = project.ci_pipelines.last
+        expect(pipeline.builds.map(&:name)).to contain_exactly(
+          'my-job-build 1/2', 'my-job-build 2/2', 'my-job-test', 'my-job-test-2', 'my-job-deploy'
+        )
       end
     end
   end
@@ -1105,8 +1073,10 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
 
         control = ActiveRecord::QueryRecorder.new { get_test_report_json }
 
-        create(:ci_build, name: 'karma', pipeline: pipeline).tap do |build|
-          create(:ci_job_artifact, :junit, job: build)
+        5.times do
+          create(:ci_build, name: 'karma', pipeline: pipeline).tap do |build|
+            create(:ci_job_artifact, :junit, job: build)
+          end
         end
 
         clear_controller_memoization
@@ -1194,6 +1164,38 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
     def clear_controller_memoization
       controller.clear_memoization(:pipeline_test_report)
       controller.remove_instance_variable(:@pipeline)
+    end
+  end
+
+  describe 'GET manual_variables' do
+    let(:pipeline) { create(:ci_pipeline, project: project) }
+
+    context 'when authorized and pipeline variables are allowed' do
+      before do
+        project.ci_cd_settings.update!(display_pipeline_variables: true)
+      end
+
+      it_behaves_like 'the show page', 'manual_variables'
+    end
+
+    context 'when pipeline variables are restricted for the project' do
+      before do
+        project.ci_cd_settings.update!(display_pipeline_variables: false)
+      end
+
+      it 'returns a 404' do
+        get :manual_variables, params: { namespace_id: project.namespace, project_id: project, id: pipeline.id }
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
+    context 'when unauthorized' do
+      it 'returns a 404' do
+        sign_in(build(:user))
+
+        get :manual_variables, params: { namespace_id: project.namespace, project_id: project, id: pipeline.id }
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
     end
   end
 
@@ -1316,10 +1318,10 @@ RSpec.describe Projects::PipelinesController, feature_category: :continuous_inte
 
     def delete_pipeline
       delete :destroy, params: {
-                         namespace_id: project.namespace,
-                         project_id: project,
-                         id: pipeline.id
-                       }
+        namespace_id: project.namespace,
+        project_id: project,
+        id: pipeline.id
+      }
     end
   end
 

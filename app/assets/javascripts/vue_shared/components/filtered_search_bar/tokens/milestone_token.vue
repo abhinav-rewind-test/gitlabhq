@@ -3,11 +3,11 @@ import { GlFilteredSearchSuggestion } from '@gitlab/ui';
 import { createAlert } from '~/alert';
 import { __ } from '~/locale';
 import { WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
-import searchMilestonesQuery from '~/issues/list/queries/search_milestones.query.graphql';
 import { sortMilestonesByDueDate } from '~/milestones/utils';
 import BaseToken from '~/vue_shared/components/filtered_search_bar/tokens/base_token.vue';
 import { stripQuotes } from '~/lib/utils/text_utility';
 import { DEFAULT_MILESTONES } from '../constants';
+import searchMilestonesQuery from '../queries/search_milestones.query.graphql';
 
 export default {
   components: {
@@ -57,9 +57,13 @@ export default {
 
       return (
         milestones.find(
-          (milestone) => milestone.title.toLowerCase() === stripQuotes(data).toLowerCase(),
+          (milestone) =>
+            this.getMilestoneTitle(milestone).toLowerCase() === stripQuotes(data).toLowerCase(),
         ) || this.defaultMilestones.find(({ value }) => value === data)
       );
+    },
+    getMilestoneTitle(milestone) {
+      return milestone.title;
     },
     fetchMilestonesBySearchTerm(search) {
       return this.$apollo
@@ -75,10 +79,20 @@ export default {
         .then((response) => {
           const data = Array.isArray(response) ? response : response.data;
 
+          const uniqueData = data.reduce((acc, current) => {
+            const existingItem = acc.find((item) => item.title === current.title);
+
+            if (!existingItem) {
+              acc.push(current);
+            }
+
+            return acc;
+          }, []);
+
           if (this.config.shouldSkipSort) {
-            this.milestones = data;
+            this.milestones = uniqueData;
           } else {
-            this.milestones = data.slice().sort(sortMilestonesByDueDate);
+            this.milestones = uniqueData.slice().sort(sortMilestonesByDueDate);
           }
         })
         .catch(() => {
@@ -101,20 +115,21 @@ export default {
     :suggestions="milestones"
     :suggestions-loading="loading"
     :get-active-token-value="getActiveMilestone"
+    :value-identifier="getMilestoneTitle"
     v-bind="$attrs"
     @fetch-suggestions="fetchMilestones"
     v-on="$listeners"
   >
     <template #view="{ viewTokenProps: { inputValue, activeTokenValue } }">
-      %{{ activeTokenValue ? activeTokenValue.title : inputValue }}
+      %{{ activeTokenValue ? getMilestoneTitle(activeTokenValue) : inputValue }}
     </template>
     <template #suggestions-list="{ suggestions }">
       <gl-filtered-search-suggestion
         v-for="milestone in suggestions"
         :key="milestone.id"
-        :value="milestone.title"
+        :value="getMilestoneTitle(milestone)"
       >
-        {{ milestone.title }}
+        {{ getMilestoneTitle(milestone) }}
       </gl-filtered-search-suggestion>
     </template>
   </base-token>

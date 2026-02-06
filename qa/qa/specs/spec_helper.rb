@@ -1,13 +1,18 @@
 # frozen_string_literal: true
 
+require 'active_support'
 require 'active_support/testing/time_helpers'
 require 'factory_bot'
+require 'gitlab_quality/test_tooling'
+require 'gitlab/rspec/configurations/test_metrics'
 
 require_relative '../../qa'
+# Extension for GitlabQuality::TestTooling::TestQuarantine::QuarantineFormatter
+require_relative 'helpers/quarantine_formatter_extension'
 
 QA::Specs::QaDeprecationToolkitEnv.configure!
 
-Knapsack::Adapters::RSpecAdapter.bind if QA::Runtime::Env.knapsack?
+Knapsack::Adapters::RSpecAdapter.bind if QA::Runtime::Env.knapsack? && !QA::Runtime::Env.dry_run
 
 # TODO: move all classes that perform rspec configuration under spec/helpers
 QA::Support::GitlabAddress.define_gitlab_address_attribute!
@@ -25,6 +30,32 @@ RSpec.configure(&:disable_monkey_patching!)
 # For JH additionally process when `jh/` exists
 require_relative('../../../jh/qa/qa/specs/spec_helper') if GitlabEdition.jh?
 
+front_end_coverage_by_example = {}
+front_end_full_coverage_by_example = {}
+
+def save_front_end_coverage_mapping(map_to_save)
+  return if map_to_save.empty?
+
+  file = "tmp/js-coverage-by-example-#{ENV['CI_JOB_NAME_SLUG'] || 'local'}-#{SecureRandom.hex(6)}.json"
+
+  # Write the mapping data
+  File.write(file, map_to_save.to_json)
+  QA::Runtime::Logger.info("Saved test coverage mapping data to #{file}")
+rescue StandardError => e
+  QA::Runtime::Logger.error("Failed to save JS coverage mapping data, error: #{e}")
+end
+
+def save_front_end_full_coverage(coverage_to_save)
+  return if coverage_to_save.empty?
+
+  file = "tmp/js-istanbul-coverage-#{ENV['CI_JOB_NAME_SLUG'] || 'local'}-#{SecureRandom.hex(6)}.json"
+
+  File.write(file, coverage_to_save.to_json)
+  QA::Runtime::Logger.info("Saved Istanbul E2E coverage data to #{file}")
+rescue StandardError => e
+  QA::Runtime::Logger.error("Failed to save Istanbul coverage data, error: #{e}")
+end
+
 RSpec.configure do |config|
   config.include ActiveSupport::Testing::TimeHelpers
   config.include QA::Support::Matchers::EventuallyMatcher
@@ -34,15 +65,44 @@ RSpec.configure do |config|
   FactoryBot.definition_file_paths = %w[qa/factories qa/ee/factories]
 
   config.add_formatter QA::Support::Formatters::ContextFormatter
-  config.add_formatter QA::Support::Formatters::QuarantineFormatter
+  config.add_formatter GitlabQuality::TestTooling::TestQuarantine::QuarantineFormatter
   config.add_formatter QA::Support::Formatters::FeatureFlagFormatter
-  config.add_formatter QA::Support::Formatters::TestMetricsFormatter if QA::Runtime::Env.running_in_ci?
+
+  unless QA::Runtime::Env.dry_run || config.dry_run?
+    config.add_formatter QA::Support::Formatters::CoverbandFormatter if QA::Runtime::Env.coverband_enabled?
+
+    Gitlab::Rspec::Configurations::TestMetrics.configure!(QA::Runtime::Env.run_type) do |exporter_config|
+      exporter_config.test_retried_proc = ->(_example) { QA::Runtime::Env.rspec_retried? }
+      exporter_config.logger = QA::Runtime::Logger.logger
+      exporter_config.spec_file_path_prefix = "qa/"
+    end
+  end
+
+  config.example_status_persistence_file_path = ENV.fetch('RSPEC_LAST_RUN_RESULTS_FILE', 'tmp/examples.txt')
 
   config.prepend_before do |example|
     QA::Runtime::Logger.info("Starting test: #{Rainbow(example.full_description).bright}")
+    QA::Runtime::User::Store.initialize_test_user
+
     QA::Runtime::Example.current = example
 
     visit(QA::Runtime::Scenario.gitlab_address) if QA::Runtime::Env.mobile_layout?
+
+    # Reset coverage persistence at the start of each test
+    if Capybara::Session.instance_created? && QA::Runtime::Env.istanbul_coverage_enabled?
+      begin
+        # Visit GitLab page first to ensure coverage bundle is loaded
+        Capybara.current_session.visit(QA::Runtime::Scenario.gitlab_address)
+
+        has_persistence = Capybara.current_session.evaluate_script(
+          "typeof window.__coveragePathsPersistence !== 'undefined'"
+        )
+
+        Capybara.current_session.execute_script("window.__coveragePathsPersistence.reset()") if has_persistence
+      rescue StandardError => e
+        QA::Runtime::Logger.warn("Failed to reset coverage paths: #{e.message}")
+      end
+    end
 
     # Reset fabrication counters tracked in resource base
     Thread.current[:api_fabrication] = 0
@@ -50,8 +110,8 @@ RSpec.configure do |config|
   end
 
   config.prepend_before(:suite) do
-    # Perform before hooks at the very start of the test run
-    QA::Runtime::Release.perform_before_hooks unless QA::Runtime::Env.dry_run
+    # Perform before hooks at the very start of the test run, perform once for parallel runs
+    QA::Runtime::Release.perform_before_hooks unless QA::Runtime::Env.dry_run || QA::Runtime::Env.parallel_run?
   end
 
   config.before(:suite) do
@@ -64,43 +124,61 @@ RSpec.configure do |config|
   end
 
   config.prepend_after do |example|
-    page = Capybara.page
-    QA::Support::PageErrorChecker.log_request_errors(page)
+    if Capybara::Session.instance_created?
+      page = Capybara.page
+      QA::Support::PageErrorChecker.log_request_errors(page)
+      QA::Support::PageErrorChecker.check_page_for_error_code(page) if example.exception
+    end
 
-    QA::Support::PageErrorChecker.check_page_for_error_code(page) if example.exception
+    if Capybara::Session.instance_created? && QA::Runtime::Env.istanbul_coverage_enabled?
+      begin
+        has_persistence = Capybara.current_session.evaluate_script(
+          "typeof window.__coveragePathsPersistence !== 'undefined'"
+        )
+
+        Capybara.current_session.execute_script("window.__coveragePathsPersistence.update()") if has_persistence
+
+        has_coverage = Capybara.current_session.evaluate_script(
+          "typeof window.__coverage__ !== 'undefined' && window.__coverage__ !== null"
+        )
+
+        if has_coverage
+          full_coverage_data = Capybara.current_session.evaluate_script("window.__coverage__")
+          coverage_paths = Capybara.current_session.evaluate_script("Object.keys(window.__coverage__ || {})")
+
+          example.metadata[:coverage_paths] = coverage_paths
+          front_end_coverage_by_example[example.metadata[:location]] = coverage_paths
+          front_end_full_coverage_by_example[example.metadata[:location]] = full_coverage_data
+        end
+      rescue StandardError => e
+        QA::Runtime::Logger.warn("Failed to collect coverage data: #{e.message}")
+      end
+    end
   end
 
-  # Add fabrication time to spec metadata
   config.append_after do |example|
+    # Add fabrication time to spec metadata
     example.metadata[:api_fabrication] = Thread.current[:api_fabrication]
     example.metadata[:browser_ui_fabrication] = Thread.current[:browser_ui_fabrication]
-  end
 
-  config.after(:context) do
-    if !QA::Runtime::Browser.blank_page? && QA::Page::Main::Menu.perform(&:signed_in?)
-      QA::Page::Main::Menu.perform(&:sign_out)
-      raise(
-        <<~ERROR
-          The test left the browser signed in.
+    # Reset unique test user after each spec unless running against live environment
+    QA::Runtime::User::Store.reset_test_user! unless QA::Runtime::Env.running_on_live_env?
 
-          Usually, Capybara prevents this from happening but some things can
-          interfere. For example, if it has an `after(:context)` block that logs
-          in, the browser will stay logged in and this will cause the next test
-          to fail.
-
-          Please make sure the test does not leave the browser signed in.
-        ERROR
-      )
+    # Reset browser session between tests
+    if Capybara::Session.instance_created?
+      QA::Runtime::Logger.debug("Resetting browser session...")
+      Capybara.current_session.reset!
     end
   end
 
   config.after(:suite) do |suite|
     # Write all test created resources to JSON file
     QA::Tools::TestResourceDataProcessor.write_to_file(suite.reporter.failed_examples.any?)
-  end
 
-  config.append_after(:suite) do
-    QA::Support::KnapsackReport.move_regenerated_report if QA::Runtime::Env.knapsack?
+    if QA::Runtime::Env.istanbul_coverage_enabled?
+      save_front_end_coverage_mapping(front_end_coverage_by_example)
+      save_front_end_full_coverage(front_end_full_coverage_by_example)
+    end
   end
 
   config.expect_with :rspec do |expectations|
@@ -119,26 +197,6 @@ RSpec.configure do |config|
 
   # This option allows to use shorthand aliases for adding :focus metadata - fit, fdescribe and fcontext
   config.filter_run_when_matching :focus
-
-  if ENV['CI'] && !QA::Runtime::Env.disable_rspec_retry?
-    # show retry status in spec process
-    config.verbose_retry = true
-
-    # show exception that triggers a retry if verbose_retry is set to true
-    config.display_try_failure_messages = true
-
-    non_quarantine_retries = QA::Runtime::Env.ci_project_name.match?(/staging|canary|production/) ? 3 : 2
-    config.around do |example|
-      quarantine = example.metadata[:quarantine]
-      different_quarantine_context = QA::Specs::Helpers::Quarantine.quarantined_different_context?(quarantine)
-      focused_quarantine = QA::Specs::Helpers::Quarantine.filters.key?(:quarantine)
-
-      # Do not disable retry when spec is quarantined but on different environment
-      next example.run_with_retry(retry: non_quarantine_retries) if different_quarantine_context && !focused_quarantine
-
-      example.run_with_retry(retry: quarantine ? 1 : non_quarantine_retries)
-    end
-  end
 end
 
 Dir[::File.join(__dir__, "features/shared_examples/**/*.rb")].each { |f| require f }

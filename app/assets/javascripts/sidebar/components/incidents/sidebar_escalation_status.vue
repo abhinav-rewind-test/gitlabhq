@@ -27,10 +27,6 @@ export default {
       type: String,
       required: true,
     },
-    issuableType: {
-      required: true,
-      type: String,
-    },
   },
   data() {
     return {
@@ -50,7 +46,7 @@ export default {
         };
       },
       update(data) {
-        return data.workspace?.issuable?.escalationStatus;
+        return data.namespace?.issuable?.escalationStatus;
       },
       error(error) {
         const message = this.$options.i18n.fetchError;
@@ -129,7 +125,7 @@ export default {
       >
         <gl-icon name="status" :size="16" />
       </div>
-      <span class="hide-collapsed text-secondary">{{ currentStatusLabel }}</span>
+      <span class="hide-collapsed gl-text-subtle">{{ currentStatusLabel }}</span>
     </template>
   </sidebar-editable-item>
 </template>

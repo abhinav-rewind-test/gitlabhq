@@ -12,28 +12,32 @@ RSpec.describe EventPresenter do
   let_it_be(:project_event) { create(:event, :created, project: project, target: target) }
 
   describe '#resource_parent_name' do
+    subject { event.present.resource_parent_name }
+
     context 'with group event' do
-      subject { group_event.present.resource_parent_name }
+      let(:event) { group_event }
 
       it { is_expected.to eq(group.full_name) }
     end
 
     context 'with project label' do
-      subject { project_event.present.resource_parent_name }
+      let(:event) { project_event }
 
       it { is_expected.to eq(project.full_name) }
     end
   end
 
   describe '#target_link_options' do
+    subject { event.present.target_link_options }
+
     context 'with group event' do
-      subject { group_event.present.target_link_options }
+      let(:event) { group_event }
 
       it { is_expected.to eq([group, target]) }
     end
 
     context 'with project label' do
-      subject { project_event.present.target_link_options }
+      let(:event) { project_event }
 
       it { is_expected.to eq([project, target]) }
     end
@@ -59,12 +63,24 @@ RSpec.describe EventPresenter do
     it 'returns the issue_type for work item events' do
       expect(build(:event, :for_work_item, :created).present).to have_attributes(target_type_name: 'task')
     end
+
+    context 'when project event has nil target_type' do
+      it 'returns project for a project event' do
+        expect(build(:event, project: create(:project), action: :created).present)
+          .to have_attributes(target_type_name: 'project')
+      end
+    end
   end
 
   describe '#note_target_type_name' do
     it 'returns design for an event on a comment on a design' do
       expect(build(:event, :commented, :for_design).present)
         .to have_attributes(note_target_type_name: 'design')
+    end
+
+    it 'returns wiki page for an event on a comment on a wiki page' do
+      expect(build(:event, :commented, :for_wiki_page_note).present)
+        .to have_attributes(note_target_type_name: 'wiki page')
     end
 
     it 'returns nil for an event without a target' do

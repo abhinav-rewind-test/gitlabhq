@@ -9,27 +9,27 @@ RSpec.shared_examples 'a harbor artifacts controller' do |args|
   let(:mock_artifacts) do
     [
       {
-        "digest": "sha256:661e8e44e5d7290fbd42d0495ab4ff6fdf1ad251a9f358969b3264a22107c14d",
-        "icon": "sha256:0048162a053eef4d4ce3fe7518615bef084403614f8bca43b40ae2e762e11e06",
-        "id": 1,
-        "project_id": 1,
-        "pull_time": "0001-01-01T00:00:00.000Z",
-        "push_time": "2022-04-23T08:04:08.901Z",
-        "repository_id": 1,
-        "size": 126745886,
-        "tags": [
+        digest: "sha256:661e8e44e5d7290fbd42d0495ab4ff6fdf1ad251a9f358969b3264a22107c14d",
+        icon: "sha256:0048162a053eef4d4ce3fe7518615bef084403614f8bca43b40ae2e762e11e06",
+        id: 1,
+        project_id: 1,
+        pull_time: "0001-01-01T00:00:00.000Z",
+        push_time: "2022-04-23T08:04:08.901Z",
+        repository_id: 1,
+        size: 126745886,
+        tags: [
           {
-            "artifact_id": 1,
-            "id": 1,
-            "immutable": false,
-            "name": "2",
-            "pull_time": "0001-01-01T00:00:00.000Z",
-            "push_time": "2022-04-23T08:04:08.920Z",
-            "repository_id": 1,
-            "signed": false
+            artifact_id: 1,
+            id: 1,
+            immutable: false,
+            name: "2",
+            pull_time: "0001-01-01T00:00:00.000Z",
+            push_time: "2022-04-23T08:04:08.920Z",
+            repository_id: 1,
+            signed: false
           }
         ],
-        "type": "IMAGE"
+        type: "IMAGE"
       }
     ]
   end
@@ -71,13 +71,14 @@ RSpec.shared_examples 'a harbor artifacts controller' do |args|
 
   before do
     stub_request(:get,
-      "https://demo.goharbor.io/api/v2.0/projects/testproject/repositories/test/artifacts"\
-      "?page=1&page_size=10&with_tag=true")
-    .with(
-      headers: {
-      'Authorization': 'Basic aGFyYm9ydXNlcm5hbWU6aGFyYm9ycGFzc3dvcmQ=',
-      'Content-Type': 'application/json'
-    }).to_return(status: 200, body: mock_artifacts.to_json, headers: { "x-total-count": 2 })
+      "https://demo.goharbor.io/api/v2.0/projects/testproject/repositories/test/artifacts" \
+        "?page=1&page_size=10&with_tag=true")
+      .with(
+        headers: {
+          Authorization: 'Basic aGFyYm9ydXNlcm5hbWU6aGFyYm9ycGFzc3dvcmQ=',
+          'Content-Type': 'application/json'
+        }).to_return(status: 200, body: mock_artifacts.to_json, headers: { "x-total-count": 2,
+                                                                           'Content-Type': 'application/json' })
     container.add_reporter(user)
     sign_in(user)
   end
@@ -128,6 +129,22 @@ RSpec.shared_examples 'a harbor artifacts controller' do |args|
         end
 
         it_behaves_like 'responds with 200 status with json'
+      end
+
+      context 'with artifacts that have no tags' do
+        let(:mock_artifacts) { [super()[0].merge(tags: nil)] }
+
+        subject do
+          get harbor_artifact_url(container, repository_id), headers: json_header
+        end
+
+        it_behaves_like 'responds with 200 status with json'
+
+        it 'returns empty tags array' do
+          subject
+
+          expect(Gitlab::Json.parse(response.body).first['tags']).to be_empty
+        end
       end
     end
 

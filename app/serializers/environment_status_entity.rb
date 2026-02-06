@@ -11,10 +11,6 @@ class EnvironmentStatusEntity < Grape::Entity
     project_environment_path(es.project, es.environment)
   end
 
-  expose :metrics_url, if: ->(*) { can_read_environment? && has_metrics? } do |es|
-    metrics_project_environment_deployment_path(es.project, es.environment, es.deployment)
-  end
-
   expose :stop_url, if: ->(*) { can_stop_environment? } do |es|
     stop_project_environment_path(es.project, es.environment)
   end
@@ -38,7 +34,12 @@ class EnvironmentStatusEntity < Grape::Entity
   end
 
   expose :deployment, as: :details do |es, options|
-    DeploymentEntity.represent(es.deployment, options.merge(project: es.project, only: [:playable_job]))
+    DeploymentEntity.represent(es.deployment,
+      options.merge(project: es.project, only: [:playable_build, :playable_job]))
+  end
+
+  expose :deployment_approved do |es|
+    es.deployment.try(:approved?)
   end
 
   expose :environment_available do |es|
@@ -51,10 +52,6 @@ class EnvironmentStatusEntity < Grape::Entity
 
   def environment
     object.environment
-  end
-
-  def has_metrics?
-    object.has_metrics?
   end
 
   def project

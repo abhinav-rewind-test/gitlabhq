@@ -12,12 +12,16 @@ module Gitlab
 
       # table_name can include schema name as a prefix. For example: 'gitlab_partitions_static.events_03',
       # otherwise, it will default to current used schema, for example 'public'.
-      def initialize(table_name:, connection:, database_name:, with_retries: true, logger: nil, dry_run: false)
-        @table_name = table_name
+      def initialize(
+        table_name:, connection:, database_name:,
+        with_retries: true, logger: nil, dry_run: false, force: true
+      )
+        @table_name = table_name.to_s
         @connection = connection
         @database_name = database_name
         @logger = logger
         @dry_run = dry_run
+        @force = force
         @with_retries = with_retries
 
         @table_name_without_schema = ActiveRecord::ConnectionAdapters::PostgreSQL::Utils
@@ -36,14 +40,21 @@ module Gitlab
       end
 
       def lock_writes
-        if table_locked_for_writes?
-          logger&.info "Skipping lock_writes, because #{table_name} is already locked for writes"
-          return result_hash(action: 'skipped')
+        unless force
+          unless table_exist?
+            logger&.info "Skipping lock_writes, because #{table_name} does not exist"
+            return result_hash(action: 'skipped')
+          end
+
+          if table_locked_for_writes?
+            logger&.info "Skipping lock_writes, because #{table_name} is already locked for writes"
+            return result_hash(action: 'skipped')
+          end
         end
 
-        logger&.info "Database: '#{database_name}', Table: '#{table_name}': Lock Writes".color(:yellow)
+        logger&.info Rainbow("Database: '#{database_name}', Table: '#{table_name}': Lock Writes").yellow
         sql_statement = <<~SQL
-          CREATE TRIGGER #{write_trigger_name}
+          CREATE OR REPLACE TRIGGER #{write_trigger_name}
             BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE
             ON #{table_name}
             FOR EACH STATEMENT EXECUTE FUNCTION #{TRIGGER_FUNCTION_NAME}();
@@ -52,27 +63,51 @@ module Gitlab
         result = process_query(sql_statement, 'lock')
 
         result_hash(action: result)
+      rescue ActiveRecord::StatementInvalid => e
+        # Errors like Gitlab::Database::GitlabSchema::UnknownSchemaError, PG::UndefinedTable
+        # are raised under this error
+        logger&.warn "Failed lock_writes, because #{table_name} raised an error. Error: #{e}"
+        result_hash(action: 'skipped')
       end
 
       def unlock_writes
-        unless table_locked_for_writes?
+        if force || table_locked_for_writes?
+          logger&.info Rainbow("Database: '#{database_name}', Table: '#{table_name}': Allow Writes").green
+          sql_statement = <<~SQL
+            DROP TRIGGER IF EXISTS #{write_trigger_name} ON #{table_name};
+          SQL
+
+          result = process_query(sql_statement, 'unlock')
+
+          result_hash(action: result)
+        else
           logger&.info "Skipping unlock_writes, because #{table_name} is already unlocked for writes"
-          return result_hash(action: 'skipped')
+          result_hash(action: 'skipped')
         end
-
-        logger&.info "Database: '#{database_name}', Table: '#{table_name}': Allow Writes".color(:green)
-        sql_statement = <<~SQL
-          DROP TRIGGER IF EXISTS #{write_trigger_name} ON #{table_name};
-        SQL
-
-        result = process_query(sql_statement, 'unlock')
-
-        result_hash(action: result)
       end
 
       private
 
-      attr_reader :table_name, :connection, :database_name, :logger, :dry_run, :table_name_without_schema, :with_retries
+      attr_reader :table_name,
+        :connection,
+        :database_name,
+        :logger,
+        :dry_run,
+        :force,
+        :table_name_without_schema,
+        :with_retries
+
+      def table_exist?
+        where = if table_name.include?('.')
+                  schema, table = table_name.split('.')
+
+                  "#{Arel.sql('table_name').eq(table).to_sql} AND #{Arel.sql('table_schema').eq(schema).to_sql}"
+                else
+                  "#{Arel.sql('table_name').eq(table_name).to_sql} AND table_schema = current_schema()"
+                end
+
+        @connection.execute("SELECT table_name FROM information_schema.tables WHERE #{where}").any?
+      end
 
       def process_query(sql, action)
         if dry_run

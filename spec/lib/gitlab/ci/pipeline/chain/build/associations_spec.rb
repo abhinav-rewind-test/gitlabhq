@@ -4,25 +4,28 @@ require 'spec_helper'
 
 RSpec.describe Gitlab::Ci::Pipeline::Chain::Build::Associations, feature_category: :continuous_integration do
   let_it_be_with_reload(:project) { create(:project, :repository) }
-  let_it_be(:user) { create(:user, developer_projects: [project]) }
+  let_it_be(:user) { create(:user, developer_of: project) }
 
   # Assigning partition_id here to validate it is being propagated correctly
   let(:pipeline) { Ci::Pipeline.new(partition_id: ci_testing_partition_id) }
   let(:bridge) { nil }
 
   let(:variables_attributes) do
-    [{ key: 'first', secret_value: 'world' },
-     { key: 'second', secret_value: 'second_world' }]
+    [
+      { key: 'first', secret_value: 'world' },
+      { key: 'second', secret_value: 'second_world' }
+    ]
   end
+
+  let(:source) { :push }
 
   let(:command) do
     Gitlab::Ci::Pipeline::Chain::Command.new(
-      source: :push,
+      source: source,
       origin_ref: 'master',
       checkout_sha: project.commit.id,
       after_sha: nil,
       before_sha: nil,
-      trigger_request: nil,
       schedule: nil,
       merge_request: nil,
       project: project,
@@ -32,6 +35,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Build::Associations, feature_categor
   end
 
   let(:step) { described_class.new(pipeline, command) }
+
+  before do
+    project.update!(ci_pipeline_variables_minimum_override_role: :developer)
+  end
 
   shared_examples 'breaks the chain' do
     it 'returns true' do
@@ -46,6 +53,15 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Build::Associations, feature_categor
       step.perform!
 
       expect(step.break?).to be false
+    end
+  end
+
+  shared_examples 'assigns variables_attributes' do
+    specify do
+      step.perform!
+
+      expect(pipeline.variables.map { |var| var.slice(:key, :secret_value) })
+        .to eq variables_attributes.map(&:with_indifferent_access)
     end
   end
 
@@ -85,7 +101,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Build::Associations, feature_categor
 
   context 'when project setting restrict_user_defined_variables is enabled' do
     before do
-      project.update!(restrict_user_defined_variables: true)
+      project.update!(ci_pipeline_variables_minimum_override_role: :maintainer)
     end
 
     context 'when user is developer' do
@@ -109,28 +125,74 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Build::Associations, feature_categor
           expect(pipeline.variables).to be_empty
         end
       end
+
+      context 'when source is :ondemand_dast_validation' do
+        let(:source) { :ondemand_dast_validation }
+
+        it_behaves_like 'does not break the chain'
+
+        it_behaves_like 'assigns variables_attributes'
+      end
+
+      context 'when source is :trigger with variables other then TRIGGER_PAYLOAD' do
+        let(:source) { :trigger }
+
+        let(:variables_attributes) do
+          [{ key: 'first', value: 'world' }]
+        end
+
+        it 'returns an insufficient permissions error' do
+          step.perform!
+
+          expect(pipeline.errors.full_messages).to eq(['Insufficient permissions to set pipeline variables'])
+        end
+      end
+
+      context 'when source is :trigger with no variables' do
+        let(:source) { :trigger }
+        let(:variables_attributes) { nil }
+
+        it_behaves_like 'does not break the chain'
+      end
+
+      context 'when source is :trigger with only TRIGGER_PAYLOAD' do
+        let(:source) { :trigger }
+
+        let(:variables_attributes) do
+          [{ key: 'TRIGGER_PAYLOAD', value: 'some payload' }]
+        end
+
+        it_behaves_like 'does not break the chain'
+      end
+    end
+  end
+
+  context 'when user is maintainer' do
+    before do
+      project.add_maintainer(user)
     end
 
-    context 'when user is maintainer' do
-      before do
-        project.add_maintainer(user)
+    it_behaves_like 'does not break the chain'
+
+    it_behaves_like 'assigns variables_attributes'
+
+    context "when source is :trigger and user has permissions to set pipeline variables" do
+      let(:source) { :trigger }
+
+      let(:variables_attributes) do
+        [{ key: 'first', value: 'world' }]
       end
 
       it_behaves_like 'does not break the chain'
-
-      it 'assigns variables_attributes' do
-        step.perform!
-
-        expect(pipeline.variables.map { |var| var.slice(:key, :secret_value) })
-          .to eq variables_attributes.map(&:with_indifferent_access)
-      end
     end
   end
 
   context 'with duplicate pipeline variables' do
     let(:variables_attributes) do
-      [{ key: 'first', secret_value: 'world' },
-       { key: 'first', secret_value: 'second_world' }]
+      [
+        { key: 'first', secret_value: 'world' },
+        { key: 'first', secret_value: 'second_world' }
+      ]
     end
 
     it_behaves_like 'breaks the chain'

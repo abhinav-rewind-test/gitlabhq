@@ -2,6 +2,7 @@
 
 class Admin::SystemInfoController < Admin::ApplicationController
   feature_category :not_owned # rubocop:todo Gitlab/AvoidFeatureCategoryNotOwned
+  authorize! :read_admin_system_information, only: [:show]
 
   EXCLUDED_MOUNT_OPTIONS = %w[
     nobrowse
@@ -59,11 +60,11 @@ class Admin::SystemInfoController < Admin::ApplicationController
       begin
         disk = Sys::Filesystem.stat(mount.mount_point)
         @disks.push({
-                      bytes_total: disk.bytes_total,
-                      bytes_used: disk.bytes_used,
-                      disk_name: mount.name,
-                      mount_path: disk.path
-                    })
+          bytes_total: disk.bytes_total,
+          bytes_used: disk.bytes_used,
+          disk_name: mount.name,
+          mount_path: disk.path
+        })
       rescue Sys::Filesystem::Error
       end
     end

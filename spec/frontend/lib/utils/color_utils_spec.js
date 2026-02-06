@@ -1,4 +1,13 @@
-import { isValidColorExpression, validateHexColor, darkModeEnabled } from '~/lib/utils/color_utils';
+import {
+  isValidColorExpression,
+  validateHexColor,
+  darkModeEnabled,
+  getAdaptiveStatusColor,
+  gradientStyle,
+} from '~/lib/utils/color_utils';
+import { getSystemColorScheme } from '~/lib/utils/css_utils';
+
+jest.mock('~/lib/utils/css_utils');
 
 describe('Color utils', () => {
   describe('Validate hex color', () => {
@@ -52,6 +61,42 @@ describe('Color utils', () => {
       ${'hello'}            | ${false} | ${'invalid'}
     `('color expression $colorExpression is $desc', ({ colorExpression, valid }) => {
       expect(isValidColorExpression(colorExpression)).toBe(valid);
+    });
+  });
+
+  describe('getAdaptiveStatusColor', () => {
+    it.each`
+      color        | expectedColor
+      ${'#995715'} | ${'#D99530'}
+      ${'#737278'} | ${'#89888D'}
+      ${'#1f75cb'} | ${'#428FDC'}
+      ${'#108548'} | ${'#2DA160'}
+      ${'#DD2B0E'} | ${'#EC5941'}
+    `('returns $expectedColor for $color when dark mode is enabled', ({ color, expectedColor }) => {
+      getSystemColorScheme.mockReturnValueOnce('gl-dark');
+      expect(getAdaptiveStatusColor(color)).toBe(expectedColor);
+    });
+
+    it('returns source color as it is when light mode is enabled', () => {
+      getSystemColorScheme.mockReturnValueOnce('gl-light');
+      const colors = ['#995715', '#737278', '#1f75cb', '#108548', '#DD2B0E'];
+
+      colors.forEach((color) => {
+        expect(getAdaptiveStatusColor(color)).toBe(color);
+      });
+    });
+  });
+
+  describe('gradientStyle', () => {
+    it.each`
+      color
+      ${'#0066cc'}
+      ${'rgba(255, 0, 0, 0.5)'}
+      ${'var(--gl-brand-color)'}
+    `('returns a radial gradient style for $color', ({ color }) => {
+      expect(gradientStyle(color)).toEqual({
+        background: `radial-gradient(circle at center, white 20%, ${color} 100%)`,
+      });
     });
   });
 });

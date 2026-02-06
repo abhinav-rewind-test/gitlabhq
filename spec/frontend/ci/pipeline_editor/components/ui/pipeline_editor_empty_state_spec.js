@@ -2,6 +2,7 @@ import { GlButton, GlSprintf, GlEmptyState } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import PipelineEditorFileNav from '~/ci/pipeline_editor/components/file_nav/pipeline_editor_file_nav.vue';
 import PipelineEditorEmptyState from '~/ci/pipeline_editor/components/ui/pipeline_editor_empty_state.vue';
+import ExternalConfigEmptyState from '~/ci/common/empty_state/external_config_empty_state.vue';
 
 const emptyStateIllustrationPath = 'illustrations/empty-state/empty-pipeline-md.svg';
 
@@ -10,6 +11,7 @@ describe('Pipeline editor empty state', () => {
   const defaultProvide = {
     emptyStateIllustrationPath,
     usesExternalConfig: false,
+    newPipelinePath: '',
   };
 
   const createComponent = ({ provide } = {}) => {
@@ -21,22 +23,27 @@ describe('Pipeline editor empty state', () => {
 
   const findFileNav = () => wrapper.findComponent(PipelineEditorFileNav);
   const findEmptyState = () => wrapper.findComponent(GlEmptyState);
+  const findExternalConfigEmptyState = () => wrapper.findComponent(ExternalConfigEmptyState);
   const findConfirmButton = () => findEmptyState().findComponent(GlButton);
 
   describe('when project uses an external CI config', () => {
+    const newPipelinePath = '/path-to-new-pipeline';
     beforeEach(() => {
       createComponent({
-        provide: { usesExternalConfig: true },
+        provide: { usesExternalConfig: true, newPipelinePath },
       });
     });
 
-    it('renders an empty state', () => {
-      expect(findEmptyState().props()).toMatchObject({
-        description: wrapper.vm.$options.i18n.externalCiInstructions,
-        primaryButtonText: null,
-        svgPath: emptyStateIllustrationPath,
-        title: "This project's pipeline configuration is located outside this repository",
-      });
+    it('renders the external config empty state', () => {
+      expect(findExternalConfigEmptyState().exists()).toBe(true);
+    });
+
+    it('provides newPipelinePath to the external config empty state', () => {
+      expect(findExternalConfigEmptyState().props('newPipelinePath')).toBe(newPipelinePath);
+    });
+
+    it('renders the file nav', () => {
+      expect(findFileNav().exists()).toBe(true);
     });
   });
 
@@ -51,16 +58,19 @@ describe('Pipeline editor empty state', () => {
 
     it('renders an empty state', () => {
       expect(findEmptyState().exists()).toBe(true);
+      expect(findExternalConfigEmptyState().exists()).toBe(false);
     });
 
     it('renders correct title and illustration', () => {
       expect(findEmptyState().props('svgPath')).toBe(emptyStateIllustrationPath);
-      expect(findEmptyState().props('title')).toBe('Optimize your workflow with CI/CD Pipelines');
+      expect(findEmptyState().props('title')).toBe(
+        'Configure a pipeline to automate your builds, tests, and deployments',
+      );
     });
 
     it('renders the correct instructions', () => {
       expect(findEmptyState().text()).toContain(
-        'Create a new .gitlab-ci.yml file at the root of the repository to get started.',
+        'Create a .gitlab-ci.yml file in your repository to configure and run your first pipeline.',
       );
     });
 

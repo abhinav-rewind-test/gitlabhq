@@ -83,7 +83,11 @@ module Discussions
     def process_auto_merge
       return unless discussions_ready_to_merge?
 
-      AutoMergeProcessWorker.perform_async(merge_request.id)
+      Gitlab::EventStore.publish(
+        MergeRequests::DiscussionsResolvedEvent.new(
+          data: { current_user_id: current_user.id, merge_request_id: merge_request.id }
+        )
+      )
     end
 
     def discussions_ready_to_merge?

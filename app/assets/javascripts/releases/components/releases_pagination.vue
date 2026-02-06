@@ -24,11 +24,9 @@ export default {
 };
 </script>
 <template>
-  <div class="gl-display-flex gl-justify-content-center">
+  <div class="gl-flex gl-justify-center">
     <gl-keyset-pagination
       v-bind="pageInfo"
-      :prev-text="__('Prev')"
-      :next-text="__('Next')"
       v-on="$listeners"
       @prev="onPrev($event)"
       @next="onNext($event)"

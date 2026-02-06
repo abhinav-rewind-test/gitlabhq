@@ -2,13 +2,16 @@
 stage: Verify
 group: Pipeline Authoring
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Optimize GitLab CI/CD configuration files
+description: Use YAML anchors, !reference tags, and the `extends` keyword to reduce CI/CD configuration file complexity.
 ---
 
-# Optimize GitLab CI/CD configuration files
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can reduce complexity and duplicated configuration in your GitLab CI/CD configuration
 files by using:
@@ -18,13 +21,20 @@ files by using:
 - The [`extends` keyword](#use-extends-to-reuse-configuration-sections),
   which is more flexible and readable. You should use `extends` where possible.
 
+To create multiple similar jobs, but with different variable values, use [`parallel:matrix](../jobs/job_control.md#run-a-matrix-of-parallel-trigger-jobs).
+
 ## Anchors
 
 YAML has a feature called 'anchors' that you can use to duplicate
 content across your document.
 
-Use anchors to duplicate or inherit properties. Use anchors with [hidden jobs](../jobs/index.md#hide-jobs)
-to provide templates for your jobs. When there are duplicate keys, the latest included key wins, overriding the other keys.
+You can use anchors to duplicate or inherit properties. Use anchors with [hidden jobs](../jobs/_index.md#hide-a-job)
+to provide templates for your jobs.
+
+The `&` character marks the anchor name, and the `*` character is the alias that references
+the anchor. You must define the anchor higher in the YAML file than any aliases that reference it.
+
+When there are duplicate keys, the latest included key wins and overrides the other keys.
 
 In certain cases (see [YAML anchors for scripts](#yaml-anchors-for-scripts)), you can use YAML anchors to build arrays with multiple components defined elsewhere. For example:
 
@@ -39,7 +49,7 @@ job1:
     - ./job-script.sh
 ```
 
-You can't use YAML anchors across multiple files when using the [`include`](index.md#include)
+You can't use YAML anchors across multiple files when using the [`include`](_index.md#include)
 keyword. Anchors are only valid in the file they were defined in. To reuse configuration
 from different YAML files, use [`!reference` tags](#reference-tags) or the
 [`extends` keyword](#use-extends-to-reuse-configuration-sections).
@@ -68,7 +78,7 @@ test2:
 
 `&` sets up the name of the anchor (`job_configuration`), `<<` means "merge the
 given hash into the current one," and `*` includes the named anchor
-(`job_configuration` again). The [expanded](../pipeline_editor/index.md#view-full-configuration) version of this example is:
+(`job_configuration` again). The [expanded](../pipeline_editor/_index.md#view-full-configuration) version of this example is:
 
 ```yaml
 .job_template:
@@ -126,7 +136,7 @@ test:mysql:
   services: *mysql_configuration
 ```
 
-The [expanded](../pipeline_editor/index.md#view-full-configuration) version is:
+The [expanded](../pipeline_editor/_index.md#view-full-configuration) version is:
 
 ```yaml
 .job_template:
@@ -169,11 +179,14 @@ You can see that the hidden jobs are conveniently used as templates, and
 
 ### YAML anchors for scripts
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/23005) in GitLab 12.5.
-> - Support for anchors with the [`stages`](../yaml/index.md#stages) keyword [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439451) in GitLab 16.9.
+{{< history >}}
 
-You can use [YAML anchors](#anchors) with [script](index.md#script), [`before_script`](index.md#before_script),
-and [`after_script`](index.md#after_script) to use predefined commands in multiple jobs:
+- Support for anchors with the [`stages`](_index.md#stages) keyword [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439451) in GitLab 16.9.
+
+{{< /history >}}
+
+You can use [YAML anchors](#anchors) with [script](_index.md#script), [`before_script`](_index.md#before_script),
+and [`after_script`](_index.md#after_script) to use predefined commands in multiple jobs:
 
 ```yaml
 .some-script-before: &some-script-before
@@ -205,7 +218,7 @@ job2:
 
 ## Use `extends` to reuse configuration sections
 
-You can use the [`extends` keyword](index.md#extends) to reuse configuration in
+You can use the [`extends` keyword](_index.md#extends) to reuse configuration in
 multiple jobs. It is similar to [YAML anchors](#anchors), but simpler and you can
 [use `extends` with `includes`](#use-extends-and-include-together).
 
@@ -294,7 +307,7 @@ test4:
 ### Use `extends` and `include` together
 
 To reuse configuration from different configuration files,
-combine `extends` and [`include`](index.md#include).
+combine `extends` and [`include`](_index.md#include).
 
 In the following example, a `script` is defined in the `included.yml` file.
 Then, in the `.gitlab-ci.yml` file, `extends` refers
@@ -321,8 +334,7 @@ to the contents of the `script`:
 ### Merge details
 
 You can use `extends` to merge hashes but not arrays.
-The algorithm used for merge is "closest scope wins". When there are
-duplicate keys, GitLab performs a reverse deep merge based on the keys.
+When there are duplicate keys, GitLab performs a reverse deep merge based on the keys.
 Keys from the last member always override anything defined on other
 levels. For example:
 
@@ -383,18 +395,19 @@ In this example:
 
 ## `!reference` tags
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/266173) in GitLab 13.9.
-> - `rules` keyword support [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/322992) in GitLab 14.3.
-
 Use the `!reference` custom YAML tag to select keyword configuration from other job
 sections and reuse it in the current section. Unlike [YAML anchors](#anchors), you can
-use `!reference` tags to reuse configuration from [included](index.md#include) configuration
+use `!reference` tags to reuse configuration from [included](_index.md#include) configuration
 files as well.
+
+If you are using `!reference` tags to override configuration from included files, consider using
+[CI/CD inputs](../inputs/_index.md) instead. You cannot use CI/CD inputs in `!reference` tags,
+because `!reference` tags are evaluated before input interpolation.
 
 In the following example, a `script` and an `after_script` from two different locations are
 reused in the `test` job:
 
-- `setup.yml`:
+- `configs.yml`:
 
   ```yaml
   .setup:
@@ -406,7 +419,7 @@ reused in the `test` job:
 
   ```yaml
   include:
-    - local: setup.yml
+    - local: configs.yml
 
   .teardown:
     after_script:
@@ -441,10 +454,34 @@ test-vars-2:
     - printenv
 ```
 
+You can use multiple `!reference` tags to build up an array with `rules`, `script`, or stages.
+For example:
+
+```yaml
+.rules_prod:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+
+.rules_staging:
+  - if: $CI_COMMIT_BRANCH =~ /^wip-.*/
+  - if: $CI_PIPELINE_SOURCE == "push"
+
+deploy_job:
+  script: echo test
+  rules:
+    - !reference [.rules_prod]
+    - !reference [.rules_staging]
+```
+
+With all other keywords, you get a [`config should be an array of` validation error](../debugging.md#config-should-be-an-array-of-hashes-error-message).
+
 ### Nest `!reference` tags in `script`, `before_script`, and `after_script`
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/74792) in GitLab 14.8.
-> - Support for `!reference` with the [`stages`](../yaml/index.md#stages) keyword [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439451) in GitLab 16.9.
+{{< history >}}
+
+- Support for `!reference` with the [`stages`](_index.md#stages) keyword [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439451) in GitLab 16.9.
+
+{{< /history >}}
 
 You can nest `!reference` tags up to 10 levels deep in `script`, `before_script`, and `after_script` sections. Use nested tags to define reusable sections when building more complex scripts. For example:
 
@@ -468,7 +505,7 @@ In this example, the `nested-references` job runs all three `echo` commands.
 
 ### Configure your IDE to support `!reference` tags
 
-The [pipeline editor](../pipeline_editor/index.md) supports `!reference` tags. However, the schema rules for custom YAML
+The [pipeline editor](../pipeline_editor/_index.md) supports `!reference` tags. However, the schema rules for custom YAML
 tags like `!reference` might be treated as invalid by your editor by default.
 You can configure some editors to accept `!reference` tags. For example:
 

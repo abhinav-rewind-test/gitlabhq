@@ -1,10 +1,9 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Hardening - Configuration Recommendations
 ---
-
-# Hardening - Configuration Recommendations
 
 General hardening guidelines are outlined in the [main hardening documentation](hardening.md).
 
@@ -45,18 +44,16 @@ the security of NGINX itself:
    nginx['ssl_protocols'] = "TLSv1.2 TLSv1.3"
 
    ##! **Recommended in: https://nginx.org/en/docs/http/ngx_http_ssl_module.html**
-   nginx['ssl_session_cache'] = "builtin:1000  shared:SSL:10m"
+   nginx['ssl_session_cache'] = "builtin:1000 shared:SSL:10m"
 
    ##! **Default according to https://nginx.org/en/docs/http/ngx_http_ssl_module.html**
    nginx['ssl_session_timeout'] = "5m"
 
    # Should prevent logjam attack etc
-   nginx['ssl_dhparam'] = "/etc/gitlab/ssl/dhparams.pem" # changed from nil
+   nginx['ssl_dhparam'] = "/etc/gitlab/ssl/dhparam.pem" # changed from nil
 
    # Turn off session ticket reuse
    nginx['ssl_session_tickets'] = "off"
-   # Pick our own curve instead of what openssl hands us
-   nginx['ssl_ecdh_curve'] = "secp384r1"
    ```
 
 1. Reconfigure GitLab:
@@ -111,7 +108,7 @@ under [Configuring Git Protocol](../administration/git_protocol.md).
 
 ## Incoming Email
 
-You can configure a GitLab self-managed instance to allow for incoming email to be
+You can configure GitLab Self-Managed to allow for incoming email to be
 used for commenting or creating issues and merge requests by registered users on
 the GitLab instance. In a hardened environment you should not configure
 this feature as it involves outside communications sending in information.
@@ -136,9 +133,9 @@ nodes that only allow the other node to access those particular ports.
 
 ## Sidekiq Configuration
 
-In the [instructions for configuring an external Sidekiq](../administration/sidekiq/index.md)
+In the [instructions for configuring an external Sidekiq](../administration/sidekiq/_index.md)
 there are numerous references to configuring IP ranges. You must
-[configure HTTPS](../administration/sidekiq/index.md#enable-https),
+[configure HTTPS](../administration/sidekiq/_index.md#enable-https),
 and consider restricting those IP addresses to specific systems that Sidekiq talks to.
 You might have to adjust firewall rules at the operating system level as well.
 
@@ -158,15 +155,3 @@ disabling the container registry entirely. You may have to adjust firewall rules
 allow access - if a completely standalone system, you should restrict access to the
 Container Registry to localhost only. Specific examples of ports used and their
 configuration are also included in the documentation.
-
-<!-- ## Troubleshooting
-
-Include any troubleshooting steps that you can foresee. If you know beforehand what issues
-one might have when setting this up, or when something is changed, or on upgrading, it's
-important to describe those, too. Think of things that may go wrong and include them here.
-This is important to minimize requests for support, and to avoid doc comments with
-questions that you know someone might ask.
-
-Each scenario can be a third-level heading, for example `### Getting error message X`.
-If you have none to add when creating a doc, leave this section in place
-but commented out to help encourage others to add to it in the future. -->

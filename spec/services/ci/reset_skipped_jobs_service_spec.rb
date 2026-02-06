@@ -123,7 +123,7 @@ RSpec.describe Ci::ResetSkippedJobsService, :sidekiq_inline, feature_category: :
     end
 
     context 'when executed by a different user than the original owner' do
-      let(:retryer) { create(:user).tap { |u| project.add_maintainer(u) } }
+      let(:retryer) { create(:user, maintainer_of: project) }
       let(:service) { described_class.new(project, retryer) }
 
       it 'reassigns jobs with updated statuses to the retryer' do
@@ -404,6 +404,59 @@ RSpec.describe Ci::ResetSkippedJobsService, :sidekiq_inline, feature_category: :
     it_behaves_like 'with a stage-dag mixed pipeline'
     it_behaves_like 'with stage-dag mixed pipeline with some same-stage needs'
     it_behaves_like 'with same-stage needs'
+  end
+
+  context 'when the pipeline is a child pipeline' do
+    let(:config) do
+      <<-YAML
+      stages: [a]
+
+      a1:
+        stage: a
+        script: exit 0
+      YAML
+    end
+
+    before do
+      stub_ci_pipeline_yaml_file(config)
+
+      upstream_pipeline = create(:ci_pipeline, project: project)
+      bridge = create(:ci_bridge, :strategy_depend, pipeline: upstream_pipeline, status: 'success', user: user)
+      create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge)
+    end
+
+    it 'resets the status of the bridge' do
+      service.execute(input_processables)
+
+      expect(pipeline.source_bridge.reload.status).to eq('pending')
+    end
+
+    context 'when the bridge record has been modified by another process' do
+      before do
+        allow(pipeline.source_bridge).to receive(:created!).and_raise(ActiveRecord::StaleObjectError)
+      end
+
+      it 'logs an error without raising' do
+        expect(Gitlab::AppJsonLogger).to receive(:info).with(
+          class: described_class.name,
+          message: 'Skipping reset of stale source bridge',
+          pipeline_id: pipeline.id,
+          project_id: project.id
+        )
+
+        expect { service.execute(input_processables) }.not_to raise_error
+      end
+
+      context 'when the rescue_stale_object_errors_in_pipeline_processing feature flag is disabled' do
+        before do
+          stub_feature_flags(rescue_stale_object_errors_in_pipeline_processing: false)
+        end
+
+        it 'raises an error' do
+          expect { service.execute(input_processables) }.to raise_error(ActiveRecord::StaleObjectError)
+        end
+      end
+    end
   end
 
   private

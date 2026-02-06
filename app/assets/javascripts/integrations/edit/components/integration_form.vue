@@ -1,8 +1,8 @@
 <script>
 import { GlAlert, GlForm } from '@gitlab/ui';
-import axios from 'axios';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions, mapGetters } from 'vuex';
+import axios from '~/lib/utils/axios_utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { s__ } from '~/locale';
 import SafeHtml from '~/vue_shared/directives/safe_html';
@@ -73,7 +73,7 @@ export default {
     isSlackIntegration() {
       return this.propsSource.type === INTEGRATION_FORM_TYPE_SLACK;
     },
-    isGoogleCloudArtifactRegistryIntegration() {
+    isGoogleArtifactManagementIntegration() {
       return this.propsSource.type === INTEGRATION_FORM_TYPE_GOOGLE_CLOUD_ARTIFACT_REGISTRY;
     },
     isGoogleCloudIAMIntegration() {
@@ -82,7 +82,7 @@ export default {
     showHelpHtml() {
       if (
         this.isSlackIntegration ||
-        this.isGoogleCloudArtifactRegistryIntegration ||
+        this.isGoogleArtifactManagementIntegration ||
         this.isGoogleCloudIAMIntegration
       ) {
         return this.helpHtml;
@@ -196,7 +196,7 @@ export default {
   <gl-form
     ref="integrationForm"
     method="post"
-    class="gl-mt-6 gl-mb-3 gl-show-field-errors"
+    class="gl-show-field-errors"
     data-testid="integration-settings-form"
     :action="propsSource.formPath"
     :novalidate="!integrationActive"
@@ -237,7 +237,7 @@ export default {
 
     <section v-if="!hasSections">
       <active-checkbox
-        v-if="propsSource.showActive"
+        v-if="propsSource.manualActivation"
         :key="`${currentKey}-active-checkbox`"
         @toggle-integration-active="onToggleIntegrationState"
       />
@@ -251,11 +251,10 @@ export default {
 
     <template v-if="hasSections">
       <integration-form-section
-        v-for="(section, index) in customState.sections"
+        v-for="section in customState.sections"
         :key="section.type"
         :section="section"
         :is-validated="isValidated"
-        :class="{ 'gl-border-b gl-pb-3 gl-mb-6': index !== customState.sections.length - 1 }"
         @toggle-integration-active="onToggleIntegrationState"
         @request-jira-issue-types="onRequestJiraIssueTypes"
       />
@@ -273,7 +272,6 @@ export default {
 
     <integration-form-actions
       v-if="isEditable"
-      :has-sections="hasSections"
       :is-saving="isSaving"
       :is-testing="isTesting"
       :is-resetting="isResetting"

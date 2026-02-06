@@ -15,6 +15,11 @@ module MergeRequests
         merge_request.title = merge_request.draft_title
       end
 
+      if params.key?(:merge_after)
+        merge_after = params.delete(:merge_after)
+        UpdateMergeScheduleService.new(merge_request, merge_after: merge_after).execute
+      end
+
       update_merge_request_with_specialized_service(merge_request) || general_fallback(merge_request)
     end
 
@@ -33,9 +38,10 @@ module MergeRequests
       if merge_request.previous_changes.include?('title') ||
           merge_request.previous_changes.include?('description')
         todo_service.update_merge_request(merge_request, current_user, old_mentioned_users)
+        handle_title_and_desc_edits(merge_request, merge_request.previous_changes.keys)
       end
 
-      handle_target_branch_change(merge_request)
+      handle_target_branch_change(merge_request, changed_fields)
       handle_draft_status_change(merge_request, changed_fields)
 
       track_title_and_desc_edits(changed_fields)
@@ -50,8 +56,8 @@ module MergeRequests
       #   state machine, we want to push this as far down in the process so we
       #   avoid resetting #ActiveModel::Dirty
       #
-      if merge_request.previous_changes.include?('target_branch') ||
-          merge_request.previous_changes.include?('source_branch')
+      if changed_fields.include?('target_branch') ||
+          changed_fields.include?('source_branch')
         merge_request.mark_as_unchecked unless merge_request.unchecked?
       end
     end
@@ -61,22 +67,50 @@ module MergeRequests
       todo_service.update_merge_request(merge_request, current_user)
     end
 
-    def reopen_service
-      MergeRequests::ReopenService
-    end
-
-    def close_service
-      MergeRequests::CloseService
-    end
-
-    def after_update(issuable, old_associations)
+    def after_update(merge_request, old_associations)
       super
-      issuable.cache_merge_request_closes_issues!(current_user)
+
+      merge_request.cache_merge_request_closes_issues!(current_user) unless merge_request.auto_merge_enabled?
+      @trigger_work_item_updated = true
     end
 
     private
 
     attr_reader :target_branch_was_deleted
+
+    def trigger_updated_work_item_on_closing_issues(merge_request, old_closing_issues_ids)
+      new_issue_ids = merge_request.merge_requests_closing_issues.limit(1000).pluck(:issue_id) # rubocop:disable CodeReuse/ActiveRecord -- Implementation would be the same in the model
+      all_issue_ids = new_issue_ids | old_closing_issues_ids
+      return if all_issue_ids.blank?
+
+      WorkItem.id_in(all_issue_ids).find_each(batch_size: 100) do |work_item| # rubocop:disable CodeReuse/ActiveRecord -- Implementation would be the same in the model
+        GraphqlTriggers.work_item_updated(work_item)
+      end
+    end
+
+    override :associations_before_update
+    def associations_before_update(merge_request)
+      super.merge(
+        closing_issues_ids: merge_request.merge_requests_closing_issues.limit(1000).pluck(:issue_id) # rubocop:disable CodeReuse/ActiveRecord -- Implementation would be the same in the model
+      )
+    end
+
+    override :change_state
+    def change_state(merge_request, state_event)
+      return unless super
+
+      @trigger_work_item_updated = true
+    end
+
+    override :trigger_update_subscriptions
+    def trigger_update_subscriptions(merge_request, old_associations)
+      return unless @trigger_work_item_updated
+
+      trigger_updated_work_item_on_closing_issues(
+        merge_request,
+        old_associations.fetch(:closing_issues_ids, [])
+      )
+    end
 
     def general_fallback(merge_request)
       # We don't allow change of source/target projects and source branch
@@ -93,6 +127,24 @@ module MergeRequests
       update_task_event(merge_request) || update(merge_request)
     end
 
+    def handle_title_and_desc_edits(merge_request, changed_fields)
+      fields = %w[title description]
+
+      return unless changed_fields.any? { |field| fields.include?(field) }
+      return unless merge_request.auto_merge_enabled?
+      return unless should_publish_update_event?(merge_request, changed_fields)
+
+      ::Gitlab::EventStore.publish(
+        ::MergeRequests::AutoMerge::TitleDescriptionUpdateEvent.new(data: { current_user_id: current_user.id, merge_request_id: merge_request.id })
+      )
+    end
+
+    def should_publish_update_event?(merge_request, changed_fields)
+      ::Feature.enabled?(:merge_request_title_regex, merge_request.project) &&
+        changed_fields.include?('title') &&
+        merge_request.project.merge_request_title_regex.present?
+    end
+
     def track_title_and_desc_edits(changed_fields)
       tracked_fields = %w[title description]
 
@@ -102,7 +154,7 @@ module MergeRequests
         next unless changed_fields.include?(action)
 
         merge_request_activity_counter
-          .public_send("track_#{action}_edit_action".to_sym, user: current_user) # rubocop:disable GitlabSecurity/PublicSend
+          .public_send(:"track_#{action}_edit_action", user: current_user) # rubocop:disable GitlabSecurity/PublicSend
       end
     end
 
@@ -157,8 +209,8 @@ module MergeRequests
       resolve_todos_for(merge_request)
     end
 
-    def handle_target_branch_change(merge_request)
-      return unless merge_request.previous_changes.include?('target_branch')
+    def handle_target_branch_change(merge_request, changes)
+      return unless changes.include?('target_branch')
 
       create_branch_change_note(
         merge_request,
@@ -169,7 +221,18 @@ module MergeRequests
       )
 
       delete_approvals_on_target_branch_change(merge_request)
-      refresh_pipelines_on_merge_requests(merge_request, allow_duplicate: true)
+
+      # `target_branch_was_deleted` is set to true when MR gets re-targeted due to
+      # deleted target branch. In this case we don't want to create a new pipeline
+      # on behalf of MR author.
+      # We nullify head_pipeline_id to force that a new pipeline is explicitly
+      # created in order to pass mergeability checks.
+      if target_branch_was_deleted
+        merge_request.head_pipeline_id = nil
+        merge_request.retargeted = true
+      else
+        refresh_pipelines_on_merge_requests(merge_request, allow_duplicate: true)
+      end
 
       abort_auto_merge(merge_request, 'target branch was changed')
     end
@@ -186,7 +249,7 @@ module MergeRequests
         # email template itself, see `change_in_merge_request_draft_status_email` template.
         notify_draft_status_changed(merge_request)
         trigger_merge_request_status_updated(merge_request)
-        publish_draft_change_event(merge_request) if Feature.enabled?(:additional_merge_when_checks_ready, project)
+        publish_draft_change_event(merge_request)
       end
 
       if !old_title_draft && new_title_draft
@@ -254,7 +317,10 @@ module MergeRequests
 
     override :quick_action_options
     def quick_action_options
-      { merge_request_diff_head_sha: params.delete(:merge_request_diff_head_sha) }
+      {
+        merge_request_diff_head_sha: params.delete(:merge_request_diff_head_sha),
+        scope_validator: params[:scope_validator]
+      }
     end
 
     def update_merge_request_with_specialized_service(merge_request)
@@ -295,6 +361,8 @@ module MergeRequests
 
       merge_request.project.team.max_member_access_for_user_ids(user_ids)
       User.id_in(user_ids).map do |user|
+        link_composite_identity(user) if user.composite_identity_enforced? && user.service_account?
+
         if user.can?(:read_merge_request, merge_request)
           user.id
         else
@@ -305,6 +373,10 @@ module MergeRequests
           nil
         end
       end.compact
+    end
+
+    def link_composite_identity(user)
+      ::Gitlab::Auth::Identity.link_from_scoped_user(user, current_user)
     end
 
     def resolve_todos_for(merge_request)

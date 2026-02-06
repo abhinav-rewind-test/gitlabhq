@@ -13,7 +13,6 @@ RSpec.describe MergeRequests::ApprovalService, feature_category: :code_review_wo
 
     before do
       project.add_developer(user)
-      stub_feature_flags ff_require_saml_auth_to_approve: false
     end
 
     shared_examples 'no-op call' do
@@ -108,7 +107,15 @@ RSpec.describe MergeRequests::ApprovalService, feature_category: :code_review_wo
       it 'publishes MergeRequests::ApprovedEvent' do
         expect { service.execute(merge_request) }
           .to publish_event(MergeRequests::ApprovedEvent)
-          .with(current_user_id: user.id, merge_request_id: merge_request.id)
+          .with(current_user_id: user.id,
+            merge_request_id: merge_request.id,
+            approved_at: anything)
+      end
+
+      it 'changes reviewers state to unapproved' do
+        expect { service.execute(merge_request) }.to change {
+          merge_request.merge_request_reviewers.reload.all?(&:approved?)
+        }.from(false).to(true)
       end
 
       it_behaves_like 'triggers GraphQL subscription mergeRequestMergeStatusUpdated' do
@@ -121,6 +128,13 @@ RSpec.describe MergeRequests::ApprovalService, feature_category: :code_review_wo
 
       it_behaves_like 'triggers GraphQL subscription mergeRequestApprovalStateUpdated' do
         let(:action) { service.execute(merge_request) }
+      end
+
+      it 'triggers GraphQL subscription userMergeRequestUpdated' do
+        expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(user, merge_request)
+        expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(merge_request.author, merge_request)
+
+        service.execute(merge_request)
       end
     end
   end

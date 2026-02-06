@@ -1,5 +1,6 @@
 import { GlLink } from '@gitlab/ui';
 import { mount } from '@vue/test-utils';
+import { removeWhitespace } from 'helpers/text_helper';
 import { getTimeago } from '~/lib/utils/datetime_utility';
 import Edited from '~/issues/show/components/edited.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
@@ -12,22 +13,50 @@ describe('Edited component', () => {
 
   const findAuthorLink = () => wrapper.findComponent(GlLink);
   const findTimeAgoTooltip = () => wrapper.findComponent(TimeAgoTooltip);
-  const formatText = (text) => text.trim().replace(/\s\s+/g, ' ');
+  const formatText = (text) => removeWhitespace(text.trim());
 
   const mountComponent = (propsData) => mount(Edited, { propsData });
 
   describe('task status section', () => {
     describe('task status text', () => {
-      it('renders when there is a task status', () => {
-        wrapper = mountComponent({ taskCompletionStatus: { completed_count: 1, count: 3 } });
+      describe('when there is completion_count', () => {
+        it('renders when there is a task status', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completed_count: 1, count: 3 } });
 
-        expect(wrapper.text()).toContain('1 of 3 checklist items completed');
+          expect(wrapper.text()).toContain('1 of 3 checklist items completed');
+        });
+
+        it('does not render when task count is 0', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completed_count: 0, count: 0 } });
+
+          expect(wrapper.text()).not.toContain('0 of 0 checklist items completed');
+        });
+
+        it('renders "0 of x" when there is a task status and no items were checked yet', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completed_count: 0, count: 3 } });
+
+          expect(wrapper.text()).toContain('0 of 3 checklist items completed');
+        });
       });
 
-      it('does not render when task count is 0', () => {
-        wrapper = mountComponent({ taskCompletionStatus: { completed_count: 0, count: 0 } });
+      describe('when there is completionCount', () => {
+        it('renders when there is a task status', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completedCount: 1, count: 3 } });
 
-        expect(wrapper.text()).not.toContain('0 of 0 checklist items completed');
+          expect(wrapper.text()).toContain('1 of 3 checklist items completed');
+        });
+
+        it('does not render when task count is 0', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completedCount: 0, count: 0 } });
+
+          expect(wrapper.text()).not.toContain('0 of 0 checklist items completed');
+        });
+
+        it('renders "0 of x" when there is a task status and no items were checked yet', () => {
+          wrapper = mountComponent({ taskCompletionStatus: { completedCount: 0, count: 3 } });
+
+          expect(wrapper.text()).toContain('0 of 3 checklist items completed');
+        });
       });
     });
 

@@ -2,17 +2,21 @@
  * @module common-utils
  */
 
-import { GlBreakpointInstance as breakpointInstance } from '@gitlab/ui/dist/utils';
 import $ from 'jquery';
-import { isFunction, defer, escape, partial, toLower } from 'lodash';
+import { isFunction, escape, partial, toLower } from 'lodash';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import Cookies from '~/lib/utils/cookies';
 import { SCOPED_LABEL_DELIMITER } from '~/sidebar/components/labels/labels_select_widget/constants';
-import { DEFAULT_CI_CONFIG_PATH, CI_CONFIG_PATH_EXTENSION } from '~/lib/utils/constants';
+import {
+  CI_CONFIG_PATH_EXTENSION,
+  DEFAULT_CI_CONFIG_PATH,
+  NO_SCROLL_TO_HASH_CLASS,
+} from '~/lib/utils/constants';
+import { getCoveringElement, observeIntersectionOnce } from '~/lib/utils/viewport';
+import { scrollPastCoveringElements } from '~/lib/utils/sticky';
 import { convertToCamelCase, convertToSnakeCase } from './text_utility';
 import { isObject } from './type_utility';
 import { getLocationHash } from './url_utility';
-
-export const NO_SCROLL_TO_HASH_CLASS = 'js-no-scroll-to-hash';
 
 export const getPagePath = (index = 0) => {
   const { page = '' } = document.body.dataset;
@@ -28,9 +32,13 @@ export const checkPageAndAction = (page, action) => {
 
 export const isInIncidentPage = () => checkPageAndAction('incidents', 'show');
 export const isInIssuePage = () => checkPageAndAction('issues', 'show');
+export const isInWorkItemPage = () => checkPageAndAction('work_items', 'show');
 export const isInDesignPage = () => checkPageAndAction('issues', 'designs');
 export const isInMRPage = () =>
-  checkPageAndAction('merge_requests', 'show') || checkPageAndAction('merge_requests', 'diffs');
+  checkPageAndAction('merge_requests', 'show') ||
+  checkPageAndAction('merge_requests', 'diffs') ||
+  checkPageAndAction('merge_requests', 'rapid_diffs') ||
+  checkPageAndAction('merge_requests', 'reports');
 export const isInEpicPage = () => checkPageAndAction('epics', 'show');
 
 export const getDashPath = (path = window.location.pathname) => path.split('/-/')[1] || null;
@@ -57,18 +65,7 @@ export const disableButtonIfEmptyField = (fieldSelector, buttonSelector, eventNa
   });
 };
 
-/**
- * Return the given element's offset height, or 0 if the element doesn't exist.
- * Probably not useful outside of handleLocationHash.
- *
- * @param {HTMLElement} element The element to measure.
- * @returns {number} The element's offset height.
- */
-const getElementOffsetHeight = (element) => element?.offsetHeight ?? 0;
-
-// automatically adjust scroll position for hash urls taking the height of the navbar into account
-// https://github.com/twitter/bootstrap/issues/1768
-export const handleLocationHash = () => {
+export const handleLocationHash = async () => {
   let hash = getLocationHash();
   if (!hash) return;
 
@@ -77,42 +74,14 @@ export const handleLocationHash = () => {
 
   const target = document.getElementById(hash) || document.getElementById(`user-content-${hash}`);
 
-  // Allow targets to opt out of scroll behavior
-  if (target?.classList.contains(NO_SCROLL_TO_HASH_CLASS)) return;
+  if (!target || target.classList.contains(NO_SCROLL_TO_HASH_CLASS)) return;
 
-  const fixedTabs = document.querySelector('.js-tabs-affix');
-  const fixedDiffStats = document.querySelector('.js-diff-files-changed');
-  const headerLoggedOut = document.querySelector('.header-logged-out');
-  const fixedTopBar = document.querySelector('.top-bar-fixed');
-  const performanceBar = document.querySelector('#js-peek');
-  const topPadding = 8;
-  const diffFileHeader = document.querySelector('.js-file-title');
-  const fixedIssuableTitle = document.querySelector('.issue-sticky-header');
+  const { isIntersecting } = await observeIntersectionOnce(target);
+  const covered = await getCoveringElement(target);
+  if (isIntersecting && !covered) return;
 
-  let adjustment = 0;
-
-  adjustment -= getElementOffsetHeight(headerLoggedOut);
-  adjustment -= getElementOffsetHeight(fixedTabs);
-  adjustment -= getElementOffsetHeight(fixedDiffStats);
-  adjustment -= getElementOffsetHeight(fixedTopBar);
-  adjustment -= getElementOffsetHeight(performanceBar);
-  adjustment -= getElementOffsetHeight(diffFileHeader);
-
-  if (isInIssuePage()) {
-    adjustment -= getElementOffsetHeight(fixedIssuableTitle);
-  }
-
-  if (isInMRPage()) {
-    adjustment -= topPadding;
-  }
-
-  if (target?.scrollIntoView) {
-    target.scrollIntoView(true);
-  }
-
-  setTimeout(() => {
-    window.scrollBy(0, adjustment);
-  });
+  target.scrollIntoView(true);
+  await scrollPastCoveringElements(target);
 };
 
 // Check if element scrolled into viewport from above or below
@@ -128,7 +97,21 @@ export const isInViewport = (el, offset = {}) => {
   );
 };
 
-export const isMetaKey = (e) => e.metaKey || e.ctrlKey || e.altKey || e.shiftKey;
+export const isElementClipped = (element, scrollContainer) => {
+  const elementRect = element.getBoundingClientRect();
+  const containerRect = scrollContainer.getBoundingClientRect();
+
+  return (
+    elementRect.top < containerRect.top ||
+    elementRect.bottom > containerRect.bottom ||
+    elementRect.left < containerRect.left ||
+    elementRect.right > containerRect.right
+  );
+};
+
+export const isModifierKey = (e) => e.metaKey || e.ctrlKey || e.altKey || e.shiftKey;
+
+export const isMetaKey = (e) => e.metaKey || e.ctrlKey;
 
 // Identify following special clicks
 // 1) Cmd + Click on Mac (e.metaKey)
@@ -136,10 +119,12 @@ export const isMetaKey = (e) => e.metaKey || e.ctrlKey || e.altKey || e.shiftKey
 // 3) Middle-click or Mouse Wheel Click (e.which is 2)
 export const isMetaClick = (e) => e.metaKey || e.ctrlKey || e.which === 2;
 
+export const isMetaEnterKeyPair = (e) => isMetaKey(e) && e.key === 'Enter';
+
 /**
  * Get the current computed outer height for given selector.
  */
-export const getOuterHeight = (selector) => {
+const getOuterHeight = (selector) => {
   const element = document.querySelector(selector);
 
   if (!element) {
@@ -150,13 +135,13 @@ export const getOuterHeight = (selector) => {
 };
 
 export const contentTop = () => {
-  const isDesktop = breakpointInstance.isDesktop();
+  const isDesktop = PanelBreakpointInstance.isDesktop();
+
   const heightCalculators = [
     () => getOuterHeight('#js-peek'),
-    () => getOuterHeight('.header-logged-out'),
     () => getOuterHeight('.top-bar-fixed'),
     ({ desktop }) => {
-      const mrStickyHeader = document.querySelector('.merge-request-sticky-header');
+      const mrStickyHeader = document.querySelector('.js-merge-request-sticky-header-wrapper');
       if (mrStickyHeader) {
         return mrStickyHeader.offsetHeight;
       }
@@ -183,6 +168,7 @@ export const contentTop = () => {
         : 0;
     },
     ({ desktop }) => (desktop ? getOuterHeight('.mr-version-controls') : 0),
+    () => getOuterHeight('.super-topbar'),
   ];
 
   return heightCalculators.reduce((totalHeight, calculator) => {
@@ -190,36 +176,12 @@ export const contentTop = () => {
   }, 0);
 };
 
-export const scrollToElement = (element, options = {}) => {
-  let el = element;
-  if (element instanceof $) {
-    // eslint-disable-next-line prefer-destructuring
-    el = element[0];
-  } else if (typeof el === 'string') {
-    el = document.querySelector(element);
-  }
-
-  if (el && el.getBoundingClientRect) {
-    // In the previous implementation, jQuery naturally deferred this scrolling.
-    // Unfortunately, we're quite coupled to this implementation detail now.
-    defer(() => {
-      const { duration = 200, offset = 0, behavior = duration ? 'smooth' : 'auto' } = options;
-      const y = el.getBoundingClientRect().top + window.pageYOffset + offset - contentTop();
-      window.scrollTo({ top: y, behavior });
-    });
-  }
-};
-
-export const scrollToElementWithContext = (element, options) => {
-  const offsetMultiplier = -0.1;
-  return scrollToElement(element, { ...options, offset: window.innerHeight * offsetMultiplier });
-};
-
 /**
  * Returns a function that can only be invoked once between
  * each browser screen repaint.
  * @param {Function} fn
  */
+
 export const debounceByAnimationFrame = (fn) => {
   let requestId;
 
@@ -304,6 +266,12 @@ export const insertText = (target, text) => {
   const insertedText = text instanceof Function ? text(textBefore, textAfter) : text;
   const hasSelection = selectionEnd !== selectionStart;
 
+  const currentActiveElement = document.activeElement;
+
+  if (document.activeElement !== target) {
+    target.focus();
+  }
+
   // The `execCommand` is officially deprecated.  However, for `insertText`,
   // there is currently no alternative. We need to use it in order to trigger
   // the browser's undo tracking when we insert text.
@@ -338,6 +306,10 @@ export const insertText = (target, text) => {
   const event = document.createEvent('Event');
   event.initEvent('autosize:update', true, false);
   target.dispatchEvent(event);
+
+  if (currentActiveElement !== target) {
+    currentActiveElement.focus();
+  }
 };
 
 /**
@@ -466,10 +438,14 @@ export const backOff = (fn, timeout = 60000) => {
   });
 };
 
-export const spriteIcon = (icon, className = '') => {
+export const spriteIcon = (icon, className = '', color = '') => {
   const classAttribute = className.length > 0 ? `class="${className}"` : '';
+  // Leading space before `style` attribute is kept on purpose
+  // to prevent causing all snapshot tests to fail when `color`
+  // is not provided.
+  const styleAttribute = color ? ` style="color: ${color};"` : '';
 
-  return `<svg ${classAttribute}><use xlink:href="${gon.sprite_icons}#${escape(icon)}" /></svg>`;
+  return `<svg ${classAttribute}${styleAttribute}><use xlink:href="${gon.sprite_icons}#${escape(icon)}" /></svg>`;
 };
 
 /**
@@ -486,9 +462,9 @@ export const spriteIcon = (icon, className = '') => {
  * @param {ConversionFunction} conversionFunction - Function to apply to each prop of the object.
  * @param {Object} obj - Object to be converted.
  * @param {Object} options - Object containing additional options.
- * @param {boolean} options.deep - FLag to allow deep object converting
- * @param {Array[]} options.dropKeys - List of properties to discard while building new object
- * @param {Array[]} options.ignoreKeyNames - List of properties to leave intact (as snake_case) while building new object
+ * @param {boolean} [options.deep] - Flag to allow deep object converting
+ * @param {Array[]} [options.dropKeys] - List of properties to discard while building new object
+ * @param {Array[]} [options.ignoreKeyNames] - List of properties to leave intact (as snake_case) while building new object
  */
 export const convertObjectProps = (conversionFunction, obj = {}, options = {}) => {
   if (!isFunction(conversionFunction) || obj === null) {
@@ -542,9 +518,9 @@ export const convertObjectProps = (conversionFunction, obj = {}, options = {}) =
  *
  * @param {Object} obj - Object to be converted.
  * @param {Object} options - Object containing additional options.
- * @param {boolean} options.deep - FLag to allow deep object converting
- * @param {Array[]} options.dropKeys - List of properties to discard while building new object
- * @param {Array[]} options.ignoreKeyNames - List of properties to leave intact (as snake_case) while building new object
+ * @param {boolean} [options.deep] - Flag to allow deep object converting
+ * @param {Array[]} [options.dropKeys] - List of properties to discard while building new object
+ * @param {Array[]} [options.ignoreKeyNames] - List of properties to leave intact (as snake_case) while building new object
  */
 export const convertObjectPropsToCamelCase = (obj = {}, options = {}) =>
   convertObjectProps(convertToCamelCase, obj, options);
@@ -559,9 +535,9 @@ export const convertObjectPropsToCamelCase = (obj = {}, options = {}) =>
  *
  * @param {Object} obj - Object to be converted.
  * @param {Object} options - Object containing additional options.
- * @param {boolean} options.deep - FLag to allow deep object converting
- * @param {Array[]} options.dropKeys - List of properties to discard while building new object
- * @param {Array[]} options.ignoreKeyNames - List of properties to leave intact while building new object
+ * @param {boolean} [options.deep] - Flag to allow deep object converting
+ * @param {Array[]} [options.dropKeys] - List of properties to discard while building new object
+ * @param {Array[]} [options.ignoreKeyNames] - List of properties to leave intact while building new object
  */
 export const convertObjectPropsToLowerCase = partial(convertObjectProps, toLower);
 
@@ -572,9 +548,9 @@ export const convertObjectPropsToLowerCase = partial(convertObjectProps, toLower
  *
  * @param {Object} obj - Object to be converted.
  * @param {Object} options - Object containing additional options.
- * @param {boolean} options.deep - FLag to allow deep object converting
- * @param {Array[]} options.dropKeys - List of properties to discard while building new object
- * @param {Array[]} options.ignoreKeyNames - List of properties to leave intact (as snake_case) while building new object
+ * @param {boolean} [options.deep] - Flag to allow deep object converting
+ * @param {Array[]} [options.dropKeys] - List of properties to discard while building new object
+ * @param {Array[]} [options.ignoreKeyNames] - List of properties to leave intact (as snake_case) while building new object
  */
 export const convertObjectPropsToSnakeCase = (obj = {}, options = {}) =>
   convertObjectProps(convertToSnakeCase, obj, options);
@@ -659,7 +635,8 @@ export const navigationType = {
  * @param {Object} label
  * @returns Boolean
  */
-export const isScopedLabel = ({ title = '' } = {}) => title.includes(SCOPED_LABEL_DELIMITER);
+export const isScopedLabel = ({ title = '', name = '' } = {}) =>
+  title.includes(SCOPED_LABEL_DELIMITER) || name.includes(SCOPED_LABEL_DELIMITER);
 
 const scopedLabelRegex = new RegExp(`(.*)${SCOPED_LABEL_DELIMITER}.*`);
 
@@ -730,6 +707,8 @@ export const isCurrentUser = (userId) => {
 /**
  * Clones an object via JSON stringifying and re-parsing.
  * This ensures object references are not persisted (e.g. unlike lodash cloneDeep)
+ * See https://github.com/lodash/lodash/issues/4710#issuecomment-606892867 for details on cloneDeep circular references
+ * See https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm for the underlying mechanism used by Lodash
  */
 export const cloneWithoutReferences = (obj) => {
   return JSON.parse(JSON.stringify(obj));
@@ -750,10 +729,23 @@ export const hasCiConfigExtension = (path) => {
 };
 
 /**
- * Checks if an element with position:sticky is stuck
- *
- * @param el
- * @returns {boolean}
+ * Force fluid layout for a single component. Useful when using VueRouter to avoid
+ * Rails-based layout changes persisting unintentionally.
  */
-export const isElementStuck = (el) =>
-  el.getBoundingClientRect().top <= parseInt(getComputedStyle(el).top, 10);
+export function setPageFullWidth() {
+  const wrappers = document.querySelectorAll('.container-fluid.container-limited');
+
+  wrappers.forEach((el) => {
+    el.classList.add('not-container-limited');
+    el.classList.remove('container-limited');
+  });
+}
+
+export function setPageDefaultWidth() {
+  const wrappers = document.querySelectorAll('.container-fluid.not-container-limited');
+
+  wrappers.forEach((el) => {
+    el.classList.add('container-limited');
+    el.classList.remove('not-container-limited');
+  });
+}

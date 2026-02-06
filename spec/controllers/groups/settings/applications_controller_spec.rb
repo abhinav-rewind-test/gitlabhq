@@ -2,10 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe Groups::Settings::ApplicationsController do
+RSpec.describe Groups::Settings::ApplicationsController, feature_category: :system_access do
   let_it_be(:user)  { create(:user) }
+  let_it_be(:admin) { create(:user, :admin) }
   let_it_be(:group) { create(:group) }
   let_it_be(:application) { create(:oauth_application, owner_id: group.id, owner_type: 'Namespace') }
+  let(:pagination_limit) { 20 }
 
   before do
     sign_in(user)
@@ -24,8 +26,43 @@ RSpec.describe Groups::Settings::ApplicationsController do
         expect(assigns[:scopes]).to be_kind_of(Doorkeeper::OAuth::Scopes)
       end
 
+      context 'when it renders all group applications' do
+        before do
+          21.times do
+            create(:oauth_application, owner_id: group.id, owner_type: 'Namespace')
+          end
+        end
+
+        render_views
+
+        it 'returns the total number of group applications' do
+          get :index, params: { group_id: group }
+
+          expect(assigns(:applications_total_count)).to eq(22)
+        end
+
+        it 'returns the maximum paginated limit per page', :aggregate_failures do
+          get :index, params: { group_id: group }
+
+          expect(assigns(:applications).count).to eq(pagination_limit)
+          expect(assigns(:applications).has_next_page?).to be_truthy
+          expect(response.body).to have_css('.gl-pagination-item[rel=next]')
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+
+        it 'returns the second page with the remaining applications', :aggregate_failures do
+          get :index, params: { group_id: group }
+          get :index, params: { group_id: group, cursor: assigns(:applications).cursor_for_next_page }
+
+          expect(assigns(:applications).count).to eq(2) # extra 1 from let_it_be(:application)
+          expect(assigns(:applications).has_next_page?).to be_falsey
+          expect(response.body).to have_css('.gl-pagination-item[rel=prev]')
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
+
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -56,7 +93,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -90,7 +127,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
       end
 
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -121,7 +158,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -151,20 +188,29 @@ RSpec.describe Groups::Settings::ApplicationsController do
         create_params = attributes_for(:application, trusted: false, confidential: false, scopes: ['api'])
 
         expect do
-          post :create, params: { group_id: group, doorkeeper_application: create_params }
-        end.to change { Doorkeeper::Application.count }.by(1)
+          post :create, params: { group_id: group, authn_oauth_application: create_params }
+        end.to change { Authn::OauthApplication.count }.by(1)
 
-        application = Doorkeeper::Application.last
+        application = Authn::OauthApplication.last
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(response).to render_template :show
         expect(application).to have_attributes(create_params.except(:uid, :owner_type))
       end
 
+      it 'sets organization_id from Current.organization' do
+        create_params = attributes_for(:application, trusted: false, confidential: false, scopes: ['api'])
+
+        post :create, params: { group_id: group, authn_oauth_application: create_params }
+
+        application = Authn::OauthApplication.last
+        expect(application.organization_id).to eq(current_organization.id)
+      end
+
       it 'renders the application form on errors' do
         expect do
-          post :create, params: { group_id: group, doorkeeper_application: attributes_for(:application).merge(redirect_uri: nil) }
-        end.not_to change { Doorkeeper::Application.count }
+          post :create, params: { group_id: group, authn_oauth_application: attributes_for(:application).merge(redirect_uri: nil) }
+        end.not_to change { Authn::OauthApplication.count }
 
         expect(response).to render_template :index
         expect(assigns[:scopes]).to be_kind_of(Doorkeeper::OAuth::Scopes)
@@ -175,10 +221,10 @@ RSpec.describe Groups::Settings::ApplicationsController do
           create_params = attributes_for(:application, confidential: true, scopes: ['read_user'])
 
           expect do
-            post :create, params: { group_id: group, doorkeeper_application: create_params }
-          end.to change { Doorkeeper::Application.count }.by(1)
+            post :create, params: { group_id: group, authn_oauth_application: create_params }
+          end.to change { Authn::OauthApplication.count }.by(1)
 
-          application = Doorkeeper::Application.last
+          application = Authn::OauthApplication.last
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(response).to render_template :show
@@ -191,15 +237,15 @@ RSpec.describe Groups::Settings::ApplicationsController do
           create_params = attributes_for(:application, trusted: true, confidential: false)
 
           expect do
-            post :create, params: { group_id: group, doorkeeper_application: create_params }
-          end.not_to change { Doorkeeper::Application.count }
+            post :create, params: { group_id: group, authn_oauth_application: create_params }
+          end.not_to change { Authn::OauthApplication.count }
 
           expect(response).to render_template :index
         end
       end
 
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -212,10 +258,10 @@ RSpec.describe Groups::Settings::ApplicationsController do
           create_params = attributes_for(:application, trusted: false, confidential: false, scopes: ['api'])
 
           expect do
-            post :create, params: { group_id: group, doorkeeper_application: create_params }
-          end.to change { Doorkeeper::Application.count }.by(1)
+            post :create, params: { group_id: group, authn_oauth_application: create_params }
+          end.to change { Authn::OauthApplication.count }.by(1)
 
-          application = Doorkeeper::Application.last
+          application = Authn::OauthApplication.last
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(response).to render_template :show
@@ -233,13 +279,13 @@ RSpec.describe Groups::Settings::ApplicationsController do
         end
 
         it 'renders a 404' do
-          post :create, params: { group_id: group, doorkeeper_application: create_params }
+          post :create, params: { group_id: group, authn_oauth_application: create_params }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -252,10 +298,10 @@ RSpec.describe Groups::Settings::ApplicationsController do
             create_params = attributes_for(:application, trusted: false, confidential: false, scopes: ['api'])
 
             expect do
-              post :create, params: { group_id: group, doorkeeper_application: create_params }
-            end.to change { Doorkeeper::Application.count }.by(1)
+              post :create, params: { group_id: group, authn_oauth_application: create_params }
+            end.to change { Authn::OauthApplication.count }.by(1)
 
-            application = Doorkeeper::Application.last
+            application = Authn::OauthApplication.last
 
             expect(response).to have_gitlab_http_status(:ok)
             expect(response).to render_template :show
@@ -291,7 +337,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
       end
 
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -312,7 +358,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
 
       context 'when renew fails' do
         before do
-          allow_next_found_instance_of(Doorkeeper::Application) do |application|
+          allow_next_found_instance_of(Authn::OauthApplication) do |application|
             allow(application).to receive(:save).and_return(false)
           end
         end
@@ -342,7 +388,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -371,7 +417,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
       it 'updates the application' do
         doorkeeper_params = { redirect_uri: 'http://example.com/', trusted: true, confidential: false }
 
-        patch :update, params: { group_id: group, id: application.id, doorkeeper_application: doorkeeper_params }
+        patch :update, params: { group_id: group, id: application.id, authn_oauth_application: doorkeeper_params }
 
         application.reload
 
@@ -381,7 +427,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
       end
 
       it 'renders the application form on errors' do
-        patch :update, params: { group_id: group, id: application.id, doorkeeper_application: { redirect_uri: nil } }
+        patch :update, params: { group_id: group, id: application.id, authn_oauth_application: { redirect_uri: nil } }
 
         expect(response).to render_template :edit
         expect(assigns[:scopes]).to be_kind_of(Doorkeeper::OAuth::Scopes)
@@ -391,7 +437,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         it 'successfully sets the application to confidential' do
           doorkeeper_params = { confidential: true }
 
-          patch :update, params: { group_id: group, id: application.id, doorkeeper_application: doorkeeper_params }
+          patch :update, params: { group_id: group, id: application.id, authn_oauth_application: doorkeeper_params }
 
           application.reload
 
@@ -401,7 +447,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
       end
 
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -413,7 +459,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         it 'updates the application' do
           doorkeeper_params = { redirect_uri: 'http://example.com/', trusted: true, confidential: false }
 
-          patch :update, params: { group_id: group, id: application.id, doorkeeper_application: doorkeeper_params }
+          patch :update, params: { group_id: group, id: application.id, authn_oauth_application: doorkeeper_params }
 
           application.reload
 
@@ -433,13 +479,13 @@ RSpec.describe Groups::Settings::ApplicationsController do
         it 'renders a 404' do
           doorkeeper_params = { redirect_uri: 'http://example.com/', trusted: true, confidential: false }
 
-          patch :update, params: { group_id: group, id: application.id, doorkeeper_application: doorkeeper_params }
+          patch :update, params: { group_id: group, id: application.id, authn_oauth_application: doorkeeper_params }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -451,7 +497,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
           it 'updates the application' do
             doorkeeper_params = { redirect_uri: 'http://example.com/', trusted: true, confidential: false }
 
-            patch :update, params: { group_id: group, id: application.id, doorkeeper_application: doorkeeper_params }
+            patch :update, params: { group_id: group, id: application.id, authn_oauth_application: doorkeeper_params }
 
             application.reload
 
@@ -473,12 +519,12 @@ RSpec.describe Groups::Settings::ApplicationsController do
       it 'deletes the application' do
         delete :destroy, params: { group_id: group, id: application.id }
 
-        expect(Doorkeeper::Application.exists?(application.id)).to be_falsy
+        expect(Authn::OauthApplication.exists?(application.id)).to be_falsy
         expect(response).to redirect_to(group_settings_applications_url(group))
       end
 
       context 'when admin mode is enabled' do
-        let!(:user) { create(:user, :admin) }
+        let(:user) { admin }
 
         before do
           Gitlab::Session.with_session(controller.session) do
@@ -490,7 +536,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         it 'deletes the application' do
           delete :destroy, params: { group_id: group, id: application.id }
 
-          expect(Doorkeeper::Application.exists?(application.id)).to be_falsy
+          expect(Authn::OauthApplication.exists?(application.id)).to be_falsy
           expect(response).to redirect_to(group_settings_applications_url(group))
         end
       end
@@ -509,7 +555,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
         end
 
         context "when admin mode is enabled for the admin user who is a #{role} of a group" do
-          let!(:user) { create(:user, :admin) }
+          let(:user) { admin }
 
           before do
             Gitlab::Session.with_session(controller.session) do
@@ -521,7 +567,7 @@ RSpec.describe Groups::Settings::ApplicationsController do
           it 'deletes the application' do
             delete :destroy, params: { group_id: group, id: application.id }
 
-            expect(Doorkeeper::Application.exists?(application.id)).to be_falsy
+            expect(Authn::OauthApplication.exists?(application.id)).to be_falsy
             expect(response).to redirect_to(group_settings_applications_url(group))
           end
         end

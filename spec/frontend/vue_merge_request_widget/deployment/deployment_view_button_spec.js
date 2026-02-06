@@ -1,4 +1,4 @@
-import { GlDropdown, GlLink } from '@gitlab/ui';
+import { GlCollapsibleListbox, GlLink } from '@gitlab/ui';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import DeploymentViewButton from '~/vue_merge_request_widget/components/deployment/deployment_view_button.vue';
 import ReviewAppLink from '~/vue_merge_request_widget/components/review_app_link.vue';
@@ -28,10 +28,9 @@ describe('Deployment View App button', () => {
   });
 
   const findReviewAppLink = () => wrapper.findComponent(ReviewAppLink);
-  const findMrWigdetDeploymentDropdown = () => wrapper.findComponent(GlDropdown);
-  const findMrWigdetDeploymentDropdownIcon = () =>
-    wrapper.findByTestId('mr-wigdet-deployment-dropdown-icon');
-  const findDeployUrlMenuItems = () => wrapper.findAllComponents(GlLink);
+  const findMrWidgetDeploymentDropdown = () => wrapper.findComponent(GlCollapsibleListbox);
+  const findDeployUrlMenuItems = () =>
+    wrapper.findByTestId('deploy-url-menu').findAllComponents(GlLink);
 
   describe('text', () => {
     it('renders text as passed', () => {
@@ -50,7 +49,7 @@ describe('Deployment View App button', () => {
     });
 
     it('renders the link to the review app without dropdown', () => {
-      expect(findMrWigdetDeploymentDropdown().exists()).toBe(false);
+      expect(findMrWidgetDeploymentDropdown().exists()).toBe(false);
     });
   });
 
@@ -65,8 +64,7 @@ describe('Deployment View App button', () => {
     });
 
     it('renders the link to the review app without dropdown', () => {
-      expect(findMrWigdetDeploymentDropdown().exists()).toBe(false);
-      expect(findMrWigdetDeploymentDropdownIcon().exists()).toBe(false);
+      expect(findMrWidgetDeploymentDropdown().exists()).toBe(false);
     });
 
     it('renders the link to the review app linked to to the first change', () => {
@@ -87,8 +85,15 @@ describe('Deployment View App button', () => {
     });
 
     it('renders the link to the review app with dropdown', () => {
-      expect(findMrWigdetDeploymentDropdown().exists()).toBe(true);
-      expect(findMrWigdetDeploymentDropdownIcon().exists()).toBe(true);
+      const dropdown = findMrWidgetDeploymentDropdown();
+      const thirdChangeUrl = deploymentMockData.changes[2].external_url;
+
+      expect(dropdown.exists()).toBe(true);
+
+      const links = dropdown.findAll('a');
+
+      expect(links).toHaveLength(3);
+      expect(links.at(2).attributes('href')).toBe(thirdChangeUrl);
     });
 
     it('renders all the links to the review apps', () => {

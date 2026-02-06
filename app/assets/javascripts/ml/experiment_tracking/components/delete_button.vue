@@ -39,7 +39,6 @@ export default {
   },
   data() {
     return {
-      isDeleteModalVisible: false,
       modal: {
         id: 'ml-experiments-delete-modal',
         deleteConfirmation: this.deleteConfirmationText,
@@ -65,7 +64,7 @@ export default {
 <template>
   <div>
     <gl-disclosure-dropdown
-      placement="right"
+      placement="bottom-end"
       category="tertiary"
       :aria-label="__('More actions')"
       icon="ellipsis_v"
@@ -76,11 +75,7 @@ export default {
         :aria-label="actionPrimaryText"
         variant="danger"
       >
-        <template #list-item>
-          <span class="gl-text-red-500">
-            {{ actionPrimaryText }}
-          </span>
-        </template>
+        <template #list-item>{{ actionPrimaryText }}</template>
       </gl-disclosure-dropdown-item>
     </gl-disclosure-dropdown>
 

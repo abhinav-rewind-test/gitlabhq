@@ -2,11 +2,12 @@
 
 module Banzai
   module Pipeline
-    class SingleLinePipeline < GfmPipeline
+    class SingleLinePipeline < BasePipeline
       def self.filters
         @filters ||= FilterArray[
           Filter::HtmlEntityFilter,
-          Filter::SanitizationFilter,
+          Filter::MinimumMarkdownSanitizationFilter,
+          Filter::SanitizeLinkFilter,
           Filter::AssetProxyFilter,
           Filter::EmojiFilter,
           Filter::CustomEmojiFilter,
@@ -20,22 +21,23 @@ module Banzai
         [
           Filter::References::UserReferenceFilter,
           Filter::References::IssueReferenceFilter,
+          Filter::References::WorkItemReferenceFilter,
           Filter::References::ExternalIssueReferenceFilter,
           Filter::References::MergeRequestReferenceFilter,
           Filter::References::SnippetReferenceFilter,
           Filter::References::CommitRangeReferenceFilter,
           Filter::References::CommitReferenceFilter,
           Filter::References::AlertReferenceFilter,
-          Filter::References::FeatureFlagReferenceFilter
+          Filter::References::FeatureFlagReferenceFilter,
+          Filter::References::WikiPageReferenceFilter
         ]
       end
 
       def self.transform_context(context)
         context = Filter::AssetProxyFilter.transform_context(context)
+        context[:only_path] = true unless context.key?(:only_path)
 
-        super(context).merge(
-          no_sourcepos: true
-        )
+        context
       end
     end
   end

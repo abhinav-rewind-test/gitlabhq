@@ -7,8 +7,8 @@ RSpec.describe Mutations::ReleaseAssetLinks::Create, feature_category: :release_
 
   let_it_be(:project) { create(:project, :private, :repository) }
   let_it_be(:release) { create(:release, project: project, tag: 'v13.10') }
-  let_it_be(:reporter) { create(:user).tap { |u| project.add_reporter(u) } }
-  let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
+  let_it_be(:reporter) { create(:user, reporter_of: project) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   let(:current_user) { developer }
   let(:context) { { current_user: current_user } }
@@ -98,7 +98,7 @@ RSpec.describe Mutations::ReleaseAssetLinks::Create, feature_category: :release_
       context "when the release doesn't exist" do
         let(:tag) { "nonexistent-tag" }
 
-        it_behaves_like 'returns errors-as-data', ['Release with tag "nonexistent-tag" was not found']
+        it_behaves_like 'returns errors-as-data', ['Release with tag &quot;nonexistent-tag&quot; was not found']
       end
 
       context 'when the URL is badly formatted' do

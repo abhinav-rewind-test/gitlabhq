@@ -15,7 +15,7 @@ RSpec.describe "Admin > Admin sees projects statistics", feature_category: :grou
     visit admin_projects_path
   end
 
-  it "shows project statistics for projects that have them" do
-    expect(page.all('.stats').map(&:text)).to contain_exactly("0 B", "Unknown")
+  it "shows project statistics for projects that have them", :js do
+    expect(page.all('[data-testid="storage-size"]').map(&:text)).to contain_exactly("0 B", "Unknown")
   end
 end

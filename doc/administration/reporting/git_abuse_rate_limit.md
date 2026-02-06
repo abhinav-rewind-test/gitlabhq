@@ -1,23 +1,31 @@
 ---
-stage: Govern
-group: Anti-Abuse
+stage: Software Supply Chain Security
+group: Authorization
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+gitlab_dedicated: yes
+description: Configure Git abuse rate limiting to automatically restrict and ban users who exceed defined repository download limits on a GitLab instance
+title: Git abuse rate limit (administration)
 ---
 
-# Git abuse rate limit (administration)
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** Self-managed
+- Tier: Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/8066) in GitLab 15.2 [with a flag](../../administration/feature_flags.md) named `git_abuse_rate_limit_feature_flag`. Disabled by default.
-> - [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/394996) in GitLab 15.11. Feature flag `git_abuse_rate_limit_feature_flag` removed.
+{{< /details >}}
 
-This is the administration documentation. For information about Git abuse rate limiting at the group level, see the [group-level documentation](../../user/group/reporting/git_abuse_rate_limit.md).
+{{< history >}}
 
-Git abuse rate limiting is a feature to automatically [ban users](../../administration/moderate_users.md#ban-and-unban-users) who download, clone, or fork more than a specified number of repositories in any project in the instance in a given time frame. Banned users cannot sign in to the instance and cannot access any non-public group via HTTP or SSH. The rate limit also applies to users who authenticate with a [personal](../../user/profile/personal_access_tokens.md) or [group access token](../../user/group/settings/group_access_tokens.md).
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/8066) in GitLab 15.2 [with a flag](../feature_flags/_index.md) named `git_abuse_rate_limit_feature_flag`. Disabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/394996) in GitLab 15.11. Feature flag `git_abuse_rate_limit_feature_flag` removed.
 
-Git abuse rate limiting does not apply to instance administrators, [deploy tokens](../../user/project/deploy_tokens/index.md), or [deploy keys](../../user/project/deploy_keys/index.md).
+{{< /history >}}
+
+This is the administration documentation. For information about Git abuse rate limiting for a group, see the [group documentation](../../user/group/reporting/git_abuse_rate_limit.md).
+
+Git abuse rate limiting is a feature to automatically [ban users](../moderate_users.md#ban-and-unban-users) who download, clone, or fork more than a specified number of repositories in any project in the instance in a given time frame. Banned users cannot sign in to the instance and cannot access any non-public group via HTTP or SSH. The rate limit also applies to users who authenticate with a [personal](../../user/profile/personal_access_tokens.md) or [group access token](../../user/group/settings/group_access_tokens.md).
+
+Git abuse rate limiting does not apply to instance administrators, [deploy tokens](../../user/project/deploy_tokens/_index.md), or [deploy keys](../../user/project/deploy_keys/_index.md).
 
 How GitLab determines a user's rate limit is under development.
 GitLab team members can view more information in this confidential epic:
@@ -25,12 +33,12 @@ GitLab team members can view more information in this confidential epic:
 
 ## Configure Git abuse rate limiting
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Reporting**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Reporting**.
 1. Expand **Git abuse rate limit**.
 1. Update the Git abuse rate limit settings:
-   1. Enter a number in the **Number of repositories** field, greater than or equal to `0` and less than or equal to `10,000`. This number specifies the maximum amount of unique repositories a user can download in the specified time period before they're banned. When set to `0`, Git abuse rate limiting is disabled.
-   1. Enter a number in the **Reporting time period (seconds)** field, greater than or equal to `0` and less than or equal to `86,400` (10 days). This number specifies the time in seconds a user can download the maximum amount of repositories before they're banned. When set to `0`, Git abuse rate limiting is disabled.
+   1. Enter a number in the **Number of repositories** field, greater than or equal to `0` and less than or equal to `10000`. This number specifies the maximum amount of unique repositories a user can download in the specified time period before they're banned. When set to `0`, Git abuse rate limiting is disabled.
+   1. Enter a number in the **Reporting time period (seconds)** field, greater than or equal to `0` and less than or equal to `864000` (10 days). This number specifies the time in seconds a user can download the maximum amount of repositories before they're banned. When set to `0`, Git abuse rate limiting is disabled.
    1. Optional. Exclude up to `100` users by adding them to the **Excluded users** field. Excluded users are not automatically banned.
    1. Add up to `100` users to the **Send notifications to** field. You must select at least one user. All application administrators are selected by default.
    1. Optional. Turn on the **Automatically ban users from this namespace when they exceed the specified limits** toggle to enable automatic banning.
@@ -44,8 +52,8 @@ If automatic banning is enabled, an email notification is sent when a user is ab
 
 ## Unban a user
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Overview > Users**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Overview** > **Users**.
 1. Select the **Banned** tab and search for the account you want to unban.
 1. From the **User administration** dropdown list select **Unban user**.
 1. On the confirmation dialog, select **Unban user**.

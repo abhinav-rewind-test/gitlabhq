@@ -12,7 +12,7 @@ module AutoMerge
       end
 
       notify(merge_request)
-      AutoMergeProcessWorker.perform_async(merge_request.id)
+      AutoMergeProcessWorker.perform_async({ 'merge_request_id' => merge_request.id })
 
       strategy.to_sym
     rescue StandardError => e
@@ -58,25 +58,41 @@ module AutoMerge
 
     def available_for?(merge_request)
       strong_memoize("available_for_#{merge_request.id}") do
-        merge_request.can_be_merged_by?(current_user) &&
-          merge_request.open? &&
-          !merge_request.broken? &&
-          overrideable_available_for_checks(merge_request) &&
-          yield
+        availability_details(merge_request).available?
       end
     end
 
     private
 
-    def overrideable_available_for_checks(merge_request)
-      !merge_request.draft? &&
-        merge_request.mergeable_discussions_state? &&
-        !merge_request.merge_blocked_by_other_mrs?
+    def availability_details(merge_request)
+      strong_memoize("availability_details_#{merge_request.id}") do
+        unless merge_request.can_be_merged_by?(current_user)
+          next AutoMerge::AvailabilityCheck.error(unavailable_reason: :forbidden)
+        end
+
+        mergeability_checks = merge_request.execute_merge_checks(
+          MergeRequest.all_mergeability_checks,
+          params: skippable_available_for_checks(merge_request),
+          execute_all: false
+        )
+
+        unless mergeability_checks.success?
+          next AutoMerge::AvailabilityCheck.error(unavailable_reason: :mergeability_checks_failed,
+            unsuccessful_check: mergeability_checks.payload[:unsuccessful_check])
+        end
+
+        block_given? ? yield : AvailabilityCheck.success
+      end
+    end
+
+    def skippable_available_for_checks(merge_request)
+      merge_request.skipped_auto_merge_checks(
+        auto_merge_strategy: strategy
+      )
     end
 
     # Overridden in child classes
-    def notify(merge_request)
-    end
+    def notify(merge_request); end
 
     def strategy
       strong_memoize(:strategy) do
@@ -95,7 +111,7 @@ module AutoMerge
       merge_request.auto_merge_enabled = false
       merge_request.merge_user = nil
 
-      merge_request.merge_params&.except!(*clearable_auto_merge_parameters)
+      merge_request.clear_merge_params(clearable_auto_merge_parameters)
 
       merge_request.save!
     end

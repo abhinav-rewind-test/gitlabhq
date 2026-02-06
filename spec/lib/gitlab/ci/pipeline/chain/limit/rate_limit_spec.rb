@@ -16,7 +16,8 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
     Gitlab::Ci::Pipeline::Chain::Command.new(
       project: project,
       current_user: user,
-      save_incompleted: save_incompleted
+      save_incompleted: save_incompleted,
+      origin_ref: project.default_branch_or_main
     )
   end
 
@@ -28,12 +29,7 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
     count.times { step.perform! }
   end
 
-  context 'when the limit is exceeded' do
-    before do
-      stub_application_setting(pipeline_limit_per_project_user_sha: 1)
-      stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
-    end
-
+  shared_examples 'exceeded rate limit' do
     it 'does not persist the pipeline' do
       perform
 
@@ -55,16 +51,15 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
           subscription_plan: project.actual_plan_name,
           commit_sha: command.sha,
           throttled: true,
-          throttle_override: false
+          throttle_override: false,
+          message: message
         )
       )
 
       perform
     end
 
-    context 'with child pipelines' do
-      let(:source) { 'parent_pipeline' }
-
+    shared_examples_for 'excluded from rate limits' do
       it 'does not break the chain' do
         perform
 
@@ -84,7 +79,70 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
       end
     end
 
-    context 'when saving incompleted pipelines' do
+    context 'with child pipelines' do
+      let(:source) { 'parent_pipeline' }
+
+      it_behaves_like 'excluded from rate limits'
+    end
+
+    context 'with creating_policy_pipeline? is true', feature_category: :security_policy_management do
+      before do
+        allow(command).to receive_message_chain(:pipeline_policy_context, :pipeline_execution_context,
+          :creating_policy_pipeline?).and_return(true)
+      end
+
+      it_behaves_like 'excluded from rate limits'
+    end
+
+    context 'with SAST FP detection duo_workflow pipelines' do
+      let(:source) { 'duo_workflow' }
+      let(:workload) { double('Workload') } # rubocop:disable RSpec/VerifiedDoubles -- EE-only class not available in FOSS
+      let(:workflow) { double('Workflow', workflow_definition: 'sast_fp_detection/v1') } # rubocop:disable RSpec/VerifiedDoubles -- EE-only class not available in FOSS
+
+      before do
+        allow(pipeline).to receive(:workload).and_return(workload)
+        allow(workload).to receive(:workflows).and_return([workflow])
+      end
+
+      it_behaves_like 'excluded from rate limits'
+    end
+
+    context 'with non-SAST FP duo_workflow pipelines' do
+      let(:source) { 'duo_workflow' }
+      let(:workload) { double('Workload') } # rubocop:disable RSpec/VerifiedDoubles -- EE-only class not available in FOSS
+      let(:workflow) { double('Workflow', workflow_definition: 'other_workflow/v1') } # rubocop:disable RSpec/VerifiedDoubles -- EE-only class not available in FOSS
+
+      before do
+        stub_application_setting(pipeline_limit_per_project_user_sha: 1)
+        stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
+        allow(pipeline).to receive(:workload).and_return(workload)
+        allow(workload).to receive(:workflows).and_return([workflow])
+      end
+
+      it 'does not exclude from rate limits' do
+        perform
+
+        expect(pipeline.errors).not_to be_empty
+      end
+    end
+
+    context 'with duo_workflow pipelines when workload is nil' do
+      let(:source) { 'duo_workflow' }
+
+      before do
+        stub_application_setting(pipeline_limit_per_project_user_sha: 1)
+        stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
+        allow(pipeline).to receive(:workload).and_return(nil)
+      end
+
+      it 'does not exclude from rate limits' do
+        perform
+
+        expect(pipeline.errors).not_to be_empty
+      end
+    end
+
+    context 'when saving incomplete pipelines' do
       let(:save_incompleted) { true }
 
       it 'does not persist the pipeline' do
@@ -98,39 +156,6 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
         perform
 
         expect(step.break?).to be_truthy
-      end
-    end
-
-    context 'when ci_enforce_throttle_pipelines_creation is disabled' do
-      before do
-        stub_feature_flags(ci_enforce_throttle_pipelines_creation: false)
-      end
-
-      it 'does not break the chain' do
-        perform
-
-        expect(step.break?).to be_falsey
-      end
-
-      it 'does not invalidate the pipeline' do
-        perform
-
-        expect(pipeline.errors).to be_empty
-      end
-
-      it 'creates a log entry' do
-        expect(Gitlab::AppJsonLogger).to receive(:info).with(
-          a_hash_including(
-            class: described_class.name,
-            project_id: project.id,
-            subscription_plan: project.actual_plan_name,
-            commit_sha: command.sha,
-            throttled: false,
-            throttle_override: false
-          )
-        )
-
-        perform
       end
     end
 
@@ -164,6 +189,46 @@ RSpec.describe ::Gitlab::Ci::Pipeline::Chain::Limit::RateLimit, :freeze_time, :c
         )
 
         perform
+      end
+    end
+  end
+
+  context 'when pipeline_limit_per_project_user_sha is exceeded' do
+    before do
+      stub_application_setting(pipeline_limit_per_project_user_sha: 1)
+      stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
+    end
+
+    it_behaves_like 'exceeded rate limit' do
+      let(:message) do
+        'Pipeline rate limit exceeded for pipelines_create'
+      end
+    end
+  end
+
+  context 'when pipelines_created_per_user is exceeded' do
+    before do
+      stub_application_setting(pipeline_limit_per_user: 1)
+      stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
+    end
+
+    it_behaves_like 'exceeded rate limit' do
+      let(:message) do
+        'Pipeline rate limit exceeded for pipelines_created_per_user'
+      end
+    end
+  end
+
+  context 'when pipelines_created_per_user and pipelines_create are exceeded' do
+    before do
+      stub_application_setting(pipeline_limit_per_user: 1)
+      stub_application_setting(pipeline_limit_per_project_user_sha: 1)
+      stub_feature_flags(ci_enforce_throttle_pipelines_creation_override: false)
+    end
+
+    it_behaves_like 'exceeded rate limit' do
+      let(:message) do
+        'Pipeline rate limit exceeded for pipelines_create and pipelines_created_per_user'
       end
     end
   end

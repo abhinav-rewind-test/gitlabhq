@@ -1,27 +1,31 @@
 ---
-stage: none
-group: unassigned
+stage: Tenant Scale
+group: Tenant Services
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Sidekiq job size limits
 ---
 
-# Sidekiq job size limits
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/68982) in GitLab 14.3.
+{{< /details >}}
 
-[Sidekiq](../sidekiq/index.md) jobs get stored in
+[Sidekiq](../sidekiq/_index.md) jobs get stored in
 Redis. To avoid excessive memory for Redis, we:
 
 - Compress job arguments before storing them in Redis.
 - Reject jobs that exceed the specified threshold limit after compression.
 
+Prerequisites:
+
+- Administrator access.
+
 To access Sidekiq job size limits:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Preferences**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Preferences**.
 1. Expand **Sidekiq job size limits**.
 1. Adjust the compression threshold or size limit. The compression can
    be disabled by selecting the **Track** mode.

@@ -11,7 +11,7 @@ module Issues
 
     def initialize(projects)
       @projects_collection = (projects.is_a?(Array) ? Project.id_in(projects) : projects).select(:id).projects_order_id_asc
-      @root_namespace = @projects_collection.select(:namespace_id).reorder(nil).take.root_namespace # rubocop:disable CodeReuse/ActiveRecord
+      @root_namespace = @projects_collection.select(:namespace_id).without_order.take.root_namespace # rubocop:disable CodeReuse/ActiveRecord
       @caching = ::Gitlab::Issues::Rebalancing::State.new(@root_namespace, @projects_collection)
     end
 
@@ -161,7 +161,7 @@ module Issues
     end
 
     def start_position
-      @start_position ||= (RelativePositioning::START_POSITION - (gaps / 2) * gap_size).to_i
+      @start_position ||= (RelativePositioning::START_POSITION - ((gaps / 2) * gap_size)).to_i
     end
 
     def with_retry(initial_batch_size, exit_batch_size)

@@ -55,7 +55,6 @@ function createComponent(options = {}) {
     stubs = defaultStubs,
     data = {},
     listeners = {},
-    groupMultiSelectTokens = false,
   } = options;
   return mount(UserToken, {
     apolloProvider: mockApollo,
@@ -66,9 +65,6 @@ function createComponent(options = {}) {
       cursorPosition: 'start',
     },
     provide: {
-      glFeatures: {
-        groupMultiSelectTokens,
-      },
       portalName: 'fake target',
       alignSuggestions: function fakeAlignSuggestions() {},
       suggestionsListClass: () => 'custom-class',
@@ -210,7 +206,7 @@ describe('UserToken', () => {
 
       expect(baseTokenEl.props()).toMatchObject({
         suggestions: mockUsers,
-        valueIdentifier: 'username',
+        valueIdentifier: expect.any(Function),
         getActiveTokenValue: baseTokenEl.props('getActiveTokenValue'),
       });
     });
@@ -339,6 +335,35 @@ describe('UserToken', () => {
       });
     });
 
+    describe('valueField config', () => {
+      it('uses username as default value', async () => {
+        wrapper = createComponent({
+          active: true,
+          data: { users: mockUsers },
+          stubs: { Portal: true },
+        });
+
+        await activateSuggestionsList();
+
+        const suggestions = findSuggestions();
+        expect(suggestions.at(2).props('value')).toBe(mockUsers[0].username);
+      });
+
+      it('uses custom field when valueField is specified', async () => {
+        wrapper = createComponent({
+          active: true,
+          config: { ...mockAuthorToken, valueField: 'name' },
+          data: { users: mockUsers },
+          stubs: { Portal: true },
+        });
+
+        await activateSuggestionsList();
+
+        const suggestions = findSuggestions();
+        expect(suggestions.at(2).props('value')).toBe(mockUsers[0].name);
+      });
+    });
+
     describe('multiSelect', () => {
       it('renders check icons in suggestions when multiSelect is true', async () => {
         wrapper = createComponent({
@@ -349,7 +374,6 @@ describe('UserToken', () => {
           config: { ...mockAuthorToken, multiSelect: true },
           active: true,
           stubs: { Portal: true },
-          groupMultiSelectTokens: true,
         });
         await activateSuggestionsList();
         const suggestions = wrapper.findAllComponents(GlFilteredSearchSuggestion);
@@ -367,7 +391,6 @@ describe('UserToken', () => {
             users: mockUsers,
           },
           config: { ...mockAuthorToken, multiSelect: true, initialUsers: mockUsers },
-          groupMultiSelectTokens: true,
         });
         await nextTick();
         const tokenSegments = wrapper.findAllComponents(GlFilteredSearchTokenSegment);

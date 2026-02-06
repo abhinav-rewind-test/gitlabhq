@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Projects > Snippets > User updates a snippet', :js, feature_category: :source_code_management do
+RSpec.describe 'Projects > Snippets > User updates a snippet', :js, feature_category: :source_code_management, quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/580358' do
   include Features::SnippetSpecHelpers
 
   let_it_be(:user) { create(:user) }
@@ -47,7 +47,7 @@ RSpec.describe 'Projects > Snippets > User updates a snippet', :js, feature_cate
 
     it 'renders edit page and displays the error' do
       expect(page.find('.flash-container')).to have_content('Error updating the snippet - Error Message')
-      expect(page).to have_content('Edit Snippet')
+      expect(page).to have_content('Edit snippet')
     end
   end
 end

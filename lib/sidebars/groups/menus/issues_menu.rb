@@ -32,14 +32,9 @@ module Sidebars
           true
         end
 
-        override :pill_count
-        def pill_count
-          strong_memoize(:pill_count) do
-            count_service = ::Groups::OpenIssuesCountService
-            count = count_service.new(context.group, context.current_user).count
-
-            format_cached_count(count_service::CACHED_COUNT_THRESHOLD, count)
-          end
+        override :pill_count_field
+        def pill_count_field
+          'openIssuesCount'
         end
 
         override :pill_html_options
@@ -54,6 +49,7 @@ module Sidebars
           super.merge({
             active_routes: list_menu_item.active_routes,
             pill_count: pill_count,
+            pill_count_field: pill_count_field,
             has_pill: has_pill?,
             super_sidebar_parent: ::Sidebars::Groups::SuperSidebarMenus::PlanMenu,
             item_id: :group_issue_list
@@ -81,7 +77,7 @@ module Sidebars
           title = if context.is_super_sidebar
                     context.group.multiple_issue_boards_available? ? s_('Issue boards') : s_('Issue board')
                   else
-                    context.group.multiple_issue_boards_available? ? s_('IssueBoards|Boards') : s_('IssueBoards|Board')
+                    context.group.multiple_issue_boards_available? ? s_('Boards|Boards') : s_('Boards|Board')
                   end
 
           ::Sidebars::MenuItem.new(

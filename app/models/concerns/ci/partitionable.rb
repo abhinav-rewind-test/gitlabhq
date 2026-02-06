@@ -25,8 +25,8 @@ module Ci
       before_validation :set_partition_id, on: :create
       validates :partition_id, presence: true
 
-      scope :in_partition, ->(id) do
-        where(partition_id: (id.respond_to?(:partition_id) ? id.partition_id : id))
+      scope :in_partition, ->(id, partition_foreign_key: :partition_id) do
+        where(partition_id: (id.respond_to?(partition_foreign_key) ? id.try(partition_foreign_key) : id))
       end
 
       def set_partition_id
@@ -35,6 +35,12 @@ module Ci
 
         self.partition_id = partition_scope_value
       end
+    end
+
+    def self.registered_models
+      Gitlab::Database::Partitioning
+        .registered_models
+        .select { |model| model < Ci::ApplicationRecord && model < Ci::Partitionable }
     end
 
     class_methods do
@@ -75,12 +81,16 @@ module Ci
         partitioned_by :partition_id,
           strategy: :ci_sliding_list,
           next_partition_if: ->(latest_partition) do
-            latest_partition.blank? || Ci::Pipeline::NEXT_PARTITION_VALUE > latest_partition.values.max
+            latest_partition.blank? || create_database_partition?(latest_partition)
           end,
           detach_partition_if: proc { false },
-          # Most of the db tasks are run in a weekly basis, e.g. execute_batched_migrations.
-          # Therefore, let's start with 1.week and see how it'd go.
-          analyze_interval: 1.week
+          analyze_interval: 3.days
+      end
+
+      def create_database_partition?(database_partition)
+        return true if database_partition.before?(Ci::Partition::LAST_STATIC_PARTITION_VALUE)
+
+        Ci::Partition.provisioning(database_partition.values.max).present?
       end
     end
   end

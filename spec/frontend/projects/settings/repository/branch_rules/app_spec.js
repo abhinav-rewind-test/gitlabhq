@@ -1,65 +1,75 @@
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
-import { GlModal, GlCollapsibleListbox, GlDisclosureDropdown } from '@gitlab/ui';
+import {
+  GlModal,
+  GlCollapsibleListbox,
+  GlDisclosureDropdown,
+  GlKeysetPagination,
+} from '@gitlab/ui';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { TEST_HOST } from 'helpers/test_constants';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
+import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
+import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import BranchRules from '~/projects/settings/repository/branch_rules/app.vue';
 import BranchRule from '~/projects/settings/repository/branch_rules/components/branch_rule.vue';
 import branchRulesQuery from 'ee_else_ce/projects/settings/repository/branch_rules/graphql/queries/branch_rules.query.graphql';
 import createBranchRuleMutation from '~/projects/settings/repository/branch_rules/graphql/mutations/create_branch_rule.mutation.graphql';
+import BranchRuleModal from '~/projects/settings/components/branch_rule_modal.vue';
+import getProtectableBranches from '~/projects/settings/graphql/queries/protectable_branches.query.graphql';
 
 import { createAlert } from '~/alert';
 import {
   branchRulesMockResponse,
+  predefinedBranchRulesMockResponse,
   appProvideMock,
   createBranchRuleMockResponse,
+  protectableBranchesMockResponse,
 } from 'ee_else_ce_jest/projects/settings/repository/branch_rules/mock_data';
 import {
   I18N,
   BRANCH_PROTECTION_MODAL_ID,
-  PROTECTED_BRANCHES_ANCHOR,
 } from '~/projects/settings/repository/branch_rules/constants';
 import { stubComponent, RENDER_ALL_SLOTS_TEMPLATE } from 'helpers/stub_component';
-import { expandSection } from '~/settings_panels';
-import { scrollToElement } from '~/lib/utils/common_utils';
-import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
+import { createMockDirective } from 'helpers/vue_mock_directive';
 
 jest.mock('~/alert');
-jest.mock('~/settings_panels');
-jest.mock('~/lib/utils/common_utils');
 
 Vue.use(VueApollo);
 
 describe('Branch rules app', () => {
   let wrapper;
   let fakeApollo;
-  const openBranches = [
-    { text: 'branch1', id: 'branch1', title: 'branch1' },
-    { text: 'branch2', id: 'branch2', title: 'branch2' },
-  ];
   const branchRulesQuerySuccessHandler = jest.fn().mockResolvedValue(branchRulesMockResponse);
   const addRuleMutationSuccessHandler = jest.fn().mockResolvedValue(createBranchRuleMockResponse);
+  const protectableBranchesSuccessHandler = jest
+    .fn()
+    .mockResolvedValue(protectableBranchesMockResponse);
+  const addBranchRulesItems = [I18N.branchName, I18N.allBranches, I18N.allProtectedBranches];
+  const { bindInternalEventDocument } = useMockInternalEventsTracking();
 
   const createComponent = async ({
-    glFeatures = { addBranchRule: true },
+    glFeatures = { editBranchRules: true },
     queryHandler = branchRulesQuerySuccessHandler,
     mutationHandler = addRuleMutationSuccessHandler,
+    provided = appProvideMock,
   } = {}) => {
     fakeApollo = createMockApollo([
       [branchRulesQuery, queryHandler],
+      [getProtectableBranches, protectableBranchesSuccessHandler],
       [createBranchRuleMutation, mutationHandler],
     ]);
 
     wrapper = mountExtended(BranchRules, {
       apolloProvider: fakeApollo,
       provide: {
-        ...appProvideMock,
+        ...provided,
         glFeatures,
       },
       stubs: {
+        BranchRuleModal,
         GlDisclosureDropdown,
         GlModal: stubComponent(GlModal, { template: RENDER_ALL_SLOTS_TEMPLATE }),
       },
@@ -70,38 +80,52 @@ describe('Branch rules app', () => {
   };
 
   const findAllBranchRules = () => wrapper.findAllComponents(BranchRule);
-  const findEmptyState = () => wrapper.findByTestId('empty');
-  const findAddBranchRuleButton = () => wrapper.findByRole('button', I18N.addBranchRule);
+  const findEmptyState = () => wrapper.findByTestId('crud-empty');
   const findModal = () => wrapper.findComponent(GlModal);
   const findAddBranchRuleDropdown = () => wrapper.findComponent(GlDisclosureDropdown);
   const findCreateBranchRuleListbox = () => wrapper.findComponent(GlCollapsibleListbox);
+  const findCrudComponent = () => wrapper.findComponent(CrudComponent);
+  const findPagination = () => wrapper.findComponent(GlKeysetPagination);
+  const clickNextButton = () => findPagination().vm.$emit('next');
+  const clickPreviousButton = () => findPagination().vm.$emit('prev');
 
-  beforeEach(() => {
-    window.gon = {
-      open_branches: openBranches,
-    };
+  beforeEach(async () => {
     setWindowLocation(TEST_HOST);
+    await createComponent();
   });
 
-  beforeEach(() => createComponent());
+  it('renders branch rules', async () => {
+    await nextTick();
 
-  it('renders branch rules', () => {
     const { nodes } = branchRulesMockResponse.data.project.branchRules;
 
-    expect(findAllBranchRules().length).toBe(nodes.length);
+    expect(findAllBranchRules()).toHaveLength(nodes.length);
 
-    expect(findAllBranchRules().at(0).props('name')).toBe(nodes[0].name);
+    expect(findAllBranchRules().at(0).props()).toEqual(
+      expect.objectContaining({
+        name: nodes[0].name,
+        branchProtection: expect.objectContaining({ allowForcePush: true }),
+      }),
+    );
 
-    expect(findAllBranchRules().at(0).props('branchProtection')).toEqual(nodes[0].branchProtection);
-
-    expect(findAllBranchRules().at(1).props('name')).toBe(nodes[1].name);
-
-    expect(findAllBranchRules().at(1).props('branchProtection')).toEqual(nodes[1].branchProtection);
+    expect(findAllBranchRules().at(1).props()).toEqual(
+      expect.objectContaining({
+        name: nodes[1].name,
+        branchProtection: expect.objectContaining({ allowForcePush: false }),
+      }),
+    );
   });
 
   it('displays an error if branch rules query fails', async () => {
     await createComponent({ queryHandler: jest.fn().mockRejectedValue() });
     expect(createAlert).toHaveBeenCalledWith({ message: I18N.queryError });
+  });
+
+  it('displays a loading state if branch rules query is pending', async () => {
+    createComponent({ queryHandler: jest.fn() });
+    expect(findCrudComponent().props('isLoading')).toBe(true);
+    await waitForPromises();
+    expect(findCrudComponent().props('isLoading')).toBe(false);
   });
 
   it('displays an empty state if no branch rules are present', async () => {
@@ -114,46 +138,46 @@ describe('Branch rules app', () => {
       expect(findAddBranchRuleDropdown().props('toggleText')).toBe('Add branch rule');
     });
 
+    it('renders a dropdown containing custom rules with actions', () => {
+      expect(findAddBranchRuleDropdown().props('items')).toEqual([
+        { action: expect.any(Function), text: 'Branch name or pattern' },
+      ]);
+    });
+
     it('renders a modal with correct props/attributes', () => {
       expect(findModal().props()).toMatchObject({
         title: I18N.createBranchRule,
         modalId: BRANCH_PROTECTION_MODAL_ID,
         actionCancel: {
-          text: 'Create branch rule',
+          text: 'Cancel',
         },
         actionPrimary: {
           attributes: {
             disabled: true,
             variant: 'confirm',
           },
-          text: 'Create protected branch',
+          text: 'Create branch rule',
         },
       });
     });
 
-    it('renders listbox with branch names', () => {
-      expect(findCreateBranchRuleListbox().exists()).toBe(true);
-      expect(findCreateBranchRuleListbox().props('items')).toHaveLength(openBranches.length);
-      expect(findCreateBranchRuleListbox().props('toggleText')).toBe(
-        'Select Branch or create wildcard',
-      );
-    });
-
     it('when the primary modal action is clicked it calls create rule mutation', async () => {
-      findCreateBranchRuleListbox().vm.$emit('select', openBranches[0].text);
+      findCreateBranchRuleListbox().vm.$emit('select', 'main');
       await nextTick();
       findModal().vm.$emit('primary');
       await nextTick();
       await nextTick();
       expect(addRuleMutationSuccessHandler).toHaveBeenCalledWith({
-        name: 'branch1',
+        name: 'main',
         projectPath: 'some/project/path',
       });
     });
 
     it('shows alert when mutation fails', async () => {
-      createComponent({ mutationHandler: jest.fn().mockRejectedValue() });
-      findCreateBranchRuleListbox().vm.$emit('select', openBranches[0].text);
+      await createComponent({
+        mutationHandler: jest.fn().mockRejectedValue(),
+      });
+      findCreateBranchRuleListbox().vm.$emit('select', 'main');
       await nextTick();
       findModal().vm.$emit('primary');
       await waitForPromises();
@@ -161,43 +185,112 @@ describe('Branch rules app', () => {
         message: 'Something went wrong while creating branch rule.',
       });
     });
+
+    it('emits a tracking event when a rule is added', async () => {
+      const { trackEventSpy } = bindInternalEventDocument(wrapper.element);
+      findCreateBranchRuleListbox().vm.$emit('select', 'main');
+      await nextTick();
+      findModal().vm.$emit('primary');
+      await waitForPromises();
+
+      expect(trackEventSpy).toHaveBeenCalledWith('protect_branch', {
+        label: 'branch_rule_details',
+      });
+    });
+
+    describe('when status check and merge request approvals features are available', () => {
+      describe.each`
+        showStatusChecks | showApprovers
+        ${true}          | ${false}
+        ${false}         | ${true}
+        ${true}          | ${true}
+      `(
+        'when showStatusChecks is $showStatusChecks and showApprovers is $showApprovers',
+        ({ showStatusChecks, showApprovers }) => {
+          it(`renders a dropdown containing predefined branch rules with actions`, () => {
+            createComponent({
+              provided: {
+                ...appProvideMock,
+                showStatusChecks,
+                showApprovers,
+              },
+            });
+            expect(findAddBranchRuleDropdown().props('items')).toEqual([
+              { action: expect.any(Function), text: 'Branch name or pattern' },
+              { action: expect.any(Function), text: 'All branches' },
+              { action: expect.any(Function), text: 'All protected branches' },
+            ]);
+          });
+        },
+      );
+
+      it('does not render predefined branch rules when they are already set', async () => {
+        const { nodes } = predefinedBranchRulesMockResponse.data.project.branchRules;
+
+        await createComponent({
+          queryHandler: jest.fn().mockResolvedValue(predefinedBranchRulesMockResponse),
+          provided: { ...appProvideMock, showStatusChecks: true, showApprovers: true },
+        });
+        await findAddBranchRuleDropdown().vm.$emit('shown');
+        await nextTick();
+
+        expect(findAddBranchRuleDropdown().props('items')).toHaveLength(
+          addBranchRulesItems.length - nodes.length,
+        );
+      });
+    });
   });
 
-  describe('Add branch rule when addBranchRule FF disabled', () => {
-    beforeEach(() => {
-      window.gon.open_branches = openBranches;
-      createComponent({ glFeatures: { addBranchRule: false } });
-    });
-    it('renders an Add branch rule button', () => {
-      expect(findAddBranchRuleButton().exists()).toBe(true);
+  describe('Pagination', () => {
+    let branchRulesQueryHandler;
+
+    beforeEach(async () => {
+      branchRulesQueryHandler = jest.fn().mockResolvedValue(branchRulesMockResponse);
+      await createComponent({ queryHandler: branchRulesQueryHandler });
     });
 
-    it('renders a modal with correct props/attributes', () => {
-      expect(findModal().props()).toMatchObject({
-        modalId: BRANCH_PROTECTION_MODAL_ID,
-        title: I18N.addBranchRule,
+    it('displays correct pagination state on first page', () => {
+      expect(findPagination().props('hasNextPage')).toBe(true);
+      expect(findPagination().props('hasPreviousPage')).toBe(false);
+      expect(findPagination().props('prevText')).toBe('Prev');
+      expect(findPagination().props('nextText')).toBe('Next');
+    });
+
+    it('fetches next page when next button is clicked', async () => {
+      clickNextButton();
+      await nextTick();
+      await waitForPromises();
+
+      expect(branchRulesQueryHandler).toHaveBeenCalledWith({
+        projectPath: appProvideMock.projectPath,
+        first: 20,
+        after: null,
       });
-
-      expect(findModal().attributes('ok-title')).toBe(I18N.createProtectedBranch);
     });
 
-    it('renders correct modal id for the default action', () => {
-      const binding = getBinding(findAddBranchRuleButton().element, 'gl-modal');
+    it('enables previous button after navigating to next page', async () => {
+      clickNextButton();
+      await nextTick();
+      await waitForPromises();
 
-      expect(binding.value).toBe(BRANCH_PROTECTION_MODAL_ID);
+      expect(findPagination().props('hasPreviousPage')).toBe(true);
     });
 
-    it('renders the correct modal content', () => {
-      expect(findModal().text()).toContain(I18N.branchRuleModalDescription);
-      expect(findModal().text()).toContain(I18N.branchRuleModalContent);
-    });
+    it('fetches previous page when previous button is clicked', async () => {
+      // First navigate to next page to have a previous page to go back to
+      clickNextButton();
+      await nextTick();
+      await waitForPromises();
 
-    it('when the primary modal action is clicked, takes user to the correct location', () => {
-      findAddBranchRuleButton().trigger('click');
-      findModal().vm.$emit('ok');
+      clickPreviousButton();
+      await nextTick();
+      await waitForPromises();
 
-      expect(expandSection).toHaveBeenCalledWith(PROTECTED_BRANCHES_ANCHOR);
-      expect(scrollToElement).toHaveBeenCalledWith(PROTECTED_BRANCHES_ANCHOR);
+      expect(branchRulesQueryHandler).toHaveBeenCalledWith({
+        projectPath: appProvideMock.projectPath,
+        first: 20,
+        after: null,
+      });
     });
   });
 });

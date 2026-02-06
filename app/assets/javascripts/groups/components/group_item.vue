@@ -1,28 +1,18 @@
 <script>
 import {
-  GlAvatar,
   GlLoadingIcon,
   GlBadge,
   GlButton,
-  GlIcon,
-  GlLabel,
-  GlPopover,
-  GlLink,
   GlTooltipDirective,
+  GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { visitUrl } from '~/lib/utils/url_utility';
+import ProjectAvatar from '~/vue_shared/components/project_avatar.vue';
 import UserAccessRoleBadge from '~/vue_shared/components/user_access_role_badge.vue';
-import { AVATAR_SHAPE_OPTION_RECT } from '~/vue_shared/constants';
-import { helpPagePath } from '~/helpers/help_page_helper';
+import VisibilityIconButton from '~/vue_shared/components/visibility_icon_button.vue';
 import { __ } from '~/locale';
-import {
-  VISIBILITY_LEVELS_STRING_TO_INTEGER,
-  VISIBILITY_TYPE_ICON,
-  GROUP_VISIBILITY_TYPE,
-  PROJECT_VISIBILITY_TYPE,
-} from '~/visibility_level/constants';
-import { ITEM_TYPE, ACTIVE_TAB_SHARED } from '../constants';
+import { ITEM_TYPE } from '../constants';
 
 import eventHub from '../event_hub';
 
@@ -36,18 +26,16 @@ export default {
     SafeHtml,
   },
   components: {
-    GlAvatar,
     GlBadge,
     GlButton,
     GlLoadingIcon,
-    GlIcon,
-    GlLabel,
-    GlPopover,
-    GlLink,
+    GlAnimatedChevronRightDownIcon,
     UserAccessRoleBadge,
     ItemTypeIcon,
     ItemActions,
     ItemStats,
+    ProjectAvatar,
+    VisibilityIconButton,
   },
   inject: {
     currentGroupVisibility: {
@@ -75,7 +63,7 @@ export default {
       return `group-${this.group.id}`;
     },
     itemTestId() {
-      return `group-overview-item-${this.group.id}`;
+      return `groups-list-item-${this.group.id}`;
     },
     rowClass() {
       return {
@@ -86,45 +74,19 @@ export default {
       };
     },
     hasChildren() {
-      return this.group.childrenCount > 0;
-    },
-    hasAvatar() {
-      return this.group.avatarUrl !== null;
-    },
-    hasComplianceFramework() {
-      return Boolean(this.group.complianceFramework?.name);
+      return this.group.hasChildren;
     },
     isGroup() {
       return this.group.type === ITEM_TYPE.GROUP;
     },
-    visibilityIcon() {
-      return VISIBILITY_TYPE_ICON[this.group.visibility];
-    },
-    visibilityTooltip() {
-      if (this.isGroup) return GROUP_VISIBILITY_TYPE[this.group.visibility];
-      return PROJECT_VISIBILITY_TYPE[this.group.visibility];
-    },
     microdata() {
       return this.group.microdata || {};
-    },
-    complianceFramework() {
-      return this.group.complianceFramework;
     },
     showActionsMenu() {
       return this.isGroup && (this.group.canEdit || this.group.canRemove || this.group.canLeave);
     },
-    shouldShowVisibilityWarning() {
-      return (
-        this.action === ACTIVE_TAB_SHARED &&
-        VISIBILITY_LEVELS_STRING_TO_INTEGER[this.group.visibility] >
-          VISIBILITY_LEVELS_STRING_TO_INTEGER[this.currentGroupVisibility]
-      );
-    },
     toggleAriaLabel() {
       return this.group.isOpen ? this.$options.i18n.collapse : this.$options.i18n.expand;
-    },
-    toggleIconName() {
-      return this.group.isOpen ? 'chevron-down' : 'chevron-right';
     },
   },
   methods: {
@@ -145,18 +107,8 @@ export default {
   i18n: {
     expand: __('Expand'),
     collapse: __('Collapse'),
-    popoverTitle: __('Less restrictive visibility'),
-    popoverBody: __('Project visibility level is less restrictive than the group settings.'),
-    learnMore: __('Learn more'),
   },
-  shareProjectsWithGroupsHelpPagePath: helpPagePath(
-    'user/project/members/share_project_with_groups',
-    {
-      anchor: 'sharing-projects-with-groups-of-a-higher-restrictive-visibility-level',
-    },
-  ),
   safeHtmlConfig: { ADD_TAGS: ['gl-emoji'] },
-  AVATAR_SHAPE_OPTION_RECT,
 };
 </script>
 
@@ -173,102 +125,70 @@ export default {
   >
     <div
       :class="{ 'project-row-contents': !isGroup }"
-      class="group-row-contents d-flex gl-align-items-center py-2 pr-3"
+      class="group-row-contents gl-flex gl-items-center gl-py-3 gl-pr-5"
     >
-      <div class="folder-toggle-wrap gl-mr-2 d-flex gl-align-items-center">
+      <div class="folder-toggle-wrap gl-mr-2 gl-flex gl-items-center">
         <gl-button
           v-if="hasChildren"
           :aria-label="toggleAriaLabel"
           :aria-expanded="String(group.isOpen)"
           category="tertiary"
-          data-testid="group-item-toggle-button"
-          :icon="toggleIconName"
+          data-testid="nested-groups-project-list-item-toggle-button"
+          class="btn-icon"
           @click.stop="onClickRowGroup"
-        />
+        >
+          <gl-animated-chevron-right-down-icon :is-on="group.isOpen" />
+        </gl-button>
         <div v-else class="gl-h-7 gl-w-7"></div>
         <item-type-icon :item-type="group.type" />
       </div>
       <gl-loading-icon
         v-if="group.isChildrenLoading"
         size="lg"
-        class="d-none d-sm-inline-flex flex-shrink-0 gl-mr-3"
+        class="gl-mr-3 gl-hidden gl-shrink-0 @sm/panel:gl-inline-flex"
       />
       <a
-        :class="{ 'gl-sm-display-flex': !group.isChildrenLoading }"
-        class="gl-display-none gl-text-decoration-none! gl-mr-3"
+        :class="{ '@sm/panel:gl-flex': !group.isChildrenLoading }"
+        class="gl-mr-3 gl-hidden !gl-no-underline"
         :href="group.relativePath"
         :aria-label="group.name"
       >
-        <gl-avatar
-          :shape="$options.AVATAR_SHAPE_OPTION_RECT"
-          :entity-id="group.id"
-          :entity-name="group.name"
-          :src="group.avatarUrl"
+        <project-avatar
           :alt="group.name"
-          :size="32"
           :itemprop="microdata.imageItemprop"
+          :project-avatar-url="group.avatarUrl"
+          :project-id="group.id"
+          :project-name="group.name"
         />
       </a>
-      <div class="group-text-container d-flex flex-fill gl-align-items-center">
-        <div class="group-text flex-grow-1 flex-shrink-1">
+      <div class="group-text-container gl-flex gl-flex-auto gl-items-center">
+        <div class="group-text gl-shrink gl-grow">
           <div
-            class="gl-display-flex gl-align-items-center gl-flex-wrap title namespace-title gl-font-weight-bold gl-mr-3"
+            class="title namespace-title gl-mr-3 gl-flex gl-flex-wrap gl-items-center gl-gap-3 gl-font-bold"
           >
             <a
               v-gl-tooltip.bottom
               data-testid="group-name"
               :href="group.relativePath"
               :title="group.fullName"
-              class="no-expand gl-mr-3 gl-text-gray-900! gl-word-break-word"
+              class="no-expand !gl-text-default gl-break-anywhere"
               :itemprop="microdata.nameItemprop"
             >
               <!-- ending bracket must be by closing tag to prevent -->
               <!-- link hover text-decoration from over-extending -->
               {{ group.name }}
             </a>
-            <gl-icon
-              v-gl-tooltip.bottom
-              class="gl-display-inline-flex gl-align-items-center gl-mr-3 gl-text-gray-500"
-              :name="visibilityIcon"
-              :title="visibilityTooltip"
+            <visibility-icon-button
+              :is-group="isGroup"
+              :visibility-level="group.visibility"
               data-testid="group-visibility-icon"
+              tooltip-placement="bottom"
             />
-            <template v-if="shouldShowVisibilityWarning">
-              <gl-button
-                ref="visibilityWarningButton"
-                class="gl-p-1! gl-bg-transparent! gl-mr-3"
-                category="tertiary"
-                icon="warning"
-                :aria-label="$options.i18n.popoverTitle"
-                @click.stop
-              />
-              <gl-popover
-                :target="() => $refs.visibilityWarningButton.$el"
-                :title="$options.i18n.popoverTitle"
-                triggers="hover focus"
-              >
-                {{ $options.i18n.popoverBody }}
-                <div class="gl-mt-3">
-                  <gl-link
-                    class="gl-font-sm"
-                    :href="$options.shareProjectsWithGroupsHelpPagePath"
-                    >{{ $options.i18n.learnMore }}</gl-link
-                  >
-                </div>
-              </gl-popover>
-            </template>
-            <user-access-role-badge v-if="group.permission" size="sm" class="gl-mr-2">
+            <user-access-role-badge v-if="group.permission" class="gl-mr-2">
               {{ group.permission }}
             </user-access-role-badge>
-            <gl-label
-              v-if="hasComplianceFramework"
-              :title="complianceFramework.name"
-              :background-color="complianceFramework.color"
-              :description="complianceFramework.description"
-              size="sm"
-            />
           </div>
-          <div v-if="group.description" class="description gl-font-sm gl-mt-1">
+          <div v-if="group.description" class="description gl-mt-1 gl-text-sm">
             <span
               v-safe-html:[$options.safeHtmlConfig]="group.description"
               :itemprop="microdata.descriptionItemprop"
@@ -277,18 +197,19 @@ export default {
             </span>
           </div>
         </div>
-        <div v-if="group.pendingRemoval">
+        <div v-if="group.isSelfDeletionInProgress">
+          <gl-badge variant="warning">{{ __('Deletion in progress') }}</gl-badge>
+        </div>
+        <div v-else-if="group.markedForDeletion">
           <gl-badge variant="warning">{{ __('Pending deletion') }}</gl-badge>
         </div>
         <div v-else-if="group.archived">
           <gl-badge variant="info">{{ __('Archived') }}</gl-badge>
         </div>
-        <div
-          class="metadata gl-display-flex gl-flex-grow-1 gl-flex-shrink-0 gl-flex-wrap justify-content-md-between"
-        >
+        <div class="metadata gl-flex gl-shrink-0 gl-grow gl-flex-wrap @md/panel:gl-justify-between">
           <item-stats
             :item="group"
-            class="group-stats gl-display-none gl-md-display-flex gl-align-items-center"
+            class="group-stats gl-hidden gl-items-center @md/panel:gl-flex"
           />
           <item-actions
             v-if="showActionsMenu"
@@ -299,6 +220,7 @@ export default {
         </div>
       </div>
     </div>
+    <!-- eslint-disable-next-line vue/no-undef-components -->
     <group-folder
       v-if="group.isOpen && hasChildren"
       :parent-group="group"

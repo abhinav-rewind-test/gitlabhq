@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Database::BulkUpdate do
+RSpec.describe Gitlab::Database::BulkUpdate, feature_category: :database do
   describe 'error states' do
     let(:columns) { %i[title] }
 
@@ -100,10 +100,14 @@ RSpec.describe Gitlab::Database::BulkUpdate do
     end
 
     before do
-      configuration_hash = ActiveRecord::Base.connection_db_config.configuration_hash
+      db_config = ActiveRecord::Base.connection_db_config
 
       ActiveRecord::Base.establish_connection( # rubocop: disable Database/EstablishConnection
-        configuration_hash.merge(prepared_statements: prepared_statements)
+        ActiveRecord::DatabaseConfigurations::HashConfig.new(
+          db_config.env_name,
+          db_config.name,
+          db_config.configuration_hash.merge(prepared_statements: prepared_statements)
+        )
       )
     end
 

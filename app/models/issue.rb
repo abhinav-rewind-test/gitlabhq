@@ -24,7 +24,8 @@ class Issue < ApplicationRecord
   include FromUnion
   include EachBatch
   include PgFullTextSearchable
-  include IgnorableColumns
+  include Gitlab::DueAtFilterable
+  include Gitlab::Utils::StrongMemoize
 
   extend ::Gitlab::Utils::Override
 
@@ -48,24 +49,39 @@ class Issue < ApplicationRecord
   #
   # This should be kept consistent with the enums used for the GraphQL issue list query in
   # https://gitlab.com/gitlab-org/gitlab/-/blob/1379c2d7bffe2a8d809f23ac5ef9b4114f789c07/app/assets/javascripts/issues/list/constants.js#L154-158
-  TYPES_FOR_LIST = %w[issue incident test_case task objective key_result].freeze
+  TYPES_FOR_LIST = %w[issue incident test_case task objective key_result ticket].freeze
 
   # Types of issues that should be displayed on issue board lists
-  TYPES_FOR_BOARD_LIST = %w[issue incident].freeze
+  TYPES_FOR_BOARD_LIST = %w[issue incident ticket].freeze
 
   # This default came from the enum `issue_type` column. Defined as default in the DB
   DEFAULT_ISSUE_TYPE = :issue
 
-  # prevent caching this column by rails, as we want to easily remove it after the backfilling
-  ignore_column :tmp_epic_id, remove_with: '16.11', remove_after: '2024-03-31'
+  # A list of types user can change between - both original and new
+  # type must be included in this list. This is needed for legacy issues
+  # where it's possible to switch between issue and incident.
+  CHANGEABLE_BASE_TYPES = %w[issue incident test_case].freeze
+
+  # Interim columns to convert integer IDs to bigint
+  ignore_column :author_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :closed_by_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :duplicated_to_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :last_edited_by_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :milestone_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :moved_to_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :project_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :promoted_to_epic_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+  ignore_column :updated_by_id_convert_to_bigint, remove_with: '17.8', remove_after: '2024-12-13'
+
+  ignore_column :external_key, remove_with: '18.5', remove_after: '2025-09-18'
 
   belongs_to :project
   belongs_to :namespace, inverse_of: :issues
 
   belongs_to :duplicated_to, class_name: 'Issue'
   belongs_to :closed_by, class_name: 'User'
-  belongs_to :work_item_type, class_name: 'WorkItems::Type', inverse_of: :work_items
-
+  belongs_to :work_item_type, class_name: 'WorkItems::Type'
   belongs_to :moved_to, class_name: 'Issue', inverse_of: :moved_from
   has_one :moved_from, class_name: 'Issue', foreign_key: :moved_to_id, inverse_of: :moved_to
 
@@ -75,10 +91,13 @@ class Issue < ApplicationRecord
 
   has_many :merge_requests_closing_issues,
     class_name: 'MergeRequestsClosingIssues',
+    inverse_of: :issue,
     dependent: :delete_all # rubocop:disable Cop/ActiveRecordDependent
 
   has_many :issue_assignees
   has_many :issue_email_participants
+  alias_method :email_participants, :issue_email_participants
+
   has_one :email
   has_many :assignees, class_name: "User", through: :issue_assignees
   has_many :zoom_meetings
@@ -90,25 +109,40 @@ class Issue < ApplicationRecord
       ordered.first
     end
   end
+  has_many :assignees_by_name_and_id, -> { ordered_by_name_asc_id_desc },
+    class_name: "User", through: :issue_assignees,
+    source: :assignee
 
   has_one :search_data, class_name: 'Issues::SearchData'
   has_one :issuable_severity
   has_one :sentry_issue
   has_one :alert_management_alert, class_name: 'AlertManagement::Alert'
   has_one :incident_management_issuable_escalation_status, class_name: 'IncidentManagement::IssuableEscalationStatus'
-  has_and_belongs_to_many :prometheus_alert_events, join_table: :issues_prometheus_alert_events # rubocop: disable Rails/HasAndBelongsToMany
+  has_one :metrics, inverse_of: :issue, autosave: true
   has_many :alert_management_alerts, class_name: 'AlertManagement::Alert', inverse_of: :issue, validate: false
-  has_many :prometheus_alerts, through: :prometheus_alert_events
   has_many :issue_customer_relations_contacts, class_name: 'CustomerRelations::IssueContact', inverse_of: :issue
   has_many :customer_relations_contacts, through: :issue_customer_relations_contacts, source: :contact, class_name: 'CustomerRelations::Contact', inverse_of: :issues
   has_many :incident_management_timeline_events, class_name: 'IncidentManagement::TimelineEvent', foreign_key: :issue_id, inverse_of: :incident
   has_many :assignment_events, class_name: 'ResourceEvents::IssueAssignmentEvent', inverse_of: :issue
 
-  alias_attribute :escalation_status, :incident_management_issuable_escalation_status
+  has_one :dates_source,
+    class_name: 'WorkItems::DatesSource',
+    inverse_of: :work_item,
+    autosave: true
+
+  has_one :work_item_description,
+    class_name: 'WorkItems::Description',
+    inverse_of: :work_item,
+    autosave: true
+
+  has_one :work_item_transition, class_name: 'WorkItems::Transition', inverse_of: :work_item
+
+  alias_method :escalation_status, :incident_management_issuable_escalation_status
 
   accepts_nested_attributes_for :issuable_severity, update_only: true
   accepts_nested_attributes_for :sentry_issue
   accepts_nested_attributes_for :incident_management_issuable_escalation_status, update_only: true
+  accepts_nested_attributes_for :work_item_description
 
   validates :project, presence: true, if: -> { !namespace || namespace.is_a?(Namespaces::ProjectNamespace) }
   validates :namespace, presence: true
@@ -116,18 +150,40 @@ class Issue < ApplicationRecord
   validates :confidential, inclusion: { in: [true, false], message: 'must be a boolean' }
 
   validate :allowed_work_item_type_change, on: :update, if: :work_item_type_id_changed?
-  validate :due_date_after_start_date
+  validate :due_date_after_start_date, if: :validate_due_date?
   validate :parent_link_confidentiality
 
   alias_attribute :external_author, :service_desk_reply_to
 
   pg_full_text_searchable columns: [{ name: 'title', weight: 'A' }, { name: 'description', weight: 'B' }]
 
+  scope :project_level, -> { where.not(project_id: nil) }
+  scope :group_level, -> { where(project_id: nil) }
+
   scope :in_namespaces, ->(namespaces) { where(namespace: namespaces) }
   scope :in_projects, ->(project_ids) { where(project_id: project_ids) }
   scope :not_in_projects, ->(project_ids) { where.not(project_id: project_ids) }
 
-  scope :non_archived, -> { left_joins(:project).where(project_id: nil).or(where(projects: { archived: false })) }
+  scope :within_namespace_hierarchy, ->(namespace) do
+    return none if namespace.nil? || namespace.traversal_ids.blank?
+
+    if namespace.traversal_ids.length == 1
+      where("namespace_traversal_ids[1] = ?", namespace.id)
+    else
+      ids = namespace.traversal_ids
+      next_ids = ids[0..-2] + [ids[-1] + 1]
+      where(namespace_traversal_ids: ids...next_ids)
+    end
+  end
+
+  scope :join_project_through_namespace, -> do
+    joins("JOIN projects ON projects.project_namespace_id = issues.namespace_id")
+  end
+
+  scope :non_archived, ->(use_existing_join: false) do
+    relation = use_existing_join ? self : left_joins(:project)
+    relation.where(project_id: nil).or(relation.where(projects: { archived: false }))
+  end
 
   scope :with_due_date, -> { where.not(due_date: nil) }
   scope :without_due_date, -> { where(due_date: nil) }
@@ -138,8 +194,13 @@ class Issue < ApplicationRecord
 
   scope :not_authored_by, ->(user) { where.not(author_id: user) }
 
+  # N.B. The start_date and due_date columns are preserved on the issues table to enable performant sorting by these
+  # dates, since we would otherwise need to perform a join for the sort. These are synced via the DB trigger
+  # sync_issues_dates_with_work_item_dates_sources() from the work_item_dates_sources table
   scope :order_due_date_asc, -> { reorder(arel_table[:due_date].asc.nulls_last) }
   scope :order_due_date_desc, -> { reorder(arel_table[:due_date].desc.nulls_last) }
+  scope :order_start_date_asc, -> { reorder(arel_table[:start_date].asc.nulls_last) }
+  scope :order_start_date_desc, -> { reorder(arel_table[:start_date].desc.nulls_last) }
   scope :order_closest_future_date, -> { reorder(Arel.sql("CASE WHEN issues.due_date >= CURRENT_DATE THEN 0 ELSE 1 END ASC, ABS(CURRENT_DATE - issues.due_date) ASC")) }
   scope :order_created_at_desc, -> { reorder(created_at: :desc) }
   scope :order_severity_asc, -> do
@@ -167,32 +228,33 @@ class Issue < ApplicationRecord
 
   scope :preload_associated_models, -> { preload(:assignees, :labels, project: :namespace) }
   scope :with_web_entity_associations, -> do
-    preload(:author, :namespace, :labels, project: [:project_feature, :route, namespace: :route])
+    preload(:author, :namespace, :labels, project: [:project_feature, :route, { namespace: :route }])
   end
 
   scope :preload_awardable, -> { preload(:award_emoji) }
+  scope :preload_namespace, -> { preload(:namespace) }
+  scope :preload_routables, -> { preload(project: [:route, { namespace: :route }]) }
+  scope :preload_namespace_routables, -> { preload(namespace: [:route, { parent: :route }]) }
+  scope :preload_for_rss, -> { preload(:author, :assignees, :labels, :milestone, :work_item_type, :project, { project: :namespace }) }
+
   scope :with_alert_management_alerts, -> { joins(:alert_management_alert) }
-  scope :with_prometheus_alert_events, -> { joins(:issues_prometheus_alert_events) }
   scope :with_api_entity_associations, -> {
-    preload(:work_item_type, :timelogs, :closed_by, :assignees, :author, :labels, :issuable_severity,
-      namespace: [{ parent: :route }, :route], milestone: { project: [:route, { namespace: :route }] },
+    preload(:work_item_type,
+      :timelogs, :closed_by, :assignees, :author, :issuable_severity,
+      :labels, namespace: [{ parent: :route }, :route], milestone: { project: [:route, { namespace: :route }] },
       project: [:project_namespace, :project_feature, :route, { group: :route }, { namespace: :route }],
-      duplicated_to: { project: [:project_feature] })
-  }
-  scope :with_issue_type, ->(types) {
-    types = Array(types)
-
-    # Using != 1 since we also want the guard clause to handle empty arrays
-    return joins(:work_item_type).where(work_item_types: { base_type: types }) if types.size != 1
-
-    # This optimization helps the planer use the correct indexes when filtering by a single type
-    where(
-      '"issues"."work_item_type_id" = (?)',
-      WorkItems::Type.by_type(types.first).select(:id).limit(1)
+      duplicated_to: { project: [:project_feature] }
     )
   }
+  scope :with_issue_type, ->(types) {
+    type_ids = WorkItems::TypesFramework::Provider.new.ids_by_base_types(types)
+
+    where(work_item_type_id: type_ids)
+  }
   scope :without_issue_type, ->(types) {
-    joins(:work_item_type).where.not(work_item_types: { base_type: types })
+    type_ids = WorkItems::TypesFramework::Provider.new.ids_by_base_types(types)
+
+    where.not(work_item_type_id: type_ids)
   }
 
   scope :public_only, -> { where(confidential: false) }
@@ -200,12 +262,25 @@ class Issue < ApplicationRecord
   scope :confidential_only, -> { where(confidential: true) }
 
   scope :without_hidden, -> {
-    where('NOT EXISTS (?)', Users::BannedUser.select(1).where('issues.author_id = banned_users.user_id'))
+    # We add `+ 0` to the author_id to make the query planner use a nested loop and prevent
+    # loading of all banned user IDs for certain queries
+    where_not_exists(Users::BannedUser.where('banned_users.user_id = (issues.author_id + 0)'))
   }
 
   scope :counts_by_state, -> { reorder(nil).group(:state_id).count }
 
-  scope :service_desk, -> { where(author: ::Users::Internal.support_bot) }
+  scope :service_desk, -> {
+    provider = WorkItems::TypesFramework::Provider.new
+
+    where(
+      author: User.support_bot,
+      work_item_type: provider.default_issue_type.id
+    )
+    .or(
+      where(work_item_type: provider.find_by_base_type(:ticket).id)
+    )
+  }
+
   scope :inc_relations_for_view, -> do
     includes(author: :status, assignees: :status)
     .allow_cross_joins_across_databases(url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/422155')
@@ -220,7 +295,7 @@ class Issue < ApplicationRecord
   # e.g:
   #
   #   .by_project_id_and_iid({project_id: 1, iid: 2})
-  #   .by_project_id_and_iid([]) # returns ActiveRecord::NullRelation
+  #   .by_project_id_and_iid([]) # returns Issue.none
   #   .by_project_id_and_iid([
   #     {project_id: 1, iid: 1},
   #     {project_id: 2, iid: 1},
@@ -234,7 +309,12 @@ class Issue < ApplicationRecord
   scope :with_non_null_relative_position, -> { where.not(relative_position: nil) }
   scope :with_projects_matching_search_data, -> { where('issue_search_data.project_id = issues.project_id') }
 
-  before_validation :ensure_namespace_id, :ensure_work_item_type
+  scope :with_work_item_type, -> {
+    joins(:work_item_type)
+  }
+
+  before_validation :ensure_namespace_id, :ensure_work_item_type, :ensure_namespace_traversal_ids
+  before_validation :ensure_work_item_description, if: :importing?
 
   after_save :ensure_metrics!, unless: :skip_metrics?
   after_commit :expire_etag_cache, unless: :importing?
@@ -278,6 +358,19 @@ class Issue < ApplicationRecord
   class << self
     extend ::Gitlab::Utils::Override
 
+    def in_namespaces_with_cte(namespaces)
+      cte = Gitlab::SQL::CTE.new(:namespace_ids, namespaces.select(:id))
+
+      where('issues.namespace_id IN (SELECT id FROM namespace_ids)').with(cte.to_arel)
+    end
+
+    def with_accessible_sub_namespace_ids_cte(namespace_ids)
+      # Using materialized: true to ensure the CTE is computed once and reused, which significantly improves performance
+      # for complex queries. See: https://gitlab.com/gitlab-org/gitlab/-/issues/548094
+      accessible_sub_namespace_ids = Gitlab::SQL::CTE.new(:accessible_sub_namespace_ids, namespace_ids, materialized: true)
+      with(accessible_sub_namespace_ids.to_arel)
+    end
+
     override :order_upvotes_desc
     def order_upvotes_desc
       reorder(upvotes_count: :desc)
@@ -308,7 +401,7 @@ class Issue < ApplicationRecord
   end
 
   def next_object_by_relative_position(ignoring: nil, order: :asc)
-    array_mapping_scope = -> (id_expression) do
+    array_mapping_scope = ->(id_expression) do
       relation = Issue.where(Issue.arel_table[:project_id].eq(id_expression))
 
       if order == :asc
@@ -322,7 +415,7 @@ class Issue < ApplicationRecord
       scope: Issue.order(relative_position: order, id: order),
       array_scope: relative_positioning_parent_projects,
       array_mapping_scope: array_mapping_scope,
-      finder_query: -> (_, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
+      finder_query: ->(_, id_expression) { Issue.where(Issue.arel_table[:id].eq(id_expression)) }
     ).execute
 
     relation = exclude_self(relation, excluded: ignoring) if ignoring.present?
@@ -331,7 +424,11 @@ class Issue < ApplicationRecord
   end
 
   def relative_positioning_parent_projects
-    project.group&.root_ancestor&.all_projects&.select(:id) || Project.id_in(project).select(:id)
+    if namespace.parent&.user_namespace?
+      Project.id_in(namespace.project).select(:id)
+    else
+      namespace.root_ancestor&.all_projects&.select(:id)
+    end
   end
 
   def self.relative_positioning_query_base(issue)
@@ -349,20 +446,40 @@ class Issue < ApplicationRecord
   # Alternative prefix for situations where the standard prefix would be
   # interpreted as a comment, most notably to begin commit messages with
   # (e.g. "GL-123: My commit")
-  def self.alternative_reference_prefix
+  def self.alternative_reference_prefix_without_postfix
     'GL-'
   end
 
-  # Pattern used to extract `#123` issue references from text
-  #
+  def self.alternative_reference_prefix_with_postfix
+    '[issue:'
+  end
+
+  def self.reference_postfix
+    ']'
+  end
+
+  # Pattern used to extract issue references from text
   # This pattern supports cross-project references.
   def self.reference_pattern
-    @reference_pattern ||= %r{
+    prefix_with_postfix = alternative_reference_prefix_with_postfix
+    if prefix_with_postfix.empty?
+      @reference_pattern ||= %r{
       (?:
         (#{Project.reference_pattern})?#{Regexp.escape(reference_prefix)} |
-        #{Regexp.escape(alternative_reference_prefix)}
+        #{Regexp.escape(alternative_reference_prefix_without_postfix)}
       )#{Gitlab::Regex.issue}
     }x
+    else
+      %r{
+    ((?:
+      (#{Project.reference_pattern})?#{Regexp.escape(reference_prefix)} |
+      #{alternative_reference_prefix_without_postfix}
+    )#{Gitlab::Regex.issue}) |
+    ((?:
+      #{Regexp.escape(prefix_with_postfix)}(#{Project.reference_pattern}/)?
+    )#{Gitlab::Regex.issue(reference_postfix)})
+  }x
+    end
   end
 
   def self.link_reference_pattern
@@ -396,6 +513,8 @@ class Issue < ApplicationRecord
     when 'closest_future_date', 'closest_future_date_asc' then order_closest_future_date
     when 'due_date', 'due_date_asc'                       then order_due_date_asc.with_order_id_desc
     when 'due_date_desc'                                  then order_due_date_desc.with_order_id_desc
+    when 'start_date', 'start_date_asc'                   then order_start_date_asc.with_order_id_desc
+    when 'start_date_desc'                                then order_start_date_desc.with_order_id_desc
     when 'relative_position', 'relative_position_asc'     then order_by_relative_position
     when 'severity_asc'                                   then order_severity_asc
     when 'severity_desc'                                  then order_severity_desc
@@ -417,8 +536,7 @@ class Issue < ApplicationRecord
       attribute_name: 'relative_position',
       column_expression: arel_table[:relative_position],
       order_expression: Issue.arel_table[:relative_position].asc.nulls_last,
-      nullable: :nulls_last,
-      distinct: false
+      nullable: :nulls_last
     )
   end
 
@@ -455,6 +573,17 @@ class Issue < ApplicationRecord
     branch_name
   end
 
+  def self.supported_keyset_orderings
+    {
+      id: [:asc, :desc],
+      title: [:asc, :desc],
+      created_at: [:asc, :desc],
+      updated_at: [:asc, :desc],
+      due_date: [:asc, :desc],
+      relative_position: [:asc, :desc]
+    }
+  end
+
   # Temporary disable moving null elements because of performance problems
   # For more information check https://gitlab.com/gitlab-com/gl-infra/production/-/issues/4321
   def check_repositioning_allowed!
@@ -464,14 +593,14 @@ class Issue < ApplicationRecord
   end
 
   def blocked_for_repositioning?
-    resource_parent.root_namespace&.issue_repositioning_disabled?
+    namespace.root_ancestor&.issue_repositioning_disabled?
   end
 
   # `from` argument can be a Namespace or Project.
-  def to_reference(from = nil, full: false)
+  def to_reference(from = nil, full: false, absolute_path: false)
     reference = "#{self.class.reference_prefix}#{iid}"
 
-    "#{namespace.to_reference_base(from, full: full)}#{reference}"
+    "#{namespace.to_reference_base(from, full: full, absolute_path: absolute_path)}#{reference}"
   end
 
   def suggested_branch_name
@@ -479,7 +608,7 @@ class Issue < ApplicationRecord
 
     start_counting_from = 2
 
-    branch_name_generator = -> (counter) do
+    branch_name_generator = ->(counter) do
       suffix = counter > 5 ? SecureRandom.hex(8) : counter
       "#{to_branch_name}-#{suffix}"
     end
@@ -507,13 +636,12 @@ class Issue < ApplicationRecord
     self.duplicated_to_id = nil
   end
 
-  def can_move?(user, to_project = nil)
-    if to_project
-      return false unless user.can?(:admin_issue, to_project)
+  def can_move?(user, to_namespace = nil)
+    if to_namespace
+      return false unless user.can?(:admin_issue, to_namespace)
     end
 
-    !moved? && persisted? &&
-      user.can?(:admin_issue, self.project)
+    !moved? && persisted? && user.can?(:admin_issue, self)
   end
   alias_method :can_clone?, :can_move?
 
@@ -540,7 +668,7 @@ class Issue < ApplicationRecord
     related_issues = yield related_issues if block_given?
     return related_issues unless authorize
 
-    cross_project_filter = -> (issues) { issues.where(project: project) }
+    cross_project_filter = ->(issues) { issues.where(project: project) }
     Ability.issues_readable_by_user(related_issues,
       current_user,
       filters: { read_cross_project: cross_project_filter })
@@ -554,18 +682,6 @@ class Issue < ApplicationRecord
     !self.closed? && !self.project.forked?
   end
 
-  # Returns `true` if the current issue can be viewed by either a logged in User
-  # or an anonymous user.
-  def visible_to_user?(user = nil)
-    return publicly_visible? unless user
-
-    return false unless readable_by?(user)
-
-    user.can_read_all_resources? ||
-      ::Gitlab::ExternalAuthorization.access_allowed?(
-        user, project.external_authorization_classification_label)
-  end
-
   # Always enforce spam check for support bot but allow for other users when issue is not publicly visible
   def allow_possible_spam?(user)
     return true if Gitlab::CurrentSettings.allow_possible_spam
@@ -577,6 +693,9 @@ class Issue < ApplicationRecord
   def supports_recaptcha?
     true
   end
+
+  # Overriden in EE
+  def supports_parent?; end
 
   def as_json(options = {})
     super(options).tap do |json|
@@ -599,12 +718,10 @@ class Issue < ApplicationRecord
   end
 
   # rubocop: disable CodeReuse/ServiceClass
-  def update_project_counter_caches
-    # TODO: Fix counter cache for issues in group
-    # TODO: see https://gitlab.com/gitlab-org/gitlab/-/work_items/393125
+  def invalidate_project_counter_caches
     return unless project
 
-    Projects::OpenIssuesCountService.new(project).refresh_cache
+    Projects::OpenIssuesCountService.new(project).delete_cache
   end
   # rubocop: enable CodeReuse/ServiceClass
 
@@ -617,7 +734,10 @@ class Issue < ApplicationRecord
   end
 
   def banzai_render_context(field)
-    super.merge(label_url_method: :project_issues_url)
+    additional_attributes = { label_url_method: :project_issues_url }
+    additional_attributes[:group] = namespace if namespace.is_a?(Group)
+
+    super.merge(additional_attributes)
   end
 
   def design_collection
@@ -625,7 +745,7 @@ class Issue < ApplicationRecord
   end
 
   def from_service_desk?
-    author.id == Users::Internal.support_bot.id
+    author.support_bot?
   end
 
   def issue_link_type
@@ -671,23 +791,6 @@ class Issue < ApplicationRecord
     self.update_column(:upvotes_count, self.upvotes)
   end
 
-  # Returns `true` if the given User can read the current Issue.
-  #
-  # This method duplicates the same check of issue_policy.rb
-  # for performance reasons, check commit: 002ad215818450d2cbbc5fa065850a953dc7ada8
-  # Make sure to sync this method with issue_policy.rb
-  def readable_by?(user)
-    if user.can_read_all_resources?
-      true
-    elsif hidden?
-      false
-    elsif project
-      project_level_readable_by?(user)
-    else
-      group_level_readable_by?(user)
-    end
-  end
-
   def hidden?
     author&.banned?
   end
@@ -723,17 +826,11 @@ class Issue < ApplicationRecord
   # Persisted records will always have a work_item_type. This method is useful
   # in places where we use a non persisted issue to perform feature checks
   def work_item_type_with_default
-    work_item_type || WorkItems::Type.default_by_type(DEFAULT_ISSUE_TYPE)
+    work_item_type || work_item_type_provider.default_issue_type
   end
 
   def issue_type
     work_item_type_with_default.base_type
-  end
-
-  def unsubscribe_email_participant(email)
-    return if email.blank?
-
-    issue_email_participants.find_by_email(email)&.destroy
   end
 
   def hook_attrs
@@ -742,7 +839,36 @@ class Issue < ApplicationRecord
 
   override :gfm_reference
   def gfm_reference(from = nil)
-    "#{work_item_type_with_default.name.underscore} #{to_reference(from)}"
+    # References can be ambiguous when two namespaces have the same path names. This is why we need to use absolute
+    # paths when cross-referencing between projects and groups.
+    #
+    # Example setup:
+    #  - `gitlab` group
+    #  - `gitlab` project within the `gitlab` group
+    #  - In a project issue, we reference an epic with `epic gitlab#123` for a system note
+    #
+    # When resolving this system note, we would look for a namespace within the `gitlab` project's parent.
+    # This would be incorrect, as it would resolve to an ISSUE on the `gitlab` PROJECT, not the `gitlab` GROUP.
+    #
+    # This problem only occurs when there is a project with the same name as the group. Otherwise, our reference
+    # code attempts to resolve it on the group.
+    #
+    # Since the reference parser has no information about where each reference originated, we need to fix this in
+    # the reference itself by providing an absolute path.
+    #
+    # In the example above, the `from` argument is the Issue on the Project, and `self` is the item on the Group.
+    # Every time we reference from a project to a group, we need to use an absolute path.
+    # So we need to reference it as `epic /gitlab#123`.
+    #
+    # We could always use absolute paths to remove the ambiguity, but this would lead to longer references everywhere
+    # that are harder to read.
+    params = {}
+
+    params[:full] = true if (from.is_a?(Project) || from.is_a?(Namespaces::ProjectNamespace)) && group_level?
+    # When we reference a root group, we also need to use an absolute path because it could be that a namespace
+    params[:absolute_path] = true unless namespace.has_parent?
+
+    "#{work_item_type_with_default.name.underscore} #{to_reference(from, **params)}"
   end
 
   def skip_metrics?
@@ -752,35 +878,75 @@ class Issue < ApplicationRecord
   def has_widget?(widget)
     widget_class = WorkItems::Widgets.const_get(widget.to_s.camelize, false)
 
-    work_item_type.widgets(resource_parent).include?(widget_class)
+    work_item_type.widget_classes(resource_parent).include?(widget_class)
   end
+
+  def group_level?
+    project_id.blank?
+  end
+
+  def autoclose_by_merged_closing_merge_request?
+    return false if group_level?
+
+    project.autoclose_referenced_issues
+  end
+
+  def epic_work_item?
+    work_item_type&.epic?
+  end
+
+  def group_epic_work_item?
+    epic_work_item? && group_level?
+  end
+
+  def use_work_item_url?
+    return false if require_legacy_views?
+    return true if work_item_type&.task?
+
+    resource_parent.use_work_item_url?
+  end
+
+  # Some Issues types/conditions were not fully migrated to WorkItems UI/workflows yet.
+  # On the other hand some other Issue types/conditions are only available through
+  # WorkItems UI/workflows.
+  #
+  # Overriden on EE (For OKRs and Epics)
+  def show_as_work_item?
+    return false if require_legacy_views?
+    return true if group_level?
+    return true if work_item_type&.task?
+
+    resource_parent.work_items_consolidated_list_enabled?
+  end
+
+  # Legacy views/workflows only
+  # - Service Desk were not converted to the work items framework.
+  # - Incidents were not converted to the work items framework.
+  def require_legacy_views?
+    from_service_desk? || work_item_type&.incident?
+  end
+
+  def ensure_work_item_description
+    return if work_item_description.present?
+
+    build_work_item_description(
+      description: description,
+      description_html: description_html,
+      last_edited_at: last_edited_at,
+      last_edited_by_id: last_edited_by_id,
+      lock_version: lock_version,
+      cached_markdown_version: cached_markdown_version
+    )
+  end
+
+  def ==(other)
+    return super unless id.present?
+
+    other.is_a?(Issue) && other.id == id
+  end
+  alias_method :eql?, :==
 
   private
-
-  def project_level_readable_by?(user)
-    if !project.issues_enabled?
-      false
-    elsif project.personal? && project.team.owner?(user)
-      true
-    elsif confidential? && !assignee_or_author?(user)
-      project.member?(user, Gitlab::Access::REPORTER)
-    elsif project.public? || (project.internal? && !user.external?)
-      project.feature_available?(:issues, user)
-    else
-      project.member?(user)
-    end
-  end
-
-  def group_level_readable_by?(user)
-    # This should never happen as we don't support personal namespace level issues. Just additional safety.
-    return false unless namespace.is_a?(::Group)
-
-    if confidential? && !assignee_or_author?(user)
-      namespace.member?(user, Gitlab::Access::REPORTER)
-    else
-      namespace.member?(user)
-    end
-  end
 
   def due_date_after_start_date
     return unless start_date.present? && due_date.present?
@@ -840,16 +1006,20 @@ class Issue < ApplicationRecord
   end
 
   def ensure_work_item_type
-    return if work_item_type_id.present? || work_item_type_id_change&.last.present?
+    return if work_item_type.present? || work_item_type_id.present? || work_item_type_id_change&.last.present?
 
-    self.work_item_type = WorkItems::Type.default_by_type(DEFAULT_ISSUE_TYPE)
+    self.work_item_type = work_item_type_provider.default_issue_type
+  end
+
+  def ensure_namespace_traversal_ids
+    self.namespace_traversal_ids = self.namespace&.traversal_ids
   end
 
   def allowed_work_item_type_change
     return unless changes[:work_item_type_id]
 
-    involved_types = WorkItems::Type.where(id: changes[:work_item_type_id].compact).pluck(:base_type).uniq
-    disallowed_types = involved_types - WorkItems::Type::CHANGEABLE_BASE_TYPES
+    involved_types = work_item_type_provider.by_ids(changes[:work_item_type_id].compact).pluck(:base_type).uniq
+    disallowed_types = involved_types - CHANGEABLE_BASE_TYPES
 
     return if disallowed_types.empty?
 
@@ -858,11 +1028,20 @@ class Issue < ApplicationRecord
 
   def linked_issues_select
     self.class.select(['issues.*', 'issue_links.id AS issue_link_id',
-                       'issue_links.link_type as issue_link_type_value',
-                       'issue_links.target_id as issue_link_source_id',
-                       'issue_links.created_at as issue_link_created_at',
-                       'issue_links.updated_at as issue_link_updated_at'])
+      'issue_links.link_type as issue_link_type_value',
+      'issue_links.target_id as issue_link_source_id',
+      'issue_links.created_at as issue_link_created_at',
+      'issue_links.updated_at as issue_link_updated_at'])
   end
+
+  def validate_due_date?
+    true
+  end
+
+  def work_item_type_provider
+    ::WorkItems::TypesFramework::Provider.new(namespace)
+  end
+  strong_memoize_attr :work_item_type_provider
 end
 
 Issue.prepend_mod_with('Issue')

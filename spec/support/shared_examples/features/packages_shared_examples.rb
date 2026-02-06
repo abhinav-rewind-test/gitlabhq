@@ -18,11 +18,29 @@ RSpec.shared_examples 'packages list' do |check_project_name: false|
   end
 end
 
-RSpec.shared_examples 'pipelines on packages list' do
+RSpec.shared_examples 'packages can be deleted' do
+  include Spec::Support::Helpers::ModalHelpers
+
+  it 'allows deletion of packages' do
+    expect(page).to have_content('2 packages')
+
+    find('[data-testid="delete-dropdown"]', match: :first).click
+    find('[data-testid="action-delete"]', match: :first).click
+    within_modal do
+      expect(page).to have_content('Delete package version')
+      click_button('Permanently delete')
+    end
+
+    expect(page).to have_content 'Package deleted successfully'
+    expect(page).to have_content('1 package')
+  end
+end
+
+RSpec.shared_examples 'pipelines on packages list' do |is_group_page: false|
   let_it_be(:pipelines) do
     %w[c83d6e391c22777fca1ed3012fce84f633d7fed0
       d83d6e391c22777fca1ed3012fce84f633d7fed0].map do |sha|
-      create(:ci_pipeline, project: project, sha: sha)
+      create(:ci_pipeline, project: project, user: user, sha: sha)
     end
   end
 
@@ -32,17 +50,23 @@ RSpec.shared_examples 'pipelines on packages list' do
     end
   end
 
-  it 'shows the latest pipeline' do
+  it 'shows the latest pipeline and user details' do
     # Test after reload
     page.evaluate_script 'window.location.reload()'
 
     wait_for_requests
 
     expect(page).to have_content('d83d6e39')
+
+    publish_message = is_group_page ? "Published to #{project.name} by #{user.name}" : "Published by #{user.name}"
+
+    expect(page).to have_content(publish_message)
   end
 end
 
 RSpec.shared_examples 'package details link' do |property|
+  include Spec::Support::Helpers::ModalHelpers
+
   before do
     stub_application_setting(npm_package_requests_forwarding: false)
   end
@@ -54,10 +78,9 @@ RSpec.shared_examples 'package details link' do |property|
 
     expect(page).to have_current_path(package_details_path)
 
-    expect(page).to have_css('.packages-app h2[data-testid="title"]', text: package.name)
+    expect(page).to have_css('.packages-app h1[data-testid="page-heading"]', text: package.name)
 
-    expect(page).to have_content('Installation')
-    expect(page).to have_content('Registry setup')
+    expect(page).to have_button('Install')
     expect(page).to have_content('Other versions 0')
   end
 
@@ -72,13 +95,8 @@ RSpec.shared_examples 'package details link' do |property|
     end
 
     it 'shows tab with count' do
-      expect(page).to have_content('Other versions 2')
-    end
-
-    it 'visiting tab shows total on page' do
-      click_link 'Other versions'
-
-      expect(page).to have_content('2 versions')
+      expect(page).to have_content('Other versions')
+      expect(find_by_testid('other-versions-badge')).to have_content('2')
     end
 
     it 'deleting version updates count' do
@@ -86,12 +104,15 @@ RSpec.shared_examples 'package details link' do |property|
 
       find('[data-testid="delete-dropdown"]', match: :first).click
       find('[data-testid="action-delete"]', match: :first).click
-      click_button('Permanently delete')
+      within_modal do
+        expect(page).to have_content('Delete package version')
+        click_button('Permanently delete')
+      end
 
       expect(page).to have_content 'Package deleted successfully'
 
       expect(page).to have_content('Other versions 1')
-      expect(page).to have_content('1 version')
+      expect(find_by_testid('other-versions-badge')).to have_content('1')
 
       expect(page).not_to have_content('1.0.0')
       expect(page).to have_content('1.1.0')
@@ -147,6 +168,58 @@ RSpec.shared_examples 'shared package sorting' do
 
   it_behaves_like 'correctly sorted packages list', 'Published', ascending: true do
     let(:packages) { [package_one, package_two] }
+  end
+
+  context 'when sorted by name ascending' do
+    before do
+      click_sort_option('Name', true)
+    end
+
+    it 'updates query params to contain orderBy:name and sort:asc' do
+      queryparams = Rack::Utils.parse_query(URI.parse(current_url).query)
+      expect(queryparams).to include(
+        'orderBy' => 'name',
+        'sort' => 'asc'
+      )
+    end
+  end
+end
+
+RSpec.shared_examples 'shared package filtering' do
+  include FilteredSearchHelpers
+
+  context 'filters by Type' do
+    let(:packages) { [npm_package] }
+
+    before do
+      select_tokens('Type', 'npm', submit: true, input_text: 'Filter results')
+    end
+
+    it_behaves_like 'packages list'
+
+    it 'updates query params' do
+      queryparams = Rack::Utils.parse_query(URI.parse(current_url).query)
+      expect(queryparams).to eq(
+        'type' => 'npm',
+        'orderBy' => 'created_at',
+        'sort' => 'desc'
+      )
+    end
+
+    context 'when cleared' do
+      before do
+        wait_for_requests
+        click_button 'Clear'
+      end
+
+      it 'resets query params' do
+        queryparams = Rack::Utils.parse_query(URI.parse(current_url).query)
+        expect(queryparams).to eq(
+          'orderBy' => 'created_at',
+          'sort' => 'desc'
+        )
+      end
+    end
   end
 end
 

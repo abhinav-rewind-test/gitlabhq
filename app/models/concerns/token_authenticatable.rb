@@ -8,8 +8,15 @@ module TokenAuthenticatable
       @encrypted_token_authenticatable_fields ||= []
     end
 
+    # Stores fields that already have been configured via add_authentication_token_field
     def token_authenticatable_fields
       @token_authenticatable_fields ||= []
+    end
+
+    # Returns all sensitive fields related to the add_authentication_token_field
+    # e.g. token, token_encrypted, token_digest
+    def token_authenticatable_sensitive_fields
+      @token_authenticatable_sensitive_fields ||= []
     end
 
     private
@@ -24,14 +31,23 @@ module TokenAuthenticatable
 
       attr_accessor :cleartext_tokens
 
-      strategy = TokenAuthenticatableStrategies::Base
-        .fabricate(self, token_field, options)
+      strategy = Authn::TokenField::Base.fabricate(self, token_field, options)
 
-      prevent_from_serialization(*strategy.token_fields) if respond_to?(:prevent_from_serialization)
+      token_authenticatable_sensitive_fields.concat(strategy.sensitive_fields.map(&:to_sym))
 
       if options.fetch(:unique, true)
         define_singleton_method("find_by_#{token_field}") do |token|
           strategy.find_token_authenticatable(token)
+        end
+      end
+
+      define_singleton_method("encode") do |token|
+        strategy.encode(token)
+      end
+
+      if options[:encrypted] && respond_to?(:scope)
+        scope :with_encrypted_tokens, ->(token_values) do
+          where("#{token_field}_encrypted" => Array.wrap(token_values))
         end
       end
 
@@ -59,16 +75,13 @@ module TokenAuthenticatable
         strategy.reset_token!(self)
       end
 
+      mod.define_method("rewrite_#{token_field}") do
+        strategy.write_new_token(self)
+      end
+
       mod.define_method("#{token_field}_matches?") do |other_token|
         token = read_attribute(token_field)
         token.present? && ActiveSupport::SecurityUtils.secure_compare(other_token, token)
-      end
-
-      # Base strategy delegates to this method for formatting a token before
-      # calling set_token. Can be overridden in models to e.g. add a prefix
-      # to the tokens
-      mod.define_method("format_#{token_field}") do |token|
-        token
       end
 
       mod.define_method("#{token_field}_expires_at") do

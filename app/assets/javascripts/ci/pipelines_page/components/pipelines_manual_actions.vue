@@ -7,13 +7,14 @@ import {
   GlTooltipDirective,
 } from '@gitlab/ui';
 import { createAlert } from '~/alert';
-import axios from '~/lib/utils/axios_utils';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { s__, __, sprintf } from '~/locale';
 import Tracking from '~/tracking';
 import GlCountdown from '~/vue_shared/components/gl_countdown.vue';
-import { TRACKING_CATEGORIES } from '../../constants';
+import { confirmJobConfirmationMessage } from '~/ci/pipeline_details/graph/utils';
+import { TRACKING_CATEGORIES, DEFAULT_MANUAL_ACTIONS_LIMIT } from '../../constants';
 import getPipelineActionsQuery from '../graphql/queries/get_pipeline_actions.query.graphql';
+import jobPlayMutation from '../../jobs_page/graphql/mutations/job_play.mutation.graphql';
 
 export default {
   name: 'PipelinesManualActions',
@@ -28,8 +29,12 @@ export default {
     GlLoadingIcon,
   },
   mixins: [Tracking.mixin()],
-  inject: ['fullPath', 'manualActionsLimit'],
+  inject: ['manualActionsLimit'],
   props: {
+    fullPath: {
+      type: String,
+      required: true,
+    },
     iid: {
       type: Number,
       required: true,
@@ -42,7 +47,7 @@ export default {
         return {
           fullPath: this.fullPath,
           iid: this.iid,
-          limit: this.manualActionsLimit,
+          limit: this.manualActionsLimit || DEFAULT_MANUAL_ACTIONS_LIMIT,
         };
       },
       skip() {
@@ -84,20 +89,24 @@ export default {
         if (!confirmed) {
           return;
         }
+      } else if (action.detailedStatus.action.confirmationMessage) {
+        const confirmed = await confirmJobConfirmationMessage(
+          action.name,
+          action.detailedStatus.action.confirmationMessage,
+        );
+
+        if (!confirmed) {
+          return;
+        }
       }
-
       this.isLoading = true;
-
-      /**
-       * Ideally, the component would not make an api call directly.
-       * However, in order to use the eventhub and know when to
-       * toggle back the `isLoading` property we'd need an ID
-       * to track the request with a watcher - since this component
-       * is rendered at least 20 times in the same page, moving the
-       * api call directly here is the most performant solution
-       */
-      axios
-        .post(`${action.playPath}.json`)
+      this.$apollo
+        .mutate({
+          mutation: jobPlayMutation,
+          variables: {
+            id: action.id,
+          },
+        })
         .then(() => {
           this.isLoading = false;
           this.$emit('refresh-pipeline-table');
@@ -145,9 +154,9 @@ export default {
   >
     <gl-disclosure-dropdown-item v-if="isActionsLoading">
       <template #list-item>
-        <div class="gl-display-flex">
-          <gl-loading-icon class="mr-2" />
-          <span>{{ __('Loading...') }}</span>
+        <div class="gl-flex">
+          <gl-loading-icon class="gl-mr-3" />
+          <span>{{ __('Loading…') }}</span>
         </div>
       </template>
     </gl-disclosure-dropdown-item>
@@ -160,7 +169,7 @@ export default {
       @action="onClickAction(action)"
     >
       <template #list-item>
-        <div class="gl-display-flex gl-justify-content-space-between gl-flex-wrap">
+        <div class="gl-flex gl-flex-wrap gl-justify-between">
           {{ action.name }}
           <span v-if="action.scheduledAt">
             <gl-icon name="clock" />
@@ -173,7 +182,7 @@ export default {
     <template #footer>
       <gl-disclosure-dropdown-item v-if="isDropdownLimitReached">
         <template #list-item>
-          <span class="gl-font-sm gl-text-gray-300!" data-testid="limit-reached-msg">
+          <span class="gl-text-sm !gl-text-gray-300" data-testid="limit-reached-msg">
             {{ __('Showing first 50 actions.') }}
           </span>
         </template>

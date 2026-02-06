@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 #
 # Requires let variables:
 # * throttle_setting_prefix: "throttle_authenticated_api", "throttle_authenticated_web", "throttle_protected_paths", "throttle_authenticated_packages_api", "throttle_authenticated_git_lfs", "throttle_authenticated_files_api", "throttle_authenticated_deprecated_api"
@@ -96,6 +97,10 @@ RSpec.shared_examples 'rate-limited token requests' do
     end
 
     it 'allows requests after throttling and then waiting for the next period' do
+      # ensure we don't tick over to the next second while hitting this period's rate limit
+      # before calculating the time for the next period
+      next_period = period.from_now
+
       requests_per_period.times do
         make_request(request_args)
         expect(response).not_to have_gitlab_http_status(:too_many_requests)
@@ -103,7 +108,7 @@ RSpec.shared_examples 'rate-limited token requests' do
 
       expect_rejection { make_request(request_args) }
 
-      travel_to(period.from_now) do
+      travel_to(next_period) do
         requests_per_period.times do
           make_request(request_args)
           expect(response).not_to have_gitlab_http_status(:too_many_requests)
@@ -159,8 +164,8 @@ RSpec.shared_examples 'rate-limited token requests' do
         status: 429,
         env: :throttle,
         remote_ip: '127.0.0.1',
-        request_method: request_method,
-        path: request_args.first,
+        method: request_method,
+        path: a_string_including(request_args.first.split('?').first),
         matched: matched
       }.merge(log_data))
 
@@ -339,7 +344,7 @@ RSpec.shared_examples 'rate-limited web authenticated requests' do
         status: 429,
         env: :throttle,
         remote_ip: '127.0.0.1',
-        request_method: request_method,
+        method: request_method,
         path: url_that_requires_authentication,
         user_id: user.id,
         'meta.user' => user.username,
@@ -459,12 +464,19 @@ end
 # * requests_per_period
 # * period_in_seconds
 # * period
+# * headers
 RSpec.shared_examples 'rate-limited unauthenticated requests' do
+  let(:headers) { {} }
+
   before do
     # Set low limits
     settings_to_set[:"#{throttle_setting_prefix}_requests_per_period"] = requests_per_period
     settings_to_set[:"#{throttle_setting_prefix}_period_in_seconds"] = period_in_seconds
     travel_back
+  end
+
+  def do_request
+    get url_that_does_not_require_authentication, headers: headers
   end
 
   context 'when the throttle is enabled' do
@@ -476,12 +488,12 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
     it 'rejects requests over the rate limit' do
       # At first, allow requests under the rate limit.
       requests_per_period.times do
-        get url_that_does_not_require_authentication
+        do_request
         expect(response).to have_gitlab_http_status(:ok)
       end
 
       # the last straw
-      expect_rejection { get url_that_does_not_require_authentication }
+      expect_rejection { do_request }
     end
 
     context 'with custom response text' do
@@ -492,37 +504,37 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
       it 'rejects requests over the rate limit' do
         # At first, allow requests under the rate limit.
         requests_per_period.times do
-          get url_that_does_not_require_authentication
+          do_request
           expect(response).to have_gitlab_http_status(:ok)
         end
 
         # the last straw
-        expect_rejection { get url_that_does_not_require_authentication }
+        expect_rejection { do_request }
         expect(response.body).to eq("Custom response\n")
       end
     end
 
     it 'allows requests after throttling and then waiting for the next period' do
       requests_per_period.times do
-        get url_that_does_not_require_authentication
+        do_request
         expect(response).to have_gitlab_http_status(:ok)
       end
 
-      expect_rejection { get url_that_does_not_require_authentication }
+      expect_rejection { do_request }
 
       travel_to(period.from_now) do
         requests_per_period.times do
-          get url_that_does_not_require_authentication
+          do_request
           expect(response).to have_gitlab_http_status(:ok)
         end
 
-        expect_rejection { get url_that_does_not_require_authentication }
+        expect_rejection { do_request }
       end
     end
 
     it 'counts requests from different IPs separately' do
       requests_per_period.times do
-        get url_that_does_not_require_authentication
+        do_request
         expect(response).to have_gitlab_http_status(:ok)
       end
 
@@ -531,7 +543,7 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
       end
 
       # would be over limit for the same IP
-      get url_that_does_not_require_authentication
+      do_request
       expect(response).to have_gitlab_http_status(:ok)
     end
 
@@ -603,7 +615,7 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
 
     it 'logs RackAttack info into structured logs' do
       requests_per_period.times do
-        get url_that_does_not_require_authentication
+        do_request
         expect(response).to have_gitlab_http_status(:ok)
       end
 
@@ -612,19 +624,19 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
         status: 429,
         env: :throttle,
         remote_ip: '127.0.0.1',
-        request_method: 'GET',
+        method: 'GET',
         path: url_that_does_not_require_authentication,
         matched: throttle_name
       })
 
       expect(Gitlab::AuthLogger).to receive(:error).with(arguments)
 
-      get url_that_does_not_require_authentication
+      do_request
     end
 
     it_behaves_like 'tracking when dry-run mode is set' do
       def do_request
-        get url_that_does_not_require_authentication
+        get url_that_does_not_require_authentication, headers: headers
       end
     end
   end
@@ -637,7 +649,7 @@ RSpec.shared_examples 'rate-limited unauthenticated requests' do
 
     it 'allows requests over the rate limit' do
       (1 + requests_per_period).times do
-        get url_that_does_not_require_authentication
+        do_request
         expect(response).to have_gitlab_http_status(:ok)
       end
     end
@@ -683,7 +695,7 @@ RSpec.shared_examples 'rate-limited frontend API requests' do
       "#{throttle_setting_prefix}_deprecated_api_enabled" => true
     )
 
-    stub_session(csrf_session)
+    stub_session(session_data: csrf_session)
   end
 
   context 'with a CSRF token' do

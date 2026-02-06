@@ -4,43 +4,33 @@ require 'flipper/adapters/active_record'
 require 'flipper/adapters/active_support_cache_store'
 
 module Feature
-  module BypassLoadBalancer
-    FLAG = 'FEATURE_FLAGS_BYPASS_LOAD_BALANCER'
-    class FlipperRecord < ActiveRecord::Base # rubocop:disable Rails/ApplicationRecord -- This class perfectly replaces
-      # Flipper::Adapters::ActiveRecord::Model, which inherits ActiveRecord::Base
-      include DatabaseReflection
-      self.abstract_class = true
+  SUPPORTED_MODELS = %w[
+    User
+    Project
+    Namespace
+    Ci::Runner
+    Organizations::Organization
+  ].freeze
 
-      # Bypass the load balancer by restoring the default behavior of `connection`
-      # before the load balancer patches ActiveRecord::Base
-      def self.connection
-        retrieve_connection
-      end
-    end
+  class FlipperRecord < ActiveRecord::Base # rubocop:disable Rails/ApplicationRecord -- This class perfectly replaces
+    # Flipper::Adapters::ActiveRecord::Model, which inherits ActiveRecord::Base
+    include DatabaseReflection
 
-    class FlipperFeature < FlipperRecord
-      self.table_name = 'features'
-    end
+    self.abstract_class = true
 
-    class FlipperGate < FlipperRecord
-      self.table_name = 'feature_gates'
-    end
-
-    def self.enabled?
-      Gitlab::Utils.to_boolean(ENV[FLAG], default: false)
+    # Bypass the load balancer by restoring the default behavior of `connection`
+    # before the load balancer patches ActiveRecord::Base
+    def self.connection
+      retrieve_connection
     end
   end
 
-  # Classes to override flipper table names
-  class FlipperFeature < Flipper::Adapters::ActiveRecord::Feature
-    include DatabaseReflection
+  class FlipperFeature < FlipperRecord
+    self.table_name = 'features'
+  end
 
-    # Using `self.table_name` won't work. ActiveRecord bug?
-    superclass.table_name = 'features'
-
-    def self.feature_names
-      pluck(:key)
-    end
+  class FlipperGate < FlipperRecord
+    self.table_name = 'feature_gates'
   end
 
   class OptOut
@@ -53,10 +43,6 @@ module Feature
     end
   end
 
-  class FlipperGate < Flipper::Adapters::ActiveRecord::Gate
-    superclass.table_name = 'feature_gates'
-  end
-
   # Generates the same flipper_id when in a request
   # If not in a request, it generates a unique flipper_id every time
   class FlipperRequest
@@ -64,6 +50,16 @@ module Feature
       Gitlab::SafeRequestStore.fetch("flipper_request_id") do
         "FlipperRequest:#{SecureRandom.uuid}".freeze
       end
+    end
+  end
+
+  # Generates the same flipper_id for a given kubernetes pod,
+  # or for the entire gitlab application if deployed on a single host.
+  class FlipperPod
+    attr_reader :flipper_id
+
+    def initialize
+      @flipper_id = "FlipperPod:#{Socket.gethostname}".freeze
     end
   end
 
@@ -81,13 +77,22 @@ module Feature
   end
 
   InvalidFeatureFlagError = Class.new(Exception) # rubocop:disable Lint/InheritException
-  InvalidOperation = Class.new(ArgumentError) # rubocop:disable Lint/InheritException
+  InvalidOperation = Class.new(ArgumentError)
 
   class << self
     delegate :group, to: :flipper
 
     def all
       flipper.features.to_a
+    end
+
+    # Preload the features with the given names.
+    #
+    # names - An Array of String or Symbol names of the features.
+    #
+    # https://github.com/flippercloud/flipper/blob/bf6a13f34fc7f45a597c3d66ec291f3e5855e830/lib/flipper/dsl.rb#L229
+    def preload(names)
+      flipper.preload(names) # rubocop:disable CodeReuse/ActiveRecord -- This cop is not relevant in the Flipper context
     end
 
     RecursionError = Class.new(RuntimeError)
@@ -97,8 +102,7 @@ module Feature
     end
 
     def persisted_names
-      model = BypassLoadBalancer.enabled? ? BypassLoadBalancer::FlipperRecord : ApplicationRecord
-      return [] unless model.database.exists?
+      return [] unless database_exists?
 
       # This loads names of all stored feature flags
       # and returns a stable Set in the following order:
@@ -245,7 +249,7 @@ module Feature
 
     # This method is called from config/initializers/0_inject_feature_flags.rb and can be used
     # to register Flipper groups.
-    # See https://docs.gitlab.com/ee/development/feature_flags/index.html
+    # See https://docs.gitlab.com/ee/development/feature_flags/
     #
     # EE feature groups should go inside the ee/lib/ee/feature.rb version of this method.
     def register_feature_groups; end
@@ -268,6 +272,10 @@ module Feature
       end
     end
 
+    def current_pod
+      @flipper_pod ||= FlipperPod.new
+    end
+
     def gitlab_instance
       @flipper_gitlab_instance ||= FlipperGitlabInstance.new
     end
@@ -288,7 +296,20 @@ module Feature
       RequestStore.fetch(:feature_flag_events) { {} }
     end
 
+    # rubocop: disable CodeReuse/ActiveRecord -- rubocop doesn't recognize Flipper::Adapters::ActiveRecord::Gate as ActiveRecord.
+    def group_ids_for(feature_key)
+      FlipperGate.where(feature_key: feature_key)
+                 .pluck(:value)
+                 .select { |v| v.start_with?("Group:") }
+                 .map { |v| v.sub("Group:", "") }
+    end
+    # rubocop: enable CodeReuse/ActiveRecord
+
     private
+
+    def database_exists?
+      FlipperRecord.database.exists?
+    end
 
     def sanitized_thing(thing)
       case thing
@@ -296,6 +317,8 @@ module Feature
         gitlab_instance
       when :request, :current_request
         current_request
+      when :pod, :current_pod
+        current_pod
       else
         thing
       end
@@ -335,8 +358,7 @@ module Feature
       # During setup the database does not exist yet. So we haven't stored a value
       # for the feature yet and return the default.
 
-      model = BypassLoadBalancer.enabled? ? BypassLoadBalancer::FlipperRecord : ApplicationRecord
-      return unless model.database.exists?
+      return unless database_exists?
 
       flag_stack = ::Thread.current[:feature_flag_recursion_check] || []
       Thread.current[:feature_flag_recursion_check] = flag_stack
@@ -370,29 +392,17 @@ module Feature
     end
 
     def build_flipper_instance(memoize: false)
-      active_record_adapter = if BypassLoadBalancer.enabled?
-                                Flipper::Adapters::ActiveRecord.new(
-                                  feature_class: BypassLoadBalancer::FlipperFeature,
-                                  gate_class: BypassLoadBalancer::FlipperGate)
-                              else
-                                Flipper::Adapters::ActiveRecord.new(
-                                  feature_class: FlipperFeature,
-                                  gate_class: FlipperGate)
-                              end
+      active_record_adapter = Flipper::Adapters::ActiveRecord.new(
+        feature_class: FlipperFeature,
+        gate_class: FlipperGate)
       # Redis L2 cache
       redis_cache_adapter =
-        ActiveSupportCacheStoreAdapter.new(
-          active_record_adapter,
-          l2_cache_backend,
-          expires_in: 1.hour,
-          write_through: true)
+        ActiveSupportCacheStoreAdapter.new(active_record_adapter, l2_cache_backend, 1.hour, write_through: true)
 
       # Thread-local L1 cache: use a short timeout since we don't have a
       # way to expire this cache all at once
-      flipper_adapter = Flipper::Adapters::ActiveSupportCacheStore.new(
-        redis_cache_adapter,
-        l1_cache_backend,
-        expires_in: 1.minute)
+      flipper_adapter =
+        Flipper::Adapters::ActiveSupportCacheStore.new(redis_cache_adapter, l1_cache_backend, 1.minute)
 
       Flipper.new(flipper_adapter).tap do |flip|
         flip.memoize = memoize
@@ -408,12 +418,30 @@ module Feature
     def check_feature_flags_definition!(key, thing, type)
       return unless check_feature_flags_definition?
 
-      if thing && !thing.respond_to?(:flipper_id) && !thing.is_a?(Flipper::Types::Group)
+      validate_thing!(key, thing)
+      Feature::Definition.valid_usage!(key, type: type)
+    end
+
+    def validate_thing!(key, thing)
+      return unless thing
+
+      # All models have a flipper_id defined by the flipper ActiveRecord adapter,
+      # so we need additional validation to ensure an unsupported model is not used accidentally.
+      if thing.is_a?(ActiveRecord::Base) && !supported_models.any? { |model| thing.is_a?(model) }
         raise InvalidFeatureFlagError,
-          "The thing '#{thing.class.name}' for feature flag '#{key}' needs to include `FeatureGate` or implement `flipper_id`"
+          "'#{thing.class.name}' is not a valid feature flag actor but was used for feature flag '#{key}'."
       end
 
-      Feature::Definition.valid_usage!(key, type: type)
+      return if thing.is_a?(Flipper::Types::Group) || thing.respond_to?(:flipper_id)
+
+      raise InvalidFeatureFlagError,
+        "The thing '#{thing.class.name}' for feature flag '#{key}' needs to include `FeatureGate` or implement `flipper_id`"
+    end
+
+    def supported_models
+      # Feature is loaded before the Rails environment is initialized
+      # so we need to constantize these at runtime.
+      @supported_models ||= SUPPORTED_MODELS.map(&:constantize)
     end
 
     def l1_cache_backend
@@ -443,11 +471,11 @@ module Feature
     end
 
     def gate_specified?
-      %i[user project group feature_group namespace repository].any? { |key| params.key?(key) }
+      %i[user project group feature_group namespace repository runner].any? { |key| params.key?(key) }
     end
 
     def targets
-      [feature_group, users, projects, groups, namespaces, repositories].flatten.compact
+      [feature_group, users, projects, groups, namespaces, repositories, runners].flatten.compact
     end
 
     private
@@ -461,36 +489,19 @@ module Feature
     # rubocop: enable CodeReuse/ActiveRecord
 
     def users
-      return unless params.key?(:user)
-
-      params[:user].split(',').map do |arg|
-        UserFinder.new(arg).find_by_username || (raise UnknownTargetError, "#{arg} is not found!")
-      end
+      find_targets(:user) { |arg| UserFinder.new(arg).find_by_username }
     end
 
     def projects
-      return unless params.key?(:project)
-
-      params[:project].split(',').map do |arg|
-        Project.find_by_full_path(arg) || (raise UnknownTargetError, "#{arg} is not found!")
-      end
+      find_targets(:project) { |arg| Project.find_by_full_path(arg) }
     end
 
     def groups
-      return unless params.key?(:group)
-
-      params[:group].split(',').map do |arg|
-        Group.find_by_full_path(arg) || (raise UnknownTargetError, "#{arg} is not found!")
-      end
+      find_targets(:group) { |arg| Group.find_by_full_path(arg) }
     end
 
     def namespaces
-      return unless params.key?(:namespace)
-
-      params[:namespace].split(',').map do |arg|
-        # We are interested in Group or UserNamespace
-        Namespace.without_project_namespaces.find_by_full_path(arg) || (raise UnknownTargetError, "#{arg} is not found!")
-      end
+      find_targets(:namespace) { |arg| Namespace.without_project_namespaces.find_by_full_path(arg) }
     end
 
     def repositories
@@ -501,6 +512,21 @@ module Feature
         raise UnknownTargetError, "#{arg} is not found!" if container.nil?
 
         container.repository
+      end
+    end
+
+    def runners
+      find_targets(:runner) { |arg| ::Ci::Runner.find_by_id(arg) }
+    end
+
+    def find_targets(param_key)
+      return unless params.key?(param_key)
+
+      params[param_key].split(',').filter_map do |arg|
+        arg = arg.strip
+
+        result = yield(arg)
+        result || (raise UnknownTargetError, "#{arg} is not found!")
       end
     end
   end

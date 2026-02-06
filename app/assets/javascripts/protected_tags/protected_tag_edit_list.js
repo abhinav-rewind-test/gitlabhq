@@ -5,21 +5,20 @@ import ProtectedTagEdit from './protected_tag_edit.vue';
 export default class ProtectedTagEditList {
   constructor(options) {
     this.hasLicense = options.hasLicense;
+    this.sectionSelector = options.sectionSelector;
     this.initEditForm();
   }
 
   initEditForm() {
-    document
-      .querySelector('.protected-tags-list')
-      .querySelectorAll('.js-protected-tag-edit-form')
-      ?.forEach((el) => {
-        const accessDropdownEl = el.querySelector('.js-allowed-to-create');
-        this.initAccessDropdown(accessDropdownEl, {
-          url: el.dataset.url,
-          hasLicense: this.hasLicense,
-          accessLevelsData: gon.create_access_levels.roles,
-        });
+    document.querySelectorAll('.protected-tags-list .js-protected-tag-edit-form')?.forEach((el) => {
+      const accessDropdownEl = el.querySelector('.js-allowed-to-create');
+      this.initAccessDropdown(accessDropdownEl, {
+        url: el.dataset.url,
+        hasLicense: this.hasLicense,
+        accessLevelsData: gon.create_access_levels.roles,
+        sectionSelector: this.sectionSelector,
       });
+    });
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -35,6 +34,7 @@ export default class ProtectedTagEditList {
 
     return new Vue({
       el,
+      name: 'ProtectedTagEditRoot',
       render(createElement) {
         return createElement(ProtectedTagEdit, {
           props: {

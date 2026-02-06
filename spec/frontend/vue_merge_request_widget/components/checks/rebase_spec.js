@@ -2,7 +2,7 @@ import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
 import { GlModal } from '@gitlab/ui';
 import MergeChecksRebase from '~/vue_merge_request_widget/components/checks/rebase.vue';
-import rebaseQuery from '~/vue_merge_request_widget/queries/states/rebase.query.graphql';
+import rebaseQuery from 'ee_else_ce/vue_merge_request_widget/queries/states/rebase.query.graphql';
 import eventHub from '~/vue_merge_request_widget/event_hub';
 import toast from '~/vue_shared/plugins/global_toast';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
@@ -27,21 +27,20 @@ const mockPipelineNodes = [
 
 const mockQueryHandler = ({
   rebaseInProgress = false,
-  targetBranch = '',
-  pushToSourceBranch = true,
   nodes = mockPipelineNodes,
+  allowMergeOnSkippedPipeline = true,
 } = {}) =>
   jest.fn().mockResolvedValue({
     data: {
       project: {
         id: '1',
+        allowMergeOnSkippedPipeline,
+        ciCdSettings: {
+          mergeTrainsEnabled: false,
+        },
         mergeRequest: {
           id: '2',
           rebaseInProgress,
-          targetBranch,
-          userPermissions: {
-            pushToSourceBranch,
-          },
           pipelines: {
             nodes,
           },
@@ -56,14 +55,19 @@ const createMockApolloProvider = (handler) => {
   return createMockApollo([[rebaseQuery, handler]]);
 };
 
-function createWrapper({ propsData = {}, provideData = {}, handler = mockQueryHandler() } = {}) {
+function createWrapper({
+  propsData = {},
+  canPushToSourceBranch = true,
+  provideData = {},
+  handler = mockQueryHandler(),
+} = {}) {
   wrapper = mountExtended(MergeChecksRebase, {
     apolloProvider: createMockApolloProvider(handler),
     provide: {
       ...provideData,
     },
     propsData: {
-      mr: {},
+      mr: { canPushToSourceBranch },
       service: {},
       check: {
         identifier: 'need_rebase',
@@ -145,13 +149,17 @@ describe('Merge request merge checks rebase component', () => {
           propsData: {
             mr: {
               onlyAllowMergeIfPipelineSucceeds: true,
+              canPushToSourceBranch: true,
             },
             service: {
               rebase: rebaseMock,
               poll: pollMock,
             },
           },
-          handler: mockQueryHandler({ pushToSourceBranch: true }),
+          handler: mockQueryHandler({
+            pushToSourceBranch: true,
+            allowMergeOnSkippedPipeline: false,
+          }),
         });
 
         await waitForPromises();
@@ -178,6 +186,7 @@ describe('Merge request merge checks rebase component', () => {
             mr: {
               onlyAllowMergeIfPipelineSucceeds: true,
               allowMergeOnSkippedPipeline: true,
+              canPushToSourceBranch: true,
             },
             service: {
               rebase: rebaseMock,
@@ -219,6 +228,7 @@ describe('Merge request merge checks rebase component', () => {
             mr: {
               sourceProjectFullPath: 'user/forked',
               targetProjectFullPath: 'root/original',
+              canPushToSourceBranch: true,
             },
             service: {
               rebase: rebaseMock,
@@ -245,6 +255,7 @@ describe('Merge request merge checks rebase component', () => {
             mr: {
               sourceProjectFullPath: 'user/forked',
               targetProjectFullPath: 'root/original',
+              canPushToSourceBranch: true,
             },
             service: {
               rebase: rebaseMock,
@@ -266,14 +277,11 @@ describe('Merge request merge checks rebase component', () => {
   });
 
   describe('without permissions', () => {
-    const exampleTargetBranch = 'fake-branch-to-test-with';
-
     it('does render the "Rebase without pipeline" button', async () => {
       createWrapper({
+        canPushToSourceBranch: false,
         handler: mockQueryHandler({
           rebaseInProgress: false,
-          pushToSourceBranch: false,
-          targetBranch: exampleTargetBranch,
         }),
       });
 
@@ -318,6 +326,49 @@ describe('Merge request merge checks rebase component', () => {
 
       expect(eventHub.$emit).toHaveBeenCalledWith('MRWidgetRebaseSuccess');
       expect(toast).toHaveBeenCalledWith('Rebase completed');
+    });
+  });
+
+  describe('error states', () => {
+    it('does not render action buttons', async () => {
+      createWrapper({
+        handler: jest.fn().mockResolvedValue({ data: { project: null } }),
+      });
+
+      await waitForPromises();
+
+      expect(findStandardRebaseButton().exists()).toBe(false);
+      expect(findRebaseWithoutCiButton().exists()).toBe(false);
+    });
+  });
+
+  describe('rebase message when merge trains are disabled', () => {
+    const mockQueryHandlerWithMergeTrains = () =>
+      jest.fn().mockResolvedValue({
+        data: {
+          project: {
+            id: '1',
+            allowMergeOnSkippedPipeline: true,
+            ciCdSettings: {
+              mergeTrainsEnabled: false,
+            },
+            mergeRequest: {
+              id: '2',
+              rebaseInProgress: false,
+              pipelines: {
+                nodes: mockPipelineNodes,
+              },
+            },
+          },
+        },
+      });
+
+    it('displays standard rebase message when merge trains are disabled', async () => {
+      createWrapper({ handler: mockQueryHandlerWithMergeTrains() });
+
+      await waitForPromises();
+
+      expect(wrapper.text()).toContain('Fast forward merge is not possible. Please rebase.');
     });
   });
 });

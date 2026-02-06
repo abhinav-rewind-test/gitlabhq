@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Resolvers::ProjectIssuesResolver do
+RSpec.describe Resolvers::ProjectIssuesResolver, feature_category: :team_planning do
   include GraphqlHelpers
 
   let_it_be(:current_user) { create(:user) }
@@ -53,10 +53,10 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
       end
 
       describe 'filtering by milestone wildcard id' do
-        let_it_be(:upcoming_milestone) { create(:milestone, project: project, title: "upcoming milestone", start_date: 1.day.ago, due_date: 1.day.from_now) }
+        let_it_be(:current_milestone) { create(:milestone, project: project, title: "current milestone", start_date: 1.day.ago, due_date: 1.day.from_now) }
         let_it_be(:past_milestone) { create(:milestone, project: project, title: "past milestone", due_date: 1.day.ago) }
         let_it_be(:future_milestone) { create(:milestone, project: project, title: "future milestone", start_date: 1.day.from_now) }
-        let_it_be(:issue5) { create(:issue, project: project, state: :opened, milestone: upcoming_milestone) }
+        let_it_be(:issue5) { create(:issue, project: project, state: :opened, milestone: current_milestone) }
         let_it_be(:issue6) { create(:issue, project: project, state: :opened, milestone: past_milestone) }
         let_it_be(:issue7) { create(:issue, project: project, state: :opened, milestone: future_milestone) }
 
@@ -70,7 +70,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
         end
 
         it 'returns issues with upcoming milestone' do
-          expect(resolve_issues(milestone_wildcard_id: wildcard_upcoming)).to contain_exactly(issue5)
+          expect(resolve_issues(milestone_wildcard_id: wildcard_upcoming)).to contain_exactly(issue7)
         end
 
         it 'returns issues with any milestone' do
@@ -82,14 +82,14 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
         end
 
         it 'generates a mutually exclusive filter error when wildcard and title are provided' do
-          expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ArgumentError, 'only one of [milestoneTitle, milestoneWildcardId] arguments is allowed at the same time.') do
+          expect_graphql_error_to_be_created(GraphQL::Schema::Validator::ValidationFailedError, 'Only one of [milestoneTitle, milestoneWildcardId] arguments is allowed at the same time.') do
             resolve_issues(milestone_title: ["started milestone"], milestone_wildcard_id: wildcard_started)
           end
         end
 
         context 'when using negated filters' do
           it 'returns issues matching the searched title after applying a negated filter' do
-            expect(resolve_issues(milestone_title: ['past milestone'], not: { milestone_wildcard_id: wildcard_upcoming })).to contain_exactly(issue6)
+            expect(resolve_issues(milestone_title: ['current milestone'], not: { milestone_wildcard_id: wildcard_upcoming })).to contain_exactly(issue5)
           end
 
           it 'returns issues excluding the ones with started milestone' do
@@ -97,13 +97,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
           end
 
           it 'returns issues excluding the ones with upcoming milestone' do
-            expect(resolve_issues(not: { milestone_wildcard_id: wildcard_upcoming })).to contain_exactly(issue6)
-          end
-
-          it 'generates a mutually exclusive filter error when wildcard and title are provided as negated filters' do
-            expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ArgumentError, 'only one of [milestoneTitle, milestoneWildcardId] arguments is allowed at the same time.') do
-              resolve_issues(not: { milestone_title: ["started milestone"], milestone_wildcard_id: wildcard_started })
-            end
+            expect(resolve_issues(not: { milestone_wildcard_id: wildcard_upcoming })).to contain_exactly(issue1, issue5)
           end
         end
       end
@@ -126,7 +120,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
 
           context 'when release_tag_wildcard_id is also provided' do
             it 'generates a mutually eclusive argument error' do
-              expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ArgumentError, 'only one of [releaseTag, releaseTagWildcardId] arguments is allowed at the same time.') do
+              expect_graphql_error_to_be_created(GraphQL::Schema::Validator::ValidationFailedError, 'Only one of [releaseTag, releaseTagWildcardId] arguments is allowed at the same time.') do
                 resolve_issues(release_tag: [release1.tag], release_tag_wildcard_id: 'ANY')
               end
             end
@@ -195,7 +189,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
 
         context 'when both assignee_username and assignee_usernames are provided' do
           it 'generates a mutually exclusive filter error' do
-            expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ArgumentError, 'only one of [assigneeUsernames, assigneeUsername, assigneeWildcardId] arguments is allowed at the same time.') do
+            expect_graphql_error_to_be_created(GraphQL::Schema::Validator::ValidationFailedError, 'Only one of [assigneeUsernames, assigneeUsername, assigneeWildcardId] arguments is allowed at the same time.') do
               resolve_issues(assignee_usernames: [assignee.username], assignee_username: assignee.username)
             end
           end
@@ -393,6 +387,8 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
         end
       end
 
+      # subscribed filtering handled in request spec, spec/requests/api/graphql/project/issues_spec.rb
+
       describe 'sorting' do
         context 'when sorting by created' do
           it 'sorts issues ascending' do
@@ -569,10 +565,10 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
 
         context 'when sorting with non-stable cursors' do
           %i[priority_asc priority_desc
-             popularity_asc popularity_desc
-             label_priority_asc label_priority_desc
-             milestone_due_asc milestone_due_desc
-             escalation_status_asc escalation_status_desc].each do |sort_by|
+            popularity_asc popularity_desc
+            label_priority_asc label_priority_desc
+            milestone_due_asc milestone_due_desc
+            escalation_status_asc escalation_status_desc].each do |sort_by|
             it "uses offset-pagination when sorting by #{sort_by}" do
               resolved = resolve_issues(sort: sort_by)
 
@@ -607,13 +603,13 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
       end
 
       it 'finds a specific issue with iid', :request_store do
-        result = batch_sync(max_queries: 8) { resolve_issues(iid: issue1.iid).to_a }
+        result = batch_sync(max_queries: 11) { resolve_issues(iid: issue1.iid).to_a }
 
         expect(result).to contain_exactly(issue1)
       end
 
       it 'batches queries that only include IIDs', :request_store do
-        result = batch_sync(max_queries: 8) do
+        result = batch_sync(max_queries: 11) do
           [issue1, issue2]
             .map { |issue| resolve_issues(iid: issue.iid.to_s) }
             .flat_map(&:to_a)
@@ -623,7 +619,7 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
       end
 
       it 'finds a specific issue with iids', :request_store do
-        result = batch_sync(max_queries: 8) do
+        result = batch_sync(max_queries: 11) do
           resolve_issues(iids: [issue1.iid]).to_a
         end
 
@@ -660,13 +656,6 @@ RSpec.describe Resolvers::ProjectIssuesResolver do
     it "returns nil without breaking" do
       expect(resolve_issues(iids: ["don't", "break"])).to be_empty
     end
-  end
-
-  it 'increases field complexity based on arguments' do
-    field = Types::BaseField.new(name: 'test', type: GraphQL::Types::String.connection_type, resolver_class: described_class, null: false, max_page_size: 100)
-
-    expect(field.complexity.call({}, {}, 1)).to eq 4
-    expect(field.complexity.call({}, { labelName: 'foo' }, 1)).to eq 8
   end
 
   def create_issue_with_severity(project, severity:)

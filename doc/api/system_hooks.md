@@ -1,27 +1,29 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Create
+group: Import
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: System hooks API
+description: "Set up and manage system hooks with the REST API."
 ---
 
-# System hooks API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-All methods require administrator authorization.
+{{< /details >}}
 
-You can configure the URL endpoint of the system hooks from the GitLab user interface:
+Use this API to manage [system hooks](../administration/system_hooks.md). System hooks
+are different from [group webhooks](group_webhooks.md) that impact all projects and subgroups
+in a group, and [project webhooks](project_webhooks.md) that are limited to a single project.
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **System Hooks** (`/admin/hooks`).
+Prerequisites:
 
-Read more about [system hooks](../administration/system_hooks.md).
+- You must be an administrator.
 
-## List system hooks
+## List all system hooks
 
-Get a list of all system hooks.
+Lists all system hooks.
 
 ```plaintext
 GET /hooks
@@ -30,7 +32,9 @@ GET /hooks
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/hooks"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/hooks"
 ```
 
 Example response:
@@ -40,75 +44,85 @@ Example response:
   {
     "id":1,
     "url":"https://gitlab.example.com/hook",
+    "name": "Hook name",
+    "description": "Hook description",
     "created_at":"2016-10-31T12:32:15.192Z",
     "push_events":true,
     "tag_push_events":false,
     "merge_requests_events": true,
     "repository_update_events": true,
-    "enable_ssl_verification":true
+    "enable_ssl_verification":true,
+    "url_variables": []
   }
 ]
 ```
 
-## Get system hook
+## Retrieve system hook
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/81595) in GitLab 14.9.
-
-Get a system hook by its ID.
+Retrieves a system hook by its ID.
 
 ```plaintext
 GET /hooks/:id
 ```
 
-| Attribute | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `id` | integer | yes | The ID of the hook |
+| Attribute | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `id`      | integer | Yes      | The ID of the hook. |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/hooks/1"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/hooks/1"
 ```
 
 Example response:
 
 ```json
-[
-  {
-    "id": 1,
-    "url": "https://gitlab.example.com/hook",
-    "created_at": "2016-10-31T12:32:15.192Z",
-    "push_events": true,
-    "tag_push_events": false,
-    "merge_requests_events": true,
-    "repository_update_events": true,
-    "enable_ssl_verification": true
-  }
-]
+{
+  "id": 1,
+  "url": "https://gitlab.example.com/hook",
+  "name": "Hook name",
+  "description": "Hook description",
+  "created_at": "2016-10-31T12:32:15.192Z",
+  "push_events": true,
+  "tag_push_events": false,
+  "merge_requests_events": true,
+  "repository_update_events": true,
+  "enable_ssl_verification": true,
+  "url_variables": []
+}
 ```
 
 ## Add new system hook
 
-Add a new system hook.
+Adds a new system hook.
 
 ```plaintext
 POST /hooks
 ```
 
-| Attribute | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `url` | string | yes | The hook URL |
-| `token` | string | no | Secret token to validate received payloads; this isn't returned in the response |
-| `push_events` | boolean |  no | When true, the hook fires on push events |
-| `tag_push_events` | boolean | no | When true, the hook fires on new tags being pushed |
-| `merge_requests_events` | boolean | no | Trigger hook on merge requests events |
-| `repository_update_events` | boolean | no | Trigger hook on repository update events |
-| `enable_ssl_verification` | boolean | no | Do SSL verification when triggering the hook |
+| Attribute                   | Type    | Required | Description |
+|-----------------------------|---------|----------|-------------|
+| `url`                       | string  | Yes      | The hook URL. |
+| `branch_filter_strategy`    | string  | No       | Filter push events by branch. Possible values are `wildcard` (default), `regex`, and `all_branches`. |
+| `description`               | string  | No       | Description of the hook. ([Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/460887) in GitLab 17.1.) |
+| `enable_ssl_verification`   | boolean | No       | Do SSL verification when triggering the hook. |
+| `merge_requests_events`     | boolean | No       | Trigger hook on merge request events. |
+| `name`                      | string  | No       | Name of the hook. ([Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/460887) in GitLab 17.1.) |
+| `push_events`               | boolean | No       | When true, the hook fires on push events. |
+| `push_events_branch_filter` | string  | No       | Trigger hook on push events for matching branches only. |
+| `repository_update_events`  | boolean | No       | Trigger hook on repository update events. |
+| `tag_push_events`           | boolean | No       | When true, the hook fires on new tags being pushed. |
+| `token`                     | string  | No       | Secret token to validate received payloads. Not returned in the response. |
 
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/hooks?url=https://gitlab.example.com/hook"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/hooks?url=https://gitlab.example.com/hook"
 ```
 
 Example response:
@@ -118,15 +132,39 @@ Example response:
   {
     "id":1,
     "url":"https://gitlab.example.com/hook",
+    "name": "Hook name",
+    "description": "Hook description",
     "created_at":"2016-10-31T12:32:15.192Z",
     "push_events":true,
     "tag_push_events":false,
     "merge_requests_events": true,
     "repository_update_events": true,
-    "enable_ssl_verification":true
+    "enable_ssl_verification":true,
+    "url_variables": []
   }
 ]
 ```
+
+## Update system hook
+
+Updates an existing system hook.
+
+```plaintext
+PUT /hooks/:hook_id
+```
+
+| Attribute                   | Type    | Required | Description |
+|-----------------------------|---------|----------|-------------|
+| `hook_id`                   | integer | Yes      | The ID of the system hook. |
+| `branch_filter_strategy`    | string  | No       | Filter push events by branch. Possible values are `wildcard` (default), `regex`, and `all_branches`. |
+| `enable_ssl_verification`   | boolean | No       | Do SSL verification when triggering the hook. |
+| `merge_requests_events`     | boolean | No       | Trigger hook on merge request events. |
+| `push_events`               | boolean | No       | When true, the hook fires on push events. |
+| `push_events_branch_filter` | string  | No       | Trigger hook on push events for matching branches only. |
+| `repository_update_events`  | boolean | No       | Trigger hook on repository update events. |
+| `tag_push_events`           | boolean | No       | When true, the hook fires on new tags being pushed. |
+| `token`                     | string  | No       | Secret token to validate received payloads; this isn't returned in the response. |
+| `url`                       | string  | No       | The hook URL. |
 
 ## Test system hook
 
@@ -136,14 +174,16 @@ Executes the system hook with mock data.
 POST /hooks/:id
 ```
 
-| Attribute | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `id` | integer | yes | The ID of the hook |
+| Attribute | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `id`      | integer | Yes      | The ID of the hook. |
 
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/hooks/1"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/hooks/1"
 ```
 
 The response is always the mock data:
@@ -167,12 +207,45 @@ Deletes a system hook.
 DELETE /hooks/:id
 ```
 
-| Attribute | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `id` | integer | yes | The ID of the hook |
+| Attribute | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `id`      | integer | Yes      | The ID of the hook. |
 
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/hooks/2"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/hooks/2"
 ```
+
+## Set a URL variable
+
+```plaintext
+PUT /hooks/:hook_id/url_variables/:key
+```
+
+Supported attributes:
+
+| Attribute | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `hook_id` | integer | Yes      | ID of the system hook. |
+| `key`     | string  | Yes      | Key of the URL variable. |
+| `value`   | string  | Yes      | Value of the URL variable. |
+
+On success, this endpoint returns the response code `204 No Content`.
+
+## Delete a URL variable
+
+```plaintext
+DELETE /hooks/:hook_id/url_variables/:key
+```
+
+Supported attributes:
+
+| Attribute | Type              | Required | Description |
+|:----------|:------------------|:---------|:------------|
+| `hook_id` | integer           | Yes      | ID of the system hook. |
+| `key`     | string            | Yes      | Key of the URL variable. |
+
+On success, this endpoint returns the response code `204 No Content`.

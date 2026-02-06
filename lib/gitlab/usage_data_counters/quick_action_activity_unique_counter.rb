@@ -6,18 +6,36 @@ module Gitlab
       class << self
         # List of events that use the current internal events implementation.
         # Only add internal events for new quick actions.
-        INTERNAL_EVENTS = %w[convert_to_ticket].freeze
+        INTERNAL_EVENTS = %w[
+          add_email_multiple
+          add_email_single
+          convert_to_ticket
+          remove_email_multiple
+          remove_email_single
+          q
+          status
+          ship
+          run_pipeline
+          approve
+          submit_review
+          unapprove
+        ].freeze
 
         # Tracks the quick action with name `name`.
         # `args` is expected to be a single string, will be split internally when necessary.
-        def track_unique_action(name, args:, user:)
+        def track_unique_action(name, args:, user:, project:, additional_properties: nil)
           return unless user
 
           args ||= ''
           name = prepare_name(name, args)
 
           if INTERNAL_EVENTS.include?(name)
-            Gitlab::InternalEvents.track_event("i_quickactions_#{name}", user: user)
+            Gitlab::InternalEvents.track_event(
+              "i_quickactions_#{name}",
+              user: user,
+              project: project,
+              additional_properties: additional_properties || prepare_additional_properties(name, args)
+            )
           else
             # Legacy event implementation. Migrate existing events to internal events.
             # See implementation of `convert_to_ticket` quickaction and
@@ -46,12 +64,21 @@ module Gitlab
             event_name_for_unassign(args)
           when 'unlabel', 'remove_label'
             event_name_for_unlabel(args)
-          when 'invite_email'
-            'invite_email' + event_name_quantifier(args.split)
+          when 'add_email'
+            "add_email#{event_name_quantifier(args.split)}"
           when 'remove_email'
-            'remove_email' + event_name_quantifier(args.split)
+            "remove_email#{event_name_quantifier(args.split)}"
           else
             name
+          end
+        end
+
+        def prepare_additional_properties(name, args)
+          case name
+          when 'q'
+            { label: args.split.first }
+          else
+            {}
           end
         end
 
@@ -61,7 +88,7 @@ module Gitlab
           if args.count == 1 && args.first == 'me'
             'assign_self'
           else
-            'assign' + event_name_quantifier(args)
+            "assign#{event_name_quantifier(args)}"
           end
         end
 

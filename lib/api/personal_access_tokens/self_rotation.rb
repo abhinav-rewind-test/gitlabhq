@@ -10,6 +10,7 @@ module API
       helpers ::API::Helpers::PersonalAccessTokensHelpers
 
       allow_access_with_scope :api
+      allow_access_with_scope :self_rotate
 
       before { authenticate! }
 
@@ -23,7 +24,7 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 405, message: 'Method not allowed' }
           ]
-          tags %w[personal_access_tokens]
+          tags %w[access_tokens]
         end
         params do
           optional :expires_at,
@@ -33,7 +34,6 @@ module API
         end
         post 'self/rotate' do
           not_allowed! unless access_token.is_a? PersonalAccessToken
-          forbidden! if current_user.project_bot?
 
           new_token = rotate_token(access_token, declared_params)
 

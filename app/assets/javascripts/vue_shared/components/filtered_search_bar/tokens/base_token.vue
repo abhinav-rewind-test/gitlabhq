@@ -10,7 +10,6 @@ import {
 import { debounce, last } from 'lodash';
 
 import { stripQuotes } from '~/lib/utils/text_utility';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import {
   DEBOUNCE_DELAY,
   FILTERS_NONE_ANY,
@@ -29,7 +28,6 @@ export default {
     GlDropdownText,
     GlLoadingIcon,
   },
-  mixins: [glFeatureFlagMixin()],
   props: {
     config: {
       type: Object,
@@ -69,23 +67,32 @@ export default {
       default: () => [],
     },
     valueIdentifier: {
-      type: String,
+      type: Function,
       required: false,
-      default: 'id',
+      default: (token) => token.id,
     },
     searchBy: {
       type: String,
       required: false,
       default: undefined,
     },
+    appliedTokens: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
   },
   data() {
     return {
-      hasFetched: false, // use this to avoid flash of `No suggestions found` before fetching
+      isFetching: false, // use this to avoid flash of `No suggestions found` before fetching
       searchKey: '',
       selectedTokens: [],
       recentSuggestions: this.config.recentSuggestionsStorageKey
-        ? getRecentlyUsedSuggestions(this.config.recentSuggestionsStorageKey) ?? []
+        ? getRecentlyUsedSuggestions(
+            this.config.recentSuggestionsStorageKey,
+            this.appliedTokens,
+            this.valueIdentifier,
+          ) ?? []
         : [],
     };
   },
@@ -97,10 +104,10 @@ export default {
       return !this.config.suggestionsDisabled;
     },
     recentTokenIds() {
-      return this.recentSuggestions.map((tokenValue) => tokenValue[this.valueIdentifier]);
+      return this.recentSuggestions.map(this.valueIdentifier);
     },
     preloadedTokenIds() {
-      return this.preloadedSuggestions.map((tokenValue) => tokenValue[this.valueIdentifier]);
+      return this.preloadedSuggestions.map(this.valueIdentifier);
     },
     activeTokenValue() {
       const data =
@@ -127,17 +134,16 @@ export default {
         ? this.suggestions
         : this.suggestions.filter(
             (tokenValue) =>
-              !this.recentTokenIds.includes(tokenValue[this.valueIdentifier]) &&
-              !this.preloadedTokenIds.includes(tokenValue[this.valueIdentifier]),
+              !this.recentTokenIds.includes(this.valueIdentifier(tokenValue)) &&
+              !this.preloadedTokenIds.includes(this.valueIdentifier(tokenValue)),
           );
-
       return this.applyMaxSuggestions(suggestions);
     },
     showDefaultSuggestions() {
-      return this.availableDefaultSuggestions.length > 0;
+      return this.availableDefaultSuggestions.length > 0 && !this.searchKey;
     },
     showNoMatchesText() {
-      return this.searchKey && !this.availableSuggestions.length;
+      return this.searchKey && !this.availableSuggestions.length && this.isFetching;
     },
     showRecentSuggestions() {
       return (
@@ -156,11 +162,7 @@ export default {
         : undefined;
     },
     multiSelectEnabled() {
-      return (
-        this.config.multiSelect &&
-        this.glFeatures.groupMultiSelectTokens &&
-        OPERATORS_TO_GROUP.includes(this.value.operator)
-      );
+      return this.config.multiSelect && OPERATORS_TO_GROUP.includes(this.value.operator);
     },
     validatedConfig() {
       if (this.config.multiSelect && !this.multiSelectEnabled) {
@@ -188,9 +190,8 @@ export default {
     },
     suggestionsLoading: {
       handler(loading) {
-        if (loading) {
-          this.hasFetched = true;
-        }
+        // If marked as loading, assume that fetching is occuring
+        this.isFetching = !loading;
       },
     },
     value: {
@@ -261,7 +262,7 @@ export default {
       if (
         this.isRecentSuggestionsEnabled &&
         activeTokenValue &&
-        !this.preloadedTokenIds.includes(activeTokenValue[this.valueIdentifier])
+        !this.preloadedTokenIds.includes(this.valueIdentifier(activeTokenValue))
       ) {
         setTokenValueToRecentlyUsed(this.config.recentSuggestionsStorageKey, activeTokenValue);
       }
@@ -333,8 +334,8 @@ export default {
         :suggestions="preloadedSuggestions"
         :selections="selectedTokens"
       ></slot>
-      <gl-loading-icon v-if="suggestionsLoading" size="sm" />
-      <template v-else-if="showAvailableSuggestions">
+      <gl-loading-icon v-if="!isFetching" size="sm" />
+      <template v-if="showAvailableSuggestions">
         <slot
           name="suggestions-list"
           :suggestions="availableSuggestions"
@@ -344,7 +345,9 @@ export default {
       <gl-dropdown-text v-else-if="showNoMatchesText">
         {{ __('No matches found') }}
       </gl-dropdown-text>
-      <gl-dropdown-text v-else-if="hasFetched">{{ __('No suggestions found') }}</gl-dropdown-text>
+      <gl-dropdown-text v-else-if="isFetching && !showAvailableSuggestions">{{
+        __('No suggestions found')
+      }}</gl-dropdown-text>
       <slot name="footer"></slot>
     </template>
   </gl-filtered-search-token>

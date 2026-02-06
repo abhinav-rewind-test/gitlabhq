@@ -27,6 +27,7 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
 
     shared_examples 'with valid params' do
       before do
+        merge_request.update!(merge_jid: 'abc123')
         allow(service).to receive(:execute_hooks)
         expect(merge_request).to receive(:update_and_mark_in_progress_merge_commit_sha).twice.and_call_original
 
@@ -46,6 +47,10 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
         email = ActionMailer::Base.deliveries.last
         expect(email.to.first).to eq(user2.email)
         expect(email.subject).to include(merge_request.title)
+      end
+
+      it 'clears merge_jid' do
+        expect(merge_request.reload.merge_jid).to be_nil
       end
 
       context 'note creation' do
@@ -245,20 +250,130 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
       end
     end
 
-    context 'closes related issues' do
-      before do
-        allow(project).to receive(:default_branch).and_return(merge_request.target_branch)
+    context 'closes related issues', :sidekiq_inline do
+      let_it_be_with_refind(:group) { create(:group) }
+      let_it_be_with_refind(:other_project) { create(:project, group: group) }
+      let_it_be(:other_issue) { create(:issue, project: other_project) }
+      let_it_be(:group_issue) { create(:issue, :group_level, namespace: group) }
+      let(:issue1) { create(:issue, project: project) }
+      let(:issue2) { create(:issue, project: project) }
+      let(:commit) do
+        double('commit', safe_message: "Fixes #{issue1.to_reference}", date: Time.current, authored_date: Time.current)
       end
 
-      it 'closes GitLab issue tracker issues', :sidekiq_inline do
-        issue  = create :issue, project: project
-        commit = double('commit', safe_message: "Fixes #{issue.to_reference}", date: Time.current, authored_date: Time.current)
+      before do
+        allow(project).to receive(:default_branch).and_return(merge_request.target_branch)
         allow(merge_request).to receive(:commits).and_return([commit])
+        create(
+          :merge_requests_closing_issues,
+          issue: issue2,
+          merge_request: merge_request,
+          from_mr_description: false
+        )
+      end
+
+      it 'closes GitLab issue tracker issues' do
         merge_request.cache_merge_request_closes_issues!
 
-        service.execute(merge_request)
+        expect do
+          service.execute(merge_request)
+        end.to change { issue1.reload.closed? }.from(false).to(true).and(
+          change { issue2.reload.closed? }.from(false).to(true)
+        )
+      end
 
-        expect(issue.reload.closed?).to be_truthy
+      context 'when closing issues exist in a namespace the merging user doesn\'t have access to' do
+        context 'when the closing work item was created in the merge request description' do
+          before do
+            create(
+              :merge_requests_closing_issues,
+              issue: other_issue,
+              merge_request: merge_request,
+              from_mr_description: true
+            )
+            create(
+              :merge_requests_closing_issues,
+              issue: group_issue,
+              merge_request: merge_request,
+              from_mr_description: true
+            )
+          end
+
+          it 'does not close the related issues' do
+            merge_request.cache_merge_request_closes_issues!
+
+            expect do
+              service.execute(merge_request)
+            end.to not_change { other_issue.reload.opened? }.from(true).and(
+              not_change { group_issue.reload.opened? }.from(true)
+            )
+          end
+        end
+
+        context 'when the closing work item was not created in the merge request description' do
+          before do
+            create(
+              :merge_requests_closing_issues,
+              issue: other_issue,
+              merge_request: merge_request,
+              from_mr_description: false
+            )
+            create(
+              :merge_requests_closing_issues,
+              issue: group_issue,
+              merge_request: merge_request,
+              from_mr_description: false
+            )
+          end
+
+          it 'closes the related issues' do
+            merge_request.cache_merge_request_closes_issues!
+
+            expect do
+              service.execute(merge_request)
+            end.to change { other_issue.reload.opened? }.from(true).to(false).and(
+              # Autoclose is disabled for group level issues until we introduce a setting at the grouo level
+              # TODO: https://gitlab.com/gitlab-org/gitlab/-/issues/472907
+              not_change { group_issue.reload.opened? }.from(true)
+            )
+          end
+        end
+      end
+
+      context 'when issue project has auto close disabled' do
+        before_all do
+          other_project.update!(autoclose_referenced_issues: false)
+          group.add_developer(user)
+        end
+
+        before do
+          create(
+            :merge_requests_closing_issues,
+            issue: other_issue,
+            merge_request: merge_request,
+            from_mr_description: false
+          )
+          create(
+            :merge_requests_closing_issues,
+            issue: group_issue,
+            merge_request: merge_request,
+            from_mr_description: false
+          )
+        end
+
+        it 'only closes project issues where the setting is enabled' do
+          merge_request.cache_merge_request_closes_issues!
+
+          expect do
+            service.execute(merge_request)
+          end.to change { issue1.reload.closed? }.from(false).to(true).and(
+            change { issue2.reload.closed? }.from(false).to(true)
+          ).and(
+            not_change { other_issue.reload.opened? }.from(true)
+          ).and(
+            not_change { group_issue.reload.opened? }.from(true)
+          )
+        end
       end
 
       context 'with Jira integration' do
@@ -364,13 +479,12 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
             merge_request.update_attribute(:merge_params, { 'force_remove_source_branch' => '1' })
           end
 
-          # Not a real use case. When a merger merges a MR , merge param 'should_remove_source_branch' is defined
-          it 'removes the source branch using the author user' do
-            expect(::MergeRequests::DeleteSourceBranchWorker).to receive(:perform_async).with(merge_request.id, merge_request.source_branch_sha, merge_request.author.id)
+          it 'removes the source branch using the current user' do
+            expect(::MergeRequests::DeleteSourceBranchWorker).to receive(:perform_async).with(merge_request.id, merge_request.source_branch_sha, user.id)
 
             service.execute(merge_request)
 
-            expect(merge_request.reload.should_remove_source_branch?).to be nil
+            expect(merge_request.reload.should_remove_source_branch?).to be_nil
           end
 
           context 'when the merger set the source branch not to be removed' do
@@ -397,6 +511,20 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
             service.execute(merge_request)
 
             expect(merge_request.reload.should_remove_source_branch?).to be true
+          end
+
+          context 'when switch_deletion_branch_user is false' do
+            before do
+              stub_feature_flags(switch_deletion_branch_user: false)
+            end
+
+            it 'removes the source branch using the current user' do
+              expect(::MergeRequests::DeleteSourceBranchWorker).to receive(:perform_async).with(merge_request.id, merge_request.source_branch_sha, user.id)
+
+              service.execute(merge_request)
+
+              expect(merge_request.reload.should_remove_source_branch?).to be true
+            end
           end
         end
       end
@@ -564,9 +692,10 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
           )
         end
 
-        context 'when fast-forward merge is not allowed' do
+        context 'when fast-forward merge is not allowed and ff rebase_on_merge_automatic is off' do
           before do
             allow_any_instance_of(Repository).to receive(:ancestor?).and_return(nil)
+            stub_feature_flags(rebase_on_merge_automatic: false)
           end
 
           %w[semi-linear ff].each do |merge_method|
@@ -600,7 +729,9 @@ RSpec.describe MergeRequests::MergeService, feature_category: :code_review_workf
         context 'with failing CI' do
           before do
             allow(merge_request.project).to receive(:only_allow_merge_if_pipeline_succeeds) { true }
-            allow(merge_request).to receive(:mergeable_ci_state?) { false }
+            allow_next_instance_of(MergeRequests::Mergeability::CheckCiStatusService) do |check|
+              allow(check).to receive(:mergeable_ci_state?).and_return(false)
+            end
           end
 
           it 'logs and saves error' do

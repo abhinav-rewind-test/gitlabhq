@@ -19,13 +19,18 @@ RSpec.describe Enums::Sbom, feature_category: :dependency_management do
       :npm                  | 6
       :nuget                | 7
       :pypi                 | 8
+      :cargo                | 14
       :apk                  | 9
       :rpm                  | 10
       :deb                  | 11
       'cbl-mariner'         | 12
       :wolfi                | 13
-      'unknown-pkg-manager' | 0
-      'Python (unknown)'    | 0
+      'unknown-pkg-manager' | 999
+      'Python (unknown)'    | 999
+      :swift                | 15
+      :conda                | 16
+      :pub                  | 17
+      ''                    | 0
     end
 
     with_them do
@@ -37,8 +42,15 @@ RSpec.describe Enums::Sbom, feature_category: :dependency_management do
     end
 
     it 'contains all of the dependency scanning and container scanning purl types' do
-      expect(described_class::DEPENDENCY_SCANNING_PURL_TYPES + described_class::CONTAINER_SCANNING_PURL_TYPES)
-        .to eql(described_class::PURL_TYPES.keys)
+      all_types = [
+        described_class::DEPENDENCY_SCANNING_PURL_TYPES,
+        described_class::CONTAINER_SCANNING_PURL_TYPES,
+        "not_provided",
+        "unknown"
+      ].flatten.sort
+
+      expect(all_types)
+        .to eql(described_class::PURL_TYPES.keys.sort)
     end
   end
 
@@ -53,11 +65,15 @@ RSpec.describe Enums::Sbom, feature_category: :dependency_management do
       'npm'      | true
       'nuget'    | true
       'pypi'     | true
+      'cargo'    | true
       'unknown'  | false
       'apk'      | false
       'rpm'      | false
       'deb'      | false
       'wolfi'    | false
+      'swift'    | true
+      'conda'    | true
+      'pub'      | true
     end
 
     with_them do
@@ -78,6 +94,7 @@ RSpec.describe Enums::Sbom, feature_category: :dependency_management do
       'npm'         | false
       'nuget'       | false
       'pypi'        | false
+      'cargo'       | false
       'unknown'     | false
       :apk          | false
       'apk'         | true
@@ -85,6 +102,9 @@ RSpec.describe Enums::Sbom, feature_category: :dependency_management do
       'deb'         | true
       'cbl-mariner' | true
       'wolfi'       | true
+      :swift        | false
+      :conda        | false
+      'pub'         | false
     end
 
     with_them do

@@ -19,23 +19,26 @@ import { SUCCESS } from '~/vue_merge_request_widget/components/deployment/consta
 import eventHub from '~/vue_merge_request_widget/event_hub';
 import MrWidgetOptions from '~/vue_merge_request_widget/mr_widget_options.vue';
 import Approvals from '~/vue_merge_request_widget/components/approvals/approvals.vue';
-import ConflictsState from '~/vue_merge_request_widget/components/states/mr_widget_conflicts.vue';
 import Preparing from '~/vue_merge_request_widget/components/states/mr_widget_preparing.vue';
 import ShaMismatch from '~/vue_merge_request_widget/components/states/sha_mismatch.vue';
 import MergedState from '~/vue_merge_request_widget/components/states/mr_widget_merged.vue';
 import WidgetContainer from '~/vue_merge_request_widget/components/widget/app.vue';
 import WidgetSuggestPipeline from '~/vue_merge_request_widget/components/mr_widget_suggest_pipeline.vue';
 import MrWidgetAlertMessage from '~/vue_merge_request_widget/components/mr_widget_alert_message.vue';
-import getStateQuery from '~/vue_merge_request_widget/queries/get_state.query.graphql';
+import getStateQuery from 'ee_else_ce/vue_merge_request_widget/queries/get_state.query.graphql';
 import getStateSubscription from '~/vue_merge_request_widget/queries/get_state.subscription.graphql';
 import readyToMergeSubscription from '~/vue_merge_request_widget/queries/states/ready_to_merge.subscription.graphql';
-import securityReportMergeRequestDownloadPathsQuery from '~/vue_merge_request_widget/extensions/security_reports/graphql/security_report_merge_request_download_paths.query.graphql';
-import readyToMergeQuery from 'ee_else_ce/vue_merge_request_widget/queries/states/ready_to_merge.query.graphql';
+import securityReportMergeRequestDownloadPathsQuery from '~/vue_merge_request_widget/widgets/security_reports/graphql/security_report_merge_request_download_paths.query.graphql';
+import readyToMergeQuery from '~/vue_merge_request_widget/queries/states/ready_to_merge.query.graphql';
 import approvalsQuery from 'ee_else_ce/vue_merge_request_widget/components/approvals/queries/approvals.query.graphql';
 import approvedBySubscription from 'ee_else_ce/vue_merge_request_widget/components/approvals/queries/approvals.subscription.graphql';
 import userPermissionsQuery from '~/vue_merge_request_widget/queries/permissions.query.graphql';
 import conflictsStateQuery from '~/vue_merge_request_widget/queries/states/conflicts.query.graphql';
+import mergeChecksQuery from '~/vue_merge_request_widget/queries/merge_checks.query.graphql';
+import mergeChecksSubscription from '~/vue_merge_request_widget/queries/merge_checks.subscription.graphql';
+import userPermissionsReviewerQuery from '~/merge_requests/components/reviewers/queries/user_permissions.query.graphql';
 import MRWidgetStore from 'ee_else_ce/vue_merge_request_widget/stores/mr_widget_store';
+import missingBranchQuery from '~/vue_merge_request_widget/queries/states/missing_branch.query.graphql';
 
 import { faviconDataUrl, overlayDataUrl } from '../lib/utils/mock_data';
 import mockData, { mockDeployment, mockMergePipeline, mockPostMergeDeployments } from './mock_data';
@@ -77,9 +80,11 @@ describe('MrWidgetOptions', () => {
       data: {
         project: {
           ...getStateQueryResponse.data.project,
+          mergeTrains: null,
           mergeRequest: {
             ...getStateQueryResponse.data.project.mergeRequest,
             mergeError: mrData.mergeError || null,
+            mergeTrainCar: null,
             detailedMergeStatus:
               mrData.detailedMergeStatus ||
               getStateQueryResponse.data.project.mergeRequest.detailedMergeStatus,
@@ -100,16 +105,56 @@ describe('MrWidgetOptions', () => {
         }),
       ],
       [
+        userPermissionsReviewerQuery,
+        jest.fn().mockResolvedValue({
+          data: {
+            project: {
+              id: 1,
+              mergeRequest: {
+                id: 1,
+                userPermissions: { adminMergeRequest: false, canMerge: true },
+              },
+            },
+          },
+        }),
+      ],
+      [
         conflictsStateQuery,
         jest.fn().mockResolvedValue({ data: { project: { mergeRequest: {} } } }),
       ],
       [securityReportMergeRequestDownloadPathsQuery, jest.fn().mockResolvedValue(null)],
+      [
+        mergeChecksQuery,
+        jest.fn().mockResolvedValue({
+          data: {
+            project: {
+              id: 1,
+              mergeRequest: { id: 1, userPermissions: { canMerge: true }, mergeabilityChecks: [] },
+            },
+          },
+        }),
+      ],
+      [
+        missingBranchQuery,
+        jest.fn().mockResolvedValue({
+          data: {
+            project: {
+              id: 1,
+              mergeRequest: {
+                id: 1,
+                sourceBranchExists: false,
+              },
+            },
+          },
+        }),
+      ],
       ...(options.apolloMock || []),
     ];
     const subscriptionHandlers = [
       [approvedBySubscription, () => mockedApprovalsSubscription],
       [getStateSubscription, stateSubscriptionHandler],
       [readyToMergeSubscription, () => createMockApolloSubscription()],
+      [mergeChecksSubscription, () => createMockApolloSubscription()],
     ];
     const apolloProvider = createMockApollo(queryHandlers);
 
@@ -141,6 +186,7 @@ describe('MrWidgetOptions', () => {
   const findMergePipelineForkAlert = () => wrapper.findByTestId('merge-pipeline-fork-warning');
   const findSuggestPipeline = () => wrapper.findComponent(WidgetSuggestPipeline);
   const findWidgetContainer = () => wrapper.findComponent(WidgetContainer);
+  const findMergeError = () => wrapper.findByTestId('merge-error');
 
   beforeEach(() => {
     gon.features = {};
@@ -158,13 +204,18 @@ describe('MrWidgetOptions', () => {
     describe('computed', () => {
       describe('componentName', () => {
         it.each`
-          state            | componentName       | component
-          ${STATUS_MERGED} | ${'MergedState'}    | ${MergedState}
-          ${'conflicts'}   | ${'ConflictsState'} | ${ConflictsState}
-          ${'shaMismatch'} | ${'ShaMismatch'}    | ${ShaMismatch}
+          state            | componentName    | component
+          ${STATUS_MERGED} | ${'MergedState'} | ${MergedState}
+          ${'shaMismatch'} | ${'ShaMismatch'} | ${ShaMismatch}
         `('should translate $state into $componentName component', async ({ state, component }) => {
           await createComponent();
-          Vue.set(wrapper.vm.mr, 'state', state);
+
+          wrapper.vm.mr = {
+            ...wrapper.vm.mr,
+            setGraphqlData: jest.fn(),
+            state,
+          };
+
           await nextTick();
           expect(wrapper.findComponent(component).exists()).toBe(true);
         });
@@ -237,7 +288,12 @@ describe('MrWidgetOptions', () => {
             },
           });
           await nextTick();
-          Vue.set(wrapper.vm.mr, 'mergePipelinesEnabled', true);
+          wrapper.vm.mt = {
+            ...wrapper.vm.mr,
+            setGraphqlData: jest.fn(),
+            mergePipelinesEnabled: true,
+          };
+
           await nextTick();
           expect(findMergePipelineForkAlert().exists()).toBe(false);
         });
@@ -261,7 +317,14 @@ describe('MrWidgetOptions', () => {
             },
           });
           await nextTick();
-          Vue.set(wrapper.vm.mr, 'mergePipelinesEnabled', true);
+
+          wrapper.vm.mr = {
+            ...wrapper.vm.mr,
+            setGraphqlData: jest.fn(),
+            setGraphqlSubscriptionData: jest.fn(),
+            mergePipelinesEnabled: true,
+          };
+
           await nextTick();
           expect(findMergePipelineForkAlert().exists()).toBe(true);
         });
@@ -311,14 +374,14 @@ describe('MrWidgetOptions', () => {
           await waitForPromises();
           eventHub.$emit('MRWidgetUpdateRequested', callback);
           await waitForPromises();
-          expect(callback).toHaveBeenCalledWith(expect.objectContaining(updatedMrData));
+          expect(callback).toHaveBeenCalled();
         });
 
         it('notifies the user of the pipeline status', async () => {
           jest.spyOn(notify, 'notifyMe').mockImplementation(() => {});
           const logoFilename = 'logo.png';
           await createComponent({
-            updatedMrData: { gitlabLogo: logoFilename },
+            updatedMrData: { gitlabLogo: logoFilename, ci_status: 'failed' },
           });
           eventHub.$emit('MRWidgetUpdateRequested');
           await waitForPromises();
@@ -493,10 +556,10 @@ describe('MrWidgetOptions', () => {
           beforeEach(() => {
             mock
               .onGet(mockData.merge_request_widget_path)
-              .reply(HTTP_STATUS_OK, { ...mockData, ...updatedMrData });
+              .reply(HTTP_STATUS_OK, { ...mockData, ...updatedMrData, ci_status: 'failed' });
             mock
               .onGet(mockData.merge_request_cached_widget_path)
-              .reply(HTTP_STATUS_OK, { ...mockData, ...updatedMrData });
+              .reply(HTTP_STATUS_OK, { ...mockData, ...updatedMrData, ci_status: 'failed' });
           });
 
           it('should call notifyMe', async () => {
@@ -524,7 +587,7 @@ describe('MrWidgetOptions', () => {
       });
 
       describe('Apollo query', () => {
-        const interval = 5;
+        const interval = 5000;
         const data = 'foo';
         const mockCheckStatus = jest.fn().mockResolvedValue({ data });
         const mockSetGraphqlData = jest.fn();
@@ -553,20 +616,35 @@ describe('MrWidgetOptions', () => {
 
           describe('normal polling behavior', () => {
             it('responds to the GraphQL query finishing', () => {
-              expect(mockSetGraphqlData).toHaveBeenCalledWith(queryResponse.data.project);
-              expect(mockCheckStatus).toHaveBeenCalled();
-              expect(mockSetData).toHaveBeenCalledWith(data, undefined);
+              delete queryResponse.data.project.mergeTrains;
+              delete queryResponse.data.project.mergeRequest.mergeTrainCar;
+              delete queryResponse.data.project.mergeRequest.detailedMergeStatus;
+              delete queryResponse.data.project.mergeRequest.commitCount;
+
+              expect(mockSetGraphqlData).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  ...queryResponse.data.project,
+                  mergeRequest: expect.objectContaining({
+                    ...queryResponse.data.project.mergeRequest,
+                  }),
+                }),
+              );
               expect(stateQueryHandler).toHaveBeenCalledTimes(1);
             });
           });
 
           describe('external event control', () => {
             describe('enablePolling', () => {
-              it('enables the Apollo query polling using the event hub', () => {
+              it('enables the Apollo query polling using the event hub', async () => {
                 eventHub.$emit('EnablePolling');
 
                 expect(stateQueryHandler).toHaveBeenCalled();
-                jest.advanceTimersByTime(interval * STATE_QUERY_POLLING_INTERVAL_BACKOFF);
+                jest.advanceTimersByTime(interval * STATE_QUERY_POLLING_INTERVAL_BACKOFF + 100);
+
+                await waitForPromises();
+
+                expect(mockCheckStatus).toHaveBeenCalled();
+                expect(mockSetData).toHaveBeenCalledWith(data, undefined);
                 expect(stateQueryHandler).toHaveBeenCalledTimes(2);
               });
             });
@@ -722,7 +800,19 @@ describe('MrWidgetOptions', () => {
 
       await waitForPromises();
 
-      expect(wrapper.findByTestId('merge-error').exists()).toBe(show);
+      expect(findMergeError().exists()).toBe(show);
+    });
+
+    it('prevents XSS attacks by rendering merge error as plain text', async () => {
+      const maliciousError = '<div class="xss"><script>alert("XSS")</script></div>';
+      createComponent();
+
+      await waitForPromises();
+      eventHub.$emit('FailedToMerge', maliciousError);
+      await nextTick();
+
+      expect(findMergeError().text()).toContain(maliciousError);
+      expect(findMergeError().element.querySelector('.xss')).toBe(null);
     });
   });
 
@@ -772,27 +862,34 @@ describe('MrWidgetOptions', () => {
       });
 
       it('removes the Preparing widget when the MR indicates it has been prepared', async () => {
-        const stateSubscription = createMockApolloSubscription();
+        const stateSubscriptions = [];
+        const stateSubscriptionHandler = () => {
+          const sub = createMockApolloSubscription();
+          stateSubscriptions.push(sub);
+          return sub;
+        };
 
         await createComponent({
           updatedMrData: { state: 'opened', detailedMergeStatus: 'PREPARING' },
           options: {},
           data: {},
-          stateSubscriptionHandler: () => stateSubscription,
+          stateSubscriptionHandler,
         });
 
         expect(wrapper.html()).toContain('mr-widget-preparing-stub');
 
-        stateSubscription.next({
-          data: {
-            mergeRequestMergeStatusUpdated: {
-              preparedAt: 'non-null value',
+        stateSubscriptions.forEach((stateSubscription) => {
+          stateSubscription.next({
+            data: {
+              mergeRequestMergeStatusUpdated: {
+                detailedMergeStatus: 'MERGEABLE',
+              },
             },
-          },
+          });
         });
 
         // Wait for batched DOM updates
-        await nextTick();
+        await waitForPromises();
 
         expect(wrapper.html()).not.toContain('mr-widget-preparing-stub');
       });

@@ -6,10 +6,10 @@ RSpec.describe BlameHelper, feature_category: :source_code_management do
   describe '#get_age_map_start_date' do
     let(:dates) do
       [Time.zone.local(2014, 3, 17, 0, 0, 0),
-       Time.zone.local(2011, 11, 2, 0, 0, 0),
-       Time.zone.local(2015, 7, 9, 0, 0, 0),
-       Time.zone.local(2013, 2, 24, 0, 0, 0),
-       Time.zone.local(2010, 9, 22, 0, 0, 0)]
+        Time.zone.local(2011, 11, 2, 0, 0, 0),
+        Time.zone.local(2015, 7, 9, 0, 0, 0),
+        Time.zone.local(2013, 2, 24, 0, 0, 0),
+        Time.zone.local(2010, 9, 22, 0, 0, 0)]
     end
 
     let(:blame_groups) do
@@ -76,5 +76,29 @@ RSpec.describe BlameHelper, feature_category: :source_code_management do
     let(:id) { 'main/README.md' }
 
     it { is_expected.to eq "/#{project.full_path}/-/blame/#{id}/streaming" }
+  end
+
+  describe '#blame_preferences' do
+    subject { helper.blame_preferences(project) }
+
+    let_it_be(:project) { build_stubbed(:project) }
+
+    let(:repo_double) { instance_double(Repository, ignore_revs_file_blob: blob) }
+
+    before do
+      allow(project).to receive(:repository).and_return(repo_double)
+    end
+
+    context 'when there is no ignore revs file' do
+      let(:blob) { nil }
+
+      it { is_expected.to eq(has_revs_file: 'false') }
+    end
+
+    context 'when there is a revs file' do
+      let(:blob) { 'not_nil' }
+
+      it { is_expected.to eq(has_revs_file: 'true') }
+    end
   end
 end

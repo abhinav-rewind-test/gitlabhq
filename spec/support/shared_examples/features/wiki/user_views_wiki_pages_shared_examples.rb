@@ -28,7 +28,7 @@ RSpec.shared_examples 'User views wiki pages' do
     visit(wiki_path(wiki, action: :pages))
   end
 
-  context 'ordered by title' do
+  context 'ordered by title', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24077' do
     let(:pages_ordered_by_title) { [wiki_page2, wiki_page3, wiki_page1] }
 
     context 'asc' do
@@ -54,7 +54,8 @@ RSpec.shared_examples 'User views wiki pages' do
     end
   end
 
-  context 'when listing more pages than allowed items per page' do
+  context 'when listing more pages than allowed items per page',
+    quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24077' do
     let(:items_per_page) { 1 }
 
     before do
@@ -65,12 +66,14 @@ RSpec.shared_examples 'User views wiki pages' do
 
     it 'shows pagination controls' do
       page.within('.gl-pagination') do
-        expect(page).to have_link("Prev")
+        expect(page).to have_testid('kaminari-pagination-prev')
         expect(page).to have_link("1")
         expect(page).to have_link("2")
         expect(page).to have_link("3")
-        expect(page).to have_link("Next")
+        expect(page).to have_testid('kaminari-pagination-next')
       end
     end
   end
+
+  it_behaves_like 'Wiki redirection'
 end

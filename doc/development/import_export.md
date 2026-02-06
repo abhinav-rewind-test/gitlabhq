@@ -1,16 +1,18 @@
 ---
-stage: Manage
-group: Import and Integrate
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Create
+group: Import
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Import/Export development documentation
 ---
 
-# Import/Export development documentation
+> [!note]
+> To mitigate the risk of introducing bugs and performance issues, newly added relations should be put behind a feature flag.
 
 General development guidelines and tips for the [Import/Export feature](../user/project/settings/import_export.md).
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i> This document is originally based on the [Import/Export 201 presentation available on YouTube](https://www.youtube.com/watch?v=V3i1OfExotE).
+<i class="fa-youtube-play" aria-hidden="true"></i> This document is originally based on the [Import/Export 201 presentation available on YouTube](https://www.youtube.com/watch?v=V3i1OfExotE).
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i> For more context you can watch this [Deep dive on Import / Export Development on YouTube](https://www.youtube.com/watch?v=IYD39JMGK78).
+<i class="fa-youtube-play" aria-hidden="true"></i> For more context you can watch this [Deep dive on Import / Export Development on YouTube](https://www.youtube.com/watch?v=IYD39JMGK78).
 
 ## Security
 
@@ -268,7 +270,7 @@ module Projects
 
       def save_all!
         if save_services
-          Gitlab::ImportExport::Saver.save(project: project, shared: @shared)
+          Gitlab::ImportExport::Saver.save(project: project, shared: @shared, user: user)
           notify_success
         else
           cleanup_and_notify_error!
@@ -288,13 +290,13 @@ Fixtures used in Import/Export specs live in `spec/fixtures/lib/gitlab/import_ex
 There are two versions of each of these fixtures:
 
 - A human readable single JSON file with all objects, called either `project.json` or `group.json`.
-- A folder named `tree`, containing a tree of files in `ndjson` format. **Do not edit files under this folder manually unless strictly necessary.**
+- A folder named `tree`, containing a tree of files in `ndjson` format. Do not edit files under this folder manually unless strictly necessary.
 
-The tools to generate the NDJSON tree from the human-readable JSON files live in the [`gitlab-org/memory-team/team-tools`](https://gitlab.com/gitlab-org/memory-team/team-tools/-/blob/master/import-export/) project.
+The tools to generate the NDJSON tree from the human-readable JSON files live in the [`gitlab-org/cloud-connector-team/team-tools`](https://gitlab.com/gitlab-org/cloud-connector-team/team-tools/-/tree/master/import-export) project.
 
 ### Project
 
-**Use `legacy-project-json-to-ndjson.sh` to generate the NDJSON tree.**
+Use `legacy-project-json-to-ndjson.sh` to generate the NDJSON tree.
 
 The NDJSON tree looks like:
 
@@ -328,7 +330,7 @@ tree
 
 ### Group
 
-**Use `legacy-group-json-to-ndjson.rb` to generate the NDJSON tree.**
+Use `legacy-group-json-to-ndjson.rb` to generate the NDJSON tree.
 
 The NDJSON tree looks like this:
 
@@ -354,5 +356,5 @@ tree
     └── 4352.json
 ```
 
-WARNING:
-When updating these fixtures, ensure you update both `json` files and `tree` folder, as the tests apply to both.
+> [!warning]
+> When updating these fixtures, ensure you update both `json` files and `tree` folder, as the tests apply to both.

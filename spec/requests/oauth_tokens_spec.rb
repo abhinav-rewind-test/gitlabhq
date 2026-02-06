@@ -12,7 +12,7 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
     post '/oauth/token',
       params: {
         grant_type: grant_type,
-        code: generate_access_grant(user).token,
+        code: generate_access_grant(user).plaintext_token,
         redirect_uri: application.redirect_uri,
         client_id: application.uid,
         client_secret: application.secret,
@@ -26,7 +26,9 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
   end
 
   context 'when there is already a token for the application' do
-    let!(:existing_token) { create(:oauth_access_token, application: application, resource_owner_id: user.id) }
+    let!(:existing_token) do
+      create(:oauth_access_token, application: application, resource_owner_id: user.id, use_refresh_token: true)
+    end
 
     shared_examples 'issues a new token' do
       it 'issues a new token' do
@@ -34,8 +36,8 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
           request_access_token(user)
         end.to change { Doorkeeper::AccessToken.count }.from(1).to(2)
 
-        expect(json_response['access_token']).not_to eq existing_token.token
-        expect(json_response['refresh_token']).not_to eq existing_token.refresh_token
+        expect(json_response['access_token']).not_to eq existing_token.plaintext_token
+        expect(json_response['refresh_token']).not_to eq existing_token.plaintext_refresh_token
       end
     end
 
@@ -44,6 +46,19 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
         expect { request_access_token(user) }.to(
           change { existing_token.reload.revoked_at }.from(nil))
       end
+    end
+
+    it 'allows cross origin for token info' do
+      options '/oauth/token/info', params: {}, headers:
+        { 'Origin' => 'https://bar.example.com',
+          'Access-Control-Request-Method' => 'GET',
+          'Access-Control-Request-Headers' => 'x-gitlab-language-server-version,authorization,user-agent' }
+
+      expect(response.headers['Access-Control-Allow-Origin']).to eq '*'
+      expect(response.headers['Access-Control-Allow-Methods']).to eq 'GET, HEAD, OPTIONS'
+      expect(response.headers['Access-Control-Allow-Headers'])
+        .to eq 'x-gitlab-language-server-version,authorization,user-agent'
+      expect(response.headers['Access-Control-Allow-Credentials']).to be_nil
     end
 
     context 'and the request is done by the resource owner' do
@@ -59,7 +74,7 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
 
       context 'with refresh token grant type' do
         let(:grant_type) { 'refresh_token' }
-        let(:refresh_token) { existing_token.refresh_token }
+        let(:refresh_token) { existing_token.plaintext_refresh_token }
 
         include_examples 'issues a new token'
         include_examples 'revokes previous token'
@@ -71,8 +86,8 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
               application: application,
               resource_owner_id: user.id,
               created_at: 10.minutes.ago,
-              expires_in: 5
-            )
+              expires_in: 5,
+              use_refresh_token: true)
           end
 
           include_examples 'issues a new token'
@@ -86,7 +101,9 @@ RSpec.describe 'OAuth Tokens requests', feature_category: :system_access do
               resource_owner_id: user.id,
               created_at: 2.hours.ago,
               revoked_at: 1.hour.ago,
-              expires_in: 5)
+              expires_in: 5,
+              use_refresh_token: true
+            )
           end
 
           it 'does not issue a new token' do

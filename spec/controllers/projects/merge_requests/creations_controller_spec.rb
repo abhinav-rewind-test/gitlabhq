@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'labkit/rspec/matchers'
 
 RSpec.describe Projects::MergeRequests::CreationsController, feature_category: :code_review_workflow do
   let(:project) { create(:project, :repository) }
@@ -101,6 +102,19 @@ RSpec.describe Projects::MergeRequests::CreationsController, feature_category: :
             get :new, params: base_params.merge(merge_request: { source_branch: 'feature' })
           end
         end
+      end
+    end
+
+    context 'for a new new request' do
+      render_views
+
+      let(:params) { get_diff_params }
+
+      it 'renders the default template' do
+        get :new, params: params
+
+        expect(response).to be_successful
+        expect(response).to render_template(:new)
       end
     end
   end
@@ -243,10 +257,10 @@ RSpec.describe Projects::MergeRequests::CreationsController, feature_category: :
       it 'selects itself as a target project' do
         get :branch_to,
           params: {
-          namespace_id: project.namespace,
-          project_id: project,
-          ref: 'master'
-        }
+            namespace_id: project.namespace,
+            project_id: project,
+            ref: 'master'
+          }
 
         expect(assigns(:target_project)).to eq(project)
         expect(response).to have_gitlab_http_status(:ok)
@@ -274,15 +288,16 @@ RSpec.describe Projects::MergeRequests::CreationsController, feature_category: :
       )
     end
 
-    it 'creates merge request' do
+    it 'creates merge request and starts covered experience' do
       expect do
         post_request(params)
       end.to change { MergeRequest.count }.by(1)
+      .and start_user_experience(:create_merge_request)
     end
 
     context 'when the merge request is not created from the web ide' do
       it 'counter is not increased' do
-        expect(Gitlab::UsageDataCounters::WebIdeCounter).not_to receive(:increment_merge_requests_count)
+        expect(Gitlab::InternalEvents).not_to receive(:track_event)
 
         post_request(params)
       end
@@ -291,29 +306,29 @@ RSpec.describe Projects::MergeRequests::CreationsController, feature_category: :
     context 'when the merge request is created from the web ide' do
       let(:nav_source) { { nav_source: 'webide' } }
 
-      it 'counter is increased' do
-        expect(Gitlab::UsageDataCounters::WebIdeCounter).to receive(:increment_merge_requests_count)
+      let(:base_params) do
+        { project_id: project, namespace_id: project.namespace.to_param }
+      end
 
-        post_request(params.merge(nav_source))
+      let(:params) do
+        base_params.merge(
+          merge_request: {
+            title: 'Test merge request',
+            source_branch: 'remove-submodule',
+            target_branch: 'master'
+          }
+        )
+      end
+
+      it_behaves_like 'internal event tracking' do
+        let(:event) { 'create_merge_request_from_web_ide' }
+
+        subject { post_request(params.merge(nav_source)) }
       end
     end
 
     def post_request(merge_request_params)
       post :create, params: merge_request_params
-    end
-  end
-
-  describe 'GET target_projects', feature_category: :code_review_workflow do
-    it 'returns target projects JSON' do
-      get :target_projects, params: { namespace_id: project.namespace.to_param, project_id: project }
-
-      expect(json_response.size).to be(2)
-
-      forked_project = json_response.first
-      expect(forked_project).to have_key('id')
-      expect(forked_project).to have_key('name')
-      expect(forked_project).to have_key('full_path')
-      expect(forked_project).to have_key('refs_url')
     end
   end
 end

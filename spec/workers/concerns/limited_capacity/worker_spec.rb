@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe LimitedCapacity::Worker, :clean_gitlab_redis_queues, :aggregate_failures, feature_category: :shared do
+RSpec.describe LimitedCapacity::Worker, :clean_gitlab_redis_queues, :aggregate_failures, feature_category: :sidekiq do
   let(:worker_class) do
     Class.new do
       def self.name
@@ -205,9 +205,9 @@ RSpec.describe LimitedCapacity::Worker, :clean_gitlab_redis_queues, :aggregate_f
 
       report_prometheus_metrics
 
-      expect(Gitlab::Metrics.registry.get(:limited_capacity_worker_running_jobs).get(labels)).to eq(5)
-      expect(Gitlab::Metrics.registry.get(:limited_capacity_worker_max_running_jobs).get(labels)).to eq(7)
-      expect(Gitlab::Metrics.registry.get(:limited_capacity_worker_remaining_work_count).get(labels)).to eq(9)
+      expect(Gitlab::Metrics.client.get(:limited_capacity_worker_running_jobs).get(labels)).to eq(5)
+      expect(Gitlab::Metrics.client.get(:limited_capacity_worker_max_running_jobs).get(labels)).to eq(7)
+      expect(Gitlab::Metrics.client.get(:limited_capacity_worker_remaining_work_count).get(labels)).to eq(9)
     end
   end
 end

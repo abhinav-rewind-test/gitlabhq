@@ -1,33 +1,32 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Cluster Environments (deprecated)
 ---
 
-# Cluster Environments (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/13392) in GitLab 12.3 for group-level clusters.
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/14809) in GitLab 12.4 for instance-level clusters.
-> - [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
-> - [Disabled on self-managed](https://gitlab.com/gitlab-org/gitlab/-/issues/353410) in GitLab 15.0.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+{{< history >}}
 
-FLAG:
-On self-managed GitLab, by default this feature is not available. To make it available, an administrator can [enable the feature flag](../../administration/feature_flags.md) named `certificate_based_clusters`.
+- [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+- [Disabled on GitLab Self-Managed](https://gitlab.com/gitlab-org/gitlab/-/issues/353410) in GitLab 15.0.
 
-Cluster environments provide a consolidated view of which CI [environments](../../ci/environments/index.md) are
+{{< /history >}}
+
+> [!flag]
+> This feature is not available by default on GitLab Self-Managed. To make it available, an administrator can [enable the feature flag](../../administration/feature_flags/_index.md) named `certificate_based_clusters`.
+
+Cluster environments provide a consolidated view of which CI [environments](../../ci/environments/_index.md) are
 deployed to the Kubernetes cluster and it:
 
 - Shows the project and the relevant environment related to the deployment.
 - Displays the status of the pods for that environment.
-
-## Overview
 
 With cluster environments, you can gain insight into:
 
@@ -38,7 +37,7 @@ With cluster environments, you can gain insight into:
 ![Cluster environments page](img/cluster_environments_table_v12_3.png)
 
 Access to cluster environments is restricted to
-[group maintainers and owners](../permissions.md#group-members-permissions)
+[group maintainers and owners](../permissions.md#group-permissions).
 
 ## Usage
 

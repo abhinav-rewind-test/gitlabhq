@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Public Snippets', :js, feature_category: :source_code_management do
+RSpec.describe 'Public Snippets', :js, :with_current_organization, feature_category: :source_code_management do
   let(:public_snippet) { create(:personal_snippet, :public, :repository) }
   let(:content) { public_snippet.blobs.first.data.strip! }
 
@@ -13,9 +13,12 @@ RSpec.describe 'Public Snippets', :js, feature_category: :source_code_management
     wait_for_requests
 
     expect(page).to have_content(content)
-    click_button('Embed')
-    expect(page).to have_field('Embed', readonly: true, with: "<script src=\"#{url}.js\"></script>")
-    expect(page).to have_field('Share', readonly: true, with: url)
+
+    within_testid('snippet-header') do
+      click_button('Code')
+      expect(page).to have_field('Embed', readonly: true, with: "<script src=\"#{url}.js\"></script>")
+      expect(page).to have_field('Share', readonly: true, with: url)
+    end
   end
 
   it 'unauthenticated user should see raw public snippets' do

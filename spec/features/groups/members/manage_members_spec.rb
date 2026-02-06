@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_and_projects do
+RSpec.describe 'Groups > Members > Manage members', :js, feature_category: :groups_and_projects do
   include ListboxHelpers
   include Features::MembersHelpers
   include Features::InviteMembersModalHelpers
@@ -13,23 +13,11 @@ RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_an
   let_it_be(:group) { create(:group) }
 
   before do
+    stub_feature_flags(show_role_details_in_drawer: false)
     sign_in(user1)
   end
 
-  shared_examples 'includes the correct Invite link' do |should_include|
-    it 'includes the modal trigger', :aggregate_failures do
-      group.add_owner(user1)
-
-      visit group_group_members_path(group)
-
-      expect(page).to have_selector(should_include)
-    end
-  end
-
-  it_behaves_like 'includes the correct Invite link', '.js-invite-members-trigger'
-  it_behaves_like 'includes the correct Invite link', '.js-invite-group-trigger'
-
-  it 'update user to owner level', :js do
+  it 'update user to owner level' do
     group.add_owner(user1)
     group.add_developer(user2)
 
@@ -42,7 +30,7 @@ RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_an
     end
   end
 
-  it 'remove user from group', :js do
+  it 'remove user from group' do
     group.add_owner(user1)
     group.add_developer(user2)
 
@@ -68,7 +56,7 @@ RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_an
   end
 
   context 'when inviting' do
-    it 'add yourself to group when already an owner', :js do
+    it 'add yourself to group when already an owner' do
       group.add_owner(user1)
 
       visit group_group_members_path(group)
@@ -82,6 +70,22 @@ RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_an
 
       page.within find_member_row(user1) do
         expect(page).to have_content('Owner')
+      end
+    end
+
+    it 'shows roles in the dropdown' do
+      group.add_owner(user1)
+
+      visit group_group_members_path(group)
+
+      click_on 'Invite members'
+
+      page.within invite_modal_selector do
+        page.within role_dropdown_selector do
+          wait_for_requests
+          toggle_listbox
+          expect_listbox_items(Gitlab::Access.all_keys)
+        end
       end
     end
 
@@ -106,7 +110,7 @@ RSpec.describe 'Groups > Members > Manage members', feature_category: :groups_an
       expect(page).not_to have_selector '.js-invite-group-modal'
     end
 
-    it 'does not include a button on the members page list to manage or remove the existing member', :js, :aggregate_failures do
+    it 'does not include a button on the members page list to manage or remove the existing member', :aggregate_failures do
       page.within(second_row) do
         # Can not modify user2 role
         expect(page).not_to have_button 'Developer'

@@ -3,10 +3,13 @@
 module Packages
   module Protection
     class CreateRuleService < BaseProjectService
+      include Gitlab::InternalEventsTracking
+
       ALLOWED_ATTRIBUTES = %i[
         package_name_pattern
         package_type
-        push_protected_up_to_access_level
+        minimum_access_level_for_delete
+        minimum_access_level_for_push
       ].freeze
 
       def execute
@@ -15,11 +18,20 @@ module Packages
           return service_response_error(message: error_message)
         end
 
-        package_protection_rule = project.package_protection_rules.create(params.slice(*ALLOWED_ATTRIBUTES))
+        creation_params = creation_params_with_defaults(params.slice(*ALLOWED_ATTRIBUTES))
+        package_protection_rule = project.package_protection_rules.create(creation_params)
 
         unless package_protection_rule.persisted?
           return service_response_error(message: package_protection_rule.errors.full_messages)
         end
+
+        track_internal_event(
+          'create_package_protection_rule',
+          project: project,
+          namespace: project.namespace,
+          user: current_user,
+          additional_properties: { package_type: package_protection_rule.package_type }
+        )
 
         ServiceResponse.success(payload: { package_protection_rule: package_protection_rule })
       rescue StandardError => e
@@ -32,6 +44,15 @@ module Packages
         ServiceResponse.error(
           message: message,
           payload: { package_protection_rule: nil }
+        )
+      end
+
+      def creation_params_with_defaults(params)
+        params.merge(
+          pattern: params[:package_name_pattern],
+          # These 2 fields are currently fixed values for all package protection rules
+          pattern_type: Packages::Protection::Rule.pattern_types[:wildcard],
+          target_field: Packages::Protection::Rule.target_fields[:package_name]
         )
       end
     end

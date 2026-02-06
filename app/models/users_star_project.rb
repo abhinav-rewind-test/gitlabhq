@@ -18,8 +18,8 @@ class UsersStarProject < ApplicationRecord
   scope :with_active_user, -> { joins(:user).merge(User.with_state(:active)) }
   scope :order_user_name_asc, -> { joins(:user).merge(User.order_name_asc) }
   scope :order_user_name_desc, -> { joins(:user).merge(User.order_name_desc) }
-  scope :by_project, -> (project) { where(project_id: project.id) }
-  scope :with_visible_profile, -> (user) { joins(:user).merge(User.with_visible_profile(user)) }
+  scope :by_project, ->(project) { where(project_id: project.id) }
+  scope :with_visible_profile, ->(user) { joins(:user).merge(User.with_visible_profile(user)) }
   scope :with_public_profile, -> { joins(:user).merge(User.with_public_profile) }
   scope :preload_users, -> { preload(:user) }
 
@@ -47,6 +47,9 @@ class UsersStarProject < ApplicationRecord
   end
 
   def decrement_project_star_count
-    Project.update_counters(project, star_count: -1) if user.active?
+    return unless user.active?
+    return unless project.star_count > 0
+
+    Project.update_counters(project, star_count: -1)
   end
 end

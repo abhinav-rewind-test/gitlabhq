@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   shared_examples 'XSS prevention' do |lang|
@@ -99,4 +99,6 @@ RSpec.describe Banzai::Filter::CodeLanguageFilter, feature_category: :team_plann
       end
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

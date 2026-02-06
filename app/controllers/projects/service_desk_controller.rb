@@ -35,6 +35,7 @@ class Projects::ServiceDeskController < Projects::ApplicationController
       project_key
       reopen_issue_on_external_participant_note
       add_external_participants_from_cc
+      tickets_confidential_by_default
     ]
   end
 
@@ -42,14 +43,15 @@ class Projects::ServiceDeskController < Projects::ApplicationController
     service_desk_settings = project.service_desk_setting
 
     {
-      service_desk_address: project.service_desk_system_address,
-      service_desk_enabled: project.service_desk_enabled,
+      service_desk_address: ::ServiceDesk::Emails.new(project).system_address,
+      service_desk_enabled: ::ServiceDesk.enabled?(project),
       issue_template_key: service_desk_settings&.issue_template_key,
       template_file_missing: service_desk_settings&.issue_template_missing?,
       outgoing_name: service_desk_settings&.outgoing_name,
       project_key: service_desk_settings&.project_key,
       reopen_issue_on_external_participant_note: service_desk_settings&.reopen_issue_on_external_participant_note,
-      add_external_participants_from_cc: service_desk_settings&.add_external_participants_from_cc
+      add_external_participants_from_cc: service_desk_settings&.add_external_participants_from_cc,
+      tickets_confidential_by_default: service_desk_settings&.tickets_confidential_by_default
     }
   end
 

@@ -3,7 +3,7 @@
 class UpdateMergeRequestsWorker # rubocop:disable Scalability/IdempotentWorker
   include ApplicationWorker
 
-  data_consistency :always
+  data_consistency :sticky
 
   sidekiq_options retry: 3
 
@@ -14,6 +14,8 @@ class UpdateMergeRequestsWorker # rubocop:disable Scalability/IdempotentWorker
   loggable_arguments 2, 3, 4
 
   def perform(project_id, user_id, oldrev, newrev, ref, params = {})
+    Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/24907')
+
     project = Project.find_by_id(project_id)
     return unless project
 
@@ -21,9 +23,10 @@ class UpdateMergeRequestsWorker # rubocop:disable Scalability/IdempotentWorker
     return unless user
 
     push_options = params.with_indifferent_access[:push_options]
+    gitaly_context = params.with_indifferent_access[:gitaly_context]
 
     MergeRequests::RefreshService
-      .new(project: project, current_user: user, params: { push_options: push_options })
+      .new(project: project, current_user: user, params: { push_options: push_options, gitaly_context: gitaly_context })
       .execute(oldrev, newrev, ref)
   end
 end

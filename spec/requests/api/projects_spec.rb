@@ -2,56 +2,13 @@
 
 require 'spec_helper'
 
-RSpec.shared_examples 'languages and percentages JSON response' do
-  let(:expected_languages) { project.repository.languages.to_h { |language| language.values_at(:label, :value) } }
-
-  before do
-    allow(project.repository).to receive(:languages).and_return(
-      [{ value: 66.69, label: "Ruby", color: "#701516", highlight: "#701516" },
-       { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
-       { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26" },
-       { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776" }]
-    )
-  end
-
-  context "when the languages haven't been detected yet" do
-    it 'returns expected language values', :aggregate_failures, :sidekiq_might_not_need_inline do
-      get api("/projects/#{project.id}/languages", user)
-
-      expect(response).to have_gitlab_http_status(:ok)
-      expect(json_response).to eq({})
-
-      get api("/projects/#{project.id}/languages", user)
-
-      expect(response).to have_gitlab_http_status(:ok)
-      expect(Gitlab::Json.parse(response.body)).to eq(expected_languages)
-    end
-  end
-
-  context 'when the languages were detected before' do
-    before do
-      Projects::DetectRepositoryLanguagesService.new(project, project.first_owner).execute
-    end
-
-    it 'returns the detection from the database', :aggregate_failures do
-      # Allow this to happen once, so the expected languages can be determined
-      expect(project.repository).to receive(:languages).once
-
-      get api("/projects/#{project.id}/languages", user)
-
-      expect(response).to have_gitlab_http_status(:ok)
-      expect(json_response).to eq(expected_languages)
-      expect(json_response.count).to be > 1
-    end
-  end
-end
-
 RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and_projects do
   include ProjectForksHelper
   include WorkhorseHelpers
   include StubRequests
 
   let_it_be(:user) { create(:user) }
+  let_it_be(:user1) { create(:user) }
   let_it_be(:user2) { create(:user) }
   let_it_be(:user3) { create(:user) }
   let_it_be(:admin) { create(:admin) }
@@ -109,6 +66,50 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
   end
 
+  shared_examples 'languages and percentages JSON response' do
+    let(:expected_languages) { project.repository.languages.to_h { |language| language.values_at(:label, :value) } }
+
+    before do
+      allow(project.repository).to receive(:languages).and_return(
+        [{ value: 66.69, label: "Ruby", color: "#701516", highlight: "#701516" },
+         { value: 22.98, label: "JavaScript", color: "#f1e05a", highlight: "#f1e05a" },
+         { value: 7.91, label: "HTML", color: "#e34c26", highlight: "#e34c26" },
+         { value: 2.42, label: "CoffeeScript", color: "#244776", highlight: "#244776" }]
+      )
+    end
+
+    context "when the languages haven't been detected yet" do
+      it 'returns expected language values', :aggregate_failures, :sidekiq_might_not_need_inline do
+        get api("/projects/#{project.id}/languages", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to eq({})
+
+        get api("/projects/#{project.id}/languages", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(Gitlab::Json.parse(response.body)).to eq(expected_languages)
+      end
+    end
+
+    context 'when the languages were detected before' do
+      before do
+        Projects::DetectRepositoryLanguagesService.new(project, project.first_owner).execute
+      end
+
+      it 'returns the detection from the database', :aggregate_failures do
+        # Allow this to happen once, so the expected languages can be determined
+        expect(project.repository).to receive(:languages).once
+
+        get api("/projects/#{project.id}/languages", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to eq(expected_languages)
+        expect(json_response.count).to be > 1
+      end
+    end
+  end
+
   shared_examples_for 'create project with default branch parameter' do
     let(:params) { { name: 'Foo Project', initialize_with_readme: true, default_branch: default_branch } }
     let(:default_branch) { 'main' }
@@ -130,6 +131,19 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         project = Project.find(json_response['id'])
         expect(project.default_branch).to eq('master')
+      end
+    end
+
+    context 'when branch name is fully qualified' do
+      let(:default_branch) { 'refs/heads/full_name' }
+
+      it 'creates project with provided default branch name without refs/heads prefix' do
+        expect { request }.to change { Project.count }.by(1)
+        expect(response).to have_gitlab_http_status(:created)
+
+        project = Project.find(json_response['id'])
+        expect(project.repository_exists?).to be_truthy
+        expect(project.default_branch).to eq('full_name')
       end
     end
 
@@ -171,7 +185,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
 
     shared_examples_for 'projects response without N + 1 queries' do |threshold|
-      let(:additional_project) { create(:project, :public) }
+      let_it_be(:additional_project) { create(:project, :public) }
+
+      before do
+        # Stub to prevent cascading settings queries from auto_duo_code_review_settings_available?
+        # These queries are unrelated to what this N+1 spec is testing.
+        # TODO: Remove this workaround once https://gitlab.com/gitlab-org/gitlab/-/issues/442164 is addressed
+        if Gitlab.ee?
+          allow_any_instance_of(EE::Project).to receive(:auto_duo_code_review_settings_available?).and_return(false)
+        end
+      end
 
       it 'avoids N + 1 queries', :use_sql_query_cache do
         control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
@@ -186,6 +209,54 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
     end
 
+    shared_examples_for 'filtering by topic (column topic_list)' do
+      let(:project_with_topics) { nil }
+
+      before do
+        project_with_topics.update!(topic_list: %w[ruby javascript])
+      end
+
+      it 'returns no projects' do
+        get api(path, user), params: { topic: 'foo' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_empty
+      end
+
+      it 'returns matching project for a single topic' do
+        get api(path, user), params: { topic: 'ruby' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to contain_exactly a_hash_including('id' => project_with_topics.id)
+      end
+
+      it 'returns matching project for multiple topics' do
+        get api(path, user), params: { topic: 'ruby, javascript' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to contain_exactly a_hash_including('id' => project_with_topics.id)
+      end
+
+      it 'returns no projects if project match only some topic' do
+        get api(path, user), params: { topic: 'ruby, foo' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_empty
+      end
+
+      it 'ignores topic if it is empty' do
+        get api(path, user), params: { topic: '' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_present
+      end
+    end
+
     context 'when unauthenticated' do
       it_behaves_like 'projects response' do
         let(:filter) { { search: project.path } }
@@ -196,6 +267,21 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       it_behaves_like 'projects response without N + 1 queries', 1 do
         let(:current_user) { nil }
       end
+
+      it_behaves_like 'filtering by topic (column topic_list)' do
+        let(:user) { nil }
+        let(:current_user) { nil }
+        let(:namespace) { create(:namespace) }
+        let(:project_with_topics) do
+          create(:project, :repository, :public, namespace: namespace, updated_at: 5.days.ago)
+        end
+
+        before do
+          allow(Organizations::Organization).to(
+            receive(:default_organization).and_return(namespace.organization)
+          )
+        end
+      end
     end
 
     context 'when authenticated as regular user' do
@@ -205,8 +291,46 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         let(:projects) { user_projects }
       end
 
-      it_behaves_like 'projects response without N + 1 queries', 0 do
+      it_behaves_like 'projects response without N + 1 queries', 2 do
         let(:current_user) { user }
+      end
+
+      it_behaves_like 'filtering by topic (column topic_list)' do
+        let(:project_with_topics) do
+          create(:project, :repository, namespace: user.namespace, updated_at: 5.days.ago)
+        end
+      end
+
+      context 'when filtering by active parameter' do
+        let_it_be(:marked_for_deletion_project) do
+          create(:project, marked_for_deletion_on: Date.parse('2024-01-01'), namespace: user.namespace)
+        end
+
+        let_it_be(:archived_project) do
+          create(:project, :archived, namespace: user.namespace)
+        end
+
+        context 'when active is true' do
+          it 'returns only non archived and not marked for deletion projects' do
+            get api(path, user), params: { active: true }
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(response).to include_pagination_headers
+            expect(json_response).to be_an Array
+            expect(json_response.map { |p| p['id'] }).not_to include(archived_project.id, marked_for_deletion_project.id)
+          end
+        end
+
+        context 'when active is false' do
+          it 'returns only archived or marked for deletion projects' do
+            get api(path, user), params: { active: false }
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(response).to include_pagination_headers
+            expect(json_response).to be_an Array
+            expect(json_response.map { |p| p['id'] }).to contain_exactly(archived_project.id, marked_for_deletion_project.id)
+          end
+        end
       end
 
       shared_examples 'includes container_registry_access_level' do
@@ -242,9 +366,46 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           create(:project, :public, group: create(:group))
         end
 
-        it_behaves_like 'projects response without N + 1 queries', 1 do
+        it_behaves_like 'projects response without N + 1 queries', 3 do
           let(:current_user) { user }
           let(:additional_project) { create(:project, :public, group: create(:group)) }
+        end
+      end
+
+      context 'when projects is in a subgroup' do
+        let_it_be(:group) { create(:group) }
+        let_it_be(:group_member) { create(:group_member, :developer, group: group, user: user) }
+
+        let_it_be(:subgroup) { create(:group, parent: group) }
+        let_it_be(:project) { create(:project, group: subgroup) }
+
+        before do
+          get api(path, user)
+        end
+
+        it_behaves_like 'projects response without N + 1 queries', 1 do
+          let(:current_user) { user }
+          let(:additional_project) { project }
+        end
+
+        it 'returns the correct group access', :aggregate_failures do
+          project_response = json_response.find { |p| p['id'] == project.id }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(project_response['permissions']['group_access']['access_level'])
+            .to eq(Gitlab::Access::DEVELOPER)
+        end
+
+        context 'when user has multiple group membership' do
+          let_it_be(:subgroup_member) { create(:group_member, :owner, group: subgroup, user: user) }
+
+          it 'returns the highest access level', :aggregate_failures do
+            project_response = json_response.find { |p| p['id'] == project.id }
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(project_response['permissions']['group_access']['access_level'])
+              .to eq(Gitlab::Access::OWNER)
+          end
         end
       end
 
@@ -325,55 +486,9 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response.find { |hash| hash['id'] == project.id }.keys).not_to include('open_issues_count')
       end
 
-      context 'filter by topic (column topic_list)' do
-        before do
-          project.update!(topic_list: %w[ruby javascript])
-        end
-
-        it 'returns no projects' do
-          get api(path, user), params: { topic: 'foo' }
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response).to include_pagination_headers
-          expect(json_response).to be_empty
-        end
-
-        it 'returns matching project for a single topic' do
-          get api(path, user), params: { topic: 'ruby' }
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response).to include_pagination_headers
-          expect(json_response).to contain_exactly a_hash_including('id' => project.id)
-        end
-
-        it 'returns matching project for multiple topics' do
-          get api(path, user), params: { topic: 'ruby, javascript' }
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response).to include_pagination_headers
-          expect(json_response).to contain_exactly a_hash_including('id' => project.id)
-        end
-
-        it 'returns no projects if project match only some topic' do
-          get api(path, user), params: { topic: 'ruby, foo' }
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response).to include_pagination_headers
-          expect(json_response).to be_empty
-        end
-
-        it 'ignores topic if it is empty' do
-          get api(path, user), params: { topic: '' }
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(response).to include_pagination_headers
-          expect(json_response).to be_present
-        end
-      end
-
       context 'filter by topic_id' do
-        let_it_be(:topic1) { create(:topic) }
-        let_it_be(:topic2) { create(:topic) }
+        let_it_be(:topic1) { create(:topic, organization_id: project.organization_id) }
+        let_it_be(:topic2) { create(:topic, organization_id: project.organization_id) }
 
         let(:current_user) { user }
 
@@ -441,7 +556,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         statistics = json_response.find { |p| p['id'] == project.id }['statistics']
         expect(statistics).to be_present
-        expect(statistics).to include('commit_count', 'storage_size', 'repository_size', 'wiki_size', 'lfs_objects_size', 'job_artifacts_size', 'pipeline_artifacts_size', 'snippets_size', 'packages_size', 'uploads_size')
+        expect(statistics).to include('commit_count', 'storage_size', 'repository_size', 'wiki_size', 'lfs_objects_size', 'job_artifacts_size', 'pipeline_artifacts_size', 'snippets_size', 'packages_size', 'uploads_size', 'container_registry_size')
       end
 
       it "does not include license by default" do
@@ -791,6 +906,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           expect(json_response.map { |project| project['id'] }).to contain_exactly(project2.id, project3.id)
         end
       end
+
+      it_behaves_like 'authorizing granular token permissions', :read_project do
+        let(:boundary_object) { :user }
+        let(:request) do
+          get api(path, personal_access_token: pat)
+        end
+      end
     end
 
     context 'and imported=true' do
@@ -892,6 +1014,23 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
 
     context 'sorting' do
+      context 'by star_count' do
+        let_it_be(:project_most_stars) { create(:project, :public, star_count: 100) }
+        let_it_be(:project_no_stars) { create(:project, :public, star_count: 0) }
+        let_it_be(:project_few_stars) { create(:project, :public, star_count: 10) }
+
+        it 'with order_by=star_count, returns list of projects sorted by star_count descending' do
+          get api(path), params: { order_by: 'star_count' }
+
+          expected_order = [project_most_stars, project_few_stars, project_no_stars, public_project]
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to include_pagination_headers
+          expect(json_response).to be_an Array
+          expect(json_response.map { |x| x['id'] }).to eq(expected_order.map(&:id))
+        end
+      end
+
       context 'by project statistics' do
         %w[repository_size storage_size wiki_size packages_size].each do |order_by|
           context "sorting by #{order_by}" do
@@ -999,6 +1138,33 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             expect(project_names).to contain_exactly(project_4.name)
           end
         end
+      end
+    end
+
+    context 'when using the marked_for_deletion_on filter' do
+      let_it_be(:user) { create(:user) }
+      let_it_be(:group) { create(:group, owners: user) }
+      let_it_be(:marked_for_deletion_project) do
+        create(:project, marked_for_deletion_at: Date.parse('2024-01-01'), group: group)
+      end
+
+      it 'returns groups marked for deletion on the specified date' do
+        get api("/projects", user), params: { marked_for_deletion_on: Date.parse('2024-01-01') }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_an Array
+        expect(json_response.map { |project| project["id"] }).to contain_exactly(marked_for_deletion_project.id)
+        expect(json_response.map { |project| project["marked_for_deletion_on"] }).to contain_exactly(Date.parse('2024-01-01').iso8601)
+      end
+
+      it 'returns all projects when marked_for_deletion_on is not specified' do
+        get api("/projects", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_an Array
+        expect(json_response.map { |project| project["id"] }).to contain_exactly(public_project.id, marked_for_deletion_project.id)
       end
     end
 
@@ -1184,24 +1350,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     context 'rate limiting' do
       let_it_be(:current_user) { create(:user) }
 
-      shared_examples_for 'does not log request and does not block the request' do
-        specify do
-          request
-          request
-
-          expect(response).not_to have_gitlab_http_status(:too_many_requests)
-          expect(Gitlab::AuthLogger).not_to receive(:error)
-        end
-      end
-
-      before do
-        stub_application_setting(projects_api_rate_limit_unauthenticated: 1)
-      end
-
       context 'when the user is signed in' do
-        it_behaves_like 'does not log request and does not block the request' do
+        it_behaves_like 'rate limited endpoint', rate_limit_key: :projects_api do
           def request
             get api(path, current_user)
+          end
+
+          def request_with_second_scope
+            get api(path, user2)
           end
         end
       end
@@ -1213,7 +1369,35 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           def request
             get api(path, current_user)
           end
+
+          def request_with_second_scope
+            get api(path, user2)
+          end
         end
+      end
+    end
+
+    context 'when page offset is within pagination limit' do
+      subject(:request) { get api(path, user), params: { page: 100, per_page: 20 } }
+
+      it 'does not track internal event' do
+        expect { request }.not_to trigger_internal_events('request_projects_api_high_offset')
+      end
+    end
+
+    context 'when page offset exceeds pagination limit' do
+      subject(:request) { get api(path, user), params: { page: 5000, per_page: 20 } }
+
+      it 'tracks internal event' do
+        expect { request }.to trigger_internal_events('request_projects_api_high_offset')
+          .with(
+            user: user,
+            category: 'InternalEventTracking',
+            additional_properties: {
+              label: '20',
+              value: 5000
+            }
+          )
       end
     end
   end
@@ -1225,8 +1409,15 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       it 'does not create new project and respond with 403' do
         allow_any_instance_of(User).to receive(:projects_limit_left).and_return(0)
         expect { post api(path, user2), params: { name: 'foo' } }
-          .to change { Project.count }.by(0)
+          .not_to change { Project.count }
         expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+
+    it_behaves_like 'restricted visibility level for API', 'project' do
+      let(:endpoint) { path }
+      let(:params_with_public_visibility) do
+        { name: 'test-project', path: 'test-project', visibility: 'public' }
       end
     end
 
@@ -1286,6 +1477,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         merge_requests_enabled: false,
         forking_access_level: 'disabled',
         analytics_access_level: 'disabled',
+        package_registry_access_level: 'disabled',
         wiki_enabled: false,
         resolve_outdated_diff_discussions: false,
         remove_source_branch_after_merge: true,
@@ -1300,6 +1492,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       }).tap do |attrs|
         attrs[:analytics_access_level] = 'disabled'
         attrs[:container_registry_access_level] = 'private'
+        attrs[:package_registry_access_level] = 'disabled'
         attrs[:security_and_compliance_access_level] = 'private'
         attrs[:releases_access_level] = 'disabled'
         attrs[:environments_access_level] = 'disabled'
@@ -1324,6 +1517,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           has_external_issue_tracker has_external_wiki issues_enabled merge_requests_enabled wiki_enabled storage_version
           container_registry_access_level releases_access_level environments_access_level feature_flags_access_level
           infrastructure_access_level monitor_access_level model_experiments_access_level model_registry_access_level
+          package_registry_access_level namespace
         ].include?(k)
 
         expect(json_response[k.to_s]).to eq(v)
@@ -1336,6 +1530,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(project.project_feature.wiki_access_level).to eq(ProjectFeature::DISABLED)
       expect(project.project_feature.analytics_access_level).to eq(ProjectFeature::DISABLED)
       expect(project.project_feature.container_registry_access_level).to eq(ProjectFeature::PRIVATE)
+      expect(project.project_feature.package_registry_access_level).to eq(ProjectFeature::PRIVATE)
       expect(project.project_feature.security_and_compliance_access_level).to eq(ProjectFeature::PRIVATE)
       expect(project.project_feature.releases_access_level).to eq(ProjectFeature::DISABLED)
       expect(project.project_feature.environments_access_level).to eq(ProjectFeature::DISABLED)
@@ -1347,6 +1542,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(project.project_feature.merge_requests_access_level).to eq(ProjectFeature::DISABLED)
       expect(project.project_feature.issues_access_level).to eq(ProjectFeature::DISABLED)
       expect(project.project_feature.snippets_access_level).to eq(ProjectFeature::DISABLED)
+
+      # Check namespace attributes
+      expect(project.namespace.id).to eq(user.namespace.id)
+      expect(project.namespace.name).to eq(user.namespace.name)
+      expect(project.namespace.path).to eq(user.namespace.path)
+      expect(project.namespace.kind).to eq(user.namespace.kind)
+      expect(project.namespace.full_path).to eq(user.namespace.full_path)
+      expect(project.namespace.parent_id).to be_nil
+      expect(project.namespace.avatar_url).to eq(user.namespace.avatar_url)
+      expect(project.namespace.web_url).to eq(user.namespace.web_url)
     end
 
     it 'assigns container_registry_enabled to project' do
@@ -1378,7 +1583,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       project = Project.find(json_response['id'])
       expect(project).to be_saved
-      expect(project.import_type).to eq('gitlab_project')
+      expect(project.import_type).to eq('gitlab_built_in_project_template')
     end
 
     it 'returns 400 for an invalid template' do
@@ -1401,11 +1606,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       url = 'http://example.com'
       stub_application_setting(import_sources: nil)
 
-      endpoint_url = "#{url}/info/refs?service=git-upload-pack"
-      stub_full_request(endpoint_url, method: :get).to_return(
-        { status: 200,
-          body: '001e# service=git-upload-pack',
-          headers: { 'Content-Type': 'application/x-git-upload-pack-advertisement' } })
+      allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with(url).and_return(true)
 
       project_params = { import_url: url, path: 'path-project-Foo', name: 'Foo Project' }
       expect { post api(path, user), params: project_params }
@@ -1423,29 +1624,12 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(response).to have_gitlab_http_status(:created)
     end
 
-    it 'disallows creating a project with an import_url that is not reachable' do
-      url = 'http://example.com'
-      endpoint_url = "#{url}/info/refs?service=git-upload-pack"
-      error_response = { status: 301, body: '', headers: nil }
-      stub_full_request(endpoint_url, method: :get).to_return(error_response)
-      project_params = { import_url: url, path: 'path-project-Foo', name: 'Foo Project' }
-
-      expect { post api(path, user), params: project_params }.not_to change { Project.count }
-
-      expect(response).to have_gitlab_http_status(:unprocessable_entity)
-      expect(json_response['message']).to eq("#{url} endpoint error: #{error_response[:status]}")
-    end
-
     it 'creates a project with an import_url that is valid' do
       url = 'http://example.com'
-      endpoint_url = "#{url}/info/refs?service=git-upload-pack"
-      git_response = {
-        status: 200,
-        body: '001e# service=git-upload-pack',
-        headers: { 'Content-Type': 'application/x-git-upload-pack-advertisement' }
-      }
+
+      allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with(url).and_return(true)
       stub_application_setting(import_sources: ['git'])
-      stub_full_request(endpoint_url, method: :get).to_return(git_response)
+
       project_params = { import_url: url, path: 'path-project-Foo', name: 'Foo Project' }
 
       expect { post api(path, user), params: project_params }.to change { Project.count }.by(1)
@@ -1692,26 +1876,10 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
     end
 
-    context 'when a visibility level is restricted' do
-      let(:project_param) { attributes_for(:project, visibility: 'public') }
-
-      before do
-        stub_application_setting(restricted_visibility_levels: [Gitlab::VisibilityLevel::PUBLIC])
-      end
-
-      it 'does not allow a non-admin to use a restricted visibility level' do
-        post api(path, user), params: project_param
-
-        expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response['message']['visibility_level'].first).to(
-          match('restricted by your GitLab administrator')
-        )
-      end
-
-      it 'allows an admin to override restricted visibility settings' do
-        post api(path, admin), params: project_param
-
-        expect(json_response['visibility']).to eq('public')
+    it_behaves_like 'authorizing granular token permissions', :create_project do
+      let(:boundary_object) { :user }
+      let(:request) do
+        post api(path, personal_access_token: pat), params: { name: 'Test Project' }
       end
     end
   end
@@ -1733,6 +1901,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(response).to include_pagination_headers
       expect(json_response).to be_an Array
       expect(json_response.map { |project| project['id'] }).to contain_exactly(public_project.id)
+    end
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :user_projects_api do
+      def request
+        get api("/users/#{user4.id}/projects/")
+      end
+
+      def request_with_second_scope
+        get api("/users/#{user4.id}/projects/", user2)
+      end
     end
 
     it 'includes container_registry_access_level' do
@@ -1859,6 +2037,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response.map { |p| p['id'] }).to contain_exactly(project.id)
       end
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_project do
+      let(:boundary_object) { :user }
+      let(:request) do
+        get api("/users/#{user4.id}/projects/", personal_access_token: pat)
+      end
+    end
   end
 
   describe 'GET /users/:user_id/starred_projects/' do
@@ -1874,6 +2059,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       expect(response).to have_gitlab_http_status(:not_found)
       expect(json_response['message']).to eq('404 User Not Found')
+    end
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :user_starred_projects_api do
+      def request
+        get api(path)
+      end
+
+      def request_with_second_scope
+        get api(path, user2)
+      end
     end
 
     context 'with a public profile' do
@@ -1896,11 +2091,23 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           expect(json_response.map { |project| project['id'] }).to contain_exactly(project2.id, project.id)
         end
       end
+
+      it_behaves_like 'authorizing granular token permissions', :read_starred_project do
+        let(:boundary_object) { :user }
+        let(:request) do
+          get api(path, personal_access_token: pat)
+        end
+      end
     end
 
     context 'with a private profile' do
       before do
         user3.update!(private_profile: true)
+        user3.reload
+      end
+
+      after do
+        user3.update!(private_profile: false)
         user3.reload
       end
 
@@ -1952,6 +2159,23 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(json_response['message']).to eq('404 User Not Found')
     end
 
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :user_contributed_projects_api do
+      def request
+        get api(path)
+      end
+
+      def request_with_second_scope
+        get api(path, user2)
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_contributed_project do
+      let(:boundary_object) { :user }
+      let(:request) do
+        get api(path, personal_access_token: pat)
+      end
+    end
+
     context 'with a public profile' do
       it 'returns projects filtered by user' do
         get api(path, user)
@@ -1970,8 +2194,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         user3.reload
       end
 
+      after do
+        user3.update!(private_profile: false)
+        user3.reload
+      end
+
       context 'user does not have access to view the private profile' do
-        it 'returns no projects' do
+        it 'returns no projects', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9486' do
           get api(path, user)
 
           expect(response).to have_gitlab_http_status(:ok)
@@ -2061,10 +2290,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(response).to have_gitlab_http_status(:created)
 
       project.each_pair do |k, v|
-        next if %i[has_external_issue_tracker has_external_wiki path storage_version].include?(k)
+        next if %i[has_external_issue_tracker has_external_wiki path storage_version namespace].include?(k)
 
         expect(json_response[k.to_s]).to eq(v)
       end
+
+      # Check namespace
+      created_project = Project.find_by_path(project[:path])
+      expect(created_project.namespace.id).to eq(user.namespace.id)
     end
 
     it 'sets a project as public' do
@@ -2225,118 +2458,15 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
       end
     end
-  end
 
-  describe "POST /projects/:id/uploads/authorize" do
-    let(:headers) { workhorse_internal_api_request_header.merge({ 'HTTP_GITLAB_WORKHORSE' => 1 }) }
-    let(:path) { "/projects/#{project.id}/uploads/authorize" }
-
-    context 'with authorized user' do
-      it "returns 200" do
-        post api(path, user), headers: headers
-
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(json_response['MaximumSize']).to eq(project.max_attachment_size)
-      end
-    end
-
-    context 'with unauthorized user' do
-      it "returns 404" do
-        post api(path, user2), headers: headers
-
-        expect(response).to have_gitlab_http_status(:not_found)
-      end
-    end
-
-    context 'with exempted project' do
-      before do
-        stub_env('GITLAB_UPLOAD_API_ALLOWLIST', project.id)
-      end
-
-      it "returns 200" do
-        post api(path, user), headers: headers
-
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(json_response['MaximumSize']).to eq(1.gigabyte)
-      end
-    end
-
-    context 'with no Workhorse headers' do
-      it "returns 403" do
-        post api(path, user)
-
-        expect(response).to have_gitlab_http_status(:forbidden)
-      end
-    end
-  end
-
-  describe "POST /projects/:id/uploads" do
-    let(:file) { fixture_file_upload("spec/fixtures/dk.png", "image/png") }
-    let(:path) { "/projects/#{project.id}/uploads" }
-
-    before do
-      project
-    end
-
-    it "uploads the file and returns its info" do
-      expect_next_instance_of(UploadService) do |instance|
-        expect(instance).to receive(:override_max_attachment_size=).with(project.max_attachment_size).and_call_original
-      end
-
-      post api(path, user), params: { file: file }
-
-      expect(response).to have_gitlab_http_status(:created)
-      expect(json_response['alt']).to eq("dk")
-      expect(json_response['url']).to start_with("/uploads/")
-      expect(json_response['url']).to end_with("/dk.png")
-      expect(json_response['full_path']).to start_with("/#{project.namespace.path}/#{project.path}/uploads")
-    end
-
-    it "does not leave the temporary file in place after uploading, even when the tempfile reaper does not run" do
-      tempfile = Tempfile.new('foo')
-      path = tempfile.path
-
-      allow_any_instance_of(Rack::TempfileReaper).to receive(:call) do |instance, env|
-        instance.instance_variable_get(:@app).call(env)
-      end
-
-      expect(path).not_to be(nil)
-      expect(Rack::Multipart::Parser::TEMPFILE_FACTORY).to receive(:call).and_return(tempfile)
-
-      post api(path, user), params: { file: fixture_file_upload("spec/fixtures/dk.png", "image/png") }
-
-      expect(tempfile.path).to be(nil)
-      expect(File.exist?(path)).to be(false)
-    end
-
-    shared_examples 'capped upload attachments' do |upload_allowed|
-      it "limits the upload to 1 GiB" do
-        expect_next_instance_of(UploadService) do |instance|
-          expect(instance).to receive(:override_max_attachment_size=).with(1.gigabyte).and_call_original
+    context 'with granular token permissions', :enable_admin_mode do
+      it_behaves_like 'authorizing granular token permissions', :create_project do
+        let(:boundary_object) { :user }
+        let(:user) { admin }
+        let(:request) do
+          post api(path, personal_access_token: pat), params: { name: 'Test Project' }
         end
-
-        post api(path, user), params: { file: file }
-
-        expect(response).to have_gitlab_http_status(:created)
       end
-
-      it "logs a warning if file exceeds attachment size" do
-        allow(Gitlab::CurrentSettings).to receive(:max_attachment_size).and_return(0)
-
-        expect(Gitlab::AppLogger).to receive(:info).with(
-          hash_including(message: 'File exceeds maximum size', upload_allowed: upload_allowed))
-            .and_call_original
-
-        post api(path, user), params: { file: file }
-      end
-    end
-
-    context 'with exempted project' do
-      before do
-        stub_env('GITLAB_UPLOAD_API_ALLOWLIST', project.id)
-      end
-
-      it_behaves_like 'capped upload attachments', true
     end
   end
 
@@ -2357,6 +2487,17 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
     it_behaves_like 'GET request permissions for admin mode' do
       let(:failed_status_code) { :not_found }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_group_project do
+      let(:boundary_object) { private_project }
+      let(:request) do
+        get api("/projects/#{private_project.id}/groups", personal_access_token: pat)
+      end
+
+      before do
+        private_project.add_developer(user)
+      end
     end
 
     shared_examples_for 'successful groups response' do
@@ -2489,6 +2630,17 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
     end
 
+    it_behaves_like 'authorizing granular token permissions', :read_share_location_project do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}/share_locations", personal_access_token: pat)
+      end
+
+      before do
+        project.add_developer(user)
+      end
+    end
+
     context 'when unauthenticated' do
       it 'does not return the groups for the given project' do
         get api(path)
@@ -2573,6 +2725,23 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       let(:failed_status_code) { :not_found }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :read_project do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api("/projects/#{project.id}", personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :project_api do
+      def request
+        get api(path)
+      end
+
+      def request_with_second_scope
+        get api(path, user2)
+      end
+    end
+
     context 'when unauthenticated' do
       it 'does not return private projects' do
         private_project = create(:project, :private)
@@ -2596,9 +2765,26 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
 
       context 'the project is a public fork' do
-        it 'hides details of a public fork parent' do
+        it 'shows details of a public fork parent' do
           public_project = create(:project, :repository, :public)
           fork = fork_project(public_project)
+
+          get api("/projects/#{fork.id}")
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['forked_from_project']).to include('id' => public_project.id)
+        end
+
+        it 'hides details of a private fork parent' do
+          public_project = create(:project, :repository, :public)
+          parent_user = create(:user)
+          public_project.team.add_developer(parent_user)
+
+          fork = fork_project(public_project, user)
+
+          # Make the parent private
+          public_project.visibility = Gitlab::VisibilityLevel::PRIVATE
+          public_project.save!
 
           get api("/projects/#{fork.id}")
 
@@ -2664,6 +2850,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             security_and_compliance_enabled
             issues_template
             merge_requests_template
+            secret_push_protection_enabled
           ]
         end
 
@@ -2720,6 +2907,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['only_allow_merge_if_pipeline_succeeds']).to eq(project.only_allow_merge_if_pipeline_succeeds)
         expect(json_response['allow_merge_on_skipped_pipeline']).to eq(project.allow_merge_on_skipped_pipeline)
         expect(json_response['restrict_user_defined_variables']).to eq(project.restrict_user_defined_variables?)
+        expect(json_response['ci_pipeline_variables_minimum_override_role']).to eq(project.ci_pipeline_variables_minimum_override_role.to_s)
         expect(json_response['only_allow_merge_if_all_discussions_are_resolved']).to eq(project.only_allow_merge_if_all_discussions_are_resolved)
         expect(json_response['security_and_compliance_access_level']).to be_present
         expect(json_response['releases_access_level']).to be_present
@@ -2730,6 +2918,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['warn_about_potentially_unwanted_characters']).to be_present
         expect(json_response).to have_key('emails_disabled')
         expect(json_response).to have_key('emails_enabled')
+        expect(json_response).to have_key('show_diff_preview_in_email')
       end
 
       it 'exposes all necessary attributes' do
@@ -2789,6 +2978,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['jobs_enabled']).to be_present
         expect(json_response['snippets_enabled']).to be_present
         expect(json_response['snippets_access_level']).to be_present
+        expect(json_response['package_registry_access_level']).to be_present
         expect(json_response['pages_access_level']).to be_present
         expect(json_response['repository_access_level']).to be_present
         expect(json_response['issues_access_level']).to be_present
@@ -2836,6 +3026,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['ci_forward_deployment_rollback_allowed']).to eq(project.ci_forward_deployment_rollback_allowed)
         expect(json_response['ci_allow_fork_pipelines_to_run_in_parent_project']).to eq(project.ci_allow_fork_pipelines_to_run_in_parent_project)
         expect(json_response['ci_separated_caches']).to eq(project.ci_separated_caches)
+        expect(json_response['resource_group_default_process_mode']).to eq(project.resource_group_default_process_mode)
         expect(json_response['merge_method']).to eq(project.merge_method.to_s)
         expect(json_response['squash_option']).to eq(project.squash_option.to_s)
         expect(json_response['readme_url']).to eq(project.readme_url)
@@ -2890,7 +3081,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           expect(response).to have_gitlab_http_status(:moved_permanently)
 
           url = response.headers['Location']
-          expect(url).to start_with("#{request.base_url}/api/v4/projects/#{project.id}")
+          expect(url).to start_with("#{::Settings.gitlab.url}/api/v4/projects/#{project.id}")
           expect(CGI.parse(URI(url).query)).to include({ 'license' => ['true'] })
         end
 
@@ -3186,8 +3377,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
 
       context 'when project belongs to a user namespace' do
-        let(:user) { create(:user) }
-        let(:project) { create(:project, namespace: user.namespace) }
+        let_it_be(:user) { create(:user) }
+        let_it_be(:project) { create(:project, namespace: user.namespace) }
 
         it 'returns user web_url and avatar_url' do
           get api(path, user)
@@ -3216,7 +3407,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['default_branch']).to eq(project.default_branch)
         expect(json_response['ci_config_path']).to eq(project.ci_config_path)
         expect(json_response['forked_from_project']).to eq(project.forked_from_project)
-        expect(json_response['service_desk_address']).to eq(project.service_desk_address)
+        expect(json_response['service_desk_address']).to eq(::ServiceDesk::Emails.new(project).address)
         expect(json_response).not_to include(
           'ci_default_git_depth',
           'ci_forward_deployment_enabled',
@@ -3227,6 +3418,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           'build_git_strategy',
           'keep_latest_artifact',
           'restrict_user_defined_variables',
+          'ci_pipeline_variables_minimum_override_role',
           'runners_token',
           'runner_token_expiration_interval',
           'group_runners_enabled',
@@ -3234,7 +3426,8 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           'build_timeout',
           'auto_devops_enabled',
           'auto_devops_deploy_strategy',
-          'import_error'
+          'import_error',
+          'ci_push_repository_for_job_token_allowed'
         )
       end
     end
@@ -3348,6 +3541,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
       end
 
+      it_behaves_like 'authorizing granular token permissions', :read_user_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/users", personal_access_token: pat)
+        end
+      end
+
       it 'returns a 404 error if not found' do
         get api("/projects/#{non_existing_record_id}/users", user)
 
@@ -3423,7 +3623,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
 
         context 'and user is a reporter of target group' do
-          let_it_be_with_reload(:target_group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_MAINTAINER_PROJECT_ACCESS) }
+          let_it_be_with_reload(:target_group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
           let_it_be_with_reload(:project_fork_target) { create(:project, namespace: target_group) }
 
           before do
@@ -3439,7 +3639,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
 
         context 'and user is a developer of target group' do
-          let_it_be_with_reload(:target_group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_MAINTAINER_PROJECT_ACCESS) }
+          let_it_be_with_reload(:target_group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
           let_it_be_with_reload(:project_fork_target) { create(:project, namespace: target_group) }
 
           before do
@@ -3456,6 +3656,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             expect(project_fork_target.forked_from_project.id).to eq(project_fork_source.id)
             expect(project_fork_target.fork_network_member).to be_present
             expect(project_fork_target).to be_forked
+          end
+
+          it_behaves_like 'authorizing granular token permissions', :mark_forked_project do
+            let(:boundary_object) { project_fork_target }
+            let(:request) do
+              post api("/projects/#{project_fork_target.id}/fork/#{project_fork_source.id}", personal_access_token: pat)
+            end
           end
         end
 
@@ -3542,6 +3749,18 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             expect(json_response['message']).to eq 'Target project cannot be equal to source project'
           end
         end
+
+        context 'when fork target and source project organization are not the same' do
+          let_it_be(:organization) { create(:organization) }
+          let_it_be(:project_fork_target_different_organization) { create(:project, organization: organization) }
+
+          it 'returns an error' do
+            post api("/projects/#{project_fork_target_different_organization.id}/fork/#{project_fork_source.id}", admin, admin_mode: true)
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to eq 'Target project must belong to source project organization'
+          end
+        end
       end
     end
 
@@ -3583,6 +3802,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
             expect(project_fork_target).not_to be_forked
           end
 
+          it_behaves_like 'authorizing granular token permissions', :delete_fork_project do
+            let(:boundary_object) { project_fork_target }
+            let(:request) do
+              delete api("/projects/#{project_fork_target.id}/fork", personal_access_token: pat)
+            end
+          end
+
           it_behaves_like '412 response' do
             subject(:request) { api(path, admin, admin_mode: true) }
           end
@@ -3620,6 +3846,17 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
           project_fork_source.reload
           expect(project_fork_source.forks.length).to eq(1)
           expect(project_fork_source.forks).to include(private_fork)
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :read_fork_project do
+          let(:boundary_object) { project_fork_source }
+          let(:request) do
+            get api("/projects/#{project_fork_source.id}/forks", personal_access_token: pat)
+          end
+
+          before do
+            project_fork_source.add_developer(user)
+          end
         end
 
         context 'for a user that can access the forks' do
@@ -3693,6 +3930,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(json_response['expires_at']).to eq(expires_at.to_s)
     end
 
+    it_behaves_like 'authorizing granular token permissions', :share_project do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api("/projects/#{project.id}/share", personal_access_token: pat),
+          params: { group_id: group.id, group_access: Gitlab::Access::DEVELOPER }
+      end
+    end
+
     it 'updates project authorization', :sidekiq_inline do
       expect do
         post api(path, user), params: { group_id: group.id, group_access: Gitlab::Access::DEVELOPER }
@@ -3738,17 +3983,6 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       expect(json_response['error']).to eq 'group_access does not have a valid value'
     end
 
-    it 'returns a 403 when a maintainer tries to create a link with OWNER access' do
-      user = create(:user)
-      project.add_maintainer(user)
-
-      expect do
-        post api(path, user), params: { group_id: group.id, group_access: Gitlab::Access::OWNER }
-      end.to not_change { project.reload.project_group_links.count }
-
-      expect(response).to have_gitlab_http_status(:forbidden)
-    end
-
     it "returns a 409 error when link is not saved" do
       allow(::Projects::GroupLinks::CreateService).to receive_message_chain(:new, :execute)
         .and_return({ status: :error, http_status: 409, message: 'error' })
@@ -3771,6 +4005,175 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
   end
 
+  describe 'GET /projects/:id/invited_groups' do
+    let_it_be(:main_group) { create(:group, :private, owners: user1) }
+    let_it_be(:direct_group1) { create(:group, :private, owners: user1) }
+    let_it_be(:direct_group2) { create(:group, :private, owners: user1) }
+    let_it_be(:inherited_group) { create(:group, :private, owners: user1) }
+    let_it_be(:main_project) { create(:project, group: main_group, owners: user1) }
+
+    let(:path) { "/projects/#{main_project.id}/invited_groups" }
+
+    before do
+      create(:group_group_link, shared_group: main_group, shared_with_group: inherited_group)
+      create(:project_group_link, group: direct_group1, project: main_project)
+      create(:project_group_link, group: direct_group2, project: main_project)
+    end
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :project_invited_groups_api do
+      def request
+        get api(path)
+      end
+
+      def request_with_second_scope
+        get api(path, user2)
+      end
+    end
+
+    context 'when authenticated as user' do
+      it 'returns the invited groups in the project', :aggregate_failures do
+        get api(path, user1)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response.length).to eq(3)
+        group_ids = json_response.map { |group| group['id'] }
+        expect(group_ids).to contain_exactly(direct_group1.id, direct_group2.id, inherited_group.id)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_invited_group_project do
+        let(:boundary_object) { main_project }
+        let(:request) do
+          get api("/projects/#{main_project.id}/invited_groups", personal_access_token: pat)
+        end
+
+        before do
+          main_project.add_developer(user)
+        end
+      end
+    end
+
+    context 'when authenticated and user does not have the access' do
+      it 'does not return the invited groups in the project', :aggregate_failures do
+        get api(path, user2)
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
+    context 'when unauthenticated as user' do
+      let_it_be(:main_group) { create(:group, :public, owners: user2) }
+      let_it_be(:direct_group_1) { create(:group, :public, owners: user2) }
+      let_it_be(:direct_group_2) { create(:group, :private, owners: user2) }
+      let_it_be(:new_project) { create(:project, :public, group: main_group, owners: user2) }
+
+      let(:path) { "/projects/#{new_project.id}/invited_groups" }
+
+      before do
+        create(:project_group_link, group: direct_group_1, project: new_project)
+        create(:project_group_link, group: direct_group_2, project: new_project)
+      end
+
+      it 'only returns the invited public groups in the project', :aggregate_failures do
+        get api(path)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response.length).to eq(1)
+        group_ids = json_response.map { |group| group['id'] }
+        expect(group_ids).to contain_exactly(direct_group_1.id)
+      end
+    end
+
+    context "when search is present in request" do
+      let_it_be(:direct_group_1) { create(:group, :public, name: "new direct", owners: user1) }
+      let_it_be(:direct_group_2) { create(:group, :private, name: "other direct", owners: user1) }
+      let_it_be(:new_project) { create(:project, :public, owners: user1) }
+
+      let(:path) { "/projects/#{new_project.id}/invited_groups" }
+
+      before do
+        create(:project_group_link, group: direct_group_1, project: new_project)
+        create(:project_group_link, group: direct_group_2, project: new_project)
+      end
+
+      it 'filters the invited groups in the group based on search params', :aggregate_failures do
+        get api(path, user1), params: { search: 'new' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_an(Array)
+        expect(json_response.length).to eq(1)
+        expect(json_response.first['id']).to eq(direct_group_1.id)
+      end
+    end
+
+    context 'when using min_access_level in the request' do
+      let_it_be(:new_direct_group) { create(:group, :public, name: "new direct") }
+      let_it_be(:other_direct_group) { create(:group, :private, name: "other direct") }
+      let_it_be(:new_project) { create(:project, :public) }
+
+      let(:path) { "/projects/#{new_project.id}/invited_groups" }
+
+      before do
+        new_direct_group.add_developer(user1)
+        other_direct_group.add_owner(user1)
+        create(:project_group_link, group: new_direct_group, project: new_project)
+        create(:project_group_link, group: other_direct_group, project: new_project)
+      end
+
+      context 'with min_access_level parameter' do
+        it 'returns an array of groups the user has at least owner access', :aggregate_failures do
+          get api(path, user1), params: { min_access_level: Gitlab::Access::OWNER }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to include_pagination_headers
+          expect(json_response).to be_an Array
+          expect(json_response.map { |group| group['id'] }).to contain_exactly(other_direct_group.id)
+        end
+      end
+    end
+
+    context "when include_relation is present in request" do
+      let_it_be(:relation_main_group) { create(:group, :private, owners: user1) }
+      let_it_be(:direct_group) { create(:group, owners: user1) }
+      let_it_be(:inherited_group) { create(:group, owners: user1) }
+      let_it_be(:new_relation_project) { create(:project, group: relation_main_group) }
+
+      let(:path) { "/projects/#{new_relation_project.id}/invited_groups" }
+
+      before do
+        create(:project_group_link, group: direct_group, project: new_relation_project)
+        create(:group_group_link, shared_group: relation_main_group, shared_with_group: inherited_group)
+      end
+
+      it 'filters the invited groups in the project based on direct relation params', :aggregate_failures do
+        get api(path, user1), params: { relation: ['direct'] }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_an(Array)
+        expect(json_response.map { |group| group['id'] }).to contain_exactly(direct_group.id)
+      end
+
+      it 'filters the invited groups in the project based on inherited relation params', :aggregate_failures do
+        get api(path, user1), params: { relation: ['inherited'] }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response).to be_an(Array)
+        expect(json_response.map { |group| group['id'] }).to contain_exactly(inherited_group.id)
+      end
+
+      it 'returns error message when include relation is invalid' do
+        get api(path, user1), params: { relation: ['some random'] }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['error']).to eq("relation does not have a valid value")
+      end
+    end
+  end
+
   describe 'DELETE /projects/:id/share/:group_id' do
     context 'for a valid group' do
       let_it_be(:group) { create(:group, :private) }
@@ -3788,6 +4191,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:no_content)
         expect(project.project_group_links).to be_empty
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_group_share_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api("/projects/#{project.id}/share/#{group.id}", personal_access_token: pat)
+        end
       end
 
       it 'updates project authorization', :sidekiq_inline do
@@ -3847,6 +4257,44 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
   end
 
+  describe 'POST /projects/:id/restore' do
+    let_it_be(:group) { create(:group, owners: user) }
+    let_it_be_with_reload(:project) { create(:project, group: group) }
+
+    context 'when project is archived' do
+      before do
+        project.update!(archived: true, marked_for_deletion_at: 1.day.ago, deleting_user: user)
+      end
+
+      it 'restores project' do
+        post api("/projects/#{project.id}/restore", user)
+
+        expect(response).to have_gitlab_http_status(:created)
+        expect(json_response['archived']).to be_falsey
+        expect(json_response['marked_for_deletion_at']).to be_falsey
+        expect(json_response['marked_for_deletion_on']).to be_falsey
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :restore_project do
+        let(:boundary_object) { project }
+
+        let(:request) do
+          post api("/projects/#{project.id}/restore", personal_access_token: pat)
+        end
+      end
+    end
+
+    it 'returns error if project is already being deleted' do
+      message = 'Error'
+      expect(::Projects::RestoreService).to receive_message_chain(:new, :execute).and_return({ status: :error, message: message })
+
+      post api("/projects/#{project.id}/restore", user)
+
+      expect(response).to have_gitlab_http_status(:bad_request)
+      expect(json_response["message"]).to eq(message)
+    end
+  end
+
   describe 'POST /projects/:id/import_project_members/:project_id' do
     let_it_be(:project2) { create(:project) }
     let_it_be(:project2_user) { create(:user) }
@@ -3856,6 +4304,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       project.add_maintainer(user)
       project2.add_maintainer(user)
       project2.add_developer(project2_user)
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :import_member_project do
+      let(:boundary_object) { project2 }
+      let(:request) do
+        post api("/projects/#{project.id}/import_project_members/#{project2.id}", personal_access_token: pat)
+      end
     end
 
     it 'records the query', :request_store, :use_sql_query_cache do
@@ -3875,7 +4330,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       measure_project.add_developer(create(:user))
       measure_project.add_developer(create(:user)) # make this 2nd one to find any n+1
 
-      unresolved_n_plus_ones = 27 # 27 queries added per member
+      unresolved_n_plus_ones = 28 # 28 queries added per member
 
       expect do
         post api("/projects/#{project.id}/import_project_members/#{measure_project.id}", user)
@@ -3945,6 +4400,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       expect(response).to have_gitlab_http_status(:unprocessable_entity)
       expect(json_response['message']).to eq('Import failed')
+      expect(json_response['reason']).to eq('import_failed_error')
     end
 
     context 'when importing of members did not work for some or all members' do
@@ -3960,6 +4416,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         error_message = { project_bot.username => 'User project bots cannot be added to other groups / projects' }
         expect(json_response['message']).to eq(error_message)
         expect(json_response['total_members_count']).to eq(3)
+        expect(json_response['status']).to eq('error')
       end
     end
   end
@@ -3983,6 +4440,27 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       let(:failed_status_code) { :not_found }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :update_project do
+      let(:boundary_object) { project }
+      let(:request) do
+        put api("/projects/#{project.id}", personal_access_token: pat), params: { name: 'new name' }
+      end
+    end
+
+    describe 'updating ci_push_repository_for_job_token_allowed attribute' do
+      it 'is disabled by default' do
+        expect(project.ci_push_repository_for_job_token_allowed).to be_falsey
+      end
+
+      it 'enables push to repository using job token' do
+        put(api(path, user), params: { ci_push_repository_for_job_token_allowed: true })
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(project.reload.ci_push_repository_for_job_token_allowed).to be_truthy
+        expect(json_response['ci_push_repository_for_job_token_allowed']).to eq(true)
+      end
+    end
+
     describe 'updating packages_enabled attribute' do
       it 'is enabled by default' do
         expect(project.packages_enabled).to be true
@@ -3995,6 +4473,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(project.reload.packages_enabled).to be false
         expect(json_response['packages_enabled']).to eq(false)
       end
+    end
+
+    it 'sets package_registry_access_level' do
+      put api(path, user), params: { package_registry_access_level: 'public' }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response['package_registry_access_level']).to eq('public')
+      expect(Project.find_by(path: project[:path]).package_registry_access_level).to eq(ProjectFeature::PUBLIC)
     end
 
     it 'sets container_registry_access_level' do
@@ -4048,6 +4534,26 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       expect(response).to have_gitlab_http_status(:bad_request)
       expect(json_response['error']).to match('at least one parameter must be provided')
+    end
+
+    it 'changes the max_artifacts_size attribute' do
+      expect(project.max_artifacts_size).to be_nil
+
+      put api(path, admin, admin_mode: true), params: { max_artifacts_size: 1 }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(project.reload.max_artifacts_size).to eq(1)
+      expect(json_response['max_artifacts_size']).to eq(1)
+    end
+
+    it 'does not change the max_artifacts_size attribute when a user does not have permissions' do
+      project.add_maintainer(user2)
+
+      put api(path, user2), params: { max_artifacts_size: 1 }
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(project.reload.max_artifacts_size).not_to eq(1)
+      expect(json_response['max_artifacts_size']).not_to eq(1)
     end
 
     context 'when unauthenticated' do
@@ -4191,6 +4697,16 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['emails_enabled']).to eq(false)
       end
 
+      it 'updates show_diff_preview_in_email?' do
+        project_param = { show_diff_preview_in_email: false }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['show_diff_preview_in_email']).to eq(false)
+        expect(project3.reload.show_diff_preview_in_email?).to eq(false)
+      end
+
       it 'updates build_git_strategy' do
         project_param = { build_git_strategy: 'clone' }
 
@@ -4229,6 +4745,146 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(response).to have_gitlab_http_status(:bad_request)
       end
 
+      context 'when ci_pipeline_variables_minimum_override_role is maintainer' do
+        let(:ci_cd_settings) { project3.ci_cd_settings }
+
+        before do
+          project3.add_maintainer(user2)
+          ci_cd_settings.pipeline_variables_minimum_override_role = 'maintainer'
+          ci_cd_settings.save!
+        end
+
+        context 'and resrict_user_defined_variables is true' do
+          context 'and current user is maintainer' do
+            let_it_be(:current_user) { user2 }
+
+            it 'accepts to change restrict_user_defined_variables' do
+              project_param = { restrict_user_defined_variables: false }
+
+              expect do
+                put api("/projects/#{project3.id}", current_user), params: project_param
+              end.to change { ci_cd_settings.reload.restrict_user_defined_variables? }.from(true).to(false)
+              .and change { ci_cd_settings.pipeline_variables_minimum_override_role }.from('maintainer').to('developer')
+
+              expect(response).to have_gitlab_http_status(:ok)
+              response_data = Gitlab::Json.parse(response.body)
+              expect(response_data['restrict_user_defined_variables']).to be_falsey
+            end
+          end
+        end
+      end
+
+      context 'when ci_pipeline_variables_minimum_override_role is developer' do
+        let(:ci_cd_settings) { project3.ci_cd_settings }
+
+        before do
+          project3.add_maintainer(user2)
+          ci_cd_settings.pipeline_variables_minimum_override_role = 'developer'
+          ci_cd_settings.save!
+        end
+
+        context 'and current user is maintainer' do
+          let_it_be(:current_user) { user2 }
+
+          it 'accepts to change restrict_user_defined_variables' do
+            project_param = { restrict_user_defined_variables: true }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'accepts to change ci_pipeline_variables_minimum_override_role' do
+            project_param = { ci_pipeline_variables_minimum_override_role: 'developer' }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+
+        context 'and current user is owner' do
+          let_it_be(:current_user) { user }
+
+          it 'successfully changes restrict_user_defined_variables' do
+            project_param = { restrict_user_defined_variables: true }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'successfully changes ci_pipeline_variables_minimum_override_role' do
+            project_param = { ci_pipeline_variables_minimum_override_role: 'developer' }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+        end
+      end
+
+      context 'when ci_pipeline_variables_minimum_override_role is set to developer' do
+        before do
+          project3.add_maintainer(user2)
+          ci_cd_settings = project3.ci_cd_settings
+          ci_cd_settings.pipeline_variables_minimum_override_role = 'developer'
+          ci_cd_settings.save!
+        end
+
+        context 'and current user is maintainer' do
+          let_it_be(:current_user) { user2 }
+
+          it 'successfully changes restrict_user_defined_variables' do
+            project_param = { restrict_user_defined_variables: true }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'successfully changes ci_pipeline_variables_minimum_override_role' do
+            project_param = { ci_pipeline_variables_minimum_override_role: 'maintainer' }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'rejects to ci_pipeline_variables_minimum_override_role to owner' do
+            project_param = { ci_pipeline_variables_minimum_override_role: 'owner' }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+          end
+        end
+
+        context 'and current user is developer' do
+          let_it_be(:current_user) { user3 }
+
+          before do
+            project3.add_developer(user3)
+          end
+
+          it 'fails to change restrict_user_defined_variables' do
+            project_param = { restrict_user_defined_variables: true }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:forbidden)
+          end
+
+          it 'fails to change ci_pipeline_variables_minimum_override_role' do
+            project_param = { ci_pipeline_variables_minimum_override_role: 'developer' }
+
+            put api("/projects/#{project3.id}", current_user), params: project_param
+
+            expect(response).to have_gitlab_http_status(:forbidden)
+          end
+        end
+      end
+
       it 'updates restrict_user_defined_variables' do
         project_param = { restrict_user_defined_variables: true }
 
@@ -4239,6 +4895,34 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         project_param.each_pair do |k, v|
           expect(json_response[k.to_s]).to eq(v)
         end
+      end
+
+      it 'updates ci_pipeline_variables_minimum_override_role' do
+        project_param = { ci_pipeline_variables_minimum_override_role: 'owner' }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:ok)
+
+        project_param.each_pair do |k, v|
+          expect(json_response[k.to_s]).to eq(v)
+        end
+      end
+
+      it 'rejects updating ci_pipeline_variables_minimum_override_role when an invalid role is provided' do
+        project_param = { ci_pipeline_variables_minimum_override_role: 'wrong' }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+      end
+
+      it 'rejects updating ci_pipeline_variables_minimum_override_role when an existing but not allowed role is provided' do
+        project_param = { ci_pipeline_variables_minimum_override_role: 'guest' }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:bad_request)
       end
 
       it 'updates public_builds (deprecated)' do
@@ -4378,6 +5062,21 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(json_response['topics']).to eq(%w[topic2])
       end
 
+      it 'updates the merge_request_title_regex and description' do
+        project3.update!(merge_request_title_regex: nil)
+
+        project_param = { merge_request_title_regex: '/aaa/', merge_request_title_regex_description: 'Description of regex' }
+
+        expect { put api("/projects/#{project3.id}", user), params: project_param }
+          .to change { [project3.reload.merge_request_title_regex, project3.merge_request_title_regex_description] }
+          .from([nil, nil])
+          .to([/aaa/, "Description of regex"])
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['merge_request_title_regex']).to eq("/aaa/")
+        expect(json_response['merge_request_title_regex_description']).to eq("Description of regex")
+      end
+
       it 'updates enforce_auth_checks_on_uploads' do
         project3.update!(enforce_auth_checks_on_uploads: false)
 
@@ -4414,6 +5113,26 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
+
+      it 'updates ci_delete_pipelines_in_seconds' do
+        project_param = { ci_delete_pipelines_in_seconds: 1.week.to_i }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['ci_delete_pipelines_in_seconds']).to eq(1.week.to_i)
+      end
+
+      it 'clears ci_delete_pipelines_in_seconds' do
+        project3.update!(ci_delete_pipelines_in_seconds: 1.week.to_i)
+
+        project_param = { ci_delete_pipelines_in_seconds: nil }
+
+        put api("/projects/#{project3.id}", user), params: project_param
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response).to match(a_hash_including('ci_delete_pipelines_in_seconds' => nil))
+      end
     end
 
     context 'when authenticated as project maintainer' do
@@ -4437,12 +5156,47 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
                           ci_forward_deployment_rollback_allowed: false,
                           ci_allow_fork_pipelines_to_run_in_parent_project: false,
                           ci_separated_caches: false,
+                          resource_group_default_process_mode: 'oldest_first',
                           description: 'new description' }
 
         put api("/projects/#{project3.id}", user4), params: project_param
         expect(response).to have_gitlab_http_status(:ok)
         project_param.each_pair do |k, v|
           expect(json_response[k.to_s]).to eq(v)
+        end
+      end
+
+      context 'when updating resource_group_default_process_mode' do
+        %w[unordered oldest_first newest_first newest_ready_first].each do |mode|
+          it "updates resource_group_default_process_mode to #{mode}" do
+            project_param = { resource_group_default_process_mode: mode }
+
+            put api("/projects/#{project3.id}", user4), params: project_param
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['resource_group_default_process_mode']).to eq(mode)
+            expect(project3.reload.resource_group_default_process_mode).to eq(mode)
+          end
+        end
+
+        it 'returns error for invalid resource_group_default_process_mode' do
+          project_param = { resource_group_default_process_mode: 'invalid_mode' }
+
+          put api("/projects/#{project3.id}", user4), params: project_param
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(json_response['error']).to include('resource_group_default_process_mode')
+        end
+
+        it 'does not update resource_group_default_process_mode if not specified' do
+          original_mode = project3.resource_group_default_process_mode
+          project_param = { description: 'updated description' }
+
+          put api("/projects/#{project3.id}", user4), params: project_param
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['resource_group_default_process_mode']).to eq(original_mode)
+          expect(project3.reload.resource_group_default_process_mode).to eq(original_mode)
         end
       end
 
@@ -4519,6 +5273,42 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:bad_request)
         expect(json_response['error']).to eq('container_expiration_policy_attributes[keep_n] is invalid')
+      end
+
+      it "doesn't update ci_delete_pipelines_in_seconds" do
+        project_param = { ci_delete_pipelines_in_seconds: 1.week.to_i }
+
+        put api("/projects/#{project3.id}", user4), params: project_param
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+        expect(project3.reload.ci_delete_pipelines_in_seconds).to be_nil
+      end
+
+      it "doesn't remove ci_delete_pipelines_in_seconds" do
+        project3.update!(ci_delete_pipelines_in_seconds: 1.week.to_i)
+        project_param = { ci_delete_pipelines_in_seconds: nil }
+
+        put api("/projects/#{project3.id}", user4), params: project_param
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+        expect(project3.reload.ci_delete_pipelines_in_seconds).to eq(1.week)
+      end
+    end
+
+    context 'with repository_object_format' do
+      it 'ignores repository object format field' do
+        put api(path, user), params: { name: 'new', repository_object_format: 'sha256' }
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['repository_object_format']).to eq 'sha1'
+      end
+    end
+
+    context 'with initialize_with_readme' do
+      it 'ignores initialize_with_readme field' do
+        put api(path, user), params: { name: 'new', initialize_with_readme: true }
+
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -4684,18 +5474,25 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['archived']).to be_truthy
       end
+
+      it_behaves_like 'authorizing granular token permissions', :archive_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/archive", personal_access_token: pat)
+        end
+      end
     end
 
     context 'on an archived project' do
       before do
-        ::Projects::UpdateService.new(project, user, archived: true).execute
+        project.update!(archived: true)
       end
 
       it 'remains archived' do
         post api(path, user)
 
-        expect(response).to have_gitlab_http_status(:created)
-        expect(json_response['archived']).to be_truthy
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq('Project is already archived.')
       end
     end
 
@@ -4733,6 +5530,19 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         end
       end
     end
+
+    context 'when archive service returns an error' do
+      it 'returns the error message' do
+        allow_next_instance_of(::Projects::ArchiveService) do |instance|
+          allow(instance).to receive(:execute).and_return(Projects::ArchiveService::ArchivingFailedError)
+        end
+
+        post api(path, user)
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq('Failed to archive project.')
+      end
+    end
   end
 
   describe 'POST /projects/:id/unarchive' do
@@ -4749,7 +5559,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
     context 'on an archived project' do
       before do
-        ::Projects::UpdateService.new(project, user, archived: true).execute
+        project.update!(archived: true)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :archive_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/unarchive", personal_access_token: pat)
+        end
       end
 
       it 'unarchives the project' do
@@ -4771,6 +5588,19 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
+
+    context 'when unarchive service returns an error' do
+      it 'returns the error message' do
+        allow_next_instance_of(::Projects::UnarchiveService) do |instance|
+          allow(instance).to receive(:execute).and_return(Projects::UnarchiveService::UnarchivingFailedError)
+        end
+
+        post api(path, user)
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']).to eq('Failed to unarchive project.')
+      end
+    end
   end
 
   describe 'POST /projects/:id/star' do
@@ -4782,6 +5612,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['star_count']).to eq(1)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :star_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/star", personal_access_token: pat)
+        end
       end
     end
 
@@ -4813,6 +5650,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:created)
         expect(json_response['star_count']).to eq(0)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :star_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/unstar", personal_access_token: pat)
+        end
       end
     end
 
@@ -4851,6 +5695,17 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     before do
       user.users_star_projects.create!(project_id: public_project.id)
       private_user.users_star_projects.create!(project_id: public_project.id)
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_starrer_project do
+      let(:boundary_object) { public_project }
+      let(:request) do
+        get api("/projects/#{public_project.id}/starrers", personal_access_token: pat)
+      end
+
+      before do
+        public_project.add_developer(user)
+      end
     end
 
     it 'returns not_found(404) for not existing project' do
@@ -4916,6 +5771,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:not_found)
       end
+
+      it_behaves_like 'authorizing granular token permissions', :read_language_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/languages", personal_access_token: pat)
+        end
+      end
     end
 
     context 'with not authorized user' do
@@ -4943,15 +5805,26 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
   describe 'DELETE /projects/:id' do
     let(:path) { "/projects/#{project.id}" }
+    let(:admin_mode) { false }
+    let(:params) { {} }
+
+    subject(:api_request) { delete api(path, user, admin_mode: admin_mode), params: params }
 
     it_behaves_like 'DELETE request permissions for admin mode' do
       let(:success_status_code) { :accepted }
       let(:failed_status_code) { :not_found }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_project do
+      let(:boundary_object) { project }
+      let(:request) do
+        delete api("/projects/#{project.id}", personal_access_token: pat)
+      end
+    end
+
     context 'when authenticated as user' do
       it 'removes project' do
-        delete api(path, user)
+        api_request
 
         expect(response).to have_gitlab_http_status(:accepted)
         expect(json_response['message']).to eql('202 Accepted')
@@ -4981,21 +5854,151 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
     end
 
     context 'when authenticated as admin' do
-      it 'removes any existing project' do
-        delete api("/projects/#{project.id}", admin, admin_mode: true)
-
-        expect(response).to have_gitlab_http_status(:accepted)
-        expect(json_response['message']).to eql('202 Accepted')
-      end
-
-      it 'does not remove a non existing project' do
-        delete api("/projects/#{non_existing_record_id}", admin, admin_mode: true)
-        expect(response).to have_gitlab_http_status(:not_found)
-      end
-
       it_behaves_like '412 response' do
         let(:success_status) { 202 }
-        subject(:request) { api("/projects/#{project.id}", admin, admin_mode: true) }
+        subject(:request) { api(path, admin, admin_mode: true) }
+      end
+    end
+
+    shared_examples 'deletes project immediately' do
+      it :aggregate_failures do
+        expect(::Projects::DestroyService).to receive(:new).with(project, user, {}).and_call_original
+
+        api_request
+
+        expect(response).to have_gitlab_http_status(:accepted)
+      end
+    end
+
+    shared_examples 'immediately delete project error' do
+      let(:expected_http_status) { :bad_request }
+
+      it :aggregate_failures do
+        expect(::Projects::DestroyService).not_to receive(:new)
+        expect(::Projects::MarkForDeletionService).not_to receive(:new)
+
+        api_request
+
+        expect(response).to have_gitlab_http_status(expected_http_status)
+        expect(Gitlab::Json.parse(response.body)['message']).to eq(error_message)
+      end
+    end
+
+    context 'for delayed deletion' do
+      let_it_be(:group) { create(:group) }
+      let_it_be_with_reload(:project) { create(:project, group: group, owners: user) }
+
+      it 'marks the project for deletion' do
+        expect(::Projects::MarkForDeletionService).to receive(:new).with(project, user, {}).and_call_original
+
+        api_request
+
+        expect(response).to have_gitlab_http_status(:accepted)
+        expect(project.reload.self_deletion_scheduled?).to be_truthy
+      end
+
+      context 'when ancestor is already marked for deletion' do
+        before do
+          create(:group_deletion_schedule, group: group)
+        end
+
+        it 'do not mark project for delayed deletion but return success', :clean_gitlab_redis_queues do
+          expect(::Projects::DestroyService).not_to receive(:new)
+          expect(::Projects::MarkForDeletionService).not_to receive(:new)
+
+          delete api(path, user), params: params
+
+          expect(response).to have_gitlab_http_status(:accepted)
+          expect(project.marked_for_deletion_on).to be_nil
+          expect(project.deleting_user).to be_nil
+        end
+      end
+
+      it 'returns error if project cannot be marked for deletion' do
+        message = 'Error'
+        expect(::Projects::MarkForDeletionService).to receive_message_chain(:new, :execute).and_return({ status: :error, message: message })
+
+        api_request
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response["message"]).to eq(message)
+      end
+
+      context 'when permanently_remove param is true' do
+        before do
+          params.merge!(permanently_remove: true)
+        end
+
+        describe 'when the :allow_immediate_namespaces_deletion application setting is false' do
+          before do
+            stub_application_setting(allow_immediate_namespaces_deletion: false)
+          end
+
+          it_behaves_like 'immediately delete project error' do
+            let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
+          end
+
+          context 'when current user is an admin' do
+            let_it_be(:user) { admin }
+            let(:admin_mode) { true }
+
+            context 'when project is already marked for deletion' do
+              before do
+                project.update!(marked_for_deletion_at: 1.day.ago, deleting_user: admin)
+                params[:full_path] = project.full_path
+                project.add_owner(admin)
+              end
+
+              it_behaves_like 'deletes project immediately'
+
+              context 'when admin_mode is false' do
+                let(:admin_mode) { false }
+
+                it_behaves_like 'immediately delete project error' do
+                  let(:error_message) { '`permanently_remove` option is not permitted on this instance.' }
+                end
+              end
+            end
+          end
+        end
+
+        context 'when project is not marked for deletion' do
+          let(:error_message) { 'Project must be marked for deletion first.' }
+
+          it_behaves_like 'immediately delete project error'
+        end
+
+        context 'when project is already marked for deletion' do
+          before do
+            project.update!(archived: true, marked_for_deletion_at: 1.day.ago, deleting_user: user)
+          end
+
+          context 'with correct project full path' do
+            before do
+              params.merge!(full_path: project.full_path)
+            end
+
+            it_behaves_like 'deletes project immediately'
+
+            context 'when the allow_immediate_namespaces_deletion FF is disabled' do
+              before do
+                stub_feature_flags(allow_immediate_namespaces_deletion: false)
+              end
+
+              it_behaves_like 'deletes project immediately'
+            end
+          end
+
+          context 'with incorrect project full path' do
+            let(:error_message) { '`full_path` is incorrect. You must enter the complete path for the project.' }
+
+            before do
+              params.merge!(full_path: "#{project.full_path}-wrong-path")
+            end
+
+            it_behaves_like 'immediately delete project error'
+          end
+        end
       end
     end
   end
@@ -5297,6 +6300,17 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         expect(response).to have_gitlab_http_status(:bad_request)
         expect(json_response['error']).to eq('visibility does not have a valid value')
       end
+
+      it_behaves_like 'authorizing granular token permissions', :create_fork_project do
+        let(:boundary_object) { project }
+        let(:fork_path) { "fork-test-#{SecureRandom.hex(4)}" }
+        let(:request) do
+          post api(path, personal_access_token: pat), params: {
+            path: fork_path,
+            name: fork_path.titleize
+          }
+        end
+      end
     end
 
     context 'when unauthenticated' do
@@ -5323,14 +6337,14 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
   end
 
   describe 'POST /projects/:id/housekeeping' do
-    let(:housekeeping) { Repositories::HousekeepingService.new(project) }
+    let(:housekeeping) { ::Repositories::HousekeepingService.new(project) }
     let(:params) { {} }
     let(:path) { "/projects/#{project.id}/housekeeping" }
 
     subject(:request) { post api(path, user), params: params }
 
     before do
-      allow(Repositories::HousekeepingService).to receive(:new).with(project, :eager).and_return(housekeeping)
+      allow(::Repositories::HousekeepingService).to receive(:new).with(project, :eager).and_return(housekeeping)
     end
 
     context 'when authenticated as owner' do
@@ -5340,6 +6354,19 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         request
 
         expect(response).to have_gitlab_http_status(:created)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :housekeep_project do
+        let!(:project) { create(:project, namespace: user.namespace) }
+        let(:boundary_object) { project }
+
+        before do
+          project.add_owner(user)
+        end
+
+        let(:request) do
+          post api("/projects/#{project.id}/housekeeping", personal_access_token: pat)
+        end
       end
 
       it 'logs an audit event' do
@@ -5359,7 +6386,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         let(:params) { { task: :prune } }
 
         it 'triggers a prune' do
-          expect(Repositories::HousekeepingService).to receive(:new).with(project, :prune).and_return(housekeeping)
+          expect(::Repositories::HousekeepingService).to receive(:new).with(project, :prune).and_return(housekeeping)
           expect(housekeeping).to receive(:execute).once
 
           request
@@ -5372,7 +6399,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         let(:params) { { task: :unsupported_task } }
 
         it 'responds with bad_request' do
-          expect(Repositories::HousekeepingService).not_to receive(:new)
+          expect(::Repositories::HousekeepingService).not_to receive(:new)
 
           request
 
@@ -5382,7 +6409,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       context 'when housekeeping lease is taken' do
         it 'returns conflict' do
-          expect(housekeeping).to receive(:execute).once.and_raise(Repositories::HousekeepingService::LeaseTaken)
+          expect(housekeeping).to receive(:execute).once.and_raise(::Repositories::HousekeepingService::LeaseTaken)
 
           request
 
@@ -5428,6 +6455,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         post api(path, user)
 
         expect(response).to have_gitlab_http_status(:created)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :recalculate_storage_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/repository_size", personal_access_token: pat)
+        end
       end
     end
 
@@ -5483,6 +6517,32 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
+
+      context 'when the project is archived' do
+        before do
+          project.update!(archived: true)
+          group.add_owner(user)
+        end
+
+        it 'returns forbidden' do
+          put api(path, user), params: { namespace: group.id }
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+        end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :transfer_project do
+      let(:group) { build(:group) }
+      let(:boundary_object) { project }
+      let(:request) do
+        put api("/projects/#{project.id}/transfer", personal_access_token: pat),
+          params: { namespace: group.id }
+      end
+
+      before do
+        group.add_owner(user)
+      end
     end
 
     context 'when authenticated as developer' do
@@ -5491,7 +6551,7 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
       end
 
       context 'target namespace allows developers to create projects' do
-        let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_MAINTAINER_PROJECT_ACCESS) }
+        let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
 
         it 'fails transferring the project to the target namespace' do
           put api(path, user), params: { namespace: group.id }
@@ -5523,6 +6583,13 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
         guest_group.add_guest(user)
         maintainer_group.add_maintainer(user)
         owner_group.add_owner(user)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_transfer_location_project do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/transfer_locations", personal_access_token: pat)
+        end
       end
 
       it 'returns 200' do
@@ -5639,10 +6706,21 @@ RSpec.describe API::Projects, :aggregate_failures, feature_category: :groups_and
 
       expect(response).to have_gitlab_http_status(:forbidden)
     end
+
+    context 'with granular token permissions', :enable_admin_mode do
+      it_behaves_like 'authorizing granular token permissions', :read_storage_project do
+        let(:boundary_object) { project }
+        let(:user) { admin }
+        let(:request) do
+          get api(path, personal_access_token: pat)
+        end
+      end
+    end
   end
 
   it_behaves_like 'custom attributes endpoints', 'projects' do
     let(:attributable) { project }
     let(:other_attributable) { project2 }
+    let(:boundary_type) { project }
   end
 end

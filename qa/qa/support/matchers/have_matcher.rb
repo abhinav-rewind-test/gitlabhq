@@ -6,6 +6,7 @@ module QA
       module HaveMatcher
         PREDICATE_TARGETS = %w[
           alert_with_title
+          artifacts_dropdown
           assignee
           auto_devops_container
           child_pipeline
@@ -30,6 +31,7 @@ module QA
           security_configuration_history_link
           skipped_job_in_group
           snippet_description
+          stage
           system_note
           tag
           variable

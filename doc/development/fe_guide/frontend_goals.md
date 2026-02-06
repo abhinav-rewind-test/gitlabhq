@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Frontend Goals
 ---
-
-# Frontend Goals
 
 This section defines the _desired state_ of the GitLab frontend and how we see it over the next few years. It is a living document and will adapt as technologies and team dynamics evolve.
 
@@ -16,21 +15,21 @@ Keeping up with the latest version of Vue ensures that the GitLab frontend lever
 
 **Current Status**
 
-- **As of December 2023**: GitLab is currently using Vue 2.x.
-- **Progress**: (Brief description of progress)
+- **As of November 2025**: The GitLab Monolith is using Vue 2.x with [frontend islands](https://gitlab.com/gitlab-org/gitlab/-/issues/577797) that use Vue 3.x
+- **Progress**: [See Epic](https://gitlab.com/groups/gitlab-org/-/epics/6252)
 
 **Responsible Team**
 
-- **Working Group**: [Vue.js 3 Migration Working Group](https://handbook.gitlab.com/handbook/company/working-groups/vuejs-3-migration/)
-- **Facilitator**: Sam Beckham, Engineering Manager, Manage:Foundations
+- **Working Group**: [Vue.js 3 Migration Working Group](https://handbook.gitlab.com/handbook/company/working-groups/vuejs-3-migration/) (disbanded)
+- **Slack Channel**: [#vue3_migration](https://gitlab.enterprise.slack.com/archives/C02719N90MP)
 
 **Milestones and Timelines**
 
-- (Key milestones, expected completions)
+See the [Epic](https://gitlab.com/groups/gitlab-org/-/epics/6252) for up to date timelines.
 
 **Challenges and Dependencies**
 
-- (Any major challenges)
+- Getting time for dedicated engineers to work on the migration effort
 
 **Success Metrics**
 
@@ -156,10 +155,10 @@ Ideally, we should reduce the number of times user needs to go through this long
 
 The realistic goal is to move to _multiple SPAs_ experience where we define the _clusters_ of pages that form the user flow, and move this cluster from Rails routing to a single-page application with client-side routing. This way, we can load all the relevant context from HAML only once, and fetch all the additional data from the API depending on the route. An example of a cluster could be the following pages:
 
-- issues list
-- issue boards
-- issue details page
-- new issue
+- **Issues** page
+- **Issue boards** page
+- **Issue details** page
+- **New issue** page
 - editing an issue
 
 All of them have the same context (project path, current user etc.), we could easily fetch more data with issue-specific parameter (issue `iid`) and store the results on the client (so that opening the same issue won't require more API calls). This leads to a smooth user experience for navigating through issues.
@@ -279,12 +278,12 @@ We're early in the process of adding visual testing, but we should have a framew
 
 ### Accessibility testing
 
-In 2023 we determined the tooling for accessibility testing. We opted for axe-core gem used in feature tests, to test the whole views rather then components in isolation. [See documentation on Automated accessibility testing](accessibility/automated_testing.md) to learn when and how to include it. You can check out our progress with [Accessibility scanner](https://gitlab-org.gitlab.io/frontend/playground/accessibility-scanner/) that uses Semgrep to find out if tests are present.
+Since 2023 we've been working on determining the tooling for accessibility testing. We opted for a axe-core based [comprehensive, multi-level approach to ensure accessibility compliance](accessibility/_index.md#how-our-accessibility-tools-work-together). Each tool serves a specific purpose in our development workflow, working together to provide complete coverage from development to production.
 
 **Current Status**
 
-- **As of December 2023**: (Status)
-- **Progress**: (Brief description of progress)
+- **As of November 2025**: In progress (~90%)
+- **Progress**: We've implemented linting, Storybook component tests, monitoring with Sitespeed. We're working on user journey testing with feature tests.
 
 **Responsible Team**
 
@@ -293,7 +292,10 @@ In 2023 we determined the tooling for accessibility testing. We opted for axe-co
 
 **Milestones and Timelines**
 
-- (Key milestones, expected completions)
+- Add axe-core checks to GitLab UI components specs - completed in May 2025
+- Develop and implement a plan for addressing accessibility violations, including evaluation plan/process and tooling - 90% done, expected to be completed by the end of FY26
+- Include accessibility checks in shared view components - 70% done, expected to be completed by the end of FY26
+- Add axe-core checks to crucial user journeys in feature specs - 20% done, expected to be completed in Q1FY27
 
 **Challenges and Dependencies**
 

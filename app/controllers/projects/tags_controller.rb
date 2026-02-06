@@ -13,7 +13,6 @@ class Projects::TagsController < Projects::ApplicationController
   feature_category :source_code_management
   urgency :low, [:new, :show, :index]
 
-  # rubocop: disable CodeReuse/ActiveRecord
   def index
     begin
       tags_params = params
@@ -23,15 +22,15 @@ class Projects::TagsController < Projects::ApplicationController
       @sort = tags_params[:sort]
       @search = tags_params[:search]
 
-      @tags = TagsFinder.new(@repository, tags_params).execute
+      @tags = TagsFinder.new(@repository, tags_params).execute(batch_load_signatures: true)
 
       @tags = Kaminari.paginate_array(@tags).page(tags_params[:page])
+
       tag_names = @tags.map(&:name)
-      @tags_pipelines = @project.ci_pipelines.latest_successful_for_refs(tag_names)
 
       @releases = ReleasesFinder.new(project, current_user, tag: tag_names).execute
-      @tag_pipeline_statuses = Ci::CommitStatusesFinder.new(@project, @repository, current_user, @tags).execute
-
+      @tag_pipeline_statuses =
+        Ci::CommitStatusesFinder.new(@project, @repository, current_user, @tags, ref_type: :tags).execute
     rescue Gitlab::Git::CommandError => e
       @tags = []
       @releases = []
@@ -45,7 +44,6 @@ class Projects::TagsController < Projects::ApplicationController
       format.atom { render layout: 'xml', status: status }
     end
   end
-  # rubocop: enable CodeReuse/ActiveRecord
 
   # rubocop: disable CodeReuse/ActiveRecord
   def show
@@ -55,6 +53,10 @@ class Projects::TagsController < Projects::ApplicationController
 
     @release = @project.releases.find_by(tag: @tag.name)
     @commit = @repository.commit(@tag.dereferenced_target)
+
+    @pipeline_status = Ci::CommitStatusesFinder
+      .new(@project, @repository, current_user, [@tag], ref_type: :tags)
+      .execute[@tag.name]
   end
   # rubocop: enable CodeReuse/ActiveRecord
 
@@ -97,7 +99,13 @@ class Projects::TagsController < Projects::ApplicationController
     flash_type = result[:status] == :error ? :alert : :notice
     flash[flash_type] = result[:message]
 
-    redirect_to project_tags_path(@project), status: :see_other
+    # When deleting from an individual tag's show page, redirect to index to avoid 404
+    # otherwise, redirect to pre-sorted list or the default tags list
+    if request.referer&.include?(project_tag_path(@project, params[:id]))
+      redirect_to project_tags_path(@project), status: :see_other
+    else
+      redirect_back_or_default(default: project_tags_path(@project), options: { status: :see_other })
+    end
   end
 
   private

@@ -1,4 +1,4 @@
-import { DESCRIPTION_TYPE, TIME_DIFFERENCE_VALUE } from '~/notes/constants';
+import { DESCRIPTION_TYPE, TIME_DIFFERENCE_VALUE, ASC } from '~/notes/constants';
 
 /**
  * Checks the time difference between two notes from their 'created_at' dates
@@ -31,11 +31,13 @@ export const isDescriptionSystemNote = (note) => {
  * @param {Array} notes
  * @returns {Array}
  */
-export const collapseSystemNotes = (notes) => {
+export const collapseSystemNotes = (notes, sortOrder = ASC) => {
   let lastDescriptionSystemNote = null;
   let lastDescriptionSystemNoteIndex = -1;
 
-  return notes.reduce((acc, currentNote) => {
+  let ascendingNotes = sortOrder === ASC ? notes : [...notes].reverse();
+
+  ascendingNotes = ascendingNotes.reduce((acc, currentNote) => {
     const note = currentNote.notes.nodes[0];
     let lastStartVersionId = '';
 
@@ -50,14 +52,14 @@ export const collapseSystemNotes = (notes) => {
         if (
           timeDifferenceMinutes > TIME_DIFFERENCE_VALUE ||
           note.author.id !== lastDescriptionSystemNote.author.id ||
-          lastDescriptionSystemNote.systemNoteMetadata.descriptionVersion?.deleted
+          lastDescriptionSystemNote.systemNoteMetadata?.descriptionVersion?.deleted
         ) {
           // update the previous system note
           lastDescriptionSystemNote = note;
         } else {
           // set the first version to fetch grouped system note versions
 
-          lastStartVersionId = lastDescriptionSystemNote.systemNoteMetadata.descriptionVersion?.id;
+          lastStartVersionId = lastDescriptionSystemNote.systemNoteMetadata?.descriptionVersion?.id;
 
           // delete the previous one
           acc.splice(lastDescriptionSystemNoteIndex, 1);
@@ -73,9 +75,9 @@ export const collapseSystemNotes = (notes) => {
             {
               ...note,
               systemNoteMetadata: {
-                ...note.systemNoteMetadata,
+                ...note?.systemNoteMetadata,
                 descriptionVersion: {
-                  ...note.systemNoteMetadata.descriptionVersion,
+                  ...note?.systemNoteMetadata?.descriptionVersion,
                   startVersionId: lastStartVersionId,
                 },
               },
@@ -89,4 +91,10 @@ export const collapseSystemNotes = (notes) => {
 
     return acc;
   }, []);
+
+  if (sortOrder === ASC) {
+    return ascendingNotes;
+  }
+
+  return ascendingNotes.reverse();
 };

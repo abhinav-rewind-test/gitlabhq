@@ -56,7 +56,7 @@ module QA
       end
 
       def api_delete_path
-        "projects/#{project.api_resource[:id]}/access_tokens/#{id}"
+        "/projects/#{project.api_resource[:id]}/access_tokens/#{id}"
       end
 
       def resource_web_url(resource)
@@ -73,7 +73,7 @@ module QA
 
       # Expire in 2 days just in case the token is created just before midnight
       def expires_at
-        @expires_at || Time.now.utc.to_date + 2
+        @expires_at || (Time.now.utc.to_date + 2)
       end
 
       def fabricate!

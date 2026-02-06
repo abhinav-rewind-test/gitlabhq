@@ -1,13 +1,13 @@
 ---
 stage: Create
 group: Code Review
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+description: Developer documentation explaining the design and workflow of merge request approval rules.
+title: Approval rules development guidelines
 ---
 
-# Approval rules development guidelines
-
 This document explains the backend design and flow of all related functionality
-about [merge request approval rules](../../user/project/merge_requests/approvals/index.md).
+about [merge request approval rules](../../user/project/merge_requests/approvals/_index.md).
 
 This should help contributors to understand the code design easier and to also
 help see if there are parts to improve as the feature and its implementation
@@ -18,15 +18,19 @@ can change often. The code should explain those things better. The components
 mentioned here are the major parts of the application for the approval rules
 feature to work.
 
-NOTE:
-This is a living document and should be updated accordingly when parts
-of the codebase touched in this document are changed or removed, or when new components
-are added.
+> [!note]
+> This is a living document and should be updated accordingly when parts
+> of the codebase touched in this document are changed or removed, or when new components
+> are added.
 
 ## Data Model
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
+
 erDiagram
+  accTitle: Approval rules data model
+  accDescr: Entity relationship diagram of approval rules
   Project ||--o{ MergeRequest: " "
   Project ||--o{ ApprovalProjectRule: " "
   ApprovalProjectRule }o--o{ User: " "
@@ -51,7 +55,11 @@ merge request approvals are defined here.
 ### `ApprovalState`
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
+
 erDiagram
+  accTitle: ApprovalState
+  accDescr: Entity relationship diagram between MergeRequest and ApprovalState
   MergeRequest ||--|| ApprovalState: " "
 ```
 
@@ -72,7 +80,10 @@ merge request (`ApprovalMergeRequestRule`) and wraps it as `ApprovalWrappedRule`
 ### `ApprovalProjectRule`
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 erDiagram
+  accTitle: ApprovalProjectRule diagram
+  accDescr: Entity relationship diagram between projects and ApprovalProjectRule
   Project ||--o{ ApprovalProjectRule: " "
   ApprovalProjectRule }o--o{ User: " "
   ApprovalProjectRule }o--o{ Group: " "
@@ -82,7 +93,7 @@ erDiagram
 `ApprovalProjectRule` model is defined in `ee/app/models/approval_project_rule.rb`.
 
 A record is created/updated/deleted when an approval rule is added/edited/removed
-via project settings or the [project level approvals API](../../api/merge_request_approvals.md#project-level-mr-approvals).
+via project settings or the [approval rules API for projects](../../api/merge_request_approvals.md#approval-rules-for-projects).
 The `ApprovalState` model gets these records when approval rules are not
 overwritten.
 
@@ -93,7 +104,10 @@ for more information about the feature.
 ### `ApprovalMergeRequestRule`
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 erDiagram
+  accTitle: ApprovalMergeRequestRule diagram
+  accDescr: Entity relationship diagram between MergeRequest and ApprovalMergeRequestRule
   MergeRequest ||--o{ ApprovalMergeRequestRule: " "
   ApprovalMergeRequestRule }o--o{ User: " "
   ApprovalMergeRequestRule }o--o{ Group: " "
@@ -103,7 +117,7 @@ erDiagram
 `ApprovalMergeRequestRule` model is defined in `ee/app/models/approval_merge_request_rule.rb`.
 
 A record is created/updated/deleted when a rule is added/edited/removed via merge
-request create/edit form or the [merge request level approvals API](../../api/merge_request_approvals.md#merge-request-level-mr-approvals).
+request create/edit form or the [single merge request approvals API](../../api/merge_request_approvals.md#approval-rules-for-a-merge-request).
 
 The `approval_project_rule` is set when it is based from an existing `ApprovalProjectRule`.
 
@@ -113,7 +127,10 @@ them from the `approval_project_rule` if not overridden.
 ### `ApprovalWrappedRule`
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 erDiagram
+  accTitle: ApprovalWrappedRule diagram
+  accDescr: Entity relationship diagram between ApprovalState and ApprovalWrappedRule
   ApprovalState ||--o{ ApprovalWrappedRule: " "
 ```
 
@@ -137,7 +154,10 @@ the merge request.
 ### `Approval`
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 erDiagram
+  accTitle: Approval diagram
+  accDescr: Entity relationship diagram between MergeRequest and Approval
   MergeRequest ||--o{ Approval: " "
 ```
 
@@ -181,7 +201,7 @@ submitted. It's like `Projects::MergeRequests::CreationsController` but it execu
 
 This API is defined in `ee/lib/api/merge_request_approvals.rb`.
 
-The [Approvals API endpoint](../../api/merge_request_approvals.md#get-configuration-1)
+The [Approvals API endpoint](../../api/merge_request_approvals.md#list-all-approval-rules-for-a-merge-request)
 is requested when a merge request page loads.
 
 The `/projects/:id/merge_requests/:merge_request_iid/approval_settings` is a
@@ -191,7 +211,7 @@ private API endpoint used for the following:
 - Listing the approval rules on the merge request page.
 
 When approving/unapproving an MR via UI and API, the [Approve Merge Request](../../api/merge_request_approvals.md#approve-merge-request)
-API endpoint or the [Unapprove Merge Request](../../api/merge_request_approvals.md#unapprove-merge-request)
+API endpoint or the [Unapprove Merge Request](../../api/merge_request_approvals.md#unapprove-a-merge-request)
 API endpoint are requested. They execute `MergeRequests::ApprovalService` and
 `MergeRequests::RemoveApprovalService` accordingly.
 
@@ -232,11 +252,11 @@ It is responsible for creating approval rules at either the merge request or pro
 
 It is called when:
 
-- Creating approval rules at the project level through the UI.
-- Creating approval rules at the project level through the [API::ProjectApprovalRules](../../api/merge_request_approvals.md#create-merge-request-level-rule) `/projects/:id/approval_rules` endpoint.
-- Creating merge request level rules through [API::MergeRequestApprovalRules](../../api/merge_request_approvals.md#create-project-level-rule) `/projects/:id/merge_requests/:merge_request_iid/approval_rules` endpoint.
+- Creating approval rules for a project through the UI.
+- Creating approval rules for a project through the [API::ProjectApprovalRules](../../api/merge_request_approvals.md#create-an-approval-rule-for-a-project) `/projects/:id/approval_rules` endpoint.
+- Creating approval rules for a single merge request through [API::MergeRequestApprovalRules](../../api/merge_request_approvals.md#create-an-approval-rule-for-a-merge-request) `/projects/:id/merge_requests/:merge_request_iid/approval_rules` endpoint.
 
-Merge request level rules created through the UI do not use this service. See [Projects::MergeRequests::CreationsController](#projectsmergerequestscontroller)
+Merge request approval rules created through the UI do not use this service. See [Projects::MergeRequests::CreationsController](#projectsmergerequestscontroller)
 
 ## Flow
 
@@ -249,7 +269,10 @@ straightforward.
 ### Creating a merge request with approval rules via web UI
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+  accTitle: Merge request creation in the UI
+  accDescr: Flowchart of the creation of a merge request in the web UI, when the merge request contains approval rules
   Projects::MergeRequests::CreationsController --> MergeRequests::CreateService
   MergeRequests::CreateService --> ApprovalRules::ParamsFilteringService
   ApprovalRules::ParamsFilteringService --> MergeRequests::CreateService
@@ -269,7 +292,10 @@ and executes `MergeRequests::UpdateService` instead.
 ### Viewing the merge request approval rules on an MR page
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+  accTitle: Viewing approval rules on a merge request
+  accDescr: Flowchart of how the frontend retrieves, then displays, approval rule information on a merge request page
   API::MergeRequestApprovals --> MergeRequest
   MergeRequest --> ApprovalState
   ApprovalState --> id1{approval rules are overridden}
@@ -285,7 +311,10 @@ used to display information on the MR widget.
 ### Approving a merge request
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+  accTitle: Approval data flowchart
+  accDescr: Flowchart of how an approval call to the API reaches the database
   API::MergeRequestApprovals --> MergeRequests::ApprovalService
   MergeRequests::ApprovalService --> Approval
   Approval --> db[(Database)]

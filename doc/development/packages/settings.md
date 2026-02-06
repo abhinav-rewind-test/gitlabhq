@@ -1,10 +1,9 @@
 ---
 stage: Package
 group: Package Registry
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Package Settings
 ---
-
-# Package Settings
 
 This page includes an exhaustive list of settings related to and maintained by the package stage.
 
@@ -14,10 +13,11 @@ This page includes an exhaustive list of settings related to and maintained by t
 
 | Setting | Table | Description |
 | ------- | ----- | -----------|
-| `npm_package_requests_forwarding` | `application_settings` | Enables or disables npm package forwarding at the instance level. |
-| `pypi_package_requests_forwarding` | `application_settings` | Enables or disables PyPI package forwarding at the instance level. |
+| `nuget_skip_metadata_url_validation` | `application_settings` | Indicates whether to skip metadata URL validation for the NuGet package. |
+| `npm_package_requests_forwarding` | `application_settings` | Enables or disables npm package forwarding for the instance. |
+| `pypi_package_requests_forwarding` | `application_settings` | Enables or disables PyPI package forwarding for the instance. |
 | `packages_cleanup_package_file_worker_capacity` | `application_settings` | Number of concurrent workers allowed for package file cleanup. |
-| `package_registry_allow_anyone_to_pull_option`  | `application_settings` | Enables or disables the `Allow anyone to pull from Package Registry` toggle. |
+| `package_registry_allow_anyone_to_pull_option`  | `application_settings` | Enables or disables the `Allow anyone to pull from package registry` toggle. |
 | `throttle_unauthenticated_packages_api_requests_per_period` | `application_settings` | Request limit for unauthenticated package API requests in the period defined by `throttle_unauthenticated_packages_api_period_in_seconds`. |
 | `throttle_unauthenticated_packages_api_period_in_seconds`  | `application_settings` | Period in seconds to measure unauthenticated package API requests. |
 | `throttle_authenticated_packages_api_requests_per_period` | `application_settings` | Request limit for authenticated package API requests in the period defined by `throttle_authenticated_packages_api_period_in_seconds`. |
@@ -35,6 +35,7 @@ This page includes an exhaustive list of settings related to and maintained by t
 | `rubygems_max_file_size` | `plan_limits` | Maximum file size for a RubyGems package file. |
 | `terraform_module_max_file_size` | `plan_limits` | Maximum file size for a Terraform package file. |
 | `helm_max_file_size` | `plan_limits` | Maximum file size for a Helm package file. |
+| `helm_max_packages_count` | `application_settings` | Maximum number of Helm packages that can be listed per channel. Must be at least 1. Default is 1000. |
 
 ### Container registry
 
@@ -49,14 +50,14 @@ This page includes an exhaustive list of settings related to and maintained by t
 | `container_registry_expiration_policies_worker_capacity` | `application_settings` | Number of concurrent container image cleanup policy workers allowed. |
 | `container_registry_cleanup_tags_service_max_list_size` | `application_settings` | The maximum number of tags that can be deleted in a cleanup policy single execution. Additional tags must be deleted in another execution. |
 | `container_registry_expiration_policies_caching` | `application_settings` | Enable or disable tag creation timestamp caching during execution of cleanup policies. |
-| `container_registry_import_max_tags_count` | `application_settings` | Defines what is a the maximum amount of tags that we accept to migrate. |
-| `container_registry_import_max_retries` | `application_settings` | The maximum amount of retries done on a migration that is aborted. |
-| `container_registry_import_start_max_retries` | `application_settings` | The maximum amount of requests to start an import step that is sent to the container registry API. |
-| `container_registry_import_max_step_duration` | `application_settings` | The maximum amount of seconds before an ongoing migration is considered as stale. |
-| `container_registry_import_target_plan` | `application_settings` | The target subscription plan on which we're intend to pick container repositories. |
-| `container_registry_import_created_before` | `application_settings` | Only image repositories created before this timestamp are eligible for the migration. |
-| `container_registry_pre_import_timeout` | `application_settings` | The timeout for long running `pre_imports` before they are canceled by the `GuardWorker`. |
-| `container_registry_import_timeout` | `application_settings` | The timeout for long running imports before they are canceled by the `GuardWorker`. |
+| `container_registry_import_max_tags_count` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns 0 until it gets removed. |
+| `container_registry_import_max_retries` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns 0 until it gets removed. |
+| `container_registry_import_start_max_retries` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns 0 until it gets removed. |
+| `container_registry_import_max_step_duration` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns 0 until it gets removed. |
+| `container_registry_import_target_plan` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns an empty string ('') until it gets removed. |
+| `container_registry_import_created_before` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns an empty string ('') until it gets removed. |
+| `container_registry_pre_import_timeout` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns an empty string ('') until it gets removed. |
+| `container_registry_import_timeout` | `application_settings` | Deprecated in 17.0. The migration for GitLab.com is now complete so we are starting to cleanup this field. This field returns an empty string ('') until it gets removed. |
 | `dependency_proxy_ttl_group_policy_worker_capacity` | `application_settings` | Number of concurrent dependency proxy cleanup policy workers allowed. |
 
 ## Namespace/Group Settings

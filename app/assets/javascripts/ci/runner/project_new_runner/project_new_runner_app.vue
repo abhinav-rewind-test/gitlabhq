@@ -1,102 +1,55 @@
 <script>
 import { createAlert, VARIANT_SUCCESS } from '~/alert';
-import { visitUrl, setUrlParams } from '~/lib/utils/url_utility';
+import { visitUrl } from '~/lib/utils/url_utility';
 import { s__ } from '~/locale';
 import { InternalEvents } from '~/tracking';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-import RegistrationCompatibilityAlert from '~/ci/runner/components/registration/registration_compatibility_alert.vue';
-import RunnerGoogleCloudOption from '~/ci/runner/components/runner_google_cloud_option.vue';
-import RunnerPlatformsRadioGroup from '~/ci/runner/components/runner_platforms_radio_group.vue';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 import RunnerCreateForm from '~/ci/runner/components/runner_create_form.vue';
-import {
-  DEFAULT_PLATFORM,
-  PARAM_KEY_PLATFORM,
-  GOOGLE_CLOUD_PLATFORM,
-  PROJECT_TYPE,
-} from '../constants';
-import { captureException } from '../sentry_utils';
-import { saveAlertToLocalStorage } from '../local_storage_alert/save_alert_to_local_storage';
+import { saveAlertToLocalStorage } from '~/lib/utils/local_storage_alert';
+import { PROJECT_TYPE } from '../constants';
 
 export default {
   name: 'ProjectNewRunnerApp',
   components: {
-    RegistrationCompatibilityAlert,
-    RunnerGoogleCloudOption,
-    RunnerPlatformsRadioGroup,
     RunnerCreateForm,
+    PageHeading,
   },
-  mixins: [glFeatureFlagsMixin(), InternalEvents.mixin()],
+  mixins: [InternalEvents.mixin()],
   props: {
     projectId: {
       type: String,
       required: true,
     },
   },
-  data() {
-    return {
-      platform: DEFAULT_PLATFORM,
-    };
-  },
-  computed: {
-    googleCloudProvisioningEnabled() {
-      return this.glFeatures.googleCloudSupportFeatureFlag;
-    },
-  },
   methods: {
     onSaved(runner) {
-      const params = { [PARAM_KEY_PLATFORM]: this.platform };
-      const ephemeralRegisterUrl = setUrlParams(params, runner.ephemeralRegisterUrl);
-
       this.trackEvent('click_create_project_runner_button');
-      if (this.platform === GOOGLE_CLOUD_PLATFORM) {
-        this.trackEvent('provision_project_runner_on_google_cloud');
-      }
 
       saveAlertToLocalStorage({
         message: s__('Runners|Runner created.'),
         variant: VARIANT_SUCCESS,
       });
-      visitUrl(ephemeralRegisterUrl);
+      visitUrl(runner.ephemeralRegisterUrl);
     },
-    onError(error, isValidationError = false) {
-      if (isValidationError) {
-        captureException({ error, component: this.$options.name });
-      }
+    onError(error) {
       createAlert({ message: error.message });
     },
   },
   PROJECT_TYPE,
-  GOOGLE_CLOUD_PLATFORM,
 };
 </script>
 
 <template>
-  <div class="gl-mt-5">
-    <h1 class="gl-heading-1">{{ s__('Runners|New project runner') }}</h1>
-
-    <registration-compatibility-alert :alert-key="projectId" />
-
-    <p>
-      {{
-        s__(
-          'Runners|Create a project runner to generate a command that registers the runner with all its configurations.',
-        )
-      }}
-    </p>
-
-    <hr aria-hidden="true" />
-
-    <h2 class="gl-heading-2">
-      {{ s__('Runners|Platform') }}
-    </h2>
-
-    <runner-platforms-radio-group v-model="platform">
-      <template v-if="googleCloudProvisioningEnabled" #cloud-options>
-        <runner-google-cloud-option v-model="platform" />
+  <div>
+    <page-heading :heading="s__('Runners|Create project runner')">
+      <template #description>
+        {{
+          s__(
+            'Runners|Create a project runner to generate a command that registers the runner with all its configurations.',
+          )
+        }}
       </template>
-    </runner-platforms-radio-group>
-
-    <hr aria-hidden="true" />
+    </page-heading>
 
     <runner-create-form
       :runner-type="$options.PROJECT_TYPE"

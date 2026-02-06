@@ -129,7 +129,6 @@ export default {
   },
   data() {
     return {
-      contentIsOnViewport: true,
       issuable: null,
       labelsSelectInProgress: false,
       oldIid: null,
@@ -152,9 +151,6 @@ export default {
     },
     issuableId() {
       return this.issuable?.id;
-    },
-    isRealtimeEnabled() {
-      return this.glFeatures.realtimeLabels;
     },
     isLabelListEnabled() {
       return this.showEmbeddedLabelsList && isDropdownVariantEmbedded(this.variant);
@@ -182,7 +178,7 @@ export default {
         return issuableLabelsQueries[this.issuableType].issuableQuery;
       },
       skip() {
-        return !isDropdownVariantSidebar(this.variant);
+        return !isDropdownVariantSidebar(this.variant) || !this.iid;
       },
       variables() {
         const queryVariables = {
@@ -197,7 +193,7 @@ export default {
         return queryVariables;
       },
       update(data) {
-        return data.workspace?.issuable;
+        return data.namespace?.issuable;
       },
       error() {
         createAlert({ message: __('Error fetching labels.') });
@@ -406,6 +402,7 @@ export default {
             :supports-lock-on-merge="isLockOnMergeSupported"
             :labels-filter-base-path="labelsFilterBasePath"
             :labels-filter-param="labelsFilterParam"
+            class="gl-pt-2"
             @onLabelRemove="handleLabelRemove"
             @onCollapsedValueClick="handleCollapsedValueClick"
           >
@@ -427,6 +424,7 @@ export default {
           </dropdown-value>
           <dropdown-contents
             ref="dropdownContents"
+            class="gl-mt-3 gl-w-full"
             :dropdown-button-text="dropdownButtonText"
             :allow-multiselect="allowMultiselect"
             :labels-list-title="labelsListTitle"
@@ -440,7 +438,6 @@ export default {
             :workspace-type="workspaceType"
             :attr-workspace-path="attrWorkspacePath"
             :label-create-type="labelCreateType"
-            class="gl-mt-3"
             @setLabels="handleDropdownClose"
             @closeDropdown="collapseEditableItem"
           />
@@ -450,6 +447,7 @@ export default {
     <template v-else>
       <dropdown-contents
         ref="dropdownContents"
+        class="issuable-form-select-holder"
         :dropdown-button-text="dropdownButtonText"
         :allow-multiselect="allowMultiselect"
         :labels-list-title="labelsListTitle"

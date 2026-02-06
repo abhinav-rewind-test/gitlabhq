@@ -12,6 +12,7 @@ export default function initAddContextCommitsTriggers() {
     // eslint-disable-next-line no-new
     new Vue({
       el: addContextCommitsModalTriggerEl,
+      name: 'AddContextCommitsModalTriggerRoot',
       data() {
         const { commitsEmpty, contextCommitsEmpty } = this.$options.el.dataset;
         return {
@@ -36,14 +37,11 @@ export default function initAddContextCommitsTriggers() {
     // eslint-disable-next-line no-new
     new Vue({
       el: addContextCommitsModalWrapperEl,
+      name: 'AddContextCommitsModalWrapperRoot',
       store,
       data() {
-        const {
-          contextCommitsPath,
-          targetBranch,
-          mergeRequestIid,
-          projectId,
-        } = this.$options.el.dataset;
+        const { contextCommitsPath, targetBranch, mergeRequestIid, projectId } =
+          this.$options.el.dataset;
         return {
           contextCommitsPath,
           targetBranch,

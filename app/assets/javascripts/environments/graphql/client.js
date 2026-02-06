@@ -7,10 +7,16 @@ import environmentToRollbackQuery from './queries/environment_to_rollback.query.
 import environmentToStopQuery from './queries/environment_to_stop.query.graphql';
 import k8sPodsQuery from './queries/k8s_pods.query.graphql';
 import k8sConnectionStatusQuery from './queries/k8s_connection_status.query.graphql';
+import k8sLogsQuery from './queries/k8s_logs.query.graphql';
 import k8sServicesQuery from './queries/k8s_services.query.graphql';
+import k8sDeploymentsQuery from './queries/k8s_deployments.query.graphql';
 import k8sNamespacesQuery from './queries/k8s_namespaces.query.graphql';
-import fluxKustomizationStatusQuery from './queries/flux_kustomization_status.query.graphql';
-import fluxHelmReleaseStatusQuery from './queries/flux_helm_release_status.query.graphql';
+import fluxKustomizationQuery from './queries/flux_kustomization.query.graphql';
+import fluxHelmReleaseQuery from './queries/flux_helm_release.query.graphql';
+import discoverFluxKustomizationsQuery from './queries/discover_flux_kustomizations.query.graphql';
+import discoverFluxHelmReleasesQuery from './queries/discover_flux_helm_releases.query.graphql';
+import k8sEventsQuery from './queries/k8s_events.query.graphql';
+import k8sPodLogsWatcherQuery from './queries/k8s_pod_logs_watcher.query.graphql';
 import { resolvers } from './resolvers';
 import typeDefs from './typedefs.graphql';
 import { connectionStatus } from './resolvers/kubernetes/constants';
@@ -20,6 +26,15 @@ export const apolloProvider = (endpoint) => {
     typeDefs,
   });
   const { cache } = defaultClient;
+
+  const k8sMetadata = {
+    name: null,
+    namespace: null,
+    creationTimestamp: null,
+    labels: null,
+    annotations: null,
+  };
+  const k8sData = { nodes: { metadata: k8sMetadata, status: {}, spec: {} } };
 
   cache.writeQuery({
     query: environmentApp,
@@ -91,16 +106,7 @@ export const apolloProvider = (endpoint) => {
   });
   cache.writeQuery({
     query: k8sPodsQuery,
-    data: {
-      metadata: {
-        name: null,
-        namespace: null,
-        creationTimestamp: null,
-      },
-      status: {
-        phase: null,
-      },
-    },
+    data: k8sData,
   });
   cache.writeQuery({
     query: k8sConnectionStatusQuery,
@@ -117,19 +123,7 @@ export const apolloProvider = (endpoint) => {
   });
   cache.writeQuery({
     query: k8sServicesQuery,
-    data: {
-      metadata: {
-        name: null,
-        namespace: null,
-        creationTimestamp: null,
-      },
-      spec: {
-        type: null,
-        clusterIP: null,
-        externalIP: null,
-        ports: [],
-      },
-    },
+    data: k8sData,
   });
   cache.writeQuery({
     query: k8sNamespacesQuery,
@@ -140,21 +134,78 @@ export const apolloProvider = (endpoint) => {
     },
   });
   cache.writeQuery({
-    query: fluxKustomizationStatusQuery,
+    query: discoverFluxKustomizationsQuery,
     data: {
-      message: '',
-      reason: '',
-      status: '',
-      type: '',
+      supportedVersion: '',
+      preferredVersion: '',
     },
   });
   cache.writeQuery({
-    query: fluxHelmReleaseStatusQuery,
+    query: discoverFluxHelmReleasesQuery,
     data: {
+      supportedVersion: '',
+      preferredVersion: '',
+    },
+  });
+  cache.writeQuery({
+    query: fluxKustomizationQuery,
+    data: {
+      ...k8sData,
+      kind: '',
+      conditions: {
+        message: '',
+        reason: '',
+        status: '',
+        type: '',
+      },
+      inventory: [],
+    },
+  });
+  cache.writeQuery({
+    query: fluxHelmReleaseQuery,
+    data: {
+      ...k8sData,
+      kind: '',
+      conditions: {
+        message: '',
+        reason: '',
+        status: '',
+        type: '',
+      },
+    },
+  });
+  cache.writeQuery({
+    query: k8sDeploymentsQuery,
+    data: {
+      metadata: {
+        name: null,
+      },
+      status: {},
+    },
+  });
+  cache.writeQuery({
+    query: k8sLogsQuery,
+    data: { logs: [] },
+  });
+
+  cache.writeQuery({
+    query: k8sEventsQuery,
+    data: {
+      lastTimestamp: '',
+      eventTime: '',
       message: '',
       reason: '',
-      status: '',
+      source: {},
       type: '',
+    },
+  });
+
+  cache.writeQuery({
+    query: k8sPodLogsWatcherQuery,
+    data: {
+      k8sPodLogsWatcher: {
+        watcher: null,
+      },
     },
   });
 

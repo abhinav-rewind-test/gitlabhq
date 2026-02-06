@@ -6,6 +6,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
   include TermsHelper
   include AdminModeHelper
   include ExternalAuthorizationServiceHelpers
+  include Ci::JobTokenScopeHelpers
 
   let(:user) { create(:user) }
   let(:actor) { user }
@@ -15,6 +16,8 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
   let(:authentication_abilities) { %i[read_project download_code push_code] }
   let(:redirected_path) { nil }
   let(:auth_result_type) { nil }
+  let(:gitaly_context) { { 'key' => 'value' } }
+  let(:personal_access_token) { nil }
   let(:changes) { Gitlab::GitAccess::ANY }
   let(:push_access_check) { access.check('git-receive-pack', changes) }
   let(:pull_access_check) { access.check('git-upload-pack', changes) }
@@ -113,7 +116,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
             end
           end
 
-          context 'when the the deploy key is restricted with external_authorization' do
+          context 'when the deploy key is restricted with external_authorization' do
             before do
               allow(Gitlab::ExternalAuthorization).to receive(:allow_deploy_tokens_and_deploy_keys?).and_return(false)
             end
@@ -253,7 +256,9 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
     end
 
     context 'key is expired' do
-      let(:actor) { create(:deploy_key, :expired) }
+      before do
+        actor.expires_at = 2.days.ago
+      end
 
       it 'does not allow expired keys' do
         expect { pull_access_check }.to raise_forbidden('Your SSH key has expired.')
@@ -278,7 +283,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         stub_application_setting(rsa_key_restriction: ApplicationSetting::FORBIDDEN_KEY_VALUE)
       end
 
-      it 'does not allow keys which are too small' do
+      it 'does not allow keys which are forbidden' do
         expect(actor).not_to be_valid
         expect { pull_access_check }.to raise_forbidden(/Your SSH key type is forbidden/)
         expect { push_access_check }.to raise_forbidden(/Your SSH key type is forbidden/)
@@ -287,7 +292,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
   end
 
   it_behaves_like '#check with a key that is not valid' do
-    let(:actor) { build(:deploy_key, user: user) }
+    let(:actor) { build(:rsa_key_2048, user: user) }
   end
 
   it_behaves_like '#check with a key that is not valid' do
@@ -338,6 +343,28 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
   end
 
   describe '#check_authentication_abilities!' do
+    context 'with a granular personal access token' do
+      let(:personal_access_token) { build(:granular_pat) }
+
+      it 'delegates to check_granular_pat_permissions!' do
+        instance = access
+        expect(instance).to receive(:check_granular_pat_permissions!)
+
+        instance.send(:check_authentication_abilities!)
+      end
+    end
+
+    context 'without a granular personal access token' do
+      it 'delegates to check_legacy_authentication_abilities!' do
+        instance = access
+        expect(instance).to receive(:check_legacy_authentication_abilities!)
+
+        instance.send(:check_authentication_abilities!)
+      end
+    end
+  end
+
+  describe '#check_legacy_authentication_abilities!' do
     before do
       project.add_maintainer(user)
     end
@@ -379,6 +406,214 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         it 'does not raise any errors' do
           expect { push_access_check }.not_to raise_error
         end
+      end
+    end
+  end
+
+  describe '#check_granular_pat_permissions!' do
+    before do
+      project.add_developer(user)
+    end
+
+    context 'without a personal access token' do
+      it 'does not check granular permissions' do
+        expect(::Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+        expect { pull_access_check }.not_to raise_error
+      end
+    end
+
+    context 'with a non-granular personal access token' do
+      let(:personal_access_token) { create(:personal_access_token, user: user) }
+
+      it 'does not check granular permissions for download' do
+        expect(::Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+        expect { pull_access_check }.not_to raise_error
+      end
+    end
+
+    context 'with a granular personal access token' do
+      let(:boundary) { Authz::Boundary.for(project) }
+      let(:personal_access_token) { create(:granular_pat, user: user, boundary: boundary, permissions: permissions) }
+
+      context 'when token has no code permissions' do
+        let(:permissions) { [] }
+
+        it 'denies git pull' do
+          expect { pull_access_check }.to raise_error(described_class::ForbiddenError,
+            'Access denied: Your Personal Access Token lacks the required permissions: [download_code] ' \
+            "for \"#{project.full_path}\".")
+        end
+
+        it 'denies git push' do
+          expect { push_access_check }.to raise_error(described_class::ForbiddenError,
+            'Access denied: Your Personal Access Token lacks the required permissions: [push_code] ' \
+            "for \"#{project.full_path}\".")
+        end
+      end
+
+      context 'when token has download_code permission' do
+        let(:permissions) { :download_code }
+
+        it 'allows git pull' do
+          expect { pull_access_check }.not_to raise_error
+        end
+
+        it 'denies git push' do
+          expect { push_access_check }.to raise_error(described_class::ForbiddenError,
+            'Access denied: Your Personal Access Token lacks the required permissions: [push_code] ' \
+            "for \"#{project.full_path}\".")
+        end
+      end
+
+      context 'when token has push_code permission' do
+        let(:permissions) { :push_code }
+
+        it 'allows git push' do
+          expect { push_access_check }.not_to raise_error
+        end
+
+        it 'denies git pull' do
+          expect { pull_access_check }.to raise_error(described_class::ForbiddenError,
+            'Access denied: Your Personal Access Token lacks the required permissions: [download_code] ' \
+            "for \"#{project.full_path}\".")
+        end
+      end
+
+      context 'when token has both download_code and push_code permissions' do
+        let(:permissions) { [:push_code, :download_code] }
+
+        it 'allows git pull' do
+          expect { pull_access_check }.not_to raise_error
+        end
+
+        it 'allows git push' do
+          expect { push_access_check }.not_to raise_error
+        end
+      end
+    end
+  end
+
+  describe '#permission_for_command' do
+    before do
+      project.add_developer(user)
+    end
+
+    context 'with a download command' do
+      it 'returns :download_code' do
+        git_access = access
+        git_access.check('git-upload-pack', changes)
+        expect(git_access.send(:permission_for_command)).to eq(:download_code)
+      end
+    end
+
+    context 'with a push command' do
+      it 'returns :push_code' do
+        git_access = access
+        git_access.check('git-receive-pack', changes)
+        expect(git_access.send(:permission_for_command)).to eq(:push_code)
+      end
+    end
+
+    context 'with an unknown command' do
+      it 'returns nil' do
+        expect(access.send(:permission_for_command)).to be_nil
+      end
+    end
+  end
+
+  describe '#has_authentication_ability?' do
+    context 'with a granular personal access token' do
+      let(:personal_access_token) { build(:granular_pat) }
+      let(:authentication_abilities) { [] }
+
+      it 'returns true regardless of authentication_abilities' do
+        expect(access.send(:has_authentication_ability?, :download_code)).to be(true)
+      end
+    end
+
+    context 'without a granular personal access token' do
+      context 'when authentication_abilities includes the ability' do
+        let(:authentication_abilities) { [:download_code] }
+
+        it 'returns true' do
+          expect(access.send(:has_authentication_ability?, :download_code)).to be(true)
+        end
+      end
+
+      context 'when authentication_abilities does not include the ability' do
+        let(:authentication_abilities) { [] }
+
+        it 'returns false' do
+          expect(access.send(:has_authentication_ability?, :download_code)).to be(false)
+        end
+      end
+    end
+  end
+
+  describe '#user_can_download?' do
+    before do
+      project.add_developer(user)
+    end
+
+    context 'without a granular personal access token' do
+      context 'when authentication_abilities includes :download_code' do
+        let(:authentication_abilities) { [:download_code] }
+
+        it 'returns true' do
+          expect(access.send(:user_can_download?)).to be(true)
+        end
+      end
+
+      context 'when authentication_abilities does not include :download_code' do
+        let(:authentication_abilities) { [] }
+
+        it 'returns falsey' do
+          expect(access.send(:user_can_download?)).to be_falsey
+        end
+      end
+    end
+
+    context 'with a granular personal access token and empty authentication_abilities' do
+      let(:personal_access_token) { create(:granular_pat) }
+      let(:authentication_abilities) { [] }
+
+      it 'returns true' do
+        expect(access.send(:user_can_download?)).to be(true)
+      end
+    end
+  end
+
+  describe '#user_can_push?' do
+    before do
+      project.add_developer(user)
+    end
+
+    context 'without a granular personal access token' do
+      context 'when authentication_abilities includes :push_code' do
+        let(:authentication_abilities) { [:push_code] }
+
+        it 'returns true' do
+          expect(access.send(:user_can_push?)).to be(true)
+        end
+      end
+
+      context 'when authentication_abilities does not include :push_code' do
+        let(:authentication_abilities) { [] }
+
+        it 'returns falsey' do
+          expect(access.send(:user_can_push?)).to be_falsey
+        end
+      end
+    end
+
+    context 'with a granular personal access token and empty authentication_abilities' do
+      let(:personal_access_token) { create(:granular_pat) }
+      let(:authentication_abilities) { [] }
+
+      it 'returns true' do
+        expect(access.send(:user_can_push?)).to be(true)
       end
     end
   end
@@ -665,9 +900,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
 
       context 'pull code' do
         context 'when project is authorized' do
-          before do
-            deploy_token.projects << project
-          end
+          let(:deploy_token) { create(:deploy_token, projects: [project]) }
 
           it { expect { pull_access_check }.not_to raise_error }
         end
@@ -731,7 +964,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
 
           context 'when is not member of the project' do
             context 'pull code' do
-              it { expect { pull_access_check }.to raise_forbidden(described_class::ERROR_MESSAGES[:download]) }
+              it { expect { pull_access_check }.not_to raise_error }
             end
           end
         end
@@ -796,10 +1029,6 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
   describe '#check_push_access!' do
     let(:unprotected_branch) { 'unprotected_branch' }
 
-    before do
-      merge_into_protected_branch
-    end
-
     let(:changes) do
       { any: Gitlab::GitAccess::ANY,
         push_new_branch: "#{Gitlab::Git::SHA1_BLANK_SHA} 570e7b2ab refs/heads/wow",
@@ -811,6 +1040,10 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         push_new_tag: "#{Gitlab::Git::SHA1_BLANK_SHA} 570e7b2ab refs/tags/v7.8.9",
         push_all: ['6f6d7e7ed 570e7b2ab refs/heads/master', '6f6d7e7ed 570e7b2ab refs/heads/feature'],
         merge_into_protected_branch: "0b4bc9a #{merge_into_protected_branch} refs/heads/feature" }
+    end
+
+    before do
+      merge_into_protected_branch
     end
 
     def merge_into_protected_branch
@@ -980,7 +1213,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
           context "when the merge request is in progress" do
             before do
               create(:merge_request, source_project: project, source_branch: unprotected_branch, target_branch: 'feature',
-                                     state: 'locked', in_progress_merge_commit_sha: merge_into_protected_branch)
+                state: 'locked', in_progress_merge_commit_sha: merge_into_protected_branch)
             end
 
             run_permission_checks(permissions_matrix.deep_merge(developer: { merge_into_protected_branch: true }))
@@ -1011,8 +1244,8 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         let(:protected_branch) { build(:protected_branch, :no_one_can_push, name: protected_branch_name, project: project) }
 
         run_permission_checks(permissions_matrix.deep_merge(developer: { push_protected_branch: false, push_all: false, merge_into_protected_branch: false },
-                                                            maintainer: { push_protected_branch: false, push_all: false, merge_into_protected_branch: false },
-                                                            admin_with_admin_mode: { push_protected_branch: false, push_all: false, merge_into_protected_branch: false }))
+          maintainer: { push_protected_branch: false, push_all: false, merge_into_protected_branch: false },
+          admin_with_admin_mode: { push_protected_branch: false, push_all: false, merge_into_protected_branch: false }))
       end
     end
 
@@ -1126,6 +1359,31 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
     end
   end
 
+  context 'when archived' do
+    let(:group) { create(:group, maintainers: user) }
+    let(:project) { create(:project, :repository, group: group) }
+
+    context 'when project is archived' do
+      before do
+        project.update!(archived: true)
+      end
+
+      it 'denies push access' do
+        expect { push_access_check }.to raise_forbidden(described_class::ERROR_MESSAGES[:archived])
+      end
+    end
+
+    context 'when group is archived' do
+      before do
+        group.update!(archived: true)
+      end
+
+      it 'denies push access' do
+        expect { push_access_check }.to raise_forbidden(described_class::ERROR_MESSAGES[:archived])
+      end
+    end
+  end
+
   describe 'deploy key permissions' do
     let(:key) { create(:deploy_key, user: user) }
     let(:actor) { key }
@@ -1137,6 +1395,14 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         end
 
         it { expect { push_access_check }.not_to raise_error }
+
+        context 'when project is archived' do
+          before do
+            project.update!(archived: true)
+          end
+
+          it { expect { push_access_check }.to raise_forbidden(described_class::ERROR_MESSAGES[:archived]) }
+        end
       end
 
       context 'when unauthorized' do
@@ -1199,7 +1465,7 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
     shared_examples 'access after accepting terms' do
       let(:actions) do
         [-> { pull_access_check },
-         -> { push_access_check }]
+          -> { push_access_check }]
       end
 
       it 'blocks access when the user did not accept terms' do
@@ -1279,15 +1545,130 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
         end
       end
     end
+
+    describe 'when request is authorized with job token' do
+      let(:source_project) { create(:project) }
+      let(:auth_result_type) { :build }
+      let(:job) { build_stubbed(:ci_build, project: source_project, user: user) }
+      let(:scope) { user.set_ci_job_token_scope!(job) }
+
+      before do
+        accept_terms(user)
+
+        source_project.add_maintainer(user)
+        source_project.save!
+
+        allow(user).to receive(:ci_job_token_scope).and_return(scope)
+      end
+
+      context 'and target project in the allow list' do
+        let(:access) { access_class.new(user, project, 'web', authentication_abilities: [:download_code], repository_path: repository_path) }
+
+        before do
+          project.add_maintainer(user)
+          project.save!
+
+          allow(scope).to receive(:accessible?).with(project).and_return(true)
+        end
+
+        it 'does not block http pull' do
+          expect { pull_access_check }.not_to raise_error
+        end
+      end
+
+      context 'and target_project in the allow list, but user does not have permissions' do
+        let(:access) { access_class.new(user, project, 'web', authentication_abilities: [:download_code], repository_path: repository_path) }
+
+        before do
+          allow(scope).to receive(:accessible?).with(project).and_return(true)
+        end
+
+        it 'blocks http pull' do
+          expect { pull_access_check }.to raise_forbidden_by_job_token(project)
+        end
+      end
+
+      context 'and target project is not in the allow list' do
+        let(:access) { access_class.new(user, project, 'web', authentication_abilities: [:download_code], repository_path: repository_path) }
+
+        before do
+          project.add_maintainer(user)
+          project.save!
+
+          allow(scope).to receive(:accessible?).with(project).and_return(false)
+        end
+
+        it 'blocks http pull' do
+          expect { pull_access_check }.to raise_forbidden_by_job_token_allowlist(source_project, project)
+        end
+      end
+    end
+
+    describe 'when request is made from CI' do
+      let(:auth_result_type) { :build }
+      let(:job) { build_stubbed(:ci_build, project: project, user: user) }
+
+      before do
+        accept_terms(user)
+        project.add_maintainer(user)
+        project.ci_push_repository_for_job_token_allowed = ci_push_repository_for_job_token_allowed
+        project.save!
+
+        allow(user).to receive(:ci_job_token_scope).and_return(user.set_ci_job_token_scope!(job))
+      end
+
+      context 'when push to repositry is allowed by project settings' do
+        let(:ci_push_repository_for_job_token_allowed) { true }
+
+        it "doesn't block push" do
+          expect { push_access_check_build(project, changes) }.not_to raise_error
+        end
+
+        context 'when push is requested to a different project' do
+          let(:another_project) do
+            create(:project, :repository, :public).tap do |accessible_project|
+              add_inbound_accessible_linkage(project, accessible_project)
+            end
+          end
+
+          before do
+            another_project.add_maintainer(user)
+            another_project.ci_push_repository_for_job_token_allowed = ci_push_repository_for_job_token_allowed
+            another_project.save!
+          end
+
+          it 'raises forbidden exception on push' do
+            expect { push_access_check_build(another_project, changes) }.to raise_error(Gitlab::GitAccess::ForbiddenError)
+          end
+        end
+      end
+
+      context 'when push to repositry is not allowed by project settings' do
+        let(:ci_push_repository_for_job_token_allowed) { false }
+
+        it 'raises forbidden exception on push' do
+          expect { push_access_check_build(project, changes) }.to raise_error(Gitlab::GitAccess::ForbiddenError)
+        end
+      end
+    end
   end
 
   private
 
   def access
     access_class.new(actor, project, protocol,
-                        authentication_abilities: authentication_abilities,
-                        repository_path: repository_path,
-                        redirected_path: redirected_path, auth_result_type: auth_result_type)
+      authentication_abilities: authentication_abilities,
+      repository_path: repository_path,
+      redirected_path: redirected_path, auth_result_type: auth_result_type, gitaly_context: gitaly_context,
+      personal_access_token: personal_access_token)
+  end
+
+  def push_access_check_build(access_project, changes)
+    access_class.new(actor, access_project, protocol,
+      authentication_abilities: build_authentication_abilities_allowed_push,
+      repository_path: "#{access_project.full_path}.git",
+      redirected_path: redirected_path, auth_result_type: auth_result_type, gitaly_context: gitaly_context)
+    .check('git-receive-pack', changes)
   end
 
   def push_changes(changes)
@@ -1302,10 +1683,28 @@ RSpec.describe Gitlab::GitAccess, :aggregate_failures, feature_category: :system
     raise_error(described_class::NotFoundError, described_class::ERROR_MESSAGES[:project_not_found])
   end
 
+  def raise_forbidden_by_job_token(target_project)
+    raise_error(described_class::ForbiddenError, format(described_class::ERROR_MESSAGES[:auth_by_job_token_forbidden],
+      target_project_id: target_project.id))
+  end
+
+  def raise_forbidden_by_job_token_allowlist(source_project, target_project)
+    raise_error(described_class::ForbiddenError, format(described_class::ERROR_MESSAGES[:auth_by_job_token_project_not_in_allowlist],
+      source_project_path: source_project.path, target_project_id: target_project.id))
+  end
+
   def build_authentication_abilities
     [
       :read_project,
       :build_download_code
+    ]
+  end
+
+  def build_authentication_abilities_allowed_push
+    [
+      :read_project,
+      :build_download_code,
+      :build_push_code
     ]
   end
 

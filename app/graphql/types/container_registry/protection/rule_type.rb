@@ -4,37 +4,40 @@ module Types
   module ContainerRegistry
     module Protection
       class RuleType < ::Types::BaseObject
-        graphql_name 'ContainerRegistryProtectionRule'
-        description 'A container registry protection rule designed to prevent users with a certain ' \
-                    'access level or lower from altering the container registry.'
+        graphql_name 'ContainerProtectionRepositoryRule'
+        description 'A container repository protection rule designed to prevent users with a certain ' \
+          'access level or lower from altering the container registry.'
 
         authorize :admin_container_image
 
         field :id,
           ::Types::GlobalIDType[::ContainerRegistry::Protection::Rule],
           null: false,
-          description: 'ID of the container registry protection rule.'
+          description: 'ID of the container repository protection rule.'
 
         field :repository_path_pattern,
           GraphQL::Types::String,
           null: false,
           description:
             'Container repository path pattern protected by the protection rule. ' \
-            'For example `my-project/my-container-*`. Wildcard character `*` allowed.'
+            'Must start with the project’s full path. For example: `my-project/*-prod-*`. ' \
+            'Wildcard character `*` is allowed anywhere after the project’s full path.'
 
-        field :push_protected_up_to_access_level,
+        field :minimum_access_level_for_delete,
           Types::ContainerRegistry::Protection::RuleAccessLevelEnum,
-          null: false,
+          null: true,
           description:
-            'Max GitLab access level to prevent from pushing container images to the container registry. ' \
-            'For example `DEVELOPER`, `MAINTAINER`, `OWNER`.'
+            'Minimum GitLab access level required to delete container images from the container repository. ' \
+            'Valid values include `MAINTAINER`, `OWNER`, or `ADMIN`. ' \
+            'If the value is `nil`, the default minimum access level is `DEVELOPER`.'
 
-        field :delete_protected_up_to_access_level,
+        field :minimum_access_level_for_push,
           Types::ContainerRegistry::Protection::RuleAccessLevelEnum,
-          null: false,
+          null: true,
           description:
-            'Max GitLab access level to prevent from pushing container images to the container registry. ' \
-            'For example `DEVELOPER`, `MAINTAINER`, `OWNER`.'
+            'Minimum GitLab access level required to push container images to the container repository. ' \
+            'Valid values include `MAINTAINER`, `OWNER`, or `ADMIN`. ' \
+            'If the value is `nil`, the default minimum access level is `DEVELOPER`.'
       end
     end
   end

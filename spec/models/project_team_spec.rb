@@ -7,6 +7,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
   let(:maintainer) { create(:user) }
   let(:reporter) { create(:user) }
+  let(:planner) { create(:user) }
   let(:guest) { create(:user) }
   let(:nonmember) { create(:user) }
 
@@ -15,6 +16,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
     before do
       project.add_maintainer(maintainer)
+      project.add_planner(planner)
       project.add_reporter(reporter)
       project.add_guest(guest)
     end
@@ -22,6 +24,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
     describe 'members collection' do
       it { expect(project.team.maintainers).to include(maintainer) }
       it { expect(project.team.maintainers).not_to include(guest) }
+      it { expect(project.team.maintainers).not_to include(planner) }
       it { expect(project.team.maintainers).not_to include(reporter) }
       it { expect(project.team.maintainers).not_to include(nonmember) }
     end
@@ -29,10 +32,12 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
     describe 'access methods' do
       it { expect(project.team.maintainer?(maintainer)).to be_truthy }
       it { expect(project.team.maintainer?(guest)).to be_falsey }
+      it { expect(project.team.maintainer?(planner)).to be_falsey }
       it { expect(project.team.maintainer?(reporter)).to be_falsey }
       it { expect(project.team.maintainer?(nonmember)).to be_falsey }
       it { expect(project.team.member?(nonmember)).to be_falsey }
       it { expect(project.team.member?(guest)).to be_truthy }
+      it { expect(project.team.member?(planner, Gitlab::Access::PLANNER)).to be_truthy }
       it { expect(project.team.member?(reporter, Gitlab::Access::REPORTER)).to be_truthy }
       it { expect(project.team.member?(guest, Gitlab::Access::REPORTER)).to be_falsey }
       it { expect(project.team.member?(nonmember, Gitlab::Access::GUEST)).to be_falsey }
@@ -46,6 +51,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
     before do
       group.add_maintainer(maintainer)
       group.add_reporter(reporter)
+      group.add_planner(planner)
       group.add_guest(guest)
 
       # If user is a group and a project member - GitLab uses highest permission
@@ -57,14 +63,17 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
     describe 'members collection' do
       it { expect(project.team.reporters).to include(reporter) }
+      it { expect(project.team.planners).to include(planner) }
       it { expect(project.team.maintainers).to include(maintainer) }
       it { expect(project.team.maintainers).to include(guest) }
       it { expect(project.team.maintainers).not_to include(reporter) }
+      it { expect(project.team.maintainers).not_to include(planner) }
       it { expect(project.team.maintainers).not_to include(nonmember) }
     end
 
     describe 'access methods' do
       it { expect(project.team.reporter?(reporter)).to be_truthy }
+      it { expect(project.team.planner?(planner)).to be_truthy }
       it { expect(project.team.maintainer?(maintainer)).to be_truthy }
       it { expect(project.team.maintainer?(guest)).to be_truthy }
       it { expect(project.team.maintainer?(reporter)).to be_falsey }
@@ -244,12 +253,14 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
       before do
         project.add_maintainer(maintainer)
         project.add_reporter(reporter)
+        project.add_planner(planner)
         project.add_guest(guest)
         project.request_access(requester)
       end
 
       it { expect(project.team.find_member(maintainer.id)).to be_a(ProjectMember) }
       it { expect(project.team.find_member(reporter.id)).to be_a(ProjectMember) }
+      it { expect(project.team.find_member(planner.id)).to be_a(ProjectMember) }
       it { expect(project.team.find_member(guest.id)).to be_a(ProjectMember) }
       it { expect(project.team.find_member(nonmember.id)).to be_nil }
       it { expect(project.team.find_member(requester.id)).to be_nil }
@@ -263,60 +274,17 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
       before do
         group.add_maintainer(maintainer)
         group.add_reporter(reporter)
+        group.add_planner(planner)
         group.add_guest(guest)
         group.request_access(requester)
       end
 
       it { expect(project.team.find_member(maintainer.id)).to be_a(GroupMember) }
       it { expect(project.team.find_member(reporter.id)).to be_a(GroupMember) }
+      it { expect(project.team.find_member(planner.id)).to be_a(GroupMember) }
       it { expect(project.team.find_member(guest.id)).to be_a(GroupMember) }
       it { expect(project.team.find_member(nonmember.id)).to be_nil }
       it { expect(project.team.find_member(requester.id)).to be_nil }
-    end
-  end
-
-  describe '#members_in_project_and_ancestors' do
-    context 'group project' do
-      it 'filters out users who are not members of the project' do
-        group = create(:group)
-        project = create(:project, group: group)
-        group_member = create(:group_member, group: group)
-        old_user = create(:user)
-
-        ProjectAuthorization.create!(project: project, user: old_user, access_level: Gitlab::Access::GUEST)
-
-        expect(project.team.members_in_project_and_ancestors).to contain_exactly(group_member.user)
-      end
-    end
-  end
-
-  describe '#members_with_access_levels' do
-    let_it_be(:maintainer) { create(:user) }
-    let_it_be(:developer) { create(:user) }
-    let_it_be(:guest) { create(:user) }
-    let_it_be(:project) { create(:project, group: create(:group)) }
-    let_it_be(:access_levels) { [Gitlab::Access::DEVELOPER, Gitlab::Access::MAINTAINER] }
-
-    subject(:members_with_access_levels) { project.team.members_with_access_levels(access_levels) }
-
-    before do
-      project.team.add_developer(developer)
-      project.team.add_maintainer(maintainer)
-      project.team.add_guest(guest)
-    end
-
-    context 'with access_levels' do
-      it 'filters members who have given access levels' do
-        expect(members_with_access_levels).to contain_exactly(developer, maintainer)
-      end
-    end
-
-    context 'without access_levels' do
-      let_it_be(:access_levels) { [] }
-
-      it 'returns empty array' do
-        expect(members_with_access_levels).to be_empty
-      end
     end
   end
 
@@ -341,6 +309,19 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
       project.team.add_member(user, :reporter)
 
       expect(project.team.reporter?(user)).to be(true)
+    end
+
+    it 'can pass through immediately_sync_authorizations' do
+      expect(::Members::Projects::CreatorService)
+        .to receive(:add_member)
+        .with(
+          project, user, :reporter,
+          current_user: anything,
+          expires_at: nil,
+          immediately_sync_authorizations: true
+        )
+
+      project.add_member(user, :reporter, immediately_sync_authorizations: true)
     end
   end
 
@@ -411,11 +392,13 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
       before do
         project.add_maintainer(maintainer)
         project.add_reporter(reporter)
+        project.add_planner(planner)
         project.add_guest(guest)
       end
 
       it { expect(project.team.contributor?(maintainer.id)).to be false }
       it { expect(project.team.contributor?(reporter.id)).to be false }
+      it { expect(project.team.contributor?(planner.id)).to be false }
       it { expect(project.team.contributor?(guest.id)).to be false }
     end
 
@@ -445,12 +428,14 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
         before do
           project.add_maintainer(maintainer)
           project.add_reporter(reporter)
+          project.add_planner(planner)
           project.add_guest(guest)
           project.request_access(requester)
         end
 
         it { expect(project.team.max_member_access(maintainer.id)).to eq(Gitlab::Access::MAINTAINER) }
         it { expect(project.team.max_member_access(reporter.id)).to eq(Gitlab::Access::REPORTER) }
+        it { expect(project.team.max_member_access(planner.id)).to eq(Gitlab::Access::PLANNER) }
         it { expect(project.team.max_member_access(guest.id)).to eq(Gitlab::Access::GUEST) }
         it { expect(project.team.max_member_access(nonmember.id)).to eq(Gitlab::Access::NO_ACCESS) }
         it { expect(project.team.max_member_access(requester.id)).to eq(Gitlab::Access::NO_ACCESS) }
@@ -465,10 +450,12 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
           group.add_maintainer(maintainer)
           group.add_reporter(reporter)
+          group.add_planner(planner)
         end
 
         it { expect(project.team.max_member_access(maintainer.id)).to eq(Gitlab::Access::DEVELOPER) }
         it { expect(project.team.max_member_access(reporter.id)).to eq(Gitlab::Access::REPORTER) }
+        it { expect(project.team.max_member_access(planner.id)).to eq(Gitlab::Access::PLANNER) }
         it { expect(project.team.max_member_access(nonmember.id)).to eq(Gitlab::Access::NO_ACCESS) }
         it { expect(project.team.max_member_access(requester.id)).to eq(Gitlab::Access::NO_ACCESS) }
 
@@ -479,6 +466,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
           it { expect(project.team.max_member_access(maintainer.id)).to eq(Gitlab::Access::NO_ACCESS) }
           it { expect(project.team.max_member_access(reporter.id)).to eq(Gitlab::Access::NO_ACCESS) }
+          it { expect(project.team.max_member_access(planner.id)).to eq(Gitlab::Access::NO_ACCESS) }
         end
       end
     end
@@ -492,12 +480,14 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
       before do
         group.add_maintainer(maintainer)
         group.add_reporter(reporter)
+        group.add_planner(planner)
         group.add_guest(guest)
         group.request_access(requester)
       end
 
       it { expect(project.team.max_member_access(maintainer.id)).to eq(Gitlab::Access::MAINTAINER) }
       it { expect(project.team.max_member_access(reporter.id)).to eq(Gitlab::Access::REPORTER) }
+      it { expect(project.team.max_member_access(planner.id)).to eq(Gitlab::Access::PLANNER) }
       it { expect(project.team.max_member_access(guest.id)).to eq(Gitlab::Access::GUEST) }
       it { expect(project.team.max_member_access(nonmember.id)).to eq(Gitlab::Access::NO_ACCESS) }
       it { expect(project.team.max_member_access(requester.id)).to eq(Gitlab::Access::NO_ACCESS) }
@@ -644,6 +634,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
     let(:maintainer) { create(:user) }
     let(:reporter) { create(:user) }
+    let(:planner) { create(:user) }
     let(:guest) { create(:user) }
 
     let(:promoted_guest) { create(:user) }
@@ -655,13 +646,17 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
     let(:second_user_without_access) { create(:user) }
 
     let(:users) do
-      [maintainer, reporter, promoted_guest, guest, group_developer, second_developer, user_without_access].map(&:id)
+      [
+        maintainer, reporter, planner, promoted_guest, guest,
+        group_developer, second_developer, user_without_access
+      ].map(&:id)
     end
 
     let(:expected) do
       {
         maintainer.id => Gitlab::Access::MAINTAINER,
         reporter.id => Gitlab::Access::REPORTER,
+        planner.id => Gitlab::Access::PLANNER,
         promoted_guest.id => Gitlab::Access::DEVELOPER,
         guest.id => Gitlab::Access::GUEST,
         group_developer.id => Gitlab::Access::DEVELOPER,
@@ -673,6 +668,7 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
     before do
       project.add_maintainer(maintainer)
       project.add_reporter(reporter)
+      project.add_planner(planner)
       project.add_guest(promoted_guest)
       project.add_guest(guest)
 
@@ -738,6 +734,28 @@ RSpec.describe ProjectTeam, feature_category: :groups_and_projects do
 
     context 'with RequestStore disabled' do
       include_examples 'max member access for users'
+    end
+  end
+
+  describe '#add_security_manager' do
+    let(:project) { create(:project) }
+    let(:user) { create(:user) }
+
+    context 'when security manager role is enabled' do
+      it 'adds the user as security manager' do
+        project.team.add_security_manager(user)
+
+        expect(project.team.member?(user, Gitlab::Access::SECURITY_MANAGER)).to be_truthy
+      end
+    end
+
+    context 'when security manager role is disabled', :disable_security_manager do
+      it 'returns nil and does not add the user' do
+        result = project.team.add_security_manager(user)
+
+        expect(result).to be_nil
+        expect(project.team.member?(user)).to be_falsey
+      end
     end
   end
 end

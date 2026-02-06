@@ -4,9 +4,10 @@ module API
   class Events < ::API::Base
     include PaginationParams
     include APIGuard
+
     helpers ::API::Helpers::EventsHelpers
 
-    allow_access_with_scope :read_user, if: -> (request) { request.get? || request.head? }
+    allow_access_with_scope :read_user, if: ->(request) { request.get? || request.head? }
 
     feature_category :user_profile
     urgency :low
@@ -16,14 +17,15 @@ module API
         detail 'This feature was introduced in GitLab 9.3.'
         success Entities::Event
         is_array true
+        tags %w[events]
         failure [
           { code: 401, message: 'Unauthorized' }
         ]
       end
       params do
         optional :scope, type: String,
-                         desc: 'Include all events across a user’s projects',
-                         documentation: { example: 'all' }
+          desc: 'Include all events across a user’s projects',
+          documentation: { example: 'all' }
         use :pagination
         use :event_filter_params
         use :sort_params

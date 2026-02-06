@@ -16,6 +16,7 @@ module Gitlab
             runner_unsupported: 'unsupported runner',
             stale_schedule: 'stale schedule',
             job_execution_timeout: 'job execution timeout',
+            job_execution_server_timeout: 'job execution timeout',
             archived_failure: 'archived failure',
             unmet_prerequisites: 'unmet prerequisites',
             scheduler_failure: 'scheduler failure',
@@ -35,15 +36,18 @@ module Gitlab
             reached_max_pipeline_hierarchy_size: 'downstream pipeline tree is too large',
             project_deleted: 'pipeline project was deleted',
             user_blocked: 'pipeline user was blocked',
-            ci_quota_exceeded: 'no more CI minutes available',
+            ci_quota_exceeded: 'no more compute minutes available',
             no_matching_runner: 'no matching runner available',
             trace_size_exceeded: 'log size limit exceeded',
             builds_disabled: 'project builds are disabled',
             environment_creation_failure: 'environment creation failure',
             deployment_rejected: 'deployment rejected',
             ip_restriction_failure: 'IP address restriction failure',
+            duo_workflow_not_allowed: 'Duo Workflow cannot run on this runner',
             failed_outdated_deployment_job: 'failed outdated deployment job',
-            reached_downstream_pipeline_trigger_rate_limit: 'Too many downstream pipelines triggered in the last minute. Try again later.'
+            reached_downstream_pipeline_trigger_rate_limit: 'Too many downstream pipelines triggered in the last minute. Try again later.',
+            job_router_failure: 'The Job Router failed to run this job.',
+            job_token_expired: 'job token has expired'
           }.freeze
           # rubocop: enable Layout/LineLength
 
@@ -68,11 +72,22 @@ module Gitlab
           private
 
           def base_message
-            "#{s_('CiStatusLabel|failed')} #{description}"
+            "#{s_('CiStatusLabel|Failed')} #{description}"
           end
 
           def description
-            "- (#{failure_reason_message})"
+            return "- (#{failure_reason_message})" unless subject.failure_reason.to_sym == :job_router_failure
+
+            custom_message = fetch_custom_message
+            if custom_message.present?
+              "- (#{failure_reason_message} #{custom_message})"
+            else
+              "- (#{failure_reason_message} Please contact your administrator.)"
+            end
+          end
+
+          def fetch_custom_message
+            subject.try(:error_job_messages)&.first&.content
           end
 
           def failure_reason_message

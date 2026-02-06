@@ -33,13 +33,31 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
     subject { client.user_create_branch(branch_name, user, start_point) }
 
-    it 'sends a user_create_branch message and returns a Gitlab::git::Branch' do
+    it 'sends a user_create_branch message and returns a Gitlab::Git::Branch' do
       expect_any_instance_of(Gitaly::OperationService::Stub)
-        .to receive(:user_create_branch).with(request, kind_of(Hash))
+        .to receive(:user_create_branch).with(request, hash_including({
+          metadata: hash_not_including("gitaly-client-context-bin")
+        }))
         .and_return(response)
 
       expect(subject.name).to eq(branch_name)
       expect(subject.dereferenced_target).to eq(commit)
+    end
+
+    context 'when skip_ci: true' do
+      subject { client.user_create_branch(branch_name, user, start_point, skip_ci: true) }
+
+      it 'passes skip-ci in gitaly_context' do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_create_branch).with(request, hash_including({
+            metadata: hash_including({
+              "gitaly-client-context-bin" => '{"skip-ci":true}'
+            })
+          }))
+          .and_return(response)
+
+        expect(subject.name).to eq(branch_name)
+      end
     end
 
     context 'with structured errors' do
@@ -61,7 +79,7 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         end
 
         shared_examples 'failed branch creation' do
-          it 'raised a PreRecieveError' do
+          it 'raised a PreReceiveError' do
             expect_any_instance_of(Gitaly::OperationService::Stub)
               .to receive(:user_create_branch)
               .and_raise(custom_hook_error)
@@ -182,14 +200,16 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
           expect(options).to be_kind_of(Hash)
           expect(request.to_h).to eq(
             payload.merge({
-              allow_conflicts: false,
-              expected_old_oid: "",
               repository: repository.gitaly_repository.to_h,
               message: message.dup.force_encoding(Encoding::ASCII_8BIT),
               user: Gitlab::Git::User.from_gitlab(user).to_gitaly.to_h,
-              timestamp: { nanos: 0, seconds: Time.current.to_i }
+              timestamp: { seconds: Time.current.to_i }
             })
           )
+          expect(request.allow_conflicts).to be false
+          expect(request.expected_old_oid).to eq("")
+          expect(request.timestamp.nanos).to eq(0)
+          expect(request.sign).to be false
         end.and_return(response)
 
         client.user_merge_to_ref(user, **payload)
@@ -199,17 +219,20 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
   describe '#user_delete_branch' do
     let(:branch_name) { 'my-branch' }
+    let(:start_point) { 'master' }
+    let(:target_sha) { 'sha_for_branch_name' }
     let(:request) do
       Gitaly::UserDeleteBranchRequest.new(
         repository: repository.gitaly_repository,
         branch_name: branch_name,
-        user: gitaly_user
+        user: gitaly_user,
+        expected_old_oid: target_sha
       )
     end
 
     let(:response) { Gitaly::UserDeleteBranchResponse.new }
 
-    subject { client.user_delete_branch(branch_name, user) }
+    subject { client.user_delete_branch(branch_name, user, target_sha: target_sha) }
 
     it 'sends a user_delete_branch message' do
       expect_any_instance_of(Gitaly::OperationService::Stub)
@@ -217,6 +240,30 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         .and_return(response)
 
       subject
+    end
+
+    context 'when target_sha is not provided' do
+      let(:target_sha) { nil }
+
+      it 'sends a user_delete_branch message without target_sha' do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_delete_branch).with(request, kind_of(Hash))
+          .and_return(response)
+
+        subject
+      end
+    end
+
+    context 'with an invalid target_sha' do
+      let(:target_sha) { 'invalid-target-sha' }
+
+      it 'raises a CommandError' do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_delete_branch).with(request, kind_of(Hash))
+          .and_raise(GRPC::InvalidArgument.new('Invalid argument'))
+
+        expect { subject }.to raise_error(Gitlab::Git::CommandError)
+      end
     end
 
     context 'with a custom hook error' do
@@ -284,40 +331,51 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
     let(:target_sha) { repository.commit(target_branch).sha }
     let(:source_sha) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
     let(:message) { 'Merge a branch' }
+    let(:sign) { false }
 
     subject do
       client.user_merge_branch(user,
         source_sha: source_sha,
         target_branch: target_branch,
         target_sha: target_sha,
-        message: message
+        message: message,
+        sign: sign
       ) {}
     end
 
-    it 'sends a user_merge_branch message', :freeze_time do
-      first_request =
-        Gitaly::UserMergeBranchRequest.new(
-          repository: repository.gitaly_repository,
-          user: gitaly_user,
-          commit_id: source_sha,
-          branch: target_branch,
-          expected_old_oid: target_sha,
-          message: message,
-          timestamp: Google::Protobuf::Timestamp.new(seconds: Time.now.utc.to_i)
-        )
-
-      second_request = Gitaly::UserMergeBranchRequest.new(apply: true)
-
-      expect_next_instance_of(Gitlab::GitalyClient::QueueEnumerator) do |instance|
-        expect(instance).to receive(:push).with(first_request).and_call_original
-        expect(instance).to receive(:push).with(second_request).and_call_original
-        expect(instance).to receive(:close)
-      end
-
+    it 'succeeds' do
       expect(subject).to be_a(Gitlab::Git::OperationService::BranchUpdate)
       expect(subject.newrev).to be_present
       expect(subject.repo_created).to be(false)
       expect(subject.branch_created).to be(false)
+    end
+
+    it 'receives a bad status' do
+      expect(client).to receive(:gitaly_client_call)
+        .and_wrap_original { |original, *args, **kwargs|
+          response_enum = original.call(*args, **kwargs)
+          Enumerator.new do |y|
+            y << response_enum.next
+            y << response_enum.next
+            raise 'bad status'
+          end
+        }
+
+      expect { subject }.to raise_error(RuntimeError, 'bad status')
+    end
+
+    it 'receives an unexpected response' do
+      expect(client).to receive(:gitaly_client_call)
+        .and_wrap_original { |original, *args, **kwargs|
+          response_enum = original.call(*args, **kwargs)
+          Enumerator.new do |y|
+            y << response_enum.next
+            y << response_enum.next
+            y << 'unexpected response'
+          end
+        }
+
+      expect { subject }.to raise_error(RuntimeError, 'expected response stream to finish')
     end
 
     context 'with an exception with the UserMergeBranchError' do
@@ -334,7 +392,7 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
             )))
       end
 
-      it 'raises PreRecieveError with the error message' do
+      it 'raises PreReceiveError with the error message' do
         expect_any_instance_of(Gitaly::OperationService::Stub)
           .to receive(:user_merge_branch).with(kind_of(Enumerator), kind_of(Hash))
           .and_raise(permission_error)
@@ -439,13 +497,13 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
     context 'with ReferenceUpdateError' do
       let(:reference_update_error) do
         new_detailed_error(GRPC::Core::StatusCodes::FAILED_PRECONDITION,
-                           "some ignored error message",
-                           Gitaly::UserMergeBranchError.new(
-                             reference_update: Gitaly::ReferenceUpdateError.new(
-                               reference_name: "refs/heads/something",
-                               old_oid: "1234",
-                               new_oid: "6789"
-                             )))
+          "some ignored error message",
+          Gitaly::UserMergeBranchError.new(
+            reference_update: Gitaly::ReferenceUpdateError.new(
+              reference_name: "refs/heads/something",
+              old_oid: "1234",
+              new_oid: "6789"
+            )))
       end
 
       it 'returns nil' do
@@ -482,12 +540,6 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
     let(:response) { Gitaly::UserFFBranchResponse.new(branch_update: branch_update) }
 
-    before do
-      expect_any_instance_of(Gitaly::OperationService::Stub)
-        .to receive(:user_ff_branch).with(request, kind_of(Hash))
-        .and_return(response)
-    end
-
     subject do
       client.user_ff_branch(user,
         source_sha: source_sha,
@@ -496,30 +548,109 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
       )
     end
 
-    it 'sends a user_ff_branch message and returns a BranchUpdate object' do
-      expect(subject).to be_a(Gitlab::Git::OperationService::BranchUpdate)
-      expect(subject.newrev).to eq(source_sha)
-      expect(subject.repo_created).to be(false)
-      expect(subject.branch_created).to be(false)
-    end
-
-    context 'when the response has no branch_update' do
-      let(:response) { Gitaly::UserFFBranchResponse.new }
-
-      it { expect(subject).to be_nil }
-    end
-
-    context "when the pre-receive hook fails" do
-      let(:response) do
-        Gitaly::UserFFBranchResponse.new(
-          branch_update: nil,
-          pre_receive_error: "pre-receive hook error message\n"
-        )
+    context 'with response' do
+      before do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_ff_branch).with(request, kind_of(Hash))
+          .and_return(response)
       end
 
-      it "raises the error" do
-        # the PreReceiveError class strips the GL-HOOK-ERR prefix from this error
-        expect { subject }.to raise_error(Gitlab::Git::PreReceiveError, "pre-receive hook failed.")
+      it 'sends a user_ff_branch message and returns a BranchUpdate object' do
+        expect(subject).to be_a(Gitlab::Git::OperationService::BranchUpdate)
+        expect(subject.newrev).to eq(source_sha)
+        expect(subject.repo_created).to be(false)
+        expect(subject.branch_created).to be(false)
+      end
+
+      context 'when the response has no branch_update' do
+        let(:response) { Gitaly::UserFFBranchResponse.new }
+
+        it { expect(subject).to be_nil }
+      end
+
+      context "when the pre-receive hook fails" do
+        let(:response) do
+          Gitaly::UserFFBranchResponse.new(
+            branch_update: nil,
+            pre_receive_error: "pre-receive hook error message\n"
+          )
+        end
+
+        it "raises the error" do
+          # the PreReceiveError class strips the GL-HOOK-ERR prefix from this error
+          expect { subject }.to raise_error(Gitlab::Git::PreReceiveError, "pre-receive hook failed.")
+        end
+      end
+    end
+
+    context 'with exception' do
+      before do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_ff_branch).with(request, kind_of(Hash))
+          .and_raise(exception)
+      end
+
+      context 'with CustomHookError' do
+        let(:exception) do
+          new_detailed_error(
+            GRPC::Core::StatusCodes::PERMISSION_DENIED,
+            "custom hook error",
+            Gitaly::UserFFBranchError.new(
+              custom_hook: Gitaly::CustomHookError.new(
+                stdout: "some stdout",
+                stderr: "GitLab: some custom hook error message",
+                hook_type: Gitaly::CustomHookError::HookType::HOOK_TYPE_PRERECEIVE
+              )))
+        end
+
+        it 'raises a PreReceiveError' do
+          expect { subject }.to raise_error do |error|
+            expect(error).to be_a(Gitlab::Git::PreReceiveError)
+            expect(error.message).to eq("some custom hook error message")
+          end
+        end
+      end
+
+      context 'with ReferenceUpdateError' do
+        let(:exception) do
+          new_detailed_error(GRPC::Core::StatusCodes::FAILED_PRECONDITION,
+            "some ignored error message",
+            Gitaly::UserFFBranchError.new(reference_update: Gitaly::ReferenceUpdateError.new))
+        end
+
+        it 'returns nil' do
+          expect(subject).to be_nil
+        end
+      end
+
+      context 'with FailedPrecondition' do
+        let(:exception) do
+          GRPC::FailedPrecondition.new('failed precondition error')
+        end
+
+        it 'returns CommitError' do
+          expect { subject }.to raise_error(Gitlab::Git::CommitError, exception.message)
+        end
+      end
+
+      context 'with a bad status' do
+        let(:exception) do
+          GRPC::Internal.new('internal error')
+        end
+
+        it 'raises the exception' do
+          expect { subject }.to raise_error(GRPC::Internal, exception.message)
+        end
+      end
+
+      context 'with unhandled exception' do
+        let(:exception) do
+          RuntimeError.new('unhandled exception')
+        end
+
+        it 'raises the exception' do
+          expect { subject }.to raise_error(RuntimeError, exception.message)
+        end
       end
     end
   end
@@ -573,6 +704,9 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
     let(:branch_name) { 'master' }
     let(:cherry_pick_message) { 'Cherry-pick message' }
     let(:time) { Time.now.utc }
+    let(:author_name) { user.name }
+    let(:author_email) { user.email }
+    let(:dry_run) { false }
 
     let(:branch_update) do
       Gitaly::OperationBranchUpdate.new(
@@ -591,10 +725,15 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         start_branch_name: branch_name,
         start_repository: repository.gitaly_repository,
         message: cherry_pick_message,
-        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i)
+        commit_author_name: author_name,
+        commit_author_email: author_email,
+        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i),
+        dry_run: dry_run,
+        expected_old_oid: target_sha
       )
     end
 
+    let(:target_sha) { repository.find_branch(branch_name).dereferenced_target.id }
     let(:response) { Gitaly::UserCherryPickResponse.new(branch_update: branch_update) }
 
     subject do
@@ -604,7 +743,11 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         branch_name: branch_name,
         message: cherry_pick_message,
         start_branch_name: branch_name,
-        start_repository: repository
+        start_repository: repository,
+        author_name: author_name,
+        author_email: author_email,
+        dry_run: dry_run,
+        target_sha: target_sha
       )
     end
 
@@ -670,6 +813,14 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
       it_behaves_like '#user_cherry_pick with a gRPC error'
     end
 
+    context 'when InvalidArgument is raised' do
+      let(:raised_error) { GRPC::InvalidArgument.new('Invalid argument') }
+      let(:expected_error) { Gitlab::Git::CommandError }
+      let(:expected_error_message) { '3:Invalid argument' }
+
+      it_behaves_like '#user_cherry_pick with a gRPC error'
+    end
+
     context 'when a non-detailed gRPC error is raised' do
       let(:raised_error) { GRPC::Internal.new('non-detailed error') }
       let(:expected_error) { GRPC::Internal }
@@ -711,7 +862,9 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         start_branch_name: branch_name,
         start_repository: repository.gitaly_repository,
         message: revert_message,
-        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i)
+        expected_old_oid: nil,
+        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i),
+        sign: true
       )
     end
 
@@ -822,20 +975,119 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
       it_behaves_like '#user_revert with a gRPC error'
     end
+
+    context 'with expected_old_oid' do
+      let(:target_sha) { '6d394385cf567f80a8fd85055db1ab4c5295806f' }
+      let(:request_with_expected_old_oid) do
+        Gitaly::UserRevertRequest.new(
+          repository: repository.gitaly_repository,
+          user: gitaly_user,
+          commit: repository.commit.to_gitaly_commit,
+          branch_name: branch_name,
+          start_branch_name: branch_name,
+          start_repository: repository.gitaly_repository,
+          message: revert_message,
+          expected_old_oid: target_sha,
+          timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i),
+          sign: true
+        )
+      end
+
+      subject do
+        client.user_revert(
+          user: user,
+          commit: repository.commit,
+          branch_name: branch_name,
+          message: revert_message,
+          start_branch_name: branch_name,
+          start_repository: repository,
+          target_sha: target_sha
+        )
+      end
+
+      it 'sends a user_revert message with expected_old_oid and returns a BranchUpdate' do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_revert).with(request_with_expected_old_oid, kind_of(Hash))
+                                   .and_return(response)
+
+        expect(subject).to be_a(Gitlab::Git::OperationService::BranchUpdate)
+        expect(subject.newrev).to be_present
+        expect(subject.repo_created).to be(false)
+        expect(subject.branch_created).to be(false)
+      end
+
+      context 'when InvalidArgument is raised due to expected_old_oid mismatch' do
+        let(:raised_error) { GRPC::InvalidArgument.new('expected old object ID does not match') }
+
+        it 'raises CommandError' do
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_revert).with(request_with_expected_old_oid, kind_of(Hash))
+                                     .and_raise(raised_error)
+
+          expect { subject }.to raise_error(Gitlab::Git::CommandError)
+        end
+      end
+
+      context 'when Internal error is raised due to race condition' do
+        let(:raised_error) { GRPC::Internal.new('reference update failed: expected old object ID does not match') }
+
+        it 'raises CommandError' do
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_revert).with(request_with_expected_old_oid, kind_of(Hash))
+                                     .and_raise(raised_error)
+
+          expect { subject }.to raise_error(Gitlab::Git::CommandError)
+        end
+      end
+    end
   end
 
   describe '#rebase' do
-    let(:response) { Gitaly::UserRebaseConfirmableResponse.new }
-
     subject do
       client.rebase(
         user,
         '',
-        branch: 'master',
-        branch_sha: 'b83d6e391c22777fca1ed3012fce84f633d7fed0',
+        branch: 'feature',
+        branch_sha: '0b4bc9a49b562e85de7cc9e834518ea6828729b9',
         remote_repository: repository,
         remote_branch: 'master'
-      )
+      ) {}
+    end
+
+    context 'with clean repository' do
+      let(:project) { create(:project, :repository) }
+
+      it 'succeeds' do
+        expect(subject).to be_present
+      end
+
+      it 'receives a bad status' do
+        expect(client).to receive(:gitaly_client_call)
+          .and_wrap_original { |original, *args, **kwargs|
+            response_enum = original.call(*args, **kwargs)
+            Enumerator.new do |y|
+              y << response_enum.next
+              y << response_enum.next
+              raise 'bad status'
+            end
+          }
+
+        expect { subject }.to raise_error(RuntimeError, 'bad status')
+      end
+
+      it 'receives an unexpected response' do
+        expect(client).to receive(:gitaly_client_call)
+          .and_wrap_original { |original, *args, **kwargs|
+            response_enum = original.call(*args, **kwargs)
+            Enumerator.new do |y|
+              y << response_enum.next
+              y << response_enum.next
+              y << 'unexpected response'
+            end
+          }
+
+        expect { subject }.to raise_error(RuntimeError, 'expected response stream to finish')
+      end
     end
 
     shared_examples '#rebase with an error' do
@@ -909,14 +1161,15 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
             eq(
               payload.merge(
                 {
-                  expected_old_oid: "",
                   repository: repository.gitaly_repository.to_h,
                   user: Gitlab::Git::User.from_gitlab(user).to_gitaly.to_h,
-                  timestamp: { nanos: 0, seconds: Time.current.to_i }
+                  timestamp: { seconds: Time.current.to_i }
                 }
               )
             )
           )
+          expect(request.expected_old_oid).to eq("")
+          expect(request.timestamp.nanos).to eq(0)
         end.and_return(response)
 
         client.user_rebase_to_ref(user, **payload)
@@ -941,7 +1194,8 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
         end_sha: end_sha,
         author: gitaly_user,
         commit_message: commit_message,
-        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i)
+        timestamp: Google::Protobuf::Timestamp.new(seconds: time.to_i),
+        sign: true
       )
     end
 
@@ -949,7 +1203,7 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
     let(:response) { Gitaly::UserSquashResponse.new(squash_sha: squash_sha) }
 
     subject do
-      client.user_squash(user, start_sha, end_sha, user, commit_message, time)
+      client.user_squash(user, start_sha: start_sha, end_sha: end_sha, author: user, message: commit_message, time: time)
     end
 
     it 'sends a user_squash message and returns the squash sha' do
@@ -1013,11 +1267,243 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
     end
   end
 
+  describe '#user_update_submodule' do
+    let(:submodule) { 'test-submodule' }
+    let(:commit_sha) { '3ac7abff9aa5e8b5184e06022894fd98c0b9c651' }
+    let(:branch) { 'master' }
+    let(:message) { 'Update submodule' }
+
+    let(:request) do
+      Gitaly::UserUpdateSubmoduleRequest.new(
+        repository: repository.gitaly_repository,
+        user: gitaly_user,
+        commit_sha: commit_sha,
+        branch: branch,
+        submodule: submodule,
+        commit_message: message,
+        timestamp: Google::Protobuf::Timestamp.new(seconds: Time.now.utc.to_i)
+      )
+    end
+
+    subject do
+      client.user_update_submodule(
+        user: user,
+        submodule: submodule,
+        commit_sha: commit_sha,
+        branch: branch,
+        message: message
+      )
+    end
+
+    context 'when successful', :freeze_time do
+      let(:branch_update) do
+        Gitaly::OperationBranchUpdate.new(
+          commit_id: 'new-commit-id',
+          repo_created: false,
+          branch_created: false
+        )
+      end
+
+      let(:response) { Gitaly::UserUpdateSubmoduleResponse.new(branch_update: branch_update) }
+
+      it 'sends a user_update_submodule message and returns a BranchUpdate' do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_update_submodule).with(request, kind_of(Hash))
+                                             .and_return(response)
+
+        expect(subject).to be_a(Gitlab::Git::OperationService::BranchUpdate)
+        expect(subject.newrev).to eq('new-commit-id')
+        expect(subject.repo_created).to be(false)
+        expect(subject.branch_created).to be(false)
+      end
+    end
+
+    context 'with unstructured errors' do
+      before do
+        expect_any_instance_of(Gitaly::OperationService::Stub)
+          .to receive(:user_update_submodule).with(request, kind_of(Hash))
+                                             .and_return(response)
+      end
+
+      context 'when pre_receive_error is present' do
+        let(:response) do
+          Gitaly::UserUpdateSubmoduleResponse.new(
+            pre_receive_error: 'GitLab: pre-receive hook failed'
+          )
+        end
+
+        it 'raises a PreReceiveError' do
+          expect { subject }.to raise_error(Gitlab::Git::PreReceiveError, 'pre-receive hook failed')
+        end
+      end
+
+      context 'when commit_error is present' do
+        let(:response) do
+          Gitaly::UserUpdateSubmoduleResponse.new(
+            commit_error: 'Could not update submodule'
+          )
+        end
+
+        it 'raises a CommitError' do
+          expect { subject }.to raise_error(Gitlab::Git::CommitError, 'Could not update submodule')
+        end
+      end
+    end
+
+    context 'with structured errors' do
+      context 'with CustomHookError' do
+        let(:stdout) { 'some stdout' }
+        let(:stderr) { 'GitLab: some custom hook error message' }
+        let(:error_message) { 'custom hook error' }
+        let(:expected_message) { 'some custom hook error message' }
+
+        let(:custom_hook_error) do
+          new_detailed_error(
+            GRPC::Core::StatusCodes::PERMISSION_DENIED,
+            error_message,
+            Gitaly::UserUpdateSubmoduleError.new(
+              custom_hook: Gitaly::CustomHookError.new(
+                stdout: stdout,
+                stderr: stderr,
+                hook_type: Gitaly::CustomHookError::HookType::HOOK_TYPE_PRERECEIVE
+              )
+            )
+          )
+        end
+
+        it 'raises a PreReceiveError' do
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_update_submodule)
+                  .and_raise(custom_hook_error)
+
+          expect { subject }.to raise_error do |error|
+            expect(error).to be_a(Gitlab::Git::PreReceiveError)
+            expect(error.message).to eq(expected_message)
+          end
+        end
+      end
+
+      context 'with ReferenceUpdateError' do
+        let(:reference_update_error) do
+          new_detailed_error(
+            GRPC::Core::StatusCodes::FAILED_PRECONDITION,
+            'ignored reference update failure',
+            Gitaly::UserUpdateSubmoduleError.new(
+              reference_update: Gitaly::ReferenceUpdateError.new(
+                reference_name: "refs/heads/#{branch}",
+                old_oid: 'old_oid_value',
+                new_oid: 'new_oid_value'
+              )
+            )
+          )
+        end
+
+        it 'raises a CommitError' do
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_update_submodule)
+                  .and_raise(reference_update_error)
+
+          expect { subject }.to raise_error(Gitlab::Git::CommitError,
+            "Could not update refs/heads/#{branch}. Please refresh and try again.")
+        end
+      end
+
+      context 'with PathError' do
+        let(:expected_message) { nil }
+        let(:error_type) { Gitaly::PathError::ErrorType::ERROR_TYPE_INVALID_PATH }
+        let(:path_error) do
+          new_detailed_error(
+            GRPC::Core::StatusCodes::INVALID_ARGUMENT,
+            'path error occurred',
+            Gitaly::UserUpdateSubmoduleError.new(
+              path_error: Gitaly::PathError.new(
+                path: submodule,
+                error_type: error_type
+              )
+            )
+          )
+        end
+
+        shared_examples 'raises a PathError' do
+          it 'formats a CommitError' do
+            expect_any_instance_of(Gitaly::OperationService::Stub)
+              .to receive(:user_update_submodule)
+                    .and_raise(path_error)
+
+            expect { subject }.to raise_error(Gitlab::Git::CommitError, expected_message)
+          end
+        end
+
+        context 'with ERROR_TYPE_INVALID_PATH error' do
+          let(:expected_message) { 'Invalid submodule path' }
+
+          it_behaves_like 'raises a PathError'
+        end
+
+        context 'with ERROR_TYPE_PATH_EXISTS error' do
+          let(:error_type) { Gitaly::PathError::ErrorType::ERROR_TYPE_PATH_EXISTS }
+          let(:expected_message) { "The submodule #{submodule} is already at #{commit_sha}" }
+
+          it_behaves_like 'raises a PathError'
+        end
+
+        context 'with ERROR_TYPE_UNSPECIFIED error' do
+          let(:error_type) { Gitaly::PathError::ErrorType::ERROR_TYPE_UNSPECIFIED }
+
+          it 're-raises the original error' do
+            expect_any_instance_of(Gitaly::OperationService::Stub)
+              .to receive(:user_update_submodule)
+                    .and_raise(path_error)
+
+            expect { subject }.to raise_error(path_error)
+          end
+        end
+      end
+
+      context 'with non-detailed GRPC error' do
+        let(:grpc_error) { GRPC::Internal.new('non-detailed error') }
+
+        it 're-raises the original error' do
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_update_submodule)
+                  .and_raise(grpc_error)
+
+          expect { subject }.to raise_error(grpc_error)
+        end
+      end
+    end
+  end
+
   describe '#user_commit_files' do
+    let(:force) { false }
+    let(:start_sha) { nil }
+    let(:sign) { true }
+    let(:target_sha) { nil }
+
     subject do
       client.user_commit_files(
-        gitaly_user, 'my-branch', 'Commit files message', [], 'janedoe@example.com', 'Jane Doe',
-        'master', repository)
+        user, 'my-branch', 'Commit files message', [], 'janedoe@example.com', 'Jane Doe',
+        'master', repository, force, start_sha, sign, target_sha)
+    end
+
+    context 'when UserCommitFiles RPC is called' do
+      let(:force) { true }
+      let(:start_sha) { project.commit.id }
+      let(:sign) { false }
+      let(:target_sha) { 'target_sha' }
+
+      it 'successfully builds the header' do
+        expect_any_instance_of(Gitaly::OperationService::Stub).to receive(:user_commit_files) do |_, req_enum|
+          header = req_enum.first.header
+
+          expect(header.force).to eq(force)
+          expect(header.start_sha).to eq(start_sha)
+          expect(header.sign).to eq(sign)
+          expect(header.expected_old_oid).to eq(target_sha)
+        end.and_return(Gitaly::UserCommitFilesResponse.new)
+
+        subject
+      end
     end
 
     context 'with unstructured errors' do
@@ -1256,6 +1742,60 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
           end
         end
       end
+
+      context 'with ReferenceUpdateError' do
+        before do
+          # Mock the detailed error structure since ReferenceUpdateError proto isn't in the gem yet
+          reference_update_struct = Struct.new(:reference_name, :old_oid)
+          reference_update_error = reference_update_struct.new('refs/heads/main', 'abc123')
+
+          detailed_error_struct = Struct.new(:reference_update)
+          detailed_error = detailed_error_struct.new(reference_update_error)
+          allow(detailed_error).to receive(:try).with(:error).and_return(:reference_update)
+
+          expect_any_instance_of(Gitaly::OperationService::Stub)
+            .to receive(:user_commit_files).with(kind_of(Enumerator), kind_of(Hash))
+            .and_raise(raised_error)
+
+          allow(Gitlab::GitalyClient).to receive(:decode_detailed_error)
+            .with(raised_error)
+            .and_return(detailed_error)
+        end
+
+        let(:raised_error) do
+          GRPC::FailedPrecondition.new("reference update failed")
+        end
+
+        it 'raises a CommitError with clear message' do
+          expect { subject }.to raise_error(Gitlab::Git::CommitError, "Could not update refs/heads/main. Please refresh and try again.")
+        end
+      end
+
+      context 'with an invalid target_sha' do
+        context 'when the target_sha is not in a valid format' do
+          let(:target_sha) { 'asdf' }
+
+          it 'raises CommandError' do
+            expect { subject }.to raise_error(Gitlab::Git::CommandError)
+          end
+        end
+
+        context 'when the target_sha is valid but not present in the repo' do
+          let(:target_sha) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff0' }
+
+          it 'raises CommandError' do
+            expect { subject }.to raise_error(Gitlab::Git::CommandError)
+          end
+        end
+
+        context 'when the target_sha is present in the repo but is not the latest' do
+          let(:target_sha) { '6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9' }
+
+          it 'raises FailedPrecondition' do
+            expect { subject }.to raise_error(GRPC::FailedPrecondition)
+          end
+        end
+      end
     end
   end
 
@@ -1267,9 +1807,14 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
     let(:patch_names) { %w[0001-This-does-not-apply-to-the-feature-branch.patch] }
     let(:branch_name) { 'branch-with-patches' }
+    let(:target_sha) { nil }
 
     subject(:commit_patches) do
-      client.user_commit_patches(user, branch_name, patch_content)
+      client.user_commit_patches(user,
+        branch_name: branch_name,
+        patches: patch_content,
+        target_sha: target_sha
+      )
     end
 
     it 'applies the patch correctly' do
@@ -1289,6 +1834,14 @@ RSpec.describe Gitlab::GitalyClient::OperationService, feature_category: :source
 
       it 'raises the correct error' do
         expect { commit_patches }.to raise_error(GRPC::FailedPrecondition)
+      end
+    end
+
+    context 'when an invalid target_sha is provided' do
+      let(:target_sha) { '2df2bff3c5d39d69c49c947a6972212731e8146f' }
+
+      it 'raises the correct error' do
+        expect { commit_patches }.to raise_error(GRPC::Internal)
       end
     end
   end

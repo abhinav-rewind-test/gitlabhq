@@ -15,6 +15,7 @@ export const STATUSES = {
 
 export const PROVIDERS = {
   GITHUB: 'github',
+  BITBUCKET: 'bitbucket',
   BITBUCKET_SERVER: 'bitbucket_server',
 };
 
@@ -24,21 +25,21 @@ export const BITBUCKET_SERVER_PAGE_LENGTH = 25;
 const SCHEDULED_STATUS_ICON = {
   icon: 'status-scheduled',
   text: __('Pending'),
-  variant: 'muted',
+  variant: 'neutral',
 };
 
 export const STATUS_ICON_MAP = {
   [STATUSES.NONE]: {
     icon: 'status-waiting',
     text: __('Not started'),
-    variant: 'muted',
+    variant: 'neutral',
   },
   [STATUSES.SCHEDULING]: SCHEDULED_STATUS_ICON,
   [STATUSES.SCHEDULED]: SCHEDULED_STATUS_ICON,
   [STATUSES.CREATED]: SCHEDULED_STATUS_ICON,
   [STATUSES.STARTED]: {
     icon: 'status-running',
-    text: __('Importing...'),
+    text: __('Importing…'),
     variant: 'info',
   },
   [STATUSES.FAILED]: {

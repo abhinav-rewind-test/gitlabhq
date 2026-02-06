@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Projects::TagsController do
+RSpec.describe Projects::TagsController, feature_category: :source_code_management do
   let(:project) { create(:project, :public, :repository) }
   let!(:release) { create(:release, project: project, tag: "v1.1.0") }
   let!(:invalid_release) { create(:release, project: project, tag: 'does-not-exist') }
@@ -75,16 +75,14 @@ RSpec.describe Projects::TagsController do
 
       context 'when multiple tags exist' do
         before do
-          create(:ci_pipeline,
-            project: project,
-            ref: 'v1.1.0',
-            sha: project.commit('v1.1.0').sha,
-            status: :running)
-          create(:ci_pipeline,
-            project: project,
-            ref: 'v1.0.0',
-            sha: project.commit('v1.0.0').sha,
-            status: :success)
+          create(
+            :ci_pipeline, :running, :tag,
+            project: project, ref: 'v1.1.0', sha: project.commit('v1.1.0').sha
+          )
+          create(
+            :ci_pipeline, :success, :tag,
+            project: project, ref: 'v1.0.0', sha: project.commit('v1.0.0').sha
+          )
         end
 
         it 'all relevant commit statuses are received' do
@@ -97,18 +95,21 @@ RSpec.describe Projects::TagsController do
 
       context 'when a tag has multiple pipelines' do
         before do
-          create(:ci_pipeline,
-            project: project,
-            ref: 'v1.0.0',
-            sha: project.commit('v1.0.0').sha,
-            status: :running,
-            created_at: 6.months.ago)
-          create(:ci_pipeline,
-            project: project,
-            ref: 'v1.0.0',
-            sha: project.commit('v1.0.0').sha,
-            status: :success,
-            created_at: 2.months.ago)
+          create(
+            :ci_pipeline, :running, :tag,
+            project: project, ref: 'v1.0.0', sha: project.commit('v1.0.0').sha,
+            created_at: 6.months.ago
+          )
+          create(
+            :ci_pipeline, :success, :tag,
+            project: project, ref: 'v1.0.0', sha: project.commit('v1.0.0').sha,
+            created_at: 2.months.ago
+          )
+          create(
+            :ci_pipeline, :failed,
+            project: project, ref: 'v1.0.0', sha: project.commit('v1.0.0').sha,
+            created_at: 1.month.ago
+          )
         end
 
         it 'chooses the latest to determine status' do
@@ -148,12 +149,12 @@ RSpec.describe Projects::TagsController do
 
     subject(:request) do
       post(:create, params: {
-             namespace_id: project.namespace.to_param,
-             project_id: project,
-             tag_name: '1.0',
-             ref: 'master',
-             release_description: release_description
-           })
+        namespace_id: project.namespace.to_param,
+        project_id: project,
+        tag_name: '1.0',
+        ref: 'master',
+        release_description: release_description
+      })
     end
 
     it 'creates tag' do
@@ -208,22 +209,45 @@ RSpec.describe Projects::TagsController do
     end
   end
 
+  # rubocop:disable RSpec/InstanceVariable -- Needed to stub HTTP_REFERER.
   describe 'DELETE #destroy' do
     let(:tag) { project.repository.add_tag(user, 'fake-tag', 'master') }
-    let(:request) do
-      delete(:destroy, params: { id: tag.name, namespace_id: project.namespace.to_param, project_id: project })
+    let(:perform_request) do
+      delete :destroy, params: {
+        id: tag.name,
+        namespace_id: project.namespace.to_param,
+        project_id: project
+      }
     end
 
     before do
       project.add_developer(user)
       sign_in(user)
-      request
     end
 
-    it 'deletes tag and redirects to tags path' do
-      expect(project.repository.find_tag(tag.name)).not_to be_present
-      expect(controller).to set_flash[:notice].to(/Tag was removed/)
-      expect(response).to redirect_to(project_tags_path(project))
+    context 'with referrer' do
+      it 'deletes tag and redirects back to the referrer page with sort_params preserved' do
+        # Setting a referrer with sorting params
+        @request.env['HTTP_REFERER'] = project_tags_path(project, sort: 'updated_desc')
+        perform_request
+
+        expect(response).to redirect_to(project_tags_path(project, sort: 'updated_desc'))
+        expect(project.repository.find_tag(tag.name)).not_to be_present
+        expect(controller).to set_flash[:notice].to(/Tag was removed/)
+      end
+    end
+
+    context 'without referer' do
+      it 'deletes tag and redirects to tags path' do
+        # Ensure no referrer is set so we can test the fallback
+        @request.env['HTTP_REFERER'] = nil
+        perform_request
+
+        expect(project.repository.find_tag(tag.name)).not_to be_present
+        expect(controller).to set_flash[:notice].to(/Tag was removed/)
+        expect(response).to redirect_to(project_tags_path(project))
+      end
     end
   end
+  # rubocop:enable RSpec/InstanceVariable
 end

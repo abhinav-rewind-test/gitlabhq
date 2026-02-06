@@ -1,5 +1,6 @@
 <script>
 import { computePosition, autoUpdate, offset, flip, shift } from '@floating-ui/dom';
+import { throttle } from 'lodash';
 import NavItem from './nav_item.vue';
 
 // Flyout menus are shown when the MenuSection's title is hovered with the mouse.
@@ -19,17 +20,38 @@ import NavItem from './nav_item.vue';
 // triangles, one above the section title, one below, do listen to events,
 // keeping hover.
 
+// The flyout menu gets some padding, to keep it open when the cursor goes out
+// of bounds just a little bit. This padding is compensated with an offset, to
+// not have any visual effect.
+export const FLYOUT_PADDING = 12;
+
 export default {
   name: 'FlyoutMenu',
   components: { NavItem },
+  inject: ['isIconOnly'],
+  provide: {
+    // NavItems inside a FlyOutMenu are not affected by iconOnly state.
+    // They should always display their title and controls (pins, pills etc)
+    isIconOnly: false,
+  },
   props: {
     targetId: {
       type: String,
       required: true,
     },
+    title: {
+      type: String,
+      required: false,
+      default: null,
+    },
     items: {
       type: Array,
       required: true,
+    },
+    asyncCount: {
+      type: Object,
+      required: false,
+      default: () => ({}),
     },
   },
   data() {
@@ -41,9 +63,9 @@ export default {
       hoverTimeoutId: null,
       showSVG: true,
       targetRect: null,
+      cleanup: null,
     };
   },
-  cleanupFunction: undefined,
   computed: {
     topSVGPoints() {
       const x = (this.currentMouseX / this.targetRect.width) * 100;
@@ -59,10 +81,24 @@ export default {
 
       return `${x}, ${y} 100, ${y} 100, 100`;
     },
+    flyoutStyle() {
+      return {
+        padding: `${FLYOUT_PADDING}px`,
+        // Add extra padding on the left, to completely overlap the scrollbar of
+        // the sidebar, which can be pretty wide, depending on the user's browser.
+        // See https://gitlab.com/gitlab-org/gitlab/-/issues/426023
+        'padding-left': `${FLYOUT_PADDING * 2}px`,
+      };
+    },
   },
   created() {
     const target = document.querySelector(`#${this.targetId}`);
-    target.addEventListener('mousemove', this.onMouseMove);
+
+    // 50ms throttle = ~20fps, which is smooth enough for UI tracking
+    this.onMouseMove = throttle(this.onMouseMove, 50);
+
+    // Add the event listener with the throttled function
+    target.addEventListener('mousemove', this.onMouseMove, { passive: true });
   },
   mounted() {
     const target = document.querySelector(`#${this.targetId}`);
@@ -71,7 +107,14 @@ export default {
 
     const updatePosition = () =>
       computePosition(target, flyout, {
-        middleware: [offset({ alignmentAxis: -12 }), flip(), shift()],
+        middleware: [
+          offset({
+            mainAxis: -FLYOUT_PADDING,
+            alignmentAxis: -FLYOUT_PADDING,
+          }),
+          flip(),
+          shift(),
+        ],
         placement: 'right-start',
         strategy: 'fixed',
       }).then(({ x, y }) => {
@@ -95,13 +138,23 @@ export default {
         };
       });
 
-    this.$options.cleanupFunction = autoUpdate(target, flyout, updatePosition);
-  },
-  beforeUnmount() {
-    this.$options.cleanupFunction();
-    clearTimeout(this.hoverTimeoutId);
+    this.cleanup = autoUpdate(target, flyout, updatePosition);
   },
   beforeDestroy() {
+    // Clean up the autoUpdate listener
+    if (this.cleanup) {
+      this.cleanup();
+    }
+
+    // Clear any pending timeout
+    clearTimeout(this.hoverTimeoutId);
+
+    // Cancel any pending throttled calls
+    if (this.onMouseMove && this.onMouseMove.cancel) {
+      this.onMouseMove.cancel();
+    }
+
+    // Remove the event listener
     const target = document.querySelector(`#${this.targetId}`);
     target.removeEventListener('mousemove', this.onMouseMove);
   },
@@ -126,24 +179,38 @@ export default {
 <template>
   <div
     :id="`${targetId}-flyout`"
-    class="gl-fixed gl-p-4 gl-mx-n1 gl-z-index-9999 gl-max-h-full gl-overflow-y-auto"
+    :style="flyoutStyle"
+    class="nav-flyout-menu gl-fixed gl-z-9999 -gl-mx-1"
     @mouseover="$emit('mouseover')"
     @mouseleave="$emit('mouseleave')"
   >
-    <ul
-      class="gl-min-w-20 gl-max-w-34 gl-border-1 gl-rounded-base gl-border-solid gl-border-gray-100 gl-shadow-md gl-bg-white gl-p-2 gl-pb-1 gl-list-style-none"
-      @mouseenter="showSVG = false"
+    <div
+      class="gl-rounded-lg gl-border-1 gl-border-solid gl-border-default gl-bg-subtle gl-p-2 gl-pb-1 gl-shadow-md dark:gl-bg-strong"
     >
-      <nav-item
-        v-for="item of items"
-        :key="item.id"
-        :item="item"
-        :is-flyout="true"
-        @pin-add="(itemId, itemTitle) => $emit('pin-add', itemId, itemTitle)"
-        @pin-remove="(itemId, itemTitle) => $emit('pin-remove', itemId, itemTitle)"
-        @nav-link-click="$emit('nav-link-click')"
-      />
-    </ul>
+      <header
+        v-if="isIconOnly && title"
+        class="gl-px-5 gl-py-2 gl-text-sm gl-font-bold gl-text-heading"
+      >
+        {{ title }}
+      </header>
+      <hr v-if="isIconOnly && title" class="-gl-mx-2 gl-my-2" />
+      <ul
+        class="gl-m-0 gl-max-h-[70vh] gl-min-w-20 gl-max-w-34 gl-list-none gl-overflow-y-auto gl-p-0"
+        @mouseenter="showSVG = false"
+      >
+        <nav-item
+          v-for="item of items"
+          :key="item.id"
+          :item="item"
+          :is-flyout="true"
+          :async-count="asyncCount"
+          @pin-add="(itemId, itemTitle) => $emit('pin-add', itemId, itemTitle)"
+          @pin-remove="(itemId, itemTitle) => $emit('pin-remove', itemId, itemTitle)"
+          @nav-link-click="$emit('nav-link-click')"
+        />
+      </ul>
+    </div>
+
     <svg
       v-if="targetRect && showSVG"
       :width="flyoutX"

@@ -3,6 +3,21 @@
 require 'spec_helper'
 
 RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projects do
+  shared_examples 'pushes feature flag' do |action|
+    render_views
+
+    it 'pushes expected feature flag to the frontend' do
+      stub_feature_flags(explore_projects_vue: false, retire_trending_projects: false)
+
+      get action
+
+      expect(response.body).to have_pushed_frontend_feature_flags(
+        exploreProjectsVue: false,
+        retireTrendingProjects: false
+      ), response.body
+    end
+  end
+
   shared_examples 'explore projects' do
     let(:expected_default_sort) { 'latest_activity_desc' }
 
@@ -24,72 +39,118 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
     describe 'GET #trending.json' do
       render_views
 
-      before do
+      it 'redirects to active projects with json format', :aggregate_failures do
         get :trending, format: :json
+
+        expect(response).to redirect_to(active_explore_projects_path(format: :json))
+        expect(response).to have_gitlab_http_status(:found)
       end
 
-      it { is_expected.to respond_with(:success) }
+      context 'when `retire_trending_projects` flag is disabled' do
+        before do
+          stub_feature_flags(retire_trending_projects: false)
+          get :trending, format: :json
+        end
 
-      it 'sets a default sort parameter' do
-        expect(controller.params[:sort]).to eq(expected_default_sort)
-        expect(assigns[:sort]).to eq(expected_default_sort)
+        it { is_expected.to respond_with(:success) }
+
+        it 'sets a default sort parameter' do
+          expect(controller.params[:sort]).to eq(expected_default_sort)
+          expect(assigns[:sort]).to eq(expected_default_sort)
+        end
       end
     end
 
     describe 'GET #starred.json' do
       render_views
 
-      before do
+      it 'redirects to active projects with stars_desc sort and json format', :aggregate_failures do
         get :starred, format: :json
+
+        expect(response).to redirect_to(active_explore_projects_path(sort: 'stars_desc', format: :json))
+        expect(response).to have_gitlab_http_status(:found)
       end
 
-      it { is_expected.to respond_with(:success) }
+      context 'when `explore_projects_vue` flag is disabled' do
+        before do
+          stub_feature_flags(explore_projects_vue: false)
+          get :starred, format: :json
+        end
 
-      it 'sets a default sort parameter' do
-        expect(controller.params[:sort]).to eq(expected_default_sort)
-        expect(assigns[:sort]).to eq(expected_default_sort)
+        it { is_expected.to respond_with(:success) }
+
+        it 'sets a default sort parameter' do
+          expect(controller.params[:sort]).to eq(expected_default_sort)
+          expect(assigns[:sort]).to eq(expected_default_sort)
+        end
       end
     end
 
+    describe 'GET #index' do
+      it_behaves_like 'pushes feature flag', :index
+    end
+
     describe 'GET #trending' do
-      context 'sorting by update date' do
-        let(:project1) { create(:project, :public, updated_at: 3.days.ago) }
-        let(:project2) { create(:project, :public, updated_at: 1.day.ago) }
+      it 'redirects to active projects' do
+        get :trending
 
-        before do
-          create(:trending_project, project: project1)
-          create(:trending_project, project: project2)
-        end
-
-        it 'sorts by last updated' do
-          get :trending, params: { sort: 'updated_desc' }
-
-          expect(assigns(:projects)).to eq [project2, project1]
-        end
-
-        it 'sorts by oldest updated' do
-          get :trending, params: { sort: 'updated_asc' }
-
-          expect(assigns(:projects)).to eq [project1, project2]
-        end
+        expect(response).to redirect_to(active_explore_projects_path)
       end
 
-      context 'projects aimed for deletion' do
-        let_it_be(:project1) { create(:project, :public, path: 'project-1') }
-        let_it_be(:project2) { create(:project, :public, path: 'project-2') }
-        let_it_be(:aimed_for_deletion_project) { create(:project, :public, :archived, marked_for_deletion_at: 2.days.ago) }
-
+      context 'when `retire_trending_projects` flag is disabled' do
         before do
-          create(:trending_project, project: project1)
-          create(:trending_project, project: project2)
-          create(:trending_project, project: aimed_for_deletion_project)
+          stub_feature_flags(retire_trending_projects: false)
         end
 
-        it 'does not list projects aimed for deletion' do
-          get :trending
+        it_behaves_like 'pushes feature flag', :trending
 
-          expect(assigns(:projects)).to eq [project2, project1]
+        context 'sorting by update date' do
+          let(:project1) { create(:project, :public, updated_at: 3.days.ago) }
+          let(:project2) { create(:project, :public, updated_at: 1.day.ago) }
+
+          before do
+            create(:trending_project, project: project1)
+            create(:trending_project, project: project2)
+          end
+
+          it 'sorts by last updated' do
+            get :trending, params: { sort: 'updated_desc' }
+
+            expect(assigns(:projects)).to eq [project2, project1]
+          end
+
+          it 'sorts by oldest updated' do
+            get :trending, params: { sort: 'updated_asc' }
+
+            expect(assigns(:projects)).to eq [project1, project2]
+          end
         end
+
+        context 'projects aimed for deletion' do
+          let_it_be(:project1) { create(:project, :public, path: 'project-1') }
+          let_it_be(:project2) { create(:project, :public, path: 'project-2') }
+          let_it_be(:aimed_for_deletion_project) { create(:project, :public, :archived, marked_for_deletion_at: 2.days.ago) }
+
+          before do
+            create(:trending_project, project: project1)
+            create(:trending_project, project: project2)
+            create(:trending_project, project: aimed_for_deletion_project)
+          end
+
+          it 'does not list projects aimed for deletion' do
+            get :trending
+
+            expect(assigns(:projects)).to eq [project2, project1]
+          end
+        end
+      end
+    end
+
+    describe 'GET #starred' do
+      it 'redirects to active projects with stars_desc sort' do
+        get :starred
+
+        expect(response).to redirect_to(active_explore_projects_path(sort: 'stars_desc'))
       end
     end
 
@@ -104,7 +165,7 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
 
       context 'when topic exists' do
         before do
-          create(:topic, name: 'topic1')
+          create(:topic, name: 'topic1', organization: current_organization)
         end
 
         it 'renders the template' do
@@ -121,6 +182,19 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
           expect(response).to render_template('topic')
         end
       end
+
+      context 'when current organization is not set' do
+        before do
+          create(:topic, name: 'topic1', organization: current_organization)
+          allow(::Current).to receive(:organization).and_return(nil)
+        end
+
+        it 'renders a 404 error' do
+          get :topic, params: { topic_name: 'topic1' }
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
     end
 
     describe 'GET #topic.atom' do
@@ -133,14 +207,10 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
       end
 
       context 'when topic exists' do
-        let(:topic) { create(:topic, name: 'topic1') }
-        let_it_be(:older_project) { create(:project, :public, updated_at: 1.day.ago) }
-        let_it_be(:newer_project) { create(:project, :public, updated_at: 2.days.ago) }
+        let_it_be(:topic) { create(:topic, name: 'topic1', organization: current_organization) }
 
-        before do
-          create(:project_topic, project: older_project, topic: topic)
-          create(:project_topic, project: newer_project, topic: topic)
-        end
+        let_it_be(:older_project) { create(:project, :public, updated_at: 1.day.ago, namespace: namespace, topic_list: 'topic1') }
+        let_it_be(:newer_project) { create(:project, :public, updated_at: 2.days.ago, namespace: namespace, topic_list: 'topic1') }
 
         it 'renders the template' do
           get :topic, format: :atom, params: { topic_name: 'topic1' }
@@ -236,17 +306,21 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
           render_views
 
           before do
+            stub_feature_flags(retire_trending_projects: false) if endpoint == :trending
+            stub_feature_flags(explore_projects_vue: false) if endpoint == :starred
             get endpoint, params: { page: page_limit }
           end
 
           it { is_expected.to respond_with(:success) }
-          it { is_expected.to render_template("explore/projects/#{endpoint}") }
+          it { is_expected.to render_template('explore/projects/index') }
         end
 
         describe "GET #{endpoint}.json" do
           render_views
 
           before do
+            stub_feature_flags(retire_trending_projects: false) if endpoint == :trending
+            stub_feature_flags(explore_projects_vue: false) if endpoint == :starred
             get endpoint, params: { page: page_limit }, format: :json
           end
 
@@ -291,9 +365,10 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
   end
 
   context 'when user is signed in' do
-    let(:user) { create(:user) }
-    let_it_be(:project) { create(:project, name: 'Project 1') }
-    let_it_be(:project2) { create(:project, name: 'Project 2') }
+    let_it_be(:namespace) { create(:namespace, organization: current_organization) }
+    let_it_be(:user) { create(:user, namespace: namespace) }
+    let_it_be(:project) { create(:project, name: 'Project 1', namespace: namespace) }
+    let_it_be(:project2) { create(:project, name: 'Project 2', namespace: namespace) }
 
     before do
       sign_in(user)
@@ -318,21 +393,6 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
       let(:controller_action) { :index }
       let(:params_with_name) { { name: 'some project' } }
 
-      it 'assigns the correct all_user_projects' do
-        get :index
-        all_user_projects = assigns(:all_user_projects)
-
-        expect(all_user_projects.count).to eq(2)
-      end
-
-      it 'assigns the correct all_starred_projects' do
-        get :index
-        all_starred_projects = assigns(:all_starred_projects)
-
-        expect(all_starred_projects.count).to eq(1)
-        expect(all_starred_projects).to include(project2)
-      end
-
       context 'when disable_anonymous_project_search is enabled' do
         before do
           stub_feature_flags(disable_anonymous_project_search: true)
@@ -349,6 +409,8 @@ RSpec.describe Explore::ProjectsController, feature_category: :groups_and_projec
   end
 
   context 'when user is not signed in' do
+    let_it_be(:namespace) { create(:namespace, organization: current_organization) }
+
     include_examples 'explore projects'
     include_examples "blocks high page numbers"
     include_examples 'avoids N+1 queries'

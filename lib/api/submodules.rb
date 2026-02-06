@@ -2,6 +2,8 @@
 
 module API
   class Submodules < ::API::Base
+    SUBMODULE_ENDPOINT_REQUIREMENTS = API::NAMESPACE_OR_PROJECT_REQUIREMENTS.merge(submodule: API::NO_SLASH_URL_PART_REGEX)
+
     before { authenticate! }
 
     feature_category :source_code_management
@@ -26,6 +28,7 @@ module API
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'Update existing submodule reference in repository' do
         success code: 200, model: Entities::CommitDetail
+        tags ['submodules']
         failure [
           { code: 404, message: '404 Project Not Found' },
           { code: 401, message: '401 Unauthorized' },
@@ -35,7 +38,7 @@ module API
       params do
         requires :submodule,
           type: String,
-          desc: 'Url encoded full path to submodule.',
+          desc: 'URL-encoded full path to submodule.',
           documentation: { example: 'gitlab-org/gitlab-shell' }
         requires :commit_sha,
           type: String,
@@ -47,7 +50,8 @@ module API
           desc: 'Commit message. If no message is provided a default one will be set.',
           documentation: { example: 'Commit message' }
       end
-      put ":id/repository/submodules/:submodule", requirements: Files::FILE_ENDPOINT_REQUIREMENTS do
+      route_setting :authorization, permissions: :update_repository_submodule, boundary_type: :project
+      put ":id/repository/submodules/:submodule", requirements: SUBMODULE_ENDPOINT_REQUIREMENTS do
         authorize! :push_code, user_project
 
         submodule_params = declared_params(include_missing: false)

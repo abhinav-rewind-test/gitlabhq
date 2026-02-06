@@ -18,6 +18,7 @@ import { reportToSentry } from '~/ci/utils';
  * - pipelines detail page in big graph
  */
 export default {
+  name: 'JobActionComponent',
   components: {
     GlIcon,
     GlButton,
@@ -50,6 +51,7 @@ export default {
       default: false,
     },
   },
+  emits: ['actionButtonClicked', 'showActionConfirmationModal', 'pipelineActionRequestComplete'],
   data() {
     return {
       isDisabled: false,
@@ -69,9 +71,6 @@ export default {
         this.$emit('actionButtonClicked');
       }
     },
-  },
-  errorCaptured(err, _vm, info) {
-    reportToSentry('action_component', `error: ${err}, info: ${info}`);
   },
   methods: {
     /**
@@ -98,6 +97,7 @@ export default {
         .post(`${this.link}.json`)
         .then(() => {
           this.isLoading = false;
+          this.isDisabled = false;
 
           this.$emit('pipelineActionRequestComplete');
         })
@@ -119,28 +119,25 @@ export default {
   <gl-button
     :id="`js-ci-action-${link}`"
     ref="button"
+    v-gl-tooltip.viewport.right
+    :title="tooltipText"
     :class="cssClass"
     :disabled="isDisabled"
     size="small"
-    class="js-ci-action gl-ci-action-icon-container ci-action-icon-container ci-action-icon-wrapper gl-display-flex gl-align-items-center gl-justify-content-center"
+    class="js-ci-action gl-ci-action-icon-container ci-action-icon-container ci-action-icon-wrapper gl-flex gl-items-center gl-justify-center"
     data-testid="ci-action-button"
     @click.stop="onClickAction"
   >
-    <div
-      v-gl-tooltip.viewport
-      :title="tooltipText"
-      class="gl-display-flex gl-align-items-center gl-justify-content-center gl-h-full"
-      data-testid="ci-action-icon-tooltip-wrapper"
-    >
+    <div class="gl-flex gl-h-full gl-items-center gl-justify-center">
       <gl-loading-icon
         v-if="isLoading"
         size="sm"
-        class="gl-button-icon gl-m-2 js-action-icon-loading"
+        class="gl-button-icon js-action-icon-loading gl-m-2"
       />
       <gl-icon
         v-else
         :name="actionIcon"
-        class="gl-button-icon gl-p-1 gl-mr-0!"
+        class="gl-button-icon !gl-mr-0 gl-p-1"
         :aria-label="actionIcon"
       />
     </div>

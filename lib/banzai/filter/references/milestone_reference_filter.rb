@@ -19,7 +19,7 @@ module Banzai
             milestone_iids = fitered_ids&.pluck(:milestone_iid)&.compact
 
             if milestone_iids.present?
-              relation << find_milestones(parent, true, absolute_path: absolute_path).where(iid: milestone_iids)
+              relation << find_milestones(parent, true, absolute_path: absolute_path).iid_in(milestone_iids)
             end
 
             milestone_names = fitered_ids&.pluck(:milestone_name)&.compact
@@ -58,7 +58,11 @@ module Banzai
             # holds the iid
             { milestone_iid: symbol.to_i, milestone_name: nil, absolute_path: absolute_path }
           else
-            { milestone_iid: match_data[:milestone_iid]&.to_i, milestone_name: match_data[:milestone_name]&.tr('"', ''), absolute_path: absolute_path }
+            {
+              milestone_iid: match_data[:milestone_iid]&.to_i,
+              milestone_name: match_data[:milestone_name]&.tr('"', ''),
+              absolute_path: absolute_path
+            }
           end
         end
 
@@ -87,23 +91,10 @@ module Banzai
           # default implementation.
           return super(text, pattern) if pattern != Milestone.reference_pattern
 
-          milestones = {}
-
-          unescaped_html = unescape_html_entities(text).gsub(pattern).with_index do |match, index|
-            ident = identifier($~)
-            milestone = yield match, ident, $~[:project], $~[:namespace], $~
-
-            if milestone != match
-              milestones[index] = milestone
-              "#{REFERENCE_PLACEHOLDER}#{index}"
-            else
-              match
-            end
+          replace_references_in_text_with_html(text.gsub(pattern)) do |match_data|
+            ident = identifier(match_data)
+            yield match_data[0], ident, match_data[:project], match_data[:namespace], match_data
           end
-
-          return text if milestones.empty?
-
-          escape_with_placeholders(unescaped_html, milestones)
         end
 
         def find_milestones(parent, find_by_iid = false, absolute_path: false)
@@ -136,15 +127,15 @@ module Banzai
             .milestone_url(milestone, only_path: context[:only_path])
         end
 
-        def object_link_text(object, matches)
-          milestone_link = escape_once(super)
+        def object_link_content_html(object, matches)
+          html = super
           reference = object.project&.to_reference_base(project)
 
-          if reference.present?
-            "#{milestone_link} <i>in #{reference}</i>".html_safe
-          else
-            milestone_link
-          end
+          i = doc.document.create_element('i')
+          i.content = "in #{reference}"
+          html += " #{i.to_html}" if reference.present?
+
+          html
         end
 
         def object_link_title(object, matches)
@@ -157,6 +148,15 @@ module Banzai
 
         def requires_unescaping?
           true
+        end
+
+        def data_attributes_for(original, parent, object, link_content: false, link_reference: false)
+          object_parent = object.resource_parent
+
+          return super unless object_parent.is_a?(Group)
+          return super if object_parent.id == parent.id
+
+          super.merge({ group: object_parent.id, namespace: object_parent.id, project: nil })
         end
       end
     end

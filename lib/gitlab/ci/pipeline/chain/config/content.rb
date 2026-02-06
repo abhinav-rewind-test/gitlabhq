@@ -11,7 +11,6 @@ module Gitlab
 
             def perform!
               if pipeline_config&.exists?
-                @pipeline.build_pipeline_config(content: pipeline_config.content)
                 @command.config_content = pipeline_config.content
                 @pipeline.config_source = pipeline_config.source
                 @command.pipeline_config = pipeline_config
@@ -32,7 +31,11 @@ module Gitlab
                   project: project, sha: @pipeline.sha,
                   custom_content: @command.content,
                   pipeline_source: @command.source, pipeline_source_bridge: @command.bridge,
-                  triggered_for_branch: @pipeline.branch?
+                  triggered_for_branch: @pipeline.branch?,
+                  ref: @pipeline.ref,
+                  source_branch: @command.merge_request&.source_branch || @pipeline.ref,
+                  pipeline_policy_context: @command.pipeline_policy_context,
+                  inputs: @command.inputs
                 )
               end
             end
@@ -42,3 +45,5 @@ module Gitlab
     end
   end
 end
+
+Gitlab::Ci::Pipeline::Chain::Config::Content.prepend_mod

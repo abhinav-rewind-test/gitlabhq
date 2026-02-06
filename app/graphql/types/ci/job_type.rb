@@ -3,9 +3,11 @@
 module Types
   module Ci
     # rubocop: disable Graphql/AuthorizeTypes
-    # The permission is presented through `StageType` that has its own authorization
+    # The permission is presented through different types that access JobType
     class JobType < BaseObject
       graphql_name 'CiJob'
+
+      implements ::Types::Ci::JobInterface
 
       present_using ::Ci::BuildPresenter
       field_class Types::Ci::JobBaseField
@@ -15,120 +17,136 @@ module Types
       expose_permissions Types::PermissionTypes::Ci::Job
 
       field :allow_failure, ::GraphQL::Types::Boolean, null: false,
-                                                       description: 'Whether the job is allowed to fail.'
+        description: 'Whether the job is allowed to fail.'
       field :duration, GraphQL::Types::Int, null: true,
-                                            description: 'Duration of the job in seconds.'
+        description: 'Duration of the job in seconds.'
       field :id, ::Types::GlobalIDType[::CommitStatus].as('JobID'), null: true,
-                                                                    description: 'ID of the job.'
+        description: 'ID of the job.'
       field :kind, type: ::Types::Ci::JobKindEnum, null: false,
-                   description: 'Indicates the type of job.'
+        description: 'Indicates the type of job.'
       field :name, GraphQL::Types::String, null: true,
-                                           description: 'Name of the job.'
+        description: 'Name of the job.'
       field :needs, BuildNeedType.connection_type, null: true,
-                                                   description: 'References to builds that must complete before the jobs run.'
-      field :pipeline, Types::Ci::PipelineType, null: true,
-                                                description: 'Pipeline the job belongs to.'
+        description: 'References to builds that must complete before the jobs run.'
+      field :pipeline, Types::Ci::PipelineInterface, null: true,
+        description: 'Pipeline the job belongs to.'
 
       field :runner, Types::Ci::RunnerType, null: true, description: 'Runner assigned to execute the job.'
       field :runner_manager, ::Types::Ci::RunnerManagerType, null: true,
-            description: 'Runner manager assigned to the job.',
-            alpha: { milestone: '15.11' }
+        description: 'Runner manager assigned to the job.'
       field :stage, Types::Ci::StageType, null: true,
-                                          description: 'Stage of the job.'
+        description: 'Stage of the job.'
       field :status,
-            type: ::Types::Ci::JobStatusEnum,
-            null: true,
-            description: "Status of the job."
+        type: ::Types::Ci::JobStatusEnum,
+        null: true,
+        description: "Status of the job."
       field :tags, [GraphQL::Types::String], null: true,
-                                             description: 'Tags for the current job.'
+        description: 'Tags for the current job.'
 
       # Life-cycle timestamps:
       field :created_at, Types::TimeType, null: false,
-                                          description: "When the job was created."
+        description: "When the job was created."
       field :erased_at, Types::TimeType, null: true,
-                                          description: "When the job was erased."
+        description: "When the job was erased."
       field :finished_at, Types::TimeType, null: true,
-                                           description: 'When a job has finished running.'
+        description: 'When a job has finished running.'
       field :queued_at, Types::TimeType, null: true,
-                                         description: 'When the job was enqueued and marked as pending.'
+        description: 'When the job was enqueued and marked as pending.'
       field :scheduled_at, Types::TimeType, null: true,
-                                            description: 'Schedule for the build.'
+        description: 'Schedule for the build.'
       field :started_at, Types::TimeType, null: true,
-                                          description: 'When the job was started.'
+        description: 'When the job was started.'
 
       # Life-cycle durations:
       field :queued_duration,
-            type: Types::DurationType,
-            null: true,
-            description: 'How long the job was enqueued before starting.'
+        type: Types::DurationType,
+        null: true,
+        description: 'How long the job was enqueued before starting.'
 
       field :active, GraphQL::Types::Boolean, null: false, method: :active?,
-                                              description: 'Indicates the job is active.'
+        description: 'Indicates the job is active.'
       field :artifacts, Types::Ci::JobArtifactType.connection_type, null: true,
-                                                                    description: 'Artifacts generated by the job.'
+        description: 'Artifacts generated by the job.'
       field :browse_artifacts_path, GraphQL::Types::String, null: true,
-                                                            description: "URL for browsing the artifact's archive."
+        description: "URL for browsing the artifact's archive."
       field :cancelable, GraphQL::Types::Boolean, null: false, method: :cancelable?,
-                                                  description: 'Indicates the job can be canceled.'
+        description: 'Indicates the job can be canceled.'
       field :commit_path, GraphQL::Types::String, null: true,
-                                                  description: 'Path to the commit that triggered the job.'
+        description: 'Path to the commit that triggered the job.'
       field :coverage, GraphQL::Types::Float, null: true,
-                                              description: 'Coverage level of the job.'
+        description: 'Coverage level of the job.'
       field :created_by_tag, GraphQL::Types::Boolean, null: false,
-                                                      description: 'Whether the job was created by a tag.', method: :tag?
+        description: 'Whether the job was created by a tag.', method: :tag?
       field :detailed_status, Types::Ci::DetailedStatusType, null: true,
-                                                             description: 'Detailed status of the job.'
+        description: 'Detailed status of the job.'
       field :downstream_pipeline, Types::Ci::PipelineType, null: true,
-                                                           description: 'Downstream pipeline for a bridge.'
+        description: 'Downstream pipeline for a bridge.'
       field :manual_job, GraphQL::Types::Boolean, null: true,
-                                                  description: 'Whether the job has a manual action.'
+        description: 'Whether the job has a manual action.'
       field :manual_variables, ManualVariableType.connection_type, null: true,
-                                                                   description: 'Variables added to a manual job when the job is triggered.'
+        description: 'Variables added to a manual job when the job is triggered.',
+        authorize: :read_manual_variables
       field :play_path, GraphQL::Types::String, null: true,
-                                                description: 'Play path of the job.'
+        description: 'Play path of the job.'
       field :playable, GraphQL::Types::Boolean, null: false, method: :playable?,
-                                                description: 'Indicates the job can be played.'
+        description: 'Indicates the job can be played.'
       field :previous_stage_jobs, Types::Ci::JobType.connection_type,
-            null: true,
-            description: 'Jobs from the previous stage.'
+        null: true,
+        description: 'Jobs from the previous stage.'
       field :previous_stage_jobs_or_needs, Types::Ci::JobNeedUnion.connection_type,
-            null: true,
-            description: 'Jobs that must complete before the job runs. Returns `BuildNeed`, ' \
-                         'which is the needed jobs if the job uses the `needs` keyword, or the previous stage jobs otherwise.',
-            deprecated: { reason: 'Replaced by previousStageJobs and needs fields', milestone: '16.4' }
+        null: true,
+        description: 'Jobs that must complete before the job runs. Returns `BuildNeed`, ' \
+          'which is the needed jobs if the job uses the `needs` keyword, or the previous stage jobs otherwise.',
+        deprecated: { reason: 'Replaced by previousStageJobs and needs fields', milestone: '16.4' }
       field :ref_name, GraphQL::Types::String, null: true,
-                                               description: 'Ref name of the job.'
+        description: 'Ref name of the job.'
       field :ref_path, GraphQL::Types::String, null: true,
-                                               description: 'Path to the ref.'
+        description: 'Path to the ref.'
       field :retried, GraphQL::Types::Boolean, null: true,
-                                               description: 'Indicates that the job has been retried.'
+        description: 'Indicates that the job has been retried.'
+      field :retry_path, GraphQL::Types::String, null: true,
+        description: 'Retry path of the job.'
       field :retryable, GraphQL::Types::Boolean, null: false,
-                                                 description: 'Indicates the job can be retried.'
+        description: 'Indicates the job can be retried.'
       field :scheduled, GraphQL::Types::Boolean, null: false, method: :scheduled?,
-                                              description: 'Indicates the job is scheduled.'
+        description: 'Indicates the job is scheduled.'
       field :scheduling_type, GraphQL::Types::String, null: true,
-                                                      description: 'Type of job scheduling. Value is `dag` if the job uses the `needs` keyword, and `stage` otherwise.'
+        description: 'Type of job scheduling. Value is `dag` if the job uses the `needs` keyword, and `stage` otherwise.'
       field :short_sha, type: GraphQL::Types::String, null: false,
-                        description: 'Short SHA1 ID of the commit.',
-                        if_unauthorized: 'Unauthorized'
+        description: 'Short SHA1 ID of the commit.',
+        if_unauthorized: 'Unauthorized'
       field :stuck, GraphQL::Types::Boolean, null: false, method: :stuck?,
-                                             description: 'Indicates the job is stuck.'
-      field :trace, Types::Ci::JobTraceType, null: true,
-                                             description: 'Trace generated by the job.'
+        description: 'Indicates the job is stuck.'
       field :triggered, GraphQL::Types::Boolean, null: true,
-                                                 description: 'Whether the job was triggered.'
+        description: 'Whether the job was triggered.'
       field :web_path, GraphQL::Types::String, null: true,
-                                               description: 'Web path of the job.'
+        description: 'Web path of the job.'
 
       field :project, Types::ProjectType, null: true, description: 'Project that the job belongs to.'
 
       field :can_play_job, GraphQL::Types::Boolean,
-            null: false, resolver_method: :can_play_job?,
-            description: 'Indicates whether the current user can play the job.',
-            calls_gitaly: true
+        null: false, resolver_method: :can_play_job?,
+        description: 'Indicates whether the current user can play the job.',
+        calls_gitaly: true
 
       field :failure_message, GraphQL::Types::String, null: true,
-                                                     description: 'Message on why the job failed.'
+        description: 'Message on why the job failed.'
+
+      field :source, GraphQL::Types::String, null: true,
+        description: 'Policy or action that initiated the job. If not set, the value is inherited from the pipeline.'
+
+      field :exit_code, GraphQL::Types::Int, null: true,
+        description: 'Exit code of the job. Available for jobs that started after upgrading to GitLab 16.10 and failed with an exit code.'
+
+      field :inputs_spec, [Types::Ci::Inputs::SpecType], null: true,
+        description: 'Input specification for the job. Defines the inputs that can be provided when creating or retrying the job. This field can only be resolved for one job in any single request.' do
+          extension ::Gitlab::Graphql::Limit::FieldCallCount, limit: 1
+        end
+
+      field :inputs, [Types::Ci::Inputs::FieldType], null: true,
+        description: 'Input values that were used when the job was created or retried. A value is only present in the field if it differs from the default value in the input configuration. This field can only be resolved for one job in any single request.' do
+          extension ::Gitlab::Graphql::Limit::FieldCallCount, limit: 1
+        end
 
       def can_play_job?
         object.playable? && Ability.allowed?(current_user, :play_job, object)
@@ -153,17 +171,15 @@ module Types
       end
 
       def tags
-        object.tags.map(&:name) if object.is_a?(::Ci::Build)
-      end
-
-      def detailed_status
-        object.detailed_status(context[:current_user])
+        object.tag_list if object.is_a?(::Ci::Build)
       end
 
       def artifacts
-        if object.is_a?(::Ci::Build)
-          object.job_artifacts
-        end
+        object.job_artifacts if object.is_a?(::Ci::Build)
+      end
+
+      def source
+        object.source if object.is_a?(::Ci::Build)
       end
 
       def trace
@@ -209,7 +225,7 @@ module Types
           plucked_build_to_runner_manager_ids =
             ::Ci::RunnerManagerBuild.for_build(build_ids).pluck_build_id_and_runner_manager_id
           runner_managers = ::Ci::RunnerManager.id_in(plucked_build_to_runner_manager_ids.values.uniq)
-          Preloaders::RunnerManagerPolicyPreloader.new(runner_managers, current_user).execute
+          ::Ci::Preloaders::RunnerManagerPolicyPreloader.new(runner_managers, current_user).execute
           runner_managers_by_id = runner_managers.index_by(&:id)
 
           build_ids.each do |build_id|
@@ -232,16 +248,18 @@ module Types
         ::Gitlab::Routing.url_helpers.project_commit_path(object.project, object.sha)
       end
 
-      def ref_name
-        object&.ref
-      end
-
       def ref_path
         ::Gitlab::Routing.url_helpers.project_commits_path(object.project, ref_name)
       end
 
       def web_path
-        ::Gitlab::Routing.url_helpers.project_job_path(object.project, object)
+        ::Gitlab::Routing.url_helpers.project_job_path(object.project, object) unless object.is_a?(::Ci::Bridge)
+      end
+
+      def retry_path
+        return unless retryable
+
+        ::Gitlab::Routing.url_helpers.retry_project_job_path(object.project, object)
       end
 
       def play_path
@@ -256,23 +274,38 @@ module Types
         object&.coverage
       end
 
-      def manual_job
-        object.try(:action?)
-      end
-
-      def triggered
-        object.try(:trigger_request)
-      end
-
       def manual_variables
-        if object.action? && object.respond_to?(:job_variables)
-          object.job_variables
+        if object.try(:action?) && !object.is_a?(GenericCommitStatus)
+          BatchLoader::GraphQL.for(object.id).batch do |job_ids, loader|
+            variables_by_job_id = ::Ci::JobVariable.for_jobs(job_ids).group_by(&:job_id)
+
+            job_ids.each do |id|
+              loader.call(id, variables_by_job_id[id] || [])
+            end
+          end
         else
-          []
+          ::Ci::JobVariable.none
         end
+      end
+
+      def exit_code
+        object.exit_code if object.build.respond_to?(:exit_code)
+      end
+
+      def inputs_spec
+        return [] unless object.is_a?(::Ci::Build)
+
+        inputs_spec = object.options[:inputs]
+        return [] unless inputs_spec.present?
+
+        ::Ci::Inputs::Builder.new(inputs_spec).all_inputs
+      end
+
+      def inputs
+        return unless object.is_a?(::Ci::Build)
+
+        object.inputs
       end
     end
   end
 end
-
-Types::Ci::JobType.prepend_mod_with('Types::Ci::JobType')

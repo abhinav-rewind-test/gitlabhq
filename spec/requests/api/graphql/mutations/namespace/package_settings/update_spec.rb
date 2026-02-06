@@ -148,7 +148,6 @@ RSpec.describe 'Updating the package settings', feature_category: :package_regis
 
   RSpec.shared_examples 'accepting the mutation request creating the package settings' do
     it_behaves_like 'creating the namespace package setting'
-    it_behaves_like 'returning a success'
     it_behaves_like 'rejecting invalid regex'
   end
 
@@ -162,15 +161,6 @@ RSpec.describe 'Updating the package settings', feature_category: :package_regis
 
       expect(mutation_response).to be_nil
     end
-  end
-
-  # To be removed when raise_group_admin_package_permission_to_owner FF is removed
-  RSpec.shared_examples 'disabling admin_package feature flag' do |action:|
-    before do
-      stub_feature_flags(raise_group_admin_package_permission_to_owner: false)
-    end
-
-    it_behaves_like "accepting the mutation request #{action} the package settings"
   end
 
   describe 'post graphql mutation' do
@@ -195,7 +185,6 @@ RSpec.describe 'Updating the package settings', feature_category: :package_regis
         end
 
         it_behaves_like params[:shared_examples_name]
-        it_behaves_like 'disabling admin_package feature flag', action: :updating if params[:user_role] == :maintainer
       end
     end
 
@@ -219,7 +208,6 @@ RSpec.describe 'Updating the package settings', feature_category: :package_regis
         end
 
         it_behaves_like params[:shared_examples_name]
-        it_behaves_like 'disabling admin_package feature flag', action: :creating if params[:user_role] == :maintainer
       end
     end
   end

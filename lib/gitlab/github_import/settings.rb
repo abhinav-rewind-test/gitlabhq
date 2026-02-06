@@ -4,14 +4,6 @@ module Gitlab
   module GithubImport
     class Settings
       OPTIONAL_STAGES = {
-        single_endpoint_issue_events_import: {
-          label: 'Import issue and pull request events',
-          selected: false,
-          details: <<-TEXT.split("\n").map(&:strip).join(' ')
-            For example, opened or closed, renamed, and labeled or unlabeled.
-            Time required to import these events depends on how many issues or pull requests your project has.
-          TEXT
-        },
         single_endpoint_notes_import: {
           label: 'Use alternative comments import method',
           selected: false,
@@ -38,13 +30,8 @@ module Gitlab
         }
       }.freeze
 
-      def self.stages_array(current_user)
-        deprecated_options = %i[single_endpoint_issue_events_import]
-
-        OPTIONAL_STAGES.filter_map do |stage_name, data|
-          next if deprecated_options.include?(stage_name) &&
-            Feature.enabled?(:github_import_extended_events, current_user)
-
+      def self.stages_array(_current_user)
+        OPTIONAL_STAGES.map do |stage_name, data|
           {
             name: stage_name.to_s,
             label: s_(format("GitHubImport|%{text}", text: data[:label])),
@@ -67,7 +54,8 @@ module Gitlab
           data: {
             optional_stages: optional_stages,
             timeout_strategy: user_settings[:timeout_strategy],
-            extended_events: user_settings[:extended_events]
+            user_contribution_mapping_enabled: true,
+            pagination_limit: user_settings[:pagination_limit]
           },
           credentials: project.import_data&.credentials
         )
@@ -83,8 +71,12 @@ module Gitlab
         !enabled?(stage_name)
       end
 
-      def extended_events?
-        !!project.import_data&.data&.dig('extended_events')
+      def user_mapping_enabled?
+        project.import_data&.data&.dig('user_contribution_mapping_enabled') || false
+      end
+
+      def map_to_personal_namespace_owner?
+        project.root_ancestor.user_namespace?
       end
 
       private

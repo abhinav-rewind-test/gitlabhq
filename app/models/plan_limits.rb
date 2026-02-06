@@ -1,21 +1,33 @@
 # frozen_string_literal: true
 
 class PlanLimits < ApplicationRecord
-  include IgnorableColumns
+  include SafelyChangeColumnDefault
+
+  columns_changing_default :active_versioned_pages_deployments_limit_by_namespace
+
   ALLOWED_LIMITS_HISTORY_ATTRIBUTES = %i[notification_limit enforcement_limit storage_size_limit
     dashboard_limit_enabled_at].freeze
 
   ignore_column :ci_max_artifact_size_running_container_scanning, remove_with: '14.3', remove_after: '2021-08-22'
 
-  attribute :limits_history, :ind_jsonb, default: -> { {} }
+  attribute :limits_history, ::Gitlab::Database::Type::IndifferentJsonb.new, default: -> { {} }
   validates :limits_history, json_schema: { filename: 'plan_limits_history' }
 
   LimitUndefinedError = Class.new(StandardError)
 
   belongs_to :plan
 
+  before_validation :set_plan_name_uid
+
+  validates :plan_name_uid, presence: true
   validates :notification_limit, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :enforcement_limit, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :web_hook_calls, numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+    if: :web_hook_calls_changed?
+  validates :web_hook_calls_mid, numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+    if: :web_hook_calls_mid_changed?
+  validates :web_hook_calls_low, numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+    if: :web_hook_calls_low_changed?
 
   def exceeded?(limit_name, subject, alternate_limit: 0)
     limit = limit_for(limit_name, alternate_limit: alternate_limit)
@@ -68,6 +80,12 @@ class PlanLimits < ApplicationRecord
     end
 
     limits_history
+  end
+
+  def set_plan_name_uid
+    return if plan_name_uid.present? && !plan_id_changed?
+
+    self.plan_name_uid = plan&.plan_name_uid_before_type_cast
   end
 end
 

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module Gitlab
   module Diff
     module Rendered
@@ -18,7 +19,7 @@ module Gitlab
           attr_reader :source_diff
 
           delegate :repository, :diff_refs, :fallback_diff_refs, :unfolded, :unique_identifier,
-                   to: :source_diff
+            to: :source_diff
 
           def initialize(diff_file)
             @source_diff = diff_file
@@ -45,7 +46,11 @@ module Gitlab
           end
 
           def rendered
-            self
+            notebook_diff ? self : nil
+          end
+
+          def rendered?
+            true
           end
 
           def highlighted_diff_lines
@@ -60,6 +65,16 @@ module Gitlab
             end
           end
 
+          def diff_lines_with_match_tail
+            lines = highlighted_diff_lines
+
+            return [] if lines.empty?
+            return [] if blob.nil?
+
+            lines
+          end
+          strong_memoize_attr(:diff_lines_with_match_tail)
+
           private
 
           def notebook_diff
@@ -71,8 +86,8 @@ module Gitlab
 
               Gitlab::RenderTimeout.timeout(background: RENDERED_TIMEOUT_BACKGROUND) do
                 IpynbDiff.diff(source_diff.old_blob&.data, source_diff.new_blob&.data,
-                               raise_if_invalid_nb: true,
-                               diffy_opts: { include_diff_info: true })&.tap do
+                  raise_if_invalid_nb: true,
+                  diffy_opts: { include_diff_info: true })&.tap do
                   log_event(LOG_IPYNBDIFF_GENERATED)
                 end
               end

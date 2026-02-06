@@ -9,15 +9,24 @@ module Gitlab
             include Chain::Helpers
             include ::Gitlab::Utils::StrongMemoize
 
+            RATE_LIMITS = [
+              { key: :pipelines_create, scope: ->(chain) { [chain.project, chain.current_user, chain.command.sha] } },
+              { key: :pipelines_created_per_user, scope: ->(chain) { chain.current_user } }
+            ].freeze
+
             def perform!
               # We exclude child-pipelines from the rate limit because they represent
-              # sub-pipelines that would otherwise hit the rate limit due to having the
-              # same scope (project, user, sha).
+              # sub-pipelines, as well as execution policy pipelines
+              # that would otherwise hit the rate limit due to having the same scope (project, user, sha).
+              # We also exclude SAST FP detection workflows specifically to prevent rate limiting
+              # when processing multiple vulnerabilities concurrently.
               #
-              return if pipeline.parent_pipeline?
+              return if pipeline.parent_pipeline? || creating_policy_pipeline? || sast_fp_detection_workflow?
 
-              if rate_limit_throttled?
-                create_log_entry
+              throttled_keys = find_throttled_keys
+
+              if throttled_keys.any?
+                create_log_entry(throttled_keys)
                 error(throttle_message) if enforce_throttle?
               end
             end
@@ -28,21 +37,25 @@ module Gitlab
 
             private
 
-            def rate_limit_throttled?
-              ::Gitlab::ApplicationRateLimiter.throttled?(
-                :pipelines_create, scope: [project, current_user, command.sha]
-              )
+            def creating_policy_pipeline?
+              command.pipeline_policy_context&.pipeline_execution_context&.creating_policy_pipeline?
             end
 
-            def create_log_entry
+            def find_throttled_keys
+              RATE_LIMITS.filter_map do |limit|
+                scope = limit[:scope].call(self)
+                limit[:key] if ::Gitlab::ApplicationRateLimiter.throttled?(limit[:key], scope: scope)
+              end
+            end
+
+            def create_log_entry(throttled_keys)
               Gitlab::AppJsonLogger.info(
                 class: self.class.name,
                 namespace_id: project.namespace_id,
                 project_id: project.id,
                 commit_sha: command.sha,
-                current_user_id: current_user.id,
                 subscription_plan: project.actual_plan_name,
-                message: 'Activated pipeline creation rate limit',
+                message: "Pipeline rate limit exceeded for #{throttled_keys.to_sentence}",
                 throttled: enforce_throttle?,
                 throttle_override: throttle_override?
               )
@@ -54,14 +67,21 @@ module Gitlab
 
             def enforce_throttle?
               strong_memoize(:enforce_throttle) do
-                ::Feature.enabled?(:ci_enforce_throttle_pipelines_creation, project) &&
-                  !throttle_override?
+                !throttle_override?
               end
             end
 
             def throttle_override?
               strong_memoize(:throttle_override) do
-                ::Feature.enabled?(:ci_enforce_throttle_pipelines_creation_override, project)
+                ::Feature.enabled?(:ci_enforce_throttle_pipelines_creation_override, project, type: :ops)
+              end
+            end
+
+            def sast_fp_detection_workflow?
+              return false unless pipeline.duo_workflow?
+
+              pipeline.workload&.workflows&.any? do |workflow|
+                workflow.workflow_definition == 'sast_fp_detection/v1'
               end
             end
           end

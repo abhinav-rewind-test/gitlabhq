@@ -10,15 +10,19 @@ module Integrations
       end
 
       def installation_alias
-        '_gitlab-instance'
+        SlackIntegration.organization_alias(params[:organization_id])
       end
+
+      def fallback_alias; end
 
       def authorized?
         current_user.can_admin_all_resources?
       end
 
       def find_or_create_integration!
-        GitlabSlackApplication.for_instance.first_or_create!
+        GitlabSlackApplication
+          .for_instance
+          .first_or_create!(organization_id: params[:organization_id]) # rubocop:disable CodeReuse/ActiveRecord: -- legacy use
       end
     end
   end

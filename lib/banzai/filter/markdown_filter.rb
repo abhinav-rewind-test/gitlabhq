@@ -3,8 +3,8 @@
 module Banzai
   module Filter
     class MarkdownFilter < HTML::Pipeline::TextFilter
-      GLFM_ENGINE  = :glfm_markdown # glfm_markdown/comrak
-      CMARK_ENGINE = :cmark         # original commonmarker/cmark-gfm
+      GLFM_ENGINE    = :glfm_markdown # gitlab-glfm-markdown/Comrak
+      DEFAULT_ENGINE = GLFM_ENGINE
 
       def initialize(text, context = nil, result = nil)
         super(text, context, result)
@@ -26,38 +26,34 @@ module Banzai
       private
 
       def engine
-        engine = context[:markdown_engine] || default_engine
+        engine = context[:markdown_engine] || DEFAULT_ENGINE
 
         engine.to_s.classify
       end
 
-      def default_engine
-        GLFM_ENGINE
-      end
-
       class << self
         # Parses string representing a sourcepos in format
-        # "start_row:start_column-end_row:end_column" into 0-based
+        # "start_line:start_column-end_line:end_column" into 0-based
         # attributes. For example, "1:10-14:1" becomes
         # {
-        #   start: { row: 0, col: 9 },
-        #   end: { row: 13, col: 0 }
+        #   start: { line: 0, column: 9 },
+        #   end: { line: 13, column: 0 }
         # }
         def parse_sourcepos(sourcepos)
           start_pos, end_pos = sourcepos&.split('-')
-          start_row, start_col = start_pos&.split(':')
-          end_row, end_col = end_pos&.split(':')
+          start_line, start_column = start_pos&.split(':')
+          end_line, end_column = end_pos&.split(':')
 
-          return unless start_row && start_col && end_row && end_col
+          return unless start_line && start_column && end_line && end_column
 
           {
-            start: { row: [1, start_row.to_i].max - 1, col: [1, start_col.to_i].max - 1 },
-            end: { row: [1, end_row.to_i].max - 1, col: [1, end_col.to_i].max - 1 }
+            start: { line: [1, start_line.to_i].max - 1, column: [1, start_column.to_i].max - 1 },
+            end: { line: [1, end_line.to_i].max - 1, column: [1, end_column.to_i].max - 1 }
           }
         end
 
         def glfm_markdown?(context)
-          (context[:markdown_engine] || GLFM_ENGINE) == GLFM_ENGINE
+          (context[:markdown_engine] || DEFAULT_ENGINE) == GLFM_ENGINE
         end
       end
     end

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'raven/transports/dummy'
 require_relative '../../../config/initializers/sentry'
 
 RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_access do
@@ -9,7 +8,10 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
   include described_class
   include TermsHelper
 
-  let_it_be(:user, reload: true) { create(:user) }
+  using RSpec::Parameterized::TableSyntax
+
+  let_it_be(:organization) { create(:organization) }
+  let_it_be(:user, reload: true) { create(:user, organizations: [organization]) }
 
   let(:admin) { create(:admin) }
   let(:key) { create(:key, user: user) }
@@ -174,21 +176,21 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
       it "returns a 401 response for an invalid token" do
         env[Gitlab::Auth::AuthFinders::PRIVATE_TOKEN_HEADER] = 'invalid token'
 
-        expect { current_user }.to raise_error /401/
+        expect { current_user }.to raise_error(/401/)
       end
 
       it "returns a 403 response for a user without access" do
         env[Gitlab::Auth::AuthFinders::PRIVATE_TOKEN_HEADER] = personal_access_token.token
         allow_any_instance_of(Gitlab::UserAccess).to receive(:allowed?).and_return(false)
 
-        expect { current_user }.to raise_error /403/
+        expect { current_user }.to raise_error(/403/)
       end
 
       it 'returns a 403 response for a user who is blocked' do
         user.block!
         env[Gitlab::Auth::AuthFinders::PRIVATE_TOKEN_HEADER] = personal_access_token.token
 
-        expect { current_user }.to raise_error /403/
+        expect { current_user }.to raise_error(/403/)
       end
 
       context 'when terms are enforced' do
@@ -198,7 +200,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
         end
 
         it 'returns a 403 when a user has not accepted the terms' do
-          expect { current_user }.to raise_error /must accept the Terms of Service/
+          expect { current_user }.to raise_error(/must accept the Terms of Service/)
         end
 
         it 'sets the current user when the user accepted the terms' do
@@ -266,28 +268,28 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
         it "returns a 401 response for an invalid token" do
           env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = 'invalid token'
 
-          expect { current_user }.to raise_error /401/
+          expect { current_user }.to raise_error(/401/)
         end
 
         it "returns a 401 response for a job that's not running" do
           job.update!(status: :success)
           env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = job.token
 
-          expect { current_user }.to raise_error /401/
+          expect { current_user }.to raise_error(/401/)
         end
 
         it "returns a 403 response for a user without access" do
           env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = job.token
           allow_any_instance_of(Gitlab::UserAccess).to receive(:allowed?).and_return(false)
 
-          expect { current_user }.to raise_error /403/
+          expect { current_user }.to raise_error(/403/)
         end
 
         it 'returns a 403 response for a user who is blocked' do
           user.block!
           env[Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER] = job.token
 
-          expect { current_user }.to raise_error /403/
+          expect { current_user }.to raise_error(/403/)
         end
 
         it "sets current_user" do
@@ -306,6 +308,118 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
 
           expect(current_user).to be_nil
         end
+      end
+    end
+
+    describe 'when authenticating using a granular token' do
+      let_it_be(:granular_pat) { create(:granular_pat) }
+
+      before do
+        env[Gitlab::Auth::AuthFinders::PRIVATE_TOKEN_HEADER] = granular_pat.token
+        allow(self).to receive(:route_setting)
+      end
+
+      context 'when the `granular_personal_access_tokens` feature flag is disabled' do
+        before do
+          stub_feature_flags(granular_personal_access_tokens: false)
+        end
+
+        it 'raises an error stating that the feature is not yet supported' do
+          expect { current_user }.to raise_error Gitlab::Auth::GranularPermissionsError,
+            'Granular tokens are not yet supported'
+        end
+      end
+
+      context 'when authorization permissions and boundary type are not defined for an endpoint' do
+        it 'raises an error stating that the permissions cannot be determined' do
+          expect { current_user }.to raise_error Gitlab::Auth::GranularPermissionsError,
+            'Unable to determine boundary and permissions for authorization'
+        end
+      end
+
+      context 'when authorization permissions are defined for an endpoint' do
+        before do
+          env['PATH_INFO'] = "/api/v4/#{boundary_segment}/endpoint"
+
+          allow(self).to receive(:route_setting).with(:authorization)
+            .and_return(permissions:, boundary_type:, boundary_param:)
+
+          allow(self).to receive(:params).and_return(param => boundary_object.id) if param
+        end
+
+        let_it_be(:permissions) { :create_issue }
+        let_it_be(:group_resource) { create(:group, organization: user.organization, developers: user) }
+        let_it_be(:project_resource) { create(:project, organization: user.organization, namespace: group_resource) }
+        let(:boundary) { ::Authz::Boundary.for(boundary_object) }
+
+        where(:boundary_type, :boundary_param, :boundary_object, :boundary_segment, :param) do
+          :project  | nil               | ref(:project_resource) | 'projects'         | :project_id
+          :project  | nil               | ref(:project_resource) | 'projects'         | :id
+          :project  | :repo_id          | ref(:project_resource) | 'import/bitbucket' | :repo_id
+          :group    | nil               | ref(:group_resource)   | 'groups'           | :group_id
+          :group    | nil               | ref(:group_resource)   | 'groups'           | :id
+          :group    | :target_namespace | ref(:group_resource)   | 'import/bitbucket' | :target_namespace
+          :user     | nil               | :user                  | ''                 | nil
+          :instance | nil               | :instance              | ''                 | nil
+        end
+
+        with_them do
+          context 'when the granular token scopes are insufficient' do
+            let(:message) do
+              msg = "Access denied: Your Personal Access Token lacks the required permissions: [#{permissions}]"
+              msg << " for \"#{boundary.path}\"" if boundary.path
+              msg << "."
+            end
+
+            it 'raises an error that includes the missing scope' do
+              expect { current_user }.to raise_error Gitlab::Auth::GranularPermissionsError, message
+            end
+          end
+
+          context 'when the granular token scopes are sufficient' do
+            let(:granular_pat) { create(:granular_pat, user:, permissions:, boundary:) }
+
+            it 'does not raise an error and returns the token user' do
+              expect(current_user).to eq(user)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  describe '.set_current_organization', :without_current_organization do
+    context 'when user argument is omitted' do
+      before do
+        allow(self).to receive(:current_user).and_return(user)
+      end
+
+      it 'sets Current.organization using current_user' do
+        set_current_organization
+
+        expect(Current.organization).to eq(organization)
+      end
+    end
+
+    context 'when user is passed' do
+      let(:other_user) { create(:user, organizations: [create(:organization)]) }
+
+      it 'sets Current.organization' do
+        set_current_organization(user: other_user)
+
+        expect(Current.organization).to eq(other_user.organization)
+      end
+    end
+
+    context 'when a header is present' do
+      let_it_be(:header_organization) { create(:organization) }
+
+      it 'sets the organization from header' do
+        request.env["HTTP_X_GITLAB_ORGANIZATION_ID"] = header_organization.id.to_s
+
+        set_current_organization(user: user)
+
+        expect(Current.organization).to eq(header_organization)
       end
     end
   end
@@ -398,7 +512,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
       end
 
       it 'returns a 401 response' do
-        expect { authenticate! }.to raise_error /401/
+        expect { authenticate! }.to raise_error(/401/)
 
         expect(env[described_class::API_RESPONSE_STATUS_CODE]).to eq(401)
       end
@@ -505,7 +619,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
             end
 
             it 'raises an error' do
-              expect { current_user }.to raise_error /User with ID or username 'nonexistent' Not Found/
+              expect { current_user }.to raise_error(/User with ID or username 'nonexistent' Not Found/)
             end
           end
         end
@@ -533,7 +647,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
         end
 
         it 'raises an error' do
-          expect { current_user }.to raise_error /Must be admin to use sudo/
+          expect { current_user }.to raise_error(/Must be admin to use sudo/)
         end
       end
     end
@@ -578,7 +692,7 @@ RSpec.describe API::Helpers, :enable_admin_mode, feature_category: :system_acces
       end
 
       it 'raises an error' do
-        expect { current_user }.to raise_error /Must be authenticated using an OAuth or Personal Access Token to use sudo/
+        expect { current_user }.to raise_error(/Must be authenticated using an OAuth or personal access token to use sudo/)
       end
     end
   end

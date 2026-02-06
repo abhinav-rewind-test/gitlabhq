@@ -1,13 +1,18 @@
 # frozen_string_literal: true
 
-class Identity < MainClusterwide::ApplicationRecord
+class Identity < ApplicationRecord
   include Sortable
   include CaseSensitivity
 
-  belongs_to :user
+  belongs_to :user, optional: false
 
   validates :provider, presence: true
-  validates :extern_uid, allow_blank: true, uniqueness: { scope: UniquenessScopes.scopes, case_sensitive: false }
+  validates :extern_uid, allow_blank: true, uniqueness: {
+    scope: UniquenessScopes.scopes,
+    case_sensitive: false,
+    message: "has already been taken. Please contact your administrator to generate a unique extern_uid / NameID"
+  }
+
   validates :user, uniqueness: { scope: UniquenessScopes.scopes }
 
   before_save :ensure_normalized_extern_uid, if: :extern_uid_changed?

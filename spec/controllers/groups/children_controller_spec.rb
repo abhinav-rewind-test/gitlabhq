@@ -4,15 +4,16 @@ require 'spec_helper'
 
 RSpec.describe Groups::ChildrenController, feature_category: :groups_and_projects do
   include ExternalAuthorizationServiceHelpers
+  using RSpec::Parameterized::TableSyntax
 
-  let(:group) { create(:group, :public) }
-  let(:user) { create(:user) }
-  let!(:group_member) { create(:group_member, group: group, user: user) }
+  let_it_be(:group) { create(:group, :public) }
+  let_it_be(:user) { create(:user) }
+  let_it_be_with_reload(:group_member) { create(:group_member, group: group, user: user) }
 
   describe 'GET #index' do
     context 'for projects' do
-      let!(:public_project) { create(:project, :public, namespace: group) }
-      let!(:private_project) { create(:project, :private, namespace: group) }
+      let_it_be_with_reload(:public_project) { create(:project, :public, namespace: group) }
+      let_it_be(:private_project) { create(:project, :private, namespace: group) }
 
       context 'as a user' do
         before do
@@ -44,13 +45,36 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
           expect(assigns(:children)).to contain_exactly(public_project)
         end
       end
+
+      describe 'archived attribute' do
+        where(:project_archived, :group_archived, :expected_archived_attribute) do
+          false | false | false
+          false | true  | true
+          true  | false | true
+          true  | true  | true
+        end
+
+        with_them do
+          before do
+            public_project.update!(archived: project_archived)
+            public_project.group.update!(archived: group_archived)
+          end
+
+          it 'returns correct archived status' do
+            get :index, params: { group_id: group.to_param }, format: :json
+
+            project_response = json_response.find { |p| p['id'] == public_project.id }
+            expect(project_response['archived']).to be(expected_archived_attribute)
+          end
+        end
+      end
     end
 
     context 'for subgroups' do
-      let!(:public_subgroup) { create(:group, :public, parent: group) }
-      let!(:private_subgroup) { create(:group, :private, parent: group) }
-      let!(:public_project) { create(:project, :public, namespace: group) }
-      let!(:private_project) { create(:project, :private, namespace: group) }
+      let_it_be(:public_subgroup) { create(:group, :public, parent: group) }
+      let_it_be(:private_subgroup) { create(:group, :private, parent: group) }
+      let_it_be(:public_project) { create(:project, :public, namespace: group) }
+      let_it_be(:private_project) { create(:project, :private, namespace: group) }
 
       context 'as a user' do
         before do
@@ -188,12 +212,150 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
           expect(response).to have_gitlab_http_status(:ok)
         end
 
-        it 'includes pagination headers' do
-          2.times { |i| create(:group, :public, parent: public_subgroup, name: "filterme#{i}") }
+        context 'when items more than Kaminari.config.default_per_page' do
+          let_it_be(:filter) { 'filtered-group' }
+          let_it_be(:per_page) { 2 }
+          let_it_be(:params) { { group_id: group.to_param, filter: filter } }
+          let_it_be(:subgroups) { Array.new(per_page) { create(:group, parent: group) } }
+          let_it_be(:sub_subgroups) { subgroups.map { |subgroup| create(:group, parent: subgroup) } }
+          let_it_be(:matching_descendants) do
+            sub_subgroups.map.with_index do |sub_subgroup, index|
+              Array.new(per_page) do |descendant_index|
+                formatted_index = "#{index}#{descendant_index}"
+                create(:group, :public, parent: sub_subgroup, name: "#{filter}-#{formatted_index}")
+              end
+            end.flatten
+          end
 
-          get :index, params: { group_id: group.to_param, filter: 'filter', per_page: 1 }, format: :json
+          before do
+            allow(Kaminari.config).to receive(:default_per_page).and_return(per_page)
+          end
+
+          it 'does not throw ArgumentError for N+1 queries' do
+            get :index, params: params, format: :json
+
+            expect(response).to have_gitlab_http_status(:ok)
+          end
+
+          it 'paginates correctly' do
+            expected_ids = [subgroups.last, sub_subgroups.last, matching_descendants.last(2)].flatten.pluck(:id)
+
+            get :index, params: params.merge(page: 2), format: :json
+
+            result_ids = descendant_ids(json_response)
+
+            expect(result_ids).to match_array(expected_ids)
+          end
+
+          context 'with a single page' do
+            let_it_be(:params) { params.merge(per_page: matching_descendants.size) }
+
+            it 'returns the correct pagination headers with per_page' do
+              get :index, params: params, format: :json
+
+              expect(response.header).to match(hash_including(
+                "X-Per-Page" => "4",
+                "X-Page" => "1",
+                "X-Next-Page" => "",
+                "X-Prev-Page" => "",
+                "X-Total" => "4",
+                "X-Total-Pages" => "1"
+              ))
+            end
+          end
+        end
+
+        it 'includes pagination headers' do
+          create_list(:group, 2, :public, parent: public_subgroup)
+
+          get :index, params: { group_id: group.to_param, per_page: 1 }, format: :json
 
           expect(response).to include_pagination_headers
+        end
+      end
+
+      context 'with active parameter' do
+        let_it_be(:group) { create(:group) }
+
+        let_it_be(:active_subgroup) { create(:group, parent: group) }
+        let_it_be(:active_project) { create(:project, :public, group: group) }
+
+        let_it_be(:inactive_subgroup) { create(:group, :archived, parent: group) }
+        let_it_be(:inactive_project) { create(:project, :archived, :public, group: group) }
+
+        subject(:make_request) { get :index, params: { group_id: group.to_param, active: active_param }, format: :json }
+
+        context 'when true' do
+          let_it_be(:active_param) { true }
+
+          it 'returns active direct children', :aggregate_failures do
+            make_request
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(descendant_ids(json_response)).to include(active_subgroup.id, active_project.id)
+            expect(descendant_ids(json_response)).not_to include(inactive_subgroup.id, inactive_project.id)
+          end
+        end
+
+        context 'when false' do
+          let_it_be(:active_param) { false }
+
+          it 'returns inactive direct children', :aggregate_failures do
+            make_request
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(descendant_ids(json_response)).to include(inactive_subgroup.id, inactive_project.id)
+            expect(descendant_ids(json_response)).not_to include(active_subgroup.id, active_project.id)
+          end
+
+          context 'when active subgroup has children' do
+            let_it_be(:active_descendant_group) { create(:group, parent: active_subgroup) }
+            let_it_be(:active_descendant_project) { create(:project, :public, group: active_subgroup) }
+
+            let_it_be(:inactive_descendant_group) { create(:group, :archived, parent: active_subgroup) }
+            let_it_be(:inactive_descendant_project) { create(:project, :public, :archived, group: active_subgroup) }
+
+            it 'returns inactive descendants', :aggregate_failures do
+              make_request
+
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(descendant_ids(json_response))
+                .to include(inactive_descendant_group.id, inactive_descendant_project.id)
+              expect(descendant_ids(json_response))
+                .not_to include(active_descendant_group.id, active_descendant_project.id)
+            end
+          end
+
+          context 'when inactive subgroup has children' do
+            let_it_be(:active_descendant_group) { create(:group, parent: inactive_subgroup) }
+            let_it_be(:active_descendant_project) { create(:project, :public, group: inactive_subgroup) }
+
+            let_it_be(:inactive_descendant_group) { create(:group, :archived, parent: inactive_subgroup) }
+            let_it_be(:inactive_descendant_project) { create(:project, :public, :archived, group: inactive_subgroup) }
+
+            it 'returns all descendants' do
+              make_request
+
+              expect(response).to have_gitlab_http_status(:ok)
+              expect(descendant_ids(json_response)).to include(
+                active_descendant_group.id,
+                active_descendant_project.id,
+                inactive_descendant_group.id,
+                inactive_descendant_project.id
+              )
+            end
+          end
+        end
+      end
+
+      context 'sorting children' do
+        it 'allows sorting projects' do
+          project_1 = create(:project, :public, namespace: group, name: 'mobile')
+          project_2 = create(:project, :public, namespace: group, name: 'hardware')
+
+          get :index, params: { group_id: group.to_param, sort: 'name_asc' }, format: :json
+
+          expect(assigns(:children)).to eq([public_subgroup, project_2, project_1, public_project])
         end
       end
 
@@ -227,8 +389,8 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
 
         context 'when rendering hierarchies' do
           # When loading hierarchies we load the all the ancestors for matched projects
-          # in 3 separate queries
-          let(:extra_queries_for_hierarchies) { 3 }
+          # in 6 separate queries
+          let(:extra_queries_for_hierarchies) { 6 }
 
           def get_filtered_list
             get :index, params: { group_id: group.to_param, filter: 'filter' }, format: :json
@@ -241,7 +403,8 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
 
             matched_group.update!(parent: public_subgroup)
 
-            expect { get_filtered_list }.not_to exceed_query_limit(control).with_threshold(extra_queries_for_hierarchies)
+            # TODO: remove + 1 after fixing https://gitlab.com/gitlab-org/gitlab/-/issues/545708
+            expect { get_filtered_list }.not_to exceed_query_limit(control).with_threshold(extra_queries_for_hierarchies + 1)
           end
 
           it 'queries the expected amount when a new group match is added' do
@@ -262,14 +425,17 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
 
             matched_project.update!(namespace: public_subgroup)
 
-            expect { get_filtered_list }.not_to exceed_query_limit(control).with_threshold(extra_queries_for_hierarchies)
+            # TODO remove + 2 after we stop manually reloading namespace_details in
+            # https://gitlab.com/gitlab-org/gitlab/-/issues/545723
+            # N+1 queries in https://gitlab.com/gitlab-org/gitlab/-/issues/545708
+            expect { get_filtered_list }.not_to exceed_query_limit(control).with_threshold(extra_queries_for_hierarchies + 2)
           end
         end
       end
     end
 
     context 'pagination' do
-      let(:per_page) { 3 }
+      let_it_be(:per_page) { 3 }
 
       before do
         allow(Kaminari.config).to receive(:default_per_page).and_return(per_page)
@@ -288,8 +454,8 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
       end
 
       context 'with only projects' do
-        let!(:other_project) { create(:project, :public, namespace: group) }
-        let!(:first_page_projects) { create_list(:project, per_page, :public, namespace: group) }
+        let_it_be(:other_project) { create(:project, :public, namespace: group) }
+        let_it_be(:first_page_projects) { create_list(:project, per_page, :public, namespace: group) }
 
         it 'has projects on the first page' do
           get :index, params: { group_id: group.to_param, sort: 'id_desc' }, format: :json
@@ -305,9 +471,9 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
       end
 
       context 'with subgroups and projects' do
-        let!(:first_page_subgroups) { create_list(:group, per_page, :public, parent: group) }
-        let!(:other_subgroup) { create(:group, :public, parent: group) }
-        let!(:next_page_projects) { create_list(:project, per_page, :public, namespace: group) }
+        let_it_be(:first_page_subgroups) { create_list(:group, per_page, :public, parent: group) }
+        let_it_be(:other_subgroup) { create(:group, :public, parent: group) }
+        let_it_be(:next_page_projects) { create_list(:project, per_page, :public, namespace: group) }
 
         it 'contains all subgroups' do
           get :index, params: { group_id: group.to_param, sort: 'id_asc' }, format: :json
@@ -322,8 +488,8 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
         end
 
         context 'with a mixed first page' do
-          let!(:first_page_subgroups) { [create(:group, :public, parent: group)] }
-          let!(:first_page_projects) { create_list(:project, per_page, :public, namespace: group) }
+          let_it_be(:first_page_subgroups) { [create(:group, :public, parent: group)] }
+          let_it_be(:first_page_projects) { create_list(:project, per_page, :public, namespace: group) }
 
           it 'correctly calculates the counts' do
             get :index, params: { group_id: group.to_param, sort: 'id_asc', page: 2 }, format: :json
@@ -342,6 +508,12 @@ RSpec.describe Groups::ChildrenController, feature_category: :groups_and_project
 
         expect(response).to have_gitlab_http_status(:ok)
       end
+    end
+  end
+
+  def descendant_ids(data)
+    Array.wrap(data).flat_map do |item|
+      [item['id'], descendant_ids(item['children'])].flatten
     end
   end
 end

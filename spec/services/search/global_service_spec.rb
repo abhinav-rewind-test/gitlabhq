@@ -6,15 +6,11 @@ RSpec.describe Search::GlobalService, feature_category: :global_search do
   let_it_be(:user) { create(:user) }
   let_it_be(:internal_user) { create(:user) }
 
-  let_it_be(:found_project)    { create(:project, :private, name: 'searchable_project') }
+  let_it_be(:found_project)    { create(:project, :private, name: 'searchable_project', maintainers: user) }
   let_it_be(:unfound_project)  { create(:project, :private, name: 'unfound_project') }
   let_it_be(:internal_project) { create(:project, :internal, name: 'searchable_internal_project') }
   let_it_be(:public_project)   { create(:project, :public, name: 'searchable_public_project') }
   let_it_be(:archived_project) { create(:project, :public, archived: true, name: 'archived_project') }
-
-  before do
-    found_project.add_maintainer(user)
-  end
 
   describe '#execute' do
     context 'unauthenticated' do
@@ -97,6 +93,74 @@ RSpec.describe Search::GlobalService, feature_category: :global_search do
         let(:results_created) { described_class.new(nil, search: 'sorted', sort: sort).execute }
         let(:results_updated) { described_class.new(nil, search: 'updated', sort: sort).execute }
       end
+    end
+  end
+
+  describe '#scope' do
+    subject(:service) { described_class.new(nil, search: "searchable", scope: scope) }
+
+    context 'when no scope is passed' do
+      let(:scope) { nil }
+
+      it 'returns the first allowed scope which the user has permission for' do
+        first_allowed_scope = service.allowed_scopes.first
+
+        expect(service.scope).to eq(first_allowed_scope)
+      end
+
+      context 'and there is a default scope set' do
+        before do
+          stub_application_setting(default_search_scope: 'users')
+        end
+
+        it 'returns the default scope' do
+          expect(service.scope).to eq('users')
+        end
+
+        context 'when default scope is not included in allowed_scopes' do
+          before do
+            # epics are EE only
+            stub_application_setting(default_search_scope: 'epics')
+          end
+
+          it 'chooses the first allowed scope' do
+            first_allowed_scope = service.allowed_scopes.first
+
+            expect(service.scope).to eq(first_allowed_scope)
+          end
+        end
+      end
+    end
+
+    context 'when scope passed is included in allowed_scopes' do
+      let(:scope) { 'issues' }
+
+      it 'returns that scope' do
+        expect(service.scope).to eq('issues')
+      end
+    end
+
+    context 'when scope passed is not included in allowed_scopes' do
+      let(:scope) { 'epics' }
+
+      it 'chooses the first allowed scope' do
+        first_allowed_scope = service.allowed_scopes.first
+
+        expect(service.scope).to eq(first_allowed_scope)
+      end
+    end
+  end
+
+  describe '#allowed_scopes' do
+    subject(:service) { described_class.new(user, search: 'searchable', search_type: 'foo') }
+
+    it 'returns scopes from Search::Scopes registry' do
+      expect(Search::Scopes).to receive(:available_for_context).with(
+        context: :global,
+        container: nil,
+        requested_search_type: 'foo'
+      )
+      service.allowed_scopes
     end
   end
 end

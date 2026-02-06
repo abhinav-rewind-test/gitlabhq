@@ -1,8 +1,8 @@
 <script>
-import { MEMBER_TYPES } from 'ee_else_ce/members/constants';
+import { MEMBERS_TAB_TYPES } from 'ee_else_ce/members/constants';
+import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
 import {
   isGroup,
-  isDirectMember,
   isCurrentUser,
   canRemove,
   canRemoveBlockedByLastOwner,
@@ -10,7 +10,7 @@ import {
   canUpdate,
 } from '../../utils';
 
-export default {
+export default normalizeRender({
   name: 'MembersTableCell',
   inject: ['currentUserId', 'canManageMembers'],
   props: {
@@ -31,19 +31,16 @@ export default {
     },
     memberType() {
       if (this.isGroup) {
-        return MEMBER_TYPES.group;
+        return MEMBERS_TAB_TYPES.group;
       }
       if (this.isInvite) {
-        return MEMBER_TYPES.invite;
+        return MEMBERS_TAB_TYPES.invite;
       }
       if (this.isAccessRequest) {
-        return MEMBER_TYPES.accessRequest;
+        return MEMBERS_TAB_TYPES.accessRequest;
       }
 
-      return MEMBER_TYPES.user;
-    },
-    isDirectMember() {
-      return isDirectMember(this.member);
+      return MEMBERS_TAB_TYPES.user;
     },
     isCurrentUser() {
       return isCurrentUser(this.member, this.currentUserId);
@@ -64,7 +61,6 @@ export default {
   render() {
     return this.$scopedSlots.default({
       memberType: this.memberType,
-      isDirectMember: this.isDirectMember,
       isCurrentUser: this.isCurrentUser,
       permissions: {
         canRemove: this.canRemove,
@@ -74,5 +70,5 @@ export default {
       },
     });
   },
-};
+});
 </script>

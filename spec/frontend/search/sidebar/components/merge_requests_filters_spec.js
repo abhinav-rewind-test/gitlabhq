@@ -6,7 +6,10 @@ import { MOCK_QUERY } from 'jest/search/mock_data';
 import MergeRequestsFilters from '~/search/sidebar/components/merge_requests_filters.vue';
 import StatusFilter from '~/search/sidebar/components/status_filter/index.vue';
 import ArchivedFilter from '~/search/sidebar/components/archived_filter/index.vue';
-import { SEARCH_TYPE_ADVANCED, SEARCH_TYPE_BASIC } from '~/search/sidebar/constants';
+import SourceBranchFilter from '~/search/sidebar/components/source_branch_filter/index.vue';
+import TargetBranchFilter from '~/search/sidebar/components/target_branch_filter/index.vue';
+import LabelFilter from '~/search/sidebar/components/label_filter/index.vue';
+import AuthorFilter from '~/search/sidebar/components/author_filter/index.vue';
 
 Vue.use(Vuex);
 
@@ -15,13 +18,17 @@ describe('GlobalSearch MergeRequestsFilters', () => {
 
   const defaultGetters = {
     currentScope: () => 'merge_requests',
+    hasMissingProjectContext: () => true,
   };
 
   const createComponent = (initialState = {}) => {
     const store = new Vuex.Store({
       state: {
         urlQuery: MOCK_QUERY,
-        searchType: SEARCH_TYPE_ADVANCED,
+        searchType: 'advanced',
+        groupInitialJson: {
+          id: 1,
+        },
         ...initialState,
       },
       getters: defaultGetters,
@@ -34,8 +41,12 @@ describe('GlobalSearch MergeRequestsFilters', () => {
 
   const findStatusFilter = () => wrapper.findComponent(StatusFilter);
   const findArchivedFilter = () => wrapper.findComponent(ArchivedFilter);
+  const findSourceBranchFilter = () => wrapper.findComponent(SourceBranchFilter);
+  const findTargetBranchFilter = () => wrapper.findComponent(TargetBranchFilter);
+  const findLabelFilter = () => wrapper.findComponent(LabelFilter);
+  const findAuthorFilter = () => wrapper.findComponent(AuthorFilter);
 
-  describe('Renders correctly with Archived Filter', () => {
+  describe('When renders correctly with advanced search', () => {
     beforeEach(() => {
       createComponent();
     });
@@ -47,11 +58,27 @@ describe('GlobalSearch MergeRequestsFilters', () => {
     it('renders ArchivedFilter', () => {
       expect(findArchivedFilter().exists()).toBe(true);
     });
+
+    it('renders SourceBranchFilter', () => {
+      expect(findSourceBranchFilter().exists()).toBe(true);
+    });
+
+    it('renders TargetBranchFilter', () => {
+      expect(findTargetBranchFilter().exists()).toBe(true);
+    });
+
+    it('renders LabelFilter', () => {
+      expect(findLabelFilter().exists()).toBe(true);
+    });
+
+    it('renders AuthorFilter', () => {
+      expect(findAuthorFilter().exists()).toBe(true);
+    });
   });
 
-  describe('Renders correctly with basic search', () => {
+  describe('When renders correctly with basic search', () => {
     beforeEach(() => {
-      createComponent({ searchType: SEARCH_TYPE_BASIC });
+      createComponent({ searchType: 'basic' });
     });
 
     it('renders StatusFilter', () => {
@@ -61,18 +88,31 @@ describe('GlobalSearch MergeRequestsFilters', () => {
     it('renders ArchivedFilter', () => {
       expect(findArchivedFilter().exists()).toBe(true);
     });
+
+    it('renders SourceBranchFilter', () => {
+      expect(findSourceBranchFilter().exists()).toBe(true);
+    });
+
+    it('renders TargetBranchFilter', () => {
+      expect(findTargetBranchFilter().exists()).toBe(true);
+    });
+
+    it('will not render LabelFilter', () => {
+      expect(findLabelFilter().exists()).toBe(false);
+    });
+
+    it('will not render AuthorFilter', () => {
+      expect(findAuthorFilter().exists()).toBe(false);
+    });
   });
 
-  describe('Renders correctly with wrong scope', () => {
+  describe('#hasMissingProjectContext getter', () => {
     beforeEach(() => {
-      defaultGetters.currentScope = () => 'test';
+      defaultGetters.hasMissingProjectContext = () => false;
       createComponent();
     });
-    it("doesn't render StatusFilter", () => {
-      expect(findStatusFilter().exists()).toBe(false);
-    });
 
-    it("doesn't render ArchivedFilter", () => {
+    it('hides ArchivedFilter', () => {
       expect(findArchivedFilter().exists()).toBe(false);
     });
   });

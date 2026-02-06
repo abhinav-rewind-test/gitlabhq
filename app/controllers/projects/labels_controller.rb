@@ -8,12 +8,12 @@ class Projects::LabelsController < Projects::ApplicationController
   before_action :find_labels, only: [:index, :set_priorities, :remove_priority, :toggle_subscription]
   before_action :authorize_read_label!
   before_action :authorize_admin_labels!, only: [:new, :create, :edit, :update,
-                                                 :generate, :destroy, :remove_priority,
-                                                 :set_priorities]
+    :generate, :destroy, :remove_priority,
+    :set_priorities]
   before_action :authorize_admin_group_labels!, only: [:promote]
 
-  before_action only: :index do
-    push_frontend_feature_flag(:label_similarity_sort, project)
+  before_action only: [:index] do
+    push_frontend_feature_flag(:labels_archive, project.group) if project.group
   end
 
   respond_to :js, :html
@@ -24,7 +24,12 @@ class Projects::LabelsController < Projects::ApplicationController
   def index
     respond_to do |format|
       format.html do
-        @prioritized_labels = @available_labels.prioritized(@project)
+        @prioritized_labels = if Feature.enabled?(:labels_archive, @project.group) && params[:archived] == 'true'
+                                Label.none
+                              else
+                                @available_labels.prioritized(@project)
+                              end
+
         @labels = @available_labels.unprioritized(@project).page(params[:page])
         # preload group, project, and subscription data
         Preloaders::LabelsPreloader.new(@prioritized_labels, current_user, @project).preload_all
@@ -56,8 +61,7 @@ class Projects::LabelsController < Projects::ApplicationController
     end
   end
 
-  def edit
-  end
+  def edit; end
 
   def update
     @label = Labels::UpdateService.new(label_params).execute(@label)
@@ -129,12 +133,13 @@ class Projects::LabelsController < Projects::ApplicationController
       return render_404 unless promote_service.execute(@label)
 
       flash[:notice] = flash_notice_for(@label, @project.group)
+      page = params[:page]
       respond_to do |format|
         format.html do
-          redirect_to(project_labels_path(@project), status: :see_other)
+          redirect_to(project_labels_path(@project, page: page), status: :see_other)
         end
         format.json do
-          render json: { url: project_labels_path(@project) }
+          render json: { url: project_labels_path(@project, page: page) }
         end
       end
     rescue ActiveRecord::RecordInvalid => e
@@ -153,13 +158,15 @@ class Projects::LabelsController < Projects::ApplicationController
   end
 
   def flash_notice_for(label, group)
-    ''.html_safe + "#{label.title} promoted to " + view_context.link_to('<u>group label</u>'.html_safe, group_labels_path(group)) + '.'
+    safe_link = view_context.link_to('<u>group label</u>'.html_safe, group_labels_path(group))
+    view_context.safe_join([ERB::Util.html_escape(label.title), " promoted to ", safe_link, "."])
   end
 
   protected
 
   def label_params
     allowed = [:title, :description, :color]
+    allowed << :archived if Feature.enabled?(:labels_archive, @project.group)
     allowed << :lock_on_merge if @project.supports_lock_on_merge?
 
     params.require(:label).permit(allowed)
@@ -174,12 +181,17 @@ class Projects::LabelsController < Projects::ApplicationController
   end
 
   def find_labels
+    archived_param = if Feature.enabled?(:labels_archive, @project.group)
+                       params[:archived].nil? ? false : params[:archived]
+                     end
+
     @available_labels ||= LabelsFinder.new(
       current_user,
       project_id: @project.id,
       include_ancestor_groups: true,
       search: params[:search],
       subscribed: params[:subscribed],
+      archived: archived_param,
       sort: sort
     ).execute
   end
@@ -189,10 +201,10 @@ class Projects::LabelsController < Projects::ApplicationController
   end
 
   def authorize_admin_labels!
-    return render_404 unless can?(current_user, :admin_label, @project)
+    render_404 unless can?(current_user, :admin_label, @project)
   end
 
   def authorize_admin_group_labels!
-    return render_404 unless can?(current_user, :admin_label, @project.group)
+    render_404 unless can?(current_user, :admin_label, @project.group)
   end
 end

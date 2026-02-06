@@ -6,16 +6,16 @@ RSpec.describe Projects::PipelineHelper do
   include Ci::BuildsHelper
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository, owners: user) }
   let_it_be(:raw_pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id) }
   let_it_be(:pipeline) { Ci::PipelinePresenter.new(raw_pipeline, current_user: user) }
 
-  before do
-    project.add_developer(user)
-  end
-
   describe '#js_pipeline_tabs_data' do
     subject(:pipeline_tabs_data) { helper.js_pipeline_tabs_data(project, pipeline, user) }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(user)
+    end
 
     it 'returns pipeline tabs data' do
       expect(pipeline_tabs_data).to include({
@@ -31,19 +31,25 @@ RSpec.describe Projects::PipelineHelper do
         suite_endpoint: project_pipeline_test_path(project, pipeline, suite_name: 'suite', format: :json),
         blob_path: project_blob_path(project, pipeline.sha),
         has_test_report: pipeline.complete_and_has_reports?(Ci::JobArtifact.of_report_type(:test)),
-        empty_dag_svg_path: match_asset_path('illustrations/empty-state/empty-dag-md.svg'),
         empty_state_image_path: match_asset_path('illustrations/empty-todos-md.svg'),
         artifacts_expired_image_path: match_asset_path('illustrations/empty-state/empty-pipeline-md.svg'),
-        tests_count: pipeline.test_report_summary.total[:count]
+        tests_count: pipeline.test_report_summary.total[:count],
+        can_read_variables: true.to_s,
+        manual_variables_count: pipeline.variables.count,
+        display_pipeline_variables: pipeline.project.ci_display_pipeline_variables?.to_s
       })
     end
   end
 
-  describe '#js_pipeline_details_header_data' do
-    subject(:pipeline_details_header_data) { helper.js_pipeline_details_header_data(project, pipeline) }
+  describe '#js_pipeline_header_data' do
+    before do
+      allow(helper).to receive(:current_user).and_return(user)
+    end
 
-    it 'returns pipeline details header data' do
-      expect(pipeline_details_header_data).to include({
+    subject(:pipeline_header_data) { helper.js_pipeline_header_data(project, pipeline) }
+
+    it 'returns pipeline header data' do
+      expect(pipeline_header_data).to include({
         full_path: project.full_path,
         graphql_resource_etag: graphql_etag_pipeline_path(pipeline),
         pipeline_iid: pipeline.iid,

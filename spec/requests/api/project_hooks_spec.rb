@@ -4,8 +4,11 @@ require 'spec_helper'
 
 RSpec.describe API::ProjectHooks, 'ProjectHooks', feature_category: :webhooks do
   let_it_be(:user) { create(:user) }
-  let_it_be(:user3) { create(:user) }
-  let_it_be(:project) { create(:project, creator_id: user.id, namespace: user.namespace) }
+  let_it_be(:user2) { create(:user) }
+  let_it_be_with_reload(:project) do
+    create(:project, :repository, creator_id: user.id, namespace: user.namespace, maintainers: user, developers: user2)
+  end
+
   let_it_be_with_refind(:hook) do
     create(
       :project_hook,
@@ -17,13 +20,9 @@ RSpec.describe API::ProjectHooks, 'ProjectHooks', feature_category: :webhooks do
     )
   end
 
-  before_all do
-    project.add_maintainer(user)
-    project.add_developer(user3)
-  end
-
   it_behaves_like 'web-hook API endpoints', '/projects/:id' do
-    let(:unauthorized_user) { user3 }
+    let(:resource) { project }
+    let(:unauthorized_user) { user2 }
 
     def scope
       project.hooks
@@ -58,7 +57,9 @@ RSpec.describe API::ProjectHooks, 'ProjectHooks', feature_category: :webhooks do
         wiki_page_events
         job_events
         deployment_events
+        feature_flag_events
         releases_events
+        milestone_events
         emoji_events
         resource_access_token_events
       ]
@@ -68,6 +69,15 @@ RSpec.describe API::ProjectHooks, 'ProjectHooks', feature_category: :webhooks do
       { push_events: true, confidential_note_events: nil }
     end
 
-    it_behaves_like 'web-hook API endpoints with branch-filter', '/projects/:id'
+    it_behaves_like 'test web-hook endpoint'
+    it_behaves_like 'POST webhook API endpoints with a branch filter', '/projects/:id'
+    it_behaves_like 'PUT webhook API endpoints with a branch filter', '/projects/:id'
+    it_behaves_like 'resend web-hook event endpoint' do
+      let(:unauthorized_user) { user2 }
+    end
+
+    it_behaves_like 'get web-hook event endpoint' do
+      let(:unauthorized_user) { user2 }
+    end
   end
 end

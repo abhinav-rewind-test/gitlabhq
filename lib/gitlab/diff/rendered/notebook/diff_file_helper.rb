@@ -1,11 +1,10 @@
 # frozen_string_literal: true
+
 module Gitlab
   module Diff
     module Rendered
       module Notebook
         module DiffFileHelper
-          require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
-
           EMBEDDED_IMAGE_PATTERN = '    ![](data:image'
 
           def strip_diff_frontmatter(diff_content)
@@ -99,7 +98,7 @@ module Gitlab
 
             image_body = line_text[1..].delete_prefix(EMBEDDED_IMAGE_PATTERN).delete_suffix(')')
 
-            "<img src=\"data:image#{CGI.escapeHTML(image_body)}\">".html_safe
+            " <img src=\"data:image#{CGI.escapeHTML(image_body)}\">".html_safe
           end
         end
       end

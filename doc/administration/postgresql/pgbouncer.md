@@ -1,18 +1,20 @@
 ---
-stage: Data Stores
-group: Database
+stage: Data Access
+group: Database Operations
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Working with the bundled PgBouncer service
 ---
 
-# Working with the bundled PgBouncer service
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-NOTE:
-PgBouncer is bundled in the `gitlab-ee` package, but is free to use.
-For support, you need a [Premium subscription](https://about.gitlab.com/pricing/).
+{{< /details >}}
+
+> [!note]
+> PgBouncer is bundled in the `gitlab-ee` package, but is free to use.
+> For support, you need a [Premium subscription](https://about.gitlab.com/pricing/).
 
 [PgBouncer](https://www.pgbouncer.org/) is used to seamlessly migrate database
 connections between servers in a failover scenario. Additionally, it can be used
@@ -43,8 +45,8 @@ This content has been moved to a [new location](replication_and_failover.md#conf
 
 1. Run `gitlab-ctl reconfigure`
 
-   NOTE:
-   If the database was already running, it needs to be restarted after reconfigure by running `gitlab-ctl restart postgresql`.
+   > [!note]
+   > If the database was already running, it needs to be restarted after reconfigure by running `gitlab-ctl restart postgresql`.
 
 1. On the node you are running PgBouncer on, make sure the following is set in `/etc/gitlab/gitlab.rb`
 
@@ -91,13 +93,11 @@ This content has been moved to a [new location](replication_and_failover.md#conf
 
 Do not backup or restore GitLab through a PgBouncer connection: it causes a GitLab outage.
 
-[Read more about this and how to reconfigure backups](../../administration/backup_restore/backup_gitlab.md#back-up-and-restore-for-installations-using-pgbouncer).
+[Read more about this and how to reconfigure backups](../backup_restore/backup_gitlab.md#back-up-and-restore-for-installations-using-pgbouncer).
 
 ## Enable Monitoring
 
-> - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/3786) in GitLab 12.0.
-
-If you enable Monitoring, it must be enabled on **all** PgBouncer servers.
+If you enable Monitoring, it must be enabled on all PgBouncer servers.
 
 1. Create/edit `/etc/gitlab/gitlab.rb` and add the following configuration:
 
@@ -181,8 +181,8 @@ ote_pid | tls
 
 Some database changes have to be done directly, and not through PgBouncer.
 
-The main affected tasks are [database restores](../../administration/backup_restore/backup_gitlab.md#back-up-and-restore-for-installations-using-pgbouncer)
-and [GitLab upgrades with database migrations](../../update/zero_downtime.md#postgresql).
+The main affected tasks are [database restores](../backup_restore/backup_gitlab.md#back-up-and-restore-for-installations-using-pgbouncer)
+and [GitLab upgrades with database migrations](../../update/zero_downtime.md).
 
 1. To find the primary node, run the following on a database node:
 
@@ -237,19 +237,7 @@ Listed below are the most relevant ones and their defaults on a Linux package in
   This is the "backend" pool in PgBouncer: connections from PgBouncer to the database.
 
 The ideal number for `default_pool_size` must be enough to handle all provisioned services that need to access
-the database. Each of the listed services below use the following formula to define database pool size:
-
-- `puma` : `max_threads + headroom` (default `14`)
-  - `max_threads` is configured via: `gitlab['puma']['max_threads']` (default: `4`)
-  - `headroom` can be configured via `DB_POOL_HEADROOM` environment variable (default to `10`)
-- `sidekiq` : `max_concurrency + 1 + headroom` (default: `31`)
-  - `max_concurrency` is configured via: `sidekiq['max_concurrency']` (default: `20`)
-  - `headroom` can be configured via `DB_POOL_HEADROOM` environment variable (default to `10`)
-- `geo-logcursor`: `1+headroom` (default: `11`)
-  - `headroom` can be configured via `DB_POOL_HEADROOM` environment variable (default to `10`)
-
-To calculate the `default_pool_size`, multiply the number of instances of `puma`, `sidekiq` and `geo-logcursor` by the
-number of connections each can consume as per listed above. The total is the suggested `default_pool_size`.
+the database. For detailed guidance on calculating the required pool size, see [Tune PostgreSQL](tune.md).
 
 If you are using more than one PgBouncer with an internal Load Balancer, you may be able to divide the
 `default_pool_size` by the number of instances to guarantee an evenly distributed load between them.
@@ -277,8 +265,8 @@ Additionally, `current_connections` should be greater than 1.
 
 ### Message: `LOG:  invalid CIDR mask in address`
 
-See the suggested fix [in Geo documentation](../geo/replication/troubleshooting/index.md#message-log--invalid-cidr-mask-in-address).
+See the suggested fix [in Geo documentation](../geo/replication/troubleshooting/postgresql_replication.md#message-log--invalid-cidr-mask-in-address).
 
 ### Message: `LOG:  invalid IP mask "md5": Name or service not known`
 
-See the suggested fix [in Geo documentation](../geo/replication/troubleshooting/index.md#message-log--invalid-ip-mask-md5-name-or-service-not-known).
+See the suggested fix [in Geo documentation](../geo/replication/troubleshooting/postgresql_replication.md#message-log--invalid-ip-mask-md5-name-or-service-not-known).

@@ -3,10 +3,14 @@
 require 'spec_helper'
 
 RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
-  let_it_be(:project) { create(:project) }
-  let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+  let_it_be_with_refind(:project) { create(:project) }
+  let_it_be_with_refind(:pipeline) { create(:ci_pipeline, project: project) }
 
   let(:build) { create(:ci_build, :created, pipeline: pipeline) }
+
+  it 'keeps MAX_TAGS_IDS in sync with TAGS_LIMIT' do
+    expect(described_class::MAX_TAGS_IDS).to eq(Gitlab::Ci::Config::Entry::Tags::TAGS_LIMIT)
+  end
 
   describe 'associations' do
     it { is_expected.to belong_to :project }
@@ -38,11 +42,13 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
     describe '.for_tags' do
       subject(:pending_builds) { described_class.for_tags(tag_ids) }
 
-      let_it_be(:pending_build_with_tags) { create(:ci_pending_build, tag_ids: [1, 2]) }
-      let_it_be(:pending_build_without_tags) { create(:ci_pending_build) }
+      let_it_be(:build_with_tags) { create(:ci_build, :tags, :pending, :queued) }
+      let_it_be(:build_without_tags) { create(:ci_build, :pending, :queued) }
+      let_it_be(:pending_build_with_tags) { build_with_tags.queuing_entry }
+      let_it_be(:pending_build_without_tags) { build_without_tags.queuing_entry }
 
       context 'when tag_ids match pending builds' do
-        let(:tag_ids) { [1, 2] }
+        let(:tag_ids) { Ci::Tag.named(build_with_tags.tag_list).ids }
 
         it 'returns matching pending builds' do
           expect(pending_builds).to contain_exactly(pending_build_with_tags, pending_build_without_tags)
@@ -78,9 +84,11 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
   end
 
   describe '.upsert_from_build!' do
+    subject(:upsert_from_build) { described_class.upsert_from_build!(build) }
+
     context 'another pending entry does not exist' do
       it 'creates a new pending entry' do
-        result = described_class.upsert_from_build!(build)
+        result = upsert_from_build
 
         expect(result.rows.dig(0, 0)).to eq build.id
         expect(build.reload.queuing_entry).to be_present
@@ -93,19 +101,17 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
       end
 
       it 'returns a build id as a result' do
-        result = described_class.upsert_from_build!(build)
-
-        expect(result.rows.dig(0, 0)).to eq build.id
+        expect(upsert_from_build.rows.dig(0, 0)).to eq build.id
       end
     end
 
     context 'when project does not have shared runners enabled' do
       before do
-        project.shared_runners_enabled = false
+        project.update!(shared_runners_enabled: false)
       end
 
       it 'sets instance_runners_enabled to false' do
-        described_class.upsert_from_build!(build)
+        upsert_from_build
 
         expect(described_class.last.instance_runners_enabled).to be_falsey
       end
@@ -115,22 +121,22 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
       let_it_be(:runner) { create(:ci_runner, :instance) }
 
       before do
-        project.shared_runners_enabled = true
+        project.update!(shared_runners_enabled: true)
       end
 
       it 'sets instance_runners_enabled to true' do
-        described_class.upsert_from_build!(build)
+        upsert_from_build
 
         expect(described_class.last.instance_runners_enabled).to be_truthy
       end
 
       context 'when project is about to be deleted' do
         before do
-          build.project.update!(pending_delete: true)
+          project.update!(pending_delete: true)
         end
 
         it 'sets instance_runners_enabled to false' do
-          described_class.upsert_from_build!(build)
+          upsert_from_build
 
           expect(described_class.last.instance_runners_enabled).to be_falsey
         end
@@ -138,11 +144,11 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
 
       context 'when builds are disabled' do
         before do
-          build.project.project_feature.update!(builds_access_level: false)
+          project.project_feature.update!(builds_access_level: false)
         end
 
         it 'sets instance_runners_enabled to false' do
-          described_class.upsert_from_build!(build)
+          upsert_from_build
 
           expect(described_class.last.instance_runners_enabled).to be_falsey
         end
@@ -154,66 +160,126 @@ RSpec.describe Ci::PendingBuild, feature_category: :continuous_integration do
 
       subject(:ci_pending_build) { described_class.last }
 
-      it 'sets tag_ids' do
-        described_class.upsert_from_build!(build)
+      it 'sets tag_ids from job_definition.config[:tag_list]' do
+        upsert_from_build
 
-        expect(ci_pending_build.tag_ids).to eq(build.tags_ids)
+        expected_tag_ids = Ci::Tag.named(build.job_definition.config[:tag_list]).ids
+        expect(ci_pending_build.tag_ids).to match_array(expected_tag_ids)
+      end
+
+      context 'and tags are not present in tags table' do
+        let(:build_tags) { Ci::BuildTag.joins(:tag).where(build_id: build.id, partition_id: build.partition_id) }
+
+        before do
+          Ci::Tag.named(build.tag_list).delete_all
+        end
+
+        it 'upserts tags from job_definition.config[:tag_list] without new taggings' do
+          expect { upsert_from_build }
+            .to change { Ci::Tag.all.pluck(:name) }.from([]).to(%w[docker ruby])
+            .and not_change { build_tags.reload.count }.from(0)
+        end
+      end
+
+      context 'when build has job definition without tag_list' do
+        let!(:build) { create(:ci_build, options: { script: ['echo hello'] }) }
+
+        before do
+          # Manually add tags to the build via the legacy tables
+          create(:ci_build_tag, tag: create(:ci_tag, name: 'legacy_tag'), build: build, project_id: build.project.id)
+        end
+
+        it 'uses empty tag_list from job_definition config' do
+          upsert_from_build
+
+          expect(ci_pending_build.tag_ids).to eq([])
+        end
+      end
+
+      context 'when build has more tags than MAX_TAGS_IDS' do
+        before do
+          stub_const("#{described_class}::MAX_TAGS_IDS", build.tag_list.count - 1)
+        end
+
+        it 'raises TooManyTagsError' do
+          expect { upsert_from_build }.to raise_error(described_class::TooManyTagsError)
+        end
       end
     end
 
     context 'when a build project is nested in a subgroup' do
-      let(:group) { create(:group, :with_hierarchy, depth: 2, children: 1) }
-      let(:project) { create(:project, namespace: group.descendants.first) }
-      let(:pipeline) { create(:ci_pipeline, project: project) }
+      let_it_be(:group) { create(:group, :with_hierarchy, depth: 2, children: 1) }
+      let_it_be_with_refind(:project) { create(:project, namespace: group.descendants.first) }
+      let_it_be_with_refind(:pipeline) { create(:ci_pipeline, project: project) }
+
       let(:build) { create(:ci_build, :created, pipeline: pipeline) }
 
-      subject { described_class.last }
+      subject(:latest_pending_build) { described_class.last }
 
       context 'when build can be picked by a group runner' do
         before do
-          project.group_runners_enabled = true
+          project.update!(group_runners_enabled: true)
         end
 
         it 'denormalizes namespace traversal ids' do
-          described_class.upsert_from_build!(build)
+          upsert_from_build
 
-          expect(subject.namespace_traversal_ids).not_to be_empty
-          expect(subject.namespace_traversal_ids).to eq [group.id, project.namespace.id]
+          expect(latest_pending_build.namespace_traversal_ids).not_to be_empty
+          expect(latest_pending_build.namespace_traversal_ids).to eq [group.id, project.namespace.id]
         end
       end
 
       context 'when build can not be picked by a group runner' do
         before do
-          project.group_runners_enabled = false
+          project.update!(group_runners_enabled: false)
         end
 
         it 'creates an empty namespace traversal ids array' do
-          described_class.upsert_from_build!(build)
+          upsert_from_build
 
-          expect(subject.namespace_traversal_ids).to be_empty
+          expect(latest_pending_build.namespace_traversal_ids).to be_empty
         end
       end
     end
   end
 
-  describe 'partitioning', :ci_partitionable do
+  describe '.namespace_transfer_params' do
+    let(:group) { create(:group) }
+    let(:new_parent_group) { create(:group) }
+    let(:expected_transfer_params) do
+      {
+        namespace_traversal_ids: [new_parent_group.id, group.id],
+        namespace_id: group.id
+      }
+    end
+
+    it 'updates all pending builds with namespace_transfer_params', :aggregate_failures do
+      expect do
+        group.update!(parent: new_parent_group)
+        # reload is called to make sure traversal_ids are reloaded
+      end.to change { Ci::PendingBuild.namespace_transfer_params(group.reload) }.to(expected_transfer_params)
+        .and not_change { Ci::PendingBuild.namespace_transfer_params(new_parent_group.reload) }
+    end
+  end
+
+  describe 'partitioning' do
     include Ci::PartitioningHelpers
 
     before do
-      stub_current_partition_id(ci_testing_partition_id_for_check_constraints)
+      stub_current_partition_id(ci_testing_partition_id)
     end
 
-    let(:new_pipeline ) { create(:ci_pipeline, project: pipeline.project) }
+    let(:new_pipeline) { create(:ci_pipeline, project: pipeline.project) }
     let(:new_build) { create(:ci_build, pipeline: new_pipeline) }
 
     it 'assigns the same partition id as the one that build has', :aggregate_failures do
-      expect(new_build.partition_id).to eq ci_testing_partition_id_for_check_constraints
+      expect(new_build.partition_id).to eq ci_testing_partition_id
 
       described_class.upsert_from_build!(build)
       described_class.upsert_from_build!(new_build)
 
       expect(build.reload.queuing_entry.partition_id).to eq pipeline.partition_id
-      expect(new_build.reload.queuing_entry.partition_id).to eq ci_testing_partition_id_for_check_constraints
+      expect(new_build.reload.queuing_entry.partition_id).to eq ci_testing_partition_id
     end
   end
 

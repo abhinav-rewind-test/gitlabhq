@@ -18,7 +18,11 @@
 # The tree structure of the entities results in the same structure for imported
 # Groups and Projects.
 class BulkImports::Entity < ApplicationRecord
+  include AfterCommitQueue
+
   self.table_name = 'bulk_import_entities'
+
+  ignore_column :source_xid_convert_to_bigint, remove_with: '18.10', remove_after: '2026-03-13'
 
   FailedError = Class.new(StandardError)
 
@@ -26,6 +30,7 @@ class BulkImports::Entity < ApplicationRecord
   belongs_to :parent, class_name: 'BulkImports::Entity', optional: true
 
   belongs_to :project, optional: true
+  belongs_to :organization, class_name: 'Organizations::Organization', optional: true
   belongs_to :group, foreign_key: :namespace_id, optional: true, inverse_of: :bulk_import_entities
 
   has_many :trackers,
@@ -38,20 +43,21 @@ class BulkImports::Entity < ApplicationRecord
     inverse_of: :entity,
     foreign_key: :bulk_import_entity_id
 
-  validates :project, absence: true, if: :group
-  validates :group, absence: true, if: :project
   validates :source_type, presence: true
   validates :source_full_path, presence: true
   validates :destination_name, presence: true, if: -> { group || project }
   validates :destination_namespace, exclusion: [nil], if: :group
   validates :destination_namespace, presence: true, if: :project?
 
+  validates_with ExactlyOnePresentValidator, fields: [:group, :project, :organization],
+    message: ->(_fields) { s_('BulkImport|Import failed. The bulk import entity must belong to only one organization, group, or project.') }
   validate :validate_parent_is_a_group, if: :parent
   validate :validate_imported_entity_type
   validate :validate_destination_namespace_ascendency, if: :group_entity?
   validate :validate_source_full_path_format
+  validate :validate_bulk_import_organization_matches
 
-  enum source_type: { group_entity: 0, project_entity: 1 }
+  enum :source_type, { group_entity: 0, project_entity: 1 }
 
   scope :by_user_id, ->(user_id) { joins(:bulk_import).where(bulk_imports: { user_id: user_id }) }
   scope :stale, -> { where('updated_at < ?', 24.hours.ago).where(status: [0, 1]) }
@@ -71,6 +77,7 @@ class BulkImports::Entity < ApplicationRecord
     state :finished, value: 2
     state :timeout, value: 3
     state :failed, value: -1
+    state :canceled, value: -2
 
     event :start do
       transition created: :started
@@ -90,11 +97,21 @@ class BulkImports::Entity < ApplicationRecord
       transition started: :timeout
     end
 
+    event :cancel do
+      transition any => :canceled
+    end
+
     # rubocop:disable Style/SymbolProc
     after_transition any => [:finished, :failed, :timeout] do |entity|
       entity.update_has_failures
     end
     # rubocop:enable Style/SymbolProc
+
+    after_transition any => [:canceled] do |entity|
+      entity.run_after_commit do
+        entity.propagate_cancel
+      end
+    end
   end
 
   def self.all_human_statuses
@@ -162,9 +179,7 @@ class BulkImports::Entity < ApplicationRecord
     url = File.join(export_relations_url_path_base, 'download')
     params = { relation: relation }
 
-    if batch_number && bulk_import.supports_batched_export?
-      params.merge!(batched: true, batch_number: batch_number)
-    end
+    params.merge!(batched: true, batch_number: batch_number) if batch_number && bulk_import.supports_batched_export?
 
     Gitlab::Utils.add_url_parameters(url, params)
   end
@@ -221,31 +236,35 @@ class BulkImports::Entity < ApplicationRecord
     end
   end
 
+  def propagate_cancel
+    trackers.each(&:cancel)
+  end
+
   private
 
   def validate_parent_is_a_group
-    unless parent.group_entity?
-      errors.add(:parent, s_('BulkImport|must be a group'))
-    end
+    errors.add(:parent, s_('BulkImport|must be a group.')) unless parent.group_entity?
   end
 
   def validate_imported_entity_type
     if group.present? && project_entity?
       errors.add(
         :group,
-        s_('BulkImport|expected an associated Project but has an associated Group')
+        s_('BulkImport|must belong to a project.')
       )
     end
 
     if project.present? && group_entity?
       errors.add(
         :project,
-        s_('BulkImport|expected an associated Group but has an associated Project')
+        s_('BulkImport|must belong to a group.')
       )
     end
   end
 
   def validate_destination_namespace_ascendency
+    return unless bulk_import&.source_equals_destination?
+
     source = Group.find_by_full_path(source_full_path)
 
     return unless source
@@ -253,7 +272,7 @@ class BulkImports::Entity < ApplicationRecord
     if source.self_and_descendants.any? { |namespace| namespace.full_path == destination_namespace }
       errors.add(
         :base,
-        s_('BulkImport|Import failed: Destination cannot be a subgroup of the source group. Change the destination and try again.')
+        s_('BulkImport|Import failed. The destination cannot be a subgroup of the source group. Change the destination and try again.')
       )
     end
   end
@@ -265,9 +284,15 @@ class BulkImports::Entity < ApplicationRecord
 
     errors.add(
       :source_full_path,
-      s_('BulkImport|must have a relative path structure with no HTTP ' \
-         'protocol characters, or leading or trailing forward slashes. Path segments must not start or ' \
-         'end with a special character, and must not contain consecutive special characters')
+      s_('BulkImport|must have a relative path with no HTTP ' \
+         'protocol characters or leading or trailing forward slashes. Path segments must not start or ' \
+         'end with a special character or contain consecutive special characters.')
     )
+  end
+
+  def validate_bulk_import_organization_matches
+    return if bulk_import.nil? || organization.nil? || bulk_import.organization == organization
+
+    errors.add(:organization_id, _("must match the bulk import organization's ID"))
   end
 end

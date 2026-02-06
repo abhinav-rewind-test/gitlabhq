@@ -6,16 +6,18 @@ module Gitlab
       module External
         class Processor
           IncludeError = Class.new(StandardError)
+          DuplicateInputError = Class.new(IncludeError)
 
           attr_reader :context, :logger
 
           def initialize(values, context)
             @values = values
-            @external_files = External::Mapper.new(values, context).process
+            @context = context
+            @external_files = mapper.process
             @content = {}
             @logger = context.logger
           rescue External::Mapper::Error,
-                 OpenSSL::SSL::SSLError => e
+            OpenSSL::SSL::SSLError => e
             raise IncludeError, e.message
           end
 
@@ -26,9 +28,16 @@ module Gitlab
             merge_external_files!
             append_inline_content!
             remove_include_keyword!
+            validate!
+
+            @content
           end
 
           private
+
+          def mapper
+            External::Mapper.new(@values, @context)
+          end
 
           def validate_external_files!
             @external_files.each do |file|
@@ -50,6 +59,10 @@ module Gitlab
 
           def remove_include_keyword!
             @content.tap { @content.delete(:include) }
+          end
+
+          def validate!
+            # no-op: override in subclasses for custom validation
           end
         end
       end

@@ -1,89 +1,22 @@
-import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { ACTION_EDIT, ACTION_DELETE } from '~/vue_shared/components/list_actions/constants';
-import { QUERY_PARAM_END_CURSOR, QUERY_PARAM_START_CURSOR } from './constants';
-
-const availableProjectActions = (userPermissions) => {
-  const baseActions = [ACTION_EDIT];
-
-  if (userPermissions.removeProject) {
-    return [...baseActions, ACTION_DELETE];
-  }
-
-  return baseActions;
-};
-
-const availableGroupActions = (userPermissions) => {
-  const baseActions = [ACTION_EDIT];
-
-  if (userPermissions.removeGroup) {
-    return [...baseActions, ACTION_DELETE];
-  }
-
-  return baseActions;
-};
-
-export const formatProjects = (projects) =>
-  projects.map(
-    ({
-      id,
-      nameWithNamespace,
-      mergeRequestsAccessLevel,
-      issuesAccessLevel,
-      forkingAccessLevel,
-      webUrl,
-      userPermissions,
-      maxAccessLevel: accessLevel,
-      ...project
-    }) => ({
-      ...project,
-      id: getIdFromGraphQLId(id),
-      name: nameWithNamespace,
-      mergeRequestsAccessLevel: mergeRequestsAccessLevel.stringValue,
-      issuesAccessLevel: issuesAccessLevel.stringValue,
-      forkingAccessLevel: forkingAccessLevel.stringValue,
-      webUrl,
-      isForked: false,
-      accessLevel,
-      editPath: `${webUrl}/edit`,
-      availableActions: availableProjectActions(userPermissions),
-      actionLoadingStates: {
-        [ACTION_DELETE]: false,
-      },
-    }),
-  );
+import {
+  TIMESTAMP_TYPE_CREATED_AT,
+  TIMESTAMP_TYPE_UPDATED_AT,
+} from '~/vue_shared/components/resource_lists/constants';
+import { formatGraphQLProjects } from '~/vue_shared/components/projects_list/formatter';
+import { formatGraphQLGroups } from '~/vue_shared/components/groups_list/formatter';
+import { SORT_CREATED_AT, SORT_UPDATED_AT } from './constants';
 
 export const formatGroups = (groups) =>
-  groups.map(({ id, webUrl, parent, maxAccessLevel: accessLevel, userPermissions, ...group }) => ({
-    ...group,
-    id: getIdFromGraphQLId(id),
-    webUrl,
-    parent: parent?.id || null,
-    accessLevel,
-    editPath: `${webUrl}/-/edit`,
-    availableActions: availableGroupActions(userPermissions),
-    actionLoadingStates: {
-      [ACTION_DELETE]: false,
-    },
-  }));
+  formatGraphQLGroups(groups, (group) => ({ editPath: group.organizationEditPath }));
 
-export const onPageChange = ({
-  startCursor,
-  endCursor,
-  routeQuery: { start_cursor, end_cursor, ...routeQuery },
-}) => {
-  if (startCursor) {
-    return {
-      ...routeQuery,
-      [QUERY_PARAM_START_CURSOR]: startCursor,
-    };
-  }
+export const formatProjects = (projects) =>
+  formatGraphQLProjects(projects, (project) => ({ editPath: project.organizationEditPath }));
 
-  if (endCursor) {
-    return {
-      ...routeQuery,
-      [QUERY_PARAM_END_CURSOR]: endCursor,
-    };
-  }
+export const timestampType = (sortName) => {
+  const SORT_MAP = {
+    [SORT_CREATED_AT]: TIMESTAMP_TYPE_CREATED_AT,
+    [SORT_UPDATED_AT]: TIMESTAMP_TYPE_UPDATED_AT,
+  };
 
-  return routeQuery;
+  return SORT_MAP[sortName] || TIMESTAMP_TYPE_CREATED_AT;
 };

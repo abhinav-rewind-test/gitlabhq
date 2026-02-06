@@ -2,6 +2,16 @@
 
 module Emails
   module MergeRequests
+    extend ActiveSupport::Concern
+
+    included do
+      override_layout_lookup_table.merge!({
+        merge_when_pipeline_succeeds_email: 'mailer',
+        approved_merge_request_email: 'mailer',
+        unapproved_merge_request_email: 'mailer'
+      })
+    end
+
     def new_merge_request_email(recipient_id, merge_request_id, reason = nil)
       setup_merge_request_mail(merge_request_id, recipient_id, present: true)
 
@@ -15,7 +25,16 @@ module Emails
     end
 
     # existing_commits - an array containing the first and last commits
-    def push_to_merge_request_email(recipient_id, merge_request_id, updated_by_user_id, reason = nil, new_commits:, total_new_commits_count:, existing_commits:, total_existing_commits_count:)
+    def push_to_merge_request_email(
+      recipient_id,
+      merge_request_id,
+      updated_by_user_id,
+      reason = nil,
+      new_commits:,
+      total_new_commits_count:,
+      existing_commits:,
+      total_existing_commits_count:
+    )
       setup_merge_request_mail(merge_request_id, recipient_id)
 
       @new_commits = new_commits
@@ -39,7 +58,13 @@ module Emails
     end
 
     # rubocop: disable CodeReuse/ActiveRecord
-    def reassigned_merge_request_email(recipient_id, merge_request_id, previous_assignee_ids, updated_by_user_id, reason = nil)
+    def reassigned_merge_request_email(
+      recipient_id,
+      merge_request_id,
+      previous_assignee_ids,
+      updated_by_user_id,
+      reason = nil
+    )
       setup_merge_request_mail(merge_request_id, recipient_id)
 
       previous_assignees = []
@@ -52,7 +77,13 @@ module Emails
     # rubocop: enable CodeReuse/ActiveRecord
 
     # rubocop: disable CodeReuse/ActiveRecord
-    def changed_reviewer_of_merge_request_email(recipient_id, merge_request_id, previous_reviewer_ids, updated_by_user_id, reason = nil)
+    def changed_reviewer_of_merge_request_email(
+      recipient_id,
+      merge_request_id,
+      previous_reviewer_ids,
+      updated_by_user_id,
+      reason = nil
+    )
       setup_merge_request_mail(merge_request_id, recipient_id)
 
       @previous_reviewers = []
@@ -77,7 +108,13 @@ module Emails
       mail_answer_thread(@merge_request, merge_request_thread_options(updated_by_user_id, reason))
     end
 
-    def changed_milestone_merge_request_email(recipient_id, merge_request_id, milestone, updated_by_user_id, reason = nil)
+    def changed_milestone_merge_request_email(
+      recipient_id,
+      merge_request_id,
+      milestone,
+      updated_by_user_id,
+      reason = nil
+    )
       setup_merge_request_mail(merge_request_id, recipient_id)
 
       @milestone = milestone
@@ -169,14 +206,12 @@ module Emails
     def setup_merge_request_mail(merge_request_id, recipient_id, present: false)
       @merge_request = MergeRequest.find(merge_request_id)
       @project = @merge_request.project
-      @target_url = project_merge_request_url(@project, @merge_request)
+      @target_url = Gitlab::Routing.url_helpers.project_merge_request_url(@project, @merge_request)
       @recipient = User.find(recipient_id)
 
-      if present
-        @mr_presenter = @merge_request.present(current_user: @recipient)
-      end
+      @mr_presenter = @merge_request.present(current_user: @recipient) if present
 
-      @sent_notification = SentNotification.record(@merge_request, recipient_id, reply_key)
+      @sent_notification = SentNotification.record(@merge_request, recipient_id)
     end
 
     def merge_request_thread_options(sender_id, reason = nil)

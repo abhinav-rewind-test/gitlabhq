@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
+RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :database do
   include MigrationsHelpers
   using RSpec::Parameterized::TableSyntax
 
@@ -37,7 +37,8 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
           {
             column: 'parent_id',
             on_delete: :async_delete,
-            gitlab_schema: :gitlab_main
+            gitlab_schema: :gitlab_main,
+            worker_class: described_class
           }
         ),
         ActiveRecord::ConnectionAdapters::ForeignKeyDefinition.new(
@@ -46,7 +47,8 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
           {
             column: 'parent_id_with_different_column',
             on_delete: :async_nullify,
-            gitlab_schema: :gitlab_main
+            gitlab_schema: :gitlab_main,
+            worker_class: described_class
           }
         )
       ],
@@ -57,7 +59,8 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
           {
             column: 'parent_id',
             on_delete: :async_delete,
-            gitlab_schema: :gitlab_main
+            gitlab_schema: :gitlab_main,
+            worker_class: described_class
           }
         )
       ]
@@ -105,12 +108,15 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
   def perform_for(db:)
     time = Time.current.midnight
 
-    case db
-    when :main
-      time += 2.minutes
-    when :ci
-      time += 3.minutes
-    end
+    # Use the same mechanism as app/workers/loose_foreign_keys/cleanup_worker.rb
+    # to ensure consistency for future decompositions.
+    index = Gitlab::Database.database_base_models_with_gitlab_shared
+                            .keys
+                            .find_index(db.to_s)
+
+    raise "Unsupported DB: #{db}" unless index
+
+    time += index.minutes
 
     travel_to(time) do
       described_class.new.perform
@@ -143,8 +149,7 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
 
         if database_base_models.has_key?(:ci)
           Gitlab::Database::SharedModel.using_connection(database_base_models[:ci].connection) do
-            LooseForeignKeys::DeletedRecord.create!(fully_qualified_table_name: 'public._test_loose_fk_parent_table_1', primary_key_value: 999)
-            LooseForeignKeys::DeletedRecord.create!(fully_qualified_table_name: 'public._test_loose_fk_parent_table_1', primary_key_value: 9991)
+            LooseForeignKeys::DeletedRecord.create!(fully_qualified_table_name: 'public._test_loose_fk_parent_table_1', primary_key_value: 1)
           end
         end
       end
@@ -163,6 +168,10 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
         travel_to DateTime.new(2019, 1, 1, 10, current_minute) do
           described_class.new.perform
         end
+
+        Gitlab::Database::SharedModel.using_connection(expected_connection) do
+          expect(LooseForeignKeys::DeletedRecord.load_batch_for_table('public._test_loose_fk_parent_table_1', 10)).to be_empty
+        end
       end
     end
   end
@@ -172,6 +181,7 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
       where(:database_name, :feature_flag) do
         :main | :loose_foreign_keys_turbo_mode_main
         :ci   | :loose_foreign_keys_turbo_mode_ci
+        :sec  | :loose_foreign_keys_turbo_mode_sec
       end
 
       with_them do
@@ -202,6 +212,7 @@ RSpec.describe LooseForeignKeys::CleanupWorker, feature_category: :cell do
       where(:database_name, :feature_flag) do
         :main | :loose_foreign_keys_turbo_mode_main
         :ci   | :loose_foreign_keys_turbo_mode_ci
+        :sec  | :loose_foreign_keys_turbo_mode_sec
       end
 
       with_them do

@@ -45,10 +45,10 @@ export default {
     :toggle-text="preferredLocale.text"
     :items="locales"
     category="tertiary"
-    placement="right"
+    placement="bottom-end"
     icon="earth"
     size="small"
-    toggle-class="py-0 gl-h-6"
+    toggle-class="!gl-py-0 gl-h-6"
     @select="onLanguageSelected"
   >
     <template #list-item="{ item: locale }">
@@ -58,7 +58,7 @@ export default {
     </template>
     <template #footer>
       <div
-        class="gl-border-t-solid gl-border-t-1 gl-border-t-gray-100 gl-display-flex gl-justify-content-center gl-p-3"
+        class="gl-flex gl-justify-center gl-border-t-1 gl-border-t-default gl-p-3 gl-border-t-solid"
         data-testid="footer"
       >
         <gl-link :href="$options.HELP_TRANSLATE_HREF">{{ $options.HELP_TRANSLATE_MSG }}</gl-link>

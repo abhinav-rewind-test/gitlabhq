@@ -68,6 +68,16 @@ RSpec.describe Groups::LabelsController, feature_category: :team_planning do
         expect(assigns(:labels).count).to eq(4)
       end
     end
+
+    context 'with archived labels' do
+      let_it_be(:archived_label) { create(:group_label, :archived, group: group, title: 'Archived Label') }
+
+      let_it_be(:params) { { group_id: group } }
+      let_it_be(:unarchived_labels) { [group_label_1] }
+      let_it_be(:all_labels) { [archived_label, group_label_1] }
+
+      it_behaves_like 'handles archived labels'
+    end
   end
 
   shared_examples 'when current_user does not have ability to modify the label' do
@@ -101,6 +111,16 @@ RSpec.describe Groups::LabelsController, feature_category: :team_planning do
       get :edit, params: { group_id: group.to_param, id: label.to_param }
 
       expect(response).to have_gitlab_http_status(:ok)
+    end
+
+    context 'with archived label' do
+      let_it_be(:archived_label) { create(:group_label, :archived, group: group) }
+
+      it 'shows the edit page' do
+        get :edit, params: { group_id: group.to_param, id: archived_label.to_param }
+
+        expect(response).to have_gitlab_http_status(:ok)
+      end
     end
 
     it_behaves_like 'when current_user does not have ability to modify the label' do
@@ -140,7 +160,7 @@ RSpec.describe Groups::LabelsController, feature_category: :team_planning do
         expect(label.reload).to eq label
       end
 
-      context 'when label is succesfuly destroyed' do
+      context 'when label is successfully destroyed' do
         it 'redirects to the group labels page' do
           label = create(:group_label, group: group)
           delete :destroy, params: { group_id: group.to_param, id: label.to_param }
@@ -209,6 +229,12 @@ RSpec.describe Groups::LabelsController, feature_category: :team_planning do
 
         it_behaves_like 'allows setting lock_on_merge'
       end
+    end
+
+    it_behaves_like 'updating archived status' do
+      let_it_be_with_reload(:label) { create(:group_label, group: group) }
+      let(:update_params) { { group_id: group.to_param, id: label.to_param } }
+      let(:expected_redirect_path) { group_labels_path }
     end
   end
 end

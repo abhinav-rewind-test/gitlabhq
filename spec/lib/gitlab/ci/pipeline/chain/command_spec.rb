@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
+RSpec.describe Gitlab::Ci::Pipeline::Chain::Command, feature_category: :pipeline_composition do
   let_it_be(:project) { create(:project, :repository) }
 
   describe '#initialize' do
@@ -12,6 +12,56 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
 
     it 'properly initialises object from hash' do
       expect(subject.origin_ref).to eq('master')
+    end
+  end
+
+  describe '#dry_run?' do
+    subject { command.dry_run? }
+
+    let(:command) { described_class.new(dry_run: dry_run, origin_ref: project.default_branch_or_main) }
+    let(:dry_run) { false }
+
+    it { is_expected.to eq(false) }
+
+    context 'when dry_run is true' do
+      let(:dry_run) { true }
+
+      it { is_expected.to eq(true) }
+    end
+  end
+
+  describe '#linting?' do
+    subject { command.linting? }
+
+    let(:command) { described_class.new(linting: linting) }
+    let(:linting) { false }
+
+    it { is_expected.to eq(false) }
+
+    context 'when linting is true' do
+      let(:linting) { true }
+
+      it { is_expected.to eq(true) }
+    end
+  end
+
+  describe '#readonly?' do
+    using RSpec::Parameterized::TableSyntax
+
+    subject { command.readonly? }
+
+    let(:command) do
+      described_class.new(dry_run: dry_run, linting: linting, origin_ref: project.default_branch_or_main)
+    end
+
+    where(:dry_run, :linting, :result) do
+      false | false | false
+      true  | false | true
+      false | true  | true
+    end
+
+    with_them do
+      it { is_expected.to eq(result) }
     end
   end
 
@@ -78,6 +128,7 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
       subject { command.merge_request_ref_exists? }
 
       let!(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
+      let(:origin_ref) { merge_request.source_branch }
 
       context 'for existing merge request ref' do
         let(:origin_ref) { merge_request.ref_path }
@@ -86,9 +137,13 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
       end
 
       context 'for branch ref' do
-        let(:origin_ref) { merge_request.source_branch }
-
         it { is_expected.to eq(false) }
+      end
+
+      it 'does not memoize the result' do
+        expect(command).to receive(:check_merge_request_ref).twice
+
+        2.times { command.merge_request_ref_exists? }
       end
     end
 
@@ -111,6 +166,12 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
         let(:origin_ref) { 'refs/tags/1.0.0' }
 
         it { is_expected.to eq('1.0.0') }
+      end
+
+      context 'for workload ref' do
+        let(:origin_ref) { 'refs/workloads/abc123' }
+
+        it { is_expected.to eq('refs/workloads/abc123') }
       end
 
       context 'for other refs' do
@@ -366,6 +427,51 @@ RSpec.describe Gitlab::Ci::Pipeline::Chain::Command do
       it 'increments the error metric with unknown_failure' do
         counter = Gitlab::Metrics.counter(:gitlab_ci_pipeline_failure_reasons, 'desc')
         expect { subject }.to change { counter.get(reason: 'unknown_failure') }.by(1)
+      end
+    end
+  end
+
+  describe '#observe_jobs_count_in_alive_pipelines' do
+    let(:histogram) { instance_double(Prometheus::Client::Histogram) }
+    let(:command) { described_class.new(project: project) }
+    let(:pipeline_seed) { instance_double(Gitlab::Ci::Pipeline::Seed::Pipeline, size: 10) }
+    let(:jobs_count) { 50 }
+
+    subject(:observe_jobs_count) do
+      command.observe_jobs_count_in_alive_pipelines
+    end
+
+    before do
+      allow(::Gitlab::Ci::Pipeline::Metrics).to receive(:active_jobs_histogram)
+        .and_return(histogram)
+      allow(project.all_pipelines).to receive(:jobs_count_in_alive_pipelines)
+        .and_return(jobs_count)
+      allow(command).to receive(:pipeline_seed).and_return(pipeline_seed)
+    end
+
+    it 'observes the sum of jobs_count_in_alive_pipelines and current_pipeline_size' do
+      expect(histogram).to receive(:observe).with({ plan: project.actual_plan_name }, 60)
+
+      observe_jobs_count
+    end
+
+    context 'when pipeline_seed is nil' do
+      let(:pipeline_seed) { nil }
+
+      it 'uses 0 for current_pipeline_size' do
+        expect(histogram).to receive(:observe).with({ plan: project.actual_plan_name }, 50)
+
+        observe_jobs_count
+      end
+    end
+
+    context 'when jobs_count_in_alive_pipelines is 0' do
+      let(:jobs_count) { 0 }
+
+      it 'observes only the current_pipeline_size' do
+        expect(histogram).to receive(:observe).with({ plan: project.actual_plan_name }, 10)
+
+        observe_jobs_count
       end
     end
   end

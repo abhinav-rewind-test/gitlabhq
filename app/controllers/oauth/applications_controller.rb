@@ -5,6 +5,7 @@ class Oauth::ApplicationsController < Doorkeeper::ApplicationsController
   include PageLayoutHelper
   include OauthApplications
   include InitializesCurrentUserMode
+  include CurrentOrganization
 
   # Defined by the `Doorkeeper::ApplicationsController` and is redundant as we call `authenticate_user!` below. Not
   # defining or skipping this will result in a `403` response to all requests.
@@ -14,6 +15,7 @@ class Oauth::ApplicationsController < Doorkeeper::ApplicationsController
   prepend_before_action :authenticate_user!
   before_action :add_gon_variables
   before_action :load_scopes, only: [:index, :create, :edit, :update]
+  before_action :set_current_organization
 
   around_action :set_locale
 
@@ -26,7 +28,7 @@ class Oauth::ApplicationsController < Doorkeeper::ApplicationsController
   def show; end
 
   def create
-    @application = Applications::CreateService.new(current_user, application_params).execute(request)
+    @application = Applications::CreateService.new(current_user, request, application_params).execute
 
     if @application.persisted?
       flash[:notice] = I18n.t(:notice, scope: [:doorkeeper, :flash, :applications, :create])
@@ -60,13 +62,14 @@ class Oauth::ApplicationsController < Doorkeeper::ApplicationsController
   end
 
   def set_index_vars
-    @applications = current_user.oauth_applications.load
+    @applications = current_user.oauth_applications.keyset_paginate(cursor: params[:cursor])
+    @applications_total_count = current_user.oauth_applications.count
     @authorized_tokens = current_user.oauth_authorized_tokens
                                      .latest_per_application
                                      .preload_application
 
     # Don't overwrite a value possibly set by `create`
-    @application ||= Doorkeeper::Application.new
+    @application ||= Authn::OauthApplication.new
   end
 
   # Override Doorkeeper to scope to the current user
@@ -74,17 +77,24 @@ class Oauth::ApplicationsController < Doorkeeper::ApplicationsController
     @application = current_user.oauth_applications.find(params[:id])
   end
 
-  rescue_from ActiveRecord::RecordNotFound do |exception|
+  rescue_from ActiveRecord::RecordNotFound do |_exception|
     render "errors/not_found", layout: "errors", status: :not_found
   end
 
   def application_params
     super.tap do |params|
       params[:owner] = current_user
+      params[:organization] = Current.organization
     end
   end
 
   def set_locale(&block)
     Gitlab::I18n.with_user_locale(current_user, &block)
+  end
+
+  def organization_params
+    params.permit(
+      :controller, :namespace_id, :group_id, :id, :organization_path
+    )
   end
 end

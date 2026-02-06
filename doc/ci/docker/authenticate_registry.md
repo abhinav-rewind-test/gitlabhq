@@ -2,9 +2,15 @@
 stage: Verify
 group: Pipeline Execution
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Authenticate with registry in Docker-in-Docker
 ---
 
-# Authenticate with registry in Docker-in-Docker
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 When you use Docker-in-Docker, the
 [standard authentication methods](using_docker_images.md#access-an-image-from-a-private-container-registry)
@@ -12,12 +18,11 @@ do not work, because a fresh Docker daemon is started with the service.
 
 ## Option 1: Run `docker login`
 
-In [`before_script`](../yaml/index.md#before_script), run `docker
-login`:
+In [`before_script`](../yaml/_index.md#before_script), run `docker login`:
 
 ```yaml
 default:
-  image: docker:24.0.5
+  image: docker:24.0.5-cli
   services:
     - docker:24.0.5-dind
 
@@ -66,7 +71,7 @@ documentation:
 ### Docker
 
 Update the
-[volume mounts](https://docs.gitlab.com/runner/configuration/advanced-configuration.html#volumes-in-the-runnersdocker-section)
+[volume mounts](https://docs.gitlab.com/runner/configuration/advanced-configuration/#volumes-in-the-runnersdocker-section)
 to include the file.
 
 ```toml
@@ -88,7 +93,7 @@ of this file. You can do this with a command like:
 kubectl create configmap docker-client-config --namespace gitlab-runner --from-file /opt/.docker/config.json
 ```
 
-Update the [volume mounts](https://docs.gitlab.com/runner/executors/kubernetes.html#using-volumes)
+Update the [volume mounts](https://docs.gitlab.com/runner/executors/kubernetes/#custom-volume-mount)
 to include the file.
 
 ```toml
@@ -101,8 +106,6 @@ to include the file.
     [[runners.kubernetes.volumes.config_map]]
       name = "docker-client-config"
       mount_path = "/root/.docker/config.json"
-      # If you are running GitLab Runner 13.5
-      # or lower you can remove this
       sub_path = "config.json"
 ```
 
@@ -115,17 +118,17 @@ defined, you can use the variable and save it in
 
 You can define this authentication in several ways:
 
-- In [`pre_build_script`](https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-runners-section)
+- In [`pre_build_script`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runners-section)
   in the runner configuration file.
-- In [`before_script`](../yaml/index.md#before_script).
-- In [`script`](../yaml/index.md#script).
+- In [`before_script`](../yaml/_index.md#before_script).
+- In [`script`](../yaml/_index.md#script).
 
-The following example shows [`before_script`](../yaml/index.md#before_script).
+The following example shows [`before_script`](../yaml/_index.md#before_script).
 The same commands apply for any solution you implement.
 
 ```yaml
 default:
-  image: docker:24.0.5
+  image: docker:24.0.5-cli
   services:
     - docker:24.0.5-dind
 

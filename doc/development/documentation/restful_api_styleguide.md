@@ -1,43 +1,65 @@
 ---
-info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
 stage: none
 group: unassigned
-description: 'Writing styles, markup, formatting, and other standards for the GitLab RESTful APIs.'
+info: For assistance with this Style Guide page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments-to-other-projects-and-subjects.
+description: Writing styles, markup, formatting, and other standards for the GitLab RESTful APIs.
+title: Documenting REST API resources
 ---
-
-# Documenting REST API resources
 
 REST API resources are documented in Markdown under
 [`/doc/api`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/doc/api). Each
 resource has its own Markdown file, which is linked from
 [`api_resources.md`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/api/api_resources.md).
 
-When modifying the Markdown, also update the corresponding
-[OpenAPI definition](https://gitlab.com/gitlab-org/gitlab/-/tree/master/doc/api/openapi)
-if one exists for the resource. If not, consider creating one. Match the latest
-[OpenAPI 3.0.x specification](https://swagger.io/specification/). (For more
-information, see the discussion in this
-[issue](https://gitlab.com/gitlab-org/gitlab/-/issues/16023#note_370901810).)
+When modifying the Markdown or API code, also update the corresponding
+[OpenAPI definition](https://gitlab.com/gitlab-org/gitlab/-/tree/master/doc/api/openapi), by running
+`bin/rake gitlab:openapi:v2:generate` and `bin/rake gitlab:openapi:v3:generate`.
+To check if the OpenAPI definition needs to be updated, you can run `bin/rake gitlab:openapi:v2:check_docs` and
+`bin/rake gitlab:openapi:v3:check_docs`.
+This is also checked by the `openapi-doc-check` CI/CD job that runs for commits that modify API code or documentation.
 
-In the Markdown doc for a resource (AKA endpoint):
+The Markdown topic for an API resource must include:
 
-- Every method must have the REST API request. For example:
+- A block that includes the HTTP method (like GET, PUT, DELETE) followed by the request path. Always start the path with a `/`. For example:
 
   ```plaintext
   GET /api/v4/projects/:id/repository/branches
   ```
 
-- Every method must have a detailed [description of the attributes](#method-description).
-- Every method must have a cURL example.
-- Every method must have a detailed [description of the response body](#response-body-description).
-- Every method must have a response body example (in JSON format).
-- If an attribute is available only to higher level subscription tiers, add the appropriate tier to the **Description**. If an attribute is
-  for Premium, include that it's also available for Ultimate.
-- If an attribute is available only in certain offerings, add the offerings to the **Description**. If the attribute's
-  description also has both offering and tier, combine them. For
-  example: _Self-managed, Premium and Ultimate only._
+- A detailed [description of the attributes](#request-attributes).
+- A detailed [description of the response body](#response-attributes).
+- A cURL example.
+- A response body example (in JSON format).
 
-After a new API documentation page is added, [add an entry in the global navigation](site_architecture/global_nav.md#add-a-navigation-entry). [Example](https://gitlab.com/gitlab-org/gitlab-docs/-/merge_requests/3497).
+After a new API documentation page is added, [add an entry in the global navigation](site_architecture/global_nav.md#add-a-navigation-entry).
+
+## Page metadata
+
+When you create a new page, include a `description` metadata field
+in the front matter that follows these guidelines for consistency:
+
+- Start with "REST API to"
+- Use action verbs that describe what users can do with the API
+- Avoid words ending in -ing
+- Keep to one sentence, ideally under 100 characters
+- End with a period
+
+For example:
+
+```yaml
+---
+stage: Example Stage
+group: Example Group
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: REST API to create, update, and delete issues.
+title: Example page title
+---
+```
+
+Additional examples:
+
+- `description: REST API to retrieve CI/CD job details, retry and cancel jobs, run manual jobs, and access job logs.`
+- `description: REST API to create, manage, and monitor CI/CD pipelines.`
 
 ## API topic template
 
@@ -47,15 +69,23 @@ required attributes first in the table.
 ````markdown
 ## API name
 
-> - History note.
+{{</* history */>}}
 
-One or two sentence description of what endpoint does.
+- History note.
 
-### Method title
+{{</* /history */>}}
 
-> - History note.
+Use this API to ...
 
-Description of the method.
+### Operation title
+
+{{</* history */>}}
+
+- History note.
+
+{{</* /history */>}}
+
+Description of the operation.
 
 ```plaintext
 METHOD /api/v4/endpoint
@@ -70,7 +100,7 @@ Supported attributes:
 | `attribute`              | datatype | No       | Detailed description. |
 | `attribute`              | datatype | No       | Detailed description. |
 
-If successful, returns [`<status_code>`](rest/index.md#status-codes) and the following
+If successful, returns [`<status_code>`](rest/troubleshooting.md#status-codes) and the following
 response attributes:
 
 | Attribute                | Type     | Description           |
@@ -97,7 +127,7 @@ Example response:
 
 ## History
 
-Add [history](versions.md#documenting-version-specific-features)
+Add [history](styleguide/availability_details.md#history)
 to describe new or updated API calls.
 
 To add history for an individual attribute, include it in the history
@@ -106,7 +136,11 @@ for the section. For example:
 ```markdown
 ### Edit a widget
 
-> - `widget_message` [introduced](<link-to-issue>) in GitLab 14.3.
+{{</* history */>}}
+
+ - `widget_message` [introduced](https://link-to-issue) in GitLab 14.3.
+
+{{</* /history */>}}
 ```
 
 If the API or attribute is deployed behind a feature flag,
@@ -115,14 +149,18 @@ If the API or attribute is deployed behind a feature flag,
 ## Deprecations
 
 To document the deprecation of an API endpoint, follow the steps to
-[deprecate a page or topic](versions.md#deprecate-a-page-or-topic).
+[deprecate a page or topic](styleguide/deprecations_and_removals.md).
 
 To deprecate an attribute:
 
 1. Add a history note.
 
    ```markdown
-   > - `widget_name` [deprecated](<link-to-issue>) in GitLab 14.7.
+   {{</* history */>}}
+
+   - `widget_name` [deprecated](https://link-to-issue) in GitLab 14.7.
+
+   {{</* /history */>}}
    ```
 
 1. Add inline deprecation text to the description.
@@ -130,23 +168,67 @@ To deprecate an attribute:
    ```markdown
    | Attribute     | Type   | Required | Description |
    |---------------|--------|----------|-------------|
-   | `widget_name` | string | No       | [Deprecated](<link-to-issue>) in GitLab 14.7 and is planned for removal in 15.4. Use `widget_id` instead. The name of the widget. |
+   | `widget_name` | string | No       | [Deprecated](https://link-to-issue) in GitLab 14.7. Use `widget_id` instead. The name of the widget. |
    ```
 
-To widely announce a deprecation, or if it's a breaking change,
-[update the REST API deprecations and removals page](../../api/rest/deprecations.md).
+To widely announce a deprecation, [update the REST API deprecations page](../../api/rest/deprecations.md).
 
-## Method description
+## API introduction
 
-Use the following table headers to describe the methods. Attributes should
-always be in code blocks using backticks (`` ` ``).
+Each API is made of one or more operations. At the start of the topic, include information that
+applies to all operations in the API, and a short description of the related features.
 
-Sort the table by required attributes first, then alphabetically.
+For consistency, try to start the introduction with: `Use this API to {verb} + [{feature}](link/to/UI/docs).`
+This allows us to direct users to related documentation that might include more context.
+
+For example:
+
+- `Use this API to manage [Git branches](path/to/file).`
+- `Use this API to interact with the [Maven package manager client](path/to/file).`
+- `Use this API to interact with namespaces, a special resource category used to organize users and groups. For more information, see [namespaces](path/to/file).`
+
+## Operation titles
+
+Start an operation title with a verb. For consistency,
+use these verbs based on the HTTP method:
+
+| HTTP method      | Verb     | Alternatives | Examples |
+| ---------------- | -------- | ------------ | -------- |
+| `GET` (multiple) | List all |              | `List all group access tokens` |
+| `GET` (single)   | Retrieve | Download     | `Retrieve a group audit event`, `Download a dependency list export` |
+| `POST`           | Create   | Add          | `Create a repository branch`, `Add a new emoji reaction` |
+| `PUT`            | Update   | Replace      | `Update a project topic` |
+| `PATCH`          | Update   | Modify       | `Update a freeze period`, `Modify an existing commit thread note` |
+| `DELETE`         | Delete   |              | `Delete a feature` |
+
+When possible, use the recommended verb. Alternatives might be needed in specific contexts, but
+minimize their use to maintain consistency.
+
+## Operation descriptions
+
+Each operation should include a short description that explains its use, and highlights any
+important information. If possible, write the first sentence to broadly repeat the title of
+the operation. For example:
+
+- `List all project access tokens` -> `Lists all project access tokens.`
+- `Delete an SSH key` -> `Deletes an SSH key from your user account.`
+- `Retrieve an enterprise user` -> `Retrieves details on a specified enterprise user.`
+
+## Request attributes
+
+You must document the request attributes in an operation. When creating the table and attribute descriptions:
+
+- Use the following column names for attribute tables.
+- List any path attributes first, then any required attributes, then sort alphabetically.
+- Place the attribute name in code blocks using backticks (`` ` ``).
+- Document any tier or offering information specific to an attribute in the description.
+  - If an attribute is available for Premium, mention that it's also available for Ultimate.
+  - Combine this tier and offering information when possible. For example: `GitLab Self-Managed, Premium and Ultimate only.`
 
 ```markdown
 | Attribute                    | Type          | Required | Description                                         |
 |------------------------------|---------------|----------|-----------------------------------------------------|
-| `title`                      | string        | Yes      | Title of the issue.                                 |
+| `title`                      | string        | Yes      | Title of the issue. GitLab Self-Managed only.       |
 | `assignee_ids`               | integer array | No       | IDs of the users to assign the issue to. Ultimate only. |
 | `confidential`               | boolean       | No       | Sets the issue to confidential. Default is `false`. |
 ```
@@ -155,45 +237,68 @@ Rendered example:
 
 | Attribute                    | Type          | Required | Description                                         |
 |------------------------------|---------------|----------|-----------------------------------------------------|
-| `title`                      | string        | Yes      | Title of the issue.                                 |
-| `assignee_ids`               | integer array | No       | IDs of the users to assign the issue to. Premium and Ultimate only. |
+| `title`                      | string        | Yes      | Title of the issue. GitLab Self-Managed only.       |
+| `assignee_ids`               | integer array | No       | IDs of the users to assign the issue to. Ultimate only. |
 | `confidential`               | boolean       | No       | Sets the issue to confidential. Default is `false`. |
 
 For information about writing attribute descriptions, see the [GraphQL API description style guide](../api_graphql_styleguide.md#description-style-guide).
 
-## Response body description
+### Conditionally required attributes
+
+If an attribute is related to another item, indicate this in the attribute description.
+
+Generally, this happens if one of two attributes is required or if an attribute must be enabled and configured separately.
+
+First define the attribute itself, then mention any requirements. Use this format:
+
+  ```markdown
+  Required if `attribute1` is `true`.
+  ```
+
+For example:
+
+| Attribute                  | Type    | Required    | Description |
+| -------------------------- | ------- | ----------- | ----------- |
+| `include_saml_users`       | boolean | Conditional | If `true`, returns users with a SAML identity. Required if `include_service_accounts` is `false`. |
+| `include_service_accounts` | boolean | Conditional | If `true`, returns service account users. Required if `include_saml_users` is `false`. |
+| `a_related_setting`        | boolean | Conditional | If `true`, does something else. Required if `include_saml_users` is `true`. |
+
+## Response attributes
+
+You might sometimes need to document the response attributes in an operation. This is not usually required.
+When creating the table and attribute descriptions:
+
+- Use the following column names for attribute tables.
+- Sort the table alphabetically.
+- Place the attribute name in code blocks using backticks (`` ` ``).
+- If describing an object or array, use dot notation to represent the sub-attributes. For example, `project.name` or `projects[].name`.
+- Document any tier or offering information specific to an attribute in the description.
+  - If an attribute is available for Premium, mention that it's also available for Ultimate.
+  - Combine this tier and offering information when possible. For example: `GitLab Self-Managed, Premium and Ultimate only.`
 
 Start the description with the following sentence, replacing `status code` with the
-relevant [HTTP status code](../../api/rest/index.md#status-codes), for example:
+relevant [HTTP status code](../../api/rest/troubleshooting.md#status-codes), for example:
 
 ```markdown
-If successful, returns [`200 OK`](../../api/rest/index.md#status-codes) and the
+If successful, returns [`200 OK`](../../api/rest/troubleshooting.md#status-codes) and the
 following response attributes:
 ```
 
-Use the following table headers to describe the response bodies. Attributes should
-always be in code blocks using backticks (`` ` ``).
-
-If the attribute is a complex type, like another object, represent sub-attributes
-with dots (`.`), like `project.name` or `projects[].name` in case of an array.
-
-Sort the table alphabetically.
-
 ```markdown
-| Attribute                    | Type          | Description                               |
-|------------------------------|---------------|-------------------------------------------|
-| `assignee_ids`               | integer array | IDs of the users to assign the issue to. Premium and Ultimate only. |
-| `confidential`               | boolean       | Whether the issue is confidential or not. |
-| `title`                      | string        | Title of the issue.                       |
+| Attribute      | Type          | Description |
+| -------------- | ------------- | ----------- |
+| `assignee_ids` | integer array | IDs of the users to assign the issue to. Premium and Ultimate only. |
+| `commits`      | object array  | Commits in the merge request diff. |
+| `commits[].id` | string        | ID of the commit. |
 ```
 
 Rendered example:
 
-| Attribute                    | Type          | Description                               |
-|------------------------------|---------------|-------------------------------------------|
-| `assignee_ids`               | integer array | IDs of the users to assign the issue to. Premium and Ultimate only. |
-| `confidential`               | boolean       | Whether the issue is confidential or not. |
-| `title`                      | string        | Title of the issue.                       |
+| Attribute      | Type          | Description |
+| -------------- | ------------- | ----------- |
+| `assignee_ids` | integer array | IDs of the users to assign the issue to. Premium and Ultimate only. |
+| `commits`      | object array  | Commits in the merge request diff. |
+| `commits[].id` | string        | ID of the commit. |
 
 For information about writing attribute descriptions, see the [GraphQL API description style guide](../api_graphql_styleguide.md#description-style-guide).
 
@@ -208,7 +313,7 @@ For information about writing attribute descriptions, see the [GraphQL API descr
 - Declare URLs with the `--url` parameter, and wrap the URL in double quotes (`"`).
 - Prefer to use examples using the personal access token and don't pass data of
   username and password.
-- For legibility, use the <code>&#92;</code> character and indentation to break long single-line
+- For legibility, use the ` \ ` character and indentation to break long single-line
   commands apart into multiple lines.
 
 | Methods                                         | Description                                            |
@@ -223,10 +328,10 @@ For information about writing attribute descriptions, see the [GraphQL API descr
 The following sections include a set of [cURL](https://curl.se/) examples
 you can use in the API documentation.
 
-WARNING:
-Do not use information for real users, URLs, or tokens. For documentation, refer to our
-relevant style guide sections on [Fake user information](styleguide/index.md#fake-user-information),
-[Fake URLs](styleguide/index.md#fake-urls), and [Fake tokens](styleguide/index.md#fake-tokens).
+> [!warning]
+> Do not use information for real users, URLs, or tokens. For documentation, refer to our
+> relevant style guide sections on [fake user information](styleguide/_index.md#fake-user-information),
+> [fake URLs](styleguide/_index.md#fake-urls), and [fake tokens](styleguide/_index.md#fake-tokens).
 
 ### Simple cURL command
 
@@ -249,13 +354,54 @@ curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
 ### Post data using cURL's `--data`
 
 Instead of using `--request POST` and appending the parameters to the URI, you
-can use cURL's `--data` option. The example below will create a new project
+can use cURL's `--data` option. The example below creates a new project
 `foo` under the authenticated user's namespace.
 
 ```shell
 curl --data "name=foo" \
   --header "PRIVATE-TOKEN: <your_access_token>" \
   --url "https://gitlab.example.com/api/v4/projects"
+```
+
+### Post data using cURL's `--data-urlencode`
+
+Use `--data-urlencode` when the data contains special characters that require URL encoding.
+
+You can use this option for:
+
+- Markdown content with code blocks or special formatting.
+- Regular expressions containing `+`, `.`, or `*`.
+- Text with quotes, ampersands, or other reserved URL characters.
+- File content that might contain special characters.
+
+For alphanumeric data without special characters, use [`--data`](#post-data-using-curls---data) instead.
+
+For an attribute with special characters:
+
+```shell
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --data-urlencode "description=Fix issue with 'quotes' & ampersands" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues"
+```
+
+For content with regular expression patterns:
+
+```shell
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --data-urlencode "name_regex_delete=dev-.+" \
+  --url "https://gitlab.example.com/api/v4/projects/5/registry/repositories/2/tags"
+```
+
+For content from a file, use `attribute@filename`:
+
+```shell
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --data-urlencode "title=API documentation update" \
+  --data-urlencode "content@content.md" \
+  --url "https://gitlab.example.com/api/v4/projects/1/wikis"
 ```
 
 ### Post data using JSON content
@@ -297,13 +443,13 @@ curl --request POST \
   --url "https://gitlab.example.com/api/v4/users/25/keys"
 ```
 
-The above example is run by and administrator and will add an SSH public key
-titled `ssh-key` to user's account which has an ID of 25.
+The above example adds an SSH public key titled `ssh-key` to the account of
+a user with ID 25. The operation requires administrator access.
 
 ### Escape special characters
 
-Spaces or slashes (`/`) may sometimes result to errors, thus it is recommended
-to escape them when possible. In the example below we create a new issue which
+Spaces or slashes (`/`) can sometimes result in errors, so you should
+escape them when possible. In the example below we create a new issue which
 contains spaces in its title. Observe how spaces are escaped using the `%20`
 ASCII code.
 

@@ -22,12 +22,16 @@ inherit_mode:
 
 AllCops:
   # The oldest supported Ruby version.
-  TargetRubyVersion: 3.0
+  TargetRubyVersion: 3.2
   SuggestExtensions: false
   NewCops: disable
 
 # This cop doesn't make sense in the context of gems
 CodeReuse/ActiveRecord:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems
+RSpec/FactoriesInMigrationSpecs:
   Enabled: false
 
 # This cop doesn't make sense in the context of gems
@@ -46,7 +50,20 @@ Gemspec/RequiredRubyVersion:
   Enabled: false
 
 # This cop doesn't make sense in the context of gems
-Gitlab/DocUrl:
+Gitlab/Ai/OrderConstants:
+  Enabled: false
+
+# This cop enforces domain bounded contexts which generally
+# are not applicable to gems.
+Gitlab/BoundedContexts:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems
+Gitlab/DocumentationLinks/HardcodedUrl:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems
+Gitlab/EeOnlyClass:
   Enabled: false
 
 # This cop doesn't make sense in the context of gems
@@ -55,6 +72,10 @@ Gitlab/NamespacedClass:
 
 # This cop doesn't make sense in the context of gems
 Gitlab/RSpec/AvoidSetup:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems
+Gitlab/RSpec/MisplacedEeSpecFile:
   Enabled: false
 
 # This cop doesn't make sense in the context of gems
@@ -119,3 +140,40 @@ Style/RegexpLiteralMixedPreserve:
 # See https://gitlab.com/gitlab-org/gitlab/-/issues/435940#note_1703307479
 Style/HashSyntax:
   EnforcedShorthandSyntax: never
+
+# This cop doesn't make sense in the context of gems
+Migration/EnsureFactoryForTable:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems unless they're
+# adding Controller code
+Rails/StrongParams:
+  Enabled: true
+  Include:
+    - '**/controllers/**/*'
+
+# This cop doesn't make sense in the context of gems
+Gitlab/NoFindInWorkers:
+  Enabled: false
+
+Rake/TopLevelMethodDefinition:
+  Enabled: true
+  Include:
+    - '**/Rakefile'
+    - '**/*.rake'
+
+Scalability/RandomCronSchedule:
+  Enabled: false
+
+Database/AvoidUsingConnectionExecute:
+  Enabled: false
+
+RSpec/RedundantMetatagType:
+  Enabled: false
+
+# This cop doesn't make sense in the context of gems
+Gitlab/NoHelpersInPresenters:
+  Enabled: false
+  Include:
+    - '{,ee/,jh/}app/presenters/**/*.rb'
+

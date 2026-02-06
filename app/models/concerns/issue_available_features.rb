@@ -11,9 +11,9 @@ module IssueAvailableFeatures
     def available_features_for_issue_types
       {
         assignee: %w[issue incident],
-        confidentiality: %w[issue incident objective key_result],
-        time_tracking: %w[issue incident],
-        move_and_clone: %w[issue incident]
+        confidentiality: %w[issue incident objective key_result task],
+        time_tracking: %w[issue incident ticket],
+        move_and_clone: %w[issue incident ticket]
       }.with_indifferent_access
     end
   end

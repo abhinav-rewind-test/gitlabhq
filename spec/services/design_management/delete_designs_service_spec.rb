@@ -9,6 +9,7 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
   let_it_be(:user) { create(:user) }
 
   let(:designs) { create_designs }
+  let(:response) { run_service }
 
   subject(:service) { described_class.new(project, user, issue: issue, designs: designs) }
 
@@ -19,8 +20,6 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
     service = described_class.new(project, user, issue: issue, designs: delenda || designs)
     service.execute
   end
-
-  let(:response) { run_service }
 
   shared_examples 'a service error' do
     it 'returns an error', :aggregate_failures do
@@ -49,7 +48,7 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
 
   before do
     enable_design_management(enabled)
-    project.add_developer(user)
+    project.add_reporter(user)
   end
 
   describe "#execute" do
@@ -59,11 +58,7 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
       it_behaves_like "a service error"
 
       it 'does not create any events in the activity stream' do
-        expect do
-          run_service
-        rescue StandardError
-          nil
-        end.not_to change { Event.count }
+        expect { safe_run_service }.not_to change { Event.count }
       end
     end
 
@@ -78,35 +73,6 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
         let(:designs) { [] }
 
         it_behaves_like "a top-level error"
-
-        it 'does not log any events' do
-          counter = ::Gitlab::UsageDataCounters::DesignsCounter
-
-          expect do
-            run_service
-          rescue StandardError
-            nil
-          end
-            .not_to change { [counter.totals, Event.count] }
-        end
-
-        it 'does not log any UsageData metrics' do
-          redis_hll = ::Gitlab::UsageDataCounters::HLLRedisCounter
-          event = Gitlab::UsageDataCounters::IssueActivityUniqueCounter::ISSUE_DESIGNS_REMOVED
-
-          expect do
-            run_service
-          rescue StandardError
-            nil
-          end
-            .not_to change { redis_hll.unique_events(event_names: event, property_name: :user, start_date: Date.today, end_date: 1.week.from_now) }
-
-          begin
-            run_service
-          rescue StandardError
-            nil
-          end
-        end
       end
 
       context 'one design is passed' do
@@ -117,19 +83,8 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
         let!(:designs) { create_designs(1) }
 
         it 'removes that design' do
-          expect { run_service }.to change { issue.designs.current.count }.from(3).to(2)
-        end
-
-        it 'logs a deletion event' do
-          counter = ::Gitlab::UsageDataCounters::DesignsCounter
-          expect { run_service }.to change { counter.read(:delete) }.by(1)
-        end
-
-        it 'updates UsageData for removed designs' do
-          expect(Gitlab::UsageDataCounters::IssueActivityUniqueCounter).to receive(:track_issue_designs_removed_action)
-                                                                             .with(author: user, project: project)
-
-          run_service
+          expect { run_service }
+            .to change { issue.designs.current.count }.from(3).to(2)
         end
 
         it 'creates an event in the activity stream' do
@@ -172,13 +127,6 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
 
           run_service
         end
-
-        it_behaves_like 'internal event tracking' do
-          let(:event) { Gitlab::UsageDataCounters::IssueActivityUniqueCounter::ISSUE_DESIGNS_REMOVED }
-          let(:namespace) { project.namespace }
-
-          subject(:service_action) { run_service }
-        end
       end
 
       context 'more than one design is passed' do
@@ -189,11 +137,8 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
         let!(:designs) { create_designs(2) }
 
         it 'makes the correct changes' do
-          counter = ::Gitlab::UsageDataCounters::DesignsCounter
-
           expect { run_service }
             .to change { issue.designs.current.count }.from(3).to(1)
-            .and change { counter.read(:delete) }.by(2)
             .and change { Event.count }.by(2)
             .and change { Event.destroyed_action.for_design.count }.by(2)
         end
@@ -238,6 +183,16 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
       describe 'scalability' do
         before do
           run_service(create_designs(1)) # ensure project, issue, etc are created
+          # Exclude internal event tracking from the DB request count. The events are tracked independently of each
+          # other and each make a query for the project's namespace. There's no way to avoid these requests for now.
+          allow(Gitlab::InternalEvents).to receive(:track_event)
+          tracking_service_double = instance_double(
+            Gitlab::WorkItems::Instrumentation::TrackingService,
+            execute: true
+          )
+
+          allow(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).and_return(
+            tracking_service_double)
         end
 
         it 'makes the same number of DB requests for one design as for several' do
@@ -249,6 +204,48 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
           expect { run_service(many) }.not_to exceed_query_limit(baseline)
         end
       end
+
+      context 'instrumentation tracking' do
+        let(:current_user) { user }
+
+        def execute_service
+          run_service
+        end
+
+        context 'when deleting a single design' do
+          before do
+            create_designs(2)
+          end
+
+          let!(:designs) { create_designs(1) }
+
+          it_behaves_like 'tracks work item event', :issue, :current_user,
+            Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_DESTROY,
+            :execute_service
+        end
+
+        context 'when deleting multiple designs' do
+          before do
+            create_designs(1)
+          end
+
+          let!(:designs) { create_designs(2) }
+
+          it 'tracks event for each design deleted' do
+            tracking_service = instance_double(Gitlab::WorkItems::Instrumentation::TrackingService)
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).twice.with(
+              work_item: issue,
+              current_user: user,
+              event: Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_DESTROY
+            ).and_return(tracking_service)
+
+            expect(tracking_service).to receive(:execute).twice
+
+            execute_service
+          end
+        end
+      end
     end
   end
 
@@ -256,5 +253,11 @@ RSpec.describe DesignManagement::DeleteDesignsService, feature_category: :design
 
   def create_designs(how_many = 2)
     create_list(:design, how_many, :with_lfs_file, issue: issue)
+  end
+
+  def safe_run_service
+    run_service
+  rescue StandardError
+    nil
   end
 end

@@ -2,24 +2,30 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Emoji reactions API
 ---
 
-# Emoji reactions API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> [Renamed](https://gitlab.com/gitlab-org/gitlab/-/issues/409884) from "award emoji" to "emoji reactions" in GitLab 16.0.
+{{< /details >}}
 
-An [emoji reaction](../user/emoji_reactions.md) tells a thousand words.
+{{< history >}}
 
-We call GitLab objects on which you can react with an emoji "awardables".
-You can react with emoji on the following:
+- [Renamed](https://gitlab.com/gitlab-org/gitlab/-/issues/409884) from "award emoji" to "emoji reactions" in GitLab 16.0.
 
-- [Epics](../user/group/epics/index.md) ([API](epics.md)).
-- [Issues](../user/project/issues/index.md) ([API](issues.md)).
-- [Merge requests](../user/project/merge_requests/index.md) ([API](merge_requests.md)).
+{{< /history >}}
+
+Use this API to manage [emoji reactions](../user/emoji_reactions.md).
+
+GitLab objects that accept emoji reactions are called awardables.
+You can react with emoji on the following resources:
+
+- [Epics](../user/group/epics/_index.md) ([API](epics.md)).
+- [Issues](../user/project/issues/_index.md) ([API](issues.md)).
+- [Merge requests](../user/project/merge_requests/_index.md) ([API](merge_requests.md)).
 - [Snippets](../user/snippets.md) ([API](snippets.md)).
 - [Comments](../user/emoji_reactions.md#emoji-reactions-for-comments) ([API](notes.md)).
 
@@ -27,11 +33,15 @@ You can react with emoji on the following:
 
 For information on using these endpoints with comments, see [Add reactions to comments](#add-reactions-to-comments).
 
-### List an awardable's emoji reactions
+### List all emoji reactions for a resource
 
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public awardables.
+{{< history >}}
 
-Get a list of all emoji reactions for a specified awardable. This endpoint can
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public awardables.
+
+{{< /history >}}
+
+Lists all emoji reactions for a specified issue, snippet, or merge request. This endpoint can
 be accessed without authentication if the awardable is publicly accessible.
 
 ```plaintext
@@ -44,13 +54,15 @@ Parameters:
 
 | Attribute      | Type           | Required | Description                                                                  |
 |:---------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`           | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`           | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid`/`merge_request_iid`/`snippet_id` | integer        | yes      | ID (`iid` for merge requests/issues, `id` for snippets) of an awardable.     |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji"
 ```
 
 Example response:
@@ -92,12 +104,15 @@ Example response:
 ]
 ```
 
-### Get single emoji reaction
+### Retrieve an emoji reaction from a resource
 
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public awardables.
+{{< history >}}
 
-Get a single emoji reaction from an issue, snippet, or merge request. This endpoint can
-be accessed without authentication if the awardable is publicly accessible.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public awardables.
+
+{{< /history >}}
+
+Retrieves a specified emoji reaction from an issue, snippet, or merge request. This endpoint can be accessed without authentication if the awardable is publicly accessible.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/award_emoji/:award_id
@@ -109,14 +124,16 @@ Parameters:
 
 | Attribute      | Type           | Required | Description                                                                  |
 |:---------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`           | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`           | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid`/`merge_request_iid`/`snippet_id` | integer        | yes      | ID (`iid` for merge requests/issues, `id` for snippets) of an awardable.     |
 | `award_id`     | integer        | yes      | ID of the emoji reaction.                                                       |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/1"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/1"
 ```
 
 Example response:
@@ -140,9 +157,9 @@ Example response:
 }
 ```
 
-### Add a new emoji reaction
+### Add an emoji reaction to a resource
 
-Add an emoji reaction on the specified awardable.
+Adds an emoji reaction to an issue, snippet, or merge request.
 
 ```plaintext
 POST /projects/:id/issues/:issue_iid/award_emoji
@@ -154,12 +171,14 @@ Parameters:
 
 | Attribute      | Type           | Required | Description                                                                  |
 |:---------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`           | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`           | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid`/`merge_request_iid`/`snippet_id` | integer        | yes      | ID (`iid` for merge requests/issues, `id` for snippets) of an awardable.     |
 | `name`         | string         | yes      | Name of the emoji without colons.                                            |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji?name=blowfish"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji?name=blowfish"
 ```
 
 Example Response:
@@ -183,9 +202,9 @@ Example Response:
 }
 ```
 
-### Delete an emoji reaction
+### Delete an emoji reaction from a resource
 
-Sometimes it's just not meant to be and you need to remove your reaction.
+Deletes a specified emoji reaction from an issue, snippet, or merge request.
 
 Only an administrator or the author of the reaction can delete an emoji reaction.
 
@@ -199,28 +218,34 @@ Parameters:
 
 | Attribute      | Type           | Required | Description                                                                  |
 |:---------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`           | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`           | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid`/`merge_request_iid`/`snippet_id` | integer        | yes      | ID (`iid` for merge requests/issues, `id` for snippets) of an awardable.     |
 | `award_id`     | integer        | yes      | ID of an emoji reaction.                                                        |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/344"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/344"
 ```
 
 ## Add reactions to comments
 
 Comments (also known as notes) are a sub-resource of issues, merge requests, and snippets.
 
-NOTE:
-The examples below describe working with emoji reactions on an issue's comments, but can be
-adapted to comments on merge requests and snippets. Therefore, you have to replace
-`issue_iid` either with `merge_request_iid` or with the `snippet_id`.
+> [!note]
+> The examples below describe working with emoji reactions on an issue's comments, but can be
+> adapted to comments on merge requests and snippets. Therefore, you have to replace
+> `issue_iid` either with `merge_request_iid` or with the `snippet_id`.
 
-### List a comment's emoji reactions
+### List all emoji reactions for a comment
 
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public comments.
+{{< history >}}
 
-Get all emoji reactions for a comment (note). This endpoint can
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public comments.
+
+{{< /history >}}
+
+Lists all emoji reactions for a specified comment. This endpoint can
 be accessed without authentication if the comment is publicly accessible.
 
 ```plaintext
@@ -231,14 +256,16 @@ Parameters:
 
 | Attribute   | Type           | Required | Description                                                                  |
 |:------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`        | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`        | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid` | integer        | yes      | Internal ID of an issue.                                                     |
 | `note_id`   | integer        | yes      | ID of a comment (note).                                                      |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji"
 ```
 
 Example response:
@@ -264,11 +291,15 @@ Example response:
 ]
 ```
 
-### Get an emoji reaction for a comment
+### Retrieve an emoji reaction from a comment
 
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public comments.
+{{< history >}}
 
-Get a single emoji reaction for a comment (note). This endpoint can
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/335068) in GitLab 15.1 to allow unauthenticated access to public comments.
+
+{{< /history >}}
+
+Retrieves an emoji reaction from a specified comment. This endpoint can
 be accessed without authentication if the comment is publicly accessible.
 
 ```plaintext
@@ -279,7 +310,7 @@ Parameters:
 
 | Attribute   | Type           | Required | Description                                                                  |
 |:------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`        | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`        | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid` | integer        | yes      | Internal ID of an issue.                                                     |
 | `note_id`   | integer        | yes      | ID of a comment (note).                                                      |
 | `award_id`  | integer        | yes      | ID of the emoji reaction.                                                       |
@@ -287,7 +318,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji/2"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji/2"
 ```
 
 Example response:
@@ -311,9 +344,9 @@ Example response:
 }
 ```
 
-### Add a new emoji reaction to a comment
+### Add an emoji reaction to a comment
 
-Create an emoji reaction on the specified comment (note).
+Adds an emoji reaction to a specified comment.
 
 ```plaintext
 POST /projects/:id/issues/:issue_iid/notes/:note_id/award_emoji
@@ -323,7 +356,7 @@ Parameters:
 
 | Attribute   | Type           | Required | Description                                                                  |
 |:------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`        | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`        | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid` | integer        | yes      | Internal ID of an issue.                                                     |
 | `note_id`   | integer        | yes      | ID of a comment (note).                                                      |
 | `name`      | string         | yes      | Name of the emoji without colons.                                            |
@@ -331,7 +364,9 @@ Parameters:
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji?name=rocket"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/notes/1/award_emoji?name=rocket"
 ```
 
 Example response:
@@ -357,7 +392,7 @@ Example response:
 
 ### Delete an emoji reaction from a comment
 
-Sometimes it's just not meant to be and you need to remove the reaction.
+Deletes an emoji reaction from a specified comment.
 
 Only an administrator or the author of the reaction can delete an emoji reaction.
 
@@ -369,7 +404,7 @@ Parameters:
 
 | Attribute   | Type           | Required | Description                                                                  |
 |:------------|:---------------|:---------|:-----------------------------------------------------------------------------|
-| `id`        | integer/string | yes      | ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding). |
+| `id`        | integer or string | yes      | ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `issue_iid` | integer        | yes      | Internal ID of an issue.                                                     |
 | `note_id`   | integer        | yes      | ID of a comment (note).                                                      |
 | `award_id`  | integer        | yes      | ID of an emoji reaction.                                                        |
@@ -377,5 +412,7 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/345"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/issues/80/award_emoji/345"
 ```

@@ -1,6 +1,5 @@
 import { CI_CONFIG_STATUS_INVALID, CI_CONFIG_STATUS_VALID } from '~/ci/pipeline_editor/constants';
-import { unwrapStagesWithNeeds } from '~/ci/pipeline_details/utils/unwrapping_utils';
-import { DOCS_URL_IN_EE_DIR } from 'jh_else_ce/lib/utils/url_utility';
+import { DOCS_URL_IN_EE_DIR } from '~/constants';
 
 export const commonOptions = {
   ciConfigPath: '/ci/config',
@@ -117,17 +116,15 @@ const mockJobFields = {
   when: 'on_success',
   only: { refs: ['branches', 'tags'], __typename: 'CiJobLimitType' },
   except: null,
-  needs: { nodes: [], __typename: 'CiConfigNeedConnection' },
+  needs: [{ name: 'test', __typename: 'CiConfigNeed' }],
   __typename: 'CiConfigJob',
 };
 
 export const mockIncludesWithBlob = {
   location: 'test-include.yml',
   type: 'local',
-  blob:
-    'http://gdk.test:3000/root/upstream/-/blob/dd54f00bb3645f8ddce7665d2ffb3864540399cb/test-include.yml',
-  raw:
-    'http://gdk.test:3000/root/upstream/-/raw/dd54f00bb3645f8ddce7665d2ffb3864540399cb/test-include.yml',
+  blob: 'http://gdk.test:3000/root/upstream/-/blob/dd54f00bb3645f8ddce7665d2ffb3864540399cb/test-include.yml',
+  raw: 'http://gdk.test:3000/root/upstream/-/raw/dd54f00bb3645f8ddce7665d2ffb3864540399cb/test-include.yml',
   __typename: 'CiConfigInclude',
 };
 
@@ -135,10 +132,46 @@ export const mockDefaultIncludes = {
   location: 'npm.gitlab-ci.yml',
   type: 'template',
   blob: null,
-  raw:
-    'https://gitlab.com/gitlab-org/gitlab/-/raw/master/lib/gitlab/ci/templates/npm.gitlab-ci.yml',
+  raw: 'https://gitlab.com/gitlab-org/gitlab/-/raw/master/lib/gitlab/ci/templates/npm.gitlab-ci.yml',
   __typename: 'CiConfigInclude',
 };
+
+export const mockSpecIncludeLocal = {
+  location: 'ci/inputs.yml',
+  type: 'local',
+  blob: 'http://gdk.test:3000/root/project/-/blob/main/ci/inputs.yml',
+  raw: 'http://gdk.test:3000/root/project/-/raw/main/ci/inputs.yml',
+  contextProject: null,
+  contextSha: null,
+  __typename: 'CiConfigInclude',
+};
+
+export const mockSpecIncludeRemote = {
+  location:
+    'http://gdk.test:3000/flightjs/ci-commit-ref-name/-/raw/test-external-file-inputs/ci/sample.yml',
+  type: 'remote',
+  blob: null,
+  raw: 'http://gdk.test:3000/flightjs/ci-commit-ref-name/-/raw/test-external-file-inputs/ci/sample.yml',
+  contextProject: null,
+  contextSha: null,
+  __typename: 'CiConfigInclude',
+};
+
+export const mockSpecIncludeProject = {
+  location: 'ci/sample.yml',
+  type: 'file',
+  blob: 'http://gdk.test:3000/flightjs/ci-commit-ref-name/-/blob/test-external-file-inputs/ci/sample.yml',
+  raw: 'http://gdk.test:3000/flightjs/ci-commit-ref-name/-/raw/test-external-file-inputs/ci/sample.yml',
+  contextProject: 'flightjs/ci-commit-ref-name',
+  contextSha: 'test-external-file-inputs',
+  __typename: 'CiConfigInclude',
+};
+
+export const mockSpecIncludes = [
+  mockSpecIncludeLocal,
+  mockSpecIncludeRemote,
+  mockSpecIncludeProject,
+];
 
 export const mockIncludes = [
   mockDefaultIncludes,
@@ -146,105 +179,113 @@ export const mockIncludes = [
   {
     location: 'a_really_really_long_name_for_includes_file.yml',
     type: 'local',
-    blob:
-      'http://gdk.test:3000/root/upstream/-/blob/dd54f00bb3645f8ddce7665d2ffb3864540399cb/a_really_really_long_name_for_includes_file.yml',
-    raw:
-      'http://gdk.test:3000/root/upstream/-/raw/dd54f00bb3645f8ddce7665d2ffb3864540399cb/a_really_really_long_name_for_includes_file.yml',
+    blob: 'http://gdk.test:3000/root/upstream/-/blob/dd54f00bb3645f8ddce7665d2ffb3864540399cb/a_really_really_long_name_for_includes_file.yml',
+    raw: 'http://gdk.test:3000/root/upstream/-/raw/dd54f00bb3645f8ddce7665d2ffb3864540399cb/a_really_really_long_name_for_includes_file.yml',
     __typename: 'CiConfigInclude',
   },
 ];
 
-// Mock result of the graphql query at:
-// app/assets/javascripts/ci/pipeline_editor/graphql/queries/ci_config.graphql
-export const mockCiConfigQueryResponse = {
+// Mock result of the graphql mutation at:
+// app/assets/javascripts/ci/pipeline_editor/graphql/mutations/ci_lint.mutation.graphql
+export const mockCiLintMutationResponse = {
   data: {
-    ciConfig: {
-      errors: [],
-      includes: mockIncludes,
-      mergedYaml: mockCiYml,
-      status: CI_CONFIG_STATUS_VALID,
-      stages: {
-        __typename: 'CiConfigStageConnection',
-        nodes: [
+    ciLint: {
+      config: {
+        errors: [],
+        warnings: [],
+        includes: mockIncludes,
+        mergedYaml: mockCiYml,
+        status: CI_CONFIG_STATUS_VALID,
+        stages: [
           {
             name: 'test',
-            groups: {
-              nodes: [
-                {
-                  id: 'group-1',
-                  name: 'job_test_1',
-                  size: 1,
-                  jobs: {
-                    nodes: [
-                      {
-                        name: 'job_test_1',
-                        script: ['echo "test 1"'],
-                        ...mockJobFields,
-                      },
-                    ],
-                    __typename: 'CiConfigJobConnection',
+            groups: [
+              {
+                id: 'group-1',
+                name: 'job_test_1',
+                size: 1,
+                jobs: [
+                  {
+                    ...mockJobFields,
+                    name: 'job_test_1',
+                    script: ['echo "test 1"'],
+                    stage: 'test',
+                    __typename: 'CiConfigJobV2',
                   },
-                  __typename: 'CiConfigGroup',
-                },
-                {
-                  id: 'group-2',
-                  name: 'job_test_2',
-                  size: 1,
-                  jobs: {
-                    nodes: [
-                      {
-                        name: 'job_test_2',
-                        script: ['echo "test 2"'],
-                        ...mockJobFields,
-                      },
-                    ],
-                    __typename: 'CiConfigJobConnection',
+                ],
+                __typename: 'CiConfigGroupV2',
+              },
+              {
+                id: 'group-2',
+                name: 'job_test_2',
+                size: 1,
+                jobs: [
+                  {
+                    name: 'job_test_2',
+                    script: ['echo "test 2"'],
+                    stage: 'test',
+                    ...mockJobFields,
+                    __typename: 'CiConfigJobV2',
                   },
-                  __typename: 'CiConfigGroup',
-                },
-              ],
-              __typename: 'CiConfigGroupConnection',
-            },
-            __typename: 'CiConfigStage',
+                ],
+                __typename: 'CiConfigGroupV2',
+              },
+            ],
+            __typename: 'CiConfigStageV2',
           },
           {
             name: 'build',
-            groups: {
-              nodes: [
-                {
-                  name: 'job_build',
-                  size: 1,
-                  jobs: {
-                    nodes: [
-                      {
-                        name: 'job_build',
-                        script: ['echo "build"'],
-                        ...mockJobFields,
-                      },
-                    ],
-                    __typename: 'CiConfigJobConnection',
+            groups: [
+              {
+                name: 'job_build',
+                size: 1,
+                jobs: [
+                  {
+                    name: 'job_build',
+                    script: ['echo "build"'],
+                    stage: 'build',
+                    ...mockJobFields,
+                    __typename: 'CiConfigJobV2',
                   },
-                  __typename: 'CiConfigGroup',
-                },
-              ],
-              __typename: 'CiConfigGroupConnection',
-            },
-            __typename: 'CiConfigStage',
+                ],
+                __typename: 'CiConfigGroupV2',
+              },
+            ],
+
+            __typename: 'CiConfigStageV2',
           },
         ],
+        __typename: 'CiConfigV2',
       },
-      __typename: 'CiConfig',
+      errors: [],
     },
   },
 };
 
-export const mergeUnwrappedCiConfig = (mergedConfig) => {
-  const { ciConfig } = mockCiConfigQueryResponse.data;
+export const mockMergedConfig = (mergedConfig) => {
+  const { config } = mockCiLintMutationResponse.data.ciLint;
   return {
-    ...ciConfig,
-    stages: unwrapStagesWithNeeds(ciConfig.stages.nodes),
+    ...config,
     ...mergedConfig,
   };
+};
+
+export const ciLintErrorResponse = {
+  data: {
+    ciLint: {
+      config: {
+        errors: ['header:spec:inputs:app_target_region config contains unknown keys: required'],
+        warnings: [],
+        includes: null,
+        mergedYaml: null,
+        status: 'INVALID',
+        stages: [],
+        __typename: 'CiConfigV2',
+      },
+      errors: [],
+      __typename: 'CiLintPayload',
+    },
+  },
 };
 
 export const mockCommitShaResults = {
@@ -317,8 +358,8 @@ export const generateMockProjectBranches = (prefix = '') => ({
   },
 });
 
-export const mockTotalBranchResults = generateMockProjectBranches().data.project.repository
-  .branchNames.length;
+export const mockTotalBranchResults =
+  generateMockProjectBranches().data.project.repository.branchNames.length;
 
 export const mockSearchBranches = {
   data: {
@@ -346,169 +387,6 @@ export const mockEmptySearchBranches = {
 
 export const mockBranchPaginationLimit = 10;
 export const mockTotalBranches = 20; // must be greater than mockBranchPaginationLimit to test pagination
-
-export const mockProjectPipeline = ({ hasStages = true } = {}) => {
-  const stages = hasStages
-    ? {
-        edges: [
-          {
-            node: {
-              id: 'gid://gitlab/Ci::Stage/605',
-              name: 'prepare',
-              status: 'success',
-              detailedStatus: {
-                detailsPath: '/root/sample-ci-project/-/pipelines/268#prepare',
-                group: 'success',
-                hasDetails: true,
-                icon: 'status_success',
-                id: 'success-605-605',
-                label: 'passed',
-                text: 'passed',
-                tooltip: 'passed',
-              },
-            },
-          },
-        ],
-      }
-    : null;
-
-  return {
-    id: '1',
-    pipeline: {
-      id: 'gid://gitlab/Ci::Pipeline/118',
-      iid: '28',
-      shortSha: mockCommitSha,
-      status: 'SUCCESS',
-      commit: {
-        id: 'commit-1',
-        title: 'Update .gitlabe-ci.yml',
-        webPath: '/-/commit/aabbccdd',
-      },
-      detailedStatus: {
-        id: 'status-1',
-        detailsPath: '/root/sample-ci-project/-/pipelines/118',
-        group: 'success',
-        icon: 'status_success',
-        text: 'passed',
-      },
-      stages,
-    },
-  };
-};
-
-export const mockLinkedPipelines = ({ hasDownstream = true, hasUpstream = true } = {}) => {
-  let upstream = null;
-  let downstream = {
-    nodes: [],
-    __typename: 'PipelineConnection',
-  };
-
-  if (hasDownstream) {
-    downstream = {
-      nodes: [
-        {
-          id: 'gid://gitlab/Ci::Pipeline/612',
-          path: '/root/job-log-sections/-/pipelines/612',
-          project: {
-            id: 'gid://gitlab/Project/21',
-            name: 'job-log-sections',
-            __typename: 'Project',
-          },
-          detailedStatus: {
-            id: 'success-612-612',
-            group: 'success',
-            icon: 'status_success',
-            label: 'passed',
-            __typename: 'DetailedStatus',
-          },
-          sourceJob: {
-            id: 'gid://gitlab/Ci::Bridge/532',
-            retried: false,
-          },
-          __typename: 'Pipeline',
-        },
-        {
-          id: 'gid://gitlab/Ci::Pipeline/611',
-          path: '/root/job-log-sections/-/pipelines/611',
-          project: {
-            id: 'gid://gitlab/Project/21',
-            name: 'job-log-sections',
-            __typename: 'Project',
-          },
-          detailedStatus: {
-            id: 'success-611-611',
-            group: 'success',
-            icon: 'status_success',
-            label: 'passed',
-            __typename: 'DetailedStatus',
-          },
-          sourceJob: {
-            id: 'gid://gitlab/Ci::Bridge/531',
-            retried: true,
-          },
-          __typename: 'Pipeline',
-        },
-        {
-          id: 'gid://gitlab/Ci::Pipeline/609',
-          path: '/root/job-log-sections/-/pipelines/609',
-          project: {
-            id: 'gid://gitlab/Project/21',
-            name: 'job-log-sections',
-            __typename: 'Project',
-          },
-          detailedStatus: {
-            id: 'success-609-609',
-            group: 'success',
-            icon: 'status_success',
-            label: 'passed',
-            __typename: 'DetailedStatus',
-          },
-          sourceJob: {
-            id: 'gid://gitlab/Ci::Bridge/530',
-            retried: true,
-          },
-          __typename: 'Pipeline',
-        },
-      ],
-      __typename: 'PipelineConnection',
-    };
-  }
-
-  if (hasUpstream) {
-    upstream = {
-      id: 'gid://gitlab/Ci::Pipeline/610',
-      path: '/root/trigger-downstream/-/pipelines/610',
-      project: {
-        id: 'gid://gitlab/Project/21',
-        name: 'trigger-downstream',
-        __typename: 'Project',
-      },
-      detailedStatus: {
-        id: 'success-610-610',
-        group: 'success',
-        icon: 'status_success',
-        label: 'passed',
-        __typename: 'DetailedStatus',
-      },
-      __typename: 'Pipeline',
-    };
-  }
-
-  return {
-    data: {
-      project: {
-        id: 'gid://gitlab/Project/21',
-        pipeline: {
-          id: 'gid://gitlab/Ci::Pipeline/790',
-          path: '/root/ci-project/-/pipelines/790',
-          downstream,
-          upstream,
-        },
-        __typename: 'Project',
-      },
-    },
-  };
-};
 
 export const mockLintResponse = {
   valid: true,
@@ -597,7 +475,7 @@ export const mockJobs = [
 ];
 
 export const mockErrors = [
-  '"job_1 job: chosen stage does not exist; available stages are .pre, build, test, deploy, .post"',
+  '"job_1 job: chosen stage test does not exist; available stages are .pre, build, test, deploy, .post"',
 ];
 
 export const mockWarnings = [
@@ -660,6 +538,16 @@ export const mockCommitCreateResponseNewEtag = {
         sha: mockCommitNextSha,
       },
       commitPipelinePath: '/api/graphql:pipelines/sha/550ceace1acd373c84d02bd539cb9d4614f786db',
+    },
+  },
+};
+
+export const mockCurrentBranchResponse = {
+  workBranches: {
+    __typename: 'BranchList',
+    current: {
+      __typename: 'WorkBranch',
+      name: mockDefaultBranch,
     },
   },
 };

@@ -2,18 +2,26 @@
 stage: Fulfillment
 group: Utilization
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+gitlab_dedicated: yes
+title: License API
 ---
 
-# License
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-To interact with license endpoints, you need to authenticate yourself as an
-administrator.
+{{< /details >}}
 
-## Retrieve information about the current license
+Use this API to interact with license endpoints. For more information, see [activate GitLab EE with a license file or key](../administration/license_file.md).
+
+Prerequisites:
+
+- You must have administrator access to the instance.
+
+## Retrieve license information
+
+Retrieves information about the current license.
 
 ```plaintext
 GET /license
@@ -22,7 +30,7 @@ GET /license
 ```json
 {
   "id": 2,
-  "plan": "gold",
+  "plan": "ultimate",
   "created_at": "2018-02-27T23:21:58.674Z",
   "starts_at": "2018-01-27",
   "expires_at": "2022-01-27",
@@ -33,7 +41,9 @@ GET /license
   "user_limit": 100,
   "active_users": 300,
   "licensee": {
-    "Name": "John Doe1"
+    "Name": "John Doe1",
+    "Email": "johndoe1@gitlab.com",
+    "Company": "GitLab"
   },
   "add_ons": {
     "GitLab_FileLocks": 1,
@@ -42,7 +52,9 @@ GET /license
 }
 ```
 
-## Retrieve information about all licenses
+## List all licenses
+
+Lists information about all licenses.
 
 ```plaintext
 GET /licenses
@@ -52,7 +64,7 @@ GET /licenses
 [
   {
     "id": 1,
-    "plan": "silver",
+    "plan": "premium",
     "created_at": "2018-02-27T23:21:58.674Z",
     "starts_at": "2018-01-27",
     "expires_at": "2022-01-27",
@@ -62,7 +74,9 @@ GET /licenses
     "overage": 200,
     "user_limit": 100,
     "licensee": {
-      "Name": "John Doe1"
+      "Name": "John Doe1",
+      "Email": "johndoe1@gitlab.com",
+      "Company": "GitLab"
     },
     "add_ons": {
       "GitLab_FileLocks": 1,
@@ -71,7 +85,7 @@ GET /licenses
   },
   {
     "id": 2,
-    "plan": "gold",
+    "plan": "ultimate",
     "created_at": "2018-02-27T23:21:58.674Z",
     "starts_at": "2018-01-27",
     "expires_at": "2022-01-27",
@@ -81,7 +95,9 @@ GET /licenses
     "overage": 200,
     "user_limit": 100,
     "licensee": {
-      "Name": "Doe John"
+      "Name": "Doe John",
+      "Email": "doejohn@gitlab.com",
+      "Company": "GitLab"
     },
     "add_ons": {
       "GitLab_FileLocks": 1
@@ -101,7 +117,9 @@ Returns:
 - `200 OK` with response containing the licenses in JSON format. This is an empty JSON array if there are no licenses.
 - `403 Forbidden` if the current user in not permitted to read the licenses.
 
-## Retrieve information about a single license
+## Retrieve a license
+
+Retrieves information about a specified license.
 
 ```plaintext
 GET /license/:id
@@ -122,7 +140,8 @@ Returns the following status codes:
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/license/:id"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+--url "https://gitlab.example.com/api/v4/license/:id"
 ```
 
 Example response:
@@ -141,7 +160,9 @@ Example response:
   "user_limit": 100,
   "active_users": 50,
   "licensee": {
-    "Name": "John Doe1"
+    "Name": "John Doe1",
+    "Email": "johndoe1@gitlab.com",
+    "Company": "GitLab"
   },
   "add_ons": {
     "GitLab_FileLocks": 1,
@@ -150,7 +171,9 @@ Example response:
 }
 ```
 
-## Add a new license
+## Create a license
+
+Creates a new license.
 
 ```plaintext
 POST /license
@@ -161,7 +184,9 @@ POST /license
 | `license` | string | yes | The license string |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/license?license=eyJkYXRhIjoiMHM5Q...S01Udz09XG4ifQ=="
+curl --request POST \
+--header "PRIVATE-TOKEN: <your_access_token>" \
+--url "https://gitlab.example.com/api/v4/license?license=eyJkYXRhIjoiMHM5Q...S01Udz09XG4ifQ=="
 ```
 
 Example response:
@@ -169,7 +194,7 @@ Example response:
 ```json
 {
   "id": 1,
-  "plan": "gold",
+  "plan": "ultimate",
   "created_at": "2018-02-27T23:21:58.674Z",
   "starts_at": "2018-01-27",
   "expires_at": "2022-01-27",
@@ -180,7 +205,9 @@ Example response:
   "user_limit": 100,
   "active_users": 300,
   "licensee": {
-    "Name": "John Doe1"
+    "Name": "John Doe1",
+    "Email": "johndoe1@gitlab.com",
+    "Company": "GitLab"
   },
   "add_ons": {
     "GitLab_FileLocks": 1,
@@ -196,6 +223,8 @@ Returns:
 
 ## Delete a license
 
+Deletes a specified license.
+
 ```plaintext
 DELETE /license/:id
 ```
@@ -205,31 +234,9 @@ DELETE /license/:id
 | `id` | integer | yes | ID of the GitLab license. |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/license/:id"
-```
-
-Example response:
-
-```json
-{
-  "id": 2,
-  "plan": "gold",
-  "created_at": "2018-02-27T23:21:58.674Z",
-  "starts_at": "2018-01-27",
-  "expires_at": "2022-01-27",
-  "historical_max": 300,
-  "maximum_user_count": 300,
-  "expired": false,
-  "overage": 200,
-  "user_limit": 100,
-  "licensee": {
-    "Name": "John Doe"
-  },
-  "add_ons": {
-    "GitLab_FileLocks": 1,
-    "GitLab_Auditor_User": 1
-  }
-}
+curl --request DELETE \
+--header "PRIVATE-TOKEN: <your_access_token>" \
+--url "https://gitlab.example.com/api/v4/license/:id"
 ```
 
 Returns:
@@ -240,6 +247,8 @@ Returns:
 
 ## Trigger recalculation of billable users
 
+Triggers recalculation of billable users for a specified license.
+
 ```plaintext
 PUT /license/:id/refresh_billable_users
 ```
@@ -249,7 +258,9 @@ PUT /license/:id/refresh_billable_users
 | `id` | integer | yes | ID of the GitLab license. |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/license/:id/refresh_billable_users"
+curl --request PUT \
+--header "PRIVATE-TOKEN: <your_access_token>" \
+--url "https://gitlab.example.com/api/v4/license/:id/refresh_billable_users"
 ```
 
 Example response:
@@ -270,21 +281,23 @@ Returns:
 |:-----------------------------|:--------------|:------------------------------------------|
 | `success`                    | boolean       | Whether the request succeeded or not.     |
 
-## Retrieve usage information about the current license
+## Retrieve license usage information
 
-Gets usage information about the current license and exports it in CSV format.
+Retrieves usage information about the current license and exports it in CSV format.
 
 ```plaintext
 GET /license/usage_export.csv
 ```
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/license/usage_export.csv"
+curl --request GET \
+--header "PRIVATE-TOKEN: <your_access_token>" \
+--url "https://gitlab.example.com/api/v4/license/usage_export.csv"
 ```
 
 Example response:
 
-```csv
+```plaintext
 License Key,"eyJkYXRhIjoib1EwRWZXU3RobDY2Yl=
 "
 Email,user@example.com
@@ -298,11 +311,9 @@ Date,Billable User Count
 2023-07-13 12:00:06,21
 2023-08-16 12:00:02,21
 2023-09-04 12:00:12,21
-
 ```
 
 Returns:
 
-- `202 Accepted` if the request to refresh billable users is successfully initiated.
-- `403 Forbidden` if the current user in not permitted to refresh billable users for the license.
-- `404 Not Found` if the license could not be found.
+- `200 OK`: Response contains the license usage in CSV format.
+- `403 Forbidden` if the current user in not permitted to view license usage.

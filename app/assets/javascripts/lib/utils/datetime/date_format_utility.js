@@ -1,16 +1,16 @@
-import { isString, mapValues, reduce, isDate, unescape } from 'lodash';
+import { isString, mapValues, reduce, isDate, unescape, isNaN } from 'lodash';
 import dateFormat from '~/lib/dateformat';
 import { roundToNearestHalf } from '~/lib/utils/common_utils';
+import { localeDateFormat } from '~/lib/utils/datetime/locale_dateformat';
 import { sanitize } from '~/lib/dompurify';
-import { s__, n__, __, sprintf } from '~/locale';
-import { parsePikadayDate } from './pikaday_utility';
+import { s__, n__, __, sprintf, createDateTimeFormat } from '~/locale';
 
 /**
  * Returns i18n month names array.
  * If `abbreviated` is provided, returns abbreviated
  * name.
  *
- * @param {Boolean} abbreviated
+ * @param {boolean} abbreviated
  */
 export const getMonthNames = (abbreviated) => {
   if (abbreviated) {
@@ -49,7 +49,7 @@ export const getMonthNames = (abbreviated) => {
  * Returns month name based on provided date.
  *
  * @param {Date} date
- * @param {Boolean} abbreviated
+ * @param {boolean} abbreviated
  */
 export const monthInWords = (date, abbreviated = false) => {
   if (!date) {
@@ -57,21 +57,6 @@ export const monthInWords = (date, abbreviated = false) => {
   }
 
   return getMonthNames(abbreviated)[date.getMonth()];
-};
-
-export const dateInWords = (date, abbreviated = false, hideYear = false) => {
-  if (!date) return date;
-
-  const month = date.getMonth();
-  const year = date.getFullYear();
-
-  const monthName = getMonthNames(abbreviated)[month];
-
-  if (hideYear) {
-    return `${monthName} ${date.getDate()}`;
-  }
-
-  return `${monthName} ${date.getDate()}, ${year}`;
 };
 
 /**
@@ -86,25 +71,27 @@ export const dateInWords = (date, abbreviated = false, hideYear = false) => {
  *
  * The largest supported unit is "days".
  *
- * @param {Number} intervalInSeconds The time interval in seconds
- * @returns {String} A humanized description of the time interval
+ * @param   {number} intervalInSeconds The time interval in seconds
+ * @param   {Object} [params]
+ * @param   {boolean} [params.abbreviated] Abbreviate the returned units (seconds = s, days = d, etc)
+ * @returns {string} A humanized description of the time interval
  */
-export const humanizeTimeInterval = (intervalInSeconds) => {
+export const humanizeTimeInterval = (intervalInSeconds, { abbreviated = false } = {}) => {
   if (intervalInSeconds < 60 /* = 1 minute */) {
     const seconds = Math.round(intervalInSeconds * 10) / 10;
-    return n__('%d second', '%d seconds', seconds);
+    return abbreviated ? `${seconds}s` : n__('%d second', '%d seconds', seconds);
   }
   if (intervalInSeconds < 3600 /* = 1 hour */) {
     const minutes = Math.round(intervalInSeconds / 6) / 10;
-    return n__('%d minute', '%d minutes', minutes);
+    return abbreviated ? `${minutes}min` : n__('%d minute', '%d minutes', minutes);
   }
   if (intervalInSeconds < 86400 /* = 1 day */) {
     const hours = Math.round(intervalInSeconds / 360) / 10;
-    return n__('%d hour', '%d hours', hours);
+    return abbreviated ? `${hours}h` : n__('%d hour', '%d hours', hours);
   }
 
   const days = Math.round(intervalInSeconds / 8640) / 10;
-  return n__('%d day', '%d days', days);
+  return abbreviated ? `${days}d` : n__('%d day', '%d days', days);
 };
 
 /**
@@ -122,19 +109,20 @@ export const getWeekdayNames = () => [
 
 /**
  * Given a date object returns the day of the week in English
- * @param {date} date
- * @returns {String}
+ * @param   {Date} date
+ * @returns {string}
  */
 export const getDayName = (date) => getWeekdayNames()[date.getDay()];
 
 /**
  * Returns the i18n month name from a given date
  * @example
- * formatDateAsMonth(new Date('2020-06-28')) -> 'Jun'
- * @param  {String} datetime where month is extracted from
- * @param  {Object} options
- * @param  {Boolean} options.abbreviated whether to use the abbreviated month string, or not
- * @return {String} the i18n month name
+ * // returns 'Jun'
+ * formatDateAsMonth(new Date('2020-06-28'))
+ * @param  {string} datetime where month is extracted from
+ * @param  {Object} [options]
+ * @param  {boolean} [options.abbreviated] whether to use the abbreviated month string, or not
+ * @return {string} the i18n month name
  */
 export function formatDateAsMonth(datetime, options = {}) {
   const { abbreviated = true } = options;
@@ -144,11 +132,12 @@ export function formatDateAsMonth(datetime, options = {}) {
 
 /**
  * @example
- * dateFormat('2017-12-05','mmm d, yyyy h:MMtt Z' ) -> "Dec 5, 2017 12:00am UTC"
- * @param {date} datetime
- * @param {String} format
- * @param {Boolean} UTC convert local time to UTC
- * @returns {String}
+ * // returns "Dec 5, 2017 12:00am UTC"
+ * formatDate('2017-12-05','mmm d, yyyy h:MMtt Z' )
+ * @param   {(Date|string|number)} [datetime]
+ * @param   {string} format
+ * @param   {boolean} UTC convert local time to UTC
+ * @returns {string}
  */
 export const formatDate = (datetime, format = 'mmm d, yyyy h:MMtt Z', utc = false) => {
   if (isString(datetime) && datetime.match(/\d+-\d+\d+ /)) {
@@ -161,7 +150,7 @@ export const formatDate = (datetime, format = 'mmm d, yyyy h:MMtt Z', utc = fals
  * Formats milliseconds as timestamp (e.g. 01:02:03).
  * This takes durations longer than a day into account (e.g. two days would be 48:00:00).
  *
- * @param milliseconds
+ * @param   {number} milliseconds
  * @returns {string}
  */
 export const formatTime = (milliseconds) => {
@@ -189,17 +178,34 @@ export const formatTime = (milliseconds) => {
 /**
  * Port of ruby helper time_interval_in_words.
  *
- * @param  {Number} seconds
- * @return {String}
+ * @param  {number} seconds
+ * @return {string}
  */
 export const timeIntervalInWords = (intervalInSeconds) => {
   const secondsInteger = parseInt(intervalInSeconds, 10);
-  const minutes = Math.floor(secondsInteger / 60);
-  const seconds = secondsInteger - minutes * 60;
-  const secondsText = n__('%d second', '%d seconds', seconds);
-  return minutes >= 1
-    ? [n__('%d minute', '%d minutes', minutes), secondsText].join(' ')
-    : secondsText;
+  const absSeconds = Math.abs(secondsInteger);
+
+  const days = Math.floor(absSeconds / 86400);
+  const hours = Math.floor((absSeconds % 86400) / 3600);
+  const minutes = Math.floor((absSeconds % 3600) / 60);
+  const seconds = absSeconds % 60;
+
+  const parts = [];
+
+  if (days > 0) {
+    parts.push(n__('%d day', '%d days', days));
+  }
+  if (hours > 0) {
+    parts.push(n__('%d hour', '%d hours', hours));
+  }
+  if (minutes > 0) {
+    parts.push(n__('%d minute', '%d minutes', minutes));
+  }
+  if (seconds > 0 || parts.length === 0) {
+    parts.push(n__('%d second', '%d seconds', seconds));
+  }
+
+  return parts.join(' ');
 };
 
 /**
@@ -230,6 +236,8 @@ export const stringifyTime = (timeObject, fullNameFormat = false) => {
  * Accepts seconds and returns a timeObject { weeks: #, days: #, hours: #, minutes: # }
  * Seconds can be negative or positive, zero or non-zero. Can be configured for any day
  * or week length.
+ *
+ * @param {number} seconds
  */
 export const parseSeconds = (
   seconds,
@@ -275,7 +283,7 @@ export const parseSeconds = (
 /**
  * Pads given items with zeros to reach a length of 2 characters.
  *
- * @param  {...any} args Items to be padded.
+ * @param   {...any} args Items to be padded.
  * @returns {Array<String>} Padded items.
  */
 export const padWithZeros = (...args) => args.map((arg) => `${arg}`.padStart(2, '0'));
@@ -285,12 +293,15 @@ export const padWithZeros = (...args) => args.map((arg) => `${arg}`.padStart(2, 
  * This can be useful when populating date/time fields along with a distinct timezone selector, in
  * which case we'd want to ignore the timezone's offset when populating the date and time.
  *
- * Examples:
- * stripTimezoneFromISODate('2021-08-16T00:00:00.000-02:00') => '2021-08-16T00:00:00.000'
- * stripTimezoneFromISODate('2021-08-16T00:00:00.000Z') => '2021-08-16T00:00:00.000'
+ * @example
+ * // returns '2021-08-16T00:00:00.000'
+ * stripTimezoneFromISODate('2021-08-16T00:00:00.000-02:00')
+ * @example
+ * // returns '2021-08-16T00:00:00.000'
+ * stripTimezoneFromISODate('2021-08-16T00:00:00.000Z')
  *
- * @param {String} date The ISO date string representation.
- * @returns {String} The ISO date string without the timezone.
+ * @param   {string} date The ISO date string representation.
+ * @returns {string} The ISO date string without the timezone.
  */
 export const stripTimezoneFromISODate = (date) => {
   if (Number.isNaN(Date.parse(date))) {
@@ -301,11 +312,13 @@ export const stripTimezoneFromISODate = (date) => {
 
 /**
  * Extracts the year, month and day from a Date instance and returns them in an object.
- * For example:
- * dateToYearMonthDate(new Date('2021-08-16')) => { year: '2021', month: '08', day: '16' }
+ *
+ * @example
+ * // returns { year: '2021', month: '08', day: '16' }
+ * dateToYearMonthDate(new Date('2021-08-16'))
  *
  * @param {Date} date The date to be parsed
- * @returns {Object} An object containing the extracted year, month and day.
+ * @returns An object containing the extracted year, month and day.
  */
 export const dateToYearMonthDate = (date) => {
   if (!isDate(date)) {
@@ -322,11 +335,13 @@ export const dateToYearMonthDate = (date) => {
 
 /**
  * Extracts the hours and minutes from a string representing a time.
- * For example:
- * timeToHoursMinutes('12:46') => { hours: '12', minutes: '46' }
  *
- * @param {String} time The time to be parsed in the form HH:MM.
- * @returns {Object} An object containing the hours and minutes.
+ * @example
+ * // returns { hours: '12', minutes: '46' }
+ * timeToHoursMinutes('12:46')
+ *
+ * @param {string} time The time to be parsed in the form HH:MM.
+ * @returns An object containing the hours and minutes.
  */
 export const timeToHoursMinutes = (time = '') => {
   if (!time || !time.match(/\d{1,2}:\d{1,2}/)) {
@@ -338,12 +353,56 @@ export const timeToHoursMinutes = (time = '') => {
 };
 
 /**
+ * Converts a Date object to a date-only string in the ISO format `yyyy-mm-dd`
+ *
+ * @param {Date} date A Date object
+ * @param {boolean} utc convert local time to UTC
+ * @returns {string} A string in the format `yyyy-mm-dd`
+ */
+export const toISODateFormat = (date, utc = false) => {
+  const day = utc ? date.getUTCDate() : date.getDate();
+  const month = (utc ? date.getUTCMonth() : date.getMonth()) + 1;
+  const year = utc ? date.getUTCFullYear() : date.getFullYear();
+  return `${year}-${padWithZeros(month)}-${padWithZeros(day)}`;
+};
+
+/**
+ * Transform any datetime to T00:00:00.000Z (UTC).
+ * For an input like 2025-10-13T19:56:59.460Z, the output is 2025-10-13T00:00:00.000Z.
+ *
+ * @param {Date|string} [dateOrString] - The ISO date string or date
+ */
+export const setUTCTime = (dateOrString) => {
+  let date;
+  if (typeof dateOrString === 'string') {
+    date = new Date(dateOrString);
+  } else {
+    // Create a new date because `setUTCHours` mutates the date in-place.
+    date = new Date(dateOrString.toISOString());
+  }
+  date.setUTCHours(0, 0, 0, 0); // Mutation in-place.
+  return date;
+};
+
+/**
+ * Formats a date into an ISO string without milliseconds.
+ *
+ * @example
+ * // returns '2020-01-29T00:00:00Z'
+ * toISOStringWithoutMilliseconds(new Date('2020-01-29:00:00:00.123'))
+ *
+ * @param {Date} date The date to be formatted
+ * @returns {string} The ISO string without milliseconds.
+ */
+export const toISOStringWithoutMilliseconds = (date) => date.toISOString().replace(/\.\d+Z$/, 'Z');
+
+/**
  * This combines a date and a time and returns the computed Date's ISO string representation.
  *
- * @param {Date} date Date object representing the base date.
- * @param {String} time String representing the time to be used, in the form HH:MM.
- * @param {String} offset An optional Date-compatible offset.
- * @returns {String} The combined Date's ISO string representation.
+ * @param   {Date}   date Date object representing the base date.
+ * @param   {string} time String representing the time to be used, in the form HH:MM.
+ * @param   {string} offset An optional Date-compatible offset.
+ * @returns {string} The combined Date's ISO string representation.
  */
 export const dateAndTimeToISOString = (date, time, offset = '') => {
   const { year, month, day } = dateToYearMonthDate(date);
@@ -360,8 +419,8 @@ export const dateAndTimeToISOString = (date, time, offset = '') => {
  * Converts a Date instance to time input-compatible value consisting in a 2-digits hours and
  * minutes, separated by a semi-colon, in the 24-hours format.
  *
- * @param {Date} date Date to be converted
- * @returns {String} time input-compatible string in the form HH:MM.
+ * @param   {Date} date Date to be converted
+ * @returns {string} time input-compatible string in the form HH:MM.
  */
 export const dateToTimeInputValue = (date) => {
   if (!isDate(date)) {
@@ -375,6 +434,21 @@ export const dateToTimeInputValue = (date) => {
   });
 };
 
+/**
+ * Formats a given amount of time units
+ *
+ * @example
+ * // returns '42 days'
+ * formatTimeAsSummary({ days: 42 });
+ *
+ * @param {Object} config object containing exactly one property to format
+ * @param {number} [config.seconds]
+ * @param {number} [config.minutes]
+ * @param {number} [config.hours]
+ * @param {number} [config.days]
+ * @param {number} [config.weeks]
+ * @param {number} [config.months]
+ */
 export const formatTimeAsSummary = ({ seconds, hours, days, minutes, weeks, months }) => {
   if (months) {
     const value = roundToNearestHalf(months);
@@ -430,9 +504,8 @@ export const formatTimeAsSummary = ({ seconds, hours, days, minutes, weeks, mont
  * ie -32400 => -9 hours
  * ie -12600 => -3.5 hours
  *
- * @param {Number} offset UTC offset in seconds as a integer
- *
- * @return {String} the + or - offset in hours, e.g. `-10`, ` 0`, `+4`
+ * @param   {number} offset UTC offset in seconds as a integer
+ * @returns {string} the + or - offset in hours, e.g. `-10`, ` 0`, `+4`
  */
 export const formatUtcOffset = (offset) => {
   const parsed = parseInt(offset, 10);
@@ -446,8 +519,8 @@ export const formatUtcOffset = (offset) => {
 /**
  * Returns formatted timezone
  *
- * @param {Object} timezone item with offset and name
- * @returns {String} the UTC timezone with the offset, e.g. `[UTC+2] Berlin, [UTC 0] London`
+ * @param   {Object} timezone item with offset and name
+ * @returns {string} the UTC timezone with the offset, e.g. `[UTC+2] Berlin, [UTC 0] London`
  */
 export const formatTimezone = ({ offset, name }) => `[UTC${formatUtcOffset(offset)}] ${name}`;
 
@@ -456,30 +529,142 @@ export const formatTimezone = ({ offset, name }) => `[UTC${formatUtcOffset(offse
  *
  * @param {Date} startDate
  * @param {Date} dueDate
- * @returns
  */
 export const humanTimeframe = (startDate, dueDate) => {
-  const start = startDate ? parsePikadayDate(startDate) : null;
-  const due = dueDate ? parsePikadayDate(dueDate) : null;
-
   if (startDate && dueDate) {
-    const startDateInWords = dateInWords(start, true, start.getFullYear() === due.getFullYear());
-    const dueDateInWords = dateInWords(due, true);
-
-    return sprintf(__('%{startDate} – %{dueDate}'), {
-      startDate: startDateInWords,
-      dueDate: dueDateInWords,
-    });
+    return localeDateFormat.asDate.formatRange(startDate, dueDate);
   }
   if (startDate && !dueDate) {
     return sprintf(__('%{startDate} – No due date'), {
-      startDate: dateInWords(start, true, false),
+      startDate: localeDateFormat.asDate.format(startDate),
     });
   }
   if (!startDate && dueDate) {
     return sprintf(__('No start date – %{dueDate}'), {
-      dueDate: dateInWords(due, true, false),
+      dueDate: localeDateFormat.asDate.format(dueDate),
     });
   }
   return '';
+};
+
+/**
+ * Formats seconds into a human readable value of elapsed time,
+ * optionally limiting it to hours.
+ * @param {Number} seconds Seconds to format
+ * @param {Boolean} limitToHours Whether or not to limit the elapsed time to be expressed in hours
+ * @return {String} Provided seconds in human readable elapsed time format
+ */
+export const formatTimeSpent = (seconds, limitToHours) => {
+  const negative = seconds < 0;
+  return (negative ? '- ' : '') + stringifyTime(parseSeconds(seconds, { limitToHours }));
+};
+
+/**
+ * Formats a date into ISO 8601 date format (yyyy-mm-dd)
+ * @param { number } year The full year (e.g., 2023)
+ * @param { number } monthIndex The zero-based month index (0-11, where 0 = January)
+ * @param { number } day The day of the month (1-31)
+ * @returns { string } Date string in ISO 8601 format (yyyy-mm-dd)
+ * @example formatIso8601Date(2023, 0, 15) // returns '2023-01-15'
+ */
+export const formatIso8601Date = (year, monthIndex, day) => {
+  return [year, monthIndex + 1, day]
+    .map(String)
+    .map((s) => s.padStart(2, '0'))
+    .join('-');
+};
+
+/**
+ * Formats a date with a long month name and numeric day. Includes year if the
+ * date is not in the current year. Example: "January 1" or "January 1, 2025",
+ * depending on locale and year. Uses UTC to avoid timezone shifts.
+ *
+ * @param {Date|string|number} dateish A value accepted by the Date constructor
+ * @returns {string}
+ */
+export const formatDateLongMonthDay = (dateish) => {
+  const date = new Date(dateish);
+
+  if (!isDate(date) || isNaN(date.getTime())) {
+    // eslint-disable-next-line @gitlab/require-i18n-strings
+    throw new Error('Argument should be a Date instance');
+  }
+
+  if (date.getFullYear() === new Date().getFullYear()) {
+    const formatter = createDateTimeFormat({
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+    return formatter.format(date);
+  }
+
+  const formatter = createDateTimeFormat({
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+    year: 'numeric',
+  });
+  return formatter.format(date);
+};
+
+/**
+ * Formats a date with a long month name, numeric day, and year.
+ * Example: "January 1, 2025" or, depending on locale, equivalent.
+ * Uses UTC to avoid TZ shifts.
+ *
+ * @param {Date|string|number} dateish
+ * @returns {string}
+ */
+export const formatDateLongMonthDayWithYear = (dateish) => {
+  const date = new Date(dateish);
+
+  if (!isDate(date) || isNaN(date.getTime())) {
+    // eslint-disable-next-line @gitlab/require-i18n-strings
+    throw new Error('Argument should be a Date instance');
+  }
+
+  const formatter = createDateTimeFormat({
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+    year: 'numeric',
+  });
+  return formatter.format(date);
+};
+
+/**
+ * Formats a date range with a long month name and numeric day.
++ * If the start and end dates are in the same year, format as "January 1 - December 31", 2025.
+ * Otherwise, format as "January 1, 2025 - December 31, 2026".
+ * Uses UTC to avoid TZ shifts.
+ *
+ * @param {Date|string|number} startDate
+ * @param {Date|string|number} endDate
+ * @returns {string}
+ */
+export const formatDateRangeLongMonthDay = (startDateish, dueDateish) => {
+  const startDate = new Date(startDateish);
+  const dueDate = new Date(dueDateish);
+
+  if (!isDate(startDate) || isNaN(startDate.getTime())) {
+    // eslint-disable-next-line @gitlab/require-i18n-strings
+    throw new Error('Start and due dates should be Date instances');
+  }
+
+  if (!isDate(dueDate) || isNaN(dueDate.getTime())) {
+    // eslint-disable-next-line @gitlab/require-i18n-strings
+    throw new Error('Start and due dates should be Date instances');
+  }
+
+  if (startDate.getFullYear() === dueDate.getFullYear()) {
+    return sprintf(__('%{startDate} – %{dueDate}'), {
+      startDate: formatDateLongMonthDay(startDate),
+      dueDate: formatDateLongMonthDayWithYear(dueDate),
+    });
+  }
+  return sprintf(__('%{startDate} – %{dueDate}'), {
+    startDate: formatDateLongMonthDayWithYear(startDate),
+    dueDate: formatDateLongMonthDayWithYear(dueDate),
+  });
 };

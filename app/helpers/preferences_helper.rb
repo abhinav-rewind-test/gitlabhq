@@ -9,6 +9,16 @@ module PreferencesHelper
     ]
   end
 
+  def dashboard_value
+    # For homepage rollout with flipped mapping, show the effective preference
+    # that matches what they actually see, not the raw database value
+    if current_user.should_use_flipped_dashboard_mapping_for_rollout?
+      current_user.effective_dashboard_for_routing
+    else
+      current_user.dashboard
+    end
+  end
+
   # Returns an Array usable by a select field for more user-friendly option text
   def dashboard_choices
     dashboards = User.dashboards.keys
@@ -16,30 +26,50 @@ module PreferencesHelper
     validate_dashboard_choices!(dashboards)
     dashboards -= excluded_dashboard_choices
 
+    dashboards -= ['homepage'] unless Feature.enabled?(:personal_homepage, current_user)
+
+    # Move homepage to first position if it's available
+    # For homepage rollout with flipped mapping, homepage becomes their default (value 0)
+    dashboards.unshift('homepage') if dashboards.delete('homepage')
+
     dashboards.map do |key|
       {
         # Use `fetch` so `KeyError` gets raised when a key is missing
-        text: localized_dashboard_choices.fetch(key),
+        text: localized_dashboard_choices_for_user.fetch(key),
         value: key
       }
     end
   end
 
+  # Maps `dashboard` values to more user-friendly option text for current user
+  def localized_dashboard_choices_for_user
+    return localized_dashboard_choices unless current_user.should_use_flipped_dashboard_mapping_for_rollout?
+
+    localized_dashboard_choices.dup.tap do |choices|
+      choices[:projects] = _("Your Contributed Projects")
+      choices[:homepage] = _("Personal homepage (default)")
+    end.freeze
+  end
+
   # Maps `dashboard` values to more user-friendly option text
   def localized_dashboard_choices
     {
-      projects: _("Your Projects (default)"),
+      projects: _("Your Contributed Projects (default)"),
       stars: _("Starred Projects"),
+      member_projects: _("Member Projects"),
       your_activity: _("Your Activity"),
       project_activity: _("Your Projects' Activity"),
       starred_project_activity: _("Starred Projects' Activity"),
       followed_user_activity: _("Followed Users' Activity"),
       groups: _("Your Groups"),
       todos: _("Your To-Do List"),
-      issues: _("Assigned Issues"),
-      merge_requests: _("Assigned merge requests"),
-      operations: _("Operations Dashboard")
-    }.with_indifferent_access.freeze
+      issues: _("Assigned issues"),
+      merge_requests: _("Merge request homepage"),
+      operations: _("Operations Dashboard"),
+      homepage: _("Personal homepage"),
+      assigned_merge_requests: _("Assigned merge requests"),
+      review_merge_requests: _("Merge request reviews")
+    }.compact.with_indifferent_access.freeze
   end
 
   def project_view_choices
@@ -75,16 +105,34 @@ module PreferencesHelper
     @user_color_mode ||= Gitlab::ColorModes.for_user(current_user).css_class
   end
 
+  def user_application_light_mode?
+    user_application_color_mode == 'gl-light'
+  end
+
   def user_application_dark_mode?
     user_application_color_mode == 'gl-dark'
   end
 
-  def user_theme_primary_color
+  def user_application_system_mode?
+    user_application_color_mode == 'gl-system'
+  end
+
+  def user_theme_primary_color(dark = false)
+    return Gitlab::Themes.for_user(current_user).primary_color_dark if dark
+
     Gitlab::Themes.for_user(current_user).primary_color
   end
 
   def user_color_scheme
     Gitlab::ColorSchemes.for_user(current_user).css_class
+  end
+
+  def user_light_color_scheme
+    Gitlab::ColorSchemes.light_for_user(current_user).css_class
+  end
+
+  def user_dark_color_scheme
+    Gitlab::ColorSchemes.dark_for_user(current_user).css_class
   end
 
   def user_tab_width
@@ -126,22 +174,65 @@ module PreferencesHelper
 
   def integration_views
     [].tap do |views|
-      views << { name: 'gitpod', message: gitpod_enable_description, message_url: gitpod_url_placeholder, help_link: help_page_path('integration/gitpod') } if Gitlab::CurrentSettings.gitpod_enabled
-      views << { name: 'sourcegraph', message: sourcegraph_url_message, message_url: Gitlab::CurrentSettings.sourcegraph_url, help_link: help_page_path('user/profile/preferences', anchor: 'sourcegraph') } if Gitlab::Sourcegraph.feature_available? && Gitlab::CurrentSettings.sourcegraph_enabled
-    end
+      if Gitlab::CurrentSettings.gitpod_enabled
+        views << {
+          name: 'gitpod',
+          message: gitpod_enable_description,
+          message_url: gitpod_url_placeholder,
+          help_link: help_page_path('integration/gitpod.md')
+        }
+      end
+
+      if Gitlab::CurrentSettings.sourcegraph_enabled
+        views << {
+          name: 'sourcegraph',
+          message: sourcegraph_url_message,
+          message_url: Gitlab::CurrentSettings.sourcegraph_url,
+          help_link: help_page_path(
+            'user/profile/preferences.md',
+            anchor: 'integrate-your-gitlab-instance-with-sourcegraph'
+          )
+        }
+      end
+
+      views << extensions_marketplace_view
+    end.compact
   end
 
   private
 
+  def extensions_marketplace_view
+    return unless WebIde::ExtensionMarketplace.feature_enabled_from_application_settings?
+
+    build_extensions_marketplace_view(
+      title: s_("Preferences|Web IDE"),
+      message: s_(
+        "PreferencesIntegrations|Uses %{extensions_marketplace_home} as the extension marketplace for the Web IDE.")
+    )
+  end
+
+  def build_extensions_marketplace_view(title:, message:)
+    marketplace_home_url = ::WebIde::ExtensionMarketplace.marketplace_home_url(user: current_user)
+
+    extensions_marketplace_home = "%{linkStart}#{marketplace_home_url}%{linkEnd}"
+    {
+      name: 'extensions_marketplace',
+      message: format(message, extensions_marketplace_home: extensions_marketplace_home),
+      title: title,
+      message_url: marketplace_home_url,
+      help_link: WebIde::ExtensionMarketplace.help_preferences_url
+    }
+  end
+
   def gitpod_url_placeholder
-    Gitlab::CurrentSettings.gitpod_url.presence || 'https://gitpod.io/'
+    Gitlab::CurrentSettings.gitpod_url.presence || 'https://app.ona.com/'
   end
 
   # Ensure that anyone adding new options updates `localized_dashboard_choices` too
   def validate_dashboard_choices!(user_dashboards)
     if user_dashboards.size != localized_dashboard_choices.size
-      raise "`User` defines #{user_dashboards.size} dashboard choices," \
-        " but `localized_dashboard_choices` defined #{localized_dashboard_choices.size}."
+      raise "`User` defines #{user_dashboards.size} dashboard choices, " \
+        "but `localized_dashboard_choices` defined #{localized_dashboard_choices.size}."
     end
   end
 

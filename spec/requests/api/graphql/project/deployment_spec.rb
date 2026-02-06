@@ -4,12 +4,10 @@ require 'spec_helper'
 
 RSpec.describe 'Project Deployment query', feature_category: :continuous_delivery do
   let_it_be(:project) { create(:project, :private, :repository) }
-  let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
-  let_it_be(:guest) { create(:user).tap { |u| project.add_guest(u) } }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:guest) { create(:user, guest_of: project) }
   let_it_be(:environment) { create(:environment, project: project) }
   let_it_be(:deployment) { create(:deployment, environment: environment, project: project) }
-
-  subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
 
   let(:user) { developer }
 
@@ -32,6 +30,8 @@ RSpec.describe 'Project Deployment query', feature_category: :continuous_deliver
       }
     )
   end
+
+  subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
 
   it 'returns the deployment of the project' do
     deployment_data = subject.dig('data', 'project', 'deployment')

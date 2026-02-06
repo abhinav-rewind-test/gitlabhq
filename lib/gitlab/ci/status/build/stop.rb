@@ -10,7 +10,7 @@ module Gitlab
           end
 
           def has_action?
-            can?(user, :update_build, subject)
+            can?(user, :play_job, subject)
           end
 
           def action_icon
@@ -35,6 +35,10 @@ module Gitlab
 
           def self.matches?(build, user)
             build.playable? && build.stops_environment?
+          end
+
+          def confirmation_message
+            subject.manual_confirmation_message
           end
         end
       end

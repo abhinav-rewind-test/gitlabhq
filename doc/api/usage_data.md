@@ -1,31 +1,45 @@
 ---
-stage: Monitor
+stage: Analytics
 group: Analytics Instrumentation
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Service Ping API
 ---
 
-# Service Data API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-The Service Data API is associated with [Service Ping](../development/internal_analytics/service_ping/index.md).
+{{< /details >}}
+
+Use this API to interact with the GitLab Service Ping process.
 
 ## Export Service Ping data
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/141446) in GitLab 16.9.
+{{< history >}}
 
-Requires a Personal Access Token with `read_service_ping` scope.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/141446) in GitLab 16.9.
 
-Returns the JSON payload collected in Service Ping. If no payload data is available in the application cache, it returns empty response.
+{{< /history >}}
+
+Exports the JSON payload collected in Service Ping. If no payload data is available in the application cache, it returns empty response.
 If payload data is empty, make sure the [Service Ping feature is enabled](../administration/settings/usage_statistics.md#enable-or-disable-service-ping) and
-wait for the cron job to be executed, or [generate payload data manually](../development/internal_analytics/service_ping/troubleshooting.md#generate-service-ping).
+wait for the cron job to be executed, or generate payload data manually.
+
+Prerequisites:
+
+- You must authenticate with a personal access token that has the `read_service_ping` scope.
+
+```plaintext
+GET /usage_data/service_ping
+```
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/usage_data/service_ping"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/usage_data/service_ping"
 ```
 
 Example response:
@@ -44,11 +58,19 @@ Example response:
 ...
 ```
 
-## Export metric definitions as a single YAML file
+### Interpreting `schema_inconsistencies_metric`
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/57270) in GitLab 13.11.
+The Service Ping JSON payload includes `schema_inconsistencies_metric`. Database schema inconsistencies are expected, and are unlikely to indicate a problem with your instance.
 
-Export all metric definitions as a single YAML file, similar to the [Metrics Dictionary](https://metrics.gitlab.com/), for easier importing.
+This metric is designed only for troubleshooting ongoing issues, and shouldn't be used as a regular health check. The metric should only be interpreted with
+the guidance of GitLab Support. The metric reports the same database schema inconsistencies as the
+[database schema checker Rake task](../administration/raketasks/maintenance.md#check-the-database-for-schema-inconsistencies).
+
+For more information, see [issue 467544](https://gitlab.com/gitlab-org/gitlab/-/issues/467544).
+
+## Export metric definitions
+
+Exports all metric definitions as a single YAML file, similar to the [Metrics Dictionary](https://metrics.gitlab.com/), for easier importing.
 
 ```plaintext
 GET /usage_data/metric_definitions
@@ -57,7 +79,8 @@ GET /usage_data/metric_definitions
 Example request:
 
 ```shell
-curl "https://gitlab.example.com/api/v4/usage_data/metric_definitions"
+curl --request GET \
+  --url "https://gitlab.example.com/api/v4/usage_data/metric_definitions"
 ```
 
 Example response:
@@ -67,29 +90,29 @@ Example response:
 - key_path: redis_hll_counters.search.i_search_paid_monthly
   description: Calculated unique users to perform a search with a paid license enabled
     by month
-  product_section: enablement
-  product_stage: enablement
   product_group: global_search
   value_type: number
   status: active
   time_frame: 28d
   data_source: redis_hll
-  distribution:
-  - ee
   tier:
   - premium
   - ultimate
 ...
 ```
 
-## Export Service Ping SQL queries
+## List all Service Ping SQL queries
 
-This action is behind the `usage_data_queries_api` feature flag and is available only for the GitLab instance [Administrator](../user/permissions.md) users.
+{{< history >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/57016) in GitLab 13.11.
-> - [Deployed behind a feature flag](../user/feature_flags.md) named `usage_data_queries_api`, disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/57016) in GitLab 13.11.
+- [Deployed behind a feature flag](../administration/feature_flags/_index.md) named `usage_data_queries_api`, disabled by default.
 
-Return all of the raw SQL queries used to compute Service Ping.
+{{< /history >}}
+
+Lists all raw SQL queries used to compute Service Ping. This action is behind the
+`usage_data_queries_api` feature flag and is available only for the GitLab instance
+[Administrator](../user/permissions.md) users.
 
 ```plaintext
 GET /usage_data/queries
@@ -98,7 +121,9 @@ GET /usage_data/queries
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/usage_data/queries"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/usage_data/queries"
 ```
 
 Example response:
@@ -146,19 +171,29 @@ Example response:
 ...
 ```
 
-## UsageDataNonSqlMetrics API
+## List all non-SQL metrics
 
-This action is behind the `usage_data_non_sql_metrics` feature flag and is available only for the GitLab instance [Administrator](../user/permissions.md) users.
+{{< history >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/57050) in GitLab 13.11.
-> - [Deployed behind a feature flag](../user/feature_flags.md), named `usage_data_non_sql_metrics`, disabled by default.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/57050) in GitLab 13.11.
+- [Deployed behind a feature flag](../administration/feature_flags/_index.md), named `usage_data_non_sql_metrics`, disabled by default.
 
-Return all non-SQL metrics data used in the Service ping.
+{{< /history >}}
+
+Lists all non-SQL metrics data used in the Service ping. This action is behind the
+`usage_data_non_sql_metrics` feature flag and is available only for the GitLab instance
+[Administrator](../user/permissions.md) users.
+
+```plaintext
+GET /usage_data/non_sql_metrics
+```
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/usage_data/non_sql_metrics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/usage_data/non_sql_metrics"
 ```
 
 Sample response:
@@ -195,4 +230,65 @@ Sample response:
     "operating_system": "mac_os_x-11.2.2"
   },
 ...
+```
+
+## Track internal events
+
+Tracks internal events in the GitLab instance.
+
+Prerequisites:
+
+- You must authenticate with a personal access token that has either the `api` or `ai_workflows` scopes.
+
+```plaintext
+POST /usage_data/track_event
+```
+
+To track events to Snowplow, set the `send_to_snowplow` parameter to `true`.
+
+Example request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --header "Content-Type: application/json" \
+     --request POST \
+     --data '{
+       "event": "mr_name_changed",
+       "send_to_snowplow": true,
+       "namespace_id": 1,
+       "project_id": 1,
+       "additional_properties": {
+         "lang": "eng"
+       }
+     }' \
+     --url "https://gitlab.example.com/api/v4/usage_data/track_event"
+```
+
+If multiple events tracking is required, send an array of events to the `/track_events` endpoint:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+     --header "Content-Type: application/json" \
+     --request POST \
+     --data '{
+       "events": [
+         {
+           "event": "mr_name_changed",
+           "namespace_id": 1,
+           "project_id": 1,
+           "additional_properties": {
+             "lang": "eng"
+           }
+         },
+         {
+           "event": "mr_name_changed",
+           "namespace_id": 2,
+           "project_id": 2,
+           "additional_properties": {
+             "lang": "eng"
+           }
+         }
+       ]
+     }' \
+     --url "https://gitlab.example.com/api/v4/usage_data/track_events"
 ```

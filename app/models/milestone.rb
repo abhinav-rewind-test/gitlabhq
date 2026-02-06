@@ -11,6 +11,7 @@ class Milestone < ApplicationRecord
   include UpdatedAtFilterable
   include EachBatch
   include Spammable
+  include AfterCommitQueue
 
   prepend_mod_with('Milestone') # rubocop: disable Cop/InjectEnterpriseEditionModule
 
@@ -23,6 +24,7 @@ class Milestone < ApplicationRecord
 
   has_many :milestone_releases
   has_many :releases, through: :milestone_releases
+  has_many :merge_requests
 
   has_internal_id :iid, scope: :project, track_if: -> { !importing? }
   has_internal_id :iid, scope: :group, track_if: -> { !importing? }
@@ -31,17 +33,33 @@ class Milestone < ApplicationRecord
 
   scope :by_iid, ->(iid) { where(iid: iid) }
   scope :active, -> { with_state(:active) }
-  scope :started, -> { active.where('milestones.start_date <= CURRENT_DATE') }
+  scope :started, ->(legacy_filtering_logic: false) do
+    if legacy_filtering_logic
+      active.where('milestones.start_date <= CURRENT_DATE')
+    else
+      active
+        .where('(milestones.start_date <= CURRENT_DATE OR milestones.start_date IS NULL) AND
+              (milestones.due_date IS NULL OR milestones.due_date >= CURRENT_DATE) AND
+              NOT (milestones.start_date IS NULL AND milestones.due_date IS NULL)')
+    end
+  end
   scope :not_started, -> { active.where('milestones.start_date > CURRENT_DATE') }
-  scope :not_upcoming, -> do
-    active
+
+  scope :not_upcoming, ->(legacy_filtering_logic: false) do
+    if legacy_filtering_logic
+      active
         .where('milestones.due_date <= CURRENT_DATE')
         .order(:project_id, :group_id, :due_date)
+    else
+      active
+        .where('milestones.start_date <= CURRENT_DATE')
+        .order(:project_id, :group_id, :start_date)
+    end
   end
 
   scope :of_projects, ->(ids) { where(project_id: ids) }
   scope :for_projects, -> { where(group: nil).includes(:project) }
-  scope :for_projects_and_groups, -> (projects, groups) do
+  scope :for_projects_and_groups, ->(projects, groups) do
     projects = projects.compact if projects.is_a? Array
     projects = [] if projects.nil?
 
@@ -53,15 +71,19 @@ class Milestone < ApplicationRecord
 
   scope :order_by_name_asc, -> { order(Arel::Nodes::Ascending.new(arel_table[:title].lower)) }
   scope :reorder_by_due_date_asc, -> { reorder(arel_table[:due_date].asc.nulls_last) }
-  scope :with_api_entity_associations, -> { preload(project: [:project_feature, :route, namespace: :route]) }
-  scope :preload_for_indexing, -> { includes(project: [:project_feature]) }
+  scope :with_api_entity_associations, -> { preload(project: [:project_feature, :route, { namespace: :route }]) }
+  scope :preload_for_indexing, -> do
+    includes(project: [
+      :project_feature, { namespace: %i[namespace_settings namespace_settings_with_ancestors_inherited_settings] }
+    ])
+  end
   scope :order_by_dates_and_title, -> { order(due_date: :asc, start_date: :asc, title: :asc) }
   scope :with_ids_or_title, ->(ids:, title:) { id_in(ids).or(with_title(title)) }
 
   validates :group, presence: true, unless: :project
   validates :project, presence: true, unless: :group
   validates :title, presence: true
-  validates_associated :milestone_releases, message: -> (_, obj) { obj[:value].map(&:errors).map(&:full_messages).join(",") }
+  validates_associated :milestone_releases, message: ->(_, obj) { obj[:value].map(&:errors).map(&:full_messages).join(",") }
   validate :parent_type_check
   validate :uniqueness_of_title, if: :title_changed?
 
@@ -80,6 +102,10 @@ class Milestone < ApplicationRecord
     state :closed
 
     state :active
+  end
+
+  def hook_attrs
+    Gitlab::HookData::MilestoneBuilder.new(self).build
   end
 
   # Searches for timeboxes with a matching title.
@@ -124,15 +150,22 @@ class Milestone < ApplicationRecord
     @link_reference_pattern ||= compose_link_reference_pattern('milestones', /(?<milestone>\d+)/)
   end
 
-  def self.upcoming_ids(projects, groups)
-    unscoped
-      .for_projects_and_groups(projects, groups)
-      .active.where('milestones.due_date > CURRENT_DATE')
-      .order(:project_id, :group_id, :due_date).select('DISTINCT ON (project_id, group_id) id')
+  def self.upcoming_ids(projects, groups, legacy_filtering_logic: false)
+    if legacy_filtering_logic
+      unscoped
+        .for_projects_and_groups(projects, groups)
+        .active.where('milestones.due_date > CURRENT_DATE')
+        .order(:project_id, :group_id, :due_date).select('DISTINCT ON (project_id, group_id) id')
+    else
+      unscoped
+        .for_projects_and_groups(projects, groups)
+        .active.where('milestones.start_date > CURRENT_DATE')
+        .order(:project_id, :group_id, :start_date).select(:id)
+    end
   end
 
   def self.with_web_entity_associations
-    preload(:group, project: [:project_feature, group: [:parent], namespace: :route])
+    preload(:group, project: [:project_feature, { group: [:parent], namespace: :route }])
   end
 
   def participants
@@ -184,18 +217,14 @@ class Milestone < ApplicationRecord
                .count
 
     {
-        opened: counts['active'] || 0,
-        closed: counts['closed'] || 0,
-        all: counts.values.sum
+      opened: counts['active'] || 0,
+      closed: counts['closed'] || 0,
+      all: counts.values.sum
     }
   end
 
   def for_display
     self
-  end
-
-  def can_be_closed?
-    active? && issues.opened.count == 0
   end
 
   def author_id
@@ -278,7 +307,7 @@ class Milestone < ApplicationRecord
       raise ArgumentError, _('Cannot refer to a group milestone by an internal id!')
     end
 
-    if format == :name && !name.include?('"')
+    if format == :name && name.exclude?('"')
       %("#{name}")
     else
       iid
@@ -300,9 +329,9 @@ class Milestone < ApplicationRecord
   # milestone titles must be unique across project and group milestones
   def uniqueness_of_title
     if project
-      relation = self.class.for_projects_and_groups([project_id], [project.group&.id])
+      relation = self.class.for_projects_and_groups([project_id], [project.group&.self_and_ancestors_ids])
     elsif group
-      relation = self.class.for_projects_and_groups(group.projects.select(:id), [group.id])
+      relation = self.class.for_projects_and_groups(group.all_project_ids, [group.self_and_hierarchy])
     end
 
     title_exists = relation.find_by_title(title)

@@ -7,11 +7,20 @@ RSpec.describe Projects::ParticipantsService, feature_category: :groups_and_proj
     let_it_be(:user) { create(:user) }
     let_it_be(:project) { create(:project, :public) }
     let_it_be(:noteable) { create(:issue, project: project) }
+    let_it_be(:other_organization) { create(:organization) }
+    let_it_be(:org_user_detail) do
+      create(:organization_user_detail, username: 'spec_bot')
+    end
+
+    let_it_be(:other_org_user_detail) do
+      create(:organization_user_detail, organization: other_organization, username: 'spec_bot')
+    end
 
     let(:params) { {} }
 
     before_all do
       project.add_developer(user)
+      project.add_developer(org_user_detail.user)
     end
 
     before do
@@ -23,10 +32,10 @@ RSpec.describe Projects::ParticipantsService, feature_category: :groups_and_proj
     end
 
     it 'returns results in correct order' do
-      group = create(:group).tap { |g| g.add_owner(user) }
+      group = create(:group, owners: user)
 
       expect(run_service.pluck(:username)).to eq([
-        noteable.author.username, 'all', user.username, group.full_path
+        noteable.author.username, 'all', user.username, org_user_detail.username, group.full_path
       ])
     end
 
@@ -65,12 +74,109 @@ RSpec.describe Projects::ParticipantsService, feature_category: :groups_and_proj
 
         expect { run_service }.not_to exceed_query_limit(control)
       end
+
+      it 'avoids N+1 OrganizationUserDetail queries' do
+        developer = create(:user)
+        project.add_developer(developer)
+        create(
+          :organization_user_detail,
+          user: developer,
+          username: 'test_alias',
+          display_name: 'Test McAlias'
+        )
+
+        control = ActiveRecord::QueryRecorder.new { run_service.to_a }
+
+        BatchLoader::Executor.clear_current
+
+        developer2 = create(:user)
+        project.add_developer(developer2)
+        create(
+          :organization_user_detail,
+          user: developer2,
+          username: 'test_alias2',
+          display_name: 'Test McAlias2'
+        )
+
+        expect { run_service.to_a }.not_to exceed_query_limit(control)
+      end
     end
 
     it 'does not return duplicate author' do
       participants = run_service
 
       expect(participants.count { |p| p[:username] == noteable.author.username }).to eq 1
+    end
+
+    it 'includes composite_identity_enforced field for users' do
+      user_participants = run_service.select { |p| p[:type] == 'User' && !p[:original_username].present? }
+
+      expect(user_participants).to all(include(:composite_identity_enforced))
+    end
+
+    context 'when noteable.participants contains placeholder or import users' do
+      let(:placeholder_user) { create(:user, :placeholder) }
+      let(:import_user) { create(:user, :import_user) }
+
+      it 'does not return the placeholder and import users' do
+        allow(noteable).to receive(:participants).and_return([user, placeholder_user, import_user])
+
+        participant_usernames = run_service.map { |user| user[:username] }
+
+        expect(participant_usernames).not_to include(placeholder_user.username, import_user.username)
+        expect(participant_usernames).to include(user.username)
+      end
+    end
+
+    describe 'organization_user_detail items' do
+      subject(:org_user_detail_items) { run_service.select { |hash| hash[:original_username].present? } }
+
+      it 'includes items for per-organization user details within the noteable organization' do
+        expect(org_user_detail_items).to include(a_hash_including(
+          type: User.name,
+          username: org_user_detail.username,
+          name: org_user_detail.display_name,
+          avatar_url: org_user_detail.user.avatar_url,
+          original_username: org_user_detail.user.username,
+          original_displayname: org_user_detail.user.name,
+          composite_identity_enforced: org_user_detail.user.composite_identity_enforced
+        ))
+      end
+
+      it 'does not include items from other organizations' do
+        expect(org_user_detail_items).not_to include(a_hash_including(
+          username: other_org_user_detail.username,
+          original_username: other_org_user_detail.user.username
+        ))
+      end
+
+      context 'when organization_users_internal FF is disabled' do
+        before do
+          stub_feature_flags(organization_users_internal: false)
+        end
+
+        it { is_expected.to be_empty }
+
+        it 'returns results in correct order' do
+          group = create(:group, owners: user)
+
+          expect(run_service.pluck(:username)).to eq([
+            noteable.author.username, 'all', user.username, org_user_detail.user.username, group.full_path
+          ])
+        end
+      end
+
+      context 'including other item types' do
+        subject(:items) { run_service }
+
+        it 'does not seprately include user for organization_user_details items' do
+          matching_items = items.select do |item|
+            [org_user_detail.username, org_user_detail.user.username].include?(item[:username])
+          end
+          expect(matching_items.count).to eq(1)
+          expect(matching_items.first).to have_key(:original_username)
+        end
+      end
     end
 
     describe 'group items' do
@@ -142,6 +248,37 @@ RSpec.describe Projects::ParticipantsService, feature_category: :groups_and_proj
               group_1.full_path, subgroup.full_path
             ])
           end
+
+          context 'when user search already returns enough results' do
+            before do
+              described_class::SEARCH_LIMIT.times { |i| create(:user, name: "bb#{i}", guest_of: project) }
+            end
+
+            it 'does not return any groups' do
+              expect(group_items).to be_empty
+            end
+          end
+        end
+      end
+
+      context 'when groups are in other organizations' do
+        let(:group_1) { create(:group) }
+        let(:group_2) { create(:group, organization: other_organization) }
+
+        before do
+          group_1.add_owner(user)
+          group_1.add_owner(create(:user))
+
+          group_2.add_owner(user)
+        end
+
+        it 'only includes groups in the projects organization' do
+          expect(group_items).to contain_exactly(
+            a_hash_including(name: group_1.full_name, count: 2)
+          )
+          expect(group_items).not_to include(
+            a_hash_including(name: group_2.full_name)
+          )
         end
       end
     end
@@ -246,8 +383,8 @@ RSpec.describe Projects::ParticipantsService, feature_category: :groups_and_proj
 
     context 'when search param is given' do
       let_it_be(:project) { create(:project, :public) }
-      let_it_be(:member_1) { create(:user, name: 'John Doe').tap { |u| project.add_guest(u) } }
-      let_it_be(:member_2) { create(:user, name: 'Jane Doe ').tap { |u| project.add_guest(u) } }
+      let_it_be(:member_1) { create(:user, name: 'John Doe', guest_of: project) }
+      let_it_be(:member_2) { create(:user, name: 'Jane Doe ', guest_of: project) }
 
       let(:service) { described_class.new(project, create(:user), search: 'johnd') }
 

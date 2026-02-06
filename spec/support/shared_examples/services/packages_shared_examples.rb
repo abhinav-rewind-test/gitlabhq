@@ -131,6 +131,8 @@ end
 RSpec.shared_examples 'package sorting' do |order_by|
   subject { get api(url), params: { sort: sort, order_by: order_by } }
 
+  let(:package_ids_desc) { packages.reverse.map(&:id) }
+
   context "sorting by #{order_by}" do
     context 'ascending order' do
       let(:sort) { 'asc' }
@@ -148,7 +150,7 @@ RSpec.shared_examples 'package sorting' do |order_by|
       it 'returns the sorted packages' do
         subject
 
-        expect(json_response.pluck('id')).to eq(packages.reverse.map(&:id))
+        expect(json_response.pluck('id')).to eq(package_ids_desc)
       end
     end
   end
@@ -206,7 +208,7 @@ RSpec.shared_examples 'filters on each package_type' do |is_project: false|
   let_it_be(:package3) { create(:npm_package, project: project) }
   let_it_be(:package4) { create(:nuget_package, project: project) }
   let_it_be(:package5) { create(:pypi_package, project: project) }
-  let_it_be(:package6) { create(:composer_package, project: project) }
+  let_it_be(:package6) { create(:composer_package_sti, project: project) }
   let_it_be(:package7) { create(:generic_package, project: project) }
   let_it_be(:package8) { create(:golang_package, project: project) }
   let_it_be(:package9) { create(:debian_package, project: project) }
@@ -215,6 +217,7 @@ RSpec.shared_examples 'filters on each package_type' do |is_project: false|
   let_it_be(:package12) { create(:terraform_module_package, project: project) }
   let_it_be(:package13) { create(:rpm_package, project: project) }
   let_it_be(:package14) { create(:ml_model_package, project: project) }
+  let_it_be(:package15) { create(:cargo_package, project: project) }
 
   Packages::Package.package_types.keys.each do |package_type|
     context "for package type #{package_type}" do
@@ -239,7 +242,8 @@ RSpec.shared_examples 'package workhorse uploads' do
     it_behaves_like 'returning response status', :forbidden
 
     it 'logs an error' do
-      expect(Gitlab::ErrorTracking).to receive(:track_exception).once
+      allow(Gitlab::ErrorTracking).to receive(:track_exception).and_call_original
+      expect(Gitlab::ErrorTracking).to receive(:track_exception).with(JWT::DecodeError)
 
       subject
     end

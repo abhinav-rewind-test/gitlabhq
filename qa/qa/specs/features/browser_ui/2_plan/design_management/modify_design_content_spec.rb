@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Plan', product_group: :product_planning do
+  RSpec.describe 'Plan', feature_category: :portfolio_management do
     describe 'Design Management' do
       let(:design) do
         Resource::Design.fabricate_via_browser_ui! do |design|
@@ -19,11 +19,11 @@ module QA
       ) do
         design.issue.visit!
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           expect(issue).to have_created_icon
         end
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           issue.update_design(design.filename)
           expect(issue).to have_modified_icon
         end

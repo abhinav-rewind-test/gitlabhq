@@ -22,8 +22,7 @@ module Gitlab
         end
         types ::Issuable
         condition do
-          quick_action_target.persisted? &&
-            quick_action_target.open? &&
+          quick_action_target.open? &&
             current_user.can?(:"update_#{quick_action_target.to_ability_name}", quick_action_target)
         end
         command :close do
@@ -141,9 +140,9 @@ module Gitlab
           run_label_command(labels: find_labels(labels_param), command: :relabel, updates_key: :label_ids)
         end
 
-        desc { _('Add a to do') }
-        explanation { _('Adds a to do.') }
-        execution_message { _('Added a to do.') }
+        desc { _('Add a to-do item') }
+        explanation { _('Adds a to-do item.') }
+        execution_message { _('Added a to-do item.') }
         types ::Issuable
         condition do
           quick_action_target.persisted? &&
@@ -153,9 +152,9 @@ module Gitlab
           @updates[:todo_event] = 'add'
         end
 
-        desc { _('Mark to do as done') }
-        explanation { _('Marks to do as done.') }
-        execution_message { _('Marked to do as done.') }
+        desc { _('Mark to-do item as done') }
+        explanation { _('Marks to-do item as done.') }
+        execution_message { _('Marked to-do item as done.') }
         types ::Issuable
         condition do
           quick_action_target.persisted? &&
@@ -166,12 +165,8 @@ module Gitlab
         end
 
         desc { _('Subscribe') }
-        explanation do
-          _('Subscribes to this %{quick_action_target}.') % { quick_action_target: target_issuable_name }
-        end
-        execution_message do
-          _('Subscribed to this %{quick_action_target}.') % { quick_action_target: target_issuable_name }
-        end
+        explanation { _('Subscribes to notifications.') }
+        execution_message { _('Subscribed to notifications.') }
         types ::Issuable
         condition do
           quick_action_target.persisted? &&
@@ -182,12 +177,8 @@ module Gitlab
         end
 
         desc { _('Unsubscribe') }
-        explanation do
-          _('Unsubscribes from this %{quick_action_target}.') % { quick_action_target: target_issuable_name }
-        end
-        execution_message do
-          _('Unsubscribed from this %{quick_action_target}.') % { quick_action_target: target_issuable_name }
-        end
+        explanation { _('Unsubscribes from notifications.') }
+        execution_message { _('Unsubscribed from notifications.') }
         types ::Issuable
         condition do
           quick_action_target.persisted? &&
@@ -219,18 +210,16 @@ module Gitlab
           end
         end
 
-        desc { _("Append the comment with %{shrug}") % { shrug: SHRUG } }
-        params '<Comment>'
+        desc { _("Add %{shrug}") % { shrug: SHRUG } }
         types ::Issuable
-        substitution :shrug do |comment|
-          "#{comment} #{SHRUG}"
+        substitution :shrug do
+          SHRUG
         end
 
-        desc { _("Append the comment with %{tableflip}") % { tableflip: TABLEFLIP } }
-        params '<Comment>'
+        desc { _("Add %{tableflip}") % { tableflip: TABLEFLIP } }
         types ::Issuable
-        substitution :tableflip do |comment|
-          "#{comment} #{TABLEFLIP}"
+        substitution :tableflip do
+          TABLEFLIP
         end
 
         desc { _('Set severity') }
@@ -259,7 +248,7 @@ module Gitlab
           end
         end
 
-        desc { _("Make %{type} confidential") % { type: target_issuable_name } }
+        desc { _("Turn on confidentiality") }
         explanation { _("Makes this %{type} confidential.") % { type: target_issuable_name } }
         types ::Issuable
         condition { quick_action_target.supports_confidentiality? && can_make_confidential? }
@@ -298,15 +287,15 @@ module Gitlab
                                         when :relabel
                                           _('Replaced all labels with %{label_references} %{label_text}.') %
                                             {
-                                            label_references: label_references.join(' '),
-                                            label_text: 'label'.pluralize(label_references.count)
-                                          }
+                                              label_references: label_references.join(' '),
+                                              label_text: 'label'.pluralize(label_references.count)
+                                            }
                                         when :label
                                           _('Added %{label_references} %{label_text}.') %
                                             {
-                                            label_references: label_references.join(' '),
-                                            label_text: 'label'.pluralize(labels.count)
-                                          }
+                                              label_references: label_references.join(' '),
+                                              label_text: 'label'.pluralize(labels.count)
+                                            }
                                         end
         end
 
@@ -320,7 +309,11 @@ module Gitlab
         end
 
         def target_issuable_name
-          quick_action_target.to_ability_name.humanize(capitalize: false)
+          if quick_action_target.to_ability_name == "work_item"
+            _('item')
+          else
+            quick_action_target.to_ability_name.humanize(capitalize: false)
+          end
         end
 
         def can_make_confidential?
@@ -333,7 +326,7 @@ module Gitlab
         end
 
         def confidential_execution_message
-          confidential_error_message.presence || _("Made this %{type} confidential.") % { type: target_issuable_name }
+          confidential_error_message.presence || (_("Made this %{type} confidential.") % { type: target_issuable_name })
         end
 
         def confidential_error_message

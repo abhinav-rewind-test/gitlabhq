@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::AttributesFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::AttributesFilter, feature_category: :markdown do
   using RSpec::Parameterized::TableSyntax
   include FilterSpecHelper
 
@@ -77,4 +77,6 @@ RSpec.describe Banzai::Filter::AttributesFilter, feature_category: :team_plannin
       end
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

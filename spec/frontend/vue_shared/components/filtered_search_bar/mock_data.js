@@ -12,6 +12,8 @@ import {
   TOKEN_TITLE_ORGANIZATION,
   TOKEN_TITLE_RELEASE,
   TOKEN_TITLE_SOURCE_BRANCH,
+  TOKEN_TITLE_GROUP,
+  TOKEN_TITLE_PROJECT,
   TOKEN_TYPE_AUTHOR,
   TOKEN_TYPE_CONFIDENTIAL,
   TOKEN_TYPE_CONTACT,
@@ -21,13 +23,18 @@ import {
   TOKEN_TYPE_ORGANIZATION,
   TOKEN_TYPE_RELEASE,
   TOKEN_TYPE_SOURCE_BRANCH,
+  TOKEN_TYPE_PROJECT,
+  TOKEN_TYPE_GROUP,
 } from '~/vue_shared/components/filtered_search_bar/constants';
+import { EMOJI_THUMBS_UP } from '~/emoji/constants';
 import UserToken from '~/vue_shared/components/filtered_search_bar/tokens/user_token.vue';
 import BranchToken from '~/vue_shared/components/filtered_search_bar/tokens/branch_token.vue';
 import EmojiToken from '~/vue_shared/components/filtered_search_bar/tokens/emoji_token.vue';
 import LabelToken from '~/vue_shared/components/filtered_search_bar/tokens/label_token.vue';
 import MilestoneToken from '~/vue_shared/components/filtered_search_bar/tokens/milestone_token.vue';
 import ReleaseToken from '~/vue_shared/components/filtered_search_bar/tokens/release_token.vue';
+import ProjectToken from '~/vue_shared/components/filtered_search_bar/tokens/project_token.vue';
+import GroupToken from '~/vue_shared/components/filtered_search_bar/tokens/group_token.vue';
 import CrmContactToken from '~/vue_shared/components/filtered_search_bar/tokens/crm_contact_token.vue';
 import CrmOrganizationToken from '~/vue_shared/components/filtered_search_bar/tokens/crm_organization_token.vue';
 
@@ -73,6 +80,19 @@ export const mockEscapedMilestone = {
   name: '5.0 RC1',
   title: '5.0 RC1',
 };
+
+export const mockDuplicateMilestones = [
+  {
+    id: 99,
+    name: '99.0',
+    title: '99.0',
+  },
+  {
+    id: 100,
+    name: '99.0',
+    title: '99.0',
+  },
+];
 
 export const mockMilestones = [
   {
@@ -232,8 +252,93 @@ export const mockGroupCrmOrganizationsQueryResponse = {
   },
 };
 
+export const mockGroupParentWorkItemsQueryResponse = {
+  data: {
+    group: {
+      id: 'gid://gitlab/Group/142',
+      workItems: {
+        nodes: [
+          {
+            id: 'gid://gitlab/WorkItem/1424',
+            iid: '1',
+            title: 'Hire trainers for mammal animals',
+            __typename: 'WorkItem',
+          },
+          {
+            id: 'gid://gitlab/WorkItem/1423',
+            iid: '1',
+            title: 'Hire trainers for avian animals',
+            __typename: 'WorkItem',
+          },
+          {
+            id: 'gid://gitlab/WorkItem/1421',
+            iid: '2',
+            title: 'Hire trainer for land animals',
+            __typename: 'WorkItem',
+          },
+          {
+            id: 'gid://gitlab/WorkItem/1420',
+            iid: '2',
+            title: 'Hire trainers for animals',
+            __typename: 'WorkItem',
+          },
+        ],
+        __typename: 'WorkItemConnection',
+      },
+      __typename: 'Group',
+    },
+  },
+};
+
+export const mockProjectParentWorkItemsQueryResponse = {
+  data: {
+    group: {
+      id: 'gid://gitlab/Group/143',
+      workItems: {
+        nodes: [
+          {
+            id: 'gid://gitlab/WorkItem/2881',
+            iid: '5',
+            title: 'Create a grassland for land animals',
+            __typename: 'WorkItem',
+          },
+          {
+            id: 'gid://gitlab/WorkItem/1564',
+            iid: '4',
+            title: 'Research land types',
+            __typename: 'WorkItem',
+          },
+          {
+            id: 'gid://gitlab/WorkItem/1525',
+            iid: '8',
+            title: 'Dummy epic work item 1',
+            __typename: 'WorkItem',
+          },
+        ],
+        __typename: 'WorkItemConnection',
+      },
+      __typename: 'Group',
+    },
+    project: {
+      id: 'gid://gitlab/Project/41',
+      workItems: {
+        nodes: [
+          {
+            id: 'gid://gitlab/WorkItem/2883',
+            iid: '1',
+            title: 'Order different types of grass',
+            __typename: 'WorkItem',
+          },
+        ],
+        __typename: 'WorkItemConnection',
+      },
+      __typename: 'Project',
+    },
+  },
+};
+
 export const mockEmoji1 = {
-  name: 'thumbsup',
+  name: EMOJI_THUMBS_UP,
 };
 
 export const mockEmoji2 = {
@@ -293,6 +398,22 @@ export const mockReleaseToken = {
   title: TOKEN_TITLE_RELEASE,
   token: ReleaseToken,
   fetchReleases: () => Promise.resolve(),
+};
+
+export const mockProjectToken = {
+  icon: 'project',
+  title: TOKEN_TYPE_PROJECT,
+  type: TOKEN_TITLE_PROJECT,
+  token: ProjectToken,
+  operators: OPERATORS_IS,
+};
+
+export const mockGroupToken = {
+  icon: 'group',
+  title: TOKEN_TYPE_GROUP,
+  type: TOKEN_TITLE_GROUP,
+  token: GroupToken,
+  operators: OPERATORS_IS,
 };
 
 export const mockReactionEmojiToken = {
@@ -393,8 +514,9 @@ export const tokenValuePlain = {
 };
 
 export const mockHistoryItems = [
-  [tokenValueAuthor, tokenValueLabel, tokenValueMilestone, 'duo'],
-  [tokenValueAuthor, 'si'],
+  [tokenValueAuthor, tokenValueLabel, tokenValueMilestone],
+  [tokenValueAuthor],
+  'duo',
 ];
 
 export const mockSortOptions = [
@@ -415,3 +537,85 @@ export const mockSortOptions = [
     },
   },
 ];
+
+export const mockProjects = [
+  {
+    id: 'gid://gitlab/Project/1000000',
+    name: 'Test',
+    fullPath: 'gitlab-duo/test',
+    avatarUrl: null,
+    __typename: 'Project',
+  },
+  {
+    id: 'gid://gitlab/Project/20',
+    name: 'coverage',
+    fullPath: 'root/coverage',
+    avatarUrl: null,
+    __typename: 'Project',
+  },
+];
+export const mockProjectResponse = {
+  data: {
+    projects: {
+      nodes: mockProjects,
+    },
+  },
+};
+
+export const mockGroups = [
+  {
+    id: 'gid://gitlab/Group/102',
+    name: 'box',
+    fullPath: 'toolbox/drawer/box',
+    fullName: 'toolbox/drawer/box',
+    avatarUrl: null,
+    __typename: 'Group',
+  },
+  {
+    id: 'gid://gitlab/Group/29',
+    name: 'Commit451',
+    fullPath: 'Commit451',
+    fullName: 'Commit451',
+    avatarUrl: null,
+    __typename: 'Group',
+  },
+];
+
+export const mockGroupResponse = {
+  data: {
+    groups: {
+      nodes: mockGroups,
+    },
+  },
+};
+
+export const mockSubGroups = {
+  data: {
+    group: {
+      id: 'gid://gitlab/Group/95',
+      name: 'Code Suggestions Group',
+      fullName: 'Code Suggestions Group',
+      fullPath: 'code-suggestions-group',
+      __typename: 'Group',
+      descendantGroups: {
+        nodes: [
+          {
+            id: 'gid://gitlab/Group/99',
+            name: 'Code Suggestions Subgroup',
+            fullName: 'Code Suggestions Group / Code Suggestions Subgroup',
+            fullPath: 'code-suggestions-group/code-suggestions-subgroup',
+            __typename: 'Group',
+          },
+        ],
+        pageInfo: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+          __typename: 'PageInfo',
+        },
+        __typename: 'GroupConnection',
+      },
+    },
+  },
+};

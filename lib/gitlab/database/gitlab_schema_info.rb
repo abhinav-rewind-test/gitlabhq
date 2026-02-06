@@ -9,7 +9,9 @@ module Gitlab
       :allow_cross_transactions,
       :allow_cross_foreign_keys,
       :file_path,
-      :cell_local,
+      :require_sharding_key,
+      :disallow_sequences,
+      :sharding_root_tables,
       keyword_init: true
     ) do
       def initialize(*)
@@ -111,10 +113,10 @@ module Gitlab
       # For the given type we iterate over all db/docs files build a Hash like:
       #
       # {
-      #   gitlab_main_cell: ['table_a', 'table_b']
+      #   gitlab_main_org: ['table_a', 'table_b']
       # }
       #
-      # This specifies that in the `gitlab_main_cell` schema the 'table_a` and `table_b` tables are allowing cross
+      # This specifies that in the `gitlab_main_org` schema the 'table_a` and `table_b` tables are allowing cross
       # queries with the current schema
       def all_table_allows(type)
         @all_table_allows ||= {}

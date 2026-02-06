@@ -5,7 +5,9 @@ require 'spec_helper'
 RSpec.describe Gitlab::GithubGistsImport::ImportGistWorker, feature_category: :importers do
   subject { described_class.new }
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:organization) { create(:organization) }
+  let_it_be(:user) { create(:user, organizations: [organization]) }
+
   let(:token) { 'token' }
   let(:gist_hash) do
     {
@@ -37,7 +39,7 @@ RSpec.describe Gitlab::GithubGistsImport::ImportGistWorker, feature_category: :i
   let(:log_attributes) do
     {
       'user_id' => user.id,
-      'external_identifiers' => { 'id': gist_object.id },
+      'external_identifiers' => { id: gist_object.id },
       'class' => 'Gitlab::GithubGistsImport::ImportGistWorker',
       'correlation_id' => 'new-correlation-id',
       'jid' => nil,

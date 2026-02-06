@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe AutoDevops::DisableWorker, '#perform', feature_category: :auto_devops do
-  let(:user) { create(:user, developer_projects: [project]) }
+  let(:user) { create(:user, developer_of: project) }
   let(:project) { create(:project, :repository, :auto_devops) }
   let(:auto_devops) { project.auto_devops }
   let(:pipeline) { create(:ci_pipeline, :failed, :auto_devops_source, project: project, user: user) }
@@ -54,6 +54,23 @@ RSpec.describe AutoDevops::DisableWorker, '#perform', feature_category: :auto_de
       expect(NotificationService).not_to receive(:new)
 
       subject.perform(pipeline.id)
+    end
+  end
+
+  context 'when pipeline is not found' do
+    let(:non_existing_pipeline_id) { non_existing_record_id }
+
+    it 'logs a warning and does not execute any side effects', :aggregate_failures do
+      expect(Sidekiq.logger).to receive(:warn).with(
+        class: described_class.name,
+        pipeline_id: non_existing_pipeline_id,
+        message: 'Pipeline not found'
+      )
+      expect(NotificationService).not_to receive(:new)
+
+      subject.perform(non_existing_pipeline_id)
+
+      expect(auto_devops.reload.enabled).to be_nil
     end
   end
 end

@@ -8,6 +8,14 @@ module Gitlab
   module Json
     INVALID_LEGACY_TYPES = [String, TrueClass, FalseClass].freeze
 
+    PARSE_LIMITS = {
+      max_depth: 32,
+      max_array_size: 50000,
+      max_hash_size: 50000,
+      max_total_elements: 100000,
+      max_json_size_bytes: 20.megabytes
+    }.freeze
+
     class << self
       # Parse a string and convert it to a Ruby object
       #
@@ -25,6 +33,9 @@ module Gitlab
         string = string.to_s unless string.is_a?(String)
 
         legacy_mode = legacy_mode_enabled?(opts.delete(:legacy_mode))
+
+        log_oversize_object(string)
+
         data = adapter_load(string, **opts)
 
         handle_legacy_mode!(data) if legacy_mode
@@ -35,6 +46,22 @@ module Gitlab
       alias_method :parse!, :parse
       alias_method :load, :parse
       alias_method :decode, :parse
+
+      # Parse a string and convert it to a Ruby object, but with limits
+      #
+      # @param string [String] the JSON string to convert to Ruby objects
+      # @param opts [Hash] an options hash in the standard JSON gem format
+      # @return [Boolean, String, Array, Hash]
+      # @raise [JSON::ParserError] raised if parsing fails
+      def safe_parse(string, opts = {})
+        return if string.nil?
+
+        parse_limits = PARSE_LIMITS.merge(opts.delete(:parse_limits) || {})
+
+        validate!(string, parse_limits)
+
+        parse(string, opts)
+      end
 
       # Restricted method for converting a Ruby object to JSON. If you
       # need to pass options to this, you should use `.generate` instead,
@@ -107,6 +134,22 @@ module Gitlab
         raise parser_error, ex
       end
 
+      def validate!(string, parse_limits)
+        Gitlab::Json::StreamValidator.new(parse_limits).validate!(string)
+      rescue Oj::ParseError, EncodingError => ex
+        raise parser_error, ex
+      rescue ::Gitlab::Json::StreamValidator::LimitExceededError => ex
+        log_exceeded_json(ex, parse_limits)
+        message = ::Gitlab::Json::StreamValidator.user_facing_error_message(ex)
+        raise parser_error, message
+      end
+
+      def log_exceeded_json(exception, parse_limits)
+        payload = { message: 'Exceeded allowed limits for parsing JSON input', parse_limits: parse_limits }
+        Gitlab::ExceptionLogFormatter.format!(exception, payload)
+        Gitlab::AppLogger.warn(payload)
+      end
+
       # Take a Ruby object and convert it to a string. This method varies
       # based on the underlying JSON interpreter. Oj treats this like JSON
       # treats `.generate`. JSON.dump takes no options.
@@ -167,10 +210,28 @@ module Gitlab
       # @return [Boolean, String, Array, Hash, Object]
       # @raise [JSON::ParserError]
       def handle_legacy_mode!(data)
-        return data unless Feature::FlipperFeature.table_exists?
-        return data unless Feature.enabled?(:json_wrapper_legacy_mode)
-
         raise parser_error if INVALID_LEGACY_TYPES.any? { |type| data.is_a?(type) }
+      end
+
+      def log_oversize_object(string)
+        oversize_threshold = ENV['GITLAB_JSON_SIZE_THRESHOLD'].to_i
+
+        return if oversize_threshold <= 0
+
+        # Estimates the total number of values in the JSON response by counting:
+        # : => Number of key-value pairs
+        # , => Number of elements in arrays (off by one since [1, 2, 3] has just 2 commas)
+        # [ => Number of arrays
+        # { => Number of objects
+        total_value_count_estimate = string.count('{[,:')
+
+        return if total_value_count_estimate < oversize_threshold
+
+        Gitlab::AppJsonLogger.info(
+          message: 'Large JSON object',
+          number_of_fields: total_value_count_estimate,
+          caller: Gitlab::BacktraceCleaner.clean_backtrace(caller)
+        )
       end
     end
 
@@ -191,7 +252,7 @@ module Gitlab
       def self.call(object, env = nil)
         return object.to_s if object.is_a?(PrecompiledJson)
 
-        Gitlab::Json.dump(object)
+        ::Gitlab::Json.dump(object)
       end
     end
 
@@ -263,7 +324,7 @@ module Gitlab
       # class method to use our generator, and it's monkey-patched in
       # config/initializers/active_support_json.rb
       def stringify(jsonified)
-        Gitlab::Json.dump(jsonified)
+        ::Gitlab::Json.dump(jsonified)
       rescue EncodingError => ex
         # Raise the same error as the default implementation if we encounter
         # an error. These are usually related to invalid UTF-8 errors.

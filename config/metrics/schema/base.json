@@ -6,15 +6,14 @@
     "value_type",
     "status",
     "product_group",
-    "product_section",
-    "product_stage",
     "time_frame",
     "data_source",
-    "distribution",
-    "tier",
     "data_category",
-    "milestone"
+    "milestone",
+    "introduced_by_url",
+    "tiers"
   ],
+  "additionalProperties": false,
   "properties": {
     "key_path": {
       "type": "string"
@@ -22,18 +21,15 @@
     "description": {
       "type": "string"
     },
-    "product_section": {
-      "type": [
-        "string"
-      ]
-    },
-    "product_stage": {
-      "type": [
-        "string"
-      ]
-    },
     "product_group": {
-      "type": "string"
+      "$ref": "product_groups.json"
+    },
+    "product_categories": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "known_product_category"
+      }
     },
     "value_type": {
       "type": "string",
@@ -68,8 +64,7 @@
     },
     "introduced_by_url": {
       "type": [
-        "string",
-        "null"
+        "string"
       ],
       "format": "uri"
     },
@@ -89,15 +84,6 @@
     "options": {
       "type": "object"
     },
-    "time_frame": {
-      "type": "string",
-      "enum": [
-        "7d",
-        "28d",
-        "all",
-        "none"
-      ]
-    },
     "data_source": {
       "type": "string",
       "enum": [
@@ -113,10 +99,6 @@
     "data_category": {
       "type": "string",
       "enum": [
-        "Operational",
-        "Optional",
-        "Subscription",
-        "Standard",
         "operational",
         "optional",
         "subscription",
@@ -127,16 +109,6 @@
       "type": "string",
       "pattern": "^(([A-Z][a-z]+)+::)*(([A-Z]+[a-z]+)+)$"
     },
-    "distribution": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "enum": [
-          "ee",
-          "ce"
-        ]
-      }
-    },
     "performance_indicator_type": {
       "type": "array",
       "items": {
@@ -146,29 +118,65 @@
           "smau",
           "paid_gmau",
           "umau",
-          "customer_health_score"
+          "customer_health_score",
+          "devops_report",
+          "lighthouse",
+          "leading_indicator"
         ]
       }
     },
-    "tier": {
+    "tiers": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
         "type": "string",
         "enum": [
           "free",
-          "starter",
           "premium",
-          "ultimate",
-          "bronze",
-          "silver",
-          "gold"
+          "ultimate"
         ]
       }
     },
     "value_json_schema": {
       "type": "string"
-    }
+    },
+    "name": {
+      "type": "string"
+    },
+    "events": {},
+    "time_frame": {}
   },
+  "oneOf": [
+    {
+      "properties": {
+        "time_frame": {
+          "type": "string",
+          "enum": [
+            "7d",
+            "28d",
+            "all",
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "properties": {
+        "time_frame": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "7d",
+              "28d",
+              "all"
+            ]
+          }
+        }
+      }
+    }
+  ],
   "allOf": [
     {
       "$ref": "internal_events.json"
@@ -181,6 +189,9 @@
     },
     {
       "$ref": "status.json"
+    },
+    {
+      "$ref": "internal_events/valid_timeframe_for_unique_property.json"
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 require 'sidekiq/api'
 
-Sidekiq::Worker.extend ActiveSupport::Concern # rubocop:disable Cop/SidekiqApiUsage
+Sidekiq::Worker.extend ActiveSupport::Concern
 
 module ApplicationWorker
   extend ActiveSupport::Concern
@@ -48,7 +48,7 @@ module ApplicationWorker
       # Prefix keys with class name to avoid conflicts in Elasticsearch types.
       # Also prefix with "extra." so that we know to log these new fields.
       @done_log_extra_metadata.transform_keys do |k|
-        "#{LOGGING_EXTRA_KEY}.#{self.class.name.gsub("::", "_").underscore}.#{k}"
+        "#{LOGGING_EXTRA_KEY}.#{self.class.name.gsub('::', '_').underscore}.#{k}"
       end
     end
   end
@@ -62,9 +62,21 @@ module ApplicationWorker
     end
 
     def with_status
-      status_from_class = self.sidekiq_options_hash['status_expiration']
+      status_from_class = sidekiq_options_hash['status_expiration']
 
       set(status_expiration: status_from_class || Gitlab::SidekiqStatus::DEFAULT_EXPIRATION)
+    end
+
+    def deferred(count = 0, by = nil)
+      set(deferred: true, deferred_count: count, deferred_by: by)
+    end
+
+    def rescheduled_once
+      set(rescheduled_once: true)
+    end
+
+    def concurrency_limit_resume(buffered_at)
+      set(concurrency_limit_resume: true, concurrency_limit_buffered_at: buffered_at)
     end
 
     def generated_queue_name
@@ -74,9 +86,9 @@ module ApplicationWorker
     def validate_worker_attributes!
       # Since the delayed data_consistency will use sidekiq built in retry mechanism, it is required that this mechanism
       # is not disabled.
-      if retry_disabled? && get_data_consistency == :delayed
-        raise ArgumentError, "Retry support cannot be disabled if data_consistency is set to :delayed"
-      end
+      return unless retry_disabled? && get_data_consistency_per_database.value?(:delayed)
+
+      raise ArgumentError, "Retry support cannot be disabled if data_consistency is set to :delayed"
     end
 
     # Checks if sidekiq retry support is disabled
@@ -92,15 +104,17 @@ module ApplicationWorker
     end
 
     override :data_consistency
-    def data_consistency(data_consistency, feature_flag: nil)
+    def data_consistency(default, overrides: nil, feature_flag: nil)
       super
 
       validate_worker_attributes!
     end
 
-    %i[perform_async perform_at perform_in].each do |name|
+    # Only override perform_at and perform_in since perform_async calls Setter.new(..).perform_async
+    # which is handled in the Gitlab::Patch::SidekiqJobSetter.
+    %i[perform_at perform_in].each do |name|
       define_method(name) do |*args|
-        route_sidekiq_job do
+        Gitlab::SidekiqSharding::Router.route(self) do
           super(*args)
         end
       end
@@ -111,7 +125,7 @@ module ApplicationWorker
       sidekiq_options queue: queue_name # rubocop:disable Cop/SidekiqOptionsQueue
 
       store_name = ::Gitlab::SidekiqConfig::WorkerRouter.global.store(self)
-      sidekiq_options store: store_name # rubocop:disable Cop/SidekiqOptionsQueue
+      sidekiq_options store: store_name
     end
 
     def queue_namespace(new_namespace = nil)
@@ -154,12 +168,14 @@ module ApplicationWorker
 
     def bulk_perform_async(args_list)
       if log_bulk_perform_async?
-        Sidekiq.logger.info('class' => self.name, 'args_list' => args_list, 'args_list_count' => args_list.length, 'message' => 'Inserting multiple jobs')
+        Sidekiq.logger.info('class' => self.name, 'args_list' => args_list, 'args_list_count' => args_list.length,
+          'message' => 'Inserting multiple jobs')
       end
 
       do_push_bulk(args_list).tap do |job_ids|
         if log_bulk_perform_async?
-          Sidekiq.logger.info('class' => self.name, 'jid_list' => job_ids, 'jid_list_count' => job_ids.length, 'message' => 'Completed JID insertion')
+          Sidekiq.logger.info('class' => self.name, 'jid_list' => job_ids, 'jid_list_count' => job_ids.length,
+            'message' => 'Completed JID insertion')
         end
       end
     end
@@ -168,9 +184,7 @@ module ApplicationWorker
       now = Time.now.to_i
       base_schedule_at = now + delay.to_i
 
-      if base_schedule_at <= now
-        raise ArgumentError, 'The schedule time must be in the future!'
-      end
+      raise ArgumentError, 'The schedule time must be in the future!' if base_schedule_at <= now
 
       schedule_at = base_schedule_at
 
@@ -190,31 +204,23 @@ module ApplicationWorker
         schedule_at = bulk_schedule_at
       end
 
-      route_sidekiq_job do
+      Gitlab::SidekiqSharding::Router.route(self) do
         in_safe_limit_batches(args_list, schedule_at) do |args_batch, schedule_at_for_batch|
           Sidekiq::Client.push_bulk('class' => self, 'args' => args_batch, 'at' => schedule_at_for_batch)
         end
       end
     end
 
+    def with_ip_address_state
+      set(ip_address_state: ::Gitlab::IpAddressState.current)
+    end
+
     private
 
     def do_push_bulk(args_list)
-      route_sidekiq_job do
+      Gitlab::SidekiqSharding::Router.route(self) do
         in_safe_limit_batches(args_list) do |args_batch, _|
           Sidekiq::Client.push_bulk('class' => self, 'args' => args_batch)
-        end
-      end
-    end
-
-    def route_sidekiq_job
-      return yield unless Gitlab::SidekiqSharding::Router.enabled?
-
-      redis_name, shard_redis_pool = Gitlab::SidekiqSharding::Router.get_shard_instance(get_sidekiq_options['store'])
-
-      Gitlab::ApplicationContext.with_context(sidekiq_destination_shard_redis: redis_name) do
-        Sidekiq::Client.via(shard_redis_pool) do
-          yield
         end
       end
     end

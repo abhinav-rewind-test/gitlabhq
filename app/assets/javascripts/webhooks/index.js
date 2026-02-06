@@ -1,5 +1,6 @@
 import Vue from 'vue';
-import FormUrlApp from './components/form_url_app.vue';
+import { parseBoolean, convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
+import WebhookFormApp from './components/webhook_form_app.vue';
 import TestDropdown from './components/test_dropdown.vue';
 
 export default () => {
@@ -9,16 +10,33 @@ export default () => {
     return null;
   }
 
-  const { url: initialUrl, urlVariables } = el.dataset;
+  const {
+    name: initialName,
+    description: initialDescription,
+    url: initialUrl,
+    urlVariables,
+    secretToken: initialSecretToken,
+    customHeaders,
+    hasGroup,
+    triggers: initialTriggers,
+    isNewHook,
+  } = el.dataset;
 
   return new Vue({
     el,
     name: 'WebhookFormRoot',
     render(createElement) {
-      return createElement(FormUrlApp, {
+      return createElement(WebhookFormApp, {
         props: {
+          initialName,
+          initialDescription,
+          initialSecretToken,
           initialUrl,
           initialUrlVariables: JSON.parse(urlVariables),
+          initialCustomHeaders: JSON.parse(customHeaders),
+          initialTriggers: convertObjectPropsToCamelCase(JSON.parse(initialTriggers)),
+          hasGroup: parseBoolean(hasGroup),
+          isNewHook: parseBoolean(isNewHook),
         },
       });
     },
@@ -30,6 +48,7 @@ const initHookTestDropdown = (el) => {
 
   return new Vue({
     el,
+    name: 'TestDropdownRoot',
     render(h) {
       return h(TestDropdown, {
         props: {

@@ -1,17 +1,23 @@
 ---
-description: "Learn how long your open merge requests have spent in code review, and what distinguishes the longest-running." # Up to ~200 chars long. They will be displayed in Google Search snippets. It may help to write the page intro first, and then reuse it here.
-stage: Plan
+stage: Analytics
 group: Optimize
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Learn how long your open merge requests have spent in code review, and what distinguishes the longest-running.
+title: Code review analytics
 ---
 
-# Code review analytics
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - Moved to GitLab Premium in 13.9.
+{{< /details >}}
+
+{{< history >}}
+
+- Moved to GitLab Premium in 13.9.
+
+{{< /history >}}
 
 Code review analytics displays a table of open merge requests that have at least one non-author comment.
 The review time is the amount of time since the first comment by a non-author in a merge request.
@@ -27,7 +33,7 @@ and improve your code review process.
   - Opportunities to accelerate your development cycle.
 - Few comments and approvers may indicate a lack of available team members.
 
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i>
+<i class="fa-youtube-play" aria-hidden="true"></i>
 For a video explanation, see [Code review analytics: Faster code review](https://www.youtube.com/watch?v=849o0XD991M).
 
 ## View code review analytics
@@ -38,8 +44,8 @@ Prerequisites:
 
 To view code review analytics:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > Code review analytics**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Analyze** > **Code review analytics**.
 1. Optional. Filter results:
    1. Select the filter bar.
    1. Select a parameter. You can filter merge requests by milestone and label.

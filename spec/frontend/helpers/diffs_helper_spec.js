@@ -56,49 +56,11 @@ describe('diffs helper', () => {
     });
   });
 
-  describe('isSingleViewStyle', () => {
-    it('is true when the file has at least 1 inline line but no parallel lines for any reason', () => {
-      const noParallelLines = getDiffFile({ parallel_diff_lines: undefined });
-      const emptyParallelLines = getDiffFile({ parallel_diff_lines: [] });
-
-      expect(diffsHelper.isSingleViewStyle(noParallelLines)).toBe(true);
-      expect(diffsHelper.isSingleViewStyle(emptyParallelLines)).toBe(true);
-    });
-
-    it('is true when the file has at least 1 parallel line but no inline lines for any reason', () => {
-      const noInlineLines = getDiffFile({ highlighted_diff_lines: undefined });
-      const emptyInlineLines = getDiffFile({ highlighted_diff_lines: [] });
-
-      expect(diffsHelper.isSingleViewStyle(noInlineLines)).toBe(true);
-      expect(diffsHelper.isSingleViewStyle(emptyInlineLines)).toBe(true);
-    });
-
-    it('is true when the file does not have any inline lines or parallel lines for any reason', () => {
-      const noLines = getDiffFile({
-        highlighted_diff_lines: undefined,
-        parallel_diff_lines: undefined,
-      });
-      const emptyLines = getDiffFile({
-        highlighted_diff_lines: [],
-        parallel_diff_lines: [],
-      });
-
-      expect(diffsHelper.isSingleViewStyle(noLines)).toBe(true);
-      expect(diffsHelper.isSingleViewStyle(emptyLines)).toBe(true);
-      expect(diffsHelper.isSingleViewStyle()).toBe(true);
-    });
-
-    it('is false when the file has both inline and parallel lines', () => {
-      expect(diffsHelper.isSingleViewStyle(getDiffFile())).toBe(false);
-    });
-  });
-
   describe.each`
-    context                                     | inline       | parallel     | blob                       | expected
-    ${'only has inline lines'}                  | ${['line']}  | ${undefined} | ${undefined}               | ${true}
-    ${'only has parallel lines'}                | ${undefined} | ${['line']}  | ${undefined}               | ${true}
-    ${"doesn't have inline, parallel, or blob"} | ${undefined} | ${undefined} | ${undefined}               | ${true}
-    ${'has blob readable text'}                 | ${undefined} | ${undefined} | ${{ readable_text: true }} | ${false}
+    context                              | inline       | parallel     | expected
+    ${'only has inline lines'}           | ${['line']}  | ${undefined} | ${true}
+    ${'only has parallel lines'}         | ${undefined} | ${['line']}  | ${true}
+    ${"doesn't have inline or parallel"} | ${undefined} | ${undefined} | ${false}
   `('when hasDiff', ({ context, inline, parallel, blob, expected }) => {
     it(`${context}`, () => {
       const diffFile = getDiffFile({

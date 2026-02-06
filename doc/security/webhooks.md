@@ -1,20 +1,22 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Filtering outbound requests
 ---
 
-# Filtering outbound requests
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 To protect against the risk of data loss and exposure, GitLab administrators can now use outbound request filtering controls to restrict certain outbound requests made by the GitLab instance.
 
 ## Secure webhooks and integrations
 
-Users with at least the Maintainer role can set up [webhooks](../user/project/integrations/webhooks.md) that are
+Users with the Maintainer or Owner role can set up [webhooks](../user/project/integrations/webhooks.md) that are
 triggered when specific changes occur in a project or group. When triggered, a `POST` HTTP request is sent to a URL. A webhook is
 usually configured to send data to a specific external web service, which processes the data in an appropriate way.
 
@@ -53,8 +55,8 @@ To prevent exploitation of insecure internal web services, all webhook and integ
 
 To allow access to these addresses:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Network**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Network**.
 1. Expand **Outbound requests**.
 1. Select the **Allow requests to the local network from webhooks and integrations** checkbox.
 
@@ -66,8 +68,8 @@ Prerequisites:
 
 [System hooks](../administration/system_hooks.md) can make requests to the local network by default. To prevent system hook requests to the local network:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Network**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Network**.
 1. Expand **Outbound requests**.
 1. Clear the **Allow requests to the local network from system hooks** checkbox.
 
@@ -79,14 +81,18 @@ Prerequisites:
 
 [DNS rebinding](https://en.wikipedia.org/wiki/DNS_rebinding) is a technique to make a malicious domain name resolve to an internal network resource to bypass local network access restrictions. GitLab has protection against this attack enabled by default. To disable this protection:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Network**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Network**.
 1. Expand **Outbound requests**.
 1. Clear the **Enforce DNS-rebinding attack protection** checkbox.
 
 ## Filter requests
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/377371) in GitLab 15.10.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/377371) in GitLab 15.10.
+
+{{< /history >}}
 
 Prerequisites:
 
@@ -94,24 +100,31 @@ Prerequisites:
 
 To filter requests by blocking many requests:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Network**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Network**.
 1. Expand **Outbound requests**.
 1. Select the **Block all requests, except for IP addresses, IP ranges, and domain names defined in the allowlist** checkbox.
 
 When this checkbox is selected, requests to the following are still not blocked:
 
-- Core services like Geo, Git, GitLab Shell, Gitaly, PostgreSQL, and Redis.
+- Core services like Git, GitLab Shell, Gitaly, PostgreSQL, and Redis.
 - Object storage.
 - IP addresses and domains in the [allowlist](#allow-outbound-requests-to-certain-ip-addresses-and-domains).
+
+When this setting is enabled, GitLab may perform DNS resolution on URLs included in other objects,
+such as Release Links.
+If DNS resolution fails, the request fails.
+To resolve this issue, add the hostname to the
+[allowlist](#allow-outbound-requests-to-certain-ip-addresses-and-domains),
+even if GitLab never needs to make an outbound connection to that host.
 
 This setting is respected by the main GitLab application only, so other services like Gitaly can still make requests that break the rule.
 Additionally, [some areas of GitLab](https://gitlab.com/groups/gitlab-org/-/epics/8029) do not respect outbound filtering
 rules.
 
-## Allow outbound requests to certain IP addresses and domains
+Due to an [existing bug (#544821)](https://gitlab.com/gitlab-org/gitlab/-/issues/544821), Geo region URLs must be added to the outbound allowlist.
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/44496) in GitLab 12.2.
+## Allow outbound requests to certain IP addresses and domains
 
 Prerequisites:
 
@@ -119,8 +132,8 @@ Prerequisites:
 
 To allow outbound requests to certain IP addresses and domains:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Network**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Network**.
 1. Expand **Outbound requests**.
 1. In **Local IP addresses and domain names that hooks and integrations can access**, enter your IP addresses and domains.
 
@@ -167,11 +180,11 @@ Most GitLab instances have their `public_runner_releases_url` set to
 `https://gitlab.com/api/v4/projects/gitlab-org%2Fgitlab-runner/releases`,
 which can prevent you from [filtering requests](#filter-requests).
 
-To resolve this issue, [configure GitLab to no longer fetch runner release version data from GitLab.com](../administration/settings/continuous_integration.md#disable-runner-version-management).
+To resolve this issue, [configure GitLab to no longer fetch runner release version data from GitLab.com](../administration/settings/continuous_integration.md#control-runner-version-management).
 
 ### GitLab subscription management is blocked
 
-When you [filter requests](#filter-requests), [GitLab subscription management](../subscriptions/self_managed/index.md)
+When you [filter requests](#filter-requests), [GitLab subscription management](../subscriptions/manage_subscription.md)
 is blocked.
 
 To work around this problem, add `customers.gitlab.com:443` to the
@@ -182,6 +195,18 @@ To work around this problem, add `customers.gitlab.com:443` to the
 When you [filter requests](#filter-requests), you might get an error that states `Help page documentation base url is blocked: Requests to hosts and IP addresses not on the Allow List are denied`.
 To work around this error:
 
-1. Revert the change so the error message `Help page documentation base url is blocked` does not appear anymore. 
+1. Revert the change so the error message `Help page documentation base url is blocked` does not appear anymore.
 1. Add `docs.gitlab.com` , or [the redirect help documentation pages URL](../administration/settings/help_page.md#redirect-help-pages) to the [allowlist](#allow-outbound-requests-to-certain-ip-addresses-and-domains).
 1. Select **Save Changes**.
+
+### GitLab Duo functionality is blocked
+
+When you [filter requests](#filter-requests), you might see `401` errors when trying to use [GitLab Duo features](../user/gitlab_duo/_index.md).
+
+This error can occur when outbound requests to the GitLab cloud server are not allowed. To work around this error:
+
+1. Add `https://cloud.gitlab.com:443` to the [allowlist](#allow-outbound-requests-to-certain-ip-addresses-and-domains).
+1. Select **Save Changes**.
+1. After GitLab has access to the [cloud server](../user/gitlab_duo/_index.md), [manually synchronize your license](../subscriptions/manage_subscription.md#manually-synchronize-subscription-data)
+
+For more information, see the troubleshooting documentation for [Code Suggestions](../user/duo_agent_platform/code_suggestions/troubleshooting.md) or [Code Suggestions (Classic)](../user/project/repository/code_suggestions/troubleshooting.md).

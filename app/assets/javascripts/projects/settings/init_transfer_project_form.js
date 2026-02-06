@@ -18,16 +18,20 @@ export default () => {
     buttonText: confirmButtonText = '',
     phrase: confirmationPhrase = '',
     confirmDangerMessage = '',
+    additionalInformation = '',
   } = el.dataset;
 
   return new Vue({
     el,
+    name: 'TransferProjectFormRoot',
     apolloProvider: new VueApollo({
       defaultClient: createDefaultClient(),
     }),
     provide: {
       confirmDangerMessage,
+      additionalInformation,
       resourceId,
+      htmlConfirmationMessage: true,
     },
     render(createElement) {
       return createElement(TransferProjectForm, {

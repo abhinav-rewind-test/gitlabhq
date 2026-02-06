@@ -4,7 +4,6 @@ module Gitlab
   module Database
     module MigrationHelpers
       include Migrations::ReestablishedConnectionStack
-      include Migrations::BackgroundMigrationHelpers
       include Migrations::BatchedBackgroundMigrationHelpers
       include Migrations::LockRetriesHelpers
       include Migrations::TimeoutHelpers
@@ -12,14 +11,39 @@ module Gitlab
       include Migrations::ExtensionHelpers
       include Migrations::SidekiqHelpers
       include Migrations::RedisHelpers
+      include Migrations::ForeignKeyHelpers
       include DynamicModelHelpers
+      include FeatureFlagMigratorHelpers
       include RenameTableHelpers
       include AsyncIndexes::MigrationHelpers
       include AsyncConstraints::MigrationHelpers
       include WraparoundVacuumHelpers
+      include PartitionHelpers
 
-      def define_batchable_model(table_name, connection: self.connection, primary_key: nil)
-        super(table_name, connection: connection, primary_key: primary_key)
+      INTEGER_IDS_YET_TO_INITIALIZED_TO_BIGINT_FILE_PATH = 'db/integer_ids_not_yet_initialized_to_bigint.yml'
+
+      TABLE_INT_IDS_YAML_FILE_COMMENT = <<-MESSAGE.strip_heredoc
+        # -- DON'T MANUALLY EDIT --
+        # Contains the list of integer IDs which were converted to bigint for new installations in
+        # https://gitlab.com/gitlab-org/gitlab/-/issues/438124, but they are still integers for existing instances.
+        # On initialize_conversion_of_integer_to_bigint those integer IDs will be removed automatically from here.
+      MESSAGE
+
+      PENDING_INT_IDS_ERROR_MSG = "'%{table}' table still has %{int_ids} integer IDs. "\
+        "Please include them in the 'columns' param and in your backfill migration. "\
+        "For more info: https://gitlab.com/gitlab-org/gitlab/-/issues/482470"
+
+      ENFORCE_INITIALIZE_ALL_INT_IDS_FROM_MILESTONE = '17.4'
+
+      DEFAULT_TIMESTAMP_COLUMNS = %i[created_at updated_at].freeze
+
+      def define_batchable_model(
+        table_name,
+        connection: self.connection,
+        primary_key: nil,
+        base_class: ActiveRecord::Base
+      )
+        super
       end
 
       def each_batch(table_name, connection: self.connection, **kwargs)
@@ -29,8 +53,6 @@ module Gitlab
       def each_batch_range(table_name, connection: self.connection, **kwargs)
         super(table_name, connection: connection, **kwargs)
       end
-
-      DEFAULT_TIMESTAMP_COLUMNS = %i[created_at updated_at].freeze
 
       # Adds `created_at` and `updated_at` columns with timezone information.
       #
@@ -215,143 +237,6 @@ module Gitlab
 
         # We removed this index. Now let's make sure it's not queued for async creation.
         unprepare_async_index_by_name(table_name, index_name, **options)
-      end
-
-      # Adds a foreign key with only minimal locking on the tables involved.
-      #
-      # This method only requires minimal locking
-      #
-      # source - The source table containing the foreign key.
-      # target - The target table the key points to.
-      # column - The name of the column to create the foreign key on.
-      # target_column - The name of the referenced column, defaults to "id".
-      # on_delete - The action to perform when associated data is removed,
-      #             defaults to "CASCADE".
-      # on_update - The action to perform when associated data is updated,
-      #             defaults to nil. This is useful for multi column FKs if
-      #             it's desirable to update one of the columns.
-      # name - The name of the foreign key.
-      # validate - Flag that controls whether the new foreign key will be validated after creation.
-      #            If the flag is not set, the constraint will only be enforced for new data.
-      # reverse_lock_order - Flag that controls whether we should attempt to acquire locks in the reverse
-      #                      order of the ALTER TABLE. This can be useful in situations where the foreign
-      #                      key creation could deadlock with another process.
-      #
-      def add_concurrent_foreign_key(source, target, column:, **options)
-        options.reverse_merge!({
-          on_delete: :cascade,
-          on_update: nil,
-          target_column: :id,
-          validate: true,
-          reverse_lock_order: false,
-          allow_partitioned: false,
-          column: column
-        })
-
-        # Transactions would result in ALTER TABLE locks being held for the
-        # duration of the transaction, defeating the purpose of this method.
-        if transaction_open?
-          raise 'add_concurrent_foreign_key can not be run inside a transaction'
-        end
-
-        if !options.delete(:allow_partitioned) && table_partitioned?(source)
-          raise ArgumentError, 'add_concurrent_foreign_key can not be used on a partitioned ' \
-            'table. Please use add_concurrent_partitioned_foreign_key on the partitioned table ' \
-            'as we need to create foreign keys on each partition and a FK on the parent table'
-        end
-
-        options[:name] ||= concurrent_foreign_key_name(source, column)
-        options[:primary_key] = options[:target_column]
-        check_options = options.slice(:column, :on_delete, :on_update, :name, :primary_key)
-
-        if foreign_key_exists?(source, target, **check_options)
-          warning_message = "Foreign key not created because it exists already " \
-            "(this may be due to an aborted migration or similar): " \
-            "source: #{source}, target: #{target}, column: #{options[:column]}, "\
-            "name: #{options[:name]}, on_update: #{options[:on_update]}, "\
-            "on_delete: #{options[:on_delete]}"
-
-          Gitlab::AppLogger.warn warning_message
-        else
-          execute_add_concurrent_foreign_key(source, target, options)
-        end
-
-        # Validate the existing constraint. This can potentially take a very
-        # long time to complete, but fortunately does not lock the source table
-        # while running.
-        # Disable this check by passing `validate: false` to the method call
-        # The check will be enforced for new data (inserts) coming in,
-        # but validating existing data is delayed.
-        #
-        # Note this is a no-op in case the constraint is VALID already
-
-        if options[:validate]
-          disable_statement_timeout do
-            execute("ALTER TABLE #{source} VALIDATE CONSTRAINT #{options[:name]};")
-          end
-        end
-      end
-
-      def validate_foreign_key(source, column, name: nil)
-        fk_name = name || concurrent_foreign_key_name(source, column)
-
-        unless foreign_key_exists?(source, name: fk_name)
-          raise missing_schema_object_message(source, "foreign key", fk_name)
-        end
-
-        disable_statement_timeout do
-          execute("ALTER TABLE #{source} VALIDATE CONSTRAINT #{fk_name};")
-        end
-      end
-
-      def foreign_key_exists?(source, target = nil, **options)
-        # This if block is necessary because foreign_key_exists? is called in down migrations that may execute before
-        # the postgres_foreign_keys view had necessary columns added.
-        # In that case, we revert to the previous behavior of this method.
-        # The behavior in the if block has a bug: it always returns false if the fk being checked has multiple columns.
-        # This can be removed after init_schema.rb passes 20221122210711_add_columns_to_postgres_foreign_keys.rb
-        # Tracking issue: https://gitlab.com/gitlab-org/gitlab/-/issues/386796
-        unless connection.column_exists?('postgres_foreign_keys', 'constrained_table_name')
-          return foreign_keys(source).any? do |foreign_key|
-            tables_match?(target.to_s, foreign_key.to_table.to_s) &&
-                options_match?(foreign_key.options, options)
-          end
-        end
-
-        # Since we may be migrating in one go from a previous version without
-        # `constrained_table_name` then we may see that this column exists
-        # (as above) but the schema cache is still outdated for the model.
-        unless Gitlab::Database::PostgresForeignKey.column_names.include?('constrained_table_name')
-          Gitlab::Database::PostgresForeignKey.reset_column_information
-        end
-
-        fks = Gitlab::Database::PostgresForeignKey.by_constrained_table_name_or_identifier(source)
-
-        fks = fks.by_referenced_table_name(target) if target
-        fks = fks.by_name(options[:name]) if options[:name]
-        fks = fks.by_constrained_columns(options[:column]) if options[:column]
-        fks = fks.by_referenced_columns(options[:primary_key]) if options[:primary_key]
-        fks = fks.by_on_delete_action(options[:on_delete]) if options[:on_delete]
-
-        fks.exists?
-      end
-
-      # Returns the name for a concurrent foreign key.
-      #
-      # PostgreSQL constraint names have a limit of 63 bytes. The logic used
-      # here is based on Rails' foreign_key_name() method, which unfortunately
-      # is private so we can't rely on it directly.
-      #
-      # prefix:
-      # - The default prefix is `fk_` for backward compatibility with the existing
-      # concurrent foreign key helpers.
-      # - For standard rails foreign keys the prefix is `fk_rails_`
-      #
-      def concurrent_foreign_key_name(table, column, prefix: 'fk_')
-        identifier = "#{table}_#{multiple_columns(column, separator: '_')}_fk"
-        hashed_identifier = Digest::SHA256.hexdigest(identifier).first(10)
-
-        "#{prefix}#{hashed_identifier}"
       end
 
       def true_value
@@ -541,6 +426,28 @@ module Gitlab
         Gitlab::Database::UnidirectionalCopyTrigger.on_table(table, connection: connection).name(old, new)
       end
 
+      # Installs a trigger in a table that assigns a sharding key from an associated table.
+      #
+      # table: The table to install the trigger in.
+      # sharding_key: The column to be assigned on `table`.
+      # parent_table: The associated table with the sharding key to be copied.
+      # parent_sharding_key: The sharding key on the parent table that will be copied to `sharding_key` on `table`.
+      # foreign_key: The column used to fetch the relevant record from `parent_table`.
+      def install_sharding_key_assignment_trigger(**args)
+        Gitlab::Database::Triggers::AssignDesiredShardingKey.new(**args.merge(connection: connection)).create
+      end
+
+      # Removes trigger used for assigning sharding keys.
+      #
+      # table: The table to install the trigger in.
+      # sharding_key: The column to be assigned on `table`.
+      # parent_table: The associated table with the sharding key to be copied.
+      # parent_sharding_key: The sharding key on the parent table that will be copied to `sharding_key` on `table`.
+      # foreign_key: The column used to fetch the relevant record from `parent_table`.
+      def remove_sharding_key_assignment_trigger(**args)
+        Gitlab::Database::Triggers::AssignDesiredShardingKey.new(**args.merge(connection: connection)).drop
+      end
+
       # Changes the type of a column concurrently.
       #
       # table - The table containing the column.
@@ -688,10 +595,6 @@ module Gitlab
         install_rename_triggers(table, old, new)
       end
 
-      def convert_to_type_column(column, from_type, to_type)
-        "#{column}_convert_#{from_type}_to_#{to_type}"
-      end
-
       def convert_to_bigint_column(column)
         "#{column}_convert_to_bigint"
       end
@@ -721,23 +624,10 @@ module Gitlab
       # table - The name of the database table containing the column
       # columns - The name, or array of names, of the column(s) that we want to convert to bigint.
       # primary_key - The name of the primary key column (most often :id)
-      def initialize_conversion_of_integer_to_bigint(table, columns, primary_key: :id)
-        mappings = Array(columns).map do |c|
-          {
-            c => {
-              from_type: :int,
-              to_type: :bigint,
-              default_value: 0
-            }
-          }
-        end.reduce(&:merge)
-
-        create_temporary_columns_and_triggers(
-          table,
-          mappings,
-          primary_key: primary_key,
-          old_bigint_column_naming: true
-        )
+      def initialize_conversion_of_integer_to_bigint(table, columns, primary_key: :id) # rubocop:disable Lint/UnusedMethodArgument -- for backward compatibility, don't remove primary_key
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .init
       end
 
       # Reverts `initialize_conversion_of_integer_to_bigint`
@@ -745,38 +635,28 @@ module Gitlab
       # table - The name of the database table containing the columns
       # columns - The name, or array of names, of the column(s) that we're converting to bigint.
       def revert_initialize_conversion_of_integer_to_bigint(table, columns)
-        columns = Array.wrap(columns)
-        temporary_columns = columns.map { |column| convert_to_bigint_column(column) }
-
-        trigger_name = rename_trigger_name(table, columns, temporary_columns)
-        remove_rename_triggers(table, trigger_name)
-
-        temporary_columns.each { |column| remove_column(table, column, if_exists: true) }
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .revert_init
       end
-      alias_method :cleanup_conversion_of_integer_to_bigint, :revert_initialize_conversion_of_integer_to_bigint
+
+      # Similar to `revert_initialize_conversion_of_integer_to_bigint`,
+      # but `cleanup_conversion_of_integer_to_bigint` updates the yaml file
+      def cleanup_conversion_of_integer_to_bigint(table, columns)
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .cleanup
+      end
 
       # Reverts `cleanup_conversion_of_integer_to_bigint`
       #
       # table - The name of the database table containing the columns
       # columns - The name, or array of names, of the column(s) that we have converted to bigint.
       # primary_key - The name of the primary key column (most often :id)
-      def restore_conversion_of_integer_to_bigint(table, columns, primary_key: :id)
-        mappings = Array(columns).map do |c|
-          {
-            c => {
-              from_type: :bigint,
-              to_type: :int,
-              default_value: 0
-            }
-          }
-        end.reduce(&:merge)
-
-        create_temporary_columns_and_triggers(
-          table,
-          mappings,
-          primary_key: primary_key,
-          old_bigint_column_naming: true
-        )
+      def restore_conversion_of_integer_to_bigint(table, columns, primary_key: :id) # rubocop:disable Lint/UnusedMethodArgument -- for backward compatibility, don't remove primary_key
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .restore_cleanup
       end
 
       # Backfills the new columns used in an integer-to-bigint conversion using background migrations.
@@ -824,34 +704,22 @@ module Gitlab
         pause_ms: 100,
         interval: 2.minutes
       )
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .backfill(
+            primary_key: primary_key,
+            batch_size: batch_size,
+            sub_batch_size: sub_batch_size,
+            pause_ms: pause_ms,
+            job_interval: interval
+          )
+      end
 
-        unless table_exists?(table)
-          raise "Table #{table} does not exist"
-        end
-
-        unless column_exists?(table, primary_key)
-          raise "Column #{primary_key} does not exist on #{table}"
-        end
-
-        conversions = Array.wrap(columns).to_h do |column|
-          raise ArgumentError, "Column #{column} does not exist on #{table}" unless column_exists?(table, column)
-
-          temporary_name = convert_to_bigint_column(column)
-          raise ArgumentError, "Column #{temporary_name} does not exist on #{table}" unless column_exists?(table, temporary_name)
-
-          [column, temporary_name]
-        end
-
-        queue_batched_background_migration(
-          'CopyColumnUsingBackgroundMigrationJob',
-          table,
-          primary_key,
-          conversions.keys,
-          conversions.values,
-          job_interval: interval,
-          pause_ms: pause_ms,
-          batch_size: batch_size,
-          sub_batch_size: sub_batch_size)
+      # Handy helper to ensure data finalization for bigint conversion process
+      def ensure_backfill_conversion_of_integer_to_bigint_is_finished(table, columns, primary_key: :id)
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .ensure_backfill(primary_key: primary_key)
       end
 
       # Reverts `backfill_conversion_of_integer_to_bigint`
@@ -860,18 +728,9 @@ module Gitlab
       # columns - The name, or an array of names, of the column(s) we want to convert to bigint.
       # primary_key - The name of the primary key column (most often :id)
       def revert_backfill_conversion_of_integer_to_bigint(table, columns, primary_key: :id)
-        columns = Array.wrap(columns)
-
-        conditions = ActiveRecord::Base.sanitize_sql(
-          [
-            'job_class_name = :job_class_name AND table_name = :table_name AND column_name = :column_name AND job_arguments = :job_arguments',
-            job_class_name: 'CopyColumnUsingBackgroundMigrationJob',
-            table_name: table,
-            column_name: primary_key,
-            job_arguments: [columns, columns.map { |column| convert_to_bigint_column(column) }].to_json
-          ])
-
-        execute("DELETE FROM batched_background_migrations WHERE #{conditions}")
+        Gitlab::Database::Migrations::Conversions::BigintConverter
+          .new(self, table, columns)
+          .revert_backfill(primary_key: primary_key)
       end
 
       # Returns an Array containing the indexes for the given column
@@ -948,9 +807,9 @@ module Gitlab
       def copy_foreign_keys(table, old, new)
         foreign_keys_for(table, old).each do |fk|
           add_concurrent_foreign_key(fk.from_table,
-                                     fk.to_table,
-                                     column: new,
-                                     on_delete: fk.on_delete)
+            fk.to_table,
+            column: new,
+            on_delete: fk.on_delete)
         end
       end
 
@@ -977,26 +836,6 @@ module Gitlab
         Arel::Nodes::SqlLiteral.new(replace.to_sql)
       end
 
-      def remove_foreign_key_if_exists(source, target = nil, **kwargs)
-        reverse_lock_order = kwargs.delete(:reverse_lock_order)
-        return unless foreign_key_exists?(source, target, **kwargs)
-
-        if target && reverse_lock_order && transaction_open?
-          execute("LOCK TABLE #{target}, #{source} IN ACCESS EXCLUSIVE MODE")
-        end
-
-        if target
-          remove_foreign_key(source, target, **kwargs)
-        else
-          remove_foreign_key(source, **kwargs)
-        end
-      end
-
-      def remove_foreign_key_without_error(*args, **kwargs)
-        remove_foreign_key(*args, **kwargs)
-      rescue ArgumentError
-      end
-
       def check_trigger_permissions!(table)
         unless Grant.create_and_execute_trigger?(table)
           dbname = ApplicationRecord.database.database_name
@@ -1017,36 +856,8 @@ into similar problems in the future (e.g. when new tables are created).
         end
       end
 
-      # Fetches indexes on a column by name for postgres.
-      #
-      # This will include indexes using an expression on the column, for example:
-      # `CREATE INDEX CONCURRENTLY index_name ON table (LOWER(column));`
-      #
-      # We can remove this when upgrading to Rails 5 with an updated `index_exists?`:
-      # - https://github.com/rails/rails/commit/edc2b7718725016e988089b5fb6d6fb9d6e16882
-      #
-      # Or this can be removed when we no longer support postgres < 9.5, so we
-      # can use `CREATE INDEX IF NOT EXISTS`.
       def index_exists_by_name?(table, index)
-        # We can't fall back to the normal `index_exists?` method because that
-        # does not find indexes without passing a column name.
-        if indexes(table).map(&:name).include?(index.to_s)
-          true
-        else
-          postgres_exists_by_name?(table, index)
-        end
-      end
-
-      def postgres_exists_by_name?(table, name)
-        index_sql = <<~SQL
-          SELECT COUNT(*)
-          FROM pg_catalog.pg_indexes
-          WHERE schemaname = #{connection.quote(current_schema)}
-            AND tablename = #{connection.quote(table)}
-            AND indexname = #{connection.quote(name)}
-        SQL
-
-        connection.select_value(index_sql).to_i > 0
+        index_name_exists?(table, index)
       end
 
       def create_or_update_plan_limit(limit_name, plan_name, limit_value)
@@ -1054,11 +865,13 @@ into similar problems in the future (e.g. when new tables are created).
         plan_name_quoted = quote(plan_name)
         limit_value_quoted = quote(limit_value)
 
-        execute <<~SQL
-          INSERT INTO plan_limits (plan_id, #{limit_name_quoted})
-          SELECT id, #{limit_value_quoted} FROM plans WHERE name = #{plan_name_quoted} LIMIT 1
-          ON CONFLICT (plan_id) DO UPDATE SET #{limit_name_quoted} = EXCLUDED.#{limit_name_quoted};
-        SQL
+        ::Gitlab::Database.allow_cross_joins_across_databases(url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/519892') do
+          execute <<~SQL
+            INSERT INTO plan_limits (plan_id, #{limit_name_quoted})
+            SELECT id, #{limit_value_quoted} FROM plans WHERE name = #{plan_name_quoted} LIMIT 1
+            ON CONFLICT (plan_id) DO UPDATE SET #{limit_name_quoted} = EXCLUDED.#{limit_name_quoted};
+          SQL
+        end
       end
 
       # Note this should only be used with very small tables
@@ -1103,101 +916,6 @@ into similar problems in the future (e.g. when new tables are created).
         SQL
       end
 
-      # rubocop:disable Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
-      def create_temporary_columns_and_triggers(table, mappings, primary_key: :id, old_bigint_column_naming: false)
-        raise ArgumentError, "No mappings for column conversion provided" if mappings.blank?
-
-        unless mappings.values.all? { |values| mapping_has_required_columns?(values) }
-          raise ArgumentError, "Some mappings don't have required keys provided"
-        end
-
-        neutral_values_for_type = {
-          int: 0,
-          bigint: 0,
-          uuid: '00000000-0000-0000-0000-000000000000'
-        }
-
-        unless table_exists?(table)
-          raise "Table #{table} does not exist"
-        end
-
-        unless column_exists?(table, primary_key)
-          raise "Column #{primary_key} does not exist on #{table}"
-        end
-
-        columns = mappings.keys
-        columns.each do |column|
-          next if column_exists?(table, column)
-
-          raise ArgumentError, "Column #{column} does not exist on #{table}"
-        end
-
-        check_trigger_permissions!(table)
-
-        if old_bigint_column_naming
-          mappings.each do |column, params|
-            params.merge!(
-              temporary_column_name: convert_to_bigint_column(column)
-            )
-          end
-        else
-          mappings.each do |column, params|
-            params.merge!(
-              temporary_column_name: convert_to_type_column(column, params[:from_type], params[:to_type])
-            )
-          end
-        end
-
-        with_lock_retries do
-          mappings.each do |(column_name, params)|
-            column = column_for(table, column_name)
-            temporary_name = params[:temporary_column_name]
-            data_type = params[:to_type]
-            default_value = params[:default_value]
-
-            if (column.name.to_s == primary_key.to_s) || !column.null
-              # If the column to be converted is either a PK or is defined as NOT NULL,
-              # set it to `NOT NULL DEFAULT 0` and we'll copy paste the correct values bellow
-              # That way, we skip the expensive validation step required to add
-              #  a NOT NULL constraint at the end of the process
-              add_column(
-                table,
-                temporary_name,
-                data_type,
-                default: column.default || default_value || neutral_values_for_type.fetch(data_type),
-                null: false
-              )
-            else
-              add_column(
-                table,
-                temporary_name,
-                data_type,
-                default: column.default
-              )
-            end
-          end
-
-          old_column_names = mappings.keys
-          temporary_column_names = mappings.values.map { |v| v[:temporary_column_name] }
-          install_rename_triggers(table, old_column_names, temporary_column_names)
-        end
-      end
-      # rubocop:enable Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
-
-      def partition?(table_name)
-        if view_exists?(:postgres_partitions)
-          Gitlab::Database::PostgresPartition.partition_exists?(table_name)
-        else
-          Gitlab::Database::PostgresPartition.legacy_partition_exists?(table_name)
-        end
-      end
-
-      def table_partitioned?(table_name)
-        Gitlab::Database::PostgresPartitionedTable
-          .find_by_name_in_current_schema(table_name)
-          .present?
-      end
-
       # While it is safe to call `change_column_default` on a column without
       # default it would still require access exclusive lock on the table
       # and for tables with high autovacuum(wraparound prevention) it will
@@ -1211,82 +929,22 @@ into similar problems in the future (e.g. when new tables are created).
         end
       end
 
-      def lock_tables(*tables, mode: :access_exclusive)
-        execute("LOCK TABLE #{tables.join(', ')} IN #{mode.to_s.upcase.tr('_', ' ')} MODE")
+      def lock_tables(*tables, mode: :access_exclusive, only: nil, nowait: nil)
+        only_param = only && 'ONLY'
+        nowait_param = nowait && 'NOWAIT'
+        tables_param = tables.map { |t| quote_table_name(t) }.join(', ')
+        mode_param = mode.to_s.upcase.tr('_', ' ')
+
+        execute(<<~SQL.squish)
+          LOCK TABLE #{only_param} #{tables_param} IN #{mode_param} MODE #{nowait_param}
+        SQL
+      end
+
+      def table_integer_ids
+        YAML.safe_load_file(File.join(INTEGER_IDS_YET_TO_INITIALIZED_TO_BIGINT_FILE_PATH))
       end
 
       private
-
-      def multiple_columns(columns, separator: ', ')
-        Array.wrap(columns).join(separator)
-      end
-
-      def cascade_statement(cascade)
-        cascade ? 'CASCADE' : ''
-      end
-
-      def validate_check_constraint_name!(constraint_name)
-        if constraint_name.to_s.length > MAX_IDENTIFIER_NAME_LENGTH
-          raise "The maximum allowed constraint name is #{MAX_IDENTIFIER_NAME_LENGTH} characters"
-        end
-      end
-
-      # mappings => {} where keys are column names and values are hashes with the following keys:
-      # from_type - from which type we're migrating
-      # to_type - to which type we're migrating
-      # default_value - custom default value, if not provided will be taken from neutral_values_for_type
-      def mapping_has_required_columns?(mapping)
-        %i[from_type to_type].map do |required_key|
-          mapping.has_key?(required_key)
-        end.all?
-      end
-
-      def column_is_nullable?(table, column)
-        # Check if table.column has not been defined with NOT NULL
-        check_sql = <<~SQL
-          SELECT c.is_nullable
-          FROM information_schema.columns c
-          WHERE c.table_schema = #{connection.quote(current_schema)}
-            AND c.table_name = #{connection.quote(table)}
-            AND c.column_name = #{connection.quote(column)}
-        SQL
-
-        connection.select_value(check_sql) == 'YES'
-      end
-
-      def missing_schema_object_message(table, type, name)
-        <<~MESSAGE
-          Could not find #{type} "#{name}" on table "#{table}" which was referenced during the migration.
-          This issue could be caused by the database schema straying from the expected state.
-
-          To resolve this issue, please verify:
-            1. all previous migrations have completed
-            2. the database objects used in this migration match the Rails definition in schema.rb or structure.sql
-
-        MESSAGE
-      end
-
-      def tables_match?(target_table, foreign_key_table)
-        target_table.blank? || foreign_key_table == target_table
-      end
-
-      def options_match?(foreign_key_options, options)
-        options.all? { |k, v| foreign_key_options[k].to_s == v.to_s }
-      end
-
-      def on_delete_statement(on_delete)
-        return '' if on_delete.blank?
-        return 'ON DELETE SET NULL' if on_delete == :nullify
-
-        "ON DELETE #{on_delete.upcase}"
-      end
-
-      def on_update_statement(on_update)
-        return '' if on_update.blank?
-        return 'ON UPDATE SET NULL' if on_update == :nullify
-
-        "ON UPDATE #{on_update.upcase}"
-      end
 
       def create_column_from(table, old, new, type: nil, batch_column_name: :id, type_cast_function: nil, limit: nil)
         old_col = column_for(table, old)
@@ -1294,9 +952,9 @@ into similar problems in the future (e.g. when new tables are created).
         new_limit = limit || old_col.limit
 
         add_column(table, new, new_type,
-                   limit: new_limit,
-                   precision: old_col.precision,
-                   scale: old_col.scale)
+          limit: new_limit,
+          precision: old_col.precision,
+          scale: old_col.scale)
 
         # We set the default value _after_ adding the column so we don't end up
         # updating any existing data with the default value. This isn't
@@ -1329,33 +987,6 @@ into similar problems in the future (e.g. when new tables are created).
           Illegal timestamp column name! Got #{column_name}.
           Must end with `_at`}
         MESSAGE
-      end
-
-      def execute_add_concurrent_foreign_key(source, target, options)
-        # Using NOT VALID allows us to create a key without immediately
-        # validating it. This means we keep the ALTER TABLE lock only for a
-        # short period of time. The key _is_ enforced for any newly created
-        # data.
-        not_valid = 'NOT VALID'
-        lock_mode = 'SHARE ROW EXCLUSIVE'
-
-        if table_partitioned?(source)
-          not_valid = ''
-          lock_mode = 'ACCESS EXCLUSIVE'
-        end
-
-        with_lock_retries do
-          execute("LOCK TABLE #{target}, #{source} IN #{lock_mode} MODE") if options[:reverse_lock_order]
-          execute(<<~SQL.squish)
-            ALTER TABLE #{source}
-            ADD CONSTRAINT #{options[:name]}
-            FOREIGN KEY (#{multiple_columns(options[:column])})
-            REFERENCES #{target} (#{multiple_columns(options[:target_column])})
-            #{on_update_statement(options[:on_update])}
-            #{on_delete_statement(options[:on_delete])}
-            #{not_valid};
-          SQL
-        end
       end
     end
   end

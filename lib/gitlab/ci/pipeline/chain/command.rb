@@ -1,4 +1,3 @@
-# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 module Gitlab
@@ -8,23 +7,28 @@ module Gitlab
         Command = Struct.new(
           :source, :project, :current_user,
           :origin_ref, :checkout_sha, :after_sha, :before_sha, :source_sha, :target_sha,
-          :trigger_request, :schedule, :merge_request, :external_pull_request,
+          :schedule, :merge_request, :external_pull_request,
           :ignore_skip_ci, :save_incompleted,
           :seeds_block, :variables_attributes, :push_options,
-          :chat_data, :allow_mirror_update, :bridge, :content, :dry_run, :logger,
+          :chat_data, :mirror_update, :bridge, :content, :dry_run, :linting, :logger, :pipeline_policy_context,
           # These attributes are set by Chains during processing:
           :config_content, :yaml_processor_result, :workflow_rules_result, :pipeline_seed,
-          :pipeline_config
+          :pipeline_config, :partition_id, :inputs, :gitaly_context, :pipeline_creation_forced_to_continue,
+          keyword_init: true
         ) do
           include Gitlab::Utils::StrongMemoize
 
-          def initialize(params = {})
-            params.each do |key, value|
-              self[key] = value
-            end
+          def readonly?
+            dry_run? || linting?
           end
 
-          alias_method :dry_run?, :dry_run
+          def dry_run?
+            dry_run
+          end
+
+          def linting?
+            linting
+          end
 
           def branch_exists?
             strong_memoize(:is_branch) do
@@ -39,10 +43,11 @@ module Gitlab
           end
 
           def merge_request_ref_exists?
-            strong_memoize(:merge_request_ref_exists) do
-              MergeRequest.merge_request_ref?(origin_ref) &&
-                project.repository.ref_exists?(origin_ref)
-            end
+            check_merge_request_ref
+          end
+
+          def workload_ref_exists?
+            ::Ci::Workloads::Workload.workload_ref?(origin_ref) && project.repository.ref_exists?(origin_ref)
           end
 
           def ref
@@ -97,6 +102,20 @@ module Gitlab
             self[:logger] ||= ::Gitlab::Ci::Pipeline::Logger.new(project: project)
           end
 
+          def current_pipeline_size
+            # The `pipeline_seed` attribute is assigned after the Seed step.
+            # And, the seed is populated when calling the `pipeline_seed.stages` method in Populate.
+            # So, there is no guarantee that `pipeline_seed` will return a meaningful result.
+            # If it does not, it's not important, we can just return 0.
+            # This is also the reason why we don't "strong memoize" this method.
+            pipeline_seed&.size || 0
+          end
+
+          def jobs_count_in_alive_pipelines
+            project.all_pipelines.jobs_count_in_alive_pipelines
+          end
+          strong_memoize_attr :jobs_count_in_alive_pipelines
+
           def observe_step_duration(step_class, duration)
             step = step_class.name.underscore.parameterize(separator: '_')
             logger.observe("pipeline_step_#{step}_duration_s", duration, once: true)
@@ -122,10 +141,8 @@ module Gitlab
           end
 
           def observe_jobs_count_in_alive_pipelines
-            jobs_count = project.all_pipelines.jobs_count_in_alive_pipelines
-
             metrics.active_jobs_histogram
-              .observe({ plan: project.actual_plan_name }, jobs_count)
+              .observe({ plan: project.actual_plan_name }, jobs_count_in_alive_pipelines + current_pipeline_size)
           end
 
           def increment_pipeline_failure_reason_counter(reason)
@@ -162,10 +179,14 @@ module Gitlab
           def gitlab_org_project?
             project.full_path == 'gitlab-org/gitlab'
           end
+
+          def check_merge_request_ref
+            MergeRequest.merge_request_ref?(origin_ref) && project.repository.ref_exists?(origin_ref)
+          end
         end
       end
     end
   end
 end
 
-# rubocop:enable Naming/FileName
+Gitlab::Ci::Pipeline::Chain::Command.prepend_mod

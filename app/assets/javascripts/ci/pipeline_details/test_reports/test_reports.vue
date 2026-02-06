@@ -51,6 +51,7 @@ export default {
       'fetchSummary',
       'setSelectedSuiteIndex',
       'removeSelectedSuiteIndex',
+      'setPage',
     ]),
     summaryBackClick() {
       this.removeSelectedSuiteIndex();
@@ -60,6 +61,9 @@ export default {
         title: document.title,
         replace: true,
       });
+
+      // reset pagination to inital state
+      this.setPage(1);
     },
     summaryTableRowClick(index) {
       this.setSelectedSuiteIndex(index);
@@ -103,13 +107,13 @@ export default {
       @before-enter="beforeEnterTransition"
       @after-leave="afterLeaveTransition"
     >
-      <div v-if="showSuite" key="detail" class="gl-w-full slide-enter-to-element">
+      <div v-if="showSuite" key="detail" class="slide-enter-to-element gl-w-full">
         <test-summary :report="getSelectedSuite" show-back @on-back-click="summaryBackClick" />
 
         <test-suite-table />
       </div>
 
-      <div v-else key="summary" class="gl-w-full slide-enter-from-element">
+      <div v-else key="summary" class="slide-enter-from-element gl-w-full">
         <test-summary :report="testReports" />
 
         <test-summary-table @row-click="summaryTableRowClick" />

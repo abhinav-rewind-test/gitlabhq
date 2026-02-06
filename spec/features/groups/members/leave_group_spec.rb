@@ -7,10 +7,11 @@ RSpec.describe 'Groups > Members > Leave group', feature_category: :groups_and_p
   include Spec::Support::Helpers::ModalHelpers
 
   let(:user) { create(:user) }
+  let(:current_organization) { user.organization }
   let(:other_user) { create(:user) }
   let(:group) { create(:group) }
   let(:more_actions_dropdown) do
-    find('[data-testid="groups-projects-more-actions-dropdown"] .gl-new-dropdown-custom-toggle')
+    find_by_testid('groups-projects-more-actions-dropdown')
   end
 
   before do
@@ -25,6 +26,7 @@ RSpec.describe 'Groups > Members > Leave group', feature_category: :groups_and_p
     more_actions_dropdown.click
     click_link 'Leave group'
     accept_gl_confirm(button_text: 'Leave group')
+    wait_for_requests
 
     expect(page).to have_current_path(dashboard_groups_path, ignore_query: true)
     expect(page).to have_content left_group_message(group)
@@ -35,8 +37,10 @@ RSpec.describe 'Groups > Members > Leave group', feature_category: :groups_and_p
     group.add_guest(user)
     group.add_owner(other_user)
 
+    visit group_path(group)
     visit group_path(group, leave: 1)
     accept_gl_confirm(button_text: 'Leave group')
+    wait_for_requests
 
     expect(page).to have_current_path(dashboard_groups_path, ignore_query: true)
     expect(group).not_to have_user(user)
@@ -49,6 +53,7 @@ RSpec.describe 'Groups > Members > Leave group', feature_category: :groups_and_p
     more_actions_dropdown.click
     click_link 'Leave group'
     accept_gl_confirm(button_text: 'Leave group')
+    wait_for_requests
 
     expect(page).to have_current_path(dashboard_groups_path, ignore_query: true)
     expect(page).to have_content left_group_message(group)
@@ -63,6 +68,7 @@ RSpec.describe 'Groups > Members > Leave group', feature_category: :groups_and_p
     more_actions_dropdown.click
     click_link 'Leave group'
     accept_gl_confirm(button_text: 'Leave group')
+    wait_for_requests
 
     expect(page).to have_current_path(dashboard_groups_path, ignore_query: true)
     expect(page).to have_content left_group_message(group)

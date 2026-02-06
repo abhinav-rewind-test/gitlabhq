@@ -10,16 +10,23 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
 
   let_it_be(:personal_access_token) { create(:personal_access_token) }
   let_it_be(:project, reload: true) { create(:project) }
-  let_it_be(:deploy_token_rw) { create(:deploy_token, read_package_registry: true, write_package_registry: true) }
-  let_it_be(:project_deploy_token_rw) { create(:project_deploy_token, deploy_token: deploy_token_rw, project: project) }
-  let_it_be(:deploy_token_ro) { create(:deploy_token, read_package_registry: true, write_package_registry: false) }
-  let_it_be(:project_deploy_token_ro) { create(:project_deploy_token, deploy_token: deploy_token_ro, project: project) }
-  let_it_be(:deploy_token_wo) { create(:deploy_token, read_package_registry: false, write_package_registry: true) }
-  let_it_be(:project_deploy_token_wo) { create(:project_deploy_token, deploy_token: deploy_token_wo, project: project) }
+  let_it_be(:deploy_token_rw) do
+    create(:deploy_token, read_package_registry: true, write_package_registry: true, projects: [project])
+  end
+
+  let_it_be(:deploy_token_ro) do
+    create(:deploy_token, read_package_registry: true, write_package_registry: false, projects: [project])
+  end
+
+  let_it_be(:deploy_token_wo) do
+    create(:deploy_token, read_package_registry: false, write_package_registry: true, projects: [project])
+  end
 
   let(:user) { personal_access_token.user }
   let(:ci_build) { create(:ci_build, :running, user: user, project: project) }
-  let(:snowplow_gitlab_standard_context) { { user: user, project: project, namespace: project.namespace, property: 'i_package_generic_user' } }
+  let(:snowplow_gitlab_standard_context) do
+    { user: user, project: project, namespace: project.namespace, property: 'i_package_generic_user' }
+  end
 
   def auth_header
     return {} if user_role == :anonymous
@@ -29,6 +36,8 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       personal_access_token_header
     when :job_token
       job_token_header
+    when :job_basic_auth
+      job_basic_auth_header
     when :invalid_personal_access_token
       personal_access_token_header('wrong token')
     when :invalid_job_token
@@ -61,6 +70,10 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
     { Gitlab::Auth::AuthFinders::JOB_TOKEN_HEADER => value || ci_build.token }
   end
 
+  def job_basic_auth_header(value = nil)
+    basic_auth_header(Gitlab::Auth::CI_JOB_USER, value || ci_build.token)
+  end
+
   def deploy_token_header(value)
     { Gitlab::Auth::AuthFinders::DEPLOY_TOKEN_HEADER => value }
   end
@@ -77,7 +90,26 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
     end
   end
 
-  describe 'PUT /api/v4/projects/:id/packages/generic/:package_name/:package_version/:file_name/authorize' do
+  describe 'PUT /api/v4/projects/:id/packages/generic/:package_name/:package_version/(*path)/:file_name/authorize' do
+    it_behaves_like 'enforcing job token policies', :admin_packages do
+      before do
+        source_project.add_developer(user)
+      end
+
+      let(:request) { authorize_upload_file(workhorse_headers.merge(job_token_header(target_job.token))) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_generic_package do
+      let(:boundary_object) { project }
+      let(:request) do
+        authorize_upload_file(workhorse_headers.merge(personal_access_token_header(pat.token)))
+      end
+
+      before do
+        project.add_developer(user)
+      end
+    end
+
     context 'with valid project' do
       where(:project_visibility, :user_role, :member?, :authenticate_with, :expected_status) do
         'PUBLIC'  | :developer | true  | :personal_access_token         | :success
@@ -151,6 +183,10 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
           expect(response).to have_gitlab_http_status(expected_status)
         end
       end
+
+      it_behaves_like 'updating personal access token last used' do
+        subject { authorize_upload_file(workhorse_headers.merge(personal_access_token_header)) }
+      end
     end
 
     context 'application security' do
@@ -164,9 +200,93 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       end
 
       with_them do
-        subject { authorize_upload_file(workhorse_headers.merge(personal_access_token_header), param_name => param_value) }
+        subject do
+          authorize_upload_file(workhorse_headers.merge(personal_access_token_header), param_name => param_value)
+        end
 
         it_behaves_like 'secure endpoint'
+      end
+    end
+
+    context 'for use_final_store_path' do
+      before do
+        project.add_developer(user)
+      end
+
+      it 'sends use_final_store_path with true' do
+        expect(::Packages::PackageFileUploader).to receive(:workhorse_authorize).with(
+          hash_including(use_final_store_path: true, final_store_path_config: { root_hash: project.id })
+        ).and_call_original
+
+        authorize_upload_file(workhorse_headers.merge(personal_access_token_header))
+      end
+    end
+
+    context 'with package protection rule for different roles and package_name_patterns' do
+      let_it_be(:pat_developer) { create(:personal_access_token, user: create(:user, developer_of: project)) }
+      let_it_be(:pat_developer_auth_header) { personal_access_token_header(pat_developer.token) }
+      let_it_be(:pat_maintainer) { create(:personal_access_token, user: create(:user, maintainer_of: project)) }
+      let_it_be(:pat_maintainer_auth_header) { personal_access_token_header(pat_maintainer.token) }
+      let_it_be(:pat_owner) { create(:personal_access_token, user: create(:user, owner_of: project)) }
+      let_it_be(:pat_owner_auth_header) { personal_access_token_header(pat_owner.token) }
+      let_it_be(:pat_admin_mode) { create(:personal_access_token, :admin_mode, user: create(:admin)) }
+      let_it_be(:pat_admin_mode_auth_header) { personal_access_token_header(pat_admin_mode.token) }
+      let_it_be(:deploy_token_rw_auth_header) { deploy_token_header(deploy_token_rw.token) }
+
+      let_it_be_with_reload(:package_protection_rule) do
+        create(:package_protection_rule, package_type: :generic, project: project)
+      end
+
+      let(:protected_package_name) { 'mypackage' }
+      let(:unprotected_package_name) { "other-#{protected_package_name}" }
+
+      let(:request_headers) { workhorse_headers.merge(auth_header) }
+
+      subject do
+        authorize_upload_file(request_headers, package_name: protected_package_name)
+        response
+      end
+
+      before do
+        package_protection_rule.update!(
+          package_name_pattern: package_name_pattern,
+          minimum_access_level_for_push: minimum_access_level_for_push
+        )
+      end
+
+      shared_examples 'authorized package' do
+        it { is_expected.to have_gitlab_http_status(:ok) }
+      end
+
+      shared_examples 'protected package' do
+        it 'responds with forbidden' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+          expect(json_response).to include 'message' => '403 Forbidden - Package protected.'
+        end
+      end
+
+      where(:package_name_pattern, :minimum_access_level_for_push, :auth_header, :shared_examples_name) do
+        ref(:protected_package_name)   | :maintainer | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:protected_package_name)   | :maintainer | ref(:pat_developer_auth_header)   | 'protected package'
+        ref(:protected_package_name)   | :maintainer | ref(:pat_maintainer_auth_header)  | 'authorized package'
+        ref(:protected_package_name)   | :owner      | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:protected_package_name)   | :owner      | ref(:pat_developer_auth_header)   | 'protected package'
+        ref(:protected_package_name)   | :owner      | ref(:pat_owner_auth_header)       | 'authorized package'
+        ref(:protected_package_name)   | :admin      | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:protected_package_name)   | :admin      | ref(:pat_admin_mode_auth_header)  | 'authorized package'
+        ref(:protected_package_name)   | :admin      | ref(:pat_owner_auth_header)       | 'protected package'
+
+        ref(:unprotected_package_name) | :admin      | ref(:deploy_token_rw_auth_header) | 'authorized package'
+        ref(:unprotected_package_name) | :admin      | ref(:pat_owner_auth_header)       | 'authorized package'
+        ref(:unprotected_package_name) | :maintainer | ref(:deploy_token_rw_auth_header) | 'authorized package'
+        ref(:unprotected_package_name) | :maintainer | ref(:pat_developer_auth_header)   | 'authorized package'
+        ref(:unprotected_package_name) | :maintainer | ref(:pat_maintainer_auth_header)  | 'authorized package'
+      end
+
+      with_them do
+        it_behaves_like params[:shared_examples_name]
       end
     end
 
@@ -177,11 +297,30 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
     end
   end
 
-  describe 'PUT /api/v4/projects/:id/packages/generic/:package_name/:package_version/:file_name' do
+  describe 'PUT /api/v4/projects/:id/packages/generic/:package_name/:package_version/(*path)/:file_name' do
     include WorkhorseHelpers
 
     let(:file_upload) { fixture_file_upload('spec/fixtures/packages/generic/myfile.tar.gz') }
     let(:params) { { file: file_upload } }
+
+    it_behaves_like 'enforcing job token policies', :admin_packages do
+      before do
+        source_project.add_developer(user)
+      end
+
+      let(:request) { upload_file(params, workhorse_headers.merge(job_token_header(target_job.token))) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :upload_generic_package do
+      let(:boundary_object) { project }
+      let(:request) do
+        upload_file(params, workhorse_headers.merge(personal_access_token_header(pat.token)))
+      end
+
+      before do
+        project.add_developer(user)
+      end
+    end
 
     context 'authentication' do
       where(:project_visibility, :user_role, :member?, :authenticate_with, :expected_status) do
@@ -264,13 +403,13 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
           headers = workhorse_headers.merge(auth_header)
 
           expect { upload_file(params, headers) }
-            .to change { project.packages.generic.count }.by(1)
+            .to change { ::Packages::Generic::Package.for_projects(project).count }.by(1)
             .and change { Packages::PackageFile.count }.by(1)
 
           aggregate_failures do
             expect(response).to have_gitlab_http_status(:created)
 
-            package = project.packages.generic.last
+            package = ::Packages::Generic::Package.for_projects(project).last
             expect(package.name).to eq('mypackage')
             expect(package.status).to eq('default')
             expect(package.version).to eq('0.0.1')
@@ -329,7 +468,7 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
               aggregate_failures do
                 expect(response).to have_gitlab_http_status(:created)
 
-                package = project.packages.find_by(name: 'mypackage')
+                package = ::Packages::Generic::Package.for_projects(project).find_by(name: 'mypackage')
                 expect(package).to be_hidden
               end
             end
@@ -370,11 +509,74 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
               subject { upload_file(params, headers, package_version: version) }
 
               it "returns the #{params[:expected_status]}", :aggregate_failures do
-                expect { subject }.to change { project.packages.generic.count }.by(expected_package_diff_count)
+                expect { subject }
+                  .to change { ::Packages::Generic::Package.for_projects(project).count }
+                  .by(expected_package_diff_count)
 
                 expect(response).to have_gitlab_http_status(expected_status)
               end
             end
+          end
+        end
+
+        context 'when file has path' do
+          let(:params) { super().merge(path: 'path/to') }
+
+          it 'creates a package and package file with path' do
+            headers = workhorse_headers.merge(auth_header)
+
+            upload_file(params, headers)
+
+            aggregate_failures do
+              package = ::Packages::Generic::Package.for_projects(project).last
+              expect(response).to have_gitlab_http_status(:created)
+              expect(package.package_files.last.file_name).to eq('path%2Fto%2Fmyfile.tar.gz')
+            end
+          end
+        end
+
+        context 'with special characters in filename' do
+          where(:symbol, :file_name) do
+            [
+              ['+', 'my+file.tar.gz'],
+              ['~', 'my~file.tar.gz'],
+              ['@', 'myfile@1.1.tar.gz']
+            ]
+          end
+
+          with_them do
+            it "creates package with #{params[:symbol]} in the filename", :aggregate_failures do
+              headers = workhorse_headers.merge(auth_header)
+
+              expect do
+                upload_file(params, headers, file_name:)
+              end.to change { ::Packages::Generic::Package.for_projects(project).count }.by(1)
+
+              expect(response).to have_gitlab_http_status(:created)
+              expect(::Packages::PackageFile.for_projects(project).find_by(file_name:)).not_to be_nil
+            end
+          end
+        end
+      end
+
+      context 'when filename contains @ or ~ symbol at beginning or end' do
+        where(:symbol, :file_name, :description) do
+          [
+            ['@', 'myfile1.1.tar.gz@', 'at the end'],
+            ['@', '@myfile1.1.tar.gz', 'at the beginning'],
+            ['~', 'myfile.tar.gz~', 'at the end'],
+            ['~', '~myfile.tar.gz', 'at the beginning']
+          ]
+        end
+
+        with_them do
+          it "returns a bad request when #{params[:symbol]} is #{params[:description]} of filename",
+            :aggregate_failures do
+            headers = workhorse_headers.merge(personal_access_token_header)
+
+            upload_file(params, headers, file_name: file_name)
+
+            expect(response).to have_gitlab_http_status(:bad_request)
           end
         end
       end
@@ -416,23 +618,127 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       context 'with existing package' do
         let_it_be(:package_name) { 'mypackage' }
         let_it_be(:package_version) { '1.2.3' }
-        let_it_be_with_reload(:existing_package) { create(:generic_package, name: package_name, version: package_version, project: project) }
+        let_it_be(:existing_package) do
+          create(:generic_package, name: package_name, version: package_version, project: project)
+        end
+
+        let_it_be(:duplicate_file) do
+          create(:package_file, package: existing_package, file_name: 'myfile.tar.gz')
+        end
+
+        let_it_be_with_reload(:package_settings) { create(:namespace_package_setting, namespace: project.namespace) }
 
         let(:headers) { workhorse_headers.merge(personal_access_token_header) }
 
+        subject(:upload_api_call) do
+          upload_file(params, headers, package_name: package_name, package_version: package_version)
+        end
+
+        shared_examples 'creates a new package' do
+          it 'creates a new package' do
+            upload_api_call
+
+            expect(response).to have_gitlab_http_status(:created)
+          end
+        end
+
+        shared_examples 'returns a bad request' do
+          it 'returns a bad request' do
+            upload_api_call
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+          end
+        end
+
         it 'does not create a new package' do
           expect { upload_file(params, headers, package_name: package_name, package_version: package_version) }
-            .to change { project.packages.generic.count }.by(0)
+            .to not_change { ::Packages::Generic::Package.for_projects(project).count }
             .and change { Packages::PackageFile.count }.by(1)
 
           expect(response).to have_gitlab_http_status(:created)
+        end
+
+        context 'when package duplicates are not allowed' do
+          before do
+            package_settings.update!(generic_duplicates_allowed: false, generic_duplicate_exception_regex: '')
+          end
+
+          it_behaves_like 'returns a bad request'
+
+          context 'when regex matches package name' do
+            before do
+              package_settings.update_column(
+                :generic_duplicate_exception_regex,
+                ".*#{existing_package.name.last(3)}.*"
+              )
+            end
+
+            it_behaves_like 'creates a new package'
+          end
+
+          context 'when regex matches package version' do
+            before do
+              package_settings.update_column(
+                :generic_duplicate_exception_regex,
+                ".*#{existing_package.version.last(3)}.*"
+              )
+            end
+
+            it_behaves_like 'creates a new package'
+          end
+
+          context 'when regex does not match package name or version' do
+            before do
+              package_settings.update_column(:generic_duplicate_exception_regex, ".*zzz.*")
+            end
+
+            it_behaves_like 'returns a bad request'
+          end
+        end
+
+        context 'when package duplicates are allowed' do
+          before do
+            package_settings.update!(generic_duplicates_allowed: true, generic_duplicate_exception_regex: '')
+          end
+
+          it_behaves_like 'creates a new package'
+
+          context 'when regex matches package name' do
+            before do
+              package_settings.update_column(
+                :generic_duplicate_exception_regex,
+                ".*#{existing_package.name.last(3)}.*"
+              )
+            end
+
+            it_behaves_like 'returns a bad request'
+          end
+
+          context 'when regex matches package version' do
+            before do
+              package_settings.update_column(
+                :generic_duplicate_exception_regex,
+                ".*#{existing_package.version.last(3)}.*"
+              )
+            end
+
+            it_behaves_like 'returns a bad request'
+          end
+
+          context 'when regex does not match package name or version' do
+            before do
+              package_settings.update_column(:generic_duplicate_exception_regex, ".*zzz.*")
+            end
+
+            it_behaves_like 'creates a new package'
+          end
         end
 
         context 'marked as pending_destruction' do
           it 'does create a new package' do
             existing_package.pending_destruction!
             expect { upload_file(params, headers, package_name: package_name, package_version: package_version) }
-              .to change { project.packages.generic.count }.by(1)
+              .to change { ::Packages::Generic::Package.for_projects(project).count }.by(1)
               .and change { Packages::PackageFile.count }.by(1)
 
             expect(response).to have_gitlab_http_status(:created)
@@ -489,13 +795,98 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       end
 
       with_them do
-        subject { upload_file(params, workhorse_headers.merge(personal_access_token_header), param_name => param_value) }
+        subject do
+          upload_file(params, workhorse_headers.merge(personal_access_token_header), param_name => param_value)
+        end
 
         it_behaves_like 'secure endpoint'
       end
     end
 
-    def upload_file(params, request_headers, send_rewritten_field: true, package_name: 'mypackage', package_version: '0.0.1', file_name: 'myfile.tar.gz')
+    context 'with package protection rule for different roles and package_name_patterns' do
+      let_it_be(:pat_developer) { create(:personal_access_token, user: create(:user, developer_of: project)) }
+      let_it_be(:pat_developer_auth_header) { personal_access_token_header(pat_developer.token) }
+      let_it_be(:pat_maintainer) { create(:personal_access_token, user: create(:user, maintainer_of: project)) }
+      let_it_be(:pat_maintainer_auth_header) { personal_access_token_header(pat_maintainer.token) }
+      let_it_be(:pat_owner) { create(:personal_access_token, user: create(:user, owner_of: project)) }
+      let_it_be(:pat_owner_auth_header) { personal_access_token_header(pat_owner.token) }
+      let_it_be(:pat_admin_mode) { create(:personal_access_token, :admin_mode, user: create(:admin)) }
+      let_it_be(:pat_admin_mode_auth_header) { personal_access_token_header(pat_admin_mode.token) }
+      let_it_be(:deploy_token_rw_auth_header) { deploy_token_header(deploy_token_rw.token) }
+
+      let_it_be_with_reload(:package_protection_rule) do
+        create(:package_protection_rule, package_type: :generic, project: project)
+      end
+
+      let(:package_name) { 'mypackage' }
+      let(:package_name_no_match) { "other-#{package_name}" }
+
+      let(:request_headers) { workhorse_headers.merge(auth_header) }
+
+      subject(:send_upload_file) do
+        upload_file(params, request_headers, package_name: package_name)
+        response
+      end
+
+      before do
+        package_protection_rule.update!(
+          package_name_pattern: package_name_pattern,
+          minimum_access_level_for_push: minimum_access_level_for_push
+        )
+      end
+
+      shared_examples 'uploaded package' do
+        it { is_expected.to have_gitlab_http_status(:created) }
+
+        it 'creates a package and package file' do
+          expect { send_upload_file }
+            .to change { ::Packages::Generic::Package.for_projects(project).count }.by(1)
+            .and change { Packages::PackageFile.count }.by(1)
+        end
+      end
+
+      shared_examples 'protected package' do
+        it 'responds with forbidden' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+          expect(json_response).to include 'message' => '403 Forbidden - Package protected.'
+        end
+      end
+
+      where(:package_name_pattern, :minimum_access_level_for_push, :auth_header, :shared_examples_name) do
+        ref(:package_name)          | :maintainer | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:package_name)          | :maintainer | ref(:pat_developer_auth_header)   | 'protected package'
+        ref(:package_name)          | :maintainer | ref(:pat_maintainer_auth_header)  | 'uploaded package'
+        ref(:package_name)          | :maintainer | ref(:pat_admin_mode_auth_header)  | 'uploaded package'
+        ref(:package_name)          | :owner      | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:package_name)          | :owner      | ref(:pat_developer_auth_header)   | 'protected package'
+        ref(:package_name)          | :owner      | ref(:pat_owner_auth_header)       | 'uploaded package'
+        ref(:package_name)          | :owner      | ref(:pat_admin_mode_auth_header)  | 'uploaded package'
+        ref(:package_name)          | :admin      | ref(:deploy_token_rw_auth_header) | 'protected package'
+        ref(:package_name)          | :admin      | ref(:pat_owner_auth_header)       | 'protected package'
+        ref(:package_name)          | :admin      | ref(:pat_admin_mode_auth_header)  | 'uploaded package'
+
+        ref(:package_name_no_match) | :maintainer | ref(:deploy_token_rw_auth_header) | 'uploaded package'
+        ref(:package_name_no_match) | :maintainer | ref(:pat_developer_auth_header)   | 'uploaded package'
+        ref(:package_name_no_match) | :maintainer | ref(:pat_maintainer_auth_header)  | 'uploaded package'
+        ref(:package_name_no_match) | :admin      | ref(:deploy_token_rw_auth_header) | 'uploaded package'
+        ref(:package_name_no_match) | :admin      | ref(:pat_owner_auth_header)       | 'uploaded package'
+        ref(:package_name_no_match) | :admin      | ref(:pat_admin_mode_auth_header)  | 'uploaded package'
+      end
+
+      with_them do
+        it_behaves_like params[:shared_examples_name]
+      end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      subject { upload_file(params, workhorse_headers.merge(personal_access_token_header)) }
+    end
+
+    def upload_file(
+      params, request_headers, send_rewritten_field: true, package_name: 'mypackage',
+      package_version: '0.0.1', file_name: 'myfile.tar.gz')
       url = "/projects/#{project.id}/packages/generic/#{package_name}/#{package_version}/#{file_name}"
 
       workhorse_finalize(
@@ -509,9 +900,31 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
     end
   end
 
-  describe 'GET /api/v4/projects/:id/packages/generic/:package_name/:package_version/:file_name' do
+  describe 'GET /api/v4/projects/:id/packages/generic/:package_name/:package_version/(*path)/:file_name' do
     let_it_be(:package) { create(:generic_package, project: project) }
     let_it_be(:package_file) { create(:package_file, :generic, package: package) }
+
+    it_behaves_like 'enforcing job token policies', :read_packages,
+      allow_public_access_for_enabled_project_features: :package_registry do
+      before do
+        source_project.add_developer(user)
+      end
+
+      let(:request) do
+        download_file(job_token_header(target_job.token))
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :download_generic_package do
+      let(:boundary_object) { project }
+      let(:request) do
+        download_file(personal_access_token_header(pat.token))
+      end
+
+      before do
+        project.add_developer(user)
+      end
+    end
 
     context 'authentication' do
       where(:project_visibility, :user_role, :member?, :authenticate_with, :expected_status) do
@@ -533,9 +946,9 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
         'PUBLIC'  | :guest     | false | :invalid_user_basic_auth       | :success
         'PUBLIC'  | :anonymous | false | :none                          | :success
         'PRIVATE' | :developer | true  | :personal_access_token         | :success
-        'PRIVATE' | :guest     | true  | :personal_access_token         | :forbidden
+        'PRIVATE' | :guest     | true  | :personal_access_token         | :success
         'PRIVATE' | :developer | true  | :user_basic_auth               | :success
-        'PRIVATE' | :guest     | true  | :user_basic_auth               | :forbidden
+        'PRIVATE' | :guest     | true  | :user_basic_auth               | :success
         'PRIVATE' | :developer | true  | :invalid_personal_access_token | :unauthorized
         'PRIVATE' | :guest     | true  | :invalid_personal_access_token | :unauthorized
         'PRIVATE' | :developer | true  | :invalid_user_basic_auth       | :unauthorized
@@ -550,12 +963,16 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
         'PRIVATE' | :guest     | false | :invalid_user_basic_auth       | :unauthorized
         'PRIVATE' | :anonymous | false | :none                          | :unauthorized
         'PUBLIC'  | :developer | true  | :job_token                     | :success
+        'PUBLIC'  | :developer | true  | :job_basic_auth                | :success
         'PUBLIC'  | :developer | true  | :invalid_job_token             | :unauthorized
         'PUBLIC'  | :developer | false | :job_token                     | :success
+        'PUBLIC'  | :developer | false | :job_basic_auth                | :success
         'PUBLIC'  | :developer | false | :invalid_job_token             | :unauthorized
         'PRIVATE' | :developer | true  | :job_token                     | :success
+        'PRIVATE' | :developer | true  | :job_basic_auth                | :success
         'PRIVATE' | :developer | true  | :invalid_job_token             | :unauthorized
         'PRIVATE' | :developer | false | :job_token                     | :not_found
+        'PRIVATE' | :developer | false | :job_basic_auth                | :not_found
         'PRIVATE' | :developer | false | :invalid_job_token             | :unauthorized
       end
 
@@ -715,12 +1132,153 @@ RSpec.describe API::GenericPackages, feature_category: :package_registry do
       expect(response).to have_gitlab_http_status(:not_found)
     end
 
-    def download_file(request_headers, package_name: nil, file_name: nil)
+    context 'when file has path' do
+      let_it_be(:file_path) { "path/to/#{package_file.file_name}" }
+
+      before do
+        project.add_developer(user)
+        package_file.update_column(:file_name, URI.encode_uri_component(file_path))
+      end
+
+      it 'responds with 200 OK' do
+        download_file(personal_access_token_header, file_name: file_path)
+
+        expect(response).to have_gitlab_http_status(:success)
+      end
+    end
+
+    context 'when there is + sign is in filename' do
+      let(:file_name) { 'my+file.tar.gz' }
+
+      before do
+        project.add_developer(user)
+        package_file.update_column(:file_name, file_name)
+      end
+
+      it 'responds with 200 OK' do
+        download_file(personal_access_token_header, file_name: file_name)
+
+        expect(response).to have_gitlab_http_status(:success)
+      end
+    end
+
+    context 'for checksum headers' do
+      let(:expected_checksum) { Digest::SHA256.hexdigest('test content') }
+
+      before do
+        project.add_developer(user)
+      end
+
+      context 'when package file has a checksum' do
+        before do
+          package_file.update_column(:file_sha256, expected_checksum)
+          package_file.reload
+        end
+
+        it 'includes X-Checksum-SHA256 header in response' do
+          download_file(personal_access_token_header)
+
+          expect(response.headers['X-Checksum-SHA256']).to eq(expected_checksum)
+        end
+      end
+
+      context 'when package file has no checksum' do
+        before do
+          package_file.update_column(:file_sha256, nil)
+        end
+
+        it 'does not include X-Checksum-SHA256 header' do
+          download_file(personal_access_token_header)
+
+          expect(response.headers).not_to have_key('X-Checksum-SHA256')
+        end
+      end
+    end
+
+    context 'when object storage is enabled' do
+      let(:package_file) { create(:package_file, :generic, :object_storage, package: package) }
+
+      subject(:download) { download_file(personal_access_token_header) }
+
+      before do
+        project.add_developer(user)
+      end
+
+      context 'when direct download is enabled' do
+        let(:disposition_param) do
+          "response-content-disposition=attachment%3B%20filename%3D%22#{package_file.file_name}"
+        end
+
+        let(:content_type_param) { 'response-content-type=application%2Fgzip' }
+
+        before do
+          stub_package_file_object_storage
+        end
+
+        it 'includes response-content-disposition, response-content-type and filename in the redirect file URL' do
+          download
+
+          expect(response.parsed_body).to include(disposition_param, content_type_param)
+          expect(response).to have_gitlab_http_status(:redirect)
+        end
+      end
+
+      context 'when direct download is disabled' do
+        let(:disposition_header) do
+          "attachment; filename=\"#{package_file.file_name}\"; filename*=UTF-8\'\'#{package_file.file_name}"
+        end
+
+        let(:expected_headers) do
+          {
+            allow_localhost: true,
+            allowed_endpoints: [],
+            response_headers: {
+              'Content-Disposition' => disposition_header,
+              'X-Checksum-SHA256' => package_file.file_sha256,
+              'Content-Type' => 'application/gzip'
+            },
+            ssrf_filter: true
+          }
+        end
+
+        before do
+          stub_package_file_object_storage(proxy_download: true)
+        end
+
+        it 'sends a file with expected headers' do
+          expect(::Gitlab::Workhorse).to receive(:send_url)
+            .with(instance_of(String), expected_headers).and_call_original
+
+          download
+
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+
+        it_behaves_like 'package registry SSRF protection'
+      end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      subject { download_file(personal_access_token_header) }
+    end
+
+    context 'for head request' do
+      before do
+        project.add_developer(user)
+        download_file(personal_access_token_header, method: :head)
+      end
+
+      it 'does not bump last downloaded at field' do
+        expect(package.reload.last_downloaded_at).to be_nil
+      end
+    end
+
+    def download_file(request_headers, package_name: nil, file_name: nil, method: :get)
       package_name ||= package.name
       file_name ||= package_file.file_name
       url = "/projects/#{project.id}/packages/generic/#{package_name}/#{package.version}/#{file_name}"
 
-      get api(url), headers: request_headers
+      public_send(method, api(url), headers: request_headers)
     end
   end
 end

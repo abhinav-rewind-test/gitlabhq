@@ -65,10 +65,6 @@ export default {
       type: Array,
       required: true,
     },
-    projectId: {
-      type: String,
-      required: true,
-    },
     projectPath: {
       type: String,
       required: true,
@@ -254,13 +250,13 @@ export default {
       </gl-sprintf>
     </gl-alert>
 
-    <h1 class="page-title gl-font-size-h-display">{{ __('New Jira import') }}</h1>
+    <h1 class="page-title gl-text-size-h-display">{{ __('New Jira import') }}</h1>
 
     <hr />
 
     <form @submit="initiateJiraImport">
       <gl-form-group
-        class="row gl-align-items-center"
+        class="row gl-items-center"
         :invalid-feedback="__('Please select a Jira project')"
         :label="__('Import from')"
         label-cols-sm="2"
@@ -270,21 +266,21 @@ export default {
           id="jira-project-select"
           v-model="selectedProject"
           data-testid="jira-project-dropdown"
-          class="mb-2"
+          class="!gl-mb-3"
           :options="jiraProjects"
           :state="selectState"
         />
       </gl-form-group>
 
       <gl-form-group
-        class="row gl-align-items-center gl-mb-6"
+        class="row gl-mb-6 gl-items-center"
         :label="__('Issue label')"
         label-cols-sm="2"
         label-for="jira-project-label"
       >
         <gl-label
           id="jira-project-label"
-          class="mb-2"
+          class="!gl-mb-3"
           background-color="#428BCA"
           :title="importLabel"
           scoped
@@ -324,7 +320,7 @@ export default {
               {{ user.username }} ({{ user.name }})
             </gl-dropdown-item>
 
-            <gl-dropdown-text v-show="shouldShowNoMatchesFoundText" class="text-secondary">
+            <gl-dropdown-text v-show="shouldShowNoMatchesFoundText" class="gl-text-subtle">
               {{ __('No matches found') }}
             </gl-dropdown-text>
           </gl-dropdown>
@@ -342,7 +338,7 @@ export default {
         {{ __('Load more users') }}
       </gl-button>
 
-      <div class="footer-block row-content-block d-flex justify-content-between">
+      <div class="footer-block row-content-block gl-flex !gl-justify-between">
         <gl-button
           type="submit"
           category="primary"

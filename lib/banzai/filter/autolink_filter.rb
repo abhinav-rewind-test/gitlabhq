@@ -2,15 +2,19 @@
 
 require 'uri'
 
+# This filter handles autolinking when a pipeline does not
+# use the MarkdownFilter, which handles it's own autolinking.
+# This happens in particular for the SingleLinePipeline and the
+# CommitDescriptionPipeline.
+#
+# rubocop:disable Rails/OutputSafety -- this is legacy/unused, no need fixing.
+# rubocop:disable Gitlab/NoCodeCoverageComment -- no coverage needed for a legacy filter
+# :nocov: undercoverage
 module Banzai
   module Filter
     # HTML Filter for auto-linking URLs in HTML.
     #
     # Based on HTML::Pipeline::AutolinkFilter
-    #
-    # Note that our CommonMark parser, `commonmarker` (using the autolink extension)
-    # handles standard autolinking, like http/https. We detect additional
-    # schemes (smb, rdar, etc).
     #
     # Context options:
     #   :autolink  - Boolean, skips all processing done by this filter when false
@@ -33,10 +37,10 @@ module Banzai
       # link. It matches the behaviour of Rinku 2.0.1:
       # https://github.com/vmg/rinku/blob/v2.0.1/ext/rinku/autolink.c#L65
       #
-      # Rubular: http://rubular.com/r/nrL3r9yUiq
+      # Rubular: https://rubular.com/r/M2sruz0iNaUxDA
       # Note that it's not possible to use Gitlab::UntrustedRegexp for LINK_PATTERN,
       # as `(?<!` is unsupported in `re2`, see https://github.com/google/re2/wiki/Syntax
-      LINK_PATTERN = %r{([a-z][a-z0-9\+\.-]+://[^\s>]+)(?<!\?|!|\.|,|:)}
+      LINK_PATTERN = %r{([a-z][a-z0-9\+\.-]{1,30}://[^\s>]{1,2000})(?<!\?|!|\.|,|:)}
 
       ENTITY_UNTRUSTED = '((?:&[\w#]+;)+)\z'
       ENTITY_UNTRUSTED_REGEX = Gitlab::UntrustedRegexp.new(ENTITY_UNTRUSTED, multiline: false)
@@ -48,7 +52,7 @@ module Banzai
       TEXT_QUERY = %(descendant-or-self::text()[
         not(#{IGNORE_PARENTS.map { |p| "ancestor::#{p}" }.join(' or ')})
         and contains(., '://')
-      ])
+      ]).freeze
 
       PUNCTUATION_PAIRS = {
         "'" => "'",
@@ -59,9 +63,19 @@ module Banzai
       }.freeze
 
       def call
+        if MarkdownFilter.glfm_markdown?(context) &&
+            context[:pipeline] != :single_line &&
+            context[:pipeline] != :commit_description
+          return doc
+        end
+
         return doc if context[:autolink] == false
 
+        @link_count = 0
+
         doc.xpath(TEXT_QUERY).each do |node|
+          break if Banzai::Filter.filter_item_limit_exceeded?(@link_count, limit: Banzai::Filter::FILTER_ITEM_LIMIT)
+
           content = node.to_html
 
           next unless content.match(LINK_PATTERN)
@@ -114,7 +128,7 @@ module Banzai
         end
 
         # Since this came from a Text node, make sure the new href is encoded.
-        # `commonmarker` percent encodes the domains of links it handles, so
+        # Markdown renderer percent encodes the domains of links it handles, so
         # do the same (instead of using `normalized_encode`).
         begin
           href_safe = Addressable::URI.encode(match).html_safe
@@ -129,7 +143,10 @@ module Banzai
       end
 
       def autolink_filter(text)
-        Gitlab::StringRegexMarker.new(CGI.unescapeHTML(text), text.html_safe).mark(LINK_PATTERN) do |link, left:, right:, mode:|
+        regex_marker = Gitlab::StringRegexMarker.new(CGI.unescapeHTML(text), text.html_safe)
+        links = links(regex_marker)
+
+        regex_marker.mark_with_ranges(links) do |link, _left, _right, _mode|
           autolink_match(link).html_safe
         end
       end
@@ -137,6 +154,23 @@ module Banzai
       def link_options
         @link_options ||= context[:link_attr] || {}
       end
+
+      def links(regex_marker)
+        links = regex_marker.ranges(LINK_PATTERN)
+        links_size = links.size
+
+        if Banzai::Filter.filter_item_limit_exceeded?(@link_count + links_size,
+          limit: Banzai::Filter::FILTER_ITEM_LIMIT)
+          links = links.take(Banzai::Filter::FILTER_ITEM_LIMIT - @link_count)
+        end
+
+        @link_count += links_size
+
+        links
+      end
     end
   end
 end
+# :nocov:
+# rubocop:enable Gitlab/NoCodeCoverageComment
+# rubocop:enable Rails/OutputSafety

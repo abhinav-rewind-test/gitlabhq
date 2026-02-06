@@ -7,11 +7,6 @@ module Gitlab
     DEFAULT_PAGE = 1
     DEFAULT_PER_PAGE = 20
 
-    SCOPE_ONLY_SORT = {
-      popularity_asc: %w[issues],
-      popularity_desc: %w[issues]
-    }.freeze
-
     attr_reader :current_user, :query, :order_by, :sort, :filters
 
     # Limit search results by passed projects
@@ -31,7 +26,8 @@ module Gitlab
       order_by: nil,
       sort: nil,
       default_project_filter: false,
-      filters: {})
+      filters: {}
+    )
       @current_user = current_user
       @query = query
       @limit_projects = limit_projects || Project.all
@@ -41,19 +37,12 @@ module Gitlab
       @filters = filters
     end
 
-    def objects(scope, page: nil, per_page: DEFAULT_PER_PAGE, without_count: true, preload_method: nil)
+    def objects(scope, page: nil, per_page: DEFAULT_PER_PAGE, preload_method: nil)
       should_preload = preload_method.present?
       collection = collection_for(scope)
-
-      if collection.nil?
-        should_preload = false
-        collection = Kaminari.paginate_array([])
-      end
-
       collection = collection.public_send(preload_method) if should_preload # rubocop:disable GitlabSecurity/PublicSend
       collection = collection.page(page).per(per_page)
-
-      without_count ? collection.without_count : collection
+      collection.without_count
     end
 
     def formatted_count(scope)
@@ -114,24 +103,36 @@ module Gitlab
     def users
       return User.none unless Ability.allowed?(current_user, :read_users_list)
 
-      UsersFinder.new(current_user, { search: query, use_minimum_char_limit: false }).execute
+      params = { search: query, use_minimum_char_limit: false }
+
+      if current_user && filters[:autocomplete]
+        params[:group_member_source_ids] = current_user_authorized_group_ids
+        params[:project_member_source_ids] = current_user_authorized_project_ids
+      end
+
+      UsersFinder.new(current_user, params).execute
     end
 
     # highlighting is only performed by Elasticsearch backed results
-    def highlight_map(_scope)
+    def highlight_map(*)
       {}
     end
 
     # aggregations are only performed by Elasticsearch backed results
-    def aggregations(_scope)
+    def aggregations(*)
       []
     end
 
-    def failed?
+    # direct counts are only performed by Elasticsearch backed results
+    def counts(*)
+      {}
+    end
+
+    def failed?(*)
       false
     end
 
-    def error
+    def error(*)
       nil
     end
 
@@ -159,7 +160,10 @@ module Gitlab
       sort_by = ::Gitlab::Search::SortOptions.sort_and_direction(order_by, sort)
 
       # Reset sort to default if the chosen one is not supported by scope
-      sort_by = nil if SCOPE_ONLY_SORT[sort_by] && SCOPE_ONLY_SORT[sort_by].exclude?(scope)
+      if Gitlab::Search::SortOptions::SCOPE_ONLY_SORT[sort_by] &&
+          Gitlab::Search::SortOptions::SCOPE_ONLY_SORT[sort_by].exclude?(scope)
+        sort_by = nil
+      end
 
       case sort_by
       when :created_at_asc
@@ -181,9 +185,9 @@ module Gitlab
 
     def projects
       scope = limit_projects
-      scope = scope.non_archived unless filters[:include_archived]
+      scope = scope.self_and_ancestors_non_archived unless filters[:include_archived]
 
-      scope.search(query)
+      scope.search(query, include_namespace: true, use_minimum_char_limit: false)
     end
 
     def issues(finder_params = {})
@@ -192,7 +196,7 @@ module Gitlab
 
       unless default_project_filter
         project_ids = project_ids_relation
-        project_ids = project_ids.non_archived unless filters[:include_archived]
+        project_ids = project_ids.self_and_ancestors_non_archived unless filters[:include_archived]
 
         issues = issues.in_projects(project_ids)
                        .allow_cross_joins_across_databases(url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/420046')
@@ -201,15 +205,10 @@ module Gitlab
       apply_sort(issues, scope: 'issues')
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def milestones
       milestones = Milestone.search(query)
-
-      milestones = filter_milestones_by_project(milestones)
-
-      milestones.reorder('updated_at DESC')
+      filter_milestones_by_project(milestones).order_updated_desc
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def merge_requests
       merge_requests = MergeRequestsFinder.new(current_user, issuable_params).execute
@@ -217,7 +216,7 @@ module Gitlab
       unless default_project_filter
         project_ids = project_ids_relation
 
-        project_ids = project_ids.non_archived unless filters[:include_archived]
+        project_ids = project_ids.self_and_ancestors_non_archived unless filters[:include_archived]
 
         merge_requests = merge_requests.of_projects(project_ids)
       end
@@ -235,7 +234,7 @@ module Gitlab
     def filter_milestones_by_project(milestones)
       candidate_project_ids = project_ids_relation
 
-      candidate_project_ids = candidate_project_ids.non_archived unless filters[:include_archived]
+      candidate_project_ids = candidate_project_ids.self_and_ancestors_non_archived unless filters[:include_archived]
 
       project_ids = milestones.of_projects(candidate_project_ids).select(:project_id).distinct.pluck(:project_id) # rubocop: disable CodeReuse/ActiveRecord
 
@@ -246,11 +245,9 @@ module Gitlab
       milestones.of_projects(authorized_project_ids_relation)
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def project_ids_relation
-      limit_projects.select(:id).reorder(nil)
+      limit_projects.select(:id).without_order
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def issuable_params
       {}.tap do |params|
@@ -268,11 +265,23 @@ module Gitlab
       end
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
-    def limited_count(relation)
-      relation.reorder(nil).limit(count_limit).size
+    def current_user_authorized_group_ids
+      GroupsFinder
+        .new(current_user, { all_available: false })
+        .execute
+        .pluck("#{Group.table_name}.#{Group.primary_key}") # rubocop: disable CodeReuse/ActiveRecord -- need to find ids
     end
-    # rubocop: enable CodeReuse/ActiveRecord
+
+    def current_user_authorized_project_ids
+      ProjectsFinder
+        .new(current_user: current_user, params: { non_public: true })
+        .execute
+        .pluck_primary_key
+    end
+
+    def limited_count(relation)
+      relation.without_order.limit(count_limit).size
+    end
   end
 end
 

@@ -50,15 +50,25 @@ RSpec.describe Event, feature_category: :user_profile do
         end
       end
 
+      context 'with an imported event' do
+        it 'does not update the project last_repository_updated_at' do
+          project.update!(last_repository_updated_at: 1.year.ago)
+
+          imported_from = Import::HasImportSource::IMPORT_SOURCES[:github]
+
+          expect { create_push_event(project, project.first_owner, imported_from) }.not_to change {
+            project.reload.last_repository_updated_at
+          }
+        end
+      end
+
       context 'without a push event' do
         it 'does not update the project last_repository_updated_at' do
           project.update!(last_repository_updated_at: 1.year.ago)
 
-          create(:closed_issue_event, project: project, author: project.first_owner)
-
-          project.reload
-
-          expect(project.last_repository_updated_at).to be_within(1.minute).of(1.year.ago)
+          expect { create(:closed_issue_event, project: project, author: project.first_owner) }.not_to change {
+            project.reload.last_repository_updated_at
+          }
         end
       end
     end
@@ -122,6 +132,53 @@ RSpec.describe Event, feature_category: :user_profile do
 
       it 'returns events for MergeRequest target_type' do
         expect(described_class.for_merge_request).to contain_exactly(mr_event)
+      end
+    end
+
+    describe '.for_project' do
+      subject { described_class.for_project }
+
+      context 'when target_type is Project' do
+        let_it_be(:event) { create(:event, target: project) }
+
+        it { is_expected.to contain_exactly(event) }
+      end
+
+      context 'when target_type is nil' do
+        context 'with project actions' do
+          let_it_be(:project_action_events) do
+            described_class::PROJECT_ACTIONS.map do |action|
+              factory = action == :pushed ? :push_event : :event
+              create(factory, target: nil, action: action, project: project)
+            end
+          end
+
+          let_it_be(:orphaned_project_action_events) do
+            described_class::PROJECT_ACTIONS
+              .excluding(:pushed) # PushEvent has a presence validation requirement for Project.
+              .map { |action| create(:event, target: nil, action: action, project: nil) }
+          end
+
+          it 'only return events with defined project' do
+            is_expected.to match_array(project_action_events)
+            is_expected.not_to include(*orphaned_project_action_events)
+          end
+        end
+
+        context 'with non-project actions' do
+          let_it_be(:non_project_action_event) { create(:event, target: nil, action: :closed, project: project) }
+          let_it_be(:orphaned_non_project_action_event) { create(:event, target: nil, action: :closed, project: nil) }
+
+          it 'excludes all non-project action events regardless of project presence' do
+            is_expected.not_to include(non_project_action_event, orphaned_non_project_action_event)
+          end
+        end
+      end
+
+      context 'when target_type is not Project' do
+        let_it_be(:non_project_event) { create(:event, :for_issue) }
+
+        it { is_expected.not_to include(non_project_event) }
       end
     end
 
@@ -191,14 +248,12 @@ RSpec.describe Event, feature_category: :user_profile do
       let!(:push_event) { create_push_event(project, project.owner) }
       let!(:comment_event) { create(:event, :commented, project: project) }
 
-      before do
-        create(:design_event, project: project) # should not be in scope
-      end
+      let!(:design_event) { create(:design_event, project: project) }
 
       it 'returns events for MergeRequest, Issue, WorkItem and push, comment events' do
         expect(described_class.contributions).to contain_exactly(
           *merge_request_events, *issue_events, work_item_event,
-          push_event, comment_event
+          push_event, comment_event, design_event
         )
       end
     end
@@ -232,6 +287,103 @@ RSpec.describe Event, feature_category: :user_profile do
       expect(event.tag?).to be_falsey
       expect(event.branch_name).to eq("master")
       expect(event.author).to eq(user)
+    end
+  end
+
+  describe '#target_id' do
+    context 'when target_id is present' do
+      let(:issue) { create(:issue, project: project) }
+      let(:event) { build(:event, target: issue, project: project) }
+
+      it 'returns the target_id' do
+        expect(event.target_id).to eq(issue.id)
+      end
+    end
+
+    context 'when target_id is not present but target_type is "Project"' do
+      let(:event) { build(:event, target: nil, project: project, target_type: 'Project') }
+
+      it 'returns the project_id as fallback' do
+        expect(event.target_id).to eq(project.id)
+      end
+    end
+
+    context 'when target_id is not present and target_type is not "Project"' do
+      let(:event) { build(:event, target: nil, project: project, target_type: 'WorkItem') }
+
+      it 'returns nil' do
+        expect(event.target_id).to be_nil
+      end
+    end
+  end
+
+  describe '#target_type' do
+    context 'when target is present' do
+      let(:issue) { create(:issue, project: project) }
+      let(:event) { build(:event, target: issue, project: project) }
+
+      it 'returns the target_type' do
+        expect(event.target_type).to eq('Issue')
+      end
+    end
+
+    context 'when target is not present' do
+      context 'when action is a PROJECT_ACTION' do
+        let(:event) { build(:event, target: nil, project: project, action: :created) }
+
+        it 'returns the project_id as fallback' do
+          expect(event.target_id).to eq(project.id)
+        end
+      end
+
+      context 'when action is not a PROJECT_ACTION' do
+        let(:event) { build(:event, target: nil, project: project, action: :commented) }
+
+        it 'returns nil' do
+          expect(event.target_id).to be_nil
+        end
+      end
+    end
+  end
+
+  describe '#target' do
+    context 'when target is present' do
+      let(:issue) { create(:issue, project: project) }
+      let(:event) { build(:event, target: issue, project: project) }
+
+      it 'returns the target' do
+        expect(event.target).to eq(issue)
+      end
+    end
+
+    context 'when target is not present but action is a PROJECT_ACTION' do
+      let(:event) { build(:event, target: nil, project: project, action: :created) }
+
+      it 'returns the project as fallback' do
+        expect(event.target).to eq(project)
+      end
+    end
+
+    context 'when target is not present and action is not a PROJECT_ACTION' do
+      let(:event) { build(:event, target: nil, project: project, action: :commented) }
+
+      it 'returns nil' do
+        expect(event.target).to be_nil
+      end
+    end
+
+    it 'eager loads the author of an event target' do
+      create(:closed_issue_event)
+
+      events = described_class.preload(:target).all.to_a
+      count = ActiveRecord::QueryRecorder
+        .new { events.first.target.author }.count
+
+      # This expectation exists to make sure the test doesn't pass when the
+      # author is for some reason not loaded at all.
+      expect(events.first.target.author).to be_an_instance_of(User)
+
+      expect(count).to be_zero
     end
   end
 
@@ -337,6 +489,7 @@ RSpec.describe Event, feature_category: :user_profile do
     let(:note_on_project_snippet) { create(:note_on_project_snippet, author: author, noteable: project_snippet, project: project) }
     let(:note_on_personal_snippet) { create(:note_on_personal_snippet, author: author, noteable: personal_snippet, project: nil) }
     let(:note_on_design) { create(:note_on_design, author: author, noteable: design, project: project) }
+    let(:note_on_wiki_page) { create(:note_on_wiki_page, author: author, project: project) }
     let(:milestone_on_project) { create(:milestone, project: project) }
     let(:event) do
       described_class.new(project: project, target: target, author_id: author.id)
@@ -588,6 +741,34 @@ RSpec.describe Event, feature_category: :user_profile do
 
     context 'wiki-page event', :aggregate_failures do
       let(:event) { create(:wiki_page_event, project: project) }
+
+      context 'on private project', :aggregate_failures do
+        let(:project) { create(:project, :wiki_repo) }
+
+        context 'when admin mode enabled', :enable_admin_mode do
+          include_examples 'visibility examples' do
+            let(:visibility) { visible_to_all_except(:logged_out, :non_member) }
+          end
+        end
+
+        context 'when admin mode disabled' do
+          include_examples 'visibility examples' do
+            let(:visibility) { visible_to_all_except(:logged_out, :non_member, :admin) }
+          end
+        end
+      end
+
+      context 'wiki-page event on public project', :aggregate_failures do
+        let(:project) { create(:project, :public, :wiki_repo) }
+
+        include_examples 'visibility examples' do
+          let(:visibility) { visible_to_all }
+        end
+      end
+    end
+
+    context 'wiki page note event', :aggregate_failures do
+      let(:event) { create(:event, :for_wiki_page_note, project: project) }
 
       context 'on private project', :aggregate_failures do
         let(:project) { create(:project, :wiki_repo) }
@@ -901,6 +1082,160 @@ RSpec.describe Event, feature_category: :user_profile do
     end
   end
 
+  describe '#update_project_activity' do
+    let(:project) { create(:project) }
+
+    context 'when last_activity_at has to be updated, but last_repository_updated_at not' do
+      before do
+        project.update!(
+          last_activity_at: described_class::RESET_PROJECT_ACTIVITY_INTERVAL.ago - 5.minutes,
+          last_repository_updated_at: Time.current
+        )
+        project.reload
+
+        ::Gitlab::Redis::SharedState.with do |redis|
+          redis.hset('inactive_projects_deletion_warning_email_notified', "project:#{project.id}", Date.current.to_s)
+        end
+      end
+
+      it 'updates the column' do
+        Gitlab::Redis::SharedState.with do |redis|
+          expect(redis).to receive(:hdel).with(
+            'inactive_projects_deletion_warning_email_notified',
+            "project:#{project.id}"
+          )
+        end
+
+        last_repository_updated_at = project.last_repository_updated_at
+
+        event = create_push_event(project, project.first_owner)
+
+        project.reload
+        event.reload
+
+        expect(project.last_repository_updated_at).to eq(last_repository_updated_at)
+        expect(project.last_activity_at).to eq(event.created_at)
+        expect(project.updated_at).to eq(event.created_at)
+      end
+    end
+
+    context 'when last_activity_at does not have to be updated, but last_repository_updated_at has' do
+      before do
+        Gitlab::Redis::SharedState.with do |redis|
+          expect(redis).not_to receive(:hdel)
+        end
+
+        project.update!(
+          last_activity_at: Time.current,
+          last_repository_updated_at: described_class::REPOSITORY_UPDATED_AT_INTERVAL.ago - 5.minutes
+        )
+        project.reload
+      end
+
+      context 'with push event' do
+        it 'updates the column' do
+          last_activity_at = project.last_activity_at
+
+          event = create_push_event(project, project.first_owner)
+
+          project.reload
+          event.reload
+
+          expect(project.last_activity_at).to eq(last_activity_at)
+          expect(project.last_repository_updated_at).to eq(event.created_at)
+          expect(project.updated_at).to eq(event.created_at)
+        end
+      end
+
+      context 'without push event' do
+        it 'does not update the columns' do
+          updated_at = project.updated_at
+          last_activity_at = project.last_activity_at
+          last_repository_updated_at = project.last_repository_updated_at
+
+          create(:closed_issue_event, project: project, author: project.first_owner)
+
+          project.reload
+
+          expect(project.last_activity_at).to eq(last_activity_at)
+          expect(project.last_repository_updated_at).to eq(last_repository_updated_at)
+          expect(project.updated_at).to eq(updated_at)
+        end
+      end
+    end
+
+    context 'when both last_activity_at and last_repository_updated_at have to be updated' do
+      before do
+        project.update!(
+          last_activity_at: described_class::RESET_PROJECT_ACTIVITY_INTERVAL.ago - 5.minutes,
+          last_repository_updated_at: described_class::REPOSITORY_UPDATED_AT_INTERVAL.ago - 5.minutes
+        )
+        project.reload
+
+        ::Gitlab::Redis::SharedState.with do |redis|
+          redis.hset('inactive_projects_deletion_warning_email_notified', "project:#{project.id}", Date.current.to_s)
+        end
+      end
+
+      it 'updates the columns' do
+        event = create_push_event(project, project.first_owner)
+
+        project.reload
+        event.reload
+
+        expect(project.last_activity_at).to eq(event.created_at)
+        expect(project.last_repository_updated_at).to eq(event.created_at)
+        expect(project.updated_at).to eq(event.created_at)
+      end
+    end
+
+    context 'when none of last_activity_at and last_repository_updated_at have to be updated' do
+      before do
+        Gitlab::Redis::SharedState.with do |redis|
+          expect(redis).not_to receive(:hdel)
+        end
+
+        project.update!(
+          last_activity_at: Time.current,
+          last_repository_updated_at: Time.current
+        )
+        project.reload
+      end
+
+      context 'with push event' do
+        it 'does not update the columns' do
+          updated_at = project.updated_at
+          last_activity_at = project.last_activity_at
+          last_repository_updated_at = project.last_repository_updated_at
+
+          create_push_event(project, project.first_owner)
+
+          project.reload
+
+          expect(project.last_activity_at).to eq(last_activity_at)
+          expect(project.last_repository_updated_at).to eq(last_repository_updated_at)
+          expect(project.updated_at).to eq(updated_at)
+        end
+      end
+
+      context 'without push event' do
+        it 'does not update the columns' do
+          updated_at = project.updated_at
+          last_activity_at = project.last_activity_at
+          last_repository_updated_at = project.last_repository_updated_at
+
+          create(:closed_issue_event, project: project, author: project.first_owner)
+
+          project.reload
+
+          expect(project.last_activity_at).to eq(last_activity_at)
+          expect(project.last_repository_updated_at).to eq(last_repository_updated_at)
+          expect(project.updated_at).to eq(updated_at)
+        end
+      end
+    end
+  end
+
   describe '#reset_project_activity' do
     let(:project) { create(:project) }
 
@@ -1003,25 +1338,9 @@ RSpec.describe Event, feature_category: :user_profile do
     end
 
     it 'returns false for a regular event without a target' do
-      event = build(:event)
+      event = build(:event, action: :updated)
 
       expect(event).not_to be_body
-    end
-  end
-
-  describe '#target' do
-    it 'eager loads the author of an event target' do
-      create(:closed_issue_event)
-
-      events = described_class.preload(:target).all.to_a
-      count = ActiveRecord::QueryRecorder
-        .new { events.first.target.author }.count
-
-      # This expectation exists to make sure the test doesn't pass when the
-      # author is for some reason not loaded at all.
-      expect(events.first.target.author).to be_an_instance_of(User)
-
-      expect(count).to be_zero
     end
   end
 
@@ -1117,7 +1436,7 @@ RSpec.describe Event, feature_category: :user_profile do
 
       with_them do
         it 'with correct name and method' do
-          event = build(:event, trait)
+          event = build(:event, trait, project: project)
 
           expect(event.action_name).to eq(action_name)
         end
@@ -1135,6 +1454,20 @@ RSpec.describe Event, feature_category: :user_profile do
         action = build(:project_imported_event)
 
         expect(action.action_name).to eq('imported')
+      end
+
+      context 'when target_type is nil' do
+        it 'returns created for created event' do
+          action = build(:event, project: create(:project), action: :created)
+
+          expect(action.action_name).to eq('created')
+        end
+
+        it 'returns imported for imported event' do
+          action = build(:event, project: create(:project, :with_import_url), action: :created)
+
+          expect(action.action_name).to eq('imported')
+        end
       end
     end
   end
@@ -1169,8 +1502,8 @@ RSpec.describe Event, feature_category: :user_profile do
     end
   end
 
-  def create_push_event(project, user)
-    event = create(:push_event, project: project, author: user)
+  def create_push_event(project, user, imported_from = 0)
+    event = create(:push_event, project: project, author: user, imported_from: imported_from)
 
     create(
       :push_event_payload,

@@ -9,6 +9,7 @@ import dropzoneInput from '~/dropzone_input';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import htmlNewMilestone from 'test_fixtures_static/textarea.html';
+import * as mediaUtils from '~/lib/utils/media_utils';
 
 const TEST_FILE = new File([], 'somefile.jpg');
 TEST_FILE.upload = {};
@@ -21,6 +22,12 @@ const TEMPLATE = `<form class="gfm-form" data-uploads-path="${TEST_UPLOAD_PATH}"
 </form>`;
 
 describe('dropzone_input', () => {
+  beforeEach(() => {
+    jest
+      .spyOn(mediaUtils, 'getLimitedMediaDimensions')
+      .mockResolvedValue({ width: 663, height: 325 });
+  });
+
   afterEach(() => {
     resetHTMLFixture();
   });
@@ -58,6 +65,9 @@ describe('dropzone_input', () => {
       form = $('#new_milestone');
       form.data('uploads-path', TEST_UPLOAD_PATH);
       dropzoneInput(form);
+
+      // needed for the underlying insertText to work
+      document.execCommand = jest.fn(() => false);
     });
 
     afterEach(() => {
@@ -122,21 +132,145 @@ describe('dropzone_input', () => {
     });
 
     it('display original file name in comment box', async () => {
-      const axiosMock = new MockAdapter(axios);
-      triggerPasteEvent({
-        types: ['Files'],
-        files: [new File([new Blob()], 'test.png', { type: 'image/png' })],
-        items: [
-          {
-            kind: 'file',
-            type: 'image/png',
-            getAsFile: () => new Blob(),
-          },
-        ],
+      jest.spyOn(mediaUtils, 'getLimitedMediaDimensions').mockResolvedValue(null);
+      await new Promise((resolve) => {
+        const axiosMock = new MockAdapter(axios);
+        triggerPasteEvent({
+          types: ['Files'],
+          files: [new File([new Blob()], 'test.png', { type: 'image/png' })],
+          items: [
+            {
+              kind: 'file',
+              type: 'image/png',
+              getAsFile: () => new Blob(),
+            },
+          ],
+        });
+
+        $('textarea').on('change', () => {
+          expect(axiosMock.history.post[0].data.get('file').name).toEqual('test.png');
+          expect($('textarea').val()).toEqual('![test.png]');
+
+          resolve();
+        });
+
+        axiosMock.onPost().reply(HTTP_STATUS_OK, { link: { markdown: '![test.png]' } });
       });
-      axiosMock.onPost().reply(HTTP_STATUS_OK, { link: { markdown: 'foo' } });
+    });
+
+    it('display width and height for retina images', async () => {
+      await new Promise((resolve) => {
+        const axiosMock = new MockAdapter(axios);
+        triggerPasteEvent({
+          types: ['Files'],
+          files: [new File(['foo'], 'test.png', { type: 'image/png' })],
+          items: [
+            {
+              kind: 'file',
+              type: 'image/png',
+              getAsFile: () => new Blob(),
+            },
+          ],
+        });
+
+        $('textarea').on('change', () => {
+          expect(axiosMock.history.post[0].data.get('file').name).toEqual('test.png');
+          expect($('textarea').val()).toEqual('![test.png]{width=663 height=325}');
+
+          resolve();
+        });
+
+        axiosMock.onPost().reply(HTTP_STATUS_OK, { link: { markdown: '![test.png]' } });
+      });
+    });
+
+    it('preserves undo history', async () => {
+      jest.spyOn(mediaUtils, 'getLimitedMediaDimensions').mockResolvedValue(null);
+      let execCommandMock;
+      const fileName = 'undo-file.png';
+
+      await new Promise((resolve) => {
+        let counter = 0;
+        execCommandMock = jest.fn(() => {
+          // The counter is added as execCommand is called twice during paste:
+          // 1. With {{undo-file.png}} while the file is being uploaded
+          // 2. With ![undo-file.png] after the upload is finished
+          counter += 1;
+          if (counter >= 2) {
+            resolve();
+            return true;
+          }
+          return true;
+        });
+        document.execCommand = execCommandMock;
+
+        const axiosMock = new MockAdapter(axios);
+        axiosMock.onPost().reply(HTTP_STATUS_OK, { link: { markdown: `![${fileName}]` } });
+        triggerPasteEvent({
+          types: ['Files'],
+          files: [new File([new Blob()], fileName, { type: 'image/png' })],
+          items: [
+            {
+              kind: 'file',
+              type: 'image/png',
+              getAsFile: () => new Blob(),
+            },
+          ],
+        });
+      });
+
+      expect($('textarea').val()).toEqual('');
+      expect(execCommandMock.mock.calls).toHaveLength(2);
+      expect(execCommandMock.mock.calls[1][2]).toEqual(`![${fileName}]`);
+    });
+  });
+
+  describe('drag and drop file upload', () => {
+    let form;
+    let dropzone;
+
+    const dropFile = (file) => {
+      const dragEvent = new DragEvent('drop');
+      dragEvent.dataTransfer = { files: [file] };
+      dropzone.drop(dragEvent);
+    };
+
+    beforeEach(() => {
+      mock.setup();
+      form = $(TEMPLATE);
+      dropzone = dropzoneInput(form);
+      document.execCommand = jest.fn();
+    });
+
+    afterEach(() => {
+      mock.teardown();
+    });
+
+    it('applies retina dimensions to dropped retina images', async () => {
+      jest
+        .spyOn(mediaUtils, 'getLimitedMediaDimensions')
+        .mockResolvedValue({ width: 663, height: 325 });
+      const mockFile = new File(['foo'], 'retina.png', { type: 'image/png' });
+
+      mock.post(TEST_UPLOAD_PATH, {
+        status: HTTP_STATUS_OK,
+        body: JSON.stringify({
+          link: {
+            url: '/uploads/retina.png',
+            markdown: '![retina.png]',
+          },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      dropFile(mockFile);
+
+      // run dropzone scheduler
+      jest.runAllTimers();
+      // wait for XHR response and getLimitedImageDimensions to resolve
       await waitForPromises();
-      expect(axiosMock.history.post[0].data.get('file').name).toEqual('test.png');
+
+      expect($(form).find('textarea').val()).toContain('{width=663 height=325}');
     });
   });
 
@@ -195,14 +329,14 @@ describe('dropzone_input', () => {
 
       it('passes attach file button as `clickable` to dropzone', () => {
         dropzoneInput(form);
-        expect($.fn.dropzone.mock.calls[0][0]).toMatchObject({ clickable: attachFileButton });
+        expect($.fn.dropzone.mock.calls[0][0].clickable).toEqual(attachFileButton);
       });
     });
 
     describe('if attach file button does not exist', () => {
       it('passes attach file button as `clickable`, if it exists', () => {
         dropzoneInput(form);
-        expect($.fn.dropzone.mock.calls[0][0]).toMatchObject({ clickable: true });
+        expect($.fn.dropzone.mock.calls[0][0].clickable).toEqual(true);
       });
     });
   });

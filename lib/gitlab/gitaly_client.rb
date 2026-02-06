@@ -28,6 +28,9 @@ module Gitlab
     MAXIMUM_GITALY_CALLS = 30
     CLIENT_NAME = (Gitlab::Runtime.sidekiq? ? 'gitlab-sidekiq' : 'gitlab-web').freeze
     GITALY_METADATA_FILENAME = '.gitaly-metadata'
+    CLIENT_RETRY_DEFAULT_MAX_ATTEMPTS = 4
+    CLIENT_RETRY_DEFAULT_MAX_BACKOFF = 1.4
+    CLIENT_RETRY_DEFAULT_INITIAL_BACKOFF = 0.4
 
     MUTEX = Mutex.new
 
@@ -43,6 +46,10 @@ module Gitlab
       end
     end
 
+    def self.with_context(...)
+      GitalyContext.with_context(...)
+    end
+
     def self.interceptors
       return [] unless Labkit::Tracing.enabled?
 
@@ -50,8 +57,40 @@ module Gitlab
     end
     private_class_method :interceptors
 
-    def self.channel_args
+    def self.retry_policy
+      # We cap to 5 max_attempts because this limit is enforced by the gRPC library.
+      # See here: https://github.com/grpc/grpc-node/issues/2326
+      max_attempts = [Gitlab.config.gitaly.try(:client_max_attempts) || CLIENT_RETRY_DEFAULT_MAX_ATTEMPTS, 5].min
+      max_backoff = Gitlab.config.gitaly.try(:client_max_backoff) || "#{CLIENT_RETRY_DEFAULT_MAX_BACKOFF}s"
+
+      # Parse max_backoff string to extract float value
+      # Example: '1.4s' => float(1.4)
+      max_backoff_value = max_backoff.to_s.delete_suffix('s').to_f
+
+      # Our backoffMultiplier (see below) is hardcoded to 2.
+      # Which means that between each retry, we double the delay
+      # before retrying.
+      # Hence, we can compute the initial_backoff with:
+      initial_backoff = max_backoff_value / (2**max_attempts)
+
+      # If 'max_attempts' and 'max_backoff' have default values
+      # we set 'initial_backoff' back to its default value, overwriting
+      # the computation above.
+      initial_backoff = CLIENT_RETRY_DEFAULT_INITIAL_BACKOFF if
+        max_attempts == CLIENT_RETRY_DEFAULT_MAX_ATTEMPTS &&
+          (max_backoff_value - CLIENT_RETRY_DEFAULT_MAX_BACKOFF).abs < Float::EPSILON
+
       {
+        maxAttempts: max_attempts,
+        initialBackoff: "#{initial_backoff}s",
+        maxBackoff: max_backoff,
+        backoffMultiplier: 2,
+        retryableStatusCodes: %w[UNAVAILABLE ABORTED]
+      }
+    end
+
+    def self.channel_args(storage = nil)
+      args = {
         # These keepalive values match the go Gitaly client
         # https://gitlab.com/gitlab-org/gitaly/-/blob/bf9f52bc/client/dial.go#L78
         'grpc.keepalive_time_ms': 20000,
@@ -65,7 +104,7 @@ module Gitlab
           # grpc creates multiple subchannels to all targets retrurned by the resolver. Requests are distributed to
           # those subchannels in a round-robin fashion.
           # More about client-side load-balancing: https://gitlab.com/groups/gitlab-org/-/epics/8971#note_1207008162
-          "loadBalancingConfig": [{ "round_robin": {} }],
+          loadBalancingConfig: [{ round_robin: {} }],
           # Enable retries for read-only RPCs. With this setting the client to will resend requests that fail with
           # the following conditions:
           #   1. An `UNAVAILABLE` status code was received.
@@ -73,118 +112,145 @@ module Gitlab
           # This allows the client to handle momentary service interruptions without user-facing errors. gRPC's
           # automatic 'transparent retries' may also be sent.
           # For more information please visit https://github.com/grpc/proposal/blob/master/A6-client-retries.md
-          'methodConfig': [
+          methodConfig: [
             {
               # Gitaly sets an `op_type` `MethodOption` on RPCs to note if it mutates a repository. We cannot
               # programatically detect read-only RPCs, i.e. those safe to retry, because Ruby's protobuf
               # implementation does not provide access to `MethodOptions`. That feature is being tracked under
               # https://github.com/protocolbuffers/protobuf/issues/1198. When that is complete we can replace this
               # table.
-              'name': [
-                { 'service': 'gitaly.BlobService', 'method':   'GetBlob' },
-                { 'service': 'gitaly.BlobService', 'method':   'GetBlobs' },
-                { 'service': 'gitaly.BlobService', 'method':   'GetLFSPointers' },
-                { 'service': 'gitaly.BlobService', 'method':   'GetAllLFSPointers' },
-                { 'service': 'gitaly.BlobService', 'method':   'ListAllBlobs' },
-                { 'service': 'gitaly.BlobService', 'method':   'ListAllLFSPointers' },
-                { 'service': 'gitaly.BlobService', 'method':   'ListBlobs' },
-                { 'service': 'gitaly.BlobService', 'method':   'ListLFSPointers' },
-                { 'service': 'gitaly.CommitService', 'method': 'CheckObjectsExist' },
-                { 'service': 'gitaly.CommitService', 'method': 'CommitIsAncestor' },
-                { 'service': 'gitaly.CommitService', 'method': 'CommitLanguages' },
-                { 'service': 'gitaly.CommitService', 'method': 'CommitStats' },
-                { 'service': 'gitaly.CommitService', 'method': 'CommitsByMessage' },
-                { 'service': 'gitaly.CommitService', 'method': 'CountCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'CountDivergingCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'FilterShasWithSignatures' },
-                { 'service': 'gitaly.CommitService', 'method': 'FindAllCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'FindCommit' },
-                { 'service': 'gitaly.CommitService', 'method': 'FindCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'GetCommitMessages' },
-                { 'service': 'gitaly.CommitService', 'method': 'GetCommitSignatures' },
-                { 'service': 'gitaly.CommitService', 'method': 'GetTreeEntries' },
-                { 'service': 'gitaly.CommitService', 'method': 'LastCommitForPath' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListAllCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListCommits' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListCommitsByOid' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListCommitsByRefName' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListFiles' },
-                { 'service': 'gitaly.CommitService', 'method': 'ListLastCommitsForTree' },
-                { 'service': 'gitaly.CommitService', 'method': 'RawBlame' },
-                { 'service': 'gitaly.CommitService', 'method': 'TreeEntry' },
-                { 'service': 'gitaly.ConflictsService', 'method': 'ListConflictFiles' },
-                { 'service': 'gitaly.DiffService', 'method': 'CommitDelta' },
-                { 'service': 'gitaly.DiffService', 'method': 'CommitDiff' },
-                { 'service': 'gitaly.DiffService', 'method': 'DiffStats' },
-                { 'service': 'gitaly.DiffService', 'method': 'FindChangedPaths' },
-                { 'service': 'gitaly.DiffService', 'method': 'GetPatchID' },
-                { 'service': 'gitaly.DiffService', 'method': 'RawDiff' },
-                { 'service': 'gitaly.DiffService', 'method': 'RawPatch' },
-                { 'service': 'gitaly.ObjectPoolService', 'method': 'GetObjectPool' },
-                { 'service': 'gitaly.RefService', 'method': 'FindAllBranches' },
-                { 'service': 'gitaly.RefService', 'method': 'FindAllRemoteBranches' },
-                { 'service': 'gitaly.RefService', 'method': 'FindAllTags' },
-                { 'service': 'gitaly.RefService', 'method': 'FindBranch' },
-                { 'service': 'gitaly.RefService', 'method': 'FindDefaultBranchName' },
-                { 'service': 'gitaly.RefService', 'method': 'FindLocalBranches' },
-                { 'service': 'gitaly.RefService', 'method': 'FindRefsByOID' },
-                { 'service': 'gitaly.RefService', 'method': 'FindTag' },
-                { 'service': 'gitaly.RefService', 'method': 'GetTagMessages' },
-                { 'service': 'gitaly.RefService', 'method': 'GetTagSignatures' },
-                { 'service': 'gitaly.RefService', 'method': 'ListBranchNamesContainingCommit' },
-                { 'service': 'gitaly.RefService', 'method': 'ListRefs' },
-                { 'service': 'gitaly.RefService', 'method': 'ListTagNamesContainingCommit' },
-                { 'service': 'gitaly.RefService', 'method': 'RefExists' },
-                { 'service': 'gitaly.RemoteService', 'method': 'FindRemoteRepository' },
-                { 'service': 'gitaly.RemoteService', 'method': 'FindRemoteRootRef' },
-                { 'service': 'gitaly.RemoteService', 'method': 'UpdateRemoteMirror' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'BackupCustomHooks' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'BackupRepository' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'CalculateChecksum' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'CreateBundle' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'Fsck' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'FindLicense' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'FindMergeBase' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'FullPath' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'HasLocalBranches' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetArchive' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetConfig' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetCustomHooks' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetFileAttributes' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetInfoAttributes' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetObject' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetObjectDirectorySize' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetRawChanges' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'GetSnapshot' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'ObjectSize' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'ObjectFormat' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'RepositoryExists' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'RepositoryInfo' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'RepositorySize' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'SearchFilesByContent' },
-                { 'service': 'gitaly.RepositoryService', 'method': 'SearchFilesByName' },
-                { 'service': 'gitaly.ServerService', 'method': 'ClockSynced' },
-                { 'service': 'gitaly.ServerService', 'method': 'DiskStatistics' },
-                { 'service': 'gitaly.ServerService', 'method': 'ReadinessCheck' },
-                { 'service': 'gitaly.ServerService', 'method': 'ServerInfo' },
-                { 'service': 'grpc.health.v1.Health', 'method': 'Check' }
+              name: [
+                { service: 'gitaly.BlobService', method:   'GetBlob' },
+                { service: 'gitaly.BlobService', method:   'GetBlobs' },
+                { service: 'gitaly.BlobService', method:   'GetLFSPointers' },
+                { service: 'gitaly.BlobService', method:   'GetAllLFSPointers' },
+                { service: 'gitaly.BlobService', method:   'ListAllBlobs' },
+                { service: 'gitaly.BlobService', method:   'ListAllLFSPointers' },
+                { service: 'gitaly.BlobService', method:   'ListBlobs' },
+                { service: 'gitaly.BlobService', method:   'ListLFSPointers' },
+                { service: 'gitaly.CommitService', method: 'CheckObjectsExist' },
+                { service: 'gitaly.CommitService', method: 'CommitIsAncestor' },
+                { service: 'gitaly.CommitService', method: 'CommitLanguages' },
+                { service: 'gitaly.CommitService', method: 'CommitStats' },
+                { service: 'gitaly.CommitService', method: 'CommitsByMessage' },
+                { service: 'gitaly.CommitService', method: 'CountCommits' },
+                { service: 'gitaly.CommitService', method: 'CountDivergingCommits' },
+                { service: 'gitaly.CommitService', method: 'FilterShasWithSignatures' },
+                { service: 'gitaly.CommitService', method: 'FindAllCommits' },
+                { service: 'gitaly.CommitService', method: 'FindCommit' },
+                { service: 'gitaly.CommitService', method: 'FindCommits' },
+                { service: 'gitaly.CommitService', method: 'GetCommitMessages' },
+                { service: 'gitaly.CommitService', method: 'GetCommitSignatures' },
+                { service: 'gitaly.CommitService', method: 'GetTreeEntries' },
+                { service: 'gitaly.CommitService', method: 'LastCommitForPath' },
+                { service: 'gitaly.CommitService', method: 'ListAllCommits' },
+                { service: 'gitaly.CommitService', method: 'ListCommits' },
+                { service: 'gitaly.CommitService', method: 'ListCommitsByOid' },
+                { service: 'gitaly.CommitService', method: 'ListCommitsByRefName' },
+                { service: 'gitaly.CommitService', method: 'ListFiles' },
+                { service: 'gitaly.CommitService', method: 'ListLastCommitsForTree' },
+                { service: 'gitaly.CommitService', method: 'RawBlame' },
+                { service: 'gitaly.CommitService', method: 'TreeEntry' },
+                { service: 'gitaly.ConflictsService', method: 'ListConflictFiles' },
+                { service: 'gitaly.DiffService', method: 'CommitDelta' },
+                { service: 'gitaly.DiffService', method: 'CommitDiff' },
+                { service: 'gitaly.DiffService', method: 'DiffStats' },
+                { service: 'gitaly.DiffService', method: 'FindChangedPaths' },
+                { service: 'gitaly.DiffService', method: 'GetPatchID' },
+                { service: 'gitaly.DiffService', method: 'RawDiff' },
+                { service: 'gitaly.DiffService', method: 'RawPatch' },
+                { service: 'gitaly.ObjectPoolService', method: 'GetObjectPool' },
+                { service: 'gitaly.RefService', method: 'FindAllBranches' },
+                { service: 'gitaly.RefService', method: 'FindAllRemoteBranches' },
+                { service: 'gitaly.RefService', method: 'FindAllTags' },
+                { service: 'gitaly.RefService', method: 'FindBranch' },
+                { service: 'gitaly.RefService', method: 'FindDefaultBranchName' },
+                { service: 'gitaly.RefService', method: 'FindLocalBranches' },
+                { service: 'gitaly.RefService', method: 'FindRefsByOID' },
+                { service: 'gitaly.RefService', method: 'FindTag' },
+                { service: 'gitaly.RefService', method: 'GetTagMessages' },
+                { service: 'gitaly.RefService', method: 'GetTagSignatures' },
+                { service: 'gitaly.RefService', method: 'ListBranchNamesContainingCommit' },
+                { service: 'gitaly.RefService', method: 'ListRefs' },
+                { service: 'gitaly.RefService', method: 'ListTagNamesContainingCommit' },
+                { service: 'gitaly.RefService', method: 'RefExists' },
+                { service: 'gitaly.RemoteService', method: 'FindRemoteRepository' },
+                { service: 'gitaly.RemoteService', method: 'FindRemoteRootRef' },
+                { service: 'gitaly.RemoteService', method: 'UpdateRemoteMirror' },
+                { service: 'gitaly.RepositoryService', method: 'BackupCustomHooks' },
+                { service: 'gitaly.RepositoryService', method: 'BackupRepository' },
+                { service: 'gitaly.RepositoryService', method: 'CalculateChecksum' },
+                { service: 'gitaly.RepositoryService', method: 'CreateBundle' },
+                { service: 'gitaly.RepositoryService', method: 'Fsck' },
+                { service: 'gitaly.RepositoryService', method: 'FindLicense' },
+                { service: 'gitaly.RepositoryService', method: 'FindMergeBase' },
+                { service: 'gitaly.RepositoryService', method: 'FullPath' },
+                { service: 'gitaly.RepositoryService', method: 'HasLocalBranches' },
+                { service: 'gitaly.RepositoryService', method: 'GetArchive' },
+                { service: 'gitaly.RepositoryService', method: 'GetConfig' },
+                { service: 'gitaly.RepositoryService', method: 'GetCustomHooks' },
+                { service: 'gitaly.RepositoryService', method: 'GetFileAttributes' },
+                { service: 'gitaly.RepositoryService', method: 'GetInfoAttributes' },
+                { service: 'gitaly.RepositoryService', method: 'GetObject' },
+                { service: 'gitaly.RepositoryService', method: 'GetObjectDirectorySize' },
+                { service: 'gitaly.RepositoryService', method: 'GetRawChanges' },
+                { service: 'gitaly.RepositoryService', method: 'GetSnapshot' },
+                { service: 'gitaly.RepositoryService', method: 'ObjectSize' },
+                { service: 'gitaly.RepositoryService', method: 'ObjectFormat' },
+                { service: 'gitaly.RepositoryService', method: 'RepositoryExists' },
+                { service: 'gitaly.RepositoryService', method: 'RepositoryInfo' },
+                { service: 'gitaly.RepositoryService', method: 'RepositorySize' },
+                { service: 'gitaly.RepositoryService', method: 'SearchFilesByContent' },
+                { service: 'gitaly.RepositoryService', method: 'SearchFilesByName' },
+                { service: 'gitaly.ServerService', method: 'DiskStatistics' },
+                { service: 'gitaly.ServerService', method: 'ReadinessCheck' },
+                { service: 'gitaly.ServerService', method: 'ServerInfo' },
+                { service: 'gitaly.ServerService', method: 'ServerSignature' },
+                { service: 'grpc.health.v1.Health', method: 'Check' }
               ],
-              'retryPolicy': {
-                'maxAttempts': 4, # Initial request, plus up to three retries.
-                'initialBackoff': '0.4s',
-                'maxBackoff': '1.4s',
-                'backoffMultiplier': 2, # Maximum retry duration is 2400ms.
-                'retryableStatusCodes': ['UNAVAILABLE']
-              }
+              retryPolicy: retry_policy
             }
           ]
         }.to_json
       }
+
+      # Add TLS-specific channel arguments if storage is provided and TLS is enabled
+      if storage
+        uri = URI(address(storage))
+
+        # For dns+tls:// scheme, extract hostname for SNI override
+        # This ensures proper certificate validation during TLS handshake when using DNS resolution
+        # Extract hostname from different URI formats:
+        # - dns+tls:///gitaly.example.com:8075 -> path is /gitaly.example.com:8075
+        # - dns+tls://1.1.1.1/gitaly.example.com:8075 -> path is /gitaly.example.com:8075
+        # - dns+tls:localhost:9876 -> opaque is localhost:9876
+        if uri.scheme == 'dns+tls'
+          host_port = if uri.opaque.present?
+                        uri.opaque
+                      elsif uri.path.present? && uri.path != '/'
+                        uri.path.sub(%r{^/}, '')
+                      end
+
+          if host_port.present?
+            target = URI.parse("//#{host_port}")
+            server_name = target.host
+            args['grpc.ssl_target_name_override'] = server_name if server_name.present?
+          end
+        end
+      end
+
+      args
     end
     private_class_method :channel_args
 
     def self.stub_creds(storage)
-      if URI(address(storage)).scheme == 'tls'
+      uri = URI(address(storage))
+
+      # Check if TLS is enabled via URI scheme
+      # Supported TLS schemes:
+      # - tls://host:port
+      # - dns+tls://authority/host:port or dns+tls:///host:port
+      if uri.scheme == 'tls' || uri.scheme == 'dns+tls'
         GRPC::Core::ChannelCredentials.new ::Gitlab::X509::Certificate.ca_certs_bundle
       else
         :this_channel_is_insecure
@@ -200,7 +266,7 @@ module Gitlab
     end
 
     def self.stub_address(storage)
-      address(storage).sub(%r{^tcp://|^tls://}, '')
+      address(storage).sub(%r{^tcp://|^tls://}, '').sub(%r{^dns\+tls:}, 'dns:')
     end
 
     # Cache gRPC servers by storage. All the client stubs in the same process can share the underlying connection to the
@@ -209,12 +275,13 @@ module Gitlab
     def self.create_channel(storage)
       @channels ||= {}
       @channels[storage] ||= GRPC::ClientStub.setup_channel(
-        nil, stub_address(storage), stub_creds(storage), channel_args
+        nil, stub_address(storage), stub_creds(storage), channel_args(storage)
       )
     end
 
     def self.clear_stubs!
       MUTEX.synchronize do
+        @channels&.each_value(&:close)
         @stubs = nil
         @channels = nil
       end
@@ -233,8 +300,8 @@ module Gitlab
         raise "storage #{storage.inspect} is missing a gitaly_address"
       end
 
-      unless %w[tcp unix tls dns].include?(URI(address).scheme)
-        raise "Unsupported Gitaly address: #{address.inspect} does not use URL scheme 'tcp' or 'unix' or 'tls' or 'dns'"
+      unless %w[tcp unix tls dns dns+tls].include?(URI(address).scheme)
+        raise "Unsupported Gitaly address: #{address.inspect} does not use URL scheme 'tcp' or 'unix' or 'tls' or 'dns' or 'dns+tls'"
       end
 
       address
@@ -276,16 +343,16 @@ module Gitlab
     # `remote_storage: 'gitaly-2'`. And then the metadata would say
     # "gitaly-2 is at network address tcp://10.0.1.2:8075".
     #
-    def self.call(storage, service, rpc, request, remote_storage: nil, timeout: default_timeout, &block)
-      Gitlab::GitalyClient::Call.new(storage, service, rpc, request, remote_storage, timeout).call(&block)
+    def self.call(storage, service, rpc, request, remote_storage: nil, timeout: default_timeout, gitaly_context: {}, &block)
+      Gitlab::GitalyClient::Call.new(storage, service, rpc, request, remote_storage, timeout, gitaly_context: gitaly_context).call(&block)
     end
 
-    def self.execute(storage, service, rpc, request, remote_storage:, timeout:)
+    def self.execute(storage, service, rpc, request, remote_storage:, timeout:, gitaly_context: {})
       enforce_gitaly_request_limits(:call)
       Gitlab::RequestContext.instance.ensure_deadline_not_exceeded!
       raise_if_concurrent_ruby!
 
-      kwargs = request_kwargs(storage, timeout: timeout.to_f, remote_storage: remote_storage)
+      kwargs = request_kwargs(storage, timeout: timeout.to_f, remote_storage: remote_storage, gitaly_context: gitaly_context)
       kwargs = yield(kwargs) if block_given?
 
       stub(service, storage).__send__(rpc, request, kwargs) # rubocop:disable GitlabSecurity/PublicSend
@@ -323,13 +390,19 @@ module Gitlab
     end
     private_class_method :authorization_token
 
-    def self.request_kwargs(storage, timeout:, remote_storage: nil)
+    def self.request_kwargs(storage, timeout:, remote_storage: nil, gitaly_context: {})
       metadata = {
         'authorization' => "Bearer #{authorization_token(storage)}",
         'client_name' => CLIENT_NAME
       }
 
       relative_path = fetch_relative_path
+
+      gitaly_context = GitalyContext.current_context.merge(gitaly_context)
+
+      ::Gitlab::Auth::Identity.currently_linked do |identity|
+        gitaly_context['scoped-user-id'] = identity.scoped_user.id.to_s
+      end
 
       context_data = Gitlab::ApplicationContext.current
 
@@ -341,8 +414,11 @@ module Gitlab
       metadata['gitaly-session-id'] = session_id
       metadata['username'] = context_data['meta.user'] if context_data&.fetch('meta.user', nil)
       metadata['user_id'] = context_data['meta.user_id'].to_s if context_data&.fetch('meta.user_id', nil)
+      metadata[Labkit::Fields::GL_USER_ID] = context_data['meta.gl_user_id'].to_s if context_data&.fetch('meta.gl_user_id', nil)
       metadata['remote_ip'] = context_data['meta.remote_ip'] if context_data&.fetch('meta.remote_ip', nil)
       metadata['relative-path-bin'] = relative_path if relative_path
+      metadata['gitaly-client-context-bin'] = gitaly_context.to_json if gitaly_context.present?
+
       metadata.merge!(Feature::Gitaly.server_feature_flags(**feature_flag_actors))
       metadata.merge!(route_to_primary)
 
@@ -603,6 +679,7 @@ module Gitlab
 
       stack_counter.select { |_, v| v == max }.keys
     end
+    private_class_method :max_stacks
 
     def self.decode_detailed_error(err)
       # details could have more than one in theory, but we only have one to worry about for now.
@@ -619,7 +696,19 @@ module Gitlab
       nil
     end
 
-    private_class_method :max_stacks
+    # This method attempts to unwrap a detailed error from a Gitaly RPC error.
+    # It first decodes the detailed error using decode_detailed_error. If successful,
+    # it tries to extract the unwrapped error by calling the method named by the
+    # error attribute on the decoded error object.
+    def self.unwrap_detailed_error(err)
+      e = decode_detailed_error(err)
+
+      return e if e.nil? || !e.respond_to?(:error) || e.error.nil? || !e.error.respond_to?(:to_s)
+
+      unwrapped_error = e[e.error.to_s]
+
+      unwrapped_error || e
+    end
 
     def self.with_feature_flag_actors(repository: nil, user: nil, project: nil, group: nil, &block)
       feature_flag_actors[:repository] = repository

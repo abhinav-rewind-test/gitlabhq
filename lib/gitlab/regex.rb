@@ -24,7 +24,7 @@ module Gitlab
     end
 
     def oci_repository_path_regex_message
-      "can only include non-accented letters, digits, '_', '-' and '.'. It must not start with '-', end in '.', '.git', or '.atom'."
+      "can only include non-accented letters, digits, '_', '-' and '.'. It must not start with '-', '_', or '.', nor end with '-', '_', '.', '.git', or '.atom'."
     end
 
     def group_name_regex
@@ -246,12 +246,12 @@ module Gitlab
       @utc_date_regex ||= /\A[0-9]{4}-[0-9]{2}-[0-9]{2}\z/
     end
 
-    def issue
-      @issue ||= /(?<issue>\d+)(?<format>\+s{,1})?(?=\W|\z)/
+    def issue(reference_postfix = nil)
+      /(?<issue>\d{1,20})#{Regexp.escape(reference_postfix) if reference_postfix}(?<format>\+s{,1})?(?=\W|\z)/
     end
 
-    def work_item
-      @work_item ||= /(?<work_item>\d+)(?<format>\+s{,1})?(?=\W|\z)/
+    def work_item(reference_postfix = nil)
+      /(?<work_item>\d{1,20})#{Regexp.escape(reference_postfix) if reference_postfix}(?<format>\+s{,1})?(?=\W|\z)/
     end
 
     def base64_regex
@@ -275,8 +275,12 @@ module Gitlab
       package_name_regex
     end
 
+    def ml_model_version_name_regex
+      Regexp.union(semver_regex, /candidate_\d+/)
+    end
+
     def ml_model_file_name_regex
-      maven_file_name_regex
+      @ml_model_file_name_regex ||= %r{\A[A-Za-z0-9\.\_\-\+ ]+\z}
     end
   end
 end

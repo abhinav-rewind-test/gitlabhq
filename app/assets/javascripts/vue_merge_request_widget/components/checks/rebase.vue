@@ -1,12 +1,12 @@
 <script>
 import { GlModal, GlLink } from '@gitlab/ui';
+import rebaseQuery from 'ee_else_ce/vue_merge_request_widget/queries/states/rebase.query.graphql';
 import { s__, __ } from '~/locale';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import { createAlert } from '~/alert';
 import toast from '~/vue_shared/plugins/global_toast';
 import simplePoll from '~/lib/utils/simple_poll';
 import mergeRequestQueryVariablesMixin from '../../mixins/merge_request_query_variables';
-import rebaseQuery from '../../queries/states/rebase.query.graphql';
 import eventHub from '../../event_hub';
 import ActionButtons from '../action_buttons.vue';
 import MergeChecksMessage from './message.vue';
@@ -26,7 +26,7 @@ export default {
       variables() {
         return this.mergeRequestQueryVariables;
       },
-      update: (data) => data.project.mergeRequest,
+      update: (data) => data.project || null,
     },
   },
   inject: {
@@ -52,29 +52,32 @@ export default {
   },
   data() {
     return {
-      state: {},
+      state: null,
       isMakingRequest: false,
     };
   },
   computed: {
     isLoading() {
-      return this.$apollo.queries.state.loading;
+      return this.$apollo.queries.state.loading || !this.state;
+    },
+    mergeRequest() {
+      return this.state?.mergeRequest;
     },
     rebaseInProgress() {
-      return this.state.rebaseInProgress;
+      return this.mergeRequest.rebaseInProgress;
     },
     showRebaseWithoutPipeline() {
       return (
-        this.state.userPermissions.pushToSourceBranch &&
+        this.mr.canPushToSourceBranch &&
         (!this.mr.onlyAllowMergeIfPipelineSucceeds ||
-          (this.mr.onlyAllowMergeIfPipelineSucceeds && this.mr.allowMergeOnSkippedPipeline))
+          (this.mr.onlyAllowMergeIfPipelineSucceeds && this.state.allowMergeOnSkippedPipeline))
       );
     },
     isForkMergeRequest() {
       return this.mr.sourceProjectFullPath !== this.mr.targetProjectFullPath;
     },
     isLatestPipelineCreatedInTargetProject() {
-      const latestPipeline = this.state.pipelines.nodes[0];
+      const latestPipeline = this.mergeRequest.pipelines.nodes[0];
 
       return latestPipeline?.project?.fullPath === this.mr.targetProjectFullPath;
     },
@@ -87,7 +90,7 @@ export default {
     },
     tertiaryActionsButtons() {
       return [
-        this.state.userPermissions.pushToSourceBranch && {
+        this.mr.canPushToSourceBranch && {
           text: s__('mrWidget|Rebase'),
           loading: this.isMakingRequest || this.rebaseInProgress,
           testId: 'standard-rebase-button',
@@ -100,6 +103,13 @@ export default {
           onClick: () => this.rebaseWithoutCi(),
         },
       ].filter((b) => b);
+    },
+    rebaseCheck() {
+      if (this.state?.ciCdSettings?.mergeTrainsEnabled) {
+        return { ...this.check, identifier: 'NEED_REBASE_MERGE_TRAIN' };
+      }
+
+      return this.check;
     },
   },
   methods: {
@@ -182,7 +192,7 @@ export default {
 </script>
 
 <template>
-  <merge-checks-message :check="check">
+  <merge-checks-message :check="rebaseCheck">
     <template #failed>
       <action-buttons v-if="!isLoading" :tertiary-buttons="tertiaryActionsButtons" />
     </template>

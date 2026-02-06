@@ -1,22 +1,21 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Access controls with cluster certificates (RBAC or ABAC) (deprecated)
 ---
 
-# Access controls with cluster certificates (RBAC or ABAC) (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed
 
-> - Restricted service account for deployment was [introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/51716) in GitLab 11.5.
-> - [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
-To connect your cluster to GitLab, use the [GitLab agent](../../clusters/agent/index.md)
-instead.
+> [!warning]
+> This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+> To connect your cluster to GitLab, use the [GitLab agent for Kubernetes](../../clusters/agent/_index.md)
+> instead.
 
 When creating a cluster in GitLab, you are asked if you would like to create either:
 
@@ -60,10 +59,6 @@ GitLab creates the following resources for RBAC clusters.
 | Environment namespace | `Secret`             | Token for environment ServiceAccount                                                                       | Deploying to a cluster |
 | Environment namespace | `RoleBinding`        | [`admin`](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#user-facing-roles) role            | Deploying to a cluster |
 
-The environment namespace `RoleBinding` was
-[updated](https://gitlab.com/gitlab-org/gitlab/-/issues/31113) in GitLab 13.6
-to `admin` role. Previously, the `edit` role was used.
-
 ## ABAC cluster resources
 
 GitLab creates the following resources for ABAC clusters.
@@ -78,10 +73,10 @@ GitLab creates the following resources for ABAC clusters.
 
 ## Security of runners
 
-Runners have the [privileged mode](https://docs.gitlab.com/runner/executors/docker.html#the-privileged-mode)
+Runners have the [privileged mode](https://docs.gitlab.com/runner/executors/docker/#the-privileged-mode)
 enabled by default, which allows them to execute special commands and run
 Docker in Docker. This functionality is needed to run some of the
-[Auto DevOps](../../../topics/autodevops/index.md)
+[Auto DevOps](../../../topics/autodevops/_index.md)
 jobs. This implies the containers are running in privileged mode and you should,
 therefore, be aware of some important details.
 
@@ -93,4 +88,4 @@ arbitrary images as they effectively have root access.
 If you don't want to use a runner in privileged mode, either:
 
 - Use instance runners on GitLab.com. They don't have this security issue.
-- Set up your own runners that use [`docker+machine`](https://docs.gitlab.com/runner/executors/docker_machine.html).
+- Set up your own runners that use [`docker+machine`](https://docs.gitlab.com/runner/executors/docker_machine/).

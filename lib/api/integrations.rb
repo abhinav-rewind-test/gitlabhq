@@ -4,12 +4,11 @@ module API
     feature_category :integrations
 
     INTEGRATIONS_TAGS = %w[integrations].freeze
-
     integrations = Helpers::IntegrationsHelpers.integrations
     integration_classes = Helpers::IntegrationsHelpers.integration_classes
 
     if Gitlab.dev_or_test_env?
-      integrations['mock-ci'] = ::Integrations::MockCi.api_fields
+      integrations['mock-ci'] = ::Integrations::MockCi.api_arguments
       integrations['mock-monitoring'] = []
 
       integration_classes += Helpers::IntegrationsHelpers.development_integration_classes
@@ -20,18 +19,20 @@ module API
     integration_classes.each do |integration|
       event_names = integration.try(:event_names) || next
       event_names.each do |event_name|
-        INTEGRATIONS[integration.to_param.tr("_", "-")] << {
+        INTEGRATIONS[integration.to_param.dasherize] << {
           required: false,
           name: event_name.to_sym,
           type: ::Grape::API::Boolean,
           desc: IntegrationsHelper.integration_event_description(integration, event_name)
         }
       end
+
+      INTEGRATIONS[integration.to_param.dasherize] << Helpers::IntegrationsHelpers.inheritance_field
     end
 
     SLASH_COMMAND_INTEGRATIONS = {
-      'mattermost-slash-commands' => ::Integrations::MattermostSlashCommands.api_fields,
-      'slack-slash-commands' => ::Integrations::SlackSlashCommands.api_fields
+      'mattermost-slash-commands' => ::Integrations::MattermostSlashCommands.api_arguments,
+      'slack-slash-commands' => ::Integrations::SlackSlashCommands.api_arguments
     }.freeze
 
     helpers do
@@ -43,7 +44,7 @@ module API
     end
 
     # The API officially documents only the `:id/integrations` API paths.
-    # We support the older `id:/services` path for backwards-compatibility in API V4.
+    # We support the older `id:/services` path for project integrations for backwards-compatibility in API V4.
     # The support for `:id/services` can be dropped if we create an API V5.
     [':id/services', ':id/integrations'].each do |path|
       params do
@@ -51,131 +52,15 @@ module API
       end
       resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         before { authenticate! }
-        before { authorize_admin_project }
+        before { authorize_admin_project_integrations }
 
-        desc 'List all active integrations' do
-          detail 'Get a list of all active project integrations.'
-          success Entities::ProjectIntegrationBasic
-          failure [
-            { code: 401, message: 'Unauthorized' },
-            { code: 404, message: 'Not found' }
-          ]
-          is_array true
-          tags INTEGRATIONS_TAGS
-        end
-        get path do
-          integrations = user_project.integrations.active
-
-          present integrations, with: Entities::ProjectIntegrationBasic
-        end
-
-        INTEGRATIONS.each do |slug, settings|
-          desc "Create/Edit #{slug.titleize} integration" do
-            detail "Set #{slug.titleize} integration for a project."
-            success Entities::ProjectIntegrationBasic
-            failure [
-              { code: 400, message: 'Bad request' },
-              { code: 401, message: 'Unauthorized' },
-              { code: 404, message: 'Not found' }
-            ]
-            tags INTEGRATIONS_TAGS
-          end
-          params do
-            settings.each do |setting|
-              if setting[:required]
-                requires setting[:name], type: setting[:type], desc: setting[:desc]
-              else
-                optional setting[:name], type: setting[:type], desc: setting[:desc]
-              end
-            end
-          end
-          put "#{path}/#{slug}" do
-            if slug == "git-guardian" && Feature.disabled?(:git_guardian_integration)
-              render_api_error!('GitGuardian feature is disabled', 400)
-            end
-
-            integration = user_project.find_or_initialize_integration(slug.underscore)
-
-            params = declared_params(include_missing: false).merge(active: true)
-
-            if integration.is_a?(::Integrations::GitlabSlackApplication)
-              if integration.new_record?
-                render_api_error!('You cannot create the GitLab for Slack app from the API', 422)
-              end
-
-              params.delete(:active)
-            end
-
-            if integration&.update(params)
-              present integration, with: Entities::ProjectIntegration
-            else
-              render_api_error!('400 Bad Request', 400)
-            end
+        helpers do
+          def fetch_parent_resource
+            user_project
           end
         end
 
-        desc "Disable an integration" do
-          detail "Disable the integration for a project. Integration settings are preserved."
-          success code: 204
-          failure [
-            { code: 400, message: 'Bad request' },
-            { code: 401, message: 'Unauthorized' },
-            { code: 404, message: 'Not found' }
-          ]
-          tags INTEGRATIONS_TAGS
-        end
-        params do
-          requires :slug, type: String, values: INTEGRATIONS.keys, desc: 'The name of the integration'
-        end
-        delete "#{path}/:slug" do
-          if params[:slug] == "git-guardian" && Feature.disabled?(:git_guardian_integration)
-            render_api_error!('GitGuardian feature is disabled', 400)
-          end
-
-          integration = user_project.find_or_initialize_integration(params[:slug].underscore)
-
-          not_found!('Integration') unless integration&.persisted?
-
-          destroy_conditionally!(integration) do
-            attrs = integration_attributes(integration).index_with do |attr|
-              column = if integration.attribute_present?(attr)
-                         integration.column_for_attribute(attr)
-                       elsif integration.data_fields_present?
-                         integration.data_fields.column_for_attribute(attr)
-                       end
-
-              case column
-              when nil, ActiveRecord::ConnectionAdapters::NullColumn
-                nil
-              else
-                column.default
-              end
-            end.merge(active: false)
-
-            render_api_error!('400 Bad Request', 400) unless integration.update(attrs)
-          end
-        end
-
-        desc "Get an integration settings" do
-          detail "Get the integration settings for a project."
-          success Entities::ProjectIntegration
-          failure [
-            { code: 400, message: 'Bad request' },
-            { code: 401, message: 'Unauthorized' },
-            { code: 404, message: 'Not found' }
-          ]
-          tags INTEGRATIONS_TAGS
-        end
-        params do
-          requires :slug, type: String, values: INTEGRATIONS.keys, desc: 'The name of the integration'
-        end
-        get "#{path}/:slug" do
-          integration = user_project.find_or_initialize_integration(params[:slug].underscore)
-
-          not_found!('Integration') unless integration&.persisted?
-
-          present integration, with: Entities::ProjectIntegration
-        end
+        mount IntegratableOperations, with: { path: path }
       end
 
       SLASH_COMMAND_INTEGRATIONS.each do |integration_slug, settings|
@@ -224,11 +109,32 @@ module API
       end
     end
 
+    # New API endpoints should use the `:id/integrations` path exclusively.
+    ':id/integrations'.tap do |path|
+      params do
+        requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the group'
+      end
+
+      resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
+        before { authenticate! }
+        before { authorize_admin_group_integrations }
+
+        helpers do
+          def fetch_parent_resource
+            user_group
+          end
+        end
+
+        mount IntegratableOperations, with: { path: path }
+      end
+    end
+
     desc "Trigger a global slack command" do
       detail 'Added in GitLab 9.4'
       failure [
         { code: 401, message: 'Unauthorized' }
       ]
+      tags INTEGRATIONS_TAGS
     end
     params do
       requires :text, type: String, desc: 'Text of the slack command'

@@ -4,15 +4,10 @@ require 'spec_helper'
 
 RSpec.describe FeatureFlags::CreateService, feature_category: :feature_flags do
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:reporter) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:reporter) { create(:user, reporter_of: project) }
 
   let(:user) { developer }
-
-  before_all do
-    project.add_developer(developer)
-    project.add_reporter(reporter)
-  end
 
   describe '#execute' do
     subject do
@@ -54,7 +49,7 @@ RSpec.describe FeatureFlags::CreateService, feature_category: :feature_flags do
           description: 'description',
           version: 'new_version_flag',
           strategies_attributes: [{ name: 'default', scopes_attributes: [{ environment_scope: '*' }], parameters: {} },
-                                  { name: 'default', parameters: {}, scopes_attributes: [{ environment_scope: 'production' }] }]
+            { name: 'default', parameters: {}, scopes_attributes: [{ environment_scope: 'production' }] }]
         }
       end
 
@@ -88,7 +83,8 @@ RSpec.describe FeatureFlags::CreateService, feature_category: :feature_flags do
         end
       end
 
-      it 'creates audit event', :with_license do
+      it 'creates audit event', :with_license,
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17039' do
         expect { subject }.to change { AuditEvent.count }.by(1)
         expect(audit_event_message).to start_with('Created feature flag feature_flag with description "description".')
         expect(audit_event_message).to include('Created strategy "default" with scopes "*".')

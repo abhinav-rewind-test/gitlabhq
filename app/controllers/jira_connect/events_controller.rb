@@ -17,7 +17,11 @@ class JiraConnect::EventsController < JiraConnect::ApplicationController
   end
 
   def uninstalled
-    if JiraConnectInstallations::DestroyService.execute(current_jira_installation, jira_connect_base_path, jira_connect_events_uninstalled_path)
+    if JiraConnectInstallations::DestroyService.execute(
+      current_jira_installation,
+      jira_connect_base_path,
+      jira_connect_events_uninstalled_path
+    )
       head :ok
     else
       head :unprocessable_entity
@@ -38,11 +42,15 @@ class JiraConnect::EventsController < JiraConnect::ApplicationController
   end
 
   def create_params
-    transformed_params.permit(:client_key, :shared_secret, :base_url)
+    transformed_params
+      .permit(:client_key, :shared_secret, :base_url, :display_url)
+      .merge(organization_id: Current.organization.id)
   end
 
   def update_params
-    transformed_params.permit(:shared_secret, :base_url)
+    transformed_params
+      .permit(:shared_secret, :base_url, :display_url)
+      .merge(organization_id: Current.organization.id)
   end
 
   def transformed_params
@@ -59,9 +67,23 @@ class JiraConnect::EventsController < JiraConnect::ApplicationController
 
   def jwt_verification_claims
     {
-      aud: Gitlab.config.jira_connect.enforce_jira_base_url_https ? jira_connect_base_url(protocol: 'https') : jira_connect_base_url,
+      aud: calculate_audiences,
       iss: transformed_params[:client_key],
       qsh: Atlassian::Jwt.create_query_string_hash(request.url, request.method, jira_connect_base_url)
     }
+  end
+
+  def calculate_audiences
+    audiences = if Gitlab.config.jira_connect.enforce_jira_base_url_https
+                  [jira_connect_base_url(protocol: 'https')]
+                else
+                  [jira_connect_base_url]
+                end
+
+    if (additional_url = Gitlab::CurrentSettings.jira_connect_additional_audience_url).present?
+      audiences << Gitlab::Utils.append_path(additional_url, "-/jira_connect")
+    end
+
+    audiences
   end
 end

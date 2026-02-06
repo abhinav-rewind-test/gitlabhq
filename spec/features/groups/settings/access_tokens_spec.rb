@@ -2,17 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Group > Settings > Access Tokens', :js, feature_category: :system_access do
+RSpec.describe 'Group > Settings > Access tokens', :js, feature_category: :system_access do
   include Spec::Support::Helpers::ModalHelpers
+  include Features::AccessTokenHelpers
 
   let_it_be(:user) { create(:user) }
   let_it_be(:bot_user) { create(:user, :project_bot) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group) { create(:group, owners: user) }
   let_it_be(:resource_settings_access_tokens_path) { group_settings_access_tokens_path(group) }
-
-  before_all do
-    group.add_owner(user)
-  end
 
   before do
     sign_in(user)
@@ -50,5 +47,22 @@ RSpec.describe 'Group > Settings > Access Tokens', :js, feature_category: :syste
     let!(:resource_access_token) { create_resource_access_token }
 
     it_behaves_like 'inactive resource access tokens', 'This group has no active access tokens.'
+  end
+
+  describe 'rotating tokens' do
+    let!(:resource_access_token) { create_resource_access_token }
+
+    it_behaves_like 'rotating token fails due to missing access rights', 'group' do
+      let_it_be(:resource) { group }
+    end
+
+    context 'when user is owner of group' do
+      before do
+        group.add_owner(user)
+      end
+
+      it_behaves_like 'rotating token succeeds', 'group'
+      it_behaves_like 'rotating already revoked token fails'
+    end
   end
 end

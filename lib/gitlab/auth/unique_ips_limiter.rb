@@ -11,7 +11,17 @@ module Gitlab
             ip = RequestContext.instance.client_ip
             unique_ips = update_and_return_ips_count(user_id, ip)
 
-            raise TooManyIps.new(user_id, ip, unique_ips) if unique_ips > config.unique_ips_limit_per_user
+            if unique_ips > config.unique_ips_limit_per_user
+              Gitlab::AuthLogger.error(
+                message: 'too_many_ips',
+                remote_ip: ip,
+                unique_ips_count: unique_ips,
+                user_id: user_id,
+                **Gitlab::ApplicationContext.current
+              )
+
+              raise TooManyIps.new(user_id, ip, unique_ips)
+            end
           end
         end
 
@@ -31,7 +41,7 @@ module Gitlab
 
           Gitlab::Redis::SharedState.with do |redis|
             redis.multi do |r|
-              r.zadd(key, time, ip)
+              r.zadd(key, time, ip.to_s)
               r.zremrangebyscore(key, 0, time - config.unique_ips_limit_time_window)
               r.zcard(key)
             end.last

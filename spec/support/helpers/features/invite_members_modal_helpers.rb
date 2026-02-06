@@ -4,23 +4,28 @@ module Features
   module InviteMembersModalHelpers
     include ListboxHelpers
 
-    def invite_member(names, role: 'Guest', expires_at: nil)
+    def invite_member(names, role: 'Guest', expires_at: nil, use_exact_text_match: true)
       click_on 'Invite members'
 
+      invite_with_opened_modal(names, role: role, expires_at: expires_at, use_exact_text_match: use_exact_text_match)
+    end
+
+    def invite_with_opened_modal(names, role: 'Guest', expires_at: nil, use_exact_text_match: true)
       page.within invite_modal_selector do
         select_members(names)
-        choose_options(role, expires_at)
+        send_keys :escape # dismiss dropdown
+        choose_options(role, expires_at, use_exact_text_match)
         submit_invites
       end
 
       wait_for_requests
     end
 
-    def invite_member_by_email(role)
+    def invite_member_by_email(role, use_exact_text_match: true)
       click_on _('Invite members')
 
       page.within invite_modal_selector do
-        choose_options(role, nil)
+        choose_options(role, nil, use_exact_text_match)
         find(member_dropdown_selector).set('new_email@gitlab.com')
         wait_for_requests
 
@@ -42,20 +47,25 @@ module Features
 
     def select_members(names)
       Array.wrap(names).each do |name|
-        find(member_dropdown_selector).set(name)
+        # use `clear: nil` to prevent events that can trap the browser focus
+        find(member_dropdown_selector).set(name, clear: nil)
 
         wait_for_requests
         click_button name
       end
     end
 
-    def invite_group(name, role: 'Guest', expires_at: nil)
+    def invite_group(name, role: 'Guest', expires_at: nil, use_exact_text_match: true)
       click_on 'Invite a group'
 
       click_on 'Select a group'
       wait_for_requests
       find('[role="option"]', text: name).click
-      choose_options(role, expires_at)
+
+      # Find the modal that contains the selected group and scope to that
+      within(page.find('[data-testid="invite-modal"], .js-invite-groups-modal', text: name)) do
+        choose_options(role, expires_at, use_exact_text_match)
+      end
 
       submit_invites
     end
@@ -64,13 +74,14 @@ module Features
       click_button 'Invite'
     end
 
-    def choose_options(role, expires_at)
+    def choose_options(role, expires_at, use_exact_text_match = true)
       page.within role_dropdown_selector do
         wait_for_requests
         toggle_listbox
-        select_listbox_item(role, exact_text: true)
+        select_listbox_item(role, exact_text: use_exact_text_match)
       end
-      fill_in 'YYYY-MM-DD', with: expires_at.strftime('%Y-%m-%d') if expires_at
+
+      fill_in 'YYYY-MM-DD', with: expires_at.to_date.iso8601 if expires_at
     end
 
     def click_groups_tab
@@ -148,11 +159,11 @@ module Features
     end
 
     def expect_to_have_group(group)
-      expect(page).to have_selector("[entity-id='#{group.id}']")
+      expect(page).to have_selector("[data-testid='group-select-avatar-#{group.id}']")
     end
 
     def expect_not_to_have_group(group)
-      expect(page).not_to have_selector("[entity-id='#{group.id}']")
+      expect(page).not_to have_selector("[data-testid='group-select-avatar-#{group.id}']")
     end
   end
 end

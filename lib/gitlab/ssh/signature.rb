@@ -8,6 +8,7 @@ module Gitlab
   module Ssh
     class Signature
       include Gitlab::Utils::StrongMemoize
+      include SignatureType
 
       GIT_NAMESPACE = 'git'
 
@@ -17,6 +18,10 @@ module Gitlab
         @signer = signer
         @commit = commit
         @committer_email = commit.committer_email
+      end
+
+      def type
+        :ssh
       end
 
       def verification_status
@@ -43,8 +48,16 @@ module Gitlab
 
           next public_key.public_key.fingerprint if public_key.is_a?(SSHData::Certificate)
 
-          public_key.fingerprint
+          public_key&.fingerprint
         end
+      end
+      # The fingerprint returned in key_fingerprint is a SHA256 given the lookup in signed_by_key
+      # method. We alias :key_fingerprint_sha256 here so app/views/projects/commit/_signature_badge.html.haml
+      # can render correctly
+      alias_method :key_fingerprint_sha256, :key_fingerprint
+
+      def user_id
+        signed_by_key&.user_id
       end
 
       private
@@ -71,7 +84,7 @@ module Gitlab
       def calculate_verification_status
         return :unknown_key unless signed_by_key
         return :other_user unless committer?
-        return :unverified unless signed_by_user_email_verified?
+        return :same_user_different_email unless signed_by_user_email_verified?
 
         :verified
       end
@@ -88,6 +101,8 @@ module Gitlab
       end
 
       def signature
+        return unless @signature_text.present?
+
         strong_memoize(:signature) do
           ::SSHData::Signature.parse_pem(@signature_text)
         rescue SSHData::DecodeError

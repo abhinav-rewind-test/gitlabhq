@@ -24,12 +24,9 @@ export default {
 </script>
 
 <template>
-  <li
-    class="timeline-entry note note-wrapper discussion-filter-note js-discussion-filter-note"
-    data-testid="discussion-filter-container"
-  >
+  <li class="timeline-entry note note-wrapper discussion-filter-note js-discussion-filter-note">
     <div
-      class="gl-float-left gl--flex-center gl-rounded-full gl-mt-n1 gl-ml-2 gl-w-6 gl-h-6 gl-bg-gray-50 gl-text-gray-600"
+      class="gl-float-left -gl-mt-1 gl-ml-2 gl-flex gl-h-6 gl-w-6 gl-items-center gl-justify-center gl-rounded-full gl-bg-strong gl-text-subtle"
     >
       <gl-icon name="comment" />
     </div>
@@ -41,7 +38,7 @@ export default {
           </template>
         </gl-sprintf>
       </div>
-      <div class="discussion-filter-actions gl-mt-3 gl-display-flex">
+      <div class="discussion-filter-actions gl-mt-3 gl-flex">
         <gl-button variant="default" class="gl-mr-3" @click="selectFilter(0)">
           {{ __('Show all activity') }}
         </gl-button>

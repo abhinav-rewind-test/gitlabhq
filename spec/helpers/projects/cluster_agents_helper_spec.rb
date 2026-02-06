@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Projects::ClusterAgentsHelper do
+RSpec.describe Projects::ClusterAgentsHelper, feature_category: :deployment_management do
   describe '#js_cluster_agent_details_data' do
     let_it_be(:project) { create(:project) }
     let_it_be(:current_user) { create(:user) }
@@ -25,7 +25,7 @@ RSpec.describe Projects::ClusterAgentsHelper do
 
     subject { helper.js_cluster_agent_details_data(agent_name, project) }
 
-    it {
+    it do
       is_expected.to match({
         agent_name: agent_name,
         project_path: project.full_path,
@@ -33,10 +33,10 @@ RSpec.describe Projects::ClusterAgentsHelper do
         empty_state_svg_path: kind_of(String),
         can_admin_vulnerability: "true",
         kas_address: Gitlab::Kas.external_url,
-        kas_version: Gitlab::Kas.version_info,
+        kas_install_version: Gitlab::Kas.install_version_info,
         can_admin_cluster: "false"
       })
-    }
+    end
 
     context 'user has admin cluster permissions' do
       let(:user_can_admin_cluster) { true }

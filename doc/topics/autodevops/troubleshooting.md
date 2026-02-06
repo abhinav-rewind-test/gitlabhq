@@ -1,14 +1,16 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Troubleshooting Auto DevOps
 ---
 
-# Troubleshooting Auto DevOps
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 The information in this documentation page describes common errors when using
 Auto DevOps, and any available workarounds.
@@ -21,7 +23,7 @@ You can resolve some problems with Auto DevOps deployment by changing advanced A
 
 ## Unable to select a buildpack
 
-Auto Build and Auto Test may fail to detect your language or framework with the
+Auto Test may fail to detect your language or framework with the
 following error:
 
 ```plaintext
@@ -68,7 +70,7 @@ As a temporary workaround, you can skip the errors by setting and forwarding the
 If your pipeline fails with the following message:
 
 ```plaintext
-Unable to create pipeline
+Unable to run pipeline
 
   jobs:test config key may not be used with `rules`: only
 ```
@@ -93,7 +95,7 @@ with Auto DevOps:
 ```plaintext
 Detected an existing PostgreSQL database installed on the
 deprecated channel 1, but the current channel is set to 2. The default
-channel changed to 2 in of GitLab 13.0.
+channel changed to 2 in GitLab 13.0.
 [...]
 ```
 
@@ -102,39 +104,52 @@ your application. The default installation method changed in GitLab 13.0, and
 upgrading existing databases requires user involvement. The two installation
 methods are:
 
-- **channel 1 (deprecated):** Pulls in the database as a dependency of the associated
+- **channel 1 (deprecated)**: Pulls in the database as a dependency of the associated
   Helm chart. Only supports Kubernetes versions up to version 1.15.
-- **channel 2 (current):** Installs the database as an independent Helm chart. Required
+- **channel 2 (current)**: Installs the database as an independent Helm chart. Required
   for using the in-cluster database feature with Kubernetes versions 1.16 and greater.
 
 If you receive this error, you can do one of the following actions:
 
-- You can *safely* ignore the warning and continue using the channel 1 PostgreSQL
+- You can safely ignore the warning and continue using the channel 1 PostgreSQL
   database by setting `AUTO_DEVOPS_POSTGRES_CHANNEL` to `1` and redeploying.
 
 - You can delete the channel 1 PostgreSQL database and install a fresh channel 2
   database by setting `AUTO_DEVOPS_POSTGRES_DELETE_V1` to a non-empty value and
   redeploying.
 
-  WARNING:
-  Deleting the channel 1 PostgreSQL database permanently deletes the existing
-  channel 1 database and all its data. See
-  [Upgrading PostgreSQL](upgrading_postgresql.md)
-  for more information on backing up and upgrading your database.
+  > [!warning]
+  > Deleting the channel 1 PostgreSQL database permanently deletes the existing
+  > channel 1 database and all its data. See
+  > [Upgrading PostgreSQL](upgrading_postgresql.md)
+  > for more information on backing up and upgrading your database.
 
 - If you are not using the in-cluster database, you can set
   `POSTGRES_ENABLED` to `false` and re-deploy. This option is especially relevant to
-  users of *custom charts without the in-chart PostgreSQL dependency*.
+  users of custom charts without the in-chart PostgreSQL dependency.
   Database auto-detection is based on the `postgresql.enabled` Helm value for
   your release. This value is set based on the `POSTGRES_ENABLED` CI/CD variable
   and persisted by Helm, regardless of whether or not your chart uses the
   variable.
 
-WARNING:
-Setting `POSTGRES_ENABLED` to `false` permanently deletes any existing
-channel 1 database for your environment.
+> [!warning]
+> Setting `POSTGRES_ENABLED` to `false` permanently deletes any existing
+> channel 1 database for your environment.
 
-## `Error: unable to recognize "": no matches for kind "Deployment" in version "extensions/v1beta1"`
+## Auto DevOps is automatically disabled for a project
+
+If Auto DevOps is automatically disabled for a project, it may be due to the following reasons:
+
+- The Auto DevOps setting has not been explicitly enabled in the [project](_index.md#per-project) itself. It is enabled only in the parent [group](_index.md#per-group) or its [instance](../../administration/settings/continuous_integration.md#configure-auto-devops-for-all-projects).
+- The project has no history of successful Auto DevOps pipelines.
+- An Auto DevOps pipeline failed.
+
+To resolve this issue:
+
+- Enable the Auto DevOps setting in the project.
+- Fix errors that are breaking the pipeline so the pipeline reruns.
+
+## Error: `unable to recognize "": no matches for kind "Deployment" in version "extensions/v1beta1"`
 
 After upgrading your Kubernetes cluster to [v1.16+](stages.md#kubernetes-116),
 you may encounter this message when deploying with Auto DevOps:
@@ -162,7 +177,7 @@ that works for this problem. Follow these steps to use the tool in Auto DevOps:
      - remote: https://gitlab.com/shinya.maeda/ci-templates/-/raw/master/map-deprecated-api.gitlab-ci.yml
 
    variables:
-     HELM_VERSION_FOR_MAPKUBEAPIS: "v2" # If you're using auto-depoy-image v2 or above, please specify "v3".
+     HELM_VERSION_FOR_MAPKUBEAPIS: "v2" # If you're using auto-depoy-image v2 or later, please specify "v3".
    ```
 
 1. Run the job `<environment-name>:map-deprecated-api`. Ensure that this job succeeds before moving
@@ -182,14 +197,19 @@ that works for this problem. Follow these steps to use the tool in Auto DevOps:
 
 1. Continue the deployments as usual.
 
-## `Error: error initializing: Looks like "https://kubernetes-charts.storage.googleapis.com" is not a valid chart repository or cannot be reached`
+## `Error: not a valid chart repository or cannot be reached`
 
 As [announced in the official CNCF blog post](https://www.cncf.io/blog/2020/10/07/important-reminder-for-all-helm-users-stable-incubator-repos-are-deprecated-and-all-images-are-changing-location/),
 the stable Helm chart repository was deprecated and removed on November 13th, 2020.
-You may encounter this error after that date.
+You may encounter this error after that date:
 
-Some GitLab features had dependencies on the stable chart. To mitigate the impact, we changed them
-to use new official repositories or the [Helm Stable Archive repository maintained by GitLab](https://gitlab.com/gitlab-org/cluster-integration/helm-stable-archive).
+```plaintext
+Error: error initializing: Looks like "https://kubernetes-charts.storage.googleapis.com"
+is not a valid chart repository or cannot be reached
+```
+
+Some GitLab features had dependencies on the stable chart. To mitigate the impact, the dependencies
+use new official repositories or the [Helm Stable Archive repository maintained by GitLab](https://gitlab.com/gitlab-org/cluster-integration/helm-stable-archive).
 Auto Deploy contains [an example fix](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/merge_requests/127).
 
 In Auto Deploy, `v1.0.6+` of `auto-deploy-image` no longer adds the deprecated stable repository to

@@ -1,7 +1,7 @@
 import { mergeAttributes } from '@tiptap/core';
 import { TaskList } from '@tiptap/extension-task-list';
 import { PARSE_HTML_PRIORITY_HIGHEST } from '../constants';
-import { getMarkdownSource } from '../services/markdown_sourcemap';
+import { getMarkdownSource } from '../services/markdown_source';
 
 export default TaskList.extend({
   addOptions() {
@@ -30,7 +30,7 @@ export default TaskList.extend({
       bullet: {
         default: '*',
         parseHTML(element) {
-          const bullet = getMarkdownSource(element)?.charAt(0);
+          const bullet = getMarkdownSource(element)?.trim().charAt(0);
           return '*+-'.includes(bullet) ? bullet : '*';
         },
       },

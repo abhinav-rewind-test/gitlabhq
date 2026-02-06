@@ -6,24 +6,17 @@ RSpec.describe NotesHelper, feature_category: :team_planning do
   include RepoHelpers
 
   let_it_be(:owner) { create(:owner) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group) { create(:group, owners: owner) }
   let_it_be(:project) { create(:project, namespace: group) }
-  let_it_be(:maintainer) { create(:user) }
-  let_it_be(:reporter) { create(:user) }
-  let_it_be(:guest) { create(:user) }
+  let_it_be(:maintainer) { create(:user, maintainer_of: project) }
+  let_it_be(:reporter) { create(:user, reporter_of: project) }
+  let_it_be(:guest) { create(:user, guest_of: project) }
 
   let_it_be(:owner_note) { create(:note, author: owner, project: project) }
   let_it_be(:maintainer_note) { create(:note, author: maintainer, project: project) }
   let_it_be(:reporter_note) { create(:note, author: reporter, project: project) }
 
   let!(:notes) { [owner_note, maintainer_note, reporter_note] }
-
-  before_all do
-    group.add_owner(owner)
-    project.add_maintainer(maintainer)
-    project.add_reporter(reporter)
-    project.add_guest(guest)
-  end
 
   describe '#note_target_title' do
     context 'note does not exist' do
@@ -103,7 +96,10 @@ RSpec.describe NotesHelper, feature_category: :team_planning do
               file: ".gitmodules",
               old_line: 4,
               new_line: 4,
-              diff_refs: merge_request_diff3.compare_with(merge_request_diff1.head_commit_sha).diff_refs
+              diff_refs: ::MergeRequests::MergeRequestDiffComparison
+                          .new(merge_request_diff3)
+                          .compare_with(merge_request_diff1.head_commit_sha)
+                          .diff_refs
             )
           end
 
@@ -291,25 +287,7 @@ RSpec.describe NotesHelper, feature_category: :team_planning do
     let(:note) { create(:note_on_issue, noteable: issue, project: project) }
 
     it 'returns the noteable url with an anchor to the note' do
-      expect(noteable_note_url(note)).to match("/#{project.namespace.path}/#{project.path}/-/issues/#{issue.iid}##{dom_id(note)}")
-    end
-  end
-
-  describe '#discussion_resolved_intro' do
-    context 'when the discussion was resolved by a push' do
-      let(:discussion) { double(:discussion, resolved_by_push?: true) }
-
-      it 'returns "Automatically resolved"' do
-        expect(discussion_resolved_intro(discussion)).to eq('Automatically resolved')
-      end
-    end
-
-    context 'when the discussion was not resolved by a push' do
-      let(:discussion) { double(:discussion, resolved_by_push?: false) }
-
-      it 'returns "Resolved"' do
-        expect(discussion_resolved_intro(discussion)).to eq('Resolved')
-      end
+      expect(noteable_note_url(note)).to match("#{::Gitlab::UrlBuilder.instance.issue_path(issue)}##{dom_id(note)}")
     end
   end
 

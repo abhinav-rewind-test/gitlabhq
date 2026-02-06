@@ -21,11 +21,32 @@ module Resolvers
           required: false,
           description: 'Sort catalog resources by given criteria.'
 
-        def resolve_with_lookahead(scope:, search: nil, sort: nil)
+        argument :verification_level, ::Types::Namespaces::VerificationLevelEnum,
+          required: false,
+          description: 'Filter catalog resources by verification level.'
+
+        argument :topics, [GraphQL::Types::String],
+          required: false,
+          description: 'Filter catalog resources by project topic names.'
+
+        argument :min_access_level, ::Types::AccessLevelEnum,
+          required: false,
+          description: 'Minimum access level required for the user on the catalog resource project.'
+
+        def resolve_with_lookahead(
+          scope:, search: nil, sort: nil, verification_level: nil, topics: nil, min_access_level: nil
+        )
           apply_lookahead(
             ::Ci::Catalog::Listing
               .new(context[:current_user])
-              .resources(sort: sort, search: search, scope: scope)
+              .resources(
+                sort: sort,
+                search: search,
+                scope: scope,
+                verification_level: verification_level,
+                topics: topics,
+                min_access_level: min_access_level
+              )
           )
         end
 
@@ -33,8 +54,12 @@ module Resolvers
 
         def preloads
           {
+            full_path: { project: [:route, { namespace: :route }] },
             web_path: { project: { namespace: :route } },
-            readme_html: { project: :route }
+            readme_html: { project: :route },
+            archived: { project: { namespace: [:namespace_settings,
+              :namespace_settings_with_ancestors_inherited_settings] } },
+            versions: { versions: :components }
           }
         end
       end

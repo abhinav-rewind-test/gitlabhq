@@ -3,40 +3,85 @@
 require 'spec_helper'
 
 RSpec.describe MergeRequests::Mergeability::CheckConflictStatusService, feature_category: :code_review_workflow do
+  using RSpec::Parameterized::TableSyntax
+
   subject(:check_conflict_status) { described_class.new(merge_request: merge_request, params: {}) }
 
-  let(:merge_request) { build(:merge_request) }
+  let(:merge_request) { build(:merge_request, merge_status: merge_status) }
+  let(:merge_status) { :can_be_merged }
 
   it_behaves_like 'mergeability check service', :conflict, 'Checks whether the merge request has a conflict'
 
   describe '#execute' do
-    let(:result) { check_conflict_status.execute }
+    context 'when the source branch sha matches the diff head sha' do
+      where(:merge_status, :expected) do
+        :preparing | Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+        :unchecked | Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+        :cannot_be_merged_recheck | Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+        :checking | Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+        :cannot_be_merged_rechecking | Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+        :can_be_merged | Gitlab::MergeRequests::Mergeability::CheckResult::SUCCESS_STATUS
+        :cannot_be_merged | Gitlab::MergeRequests::Mergeability::CheckResult::FAILED_STATUS
+      end
 
-    before do
-      allow(merge_request).to receive(:can_be_merged?).and_return(can_be_merged)
-    end
+      with_them do
+        let(:result) { check_conflict_status.execute }
 
-    context 'when MergeRequest#can_be_merged is true' do
-      let(:can_be_merged) { true }
-
-      it 'returns a check result with status success' do
-        expect(result.status).to eq Gitlab::MergeRequests::Mergeability::CheckResult::SUCCESS_STATUS
+        it 'returns the expected status' do
+          expect(result.status).to eq expected
+          expect(result.payload[:identifier]).to eq(:conflict)
+        end
       end
     end
 
-    context 'when MergeRequest#can_be_merged is false' do
-      let(:can_be_merged) { false }
+    context 'when the source branch sha does not match the diff head sha' do
+      let(:merge_request) { create(:merge_request) }
+      let(:result) { check_conflict_status.execute }
 
-      it 'returns a check result with status failed' do
-        expect(result.status).to eq Gitlab::MergeRequests::Mergeability::CheckResult::FAILED_STATUS
-        expect(result.payload[:identifier]).to eq(:conflict)
+      before do
+        merge_request.source_branch_sha = '1'
+      end
+
+      context 'when feature flag is enabled' do
+        before do
+          stub_feature_flags(validate_diff_sha_mr_head_sha: true)
+        end
+
+        it 'returns checking' do
+          expect(result.status).to eq Gitlab::MergeRequests::Mergeability::CheckResult::CHECKING_STATUS
+          expect(result.payload[:identifier]).to eq(:conflict)
+        end
+      end
+
+      context 'when feature flag is disabled' do
+        before do
+          stub_feature_flags(validate_diff_sha_mr_head_sha: false)
+        end
+
+        it 'proceeds with normal merge status check' do
+          # When the flag is disabled, it should follow the normal flow
+          # which depends on the merge_request.can_be_merged? status
+          expect(result.payload[:identifier]).to eq(:conflict)
+        end
       end
     end
   end
 
   describe '#skip?' do
-    it 'returns false' do
-      expect(check_conflict_status.skip?).to eq false
+    where(:skip_conflict_check, :expected) do
+      nil   | false
+      false | false
+      true  | true
+    end
+
+    with_them do
+      subject do
+        described_class
+          .new(merge_request: merge_request, params: { skip_conflict_check: skip_conflict_check })
+          .skip?
+      end
+
+      it { is_expected.to equal expected }
     end
   end
 

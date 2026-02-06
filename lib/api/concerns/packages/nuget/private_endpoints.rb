@@ -20,6 +20,8 @@ module API
           NON_NEGATIVE_INTEGER_REGEX = %r{\A(0|[1-9]\d*)\z}
 
           included do
+            boundary_type
+
             # https://docs.microsoft.com/en-us/nuget/api/registration-base-url-resource
             params do
               requires :package_name, type: String, desc: 'The NuGet package name',
@@ -38,10 +40,11 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not Found' }
                 ]
-                tags %w[nuget_packages]
+                tags %w[packages]
               end
+              route_setting :authorization, permissions: :read_nuget_package, boundary_type: boundary_type
               get 'index', format: :json, urgency: :low do
-                present ::Packages::Nuget::PackagesMetadataPresenter.new(find_packages(params[:package_name])),
+                present ::Packages::Nuget::PackagesMetadataPresenter.new(find_packages),
                   with: ::API::Entities::Nuget::PackagesMetadata
               end
 
@@ -53,17 +56,15 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not Found' }
                 ]
-                tags %w[nuget_packages]
+                tags %w[packages]
               end
               params do
                 requires :package_version, type: String, desc: 'The NuGet package version',
                   regexp: API::NO_SLASH_URL_PART_REGEX, documentation: { example: '1.0.0' }
               end
+              route_setting :authorization, permissions: :read_nuget_package, boundary_type: boundary_type
               get '*package_version', format: :json, urgency: :low do
-                present ::Packages::Nuget::PackageMetadataPresenter.new(
-                  find_package(params[:package_name],
-                    params[:package_version])
-                ),
+                present ::Packages::Nuget::PackageMetadataPresenter.new(find_package),
                   with: ::API::Entities::Nuget::PackageMetadata
               end
             end
@@ -90,24 +91,17 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not Found' }
                 ]
-                tags %w[nuget_packages]
+                tags %w[packages]
               end
+              route_setting :authorization, permissions: :search_nuget_package, boundary_type: boundary_type
               get format: :json, urgency: :low do
-                search_options = {
-                  include_prerelease_versions: params[:prerelease],
-                  per_page: params[:take],
-                  padding: params[:skip]
-                }
-
-                results = search_packages(params[:q], search_options)
-
                 track_package_event(
                   'search_package',
                   :nuget,
                   **snowplow_gitlab_standard_context.merge(category: 'API::NugetPackages')
                 )
 
-                present ::Packages::Nuget::SearchResultsPresenter.new(results),
+                present ::Packages::Nuget::SearchResultsPresenter.new(search_packages),
                   with: ::API::Entities::Nuget::SearchResults
               end
             end

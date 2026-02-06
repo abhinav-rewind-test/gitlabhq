@@ -79,8 +79,6 @@ module Factories
                 environment: { name: 'staging', action: 'prepare' }
               }
             end
-
-            set_expanded_environment_name
           end
 
           trait :start_staging do
@@ -93,8 +91,6 @@ module Factories
                 environment: { name: 'staging', action: 'start' }
               }
             end
-
-            set_expanded_environment_name
           end
 
           trait :stop_staging do
@@ -107,17 +103,17 @@ module Factories
                 environment: { name: 'staging', action: 'stop' }
               }
             end
-
-            set_expanded_environment_name
           end
 
-          trait :set_expanded_environment_name do
-            after(:build) do |job, evaluator|
-              job.assign_attributes(
-                metadata_attributes: {
-                  expanded_environment_name: job.expanded_environment_name
-                }
-              )
+          trait :deploy_job do
+            name { 'deploy job' }
+            environment { 'env' }
+
+            options do
+              {
+                script: %w(ls),
+                environment: { name: environment, action: 'start' }
+              }
             end
           end
 

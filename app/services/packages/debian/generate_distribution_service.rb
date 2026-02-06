@@ -12,6 +12,7 @@ module Packages
       DEFAULT_LEASE_TIMEOUT = 1.hour.to_i.freeze
 
       # From https://salsa.debian.org/ftp-team/dak/-/blob/991aaa27a7f7aa773bb9c0cf2d516e383d9cffa0/setup/core-init.d/080_metadatakeys#L9
+      # Additionally using "Build-Ids" (not used by dak, which is used to generate archives)
       METADATA_KEYS = %w[
         Package
         Source
@@ -60,7 +61,10 @@ module Packages
         Tag
         Package-Type
         Installer-Menu-Item
+        Build-Ids
       ].freeze
+
+      GenerateDistributionError = Class.new(StandardError)
 
       def initialize(distribution)
         @distribution = distribution
@@ -156,7 +160,7 @@ module Packages
       def pool_prefix(package_file)
         case @distribution
         when ::Packages::Debian::GroupDistribution
-          "pool/#{@distribution.codename}/#{package_file.package.project_id}"
+          "pool/#{@distribution.codename}/#{package_file.project_id}"
         else
           "pool/#{@distribution.codename}"
         end
@@ -202,7 +206,8 @@ module Packages
       end
 
       def generate_release
-        @distribution.key || @distribution.create_key(GenerateDistributionKeyService.new.execute)
+        generate_distribution_key unless @distribution.key
+
         @distribution.file = CarrierWaveStringFile.new(release_content)
         @distribution.file_signature = SignDistributionService.new(@distribution, release_content, detach: true).execute
         @distribution.signed_file = CarrierWaveStringFile.new(
@@ -271,6 +276,14 @@ module Packages
       # used by ExclusiveLeaseGuard
       def lease_timeout
         DEFAULT_LEASE_TIMEOUT
+      end
+
+      def generate_distribution_key
+        response = GenerateDistributionKeyService.new.execute
+
+        raise GenerateDistributionError, response.message unless response.success?
+
+        @distribution.create_key(response.payload)
       end
     end
   end

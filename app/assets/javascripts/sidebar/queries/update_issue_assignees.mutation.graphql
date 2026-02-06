@@ -1,5 +1,5 @@
-#import "~/graphql_shared/fragments/user.fragment.graphql"
 #import "~/graphql_shared/fragments/user_availability.fragment.graphql"
+#import "~/graphql_shared/fragments/user_with_type.fragment.graphql"
 
 mutation issueSetAssignees($iid: String!, $assigneeUsernames: [String!]!, $fullPath: ID!) {
   issuableSetAssignees: issueSetAssignees(
@@ -9,8 +9,9 @@ mutation issueSetAssignees($iid: String!, $assigneeUsernames: [String!]!, $fullP
       id
       assignees {
         nodes {
-          ...User
+          ...UserWithType
           ...UserAvailability
+          compositeIdentityEnforced @gl_introduced(version: "18.8.0")
         }
       }
     }

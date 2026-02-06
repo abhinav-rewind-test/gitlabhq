@@ -13,7 +13,7 @@ RSpec.describe PersonalProjectsFinder, feature_category: :groups_and_projects do
   end
 
   let_it_be(:private_project_shared) do
-    create(:project, :private, namespace: source_user.namespace, last_activity_at: 2.hours.ago, path: 'mepmep')
+    create(:project, :private, namespace: source_user.namespace, last_activity_at: 2.hours.ago, path: 'mepmep', developers: current_user)
   end
 
   let_it_be(:internal_project) do
@@ -24,14 +24,26 @@ RSpec.describe PersonalProjectsFinder, feature_category: :groups_and_projects do
     create(:project, :private, namespace: source_user.namespace, last_activity_at: 4.hours.ago, path: 'D')
   end
 
-  before_all do
-    private_project_shared.add_developer(current_user)
-  end
-
   describe 'without a current user' do
     subject { finder.execute }
 
     it { is_expected.to eq([public_project]) }
+  end
+
+  describe 'with user passed as a string' do
+    let(:finder) { described_class.new(source_user.username) }
+
+    subject { finder.execute }
+
+    it { is_expected.to eq([public_project]) }
+  end
+
+  describe 'with user is nil' do
+    let(:finder) { described_class.new(nil) }
+
+    subject { finder.execute }
+
+    it { is_expected.to be_empty }
   end
 
   describe 'with a current user' do

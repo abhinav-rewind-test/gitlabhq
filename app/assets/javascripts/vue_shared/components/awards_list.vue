@@ -4,11 +4,15 @@ import { groupBy } from 'lodash';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import EmojiPicker from '~/emoji/components/picker.vue';
 import { __, sprintf } from '~/locale';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { glEmojiTag } from '~/emoji';
+import { EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN } from '~/emoji/constants';
 
 // Internal constant, specific to this component, used when no `currentUserId` is given
 const NO_USER_ID = -1;
+const TOOLTIP_NAME_COUNT = 10;
+
+// Make sure the right capizalization is used depending on where you appear in the list
+const insertYou = (index) => (index === 0 ? __('You') : __('you'));
 
 export default {
   components: {
@@ -19,8 +23,12 @@ export default {
     GlTooltip: GlTooltipDirective,
     SafeHtml,
   },
-  mixins: [glFeatureFlagsMixin()],
   props: {
+    customEmojiPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
     awards: {
       type: Array,
       required: true,
@@ -30,7 +38,7 @@ export default {
       required: true,
     },
     currentUserId: {
-      type: Number,
+      type: [Number, String],
       required: false,
       default: NO_USER_ID,
     },
@@ -61,13 +69,10 @@ export default {
       };
 
       return [
-        ...(thumbsup ? [this.createAwardList('thumbsup', thumbsup)] : []),
-        ...(thumbsdown ? [this.createAwardList('thumbsdown', thumbsdown)] : []),
+        ...(thumbsup ? [this.createAwardList(EMOJI_THUMBS_UP, thumbsup)] : []),
+        ...(thumbsdown ? [this.createAwardList(EMOJI_THUMBS_DOWN, thumbsdown)] : []),
         ...Object.entries(rest).map(([name, list]) => this.createAwardList(name, list)),
       ];
-    },
-    isAuthoredByMe() {
-      return this.noteAuthorId === this.currentUserId;
     },
   },
   mounted() {
@@ -101,25 +106,27 @@ export default {
         return '';
       }
 
-      const hasReactionByCurrentUser = this.hasReactionByCurrentUser(awardsList);
-      const TOOLTIP_NAME_COUNT = hasReactionByCurrentUser ? 9 : 10;
-      let awardList = awardsList;
+      const awardList = awardsList;
 
-      // Filter myself from list if I am awarded.
-      if (hasReactionByCurrentUser) {
-        awardList = awardList.filter((award) => award.user.id !== this.currentUserId);
+      // Make sure current user shows in the list if there are too many reactions to list all users
+      if (awardList.length > TOOLTIP_NAME_COUNT && this.hasReactionByCurrentUser(awardList)) {
+        const currentUserIndex = awardList.findIndex(
+          (award) => award.user.id === this.currentUserId,
+        );
+        if (currentUserIndex > TOOLTIP_NAME_COUNT - 1) {
+          const currentUser = awardList[currentUserIndex];
+          awardList.splice(currentUserIndex, 1);
+          awardList.splice(TOOLTIP_NAME_COUNT - 1, 0, currentUser);
+        }
       }
 
-      // Get only 9-10 usernames to show in tooltip text.
-      const namesToShow = awardList.slice(0, TOOLTIP_NAME_COUNT).map((award) => award.user.name);
+      // Get only TOOLTIP_NAME_COUNT usernames to show in tooltip text.
+      const namesToShow = awardList
+        .map(({ user }, index) => (user.id === this.currentUserId ? insertYou(index) : user.name)) // Replace your own username with "You" or "you"
+        .slice(0, TOOLTIP_NAME_COUNT); // Only take the first TOOLTIP_NAME_COUNT items
 
       // Get the remaining list to use in `and x more` text.
       const remainingAwardList = awardList.slice(TOOLTIP_NAME_COUNT, awardList.length);
-
-      // Add myself to the beginning of the list so title will start with You.
-      if (hasReactionByCurrentUser) {
-        namesToShow.unshift(__('You'));
-      }
 
       let title = '';
 
@@ -172,8 +179,8 @@ export default {
     <gl-button
       v-for="awardList in groupedAwards"
       :key="awardList.name"
-      v-gl-tooltip.viewport
-      class="gl-mr-3 gl-my-2"
+      v-gl-tooltip
+      class="gl-my-2 gl-mr-3"
       :class="awardList.classes"
       :title="awardList.title"
       :data-emoji-name="awardList.name"
@@ -192,6 +199,7 @@ export default {
     <div v-if="canAwardEmoji" class="award-menu-holder gl-my-2">
       <emoji-picker
         :right="false"
+        :custom-emoji-path="customEmojiPath"
         data-testid="emoji-picker"
         @click="handleAward"
         @shown="setIsMenuOpen(true)"

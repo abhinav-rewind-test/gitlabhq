@@ -1,4 +1,4 @@
-import Vue from 'vue';
+import Vue, { ref } from 'vue';
 import { debounce } from 'lodash';
 import UsersCache from './lib/utils/users_cache';
 import UserPopover from './vue_shared/components/user_popover/user_popover.vue';
@@ -28,13 +28,15 @@ const getPreloadedUserInfo = (dataset) => {
  * Adds a UserPopover component to the body, hands over as much data as the target element has in data attributes.
  * loads based on data-user-id more data about a user from the API and sets it on the popover
  */
-const populateUserInfo = (user) => {
-  const { userId } = user;
+const populateUserInfo = (userRef) => {
+  const { userId } = userRef.value;
 
   return Promise.all([UsersCache.retrieveById(userId), UsersCache.retrieveStatusById(userId)]).then(
     ([userData, status]) => {
       if (userData) {
-        Object.assign(user, {
+        // eslint-disable-next-line no-param-reassign
+        userRef.value = {
+          ...userRef.value,
           id: userId,
           avatarUrl: userData.avatar_url,
           bot: userData.bot,
@@ -49,36 +51,53 @@ const populateUserInfo = (user) => {
           isFollowed: userData.is_followed,
           state: userData.state,
           loaded: true,
-        });
+        };
       }
 
       if (status) {
-        Object.assign(user, {
-          status,
-        });
+        // eslint-disable-next-line no-param-reassign
+        userRef.value.status = status;
       }
 
-      return user;
+      return userRef.value;
     },
   );
 };
 
-function createPopover(el, user) {
+function createPopover(el, userRef) {
   removeTitle(el);
   const preloadedUserInfo = getPreloadedUserInfo(el.dataset);
 
-  Object.assign(user, preloadedUserInfo);
+  Object.assign(userRef.value, preloadedUserInfo);
 
   if (preloadedUserInfo.userId) {
-    populateUserInfo(user);
+    populateUserInfo(userRef);
   }
-  const UserPopoverComponent = Vue.extend(UserPopover);
-  return new UserPopoverComponent({
-    propsData: {
-      target: el,
-      user,
-      show: true,
-      placement: el.dataset.placement || 'top',
+
+  return new Vue({
+    name: 'UserPopoverRoot',
+    render(createElement) {
+      return createElement(UserPopover, {
+        props: {
+          target: el,
+          user: userRef.value,
+          show: true,
+          placement: el.dataset.placement || 'top',
+          container: el.parentNode?.id || null,
+        },
+        on: {
+          follow: () => {
+            UsersCache.updateById(preloadedUserInfo.userId, { is_followed: true });
+            // eslint-disable-next-line no-param-reassign
+            userRef.value.isFollowed = true;
+          },
+          unfollow: () => {
+            UsersCache.updateById(preloadedUserInfo.userId, { is_followed: false });
+            // eslint-disable-next-line no-param-reassign
+            userRef.value.isFollowed = false;
+          },
+        },
+      });
     },
   });
 }
@@ -102,19 +121,14 @@ function launchPopover(el, mountPopover) {
     },
     { once: true },
   );
-  const popoverInstance = createPopover(el, emptyUser);
-
-  const { userId } = el.dataset;
-
-  popoverInstance.$on('follow', () => {
-    UsersCache.updateById(userId, { is_followed: true });
-    el.user.isFollowed = true;
-  });
-
-  popoverInstance.$on('unfollow', () => {
-    UsersCache.updateById(userId, { is_followed: false });
-    el.user.isFollowed = false;
-  });
+  el.addEventListener(
+    'focusout',
+    ({ target }) => {
+      target.removeAttribute('aria-describedby');
+    },
+    { once: true },
+  );
+  const popoverInstance = createPopover(el, ref(emptyUser));
 
   mountPopover(popoverInstance);
 }
@@ -138,6 +152,7 @@ export default function addPopovers(mountPopover = (instance) => instance.$mount
   // https://gitlab.com/gitlab-org/gitlab/-/issues/351395#note_1039341458
   if (window.gon?.current_user_id && !hasAddedLazyPopovers) {
     document.addEventListener('mouseover', (event) => lazyLaunchPopover(mountPopover, event));
+    document.addEventListener('focusin', (event) => lazyLaunchPopover(mountPopover, event));
     hasAddedLazyPopovers = true;
   }
 }

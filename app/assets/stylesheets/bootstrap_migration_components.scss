@@ -29,25 +29,15 @@ input[type='file'] {
 .form-group.row > .col-form-label {
   // Bootstrap 4 aligns labels to the left
   // for horizontal forms
-  @include media-breakpoint-up(md) {
+  @include gl-container-width-up(md, panel) {
     text-align: right;
-  }
-}
-
-@each $breakpoint in map-keys($grid-breakpoints) {
-  @include media-breakpoint-up($breakpoint) {
-    $infix: breakpoint-infix($breakpoint, $grid-breakpoints);
-
-    .d#{$infix}-table-header-group {
-      display: table-header-group !important;
-    }
   }
 }
 
 .text-secondary {
   // Override Bootstrap's light secondary color
   // We have to use !important because bootstrap has that set as well
-  color: $gl-text-color-secondary !important;
+  @apply gl-text-subtle #{!important};
 }
 
 .bg-success,
@@ -79,6 +69,7 @@ input[type='file'] {
 
 // Add to .label so that old system notes that are saved to the db
 // will still receive the correct styling
+// stylelint-disable-next-line gitlab/no-gl-class
 .badge:not(.gl-badge),
 .label {
   padding: 4px 5px;
@@ -89,7 +80,7 @@ input[type='file'] {
 
   &.badge-gray {
     background-color: $label-gray-bg;
-    color: $gl-text-color;
+    @apply gl-text-default;
     text-shadow: none;
   }
 
@@ -107,32 +98,28 @@ input[type='file'] {
   height: 0;
   margin: 4px 0;
   overflow: hidden;
-  border-top: 1px solid $border-color;
+  @apply gl-border-t;
 }
 
 .info-well {
-  background: $gray-10;
-  color: $gl-text-color;
-  border: 1px solid $border-color;
-  border-radius: 4px;
+  @apply gl-bg-subtle;
+  @apply gl-text-default;
+  @apply gl-border;
+  @apply gl-border-section;
+  @apply gl-rounded-base;
+
   margin-bottom: 16px;
 
   .ref-list {
-    border-color: $well-inner-border;
+    border-color: var(--gl-border-color-section);
   }
-  
+
   .well-segment {
     padding: 1rem;
 
-    &.pipeline-info {
-      align-items: center;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.25rem;
-    }
-
-    &:not(:last-of-type) {
-      border-bottom: 1px solid $well-inner-border;
+    &:not(:first-of-type) {
+      @apply gl-border-t;
+      @apply gl-border-t-section;
     }
 
     p,
@@ -186,11 +173,6 @@ input[type='file'] {
   border-color: $blue-500;
 }
 
-.alert-warning {
-  background-color: $orange-500;
-  border-color: $orange-500;
-}
-
 .alert-danger {
   background-color: $red-500;
   border-color: $red-500;
@@ -210,14 +192,6 @@ input[type='file'] {
 
 input[type=color].form-control {
   height: $input-height;
-}
-
-.toggle-sidebar-button {
-  .collapse-text,
-  .icon-chevron-double-lg-left,
-  .icon-chevron-double-lg-right {
-    color: $gl-text-color-secondary;
-  }
 }
 
 .project-templates-buttons {

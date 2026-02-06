@@ -5,6 +5,10 @@ FactoryBot.define do
     project
     package_name_pattern { '@my_scope/my_package' }
     package_type { :npm }
-    push_protected_up_to_access_level { :developer }
+    minimum_access_level_for_delete { :owner }
+    minimum_access_level_for_push { :maintainer }
+    pattern { '@my_scope/my_package' }
+    pattern_type { :wildcard }
+    target_field { :package_name }
   end
 end

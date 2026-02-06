@@ -2,13 +2,22 @@
 stage: Plan
 group: Product Planning
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Epic Issues API (deprecated)
 ---
 
-# Epic Issues API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+> [!warning]
+> The Epics REST API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/460668) in GitLab 17.0
+> and is planned for removal in v5 of the API.
+> From GitLab 17.4 to 18.0, if [the new look for epics](../user/group/epics/_index.md#epics-as-work-items) is enabled, and in GitLab 18.1 and later, use the
+> Work Items API instead. For more information, see [migrate epic APIs to work items](graphql/epic_work_items_api_migration_guide.md).
+> This change is a breaking change.
 
 Every API call to the epic issues API endpoint must be authenticated.
 
@@ -18,14 +27,11 @@ results in a `404` status code.
 Epics are available only in GitLab [Premium and Ultimate](https://about.gitlab.com/pricing/).
 If the Epics feature is not available, a `403` status code is returned.
 
-## Epic Issues pagination
+## List all issues for an epic
 
-API results [are paginated](rest/index.md#pagination). Requests that return
-multiple issues default to returning 20 results at a time.
+Lists all issues assigned to a specified epic.
 
-## List issues for an epic
-
-Gets all issues that are assigned to an epic and the authenticated user has access to.
+Responses are [paginated](rest/_index.md#pagination) and return 20 results by default.
 
 ```plaintext
 GET /groups/:id/epics/:epic_iid/issues
@@ -33,11 +39,12 @@ GET /groups/:id/epics/:epic_iid/issues
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.  |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.  |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/issues"
 ```
 
 Example response:
@@ -116,11 +123,12 @@ Example response:
 ]
 ```
 
-**Note**: `assignee` column is deprecated, now we show it as a single-sized array `assignees` to conform to the GitLab EE API.
+> [!note]
+> The `assignee` column is deprecated. It is now a single-sized `assignees` array.
 
-## Assign an issue to the epic
+## Assign an issue to an epic
 
-Creates an epic - issue association. If the issue in question belongs to another epic it is unassigned from that epic.
+Assigns an issue to a specified epic. If the issue already belongs to another epic, it is unassigned from that epic first.
 
 ```plaintext
 POST /groups/:id/epics/:epic_iid/issues/:issue_id
@@ -128,12 +136,14 @@ POST /groups/:id/epics/:epic_iid/issues/:issue_id
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.  |
-| `issue_id`          | integer/string   | yes        | The ID of the issue.          |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.  |
+| `issue_id`          | integer or string   | yes        | The ID of the issue.          |
 
 ```shell
-curl --header POST "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/55"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/55"
 ```
 
 Example response:
@@ -222,11 +232,12 @@ Example response:
 }
 ```
 
-**Note**: `assignee` column is deprecated, now we show it as a single-sized array `assignees` to conform to the GitLab EE API.
+> [!note]
+> The `assignee` column is deprecated. It is now a single-sized `assignees` array.
 
-## Remove an issue from the epic
+## Remove an issue from an epic
 
-Removes an epic - issue association.
+Removes an issue from a specified epic.
 
 ```plaintext
 DELETE /groups/:id/epics/:epic_iid/issues/:epic_issue_id
@@ -234,12 +245,15 @@ DELETE /groups/:id/epics/:epic_iid/issues/:epic_issue_id
 
 | Attribute           | Type             | Required   | Description                                                                                          |
 | ------------------- | ---------------- | ---------- | -----------------------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.                |
-| `epic_issue_id`     | integer/string   | yes        | The ID of the issue - epic association.     |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.                |
+| `epic_issue_id`     | integer or string   | yes        | The ID of the epic-issue association.     |
 
 ```shell
-curl --header DELETE "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/11"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/11"
+
 ```
 
 Example response:
@@ -328,11 +342,12 @@ Example response:
 }
 ```
 
-**Note**: `assignee` column is deprecated, now we show it as a single-sized array `assignees` to conform to the GitLab EE API.
+> [!note]
+> The `assignee` column is deprecated. It is now a single-sized `assignees` array.
 
-## Update epic - issue association
+## Update an epic-issue association
 
-Updates an epic - issue association.
+Updates an epic-issue association.
 
 ```plaintext
 PUT /groups/:id/epics/:epic_iid/issues/:epic_issue_id
@@ -340,14 +355,16 @@ PUT /groups/:id/epics/:epic_iid/issues/:epic_issue_id
 
 | Attribute           | Type             | Required   | Description                                                                                          |
 | ------------------- | ---------------- | ---------- | -----------------------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.                |
-| `epic_issue_id`     | integer/string   | yes        | The ID of the issue - epic association.     |
-| `move_before_id`    | integer/string   | no         | The ID of the issue - epic association that should be placed before the link in the question.     |
-| `move_after_id`     | integer/string   | no         | The ID of the issue - epic association that should be placed after the link in the question.     |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.                |
+| `epic_issue_id`     | integer or string   | yes        | The ID of the epic-issue association.     |
+| `move_before_id`    | integer or string   | no         | The ID of the epic-issue association that should be placed before the link in the question.     |
+| `move_after_id`     | integer or string   | no         | The ID of the epic-issue association that should be placed after the link in the question.     |
 
 ```shell
-curl --header PUT "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/11?move_before_id=20"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/issues/11?move_before_id=20"
 ```
 
 Example response:

@@ -1,7 +1,11 @@
 <script>
 import {
+  GlAlert,
   GlBadge,
   GlButton,
+  GlDisclosureDropdown,
+  GlDisclosureDropdownItem,
+  GlIcon,
   GlLink,
   GlModal,
   GlModalDirective,
@@ -14,7 +18,6 @@ import {
 import { createAlert } from '~/alert';
 import { TYPENAME_PACKAGES_PACKAGE } from '~/graphql_shared/constants';
 import { convertToGraphQLId } from '~/graphql_shared/utils';
-import { numberToHumanSize } from '~/lib/utils/number_utils';
 import { objectToQuery } from '~/lib/utils/url_utility';
 import { s__, __ } from '~/locale';
 import { packageTypeToTrackCategory } from '~/packages_and_registries/package_registry/utils';
@@ -25,14 +28,17 @@ import PackageHistory from '~/packages_and_registries/package_registry/component
 import PackageTitle from '~/packages_and_registries/package_registry/components/details/package_title.vue';
 import DeletePackages from '~/packages_and_registries/package_registry/components/functional/delete_packages.vue';
 import {
+  PACKAGE_DEPRECATED_STATUS,
   PACKAGE_TYPE_NUGET,
   PACKAGE_TYPE_COMPOSER,
   PACKAGE_TYPE_CONAN,
   PACKAGE_TYPE_MAVEN,
   PACKAGE_TYPE_PYPI,
+  PACKAGE_TYPE_NPM,
   DELETE_PACKAGE_TRACKING_ACTION,
   REQUEST_DELETE_PACKAGE_TRACKING_ACTION,
   CANCEL_DELETE_PACKAGE_TRACKING_ACTION,
+  INSTALL_PACKAGE_TRACKING_ACTION,
   REQUEST_FORWARDING_HELP_PAGE_PATH,
   SHOW_DELETE_SUCCESS_ALERT,
   FETCH_PACKAGE_DETAILS_ERROR_MESSAGE,
@@ -43,16 +49,23 @@ import {
 } from '~/packages_and_registries/package_registry/constants';
 
 import getPackageDetails from '~/packages_and_registries/package_registry/graphql/queries/get_package_details.query.graphql';
+import getGroupPackageSettings from '~/packages_and_registries/package_registry/graphql/queries/get_group_package_settings.query.graphql';
 import getPackageVersionsQuery from '~/packages_and_registries/package_registry/graphql/queries/get_package_versions.query.graphql';
+
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import Tracking from '~/tracking';
 
 export default {
   name: 'PackagesApp',
   components: {
+    GlAlert,
     GlBadge,
     GlButton,
+    GlDisclosureDropdown,
+    GlDisclosureDropdownItem,
     GlEmptyState,
     GlModal,
+    GlIcon,
     GlLink,
     GlTab,
     GlTabs,
@@ -75,19 +88,21 @@ export default {
     GlModal: GlModalDirective,
   },
   mixins: [Tracking.mixin()],
-  inject: ['emptyListIllustration', 'projectListUrl', 'groupListUrl', 'breadCrumbState'],
+  inject: ['emptyListIllustration', 'projectListUrl', 'groupListUrl'],
   trackingActions: {
     DELETE_PACKAGE_TRACKING_ACTION,
     REQUEST_DELETE_PACKAGE_TRACKING_ACTION,
     CANCEL_DELETE_PACKAGE_TRACKING_ACTION,
+    INSTALL_PACKAGE_TRACKING_ACTION,
   },
   data() {
     return {
       deletePackageModalContent: DELETE_MODAL_CONTENT,
-      filesToDelete: [],
-      mutationLoading: false,
       versionsMutationLoading: false,
       packageEntity: {},
+      groupSettings: {},
+      showInstructions: false,
+      isDropdownVisible: false,
     };
   },
   apollo: {
@@ -106,14 +121,29 @@ export default {
           error,
         });
       },
-      result() {
-        this.breadCrumbState.updateName(
-          `${this.packageEntity?.name} v ${this.packageEntity?.version}`,
-        );
+    },
+    groupSettings: {
+      query: getGroupPackageSettings,
+      variables() {
+        return {
+          fullPath: this.projectPath,
+        };
+      },
+      update(data) {
+        return data.project?.group?.packageSettings || {};
+      },
+      skip() {
+        return !(this.isRequestForwardingSupported && this.canDelete);
+      },
+      error(error) {
+        Sentry.captureException(error);
       },
     },
   },
   computed: {
+    canDelete() {
+      return this.packageEntity.userPermissions?.destroyPackage;
+    },
     deleteModalContent() {
       return this.isRequestForwardingEnabled
         ? DELETE_PACKAGE_REQUEST_FORWARDING_MODAL_CONTENT
@@ -139,9 +169,19 @@ export default {
     isLoading() {
       return this.$apollo.queries.packageEntity.loading;
     },
+    isRequestForwardingSupported() {
+      return [PACKAGE_TYPE_MAVEN, PACKAGE_TYPE_PYPI, PACKAGE_TYPE_NPM].includes(this.packageType);
+    },
+    isRequestForwardingEnabled() {
+      return (
+        this.isRequestForwardingSupported &&
+        this.groupSettings[`${this.packageType.toLowerCase()}PackageRequestsForwarding`]
+      );
+    },
     isValidPackage() {
       return this.isLoading || Boolean(this.packageEntity.name);
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       return {
         category: packageTypeToTrackCategory(this.packageType),
@@ -156,14 +196,11 @@ export default {
     showDependencies() {
       return this.packageType === PACKAGE_TYPE_NUGET;
     },
+    showDeprecationAlert() {
+      return this.packageEntity.status === PACKAGE_DEPRECATED_STATUS;
+    },
     showFiles() {
       return this.packageType !== PACKAGE_TYPE_COMPOSER;
-    },
-    groupSettings() {
-      return this.packageEntity.project?.group?.packageSettings ?? {};
-    },
-    isRequestForwardingEnabled() {
-      return this.groupSettings[`${this.packageType.toLowerCase()}PackageRequestsForwarding`];
     },
     showMetadata() {
       return [
@@ -185,11 +222,25 @@ export default {
         },
       ];
     },
+    hasInstallationInstructions() {
+      const packageTypesWithInstructions = [
+        PACKAGE_TYPE_CONAN,
+        PACKAGE_TYPE_MAVEN,
+        PACKAGE_TYPE_NPM,
+        PACKAGE_TYPE_NUGET,
+        PACKAGE_TYPE_PYPI,
+      ];
+
+      // Composer packages only have installation instructions on the group level
+      if (this.packageType === PACKAGE_TYPE_COMPOSER) {
+        return Boolean(this.groupListUrl);
+      }
+
+      // Other package types that support installation instructions
+      return packageTypesWithInstructions.includes(this.packageType);
+    },
   },
   methods: {
-    formatSize(size) {
-      return numberToHumanSize(size);
-    },
     navigateToListWithSuccessModal() {
       const returnTo =
         !this.groupListUrl || document.referrer.includes(this.projectName)
@@ -207,10 +258,24 @@ export default {
     resetDeleteModalContent() {
       this.deletePackageModalContent = DELETE_MODAL_CONTENT;
     },
+    toggleShowInstructions() {
+      this.showInstructions = !this.showInstructions;
+      this.track(this.$options.trackingActions.INSTALL_PACKAGE_TRACKING_ACTION);
+    },
+    showDropdown() {
+      this.isDropdownVisible = true;
+    },
+    hideDropdown() {
+      this.isDropdownVisible = false;
+    },
+    showDropdownTooltip() {
+      return !this.isDropdownVisible ? this.$options.i18n.moreActionsTooltip : '';
+    },
   },
   i18n: {
     DELETE_MODAL_TITLE,
     otherVersionsTabTitle: s__('PackageRegistry|Other versions'),
+    moreActionsTooltip: __('Actions'),
   },
   links: {
     REQUEST_FORWARDING_HELP_PAGE_PATH,
@@ -251,23 +316,81 @@ export default {
     <package-title :package-entity="packageEntity">
       <template #delete-button>
         <gl-button
-          v-if="packageEntity.userPermissions.destroyPackage"
-          v-gl-modal="'delete-modal'"
-          variant="danger"
-          category="primary"
-          data-testid="delete-package"
+          v-if="hasInstallationInstructions"
+          class="gl-grow"
+          variant="confirm"
+          data-testid="install-button"
+          @click="toggleShowInstructions"
+          >{{ s__('PackageRegistry|Install') }}</gl-button
         >
-          {{ __('Delete') }}
-        </gl-button>
+        <gl-disclosure-dropdown
+          v-if="canDelete"
+          v-gl-tooltip="showDropdownTooltip"
+          category="tertiary"
+          placement="bottom-end"
+          class="sm:!-gl-my-3"
+          data-testid="package-options-dropdown"
+          :title="$options.i18n.moreActionsTooltip"
+          block
+          @shown="showDropdown"
+          @hidden="hideDropdown"
+        >
+          <template #toggle>
+            <div class="gl-mb-2 gl-min-h-7 @sm/panel:!gl-mb-0">
+              <gl-button
+                class="gl-new-dropdown-toggle gl-w-full @sm/panel:!gl-hidden"
+                button-text-classes="gl-flex gl-justify-between gl-w-full"
+                category="secondary"
+                :aria-label="$options.i18n.moreActionsTooltip"
+              >
+                <span>{{ $options.i18n.moreActionsTooltip }}</span>
+                <gl-icon class="dropdown-chevron" name="chevron-down" />
+              </gl-button>
+              <gl-button
+                class="gl-new-dropdown-toggle gl-new-dropdown-icon-only gl-new-dropdown-toggle-no-caret gl-hidden @sm/panel:!gl-flex"
+                category="tertiary"
+                icon="ellipsis_v"
+                :aria-label="$options.i18n.moreActionsTooltip"
+                :title="$options.i18n.moreActionsTooltip"
+              />
+            </div>
+          </template>
+          <gl-disclosure-dropdown-item
+            v-gl-modal="'delete-modal'"
+            variant="danger"
+            data-testid="delete-package"
+          >
+            <template #list-item>
+              {{ __('Delete') }}
+            </template>
+          </gl-disclosure-dropdown-item>
+        </gl-disclosure-dropdown>
       </template>
     </package-title>
 
+    <gl-modal
+      v-if="hasInstallationInstructions"
+      v-model="showInstructions"
+      :title="__('Installation')"
+      modal-id="installation-instructions-modal"
+      data-testid="installation-instructions-modal"
+      hide-footer
+      no-focus-on-show
+    >
+      <template #modal-title>
+        <h2 class="gl-heading-2 gl-my-0">{{ __('Installation') }}</h2>
+      </template>
+      <installation-commands :package-entity="packageEntity" data-testid="installation-commands" />
+    </gl-modal>
+
     <gl-tabs>
-      <gl-tab :title="__('Detail')">
-        <div data-testid="package-information-content">
+      <gl-tab :title="__('Details')">
+        <div data-testid="package-information-content" class="-gl-mt-3">
           <package-history :package-entity="packageEntity" :project-name="projectName" />
 
-          <installation-commands :package-entity="packageEntity" />
+          <gl-alert v-if="showDeprecationAlert" :dismissible="false" variant="warning">
+            {{ s__('PackageRegistry|This package version has been deprecated.') }}
+          </gl-alert>
 
           <additional-metadata
             v-if="showMetadata"
@@ -277,7 +400,7 @@ export default {
 
           <package-files
             v-if="showFiles"
-            :can-delete="packageEntity.userPermissions.destroyPackage"
+            :can-delete="canDelete"
             :package-id="packageEntity.id"
             :package-type="packageType"
             :project-path="projectPath"
@@ -289,9 +412,7 @@ export default {
       <gl-tab v-if="showDependencies">
         <template #title>
           <span>{{ __('Dependencies') }}</span>
-          <gl-badge size="sm" data-testid="dependencies-badge">{{
-            packageDependencies.length
-          }}</gl-badge>
+          <gl-badge data-testid="dependencies-badge">{{ packageDependencies.length }}</gl-badge>
         </template>
 
         <template v-if="packageDependencies.length > 0">
@@ -306,7 +427,7 @@ export default {
       <gl-tab title-item-class="js-versions-tab" lazy>
         <template #title>
           <span>{{ $options.i18n.otherVersionsTabTitle }}</span>
-          <gl-badge size="sm" class="gl-tab-counter-badge" data-testid="other-versions-badge">{{
+          <gl-badge class="gl-tab-counter-badge" data-testid="other-versions-badge">{{
             packageVersionsCount
           }}</gl-badge>
         </template>

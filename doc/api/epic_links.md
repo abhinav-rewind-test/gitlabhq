@@ -2,15 +2,22 @@
 stage: Plan
 group: Product Planning
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Epic Links API (deprecated)
 ---
 
-# Epic Links API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/9188) in GitLab 11.8.
+{{< /details >}}
+
+> [!warning]
+> The Epics REST API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/460668) in GitLab 17.0
+> and is planned for removal in v5 of the API.
+> From GitLab 17.4 to 18.0, if [the new look for epics](../user/group/epics/_index.md#epics-as-work-items) is enabled, and in GitLab 18.1 and later, use the
+> Work Items API instead. For more information, see [migrate epic APIs to work items](graphql/epic_work_items_api_migration_guide.md).
+> This change is a breaking change.
 
 Manages parent-child [epic relationships](../user/group/epics/manage_epics.md#multi-level-child-epics).
 
@@ -22,9 +29,9 @@ group results in a `404` status code.
 Multi-level Epics are available only in [GitLab Ultimate](https://about.gitlab.com/pricing/).
 If the Multi-level Epics feature is not available, a `403` status code is returned.
 
-## List epics related to a given epic
+## List all child epics of an epic
 
-Gets all child epics of an epic.
+List all child epics of an epic.
 
 ```plaintext
 GET /groups/:id/epics/:epic_iid/epics
@@ -32,11 +39,12 @@ GET /groups/:id/epics/:epic_iid/epics
 
 | Attribute  | Type           | Required | Description                                                                                                   |
 | ---------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `id`       | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user |
+| `id`       | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `epic_iid` | integer        | yes      | The internal ID of the epic.                                                                                  |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/epics/"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/epics"
 ```
 
 Example response:
@@ -86,12 +94,15 @@ POST /groups/:id/epics/:epic_iid/epics/:child_epic_id
 
 | Attribute       | Type           | Required | Description                                                                                                        |
 | --------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`            | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user      |
+| `id`            | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group      |
 | `epic_iid`      | integer        | yes      | The internal ID of the epic.                                                                                       |
 | `child_epic_id` | integer        | yes      | The global ID of the child epic. Internal ID can't be used because they can conflict with epics from other groups. |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/epics/6"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/epics/6"
+
 ```
 
 Example response:
@@ -131,7 +142,7 @@ Example response:
 
 ## Create and assign a child epic
 
-Creates a new epic and associates it with provided parent epic. The response is LinkedEpic object.
+Create a new epic and associate it with provided parent epic. The response is a `LinkedEpic` object.
 
 ```plaintext
 POST /groups/:id/epics/:epic_iid/epics
@@ -139,13 +150,15 @@ POST /groups/:id/epics/:epic_iid/epics
 
 | Attribute       | Type           | Required | Description                                                                                                        |
 | --------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`            | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user      |
+| `id`            | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group      |
 | `epic_iid`      | integer        | yes      | The internal ID of the (future parent) epic.                                                                       |
 | `title`         | string         | yes      | The title of a newly created epic.                                                                                 |
 | `confidential`  | boolean        | no       | Whether the epic should be confidential. Parameter is ignored if `confidential_epics` feature flag is disabled. Defaults to the confidentiality state of the parent epic.  |
 
 ```shell
-curl --request POST --header  "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/epics?title=Newpic"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/epics?title=Newpic"
 ```
 
 Example response:
@@ -173,14 +186,16 @@ PUT /groups/:id/epics/:epic_iid/epics/:child_epic_id
 
 | Attribute        | Type           | Required | Description                                                                                                        |
 | ---------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`             | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user.     |
+| `id`             | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group.     |
 | `epic_iid`       | integer        | yes      | The internal ID of the epic.                                                                                       |
 | `child_epic_id`  | integer        | yes      | The global ID of the child epic. Internal ID can't be used because they can conflict with epics from other groups. |
 | `move_before_id` | integer        | no       | The global ID of a sibling epic that should be placed before the child epic.                                       |
 | `move_after_id`  | integer        | no       | The global ID of a sibling epic that should be placed after the child epic.                                        |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/4/epics/5"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/4/epics/5"
 ```
 
 Example response:
@@ -222,7 +237,7 @@ Example response:
 
 ## Unassign a child epic
 
-Unassigns a child epic from a parent epic.
+Unassign a child epic from a parent epic.
 
 ```plaintext
 DELETE /groups/:id/epics/:epic_iid/epics/:child_epic_id
@@ -230,12 +245,14 @@ DELETE /groups/:id/epics/:epic_iid/epics/:child_epic_id
 
 | Attribute       | Type           | Required | Description                                                                                                        |
 | --------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`            | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user.     |
+| `id`            | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group.     |
 | `epic_iid`      | integer        | yes      | The internal ID of the epic.                                                                                       |
 | `child_epic_id` | integer        | yes      | The global ID of the child epic. Internal ID can't be used because they can conflict with epics from other groups. |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/4/epics/5"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/4/epics/5"
 ```
 
 Example response:

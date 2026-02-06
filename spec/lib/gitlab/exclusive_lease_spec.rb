@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::ExclusiveLease, :request_store,
-  :clean_gitlab_redis_shared_state, feature_category: :shared do
+  :clean_gitlab_redis_shared_state, feature_category: :redis do
   let(:unique_key) { SecureRandom.hex(10) }
 
   describe '#try_obtain' do
@@ -27,7 +27,7 @@ RSpec.describe Gitlab::ExclusiveLease, :request_store,
       subject(:lease_attempt) { lease.try_obtain }
 
       context 'in development/test environment' do
-        it 'raises error within ci db' do
+        it 'raises error within ci db', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446120' do
           expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).and_call_original
 
           Ci::Pipeline.transaction do
@@ -35,11 +35,25 @@ RSpec.describe Gitlab::ExclusiveLease, :request_store,
           end
         end
 
-        it 'raises error within main db' do
+        it 'raises error within main db', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446121' do
           expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).and_call_original
 
           ApplicationRecord.transaction do
             expect { lease_attempt }.to raise_error(Gitlab::ExclusiveLease::LeaseWithinTransactionError)
+          end
+        end
+
+        it 'allows the operation if lock thread is set' do
+          described_class.skipping_transaction_check do
+            thread = Thread.new do
+              Thread.current.abort_on_exception = true
+
+              ApplicationRecord.transaction do
+                expect { lease_attempt }.not_to raise_error
+              end
+            end
+
+            thread.join
           end
         end
       end
@@ -49,13 +63,13 @@ RSpec.describe Gitlab::ExclusiveLease, :request_store,
           stub_rails_env('production')
         end
 
-        it 'logs error within ci db' do
+        it 'logs error within ci db', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446122' do
           expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).and_call_original
 
           Ci::Pipeline.transaction { lease_attempt }
         end
 
-        it 'logs error within main db' do
+        it 'logs error within main db', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446123' do
           expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).and_call_original
 
           ApplicationRecord.transaction { lease_attempt }
@@ -315,6 +329,23 @@ RSpec.describe Gitlab::ExclusiveLease, :request_store,
               .and_call_original
 
       described_class.throttle(1, count: 48, period: 1.day) {}
+    end
+  end
+
+  describe '#same_uuid?' do
+    it 'returns true for an existing lease' do
+      lease = described_class.new(unique_key, timeout: 3600)
+      lease.try_obtain
+
+      expect(lease.same_uuid?).to eq(true)
+    end
+
+    it 'returns false for a lease that does not exist' do
+      described_class.new(unique_key, timeout: 3600).try_obtain
+
+      lease = described_class.new(unique_key, timeout: 3600)
+
+      expect(lease.same_uuid?).to eq(false)
     end
   end
 end

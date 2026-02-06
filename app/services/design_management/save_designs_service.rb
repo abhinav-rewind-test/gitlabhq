@@ -4,6 +4,7 @@ module DesignManagement
   class SaveDesignsService < DesignService
     include RunsDesignActions
     include OnSuccessCallbacks
+    include Gitlab::InternalEventsTracking
 
     MAX_FILES = 10
 
@@ -65,9 +66,6 @@ module DesignManagement
       return if design_unchanged?(design, content)
 
       action = new_file?(design) ? :create : :update
-      on_success do
-        track_usage_metrics(action)
-      end
 
       DesignManagement::DesignAction.new(design, action, content)
     end
@@ -80,6 +78,7 @@ module DesignManagement
     def create_events
       by_action = @actions.group_by(&:action).transform_values { |grp| grp.map(&:design) }
 
+      track_design_actions(by_action)
       event_create_service.save_designs(current_user, **by_action)
     end
 
@@ -129,16 +128,25 @@ module DesignManagement
       end
     end
 
-    def track_usage_metrics(action)
-      if action == :update
-        ::Gitlab::UsageDataCounters::IssueActivityUniqueCounter
-          .track_issue_designs_modified_action(author: current_user, project: project)
-      else
-        ::Gitlab::UsageDataCounters::IssueActivityUniqueCounter
-          .track_issue_designs_added_action(author: current_user, project: project)
-      end
+    def track_design_actions(by_action)
+      by_action&.each do |action, designs|
+        event = case action
+                when :create
+                  Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_CREATE
+                when :update
+                  Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_UPDATE
+                else
+                  next
+                end
 
-      ::Gitlab::UsageDataCounters::DesignsCounter.count(action)
+        designs.each do
+          ::Gitlab::WorkItems::Instrumentation::TrackingService.new(
+            work_item: issue,
+            current_user: current_user,
+            event: event
+          ).execute
+        end
+      end
     end
   end
 end

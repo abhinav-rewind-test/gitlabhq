@@ -4,12 +4,10 @@ import { __, s__ } from '~/locale';
 import { OPERATORS_IS } from '~/vue_shared/components/filtered_search_bar/constants';
 
 // Overridden in EE
-export const EE_APP_OPTIONS = {};
+export const GROUPS_APP_OPTIONS = {};
+export const PROJECTS_APP_OPTIONS = {};
 
-// Overridden in EE
-export const EE_TABS = [];
-
-export const EE_ACTION_BUTTONS = {};
+export const ACTION_BUTTONS = {};
 
 export const FIELD_KEY_ACCOUNT = 'account';
 export const FIELD_KEY_SOURCE = 'source';
@@ -32,13 +30,13 @@ export const FIELDS = [
       asc: 'name_asc',
       desc: 'name_desc',
     },
-    tdClass: 'gl-vertical-align-middle!',
+    tdClass: '!gl-align-middle',
   },
   {
     key: FIELD_KEY_SOURCE,
     label: __('Source'),
     thClass: 'col-meta',
-    tdClass: 'col-meta gl-vertical-align-middle!',
+    tdClass: 'col-meta !gl-align-middle',
   },
   {
     key: FIELD_KEY_GRANTED,
@@ -47,25 +45,25 @@ export const FIELDS = [
       asc: 'last_joined',
       desc: 'oldest_joined',
     },
-    tdClass: 'gl-vertical-align-middle!',
+    tdClass: '!gl-align-middle',
   },
   {
     key: FIELD_KEY_INVITED,
     label: __('Invited'),
     thClass: 'col-meta',
-    tdClass: 'col-meta gl-vertical-align-middle!',
+    tdClass: 'col-meta !gl-align-middle',
   },
   {
     key: FIELD_KEY_REQUESTED,
     label: __('Requested'),
     thClass: 'col-meta',
-    tdClass: 'col-meta gl-vertical-align-middle!',
+    tdClass: 'col-meta !gl-align-middle',
   },
   {
     key: FIELD_KEY_MAX_ROLE,
-    label: __('Max role'),
+    label: __('Role'),
     thClass: 'col-max-role',
-    tdClass: 'col-max-role gl-vertical-align-middle!',
+    tdClass: 'col-max-role !gl-align-middle',
     sort: {
       asc: 'access_level_asc',
       desc: 'access_level_desc',
@@ -75,13 +73,13 @@ export const FIELDS = [
     key: FIELD_KEY_EXPIRATION,
     label: __('Expiration'),
     thClass: 'col-expiration',
-    tdClass: 'col-expiration gl-vertical-align-middle!',
+    tdClass: 'col-expiration !gl-align-middle',
   },
   {
     key: FIELD_KEY_ACTIVITY,
     label: s__('Members|Activity'),
     thClass: 'col-activity',
-    tdClass: 'col-activity gl-vertical-align-middle!',
+    tdClass: 'col-activity !gl-align-middle',
   },
   {
     key: FIELD_KEY_USER_CREATED_AT,
@@ -141,12 +139,7 @@ export const FILTERED_SEARCH_TOKEN_WITH_INHERITED_PERMISSIONS = {
   operators: OPERATORS_IS,
   options: [
     { value: 'exclude', title: s__('Members|Direct') },
-    {
-      value: 'only',
-      title: gon.features?.webuiMembersInheritedUsers
-        ? s__('Members|Indirect')
-        : s__('Members|Inherited'),
-    },
+    { value: 'only', title: s__('Members|Indirect') },
   ],
 };
 
@@ -155,20 +148,33 @@ export const FILTERED_SEARCH_TOKEN_GROUPS_WITH_INHERITED_PERMISSIONS = {
   type: 'groups_with_inherited_permissions',
 };
 
+export const FILTERED_SEARCH_MAX_ROLE = {
+  type: 'max_role',
+  icon: 'shield',
+  title: __('Role'),
+  token: GlFilteredSearchToken,
+  unique: true,
+  operators: OPERATORS_IS,
+};
+
 export const AVAILABLE_FILTERED_SEARCH_TOKENS = [
   FILTERED_SEARCH_TOKEN_TWO_FACTOR,
   FILTERED_SEARCH_TOKEN_WITH_INHERITED_PERMISSIONS,
   FILTERED_SEARCH_TOKEN_GROUPS_WITH_INHERITED_PERMISSIONS,
+  FILTERED_SEARCH_MAX_ROLE,
 ];
 
 export const AVATAR_SIZE = 48;
 
-export const MEMBER_TYPES = {
+export const DEFAULT_PAGE_SIZE = 20;
+
+export const MEMBERS_TAB_TYPES = Object.freeze({
   user: 'user',
   group: 'group',
   invite: 'invite',
   accessRequest: 'accessRequest',
-};
+  placeholder: 'placeholder',
+});
 
 // `app/models/members/group_member.rb`
 export const MEMBER_MODEL_TYPE_GROUP_MEMBER = 'GroupMember';
@@ -176,11 +182,12 @@ export const MEMBER_MODEL_TYPE_GROUP_MEMBER = 'GroupMember';
 // `app/models/members/project_member.rb`
 export const MEMBER_MODEL_TYPE_PROJECT_MEMBER = 'ProjectMember';
 
-export const TAB_QUERY_PARAM_VALUES = {
+export const TAB_QUERY_PARAM_VALUES = Object.freeze({
   group: 'groups',
   invite: 'invited',
   accessRequest: 'access_requests',
-};
+  placeholder: 'placeholders',
+});
 
 /**
  * This user state value comes from the User model
@@ -205,6 +212,7 @@ export const REMOVE_GROUP_LINK_MODAL_ID = 'remove-group-link-modal-id';
 
 export const SORT_QUERY_PARAM_NAME = 'sort';
 export const ACTIVE_TAB_QUERY_PARAM_NAME = 'tab';
+export const ACTIVE_SUBTAB_QUERY_PARAM = 'subtab';
 
 export const MEMBER_ACCESS_LEVEL_PROPERTY_NAME = 'access_level';
 
@@ -215,3 +223,22 @@ export const I18N_USER_YOU = __("It's you");
 export const I18N_USER_BLOCKED = __('Blocked');
 export const I18N_USER_BOT = __('Bot');
 export const I188N_USER_2FA = __('2FA');
+export const I18N_ROLE_SAVE_SUCCESS = s__('Members|Role was successfully updated.');
+export const I18N_ROLE_SAVE_ERROR = s__('MemberRole|Could not update role.');
+
+export const CONTEXT_TYPE = Object.freeze({
+  PROJECT: 'PROJECT',
+  GROUP: 'GROUP',
+});
+
+export const BYPASS_CONFIRMATION_TYPE_ADMIN = 'admin';
+export const BYPASS_CONFIRMATION_TYPE_GROUP_OWNER = 'group_owner';
+
+export const ALLOW_BYPASS_PLACEHOLDER_CONFIRMATION_MESSAGE = {
+  [BYPASS_CONFIRMATION_TYPE_ADMIN]: s__(
+    'UserMapping|The %{strongStart}Skip confirmation when administrators reassign placeholder users%{strongEnd} setting is enabled. Users do not have to approve the reassignment, and contributions are reassigned immediately.',
+  ),
+  [BYPASS_CONFIRMATION_TYPE_GROUP_OWNER]: s__(
+    'UserMapping|The %{strongStart}Skip confirmation when group owners reassign placeholder users to enterprise users%{strongEnd} setting is enabled. Enterprise users do not have to approve the reassignment, and contributions are reassigned immediately.',
+  ),
+};

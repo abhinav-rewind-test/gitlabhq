@@ -1,14 +1,16 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Geo
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Geo security review (Q&A)
 ---
 
-# Geo security review (Q&A)
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 The following security review of the Geo feature set focuses on security aspects of
 the feature as they apply to customers running their own GitLab instances. The review
@@ -40,7 +42,6 @@ from [owasp.org](https://owasp.org/).
   private projects. Geo replicates them all indiscriminately. "Selective sync"
   exists for files and repositories (but not database content), which would permit
   only less-sensitive projects to be replicated to a **secondary** site if desired.
-- See also: [GitLab data classification policy](https://handbook.gitlab.com/handbook/security/data-classification-standard/).
 
 ### What data backup and retention requirements have been defined for the application?
 
@@ -49,23 +50,23 @@ from [owasp.org](https://owasp.org/).
 
 ## End-Users
 
-### Who are the application's end‐users?
+### Who are the application's end-users?
 
 - **Secondary** sites are created in regions that are distant (in terms of
   Internet latency) from the main GitLab installation (the **primary** site). They are
   intended to be used by anyone who would ordinarily use the **primary** site, who finds
   that the **secondary** site is closer to them (in terms of Internet latency).
 
-### How do the end‐users interact with the application?
+### How do the end-users interact with the application?
 
 - **Secondary** sites provide all the interfaces a **primary** site does
-  (notably a HTTP/HTTPS web application, and HTTP/HTTPS or SSH Git repository
+  (notably an HTTP/HTTPS web application, and HTTP/HTTPS or SSH Git repository
   access), but is constrained to read-only activities. The principal use case is
   envisioned to be cloning Git repositories from the **secondary** site in favor of the
   **primary** site, but end-users may use the GitLab web interface to view information like projects,
   issues, merge requests, and snippets.
 
-### What security expectations do the end‐users have?
+### What security expectations do the end-users have?
 
 - The replication process must be secure. It would typically be unacceptable to
   transmit the entire database contents or all files and repositories across the
@@ -96,7 +97,7 @@ from [owasp.org](https://owasp.org/).
 
 ## Network
 
-### What details regarding routing, switching, firewalling, and load‐balancing have been defined?
+### What details regarding routing, switching, firewalling, and load-balancing have been defined?
 
 - Geo requires the **primary** site and **secondary** site to be able to communicate with each
   other across a TCP/IP network. In particular, the **secondary** sites must be able to
@@ -126,9 +127,9 @@ from [owasp.org](https://owasp.org/).
 
 - Geo imposes no additional restrictions on operating system (see the
   [GitLab installation](https://about.gitlab.com/install/) page for more
-  details), however we recommend using the operating systems listed in the [Geo documentation](../index.md#requirements-for-running-geo).
+  details), however we recommend using the operating systems listed in the [Geo documentation](../_index.md#requirements-for-running-geo).
 
-### What details regarding required OS components and lock‐down needs have been defined?
+### What details regarding required OS components and lock-down needs have been defined?
 
 - The supported Linux package installation method packages most components itself.
 - There are significant dependencies on the system-installed OpenSSH daemon (Geo
@@ -171,9 +172,12 @@ from [owasp.org](https://owasp.org/).
 - GitLab is "cloud native" and this applies to Geo as much as to the rest of the
   product. Deployment in clouds is a common and supported scenario.
 
-## If applicable, what approach(es) to cloud computing is taken (Managed Hosting versus "Pure" Cloud, a "full machine" approach such as AWS-EC2 versus a "hosted database" approach such as AWS-RDS and Azure, etc)?
+## If applicable, what approaches to cloud computing are taken?
 
-- To be decided by our customers, according to their operational needs.
+- Whether to use these is to be decided by our customers, according to their operational needs:
+
+  - Managed hosting versus "pure" cloud
+  - A "full machine" approach, such as AWS-ED2, versus a "hosted database" approach such as AWS-RDS and Azure
 
 ## Environment
 
@@ -189,7 +193,7 @@ from [owasp.org](https://owasp.org/).
 
 - PostgreSQL >= 12, Redis, Sidekiq, Puma.
 
-### How can database connection strings, encryption keys, and other sensitive components be stored, accessed, and protected from unauthorized detection?
+### How to protect database connection strings, encryption keys, and other sensitive components?
 
 - There are some Geo-specific values. Some are shared secrets which must be
   securely transmitted from the **primary** site to the **secondary** site at setup time. Our
@@ -232,7 +236,7 @@ from [owasp.org](https://owasp.org/).
 
 - Git repositories and files, tracking information related to them, and the GitLab database contents.
 
-### What data is or may need to be encrypted and what key management requirements have been defined?
+### What data should be encrypted? What key management requirements are defined?
 
 - Neither **primary** sites or **secondary** sites encrypt Git repository or file system data at
   rest. A subset of database columns are encrypted at rest using the `db_otp_key`.
@@ -247,8 +251,9 @@ from [owasp.org](https://owasp.org/).
 
 - Comprehensive system logs exist, tracking every connection to GitLab and PostgreSQL.
 
-### What encryption requirements have been defined for data in transit - including transmission over WAN, LAN, SecureFTP, or publicly accessible protocols such as http: and https:?
+### What encryption requirements have been defined for data in transit?
 
+- (This includes transmission over WAN, LAN, SecureFTP, or publicly accessible protocols such as `http:` and `https:`.)
 - Data must have the option to be encrypted in transit, and be secure against
   both passive and active attack (for example, MITM attacks should not be possible).
 
@@ -268,7 +273,7 @@ from [owasp.org](https://owasp.org/).
 
 ### What user authorization requirements have been defined?
 
-- **Secondary** sites must only be able to *read* data. They are not currently able to mutate data on the **primary** site.
+- **Secondary** sites must only be able to read data. They cannot mutate data on the **primary** site.
 
 ### What session management requirements have been defined?
 
@@ -288,7 +293,7 @@ from [owasp.org](https://owasp.org/).
 
 ## Application Monitoring
 
-### What application auditing requirements have been defined? How are audit and debug logs accessed, stored, and secured?
+### How are audit and debug logs accessed, stored, and secured?
 
 - Structured JSON log is written to the file system, and can also be ingested
   into a Kibana installation for further analysis.

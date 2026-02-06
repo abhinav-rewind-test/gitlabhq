@@ -7,7 +7,7 @@ RSpec.describe SortingPreference do
   let(:params) { {} }
 
   let(:controller_class) do
-    Class.new do
+    Class.new(ApplicationController) do
       def self.helper_method(name); end
 
       include SortingPreference
@@ -96,6 +96,13 @@ RSpec.describe SortingPreference do
 
       context 'when action_name is merge_requests' do
         let(:action_name) { 'merge_requests' }
+        let(:can_sort_by_merged_date?) { true }
+
+        it_behaves_like 'user can sort by merged date'
+      end
+
+      context 'when action_name is search_merge_requests' do
+        let(:action_name) { 'search_merge_requests' }
         let(:can_sort_by_merged_date?) { true }
 
         it_behaves_like 'user can sort by merged date'

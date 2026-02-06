@@ -2,10 +2,10 @@
 
 module WorkItems
   class CreateService < Issues::CreateService
-    extend ::Gitlab::Utils::Override
     include WidgetableService
 
     def initialize(container:, perform_spam_check: true, current_user: nil, params: {}, widget_params: {})
+      @create_source = params.delete(:create_source)
       super(
         container: container,
         current_user: current_user,
@@ -18,51 +18,20 @@ module WorkItems
 
     def execute(skip_system_notes: false)
       result = skip_system_notes? ? super(skip_system_notes: true) : super
-      return result if result.error?
+
+      # we need to pass `work_item` in error response to properly display errors
+      return error(result.message, result.http_status, pass_back: payload(result[:issue])) if result.error?
 
       work_item = result[:issue]
 
       if work_item.valid?
-        publish_event(work_item)
+        track_work_item_create(work_item)
         success(payload(work_item))
       else
         error(work_item.errors.full_messages, :unprocessable_entity, pass_back: payload(work_item))
       end
-    rescue ::WorkItems::Widgets::BaseService::WidgetError => e
+    rescue ::Issuable::Callbacks::Base::Error => e
       error(e.message, :unprocessable_entity)
-    end
-
-    def before_create(work_item)
-      execute_widgets(
-        work_item: work_item,
-        callback: :before_create_callback,
-        widget_params: @widget_params
-      )
-
-      super
-    end
-
-    def transaction_create(work_item)
-      super.tap do |save_result|
-        if save_result
-          execute_widgets(
-            work_item: work_item,
-            callback: :after_create_in_transaction,
-            widget_params: @widget_params
-          )
-        end
-      end
-    end
-
-    def prepare_create_params(work_item)
-      execute_widgets(
-        work_item: work_item,
-        callback: :prepare_create_params,
-        widget_params: @widget_params,
-        service_params: params
-      )
-
-      super
     end
 
     def parent
@@ -70,15 +39,6 @@ module WorkItems
     end
 
     private
-
-    override :handle_quick_actions
-    def handle_quick_actions(work_item)
-      # Do not handle quick actions unless the work item is the default Issue.
-      # The available quick actions for a work item depend on its type and widgets.
-      return if work_item.work_item_type != WorkItems::Type.default_by_type(:issue)
-
-      super
-    end
 
     def authorization_action
       :create_work_item
@@ -92,15 +52,16 @@ module WorkItems
       false
     end
 
-    def publish_event(work_item)
-      work_item.run_after_commit_or_now do
-        Gitlab::EventStore.publish(
-          WorkItems::WorkItemCreatedEvent.new(data: {
-            id: work_item.id,
-            namespace_id: work_item.namespace_id
-          })
-        )
-      end
+    def track_work_item_create(work_item)
+      candidate = "work_item_create_#{@create_source}" if @create_source.present?
+      event_name = candidate if Gitlab::WorkItems::Instrumentation::EventActions.valid_event?(candidate)
+      event_name ||= Gitlab::WorkItems::Instrumentation::EventActions::CREATE
+
+      ::Gitlab::WorkItems::Instrumentation::TrackingService.new(
+        work_item: work_item,
+        current_user: current_user,
+        event: event_name
+      ).execute
     end
   end
 end

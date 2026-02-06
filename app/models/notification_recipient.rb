@@ -30,6 +30,7 @@ class NotificationRecipient
   end
 
   def notifiable?
+    return false if composite_identity_enforced?
     return false unless has_access?
     return false if emails_disabled?
     return false if own_activity?
@@ -67,10 +68,23 @@ class NotificationRecipient
     return false unless @custom_action
     return false unless notification_setting
 
-    notification_setting.event_enabled?(@custom_action) ||
-      # fixed_pipeline is a subset of success_pipeline event
-      (@custom_action == :fixed_pipeline &&
-       notification_setting.event_enabled?(:success_pipeline))
+    # 1. Check if the exact action is enabled
+    return true if notification_setting.event_enabled?(@custom_action)
+
+    # 2. Fallback logic: work_item and epic events --> issue events
+    #    This allows all work items (tasks, tickets, epics) to use issue notification settings
+    #    until we have dedicated work_item/epic events in EMAIL_EVENTS.
+    #    - work_item events (new_work_item, close_work_item, etc.) fallback to issue equivalents
+    #    - epic events (new_epic, close_epic, etc.) also fallback to issue equivalents
+    fallback_action = @custom_action.to_s
+      .sub('work_item', 'issue')
+      .sub('epic', 'issue')
+      .to_sym
+
+    return true if fallback_action != @custom_action && notification_setting.event_enabled?(fallback_action)
+
+    # 3. Special case: fixed_pipeline is a subset of success_pipeline event
+    @custom_action == :fixed_pipeline && notification_setting.event_enabled?(:success_pipeline)
   end
 
   def unsubscribed?
@@ -108,14 +122,21 @@ class NotificationRecipient
       break false unless user.can?(:receive_notifications)
       break true if @skip_read_ability
 
-      break false if @target && !user.can?(:read_cross_project)
-      break false if @project && !user.can?(:read_project, @project)
+      if @project
+        break false unless user.can?(:read_project, @project)
+      else
+        break false unless user.can?(:read_cross_project)
+      end
 
       break true unless read_ability
       break true unless DeclarativePolicy.has_policy?(@target)
 
       user.can?(read_ability, @target)
     end
+  end
+
+  def composite_identity_enforced?
+    user.composite_identity_enforced?
   end
 
   def excluded_watcher_action?
@@ -161,7 +182,8 @@ class NotificationRecipient
   def default_project
     return if @target.nil?
     return @target if @target.is_a?(Project)
-    return @target.project if @target.respond_to?(:project)
+
+    @target.project if @target.respond_to?(:project)
   end
 
   def find_notification_setting
@@ -169,22 +191,11 @@ class NotificationRecipient
 
     return project_setting unless project_setting.nil? || project_setting.global?
 
-    group_setting = closest_non_global_group_notification_setting
+    group_setting = user.closest_non_global_group_notification_setting(@group)
 
     return group_setting unless group_setting.nil?
 
     user.global_notification_setting
-  end
-
-  # Returns the notification_setting of the lowest group in hierarchy with non global level
-  def closest_non_global_group_notification_setting
-    return unless @group
-
-    @group
-      .notification_settings(hierarchy_order: :asc)
-      .where(user: user)
-      .where.not(level: NotificationSetting.levels[:global])
-      .first
   end
 
   def participating_custom_action?

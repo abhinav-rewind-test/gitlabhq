@@ -5,6 +5,10 @@ module Ci
     include EachBatch
     include Ci::Partitionable
 
+    MAX_TAGS_IDS = 50
+
+    TooManyTagsError = Class.new(StandardError)
+
     belongs_to :project
 
     belongs_to :build, # rubocop: disable Rails/InverseOf -- this relation is not present on build
@@ -12,6 +16,7 @@ module Ci
       class_name: 'Ci::Build',
       partition_foreign_key: :partition_id
     belongs_to :namespace, inverse_of: :pending_builds, class_name: 'Namespace'
+    belongs_to :plan
 
     partitionable scope: :build
 
@@ -21,7 +26,7 @@ module Ci
     scope :with_instance_runners, -> { where(instance_runners_enabled: true) }
     scope :for_tags, ->(tag_ids) do
       if tag_ids.present?
-        where('ci_pending_builds.tag_ids <@ ARRAY[?]::int[]', Array.wrap(tag_ids))
+        where("ci_pending_builds.tag_ids <@ '{?}'", Array.wrap(tag_ids))
       else
         where("ci_pending_builds.tag_ids = '{}'")
       end
@@ -36,6 +41,13 @@ module Ci
         self.upsert(entry.attributes.compact, returning: %w[build_id], unique_by: :build_id)
       end
 
+      def namespace_transfer_params(namespace)
+        {
+          namespace_traversal_ids: namespace.traversal_ids,
+          namespace_id: namespace.id
+        }
+      end
+
       private
 
       def args_from_build(build)
@@ -46,15 +58,21 @@ module Ci
           project: project,
           protected: build.protected?,
           namespace: project.namespace,
-          tag_ids: build.tags_ids,
+          tag_ids: build_tags_ids(build),
           instance_runners_enabled: shared_runners_enabled?(project)
         }
 
-        if group_runners_enabled?(project)
-          args.store(:namespace_traversal_ids, project.namespace.traversal_ids)
-        end
+        args.store(:namespace_traversal_ids, project.namespace.traversal_ids) if group_runners_enabled?(project)
 
         args
+      end
+
+      def build_tags_ids(build)
+        build.tag_list.then do |tag_list|
+          raise TooManyTagsError if tag_list.size >= MAX_TAGS_IDS
+
+          Ci::Tag.find_or_create_all_with_like_by_name(tag_list).map(&:id).sort
+        end
       end
 
       def shared_runners_enabled?(project)

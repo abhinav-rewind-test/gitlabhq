@@ -17,7 +17,7 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
     let_it_be(:project) { create(:project, :repository) }
     let_it_be(:user) { create(:user) }
 
-    let_it_be(:accessible_project) { create(:project, :internal).tap { |p| p.add_developer(user) } }
+    let_it_be(:accessible_project) { create(:project, :internal, developers: user) }
     let_it_be(:inaccessible_project) { create(:project, :internal) }
     let_it_be(:project_private) { create(:project, :private) }
 
@@ -103,6 +103,18 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
         expect(json_response['keys'].pluck("id")).to match_array([deploy_key_public.id])
       end
     end
+
+    describe 'GET available_public_keys with search' do
+      let_it_be(:another_deploy_key_public) { create(:deploy_key, public: true, title: 'new-key') }
+      let(:params) do
+        { namespace_id: project.namespace, project_id: project, search: 'key', in: 'title' }
+      end
+
+      it 'returns available public keys matching the search' do
+        get :available_public_keys, params: params.merge(format: :json)
+        expect(json_response['keys'].pluck("id")).to match_array([another_deploy_key_public.id])
+      end
+    end
   end
 
   describe 'POST create' do
@@ -124,6 +136,9 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
       expect { post :create, params: create_params }.to change(project.deploy_keys, :count).by(1)
 
       expect(response).to redirect_to(project_settings_repository_path(project, anchor: 'js-deploy-keys-settings'))
+
+      key = project.deploy_keys.find_by(title: create_params.dig(:deploy_key, :title))
+      expect(key.organization).to eq(current_organization)
     end
 
     it 'redirects to project settings with the correct anchor' do
@@ -147,8 +162,8 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
         post :create, params: create_params
 
         expect(assigns(:key).errors.count).to be > 1
-        expect(flash[:alert]).to eq('Deploy Key must be a <a target="_blank" rel="noopener noreferrer" ' \
-          'href="/help/user/ssh#supported-ssh-key-types">supported SSH public key.</a>')
+        expect(flash[:alert]).to eq('Deploy key must be a <a target="_blank" rel="noopener noreferrer" ' \
+          'href="/help/user/ssh.md#supported-ssh-key-types">supported SSH public key.</a>')
       end
     end
 
@@ -308,6 +323,7 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
 
   describe 'PUT update' do
     let(:extra_params) { {} }
+    let(:project) { create(:project) }
 
     subject do
       put :update, params: extra_params.reverse_merge(
@@ -319,8 +335,6 @@ RSpec.describe Projects::DeployKeysController, feature_category: :continuous_del
       deploy_keys_projects_attributes = { '0' => { can_push: can_push } }
       { deploy_key: { title: title, deploy_keys_projects_attributes: deploy_keys_projects_attributes } }
     end
-
-    let(:project) { create(:project) }
 
     context 'public deploy key' do
       let(:deploy_key) { create(:deploy_key, public: true) }

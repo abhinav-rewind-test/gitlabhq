@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   let_it_be(:parent_group) { create(:group, :public) }
@@ -18,8 +18,8 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
   shared_examples 'reference parsing' do
     %w[pre code a style].each do |elem|
       it "ignores valid references contained inside '#{elem}' element" do
-        exp = act = "<#{elem}>milestone #{reference}</#{elem}>"
-        expect(reference_filter(act).to_html).to eq exp
+        act = "<#{elem}>milestone #{reference}</#{elem}>"
+        expect(reference_filter(act).to_html).to include act
       end
     end
 
@@ -33,8 +33,13 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
       doc = reference_filter("Milestone #{reference}")
       link = doc.css('a').first
 
-      expect(link).to have_attribute('data-project')
-      expect(link.attr('data-project')).to eq project.id.to_s
+      if milestone.project.present?
+        expect(link).to have_attribute('data-project')
+        expect(link.attr('data-project')).to eq project.id.to_s
+      elsif milestone.group.present?
+        expect(link).to have_attribute('data-group')
+        expect(link.attr('data-group')).to eq milestone.group.id.to_s
+      end
     end
 
     it 'includes a data-milestone attribute' do
@@ -67,9 +72,9 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
     end
 
     it 'ignores invalid milestone IIDs' do
-      exp = act = "Milestone #{invalidate_reference(reference)}"
+      act = "Milestone #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -98,9 +103,9 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
     end
 
     it 'ignores invalid milestone names' do
-      exp = act = "Milestone #{Milestone.reference_prefix}#{milestone.name.reverse}"
+      act = "Milestone #{Milestone.reference_prefix}#{milestone.name.reverse}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -124,9 +129,9 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
     end
 
     it 'ignores invalid milestone names' do
-      exp = act = %(Milestone #{Milestone.reference_prefix}"#{milestone.name.reverse}")
+      act = %(Milestone #{Milestone.reference_prefix}"#{milestone.name.reverse}")
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -153,8 +158,13 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
       doc = reference_filter("Milestone #{link_reference}")
       link = doc.css('a').first
 
-      expect(link).to have_attribute('data-project')
-      expect(link.attr('data-project')).to eq project.id.to_s
+      if milestone.project.present?
+        expect(link).to have_attribute('data-project')
+        expect(link.attr('data-project')).to eq project.id.to_s
+      elsif milestone.group.present?
+        expect(link).to have_attribute('data-group')
+        expect(link.attr('data-group')).to eq milestone.group.id.to_s
+      end
     end
 
     it 'includes a data-milestone attribute' do
@@ -306,7 +316,7 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
 
   shared_examples 'references with HTML entities' do
     before do
-      milestone.update!(title: '&lt;html&gt;')
+      milestone.update!(title: '<html>')
     end
 
     it 'links to a valid reference' do
@@ -319,7 +329,7 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
     it 'ignores invalid milestone names and escapes entities' do
       act = %(Milestone %"&lt;non valid&gt;")
 
-      expect(reference_filter(act).to_html).to eq act
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -330,7 +340,7 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
       result = reference_filter("See #{absolute_reference}")
 
       expect(result.css('a').first.attr('href')).to eq(urls.milestone_url(milestone))
-      expect(result.css('a').first.attr('data-original')).to eq absolute_reference
+      expect(result.css('a').first.attr('data-original')).to eq_html(absolute_reference)
       expect(result.content).to eq "See %#{milestone.title}"
     end
   end
@@ -427,9 +437,9 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
       end
 
       it 'ignores internal references' do
-        exp = act = "See %#{milestone.iid}"
+        act = "See %#{milestone.iid}"
 
-        expect(reference_filter(act, context).to_html).to eq exp
+        expect(reference_filter(act, context).to_html).to include act
       end
 
       it_behaves_like 'absolute references' do
@@ -468,9 +478,9 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
       end
 
       it 'ignores internal references' do
-        exp = act = "See %#{group_milestone.iid}"
+        act = "See %#{group_milestone.iid}"
 
-        expect(reference_filter(act, context).to_html).to eq exp
+        expect(reference_filter(act, context).to_html).to include act
       end
     end
 
@@ -504,7 +514,7 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
     context 'when referencing both group and subgroup milestones using absolute references' do
       let(:subgroup) { create(:group, :public, parent: group) }
       let(:group_milestone) { create(:milestone, title: 'group_milestone', group: group) }
-      let(:subgroup_milestone) { create(:milestone, title: 'group_milestone', group: subgroup) }
+      let(:subgroup_milestone) { create(:milestone, title: 'subgroup_milestone', group: subgroup) }
       let(:context) { { project: project, group: nil } }
 
       it 'links to valid references' do
@@ -616,5 +626,23 @@ RSpec.describe Banzai::Filter::References::MilestoneReferenceFilter, feature_cat
         reference_filter(markdown)
       end.not_to exceed_all_query_limit(control_count)
     end
+  end
+
+  it_behaves_like 'a reference which does not unescape its content in data-original' do
+    let(:context)                 { { project: project } }
+    let(:milestone_title)         { "x<script>alert('xss');</script>" }
+    let(:milestone_title_escaped) { "x&lt;script&gt;alert('xss');&lt;/script&gt;" }
+    let(:resource)                { create(:milestone, title: milestone_title, project: project) }
+    let(:reference)               { %(#{resource.class.reference_prefix}"#{milestone_title_escaped}") }
+
+    let(:expected_resource_title)   { milestone_title }
+    let(:expected_href)             { urls.milestone_url(resource) }
+    let(:expected_replacement_text) { %(#{resource.class.reference_prefix}#{milestone_title}) }
+  end
+
+  it_behaves_like 'ReferenceFilter#references_in' do
+    let(:milestone) { create(:milestone, project: project) }
+    let(:reference) { milestone.to_reference }
+    let(:filter_instance) { described_class.new(nil, { project: }) }
   end
 end

@@ -2,29 +2,26 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Resource state events API
 ---
 
-# Resource state events API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/35210/) in GitLab 13.2.
+{{< /details >}}
 
-Resource state events keep track of what happens to GitLab [issues](../user/project/issues/index.md)
-[merge requests](../user/project/merge_requests/index.md) and [epics starting with GitLab 15.4](../user/group/epics/index.md)
+Use this API to interact with state change events for issues, merge requests, and epics.
 
-Use them to track which state was set, who did it, and when it happened.
-
-Resource state events API does not track the initial state ("create" or "open") of resources.
+This API does not track the initial state ("create" or "open") of resources.
 For a resource that was not closed or re-opened, an empty list is returned.
 
 ## Issues
 
 ### List project issue state events
 
-Gets a list of all state events for a single issue.
+Lists all state events for a single issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_state_events
@@ -32,7 +29,7 @@ GET /projects/:id/issues/:issue_iid/resource_state_events
 
 | Attribute   | Type           | Required | Description                                                                     |
 | ----------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`        | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `issue_iid` | integer        | yes      | The IID of an issue                                                             |
 
 Example request:
@@ -58,6 +55,8 @@ Example response:
     "created_at": "2018-08-20T13:38:20.077Z",
     "resource_type": "Issue",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "opened"
   },
   {
@@ -73,14 +72,16 @@ Example response:
     "created_at": "2018-08-21T14:38:20.077Z",
     "resource_type": "Issue",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "closed"
   }
 ]
 ```
 
-### Get single issue state event
+### Retrieve a single issue state event
 
-Returns a single state event for a specific project issue
+Retrieves a single state event for a specific project issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_state_events/:resource_state_event_id
@@ -90,7 +91,7 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `issue_iid`                   | integer        | yes      | The IID of an issue                                                             |
 | `resource_state_event_id`     | integer        | yes      | The ID of a state event                                                     |
 
@@ -116,6 +117,8 @@ Example response:
   "created_at": "2018-08-21T14:38:20.077Z",
   "resource_type": "Issue",
   "resource_id": 11,
+  "source_commit": null,
+  "source_merge_request_id": null,
   "state": "closed"
 }
 ```
@@ -124,7 +127,7 @@ Example response:
 
 ### List project merge request state events
 
-Gets a list of all state events for a single merge request.
+Lists all state events for a single merge request.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/resource_state_events
@@ -132,7 +135,7 @@ GET /projects/:id/merge_requests/:merge_request_iid/resource_state_events
 
 | Attribute           | Type           | Required | Description                                                                     |
 | ------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `merge_request_iid` | integer        | yes      | The IID of a merge request                                                      |
 
 Example request:
@@ -158,6 +161,8 @@ Example response:
     "created_at": "2018-08-20T13:38:20.077Z",
     "resource_type": "MergeRequest",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "opened"
   },
   {
@@ -173,14 +178,16 @@ Example response:
     "created_at": "2018-08-21T14:38:20.077Z",
     "resource_type": "MergeRequest",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "closed"
   }
 ]
 ```
 
-### Get single merge request state event
+### Retrieve a single merge request state event
 
-Returns a single state event for a specific project merge request
+Retrieves a single state event for a specific project merge request.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/resource_state_events/:resource_state_event_id
@@ -190,7 +197,7 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `merge_request_iid`           | integer        | yes      | The IID of a merge request                                                      |
 | `resource_state_event_id`     | integer        | yes      | The ID of a state event                                                     |
 
@@ -216,17 +223,30 @@ Example response:
   "created_at": "2018-08-21T14:38:20.077Z",
   "resource_type": "MergeRequest",
   "resource_id": 11,
+  "source_commit": null,
+  "source_merge_request_id": null,
   "state": "closed"
 }
 ```
 
 ## Epics
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/97554) in GitLab 15.4.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/97554) in GitLab 15.4.
+
+{{< /history >}}
+
+> [!warning]
+> The Epics REST API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/460668) in GitLab 17.0
+> and is planned for removal in v5 of the API.
+> From GitLab 17.4 to 18.0, if [the new look for epics](../user/group/epics/_index.md#epics-as-work-items) is enabled, and in GitLab 18.1 and later, use the
+> Work Items API instead. For more information, see [migrate epic APIs to work items](graphql/epic_work_items_api_migration_guide.md).
+> This change is a breaking change.
 
 ### List group epic state events
 
-Returns a list of all state events for a single epic.
+Lists all state events for a single epic.
 
 ```plaintext
 GET /groups/:id/epics/:epic_id/resource_state_events
@@ -234,7 +254,7 @@ GET /groups/:id/epics/:epic_id/resource_state_events
 
 | Attribute   | Type           | Required | Description                                                                    |
 |-------------| -------------- | -------- |--------------------------------------------------------------------------------|
-| `id`        | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding).   |
+| `id`        | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group.   |
 | `epic_id`   | integer        | yes      | The ID of an epic.                                                              |
 
 Example request:
@@ -260,6 +280,8 @@ Example response:
     "created_at": "2018-08-20T13:38:20.077Z",
     "resource_type": "Epic",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "opened"
   },
   {
@@ -275,14 +297,16 @@ Example response:
     "created_at": "2018-08-21T14:38:20.077Z",
     "resource_type": "Epic",
     "resource_id": 11,
+    "source_commit": null,
+    "source_merge_request_id": null,
     "state": "closed"
   }
 ]
 ```
 
-### Get single epic state event
+### Retrieve a single epic state event
 
-Returns a single state event for a specific group epic.
+Retrieves a single epic state event.
 
 ```plaintext
 GET /groups/:id/epics/:epic_id/resource_state_events/:resource_state_event_id
@@ -292,7 +316,7 @@ Parameters:
 
 | Attribute                 | Type           | Required | Description                                                                   |
 |---------------------------| -------------- | -------- |-------------------------------------------------------------------------------|
-| `id`                      | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding).  |
+| `id`                      | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group.  |
 | `epic_id`                 | integer        | yes      | The ID of an epic.                                                           |
 | `resource_state_event_id` | integer        | yes      | The ID of a state event.                                                       |
 
@@ -318,6 +342,8 @@ Example response:
   "created_at": "2018-08-21T14:38:20.077Z",
   "resource_type": "Epic",
   "resource_id": 11,
+  "source_commit": null,
+  "source_merge_request_id": null,
   "state": "closed"
 }
 ```

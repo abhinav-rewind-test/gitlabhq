@@ -18,7 +18,10 @@ module Gitlab
       end
 
       def execute
+        project.importing = true
         if import_file && check_version! && restorers.all?(&:restore) && overwrite_project
+          remove_import_file
+
           project
         else
           raise Projects::ImportService::Error, shared.errors.to_sentence
@@ -32,7 +35,6 @@ module Gitlab
         raise Projects::ImportService::Error, e.message
       ensure
         remove_base_tmp_dir
-        remove_import_file
       end
 
       private
@@ -41,13 +43,13 @@ module Gitlab
 
       def restorers
         [repo_restorer, wiki_restorer, project_tree, avatar_restorer, design_repo_restorer,
-         uploads_restorer, lfs_restorer, statistics_restorer, snippets_repo_restorer]
+          uploads_restorer, lfs_restorer, statistics_restorer, snippets_repo_restorer]
       end
 
       def import_file
         Gitlab::ImportExport::FileImporter.import(importable: project,
-                                                  archive_file: archive_file,
-                                                  shared: shared)
+          archive_file: archive_file,
+          shared: shared, user: current_user)
       end
 
       def check_version!
@@ -56,8 +58,8 @@ module Gitlab
 
       def project_tree
         @project_tree ||= project_tree_class.new(user: current_user,
-                                                 shared: shared,
-                                                 project: project)
+          shared: shared,
+          project: project)
       end
 
       def project_tree_class
@@ -74,20 +76,20 @@ module Gitlab
 
       def repo_restorer
         Gitlab::ImportExport::RepoRestorer.new(path_to_bundle: repo_path,
-                                               shared: shared,
-                                               importable: project)
+          shared: shared,
+          importable: project)
       end
 
       def wiki_restorer
         Gitlab::ImportExport::RepoRestorer.new(path_to_bundle: wiki_repo_path,
-                                               shared: shared,
-                                               importable: ProjectWiki.new(project))
+          shared: shared,
+          importable: ProjectWiki.new(project))
       end
 
       def design_repo_restorer
         Gitlab::ImportExport::DesignRepoRestorer.new(path_to_bundle: design_repo_path,
-                                                     shared: shared,
-                                                     importable: project)
+          shared: shared,
+          importable: project)
       end
 
       def uploads_restorer
@@ -100,8 +102,8 @@ module Gitlab
 
       def snippets_repo_restorer
         Gitlab::ImportExport::SnippetsRepoRestorer.new(project: project,
-                                                       shared: shared,
-                                                       user: current_user)
+          shared: shared,
+          user: current_user)
       end
 
       def statistics_restorer
@@ -125,7 +127,7 @@ module Gitlab
       end
 
       def remove_import_file
-        upload = project.import_export_upload
+        upload = project.import_export_upload_by_user(current_user)
 
         return unless upload&.import_file&.file
 

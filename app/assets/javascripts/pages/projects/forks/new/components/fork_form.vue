@@ -16,9 +16,10 @@ import { buildApiUrl } from '~/api/api_utils';
 import { createAlert } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
 import csrf from '~/lib/utils/csrf';
-import { redirectTo } from '~/lib/utils/url_utility'; // eslint-disable-line import/no-deprecated
+import { visitUrl } from '~/lib/utils/url_utility';
 import { s__, __ } from '~/locale';
 import validation from '~/vue_shared/directives/validation';
+import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
 import {
   VISIBILITY_LEVEL_PRIVATE_STRING,
   VISIBILITY_LEVEL_INTERNAL_STRING,
@@ -64,6 +65,7 @@ export default {
     GlFormRadio,
     GlFormRadioGroup,
     ProjectNamespace,
+    HelpIcon,
   },
   directives: {
     validation: validation(feedbackMap),
@@ -280,7 +282,7 @@ export default {
 
       try {
         const { data } = await axios.post(url, postParams);
-        redirectTo(data.web_url); // eslint-disable-line import/no-deprecated
+        visitUrl(data.web_url);
       } catch (error) {
         this.isSaving = false;
         const message =
@@ -320,23 +322,23 @@ export default {
       />
     </gl-form-group>
 
-    <div class="gl-md-display-flex">
-      <div class="gl-flex-basis-half">
+    <div class="@md/panel:gl-flex">
+      <div class="gl-basis-1/2">
         <gl-form-group
           :label="__('Project URL')"
           label-for="fork-url"
-          class="gl-md-mr-3"
+          class="@md/panel:gl-mr-3"
           :state="form.fields.namespace.state"
           :invalid-feedback="s__('ForkProject|Please select a namespace')"
         >
           <project-namespace @select="setNamespace" />
         </gl-form-group>
       </div>
-      <div class="gl-flex-basis-half">
+      <div class="gl-basis-1/2">
         <gl-form-group
           :label="__('Project slug')"
           label-for="fork-slug"
-          class="gl-md-ml-3"
+          class="@md/panel:gl-ml-3"
           :invalid-feedback="form.fields.slug.feedback"
         >
           <gl-form-input
@@ -352,7 +354,7 @@ export default {
       </div>
     </div>
 
-    <p class="gl-mt-n3 gl-text-gray-500">
+    <p class="-gl-mt-3 gl-text-subtle">
       {{ s__('ForkProject|Want to organize several dependent projects under the same namespace?') }}
       <gl-link :href="newGroupPath" target="_blank">
         {{ s__('ForkProject|Create a group') }}
@@ -365,6 +367,7 @@ export default {
         v-model="form.fields.description.value"
         data-testid="fork-description-textarea"
         name="description"
+        no-resize
         :state="form.fields.description.state"
       />
     </gl-form-group>
@@ -405,7 +408,7 @@ export default {
       <label>
         {{ s__('ForkProject|Visibility level') }}
         <gl-link :href="visibilityHelpPath" target="_blank">
-          <gl-icon name="question-o" />
+          <help-icon />
         </gl-link>
       </label>
       <gl-form-radio-group
@@ -435,7 +438,7 @@ export default {
       </gl-form-radio-group>
     </gl-form-group>
 
-    <div class="gl-display-flex gl-justify-content-space-between gl-mt-8">
+    <div class="gl-mt-8 gl-flex gl-justify-between">
       <gl-button
         type="submit"
         category="primary"

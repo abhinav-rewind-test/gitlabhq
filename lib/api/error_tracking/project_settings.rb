@@ -4,9 +4,8 @@ module API
   class ErrorTracking::ProjectSettings < ::API::Base
     before { authenticate! }
 
-    ERROR_TRACKING_PROJECT_SETTINGS_TAGS = %w[error_tracking_project_settings].freeze
-
-    feature_category :error_tracking
+    ERROR_TRACKING_PROJECT_SETTINGS_TAGS = %w[error_tracking].freeze
+    feature_category :observability
     urgency :low
 
     helpers do
@@ -17,7 +16,7 @@ module API
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
+        desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
     end
 
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do

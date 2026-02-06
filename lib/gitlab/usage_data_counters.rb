@@ -3,19 +3,6 @@
 module Gitlab
   module UsageDataCounters
     COUNTERS = [
-      PackageEventCounter,
-      MergeRequestCounter,
-      DesignsCounter,
-      DiffsCounter,
-      KubernetesAgentCounter,
-      NoteCounter,
-      SearchCounter,
-      WebIdeCounter,
-      WikiPageCounter,
-      SnippetCounter,
-      CycleAnalyticsCounter,
-      ProductivityAnalyticsCounter,
-      SourceCodeCounter,
       MergeRequestWidgetExtensionCounter
     ].freeze
 

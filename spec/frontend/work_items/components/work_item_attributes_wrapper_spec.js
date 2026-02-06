@@ -1,67 +1,95 @@
-import { nextTick } from 'vue';
+import Vue, { nextTick } from 'vue';
+import VueApollo from 'vue-apollo';
 import { shallowMount } from '@vue/test-utils';
 import Participants from '~/sidebar/components/participants/participants.vue';
-import WorkItemAssigneesWithEdit from '~/work_items/components/work_item_assignees_with_edit.vue';
-import WorkItemDueDateInline from '~/work_items/components/work_item_due_date_inline.vue';
-import WorkItemDueDateWithEdit from '~/work_items/components/work_item_due_date_with_edit.vue';
-import WorkItemLabelsInline from '~/work_items/components/work_item_labels_inline.vue';
-import WorkItemLabelsWithEdit from '~/work_items/components/work_item_labels_with_edit.vue';
-import WorkItemMilestoneInline from '~/work_items/components/work_item_milestone_inline.vue';
-import WorkItemMilestoneWithEdit from '~/work_items/components/work_item_milestone_with_edit.vue';
-import WorkItemParentInline from '~/work_items/components/work_item_parent_inline.vue';
-import WorkItemParent from '~/work_items/components/work_item_parent_with_edit.vue';
+import WorkItemAssignees from '~/work_items/components/work_item_assignees.vue';
+import WorkItemDates from 'ee_else_ce/work_items/components/work_item_dates.vue';
+import WorkItemLabels from '~/work_items/components/work_item_labels.vue';
+import WorkItemMilestone from '~/work_items/components/work_item_milestone.vue';
+import WorkItemParent from '~/work_items/components/work_item_parent.vue';
 import WorkItemTimeTracking from '~/work_items/components/work_item_time_tracking.vue';
+import WorkItemCrmContacts from '~/work_items/components/work_item_crm_contacts.vue';
 import waitForPromises from 'helpers/wait_for_promises';
+import createMockApollo from 'helpers/mock_apollo_helper';
 import WorkItemAttributesWrapper from '~/work_items/components/work_item_attributes_wrapper.vue';
+import workItemParticipantsQuery from '~/work_items/graphql/work_item_participants.query.graphql';
+import getAllowedWorkItemParentTypes from '~/work_items/graphql/work_item_allowed_parent_types.query.graphql';
 import {
   workItemResponseFactory,
-  taskType,
-  objectiveType,
-  keyResultType,
-  issueType,
-  epicType,
-} from '../mock_data';
+  mockParticipantWidget,
+  allowedParentTypesResponse,
+  allowedParentTypesEmptyResponse,
+} from 'ee_else_ce_jest/work_items/mock_data';
 
 describe('WorkItemAttributesWrapper component', () => {
   let wrapper;
 
-  const workItemQueryResponse = workItemResponseFactory({ canUpdate: true, canDelete: true });
+  Vue.use(VueApollo);
 
-  const findWorkItemAssignees = () => wrapper.findComponent(WorkItemAssigneesWithEdit);
-  const findWorkItemDueDate = () => wrapper.findComponent(WorkItemDueDateWithEdit);
-  const findWorkItemDueDateInline = () => wrapper.findComponent(WorkItemDueDateInline);
-  const findWorkItemLabelsInline = () => wrapper.findComponent(WorkItemLabelsInline);
-  const findWorkItemLabels = () => wrapper.findComponent(WorkItemLabelsWithEdit);
-  const findWorkItemMilestone = () => wrapper.findComponent(WorkItemMilestoneWithEdit);
-  const findWorkItemMilestoneInline = () => wrapper.findComponent(WorkItemMilestoneInline);
-  const findWorkItemParentInline = () => wrapper.findComponent(WorkItemParentInline);
+  const workItemQueryResponse = workItemResponseFactory({
+    canUpdate: true,
+    canDelete: true,
+    participantsWidgetPresent: false,
+    showPlanUpgradePromotion: true,
+  });
+  const workItemParticipantsQueryResponse = {
+    data: {
+      namespace: {
+        __typename: 'Namespace',
+        id: workItemQueryResponse.data.workItem.namespace.id,
+        workItem: {
+          id: workItemQueryResponse.data.workItem.id,
+          widgets: [...workItemQueryResponse.data.workItem.widgets, mockParticipantWidget],
+        },
+      },
+    },
+  };
+  const workItemParticipantsQuerySuccessHandler = jest
+    .fn()
+    .mockResolvedValue(workItemParticipantsQueryResponse);
+  const workItemParticipantsQueryFailureHandler = jest.fn().mockRejectedValue(new Error());
+
+  const allowedParentTypesSuccessHandler = jest.fn().mockResolvedValue(allowedParentTypesResponse);
+  const allowedParentTypesEmptyHandler = jest
+    .fn()
+    .mockResolvedValue(allowedParentTypesEmptyResponse);
+
+  const findWorkItemAssignees = () => wrapper.findComponent(WorkItemAssignees);
+  const findWorkItemDates = () => wrapper.findComponent(WorkItemDates);
+  const findWorkItemLabels = () => wrapper.findComponent(WorkItemLabels);
+  const findWorkItemMilestone = () => wrapper.findComponent(WorkItemMilestone);
   const findWorkItemParent = () => wrapper.findComponent(WorkItemParent);
   const findWorkItemTimeTracking = () => wrapper.findComponent(WorkItemTimeTracking);
   const findWorkItemParticipants = () => wrapper.findComponent(Participants);
+  const findWorkItemCrmContacts = () => wrapper.findComponent(WorkItemCrmContacts);
 
   const createComponent = ({
     workItem = workItemQueryResponse.data.workItem,
-    workItemsBeta = true,
+    groupPath = '',
+    workItemParticipantsQueryHandler = workItemParticipantsQuerySuccessHandler,
+    allowedParentTypesHandler = allowedParentTypesSuccessHandler,
   } = {}) => {
     wrapper = shallowMount(WorkItemAttributesWrapper, {
+      apolloProvider: createMockApollo([
+        [workItemParticipantsQuery, workItemParticipantsQueryHandler],
+        [getAllowedWorkItemParentTypes, allowedParentTypesHandler],
+      ]),
       propsData: {
         fullPath: 'group/project',
         workItem,
+        groupPath,
+        isGroup: false,
       },
       provide: {
-        hasIssueWeightsFeature: true,
-        hasIterationsFeature: true,
-        hasOkrsFeature: true,
-        hasIssuableHealthStatusFeature: true,
-        projectNamespace: 'namespace',
-        glFeatures: {
-          workItemsBeta,
-        },
+        hasSubepicsFeature: true,
+        getWorkItemTypeConfiguration: jest.fn().mockReturnValue({ widgetDefinitions: [] }),
       },
       stubs: {
         WorkItemWeight: true,
         WorkItemIteration: true,
         WorkItemHealthStatus: true,
+        WorkItemParent: true,
+        WorkItemStatus: true,
       },
     });
   };
@@ -94,25 +122,13 @@ describe('WorkItemAttributesWrapper component', () => {
       expect(findWorkItemLabels().exists()).toBe(exists);
     });
 
-    it.each`
-      description                                                   | labelsWidgetInlinePresent | labelsWidgetWithEditPresent | workItemsBetaFlagEnabled
-      ${'renders WorkItemLabels when workItemsBeta enabled'}        | ${false}                  | ${true}                     | ${true}
-      ${'renders WorkItemLabelsInline when workItemsBeta disabled'} | ${true}                   | ${false}                    | ${false}
-    `(
-      '$description',
-      async ({
-        labelsWidgetInlinePresent,
-        labelsWidgetWithEditPresent,
-        workItemsBetaFlagEnabled,
-      }) => {
-        createComponent({ workItemsBeta: workItemsBetaFlagEnabled });
+    it('renders WorkItemLabels', async () => {
+      createComponent();
 
-        await waitForPromises();
+      await waitForPromises();
 
-        expect(findWorkItemLabels().exists()).toBe(labelsWidgetWithEditPresent);
-        expect(findWorkItemLabelsInline().exists()).toBe(labelsWidgetInlinePresent);
-      },
-    );
+      expect(findWorkItemLabels().exists()).toBe(true);
+    });
   });
 
   describe('dates widget', () => {
@@ -121,33 +137,21 @@ describe('WorkItemAttributesWrapper component', () => {
       ${'when widget is returned from API'}     | ${true}            | ${true}
       ${'when widget is not returned from API'} | ${false}           | ${false}
     `('$description', ({ datesWidgetPresent, exists }) => {
-      it(`${datesWidgetPresent ? 'renders' : 'does not render'} due date component`, () => {
+      it(`${datesWidgetPresent ? 'renders' : 'does not render'} dates component`, () => {
         const response = workItemResponseFactory({ datesWidgetPresent });
         createComponent({ workItem: response.data.workItem });
 
-        expect(findWorkItemDueDate().exists()).toBe(exists);
+        expect(findWorkItemDates().exists()).toBe(exists);
       });
     });
 
-    it.each`
-      description                                                     | dueDateWidgetInlinePresent | dueDateWidgetWithEditPresent | workItemsBetaFlagEnabled
-      ${'renders WorkItemDueDateWithEdit when workItemsBeta enabled'} | ${false}                   | ${true}                      | ${true}
-      ${'renders WorkItemDueDateInline when workItemsBeta disabled'}  | ${true}                    | ${false}                     | ${false}
-    `(
-      '$description',
-      async ({
-        dueDateWidgetInlinePresent,
-        dueDateWidgetWithEditPresent,
-        workItemsBetaFlagEnabled,
-      }) => {
-        createComponent({ workItemsBeta: workItemsBetaFlagEnabled });
+    it('renders WorkItemDates', async () => {
+      createComponent();
 
-        await waitForPromises();
+      await waitForPromises();
 
-        expect(findWorkItemDueDate().exists()).toBe(dueDateWidgetWithEditPresent);
-        expect(findWorkItemDueDateInline().exists()).toBe(dueDateWidgetInlinePresent);
-      },
-    );
+      expect(findWorkItemDates().exists()).toBe(true);
+    });
   });
 
   describe('milestone widget', () => {
@@ -162,62 +166,39 @@ describe('WorkItemAttributesWrapper component', () => {
       expect(findWorkItemMilestone().exists()).toBe(exists);
     });
 
-    it.each`
-      description                                                      | milestoneWidgetInlinePresent | milestoneWidgetWithEditPresent | workItemsBetaFlagEnabled
-      ${'renders WorkItemMilestone when workItemsBeta enabled'}        | ${false}                     | ${true}                        | ${true}
-      ${'renders WorkItemMilestoneInline when workItemsBeta disabled'} | ${true}                      | ${false}                       | ${false}
-    `(
-      '$description',
-      async ({
-        milestoneWidgetInlinePresent,
-        milestoneWidgetWithEditPresent,
-        workItemsBetaFlagEnabled,
-      }) => {
-        createComponent({ workItemsBeta: workItemsBetaFlagEnabled });
-
-        await waitForPromises();
-
-        expect(findWorkItemMilestone().exists()).toBe(milestoneWidgetWithEditPresent);
-        expect(findWorkItemMilestoneInline().exists()).toBe(milestoneWidgetInlinePresent);
-      },
-    );
-  });
-
-  describe('parent widget', () => {
-    describe.each`
-      description                            | workItemType     | exists
-      ${'when work item type is task'}       | ${taskType}      | ${true}
-      ${'when work item type is objective'}  | ${objectiveType} | ${true}
-      ${'when work item type is key result'} | ${keyResultType} | ${true}
-      ${'when work item type is issue'}      | ${issueType}     | ${true}
-      ${'when work item type is epic'}       | ${epicType}      | ${true}
-    `('$description', ({ workItemType, exists }) => {
-      it(`${exists ? 'renders' : 'does not render'} parent component`, async () => {
-        const response = workItemResponseFactory({ workItemType });
-        createComponent({ workItem: response.data.workItem });
-
-        await waitForPromises();
-
-        expect(findWorkItemParent().exists()).toBe(exists);
-      });
-    });
-
-    it('renders WorkItemParent when workItemsBeta enabled', async () => {
+    it('renders WorkItemMilestone', async () => {
       createComponent();
 
       await waitForPromises();
 
-      expect(findWorkItemParent().exists()).toBe(true);
-      expect(findWorkItemParentInline().exists()).toBe(false);
+      expect(findWorkItemMilestone().exists()).toBe(true);
     });
+  });
 
-    it('renders WorkItemParentInline when workItemsBeta disabled', async () => {
-      createComponent({ workItemsBeta: false });
+  describe('parent widget', () => {
+    it(`renders parent component`, async () => {
+      const response = workItemResponseFactory();
+      createComponent({ workItem: response.data.workItem });
 
       await waitForPromises();
 
+      expect(findWorkItemParent().exists()).toBe(true);
+    });
+
+    it('does not render parent component if it is not supported by the license', async () => {
+      createComponent({ allowedParentTypesHandler: allowedParentTypesEmptyHandler });
+      await waitForPromises();
+
       expect(findWorkItemParent().exists()).toBe(false);
-      expect(findWorkItemParentInline().exists()).toBe(true);
+    });
+
+    it.each([true, false])(`renders parent component with hasParent %s`, async (hasParent) => {
+      const response = workItemResponseFactory({ hasParent });
+      createComponent({ workItem: response.data.workItem });
+
+      await waitForPromises();
+
+      expect(findWorkItemParent().props('hasParent')).toBe(hasParent);
     });
 
     it('emits an error event to the wrapper', async () => {
@@ -231,6 +212,17 @@ describe('WorkItemAttributesWrapper component', () => {
       await nextTick();
 
       expect(wrapper.emitted('error')).toEqual([[updateError]]);
+    });
+
+    it('allows update when user has adminWorkItemLink permission even without setWorkItemMetadata', async () => {
+      const response = workItemResponseFactory({
+        userPermissions: { setWorkItemMetadata: false, adminWorkItemLink: true },
+      });
+      createComponent({ workItem: response.data.workItem });
+
+      await waitForPromises();
+
+      expect(findWorkItemParent().props('canUpdate')).toBe(true);
     });
   });
 
@@ -247,16 +239,42 @@ describe('WorkItemAttributesWrapper component', () => {
     });
   });
 
-  describe('participants widget', () => {
+  describe('CRM contacts widget', () => {
     it.each`
-      description                                               | participantsWidgetPresent | exists
-      ${'renders when widget is returned from API'}             | ${true}                   | ${true}
-      ${'does not render when widget is not returned from API'} | ${false}                  | ${false}
-    `('$description', ({ participantsWidgetPresent, exists }) => {
-      const response = workItemResponseFactory({ participantsWidgetPresent });
+      description                                               | crmContactsWidgetPresent | exists
+      ${'renders when widget is returned from API'}             | ${true}                  | ${true}
+      ${'does not render when widget is not returned from API'} | ${false}                 | ${false}
+    `('$description', ({ crmContactsWidgetPresent, exists }) => {
+      const response = workItemResponseFactory({ crmContactsWidgetPresent });
       createComponent({ workItem: response.data.workItem });
 
+      expect(findWorkItemCrmContacts().exists()).toBe(exists);
+    });
+  });
+
+  describe('participants widget', () => {
+    it.each`
+      description                                               | workItemParticipantsQueryHandler           | exists
+      ${'renders when widget is returned from API'}             | ${workItemParticipantsQuerySuccessHandler} | ${true}
+      ${'does not render when widget is not returned from API'} | ${workItemParticipantsQueryFailureHandler} | ${false}
+    `('$description', async ({ workItemParticipantsQueryHandler, exists }) => {
+      createComponent({ workItemParticipantsQueryHandler });
+
+      await waitForPromises();
+
       expect(findWorkItemParticipants().exists()).toBe(exists);
+    });
+
+    it('passed correct participant count to participant component', async () => {
+      // Mocking the participant count to be 20
+      mockParticipantWidget.participants.count = 20;
+
+      createComponent({ workItemParticipantsQuerySuccessHandler });
+
+      await waitForPromises();
+
+      expect(findWorkItemParticipants().exists()).toBe(true);
+      expect(findWorkItemParticipants().props('participantCount')).toBe(20);
     });
   });
 });

@@ -1,17 +1,16 @@
 ---
-stage: Secure
+stage: Application Security Testing
 group: Static Analysis
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Security scanner integration
 ---
 
-# Security scanner integration
-
 Integrating a security scanner into GitLab consists of providing end users
-with a [CI/CD job definition](../../ci/jobs/index.md)
+with a [CI/CD job definition](../../ci/jobs/_index.md)
 they can add to their CI/CD configuration files to scan their GitLab projects.
 This job should then output its results in a GitLab-specified format. These results are then
-automatically presented in various places in GitLab, such as the Pipeline view, merge request
-widget, and Security Dashboard.
+automatically presented in various places in GitLab, such as the pipeline view, merge request
+widget, and security dashboard.
 
 The scanning job is usually based on a [Docker image](https://docs.docker.com/)
 that contains the scanner and all its dependencies in a self-contained environment.
@@ -23,11 +22,11 @@ scanner, as well as requirements and guidelines for the Docker image.
 
 This section describes several important fields to add to the security scanner's job
 definition file. Full documentation on these and other available fields can be viewed
-in the [CI documentation](../../ci/yaml/index.md#image).
+in the [CI/CD documentation](../../ci/yaml/_index.md#image).
 
 ### Name
 
-For consistency, scanning jobs should be named after the scanner, in lower case.
+For consistency, scanning jobs should be named after the scanner, in lowercase.
 The job name is suffixed after the type of scanning:
 
 - `_dependency_scanning`
@@ -39,41 +38,40 @@ For instance, the dependency scanning job based on the "MySec" scanner would be 
 
 ### Image
 
-The [`image`](../../ci/yaml/index.md#image) keyword is used to specify
+The [`image`](../../ci/yaml/_index.md#image) keyword is used to specify
 the [Docker image](../../ci/docker/using_docker_images.md#what-is-an-image)
 containing the security scanner.
 
 ### Script
 
-The [`script`](../../ci/yaml/index.md#script) keyword
+The [`script`](../../ci/yaml/_index.md#script) keyword
 is used to specify the commands to run the scanner.
 Because the `script` entry can't be left empty, it must be set to the command that performs the scan.
 It is not possible to rely on the predefined `ENTRYPOINT` and `CMD` of the Docker image
 to perform the scan automatically, without passing any command.
 
-The [`before_script`](../../ci/yaml/index.md#before_script)
-should not be used in the job definition because users may rely on this to prepare their projects before performing the scan.
-For instance, it is common practice to use `before_script` to install system libraries
-a particular project needs before performing SAST or Dependency Scanning.
+The [`before_script`](../../ci/yaml/_index.md#before_script) should not be used in the job
+definition because users may rely on this to prepare their projects before performing the scan. For
+instance, it is common practice to use `before_script` to install system libraries a particular
+project needs before performing static application security testing (SAST) or dependency scanning.
 
-Similarly, [`after_script`](../../ci/yaml/index.md#after_script)
+Similarly, [`after_script`](../../ci/yaml/_index.md#after_script)
 should not be used in the job definition, because it may be overridden by users.
 
 ### Stage
 
 For consistency, scanning jobs should belong to the `test` stage when possible.
-The [`stage`](../../ci/yaml/index.md#stage) keyword can be omitted because `test` is the default value.
+The [`stage`](../../ci/yaml/_index.md#stage) keyword can be omitted because `test` is the default value.
 
 ### Fail-safe
 
-To be aligned with the [GitLab Security paradigm](https://about.gitlab.com/direction/secure/#security-paradigm),
-scanning jobs should not block the pipeline when they fail,
-so the [`allow_failure`](../../ci/yaml/index.md#allow_failure) parameter should be set to `true`.
+By default, scanning jobs do not block the pipeline when they fail,
+so the [`allow_failure`](../../ci/yaml/_index.md#allow_failure) parameter should be set to `true`.
 
 ### Artifacts
 
 Scanning jobs must declare a report that corresponds to the type of scanning they perform,
-using the [`artifacts:reports`](../../ci/yaml/index.md#artifactsreports) keyword.
+using the [`artifacts:reports`](../../ci/yaml/_index.md#artifactsreports) keyword.
 Valid reports are:
 
 - `dependency_scanning`
@@ -82,6 +80,7 @@ Valid reports are:
 - `api_fuzzing`
 - `coverage_fuzzing`
 - `sast`
+- `secret_detection`
 
 For example, here is the definition of a SAST job that generates a file named `gl-sast-report.json`,
 and uploads it as a SAST report:
@@ -100,8 +99,8 @@ it's declared under the `reports:sast` key in the job definition, not because of
 
 ### Policies
 
-Certain GitLab workflows, such as [AutoDevOps](../../topics/autodevops/cicd_variables.md#job-disabling-variables),
-define CI/CD variables to indicate that given scans should be disabled. You can check for this by looking
+Some GitLab workflows, such as [AutoDevOps](../../topics/autodevops/cicd_variables.md#job-skipping-variables),
+define CI/CD variables to indicate that given scans should be skipped. You can check for this by looking
 for variables such as:
 
 - `DEPENDENCY_SCANNING_DISABLED`
@@ -109,7 +108,7 @@ for variables such as:
 - `SAST_DISABLED`
 - `DAST_DISABLED`
 
-If appropriate based on the scanner type, you should then disable running the custom scanner.
+If appropriate based on the scanner type, you should then skip running the custom scanner.
 
 GitLab also defines a `CI_PROJECT_REPOSITORY_LANGUAGES` variable, which provides the list of
 languages in the repository. Depending on this value, your scanner may or may not do something different.
@@ -118,7 +117,7 @@ See the [predefined CI/CD variables](../../ci/variables/predefined_variables.md)
 
 #### Policy checking example
 
-This example shows how to skip a custom Dependency Scanning job, `mysec_dependency_scanning`, unless
+This example shows how to skip a custom dependency scanning job, `mysec_dependency_scanning`, unless
 the project repository contains Java source code and the `dependency_scanning` feature is enabled:
 
 ```yaml
@@ -144,8 +143,8 @@ regardless of the individual machine the scanner runs on.
 
 ### Image size
 
-Depending on the CI infrastructure,
-the CI may have to fetch the Docker image every time the job runs.
+Depending on the CI/CD infrastructure,
+the CI/CD may have to fetch the Docker image every time the job runs.
 For the scanning job to run fast and avoid wasting bandwidth, Docker images should be as small as
 possible. You should aim for 50 MB or smaller. If that isn't possible, try to keep it below 1.46 GB,
 which is the size of a DVD-ROM.
@@ -176,8 +175,15 @@ Here are some examples to get you started:
 ### Image tag
 
 As documented in the [Docker Official Images](https://github.com/docker-library/official-images#tags-and-aliases) project,
-it is strongly encouraged that version number tags be given aliases which allows the user to easily refer to the "most recent" release of a particular series.
+it is strongly encouraged that version number tags be given aliases which allows the user to refer to the "most recent" release of a particular series.
 See also [Docker Tagging: Best practices for tagging and versioning Docker images](https://learn.microsoft.com/en-us/archive/blogs/stevelasker/docker-tagging-best-practices-for-tagging-and-versioning-docker-images).
+
+### Permissions
+
+To run a Docker container with non-root privileges the following user and group must be present in the container:
+
+- User `gitlab` with user ID `1000`
+- Group `gitlab` with group ID `1000`
 
 ## Command line
 
@@ -188,15 +194,15 @@ It also generates text output on the standard output and standard error streams,
 ### Variables
 
 All CI/CD variables are passed to the scanner as environment variables.
-The scanned project is described by the [predefined CI/CD variables](../../ci/variables/index.md).
+The scanned project is described by the [predefined CI/CD variables](../../ci/variables/_index.md).
 
-#### SAST and Dependency Scanning
+#### SAST and dependency scanning
 
-SAST and Dependency Scanning scanners must scan the files in the project directory, given by the `CI_PROJECT_DIR` CI/CD variable.
+SAST and dependency scanning scanners must scan the files in the project directory, given by the `CI_PROJECT_DIR` CI/CD variable.
 
-#### Container Scanning
+#### Container scanning
 
-To be consistent with the official Container Scanning for GitLab,
+To be consistent with the official container scanning for GitLab,
 scanners must scan the Docker image whose name and tag are given by
 `CI_APPLICATION_REPOSITORY` and `CI_APPLICATION_TAG`. If the `DOCKER_IMAGE`
 CI/CD variable is provided, then the `CI_APPLICATION_REPOSITORY` and `CI_APPLICATION_TAG` variables
@@ -219,16 +225,16 @@ it is recommended to expose configuration as CI/CD variables, not files.
 ### Output file
 
 Like any artifact uploaded to GitLab CI/CD,
-the Secure report generated by the scanner must be written in the project directory,
+the secure report generated by the scanner must be written in the project directory,
 given by the `CI_PROJECT_DIR` CI/CD variable.
 
 It is recommended to name the output file after the type of scanning, and to use `gl-` as a prefix.
-Since all Secure reports are JSON files, it is recommended to use `.json` as a file extension.
-For instance, a suggested filename for a Dependency Scanning report is `gl-dependency-scanning.json`.
+Since all secure reports are JSON files, you should use `.json` as a file extension.
+For instance, a suggested filename for a dependency scanning report is `gl-dependency-scanning.json`.
 
-The [`artifacts:reports`](../../ci/yaml/index.md#artifactsreports) keyword
+The [`artifacts:reports`](../../ci/yaml/_index.md#artifactsreports) keyword
 of the job definition must be consistent with the file path where the Security report is written.
-For instance, if a Dependency Scanning analyzer writes its report to the CI project directory,
+For instance, if a dependency scanning analyzer writes its report to the CI/CD project directory,
 and if this report filename is `depscan.json`,
 then `artifacts:reports:dependency_scanning` must be set to `depscan.json`.
 
@@ -237,14 +243,14 @@ then `artifacts:reports:dependency_scanning` must be set to `depscan.json`.
 Following the POSIX exit code standard, the scanner exits with either `0` for success or `1` for failure.
 Success also includes the case when vulnerabilities are found.
 
-When a CI job fails, security report results are not ingested by GitLab, even if the job
-[allows failure](../../ci/yaml/index.md#allow_failure). However, the report artifacts are still uploaded to GitLab and available
-for [download in the pipeline security tab](../../user/application_security/vulnerability_report/pipeline.md#downloading-security-scan-results).
+When a CI/CD job fails, security report results are not ingested by GitLab, even if the job
+[allows failure](../../ci/yaml/_index.md#allow_failure). However, the report artifacts are still uploaded to GitLab and available
+for [download in the pipeline security tab](../../user/application_security/detect/security_scanning_results.md#download-a-security-report).
 
 ### Logging
 
-The scanner should log error messages and warnings so that users can easily investigate
-misconfiguration and integration issues by looking at the log of the CI scanning job.
+The scanner should log error messages and warnings so that users can investigate
+misconfiguration and integration issues by looking at the log of the CI/CD scanning job.
 
 Scanners may use [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code#Colors)
 to colorize the messages they write to the Unix standard output and standard error streams.
@@ -288,23 +294,21 @@ The report is a JSON document that combines vulnerabilities with possible remedi
 This documentation gives an overview of the report JSON format, recommendations, and examples to
 help integrators set its fields.
 The format is extensively described in the documentation of
-[SAST](../../user/application_security/sast/index.md#output),
-[DAST](../../user/application_security/dast/proxy-based.md#reports),
-[Dependency Scanning](../../user/application_security/dependency_scanning/index.md#output),
-and [Container Scanning](../../user/application_security/container_scanning/index.md#reports-json-format)
+[SAST](../../user/application_security/sast/_index.md#download-a-sast-report),
+[DAST](../../user/application_security/dast/browser/_index.md),
+[dependency scanning](../../user/application_security/dependency_scanning/_index.md#understanding-the-results),
+and [container scanning](../../user/application_security/container_scanning/_index.md#reports-json-format)
 
 You can find the schemas for these scanners here:
 
-- [Container Scanning](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/container-scanning-report-format.json)
-- [Coverage Fuzzing](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/coverage-fuzzing-report-format.json)
+- [Container scanning](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/container-scanning-report-format.json)
+- [Coverage fuzzing](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/coverage-fuzzing-report-format.json)
 - [DAST](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/dast-report-format.json)
-- [Dependency Scanning](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/dependency-scanning-report-format.json)
+- [Dependency scanning](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/dependency-scanning-report-format.json)
 - [SAST](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/sast-report-format.json)
-- [Secret Detection](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/secret-detection-report-format.json)
+- [Secret detection](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/secret-detection-report-format.json)
 
 ### Report validation
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/351000) in GitLab 15.0.
 
 You must ensure that reports generated by the scanner pass validation against the schema version
 declared in your reports. Reports that don't pass validation are not ingested by GitLab, and an
@@ -321,57 +325,52 @@ If a report uses a `PATCH` version that doesn't match any vendored schema versio
 the latest vendored `PATCH` version. For example, if a report version is 15.0.23 and the latest vendored
 version is 15.0.6, the report is validated against version 15.0.6.
 
-GitLab uses the
-[`json_schemer`](https://www.rubydoc.info/gems/json_schemer) gem to perform validation.
+GitLab validates reports against security report JSON schemas
+it reads from the [`gitlab-security_report_schemas`](https://rubygems.org/gems/gitlab-security_report_schemas)
+gem. You can see which schema versions are supported in your GitLab version
+by looking at the version of the gem in your GitLab installation. For example,
+[GitLab 15.4](https://gitlab.com/gitlab-org/gitlab/-/blob/93a2a651a48bd03d9d84847e1cade19962ab4292/Gemfile#L431)
+uses version `0.1.2.min15.0.0.max15.2.0`, which means it has versions in the range `15.0.0` and `15.2.0`.
 
-Ongoing improvements to report validation are tracked [in this epic](https://gitlab.com/groups/gitlab-org/-/epics/8900).
-In the meantime, you can see which versions are supported in the
-[source code](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/parsers/security/validators/schema_validator.rb#L9). Remember to pick the correct version for your instance, for example [`v15.7.3-ee`](https://gitlab.com/gitlab-org/gitlab/-/blob/v15.7.3-ee/lib/gitlab/ci/parsers/security/validators/schema_validator.rb#L9).
+To see the exact versions, read the [validate locally](#validate-locally) section.
 
 #### Validate locally
 
 Before running your analyzer in GitLab, you should validate the report produced by your analyzer to
 ensure it complies with the declared schema version.
 
-Use the script below to validate JSON files against a given schema.
+1. Install [`gitlab-security_report_schemas`](https://rubygems.org/gems/gitlab-security_report_schemas).
+1. Run `security-report-schemas` to see what schema versions are supported.
+1. Run `security-report-schemas <report.json>` to validate a report.
 
-```ruby
-require 'bundler/inline'
+```shell
+$ gem install gitlab-security_report_schemas -v 0.1.2.min15.0.0.max15.2.1
+Successfully installed gitlab-security_report_schemas-0.1.2.min15.0.0.max15.2.1
+Parsing documentation for gitlab-security_report_schemas-0.1.2.min15.0.0.max15.2.1
+Done installing documentation for gitlab-security_report_schemas after 0 seconds
+1 gem installed
 
-gemfile do
-  source 'https://rubygems.org'
-  gem 'json_schemer'
-end
+$ security-report-schemas
+SecurityReportSchemas 0.1.2.min15.0.0.max15.2.1.
+Supported schema versions: ["15.0.0", "15.0.1", "15.0.2", "15.0.4", "15.0.5", "15.0.6", "15.0.7", "15.1.0", "15.1.1", "15.1.2", "15.1.3", "15.1.4", "15.2.0", "15.2.1"]
 
-require 'json'
-require 'pathname'
+Usage: security-report-schemas REPORT_FILE_PATH [options]
+    -r, --report_type=REPORT_TYPE    Override the report type
+    -w, --warnings                   Prints the warning messages
 
-raise 'Usage: ruby script.rb <security schema filename> <report filename>' unless ARGV.size == 2
-
-schema = JSONSchemer.schema(Pathname.new(ARGV[0]))
-report = JSON.parse(File.open(ARGV[1]).read)
-schema_validation_errors = schema.validate(report).map { |error| JSONSchemer::Errors.pretty(error) }
-puts(schema_validation_errors)
+$ security-report-schemas ~/Downloads/gl-dependency-scanning-report.json
+Validating dependency_scanning v15.0.0 against schema v15.0.0
+Content is invalid
+* root is missing required keys: dependency_files
 ```
 
-1. Download the appropriate schema that matches your report type and declared version. For
-   example, you can find version `15.0.6` of the `container_scanning` report schema at
-   `https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/raw/v15.0.6/dist/container-scanning-report-format.json?inline=false`.
-1. Save the Ruby script above in a file, for example, `validate.rb`.
-1. Run the script, passing the schema and report filenames as arguments in order. For example:
-   1. Using your local Ruby interpreter: `ruby validate.rb container-scanning-format_15-0-6.json gl-container-scanning-report.json`.
-   1. Using Docker: `docker run -it --rm -v $(pwd):/ci ruby:3 ruby /ci/validate.rb /ci/container-scanning-format_15-0-6.json  /ci/gl-container-scanning-report.json`
-1. Validation errors are shown on the screen. You must resolve these errors before GitLab can ingest your report.
-
-### Report Fields
+### Report fields
 
 #### Version
 
-This field specifies which [Security Report Schemas](https://gitlab.com/gitlab-org/security-products/security-report-schemas) version you are using. For information about the versions to use, see [releases](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/releases).
+This field specifies which [security report schemas](https://gitlab.com/gitlab-org/security-products/security-report-schemas) version you are using. For information about the versions to use, see [releases](https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/releases).
 
-In GitLab 14.10 and later, GitLab validates your report against the version of the schema specified by this value.
-The versions supported by GitLab can be found in
-[`gitlab/ee/lib/ee/gitlab/ci/parsers/security/validators/schemas`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/ee/lib/ee/gitlab/ci/parsers/security/validators/schemas).
+GitLab validates your report against the version of the schema specified by this value.
 
 #### Vulnerabilities
 
@@ -401,17 +400,17 @@ and `status` of the scan (either "success" or "failure").
 Both the `analyzer` and `scanner` fields are objects that embeds a human-readable `name` and a technical `id`.
 The `id` should not collide with any other analyzers or scanners another integrator would provide.
 
-##### Scan Primary Identifiers
+##### Scan primary identifiers
 
 The `scan.primary_identifiers` field is an optional field containing an array of
-[primary identifiers](../../user/application_security/terminology/index.md#primary-identifier)).
+[primary identifiers](../../user/application_security/terminology/_index.md#primary-identifier).
 This is an exhaustive list of all rulesets for which the analyzer performed the scan.
 
 Even when the [`Vulnerabilities`](#vulnerabilities) array for a given scan may be empty, this optional field
 should contain the complete list of potential identifiers to inform the Rails application of which
 rules were executed.
 
-When populated, the Rails application [may automatically resolve previously detected vulnerabilities](../../user/application_security/iac_scanning/index.md#automatic-vulnerability-resolution) as no
+When populated, the Rails application [may automatically resolve previously detected vulnerabilities](../../user/application_security/iac_scanning/_index.md#automatic-vulnerability-resolution) as no
 longer relevant when their primary identifier is not included.
 
 ##### Name, message, and description
@@ -425,15 +424,15 @@ whereas the `message` may repeat the location.
 As a visual example, this screenshot highlights where these fields are used when viewing a
 vulnerability as part of a pipeline view.
 
-![Example Vulnerability](img/example_vuln.png)
+![Example Vulnerability](img/example_vuln_v13_0.png)
 
 For instance, a `message` for a vulnerability
-reported by Dependency Scanning gives information on the vulnerable dependency,
+reported by dependency scanning gives information on the vulnerable dependency,
 which is redundant with the `location` field of the vulnerability.
 The `name` field is preferred but the `message` field is used
 when the context/location cannot be removed from the title of the vulnerability.
 
-To illustrate, here is an example vulnerability object reported by a Dependency Scanning scanner,
+To illustrate, here is an example vulnerability object reported by a dependency scanning scanner,
 and where the `message` repeats the `location` field:
 
 ```json
@@ -467,38 +466,43 @@ the risk. End-users interact with this field, whereas GitLab automatically proce
 ##### Identifiers
 
 The `identifiers` array describes the detected vulnerability. An identifier object's `type` and
-`value` fields are used to [tell if two identifiers are the same](../../user/application_security/vulnerability_report/pipeline.md#deduplication-process).
+`value` fields are used to [tell if two identifiers are the same](../../user/application_security/detect/vulnerability_deduplication.md).
 The user interface uses the object's `name` and `url` fields to display the identifier.
 
-We recommend that you use the identifiers the GitLab scanners already define:
+<a id="primary-identifier"></a>
 
-| Identifier | Type | Example value |
-|------------|------|---------------|
-| [CVE](https://cve.mitre.org/cve/) | `cve` | CVE-2019-10086 |
-| [CWE](https://cwe.mitre.org/data/index.html) | `cwe` | CWE-1026 |
-| [ELSA](https://linux.oracle.com/security/) | `elsa` | ELSA-2020-0085 |
-| [OSVD](https://cve.mitre.org/data/refs/refmap/source-OSVDB.html) | `osvdb` | OSVDB-113928 |
-| [OWASP](https://owasp.org/Top10/) | `owasp` | A01:2021–Broken Access Control Design |
-| [RHSA](https://access.redhat.com/errata-search/#/) | `rhsa` | RHSA-2020:0111 |
-| [USN](https://ubuntu.com/security/notices) | `usn` | USN-4234-1 |
-| [WASC](http://projects.webappsec.org/Threat-Classification-Reference-Grid)  | `wasc` | WASC-19 |
+> [!note]
+> The first item of the `identifiers` array is called the
+> [primary identifier](../../user/application_security/terminology/_index.md#primary-identifier), and
+> it is used to
+> [track vulnerabilities](#vulnerability-tracking) as new commits are pushed to the repository.
+
+We recommend that you use the identifiers the GitLab scanners already [define](https://gitlab.com/gitlab-org/security-products/analyzers/report/-/blob/main/identifier.go):
+
+| Identifier | Type | Example value | Example name |
+|------------|------|---------------|--------------|
+| [CVE](https://cve.mitre.org/cve/) | `cve` | CVE-2019-10086 | CVE-2019-10086 |
+| [CWE](https://cwe.mitre.org/data/index.html) | `cwe` | 1026 | CWE-1026 |
+| [ELSA](https://linux.oracle.com/security/) | `elsa` | ELSA-2020-0085 | ELSA-2020-0085 |
+| [OSVD](https://cve.mitre.org/data/refs/refmap/source-OSVDB.html) | `osvdb` | OSVDB-113928 | OSVDB-113928 |
+| [OWASP](https://owasp.org/Top10/) | `owasp` | A01:2021 | A01:2021 - Broken Access Control |
+| [RHSA](https://access.redhat.com/errata-search/#/) | `rhsa` | RHSA-2020:0111 | RHSA-2020:0111 |
+| [USN](https://ubuntu.com/security/notices) | `usn` | USN-4234-1 | USN-4234-1 |
+| [GHSA](https://github.com/advisories) | `ghsa` | GHSA-38jh-8h67-m7mj | GHSA-38jh-8h67-m7mj |
+| [HACKERONE](https://hackerone.com/hacktivity/overview) | `hackerone` | 698789 | HACKERONE-698789 |
 
 The generic identifiers listed above are defined in the [common library](https://gitlab.com/gitlab-org/security-products/analyzers/common),
 which is shared by some of the analyzers that GitLab maintains. You can [contribute](https://gitlab.com/gitlab-org/security-products/analyzers/common/blob/master/issue/identifier.go)
 new generic identifiers to if needed. Analyzers may also produce vendor-specific or product-specific
 identifiers, which don't belong in the [common library](https://gitlab.com/gitlab-org/security-products/analyzers/common).
 
-The first item of the `identifiers` array is called the
-[primary identifier](../../user/application_security/terminology/index.md#primary-identifier), and
-it is used to
-[track vulnerabilities](#tracking-and-merging-vulnerabilities) as new commits are pushed to the repository.
-
 Not all vulnerabilities have CVEs, and a CVE can be identified multiple times. As a result, a CVE
 isn't a stable identifier and you shouldn't assume it as such when tracking vulnerabilities.
 
-The maximum number of identifiers for a vulnerability is set as 20. If a vulnerability has more than 20 identifiers,
-the system saves only the first 20 of them. The vulnerabilities in the [Pipeline Security](../../user/application_security/vulnerability_report/pipeline.md#view-vulnerabilities-in-a-pipeline)
-tab do not enforce this limit and all identifiers present in the report artifact are displayed.
+The maximum number of identifiers for a vulnerability is set as 20. If a vulnerability has more than
+20 identifiers, the system saves only the first 20 of them. The vulnerabilities in the
+[pipeline security](../../user/application_security/detect/security_scanning_results.md) tab do not
+enforce this limit and all identifiers present in the report artifact are displayed.
 
 #### Details
 
@@ -514,9 +518,9 @@ which is used to track vulnerabilities
 as new commits are pushed to the repository.
 The attributes used to generate the location fingerprint also depend on the type of scanning.
 
-##### Dependency Scanning
+##### Dependency scanning
 
-The `location` of a Dependency Scanning vulnerability is composed of a `dependency` and a `file`.
+The `location` of a dependency scanning vulnerability is composed of a `dependency` and a `file`.
 The `dependency` object describes the affected `package` and the dependency `version`.
 `package` embeds the `name` of the affected library/module.
 `file` is the path of the dependency file that declares the affected dependency.
@@ -539,15 +543,15 @@ version `4.0.11` of npm package [`handlebars`](https://www.npmjs.com/package/han
 This affected dependency is listed in `client/package.json`,
 a dependency file processed by npm or yarn.
 
-The location fingerprint of a Dependency Scanning vulnerability
+The location fingerprint of a dependency scanning vulnerability
 combines the `file` and the package `name`,
 so these attributes are mandatory.
 All other attributes are optional.
 
-##### Container Scanning
+##### Container scanning
 
-Similar to Dependency Scanning,
-the `location` of a Container Scanning vulnerability has a `dependency` and a `file`.
+Similar to dependency scanning,
+the `location` of a container scanning vulnerability has a `dependency` and a `file`.
 It also has an `operating_system` field.
 
 For instance, here is the `location` object for a vulnerability affecting
@@ -569,7 +573,7 @@ version `2.50.3-2+deb9u1` of Debian package `glib2.0`:
 The affected package is found when scanning the Docker image `registry.gitlab.com/example/app:latest`.
 The Docker image is based on `debian:9` (Debian Stretch).
 
-The location fingerprint of a Container Scanning vulnerability
+The location fingerprint of a container scanning vulnerability
 combines the `operating_system` and the package `name`,
 so these attributes are mandatory.
 The `image` is also mandatory.
@@ -600,31 +604,27 @@ combines `file`, `start_line`, and `end_line`,
 so these attributes are mandatory.
 All other attributes are optional.
 
-#### Tracking and merging vulnerabilities
+#### Vulnerability tracking
 
-Users may give feedback on a vulnerability:
+Tracking vulnerabilities by line number only would cause problems. The same vulnerability would be
+duplicated when code changes are made. GitLab minimizes this duplication using a different approach.
+It tracks each vulnerability with a scope and offset signature. This signature comes from the
+[tracking calculator](https://gitlab.com/gitlab-org/security-products/post-analyzers/tracking-calculator),
+a post-processor that adds scoping information to analyzer reports.
 
-- They may dismiss a vulnerability if it doesn't apply to their projects
-- They may create an issue for a vulnerability if there's a possible threat
+Vulnerability tracking does not apply when either the affected file is renamed or the relevant code
+is moved to another file.
 
-GitLab tracks vulnerabilities so that user feedback is not lost
-when new Git commits are pushed to the repository.
-Vulnerabilities are tracked using a
-[`UUIDv5`](https://gitlab.com/gitlab-org/gitlab/-/blob/1272957c4a55e616569721febccb685c056ca1e4/ee/app/models/vulnerabilities/finding.rb#L364-368)
-digest, which is generated by a `SHA-1` hash of four attributes:
+A vulnerability's signature is calculated by using a UUIDv5 digest, calculated as a hash of the
+following attributes:
 
 - [Report type](#category)
 - [Primary identifier](#identifiers)
 - [Location fingerprint](#location)
 - Project ID
 
-Right now, GitLab cannot track a vulnerability if its location changes
-as new Git commits are pushed, and this results in user feedback being lost.
-For instance, user feedback on a SAST vulnerability is lost
-if the affected file is renamed or the affected line moves down.
-This is addressed in [issue #7586](https://gitlab.com/gitlab-org/gitlab/-/issues/7586).
-
-See also [deduplication process](../../user/application_security/vulnerability_report/pipeline.md#deduplication-process).
+See also
+[deduplication process](../../user/application_security/detect/vulnerability_deduplication.md).
 
 ##### Severity
 
@@ -635,14 +635,13 @@ The severity ranges from `Info` to `Critical`, but it can also be `Unknown`.
 Valid values are: `Unknown`, `Info`, `Low`, `Medium`, `High`, or `Critical`
 
 `Unknown` values means that data is unavailable to determine it's actual value. Therefore, it may be `high`, `medium`, or `low`,
-and needs to be investigated. We have [provided a chart](../../user/application_security/sast/analyzers.md#data-provided-by-analyzers)
-of the available SAST Analyzers and what data is currently available.
+and needs to be investigated.
 
 #### Remediations
 
 The `remediations` field of the report is an array of remediation objects.
 Each remediation describes a patch that can be applied to
-[resolve](../../user/application_security/vulnerabilities/index.md#resolve-a-vulnerability)
+[resolve](../../user/application_security/vulnerabilities/_index.md#resolve-a-vulnerability)
 a set of vulnerabilities.
 
 Here is an example of a report that contains remediations.

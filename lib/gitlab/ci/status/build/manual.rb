@@ -21,7 +21,7 @@ module Gitlab
           private
 
           def illustration_content
-            if can?(user, :update_build, subject)
+            if can?(user, :play_job, subject)
               manual_job_action_message
             else
               generic_permission_failure_message
@@ -31,8 +31,10 @@ module Gitlab
           def manual_job_action_message
             if subject.retryable?
               _("You can modify this job's CI/CD variables before running it again.")
-            else
+            elsif can?(user, :set_pipeline_variables, subject.project)
               _('This job does not start automatically and must be started manually. You can add CI/CD variables below for last-minute configuration changes before starting the job.')
+            else
+              _("This job does not start automatically and must be started manually.")
             end
           end
 

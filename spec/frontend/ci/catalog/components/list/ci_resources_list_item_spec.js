@@ -1,37 +1,29 @@
-import Vue from 'vue';
-import VueRouter from 'vue-router';
-import { GlAvatar, GlBadge, GlSprintf } from '@gitlab/ui';
+import { update, cloneDeep } from 'lodash';
+import { GlAvatar, GlBadge, GlSprintf, GlTruncate } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import { cleanLeadingSeparator } from '~/lib/utils/url_utility';
 import { createRouter } from '~/ci/catalog/router/index';
 import CiResourcesListItem from '~/ci/catalog/components/list/ci_resources_list_item.vue';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { catalogSinglePageResponse } from '../../mock';
-
-Vue.use(VueRouter);
+import CiVerificationBadge from '~/ci/catalog/components/shared/ci_verification_badge.vue';
+import ProjectVisibilityIcon from '~/ci/catalog/components/shared/project_visibility_icon.vue';
+import Markdown from '~/vue_shared/components/markdown/non_gfm_markdown.vue';
+import TopicBadges from '~/vue_shared/components/topic_badges.vue';
+import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
+import { catalogSinglePageResponse, longResourceDescription } from '../../mock';
 
 const defaultEvent = { preventDefault: jest.fn, ctrlKey: false, metaKey: false };
+const baseRoute = '/';
+const resourcesPageComponentStub = {
+  name: 'page-component',
+  template: '<div>Hello</div>',
+};
 
 describe('CiResourcesListItem', () => {
   let wrapper;
   let routerPush;
+  let router;
 
-  const router = createRouter();
   const resource = catalogSinglePageResponse.data.ciCatalogResources.nodes[0];
-  const componentList = {
-    components: {
-      nodes: [
-        {
-          id: 'gid://gitlab/Ci::Catalog::Resources::Component/2',
-          name: 'test-component',
-        },
-        {
-          id: 'gid://gitlab/Ci::Catalog::Resources::Component/1',
-          name: 'component_two',
-        },
-      ],
-    },
-  };
   const release = {
     author: { id: 'author-id', name: 'author', username: 'author-username', webUrl: '/user/1' },
     createdAt: Date.now(),
@@ -48,22 +40,34 @@ describe('CiResourcesListItem', () => {
         ...defaultProps,
         ...props,
       },
+      directives: {
+        GlTooltip: createMockDirective('gl-tooltip'),
+      },
       stubs: {
         GlSprintf,
+        GlTruncate,
       },
     });
   };
 
   const findAvatar = () => wrapper.findComponent(GlAvatar);
   const findBadge = () => wrapper.findComponent(GlBadge);
-  const findComponentNames = () => wrapper.findByTestId('ci-resource-component-names');
-  const findResourceName = () => wrapper.findByTestId('ci-resource-link');
-  const findResourceDescription = () => wrapper.findByText(defaultProps.resource.description);
-  const findUserLink = () => wrapper.findByTestId('user-link');
+  const findMarkdown = () => wrapper.findComponent(Markdown);
   const findTimeAgoMessage = () => wrapper.findComponent(GlSprintf);
+  const findTopicBadgesComponent = () => wrapper.findComponent(TopicBadges);
+  const findVerificationBadge = () => wrapper.findComponent(CiVerificationBadge);
+  const findVisibilityIcon = () => wrapper.findComponent(ProjectVisibilityIcon);
+  const findVersionBadge = () => wrapper.findComponent(GlBadge);
+  const findArchiveBadge = () => wrapper.findByTestId('archive-badge');
+
+  const findComponentNames = () => wrapper.findByTestId('ci-resource-component-names');
   const findFavorites = () => wrapper.findByTestId('stats-favorites');
+  const findResourceName = () => wrapper.findByTestId('ci-resource-link');
+  const findUsage = () => wrapper.findByTestId('stats-usage');
+  const findUserLink = () => wrapper.findByTestId('user-link');
 
   beforeEach(() => {
+    router = createRouter(baseRoute, resourcesPageComponentStub);
     routerPush = jest.spyOn(router, 'push').mockImplementation(() => {});
   });
 
@@ -85,7 +89,7 @@ describe('CiResourcesListItem', () => {
 
     it('renders the resource name and link', () => {
       expect(findResourceName().exists()).toBe(true);
-      expect(findResourceName().attributes().href).toBe(defaultProps.resource.webPath);
+      expect(findResourceName().attributes().href).toBe(`/${defaultProps.resource.fullPath}`);
     });
 
     it('renders the resource version badge', () => {
@@ -93,7 +97,23 @@ describe('CiResourcesListItem', () => {
     });
 
     it('renders the resource description', () => {
-      expect(findResourceDescription().exists()).toBe(true);
+      const markdown = findMarkdown();
+      expect(markdown.exists()).toBe(true);
+      expect(markdown.props().markdown).toBe(defaultProps.resource.description);
+    });
+
+    it('renders a truncated resource description', () => {
+      defaultProps.resource.description = longResourceDescription;
+      createComponent();
+
+      const markdown = findMarkdown();
+      expect(markdown.props().markdown).toHaveLength(260);
+    });
+
+    it('hides the resource description on mobile devices', () => {
+      const markdown = findMarkdown();
+      expect(markdown.classes('gl-hidden')).toBe(true);
+      expect(markdown.classes('@md/panel:gl-block')).toBe(true);
     });
   });
 
@@ -113,13 +133,114 @@ describe('CiResourcesListItem', () => {
         createComponent();
       });
 
-      it('renders the component name template', () => {
-        expect(findComponentNames().exists()).toBe(true);
+      it('renders the correct component names', () => {
+        expect(findComponentNames().text()).toMatchInterpolatedText(
+          '• Components: test-component, component_two',
+        );
       });
 
-      it('renders the correct component names', () => {
-        expect(findComponentNames().text()).toContain(componentList.components.nodes[0].name);
-        expect(findComponentNames().text()).toContain(componentList.components.nodes[1].name);
+      it('renders GlTruncate for each component name', () => {
+        const names = findComponentNames()
+          .findAllComponents(GlTruncate)
+          .wrappers.map((x) => x.props('text'));
+
+        expect(names).toEqual(['test-component', 'component_two']);
+      });
+    });
+
+    describe('when there are lots of components', () => {
+      beforeEach(() => {
+        // what: Update resource.versions to have at least 5 components
+        const versions = update(
+          cloneDeep(resource.versions),
+          'nodes[0].components.nodes',
+          (components) =>
+            Array(5)
+              .fill(1)
+              .map((x, idx) => components[idx % components.length]),
+        );
+
+        createComponent({ props: { resource: { ...resource, versions } } });
+      });
+
+      it('renders the correct component names with a delimeter', () => {
+        expect(findComponentNames().text()).toMatchInterpolatedText(
+          '• Components: test-component, component_two, test-component, component_two, test-component',
+        );
+      });
+    });
+  });
+
+  describe('project topics', () => {
+    describe('when there are no topics', () => {
+      it('does not render the topic badges component', () => {
+        createComponent();
+
+        expect(findTopicBadgesComponent().exists()).toBe(false);
+      });
+    });
+
+    describe('when there are topics', () => {
+      it('renders the topic badges component', () => {
+        const topics = ['vue.js', 'Ruby'];
+        createComponent({ props: { resource: { ...resource, topics } } });
+
+        expect(findTopicBadgesComponent().exists()).toBe(true);
+        expect(findTopicBadgesComponent().props('topics')).toBe(topics);
+      });
+    });
+  });
+
+  describe('visibility level', () => {
+    describe('when the project is public', () => {
+      beforeEach(() => {
+        createComponent();
+      });
+
+      it('does not render the private icon', () => {
+        expect(findVisibilityIcon().exists()).toBe(false);
+      });
+    });
+
+    describe('when the project is private', () => {
+      beforeEach(() => {
+        createComponent({
+          props: { resource: { ...resource, ...{ visibilityLevel: 'private' } } },
+        });
+      });
+
+      it('renders the private icon', () => {
+        expect(findVisibilityIcon().exists()).toBe(true);
+      });
+    });
+  });
+
+  describe('verification badge', () => {
+    describe('when the resource is not verified', () => {
+      beforeEach(() => {
+        createComponent();
+      });
+
+      it('does not render the verification badge', () => {
+        expect(findVerificationBadge().exists()).toBe(false);
+      });
+    });
+
+    describe.each`
+      verificationLevel | describeText
+      ${'GITLAB'}       | ${'GitLab'}
+      ${'PARTNER'}      | ${'partner'}
+    `('when the resource is $describeText maintained', ({ verificationLevel }) => {
+      beforeEach(() => {
+        createComponent({ props: { resource: { ...resource, verificationLevel } } });
+      });
+
+      it('renders the verification badge', () => {
+        expect(findVerificationBadge().exists()).toBe(true);
+      });
+
+      it('displays the correct badge', () => {
+        expect(findVerificationBadge().props('verificationLevel')).toBe(verificationLevel);
       });
     });
   });
@@ -137,6 +258,12 @@ describe('CiResourcesListItem', () => {
       it('renders the generic `unreleased` badge', () => {
         expect(findBadge().exists()).toBe(true);
         expect(findBadge().text()).toBe('Unreleased');
+      });
+
+      it('does not have tooltip attributes on the badge', () => {
+        const badge = findVersionBadge();
+        expect(badge.attributes('title')).toBeUndefined();
+        expect(badge.attributes('href')).toBeUndefined();
       });
     });
 
@@ -172,6 +299,18 @@ describe('CiResourcesListItem', () => {
         expect(findBadge().exists()).toBe(true);
         expect(findBadge().text()).toBe(release.name);
       });
+
+      it('has tooltip with release information on the badge', () => {
+        const badge = findVersionBadge();
+        const tooltip = getBinding(badge.element, 'gl-tooltip');
+        const title = 'Released Jan 26, 2024 7:40pm UTC';
+
+        expect(badge.attributes()).toMatchObject({
+          title,
+          href: resource.versions.nodes[0].path,
+        });
+        expect(tooltip).toBeDefined();
+      });
     });
   });
 
@@ -182,7 +321,7 @@ describe('CiResourcesListItem', () => {
         await findResourceName().vm.$emit('click', defaultEvent);
 
         expect(routerPush).toHaveBeenCalledWith({
-          path: cleanLeadingSeparator(resource.webPath),
+          path: resource.fullPath,
         });
       });
     });
@@ -211,7 +350,7 @@ describe('CiResourcesListItem', () => {
     });
 
     it('navigates to the details page', () => {
-      expect(routerPush).toHaveBeenCalledWith({ path: cleanLeadingSeparator(resource.webPath) });
+      expect(routerPush).toHaveBeenCalledWith({ path: resource.fullPath });
     });
   });
 
@@ -233,33 +372,68 @@ describe('CiResourcesListItem', () => {
       });
 
       it('has the correct styling', () => {
-        expect(findFavorites().classes()).toEqual(['gl-reset-color!']);
+        expect(findFavorites().classes()).toEqual(['!gl-text-inherit']);
       });
-    });
 
-    describe('when there are no statistics', () => {
-      it('render favorites as 0', () => {
-        createComponent({
-          props: {
-            resource: {
-              ...resource,
-              starCount: 0,
+      describe('when there are no statistics', () => {
+        it('render favorites and usage as 0', () => {
+          createComponent({
+            props: {
+              resource: {
+                ...resource,
+                starCount: 0,
+              },
             },
-          },
+          });
+
+          expect(findFavorites().exists()).toBe(true);
+          expect(findFavorites().text()).toBe('0');
+        });
+      });
+
+      describe('where there are statistics', () => {
+        beforeEach(() => {
+          createComponent();
         });
 
-        expect(findFavorites().exists()).toBe(true);
-        expect(findFavorites().text()).toBe('0');
+        it('render favorites', () => {
+          expect(findFavorites().exists()).toBe(true);
+          expect(findFavorites().text()).toBe(String(defaultProps.resource.starCount));
+        });
+
+        it('render usage data', () => {
+          expect(findUsage().exists()).toBe(true);
+          expect(findUsage().text()).toBe('4');
+        });
       });
     });
+  });
 
-    describe('where there are statistics', () => {
-      it('render favorites', () => {
-        createComponent();
-
-        expect(findFavorites().exists()).toBe(true);
-        expect(findFavorites().text()).toBe(String(defaultProps.resource.starCount));
+  describe('archive badge', () => {
+    it('renders the archive badge when resource is archived', () => {
+      createComponent({
+        props: {
+          resource: {
+            ...resource,
+            archived: true,
+          },
+        },
       });
+
+      expect(findArchiveBadge().exists()).toBe(true);
+    });
+
+    it('does not render the archive badge when resource is not archived', () => {
+      createComponent({
+        props: {
+          resource: {
+            ...resource,
+            archived: false,
+          },
+        },
+      });
+
+      expect(findArchiveBadge().exists()).toBe(false);
     });
   });
 });

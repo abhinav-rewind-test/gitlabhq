@@ -23,6 +23,7 @@ module API
           is_array true
           tags %w[clusters]
         end
+        route_setting :authorization, permissions: :read_cluster, boundary_type: :instance
         get '/clusters' do
           authorize! :read_cluster, clusterable_instance
           present paginate(clusters_for_current_user), with: Entities::Cluster
@@ -40,6 +41,7 @@ module API
         params do
           requires :cluster_id, type: Integer, desc: "The cluster ID"
         end
+        route_setting :authorization, permissions: :read_cluster, boundary_type: :instance
         get '/clusters/:cluster_id' do
           authorize! :read_cluster, cluster
 
@@ -64,7 +66,7 @@ module API
           optional :domain, type: String, desc: 'Cluster base domain'
           optional :management_project_id, type: Integer, desc: 'The ID of the management project'
           optional :managed, type: Boolean, default: true, desc: 'Determines if GitLab will manage namespaces and service accounts for this cluster, defaults to true'
-          requires :platform_kubernetes_attributes, type: Hash, desc: %q(Platform Kubernetes data) do
+          requires :platform_kubernetes_attributes, type: Hash, desc: 'Platform Kubernetes data' do
             requires :api_url, type: String, allow_blank: false, desc: 'URL to access the Kubernetes API'
             requires :token, type: String, desc: 'Token to authenticate against Kubernetes'
             optional :ca_cert, type: String, desc: 'TLS certificate (needed if API is using a self-signed TLS certificate)'
@@ -72,6 +74,7 @@ module API
             optional :authorization_type, type: String, values: ::Clusters::Platforms::Kubernetes.authorization_types.keys, default: 'rbac', desc: 'Cluster authorization type, defaults to RBAC'
           end
         end
+        route_setting :authorization, permissions: :create_cluster, boundary_type: :instance
         post '/clusters/add' do
           authorize! :add_cluster, clusterable_instance
 
@@ -105,13 +108,14 @@ module API
           optional :domain, type: String, desc: 'Cluster base domain'
           optional :management_project_id, type: Integer, desc: 'The ID of the management project'
           optional :managed, type: Boolean, desc: 'Determines if GitLab will manage namespaces and service accounts for this cluster'
-          optional :platform_kubernetes_attributes, type: Hash, desc: %q(Platform Kubernetes data) do
+          optional :platform_kubernetes_attributes, type: Hash, desc: 'Platform Kubernetes data' do
             optional :api_url, type: String, desc: 'URL to access the Kubernetes API'
             optional :token, type: String, desc: 'Token to authenticate against Kubernetes'
             optional :ca_cert, type: String, desc: 'TLS certificate (needed if API is using a self-signed TLS certificate)'
             optional :namespace, type: String, desc: 'Unique namespace related to Project'
           end
         end
+        route_setting :authorization, permissions: :update_cluster, boundary_type: :instance
         put '/clusters/:cluster_id' do
           authorize! :update_cluster, cluster
 
@@ -136,6 +140,7 @@ module API
         params do
           requires :cluster_id, type: Integer, desc: "The cluster ID"
         end
+        route_setting :authorization, permissions: :delete_cluster, boundary_type: :instance
         delete '/clusters/:cluster_id' do
           authorize! :admin_cluster, cluster
 

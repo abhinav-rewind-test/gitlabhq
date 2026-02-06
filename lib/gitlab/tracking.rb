@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 # WARNING: This module has been deprecated and will be removed in the future
-# Use InternalEvents.track_event instead https://docs.gitlab.com/ee/development/internal_analytics/internal_event_instrumentation/index.html
+# Use InternalEvents.track_event instead https://docs.gitlab.com/ee/development/internal_analytics/internal_event_instrumentation/
 
 module Gitlab
   module Tracking
     class << self
       delegate :flush, to: :tracker
 
-      def enabled?
-        tracker.enabled?
+      def frontend_connect_directly_to_snowplow_collector?
+        Gitlab::CurrentSettings.snowplow_enabled? && !Gitlab::CurrentSettings.snowplow_collector_hostname.blank?
       end
 
       def micro_verification_enabled?
@@ -23,33 +23,17 @@ module Gitlab
 
         contexts = [
           Tracking::StandardContext.new(
-            namespace_id: namespace&.id,
-            plan_name: namespace&.actual_plan_name,
+            namespace: namespace,
             project_id: project_id,
-            user_id: user&.id,
+            user: user,
             **extra).to_context, *context
         ]
 
         track_struct_event(tracker, category, action, label: label, property: property, value: value, contexts: contexts)
       end
 
-      def definition(basename, category: nil, action: nil, label: nil, property: nil, value: nil, context: [], project: nil, user: nil, namespace: nil, **extra) # rubocop:disable Metrics/ParameterLists
-        definition = YAML.load_file(Rails.root.join("config/events/#{basename}.yml"))
-
-        dispatch_from_definition(definition, label: label, property: property, value: value, context: context, project: project, user: user, namespace: namespace, **extra)
-      end
-
-      def dispatch_from_definition(definition, **event_data)
-        definition = definition.with_indifferent_access
-
-        category ||= definition[:category]
-        action ||= definition[:action]
-
-        event(category, action, **event_data)
-      end
-
-      def options(group)
-        tracker.options(group)
+      def frontend_client_options(group)
+        tracker.frontend_client_options(group)
       end
 
       def collector_hostname
@@ -57,9 +41,7 @@ module Gitlab
       end
 
       def snowplow_micro_enabled?
-        (Rails.env.development? || micro_verification_enabled?) && Gitlab.config.snowplow_micro.enabled
-      rescue GitlabSettings::MissingSetting
-        false
+        Rails.env.development? || micro_verification_enabled?
       end
 
       def tracker
@@ -72,9 +54,27 @@ module Gitlab
 
       private
 
-      def track_struct_event(destination, category, action, label:, property:, value:, contexts:) # rubocop:disable Metrics/ParameterLists
-        destination
+      def track_struct_event(destination, category, action, label:, property:, value:, contexts:)
+        log_experiment = Feature.enabled?(:track_struct_event_logger, Feature.current_request) &&
+          contexts.to_s.include?('experiment')
+
+        if log_experiment
+          # rubocop:disable GitlabSecurity/PublicSend -- Used for debugging
+          emitters = destination.send(:tracker).instance_variable_get(:@emitters)
+          emitter = emitters.first
+          Gitlab::AppLogger.info(
+            "[EXPERIMENT_DEBUG] called track_struct_event with: category - #{category}, action - #{action}, label - #{label}, property - #{property}, value - #{value}, tracker info:  class - #{destination.class}, " \
+              "emitters count: #{emitters.count}, emitter class: #{emitter.class}, buffer size: #{emitter.instance_variable_get(:@buffer_size)}, buffer: #{emitter.instance_variable_get(:@buffer)}, queue size: #{emitter.instance_variable_get(:@queue)&.size}"
+          )
+          # rubocop:enable GitlabSecurity/PublicSend
+        end
+
+        result = destination
           .event(category, action, label: label, property: property, value: value, context: contexts)
+
+        Gitlab::AppLogger.info('[EXPERIMENT_DEBUG] successfully send event') if log_experiment
+
+        result
       rescue StandardError => error
         Gitlab::ErrorTracking.track_and_raise_for_dev_exception(error, snowplow_category: category, snowplow_action: action)
       end

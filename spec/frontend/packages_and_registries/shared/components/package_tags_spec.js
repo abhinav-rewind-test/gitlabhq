@@ -1,24 +1,22 @@
-import { mount } from '@vue/test-utils';
+import { mountExtended } from 'helpers/vue_test_utils_helper';
 import PackageTags from '~/packages_and_registries/shared/components/package_tags.vue';
 import { mockTags } from 'jest/packages_and_registries/infrastructure_registry/components/mock_data';
 
 describe('PackageTags', () => {
   let wrapper;
 
-  function createComponent(tags = [], props = {}) {
-    const propsData = {
-      tags,
-      ...props,
-    };
-
-    wrapper = mount(PackageTags, {
-      propsData,
+  const createComponent = (tags = [], props = {}) => {
+    wrapper = mountExtended(PackageTags, {
+      propsData: {
+        tags,
+        ...props,
+      },
     });
-  }
+  };
 
-  const tagLabel = () => wrapper.find('[data-testid="tagLabel"]');
-  const tagBadges = () => wrapper.findAll('[data-testid="tagBadge"]');
-  const moreBadge = () => wrapper.find('[data-testid="moreBadge"]');
+  const tagLabel = () => wrapper.findByTestId('tagLabel');
+  const tagBadges = () => wrapper.findAllByTestId('tagBadge');
+  const moreBadge = () => wrapper.findByTestId('moreBadge');
 
   describe('tag label', () => {
     it('shows the tag label by default', () => {
@@ -64,12 +62,12 @@ describe('PackageTags', () => {
   });
 
   describe('tagBadgeStyle', () => {
-    const defaultStyle = ['badge', 'badge-info', 'gl-display-none'];
+    const defaultStyle = ['badge', 'badge-info', 'gl-hidden'];
 
     it('shows tag badge when there is only one', () => {
       createComponent([mockTags[0]]);
 
-      const expectedStyle = [...defaultStyle, 'gl-display-flex', 'gl-ml-3'];
+      const expectedStyle = [...defaultStyle, '!gl-flex', 'gl-ml-3'];
 
       expect(tagBadges().at(0).classes()).toEqual(expect.arrayContaining(expectedStyle));
     });
@@ -77,7 +75,7 @@ describe('PackageTags', () => {
     it('shows tag badge for medium or heigher resolutions', () => {
       createComponent(mockTags);
 
-      const expectedStyle = [...defaultStyle, 'gl-md-display-flex!'];
+      const expectedStyle = [...defaultStyle, '@md/panel:!gl-flex'];
 
       expect(tagBadges().at(1).classes()).toEqual(expect.arrayContaining(expectedStyle));
     });
@@ -87,7 +85,7 @@ describe('PackageTags', () => {
         tagDisplayLimit: 4,
       });
 
-      const expectedStyleWithoutAppend = [...defaultStyle, 'gl-md-display-flex!'];
+      const expectedStyleWithoutAppend = [...defaultStyle, '@md/panel:!gl-flex'];
       const expectedStyleWithAppend = [...expectedStyleWithoutAppend, 'gl-mr-2'];
 
       const allBadges = tagBadges();

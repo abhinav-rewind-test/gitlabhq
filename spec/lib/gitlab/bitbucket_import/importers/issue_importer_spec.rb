@@ -2,14 +2,15 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::BitbucketImport::Importers::IssueImporter, :clean_gitlab_redis_cache, feature_category: :importers do
+RSpec.describe Gitlab::BitbucketImport::Importers::IssueImporter, :clean_gitlab_redis_shared_state, feature_category: :importers do
   include AfterNextHelpers
 
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:bitbucket_user) { create(:user) }
-  let_it_be(:identity) { create(:identity, user: bitbucket_user, extern_uid: 'bitbucket_user', provider: :bitbucket) }
+  let_it_be(:identity) { create(:identity, user: bitbucket_user, extern_uid: '{123}', provider: :bitbucket) }
   let_it_be(:default_work_item_type) { create(:work_item_type) }
   let_it_be(:label) { create(:label, project: project) }
+  let(:mentions_converter) { Gitlab::Import::MentionsConverter.new('bitbucket', project) }
 
   let(:hash) do
     {
@@ -17,7 +18,8 @@ RSpec.describe Gitlab::BitbucketImport::Importers::IssueImporter, :clean_gitlab_
       title: 'title',
       description: 'description',
       state: 'closed',
-      author: 'bitbucket_user',
+      author: '{123}',
+      author_nickname: 'bitbucket_user',
       milestone: 'my milestone',
       issue_type_id: default_work_item_type.id,
       label_id: label.id,
@@ -30,6 +32,7 @@ RSpec.describe Gitlab::BitbucketImport::Importers::IssueImporter, :clean_gitlab_
 
   before do
     allow(Gitlab::Git).to receive(:ref_name).and_return('refname')
+    allow(Gitlab::Import::MentionsConverter).to receive(:new).and_return(mentions_converter)
   end
 
   describe '#execute' do
@@ -46,6 +49,13 @@ RSpec.describe Gitlab::BitbucketImport::Importers::IssueImporter, :clean_gitlab_
       expect(issue.labels).to eq([label])
       expect(issue.created_at).to eq(Date.today)
       expect(issue.updated_at).to eq(Date.today)
+      expect(issue.imported_from).to eq('bitbucket')
+    end
+
+    it 'converts mentions in the description' do
+      expect(mentions_converter).to receive(:convert).once.and_call_original
+
+      importer.execute
     end
 
     context 'when the author does not have a bitbucket identity' do

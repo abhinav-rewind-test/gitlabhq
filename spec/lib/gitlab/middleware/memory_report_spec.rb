@@ -26,15 +26,10 @@ RSpec.describe Gitlab::Middleware::MemoryReport do
       end
     end
 
-    context 'when the Rails environment is not development' do
-      let(:env) { Rack::MockRequest.env_for('/') }
-
-      it_behaves_like 'returns original response'
-    end
-
-    context 'when the Rails environment is development' do
+    context 'when user is not allowed' do
       before do
-        allow(Rails.env).to receive(:development?).and_return(true)
+        allow(env).to receive(:[]).and_call_original
+        allow(env).to receive(:[]).with('warden').and_return(instance_double(Warden::Proxy, user: create(:user)))
       end
 
       context 'when memory report is not requested' do
@@ -46,14 +41,32 @@ RSpec.describe Gitlab::Middleware::MemoryReport do
       context 'when memory report is requested' do
         let(:env) { Rack::MockRequest.env_for('/', params: { 'performance_bar' => 'memory' }) }
 
-        before do
-          allow(env).to receive(:[]).and_call_original
-          allow(app).to receive(:call).and_return(empty_memory_report)
-        end
+        it_behaves_like 'returns original response'
+      end
+    end
+
+    context 'when user is allowed' do
+      before do
+        allow(env).to receive(:[]).and_call_original
+        allow(env).to receive(:[]).with('warden').and_return(instance_double(Warden::Proxy, user: create(:admin)))
+      end
+
+      context 'when memory report is not requested' do
+        let(:env) { Rack::MockRequest.env_for('/') }
+
+        it_behaves_like 'returns original response'
+      end
+
+      context 'when memory report is requested' do
+        let(:env) { Rack::MockRequest.env_for('/', params: { 'performance_bar' => 'memory' }) }
 
         let(:empty_memory_report) do
           report = MemoryProfiler::Results.new
           report.register_results(MemoryProfiler::StatHash.new, MemoryProfiler::StatHash.new, 1)
+        end
+
+        before do
+          allow(app).to receive(:call).and_return(empty_memory_report)
         end
 
         it 'returns a memory report' do

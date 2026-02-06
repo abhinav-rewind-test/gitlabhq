@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-constraints(::Constraints::ProjectUrlConstrainer.new) do
+constraints(Projects::ProjectUrlConstraint.new) do
   # If the route has a wildcard segment, the segment has a regex constraint,
   # the segment is potentially followed by _another_ wildcard segment, and
   # the `format` option is not set to false, we need to specify that
@@ -28,6 +28,8 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
       # Begin of the /-/ scope.
       # Use this scope for all new project routes.
       scope '-' do
+        post :preview_markdown
+
         get 'archive/*id', format: true, constraints: { format: Gitlab::PathRegex.archive_formats_regex, id: /.+?/ }, to: 'repositories#archive', as: 'archive'
 
         namespace :security do
@@ -45,7 +47,8 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
           end
         end
 
-        resources :infrastructure_registry, only: [:index, :show], module: :packages
+        resources :terraform_module_registry, only: [:index, :show], module: :packages, as: :infrastructure_registry, controller: 'infrastructure_registry'
+        get :infrastructure_registry, to: redirect('%{namespace_id}/%{project_id}/-/terraform_module_registry')
 
         resources :jobs, only: [:index, :show], constraints: { id: /\d+/ } do
           collection do
@@ -67,6 +70,7 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             post :erase
             get :trace, defaults: { format: 'json' }
             get :raw
+            get :viewer
             get :terminal
             get :proxy
             get :test_report_summary
@@ -114,11 +118,11 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             put :reset_registration_token
             post :create_deploy_token, path: 'deploy_token/create', to: 'repository#create_deploy_token'
             get :runner_setup_scripts, format: :json
+            get :export_job_token_authorizations, defaults: { format: :csv }
           end
 
           resource :operations, only: [:show, :update] do
             member do
-              post :reset_alerting_token
               post :reset_pagerduty_token
             end
           end
@@ -151,6 +155,11 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
           resources :access_tokens, only: [:index, :create] do
             member do
               put :revoke
+              put :rotate
+            end
+
+            collection do
+              get :inactive, format: :json
             end
           end
 
@@ -172,12 +181,15 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             get 'commands'
             get 'snippets'
             get 'contacts'
+            get 'wikis'
           end
         end
 
         resources :project_members, except: [:show, :new, :create, :edit], constraints: { id: %r{[a-zA-Z./0-9_\-#%+:]+} }, concerns: :access_requestable do
           collection do
             delete :leave
+
+            get :invite_search, format: :json
           end
 
           member do
@@ -249,7 +261,7 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
 
         resource :mattermost, only: [:new, :create]
         resource :variables, only: [:show, :update]
-        resources :triggers, only: [:index, :create, :edit, :update, :destroy]
+        resources :triggers, only: [:index, :create, :update, :destroy]
 
         resource :mirror, only: [:show, :update] do
           member do
@@ -322,6 +334,7 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             post :stop
             post :cancel_auto_stop
             get :terminal
+            get '/k8s(/*vueroute)', to: 'environments#k8s', as: :k8s_subroute
 
             # This route is also defined in gitlab-workhorse. Make sure to update accordingly.
             get '/terminal.ws/authorize', to: 'environments#terminal_websocket_authorize', format: false
@@ -334,12 +347,7 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             get :search
           end
 
-          resources :deployments, only: [:index, :show] do
-            member do
-              get :metrics
-              get :additional_metrics
-            end
-          end
+          resources :deployments, only: [:index, :show]
         end
 
         resources :alert_management, only: [:index] do
@@ -350,10 +358,19 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
 
         get 'alert_management/:id', to: 'alert_management#details', as: 'alert_management_alert'
 
-        resources :work_items, only: [:show], param: :iid do
+        get :work_items, to: 'work_items#calendar', constraints: ->(req) { req.format == :ics }
+        get :work_items, to: 'work_items#rss', constraints: ->(req) { req.format == :atom }
+
+        resources :saved_views, only: [:show], path: 'work_items/views'
+
+        resources :work_items, only: [:show, :index, :edit], param: :iid do
           collection do
             post :import_csv
             post 'import_csv/authorize', to: 'work_items#authorize'
+          end
+
+          member do
+            get '/designs(/*vueroute)', to: 'work_items#show', as: :designs, format: false
           end
         end
 
@@ -388,9 +405,9 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
         end
 
         namespace :design_management do
-          namespace :designs, path: 'designs/:design_id(/:sha)', constraints: -> (params) { params[:sha].nil? || Gitlab::Git.commit_id?(params[:sha]) } do
+          namespace :designs, path: 'designs/:design_id(/:sha)', constraints: ->(params) { params[:sha].nil? || Gitlab::Git.commit_id?(params[:sha]) } do
             resource :raw_image, only: :show
-            resources :resized_image, only: :show, constraints: -> (params) { ::DesignManagement::DESIGN_IMAGE_SIZES.include?(params[:id]) }
+            resources :resized_image, only: :show, constraints: ->(params) { ::DesignManagement::DESIGN_IMAGE_SIZES.include?(params[:id]) }
           end
         end
 
@@ -398,11 +415,11 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
           to: 'snippets/blobs#raw',
           format: false,
           as: :snippet_blob_raw,
-          constraints: { snippet_id: /\d+/ }
+          constraints: { snippet_id: /\d+/, ref: %r{[^\/]+} }
 
-        draw :issues
-        draw :merge_requests
-        draw :pipelines
+        draw_all :issues
+        draw_all :merge_requests
+        draw_all :pipelines
 
         # The wiki and repository routing contains wildcard characters so
         # its preferable to keep it below all other project routes
@@ -449,11 +466,10 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
           end
         end
 
-        get :planning_hierarchy
-
         resources :badges, only: [] do
           collection do
             constraints format: /svg/ do
+              get :custom
               get :release
             end
           end
@@ -469,10 +485,16 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
 
         namespace :ml do
           resources :experiments, only: [:index, :show, :destroy], controller: 'experiments', param: :iid
-          resources :candidates, only: [:show, :destroy], controller: 'candidates', param: :iid
-          resources :models, only: [:index, :show, :destroy, :new], controller: 'models', param: :model_id do
-            resources :versions, only: [:show], controller: 'model_versions', param: :model_version_id
+          resources :candidates, only: [:show, :destroy], controller: 'candidates', param: :iid do
+            member do
+              get :promote
+            end
           end
+          resources :models, only: [:index, :show, :edit, :destroy, :new], controller: 'models', param: :model_id do
+            resources :versions, only: [:new], controller: 'model_versions'
+            resources :versions, only: [:show, :edit], controller: 'model_versions', param: :model_version_id
+          end
+          post :preview_markdown
         end
 
         namespace :service_desk do
@@ -487,11 +509,19 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             end
           end
         end
+
+        resources :attestations, only: [:index, :show] do
+          member do
+            get :download
+          end
+        end
       end
       # End of the /-/ scope.
 
       # All new routes should go under /-/ scope.
       # Look for scope '-' at the top of the file.
+
+      post '/restore' => '/projects#restore', as: :restore # rubocop:todo Cop/PutProjectRoutesUnderScope -- Moved from EE
 
       #
       # Service Desk
@@ -519,6 +549,7 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
         constraints: { template_type: %r{issue|merge_request}, format: 'json' }
 
       resource :pages, only: [:new, :show, :update, :destroy] do # rubocop: disable Cop/PutProjectRoutesUnderScope
+        post :regenerate_unique_domain # rubocop:todo Cop/PutProjectRoutesUnderScope
         resources :domains, except: :index, controller: 'pages_domains', constraints: { id: %r{[^/]+} } do # rubocop: disable Cop/PutProjectRoutesUnderScope
           member do
             post :verify # rubocop:todo Cop/PutProjectRoutesUnderScope
@@ -528,17 +559,9 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
         end
       end
 
-      namespace :prometheus do
-        resources :metrics, constraints: { id: %r{[^\/]+} }, only: [:index, :new, :create, :edit, :update, :destroy] do # rubocop: disable Cop/PutProjectRoutesUnderScope
-          get :active_common, on: :collection # rubocop:todo Cop/PutProjectRoutesUnderScope
-          post :validate_query, on: :collection # rubocop:todo Cop/PutProjectRoutesUnderScope
-        end
-      end
-
       scope :prometheus, as: :prometheus do
         resources :alerts, constraints: { id: /\d+/ }, only: [] do # rubocop: disable Cop/PutProjectRoutesUnderScope
           post :notify, on: :collection, to: 'alerting/notifications#create', defaults: { endpoint_identifier: 'legacy-prometheus' } # rubocop: disable Cop/PutProjectRoutesUnderScope
-          get :metrics_dashboard, on: :member # rubocop:todo Cop/PutProjectRoutesUnderScope
         end
       end
 
@@ -571,7 +594,6 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
 
       resources :notes, only: [:create, :destroy, :update], concerns: :awardable, constraints: { id: /\d+/ } do # rubocop: disable Cop/PutProjectRoutesUnderScope
         member do
-          delete :delete_attachment # rubocop:todo Cop/PutProjectRoutesUnderScope
           post :resolve # rubocop:todo Cop/PutProjectRoutesUnderScope
           delete :resolve, action: :unresolve # rubocop:todo Cop/PutProjectRoutesUnderScope
           get :outdated_line_change # rubocop:todo Cop/PutProjectRoutesUnderScope
@@ -599,10 +621,6 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
             end
           end
         end
-      end
-
-      scope :service_ping, controller: :service_ping do
-        post :web_ide_pipelines_count # rubocop:todo Cop/PutProjectRoutesUnderScope
       end
 
       resources :web_ide_terminals, path: :ide_terminals, only: [:create, :show], constraints: { id: /\d+/, format: :json } do # rubocop: disable Cop/PutProjectRoutesUnderScope
@@ -660,7 +678,6 @@ constraints(::Constraints::ProjectUrlConstrainer.new) do
         post :unarchive
         post :housekeeping
         post :toggle_star
-        post :preview_markdown
         post :export
         post :remove_export
         post :generate_new_export
@@ -677,7 +694,7 @@ end
 
 # It's under /-/jira scope but cop is only checking /-/
 # rubocop: disable Cop/PutProjectRoutesUnderScope
-scope path: '(/-/jira)', constraints: ::Constraints::JiraEncodedUrlConstrainer.new, as: :jira do
+scope path: '(/-/jira)', constraints: Integrations::JiraEncodedUrlConstraint.new, as: :jira do
   scope path: '*namespace_id/:project_id',
     namespace_id: Gitlab::Jira::Dvcs::ENCODED_ROUTE_REGEX,
     project_id: Gitlab::Jira::Dvcs::ENCODED_ROUTE_REGEX do

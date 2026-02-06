@@ -4,10 +4,16 @@ require 'spec_helper'
 RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workflow do
   include RepoHelpers
 
-  let_it_be(:merge_request) { create(:merge_request, reviewers: create_list(:user, 1)) }
+  let_it_be(:merge_request) { create(:merge_request, reviewers: create_list(:user, 1), assignees: create_list(:user, 1)) }
   let(:project) { merge_request.target_project }
   let(:user) { merge_request.author }
   let(:commit) { project.commit(sample_commit.id) }
+  let(:internal) { false }
+  let(:executing_user) { nil }
+  let(:params) { {} }
+  let(:service) { described_class.new(merge_request, user, params) }
+  let(:todo_service) { instance_double(TodoService) }
+  let(:notification_service) { instance_double(NotificationService) }
 
   let(:position) do
     Gitlab::Diff::Position.new(
@@ -19,13 +25,20 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
     )
   end
 
+  before do
+    allow(service).to receive_messages(todo_service: todo_service, notification_service: notification_service)
+    allow(todo_service).to receive(:new_review)
+    allow(notification_service).to receive_message_chain(:async, :new_review)
+    allow(::Gitlab::EventStore).to receive(:publish)
+  end
+
   def publish(draft: nil)
-    DraftNotes::PublishService.new(merge_request, user).execute(draft)
+    service.execute(draft: draft, executing_user: executing_user)
   end
 
   context 'single draft note' do
     let(:commit_id) { nil }
-    let!(:drafts) { create_list(:draft_note, 2, merge_request: merge_request, author: user, commit_id: commit_id, position: position) }
+    let!(:drafts) { create_list(:draft_note, 2, merge_request: merge_request, author: user, commit_id: commit_id, position: position, internal: internal) }
 
     it 'publishes' do
       expect { publish(draft: drafts.first) }.to change { DraftNote.count }.by(-1).and change { Note.count }.by(1)
@@ -59,6 +72,18 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
 
         expect(result[:status]).to eq(:success)
         expect(merge_request.notes.first.commit_id).to eq(commit_id)
+      end
+    end
+
+    context 'internal is set' do
+      let(:position) { nil }
+      let(:internal) { true }
+
+      it 'creates internal note from draft' do
+        result = publish(draft: drafts.first)
+
+        expect(result[:status]).to eq(:success)
+        expect(merge_request.notes.first.internal).to eq(internal)
       end
     end
   end
@@ -120,10 +145,10 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
       expect(notes.last.note).to eq('second note')
     end
 
-    it 'sends batch notification' do
-      expect_next_instance_of(NotificationService) do |notification_service|
-        expect(notification_service).to receive_message_chain(:async, :new_review).with(kind_of(Review))
-      end
+    it 'creates the correct pub-sub event' do
+      expect(::Gitlab::EventStore).to receive(:publish).with(
+        an_instance_of(MergeRequests::DraftNotePublishedEvent)
+      ).and_call_original
 
       publish
     end
@@ -134,6 +159,21 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
         .with(user: user)
 
       publish
+    end
+
+    it 'invalidates cache counts' do
+      expect(merge_request.assignees).to all(receive(:invalidate_merge_request_cache_counts))
+
+      publish
+    end
+
+    context 'when passing draft note ids' do
+      let(:draft) { create(:draft_note_on_text_diff, merge_request: merge_request, author: user, note: 'first note', commit_id: commit_id, position: position) }
+      let(:params) { { ids: [draft.id] } }
+
+      it 'publishes draft notes by ID' do
+        expect { publish }.to change { DraftNote.count }.by(-1).and change { Note.count }.by(1)
+      end
     end
 
     context 'capturing diff notes positions and keeping around commits' do
@@ -155,6 +195,8 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
         notes = merge_request.notes.order(id: :asc)
         expect(notes.first.diff_note_positions).to be_any
         expect(notes.last.diff_note_positions).to be_any
+        expect(notes.flat_map(&:diff_note_positions).pluck(:namespace_id).uniq)
+          .to contain_exactly(project.project_namespace_id)
       end
 
       it 'keeps around the commits of each published note' do
@@ -172,16 +214,21 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
         end
       end
 
-      it 'does not request a lot from Gitaly', :request_store, :clean_gitlab_redis_cache do
-        merge_request
-        position
+      context 'checking gitaly calls' do
+        # NOTE: This was added to avoid test flakiness.
+        let(:merge_request) { create(:merge_request) }
 
-        Gitlab::GitalyClient.reset_counts
+        it 'does not request a lot from Gitaly', :request_store, :clean_gitlab_redis_cache do
+          merge_request
+          position
 
-        # NOTE: This should be reduced as we work on reducing Gitaly calls.
-        # Gitaly requests shouldn't go above this threshold as much as possible
-        # as it may add more to the Gitaly N+1 issue we are experiencing.
-        expect { publish }.to change { Gitlab::GitalyClient.get_request_count }.by(19)
+          Gitlab::GitalyClient.reset_counts
+
+          # NOTE: This should be reduced as we work on reducing Gitaly calls.
+          # Gitaly requests shouldn't go above this threshold as much as possible
+          # as it may add more to the Gitaly N+1 issue we are experiencing.
+          expect { publish }.to change { Gitlab::GitalyClient.get_request_count }.by(19)
+        end
       end
     end
 
@@ -203,6 +250,31 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
       publish
 
       expect(MergeRequests::UpdateReviewerStateService).not_to receive(:new)
+    end
+  end
+
+  context 'with many draft notes', :use_sql_query_cache, :request_store do
+    let(:merge_request) { create(:merge_request) }
+
+    it 'reduce N+1 queries' do
+      5.times do
+        create(:draft_note_on_discussion, merge_request: merge_request, author: user, note: 'some note')
+      end
+
+      recorder = ActiveRecord::QueryRecorder.new(skip_cached: false) { publish }
+
+      expect(recorder.count).not_to be > 116
+    end
+  end
+
+  context 'with no draft notes' do
+    let(:merge_request) { create(:merge_request) }
+
+    it 'creates the correct pub-sub event' do
+      expect(::Gitlab::EventStore).to receive(:publish)
+      expect(MergeRequests::DraftNotePublishedEvent).to receive(:new)
+
+      publish
     end
   end
 
@@ -269,6 +341,7 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
         refresh = MergeRequests::RefreshService.new(project: project, current_user: user)
         refresh.execute(oldrev, newrev, merge_request.source_branch_ref)
 
+        merge_request.reload
         expect { publish(draft: draft) }.to change { Suggestion.count }.by(1)
           .and change { DiffNote.count }.from(0).to(1)
 
@@ -314,7 +387,7 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
       create(:draft_note, merge_request: merge_request, author: user, note: "/assign #{user.to_reference}")
 
       expect { publish }.to change { DraftNote.count }.by(-1).and change { Note.count }.by(1)
-      expect(merge_request.reload.assignees).to eq([user])
+      expect(merge_request.reload.assignees).to include(user)
       expect(merge_request.notes.last).to be_system
     end
   end
@@ -330,9 +403,9 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
       expect(Note.find(note.id).discussion.resolved?).to be true
     end
 
-    it 'sends notifications if all threads are resolved' do
+    it 'handles resolved discussions without sending notifications' do
       expect_next_instance_of(MergeRequests::ResolvedDiscussionNotificationService) do |instance|
-        expect(instance).to receive(:execute).with(merge_request)
+        expect(instance).to receive(:execute).with(merge_request, send_notifications: false)
       end
 
       publish
@@ -346,6 +419,36 @@ RSpec.describe DraftNotes::PublishService, feature_category: :code_review_workfl
 
     it 'returns an error' do
       expect(publish[:status]).to eq(:error)
+    end
+
+    context 'when executing_user is specified' do
+      let(:executing_user) { create(:user) }
+
+      context 'and executing_user can create notes' do
+        before do
+          allow(Ability)
+            .to receive(:allowed?)
+            .with(executing_user, :create_note, merge_request)
+            .and_return(true)
+        end
+
+        it 'returns success' do
+          expect(publish[:status]).to eq(:success)
+        end
+      end
+
+      context 'and executing_user cannot create notes' do
+        before do
+          allow(Ability)
+            .to receive(:allowed?)
+            .with(executing_user, :create_note, merge_request)
+            .and_return(false)
+        end
+
+        it 'returns an error' do
+          expect(publish[:status]).to eq(:error)
+        end
+      end
     end
   end
 end

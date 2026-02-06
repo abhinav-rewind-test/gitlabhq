@@ -1,27 +1,25 @@
 ---
-stage: Systems
-group: Distribution
+stage: Tenant Scale
+group: Tenant Services
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Run multiple Sidekiq processes
 ---
 
-# Run multiple Sidekiq processes
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 GitLab allows you to start multiple Sidekiq processes to process background jobs
 at a higher rate on a single instance. By default, Sidekiq starts one worker
 process and only uses a single core.
 
-NOTE:
-The information in this page applies only to Linux package installations.
+> [!note]
+> The information in this page applies only to Linux package installations.
 
 ## Start multiple processes
-
-> - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/4006) in GitLab 12.10, starting multiple processes with Sidekiq cluster.
-> - [Sidekiq cluster moved](https://gitlab.com/groups/gitlab-com/gl-infra/-/epics/181) to GitLab Free in 12.10.
-> - [Sidekiq cluster became default](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/4140) in GitLab 13.0.
 
 When starting multiple processes, the number of processes should at most equal
 (and **not** exceed) the number of CPU cores you want to dedicate to Sidekiq.
@@ -52,8 +50,8 @@ to all available queues:
 
 To view the Sidekiq processes in GitLab:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Monitoring > Background Jobs**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Monitoring** > **Background jobs**.
 
 ## Concurrency
 
@@ -65,6 +63,12 @@ These threads run inside a single Ruby process, and each process can only use a
 single CPU core. The usefulness of threading depends on the work having some
 external dependencies to wait on, like database queries or HTTP requests. Most
 Sidekiq deployments benefit from this threading.
+
+## Database connection planning
+
+Before increasing Sidekiq processes or concurrency, consider the database connection impact on your PostgreSQL `max_connections` setting.
+
+For detailed connection planning and calculations, see the [Tune PostgreSQL](../postgresql/tune.md) page.
 
 ### Manage thread counts explicitly
 
@@ -87,7 +91,11 @@ for more details.
 
 #### Manage thread counts with concurrency field
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439687) in GitLab 16.9.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439687) in GitLab 16.9.
+
+{{< /history >}}
 
 In GitLab 16.9 and later, you can set the concurrency by setting `concurrency`. This value explicitly sets each process
 with this amount of concurrency.
@@ -105,51 +113,6 @@ For example, to set the concurrency to `20`:
    ```shell
    sudo gitlab-ctl reconfigure
    ```
-
-<!--- start_remove The following content will be removed on remove_date: '2024-08-16' -->
-
-#### Manage thread counts with `min_concurrency` and `max_concurrency` fields (deprecated)
-
-WARNING:
-The `min_concurrency` and `max_concurrency` settings were deprecated in GitLab 16.9 and are planned
-for removal in 17.0. Use [`concurrency`](#manage-thread-counts-with-concurrency-field) instead.
-
-We only recommend setting explicit concurrency by setting `min_concurrency` and
-`max_concurrency` to the same value. The two distinct settings are kept for
-backward compatibility reasons. For more predictable results, use the same
-values, or you might run into issues with Sidekiq jobs piling up.
-
-For example, to set the concurrency to `20`:
-
-1. Edit `/etc/gitlab/gitlab.rb`:
-
-   ```ruby
-   sidekiq['min_concurrency'] = 20
-   sidekiq['max_concurrency'] = 20
-   ```
-
-1. Save the file and reconfigure GitLab:
-
-   ```shell
-   sudo gitlab-ctl reconfigure
-   ```
-
-`min_concurrency` and `max_concurrency` are independent; one can be set without
-the other. Setting `min_concurrency` to `0` disables the limit. Not explicitly
-setting `min_concurrency` is the same as setting it to `0`.
-
-For each queue group, let `N` be one more than the number of queues. The
-concurrency is set to:
-
-1. `min_concurrency`, if it's equal to `max_concurrency`.
-1. `N`, if it's between `min_concurrency` and `max_concurrency`.
-1. `max_concurrency`, if `N` exceeds this value.
-1. `min_concurrency`, if `N` is less than this value.
-
-When `min_concurrency` is greater than `max_concurrency`, it is treated as
-being equal to `max_concurrency`.
-
-<!-- end_remove -->
 
 ## Modify the check interval
 
@@ -172,10 +135,10 @@ processes:
 
 ## Troubleshoot using the CLI
 
-WARNING:
-It's recommended to use `/etc/gitlab/gitlab.rb` to configure the Sidekiq processes.
-If you experience a problem, you should contact GitLab support. Use the command
-line at your own risk.
+> [!warning]
+> It's recommended to use `/etc/gitlab/gitlab.rb` to configure the Sidekiq processes.
+> If you experience a problem, you should contact GitLab support. Use the command
+> line at your own risk.
 
 For debugging purposes, you can start extra Sidekiq processes by using the command
 `/opt/gitlab/embedded/service/gitlab-rails/bin/sidekiq-cluster`. This command
@@ -196,7 +159,7 @@ Instead of a queue, a queue namespace can also be provided, to have the process
 automatically listen on all queues in that namespace without needing to
 explicitly list all the queue names. For more information about queue namespaces,
 see the relevant section in the
-[Sidekiq development documentation](../../development/sidekiq/index.md#queue-namespaces).
+Sidekiq development part of the GitLab development documentation.
 
 ### Monitor the `sidekiq-cluster` command
 

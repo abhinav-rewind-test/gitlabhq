@@ -1,14 +1,16 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: File system performance benchmarking
 ---
 
-# File system performance benchmarking
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 File system performance has a big impact on overall GitLab performance,
 especially for actions that read or write to Git repositories. This information
@@ -25,8 +27,12 @@ I/O. The information on this page can be used for either scenario.
 
 You should use
 [Fio](https://fio.readthedocs.io/en/latest/fio_doc.html) to test I/O
-performance. This test should be run both on the NFS server and on the
-application nodes that talk to the NFS server.
+performance. This test should be run on those servers that could be impacted
+by low disk performance:
+
+- NFS host and the application nodes that mount an NFS drive.
+- Gitaly nodes.
+- PostgreSQL nodes.
 
 To install:
 
@@ -36,11 +42,14 @@ To install:
 Then run the following:
 
 ```shell
-fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --bs=4k --iodepth=64 --readwrite=randrw --rwmixread=75 --size=4G --filename=/path/to/git-data/testfile
+file="/path/to/nfs-or-postgres-or-gitaly/fio-benchmark-$(date +%s)"
+fio --ioengine=libaio --direct=1 --gtod_reduce=1 --iodepth=64 --randrepeat=1 \
+    --readwrite=randrw --name="$file" --filename="$file" \
+    --size=4G --rwmixread=75 --bs=4k
 ```
 
-This creates a 4 GB file in `/path/to/git-data/testfile`. It performs
-4 KB reads and writes using a 75%/25% split in the file, with 64
+This creates a 4 GB file in the NFS, PostgreSQL or Gitaly path.
+Fio performs 4 KB reads and writes using a 75%/25% split in the file, with 64
 operations running at a time. Be sure to delete the file after the test
 completes.
 
@@ -48,7 +57,7 @@ The output varies depending on what version of `fio` installed. The following
 is an example output from `fio` v2.2.10 on a networked solid-state drive (SSD):
 
 ```plaintext
-test: (g=0): rw=randrw, bs=4K-4K/4K-4K/4K-4K, ioengine=libaio, iodepth=64
+path/to/nfs-or-postgres-or-gitaly/fio-benchmark-1234567890: (g=0): rw=randrw, bs=4K-4K/4K-4K/4K-4K, ioengine=libaio, iodepth=64
     fio-2.2.10
     Starting 1 process
     test: Laying out IO file(s) (1 file(s) / 1024MB)
@@ -75,11 +84,11 @@ operations per second.
 
 ### Simple benchmarking
 
-NOTE:
-This test is naive but can be used if `fio` is not
-available on the system. It's possible to receive good results on this
-test but still have poor performance due to read speed and various other
-factors.
+> [!note]
+> This test is naive but can be used if `fio` is not
+> available on the system. It's possible to receive good results on this
+> test but still have poor performance due to read speed and various other
+> factors.
 
 The following one-line commands provide a quick benchmark for file system write and read
 performance. This writes 1,000 small files to the directory in which it is
@@ -107,9 +116,9 @@ executed, and then reads the same 1,000 files.
 
 1. Remove the test files:
 
-  ```shell
-  cd ../; rm -rf test
-  ```
+   ```shell
+   cd ../; rm -rf test
+   ```
 
 The output of the `time for ...` commands resemble the following. The
 important metric is the `real` time.

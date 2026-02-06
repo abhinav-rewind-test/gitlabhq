@@ -1,7 +1,6 @@
 ---
 # Cop supports --autocorrect.
 Style/AccessorGrouping:
-  Details: grace period
   Exclude:
     - 'app/finders/template_finder.rb'
     - 'app/models/commit.rb'
@@ -20,11 +19,8 @@ Style/AccessorGrouping:
     - 'app/models/integrations/chat_message/wiki_page_message.rb'
     - 'app/models/project.rb'
     - 'app/services/deployments/update_environment_service.rb'
-    - 'app/services/issues/clone_service.rb'
     - 'app/services/note_summary.rb'
     - 'app/services/notification_recipients/builder/default.rb'
-    - 'app/services/task_list_toggle_service.rb'
-    - 'ee/app/models/approval_wrapped_rule.rb'
     - 'ee/app/models/integrations/chat_message/vulnerability_message.rb'
     - 'ee/app/services/ci/pipeline_creation/drop_not_runnable_builds_service.rb'
     - 'ee/lib/gitlab/ci/reports/coverage_fuzzing/crash.rb'
@@ -35,7 +31,6 @@ Style/AccessorGrouping:
     - 'ee/lib/gitlab/ci/reports/security/locations/dependency_scanning.rb'
     - 'lib/feature/definition.rb'
     - 'lib/gitlab/audit/type/definition.rb'
-    - 'lib/gitlab/ci/config/external/context.rb'
     - 'lib/gitlab/ci/reports/security/finding.rb'
     - 'lib/gitlab/ci/reports/security/identifier.rb'
     - 'lib/gitlab/ci/reports/security/locations/sast.rb'
@@ -45,7 +40,6 @@ Style/AccessorGrouping:
     - 'lib/gitlab/ci/trace/chunked_io.rb'
     - 'lib/gitlab/ci/variables/builder.rb'
     - 'lib/gitlab/contributions_calendar.rb'
-    - 'lib/gitlab/database/background_migration/batch_metrics.rb'
     - 'lib/gitlab/diff/diff_refs.rb'
     - 'lib/gitlab/diff/formatters/base_formatter.rb'
     - 'lib/gitlab/diff/formatters/image_formatter.rb'
@@ -55,11 +49,8 @@ Style/AccessorGrouping:
     - 'lib/gitlab/graphql/connection_redaction.rb'
     - 'lib/gitlab/http_io.rb'
     - 'lib/gitlab/import_export/project/tree_restorer.rb'
-    - 'lib/gitlab/search/abuse_detection.rb'
     - 'lib/gitlab/sidekiq_middleware/duplicate_jobs/duplicate_job.rb'
     - 'lib/gitlab/suggestions/file_suggestion.rb'
-    - 'lib/gitlab/tracking/event_definition.rb'
-    - 'lib/gitlab/usage/metric_definition.rb'
     - 'lib/gitlab/usage/metrics/instrumentations/base_metric.rb'
     - 'lib/gitlab/usage/service_ping/instrumented_payload.rb'
     - 'lib/json_web_token/token.rb'
@@ -67,4 +58,3 @@ Style/AccessorGrouping:
     - 'lib/safe_zip/entry.rb'
     - 'lib/system_check/simple_executor.rb'
     - 'qa/qa/ee/resource/geo/node.rb'
-    - 'qa/qa/ee/resource/settings/elasticsearch.rb'

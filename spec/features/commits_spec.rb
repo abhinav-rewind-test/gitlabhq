@@ -12,7 +12,7 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
       stub_ci_pipeline_to_return_yaml_file
     end
 
-    let(:creator) { create(:user, developer_projects: [project]) }
+    let(:creator) { create(:user, developer_of: project) }
     let!(:pipeline) do
       create(
         :ci_pipeline,
@@ -41,7 +41,7 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
         end
 
         it 'contains commit short id' do
-          within_testid('pipeline-details-header') do
+          within_testid('pipeline-header') do
             expect(page).to have_content pipeline.sha[0..7]
           end
         end
@@ -75,14 +75,80 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
             )
           end
 
-          before do
-            visit project_commits_path(project, :master)
+          context 'while viewing a branch' do
+            before do
+              visit project_commits_path(project, :master)
+            end
+
+            it 'shows correct build status from default branch' do
+              page.within("//li[@id='commit-#{pipeline.short_sha}']") do
+                expect(page).to have_css("[data-testid='ci-icon']")
+                expect(page).to have_css('[data-testid="status_success_borderless-icon"]')
+              end
+            end
           end
 
-          it 'shows correct build status from default branch' do
-            page.within("//li[@id='commit-#{pipeline.short_sha}']") do
-              expect(page).to have_css("[data-testid='ci-icon']")
-              expect(page).to have_css('[data-testid="status_success_borderless-icon"]')
+          context 'while viewing a commit' do
+            let_it_be(:sha) { project.commit.sha }
+            let_it_be(:short_sha) { sha[..7] }
+
+            before_all do
+              project.repository.add_branch(user, sha, 'master', skip_ci: true)
+              project.repository.add_branch(user, short_sha, 'master', skip_ci: true)
+            end
+
+            context 'when ref is a commit short sha' do
+              context 'without ref_type' do
+                before do
+                  visit project_commits_path(project, short_sha)
+                end
+
+                # Git prioritizes matching short SHAs to branches over commits
+                it 'does not show any build status' do
+                  page.within("//li[@id='commit-#{short_sha}']") do
+                    expect(page).not_to have_css("[data-testid='ci-icon']")
+                  end
+                end
+              end
+
+              context 'with ref_type' do
+                before do
+                  visit project_commits_path(project, short_sha, ref_type: 'heads')
+                end
+
+                it 'does not show any build status' do
+                  page.within("//li[@id='commit-#{short_sha}']") do
+                    expect(page).not_to have_css("[data-testid='ci-icon']")
+                  end
+                end
+              end
+            end
+
+            context 'when ref is a commit sha' do
+              context 'without ref_type' do
+                before do
+                  visit project_commits_path(project, sha)
+                end
+
+                it 'shows latest build status for the commit sha' do
+                  page.within("//li[@id='commit-#{short_sha}']") do
+                    expect(page).to have_css("[data-testid='ci-icon']")
+                    expect(page).to have_css('[data-testid="status_failed_borderless-icon"]')
+                  end
+                end
+              end
+
+              context 'with ref_type' do
+                before do
+                  visit project_commits_path(project, sha, ref_type: 'heads')
+                end
+
+                it 'does not show any build status' do
+                  page.within("//li[@id='commit-#{short_sha}']") do
+                    expect(page).not_to have_css("[data-testid='ci-icon']")
+                  end
+                end
+              end
             end
           end
         end
@@ -111,18 +177,27 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
           end
         end
 
-        describe 'Cancel all builds' do
-          it 'cancels commit', :js, :sidekiq_might_not_need_inline do
-            visit pipeline_path(pipeline)
-            click_on 'Cancel pipeline'
-            expect(page).to have_content 'Canceled'
+        describe 'Cancel jobs' do
+          let!(:pipeline) do
+            create(
+              :ci_pipeline,
+              project: project,
+              user: creator,
+              ref: project.default_branch,
+              sha: project.commit.sha,
+              status: :running,
+              created_at: 5.months.ago
+            )
           end
-        end
 
-        describe 'Cancel build' do
-          it 'cancels build', :js, :sidekiq_might_not_need_inline do
+          before do
             visit pipeline_path(pipeline)
-            find_by_testid('cancel-pipeline').click
+            wait_for_requests
+            click_on 'Cancel pipeline'
+            wait_for_requests
+          end
+
+          it 'cancels pipeline and jobs', :js, :sidekiq_might_not_need_inline do
             expect(page).to have_content 'Canceled'
           end
         end
@@ -148,8 +223,9 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
         end
       end
 
-      context 'when accessing internal project with disallowed access', :js, quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/299575' do
+      context 'when accessing internal project with disallowed access', :js do
         before do
+          project.add_reporter(user)
           project.update!(
             visibility_level: Gitlab::VisibilityLevel::INTERNAL,
             public_builds: false)
@@ -159,7 +235,6 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
 
         it do
           expect(page).to have_content pipeline.sha[0..7]
-          expect(page).to have_content pipeline.git_commit_message.gsub!(/\s+/, ' ')
           expect(page).to have_content pipeline.user.name
 
           expect(page).not_to have_link('Cancel pipeline')
@@ -203,7 +278,7 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
       commits = project.repository.commits(branch_name, limit: 40)
 
       commits.each do |commit|
-        expect(page).to have_content("authored #{commit.authored_date.strftime("%b %d, %Y")}")
+        expect(page).to have_content("authored #{commit.authored_date.strftime('%b %d, %Y')}")
       end
     end
 
@@ -234,7 +309,7 @@ RSpec.describe 'Commits', feature_category: :source_code_management do
     shared_examples 'show commits by author' do
       it "includes the author's commits" do
         commits.each do |commit|
-          expect(page).to have_content("#{author_commit.author_name} authored #{commit.authored_date.strftime("%b %d, %Y")}")
+          expect(page).to have_content("#{author_commit.author_name} authored #{commit.authored_date.strftime('%b %d, %Y')}")
         end
       end
     end

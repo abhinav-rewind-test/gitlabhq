@@ -6,6 +6,8 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
   let(:policy) { ActionDispatch::ContentSecurityPolicy.new }
   let(:lfs_enabled) { false }
   let(:proxy_download) { false }
+  let(:host) { "gdk.test" }
+  let(:port) { 3443 }
 
   let(:csp_config) do
     {
@@ -43,6 +45,11 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
   end
 
   before do
+    ViteRuby.configure(
+      host: host,
+      port: port,
+      https: true
+    )
     stub_lfs_setting(enabled: lfs_enabled)
     allow(LfsObjectUploader)
       .to receive(:object_store_options)
@@ -80,10 +87,6 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
     let(:style_src) { directives['style_src'] }
     let(:worker_src) { directives['worker_src'] }
 
-    before do
-      stub_env('GITLAB_ANALYTICS_URL', nil)
-    end
-
     it 'returns default directives' do
       directive_names = (described_class::DIRECTIVES - ['report_uri'])
       directive_names.each do |directive|
@@ -105,6 +108,83 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
     describe 'the media-src directive' do
       it 'can be loaded from anywhere' do
         expect(media_src).to include('http: https:')
+      end
+    end
+
+    describe 'the worker-src directive' do
+      it 'can be loaded from local origins' do
+        expect(worker_src).to eq("'self' http://localhost/assets/ blob: data: https://gdk.test:3443/assets/vite/")
+      end
+    end
+
+    describe 'Vite dev server' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:https, :env) do
+        [
+          [true, 'development'],
+          [true, 'test'],
+          [false, 'development'],
+          [false, 'test']
+        ]
+      end
+
+      with_them do
+        def protocol
+          https ? 'https' : 'http'
+        end
+
+        def ws_protocol
+          https ? 'wss' : 'ws'
+        end
+
+        def origin
+          "#{protocol}://#{ViteRuby.config.host_with_port}"
+        end
+
+        def dev_server_path
+          "#{origin}/assets/vite"
+        end
+
+        def dev_server_socket_path
+          "#{ws_protocol}://#{ViteRuby.config.host_with_port}/assets/vite"
+        end
+
+        before do
+          ViteRuby.configure(
+            host: host,
+            port: port,
+            https: https
+          )
+        end
+
+        context 'when in production' do
+          before do
+            stub_rails_env('production')
+          end
+
+          it 'does not add directives' do
+            expect(connect_src).not_to include(dev_server_path)
+            expect(connect_src).not_to include(dev_server_socket_path)
+            expect(worker_src).not_to include(dev_server_path)
+            expect(style_src).not_to include(dev_server_path)
+            expect(font_src).not_to include(dev_server_path)
+          end
+        end
+
+        context 'when in non-production' do
+          before do
+            stub_rails_env(env)
+          end
+
+          it 'adds directives' do
+            expect(connect_src).to include(dev_server_path)
+            expect(connect_src).to include(dev_server_socket_path)
+            expect(worker_src).to include(dev_server_path)
+            expect(style_src).to include(dev_server_path)
+            expect(font_src).to include(dev_server_path)
+          end
+        end
       end
     end
 
@@ -177,28 +257,28 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
     describe 'Websocket connections' do
       it 'with insecure domain' do
         stub_config_setting(host: 'example.com', https: false)
-        expect(connect_src).to eq("'self' ws://example.com")
+        expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ ws://example.com")
       end
 
       it 'with secure domain' do
         stub_config_setting(host: 'example.com', https: true)
-        expect(connect_src).to eq("'self' wss://example.com")
+        expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ wss://example.com")
       end
 
       it 'with custom port' do
         stub_config_setting(host: 'example.com', port: '1234')
-        expect(connect_src).to eq("'self' ws://example.com:1234")
+        expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ ws://example.com:1234")
       end
 
       it 'with custom port and secure domain' do
         stub_config_setting(host: 'example.com', https: true, port: '1234')
-        expect(connect_src).to eq("'self' wss://example.com:1234")
+        expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ wss://example.com:1234")
       end
 
       it 'when port is included in HTTP_PORTS' do
         described_class::HTTP_PORTS.each do |port|
           stub_config_setting(host: 'example.com', https: true, port: port)
-          expect(connect_src).to eq("'self' wss://example.com")
+          expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ wss://example.com")
         end
       end
     end
@@ -317,9 +397,9 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
 
         it 'does not include CDN host in CSP' do
           expect(script_src).to eq(::Gitlab::ContentSecurityPolicy::Directives.script_src)
-          expect(style_src).to eq(::Gitlab::ContentSecurityPolicy::Directives.style_src)
-          expect(font_src).to eq("'self'")
-          expect(worker_src).to eq("http://localhost/assets/ blob: data:")
+          expect(style_src).to eq("#{::Gitlab::ContentSecurityPolicy::Directives.style_src} https://gdk.test:3443/assets/vite/")
+          expect(font_src).to eq("'self' https://gdk.test:3443/assets/vite/")
+          expect(worker_src).to eq("#{::Gitlab::ContentSecurityPolicy::Directives.worker_src} https://gdk.test:3443/assets/vite/")
           expect(frame_src).to eq(::Gitlab::ContentSecurityPolicy::Directives.frame_src)
         end
       end
@@ -340,41 +420,25 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
     end
 
     context 'when sentry is configured' do
-      let(:legacy_dsn) { 'dummy://abc@legacy-sentry.example.com/1' }
       let(:dsn) { 'dummy://def@sentry.example.com/2' }
 
       before do
         stub_config_setting(host: 'gitlab.example.com')
       end
 
-      context 'when legacy sentry is configured' do
-        before do
-          allow(Gitlab.config.sentry).to receive(:enabled).and_return(true)
-          allow(Gitlab.config.sentry).to receive(:clientside_dsn).and_return(legacy_dsn)
-          allow(Gitlab::CurrentSettings).to receive(:sentry_enabled).and_return(false)
-        end
-
-        it 'adds legacy sentry path to CSP' do
-          expect(connect_src).to eq("'self' ws://gitlab.example.com dummy://legacy-sentry.example.com")
-        end
-      end
-
       context 'when sentry is configured' do
         before do
-          allow(Gitlab.config.sentry).to receive(:enabled).and_return(false)
           allow(Gitlab::CurrentSettings).to receive(:sentry_enabled).and_return(true)
           allow(Gitlab::CurrentSettings).to receive(:sentry_clientside_dsn).and_return(dsn)
         end
 
         it 'adds new sentry path to CSP' do
-          expect(connect_src).to eq("'self' ws://gitlab.example.com dummy://sentry.example.com")
+          expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ ws://gitlab.example.com dummy://sentry.example.com")
         end
       end
 
       context 'when sentry settings are from older schemas and sentry setting are missing' do
         before do
-          allow(Gitlab.config.sentry).to receive(:enabled).and_return(false)
-
           allow(Gitlab::CurrentSettings).to receive(:respond_to?).with(:sentry_enabled).and_return(false)
           allow(Gitlab::CurrentSettings).to receive(:sentry_enabled).and_raise(NoMethodError)
 
@@ -383,32 +447,7 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
         end
 
         it 'config is backwards compatible, does not add sentry path to CSP' do
-          expect(connect_src).to eq("'self' ws://gitlab.example.com")
-        end
-      end
-
-      context 'when legacy sentry and sentry are both configured' do
-        let(:connect_src_expectation) do
-          # rubocop:disable Lint/PercentStringArray
-          %w[
-            'self'
-            ws://gitlab.example.com
-            dummy://legacy-sentry.example.com
-            dummy://sentry.example.com
-          ].join(' ')
-          # rubocop:enable Lint/PercentStringArray
-        end
-
-        before do
-          allow(Gitlab.config.sentry).to receive(:enabled).and_return(true)
-          allow(Gitlab.config.sentry).to receive(:clientside_dsn).and_return(legacy_dsn)
-
-          allow(Gitlab::CurrentSettings).to receive(:sentry_enabled).and_return(true)
-          allow(Gitlab::CurrentSettings).to receive(:sentry_clientside_dsn).and_return(dsn)
-        end
-
-        it 'adds both sentry paths to CSP' do
-          expect(connect_src).to eq(connect_src_expectation)
+          expect(connect_src).to eq("'self' wss://gdk.test:3443/assets/vite/ https://gdk.test:3443/assets/vite/ ws://gitlab.example.com")
         end
       end
     end
@@ -513,77 +552,6 @@ RSpec.describe Gitlab::ContentSecurityPolicy::ConfigLoader, feature_category: :s
 
         it 'adds Snowplow Micro URL with trailing slash to connect-src' do
           expect(connect_src).to match(Regexp.new(snowplow_micro_url))
-        end
-
-        context 'when not enabled using config' do
-          before do
-            stub_config(snowplow_micro: { enabled: false })
-          end
-
-          it 'does not add Snowplow Micro URL to connect-src' do
-            expect(connect_src).not_to include(snowplow_micro_url)
-          end
-        end
-
-        context 'when REVIEW_APPS_ENABLED is set' do
-          before do
-            stub_env('REVIEW_APPS_ENABLED', 'true')
-          end
-
-          it "includes review app's merge requests API endpoint in the CSP" do
-            expect(connect_src).to include('https://gitlab.com/api/v4/projects/278964/merge_requests/')
-          end
-        end
-
-        context 'when REVIEW_APPS_ENABLED is blank' do
-          before do
-            stub_env('REVIEW_APPS_ENABLED', '')
-          end
-
-          it "does not include review app's merge requests API endpoint in the CSP" do
-            expect(connect_src).not_to include('https://gitlab.com/api/v4/projects/278964/merge_requests/')
-          end
-        end
-      end
-    end
-
-    describe 'browsersdk_tracking' do
-      let(:analytics_url) { 'https://analytics.gitlab.com' }
-      let(:is_gitlab_com) { true }
-
-      before do
-        allow(Gitlab).to receive(:com?).and_return(is_gitlab_com)
-      end
-
-      context 'when browsersdk_tracking is enabled, GITLAB_ANALYTICS_URL is set, and Gitlab.com? is true' do
-        before do
-          stub_env('GITLAB_ANALYTICS_URL', analytics_url)
-        end
-
-        it 'adds GITLAB_ANALYTICS_URL to connect-src' do
-          expect(connect_src).to include(analytics_url)
-        end
-      end
-
-      context 'when Gitlab.com? is false' do
-        let(:is_gitlab_com) { false }
-
-        before do
-          stub_env('GITLAB_ANALYTICS_URL', analytics_url)
-        end
-
-        it 'does not add GITLAB_ANALYTICS_URL to connect-src' do
-          expect(connect_src).not_to include(analytics_url)
-        end
-      end
-
-      context 'when GITLAB_ANALYTICS_URL is not set' do
-        before do
-          stub_env('GITLAB_ANALYTICS_URL', nil)
-        end
-
-        it 'does not add GITLAB_ANALYTICS_URL to connect-src' do
-          expect(connect_src).not_to include(analytics_url)
         end
       end
     end

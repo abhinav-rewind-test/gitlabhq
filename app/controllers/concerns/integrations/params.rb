@@ -35,6 +35,7 @@ module Integrations
       :datadog_env,
       :datadog_service,
       :datadog_tags,
+      :datadog_ci_visibility,
       :default_irc_uri,
       :device,
       :disable_diffs,
@@ -43,12 +44,12 @@ module Integrations
       :diffblue_license_key,
       :drone_url,
       :enable_ssl_verification,
+      :exclude_service_accounts,
       :external_wiki_url,
-      :google_iap_service_account_json,
-      :google_iap_audience_client_id,
       :google_play_protected_refs,
       :group_confidential_mention_events,
       :group_mention_events,
+      :hostname,
       :incident_events,
       :inherit_from_id,
       # We're using `issues_events` and `merge_requests_events`
@@ -65,17 +66,20 @@ module Integrations
       :jira_issue_regex,
       :jira_issue_transition_automatic,
       :jira_issue_transition_id,
+      :jira_cloud_app_service_ids,
+      :jira_cloud_app_enable_deployment_gating,
+      :jira_cloud_app_deployment_gating_environments,
       :manual_configuration,
       :merge_requests_events,
       :mock_service_url,
       :namespace,
       :new_issue_url,
       :notify_only_broken_pipelines,
+      :notify_only_when_pipeline_status_changes,
       :package_name,
       :password,
       :priority,
       :project_key,
-      :project_keys,
       :project_name,
       :project_url,
       :recipients,
@@ -90,12 +94,14 @@ module Integrations
       :sound,
       :subdomain,
       :teamcity_url,
+      :thread,
       :token,
       :type,
       :url,
       :user_key,
       :username,
       :webhook,
+      :workspace_url,
       :zentao_product_xid
     ].freeze
 
@@ -108,11 +114,11 @@ module Integrations
 
       if param_values.is_a?(ActionController::Parameters)
         if %w[update test].include?(action_name) && integration.chat?
-          param_values.delete('webhook') if param_values['webhook'] == BaseChatNotification::SECRET_MASK
+          param_values.delete('webhook') if param_values['webhook'] == Base::ChatNotification::SECRET_MASK
 
           if integration.try(:mask_configurable_channels?)
             integration.event_channel_names.each do |channel|
-              param_values.delete(channel) if param_values[channel] == BaseChatNotification::SECRET_MASK
+              param_values.delete(channel) if param_values[channel] == Base::ChatNotification::SECRET_MASK
             end
           end
         end

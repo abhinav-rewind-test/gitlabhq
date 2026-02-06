@@ -1,5 +1,6 @@
 import { isEmpty } from 'lodash';
 import { normalizeHeaders, parseIntPagination } from '~/lib/utils/common_utils';
+import { convertToGraphQLId } from '~/graphql_shared/utils';
 import { getGroupItemMicrodata } from './utils';
 
 export default class GroupsStore {
@@ -14,23 +15,6 @@ export default class GroupsStore {
   setGroups(rawGroups) {
     if (rawGroups && rawGroups.length) {
       this.state.groups = rawGroups.map((rawGroup) => this.formatGroupItem(rawGroup));
-    } else {
-      this.state.groups = [];
-    }
-  }
-
-  setSearchedGroups(rawGroups) {
-    const formatGroups = (groups) =>
-      groups.map((group) => {
-        const formattedGroup = this.formatGroupItem(group);
-        if (formattedGroup.children && formattedGroup.children.length) {
-          formattedGroup.children = formatGroups(formattedGroup.children);
-        }
-        return formattedGroup;
-      });
-
-    if (rawGroups && rawGroups.length) {
-      this.state.groups = formatGroups(rawGroups);
     } else {
       this.state.groups = [];
     }
@@ -66,10 +50,13 @@ export default class GroupsStore {
 
   formatGroupItem(rawGroupItem) {
     const groupChildren = rawGroupItem.children || [];
-    const groupIsOpen = groupChildren.length > 0 || false;
+    const groupIsOpen = groupChildren.length > 0;
     const childrenCount = this.hideProjects
       ? rawGroupItem.subgroup_count
       : rawGroupItem.children_count;
+    const hasChildren = this.hideProjects
+      ? rawGroupItem.has_subgroups
+      : rawGroupItem.children_count > 0;
 
     const groupItem = {
       id: rawGroupItem.id,
@@ -86,18 +73,20 @@ export default class GroupsStore {
       canRemove: rawGroupItem.can_remove,
       type: rawGroupItem.type,
       permission: rawGroupItem.permission,
-      children: groupChildren,
+      children: groupChildren.map((child) => this.formatGroupItem(child)),
       isOpen: groupIsOpen,
       isChildrenLoading: false,
       isBeingRemoved: false,
       parentId: rawGroupItem.parent_id,
       childrenCount,
+      hasChildren,
       projectCount: rawGroupItem.project_count,
       subgroupCount: rawGroupItem.subgroup_count,
       memberCount: rawGroupItem.number_users_with_delimiter,
       starCount: rawGroupItem.star_count,
       updatedAt: rawGroupItem.updated_at,
-      pendingRemoval: rawGroupItem.marked_for_deletion,
+      markedForDeletion: rawGroupItem.marked_for_deletion,
+      isSelfDeletionInProgress: rawGroupItem.is_self_deletion_in_progress,
       microdata: this.showSchemaMarkup ? getGroupItemMicrodata(rawGroupItem) : {},
       lastActivityAt: rawGroupItem.last_activity_at
         ? rawGroupItem.last_activity_at
@@ -105,11 +94,15 @@ export default class GroupsStore {
       archived: rawGroupItem.archived,
     };
 
-    if (!isEmpty(rawGroupItem.compliance_management_framework)) {
+    if (!isEmpty(rawGroupItem.compliance_management_frameworks)) {
       groupItem.complianceFramework = {
-        name: rawGroupItem.compliance_management_framework.name,
-        color: rawGroupItem.compliance_management_framework.color,
-        description: rawGroupItem.compliance_management_framework.description,
+        id: convertToGraphQLId(
+          'ComplianceManagement::Framework',
+          rawGroupItem.compliance_management_frameworks[0].id,
+        ),
+        name: rawGroupItem.compliance_management_frameworks[0].name,
+        color: rawGroupItem.compliance_management_frameworks[0].color,
+        description: rawGroupItem.compliance_management_frameworks[0].description,
       };
     }
 

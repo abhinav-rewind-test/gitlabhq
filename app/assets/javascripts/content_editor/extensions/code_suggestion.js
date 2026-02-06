@@ -1,4 +1,5 @@
 import { lowlight } from 'lowlight/lib/core';
+import { Fragment } from '@tiptap/pm/model';
 import { textblockTypeInputRule } from '@tiptap/core';
 import { PARSE_HTML_PRIORITY_HIGHEST } from '../constants';
 import { memoizedGet } from '../services/utils';
@@ -34,32 +35,34 @@ export default CodeBlockHighlight.extend({
     const ext = this;
 
     return {
-      insertCodeSuggestion: (attributes) => async ({ editor }) => {
-        // do not insert a new suggestion if already inside a suggestion
-        if (editor.isActive('codeSuggestion')) return false;
+      insertCodeSuggestion:
+        (attributes) =>
+        async ({ editor }) => {
+          // do not insert a new suggestion if already inside a suggestion
+          if (editor.isActive('codeSuggestion')) return false;
 
-        const rawPath = ext.options.codeSuggestionsConfig.diffFile.view_path.replace(
-          '/blob/',
-          '/raw/',
-        );
-        const allLines = (await memoizedGet(rawPath)).split('\n');
-        const { line } = ext.options.codeSuggestionsConfig;
-        let { lines } = ext.options.codeSuggestionsConfig;
+          const rawPath = ext.options.codeSuggestionsConfig.diffFile.view_path.replace(
+            '/blob/',
+            '/raw/',
+          );
+          const allLines = (await memoizedGet(rawPath)).split('\n');
+          const { line } = ext.options.codeSuggestionsConfig;
+          let { lines } = ext.options.codeSuggestionsConfig;
 
-        if (!lines.length) lines = [line];
+          if (!lines.length) lines = [line];
 
-        const content = lines.map((l) => allLines[l.new_line - 1]).join('\n');
-        const lineNumbers = `-${lines.length - 1}+0`;
+          const content = lines.map((l) => allLines[l.new_line - 1]).join('\n');
+          const lineNumbers = `-${lines.length - 1}+0`;
 
-        editor.commands.insertContent({
-          type: 'codeSuggestion',
-          attrs: { langParams: lineNumbers, ...attributes },
-          // empty strings are not allowed in text nodes
-          content: [{ type: 'text', text: content || ' ' }],
-        });
+          editor.commands.insertContent({
+            type: 'codeSuggestion',
+            attrs: { langParams: lineNumbers, ...attributes },
+            // empty strings are not allowed in text nodes
+            content: [{ type: 'text', text: content || ' ' }],
+          });
 
-        return true;
-      },
+          return true;
+        },
     };
   },
 
@@ -67,7 +70,12 @@ export default CodeBlockHighlight.extend({
     return [
       {
         priority: PARSE_HTML_PRIORITY_HIGHEST,
-        tag: 'pre[lang="suggestion"]',
+        tag: 'pre[data-canonical-lang="suggestion"]',
+        getContent(element, schema) {
+          return element.textContent
+            ? Fragment.from(schema.text(element.textContent))
+            : Fragment.empty;
+        },
       },
     ];
   },

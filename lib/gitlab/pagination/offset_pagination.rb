@@ -11,19 +11,19 @@ module Gitlab
         @request_context = request_context
       end
 
-      def paginate(relation, exclude_total_headers: false, skip_default_order: false, without_count: false)
+      def paginate(relation, exclude_total_headers: false, skip_default_order: false, without_count: false, skip_pagination_check: false)
         ordered_relation = add_default_order(relation, skip_default_order: skip_default_order)
 
-        paginate_with_limit_optimization(ordered_relation, without_count: without_count).tap do |data|
-          add_pagination_headers(data, exclude_total_headers)
+        paginate_with_limit_optimization(ordered_relation, without_count: without_count, skip_pagination_check: skip_pagination_check).tap do |data|
+          add_pagination_headers(data, exclude_total_headers, without_count)
         end
       end
 
       private
 
-      def paginate_with_limit_optimization(relation, without_count:)
-        pagination_data = if needs_pagination?(relation)
-                            relation.page(params[:page]).per(params[:per_page])
+      def paginate_with_limit_optimization(relation, without_count:, skip_pagination_check: false)
+        pagination_data = if !skip_pagination_check && needs_pagination?(relation)
+                            relation.page(page).per(per_page)
                           else
                             relation
                           end
@@ -41,8 +41,8 @@ module Gitlab
 
       def needs_pagination?(relation)
         return true unless relation.respond_to?(:current_page)
-        return true if params[:page].present? && relation.current_page != params[:page].to_i
-        return true if params[:per_page].present? && relation.limit_value != params[:per_page].to_i
+        return true if page.present? && relation.current_page != page.to_i
+        return true if per_page.present? && relation.limit_value != per_page.to_i
 
         false
       end
@@ -57,16 +57,21 @@ module Gitlab
         relation
       end
 
-      def add_pagination_headers(paginated_data, exclude_total_headers)
+      def add_pagination_headers(paginated_data, exclude_total_headers, without_count)
         Gitlab::Pagination::OffsetHeaderBuilder.new(
           request_context: self, per_page: paginated_data.limit_value, page: paginated_data.current_page,
           next_page: paginated_data.next_page, prev_page: paginated_data.prev_page,
           total: total_count(paginated_data), total_pages: total_pages(paginated_data)
-        ).execute(exclude_total_headers: exclude_total_headers, data_without_counts: data_without_counts?(paginated_data))
+        ).execute(exclude_total_headers: exclude_total_headers, data_without_counts: without_count || data_without_counts?(paginated_data))
       end
 
       def data_without_counts?(paginated_data)
-        paginated_data.is_a?(Kaminari::PaginatableWithoutCount)
+        paginated_data.is_a?(Kaminari::PaginatableWithoutCount) || paginatable_array_exceeds_count?(paginated_data)
+      end
+
+      def paginatable_array_exceeds_count?(paginated_data)
+        paginated_data.is_a?(Kaminari::PaginatableArray) &&
+          paginated_data.total_count >= Kaminari::ActiveRecordRelationMethods::MAX_COUNT_LIMIT
       end
 
       def total_count(paginated_data)
@@ -84,6 +89,23 @@ module Gitlab
         limited_total_count = paginated_data.total_count_with_limit
 
         limited_total_count > Kaminari::ActiveRecordRelationMethods::MAX_COUNT_LIMIT
+      end
+
+      def page
+        to_integer(params[:page])
+      end
+
+      def per_page
+        to_integer(params[:per_page])
+      end
+
+      def to_integer(value)
+        case value
+        when Integer
+          value
+        when String
+          Integer(value, 10, exception: false)
+        end
       end
     end
   end

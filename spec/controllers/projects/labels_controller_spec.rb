@@ -5,10 +5,12 @@ require 'spec_helper'
 RSpec.describe Projects::LabelsController, feature_category: :team_planning do
   let_it_be(:group)   { create(:group) }
   let_it_be(:project, reload: true) { create(:project, namespace: group) }
-  let_it_be(:user)    { create(:user) }
+  let_it_be(:project_2) { create(:project, namespace: group) }
+  let_it_be(:user) { create(:user) }
 
   before do
     project.add_maintainer(user)
+    project_2.add_maintainer(user)
 
     sign_in(user)
   end
@@ -56,6 +58,35 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
         list_labels
 
         expect(assigns(:labels)).to eq [group_label_3, group_label_4, label_4, label_5]
+      end
+
+      context 'with archived labels' do
+        let_it_be(:archived_label) { create(:label, :archived, project: project_2, title: 'Archived Label') }
+        let_it_be(:unarchived_label) { create(:label, project: project_2, title: 'Unarchived Label') }
+        let_it_be(:params) { { namespace_id: project_2.namespace.to_param, project_id: project_2 } }
+
+        let_it_be(:unarchived_labels) { [unarchived_label, group_label_1, group_label_2, group_label_3, group_label_4] }
+        let_it_be(:all_labels) { [archived_label, unarchived_label, group_label_1, group_label_2, group_label_3, group_label_4] }
+
+        it_behaves_like 'handles archived labels'
+
+        context 'when viewing archived tab' do
+          it 'does not show prioritized labels' do
+            get :index, params: { namespace_id: project.namespace.to_param, project_id: project, archived: 'true' }
+            expect(assigns(:prioritized_labels)).to be_empty
+          end
+
+          context 'with feature flag labels_archive disabled' do
+            before do
+              stub_feature_flags(labels_archive: false)
+            end
+
+            it 'returns all prioritized labels' do
+              get :index, params: { namespace_id: project.namespace.to_param, project_id: project, archived: 'true' }
+              expect(assigns(:prioritized_labels)).to match_array group_priority_labels + project_priority_labels
+            end
+          end
+        end
       end
 
       it 'does not include labels with priority' do
@@ -190,12 +221,25 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
         expect(GroupLabel.find_by(title: promoted_label_name)).not_to be_nil
       end
 
+      it 'redirects to the same page after promoting when format is html' do
+        post :promote, params: { namespace_id: project.namespace.to_param, project_id: project, id: label_1.to_param, page: 2 }, format: :html
+
+        expect(response).to redirect_to(project_labels_path(project, page: 2))
+      end
+
+      it 'returns the url with right page param when format is json' do
+        post :promote, params: { namespace_id: project.namespace.to_param, project_id: project, id: label_1.to_param, page: 2 }, format: :json
+
+        expect(json_response).to eq({ 'url' => project_labels_path(project, page: 2) })
+      end
+
       it 'renders label name without parsing it as HTML' do
-        label_1.update!(name: 'CCC&lt;img src=x onerror=alert(document.domain)&gt;')
+        name = 'CCC<img src=x onerror=alert(document.domain)>'
+        label_1.update!(name: name)
 
         post :promote, params: { namespace_id: project.namespace.to_param, project_id: project, id: label_1.to_param }
 
-        expect(flash[:notice]).to eq("CCC&lt;img src=x onerror=alert(document.domain)&gt; promoted to <a href=\"#{group_labels_path(project.group)}\"><u>group label</u></a>.")
+        expect(flash[:notice]).to eq("#{CGI.escapeHTML(name)} promoted to <a href=\"#{group_labels_path(project.group)}\"><u>group label</u></a>.")
       end
 
       context 'service raising InvalidRecord' do
@@ -342,6 +386,12 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
         it_behaves_like 'allows setting lock_on_merge'
       end
     end
+
+    it_behaves_like 'updating archived status' do
+      let_it_be_with_reload(:label) { create(:label, project: project) }
+      let(:update_params) { { namespace_id: project.namespace, project_id: project, id: label.to_param } }
+      let(:expected_redirect_path) { project_labels_path(project) }
+    end
   end
 
   describe 'DELETE #destroy' do
@@ -364,7 +414,7 @@ RSpec.describe Projects::LabelsController, feature_category: :team_planning do
         expect(label.reload).to eq label
       end
 
-      context 'when label is succesfuly destroyed' do
+      context 'when label is successfully destroyed' do
         it 'redirects to the project labels page' do
           label = create(:label, project: project)
           delete :destroy, params: { namespace_id: group.to_param, project_id: project.to_param, id: label.to_param }

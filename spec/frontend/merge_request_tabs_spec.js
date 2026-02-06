@@ -4,14 +4,27 @@ import htmlMergeRequestsWithTaskList from 'test_fixtures/merge_requests/merge_re
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import initMrPage from 'helpers/init_vue_mr_page_helper';
 import { stubPerformanceWebAPI } from 'helpers/performance';
+import setWindowLocation from 'helpers/set_window_location_helper';
+import { scrollTo } from '~/lib/utils/scroll_utils';
 import axios from '~/lib/utils/axios_utils';
 import MergeRequestTabs, { getActionFromHref } from '~/merge_request_tabs';
 import Diff from '~/diff';
-import '~/lib/utils/common_utils';
-import '~/lib/utils/url_utility';
+import { visitUrl } from '~/lib/utils/url_utility';
+import { NO_SCROLL_TO_HASH_CLASS } from '~/lib/utils/constants';
 
 jest.mock('~/lib/utils/webpack', () => ({
   resetServiceWorkersPublicPath: jest.fn(),
+}));
+
+jest.mock('~/lib/utils/url_utility', () => ({
+  ...jest.requireActual('~/lib/utils/url_utility'),
+  visitUrl: jest.fn(),
+}));
+
+jest.mock('~/lib/utils/scroll_utils', () => ({
+  ...jest.requireActual('~/lib/utils/scroll_utils'),
+  scrollTo: jest.fn(),
+  scrollToElement: jest.fn(),
 }));
 
 describe('MergeRequestTabs', () => {
@@ -42,7 +55,7 @@ describe('MergeRequestTabs', () => {
   });
 
   afterEach(() => {
-    document.body.innerHTML = '';
+    resetHTMLFixture();
   });
 
   describe('clickTab', () => {
@@ -107,10 +120,6 @@ describe('MergeRequestTabs', () => {
       };
     });
 
-    afterEach(() => {
-      resetHTMLFixture();
-    });
-
     describe('meta click', () => {
       let metakeyEvent;
 
@@ -127,7 +136,7 @@ describe('MergeRequestTabs', () => {
         testContext.class.bindEvents();
         $('.merge-request-tabs .commits-tab a').trigger(metakeyEvent);
 
-        expect(window.open).toHaveBeenCalled();
+        expect(visitUrl).toHaveBeenCalledWith(expect.any(String), true);
       });
 
       it('opens page when commits badge is clicked', () => {
@@ -139,7 +148,7 @@ describe('MergeRequestTabs', () => {
         testContext.class.bindEvents();
         $('.merge-request-tabs .commits-tab a .badge').trigger(metakeyEvent);
 
-        expect(window.open).toHaveBeenCalled();
+        expect(visitUrl).toHaveBeenCalledWith(expect.any(String), true);
       });
     });
 
@@ -151,7 +160,7 @@ describe('MergeRequestTabs', () => {
 
       testContext.class.clickTab({ ...clickTabParams, metaKey: true });
 
-      expect(window.open).toHaveBeenCalled();
+      expect(visitUrl).toHaveBeenCalledWith(expect.any(String), true);
     });
 
     it('opens page tab in a new browser tab with Cmd+Click - Mac', () => {
@@ -162,7 +171,7 @@ describe('MergeRequestTabs', () => {
 
       testContext.class.clickTab({ ...clickTabParams, ctrlKey: true });
 
-      expect(window.open).toHaveBeenCalled();
+      expect(visitUrl).toHaveBeenCalledWith(expect.any(String), true);
     });
 
     it('opens page tab in a new browser tab with Middle-click - Mac/PC', () => {
@@ -173,7 +182,7 @@ describe('MergeRequestTabs', () => {
 
       testContext.class.clickTab({ ...clickTabParams, which: 2 });
 
-      expect(window.open).toHaveBeenCalled();
+      expect(visitUrl).toHaveBeenCalledWith(expect.any(String), true);
     });
   });
 
@@ -227,6 +236,24 @@ describe('MergeRequestTabs', () => {
       expect(testContext.subject('commits')).toBe('/foo/bar/-/merge_requests/1/commits');
     });
 
+    it('changes from notes ending with a trailing slash', () => {
+      setLocation({
+        pathname: '/foo/bar/-/merge_requests/1/',
+      });
+
+      expect(testContext.subject('diffs')).toBe('/foo/bar/-/merge_requests/1/diffs');
+      expect(testContext.subject('commits')).toBe('/foo/bar/-/merge_requests/1/commits');
+    });
+
+    it('changes from diffs ending with a trailing slash', () => {
+      setLocation({
+        pathname: '/foo/bar/-/merge_requests/1/diffs/',
+      });
+
+      expect(testContext.subject('show')).toBe('/foo/bar/-/merge_requests/1');
+      expect(testContext.subject('commits')).toBe('/foo/bar/-/merge_requests/1/commits');
+    });
+
     it('includes search parameters and hash string', () => {
       setLocation({
         pathname: '/foo/bar/-/merge_requests/1/diffs',
@@ -269,6 +296,30 @@ describe('MergeRequestTabs', () => {
 
       expect(testContext.subject('show')).toBe('/foo/bar/-/merge_requests/1');
     });
+
+    it.each`
+      pathname                                                | action       | expected
+      ${'/group/reports/project/-/merge_requests/1'}          | ${'show'}    | ${'/group/reports/project/-/merge_requests/1'}
+      ${'/group/reports/project/-/merge_requests/1'}          | ${'reports'} | ${'/group/reports/project/-/merge_requests/1/reports'}
+      ${'/group/reports/project/-/merge_requests/1/reports'}  | ${'reports'} | ${'/group/reports/project/-/merge_requests/1/reports'}
+      ${'/group/reports/project/-/merge_requests/1/reports'}  | ${'show'}    | ${'/group/reports/project/-/merge_requests/1'}
+      ${'/group/project/-/merge_requests/1/diffs'}            | ${'commits'} | ${'/group/project/-/merge_requests/1/commits'}
+      ${'/group/project/-/merge_requests/1/commits'}          | ${'diffs'}   | ${'/group/project/-/merge_requests/1/diffs'}
+      ${'/group/project/-/merge_requests/1/reports/security'} | ${'show'}    | ${'/group/project/-/merge_requests/1'}
+      ${'/group/project/-/merge_requests/1/reports/security'} | ${'reports'} | ${'/group/project/-/merge_requests/1/reports'}
+      ${'/group/project/-/merge_requests/1/commits'}          | ${'commits'} | ${'/group/project/-/merge_requests/1/commits'}
+      ${'/group/project/-/merge_requests/1/diffs/'}           | ${'show'}    | ${'/group/project/-/merge_requests/1'}
+      ${'/group/project/-/merge_requests/1/commits.html'}     | ${'show'}    | ${'/group/project/-/merge_requests/1'}
+    `(
+      'updates URL to $expected if current URL is $pathname and new action is $action',
+      ({ pathname, action, expected }) => {
+        setLocation({
+          pathname,
+        });
+
+        expect(testContext.subject(action)).toBe(expected);
+      },
+    );
   });
 
   describe('expandViewContainer', () => {
@@ -328,27 +379,18 @@ describe('MergeRequestTabs', () => {
       $.fn.renderGFM = jest.fn();
       jest.spyOn(mainContent, 'getBoundingClientRect').mockReturnValue({ top: 10 });
       jest.spyOn(tabContent, 'getBoundingClientRect').mockReturnValue({ top: 100 });
-      jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
       jest.spyOn(document, 'querySelector').mockImplementation((selector) => {
         return selector === '.content-wrapper' ? mainContent : tabContent;
       });
       testContext.class.currentAction = 'commits';
     });
 
-    it('calls window scrollTo with options if document has scrollBehavior', () => {
-      document.documentElement.style.scrollBehavior = '';
-
-      testContext.class.tabShown('commits', 'foobar');
-
-      expect(window.scrollTo.mock.calls[0][0]).toEqual({ top: 39, behavior: 'smooth' });
-    });
-
-    it('calls window scrollTo with two args if document does not have scrollBehavior', () => {
+    it('calls scrollTo', () => {
       jest.spyOn(document.documentElement, 'style', 'get').mockReturnValue({});
 
       testContext.class.tabShown('commits', 'foobar');
 
-      expect(window.scrollTo.mock.calls[0]).toEqual([0, 39]);
+      expect(scrollTo.mock.calls[0]).toEqual([{ top: 39, behavior: 'smooth' }]);
     });
 
     it.each`
@@ -371,7 +413,7 @@ describe('MergeRequestTabs', () => {
       testContext.class.tabShown(tab, 'foobar');
 
       testContext.class.expandSidebar.forEach((el) => {
-        expect(el.classList.contains('gl-display-none!')).toBe(hides);
+        expect(el.classList.contains('!gl-hidden')).toBe(hides);
       });
     });
 
@@ -379,7 +421,6 @@ describe('MergeRequestTabs', () => {
       const SCROLL_TOP = 100;
 
       beforeEach(() => {
-        jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
         testContext.class.mergeRequestTabs = document.createElement('div');
         testContext.class.mergeRequestTabPanes = document.createElement('div');
         testContext.class.currentTab = 'tab';
@@ -391,7 +432,7 @@ describe('MergeRequestTabs', () => {
 
         jest.advanceTimersByTime(250);
 
-        expect(window.scrollTo.mock.calls[0][0]).toEqual({
+        expect(scrollTo.mock.calls[0][0]).toEqual({
           top: SCROLL_TOP,
           left: 0,
           behavior: 'auto',
@@ -403,7 +444,71 @@ describe('MergeRequestTabs', () => {
 
         jest.advanceTimersByTime(250);
 
-        expect(window.scrollTo).not.toHaveBeenCalled();
+        expect(scrollTo).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('switching to the diffs tab', () => {
+      describe('Rapid Diffs', () => {
+        let createRapidDiffsApp;
+        let init;
+        let hide;
+        let show;
+
+        beforeEach(() => {
+          setWindowLocation('https://example.com?rapid_diffs=true');
+          init = jest.fn();
+          hide = jest.fn();
+          show = jest.fn();
+          createRapidDiffsApp = jest.fn(() => ({
+            init,
+            hide,
+            show,
+          }));
+        });
+
+        it('stats Rapid Diffs app', () => {
+          testContext.class = new MergeRequestTabs({
+            stubLocation,
+            createRapidDiffsApp,
+          });
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
+          expect(init).toHaveBeenCalledTimes(1);
+        });
+
+        it('creates a single Rapid Diffs app instance', () => {
+          testContext.class = new MergeRequestTabs({
+            stubLocation,
+            createRapidDiffsApp,
+          });
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          testContext.class.tabShown('new', 'not-a-vue-page');
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          expect(createRapidDiffsApp).toHaveBeenCalledTimes(1);
+          expect(init).toHaveBeenCalledTimes(1);
+        });
+
+        it('hides Rapid Diffs', () => {
+          testContext.class = new MergeRequestTabs({
+            stubLocation,
+            createRapidDiffsApp,
+          });
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          testContext.class.tabShown('new', 'not-a-vue-page');
+          expect(hide).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows Rapid Diffs', () => {
+          testContext.class = new MergeRequestTabs({
+            stubLocation,
+            createRapidDiffsApp,
+          });
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          testContext.class.tabShown('new', 'not-a-vue-page');
+          testContext.class.tabShown('diffs', 'not-a-vue-page');
+          expect(show).toHaveBeenCalledTimes(1);
+        });
       });
     });
   });
@@ -479,14 +584,31 @@ describe('MergeRequestTabs', () => {
 
   describe('getActionFromHref', () => {
     it.each`
-      pathName                                        | action
-      ${'/user/pipelines/-/merge_requests/1/diffs'}   | ${'diffs'}
-      ${'/user/diffs/-/merge_requests/1/pipelines'}   | ${'pipelines'}
-      ${'/user/pipelines/-/merge_requests/1/commits'} | ${'commits'}
-      ${'/user/pipelines/1/-/merge_requests/1/diffs'} | ${'diffs'}
-      ${'/user/pipelines/-/merge_requests/1'}         | ${'show'}
+      pathName                                               | action
+      ${'/user/pipelines/-/merge_requests/1/diffs'}          | ${'diffs'}
+      ${'/user/diffs/-/merge_requests/1/pipelines'}          | ${'pipelines'}
+      ${'/user/pipelines/-/merge_requests/1/commits'}        | ${'commits'}
+      ${'/user/pipelines/1/-/merge_requests/1/diffs'}        | ${'diffs'}
+      ${'/user/gitlab/-/merge_requests/new/diffs'}           | ${'diffs'}
+      ${'/user/pipelines/-/merge_requests/1'}                | ${'show'}
+      ${'/user/pipelines/-/merge_requests/1/reports'}        | ${'reports'}
+      ${'/group/reports/project/-/merge_requests/1/reports'} | ${'reports'}
     `('returns $action for $location', ({ pathName, action }) => {
       expect(getActionFromHref(pathName)).toBe(action);
     });
+  });
+
+  it('does not scroll to targets with no scroll class', () => {
+    setHTMLFixture(htmlMergeRequestsWithTaskList);
+    const target = document.createElement('div');
+    target.id = 'target';
+    target.classList.add(NO_SCROLL_TO_HASH_CLASS);
+    document.body.appendChild(target);
+    testContext.class.currentAction = 'show';
+    window.location.hash = 'target';
+
+    // popstate event handlers are not triggered in the same task
+    jest.runAllTimers();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });

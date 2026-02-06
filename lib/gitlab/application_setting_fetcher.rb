@@ -24,13 +24,7 @@ module Gitlab
       def cached_application_settings
         return in_memory_application_settings if ENV['IN_MEMORY_APPLICATION_SETTINGS'] == 'true'
 
-        begin
-          ::ApplicationSetting.cached
-        rescue StandardError
-          # In case Redis isn't running
-          # or the Redis UNIX socket file is not available
-          # or the DB is not running (we use migrations in the cache key)
-        end
+        ::ApplicationSetting.cached
       end
 
       def uncached_application_settings
@@ -42,7 +36,7 @@ module Gitlab
         # need to be added to the application settings. To prevent Rake tasks
         # and other callers from failing, use any loaded settings and return
         # defaults for missing columns.
-        if Gitlab::Runtime.rake? && ::ApplicationSetting.connection.migration_context.needs_migration?
+        if Gitlab::Runtime.rake? && needs_migration?
           db_attributes = current_settings&.attributes || {}
           fake_application_settings(db_attributes)
         elsif current_settings.present?
@@ -52,6 +46,10 @@ module Gitlab
         end
       rescue ::ApplicationSetting::Recursion
         in_memory_application_settings
+      end
+
+      def needs_migration?
+        ::ApplicationSetting.connection_pool.migration_context.needs_migration?
       end
 
       def in_memory_application_settings

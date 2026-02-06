@@ -9,7 +9,7 @@ module DesignManagement
     #
     # Enable all uploaded files to be stored in LFS.
     MANAGED_GIT_ATTRIBUTES = <<~GA.freeze
-      /#{DesignManagement.designs_directory}/* filter=lfs diff=lfs merge=lfs -text
+      /#{DesignManagement.designs_directory}/** filter=lfs diff=lfs merge=lfs -text
     GA
 
     # Override of a method called on Repository instances but sent via
@@ -34,11 +34,6 @@ module DesignManagement
     # method_missing to Gitlab::Git::Repository where it is defined
     def attributes_at(_ref = nil)
       info_attributes
-    end
-
-    override :copy_gitattributes
-    def copy_gitattributes(_ref = nil)
-      true
     end
   end
 end

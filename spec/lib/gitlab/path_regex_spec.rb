@@ -3,11 +3,6 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::PathRegex do
-  let(:starting_with_namespace) { %r{^/\*namespace_id/:(project_)?id} }
-  let(:non_param_parts) { %r{[^:*][a-z\-_/]*} }
-  let(:any_other_path_part) { %r{[a-z\-_/:]*} }
-  let(:wildcard_segment) { /\*/ }
-
   # Pass in a full path to remove the format segment:
   # `/ci/lint(.:format)` -> `/ci/lint`
   def without_format(path)
@@ -68,6 +63,11 @@ RSpec.describe Gitlab::PathRegex do
 
     message
   end
+
+  let(:starting_with_namespace) { %r{^/\*namespace_id/:(project_)?id} }
+  let(:non_param_parts) { %r{[^:*][a-z\-_/]*} }
+  let(:any_other_path_part) { %r{[a-z\-_/:]*} }
+  let(:wildcard_segment) { /\*/ }
 
   let(:all_non_legacy_routes) do
     route_set = Rails.application.routes
@@ -176,11 +176,11 @@ RSpec.describe Gitlab::PathRegex do
 
   describe 'TOP_LEVEL_ROUTES' do
     it 'includes all the top level namespaces' do
-      failure_block = lambda do
+      failure_block = -> do
         missing_words = top_level_words - described_class::TOP_LEVEL_ROUTES
         additional_words = described_class::TOP_LEVEL_ROUTES - top_level_words
         failure_message('TOP_LEVEL_ROUTES', 'rename_root_paths',
-                        missing_words: missing_words, additional_words: additional_words)
+          missing_words: missing_words, additional_words: additional_words)
       end
 
       # We have to account for routes that are added by gems into the RAILS_ENV=test only.
@@ -200,11 +200,11 @@ RSpec.describe Gitlab::PathRegex do
 
   describe 'GROUP_ROUTES' do
     it "don't contain a second wildcard" do
-      failure_block = lambda do
+      failure_block = -> do
         missing_words = paths_after_group_id - described_class::GROUP_ROUTES
         additional_words = described_class::GROUP_ROUTES - paths_after_group_id
         failure_message('GROUP_ROUTES', 'rename_child_paths',
-                        missing_words: missing_words, additional_words: additional_words)
+          missing_words: missing_words, additional_words: additional_words)
       end
 
       expect(described_class::GROUP_ROUTES)

@@ -1,13 +1,18 @@
 /* eslint-disable class-methods-use-this, @gitlab/require-i18n-strings */
 
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
 import $ from 'jquery';
 import { uniq, escape } from 'lodash';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { getEmojiScoreWithIntent } from '~/emoji/utils';
-import { getCookie, setCookie, scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import * as Emoji from '~/emoji';
 import { dispose, fixTitle } from '~/tooltips';
 import { createAlert } from '~/alert';
+import {
+  EMOJI_THUMBS_UP,
+  EMOJI_THUMBS_DOWN,
+  FREQUENTLY_USED_EMOJIS_STORAGE_KEY,
+} from '~/emoji/constants';
 import axios from './lib/utils/axios_utils';
 import { isInVueNoteablePage } from './lib/utils/dom_utils';
 import { __ } from './locale';
@@ -230,12 +235,12 @@ export class AwardsHandler {
       <h5 class="emoji-menu-title">
         ${escape(name)}
       </h5>
-      <ul class="clearfix emoji-menu-list ${opts.frequentEmojis ? 'frequent-emojis' : ''}">
+      <ul class="gl-clearfix emoji-menu-list ${opts.frequentEmojis ? 'frequent-emojis' : ''}">
         ${emojiList
           .map(
             (emojiName) => `
           <li class="emoji-menu-list-item">
-            <button class="emoji-menu-btn text-center js-emoji-btn" type="button">
+            <button class="emoji-menu-btn !gl-text-center js-emoji-btn" type="button">
               ${this.emoji.glEmojiTag(emojiName, {
                 sprite: true,
               })}
@@ -261,8 +266,9 @@ export class AwardsHandler {
     const css = {
       top: `${$addBtn.offset().top + $addBtn.outerHeight()}px`,
     };
-    // for xs screen we position the element on center
-    if (bp.getBreakpointSize() === 'xs' || bp.getBreakpointSize() === 'sm') {
+    // for smaller breakpoints, we position the element on center
+    const breakpoint = PanelBreakpointInstance.getBreakpointSize();
+    if (['xs', 'sm'].includes(breakpoint)) {
       css.left = '5%';
     } else if (position === 'right') {
       css.left = `${$addBtn.offset().left - $menu.outerWidth() + 20}px`;
@@ -274,7 +280,8 @@ export class AwardsHandler {
     return $menu.css(css);
   }
 
-  addAward(votesBlock, awardUrl, emoji, checkMutuality, callback) {
+  // eslint-disable-next-line max-params
+  addAward(votesBlock, awardUrl, emoji, callback) {
     const isMainAwardsBlock = votesBlock.closest('.js-noteable-awards').length;
 
     if (isInVueNoteablePage() && !isMainAwardsBlock) {
@@ -297,7 +304,7 @@ export class AwardsHandler {
     const $emojiButton = this.findEmojiIcon(votesBlock, normalizedEmoji).closest('button');
 
     this.postEmoji($emojiButton, awardUrl, normalizedEmoji, () => {
-      this.addAwardToEmojiBar(votesBlock, normalizedEmoji, checkMutuality);
+      this.addAwardToEmojiBar(votesBlock, normalizedEmoji);
       return typeof callback === 'function' ? callback() : undefined;
     });
 
@@ -306,10 +313,7 @@ export class AwardsHandler {
     return $(`${this.toggleButtonSelector}.is-active`).removeClass('is-active');
   }
 
-  addAwardToEmojiBar(votesBlock, emoji, checkForMutuality) {
-    if (checkForMutuality || checkForMutuality === null) {
-      this.checkMutuality(votesBlock, emoji);
-    }
+  addAwardToEmojiBar(votesBlock, emoji) {
     this.addEmojiToFrequentlyUsedList(emoji);
     const normalizedEmoji = this.emoji.normalizeEmojiName(emoji);
     const $emojiButton = this.findEmojiIcon(votesBlock, normalizedEmoji).closest('button');
@@ -351,18 +355,6 @@ export class AwardsHandler {
     return this.getVotesBlock().data('awardUrl');
   }
 
-  checkMutuality(votesBlock, emoji) {
-    const awardUrl = this.getAwardUrl();
-    if (emoji === 'thumbsup' || emoji === 'thumbsdown') {
-      const mutualVote = emoji === 'thumbsup' ? 'thumbsdown' : 'thumbsup';
-      const $emojiButton = votesBlock.find(`[data-name="${mutualVote}"]`).closest('button');
-      const isAlreadyVoted = $emojiButton.hasClass('active');
-      if (isAlreadyVoted) {
-        this.addAward(votesBlock, awardUrl, mutualVote, false);
-      }
-    }
-  }
-
   isActive($emojiButton) {
     return $emojiButton.hasClass('active');
   }
@@ -373,7 +365,7 @@ export class AwardsHandler {
     if (counterNumber > 1) {
       counter.text(counterNumber - 1);
       this.removeYouFromUserList($emojiButton);
-    } else if (emoji === 'thumbsup' || emoji === 'thumbsdown') {
+    } else if (emoji === EMOJI_THUMBS_UP || emoji === EMOJI_THUMBS_DOWN) {
       dispose($emojiButton);
       counter.text('0');
       this.removeYouFromUserList($emojiButton);
@@ -480,6 +472,7 @@ export class AwardsHandler {
     });
   }
 
+  // eslint-disable-next-line max-params
   postEmoji($emojiButton, awardUrl, emoji, callback) {
     axios
       .post(awardUrl, {
@@ -508,7 +501,7 @@ export class AwardsHandler {
   addEmojiToFrequentlyUsedList(emoji) {
     if (this.emoji.isEmojiNameValid(emoji)) {
       this.frequentlyUsedEmojis = uniq(this.getFrequentlyUsedEmojis().concat(emoji));
-      setCookie('frequently_used_emojis', this.frequentlyUsedEmojis.join(','));
+      localStorage.setItem(FREQUENTLY_USED_EMOJIS_STORAGE_KEY, this.frequentlyUsedEmojis.join(','));
     }
   }
 
@@ -516,7 +509,9 @@ export class AwardsHandler {
     return (
       this.frequentlyUsedEmojis ||
       (() => {
-        const frequentlyUsedEmojis = uniq((getCookie('frequently_used_emojis') || '').split(','));
+        const frequentlyUsedEmojis = uniq(
+          (localStorage.getItem(FREQUENTLY_USED_EMOJIS_STORAGE_KEY) || '').split(','),
+        );
         this.frequentlyUsedEmojis = frequentlyUsedEmojis.filter((inputName) =>
           this.emoji.isEmojiNameValid(inputName),
         );

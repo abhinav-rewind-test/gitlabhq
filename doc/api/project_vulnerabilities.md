@@ -1,48 +1,50 @@
 ---
-stage: Govern
-group: Threat Insights
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+stage: Security Risk Management
+group: Security Insights
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Project vulnerabilities API
+description: Project Vulnerabilities API for listing and creating project vulnerabilities. Requires authentication and appropriate permissions.
 ---
 
-# Project vulnerabilities API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/10242) in GitLab 12.6.
-> - `last_edited_at` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `start_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `updated_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `last_edited_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
-> - `due_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+{{< /details >}}
 
-WARNING:
-This API is in the process of being deprecated and considered unstable.
-The response payload may be subject to change or breakage
-across GitLab releases. Use the
-[GraphQL API](graphql/reference/index.md#queryvulnerabilities)
-instead.
+{{< history >}}
 
-Every API call to vulnerabilities must be [authenticated](rest/index.md#authentication).
+- `last_edited_at` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `start_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `updated_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `last_edited_by_id` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
+- `due_date` [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/268154) in GitLab 16.7.
 
-Vulnerability permissions inherit permissions from their project. If a project is
-private, and a user isn't a member of the project to which the vulnerability
-belongs, requests to that project returns a `404 Not Found` status code.
+{{< /history >}}
 
-## Vulnerabilities pagination
+> [!warning]
+> This API is in the process of being deprecated and considered unstable.
+> The response payload may be subject to change or breakage
+> across GitLab releases. Use the
+> [GraphQL API](graphql/reference/_index.md#queryvulnerabilities)
+> instead.
 
-API results are paginated, and `GET` requests return 20 results at a time by default.
+Use this API to manage [project vulnerabilities](../user/application_security/vulnerabilities/_index.md).
+Every call to this API requires authentication.
 
-Read more on [pagination](rest/index.md#pagination).
+If a user isn't a member of a private project, requests to the private project return a `404 Not Found`
+status code.
 
 ## List project vulnerabilities
 
 List all of a project's vulnerabilities.
 
 If an authenticated user does not have permission to
-[use the Project Security Dashboard](../user/permissions.md#project-members-permissions),
+[use the Project Security Dashboard](../user/permissions.md#project-permissions),
 `GET` requests for vulnerabilities of this project result in a `403` status code.
+
+Responses are [paginated](rest/_index.md#pagination) and return 20 results by default.
 
 ```plaintext
 GET /projects/:id/vulnerabilities
@@ -50,10 +52,12 @@ GET /projects/:id/vulnerabilities
 
 | Attribute     | Type           | Required | Description                                                                                                                                                                 |
 | ------------- | -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user.                                                            |
+| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).                                                            |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/4/vulnerabilities"
+curl --request GET \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/projects/4/vulnerabilities"
 ```
 
 Example response:
@@ -75,7 +79,6 @@ Example response:
             "metadata_version": "2.0",
             "name": "Regular Expression Denial of Service in debug",
             "primary_identifier_id": 135,
-            "project_fingerprint": "05e7cc9978ca495cf739a9f707ed34811e41c615",
             "project_id": 24,
             "raw_metadata": "{\"category\":\"dependency_scanning\",\"name\":\"Regular Expression Denial of Service\",\"message\":\"Regular Expression Denial of Service in debug\",\"description\":\"The debug module is vulnerable to regular expression denial of service when untrusted user input is passed into the `o` formatter. It takes around 50k characters to block for 2 seconds making this a low severity issue.\",\"cve\":\"yarn.lock:debug:gemnasium:37283ed4-0380-40d7-ada7-2d994afcc62a\",\"severity\":\"Unknown\",\"solution\":\"Upgrade to latest versions.\",\"scanner\":{\"id\":\"gemnasium\",\"name\":\"Gemnasium\"},\"location\":{\"file\":\"yarn.lock\",\"dependency\":{\"package\":{\"name\":\"debug\"},\"version\":\"1.0.5\"}},\"identifiers\":[{\"type\":\"gemnasium\",\"name\":\"Gemnasium-37283ed4-0380-40d7-ada7-2d994afcc62a\",\"value\":\"37283ed4-0380-40d7-ada7-2d994afcc62a\",\"url\":\"https://deps.sec.gitlab.com/packages/npm/debug/versions/1.0.5/advisories\"}],\"links\":[{\"url\":\"https://nodesecurity.io/advisories/534\"},{\"url\":\"https://github.com/visionmedia/debug/issues/501\"},{\"url\":\"https://github.com/visionmedia/debug/pull/504\"}],\"remediations\":[null]}",
             "report_type": "dependency_scanning",
@@ -113,7 +116,7 @@ Example response:
 Creates a new vulnerability.
 
 If an authenticated user does not have a permission to
-[create a new vulnerability](../user/permissions.md#project-members-permissions),
+[create a new vulnerability](../user/permissions.md#project-permissions),
 this request results in a `403` status code.
 
 ```plaintext
@@ -122,7 +125,7 @@ POST /projects/:id/vulnerabilities?finding_id=<your_finding_id>
 
 | Attribute           | Type              | Required   | Description                                                                                                                  |
 | ------------------- | ----------------- | ---------- | -----------------------------------------------------------------------------------------------------------------------------|
-| `id`                | integer or string | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) which the authenticated user is a member of  |
+| `id`                | integer or string | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) which the authenticated user is a member of  |
 | `finding_id`        | integer or string | yes        | The ID of a Vulnerability Finding to create the new Vulnerability from |
 
 The other attributes of a newly created Vulnerability are populated from
@@ -137,7 +140,9 @@ its source Vulnerability Finding, or with these default values:
 | `confidence` | The `confidence` attribute of a Vulnerability Finding |
 
 ```shell
-curl --header POST "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/vulnerabilities?finding_id=1"
+curl --request POST \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/projects/1/vulnerabilities?finding_id=1"
 ```
 
 Example response:
@@ -158,7 +163,6 @@ Example response:
         "metadata_version": "2.0",
         "name": "Regular Expression Denial of Service in debug",
         "primary_identifier_id": 135,
-        "project_fingerprint": "05e7cc9978ca495cf739a9f707ed34811e41c615",
         "project_id": 24,
         "raw_metadata": "{\"category\":\"dependency_scanning\",\"name\":\"Regular Expression Denial of Service\",\"message\":\"Regular Expression Denial of Service in debug\",\"description\":\"The debug module is vulnerable to regular expression denial of service when untrusted user input is passed into the `o` formatter. It takes around 50k characters to block for 2 seconds making this a low severity issue.\",\"cve\":\"yarn.lock:debug:gemnasium:37283ed4-0380-40d7-ada7-2d994afcc62a\",\"severity\":\"Unknown\",\"solution\":\"Upgrade to latest versions.\",\"scanner\":{\"id\":\"gemnasium\",\"name\":\"Gemnasium\"},\"location\":{\"file\":\"yarn.lock\",\"dependency\":{\"package\":{\"name\":\"debug\"},\"version\":\"1.0.5\"}},\"identifiers\":[{\"type\":\"gemnasium\",\"name\":\"Gemnasium-37283ed4-0380-40d7-ada7-2d994afcc62a\",\"value\":\"37283ed4-0380-40d7-ada7-2d994afcc62a\",\"url\":\"https://deps.sec.gitlab.com/packages/npm/debug/versions/1.0.5/advisories\"}],\"links\":[{\"url\":\"https://nodesecurity.io/advisories/534\"},{\"url\":\"https://github.com/visionmedia/debug/issues/501\"},{\"url\":\"https://github.com/visionmedia/debug/pull/504\"}],\"remediations\":[null]}",
         "report_type": "dependency_scanning",

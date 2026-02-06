@@ -1,13 +1,14 @@
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import GroupsList from '~/vue_shared/components/groups_list/groups_list.vue';
 import GroupsListItem from '~/vue_shared/components/groups_list/groups_list_item.vue';
+import { TIMESTAMP_TYPE_CREATED_AT } from '~/vue_shared/components/resource_lists/constants';
 import { groups } from './mock_data';
 
 describe('GroupsList', () => {
   let wrapper;
 
   const defaultPropsData = {
-    groups,
+    items: groups,
     listItemClass: 'gl-px-5',
   };
 
@@ -24,32 +25,27 @@ describe('GroupsList', () => {
     const expectedProps = groupsListItemWrappers.map((groupsListItemWrapper) =>
       groupsListItemWrapper.props(),
     );
-    const expectedClasses = groupsListItemWrappers.map((groupsListItemWrapper) =>
-      groupsListItemWrapper.classes(),
-    );
 
     expect(expectedProps).toEqual(
-      defaultPropsData.groups.map((group) => ({
+      defaultPropsData.items.map((group) => ({
         group,
         showGroupIcon: false,
+        listItemClass: defaultPropsData.listItemClass,
+        timestampType: TIMESTAMP_TYPE_CREATED_AT,
+        includeMicrodata: false,
       })),
-    );
-    expect(expectedClasses).toEqual(
-      defaultPropsData.groups.map(() => [defaultPropsData.listItemClass]),
     );
   });
 
-  describe('when `GroupsListItem` emits `delete` event', () => {
-    const [firstGroup] = defaultPropsData.groups;
-
+  describe('when `GroupsListItem` emits `refetch` event', () => {
     beforeEach(() => {
       createComponent();
 
-      wrapper.findComponent(GroupsListItem).vm.$emit('delete', firstGroup);
+      wrapper.findComponent(GroupsListItem).vm.$emit('refetch');
     });
 
-    it('emits `delete` event', () => {
-      expect(wrapper.emitted('delete')).toEqual([[firstGroup]]);
+    it('emits `refetch` event', () => {
+      expect(wrapper.emitted('refetch')).toEqual([[]]);
     });
   });
 });

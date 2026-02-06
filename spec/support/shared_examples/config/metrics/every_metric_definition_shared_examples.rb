@@ -20,7 +20,6 @@ RSpec.shared_examples 'every metric definition' do
 
   let(:ignored_metric_files_key_patterns) do
     %w[
-      ci_runners_online
       mock_ci
       mock_monitoring
       user_auth_by_provider
@@ -46,7 +45,7 @@ RSpec.shared_examples 'every metric definition' do
   let(:metric_files_with_schema) do
     Gitlab::Usage::MetricDefinition
       .definitions
-      .select { |_, v| v.respond_to?(:value_json_schema) }
+      .select { |_, v| v.value_json_schema }
   end
 
   let(:expected_metric_files_key_paths) { metric_files_key_paths }
@@ -73,6 +72,9 @@ RSpec.shared_examples 'every metric definition' do
     allow(Gitlab::UsageData).to receive(:alt_usage_data).and_wrap_original do |_m, *_args, **kwargs|
       kwargs[:fallback] || Gitlab::Utils::UsageData::FALLBACK
     end
+    # We only sleep to reduce load in production, which isn't a concern in specs.
+    # See https://docs.gitlab.com/development/database/batching_best_practices/#batching-in-background-jobs
+    stub_const('Gitlab::Database::BatchCounter::SLEEP_TIME_IN_SECONDS', 0)
     stub_licensed_features(requirements: true)
     stub_prometheus_queries
     stub_usage_data_connections
@@ -108,24 +110,28 @@ RSpec.shared_examples 'every metric definition' do
   describe 'metrics classes' do
     let(:parent_metric_classes) do
       [
+        Gitlab::Usage::Metrics::Instrumentations::BaseIntegrationsMetric,
         Gitlab::Usage::Metrics::Instrumentations::BaseMetric,
-        Gitlab::Usage::Metrics::Instrumentations::GenericMetric,
+        Gitlab::Usage::Metrics::Instrumentations::CountCreatingCiBuildMetric,
         Gitlab::Usage::Metrics::Instrumentations::DatabaseMetric,
-        Gitlab::Usage::Metrics::Instrumentations::RedisMetric,
-        Gitlab::Usage::Metrics::Instrumentations::RedisHLLMetric,
+        Gitlab::Usage::Metrics::Instrumentations::GenericMetric,
         Gitlab::Usage::Metrics::Instrumentations::NumbersMetric,
         Gitlab::Usage::Metrics::Instrumentations::PrometheusMetric,
+        Gitlab::Usage::Metrics::Instrumentations::RedisHLLMetric,
+        Gitlab::Usage::Metrics::Instrumentations::RedisMetric,
         Gitlab::Usage::Metrics::Instrumentations::TotalCountMetric
       ]
     end
 
     let(:ignored_classes) do
-      Gitlab::Usage::Metrics::Instrumentations::IssuesCreatedFromAlertsMetric::ISSUES_FROM_ALERTS_METRICS +
-        Gitlab::Usage::Metrics::Instrumentations::UniqueUsersAllImportsMetric::IMPORTS_METRICS
+      Gitlab::Usage::Metrics::Instrumentations::UniqueUsersAllImportsMetric::IMPORTS_METRICS
     end
 
     def assert_uses_all_nested_classes(parent_module)
       parent_module.constants(false).each do |const_name|
+        next if const_name == :TotalSumMetric # TODO: Remove when first metric is implemented
+        next if const_name == :UniqueTotalsMetric # TODO: Remove when first metric is implemented
+
         constant = parent_module.const_get(const_name, false)
         next if parent_metric_classes.include?(constant) ||
           ignored_classes.include?(constant)

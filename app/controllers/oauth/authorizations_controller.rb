@@ -4,11 +4,20 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
   include Gitlab::GonHelper
   include InitializesCurrentUserMode
   include Gitlab::Utils::StrongMemoize
+  include RequestPayloadLogger
+
+  alias_method :auth_user, :current_user
+
+  prepend_before_action :set_current_organization
 
   before_action :add_gon_variables
   before_action :verify_confirmed_email!, :verify_admin_allowed!
+  # rubocop: disable Rails/LexicallyScopedActionFilter -- :create is defined in Doorkeeper::AuthorizationsController
+  before_action :validate_pkce_for_dynamic_applications, only: [:new, :create]
+  after_action :audit_oauth_authorization, only: [:create]
+  # rubocop: enable Rails/LexicallyScopedActionFilter
 
-  layout 'profile'
+  layout 'minimal'
 
   # Overridden from Doorkeeper::AuthorizationsController to
   # include the call to session.delete
@@ -32,6 +41,26 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
 
   private
 
+  def audit_oauth_authorization
+    return unless performed? && (response.successful? || response.redirect?) && pre_auth&.client
+
+    application = pre_auth.client.application
+
+    Gitlab::Audit::Auditor.audit(
+      name: 'user_authorized_oauth_application',
+      author: current_user,
+      scope: current_user,
+      target: application,
+      message: 'User authorized an OAuth application.',
+      additional_details: {
+        application_name: application.name,
+        application_id: application.id,
+        scopes: application.scopes.to_a
+      },
+      ip_address: request.remote_ip
+    )
+  end
+
   # Chrome blocks redirections if the form-action CSP directive is present
   # and the redirect location's scheme isn't allow-listed
   # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/form-action
@@ -50,7 +79,25 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
     # Cannot be achieved with a before_action hook, due to the execution order.
     downgrade_scopes! if action_name == 'new'
 
+    # Force scope to `mcp` for MCP server requests and dynamic MCP applications.
+    # This ensures that even if a client requests other scopes, dynamic MCP applications
+    # are restricted to the mcp scope only, regardless of what was requested.
+    params[:scope] = Gitlab::Auth::MCP_SCOPE.to_s if resource_is_mcp_server? || should_force_mcp_scope_for_dynamic_app?
+    params[:organization_id] = ::Current.organization.id
+
     super
+  end
+
+  def resource_is_mcp_server?
+    params[:resource].present? && params[:resource].end_with?('/api/v4/mcp')
+  end
+
+  def should_force_mcp_scope_for_dynamic_app?
+    doorkeeper_application&.dynamic? &&
+      # Verify application only has mcp scope. Dynamic apps are always created with
+      # only mcp scope (see dynamic_registrations_controller.rb), but this check
+      # guards against future changes or manual modifications.
+      doorkeeper_application&.scopes == Doorkeeper::OAuth::Scopes.from_string(Gitlab::Auth::MCP_SCOPE.to_s)
   end
 
   # limit scopes when signing in with GitLab
@@ -82,8 +129,9 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
   end
 
   def doorkeeper_application
-    strong_memoize(:doorkeeper_application) { ::Doorkeeper::OAuth::Client.find(params['client_id'])&.application }
+    ::Doorkeeper::OAuth::Client.find(params['client_id'].to_s)&.application
   end
+  strong_memoize_attr :doorkeeper_application
 
   def application_has_read_user_scope?
     doorkeeper_application&.includes_scope?(Gitlab::Auth::READ_USER_SCOPE)
@@ -116,4 +164,26 @@ class Oauth::AuthorizationsController < Doorkeeper::AuthorizationsController
       *::Gitlab::Auth::REGISTRY_SCOPES
     ) && !doorkeeper_application&.trusted?
   end
+
+  def validate_pkce_for_dynamic_applications
+    return unless doorkeeper_application&.dynamic?
+
+    if params[:code_challenge].blank?
+      pre_auth.error = :pkce_required_for_dynamic_applications
+      render "doorkeeper/authorizations/error"
+      return
+    end
+
+    return unless params[:code_challenge_method].present? && params[:code_challenge_method] != 'S256'
+
+    pre_auth.error = :invalid_code_challenge_method
+    render "doorkeeper/authorizations/error"
+  end
+
+  # Used by `set_current_organization` in BaseActionController
+  def organization_params
+    {}
+  end
 end
+
+Oauth::AuthorizationsController.prepend_mod

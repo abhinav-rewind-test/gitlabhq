@@ -109,32 +109,78 @@ RSpec.describe MergeRequests::BaseService, feature_category: :code_review_workfl
       end
     end
 
-    context 'async: true' do
-      it 'enques a CreatePipelineWorker' do
-        expect(MergeRequests::CreatePipelineService).not_to receive(:new)
-        expect(MergeRequests::CreatePipelineWorker)
-          .to receive(:perform_async)
-          .with(project.id, user.id, merge_request.id, { "allow_duplicate" => false })
-          .and_call_original
+    context 'when async: true' do
+      it 'executes MergeRequests::CreatePipelineService async' do
+        service = instance_double(MergeRequests::CreatePipelineService)
 
-        Sidekiq::Testing.fake! do
-          expect { subject.execute(merge_request, async: true) }.to change(MergeRequests::CreatePipelineWorker.jobs, :size).by(1)
-        end
+        expect(MergeRequests::CreatePipelineService)
+          .to receive(:new)
+          .with(project: project, current_user: user, params: { allow_duplicate: false })
+          .and_return(service)
+
+        expect(service).to receive(:execute_async).with(merge_request)
+
+        subject.execute(merge_request, async: true)
       end
 
-      context 'allow_duplicate: true' do
+      context 'when allow_duplicate: true' do
         it 'passes :allow_duplicate as true' do
-          expect(MergeRequests::CreatePipelineService).not_to receive(:new)
-          expect(MergeRequests::CreatePipelineWorker)
-            .to receive(:perform_async)
-            .with(project.id, user.id, merge_request.id, { "allow_duplicate" => true })
-            .and_call_original
+          service = instance_double(MergeRequests::CreatePipelineService)
 
-          Sidekiq::Testing.fake! do
-            expect { subject.execute(merge_request, async: true, allow_duplicate: true) }.to change(MergeRequests::CreatePipelineWorker.jobs, :size).by(1)
-          end
+          expect(MergeRequests::CreatePipelineService)
+            .to receive(:new)
+            .with(project: project, current_user: user, params: { allow_duplicate: true })
+            .and_return(service)
+
+          expect(service).to receive(:execute_async).with(merge_request)
+
+          subject.execute(merge_request, async: true, allow_duplicate: true)
         end
       end
+    end
+  end
+
+  describe '#hook_data' do
+    let(:merge_request) { create(:merge_request, source_project: project) }
+    let(:service) { described_class.new(project: project, current_user: user) }
+
+    it 'includes system field when system: true' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action', system: true)
+
+      expect(hook_data[:object_attributes][:system]).to be true
+    end
+
+    it 'includes system field as false when system: false' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action', system: false)
+
+      expect(hook_data[:object_attributes][:system]).to be false
+    end
+
+    it 'defaults system field to false when not specified' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action')
+
+      expect(hook_data[:object_attributes][:system]).to be false
+    end
+
+    it 'includes system_action when provided' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action', system: true, system_action: 'approvals_reset_on_push')
+
+      expect(hook_data[:object_attributes][:system]).to be true
+      expect(hook_data[:object_attributes][:system_action]).to eq('approvals_reset_on_push')
+    end
+
+    it 'does not include system_action when not provided' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action', system: true)
+
+      expect(hook_data[:object_attributes][:system]).to be true
+      expect(hook_data[:object_attributes]).not_to have_key(:system_action)
+    end
+
+    it 'does not include system_action when system is false' do
+      hook_data = service.send(:hook_data, merge_request, 'test_action', system: false, system_action: 'approvals_reset_on_push')
+
+      expect(hook_data[:object_attributes][:system]).to be false
+      expect(hook_data[:object_attributes]).not_to have_key(:system_action)
     end
   end
 

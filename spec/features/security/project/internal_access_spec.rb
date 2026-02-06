@@ -189,23 +189,6 @@ RSpec.describe "Internal Project Access", feature_category: :system_access do
     it { is_expected.to be_denied_for(:visitor) }
   end
 
-  describe "GET /:project_path/issues/:id/edit" do
-    let(:issue) { create(:issue, project: project) }
-
-    subject { edit_project_issue_path(project, issue) }
-
-    it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { is_expected.to be_allowed_for(:admin) }
-    it('is denied for admin when admin mode is disabled') { is_expected.to be_denied_for(:admin) }
-    it { is_expected.to be_allowed_for(:owner).of(project) }
-    it { is_expected.to be_allowed_for(:maintainer).of(project) }
-    it { is_expected.to be_allowed_for(:developer).of(project) }
-    it { is_expected.to be_allowed_for(:reporter).of(project) }
-    it { is_expected.to be_denied_for(:guest).of(project) }
-    it { is_expected.to be_denied_for(:user) }
-    it { is_expected.to be_denied_for(:external) }
-    it { is_expected.to be_denied_for(:visitor) }
-  end
-
   describe "GET /:project_path/snippets" do
     subject { project_snippets_path(project) }
 
@@ -555,6 +538,7 @@ RSpec.describe "Internal Project Access", feature_category: :system_access do
       stub_container_registry_config(enabled: true)
       stub_container_registry_info
       project.container_repositories << container_repository
+      allow(ContainerRegistry::GitlabApiClient).to receive(:supports_gitlab_api?).and_return(true)
     end
 
     subject { project_container_registry_index_path(project) }

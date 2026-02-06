@@ -22,6 +22,33 @@ module AppearancesHelper
     current_appearance&.title.presence || default_brand_title
   end
 
+  def custom_sign_in_brand_title
+    # no-op overridden in EE
+  end
+
+  def custom_sign_up_brand_title
+    # no-op overridden in EE
+  end
+
+  def appearance_apple_touch_icon
+    link_tags = favicon_link_tag('apple-touch-icon.png', rel: 'apple-touch-icon')
+
+    return link_tags unless current_appearance&.pwa_icon.present?
+
+    link_tags = favicon_link_tag(
+      appearance_pwa_icon_path_scaled(Appearance::ALLOWED_PWA_ICON_SCALER_WIDTHS.first),
+      rel: 'apple-touch-icon'
+    )
+
+    Appearance::ALLOWED_PWA_ICON_SCALER_WIDTHS.each do |width|
+      link_tags += "\n"
+      link_tags += favicon_link_tag(appearance_pwa_icon_path_scaled(width),
+        sizes: "#{width}x#{width}", rel: 'apple-touch-icon')
+    end
+
+    link_tags
+  end
+
   def appearance_pwa_name
     current_appearance&.pwa_name.presence || _('GitLab')
   end
@@ -44,7 +71,7 @@ module AppearancesHelper
   end
 
   def brand_image
-    image_tag(brand_image_path, alt: brand_title, class: 'gl-visibility-hidden gl-h-10 js-portrait-logo-detection')
+    image_tag(brand_image_path, alt: brand_title, class: 'gl-invisible gl-h-10 js-portrait-logo-detection')
   end
 
   def brand_image_path
@@ -54,11 +81,7 @@ module AppearancesHelper
   end
 
   def custom_sign_in_description
-    [
-      markdown_field(current_appearance, :description),
-      markdown_field(Gitlab::CurrentSettings.current_application_settings, :sign_in_text),
-      markdown(Gitlab::CurrentSettings.help_text)
-    ].compact_blank.join("<br>").html_safe
+    markdown_field(current_appearance, :description)
   end
 
   def brand_member_guidelines
@@ -80,15 +103,12 @@ module AppearancesHelper
   end
 
   def brand_header_logo(options = {})
-    add_gitlab_white_text = options[:add_gitlab_white_text] || false
-    add_gitlab_black_text = options[:add_gitlab_black_text] || false
+    add_gitlab_logo_text = options[:add_gitlab_logo_text] || false
 
     if current_appearance&.header_logo?
       image_tag current_appearance.header_logo_path, class: 'brand-header-logo', alt: ''
-    elsif add_gitlab_white_text
-      render partial: 'shared/logo_with_white_text', formats: :svg
-    elsif add_gitlab_black_text
-      render partial: 'shared/logo_with_black_text', formats: :svg
+    elsif add_gitlab_logo_text
+      render partial: 'shared/logo_with_text', formats: :svg
     else
       render partial: 'shared/logo', formats: :svg
     end

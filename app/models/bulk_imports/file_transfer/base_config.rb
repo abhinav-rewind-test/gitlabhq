@@ -7,6 +7,7 @@ module BulkImports
 
       UPLOADS_RELATION = 'uploads'
       SELF_RELATION = 'self'
+      USER_CONTRIBUTIONS_RELATION = 'user_contributions'
 
       def initialize(portable)
         @portable = portable
@@ -22,6 +23,10 @@ module BulkImports
 
       def relation_excluded_keys(relation)
         attributes_finder.find_excluded_keys(relation)
+      end
+
+      def relation_included_keys(relation)
+        attributes_finder.find_included_keys(relation)
       end
 
       def export_path
@@ -51,6 +56,14 @@ module BulkImports
 
       def file_relation?(relation)
         file_relations.include?(relation)
+      end
+
+      def relation_has_user_contributions?(relation)
+        (relation_included_keys(relation) & ::Gitlab::ImportExport::Base::RelationFactory::USER_REFERENCES).any?
+      end
+
+      def user_contributions_relation?(relation)
+        relation == USER_CONTRIBUTIONS_RELATION
       end
 
       def tree_relation_definition_for(relation)

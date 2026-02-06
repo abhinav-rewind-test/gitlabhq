@@ -4,7 +4,6 @@ module ProtectedBranches
   class CacheService < ProtectedBranches::BaseService
     include Gitlab::Utils::StrongMemoize
 
-    CACHE_ROOT_KEY = 'cache:gitlab:protected_branch'
     TTL_UNSET = -1
     CACHE_EXPIRE_IN = 1.day
     CACHE_LIMIT = 1000
@@ -54,10 +53,15 @@ module ProtectedBranches
 
       return unless (group = project_or_group).is_a?(Group)
 
-      group.all_projects.find_each do |project|
+      group.all_projects.each_batch do |projects_relation|
+        # First we remove the cache for each project in the group and then
+        # touch the projects_relation to update the projects' cache key.
         with_redis do |redis|
-          redis.unlink redis_key(project)
+          projects_relation.each do |project|
+            redis.unlink redis_key(project)
+          end
         end
+        projects_relation.touch_all
       end
     end
 
@@ -84,23 +88,8 @@ module ProtectedBranches
 
     def redis_key(entity = project_or_group)
       strong_memoize_with(:redis_key, entity) do
-        scope_redis_key?(entity) ? scoped_redis_key(entity) : unscoped_redis_key(entity)
+        ProtectedBranch::CacheKey.new(entity).to_s
       end
-    end
-
-    def scope_redis_key?(entity)
-      group = entity.is_a?(Group) ? entity : entity.group
-
-      Feature.enabled?(:group_protected_branches, group) ||
-        Feature.enabled?(:allow_protected_branches_for_group, group)
-    end
-
-    def scoped_redis_key(entity)
-      [CACHE_ROOT_KEY, entity.class.name, entity.id].join(':')
-    end
-
-    def unscoped_redis_key(entity)
-      [CACHE_ROOT_KEY, entity.id].join(':')
     end
 
     def metrics

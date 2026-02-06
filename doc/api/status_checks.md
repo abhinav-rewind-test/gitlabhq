@@ -1,27 +1,28 @@
 ---
-stage: Govern
-group: Compliance
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+stage: Security Risk Management
+group: Security Policies
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: External Status Checks API
 ---
 
-# External Status Checks API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/3869) in GitLab 14.0, disabled behind the `:ff_external_status_checks` feature flag.
-> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/320783) in GitLab 14.1.
+{{< /details >}}
 
-## Get project external status check services
+Use this API to manage [external status checks](../user/project/merge_requests/status_checks.md).
 
-You can request information about a project's external status check services using the following endpoint:
+## Retrieve project external status check services
+
+Retrieves information about a project's external status check services using the following endpoint:
 
 ```plaintext
 GET /projects/:id/external_status_checks
 ```
 
-**Parameters:**
+**Parameters**:
 
 | Attribute           | Type    | Required | Description         |
 |---------------------|---------|----------|---------------------|
@@ -34,6 +35,7 @@ GET /projects/:id/external_status_checks
     "name": "Compliance Tool",
     "project_id": 6,
     "external_url": "https://gitlab.com/example/compliance-tool",
+    "hmac": true,
     "protected_branches": [
       {
         "id": 14,
@@ -50,26 +52,27 @@ GET /projects/:id/external_status_checks
 
 ## Create external status check service
 
-You can create a new external status check service for a project using the following endpoint:
+Creates a new external status check service for a project using the following endpoint:
 
 ```plaintext
 POST /projects/:id/external_status_checks
 ```
 
-WARNING:
-External status checks send information about all applicable merge requests to the
-defined external service. This includes confidential merge requests.
+> [!warning]
+> External status checks send information about all applicable merge requests to the
+> defined external service. This includes confidential merge requests.
 
 | Attribute              | Type             | Required | Description                                    |
 |------------------------|------------------|----------|------------------------------------------------|
 | `id`                   | integer          | yes      | ID of a project                                |
 | `name`                 | string           | yes      | Display name of external status check service  |
 | `external_url`         | string           | yes      | URL of external status check service           |
+| `shared_secret`        | string           | no       | HMAC secret for external status check          |
 | `protected_branch_ids` | `array<Integer>` | no       | IDs of protected branches to scope the rule by |
 
 ## Update external status check service
 
-You can update an existing external status check for a project using the following endpoint:
+Updates an existing external status check for a project using the following endpoint:
 
 ```plaintext
 PUT /projects/:id/external_status_checks/:check_id
@@ -81,11 +84,12 @@ PUT /projects/:id/external_status_checks/:check_id
 | `check_id`             | integer          | yes      | ID of an external status check service         |
 | `name`                 | string           | no       | Display name of external status check service  |
 | `external_url`         | string           | no       | URL of external status check service           |
+| `shared_secret`        | string           | no       | HMAC secret for external status check          |
 | `protected_branch_ids` | `array<Integer>` | no       | IDs of protected branches to scope the rule by |
 
 ## Delete external status check service
 
-You can delete an external status check service for a project using the following endpoint:
+Deletes an external status check service for a project using the following endpoint:
 
 ```plaintext
 DELETE /projects/:id/external_status_checks/:check_id
@@ -96,15 +100,15 @@ DELETE /projects/:id/external_status_checks/:check_id
 | `check_id`             | integer        | yes      | ID of an external status check service |
 | `id`                   | integer        | yes      | ID of a project                        |
 
-## List status checks for a merge request
+## List all status checks for a merge request
 
-For a single merge request, list the external status check services that apply to it and their status.
+Lists the external status check services that apply to a single merge request and their status.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/status_checks
 ```
 
-**Parameters:**
+**Parameters**:
 
 | Attribute                | Type    | Required | Description                |
 | ------------------------ | ------- | -------- | -------------------------- |
@@ -130,14 +134,15 @@ GET /projects/:id/merge_requests/:merge_request_iid/status_checks
 
 ## Set status of an external status check
 
-> - Introduced in GitLab 14.9, `passed` status to pass external status checks. Introduced [with a flag](../administration/feature_flags.md) named `status_checks_add_status_field`. Disabled by default.
-> - Introduced in GitLab 14.9, `failed` status to fail external status checks. Introduced [with a flag](../administration/feature_flags.md) named `status_checks_add_status_field`. Disabled by default.
-> - `pass` status to pass checks is [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/339039) in GitLab 14.9. Replaced with `passed`.
-> - Support for `failed` and `passed` [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/issues/353836) in GitLab 15.0 and feature flag removed.
-> - Support for `pending` in GitLab 16.5 [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/issues/413723) in GitLab 16.5
+{{< history >}}
 
-For a single merge request, use the API to inform GitLab that a merge request has passed a check by an external service.
-To set the status of an external check, the personal access token used must belong to a user with at least the Developer role on the target project of the merge request.
+- Support for `failed` and `passed` [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/issues/353836) in GitLab 15.0
+- Support for `pending` in GitLab 16.5 [enabled by default](https://gitlab.com/gitlab-org/gitlab/-/issues/413723) in GitLab 16.5
+
+{{< /history >}}
+
+Sets the status of an external status check for a single merge request, informing GitLab that a merge request has passed a check by an external service.
+To set the status of an external check, the personal access token used must belong to a user with the Developer, Maintainer, or Owner role on the target project of the merge request.
 
 Execute this API call as any user with rights to approve the merge request itself.
 
@@ -145,7 +150,7 @@ Execute this API call as any user with rights to approve the merge request itsel
 POST /projects/:id/merge_requests/:merge_request_iid/status_check_responses
 ```
 
-**Parameters:**
+**Parameters**:
 
 | Attribute                  | Type    | Required | Description                                                                                       |
 | -------------------------- | ------- | -------- |---------------------------------------------------------------------------------------------------|
@@ -155,14 +160,18 @@ POST /projects/:id/merge_requests/:merge_request_iid/status_check_responses
 | `external_status_check_id` | integer | yes      | ID of an external status check                                                                    |
 | `status`                   | string  | no       | Set to `pending` to mark the check as pending, `passed` to pass the check, or `failed` to fail it |
 
-NOTE:
-`sha` must be the SHA at the `HEAD` of the merge request's source branch.
+> [!note]
+> `sha` must be the SHA at the `HEAD` of the merge request's source branch.
 
 ## Retry failed status check for a merge request
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/383200) in GitLab 15.7.
+{{< history >}}
 
-For a single merge request, retry the specified failed external status check. Even
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/383200) in GitLab 15.7.
+
+{{< /history >}}
+
+Retries the specified failed external status check for a single merge request. Even
 though the merge request hasn't changed, this endpoint resends the current state of
 merge request to the defined external service.
 
@@ -170,7 +179,7 @@ merge request to the defined external service.
 POST /projects/:id/merge_requests/:merge_request_iid/status_checks/:external_status_check_id/retry
 ```
 
-**Parameters:**
+**Parameters**:
 
 | Attribute                  | Type    | Required | Description                           |
 | -------------------------- | ------- | -------- | ------------------------------------- |

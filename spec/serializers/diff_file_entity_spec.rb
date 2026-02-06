@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe DiffFileEntity do
+RSpec.describe DiffFileEntity, feature_category: :code_review_workflow do
   include RepoHelpers
 
   let_it_be(:project) { create(:project, :repository) }
@@ -88,6 +88,10 @@ RSpec.describe DiffFileEntity do
       expect(diff_file).to receive(:diff_lines_for_serializer).exactly(3).times.and_return([])
       expect(subject[:highlighted_diff_lines]).to eq([])
     end
+  end
+
+  it 'exposes code_review_id' do
+    expect(subject[:code_review_id]).to match(/\A[0-9a-f]{40}\z/)
   end
 
   it_behaves_like 'diff file with conflict_type'

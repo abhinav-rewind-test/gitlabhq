@@ -1,30 +1,32 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Applications API
 ---
 
-# Applications API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/8160) in GitLab 10.5.
+{{< /details >}}
 
-The Applications API operates on instance-wide OAuth applications for:
+Use this API to manage instance-wide OAuth applications that:
 
-- [Using GitLab as an authentication provider](../integration/oauth_provider.md).
-- [Allowing access to GitLab resources on a user's behalf](oauth2.md).
+- [Use GitLab as an authentication provider](../integration/oauth_provider.md).
+- [Allow access to GitLab resources on a user's behalf](oauth2.md).
 
-The Applications API cannot be used to manage group applications or applications of individual users.
+> [!note]
+> You cannot use this API to manage group applications or individual user applications.
 
-NOTE:
-Only administrator users can use the Applications API.
+Prerequisites:
+
+- You must have administrator access to the instance.
 
 ## Create an application
 
-Create an application by posting a JSON payload.
+Creates an application.
 
 Returns `200` if the request succeeds.
 
@@ -32,21 +34,22 @@ Returns `200` if the request succeeds.
 POST /applications
 ```
 
-Parameters:
+Supported attributes:
 
 | Attribute      | Type    | Required | Description                      |
 |:---------------|:--------|:---------|:---------------------------------|
 | `name`         | string  | yes      | Name of the application.         |
 | `redirect_uri` | string  | yes      | Redirect URI of the application. |
-| `scopes`       | string  | yes      | Scopes of the application. You can specify multiple scopes by separating each scope using a space. |
-| `confidential` | boolean | no       | The application is used where the client secret can be kept confidential. Native mobile apps and Single Page Apps are considered non-confidential. Defaults to `true` if not supplied |
+| `scopes`       | string  | yes      | Scopes available to the application. Separate multiple scopes with a space. |
+| `confidential` | boolean | no       | If `true`, the application can securely store client credentials, such as the client secret. Non-confidential applications (such as native mobile apps and Single Page Apps) might expose client credentials. Defaults to `true` if unspecified. |
 
 Example request:
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
-     --data "name=MyApplication&redirect_uri=http://redirect.uri&scopes=api read_user email" \
-     "https://gitlab.example.com/api/v4/applications"
+curl --request POST \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --data "name=MyApplication&redirect_uri=http://redirect.uri&scopes=api read_user email" \
+    --url "https://gitlab.example.com/api/v4/applications"
 ```
 
 Example response:
@@ -64,7 +67,7 @@ Example response:
 
 ## List all applications
 
-List all registered applications.
+Lists all applications.
 
 ```plaintext
 GET /applications
@@ -73,7 +76,9 @@ GET /applications
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/applications"
+curl --request GET \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/applications"
 ```
 
 Example response:
@@ -90,12 +95,12 @@ Example response:
 ]
 ```
 
-NOTE:
-The `secret` value is not exposed by this API.
+> [!note]
+> The `secret` value is not exposed by this API.
 
 ## Delete an application
 
-Delete a specific application.
+Deletes a specified application.
 
 Returns `204` if the request succeeds.
 
@@ -103,7 +108,7 @@ Returns `204` if the request succeeds.
 DELETE /applications/:id
 ```
 
-Parameters:
+Supported attributes:
 
 | Attribute | Type    | Required | Description                                         |
 |:----------|:--------|:---------|:----------------------------------------------------|
@@ -112,5 +117,48 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/applications/:id"
+curl --request DELETE \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/applications/:id"
+```
+
+## Renew an application secret
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/422420) in GitLab 16.11.
+
+{{< /history >}}
+
+Renews the secret for a specified application. Returns `200` if the request succeeds.
+
+```plaintext
+POST /applications/:id/renew-secret
+```
+
+Supported attributes:
+
+| Attribute | Type    | Required | Description                                         |
+|:----------|:--------|:---------|:----------------------------------------------------|
+| `id`      | integer | yes      | The ID of the application (not the `application_id`). |
+
+Example request:
+
+```shell
+curl --request POST \
+    --header "PRIVATE-TOKEN: <your_access_token>" \
+    --url "https://gitlab.example.com/api/v4/applications/:id/renew-secret"
+```
+
+Example response:
+
+```json
+{
+    "id":1,
+    "application_id": "5832fc6e14300a0d962240a8144466eef4ee93ef0d218477e55f11cf12fc3737",
+    "application_name": "MyApplication",
+    "secret": "ee1dd64b6adc89cf7e2c23099301ccc2c61b441064e9324d963c46902a85ec34",
+    "callback_url": "http://redirect.uri",
+    "confidential": true
+}
 ```

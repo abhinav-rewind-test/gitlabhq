@@ -3,6 +3,8 @@
 require 'uri'
 
 module ApplicationHelper
+  include ViteHelper
+
   # See https://docs.gitlab.com/ee/development/ee_features.html#code-in-appviews
   # rubocop: disable CodeReuse/ActiveRecord
   # We allow partial to be nil so that collection views can be passed in
@@ -129,13 +131,17 @@ module ApplicationHelper
     sanitize(str, tags: %w[a span])
   end
 
+  def project_studio_enabled?
+    true
+  end
+
   def body_data
     {
       page: body_data_page,
       page_type_id: controller.params[:id],
-      find_file: find_file_path(ref_type: @ref_type),
       group: @group&.path,
-      group_full_path: @group&.full_path
+      group_full_path: @group&.full_path,
+      project_studio_enabled: project_studio_enabled?.to_s
     }.merge(project_data)
   end
 
@@ -145,6 +151,7 @@ module ApplicationHelper
     {
       project_id: @project.id,
       project: @project.path,
+      project_full_path: @project.full_path,
       group: @project.group&.path,
       group_full_path: @project.group&.full_path,
       namespace_id: @project.namespace&.id
@@ -196,6 +203,8 @@ module ApplicationHelper
       class: css_classes.join(' '),
       title: l(time.to_time.in_time_zone, format: :timeago_tooltip),
       datetime: time.to_time.getutc.iso8601,
+      tabindex: '0',
+      aria: { label: l(time.to_time.in_time_zone, format: :timeago_tooltip) },
       data: {
         toggle: 'tooltip',
         placement: placement,
@@ -206,11 +215,11 @@ module ApplicationHelper
   def edited_time_ago_with_tooltip(editable_object, placement: 'top', html_class: 'time_ago', exclude_author: false)
     return unless editable_object.edited?
 
-    content_tag :small, class: 'edited-text' do
+    content_tag :div, class: 'edited-text gl-mt-4 gl-text-subtle gl-text-sm' do
       timeago = time_ago_with_tooltip(editable_object.last_edited_at, placement: placement, html_class: html_class)
 
       if !exclude_author && editable_object.last_edited_by
-        author_link = link_to_member(editable_object.project, editable_object.last_edited_by, avatar: false, extra_class: 'gl-hover-text-decoration-underline', author_class: nil)
+        author_link = link_to_member(editable_object.last_edited_by, avatar: false, extra_class: 'hover:gl-underline gl-text-subtle', author_class: nil)
         output = safe_format(_("Edited %{timeago} by %{author}"), timeago: timeago, author: author_link)
       else
         output = safe_format(_("Edited %{timeago}"), timeago: timeago)
@@ -221,18 +230,12 @@ module ApplicationHelper
   end
 
   # This needs to be used outside of Rails
-  def self.promo_host
-    'about.gitlab.com'
-  end
-
-  # Convenient method for Rails helper
-  def promo_host
-    ApplicationHelper.promo_host
-  end
-
-  # This needs to be used outside of Rails
   def self.community_forum
     'https://forum.gitlab.com'
+  end
+
+  def university_url
+    'https://university.gitlab.com'
   end
 
   # Convenient method for Rails helper
@@ -240,12 +243,8 @@ module ApplicationHelper
     ApplicationHelper.community_forum
   end
 
-  def promo_url
-    "https://#{promo_host}"
-  end
-
   def support_url
-    Gitlab::CurrentSettings.current_application_settings.help_page_support_url.presence || "#{promo_url}/get-help/"
+    Gitlab::CurrentSettings.current_application_settings.help_page_support_url.presence || 'https://support.gitlab.com'
   end
 
   def instance_review_permitted?
@@ -285,10 +284,6 @@ module ApplicationHelper
     "#{request.path}?#{options.compact.to_param}"
   end
 
-  def stylesheet_link_tag_defer(path)
-    stylesheet_link_tag(path, media: "all", crossorigin: ActionController::Base.asset_host ? 'anonymous' : nil)
-  end
-
   def sign_in_with_redirect?
     current_page?(new_user_session_path) && session[:user_return_to].present?
   end
@@ -301,7 +296,7 @@ module ApplicationHelper
     if admin
       admin_user_key_path(@user, key)
     else
-      profile_key_path(key)
+      user_settings_ssh_key_path(key)
     end
   end
 
@@ -317,12 +312,14 @@ module ApplicationHelper
   end
 
   def page_class
-    class_names = []
+    class_names = ['with-top-bar']
     class_names << 'issue-boards-page gl-overflow-auto' if current_controller?(:boards)
     class_names << 'epic-boards-page gl-overflow-auto' if current_controller?(:epic_boards)
     class_names << 'with-performance-bar' if performance_bar_enabled?
-    class_names << 'with-header' if @with_header || !current_user
-    class_names << 'with-top-bar' unless @hide_top_bar_padding
+    class_names << 'with-header' if @with_header || !current_user || project_studio_enabled?
+    class_names << 'application-chrome' if project_studio_enabled?
+    class_names << 'page-with-panels' if project_studio_enabled?
+    class_names << 'with-gl-container-queries' if project_studio_enabled?
     class_names << system_message_class
 
     class_names
@@ -352,13 +349,13 @@ module ApplicationHelper
     cookies[name] != 'true'
   end
 
+  def linkedin_name(user)
+    user.linkedin.chomp('/').gsub(%r{.*/}, '')
+  end
+
   def linkedin_url(user)
-    name = user.linkedin
-    if %r{\Ahttps?://(www\.)?linkedin\.com/in/}.match?(name)
-      name
-    else
-      "https://www.linkedin.com/in/#{name}"
-    end
+    name = linkedin_name(user)
+    "https://www.linkedin.com/in/#{name}"
   end
 
   def twitter_url(user)
@@ -376,12 +373,32 @@ module ApplicationHelper
     "https://discord.com/users/#{user.discord}"
   end
 
+  def bluesky_url(user)
+    return '' if user.bluesky.blank?
+
+    external_redirect_path(url: "https://bsky.app/profile/#{user.bluesky}")
+  end
+
+  def orcid_url(user)
+    return '' if user.orcid.blank?
+
+    external_redirect_path(url: "https://orcid.org/#{user.orcid}")
+  end
+
   def mastodon_url(user)
     return '' if user.mastodon.blank?
 
     url = user.mastodon.match UserDetail::MASTODON_VALIDATION_REGEX
 
-    external_redirect_path(url: "https://#{url[2]}/@#{url[1]}")
+    return '' unless url
+
+    external_redirect_path(url: "https://#{url[2]}/@#{url[1]}", rel: 'me')
+  end
+
+  def github_url(user)
+    return '' if user.github.blank?
+
+    "https://github.com/#{user.github}"
   end
 
   def collapsed_super_sidebar?
@@ -402,7 +419,7 @@ module ApplicationHelper
   end
 
   def client_class_list
-    "gl-browser-#{browser_id} gl-platform-#{platform_id}"
+    "gl-browser-#{browser_id} gl-platform-#{platform_id}" # rubocop:disable Tailwind/StringInterpolation -- Not a CSS utility class
   end
 
   def client_js_flags
@@ -412,18 +429,24 @@ module ApplicationHelper
     }
   end
 
-  def add_page_specific_style(path, defer: true)
+  def add_page_specific_style(path)
     @already_added_styles ||= Set.new
     return if @already_added_styles.include?(path)
 
     @already_added_styles.add(path)
     content_for :page_specific_styles do
-      if defer
-        stylesheet_link_tag_defer path
-      else
-        stylesheet_link_tag path
-      end
+      universal_stylesheet_link_tag path
     end
+  end
+
+  def add_work_items_stylesheet
+    add_page_specific_style('page_bundles/work_items')
+    add_page_specific_style('page_bundles/notes_shared')
+  end
+
+  def add_issuable_stylesheet
+    add_page_specific_style('page_bundles/issuable')
+    add_page_specific_style('page_bundles/notes_shared')
   end
 
   def page_startup_api_calls
@@ -446,7 +469,7 @@ module ApplicationHelper
         labels: labels_group_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id]),
         milestones: milestones_group_autocomplete_sources_path(object),
         commands: commands_group_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id])
-      }
+      }.compact
     else
       {
         members: members_project_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id]),
@@ -456,8 +479,9 @@ module ApplicationHelper
         milestones: milestones_project_autocomplete_sources_path(object),
         commands: commands_project_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id]),
         snippets: snippets_project_autocomplete_sources_path(object),
-        contacts: contacts_project_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id])
-      }
+        contacts: contacts_project_autocomplete_sources_path(object, type: noteable_type, type_id: params[:id]),
+        wikis: object.feature_available?(:wiki, current_user) ? wikis_project_autocomplete_sources_path(object) : nil
+      }.compact
     end
   end
 
@@ -480,7 +504,7 @@ module ApplicationHelper
     form_with(**args.merge({ builder: ::Gitlab::FormBuilders::GitlabUiFormBuilder }), &block)
   end
 
-  def hidden_resource_icon(resource, css_class: nil)
+  def hidden_resource_icon(resource, css_class: nil, variant: nil)
     issuable_title = _('This %{issuable} is hidden because its author has been banned.')
 
     case resource
@@ -488,24 +512,17 @@ module ApplicationHelper
       title = format(issuable_title, issuable: _('issue'))
     when MergeRequest
       title = format(issuable_title, issuable: _('merge request'))
-    when Project
-      title = _('This project is hidden because its creator has been banned')
     end
 
     return unless title
 
     content_tag(:span, class: 'has-tooltip', title: title) do
-      sprite_icon('spam', css_class: ['gl-vertical-align-text-bottom', css_class].compact_blank.join(' '))
+      sprite_icon('spam', css_class: ['gl-align-text-bottom', css_class].compact_blank.join(' '), variant: variant)
     end
   end
 
-  def controller_full_path
-    action = case controller.action_name
-             when 'create' then 'new'
-             when 'update' then 'edit'
-             else controller.action_name
-             end
-    "#{controller.controller_path}/#{action}"
+  def ai_panel_expanded?
+    cookies[:ai_panel_active_tab].present?
   end
 
   private

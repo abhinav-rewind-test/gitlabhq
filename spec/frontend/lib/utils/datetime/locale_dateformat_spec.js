@@ -1,5 +1,6 @@
 import { DATE_TIME_FORMATS, localeDateFormat } from '~/lib/utils/datetime/locale_dateformat';
 import { setLanguage } from 'jest/__helpers__/locale_helper';
+// eslint-disable-next-line no-restricted-imports
 import * as localeFns from '~/locale';
 
 describe('localeDateFormat (en-US)', () => {
@@ -172,6 +173,20 @@ describe('localeDateFormat (en-US)', () => {
       expect(localeDateFormat[format].format(date)).toBe(localeDateFormat[format].format(date));
 
       expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('#asMonthYear', () => {
+    it('exposes a working date formatter', () => {
+      expectDateString(localeDateFormat.asMonthYear.format(date)).toBe('Jul 1983');
+      expectDateString(localeDateFormat.asMonthYear.format(nextYear)).toBe('Jan 1984');
+    });
+
+    it('exposes a working date range formatter', () => {
+      expectDateString(localeDateFormat.asMonthYear.formatRange(date, sameMonth)).toBe('Jul 1983');
+      expectDateString(localeDateFormat.asMonthYear.formatRange(date, nextYear)).toBe(
+        'Jul 1983 – Jan 1984',
+      );
     });
   });
 });

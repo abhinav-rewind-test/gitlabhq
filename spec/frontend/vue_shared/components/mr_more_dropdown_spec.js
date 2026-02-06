@@ -1,9 +1,12 @@
-import { shallowMount } from '@vue/test-utils';
+import { mountExtended } from 'helpers/vue_test_utils_helper';
+import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import MRMoreActionsDropdown from '~/vue_shared/components/mr_more_dropdown.vue';
 
 describe('MR More actions sidebar', () => {
   let wrapper;
 
+  const findMoreDropdown = () => wrapper.findByTestId('dropdown-toggle');
+  const findMoreDropdownTooltip = () => getBinding(findMoreDropdown().element, 'gl-tooltip');
   const findNotificationToggle = () => wrapper.find('[data-testid="notification-toggle"]');
   const findEditMergeRequestOption = () => wrapper.find('[data-testid="edit-merge-request"]');
   const findMarkAsReadyAndDraftOption = () =>
@@ -11,6 +14,7 @@ describe('MR More actions sidebar', () => {
   const findCopyReferenceButton = () => wrapper.find('[data-testid="copy-reference"]');
   const findReopenMergeRequestOption = () => wrapper.find('[data-testid="reopen-merge-request"]');
   const findReportAbuseOption = () => wrapper.find('[data-testid="report-abuse-option"]');
+  const findLockMergeRequestOption = () => wrapper.find('[data-testid="lock-merge-request"]');
 
   const createComponent = ({
     isCurrentUser = true,
@@ -18,7 +22,10 @@ describe('MR More actions sidebar', () => {
     open = false,
     canUpdateMergeRequest = false,
   } = {}) => {
-    wrapper = shallowMount(MRMoreActionsDropdown, {
+    wrapper = mountExtended(MRMoreActionsDropdown, {
+      directives: {
+        GlTooltip: createMockDirective('gl-tooltip'),
+      },
       propsData: {
         mr: {
           iid: 1,
@@ -97,6 +104,22 @@ describe('MR More actions sidebar', () => {
     });
   });
 
+  describe('Lock merge request', () => {
+    it.each`
+      copy            | canUpdateMergeRequest | expected
+      ${'should'}     | ${true}               | ${true}
+      ${'should not'} | ${false}              | ${false}
+    `(
+      '$copy have the lock option when `canUpdateMergeRequest` is $canUpdateMergeRequest',
+      ({ canUpdateMergeRequest, expected }) => {
+        createComponent({
+          canUpdateMergeRequest,
+        });
+        expect(findLockMergeRequestOption().exists()).toBe(expected);
+      },
+    );
+  });
+
   describe('Copy reference', () => {
     it('should be visible', () => {
       createComponent();
@@ -116,6 +139,22 @@ describe('MR More actions sidebar', () => {
       createComponent({ isCurrentUser: false });
 
       expect(findReportAbuseOption().exists()).toBe(true);
+    });
+  });
+
+  describe('More actions menu', () => {
+    createComponent();
+
+    it('renders the dropdown button', () => {
+      createComponent();
+
+      expect(findMoreDropdown().exists()).toBe(true);
+    });
+
+    it('renders tooltip', () => {
+      createComponent();
+
+      expect(findMoreDropdownTooltip().value).toBe('Merge request actions');
     });
   });
 });

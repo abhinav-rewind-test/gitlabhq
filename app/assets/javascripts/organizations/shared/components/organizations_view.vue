@@ -1,5 +1,6 @@
 <script>
 import { GlLoadingIcon, GlEmptyState } from '@gitlab/ui';
+import organizationsEmptyStateSvgPath from '@gitlab/svgs/dist/illustrations/empty-state/empty-organizations-md.svg?url';
 import { s__ } from '~/locale';
 import OrganizationsList from './list/organizations_list.vue';
 
@@ -17,7 +18,7 @@ export default {
     OrganizationsList,
     GlEmptyState,
   },
-  inject: ['newOrganizationUrl', 'organizationsEmptyStateSvgPath'],
+  inject: ['newOrganizationUrl', 'canCreateOrganization'],
   props: {
     organizations: {
       type: Object,
@@ -34,6 +35,24 @@ export default {
     nodes() {
       return this.organizations.nodes || [];
     },
+    emptyStateProps() {
+      const baseProps = {
+        svgHeight: 144,
+        svgPath: organizationsEmptyStateSvgPath,
+        title: this.$options.i18n.emptyStateTitle,
+        description: this.$options.i18n.emptyStateDescription,
+      };
+
+      if (this.canCreateOrganization) {
+        return {
+          ...baseProps,
+          primaryButtonLink: this.newOrganizationUrl,
+          primaryButtonText: this.$options.i18n.emptyStateButtonText,
+        };
+      }
+
+      return baseProps;
+    },
   },
 };
 </script>
@@ -47,13 +66,5 @@ export default {
     @prev="$emit('prev', $event)"
     @next="$emit('next', $event)"
   />
-  <gl-empty-state
-    v-else
-    :svg-height="144"
-    :svg-path="organizationsEmptyStateSvgPath"
-    :title="$options.i18n.emptyStateTitle"
-    :description="$options.i18n.emptyStateDescription"
-    :primary-button-link="newOrganizationUrl"
-    :primary-button-text="$options.i18n.emptyStateButtonText"
-  />
+  <gl-empty-state v-else v-bind="emptyStateProps" />
 </template>

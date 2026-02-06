@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::IdToken do
   context 'when given `aud` as a string' do
@@ -69,9 +69,9 @@ RSpec.describe Gitlab::Ci::Config::Entry::IdToken do
 
       expect(id_token).not_to be_valid
       expect(id_token.errors).to match_array([
-                                               'id token config missing required keys: aud',
-                                               'id token aud should be an array of strings or a string'
-                                             ])
+        'id token config missing required keys: aud',
+        'id token aud should be an array of strings or a string'
+      ])
     end
   end
 
@@ -84,8 +84,8 @@ RSpec.describe Gitlab::Ci::Config::Entry::IdToken do
 
       expect(id_token).not_to be_valid
       expect(id_token.errors).to match_array([
-                                               'id token config contains unknown keys: unknown'
-                                             ])
+        'id token config contains unknown keys: unknown'
+      ])
     end
   end
 end

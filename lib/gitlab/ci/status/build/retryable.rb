@@ -6,7 +6,7 @@ module Gitlab
       module Build
         class Retryable < Status::Extended
           def has_action?
-            can?(user, :update_build, subject)
+            can?(user, :retry_job, subject)
           end
 
           def action_icon
@@ -14,11 +14,11 @@ module Gitlab
           end
 
           def action_title
-            'Retry'
+            s_('Job|Run again')
           end
 
           def action_button_title
-            _('Retry this job')
+            s_('Job|Run this job again')
           end
 
           def action_path
@@ -27,6 +27,10 @@ module Gitlab
 
           def action_method
             :post
+          end
+
+          def confirmation_message
+            subject.manual_confirmation_message
           end
 
           def self.matches?(build, user)

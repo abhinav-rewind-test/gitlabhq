@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import PipelinesManualActions from '~/ci/pipelines_page/components/pipelines_manual_actions.vue';
@@ -14,6 +15,9 @@ describe('Pipeline operations', () => {
     pipeline: {
       id: 329,
       iid: 234,
+      project: {
+        full_path: 'root/ci-project',
+      },
       details: {
         has_manual_actions: true,
         has_scheduled_actions: false,
@@ -26,7 +30,6 @@ describe('Pipeline operations', () => {
       retry_path: '/root/ci-project/-/pipelines/329/retry',
     },
   };
-
   const createComponent = (props = defaultProps) => {
     wrapper = shallowMountExtended(PipelineOperations, {
       propsData: {
@@ -119,6 +122,23 @@ describe('Pipeline operations', () => {
       expect(trackingSpy).toHaveBeenCalledWith(undefined, 'click_cancel_button', {
         label: TRACKING_CATEGORIES.table,
       });
+    });
+  });
+
+  describe('button tooltips', () => {
+    beforeEach(() => {
+      createComponent();
+    });
+
+    it('cancel and retry buttons contain a key', async () => {
+      findRetryBtn().vm.$emit('click');
+
+      await nextTick();
+
+      // forces Vue to completely destroy and recreate the button element
+      // to avoid tooltip staleness with quick state changes
+      expect(findRetryBtn().vm.$vnode.key).toBe('retry-true');
+      expect(findCancelBtn().vm.$vnode.key).toBe('cancel-false');
     });
   });
 });

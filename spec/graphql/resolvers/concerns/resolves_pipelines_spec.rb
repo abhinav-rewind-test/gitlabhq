@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ResolvesPipelines do
+RSpec.describe ResolvesPipelines, feature_category: :source_code_management do
   include GraphqlHelpers
 
   subject(:resolver) do
@@ -17,12 +17,13 @@ RSpec.describe ResolvesPipelines do
 
   let_it_be(:current_user) { create(:user) }
 
-  let_it_be(:project) { create(:project, :private) }
+  let_it_be(:project) { create(:project, :private, :repository, developers: current_user) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
   let_it_be(:failed_pipeline) { create(:ci_pipeline, :failed, project: project) }
   let_it_be(:success_pipeline) { create(:ci_pipeline, :success, project: project) }
   let_it_be(:ref_pipeline) { create(:ci_pipeline, project: project, ref: 'awesome-feature') }
   let_it_be(:sha_pipeline) { create(:ci_pipeline, project: project, sha: 'deadbeef') }
+  let_it_be(:tag_pipeline) { create(:ci_pipeline, :tag, project: project) }
   let_it_be(:username_pipeline) { create(:ci_pipeline, project: project, user: current_user) }
   let_it_be(:all_pipelines) do
     [
@@ -31,15 +32,12 @@ RSpec.describe ResolvesPipelines do
       success_pipeline,
       ref_pipeline,
       sha_pipeline,
+      tag_pipeline,
       username_pipeline
     ]
   end
 
-  before do
-    project.add_developer(current_user)
-  end
-
-  it { is_expected.to have_graphql_arguments(:status, :scope, :ref, :sha, :source, :updated_after, :updated_before, :username) }
+  it { is_expected.to have_graphql_arguments(:status, :scope, :ref, :ref_type, :sha, :source, :updated_after, :updated_before, :username, :ids) }
 
   it 'finds all pipelines' do
     expect(resolve_pipelines).to contain_exactly(*all_pipelines)
@@ -55,6 +53,72 @@ RSpec.describe ResolvesPipelines do
 
   it 'allows filtering by ref' do
     expect(resolve_pipelines(ref: 'awesome-feature')).to contain_exactly(ref_pipeline)
+  end
+
+  describe 'filtering by ref_type' do
+    specify { expect(project.repository.branch_names).to be_present }
+    specify { expect(project.repository.tag_names).to be_present }
+
+    context 'when ref_type is heads' do
+      it 'behaves like scoped to branches' do
+        expect(resolve_pipelines(ref_type: 'heads').items)
+          .to match_array(resolve_pipelines(scope: 'branches').items)
+      end
+
+      context 'when scope is defined' do
+        it 'behaves like the scope' do
+          expect(resolve_pipelines(scope: 'tags', ref_type: 'heads').items)
+            .to match_array(resolve_pipelines(scope: 'tags').items)
+        end
+      end
+    end
+
+    context 'when ref_type is tags' do
+      it 'behaves like scoped to tags' do
+        expect(resolve_pipelines(ref_type: 'tags').items)
+          .to match_array(resolve_pipelines(scope: 'tags').items)
+      end
+
+      context 'when scope is defined' do
+        it 'behaves like the scope' do
+          expect(resolve_pipelines(scope: 'branches', ref_type: 'tags').items)
+            .to match_array(resolve_pipelines(scope: 'branches').items)
+        end
+      end
+    end
+
+    context 'when branch and tag with same name exist' do
+      let_it_be(:branch_pipeline) { create(:ci_pipeline, project: project, ref: 'last_commit') }
+      let_it_be(:tag_pipeline) { create(:ci_pipeline, :tag, project: project, ref: 'last_commit') }
+
+      context 'when ref_type is heads' do
+        it 'behaves like scoped to heads' do
+          expect(resolve_pipelines(ref_type: 'heads').items)
+            .to match_array(resolve_pipelines(scope: 'branches').items)
+        end
+
+        context 'when scope is defined' do
+          it 'behaves like the scope' do
+            expect(resolve_pipelines(scope: 'tags', ref_type: 'heads').items)
+              .to match_array(resolve_pipelines(scope: 'tags').items)
+          end
+        end
+      end
+
+      context 'when ref_type is tags' do
+        it 'behaves like scoped to heads' do
+          expect(resolve_pipelines(ref_type: 'tags').items)
+            .to match_array(resolve_pipelines(scope: 'tags').items)
+        end
+
+        context 'when scope is defined' do
+          it 'behaves like the scope' do
+            expect(resolve_pipelines(scope: 'branches', ref_type: 'tags').items)
+              .to match_array(resolve_pipelines(scope: 'branches').items)
+          end
+        end
+      end
+    end
   end
 
   it 'allows filtering by sha' do
@@ -77,7 +141,7 @@ RSpec.describe ResolvesPipelines do
     expect(resolve_pipelines(username: current_user.username)).to contain_exactly(username_pipeline)
   end
 
-  context 'filtering by updated_at' do
+  describe 'filtering by updated_at' do
     let_it_be(:old_pipeline) { create(:ci_pipeline, project: project, updated_at: 2.days.ago) }
     let_it_be(:older_pipeline) { create(:ci_pipeline, project: project, updated_at: 5.days.ago) }
 
@@ -106,9 +170,43 @@ RSpec.describe ResolvesPipelines do
   it 'increases field complexity based on arguments' do
     field = Types::BaseField.new(name: 'test', type: GraphQL::Types::String, resolver_class: resolver, null: false, max_page_size: 1)
 
-    expect(field.complexity.call({}, {}, 1)).to eq 2
-    expect(field.complexity.call({}, { sha: 'foo' }, 1)).to eq 4
-    expect(field.complexity.call({}, { sha: 'ref' }, 1)).to eq 4
+    expect(field.complexity.call({}, {}, 1)).to eq 3
+    expect(field.complexity.call({}, { sha: 'foo' }, 1)).to eq 5
+    expect(field.complexity.call({}, { sha: 'ref' }, 1)).to eq 5
+  end
+
+  context 'filtering by IDs' do
+    let_it_be(:pipeline1) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline2) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline3) { create(:ci_pipeline, project: project) }
+
+    it 'returns pipelines matching the provided IDs' do
+      ids = [pipeline1.to_global_id.to_s, pipeline3.to_global_id.to_s]
+
+      expect(resolve_pipelines(ids: ids)).to contain_exactly(pipeline1, pipeline3)
+    end
+
+    it 'raises an error when exceeding maximum pipeline IDs limit' do
+      max_ids_count = described_class::MAX_PIPELINE_IDS
+
+      too_many_ids = Array.new(max_ids_count + 1) do |i|
+        "gid://gitlab/Ci::Pipeline/#{i + 1}"
+      end
+
+      result = resolve_pipelines(ids: too_many_ids)
+
+      expect(result).to be_a(GraphQL::ExecutionError)
+      expect(result.message).to eq("Cannot query more than #{max_ids_count} pipelines by ID at once.")
+    end
+
+    it 'handles invalid GraphQL IDs' do
+      invalid_id = "invalid-id"
+      valid_id = pipeline1.to_global_id.to_s
+
+      ids = [invalid_id, valid_id]
+
+      expect(resolve_pipelines(ids: ids)).to contain_exactly(pipeline1)
+    end
   end
 
   def resolve_pipelines(args = {}, context = { current_user: current_user })

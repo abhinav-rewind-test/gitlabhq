@@ -10,7 +10,6 @@ export const DISCUSSION_SINGLE_DIFF_FAILED = s__(
 export const DIFF_FILE_HEADER = {
   optionsDropdownTitle: __('Options'),
   fileReviewLabel: __('Viewed'),
-  fileReviewTooltip: __('Collapses this file (only for you) until it’s changed again.'),
 };
 
 export const DIFF_FILE = {
@@ -67,11 +66,15 @@ export const BUILDING_YOUR_MR = __(
 );
 export const SOMETHING_WENT_WRONG = __('Something went wrong on our end. Please try again!');
 export const SAVING_THE_COMMENT_FAILED = s__(
-  'MergeRequests|Your comment could not be submitted because %{reason}.',
+  'MergeRequests|Comment could not be submitted: %{reason}.',
 );
 export const ERROR_LOADING_FULL_DIFF = s__(
   'MergeRequest|Error loading full diff. Please try again.',
 );
 export const ERROR_DISMISSING_SUGESTION_POPOVER = s__(
   'MergeRequest|Error dismissing suggestion popover. Please try again.',
+);
+export const ENCODED_FILE_PATHS_TITLE = __('Some changes are not shown.');
+export const ENCODED_FILE_PATHS_MESSAGE = __(
+  'Some files cannot be displayed due to their file path encoding.',
 );

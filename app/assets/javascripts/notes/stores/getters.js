@@ -2,7 +2,7 @@ import { flattenDeep, clone } from 'lodash';
 import { match } from '~/diffs/utils/diff_file';
 import { isInMRPage } from '~/lib/utils/common_utils';
 import { doesHashExistInUrl } from '~/lib/utils/url_utility';
-import { badgeState } from '~/merge_requests/components/merge_request_header.vue';
+import { badgeState } from '~/merge_requests/badge_state';
 import * as constants from '../constants';
 import { collapseSystemNotes } from './collapse_utils';
 
@@ -165,28 +165,27 @@ export const noteableType = (state) => {
 
 const reverseNotes = (array) => array.slice(0).reverse();
 
-const isLastNote = (note, state) =>
+const isCurrentUserLastNote = (note, state) =>
   !note.system && state.userData && note.author && note.author.id === state.userData.id;
 
 export const getCurrentUserLastNote = (state) =>
   flattenDeep(reverseNotes(state.discussions).map((note) => reverseNotes(note.notes))).find((el) =>
-    isLastNote(el, state),
+    isCurrentUserLastNote(el, state),
   );
-
-export const getDiscussionLastNote = (state) => (discussion) =>
-  reverseNotes(discussion.notes).find((el) => isLastNote(el, state));
 
 export const unresolvedDiscussionsCount = (state) => state.unresolvedDiscussionsCount;
 export const resolvableDiscussionsCount = (state) => state.resolvableDiscussionsCount;
 
-export const showJumpToNextDiscussion = (state, getters) => (mode = 'discussion') => {
-  const orderedDiffs =
-    mode !== 'discussion'
-      ? getters.unresolvedDiscussionsIdsByDiff
-      : getters.unresolvedDiscussionsIdsByDate;
+export const showJumpToNextDiscussion =
+  (state, getters) =>
+  (mode = 'discussion') => {
+    const orderedDiffs =
+      mode !== 'discussion'
+        ? getters.unresolvedDiscussionsIdsByDiff
+        : getters.unresolvedDiscussionsIdsByDate;
 
-  return orderedDiffs.length > 1;
-};
+    return orderedDiffs.length > 1;
+  };
 
 export const isDiscussionResolved = (state, getters) => (discussionId) =>
   getters.resolvedDiscussionsById[discussionId] !== undefined;
@@ -302,26 +301,24 @@ export const isLastUnresolvedDiscussion = (state, getters) => (discussionId, dif
   return lastDiscussionId === discussionId;
 };
 
-export const findUnresolvedDiscussionIdNeighbor = (state, getters) => ({
-  discussionId,
-  diffOrder,
-  step,
-}) => {
-  const diffIds = getters.unresolvedDiscussionsIdsOrdered(diffOrder);
-  const dateIds = getters.unresolvedDiscussionsIdsOrdered(false);
-  const ids = diffIds.length ? diffIds : dateIds;
-  const index = ids.indexOf(discussionId) + step;
+export const findUnresolvedDiscussionIdNeighbor =
+  (state, getters) =>
+  ({ discussionId, diffOrder, step }) => {
+    const diffIds = getters.unresolvedDiscussionsIdsOrdered(diffOrder);
+    const dateIds = getters.unresolvedDiscussionsIdsOrdered(false);
+    const ids = diffIds.length ? diffIds : dateIds;
+    const index = ids.indexOf(discussionId) + step;
 
-  if (index < 0 && step < 0) {
-    return ids[ids.length - 1];
-  }
+    if (index < 0 && step < 0) {
+      return ids[ids.length - 1];
+    }
 
-  if (index === ids.length && step > 0) {
-    return ids[0];
-  }
+    if (index === ids.length && step > 0) {
+      return ids[0];
+    }
 
-  return ids[index];
-};
+    return ids[index];
+  };
 
 // Gets the ID of the discussion following the one provided, respecting order (diff or date)
 // @param {Boolean} discussionId - id of the current discussion
@@ -348,6 +345,7 @@ export const commentsDisabled = (state) => state.commentsDisabled;
 export const suggestionsCount = (state, getters) =>
   Object.values(getters.notesById).filter((n) => n.suggestions?.length).length;
 
+// eslint-disable-next-line max-params
 export const hasDrafts = (state, getters, rootState, rootGetters) =>
   Boolean(rootGetters['batchComments/hasDrafts']);
 

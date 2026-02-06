@@ -131,7 +131,7 @@ module Gitlab
             Gitlab::Git::Tree.new(
               id: gitaly_tree_entry.oid,
               type: gitaly_tree_entry.type.downcase,
-              mode: gitaly_tree_entry.mode.to_s(8),
+              mode: gitaly_tree_entry.mode.to_i.to_s(8),
               name: File.basename(gitaly_tree_entry.path),
               path: encode_binary(gitaly_tree_entry.path),
               flat_path: encode_binary(gitaly_tree_entry.flat_path),
@@ -154,13 +154,59 @@ module Gitlab
         end
       end
 
-      def commit_count(ref, options = {})
+      # Count commits in the repository.
+      #
+      # @param ref [String] The revision to count commits from (soft deprecated, use revisions instead)
+      # @param options [Hash] Options for counting commits
+      # @option options [Array<String>] :revisions Multiple revisions to count commits from.
+      #   Supports pseudo-revisions like --all, --branches, --tags, --not, --glob.
+      #   Takes precedence over :all and ref parameters.
+      # @option options [Boolean] :all Count commits from all refs (soft deprecated, use revisions: ['--all'])
+      # @option options [Boolean] :first_parent Only follow first parent on merge commits
+      # @option options [Time] :after Only count commits after this time
+      # @option options [Time] :before Only count commits before this time
+      # @option options [String] :path Only count commits that touch this path
+      # @option options [Integer] :max_count Maximum number of commits to count
+      #
+      # @return [Integer] The number of commits
+      #
+      # @example Count commits in a single branch
+      #   commit_count('master')
+      #
+      # @example Count commits across multiple branches using revisions
+      #   commit_count(nil, revisions: ['feature-a', 'feature-b'])
+      #
+      # @example Count commits in all branches using revisions
+      #   commit_count(nil, revisions: ['--all'])
+      #
+      # @example Count commits in branch-2 but not in branch-1
+      #   commit_count(nil, revisions: ['branch-2', '--not', 'branch-1'])
+      #
+      def commit_count(ref, options = {}) # rubocop:disable Metrics/PerceivedComplexity -- will be removed with https://gitlab.com/gitlab-org/gitlab/-/issues/587521
         request = Gitaly::CountCommitsRequest.new(
           repository: @gitaly_repo,
-          revision: encode_binary(ref),
-          all: !!options[:all],
           first_parent: !!options[:first_parent]
         )
+
+        if use_revisions_parameter_only?
+          revisions = if options[:revisions].present?
+                        Array.wrap(options[:revisions])
+                      elsif options[:all]
+                        ['--all']
+                      elsif ref
+                        [ref]
+                      end
+
+          request.revisions = encode_repeated(revisions) if revisions.present?
+        elsif options[:revisions].present?
+          # Legacy behavior: The new revisions field takes precedence over all and revision fields
+          request.revisions = encode_repeated(Array.wrap(options[:revisions]))
+        elsif options[:all]
+          request.all = true
+        elsif ref
+          request.revision = encode_binary(ref)
+        end
+
         request.after = Google::Protobuf::Timestamp.new(seconds: options[:after].to_i) if options[:after].present?
         request.before = Google::Protobuf::Timestamp.new(seconds: options[:before].to_i) if options[:before].present?
         request.path = encode_binary(options[:path]) if options[:path].present?
@@ -251,8 +297,8 @@ module Gitlab
       # else # defaults to :include_merges behavior
       #   ['foo_bar.rb', 'bar_baz.rb'],
       #
-      def find_changed_paths(objects, merge_commit_diff_mode: nil)
-        request = find_changed_paths_request(objects, merge_commit_diff_mode)
+      def find_changed_paths(objects, merge_commit_diff_mode: nil, find_renames: false, diff_filters: nil)
+        request = find_changed_paths_request(objects, merge_commit_diff_mode, find_renames, diff_filters)
 
         return [] if request.nil?
 
@@ -262,10 +308,12 @@ module Gitlab
             Gitlab::Git::ChangedPath.new(
               status: path.status,
               path: EncodingHelper.encode!(path.path),
-              old_mode: path.old_mode.to_s(8),
-              new_mode: path.new_mode.to_s(8),
+              old_path: EncodingHelper.encode!(path.old_path),
+              old_mode: path.old_mode.to_i.to_s(8),
+              new_mode: path.new_mode.to_i.to_s(8),
               old_blob_id: path.old_blob_id,
-              new_blob_id: path.new_blob_id
+              new_blob_id: path.new_blob_id,
+              commit_id: path.commit_id
             )
           end
         end
@@ -285,13 +333,19 @@ module Gitlab
       end
 
       def list_commits(revisions, params = {})
+        # We want to include the commit ref in the revisions if present.
+        revisions = Array.wrap(params[:ref].presence || []) + Array.wrap(revisions)
+
         request = Gitaly::ListCommitsRequest.new(
           repository: @gitaly_repo,
-          revisions: Array.wrap(revisions),
+          revisions: revisions,
           reverse: !!params[:reverse],
           ignore_case: params[:ignore_case],
           pagination_params: params[:pagination_params]
         )
+
+        request.order = params[:order].upcase if params[:order].present?
+        request.skip = params[:skip].to_i if params[:skip].present?
 
         if params[:commit_message_patterns]
           request.commit_message_patterns += Array.wrap(params[:commit_message_patterns])
@@ -301,8 +355,15 @@ module Gitlab
         request.before = GitalyClient.timestamp(params[:before]) if params[:before]
         request.after = GitalyClient.timestamp(params[:after]) if params[:after]
 
-        response = gitaly_client_call(@repository.storage, :commit_service, :list_commits, request, timeout: GitalyClient.medium_timeout)
-        consume_commits_response(response)
+        response = gitaly_client_call(
+          @repository.storage,
+          :commit_service,
+          :list_commits,
+          request,
+          timeout: GitalyClient.medium_timeout
+        )
+
+        CommitCollectionWithNextCursor.new(response, @repository)
       end
 
       # List all commits which are new in the repository. If commits have been pushed into the repo
@@ -383,18 +444,19 @@ module Gitlab
       end
 
       def languages(ref = nil)
-        request = Gitaly::CommitLanguagesRequest.new(repository: @gitaly_repo, revision: ref || '')
+        request = Gitaly::CommitLanguagesRequest.new(repository: @gitaly_repo, revision: encode_binary(ref) || '')
         response = gitaly_client_call(@repository.storage, :commit_service, :commit_languages, request, timeout: GitalyClient.long_timeout)
 
         response.languages.map { |l| { value: l.share.round(2), label: l.name, color: l.color, highlight: l.color } }
       end
 
-      def raw_blame(revision, path, range:)
+      def raw_blame(revision, path, range:, ignore_revisions_blob: nil)
         request = Gitaly::RawBlameRequest.new(
           repository: @gitaly_repo,
           revision: encode_binary(revision),
           path: encode_binary(path),
-          range: (encode_binary(range) if range)
+          range: (encode_binary(range) if range),
+          ignore_revisions_blob: (encode_binary(ignore_revisions_blob) if ignore_revisions_blob)
         )
 
         response = gitaly_client_call(@repository.storage, :commit_service, :raw_blame, request, timeout: GitalyClient.medium_timeout)
@@ -405,6 +467,10 @@ module Gitlab
         case detailed_error.try(:error)
         when :out_of_range, :path_not_found
           raise ArgumentError, e.details
+        when :invalid_ignore_revs_format
+          raise Gitlab::Git::Blame::IgnoreRevsFormatError, e.details
+        when :resolve_ignore_revs
+          raise Gitlab::Git::Blame::IgnoreRevsFileError, e.details
         else
           raise e
         end
@@ -457,7 +523,8 @@ module Gitlab
           global_options: parse_global_options!(options),
           disable_walk: true, # This option is deprecated. The 'walk' implementation is being removed.
           trailers: options[:trailers],
-          include_referenced_by: options[:include_referenced_by]
+          include_referenced_by: options[:include_referenced_by],
+          message_regex: options[:message_regex]
         )
         request.after    = GitalyClient.timestamp(options[:after]) if options[:after]
         request.before   = GitalyClient.timestamp(options[:before]) if options[:before]
@@ -527,7 +594,9 @@ module Gitlab
           h[k] = {
             signature: +''.b,
             signed_text: +''.b,
-            signer: :SIGNER_UNSPECIFIED
+            signer: :SIGNER_UNSPECIFIED,
+            author_email: +''.b,
+            committer_email: +''.b
           }
         end
 
@@ -538,6 +607,12 @@ module Gitlab
 
           signatures[current_commit_id][:signature] << message.signature
           signatures[current_commit_id][:signed_text] << message.signed_text
+
+          signatures[current_commit_id][:author_email] << message.author.email if message.author&.email.present?
+
+          if message.committer&.email.present?
+            signatures[current_commit_id][:committer_email] << message.committer.email
+          end
 
           # The actual value is send once. All the other chunks send SIGNER_UNSPECIFIED
           signatures[current_commit_id][:signer] = message.signer unless message.signer == :SIGNER_UNSPECIFIED
@@ -647,8 +722,8 @@ module Gitlab
         response.commit
       end
 
-      def find_changed_paths_request(objects, merge_commit_diff_mode)
-        diff_mode = MERGE_COMMIT_DIFF_MODES[merge_commit_diff_mode] if Feature.enabled?(:merge_commit_diff_modes)
+      def find_changed_paths_request(objects, merge_commit_diff_mode, find_renames, diff_filters = nil)
+        diff_mode = MERGE_COMMIT_DIFF_MODES[merge_commit_diff_mode]
 
         requests = objects.filter_map do |object|
           case object
@@ -667,7 +742,16 @@ module Gitlab
 
         return if requests.blank?
 
-        Gitaly::FindChangedPathsRequest.new(repository: @gitaly_repo, requests: requests, merge_commit_diff_mode: diff_mode)
+        request_options = {
+          repository: @gitaly_repo,
+          requests: requests,
+          merge_commit_diff_mode: diff_mode,
+          find_renames: find_renames
+        }
+
+        request_options[:diff_filters] = diff_filters if diff_filters
+
+        Gitaly::FindChangedPathsRequest.new(request_options)
       end
 
       def path_error_message(path_error)
@@ -683,6 +767,11 @@ module Gitlab
         else
           "Unknown path error"
         end
+      end
+
+      def use_revisions_parameter_only?
+        @repository.container.is_a?(Project) &&
+          Feature.enabled?(:count_commits_use_revisions_only, @repository.container)
       end
     end
   end

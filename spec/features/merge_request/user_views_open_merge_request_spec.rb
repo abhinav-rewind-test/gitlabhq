@@ -15,7 +15,7 @@ RSpec.describe 'User views an open merge request', feature_category: :code_revie
     end
 
     it 'renders both the title and the description' do
-      node = find('.md h1 a#user-content-description-header')
+      node = find('.md h1#user-content-description-header a')
       expect(node[:href]).to end_with('#description-header')
 
       # Work around a weird Capybara behavior where calling `parent` on a node
@@ -92,24 +92,9 @@ RSpec.describe 'User views an open merge request', feature_category: :code_revie
         visit(merge_request_path(merge_request))
       end
 
-      it 'shows diverged commits count', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/408223' do
+      it 'shows diverged commits count',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9495' do
         expect(page).not_to have_content(/([0-9]+ commits? behind)/)
-      end
-    end
-
-    context 'when the assignee\'s availability set' do
-      before do
-        merge_request.author.create_status(availability: 'busy')
-        merge_request.assignees << merge_request.author
-
-        visit(merge_request_path(merge_request))
-      end
-
-      it 'exposes the availability in the data-availability attribute' do
-        assignees_data = find_all("input[name='merge_request[assignee_ids][]']", visible: false)
-
-        expect(assignees_data.size).to eq(1)
-        expect(assignees_data.first['data-availability']).to eq('busy')
       end
     end
   end
@@ -126,7 +111,7 @@ RSpec.describe 'User views an open merge request', feature_category: :code_revie
     it 'renders edit button in preferred language' do
       visit(merge_request_path(merge_request))
 
-      page.within('.detail-page-header-actions') do
+      page.within('.detail-page-header') do
         expect(page).to have_link('Edit')
       end
 
@@ -134,7 +119,7 @@ RSpec.describe 'User views an open merge request', feature_category: :code_revie
 
       visit(merge_request_path(merge_request))
 
-      page.within('.detail-page-header-actions') do
+      page.within('.detail-page-header') do
         expect(page).to have_link('Bearbeiten')
       end
     end

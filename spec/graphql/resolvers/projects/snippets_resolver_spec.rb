@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Resolvers::Projects::SnippetsResolver do
+RSpec.describe Resolvers::Projects::SnippetsResolver, :with_current_organization, feature_category: :source_code_management do
   include GraphqlHelpers
 
   describe '#resolve' do
@@ -18,6 +18,11 @@ RSpec.describe Resolvers::Projects::SnippetsResolver do
 
     before_all do
       project.add_developer(user)
+    end
+
+    before do
+      # Since this doesn't go through a request flow, we need to manually set Current.organization
+      Current.organization = current_organization
     end
 
     it 'calls SnippetsFinder' do
@@ -83,6 +88,35 @@ RSpec.describe Resolvers::Projects::SnippetsResolver do
         expect_graphql_error_to_be_created(Gitlab::Graphql::Errors::ResourceNotAvailable) do
           resolve_snippets(obj: disabled_snippet_project)
         end
+      end
+    end
+
+    describe '.complexity_multiplier' do
+      it 'returns 0 for ID-based queries' do
+        expect(described_class.complexity_multiplier({ iid: 123 })).to eq(0)
+        expect(described_class.complexity_multiplier({ iids: [123, 456] })).to eq(0)
+      end
+
+      it 'returns 0.05 for bulk queries' do
+        expect(described_class.complexity_multiplier({ first: 10 })).to eq(0.05)
+      end
+
+      it 'applies 5% complexity increase to bulk queries' do
+        query_string = <<~GRAPHQL
+          query {
+            project(fullPath: "test-project") {
+              snippets(first: 100) {
+                nodes { title }
+              }
+            }
+          }
+        GRAPHQL
+
+        complexity_with_multiplier = calculate_query_complexity(query_string)
+        allow(described_class).to receive(:complexity_multiplier).and_return(0)
+        complexity_without_multiplier = calculate_query_complexity(query_string)
+
+        expect(complexity_with_multiplier).to be > complexity_without_multiplier
       end
     end
   end

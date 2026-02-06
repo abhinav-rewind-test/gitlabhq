@@ -27,7 +27,7 @@ module RuboCop
             before_execute = node.descendants[1].source_range
             range_to_remove = node.source_range
                                 .with(begin_pos: before_execute.end_pos,
-                                      end_pos: upto_including_execute.end_pos)
+                                  end_pos: upto_including_execute.end_pos)
 
             corrector.remove(range_to_remove)
           end
@@ -36,7 +36,7 @@ module RuboCop
         def find_on_execute?(node)
           chained_on_node = node.descendants.first
           node.method_name.to_s =~ FIND_PATTERN &&
-            chained_on_node.is_a?(RuboCop::AST::SendNode) && chained_on_node.method_name == :execute
+            chained_on_node.is_a?(RuboCop::AST::SendNode) && chained_on_node.method?(:execute)
         end
 
         def allowed_module?(node)

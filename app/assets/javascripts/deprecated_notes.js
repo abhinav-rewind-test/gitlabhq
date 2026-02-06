@@ -35,10 +35,10 @@ import {
   getCookie,
   isInViewport,
   getPagePath,
-  scrollToElement,
-  isMetaKey,
+  isModifierKey,
   isInMRPage,
 } from './lib/utils/common_utils';
+import { scrollToElement } from './lib/utils/scroll_utils';
 import { localTimeAgo } from './lib/utils/datetime_utility';
 import { getLocationHash } from './lib/utils/url_utility';
 import { sprintf, s__, __ } from './locale';
@@ -50,10 +50,10 @@ function normalizeNewlines(str) {
   return str.replace(/\r\n/g, '\n');
 }
 
-const MAX_VISIBLE_COMMIT_LIST_COUNT = 3;
 const REGEX_QUICK_ACTIONS = /^\/\w+.*$/gm;
 
 export default class Notes {
+  // eslint-disable-next-line max-params
   static initialize(notes_url, last_fetched_at, view, enableGFM) {
     if (!this.instance) {
       this.instance = new Notes(notes_url, last_fetched_at, view, enableGFM);
@@ -64,6 +64,7 @@ export default class Notes {
     return this.instance;
   }
 
+  // eslint-disable-next-line max-params
   constructor(notes_url, last_fetched_at, view, enableGFM = defaultAutocompleteConfig) {
     this.updateTargetButtons = this.updateTargetButtons.bind(this);
     this.updateComment = this.updateComment.bind(this);
@@ -109,7 +110,6 @@ export default class Notes {
       fieldName: 'note',
       selector: '.notes',
     });
-    this.collapseLongCommitList();
     this.setViewType(view);
 
     // We are in the merge requests page so we need another edit form for Changes tab
@@ -220,6 +220,7 @@ export default class Notes {
 
     form.commentTypeComponent = new Vue({
       el,
+      name: 'DeprecatedNotesCommentTypeDropdownRoot',
       data() {
         return {
           noteType: constants.COMMENT,
@@ -256,7 +257,7 @@ export default class Notes {
     let newText;
     let originalText;
 
-    if (isMetaKey(e)) {
+    if (isModifierKey(e)) {
       return;
     }
 
@@ -395,7 +396,6 @@ export default class Notes {
     // Update datetime format on the recent note
     localTimeAgo($note.find('.js-timeago').get(), false);
 
-    this.collapseLongCommitList();
     this.taskList.init();
 
     // This stops the note highlight, #note_xxx`, from being removed after real time update
@@ -430,12 +430,12 @@ export default class Notes {
     }
 
     if (!noteEntity.valid) {
-      if (noteEntity.errors && noteEntity.errors.commands_only) {
+      if (noteEntity?.quick_actions_status?.messages) {
         if (noteEntity.commands_changes && Object.keys(noteEntity.commands_changes).length > 0) {
           $notesList.find('.system-note.being-posted').remove();
         }
         this.addAlert({
-          message: noteEntity.errors.commands_only,
+          message: noteEntity.quick_actions_status.messages,
           variant: VARIANT_INFO,
           parent: this.parentTimeline.get(0),
         });
@@ -547,6 +547,10 @@ export default class Notes {
 
         renderGFM(discussionElement);
         const $discussion = $(discussionElement).unwrap();
+
+        if (noteEntity.on_image) {
+          discussionElement.classList.add('discussion-notes', 'gl-block');
+        }
 
         if (!this.isParallelView() || row.hasClass('js-temp-notes-holder') || noteEntity.on_image) {
           // insert the note and the reply button after the temp row
@@ -1291,6 +1295,7 @@ export default class Notes {
     // eslint-disable-next-line no-new
     new Vue({
       el,
+      name: 'DeprecatedNotesSkeletonLoaderRoot',
       components: {
         GlSkeletonLoader,
       },
@@ -1363,38 +1368,10 @@ export default class Notes {
     const $svgChevronUpElement = $element.find('svg.js-chevron-up');
     const $svgChevronDownElement = $element.find('svg.js-chevron-down');
 
-    $svgChevronUpElement.toggleClass('gl-display-none');
-    $svgChevronDownElement.toggleClass('gl-display-none');
+    $svgChevronUpElement.toggleClass('gl-hidden');
+    $svgChevronDownElement.toggleClass('gl-hidden');
 
     $closestSystemCommitList.toggleClass('hide-shade');
-  }
-
-  /**
-   * Scans system notes with `ul` elements in system note body
-   * then collapse long commit list pushed by user to make it less
-   * intrusive.
-   */
-  collapseLongCommitList() {
-    const systemNotes = $('#notes-list').find('li.system-note').has('ul');
-
-    $.each(systemNotes, (index, systemNote) => {
-      const $systemNote = $(systemNote);
-      const headerMessage = $systemNote
-        .find('.note-text')
-        .find('p')
-        .first()
-        .text()
-        .replace(':', '');
-
-      $systemNote.find('.note-header .system-note-message').html(headerMessage);
-
-      if ($systemNote.find('li').length > MAX_VISIBLE_COMMIT_LIST_COUNT) {
-        $systemNote.find('.note-text').addClass('system-note-commit-list');
-        $systemNote.find('.system-note-commit-list-toggler').show();
-      } else {
-        $systemNote.find('.note-text').addClass('system-note-commit-list hide-shade');
-      }
-    });
   }
 
   addAlert(...alertParams) {
@@ -1565,14 +1542,14 @@ export default class Notes {
          <div class="timeline-entry-inner">
             <div class="timeline-icon">
                <a href="/${escape(currentUsername)}">
-                 <img class="avatar s40" src="${currentUserAvatar}" />
+                 <img class="avatar s32" src="${currentUserAvatar}" />
                </a>
             </div>
             <div class="timeline-content ${discussionClass}">
                <div class="note-header">
                   <div class="note-header-info">
                      <a href="/${escape(currentUsername)}">
-                       <span class="gl-display-none gl-sm-display-inline-block bold">${escape(
+                       <span class="gl-hidden @sm/panel:gl-inline-block gl-font-bold">${escape(
                          currentUsername,
                        )}</span>
                        <span class="note-headline-light">${escape(currentUsername)}</span>
@@ -1589,7 +1566,7 @@ export default class Notes {
       </li>`,
     );
 
-    $tempNote.find('.gl-display-none.gl-sm-display-inline-block').text(escape(currentUserFullname));
+    $tempNote.find('.gl-hidden.\\@sm\\/panel\\:gl-inline-block').text(escape(currentUserFullname));
     $tempNote.find('.note-headline-light').text(`@${escape(currentUsername)}`);
 
     return $tempNote;

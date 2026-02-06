@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.shared_context 'with container for work items service' do |container_type|
-  let_it_be_with_reload(:project) { create(:project) }
   let_it_be_with_reload(:group) { create(:group) }
+  let_it_be_with_reload(:project) { create(:project, group: group) }
 
   let_it_be(:container) do
     case container_type
@@ -49,5 +49,10 @@ RSpec.shared_context 'with container for work items service' do |container_type|
     memberships_container = container.is_a?(Namespaces::ProjectNamespace) ? container.reload.project : container
     memberships_container.add_guest(guest)
     memberships_container.add_reporter(reporter)
+
+    # Ensure support bot user is created so creation doesn't count towards query limit
+    # and we don't try to obtain an exclusive lease within a transaction.
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+    create(:support_bot)
   end
 end

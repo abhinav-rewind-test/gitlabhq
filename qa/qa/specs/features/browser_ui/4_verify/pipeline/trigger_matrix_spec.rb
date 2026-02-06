@@ -1,28 +1,20 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Verify', :runner, :reliable, product_group: :pipeline_authoring do
+  RSpec.describe 'Verify', feature_category: :pipeline_composition do
     describe 'Trigger matrix' do
       let(:executor) { "qa-runner-#{Faker::Alphanumeric.alphanumeric(number: 8)}" }
       let(:project) { create(:project, name: 'project-with-pipeline') }
-      let!(:runner) do
-        Resource::ProjectRunner.fabricate! do |runner|
-          runner.project = project
-          runner.name = executor
-          runner.tags = [executor]
-        end
-      end
+      let!(:runner) { create(:project_runner, project: project, name: executor, tags: [executor]) }
 
       before do
         Flow::Login.sign_in
         add_ci_files
-        project.visit!
-        Flow::Pipeline.visit_latest_pipeline(status: 'Passed')
+        project.visit_latest_pipeline
       end
 
       after do
         runner.remove_via_api!
-        project.remove_via_api!
       end
 
       it 'creates 2 trigger jobs and passes corresponding matrix variables', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/348000' do
@@ -54,6 +46,8 @@ module QA
 
       def add_ci_files
         create(:commit, project: project, commit_message: 'todo', actions: [child_ci_file, parent_ci_file])
+        Flow::Pipeline.wait_for_pipeline_creation_via_api(project: project)
+        Flow::Pipeline.wait_for_latest_pipeline_to_have_status(project: project, status: 'success')
       end
 
       def parent_ci_file

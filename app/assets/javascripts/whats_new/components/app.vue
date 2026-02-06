@@ -1,38 +1,68 @@
 <script>
-import { GlDrawer, GlInfiniteScroll, GlResizeObserverDirective } from '@gitlab/ui';
+import { GlDrawer, GlResizeObserverDirective } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions } from 'vuex';
 import Tracking from '~/tracking';
 import { getContentWrapperHeight } from '~/lib/utils/dom_utils';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { getDrawerBodyHeight } from '../utils/get_drawer_body_height';
-import Feature from './feature.vue';
-import SkeletonLoader from './skeleton_loader.vue';
+import OtherUpdates from './other_updates.vue';
 
 const trackingMixin = Tracking.mixin();
 
 export default {
   components: {
     GlDrawer,
-    GlInfiniteScroll,
-    SkeletonLoader,
-    Feature,
+    OtherUpdates,
   },
   directives: {
     GlResizeObserver: GlResizeObserverDirective,
   },
-  mixins: [trackingMixin],
+  mixins: [trackingMixin, glFeatureFlagsMixin()],
   props: {
     versionDigest: {
       type: String,
       required: false,
       default: undefined,
     },
+    initialReadArticles: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
+    markAsReadPath: {
+      type: String,
+      required: false,
+      default: undefined,
+    },
+    mostRecentReleaseItemsCount: {
+      type: Number,
+      required: true,
+    },
+    withClose: {
+      type: Function,
+      required: false,
+      default: () => {},
+    },
+    updateHelpMenuUnreadBadge: {
+      type: Function,
+      required: false,
+      default: () => {},
+    },
   },
   computed: {
-    ...mapState(['open', 'features', 'pageInfo', 'drawerBodyHeight', 'fetching']),
+    ...mapState(['open', 'features', 'pageInfo', 'drawerBodyHeight', 'fetching', 'readArticles']),
     getDrawerHeaderHeight() {
       return getContentWrapperHeight();
     },
+  },
+  watch: {
+    readArticles(newVal) {
+      this.updateHelpMenuUnreadBadge(this.mostRecentReleaseItemsCount - newVal.length);
+    },
+  },
+  created() {
+    this.setReadArticles(this.initialReadArticles);
   },
   mounted() {
     this.openDrawer(this.versionDigest);
@@ -48,7 +78,13 @@ export default {
     });
   },
   methods: {
-    ...mapActions(['openDrawer', 'closeDrawer', 'fetchItems', 'setDrawerBodyHeight']),
+    ...mapActions([
+      'openDrawer',
+      'closeDrawer',
+      'fetchItems',
+      'setDrawerBodyHeight',
+      'setReadArticles',
+    ]),
     bottomReached() {
       const page = this.pageInfo.nextPage;
       if (page) {
@@ -67,6 +103,13 @@ export default {
 
       this.fetchItems({ page, versionDigest });
     },
+    close() {
+      if (this.withClose) {
+        this.withClose();
+      }
+
+      this.closeDrawer();
+    },
   },
 };
 </script>
@@ -78,33 +121,32 @@ export default {
       v-gl-resize-observer="handleResize"
       aria-labelledby="whats-new-drawer-heading"
       tabindex="0"
-      class="whats-new-drawer gl-reset-line-height gl-focus--focus"
+      class="whats-new-drawer gl-leading-reset focus:gl-focus"
       :header-height="getDrawerHeaderHeight"
       :z-index="700"
       :open="open"
       @opened="focusDrawer"
-      @close="closeDrawer"
+      @close="close"
     >
       <template #title>
-        <h4 id="whats-new-drawer-heading" class="page-title gl-my-2">{{ __("What's new") }}</h4>
+        <h3 id="whats-new-drawer-heading" class="gl-heading-3-fixed gl-my-3 gl-ml-3">
+          {{ __("What's new at GitLab") }}
+        </h3>
       </template>
-      <template v-if="features.length || !fetching">
-        <gl-infinite-scroll
-          :fetched-items="features.length"
-          :max-list-height="drawerBodyHeight"
-          class="gl-p-0"
-          @bottomReached="bottomReached"
-        >
-          <template #items>
-            <feature v-for="feature in features" :key="feature.name" :feature="feature" />
-          </template>
-        </gl-infinite-scroll>
-      </template>
-      <div v-else class="gl-mt-5">
-        <skeleton-loader />
-        <skeleton-loader />
+
+      <div>
+        <other-updates
+          :features="features"
+          :read-articles="readArticles"
+          :total-articles-to-read="mostRecentReleaseItemsCount"
+          :mark-as-read-path="markAsReadPath"
+          :fetching="fetching"
+          :drawer-body-height="drawerBodyHeight"
+          class="other-updates gl-pt-3"
+          @bottom-reached="bottomReached"
+        />
       </div>
     </gl-drawer>
-    <div v-if="open" class="whats-new-modal-backdrop modal-backdrop" @click="closeDrawer"></div>
+    <div v-if="open" class="whats-new-modal-backdrop modal-backdrop" @click="close"></div>
   </div>
 </template>

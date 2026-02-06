@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
+RSpec.describe 'Math rendering', :js, feature_category: :markdown do
   let_it_be(:project) { create(:project, :public) }
 
   it 'renders inline and display math correctly' do
@@ -40,7 +40,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
     create_and_visit_issue_with_description(description)
 
-    page.within '.description > .md' do
+    page.within '.description.md' do
       # unfortunately there is no class selector for KaTeX's "unsupported command"
       # formatting so we must match the style attribute
       expect(page).to have_selector('.katex-html .mord[style*="color:"][style*="#cc0000"]', text: '\href')
@@ -69,8 +69,8 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
       it 'renders lazy load button' do
         create_and_visit_issue_with_description(lazy_load_description)
 
-        page.within '.description > .md' do
-          expect(page).to have_selector('.js-lazy-render-math-container', text: /math block exceeds 1000 characters/)
+        page.within '.description.md' do
+          expect(page).to have_selector('[role="alert"]', text: /math block exceeds 1000 characters/)
         end
       end
 
@@ -83,7 +83,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
         create_and_visit_issue_with_description(description)
 
-        page.within '.description > .md' do
+        page.within '.description.md' do
           expect(page).not_to have_selector('.katex-error')
         end
       end
@@ -91,7 +91,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
       it 'shows error message when too many expansions', :js do
         create_and_visit_issue_with_description(excessive_expansion_description)
 
-        page.within '.description > .md' do
+        page.within '.description.md' do
           click_button 'Display anyway'
 
           expect(page).to have_selector('.katex-error', text: /Too many expansions/)
@@ -111,9 +111,9 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
           # the find is needed to ensure the lazy container is loaded, otherwise
           # it can be a flaky test, similar to
           # https://gitlab.com/gitlab-org/gitlab/-/merge_requests/25408
-          find('.js-lazy-render-math-container')
+          find('[role="alert"]')
 
-          expect(page).to have_selector('.js-lazy-render-math-container', text: /math block exceeds 1000 characters/)
+          expect(page).to have_selector('[role="alert"]', text: /math block exceeds 1000 characters/)
         end
       end
     end
@@ -126,17 +126,16 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
       it 'does not render lazy load button' do
         create_and_visit_issue_with_description(lazy_load_description)
 
-        page.within '.description > .md' do
+        page.within '.description.md' do
           expect(page).not_to have_selector('button', text: 'Display anyway')
-          expect(page)
-            .not_to have_selector('.js-lazy-render-math-container', text: /math block exceeds 1000 characters/)
+          expect(page).not_to have_selector('[role="alert"]', text: /math block exceeds 1000 characters/)
         end
       end
 
       it 'does not show error message when too many expansions', :js do
         create_and_visit_issue_with_description(excessive_expansion_description)
 
-        page.within '.description > .md' do
+        page.within '.description.md' do
           expect(page).not_to have_selector('button', text: 'Display anyway')
           expect(page).not_to have_selector('.katex-error', text: /Too many expansions/)
         end
@@ -153,7 +152,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
     create_and_visit_issue_with_description(description)
 
-    page.within '.description > .md' do
+    page.within '.description.md' do
       expect(page).to have_selector('.katex-error',
         text: /There was an error rendering this math block. KaTeX parse error/)
     end
@@ -168,7 +167,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
     create_and_visit_issue_with_description(description)
 
-    page.within '.description > .md' do
+    page.within '.description.md' do
       expect(page).to have_selector('.katex-error', text: /&amp;lt;script&amp;gt;/)
     end
   end
@@ -182,7 +181,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
     create_and_visit_issue_with_description(description)
 
-    page.within '.description > .md' do
+    page.within '.description.md' do
       expect(page).to have_selector('.math-content-display')
     end
   end
@@ -192,7 +191,7 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
     create_and_visit_issue_with_description(description)
 
-    page.within '.description > .md' do
+    page.within '.description.md' do
       expect(page).to have_selector('.math-content-inline')
     end
   end
@@ -209,10 +208,10 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
       issue = create_and_visit_issue_with_description(description)
 
-      page.within '.description > .md' do
+      page.within '.description.md' do
         click_link 'test link'
 
-        expect(page).to have_current_path(project_issue_path(project, issue))
+        expect(page).to have_current_path(project_work_item_path(project, issue))
       end
     end
 
@@ -223,10 +222,10 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
 
       issue = create_and_visit_issue_with_description(description)
 
-      page.within '.description > .md' do
+      page.within '.description.md' do
         click_link 'test link'
 
-        expect(page).to have_current_path(project_issue_path(project, issue))
+        expect(page).to have_current_path(project_work_item_path(project, issue))
       end
     end
   end
@@ -237,6 +236,13 @@ RSpec.describe 'Math rendering', :js, feature_category: :team_planning do
     visit project_issue_path(project, issue)
 
     wait_for_requests
+
+    # These tests have become flaky because *something* is *sometimes* causing the "Manage" item in the sidebar to
+    # become hovered, popping up its menu, and covering things we want to click with the Manage subitems.
+    # Rather than quarantine the tests forever, let's hover something else that stops this.
+    # "search-icon" seems consistently available, and hovering it doesn't pop anything up, but *does* cause
+    # an existing hover-triggered popup to vanish.
+    find_by_testid('search-icon').hover
 
     issue
   end

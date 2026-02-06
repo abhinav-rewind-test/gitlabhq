@@ -1,3 +1,9 @@
+/*
+Package upload provides functionality for handling file uploads in GitLab Workhorse.
+
+It includes features for processing multipart requests, handling file destinations,
+and extracting EXIF data from uploaded images.
+*/
 package upload
 
 import (
@@ -10,7 +16,7 @@ import (
 	"net/http"
 	"net/textproto"
 
-	"github.com/golang-jwt/jwt/v5"
+	jwt "github.com/golang-jwt/jwt/v5"
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/config"
@@ -20,12 +26,11 @@ import (
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/zipartifacts"
 )
 
+// RewrittenFieldsHeader is the HTTP header used to indicate multipart form fields
+// that have been rewritten by GitLab Workhorse.
 const RewrittenFieldsHeader = "Gitlab-Workhorse-Multipart-Fields"
 
-type PreAuthorizer interface {
-	PreAuthorizeHandler(next api.HandleFunc, suffix string) http.Handler
-}
-
+// MultipartClaims represents the claims included in a JWT token used for multipart requests.
 type MultipartClaims struct {
 	RewrittenFields map[string]string `json:"rewritten_fields"`
 	jwt.RegisteredClaims
@@ -40,6 +45,38 @@ type MultipartFormProcessor interface {
 	Name() string
 	Count() int
 	TransformContents(ctx context.Context, filename string, r io.Reader) (io.ReadCloser, error)
+	IsLsifProcessing() bool
+}
+
+// handleMultipartError handles errors from multipart file rewriting
+func handleMultipartError(w http.ResponseWriter, r *http.Request, err error, h http.Handler) {
+	switch {
+	case errors.Is(err, http.ErrNotMultipart):
+		h.ServeHTTP(w, r)
+	case errors.Is(err, ErrInjectedClientParam) || errors.Is(err, ErrUnexpectedMultipartEOF) || errors.Is(err, http.ErrMissingBoundary):
+		fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest))
+	case errors.Is(err, ErrTooManyFilesUploaded):
+		fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest), fail.WithBody(err.Error()))
+	case errors.Is(err, destination.ErrEntityTooLarge):
+		// For entity too large errors, include the detailed error message that may contain LSIF size info
+		fail.Request(w, r, err, fail.WithStatus(http.StatusRequestEntityTooLarge), fail.WithBody(err.Error()))
+	case errors.Is(err, zipartifacts.ErrBadMetadata):
+		fail.Request(w, r, err, fail.WithStatus(http.StatusRequestEntityTooLarge))
+	case errors.Is(err, exif.ErrRemovingExif):
+		fail.Request(w, r, err, fail.WithStatus(http.StatusUnprocessableEntity),
+			fail.WithBody("Failed to process image"))
+	case errors.Is(err, context.DeadlineExceeded):
+		fail.Request(w, r, err, fail.WithStatus(http.StatusGatewayTimeout), fail.WithBody("deadline exceeded"))
+	default:
+		switch t := err.(type) {
+		case textproto.ProtocolError:
+			fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest))
+		case *api.PreAuthorizeFixedPathError:
+			fail.Request(w, r, err, fail.WithStatus(t.StatusCode), fail.WithBody(t.Status))
+		default:
+			fail.Request(w, r, fmt.Errorf("handleFileUploads: extract files from multipart: %v", err))
+		}
+	}
 }
 
 // interceptMultipartFiles is the core of the implementation of
@@ -47,43 +84,23 @@ type MultipartFormProcessor interface {
 func interceptMultipartFiles(w http.ResponseWriter, r *http.Request, h http.Handler, filter MultipartFormProcessor, fa fileAuthorizer, p Preparer, cfg *config.Config) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	defer writer.Close()
+	defer func() {
+		if writerErr := writer.Close(); writerErr != nil {
+			_, _ = fmt.Fprintln(w, writerErr.Error())
+		}
+	}()
 
 	// Rewrite multipart form data
 	err := rewriteFormFilesFromMultipart(r, writer, filter, fa, p, cfg)
 	if err != nil {
-		switch err {
-		case http.ErrNotMultipart:
-			h.ServeHTTP(w, r)
-		case ErrInjectedClientParam, ErrUnexpectedMultipartEOF, http.ErrMissingBoundary:
-			fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest))
-		case ErrTooManyFilesUploaded:
-			fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest), fail.WithBody(err.Error()))
-		case destination.ErrEntityTooLarge, zipartifacts.ErrBadMetadata:
-			fail.Request(w, r, err, fail.WithStatus(http.StatusRequestEntityTooLarge))
-		case exif.ErrRemovingExif:
-			fail.Request(w, r, err, fail.WithStatus(http.StatusUnprocessableEntity),
-				fail.WithBody("Failed to process image"))
-		default:
-			if errors.Is(err, context.DeadlineExceeded) {
-				fail.Request(w, r, err, fail.WithStatus(http.StatusGatewayTimeout), fail.WithBody("deadline exceeded"))
-				return
-			}
-
-			switch t := err.(type) {
-			case textproto.ProtocolError:
-				fail.Request(w, r, err, fail.WithStatus(http.StatusBadRequest))
-			case *api.PreAuthorizeFixedPathError:
-				fail.Request(w, r, err, fail.WithStatus(t.StatusCode), fail.WithBody(t.Status))
-			default:
-				fail.Request(w, r, fmt.Errorf("handleFileUploads: extract files from multipart: %v", err))
-			}
-		}
+		handleMultipartError(w, r, err, h)
 		return
 	}
 
 	// Close writer
-	writer.Close()
+	if writerErr := writer.Close(); writerErr != nil {
+		_, _ = fmt.Fprintln(w, writerErr.Error())
+	}
 
 	// Hijack the request
 	r.Body = io.NopCloser(&body)

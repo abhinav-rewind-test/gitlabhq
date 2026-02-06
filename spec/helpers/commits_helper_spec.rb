@@ -5,6 +5,43 @@ require 'spec_helper'
 RSpec.describe CommitsHelper do
   include ProjectForksHelper
 
+  describe '#commit_list_app_data' do
+    let_it_be(:project) { create(:project, :repository) }
+    let(:ref) { 'feature-branch' }
+    let(:ref_type) { 'heads' }
+    let(:id) { 'commit-id' }
+    let(:path) { 'app/javascript/components/app.js' }
+
+    before do
+      assign(:project, project)
+      assign(:ref, ref)
+      assign(:ref_type, ref_type)
+      assign(:id, id)
+      assign(:path, path)
+
+      allow(helper).to receive(:project_commits_path).with(project, id, { format: :atom }).and_return("/#{project.full_path}/-/commits/#{id}.atom")
+      allow(helper).to receive(:path_to_browse_file_or_directory).with(project, ref, path).and_return("/#{project.full_path}/-/tree/#{ref}/#{path}")
+      allow(helper).to receive(:rss_url_options).and_return({ format: :atom })
+    end
+
+    subject { helper.commit_list_app_data }
+
+    it 'returns the correct data to commits app' do
+      expect(subject).to include({
+        'project_full_path' => project.full_path,
+        'project_root_path' => "/#{project.full_path}",
+        'project_path' => project.path,
+        'project_id' => project.id.to_s,
+        'escaped_ref' => ref,
+        'ref_type' => ref_type.to_s,
+        'root_ref' => project.default_branch,
+        'browse_files_path' => "/#{project.full_path}/-/tree/#{ref}/#{path}",
+        'commits_feed_path' => "/#{project.full_path}/-/commits/#{id}.atom",
+        'base_path' => "/#{project.full_path}/-/commits"
+      })
+    end
+  end
+
   describe 'commit_author_link' do
     it 'escapes the author email' do
       commit = double(
@@ -219,19 +256,46 @@ RSpec.describe CommitsHelper do
 
   describe '#cherry_pick_projects_data' do
     let(:project) { create(:project, :repository) }
-    let(:user) { create(:user, maintainer_projects: [project]) }
+    let(:user) { create(:user, maintainer_of: project) }
     let!(:forked_project) { fork_project(project, user, { namespace: user.namespace, repository: true }) }
 
     before do
       allow(helper).to receive(:current_user).and_return(user)
     end
 
-    it 'returns data for cherry picking into a project' do
-      expect(helper.cherry_pick_projects_data(forked_project)).to match_array(
-        [
-          { id: project.id.to_s, name: project.full_path, refsUrl: refs_project_path(project) },
-          { id: forked_project.id.to_s, name: forked_project.full_path, refsUrl: refs_project_path(forked_project) }
-        ])
+    context 'when user has push permissions to both projects' do
+      it 'returns data for both the original and forked project' do
+        expect(helper.cherry_pick_projects_data(forked_project)).to match_array(
+          [
+            { id: project.id.to_s, name: project.full_path, refsUrl: refs_project_path(project) },
+            { id: forked_project.id.to_s, name: forked_project.full_path, refsUrl: refs_project_path(forked_project) }
+          ])
+      end
+    end
+
+    context 'when user lacks push permissions to the original project' do
+      before do
+        project.add_guest(user)
+      end
+
+      it 'only returns data for the forked project' do
+        expect(helper.cherry_pick_projects_data(forked_project)).to match_array(
+          [
+            { id: forked_project.id.to_s, name: forked_project.full_path, refsUrl: refs_project_path(forked_project) }
+          ])
+      end
+    end
+
+    context 'when user lacks push permissions to both projects' do
+      let(:other_user) { create(:user) }
+
+      before do
+        allow(helper).to receive(:current_user).and_return(other_user)
+      end
+
+      it 'returns an empty array' do
+        expect(helper.cherry_pick_projects_data(forked_project)).to eq([])
+      end
     end
   end
 
@@ -396,6 +460,41 @@ RSpec.describe CommitsHelper do
 
       it 'uses system timezone' do
         is_expected.to eq('2023-01-01')
+      end
+    end
+  end
+
+  describe '#path_to_browse_file_or_directory' do
+    let_it_be(:project) { create(:project, :repository) }
+    let(:ref) { 'my-branch' }
+
+    before do
+      assign(:repo, project.repository)
+    end
+
+    context 'if path is empty' do
+      let(:path) { '' }
+
+      it 'links to tree at root directory' do
+        expect(helper.path_to_browse_file_or_directory(project, ref, path)).to eq("/#{project.full_path}/-/tree/#{ref}")
+      end
+    end
+
+    context 'if the path is a directory' do
+      let(:path) { 'path/to/directory' }
+
+      it 'links to tree at path' do
+        allow(helper).to receive(:commit_blob).and_return(nil)
+        expect(helper.path_to_browse_file_or_directory(project, ref, path)).to eq("/#{project.full_path}/-/tree/#{ref}/#{path}")
+      end
+    end
+
+    context 'if the path is a file' do
+      let(:path) { 'path/to/file.txt' }
+
+      it 'links to blob at path' do
+        allow(helper).to receive(:commit_blob).and_return(true)
+        expect(helper.path_to_browse_file_or_directory(project, ref, path)).to eq("/#{project.full_path}/-/blob/#{ref}/#{path}")
       end
     end
   end

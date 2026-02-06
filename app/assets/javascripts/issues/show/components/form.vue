@@ -22,10 +22,6 @@ export default {
     LockedWarning,
   },
   props: {
-    endpoint: {
-      type: String,
-      required: true,
-    },
     formState: {
       type: Object,
       required: true,
@@ -58,11 +54,6 @@ export default {
     projectNamespace: {
       type: String,
       required: true,
-    },
-    canAttachFile: {
-      type: Boolean,
-      required: false,
-      default: true,
     },
     enableAutocomplete: {
       type: Boolean,
@@ -164,7 +155,7 @@ export default {
 </script>
 
 <template>
-  <form data-testid="issuable-form">
+  <form data-testid="issuable-form" class="gl-mt-1">
     <locked-warning v-if="showLockedWarning" :issuable-type="issuableType" />
     <gl-alert
       v-if="showOutdatedDescriptionWarning"
@@ -182,16 +173,19 @@ export default {
       }}</gl-alert
     >
     <div class="row gl-mb-3">
-      <div class="col-12">
+      <div class="gl-col-12">
         <issuable-title-field ref="title" v-model="formData.title" @input="updateTitleDraft" />
       </div>
     </div>
     <div class="row gl-gap-3">
-      <div v-if="showTypeField" class="col-12 col-md-4 pr-md-0">
+      <div v-if="showTypeField" class="gl-col-12 gl-col-md-4 @md/panel:!gl-pr-0">
         <issuable-type-field ref="issue-type" />
       </div>
 
-      <div v-if="hasIssuableTemplates" class="col-12 col-md-4 gl-md-pl-0 gl-md-pr-0">
+      <div
+        v-if="hasIssuableTemplates"
+        class="gl-col-12 gl-col-md-4 @md/panel:gl-pl-0 @md/panel:gl-pr-0"
+      >
         <description-template-field
           v-model="formData.description"
           :issuable-templates="issuableTemplates"
@@ -207,11 +201,10 @@ export default {
       v-model="formData.description"
       :markdown-preview-path="markdownPreviewPath"
       :markdown-docs-path="markdownDocsPath"
-      :can-attach-file="canAttachFile"
       :enable-autocomplete="enableAutocomplete"
       @input="updateDescriptionDraft"
     />
 
-    <edit-actions :endpoint="endpoint" :form-state="formState" :issuable-type="issuableType" />
+    <edit-actions :form-state="formState" />
   </form>
 </template>

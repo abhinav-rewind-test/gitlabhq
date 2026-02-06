@@ -3,11 +3,14 @@
 require 'spec_helper'
 
 RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_composition do
-  let_it_be(:project) { create(:project, :empty_repo) }
+  let_it_be_with_reload(:project) { create(:project, :empty_repo) }
   let(:sha) { '123456' }
   let(:content) { nil }
   let(:source) { :push }
   let(:bridge) { nil }
+  let(:triggered_for_branch) { true }
+  let(:ref) { 'master' }
+  let(:inputs) { nil }
 
   subject(:config) do
     described_class.new(
@@ -15,7 +18,10 @@ RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_compositio
       sha: sha,
       custom_content: content,
       pipeline_source: source,
-      pipeline_source_bridge: bridge
+      pipeline_source_bridge: bridge,
+      triggered_for_branch: triggered_for_branch,
+      ref: ref,
+      inputs: inputs
     )
   end
 
@@ -24,7 +30,7 @@ RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_compositio
   end
 
   context 'when bridge job is passed in as parameter' do
-    let(:ci_config_path) { nil }
+    let(:ci_config_path) { 'path/to/config.yml' }
     let(:bridge) { build_stubbed(:ci_bridge) }
 
     before do
@@ -34,7 +40,15 @@ RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_compositio
     it 'returns the content already available in command' do
       expect(config.source).to eq(:bridge_source)
       expect(config.content).to eq('the-yaml')
-      expect(config.url).to be_nil
+      expect(config.url).to eq("localhost/#{project.full_path}//path/to/config.yml")
+    end
+
+    context "with nil ci_config_path" do
+      let(:ci_config_path) { nil }
+
+      it 'returns the default location' do
+        expect(config.url).to end_with("localhost/#{project.full_path}//.gitlab-ci.yml")
+      end
     end
   end
 
@@ -137,6 +151,25 @@ RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_compositio
       expect(config.content).to eq(config_content_result)
       expect(config.url).to eq("localhost/#{project.full_path}//.gitlab-ci.yml")
     end
+
+    context 'when passing inputs' do
+      let(:inputs) { { 'foo' => 'bar' } }
+      let(:config_content_result) do
+        <<~CICONFIG
+          ---
+          include:
+          - local: ".gitlab-ci.yml"
+            inputs:
+              foo: bar
+        CICONFIG
+      end
+
+      it 'returns root config with inputs' do
+        expect(config.source).to eq(:repository_source)
+        expect(config.content).to eq(config_content_result)
+        expect(config.url).to eq("localhost/#{project.full_path}//.gitlab-ci.yml")
+      end
+    end
   end
 
   context 'when config is the Auto-Devops template' do
@@ -189,6 +222,33 @@ RSpec.describe Gitlab::Ci::ProjectConfig, feature_category: :pipeline_compositio
       expect(config.source).to be_nil
       expect(config.content).to be_nil
       expect(config.url).to be_nil
+    end
+  end
+
+  describe '#external?' do
+    using RSpec::Parameterized::TableSyntax
+
+    subject { config.external? }
+
+    let(:ci_config_path) { nil }
+
+    where(:config_source, :expected_result) do
+      :external_project_source  | true
+      :remote_source            | true
+      :auto_devops_source       | false
+      :bridge_source            | false
+      :compliance_source        | false
+      :parameter_source         | false
+      :repository_source        | false
+      nil                       | false
+    end
+
+    with_them do
+      before do
+        allow(config).to receive(:source).and_return(config_source)
+      end
+
+      it { is_expected.to be expected_result }
     end
   end
 end

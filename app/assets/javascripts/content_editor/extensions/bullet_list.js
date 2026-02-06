@@ -1,5 +1,5 @@
 import { BulletList } from '@tiptap/extension-bullet-list';
-import { getMarkdownSource } from '../services/markdown_sourcemap';
+import { getMarkdownSource } from '../services/markdown_source';
 
 export default BulletList.extend({
   addOptions() {
@@ -18,7 +18,7 @@ export default BulletList.extend({
       bullet: {
         default: '*',
         parseHTML(element) {
-          const bullet = getMarkdownSource(element)?.charAt(0);
+          const bullet = getMarkdownSource(element)?.trim().charAt(0);
 
           return '*+-'.includes(bullet) ? bullet : '*';
         },

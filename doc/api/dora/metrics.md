@@ -1,26 +1,29 @@
 ---
-stage: Plan
+stage: Analytics
 group: Optimize
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Retrieve project and group DORA metrics with the REST API.
+title: DevOps Research and Assessment (DORA) metrics API
 ---
 
-# DevOps Research and Assessment (DORA) key metrics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/279039) in GitLab 13.10.
-> - The legacy key/value pair `{ "<date>" => "<value>" }` was removed from the payload in GitLab 14.0.
-> - `time_to_restore_service` metric was introduced in GitLab 14.9.
+{{< /details >}}
 
-You can also retrieve [DORA metrics](../../user/analytics/dora_metrics.md) with the [GraphQL API](../../api/graphql/reference/index.md).
+Use this API to retrieve details of [DORA metrics](../../user/analytics/dora_metrics.md) for your groups and projects.
 
-All methods require at least the Reporter role.
+Additional endpoints are available with the [GraphQL API](../graphql/reference/_index.md).
 
-## Get project-level DORA metrics
+Prerequisites:
 
-Get project-level DORA metrics.
+- You must have at least the Reporter role.
+
+## Retrieve project-level DORA metrics
+
+Retrieves DORA metrics for a specified project.
 
 ```plaintext
 GET /projects/:id/dora/metrics
@@ -28,10 +31,10 @@ GET /projects/:id/dora/metrics
 
 | Attribute            | Type             | Required | Description |
 |:---------------------|:-----------------|:---------|:------------|
-| `id`                 | integer/string   | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding) can be accessed by the authenticated user. |
+| `id`                 | integer or string   | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths) can be accessed by the authenticated user. |
 | `metric`             | string           | yes      | One of `deployment_frequency`, `lead_time_for_changes`, `time_to_restore_service` or `change_failure_rate`. |
 | `end_date`           | string           | no       | Date range to end at. ISO 8601 Date format, for example `2021-03-01`. Default is the current date. |
-| `environment_tiers`  | array of strings | no       | The [tiers of the environments](../../ci/environments/index.md#deployment-tier-of-environments). Default is `production`. |
+| `environment_tiers`  | array of strings | no       | The [tiers of the environments](../../ci/environments/_index.md#deployment-tier-of-environments). Default is `production`. |
 | `interval`           | string           | no       | The bucketing interval. One of `all`, `monthly` or `daily`. Default is `daily`. |
 | `start_date`         | string           | no       | Date range to start from. ISO 8601 Date format, for example `2021-03-01`. Default is 3 months ago. |
 
@@ -56,11 +59,9 @@ Example response:
 ]
 ```
 
-## Get group-level DORA metrics
+## Retrieve group-level DORA metrics
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/279039) in GitLab 13.10.
-
-Get group-level DORA metrics.
+Retrieves DORA metrics for a specified group.
 
 ```plaintext
 GET /groups/:id/dora/metrics
@@ -68,10 +69,10 @@ GET /groups/:id/dora/metrics
 
 | Attribute           | Type             | Required | Description |
 |:--------------------|:-----------------|:---------|:------------|
-| `id`                | integer/string   | yes      | The ID or [URL-encoded path of the project](../rest/index.md#namespaced-path-encoding) can be accessed by the authenticated user. |
+| `id`                | integer or string   | yes      | The ID or [URL-encoded path of the project](../rest/_index.md#namespaced-paths) can be accessed by the authenticated user. |
 | `metric`            | string           | yes      | One of `deployment_frequency`, `lead_time_for_changes`, `time_to_restore_service` or `change_failure_rate`. |
 | `end_date`          | string           | no       | Date range to end at. ISO 8601 Date format, for example `2021-03-01`. Default is the current date. |
-| `environment_tiers` | array of strings | no       | The [tiers of the environments](../../ci/environments/index.md#deployment-tier-of-environments). Default is `production`. |
+| `environment_tiers` | array of strings | no       | The [tiers of the environments](../../ci/environments/_index.md#deployment-tier-of-environments). Default is `production`. |
 | `interval`          | string           | no       | The bucketing interval. One of `all`, `monthly` or `daily`. Default is `daily`. |
 | `start_date`        | string           | no       | Date range to start from. ISO 8601 Date format, for example `2021-03-01`. Default is 3 months ago. |
 
@@ -98,7 +99,7 @@ Example response:
 
 ## The `value` field
 
-For both the project and group-level endpoints above, the `value` field in the
+For both the project and group-level endpoints described previously, the `value` field in the
 API response has a different meaning depending on the provided `metric` query
 parameter:
 
@@ -109,5 +110,5 @@ parameter:
 | `lead_time_for_changes`    | The median number of seconds between the merge of the merge request (MR) and the deployment of the MR commits for all MRs deployed during the time period. |
 | `time_to_restore_service`  | The median number of seconds an incident was open during the time period. Available only for production environment. |
 
-NOTE:
-The API returns the `monthly` and `all` intervals by calculating the median of the daily median values. This can introduce a slight inaccuracy in the returned data.
+> [!note]
+> The API returns the `monthly` and `all` intervals by calculating the median of the daily median values. This can introduce a slight inaccuracy in the returned data.

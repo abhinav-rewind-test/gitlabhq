@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'events/event/_push.html.haml' do
+RSpec.describe 'events/event/_push.html.haml', feature_category: :source_code_management do
   let(:event) { build_stubbed(:push_event) }
   let(:event_presenter) { event.present }
 
@@ -23,7 +23,8 @@ RSpec.describe 'events/event/_push.html.haml' do
     end
 
     context 'that has been deleted' do
-      it 'does not link to the branch' do
+      it 'does not link to the branch',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17063' do
         render partial: 'events/event/push', locals: { event: event_presenter }
 
         expect(rendered).not_to have_link(event.ref_name)

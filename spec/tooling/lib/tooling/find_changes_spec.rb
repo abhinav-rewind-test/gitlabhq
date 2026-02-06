@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../../../../tooling/lib/tooling/find_changes'
-require 'gitlab/rspec/all'
+require 'fast_spec_helper'
 require 'json'
 require 'tempfile'
 
@@ -27,6 +27,10 @@ RSpec.describe Tooling::FindChanges, feature_category: :tooling do
   let(:gitlab_client)                      { double('GitLab') } # rubocop:disable RSpec/VerifiedDoubles
   let(:file_filter)                        { ->(_) { true } }
   let(:only_new_paths)                     { false }
+  let(:project_token)                      { 'dummy-token' }
+  let(:find_changes_api_token)             { nil }
+  let(:find_changes_mr_project_path)       { nil }
+  let(:find_changes_mr_iid)                { nil }
 
   around do |example|
     self.changed_files_file             = Tempfile.new('changed_files_file')
@@ -52,7 +56,10 @@ RSpec.describe Tooling::FindChanges, feature_category: :tooling do
       'CI_API_V4_URL' => 'gitlab_api_url',
       'CI_MERGE_REQUEST_IID' => '1234',
       'CI_MERGE_REQUEST_PROJECT_PATH' => 'dummy-project',
-      'PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE' => 'dummy-token'
+      'PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE' => project_token,
+      'FIND_CHANGES_API_TOKEN' => find_changes_api_token,
+      'FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH' => find_changes_mr_project_path,
+      'FIND_CHANGES_MERGE_REQUEST_IID' => find_changes_mr_iid
     )
   end
 
@@ -66,6 +73,64 @@ RSpec.describe Tooling::FindChanges, feature_category: :tooling do
         )
       end
     end
+
+    describe '#gitlab_token' do
+      it 'sets to PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE' do
+        expect(instance.__send__(:gitlab_token)).to eq('dummy-token')
+      end
+
+      context 'when FIND_CHANGES_API_TOKEN is set' do
+        let(:find_changes_api_token) { 'mummy-token' }
+
+        it 'sets to PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE' do
+          expect(instance.__send__(:gitlab_token)).to eq('dummy-token')
+        end
+
+        context 'when FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH is set' do
+          let(:find_changes_mr_project_path) { 'mummy-project' }
+
+          it 'sets to PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE' do
+            expect(instance.__send__(:gitlab_token)).to eq('mummy-token')
+          end
+        end
+      end
+
+      context 'when PROJECT_TOKEN_FOR_CI_SCRIPTS_API_USAGE is not set' do
+        let(:project_token) { nil }
+
+        it 'sets to an empty string' do
+          expect(instance.__send__(:gitlab_token)).to eq('')
+        end
+      end
+    end
+
+    describe '#mr_project_path' do
+      it 'sets to CI_MERGE_REQUEST_PROJECT_PATH' do
+        expect(instance.__send__(:mr_project_path)).to eq('dummy-project')
+      end
+
+      context 'when FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH is set' do
+        let(:find_changes_mr_project_path) { 'mummy-project' }
+
+        it 'sets to FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH' do
+          expect(instance.__send__(:mr_project_path)).to eq('mummy-project')
+        end
+      end
+    end
+
+    describe '#mr_iid' do
+      it 'sets to CI_MERGE_REQUEST_PROJECT_PATH' do
+        expect(instance.__send__(:mr_iid)).to eq('1234')
+      end
+
+      context 'when FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH is set' do
+        let(:find_changes_mr_iid) { '1357' }
+
+        it 'sets to FIND_CHANGES_MERGE_REQUEST_PROJECT_PATH' do
+          expect(instance.__send__(:mr_iid)).to eq('1357')
+        end
+      end
+    end
   end
 
   describe '#execute' do
@@ -75,23 +140,42 @@ RSpec.describe Tooling::FindChanges, feature_category: :tooling do
       allow(instance).to receive(:gitlab).and_return(gitlab_client)
     end
 
-    context 'when there is no changed files file' do
-      let(:changed_files_pathname) { nil }
-
-      it 'raises an ArgumentError' do
-        expect { subject }.to raise_error(
-          ArgumentError, "A path to the changed files file must be given as :changed_files_pathname"
-        )
-      end
-    end
-
     context 'when fetching changes from API' do
       let(:from) { :api }
+      let(:mr_changes_array) { [] }
+
+      before do
+        # rubocop:disable RSpec/VerifiedDoubles -- The class from the GitLab gem isn't public, so we cannot use verified doubles for it.
+        allow(gitlab_client).to receive(:merge_request_changes)
+          .with('dummy-project', '1234')
+          .and_return(double(changes: mr_changes_array))
+        # rubocop:enable RSpec/VerifiedDoubles
+      end
 
       it 'calls GitLab API to retrieve the MR diff' do
         expect(gitlab_client).to receive_message_chain(:merge_request_changes, :changes).and_return([])
 
         subject
+      end
+
+      context 'when there is no changed files file' do
+        let(:changed_files_pathname) { nil }
+        let(:mr_changes_array) do
+          [
+            {
+              "new_path" => "scripts/test.js",
+              "old_path" => "scripts/test.js"
+            },
+            {
+              "new_path" => "doc/index.md",
+              "old_path" => "doc/index.md"
+            }
+          ]
+        end
+
+        it 'returns changed files array' do
+          expect(subject).to match_array(["scripts/test.js", "doc/index.md"])
+        end
       end
 
       context 'when used with file_filter' do

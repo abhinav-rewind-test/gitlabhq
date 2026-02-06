@@ -7,15 +7,16 @@ RSpec.describe Gitlab::GithubImport::Importer::Attachments::NotesImporter, featu
 
   let_it_be(:project) { create(:project) }
 
-  let(:client) { instance_double(Gitlab::GithubImport::Client) }
+  let(:client) { instance_double(Gitlab::GithubImport::Client, web_endpoint: "https://github.com") }
 
-  describe '#sequential_import', :clean_gitlab_redis_cache do
-    let_it_be(:note) { create(:note, project: project) }
+  describe '#sequential_import', :clean_gitlab_redis_shared_state do
+    let_it_be(:note) { create(:note, project: project, importing: true) }
 
     let_it_be(:note_with_attachment) do
       create(:note,
         project: project,
-        note: "![image](https://user-images.githubusercontent.com/1/uuid-1.png)"
+        note: "![image](https://user-images.githubusercontent.com/1/uuid-1.png)",
+        importing: true
       )
     end
 
@@ -23,7 +24,8 @@ RSpec.describe Gitlab::GithubImport::Importer::Attachments::NotesImporter, featu
       create(:note,
         :system,
         project: project,
-        note: "![image](https://user-images.githubusercontent.com/1/uuid-1.png)"
+        note: "![image](https://user-images.githubusercontent.com/1/uuid-1.png)",
+        importing: true
       )
     end
 
@@ -64,7 +66,12 @@ RSpec.describe Gitlab::GithubImport::Importer::Attachments::NotesImporter, featu
       end
 
       it 'does not execute importer for the note with an attachment' do
-        expect(Gitlab::GithubImport::Importer::NoteAttachmentsImporter).not_to receive(:new)
+        expect(Gitlab::GithubImport::Importer::NoteAttachmentsImporter).not_to receive(:new).with(
+          anything,
+          project.id,
+          hash_including("id" => note_with_attachment.id),
+          anything
+        )
 
         importer.sequential_import
       end

@@ -1,4 +1,4 @@
-import { shallowMount } from '@vue/test-utils';
+import { shallowMount, mount } from '@vue/test-utils';
 import Line from '~/ci/job_details/components/log/line.vue';
 import LineNumber from '~/ci/job_details/components/log/line_number.vue';
 import setWindowLocation from 'helpers/set_window_location_helper';
@@ -24,9 +24,10 @@ describe('Job Log Line', () => {
   let wrapper;
   let data;
 
-  const createComponent = (props = {}) => {
-    wrapper = shallowMount(Line, {
+  const createComponent = (props, mountFn = shallowMount) => {
+    wrapper = mountFn(Line, {
       propsData: {
+        path: '/',
         ...props,
       },
     });
@@ -46,12 +47,29 @@ describe('Job Log Line', () => {
     expect(wrapper.findComponent(LineNumber).exists()).toBe(true);
   });
 
-  it('renders a span the provided text', () => {
+  it('renders a span with provided text', () => {
     expect(findLine().text()).toBe(data.line.content[0].text);
   });
 
+  it('renders a span with multiple parts of text', () => {
+    createComponent({
+      line: {
+        content: [
+          { text: 'A line that ', style: 'style-1' },
+          { text: 'continues.', style: 'style-2' },
+        ],
+        lineNumber: 0,
+      },
+    });
+
+    expect(findLine().text()).toBe('A line that continues.');
+    expect(findLine().element.innerHTML).toBe(
+      '<span class="style-1">A line that </span><span class="style-2">continues.</span>',
+    );
+  });
+
   it('renders the provided style as a class attribute', () => {
-    expect(findLine().classes()).toContain(data.line.content[0].style);
+    expect(findLine().find(`.${data.line.content[0].style}`).exists()).toBe(true);
   });
 
   describe('job urls as links', () => {
@@ -78,7 +96,7 @@ describe('Job Log Line', () => {
     it('renders a link with corresponding styles', () => {
       createComponent(mockProps({ text: httpsUrl }));
 
-      expect(findLink().classes()).toEqual(['gl-reset-color!', 'gl-text-decoration-underline']);
+      expect(findLink().classes()).toEqual(['!gl-text-inherit', 'gl-underline']);
     });
 
     it('renders links with queries, surrounded by questions marks', () => {
@@ -103,6 +121,16 @@ describe('Job Log Line', () => {
       expect(findLine().text()).toBe(url);
       expect(findLinks().at(0).text()).toBe(url);
       expect(findLinks().at(0).attributes('href')).toBe(url);
+    });
+
+    it('renders links surrounded by brackets `[]`', () => {
+      const url = `[${httpUrl}]`;
+
+      createComponent(mockProps({ text: url }));
+
+      expect(findLine().text()).toBe(url);
+      expect(findLinks().at(0).text()).toBe(httpUrl);
+      expect(findLinks().at(0).attributes('href')).toBe(httpUrl);
     });
 
     it('renders multiple links surrounded by text', () => {
@@ -156,6 +184,26 @@ describe('Job Log Line', () => {
       expect(links.at(2).attributes('href')).toBe(httpsUrl);
     });
 
+    it('renders a link when URL is wrapped with single or double quotes', () => {
+      const mockUrlOne = 'https://gitlab.com/gitlab-org/gitlab';
+      const mockUrlTwo = 'https://gitlab.example.com';
+
+      createComponent(mockProps({ text: `'${mockUrlOne}' "${mockUrlTwo}"` }));
+
+      const links = findLinks();
+
+      expect(links).toHaveLength(2);
+      expect(findLine().text()).toBe(`'${mockUrlOne}' "${mockUrlTwo}"`);
+
+      // First link - single quoted
+      expect(links.at(0).text()).toBe(mockUrlOne);
+      expect(links.at(0).attributes('href')).toBe(mockUrlOne);
+
+      // Second link - double quoted
+      expect(links.at(1).text()).toBe(mockUrlTwo);
+      expect(links.at(1).attributes('href')).toBe(mockUrlTwo);
+    });
+
     it('renders text with symbols in it', () => {
       const text = 'apt-get update < /dev/null > /dev/null';
       createComponent(mockProps({ text }));
@@ -181,6 +229,28 @@ describe('Job Log Line', () => {
     });
   });
 
+  describe('job line time', () => {
+    it('shows a time', () => {
+      const lineNumber = 1;
+      const time = '00:00:01Z';
+      const text = 'text';
+
+      createComponent(
+        {
+          line: {
+            time,
+            content: [{ text }],
+            lineNumber,
+          },
+          path: '/',
+        },
+        mount,
+      );
+
+      expect(wrapper.text()).toBe(`${lineNumber}${time}${text}`);
+    });
+  });
+
   describe('job log search', () => {
     it('applies highlight class to search result elements', () => {
       createComponent({
@@ -194,7 +264,7 @@ describe('Job Log Line', () => {
         isHighlighted: true,
       });
 
-      expect(wrapper.classes()).toContain('gl-bg-gray-700');
+      expect(wrapper.classes()).toContain('job-log-line-highlight');
     });
 
     it('does not apply highlight class to search result elements', () => {
@@ -208,7 +278,7 @@ describe('Job Log Line', () => {
         path: '/root/ci-project/-/jobs/1089',
       });
 
-      expect(wrapper.classes()).not.toContain('gl-bg-gray-700');
+      expect(wrapper.classes()).not.toContain('job-log-line-highlight');
     });
   });
 
@@ -229,7 +299,7 @@ describe('Job Log Line', () => {
           path: '/root/ci-project/-/jobs/6353',
         });
 
-        expect(wrapper.classes()).toContain('gl-bg-gray-700');
+        expect(wrapper.classes()).toContain('job-log-line-highlight');
       });
     });
 
@@ -249,7 +319,7 @@ describe('Job Log Line', () => {
           path: '/root/ci-project/-/jobs/6353',
         });
 
-        expect(wrapper.classes()).not.toContain('gl-bg-gray-700');
+        expect(wrapper.classes()).not.toContain('job-log-line-highlight');
       });
     });
   });

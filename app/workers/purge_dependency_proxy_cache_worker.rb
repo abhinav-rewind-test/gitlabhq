@@ -4,14 +4,14 @@ class PurgeDependencyProxyCacheWorker
   include ApplicationWorker
   include DependencyProxy::Expireable
 
-  data_consistency :always
+  data_consistency :delayed
 
   sidekiq_options retry: 3
   include Gitlab::Allowable
   idempotent!
 
   queue_namespace :dependency_proxy
-  feature_category :dependency_proxy
+  feature_category :virtual_registry
 
   def perform(current_user_id, group_id)
     @current_user = User.find_by_id(current_user_id)

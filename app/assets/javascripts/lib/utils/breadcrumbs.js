@@ -1,27 +1,38 @@
 import Vue from 'vue';
+import { destroySuperSidebarBreadcrumbs } from '~/super_sidebar/super_sidebar_breadcrumbs';
+import { staticBreadcrumbs } from './breadcrumbs_state';
 
-// TODO: Review replacing this when a breadcrumbs ViewComponent has been created https://gitlab.com/gitlab-org/gitlab/-/issues/367326
-export const injectVueAppBreadcrumbs = (router, BreadcrumbsComponent, apolloProvider = null) => {
-  const breadcrumbEls = document.querySelectorAll('nav .js-breadcrumbs-list li');
+export const injectVueAppBreadcrumbs = (
+  router,
+  BreadcrumbsComponent,
+  apolloProvider = null,
+  provide = {},
+  // eslint-disable-next-line max-params
+) => {
+  const injectBreadcrumbEl = document.querySelector('#js-injected-page-breadcrumbs');
 
-  if (breadcrumbEls.length < 1) {
+  if (!injectBreadcrumbEl) {
     return false;
   }
 
-  const breadcrumbEl = breadcrumbEls[breadcrumbEls.length - 1];
+  destroySuperSidebarBreadcrumbs();
 
-  const lastCrumb = breadcrumbEl.children[0];
-  const nestedBreadcrumbEl = document.createElement('div');
-
-  breadcrumbEl.replaceChild(nestedBreadcrumbEl, lastCrumb);
+  const { items } = staticBreadcrumbs;
 
   return new Vue({
-    el: nestedBreadcrumbEl,
+    el: injectBreadcrumbEl,
+    name: 'CustomBreadcrumbsRoot',
     router,
     apolloProvider,
+    provide,
     render(createElement) {
       return createElement(BreadcrumbsComponent, {
-        class: breadcrumbEl.className,
+        class: injectBreadcrumbEl.className,
+        props: {
+          allStaticBreadcrumbs: items.slice(),
+          // Use if your app is replacing the last breadcrumb item as root
+          staticBreadcrumbs: items.slice(0, -1),
+        },
       });
     },
   });

@@ -1,16 +1,15 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Getting started
 ---
 
-# Getting started
+This page will guide you through the Frontend development process and show you what a normal merge request cycle looks like. You can find more about the organization of the frontend team in the [handbook](https://handbook.gitlab.com/handbook/engineering/frontend/).
 
-This page will guide you through the Frontend development process and show you what a normal Merge Request cycle looks like. You can find more about the organization of the frontend team in the [handbook](https://handbook.gitlab.com/handbook/engineering/frontend/).
+There are a lot of things to consider for a first merge request and it can feel overwhelming. The [Frontend onboarding course](onboarding_course/_index.md) provides a 6-week structured curriculum to learn how to contribute to the GitLab frontend.
 
-There are a lot of things to consider for a first merge request and it can feel overwhelming. The [Frontend onboarding course](onboarding_course/index.md) provides a 6-week structured curriculum to learn how to contribute to the GitLab frontend.
-
-## Development life cycle
+## Development lifecycle
 
 ### Step 1: Preparing the issue
 
@@ -24,7 +23,7 @@ Before writing code, make sure to ask yourself the following questions and have 
   - If this is GraphQL, write a query proposal and ask your BE counterpart to confirm they are in agreement.
 - Can I use [GitLab UI components](https://gitlab-org.gitlab.io/gitlab-ui/?path=/docs/base-accordion--docs)? Which components are appropriate and do they have all of the functionality that I need?
 - Are there existing components or utilities in the GitLab project that I could use?
-- [Should this change live behind a Feature Flag](https://handbook.gitlab.com/handbook/product-development-flow/feature-flag-lifecycle/#when-to-use-feature-flags)?
+- [Should this change live behind a feature flag](https://handbook.gitlab.com/handbook/product-development/how-we-work/product-development-flow/feature-flag-lifecycle/#when-to-use-feature-flags)?
 - In which directory should this code live?
 - Should I build part of this feature as reusable? If so, where should it live in the codebase and how do I make it discoverable?
   - Note: For now this is still being considered, but the `vue_shared` folder is still the preferred directory for GitLab-wide components.
@@ -37,7 +36,7 @@ If all of these questions have an answer, then you can safely move on to writing
 
 Make sure to communicate with your team as you progress or if you are unable to work on a planned issue for a long period of time.
 
-If you require assistance, make sure to push your branch and share your Merge Request either directly to a teammate or in the Slack channel `#frontend` to get advice on how to move forward. You can [mark your Merge Request as a draft](../../user/project/merge_requests/drafts.md), which will clearly communicate that it is not ready for a full on review. Always remember to have a [low level of shame](https://handbook.gitlab.com/handbook/values/#low-level-of-shame) and **ask for help when you need it**.
+If you require assistance, make sure to push your branch and share your merge request either directly to a teammate or in the Slack channel `#frontend` to get advice on how to move forward. You can [mark your merge request as a draft](../../user/project/merge_requests/drafts.md), which will clearly communicate that it is not ready for a full on review. Always remember to have a [low level of shame](https://handbook.gitlab.com/handbook/values/#low-level-of-shame) and **ask for help when you need it**.
 
 As you write code, make sure to test your change thoroughly. It is the author's responsibility to test their code, ensure that it works as expected, and ensure that it did not break existing behaviours. Reviewers may help in that regard, but **do not expect it**. Make sure to check different browsers, mobile viewports and unexpected user flows.
 

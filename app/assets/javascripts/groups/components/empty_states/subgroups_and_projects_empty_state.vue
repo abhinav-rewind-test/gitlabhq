@@ -1,92 +1,80 @@
 <script>
-import { GlLink, GlEmptyState } from '@gitlab/ui';
-
+import groupsEmptyStateIllustration from '@gitlab/svgs/dist/illustrations/empty-state/empty-groups-md.svg?url';
+import { GlButton } from '@gitlab/ui';
+import ResourceListsEmptyState from '~/vue_shared/components/resource_lists/empty_state.vue';
 import { s__ } from '~/locale';
+import { SEARCH_MINIMUM_LENGTH } from '../../constants';
 
 export default {
-  components: { GlLink, GlEmptyState },
+  components: { ResourceListsEmptyState, GlButton },
+  SEARCH_MINIMUM_LENGTH,
+  groupsEmptyStateIllustration,
   i18n: {
-    withLinks: {
-      subgroup: {
-        title: s__('GroupsEmptyState|Create new subgroup'),
-        description: s__(
-          'GroupsEmptyState|Groups are the best way to manage multiple projects and members.',
-        ),
-      },
-      project: {
-        title: s__('GroupsEmptyState|Create new project'),
-        description: s__(
-          'GroupsEmptyState|Projects are where you can store your code, access issues, wiki, and other features of GitLab.',
-        ),
-      },
-    },
-    withoutLinks: {
-      title: s__('GroupsEmptyState|No subgroups or projects.'),
-      description: s__(
-        'GroupsEmptyState|You do not have necessary permissions to create a subgroup or project in this group. Please contact an owner of this group to create a new subgroup or project.',
-      ),
+    title: s__('GroupsEmptyState|Organize your work with projects and subgroups'),
+    noPermissionsTitle: s__('GroupsEmptyState|There are no subgroups or projects in this group'),
+    description: s__(
+      'GroupsEmptyState|Use projects to store Git repositories and collaborate on issues. Use subgroups as folders to organize related projects and manage team access.',
+    ),
+    noPermissionsDescription: s__(
+      'GroupsEmptyState|You do not have necessary permissions to create a subgroup or project in this group. Please contact an owner of this group to create a new subgroup or project.',
+    ),
+  },
+  inject: ['newSubgroupPath', 'newProjectPath', 'canCreateSubgroups', 'canCreateProjects'],
+  props: {
+    search: {
+      type: String,
+      required: false,
+      default: '',
     },
   },
-  linkClasses: [
-    'gl-border',
-    'gl-text-decoration-none!',
-    'gl-rounded-base',
-    'gl-p-7',
-    'gl-display-flex',
-    'gl-h-full',
-    'gl-align-items-center',
-    'gl-text-purple-600',
-    'gl-hover-bg-gray-50',
-  ],
-  inject: [
-    'newSubgroupPath',
-    'newProjectPath',
-    'newSubgroupIllustration',
-    'newProjectIllustration',
-    'emptyProjectsIllustration',
-    'emptySubgroupIllustration',
-    'canCreateSubgroups',
-    'canCreateProjects',
-  ],
+  computed: {
+    hasActions() {
+      return this.canCreateSubgroups || this.canCreateProjects;
+    },
+    description() {
+      return this.hasActions
+        ? this.$options.i18n.description
+        : this.$options.i18n.noPermissionsDescription;
+    },
+    title() {
+      return this.hasActions ? this.$options.i18n.title : this.$options.i18n.noPermissionsTitle;
+    },
+  },
 };
 </script>
 
 <template>
-  <div v-if="canCreateSubgroups || canCreateProjects" class="gl-mt-5">
-    <div class="gl-display-flex gl-mx-n3 gl-my-n3 gl-flex-wrap">
-      <div v-if="canCreateSubgroups" class="gl-p-3 gl-w-full gl-sm-w-half">
-        <gl-link :href="newSubgroupPath" :class="$options.linkClasses">
-          <div class="svg-content gl-w-15 gl-flex-shrink-0 gl-mr-5">
-            <img :src="newSubgroupIllustration" :alt="$options.i18n.withLinks.subgroup.title" />
-          </div>
-          <div>
-            <h4 class="gl-reset-color">{{ $options.i18n.withLinks.subgroup.title }}</h4>
-            <p class="gl-text-body">
-              {{ $options.i18n.withLinks.subgroup.description }}
-            </p>
-          </div>
-        </gl-link>
+  <resource-lists-empty-state
+    :title="title"
+    :svg-path="$options.groupsEmptyStateIllustration"
+    :description="description"
+    :search="search"
+    :search-minimum-length="$options.SEARCH_MINIMUM_LENGTH"
+  >
+    <template v-if="hasActions" #actions>
+      <div
+        class="gl-flex gl-flex-col gl-justify-center gl-gap-3 gl-text-left @md/panel:gl-flex-row"
+        data-testid="empty-subgroup-and-projects-actions"
+      >
+        <gl-button
+          v-if="canCreateProjects"
+          :href="newProjectPath"
+          data-testid="create-project"
+          variant="confirm"
+          category="primary"
+        >
+          {{ __('Create project') }}
+        </gl-button>
+        <gl-button
+          v-if="canCreateSubgroups"
+          :href="newSubgroupPath"
+          data-testid="create-subgroup"
+          :variant="canCreateProjects ? 'default' : 'confirm'"
+          :category="canCreateProjects ? 'secondary' : 'primary'"
+        >
+          {{ __('Create subgroup') }}
+        </gl-button>
       </div>
-      <div v-if="canCreateProjects" class="gl-p-3 gl-w-full gl-sm-w-half">
-        <gl-link :href="newProjectPath" :class="$options.linkClasses">
-          <div class="svg-content gl-w-13 gl-flex-shrink-0 gl-mr-5">
-            <img :src="newProjectIllustration" :alt="$options.i18n.withLinks.project.title" />
-          </div>
-          <div>
-            <h4 class="gl-reset-color">{{ $options.i18n.withLinks.project.title }}</h4>
-            <p class="gl-text-body">
-              {{ $options.i18n.withLinks.project.description }}
-            </p>
-          </div>
-        </gl-link>
-      </div>
-    </div>
-  </div>
-  <gl-empty-state
-    v-else
-    :title="$options.i18n.withoutLinks.title"
-    :svg-path="emptySubgroupIllustration"
-    :svg-height="null"
-    :description="$options.i18n.withoutLinks.description"
-  />
+    </template>
+  </resource-lists-empty-state>
 </template>

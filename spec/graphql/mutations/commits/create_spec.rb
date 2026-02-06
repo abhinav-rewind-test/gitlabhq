@@ -2,27 +2,19 @@
 
 require 'spec_helper'
 
-RSpec.describe Mutations::Commits::Create do
+RSpec.describe Mutations::Commits::Create, feature_category: :source_code_management do
   include GraphqlHelpers
 
-  subject(:mutation) { described_class.new(object: nil, context: context, field: nil) }
+  subject(:mutation) { described_class.new(object: nil, context: query_context, field: nil) }
 
-  let_it_be(:user) { create(:user) }
+  let_it_be(:current_user) { create(:user) }
   let_it_be(:project) { create(:project, :public, :repository) }
   let_it_be(:group) { create(:group, :public) }
-
-  let(:context) do
-    GraphQL::Query::Context.new(
-      query: query_double(schema: nil), # rubocop:disable RSpec/VerifiedDoubles
-      values: { current_user: user },
-      object: nil
-    )
-  end
 
   specify { expect(described_class).to require_graphql_authorizations(:push_code) }
 
   describe '#resolve' do
-    subject { mutation.resolve(project_path: project.full_path, branch: branch, start_branch: start_branch, message: message, actions: actions) }
+    subject { mutation.resolve(project_path: project.full_path, branch: branch, start_branch: start_branch, message: message, actions: actions, allow_empty: allow_empty) }
 
     let(:branch) { 'master' }
     let(:start_branch) { nil }
@@ -39,6 +31,7 @@ RSpec.describe Mutations::Commits::Create do
     end
 
     let(:mutated_commit) { subject[:commit] }
+    let(:allow_empty) { false }
 
     context 'when user is not a project member' do
       it 'raises an error' do
@@ -49,7 +42,7 @@ RSpec.describe Mutations::Commits::Create do
     context 'when user is a direct project member' do
       context 'and user is a guest' do
         before do
-          project.add_guest(user)
+          project.add_guest(current_user)
         end
 
         it 'raises an error' do
@@ -61,7 +54,7 @@ RSpec.describe Mutations::Commits::Create do
         let(:deltas) { mutated_commit.raw_deltas }
 
         before_all do
-          project.add_developer(user)
+          project.add_developer(current_user)
         end
 
         context 'when service successfully creates a new commit' do
@@ -79,8 +72,8 @@ RSpec.describe Mutations::Commits::Create do
             expect(subject[:errors]).to be_empty
 
             expect_to_contain_deltas([
-                                       a_hash_including(a_mode: '0', b_mode: '100644', new_file: true, new_path: file_path)
-                                     ])
+              a_hash_including(a_mode: '0', b_mode: '100644', new_file: true, new_path: file_path)
+            ])
           end
         end
 
@@ -120,24 +113,59 @@ RSpec.describe Mutations::Commits::Create do
             expect(subject[:errors]).to be_empty
 
             expect_to_contain_deltas([
-                                       a_hash_including(a_mode: '0', b_mode: '100644', new_path: 'foo/foobar'),
-                                       a_hash_including(deleted_file: true, new_path: 'README.md'),
-                                       a_hash_including(deleted_file: true, new_path: 'LICENSE'),
-                                       a_hash_including(new_file: true, new_path: 'LICENSE.md'),
-                                       a_hash_including(new_file: false, new_path: 'VERSION'),
-                                       a_hash_including(a_mode: '100644', b_mode: '100755', new_path: 'CHANGELOG')
-                                     ])
+              a_hash_including(a_mode: '0', b_mode: '100644', new_path: 'foo/foobar'),
+              a_hash_including(deleted_file: true, new_path: 'README.md'),
+              a_hash_including(deleted_file: true, new_path: 'LICENSE'),
+              a_hash_including(new_file: true, new_path: 'LICENSE.md'),
+              a_hash_including(new_file: false, new_path: 'VERSION'),
+              a_hash_including(a_mode: '100644', b_mode: '100755', new_path: 'CHANGELOG')
+            ])
           end
         end
 
-        context 'when actions are not defined' do
-          let(:actions) { [] }
+        describe 'actions' do
+          context 'when actions are not defined' do
+            let(:actions) { [] }
 
-          it 'returns a new commit' do
-            expect(mutated_commit).to have_attributes(message: message, project: project)
-            expect(subject[:errors]).to be_empty
+            context 'when allow_empty is true' do
+              let(:allow_empty) { true }
 
-            expect_to_contain_deltas([])
+              it 'creates an empty commit successfully' do
+                expect(mutated_commit).to have_attributes(message: message, project: project)
+                expect(subject[:errors]).to be_empty
+                expect_to_contain_deltas([])
+              end
+            end
+
+            context 'when allow_empty is false' do
+              it 'raises an ArgumentError' do
+                expect { subject }.to raise_error(Gitlab::Graphql::Errors::ArgumentError)
+                  .with_message('Provide at least one action, or set allowEmpty to true.')
+              end
+            end
+          end
+        end
+
+        describe 'allow_empty' do
+          shared_examples 'successful commit' do
+            it 'returns a new commit' do
+              expect(mutated_commit).to have_attributes(message: message, project: project)
+              expect(subject[:errors]).to be_empty
+
+              expect_to_contain_deltas([
+                a_hash_including(a_mode: '0', b_mode: '100644', new_file: true, new_path: file_path)
+              ])
+            end
+          end
+
+          context "when allow_empty is true" do
+            let(:allow_empty) { true }
+
+            include_examples 'successful commit'
+          end
+
+          context "when allow_empty is false" do
+            include_examples 'successful commit'
           end
         end
 
@@ -169,8 +197,8 @@ RSpec.describe Mutations::Commits::Create do
             expect(subject[:content]).to eq(actions.pluck(:content))
 
             expect_to_contain_deltas([
-                                       a_hash_including(a_mode: '0', b_mode: '100644', new_file: true, new_path: 'ANOTHER_FILE.md')
-                                     ])
+              a_hash_including(a_mode: '0', b_mode: '100644', new_file: true, new_path: 'ANOTHER_FILE.md')
+            ])
           end
         end
 
@@ -179,7 +207,7 @@ RSpec.describe Mutations::Commits::Create do
 
           it 'returns errors' do
             expect(mutated_commit).to be_nil
-            expect(subject[:errors].to_s).to match(/empty CommitMessage/)
+            expect(subject[:errors]).to include('You must provide a commit message')
           end
         end
 
@@ -211,7 +239,7 @@ RSpec.describe Mutations::Commits::Create do
 
         context 'and user is a guest' do
           before do
-            group.add_guest(user)
+            group.add_guest(current_user)
           end
 
           it 'raises an error' do
@@ -225,7 +253,7 @@ RSpec.describe Mutations::Commits::Create do
 
         context 'and user is a guest' do
           before do
-            group.add_guest(user)
+            group.add_guest(current_user)
           end
 
           it 'raises an error' do
@@ -237,7 +265,7 @@ RSpec.describe Mutations::Commits::Create do
 
     context 'when user is a maintainer of a different project' do
       before do
-        create(:project_empty_repo).add_maintainer(user)
+        create(:project_empty_repo).add_maintainer(current_user)
       end
 
       it 'raises an error' do
@@ -248,6 +276,6 @@ RSpec.describe Mutations::Commits::Create do
 
   def expect_to_contain_deltas(expected_deltas)
     expect(deltas.count).to eq(expected_deltas.count)
-    expect(deltas).to include(*expected_deltas)
+    expect(deltas).to include(*expected_deltas) unless expected_deltas.empty?
   end
 end

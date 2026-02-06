@@ -27,7 +27,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
   end
 
   describe '.long_timeout' do
-    context 'default case' do
+    context 'default case', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9469' do
       it { expect(subject.long_timeout).to eq(6.hours) }
     end
 
@@ -128,6 +128,28 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         expect(described_class.stub_address('default')).to eq('localhost:9876')
       end
     end
+
+    where(:address, :expected_stub_address) do
+      [
+        ['unix:tmp/gitaly.sock', 'unix:tmp/gitaly.sock'],
+        ['tcp://localhost:9876', 'localhost:9876'],
+        ['tls://localhost:9876', 'localhost:9876'],
+        ['dns:///localhost:9876', 'dns:///localhost:9876'],
+        ['dns:localhost:9876', 'dns:localhost:9876'],
+        ['dns://1.1.1.1/localhost:9876', 'dns://1.1.1.1/localhost:9876'],
+        ['dns+tls:///localhost:9876', 'dns:///localhost:9876'],
+        ['dns+tls:localhost:9876', 'dns:localhost:9876'],
+        ['dns+tls://1.1.1.1/localhost:9876', 'dns://1.1.1.1/localhost:9876']
+      ]
+    end
+
+    with_them do
+      it 'returns the expected stub address' do
+        stub_repos_storages address
+
+        expect(described_class.stub_address('default')).to eq(expected_stub_address)
+      end
+    end
   end
 
   describe '.stub_creds' do
@@ -181,17 +203,46 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         described_class.stub_creds('default')
       end.to raise_error(/unsupported Gitaly address/i)
     end
+
+    context 'with dns+tls scheme variations' do
+      it 'returns Credentials object with dns+tls:/// (no authority)' do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => { 'gitaly_address' => 'dns+tls:///localhost:9876' }
+        })
+
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+
+      it 'returns Credentials object with dns+tls://authority/host:port' do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => { 'gitaly_address' => 'dns+tls://1.1.1.1/gitaly.example.com:8075' }
+        })
+
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+
+      it 'returns Credentials object with dns+tls:host:port (short form)' do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => { 'gitaly_address' => 'dns+tls:localhost:9876' }
+        })
+
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+    end
   end
 
   describe '.create_channel' do
     where(:storage, :address, :expected_target) do
       [
         ['default', 'unix:tmp/gitaly.sock', 'unix:tmp/gitaly.sock'],
-        ['default', 'tcp://localhost:9876', 'localhost:9876'],
-        ['default', 'tls://localhost:9876', 'localhost:9876'],
+        ['default', 'tcp://localhost:9876', 'dns:///localhost:9876'],
+        ['default', 'tls://localhost:9876', 'dns:///localhost:9876'],
         ['default', 'dns:///localhost:9876', 'dns:///localhost:9876'],
         ['default', 'dns:localhost:9876', 'dns:localhost:9876'],
-        ['default', 'dns://1.1.1.1/localhost:9876', 'dns://1.1.1.1/localhost:9876']
+        ['default', 'dns://1.1.1.1/localhost:9876', 'dns://1.1.1.1/localhost:9876'],
+        ['default', 'dns+tls:///localhost:9876', 'dns:///localhost:9876'],
+        ['default', 'dns+tls:localhost:9876', 'dns:localhost:9876'],
+        ['default', 'dns+tls://1.1.1.1/localhost:9876', 'dns://1.1.1.1/localhost:9876']
       ]
     end
 
@@ -275,7 +326,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
 
       it 'strips tls:// prefix before passing it to GRPC::Core::Channel initializer' do
         expect(Gitaly::CommitService::Stub).to receive(:new).with(
-          address, nil, channel_override: be_a(GRPC::Core::Channel), interceptors: []
+          "dns:///#{address}", nil, channel_override: be_a(GRPC::Core::Channel), interceptors: []
         )
 
         described_class.stub(:commit_service, 'default')
@@ -299,7 +350,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
 
       it 'strips tcp:// prefix before passing it to GRPC::Core::Channel initializer' do
         expect(Gitaly::CommitService::Stub).to receive(:new).with(
-          address, nil, channel_override: be_a(GRPC::Core::Channel), interceptors: []
+          "dns:///#{address}", nil, channel_override: be_a(GRPC::Core::Channel), interceptors: []
         )
 
         described_class.stub(:commit_service, 'default')
@@ -394,6 +445,26 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
       expect(results[:metadata]).to include('gitaly-session-id')
     end
 
+    context 'with gitaly_context' do
+      let(:gitaly_context) { { key: :value } }
+
+      it 'passes context as "gitaly-client-context-bin"' do
+        kwargs = described_class.request_kwargs('default', timeout: 1, gitaly_context: gitaly_context)
+
+        expect(kwargs[:metadata]['gitaly-client-context-bin']).to eq(gitaly_context.to_json)
+      end
+
+      context 'when empty context' do
+        let(:gitaly_context) { {} }
+
+        it 'does not provide "gitaly-client-context-bin"' do
+          kwargs = described_class.request_kwargs('default', timeout: 1, gitaly_context: gitaly_context)
+
+          expect(kwargs[:metadata]).not_to have_key('gitaly-client-context-bin')
+        end
+      end
+    end
+
     context 'when RequestStore is not enabled' do
       it 'sets a different gitaly-session-id per request' do
         gitaly_session_id = described_class.request_kwargs('default', timeout: 1)[:metadata]['gitaly-session-id']
@@ -475,7 +546,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
           end
 
           expect(metadata['username']).to eql(user.username)
-          expect(metadata['user_id']).to eql(user.id.to_s)
+          expect(metadata[Labkit::Fields::GL_USER_ID]).to eql(user.id.to_s)
         end
       end
 
@@ -484,7 +555,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
           metadata = described_class.request_kwargs('default', timeout: 1)[:metadata]
 
           expect(metadata).not_to have_key('username')
-          expect(metadata).not_to have_key('user_id')
+          expect(metadata).not_to have_key(Labkit::Fields::GL_USER_ID)
         end
       end
 
@@ -591,7 +662,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         allow(Gitlab::RequestContext.instance).to receive(:request_deadline).and_return(request_deadline)
       end
 
-      it 'includes the deadline information' do
+      it 'includes the deadline information', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16819' do
         kword_args = described_class.request_kwargs('default', timeout: 2)
 
         expect(kword_args[:deadline])
@@ -606,7 +677,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         expect(kword_args[:metadata][:deadline_type]).to eq("limited")
       end
 
-      it 'does not limit calls in sidekiq' do
+      it 'does not limit calls in sidekiq', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9511' do
         expect(Sidekiq).to receive(:server?).and_return(true)
 
         kword_args = described_class.request_kwargs('default', timeout: 6.hours.to_i)
@@ -624,7 +695,7 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         expect(kword_args[:metadata][:deadline_type]).to be_nil
       end
 
-      it 'includes only the deadline specified by the timeout when there was no deadline' do
+      it 'includes only the deadline specified by the timeout when there was no deadline', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9513' do
         allow(Gitlab::RequestContext.instance).to receive(:request_deadline).and_return(nil)
         kword_args = described_class.request_kwargs('default', timeout: 6.hours.to_i)
 
@@ -836,8 +907,8 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
   describe '.decode_detailed_error' do
     let(:detailed_error) do
       new_detailed_error(GRPC::Core::StatusCodes::INVALID_ARGUMENT,
-                         "error message",
-                         Gitaly::InvalidRefFormatError.new)
+        "error message",
+        Gitaly::InvalidRefFormatError.new)
     end
 
     let(:error_without_details) do
@@ -868,6 +939,54 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
       with_them do
         it 'returns correct detailed error' do
           expect(described_class.decode_detailed_error(error)).to eq(result)
+        end
+      end
+    end
+  end
+
+  describe '.unwrap_detailed_error' do
+    let(:wrapped_detailed_error) do
+      new_detailed_error(GRPC::Core::StatusCodes::INVALID_ARGUMENT,
+        "error message",
+        Gitaly::UpdateReferencesError.new(invalid_format: Gitaly::InvalidRefFormatError.new(refs: ['\invali.\d/1', '\.invali/d/2'])))
+    end
+
+    let(:detailed_error) do
+      new_detailed_error(GRPC::Core::StatusCodes::INVALID_ARGUMENT,
+        "error message",
+        Gitaly::InvalidRefFormatError.new)
+    end
+
+    let(:error_without_details) do
+      error_code = GRPC::Core::StatusCodes::INVALID_ARGUMENT
+      error_message = "error message"
+
+      status_error = Google::Rpc::Status.new(
+        code: error_code,
+        message: error_message,
+        details: nil
+      )
+
+      GRPC::BadStatus.new(
+        error_code,
+        error_message,
+        { "grpc-status-details-bin" => Google::Rpc::Status.encode(status_error) })
+    end
+
+    context 'unwraps detailed errors' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:error, :result) do
+        wrapped_detailed_error | Gitaly::InvalidRefFormatError.new(refs: ['\invali.\d/1', '\.invali/d/2'])
+        detailed_error | Gitaly::InvalidRefFormatError.new
+        error_without_details | nil
+        StandardError.new | nil
+        nil | nil
+      end
+
+      with_them do
+        it 'returns unwrapped detailed error' do
+          expect(described_class.unwrap_detailed_error(error)).to eq(result)
         end
       end
     end
@@ -911,11 +1030,35 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
     end
   end
 
+  describe '.call' do
+    subject(:call) do
+      described_class.call(storage, service, rpc, request, remote_storage: remote_storage, timeout: timeout, gitaly_context: gitaly_context)
+    end
+
+    let(:storage) { 'default' }
+    let(:service) { :ref_service }
+    let(:rpc) { :find_local_branches }
+    let(:request) { Gitaly::FindLocalBranchesRequest.new }
+    let(:remote_storage) { nil }
+    let(:timeout) { 10.seconds }
+    let(:gitaly_context) { { key: :value } }
+
+    it 'inits Gitlab::GitalyClient::Call instance with provided arguments' do
+      expect(Gitlab::GitalyClient::Call).to receive(:new).with(
+        storage, service, rpc, request, remote_storage, timeout, gitaly_context: gitaly_context
+      ).and_call_original
+
+      call
+    end
+  end
+
   describe '.execute' do
     subject(:execute) do
       described_class.execute('default', :ref_service, :find_local_branches, Gitaly::FindLocalBranchesRequest.new,
-        remote_storage: nil, timeout: 10.seconds)
+        remote_storage: nil, timeout: 10.seconds, gitaly_context: gitaly_context)
     end
+
+    let(:gitaly_context) { {} }
 
     it 'raises an exception when running within a concurrent Ruby thread' do
       Thread.current[:restrict_within_concurrent_ruby] = true
@@ -924,6 +1067,248 @@ RSpec.describe Gitlab::GitalyClient, feature_category: :gitaly do
         "Cannot run 'gitaly' if running from `Concurrent::Promise`.")
 
       Thread.current[:restrict_within_concurrent_ruby] = nil
+    end
+
+    context 'with gitaly_context' do
+      let(:gitaly_context) { { key: :value } }
+
+      it 'passes the gitaly_context to .request_kwargs' do
+        expect(described_class).to receive(:request_kwargs).with(
+          'default', timeout: 10.seconds, remote_storage: nil, gitaly_context: gitaly_context
+        ).and_call_original
+
+        execute
+      end
+    end
+  end
+
+  describe '.retry_policy' do
+    subject { described_class.retry_policy }
+
+    context 'when settings are not redefined' do
+      it 'returns default retry policy settings' do
+        is_expected.to eq(
+          maxAttempts: 4,
+          initialBackoff: '0.4s',
+          maxBackoff: '1.4s',
+          backoffMultiplier: 2,
+          retryableStatusCodes: %w[UNAVAILABLE ABORTED]
+        )
+      end
+    end
+
+    context 'when settings are redefined' do
+      before do
+        stub_config(gitaly: { client_max_attempts: 10, client_max_backoff: '5.0s' })
+      end
+
+      it 'uses the configured values' do
+        is_expected.to eq(
+          maxAttempts: 5, ## We expect the provided value 10 to be capped to 5
+          initialBackoff: '0.15625s', # 5/2^5 = 0.15625
+          maxBackoff: '5.0s',
+          backoffMultiplier: 2,
+          retryableStatusCodes: %w[UNAVAILABLE ABORTED]
+        )
+      end
+    end
+  end
+
+  describe '.channel_args' do
+    context 'when called without a storage argument' do
+      it 'returns base channel arguments without TLS settings' do
+        args = described_class.send(:channel_args)
+
+        expect(args).to include('grpc.keepalive_time_ms': 20000)
+        expect(args).to include('grpc.keepalive_permit_without_calls': 1)
+        expect(args).to have_key(:'grpc.service_config')
+        expect(args).not_to have_key('grpc.ssl_target_name_override')
+      end
+    end
+
+    context 'when called with a storage using dns+tls:// scheme' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls:///gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'adds SNI override with the hostname' do
+        expect(described_class.send(:channel_args, 'default')).to include('grpc.ssl_target_name_override' => 'gitaly.example.com')
+      end
+    end
+
+    context 'when called with a storage using dns+tls:// scheme with authority' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls://1.1.1.1/gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'adds SNI override with the host from the path' do
+        expect(described_class.send(:channel_args, 'default')).to include('grpc.ssl_target_name_override' => 'gitaly.example.com')
+      end
+    end
+
+    context 'when called with a storage using dns+tls: scheme (short form)' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls:gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'adds SNI override with the hostname from opaque' do
+        expect(described_class.send(:channel_args, 'default')).to include('grpc.ssl_target_name_override' => 'gitaly.example.com')
+      end
+    end
+
+    context 'when called with a storage using tls:// scheme' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'tls://gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'does not add SNI override without dns scheme' do
+        expect(described_class.send(:channel_args, 'default')).not_to have_key('grpc.ssl_target_name_override')
+      end
+    end
+
+    context 'when called with a storage using tcp:// scheme' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'tcp://gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'does not add SNI override' do
+        expect(described_class.send(:channel_args, 'default')).not_to have_key('grpc.ssl_target_name_override')
+      end
+    end
+
+    context 'when called with a storage using dns+tls:// scheme with empty path' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls://1.1.1.1/'
+          }
+        })
+      end
+
+      it 'does not add SNI override when path is only a slash' do
+        expect(described_class.send(:channel_args, 'default')).not_to have_key('grpc.ssl_target_name_override')
+      end
+    end
+
+    context 'when called with a storage using dns+tls:// scheme with only port in path' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls:///:8075'
+          }
+        })
+      end
+
+      it 'does not add SNI override when hostname is blank' do
+        expect(described_class.send(:channel_args, 'default')).not_to have_key('grpc.ssl_target_name_override')
+      end
+    end
+  end
+
+  describe 'TLS integration' do
+    context 'when creating a channel with dns+tls:// scheme' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls:///gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'creates a channel with TLS credentials' do
+        channel = described_class.create_channel('default')
+
+        expect(channel).to be_a(GRPC::Core::Channel)
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+    end
+
+    context 'when creating a channel with dns+tls:// scheme with authority' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls://1.1.1.1/gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'creates a channel with TLS credentials' do
+        channel = described_class.create_channel('default')
+
+        expect(channel).to be_a(GRPC::Core::Channel)
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+    end
+
+    context 'when creating a channel with dns+tls: scheme (short form)' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'dns+tls:gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'creates a channel with TLS credentials' do
+        channel = described_class.create_channel('default')
+
+        expect(channel).to be_a(GRPC::Core::Channel)
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+    end
+
+    context 'when creating a channel with tls:// scheme and no explicit config' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'tls://gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'creates a channel with TLS credentials' do
+        channel = described_class.create_channel('default')
+
+        expect(channel).to be_a(GRPC::Core::Channel)
+        expect(described_class.stub_creds('default')).to be_a(GRPC::Core::ChannelCredentials)
+      end
+    end
+
+    context 'when creating a channel without TLS' do
+      before do
+        allow(Gitlab.config.repositories).to receive(:storages).and_return({
+          'default' => {
+            'gitaly_address' => 'tcp://gitaly.example.com:8075'
+          }
+        })
+      end
+
+      it 'creates a channel with insecure credentials' do
+        channel = described_class.create_channel('default')
+
+        expect(channel).to be_a(GRPC::Core::Channel)
+        expect(described_class.stub_creds('default')).to eq(:this_channel_is_insecure)
+      end
     end
   end
 end

@@ -17,7 +17,7 @@ class Projects::RawController < Projects::ApplicationController
   feature_category :source_code_management
 
   def show
-    @blob = @repository.blob_at(@ref, @path, limit: Gitlab::Git::Blob::LFS_POINTER_MAX_SIZE)
+    @blob = @repository.blob_at(ref, @path, limit: Gitlab::Git::Blob::LFS_POINTER_MAX_SIZE)
 
     send_blob(@repository, @blob, inline: (params[:inline] != 'false'), allow_caching:
 ::Users::Anonymous.can?(:read_code, @project))
@@ -25,11 +25,8 @@ class Projects::RawController < Projects::ApplicationController
 
   private
 
-  def set_ref_and_path
-    # This bypasses assign_ref_vars to avoid a Gitaly FindCommit lookup.
-    # We don't need to find the commit to either rate limit or send the
-    # blob.
-    @ref, @path = extract_ref(get_id)
+  def ref
+    @fully_qualified_ref || @ref
   end
 
   def check_show_rate_limit!

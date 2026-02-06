@@ -2,31 +2,73 @@
 
 require 'spec_helper'
 
-RSpec.describe HooksHelper do
+RSpec.describe HooksHelper, feature_category: :integrations do
   let(:project) { build_stubbed(:project) }
   let(:project_hook) { build_stubbed(:project_hook, project: project) }
   let(:service_hook) { build_stubbed(:service_hook, integration: build_stubbed(:drone_ci_integration)) }
   let(:system_hook) { build_stubbed(:system_hook) }
+
+  let(:expected_triggers) do
+    triggers = project_hook.class.triggers.values.index_with do |event_type|
+      project_hook.public_send(event_type)
+    end
+
+    branch_filter_settings = {
+      push_events_branch_filter: project_hook.push_events_branch_filter,
+      branch_filter_strategy: project_hook.branch_filter_strategy
+    }
+
+    Gitlab::Json.dump(triggers.merge(branch_filter_settings))
+  end
 
   describe '#webhook_form_data' do
     subject { helper.webhook_form_data(project_hook) }
 
     context 'when there are no URL variables' do
       it 'returns proper data' do
-        expect(subject).to match(
+        is_expected.to match(
+          name: project_hook.name,
+          description: project_hook.description,
+          secret_token: nil,
           url: project_hook.url,
-          url_variables: "[]"
+          url_variables: "[]",
+          custom_headers: "[]",
+          is_new_hook: "false",
+          triggers: expected_triggers
         )
       end
     end
 
     context 'when there are URL variables' do
-      let(:project_hook) { build_stubbed(:project_hook, :url_variables, project: project) }
+      let(:project_hook) { build_stubbed(:project_hook, :url_variables, :token, project: project) }
 
       it 'returns proper data' do
-        expect(subject).to match(
+        is_expected.to match(
+          name: project_hook.name,
+          description: project_hook.description,
+          secret_token: WebHook::SECRET_MASK,
           url: project_hook.url,
-          url_variables: Gitlab::Json.dump([{ key: 'abc' }, { key: 'def' }])
+          url_variables: Gitlab::Json.dump([{ key: 'abc' }, { key: 'def' }]),
+          custom_headers: "[]",
+          is_new_hook: "false",
+          triggers: expected_triggers
+        )
+      end
+    end
+
+    context 'when there are custom headers' do
+      let(:project_hook) { build_stubbed(:project_hook, :token, project: project, custom_headers: { test: 'blub' }) }
+
+      it 'returns proper data' do
+        is_expected.to match(
+          name: project_hook.name,
+          description: project_hook.description,
+          secret_token: WebHook::SECRET_MASK,
+          url: project_hook.url,
+          url_variables: "[]",
+          custom_headers: Gitlab::Json.dump([{ key: 'test', value: WebHook::SECRET_MASK }]),
+          is_new_hook: "false",
+          triggers: expected_triggers
         )
       end
     end

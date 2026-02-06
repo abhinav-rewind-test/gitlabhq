@@ -5,9 +5,9 @@ module Banzai
     class BroadcastMessagePipeline < DescriptionPipeline
       def self.filters
         @filters ||= FilterArray[
-          Filter::BlockquoteFenceFilter,
           Filter::MarkdownFilter,
           Filter::BroadcastMessageSanitizationFilter,
+          Filter::SanitizeLinkFilter,
           Filter::EmojiFilter,
           Filter::ColorFilter,
           Filter::AutolinkFilter,

@@ -1,62 +1,77 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Modify global user settings
 ---
 
-# Modify global user settings
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-GitLab administrators can modify user settings for the entire GitLab instance.
+{{< /details >}}
 
-## Use configuration files to prevent new users from creating top-level groups
+You can modify settings for every user in your GitLab instance.
 
-By default, new users can create top-level groups. To disable new users'
-ability to create top-level groups (does not affect existing users' setting), GitLab administrators can modify this setting:
+Prerequisites:
 
-- In GitLab 15.5 and later, using either:
-  - The [GitLab UI](../administration/settings/account_and_limit_settings.md#prevent-new-users-from-creating-top-level-groups).
-  - The [application setting API](../api/settings.md#change-application-settings).
-- In GitLab 15.4 and earlier, in a configuration file by following the steps in this section.
+- You must be an administrator for the instance.
 
-To disable new users' ability to create top-level groups using the configuration file.
+## Prevent users from creating top-level groups
 
-For Linux package installations:
+You can prevent users from creating top-level groups.
 
-1. Edit `/etc/gitlab/gitlab.rb` and add the following line:
+When group creation is prevented:
+
+- Users cannot create top-level groups.
+- Users can create subgroups in groups where they have at least the Maintainer role, depending on the
+  [subgroup creation permissions](../user/group/subgroups/_index.md#change-who-can-create-subgroups)
+  for the group.
+
+To prevent users from creating top-level groups, use one of these methods:
+
+| Method        | For new users                                                                                                         | For existing users |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| UI            | [Account and limit settings](settings/account_and_limit_settings.md#prevent-new-users-from-creating-top-level-groups) | [User settings in the Admin area](admin_area.md#prevent-a-user-from-creating-top-level-groups) |
+| API           | [Application settings API](../api/settings.md#update-application-settings) to modify the `can_create_group` setting   | [Users API](../api/users.md#modify-a-user) to modify the `can_create_group` setting |
+| Rails console | None                                                                                                                  | [Use the Rails console](#use-the-rails-console) |
+
+### Use the Rails console
+
+You can use the Rails console to prevent existing users from creating top-level groups.
+Use this method when making bulk updates to multiple users.
+
+To prevent existing users from creating top-level groups:
+
+1. Start a [Rails console session](operations/rails_console.md#starting-a-rails-console-session).
+1. Run one of these commands:
+
+   - To prevent group creation for all existing users except administrators:
+
+     ```ruby
+     User.where.not(admin: true).update_all(can_create_group: false)
+     ```
+
+   - To prevent group creation for a specific user:
+
+     ```ruby
+     User.find_by(username: 'someuser').update(can_create_group: false)
+     ```
+
+1. Exit the console:
 
    ```ruby
-   gitlab_rails['gitlab_default_can_create_group'] = false
+   exit
    ```
-
-1. [Reconfigure and restart GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation).
-
-For self-compiled installations:
-
-1. Edit `config/gitlab.yml` and uncomment the following line:
-
-   ```yaml
-   # default_can_create_group: false  # default: true
-   ```
-
-1. [Restart GitLab](restart_gitlab.md#self-compiled-installations).
-
-### Prevent existing users from creating top-level groups
-
-Administrators can:
-
-- Use the Admin Area to [prevent an existing user from creating top-level groups](../administration/admin_area.md#prevent-a-user-from-creating-top-level-groups).
-- Use the [modify an existing user API endpoint](../api/users.md#user-modification) to change the `can_create_group` setting.
 
 ## Prevent users from changing their usernames
 
-By default, new users can change their usernames. To disable your users'
-ability to change their usernames.
+By default, users can change their usernames. To prevent users from changing their usernames:
 
-For Linux package installations:
+{{< tabs >}}
+
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following line:
 
@@ -66,7 +81,9 @@ For Linux package installations:
 
 1. [Reconfigure and restart GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation).
 
-For self-compiled installations:
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `config/gitlab.yml` and uncomment the following line:
 
@@ -76,6 +93,10 @@ For self-compiled installations:
 
 1. [Restart GitLab](restart_gitlab.md#self-compiled-installations).
 
+{{< /tab >}}
+
+{{< /tabs >}}
+
 ## Prevent Guest users from promoting to a higher role
 
 On GitLab Ultimate, Guest users do not count toward paid seats. However, when a Guest user creates
@@ -83,8 +104,8 @@ projects and namespaces, they are automatically promoted to a higher role than G
 a paid seat.
 
 To prevent Guest users from being promoted to a higher role and occupying a paid seat,
-set the user as [external](../administration/external_users.md).
+set the user as [external](external_users.md).
 
 External users cannot create personal projects or namespaces. If a user with the Guest role is promoted into a higher role by another user,
 the external user setting must be removed before they can create personal projects or namespaces. For a complete list of restrictions for external
-users, see [External users](../administration/external_users.md).
+users, see [External users](external_users.md).

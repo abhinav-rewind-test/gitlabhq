@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 # frozen_string_literal: true
 
 # Internal Events Tracking Monitor
@@ -18,24 +19,50 @@
 #   - To exit the script, press Ctrl+C.
 #
 
+unless defined?(Rails)
+  puts <<~TEXT
+
+    Error! The Internal Events Tracking Monitor could not access the Rails context!
+
+      Ensure GDK is running, then run:
+
+      bin/rails runner scripts/internal_events/monitor.rb #{ARGV.any? ? ARGV.join(' ') : '<events or key_path>'}
+
+  TEXT
+
+  exit! 1
+end
+
+unless ARGV.any?
+  puts <<~TEXT
+
+    Error! The Internal Events Tracking Monitor requires events or key path to be specified.
+
+      For example, to monitor events g_edit_by_web_ide and g_edit_by_sfe, run:
+
+      bin/rails runner scripts/internal_events/monitor.rb g_edit_by_web_ide g_edit_by_sfe
+
+      to monitor metrics where the key_path starts with counts.count_total_invocations_of_internal_events, run:
+
+      bin/rails runner scripts/internal_events/monitor.rb counts.count_total_invocations_of_internal_events
+
+  TEXT
+
+  exit! 1
+end
+
 require 'terminal-table'
 require 'net/http'
 
-module ExtendedTimeFrame
-  def weekly_time_range
-    super.tap { |h| h[:end_date] = 1.week.from_now }
-  end
+require_relative './server'
+require_relative '../../spec/support/helpers/service_ping_helpers'
 
-  def monthly_time_range
-    super.tap { |h| h[:end_date] = 1.week.from_now }
-  end
-end
-Gitlab::Usage::TimeFrame.prepend(ExtendedTimeFrame)
+Gitlab::Usage::TimeFrame.prepend(ServicePingHelpers::CurrentTimeFrame)
 
 def metric_definitions_from_args
   args = ARGV
   Gitlab::Usage::MetricDefinition.all.select do |metric|
-    metric.available? && args.any? { |arg| metric.events.key?(arg) }
+    metric.available? && args.any? { |arg| metric.events.key?(arg) || metric.key_path.start_with?(arg) }
   end
 end
 
@@ -43,6 +70,10 @@ def red(text)
   @pastel ||= Pastel.new
 
   @pastel.red(text)
+end
+
+def current_timestamp
+  (Time.now.to_f * 1000).to_i
 end
 
 def snowplow_data
@@ -59,22 +90,39 @@ def extract_standard_context(event)
     next unless context['schema'].start_with?('iglu:com.gitlab/gitlab_standard/jsonschema')
 
     return {
-
       user_id: context["data"]["user_id"],
       namespace_id: context["data"]["namespace_id"],
       project_id: context["data"]["project_id"],
-      plan: context["data"]["plan"]
+      plan: context["data"]["plan"],
+      extra: context["data"]["extra"]
     }
   end
   {}
 end
 
 def generate_snowplow_table
+  return event_tracking_disabled_table unless Gitlab::CurrentSettings.gitlab_product_usage_data_enabled?
+
   events = snowplow_data.select { |d| ARGV.include?(d["event"]["se_action"]) }
+            .filter { |e| e['rawEvent']['parameters']['dtm'].to_i > @min_timestamp }
+
   @initial_max_timestamp ||= events.map { |e| e['rawEvent']['parameters']['dtm'].to_i }.max || 0
 
   rows = []
-  rows << ['Event Name', 'Collector Timestamp', 'Category', 'user_id', 'namespace_id', 'project_id', 'plan']
+  rows << [
+    'Event Name',
+    'Collector Timestamp',
+    'Category',
+    'user_id',
+    'namespace_id',
+    'project_id',
+    'plan',
+    'Label',
+    'Property',
+    'Value',
+    'Extra'
+  ]
+
   rows << :separator
 
   events.each do |event|
@@ -87,7 +135,11 @@ def generate_snowplow_table
       standard_context[:user_id],
       standard_context[:namespace_id],
       standard_context[:project_id],
-      standard_context[:plan]
+      standard_context[:plan],
+      event['event']['se_label'],
+      event['event']['se_property'],
+      event['event']['se_value'],
+      standard_context[:extra]
     ]
 
     row.map! { |value| red(value) } if event['rawEvent']['parameters']['dtm'].to_i > @initial_max_timestamp
@@ -145,24 +197,63 @@ def render_screen(paused)
   print TTY::Cursor.move_to(0, 0)
 
   puts "Updated at #{Time.current} #{'[PAUSED]' if paused}"
-  puts "Monitored events: #{ARGV.join(', ')}"
+  puts "Monitored events or key path prefix: #{ARGV.join(', ')}"
   puts
 
   puts metrics_table
-
   puts events_table
 
   puts
   puts "Press \"p\" to toggle refresh. (It makes it easier to select and copy the tables)"
+  puts "Press \"r\" to reset without exiting the monitor"
   puts "Press \"q\" to quit"
 end
+
+def event_tracking_disabled_table
+  Terminal::Table.new(
+    title: red('SNOWPLOW EVENTS (DISABLED)'),
+    rows: [[
+      <<~TEXT
+        Whoops! GitLab is not configured to send events! To resolve this issue, you can do one of:
+          1) Enable event tracking
+             - Nav to Admin area > Settings > Metrics and profiling > Event tracking
+             - Toggle "Enable event tracking" on
+             - Save changes
+
+          2) Set up Snowplow Micro in your GDK
+            https://gitlab-org.gitlab.io/gitlab-development-kit/howto/snowplow_micro/
+      TEXT
+    ]]
+  )
+end
+
+server = nil
+@min_timestamp = current_timestamp
 
 begin
   snowplow_data
 rescue Errno::ECONNREFUSED
-  puts "Could not connect to Snowplow Micro."
-  puts "Please follow these instruction to set up Snowplow Micro:"
-  puts "https://gitlab.com/gitlab-org/gitlab-development-kit/-/blob/main/doc/howto/snowplow_micro.md"
+  # Start the mock server if Snowplow Micro is not running
+  server = Thread.start { Server.new.start }
+  retry
+rescue Errno::ECONNRESET, EOFError
+  puts <<~TEXT
+
+    Error: No events server available!
+
+    This is often caused by mismatched hostnames. To resolve this issue, you can do one of:
+
+      1) When GDK has a hostname alias, update `config/gitlab.yml` to
+         use localhost for the snowplow_micro settings. For example:
+          |                             -->                              |
+          |  snowplow_micro:             |  snowplow_micro:              |
+          |    address: 'gdk.test:9090'  |    address: 'localhost:9090'  |
+
+      2) Set up Snowplow Micro in your GDK
+         https://gitlab-org.gitlab.io/gitlab-development-kit/howto/snowplow_micro/
+
+  TEXT
+
   exit 1
 end
 
@@ -175,7 +266,11 @@ begin
     when 'p'
       paused = !paused
       render_screen(paused)
+    when 'r'
+      @min_timestamp = current_timestamp
+      @initial_values = {}
     when 'q'
+      server&.exit
       break
     end
 
@@ -183,6 +278,8 @@ begin
 
     sleep 1
   end
-rescue Interrupt
-  # Quietly shut down
+rescue Errno::ECONNREFUSED
+  # Ignore this error, caused by the server being killed before the loop due to working on a child thread
+ensure
+  server&.exit
 end

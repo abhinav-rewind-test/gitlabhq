@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
 class NotificationSetting < ApplicationRecord
+  include EachBatch
   include FromUnion
 
-  enum level: { global: 3, watch: 2, participating: 1, mention: 4, disabled: 0, custom: 5 }, _default: :global
+  enum :level, { global: 3, watch: 2, participating: 1, mention: 4, disabled: 0, custom: 5 }, default: :global
 
   belongs_to :user
   belongs_to :source, polymorphic: true # rubocop:disable Cop/PolymorphicAssociations
@@ -31,6 +32,7 @@ class NotificationSetting < ApplicationRecord
   scope :preload_source_route, -> { preload(source: [:route]) }
 
   scope :order_by_id_asc, -> { order(id: :asc) }
+  scope :by_sources, ->(sources) { where(source: sources) }
 
   # NOTE: Applicable unfound_translations.rb also needs to be updated when below events are changed.
   EMAIL_EVENTS = [
@@ -55,6 +57,14 @@ class NotificationSetting < ApplicationRecord
     :merge_when_pipeline_succeeds
   ].freeze
 
+  EXCLUDED_WATCHER_EVENTS = [
+    :push_to_merge_request,
+    :issue_due,
+    :work_item_due,
+    :success_pipeline,
+    :approver
+  ].freeze
+
   def self.email_events(source = nil)
     EMAIL_EVENTS
   end
@@ -67,13 +77,6 @@ class NotificationSetting < ApplicationRecord
     self.class.email_events(source)
   end
 
-  EXCLUDED_WATCHER_EVENTS = [
-    :push_to_merge_request,
-    :issue_due,
-    :success_pipeline,
-    :approver
-  ].freeze
-
   def self.find_or_create_for(source)
     setting = find_or_initialize_by(source: source)
 
@@ -82,6 +85,15 @@ class NotificationSetting < ApplicationRecord
     end
 
     setting
+  end
+
+  def self.reset_email_for_user!(email)
+    where(
+      user_id: email.user_id,
+      notification_email: email.email
+    ).each_batch(of: 500) do |relation|
+      relation.update_all(notification_email: nil)
+    end
   end
 
   # Allow people to receive both failed pipeline/fixed pipeline notifications
@@ -111,7 +123,7 @@ class NotificationSetting < ApplicationRecord
 
   def notification_email_verified
     return if user.temp_oauth_email?
-    return if notification_email.empty?
+    return if notification_email.blank?
 
     errors.add(:notification_email, _("must be an email you have verified")) unless user.verified_emails.include?(notification_email)
   end

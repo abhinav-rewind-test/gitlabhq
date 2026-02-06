@@ -33,20 +33,15 @@ describe('confirmViaGlModal', () => {
     expect(confirmAction).toHaveBeenCalledWith('message', {});
   });
 
-  it.each(['gl-sr-only', 'sr-only'])(
-    `uses slot.%s contentText as primaryBtnText`,
-    (srOnlyClass) => {
-      el = createElement(
-        `<a href="#"><span class="${srOnlyClass}">Delete merge request</span></a>`,
-      );
+  it(`uses slot.gl-sr-only contentText as primaryBtnText`, () => {
+    el = createElement(`<a href="#"><span class="gl-sr-only">Delete merge request</span></a>`);
 
-      confirmViaGlModal('', el);
+    confirmViaGlModal('', el);
 
-      expect(confirmAction).toHaveBeenCalledWith('', {
-        primaryBtnText: 'Delete merge request',
-      });
-    },
-  );
+    expect(confirmAction).toHaveBeenCalledWith('', {
+      primaryBtnText: 'Delete merge request',
+    });
+  });
 
   it('uses `aria-label` value as `primaryBtnText`', () => {
     el = createElement(`<a aria-label="Delete merge request" href="#"></a>`);
@@ -76,5 +71,23 @@ describe('confirmViaGlModal', () => {
     confirmViaGlModal(message, el);
 
     expect(confirmAction).toHaveBeenCalledWith(message, { modalHtmlMessage: message });
+  });
+
+  it('uses data-tracking-event attributes to prepare trackEventConfig', () => {
+    el = createElement(
+      `<a data-tracking-event-name="test_event" data-tracking-event-label="test_label" data-tracking-event-property="test_property" data-tracking-event-value="test_value" href="#"></a>`,
+    );
+    const message = 'Test message';
+
+    confirmViaGlModal(message, el);
+
+    expect(confirmAction).toHaveBeenCalledWith(message, {
+      trackingEvent: {
+        name: 'test_event',
+        label: 'test_label',
+        property: 'test_property',
+        value: 'test_value',
+      },
+    });
   });
 });

@@ -2,7 +2,6 @@ package destination
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -11,13 +10,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"gocloud.dev/blob"
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/config"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/testhelper"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/upload/destination/objectstore/test"
+)
+
+const (
+	remoteObject           = "tmp/test-file/1"
+	partNumberParam1       = "?partNumber=1"
+	partNumberParam2       = "?partNumber=2"
+	testFile               = "test-file"
+	ASignatureParam        = "?Signature=ASignature"
+	AnotherSignatureParam  = "?Signature=AnotherSignature"
+	CompleteSignatureParam = "?Signature=CompleteSignature"
 )
 
 func testDeadline() time.Time {
@@ -96,12 +105,12 @@ func TestUploadWrongETag(t *testing.T) {
 			opts := &UploadOpts{
 				RemoteID:        "test-file",
 				RemoteURL:       objectURL,
-				PresignedPut:    objectURL + "?Signature=ASignature",
-				PresignedDelete: objectURL + "?Signature=AnotherSignature",
+				PresignedPut:    objectURL + ASignatureParam,
+				PresignedDelete: objectURL + AnotherSignatureParam,
 				Deadline:        testDeadline(),
 			}
 			if spec.multipart {
-				opts.PresignedParts = []string{objectURL + "?partNumber=1"}
+				opts.PresignedParts = []string{objectURL + partNumberParam1}
 				opts.PresignedCompleteMultipart = objectURL + "?Signature=CompleteSig"
 				opts.PresignedAbortMultipart = objectURL + "?Signature=AbortSig"
 				opts.PartSize = test.ObjectSize
@@ -159,10 +168,10 @@ func TestUpload(t *testing.T) {
 			case remoteSingle:
 				objectURL := ts.URL + test.ObjectPath
 
-				opts.RemoteID = "test-file"
+				opts.RemoteID = testFile
 				opts.RemoteURL = objectURL
-				opts.PresignedPut = objectURL + "?Signature=ASignature"
-				opts.PresignedDelete = objectURL + "?Signature=AnotherSignature"
+				opts.PresignedPut = objectURL + ASignatureParam
+				opts.PresignedDelete = objectURL + AnotherSignatureParam
 				opts.Deadline = testDeadline()
 
 				expectedDeletes = 1
@@ -170,12 +179,12 @@ func TestUpload(t *testing.T) {
 			case remoteMultipart:
 				objectURL := ts.URL + test.ObjectPath
 
-				opts.RemoteID = "test-file"
+				opts.RemoteID = testFile
 				opts.RemoteURL = objectURL
-				opts.PresignedDelete = objectURL + "?Signature=AnotherSignature"
+				opts.PresignedDelete = objectURL + AnotherSignatureParam
 				opts.PartSize = int64(len(test.ObjectContent)/2) + 1
-				opts.PresignedParts = []string{objectURL + "?partNumber=1", objectURL + "?partNumber=2"}
-				opts.PresignedCompleteMultipart = objectURL + "?Signature=CompleteSignature"
+				opts.PresignedParts = []string{objectURL + partNumberParam1, objectURL + partNumberParam2}
+				opts.PresignedCompleteMultipart = objectURL + CompleteSignatureParam
 				opts.Deadline = testDeadline()
 
 				osStub.InitiateMultipartUpload(test.ObjectPath)
@@ -205,7 +214,7 @@ func TestUpload(t *testing.T) {
 
 			if spec.local {
 				require.NotEmpty(t, fh.LocalPath, "File not persisted on disk")
-				_, err := os.Stat(fh.LocalPath)
+				_, err = os.Stat(fh.LocalPath)
 				require.NoError(t, err)
 
 				dir := path.Dir(fh.LocalPath)
@@ -247,10 +256,16 @@ func TestUploadWithS3WorkhorseClient(t *testing.T) {
 		objectSize  int64
 		maxSize     int64
 		expectedErr error
+		awsSDK      string
 	}{
 		{
 			name:       "known size with no limit",
 			objectSize: test.ObjectSize,
+		},
+		{
+			name:       "known size with no limit with v1 SDK",
+			objectSize: test.ObjectSize,
+			awsSDK:     "v1",
 		},
 		{
 			name:       "unknown size with no limit",
@@ -262,18 +277,37 @@ func TestUploadWithS3WorkhorseClient(t *testing.T) {
 			maxSize:     test.ObjectSize - 1,
 			expectedErr: ErrEntityTooLarge,
 		},
+		{
+			name:       "S3 v2 known size with no limit",
+			objectSize: test.ObjectSize,
+			awsSDK:     "v2",
+		},
+		{
+			name:       "S3 v2 unknown size with no limit",
+			objectSize: -1,
+			awsSDK:     "v2",
+		},
+		{
+			name:        "S3 v2 unknown object size with limit",
+			objectSize:  -1,
+			maxSize:     test.ObjectSize - 1,
+			expectedErr: ErrEntityTooLarge,
+			awsSDK:      "v2",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-
-			s3Creds, s3Config, sess, ts := test.SetupS3(t, "")
+			s3Creds, s3Config, client, ts := test.SetupS3(t, "")
 			defer ts.Close()
+
+			if tc.awsSDK != "" {
+				s3Config.AwsSDK = tc.awsSDK
+			}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			remoteObject := "tmp/test-file/1"
 			opts := UploadOpts{
 				RemoteID:           "test-file",
 				Deadline:           testDeadline(),
@@ -291,10 +325,10 @@ func TestUploadWithS3WorkhorseClient(t *testing.T) {
 
 			if tc.expectedErr == nil {
 				require.NoError(t, err)
-				test.S3ObjectExists(t, sess, s3Config, remoteObject, test.ObjectContent)
+				test.S3ObjectExists(ctx, t, client, s3Config, remoteObject, test.ObjectContent)
 			} else {
 				require.Equal(t, tc.expectedErr, err)
-				test.S3ObjectDoesNotExist(t, sess, s3Config, remoteObject)
+				test.S3ObjectDoesNotExist(ctx, t, client, s3Config, remoteObject)
 			}
 		})
 	}
@@ -306,7 +340,6 @@ func TestUploadWithAzureWorkhorseClient(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	remoteObject := "tmp/test-file/1"
 	opts := UploadOpts{
 		RemoteID:           "test-file",
 		Deadline:           testDeadline(),
@@ -331,7 +364,6 @@ func TestUploadWithUnknownGoCloudScheme(t *testing.T) {
 
 	mux := new(blob.URLMux)
 
-	remoteObject := "tmp/test-file/1"
 	opts := UploadOpts{
 		RemoteID:           "test-file",
 		Deadline:           testDeadline(),
@@ -370,9 +402,9 @@ func TestUploadMultipartInBodyFailure(t *testing.T) {
 				RemoteID:                   "test-file",
 				RemoteURL:                  objectURL,
 				PartSize:                   test.ObjectSize,
-				PresignedParts:             []string{objectURL + "?partNumber=1", objectURL + "?partNumber=2"},
-				PresignedCompleteMultipart: objectURL + "?Signature=CompleteSignature",
-				PresignedDelete:            objectURL + "?Signature=AnotherSignature",
+				PresignedParts:             []string{objectURL + partNumberParam1, objectURL + partNumberParam2},
+				PresignedCompleteMultipart: objectURL + CompleteSignatureParam,
+				PresignedDelete:            objectURL + AnotherSignatureParam,
 				Deadline:                   testDeadline(),
 				SkipDelete:                 spec.skipDelete,
 			}
@@ -450,21 +482,21 @@ func TestUploadRemoteFileWithLimit(t *testing.T) {
 				case remoteSingle:
 					objectURL := ts.URL + test.ObjectPath
 
-					opts.RemoteID = "test-file"
+					opts.RemoteID = testFile
 					opts.RemoteURL = objectURL
-					opts.PresignedPut = objectURL + "?Signature=ASignature"
-					opts.PresignedDelete = objectURL + "?Signature=AnotherSignature"
+					opts.PresignedPut = objectURL + ASignatureParam
+					opts.PresignedDelete = objectURL + AnotherSignatureParam
 					opts.Deadline = testDeadline()
 					opts.MaximumSize = tc.maxSize
 				case remoteMultipart:
 					objectURL := ts.URL + test.ObjectPath
 
-					opts.RemoteID = "test-file"
+					opts.RemoteID = testFile
 					opts.RemoteURL = objectURL
-					opts.PresignedDelete = objectURL + "?Signature=AnotherSignature"
+					opts.PresignedDelete = objectURL + AnotherSignatureParam
 					opts.PartSize = int64(len(tc.testData)/2) + 1
-					opts.PresignedParts = []string{objectURL + "?partNumber=1", objectURL + "?partNumber=2"}
-					opts.PresignedCompleteMultipart = objectURL + "?Signature=CompleteSignature"
+					opts.PresignedParts = []string{objectURL + partNumberParam1, objectURL + partNumberParam2}
+					opts.PresignedCompleteMultipart = objectURL + CompleteSignatureParam
 					opts.Deadline = testDeadline()
 					opts.MaximumSize = tc.maxSize
 
@@ -482,7 +514,7 @@ func TestUploadRemoteFileWithLimit(t *testing.T) {
 					require.NoError(t, err)
 					require.NotNil(t, fh)
 				} else {
-					require.True(t, errors.Is(err, tc.expectedErr))
+					require.ErrorIs(t, err, tc.expectedErr)
 					require.Nil(t, fh)
 				}
 			}

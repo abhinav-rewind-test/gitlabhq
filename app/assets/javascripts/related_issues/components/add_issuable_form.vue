@@ -3,6 +3,7 @@ import { GlFormGroup, GlFormRadioGroup, GlButton } from '@gitlab/ui';
 import { TYPE_ISSUE } from '~/issues/constants';
 import { mergeUrlParams } from '~/lib/utils/url_utility';
 import { __ } from '~/locale';
+import SafeHtml from '~/vue_shared/directives/safe_html';
 
 import {
   itemAddFailureTypesMap,
@@ -16,6 +17,9 @@ import RelatedIssuableInput from './related_issuable_input.vue';
 
 export default {
   name: 'AddIssuableForm',
+  directives: {
+    SafeHtml,
+  },
   components: {
     GlFormGroup,
     GlFormRadioGroup,
@@ -183,7 +187,7 @@ export default {
           :checked="linkedIssueType"
         />
       </gl-form-group>
-      <p class="bold gl-mb-2">
+      <p class="gl-mb-2 gl-font-bold">
         {{ issuableInputText }}
       </p>
     </template>
@@ -206,10 +210,8 @@ export default {
       @addIssuableFormBlur="onAddIssuableFormBlur"
       @addIssuableFormInput="onAddIssuableFormInput"
     />
-    <p v-if="hasError" class="gl-field-error">
-      {{ addRelatedErrorMessage }}
-    </p>
-    <div class="gl-mt-5">
+    <p v-if="hasError" v-safe-html="addRelatedErrorMessage" class="gl-field-error"></p>
+    <div class="gl-mt-5 gl-flex gl-gap-3">
       <gl-button
         ref="addButton"
         category="primary"
@@ -218,7 +220,6 @@ export default {
         :loading="isSubmitting"
         type="submit"
         size="small"
-        class="gl-mr-2"
         data-testid="add-issue-button"
       >
         {{ __('Add') }}

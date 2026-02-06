@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Plan', product_group: :product_planning do
+  RSpec.describe 'Plan', feature_category: :portfolio_management do
     describe 'Design Management' do
       let(:first_design) { Resource::Design.fabricate! }
 
@@ -23,10 +23,13 @@ module QA
         Flow::Login.sign_in
       end
 
-      it 'user archives a design', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347713' do
+      it(
+        'user archives a design',
+        testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347713'
+      ) do
         third_design.issue.visit!
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           issue.select_design(third_design.filename)
 
           issue.archive_selected_designs
@@ -36,7 +39,7 @@ module QA
           expect(issue).to have_design(second_design.filename)
         end
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           issue.select_design(second_design.filename)
           issue.select_design(first_design.filename)
 

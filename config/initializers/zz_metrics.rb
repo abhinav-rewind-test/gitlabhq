@@ -2,7 +2,7 @@
 
 # This file was prefixed with zz_ because we want to load it the last!
 # See: https://gitlab.com/gitlab-org/gitlab-foss/issues/55611
-if Gitlab::Metrics.enabled? && Gitlab::Runtime.application?
+if Gitlab::Metrics.prometheus_metrics_enabled? && Gitlab::Runtime.application?
   require 'pathname'
   require 'connection_pool'
 
@@ -21,7 +21,7 @@ if Gitlab::Metrics.enabled? && Gitlab::Runtime.application?
       Gitlab::Metrics::RackMiddleware
 
     config.middleware.insert_before Gitlab::Database::LoadBalancing::RackMiddleware,
-                                   Gitlab::Middleware::RailsQueueDuration
+      Gitlab::Middleware::RailsQueueDuration
 
     config.middleware.move_after Gitlab::Metrics::RackMiddleware,
       Gitlab::EtagCaching::Middleware
@@ -29,14 +29,7 @@ if Gitlab::Metrics.enabled? && Gitlab::Runtime.application?
     config.middleware.use(Gitlab::Metrics::ElasticsearchRackMiddleware)
   end
 
-  if Gitlab::Runtime.puma?
-    Gitlab::Metrics::RequestsRackMiddleware.initialize_metrics
-    Gitlab::Metrics::GlobalSearchSlis.initialize_slis!
-  elsif Gitlab::Runtime.sidekiq?
-    Gitlab::Metrics::GlobalSearchIndexingSlis.initialize_slis! if Gitlab.ee?
-    Gitlab::Metrics::LooseForeignKeysSlis.initialize_slis!
-    Gitlab::Metrics::Llm.initialize_slis! if Gitlab.ee?
-  end
+  Gitlab::Metrics.initialize_slis!
 
   GC::Profiler.enable
 
@@ -44,7 +37,7 @@ if Gitlab::Metrics.enabled? && Gitlab::Runtime.application?
     def connect(*args)
       val = super
 
-      if current_transaction = (::Gitlab::Metrics::WebTransaction.current || ::Gitlab::Metrics::BackgroundTransaction.current)
+      if current_transaction = ::Gitlab::Metrics::WebTransaction.current || ::Gitlab::Metrics::BackgroundTransaction.current
         current_transaction.increment(:gitlab_transaction_new_redis_connections_total, 1)
       end
 

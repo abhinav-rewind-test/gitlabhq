@@ -1,7 +1,7 @@
 import { GlLink } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import TargetLink from '~/contribution_events/components/target_link.vue';
-import { eventApproved, eventJoined, eventWikiPageCreated } from '../utils';
+import { eventApproved, eventPushed } from '../utils';
 
 describe('TargetLink', () => {
   let wrapper;
@@ -36,26 +36,16 @@ describe('TargetLink', () => {
       });
       expect(link.text()).toBe(reference_link_text);
     });
-
-    describe('when target does not have `reference_link_text` defined', () => {
-      const event = eventWikiPageCreated();
-      beforeEach(() => {
-        createComponent({ propsData: { event } });
-      });
-
-      it('uses `title` for the link text', () => {
-        expect(findLink().text()).toBe(event.target.title);
-      });
-    });
   });
 
   describe('when target type is not defined', () => {
     beforeEach(() => {
-      createComponent({ propsData: { event: eventJoined() } });
+      const event = { ...eventPushed(), target: {} };
+      createComponent({ propsData: { event } });
     });
 
     it('renders nothing', () => {
-      expect(wrapper.html()).toBe('');
+      expect(wrapper.find('*').exists()).toBe(false);
     });
   });
 });

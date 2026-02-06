@@ -4,11 +4,7 @@ require 'spec_helper'
 
 RSpec.describe API::ProjectStatistics, feature_category: :source_code_management do
   let_it_be(:reporter) { create(:user) }
-  let_it_be(:public_project) { create(:project, :public) }
-
-  before do
-    public_project.add_reporter(reporter)
-  end
+  let_it_be(:public_project) { create(:project, :public, reporters: reporter) }
 
   describe 'GET /projects/:id/statistics' do
     let_it_be(:fetch_statistics1) { create(:project_daily_statistic, project: public_project, fetch_count: 30, date: 29.days.ago) }
@@ -49,6 +45,14 @@ RSpec.describe API::ProjectStatistics, feature_category: :source_code_management
 
       expect(response).to have_gitlab_http_status(:forbidden)
       expect(json_response['message']).to eq('403 Forbidden')
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_statistic do
+      let(:user) { reporter }
+      let(:boundary_object) { public_project }
+      let(:request) do
+        get api("/projects/#{public_project.id}/statistics", personal_access_token: pat)
+      end
     end
   end
 end

@@ -19,70 +19,60 @@ module Search
     end
 
     def tabs
-      {
-        projects: {
-          sort: 1,
-          label: _("Projects"),
-          data: { testid: 'projects-tab' },
-          condition: project.nil?
-        },
-        blobs: {
-          sort: 2,
-          label: _("Code"),
-          data: { testid: 'code-tab' },
-          condition: show_code_search_tab?
-        },
-        #  sort: 3 is reserved for EE items
-        issues: {
-          sort: 4,
-          label: _("Issues"),
-          condition: show_issues_search_tab?
-        },
-        merge_requests: {
-          sort: 5,
-          label: _("Merge requests"),
-          condition: show_merge_requests_search_tab?
-        },
-        wiki_blobs: {
-          sort: 6,
-          label: _("Wiki"),
-          condition: show_wiki_search_tab?
-        },
-        commits: {
-          sort: 7,
-          label: _("Commits"),
-          condition: show_commits_search_tab?
-        },
-        notes: {
-          sort: 8,
-          label: _("Comments"),
-          condition: show_comments_search_tab?
-        },
-        milestones: {
-          sort: 9, label: _("Milestones"),
-          condition: show_milestones_search_tab?
-        },
-        users: {
-          sort: 10,
-          label: _("Users"),
-          condition: show_user_search_tab?
-        },
-        snippet_titles: {
-          sort: 11,
-          label: _("Snippets"),
-          search: { snippets: true, group_id: nil, project_id: nil },
-          condition: show_snippets_search_tab?
+      nav = {}
+      Search::Scopes.scope_definitions.each do |scope_key, definition|
+        label = definition[:label]
+        label = label.call if label.respond_to?(:call)
+
+        nav[scope_key] = {
+          sort: definition[:sort],
+          label: label,
+          condition: scope_visible?(scope_key)
         }
-      }
+
+        # Only add data attribute for projects and blobs (to match legacy behavior)
+        if scope_key == :projects
+          nav[scope_key][:data] = { testid: 'projects-tab' }
+        elsif scope_key == :blobs
+          nav[scope_key][:data] = { testid: 'code-tab' }
+        end
+
+        nav[scope_key][:search] = { snippets: true, group_id: nil, project_id: nil } if scope_key == :snippet_titles
+      end
+
+      nav
     end
 
     private
 
-    attr_reader :user, :project, :group, :options
-
-    def show_elasticsearch_tabs?
-      !!options[:show_elasticsearch_tabs]
+    # Returns whether a scope should be visible
+    # This method is called for each scope defined in Search::Scopes::SCOPE_DEFINITIONS
+    def scope_visible?(scope_key)
+      case scope_key
+      when :projects
+        project.nil?
+      when :blobs
+        show_code_search_tab?
+      when :issues
+        show_issues_search_tab?
+      when :merge_requests
+        show_merge_requests_search_tab?
+      when :wiki_blobs
+        show_wiki_search_tab?
+      when :commits
+        show_commits_search_tab?
+      when :notes
+        show_comments_search_tab?
+      when :milestones
+        show_milestones_search_tab?
+      when :users
+        show_user_search_tab?
+      else # scope_key is restricted to predefined keys; safe to use else
+        show_snippets_search_tab?
+      end
     end
+
+    attr_reader :user, :project, :group, :options
 
     def search_tab_ability_map
       {
@@ -102,7 +92,7 @@ module Search
       return true if tab_enabled_for_project?(:users)
       return false unless can?(user, :read_users_list)
 
-      project.nil? && feature_flag_tab_enabled?(:global_search_users_tab)
+      project.nil? && (group.present? || ::Gitlab::CurrentSettings.global_search_users_enabled?)
     end
 
     def show_code_search_tab?
@@ -114,40 +104,32 @@ module Search
     end
 
     def show_commits_search_tab?
-      return true if tab_enabled_for_project?(:commits)
-
-      project.nil? && show_elasticsearch_tabs? && feature_flag_tab_enabled?(:global_search_commits_tab)
+      tab_enabled_for_project?(:commits)
     end
 
     def show_issues_search_tab?
       return true if tab_enabled_for_project?(:issues)
 
-      project.nil? && feature_flag_tab_enabled?(:global_search_issues_tab)
+      project.nil? && (group.present? || ::Gitlab::CurrentSettings.global_search_issues_enabled?)
     end
 
     def show_merge_requests_search_tab?
       return true if tab_enabled_for_project?(:merge_requests)
 
-      project.nil? && feature_flag_tab_enabled?(:global_search_merge_requests_tab)
+      project.nil? && (group.present? || ::Gitlab::CurrentSettings.global_search_merge_requests_enabled?)
     end
 
     def show_comments_search_tab?
-      return true if tab_enabled_for_project?(:notes)
-
-      project.nil? && show_elasticsearch_tabs?
+      tab_enabled_for_project?(:notes)
     end
 
     def show_snippets_search_tab?
-      !!options[:show_snippets] && project.nil? && feature_flag_tab_enabled?(:global_search_snippet_titles_tab)
+      !!options[:show_snippets] && project.nil? &&
+        (group.present? || ::Gitlab::CurrentSettings.global_search_snippet_titles_enabled?)
     end
 
     def show_milestones_search_tab?
       project.nil? || tab_enabled_for_project?(:milestones)
-    end
-
-    # deprecated - this method is being refactored and will eventually be removed
-    def feature_flag_tab_enabled?(flag)
-      group.present? || Feature.enabled?(flag, user, type: :ops)
     end
   end
 end

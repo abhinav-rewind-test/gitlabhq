@@ -1,18 +1,19 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Terraform state administration
+description: Administer Terraform state storage.
 ---
 
-# Terraform state administration
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/2673) in GitLab 12.10.
+{{< /details >}}
 
-GitLab can be used as a backend for [Terraform](../user/infrastructure/index.md) state
+GitLab can be used as a backend for [Terraform](../user/infrastructure/_index.md) state
 files. The files are encrypted before being stored. This feature is enabled by default.
 
 The storage location of these files defaults to:
@@ -31,12 +32,12 @@ or because your instance doesn't use Terraform.
 
 When Terraform state administration is disabled:
 
-- On the left sidebar, you cannot select **Operate > Terraform states**.
+- On the left sidebar, you cannot select **Operate** > **Terraform states**.
 - Any CI/CD jobs that access the Terraform state fail with this error:
 
-    ```shell
-    Error refreshing state: HTTP remote state endpoint invalid auth
-    ```
+  ```shell
+  Error refreshing state: HTTP remote state endpoint invalid auth
+  ```
 
 To disable Terraform administration, follow the steps below according to your installation.
 
@@ -96,9 +97,12 @@ For self-compiled installations:
 
 ## Using object storage
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 Instead of storing Terraform state files on disk, we recommend the use of
 [one of the supported object storage options](object_storage.md#supported-object-storage-providers).
@@ -121,12 +125,10 @@ The following settings are:
 
 ### Migrate to object storage
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/247042) in GitLab 13.9.
-
-WARNING:
-It's not possible to migrate Terraform state files from object storage back to local storage,
-so proceed with caution. [An issue exists](https://gitlab.com/gitlab-org/gitlab/-/issues/350187)
-to change this behavior.
+> [!warning]
+> It's not possible to migrate Terraform state files from object storage back to local storage,
+> so proceed with caution. [An issue exists](https://gitlab.com/gitlab-org/gitlab/-/issues/350187)
+> to change this behavior.
 
 To migrate Terraform state files to object storage:
 
@@ -142,26 +144,10 @@ To migrate Terraform state files to object storage:
   sudo -u git -H bundle exec rake gitlab:terraform_states:migrate RAILS_ENV=production
   ```
 
-For GitLab 13.8 and earlier versions, you can use a workaround for the Rake task:
-
-1. Open the GitLab [Rails console](operations/rails_console.md).
-1. Run the following commands:
-
-   ```ruby
-   Terraform::StateUploader.alias_method(:upload, :model)
-
-   Terraform::StateVersion.where(file_store: ::ObjectStorage::Store::LOCAL).   find_each(batch_size: 10) do |terraform_state_version|
-     puts "Migrating: #{terraform_state_version.inspect}"
-
-     terraform_state_version.file.migrate!(::ObjectStorage::Store::REMOTE)
-   end
-   ```
-
 You can optionally track progress and verify that all Terraform state files migrated successfully using the
 [PostgreSQL console](https://docs.gitlab.com/omnibus/settings/database.html#connecting-to-the-bundled-postgresql-database):
 
-- `sudo gitlab-rails dbconsole` for Linux package installations running GitLab 14.1 and earlier.
-- `sudo gitlab-rails dbconsole --database main` for Linux package installations running GitLab 14.2 and later.
+- `sudo gitlab-rails dbconsole --database main` for Linux package installations.
 - `sudo -u git -H psql -d gitlabhq_production` for self-compiled installations.
 
 Verify `objectstg` below (where `file_store=2`) has count of all states:
@@ -182,15 +168,15 @@ sudo find /var/opt/gitlab/gitlab-rails/shared/terraform_state -type f | grep -v 
 
 ### S3-compatible connection settings
 
-In GitLab 13.2 and later, you should use the
+You should use the
 [consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form).
 This section describes the earlier configuration format.
 
 See [the available connection settings for different providers](object_storage.md#configure-the-connection-settings).
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following lines; replacing with
    the values you want:
@@ -206,8 +192,8 @@ See [the available connection settings for different providers](object_storage.m
    }
    ```
 
-   NOTE:
-   If you are using AWS IAM profiles, be sure to omit the AWS access key and secret access key/value pairs.
+   > [!note]
+   > If you are using AWS IAM profiles, be sure to omit the AWS access key and secret access key/value pairs.
 
    ```ruby
    gitlab_rails['terraform_state_object_store_connection'] = {
@@ -220,7 +206,9 @@ See [the available connection settings for different providers](object_storage.m
 1. Save the file and [reconfigure GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 1. [Migrate any existing local states to the object storage](#migrate-to-object-storage)
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `/home/git/gitlab/config/gitlab.yml` and add or amend the following
    lines:
@@ -241,7 +229,9 @@ See [the available connection settings for different providers](object_storage.m
 1. Save the file and [restart GitLab](restart_gitlab.md#self-compiled-installations) for the changes to take effect.
 1. [Migrate any existing local states to the object storage](#migrate-to-object-storage)
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ### Find a Terraform state file path
 
@@ -268,3 +258,51 @@ To find a state file path:
    ```
 
 The relative path is displayed.
+
+## Restoring Terraform state files from backups
+
+To restore Terraform state files from backups, you must have access to the encrypted state files and the GitLab database.
+
+### Database tables
+
+The following database table helps trace the S3 path back to specific projects:
+
+- `terraform_states`: Contains the base state information, including the universally unique ID (UUID) for each state.
+
+### File structure and path composition
+
+The state files are stored in a specific directory structure, where:
+
+- The first three segments of the path are derived from the SHA-256 hash value of the project ID.
+- Each state has a UUID stored on the `terraform_states` database table that forms part of the path.
+
+For example, for a project where the:
+
+- Project ID is `12345`
+- State UUID is `example-uuid`
+
+If the SHA-256 hash value of `12345` is `5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5`, the folder structure would be:
+
+```plaintext
+terraform/                                                                 <- configured Terraform storage directory
+├─ 59/                                                                     <- first and second character of project ID hash
+|  ├─ 94/                                                                  <- third and fourth character of project ID hash
+|  |  ├─ 5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5/ <- full project ID hash
+|  |  |  ├─ example-uuid/                                                  <- state UUID
+|  |  |  |  ├─ 1.tf                                                        <- individual state versions
+|  |  |  |  ├─ 2.tf
+|  |  |  |  ├─ 3.tf
+```
+
+### Decryption process
+
+The state files are encrypted using Lockbox and require the following information for decryption:
+
+- The `db_key_base` application secret
+- The project ID
+
+The encryption key is derived from both the `db_key_base` and the project ID. If you can't access `db_key_base`, decryption is not possible.
+
+To learn how to manually decrypt files, see the documentation from [Lockbox](https://github.com/ankane/lockbox).
+
+To view the encryption key generation process, see the [state uploader code](https://gitlab.com/gitlab-org/gitlab/-/blob/e0137111fbbd28316f38da30075aba641e702b98/app/uploaders/terraform/state_uploader.rb#L43).

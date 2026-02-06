@@ -95,32 +95,19 @@ RSpec.shared_examples 'pauses, resumes and deletes a runner' do
     end
   end
 
-  describe 'deletes runner' do
-    before do
-      within_runner_row(runner.id) do
-        click_on 'Delete runner'
-      end
+  it 'deletes runner' do
+    within_runner_row(runner.id) do
+      click_on 'Delete runner'
     end
 
-    it 'confirms runner deletion' do
+    within_modal do
       expect(page).to have_text "Delete runner ##{runner.id} (#{runner.short_sha})?"
-      expect(page).to have_text "Are you sure you want to continue?"
 
-      within_modal do
-        click_on 'Permanently delete runner'
-      end
-
-      expect(page.find('.gl-toast')).to have_text(/Runner .+ deleted/)
-      expect(page).not_to have_content runner.description
+      click_on 'Permanently delete runner'
     end
 
-    it 'cancels runner deletion' do
-      within_modal do
-        click_on 'Cancel'
-      end
-
-      expect(page).to have_content runner.description
-    end
+    expect(page.find('.gl-toast')).to have_text(/Runner .+ deleted/)
+    expect(page).not_to have_content runner.description
   end
 end
 
@@ -145,19 +132,17 @@ RSpec.shared_examples 'filters by tag' do
     expect(page).to have_content missing_runner
 
     input_filtered_search_filter_is_only('Tags', tag)
+    wait_for_requests
 
     expect(page).to have_content found_runner
     expect(page).not_to have_content missing_runner
   end
 end
 
-RSpec.shared_examples 'shows runner jobs tab' do
-  it 'show jobs in tab' do
-    click_on("#{s_('Runners|Jobs')} #{job_count}")
-
-    within "[data-testid='job-row-#{job.id}']" do
-      expect(page).to have_link("##{job.id}")
-    end
+RSpec.shared_examples 'shows runner jobs' do
+  it 'show jobs' do
+    expect(page).to have_content("#{s_('Runners|Jobs')} #{job_count}")
+    expect(page).to have_link("##{job.id}")
   end
 end
 
@@ -169,21 +154,21 @@ RSpec.shared_examples 'shows locked field' do
 end
 
 RSpec.shared_examples 'submits edit runner form' do
-  it 'breadcrumb contains runner id and token' do
-    page.within '[data-testid="breadcrumb-links"]' do
+  it 'breadcrumb contains runner id and token', :js do
+    within_testid 'breadcrumb-links' do
       expect(page).to have_link("##{runner.id} (#{runner.short_sha})")
-      expect(page.find('[data-testid="breadcrumb-current-link"]')).to have_content("Edit")
+      expect(find('li:last-of-type')).to have_content("Edit")
     end
   end
 
   context 'when a runner is updated', :js do
     before do
-      fill_in s_('Runners|Runner description'), with: 'new-runner-description', fill_options: { clear: :backspace }
+      fill_in s_('Runners|Runner description'), with: 'new-runner-description'
 
       click_on _('Save changes')
     end
 
-    it 'redirects to runner page and shows succesful update' do
+    it 'redirects to runner page and shows successful update' do
       expect(current_url).to match(runner_page_path)
 
       expect(page.find('[data-testid="alert-success"]')).to have_content('saved')
@@ -206,17 +191,6 @@ RSpec.shared_examples 'creates runner and shows register page' do
 
       click_on 'How do I install GitLab Runner?'
       expect(page.find('[data-testid="runner-platforms-drawer"]')).to have_content('gitlab-runner install')
-    end
-
-    it 'warns from leaving page without finishing registration' do
-      click_on s_('Runners|View runners')
-
-      alert = page.driver.browser.switch_to.alert
-
-      expect(alert).not_to be_nil
-      alert.dismiss
-
-      expect(current_url).to match(register_path_pattern)
     end
   end
 end

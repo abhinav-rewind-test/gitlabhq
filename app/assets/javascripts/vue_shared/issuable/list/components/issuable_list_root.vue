@@ -1,29 +1,32 @@
 <script>
-import { GlAlert, GlBadge, GlKeysetPagination, GlSkeletonLoader, GlPagination } from '@gitlab/ui';
-import { uniqueId } from 'lodash';
+import {
+  GlAlert,
+  GlBadge,
+  GlKeysetPagination,
+  GlPagination,
+  GlIntersectionObserver,
+} from '@gitlab/ui';
+import EmptyResult from '~/vue_shared/components/empty_result.vue';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import PageSizeSelector from '~/vue_shared/components/page_size_selector.vue';
-import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { updateHistory, setUrlParams } from '~/lib/utils/url_utility';
 import { __ } from '~/locale';
 import { DRAG_DELAY } from '~/sortable/constants';
+import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import FilteredSearchBar from '~/vue_shared/components/filtered_search_bar/filtered_search_bar_root.vue';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-
-import issuableEventHub from '~/issues/list/eventhub';
+import ResourceListsLoadingStateList from '~/vue_shared/components/resource_lists/loading_state_list.vue';
 import { DEFAULT_SKELETON_COUNT, PAGE_SIZE_STORAGE_KEY } from '../constants';
 import IssuableBulkEditSidebar from './issuable_bulk_edit_sidebar.vue';
 import IssuableItem from './issuable_item.vue';
 import IssuableTabs from './issuable_tabs.vue';
-import IssuableGrid from './issuable_grid.vue';
 
-const VueDraggable = () => import('vuedraggable');
+const VueDraggable = () => import('~/lib/utils/vue3compat/draggable_compat.vue');
 
 export default {
   vueDraggableAttributes: {
     animation: 200,
-    forceFallback: true,
-    ghostClass: 'gl-visibility-hidden',
+    forceFallback: false,
+    ghostClass: 'gl-invisible',
     tag: 'ul',
     delay: DRAG_DELAY,
     delayOnTouchOnly: true,
@@ -32,22 +35,27 @@ export default {
     GlAlert,
     GlBadge,
     GlKeysetPagination,
-    GlSkeletonLoader,
     IssuableTabs,
     FilteredSearchBar,
     IssuableItem,
-    IssuableGrid,
     IssuableBulkEditSidebar,
     GlPagination,
     VueDraggable,
     PageSizeSelector,
+    ResourceListsLoadingStateList,
     LocalStorageSync,
+    EmptyResult,
+    GlIntersectionObserver,
   },
-  mixins: [glFeatureFlagMixin()],
   props: {
     namespace: {
       type: String,
       required: true,
+    },
+    fullPath: {
+      type: String,
+      required: false,
+      default: null,
     },
     recentSearchesStorageKey: {
       type: String,
@@ -193,17 +201,12 @@ export default {
       required: false,
       default: false,
     },
-    showPageSizeChangeControls: {
+    showPageSizeSelector: {
       type: Boolean,
       required: false,
       default: false,
     },
     showWorkItemTypeIcon: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-    isGridView: {
       type: Boolean,
       required: false,
       default: false,
@@ -218,10 +221,41 @@ export default {
       required: false,
       default: false,
     },
+    issuableItemClass: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    detailLoading: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    hiddenMetadataKeys: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
+    alwaysAllowCustomEmptyState: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    searchTimeout: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    maxCount: {
+      type: Number,
+      required: false,
+      default: null,
+    },
   },
   data() {
     return {
-      checkedIssuables: {},
+      checkedIssuableIds: [],
+      isStickyHeaderVisible: false,
     };
   },
   computed: {
@@ -237,75 +271,60 @@ export default {
       return DEFAULT_SKELETON_COUNT;
     },
     allIssuablesChecked() {
-      return this.bulkEditIssuables.length === this.issuables.length;
+      return this.checkedIssuables.length === this.issuables.length;
     },
-    /**
-     * Returns all the checked issuables from `checkedIssuables` map.
-     */
-    bulkEditIssuables() {
-      return Object.keys(this.checkedIssuables).reduce((acc, issuableId) => {
-        if (this.checkedIssuables[issuableId].checked) {
-          acc.push(this.checkedIssuables[issuableId].issuable);
-        }
-        return acc;
-      }, []);
+    checkedIssuables() {
+      return this.issuables.filter((issuable) => this.checkedIssuableIds.includes(issuable.id));
     },
     issuablesWrapper() {
       return this.isManualOrdering ? VueDraggable : 'ul';
     },
-    gridViewFeatureEnabled() {
-      return Boolean(this.glFeatures?.issuesGridView);
+    hasItems() {
+      return this.issuables.length > 0;
     },
   },
   watch: {
-    issuables(list) {
-      this.checkedIssuables = list.reduce((acc, issuable) => {
-        const id = this.issuableId(issuable);
-        acc[id] = {
-          // By default, an issuable is not checked,
-          // But if `checkedIssuables` is already
-          // populated, use existing value.
-          checked:
-            typeof this.checkedIssuables[id] !== 'boolean'
-              ? false
-              : this.checkedIssuables[id].checked,
-          // We're caching issuable reference here
-          // for ease of populating in `bulkEditIssuables`.
-          issuable,
-        };
-        return acc;
-      }, {});
-    },
     urlParams: {
       deep: true,
       immediate: true,
       handler(params) {
         if (Object.keys(params).length) {
           updateHistory({
-            url: setUrlParams(params, window.location.href, true, false, true),
+            url: setUrlParams(params, {
+              url: window.location.href,
+              clearParams: true,
+              decodeParams: true,
+            }),
             title: document.title,
             replace: true,
           });
         }
       },
     },
+    showBulkEditSidebar() {
+      this.checkedIssuableIds = [];
+    },
   },
   methods: {
-    issuableId(issuable) {
-      return getIdFromGraphQLId(issuable.id) || issuable.iid || uniqueId();
+    isIssuableChecked(issuable) {
+      return this.checkedIssuableIds.includes(issuable.id);
     },
-    issuableChecked(issuable) {
-      return this.checkedIssuables[this.issuableId(issuable)]?.checked;
+    updateCheckedIssuableIds(issuable, toCheck) {
+      const isIdChecked = this.checkedIssuableIds.includes(issuable.id);
+      if (toCheck && !isIdChecked) {
+        this.checkedIssuableIds.push(issuable.id);
+      }
+      if (!toCheck && isIdChecked) {
+        const indexToDelete = this.checkedIssuableIds.findIndex((id) => id === issuable.id);
+        this.checkedIssuableIds.splice(indexToDelete, 1);
+      }
     },
     handleIssuableCheckedInput(issuable, value) {
-      this.checkedIssuables[this.issuableId(issuable)].checked = value;
+      this.updateCheckedIssuableIds(issuable, value);
       this.$emit('update-legacy-bulk-edit');
-      issuableEventHub.$emit('issuables:issuableChecked', issuable, value);
     },
     handleAllIssuablesCheckedInput(value) {
-      Object.keys(this.checkedIssuables).forEach((issuableId) => {
-        this.checkedIssuables[issuableId].checked = value;
-      });
+      this.issuables.forEach((issuable) => this.updateCheckedIssuableIds(issuable, value));
       this.$emit('update-legacy-bulk-edit');
     },
     handleVueDraggableUpdate({ newIndex, oldIndex }) {
@@ -315,7 +334,12 @@ export default {
       this.$emit('page-size-change', newPageSize);
     },
     isIssuableActive(issuable) {
-      return Boolean(issuable.iid === this.activeIssuable?.iid);
+      return Boolean(
+        getIdFromGraphQLId(issuable.id) === getIdFromGraphQLId(this.activeIssuable?.id),
+      );
+    },
+    toggleStickyHeader(isVisible) {
+      this.isStickyHeaderVisible = isVisible;
     },
   },
   PAGE_SIZE_STORAGE_KEY,
@@ -324,17 +348,20 @@ export default {
 
 <template>
   <div class="issuable-list-container">
-    <issuable-tabs
-      :tabs="tabs"
-      :tab-counts="tabCounts"
-      :current-tab="currentTab"
-      :truncate-counts="truncateCounts"
-      @click="$emit('click-tab', $event)"
-    >
-      <template #nav-actions>
-        <slot name="nav-actions"></slot>
-      </template>
-    </issuable-tabs>
+    <slot name="list-header">
+      <issuable-tabs
+        :tabs="tabs"
+        :tab-counts="tabCounts"
+        :current-tab="currentTab"
+        :truncate-counts="truncateCounts"
+        :max-count="maxCount"
+        @click="$emit('click-tab', $event)"
+      >
+        <template #nav-actions>
+          <slot name="nav-actions"></slot>
+        </template>
+      </issuable-tabs>
+    </slot>
     <filtered-search-bar
       :namespace="namespace"
       :recent-searches-storage-key="recentSearchesStorageKey"
@@ -348,31 +375,81 @@ export default {
       :checkbox-checked="allIssuablesChecked"
       :show-friendly-text="showFilteredSearchFriendlyText"
       terms-as-tokens
-      class="gl-flex-grow-1 gl-border-t-none row-content-block"
+      class="row-content-block gl-grow gl-border-t-0 @sm/panel:gl-flex"
       data-testid="issuable-search-container"
       @checked-input="handleAllIssuablesCheckedInput"
       @onFilter="$emit('filter', $event)"
       @onSort="$emit('sort', $event)"
-    />
-    <gl-alert v-if="error" variant="danger" @dismiss="$emit('dismiss-alert')">{{ error }}</gl-alert>
+    >
+      <template #user-preference>
+        <slot name="user-preference"></slot>
+      </template>
+    </filtered-search-bar>
+    <gl-intersection-observer
+      @appear="toggleStickyHeader(false)"
+      @disappear="toggleStickyHeader(true)"
+    >
+      <transition name="issuable-header-slide">
+        <div
+          v-if="isStickyHeaderVisible"
+          class="sticky-filter gl-fixed gl-left-auto gl-right-auto gl-z-3 gl-hidden @md/panel:gl-block"
+        >
+          <filtered-search-bar
+            :namespace="namespace"
+            :recent-searches-storage-key="recentSearchesStorageKey"
+            :search-input-placeholder="searchInputPlaceholder"
+            :tokens="searchTokens"
+            :sort-options="sortOptions"
+            :initial-filter-value="initialFilterValue"
+            :initial-sort-by="initialSortBy"
+            :sync-filter-and-sort="syncFilterAndSort"
+            :show-checkbox="showBulkEditSidebar"
+            :checkbox-checked="allIssuablesChecked"
+            :show-friendly-text="showFilteredSearchFriendlyText"
+            terms-as-tokens
+            class="row-content-block gl-grow gl-border-t-0 @sm/panel:gl-flex"
+            data-testid="issuable-search-container"
+            @checked-input="handleAllIssuablesCheckedInput"
+            @onFilter="$emit('filter', $event)"
+            @onSort="$emit('sort', $event)"
+          >
+            <template #user-preference>
+              <slot name="user-preference"></slot>
+            </template>
+          </filtered-search-bar>
+        </div>
+      </transition>
+    </gl-intersection-observer>
+    <gl-alert
+      v-if="error && !searchTimeout"
+      variant="danger"
+      :class="{ 'gl-mt-5': !hasItems && !issuablesLoading }"
+      :dismissible="hasItems"
+      @dismiss="$emit('dismiss-alert')"
+    >
+      {{ error }}
+    </gl-alert>
     <issuable-bulk-edit-sidebar :expanded="showBulkEditSidebar">
       <template #bulk-edit-actions>
-        <slot name="bulk-edit-actions" :checked-issuables="bulkEditIssuables"></slot>
+        <slot name="bulk-edit-actions" :checked-issuables="checkedIssuables"></slot>
       </template>
       <template #sidebar-items>
-        <slot name="sidebar-items" :checked-issuables="bulkEditIssuables"></slot>
+        <slot name="sidebar-items" :checked-issuables="checkedIssuables"></slot>
       </template>
     </issuable-bulk-edit-sidebar>
     <slot name="list-body"></slot>
-    <ul v-if="issuablesLoading" class="content-list">
-      <li v-for="n in skeletonItemCount" :key="n" class="issue gl-px-5! gl-py-5!">
-        <gl-skeleton-loader />
-      </li>
-    </ul>
+    <slot name="before-list-items"></slot>
+    <resource-lists-loading-state-list
+      v-if="issuablesLoading"
+      :left-lines-count="3"
+      :list-length="skeletonItemCount"
+    />
     <template v-else>
       <component
         :is="issuablesWrapper"
-        v-if="issuables.length > 0 && !isGridView"
+        v-if="issuables.length > 0"
+        :value="issuables"
+        item-key="id"
         class="content-list issuable-list issues-list"
         :class="{ 'manual-ordering': isManualOrdering }"
         v-bind="$options.vueDraggableAttributes"
@@ -380,19 +457,22 @@ export default {
       >
         <issuable-item
           v-for="issuable in issuables"
-          :key="issuableId(issuable)"
-          :class="{ 'gl-cursor-grab': isManualOrdering }"
+          :key="issuable.id"
+          :class="[{ 'gl-cursor-grab': isManualOrdering }, issuableItemClass]"
           data-testid="issuable-container"
           :data-qa-issuable-title="issuable.title"
           :has-scoped-labels-feature="hasScopedLabelsFeature"
           :issuable-symbol="issuableSymbol"
           :issuable="issuable"
           :label-filter-param="labelFilterParam"
+          :full-path="fullPath"
           :show-checkbox="showBulkEditSidebar"
-          :checked="issuableChecked(issuable)"
+          :checked="isIssuableChecked(issuable)"
           :show-work-item-type-icon="showWorkItemTypeIcon"
           :prevent-redirect="preventRedirect"
           :is-active="isIssuableActive(issuable)"
+          :detail-loading="detailLoading"
+          :hidden-metadata-keys="hiddenMetadataKeys"
           @checked-input="handleIssuableCheckedInput(issuable, $event)"
           @select-issuable="$emit('select-issuable', $event)"
         >
@@ -405,25 +485,46 @@ export default {
           <template #timeframe>
             <slot name="timeframe" :issuable="issuable"></slot>
           </template>
+          <template #target-branch>
+            <slot name="target-branch" :issuable="issuable"></slot>
+          </template>
           <template #status>
             <slot name="status" :issuable="issuable"></slot>
           </template>
           <template #statistics>
             <slot name="statistics" :issuable="issuable"></slot>
           </template>
+          <template #approval-status>
+            <slot name="approval-status" :issuable="issuable"></slot>
+          </template>
           <template #pipeline-status>
             <slot name="pipeline-status" :issuable="issuable"></slot>
           </template>
+          <template #reviewers>
+            <slot name="reviewers" :issuable="issuable"></slot>
+          </template>
+          <template #title-icons>
+            <slot name="title-icons" :issuable="issuable"></slot>
+          </template>
+          <template #discussions>
+            <slot name="discussions" :issuable="issuable"></slot>
+          </template>
+          <template #health-status>
+            <slot name="health-status" :issuable="issuable"></slot>
+          </template>
+          <template #custom-status>
+            <slot name="custom-status" :issuable="issuable"></slot>
+          </template>
         </issuable-item>
       </component>
-      <div v-else-if="issuables.length > 0 && isGridView">
-        <issuable-grid />
-      </div>
-      <slot v-else name="empty-state"></slot>
+      <empty-result v-else-if="!alwaysAllowCustomEmptyState && initialFilterValue.length > 0" />
+      <slot v-else-if="searchTimeout" name="search-timeout"></slot>
+      <slot v-else-if="!error" name="empty-state"></slot>
     </template>
 
     <div
-      class="gl-display-flex gl-justify-content-space-between gl-md-justify-content-center! gl-mt-6 gl-relative"
+      data-testid="list-footer"
+      class="gl-relative gl-mt-6 gl-flex gl-justify-between @md/panel:!gl-justify-center"
     >
       <gl-keyset-pagination
         v-if="showPaginationControls && useKeysetPagination"
@@ -445,14 +546,14 @@ export default {
       />
 
       <local-storage-sync
-        v-if="showPageSizeChangeControls"
+        v-if="showPageSizeSelector"
         :value="defaultPageSize"
         :storage-key="$options.PAGE_SIZE_STORAGE_KEY"
         @input="handlePageSizeChange"
       >
         <page-size-selector
           :value="defaultPageSize"
-          class="gl-right-0 gl-relative md:gl-absolute"
+          class="gl-relative gl-right-0 @md/panel:gl-absolute"
           @input="handlePageSizeChange"
         />
       </local-storage-sync>

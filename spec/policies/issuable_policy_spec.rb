@@ -2,9 +2,10 @@
 
 require 'spec_helper'
 
-RSpec.describe IssuablePolicy, models: true do
+RSpec.describe IssuablePolicy, :models do
   let_it_be(:user) { create(:user) }
   let_it_be(:guest) { create(:user) }
+  let_it_be(:planner) { create(:user) }
   let_it_be(:reporter) { create(:user) }
   let_it_be(:developer) { create(:user) }
   let_it_be(:project) { create(:project, :public) }
@@ -15,6 +16,7 @@ RSpec.describe IssuablePolicy, models: true do
   before do
     project.add_developer(developer)
     project.add_guest(guest)
+    project.add_planner(planner)
     project.add_reporter(reporter)
   end
 
@@ -26,10 +28,6 @@ RSpec.describe IssuablePolicy, models: true do
     context 'when user is author of issuable' do
       let(:merge_request) { create(:merge_request, source_project: project, author: user) }
       let(:policies) { described_class.new(user, merge_request) }
-
-      it 'allows resolving notes' do
-        expect(policies).to be_allowed(:resolve_note)
-      end
 
       it 'does not allow reading internal notes' do
         expect(policies).to be_disallowed(:read_internal_note)
@@ -44,6 +42,10 @@ RSpec.describe IssuablePolicy, models: true do
       context 'Timeline events' do
         it 'allows non-members to read time line events' do
           expect(permissions(guest, issue)).to be_allowed(:read_incident_management_timeline_event)
+        end
+
+        it 'disallows planners from managing timeline events' do
+          expect(permissions(planner, issue)).to be_disallowed(:admin_incident_management_timeline_event)
         end
 
         it 'disallows reporters from managing timeline events' do
@@ -79,6 +81,10 @@ RSpec.describe IssuablePolicy, models: true do
             expect(permissions(guest, issue)).to be_allowed(:read_incident_management_timeline_event)
           end
 
+          it 'disallows planners from managing timeline events' do
+            expect(permissions(planner, issue)).to be_disallowed(:admin_incident_management_timeline_event)
+          end
+
           it 'disallows reporters from managing timeline events' do
             expect(permissions(reporter, issue)).to be_disallowed(:admin_incident_management_timeline_event)
           end
@@ -106,10 +112,6 @@ RSpec.describe IssuablePolicy, models: true do
         it 'can not create a note nor award emojis' do
           expect(policies).to be_disallowed(:create_note, :award_emoji)
         end
-
-        it 'does not allow resolving note' do
-          expect(policies).to be_disallowed(:resolve_note)
-        end
       end
 
       context 'when the user is a project member' do
@@ -119,10 +121,6 @@ RSpec.describe IssuablePolicy, models: true do
 
         it 'can create a note and award emojis' do
           expect(policies).to be_allowed(:create_note, :award_emoji)
-        end
-
-        it 'allows resolving notes' do
-          expect(policies).to be_allowed(:resolve_note)
         end
       end
     end
@@ -166,6 +164,16 @@ RSpec.describe IssuablePolicy, models: true do
 
       it 'does not allow timelogs creation' do
         expect(permissions(guest, issue)).to be_disallowed(:create_timelog)
+      end
+    end
+
+    context 'when user is at planner of the project' do
+      it 'allows timelogs creation' do
+        expect(permissions(planner, issue)).to be_allowed(:create_timelog)
+      end
+
+      it 'allows reading internal notes' do
+        expect(permissions(planner, issue)).to be_allowed(:read_internal_note)
       end
     end
 

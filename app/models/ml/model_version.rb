@@ -5,9 +5,7 @@ module Ml
     include Presentable
     include Sortable
     include SemanticVersionable
-
-    semver_method :semver
-    validate_semver
+    include CacheMarkdownField
 
     validates :project, :model, presence: true
 
@@ -18,7 +16,7 @@ module Ml
       length: { maximum: 255 }
 
     validates :description,
-      length: { maximum: 500 }
+      length: { maximum: 10_000 }
 
     validate :valid_model?, :valid_package?
 
@@ -31,11 +29,16 @@ module Ml
     delegate :name, to: :model
 
     scope :order_by_model_id_id_desc, -> { order('model_id, id DESC') }
-    scope :latest_by_model, -> { order_by_model_id_id_desc.select('DISTINCT ON (model_id) *') }
-    scope :by_version, ->(version) { where("version LIKE ?", "#{sanitize_sql_like(version)}%") } # rubocop:disable GitlabSecurity/SqlInjection -- we are sanitizing
+    scope :latest_by_model, -> {
+                              order(model_id: :desc, semver_major: :desc, semver_minor: :desc, semver_patch: :desc)
+                                .select('DISTINCT ON (model_id) *')
+                            }
+    scope :by_version, ->(version) { where("version LIKE ?", "#{sanitize_sql_like(version)}%") }
     scope :for_model, ->(model) { where(project: model.project, model: model) }
     scope :including_relations, -> { includes(:project, :model, :candidate) }
     scope :order_by_version, ->(order) { reorder(version: order) }
+
+    cache_markdown_field :description
 
     def add_metadata(metadata_key_value)
       return unless metadata_key_value.present?
@@ -50,11 +53,6 @@ module Ml
     end
 
     class << self
-      def find_or_create!(model, version, package, description)
-        create_with(package: package, description: description)
-          .find_or_create_by!(project: model.project, model: model, version: version)
-      end
-
       def by_project_id_and_id(project_id, id)
         find_by(project_id: project_id, id: id)
       end

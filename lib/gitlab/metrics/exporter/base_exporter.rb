@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'webrick'
-require 'prometheus/client/rack/exporter'
+require 'labkit/metrics/rack_exporter'
 
 module Gitlab
   module Metrics
@@ -68,11 +68,8 @@ module Gitlab
           if server
             # we close sockets if thread is not longer running
             # this happens, when the process forks
-            if thread.alive?
-              server.shutdown
-            else
-              server.listeners.each(&:close)
-            end
+            server.listeners.each(&:close) unless thread.alive?
+            server.shutdown
           end
 
           @server = nil
@@ -86,8 +83,9 @@ module Gitlab
             use Rack::Deflater
             use Gitlab::Metrics::Exporter::MetricsMiddleware, pid
             use Gitlab::Metrics::Exporter::GcRequestMiddleware if gc_requests
-            use ::Prometheus::Client::Rack::Exporter if ::Gitlab::Metrics.metrics_folder_present?
-            run -> (env) { [404, {}, ['']] }
+            use ::Labkit::Metrics::RackExporter if ::Gitlab::Metrics.prometheus_metrics_enabled?
+
+            run ->(env) { [404, {}, ['']] }
           end
         end
 

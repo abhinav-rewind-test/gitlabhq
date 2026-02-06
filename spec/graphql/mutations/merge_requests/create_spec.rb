@@ -1,32 +1,20 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'labkit/rspec/matchers'
 
-RSpec.describe Mutations::MergeRequests::Create do
+RSpec.describe Mutations::MergeRequests::Create, feature_category: :api do
   include GraphqlHelpers
 
   subject(:mutation) { described_class.new(object: nil, context: context, field: nil) }
 
   let(:user) { create(:user) }
-
-  let(:context) do
-    GraphQL::Query::Context.new(
-      query: query_double(schema: nil),
-      values: { current_user: user },
-      object: nil
-    )
-  end
+  let(:query) { GraphQL::Query.new(empty_schema, document: nil, context: {}, variables: {}) }
+  let(:context) { GraphQL::Query::Context.new(query: query, values: { current_user: user }) }
 
   describe '#resolve' do
     subject do
-      mutation.resolve(
-        project_path: project.full_path,
-        title: title,
-        source_branch: source_branch,
-        target_branch: target_branch,
-        description: description,
-        labels: labels
-      )
+      mutation.resolve(project_path: project.full_path, **params)
     end
 
     let(:title) { 'MergeRequest' }
@@ -34,6 +22,17 @@ RSpec.describe Mutations::MergeRequests::Create do
     let(:target_branch) { 'master' }
     let(:description) { nil }
     let(:labels) { nil }
+    let(:merge_after) { nil }
+    let(:params) do
+      {
+        title: title,
+        source_branch: source_branch,
+        target_branch: target_branch,
+        description: description,
+        labels: labels,
+        merge_after: merge_after
+      }
+    end
 
     let(:mutated_merge_request) { subject[:merge_request] }
 
@@ -92,6 +91,35 @@ RSpec.describe Mutations::MergeRequests::Create do
           end
         end
 
+        context 'when optional merge_after field is set' do
+          let(:merge_after) { '2025-01-09T20:47:00+0100' }
+
+          it 'returns a new merge request with merge_after' do
+            expect(mutated_merge_request.merge_schedule.merge_after).to eq('2025-01-09T19:47:00.000Z')
+            expect(subject[:errors]).to be_empty
+          end
+        end
+
+        context 'when optional remove_source_branch field is set' do
+          let(:params) do
+            {
+              project_path: project.full_path,
+              title: title,
+              source_branch: source_branch,
+              target_branch: target_branch,
+              description: description,
+              labels: labels,
+              merge_after: merge_after,
+              remove_source_branch: true
+            }
+          end
+
+          it 'returns a new merge request with remove_source_branch' do
+            expect(mutated_merge_request.force_remove_source_branch?).to be(true)
+            expect(subject[:errors]).to be_empty
+          end
+        end
+
         context 'when service cannot create a merge request' do
           let(:title) { nil }
 
@@ -103,6 +131,10 @@ RSpec.describe Mutations::MergeRequests::Create do
             expect(mutated_merge_request).to be_nil
             expect(subject[:errors]).to match_array(['Title can\'t be blank'])
           end
+        end
+
+        it 'starts covered experience for create_merge_request' do
+          expect { subject }.to start_user_experience(:create_merge_request)
         end
       end
     end

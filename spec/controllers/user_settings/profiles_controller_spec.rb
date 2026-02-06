@@ -28,6 +28,18 @@ RSpec.describe UserSettings::ProfilesController, :request_store, feature_categor
       expect(user.unconfirmed_email).to eq('john@gmail.com')
     end
 
+    it 'includes confirmation help text with new email address in response' do
+      sign_in(user)
+
+      put :update, params: { user: { email: 'john@gmail.com', validation_password: password } }, format: :json
+
+      expect(response).to have_gitlab_http_status(:ok)
+      expect(json_response).to include(
+        'message' => s_('Profiles|Profile was successfully updated'),
+        'email_help_text' => include('john@gmail.com')
+      )
+    end
+
     it "allows an email update without confirmation if existing verified email" do
       user = create(:user)
       create(:email, :confirmed, user: user, email: 'john@gmail.com')
@@ -132,14 +144,142 @@ RSpec.describe UserSettings::ProfilesController, :request_store, feature_categor
       expect(response).to have_gitlab_http_status(:found)
     end
 
-    it 'allows updating user specified mastodon username', :aggregate_failures do
-      mastodon_username = '@robin@example.com'
+    it 'allows updating user specified bluesky did identifier', :aggregate_failures do
+      bluesky_did_id = 'did:plc:ewvi7nxzyoun6zhxrhs64oiz'
       sign_in(user)
 
-      put :update, params: { user: { mastodon: mastodon_username } }
+      put :update, params: { user: { bluesky: bluesky_did_id } }
 
-      expect(user.reload.mastodon).to eq(mastodon_username)
+      expect(user.reload.bluesky).to eq(bluesky_did_id)
       expect(response).to have_gitlab_http_status(:found)
+    end
+
+    it 'allows updating user specified mastodon usernames with varying top level domains', :aggregate_failures do
+      possible_mastodon_usernames = [
+        '@robin@example.com',
+        '@robin@mastadon.com',
+        '@john@mastadon.social',
+        '@drew@social.vivaldi.net',
+        '@adil@c.im'
+      ]
+      sign_in(user)
+
+      possible_mastodon_usernames.each do |mastodon_username|
+        put :update, params: { user: { mastodon: mastodon_username } }
+
+        expect(user.reload.mastodon).to eq(mastodon_username)
+        expect(response).to have_gitlab_http_status(:found)
+      end
+    end
+
+    it 'allows updating user specified ORCID ID', :aggregate_failures do
+      orcid_id = '1234-1234-1234-1234'
+      sign_in(user)
+
+      put :update, params: { user: { orcid: orcid_id } }
+
+      expect(user.reload.orcid).to eq(orcid_id)
+      expect(response).to have_gitlab_http_status(:found)
+    end
+
+    context 'for email OTP enrollment' do
+      context 'when the current password is not required' do
+        it 'allows enabling email OTP', :aggregate_failures, :freeze_time do
+          stub_application_setting(password_authentication_enabled_for_web?: false)
+
+          sign_in(user)
+
+          put :update, params: { user: { email_otp_required_as_boolean: true }, current_password: password }
+
+          expect(user.reload.email_otp_required_after).to eq(Time.current)
+          expect(response).to have_gitlab_http_status(:found)
+        end
+      end
+
+      context 'when the correct user password is provided' do
+        it 'allows enabling email OTP', :aggregate_failures, :freeze_time do
+          sign_in(user)
+
+          put :update, params: { user: { email_otp_required_as_boolean: true }, current_password: password }
+
+          expect(user.reload.email_otp_required_after).to eq(Time.current)
+          expect(response).to have_gitlab_http_status(:found)
+        end
+
+        it 'allows disabling email OTP', :aggregate_failures do
+          user.update!(email_otp_required_after: Time.current)
+          sign_in(user)
+
+          put :update, params: { user: { email_otp_required_as_boolean: false }, current_password: password }
+
+          expect(user.reload.email_otp_required_after).to be_nil
+          expect(response).to have_gitlab_http_status(:found)
+        end
+      end
+
+      context 'when incorrect passwords are provided' do
+        where(:provided_password) do
+          [
+            nil,
+            "",
+            "invalid"
+          ]
+        end
+
+        with_them do
+          it 'does not allows modifying email OTP', :aggregate_failures do
+            sign_in(user)
+
+            put :update, params: { user: { email_otp_required_as_boolean: true }, current_password: provided_password }
+
+            expect(response).to have_gitlab_http_status(:found)
+            expect(flash[:alert]).to eq('You must provide a valid current password.')
+          end
+        end
+      end
+
+      context 'when email_otp_required_as_boolean is not in params' do
+        it 'does not call can_modify_email_otp_enrollment?', :aggregate_failures do
+          sign_in(user)
+
+          expect(user).not_to receive(:can_modify_email_otp_enrollment?)
+
+          put :update, params: { user: { name: 'New Name' } }
+
+          expect(response).to have_gitlab_http_status(:found)
+        end
+      end
+
+      context 'when email_otp_required_as_boolean value is not changing' do
+        it 'does not call can_modify_email_otp_enrollment?', :aggregate_failures do
+          sign_in(user)
+
+          expect(user).not_to receive(:can_modify_email_otp_enrollment?)
+
+          put :update, params: { user: { email_otp_required_as_boolean: false } }
+
+          expect(response).to have_gitlab_http_status(:found)
+        end
+      end
+
+      context 'when the user is not permitted to change their email OTP enrollment', :freeze_time do
+        # Other can_modify_email_otp_enrollment? scenarios are tested in
+        # email_otp_enrollment_spec.rb
+        before do
+          stub_application_setting(require_minimum_email_based_otp_for_users_with_passwords: true)
+          user.update!(email_otp_required_after: Time.current)
+        end
+
+        it 'does not allows modifying email OTP', :aggregate_failures do
+          sign_in(user)
+
+          put :update, params: { user: { email_otp_required_as_boolean: false } }
+
+          expect(user.reload.email_otp_required_after).to eq(Time.current)
+          expect(response).to have_gitlab_http_status(:found)
+          expect(flash[:alert]).to eq('You are not permitted to change email OTP enrollment')
+        end
+      end
     end
   end
 end

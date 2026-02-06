@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'deployable'
+require Rails.root.join('spec/support/helpers/ci/job_factory_helpers')
 
 FactoryBot.define do
   factory :ci_build, class: 'Ci::Build', parent: :ci_processable do
@@ -12,31 +13,43 @@ FactoryBot.define do
     scheduling_type { 'stage' }
     pending
 
-    options do
-      {
-        image: 'image:1.0',
-        services: ['postgres'],
-        script: ['ls -a']
-      }
-    end
-
-    yaml_variables do
-      [
-        { key: 'DB_NAME', value: 'postgres', public: true }
-      ]
-    end
-
     project { pipeline.project }
 
     ref { pipeline.ref }
 
     runner_manager { nil }
 
+    execution_config { nil }
+
+    transient do
+      options do
+        {
+          image: 'image:1.0',
+          services: ['postgres'],
+          script: ['ls -a']
+        }
+      end
+
+      yaml_variables do
+        [
+          { key: 'DB_NAME', value: 'postgres', public: true }
+        ]
+      end
+
+      id_tokens { nil }
+    end
+
     after(:build) do |build, evaluator|
       if evaluator.runner_manager
         build.runner = evaluator.runner_manager.runner
         create(:ci_runner_machine_build, build: build, runner_manager: evaluator.runner_manager)
       end
+
+      job_definition_values = {
+        id_tokens: evaluator.id_tokens,
+        tag_list: evaluator.tag_list
+      }.compact
+      Ci::JobFactoryHelpers.mutate_temp_job_definition(build, **job_definition_values) if job_definition_values.any?
     end
 
     trait :with_token do
@@ -49,9 +62,22 @@ FactoryBot.define do
       end
     end
 
+    trait :with_build_name do
+      after(:create) do |build, _|
+        create(:ci_build_name, build: build)
+      end
+    end
+
+    trait :with_job_source do
+      after(:create) do |build, _|
+        create(:ci_build_source, job: build)
+      end
+    end
+
     trait :degenerated do
       options { nil }
       yaml_variables { nil }
+      execution_config { nil }
     end
 
     trait :unique_name do
@@ -172,6 +198,14 @@ FactoryBot.define do
       manual
     end
 
+    trait :with_manual_confirmation do
+      options do
+        {
+          manual_confirmation: 'Please confirm. Do you want to proceed?'
+        }
+      end
+    end
+
     trait :retryable do
       success
     end
@@ -215,7 +249,7 @@ FactoryBot.define do
     end
 
     trait :triggered do
-      trigger_request factory: :ci_trigger_request
+      pipeline factory: :ci_pipeline, traits: [:triggered]
     end
 
     trait :tag do
@@ -237,7 +271,7 @@ FactoryBot.define do
 
       after(:create) do |build, evaluator|
         Gitlab::ExclusiveLease.skipping_transaction_check do
-          build.trace.set("Coverage #{evaluator.trace_coverage}%")
+          build.trace.send(:unsafe_set, "Coverage #{evaluator.trace_coverage}%")
         end
         build.trace.archive! if build.complete?
       end
@@ -245,7 +279,12 @@ FactoryBot.define do
 
     trait :trace_live do
       after(:create) do |build, evaluator|
-        Gitlab::ExclusiveLease.skipping_transaction_check { build.trace.set('BUILD TRACE') }
+        Gitlab::ExclusiveLease.skipping_transaction_check do
+          # We can skip calling `Ci::Build#hide_secrets` because this content is safe.
+          # This allows not to call into potentialy unstubbed ApplicationSetting in specs.
+          # For example: `ci_job_token_signing_key` when in `let_it_be` context.
+          build.trace.send(:unsafe_set, 'BUILD TRACE')
+        end
       end
     end
 
@@ -267,7 +306,9 @@ FactoryBot.define do
           File.expand_path(
             Rails.root.join('spec/fixtures/trace/trace_with_duplicate_sections')))
 
-        Gitlab::ExclusiveLease.skipping_transaction_check { build.trace.set(trace) }
+        Gitlab::ExclusiveLease.skipping_transaction_check do
+          build.trace.send(:unsafe_set, trace)
+        end
       end
     end
 
@@ -277,7 +318,9 @@ FactoryBot.define do
           File.expand_path(
             Rails.root.join('spec/fixtures/trace/trace_with_sections')))
 
-        Gitlab::ExclusiveLease.skipping_transaction_check { build.trace.set(trace) }
+        Gitlab::ExclusiveLease.skipping_transaction_check do
+          build.trace.send(:unsafe_set, trace)
+        end
       end
     end
 
@@ -287,7 +330,7 @@ FactoryBot.define do
           File.expand_path(
             Rails.root.join('spec/fixtures/trace/ansi-sequence-and-unicode')))
 
-        build.trace.set(trace)
+        build.trace.send(:unsafe_set, trace)
       end
     end
 
@@ -310,14 +353,28 @@ FactoryBot.define do
       runner factory: :ci_runner
 
       after(:create) do |build|
-        ::Ci::RunningBuild.upsert_shared_runner_build!(build)
+        ::Ci::RunningBuild.upsert_build!(build)
+      end
+    end
+
+    trait :pages do
+      ref { "HEAD" }
+      name { 'pages' }
+
+      after(:create) do |build, _evaluator|
+        file = fixture_file_upload("spec/fixtures/pages.zip")
+        metadata = fixture_file_upload("spec/fixtures/pages.zip.meta")
+
+        create(:ci_job_artifact, :correct_checksum, file: file, job: build)
+        create(:ci_job_artifact, file_type: :metadata, file_format: :gzip, file: metadata, job: build)
+        build.reload
       end
     end
 
     trait :artifacts do
       after(:create) do |build, evaluator|
-        create(:ci_job_artifact, :archive, :public, job: build, expire_at: build.artifacts_expire_at)
-        create(:ci_job_artifact, :metadata, :public, job: build, expire_at: build.artifacts_expire_at)
+        create(:ci_job_artifact, :mocked_checksum, :archive, :public, job: build, expire_at: build.artifacts_expire_at)
+        create(:ci_job_artifact, :mocked_checksum, :metadata, :public, job: build, expire_at: build.artifacts_expire_at)
         build.reload
       end
     end
@@ -326,6 +383,14 @@ FactoryBot.define do
       after(:create) do |build, evaluator|
         create(:ci_job_artifact, :archive, :private, job: build, expire_at: build.artifacts_expire_at)
         create(:ci_job_artifact, :metadata, :private, job: build, expire_at: build.artifacts_expire_at)
+        build.reload
+      end
+    end
+
+    trait :artifacts_with_maintainer_access do
+      after(:create) do |build, evaluator|
+        create(:ci_job_artifact, :archive, :maintainer, job: build, expire_at: build.artifacts_expire_at)
+        create(:ci_job_artifact, :metadata, :maintainer, job: build, expire_at: build.artifacts_expire_at)
         build.reload
       end
     end
@@ -341,6 +406,7 @@ FactoryBot.define do
     trait :report_results do
       after(:build) do |build|
         build.report_results << build(:ci_build_report_result)
+        build.job_artifacts << build(:ci_job_artifact, :junit, job: build)
       end
     end
 
@@ -426,7 +492,7 @@ FactoryBot.define do
       artifacts_expire_at { 1.minute.ago }
     end
 
-    trait :with_artifacts_paths do
+    trait :with_archive_artifact do
       options do
         {
           artifacts: {
@@ -437,6 +503,10 @@ FactoryBot.define do
             expire_in: '7d'
           }
         }
+      end
+
+      after(:build) do |build|
+        build.job_artifacts << build(:ci_job_artifact, :archive, job: build)
       end
     end
 
@@ -459,8 +529,8 @@ FactoryBot.define do
         {
           image: { name: 'image:1.0', entrypoint: '/bin/sh' },
           services: ['postgres',
-                     { name: 'docker:stable-dind', entrypoint: '/bin/sh', command: 'sleep 30', alias: 'docker' },
-                     { name: 'mysql:latest', variables: { MYSQL_ROOT_PASSWORD: 'root123.' } }],
+            { name: 'docker:stable-dind', entrypoint: '/bin/sh', command: 'sleep 30', alias: 'docker' },
+            { name: 'mysql:latest', variables: { MYSQL_ROOT_PASSWORD: 'root123.' } }],
           script: %w[echo],
           after_script: %w[ls date],
           hooks: { pre_get_sources_script: ["echo 'hello pre_get_sources_script'"] },
@@ -485,7 +555,6 @@ FactoryBot.define do
     trait :release_options do
       options do
         {
-          only: 'tags',
           script: ['make changelog | tee release_changelog.txt'],
           release: {
             name: 'Release $CI_COMMIT_SHA',
@@ -523,7 +592,7 @@ FactoryBot.define do
     trait :dast do
       options do
         {
-            artifacts: { reports: { dast: 'gl-dast-report.json' } }
+          artifacts: { reports: { dast: 'gl-dast-report.json' } }
         }
       end
     end
@@ -531,7 +600,7 @@ FactoryBot.define do
     trait :sast do
       options do
         {
-            artifacts: { reports: { sast: 'gl-sast-report.json' } }
+          artifacts: { reports: { sast: 'gl-sast-report.json' } }
         }
       end
     end
@@ -539,7 +608,7 @@ FactoryBot.define do
     trait :secret_detection do
       options do
         {
-            artifacts: { reports: { secret_detection: 'gl-secret-detection-report.json' } }
+          artifacts: { reports: { secret_detection: 'gl-secret-detection-report.json' } }
         }
       end
     end
@@ -547,7 +616,15 @@ FactoryBot.define do
     trait :dependency_scanning do
       options do
         {
-            artifacts: { reports: { dependency_scanning: 'gl-dependency-scanning-report.json' } }
+          artifacts: { reports: { dependency_scanning: 'gl-dependency-scanning-report.json' } }
+        }
+      end
+    end
+
+    trait :sbom_dependency_scanning do
+      options do
+        {
+          artifacts: { reports: { cyclonedx: 'gl-sbom-report.cdx.json' } }
         }
       end
     end
@@ -555,7 +632,7 @@ FactoryBot.define do
     trait :container_scanning do
       options do
         {
-            artifacts: { reports: { container_scanning: 'gl-container-scanning-report.json' } }
+          artifacts: { reports: { container_scanning: 'gl-container-scanning-report.json' } }
         }
       end
     end
@@ -563,7 +640,7 @@ FactoryBot.define do
     trait :cluster_image_scanning do
       options do
         {
-            artifacts: { reports: { cluster_image_scanning: 'gl-cluster-image-scanning-report.json' } }
+          artifacts: { reports: { cluster_image_scanning: 'gl-cluster-image-scanning-report.json' } }
         }
       end
     end
@@ -587,12 +664,12 @@ FactoryBot.define do
     trait :multiple_report_artifacts do
       options do
         {
-            artifacts: {
-              reports: {
-                sast: 'gl-sast-report.json',
-                container_scanning: 'gl-container-scanning-report.json'
-              }
+          artifacts: {
+            reports: {
+              sast: 'gl-sast-report.json',
+              container_scanning: 'gl-container-scanning-report.json'
             }
+          }
         }
       end
     end
@@ -609,6 +686,14 @@ FactoryBot.define do
       options do
         {
           artifacts: { access: 'developer' }
+        }
+      end
+    end
+
+    trait :with_maintainer_access_artifacts do
+      options do
+        {
+          artifacts: { access: 'maintainer' }
         }
       end
     end
@@ -686,6 +771,16 @@ FactoryBot.define do
     trait :with_runner_session do
       after(:build) do |build|
         build.build_runner_session(url: 'https://gitlab.example.com')
+      end
+    end
+
+    trait :slsa_artifacts do
+      after(:create) do |build, evaluator|
+        create(:ci_job_artifact, :mocked_checksum, :slsa_archive, :public, job: build,
+          expire_at: build.artifacts_expire_at)
+        create(:ci_job_artifact, :mocked_checksum, :slsa_metadata, :public, job: build,
+          expire_at: build.artifacts_expire_at)
+        build.reload
       end
     end
   end

@@ -9,26 +9,29 @@ RSpec.describe QA::Runtime::Env do
 
   shared_examples 'boolean method with parameter' do |method:, env_key:, default:, param: nil|
     context 'when there is an env variable set' do
-      it 'returns false when falsey values specified' do
+      it 'returns false when variable is falsey or unsupported' do
         stub_env(env_key, 'false')
-        expect(described_class.public_send(method, *param)).to be_falsey
+        expect(described_class.public_send(method, *param)).to eq(false)
 
         stub_env(env_key, 'no')
-        expect(described_class.public_send(method, *param)).to be_falsey
+        expect(described_class.public_send(method, *param)).to eq(false)
 
         stub_env(env_key, '0')
-        expect(described_class.public_send(method, *param)).to be_falsey
-      end
-
-      it 'returns true when anything else specified' do
-        stub_env(env_key, 'true')
-        expect(described_class.public_send(method, *param)).to be_truthy
-
-        stub_env(env_key, '1')
-        expect(described_class.public_send(method, *param)).to be_truthy
+        expect(described_class.public_send(method, *param)).to eq(false)
 
         stub_env(env_key, 'anything')
-        expect(described_class.public_send(method, *param)).to be_truthy
+        expect(described_class.public_send(method, *param)).to eq(false)
+      end
+
+      it 'returns true when variable set to truthy' do
+        stub_env(env_key, 'true')
+        expect(described_class.public_send(method, *param)).to eq(true)
+
+        stub_env(env_key, '1')
+        expect(described_class.public_send(method, *param)).to eq(true)
+
+        stub_env(env_key, 'yes')
+        expect(described_class.public_send(method, *param)).to eq(true)
       end
     end
 
@@ -90,6 +93,7 @@ RSpec.describe QA::Runtime::Env do
 
     with_them do
       before do
+        described_class.instance_variable_set(:@gitlab_host, nil)
         QA::Runtime::Scenario.define(:gitlab_address, url)
       end
 
@@ -109,82 +113,11 @@ RSpec.describe QA::Runtime::Env do
 
     with_them do
       before do
+        described_class.instance_variable_set(:@gitlab_host, nil)
         QA::Runtime::Scenario.define(:gitlab_address, url)
       end
 
       it { expect(described_class.running_on_dev?).to eq result }
-    end
-  end
-
-  describe '.personal_access_token' do
-    around do |example|
-      described_class.instance_variable_set(:@personal_access_token, nil)
-      example.run
-      described_class.instance_variable_set(:@personal_access_token, nil)
-    end
-
-    context 'when GITLAB_QA_ACCESS_TOKEN is set' do
-      before do
-        stub_env('GITLAB_QA_ACCESS_TOKEN', 'a_token_too')
-      end
-
-      it 'returns specified token from env' do
-        expect(described_class.personal_access_token).to eq 'a_token_too'
-      end
-    end
-
-    context 'when @personal_access_token is set' do
-      before do
-        described_class.personal_access_token = 'another_token'
-      end
-
-      it 'returns the instance variable value' do
-        expect(described_class.personal_access_token).to eq 'another_token'
-      end
-    end
-  end
-
-  describe '.personal_access_token=' do
-    around do |example|
-      described_class.instance_variable_set(:@personal_access_token, nil)
-      example.run
-      described_class.instance_variable_set(:@personal_access_token, nil)
-    end
-
-    it 'saves the token' do
-      described_class.personal_access_token = 'a_token'
-
-      expect(described_class.personal_access_token).to eq 'a_token'
-    end
-  end
-
-  describe '.forker?' do
-    before do
-      stub_env('GITLAB_FORKER_USERNAME', nil)
-      stub_env('GITLAB_FORKER_PASSWORD', nil)
-    end
-
-    it 'returns false if no forker credentials are defined' do
-      expect(described_class).not_to be_forker
-    end
-
-    it 'returns false if only forker username is defined' do
-      stub_env('GITLAB_FORKER_USERNAME', 'foo')
-
-      expect(described_class).not_to be_forker
-    end
-
-    it 'returns false if only forker password is defined' do
-      stub_env('GITLAB_FORKER_PASSWORD', 'bar')
-
-      expect(described_class).not_to be_forker
-    end
-
-    it 'returns true if forker username and password are defined' do
-      stub_env('GITLAB_FORKER_USERNAME', 'foo')
-      stub_env('GITLAB_FORKER_PASSWORD', 'bar')
-
-      expect(described_class).to be_forker
     end
   end
 
@@ -239,21 +172,6 @@ RSpec.describe QA::Runtime::Env do
       stub_env('QA_GITHUB_ACCESS_TOKEN', ' abc123 ')
 
       expect { described_class.require_github_access_token! }.not_to raise_error
-    end
-  end
-
-  describe '.require_admin_access_token!' do
-    it 'raises ArgumentError if GITLAB_QA_ADMIN_ACCESS_TOKEN is not specified' do
-      described_class.instance_variable_set(:@admin_personal_access_token, nil)
-      stub_env('GITLAB_QA_ADMIN_ACCESS_TOKEN', nil)
-
-      expect { described_class.require_admin_access_token! }.to raise_error(ArgumentError)
-    end
-
-    it 'does not raise exception if GITLAB_QA_ADMIN_ACCESS_TOKEN is specified' do
-      stub_env('GITLAB_QA_ADMIN_ACCESS_TOKEN', 'foobar123')
-
-      expect { described_class.require_admin_access_token! }.not_to raise_error
     end
   end
 
@@ -371,6 +289,50 @@ RSpec.describe QA::Runtime::Env do
       end
 
       it { is_expected.to be_empty }
+    end
+  end
+
+  describe '.running_against_cell?' do
+    context 'when QA_COOKIES is not set' do
+      before do
+        stub_env('QA_COOKIES', nil)
+      end
+
+      it 'returns false' do
+        expect(described_class.running_against_cell?).to be false
+      end
+    end
+
+    context 'when QA_COOKIES is empty' do
+      before do
+        stub_env('QA_COOKIES', '')
+      end
+
+      it 'returns false' do
+        expect(described_class.running_against_cell?).to be false
+      end
+    end
+
+    context 'when QA_COOKIES contains _gitlab_session with cell prefix' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:cookie_value, :expected_result) do
+        '_gitlab_session=cell-1-abc123' | true
+        'gitlab_canary=false\;_gitlab_session=cell-5-hash123' | true
+        '_gitlab_session=cell-5-hash123\;gitlab_canary=true' | true
+        '_gitlab_session=production-session-123' | false
+        'gitlab_canary=true' | false
+      end
+
+      with_them do
+        before do
+          stub_env('QA_COOKIES', cookie_value)
+        end
+
+        it "returns #{params[:expected_result]}" do
+          expect(described_class.running_against_cell?).to eq(expected_result)
+        end
+      end
     end
   end
 end

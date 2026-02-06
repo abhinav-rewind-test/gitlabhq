@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Manage' do
-    describe 'Gitlab migration', product_group: :import_and_integrate do
+  RSpec.describe 'Manage', feature_category: :importers do
+    describe 'Gitlab migration', :import, :orchestrated, requires_admin: 'creates a user via API' do
       include_context 'with gitlab project migration'
 
       context 'with release' do
@@ -52,7 +52,11 @@ module QA
 
         it(
           'successfully imports project release',
-          testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/360243'
+          testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/360243',
+          quarantine: {
+            type: :investigating,
+            issue: "https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24012"
+          }
         ) do
           expect_project_import_finished_successfully
 

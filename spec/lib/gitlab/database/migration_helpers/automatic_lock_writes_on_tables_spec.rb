@@ -9,10 +9,11 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
   let(:schema_class) { Class.new(Gitlab::Database::Migration[2.1]) }
   let(:skip_automatic_lock_on_writes) { false }
   let(:gitlab_main_table_name) { :_test_gitlab_main_table }
-  let(:gitlab_main_clusterwide_table_name) { :_test_gitlab_main_clusterwide_table }
+  let(:gitlab_main_user_table_name) { :_test_gitlab_main_user_table }
   let(:gitlab_main_cell_table_name) { :_test_gitlab_main_cell_table }
   let(:gitlab_ci_table_name) { :_test_gitlab_ci_table }
   let(:gitlab_pm_table_name) { :_test_gitlab_pm_table }
+  let(:gitlab_sec_table_name) { :_test_gitlab_sec_table }
   let(:gitlab_geo_table_name) { :_test_gitlab_geo_table }
   let(:gitlab_shared_table_name) { :_test_table }
 
@@ -27,11 +28,12 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
   # Drop the created test tables, because we use non-transactional tests
   after do
     drop_table_if_exists(gitlab_main_table_name)
-    drop_table_if_exists(gitlab_main_clusterwide_table_name)
+    drop_table_if_exists(gitlab_main_user_table_name)
     drop_table_if_exists(gitlab_main_cell_table_name)
     drop_table_if_exists(gitlab_ci_table_name)
     drop_table_if_exists(gitlab_geo_table_name)
     drop_table_if_exists(gitlab_pm_table_name)
+    drop_table_if_exists(gitlab_sec_table_name)
     drop_table_if_exists(gitlab_shared_table_name)
     drop_table_if_exists(renamed_gitlab_main_table_name)
     drop_table_if_exists(renamed_gitlab_ci_table_name)
@@ -91,8 +93,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
       let(:create_gitlab_main_cell_table_migration_class) { create_table_migration(gitlab_main_cell_table_name) }
       let(:create_gitlab_ci_table_migration_class) { create_table_migration(gitlab_ci_table_name) }
       let(:create_gitlab_shared_table_migration_class) { create_table_migration(gitlab_shared_table_name) }
-      let(:create_gitlab_main_clusterwide_table_migration_class) do
-        create_table_migration(gitlab_main_clusterwide_table_name)
+      let(:create_gitlab_main_user_table_migration_class) do
+        create_table_migration(gitlab_main_user_table_name)
       end
 
       before do
@@ -104,7 +106,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
 
         create_gitlab_main_table_migration_class.migrate(:up)
         create_gitlab_main_cell_table_migration_class.migrate(:up)
-        create_gitlab_main_clusterwide_table_migration_class.migrate(:up)
+        create_gitlab_main_user_table_migration_class.migrate(:up)
         create_gitlab_ci_table_migration_class.migrate(:up)
         create_gitlab_shared_table_migration_class.migrate(:up)
 
@@ -113,8 +115,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
           create_gitlab_main_cell_table_migration_class.connection.execute("DELETE FROM #{gitlab_main_cell_table_name}")
           create_gitlab_ci_table_migration_class.connection.execute("DELETE FROM #{gitlab_ci_table_name}")
           create_gitlab_shared_table_migration_class.connection.execute("DELETE FROM #{gitlab_shared_table_name}")
-          create_gitlab_main_clusterwide_table_migration_class.connection.execute(
-            "DELETE FROM #{gitlab_main_clusterwide_table_name}"
+          create_gitlab_main_user_table_migration_class.connection.execute(
+            "DELETE FROM #{gitlab_main_user_table_name}"
           )
         end.not_to raise_error
       end
@@ -179,14 +181,14 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
         end
       end
 
-      context 'for creating a gitlab_main_clusterwide table' do
-        let(:table_name) { gitlab_main_clusterwide_table_name }
+      context 'for creating a gitlab_main_user table' do
+        let(:table_name) { gitlab_main_user_table_name }
 
         it_behaves_like 'does not lock writes on table', Gitlab::Database.database_base_models[:main]
         it_behaves_like 'locks writes on table', Gitlab::Database.database_base_models[:ci]
       end
 
-      context 'for creating a gitlab_main_cell table' do
+      context 'for creating a gitlab_main_org table' do
         let(:table_name) { gitlab_main_cell_table_name }
 
         it_behaves_like 'does not lock writes on table', Gitlab::Database.database_base_models[:main]
@@ -198,6 +200,17 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
 
         it_behaves_like 'does not lock writes on table', Gitlab::Database.database_base_models[:main]
         it_behaves_like 'locks writes on table', Gitlab::Database.database_base_models[:ci]
+      end
+
+      context 'for creating a gitlab_sec table' do
+        before do
+          skip_if_shared_database('sec')
+        end
+
+        let(:table_name) { gitlab_sec_table_name }
+
+        it_behaves_like 'does not lock writes on table', Gitlab::Database.database_base_models[:sec]
+        it_behaves_like 'locks writes on table', Gitlab::Database.database_base_models[:main]
       end
 
       context 'for creating a gitlab_ci table' do
@@ -264,7 +277,8 @@ RSpec.describe Gitlab::Database::MigrationHelpers::AutomaticLockWritesOnTables,
           expect { run_migration }.to raise_error(
             Gitlab::Database::GitlabSchema::UnknownSchemaError,
             "Could not find gitlab schema for table foobar: " \
-            "Any new or deleted tables must be added to the database dictionary " \
+            "Any new or deleted tables must be added to the database dictionary. " \
+            "Use `bin/rake gitlab:db:dictionary:generate` to create a new dictionary file. " \
             "See https://docs.gitlab.com/ee/development/database/database_dictionary.html"
           )
         end

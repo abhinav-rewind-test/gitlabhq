@@ -1,18 +1,24 @@
 <script>
-import { GlButton, GlCollapse } from '@gitlab/ui';
+import { GlButton, GlCollapse, GlAnimatedChevronLgRightDownIcon } from '@gitlab/ui';
 import { uniqueId } from 'lodash';
+import { historyPushState } from '~/lib/utils/common_utils';
 
 import { __ } from '~/locale';
 
 export default {
-  components: { GlButton, GlCollapse },
+  components: { GlButton, GlCollapse, GlAnimatedChevronLgRightDownIcon },
   props: {
+    title: {
+      type: String,
+      required: false,
+      default: null,
+    },
     id: {
       type: String,
       required: false,
       default: null,
     },
-    defaultExpanded: {
+    expanded: {
       type: Boolean,
       default: false,
       required: false,
@@ -20,23 +26,49 @@ export default {
   },
   data() {
     return {
-      expanded: window.location.hash?.replace('#', '') === this.id || this.defaultExpanded,
+      localExpanded: window.location.hash?.replace('#', '') === this.id || this.expanded,
     };
   },
+
   computed: {
     ariaExpanded() {
-      return this.expanded ? 'true' : 'false';
+      return this.localExpanded ? 'true' : 'false';
     },
     toggleButtonText() {
-      return this.expanded ? this.$options.i18n.collapseText : this.$options.i18n.expandText;
+      return this.localExpanded ? this.$options.i18n.collapseText : this.$options.i18n.expandText;
+    },
+    toggleButtonAriaLabel() {
+      return `${this.toggleButtonText} ${this.$scopedSlots.title || this.title}`;
+    },
+    expandedClass() {
+      return this.localExpanded ? 'expanded' : '';
     },
     collapseId() {
       return this.id || uniqueId('settings-block-');
     },
+    isChevronUp() {
+      return this.localExpanded;
+    },
+  },
+  watch: {
+    expanded(newValue) {
+      this.localExpanded = newValue;
+    },
+    localExpanded(isExpanded) {
+      // IMPORTANT: Keep this implementation in sync with app/assets/javascripts/settings_panels.js
+      // Both files handle settings block behavior and must maintain consistency.
+      if (isExpanded) {
+        historyPushState(`${window.location.pathname}${window.location.search}#${this.collapseId}`);
+        window.location.hash = this.collapseId;
+      } else {
+        historyPushState(window.location.pathname + window.location.search);
+      }
+    },
   },
   methods: {
     toggleExpanded() {
-      this.expanded = !this.expanded;
+      this.localExpanded = !this.localExpanded;
+      this.$emit('toggle-expand', this.localExpanded);
     },
   },
   i18n: {
@@ -49,40 +81,42 @@ export default {
 </script>
 
 <template>
-  <section class="vue-settings-block">
-    <div class="gl-display-flex gl-justify-content-space-between gl-align-items-flex-start">
-      <div class="gl-flex-grow-1">
-        <h4
-          role="button"
-          tabindex="-1"
-          class="gl-cursor-pointer gl-mt-0 gl-mb-3"
-          :aria-expanded="ariaExpanded"
-          :aria-controls="collapseId"
-          @click="toggleExpanded"
-        >
-          <slot name="title"></slot>
-        </h4>
-        <p class="gl-text-secondary gl-m-0"><slot name="description"></slot></p>
-      </div>
-      <div class="gl-flex-shrink-0 gl-px-3">
+  <section :id="id" class="vue-settings-block settings no-animate" :class="expandedClass">
+    <div class="gl-flex gl-items-start gl-justify-between gl-gap-x-3">
+      <div class="-gl-mr-3 gl-shrink-0 gl-px-2 gl-py-0 @sm/panel:gl-mr-0 @sm/panel:gl-p-2">
         <gl-button
-          class="gl-min-w-12"
+          category="tertiary"
+          size="small"
+          class="settings-toggle gl-shrink-0 !gl-px-0 !gl-pl-2"
+          :aria-label="toggleButtonAriaLabel"
           :aria-expanded="ariaExpanded"
           :aria-controls="collapseId"
+          data-testid="settings-block-toggle"
           @click="toggleExpanded"
         >
-          <span aria-hidden="true">
-            {{ toggleButtonText }}
-          </span>
-          <span class="gl-sr-only">
-            {{ toggleButtonText }}
-            <slot name="title"></slot>
-          </span>
+          <gl-animated-chevron-lg-right-down-icon variant="default" :is-on="isChevronUp" />
+          <div class="gl-sr-only">{{ toggleButtonText }}</div>
         </gl-button>
       </div>
+      <div class="gl-grow">
+        <button
+          class="gl-w-full gl-border-0 gl-bg-transparent gl-p-0 gl-text-left"
+          tabindex="-1"
+          type="button"
+          :aria-expanded="ariaExpanded"
+          :aria-controls="collapseId"
+          data-testid="settings-block-title"
+          @click="toggleExpanded"
+        >
+          <h2 class="gl-heading-2 !gl-mb-2" data-settings-block-title>
+            {{ title }}
+          </h2>
+        </button>
+        <p class="gl-m-0 gl-text-subtle"><slot name="description"></slot></p>
+      </div>
     </div>
-    <gl-collapse :id="collapseId" v-model="expanded">
-      <div class="gl-pt-5">
+    <gl-collapse :id="collapseId" :visible="localExpanded" data-testid="settings-block-content">
+      <div class="gl-pl-7 gl-pt-5 @sm/panel:gl-pl-8">
         <slot></slot>
       </div>
     </gl-collapse>

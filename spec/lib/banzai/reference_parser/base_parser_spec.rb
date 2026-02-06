@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::ReferenceParser::BaseParser, feature_category: :team_planning do
+RSpec.describe Banzai::ReferenceParser::BaseParser, feature_category: :markdown do
   include ReferenceParserHelpers
 
   let(:user) { create(:user) }
@@ -362,7 +362,7 @@ RSpec.describe Banzai::ReferenceParser::BaseParser, feature_category: :team_plan
           .to eq([project])
       end
 
-      it 'will not overflow the stack' do
+      it 'does not overflow the stack' do
         ids = 1.upto(1_000_000).to_a
 
         # Avoid executing a large, unnecessary SQL query

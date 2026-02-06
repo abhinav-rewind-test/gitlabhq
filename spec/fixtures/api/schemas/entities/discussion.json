@@ -29,12 +29,6 @@
           "body": {
             "type": "string"
           },
-          "attachment": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "award_emoji": {
             "type": "array"
           },
@@ -198,6 +192,16 @@
               "null"
             ]
           },
+          "imported": {
+            "type": [
+              "boolean"
+            ]
+          },
+          "imported_from": {
+            "type": [
+              "string"
+            ]
+          },
           "external_author": {
             "type": [
               "string",
@@ -207,7 +211,6 @@
         },
         "required": [
           "id",
-          "attachment",
           "author",
           "created_at",
           "updated_at",

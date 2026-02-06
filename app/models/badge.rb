@@ -11,8 +11,15 @@ class Badge < ApplicationRecord
     'project_title' => :title,
     'project_name' => :path,
     'project_id' => :id,
+    'project_namespace' => ->(project) { project.project_namespace.to_param },
+    'group_name' => ->(project) { project.group&.to_param },
+    'gitlab_server' => proc { Gitlab.config.gitlab.host },
+    'gitlab_pages_domain' => proc { Gitlab.config.pages.host },
     'default_branch' => :default_branch,
-    'commit_sha' => ->(project) { project.commit&.sha }
+    'commit_sha' => ->(project) { project.commit&.sha },
+    'latest_tag' => ->(project) do
+      TagsFinder.new(project.repository, per_page: 1, sort: 'updated_desc').execute.first&.name if project.repository
+    end
   }.freeze
 
   # This regex is built dynamically using the keys from the PLACEHOLDER struct.
@@ -25,6 +32,8 @@ class Badge < ApplicationRecord
   scope :order_created_at_asc, -> { reorder(created_at: :asc) }
 
   scope :with_name, ->(name) { where(name: name) }
+
+  before_validation :set_sharding_key_preference
 
   validates :link_url, :image_url, addressable_url: true
   validates :type, presence: true
@@ -40,6 +49,16 @@ class Badge < ApplicationRecord
   end
 
   private
+
+  def set_sharding_key_preference
+    return unless group_id.present? && project_id.present?
+
+    if respond_to?(:group)
+      self.group = nil
+    else
+      self.group_id = nil
+    end
+  end
 
   def build_rendered_url(url, project = nil)
     return url unless project

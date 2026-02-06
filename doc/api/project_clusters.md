@@ -1,20 +1,19 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Project clusters API (certificate-based) (deprecated)
 ---
 
-# Project clusters API (certificate-based) (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/23922) in GitLab 11.7.
-> - [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+> [!warning]
+> This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
 
 Users need at least the Maintainer role to use these endpoints.
 
@@ -30,12 +29,14 @@ Parameters:
 
 | Attribute | Type    | Required | Description                                           |
 | --------- | ------- | -------- | ----------------------------------------------------- |
-| `id`      | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user |
+| `id`      | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/projects/26/clusters"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/26/clusters"
 ```
 
 Example response:
@@ -100,13 +101,15 @@ Parameters:
 
 | Attribute    | Type    | Required | Description                                           |
 | ------------ | ------- | -------- | ----------------------------------------------------- |
-| `id`         | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user |
+| `id`         | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `cluster_id` | integer | yes      | The ID of the cluster                                 |
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/projects/26/clusters/18"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/26/clusters/18"
 ```
 
 Example response:
@@ -194,7 +197,7 @@ Parameters:
 
 | Attribute                                            | Type    | Required | Description                                                                                           |
 | ---------------------------------------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `id`                                                 | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user                                                 |
+| `id`                                                 | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths)                                                 |
 | `name`                                               | string  | yes      | The name of the cluster                                                                               |
 | `domain`                                             | string  | no       | The [base domain](../user/project/clusters/gitlab_managed_clusters.md#base-domain) of the cluster                       |
 | `management_project_id`                              | integer | no       | The ID of the [management project](../user/clusters/management_project.md) for the cluster            |
@@ -210,10 +213,12 @@ Parameters:
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/projects/26/clusters/user" \
--H "Accept: application/json" \
--H "Content-Type:application/json" \
--X POST --data '{"name":"cluster-5", "platform_kubernetes_attributes":{"api_url":"https://35.111.51.20","token":"12345","namespace":"cluster-5-namespace","ca_cert":"-----BEGIN CERTIFICATE-----\r\nhFiK1L61owwDQYJKoZIhvcNAQELBQAw\r\nLzEtMCsGA1UEAxMkZDA1YzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM4ZDBj\r\nMB4XDTE4MTIyNzIwMDM1MVoXDTIzMTIyNjIxMDM1MVowLzEtMCsGA1UEAxMkZDA1\r\nYzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM.......-----END CERTIFICATE-----"}}'
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Accept: application/json" \
+  --header "Content-Type:application/json" \
+  --data '{"name":"cluster-5", "platform_kubernetes_attributes":{"api_url":"https://35.111.51.20","token":"12345","namespace":"cluster-5-namespace","ca_cert":"-----BEGIN CERTIFICATE-----\r\nhFiK1L61owwDQYJKoZIhvcNAQELBQAw\r\nLzEtMCsGA1UEAxMkZDA1YzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM4ZDBj\r\nMB4XDTE4MTIyNzIwMDM1MVoXDTIzMTIyNjIxMDM1MVowLzEtMCsGA1UEAxMkZDA1\r\nYzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM.......-----END CERTIFICATE-----"}}' \
+  --url "https://gitlab.example.com/api/v4/projects/26/clusters/user"
 ```
 
 Example response:
@@ -291,7 +296,7 @@ Parameters:
 
 | Attribute                                   | Type    | Required | Description                                                                                |
 | ------------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------ |
-| `id`                                        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user                                      |
+| `id`                                        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths)                                      |
 | `cluster_id`                                | integer | yes      | The ID of the cluster                                                                      |
 | `name`                                      | string  | no       | The name of the cluster                                                                    |
 | `domain`                                    | string  | no       | The [base domain](../user/project/clusters/gitlab_managed_clusters.md#base-domain) of the cluster            |
@@ -304,17 +309,19 @@ Parameters:
 | `platform_kubernetes_attributes[namespace]` | string  | no       | The unique namespace related to the project                                                |
 | `environment_scope`                         | string  | no       | The associated environment to the cluster                                                  |
 
-NOTE:
-`name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
-through the ["Add existing Kubernetes cluster"](../user/project/clusters/add_existing_cluster.md) option or
-through the ["Add existing cluster to project"](#add-existing-cluster-to-project) endpoint.
+> [!note]
+> `name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
+> through the ["Add existing Kubernetes cluster"](../user/project/clusters/add_existing_cluster.md) option or
+> through the ["Add existing cluster to project"](#add-existing-cluster-to-project) endpoint.
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/projects/26/clusters/24" \
--H "Content-Type:application/json" \
--X PUT --data '{"name":"new-cluster-name","domain":"new-domain.com","api_url":"https://new-api-url.com"}'
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type:application/json" \
+  --data '{"name":"new-cluster-name","domain":"new-domain.com","api_url":"https://new-api-url.com"}' \
+  --url "https://gitlab.example.com/api/v4/projects/26/clusters/24"
 ```
 
 Example response:
@@ -402,11 +409,13 @@ Parameters:
 
 | Attribute    | Type    | Required | Description                                           |
 | ------------ | ------- | -------- | ----------------------------------------------------- |
-| `id`         | integer or string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user |
+| `id`         | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `cluster_id` | integer | yes      | The ID of the cluster                                 |
 
 Example request:
 
 ```shell
-curl --request DELETE --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/projects/26/clusters/23"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/26/clusters/23"
 ```

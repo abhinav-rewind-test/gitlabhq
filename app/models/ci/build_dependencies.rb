@@ -14,8 +14,8 @@ module Ci
       (local + cross_pipeline + cross_project).uniq
     end
 
-    def invalid_local
-      local.reject(&:valid_dependency?)
+    def invalid
+      [local, cross_pipeline, cross_project].flat_map { |deps| deps.reject(&:valid_dependency?) }
     end
 
     def valid?
@@ -96,7 +96,7 @@ module Ci
     end
 
     def expand_variables_and_validate(specifications)
-      specifications.map do |spec|
+      specifications.filter_map do |spec|
         pipeline = ExpandVariables.expand(spec[:pipeline].to_s, processable_variables).to_i
         # current pipeline is not allowed because local dependencies
         # should be used instead.
@@ -105,7 +105,7 @@ module Ci
         job = ExpandVariables.expand(spec[:job], processable_variables)
 
         { job: job, pipeline: pipeline }
-      end.compact
+      end
     end
 
     def valid_cross_pipeline?

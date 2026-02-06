@@ -1,14 +1,16 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Vuex
 ---
 
-# Vuex
+## DEPRECATED
 
-[Vuex](https://vuex.vuejs.org) should no longer be considered a preferred path to store management and is currently in its legacy phase. This means it is acceptable to add upon existing `Vuex` stores, but we strongly recommend reducing store sizes over time and eventually [migrating away from VueX entirely](migrating_from_vuex.md). Before adding any new `Vuex` store to an application, first ensure that the `Vue` application you plan to add it into **does not use** `Apollo`. `Vuex` and `Apollo` should not be combined unless absolutely necessary. Consider reading through [our GraphQL documentation](../fe_guide/graphql.md) for more guidelines on how you can build `Apollo` based applications.
+**[Vuex](https://vuex.vuejs.org) is deprecated at GitLab** and no new Vuex stores should be created.
+You can still maintain existing Vuex stores but we strongly recommend [migrating away from Vuex entirely](migrating_from_vuex.md).
 
-The information included in this page is explained in more detail in the
+The rest of the information included on this page is explained in more detail in the
 official [Vuex documentation](https://vuex.vuejs.org).
 
 ## Separation of concerns
@@ -146,18 +148,18 @@ See the Vuex documentation for examples of [committing mutations from components
 
 When a request is made we often want to show a loading state to the user.
 
-Instead of creating an mutation to toggle the loading state, we should:
+Instead of creating a mutation to toggle the loading state, we should:
 
 1. A mutation with type `REQUEST_SOMETHING`, to toggle the loading state
 1. A mutation with type `RECEIVE_SOMETHING_SUCCESS`, to handle the success callback
 1. A mutation with type `RECEIVE_SOMETHING_ERROR`, to handle the error callback
 1. An action `fetchSomething` to make the request and commit mutations on mentioned cases
-    1. In case your application does more than a `GET` request you can use these as examples:
-        - `POST`: `createSomething`
-        - `PUT`: `updateSomething`
-        - `DELETE`: `deleteSomething`
+   1. In case your application does more than a `GET` request you can use these as examples:
+      - `POST`: `createSomething`
+      - `PUT`: `updateSomething`
+      - `DELETE`: `deleteSomething`
 
-As a result, we can dispatch the `fetchNamespace` action from the component and it is responsible to commit  `REQUEST_NAMESPACE`, `RECEIVE_NAMESPACE_SUCCESS` and `RECEIVE_NAMESPACE_ERROR` mutations.
+As a result, we can dispatch the `fetchNamespace` action from the component and it is responsible to commit `REQUEST_NAMESPACE`, `RECEIVE_NAMESPACE_SUCCESS` and `RECEIVE_NAMESPACE_ERROR` mutations.
 
 > Previously, we were dispatching actions from the `fetchNamespace` action instead of committing mutation, so don't be confused if you find a different pattern in the older parts of the codebase. However, we encourage leveraging a new pattern whenever you write new Vuex stores.
 

@@ -9,10 +9,13 @@ import eventHub from '../event_hub';
 
 import {
   displaySuccessfulInvitationAlert,
-  reloadOnInvitationSuccess,
+  reloadOnMemberInvitationSuccess,
 } from '../utils/trigger_successful_invite_alert';
 
 import {
+  BLOCKED_SEAT_OVERAGES_ERROR_REASON,
+  BLOCKED_SEAT_OVERAGES_BODY,
+  BLOCKED_SEAT_OVERAGES_CTA,
   PROJECT_SELECT_LABEL_ID,
   IMPORT_PROJECT_MEMBERS_MODAL_TRACKING_CATEGORY,
   IMPORT_PROJECT_MEMBERS_MODAL_TRACKING_LABEL,
@@ -42,6 +45,11 @@ export default {
       label: IMPORT_PROJECT_MEMBERS_MODAL_TRACKING_LABEL,
     }),
   ],
+  inject: {
+    addSeatsHref: {
+      default: '',
+    },
+  },
   props: {
     projectId: {
       type: String,
@@ -64,6 +72,7 @@ export default {
   },
   data() {
     return {
+      errorReason: '',
       projectToBeImported: {},
       invalidFeedbackMessage: '',
       totalMembersCount: 0,
@@ -137,13 +146,16 @@ export default {
         count: this.errorsExpanded.length,
       });
     },
+    shouldShowSeatOverageNotification() {
+      return this.errorReason === BLOCKED_SEAT_OVERAGES_ERROR_REASON && this.addSeatsHref;
+    },
   },
   mounted() {
     if (this.reloadPageOnSubmit) {
       displaySuccessfulInvitationAlert();
     }
 
-    eventHub.$on('openProjectMembersModal', () => {
+    eventHub.$on('open-project-members-modal', () => {
       this.openModal();
     });
   },
@@ -177,8 +189,11 @@ export default {
         } else {
           this.onInviteSuccess();
         }
-      } catch {
-        this.showErrorAlert();
+      } catch (error) {
+        const { message, reason } = error.response.data || {};
+
+        this.errorReason = reason;
+        this.showErrorAlert(message);
       } finally {
         this.isLoading = false;
         this.projectToBeImported = {};
@@ -192,7 +207,7 @@ export default {
       this.track('invite_successful');
 
       if (this.reloadPageOnSubmit) {
-        reloadOnInvitationSuccess();
+        reloadOnMemberInvitationSuccess();
       } else {
         this.showToastMessage();
       }
@@ -201,8 +216,8 @@ export default {
       this.$toast.show(this.$options.i18n.successMessage, this.$options.toastOptions);
       this.closeModal();
     },
-    showErrorAlert() {
-      this.invalidFeedbackMessage = this.$options.i18n.defaultError;
+    showErrorAlert(message) {
+      this.invalidFeedbackMessage = message || this.$options.i18n.defaultError;
     },
     onCancel() {
       this.track('click_cancel');
@@ -211,6 +226,7 @@ export default {
       this.track('click_x');
     },
     clearValidation() {
+      this.errorReason = '';
       this.invalidFeedbackMessage = '';
       this.invalidMembers = {};
     },
@@ -238,6 +254,8 @@ export default {
     modalCancelButton: __('Cancel'),
     defaultError: s__('ImportAProjectModal|Unable to import project members'),
     successMessage: s__('ImportAProjectModal|Successfully imported'),
+    BLOCKED_SEAT_OVERAGES_BODY,
+    BLOCKED_SEAT_OVERAGES_CTA,
   },
   errorsLimit: 2,
   projectSelectLabelId: PROJECT_SELECT_LABEL_ID,
@@ -271,14 +289,14 @@ export default {
         data-testid="alert-member-error"
       >
         {{ $options.labels.memberErrorListText }}
-        <ul class="gl-pl-5 gl-mb-0">
+        <ul class="gl-mb-0 gl-pl-5">
           <li v-for="error in errorsLimited" :key="error.member" data-testid="errors-limited-item">
             <strong>{{ error.displayedMemberName }}:</strong> {{ error.message }}
           </li>
         </ul>
         <template v-if="shouldErrorsSectionExpand">
           <gl-collapse v-model="isErrorsSectionExpanded">
-            <ul class="gl-pl-5 gl-mb-0">
+            <ul class="gl-mb-0 gl-pl-5">
               <li
                 v-for="error in errorsExpanded"
                 :key="error.member"
@@ -289,7 +307,7 @@ export default {
             </ul>
           </gl-collapse>
           <gl-button
-            class="gl-text-decoration-none! gl-shadow-none! gl-mt-3"
+            class="gl-mt-3 !gl-no-underline !gl-shadow-none"
             data-testid="accordion-button"
             variant="link"
             @click="toggleErrorExpansion"
@@ -297,7 +315,7 @@ export default {
             {{ errorCollapseText }}
             <gl-icon
               name="chevron-down"
-              class="gl-transition-medium"
+              class="gl-transition-all"
               :class="{ 'gl-rotate-180': isErrorsSectionExpanded }"
             />
           </gl-button>
@@ -321,12 +339,24 @@ export default {
       :invalid-feedback="invalidFeedbackMessage"
       :state="validationState"
       data-testid="form-group"
-      label-class="gl-pt-3!"
+      label-class="!gl-pt-3"
       :label="$options.i18n.projectLabel"
       :label-for="$options.projectSelectLabelId"
     >
       <project-select v-model="projectToBeImported" />
     </gl-form-group>
+    <gl-alert
+      v-if="shouldShowSeatOverageNotification"
+      id="import-project-members-seat-overages-alert"
+      class="gl-mb-4"
+      dismissable
+      data-testid="import-project-members-seat-overages-alert"
+      :primary-button-link="addSeatsHref"
+      :primary-button-text="$options.i18n.BLOCKED_SEAT_OVERAGES_CTA"
+      @dismiss="errorReason = false"
+    >
+      {{ $options.i18n.BLOCKED_SEAT_OVERAGES_BODY }}
+    </gl-alert>
     <p>{{ $options.i18n.modalHelpText }}</p>
   </gl-modal>
 </template>

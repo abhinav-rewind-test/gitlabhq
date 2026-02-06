@@ -8,8 +8,8 @@ module Gitlab
         # Entry that represents a parent-child or cross-project downstream trigger.
         #
         class Trigger < ::Gitlab::Config::Entry::Simplifiable
-          strategy :SimpleTrigger, if: -> (config) { config.is_a?(String) }
-          strategy :ComplexTrigger, if: -> (config) { config.is_a?(Hash) }
+          strategy :SimpleTrigger, if: ->(config) { config.is_a?(String) }
+          strategy :ComplexTrigger, if: ->(config) { config.is_a?(Hash) }
 
           # cross-project
           class SimpleTrigger < ::Gitlab::Config::Entry::Node
@@ -23,27 +23,27 @@ module Gitlab
           end
 
           class ComplexTrigger < ::Gitlab::Config::Entry::Simplifiable
-            strategy :CrossProjectTrigger, if: -> (config) { !config.key?(:include) }
+            strategy :CrossProjectTrigger, if: ->(config) { !config.key?(:include) }
 
-            strategy :SameProjectTrigger, if: -> (config) do
+            strategy :SameProjectTrigger, if: ->(config) do
               config.key?(:include)
             end
 
-            # cross-project
             class CrossProjectTrigger < ::Gitlab::Config::Entry::Node
               include ::Gitlab::Config::Entry::Validatable
               include ::Gitlab::Config::Entry::Attributable
               include ::Gitlab::Config::Entry::Configurable
 
-              ALLOWED_KEYS = %i[project branch strategy forward].freeze
-              attributes :project, :branch, :strategy
+              ALLOWED_KEYS = %i[project branch strategy forward inputs].freeze
+              attributes :project, :branch, :strategy, :inputs
 
               validations do
                 validates :config, presence: true
                 validates :config, allowed_keys: ALLOWED_KEYS
+                validates :inputs, type: Hash, allow_nil: true
                 validates :project, type: String, presence: true
                 validates :branch, type: String, allow_nil: true
-                validates :strategy, type: String, inclusion: { in: %w[depend], message: 'should be depend' }, allow_nil: true
+                validates :strategy, type: String, inclusion: { in: %w[depend mirror], message: 'should be depend or mirror' }, allow_nil: true
               end
 
               entry :forward, ::Gitlab::Ci::Config::Entry::Trigger::Forward,
@@ -53,7 +53,8 @@ module Gitlab
                 { project: project,
                   branch: branch,
                   strategy: strategy,
-                  forward: forward_value }.compact
+                  forward: forward_value,
+                  inputs: inputs }.compact
               end
             end
 
@@ -70,7 +71,7 @@ module Gitlab
               validations do
                 validates :config, presence: true
                 validates :config, allowed_keys: ALLOWED_KEYS
-                validates :strategy, type: String, inclusion: { in: %w[depend], message: 'should be depend' }, allow_nil: true
+                validates :strategy, type: String, inclusion: { in: %w[depend mirror], message: 'should be depend or mirror' }, allow_nil: true
               end
 
               entry :include, ::Gitlab::Ci::Config::Entry::Includes,

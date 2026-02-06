@@ -12,13 +12,21 @@ module QA
 
             base.class_eval do
               include QA::Page::SubMenus::CreateNewMenu
+
+              view 'app/assets/javascripts/work_items/components/create_work_item_modal.vue' do
+                element 'new-work-item-modal-link'
+              end
             end
           end
 
           def go_to_new_issue
             within_new_item_menu do
-              click_element(:create_menu_item, create_menu_item: 'new_issue')
+              link = has_element?(:create_menu_item, create_menu_item: 'new_work_item') ? 'new_work_item' : 'new_issue'
+              click_element(:create_menu_item, create_menu_item: link)
             end
+
+            # Click the "Open in full page" link if modal appears
+            click_element('new-work-item-modal-link') if has_element?('new-work-item-modal-link')
           end
 
           def go_to_new_merge_request

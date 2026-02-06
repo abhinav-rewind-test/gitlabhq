@@ -2,12 +2,17 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::SnippetSearchResults do
+RSpec.describe Gitlab::SnippetSearchResults, :with_current_organization, feature_category: :global_search do
   include SearchHelpers
 
-  let_it_be(:snippet) { create(:snippet, content: 'foo', file_name: 'foo') }
+  before do
+    # Since this doesn't go through a request flow, we need to manually set Current.organization
+    Current.organization = current_organization
+  end
 
-  let(:results) { described_class.new(snippet.author, 'foo') }
+  let_it_be(:snippet) { create(:personal_snippet, content: 'foo', file_name: 'foo') }
+
+  let(:results) { described_class.new(snippet.author, 'foo', organization_id: current_organization.id) }
 
   describe '#snippet_titles_count' do
     it 'returns the amount of matched snippet titles' do
@@ -30,11 +35,17 @@ RSpec.describe Gitlab::SnippetSearchResults do
 
   describe '#objects' do
     it 'uses page and per_page to paginate results' do
-      snippet2 = create(:snippet, :public, content: 'foo', file_name: 'foo')
+      snippet2 = create(:personal_snippet, :public, content: 'foo', file_name: 'foo')
 
       expect(results.objects('snippet_titles', page: 1, per_page: 1).to_a).to eq([snippet2])
       expect(results.objects('snippet_titles', page: 2, per_page: 1).to_a).to eq([snippet])
       expect(results.objects('snippet_titles', page: 1, per_page: 2).count).to eq(2)
+    end
+  end
+
+  describe '#finder_params' do
+    it 'includes organization_id' do
+      expect(results.send(:finder_params)).to include(organization_id: current_organization.id)
     end
   end
 end

@@ -4,6 +4,11 @@ module IssueLinks
   class CreateService < IssuableLinks::CreateService
     include IncidentManagement::UsageData
 
+    def success(...)
+      GraphqlTriggers.work_item_updated(issuable)
+      super
+    end
+
     def linkable_issuables(issues)
       @linkable_issuables ||= issues.select { |issue| can?(current_user, :admin_issue_link, issue) }
     end
@@ -25,7 +30,15 @@ module IssueLinks
     def link_class
       IssueLink
     end
+
+    def issuables_no_permission_error_message
+      _("Couldn't link issues. You must have at least the Guest role in both projects.")
+    end
+
+    def extractor_context
+      issuable.group_level? ? { group: issuable.namespace } : {}
+    end
   end
 end
 
-IssueLinks::CreateService.prepend_mod_with('IssueLinks::CreateService')
+IssueLinks::CreateService.prepend_mod

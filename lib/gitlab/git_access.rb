@@ -23,10 +23,13 @@ module Gitlab
       deploy_key_upload: 'This deploy key does not have write access to this project.',
       no_repo: 'A repository for this project does not exist yet.',
       project_not_found: "The project you were looking for could not be found or you don't have permission to view it.",
+      auth_by_job_token_forbidden: 'Insufficient permissions to pull from the repository of project #%{target_project_id}.',
+      auth_by_job_token_project_not_in_allowlist: 'Authentication by CI/CD job token not allowed from %{source_project_path} to project #%{target_project_id}.',
       command_not_allowed: "The command you're trying to execute is not allowed.",
       upload_pack_disabled_over_http: 'Pulling over HTTP is not allowed.',
       receive_pack_disabled_over_http: 'Pushing over HTTP is not allowed.',
       read_only: 'The repository is temporarily read-only. Please try again later.',
+      archived: "You can't push code to an archived project.",
       cannot_push_to_read_only: "You can't push code to a read-only GitLab instance.",
       push_code: 'You are not allowed to push code to this project.'
     }.freeze
@@ -43,8 +46,8 @@ module Gitlab
     ALL_COMMANDS = DOWNLOAD_COMMANDS + PUSH_COMMANDS
 
     attr_reader :actor, :protocol, :authentication_abilities,
-                :repository_path, :redirected_path, :auth_result_type,
-                :cmd, :changes
+      :repository_path, :redirected_path, :auth_result_type,
+      :cmd, :changes, :push_options, :gitaly_context, :personal_access_token
     attr_accessor :container
 
     def self.error_message(key)
@@ -57,7 +60,7 @@ module Gitlab
       raise ArgumentError, "No error message defined for #{key}"
     end
 
-    def initialize(actor, container, protocol, authentication_abilities:, repository_path: nil, redirected_path: nil, auth_result_type: nil)
+    def initialize(actor, container, protocol, authentication_abilities:, repository_path: nil, redirected_path: nil, auth_result_type: nil, push_options: nil, gitaly_context: nil, personal_access_token: nil) # rubocop:disable Metrics/ParameterLists -- it needs a refactoring to resolve
       @actor     = actor
       @container = container
       @protocol  = protocol
@@ -65,6 +68,9 @@ module Gitlab
       @repository_path = repository_path
       @redirected_path = redirected_path
       @auth_result_type = auth_result_type
+      @push_options = Gitlab::PushOptions.new(push_options)
+      @gitaly_context = gitaly_context
+      @personal_access_token = personal_access_token
     end
 
     def check(cmd, changes)
@@ -78,8 +84,7 @@ module Gitlab
       check_command_disabled!
       check_command_existence!
 
-      custom_action = check_custom_action
-      return custom_action if custom_action
+      check_custom_ssh_action!
 
       check_db_accessibility!
       check_container!
@@ -111,11 +116,6 @@ module Gitlab
         (project? && repository_access_level != ::Featurable::DISABLED)
     end
 
-    def user_can_download?
-      authentication_abilities.include?(:download_code) &&
-        user_access.can_do_action?(download_ability)
-    end
-
     # @return [Symbol] the name of a Declarative Policy ability to check
     def download_ability
       raise NotImplementedError
@@ -141,6 +141,10 @@ module Gitlab
     # when accessing via the CI_JOB_TOKEN
     def build_can_download_code?
       authentication_abilities.include?(:build_download_code) && user_access.can_do_action?(:build_download_code)
+    end
+
+    def build_can_push?
+      authentication_abilities.include?(:build_push_code) && user_access.can_do_action?(:build_push_code)
     end
 
     def build_can_download?
@@ -176,12 +180,12 @@ module Gitlab
       check_project_accessibility!
     end
 
-    def check_custom_action
+    def check_custom_ssh_action!
       # no-op: Overridden in EE
     end
 
     def check_for_console_messages
-      return console_messages unless key?
+      return console_messages unless key? || deploy_key?
 
       key_status = Gitlab::Auth::KeyStatusChecker.new(actor)
 
@@ -197,12 +201,12 @@ module Gitlab
     end
 
     def check_valid_actor!
-      return unless key?
-
-      if !actor.valid?
-        raise ForbiddenError, "Your SSH key #{actor.errors[:key].first}."
-      elsif actor.expired?
-        raise ForbiddenError, "Your SSH key has expired."
+      if key? || deploy_key?
+        if !actor.valid?
+          raise ForbiddenError, "Your SSH key #{actor.errors[:key].first}."
+        elsif actor.expired?
+          raise ForbiddenError, "Your SSH key has expired."
+        end
       end
     end
 
@@ -224,20 +228,71 @@ module Gitlab
     end
 
     def check_authentication_abilities!
+      if personal_access_token&.granular?
+        check_granular_pat_permissions!
+      else
+        check_legacy_authentication_abilities!
+      end
+    end
+
+    def check_legacy_authentication_abilities!
       case cmd
       when *DOWNLOAD_COMMANDS
         unless authentication_abilities.include?(:download_code) || authentication_abilities.include?(:build_download_code)
           raise ForbiddenError, error_message(:auth_download)
         end
       when *PUSH_COMMANDS
-        unless authentication_abilities.include?(:push_code)
+        unless authentication_abilities.include?(:push_code) || authentication_abilities.include?(:build_push_code)
           raise ForbiddenError, error_message(:auth_upload)
         end
       end
     end
 
+    def check_granular_pat_permissions!
+      result = ::Authz::Tokens::AuthorizeGranularScopesService.new(
+        boundary: ::Authz::Boundary.for(project),
+        permissions: permission_for_command,
+        token: personal_access_token
+      ).execute
+
+      raise ForbiddenError, result.message if result.error?
+    end
+
+    def permission_for_command
+      case cmd
+      when *DOWNLOAD_COMMANDS
+        :download_code
+      when *PUSH_COMMANDS
+        :push_code
+      end
+    end
+
+    # For granular PATs, permissions are validated earlier via check_granular_pat_permissions!
+    # so we can skip the authentication_abilities check.
+    def has_authentication_ability?(ability)
+      personal_access_token&.granular? || authentication_abilities.include?(ability)
+    end
+
     def check_project_accessibility!
-      raise NotFoundError, not_found_message unless can_read_project?
+      return if can_read_project?
+
+      if user&.from_ci_job_token?
+
+        policy = ProjectPolicy.new(user, project)
+
+        if policy.project_allowed_for_job_token?
+          raise ForbiddenError, format(error_message(:auth_by_job_token_forbidden),
+            target_project_id: project.id)
+        else
+          source_project = user.ci_job_token_scope.current_project
+
+          raise ForbiddenError, format(error_message(:auth_by_job_token_project_not_in_allowlist),
+            source_project_path: source_project.path,
+            target_project_id: project.id)
+        end
+      else
+        raise NotFoundError, not_found_message
+      end
     end
 
     def not_found_message
@@ -319,6 +374,10 @@ module Gitlab
         raise ForbiddenError, error_message(:read_only)
       end
 
+      if project&.self_or_ancestors_archived?
+        raise ForbiddenError, error_message(:archived)
+      end
+
       if deploy_key?
         unless deploy_key.can_push_to?(project)
           raise ForbiddenError, error_message(:deploy_key_upload)
@@ -332,13 +391,18 @@ module Gitlab
       check_change_access!
     end
 
+    def user_can_download?
+      has_authentication_ability?(:download_code) && user_access.can_do_action?(download_ability)
+    end
+
     def user_can_push?
-      user_access.can_do_action?(push_ability)
+      has_authentication_ability?(:push_code) && user_access.can_do_action?(push_ability)
     end
 
     def check_change_access!
       if changes == ANY
         can_push = deploy_key? ||
+          build_can_push? ||
           user_can_push? ||
           project&.any_branch_allows_collaboration?(user_access.user)
 
@@ -356,7 +420,9 @@ module Gitlab
         user_access: user_access,
         project: project,
         protocol: protocol,
-        logger: logger
+        logger: logger,
+        push_options: push_options,
+        gitaly_context: gitaly_context
       ).validate!
     rescue Checks::TimedLogger::TimeoutError
       raise TimeoutError, logger.full_message
@@ -383,7 +449,7 @@ module Gitlab
     end
 
     def key?
-      actor.is_a?(Key)
+      actor.is_a?(Key) && actor.regular_key?
     end
 
     def can_read_project?
@@ -529,8 +595,7 @@ module Gitlab
     end
 
     # overriden in EE
-    def check_additional_conditions!
-    end
+    def check_additional_conditions!; end
 
     def repository_access_level
       project&.repository_access_level

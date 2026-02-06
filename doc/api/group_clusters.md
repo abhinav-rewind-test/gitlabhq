@@ -1,31 +1,30 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Group clusters API (certificate-based) (deprecated)
 ---
 
-# Group clusters API (certificate-based) (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/30213) in GitLab 12.1.
-> - [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+> [!warning]
+> This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
 
-Similarly to [project-level](../user/project/clusters/index.md) and
-[instance-level](../user/instance/clusters/index.md) Kubernetes clusters,
+Similarly to [project-level](../user/project/clusters/_index.md) and
+[instance-level](../user/instance/clusters/_index.md) Kubernetes clusters,
 group-level Kubernetes clusters allow you to connect a Kubernetes cluster to
 your group, enabling you to use the same cluster across multiple projects.
 
-Users need at least the Maintainer role for the group to use these endpoints.
+Users need the Maintainer or Owner role for the group to use these endpoints.
 
 ## List group clusters
 
-Returns a list of group clusters.
+Lists all group clusters for a specified group.
 
 ```plaintext
 GET /groups/:id/clusters
@@ -35,12 +34,13 @@ Parameters:
 
 | Attribute | Type           | Required | Description                                                                   |
 | --------- | -------------- | -------- | ----------------------------------------------------------------------------- |
-| `id`      | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`      | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/groups/26/clusters"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/26/clusters"
 ```
 
 Example response:
@@ -92,9 +92,9 @@ Example response:
 ]
 ```
 
-## Get a single group cluster
+## Retrieve a group cluster
 
-Gets a single group cluster.
+Retrieves a specified group cluster.
 
 ```plaintext
 GET /groups/:id/clusters/:cluster_id
@@ -104,13 +104,14 @@ Parameters:
 
 | Attribute    | Type           | Required | Description                                                                   |
 | ------------ | -------------- | -------- | ----------------------------------------------------------------------------- |
-| `id`         | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`         | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `cluster_id` | integer        | yes      | The ID of the cluster                                                         |
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/groups/26/clusters/18"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/26/clusters/18"
 ```
 
 Example response:
@@ -161,9 +162,9 @@ Example response:
 }
 ```
 
-## Add existing cluster to group
+## Create a group cluster
 
-Adds an existing Kubernetes cluster to the group.
+Creates a group cluster for a specified group by adding an existing Kubernetes cluster.
 
 ```plaintext
 POST /groups/:id/clusters/user
@@ -173,9 +174,9 @@ Parameters:
 
 | Attribute                                            | Type           | Required | Description                                                                                         |
 | ---------------------------------------------------- | -------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `id`                                                 | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding)                       |
+| `id`                                                 | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                       |
 | `name`                                               | string         | yes      | The name of the cluster                                                                             |
-| `domain`                                             | string         | no       | The [base domain](../user/group/clusters/index.md#base-domain) of the cluster                       |
+| `domain`                                             | string         | no       | The [base domain](../user/group/clusters/_index.md#base-domain) of the cluster                       |
 | `management_project_id`                              | integer        | no       | The ID of the [management project](../user/clusters/management_project.md) for the cluster          |
 | `enabled`                                            | boolean        | no       | Determines if cluster is active or not, defaults to `true`                                            |
 | `managed`                                            | boolean        | no       | Determines if GitLab manages namespaces and service accounts for this cluster. Defaults to `true` |
@@ -188,10 +189,19 @@ Parameters:
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/groups/26/clusters/user" \
--H "Accept: application/json" \
--H "Content-Type:application/json" \
---request POST --data '{"name":"cluster-5", "platform_kubernetes_attributes":{"api_url":"https://35.111.51.20","token":"12345","ca_cert":"-----BEGIN CERTIFICATE-----\r\nhFiK1L61owwDQYJKoZIhvcNAQELBQAw\r\nLzEtMCsGA1UEAxMkZDA1YzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM4ZDBj\r\nMB4XDTE4MTIyNzIwMDM1MVoXDTIzMTIyNjIxMDM1MVowLzEtMCsGA1UEAxMkZDA1\r\nYzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM.......-----END CERTIFICATE-----"}}'
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Accept: application/json" \
+  --header "Content-Type:application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/26/clusters/user" \
+  --data '{
+    "name":"cluster-5",
+    "platform_kubernetes_attributes":{
+      "api_url":"https://35.111.51.20",
+      "token":"12345",
+      "ca_cert":"-----BEGIN CERTIFICATE-----\r\nhFiK1L61owwDQYJKoZIhvcNAQELBQAw\r\nLzEtMCsGA1UEAxMkZDA1YzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM4ZDBj\r\nMB4XDTE4MTIyNzIwMDM1MVoXDTIzMTIyNjIxMDM1MVowLzEtMCsGA1UEAxMkZDA1\r\nYzQ1YjctNzdiMS00NDY0LThjNmEtMTQ0ZDJkZjM.......-----END CERTIFICATE-----"
+    }
+  }'
 ```
 
 Example response:
@@ -232,9 +242,9 @@ Example response:
 }
 ```
 
-## Edit group cluster
+## Update a group cluster
 
-Updates an existing group cluster.
+Updates a specified group cluster.
 
 ```plaintext
 PUT /groups/:id/clusters/:cluster_id
@@ -244,10 +254,10 @@ Parameters:
 
 | Attribute                                 | Type           | Required | Description                                                                                |
 | ----------------------------------------- | -------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `id`                                      | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding)              |
+| `id`                                      | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group              |
 | `cluster_id`                              | integer        | yes      | The ID of the cluster                                                                      |
 | `name`                                    | string         | no       | The name of the cluster                                                                    |
-| `domain`                                  | string         | no       | The [base domain](../user/group/clusters/index.md#base-domain) of the cluster              |
+| `domain`                                  | string         | no       | The [base domain](../user/group/clusters/_index.md#base-domain) of the cluster              |
 | `management_project_id`                   | integer        | no       | The ID of the [management project](../user/clusters/management_project.md) for the cluster |
 | `enabled`                                 | boolean        | no       | Determines if cluster is active or not                                                     |
 | `managed`                                 | boolean        | no       | Determines if GitLab manages namespaces and service accounts for this cluster          |
@@ -256,17 +266,25 @@ Parameters:
 | `platform_kubernetes_attributes[ca_cert]` | string         | no       | TLS certificate. Required if API is using a self-signed TLS certificate.                   |
 | `environment_scope`                       | string         | no       | The associated environment to the cluster. Premium and Ultimate only.                      |
 
-NOTE:
-`name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
-through the ["Add existing Kubernetes cluster"](../user/project/clusters/add_existing_cluster.md) option or
-through the ["Add existing cluster to group"](#add-existing-cluster-to-group) endpoint.
+> [!note]
+> `name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
+> through the ["Add existing Kubernetes cluster"](../user/project/clusters/add_existing_cluster.md) option or
+> through the ["Create a group cluster"](#create-a-group-cluster) endpoint.
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/groups/26/clusters/24" \
--H "Content-Type:application/json" \
---request PUT --data '{"name":"new-cluster-name","domain":"new-domain.com","platform_kubernetes_attributes":{"api_url":"https://10.10.101.1:6433"}}'
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type:application/json" \
+  --url "https://gitlab.example.com/api/v4/groups/26/clusters/24" \
+  --data '{
+    "name":"new-cluster-name",
+    "domain":"new-domain.com",
+    "platform_kubernetes_attributes":{
+      "api_url":"https://10.10.101.1:6433"
+    }
+  }'
 ```
 
 Example response:
@@ -317,9 +335,9 @@ Example response:
 }
 ```
 
-## Delete group cluster
+## Delete a group cluster
 
-Deletes an existing group cluster. Does not remove existing resources within the connected Kubernetes cluster.
+Deletes a specified group cluster. Does not remove existing resources within the connected Kubernetes cluster.
 
 ```plaintext
 DELETE /groups/:id/clusters/:cluster_id
@@ -329,11 +347,13 @@ Parameters:
 
 | Attribute    | Type           | Required | Description                                                                   |
 | ------------ | -------------- | -------- | ----------------------------------------------------------------------------- |
-| `id`         | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`         | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `cluster_id` | integer        | yes      | The ID of the cluster                                                         |
 
 Example request:
 
 ```shell
-curl --request DELETE --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/groups/26/clusters/23"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/26/clusters/23"
 ```

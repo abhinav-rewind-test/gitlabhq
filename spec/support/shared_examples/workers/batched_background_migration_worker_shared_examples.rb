@@ -9,7 +9,7 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
 
   describe 'defining the job attributes' do
     it 'defines the data_consistency as always' do
-      expect(described_class.get_data_consistency).to eq(:always)
+      expect(described_class.get_data_consistency_per_database.values.uniq).to eq([:always])
     end
 
     it 'defines the feature_category as database' do
@@ -28,18 +28,6 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
 
     it 'overrides the method to return the tracking database' do
       expect(described_class.tracking_database).to eq(tracking_database)
-    end
-  end
-
-  describe '.lease_key' do
-    let(:lease_key) { described_class.name.demodulize.underscore }
-
-    it 'does not raise an error' do
-      expect { described_class.lease_key }.not_to raise_error
-    end
-
-    it 'returns the lease key' do
-      expect(described_class.lease_key).to eq(lease_key)
     end
   end
 
@@ -83,7 +71,7 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
         expect(Sidekiq.logger).to receive(:info) do |payload|
           expect(payload[:class]).to eq(described_class.name)
           expect(payload[:database]).to eq(tracking_database)
-          expect(payload[:message]).to match(/skipping migration execution/)
+          expect(payload[:message]).to include('Skipping')
         end
 
         expect { worker.perform }.not_to raise_error
@@ -188,6 +176,8 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
                 Database::BatchedBackgroundMigration::MainExecutionWorker
               when :ci
                 Database::BatchedBackgroundMigration::CiExecutionWorker
+              when :sec
+                Database::BatchedBackgroundMigration::SecExecutionWorker
               end
             end
 
@@ -225,7 +215,7 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
 
           def perform
             each_sub_batch(
-              batching_scope: -> (relation) { relation.where(status: matching_status) }
+              batching_scope: ->(relation) { relation.where(status: matching_status) }
             ) do |sub_batch|
               sub_batch.update_all(some_column: 0)
             end
@@ -274,18 +264,18 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
         #   - one record beyond the migration's range
         #   - one record that doesn't match the migration job's batch condition
         connection.execute(<<~SQL)
-        CREATE TABLE #{new_table_name} (
-          id integer primary key,
-          some_column integer,
-          status smallint);
+          CREATE TABLE #{new_table_name} (
+            id integer primary key,
+            some_column integer,
+            status smallint);
 
-        INSERT INTO #{new_table_name} (id, some_column, status)
-        SELECT generate_series, generate_series, 1
-        FROM generate_series(1, #{migration_records + 1});
+          INSERT INTO #{new_table_name} (id, some_column, status)
+          SELECT generate_series, generate_series, 1
+          FROM generate_series(1, #{migration_records + 1});
 
-        UPDATE #{new_table_name}
-          SET status = 0
-        WHERE some_column = #{migration_records - 5};
+          UPDATE #{new_table_name}
+            SET status = 0
+          WHERE some_column = #{migration_records - 5};
         SQL
 
         stub_const('Gitlab::BackgroundMigration::ExampleDataMigration', migration_class)
@@ -296,7 +286,9 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
         (number_of_batches + 1).times do
           described_class.new.perform
 
-          travel_to((migration.interval + described_class::INTERVAL_VARIANCE).seconds.from_now)
+          travel_to(
+            (migration.interval + Database::BatchedBackgroundMigration::ExecutionWorker::INTERVAL_VARIANCE)
+              .seconds.from_now)
         end
       end
 
@@ -341,21 +333,15 @@ RSpec.shared_examples 'it runs batched background migration jobs' do |tracking_d
       context 'health status' do
         subject(:migration_run) { described_class.new.perform }
 
-        context 'with skip_autovacuum_health_check_for_ci_builds FF disabled' do
-          before do
-            stub_feature_flags(skip_autovacuum_health_check_for_ci_builds: false)
-          end
+        it 'puts migration on hold when there is autovaccum activity on related tables' do
+          swapout_view_for_table(:postgres_autovacuum_activity, connection: connection)
+          create(
+            :postgres_autovacuum_activity,
+            table: migration.table_name,
+            table_identifier: "public.#{migration.table_name}"
+          )
 
-          it 'puts migration on hold when there is autovaccum activity on related tables' do
-            swapout_view_for_table(:postgres_autovacuum_activity, connection: connection)
-            create(
-              :postgres_autovacuum_activity,
-              table: migration.table_name,
-              table_identifier: "public.#{migration.table_name}"
-            )
-
-            expect { migration_run }.to change { migration.reload.on_hold? }.from(false).to(true)
-          end
+          expect { migration_run }.to change { migration.reload.on_hold? }.from(false).to(true)
         end
 
         it 'puts migration on hold when the pending WAL count is above the limit' do

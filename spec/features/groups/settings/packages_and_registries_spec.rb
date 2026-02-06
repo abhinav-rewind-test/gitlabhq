@@ -5,13 +5,16 @@ require 'spec_helper'
 RSpec.describe 'Group Package and registry settings', feature_category: :package_registry do
   include WaitForRequests
 
-  let(:user) { create(:user) }
-  let(:group) { create(:group) }
-  let(:sub_group) { create(:group, parent: group) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:sub_group) { create(:group, parent: group) }
 
-  before do
+  before_all do
     group.add_owner(user)
     sub_group.add_owner(user)
+  end
+
+  before do
     sign_in(user)
   end
 
@@ -25,27 +28,20 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
 
       within_testid('super-sidebar') do
         click_button 'Settings'
-        expect(page).not_to have_content 'Packages and registries'
+
+        expect(page).not_to have_link('Packages and registries',
+          href: group_settings_packages_and_registries_path(group))
       end
     end
 
     it 'renders 404 when navigating to page' do
       visit_settings_page
 
-      expect(page).to have_content('Not Found')
+      expect(page).to have_content('Page not found')
     end
   end
 
   context 'when packages feature is enabled on the group' do
-    it 'the menu item is visible', :js do
-      visit group_path(group)
-
-      within_testid('super-sidebar') do
-        click_button 'Settings'
-        expect(page).to have_content 'Packages and registries'
-      end
-    end
-
     it 'has a page title set' do
       visit_settings_page
 
@@ -56,7 +52,8 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
       visit_settings_page
 
       within_testid('super-sidebar') do
-        expect(page).to have_link _('Packages and registries')
+        expect(page).to have_selector('button[aria-expanded="true"]', text: 'Settings')
+        expect(page).to have_css('a[aria-current="page"]', text: 'Packages and registries')
       end
     end
 
@@ -65,8 +62,8 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
 
       wait_for_requests
 
-      expect(page).to be_axe_clean.within('[data-testid="packages-and-registries-group-settings"]') # rubocop:todo Capybara/TestidFinders -- Doesn't cover use case, see https://gitlab.com/gitlab-org/gitlab/-/issues/442224
-                                  .skipping :'link-in-text-block', :'heading-order'
+      expect(page).to be_axe_clean.within_testid('packages-and-registries-group-settings')
+                                  .skipping :'link-in-text-block'
     end
 
     it 'has a Duplicate packages section', :js do
@@ -82,16 +79,10 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
       wait_for_requests
 
       within_testid 'maven-settings' do
-        expect(page).to have_field _('Exceptions'), disabled: true
-
         click_button class: 'gl-toggle'
-
-        expect(page).to have_field _('Exceptions'), disabled: false
-
-        visit_settings_page
-
-        expect(page).to have_field _('Exceptions'), disabled: false
       end
+
+      expect(find('.gl-toast')).to have_content('Settings saved successfully.')
     end
 
     it 'shows an error on wrong regex', :js do
@@ -101,7 +92,7 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
       within_testid 'maven-settings' do
         click_button class: 'gl-toggle'
 
-        fill_in _('Exceptions'), with: ')'
+        fill_in class: 'gl-form-input', with: ')'
 
         # simulate blur event
         send_keys(:tab)
@@ -111,20 +102,46 @@ RSpec.describe 'Group Package and registry settings', feature_category: :package
     end
 
     context 'in a sub group' do
-      it 'works correctly', :js do
+      it 'automatically saves changes to the server', :js do
         visit_sub_group_settings_page
         wait_for_requests
 
         within_testid 'maven-settings' do
-          expect(page).to have_content('Allow duplicates')
-
-          expect(page).to have_field _('Exceptions'), disabled: true
-
           click_button class: 'gl-toggle'
-
-          expect(page).to have_field _('Exceptions'), disabled: false
         end
+
+        expect(find('.gl-toast')).to have_content('Settings saved successfully.')
       end
+    end
+  end
+
+  describe 'dependency proxy for containers', :js do
+    before do
+      stub_config(dependency_proxy: { enabled: true })
+    end
+
+    it 'updates Docker Hub authentication' do
+      visit_settings_page
+
+      within_testid 'dependency-proxy-settings-content' do
+        fill_in 'Identity', with: 'username'
+        fill_in 'Secret', with: 'token'
+
+        click_button 'Save changes'
+      end
+
+      expect(find('.gl-toast')).to have_content('Settings saved successfully.')
+    end
+
+    it 'allows clearing Docker Hub authentication settings' do
+      visit_settings_page
+
+      within_testid 'dependency-proxy-settings-content' do
+        fill_in 'Identity', with: ''
+        click_button 'Save changes'
+      end
+
+      expect(find('.gl-toast')).to have_content('Settings saved successfully.')
     end
   end
 

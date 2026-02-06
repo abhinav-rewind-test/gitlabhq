@@ -14,9 +14,13 @@ RSpec.describe Gitlab::GrapeLogging::Formatters::LogrageWithTimestamp do
       method: 'PUT',
       path: '/api/v4/projects/1',
       params: {
-        'description': '[FILTERED]',
-        'name': 'gitlab test',
-        'int': 42
+        description: '[FILTERED]',
+        name: 'gitlab test',
+        int: 42,
+        float: 42.123,
+        true_value: true,
+        false_value: false,
+        null_value: nil
       },
       host: 'localhost',
       remote_ip: '127.0.0.1',
@@ -47,7 +51,11 @@ RSpec.describe Gitlab::GrapeLogging::Formatters::LogrageWithTimestamp do
       [
         { 'key' => 'description', 'value' => '[FILTERED]' },
         { 'key' => 'name', 'value' => 'gitlab test' },
-        { 'key' => 'int', 'value' => 42 }
+        { 'key' => 'int', 'value' => 42 },
+        { 'key' => 'float', 'value' => 42.123 },
+        { 'key' => 'true_value', 'value' => true },
+        { 'key' => 'false_value', 'value' => false },
+        { 'key' => 'null_value', 'value' => nil }
       ])
   end
 end

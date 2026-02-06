@@ -3,6 +3,7 @@
 require "addressable/uri"
 require "active_support/all"
 require "action_view"
+require "securerandom"
 
 module Gitlab
   module Utils
@@ -11,10 +12,8 @@ module Gitlab
     ConcurrentRubyThreadIsUsedError = Class.new(StandardError)
 
     def allowlisted?(absolute_path, allowlist)
-      path = absolute_path.downcase
-
-      allowlist.map(&:downcase).any? do |allowed_path|
-        path.start_with?(allowed_path)
+      allowlist.any? do |allowed_path|
+        absolute_path.start_with?(allowed_path)
       end
     end
 
@@ -60,12 +59,21 @@ module Gitlab
     #
     #   * Lowercased
     #   * Anything not matching [a-z0-9-] is replaced with a -
+    #   * Conditionally allows dots [a-z0-9-.]
     #   * Maximum length is 63 bytes
-    #   * First/Last Character is not a hyphen
-    def slugify(str)
+    #   * First/Last Character is not a hyphen or a dot
+    def slugify(str, allow_dots: false)
+      pattern = allow_dots ? /[^a-z0-9.]/ : /[^a-z0-9]/
       str.downcase
-        .gsub(/[^a-z0-9]/, '-')[0..62]
-        .gsub(/(\A-+|-+\z)/, '')
+        .gsub(pattern, '-')[0..62]
+        .gsub(/(\A[-.]+|[-.]+\z)/, '')
+    end
+
+    # Converts a class into the string representation of its name, following the ActiveModel naming convention
+    # https://api.rubyonrails.org/classes/ActiveModel/Naming.html#method-c-param_key
+    # param_key(Ci::SecureFile) returns "ci_secure_file"
+    def param_key(klass)
+      klass.name.underscore.tr('/', '_')
     end
 
     # Converts newlines into HTML line break elements
@@ -291,6 +299,89 @@ module Gitlab
       return unless Thread.current[:restrict_within_concurrent_ruby]
 
       raise ConcurrentRubyThreadIsUsedError, "Cannot run '#{what}' if running from `Concurrent::Promise`."
+    end
+
+    # Returns a valid Rails log_level, given a user input and an optional fallback
+    #
+    # `config.log_level=` does NOT accept integers, but Ruby Loggers do.
+    #
+    # @return [Symbol, nil]
+    def to_rails_log_level(input, fallback = nil)
+      case input.to_s.downcase
+      when 'debug',   '0' then :debug
+      when 'info',    '1' then :info
+      when 'warn',    '2' then :warn
+      when 'error',   '3' then :error
+      when 'fatal',   '4' then :fatal
+      when 'unknown', '5' then :unknown
+      else
+        return :info unless fallback
+
+        # Normalize the fallback value, just in case
+        to_rails_log_level(fallback)
+      end
+    end
+
+    # @param [Array, Hash] item - An Array or a Hash
+    # @return [Array, Hash]
+    #
+    # Use this method to recursively sort any nested Hashes of a collection (an Array or Hash), with
+    # the sort order based on the keys of the nested Hashes.
+    #
+    # - deeply nested Arrays are supported. For example: `[[[{b: 2, a: 1}]]]` will sort the nested Hash.
+    # - The order of any nested Arrays is preserved. For example: `[1, {b: 2, a: 1}, 3]` will sort the
+    #   nested Hash, but preserve the order of the Array.
+    # - Any non-Array/non-Hash items are returned as-is without further recursion.
+    def deep_sort_hashes(item)
+      case item
+      when Hash
+        item.keys.sort_by(&:to_s).each_with_object({}) do |key, sorted_hash|
+          value = item[key]
+          sorted_hash[key] = value.is_a?(Hash) || value.is_a?(Array) ? deep_sort_hashes(value) : value
+        end
+      when Array
+        item.map { |element| deep_sort_hashes(element) }
+      else
+        item
+      end
+    end
+    alias_method :deep_sort_hash, :deep_sort_hashes
+
+    # Generate a random v7 UUID (Universally Unique IDentifier).
+    # Ported from ruby 3.3.0's https://github.com/ruby/securerandom/commit/34ed1a2ec35dc8f00ff69665b373cef7484c937f
+    # TODO remove when we support min ruby 3.3.0
+    def uuid_v7(extra_timestamp_bits: 0) # rubocop:disable Metrics/AbcSize -- Ported as is
+      case (extra_timestamp_bits = Integer(extra_timestamp_bits))
+      when 0 # min timestamp precision
+        ms = Process.clock_gettime(Process::CLOCK_REALTIME, :millisecond)
+        rand = SecureRandom.random_bytes(10)
+        rand.setbyte(0, (rand.getbyte(0) & 0x0f) | 0x70) # version
+        rand.setbyte(2, (rand.getbyte(2) & 0x3f) | 0x80) # variant
+        format("%08x-%04x-%s", (ms & 0x0000_ffff_ffff_0000) >> 16, (ms & 0x0000_0000_0000_ffff),
+          rand.unpack("H4H4H12").join("-"))
+
+      when 12 # max timestamp precision
+        ms, ns = Process.clock_gettime(Process::CLOCK_REALTIME, :nanosecond)
+                   .divmod(1_000_000)
+        extra_bits = ns * 4096 / 1_000_000
+        rand = SecureRandom.random_bytes(8)
+        rand.setbyte(0, (rand.getbyte(0) & 0x3f) | 0x80) # variant
+        format("%08x-%04x-7%03x-%s", (ms & 0x0000_ffff_ffff_0000) >> 16, (ms & 0x0000_0000_0000_ffff), extra_bits,
+          rand.unpack("H4H12").join("-"))
+
+      when (0..12) # the generic version is slower than the special cases above
+        rand_a, rand_b1, rand_b2, rand_b3 = SecureRandom.random_bytes(10).unpack("nnnN")
+        rand_mask_bits = 12 - extra_timestamp_bits
+        ms, ns = Process.clock_gettime(Process::CLOCK_REALTIME, :nanosecond)
+                   .divmod(1_000_000)
+        format("%08x-%04x-%04x-%04x-%04x%08x",
+          (ms & 0x0000_ffff_ffff_0000) >> 16, (ms & 0x0000_0000_0000_ffff), 0x7000 |
+            ((ns * (1 << extra_timestamp_bits) / 1_000_000) << rand_mask_bits) |
+            (rand_a & ((1 << rand_mask_bits) - 1)), 0x8000 | (rand_b1 & 0x3fff), rand_b2, rand_b3)
+
+      else
+        raise ArgumentError, "extra_timestamp_bits must be in 0..12, got: #{extra_timestamp_bits}"
+      end
     end
   end
 end

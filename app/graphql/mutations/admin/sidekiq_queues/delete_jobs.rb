@@ -8,32 +8,30 @@ module Mutations
 
         ADMIN_MESSAGE = 'You must be an admin to use this mutation'
 
-        ::Gitlab::ApplicationContext.known_keys.each do |key|
+        ::Gitlab::ApplicationContext.allowed_job_keys.each do |key|
           argument key,
-                   GraphQL::Types::String,
-                   required: false,
-                   description: "Delete jobs matching #{key} in the context metadata."
+            GraphQL::Types::String,
+            required: false,
+            description: "Delete jobs matching #{key} in the context metadata."
         end
 
         argument ::Gitlab::SidekiqQueue::WORKER_KEY,
-                 GraphQL::Types::String,
-                 required: false,
-                 description: 'Delete jobs with the given worker class.'
+          GraphQL::Types::String,
+          required: false,
+          description: 'Delete jobs with the given worker class.'
 
         argument :queue_name,
-                 GraphQL::Types::String,
-                 required: true,
-                 description: 'Name of the queue to delete jobs from.'
+          GraphQL::Types::String,
+          required: true,
+          description: 'Name of the queue to delete jobs from.'
 
         field :result,
-              Types::Admin::SidekiqQueues::DeleteJobsResponseType,
-              null: true,
-              description: 'Information about the status of the deletion request.'
+          Types::Admin::SidekiqQueues::DeleteJobsResponseType,
+          null: true,
+          description: 'Information about the status of the deletion request.'
 
         def ready?(**args)
-          unless current_user&.admin?
-            raise Gitlab::Graphql::Errors::ResourceNotAvailable, ADMIN_MESSAGE
-          end
+          raise_resource_not_available_error! ADMIN_MESSAGE unless current_user&.admin?
 
           super
         end
@@ -49,7 +47,7 @@ module Mutations
             errors: ['No metadata provided']
           }
         rescue Gitlab::SidekiqQueue::InvalidQueueError
-          raise Gitlab::Graphql::Errors::ResourceNotAvailable, "Queue #{queue_name} not found"
+          raise_resource_not_available_error! "Queue #{queue_name} not found"
         end
       end
     end

@@ -1,10 +1,10 @@
 import { GlButton, GlIcon } from '@gitlab/ui';
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
 import { nextTick } from 'vue';
 import Cookies from '~/lib/utils/cookies';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import IssuableSidebarRoot from '~/vue_shared/issuable/sidebar/components/issuable_sidebar_root.vue';
 import { USER_COLLAPSED_GUTTER_COOKIE } from '~/vue_shared/issuable/sidebar/constants';
 
@@ -50,7 +50,7 @@ describe('IssuableSidebarRoot', () => {
     beforeEach(() => {
       jest.spyOn(Cookies, 'set').mockImplementation(jest.fn());
       jest.spyOn(Cookies, 'get').mockReturnValue(false);
-      jest.spyOn(bp, 'isDesktop').mockReturnValue(true);
+      jest.spyOn(PanelBreakpointInstance, 'isDesktop').mockReturnValue(true);
 
       wrapper = createComponent();
     });
@@ -73,7 +73,7 @@ describe('IssuableSidebarRoot', () => {
 
     describe('when collapsing the sidebar', () => {
       it('updates "collapsed_gutter" cookie value and layout classes', async () => {
-        await findToggleSidebarButton().trigger('click');
+        await findToggleSidebarButton().vm.$emit('click');
 
         expect(Cookies.set).toHaveBeenCalledWith(USER_COLLAPSED_GUTTER_COOKIE, true, {
           expires: 365,
@@ -94,7 +94,9 @@ describe('IssuableSidebarRoot', () => {
       `(
         'sets page layout classes correctly when current screen size is `$breakpoint`',
         async ({ breakpoint, isExpandedValue }) => {
-          jest.spyOn(bp, 'isDesktop').mockReturnValue(breakpoint === 'lg' || breakpoint === 'xl');
+          jest
+            .spyOn(PanelBreakpointInstance, 'isDesktop')
+            .mockReturnValue(breakpoint === 'lg' || breakpoint === 'xl');
 
           window.dispatchEvent(new Event('resize'));
           await nextTick();

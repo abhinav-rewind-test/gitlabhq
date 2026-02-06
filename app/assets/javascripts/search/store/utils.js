@@ -1,16 +1,22 @@
 import { isEqual, orderBy } from 'lodash';
 import AccessorUtilities from '~/lib/utils/accessor';
 import { formatNumber } from '~/locale';
-import { joinPaths } from '~/lib/utils/url_utility';
-import { languageFilterData } from '~/search/sidebar/components/language_filter/data';
+import { joinPaths, queryToObject, objectToQuery, getBaseURL } from '~/lib/utils/url_utility';
+import { LABEL_AGREGATION_NAME, LANGUAGE_FILTER_PARAM } from '~/search/sidebar/constants';
+import {
+  SEARCH_SCOPE,
+  USER_HANDLE,
+} from '~/super_sidebar/components/global_search/command_palette/constants';
+
 import {
   MAX_FREQUENT_ITEMS,
   MAX_FREQUENCY,
   SIDEBAR_PARAMS,
   NUMBER_FORMATING_OPTIONS,
+  REGEX_PARAM,
+  LS_REGEX_HANDLE,
+  SEARCH_WINDOW_TITLE,
 } from './constants';
-
-const LANGUAGE_AGGREGATION_NAME = languageFilterData.filterParam;
 
 function extractKeys(object, keyList) {
   return Object.fromEntries(keyList.map((key) => [key, object[key]]));
@@ -18,15 +24,30 @@ function extractKeys(object, keyList) {
 
 export const loadDataFromLS = (key) => {
   if (!AccessorUtilities.canUseLocalStorage()) {
-    return [];
+    return null;
   }
 
   try {
-    return JSON.parse(localStorage.getItem(key)) || [];
+    return JSON.parse(localStorage.getItem(key)) || null;
   } catch {
     // The LS got in a bad state, let's wipe it
     localStorage.removeItem(key);
-    return [];
+    return null;
+  }
+};
+
+export const setDataToLS = (key, value) => {
+  if (!AccessorUtilities.canUseLocalStorage()) {
+    return null;
+  }
+
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return value;
+  } catch {
+    // The LS got in a bad state, let's wipe it
+    localStorage.removeItem(key);
+    return null;
   }
 };
 
@@ -95,7 +116,6 @@ export const mergeById = (inflatedData, storedData) => {
 
 export const isSidebarDirty = (currentQuery, urlQuery) => {
   return SIDEBAR_PARAMS.some((param) => {
-    // userAddParam ensures we don't get a false dirty from null !== undefined
     const userAddedParam = !urlQuery[param] && currentQuery[param];
     const userChangedExistingParam = urlQuery[param] && urlQuery[param] !== currentQuery[param];
 
@@ -123,7 +143,7 @@ export const getAggregationsUrl = () => {
 };
 
 const sortLanguages = (state, entries) => {
-  const queriedLanguages = state.query?.[LANGUAGE_AGGREGATION_NAME] || [];
+  const queriedLanguages = state.query?.[LANGUAGE_FILTER_PARAM] || [];
 
   if (!Array.isArray(queriedLanguages) || !queriedLanguages.length) {
     return entries;
@@ -134,12 +154,25 @@ const sortLanguages = (state, entries) => {
   return orderBy(entries, [({ key }) => queriedLanguagesSet.has(key), 'count'], ['desc', 'desc']);
 };
 
+const getUniqueNamesOnly = (items) => {
+  return items.filter(
+    (item, index, array) => index === array.findIndex((obj) => obj.title === item.title),
+  );
+};
+
 export const prepareSearchAggregations = (state, aggregationData) =>
   aggregationData.map((item) => {
-    if (item?.name === LANGUAGE_AGGREGATION_NAME) {
+    if (item?.name === LANGUAGE_FILTER_PARAM) {
       return {
         ...item,
         buckets: sortLanguages(state, item.buckets),
+      };
+    }
+
+    if (item?.name === LABEL_AGREGATION_NAME) {
+      return {
+        ...item,
+        buckets: getUniqueNamesOnly(item.buckets),
       };
     }
 
@@ -148,4 +181,81 @@ export const prepareSearchAggregations = (state, aggregationData) =>
 
 export const addCountOverLimit = (count = '') => {
   return count.includes('+') ? '+' : '';
+};
+
+/**
+ * Adds or changes query string params
+ * @param {string} link - should be url (absolute or relative)
+ * @param {object} newProperty - should be url (absolute or relative)
+ * @returns {string} - url string
+ */
+export const modifySearchQuery = (link, newProperty) => {
+  const urlObject = new URL(link, getBaseURL());
+  const queryObject = queryToObject(urlObject.search);
+
+  return `${urlObject.pathname}?${objectToQuery({ ...queryObject, ...newProperty })}`;
+};
+
+/**
+ * Inject regex query param if it's saved in local storage
+ * @param {string} link - should be url (absolute or relative)
+ * @param {boolean} [objectOnly=false] - should return object only instead of the link string
+ * @returns {T extends true ? object : string} - Conditional return based on objectOnly parameter
+ * @template T
+ */
+export const injectRegexSearch = (link, objectOnly = false) => {
+  const regexSearch =
+    loadDataFromLS(LS_REGEX_HANDLE) === null
+      ? {}
+      : { [REGEX_PARAM]: loadDataFromLS(LS_REGEX_HANDLE) };
+
+  if (objectOnly) {
+    return regexSearch;
+  }
+  return modifySearchQuery(link, regexSearch);
+};
+
+/** @param { string } link */
+export const injectUsersScope = (link) => {
+  const urlObject = new URL(link, getBaseURL());
+  const queryObject = queryToObject(urlObject.search);
+  queryObject.scope = SEARCH_SCOPE[USER_HANDLE];
+
+  return `${urlObject.pathname}?${objectToQuery(queryObject)}`;
+};
+
+export const scopeCrawler = (navigation, parentScope = null) => {
+  for (const value of Object.values(navigation)) {
+    if (value.active) {
+      return parentScope || value.scope;
+    }
+
+    if (value.sub_items) {
+      const subItemScope = scopeCrawler(value.sub_items, value.scope);
+      if (subItemScope) {
+        return subItemScope;
+      }
+    }
+  }
+
+  return null;
+};
+
+export const buildDocumentTitle = (title) => {
+  const prevTitle = document.title;
+
+  if (prevTitle.includes(SEARCH_WINDOW_TITLE)) {
+    if (prevTitle.startsWith(SEARCH_WINDOW_TITLE)) {
+      return `${title} · ${SEARCH_WINDOW_TITLE}`;
+    }
+
+    if (prevTitle.trim().startsWith(` · ${SEARCH_WINDOW_TITLE}`.trim())) {
+      return `${title} · ${SEARCH_WINDOW_TITLE}`;
+    }
+
+    const pattern = new RegExp(`^.*?(?= · ${SEARCH_WINDOW_TITLE})`);
+    return prevTitle.replace(pattern, title);
+  }
+  // If pattern not found, return the original
+  return title;
 };

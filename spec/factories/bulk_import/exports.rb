@@ -2,8 +2,12 @@
 
 FactoryBot.define do
   factory :bulk_import_export, class: 'BulkImports::Export', traits: %i[started] do
-    group
+    group { association(:group) if project.nil? }
     relation { 'labels' }
+
+    trait :pending do
+      status { -2 }
+    end
 
     trait :started do
       status { 0 }
@@ -23,6 +27,10 @@ FactoryBot.define do
 
     trait :batched do
       batched { true }
+    end
+
+    trait :offline do
+      offline_export
     end
   end
 end

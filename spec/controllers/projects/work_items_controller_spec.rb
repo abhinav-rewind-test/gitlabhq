@@ -5,15 +5,10 @@ require 'spec_helper'
 RSpec.describe Projects::WorkItemsController, feature_category: :team_planning do
   let_it_be(:reporter) { create(:user) }
   let_it_be(:guest) { create(:user) }
-  let_it_be(:project) { create(:project) }
+  let_it_be(:project) { create(:project, reporters: reporter, guests: guest) }
   let_it_be(:work_item) { create(:work_item, project: project) }
 
   let(:file) { 'file' }
-
-  before do
-    project.add_reporter(reporter)
-    project.add_guest(guest)
-  end
 
   shared_examples 'response with 404 status' do
     it 'renders a not found message' do
@@ -53,6 +48,88 @@ RSpec.describe Projects::WorkItemsController, feature_category: :team_planning d
 
     context 'when user is anonymous' do
       it_behaves_like 'redirects to new session path'
+    end
+  end
+
+  describe 'GET rss' do
+    before do
+      sign_in(reporter)
+
+      # Mock the default page size so we can test this with only 2 work items
+      allow(Kaminari.config).to receive(:default_per_page).and_return(1)
+    end
+
+    let_it_be(:work_items) { create_list(:work_item, 2, project: project) }
+
+    it 'renders the correct template' do
+      get :rss, format: :atom, params: { project_id: project, namespace_id: project.namespace }
+
+      expect(response).to have_gitlab_http_status(:success)
+      expect(response).to render_template('projects/work_items/rss')
+      expect(response).to render_template(layout: :xml)
+    end
+
+    it 'paginates the result' do
+      get :rss, format: :atom, params: { project_id: project, namespace_id: project.namespace, page: 1 }
+      expect(response).to have_gitlab_http_status(:success)
+      expect(assigns(:work_items).size).to eq(1)
+
+      first_page_item = assigns(:work_items).first
+
+      get :rss, format: :atom, params: { project_id: project, namespace_id: project.namespace, page: 2 }
+      expect(response).to have_gitlab_http_status(:success)
+      expect(assigns(:work_items).size).to eq(1)
+
+      second_page_item = assigns(:work_items).first
+
+      expect(first_page_item.id).not_to eq(second_page_item.id)
+    end
+  end
+
+  describe 'GET edit' do
+    context 'when visiting work_items edit route' do
+      before do
+        sign_in(reporter)
+      end
+
+      it 'redirects to work_items detail page with edit query parameter' do
+        get :edit, params: { namespace_id: project.namespace, project_id: project, iid: work_item.iid }
+
+        expect(response).to redirect_to(project_work_item_path(project, work_item.iid, edit: 'true'))
+        expect(response).to have_gitlab_http_status(:found)
+      end
+
+      it 'returns 404 when work item does not exist' do
+        get :edit, params: { namespace_id: project.namespace, project_id: project, iid: non_existing_record_iid }
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
+    context 'with unauthorized user' do
+      before do
+        sign_in(guest)
+      end
+
+      it 'redirects to work_items detail page without edit parameter' do
+        get :edit, params: { namespace_id: project.namespace, project_id: project, iid: work_item.iid }
+
+        expect(response).to redirect_to(project_work_item_path(project, work_item.iid))
+        expect(response).to have_gitlab_http_status(:found)
+      end
+    end
+
+    context 'with anonymous user' do
+      before do
+        sign_out(:user)
+      end
+
+      it 'redirects to sign in page' do
+        get :edit, params: { namespace_id: project.namespace, project_id: project, iid: work_item.iid }
+
+        expect(response).to redirect_to(new_user_session_path)
+        expect(response).to have_gitlab_http_status(:found)
+      end
     end
   end
 
@@ -121,14 +198,6 @@ RSpec.describe Projects::WorkItemsController, feature_category: :team_planning d
             expect(json_response['errors']).to eq('File upload error.')
           end
         end
-      end
-
-      context 'when feature is not available' do
-        before do
-          stub_feature_flags(import_export_work_items_csv: false)
-        end
-
-        it_behaves_like 'response with 404 status'
       end
     end
 

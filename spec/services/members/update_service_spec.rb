@@ -13,7 +13,7 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
   let_it_be(:access_level) { Gitlab::Access::MAINTAINER }
   let(:members) { source.members_and_requesters.where(user_id: member_users).to_a }
   let(:update_service) { described_class.new(current_user, params) }
-  let(:params) { { access_level: access_level } }
+  let(:params) { { access_level: access_level, source: source } }
   let(:updated_members) { subject[:members] }
 
   before do
@@ -47,7 +47,7 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
   end
 
   shared_examples 'returns error status when params are invalid' do
-    let_it_be(:params) { { expires_at: 2.days.ago } }
+    let_it_be(:params) { { expires_at: 2.days.ago, source: source } }
 
     specify do
       expect(subject[:status]).to eq(:error)
@@ -71,8 +71,10 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
       members.each do |member|
         expect(update_service).to receive(:after_execute).with(
           action: permission,
-          old_access_level: member.human_access_labeled,
-          old_expiry: member.expires_at,
+          old_values_map: a_hash_including(
+            human_access: member.human_access_labeled,
+            expires_at: member.expires_at
+          ),
           member: member
         )
       end
@@ -111,20 +113,20 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
       end
 
       context 'with Gitlab::Access::GUEST level as a string' do
-        let_it_be(:params) { { access_level: Gitlab::Access::GUEST.to_s } }
+        let_it_be(:params) { { access_level: Gitlab::Access::GUEST.to_s, source: source } }
 
         it_behaves_like 'schedules to delete confidential todos'
       end
 
       context 'with Gitlab::Access::GUEST level as an integer' do
-        let_it_be(:params) { { access_level: Gitlab::Access::GUEST } }
+        let_it_be(:params) { { access_level: Gitlab::Access::GUEST, source: source } }
 
         it_behaves_like 'schedules to delete confidential todos'
       end
     end
 
     context 'when access_level is invalid' do
-      let_it_be(:params) { { access_level: 'invalid' } }
+      let_it_be(:params) { { access_level: 'invalid', source: source } }
 
       it 'raises an error' do
         expect { described_class.new(current_user, params) }
@@ -133,7 +135,7 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
     end
 
     context 'when members update results in no change' do
-      let(:params) { { access_level: members.first.access_level } }
+      let(:params) { { access_level: members.first.access_level, source: source } }
 
       it 'does not invoke update! and post_update' do
         expect(update_service).not_to receive(:save!)
@@ -172,6 +174,12 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
       context 'and updating members to OWNER' do
         it_behaves_like 'a service raising Gitlab::Access::AccessDeniedError' do
           let_it_be(:access_level) { Gitlab::Access::OWNER }
+        end
+      end
+
+      context 'and updating members to PLANNER' do
+        it_behaves_like 'a service raising Gitlab::Access::AccessDeniedError' do
+          let_it_be(:access_level) { Gitlab::Access::PLANNER }
         end
       end
 
@@ -221,7 +229,7 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
     end
 
     context 'when project members expiration date is updated with expiry_notified_at' do
-      let_it_be(:params) { { expires_at: 20.days.from_now } }
+      let_it_be(:params) { { expires_at: 20.days.from_now, source: source } }
 
       before do
         group_project.group.add_owner(current_user)
@@ -254,24 +262,17 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
     end
 
     context 'when group members expiration date is updated' do
-      let_it_be(:params) { { expires_at: 20.days.from_now } }
-      let(:notification_service) { instance_double(NotificationService) }
-
-      before do
-        allow(NotificationService).to receive(:new).and_return(notification_service)
-      end
+      let_it_be(:params) { { expires_at: 20.days.from_now, source: source } }
 
       it 'emails the users that their group membership expiry has changed' do
-        members.each do |member|
-          expect(notification_service).to receive(:updated_member_expiration).with(member)
-        end
-
-        subject
+        expect do
+          subject
+        end.to have_enqueued_mail(Members::ExpirationDateUpdatedMailer, :email).exactly(members.count).times
       end
     end
 
     context 'when group members expiration date is updated with expiry_notified_at' do
-      let_it_be(:params) { { expires_at: 20.days.from_now } }
+      let_it_be(:params) { { expires_at: 20.days.from_now, source: source } }
 
       before do
         members.each do |member|
@@ -321,11 +322,20 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
     end
   end
 
+  context 'when passing an invalid source' do
+    let_it_be(:source) { Object.new }
+
+    it 'raises a RuntimeError' do
+      expect { update_service.execute([]) }.to raise_error(RuntimeError, 'Unknown source type: Object!')
+    end
+  end
+
   it_behaves_like 'current user cannot update the given members'
   it_behaves_like 'updating a project'
   it_behaves_like 'updating a group'
 
   context 'with a single member' do
+    let_it_be(:source) { group }
     let(:members) { create(:group_member, group: group) }
 
     before do
@@ -358,6 +368,50 @@ RSpec.describe Members::UpdateService, feature_category: :groups_and_projects do
       end
 
       it_behaves_like 'a service raising Gitlab::Access::AccessDeniedError'
+    end
+  end
+
+  describe 'event publishing' do
+    let_it_be(:source) { group }
+
+    before do
+      group.add_owner(current_user)
+    end
+
+    context 'without error' do
+      it 'publishes a members updated event' do
+        expect { subject }.to publish_event(Members::UpdatedEvent).with({
+          source_id: group.id,
+          source_type: "Group",
+          user_ids: [members.first.user_id, members.second.user_id]
+        })
+      end
+    end
+
+    context 'without changes' do
+      let(:params) { { source: source } }
+
+      it 'does not trigger a members updated event' do
+        expect { subject }.not_to publish_event(Members::UpdatedEvent)
+      end
+    end
+
+    context 'with error for one member' do
+      before do
+        allow(members.second).to receive(:save!).and_raise ActiveRecord::RecordInvalid
+      end
+
+      it 'does not trigger a members updated event' do
+        expect { subject }.not_to publish_event(Members::UpdatedEvent)
+      end
+    end
+
+    context 'with errors for all members' do
+      let(:access_level) { -100 }
+
+      it 'does not trigger a members updated event' do
+        expect { subject }.not_to publish_event(Members::UpdatedEvent)
+      end
     end
   end
 end

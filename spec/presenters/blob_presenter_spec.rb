@@ -119,6 +119,31 @@ RSpec.describe BlobPresenter do
     end
   end
 
+  describe '#can_modify_blob_with_web_ide?' do
+    before do
+      allow(blob).to receive(:stored_externally?).and_return(false)
+      allow(presenter).to receive(:can_collaborate_with_project?).with(project).and_return(false)
+    end
+
+    it { expect(presenter.can_modify_blob_with_web_ide?).to be_falsey }
+
+    context 'when blob is stored externally' do
+      before do
+        allow(blob).to receive(:stored_externally?).and_return(true)
+      end
+
+      it { expect(presenter.can_modify_blob_with_web_ide?).to be_falsey }
+    end
+
+    context 'when user can collaborate with the project' do
+      before do
+        allow(presenter).to receive(:can_collaborate_with_project?).with(project).and_return(true)
+      end
+
+      it { expect(presenter.can_modify_blob_with_web_ide?).to be_truthy }
+    end
+  end
+
   describe '#can_current_user_push_to_branch?' do
     context 'when ref is a branch' do
       let(:ref) { 'feature' }
@@ -138,6 +163,15 @@ RSpec.describe BlobPresenter do
 
   describe '#archived?' do
     it { expect(presenter.archived?).to eq(project.archived) }
+
+    context 'with archived group' do
+      let_it_be(:group) { create(:group).tap { |group| group.update!(archived: true) } }
+      let_it_be(:project) { create(:project, :repository, group: group) }
+
+      it 'returns true' do
+        expect(presenter.archived?).to be_truthy
+      end
+    end
   end
 
   describe '#pipeline_editor_path' do
@@ -169,8 +203,8 @@ RSpec.describe BlobPresenter do
     end
   end
 
-  context 'Gitpod' do
-    let(:gitpod_url) { "https://gitpod.io" }
+  context 'Ona' do
+    let(:gitpod_url) { "https://app.ona.com" }
     let(:gitpod_application_enabled) { true }
     let(:gitpod_user_enabled) { true }
 
@@ -180,13 +214,13 @@ RSpec.describe BlobPresenter do
       allow(Gitlab::CurrentSettings).to receive(:gitpod_url).and_return(gitpod_url)
     end
 
-    context 'Gitpod enabled for application and user' do
+    context 'Ona enabled for application and user' do
       describe '#gitpod_blob_url' do
         it { expect(presenter.gitpod_blob_url).to eq("#{gitpod_url}##{"http://localhost/#{project.full_path}/-/tree/#{ref}/#{path}"}") }
       end
     end
 
-    context 'Gitpod disabled at application level' do
+    context 'Ona disabled at application level' do
       let(:gitpod_application_enabled) { false }
 
       describe '#gitpod_blob_url' do
@@ -194,7 +228,7 @@ RSpec.describe BlobPresenter do
       end
     end
 
-    context 'Gitpod disabled at user level' do
+    context 'Ona disabled at user level' do
       let(:gitpod_user_enabled) { false }
 
       describe '#gitpod_blob_url' do
@@ -247,7 +281,7 @@ RSpec.describe BlobPresenter do
   end
 
   describe '#code_owners' do
-    it { expect(presenter.code_owners).to match_array([]) }
+    it { expect(presenter.code_owners).to be_empty }
   end
 
   describe '#ide_edit_path' do
@@ -390,6 +424,20 @@ RSpec.describe BlobPresenter do
     end
   end
 
+  describe '#base64_encoded_blob' do
+    let(:blob) { repository.blob_at('HEAD', file) }
+    let(:file) { 'files/ruby/popen.rb' }
+
+    it 'does not include html in the content' do
+      expect(presenter.base64_encoded_blob.include?('</span>')).to be_falsey
+    end
+
+    it 'encodes the raw blob base 64' do
+      expect(presenter.base64_encoded_blob).to include("cmVxdWlyZSAnZmlsZXV0")
+      expect(presenter.base64_encoded_blob).to include("R1cwogIGVuZAplbmQK\n")
+    end
+  end
+
   describe '#raw_plain_data' do
     let(:blob) { repository.blob_at('HEAD', file) }
 
@@ -418,6 +466,12 @@ RSpec.describe BlobPresenter do
 
       it 'returns plain content' do
         expect(presenter.plain_data).to include('<span id="LC1" class="line" lang="markdown">')
+      end
+
+      it 'does not load whole blob' do
+        expect(presenter).not_to receive(:load_all_blob_data)
+
+        presenter.plain_data
       end
     end
 

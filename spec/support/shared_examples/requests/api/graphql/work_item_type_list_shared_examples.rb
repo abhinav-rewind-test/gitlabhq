@@ -14,24 +14,12 @@ RSpec.shared_examples 'graphql work item type list request spec' do |context_nam
     )
   end
 
-  before do
-    post_graphql(query, current_user: current_user)
-  end
-
   context 'when user has access to the resource parent' do
-    it_behaves_like 'a working graphql query that returns data' do
-      before do
-        post_graphql(query, current_user: current_user)
-      end
-    end
-
-    it 'returns all default work item types' do
+    before do
       post_graphql(query, current_user: current_user)
-
-      expect(graphql_data_at(parent_key, :workItemTypes, :nodes)).to match_array(
-        expected_work_item_type_response(parent)
-      )
     end
+
+    it_behaves_like 'a working graphql query that returns data'
 
     it 'prevents N+1 queries' do
       # Destroy 2 existing types
@@ -47,8 +35,47 @@ RSpec.shared_examples 'graphql work item type list request spec' do |context_nam
         Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter.upsert_types
       end.to change { WorkItems::Type.count }.by(2)
 
-      expect { post_graphql(query, current_user: current_user) }.to issue_same_number_of_queries_as(control)
+      # TODO: Followup to solve the extra queries - https://gitlab.com/gitlab-org/gitlab/-/issues/512617
+      expect do
+        post_graphql(query, current_user: current_user)
+      end.to issue_same_number_of_queries_as(control).with_threshold(5)
       expect(graphql_errors).to be_blank
+    end
+
+    context 'when filtering by name' do
+      let(:query) do
+        <<~QUERY
+          query {
+            #{parent_key}(fullPath: "#{parent.full_path}") {
+              workItemTypes(name: ISSUE) {
+                nodes {
+                  #{work_item_type_fields}
+                }
+              }
+            }
+          }
+        QUERY
+      end
+
+      it_behaves_like 'a working graphql query that returns data'
+    end
+
+    context 'when filtering with only_available' do
+      let(:query) do
+        <<~QUERY
+          query {
+            #{parent_key}(fullPath: "#{parent.full_path}") {
+              workItemTypes(onlyAvailable: true) {
+                nodes {
+                  #{work_item_type_fields}
+                }
+              }
+            }
+          }
+        QUERY
+      end
+
+      it_behaves_like 'a working graphql query that returns data'
     end
   end
 
@@ -62,5 +89,9 @@ RSpec.shared_examples 'graphql work item type list request spec' do |context_nam
     it 'does not return the parent' do
       expect(graphql_data).to eq(parent_key.to_s => nil)
     end
+  end
+
+  def ids_from_response
+    graphql_data_at(parent_key, :workItemTypes, :nodes, :id).map { |gid| GlobalID.new(gid).model_id.to_i }
   end
 end

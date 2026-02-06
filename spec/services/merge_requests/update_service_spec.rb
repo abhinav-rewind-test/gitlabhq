@@ -2,34 +2,39 @@
 
 require 'spec_helper'
 
-RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_review_workflow do
+RSpec.describe MergeRequests::UpdateService, :mailer, :request_store, feature_category: :code_review_workflow do
   include ProjectForksHelper
 
-  let(:group) { create(:group, :public) }
-  let(:project) { create(:project, :private, :repository, group: group) }
-  let(:user) { create(:user) }
-  let(:user2) { create(:user) }
-  let(:user3) { create(:user) }
-  let(:label) { create(:label, title: 'a', project: project) }
-  let(:label2) { create(:label) }
-  let(:milestone) { create(:milestone, project: project) }
+  let_it_be(:group) { create(:group, :public) }
+  let_it_be(:project) { create(:project, :private, :repository, group: group) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:user2) { create(:user) }
+  let_it_be(:user3) { create(:user) }
+  let_it_be(:service_account) { create(:user, :service_account, composite_identity_enforced: true) }
+  let_it_be(:label) { create(:label, title: 'a', project: project) }
+  let_it_be(:label2) { create(:label) }
+  let_it_be(:milestone) { create(:milestone, project: project) }
 
   let(:merge_request) do
     create(
       :merge_request,
       :simple,
+      :unchanged,
       title: 'Old title',
       description: "FYI #{user2.to_reference}",
       assignee_ids: [user3.id],
       source_project: project,
-      author: create(:user)
+      author: user
     )
   end
 
-  before do
+  let(:current_user) { user }
+
+  before_all do
     project.add_maintainer(user)
     project.add_developer(user2)
     project.add_developer(user3)
+    project.add_developer(service_account)
   end
 
   describe 'execute' do
@@ -47,7 +52,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
     end
 
     def update_merge_request(opts)
-      @merge_request = MergeRequests::UpdateService.new(project: project, current_user: user, params: opts).execute(merge_request)
+      @merge_request = MergeRequests::UpdateService.new(project: project, current_user: current_user, params: opts).execute(merge_request)
       @merge_request.reload
     end
 
@@ -73,23 +78,13 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
         }
       end
 
-      let(:service) { described_class.new(project: project, current_user: current_user, params: opts) }
-      let(:current_user) { user }
-
-      before do
-        allow(service).to receive(:execute_hooks)
-
-        perform_enqueued_jobs do
-          @merge_request = service.execute(merge_request)
-          @merge_request.reload
-        end
-      end
-
       it 'matches base expectations' do
+        update_merge_request(opts)
+
         expect(@merge_request).to be_valid
         expect(@merge_request.title).to eq('New title')
         expect(@merge_request.assignees).to match_array([user])
-        expect(@merge_request.reviewers).to match_array([])
+        expect(@merge_request.reviewers).to be_empty
         expect(@merge_request).to be_closed
         expect(@merge_request.labels.count).to eq(1)
         expect(@merge_request.labels.first.title).to eq(label.name)
@@ -99,8 +94,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       context 'usage counters' do
-        let(:merge_request2) { create(:merge_request) }
-        let(:draft_merge_request) { create(:merge_request, :draft_merge_request) }
+        let(:merge_request2) { create(:merge_request, source_project: project) }
+        let(:draft_merge_request) { create(:merge_request, :draft_merge_request, source_project: project) }
 
         it 'update as expected' do
           expect(Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter)
@@ -130,6 +125,10 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
         end
 
         context 'when MR is locked' do
+          before do
+            merge_request.update!(discussion_locked: true)
+          end
+
           context 'when locked again' do
             it 'does not track discussion locking' do
               expect(Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter)
@@ -154,7 +153,9 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
         end
 
         context 'when MR is unlocked' do
-          let(:locked) { false }
+          before do
+            merge_request.update!(discussion_locked: false)
+          end
 
           context 'when unlocked again' do
             it 'does not track discussion unlocking' do
@@ -209,7 +210,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           expect(Gitlab::UsageDataCounters::MergeRequestActivityUniqueCounter)
             .to receive(:track_labels_changed_action).once.with(user: user)
 
-          opts[:label_ids] = [label2.id]
+          opts[:label_ids] = [label.id]
 
           described_class.new(project: project, current_user: user, params: opts).execute(merge_request)
         end
@@ -244,13 +245,18 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           let(:opts) { { milestone_id: milestone.id } }
 
           it 'sets milestone' do
+            update_merge_request(opts)
+
             expect(@merge_request.milestone).to eq milestone
           end
         end
 
         context 'milestone counters cache reset' do
-          let(:milestone_old) { create(:milestone, project: project) }
-          let(:opts) { { milestone_id: milestone_old.id } }
+          let_it_be(:milestone_old) { create(:milestone, project: project) }
+
+          before do
+            merge_request.update!(milestone_id: milestone_old.id)
+          end
 
           it 'deletes milestone counters' do
             expect_next_instance_of(Milestones::MergeRequestsCountService, milestone_old) do |service|
@@ -284,28 +290,12 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
         end
       end
 
-      it 'executes hooks with update action' do
-        expect(service).to have_received(:execute_hooks)
-          .with(
-            @merge_request,
-            'update',
-            old_associations: {
-              labels: [],
-              mentioned_users: [user2],
-              assignees: [user3],
-              reviewers: [],
-              milestone: nil,
-              total_time_spent: 0,
-              time_change: 0,
-              description: "FYI #{user2.to_reference}"
-            }
-          )
-      end
-
       context 'with reviewers' do
         let(:opts) { { reviewer_ids: [user2.id] } }
 
         it 'creates system note about merge_request review request' do
+          update_merge_request(opts)
+
           note = find_note('requested review from')
 
           expect(note).not_to be_nil
@@ -319,9 +309,45 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
           update_merge_request(reviewer_ids: [user.id])
         end
+
+        it 'sets reviewer state as approved if user has previously approved' do
+          create(:approval, merge_request: merge_request, user: user)
+
+          update_merge_request(reviewer_ids: [user.id])
+
+          expect(merge_request.find_reviewer(user)).to be_approved
+        end
+
+        context 'when the reviewer is a service account with composite_identity_enforced' do
+          it 'assigns the reviewer' do
+            expect(::Gitlab::Auth::Identity).to receive(:link_from_scoped_user).and_call_original
+
+            update_merge_request(reviewer_ids: [service_account.id], use_specialized_service: true)
+            expect(merge_request.reviewers).to eq([service_account])
+          end
+        end
+
+        context 'when the reviewer is not a service account but has composite_identity_enforced set' do
+          let_it_be(:new_assignee) do
+            create(:user, developer_of: project)
+          end
+
+          before do
+            new_assignee.composite_identity_enforced!
+            allow(User).to receive(:id_in).and_return([new_assignee])
+          end
+
+          it 'does not call ::Gitlab::Auth::Identity' do
+            expect(::Gitlab::Auth::Identity).not_to receive(:link_from_scoped_user)
+
+            update_merge_request(reviewer_ids: [new_assignee.id], use_specialized_service: true)
+          end
+        end
       end
 
       it 'creates a resource label event' do
+        update_merge_request(opts)
+
         event = merge_request.resource_label_events.last
 
         expect(event).not_to be_nil
@@ -330,13 +356,17 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       it 'creates system note about title change' do
-        note = find_note('changed title')
+        update_merge_request(opts)
+
+        note = find_note('<p>changed title')
 
         expect(note).not_to be_nil
-        expect(note.note).to eq 'changed title from **{-Old-} title** to **{+New+} title**'
+        expect(note.note).to eq '<p>changed title from <code class="idiff"><span class="idiff left right deletion">Old</span> title</code> to <code class="idiff"><span class="idiff left right addition">New</span> title</code></p>'
       end
 
       it 'creates system note about description change' do
+        update_merge_request(opts)
+
         note = find_note('changed the description')
 
         expect(note).not_to be_nil
@@ -344,6 +374,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       it 'creates system note about branch change' do
+        update_merge_request(opts)
+
         note = find_note('changed target')
 
         expect(note).not_to be_nil
@@ -351,6 +383,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       it 'creates system note about discussion lock' do
+        update_merge_request(opts)
+
         note = find_note('locked the discussion in this merge request')
 
         expect(note).not_to be_nil
@@ -358,11 +392,15 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       context 'when current user cannot admin issues in the project' do
-        let(:guest) { create(:user) }
+        let_it_be(:guest) { create(:user) }
         let(:current_user) { guest }
 
-        before do
+        before_all do
           project.add_guest(guest)
+        end
+
+        before do
+          update_merge_request(opts)
         end
 
         it 'filters out params that cannot be set without the :admin_merge_request permission' do
@@ -399,6 +437,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
       context 'when not including source branch removal options' do
         before do
+          update_merge_request(opts)
+
           opts.delete(:force_remove_source_branch)
         end
 
@@ -491,15 +531,22 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
     shared_examples_for "creates a new pipeline" do
       it "creates a new pipeline" do
-        expect(MergeRequests::CreatePipelineWorker)
-          .to receive(:perform_async)
-          .with(project.id, user.id, merge_request.id, { "allow_duplicate" => true })
+        service = instance_double(MergeRequests::CreatePipelineService)
+
+        expect(MergeRequests::CreatePipelineService)
+          .to receive(:new)
+          .with(project: project, current_user: user, params: { allow_duplicate: true })
+          .and_return(service)
+
+        expect(service).to receive(:execute_async).with(merge_request)
 
         update_merge_request(target_branch: new_target_branch)
       end
     end
 
-    shared_examples_for 'correct merge behavior' do
+    describe 'merge' do
+      let(:project) { create(:project, :private, :repository, group: group) }
+
       let(:opts) do
         {
           merge: merge_request.diff_head_sha
@@ -507,6 +554,10 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       let(:service) { described_class.new(project: project, current_user: user, params: opts) }
+
+      before do
+        project.add_maintainer(user) # rubocop:disable RSpec/BeforeAllRoleAssignment -- we're overriding the project in this context
+      end
 
       context 'without pipeline' do
         before do
@@ -552,7 +603,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
             head_pipeline_of: merge_request
           )
 
-          expect(AutoMerge::MergeWhenPipelineSucceedsService).to receive(:new).with(project, user, { sha: merge_request.diff_head_sha })
+          expect(AutoMerge::MergeWhenChecksPassService).to receive(:new).with(project, user, { sha: merge_request.diff_head_sha })
             .and_return(service_mock)
           allow(service_mock).to receive(:available_for?) { true }
           expect(service_mock).to receive(:execute).with(merge_request)
@@ -596,10 +647,6 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
         it { expect(@merge_request.state).to eq('opened') }
       end
-    end
-
-    describe 'merge' do
-      it_behaves_like 'correct merge behavior'
     end
 
     context 'todos' do
@@ -710,8 +757,46 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           expect(user3.review_requested_open_merge_requests_count).to eq(0)
         end
 
+        it 'invalidates assignee merge request count cache' do
+          expect(merge_request.assignees).to all(receive(:invalidate_merge_request_cache_counts))
+
+          update_merge_request(reviewer_ids: [user2.id])
+        end
+
         it_behaves_like 'triggers GraphQL subscription mergeRequestReviewersUpdated' do
           let(:action) { update_merge_request({ reviewer_ids: [user2.id] }) }
+        end
+
+        it 'triggers GraphQL subscription userMergeRequestUpdated' do
+          expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(merge_request.author, merge_request)
+          expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(user3, merge_request)
+          expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(user2, merge_request)
+
+          update_merge_request(reviewer_ids: [user2.id])
+        end
+
+        describe 'recording the first reviewer assigned at timestamp' do
+          subject(:metrics) { merge_request.reload.metrics }
+
+          it 'sets the current timestamp' do
+            freeze_time do
+              update_merge_request(reviewer_ids: [user2.id])
+
+              current_time = Time.current
+              expect(metrics.reviewer_first_assigned_at).to eq(current_time)
+            end
+          end
+
+          it 'updates the value if the current time is earlier than the stored time' do
+            freeze_time do
+              merge_request.metrics.update!(reviewer_first_assigned_at: 5.days.from_now)
+
+              update_merge_request(reviewer_ids: [user2.id])
+
+              current_time = Time.current
+              expect(metrics.reviewer_first_assigned_at).to eq(current_time)
+            end
+          end
         end
       end
 
@@ -844,7 +929,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
       context 'when auto merge is enabled and target branch changed' do
         before do
-          AutoMergeService.new(project, user, { sha: merge_request.diff_head_sha }).execute(merge_request, AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS)
+          AutoMergeService.new(project, user, { sha: merge_request.diff_head_sha }).execute(merge_request, AutoMergeService::STRATEGY_MERGE_WHEN_CHECKS_PASS)
         end
 
         it 'calls MergeRequests::ResolveTodosService#async_execute' do
@@ -862,17 +947,13 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
     end
 
     context 'when the draft status is changed' do
-      let(:title) { 'New Title' }
-      let(:draft_title) { "Draft: #{title}" }
-      let!(:non_subscriber) { create(:user) }
+      let!(:non_subscriber) { create(:user, developer_of: project) }
       let!(:subscriber) do
-        create(:user) { |u| merge_request.toggle_subscription(u, project) }
+        create(:user, developer_of: project) { |u| merge_request.toggle_subscription(u, project) }
       end
 
-      before do
-        project.add_developer(non_subscriber)
-        project.add_developer(subscriber)
-      end
+      let(:title) { 'New Title' }
+      let(:draft_title) { "Draft: #{title}" }
 
       context 'removing draft status' do
         before do
@@ -896,7 +977,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           update_merge_request(title: 'New title')
         end
 
-        context 'when additional_merge_when_checks_ready is enabled' do
+        context 'when merge_when_checks_pass is enabled' do
           it 'publishes a DraftStateChangeEvent' do
             expected_data = {
               current_user_id: user.id,
@@ -904,16 +985,6 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
             }
 
             expect { update_merge_request(title: 'New title') }.to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
-          end
-        end
-
-        context 'when additional_merge_when_checks_ready is disabled' do
-          before do
-            stub_feature_flags(additional_merge_when_checks_ready: false)
-          end
-
-          it 'does not publish a DraftStateChangeEvent' do
-            expect { update_merge_request(title: 'New title') }.not_to publish_event(MergeRequests::DraftStateChangeEvent)
           end
         end
 
@@ -943,7 +1014,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           should_not_email(non_subscriber)
         end
 
-        context 'when additional_merge_when_checks_ready is enabled' do
+        context 'when merge_when_checks_pass is enabled' do
           it 'publishes a DraftStateChangeEvent' do
             expected_data = {
               current_user_id: user.id,
@@ -951,16 +1022,6 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
             }
 
             expect { update_merge_request(title: 'Draft: New title') }.to publish_event(MergeRequests::DraftStateChangeEvent).with(expected_data)
-          end
-        end
-
-        context 'when additional_merge_when_checks_ready is disabled' do
-          before do
-            stub_feature_flags(additional_merge_when_checks_ready: false)
-          end
-
-          it 'does not publish a DraftStateChangeEvent' do
-            expect { update_merge_request(title: 'Draft: New title') }.not_to publish_event(MergeRequests::DraftStateChangeEvent)
           end
         end
 
@@ -982,10 +1043,10 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
     end
 
     context 'when the merge request is relabeled' do
-      let!(:non_subscriber) { create(:user) }
-      let!(:subscriber) { create(:user) { |u| label.toggle_subscription(u, project) } }
+      let_it_be(:non_subscriber) { create(:user) }
+      let_it_be(:subscriber) { create(:user) { |u| label.toggle_subscription(u, project) } }
 
-      before do
+      before_all do
         project.add_developer(non_subscriber)
         project.add_developer(subscriber)
       end
@@ -1032,6 +1093,10 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
     context 'updating mentions' do
       let(:mentionable) { merge_request }
+
+      after do
+        group.reset
+      end
 
       include_examples 'updating mentions', described_class
     end
@@ -1081,30 +1146,147 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
     end
 
-    context 'while saving references to issues that the updated merge request closes' do
-      let(:first_issue) { create(:issue, project: project) }
-      let(:second_issue) { create(:issue, project: project) }
+    describe 'AutoMerge::TitleDescriptionUpdateEvent' do
+      let(:auto_merge_enabled) { true }
+      let(:title_regex) { 'test' }
+      let(:description) { 'description' }
 
-      it 'creates a `MergeRequestsClosingIssues` record for each issue' do
+      before do
+        merge_request.update!(auto_merge_enabled: true, merge_user: user) if auto_merge_enabled
+        project.update!(merge_request_title_regex_description: description, merge_request_title_regex: title_regex)
+      end
+
+      context 'when the title changes' do
+        let(:update_params) { { title: 'New title' } }
+
+        context 'when project has a required regex' do
+          context 'when auto merge is enabled' do
+            it_behaves_like 'it publishes the AutoMerge::TitleDescriptionUpdateEvent once'
+
+            context 'when merge_request_title_regex ff is off' do
+              before do
+                stub_feature_flags(merge_request_title_regex: false)
+              end
+
+              it_behaves_like 'it does not publish the AutoMerge::TitleDescriptionUpdateEvent'
+            end
+          end
+
+          context 'when auto merge is not enabled' do
+            let(:auto_merge_enabled) { false }
+
+            it_behaves_like 'it does not publish the AutoMerge::TitleDescriptionUpdateEvent'
+          end
+        end
+
+        context 'when project has no required regex' do
+          let(:title_regex) { nil }
+          let(:description) { nil }
+
+          it_behaves_like 'it does not publish the AutoMerge::TitleDescriptionUpdateEvent'
+        end
+      end
+    end
+
+    context 'while saving references to issues that the updated merge request closes', :aggregate_failures do
+      let_it_be(:user) { create(:user) }
+      let_it_be(:group) { create(:group, :public) }
+      let_it_be(:project) { create(:project, :private, :repository, group: group, developers: user) }
+      let_it_be(:merge_request, refind: true) { create(:merge_request, :simple, :unchanged, source_project: project) }
+      let_it_be(:first_issue) { create(:issue, project: project) }
+      let_it_be(:second_issue) { create(:issue, project: project) }
+
+      shared_examples 'merge request update that triggers work item updated subscription' do
+        it 'triggers a workItemUpdated subscription for all affected records' do
+          service = described_class.new(project: project, current_user: user, params: update_params)
+          allow(service).to receive(:execute_hooks)
+          allow(GraphqlTriggers).to receive(:work_item_updated).and_call_original
+
+          WorkItem.where(id: issues_to_notify).find_each do |work_item|
+            expect(GraphqlTriggers).to receive(:work_item_updated).with(work_item).at_least(:once).and_call_original
+          end
+
+          service.execute(merge_request)
+        end
+      end
+
+      it 'creates a `MergeRequestsClosingIssues` record marked as from_mr_description for each issue' do
         issue_closing_opts = { description: "Closes #{first_issue.to_reference} and #{second_issue.to_reference}" }
         service = described_class.new(project: project, current_user: user, params: issue_closing_opts)
         allow(service).to receive(:execute_hooks)
-        service.execute(merge_request)
 
-        issue_ids = MergeRequestsClosingIssues.where(merge_request: merge_request).pluck(:issue_id)
-        expect(issue_ids).to match_array([first_issue.id, second_issue.id])
+        expect do
+          service.execute(merge_request)
+        end.to change { MergeRequestsClosingIssues.count }.by(2)
+
+        expect(MergeRequestsClosingIssues.where(merge_request: merge_request)).to contain_exactly(
+          have_attributes(issue_id: first_issue.id, from_mr_description: true),
+          have_attributes(issue_id: second_issue.id, from_mr_description: true)
+        )
       end
 
-      it 'removes `MergeRequestsClosingIssues` records when issues are not closed anymore' do
+      it 'removes `MergeRequestsClosingIssues` records marked as from_mr_description' do
+        third_issue = create(:issue, project: project)
         create(:merge_requests_closing_issues, issue: first_issue, merge_request: merge_request)
         create(:merge_requests_closing_issues, issue: second_issue, merge_request: merge_request)
+        create(
+          :merge_requests_closing_issues,
+          issue: third_issue,
+          merge_request: merge_request,
+          from_mr_description: false
+        )
 
         service = described_class.new(project: project, current_user: user, params: { description: "not closing any issues" })
         allow(service).to receive(:execute_hooks)
-        service.execute(merge_request.reload)
 
-        issue_ids = MergeRequestsClosingIssues.where(merge_request: merge_request).pluck(:issue_id)
-        expect(issue_ids).to be_empty
+        # Does not delete the one marked as from_mr_description: false
+        expect do
+          service.execute(merge_request.reload)
+        end.to change { MergeRequestsClosingIssues.count }.from(3).to(1)
+      end
+
+      context 'when merge request has auto merge enabled' do
+        before do
+          merge_request.update!(auto_merge_enabled: true, merge_user: user)
+        end
+
+        it 'does not create `MergeRequestsClosingIssues` records' do
+          issue_closing_opts = { description: "Closes #{first_issue.to_reference} and #{second_issue.to_reference}" }
+          service = described_class.new(project: project, current_user: user, params: issue_closing_opts)
+          allow(service).to receive(:execute_hooks)
+
+          expect do
+            service.execute(merge_request)
+          end.to not_change { MergeRequestsClosingIssues.count }.from(0)
+        end
+      end
+
+      it_behaves_like 'merge request update that triggers work item updated subscription' do
+        let(:update_params) { { description: "Closes #{first_issue.to_reference}" } }
+        let(:issues_to_notify) { [first_issue] }
+      end
+
+      context 'when MergeRequestsClosingIssues already exist' do
+        let_it_be(:third_issue) { create(:issue, project: project) }
+
+        before_all do
+          merge_request.update!(description: "Closes #{first_issue.to_reference} and #{second_issue.to_reference}")
+          merge_request.cache_merge_request_closes_issues!(user)
+        end
+
+        context 'when description updates MergeRequestsClosingIssues records' do
+          it_behaves_like 'merge request update that triggers work item updated subscription' do
+            let(:update_params) { { description: "Closes #{third_issue.to_reference} and #{second_issue.to_reference}" } }
+            let(:issues_to_notify) { [first_issue, second_issue, third_issue] }
+          end
+        end
+
+        context 'when description is not updated' do
+          it_behaves_like 'merge request update that triggers work item updated subscription' do
+            let(:update_params) { { state_event: 'close' } }
+            let(:issues_to_notify) { [first_issue, second_issue] }
+          end
+        end
       end
     end
 
@@ -1237,7 +1419,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
 
     it_behaves_like 'issuable update service' do
       let(:open_issuable) { merge_request }
-      let(:closed_issuable) { create(:closed_merge_request, source_project: project) }
+      let(:closed_issuable) { create(:closed_merge_request, :unchanged, source_project: project) }
     end
 
     context 'setting `allow_collaboration`' do
@@ -1254,7 +1436,7 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       before do
-        allow(ProtectedBranch).to receive(:protected?).with(source_project, 'fixes') { false }
+        allow(ProtectedBranch).to receive(:protected?).and_return(false)
       end
 
       it 'does not allow a maintainer of the target project to set `allow_collaboration`' do
@@ -1309,7 +1491,8 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           :merge_request,
           source_project: project,
           source_branch: 'mr-b',
-          target_branch: 'mr-a'
+          target_branch: 'mr-a',
+          head_pipeline_id: 1
         )
       end
 
@@ -1322,17 +1505,29 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
           .to change { merge_request.reload.target_branch }.from('mr-a').to('master')
       end
 
-      it 'updates to master because of branch deletion' do
-        expect(SystemNoteService).to receive(:change_branch).with(
-          merge_request, project, user, 'target', 'delete', 'mr-a', 'master'
-        )
-
-        expect { update_merge_request(target_branch: 'master', target_branch_was_deleted: true) }
-          .to change { merge_request.reload.target_branch }.from('mr-a').to('master')
-      end
-
       it_behaves_like "creates a new pipeline" do
         let(:new_target_branch) { "target" }
+      end
+
+      context 'when target_branch_was_deleted is true' do
+        it 'updates to master because of branch deletion' do
+          expect(SystemNoteService).to receive(:change_branch).with(
+            merge_request, project, user, 'target', 'delete', 'mr-a', 'master'
+          )
+
+          expect { update_merge_request(target_branch: 'master', target_branch_was_deleted: true) }
+            .to change { merge_request.reload.target_branch }.from('mr-a').to('master')
+        end
+
+        it 'does not create a new pipeline' do
+          expect(MergeRequests::CreatePipelineWorker).not_to receive(:perform_async)
+
+          expect { update_merge_request(target_branch: 'master', target_branch_was_deleted: true) }
+            .to change { merge_request.reload.target_branch }.from('mr-a').to('master')
+
+          expect(merge_request.reload.head_pipeline_id).to be_nil
+          expect(merge_request.retargeted).to eq(true)
+        end
       end
     end
 
@@ -1341,11 +1536,18 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       let(:issuable) { described_class.new(project: project, current_user: user, params: params).execute(existing_merge_request) }
     end
 
+    it_behaves_like 'issuable record does not run quick actions when not editing description' do
+      let(:label) { create(:label, project: project) }
+      let(:assignee) { create(:user, maintainer_of: project) }
+      let(:existing_merge_request) { create(:merge_request, source_project: project, description: old_description) }
+      let(:updated_issuable) { described_class.new(project: project, current_user: user, params: params).execute(existing_merge_request) }
+    end
+
     context 'updating labels' do
       context 'when merge request is not merged' do
         let(:label_a) { label }
-        let(:label_b) { create(:label, title: 'b', project: project) }
-        let(:label_c) { create(:label, title: 'c', project: project) }
+        let(:label_b) { create(:label, project: project) }
+        let(:label_c) { create(:label, project: project) }
         let(:label_locked) { create(:label, title: 'locked', project: project, lock_on_merge: true) }
         let(:issuable) { merge_request }
 
@@ -1355,9 +1557,9 @@ RSpec.describe MergeRequests::UpdateService, :mailer, feature_category: :code_re
       end
 
       context 'when merge request has been merged' do
-        let(:label_a) { create(:label, title: 'a', project: project, lock_on_merge: true) }
-        let(:label_b) { create(:label, title: 'b', project: project, lock_on_merge: true) }
-        let(:label_c) { create(:label, title: 'c', project: project, lock_on_merge: true) }
+        let(:label_a) { create(:label, project: project, lock_on_merge: true) }
+        let(:label_b) { create(:label, project: project, lock_on_merge: true) }
+        let(:label_c) { create(:label, project: project, lock_on_merge: true) }
         let(:label_unlocked) { create(:label, title: 'unlocked', project: project) }
         let(:issuable) { merge_request }
 

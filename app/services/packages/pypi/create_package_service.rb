@@ -5,18 +5,26 @@ module Packages
     class CreatePackageService < ::Packages::CreatePackageService
       include ::Gitlab::Utils::StrongMemoize
 
+      ERROR_REASON_INVALID_PARAMETER = :invalid_parameter
+      ERROR_RESPONSE_UNAUTHORIZED = ServiceResponse.error(message: 'Unauthorized', reason: :unauthorized)
+
       def execute
+        return ERROR_RESPONSE_UNAUTHORIZED unless can_create_package?
+        return ERROR_RESPONSE_PACKAGE_PROTECTED if package_protected?
+
         ::Packages::Package.transaction do
           meta = Packages::Pypi::Metadatum.new(
             package: created_package,
             required_python: params[:requires_python] || '',
             metadata_version: params[:metadata_version],
             author_email: params[:author_email],
-            description: params[:description]&.truncate(::Packages::Pypi::Metadatum::MAX_DESCRIPTION_LENGTH),
+            description: params[:description],
             description_content_type: params[:description_content_type],
             summary: params[:summary],
-            keywords: params[:keywords]&.truncate(::Packages::Pypi::Metadatum::MAX_KEYWORDS_LENGTH)
+            keywords: params[:keywords]
           )
+
+          truncate_fields(meta)
 
           raise ActiveRecord::RecordInvalid, meta unless meta.valid?
 
@@ -24,18 +32,27 @@ module Packages
 
           Packages::Pypi::Metadatum.upsert(meta.attributes)
 
-          ::Packages::CreatePackageFileService.new(created_package, file_params).execute
+          package_file = ::Packages::CreatePackageFileService.new(created_package, file_params).execute
+
+          package_file.create_pypi_file_metadatum(
+            required_python: meta.required_python,
+            project_id: package_file.project_id
+          )
 
           ServiceResponse.success(payload: { package: created_package })
         end
-      rescue ActiveRecord::RecordInvalid => e
-        ServiceResponse.error(message: e.message, reason: :invalid_parameter)
+      rescue ActiveRecord::RecordInvalid, ArgumentError => e
+        ServiceResponse.error(message: e.message, reason: ERROR_REASON_INVALID_PARAMETER)
       end
 
       private
 
+      def package_protected?
+        super(package_name: params[:name], package_type: :pypi)
+      end
+
       def created_package
-        find_or_create_package!(:pypi)
+        find_or_create_package!(::Packages::Pypi::Package)
       end
       strong_memoize_attr :created_package
 
@@ -47,6 +64,16 @@ module Packages
           file_md5: params[:md5_digest],
           file_sha256: params[:sha256_digest]
         }
+      end
+
+      def truncate_fields(meta)
+        return if meta.valid?
+
+        meta.errors.select { |error| error.type == :too_long }.each do |error|
+          field = error.attribute
+
+          meta[field] = meta[field].truncate(error.options[:count])
+        end
       end
     end
   end

@@ -16,8 +16,9 @@ RSpec.describe Gitlab::BackgroundMigration::BatchedMigrationJob, feature_categor
       expect(generic_instance.send(:batch_column)).to eq('id')
       expect(generic_instance.instance_variable_get(:@job_arguments)).to eq(%w[x y])
       expect(generic_instance.send(:connection)).to eq(connection)
+      expect(generic_instance.send(:pause_ms)).to eq(described_class::MINIMUM_PAUSE_MS)
 
-      %i[start_id end_id sub_batch_size pause_ms].each do |attr|
+      %i[start_id end_id sub_batch_size].each do |attr|
         expect(generic_instance.send(attr)).to eq(0)
       end
     end
@@ -189,20 +190,42 @@ RSpec.describe Gitlab::BackgroundMigration::BatchedMigrationJob, feature_categor
     end
   end
 
+  describe '.tables_to_check_for_vacuum' do
+    context 'when not specified' do
+      let(:job_class) { Class.new(described_class) }
+
+      it 'health_context_tables returns empty list' do
+        expect(job_class.health_context_tables).to be_empty
+      end
+    end
+
+    context 'when specified' do
+      let(:job_class) do
+        Class.new(described_class) do
+          tables_to_check_for_vacuum :foo, 'bar'
+        end
+      end
+
+      it 'health_context_tables returns list of the tables' do
+        expect(job_class.health_context_tables).to match_array(%w[foo bar])
+      end
+    end
+  end
+
   describe 'descendants', :eager_load do
     it 'have the same method signature for #perform' do
       expected_arity = described_class.instance_method(:perform).arity
       offences = described_class.descendants.select { |klass| klass.instance_method(:perform).arity != expected_arity }
 
       expect(offences).to be_empty, "expected no descendants of #{described_class} to accept arguments for " \
-        "'#perform', but some do: #{offences.join(", ")}"
+        "'#perform', but some do: #{offences.join(', ')}"
     end
 
     it 'do not use .batching_scope' do
       offences = described_class.descendants.select { |klass| klass.respond_to?(:batching_scope) }
 
       expect(offences).to be_empty, "expected no descendants of #{described_class} to define '.batching_scope', " \
-        "but some do: #{offences.join(", ")}"
+        "but some do: #{offences.join(', ')}"
     end
   end
 
@@ -237,7 +260,7 @@ RSpec.describe Gitlab::BackgroundMigration::BatchedMigrationJob, feature_categor
           def perform(*job_arguments)
             each_sub_batch(
               batching_arguments: { order_hint: :updated_at },
-              batching_scope: -> (relation) { relation.where.not(bar: nil) }
+              batching_scope: ->(relation) { relation.where.not(bar: nil) }
             ) do |sub_batch|
               sub_batch.update_all('to_column = from_column')
             end
@@ -282,7 +305,7 @@ RSpec.describe Gitlab::BackgroundMigration::BatchedMigrationJob, feature_categor
             def perform(*job_arguments)
               each_sub_batch(
                 batching_arguments: { order_hint: :updated_at },
-                batching_scope: -> (relation) { relation.where.not(bar: nil) }
+                batching_scope: ->(relation) { relation.where.not(bar: nil) }
               ) do |sub_batch|
                 sub_batch.update_all('to_column = from_column')
               end

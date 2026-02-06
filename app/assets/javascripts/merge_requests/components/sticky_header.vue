@@ -7,8 +7,7 @@ import {
   GlIcon,
   GlTooltipDirective,
 } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapGetters, mapState } from 'vuex';
+import { mapState } from 'pinia';
 import { __ } from '~/locale';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import { shouldDisableShortcuts } from '~/behaviors/shortcuts/shortcuts_toggle';
@@ -18,18 +17,23 @@ import { convertToGraphQLId } from '~/graphql_shared/utils';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { isLoggedIn } from '~/lib/utils/common_utils';
 import StatusBadge from '~/issuable/components/status_badge.vue';
+import ImportedBadge from '~/vue_shared/components/imported_badge.vue';
 import { TYPE_MERGE_REQUEST } from '~/issues/constants';
 import DiscussionCounter from '~/notes/components/discussion_counter.vue';
 import TodoWidget from '~/sidebar/components/todo_toggle/sidebar_todo_widget.vue';
 import SubscriptionsWidget from '~/sidebar/components/subscriptions/sidebar_subscriptions_widget.vue';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
+import SubmitReviewButton from '~/batch_comments/components/submit_review_button.vue';
+import { badgeState } from '~/merge_requests/badge_state';
+import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
+import { useNotes } from '~/notes/store/legacy_notes';
 import titleSubscription from '../queries/title.subscription.graphql';
-import { badgeState } from './merge_request_header.vue';
 
 export default {
   TYPE_MERGE_REQUEST,
   apollo: {
     $subscribe: {
+      // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
       title: {
         query() {
           return titleSubscription;
@@ -51,6 +55,7 @@ export default {
     },
   },
   components: {
+    SubmitReviewButton,
     GlIntersectionObserver,
     GlLink,
     GlSprintf,
@@ -58,6 +63,7 @@ export default {
     GlIcon,
     DiscussionCounter,
     StatusBadge,
+    ImportedBadge,
     TodoWidget,
     SubscriptionsWidget,
     ClipboardButton,
@@ -68,6 +74,7 @@ export default {
   },
   mixins: [glFeatureFlagsMixin()],
   inject: {
+    defaultBranchName: { default: '' },
     projectPath: { default: null },
     sourceProjectPath: { default: null },
     title: { default: '' },
@@ -75,6 +82,21 @@ export default {
     blocksMerge: { default: false },
   },
   props: {
+    canResolveDiscussion: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isImported: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isDraft: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
     tabs: {
       type: Array,
       required: true,
@@ -88,11 +110,12 @@ export default {
     };
   },
   computed: {
-    ...mapGetters(['getNoteableData', 'discussionTabCounter']),
-    ...mapState({
-      activeTab: (state) => state.page.activeTab,
-      doneFetchingBatchDiscussions: (state) => state.notes.doneFetchingBatchDiscussions,
-    }),
+    ...mapState(useNotes, [
+      'getNoteableData',
+      'discussionTabCounter',
+      'doneFetchingBatchDiscussions',
+    ]),
+    ...mapState(useMrNotes, ['activeTab']),
     badgeState() {
       return badgeState;
     },
@@ -124,6 +147,9 @@ export default {
         ? description
         : sanitize(`${description} <kbd class="flat gl-ml-1" aria-hidden=true>b</kbd>`);
     },
+    shouldShowTargetCopyButton() {
+      return this.getNoteableData.target_branch !== this.defaultBranchName;
+    },
   },
   watch: {
     discussionTabCounter(val) {
@@ -148,51 +174,55 @@ export default {
 
 <template>
   <gl-intersection-observer
-    class="gl-relative -gl-top-5"
+    class="merge-request-sticky-header-wrapper gl-relative gl-top-8"
     @appear="setStickyHeaderVisible(false)"
     @disappear="setStickyHeaderVisible(true)"
   >
     <div
-      class="issue-sticky-header merge-request-sticky-header gl-fixed gl-bg-white gl-display-none gl-md-display-flex gl-flex-direction-column gl-justify-content-end gl-border-b"
-      :class="{ 'gl-visibility-hidden': !isStickyHeaderVisible }"
+      class="issue-sticky-header merge-request-sticky-header gl-border-b gl-fixed gl-hidden gl-flex-col gl-justify-end gl-bg-default !gl-pr-0 @md/panel:gl-flex"
+      :class="{
+        'gl-invisible': !isStickyHeaderVisible,
+      }"
     >
       <div
-        class="issue-sticky-header-text gl-display-flex gl-flex-direction-column gl-align-items-center gl-mx-auto gl-w-full"
+        class="issue-sticky-header-text gl-mx-auto gl-flex gl-w-full gl-flex-col gl-items-center"
         :class="{ 'container-limited': !isFluidLayout }"
       >
-        <div class="gl-w-full gl-display-flex gl-align-items-baseline">
+        <div class="gl-flex gl-w-full gl-items-center gl-gap-2">
           <status-badge
-            class="gl-align-self-center gl-mr-3"
             :issuable-type="$options.TYPE_MERGE_REQUEST"
             :state="badgeState.state"
+            :is-draft="isDraft"
           />
+          <imported-badge v-if="isImported" />
           <a
             v-safe-html:[$options.safeHtmlConfig]="titleHtml"
             href="#top"
-            class="gl-display-none gl-lg-display-block gl-font-weight-bold gl-overflow-hidden gl-white-space-nowrap gl-text-overflow-ellipsis gl-my-0 gl-mr-4 gl-text-black-normal"
+            class="gl-my-0 gl-ml-1 gl-mr-2 gl-overflow-hidden gl-text-ellipsis gl-whitespace-nowrap gl-font-bold gl-text-default"
           ></a>
-          <div class="gl-display-flex gl-align-items-baseline">
-            <gl-sprintf :message="__('%{source} %{copyButton} into %{target}')">
+          <div class="gl-flex gl-items-center">
+            <gl-sprintf :message="__('%{source} %{copyButton} into %{target} %{targetCopyButton}')">
               <template #copyButton>
                 <clipboard-button
-                  v-gl-tooltip.bottom.html="copySourceBranchTooltip"
+                  tooltip-placement="bottom"
+                  :title="copySourceBranchTooltip"
                   :text="getNoteableData.source_branch"
                   size="small"
                   category="tertiary"
-                  class="gl-m-0! gl-mx-1! js-source-branch-copy gl-align-self-center"
+                  class="js-source-branch-copy gl-mx-1"
                 />
               </template>
               <template #source>
                 <gl-link
                   :title="getNoteableData.source_branch"
                   :href="getNoteableData.source_branch_path"
-                  class="gl-text-blue-500! gl-font-monospace gl-bg-blue-50 gl-rounded-base gl-font-sm gl-px-2 gl-text-truncate gl-max-w-26"
+                  class="ref-container gl-mt-2 gl-max-w-26 gl-truncate gl-rounded-base gl-px-2 gl-font-monospace gl-text-sm"
                   data-testid="source-branch"
                 >
                   <span
                     v-if="isForked"
                     v-gl-tooltip
-                    class="gl-vertical-align-middle gl-mr-n2"
+                    class="-gl-mr-2 gl-align-middle"
                     :title="__('The source project is a fork')"
                   >
                     <gl-icon name="fork" :size="12" class="gl-ml-1" />
@@ -200,11 +230,22 @@ export default {
                   {{ sourceBranch }}
                 </gl-link>
               </template>
+              <template #targetCopyButton>
+                <clipboard-button
+                  v-if="shouldShowTargetCopyButton"
+                  tooltip-placement="bottom"
+                  :title="__('Copy branch name')"
+                  :text="getNoteableData.target_branch"
+                  size="small"
+                  category="tertiary"
+                  class="gl-mx-1"
+                />
+              </template>
               <template #target>
                 <gl-link
                   :title="getNoteableData.target_branch"
                   :href="getNoteableData.target_branch_path"
-                  class="gl-text-blue-500! gl-font-monospace gl-bg-blue-50 gl-rounded-base gl-font-sm gl-px-2 gl-text-truncate gl-max-w-26 gl-ml-2"
+                  class="ref-container gl-ml-2 gl-mt-2 gl-max-w-26 gl-truncate gl-rounded-base gl-px-2 gl-font-monospace gl-text-sm"
                 >
                   {{ getNoteableData.target_branch }}
                 </gl-link>
@@ -212,23 +253,18 @@ export default {
             </gl-sprintf>
           </div>
         </div>
-        <div class="gl-w-full gl-display-flex">
+        <div class="gl-flex gl-w-full gl-justify-between">
           <ul
-            class="merge-request-tabs nav-tabs nav nav-links gl-display-flex gl-flex-nowrap gl-m-0 gl-p-0 gl-border-b-0"
+            class="merge-request-tabs nav-tabs nav nav-links gl-m-0 gl-flex gl-flex-nowrap gl-border-b-0 gl-p-0"
           >
             <li
               v-for="(tab, index) in tabs"
               :key="tab[0]"
               :class="{ active: activeTab === tab[0] }"
             >
-              <gl-link
-                :href="tab[2]"
-                :data-action="tab[0]"
-                class="gl-outline-0! gl-py-4!"
-                @click="visitTab"
-              >
+              <gl-link :href="tab[2]" :data-action="tab[0]" class="!gl-py-4" @click="visitTab">
                 {{ tab[1] }}
-                <gl-badge variant="muted" size="sm">
+                <gl-badge variant="neutral">
                   <template v-if="index === 0 && discussionCounter !== 0">
                     {{ discussionCounter }}
                   </template>
@@ -239,12 +275,13 @@ export default {
               </gl-link>
             </li>
           </ul>
-          <div class="gl-display-none gl-lg-display-flex gl-align-items-center gl-ml-auto">
-            <discussion-counter :blocks-merge="blocksMerge" hide-options />
-            <div
-              v-if="isSignedIn"
-              :class="{ 'gl-display-flex gl-gap-3': isNotificationsTodosButtons }"
-            >
+          <div class="gl-flex gl-flex-wrap gl-items-center gl-gap-3">
+            <discussion-counter
+              :blocks-merge="blocksMerge"
+              :can-resolve-discussion="canResolveDiscussion"
+              hide-options
+            />
+            <template v-if="isSignedIn">
               <todo-widget
                 :issuable-id="issuableId"
                 :issuable-iid="issuableIid"
@@ -257,7 +294,8 @@ export default {
                 :full-path="projectPath"
                 issuable-type="merge_request"
               />
-            </div>
+            </template>
+            <submit-review-button />
           </div>
         </div>
       </div>

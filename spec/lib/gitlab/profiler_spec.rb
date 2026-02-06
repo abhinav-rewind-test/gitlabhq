@@ -59,6 +59,17 @@ RSpec.describe Gitlab::Profiler do
       described_class.profile('/', user: user, private_token: private_token)
     end
 
+    it 'passes headers' do
+      user = double(:user)
+      headers = { 'Private-Token' => private_token, 'foo' => 'bar' }
+
+      expect(described_class).to receive(:with_user).with(nil).and_call_original
+      expect(app).to receive(:get).with('/', params: nil, headers: headers)
+      expect(app).to receive(:get).with('/api/v4/users')
+
+      described_class.profile('/', user: user, headers: headers)
+    end
+
     it 'generates sampling data' do
       user = double(:user)
       temp_data = Tempfile.new
@@ -113,7 +124,7 @@ RSpec.describe Gitlab::Profiler do
         custom_logger.debug('Project Load (10.4ms)')
 
         expect(custom_logger.load_times_by_model).to eq('User' => [1.2, 1.3],
-                                                        'Project' => [10.4])
+          'Project' => [10.4])
       end
 
       it 'logs the backtrace, ignoring lines as appropriate' do
@@ -122,13 +133,13 @@ RSpec.describe Gitlab::Profiler do
 
         expect(custom_logger).to receive(:add)
                                    .with(Logger::DEBUG,
-                                         anything,
-                                         a_string_matching(File.basename(__FILE__)))
+                                     anything,
+                                     a_string_matching(File.basename(__FILE__)))
                                    .twice
 
         expect(custom_logger).not_to receive(:add).with(Logger::DEBUG,
-                                                        anything,
-                                                        a_string_matching('lib/gitlab/profiler.rb'))
+          anything,
+          a_string_matching('lib/gitlab/profiler.rb'))
 
         # Force a part of the backtrace to be in the (ignored) profiler source
         # file.

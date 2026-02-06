@@ -1,17 +1,27 @@
 import {
-  ActiveModelError,
   generateHelpTextWithLinks,
   mapSystemToFriendlyError,
+  isKnownErrorCode,
 } from '~/lib/utils/error_utils';
 import { convertObjectPropsToLowerCase } from '~/lib/utils/common_utils';
 
 describe('Error Alert Utils', () => {
   const unfriendlyErrorOneKey = 'Unfriendly error 1';
   const emailTakenAttributeMap = 'email:taken';
+  const authenticationRequiredCause =
+    '[card_error/authentication_required/authentication_required]';
   const emailTakenError = 'Email has already been taken';
   const emailTakenFriendlyError = {
     message: 'This is a friendly error message for the given attribute map',
     links: {},
+  };
+  const authenticationRequiredError = {
+    message:
+      '%{stripe3dsLinkStart}3D Secure authentication%{stripe3dsLinkEnd} is not supported. Please %{salesLinkStart}contact our sales team%{salesLinkEnd} to purchase, or try a different credit card.',
+    links: {
+      stripe3dsLink: 'https://docs.stripe.com/payments/3d-secure',
+      salesLink: 'https://example.com/sales/',
+    },
   };
 
   const mockErrorDictionary = convertObjectPropsToLowerCase({
@@ -34,6 +44,7 @@ describe('Error Alert Utils', () => {
       links: {},
     },
     [emailTakenAttributeMap]: emailTakenFriendlyError,
+    [authenticationRequiredCause]: authenticationRequiredError,
     [emailTakenError]: emailTakenFriendlyError,
   });
 
@@ -46,10 +57,19 @@ describe('Error Alert Utils', () => {
     describe.each(Object.keys(mockErrorDictionary))('when system error is %s', (systemError) => {
       const friendlyError = mockErrorDictionary[systemError];
 
-      it('maps the system error to the friendly one', () => {
+      it('maps the error string the system error to the friendly one', () => {
         expect(mapSystemToFriendlyError(new Error(systemError), mockErrorDictionary)).toEqual(
           friendlyError,
         );
+      });
+
+      it('maps error cause to the system error to the friendly one', () => {
+        expect(
+          mapSystemToFriendlyError(
+            new Error(emailTakenError, { cause: systemError }),
+            mockErrorDictionary,
+          ),
+        ).toEqual(friendlyError);
       });
 
       it('maps the system error to the friendly one from uppercase', () => {
@@ -59,23 +79,28 @@ describe('Error Alert Utils', () => {
       });
     });
 
-    describe.each(['', {}, [], undefined, null, new Error()])(
-      'when system error is %s',
-      (systemError) => {
-        it('defaults to the given general error message when provided', () => {
-          expect(
-            mapSystemToFriendlyError(systemError, mockErrorDictionary, mockGeneralError),
-          ).toEqual(mockGeneralError);
-        });
+    describe.each([
+      '',
+      {},
+      [],
+      undefined,
+      null,
+      new Error(),
+      new Error(undefined, { cause: null }),
+    ])('when system error is %s', (systemError) => {
+      it('defaults to the given general error message when provided', () => {
+        expect(
+          mapSystemToFriendlyError(systemError, mockErrorDictionary, mockGeneralError),
+        ).toEqual(mockGeneralError);
+      });
 
-        it('defaults to the default error message when general error message is not provided', () => {
-          expect(mapSystemToFriendlyError(systemError, mockErrorDictionary)).toEqual({
-            message: 'Something went wrong. Please try again.',
-            links: {},
-          });
+      it('defaults to the default error message when general error message is not provided', () => {
+        expect(mapSystemToFriendlyError(systemError, mockErrorDictionary)).toEqual({
+          message: 'Something went wrong. Please try again.',
+          links: {},
         });
-      },
-    );
+      });
+    });
 
     describe('when system error is a non-existent key', () => {
       const message = 'a non-existent key';
@@ -109,29 +134,25 @@ describe('Error Alert Utils', () => {
       });
     });
 
-    describe('when error is email:taken error_attribute_map', () => {
-      const errorAttributeMap = { email: ['taken'] };
-
-      it('maps the email friendly error', () => {
+    describe('when error cause does not exist', () => {
+      it('maps the error string', () => {
         expect(
           mapSystemToFriendlyError(
-            new ActiveModelError(errorAttributeMap, emailTakenError),
+            new Error(unfriendlyErrorOneKey, { cause: 'does not exist' }),
             mockErrorDictionary,
           ),
-        ).toEqual(mockErrorDictionary[emailTakenAttributeMap.toLowerCase()]);
+        ).toEqual(mockErrorDictionary[unfriendlyErrorOneKey.toLowerCase()]);
       });
     });
 
-    describe('when there are multiple errors in the error_attribute_map', () => {
-      const errorAttributeMap = { email: ['taken', 'invalid'] };
-
-      it('maps the email friendly error', () => {
+    describe('when both error cause and error string exists', () => {
+      it('maps the error cause', () => {
         expect(
           mapSystemToFriendlyError(
-            new ActiveModelError(errorAttributeMap, `${emailTakenError}, Email is invalid`),
+            new Error(unfriendlyErrorOneKey, { cause: authenticationRequiredCause }),
             mockErrorDictionary,
           ),
-        ).toEqual(mockErrorDictionary[emailTakenAttributeMap.toLowerCase()]);
+        ).toEqual(mockErrorDictionary[authenticationRequiredCause.toLowerCase()]);
       });
     });
   });
@@ -189,6 +210,27 @@ describe('Error Alert Utils', () => {
           new Error('The error cannot be empty.'),
         );
       });
+    });
+  });
+
+  describe('isKnownErrorCode', () => {
+    const errorDictionary = {
+      known_error_code: 'Friendly error for known error code',
+    };
+
+    it.each`
+      error                   | result
+      ${'known_error_code'}   | ${true}
+      ${'unknown_error_code'} | ${false}
+      ${new Error()}          | ${false}
+      ${1000}                 | ${false}
+      ${''}                   | ${false}
+      ${{}}                   | ${false}
+      ${[]}                   | ${false}
+      ${undefined}            | ${false}
+      ${null}                 | ${false}
+    `('returns $result when error is $error', ({ error, result }) => {
+      expect(isKnownErrorCode(error, errorDictionary)).toBe(result);
     });
   });
 });

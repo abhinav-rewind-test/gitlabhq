@@ -10,12 +10,13 @@ module Ci
 
     ACCEPT_TIMEOUT = 5.minutes.freeze
 
-    attr_reader :build, :params, :metrics
+    attr_reader :build, :params, :metrics, :logger
 
-    def initialize(build, params, metrics = ::Gitlab::Ci::Trace::Metrics.new)
+    def initialize(build, params, metrics = ::Gitlab::Ci::Trace::Metrics.new, logger = Gitlab::AppLogger)
       @build = build
       @params = params
       @metrics = metrics
+      @logger = logger
     end
 
     def execute
@@ -105,12 +106,30 @@ module Ci
 
         Result.new(status: 200)
       when 'failed'
-        build.drop_with_exit_code!(params[:failure_reason], params[:exit_code])
+        handle_build_failure!
 
         Result.new(status: 200)
       else
         Result.new(status: 400)
       end
+    end
+
+    def handle_build_failure!
+      build.drop_with_exit_code!(params[:failure_reason], params[:exit_code])
+      create_failure_message! if should_create_failure_message?
+    end
+
+    def should_create_failure_message?
+      params[:failure_message].present? && params[:failure_reason] == 'job_router_failure'
+    end
+
+    def create_failure_message!
+      build.job_messages.create!(
+        content: params[:failure_message],
+        severity: :error,
+        project_id: build.project_id,
+        partition_id: build.partition_id
+      )
     end
 
     def discard_build_trace!
@@ -142,7 +161,7 @@ module Ci
     end
 
     def build_state
-      params.dig(:state).to_s
+      params[:state].to_s
     end
 
     def has_checksum?
@@ -154,7 +173,7 @@ module Ci
     end
 
     def trace_checksum
-      params.dig(:output, :checksum) || params.dig(:checksum)
+      params.dig(:output, :checksum) || params[:checksum]
     end
 
     def trace_bytesize
@@ -183,7 +202,7 @@ module Ci
     end
 
     def failure_reason
-      reason = params.dig(:failure_reason)
+      reason = params[:failure_reason]
 
       return unless reason
 
@@ -217,7 +236,7 @@ module Ci
     end
 
     def chunks_migration_enabled?
-      ::Feature.enabled?(:ci_enable_live_trace, build.project)
+      Gitlab::CurrentSettings.ci_job_live_trace_enabled?
     end
 
     def log_invalid_chunks?

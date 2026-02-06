@@ -37,7 +37,7 @@ module Gitlab
                    end
 
         request = Gitaly::OptimizeRepositoryRequest.new(repository: @gitaly_repo,
-                                                        strategy: strategy)
+          strategy: strategy)
         gitaly_client_call(@storage, :repository_service, :optimize_repository, request, timeout: GitalyClient.long_timeout)
       end
 
@@ -65,11 +65,16 @@ module Gitlab
         response.size
       end
 
-      def apply_gitattributes(revision)
-        request = Gitaly::ApplyGitattributesRequest.new(repository: @gitaly_repo, revision: encode_binary(revision))
-        gitaly_client_call(@storage, :repository_service, :apply_gitattributes, request, timeout: GitalyClient.fast_timeout)
-      rescue GRPC::InvalidArgument => ex
-        raise Gitlab::Git::Repository::InvalidRef, ex
+      def migrate_reference_backend(to_reftable: false)
+        target = if to_reftable
+                   Gitaly::MigrateReferenceBackendRequest::ReferenceBackend::REFERENCE_BACKEND_REFTABLE
+                 else
+                   Gitaly::MigrateReferenceBackendRequest::ReferenceBackend::REFERENCE_BACKEND_FILES
+                 end
+
+        request = Gitaly::MigrateReferenceBackendRequest.new(repository: @gitaly_repo, target_reference_backend: target)
+
+        gitaly_client_call(@storage, :repository_service, :migrate_reference_backend, request, timeout: GitalyClient.medium_timeout)
       end
 
       def info_attributes
@@ -84,14 +89,13 @@ module Gitlab
       # rubocop: disable Metrics/ParameterLists
       # The `remote` parameter is going away soonish anyway, at which point the
       # Rubocop warning can be enabled again.
-      def fetch_remote(url, refmap:, ssh_auth:, forced:, no_tags:, timeout:, prune: true, check_tags_changed: false, http_authorization_header: "", resolved_address: "")
+      def fetch_remote(url, refmap:, ssh_auth:, forced:, no_tags:, timeout:, prune: true, http_authorization_header: "", resolved_address: "")
         request = Gitaly::FetchRemoteRequest.new(
           repository: @gitaly_repo,
           force: forced,
           no_tags: no_tags,
           timeout: timeout,
           no_prune: !prune,
-          check_tags_changed: check_tags_changed,
           remote_params: Gitaly::Remote.new(
             url: url,
             mirror_refmaps: Array.wrap(refmap).map(&:to_s),
@@ -213,30 +217,12 @@ module Gitlab
         )
       end
 
-      def backup_custom_hooks(save_path)
-        gitaly_fetch_stream_to_file(
-          save_path,
-          :backup_custom_hooks,
-          Gitaly::BackupCustomHooksRequest,
-          GitalyClient.default_timeout
-        )
-      end
-
       def create_from_bundle(bundle_path)
         gitaly_repo_stream_request(
           bundle_path,
           :create_repository_from_bundle,
           Gitaly::CreateRepositoryFromBundleRequest,
           GitalyClient.long_timeout
-        )
-      end
-
-      def restore_custom_hooks(custom_hooks_path)
-        gitaly_repo_stream_request(
-          custom_hooks_path,
-          :restore_custom_hooks,
-          Gitaly::RestoreCustomHooksRequest,
-          GitalyClient.default_timeout
         )
       end
 
@@ -249,33 +235,6 @@ module Gitlab
         request.old_revision = old_ref.b unless old_ref.nil?
 
         gitaly_client_call(@storage, :repository_service, :write_ref, request, timeout: GitalyClient.fast_timeout)
-      end
-
-      def set_full_path(path)
-        gitaly_client_call(
-          @storage,
-          :repository_service,
-          :set_full_path,
-          Gitaly::SetFullPathRequest.new(
-            repository: @gitaly_repo,
-            path: path
-          ),
-          timeout: GitalyClient.fast_timeout
-        )
-
-        nil
-      end
-
-      def full_path
-        response = gitaly_client_call(
-          @storage,
-          :repository_service,
-          :full_path,
-          Gitaly::FullPathRequest.new(repository: @gitaly_repo),
-          timeout: GitalyClient.fast_timeout
-        )
-
-        response.path.presence
       end
 
       def find_license
@@ -328,7 +287,7 @@ module Gitlab
         gitaly_client_call(@storage, :repository_service, :remove_repository, request, timeout: GitalyClient.long_timeout)
       end
 
-      def replicate(source_repository)
+      def replicate(source_repository, partition_hint: "")
         request = Gitaly::ReplicateRepositoryRequest.new(
           repository: @gitaly_repo,
           source: source_repository.gitaly_repository
@@ -341,7 +300,9 @@ module Gitlab
           request,
           remote_storage: source_repository.storage,
           timeout: GitalyClient.long_timeout
-        )
+        ) do |kwargs|
+          kwargs.deep_merge(metadata: { 'gitaly-partitioning-hint': partition_hint })
+        end
       end
 
       def object_pool

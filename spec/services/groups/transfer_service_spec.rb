@@ -36,9 +36,9 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
   context 'handling packages' do
     let_it_be(:group) { create(:group) }
-    let_it_be(:new_group) { create(:group) }
-
     let_it_be(:project) { create(:project, namespace: group) }
+
+    let!(:new_group) { create(:group) }
 
     before do
       group.add_owner(user)
@@ -52,7 +52,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
         it 'allows transfer' do
           transfer_service.execute(new_group)
 
-          expect(transfer_service.error).to be nil
+          expect(transfer_service.error).to be_nil
           expect(group.parent).to eq(new_group)
         end
       end
@@ -61,7 +61,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
       context 'with a project within subgroup' do
         let_it_be(:root_group) { create(:group) }
-        let_it_be(:group) { create(:group, parent: root_group) }
+        let_it_be_with_reload(:group) { create(:group, parent: root_group) }
         let_it_be(:project) { create(:project, namespace: group) }
 
         before do
@@ -114,7 +114,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
         it 'allows transfer' do
           transfer_service.execute(nil)
 
-          expect(transfer_service.error).to be nil
+          expect(transfer_service.error).to be_nil
           expect(group.parent).to be_nil
         end
       end
@@ -276,6 +276,17 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
         end
       end
 
+      context 'when transferring an archived group' do
+        before do
+          group.update!(archived: true)
+        end
+
+        it "adds an error on group" do
+          expect(transfer_service.execute(new_parent_group)).to be_falsy
+          expect(transfer_service.error).to eq("Transfer failed: You don't have enough permissions.")
+        end
+      end
+
       context 'when the parent has a group with the same path' do
         before do
           create(:group_member, :owner, group: new_parent_group, user: user)
@@ -362,6 +373,31 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
               expect(new_created_integration.webhook).to eq(new_parent_group_integration.webhook)
               expect(PropagateIntegrationWorker).to have_received(:perform_async).with(new_created_integration.id)
               expect(Integration.count).to eq(3)
+            end
+          end
+
+          context 'with instance specific integration' do
+            let_it_be(:instance_specific_integration) { create(:beyond_identity_integration, :instance) }
+            let_it_be(:group_instance_specific_integration) do
+              create(
+                :beyond_identity_integration,
+                group: group,
+                instance: false,
+                active: true,
+                inherit_from_id: instance_specific_integration.id
+              )
+            end
+
+            let_it_be(:parent_group_instance_specific_integration) do
+              create(:beyond_identity_integration, group: new_parent_group, instance: false, active: false)
+            end
+
+            it 'replaces inherited integrations', :aggregate_failures do
+              new_group_instance_specific_integration = Integration.find_by(group: group, type: instance_specific_integration.type)
+              expect(new_group_instance_specific_integration.inherit_from_id).to eq(parent_group_instance_specific_integration.id)
+              expect(new_group_instance_specific_integration.active).to be_falsey
+              expect(PropagateIntegrationWorker).to have_received(:perform_async).with(new_group_instance_specific_integration.id)
+              expect(Integration.count).to eq(5)
             end
           end
 
@@ -901,7 +937,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
         it 'does not transfer' do
           expect(subject).to be false
-          expect(transfer_service.error).to match(/Docker images in their Container Registry/)
+          expect(transfer_service.error).to match(/Docker images in their container registry/)
         end
       end
 
@@ -911,7 +947,7 @@ RSpec.describe Groups::TransferService, :sidekiq_inline, feature_category: :grou
 
         it 'does not transfer' do
           expect(subject).to be false
-          expect(transfer_service.error).to match(/Docker images in their Container Registry/)
+          expect(transfer_service.error).to match(/Docker images in their container registry/)
         end
       end
     end

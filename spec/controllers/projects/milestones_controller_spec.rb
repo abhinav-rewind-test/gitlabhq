@@ -57,7 +57,7 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
       expect(response).to redirect_to(new_project_release_path(project))
     end
 
-    it 'will not redirect when given a redirect_path with an error' do
+    it 'does not redirect when given a redirect_path with an error' do
       post :create, params: { namespace_id: project.namespace.id, project_id: project.id, redirect_path: 'new_release', milestone: { title: nil } }
 
       expect(response).to have_gitlab_http_status(:ok)
@@ -68,11 +68,11 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
     context "as html" do
       def render_index(project:, page:, search_title: '')
         get :index, params: {
-                      namespace_id: project.namespace.id,
-                      project_id: project.id,
-                      search_title: search_title,
-                      page: page
-                    }
+          namespace_id: project.namespace.id,
+          project_id: project.id,
+          search_title: search_title,
+          page: page
+        }
       end
 
       it "queries only projects milestones" do
@@ -186,6 +186,19 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
       expect(milestone.title).to eq milestone_params[:title]
     end
 
+    it "handles validation error" do
+      group = create(:group)
+      group_milestone = create(:milestone, group: group)
+      project.update!(namespace: group)
+
+      milestone_params[:title] = group_milestone.title
+
+      subject
+
+      expect(response).not_to redirect_to(project_milestone_path(project, milestone.iid))
+      expect(response).to render_template(:edit)
+    end
+
     it "handles ActiveRecord::StaleObjectError" do
       # Purposely reduce the lock_version to trigger an ActiveRecord::StaleObjectError
       milestone_params[:lock_version] = milestone.lock_version - 1
@@ -208,7 +221,7 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
           }
       end
 
-      it "responds :no_content (204) without content body and updates milestone sucessfully" do
+      it "responds :no_content (204) without content body and updates milestone successfully" do
         subject
 
         expect(response).to have_gitlab_http_status(:no_content)
@@ -220,9 +233,7 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
       end
 
       it 'responds unprocessable_entity (422) with error data' do
-        # Note: This assignment ensures and triggers a validation error when updating the milestone.
-        # Same approach used in spec/models/milestone_spec.rb .
-        milestone_params[:title] = '<img src=x onerror=prompt(1)>'
+        milestone_params[:title] = ''
 
         subject
 
@@ -241,7 +252,7 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
         expect(response).to have_gitlab_http_status(:conflict)
         expect(json_response).to include "errors" => [
           format(
-            _("Someone edited this %{model_name} at the same time you did. Please refresh your browser and make sure your changes will not unintentionally remove theirs."), # rubocop:disable Layout/LineLength
+            _("Someone edited this %{model_name} at the same time you did. Please refresh your browser and make sure your changes will not unintentionally remove theirs."),
             model_name: _('milestone')
           )
         ]
@@ -333,11 +344,12 @@ RSpec.describe Projects::MilestonesController, feature_category: :team_planning 
       end
 
       it 'renders milestone name without parsing it as HTML' do
-        milestone.update!(name: 'CCC&lt;img src=x onerror=alert(document.domain)&gt;')
+        name = 'CCC<img src=x onerror=alert(document.domain)>'
+        milestone.update!(name: name)
 
         post :promote, params: { namespace_id: project.namespace.id, project_id: project.id, id: milestone.iid }
 
-        expect(flash[:notice]).to eq("CCC promoted to <a href=\"#{group_milestone_path(project.group, milestone.iid)}\"><u>group milestone</u></a>.")
+        expect(flash[:notice]).to eq("#{CGI.escapeHTML(name)} promoted to <a href=\"#{group_milestone_path(project.group, milestone.iid)}\"><u>group milestone</u></a>.")
       end
     end
 

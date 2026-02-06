@@ -1,12 +1,13 @@
 /* eslint-disable func-names, consistent-return, no-param-reassign */
 
 import $ from 'jquery';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { setCookie } from '~/lib/utils/common_utils';
 import { hide, fixTitle } from '~/tooltips';
 import { __ } from './locale';
 
 const updateSidebarClasses = (layoutPage, rightSidebar) => {
-  if (window.innerWidth >= 992) {
+  if (PanelBreakpointInstance.isDesktop()) {
     layoutPage.classList.remove('right-sidebar-expanded', 'right-sidebar-collapsed');
     rightSidebar.classList.remove('right-sidebar-collapsed');
     rightSidebar.classList.add('right-sidebar-expanded');
@@ -21,6 +22,8 @@ function Sidebar() {
   this.sidebar = $('aside');
 
   this.isMR = /projects:merge_requests:/.test(document.body.dataset.page);
+
+  this.isTransitioning = false;
 
   this.removeListeners();
   this.addEventListeners();
@@ -52,21 +55,49 @@ Sidebar.prototype.addEventListeners = function () {
   this.sidebar.on('hidden.gl.dropdown', this, this.onSidebarDropdownHidden);
   this.sidebar.on('hiddenGlDropdown', this, this.onSidebarDropdownHidden);
 
-  $document.on('click', '.js-sidebar-toggle', this.sidebarToggleClicked);
+  $document.on('click', '.js-sidebar-toggle', this.sidebarToggleClicked.bind(this));
 
   const layoutPage = document.querySelector('.layout-page');
   const rightSidebar = document.querySelector('.js-right-sidebar');
 
   if (rightSidebar.classList.contains('right-sidebar-merge-requests')) {
     updateSidebarClasses(layoutPage, rightSidebar);
-    window.addEventListener('resize', () => updateSidebarClasses(layoutPage, rightSidebar));
+
+    PanelBreakpointInstance.addResizeListener(() => {
+      updateSidebarClasses(layoutPage, rightSidebar);
+    });
   }
 };
 
 Sidebar.prototype.sidebarToggleClicked = function (e, triggered) {
+  if (this.isTransitioning && this.sidebar.is(':not(.right-sidebar-merge-requests)')) return;
+
+  this.isTransitioning = true;
+
+  /**
+   * We're bypassing `transitionend` event handler only when
+   * transition-duration is 0, as in rspecs, animations are
+   * disabled which causes transitionend event to never emit;
+   * See https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionend_event
+   * This causes the `isTransitioning` flag to never be updated
+   * making sidebar no longer expandable once collapsed;
+   * See https://gitlab.com/gitlab-org/gitlab/-/issues/579764
+   */
+  if (this.sidebar.css('transitionDuration') !== '0s') {
+    this.sidebar.one('transitionend', () => {
+      this.isTransitioning = false;
+    });
+  } else {
+    setTimeout(() => {
+      this.isTransitioning = false;
+    }, 0);
+  }
+
   const $toggleButtons = $('.js-sidebar-toggle');
   const $collapseIcon = $('.js-sidebar-collapse');
   const $expandIcon = $('.js-sidebar-expand');
+  const $toggleButtonMilestone = $('.js-milestone-toggle');
+
   const $toggleContainer = $('.js-sidebar-toggle-container');
   const isExpanded = $toggleContainer.data('is-expanded');
   const tooltipLabel = isExpanded ? __('Expand sidebar') : __('Collapse sidebar');
@@ -83,6 +114,10 @@ Sidebar.prototype.sidebarToggleClicked = function (e, triggered) {
     if (!this.isMR) {
       $('.layout-page').removeClass('right-sidebar-expanded').addClass('right-sidebar-collapsed');
     }
+
+    if ($toggleButtonMilestone) {
+      $toggleButtonMilestone.removeClass('hidden');
+    }
   } else {
     $toggleContainer.data('is-expanded', true);
     $expandIcon.addClass('hidden');
@@ -93,6 +128,10 @@ Sidebar.prototype.sidebarToggleClicked = function (e, triggered) {
 
     if (!this.isMR) {
       $('.layout-page').removeClass('right-sidebar-collapsed').addClass('right-sidebar-expanded');
+    }
+
+    if ($toggleButtonMilestone) {
+      $toggleButtonMilestone.addClass('hidden');
     }
   }
 

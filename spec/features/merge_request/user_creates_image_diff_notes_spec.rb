@@ -9,6 +9,7 @@ RSpec.describe 'Merge request > User creates image diff notes', :js, feature_cat
   let(:user) { project.creator }
 
   before do
+    stub_feature_flags(rapid_diffs_on_commit_show: false)
     sign_in(user)
 
     # Stub helper to return any blob file as image from public app folder.
@@ -88,7 +89,8 @@ RSpec.describe 'Merge request > User creates image diff notes', :js, feature_cat
           create_image_diff_note
         end
 
-        it 'shows indicator and avatar badges, and allows collapsing/expanding the discussion notes', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/27950' do
+        it 'shows indicator and avatar badges, and allows collapsing/expanding the discussion notes',
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16776' do
           indicator = find('.js-image-badge', match: :first)
           badge = find('.user-avatar-link .badge', match: :first)
 
@@ -174,7 +176,7 @@ RSpec.describe 'Merge request > User creates image diff notes', :js, feature_cat
   end
 
   shared_examples 'onion skin' do
-    it 'resets opacity when toggling between view modes', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/393331' do
+    it 'resets opacity when toggling between view modes', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9342' do
       # Simulate dragging onion-skin slider
       drag_and_drop_by(find('.dragger'), -30, 0)
 
@@ -230,7 +232,7 @@ RSpec.describe 'Merge request > User creates image diff notes', :js, feature_cat
       it_behaves_like 'onion skin'
     end
 
-    describe 'swipe view', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/209999' do
+    describe 'swipe view', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9345' do
       before do
         switch_to_swipe_view
       end
@@ -280,8 +282,11 @@ RSpec.describe 'Merge request > User creates image diff notes', :js, feature_cat
   def create_image_diff_note
     wait_for_all_requests
 
-    page.all('a', text: 'Click to expand it.', wait: false).each do |element|
-      element.click
+    nb = 0
+    while nb < 100 && page.all('a', text: 'Click to expand it.').any?
+      page.first('a', text: 'Click to expand it.').click
+      wait_for_requests
+      nb += 1
     end
 
     find('.js-add-image-diff-note-button', match: :first).click

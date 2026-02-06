@@ -24,11 +24,6 @@ export default {
       type: String,
       required: true,
     },
-    canAttachFile: {
-      type: Boolean,
-      required: false,
-      default: true,
-    },
     enableAutocomplete: {
       type: Boolean,
       required: false,
@@ -67,7 +62,7 @@ export default {
 
 <template>
   <div class="common-note-form">
-    <label class="sr-only" for="issue-description">{{ __('Description') }}</label>
+    <label class="gl-sr-only" for="issue-description">{{ __('Description') }}</label>
     <markdown-editor
       ref="markdownEditor"
       class="gl-mt-3"

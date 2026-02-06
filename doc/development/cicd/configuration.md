@@ -1,10 +1,9 @@
 ---
 stage: Verify
 group: Pipeline Authoring
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Contribute to the CI/CD configuration
 ---
-
-# Contribute to the CI/CD configuration
 
 ## Glossary
 
@@ -23,16 +22,25 @@ For example;
 
 ## Adding New Keywords
 
+> [!note]
+> Experimental CI keywords must be guarded behind a feature flag.
+> Users adding them to their CI configuration does not count as [explicit opt-in](../../policy/development_stages_support.md#experiment),
+> as they could do so without ever seeing that the keyword is experimental. An
+> experimental CI keyword should not be added to the [JSON schema](schema.md) to ensure it
+> does not get auto-suggested to users yet.
+
 CI config keywords are added in the [`lib/gitlab/ci/config/entry`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/config/entry) directory.
 For EE-specific changes, use the [`ee/lib/gitlab/ci/config/entry`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/ee/lib/gitlab/ci/config/entry)
 or [`ee/lib/ee/gitlab/ci/config/entry`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/ee/lib/ee/gitlab/ci/config/entry) directory.
+
+Update the [JSON schema](schema.md) accordingly.
 
 ### Inheritance
 
 An entry is represented by a class that inherits from;
 
 - `Entry::Node`: for simple keywords.
-  (e.g. [`Entry::Stage`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/config/entry/stage.rb))
+  (For example, [`Entry::Stage`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/config/entry/stage.rb))
 - `Entry::Simplifiable`: for keywords that have multiple structures.
   For example, [`Entry::Retry`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/config/entry/retry.rb) can be a simple number or a hash configuration.
 - `Entry::ComposableArray`: for keywords that have a list of single-type sub-elements.
@@ -82,7 +90,7 @@ end
 ## Feature Flag Usage
 
 When adding new CI/CD configuration keywords, it is important to use feature flags to control the rollout of the change.
-This allows us to test the change in production without affecting all users. For more information, see the [feature flags documentation](../feature_flags/index.md).
+This allows us to test the change in production without affecting all users. For more information, see the [feature flags documentation](../feature_flags/_index.md).
 
 A common place to check for a feature flag is in the `Gitlab::Config::Entry::Node#value` method. For example:
 
@@ -98,17 +106,17 @@ end
 private
 
 def file_available?
-  ::Gitlab::Ci::YamlProcessor::FeatureFlags.enabled?(:secret_file_available, type: :beta)
+  ::Gitlab::Ci::Config::FeatureFlags.enabled?(:secret_file_available, type: :beta)
 end
 ```
 
 ### Feature Flag Actor
 
-In entry classes, we have no access to the current project or user. However, it's discouraged to use feature flags without [an actor](../feature_flags/index.md#feature-actors).
+In entry classes, we have no access to the current project or user. However, it's discouraged to use feature flags without [an actor](../feature_flags/_index.md#feature-actors).
 To solve this problem, we have three options;
 
 1. Use `Feature.enabled?(:feature_flag, Feature.current_request)`.
-1. Use `YamlProcessor::FeatureFlags.enabled?(:feature_flag)`
+1. Use `Config::FeatureFlags.enabled?(:feature_flag)`
 1. Do not use feature flags in entry classes and use them in other parts of the code.
 
 ## Testing and Validation

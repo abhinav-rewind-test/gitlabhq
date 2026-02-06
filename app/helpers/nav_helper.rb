@@ -22,19 +22,22 @@ module NavHelper
     class_name
   end
 
-  def page_gutter_class
-    merge_request_sidebar = current_controller?('merge_requests')
+  def super_sidebar_loading_state_class
+    cookies['super_sidebar_collapsed'] == 'true' ? 'super-sidebar-is-icon-only' : ''
+  end
 
+  def page_gutter_class
     if (page_has_markdown? || current_path?('projects/merge_requests#diffs')) && !current_controller?('conflicts')
       if cookies[:collapsed_gutter] == 'true'
-        ["page-gutter", ('right-sidebar-collapsed' unless merge_request_sidebar).to_s]
+        ["page-gutter", ('right-sidebar-collapsed' unless skip_right_sidebar_classes?).to_s]
       else
-        ["page-gutter", ('right-sidebar-expanded' unless merge_request_sidebar).to_s]
+        ["page-gutter", ('right-sidebar-expanded' unless skip_right_sidebar_classes?).to_s]
       end
     elsif current_path?('jobs#show')
       %w[page-gutter build-sidebar right-sidebar-expanded]
-    elsif current_controller?('wikis') && current_action?('show', 'create', 'edit', 'update', 'history', 'git_access', 'destroy', 'diff')
-      %w[page-gutter wiki-sidebar right-sidebar-expanded]
+    elsif current_controller?('wikis') &&
+        current_action?('show', 'create', 'edit', 'update', 'history', 'git_access', 'destroy', 'diff')
+      %w[page-gutter has-wiki-sidebar]
     else
       []
     end
@@ -79,6 +82,22 @@ module NavHelper
     end
 
     links
+  end
+
+  def merge_request_sidebar?
+    current_controller?('merge_requests')
+  end
+
+  def work_item_epic_page?
+    current_controller?('epics')
+  end
+
+  def new_issue_look?
+    current_controller?('issues') && @issue&.show_as_work_item?
+  end
+
+  def skip_right_sidebar_classes?
+    merge_request_sidebar? || work_item_epic_page? || new_issue_look?
   end
 end
 

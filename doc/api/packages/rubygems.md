@@ -2,27 +2,25 @@
 stage: Package
 group: Package Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Ruby gems API
 ---
 
-# Ruby gems API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-This is the API documentation for [Ruby gems](../../user/packages/rubygems_registry/index.md).
+{{< /details >}}
 
-WARNING:
-This API is used by the [Ruby gems and Bundler package manager clients](https://maven.apache.org/)
-and is generally not meant for manual consumption. This API is under development and is not ready
-for production use due to limited functionality.
+Use this API to interact with the [Ruby gems and Bundler package manager clients](../../user/packages/rubygems_registry/_index.md).
 
-For instructions on how to upload and install gems from the GitLab
-package registry, see the [Ruby gems registry documentation](../../user/packages/rubygems_registry/index.md).
+> [!warning]
+> This API is used by the [Ruby gems and Bundler package manager clients](https://maven.apache.org/)
+> and is generally not meant for manual consumption. This API is under development and is not ready
+> for production use due to limited functionality.
 
-NOTE:
 These endpoints do not adhere to the standard API authentication methods.
-See the [Ruby gems registry documentation](../../user/packages/rubygems_registry/index.md)
+See the [Ruby gems registry documentation](../../user/packages/rubygems_registry/_index.md)
 for details on which headers and token types are supported. Undocumented authentication methods might be removed in the future.
 
 ## Enable the Ruby gems API
@@ -51,9 +49,7 @@ Feature.disable(:rubygem_packages, Project.find(2))
 
 ## Download a gem file
 
-> - Introduced in GitLab 13.10.
-
-Download a gem:
+Downloads a specified gem file for a project.
 
 ```plaintext
 GET projects/:id/packages/rubygems/gems/:file_name
@@ -65,7 +61,8 @@ GET projects/:id/packages/rubygems/gems/:file_name
 | `file_name`  | string | yes      | The name of the `.gem` file. |
 
 ```shell
-curl --header "Authorization:<personal_access_token>" "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/gems/my_gem-1.0.0.gem"
+curl --header "Authorization:<personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/gems/my_gem-1.0.0.gem"
 ```
 
 Write the output to file:
@@ -76,11 +73,12 @@ curl --header "Authorization:<personal_access_token>" "https://gitlab.example.co
 
 This writes the downloaded file to `my_gem-1.0.0.gem` in the current directory.
 
-## Fetch a list of dependencies
+## Retrieve dependencies
 
-> - Introduced in GitLab 13.10.
+Retrieves a list of dependencies for specified gems.
 
-Fetch a list of dependencies for a list of gems:
+The response is a marshalled array of hashes for all versions of the requested gems.
+Because the response is marshalled, you can store it in a file.
 
 ```plaintext
 GET projects/:id/packages/rubygems/api/v1/dependencies
@@ -92,17 +90,18 @@ GET projects/:id/packages/rubygems/api/v1/dependencies
 | `gems`    | string | no       | Comma-separated list of gems to fetch dependencies for. |
 
 ```shell
-curl --header "Authorization:<personal_access_token>" "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/dependencies?gems=my_gem,foo"
+curl --header "Authorization:<personal_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/dependencies?gems=my_gem,foo"
 ```
 
-This endpoint returns a marshalled array of hashes for all versions of the requested gems. Since the
-response is marshalled, you can store it in a file. If Ruby is installed, you can use the following
+If Ruby is installed, you can use the following
 Ruby command to read the response. For this to work, you must
-[set your credentials in `~/.gem/credentials`](../../user/packages/rubygems_registry/index.md#authenticate-with-a-personal-access-token-or-deploy-token):
+either [set your credentials in `~/.gem/credentials`](../../user/packages/rubygems_registry/_index.md#authenticate-to-the-package-registry),
+or pass your access token to the request:
 
 ```shell
 $ ruby -ropen-uri -rpp -e \
-  'pp Marshal.load(open("https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/dependencies?gems=my_gem,rails,foo"))'
+  'pp Marshal.load(URI.open("https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/dependencies?gems=my_gem,rails,foo", "Authorization" => <personal_access_token>))'
 
 [{:name=>"my_gem", :number=>"0.0.1", :platform=>"ruby", :dependencies=>[]},
  {:name=>"my_gem",
@@ -129,13 +128,9 @@ $ ruby -ropen-uri -rpp -e \
     ["dependency_4", ">= 0"]]}]
 ```
 
-This writes the downloaded file to `mypkg-1.0-SNAPSHOT.jar` in the current directory.
-
 ## Upload a gem
 
-> - Introduced in GitLab 13.11.
-
-Upload a gem:
+Uploads a gem for a specified project.
 
 ```plaintext
 POST projects/:id/packages/rubygems/api/v1/gems
@@ -149,5 +144,5 @@ POST projects/:id/packages/rubygems/api/v1/gems
 curl --request POST \
      --upload-file path/to/my_gem_file.gem \
      --header "Authorization:<personal_access_token>" \
-     "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/gems"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/rubygems/api/v1/gems"
 ```

@@ -5,6 +5,22 @@ module Gitlab
     module MergeRequestHelpers
       include DatabaseHelpers
 
+      # @param attributes [Hash]
+      # @return MergeRequest::Metrics
+      def create_merge_request_metrics(attributes)
+        retries ||= 0
+        metric = MergeRequest::Metrics.find_or_initialize_by(merge_request: merge_request) # rubocop: disable CodeReuse/ActiveRecord -- no need to move this to ActiveRecord model
+        metric.update(attributes)
+        metric
+      rescue ActiveRecord::RecordNotUnique => e
+        # Multiple jobs may attempt to create the metrics simultaneously
+        sleep 1
+        retries += 1
+        retry if retries < 5
+
+        raise e
+      end
+
       # rubocop: disable CodeReuse/ActiveRecord
       def create_merge_request_without_hooks(project, attributes, iid)
         # This work must be wrapped in a transaction as otherwise we can leave
@@ -71,20 +87,21 @@ module Gitlab
       end
 
       def create_approval!(project_id, merge_request_id, user_id, submitted_at)
-        approval_attributes = {
+        approval = Approval.create(
           merge_request_id: merge_request_id,
           user_id: user_id,
           created_at: submitted_at,
-          updated_at: submitted_at
-        }
-
-        result = ::Approval.insert(
-          approval_attributes,
-          returning: [:id],
-          unique_by: [:user_id, :merge_request_id]
+          updated_at: submitted_at,
+          importing: true
         )
 
-        add_approval_system_note!(project_id, merge_request_id, user_id, submitted_at) if result.rows.present?
+        return unless approval.persisted?
+
+        note = add_approval_system_note!(project_id, merge_request_id, user_id, submitted_at)
+
+        [approval, note]
+      rescue ActiveRecord::RecordNotUnique, PG::UniqueViolation
+        # Multiple approvals mapped to the same user (e.g. personal namespace owner) can cause validation race condition
       end
 
       def add_approval_system_note!(project_id, merge_request_id, user_id, submitted_at)

@@ -6,7 +6,6 @@ import * as builtInExtensions from '../extensions';
 import { ContentEditor } from './content_editor';
 import MarkdownSerializer from './markdown_serializer';
 import createGlApiMarkdownDeserializer from './gl_api_markdown_deserializer';
-import createRemarkMarkdownDeserializer from './remark_markdown_deserializer';
 import AssetResolver from './asset_resolver';
 import trackInputRulesAndShortcuts from './track_input_rules_and_shortcuts';
 import AutocompleteHelper from './autocomplete_helper';
@@ -24,6 +23,7 @@ export const createContentEditor = ({
   serializerConfig = { marks: {}, nodes: {} },
   tiptapOptions,
   drawioEnabled = false,
+  supportsTableOfContents = false,
   enableAutocomplete,
   autocompleteDataSources = {},
   sidebarMediator = {},
@@ -36,17 +36,16 @@ export const createContentEditor = ({
   const eventHub = eventHubFactory();
   const assetResolver = new AssetResolver({ renderMarkdown });
   const serializer = new MarkdownSerializer({ serializerConfig });
+
   const autocompleteHelper = new AutocompleteHelper({
     dataSourceUrls: autocompleteDataSources,
     sidebarMediator,
   });
-  const deserializer = window.gon?.features?.preserveUnchangedMarkdown
-    ? createRemarkMarkdownDeserializer()
-    : createGlApiMarkdownDeserializer({
-        render: renderMarkdown,
-      });
+  const deserializer = createGlApiMarkdownDeserializer({
+    render: renderMarkdown,
+  });
 
-  const { Suggestions, DrawioDiagram, ...otherExtensions } = builtInExtensions;
+  const { Suggestions, DrawioDiagram, TableOfContents, ...otherExtensions } = builtInExtensions;
 
   const builtInContentEditorExtensions = flatMap(otherExtensions).map((ext) =>
     ext.configure({
@@ -64,9 +63,12 @@ export const createContentEditor = ({
   if (enableAutocomplete)
     allExtensions.push(Suggestions.configure({ autocompleteHelper, serializer }));
   if (drawioEnabled) allExtensions.push(DrawioDiagram.configure({ uploadsPath, assetResolver }));
+  if (supportsTableOfContents) allExtensions.push(TableOfContents);
 
   const trackedExtensions = allExtensions.map(trackInputRulesAndShortcuts);
   const tiptapEditor = createTiptapEditor({ extensions: trackedExtensions, ...tiptapOptions });
+
+  autocompleteHelper.tiptapEditor = tiptapEditor;
 
   return new ContentEditor({
     tiptapEditor,
@@ -75,6 +77,8 @@ export const createContentEditor = ({
     deserializer,
     assetResolver,
     drawioEnabled,
+    supportsTableOfContents,
     codeSuggestionsConfig,
+    autocompleteHelper,
   });
 };

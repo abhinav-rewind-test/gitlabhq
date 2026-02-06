@@ -4,7 +4,7 @@ import {
   GlBadge,
   GlButton,
   GlLoadingIcon,
-  GlPagination,
+  GlKeysetPagination,
   GlTabs,
   GlTab,
   GlSprintf,
@@ -12,27 +12,33 @@ import {
 } from '@gitlab/ui';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import { s__, sprintf } from '~/locale';
+import { convertToGraphQLId } from '~/graphql_shared/utils';
+import { TYPENAME_PROJECT } from '~/graphql_shared/constants';
 import { limitedCounterWithDelimiter } from '~/lib/utils/text_utility';
-import { queryToObject } from '~/lib/utils/url_utility';
+import { queryToObject, updateHistory, setUrlParams } from '~/lib/utils/url_utility';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
+import { reportToSentry } from '~/ci/utils';
+import Tracking from '~/tracking';
+import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import deletePipelineScheduleMutation from '../graphql/mutations/delete_pipeline_schedule.mutation.graphql';
 import playPipelineScheduleMutation from '../graphql/mutations/play_pipeline_schedule.mutation.graphql';
 import takeOwnershipMutation from '../graphql/mutations/take_ownership.mutation.graphql';
 import getPipelineSchedulesQuery from '../graphql/queries/get_pipeline_schedules.query.graphql';
-import { ALL_SCOPE, SCHEDULES_PER_PAGE } from '../constants';
+import pipelineScheduleStatusUpdatedSubscription from '../graphql/subscriptions/ci_pipeline_schedule_status_updated.subscription.graphql';
+import {
+  ALL_SCOPE,
+  SCHEDULES_PER_PAGE,
+  DEFAULT_SORT_VALUE,
+  TABLE_SORT_STORAGE_KEY,
+} from '../constants';
+import { updateScheduleNodes } from '../utils';
 import PipelineSchedulesTable from './table/pipeline_schedules_table.vue';
 import TakeOwnershipModal from './take_ownership_modal.vue';
 import DeletePipelineScheduleModal from './delete_pipeline_schedule_modal.vue';
 import PipelineScheduleEmptyState from './pipeline_schedules_empty_state.vue';
 
-const defaultPagination = {
-  first: SCHEDULES_PER_PAGE,
-  last: null,
-  prevPageCursor: '',
-  nextPageCursor: '',
-  currentPage: 1,
-};
-
 export default {
+  name: 'PipelineSchedules',
   i18n: {
     schedulesFetchError: s__('PipelineSchedules|There was a problem fetching pipeline schedules.'),
     scheduleDeleteError: s__(
@@ -52,6 +58,7 @@ export default {
     ),
     planLimitReachedBtnText: s__('PipelineSchedules|Explore plan limits'),
   },
+  sortStorageKey: TABLE_SORT_STORAGE_KEY,
   docsLink: helpPagePath('administration/instance_limits', {
     anchor: 'number-of-pipeline-schedules',
   }),
@@ -61,17 +68,19 @@ export default {
     GlBadge,
     GlButton,
     GlLoadingIcon,
-    GlPagination,
+    GlKeysetPagination,
     GlTabs,
     GlTab,
     GlSprintf,
     GlLink,
+    LocalStorageSync,
     PipelineSchedulesTable,
     TakeOwnershipModal,
     PipelineScheduleEmptyState,
   },
+  mixins: [Tracking.mixin()],
   inject: {
-    fullPath: {
+    projectPath: {
       default: '',
     },
     pipelinesPath: {
@@ -80,21 +89,35 @@ export default {
     newSchedulePath: {
       default: '',
     },
+    projectId: {
+      default: '',
+    },
   },
   apollo: {
     schedules: {
       query: getPipelineSchedulesQuery,
       variables() {
-        return {
-          projectPath: this.fullPath,
+        const queryVariables = {
+          projectPath: this.projectPath,
           // we need to ensure we send null to the API when
           // the scope is 'ALL'
           status: this.scope === ALL_SCOPE ? null : this.scope,
-          first: this.pagination.first,
-          last: this.pagination.last,
-          prevPageCursor: this.pagination.prevPageCursor,
-          nextPageCursor: this.pagination.nextPageCursor,
+          sortValue: this.sortValue,
         };
+
+        if (this.prevPageCursor) {
+          queryVariables.prevPageCursor = this.prevPageCursor;
+          queryVariables.first = null; // Explicitly set first to null when using last
+          queryVariables.last = SCHEDULES_PER_PAGE;
+          return queryVariables;
+        }
+
+        queryVariables.first = SCHEDULES_PER_PAGE;
+        queryVariables.last = null; // Explicitly set last to null when using first
+        queryVariables.nextPageCursor = this.nextPageCursor || '';
+        queryVariables.prevPageCursor = '';
+
+        return queryVariables;
       },
       update(data) {
         const {
@@ -111,13 +134,64 @@ export default {
           planLimit: ciPipelineSchedules,
         };
       },
-      error() {
-        this.reportError(this.$options.i18n.schedulesFetchError);
+      error(error) {
+        this.reportError(this.$options.i18n.schedulesFetchError, error);
+      },
+      result({ data }) {
+        // we use a manual subscribeToMore call due to issues with
+        // the skip hook not working correctly for the subscription
+        // and previousData object being an empty {} on init
+        if (data?.project?.pipelineSchedules?.nodes?.length > 0 && !this.isSubscribed) {
+          // Prevent duplicate subscriptions on refetch
+          this.isSubscribed = true;
+
+          this.$apollo.queries.schedules.subscribeToMore({
+            document: pipelineScheduleStatusUpdatedSubscription,
+            variables: {
+              projectId: convertToGraphQLId(TYPENAME_PROJECT, this.projectId),
+            },
+            updateQuery(
+              previousData,
+              {
+                subscriptionData: {
+                  data: { ciPipelineScheduleStatusUpdated },
+                },
+              },
+            ) {
+              if (ciPipelineScheduleStatusUpdated) {
+                const schedules = previousData?.project?.pipelineSchedules?.nodes || [];
+
+                const updatedNodes = updateScheduleNodes(
+                  schedules,
+                  ciPipelineScheduleStatusUpdated,
+                );
+
+                return {
+                  ...previousData,
+                  project: {
+                    ...previousData.project,
+                    pipelineSchedules: {
+                      ...previousData.project.pipelineSchedules,
+                      nodes: updatedNodes,
+                    },
+                  },
+                };
+              }
+              return previousData;
+            },
+          });
+        }
       },
     },
   },
   data() {
-    const { scope } = queryToObject(window.location.search);
+    const queryParams = queryToObject(window.location.search);
+    const { scope, page, prev, next, sort = DEFAULT_SORT_VALUE } = queryParams;
+
+    const sortValue = sort;
+    const sortDesc = sort.endsWith('_DESC');
+    const sortBy = sortDesc ? sort.slice(0, -5) : sort;
+
     return {
       schedules: {
         list: [],
@@ -128,12 +202,16 @@ export default {
       playSuccess: false,
       errorMessage: '',
       scheduleId: null,
+      sortValue,
+      sortBy,
+      sortDesc,
       showDeleteModal: false,
       showTakeOwnershipModal: false,
       count: 0,
-      pagination: {
-        ...defaultPagination,
-      },
+      isSubscribed: false,
+      currentPage: parseInt(page, 10) || 1,
+      prevPageCursor: prev || '',
+      nextPageCursor: next || '',
     };
   },
   computed: {
@@ -177,12 +255,6 @@ export default {
     showPagination() {
       return this.schedules?.pageInfo?.hasNextPage || this.schedules?.pageInfo?.hasPreviousPage;
     },
-    prevPage() {
-      return Number(this.schedules?.pageInfo?.hasPreviousPage);
-    },
-    nextPage() {
-      return Number(this.schedules?.pageInfo?.hasNextPage);
-    },
     // if limit is null, then user does not have access to create schedule
     hasNoAccess() {
       return this.schedules?.planLimit === null;
@@ -201,6 +273,16 @@ export default {
     shouldDisableNewScheduleBtn() {
       return (this.hasReachedPlanLimit || this.hasNoAccess) && !this.hasUnlimitedSchedules;
     },
+    sortingState: {
+      get() {
+        return { sortValue: this.sortValue, sortBy: this.sortBy, sortDesc: this.sortDesc };
+      },
+      set(values) {
+        this.sortValue = values.sortValue;
+        this.sortBy = values.sortBy;
+        this.sortDesc = values.sortDesc;
+      },
+    },
   },
   watch: {
     // this watcher ensures that the count on the all tab
@@ -212,9 +294,11 @@ export default {
     },
   },
   methods: {
-    reportError(error) {
+    reportError(errorMessage, error) {
       this.hasError = true;
-      this.errorMessage = error;
+      this.errorMessage = errorMessage;
+
+      reportToSentry(this.$options.name, error);
     },
     setDeleteModal(id) {
       this.showDeleteModal = true;
@@ -246,8 +330,8 @@ export default {
           this.$apollo.queries.schedules.refetch();
           this.$toast.show(this.$options.i18n.deleteSuccess);
         }
-      } catch {
-        this.reportError(this.$options.i18n.scheduleDeleteError);
+      } catch (error) {
+        this.reportError(this.$options.i18n.scheduleDeleteError, error);
       }
     },
     async takeOwnership() {
@@ -277,8 +361,8 @@ export default {
             this.$toast.show(toastMsg);
           }
         }
-      } catch {
-        this.reportError(this.$options.i18n.takeOwnershipError);
+      } catch (error) {
+        this.reportError(this.$options.i18n.takeOwnershipError, error);
       }
     },
     async playPipelineSchedule(id) {
@@ -297,40 +381,74 @@ export default {
         } else {
           this.playSuccess = true;
         }
-      } catch {
+      } catch (error) {
         this.playSuccess = false;
-        this.reportError(this.$options.i18n.schedulePlayError);
+
+        this.reportError(this.$options.i18n.schedulePlayError, error);
       }
     },
     resetPagination() {
-      this.pagination = {
-        ...defaultPagination,
-      };
+      this.currentPage = 1;
+      this.prevPageCursor = '';
+      this.nextPageCursor = '';
+      this.updateUrl();
     },
     fetchPipelineSchedulesByStatus(scope) {
       this.scope = scope;
       this.resetPagination();
       this.$apollo.queries.schedules.refetch();
     },
-    handlePageChange(page) {
+    handlePageChange(to) {
       const { startCursor, endCursor } = this.schedules.pageInfo;
 
-      if (page > this.pagination.currentPage) {
-        this.pagination = {
-          first: SCHEDULES_PER_PAGE,
-          last: null,
-          prevPageCursor: '',
-          nextPageCursor: endCursor,
-          currentPage: page,
-        };
-      } else {
-        this.pagination = {
-          last: SCHEDULES_PER_PAGE,
-          first: null,
-          prevPageCursor: startCursor,
-          currentPage: page,
-        };
+      if (to === 'next') {
+        this.prevPageCursor = '';
+        this.nextPageCursor = endCursor;
+        this.currentPage += 1;
+      } else if (to === 'prev') {
+        this.prevPageCursor = startCursor;
+        this.nextPageCursor = '';
+        this.currentPage -= 1;
       }
+
+      this.track('click_navigation', { label: to });
+      this.updateUrl();
+      scrollToElement(this.$el);
+    },
+    onUpdateSorting(sortValue, sortBy, sortDesc) {
+      this.sortValue = sortValue;
+      this.sortBy = sortBy;
+      this.sortDesc = sortDesc;
+
+      this.resetPagination();
+    },
+    updateUrl() {
+      const { href, search } = window.location;
+      const queryParams = queryToObject(search, { gatherArrays: true });
+      const {
+        scope,
+        currentPage: page = 1,
+        prevPageCursor: prev,
+        nextPageCursor: next,
+        sortValue: sort,
+      } = this;
+
+      const params = { scope, page, prev, next, sort };
+      for (const [param, value] of Object.entries(params)) {
+        if (value && (param !== 'scope' || value !== ALL_SCOPE)) {
+          queryParams[param] = value;
+        } else {
+          delete queryParams[param];
+        }
+      }
+
+      // We want to replace the history state so that back button
+      // correctly reloads the page with previous URL.
+      updateHistory({
+        url: setUrlParams(queryParams, { url: href, clearParams: true }),
+        title: document.title,
+        replace: true,
+      });
     },
   },
 };
@@ -345,7 +463,7 @@ export default {
     <gl-alert v-if="playSuccess" class="gl-my-3" variant="info" @dismiss="playSuccess = false">
       <gl-sprintf :message="$options.i18n.playSuccess">
         <template #link="{ content }">
-          <gl-link :href="pipelinesPath" class="gl-text-decoration-none!">{{ content }}</gl-link>
+          <gl-link :href="pipelinesPath" class="!gl-no-underline">{{ content }}</gl-link>
         </template>
       </gl-sprintf>
     </gl-alert>
@@ -364,13 +482,15 @@ export default {
       </gl-button>
     </gl-alert>
 
+    <local-storage-sync v-model="sortingState" :storage-key="$options.sortStorageKey" />
+
     <pipeline-schedule-empty-state v-if="showEmptyState" />
 
     <gl-tabs
       v-else
       sync-active-tab-with-query-params
       query-param-name="scope"
-      nav-class="gl-flex-grow-1 gl-align-items-center gl-mt-2"
+      nav-class="gl-grow gl-items-center gl-mt-2"
     >
       <gl-tab
         v-for="tab in tabs"
@@ -385,7 +505,7 @@ export default {
           <template v-if="tab.showBadge">
             <gl-loading-icon v-if="tab.scope === scope && isLoading" class="gl-ml-2" />
 
-            <gl-badge v-else-if="tab.count" size="sm" class="gl-tab-counter-badge">
+            <gl-badge v-else-if="tab.count" class="gl-tab-counter-badge">
               {{ tab.count }}
             </gl-badge>
           </template>
@@ -397,20 +517,22 @@ export default {
           <pipeline-schedules-table
             :schedules="schedules.list"
             :current-user="schedules.currentUser"
+            :sort-by="sortBy"
+            :sort-desc="sortDesc"
             @showTakeOwnershipModal="setTakeOwnershipModal"
             @showDeleteModal="setDeleteModal"
             @playPipelineSchedule="playPipelineSchedule"
+            @update-sorting="onUpdateSorting"
           />
 
-          <gl-pagination
-            v-if="showPagination"
-            :value="pagination.currentPage"
-            :prev-page="prevPage"
-            :next-page="nextPage"
-            align="center"
-            class="gl-mt-5"
-            @input="handlePageChange"
-          />
+          <div class="gl-flex gl-justify-center">
+            <gl-keyset-pagination
+              v-if="showPagination"
+              v-bind="schedules.pageInfo"
+              @prev="handlePageChange('prev')"
+              @next="handlePageChange('next')"
+            />
+          </div>
         </template>
       </gl-tab>
 

@@ -10,6 +10,8 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
   let_it_be_with_refind(:project, reload: true) { create(:project, :public) }
   let_it_be_with_refind(:assignee) { create(:user) }
 
+  let_it_be(:ghost_user) { Users::Internal.in_organization(project.organization).ghost }
+
   let(:notification) { described_class.new }
 
   around(:example, :deliver_mails_inline) do |example|
@@ -253,16 +255,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     it_behaves_like 'participating by assignee notification', check_delivery_jobs_queue: check_delivery_jobs_queue
   end
 
-  shared_examples 'declines the invite' do
-    specify do
-      member = source.members.last
-
-      expect do
-        notification.decline_invite(member)
-      end.to change { ActionMailer::Base.deliveries.size }.by(1)
-    end
-  end
-
   describe '.permitted_actions' do
     it 'includes public methods' do
       expect(described_class.permitted_actions).to include(:access_token_created)
@@ -324,7 +316,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
       end
 
       describe "never emails the ghost user" do
-        let(:key_options) { { user: Users::Internal.ghost } }
+        let(:key_options) { { user: ghost_user } }
 
         it "does not send email to key owner" do
           expect { subject }.not_to have_enqueued_email(key.id, mail: "new_ssh_key_email")
@@ -345,7 +337,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
       end
 
       describe "never emails the ghost user" do
-        let(:key_options) { { user: Users::Internal.ghost } }
+        let(:key_options) { { user: ghost_user } }
 
         it "does not send email to key owner" do
           expect { subject }.not_to have_enqueued_email(key.id, mail: "new_gpg_key_email")
@@ -377,23 +369,25 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
 
     describe '#resource_access_token_about_to_expire' do
-      let_it_be(:project_bot) { create(:user, :project_bot) }
-      let_it_be(:expiring_token) { create(:personal_access_token, user: project_bot, expires_at: 5.days.from_now) }
+      let_it_be(:project_bot) { create(:user, :project_bot, username: 'project_bot') }
+      let_it_be(:expiring_token) { "Expiring Token" }
 
-      let_it_be(:owner1) { create(:user) }
-      let_it_be(:owner2) { create(:user) }
+      let_it_be(:owner1) { create(:user, username: 'owner1') }
+      let_it_be(:owner2) { create(:user, username: 'owner2') }
+      let_it_be(:maintainer) { create(:user, username: 'maintainer') }
+      let_it_be(:parent_group) { create(:group) }
+      let_it_be(:group) { create(:group, parent: parent_group) }
 
       subject(:notification_service) do
-        notification.resource_access_tokens_about_to_expire(project_bot, [expiring_token.name])
+        notification.bot_resource_access_token_about_to_expire(project_bot, expiring_token)
       end
 
       context 'when the resource is a group' do
-        let(:group) { create(:group) }
-
-        before do
+        before_all do
           group.add_owner(owner1)
           group.add_owner(owner2)
           group.add_reporter(project_bot)
+          group.add_maintainer(maintainer)
         end
 
         it 'sends emails to the group owners' do
@@ -401,45 +395,374 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
             have_enqueued_email(
               owner1,
               project_bot.resource_bot_resource,
-              [expiring_token.name],
-              mail: "resource_access_tokens_about_to_expire_email"
+              expiring_token,
+              {},
+              mail: "bot_resource_access_token_about_to_expire_email"
             ).and(
               have_enqueued_email(
                 owner2,
                 project_bot.resource_bot_resource,
-                [expiring_token.name],
-                mail: "resource_access_tokens_about_to_expire_email"
+                expiring_token,
+                {},
+                mail: "bot_resource_access_token_about_to_expire_email"
               )
             )
           )
+        end
+
+        it "logs notication sent message" do
+          expect(Gitlab::AppLogger).to(
+            receive(:info)
+              .with({ message: "Notifying resource access token owner about expiring tokens",
+                      class: described_class,
+                      user_id: owner1.id })
+          )
+
+          expect(Gitlab::AppLogger).to(
+            receive(:info)
+            .with({ message: "Notifying resource access token owner about expiring tokens",
+              class: described_class,
+              user_id: owner2.id })
+          )
+
+          notification_service
+        end
+
+        it 'does not send an email to group maintainer' do
+          expect { notification_service }.not_to(
+            have_enqueued_email(
+              maintainer,
+              project_bot.resource_bot_resource,
+              expiring_token,
+              mail: "bot_resource_access_token_about_to_expire_email"
+            )
+          )
+        end
+
+        context 'when group has inherited members' do
+          let_it_be(:parent_owner) { create(:user) }
+          let_it_be(:expiring_token_1) { "Expiring Token 1" }
+          let_it_be(:expiring_token_2) { "Expirigin Token 2" }
+
+          subject(:notification_service) do
+            notification.bot_resource_access_token_about_to_expire(project_bot, [expiring_token_1, expiring_token_2])
+          end
+
+          before_all do
+            parent_group.add_owner(parent_owner)
+          end
+
+          before(:context) do
+            group.resource_access_token_notify_inherited = true
+            group.save!
+          end
+
+          # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+          after(:context) do
+            group.resource_access_token_notify_inherited = nil
+            group.save!
+          end
+
+          it 'sends email to inherited members' do
+            expect { notification_service }.to(
+              have_enqueued_email(
+                owner1,
+                project_bot.resource_bot_resource,
+                [expiring_token_1, expiring_token_2],
+                {},
+                mail: "bot_resource_access_token_about_to_expire_email"
+              ).and(
+                have_enqueued_email(
+                  parent_owner,
+                  project_bot.resource_bot_resource,
+                  [expiring_token_1, expiring_token_2],
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                )
+              )
+            )
+          end
+
+          context 'when multiple memberships exist for the same user' do
+            before do
+              parent_group.add_owner(owner1)
+
+              # GroupFinder by default uses DISTINCT ON (user_id, invite_email), so the duplicate memberships
+              # must have differences in these columns to produce duplicate emails
+              member = Member.find_by(source: parent_group, user: owner1)
+              member.update!(invite_email: owner1.email)
+            end
+
+            it 'does not send duplicate emails to owner1' do
+              expect { notification_service }.to(
+                have_enqueued_email(
+                  owner1,
+                  project_bot.resource_bot_resource,
+                  [expiring_token_1, expiring_token_2],
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                ).once
+              )
+            end
+          end
+
+          shared_examples 'does not email inherited members' do
+            it 'sends email to direct members' do
+              expect { notification_service }.to(
+                have_enqueued_email(
+                  owner1,
+                  project_bot.resource_bot_resource,
+                  [expiring_token_1, expiring_token_2],
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                ).and(
+                  have_enqueued_email(
+                    owner2,
+                    project_bot.resource_bot_resource,
+                    [expiring_token_1, expiring_token_2],
+                    {},
+                    mail: "bot_resource_access_token_about_to_expire_email"
+                  )
+                )
+              )
+            end
+
+            it 'does not send email to inherited members' do
+              expect { notification_service }.not_to(
+                have_enqueued_email(
+                  parent_owner,
+                  project_bot.resource_bot_resource,
+                  [expiring_token_1, expiring_token_2],
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                )
+              )
+            end
+          end
+
+          context 'when instance setting resource_access_token_notify_inherited is enforced' do
+            before do
+              stub_application_setting(
+                resource_access_token_notify_inherited: false,
+                lock_resource_access_token_notify_inherited: true
+              )
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
+
+          context 'when group setting resource_access_token_notify_inherited is false' do
+            before(:context) do
+              group.resource_access_token_notify_inherited = false
+              group.save!
+            end
+
+            # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+            after(:context) do
+              group.resource_access_token_notify_inherited = nil
+              group.save!
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
+
+          context 'when parent group setting resource_access_token_notify_inherited is false' do
+            before(:context) do
+              parent_group.resource_access_token_notify_inherited = false
+              parent_group.save!
+            end
+
+            # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+            after(:context) do
+              parent_group.resource_access_token_notify_inherited = nil
+              parent_group.save!
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
         end
       end
 
       context 'when the resource is a project' do
-        let(:project) { create(:project) }
+        let_it_be(:namespace) { create(:namespace, :with_namespace_settings) }
+        let_it_be(:project) { create(:project, namespace: namespace) }
 
-        before do
-          project.add_maintainer(owner1)
-          project.add_maintainer(owner2)
+        before_all do
+          project.add_maintainer(maintainer)
           project.add_reporter(project_bot)
         end
 
-        it 'sends emails to the group owners' do
+        it 'sends emails to the project maintainers and owners' do
+          expect(project.owner).to be_a(User)
+
           expect { notification_service }.to(
             have_enqueued_email(
-              owner1,
+              maintainer,
               project_bot.resource_bot_resource,
-              [expiring_token.name],
-              mail: "resource_access_tokens_about_to_expire_email"
+              expiring_token,
+              {},
+              mail: "bot_resource_access_token_about_to_expire_email"
             ).and(
               have_enqueued_email(
-                owner2,
+                project.owner,
                 project_bot.resource_bot_resource,
-                [expiring_token.name],
-                mail: "resource_access_tokens_about_to_expire_email"
+                expiring_token,
+                {},
+                mail: "bot_resource_access_token_about_to_expire_email"
               )
             )
           )
+        end
+
+        context 'when project has inherited members' do
+          before_all do
+            project.namespace = group
+            project.save!
+            group.add_owner(owner1)
+            project.add_owner(owner2)
+          end
+
+          before(:context) do
+            group.resource_access_token_notify_inherited = true
+            group.save!
+          end
+
+          # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+          after(:context) do
+            group.resource_access_token_notify_inherited = nil
+            group.save!
+          end
+
+          it 'sends email to inherited members' do
+            expect { notification_service }.to(
+              have_enqueued_email(
+                maintainer,
+                project_bot.resource_bot_resource,
+                expiring_token,
+                {},
+                mail: "bot_resource_access_token_about_to_expire_email"
+              ).and(
+                have_enqueued_email(
+                  owner1,
+                  project_bot.resource_bot_resource,
+                  expiring_token,
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                )
+              )
+            )
+          end
+
+          context 'when multiple memberships exist for the same user' do
+            before do
+              parent_group.add_owner(owner1)
+
+              # MembersFinder by defaul tuses DISTINCT ON (user_id, invite_email), so the duplicate memberships
+              # must have differences in these columns to produce duplicate emails
+              member = Member.find_by(source: parent_group, user: owner1)
+              member.update!(invite_email: owner1.email)
+            end
+
+            it 'does not send duplicate emails to owner1' do
+              expect { notification_service }.to(
+                have_enqueued_email(
+                  owner1,
+                  project_bot.resource_bot_resource,
+                  expiring_token,
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                ).once
+              )
+            end
+          end
+
+          shared_examples 'does not email inherited members' do
+            it 'sends email to direct members' do
+              expect { notification_service }.to(
+                have_enqueued_email(
+                  maintainer,
+                  project_bot.resource_bot_resource,
+                  expiring_token,
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                ).and(
+                  have_enqueued_email(
+                    owner2,
+                    project_bot.resource_bot_resource,
+                    expiring_token,
+                    {},
+                    mail: "bot_resource_access_token_about_to_expire_email"
+                  )
+                )
+              )
+            end
+
+            it 'does not send email to inherited members' do
+              expect { notification_service }.not_to(
+                have_enqueued_email(
+                  owner1,
+                  project_bot.resource_bot_resource,
+                  expiring_token,
+                  {},
+                  mail: "bot_resource_access_token_about_to_expire_email"
+                )
+              )
+            end
+          end
+
+          context 'when instance setting resource_access_token_notify_inherited is enforced' do
+            before do
+              stub_application_setting(
+                resource_access_token_notify_inherited: false,
+                lock_resource_access_token_notify_inherited: true
+              )
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
+
+          context 'when group setting resource_access_token_notify_inherited is false' do
+            before(:context) do
+              group.resource_access_token_notify_inherited = false
+              group.save!
+            end
+
+            # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+            after(:context) do
+              group.resource_access_token_notify_inherited = nil
+              group.save!
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
+
+          context 'when parent group setting resource_access_token_notify_inherited is false' do
+            before(:context) do
+              parent_group.lock_resource_access_token_notify_inherited = true
+              parent_group.resource_access_token_notify_inherited = false
+              parent_group.save!
+            end
+
+            # since this setting is on namespace_settings, it doesn't get automatically rolled back correctly
+            after(:context) do
+              parent_group.lock_resource_access_token_notify_inherited = false
+              parent_group.resource_access_token_notify_inherited = nil
+              parent_group.save!
+            end
+
+            it_behaves_like 'does not email inherited members'
+          end
+        end
+      end
+
+      # this should never happen in real-world usage, but we have to make rspec coverage happy
+      context 'when resource is missing' do
+        it 'raises an ArgumentError for invalid project bot' do
+          allow(notification).to receive(:send_bot_rat_expiry_to_inherited?).and_return(true)
+          resource_double = double('Not Real Class')
+          allow(project_bot).to receive(:resource_bot_resource).and_return(resource_double)
+
+          expect { notification_service }.to raise_error(ArgumentError)
         end
       end
     end
@@ -448,10 +771,93 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
       let_it_be(:user) { create(:user) }
       let_it_be(:pat) { create(:personal_access_token, user: user, expires_at: 5.days.from_now) }
 
-      subject { notification.access_token_about_to_expire(user, [pat.name]) }
+      subject(:notification_service) { notification.access_token_about_to_expire(user, [pat.name]) }
 
       it 'sends email to the token owner' do
-        expect { subject }.to have_enqueued_email(user, [pat.name], mail: "access_token_about_to_expire_email")
+        expect { notification_service }.to have_enqueued_email(user, [pat.name], {}, mail: "access_token_about_to_expire_email")
+      end
+
+      it "logs notication sent message" do
+        expect(Gitlab::AppLogger).to(
+          receive(:info)
+            .with({ message: "Notifying User about expiring tokens",
+                    class: described_class,
+                    user_id: user.id })
+        )
+
+        notification_service
+      end
+    end
+
+    describe '#deploy_token_about_to_expire' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:regular_user) { create(:user) }
+      let_it_be(:project_owner) { create(:user) }
+      let_it_be(:project_maintainer) { create(:user) }
+      let_it_be(:deploy_token) { create(:deploy_token, expires_at: 5.days.from_now.iso8601) }
+      let_it_be(:project_deploy_token) { create(:project_deploy_token, project: project, deploy_token: deploy_token) }
+
+      before do
+        project.add_owner(project_owner)
+        project.add_maintainer(project_maintainer)
+      end
+
+      it 'sends emails to project owner and maintainer' do
+        expect do
+          notification.deploy_token_about_to_expire(project_owner, deploy_token.name, project)
+        end.to have_enqueued_email(project_owner, deploy_token.name, project, {}, mail: "deploy_token_about_to_expire_email")
+
+        expect do
+          notification.deploy_token_about_to_expire(project_maintainer, deploy_token.name, project)
+        end.to have_enqueued_email(project_maintainer, deploy_token.name, project, {}, mail: "deploy_token_about_to_expire_email")
+      end
+
+      it 'logs notification sent message for both users' do
+        expect(Gitlab::AppLogger).to receive(:info).with({
+          message: "Notifying user about expiring deploy tokens",
+          class: described_class,
+          user_id: project_owner.id
+        })
+
+        expect(Gitlab::AppLogger).to receive(:info).with({
+          message: "Notifying user about expiring deploy tokens",
+          class: described_class,
+          user_id: project_maintainer.id
+        })
+
+        notification.deploy_token_about_to_expire(project_owner, deploy_token.name, project)
+        notification.deploy_token_about_to_expire(project_maintainer, deploy_token.name, project)
+      end
+
+      context 'when user is not allowed to receive notifications' do
+        before do
+          project_owner.block!
+        end
+
+        it 'does not send email to blocked user' do
+          expect do
+            notification.deploy_token_about_to_expire(project_owner, deploy_token.name, project)
+          end.not_to have_enqueued_email(project_owner, deploy_token.name, project, {}, mail: "deploy_token_about_to_expire_email")
+
+          expect do
+            notification.deploy_token_about_to_expire(project_maintainer, deploy_token.name, project)
+          end.to have_enqueued_email(project_maintainer, deploy_token.name, project, {}, mail: "deploy_token_about_to_expire_email")
+        end
+      end
+
+      context 'when user is neither owner nor maintainer' do
+        let(:regular_user) { create(:user) }
+
+        it 'does not send email to users without proper permissions' do
+          expect do
+            notification.deploy_token_about_to_expire(regular_user, deploy_token.name, project)
+          end.not_to have_enqueued_email(regular_user, deploy_token.name, project, {}, mail: "deploy_token_about_to_expire_email")
+        end
+
+        it 'does not log notification message for unauthorized users' do
+          expect(Gitlab::AppLogger).not_to receive(:info)
+          notification.deploy_token_about_to_expire(regular_user, deploy_token.name, project)
+        end
       end
     end
 
@@ -502,6 +908,27 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         end
       end
     end
+
+    describe '#access_token_rotated' do
+      let_it_be(:user) { create(:user) }
+      let_it_be(:pat) { create(:personal_access_token, user: user) }
+
+      subject(:notification_service) { notification.access_token_rotated(user, pat.name) }
+
+      it 'sends email to the token owner' do
+        expect { notification_service }.to have_enqueued_email(user, pat.name, mail: "access_token_rotated_email")
+      end
+
+      context 'when user is not allowed to receive notifications' do
+        before do
+          user.block!
+        end
+
+        it 'does not send email to the token owner' do
+          expect { notification_service }.not_to have_enqueued_email(user, pat.name, mail: "access_token_rotated_email")
+        end
+      end
+    end
   end
 
   describe 'SSH Keys' do
@@ -548,24 +975,81 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
   end
 
   describe '#unknown_sign_in' do
-    let_it_be(:user) { create(:user) }
-    let_it_be(:ip) { '127.0.0.1' }
-    let_it_be(:time) { Time.current }
+    let(:user) { create(:user) }
+    let(:ip) { '127.0.0.1' }
+    let(:country) { 'Germany' }
+    let(:city) { 'Frankfurt' }
+    let(:request_info) { Struct.new(:country, :city).new(country, city) }
+    let(:time) { Time.current }
 
-    subject { notification.unknown_sign_in(user, ip, time) }
+    subject { notification.unknown_sign_in(user, ip, time, request_info) }
 
     it 'sends email to the user' do
-      expect { subject }.to have_enqueued_email(user, ip, time, mail: 'unknown_sign_in_email')
+      expect { subject }.to have_enqueued_email(user, ip, time, { country: country, city: city }, mail: 'unknown_sign_in_email')
+    end
+  end
+
+  describe '#enabled_two_factor' do
+    let_it_be(:user) { create(:user) }
+
+    describe 'Passkey' do
+      subject { notification.enabled_two_factor(user, :passkey, device_name: 'MacBook Touch ID') }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, 'MacBook Touch ID', :passkey, mail: 'enabled_two_factor_webauthn_email')
+      end
+    end
+
+    describe 'Time-based OTP' do
+      subject { notification.enabled_two_factor(user, :otp) }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, mail: 'enabled_two_factor_otp_email')
+      end
+    end
+
+    describe 'WebAuthn' do
+      subject { notification.enabled_two_factor(user, :webauthn, device_name: 'MacBook Touch ID') }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, 'MacBook Touch ID', mail: 'enabled_two_factor_webauthn_email')
+      end
     end
   end
 
   describe '#disabled_two_factor' do
     let_it_be(:user) { create(:user) }
 
-    subject { notification.disabled_two_factor(user) }
+    describe 'Two Factor' do
+      subject { notification.disabled_two_factor(user) }
 
-    it 'sends email to the user' do
-      expect { subject }.to have_enqueued_email(user, mail: 'disabled_two_factor_email')
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, mail: 'disabled_two_factor_email')
+      end
+    end
+
+    describe 'Passkey' do
+      subject { notification.disabled_two_factor(user, :passkey, device_name: 'MacBook Touch ID') }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, 'MacBook Touch ID', :passkey, mail: 'disabled_two_factor_webauthn_email')
+      end
+    end
+
+    describe 'Time-based OTP' do
+      subject { notification.disabled_two_factor(user, :otp) }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, mail: 'disabled_two_factor_otp_email')
+      end
+    end
+
+    describe 'WebAuthn' do
+      subject { notification.disabled_two_factor(user, :webauthn, device_name: 'MacBook Touch ID') }
+
+      it 'sends email to the user' do
+        expect { subject }.to have_enqueued_email(user, 'MacBook Touch ID', mail: 'disabled_two_factor_webauthn_email')
+      end
     end
   end
 
@@ -600,10 +1084,14 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
           allow(::Gitlab::Email::IncomingEmail).to receive(:supports_wildcard?).and_return(true)
         end
 
+        let_it_be(:project) { create(:project) }
+        let_it_be(:support_bot) { create(:support_bot) }
         let(:mailer) { double(deliver_later: true) }
-        let(:issue) { create(:issue, author: Users::Internal.support_bot) }
-        let(:project) { issue.project }
-        let(:note) { create(:note, noteable: issue, project: project) }
+        let(:issue) { create(:issue, project: project, author: support_bot) }
+        let(:work_item) { create(:work_item, :ticket, project: project, author: support_bot) }
+        let(:noteable) { issue }
+
+        let(:note) { create(:note, noteable: noteable, project: project) }
 
         subject(:notification_service) { described_class.new }
 
@@ -628,109 +1116,119 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
           it_behaves_like 'notification with exact metric events', 0
         end
 
-        it_behaves_like 'no participants are notified'
+        shared_examples 'about sending service desk emails' do
+          it_behaves_like 'no participants are notified'
 
-        context 'do exist and note not confidential' do
-          let!(:issue_email_participant) { issue.issue_email_participants.create!(email: 'service.desk@example.com') }
+          context 'when issue email participants exist and note not confidential' do
+            let!(:issue_email_participant) { noteable.issue_email_participants.create!(email: 'service.desk@example.com') }
 
-          before do
-            issue.update!(external_author: 'service.desk@example.com')
-            project.update!(service_desk_enabled: true)
-          end
-
-          it 'sends the email' do
-            expect(Notify).to receive(:service_desk_new_note_email)
-              .with(issue.id, note.id, issue_email_participant)
-
-            notification_service.new_note(note)
-          end
-
-          it_behaves_like 'notification with exact metric events', 1
-
-          context 'when service desk is disabled' do
             before do
-              project.update!(service_desk_enabled: false)
+              noteable.update!(external_author: 'service.desk@example.com')
+              project.update!(service_desk_enabled: true)
             end
 
-            it_behaves_like 'no participants are notified'
-          end
-
-          context 'with multiple external participants' do
-            let!(:other_external_participant) { issue.issue_email_participants.create!(email: 'user@example.com') }
-
-            it 'sends emails' do
+            it 'sends the email' do
               expect(Notify).to receive(:service_desk_new_note_email)
-                .with(issue.id, note.id, IssueEmailParticipant).twice
+                .with(noteable.id, note.id, issue_email_participant)
 
               notification_service.new_note(note)
             end
 
-            context 'when note is from an external participant' do
-              shared_examples 'only sends one Service Desk notification email' do
-                it 'sends one email' do
-                  expect(Notify).not_to receive(:service_desk_new_note_email)
-                    .with(issue.id, note.id, non_recipient)
+            it_behaves_like 'notification with exact metric events', 1
 
-                  expect(Notify).to receive(:service_desk_new_note_email)
-                    .with(issue.id, note.id, recipient)
-
-                  notification_service.new_note(note)
-                end
+            context 'when service desk is disabled' do
+              before do
+                project.update!(service_desk_enabled: false)
               end
 
-              let!(:note) do
-                create(
-                  :note_on_issue,
-                  author: Users::Internal.support_bot,
-                  noteable: issue,
-                  project_id: issue.project_id,
-                  note: '@mention referenced, @unsubscribed_mentioned and @outsider also'
-                )
+              it_behaves_like 'no participants are notified'
+            end
+
+            context 'with multiple external participants' do
+              let!(:other_external_participant) { noteable.issue_email_participants.create!(email: 'user@example.com') }
+
+              it 'sends emails' do
+                expect(Notify).to receive(:service_desk_new_note_email)
+                  .with(noteable.id, note.id, IssueEmailParticipant).twice
+
+                notification_service.new_note(note)
               end
 
-              context 'and the note is from the external issue author' do
-                let(:non_recipient) { issue_email_participant }
-                let(:recipient) { other_external_participant }
-                let!(:note_metadata) do
-                  create(:note_metadata, note: note, email_participant: issue_email_participant.email)
+              context 'when note is from an external participant' do
+                shared_examples 'only sends one Service Desk notification email' do
+                  it 'sends one email' do
+                    expect(Notify).not_to receive(:service_desk_new_note_email)
+                      .with(noteable.id, note.id, non_recipient)
+
+                    expect(Notify).to receive(:service_desk_new_note_email)
+                      .with(noteable.id, note.id, recipient)
+
+                    notification_service.new_note(note)
+                  end
                 end
 
-                it_behaves_like 'only sends one Service Desk notification email'
-              end
-
-              context 'and the note is from another external participant' do
-                let(:non_recipient) { other_external_participant }
-                let(:recipient) { issue_email_participant }
-                let!(:note_metadata) do
-                  create(:note_metadata, note: note, email_participant: other_external_participant.email)
+                let!(:note) do
+                  create(
+                    :note_on_issue,
+                    author: support_bot,
+                    noteable: noteable,
+                    project_id: noteable.project_id,
+                    note: '@mention referenced, @unsubscribed_mentioned and @outsider also'
+                  )
                 end
 
-                it_behaves_like 'only sends one Service Desk notification email'
-
-                context 'and the external note auhor email has different format' do
-                  let(:non_recipient) { other_external_participant }
-                  let(:recipient) { issue_email_participant }
+                context 'and the note is from the external issue author' do
+                  let(:non_recipient) { issue_email_participant }
+                  let(:recipient) { other_external_participant }
                   let!(:note_metadata) do
-                    create(:note_metadata, note: note, email_participant: 'USER@example.com')
+                    create(:note_metadata, note: note, email_participant: issue_email_participant.email)
                   end
 
                   it_behaves_like 'only sends one Service Desk notification email'
                 end
+
+                context 'and the note is from another external participant' do
+                  let(:non_recipient) { other_external_participant }
+                  let(:recipient) { issue_email_participant }
+                  let!(:note_metadata) do
+                    create(:note_metadata, note: note, email_participant: other_external_participant.email)
+                  end
+
+                  it_behaves_like 'only sends one Service Desk notification email'
+
+                  context 'and the external note auhor email has different format' do
+                    let(:non_recipient) { other_external_participant }
+                    let(:recipient) { issue_email_participant }
+                    let!(:note_metadata) do
+                      create(:note_metadata, note: note, email_participant: 'USER@example.com')
+                    end
+
+                    it_behaves_like 'only sends one Service Desk notification email'
+                  end
+                end
               end
             end
           end
+
+          context 'when issue email participants exist and note is confidential' do
+            let(:note) { create(:note, noteable: noteable, project: project, confidential: true) }
+            let!(:issue_email_participant) { noteable.issue_email_participants.create!(email: 'service.desk@example.com') }
+
+            before do
+              noteable.update!(external_author: 'service.desk@example.com')
+              project.update!(service_desk_enabled: true)
+            end
+
+            it_behaves_like 'no participants are notified'
+          end
         end
 
-        context 'do exist and note is confidential' do
-          let(:note) { create(:note, noteable: issue, project: project, confidential: true) }
-          let!(:issue_email_participant) { issue.issue_email_participants.create!(email: 'service.desk@example.com') }
+        include_examples 'about sending service desk emails'
 
-          before do
-            issue.update!(external_author: 'service.desk@example.com')
-            project.update!(service_desk_enabled: true)
-          end
+        context 'when noteable is a work item ticket' do
+          let(:noteable) { work_item }
 
-          it_behaves_like 'no participants are notified'
+          include_examples 'about sending service desk emails'
         end
       end
 
@@ -1203,9 +1701,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
 
     context 'personal snippet note', :deliver_mails_inline do
-      let(:snippet) { create(:personal_snippet, :public, author: @u_snippet_author) }
-      let(:note)    { create(:note_on_personal_snippet, noteable: snippet, note: '@mentioned note', author: @u_note_author) }
-
       before do
         @u_watcher               = create_global_setting_for(create(:user), :watch)
         @u_participant           = create_global_setting_for(create(:user), :participating)
@@ -1218,6 +1713,9 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
 
         reset_delivered_emails!
       end
+
+      let(:snippet) { create(:personal_snippet, :public, author: @u_snippet_author) }
+      let(:note)    { create(:note_on_personal_snippet, noteable: snippet, note: '@mentioned note', author: @u_note_author) }
 
       let!(:notes) do
         [
@@ -1349,9 +1847,9 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
 
       let_it_be(:design) { create(:design, :with_file) }
       let_it_be(:project) { design.project }
-      let_it_be(:member_and_mentioned) { create(:user, developer_projects: [project]) }
-      let_it_be(:member_and_author_of_second_note) { create(:user, developer_projects: [project]) }
-      let_it_be(:member_and_not_mentioned) { create(:user, developer_projects: [project]) }
+      let_it_be(:member_and_mentioned) { create(:user, developer_of: project) }
+      let_it_be(:member_and_author_of_second_note) { create(:user, developer_of: project) }
+      let_it_be(:member_and_not_mentioned) { create(:user, developer_of: project) }
       let_it_be(:non_member_and_mentioned) { create(:user) }
       let_it_be(:note) do
         create(
@@ -1392,6 +1890,60 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
 
           should_not_email_anyone
         end
+      end
+    end
+  end
+
+  context 'wiki page note', :deliver_mails_inline do
+    let_it_be(:project) { create(:project, :public, :repository) }
+    let_it_be(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
+    let_it_be(:note) { create(:note, noteable: wiki_page_meta, project: project) }
+
+    before_all do
+      build_team(project)
+      build_group(project)
+      update_custom_notification(:new_note, @u_guest_custom, resource: project)
+      update_custom_notification(:new_note, @u_custom_global)
+    end
+
+    before do
+      reset_delivered_emails!
+    end
+
+    describe '#new_note, #perform_enqueued_jobs' do
+      it do
+        notification.new_note(note)
+        should_email(@u_guest_watcher)
+        should_email(@u_custom_global)
+        should_email(@u_guest_custom)
+        should_email(@u_watcher)
+        should_email_nested_group_user(@pg_watcher)
+        should_not_email(@u_mentioned)
+        should_not_email(note.author)
+        should_not_email(@u_participating)
+        should_not_email(@u_disabled)
+        should_not_email(@u_lazy_participant)
+        should_not_email_nested_group_user(@pg_disabled)
+      end
+
+      it do
+        note.update_attribute(:note, '@mention referenced')
+        notification.new_note(note)
+
+        should_email(@u_guest_watcher)
+        should_email(@u_watcher)
+        should_email(@u_mentioned)
+        should_email_nested_group_user(@pg_watcher)
+        should_not_email(note.author)
+        should_not_email(@u_participating)
+        should_not_email(@u_disabled)
+        should_not_email(@u_lazy_participant)
+        should_not_email_nested_group_user(@pg_disabled)
+      end
+
+      it_behaves_like 'project emails are disabled' do
+        let(:notification_target)  { note }
+        let(:notification_trigger) { notification.new_note(note) }
       end
     end
   end
@@ -1494,9 +2046,9 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
   end
 
-  describe 'Issues', :aggregate_failures do
+  describe 'Issues and Work Items', :aggregate_failures do
     let(:another_project) { create(:project, :public, namespace: group) }
-    let(:issue) { create :issue, project: project, assignees: [assignee], description: 'cc @participant @unsubscribed_mentioned' }
+    let(:issue) { create(:issue, project: project, assignees: [assignee], description: 'cc @participant @unsubscribed_mentioned') }
 
     let_it_be(:group) { create(:group) }
     let_it_be(:project) { create(:project, :public, namespace: group) }
@@ -1663,6 +2215,28 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
           let(:current_user) { create(:user, :ghost) }
 
           include_examples 'is not able to send notifications', check_delivery_jobs_queue: true
+        end
+      end
+
+      context 'with work item' do
+        shared_examples 'notifies user with custom notification settings' do
+          it 'notifies user with custom notification settings' do
+            expect do
+              notification.new_issue(item, @u_guest_custom)
+            end.to enqueue_mail_with(Notify, :new_issue_email, @u_guest_custom, item, nil)
+          end
+        end
+
+        context 'of type task' do
+          let(:item) { create(:work_item, :task, project: project) }
+
+          include_examples 'notifies user with custom notification settings'
+        end
+
+        context 'of type ticket' do
+          let(:item) { create(:work_item, :ticket, project: project) }
+
+          include_examples 'notifies user with custom notification settings'
         end
       end
     end
@@ -2374,7 +2948,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         let(:maintainer) { create(:user) }
 
         describe '#approve_mr' do
-          it 'will notify the author, subscribers, and assigned users' do
+          it 'notifies the author, subscribers, and assigned users' do
             notification.approve_mr(merge_request, maintainer)
 
             merge_request.assignees.each { |assignee| should_email(assignee) }
@@ -2399,7 +2973,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         end
 
         describe '#unapprove_mr' do
-          it 'will notify the author, subscribers, and assigned users' do
+          it 'notifies the author, subscribers, and assigned users' do
             notification.unapprove_mr(merge_request, maintainer)
 
             merge_request.assignees.each { |assignee| should_email(assignee) }
@@ -2658,6 +3232,8 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
 
       describe 'triggers push_to_merge_request_email with corresponding email' do
         let_it_be(:merge_request) { create(:merge_request, author: author, source_project: project) }
+        let(:existing_commits) { mock_commits(50) }
+        let(:expected_existing_commits) { [commit_to_hash(existing_commits.first), commit_to_hash(existing_commits.last)] }
 
         def mock_commits(length)
           Array.new(length) { |i| double(:commit, short_id: SecureRandom.hex(4), title: "This is commit #{i}") }
@@ -2666,9 +3242,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         def commit_to_hash(commit)
           { short_id: commit.short_id, title: commit.title }
         end
-
-        let(:existing_commits) { mock_commits(50) }
-        let(:expected_existing_commits) { [commit_to_hash(existing_commits.first), commit_to_hash(existing_commits.last)] }
 
         before do
           allow(::Notify).to receive(:push_to_merge_request_email).and_call_original
@@ -3227,41 +3800,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
   end
 
-  describe '#invite_member_reminder' do
-    let_it_be(:group_member) { create(:group_member) }
-
-    subject { notification.invite_member_reminder(group_member, 'token', 0) }
-
-    it 'calls the Notify.invite_member_reminder method with the right params' do
-      expect(Notify).to receive(:member_invited_reminder_email).with('Group', group_member.id, 'token', 0).at_least(:once).and_call_original
-
-      subject
-    end
-
-    it 'sends exactly one email' do
-      subject
-
-      expect_delivery_jobs_count(1)
-      expect_enqueud_email('Group', group_member.id, 'token', 0, mail: 'member_invited_reminder_email')
-    end
-  end
-
-  describe '#invite_member' do
-    let_it_be(:group_member) { create(:group_member) }
-
-    subject(:invite_member) { notification.invite_member(group_member, 'token') }
-
-    it 'sends exactly one email' do
-      expect(Notify)
-        .to receive(:member_invited_email).with('Group', group_member.id, 'token').at_least(:once).and_call_original
-
-      invite_member
-
-      expect_delivery_jobs_count(1)
-      expect_enqueud_email('Group', group_member.id, 'token', mail: 'member_invited_email')
-    end
-  end
-
   describe '#new_instance_access_request', :deliver_mails_inline do
     let_it_be(:user) { create(:user, :blocked_pending_approval) }
     let_it_be(:admins) { create_list(:admin, 12, :with_sign_ins) }
@@ -3346,21 +3884,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         let(:notification_trigger) { group.request_access(added_user) }
       end
     end
-
-    describe '#decline_invite' do
-      let(:creator) { create(:user) }
-      let(:group) { create(:group) }
-      let(:member) { create(:user) }
-
-      before do
-        group.add_owner(creator)
-        group.add_developer(member, creator)
-      end
-
-      it_behaves_like 'declines the invite' do
-        let(:source) { group }
-      end
-    end
   end
 
   describe 'ProjectMember', :deliver_mails_inline do
@@ -3403,7 +3926,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
 
       context 'for a project in a group' do
         let(:group_owner) { create(:user) }
-        let(:group) { create(:group).tap { |g| g.add_owner(group_owner) } }
+        let(:group) { create(:group, owners: group_owner) }
 
         context 'when the project has no maintainers' do
           context 'when the group has at least one owner' do
@@ -3477,126 +4000,6 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         end
       end
     end
-
-    describe '#decline_invite' do
-      let(:member) { create(:user) }
-
-      before do
-        project.add_developer(member, current_user: project.first_owner)
-      end
-
-      it_behaves_like 'declines the invite' do
-        let(:source) { project }
-      end
-    end
-
-    describe '#member_about_to_expire' do
-      let_it_be(:group_member) { create(:group_member, expires_at: 7.days.from_now.to_date) }
-      let_it_be(:project_member) { create(:project_member, expires_at: 7.days.from_now.to_date) }
-
-      context "with group member" do
-        it 'emails the user that their group membership will be expired' do
-          notification.member_about_to_expire(group_member)
-
-          should_email(group_member.user)
-        end
-      end
-
-      context "with project member" do
-        it 'emails the user that their project membership will be expired' do
-          notification.member_about_to_expire(project_member)
-
-          should_email(project_member.user)
-        end
-      end
-    end
-  end
-
-  describe '#new_member', :deliver_mails_inline do
-    let_it_be(:source) { create(:group) }
-    let_it_be(:added_user) { create(:user) }
-
-    subject(:new_member) { notification.new_member(member) }
-
-    shared_examples_for 'new member added' do |source_type|
-      it 'triggers a notification about about the added access', deliver_mails_inline: false do
-        new_member
-
-        expect_delivery_jobs_count(1)
-        expect_enqueud_email(source_type, member.id, mail: 'member_access_granted_email')
-      end
-    end
-
-    context 'when source is a Group' do
-      it_behaves_like 'new member added', 'Group' do
-        let_it_be(:member) { create(:group_member, source: source) }
-      end
-
-      it_behaves_like 'group emails are disabled' do
-        let(:notification_target) { source }
-        let(:notification_trigger) { notification_target.add_guest(added_user) }
-      end
-    end
-
-    context 'when source is a Project' do
-      let_it_be(:source) { create(:project) }
-
-      it_behaves_like 'new member added', 'Project' do
-        let_it_be(:member) { create(:project_member, source: project) }
-      end
-
-      it_behaves_like 'project emails are disabled' do
-        let_it_be(:notification_target) { source }
-        let(:notification_trigger) { source.add_guest(added_user) }
-      end
-    end
-
-    context 'when notifications are disabled' do
-      before do
-        create_global_setting_for(added_user, :disabled)
-      end
-
-      it 'does not send a notification' do
-        source.add_guest(added_user)
-        should_not_email_anyone
-      end
-    end
-  end
-
-  describe '#updated_member_expiration' do
-    subject(:updated_member_expiration) { notification.updated_member_expiration(member) }
-
-    context 'for group member' do
-      let_it_be(:member) { create(:group_member) }
-
-      it 'triggers a notification about the expiration change' do
-        updated_member_expiration
-
-        expect_delivery_jobs_count(1)
-        expect_enqueud_email('Group', member.id, mail: 'member_expiration_date_updated_email')
-      end
-    end
-
-    context 'for project member' do
-      let_it_be(:member) { create(:project_member) }
-
-      it 'does not trigger a notification' do
-        updated_member_expiration
-
-        expect_delivery_jobs_count(0)
-      end
-    end
-  end
-
-  describe '#updated_member_access_level' do
-    let_it_be(:member) { create(:group_member) }
-
-    it 'triggers a notification about the access_level change' do
-      notification.updated_member_access_level(member)
-
-      expect_delivery_jobs_count(1)
-      expect_enqueud_email('Group', member.id, mail: 'member_access_granted_email')
-    end
   end
 
   context 'guest user in private project', :deliver_mails_inline do
@@ -3616,7 +4019,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
 
     it 'filters out guests when new note is created' do
-      expect(SentNotification).to receive(:record).with(merge_request, any_args).once
+      expect(SentNotification).to receive(:record).with(merge_request, any_args).once.and_call_original
 
       notification.new_note(note)
 
@@ -4036,6 +4439,36 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
   end
 
+  describe 'Repository rewrite history', :deliver_mails_inline do
+    let(:user) { create(:user) }
+
+    describe '#repository_rewrite_history_success' do
+      it 'emails the specified user only' do
+        notification.repository_rewrite_history_success(project, user)
+
+        should_email(user)
+      end
+
+      it_behaves_like 'project emails are disabled' do
+        let(:notification_target)  { project }
+        let(:notification_trigger) { notification.repository_rewrite_history_success(project, user) }
+      end
+    end
+
+    describe '#repository_rewrite_history_failure' do
+      it 'emails the specified user only' do
+        notification.repository_rewrite_history_failure(project, user, 'Some error')
+
+        should_email(user)
+      end
+
+      it_behaves_like 'project emails are disabled' do
+        let(:notification_target)  { project }
+        let(:notification_trigger) { notification.repository_rewrite_history_failure(project, user, 'Some error') }
+      end
+    end
+  end
+
   describe 'Repository cleanup', :deliver_mails_inline do
     let(:user) { create(:user) }
 
@@ -4099,7 +4532,7 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
     end
   end
 
-  context 'with external authorization service', :deliver_mails_inline do
+  context 'with external authorization service and a specified project', :deliver_mails_inline do
     let(:issue) { create(:issue) }
     let(:project) { issue.project }
     let(:note) { create(:note, noteable: issue, project: project) }
@@ -4123,32 +4556,18 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         enable_external_authorization_service_check
       end
 
-      it 'does not send an email' do
-        expect(Notify).not_to receive(:new_issue_email)
+      it 'checks external auth and sends an email if successful' do
+        expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?).at_least(:once).with(anything, "default_label", any_args).and_return(true)
+        expect(Notify).to receive(:new_issue_email).at_least(:once).with(member.id, issue.id, nil).and_call_original
 
         subject.new_issue(issue, member)
       end
 
-      context 'with admin user' do
-        before do
-          member.update!(admin: true)
-        end
+      it 'checks external auth and does not send an email if denied' do
+        expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?).at_least(:once).with(anything, "default_label", any_args).and_return(false)
+        expect(Notify).not_to receive(:new_issue_email)
 
-        context 'when admin mode is enabled', :enable_admin_mode do
-          it 'still delivers email to admins' do
-            expect(Notify).to receive(:new_issue_email).at_least(:once).with(member.id, issue.id, nil).and_call_original
-
-            subject.new_issue(issue, member)
-          end
-        end
-
-        context 'when admin mode is disabled' do
-          it 'does not send an email' do
-            expect(Notify).not_to receive(:new_issue_email)
-
-            subject.new_issue(issue, member)
-          end
-        end
+        subject.new_issue(issue, member)
       end
     end
   end
@@ -4259,6 +4678,134 @@ RSpec.describe NotificationService, :mailer, feature_category: :team_planning do
         deletion_date,
         mail: "inactive_project_deletion_warning_email"
       )
+    end
+  end
+
+  describe 'project scheduled for deletion' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project) }
+
+    context 'when project emails are disabled' do
+      before do
+        allow(project).to receive(:emails_disabled?).and_return(true)
+      end
+
+      it 'does not send any emails' do
+        expect(Notify).not_to receive(:project_scheduled_for_deletion)
+
+        subject.project_scheduled_for_deletion(project)
+      end
+    end
+
+    context 'when project emails are enabled' do
+      before do
+        allow(project).to receive(:emails_disabled?).and_return(false)
+      end
+
+      context 'when user is owner' do
+        it 'sends email' do
+          expect(Notify).to receive(:project_scheduled_for_deletion).with(project.first_owner.id, project.id).and_call_original
+
+          subject.project_scheduled_for_deletion(project)
+        end
+
+        context 'when owner is blocked' do
+          it 'does not send email' do
+            project.owner.block!
+
+            expect(Notify).not_to receive(:project_scheduled_for_deletion)
+
+            subject.project_scheduled_for_deletion(project)
+          end
+        end
+      end
+
+      context 'when project has multiple owners' do
+        it 'sends email to all owners' do
+          project.add_owner(user)
+
+          expect(Notify).to receive(:project_scheduled_for_deletion).with(project.first_owner.id, project.id).and_call_original
+          expect(Notify).to receive(:project_scheduled_for_deletion).with(user.id, project.id).and_call_original
+
+          subject.project_scheduled_for_deletion(project)
+        end
+      end
+
+      context 'when project has no direct owners but belongs to a group with owners' do
+        let_it_be(:group) { create(:group) }
+        let_it_be(:project) { create(:project, group: group) }
+        let_it_be(:group_owner) { create(:user) }
+
+        before do
+          group.add_owner(group_owner)
+          # Ensure project has no direct owners
+          project.members.owners.delete_all if project.members.owners.any?
+        end
+
+        it 'sends email to group owners' do
+          expect(Notify).to receive(:project_scheduled_for_deletion).with(group_owner.id, project.id).and_call_original
+
+          subject.project_scheduled_for_deletion(project)
+        end
+      end
+    end
+  end
+
+  describe 'group scheduled for deletion' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:group) { create(:group) }
+
+    context 'when group emails are disabled' do
+      before do
+        allow(group).to receive(:emails_disabled?).and_return(true)
+      end
+
+      it 'does not send any emails' do
+        expect(Notify).not_to receive(:group_scheduled_for_deletion)
+
+        subject.group_scheduled_for_deletion(group)
+      end
+    end
+
+    context 'when group emails are enabled' do
+      before do
+        allow(group).to receive(:emails_disabled?).and_return(false)
+      end
+
+      context 'when user is owner' do
+        it 'sends email' do
+          group.add_owner(user)
+
+          expect(Notify).to receive(:group_scheduled_for_deletion).with(user.id, group.id).and_call_original
+
+          subject.group_scheduled_for_deletion(group)
+        end
+
+        context 'when owner is blocked' do
+          it 'does not send email' do
+            group.add_owner(user)
+            user.block!
+
+            expect(Notify).not_to receive(:group_scheduled_for_deletion)
+
+            subject.group_scheduled_for_deletion(group)
+          end
+        end
+      end
+
+      context 'when group has multiple owners' do
+        let_it_be(:another_user) { create(:user) }
+
+        it 'sends email to all owners' do
+          group.add_owner(user)
+          group.add_owner(another_user)
+
+          expect(Notify).to receive(:group_scheduled_for_deletion).with(user.id, group.id).and_call_original
+          expect(Notify).to receive(:group_scheduled_for_deletion).with(another_user.id, group.id).and_call_original
+
+          subject.group_scheduled_for_deletion(group)
+        end
+      end
     end
   end
 

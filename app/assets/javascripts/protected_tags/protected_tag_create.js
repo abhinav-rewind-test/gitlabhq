@@ -7,11 +7,16 @@ import { initAccessDropdown } from '~/projects/settings/init_access_dropdown';
 import { ACCESS_LEVELS } from './constants';
 
 export default class ProtectedTagCreate {
-  constructor({ hasLicense }) {
+  constructor({ hasLicense, sectionSelector }) {
     this.hasLicense = hasLicense;
+    this.sectionSelector = sectionSelector;
     this.$form = $('.js-new-protected-tag');
-    this.buildDropdowns();
-    this.bindEvents();
+
+    if (this.$form.length > 0) {
+      this.buildDropdowns();
+      this.bindEvents();
+    }
+
     this.selectedItems = [];
   }
 
@@ -35,6 +40,7 @@ export default class ProtectedTagCreate {
     // Allowed to Create dropdown
     const createTagSelector = 'js-allowed-to-create';
     const [dropdownEl] = this.$form.find(`.${createTagSelector}`);
+
     this.protectedTagAccessDropdown = initAccessDropdown(dropdownEl, {
       toggleClass: createTagSelector,
       hasLicense: this.hasLicense,
@@ -43,6 +49,7 @@ export default class ProtectedTagCreate {
       groupsWithProjectAccess: true,
       searchEnabled: dropdownEl.dataset.filter !== undefined,
       testId: 'allowed-to-create-dropdown',
+      sectionSelector: this.sectionSelector,
     });
 
     this.protectedTagAccessDropdown.$on('select', (selected) => {

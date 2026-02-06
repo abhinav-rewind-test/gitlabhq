@@ -1,50 +1,44 @@
 import { GlTokenSelector } from '@gitlab/ui';
-import { shallowMount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { stubComponent } from 'helpers/stub_component';
+import { mountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
-import * as UserApi from '~/api/user_api';
 import MembersTokenSelect from '~/invite_members/components/members_token_select.vue';
 import { VALID_TOKEN_BACKGROUND, INVALID_TOKEN_BACKGROUND } from '~/invite_members/constants';
+import * as MembersUtils from '~/invite_members/utils/member_utils';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 
 const label = 'testgroup';
 const placeholder = 'Search for a member';
-const groupId = '31';
 const user1 = { id: 1, name: 'John Smith', username: 'one_1', avatar_url: '' };
 const user2 = { id: 2, name: 'Jane Doe', username: 'two_2', avatar_url: '' };
 const allUsers = [user1, user2];
 const handleEnterSpy = jest.fn();
 
-const createComponent = (props = {}, glFeatures = {}) => {
-  return shallowMount(MembersTokenSelect, {
+/** @type {import('helpers/vue_test_utils_helper').ExtendedWrapper} */
+let wrapper;
+const searchUrl = 'https://example.com/gitlab/groups/mygroup/-/group_members/invite_search.json';
+
+const createComponent = ({ props = {} } = {}) => {
+  wrapper = mountExtended(MembersTokenSelect, {
     propsData: {
       ariaLabelledby: label,
       invalidMembers: {},
       placeholder,
-      groupId,
       ...props,
     },
-    provide: { glFeatures },
-    stubs: {
-      GlTokenSelector: stubComponent(GlTokenSelector, {
-        methods: {
-          handleEnter: handleEnterSpy,
-        },
-      }),
-    },
+    provide: { searchUrl },
   });
 };
 
-describe('MembersTokenSelect', () => {
-  let wrapper;
+beforeEach(() => {
+  createComponent();
+});
 
+describe('MembersTokenSelect', () => {
   const findTokenSelector = () => wrapper.findComponent(GlTokenSelector);
 
   describe('rendering the token-selector component', () => {
     it('renders with the correct props', () => {
-      wrapper = createComponent();
-
       const expectedProps = {
         ariaLabelledby: label,
         placeholder,
@@ -59,8 +53,6 @@ describe('MembersTokenSelect', () => {
       const badToken = { ...user1, class: INVALID_TOKEN_BACKGROUND };
       const goodToken = { ...user2, class: VALID_TOKEN_BACKGROUND };
 
-      wrapper = createComponent();
-
       findTokenSelector().vm.$emit('input', [user1, user2]);
 
       await waitForPromises();
@@ -74,7 +66,6 @@ describe('MembersTokenSelect', () => {
 
     it('does not change class when invalid members are cleared', async () => {
       // arrange - invalidMembers is non-empty and then tokens are added
-      wrapper = createComponent();
       await wrapper.setProps({ invalidMembers: { one_1: 'bad stuff' } });
       findTokenSelector().vm.$emit('input', [user1, user2]);
       await waitForPromises();
@@ -87,16 +78,29 @@ describe('MembersTokenSelect', () => {
     });
   });
 
+  describe('when there are users with warning', () => {
+    it('shows warning token selector', async () => {
+      createComponent({ props: { usersWithWarning: { [user1.username]: 'warning message' } } });
+      findTokenSelector().vm.$emit('input', [user1]);
+      await waitForPromises();
+
+      const warningMemberIcon = wrapper.findByTestId(`warning-icon-${user1.id}`);
+
+      expect(warningMemberIcon.props('name')).toBe('warning');
+    });
+  });
+
   describe('users', () => {
+    let tokenSelector;
+
     beforeEach(() => {
-      jest.spyOn(UserApi, 'getUsers').mockResolvedValue({ data: allUsers });
-      wrapper = createComponent();
+      jest.spyOn(MembersUtils, 'searchUsers').mockResolvedValue({ data: allUsers });
+      createComponent();
+      tokenSelector = findTokenSelector();
     });
 
     describe('when input is manually focused', () => {
       it('calls the API and sets dropdown items as request result', async () => {
-        const tokenSelector = findTokenSelector();
-
         tokenSelector.vm.$emit('focus');
 
         await waitForPromises();
@@ -107,12 +111,6 @@ describe('MembersTokenSelect', () => {
     });
 
     describe('when text input is typed in', () => {
-      let tokenSelector;
-
-      beforeEach(() => {
-        tokenSelector = findTokenSelector();
-      });
-
       it('calls the API with search parameter', async () => {
         const searchParam = 'One';
 
@@ -120,10 +118,7 @@ describe('MembersTokenSelect', () => {
 
         await waitForPromises();
 
-        expect(UserApi.getUsers).toHaveBeenCalledWith(searchParam, {
-          active: true,
-          without_project_bots: true,
-        });
+        expect(MembersUtils.searchUsers).toHaveBeenCalledWith(searchUrl, searchParam);
         expect(tokenSelector.props('hideDropdownWithNoItems')).toBe(false);
       });
 
@@ -132,10 +127,7 @@ describe('MembersTokenSelect', () => {
 
         await waitForPromises();
 
-        expect(UserApi.getUsers).toHaveBeenCalledWith('foo@bar.com', {
-          active: true,
-          without_project_bots: true,
-        });
+        expect(MembersUtils.searchUsers).toHaveBeenCalledWith(searchUrl, 'foo@bar.com');
         expect(tokenSelector.props('hideDropdownWithNoItems')).toBe(false);
       });
 
@@ -159,7 +151,7 @@ describe('MembersTokenSelect', () => {
       describe('when API search fails', () => {
         beforeEach(() => {
           jest.spyOn(Sentry, 'captureException');
-          jest.spyOn(UserApi, 'getUsers').mockRejectedValue('error');
+          jest.spyOn(MembersUtils, 'searchUsers').mockRejectedValue('error');
         });
 
         it('reports to sentry', async () => {
@@ -172,11 +164,30 @@ describe('MembersTokenSelect', () => {
       });
 
       it('allows tab to function as enter', () => {
+        tokenSelector.vm.handleEnter = handleEnterSpy;
+
         tokenSelector.vm.$emit('text-input', 'username');
 
         tokenSelector.vm.$emit('keydown', new KeyboardEvent('keydown', { key: 'Tab' }));
 
         expect(handleEnterSpy).toHaveBeenCalled();
+      });
+
+      it('emits tokenization-state-change with true when text is typed', async () => {
+        tokenSelector.vm.$emit('text-input', 'test');
+        await nextTick();
+
+        expect(wrapper.emitted('tokenization-state-change')).toEqual([[true]]);
+      });
+
+      it('emits tokenization-state-change with false when typed text is cleared', async () => {
+        tokenSelector.vm.$emit('text-input', 'test');
+        await nextTick();
+
+        tokenSelector.vm.$emit('text-input', '');
+        await nextTick();
+
+        expect(wrapper.emitted('tokenization-state-change')).toEqual([[true], [false]]);
       });
     });
 
@@ -208,8 +219,6 @@ describe('MembersTokenSelect', () => {
 
   describe('when text input is blurred', () => {
     it('clears text input', async () => {
-      wrapper = createComponent();
-
       const tokenSelector = findTokenSelector();
 
       tokenSelector.vm.$emit('blur');
@@ -217,49 +226,6 @@ describe('MembersTokenSelect', () => {
       await nextTick();
 
       expect(tokenSelector.props('hideDropdownWithNoItems')).toBe(false);
-    });
-  });
-
-  describe('when component is mounted for a group using a SAML provider', () => {
-    const searchParam = 'name';
-
-    beforeEach(() => {
-      jest.spyOn(UserApi, 'getGroupUsers').mockResolvedValue({ data: allUsers });
-
-      wrapper = createComponent({ usersFilter: 'saml_provider_id' }, { groupUserSaml: true });
-
-      findTokenSelector().vm.$emit('text-input', searchParam);
-    });
-
-    it('calls the group API with correct parameters', () => {
-      expect(UserApi.getGroupUsers).toHaveBeenCalledWith(searchParam, groupId, {
-        active: true,
-        include_saml_users: true,
-        include_service_accounts: true,
-      });
-    });
-  });
-
-  describe('when group_user_saml feature flag is disabled', () => {
-    describe('when component is mounted for a group using a SAML provider', () => {
-      const searchParam = 'name';
-      const samlProviderId = 123;
-
-      beforeEach(() => {
-        jest.spyOn(UserApi, 'getUsers').mockResolvedValue({ data: allUsers });
-
-        wrapper = createComponent({ filterId: samlProviderId, usersFilter: 'saml_provider_id' });
-
-        findTokenSelector().vm.$emit('text-input', searchParam);
-      });
-
-      it('calls the API with the saml provider ID param', () => {
-        expect(UserApi.getUsers).toHaveBeenCalledWith(searchParam, {
-          active: true,
-          without_project_bots: true,
-          saml_provider_id: samlProviderId,
-        });
-      });
     });
   });
 });

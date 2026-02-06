@@ -4,6 +4,7 @@ class Import::GithubController < Import::BaseController
   extend ::Gitlab::Utils::Override
 
   include ImportHelper
+  include SafeFormatHelper
   include ActionView::Helpers::SanitizeHelper
   include Import::GithubOauth
 
@@ -15,7 +16,7 @@ class Import::GithubController < Import::BaseController
 
   rescue_from Octokit::Unauthorized, with: :provider_unauthorized
   rescue_from Octokit::TooManyRequests, with: :provider_rate_limit
-  rescue_from Octokit::Forbidden, with: :provider_scope_validation_error
+  rescue_from Octokit::Forbidden, with: :provider_forbidden
   rescue_from Gitlab::GithubImport::RateLimitError, with: :rate_limit_threshold_exceeded
 
   delegate :client, to: :client_proxy, private: true
@@ -42,18 +43,11 @@ class Import::GithubController < Import::BaseController
   end
 
   def personal_access_token
-    experiment(:default_to_import_tab, actor: current_user)
-      .track(:authentication, property: provider_name)
-
     session[access_token_key] = params[:personal_access_token]&.strip
     redirect_to status_import_url
   end
 
   def status
-    @fine_grained = Gitlab::GithubImport.fine_grained_personal_token?(session[access_token_key])
-
-    client_repos
-
     respond_to do |format|
       format.json do
         render json: { imported_projects: serialized_imported_projects,
@@ -158,10 +152,9 @@ class Import::GithubController < Import::BaseController
 
   override :provider_url
   def provider_url
-    strong_memoize(:provider_url) do
-      oauth_config&.dig('url').presence || 'https://github.com'
-    end
+    oauth_config&.dig('url').presence || 'https://github.com'
   end
+  strong_memoize_attr :provider_url
 
   private
 
@@ -170,7 +163,7 @@ class Import::GithubController < Import::BaseController
   end
 
   def authorize_owner_access!
-    return render_404 unless current_user.can?(:owner_access, project)
+    render_404 unless current_user.can?(:owner_access, project)
   end
 
   def import_params
@@ -242,26 +235,38 @@ class Import::GithubController < Import::BaseController
 
   def provider_unauthorized
     session[access_token_key] = nil
-    redirect_to new_import_url,
-      alert: "Access denied to your #{Gitlab::ImportSources.title(provider_name.to_s)} account."
+    flash[:alert] = s_('Import|Invalid credentials')
+    respond_to do |format|
+      format.json { render json: { error: { redirect: new_import_url } }, status: :not_found }
+      format.html { redirect_to new_import_url }
+    end
   end
 
   def provider_rate_limit(exception)
     reset_time = Time.zone.at(exception.response_headers['x-ratelimit-reset'].to_i)
     session[access_token_key] = nil
     redirect_to new_import_url,
-      alert: _("GitHub API rate limit exceeded. Try again after %{reset_time}") % { reset_time: reset_time }
+      alert: safe_format(_("GitHub API rate limit exceeded. Try again after %{reset_time}"), reset_time: reset_time)
   end
 
-  def provider_scope_validation_error
+  def provider_forbidden
     session[access_token_key] = nil
-    redirect_to new_import_url,
-      alert: format(
-        s_("GithubImport|Your GitHub access token does not have the correct scope to import. " \
-           "Please use a token with the '%{repo}' scope, and with the '%{read_org}' scope " \
-           "if importing collaborators."),
-        repo: 'repo', read_org: 'read:org'
-      )
+    docs_link = helpers.link_to(
+      '',
+      help_page_url('user/project/import/github.md', anchor: 'use-a-github-personal-access-token'),
+      target: '_blank',
+      rel: 'noopener noreferrer'
+    )
+    tag_pair_docs_link = tag_pair(docs_link, :link_start, :link_end)
+    alert_message = safe_format(
+      s_(
+        "GithubImport|Your GitHub personal access token does not have the required scope to import. " \
+          "%{link_start}Learn More%{link_end}."
+      ),
+      tag_pair_docs_link
+    )
+
+    redirect_to new_import_url, alert: alert_message
   end
 
   def auth_state_key

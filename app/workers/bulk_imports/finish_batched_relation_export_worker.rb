@@ -16,8 +16,8 @@ module BulkImports
 
       return unless export
       return if export.finished? || export.failed?
-      return re_enqueue if export_in_progress?
       return fail_export! if export_timeout?
+      return re_enqueue if export_in_progress?
 
       finish_export!
     end
@@ -34,7 +34,7 @@ module BulkImports
     end
 
     def re_enqueue
-      self.class.perform_in(REENQUEUE_DELAY.ago, export.id)
+      self.class.perform_in(REENQUEUE_DELAY, export.id)
     end
 
     def export_timeout?
@@ -42,7 +42,7 @@ module BulkImports
     end
 
     def export_in_progress?
-      export.batches.any?(&:started?)
+      export.batches.in_progress.any?
     end
 
     def finish_export!
@@ -52,6 +52,11 @@ module BulkImports
     end
 
     def expire_cache!
+      Gitlab::Cache::Import::Caching.expire(
+        BulkImports::BatchedRelationExportService.batch_size_cache_key(export.id),
+        0
+      )
+
       export.batches.each do |batch|
         key = BulkImports::BatchedRelationExportService.cache_key(export.id, batch.id)
 

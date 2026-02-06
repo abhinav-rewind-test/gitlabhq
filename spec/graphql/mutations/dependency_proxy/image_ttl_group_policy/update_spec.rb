@@ -2,18 +2,19 @@
 
 require 'spec_helper'
 
-RSpec.describe Mutations::DependencyProxy::ImageTtlGroupPolicy::Update, feature_category: :dependency_proxy do
+RSpec.describe Mutations::DependencyProxy::ImageTtlGroupPolicy::Update, feature_category: :virtual_registry do
+  include GraphqlHelpers
   using RSpec::Parameterized::TableSyntax
 
   let_it_be_with_reload(:group) { create(:group) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:current_user) { create(:user) }
 
   let(:params) { { group_path: group.full_path } }
 
   specify { expect(described_class).to require_graphql_authorizations(:admin_dependency_proxy) }
 
   describe '#resolve' do
-    subject { described_class.new(object: group, context: { current_user: user }, field: nil).resolve(**params) }
+    subject { described_class.new(object: group, context: query_context, field: nil).resolve(**params) }
 
     shared_examples 'returning a success' do
       it 'returns the dependency proxy image ttl group policy with no errors' do
@@ -58,15 +59,6 @@ RSpec.describe Mutations::DependencyProxy::ImageTtlGroupPolicy::Update, feature_
       end
     end
 
-    # To be removed when raise_group_admin_package_permission_to_owner FF is removed
-    shared_examples 'disabling admin_package feature flag' do |action:|
-      before do
-        stub_feature_flags(raise_group_admin_package_permission_to_owner: false)
-      end
-
-      it_behaves_like "#{action} the dependency proxy image ttl policy"
-    end
-
     before do
       stub_config(dependency_proxy: { enabled: true })
     end
@@ -90,11 +82,10 @@ RSpec.describe Mutations::DependencyProxy::ImageTtlGroupPolicy::Update, feature_
 
       with_them do
         before do
-          group.send("add_#{user_role}", user) unless user_role == :anonymous
+          group.send("add_#{user_role}", current_user) unless user_role == :anonymous
         end
 
         it_behaves_like params[:shared_examples_name]
-        it_behaves_like 'disabling admin_package feature flag', action: :updating if params[:user_role] == :maintainer
       end
     end
 
@@ -112,11 +103,10 @@ RSpec.describe Mutations::DependencyProxy::ImageTtlGroupPolicy::Update, feature_
 
       with_them do
         before do
-          group.send("add_#{user_role}", user) unless user_role == :anonymous
+          group.send("add_#{user_role}", current_user) unless user_role == :anonymous
         end
 
         it_behaves_like params[:shared_examples_name]
-        it_behaves_like 'disabling admin_package feature flag', action: :creating if params[:user_role] == :maintainer
       end
     end
   end

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module Gitlab
   module MergeRequests
     class MessageGenerator
@@ -53,13 +54,16 @@ module Gitlab
         'reference' => ->(merge_request, _, _) { merge_request.to_reference(full: true) },
         'local_reference' => ->(merge_request, _, _) { merge_request.to_reference(full: false) },
         'source_project_id' => ->(merge_request, _, _) { merge_request.source_project.id.to_s },
-        'first_commit' => -> (merge_request, _, _) {
+        'first_commit' => ->(merge_request, _, _) {
           return unless merge_request.persisted? || merge_request.compare_commits.present?
 
           merge_request.first_commit&.safe_message&.strip
         },
-        'first_multiline_commit' => -> (merge_request, _, _) {
+        'first_multiline_commit' => ->(merge_request, _, _) {
           merge_request.first_multiline_commit&.safe_message&.strip.presence || merge_request.title
+        },
+        'first_multiline_commit_description' => ->(merge_request, _, _) {
+          merge_request.first_multiline_commit_description&.strip
         },
         'url' => ->(merge_request, _, _) { Gitlab::UrlBuilder.build(merge_request) },
         'reviewed_by' => ->(merge_request, _, _) {
@@ -81,9 +85,12 @@ module Gitlab
                        .map { |author_email, author_name| "Co-authored-by: #{author_name} <#{author_email}>" }
                        .join("\n")
         end,
-        'all_commits' => -> (merge_request, _, _) do
+        'merge_request_author' => ->(merge_request, _, _) {
+          "#{merge_request.author&.name} <#{merge_request.author&.commit_email_or_default}>"
+        },
+        'all_commits' => ->(merge_request, _, _) do
           merge_request
-            .recent_commits
+            .recent_commits(load_from_gitaly: true)
             .without_merge_commits
             .map do |commit|
               if commit.safe_message&.bytesize&.>(100.kilobytes)
@@ -107,6 +114,7 @@ module Gitlab
         target_branch
         first_commit
         first_multiline_commit
+        first_multiline_commit_description
         co_authored_by
         all_commits
       ].freeze

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Query.project(fullPath).ciVariables', feature_category: :secrets_management do
+RSpec.describe 'Query.project(fullPath).ciVariables', feature_category: :pipeline_composition do
   include GraphqlHelpers
 
   let_it_be(:project) { create(:project) }
@@ -20,6 +20,7 @@ RSpec.describe 'Query.project(fullPath).ciVariables', feature_category: :secrets
               value
               variableType
               protected
+              hidden
               masked
               raw
               environmentScope
@@ -57,7 +58,37 @@ RSpec.describe 'Query.project(fullPath).ciVariables', feature_category: :secrets
         'variableType' => 'ENV_VAR',
         'masked' => false,
         'protected' => true,
+        'hidden' => false,
         'raw' => true,
+        'environmentScope' => 'production'
+      })
+    end
+
+    it "sets the value to null if the variable is hidden" do
+      variable = create(
+        :ci_variable,
+        project: project,
+        key: 'TEST_VAR',
+        value: 'TestVariable',
+        masked: true,
+        hidden: true,
+        protected: true,
+        raw: false,
+        environment_scope: 'production'
+      )
+
+      post_graphql(query, current_user: user)
+
+      expect(graphql_data.dig('project', 'ciVariables', 'limit')).to be(8000)
+      expect(graphql_data.dig('project', 'ciVariables', 'nodes')).to contain_exactly({
+        'id' => variable.to_global_id.to_s,
+        'key' => 'TEST_VAR',
+        'value' => nil,
+        'variableType' => 'ENV_VAR',
+        'masked' => true,
+        'protected' => true,
+        'hidden' => true,
+        'raw' => false,
         'environmentScope' => 'production'
       })
     end

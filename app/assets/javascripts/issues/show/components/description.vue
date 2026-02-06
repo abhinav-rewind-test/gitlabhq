@@ -15,28 +15,25 @@ import TaskList from '~/task_list';
 import { addHierarchyChild, removeHierarchyChild } from '~/work_items/graphql/cache_utils';
 import createWorkItemMutation from '~/work_items/graphql/create_work_item.mutation.graphql';
 import deleteWorkItemMutation from '~/work_items/graphql/delete_work_item.mutation.graphql';
-import projectWorkItemTypesQuery from '~/work_items/graphql/project_work_item_types.query.graphql';
+import namespaceWorkItemTypesQuery from '~/work_items/graphql/namespace_work_item_types.query.graphql';
 import {
-  sprintfWorkItem,
   I18N_WORK_ITEM_ERROR_CREATING,
   I18N_WORK_ITEM_ERROR_DELETING,
-  WORK_ITEM_TYPE_VALUE_TASK,
+  NAME_TO_TEXT_LOWERCASE_MAP,
+  WORK_ITEM_TYPE_NAME_TASK,
 } from '~/work_items/constants';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
 import eventHub from '../event_hub';
 import animateMixin from '../mixins/animate';
 import {
-  deleteTaskListItem,
   convertDescriptionWithNewSort,
+  deleteTaskListItem,
   extractTaskTitleAndDescription,
+  insertNextToTaskListItemText,
 } from '../utils';
 import TaskListItemActions from './task_list_item_actions.vue';
 
 Vue.use(GlToast);
-
-const workItemTypes = {
-  TASK: 'task',
-};
 
 export default {
   directives: {
@@ -78,11 +75,6 @@ export default {
       required: false,
       default: null,
     },
-    issueIid: {
-      type: String,
-      required: false,
-      default: null,
-    },
     isUpdating: {
       type: Boolean,
       required: false,
@@ -113,14 +105,14 @@ export default {
       },
     },
     workItemTypes: {
-      query: projectWorkItemTypesQuery,
+      query: namespaceWorkItemTypesQuery,
       variables() {
         return {
           fullPath: this.fullPath,
         };
       },
       update(data) {
-        return data.workspace?.workItemTypes?.nodes;
+        return data.namespace?.workItemTypes?.nodes;
       },
       skip() {
         return !this.canUpdate;
@@ -129,7 +121,7 @@ export default {
   },
   computed: {
     taskWorkItemTypeId() {
-      return this.workItemTypes.find((type) => type.name === WORK_ITEM_TYPE_VALUE_TASK)?.id;
+      return this.workItemTypes.find((type) => type.name === WORK_ITEM_TYPE_NAME_TASK)?.id;
     },
     issueGid() {
       return this.issueId ? convertToGraphQLId(TYPENAME_WORK_ITEM, this.issueId) : null;
@@ -146,9 +138,7 @@ export default {
         this.initialUpdate = false;
       }
 
-      this.$nextTick(() => {
-        this.renderGFM();
-      });
+      this.renderGFM();
     },
   },
   mounted() {
@@ -164,7 +154,9 @@ export default {
     this.removeAllPointerEventListeners();
   },
   methods: {
-    renderGFM() {
+    async renderGFM() {
+      await this.$nextTick();
+
       renderGFM(this.$refs['gfm-content']);
 
       if (this.canUpdate) {
@@ -174,22 +166,21 @@ export default {
           fieldName: 'description',
           lockVersion: this.lockVersion,
           selector: '.detail-page-description',
-          onUpdate: this.taskListUpdateStarted.bind(this),
-          onSuccess: this.taskListUpdateSuccess.bind(this),
+          onUpdate: () => this.$emit('taskListUpdateStarted'),
+          onSuccess: () => this.$emit('taskListUpdateSucceeded'),
           onError: this.taskListUpdateError.bind(this),
         });
 
         this.removeAllPointerEventListeners();
-
         this.renderSortableLists();
-
         this.renderTaskListItemActions();
       }
     },
     renderSortableLists() {
       // We exclude GLFM table of contents which have a `section-nav` class on the root `ul`.
+      // We also exclude footnotes, which are in an `ol` inside a `section.footnotes`.
       const lists = this.$el.querySelectorAll?.(
-        '.description .md > ul:not(.section-nav), .description .md > ul:not(.section-nav) ul, .description ol',
+        '.description .md > ul:not(.section-nav), .description .md > ul:not(.section-nav) ul, .description :not(section.footnotes) > ol',
       );
       lists?.forEach((list) => {
         if (list.children.length <= 1) {
@@ -260,35 +251,27 @@ export default {
         this.pointerEventListeners.delete(listItem);
       });
     },
-    taskListUpdateStarted() {
-      this.$emit('taskListUpdateStarted');
-    },
-    taskListUpdateSuccess() {
-      this.$emit('taskListUpdateSucceeded');
-    },
     taskListUpdateError() {
-      createAlert({
-        message: sprintf(
-          __(
-            'Someone edited this %{issueType} at the same time you did. The description has been updated and you will need to make your changes again.',
-          ),
-          {
-            issueType: this.issuableType,
-          },
-        ),
-      });
+      const message = __(
+        'Someone edited this %{issueType} at the same time you did. The description has been updated and you will need to make your changes again.',
+      );
+      createAlert({ message: sprintf(message, { issueType: this.issuableType }) });
 
       this.$emit('taskListUpdateFailed');
     },
-    createTaskListItemActions(provide) {
+    createTaskListItemActions() {
       const app = new Vue({
         el: document.createElement('div'),
-        provide,
+        name: 'TaskListItemActionsRoot',
+        provide: { id: this.issueId, issuableType: this.issuableType },
         render: (createElement) => createElement(TaskListItemActions),
       });
       return app.$el;
     },
-    convertTaskListItem(sourcepos) {
+    convertTaskListItem({ id, sourcepos }) {
+      if (this.issueId !== id) {
+        return;
+      }
       const oldDescription = this.descriptionText;
       const { newDescription, taskDescription, taskTitle } = deleteTaskListItem(
         oldDescription,
@@ -297,7 +280,10 @@ export default {
       this.$emit('saveDescription', newDescription);
       this.createTask({ taskTitle, taskDescription, oldDescription });
     },
-    deleteTaskListItem(sourcepos) {
+    deleteTaskListItem({ id, sourcepos }) {
+      if (this.issueId !== id) {
+        return;
+      }
       const { newDescription } = deleteTaskListItem(this.descriptionText, sourcepos);
       this.$emit('saveDescription', newDescription);
     },
@@ -307,28 +293,11 @@ export default {
       );
 
       taskListItems?.forEach((item) => {
-        const provide = { canUpdate: this.canUpdate, issuableType: this.issuableType };
-        const dropdown = this.createTaskListItemActions(provide);
-        this.insertNextToTaskListItemText(dropdown, item);
+        const dropdown = this.createTaskListItemActions();
+        insertNextToTaskListItemText(dropdown, item);
         this.addPointerEventListeners(item, '.task-list-item-actions');
         this.hasTaskListItemActions = true;
       });
-    },
-    insertNextToTaskListItemText(element, listItem) {
-      const children = Array.from(listItem.children);
-      const paragraph = children.find((el) => el.tagName === 'P');
-      const list = children.find((el) => el.classList.contains('task-list'));
-      if (paragraph) {
-        // If there's a `p` element, then it's a multi-paragraph task item
-        // and the task text exists within the `p` element as the last child
-        paragraph.append(element);
-      } else if (list) {
-        // Otherwise, the task item can have a child list which exists directly after the task text
-        list.insertAdjacentElement('beforebegin', element);
-      } else {
-        // Otherwise, the task item is a simple one where the task text exists as the last child
-        listItem.append(element);
-      }
     },
     stripClientState(description) {
       return description.replaceAll('<details open="true">', '<details>');
@@ -364,8 +333,7 @@ export default {
           update: (cache, { data: { workItemCreate } }) =>
             addHierarchyChild({
               cache,
-              fullPath: this.fullPath,
-              iid: this.issueIid,
+              id: convertToGraphQLId(TYPENAME_WORK_ITEM, this.issueId),
               workItem: workItemCreate.workItem,
             }),
         });
@@ -399,8 +367,7 @@ export default {
           update: (cache) =>
             removeHierarchyChild({
               cache,
-              fullPath: this.fullPath,
-              iid: this.issueIid,
+              id: convertToGraphQLId(TYPENAME_WORK_ITEM, this.issueId),
               workItem: { id },
             }),
         });
@@ -416,7 +383,9 @@ export default {
     },
     showAlert(message, error) {
       createAlert({
-        message: sprintfWorkItem(message, workItemTypes.TASK),
+        message: sprintf(message, {
+          workItemType: NAME_TO_TEXT_LOWERCASE_MAP[WORK_ITEM_TYPE_NAME_TASK],
+        }),
         error,
         captureError: true,
       });

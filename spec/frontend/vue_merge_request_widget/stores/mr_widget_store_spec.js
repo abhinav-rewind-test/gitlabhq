@@ -1,4 +1,3 @@
-import { convertToCamelCase } from '~/lib/utils/text_utility';
 import MergeRequestStore from '~/vue_merge_request_widget/stores/mr_widget_store';
 import { stateKey } from '~/vue_merge_request_widget/stores/state_maps';
 import mockData from '../mock_data';
@@ -10,7 +9,7 @@ describe('MergeRequestStore', () => {
     store = new MergeRequestStore(mockData);
   });
 
-  it('should initialize gitpod attributes', () => {
+  it('should initialize ona attributes', () => {
     expect(store).toMatchObject({
       gitpodEnabled: mockData.gitpod_enabled,
       showGitpodButton: mockData.show_gitpod_button,
@@ -150,19 +149,6 @@ describe('MergeRequestStore', () => {
 
       expect(store.securityReportsDocsPath).toBe('security-reports-docs-path');
     });
-
-    it.each(['sast_comparison_path', 'secret_detection_comparison_path'])(
-      'should set %s path',
-      (property) => {
-        // Ensure something is set in the mock data
-        expect(property in mockData).toBe(true);
-        const expectedValue = mockData[property];
-
-        store.setPaths({ ...mockData });
-
-        expect(store[convertToCamelCase(property)]).toBe(expectedValue);
-      },
-    );
   });
 
   describe('preventMerge', () => {
@@ -187,6 +173,16 @@ describe('MergeRequestStore', () => {
         store.setApprovals({ approved: true });
 
         expect(store.preventMerge).toBe(false);
+      });
+    });
+
+    describe('setRemoveSourceBranch', () => {
+      it('updates removeSourceBranch', () => {
+        store.setRemoveSourceBranch(true);
+        expect(store.shouldRemoveSourceBranch).toBe(true);
+
+        store.setRemoveSourceBranch(false);
+        expect(store.shouldRemoveSourceBranch).toBe(false);
       });
     });
   });

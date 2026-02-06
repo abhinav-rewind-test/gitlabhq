@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe API::RubygemPackages, feature_category: :package_registry do
   include PackagesManagerApiSpecHelpers
   include WorkhorseHelpers
+  include HttpBasicAuthHelpers
   using RSpec::Parameterized::TableSyntax
 
   let_it_be_with_reload(:project) { create(:project) }
@@ -19,18 +20,17 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
   let_it_be(:personal_access_token) { create(:personal_access_token) }
   let_it_be(:user) { personal_access_token.user }
   let_it_be(:job) { create(:ci_build, :running, user: user, project: project) }
-  let_it_be(:deploy_token) { create(:deploy_token, read_package_registry: true, write_package_registry: true) }
-  let_it_be(:project_deploy_token) { create(:project_deploy_token, deploy_token: deploy_token, project: project) }
+  let_it_be(:deploy_token) { create(:deploy_token, read_package_registry: true, write_package_registry: true, projects: [project]) }
   let_it_be(:headers) { {} }
 
   let(:snowplow_gitlab_standard_context) { snowplow_context }
 
-  def snowplow_context(user_role: :developer)
-    if user_role == :anonymous
-      { project: project, namespace: project.namespace, property: 'i_package_rubygems_user' }
-    else
-      { project: project, namespace: project.namespace, property: 'i_package_rubygems_user', user: user }
-    end
+  def snowplow_context(user_role: :developer, token_type: :personal_access_token)
+    context = { project: project, namespace: project.namespace, property: 'i_package_rubygems_user' }
+
+    context[:user] = user unless user_role == :anonymous || token_type == :deploy_token
+
+    context
   end
 
   shared_examples 'when feature flag is disabled' do
@@ -63,11 +63,11 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
     end
 
     where(:user_role, :token_type, :valid_token, :status) do
-      :guest     | :personal_access_token   | true  | :forbidden
+      :guest     | :personal_access_token   | true  | :not_found
       :guest     | :personal_access_token   | false | :unauthorized
       :guest     | :deploy_token            | true  | :not_found
       :guest     | :deploy_token            | false | :unauthorized
-      :guest     | :job_token               | true  | :forbidden
+      :guest     | :job_token               | true  | :not_found
       :guest     | :job_token               | false | :unauthorized
       :reporter  | :personal_access_token   | true  | :not_found
       :reporter  | :personal_access_token   | false | :unauthorized
@@ -107,6 +107,10 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
     subject { get(url, headers: headers) }
 
     it_behaves_like 'an unimplemented route'
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+    end
   end
 
   describe 'GET /api/v4/projects/:project_id/packages/rubygems/quick/Marshal.4.8/:file_name' do
@@ -115,6 +119,9 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
     subject { get(url, headers: headers) }
 
     it_behaves_like 'an unimplemented route'
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+    end
   end
 
   describe 'GET /api/v4/projects/:project_id/packages/rubygems/gems/:file_name' do
@@ -139,7 +146,7 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         :public  | :guest      | false | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :public  | :anonymous  | false | :personal_access_token | true  | 'Rubygems gem download'            | :success
         :private | :developer  | true  | :personal_access_token | true  | 'Rubygems gem download'            | :success
-        :private | :guest      | true  | :personal_access_token | true  | 'rejects rubygems packages access' | :forbidden
+        :private | :guest      | true  | :personal_access_token | true  | 'Rubygems gem download'            | :success
         :private | :developer  | true  | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :private | :guest      | true  | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | false | :personal_access_token | true  | 'rejects rubygems packages access' | :not_found
@@ -156,7 +163,7 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         :public  | :developer  | false | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :public  | :guest      | false | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | true  | :job_token             | true  | 'Rubygems gem download'            | :success
-        :private | :guest      | true  | :job_token             | true  | 'rejects rubygems packages access' | :forbidden
+        :private | :guest      | true  | :job_token             | true  | 'Rubygems gem download'            | :success
         :private | :developer  | true  | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :guest      | true  | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | false | :job_token             | true  | 'rejects rubygems packages access' | :not_found
@@ -173,11 +180,7 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         let(:token) { valid_token ? tokens[token_type] : 'invalid-token123' }
         let(:headers) { user_role == :anonymous ? {} : { 'HTTP_AUTHORIZATION' => token } }
         let(:snowplow_gitlab_standard_context) do
-          if token_type == :deploy_token
-            snowplow_context.merge(user: deploy_token)
-          else
-            snowplow_context(user_role: user_role)
-          end
+          snowplow_context(user_role: user_role, token_type: token_type)
         end
 
         before do
@@ -211,6 +214,20 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(response.body).not_to eq(package_file_pending_destruction.file.file.read)
+      end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :download_ruby_gem do
+      let(:boundary_object) { project }
+      let(:headers) { { 'HTTP_AUTHORIZATION' => pat.token } }
+      let(:request) { get(url, headers: headers) }
+
+      before do
+        project.add_developer(user)
       end
     end
   end
@@ -275,6 +292,20 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         end
 
         it_behaves_like params[:shared_examples_name], params[:user_role], params[:expected_status], params[:member]
+      end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_ruby_gem do
+      let(:boundary_object) { project }
+      let(:headers) { workhorse_headers.merge({ 'HTTP_AUTHORIZATION' => pat.token }) }
+      let(:request) { post(url, headers: headers) }
+
+      before do
+        project.add_developer(user)
       end
     end
   end
@@ -348,16 +379,8 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         let(:token) { valid_token ? tokens[token_type] : 'invalid-token123' }
         let(:user_headers) { user_role == :anonymous ? {} : { 'HTTP_AUTHORIZATION' => token } }
         let(:headers) { user_headers.merge(workhorse_headers) }
-        let(:snowplow_gitlab_standard_context) { { project: project, namespace: project.namespace, user: snowplow_user, property: 'i_package_rubygems_user' } }
-        let(:snowplow_user) do
-          case token_type
-          when :deploy_token
-            deploy_token
-          when :job_token
-            job.user
-          else
-            user
-          end
+        let(:snowplow_gitlab_standard_context) do
+          snowplow_context(user_role: user_role, token_type: token_type)
         end
 
         before do
@@ -379,10 +402,33 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
           allow(Packages::CreatePackageFileService).to receive(:new).and_raise(StandardError)
 
           expect { subject }
-              .to change { project.packages.count }.by(0)
-              .and change { Packages::PackageFile.count }.by(0)
+              .to not_change { ::Packages::Rubygems::Package.for_projects(project).count }
+              .and not_change { Packages::PackageFile.count }
           expect(response).to have_gitlab_http_status(:error)
         end
+      end
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :upload_ruby_gem do
+      let(:boundary_object) { project }
+      let(:headers) { workhorse_headers.merge({ 'HTTP_AUTHORIZATION' => pat.token }) }
+      let(:request) do
+        workhorse_finalize(
+          api(url),
+          method: :post,
+          file_key: file_key,
+          params: params,
+          headers: headers,
+          send_rewritten_field: send_rewritten_field
+        )
+      end
+
+      before do
+        project.add_developer(user)
       end
     end
   end
@@ -406,7 +452,7 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         :public  | :guest      | false | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :public  | :anonymous  | false | :personal_access_token | true  | 'dependency endpoint success'      | :success
         :private | :developer  | true  | :personal_access_token | true  | 'dependency endpoint success'      | :success
-        :private | :guest      | true  | :personal_access_token | true  | 'rejects rubygems packages access' | :forbidden
+        :private | :guest      | true  | :personal_access_token | true  | 'dependency endpoint success'      | :success
         :private | :developer  | true  | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :private | :guest      | true  | :personal_access_token | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | false | :personal_access_token | true  | 'rejects rubygems packages access' | :not_found
@@ -423,7 +469,7 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
         :public  | :developer  | false | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :public  | :guest      | false | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | true  | :job_token             | true  | 'dependency endpoint success'      | :success
-        :private | :guest      | true  | :job_token             | true  | 'rejects rubygems packages access' | :forbidden
+        :private | :guest      | true  | :job_token             | true  | 'dependency endpoint success'      | :success
         :private | :developer  | true  | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :guest      | true  | :job_token             | false | 'rejects rubygems packages access' | :unauthorized
         :private | :developer  | false | :job_token             | true  | 'rejects rubygems packages access' | :not_found
@@ -458,6 +504,21 @@ RSpec.describe API::RubygemPackages, feature_category: :package_registry do
       end
 
       it_behaves_like 'dependency endpoint success', :anonymous, :success
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { build_auth_headers(tokens[:personal_access_token]) }
+      let(:params) { {} }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_ruby_gem do
+      let(:boundary_object) { project }
+      let(:headers) { { 'HTTP_AUTHORIZATION' => pat.token } }
+      let(:request) { get(url, headers: headers) }
+
+      before do
+        project.add_developer(user)
+      end
     end
   end
 end

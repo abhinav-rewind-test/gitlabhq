@@ -64,13 +64,16 @@ export default {
         };
       },
       update(data) {
-        return data.workspace?.issuable?.confidential || false;
+        return data.namespace?.issuable?.confidential || false;
+      },
+      skip() {
+        return !this.iid;
       },
       result({ data }) {
         if (!data) {
           return;
         }
-        this.$emit('confidentialityUpdated', data.workspace?.issuable?.confidential);
+        this.$emit('confidentialityUpdated', data.namespace?.issuable?.confidential);
       },
       error() {
         createAlert({
@@ -111,7 +114,7 @@ export default {
       });
 
       const data = produce(sourceData, (draftData) => {
-        draftData.workspace.issuable.confidential = !this.confidential;
+        draftData.namespace.issuable.confidential = !this.confidential;
       });
 
       client.writeQuery({
@@ -142,14 +145,13 @@ export default {
         <sidebar-confidentiality-content
           v-if="!isLoading"
           :confidential="confidential"
-          :issuable-type="issuableType"
           :class="{ 'gl-mt-3': !isClassicSidebar }"
           @expandSidebar="expandSidebar"
         />
       </div>
     </template>
     <template #default>
-      <sidebar-confidentiality-content :confidential="confidential" :issuable-type="issuableType" />
+      <sidebar-confidentiality-content :confidential="confidential" />
       <sidebar-confidentiality-form
         :iid="iid"
         :full-path="fullPath"

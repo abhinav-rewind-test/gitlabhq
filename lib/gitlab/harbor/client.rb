@@ -6,6 +6,9 @@ module Gitlab
       Error = Class.new(StandardError)
       ConfigError = Class.new(Error)
 
+      RESPONSE_SIZE_LIMIT = 1.megabyte
+      RESPONSE_MEMORY_SIZE_LIMIT = RESPONSE_SIZE_LIMIT * 5
+
       attr_reader :integration
 
       def initialize(integration)
@@ -15,8 +18,8 @@ module Gitlab
       end
 
       def check_project_availability
-        options = { headers: headers.merge!('Accept': 'application/json') }
-        response = Gitlab::HTTP.head(url("projects?project_name=#{integration.project_name}"), options)
+        options = { headers: headers.merge!(Accept: 'application/json') }
+        response = Integrations::Clients::HTTP.head(url("projects?project_name=#{integration.project_name}"), options)
 
         { success: response.success? }
       end
@@ -42,13 +45,13 @@ module Gitlab
       private
 
       def get(path, params = {})
-        options = { headers: headers, query: params }
-        response = Gitlab::HTTP.get(path, options)
+        options = { headers: headers, query: params, max_bytes: RESPONSE_MEMORY_SIZE_LIMIT }
+        response = Integrations::Clients::HTTP.get(path, options)
 
         raise Gitlab::Harbor::Client::Error, 'request error' unless response.success?
 
         {
-          body: Gitlab::Json.parse(response.body),
+          body: response.parsed_response,
           total_count: response.headers['x-total-count'].to_i
         }
       rescue JSON::ParserError
@@ -65,7 +68,7 @@ module Gitlab
         auth = Base64.strict_encode64("#{integration.username}:#{integration.password}")
         {
           'Content-Type': 'application/json',
-          'Authorization': "Basic #{auth}"
+          Authorization: "Basic #{auth}"
         }
       end
     end

@@ -16,22 +16,14 @@
     }
   }
 
-  .cancel-btn {
-    color: $red-600;
-
-    &:hover {
-      color: $red-600;
-    }
-  }
-
   .file-title {
-    @include gl-font-monospace;
+    @apply gl-font-monospace;
   }
 
   .editor-ref {
-    background: var(--gray-10, $gray-10);
+    @apply gl-bg-subtle;
     padding-right: $gl-padding;
-    border-right: 1px solid var(--border-color, $border-color);
+    border-right: 1px solid var(--gl-border-color-default);
     display: block;
     float: left;
     margin-right: 10px;
@@ -44,11 +36,11 @@
     max-width: 250px;
     float: left;
 
-    @media(max-width: map-get($grid-breakpoints, lg)-1) {
+    @include gl-container-width-down(lg, panel) {
       width: 180px;
     }
 
-    @media (max-width: 1360px) {
+    @include gl-container-width-down(xl, panel) {
       width: auto;
     }
   }
@@ -59,7 +51,6 @@
 
   .soft-wrap-toggle {
     font-family: $regular-font;
-    margin-left: $gl-padding-8;
 
     .soft-wrap {
       display: inline-flex;
@@ -81,12 +72,12 @@
   }
 
   .overflow-guard {
-    border-radius: 0 0 $border-radius-default $border-radius-default;
+    border-radius: 0 0 $gl-border-radius-base $gl-border-radius-base;
   }
 }
 
 
-@include media-breakpoint-down(md) {
+@include gl-container-width-down(lg, panel) {
   .file-editor {
     .file-title {
       display: block;
@@ -103,33 +94,20 @@
       display: flex;
       flex-direction: row;
       justify-content: space-between;
+      align-items: flex-start;
       width: 100%;
       padding: $gl-padding-8 0 0;
 
-      .md-header-toolbar {
-        margin-left: 0;
-      }
-
       .soft-wrap-toggle {
-        width: 100%;
         margin-left: 0;
-      }
-
-      @media(max-width: map-get($grid-breakpoints, md)-1) {
-        clear: both;
       }
     }
   }
 }
 
-@include media-breakpoint-down(sm) {
+@include gl-container-width-down(md, panel) {
   .file-editor .file-buttons {
     flex-direction: column;
-    padding: $gl-padding-8 0 0;
-
-    .md-header-toolbar {
-      margin: $gl-padding-8 0;
-    }
   }
 }
 
@@ -139,7 +117,7 @@
   vertical-align: top;
   display: inline-block;
 
-  @media(max-width: map-get($grid-breakpoints, lg)-1) {
+  @include gl-container-width-down(lg, panel) {
     display: block;
     margin: 19px 0 12px;
   }
@@ -149,7 +127,7 @@
   display: flex;
   vertical-align: top;
 
-  @media(max-width: map-get($grid-breakpoints, lg)-1) {
+  @include gl-container-width-down(lg, panel) {
     display: inline-block;
     width: 100%;
     padding: 0;
@@ -161,7 +139,7 @@
   display: flex;
   vertical-align: top;
 
-  @media(max-width: map-get($grid-breakpoints, lg)-1) {
+  @include gl-container-width-down(lg, panel) {
     display: block;
     width: 100%;
     margin: 0 0 16px;

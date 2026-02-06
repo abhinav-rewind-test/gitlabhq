@@ -210,7 +210,7 @@ RSpec.shared_examples 'rich text editor - links' do
       end
 
       it 'expands the link, updates the link attributes and text if text is updated',
-        quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/419684' do
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24076' do
         page.within '[data-testid="link-bubble-menu"]' do
           fill_in 'link-text', with: 'new text'
           fill_in 'link-href', with: 'https://about.gitlab.com'
@@ -225,6 +225,49 @@ RSpec.shared_examples 'rich text editor - links' do
           expect(page).not_to have_selector('strong')
         end
       end
+    end
+  end
+
+  describe 'copy link functionality for uploaded files' do
+    before do
+      switch_to_content_editor
+      click_attachment_button
+    end
+
+    it 'copies the full contextualized URL for uploaded files', :js do
+      upload_asset 'sample.pdf'
+      wait_for_requests
+
+      expect(page).to have_css('[data-testid="content_editor_editablebox"] a[href]')
+
+      page.find('[data-testid="content_editor_editablebox"] a[href]').click
+
+      expect(page).to have_css('[data-testid="link-bubble-menu"]')
+
+      expect(page).to have_css('[data-testid="copy-link-url"]')
+
+      link_href = page.find('[data-testid="content_editor_editablebox"] a[href]')['href']
+
+      expect(link_href).to match(%r{https?://.*/-/(project|group)/\d+/uploads/\h{32}/sample\.pdf})
+    end
+  end
+
+  describe 'copy link functionality for external URLs' do
+    before do
+      switch_to_content_editor
+    end
+
+    it 'copies external URLs as-is', :js do
+      type_in_content_editor 'Link to [GitLab](https://gitlab.com)'
+
+      page.find('[data-testid="content_editor_editablebox"] a[href="https://gitlab.com"]').click
+
+      expect(page).to have_css('[data-testid="link-bubble-menu"]')
+
+      expect(page).to have_css('[data-testid="copy-link-url"]')
+
+      link_href = page.find('[data-testid="content_editor_editablebox"] a[href="https://gitlab.com"]')['href']
+      expect(link_href).to eq('https://gitlab.com/')
     end
   end
 end

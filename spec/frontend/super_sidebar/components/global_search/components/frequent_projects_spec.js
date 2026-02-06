@@ -6,19 +6,18 @@ import FrequentProjects from '~/super_sidebar/components/global_search/component
 import createMockApollo from 'helpers/mock_apollo_helper';
 import currentUserFrecentProjectsQuery from '~/super_sidebar/graphql/queries/current_user_frecent_projects.query.graphql';
 import waitForPromises from 'helpers/wait_for_promises';
+import { FREQUENTLY_VISITED_PROJECTS_HANDLE } from '~/super_sidebar/components/global_search/command_palette/constants';
 import { frecentProjectsMock } from '../../../mock_data';
 
 Vue.use(VueApollo);
 
-describe('FrequentlyVisitedProjects', () => {
-  let wrapper;
+const TEST_PROJECTS_PATH = '/mock/project/path';
 
-  const projectsPath = '/mock/project/path';
-  const currentUserFrecentProjectsQueryHandler = jest.fn().mockResolvedValue({
-    data: {
-      frecentProjects: frecentProjectsMock,
-    },
-  });
+describe('FrequentlyVisitedProjects', () => {
+  /** @type {import('@vue/test-utils').Wrapper} */
+  let wrapper;
+  /** @type {jest.Mock} */
+  let currentUserFrecentProjectsQueryHandler;
 
   const createComponent = (options) => {
     const mockApollo = createMockApollo([
@@ -28,7 +27,7 @@ describe('FrequentlyVisitedProjects', () => {
     wrapper = shallowMount(FrequentProjects, {
       apolloProvider: mockApollo,
       provide: {
-        projectsPath,
+        projectsPath: TEST_PROJECTS_PATH,
       },
       ...options,
     });
@@ -40,6 +39,14 @@ describe('FrequentlyVisitedProjects', () => {
     ...wrapperInstance.vm.$attrs,
   });
 
+  beforeEach(() => {
+    currentUserFrecentProjectsQueryHandler = jest.fn().mockResolvedValue({
+      data: {
+        frecentProjects: frecentProjectsMock,
+      },
+    });
+  });
+
   it('passes project-specific props', () => {
     createComponent();
 
@@ -48,7 +55,7 @@ describe('FrequentlyVisitedProjects', () => {
       groupName: 'Frequently visited projects',
       viewAllItemsIcon: 'project',
       viewAllItemsText: 'View all my projects',
-      viewAllItemsPath: projectsPath,
+      viewAllItemsPath: TEST_PROJECTS_PATH,
     });
   });
 
@@ -83,5 +90,33 @@ describe('FrequentlyVisitedProjects', () => {
     findFrequentItems().vm.$emit('nothing-to-render');
 
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('events', () => {
+    beforeEach(() => {
+      createComponent();
+    });
+
+    it('emits action on click', () => {
+      findFrequentItems().vm.$emit('action');
+      expect(wrapper.emitted('action')).toStrictEqual([[FREQUENTLY_VISITED_PROJECTS_HANDLE]]);
+    });
+  });
+
+  describe('when query returns null', () => {
+    beforeEach(async () => {
+      currentUserFrecentProjectsQueryHandler = jest.fn().mockResolvedValue({
+        data: {
+          frecentProjects: null,
+        },
+      });
+
+      createComponent();
+      await waitForPromises();
+    });
+
+    it('passes empty array to items', () => {
+      expect(findFrequentItems().props('items')).toEqual([]);
+    });
   });
 });

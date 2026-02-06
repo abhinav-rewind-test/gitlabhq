@@ -27,10 +27,21 @@ module Gitlab
           SQL
         end
 
+        def copy_relation(relation)
+          connection.execute(<<~SQL)
+            INSERT INTO #{destination_table} (#{column_listing})
+            #{relation.select(column_listing).to_sql}
+            FOR UPDATE
+            ON CONFLICT (#{conflict_targets}) DO NOTHING
+          SQL
+        end
+
         private
 
         def column_listing
-          @column_listing ||= connection.columns(source_table).map(&:name).join(DELIMITER)
+          @column_listing ||= connection.columns(source_table)
+            .map { |c| connection.quote_column_name(c.name) }
+            .join(DELIMITER)
         end
 
         def conflict_targets

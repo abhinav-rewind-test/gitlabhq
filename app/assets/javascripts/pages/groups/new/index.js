@@ -23,11 +23,14 @@ function initNewGroupCreation(el) {
   const {
     hasErrors,
     rootPath,
+    enforceTopLevelGroupLimit,
     groupsUrl,
     parentGroupUrl,
     parentGroupName,
     importExistingGroupPath,
     isSaas,
+    identityVerificationRequired,
+    identityVerificationPath,
   } = el.dataset;
 
   const props = {
@@ -40,13 +43,21 @@ function initNewGroupCreation(el) {
     isSaas: parseBoolean(isSaas),
   };
 
+  const provide = {
+    identityVerificationRequired: parseBoolean(identityVerificationRequired),
+    identityVerificationPath,
+    enforceTopLevelGroupLimit: parseBoolean(enforceTopLevelGroupLimit),
+  };
+
   const apolloProvider = new VueApollo({
     defaultClient: createDefaultClient(),
   });
 
   return new Vue({
     el,
+    name: 'NewGroupCreationAppRoot',
     apolloProvider,
+    provide,
     render(h) {
       return h(NewGroupCreationApp, { props });
     },

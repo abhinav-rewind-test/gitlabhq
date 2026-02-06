@@ -1,9 +1,8 @@
 import { GlTableLite, GlBadge, GlEmptyState } from '@gitlab/ui';
-import { GlSingleStat } from '@gitlab/ui/dist/charts';
+import { GlSingleStat } from '@gitlab/ui/src/charts';
 import { mount } from '@vue/test-utils';
 import { extendedWrapper } from 'helpers/vue_test_utils_helper';
 import DevopsScore from '~/analytics/devops_reports/components/devops_score.vue';
-import DevopsScoreCallout from '~/analytics/devops_reports/components/devops_score_callout.vue';
 import { devopsScoreMetricsData, noDataImagePath, devopsScoreTableHeaders } from '../mock_data';
 
 describe('DevopsScore', () => {
@@ -25,17 +24,12 @@ describe('DevopsScore', () => {
   const findCol = (testId) => findTable().find(`[data-testid="${testId}"]`);
   const findUsageCol = () => findCol('usageCol');
   const findDevopsScoreApp = () => wrapper.findByTestId('devops-score-app');
-  const bannerExists = () => wrapper.findComponent(DevopsScoreCallout).exists();
   const findDocsLink = () =>
     wrapper.findByRole('link', { name: 'See example DevOps Score page in our documentation.' });
 
   describe('with no data', () => {
     beforeEach(() => {
       createComponent({ devopsScoreMetrics: {} });
-    });
-
-    it('includes the DevopsScoreCallout component', () => {
-      expect(bannerExists()).toBe(true);
     });
 
     describe('empty state', () => {
@@ -45,14 +39,14 @@ describe('DevopsScore', () => {
 
       it('displays the correct message', () => {
         expect(findEmptyState().text().replace(/\s+/g, ' ')).toBe(
-          'Data is still calculating... It may be several days before you see feature usage data. See example DevOps Score page in our documentation.',
+          'Data is still calculating… It may be several days before you see feature usage data. See example DevOps Score page in our documentation.',
         );
       });
 
       it('contains a link to the feature documentation', () => {
         expect(findDocsLink().exists()).toBe(true);
         expect(findDocsLink().attributes('href')).toBe(
-          '/help/administration/analytics/dev_ops_reports',
+          '/help/administration/analytics/devops_adoption',
         );
       });
     });
@@ -65,10 +59,6 @@ describe('DevopsScore', () => {
   describe('with data', () => {
     beforeEach(() => {
       createComponent();
-    });
-
-    it('includes the DevopsScoreCallout component', () => {
-      expect(bannerExists()).toBe(true);
     });
 
     it('does not display the empty state', () => {
@@ -132,7 +122,7 @@ describe('DevopsScore', () => {
               const badge = findUsageCol().findComponent(GlBadge);
 
               expect(badge.exists()).toBe(true);
-              expect(badge.props('variant')).toBe('muted');
+              expect(badge.props('variant')).toBe('neutral');
               expect(badge.text()).toBe('Low');
             });
           });

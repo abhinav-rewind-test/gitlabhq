@@ -26,8 +26,8 @@ module Network
     def collect_commits
       # https://gitlab.com/gitlab-org/gitlab-foss/issues/58013
       Gitlab::GitalyClient.allow_n_plus_1_calls do
-        find_commits(count_to_display_commit_in_center).map do |commit|
-          # Decorate with app/model/network/commit.rb
+        # Decorate with app/model/network/commit.rb
+        list_commits(count_to_display_commit_in_center).map do |commit|
           Network::Commit.new(commit)
         end
       end
@@ -62,12 +62,31 @@ module Network
       days
     end
 
+    # TODO: `skip` is not a valid parameter for `ListCommitsRequest` RPC
+    # Issue: https://gitlab.com/gitlab-org/gitlab/-/issues/481720
+
     # Skip count that the target commit is displayed in center.
     def count_to_display_commit_in_center
+      offset = calculate_offset
+
+      if self.class.max_count / 2 < offset
+        # get max index that commit is displayed in the center.
+        offset - (self.class.max_count / 2)
+      else
+        0
+      end
+    end
+
+    def calculate_offset
+      unless @filter_ref
+        return @project.repository.count_commits(revisions: ['--branches', '--tags'],
+          after: @commit.date)
+      end
+
       offset = -1
       skip = 0
       while offset == -1
-        tmp_commits = find_commits(skip)
+        tmp_commits = list_commits(skip)
 
         if tmp_commits.present?
           index = tmp_commits.index do |c|
@@ -86,25 +105,27 @@ module Network
         end
       end
 
-      if self.class.max_count / 2 < offset
-        # get max index that commit is displayed in the center.
-        offset - self.class.max_count / 2
-      else
-        0
-      end
+      offset
     end
 
-    def find_commits(skip = 0)
+    def list_commits(skip = 0)
       Gitlab::SafeRequestStore.fetch([@project, :network_graph_commits, skip]) do
         opts = {
-          max_count: self.class.max_count,
-          skip: skip,
-          order: :date
+          revisions: %w[--tags --branches],
+          pagination_params: { limit: self.class.max_count },
+          reverse: false,
+          order: :date,
+          skip: skip
         }
 
-        opts[:ref] = @commit.id if @filter_ref
+        if @filter_ref
+          opts[:ref] = @commit.id
+          opts[:before] = @commit.committed_date
+        else
+          opts[:ref] = @ref
+        end
 
-        Gitlab::Git::Commit.find_all(@repo.raw_repository, opts)
+        Gitlab::Git::Commit.list_all(@repo.raw_repository, opts)
       end
     end
 

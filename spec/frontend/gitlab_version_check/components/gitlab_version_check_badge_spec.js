@@ -27,7 +27,6 @@ describe('GitlabVersionCheckBadge', () => {
     unmockTracking();
   });
 
-  const findGlBadgeClickWrapper = () => wrapper.findByTestId('badge-click-wrapper');
   const findGlBadge = () => wrapper.findComponent(GlBadge);
 
   describe('template', () => {
@@ -61,8 +60,8 @@ describe('GitlabVersionCheckBadge', () => {
           expect(findGlBadge().attributes('href')).toBe(UPGRADE_DOCS_URL);
         });
 
-        it(`tracks click_version_badge with label ${expectedUI.title} when badge is clicked`, async () => {
-          await findGlBadgeClickWrapper().trigger('click');
+        it(`tracks click_version_badge with label ${expectedUI.title} when badge is clicked`, () => {
+          findGlBadge().vm.$emit('click');
 
           expect(trackingSpy).toHaveBeenCalledWith(undefined, 'click_link', {
             label: 'version_badge',
@@ -88,8 +87,8 @@ describe('GitlabVersionCheckBadge', () => {
         expect(findGlBadge().attributes('href')).toBe(undefined);
       });
 
-      it('does not track click_version_badge', async () => {
-        await findGlBadgeClickWrapper().trigger('click');
+      it('does not track click_version_badge', () => {
+        findGlBadge().vm.$emit('click');
 
         expect(trackingSpy).not.toHaveBeenCalledWith(undefined, 'click_link', {
           label: 'version_badge',

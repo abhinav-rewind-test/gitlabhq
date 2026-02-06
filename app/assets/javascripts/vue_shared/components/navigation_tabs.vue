@@ -1,5 +1,5 @@
 <script>
-import { GlBadge, GlTabs, GlTab } from '@gitlab/ui';
+import { GlBadge, GlLoadingIcon, GlTabs, GlTab } from '@gitlab/ui';
 import { initScrollingTabs } from '~/layout_nav';
 
 /**
@@ -17,6 +17,7 @@ import { initScrollingTabs } from '~/layout_nav';
  *      scope: String,
  *      count: Number || Undefined || Null,
  *      isActive: Boolean,
+ *      isLoading: Boolean
  *    },
  *   ]"
  *   @onChangeTab="onChangeTab"
@@ -26,6 +27,7 @@ export default {
   name: 'NavigationTabs',
   components: {
     GlBadge,
+    GlLoadingIcon,
     GlTabs,
     GlTab,
   },
@@ -48,7 +50,9 @@ export default {
       // 0 is valid in a badge, but evaluates to false, we need to check for undefined or null
       return !(count === undefined || count === null);
     },
-
+    showLoadingIcon(tab) {
+      return tab.isLoading || false;
+    },
     onTabClick(tab) {
       this.$emit('onChangeTab', tab.scope);
     },
@@ -56,11 +60,11 @@ export default {
 };
 </script>
 <template>
-  <gl-tabs class="gl-display-flex gl-w-full" nav-class="gl-border-0!">
+  <gl-tabs class="gl-flex gl-w-full" nav-class="!gl-border-0">
     <gl-tab
       v-for="(tab, i) in tabs"
       :key="i"
-      :title-link-class="`js-${scope}-tab-${tab.scope} gl-display-inline-flex`"
+      :title-link-class="`js-${scope}-tab-${tab.scope} gl-inline-flex`"
       :title-link-attributes="/* eslint-disable @gitlab/vue-no-new-non-primitive-in-template */ {
         'data-testid': `${scope}-tab-${tab.scope}`,
       } /* eslint-enable @gitlab/vue-no-new-non-primitive-in-template */"
@@ -69,9 +73,11 @@ export default {
     >
       <template #title>
         <span class="gl-mr-2"> {{ tab.name }} </span>
-        <gl-badge v-if="shouldRenderBadge(tab.count)" size="sm" class="gl-tab-counter-badge">{{
-          tab.count
-        }}</gl-badge>
+        <gl-loading-icon v-if="showLoadingIcon(tab)" />
+
+        <gl-badge v-else-if="shouldRenderBadge(tab.count)" class="gl-tab-counter-badge">
+          {{ tab.count }}
+        </gl-badge>
       </template>
     </gl-tab>
   </gl-tabs>

@@ -107,18 +107,6 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
         shared_examples 'users are invited through groups' do
           let_it_be(:invited_group_member) { create(:user) }
 
-          context 'when webui_members_inherited_users is disabled' do
-            before do
-              stub_feature_flags(webui_members_inherited_users: false)
-            end
-
-            it 'lists only direct members' do
-              get :index, params: { namespace_id: project.namespace, project_id: project }
-
-              expect(assigns(:project_members).map(&:user_id)).not_to include(invited_group_member.id)
-            end
-          end
-
           it 'lists invited group members by default' do
             get :index, params: { namespace_id: project.namespace, project_id: project }
 
@@ -212,13 +200,108 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
           end
         end
       end
+
+      context 'group members' do
+        let_it_be(:group) { create(:group) }
+        let_it_be(:project) { create(:project, :public, group: group) }
+
+        let_it_be(:inherited_group_member) do
+          create(:group_group_link, shared_group: group, shared_with_group: create(:group, name: 'foo'))
+        end
+
+        let_it_be(:direct_group_member) do
+          create(:project_group_link, :reporter, project: project, group: shared_group)
+        end
+
+        let(:params) { {} }
+
+        subject(:make_request) do
+          get :index, params: { namespace_id: project.namespace, project_id: project }.merge(params)
+        end
+
+        it 'lists all group members' do
+          make_request
+
+          expected = ::Members::GroupLinksCollection.new([direct_group_member, inherited_group_member])
+          expect(assigns(:group_member_links)).to eq(expected)
+        end
+
+        context 'when group is both a direct and inherited members' do
+          context 'when inherited access is higher' do
+            let_it_be(:inherited_maintainer_member) do
+              create(:group_group_link, :maintainer, shared_group: group, shared_with_group: shared_group)
+            end
+
+            it 'lists membership with highest access level' do
+              make_request
+
+              expected = ::Members::GroupLinksCollection.new([inherited_maintainer_member, inherited_group_member])
+              expect(assigns(:group_member_links)).to eq(expected)
+            end
+          end
+
+          context 'when direct project access is higher' do
+            let_it_be(:inherited_guest_member) do
+              create(:group_group_link, :guest, shared_group: group, shared_with_group: shared_group)
+            end
+
+            it 'lists membership with highest access level' do
+              make_request
+
+              expected = ::Members::GroupLinksCollection.new([direct_group_member, inherited_group_member])
+              expect(assigns(:group_member_links)).to eq(expected)
+            end
+          end
+        end
+
+        context 'when `search_groups` is provided' do
+          let(:params) { { search_groups: 'foo' } }
+
+          it 'filters results' do
+            make_request
+
+            expected = ::Members::GroupLinksCollection.new([inherited_group_member])
+            expect(assigns(:group_member_links)).to eq(expected)
+          end
+        end
+
+        context 'when groups_with_inherited_permissions is `exclude`' do
+          let(:params) { { groups_with_inherited_permissions: 'exclude' } }
+
+          it 'lists direct group members' do
+            make_request
+
+            expected = ::Members::GroupLinksCollection.new([direct_group_member])
+            expect(assigns(:group_member_links)).to eq(expected)
+          end
+        end
+
+        context 'when groups_with_inherited_permissions is `only`' do
+          let(:params) { { groups_with_inherited_permissions: 'only' } }
+
+          it 'lists inherited group members' do
+            make_request
+
+            expected = ::Members::GroupLinksCollection.new([inherited_group_member])
+            expect(assigns(:group_member_links)).to eq(expected)
+          end
+        end
+
+        it 'sets pagination parameters', :aggregate_failures do
+          make_request
+
+          expect(assigns(:group_member_links).current_page).to be(1)
+          expect(assigns(:group_member_links).limit_value).to be(20)
+          expect(assigns(:group_member_links).total_count).to be(2)
+        end
+      end
     end
 
     describe 'PUT update' do
       let_it_be(:requester) { create(:project_member, :access_request, project: project) }
 
       before do
-        project.add_maintainer(user)
+        project.add_owner(user)
         sign_in(user)
       end
 
@@ -240,6 +323,13 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
         describe 'managing project direct owners' do
           context 'when a Maintainer tries to elevate another user to OWNER' do
+            let(:maintainer_user) { create(:user) }
+
+            before do
+              project.add_maintainer(maintainer_user)
+              sign_in(maintainer_user)
+            end
+
             it 'does not allow the operation' do
               params = {
                 project_member: { access_level: Gitlab::Access::OWNER },
@@ -282,13 +372,13 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
       context 'access expiry date' do
         subject do
           put :update, xhr: true, params: {
-                                            project_member: {
-                                              expires_at: expires_at
-                                            },
-                                            namespace_id: project.namespace,
-                                            project_id: project,
-                                            id: requester
-                                          }
+            project_member: {
+              expires_at: expires_at
+            },
+            namespace_id: project.namespace,
+            project_id: project,
+            id: requester
+          }
         end
 
         context 'when set to a date in the past' do
@@ -344,7 +434,7 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
         context 'when `expires_at` is set' do
           it 'returns correct json response' do
-            expect(json_response).to eq({
+            expect(json_response).to include({
               "expires_soon" => false,
               "expires_at_formatted" => expiry_date.to_time.in_time_zone.to_fs(:medium)
             })
@@ -354,8 +444,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
         context 'when `expires_at` is not set' do
           let(:expiry_date) { nil }
 
-          it 'returns empty json response' do
-            expect(json_response).to be_empty
+          it 'returns json response without expiration data' do
+            expect(json_response).not_to have_key(:expires_soon)
+            expect(json_response).not_to have_key(:expires_at_formatted)
           end
         end
       end
@@ -371,10 +462,10 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
       context 'when member is not found' do
         it 'returns 404' do
           delete :destroy, params: {
-                             namespace_id: project.namespace,
-                             project_id: project,
-                             id: 42
-                           }
+            namespace_id: project.namespace,
+            project_id: project,
+            id: 42
+          }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
@@ -426,10 +517,10 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it '[HTML] removes user from members', :aggregate_failures do
             delete :destroy, params: {
-                               namespace_id: project.namespace,
-                               project_id: project,
-                               id: member
-                             }
+              namespace_id: project.namespace,
+              project_id: project,
+              id: member
+            }
 
             expect(response).to redirect_to(
               project_project_members_path(project)
@@ -459,9 +550,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
       context 'when member is not found' do
         it 'returns 404' do
           delete :leave, params: {
-                           namespace_id: project.namespace,
-                           project_id: project
-                         }
+            namespace_id: project.namespace,
+            project_id: project
+          }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
@@ -475,9 +566,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it 'removes user from members', :aggregate_failures do
             delete :leave, params: {
-                             namespace_id: project.namespace,
-                             project_id: project
-                           }
+              namespace_id: project.namespace,
+              project_id: project
+            }
 
             expect(controller).to set_flash.to "You left the \"#{project.human_name}\" project."
             expect(response).to redirect_to(dashboard_projects_path)
@@ -494,9 +585,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it 'cannot remove themselves from the project' do
             delete :leave, params: {
-                             namespace_id: project.namespace,
-                             project_id: project
-                           }
+              namespace_id: project.namespace,
+              project_id: project
+            }
 
             expect(response).to have_gitlab_http_status(:forbidden)
           end
@@ -509,9 +600,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it 'removes user from members', :aggregate_failures do
             delete :leave, params: {
-                             namespace_id: project.namespace,
-                             project_id: project
-                           }
+              namespace_id: project.namespace,
+              project_id: project
+            }
 
             expect(controller).to set_flash.to 'Your access request to the project has been withdrawn.'
             expect(response).to redirect_to(project_path(project))
@@ -529,9 +620,9 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
       it 'creates a new ProjectMember that is not a team member', :aggregate_failures do
         post :request_access, params: {
-                                namespace_id: project.namespace,
-                                project_id: project
-                              }
+          namespace_id: project.namespace,
+          project_id: project
+        }
 
         expect(controller).to set_flash.to 'Your request for access has been queued for review.'
         expect(response).to redirect_to(
@@ -552,10 +643,10 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
       context 'when member is not found' do
         it 'returns 404' do
           post :approve_access_request, params: {
-                                          namespace_id: project.namespace,
-                                          project_id: project,
-                                          id: 42
-                                        }
+            namespace_id: project.namespace,
+            project_id: project,
+            id: 42
+          }
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
@@ -569,10 +660,10 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it 'returns 404', :aggregate_failures do
             post :approve_access_request, params: {
-                                            namespace_id: project.namespace,
-                                            project_id: project,
-                                            id: member
-                                          }
+              namespace_id: project.namespace,
+              project_id: project,
+              id: member
+            }
 
             expect(response).to have_gitlab_http_status(:not_found)
             expect(project.members).not_to include member
@@ -586,10 +677,10 @@ RSpec.describe Projects::ProjectMembersController, feature_category: :groups_and
 
           it 'adds user to members', :aggregate_failures do
             post :approve_access_request, params: {
-                                            namespace_id: project.namespace,
-                                            project_id: project,
-                                            id: member
-                                          }
+              namespace_id: project.namespace,
+              project_id: project,
+              id: member
+            }
 
             expect(response).to redirect_to(
               project_project_members_path(project)

@@ -29,9 +29,13 @@ class Projects::BranchesController < Projects::ApplicationController
         fetch_branches_by_mode
         fetch_merge_requests_for_branches
 
-        @refs_pipelines = @project.ci_pipelines.latest_successful_for_refs(@branches.map(&:name))
-        @merged_branch_names = repository.merged_branch_names(@branches.map(&:name))
-        @branch_pipeline_statuses = Ci::CommitStatusesFinder.new(@project, repository, current_user, @branches).execute
+        @branches.each do |branch|
+          Gitlab::Git::RefPreloader.collect_ref(@project.id, Gitlab::Git::BRANCH_REF_PREFIX + branch.name)
+        end
+
+        @merged_branch_names = repository.merged_branch_names(@branches.map(&:name), include_identical: true)
+        @branch_pipeline_statuses =
+          Ci::CommitStatusesFinder.new(@project, repository, current_user, @branches, ref_type: :heads).execute
 
         # https://gitlab.com/gitlab-org/gitlab/-/issues/22851
         Gitlab::GitalyClient.allow_n_plus_1_calls do
@@ -42,8 +46,8 @@ class Projects::BranchesController < Projects::ApplicationController
         render status: :service_unavailable
       end
       format.json do
-        branches = BranchesFinder.new(@repository, params).execute
-        branches = Kaminari.paginate_array(branches).page(params[:page])
+        branches = BranchesFinder.new(@repository, branches_params).execute
+        branches = Kaminari.paginate_array(branches).page(branches_params[:page])
         render json: branches.map(&:name)
       end
     end
@@ -53,7 +57,13 @@ class Projects::BranchesController < Projects::ApplicationController
     respond_to do |format|
       format.json do
         service = ::Branches::DivergingCommitCountsService.new(repository)
-        branches = BranchesFinder.new(repository, params.permit(names: [])).execute
+        ref_names = params.permit(names: [])[:names].presence
+
+        branches = Gitlab::Git::Finders::RefsFinder.new(
+          repository,
+          ref_type: :branches,
+          ref_names: ref_names
+        ).execute
 
         Gitlab::GitalyClient.allow_n_plus_1_calls do
           render json: branches.to_h { |branch| [branch.name, service.call(branch)] }
@@ -129,13 +139,14 @@ class Projects::BranchesController < Projects::ApplicationController
     ::Branches::DeleteMergedService.new(@project, current_user).async_execute
 
     redirect_to project_branches_path(@project),
-      notice: _('Merged branches are being deleted. This can take some time depending on the number of branches. Please refresh the page to see changes.')
+      notice: _('Merged branches are being deleted. This can take some time depending on the number of branches. ' \
+        'Please refresh the page to see changes.')
   end
 
   private
 
   def sort_param
-    sort = params[:sort].presence
+    sort = branches_params[:sort].presence
 
     unless sort.in?(supported_sort_options)
       flash.now[:alert] = _("Unsupported sort value.")
@@ -191,8 +202,11 @@ class Projects::BranchesController < Projects::ApplicationController
 
   def redirect_for_legacy_index_sort_or_search
     # Normalize a legacy URL with redirect
-    if request.format != :json && !params[:state].presence && [:sort, :search, :page].any? { |key| params[key].presence }
-      redirect_to project_branches_filtered_path(@project, state: 'all'), notice: _('Update your bookmarked URLs as filtered/sorted branches URL has been changed.')
+    if request.format != :json && !branches_params[:state].presence && [:sort, :search, :page].any? do |key|
+      branches_params[key].presence
+    end
+      redirect_to project_branches_filtered_path(@project, state: 'all'),
+        notice: _('Update your bookmarked URLs as filtered/sorted branches URL has been changed.')
     end
   end
 
@@ -200,7 +214,7 @@ class Projects::BranchesController < Projects::ApplicationController
     return fetch_branches_for_overview if @mode == 'overview'
 
     @branches, @prev_path, @next_path =
-      Projects::BranchesByModeService.new(@project, params.merge(sort: @sort, mode: @mode)).execute
+      Projects::BranchesByModeService.new(@project, branches_params.merge(sort: @sort, mode: @mode)).execute
   end
 
   def fetch_merge_requests_for_branches
@@ -227,7 +241,7 @@ class Projects::BranchesController < Projects::ApplicationController
   end
 
   def fetch_mode
-    state = params[:state].presence
+    state = branches_params[:state].presence
 
     return 'overview' unless state
 
@@ -242,5 +256,9 @@ class Projects::BranchesController < Projects::ApplicationController
     return unless can?(current_user, :update_issue, confidential_issue_project)
 
     confidential_issue_project
+  end
+
+  def branches_params
+    params.permit(:page, :state, :sort, :search, :page_token, :offset)
   end
 end

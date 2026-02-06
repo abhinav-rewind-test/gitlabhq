@@ -10,12 +10,12 @@ RSpec.describe Gitlab::Email::Handler::UnsubscribeHandler do
     stub_config_setting(host: 'localhost')
   end
 
+  let_it_be(:project) { create(:project, :public, :repository) }
   let(:email_raw) { fixture_file('emails/valid_reply.eml').gsub(mail_key, "#{mail_key}#{Gitlab::Email::Common::UNSUBSCRIBE_SUFFIX}") }
-  let(:project)   { create(:project, :public) }
-  let(:user)      { create(:user) }
-  let(:noteable)  { create(:issue, project: project) }
+  let(:user) { create(:user) }
+  let(:noteable) { create(:issue, project: project) }
 
-  let!(:sent_notification) { SentNotification.record(noteable, user.id, mail_key) }
+  let!(:sent_notification) { SentNotification.record(noteable, user.id, { reply_key: mail_key }) }
 
   context "when email key" do
     let(:mail) { Mail::Message.new(email_raw) }
@@ -41,7 +41,7 @@ RSpec.describe Gitlab::Email::Handler::UnsubscribeHandler do
 
   context 'when notification concerns a commit' do
     let(:commit) { create(:commit, project: project) }
-    let!(:sent_notification) { SentNotification.record(commit, user.id, mail_key) }
+    let!(:sent_notification) { SentNotification.record(commit, user.id, { reply_key: mail_key }) }
 
     it 'handler does not raise an error' do
       expect { receiver.execute }.not_to raise_error
@@ -82,8 +82,17 @@ RSpec.describe Gitlab::Email::Handler::UnsubscribeHandler do
     end
   end
 
-  context 'when no sent notification for the mail key could be found' do
+  context 'when mail key has the wrong format' do
     let(:email_raw) { fixture_file('emails/wrong_mail_key.eml') }
+
+    it 'raises a UnknownIncomingEmail' do
+      expect { receiver.execute }.to raise_error(Gitlab::Email::UnknownIncomingEmail)
+    end
+  end
+
+  context 'when no sent notification for the mail key could be found' do
+    let(:email_raw) { fixture_file('emails/valid_reply.eml') }
+    let(:sent_notification) { nil }
 
     it 'raises a SentNotificationNotFoundError' do
       expect { receiver.execute }.to raise_error(Gitlab::Email::SentNotificationNotFoundError)

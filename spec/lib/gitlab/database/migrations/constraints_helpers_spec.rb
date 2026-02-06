@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers do
+RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers, feature_category: :database do
   let(:model) do
     ActiveRecord::Migration.new.extend(described_class)
   end
@@ -41,6 +41,14 @@ RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers do
 
       expect(described_class)
         .to be_check_constraint_exists(:projects, 'check_1', connection: model.connection)
+    end
+
+    it 'returns true if a constraint exists in the specified non-current schema' do
+      expect(model)
+        .to be_check_constraint_exists('new_test_schema.projects', 'check_2')
+
+      expect(described_class)
+        .to be_check_constraint_exists('new_test_schema.projects', 'check_2', connection: model.connection)
     end
 
     it 'returns false if a constraint does not exist' do
@@ -150,6 +158,21 @@ RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers do
             'check_name_not_null',
             validate: false
           )
+        end
+
+        context 'with a schema-prefixed table' do
+          it 'includes the schema in the ADD CONSTRAINT query' do
+            expect(model).to receive(:with_lock_retries).and_call_original
+            expect(model).to receive(:execute).with(/ALTER TABLE other_schema.test_table\s+ADD CONSTRAINT/)
+
+            # setting validate: false to only focus on the ADD CONSTRAINT command
+            model.add_check_constraint(
+              'other_schema.test_table',
+              'char_length(name) <= 255',
+              'check_name_not_null',
+              validate: false
+            )
+          end
         end
       end
 
@@ -517,7 +540,7 @@ RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers do
 
   describe '#add_not_null_constraint' do
     context 'when it is called with the default options' do
-      it 'calls add_check_constraint with an infered constraint name and validate: true' do
+      it 'calls add_check_constraint with an inferred constraint name and validate: true' do
         constraint_name = model.check_constraint_name(:test_table, :name, 'not_null')
         check = "name IS NOT NULL"
 
@@ -796,6 +819,35 @@ RSpec.describe Gitlab::Database::Migrations::ConstraintsHelpers do
           .constrained_columns
           .first
           .to_sym
+      end
+    end
+  end
+
+  describe '#column_is_nullable?' do
+    # This is defined as a private method of this module, and normally would not warrant
+    # dedicated test coverage. But that being said, it has no test coverage at all (it's
+    # only stubbed in the ConstraintsHelpers spec) so I'm adding testing here until we
+    # figure out how to test it properly through the public methods that use it.
+
+    context 'when a plain table name is passed' do
+      subject(:nullable) { model.send(:column_is_nullable?, 'table_name', 'column_name') }
+
+      it 'defaults to querying for the table defined in the current_schema' do
+        expect(model.connection).to receive(:select_value)
+          .with(/c\.table_schema = 'public'\s+AND c.table_name = 'table_name'\s+AND c.column_name = 'column_name'/)
+
+        nullable
+      end
+    end
+
+    context 'when a table name is passed with a schema prefix' do
+      subject(:nullable) { model.send(:column_is_nullable?, 'schema_prefix.table_name', 'column_name') }
+
+      it 'correctly parses out the schema prefix and uses it instead of current_schema' do
+        expect(model.connection).to receive(:select_value)
+        .with(/c\.table_schema = 'schema_prefix'\s+AND c.table_name = 'table_name'\s+AND c.column_name = 'column_name'/)
+
+        nullable
       end
     end
   end

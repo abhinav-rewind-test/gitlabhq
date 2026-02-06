@@ -5,6 +5,7 @@ require 'spec_helper'
 RSpec.describe Label, feature_category: :team_planning do
   using RSpec::Parameterized::TableSyntax
 
+  let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project) }
 
   describe 'modules' do
@@ -15,37 +16,17 @@ RSpec.describe Label, feature_category: :team_planning do
   describe 'associations' do
     it { is_expected.to have_many(:issues).through(:label_links).source(:target) }
     it { is_expected.to have_many(:label_links).dependent(:destroy) }
+    it { is_expected.to have_many(:resource_label_events).dependent(:nullify) }
     it { is_expected.to have_many(:lists).dependent(:destroy) }
     it { is_expected.to have_many(:priorities).class_name('LabelPriority') }
   end
 
+  it_behaves_like 'BaseLabel'
+
   describe 'validation' do
+    subject { described_class.new(project: project) }
+
     it { is_expected.to validate_uniqueness_of(:title).scoped_to([:group_id, :project_id]) }
-
-    it 'validates color code' do
-      is_expected.not_to allow_value('G-ITLAB').for(:color)
-      is_expected.not_to allow_value('AABBCC').for(:color)
-      is_expected.not_to allow_value('#AABBCCEE').for(:color)
-      is_expected.not_to allow_value('GGHHII').for(:color)
-      is_expected.not_to allow_value('#').for(:color)
-      is_expected.not_to allow_value('').for(:color)
-
-      is_expected.to allow_value('#AABBCC').for(:color)
-      is_expected.to allow_value('#abcdef').for(:color)
-    end
-
-    it 'validates title' do
-      is_expected.not_to allow_value('G,ITLAB').for(:title)
-      is_expected.not_to allow_value('').for(:title)
-      is_expected.not_to allow_value('s' * 256).for(:title)
-
-      is_expected.to allow_value('GITLAB').for(:title)
-      is_expected.to allow_value('gitlab').for(:title)
-      is_expected.to allow_value('G?ITLAB').for(:title)
-      is_expected.to allow_value('G&ITLAB').for(:title)
-      is_expected.to allow_value("customer's request").for(:title)
-      is_expected.to allow_value('s' * 255).for(:title)
-    end
 
     describe 'description length' do
       let(:invalid_description) { 'x' * (::Label::DESCRIPTION_LENGTH_MAX + 1) }
@@ -162,52 +143,133 @@ RSpec.describe Label, feature_category: :team_planning do
         end
       end
     end
-  end
 
-  describe 'ensure_lock_on_merge_allowed' do
-    let(:validation_error) { 'can not be set for template labels' }
+    describe 'exactly_one_parent', :with_current_organization do
+      context 'when none of the parent_id fields are set' do
+        it 'adds an error message' do
+          label = described_class.new
+          label.valid?
 
-    # rubocop:disable Rails/SaveBang
-    context 'when creating a label' do
-      let(:label) { described_class.create(title: 'test', template: template, lock_on_merge: lock_on_merge) }
-
-      where(:template, :lock_on_merge, :valid, :errors) do
-        false         | false        | true    | []
-        false         | true         | true    | []
-        true          | false        | true    | []
-        true          | true         | false   | [validation_error]
-        false         | true         | true    | []
+          expect(label.errors[:parent]).to include('Exactly one of project, organization, group must be present')
+        end
       end
 
-      with_them do
-        it 'validates lock_on_merge on label creation' do
-          expect(label.valid?).to be(valid)
-          expect(label.errors[:lock_on_merge]).to eq(errors)
+      context 'when a parent is set' do
+        let(:group_id) { group.id }
+        let(:project_id) { project.id }
+        let(:organization_id) { current_organization.id }
+
+        where(:current_group_id, :current_project_id, :current_organization_id, :valid) do
+          ref(:group_id)        | nil              | nil                   | true
+          nil                   | ref(:project_id) | nil                   | true
+          nil                   | nil              | ref(:organization_id) | true
+          ref(:group_id)        | ref(:project_id) | ref(:organization_id) | false
+          ref(:group_id)        | ref(:project_id) | nil                   | false
+          ref(:group_id)        | nil              | ref(:organization_id) | false
+          nil                   | ref(:project_id) | ref(:organization_id) | false
+        end
+
+        with_them do
+          it 'validates presence of a single parent' do
+            label = described_class.new(
+              group_id: current_group_id,
+              project_id: current_project_id,
+              organization_id: current_organization_id
+            )
+            label.valid?
+
+            expect(label.errors[:parent].empty?).to eq(valid)
+          end
         end
       end
     end
-    # rubocop:enable Rails/SaveBang
 
-    context 'when updating a label' do
-      let_it_be(:template_label) { create(:label, template: true) }
+    describe 'ensure_lock_on_merge_allowed' do
+      let(:validation_error) { 'can not be set for template labels' }
 
-      where(:lock_on_merge, :valid, :errors) do
-        true         | false   | [validation_error]
-        false        | true    | []
-      end
+      # rubocop:disable Rails/SaveBang
+      context 'when creating a label' do
+        let(:label) { described_class.create(title: 'test', template: template, lock_on_merge: lock_on_merge) }
 
-      with_them do
-        it 'validates lock_on_merge value if label is a template' do
-          template_label.update_column(:lock_on_merge, lock_on_merge)
-
-          expect(template_label.valid?).to be(valid)
-          expect(template_label.errors[:lock_on_merge]).to eq(errors)
+        where(:template, :lock_on_merge, :valid, :errors) do
+          false         | false        | true    | []
+          false         | true         | true    | []
+          true          | false        | true    | []
+          true          | true         | false   | [validation_error]
+          false         | true         | true    | []
         end
+
+        with_them do
+          it 'validates lock_on_merge on label creation' do
+            label.valid?
+
+            expect(label.errors[:lock_on_merge].empty?).to eq(valid)
+            expect(label.errors[:lock_on_merge]).to eq(errors)
+          end
+        end
+      end
+      # rubocop:enable Rails/SaveBang
+
+      context 'when updating a label' do
+        let_it_be(:template_label) { create(:label, template: true) }
+
+        where(:lock_on_merge, :valid, :errors) do
+          true         | false   | [validation_error]
+          false        | true    | []
+        end
+
+        with_them do
+          it 'validates lock_on_merge value if label is a template' do
+            template_label.update_column(:lock_on_merge, lock_on_merge)
+
+            expect(template_label.valid?).to be(valid)
+            expect(template_label.errors[:lock_on_merge]).to eq(errors)
+          end
+        end
+      end
+    end
+  end
+
+  describe 'callbacks' do
+    describe 'ensure_single_parent_existing_records' do
+      context 'when its a group label' do
+        let(:label) { create(:group_label, group: group) }
+
+        it 'removes project_id if present' do
+          label.project_id = project.id
+          expect(label).to be_valid
+        end
+      end
+    end
+
+    describe 'nullify_dependent_associations_in_batches' do
+      let_it_be(:issue) { create(:issue, :group_level, namespace: group) }
+      let_it_be_with_reload(:resource_label_event) { create(:resource_label_event, issue: issue) }
+      let(:label) { resource_label_event.label }
+
+      it 'nullifys associated resource_label_events' do
+        expect(label).to receive(:nullify_dependent_associations_in_batches).and_call_original
+
+        label.destroy!
+
+        expect(resource_label_event.reload.label_id).to be_nil
+        expect(described_class.find_by(id: label.id)).to be_nil
       end
     end
   end
 
   describe 'scopes' do
+    describe '.in_organization' do
+      let(:organization1) { create(:organization) }
+      let(:organization2) { create(:organization) }
+      let!(:label1) { create(:admin_label, organization: organization1) }
+      let!(:label2) { create(:admin_label, organization: organization2) }
+
+      subject { described_class.in_organization(organization2) }
+
+      it { is_expected.to contain_exactly(label2) }
+    end
+
     describe '.on_board' do
       let(:board) { create(:board, project: project) }
       let!(:list1) { create(:list, board: board, label: development) }
@@ -252,53 +314,38 @@ RSpec.describe Label, feature_category: :team_planning do
     end
   end
 
-  describe '#color' do
-    it 'strips color' do
-      label = described_class.new(color: '   #abcdef   ')
-      label.valid?
+  describe '#hook_attrs' do
+    let_it_be(:label) { build_stubbed(:label) }
 
-      expect(label.color).to be_color('#abcdef')
+    subject(:attrs) { label.hook_attrs }
+
+    it 'has the expected attributes' do
+      is_expected.to match(
+        {
+          id: label.id,
+          title: label.title,
+          color: label.color,
+          project_id: label.project.id,
+          created_at: be_like_time(label.created_at),
+          updated_at: be_like_time(label.updated_at),
+          template: label.template,
+          description: label.description,
+          type: label.type,
+          group_id: nil
+        }
+      )
     end
 
-    it 'uses default color if color is missing' do
-      label = described_class.new(color: nil)
+    context 'when label has a group' do
+      let_it_be(:group) { build_stubbed(:group) }
 
-      expect(label.color).to be_color(Label::DEFAULT_COLOR)
-    end
-  end
+      before do
+        label.group_id = group.id
+      end
 
-  describe '#text_color' do
-    it 'uses default color if color is missing' do
-      label = described_class.new(color: nil)
-
-      expect(label.text_color).to eq(Label::DEFAULT_COLOR.contrast)
-    end
-  end
-
-  describe '#title' do
-    it 'sanitizes title' do
-      label = described_class.new(title: '<b>foo & bar?</b>')
-      expect(label.title).to eq('foo & bar?')
-    end
-
-    it 'strips title' do
-      label = described_class.new(title: '   label   ')
-      label.valid?
-
-      expect(label.title).to eq('label')
-    end
-  end
-
-  describe '#description' do
-    it 'sanitizes description' do
-      label = described_class.new(description: '<b>foo & bar?</b>')
-      expect(label.description).to eq('foo & bar?')
-    end
-
-    it 'accepts an empty string' do
-      label = described_class.new(title: 'foo', description: 'bar')
-      label.update!(description: '')
-      expect(label.description).to eq('')
+      it 'has the group ID' do
+        is_expected.to include(group_id: group.id)
+      end
     end
   end
 
@@ -331,6 +378,14 @@ RSpec.describe Label, feature_category: :team_planning do
           expect(priority.reload.priority).to eq 1
         end
       end
+
+      context 'when label is archived' do
+        subject(:label) { create(:label, :archived, project: project) }
+
+        it 'does not create label priority' do
+          expect { label.prioritize!(project, 1) }.not_to change(label.priorities, :count)
+        end
+      end
     end
 
     describe '#unprioritize!' do
@@ -338,6 +393,29 @@ RSpec.describe Label, feature_category: :team_planning do
         create(:label_priority, project: project, label: label, priority: 0)
 
         expect { label.unprioritize!(project) }.to change(label.priorities, :count).by(-1)
+      end
+
+      context 'when archiving label' do
+        it 'unprioritizes label' do
+          create(:label_priority, project: project, label: label, priority: 0)
+
+          label.archived = true
+          expect { label.save! }.to change(label.priorities, :count).by(-1)
+        end
+
+        it 'does not unprioritize other labels' do
+          other_label = create(:label)
+          create(:label_priority, project: project, label: other_label, priority: 0)
+
+          label.archived = true
+          expect { label.save! }.not_to change(other_label.priorities, :count)
+        end
+
+        it 'does not trigger the callbacks when not archived' do
+          label.archived = false
+          expect(label).not_to receive(:unprioritize_all!)
+          label.save!
+        end
       end
     end
 
@@ -355,22 +433,6 @@ RSpec.describe Label, feature_category: :team_planning do
           expect(label.priority(project)).to eq 1
         end
       end
-    end
-  end
-
-  describe '.search' do
-    let(:label) { create(:label, title: 'bug', description: 'incorrect behavior') }
-
-    it 'returns labels with a partially matching title' do
-      expect(described_class.search(label.title[0..2])).to eq([label])
-    end
-
-    it 'returns labels with a partially matching description' do
-      expect(described_class.search(label.description[0..5])).to eq([label])
-    end
-
-    it 'returns nothing' do
-      expect(described_class.search('feature')).to be_empty
     end
   end
 
@@ -446,13 +508,15 @@ RSpec.describe Label, feature_category: :team_planning do
     end
   end
 
-  describe '#templates' do
+  describe '#templates', :with_current_organization do
     context 'with invalid template labels' do
       it 'returns only valid template labels' do
         create(:label)
         # Project labels should not have template set to true
         create(:label, template: true)
-        valid_template_label = described_class.create!(title: 'test', template: true, type: nil)
+        valid_template_label = described_class.create!(
+          title: 'test', template: true, type: nil, organization_id: current_organization.id
+        )
 
         expect(described_class.templates).to eq([valid_template_label])
       end
@@ -467,6 +531,38 @@ RSpec.describe Label, feature_category: :team_planning do
       label2 = create(:label, title: "TITLE2")
 
       expect(pluck_titles).to contain_exactly(label1.title, label2.title)
+    end
+  end
+
+  describe '#refresh_markdown_cache!' do
+    before do
+      described_class.connection.execute(<<~SQL)
+        ALTER TABLE labels DROP CONSTRAINT check_2d9a8c1bca;
+      SQL
+
+      label
+
+      described_class.connection.execute(<<~SQL)
+        ALTER TABLE labels
+          ADD CONSTRAINT check_2d9a8c1bca CHECK ((num_nonnulls(group_id, organization_id, project_id) = 1)) NOT VALID;
+      SQL
+    end
+
+    context 'when label has both project_id and group_id present' do
+      let(:label) do
+        create(:label, project: project).tap do |r|
+          r.group = group
+          r.save!(validate: false)
+        end
+      end
+
+      it 'updates sharding key unless exactly one sharding key column is present' do
+        expect do
+          label.refresh_markdown_cache!
+        end.to change { [label.project_id, label.group_id, label.organization_id] }
+          .from([project.id, group.id, nil])
+          .to([project.id, nil, nil])
+      end
     end
   end
 end

@@ -1,4 +1,5 @@
 import $ from 'jquery';
+import { __ } from '~/locale';
 import { renderGFM } from '~/behaviors/markdown/render_gfm';
 import { SourceEditorExtension } from '~/editor/extensions/source_editor_extension_base';
 import { FileTemplateExtension } from '~/editor/extensions/source_editor_file_template_ext';
@@ -8,8 +9,10 @@ import { createAlert } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
 import { addEditorMarkdownListeners } from '~/lib/utils/text_markdown';
 import FilepathFormMediator from '~/blob/filepath_form_mediator';
+import { HTTP_STATUS_PAYLOAD_TOO_LARGE } from '~/lib/utils/http_status';
 import { visitUrl } from '~/lib/utils/url_utility';
 import Api from '~/api';
+import { createDynamicHeightManager } from '~/vue_shared/utils/dynamic_height';
 
 import { BLOB_EDITOR_ERROR, BLOB_PREVIEW_ERROR, BLOB_EDIT_ERROR } from './constants';
 
@@ -103,6 +106,7 @@ export default class EditBlob {
     }
 
     this.initFilepathForm();
+    this.initDynamicHeight();
     this.editor.focus();
 
     form.addEventListener('submit', async (event) => {
@@ -130,6 +134,18 @@ export default class EditBlob {
         this.editor.unuse(this.markdownExtensions);
       }
     });
+  }
+
+  initDynamicHeight() {
+    const editorElement = document.getElementById('editor');
+    this.dynamicHeightManager = createDynamicHeightManager(editorElement);
+  }
+
+  destroy() {
+    if (this.dynamicHeightManager) {
+      this.dynamicHeightManager.destroy();
+      this.dynamicHeightManager = null;
+    }
   }
 
   initFilepathForm() {
@@ -163,6 +179,18 @@ export default class EditBlob {
     }
   }
 
+  static createBlobAlert = (error) => {
+    if (error.response.status === HTTP_STATUS_PAYLOAD_TOO_LARGE) {
+      createAlert({
+        message: __('The blob is too large to render'),
+      });
+    } else {
+      createAlert({
+        message: BLOB_PREVIEW_ERROR,
+      });
+    }
+  };
+
   editModeLinkClickHandler(e) {
     e.preventDefault();
 
@@ -191,11 +219,9 @@ export default class EditBlob {
             currentPane.empty().append(data);
             renderGFM(currentPane.get(0));
           })
-          .catch(() =>
-            createAlert({
-              message: BLOB_PREVIEW_ERROR,
-            }),
-          );
+          .catch((error) => {
+            EditBlob.createBlobAlert(error);
+          });
       }
     }
 
@@ -215,5 +241,13 @@ export default class EditBlob {
     this.isSoftWrapped = !this.isSoftWrapped;
     this.$toggleButton.toggleClass('soft-wrap-active', this.isSoftWrapped);
     this.editor.updateOptions({ wordWrap: this.isSoftWrapped ? 'on' : 'off' });
+  }
+
+  getFileContent() {
+    return this.editor?.getValue();
+  }
+
+  getOriginalFilePath() {
+    return this.options.filePath;
   }
 }

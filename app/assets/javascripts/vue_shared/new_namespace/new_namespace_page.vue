@@ -1,22 +1,29 @@
 <script>
-import { GlBreadcrumb, GlIcon } from '@gitlab/ui';
+import { MountingPortal } from 'portal-vue';
+import { GlBreadcrumb, GlIcon, GlAlert } from '@gitlab/ui';
 import NewTopLevelGroupAlert from '~/groups/components/new_top_level_group_alert.vue';
-
-import SuperSidebarToggle from '~/super_sidebar/components/super_sidebar_toggle.vue';
-import { sidebarState, JS_TOGGLE_EXPAND_CLASS } from '~/super_sidebar/constants';
+import { s__ } from '~/locale';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 import LegacyContainer from './components/legacy_container.vue';
 import WelcomePage from './components/welcome.vue';
 
 export default {
-  JS_TOGGLE_EXPAND_CLASS,
   components: {
+    PageHeading,
     NewTopLevelGroupAlert,
     GlBreadcrumb,
     GlIcon,
+    GlAlert,
     WelcomePage,
     LegacyContainer,
-    SuperSidebarToggle,
+    MountingPortal,
   },
+
+  inject: {
+    identityVerificationRequired: { default: false },
+    identityVerificationPath: { default: null },
+  },
+
   props: {
     title: {
       type: String,
@@ -85,8 +92,20 @@ export default {
       return this.isSaas && this.activePanel.detailProps?.parentGroupName === '';
     },
 
-    showSuperSidebarToggle() {
-      return sidebarState.isCollapsed;
+    isUsingPaneledView() {
+      return gon.features?.projectStudioEnabled;
+    },
+    wrapperComponentProps() {
+      return this.isUsingPaneledView
+        ? {
+            is: MountingPortal,
+            'mount-to': '.panel-header',
+            name: 'breadcrumbs',
+            append: true,
+          }
+        : {
+            is: 'div',
+          };
     },
   },
 
@@ -115,43 +134,61 @@ export default {
       }
     },
   },
+
+  i18n: {
+    restrictedAlert: {
+      title: s__(
+        'IdentityVerification|Before you can create additional groups, we need to verify your account.',
+      ),
+      description: s__(
+        `IdentityVerification|We won't ask you for this information again. It will never be used for marketing purposes.`,
+      ),
+      buttonText: s__('IdentityVerification|Verify my account'),
+    },
+  },
 };
 </script>
 
 <template>
   <div>
-    <div class="top-bar-fixed container-fluid" data-testid="top-bar">
+    <component :is="wrapperComponentProps.is" v-bind="wrapperComponentProps">
       <div
-        class="top-bar-container gl-display-flex gl-align-items-center gl-border-b-1 gl-border-b-gray-100 gl-border-b-solid"
+        class="top-bar-fixed container-fluid"
+        :class="{ 'gl-border-b gl-top-0 gl-mx-0 gl-w-full': isUsingPaneledView }"
+        data-testid="top-bar"
       >
-        <super-sidebar-toggle
-          v-if="showSuperSidebarToggle"
-          class="gl-mr-2"
-          :class="$options.JS_TOGGLE_EXPAND_CLASS"
-        />
-        <gl-breadcrumb :items="breadcrumbs" data-testid="breadcrumb-links" />
+        <div
+          class="top-bar-container gl-flex gl-items-center gl-border-b-default gl-border-b-solid"
+          :class="isUsingPaneledView ? 'gl-border-b-0' : 'gl-border-b-1'"
+        >
+          <gl-breadcrumb :items="breadcrumbs" data-testid="breadcrumb-links" class="gl-grow" />
+        </div>
       </div>
-    </div>
+    </component>
 
     <template v-if="activePanel">
-      <div
-        data-testid="active-panel-template"
-        class="gl-display-flex gl-align-items-center gl-py-5"
-      >
-        <div class="col-auto">
-          <img aria-hidden :src="activePanel.imageSrc" />
-        </div>
-        <div class="col">
-          <h4>{{ activePanel.title }}</h4>
-
-          <p v-if="hasTextDetails">{{ details }}</p>
+      <page-heading :heading="activePanel.title" data-testid="active-panel-template">
+        <template #description>
+          <template v-if="hasTextDetails">{{ details }}</template>
           <component :is="details" v-else v-bind="detailProps" />
-        </div>
+          <slot name="extra-description"></slot>
+        </template>
+      </page-heading>
 
-        <slot name="extra-description"></slot>
-      </div>
-      <div>
+      <gl-alert
+        v-if="identityVerificationRequired"
+        :title="$options.i18n.restrictedAlert.title"
+        :dismissible="false"
+        :primary-button-text="$options.i18n.restrictedAlert.buttonText"
+        :primary-button-link="identityVerificationPath"
+        variant="danger"
+      >
+        {{ $options.i18n.restrictedAlert.description }}
+      </gl-alert>
+
+      <div v-else>
         <new-top-level-group-alert v-if="showNewTopLevelGroupAlert" />
+
         <legacy-container :key="activePanel.name" :selector="activePanel.selector" />
       </div>
     </template>

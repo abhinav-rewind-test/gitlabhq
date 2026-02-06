@@ -1,21 +1,15 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Verify', :runner, product_group: :pipeline_execution,
+  RSpec.describe 'Verify', feature_category: :continuous_integration,
     quarantine: {
-      issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/411510',
+      issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24023',
       type: :flaky
     } do
     context 'when pipeline is blocked' do
       let(:executor) { "qa-runner-#{Faker::Alphanumeric.alphanumeric(number: 8)}" }
       let(:project) { create(:project, name: 'project-with-blocked-pipeline') }
-      let!(:runner) do
-        Resource::ProjectRunner.fabricate! do |runner|
-          runner.project = project
-          runner.name = executor
-          runner.tags = [executor]
-        end
-      end
+      let!(:runner) { create(:project_runner, project: project, name: executor, tags: [executor]) }
 
       let!(:ci_file) do
         create(:commit, project: project, commit_message: 'Add .gitlab-ci.yml', actions: [

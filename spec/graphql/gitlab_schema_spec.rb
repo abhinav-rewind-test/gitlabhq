@@ -4,12 +4,11 @@ require 'spec_helper'
 
 RSpec.describe GitlabSchema do
   let_it_be(:connections) { described_class.connections.all_wrappers }
-  let_it_be(:tracers) { described_class.tracers }
 
   let(:user) { build :user }
 
   it 'uses batch loading' do
-    expect(tracers).to include(BatchLoader::GraphQL)
+    expect(described_class.trace_modules_for(:default)).to include(BatchLoader::GraphQL::Trace)
   end
 
   it 'has the base mutation' do
@@ -102,6 +101,40 @@ RSpec.describe GitlabSchema do
     end
   end
 
+  describe '.get_type (class method)' do
+    it 'applies GlobalId deprecations to type name' do
+      deprecated_name = 'DeprecatedTypeName'
+      transformed_name = 'NewTypeName'
+
+      allow(Gitlab::GlobalId::Deprecations).to receive(:apply_to_graphql_name)
+        .with(deprecated_name)
+        .and_return(transformed_name)
+      allow(Gitlab::Graphql::TypeNameDeprecations).to receive(:apply_to_graphql_name)
+        .with(transformed_name)
+        .and_return(transformed_name)
+
+      described_class.get_type(deprecated_name)
+
+      expect(Gitlab::GlobalId::Deprecations).to have_received(:apply_to_graphql_name).with(deprecated_name)
+      expect(Gitlab::Graphql::TypeNameDeprecations).to have_received(:apply_to_graphql_name).with(transformed_name)
+    end
+
+    it 'applies TypeName deprecations to type name' do
+      type_name = 'SomeType'
+
+      allow(Gitlab::GlobalId::Deprecations).to receive(:apply_to_graphql_name)
+        .with(type_name)
+        .and_return(type_name)
+      allow(Gitlab::Graphql::TypeNameDeprecations).to receive(:apply_to_graphql_name)
+        .with(type_name)
+        .and_return('TransformedType')
+
+      described_class.get_type(type_name)
+
+      expect(Gitlab::Graphql::TypeNameDeprecations).to have_received(:apply_to_graphql_name).with(type_name)
+    end
+  end
+
   describe '.id_from_object' do
     it 'returns a global id' do
       expect(described_class.id_from_object(build(:project, id: 1))).to be_a(GlobalID)
@@ -141,8 +174,18 @@ RSpec.describe GitlabSchema do
 
         expect do
           [described_class.object_from_id(user1.to_global_id),
-           described_class.object_from_id(user2.to_global_id)].map(&:sync)
+            described_class.object_from_id(user2.to_global_id)].map(&:sync)
         end.not_to exceed_query_limit(1)
+      end
+
+      context 'when record is not found' do
+        let(:user) { build(:user, id: non_existing_record_id) }
+
+        it 'returns nil' do
+          result = described_class.object_from_id(user.to_global_id.to_s)
+
+          expect(result.sync).to be_nil
+        end
       end
     end
 
@@ -161,8 +204,18 @@ RSpec.describe GitlabSchema do
 
         expect do
           [described_class.object_from_id(note1.to_global_id),
-           described_class.object_from_id(note2.to_global_id)].map(&:sync)
+            described_class.object_from_id(note2.to_global_id)].map(&:sync)
         end.not_to exceed_query_limit(1)
+      end
+
+      context 'when record is not found' do
+        let(:note) { build(:discussion_note_on_merge_request, id: non_existing_record_id) }
+
+        it 'returns nil' do
+          result = described_class.object_from_id(note.to_global_id.to_s)
+
+          expect(result.sync).to be_nil
+        end
       end
     end
 
@@ -188,6 +241,43 @@ RSpec.describe GitlabSchema do
         expect(TestGlobalId).to receive(:find).with("123").and_return(result)
 
         expect(described_class.object_from_id(result.to_global_id)).to eq(result)
+      end
+
+      context 'when class raises an ActiveRecord::RecordNotFound' do
+        before do
+          allow(TestGlobalId).to receive(:find).with("123").and_raise(ActiveRecord::RecordNotFound)
+        end
+
+        it 'returns nil' do
+          result = TestGlobalId.new(123)
+
+          expect(described_class.object_from_id(result.to_global_id)).to be_nil
+        end
+      end
+    end
+
+    context 'with an ActiveRecord::FixedItemsModel' do
+      before do
+        stub_const('TestStaticModel', Class.new do
+          include ActiveRecord::FixedItemsModel::Model
+          include GlobalID::Identification
+        end)
+
+        stub_const('TestStaticModel::ITEMS', [{ id: 1 }].freeze)
+      end
+
+      it 'falls back to a regular find' do
+        result = TestStaticModel.find(1)
+
+        expect(TestStaticModel).to receive(:find).with("1").and_return(result)
+        expect(described_class.object_from_id(result.to_global_id)).to eq(result)
+      end
+
+      context 'when item does not exist and class raises ActiveRecord::FixedItemsModel::RecordNotFound' do
+        it 'returns nil' do
+          expect(TestStaticModel).to receive(:find).with("123").and_raise(ActiveRecord::FixedItemsModel::RecordNotFound)
+          expect(described_class.object_from_id('gid://gitlab/TestStaticModel/123')).to be_nil
+        end
       end
     end
 

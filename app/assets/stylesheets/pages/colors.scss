@@ -1,34 +1,4 @@
-.color-item {
-  display: flex;
-}
-
-.color-item-color {
-  flex-shrink: 0;
-  margin-right: $gl-spacing-scale-3;
-  top: 0;
-}
-
-.right-sidebar-collapsed {
-  .color-item {
-    padding-top: $gl-spacing-scale-3;
-  }
-
-  .color-item-color {
-    margin: 0;
-  }
-
-  .color-item-text {
-    display: none;
-  }
-}
-
-.warning-title {
-  color: var(--gray-900, $gray-900);
-}
-
-.danger-title {
-  color: var(--red-500, $red-500);
-}
+@use "sass:math";
 
 .suggest-colors {
   padding-top: 3px;
@@ -46,7 +16,7 @@
     &:focus:active {
       position: relative;
       z-index: 1;
-      @include gl-focus;
+      @apply gl-focus;
     }
   }
 
@@ -56,7 +26,7 @@
 
     a {
       border-radius: 0;
-      width: (100% / 7);
+      width: math.div(100%, 7);
       margin-right: 0;
       margin-bottom: -5px;
 
@@ -67,7 +37,7 @@
       &:nth-of-type(7) {
         border-top-right-radius: $gl-border-radius-base;
       }
-      
+
       &:nth-last-child(7) {
         border-bottom-left-radius: $gl-border-radius-base;
       }

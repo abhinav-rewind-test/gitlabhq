@@ -1,19 +1,18 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Geo
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Geo self-service framework
 ---
 
-# Geo self-service framework
+> [!note]
+> This document is subject to change as we continue to implement and iterate on the framework.
+> Follow the progress in the [epic](https://gitlab.com/groups/gitlab-org/-/epics/2161).
+> If you need to replicate a new data type, reach out to the Geo
+> team to discuss the options. You can contact them in `#g_geo` on Slack
+> or mention `@geo-team` in the issue or merge request.
 
-NOTE:
-This document is subject to change as we continue to implement and iterate on the framework.
-Follow the progress in the [epic](https://gitlab.com/groups/gitlab-org/-/epics/2161).
-If you need to replicate a new data type, reach out to the Geo
-team to discuss the options. You can contact them in `#g_geo` on Slack
-or mention `@geo-team` in the issue or merge request.
-
-Geo provides an API to make it possible to easily replicate data types
+Geo provides an API to make it possible to replicate data types
 across Geo sites. This API is presented as a Ruby Domain-Specific
 Language (DSL) and aims to make it possible to replicate data with
 minimal effort of the engineer who created a data type.
@@ -71,7 +70,7 @@ naming conventions:
   happen.
 
 - **Geo Domain-Specific Language**:
-  The syntactic sugar that allows engineers to easily specify which
+  The syntactic sugar that allows engineers to specify which
   resources should be replicated and how.
 
 ## Geo Domain-Specific Language
@@ -164,7 +163,7 @@ the Geo team if you are unsure.
 
 Models that use [CarrierWave's](https://github.com/carrierwaveuploader/carrierwave) `Uploader::Base` are supported by Geo with the `Geo::BlobReplicatorStrategy` module. For example, see how [Geo replication was implemented for Pipeline Artifacts](https://gitlab.com/gitlab-org/gitlab/-/issues/238464).
 
-Each file is expected to have its own primary ID and model. Geo strongly recommends treating *every single file* as a first-class citizen, because in our experience this greatly simplifies tracking replication and verification state.
+Each file is expected to have its own primary ID and model. Geo strongly recommends treating every single file as a first-class citizen, because in our experience this greatly simplifies tracking replication and verification state.
 
 To implement Geo replication of a new blob-type Model, [open an issue with the provided issue template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Geo%20Replicate%20a%20new%20blob%20type).
 
@@ -175,6 +174,8 @@ To view the implementation steps without opening an issue, [view the issue templ
 Models that refer to any Git repository on disk are supported by Geo with the `Geo::RepositoryReplicatorStrategy` module. For example, see how [Geo replication was implemented for Group-level Wikis](https://gitlab.com/gitlab-org/gitlab/-/issues/208147). Note that this issue does not implement verification, since verification of Git repositories was not yet added to the Geo self-service framework. An example implementing verification can be found in the merge request to [Add Snippet repository verification](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/56596).
 
 Each Git repository is expected to have its own primary ID and model.
+
+For a detailed explanation of the repository sync flow, exclusive lease mechanism, and troubleshooting orphaned lease keys, see the [repository synchronization documentation](repository_sync.md).
 
 To implement Geo replication of a new Git repository-type Model, [open an issue with the provided issue template](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Geo%20Replicate%20a%20new%20Git%20repository%20type).
 

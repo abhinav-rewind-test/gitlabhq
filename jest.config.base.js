@@ -20,35 +20,36 @@ module.exports = (path, options = {}) => {
     roots: extRoots = [],
     rootsEE: extRootsEE = [],
     rootsJH: extRootsJH = [],
+    isEE = IS_EE,
+    isJH = IS_JH,
   } = options;
 
   const reporters = ['default'];
   const VUE_JEST_TRANSFORMER = USE_VUE_3 ? '@vue/vue3-jest' : '@vue/vue2-jest';
   const setupFilesAfterEnv = [`<rootDir>/${path}/test_setup.js`, 'jest-canvas-mock'];
-  const vueModuleNameMappers = {};
+  const vueModuleNameMappers = {
+    // consume @gitlab-ui from source to allow us to compile in either Vue 2 or Vue 3
+    '@gitlab/ui/dist/charts$': '@gitlab/ui/src/charts',
+    '@gitlab/ui$': '@gitlab/ui/src',
+  };
   const globals = {};
 
-  if (EXPLICIT_VUE_VERSION) {
-    Object.assign(vueModuleNameMappers, {
-      '^@gitlab/ui/dist/([^.]*)$': [
-        '<rootDir>/node_modules/@gitlab/ui/src/$1.vue',
-        '<rootDir>/node_modules/@gitlab/ui/src/$1.js',
-        '<rootDir>/node_modules/@gitlab/ui/dist/$1.js',
-      ],
-      '^@gitlab/ui$': '<rootDir>/node_modules/@gitlab/ui/src/index.js',
-    });
-  }
+  const customElements = ['fe-island-duo-next'];
+  const isCE = (tag) => customElements.includes(tag);
 
   if (USE_VUE_3) {
     setupFilesAfterEnv.unshift('<rootDir>/spec/frontend/vue_compat_test_setup.js');
     Object.assign(vueModuleNameMappers, {
-      '^vue$': '@vue/compat',
+      '^vue$': '<rootDir>/app/assets/javascripts/lib/utils/vue3compat/vue.js',
       '^@vue/test-utils$': '@vue/test-utils-vue3',
 
       // Library wrappers
       '^vuex$': '<rootDir>/app/assets/javascripts/lib/utils/vue3compat/vuex.js',
       '^vue-apollo$': '<rootDir>/app/assets/javascripts/lib/utils/vue3compat/vue_apollo.js',
       '^vue-router$': '<rootDir>/app/assets/javascripts/lib/utils/vue3compat/vue_router.js',
+      '^portal-vue$': '<rootDir>/app/assets/javascripts/lib/utils/vue3compat/portal_vue.js',
+      '^vendor/vue-virtual-scroller$':
+        '<rootDir>/vendor/assets/javascripts/vue-virtual-scroller-vue3/src/index.js',
     });
     Object.assign(globals, {
       'vue-jest': {
@@ -59,6 +60,7 @@ module.exports = (path, options = {}) => {
           compatConfig: {
             MODE: 2,
           },
+          isCustomElement: isCE,
         },
       },
     });
@@ -76,15 +78,18 @@ module.exports = (path, options = {}) => {
         addFileAttribute: 'true',
       },
     ]);
+
+    reporters.push(['<rootDir>/scripts/frontend/jest_json_reporter.js', {}]);
+    reporters.push(['<rootDir>/scripts/frontend/jest_test_map_reporter.js', {}]);
   }
 
   const glob = `${path}/**/*@([._])spec.js`;
   let testMatch = [`<rootDir>/${glob}`];
-  if (IS_EE) {
+  if (isEE) {
     testMatch.push(`<rootDir>/ee/${glob}`);
   }
 
-  if (IS_JH) {
+  if (isJH) {
     testMatch.push(`<rootDir>/jh/${glob}`);
   }
   // workaround for eslint-import-resolver-jest only resolving in test files
@@ -114,6 +119,8 @@ module.exports = (path, options = {}) => {
     '^shared_queries(/.*)$': '<rootDir>/app/graphql/queries$1',
     '^ee_else_ce(/.*)$': '<rootDir>/app/assets/javascripts$1',
     '^jh_else_ce(/.*)$': '<rootDir>/app/assets/javascripts$1',
+    '^jh_else_ee(/.*)$':
+      '<rootDir>/app/assets/javascripts/vue_shared/components/empty_component.js',
     '^any_else_ce(/.*)$': '<rootDir>/app/assets/javascripts$1',
     '^helpers(/.*)$': '<rootDir>/spec/frontend/__helpers__$1',
     '^vendor(/.*)$': '<rootDir>/vendor/assets/javascripts$1',
@@ -130,9 +137,10 @@ module.exports = (path, options = {}) => {
 
   const collectCoverageFrom = ['<rootDir>/app/assets/javascripts/**/*.{js,vue}'];
 
-  if (IS_EE) {
+  if (isEE) {
     const rootDirEE = '<rootDir>/ee/app/assets/javascripts$1';
     const specDirEE = '<rootDir>/ee/spec/frontend/$1';
+    const feIslandsDirEE = '<rootDir>/ee/frontend_islands/apps/$1';
     Object.assign(moduleNameMapper, {
       '^ee(/.*)$': rootDirEE,
       '^ee_component(/.*)$': rootDirEE,
@@ -141,6 +149,7 @@ module.exports = (path, options = {}) => {
       '^ee_else_ce_jest/(.*)$': specDirEE,
       '^any_else_ce(/.*)$': rootDirEE,
       '^jh_else_ee(/.*)$': rootDirEE,
+      '^fe_islands(/.*)$': feIslandsDirEE,
       [TEST_FIXTURES_PATTERN]: `<rootDir>${TEST_FIXTURES_HOME_EE}$1`,
       ...extModuleNameMapperEE,
     });
@@ -148,7 +157,7 @@ module.exports = (path, options = {}) => {
     collectCoverageFrom.push(rootDirEE.replace('$1', '/**/*.{js,vue}'));
   }
 
-  if (IS_JH) {
+  if (isJH) {
     // DO NOT add additional path to Jihu side, it might break things.
     const rootDirJH = '<rootDir>/jh/app/assets/javascripts$1';
     const specDirJH = '<rootDir>/jh/spec/frontend/$1';
@@ -174,37 +183,14 @@ module.exports = (path, options = {}) => {
     return '<rootDir>/coverage-frontend/';
   };
 
-  const gfmParserDependencies = [
-    'rehype-.*',
-    'remark-.*',
-    'hast*',
-    'unist.*',
-    'markdown-table',
-    'mdast-util-.*',
-    'micromark.*',
-    'vfile.*',
-    'bail',
-    'trough',
-    'unified',
-    'is-plain-obj',
-    'decode-named-character-reference',
-    'character-entities*',
-    'property-information',
-    'space-separated-tokens',
-    'comma-separated-tokens',
-    'web-namespaces',
-    'zwitch',
-    'html-void-elements',
-    'ccount',
-    'escape-string-regexp',
-  ];
-
   const transformIgnoreNodeModules = [
     'vue-test-utils-compat',
     '@gitlab/ui',
+    '@gitlab/duo-ui',
     '@gitlab/favicon-overlay',
     '@gitlab/cluster-client',
     '@gitlab/web-ide',
+    '@gitlab/query-language',
     'bootstrap-vue',
     'gridstack',
     'three',
@@ -213,6 +199,7 @@ module.exports = (path, options = {}) => {
     'monaco-marker-data-provider',
     'monaco-worker-manager',
     'fast-mersenne-twister',
+    'pdfjs-dist',
     'prosemirror-markdown',
     'marked',
     'fault',
@@ -221,7 +208,13 @@ module.exports = (path, options = {}) => {
     'vscode-languageserver-types',
     'yaml',
     'dexie',
-    ...gfmParserDependencies,
+    'markdown-table',
+    'mdast-util-.*',
+    'micromark.*',
+    'is-plain-obj',
+    'decode-named-character-reference',
+    'character-entities*',
+    'escape-string-regexp',
   ];
 
   return {
@@ -246,11 +239,12 @@ module.exports = (path, options = {}) => {
     resolver: './jest_resolver.js',
     setupFilesAfterEnv,
     restoreMocks: true,
-    slowTestThreshold: process.env.CI ? 6000 : 500,
+    // actual test timeouts
+    testTimeout: process.env.CI ? 10000 : 5000,
     transform: {
       '^.+\\.(gql|graphql)$': './spec/frontend/__helpers__/graphql_transformer.js',
       '^.+_worker\\.js$': './spec/frontend/__helpers__/web_worker_transformer.js',
-      '^.+\\.js$': 'babel-jest',
+      '^.+\\.m?js$': 'babel-jest',
       '^.+\\.vue$': VUE_JEST_TRANSFORMER,
       'spec/frontend/editor/schema/ci/yaml_tests/.+\\.(yml|yaml)$':
         './spec/frontend/__helpers__/yaml_transformer.js',
@@ -265,11 +259,13 @@ module.exports = (path, options = {}) => {
     },
     testEnvironment: '<rootDir>/spec/frontend/environment.js',
     testEnvironmentOptions: {
-      IS_EE,
-      IS_JH,
+      IS_EE: isEE,
+      IS_JH: isJH,
       url: TEST_HOST,
+      customExportConditions: ['node', 'node-addons'],
     },
     testRunner: 'jest-jasmine2',
+    prettierPath: undefined,
     snapshotSerializers: [
       '<rootDir>/spec/frontend/__helpers__/html_string_serializer.js',
       '<rootDir>/spec/frontend/__helpers__/clean_html_element_serializer.js',
@@ -277,8 +273,16 @@ module.exports = (path, options = {}) => {
     roots: [
       '<rootDir>/app/assets/javascripts/',
       ...extRoots,
-      ...(IS_EE ? ['<rootDir>/ee/app/assets/javascripts/', ...extRootsEE] : []),
-      ...(IS_JH ? ['<rootDir>/jh/app/assets/javascripts/', ...extRootsJH] : []),
+      ...(isEE ? ['<rootDir>/ee/app/assets/javascripts/', ...extRootsEE] : []),
+      ...(isJH ? ['<rootDir>/jh/app/assets/javascripts/', ...extRootsJH] : []),
     ],
+    /*
+    Reduce the amount of max workers in development mode.
+    If we use all available cores, on machines with efficiency cores, we actually will be slower
+
+    Set nothing for CI, because we want to use the auto-logic for the cores
+     */
+    maxWorkers: process.env.CI ? '' : '60%',
+    testPathIgnorePatterns: ['<rootDir>/ee/frontend_islands'],
   };
 };

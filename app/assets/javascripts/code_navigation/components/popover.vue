@@ -1,6 +1,7 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
 import { GlButton, GlTabs, GlTab, GlLink, GlBadge } from '@gitlab/ui';
+import Markdown from '~/vue_shared/components/markdown/non_gfm_markdown.vue';
 import DocLine from './doc_line.vue';
 
 export default {
@@ -11,6 +12,7 @@ export default {
     GlLink,
     GlBadge,
     DocLine,
+    Markdown,
   },
   props: {
     position: {
@@ -80,7 +82,6 @@ export default {
       );
     },
   },
-  colorScheme: gon?.user_color_scheme,
 };
 </script>
 
@@ -90,27 +91,27 @@ export default {
     class="popover code-navigation-popover popover-font-size-normal gl-popover bs-popover-bottom show"
   >
     <div :style="{ left: `${offsetLeft}px` }" class="arrow"></div>
-    <gl-tabs nav-class="gl-hidden" content-class="gl-py-0">
+    <gl-tabs content-class="gl-py-0">
       <gl-tab :title="__('Definition')">
-        <div class="overflow-auto code-navigation-popover-container">
+        <div class="code-navigation-popover-container !gl-overflow-auto">
           <div
             v-for="(hover, index) in data.hover"
             :key="index"
-            :class="{ 'border-bottom': index !== data.hover.length - 1 }"
+            :class="{ '!gl-border-b !gl-border-b-gray-300': index !== data.hover.length - 1 }"
           >
             <pre
               v-if="hover.language"
               ref="code-output"
-              :class="$options.colorScheme"
-              class="border-0 bg-transparent m-0 code highlight text-wrap"
-            ><doc-line v-for="(tokens, tokenIndex) in hover.tokens" :key="tokenIndex" :language="hover.language" :tokens="tokens"/></pre>
-            <p v-else ref="doc-output" class="p-3 m-0">
-              {{ hover.value }}
-            </p>
+              class="code code-syntax-highlight-theme highlight !gl-m-0 !gl-whitespace-normal !gl-border-0 !gl-bg-transparent"
+            ><doc-line v-for="(tokens, tokenIndex) in hover.tokens" :key="tokenIndex" :language="hover.language" :tokens="tokens" /></pre>
+            <markdown v-else ref="doc-output" class="gl-p-3" :markdown="hover.value" />
           </div>
         </div>
-        <div v-if="definitionPath || isCurrentDefinition" class="popover-body border-top">
-          <span v-if="isCurrentDefinition" class="gl-font-weight-bold gl-font-base">
+        <div
+          v-if="definitionPath || isCurrentDefinition"
+          class="popover-body !gl-border-t !gl-border-t-gray-300"
+        >
+          <span v-if="isCurrentDefinition" class="gl-text-base gl-font-bold">
             {{ s__('CodeIntelligence|This is the definition') }}
           </span>
           <gl-button
@@ -125,10 +126,10 @@ export default {
           </gl-button>
         </div>
       </gl-tab>
-      <gl-tab data-testid="references-tab" class="py-2">
+      <gl-tab data-testid="references-tab" class="!gl-py-3">
         <template #title>
           {{ __('References') }}
-          <gl-badge size="sm" class="gl-tab-counter-badge">{{ references.length }}</gl-badge>
+          <gl-badge class="gl-tab-counter-badge">{{ references.length }}</gl-badge>
         </template>
         <template v-if="references.length">
           <div v-for="(reference, index) in references" :key="index" class="gl-dropdown-item">

@@ -2,9 +2,8 @@
 stage: Create
 group: Source Code
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: '`gitlab-sshd` in GitLab Shell'
 ---
-
-# `gitlab-sshd` in GitLab Shell
 
 `gitlab-sshd` is a binary in [`gitlab-shell`](https://gitlab.com/gitlab-org/gitlab-shell)
 which runs as a persistent SSH daemon. It is intended to replace `OpenSSH` on GitLab SaaS,
@@ -12,6 +11,7 @@ and eventually other cloud-native environments. Instead of running an `sshd` pro
 we run a `gitlab-sshd` process that does the same job, in a more focused manner:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
     participant Git on client
     participant GitLab SSHD

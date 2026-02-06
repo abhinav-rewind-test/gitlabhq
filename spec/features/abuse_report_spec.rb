@@ -11,6 +11,12 @@ RSpec.describe 'Abuse reports', :js, feature_category: :insider_threat do
   let_it_be(:issue) { create(:issue, project: project, author: abusive_user) }
 
   before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+    stub_feature_flags(hide_incident_management_features: false)
+
     sign_in(reporter1)
   end
 
@@ -29,7 +35,7 @@ RSpec.describe 'Abuse reports', :js, feature_category: :insider_threat do
       before do
         visit project_issue_path(project, issue)
 
-        click_button 'Issue actions'
+        click_button 'More actions', match: :first
       end
 
       it_behaves_like 'reports the user with an abuse category'
@@ -82,7 +88,8 @@ RSpec.describe 'Abuse reports', :js, feature_category: :insider_threat do
         expect(page).to have_content 'Thank you for your report'
       end
 
-      it 'allows multiple users to report the same user', :js do
+      it 'allows multiple users to report the same user', :js,
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16574' do
         fill_and_submit_abuse_category_form
         fill_and_submit_report_abuse_form
 
@@ -114,7 +121,8 @@ RSpec.describe 'Abuse reports', :js, feature_category: :insider_threat do
       it_behaves_like 'reports the user with an abuse category'
     end
 
-    context 'when reporting a comment' do
+    context 'when reporting a comment',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/5981' do
       let_it_be(:issue) { create(:issue, project: project, author: abusive_user) }
       let_it_be(:comment) do
         create(:discussion_note_on_issue, author: abusive_user, project: project, noteable: issue, note: 'some note')
@@ -122,7 +130,10 @@ RSpec.describe 'Abuse reports', :js, feature_category: :insider_threat do
 
       before do
         visit project_issue_path(project, issue)
-        find('.more-actions-toggle button').click
+
+        within('.note') do
+          click_button 'More actions'
+        end
       end
 
       it_behaves_like 'reports the user with an abuse category'

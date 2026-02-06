@@ -7,9 +7,10 @@ RSpec.describe MergeRequests::PostMergeService, feature_category: :code_review_w
 
   let_it_be(:user) { create(:user) }
   let_it_be(:merge_request, reload: true) { create(:merge_request, assignees: [user]) }
-  let_it_be(:project) { merge_request.project }
+  let_it_be(:project, reload: true) { merge_request.project }
+  let(:params) { {} }
 
-  subject { described_class.new(project: project, current_user: user).execute(merge_request) }
+  subject { described_class.new(project: project, current_user: user, params: params).execute(merge_request) }
 
   before do
     project.add_maintainer(user)
@@ -77,6 +78,13 @@ RSpec.describe MergeRequests::PostMergeService, feature_category: :code_review_w
       subject
     end
 
+    it 'triggers GraphQL subscription userMergeRequestUpdated' do
+      expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(user, merge_request)
+      expect(GraphqlTriggers).to receive(:user_merge_request_updated).with(merge_request.author, merge_request)
+
+      subject
+    end
+
     context 'when there are issues to be closed' do
       let_it_be(:issue) { create(:issue, project: project) }
 
@@ -84,21 +92,66 @@ RSpec.describe MergeRequests::PostMergeService, feature_category: :code_review_w
         merge_request.update!(target_branch: 'foo')
 
         allow(project).to receive(:default_branch).and_return('foo')
-        allow(merge_request).to receive(:visible_closing_issues_for).and_return([issue])
       end
 
-      it 'performs MergeRequests::CloseIssueWorker asynchronously' do
-        expect(MergeRequests::CloseIssueWorker)
-          .to receive(:perform_async)
-          .with(project.id, user.id, issue.id, merge_request.id)
+      context 'when there is one issue to be closed' do
+        before do
+          allow(merge_request).to receive(:closes_issues).and_return([issue])
+        end
 
-        subject
+        it 'performs MergeRequests::CloseIssueWorker asynchronously' do
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue)
 
-        expect(merge_request.reload).to be_merged
+          expect(MergeRequests::CloseIssueWorker)
+            .to receive(:perform_in)
+            .with(0.minutes, project.id, user.id, issue.id, merge_request.id, { skip_authorization: false })
+
+          subject
+
+          expect(merge_request.reload).to be_merged
+        end
+      end
+
+      context 'when there are multiple issues to be closed' do
+        let_it_be(:issue2) { create(:issue, project: project) }
+        let_it_be(:issue3) { create(:issue, project: project) }
+        let_it_be(:issue4) { create(:issue, project: project) }
+        let_it_be(:issue5) { create(:issue, project: project) }
+
+        before do
+          stub_const('MergeRequests::PostMergeService::BATCH_SIZE', 1)
+          allow(merge_request).to receive(:closes_issues).and_return([issue, issue2, issue3, issue4, issue5])
+          allow(MergeRequests::CloseIssueWorker).to receive(:perform_in).and_call_original
+        end
+
+        it 'performs MergeRequests::CloseIssueWorker asynchronously' do
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue)
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue2)
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue3)
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue4)
+          create(:merge_requests_closing_issues, merge_request: merge_request, issue: issue5)
+
+          expect(MergeRequests::CloseIssueWorker)
+            .to receive(:perform_in)
+                  .with(0.minutes, project.id, user.id, issue.id, merge_request.id, { skip_authorization: false })
+          expect(MergeRequests::CloseIssueWorker)
+            .to receive(:perform_in)
+                  .with(5.minutes, project.id, user.id, issue5.id, merge_request.id, { skip_authorization: false })
+
+          subject
+
+          expect(merge_request.reload).to be_merged
+        end
       end
 
       context 'when issue is an external issue' do
         let_it_be(:issue) { ExternalIssue.new('JIRA-123', project) }
+
+        before do
+          project.update!(has_external_issue_tracker: true)
+          allow(merge_request).to receive(:closes_issues).and_return([issue])
+          merge_request.reload
+        end
 
         it 'executes Issues::CloseService' do
           expect_next_instance_of(Issues::CloseService) do |close_service|
@@ -158,12 +211,90 @@ RSpec.describe MergeRequests::PostMergeService, feature_category: :code_review_w
       it 'performs Pages::DeactivateMrDeploymentWorker asynchronously' do
         expect(Pages::DeactivateMrDeploymentsWorker)
           .to receive(:perform_async)
-          .with(merge_request)
+          .with(merge_request.id)
 
         subject
 
         expect(merge_request.reload).to be_merged
       end
+    end
+  end
+
+  context 'when there are auto merge MRs with the branch as target' do
+    context 'when source branch is to be deleted' do
+      let(:params) { { delete_source_branch: true } }
+
+      it 'aborts auto merges' do
+        mr_1 = create(:merge_request, :merge_when_checks_pass, target_branch: merge_request.source_branch,
+          source_branch: "test", source_project: merge_request.project)
+        mr_2 = create(:merge_request, :merge_when_checks_pass, target_branch: merge_request.source_branch,
+          source_branch: "feature", source_project: merge_request.project)
+        mr_3 = create(:merge_request, :merge_when_checks_pass, target_branch: 'feature',
+          source_branch: 'second', source_project: merge_request.project)
+
+        expect(merge_request.source_project.merge_requests.with_auto_merge_enabled).to contain_exactly(mr_1, mr_2, mr_3)
+        subject
+        expect(merge_request.source_project.merge_requests.with_auto_merge_enabled).to contain_exactly(mr_3)
+      end
+    end
+
+    context 'when source branch is not be deleted' do
+      it 'does not abort any auto merges' do
+        mr_1 = create(:merge_request, :merge_when_checks_pass, target_branch: merge_request.source_branch,
+          source_branch: "test", source_project: merge_request.project)
+        mr_2 = create(:merge_request, :merge_when_checks_pass, target_branch: merge_request.source_branch,
+          source_branch: "feature", source_project: merge_request.project)
+        mr_3 = create(:merge_request, :merge_when_checks_pass, target_branch: 'feature',
+          source_branch: 'second', source_project: merge_request.project)
+
+        expect(merge_request.source_project.merge_requests.with_auto_merge_enabled).to contain_exactly(mr_1, mr_2, mr_3)
+        subject
+        expect(merge_request.source_project.merge_requests.with_auto_merge_enabled).to contain_exactly(mr_1, mr_2, mr_3)
+      end
+    end
+  end
+
+  context 'when event source is given' do
+    let(:source) { create(:merge_request, :simple, source_project: project) }
+
+    subject { described_class.new(project: project, current_user: user).execute(merge_request, source) }
+
+    it 'creates a resource_state_event as expected' do
+      expect { subject }.to change { ResourceStateEvent.count }.by 1
+
+      event = merge_request.resource_state_events.last
+
+      expect(event.state).to eq 'merged'
+      expect(event.source_merge_request).to eq source
+    end
+  end
+
+  context 'when mark_as_merged fails' do
+    before do
+      merge_request.close!
+    end
+
+    it 'logs a warning with error details' do
+      expect(Gitlab::AppLogger).to receive(:warn).with(
+        hash_including(
+          message: 'Failed to mark merge request as merged',
+          merge_request_id: merge_request.id,
+          merge_request_iid: merge_request.iid,
+          project_id: merge_request.project_id,
+          delete_source_branch: nil,
+          errors: ["State cannot transition via \"mark as merged\""]
+        )
+      ).and_call_original
+
+      subject
+    end
+
+    it 'continues with the rest of the post-merge process' do
+      allow(Gitlab::AppLogger).to receive(:warn).and_call_original
+
+      expect(merge_request).to receive(:invalidate_project_counter_caches)
+
+      subject
     end
   end
 end

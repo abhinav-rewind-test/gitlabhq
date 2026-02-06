@@ -5,7 +5,7 @@ module API
     class BroadcastMessages < ::API::Base
       include PaginationParams
 
-      feature_category :onboarding
+      feature_category :notifications
       urgency :low
 
       resource :broadcast_messages do
@@ -18,6 +18,7 @@ module API
         desc 'Get all broadcast messages' do
           detail 'This feature was introduced in GitLab 8.12.'
           success Entities::System::BroadcastMessage
+          tags ['broadcast_messages']
         end
         params do
           use :pagination
@@ -31,23 +32,23 @@ module API
         desc 'Create a broadcast message' do
           detail 'This feature was introduced in GitLab 8.12.'
           success Entities::System::BroadcastMessage
+          tags ['broadcast_messages']
         end
         params do
           requires :message, type: String, desc: 'Message to display'
           optional :starts_at, type: DateTime, desc: 'Starting time', default: -> { Time.zone.now }
           optional :ends_at, type: DateTime, desc: 'Ending time', default: -> { 1.hour.from_now }
-          optional :color, type: String, desc: 'Background color'
-          optional :font, type: String, desc: 'Foreground color'
+          optional :color, type: String, desc: 'Background color (Deprecated. Use "theme" instead.)'
+          optional :font, type: String, desc: 'Foreground color (Deprecated. Use "theme" instead.)'
           optional :target_access_levels,
             type: Array[Integer],
             coerce_with: Validations::Types::CommaSeparatedToIntegerArray.coerce,
             values: System::BroadcastMessage::ALLOWED_TARGET_ACCESS_LEVELS,
             desc: 'Target user roles'
           optional :target_path, type: String, desc: 'Target path'
-          optional :broadcast_type, type: String, values: System::BroadcastMessage.broadcast_types.keys, desc: 'Broadcast type. Defaults to banner', default: -> {
-                                                                                                                                                                'banner'
-                                                                                                                                                              }
+          optional :broadcast_type, type: String, values: System::BroadcastMessage.broadcast_types.keys, desc: 'Broadcast type. Defaults to banner', default: 'banner'
           optional :dismissable, type: Boolean, desc: 'Is dismissable'
+          optional :theme, type: String, values: System::BroadcastMessage.themes.keys, desc: 'The theme for the message'
         end
         post do
           authenticated_as_admin!
@@ -64,6 +65,7 @@ module API
         desc 'Get a specific broadcast message' do
           detail 'This feature was introduced in GitLab 8.12.'
           success Entities::System::BroadcastMessage
+          tags ['broadcast_messages']
         end
         params do
           requires :id, type: Integer, desc: 'Broadcast message ID'
@@ -77,14 +79,15 @@ module API
         desc 'Update a broadcast message' do
           detail 'This feature was introduced in GitLab 8.12.'
           success Entities::System::BroadcastMessage
+          tags ['broadcast_messages']
         end
         params do
           requires :id, type: Integer, desc: 'Broadcast message ID'
           optional :message, type: String, desc: 'Message to display'
           optional :starts_at, type: DateTime, desc: 'Starting time'
           optional :ends_at, type: DateTime, desc: 'Ending time'
-          optional :color, type: String, desc: 'Background color'
-          optional :font, type: String, desc: 'Foreground color'
+          optional :color, type: String, desc: 'Background color (Deprecated. Use "theme" instead.)'
+          optional :font, type: String, desc: 'Foreground color (Deprecated. Use "theme" instead.)'
           optional :target_access_levels,
             type: Array[Integer],
             coerce_with: Validations::Types::CommaSeparatedToIntegerArray.coerce,
@@ -94,6 +97,7 @@ module API
           optional :broadcast_type, type: String, values: System::BroadcastMessage.broadcast_types.keys,
             desc: 'Broadcast Type'
           optional :dismissable, type: Boolean, desc: 'Is dismissable'
+          optional :theme, type: String, values: System::BroadcastMessage.themes.keys, desc: 'The theme for the message'
         end
         put ':id' do
           authenticated_as_admin!
@@ -110,6 +114,7 @@ module API
         desc 'Delete a broadcast message' do
           detail 'This feature was introduced in GitLab 8.12.'
           success Entities::System::BroadcastMessage
+          tags ['broadcast_messages']
         end
         params do
           requires :id, type: Integer, desc: 'Broadcast message ID'

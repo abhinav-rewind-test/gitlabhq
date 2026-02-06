@@ -1,19 +1,22 @@
-import { GlFormCheckbox, GlSprintf, GlTruncate } from '@gitlab/ui';
+import { GlFormCheckbox, GlSprintf, GlTruncate, GlBadge } from '@gitlab/ui';
 import Vue from 'vue';
 import VueRouter from 'vue-router';
 import { RouterLinkStub } from '@vue/test-utils';
+import ProtectedBadge from '~/vue_shared/components/badges/protected_badge.vue';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
-
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import PackagesListRow from '~/packages_and_registries/package_registry/components/list/package_list_row.vue';
 import PackageTags from '~/packages_and_registries/shared/components/package_tags.vue';
+import PublishMessage from '~/packages_and_registries/shared/components/publish_message.vue';
 import PublishMethod from '~/packages_and_registries/package_registry/components/list/publish_method.vue';
-import TimeagoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
-import { PACKAGE_ERROR_STATUS } from '~/packages_and_registries/package_registry/constants';
+import {
+  PACKAGE_ERROR_STATUS,
+  PACKAGE_DEPRECATED_STATUS,
+} from '~/packages_and_registries/package_registry/constants';
 
 import ListItem from '~/vue_shared/components/registry/list_item.vue';
 import {
+  conanMetadata,
   linksData,
   packageData,
   packagePipelines,
@@ -35,18 +38,23 @@ describe('packages_list_row', () => {
   const packageWithTags = { ...packageWithoutTags, tags: { nodes: packageTags() } };
 
   const findPackageTags = () => wrapper.findComponent(PackageTags);
+  const findDeprecatedBadge = () => wrapper.findComponent(GlBadge);
   const findDeleteDropdown = () => wrapper.findByTestId('delete-dropdown');
   const findDeleteButton = () => wrapper.findByTestId('action-delete');
+  const findErrorMessage = () => wrapper.findByTestId('error-message');
   const findPackageType = () => wrapper.findByTestId('package-type');
   const findPackageLink = () => wrapper.findByTestId('details-link');
   const findWarningIcon = () => wrapper.findByTestId('warning-icon');
   const findLeftSecondaryInfos = () => wrapper.findByTestId('left-secondary-infos');
   const findPackageVersion = () => findLeftSecondaryInfos().findComponent(GlTruncate);
+  const findPublishMessage = () => wrapper.findComponent(PublishMessage);
   const findPublishMethod = () => wrapper.findComponent(PublishMethod);
-  const findRightSecondary = () => wrapper.findByTestId('right-secondary');
   const findListItem = () => wrapper.findComponent(ListItem);
   const findBulkDeleteAction = () => wrapper.findComponent(GlFormCheckbox);
-  const findPackageName = () => wrapper.findComponent(GlTruncate);
+  const findPackageName = () => wrapper.findByTestId('package-name');
+  const findConanMetadata = () => wrapper.findByTestId('conan-metadata');
+  const findPackageUsername = () => wrapper.findByTestId('package-username');
+  const findPackageChannel = () => wrapper.findByTestId('package-channel');
 
   const mountComponent = ({
     packageEntity = packageWithoutTags,
@@ -58,15 +66,12 @@ describe('packages_list_row', () => {
       stubs: {
         ListItem,
         GlSprintf,
-        TimeagoTooltip,
         RouterLink: RouterLinkStub,
+        GlBadge,
       },
       propsData: {
         packageEntity,
         selected,
-      },
-      directives: {
-        GlTooltip: createMockDirective('gl-tooltip'),
       },
     });
   };
@@ -87,9 +92,7 @@ describe('packages_list_row', () => {
   it('lists the package name', () => {
     mountComponent();
 
-    expect(findPackageName().props()).toMatchObject({
-      text: '@gitlab-org/package-15',
-    });
+    expect(findPackageName().text()).toBe('@gitlab-org/package-15');
   });
 
   describe('tags', () => {
@@ -167,9 +170,15 @@ describe('packages_list_row', () => {
     });
 
     it('lists the package name', () => {
-      expect(findPackageName().props()).toMatchObject({
-        text: '@gitlab-org/package-15',
-      });
+      expect(findPackageName().text()).toBe('@gitlab-org/package-15');
+    });
+
+    it('does not show the publish method', () => {
+      expect(findPublishMethod().exists()).toBe(false);
+    });
+
+    it('does not show published message', () => {
+      expect(findPublishMessage().exists()).toBe(false);
     });
 
     it('does not have a link to navigate to the details page', () => {
@@ -178,10 +187,29 @@ describe('packages_list_row', () => {
 
     it('has a warning icon', () => {
       const icon = findWarningIcon();
-      const tooltip = getBinding(icon.element, 'gl-tooltip');
       expect(icon.props('name')).toBe('warning');
-      expect(tooltip.value).toMatchObject({
-        title: 'Invalid Package: failed metadata extraction',
+    });
+
+    it('renders error message text', () => {
+      expect(findErrorMessage().text()).toEqual(
+        'Error publishing · Invalid Package: failed metadata extraction',
+      );
+    });
+
+    describe('with custom error message', () => {
+      it('renders error message text', () => {
+        mountComponent({
+          packageEntity: {
+            ...packageWithoutTags,
+            status: PACKAGE_ERROR_STATUS,
+            statusMessage: 'custom error message',
+            _links: {
+              webPath: null,
+            },
+          },
+        });
+
+        expect(findErrorMessage().text()).toEqual('Error publishing · custom error message');
       });
     });
 
@@ -247,6 +275,12 @@ describe('packages_list_row', () => {
   });
 
   describe('right info', () => {
+    const projectPageProps = {
+      projectName: '',
+      projectUrl: '',
+      publishDate: packageWithoutTags.createdAt,
+    };
+
     it('has publish method component', () => {
       mountComponent({
         packageEntity: { ...packageWithoutTags, pipelines: { nodes: packagePipelines() } },
@@ -255,50 +289,159 @@ describe('packages_list_row', () => {
       expect(findPublishMethod().props('pipeline')).toEqual(packagePipelines()[0]);
     });
 
-    it('if the package is published through CI show the author name', () => {
+    it('if the package is published through CI sets author on PublishMessage component', () => {
       mountComponent({
         packageEntity: { ...packageWithoutTags, pipelines: { nodes: packagePipelines() } },
       });
 
-      expect(findRightSecondary().text()).toBe(`Published by Administrator, 1 month ago`);
+      expect(findPublishMessage().props()).toStrictEqual({
+        author: 'Administrator',
+        ...projectPageProps,
+      });
     });
 
-    it('if the package is published manually then dont show author name', () => {
+    it('if the package is published manually then does not set author on PublishMessage component', () => {
       mountComponent({
         packageEntity: { ...packageWithoutTags },
       });
 
-      expect(findRightSecondary().text()).toBe(`Published 1 month ago`);
+      expect(findPublishMessage().props()).toStrictEqual({
+        author: '',
+        ...projectPageProps,
+      });
+    });
+
+    describe('PublishMessage component for group page', () => {
+      const groupPageProps = {
+        projectName: packageWithoutTags.project.name,
+        projectUrl: packageWithoutTags.project.webUrl,
+        publishDate: packageWithoutTags.createdAt,
+      };
+
+      it('if the package is published through CI sets project name, url and author', () => {
+        mountComponent({
+          provide: {
+            ...defaultProvide,
+            isGroupPage: true,
+          },
+          packageEntity: { ...packageWithoutTags, pipelines: { nodes: packagePipelines() } },
+        });
+
+        expect(findPublishMessage().props()).toStrictEqual({
+          author: 'Administrator',
+          ...groupPageProps,
+        });
+      });
+
+      it('if the package is published manually passes show project name, url and does not set author', () => {
+        mountComponent({
+          provide: {
+            ...defaultProvide,
+            isGroupPage: true,
+          },
+          packageEntity: { ...packageWithoutTags },
+        });
+
+        expect(findPublishMessage().props()).toStrictEqual({
+          author: '',
+          ...groupPageProps,
+        });
+      });
     });
   });
 
-  describe('right info for a group registry', () => {
-    it('if the package is published through CI show the project and author name', () => {
+  describe('badge "protected"', () => {
+    const mountComponentForBadgeProtected = ({ packageEntityProtectionRuleExists = true } = {}) =>
       mountComponent({
+        packageEntity: {
+          ...packageWithoutTags,
+          protectionRuleExists: packageEntityProtectionRuleExists,
+        },
         provide: {
           ...defaultProvide,
-          isGroupPage: true,
         },
-        packageEntity: { ...packageWithoutTags, pipelines: { nodes: packagePipelines() } },
       });
 
-      expect(findRightSecondary().text()).toBe(
-        `Published to ${packageWithoutTags.project.name} by Administrator, 1 month ago`,
-      );
+    const findProtectedBadge = () => wrapper.findComponent(ProtectedBadge);
+
+    describe('when package is protected', () => {
+      it('shows badge', () => {
+        mountComponentForBadgeProtected();
+
+        expect(findProtectedBadge().exists()).toBe(true);
+        expect(findProtectedBadge().props('tooltipText')).toMatch(
+          'A protection rule exists for this package.',
+        );
+      });
     });
 
-    it('if the package is published manually dont show project and the author name', () => {
-      mountComponent({
-        provide: {
-          ...defaultProvide,
-          isGroupPage: true,
-        },
-        packageEntity: { ...packageWithoutTags },
+    describe('when package is not protected', () => {
+      it('does not show badge', () => {
+        mountComponentForBadgeProtected({ packageEntityProtectionRuleExists: false });
+
+        expect(findProtectedBadge().exists()).toBe(false);
+      });
+    });
+  });
+
+  describe('deprecated badge', () => {
+    it('is not rendered by default', () => {
+      mountComponent();
+
+      expect(findDeprecatedBadge().exists()).toBe(false);
+    });
+
+    describe('when package has deprecated status', () => {
+      beforeEach(() => {
+        mountComponent({
+          packageEntity: {
+            ...packageWithoutTags,
+            status: PACKAGE_DEPRECATED_STATUS,
+          },
+        });
       });
 
-      expect(findRightSecondary().text()).toBe(
-        `Published to ${packageWithoutTags.project.name}, 1 month ago`,
-      );
+      it('renders GlBadge component', () => {
+        expect(findDeprecatedBadge().props('variant')).toBe('warning');
+      });
+
+      it('renders the text `deprecated`', () => {
+        expect(findDeprecatedBadge().text()).toBe('deprecated');
+      });
+    });
+  });
+
+  describe('conan metadata', () => {
+    it('does not render `packageUsername` and `packageChannel` for any packages other than conan', () => {
+      mountComponent();
+
+      expect(findConanMetadata().exists()).toBe(false);
+    });
+
+    it('renders correct `packageUsername` and `packageChannel` when package type is conan', () => {
+      mountComponent({
+        packageEntity: {
+          ...packageWithoutTags,
+          packageType: 'CONAN',
+          metadata: conanMetadata(),
+        },
+      });
+
+      expect(findConanMetadata().exists()).toBe(true);
+      expect(findPackageUsername().text()).toBe('gitlab-org+gitlab-test');
+      expect(findPackageChannel().text()).toBe('stable');
+    });
+
+    it('hides Conan metadata with default values', () => {
+      mountComponent({
+        packageEntity: {
+          ...packageWithoutTags,
+          packageType: 'CONAN',
+          metadata: { ...conanMetadata(), packageChannel: '_', packageUsername: '_' },
+        },
+      });
+
+      expect(findConanMetadata().exists()).toBe(false);
     });
   });
 });

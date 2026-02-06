@@ -43,6 +43,11 @@ module Gitlab
             end
 
             def apply_permissions(variables)
+              # On demand DAST validation pipelines are created by the GitLab backend.
+              # Their pipeline variables are also controlled by GitLab.
+              # See https://gitlab.com/gitlab-org/gitlab/-/issues/513148
+              return variables if @command.source.to_sym == :ondemand_dast_validation
+
               # We allow parent pipelines to pass variables to child pipelines since
               # these variables are coming from internal configurations. We will check
               # permissions to :set_pipeline_variables when those are injected upstream,
@@ -51,7 +56,22 @@ module Gitlab
               # the variables are provided from the outside and those should be guarded.
               return variables if @command.creates_child_pipeline?
 
-              if variables.present? && !can?(@command.current_user, :set_pipeline_variables, @command.project)
+              # If the trigger token belongs to a user that has permissions to set pipeline variables,
+              # we allow all other variables in the variables[]= REST API param, including TRIGGER_PAYLOAD if exists.
+              # If the trigger token belongs to a user that does NOT have permissions to set pipeline variables:
+              #   - if variables other than TRIGGER_PAYLOAD are specified, we return an error.
+              #   - if only TRIGGER_PAYLOAD is specified, we allow it.
+              # See https://gitlab.com/gitlab-org/gitlab/-/issues/557381
+              user_defined_variables = if @command.source.to_sym == :trigger
+                                         # This variable is defined by GitLab when triggering webhooks
+                                         # so it should be allowlisted.
+                                         variables.reject { |v| v[:key] == 'TRIGGER_PAYLOAD' }
+                                       else
+                                         variables
+                                       end
+
+              if user_defined_variables.present? && !can?(@command.current_user, :set_pipeline_variables,
+                @command.project)
                 error("Insufficient permissions to set pipeline variables")
                 variables = []
               end
@@ -61,14 +81,14 @@ module Gitlab
 
             def validate_uniqueness(variables)
               duplicated_keys = variables
-                .map { |var| var[:key] }
+                .map { |var| var[:key] } # rubocop: disable Rails/Pluck -- Pluck raises error too
                 .tally
                 .filter_map { |key, count| key if count > 1 }
 
               if duplicated_keys.empty?
                 variables
               else
-                error(duplicate_variables_message(duplicated_keys), config_error: true)
+                error(duplicate_variables_message(duplicated_keys), failure_reason: :config_error)
                 []
               end
             end

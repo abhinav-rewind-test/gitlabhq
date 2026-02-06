@@ -16,17 +16,22 @@ module Quality
         frontend/fixtures
       ],
       unit: %w[
+        active_context
         bin
+        cells
         channels
         components
         config
+        constraints
         contracts
         db
         dependencies
         elastic
         elastic_integration
         experiments
+        facades
         factories
+        factories_specs
         finders
         frontend
         graphql
@@ -76,7 +81,7 @@ module Quality
     end
 
     def pattern(level)
-      @patterns[level] ||= "#{prefixes_for_pattern}spec/#{folders_pattern(level)}{,/**/}*#{suffix(level)}".freeze # rubocop:disable Style/RedundantFreeze
+      @patterns[level] ||= "#{prefixes_for_pattern}spec/#{folders_pattern(level)}{,/**/}*#{suffix(level)}".freeze
     end
 
     def regexp(level, start_with = false)

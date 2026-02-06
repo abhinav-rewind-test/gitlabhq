@@ -6,7 +6,7 @@ RSpec.describe Projects::GroupLinks::DestroyService, '#execute', feature_categor
   let_it_be(:user) { create :user }
   let_it_be(:project) { create(:project, :private) }
   let_it_be(:group) { create(:group) }
-  let_it_be(:group_user) { create(:user).tap { |user| group.add_guest(user) } }
+  let_it_be(:group_user) { create(:user, guest_of: group) }
 
   let(:group_access) { Gitlab::Access::DEVELOPER }
   let!(:group_link) { create(:project_group_link, project: project, group: group, group_access: group_access) }
@@ -38,20 +38,20 @@ RSpec.describe Projects::GroupLinks::DestroyService, '#execute', feature_categor
         result = subject.execute(group_link)
 
         expect(result[:status]).to eq(:error)
-        expect(result[:reason]).to eq(:not_found)
+        expect(result[:reason]).to eq(:forbidden)
       end.not_to change { project.reload.project_group_links.count }
     end
   end
 
   context 'when the user has proper permissions to remove a group-link from a project' do
-    context 'when the user is a MAINTAINER in the project' do
+    context 'when the user is a OWNER in the project' do
       before do
-        project.add_maintainer(user)
+        project.add_owner(user)
       end
 
       it_behaves_like 'removes group from project'
 
-      context 'project authorizations refresh' do
+      context 'project authorizations refresh', :sidekiq_inline do
         it 'calls AuthorizedProjectUpdate::ProjectRecalculateWorker to update project authorizations' do
           expect(AuthorizedProjectUpdate::ProjectRecalculateWorker)
             .to receive(:perform_async).with(group_link.project.id)
@@ -122,9 +122,8 @@ RSpec.describe Projects::GroupLinks::DestroyService, '#execute', feature_categor
           expect do
             result = subject.execute(group_link)
 
-            expect(result[:status]).to eq(:error)
-            expect(result[:reason]).to eq(:forbidden)
-          end.not_to change { project.reload.project_group_links.count }
+            expect(result[:status]).to eq(:success)
+          end.to change { project.reload.project_group_links.count }
         end
 
         context 'if the user is an OWNER of the group' do

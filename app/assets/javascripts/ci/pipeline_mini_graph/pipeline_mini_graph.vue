@@ -1,147 +1,116 @@
 <script>
-import { GlLoadingIcon } from '@gitlab/ui';
-import { createAlert } from '~/alert';
-import { __ } from '~/locale';
+import { GlIcon, GlTooltipDirective } from '@gitlab/ui';
 import { keepLatestDownstreamPipelines } from '~/ci/pipeline_details/utils/parsing_utils';
-import { getQueryHeaders, toggleQueryPollingByVisibility } from '~/ci/pipeline_details/graph/utils';
-import { PIPELINE_MINI_GRAPH_POLL_INTERVAL } from '~/ci/pipeline_details/constants';
-import getLinkedPipelinesQuery from '~/ci/pipeline_details/graphql/queries/get_linked_pipelines.query.graphql';
-import getPipelineStagesQuery from './graphql/queries/get_pipeline_stages.query.graphql';
-import LegacyPipelineMiniGraph from './legacy_pipeline_mini_graph.vue';
-
+import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
+import { normalizeDownstreamPipelines, normalizeStages } from './utils/data_utils';
+import DownstreamPipelines from './downstream_pipelines.vue';
+import PipelineStages from './pipeline_stages.vue';
+/**
+ * Renders the pipeline mini graph.
+ * All REST data passed in is formatted to GraphQL.
+ */
 export default {
-  i18n: {
-    linkedPipelinesFetchError: __('There was a problem fetching linked pipelines.'),
-    stagesFetchError: __('There was a problem fetching the pipeline stages.'),
+  name: 'PipelineMiniGraph',
+  arrowStyles: ['arrow-icon gl-inline-block gl-mx-1 gl-text-subtle !gl-align-middle'],
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   components: {
-    GlLoadingIcon,
-    LegacyPipelineMiniGraph,
+    CiIcon,
+    DownstreamPipelines,
+    GlIcon,
+    PipelineStages,
   },
   props: {
-    pipelineEtag: {
-      type: String,
-      required: true,
-    },
-    fullPath: {
-      type: String,
-      required: true,
-    },
-    iid: {
-      type: String,
-      required: true,
+    downstreamPipelines: {
+      type: Array,
+      required: false,
+      default: () => [],
     },
     isMergeTrain: {
       type: Boolean,
       required: false,
       default: false,
     },
-    pollInterval: {
-      type: Number,
+    pipelinePath: {
+      type: String,
       required: false,
-      default: PIPELINE_MINI_GRAPH_POLL_INTERVAL,
-    },
-  },
-  data() {
-    return {
-      linkedPipelines: null,
-      pipelineStages: [],
-    };
-  },
-  apollo: {
-    linkedPipelines: {
-      context() {
-        return getQueryHeaders(this.pipelineEtag);
-      },
-      query: getLinkedPipelinesQuery,
-      pollInterval() {
-        return this.pollInterval;
-      },
-      variables() {
-        return {
-          fullPath: this.fullPath,
-          iid: this.iid,
-        };
-      },
-      update({ project }) {
-        return project?.pipeline || this.linkedpipelines;
-      },
-      error() {
-        createAlert({ message: this.$options.i18n.linkedPipelinesFetchError });
-      },
+      default: '',
     },
     pipelineStages: {
-      context() {
-        return getQueryHeaders(this.pipelineEtag);
-      },
-      query: getPipelineStagesQuery,
-      pollInterval() {
-        return this.pollInterval;
-      },
-      variables() {
-        return {
-          fullPath: this.fullPath,
-          iid: this.iid,
-        };
-      },
-      update({ project }) {
-        return project?.pipeline?.stages?.nodes || this.pipelineStages;
-      },
-      error() {
-        createAlert({ message: this.$options.i18n.stagesFetchError });
-      },
+      type: Array,
+      required: true,
+    },
+    upstreamPipeline: {
+      type: Object,
+      required: false,
+      default: () => {},
     },
   },
+  emits: ['jobActionExecuted', 'miniGraphStageClick'],
   computed: {
-    downstreamPipelines() {
-      return keepLatestDownstreamPipelines(this.linkedPipelines?.downstream?.nodes);
+    formattedDownstreamPipelines() {
+      return normalizeDownstreamPipelines(this.downstreamPipelines);
     },
     formattedStages() {
-      return this.pipelineStages.map((stage) => {
-        const { name, detailedStatus } = stage;
-        return {
-          // TODO: Once we fetch stage by ID with GraphQL,
-          // this method will change.
-          // see https://gitlab.com/gitlab-org/gitlab/-/issues/384853
-          id: stage.id,
-          dropdown_path: `${this.pipelinePath}/stage.json?stage=${name}`,
-          name,
-          path: `${this.pipelinePath}#${name}`,
-          status: {
-            details_path: `${this.pipelinePath}#${name}`,
-            has_details: detailedStatus?.hasDetails || false,
-            ...detailedStatus,
-          },
-          title: `${name}: ${detailedStatus?.text || ''}`,
-        };
-      });
+      return normalizeStages(this.pipelineStages);
     },
-    pipelinePath() {
-      return this.linkedPipelines?.path || '';
+    hasDownstreamPipelines() {
+      return Boolean(this.latestDownstreamPipelines.length);
     },
-    upstreamPipeline() {
-      return this.linkedPipelines?.upstream;
+    hasUpstreamPipeline() {
+      return this.upstreamPipeline?.id;
     },
-  },
-  mounted() {
-    toggleQueryPollingByVisibility(this.$apollo.queries.linkedPipelines);
-    toggleQueryPollingByVisibility(this.$apollo.queries.pipelineStages);
+    latestDownstreamPipelines() {
+      return keepLatestDownstreamPipelines(this.formattedDownstreamPipelines);
+    },
+    upstreamPipelineStatus() {
+      return this.upstreamPipeline?.detailedStatus || this.upstreamPipeline?.details?.status;
+    },
+    upstreamTooltipText() {
+      return `${this.upstreamPipeline?.project?.name} - ${this.upstreamPipelineStatus?.label}`;
+    },
   },
 };
 </script>
 
 <template>
-  <div>
-    <gl-loading-icon v-if="$apollo.queries.pipelineStages.loading" />
-    <legacy-pipeline-mini-graph
-      v-else
-      data-testid="pipeline-mini-graph"
-      is-graphql
-      :downstream-pipelines="downstreamPipelines"
+  <div data-testid="pipeline-mini-graph">
+    <ci-icon
+      v-if="hasUpstreamPipeline"
+      v-gl-tooltip.hover
+      :title="upstreamTooltipText"
+      :aria-label="upstreamTooltipText"
+      :status="upstreamPipelineStatus"
+      :show-tooltip="false"
+      class="gl-align-middle"
+      data-testid="pipeline-mini-graph-upstream"
+    />
+    <gl-icon
+      v-if="hasUpstreamPipeline"
+      :class="$options.arrowStyles"
+      name="arrow-right"
+      data-testid="upstream-arrow-icon"
+      variant="subtle"
+    />
+    <pipeline-stages
       :is-merge-train="isMergeTrain"
-      :pipeline-path="pipelinePath"
       :stages="formattedStages"
-      :upstream-pipeline="upstreamPipeline"
+      @jobActionExecuted="$emit('jobActionExecuted')"
+      @miniGraphStageClick="$emit('miniGraphStageClick')"
+    />
+    <gl-icon
+      v-if="hasDownstreamPipelines"
+      :class="$options.arrowStyles"
+      name="arrow-right"
+      data-testid="downstream-arrow-icon"
+      variant="subtle"
+    />
+    <downstream-pipelines
+      v-if="hasDownstreamPipelines"
+      :pipelines="latestDownstreamPipelines"
+      :pipeline-path="pipelinePath"
+      data-testid="pipeline-mini-graph-downstream"
     />
   </div>
 </template>

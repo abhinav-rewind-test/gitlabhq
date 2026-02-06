@@ -7,9 +7,8 @@
 #
 #   it_behaves_like 'an idempotent worker' do
 #     it 'checks the side-effects for multiple calls' do
-#       # it'll call the job's perform method 3 times
-#       # by default.
-#       subject
+#       # it'll call the job's perform method 2 times
+#       perform_idempotent_work
 #
 #       expect(model.state).to eq('state')
 #     end
@@ -19,7 +18,7 @@ RSpec.shared_examples 'an idempotent worker' do
   let(:worker_exec_times) { IdempotentWorkerHelper::WORKER_EXEC_TIMES }
 
   # Avoid stubbing calls for a more accurate run.
-  subject do
+  subject(:perform_idempotent_work) do
     if described_class.include?(::Gitlab::EventStore::Subscriber)
       event_worker
     else

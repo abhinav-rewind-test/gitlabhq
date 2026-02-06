@@ -11,13 +11,19 @@ module Types
       authorize :read_package
 
       field :versions, ::Types::Packages::PackageBaseType.connection_type, null: true,
-                                                                           description: 'Other versions of the package.'
+        description: 'Other versions of the package.'
 
-      field :package_files, Types::Packages::PackageFileType.connection_type, null: true, method: :installable_package_files, description: 'Package files.'
+      field :package_files,
+        Types::Packages::PackageFileType.connection_type,
+        null: true,
+        method: :installable_package_files,
+        description: 'Package files.'
 
-      field :dependency_links, Types::Packages::PackageDependencyLinkType.connection_type, null: true, description: 'Dependency link.'
+      field :dependency_links, Types::Packages::PackageDependencyLinkType.connection_type, null: true,
+        description: 'Dependency link.'
 
-      field :composer_config_repository_url, GraphQL::Types::String, null: true, description: 'Url of the Composer setup endpoint.'
+      field :composer_config_repository_url, GraphQL::Types::String, null: true,
+        description: 'Url of the Composer setup endpoint.'
       field :composer_url, GraphQL::Types::String, null: true, description: 'Url of the Composer endpoint.'
       field :conan_url, GraphQL::Types::String, null: true, description: 'Url of the Conan project endpoint.'
       field :maven_url, GraphQL::Types::String, null: true, description: 'Url of the Maven project endpoint.'
@@ -26,13 +32,11 @@ module Types
       field :pypi_setup_url, GraphQL::Types::String, null: true, description: 'Url of the PyPi project setup endpoint.'
       field :pypi_url, GraphQL::Types::String, null: true, description: 'Url of the PyPi project endpoint.'
 
-      field :last_downloaded_at, Types::TimeType, null: true, description: 'Last time that a file of this package was downloaded.'
+      field :last_downloaded_at, Types::TimeType, null: true,
+        description: 'Last time that a file of the package was downloaded.'
 
-      field :public_package, GraphQL::Types::Boolean, null: true, description: 'Indicates if there is public access to the package.'
-
-      def versions
-        object.versions
-      end
+      field :public_package, GraphQL::Types::Boolean, null: true,
+        description: 'Indicates if there is public access to the package.'
 
       def composer_config_repository_url
         composer_config_repository_name(object.project.group&.id)
@@ -68,6 +72,12 @@ module Types
 
       def public_package
         object.project.project_feature.public_packages?
+      end
+
+      def dependency_links
+        object.dependency_links.then do |links|
+          object.nuget? ? links.without_empty_nuget_dependencies : links
+        end
       end
     end
   end

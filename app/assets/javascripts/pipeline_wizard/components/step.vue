@@ -1,4 +1,5 @@
 <script>
+import { toRaw } from 'vue';
 import { GlAlert } from '@gitlab/ui';
 import { isNode, isDocument, parseDocument, Document } from 'yaml';
 import { merge } from '~/lib/utils/yaml';
@@ -90,7 +91,8 @@ export default {
       // this is done on purpose, see
       // https://gitlab.com/gitlab-org/gitlab/-/merge_requests/81412#note_862972703
       // for more information
-      merge(this.compiled, this.forceClone(this.template));
+      merge(toRaw(this.compiled), this.forceClone(this.template));
+
       this.wasCompiled = true;
     },
     onUpdate(c) {
@@ -107,7 +109,9 @@ export default {
       }
     },
     onInputValidationStateChange(inputId, value) {
-      this.$set(this.inputValidStates, inputId, value);
+      const copy = [...this.inputValidStates];
+      copy[inputId] = value;
+      this.inputValidStates = copy;
     },
     onHighlight(path) {
       this.$emit('update:highlight', path);
@@ -129,6 +133,7 @@ export default {
       :validate="validate"
       :widget="input.widget"
       class="gl-mb-8"
+      :monospace="input.monospace"
       v-bind="input"
       @highlight="onHighlight"
       @update:valid="(validationState) => onInputValidationStateChange(i, validationState)"

@@ -6,6 +6,7 @@ module API
       module V1
         class NamespacePackages < ::API::Base
           include ::API::Helpers::Authentication
+
           helpers ::API::Helpers::PackagesHelpers
           helpers ::API::Helpers::Packages::BasicAuthHelpers
 
@@ -32,12 +33,12 @@ module API
             include ::Gitlab::Utils::StrongMemoize
 
             params :module_name do
-              requires :module_name, type: String, desc: '', regexp: API::NO_SLASH_URL_PART_REGEX
-              requires :module_system, type: String, regexp: API::NO_SLASH_URL_PART_REGEX
+              requires :module_name, type: String, desc: 'Name of the module', regexp: API::NO_SLASH_URL_PART_REGEX
+              requires :module_system, type: String, desc: 'System of the module', regexp: API::NO_SLASH_URL_PART_REGEX
             end
 
             params :module_version do
-              requires :module_version, type: String, desc: 'Module version', regexp: SEMVER_REGEX
+              requires :module_version, type: String, desc: 'Version of the module', regexp: SEMVER_REGEX
             end
 
             def module_namespace
@@ -45,22 +46,25 @@ module API
             end
             strong_memoize_attr :module_namespace
 
+            def projects
+              ::Packages::ProjectsFinder.new(
+                current_user: current_user,
+                group: module_namespace,
+                params: { within_public_package_registry: true }
+              ).execute
+            end
+
             def finder_params
               {
                 package_type: :terraform_module,
                 package_name: "#{params[:module_name]}/#{params[:module_system]}",
+                package_version: params[:module_version],
                 exact_name: true
-              }.tap do |finder_params|
-                finder_params[:package_version] = params[:module_version] if params.has_key?(:module_version)
-              end
+              }.compact
             end
 
             def packages
-              ::Packages::GroupPackagesFinder.new(
-                current_user,
-                module_namespace,
-                finder_params
-              ).execute
+              ::Packages::PackagesFinder.new(projects, finder_params).execute
             end
             strong_memoize_attr :packages
 
@@ -73,6 +77,11 @@ module API
               package.installable_package_files.first
             end
             strong_memoize_attr :package_file
+
+            def latest_package
+              packages.unscope_order.order_metadatum_semver_desc.first
+            end
+            strong_memoize_attr :latest_package
           end
 
           params do
@@ -98,8 +107,10 @@ module API
                 { code: 403, message: 'Forbidden' }
               ]
               is_array true
-              tags %w[terraform_registry]
+              tags %w[terraform]
             end
+            route_setting :authorization, permissions: :read_terraform_module,
+              boundary_type: :group, boundary_param: :module_namespace
             get 'versions' do
               presenter = ::Terraform::ModulesPresenter.new(packages, params[:module_system])
               present presenter, with: ::API::Entities::Terraform::ModuleVersions
@@ -112,10 +123,12 @@ module API
                 { code: 403, message: 'Forbidden' },
                 { code: 404, message: 'Not found' }
               ]
-              tags %w[terraform_registry]
+              tags %w[terraform]
             end
+            route_setting :authorization, permissions: :download_terraform_module,
+              boundary_type: :group, boundary_param: :module_namespace
             get 'download' do
-              latest_version = packages.order_version.last&.version
+              latest_version = latest_package&.version
 
               if latest_version.nil?
                 render_api_error!({ error: "No version found for #{params[:module_name]} module" }, :not_found)
@@ -141,11 +154,11 @@ module API
                 { code: 403, message: 'Forbidden' },
                 { code: 404, message: 'Not found' }
               ]
-              tags %w[terraform_registry]
+              tags %w[terraform]
             end
+            route_setting :authorization, permissions: :read_terraform_module,
+              boundary_type: :group, boundary_param: :module_namespace
             get do
-              latest_package = packages.order_version.last
-
               if latest_package&.version.nil?
                 render_api_error!({ error: "No version found for #{params[:module_name]} module" }, :not_found)
               end
@@ -170,8 +183,10 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not found' }
                 ]
-                tags %w[terraform_registry]
+                tags %w[terraform]
               end
+              route_setting :authorization, permissions: :download_terraform_module,
+                boundary_type: :group, boundary_param: :module_namespace
               get 'download' do
                 module_file_path = api_v4_packages_terraform_modules_v1_module_version_file_path(
                   module_namespace: params[:module_namespace],
@@ -205,8 +220,10 @@ module API
                     { code: 403, message: 'Forbidden' },
                     { code: 404, message: 'Not found' }
                   ]
-                  tags %w[terraform_registry]
+                  tags %w[terraform]
                 end
+                route_setting :authorization, permissions: :download_terraform_module,
+                  boundary_type: :group, boundary_param: :module_namespace
                 get do
                   track_package_event(
                     'pull_package',
@@ -231,8 +248,10 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not found' }
                 ]
-                tags %w[terraform_registry]
+                tags %w[terraform]
               end
+              route_setting :authorization, permissions: :read_terraform_module,
+                boundary_type: :group, boundary_param: :module_namespace
               get format: false do
                 presenter = ::Terraform::ModuleVersionPresenter.new(package, params[:module_system])
                 present presenter, with: ::API::Entities::Terraform::ModuleVersion

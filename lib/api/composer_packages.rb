@@ -35,7 +35,8 @@ module API
     helpers do
       def packages
         strong_memoize(:packages) do
-          packages = ::Packages::Composer::PackagesFinder.new(current_user, find_authorized_group!).execute
+          group = find_authorized_group!
+          packages = ::Packages::Composer::PackageFinder.new(current_user, group).execute
 
           if params[:package_name].present?
             params[:package_name], params[:sha] = params[:package_name].split('$')
@@ -76,9 +77,10 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[composer_packages]
+        tags %w[packages]
       end
       route_setting :authentication, job_token_allowed: :basic_auth, basic_auth_personal_access_token: true, deploy_token_allowed: true
+      route_setting :authorization, skip_job_token_policies: true, permissions: :read_composer_package, boundary_type: :group
       get ':id/-/packages/composer/packages', urgency: :low do
         presenter.root
       end
@@ -90,12 +92,13 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[composer_packages]
+        tags %w[packages]
       end
       params do
         requires :sha, type: String, desc: 'Shasum of current json', documentation: { example: '673594f85a55fe3c0eb45df7bd2fa9d95a1601ab' }
       end
       route_setting :authentication, job_token_allowed: :basic_auth, basic_auth_personal_access_token: true, deploy_token_allowed: true
+      route_setting :authorization, skip_job_token_policies: true, permissions: :read_composer_package, boundary_type: :group
       get ':id/-/packages/composer/p/:sha', urgency: :low do
         presenter.provider
       end
@@ -107,12 +110,13 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[composer_packages]
+        tags %w[packages]
       end
       params do
         requires :package_name, type: String, file_path: true, desc: 'The Composer package name', documentation: { example: 'my-composer-package' }
       end
       route_setting :authentication, job_token_allowed: :basic_auth, basic_auth_personal_access_token: true, deploy_token_allowed: true
+      route_setting :authorization, skip_job_token_policies: true, permissions: :read_composer_package, boundary_type: :group
       get ':id/-/packages/composer/p2/*package_name', requirements: COMPOSER_ENDPOINT_REQUIREMENTS, file_path: true, urgency: :low do
         not_found! if packages.empty?
 
@@ -126,12 +130,13 @@ module API
           { code: 401, message: 'Unauthorized' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[composer_packages]
+        tags %w[packages]
       end
       params do
         requires :package_name, type: String, file_path: true, desc: 'The Composer package name', documentation: { example: 'my-composer-package' }
       end
       route_setting :authentication, job_token_allowed: :basic_auth, basic_auth_personal_access_token: true, deploy_token_allowed: true
+      route_setting :authorization, skip_job_token_policies: true, permissions: :read_composer_package, boundary_type: :group
       get ':id/-/packages/composer/*package_name', requirements: COMPOSER_ENDPOINT_REQUIREMENTS, file_path: true, urgency: :low do
         not_found! if packages.empty?
         not_found! if params[:sha].blank?
@@ -147,6 +152,8 @@ module API
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       namespace ':id/packages/composer' do
         route_setting :authentication, job_token_allowed: true, basic_auth_personal_access_token: true, deploy_token_allowed: true
+        route_setting :authorization, job_token_policies: :admin_packages, permissions: :publish_composer_package,
+          boundary_type: :project
 
         desc 'Composer packages endpoint for registering packages' do
           detail 'This feature was introduced in GitLab 13.1'
@@ -157,7 +164,7 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[composer_packages]
+          tags %w[packages]
         end
         params do
           optional :branch, type: String, desc: 'The name of the branch', documentation: { example: 'release' }
@@ -192,30 +199,34 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[composer_packages]
+          tags %w[packages]
         end
         params do
           requires :sha, type: String, desc: 'Shasum of current json', documentation: { example: '673594f85a55fe3c0eb45df7bd2fa9d95a1601ab' }
           requires :package_name, type: String, file_path: true, desc: 'The Composer package name', documentation: { example: 'my-composer-package' }
         end
         route_setting :authentication, job_token_allowed: :basic_auth, basic_auth_personal_access_token: true, deploy_token_allowed: true
+        route_setting :authorization, job_token_policies: :read_packages,
+          allow_public_access_for_enabled_project_features: :package_registry, permissions: :read_composer_package,
+          boundary_type: :project
         get 'archives/*package_name', urgency: :default do
           project = authorized_user_project(action: :read_package)
+          authorize_job_token_policies!(project)
 
-          package = project
-            .packages
-            .composer
-            .with_name(params[:package_name])
-            .with_composer_target(params[:sha])
-            .first
-          metadata = package&.composer_metadatum
+          package = ::Packages::Composer::PackageFinder
+                      .new(current_user, project, { package_name: params[:package_name], target_sha: params[:sha] })
+                      .execute
+                      .first
 
-          not_found! unless metadata
+          not_found! unless package
 
           track_package_event('pull_package', :composer, project: project, namespace: project.namespace)
-          package.touch_last_downloaded_at
 
-          send_git_archive project.repository, ref: metadata.target_sha, format: 'zip', append_sha: true
+          # For now we keep writing to the existing packages_packages table.
+          # It contains the trigger to sync the data with packages_composer_packages table.
+          ::Packages::Composer::Sti::Package.touch_last_downloaded_at(package.id) unless request.head?
+
+          send_git_archive project.repository, ref: package.target_sha, format: 'zip', append_sha: true
         end
       end
     end

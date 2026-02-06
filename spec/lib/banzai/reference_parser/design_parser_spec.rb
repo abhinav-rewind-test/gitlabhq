@@ -8,11 +8,10 @@ RSpec.describe Banzai::ReferenceParser::DesignParser, feature_category: :design_
 
   let_it_be(:issue) { create(:issue) }
   let_it_be(:design) { create(:design, :with_versions, issue: issue) }
-  let_it_be(:user) { create(:user, developer_projects: [issue.project]) }
+  let_it_be(:user) { create(:user, developer_of: issue.project) }
+  let(:link) { design_link(design) }
 
   subject(:instance) { described_class.new(Banzai::RenderContext.new(issue.project, user)) }
-
-  let(:link) { design_link(design) }
 
   before do
     enable_design_management
@@ -40,9 +39,9 @@ RSpec.describe Banzai::ReferenceParser::DesignParser, feature_category: :design_
 
       subject(:visible_nodes) do
         nodes = [link,
-                 other_project_link,
-                 public_link,
-                 public_but_confidential_link]
+          other_project_link,
+          public_link,
+          public_but_confidential_link]
 
         instance.nodes_visible_to_user(user, nodes)
       end

@@ -29,14 +29,17 @@ export default {
   },
   methods: {
     gcpProjectUrl(id) {
-      return setUrlParams({ project: id }, 'https://console.cloud.google.com/sql/instances');
+      return setUrlParams(
+        { project: id },
+        { url: 'https://console.cloud.google.com/sql/instances' },
+      );
     },
     instanceUrl(name, id) {
       const saferName = encodeSaferUrl(name);
 
       return setUrlParams(
         { project: id },
-        `https://console.cloud.google.com/sql/instances/${saferName}/overview`,
+        { url: `https://console.cloud.google.com/sql/instances/${saferName}/overview` },
       );
     },
   },
@@ -61,7 +64,7 @@ export default {
     />
 
     <div v-else>
-      <h2 class="gl-font-size-h2">{{ $options.i18n.title }}</h2>
+      <h2 class="gl-text-size-h2">{{ $options.i18n.title }}</h2>
       <p>{{ $options.i18n.description }}</p>
       <gl-table :fields="$options.fields" :items="tableData">
         <template #cell(gcp_project)="{ value }">

@@ -15,9 +15,9 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Feature Flag #{reference}</#{elem}>"
+      act = "<#{elem}>Feature Flag #{reference}</#{elem}>"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -35,9 +35,9 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
     end
 
     it 'ignores invalid feature flag IIDs' do
-      exp = act = "Check [feature_flag:#{non_existing_record_id}]"
+      act = "Check [feature_flag:#{non_existing_record_id}]"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
 
     it 'includes a title attribute' do
@@ -109,9 +109,9 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
     end
 
     it 'ignores invalid feature flag IIDs on the referenced project' do
-      exp = act = "Check [feature_flag:#{non_existing_record_id}]"
+      act = "Check [feature_flag:#{non_existing_record_id}]"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -141,9 +141,9 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
     end
 
     it 'ignores invalid feature flag IIDs on the referenced project' do
-      exp = act = "Check [feature_flag:#{non_existing_record_id}]"
+      act = "Check [feature_flag:#{non_existing_record_id}]"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -173,9 +173,9 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
     end
 
     it 'ignores invalid feature flag IDs on the referenced project' do
-      exp = act = "Check [feature_flag:#{non_existing_record_id}]"
+      act = "Check [feature_flag:#{non_existing_record_id}]"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -209,15 +209,28 @@ RSpec.describe Banzai::Filter::References::FeatureFlagReferenceFilter, feature_c
 
     it 'links to a valid reference' do
       reference = "[feature_flag:#{project.full_path}/#{feature_flag.iid}]"
-      result = reference_filter("See #{reference}", { project: nil, group: group } )
+      result = reference_filter("See #{reference}", { project: nil, group: group })
 
       expect(result.css('a').first.attr('href')).to eq(urls.edit_project_feature_flag_url(project, feature_flag))
     end
 
     it 'ignores internal references' do
-      exp = act = "See [feature_flag:#{feature_flag.iid}]"
+      act = "See [feature_flag:#{feature_flag.iid}]"
 
-      expect(reference_filter(act, project: nil, group: group).to_html).to eq exp
+      expect(reference_filter(act, project: nil, group: group).to_html).to include act
+    end
+  end
+
+  context 'when checking N+1' do
+    let_it_be(:feature_flag1) { create(:operations_feature_flag, project: project) }
+    let_it_be(:feature_flag2) { create(:operations_feature_flag, project: project) }
+
+    it 'does not have N+1 per multiple references per project', :use_sql_query_cache do
+      single_reference = "Feature flag [feature_flag:#{feature_flag1.iid}]"
+      multiple_references = "Feature flags [feature_flag:#{feature_flag1.iid}] and [feature_flag:#{feature_flag2.iid}]"
+
+      control = ActiveRecord::QueryRecorder.new { reference_filter(single_reference).to_html }
+      expect { reference_filter(multiple_references).to_html }.not_to exceed_query_limit(control)
     end
   end
 end

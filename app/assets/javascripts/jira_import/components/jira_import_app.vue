@@ -17,10 +17,6 @@ export default {
     JiraImportSetup,
   },
   props: {
-    inProgressIllustration: {
-      type: String,
-      required: true,
-    },
     isJiraConfigured: {
       type: Boolean,
       required: true,
@@ -30,10 +26,6 @@ export default {
       required: true,
     },
     jiraIntegrationPath: {
-      type: String,
-      required: true,
-    },
-    projectId: {
       type: String,
       required: true,
     },
@@ -95,10 +87,10 @@ export default {
       :illustration="setupIllustration"
       :jira-integration-path="jiraIntegrationPath"
     />
-    <gl-loading-icon v-else-if="$apollo.loading" size="lg" class="mt-3" />
+    <gl-loading-icon v-else-if="$apollo.loading" size="lg" class="!gl-mt-5" />
     <jira-import-progress
       v-else-if="jiraImportDetails.isInProgress"
-      :illustration="inProgressIllustration"
+      :illustration="setupIllustration"
       :import-initiator="jiraImportDetails.mostRecentImport.scheduledBy.name"
       :import-project="jiraImportDetails.mostRecentImport.jiraProjectKey"
       :import-time="jiraImportDetails.mostRecentImport.scheduledAt"
@@ -109,7 +101,6 @@ export default {
       :issues-path="issuesPath"
       :jira-imports="jiraImportDetails.imports"
       :jira-projects="jiraImportDetails.projects"
-      :project-id="projectId"
       :project-path="projectPath"
       @error="setAlertMessage"
     />

@@ -121,26 +121,24 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
 
         let!(:commit_author) { create(:user, email: sample_commit.author_email) }
 
-        let(:tracking_params) do
-          ['o_pipeline_authoring_unique_users_committing_ciconfigfile', values: commit_author.id]
-        end
-
         it 'tracks the event' do
-          time = Time.zone.now
-
-          execute_service
-
-          expect(Gitlab::UsageDataCounters::HLLRedisCounter.unique_events(event_names: 'o_pipeline_authoring_unique_users_committing_ciconfigfile', start_date: time, end_date: time + 7.days)).to eq(1)
+          expect { subject }
+          .to trigger_internal_events('commit_change_to_ciconfigfile')
+          .with(category: 'Git::BranchHooksService', user: commit_author, project: project)
+          .and increment_usage_metrics(
+            'redis_hll_counters.pipeline_authoring.o_pipeline_authoring_unique_users_committing_ciconfigfile_weekly',
+            'redis_hll_counters.pipeline_authoring.o_pipeline_authoring_unique_users_committing_ciconfigfile_monthly',
+            'redis_hll_counters.pipeline_authoring.pipeline_authoring_total_unique_counts_weekly',
+            'redis_hll_counters.pipeline_authoring.pipeline_authoring_total_unique_counts_monthly'
+          )
         end
 
         context 'when the branch is not the main branch' do
           let(:branch) { 'feature' }
 
           it 'does not track the event' do
-            expect(Gitlab::UsageDataCounters::HLLRedisCounter)
-              .not_to receive(:track_event).with(*tracking_params)
-
-            execute_service
+            expect { subject }
+            .not_to trigger_internal_events('commit_change_to_ciconfigfile')
           end
         end
 
@@ -150,10 +148,8 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
           end
 
           it 'does not track the event' do
-            expect(Gitlab::UsageDataCounters::HLLRedisCounter)
-              .not_to receive(:track_event).with(*tracking_params)
-
-            execute_service
+            expect { subject }
+            .not_to trigger_internal_events('commit_change_to_ciconfigfile')
           end
         end
       end
@@ -174,6 +170,12 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
         expect(event.push_event_payload.commit_title).to eq('Change some files')
         expect(event.push_event_payload.ref).to eq('master')
         expect(event.push_event_payload.commit_count).to be > 1
+      end
+
+      it 'correctly marks branch as protected' do
+        execute_service
+
+        expect(ProtectedBranch.protected?(project, branch)).to eq(true)
       end
     end
 
@@ -237,7 +239,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
     end
 
     def clears_extended_cache
-      clears_cache(extended: %i[readme])
+      clears_cache(extended: %w[readme])
     end
 
     context 'on default branch' do
@@ -369,7 +371,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
           .with(newrev, limit: threshold_limit)
           .and_call_original
 
-        expect(ProcessCommitWorker).to receive(:perform_async).twice
+        expect(ProcessCommitWorker).to receive(:perform_in).twice
 
         service.execute
 
@@ -405,7 +407,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
           .with(oldrev, newrev, limit: threshold_limit)
           .and_call_original
 
-        expect(ProcessCommitWorker).to receive(:perform_async).twice
+        expect(ProcessCommitWorker).to receive(:perform_in).twice
 
         service.execute
 
@@ -419,7 +421,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
       it 'does not process commit messages' do
         expect(project.repository).not_to receive(:commits)
         expect(project.repository).not_to receive(:commits_between)
-        expect(ProcessCommitWorker).not_to receive(:perform_async)
+        expect(ProcessCommitWorker).not_to receive(:perform_in)
 
         service.execute
 
@@ -437,7 +439,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
           .with(project.default_branch, newrev, limit: threshold_limit)
           .and_call_original
 
-        expect(ProcessCommitWorker).to receive(:perform_async).twice
+        expect(ProcessCommitWorker).to receive(:perform_in).twice
 
         service.execute
 
@@ -454,7 +456,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
           .with(oldrev, newrev, limit: threshold_limit)
           .and_call_original
 
-        expect(ProcessCommitWorker).to receive(:perform_async).twice
+        expect(ProcessCommitWorker).to receive(:perform_in).twice
 
         service.execute
         expect(commits_count).to eq(project.repository.count_commits_between(oldrev, newrev))
@@ -468,7 +470,8 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
       it 'does not process commit messages' do
         expect(project.repository).not_to receive(:commits)
         expect(project.repository).not_to receive(:commits_between)
-        expect(ProcessCommitWorker).not_to receive(:perform_async)
+        expect(ProcessCommitWorker).not_to receive(:perform_in)
+        expect(service).to receive(:branch_remove_hooks)
 
         service.execute
 
@@ -486,7 +489,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
 
       context 'when commits already exists in the upstream project' do
         it 'does not process commit messages' do
-          expect(ProcessCommitWorker).not_to receive(:perform_async)
+          expect(ProcessCommitWorker).not_to receive(:perform_in)
 
           forked_service.execute
         end
@@ -508,7 +511,7 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
         let(:newrev) { forked_commit_ids.last }
 
         it 'processes the commit message' do
-          expect(ProcessCommitWorker).to receive(:perform_async).once
+          expect(ProcessCommitWorker).to receive(:perform_in).once
 
           forked_service.execute
         end
@@ -518,9 +521,37 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
         it 'processes the commit messages' do
           upstream_project.destroy!
 
-          expect(ProcessCommitWorker).to receive(:perform_async).twice
+          expect(ProcessCommitWorker).to receive(:perform_in).twice
 
           forked_service.execute
+        end
+      end
+    end
+
+    context 'when rate limiting ProcessCommitWorker' do
+      context 'when process_commit_worker_pool is not a param' do
+        it 'queues jobs instantly' do
+          expect(ProcessCommitWorker).to receive(:perform_in).twice.with(0, any_args)
+
+          service.execute
+        end
+      end
+
+      context 'when process_commit_worker_pool is a param' do
+        let(:pool) { instance_double(Gitlab::Git::ProcessCommitWorkerPool) }
+
+        let(:service) do
+          described_class.new(project, user, {
+            process_commit_worker_pool: pool,
+            change: { oldrev: oldrev, newrev: newrev, ref: ref }
+          })
+        end
+
+        it 'delays jobs' do
+          expect(pool).to receive(:get_and_increment_delay).twice.and_return(99)
+          expect(ProcessCommitWorker).to receive(:perform_in).twice.with(99, any_args)
+
+          service.execute
         end
       end
     end
@@ -542,8 +573,8 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
     context 'oldrev is set' do
       context 'Gitaly does not know about the branch' do
         it 'is treated as a new branch' do
-          allow(project.repository).to receive(:branch_names) { [] }
-
+          allow(project.repository).to receive(:branch_exists?).with("refs/heads/#{branch}").and_return(false)
+          allow(project.repository).to receive(:branch_exists?).with(branch).and_return(false)
           expect(service).to receive(:branch_create_hooks)
 
           service.execute
@@ -553,6 +584,49 @@ RSpec.describe Git::BranchHooksService, :clean_gitlab_redis_shared_state, featur
       context 'Gitaly knows about the branch' do
         it 'is not treated as a new branch' do
           expect(service).not_to receive(:branch_create_hooks)
+
+          service.execute
+        end
+      end
+    end
+  end
+
+  describe '#enqueue_jira_connect_remove_branches' do
+    let(:newrev) { Gitlab::Git::SHA1_BLANK_SHA }
+    let(:extracted_keys) { ['JIRA-1'] }
+
+    before do
+      allow(Atlassian::JiraIssueKeyExtractors::Branch)
+        .to receive(:has_keys?)
+        .with(project, branch)
+        .and_return(extracted_keys)
+    end
+
+    context 'when there is no jira subscription' do
+      it 'does not call JiraConnect' do
+        expect(Integrations::JiraConnect::RemoveBranchWorker).not_to receive(:perform_async)
+
+        service.execute
+      end
+    end
+
+    context 'when there is a jira subscription' do
+      before do
+        allow(project).to receive(:jira_subscription_exists?).and_return(true)
+      end
+
+      it 'calls JiraConnect' do
+        expect(Integrations::JiraConnect::RemoveBranchWorker)
+          .to receive(:perform_async)
+
+        service.execute
+      end
+
+      context 'when the branch has no Jira keys in its name' do
+        let(:extracted_keys) { nil }
+
+        it 'does not call JiraConnect' do
+          expect(Integrations::JiraConnect::RemoveBranchWorker).not_to receive(:perform_async)
 
           service.execute
         end

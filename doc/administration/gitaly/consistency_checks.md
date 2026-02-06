@@ -1,10 +1,9 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Gitaly
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Repository consistency checks
 ---
-
-# Repository consistency checks
 
 Gitaly runs repository consistency checks:
 
@@ -39,73 +38,36 @@ Instance administrators can override consistency checks if they must
 process repositories that do not pass consistency checks.
 
 For Linux package installations, edit `/etc/gitlab/gitlab.rb` and set the
-following keys (in this example, to disable the `hasDotgit` consistency check):
+following keys (in this example, to allow bad email headers in old commits, and
+disable the `hasDotgit` and `gitmodulesUrl` consistency checks):
 
-- In [GitLab 15.10](https://gitlab.com/gitlab-org/gitaly/-/issues/4754) and later:
+```ruby
+ignored_blobs = "/etc/gitlab/instance_wide_ignored_git_blobs.txt"
 
-  ```ruby
-  ignored_blobs = "/etc/gitlab/instance_wide_ignored_git_blobs.txt"
-
-  gitaly['configuration'] = {
+gitaly['configuration'] = {
+  # ...
+  git: {
     # ...
-    git: {
-      # ...
-      config: [
-        # Populate a file with one unabbreviated SHA-1 per line.
-        # See https://git-scm.com/docs/git-config#Documentation/git-config.txt-fsckskipList
-        { key: "fsck.skipList", value: ignored_blobs },
-        { key: "fetch.fsck.skipList", value: ignored_blobs },
-        { key: "receive.fsck.skipList", value: ignored_blobs },
+    config: [
+      # Allow bad email headers in old commits
+      # (Populate a file with one unabbreviated SHA-1 per line.
+      #  See https://git-scm.com/docs/git-config#Documentation/git-config.txt-fsckskipList)
+      { key: "fsck.skipList", value: ignored_blobs },
+      { key: "fetch.fsck.skipList", value: ignored_blobs },
+      { key: "receive.fsck.skipList", value: ignored_blobs },
+      { key: "fsck.missingSpaceBeforeEmail", value: "ignore" },
 
-        { key: "fsck.hasDotgit", value: "ignore" },
-        { key: "fetch.fsck.hasDotgit", value: "ignore" },
-        { key: "receive.fsck.hasDotgit", value: "ignore" },
-        { key: "fsck.missingSpaceBeforeEmail", value: "ignore" },
-      ],
-    },
-  }
-  ```
-
-- In [GitLab 15.3](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/6800) to GitLab 15.9:
-
-  ```ruby
-  ignored_blobs = "/etc/gitlab/instance_wide_ignored_git_blobs.txt"
-
-  gitaly['gitconfig'] = [
-
-   # Populate a file with one unabbreviated SHA-1 per line.
-   # See https://git-scm.com/docs/git-config#Documentation/git-config.txt-fsckskipList
-   { key: "fsck.skipList", value: ignored_blobs },
-   { key: "fetch.fsck.skipList", value: ignored_blobs },
-   { key: "receive.fsck.skipList", value: ignored_blobs },
-
-   { key: "fsck.hasDotgit", value: "ignore" },
-   { key: "fetch.fsck.hasDotgit", value: "ignore" },
-   { key: "receive.fsck.hasDotgit", value: "ignore" },
-   { key: "fsck.missingSpaceBeforeEmail", value: "ignore" },
-  ]
-  ```
-
-- In GitLab 15.2 and earlier (legacy method):
-
-  ```ruby
-  ignored_git_errors = [
-    "hasDotgit = ignore",
-    "missingSpaceBeforeEmail = ignore",
-  ]
-  omnibus_gitconfig['system'] = {
-
-   # Populate a file with one unabbreviated SHA-1 per line.
-   # See https://git-scm.com/docs/git-config#Documentation/git-config.txt-fsckskipList
-    "fsck.skipList" => ignored_blobs
-    "fetch.fsck.skipList" => ignored_blobs,
-    "receive.fsck.skipList" => ignored_blobs,
-
-    "fsck" => ignored_git_errors,
-    "fetch.fsck" => ignored_git_errors,
-    "receive.fsck" => ignored_git_errors,
-  }
-  ```
+      # Ignore specific consistency checks
+      # See https://git-scm.com/docs/git-fsck.html#_fsck_messages
+      { key: "fsck.hasDotgit", value: "ignore" },
+      { key: "fetch.fsck.hasDotgit", value: "ignore" },
+      { key: "receive.fsck.hasDotgit", value: "ignore" },
+      { key: "fsck.gitmodulesUrl", value: "ignore" },
+      { key: "fetch.fsck.gitmodulesUrl", value: "ignore" },
+    ],
+  },
+}
+```
 
 For self-compiled installations, edit the Gitaly configuration (`gitaly.toml`) to do the
 equivalent:
@@ -133,6 +95,14 @@ value = "ignore"
 
 [[git.config]]
 key = "receive.fsck.missingSpaceBeforeEmail"
+value = "ignore"
+
+[[git.config]]
+key = "fsck.gitmodulesUrl"
+value = "ignore"
+
+[[git.config]]
+key = "fetch.fsck.gitmodulesUrl"
 value = "ignore"
 
 [[git.config]]

@@ -19,6 +19,22 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
   end
 
   describe 'GET /projects/:id/releases', :use_clean_rails_redis_caching do
+    it_behaves_like 'authorizing granular token permissions', :read_release do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        get api("/projects/#{project.id}/releases", personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_releases,
+      allow_public_access_for_enabled_project_features: [:repository, :releases] do
+      let(:user) { developer }
+      let(:request) do
+        get api("/projects/#{source_project.id}/releases"), params: { job_token: target_job.token }
+      end
+    end
+
     context 'when there are two releases' do
       let!(:release_1) do
         create(:release, project: project, tag: 'v0.1', author: maintainer, released_at: 2.days.ago)
@@ -218,7 +234,7 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
         expect(json_response.count).to eq(1)
         expect(json_response.first['tag_name']).to eq('v1.1.5')
-        expect(release).to be_tag_missing
+        expect(release.repository.find_tag(release.tag)).to be_nil
       end
     end
 
@@ -317,6 +333,22 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
           author: maintainer,
           description: 'This is v0.1'
         )
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_release do
+        let(:boundary_object) { project }
+        let(:user) { maintainer }
+        let(:request) do
+          get api("/projects/#{project.id}/releases/v0.1", personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'enforcing job token policies', :read_releases,
+        allow_public_access_for_enabled_project_features: [:repository, :releases] do
+        let(:user) { developer }
+        let(:request) do
+          get api("/projects/#{source_project.id}/releases/v0.1"), params: { job_token: target_job.token }
+        end
       end
 
       it 'returns 200 HTTP status' do
@@ -581,6 +613,23 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
     context 'with a valid release tag' do
       context 'when filepath is provided' do
         context 'when filepath exists' do
+          it_behaves_like 'authorizing granular token permissions', :read_release, expected_success_status: :redirect do
+            let(:boundary_object) { project }
+            let(:user) { developer }
+            let(:request) do
+              get api("/projects/#{project.id}/releases/v0.1/downloads#{filepath}", personal_access_token: pat)
+            end
+          end
+
+          it_behaves_like 'enforcing job token policies', :read_releases, expected_success_status: :redirect,
+            allow_public_access_for_enabled_project_features: [:repository, :releases] do
+            let(:user) { developer }
+            let(:request) do
+              get api("/projects/#{source_project.id}/releases/v0.1/downloads#{filepath}"),
+                params: { job_token: target_job.token }
+            end
+          end
+
           it 'redirects to the file download URL' do
             get api("/projects/#{project.id}/releases/v0.1/downloads#{filepath}", maintainer)
 
@@ -709,6 +758,22 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
         )
       end
 
+      it_behaves_like 'authorizing granular token permissions', :read_release, expected_success_status: :redirect do
+        let(:boundary_object) { project }
+        let(:user) { developer }
+        let(:request) do
+          get api("/projects/#{project.id}/releases/permalink/latest", personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'enforcing job token policies', :read_releases, expected_success_status: :redirect,
+        allow_public_access_for_enabled_project_features: [:repository, :releases] do
+        let(:user) { developer }
+        let(:request) do
+          get api("/projects/#{source_project.id}/releases/permalink/latest"), params: { job_token: target_job.token }
+        end
+      end
+
       it 'redirects to the latest release tag' do
         get api("/projects/#{project.id}/releases/permalink/latest", maintainer)
 
@@ -770,14 +835,43 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
           expect(response).to have_gitlab_http_status(:redirect)
           expect(uri.path).to eq("/api/v4/projects/#{project.id}/releases/#{release_b.tag}/downloads/bin/example.exe")
         end
+      end
 
-        it 'returns error when there is path traversal in suffix path' do
-          get api("/projects/#{project.id}/releases/permalink/latest/downloads/bin/../../../../../../../password.txt", maintainer)
-
-          expect(response).to have_gitlab_http_status(:bad_request)
-
-          expect(json_response['error']).to eq('suffix_path should be a valid file path')
+      context 'when a relative URL is configured' do
+        before do
+          stub_config_setting(relative_url_root: '/gitlab-relative-url')
         end
+
+        it 'includes the relative URL in the redirect' do
+          get api("/projects/#{project.id}/releases/permalink/latest", maintainer)
+
+          uri = URI(response.header["Location"])
+
+          expect(response).to have_gitlab_http_status(:redirect)
+          expect(uri.path).to eq("/gitlab-relative-url/api/v4/projects/#{project.id}/releases/#{release_b.tag}")
+        end
+      end
+    end
+
+    context 'when the tag name should be escaped' do
+      let!(:release_c) do
+        create(
+          :release,
+          project: project,
+          tag: 'version/0.1',
+          author: maintainer,
+          description: 'This is v0.1',
+          released_at: 3.days.ago
+        )
+      end
+
+      it 'redirects to the latest release tag and encodes tag name' do
+        get api("/projects/#{project.id}/releases/permalink/latest", maintainer)
+
+        uri = URI(response.header["Location"])
+
+        expect(response).to have_gitlab_http_status(:redirect)
+        expect(uri.path).to eq("/api/v4/projects/#{project.id}/releases/version%2F0.1")
       end
     end
   end
@@ -803,6 +897,21 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
     before do
       initialize_tags
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_release do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        post api("/projects/#{project.id}/releases", personal_access_token: pat), params: params
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :admin_releases do
+      let(:user) { developer }
+      let(:request) do
+        post api("/projects/#{source_project.id}/releases"), params: params.merge(job_token: target_job.token)
+      end
     end
 
     it 'accepts the request' do
@@ -831,9 +940,9 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
     it 'creates a new release without description' do
       params = {
-          name: 'New release without description',
-          tag_name: 'v0.1',
-          released_at: '2019-03-25 10:00:00'
+        name: 'New release without description',
+        tag_name: 'v0.1',
+        released_at: '2019-03-25 10:00:00'
       }
 
       expect do
@@ -1258,6 +1367,87 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
         end
       end
     end
+
+    context 'when the project is a catalog resource' do
+      let_it_be(:project) { create(:project, :catalog_resource_with_components, create_tag: '6.0.0') }
+      let_it_be(:ci_catalog_resource) { create(:ci_catalog_resource, project: project) }
+
+      let(:params) do
+        {
+          name: 'New release',
+          tag_name: '6.0.0',
+          description: 'Super nice release'
+        }
+      end
+
+      it 'creates a new release without publishing the catalog resource' do
+        expect do
+          post api("/projects/#{project.id}/releases", maintainer), params: params
+        end.to change { Release.count }.by(1)
+
+        release = project.releases.last
+        expect(release.name).to eq('New release')
+        expect(release.catalog_resource_version).to be_nil
+      end
+
+      context 'when legacy_catalog_publish is true' do
+        let(:params) do
+          {
+            name: 'New release',
+            tag_name: '6.0.0',
+            description: 'Super nice release',
+            legacy_catalog_publish: true
+          }
+        end
+
+        it 'creates a new release and publishes the catalog resource' do
+          expect do
+            post api("/projects/#{project.id}/releases", maintainer), params: params
+          end.to change { Release.count }.by(1)
+
+          release = project.releases.last
+          expect(release.name).to eq('New release')
+          expect(release.catalog_resource_version.catalog_resource).to eq(ci_catalog_resource)
+        end
+      end
+
+      context 'when the FF ci_release_cli_catalog_publish_option is disabled' do
+        before do
+          stub_feature_flags(ci_release_cli_catalog_publish_option: false)
+        end
+
+        it 'creates a new release and publishes the catalog resource' do
+          expect do
+            post api("/projects/#{project.id}/releases", maintainer), params: params
+          end.to change { Release.count }.by(1)
+
+          release = project.releases.last
+          expect(release.name).to eq('New release')
+          expect(release.catalog_resource_version.catalog_resource).to eq(ci_catalog_resource)
+        end
+
+        context 'when legacy_catalog_publish is true' do
+          let(:params) do
+            {
+              name: 'New release',
+              tag_name: '6.0.0',
+              description: 'Super nice release',
+              legacy_catalog_publish: true
+            }
+          end
+
+          it 'creates a new release and publishes the catalog resource' do
+            expect do
+              post api("/projects/#{project.id}/releases", maintainer), params: params
+            end.to change { Release.count }.by(1)
+
+            release = project.releases.last
+            expect(release.name).to eq('New release')
+            expect(release.catalog_resource_version.catalog_resource).to eq(ci_catalog_resource)
+          end
+        end
+      end
+    end
   end
 
   describe 'PUT /projects/:id/releases/:tag_name' do
@@ -1276,6 +1466,21 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
 
     before do
       initialize_tags
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :update_release do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        put api("/projects/#{project.id}/releases/v0.1", personal_access_token: pat), params: params
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :admin_releases do
+      let(:user) { developer }
+      let(:request) do
+        put api("/projects/#{source_project.id}/releases/v0.1"), params: params.merge(job_token: target_job.token)
+      end
     end
 
     it 'accepts the request' do
@@ -1519,6 +1724,21 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
       )
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_release do
+      let(:boundary_object) { project }
+      let(:user) { maintainer }
+      let(:request) do
+        delete api("/projects/#{project.id}/releases/v0.1", personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :admin_releases do
+      let(:user) { developer }
+      let(:request) do
+        delete api("/projects/#{source_project.id}/releases/v0.1"), params: { job_token: target_job.token }
+      end
+    end
+
     it 'accepts the request' do
       delete api("/projects/#{project.id}/releases/v0.1", maintainer)
 
@@ -1689,6 +1909,14 @@ RSpec.describe API::Releases, :aggregate_failures, feature_category: :release_or
     context 'when authenticated as guest' do
       before do
         group1.add_guest(guest)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_release do
+        let(:boundary_object) { group1 }
+        let(:user) { guest }
+        let(:request) do
+          get api("/groups/#{group1.id}/releases", personal_access_token: pat)
+        end
       end
 
       it "does not expose tag, commit, source code or helper paths" do

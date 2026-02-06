@@ -14,7 +14,7 @@ RSpec.describe WorkItems::ImportCsvService, feature_category: :team_planning do
     described_class.new(user, project, uploader)
   end
 
-  let_it_be(:issue_type) { ::WorkItems::Type.default_issue_type }
+  let_it_be(:issue_type) { build(:work_item_system_defined_type, :issue) }
 
   let(:work_items) { ::WorkItems::WorkItemsFinder.new(user, project: project).execute }
   let(:email_method) { :import_work_items_csv_email }
@@ -28,6 +28,8 @@ RSpec.describe WorkItems::ImportCsvService, feature_category: :team_planning do
       end
 
       it_behaves_like 'importer with email notification'
+
+      it_behaves_like 'performs a spam check', true
 
       context 'when file format is valid' do
         context 'when work item types are available' do
@@ -56,7 +58,7 @@ RSpec.describe WorkItems::ImportCsvService, feature_category: :team_planning do
           end
         end
 
-        context 'when csv contains work item types that are missing or not available' do
+        context 'when csv contains work item types that are not available' do
           let(:file) { fixture_file_upload('spec/fixtures/work_items_invalid_types.csv') }
 
           it 'creates no work items' do
@@ -70,14 +72,59 @@ RSpec.describe WorkItems::ImportCsvService, feature_category: :team_planning do
             expect(result[:error_lines]).to be_empty # there are problematic lines detailed below
             expect(result[:parse_error]).to eq(false)
             expect(result[:type_errors]).to match({
-              blank: [4],
-              disallowed: {}, # tested in the EE version
+              blank: [],
+              disallowed: { "epic" => [5] }, # tested in the EE version
               missing: {
                 "isssue" => [2],
                 "issue!!" => [3]
               }
             })
           end
+        end
+
+        context 'when csv contains work item types that are missing' do
+          let(:file) { fixture_file_upload('spec/fixtures/work_items_no_type.csv') }
+
+          it 'defaults the work item type to issue' do
+            result = nil
+
+            issue_wit = WorkItems::Type.find_by(name: "Issue")
+            expect { result = subject }.to change { WorkItem.where(work_item_type: issue_wit).count }.by(2)
+
+            expect(result[:success]).to eq(2)
+            expect(result[:error_lines]).to be_empty
+            expect(result[:parse_error]).to eq(false)
+            expect(result[:type_errors]).to be_nil
+          end
+        end
+
+        context 'with quick actions in the description field' do
+          let(:file) { fixture_file_upload('spec/fixtures/csv_complex.csv') }
+          let(:assignee) { create(:user, username: 'csv_assignee') }
+          let!(:test_milestone) { create(:milestone, project: project, title: '15.10') }
+
+          it 'sets all work item attributes and executes quick actions' do
+            project.add_developer(user)
+            project.add_developer(assignee)
+
+            expect { subject }.to change { project.issues.count }.by 3
+
+            # Assignees and time_estimate are set through the quick action in the CSV description field
+            wi_attrs = [:title, :description, :time_estimate, :due_date, :milestone_id]
+            expect(project.issues.pluck(*wi_attrs)).to include(
+              ['Title with quote"', 'Description', 3600, Date.new(2022, 6, 28), test_milestone.id]
+            )
+
+            expect(WorkItem.find_by(title: 'Title with quote"').assignees).to contain_exactly(assignee)
+          end
+        end
+
+        context 'when user is an admin' do
+          before do
+            allow(user).to receive(:can_admin_all_resources?).and_return(true)
+          end
+
+          it_behaves_like 'performs a spam check', false
         end
       end
 
@@ -95,16 +142,6 @@ RSpec.describe WorkItems::ImportCsvService, feature_category: :team_planning do
 
         it 'creates no work items' do
           expect { subject }.not_to change { work_items.count }
-        end
-      end
-
-      context 'when import_export_work_items_csv feature flag is off' do
-        before do
-          stub_feature_flags(import_export_work_items_csv: false)
-        end
-
-        it 'raises an error' do
-          expect { subject }.to raise_error(/This feature is currently behind a feature flag and it is not available./)
         end
       end
     end

@@ -1,32 +1,31 @@
 <script>
 import { GlForm, GlButton, GlSprintf } from '@gitlab/ui';
+import { mapActions } from 'pinia';
 import { createAlert } from '~/alert';
 import csrf from '~/lib/utils/csrf';
 import { STATUS_MERGED } from '~/issues/constants';
 import { BV_SHOW_MODAL } from '~/lib/utils/constants';
 import { HTTP_STATUS_UNAUTHORIZED } from '~/lib/utils/http_status';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-import { s__, __, sprintf } from '~/locale';
+import { s__, __, n__, sprintf } from '~/locale';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
+import { useBatchComments } from '~/batch_comments/store';
 import approvalsMixin from '../../mixins/approvals';
 import StateContainer from '../state_container.vue';
 import { INVALID_RULES_DOCS_PATH } from '../../constants';
 import ApprovalsSummary from './approvals_summary.vue';
-import ApprovalsSummaryOptional from './approvals_summary_optional.vue';
 import { FETCH_LOADING, APPROVE_ERROR, UNAPPROVE_ERROR } from './messages';
 
 export default {
   name: 'MRWidgetApprovals',
   components: {
     ApprovalsSummary,
-    ApprovalsSummaryOptional,
     StateContainer,
     GlButton,
     GlSprintf,
     GlForm,
   },
   csrf,
-  mixins: [approvalsMixin, glFeatureFlagsMixin()],
+  mixins: [approvalsMixin],
   props: {
     mr: {
       type: Object,
@@ -38,11 +37,6 @@ export default {
     },
     isOptionalDefault: {
       type: Boolean,
-      required: false,
-      default: null,
-    },
-    approveDefault: {
-      type: Function,
       required: false,
       default: null,
     },
@@ -66,6 +60,11 @@ export default {
       required: false,
       default: false,
     },
+    actionButtons: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
   },
   data() {
     return {
@@ -74,8 +73,8 @@ export default {
     };
   },
   computed: {
-    isBasic() {
-      return this.mr.approvalsWidgetType === 'base';
+    isLoading() {
+      return this.$apollo.queries.approvals.loading || !this.approvals;
     },
     isApproved() {
       return this.hasAllApprovals;
@@ -121,6 +120,9 @@ export default {
     showUnapprove() {
       return this.userHasApproved && !this.userCanApprove && this.mr.state !== STATUS_MERGED;
     },
+    showApproveButton() {
+      return (!this.requireSamlAuthToApprove || this.showUnapprove) && this.action;
+    },
     approvalText() {
       // Repeating a text of this to keep i18n easier to do (vs, construcing a compound string)
       if (this.requireSamlAuthToApprove) {
@@ -153,24 +155,30 @@ export default {
 
       return null;
     },
-    pluralizedApprovedRuleText() {
-      return this.invalidApprovedRules.length > 1
-        ? this.$options.i18n.invalidRulesPlural
-        : this.$options.i18n.invalidRuleSingular;
-    },
     pluralizedFailedRuleText() {
-      return this.invalidFailedRules.length > 1
-        ? this.$options.i18n.invalidFailedRulesPlural
-        : this.$options.i18n.invalidFailedRuleSingular;
+      return sprintf(
+        n__(
+          "mrWidget|%{dangerStart}1 rule can't be approved%{dangerEnd}",
+          "mrWidget|%{dangerStart}%{count} rules can't be approved%{dangerEnd}",
+          this.invalidFailedRules.length,
+        ),
+        { count: this.invalidFailedRules.length },
+      );
+    },
+    pluralizedApprovedRuleText() {
+      return sprintf(
+        n__(
+          'mrWidget|1 invalid rule has been approved automatically',
+          'mrWidget|%{count} invalid rules have been approved automatically',
+          this.invalidApprovedRules.length,
+        ),
+        { count: this.invalidApprovedRules.length },
+      );
     },
     pluralizedRuleText() {
       return [
-        this.hasInvalidFailedRules
-          ? sprintf(this.pluralizedFailedRuleText, { rules: this.invalidFailedRules.length })
-          : null,
-        this.hasInvalidApprovedRules
-          ? sprintf(this.pluralizedApprovedRuleText, { rules: this.invalidApprovedRules.length })
-          : null,
+        this.hasInvalidFailedRules ? this.pluralizedFailedRuleText : null,
+        this.hasInvalidApprovedRules ? this.pluralizedApprovedRuleText : null,
       ]
         .filter((text) => Boolean(text))
         .join(', ')
@@ -184,13 +192,15 @@ export default {
     },
   },
   methods: {
+    ...mapActions(useBatchComments, ['clearDrafts']),
     approve() {
       if (this.requirePasswordToApprove) {
         this.$root.$emit(BV_SHOW_MODAL, this.modalId);
         return;
       }
       this.updateApproval(
-        () => this.service.approveMergeRequest(),
+        () =>
+          this.service.approveMergeRequest({ publish_review: true }).then(() => this.clearDrafts()),
         () =>
           this.alerts.push(
             createAlert({
@@ -199,13 +209,9 @@ export default {
           ),
       );
     },
-    approveWithSamlAuth() {
-      // Intentionally direct to SAML Identity Provider for renewed authorization even if SSO session exists
-      this.$refs.form.$el.submit();
-    },
     approveWithAuth(data) {
       this.updateApproval(
-        () => this.service.approveMergeRequestWithAuth(data),
+        () => this.service.approveMergeRequestWithAuth(data).then(() => this.clearDrafts()),
         (error) => {
           if (error?.response?.status === HTTP_STATUS_UNAUTHORIZED) {
             this.hasApprovalAuthError = true;
@@ -247,35 +253,29 @@ export default {
   FETCH_LOADING,
   linkToInvalidRules: INVALID_RULES_DOCS_PATH,
   i18n: {
-    invalidRuleSingular: s__('mrWidget|%{rules} invalid rule has been approved automatically'),
-    invalidRulesPlural: s__('mrWidget|%{rules} invalid rules have been approved automatically'),
-    invalidFailedRuleSingular: s__(
-      "mrWidget|%{dangerStart}%{rules} rule can't be approved%{dangerEnd}",
-    ),
-    invalidFailedRulesPlural: s__(
-      "mrWidget|%{dangerStart}%{rules} rules can't be approved%{dangerEnd}",
-    ),
     learnMore: __('Learn more.'),
   },
 };
 </script>
 <template>
-  <div v-if="approvals" class="js-mr-approvals mr-section-container mr-widget-workflow">
+  <div v-if="approvals" class="js-mr-approvals mr-section-container">
     <state-container
-      :is-loading="$apollo.queries.approvals.loading"
-      :mr="mr"
+      :is-loading="isLoading"
       status="approval"
       is-collapsible
       collapse-on-desktop
       :collapsed="collapsed"
       :expand-details-tooltip="__('Expand eligible approvers')"
       :collapse-details-tooltip="__('Collapse eligible approvers')"
+      :actions="actionButtons"
       @toggle="() => $emit('toggle')"
     >
-      <template v-if="$apollo.queries.approvals.loading">{{ $options.FETCH_LOADING }}</template>
+      <template v-if="isLoading">{{ $options.FETCH_LOADING }}</template>
       <template v-else>
-        <div class="gl-display-flex gl-flex-direction-column">
-          <div class="gl-display-flex gl-flex-direction-row gl-align-items-center">
+        <div class="gl-flex gl-flex-col">
+          <div
+            class="gl-flex gl-flex-col gl-flex-wrap gl-items-baseline gl-gap-3 @sm/panel:gl-flex-row @sm/panel:gl-items-center"
+          >
             <div v-if="requireSamlAuthToApprove && showApprove">
               <gl-form
                 ref="form"
@@ -289,7 +289,6 @@ export default {
                   size="small"
                   :category="action.category"
                   :loading="isApproving"
-                  class="gl-mr-3"
                   data-testid="approve-button"
                   type="submit"
                 >
@@ -298,36 +297,30 @@ export default {
                 <input :value="$options.csrf.token" type="hidden" name="authenticity_token" />
               </gl-form>
             </div>
-            <span v-if="!requireSamlAuthToApprove || showUnapprove">
-              <gl-button
-                v-if="action"
-                :variant="action.variant"
-                size="small"
-                :category="action.category"
-                :loading="isApproving"
-                class="gl-mr-3"
-                data-testid="approve-button"
-                @click="action.action"
-              >
-                {{ action.text }}
-              </gl-button>
-            </span>
-            <approvals-summary-optional
-              v-if="isOptional"
-              :can-approve="hasAction"
-              :help-path="mr.approvalsHelpPath"
-            />
+            <gl-button
+              v-if="showApproveButton"
+              :variant="action.variant"
+              size="small"
+              :category="action.category"
+              :loading="isApproving"
+              data-testid="approve-button"
+              @click="action.action"
+            >
+              {{ action.text }}
+            </gl-button>
             <approvals-summary
-              v-else
+              :optional="isOptional"
               :approval-state="approvals"
               :disable-committers-approval="disableCommittersApproval"
               :multiple-approval-rules-available="mr.multipleApprovalRulesAvailable"
+              :can-approve="hasAction"
+              :help-path="mr.approvalsHelpPath"
             />
           </div>
-          <div v-if="hasInvalidRules" class="gl-text-secondary gl-mt-2" data-testid="invalid-rules">
+          <div v-if="hasInvalidRules" class="gl-mt-2 gl-text-subtle" data-testid="invalid-rules">
             <gl-sprintf :message="pluralizedRuleText">
               <template #danger="{ content }">
-                <span class="gl-font-weight-bold text-danger">{{ content }}</span>
+                <span class="gl-font-bold gl-text-danger">{{ content }}</span>
               </template>
             </gl-sprintf>
           </div>

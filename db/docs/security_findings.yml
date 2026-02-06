@@ -4,16 +4,11 @@ classes:
 - Security::Finding
 feature_categories:
 - vulnerability_management
-description: Stores a subset of the Finding data which is used to optimize the pipeline security tab
+description: Stores a subset of the Finding data which is used to optimize the pipeline
+  security tab
 introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/40368
 milestone: '13.4'
-gitlab_schema: gitlab_main_cell
-allow_cross_joins:
-- gitlab_main_clusterwide
-allow_cross_transactions:
-- gitlab_main_clusterwide
-allow_cross_foreign_keys:
-- gitlab_main_clusterwide
+gitlab_schema: gitlab_sec
 desired_sharding_key:
   project_id:
     references: projects
@@ -23,3 +18,6 @@ desired_sharding_key:
         table: vulnerability_scanners
         sharding_key: project_id
         belongs_to: scanner
+desired_sharding_key_migration_job_name: BackfillSecurityFindingsProjectId
+sharding_key_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/454949
+table_size: small

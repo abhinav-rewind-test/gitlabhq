@@ -1,14 +1,10 @@
 # frozen_string_literal: true
 
 module Users
-  class CreditCardValidation < MainClusterwide::ApplicationRecord
-    include IgnorableColumns
-
-    RELEASE_DAY = Date.new(2021, 5, 17)
+  class CreditCardValidation < ApplicationRecord
+    DAILY_VERIFICATION_LIMIT = 5
 
     self.table_name = 'user_credit_card_validations'
-
-    ignore_columns %i[last_digits network holder_name expiration_date], remove_with: '16.9', remove_after: '2024-01-22'
 
     attr_accessor :last_digits, :network, :holder_name, :expiration_date
 
@@ -23,6 +19,10 @@ module Users
     }
 
     validates :zuora_payment_method_xid, length: { maximum: 50 }, uniqueness: true, allow_nil: true
+
+    validates :stripe_setup_intent_xid, length: { maximum: 255 }, allow_nil: true
+    validates :stripe_payment_method_xid, length: { maximum: 255 }, allow_nil: true
+    validates :stripe_card_fingerprint, length: { maximum: 255 }, allow_nil: true
 
     validates :last_digits_hash, length: { maximum: 44 }
     validates :holder_name_hash, length: { maximum: 44 }
@@ -77,6 +77,15 @@ module Users
 
     def set_expiration_date_hash
       self.expiration_date_hash = Gitlab::CryptoHelper.sha256(expiration_date.to_s)
+    end
+
+    def exceeded_daily_verification_limit?
+      duplicate_record_count = self.class
+        .where(stripe_card_fingerprint: stripe_card_fingerprint)
+        .where('credit_card_validated_at > ?', 24.hours.ago)
+        .count
+
+      duplicate_record_count >= DAILY_VERIFICATION_LIMIT
     end
   end
 end

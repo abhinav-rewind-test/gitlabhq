@@ -1,21 +1,23 @@
-import { mount } from '@vue/test-utils';
+import { shallowMount } from '@vue/test-utils';
 import { GlLink } from '@gitlab/ui';
 import PerformanceBarApp from '~/performance_bar/components/performance_bar_app.vue';
 import PerformanceBarStore from '~/performance_bar/stores/performance_bar_store';
+import InfoApp from '~/performance_bar/components/info_modal/info_app.vue';
 
 describe('performance bar app', () => {
   let wrapper;
   const store = new PerformanceBarStore();
   store.addRequest('123', 'https://gitlab.com', '', {}, 'GET');
-  const createComponent = () => {
-    wrapper = mount(PerformanceBarApp, {
+
+  const createComponent = (props = {}) => {
+    wrapper = shallowMount(PerformanceBarApp, {
       propsData: {
         store,
         env: 'development',
         requestId: '123',
-        requestMethod: 'GET',
         statsUrl: 'https://log.gprd.gitlab.net/app/dashboards#/view/',
-        peekUrl: '/-/peek/results',
+        simulateSaas: false,
+        ...props,
       },
       stubs: {
         GlEmoji: { template: '<div/>' },
@@ -23,11 +25,23 @@ describe('performance bar app', () => {
     });
   };
 
-  beforeEach(() => {
-    createComponent();
+  const findInfoApp = () => wrapper.findComponent(InfoApp);
+
+  describe('info section', () => {
+    beforeEach(() => createComponent());
+
+    it('renders the info section button', () => {
+      expect(findInfoApp().exists()).toBe(true);
+    });
+
+    it('passes the currentRequest prop', () => {
+      expect(findInfoApp().props().currentRequest).toEqual(store.findRequest('123'));
+    });
   });
 
   describe('flamegraph buttons', () => {
+    beforeEach(() => createComponent());
+
     const flamegraphDiv = () => wrapper.find('#peek-flamegraph');
     const flamegraphLinks = () => flamegraphDiv().findAllComponents(GlLink);
 
@@ -43,6 +57,8 @@ describe('performance bar app', () => {
   });
 
   describe('memory report button', () => {
+    beforeEach(() => createComponent());
+
     const memoryReportDiv = () => wrapper.find('#peek-memory-report');
     const memoryReportLink = () => memoryReportDiv().findComponent(GlLink);
 
@@ -53,11 +69,17 @@ describe('performance bar app', () => {
     });
   });
 
-  it('sets the class to match the environment', () => {
-    expect(wrapper.element.getAttribute('class')).toContain('development');
+  describe('environment class', () => {
+    beforeEach(() => createComponent());
+
+    it('sets the class to match the environment', () => {
+      expect(wrapper.element.getAttribute('class')).toContain('development');
+    });
   });
 
   describe('changeCurrentRequest', () => {
+    beforeEach(() => createComponent());
+
     it('emits a change-request event', () => {
       expect(wrapper.emitted('change-request')).toBeUndefined();
 
@@ -65,6 +87,27 @@ describe('performance bar app', () => {
 
       expect(wrapper.emitted('change-request')).toBeDefined();
       expect(wrapper.emitted('change-request')[0]).toEqual(['123']);
+    });
+  });
+
+  describe('SaaS indicator', () => {
+    const findSaasIndicator = () => wrapper.find('[data-testid="simulate-saas-indicator"]');
+
+    describe('when simulateSaas is false', () => {
+      beforeEach(() => createComponent());
+
+      it('does not render', () => {
+        expect(findSaasIndicator().exists()).toBe(false);
+      });
+    });
+
+    describe('when simulateSaas is true', () => {
+      beforeEach(() => createComponent({ simulateSaas: true }));
+
+      it('renders', () => {
+        expect(findSaasIndicator().exists()).toBe(true);
+        expect(findSaasIndicator().text()).toBe('SaaS');
+      });
     });
   });
 });

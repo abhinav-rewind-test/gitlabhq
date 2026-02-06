@@ -1,18 +1,20 @@
 ---
-description: "Merge request analytics help you understand the efficiency of your code review process, and the productivity of your team." # Up to ~200 chars long. They will be displayed in Google Search snippets. It may help to write the page intro first, and then reuse it here.
-stage: Plan
+stage: Analytics
 group: Optimize
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Merge request analytics help you understand the efficiency of your code review process, and the productivity of your team.
+title: Merge request analytics
 ---
 
-# Merge request analytics
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/229045) in GitLab 13.3.
-> - Moved to GitLab Premium in 13.9.
+{{< /details >}}
+
+Merge request analytics provide DevOps managers with valuable insights into their team's code review and merging workflows.
+Based on the detailed metrics and trends related to merge requests, organizations can monitor and optimize their development processes.
 
 Use merge request analytics to view:
 
@@ -25,6 +27,13 @@ You can use merge request analytics to identify:
 - Low or high productivity months.
 - The efficiency and productivity of your merge request and code review processes.
 
+These insights can help you make data-driven decisions like:
+
+- Resource allocation: Address low productivity periods by reallocating resources or adjusting timelines.
+- Performance benchmarking: Highlight high-performing teams and share best practices.
+- Milestone planning: Adjust timelines based on historical merging trends.
+- Process optimization: Identify and resolve bottlenecks in code review and merging workflows.
+
 ## View merge request analytics
 
 Prerequisites:
@@ -33,25 +42,24 @@ Prerequisites:
 
 To view merge request analytics:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > Merge request analytics**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Analyze** > **Analytics Dashboards**.
+1. Select **Merge request analytics**.
+
+![Merge request analytics chart](img/mr_analytics_chart_v17_7.png)
 
 ## View the number of merge requests in a date range
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/232651) in GitLab 13.3.
-> - Filtering [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/229266) in GitLab 13.4
-
 To view the number of merge requests merged during a specific date range:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > Merge request analytics**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Analyze** > **Analytics Dashboards**.
+1. Select **Merge request analytics**.
 1. Optional. Filter results:
    1. Select the filter bar.
    1. Select a parameter.
    1. Select a value or enter text to refine the results.
-   1. To adjust the date range:
-      - In the **From** field, select a start date.
-      - In the **To** field, select an end date.
+   1. To adjust the date range, from the dropdown list, select an option. Default is **Last 365 days**.
 
 The **Throughput** chart shows issues closed or merge requests merged (not closed) over a period of
 time.
@@ -70,13 +78,12 @@ the following information about each merge request:
 
 ## View average time between merge request creation and merge
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/229389) in GitLab 13.9.
-
 The number in **Mean time to merge** shows the average time between when a merge request is
 created and when it's merged. Closed and not yet merged merge requests are not included.
 
 To view **Mean time to merge**:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Analyze > Merge request analytics**. The **Mean time to merge** number
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Analyze** > **Analytics Dashboards**.
+1. Select **Merge request analytics**. The **Mean time to merge** number
    is displayed on the dashboard.

@@ -1,10 +1,10 @@
 # frozen_string_literal: true
+
 module Gitlab
   module BackgroundMigration
-    # Backfill project namespace_details for a range of projects
     class BackfillProjectNamespaceDetails < ::Gitlab::BackgroundMigration::BatchedMigrationJob
       operation_name :backfill_project_namespace_details
-      feature_category :database
+      feature_category :groups_and_projects
 
       def perform
         each_sub_batch do |sub_batch|
@@ -19,8 +19,13 @@ module Gitlab
             SELECT projects.description, projects.description_html, projects.cached_markdown_version, now(), now(), projects.project_namespace_id
             FROM projects
             WHERE projects.id IN(#{relation.select(:id).to_sql})
-          ON CONFLICT (namespace_id) DO NOTHING;
-        SQL
+              AND projects.project_namespace_id IS NOT NULL
+          ON CONFLICT (namespace_id) DO UPDATE SET
+            description = EXCLUDED.description,
+            description_html = EXCLUDED.description_html,
+            cached_markdown_version = EXCLUDED.cached_markdown_version,
+            updated_at = EXCLUDED.updated_at;
+          SQL
         )
       end
     end

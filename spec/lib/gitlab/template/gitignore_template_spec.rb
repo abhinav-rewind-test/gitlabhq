@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Template::GitignoreTemplate do
   subject { described_class }
@@ -20,7 +20,7 @@ RSpec.describe Gitlab::Template::GitignoreTemplate do
 
   describe '.find' do
     it 'returns nil if the file does not exist' do
-      expect(subject.find('mepmep-yadida')).to be nil
+      expect(subject.find('mepmep-yadida')).to be_nil
     end
 
     it 'returns the Gitignore object of a valid file' do

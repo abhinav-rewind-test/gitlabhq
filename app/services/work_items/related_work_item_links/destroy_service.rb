@@ -42,13 +42,20 @@ module WorkItems
           linked_item = link.try(direction)
 
           if can_admin_work_item_link?(linked_item)
-            link.destroy!
-            removed_ids << linked_item.id
-            create_notes(link)
+            create_notes(link) if perform_destroy_link(link, linked_item)
           else
             failed_ids << linked_item.id
           end
         end
+      end
+
+      # Overriden on EE to sync deletion with
+      # related epic links records
+      def perform_destroy_link(link, linked_item)
+        link.destroy!
+        track_destroyed_link(link)
+        removed_ids << linked_item.id
+        true
       end
 
       def create_notes(link)
@@ -84,8 +91,14 @@ module WorkItems
 
         "#{success_message} #{error_message}"
       end
+
+      def track_destroyed_link(link)
+        Gitlab::WorkItems::Instrumentation::TrackingService.new(
+          work_item: @work_item,
+          current_user: current_user,
+          event: ::Gitlab::WorkItems::Instrumentation::EventActions.link_event(link, @work_item, :remove)
+        ).execute
+      end
     end
   end
 end
-
-WorkItems::RelatedWorkItemLinks::DestroyService.prepend_mod_with('WorkItems::RelatedWorkItemLinks::DestroyService')

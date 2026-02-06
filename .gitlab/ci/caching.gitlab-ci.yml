@@ -1,59 +1,143 @@
-cache-workhorse:
+#===== extensions ======
+.cache-pull-push-base:
+  stage: sync
   extends:
     - .default-retry
-    - .default-before_script
-    - .ruby-cache
-    - .setup-test-env-cache
-    - .caching:rules:cache-workhorse
-  stage: prepare
+    - .caching:rules:update-cache-on-code-changes
   variables:
-    SETUP_DB: "false"
-  script:
-    - source scripts/gitlab_component_helpers.sh
-    - 'gitlab_workhorse_archive_doesnt_exist || { echoinfo "INFO: Exiting early as package exists."; exit 0; }'
-    - run_timed_command "scripts/setup-test-env"
-    - run_timed_command "select_gitlab_workhorse_essentials"
-    - run_timed_command "create_gitlab_workhorse_package"
-    - run_timed_command "upload_gitlab_workhorse_package"
-  artifacts:
-    expire_in: 7d
-    paths:
-      - ${TMP_TEST_GITLAB_WORKHORSE_PATH}/
-
-.cache-assets-base:
+    GIT_DEPTH: 1
+    GIT_STRATEGY: fetch
+  allow_failure: true
+#=================================
+# Dependencies
+#=================================
+cache:ruby-gems:
   extends:
-    - .compile-assets-base
-    - .assets-compile-cache
-    - .caching:rules:cache-assets
-  stage: prepare
+    - .with-ruby-slim-image
+    - .cache-pull-push-base
+    - .ruby-cache-pull-push
+  stage: sync
   variables:
-    WEBPACK_REPORT: "false"
-  script:
-    - yarn_install_script
-    - export GITLAB_ASSETS_HASH=$(bundle exec rake gitlab:assets:hash_sum)
-    - source scripts/gitlab_component_helpers.sh
-    - 'gitlab_assets_archive_doesnt_exist || { echoinfo "INFO: Exiting early as package exists."; exit 0; }'
-    - assets_compile_script
-    - echo -n "${GITLAB_ASSETS_HASH}" > "cached-assets-hash.txt"
-    - run_timed_command "create_gitlab_assets_package"
-    - run_timed_command "upload_gitlab_assets_package"
-
-cache-assets:test:
-  extends: .cache-assets-base
-
-cache-assets:production:
-  extends:
-    - .cache-assets-base
-    - .production
-
-packages-cleanup:
-  extends:
-    - .default-retry
-    - .caching:rules:packages-cleanup
-  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}ruby:${RUBY_VERSION}
-  stage: prepare
+    BUNDLE_WITHOUT: ""
   before_script:
     - source scripts/utils.sh
-    - install_gitlab_gem
   script:
-    - scripts/packages/automated_cleanup.rb
+    - bundle_install_script
+
+cache:ruby-gems-ubi:
+  extends:
+    - cache:ruby-gems
+    - .with-ruby-ubi-image
+  variables:
+    BUILD_OS: ubi
+    OS_VERSION: $UBI_VERSION
+
+cache:node-modules:
+  extends:
+    - .cache-pull-push-base
+    - .with-ci-node-image
+    - .yarn-cache-pull-push
+  variables:
+    GLCI_SKIP_NODE_MODULES_PATCHING: "true"
+  before_script:
+    - source scripts/utils.sh
+  script:
+    - yarn_install_script
+
+# separate production cache is needed for jobs that run yarn install with NODE_ENV=production
+# if cache generated with NODE_ENV=test is used, yarn install will still take substantial amount of time to run
+cache:node-modules-production:
+  extends: cache:node-modules
+  variables:
+    NODE_ENV: production
+
+cache:e2e-ruby-gems:
+  extends:
+    - .with-ruby-slim-image
+    - .cache-pull-push-base
+    - .qa-cache-pull-push
+  before_script:
+    - source scripts/utils.sh
+    - cd qa
+    # e2e tests do not have alternative Gemfile but it could be set by rails-next pipeline
+    # so it needs to be unset explicitly
+    - unset BUNDLE_GEMFILE
+  script:
+    - bundle_install_script
+
+# E2E runners have separate infra setup and different cache bucket
+cache:e2e-ruby-gems-e2e-runners:
+  extends:
+    - cache:e2e-ruby-gems
+    - .caching:rules:e2e-gem-cache-e2e-runners
+  tags:
+    - e2e
+
+cache:orchestrator-gems:
+  extends:
+    - .with-ruby-slim-image
+    - .cache-pull-push-base
+    - .qa-orchestrator-cache-pull-push
+  before_script:
+    - source scripts/utils.sh
+    - cd qa/gems/gitlab-orchestrator
+    # orchestrator doesn't have alternative Gemfile but it could be set by rails-next pipeline
+    # so it needs to be unset explicitly
+    - unset BUNDLE_GEMFILE
+  script:
+    - bundle_install_script
+
+#=================================
+# Workhorse
+#=================================
+cache:workhorse-hash:
+  extends:
+    - .cache-pull-push-base
+    - .with-alpine-image
+    - .rails:rules:setup-test-env
+  script:
+    - echo "GLCI_WORKHORSE_HASH=$(git rev-parse HEAD:workhorse)" > build.env
+    - echo "Calculated workhorse checksum - $(cat build.env)"
+  artifacts:
+    reports:
+      dotenv: build.env
+
+#=================================
+# Frontend
+#=================================
+cache:assets-hash:
+  extends:
+    - .cache-pull-push-base
+    - .with-alpine-ruby-image
+    - .caching:rules:frontend-asset-hash
+  script:
+    - echo "GLCI_GITLAB_ASSETS_HASH=$(ruby scripts/lib/assets_sha.rb)" > build.env
+    - echo "Calculated assets checksum - $(cat build.env)"
+  artifacts:
+    reports:
+      dotenv: build.env
+  allow_failure: false
+
+#=================================
+# FE Island
+#=================================
+cache:fe-islands-hash:
+  extends:
+    - .cache-pull-push-base
+    - .with-alpine-ruby-image
+    - .caching:rules:frontend-asset-hash
+  script:
+    - echo "GLCI_FE_ISLAND_HASH=$(ruby scripts/lib/frontend_islands_sha.rb)" > build.env
+    - echo "Calculated assets checksum - $(cat build.env)"
+  artifacts:
+    reports:
+      dotenv: build.env
+  allow_failure: false
+
+cache:fe-islands-node-modules:
+  extends:
+    - .cache-pull-push-base
+    - .with-ci-node-image
+    - .fe-islands-yarn-pull-push-cache
+  script:
+    - scripts/install_frontend_islands

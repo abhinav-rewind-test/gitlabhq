@@ -7,7 +7,7 @@ RSpec.describe 'Batch diffs', :js, feature_category: :code_review_workflow do
   include RepoHelpers
 
   let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:merge_request) { create(:merge_request, source_project: project, source_branch: 'master', target_branch: 'empty-branch') }
+  let(:merge_request) { create(:merge_request, source_project: project, source_branch: 'master', target_branch: 'empty-branch') }
 
   before do
     sign_in(project.first_owner)
@@ -71,7 +71,7 @@ RSpec.describe 'Batch diffs', :js, feature_category: :code_review_workflow do
 
     context 'which is in at least page 2 of the batched pages of diffs' do
       it 'scrolls to the correct discussion',
-        quarantine: { issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/293814' } do
+        quarantine: { issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16778' } do
         page.within get_first_diff do
           click_link('just now')
         end
@@ -90,7 +90,7 @@ RSpec.describe 'Batch diffs', :js, feature_category: :code_review_workflow do
   context 'when user switches view styles' do
     before do
       find('.js-show-diff-settings').click
-      click_button 'Side-by-side'
+      find_by_testid('listbox-item-parallel').click
 
       wait_for_requests
     end

@@ -12,6 +12,7 @@ RSpec.describe Tooling::Danger::AnalyticsInstrumentation, feature_category: :ser
   subject(:analytics_instrumentation) { fake_danger.new(helper: fake_helper) }
 
   let(:fake_danger) { DangerSpecHelper.fake_danger.include(described_class) }
+  let(:fake_project_helper) { instance_double(Tooling::Danger::ProjectHelper) }
   let(:previous_label_to_add) { 'label_to_add' }
   let(:labels_to_add) { [previous_label_to_add] }
   let(:ci_env) { true }
@@ -233,8 +234,6 @@ RSpec.describe Tooling::Danger::AnalyticsInstrumentation, feature_category: :ser
   end
 
   describe '#check_deprecated_data_sources!' do
-    let(:fake_project_helper) { instance_double(Tooling::Danger::ProjectHelper) }
-
     subject(:check_data_source) { analytics_instrumentation.check_deprecated_data_sources! }
 
     before do
@@ -289,6 +288,501 @@ RSpec.describe Tooling::Danger::AnalyticsInstrumentation, feature_category: :ser
           check_data_source
         end
       end
+    end
+  end
+
+  describe '#check_removed_metric_fields!' do
+    let(:file_lines) do
+      file_diff.map { |line| line.delete_prefix('+') }
+    end
+
+    let(:milestone) { { 'title' => '17.1' } }
+    let(:filename) { 'config/metrics/new_metric.yml' }
+    let(:mr_url) { 'https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1' }
+
+    subject(:check_removed_metric_fields) { analytics_instrumentation.check_removed_metric_fields! }
+
+    before do
+      allow(fake_project_helper).to receive(:file_lines).with(filename).and_return(file_lines)
+      allow(fake_helper).to receive(:modified_files).and_return([filename])
+      allow(fake_helper).to receive(:changed_lines).with(filename).and_return(file_diff)
+      allow(fake_helper).to receive(:mr_web_url).and_return(mr_url)
+      allow(fake_helper).to receive(:mr_milestone).and_return(milestone)
+      allow(analytics_instrumentation).to receive(:project_helper).and_return(fake_project_helper)
+    end
+
+    context 'when metric was removed' do
+      context 'and removed_by_url is missing' do
+        let(:file_diff) do
+          [
+            "+---",
+            "+status: removed",
+            "+milestone_removed: '#{milestone['title']}'"
+          ]
+        end
+
+        it 'adds suggestions' do
+          template = <<~SUGGEST_COMMENT
+            ```suggestion
+            status: removed
+            removed_by_url: %<mr_url>s
+            ```
+          SUGGEST_COMMENT
+
+          expected_format = format(template, mr_url: mr_url)
+
+          expect(analytics_instrumentation).to receive(:markdown).with(expected_format, file: filename, line: 2)
+
+          check_removed_metric_fields
+        end
+      end
+
+      context 'and milestone_removed is missing' do
+        let(:file_diff) do
+          [
+            "+---",
+            "+status: removed",
+            "+removed_by_url: #{mr_url}"
+          ]
+        end
+
+        context 'when milestone is set for the MR' do
+          it 'adds suggestions' do
+            template = <<~SUGGEST_COMMENT
+            ```suggestion
+            status: removed
+            milestone_removed: '%<milestone>s'
+            ```
+            SUGGEST_COMMENT
+
+            expected_format = format(template, milestone: milestone['title'])
+
+            expect(analytics_instrumentation).to receive(:markdown).with(expected_format, file: filename, line: 2)
+
+            check_removed_metric_fields
+          end
+        end
+
+        context 'when milestone is not set for the MR' do
+          let(:milestone) { nil }
+
+          it 'adds suggestions with placeholder text and a comment' do
+            template = <<~SUGGEST_COMMENT
+            ```suggestion
+            status: removed
+            milestone_removed: '[PLEASE SET MILESTONE]'
+            ```
+            SUGGEST_COMMENT
+
+            expected_format = format("#{template}\nPlease set the `milestone_removed` value manually")
+
+            expect(analytics_instrumentation).to receive(:markdown).with(expected_format, file: filename, line: 2)
+
+            check_removed_metric_fields
+          end
+        end
+      end
+
+      context 'and both removed_by_url and milestone_removed are missing' do
+        let(:file_diff) do
+          [
+            "+---",
+            "+status: removed"
+          ]
+        end
+
+        it 'adds suggestions' do
+          template = <<~SUGGEST_COMMENT
+            ```suggestion
+            status: removed
+            removed_by_url: %<mr_url>s
+            milestone_removed: '%<milestone>s'
+            ```
+          SUGGEST_COMMENT
+
+          expected_format = format(template, mr_url: mr_url, milestone: milestone['title'])
+
+          expect(analytics_instrumentation).to receive(:markdown).with(expected_format, file: filename, line: 2)
+
+          check_removed_metric_fields
+        end
+      end
+
+      context 'and both removed_by_url and milestone_removed are present' do
+        let(:file_diff) do
+          [
+            "+---",
+            "+status: removed",
+            "+removed_by_url: #{mr_url}",
+            "+milestone_removed: '#{milestone['title']}'"
+          ]
+        end
+
+        it 'does not add suggestions' do
+          expect(analytics_instrumentation).not_to receive(:markdown)
+
+          check_removed_metric_fields
+        end
+      end
+    end
+
+    context 'when metric was not removed' do
+      let(:file_diff) do
+        [
+          "+---",
+          "+status: active",
+          "+removed_by_url: #{mr_url}",
+          "+milestone_removed: '#{milestone['title']}'"
+        ]
+      end
+
+      it 'does not add suggestions' do
+        expect(analytics_instrumentation).not_to receive(:markdown)
+
+        check_removed_metric_fields
+      end
+    end
+  end
+
+  describe '#warn_about_migrated_redis_keys_specs!' do
+    let(:redis_hll_file) { 'lib/gitlab/usage_data_counters/hll_redis_key_overrides.yml' }
+    let(:total_counter_file) { 'lib/gitlab/usage_data_counters/total_counter_redis_key_overrides.yml' }
+
+    subject(:check_redis_keys_files_overrides) { analytics_instrumentation.warn_about_migrated_redis_keys_specs! }
+
+    before do
+      allow(fake_helper).to receive(:changed_lines).with(redis_hll_file).and_return([file_diff_hll])
+      allow(fake_helper).to receive(:changed_lines).with(total_counter_file).and_return([file_diff_total])
+    end
+
+    context 'when new keys added to overrides files' do
+      let(:file_diff_hll) { "+user_viewed_cluster_configuration-user: user_viewed_cluster_configuration" }
+      let(:file_diff_total) { "+user_viewed_cluster_configuration-user: USER_VIEWED_CLUSTER_CONFIGURATION" }
+
+      it 'adds suggestion to add specs' do
+        expect(analytics_instrumentation).to receive(:warn)
+
+        check_redis_keys_files_overrides
+      end
+
+      context 'when spec files are added' do
+        before do
+          filename1 = 'app/not_spec.rb'
+          filename2 = 'spec/controller/credentials_controller_spec.rb'
+
+          allow(fake_helper).to receive(:modified_files).and_return([filename1, filename2])
+          allow(fake_helper).to receive(:changed_lines).with(filename2).and_return(file_diff)
+        end
+
+        context 'when migration specs are not added' do
+          let(:file_diff) do
+            [
+              "+     it_behaves_like 'internal event' do",
+              "+       let(:event) {'credentials_show'}",
+              "+     end"
+            ]
+          end
+
+          it "adds a suggestion to add specs" do
+            expect(analytics_instrumentation).to receive(:warn)
+
+            check_redis_keys_files_overrides
+          end
+        end
+
+        context 'when migration specs are already added' do
+          let(:file_diff) do
+            [
+              "+     it_behaves_like 'migrated internal event' do",
+              "+       let(:event) {'credentials_show'}",
+              "+     end"
+            ]
+          end
+
+          it "doesn't add a suggestion to add specs" do
+            expect(analytics_instrumentation).not_to receive(:warn)
+
+            check_redis_keys_files_overrides
+          end
+        end
+      end
+    end
+
+    context 'when no new keys added to overrides files' do
+      let(:file_diff_hll) { "-user_viewed_cluster_configuration-user: user_viewed_cluster_configuration" }
+      let(:file_diff_total) { "-user_viewed_cluster_configuration-user: USER_VIEWED_CLUSTER_CONFIGURATION" }
+
+      it "doesn't add a suggestion to add specs" do
+        expect(analytics_instrumentation).not_to receive(:warn)
+
+        check_redis_keys_files_overrides
+      end
+    end
+  end
+
+  describe '#warn_about_potential_pii_tracking' do
+    let(:file_diff) do
+      [
+        "+additional_properties: {",
+        "+  property: 'user_email'}",
+        "+  additional_properties = {",
+        "+  property: 'user_email'",
+        "+}"
+      ]
+    end
+
+    before do
+      allow(fake_helper).to receive(:added_files).and_return([])
+      allow(fake_helper).to receive(:modified_files).and_return([])
+      allow(fake_helper).to receive(:changed_lines).with(anything).and_return(file_diff)
+      allow(analytics_instrumentation).to receive(:project_helper).and_return(fake_project_helper)
+      allow(analytics_instrumentation.project_helper).to receive(:file_lines).and_return(file_diff.map { |line| line.delete_prefix('+') })
+    end
+
+    subject(:warn_about_potential_pii_tracking) { analytics_instrumentation.warn_about_potential_pii_tracking }
+
+    shared_examples 'correct pii warning' do
+      it 'adds suggestions to files with new additional properties' do
+        expect(analytics_instrumentation).to receive(:markdown).twice
+
+        warn_about_potential_pii_tracking
+      end
+
+      context 'when no new additional properties are added' do
+        let(:file_diff) { [] }
+
+        it 'does not add suggestions' do
+          expect(analytics_instrumentation).not_to receive(:markdown)
+
+          warn_about_potential_pii_tracking
+        end
+      end
+    end
+
+    context 'with added file' do
+      let(:added_file) { 'lib/new.rb' }
+
+      before do
+        allow(fake_helper).to receive(:added_files).and_return([added_file])
+      end
+
+      it_behaves_like 'correct pii warning'
+    end
+
+    context 'with changed file' do
+      let(:changed_file) { 'lib/changed.rb' }
+
+      before do
+        allow(fake_helper).to receive(:modified_files).and_return([changed_file])
+        allow(fake_helper).to receive(:changed_lines).with(changed_file).and_return(file_diff)
+      end
+
+      it_behaves_like 'correct pii warning'
+    end
+
+    context 'with spec files' do
+      let(:added_spec) { 'spec/lib/new_spec.rb' }
+      let(:changed_spec) { 'spec/lib/changed_spec.rb' }
+
+      before do
+        allow(fake_helper).to receive(:added_files).and_return([added_spec])
+        allow(fake_helper).to receive(:modified_files).and_return([changed_spec])
+      end
+
+      it 'does not add suggestions' do
+        expect(analytics_instrumentation).not_to receive(:markdown)
+
+        warn_about_potential_pii_tracking
+      end
+    end
+  end
+
+  describe '#prohibit_key_path_changes!' do
+    subject(:prohibit_key_path_changes) { analytics_instrumentation.prohibit_key_path_changes! }
+
+    let(:metric_files) { ['config/metrics/new_metric.yml'] }
+    let(:changed_file_lines) { changed_lines.map { |line| line.delete_prefix('+') } }
+
+    before do
+      allow(fake_helper).to receive(:changed_lines).with(metric_files.first).and_return(changed_lines)
+      allow(fake_project_helper).to receive(:file_lines).with(metric_files.first).and_return(changed_file_lines)
+      allow(analytics_instrumentation).to receive(:project_helper).and_return(fake_project_helper)
+    end
+
+    context 'when a metric was added' do
+      let(:changed_lines) { ['+key_path: user.email'] }
+
+      before do
+        allow(fake_helper).to receive(:added_files).and_return(metric_files)
+      end
+
+      it 'does not add warning' do
+        expect(analytics_instrumentation).not_to receive(:markdown)
+
+        prohibit_key_path_changes
+      end
+    end
+
+    context 'when a metric was removed' do
+      let(:changed_lines) { ['-key_path: user.email'] }
+
+      before do
+        allow(fake_helper).to receive(:deleted_files).and_return(metric_files)
+      end
+
+      it 'does not add warning' do
+        expect(analytics_instrumentation).not_to receive(:markdown)
+
+        prohibit_key_path_changes
+      end
+    end
+
+    context 'when a metric was modified' do
+      before do
+        allow(fake_helper).to receive(:modified_files).and_return(metric_files)
+      end
+
+      context 'when key_path is not changed' do
+        let(:changed_lines) do
+          [
+            "-source: database",
+            "+source: non_database"
+          ]
+        end
+
+        it 'does not add warning' do
+          expect(analytics_instrumentation).not_to receive(:markdown)
+
+          prohibit_key_path_changes
+        end
+      end
+
+      context 'when key_path is changed' do
+        let(:changed_lines) do
+          [
+            "-key_path: 'user.email'",
+            "+key_path: 'user.e_mail'"
+          ]
+        end
+
+        it 'adds warning' do
+          expect(analytics_instrumentation).to receive(:markdown)
+
+          prohibit_key_path_changes
+        end
+      end
+    end
+  end
+
+  describe '#verify_fe_tracking_params' do
+    subject(:verify_fe_tracking_params) { analytics_instrumentation.verify_fe_tracking_params }
+
+    let(:js_files) { %w[app/assets/javascripts/test.js app/assets/javascripts/component.vue] }
+
+    before do
+      allow(fake_helper).to receive(:all_changed_files).and_return(js_files)
+      allow(analytics_instrumentation).to receive(:project_helper).and_return(fake_project_helper)
+      allow(fake_project_helper).to receive(:file_lines).and_return([])
+
+      js_files.each do |file|
+        allow(fake_helper).to receive(:changed_lines).with(file).and_return(file_changes[file] || [])
+      end
+    end
+
+    shared_context 'with event definition' do
+      before do
+        allow(File).to receive(:exist?).and_return(false)
+        allow(File).to receive(:exist?).with("config/events/#{event_name}.yml").and_return(ce_file_exists)
+        allow(File).to receive(:exist?).with("ee/config/events/#{event_name}.yml").and_return(ee_file_exists)
+
+        if ce_file_exists
+
+          allow(YAML).to receive(:load_file).with("config/events/#{event_name}.yml").and_return(event_definition)
+        elsif ee_file_exists
+
+          allow(YAML).to receive(:load_file).with("ee/config/events/#{event_name}.yml").and_return(event_definition)
+        end
+      end
+    end
+
+    shared_examples 'does not suggest changes' do
+      it 'does not add suggestions' do
+        expect(analytics_instrumentation).not_to receive(:add_suggestion)
+
+        verify_fe_tracking_params
+      end
+    end
+
+    shared_examples 'suggests property changes' do
+      it 'adds suggestion for missing properties' do
+        expect(analytics_instrumentation).to receive(:add_suggestion)
+
+        verify_fe_tracking_params
+      end
+    end
+
+    context 'when no trackEvent calls are added' do
+      let(:file_changes) { { 'app/assets/javascripts/test.js' => ['+ console.log("new code");'] } }
+
+      it_behaves_like 'does not suggest changes'
+    end
+
+    context 'when trackEvent call has valid properties' do
+      include_context 'with event definition'
+
+      let(:event_name) { 'valid_event' }
+      let(:ce_file_exists) { true }
+      let(:ee_file_exists) { false }
+      let(:event_definition) { { 'additional_properties' => { 'action' => {}, 'source' => {} } } }
+      let(:file_changes) { { 'app/assets/javascripts/test.js' => ["+ this.trackEvent('#{event_name}', { action: 'click', source: 'button' });"] } }
+
+      it_behaves_like 'does not suggest changes'
+    end
+
+    context 'when trackEvent call has missing properties' do
+      include_context 'with event definition'
+
+      let(:event_name) { 'invalid_event' }
+      let(:ce_file_exists) { true }
+      let(:ee_file_exists) { false }
+      let(:event_definition) { { 'additional_properties' => { 'action' => {} } } }
+      let(:file_changes) { { 'app/assets/javascripts/test.js' => ["+ this.trackEvent('#{event_name}', { action: 'click', missing_prop: 'value' });"] } }
+
+      it_behaves_like 'suggests property changes'
+    end
+
+    context 'when trackEvent call with EE event definition' do
+      include_context 'with event definition'
+
+      let(:event_name) { 'ee_event' }
+      let(:ce_file_exists) { false }
+      let(:ee_file_exists) { true }
+      let(:event_definition) { { 'additional_properties' => { 'feature' => {} } } }
+      let(:file_changes) { { 'app/assets/javascripts/test.js' => ["+ this.trackEvent('#{event_name}', { feature: 'advanced', missing: 'prop' });"] } }
+
+      it_behaves_like 'suggests property changes'
+    end
+
+    context 'when multi-line trackEvent call' do
+      include_context 'with event definition'
+
+      let(:event_name) { 'multiline_event' }
+      let(:ce_file_exists) { true }
+      let(:ee_file_exists) { false }
+      let(:event_definition) { { 'additional_properties' => { 'label' => {} } } }
+      let(:file_changes) do
+        {
+          'app/assets/javascripts/component.vue' => [
+            "+ this.trackEvent('#{event_name}',",
+            "+   {",
+            "+     label: 'test',",
+            "+     invalid_prop: 'value'",
+            "+   });"
+          ]
+        }
+      end
+
+      it_behaves_like 'suggests property changes'
     end
   end
 end

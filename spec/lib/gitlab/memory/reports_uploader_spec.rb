@@ -13,9 +13,9 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
   end
 
   # rubocop: disable RSpec/VerifiedDoubles
-  # `Fog::Storage::Google` does not implement `put_object` itself, so it is tricky to pinpoint particular method
-  # with instance_double without revealing `Fog::Storage::Google` internals. For simplicity, we use a simple double.
-  let(:fog) { double("Fog::Storage::Google") }
+  # `Fog::Google::Storage` does not implement `put_object` itself, so it is tricky to pinpoint particular method
+  # with instance_double without revealing `Fog::Google::Storage` internals. For simplicity, we use a simple double.
+  let(:fog) { double("Fog::Google::Storage") }
   # rubocop: enable RSpec/VerifiedDoubles
 
   let(:report) { Tempfile.new("report.1.worker_1.#{Time.current.to_i}.json") }
@@ -26,7 +26,7 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
 
   describe '#upload' do
     before do
-      allow(Fog::Storage::Google)
+      allow(Fog::Google::Storage)
         .to receive(:new)
         .with(google_project: gcs_project, google_json_key_location: gcs_key)
         .and_return(fog)
@@ -36,7 +36,7 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
       expect(logger)
         .to receive(:info)
         .with(hash_including(:pid, message: "Diagnostic reports", perf_report_status: "upload requested",
-                                   class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
+          class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
         .ordered
 
       expect(fog).to receive(:put_object).with(gcs_bucket, File.basename(report), instance_of(File))
@@ -44,8 +44,8 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
       expect(logger)
         .to receive(:info)
         .with(hash_including(:pid, :duration_s,
-                             message: "Diagnostic reports", perf_report_status: "upload success",
-                             class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
+          message: "Diagnostic reports", perf_report_status: "upload success",
+          class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
         .ordered
 
       uploader.upload(report.path)
@@ -62,7 +62,7 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
         expect(logger)
           .to receive(:info)
           .with(hash_including(:pid, message: "Diagnostic reports", perf_report_status: "upload requested",
-                                     class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
+            class: 'Gitlab::Memory::ReportsUploader', perf_report_path: report.path))
 
         expect(fog).to receive(:put_object).with(invalid_bucket, File.basename(report), instance_of(File))
                    .and_raise(Google::Apis::ClientError.new("invalid: Invalid bucket name: #{invalid_bucket}"))
@@ -70,8 +70,8 @@ RSpec.describe Gitlab::Memory::ReportsUploader, :aggregate_failures do
         expect(logger)
           .to receive(:error)
           .with(hash_including(:pid,
-                               message: "Diagnostic reports", class: 'Gitlab::Memory::ReportsUploader',
-                               perf_report_status: 'error', error: "invalid: Invalid bucket name: #{invalid_bucket}"))
+            message: "Diagnostic reports", class: 'Gitlab::Memory::ReportsUploader',
+            perf_report_status: 'error', error: "invalid: Invalid bucket name: #{invalid_bucket}"))
 
         expect { uploader.upload(report.path) }.not_to raise_error
       end

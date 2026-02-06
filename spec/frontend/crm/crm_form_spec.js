@@ -42,17 +42,20 @@ describe('Reusable form component', () => {
   let fakeApollo;
   let router;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     router = new VueRouter({
       base: '',
       mode: 'history',
       routes,
     });
-    router.push('/test');
+    await router.push('/new');
 
     handler = jest.fn().mockImplementation((key) => DEFAULT_RESPONSES[key]);
 
-    const hanlderWithKey = (key) => (...args) => handler(key, ...args);
+    const hanlderWithKey =
+      (key) =>
+      (...args) =>
+        handler(key, ...args);
 
     fakeApollo = createMockApollo([
       [createContactMutation, hanlderWithKey('createContact')],

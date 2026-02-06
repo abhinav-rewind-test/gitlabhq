@@ -30,7 +30,7 @@ RSpec.describe 'User creates a merge request', :js, feature_category: :code_revi
       visit project_new_merge_request_path(project)
 
       expect(page).to have_title('Not Found')
-      expect(page).to have_content('Page Not Found')
+      expect(page).to have_content('Page not found')
     end
   end
 
@@ -52,7 +52,7 @@ RSpec.describe 'User creates a merge request', :js, feature_category: :code_revi
         project.repository.create_branch("<img/src='x'/onerror=alert('oops')>", 'master')
       end
 
-      it 'does not execute the suspicious branch name' do
+      it 'does not execute the suspicious branch name', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16777' do
         visit(project_new_merge_request_path(project))
 
         compare_source_and_target("<img/src='x'/onerror=alert('oops')>", 'feature')
@@ -61,7 +61,8 @@ RSpec.describe 'User creates a merge request', :js, feature_category: :code_revi
       end
     end
 
-    context 'to a forked project' do
+    context 'to a forked project',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6562' do
       let(:forked_project) { fork_project(project, user, namespace: user.namespace, repository: true) }
 
       it 'creates a merge request', :sidekiq_might_not_need_inline do
@@ -139,6 +140,42 @@ RSpec.describe 'User creates a merge request', :js, feature_category: :code_revi
         end
 
         it_behaves_like 'renders not found'
+      end
+    end
+  end
+
+  context 'when source and target both have a commit with the same content' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:user) { create(:user) }
+
+    let(:title) { 'Some feature' }
+
+    before do
+      project.add_maintainer(user)
+      sign_in(user)
+
+      # create a commit with identical content on source and target
+      project.repository.create_file(user, 'bbb.txt', 'zzzz', message: 'Commit on target', branch_name: 'feature')
+      project.repository.create_file(user, 'bbb.txt', 'zzzz', message: 'Commit on src', branch_name: 'fix')
+    end
+
+    it "contains the correct changes count", :sidekiq_inline do
+      visit(project_new_merge_request_path(project))
+
+      compare_source_and_target('fix', 'feature')
+
+      fill_in('Title', with: title)
+      click_button('Create merge request')
+
+      page.within('.diffs-tab') do
+        expect(page).to have_content('Changes 2')
+      end
+
+      click_on 'Changes'
+      wait_for_requests
+
+      page.within('.diffs-tab') do
+        expect(page).to have_content('Changes 2')
       end
     end
   end

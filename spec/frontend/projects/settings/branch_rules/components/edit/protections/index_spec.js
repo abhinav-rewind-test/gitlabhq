@@ -32,20 +32,16 @@ describe('Branch Protections', () => {
 
   it('renders help text', () => {
     expect(findHelpText().text()).toMatchInterpolatedText(i18n.protectionsHelpText);
-    expect(findHelpLink().attributes('href')).toBe('/help/user/project/protected_branches');
+    expect(findHelpLink().attributes('href')).toBe(
+      '/help/user/project/repository/branches/protected',
+    );
   });
 
   it('renders a PushProtections component with correct props', () => {
-    expect(findPushProtections().props('membersAllowedToPush')).toStrictEqual(
-      protections.membersAllowedToPush,
-    );
     expect(findPushProtections().props('allowForcePush')).toBe(protections.allowForcePush);
   });
 
   it('renders a MergeProtections component with correct props', () => {
-    expect(findMergeProtections().props('membersAllowedToMerge')).toStrictEqual(
-      protections.membersAllowedToMerge,
-    );
     expect(findMergeProtections().props('requireCodeOwnersApproval')).toBe(
       protections.requireCodeOwnersApproval,
     );

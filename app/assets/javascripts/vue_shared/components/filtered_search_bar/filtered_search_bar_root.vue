@@ -22,7 +22,7 @@ export default {
   },
   props: {
     namespace: {
-      type: String,
+      type: [Number, String],
       required: true,
     },
     recentSearchesStorageKey: {
@@ -100,10 +100,14 @@ export default {
       required: false,
       default: __('Search for this text'),
     },
+    showSearchButton: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   data() {
     return {
-      initialRender: true,
       recentSearchesPromise: null,
       recentSearches: [],
       filterValue: this.initialFilterValue,
@@ -150,7 +154,9 @@ export default {
           // Only include non-string history items (discard items from legacy search)
           if (typeof item !== 'string') {
             const sanitizedItem = uniqueTokens(item);
-            const itemString = JSON.stringify(sanitizedItem);
+            const itemString = sanitizedItem
+              .map((token) => `${token.type}${token.value.operator}${token.value.data}`)
+              .join('');
             // Only include items which aren't already part of history
             if (!knownItems.includes(itemString)) {
               historyItems.push(sanitizedItem);
@@ -176,9 +182,10 @@ export default {
         this.updateSelectedSortValues();
       }
     },
-  },
-  created() {
-    if (this.recentSearchesStorageKey) this.setupRecentSearch();
+    recentSearchesStorageKey: {
+      handler: 'setupRecentSearch',
+      immediate: true,
+    },
   },
   methods: {
     /**
@@ -336,63 +343,88 @@ export default {
         sortDirectionAscending: false,
       };
     },
+    onInput(tokens) {
+      this.$emit('onInput', this.removeQuotesEnclosure(uniqueTokens(tokens)));
+    },
+    onTokenComplete(token) {
+      this.$emit('token-complete', token);
+    },
+    onTokenDestroy(token) {
+      this.$emit('token-destroy', token);
+    },
   },
 };
 </script>
 
 <template>
-  <div class="vue-filtered-search-bar-container gl-md-display-flex gl-min-w-0">
-    <gl-form-checkbox
-      v-if="showCheckbox"
-      class="gl-align-self-center"
-      :checked="checkboxChecked"
-      @change="$emit('checked-input', $event)"
-    >
-      <span class="gl-sr-only">{{ __('Select all') }}</span>
-    </gl-form-checkbox>
-    <gl-filtered-search
-      ref="filteredSearchInput"
-      v-model="filterValue"
-      :placeholder="searchInputPlaceholder"
-      :available-tokens="tokens"
-      :history-items="filteredRecentSearches"
-      :suggestions-list-class="suggestionsListClass"
-      :search-button-attributes="searchButtonAttributes"
-      :search-input-attributes="searchInputAttributes"
-      :recent-searches-header="__('Recent searches')"
-      :clear-button-title="__('Clear')"
-      :close-button-title="__('Close')"
-      :clear-recent-searches-text="__('Clear recent searches')"
-      :no-recent-searches-text="__(`You don't have any recent searches`)"
-      :search-text-option-label="searchTextOptionLabel"
-      :show-friendly-text="showFriendlyText"
-      :terms-as-tokens="termsAsTokens"
-      class="flex-grow-1"
-      @history-item-selected="handleHistoryItemSelected"
-      @clear="onClear"
-      @clear-history="handleClearHistory"
-      @submit="handleFilterSubmit"
-    >
-      <template #history-item="{ historyItem }">
-        <template v-for="(token, index) in historyItem">
-          <span v-if="typeof token === 'string'" :key="index" class="gl-px-1">"{{ token }}"</span>
-          <span v-else :key="`${index}-${token.type}-${token.value.data}`" class="gl-px-1">
-            <span v-if="tokenTitles[token.type]"
-              >{{ tokenTitles[token.type] }} :{{ token.value.operator }}</span
-            >
-            <strong>{{ tokenSymbols[token.type] }}{{ historyTokenOptionTitle(token) }}</strong>
-          </span>
+  <div class="vue-filtered-search-bar-container gl-flex gl-flex-col gl-gap-3 @sm/panel:gl-flex-row">
+    <div class="gl-flex gl-min-w-0 gl-grow gl-gap-3">
+      <gl-form-checkbox
+        v-if="showCheckbox"
+        class="gl-min-h-0 gl-self-center"
+        :checked="checkboxChecked"
+        @change="$emit('checked-input', $event)"
+      >
+        <span class="gl-sr-only">{{ __('Select all') }}</span>
+      </gl-form-checkbox>
+      <gl-filtered-search
+        ref="filteredSearchInput"
+        v-model="filterValue"
+        :placeholder="searchInputPlaceholder"
+        :available-tokens="tokens"
+        :history-items="filteredRecentSearches"
+        :suggestions-list-class="suggestionsListClass"
+        :search-button-attributes="searchButtonAttributes"
+        :search-input-attributes="searchInputAttributes"
+        :recent-searches-header="__('Recent searches')"
+        :clear-button-title="__('Clear')"
+        :close-button-title="__('Close')"
+        :clear-recent-searches-text="__('Clear recent searches')"
+        :no-recent-searches-text="__(`You don't have any recent searches`)"
+        :search-text-option-label="searchTextOptionLabel"
+        :show-friendly-text="showFriendlyText"
+        :show-search-button="showSearchButton"
+        :terms-as-tokens="termsAsTokens"
+        class="gl-grow"
+        @history-item-selected="handleHistoryItemSelected"
+        @clear="onClear"
+        @clear-history="handleClearHistory"
+        @submit="handleFilterSubmit"
+        @input="onInput"
+        @token-complete="onTokenComplete"
+        @token-destroy="onTokenDestroy"
+      >
+        <template #history-item="{ historyItem }">
+          <template v-for="(token, index) in historyItem">
+            <span v-if="typeof token === 'string'" :key="index" class="gl-px-1">"{{ token }}"</span>
+            <span v-else :key="`${index}-${token.type}-${token.value.data}`" class="gl-px-1">
+              <span v-if="tokenTitles[token.type]"
+                >{{ tokenTitles[token.type] }} :{{ token.value.operator }}</span
+              >
+              <strong>{{ tokenSymbols[token.type] }}{{ historyTokenOptionTitle(token) }}</strong>
+            </span>
+          </template>
         </template>
-      </template>
-    </gl-filtered-search>
-    <gl-sorting
-      v-if="selectedSortOption"
-      :sort-options="transformedSortOptions"
-      :sort-by="sortById"
-      :is-ascending="sortDirectionAscending"
-      class="sort-dropdown-container"
-      @sortByChange="handleSortByChange"
-      @sortDirectionChange="handleSortDirectionChange"
-    />
+      </gl-filtered-search>
+    </div>
+    <div
+      :class="{
+        'gl-flex gl-items-center gl-justify-between gl-gap-3': $scopedSlots['user-preference'],
+      }"
+    >
+      <slot name="user-preference"></slot>
+      <gl-sorting
+        v-if="selectedSortOption"
+        :sort-options="transformedSortOptions"
+        :sort-by="sortById"
+        :is-ascending="sortDirectionAscending"
+        class="sort-dropdown-container !gl-m-0 gl-w-full @sm/panel:gl-w-auto"
+        dropdown-toggle-class="gl-grow"
+        dropdown-class="gl-grow"
+        sort-direction-toggle-class="!gl-shrink !gl-grow-0"
+        @sortByChange="handleSortByChange"
+        @sortDirectionChange="handleSortDirectionChange"
+      />
+    </div>
   </div>
 </template>

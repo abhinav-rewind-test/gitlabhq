@@ -6,17 +6,13 @@ RSpec.describe Ci::PipelinePresenter do
   include Gitlab::Routing
 
   let_it_be(:user) { create(:user) }
-  let_it_be_with_reload(:project) { create(:project, :test_repo) }
+  let_it_be_with_reload(:project) { create(:project, :test_repo, developers: user) }
   let_it_be_with_reload(:pipeline) { create(:ci_pipeline, project: project) }
 
   let(:current_user) { user }
 
   subject(:presenter) do
     described_class.new(pipeline)
-  end
-
-  before_all do
-    project.add_developer(user)
   end
 
   before do
@@ -103,10 +99,10 @@ RSpec.describe Ci::PipelinePresenter do
       it { is_expected.to eq('Merge request pipeline') }
     end
 
-    context 'for a merged result pipeline' do
+    context 'for a merged results pipeline' do
       let(:event_type) { :merged_result }
 
-      it { is_expected.to eq('Merged result pipeline') }
+      it { is_expected.to eq('Merged results pipeline') }
     end
 
     context 'for a merge train pipeline' do
@@ -203,7 +199,7 @@ RSpec.describe Ci::PipelinePresenter do
         end
 
         it 'returns a correct ref text' do
-          is_expected.to eq("For <a class=\"ref-container gl-link\" href=\"#{project_commits_path(pipeline.project, pipeline.ref)}\">#{pipeline.ref}</a>")
+          is_expected.to eq("In <a class=\"ref-container gl-link\" href=\"#{project_commits_path(pipeline.project, pipeline.ref)}\">#{pipeline.ref}</a>")
         end
 
         context 'when ref contains malicious script' do
@@ -221,7 +217,7 @@ RSpec.describe Ci::PipelinePresenter do
         end
 
         it 'returns a correct ref text' do
-          is_expected.to eq("For <span class=\"ref-name\">#{pipeline.ref}</span>")
+          is_expected.to eq("In <span class=\"ref-name\">#{pipeline.ref}</span>")
         end
 
         context 'when ref contains malicious script' do

@@ -18,7 +18,17 @@ export default {
   directives: {
     GlTooltip: GlTooltipDirective,
   },
-  inject: ['blobHash'],
+  inject: {
+    blobHash: {
+      default: '',
+    },
+    canDownloadCode: {
+      default: true,
+    },
+    fileType: {
+      default: '',
+    },
+  },
   props: {
     rawPath: {
       type: String,
@@ -62,7 +72,10 @@ export default {
   },
   computed: {
     downloadUrl() {
-      return setUrlParams({ inline: false }, relativePathToAbsolute(this.rawPath, getBaseURL()));
+      return setUrlParams(
+        { inline: false },
+        { url: relativePathToAbsolute(this.rawPath, getBaseURL()) },
+      );
     },
     copyDisabled() {
       return this.activeViewer === RICH_BLOB_VIEWER;
@@ -82,6 +95,15 @@ export default {
         environmentName: this.environmentName,
       });
     },
+    isPdfFile() {
+      return this.fileType?.includes('pdf');
+    },
+    openInNewWindowUrl() {
+      return setUrlParams(
+        { inline: true },
+        { url: relativePathToAbsolute(this.rawPath, getBaseURL()) },
+      );
+    },
   },
   methods: {
     onCopy() {
@@ -96,9 +118,12 @@ export default {
 };
 </script>
 <template>
-  <gl-button-group data-testid="default-actions-container">
+  <gl-button-group
+    class="gl-hidden @sm/panel:gl-inline-flex"
+    data-testid="default-actions-container"
+  >
     <gl-button
-      v-if="showCopyButton"
+      v-if="!isEmpty && showCopyButton"
       v-gl-tooltip.hover
       :aria-label="$options.BTN_COPY_CONTENTS_TITLE"
       :title="$options.BTN_COPY_CONTENTS_TITLE"
@@ -112,7 +137,7 @@ export default {
       @click="onCopy"
     />
     <gl-button
-      v-if="!isBinary"
+      v-if="!isEmpty && !isBinary"
       v-gl-tooltip.hover
       :aria-label="$options.BTN_RAW_TITLE"
       :title="$options.BTN_RAW_TITLE"
@@ -123,13 +148,27 @@ export default {
       variant="default"
     />
     <gl-button
-      v-if="!isEmpty"
+      v-if="!isEmpty && canDownloadCode"
       v-gl-tooltip.hover
       :aria-label="$options.BTN_DOWNLOAD_TITLE"
       :title="$options.BTN_DOWNLOAD_TITLE"
       :href="downloadUrl"
+      data-testid="download-button"
       target="_blank"
       icon="download"
+      category="primary"
+      variant="default"
+    />
+    <gl-button
+      v-if="!isEmpty && isPdfFile"
+      v-gl-tooltip.hover
+      :aria-label="s__('BlobViewer|Open in a new window')"
+      :title="s__('BlobViewer|Open in a new window')"
+      :href="openInNewWindowUrl"
+      data-testid="open-new-window-button"
+      target="_blank"
+      rel="noopener noreferrer"
+      icon="external-link"
       category="primary"
       variant="default"
     />

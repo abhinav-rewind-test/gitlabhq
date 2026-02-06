@@ -1,20 +1,25 @@
 import $ from 'jquery';
 import { flatten } from 'lodash';
 import Vue from 'vue';
+import { InternalEvents } from '~/tracking';
+import { FIND_FILE_SHORTCUT_CLICK } from '~/tracking/constants';
 import { Mousetrap, addStopCallback } from '~/lib/mousetrap';
 import { getCookie, setCookie, parseBoolean } from '~/lib/utils/common_utils';
-
+import { waitForElement } from '~/lib/utils/dom_utils';
 import findAndFollowLink from '~/lib/utils/navigation_utility';
-import { refreshCurrentPage, visitUrl } from '~/lib/utils/url_utility';
+import { refreshCurrentPage } from '~/lib/utils/url_utility';
 import {
   keysFor,
   TOGGLE_KEYBOARD_SHORTCUTS_DIALOG,
   START_SEARCH,
+  START_SEARCH_PROJECT_FILE,
   FOCUS_FILTER_BAR,
   TOGGLE_PERFORMANCE_BAR,
   HIDE_APPEARING_CONTENT,
   TOGGLE_CANARY,
   TOGGLE_MARKDOWN_PREVIEW,
+  FIND_AND_REPLACE,
+  GO_TO_HOMEPAGE,
   GO_TO_YOUR_TODO_LIST,
   GO_TO_ACTIVITY_FEED,
   GO_TO_YOUR_ISSUES,
@@ -23,8 +28,8 @@ import {
   GO_TO_YOUR_GROUPS,
   GO_TO_MILESTONE_LIST,
   GO_TO_YOUR_SNIPPETS,
-  GO_TO_PROJECT_FIND_FILE,
   GO_TO_YOUR_REVIEW_REQUESTS,
+  DUO_CHAT,
 } from './keybindings';
 import { disableShortcuts, shouldDisableShortcuts } from './shortcuts_toggle';
 
@@ -75,34 +80,50 @@ export default class Shortcuts {
 
     this.addAll([
       [TOGGLE_KEYBOARD_SHORTCUTS_DIALOG, this.onToggleHelp],
+      [START_SEARCH_PROJECT_FILE, Shortcuts.focusSearchFile],
       [START_SEARCH, Shortcuts.focusSearch],
       [FOCUS_FILTER_BAR, this.focusFilter.bind(this)],
       [TOGGLE_PERFORMANCE_BAR, Shortcuts.onTogglePerfBar],
       [HIDE_APPEARING_CONTENT, Shortcuts.hideAppearingContent],
       [TOGGLE_CANARY, Shortcuts.onToggleCanary],
 
+      [GO_TO_HOMEPAGE, () => findAndFollowLink('.brand-logo')],
       [GO_TO_YOUR_TODO_LIST, () => findAndFollowLink('.shortcuts-todos')],
       [GO_TO_ACTIVITY_FEED, () => findAndFollowLink('.dashboard-shortcuts-activity')],
       [GO_TO_YOUR_ISSUES, () => findAndFollowLink('.dashboard-shortcuts-issues')],
-      [GO_TO_YOUR_MERGE_REQUESTS, () => findAndFollowLink('.dashboard-shortcuts-merge_requests')],
-      [GO_TO_YOUR_REVIEW_REQUESTS, () => findAndFollowLink('.dashboard-shortcuts-review_requests')],
+      [
+        GO_TO_YOUR_MERGE_REQUESTS,
+        () =>
+          findAndFollowLink(
+            '.dashboard-shortcuts-merge_requests, .js-merge-request-dashboard-shortcut',
+          ),
+      ],
+      [
+        GO_TO_YOUR_REVIEW_REQUESTS,
+        () =>
+          findAndFollowLink(
+            '.dashboard-shortcuts-review_requests, .js-merge-request-dashboard-shortcut',
+          ),
+      ],
       [GO_TO_YOUR_PROJECTS, () => findAndFollowLink('.dashboard-shortcuts-projects')],
       [GO_TO_YOUR_GROUPS, () => findAndFollowLink('.dashboard-shortcuts-groups')],
       [GO_TO_MILESTONE_LIST, () => findAndFollowLink('.dashboard-shortcuts-milestones')],
       [GO_TO_YOUR_SNIPPETS, () => findAndFollowLink('.dashboard-shortcuts-snippets')],
 
       [TOGGLE_MARKDOWN_PREVIEW, Shortcuts.toggleMarkdownPreview],
+      [DUO_CHAT, Shortcuts.focusDuoChat],
     ]);
 
     addStopCallback((e, element, combo) =>
       keysFor(TOGGLE_MARKDOWN_PREVIEW).includes(combo) ? false : undefined,
     );
 
-    const findFileURL = document.body.dataset.findFile;
-    if (typeof findFileURL !== 'undefined' && findFileURL !== null) {
-      this.add(GO_TO_PROJECT_FIND_FILE, () => {
-        visitUrl(findFileURL);
-      });
+    if (gon?.features?.findAndReplace) {
+      this.add(FIND_AND_REPLACE, Shortcuts.toggleFindAndReplaceBar);
+
+      addStopCallback((e, element, combo) =>
+        keysFor(FIND_AND_REPLACE).includes(combo) ? false : undefined,
+      );
     }
 
     $(document).on('click', '.js-shortcuts-modal-trigger', this.onToggleHelp);
@@ -110,6 +131,12 @@ export default class Shortcuts {
     if (shouldDisableShortcuts()) {
       disableShortcuts();
     }
+
+    this.filterSelectors = [
+      'input[type=search]:not(#diff-tree-search)',
+      '.gl-filtered-search-term-input',
+      '.filtered-search',
+    ];
   }
 
   /**
@@ -210,6 +237,7 @@ export default class Shortcuts {
 
       this.helpModalVueInstance = new Vue({
         el: this.helpModalElement,
+        name: 'ShortcutsHelpRoot',
         components: {
           ShortcutsHelp: () => import('./shortcuts_help.vue'),
         },
@@ -247,20 +275,43 @@ export default class Shortcuts {
     $(document).triggerHandler('markdown-preview:toggle', [e]);
   }
 
+  static toggleFindAndReplaceBar(e) {
+    $(document).triggerHandler('markdown-editor:find-and-replace', [e]);
+  }
+
   focusFilter(e) {
-    if (!this.filterInput) {
-      this.filterInput = $('input[type=search]', '.nav-controls');
-    }
-    this.filterInput.focus();
+    const elements = document.querySelectorAll(this.filterSelectors.join(','));
+    const visibleElement = Array.from(elements).find((el) => el.offsetParent);
+
+    visibleElement?.focus();
     e.preventDefault();
   }
 
   static focusSearch(e) {
     document.querySelector('#super-sidebar-search')?.click();
+    InternalEvents.trackEvent('press_keyboard_shortcut_to_activate_command_palette');
 
     if (e.preventDefault) {
       e.preventDefault();
     }
+  }
+
+  static async focusSearchFile(e) {
+    if (!/^projects:/.test(document.body.dataset.page)) return;
+
+    if (e?.key) {
+      InternalEvents.trackEvent(FIND_FILE_SHORTCUT_CLICK);
+    }
+    e?.preventDefault();
+    document.querySelector('#super-sidebar-search')?.click();
+
+    const searchInput = await waitForElement('#super-sidebar-search-modal #search');
+    if (!searchInput) return;
+
+    const currentPath = document.querySelector('.js-repo-breadcrumbs')?.dataset.currentPath;
+
+    searchInput.value = `~${currentPath ? `${currentPath}/` : ''}`;
+    searchInput.dispatchEvent(new Event('input'));
   }
 
   static hideAppearingContent(e) {
@@ -269,6 +320,14 @@ export default class Shortcuts {
     elements.forEach((element) => {
       element.style.display = 'none';
     });
+
+    if (e.preventDefault) {
+      e.preventDefault();
+    }
+  }
+
+  static focusDuoChat(e) {
+    document.querySelector('.js-tanuki-bot-chat-toggle')?.click();
 
     if (e.preventDefault) {
       e.preventDefault();

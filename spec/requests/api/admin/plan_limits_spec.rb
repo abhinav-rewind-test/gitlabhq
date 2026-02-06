@@ -10,12 +10,19 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
   describe 'GET /application/plan_limits' do
     it_behaves_like 'GET request permissions for admin mode'
 
+    it_behaves_like 'authorizing granular token permissions', :read_plan_limit do
+      let(:user) { admin }
+      let(:boundary_object) { :instance }
+      let(:request) { get api(path, personal_access_token: pat) }
+    end
+
     context 'as an admin user' do
       context 'no params' do
         it 'returns plan limits', :aggregate_failures do
           get api(path, admin, admin_mode: true)
 
           expect(json_response).to be_an Hash
+          expect(json_response['ci_instance_level_variables']).to eq(Plan.default.actual_limits.ci_instance_level_variables)
           expect(json_response['ci_pipeline_size']).to eq(Plan.default.actual_limits.ci_pipeline_size)
           expect(json_response['ci_active_jobs']).to eq(Plan.default.actual_limits.ci_active_jobs)
           expect(json_response['ci_project_subscriptions']).to eq(Plan.default.actual_limits.ci_project_subscriptions)
@@ -23,6 +30,8 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
           expect(json_response['ci_needs_size_limit']).to eq(Plan.default.actual_limits.ci_needs_size_limit)
           expect(json_response['ci_registered_group_runners']).to eq(Plan.default.actual_limits.ci_registered_group_runners)
           expect(json_response['ci_registered_project_runners']).to eq(Plan.default.actual_limits.ci_registered_project_runners)
+          expect(json_response['dotenv_size']).to eq(Plan.default.actual_limits.dotenv_size)
+          expect(json_response['dotenv_variables']).to eq(Plan.default.actual_limits.dotenv_variables)
           expect(json_response['conan_max_file_size']).to eq(Plan.default.actual_limits.conan_max_file_size)
           expect(json_response['generic_packages_max_file_size']).to eq(Plan.default.actual_limits.generic_packages_max_file_size)
           expect(json_response['helm_max_file_size']).to eq(Plan.default.actual_limits.helm_max_file_size)
@@ -34,6 +43,9 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
           expect(json_response['terraform_module_max_file_size']).to eq(Plan.default.actual_limits.terraform_module_max_file_size)
           expect(json_response['storage_size_limit']).to eq(Plan.default.actual_limits.storage_size_limit)
           expect(json_response['pipeline_hierarchy_size']).to eq(Plan.default.actual_limits.pipeline_hierarchy_size)
+          expect(json_response['web_hook_calls']).to eq(Plan.default.actual_limits.web_hook_calls)
+          expect(json_response['web_hook_calls_mid']).to eq(Plan.default.actual_limits.web_hook_calls_mid)
+          expect(json_response['web_hook_calls_low']).to eq(Plan.default.actual_limits.web_hook_calls_low)
         end
       end
 
@@ -47,6 +59,7 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(json_response).to be_an Hash
+          expect(json_response['ci_instance_level_variables']).to eq(Plan.default.actual_limits.ci_instance_level_variables)
           expect(json_response['ci_pipeline_size']).to eq(Plan.default.actual_limits.ci_pipeline_size)
           expect(json_response['ci_active_jobs']).to eq(Plan.default.actual_limits.ci_active_jobs)
           expect(json_response['ci_project_subscriptions']).to eq(Plan.default.actual_limits.ci_project_subscriptions)
@@ -64,6 +77,9 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
           expect(json_response['terraform_module_max_file_size']).to eq(Plan.default.actual_limits.terraform_module_max_file_size)
           expect(json_response['storage_size_limit']).to eq(Plan.default.actual_limits.storage_size_limit)
           expect(json_response['pipeline_hierarchy_size']).to eq(Plan.default.actual_limits.pipeline_hierarchy_size)
+          expect(json_response['web_hook_calls']).to eq(Plan.default.actual_limits.web_hook_calls)
+          expect(json_response['web_hook_calls_mid']).to eq(Plan.default.actual_limits.web_hook_calls_mid)
+          expect(json_response['web_hook_calls_low']).to eq(Plan.default.actual_limits.web_hook_calls_low)
         end
       end
 
@@ -84,7 +100,13 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
 
   describe 'PUT /application/plan_limits' do
     it_behaves_like 'PUT request permissions for admin mode' do
-      let(:params) { { 'plan_name': 'default' } }
+      let(:params) { { plan_name: 'default' } }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :update_plan_limit do
+      let(:user) { admin }
+      let(:boundary_object) { :instance }
+      let(:request) { put api(path, personal_access_token: pat), params: { plan_name: 'default' } }
     end
 
     context 'as an admin user', :freeze_time do
@@ -93,29 +115,36 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
       context 'correct params' do
         it 'updates multiple plan limits', :aggregate_failures do
           put api(path, admin, admin_mode: true), params: {
-            'plan_name': 'default',
-            'ci_pipeline_size': 101,
-            'ci_active_jobs': 102,
-            'ci_project_subscriptions': 104,
-            'ci_pipeline_schedules': 105,
-            'ci_needs_size_limit': 106,
-            'ci_registered_group_runners': 107,
-            'ci_registered_project_runners': 108,
-            'conan_max_file_size': 10,
-            'enforcement_limit': 100,
-            'generic_packages_max_file_size': 20,
-            'helm_max_file_size': 25,
-            'maven_max_file_size': 30,
-            'notification_limit': 90,
-            'npm_max_file_size': 40,
-            'nuget_max_file_size': 50,
-            'pypi_max_file_size': 60,
-            'terraform_module_max_file_size': 70,
-            'storage_size_limit': 80,
-            'pipeline_hierarchy_size': 250
+            plan_name: 'default',
+            ci_instance_level_variables: 103,
+            ci_pipeline_size: 101,
+            ci_active_jobs: 102,
+            ci_project_subscriptions: 104,
+            ci_pipeline_schedules: 105,
+            ci_needs_size_limit: 106,
+            ci_registered_group_runners: 107,
+            ci_registered_project_runners: 108,
+            dotenv_size: 109,
+            dotenv_variables: 110,
+            conan_max_file_size: 10,
+            enforcement_limit: 100,
+            generic_packages_max_file_size: 20,
+            helm_max_file_size: 25,
+            maven_max_file_size: 30,
+            notification_limit: 90,
+            npm_max_file_size: 40,
+            nuget_max_file_size: 50,
+            pypi_max_file_size: 60,
+            terraform_module_max_file_size: 70,
+            storage_size_limit: 80,
+            pipeline_hierarchy_size: 250,
+            web_hook_calls: 300,
+            web_hook_calls_mid: 200,
+            web_hook_calls_low: 100
           }
 
           expect(json_response).to be_an Hash
+          expect(json_response['ci_instance_level_variables']).to eq(103)
           expect(json_response['ci_pipeline_size']).to eq(101)
           expect(json_response['ci_active_jobs']).to eq(102)
           expect(json_response['ci_project_subscriptions']).to eq(104)
@@ -123,6 +152,8 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
           expect(json_response['ci_needs_size_limit']).to eq(106)
           expect(json_response['ci_registered_group_runners']).to eq(107)
           expect(json_response['ci_registered_project_runners']).to eq(108)
+          expect(json_response['dotenv_size']).to eq(109)
+          expect(json_response['dotenv_variables']).to eq(110)
           expect(json_response['conan_max_file_size']).to eq(10)
           expect(json_response['enforcement_limit']).to eq(100)
           expect(json_response['generic_packages_max_file_size']).to eq(20)
@@ -140,12 +171,15 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
           expect(json_response['terraform_module_max_file_size']).to eq(70)
           expect(json_response['storage_size_limit']).to eq(80)
           expect(json_response['pipeline_hierarchy_size']).to eq(250)
+          expect(json_response['web_hook_calls']).to eq(300)
+          expect(json_response['web_hook_calls_mid']).to eq(200)
+          expect(json_response['web_hook_calls_low']).to eq(100)
         end
 
         it 'updates single plan limits', :aggregate_failures do
           put api(path, admin, admin_mode: true), params: {
-            'plan_name': 'default',
-            'maven_max_file_size': 100
+            plan_name: 'default',
+            maven_max_file_size: 100
           }
 
           expect(response).to have_gitlab_http_status(:ok)
@@ -166,30 +200,37 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
       context 'params with wrong type' do
         it 'fails to update plan limits', :aggregate_failures do
           put api(path, admin, admin_mode: true), params: {
-            'plan_name': 'default',
-            'ci_pipeline_size': 'z',
-            'ci_active_jobs': 'y',
-            'ci_project_subscriptions': 'w',
-            'ci_pipeline_schedules': 'v',
-            'ci_needs_size_limit': 'u',
-            'ci_registered_group_runners': 't',
-            'ci_registered_project_runners': 's',
-            'conan_max_file_size': 'a',
-            'enforcement_limit': 'e',
-            'generic_packages_max_file_size': 'b',
-            'helm_max_file_size': 'h',
-            'maven_max_file_size': 'c',
-            'notification_limit': 'n',
-            'npm_max_file_size': 'd',
-            'nuget_max_file_size': 'e',
-            'pypi_max_file_size': 'f',
-            'terraform_module_max_file_size': 'g',
-            'storage_size_limit': 'j',
-            'pipeline_hierarchy_size': 'r'
+            plan_name: 'default',
+            ci_instance_level_variables: 'a',
+            ci_pipeline_size: 'z',
+            ci_active_jobs: 'y',
+            ci_project_subscriptions: 'w',
+            ci_pipeline_schedules: 'v',
+            ci_needs_size_limit: 'u',
+            ci_registered_group_runners: 't',
+            ci_registered_project_runners: 's',
+            dotenv_size: 'r',
+            dotenv_variables: 'q',
+            conan_max_file_size: 'a',
+            enforcement_limit: 'e',
+            generic_packages_max_file_size: 'b',
+            helm_max_file_size: 'h',
+            maven_max_file_size: 'c',
+            notification_limit: 'n',
+            npm_max_file_size: 'd',
+            nuget_max_file_size: 'e',
+            pypi_max_file_size: 'f',
+            terraform_module_max_file_size: 'g',
+            storage_size_limit: 'j',
+            pipeline_hierarchy_size: 'r',
+            web_hook_calls: 's',
+            web_hook_calls_mid: 't',
+            web_hook_calls_low: 'u'
           }
 
           expect(response).to have_gitlab_http_status(:bad_request)
           expect(json_response['error']).to include(
+            'ci_instance_level_variables is invalid',
             'ci_pipeline_size is invalid',
             'ci_active_jobs is invalid',
             'ci_project_subscriptions is invalid',
@@ -197,6 +238,8 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
             'ci_needs_size_limit is invalid',
             'ci_registered_group_runners is invalid',
             'ci_registered_project_runners is invalid',
+            'dotenv_size is invalid',
+            'dotenv_variables is invalid',
             'conan_max_file_size is invalid',
             'enforcement_limit is invalid',
             'generic_packages_max_file_size is invalid',
@@ -208,14 +251,17 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
             'pypi_max_file_size is invalid',
             'terraform_module_max_file_size is invalid',
             'storage_size_limit is invalid',
-            'pipeline_hierarchy_size is invalid'
+            'pipeline_hierarchy_size is invalid',
+            'web_hook_calls is invalid',
+            'web_hook_calls_mid is invalid',
+            'web_hook_calls_low is invalid'
           )
         end
       end
 
       context 'missing plan_name in params' do
         it 'fails to update plan limits', :aggregate_failures do
-          put api(path, admin, admin_mode: true), params: { 'conan_max_file_size': 0 }
+          put api(path, admin, admin_mode: true), params: { conan_max_file_size: 0 }
 
           expect(response).to have_gitlab_http_status(:bad_request)
           expect(json_response['error']).to match('plan_name is missing')
@@ -224,14 +270,14 @@ RSpec.describe API::Admin::PlanLimits, 'PlanLimits', feature_category: :shared d
 
       context 'additional undeclared params' do
         before do
-          Plan.default.actual_limits.update!({ 'golang_max_file_size': 1000 })
+          Plan.default.actual_limits.update!({ golang_max_file_size: 1000 })
         end
 
         it 'updates only declared plan limits', :aggregate_failures do
           put api(path, admin, admin_mode: true), params: {
-            'plan_name': 'default',
-            'pypi_max_file_size': 200,
-            'golang_max_file_size': 999
+            plan_name: 'default',
+            pypi_max_file_size: 200,
+            golang_max_file_size: 999
           }
 
           expect(response).to have_gitlab_http_status(:ok)

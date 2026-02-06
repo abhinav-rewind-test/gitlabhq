@@ -7,12 +7,13 @@ module Packages
       include Packages::Downloadable
       include Packages::Destructible
 
-      enum status: { default: 0, processing: 1, error: 3 }
+      enum :status, { default: 0, processing: 1, pending_destruction: 2, error: 3 }
 
       belongs_to :project, inverse_of: :npm_metadata_caches
 
       validates :file, :object_storage_key, :package_name, :project, :size, presence: true
       validates :package_name, uniqueness: { scope: :project_id }
+      validates :object_storage_key, uniqueness: { scope: :project_id }
       validates :package_name, format: { with: Gitlab::Regex.package_name_regex }
       validates :package_name, format: { with: Gitlab::Regex.npm_package_name_regex }
 
@@ -20,9 +21,6 @@ module Packages
 
       before_validation :set_object_storage_key
       attr_readonly :object_storage_key
-
-      scope :stale, -> { where(project_id: nil) }
-      scope :pending_destruction, -> { stale.default }
 
       def self.find_or_build(package_name:, project_id:)
         find_or_initialize_by(

@@ -11,15 +11,8 @@ class ContainerRepository < ApplicationRecord
   WAITING_CLEANUP_STATUSES = %i[cleanup_scheduled cleanup_unfinished].freeze
   REQUIRING_CLEANUP_STATUSES = %i[cleanup_unscheduled cleanup_scheduled].freeze
 
-  IDLE_MIGRATION_STATES = %w[default pre_import_done import_done import_aborted import_skipped].freeze
-  ACTIVE_MIGRATION_STATES = %w[pre_importing importing].freeze
-  MIGRATION_STATES = (IDLE_MIGRATION_STATES + ACTIVE_MIGRATION_STATES).freeze
-  ABORTABLE_MIGRATION_STATES = (ACTIVE_MIGRATION_STATES + %w[pre_import_done default]).freeze
-  SKIPPABLE_MIGRATION_STATES = (ABORTABLE_MIGRATION_STATES + %w[import_aborted]).freeze
-
-  MIGRATION_PHASE_1_ENDED_AT = Date.new(2022, 01, 23).freeze
-
   MAX_TAGS_PAGES = 2000
+  MAX_DELETION_FAILURES = 10
 
   # The Registry client uses JWT token to authenticate to Registry. We cache the client using expiration
   # time of JWT token. However it's possible that the token is valid but by the time the request is made to
@@ -27,33 +20,15 @@ class ContainerRepository < ApplicationRecord
   # from the cache expiration time.
   AUTH_TOKEN_USAGE_RESERVED_TIME_IN_SECS = 5
 
-  TooManyImportsError = Class.new(StandardError)
-
   belongs_to :project
 
   validates :name, length: { minimum: 0, allow_nil: false }
   validates :name, uniqueness: { scope: :project_id }
-  validates :migration_state, presence: true, inclusion: { in: MIGRATION_STATES }
-  validates :migration_aborted_in_state, inclusion: { in: ABORTABLE_MIGRATION_STATES }, allow_nil: true
+  validates :failed_deletion_count, presence: true
+  validates :failed_deletion_count, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: MAX_DELETION_FAILURES }
 
-  validates :migration_retries_count, presence: true,
-    numericality: { greater_than_or_equal_to: 0 },
-    allow_nil: false
-
-  enum status: { delete_scheduled: 0, delete_failed: 1, delete_ongoing: 2 }
-  enum expiration_policy_cleanup_status: { cleanup_unscheduled: 0, cleanup_scheduled: 1, cleanup_unfinished: 2, cleanup_ongoing: 3 }
-
-  enum migration_skipped_reason: {
-    not_in_plan: 0,
-    too_many_retries: 1,
-    too_many_tags: 2,
-    root_namespace_in_deny_list: 3,
-    migration_canceled: 4,
-    not_found: 5,
-    native_import: 6,
-    migration_forced_canceled: 7,
-    migration_canceled_by_registry: 8
-  }
+  enum :status, { delete_scheduled: 0, delete_failed: 1, delete_ongoing: 2 }
+  enum :expiration_policy_cleanup_status, { cleanup_unscheduled: 0, cleanup_scheduled: 1, cleanup_unfinished: 2, cleanup_ongoing: 3 }
 
   delegate :client, :gitlab_api_client, to: :registry
 
@@ -71,165 +46,10 @@ class ContainerRepository < ApplicationRecord
   scope :search_by_name, ->(query) { fuzzy_search(query, [:name], use_minimum_char_limit: false) }
   scope :waiting_for_cleanup, -> { where(expiration_policy_cleanup_status: WAITING_CLEANUP_STATUSES) }
   scope :expiration_policy_started_at_nil_or_before, ->(timestamp) { where('expiration_policy_started_at < ? OR expiration_policy_started_at IS NULL', timestamp) }
-  scope :with_migration_import_started_at_nil_or_before, ->(timestamp) { where("COALESCE(migration_import_started_at, '01-01-1970') < ?", timestamp) }
-  scope :with_migration_pre_import_started_at_nil_or_before, ->(timestamp) { where("COALESCE(migration_pre_import_started_at, '01-01-1970') < ?", timestamp) }
-  scope :with_migration_pre_import_done_at_nil_or_before, ->(timestamp) { where("COALESCE(migration_pre_import_done_at, '01-01-1970') < ?", timestamp) }
   scope :with_stale_ongoing_cleanup, ->(threshold) { cleanup_ongoing.expiration_policy_started_at_nil_or_before(threshold) }
   scope :with_stale_delete_at, ->(threshold) { where('delete_started_at < ?', threshold) }
-  scope :import_in_process, -> { where(migration_state: %w[pre_importing pre_import_done importing]) }
-
-  scope :recently_done_migration_step, -> do
-    where(migration_state: %w[import_done pre_import_done import_aborted import_skipped])
-      .order(Arel.sql('GREATEST(migration_pre_import_done_at, migration_import_done_at, migration_aborted_at, migration_skipped_at) DESC'))
-  end
-
-  scope :ready_for_import, -> do
-    # There is no yaml file for the container_registry_phase_2_deny_list
-    # feature flag since it is only accessed in this query.
-    # https://gitlab.com/gitlab-org/gitlab/-/issues/350543 tracks the rollout and
-    # removal of this feature flag.
-    joins(project: [:namespace]).where(
-      migration_state: [:default],
-      created_at: ...ContainerRegistry::Migration.created_before
-    ).with_target_import_tier
-    .where(
-      "NOT EXISTS (
-        SELECT 1
-        FROM feature_gates
-        WHERE feature_gates.feature_key = 'container_registry_phase_2_deny_list'
-        AND feature_gates.key = 'actors'
-        AND feature_gates.value = concat('Group:', namespaces.traversal_ids[1])
-      )"
-    )
-  end
 
   before_update :set_status_updated_at_to_now, if: :status_changed?
-
-  state_machine :migration_state, initial: :default, use_transactions: false do
-    state :pre_importing do
-      validates :migration_pre_import_started_at, presence: true
-      validates :migration_pre_import_done_at, presence: false
-    end
-
-    state :pre_import_done do
-      validates :migration_pre_import_done_at, presence: true
-    end
-
-    state :importing do
-      validates :migration_import_started_at, presence: true
-      validates :migration_import_done_at, presence: false
-    end
-
-    state :import_done
-
-    state :import_skipped do
-      validates :migration_skipped_reason, :migration_skipped_at, presence: true
-    end
-
-    state :import_aborted do
-      validates :migration_aborted_at, presence: true
-      validates :migration_retries_count, presence: true, numericality: { greater_than_or_equal_to: 1 }
-    end
-
-    event :start_pre_import do
-      transition %i[default pre_importing importing import_aborted] => :pre_importing
-    end
-
-    event :finish_pre_import do
-      transition %i[pre_importing importing import_aborted] => :pre_import_done
-    end
-
-    event :start_import do
-      transition %i[pre_import_done pre_importing importing import_aborted] => :importing
-    end
-
-    event :finish_import do
-      transition %i[default pre_importing importing import_aborted] => :import_done
-    end
-
-    event :already_migrated do
-      transition default: :import_done
-    end
-
-    event :abort_import do
-      transition ABORTABLE_MIGRATION_STATES.map(&:to_sym) => :import_aborted
-    end
-
-    event :skip_import do
-      transition SKIPPABLE_MIGRATION_STATES.map(&:to_sym) => :import_skipped
-    end
-
-    event :retry_pre_import do
-      transition %i[pre_importing importing import_aborted] => :pre_importing
-    end
-
-    event :retry_import do
-      transition %i[pre_importing importing import_aborted] => :importing
-    end
-
-    before_transition any => :pre_importing do |container_repository|
-      container_repository.migration_pre_import_started_at = Time.zone.now
-      container_repository.migration_pre_import_done_at = nil
-    end
-
-    after_transition any => :pre_importing do |container_repository, transition|
-      forced = transition.args.first.try(:[], :forced)
-      next if forced
-
-      container_repository.try_import do
-        container_repository.migration_pre_import
-      end
-    end
-
-    before_transition any => :pre_import_done do |container_repository|
-      container_repository.migration_pre_import_done_at = Time.zone.now
-    end
-
-    before_transition any => :importing do |container_repository|
-      container_repository.migration_import_started_at = Time.zone.now
-      container_repository.migration_import_done_at = nil
-    end
-
-    after_transition any => :importing do |container_repository, transition|
-      forced = transition.args.first.try(:[], :forced)
-      next if forced
-
-      container_repository.try_import do
-        container_repository.migration_import
-      end
-    end
-
-    before_transition any => :import_done do |container_repository|
-      container_repository.migration_import_done_at = Time.zone.now
-    end
-
-    before_transition any => :import_aborted do |container_repository|
-      container_repository.migration_aborted_in_state = container_repository.migration_state
-      container_repository.migration_aborted_at = Time.zone.now
-      container_repository.migration_retries_count += 1
-    end
-
-    after_transition any => :import_aborted do |container_repository|
-      if container_repository.retried_too_many_times?
-        container_repository.skip_import(reason: :too_many_retries)
-      end
-    end
-
-    before_transition import_aborted: any do |container_repository|
-      container_repository.migration_aborted_at = nil
-      container_repository.migration_aborted_in_state = nil
-    end
-
-    before_transition any => :import_skipped do |container_repository|
-      container_repository.migration_skipped_at = Time.zone.now
-    end
-
-    before_transition any => %i[import_done import_aborted import_skipped] do |container_repository|
-      container_repository.run_after_commit do
-        ::ContainerRegistry::Migration::EnqueuerWorker.enqueue_a_job
-      end
-    end
-  end
 
   # Container Repository model and the code that makes API calls
   # are tied. Sometimes (mainly in Geo) we need to work with Registry
@@ -243,13 +63,6 @@ class ContainerRepository < ApplicationRecord
       project: path.repository_project,
       name: path.repository_name
     ).exists?
-  end
-
-  def self.all_migrated?
-    # check that the set of non migrated repositories is empty
-    where(created_at: ...MIGRATION_PHASE_1_ENDED_AT)
-      .where.not(migration_state: 'import_done')
-      .empty?
   end
 
   def self.with_enabled_policy
@@ -268,151 +81,13 @@ class ContainerRepository < ApplicationRecord
     with_enabled_policy.cleanup_unfinished
   end
 
-  def self.with_stale_migration(before_timestamp)
-    stale_pre_importing = with_migration_states(:pre_importing)
-                            .with_migration_pre_import_started_at_nil_or_before(before_timestamp)
-    stale_pre_import_done = with_migration_states(:pre_import_done)
-                              .with_migration_pre_import_done_at_nil_or_before(before_timestamp)
-    stale_importing = with_migration_states(:importing)
-                        .with_migration_import_started_at_nil_or_before(before_timestamp)
-
-    union = ::Gitlab::SQL::Union.new([
-                                       stale_pre_importing,
-                                       stale_pre_import_done,
-                                       stale_importing
-                                     ])
-    from("(#{union.to_sql}) #{ContainerRepository.table_name}")
-  end
-
-  def self.with_target_import_tier
-    # overridden in ee
-    #
-    # Repositories are being migrated by tier on Saas, so we need to
-    # filter by plan/subscription which is not available in FOSS
-    all
-  end
-
   def self.registry_client_expiration_time
     (Gitlab::CurrentSettings.container_registry_token_expire_delay * 60) - AUTH_TOKEN_USAGE_RESERVED_TIME_IN_SECS
   end
 
-  class << self
-    alias_method :pending_destruction, :delete_scheduled # needed by Packages::Destructible
-  end
-
-  def skip_import(reason:)
-    self.migration_skipped_reason = reason
-
-    super
-  end
-
-  def start_pre_import(*args)
-    return false unless ContainerRegistry::Migration.enabled?
-
-    super(*args)
-  end
-
-  def retry_pre_import
-    return false unless ContainerRegistry::Migration.enabled?
-
-    super
-  end
-
-  def retry_import
-    return false unless ContainerRegistry::Migration.enabled?
-
-    super
-  end
-
-  def finish_pre_import_and_start_import
-    # nothing to do between those two transitions for now.
-    finish_pre_import && start_import
-  end
-
-  def retry_aborted_migration
-    return unless migration_state == 'import_aborted'
-
-    reconcile_import_status(external_import_status) do
-      # If the import_status request fails, use the timestamp to guess current state
-      migration_pre_import_done_at ? retry_import : retry_pre_import
-    end
-  end
-
-  def reconcile_import_status(status)
-    case status
-    when 'native'
-      finish_import_as(:native_import)
-    when 'pre_import_in_progress'
-      return if pre_importing?
-
-      start_pre_import(forced: true)
-    when 'import_in_progress'
-      return if importing?
-
-      start_import(forced: true)
-    when 'import_complete'
-      finish_import
-    when 'import_failed', 'import_canceled'
-      retry_import
-    when 'pre_import_complete'
-      finish_pre_import_and_start_import
-    when 'pre_import_failed', 'pre_import_canceled'
-      retry_pre_import
-    else
-      yield
-    end
-  end
-
-  def try_import
-    raise ArgumentError, 'block not given' unless block_given?
-
-    try_count = 0
-    begin
-      try_count += 1
-
-      case yield
-      when :ok
-        return true
-      when :not_found
-        finish_import_as(:not_found)
-      when :already_imported
-        finish_import_as(:native_import)
-      else
-        abort_import
-      end
-
-      false
-    rescue TooManyImportsError
-      if try_count <= ::ContainerRegistry::Migration.start_max_retries
-        sleep 0.1 * try_count
-        retry
-      else
-        abort_import
-        false
-      end
-    end
-  end
-
-  def retried_too_many_times?
-    migration_retries_count >= ContainerRegistry::Migration.max_retries
-  end
-
-  def nearing_or_exceeded_retry_limit?
-    migration_retries_count >= ContainerRegistry::Migration.max_retries - 1
-  end
-
-  def migrated?
-    Gitlab.com_except_jh?
-  end
-
-  def last_import_step_done_at
-    [migration_pre_import_done_at, migration_import_done_at, migration_aborted_at, migration_skipped_at].compact.max
-  end
-
-  def external_import_status
-    strong_memoize(:import_status) do
-      gitlab_api_client.import_status(self.path)
-    end
+  # needed by Packages::Destructible
+  def self.pending_destruction
+    delete_scheduled.where('next_delete_attempt_at IS NULL OR next_delete_attempt_at < ?', Time.zone.now)
   end
 
   # rubocop: disable CodeReuse/ServiceClass
@@ -437,14 +112,22 @@ class ContainerRepository < ApplicationRecord
     File.join(registry.path, path)
   end
 
+  # If the container registry GitLab API is available, the API
+  # does a search of tags containing the name and we filter them
+  # to find the exact match. Otherwise, we instantiate a tag.
   def tag(tag)
-    if can_access_the_gitlab_api?
-      page = tags_page(name: tag, page_size: 1)
+    if gitlab_api_client.supports_gitlab_api?
+      page = tags_page(name: tag)
+      return if page[:tags].blank?
 
-      page[:tags].first
+      page[:tags].find { |result_tag| result_tag.name == tag }
     else
       ContainerRegistry::Tag.new(self, tag)
     end
+  end
+
+  def image_manifest(reference)
+    client.repository_manifest(path, reference)
   end
 
   def manifest
@@ -453,7 +136,7 @@ class ContainerRepository < ApplicationRecord
 
   def tags
     strong_memoize(:tags) do
-      if can_access_the_gitlab_api? && Feature.enabled?(:fetch_tags_from_registry_api, project)
+      if gitlab_api_client.supports_gitlab_api?
         result = []
         each_tags_page do |array_of_tags|
           result << array_of_tags
@@ -471,7 +154,7 @@ class ContainerRepository < ApplicationRecord
   end
 
   def each_tags_page(page_size: 100, &block)
-    raise ArgumentError, 'not a migrated repository' unless migrated?
+    raise ArgumentError, _('GitLab container registry API not supported') unless gitlab_api_client.supports_gitlab_api?
     raise ArgumentError, 'block not given' unless block
 
     # dummy uri to initialize the loop
@@ -496,8 +179,8 @@ class ContainerRepository < ApplicationRecord
     raise 'too many pages requested' if page_count >= MAX_TAGS_PAGES
   end
 
-  def tags_page(before: nil, last: nil, sort: nil, name: nil, page_size: 100, referrers: nil)
-    raise ArgumentError, 'not a migrated repository' unless migrated?
+  def tags_page(before: nil, last: nil, sort: nil, name: nil, page_size: 100, referrers: nil, referrer_type: nil)
+    raise ArgumentError, _('GitLab container registry API not supported') unless gitlab_api_client.supports_gitlab_api?
 
     page = gitlab_api_client.tags(
       self.path,
@@ -506,7 +189,8 @@ class ContainerRepository < ApplicationRecord
       last: last,
       sort: sort,
       name: name,
-      referrers: referrers
+      referrers: referrers,
+      referrer_type: referrer_type
     )
 
     {
@@ -526,17 +210,19 @@ class ContainerRepository < ApplicationRecord
   end
 
   def has_tags?
-    tags.any?
+    if gitlab_api_client.supports_gitlab_api?
+      page = tags_page(page_size: 1) # Fetch one tag to check existence
+      page[:tags].present?
+    else
+      manifest&.dig('tags').present?
+    end
   end
-
-  def root_repository?
-    name.empty?
-  end
+  strong_memoize_attr :has_tags?
 
   def delete_tags!
     return unless has_tags?
 
-    digests = tags.map { |tag| tag.digest }.compact.to_set
+    digests = tags.map(&:digest).compact.to_set
 
     digests.map { |digest| delete_tag(digest) }.all?
   end
@@ -557,16 +243,28 @@ class ContainerRepository < ApplicationRecord
     strong_memoize(:size) do
       next unless gitlab_api_client.supports_gitlab_api?
 
-      gitlab_api_client.repository_details(self.path, sizing: :self)['size_bytes']
+      gitlab_api_client_repository_details['size_bytes']
     end
   end
 
+  def last_published_at
+    return unless gitlab_api_client.supports_gitlab_api?
+
+    timestamp_string = gitlab_api_client_repository_details['last_published_at']
+    DateTime.iso8601(timestamp_string)
+  rescue ArgumentError
+    nil
+  end
+  strong_memoize_attr :last_published_at
+
   def set_delete_ongoing_status
     now = Time.zone.now
+
     update_columns(
       status: :delete_ongoing,
       delete_started_at: now,
-      status_updated_at: now
+      status_updated_at: now,
+      next_delete_attempt_at: nil
     )
   end
 
@@ -574,57 +272,18 @@ class ContainerRepository < ApplicationRecord
     update_columns(
       status: :delete_scheduled,
       delete_started_at: nil,
-      status_updated_at: Time.zone.now
+      status_updated_at: Time.zone.now,
+      failed_deletion_count: failed_deletion_count + 1,
+      next_delete_attempt_at: next_delete_attempt_with_delay
     )
   end
 
-  def migration_in_active_state?
-    migration_state.in?(ACTIVE_MIGRATION_STATES)
-  end
-
-  def migration_importing?
-    migration_state == 'importing'
-  end
-
-  def migration_pre_importing?
-    migration_state == 'pre_importing'
-  end
-
-  def migration_pre_import
-    return :error unless gitlab_api_client.supports_gitlab_api?
-
-    response = gitlab_api_client.pre_import_repository(self.path)
-    raise TooManyImportsError if response == :too_many_imports
-
-    response
-  end
-
-  def migration_import
-    return :error unless gitlab_api_client.supports_gitlab_api?
-
-    response = gitlab_api_client.import_repository(self.path)
-    raise TooManyImportsError if response == :too_many_imports
-
-    response
-  end
-
-  def migration_cancel
-    return :error unless gitlab_api_client.supports_gitlab_api?
-
-    gitlab_api_client.cancel_repository_import(self.path)
-  end
-
-  # This method is not meant for consumption by the code
-  # It is meant for manual use in the case that a migration needs to be
-  # cancelled by an admin or SRE
-  def force_migration_cancel
-    return :error unless gitlab_api_client.supports_gitlab_api?
-
-    response = gitlab_api_client.cancel_repository_import(self.path, force: true)
-
-    skip_import(reason: :migration_forced_canceled) if response[:status] == :ok
-
-    response
+  def set_delete_failed_status
+    update_columns(
+      status: :delete_failed,
+      delete_started_at: nil,
+      status_updated_at: Time.zone.now
+    )
   end
 
   def self.build_from_path(path)
@@ -652,16 +311,24 @@ class ContainerRepository < ApplicationRecord
     self.find_by(project: path.repository_project, name: path.repository_name)
   end
 
+  def protected_from_delete_by_tag_rules?(user)
+    return true unless user
+
+    # Admins are not restricted by mutable tag protection rules
+    return false if user.can_admin_all_resources?
+
+    # Check for mutable tag protection rules
+    return false unless project.has_container_registry_protected_tag_rules?(
+      action: 'delete',
+      access_level: project.team.max_member_access(user.id)
+    )
+
+    return false unless has_tags?
+
+    true
+  end
+
   private
-
-  def can_access_the_gitlab_api?
-    migrated? && ContainerRegistry::GitlabApiClient.supports_gitlab_api?
-  end
-
-  def finish_import_as(reason)
-    self.migration_skipped_reason = reason
-    finish_import
-  end
 
   def transform_tags_page(tags_response_body)
     return [] unless tags_response_body
@@ -675,12 +342,22 @@ class ContainerRepository < ApplicationRecord
       tag.revision = raw_tag['config_digest'].to_s.split(':')[1] || ''
       tag.referrers = raw_tag['referrers']
       tag.published_at = raw_tag['published_at']
+      tag.media_type = raw_tag['media_type']
       tag
     end
   end
 
   def set_status_updated_at_to_now
     self.status_updated_at = Time.zone.now
+  end
+
+  def gitlab_api_client_repository_details
+    gitlab_api_client.repository_details(self.path, sizing: :self)
+  end
+  strong_memoize_attr :gitlab_api_client_repository_details
+
+  def next_delete_attempt_with_delay(now = Time.zone.now)
+    now + (2**failed_deletion_count).minutes
   end
 end
 

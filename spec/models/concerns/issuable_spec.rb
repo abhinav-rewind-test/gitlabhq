@@ -7,7 +7,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
   using RSpec::Parameterized::TableSyntax
 
   let(:issuable_class) { Issue }
-  let(:issue) { create(:issue, title: 'An issue', description: 'A description') }
+  let(:issue) { create(:issue, title: 'An _issue_', description: 'A **description**') }
   let(:user) { create(:user) }
 
   describe "Associations" do
@@ -86,7 +86,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
         stub_const("Issuable::MAX_NUMBER_OF_ASSIGNEES_OR_REVIEWERS", 2)
       end
 
-      it 'will not exceed the assignee limit' do
+      it 'does not exceed the assignee limit' do
         expect do
           subject.update!(assignees: [assignee_1, assignee_2, assignee_3])
         end.to raise_error(ActiveRecord::RecordInvalid)
@@ -99,15 +99,28 @@ RSpec.describe Issuable, feature_category: :team_planning do
     it { expect(issuable_class).to respond_to(:closed) }
     it { expect(issuable_class).to respond_to(:assigned) }
 
+    describe '.non_archived' do
+      let_it_be(:archived_project) { create(:project, :archived) }
+      let_it_be(:non_archived_project) { create(:project) }
+      let_it_be(:mr_in_archived_project) { create(:merge_request, source_project: archived_project, target_project: archived_project) }
+      let_it_be(:mr_in_non_archived_project) { create(:merge_request, source_project: non_archived_project, target_project: non_archived_project) }
+
+      it 'excludes merge requests from archived projects' do
+        expect(MergeRequest.non_archived).to include(mr_in_non_archived_project)
+        expect(MergeRequest.non_archived).not_to include(mr_in_archived_project)
+      end
+    end
+
     describe '.includes_for_bulk_update' do
       before do
         stub_const('Example', Class.new(ActiveRecord::Base))
 
         Example.class_eval do
-          include Issuable # adds :labels and :metrics, among others
+          include Issuable # adds :labels, among others
 
           belongs_to :author
           has_many :assignees
+          has_one :metrics
         end
       end
 
@@ -162,7 +175,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
 
   describe '.any_label' do
     let_it_be(:issue_with_label) { create(:labeled_issue, labels: [create(:label)]) }
-    let_it_be(:issue_with_multiple_labels) { create(:labeled_issue, labels: [create(:label), create(:label)]) }
+    let_it_be(:issue_with_multiple_labels) { create(:labeled_issue, labels: create_list(:label, 2)) }
     let_it_be(:issue_without_label) { create(:issue) }
 
     it 'returns an issuable with at least one label' do
@@ -172,6 +185,22 @@ RSpec.describe Issuable, feature_category: :team_planning do
     context 'for custom sorting' do
       it 'returns an issuable with at least one label' do
         expect(issuable_class.any_label('created_at')).to eq([issue_with_label, issue_with_multiple_labels])
+      end
+    end
+  end
+
+  describe '.participant_includes' do
+    it 'returns participant associations' do
+      expect(issuable_class.participant_includes).to contain_exactly(:assignees, :author, :award_emoji, { notes: [:author, :award_emoji] })
+    end
+
+    context 'with remove_per_source_permission_from_participants disabled' do
+      before do
+        stub_feature_flags(remove_per_source_permission_from_participants: false)
+      end
+
+      it 'includes system_note_metadata association' do
+        expect(issuable_class.participant_includes).to contain_exactly(:assignees, :author, :award_emoji, { notes: [:author, :award_emoji, :system_note_metadata] })
       end
     end
   end
@@ -333,6 +362,26 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
   end
 
+  describe '.gfm_autocomplete_search' do
+    let_it_be(:project) { create(:project) }
+
+    let_it_be(:issue_1) { create(:issue, project: project, iid: 1, title: 'gitlab 2') }
+    let_it_be(:issue_10) { create(:issue, project: project, iid: 10, title: 'some gitlab issue') }
+    let_it_be(:issue_20) { create(:issue, project: project, iid: 20, title: 'other title') }
+
+    it 'returns issuables with matching iid or title ordered by id desc' do
+      expect(issuable_class.gfm_autocomplete_search('2')).to eq([issue_20, issue_1])
+    end
+
+    it 'returns issuables with matching title ordered by id desc' do
+      expect(issuable_class.gfm_autocomplete_search('gitlab')).to eq([issue_10, issue_1])
+    end
+
+    it 'allows partial string matches' do
+      expect(issuable_class.gfm_autocomplete_search('the')).to eq([issue_20])
+    end
+  end
+
   describe '.to_ability_name' do
     it { expect(Issue.to_ability_name).to eq("issue") }
     it { expect(MergeRequest.to_ability_name).to eq("merge_request") }
@@ -452,7 +501,7 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
 
     it 'skips coercion for not Integer values' do
-      expect { issue.time_estimate = nil }.to change { issue.time_estimate }.to(nil)
+      expect { issue.time_estimate = nil }.to change { issue.read_attribute(:time_estimate) }.to(nil)
       expect { issue.time_estimate = 'invalid time' }.not_to raise_error
       expect { issue.time_estimate = 22.33 }.not_to raise_error
     end
@@ -475,10 +524,11 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build and does not set labels, assignees, nor total_time_spent' do
         expect(builder).to receive(:build).with(
           user: user,
-          changes: {})
+          changes: hash_not_including(:total_time_spent, :labels, :assignees),
+          action: 'open')
 
         # In some cases, old_associations is empty, e.g. on a close event
-        issue.to_hook_data(user)
+        issue.to_hook_data(user, action: 'open')
       end
     end
 
@@ -494,11 +544,12 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'labels' => [[labels[0].hook_attrs], [labels[1].hook_attrs]]
           ))
 
-        issue.to_hook_data(user, old_associations: { labels: [labels[0]] })
+        issue.to_hook_data(user, old_associations: { labels: [labels[0]] }, action: 'update')
       end
     end
 
@@ -513,11 +564,12 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'total_time_spent' => [1, 2]
           ))
 
-        issue.to_hook_data(user, old_associations: { total_time_spent: 1 })
+        issue.to_hook_data(user, old_associations: { total_time_spent: 1 }, action: 'update')
       end
     end
 
@@ -530,14 +582,15 @@ RSpec.describe Issuable, feature_category: :team_planning do
           .to receive(:new).with(issue).and_return(builder)
       end
 
-      it 'delegates to Gitlab::DataBuilder::Issuable#build' do
+      it 'delegates to Gitlab::DataBuilder::Issuable#build', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16826' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'assignees' => [[user.hook_attrs], [user.hook_attrs, user2.hook_attrs]]
           ))
 
-        issue.to_hook_data(user, old_associations: { assignees: [user] })
+        issue.to_hook_data(user, old_associations: { assignees: [user] }, action: 'update')
       end
     end
 
@@ -555,11 +608,12 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'assignees' => [[user.hook_attrs], [user.hook_attrs, user2.hook_attrs]]
           ))
 
-        merge_request.to_hook_data(user, old_associations: { assignees: [user] })
+        merge_request.to_hook_data(user, old_associations: { assignees: [user] }, action: 'update')
       end
     end
 
@@ -577,10 +631,82 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
-            'reviewers' => [[user.hook_attrs], [user.hook_attrs, user2.hook_attrs]]
+            'reviewers' => [
+              [hash_including(user.hook_attrs.merge(state: 'unreviewed', re_requested: false))],
+              [
+                hash_including(user.hook_attrs.merge(state: 'unreviewed', re_requested: false)),
+                hash_including(user2.hook_attrs.merge(state: 'unreviewed', re_requested: false))
+              ]
+            ]
           ))
-        merge_request.to_hook_data(user, old_associations: { reviewers: [user] })
+        merge_request.to_hook_data(user, old_associations: { reviewers_hook_attrs: [user.hook_attrs.merge(state: 'unreviewed', re_requested: false)] }, action: 'update')
+      end
+    end
+
+    context 'merge_request re-request reviewer' do
+      let(:merge_request) { create(:merge_request) }
+      let(:reviewer) { create(:user) }
+
+      before do
+        merge_request.update!(reviewers: [reviewer])
+        expect(Gitlab::DataBuilder::Issuable)
+          .to receive(:new).with(merge_request).and_return(builder)
+      end
+
+      it 'includes re_requested: true in current state for re-requested reviewer' do
+        old_reviewers_hook_attrs = [reviewer.hook_attrs.merge(state: 'unreviewed', re_requested: false)]
+
+        expect(builder).to receive(:build).with(
+          user: user,
+          action: 'update',
+          changes: hash_including(
+            'reviewers' => [
+              [hash_including(reviewer.hook_attrs.merge(state: 'unreviewed', re_requested: false))],
+              [hash_including(reviewer.hook_attrs.merge(state: 'unreviewed', re_requested: true))]
+            ]
+          ))
+
+        merge_request.to_hook_data(
+          user,
+          old_associations: {
+            reviewers_hook_attrs: old_reviewers_hook_attrs,
+            re_requested_reviewer_id: reviewer.id
+          },
+          action: 'update'
+        )
+      end
+    end
+
+    context 'merge_request with reviewers updates title' do
+      let(:merge_request) { create(:merge_request, reviewers: [user]) }
+
+      before do
+        merge_request.reload
+        expect(Gitlab::DataBuilder::Issuable)
+          .to receive(:new).with(merge_request).and_return(builder)
+      end
+
+      it 'does not include false reviewer changes when only title changes' do
+        # Capture the current state
+        current_reviewers_hook_attrs = merge_request.reviewers_hook_attrs
+
+        expect(builder).to receive(:build).with(
+          user: user,
+          action: 'update',
+          changes: hash_excluding('reviewers')
+        )
+
+        # Simulate what IssuableBaseService#associations_before_update now does
+        merge_request.to_hook_data(
+          user,
+          old_associations: {
+            reviewers: merge_request.reviewers.to_a,
+            reviewers_hook_attrs: current_reviewers_hook_attrs
+          },
+          action: 'update'
+        )
       end
     end
 
@@ -596,11 +722,12 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'severity' => %w[unknown low]
           ))
 
-        issue.to_hook_data(user, old_associations: { severity: 'unknown' })
+        issue.to_hook_data(user, old_associations: { severity: 'unknown' }, action: 'update')
       end
     end
 
@@ -617,11 +744,35 @@ RSpec.describe Issuable, feature_category: :team_planning do
       it 'delegates to Gitlab::DataBuilder::Issuable#build' do
         expect(builder).to receive(:build).with(
           user: user,
+          action: 'update',
           changes: hash_including(
             'escalation_status' => %i[triggered acknowledged]
           ))
 
-        issue.to_hook_data(user, old_associations: { escalation_status: :triggered })
+        issue.to_hook_data(user, old_associations: { escalation_status: :triggered }, action: 'update')
+      end
+    end
+
+    context 'merge_request saved twice' do
+      let(:merge_request) { create(:merge_request, :unchanged, target_branch: "initial-branch", title: "initial title") }
+
+      before do
+        merge_request.update!(target_branch: "some-other-branch")
+        merge_request.update!(title: "temporary title")
+        merge_request.update!(target_branch: "final-branch", title: "final title")
+
+        expect(Gitlab::DataBuilder::Issuable).to receive(:new).with(merge_request).and_return(builder)
+      end
+
+      it 'includes the cumulative changes of both saves' do
+        expect(builder).to receive(:build).with(
+          user: user,
+          action: 'update',
+          changes: hash_including(
+            'title' => ["initial title", "final title"],
+            'target_branch' => %w[initial-branch final-branch]
+          ))
+        merge_request.to_hook_data(user, action: 'update')
       end
     end
   end
@@ -875,6 +1026,44 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
   end
 
+  describe '#notes_with_associations' do
+    let!(:note) { create(:note, noteable: issue, project: issue.project) }
+
+    it 'returns notes with associations' do
+      expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji)
+    end
+
+    context 'with remove_per_source_permission_from_participants disabled' do
+      before do
+        stub_feature_flags(remove_per_source_permission_from_participants: false)
+      end
+
+      it 'includes project and system_note_metadata associations' do
+        expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :project, :system_note_metadata)
+      end
+
+      context 'when notes already have projects loaded' do
+        before do
+          allow(issue.notes).to receive(:projects_loaded?).and_return(true)
+        end
+
+        it 'does not include project in includes' do
+          expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :system_note_metadata)
+        end
+      end
+
+      context 'when notes already have system_note_metadata loaded' do
+        before do
+          allow(issue.notes).to receive(:system_note_metadata_loaded?).and_return(true)
+        end
+
+        it 'does not include system_note_metadata in includes' do
+          expect(issue.notes_with_associations.includes_values).to contain_exactly(:author, :award_emoji, :project)
+        end
+      end
+    end
+  end
+
   describe '#first_contribution?', feature_category: :code_review_workflow do
     let(:group) { create(:group) }
     let(:project) { create(:project, namespace: group) }
@@ -884,15 +1073,15 @@ RSpec.describe Issuable, feature_category: :team_planning do
     let(:contributor) { create(:user) }
     let(:first_time_contributor) { create(:user) }
 
+    let(:merged_mr) { create(:merge_request, :merged, author: contributor, target_project: project, source_project: project) }
+    let(:open_mr) { create(:merge_request, author: first_time_contributor, target_project: project, source_project: project) }
+    let(:merged_mr_other_project) { create(:merge_request, :merged, author: first_time_contributor, target_project: other_project, source_project: other_project) }
+
     before do
       project.add_guest(guest)
       project.add_guest(contributor)
       project.add_guest(first_time_contributor)
     end
-
-    let(:merged_mr) { create(:merge_request, :merged, author: contributor, target_project: project, source_project: project) }
-    let(:open_mr) { create(:merge_request, author: first_time_contributor, target_project: project, source_project: project) }
-    let(:merged_mr_other_project) { create(:merge_request, :merged, author: first_time_contributor, target_project: other_project, source_project: other_project) }
 
     context "for merge requests" do
       it "is true when you don't have any merged MR" do
@@ -1007,21 +1196,6 @@ RSpec.describe Issuable, feature_category: :team_planning do
     end
   end
 
-  describe '#supports_issue_type?' do
-    where(:issuable_type, :supports_issue_type) do
-      :issue         | true
-      :merge_request | false
-    end
-
-    with_them do
-      let(:issuable) { build_stubbed(issuable_type) }
-
-      subject { issuable.supports_issue_type? }
-
-      it { is_expected.to eq(supports_issue_type) }
-    end
-  end
-
   describe '#supports_confidentiality?' do
     where(:issuable_type, :supports_confidentiality) do
       :issue         | true
@@ -1105,5 +1279,21 @@ RSpec.describe Issuable, feature_category: :team_planning do
 
       it_behaves_like 'an exportable'
     end
+  end
+
+  describe '#title_html' do
+    let(:expected_title) { 'An <em>issue</em>' }
+
+    subject { issue.title_html }
+
+    it { is_expected.to eq(expected_title) }
+  end
+
+  describe '#description_html' do
+    let(:expected_description) { '<p dir="auto">A <strong>description</strong></p>' }
+
+    subject { issue.description_html }
+
+    it { is_expected.to eq_no_sourcepos(expected_description) }
   end
 end

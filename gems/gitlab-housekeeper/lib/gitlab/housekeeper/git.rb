@@ -2,6 +2,7 @@
 
 require 'logger'
 require 'gitlab/housekeeper/shell'
+require 'gitlab/housekeeper/push_options'
 
 module Gitlab
   module Housekeeper
@@ -14,21 +15,17 @@ module Gitlab
         @branch_from = branch_from
       end
 
-      def with_clean_state
+      def with_clean_state(&block)
         result = Shell.execute('git', 'stash')
         stashed = !result.include?('No local changes to save')
 
-        with_return_to_current_branch(stashed: stashed) do
-          checkout_branch(@branch_from)
-
-          yield
-        end
+        with_return_to_current_branch(stashed: stashed, &block)
       end
 
       def create_branch(change)
-        branch_name = branch_name(change.identifiers)
+        branch_name = self.class.branch_name(change.identifiers)
 
-        Shell.execute("git", "branch", "-f", branch_name)
+        Shell.execute("git", "branch", "-f", branch_name, @branch_from)
 
         branch_name
       end
@@ -46,8 +43,42 @@ module Gitlab
         Shell.execute("git", "commit", "-m", change.commit_message)
       end
 
-      def push(branch_name)
-        Shell.execute('git', 'push', '-f', housekeeper_remote, "#{branch_name}:#{branch_name}")
+      def push(branch_name, push_options = PushOptions.new)
+        push_command = ['git', 'push', '-u', '-f', housekeeper_remote, "#{branch_name}:#{branch_name}"]
+        push_command << '-o ci.skip' if push_options.ci_skip
+
+        Shell.execute(*push_command)
+      end
+
+      def remote_branch_changed_files(branch_name, path = nil)
+        remote = housekeeper_remote
+        Shell.execute('git', 'fetch', remote, branch_name)
+
+        remote_ref = "#{remote}/#{branch_name}"
+
+        # Find the merge base to get only the changes introduced in the MR
+        merge_base = Shell.execute('git', 'merge-base', @branch_from, remote_ref).chomp
+
+        diff_command = ['git', 'diff', '--name-only', merge_base, remote_ref]
+        diff_command += ['--', path] if path
+
+        Shell.execute(*diff_command).each_line.map(&:chomp)
+      end
+
+      def self.branch_name(identifiers)
+        # Hyphen-case each identifier then join together with hyphens.
+        branch_name = identifiers
+          .map { |i| i.gsub(/[^\w]+/, '-') }
+          .map { |i| i.gsub(/[[:upper:]]/) { |w| "-#{w.downcase}" } }
+          .join('-')
+          .delete_prefix("-")
+
+        # Truncate if it's too long and add a digest
+        if branch_name.length > 240
+          branch_name = branch_name[0...200] + OpenSSL::Digest::SHA256.hexdigest(branch_name)[0...15]
+        end
+
+        branch_name
       end
 
       private
@@ -74,22 +105,6 @@ module Gitlab
 
       def checkout_branch(branch_name)
         Shell.execute("git", "checkout", branch_name)
-      end
-
-      def branch_name(identifiers)
-        # Hyphen-case each identifier then join together with hyphens.
-        branch_name = identifiers
-          .map { |i| i.gsub(/[^\w]+/, '-') }
-          .map { |i| i.gsub(/[[:upper:]]/) { |w| "-#{w.downcase}" } }
-          .join('-')
-          .delete_prefix("-")
-
-        # Truncate if it's too long and add a digest
-        if branch_name.length > 240
-          branch_name = branch_name[0...200] + OpenSSL::Digest::SHA256.hexdigest(branch_name)[0...15]
-        end
-
-        branch_name
       end
 
       def with_return_to_current_branch(stashed: false)

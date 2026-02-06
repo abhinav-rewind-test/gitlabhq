@@ -3,10 +3,13 @@
 require 'spec_helper'
 
 RSpec.describe ServiceHook, feature_category: :webhooks do
+  let_it_be(:project) { create(:project) }
+  let(:integration) { create(:integration, project: project) }
+  let(:hook) { build(:service_hook, integration: integration, project_id: project.id) }
+
   it_behaves_like 'a hook that does not get automatically disabled on failure' do
-    let(:hook) { create(:service_hook) }
     let(:hook_factory) { :service_hook }
-    let(:default_factory_arguments) { {} }
+    let(:default_factory_arguments) { { integration: integration } }
 
     def find_hooks
       described_class.all
@@ -14,7 +17,18 @@ RSpec.describe ServiceHook, feature_category: :webhooks do
   end
 
   describe 'associations' do
-    it { is_expected.to belong_to :integration }
+    it { is_expected.to belong_to(:integration) }
+    it { is_expected.to have_many(:web_hook_logs) }
+  end
+
+  describe '#destroy' do
+    let(:web_hook) { create(:service_hook, integration: integration, project_id: project.id) }
+
+    it 'does not cascade to web_hook_logs' do
+      create_list(:web_hook_log, 3, web_hook: web_hook)
+
+      expect { web_hook.destroy! }.not_to change { web_hook.web_hook_logs.count }
+    end
   end
 
   describe 'validations' do
@@ -22,11 +36,11 @@ RSpec.describe ServiceHook, feature_category: :webhooks do
   end
 
   describe 'execute' do
-    let(:hook) { build(:service_hook) }
     let(:data) { { key: 'value' } }
 
     it '#execute' do
-      expect(WebHookService).to receive(:new).with(hook, data, 'service_hook', force: false).and_call_original
+      expect(WebHookService).to receive(:new).with(hook, data, 'service_hook', idempotency_key: anything,
+        force: false).and_call_original
       expect_any_instance_of(WebHookService).to receive(:execute)
 
       hook.execute(data)
@@ -34,12 +48,7 @@ RSpec.describe ServiceHook, feature_category: :webhooks do
   end
 
   describe '#parent' do
-    let(:hook) { build(:service_hook, integration: integration) }
-
     context 'with a project-level integration' do
-      let(:project) { build(:project) }
-      let(:integration) { build(:integration, project: project) }
-
       it 'returns the associated project' do
         expect(hook.parent).to eq(project)
       end
@@ -48,6 +57,7 @@ RSpec.describe ServiceHook, feature_category: :webhooks do
     context 'with a group-level integration' do
       let(:group) { build(:group) }
       let(:integration) { build(:integration, :group, group: group) }
+      let(:hook) { build(:service_hook, integration: integration) }
 
       it 'returns the associated group' do
         expect(hook.parent).to eq(group)

@@ -8,9 +8,9 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
       {
         scan: {
           scanner: {
-              id: "gemnasium",
-              name: "Gemnasium",
-              version: "2.1.0"
+            id: "gemnasium",
+            name: "Gemnasium",
+            version: "2.1.0"
           }
         }
       }
@@ -41,7 +41,7 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
       end
 
       describe 'schema validation' do
-        let(:validator_class) { Gitlab::Ci::Parsers::Security::Validators::SchemaValidator }
+        let(:validator_class) { Gitlab::SecurityReportSchemas::Validator }
         let(:data) { {}.merge(scanner_data) }
         let(:json_data) { data.to_json }
         let(:parser) { described_class.new(json_data, report, signatures_enabled: signatures_enabled, validate: validate) }
@@ -63,11 +63,9 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
             parse_report
 
             expect(validator_class).not_to have_received(:new).with(
-              report.type,
               data.deep_stringify_keys,
-              report.version,
-              project: pipeline.project,
-              scanner: data.dig(:scan, :scanner).deep_stringify_keys
+              report.type,
+              report.version
             )
           end
 
@@ -105,11 +103,9 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
             parse_report
 
             expect(validator_class).to have_received(:new).with(
-              report.type,
               data.deep_stringify_keys,
-              report.version,
-              project: pipeline.project,
-              scanner: data.dig(:scan, :scanner).deep_stringify_keys
+              report.type,
+              report.version
             )
           end
 
@@ -253,17 +249,17 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
 
         describe 'top-level scanner' do
           it 'is the primary scanner' do
-            expect(report.primary_scanner.external_id).to eq('gemnasium')
-            expect(report.primary_scanner.name).to eq('Gemnasium top-level')
-            expect(report.primary_scanner.vendor).to eq('GitLab')
-            expect(report.primary_scanner.version).to eq('2.18.0')
+            expect(report.scanner.external_id).to eq('gemnasium')
+            expect(report.scanner.name).to eq('Gemnasium top-level')
+            expect(report.scanner.vendor).to eq('GitLab')
+            expect(report.scanner.version).to eq('2.18.0')
           end
 
           it 'returns nil report has no scanner' do
             empty_report = Gitlab::Ci::Reports::Security::Report.new(artifact.file_type, pipeline, 2.weeks.ago)
             described_class.parse!({}.to_json, empty_report)
 
-            expect(empty_report.primary_scanner).to be_nil
+            expect(empty_report.scanner).to be_nil
           end
         end
 
@@ -300,7 +296,7 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
             empty_report = Gitlab::Ci::Reports::Security::Report.new(artifact.file_type, pipeline, 2.weeks.ago)
             described_class.parse!({}.to_json, empty_report)
 
-            expect(empty_report.scan).to be(nil)
+            expect(empty_report.scan).to be_nil
           end
         end
 
@@ -348,9 +344,14 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
           it 'returns links object for each finding', :aggregate_failures do
             links = report.findings.flat_map(&:links)
 
-            expect(links.map(&:url)).to match_array(['https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-1020', 'https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-1030',
-                                                     "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2137", "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2138",
-                                                     "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2139", "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2140"])
+            expect(links.map(&:url)).to match_array([
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-1020",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-1030",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2137",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2138",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2139",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-2140"
+            ])
             expect(links.map(&:name)).to match_array([nil, nil, nil, nil, nil, 'CVE-1030'])
             expect(links.size).to eq(6)
             expect(links.first).to be_a(::Gitlab::Ci::Reports::Security::Link)
@@ -368,9 +369,9 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
 
             expect(all_evidences.size).to eq(7)
             expect(evidences.size).to eq(2)
-            expect(evidences).to all( be_a(::Gitlab::Ci::Reports::Security::Evidence) )
-            expect(data).to all( have_values )
-            expect(summaries).to all( match(/The Origin header was changed/) )
+            expect(evidences).to all(be_a(::Gitlab::Ci::Reports::Security::Evidence))
+            expect(data).to all(have_values)
+            expect(summaries).to all(match(/The Origin header was changed/))
           end
         end
 
@@ -425,14 +426,14 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
           context 'with invalid tracking information' do
             let(:tracking_data) do
               {
-              'type' => 'source',
-              'items' => [
-                'signatures' => [
-                  { 'algorithm' => 'hash', 'value' => 'hash_value' },
-                  { 'algorithm' => 'location', 'value' => 'location_value' },
-                  { 'algorithm' => 'INVALID', 'value' => 'scope_offset_value' }
+                'type' => 'source',
+                'items' => [
+                  'signatures' => [
+                    { 'algorithm' => 'hash', 'value' => 'hash_value' },
+                    { 'algorithm' => 'location', 'value' => 'location_value' },
+                    { 'algorithm' => 'INVALID', 'value' => 'scope_offset_value' }
+                  ]
                 ]
-              ]
               }
             end
 
@@ -445,14 +446,14 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
           context 'with valid tracking information' do
             let(:tracking_data) do
               {
-              'type' => 'source',
-              'items' => [
-                'signatures' => [
-                  { 'algorithm' => 'hash', 'value' => 'hash_value' },
-                  { 'algorithm' => 'location', 'value' => 'location_value' },
-                  { 'algorithm' => 'scope_offset', 'value' => 'scope_offset_value' }
+                'type' => 'source',
+                'items' => [
+                  'signatures' => [
+                    { 'algorithm' => 'hash', 'value' => 'hash_value' },
+                    { 'algorithm' => 'location', 'value' => 'location_value' },
+                    { 'algorithm' => 'scope_offset', 'value' => 'scope_offset_value' }
+                  ]
                 ]
-              ]
               }
             end
 
@@ -488,6 +489,12 @@ RSpec.describe Gitlab::Ci::Parsers::Security::Common, feature_category: :vulnera
             finding = report.findings.first
 
             expect(finding.solution).to eq('Upgrade to latest version.\u0000')
+          end
+
+          it 'does not introduce a Unicode null character while trying to escape an already escaped null character' do
+            finding = report.findings.first
+
+            expect(finding.description).to eq('This string does not contain a Unicode null character \\\\u0000')
           end
 
           it 'adds warning to report' do

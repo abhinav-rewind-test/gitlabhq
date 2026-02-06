@@ -1,19 +1,22 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Verify
+group: Pipeline Execution
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: GitHub
+description: Send GitLab CI/CD pipeline status updates to GitHub.
 ---
 
-# GitHub
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can update GitHub with pipeline status updates from GitLab.
 The GitHub integration can help you if you use GitLab for CI/CD.
 
-![Pipeline status update on GitHub](img/github_status_check_pipeline_update.png)
+![Pipeline status update on GitHub](img/github_status_check_pipeline_update_v10_6.png)
 
 This project integration is separate from the [instance-wide GitHub integration](../import/github.md#mirror-a-repository-and-share-pipeline-status)
 and is automatically configured when you import a [GitHub project](../../../integration/github.md).
@@ -33,8 +36,8 @@ Complete these steps on GitHub:
 
 Complete these steps in GitLab:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > Integrations**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **Integrations**.
 1. Select **GitHub**.
 1. Ensure the **Active** checkbox is selected.
 1. In **Token**, paste the token you generated on GitHub.
@@ -43,12 +46,10 @@ Complete these steps in GitLab:
 1. Optional. Select **Test settings**.
 1. Select **Save changes**.
 
-After configuring the integration, see [Pipelines for external pull requests](../../../ci/ci_cd_for_external_repos/index.md#pipelines-for-external-pull-requests)
+After configuring the integration, see [Pipelines for external pull requests](../../../ci/ci_cd_for_external_repos/_index.md#pipelines-for-external-pull-requests)
 to configure pipelines to run for open pull requests.
 
 ### Static or dynamic status check names
-
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/9931) in GitLab 12.4 to make static status check names the default behavior for new projects.
 
 A status check name can be static or dynamic:
 

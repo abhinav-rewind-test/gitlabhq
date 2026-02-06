@@ -1,41 +1,34 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Roll back to earlier GitLab versions
+description: Roll back Linux package or Docker instances to earlier versions.
 ---
 
-# Downgrade
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-This section contains general information on how to revert to an earlier version
-of a package.
+{{< /details >}}
 
-WARNING:
-You must at least have a database backup created under the version you are
-downgrading to. Ideally, you should have a
-[full backup archive](../../administration/backup_restore/index.md)
-on hand.
+You can roll back to earlier versions of GitLab instances that were installed by using the Linux package or Docker.
 
-The example below demonstrates the downgrade procedure when downgrading between minor
-and patch versions (for example, from 13.0.6 to 13.0.5).
+When rolling back, you must take into account [version-specific changes](../versions/_index.md) that occurred when you previously upgraded.
 
-When downgrading between major versions, take into account the
-[specific version changes](index.md#version-specific-changes) that occurred when you upgraded
-to the major version you are downgrading from.
+## Prerequisites
 
-These steps consist of:
+Because you must revert the database schema changes (migrations) that were made when the instance was upgraded, you
+must have:
 
-- Stopping GitLab
-- Removing the current package
-- Installing the old package
-- Reconfiguring GitLab
-- Restoring the backup
-- Starting GitLab
+- At least a database backup created under the exact same version and edition you are rolling back to.
+- Ideally, a [full backup archive](../../administration/backup_restore/_index.md) of that exact same version and edition
+  you are rolling back to.
 
-Steps:
+## Roll back a Linux package instance
+
+To roll back a Linux package instance to an earlier GitLab version:
 
 1. Stop GitLab and remove the current package:
 
@@ -53,7 +46,7 @@ Steps:
    sudo yum remove gitlab-ee
    ```
 
-1. Identify the GitLab version you want to downgrade to:
+1. Identify the GitLab version you want to roll back to:
 
    ```shell
    # (Replace with gitlab-ce if you have GitLab FOSS installed)
@@ -65,16 +58,16 @@ Steps:
    sudo yum --showduplicates list gitlab-ee
    ```
 
-1. Downgrade GitLab to the desired version (for example, to GitLab 13.0.5):
+1. Roll back GitLab to the desired version (for example, to GitLab 15.0.5):
 
    ```shell
    # (Replace with gitlab-ce if you have GitLab FOSS installed)
 
    # Ubuntu
-   sudo apt install gitlab-ee=13.0.5-ee.0
+   sudo apt install gitlab-ee=15.0.5-ee.0
 
    # CentOS:
-   sudo yum install gitlab-ee-13.0.5-ee.0.el8
+   sudo yum install gitlab-ee-15.0.5-ee.0.el8
    ```
 
 1. Reconfigure GitLab:
@@ -84,4 +77,25 @@ Steps:
    ```
 
 1. [Restore GitLab](../../administration/backup_restore/restore_gitlab.md#restore-for-linux-package-installations)
-   to complete the downgrade.
+   to complete the roll back.
+
+## Roll back a Docker instance
+
+The restore overwrites all newer GitLab database content with the older state.
+A rollback is only recommended where necessary. For example, if post-upgrade tests reveal problems that cannot be resolved quickly.
+
+> [!warning]
+> You must have at least a database backup created with the exact same version and edition you are downgrading to.
+> The backup is required to revert the schema changes (migrations) made during the upgrade.
+
+To roll back GitLab shortly after an upgrade:
+
+1. Follow the upgrade procedure, by [specifying an earlier version](../../install/docker/installation.md#find-the-gitlab-version-and-edition-to-use)
+   than you have installed.
+
+1. Restore the [database backup you made](../../install/docker/backup.md#create-a-database-backup) before the upgrade.
+
+   - [Follow the restore steps for Docker images](../../administration/backup_restore/restore_gitlab.md#restore-for-docker-image-and-gitlab-helm-chart-installations), including
+     stopping Puma and Sidekiq. Only the database must be restored, so add
+     `SKIP=artifacts,repositories,registry,uploads,builds,pages,lfs,packages,terraform_state`
+     to the `gitlab-backup restore` command line arguments.

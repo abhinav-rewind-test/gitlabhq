@@ -4,22 +4,24 @@ import { __ } from '~/locale';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { reportToSentry } from '~/ci/utils';
 import {
+  ENVIRONMENT_FETCH_ERROR,
   ENVIRONMENT_QUERY_LIMIT,
   mapEnvironmentNames,
 } from '~/ci/common/private/ci_environments_dropdown';
 import {
   ADD_MUTATION_ACTION,
   DELETE_MUTATION_ACTION,
+  genericMutationErrorText,
+  mapMutationActionToToast,
   SORT_DIRECTIONS,
   UPDATE_MUTATION_ACTION,
-  mapMutationActionToToast,
-  environmentFetchErrorText,
-  genericMutationErrorText,
   variableFetchErrorText,
 } from '../constants';
+import { validateQueryData, validateMutationData } from '../utils';
 import CiVariableSettings from './ci_variable_settings.vue';
 
 export default {
+  name: 'CiVariableShared',
   components: {
     CiVariableSettings,
   },
@@ -57,19 +59,7 @@ export default {
     mutationData: {
       required: true,
       type: Object,
-      validator: (obj) => {
-        const hasValidKeys = Object.keys(obj).includes(
-          ADD_MUTATION_ACTION,
-          UPDATE_MUTATION_ACTION,
-          DELETE_MUTATION_ACTION,
-        );
-
-        const hasValidValues = Object.values(obj).reduce((acc, val) => {
-          return acc && typeof val === 'object';
-        }, true);
-
-        return hasValidKeys && hasValidValues;
-      },
+      validator: validateMutationData,
     },
     refetchAfterMutation: {
       required: false,
@@ -79,26 +69,13 @@ export default {
     queryData: {
       required: true,
       type: Object,
-      validator: (obj) => {
-        const { ciVariables, environments } = obj;
-        const hasCiVariablesKey = Boolean(ciVariables);
-        let hasCorrectEnvData = true;
-
-        const hasCorrectVariablesData =
-          typeof ciVariables?.lookup === 'function' && typeof ciVariables.query === 'object';
-
-        if (environments) {
-          hasCorrectEnvData =
-            typeof environments?.lookup === 'function' && typeof environments.query === 'object';
-        }
-
-        return hasCiVariablesKey && hasCorrectVariablesData && hasCorrectEnvData;
-      },
+      validator: validateQueryData,
     },
   },
   data() {
     return {
       ciVariables: [],
+      environments: [],
       hasNextPage: false,
       isInitialLoading: true,
       isLoadingMoreItems: false,
@@ -142,8 +119,9 @@ export default {
             this.fetchMoreVariables();
             this.loadingCounter += 1;
           } else {
-            createAlert({ message: this.$options.tooManyCallsError });
-            reportToSentry(this.componentName, new Error(this.$options.tooManyCallsError));
+            this.isLoadingMoreItems = false;
+            createAlert({ message: this.$options.i18n.tooManyCallsError });
+            reportToSentry(this.componentName, new Error(this.$options.i18n.tooManyCallsError));
           }
         }
       },
@@ -176,13 +154,17 @@ export default {
         return mapEnvironmentNames(this.queryData.environments.lookup(data)?.nodes);
       },
       error() {
-        createAlert({ message: environmentFetchErrorText });
+        createAlert({ message: ENVIRONMENT_FETCH_ERROR });
       },
     },
   },
   computed: {
     areEnvironmentsLoading() {
       return this.$apollo.queries.environments.loading;
+    },
+    areHiddenVariablesAvailable() {
+      // group and project variables can be hidden, instance variables cannot
+      return Boolean(this.entity);
     },
     hasEnvScopeQuery() {
       return Boolean(this.queryData?.environments?.query);
@@ -309,6 +291,7 @@ export default {
 <template>
   <ci-variable-settings
     :are-environments-loading="areEnvironmentsLoading"
+    :are-hidden-variables-available="areHiddenVariablesAvailable"
     :are-scoped-variables-available="areScopedVariablesAvailable"
     :entity="entity"
     :environments="environments"

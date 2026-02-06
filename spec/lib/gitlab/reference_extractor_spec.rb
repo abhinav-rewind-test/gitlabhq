@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::ReferenceExtractor do
+RSpec.describe Gitlab::ReferenceExtractor, feature_category: :shared do
   let_it_be(:project) { create(:project) }
 
   before do
@@ -45,7 +45,7 @@ RSpec.describe Gitlab::ReferenceExtractor do
       > @offteam
     ))
 
-    expect(subject.users).to match_array([])
+    expect(subject.users).to be_empty
   end
 
   describe 'directly addressed users' do
@@ -263,7 +263,7 @@ RSpec.describe Gitlab::ReferenceExtractor do
   describe '#all' do
     let(:issue) { create(:issue, project: project) }
     let(:issue2) { create(:issue, project: project) }
-    let(:issue2_url) { Rails.application.routes.url_helpers.project_issue_url(project, issue2) }
+    let(:issue2_url) { ::Gitlab::UrlBuilder.instance.issue_url(issue2) }
     let(:label) { create(:label, project: project) }
     let(:alert) { create(:alert_management_alert, project: project) }
     let(:text) { "Ref. #{issue.to_reference} and #{label.to_reference} and #{alert.to_reference} and #{issue2_url}" }
@@ -313,14 +313,28 @@ RSpec.describe Gitlab::ReferenceExtractor do
       end
     end
 
+    # There should never be more than these 7 single-character prefixes,
+    # @, #, ~, %, !, $, and &
+    # See https://gitlab.com/groups/gitlab-org/-/epics/7563
+    it 'returns only 7 single-character prefixes' do
+      single_character_prefixes = prefixes.keys.select { |prefix| prefix.length == 1 }
+      valid_prefixes = %w[@ # ~ % ! $ &]
+
+      expect(single_character_prefixes).to match_array(valid_prefixes)
+    end
+
     it 'returns all supported prefixes' do
-      expect(prefixes.keys.uniq).to include(*%w(@ # ~ % ! $ & [vulnerability:))
+      valid_prefixes = %w(@ # ~ % ! $ & [vulnerability:)
+      valid_prefixes += %w[*iteration:] if Gitlab.ee?
+
+      expect(prefixes.keys).to match_array(valid_prefixes)
     end
 
     it 'does not allow one prefix for multiple referables if not allowed specificly' do
       # make sure you are not overriding existing prefix before changing this hash
       multiple_allowed = {
-        '@' => 3
+        '@' => 3,
+        '#' => 2
       }
 
       prefixes.each do |prefix, referables|
@@ -402,6 +416,37 @@ RSpec.describe Gitlab::ReferenceExtractor do
         it 'returns true' do
           expect(subject.all_visible?).to be_truthy
         end
+      end
+    end
+  end
+
+  describe '#has_work_item_references?' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project, :public) }
+    let(:work_item) { create(:work_item, project: project) }
+    let(:work_item_path) { "/#{work_item.project.namespace.path}/#{work_item.project.path}/-/work_items/#{work_item.iid}" }
+    let(:work_item_url) { "http://#{Gitlab.config.gitlab.host}#{work_item_path}" }
+    let(:text) { "Ref. #{work_item_url}" }
+
+    subject { described_class.new(project, user) }
+
+    context 'when work item references are present' do
+      before do
+        subject.analyze(text)
+      end
+
+      it 'returns true' do
+        expect(subject.has_work_item_references?).to be_truthy
+      end
+    end
+
+    context 'when work item references are not present' do
+      before do
+        subject.analyze("No work item references here")
+      end
+
+      it 'returns false' do
+        expect(subject.has_work_item_references?).to be_falsey
       end
     end
   end

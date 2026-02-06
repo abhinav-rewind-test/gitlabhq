@@ -1,7 +1,8 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
 import { GlAlert, GlButton, GlEmptyState, GlLink, GlSprintf, GlTable } from '@gitlab/ui';
-import { setUrlParams, DOCS_URL_IN_EE_DIR } from 'jh_else_ce/lib/utils/url_utility';
+import { setUrlParams } from 'jh_else_ce/lib/utils/url_utility';
+import { DOCS_URL_IN_EE_DIR } from '~/constants';
 import { __ } from '~/locale';
 
 const GOOGLE_CONSOLE_URL = 'https://console.cloud.google.com/iam-admin/serviceaccounts';
@@ -23,7 +24,7 @@ export default {
     },
   },
   tableFields: [
-    { key: 'ref', label: __('Environment'), sortable: true },
+    { key: 'ref', label: __('Environment'), sortable: true, isRowHeader: true },
     { key: 'gcp_project', label: __('Google Cloud Project'), sortable: true },
     { key: 'service_account_exists', label: __('Service Account'), sortable: true },
     { key: 'service_account_key_exists', label: __('Service Account Key'), sortable: true },
@@ -46,7 +47,7 @@ export default {
   },
   methods: {
     gcpProjectUrl(id) {
-      return setUrlParams({ project: id }, GOOGLE_CONSOLE_URL);
+      return setUrlParams({ project: id }, { url: GOOGLE_CONSOLE_URL });
     },
   },
   GOOGLE_CONSOLE_URL,
@@ -67,7 +68,7 @@ export default {
     />
 
     <div v-else>
-      <h2 class="gl-font-size-h2">{{ $options.i18n.serviceAccountsTitle }}</h2>
+      <h2 class="gl-text-size-h2">{{ $options.i18n.serviceAccountsTitle }}</h2>
       <p>{{ $options.i18n.serviceAccountsDescription }}</p>
 
       <gl-table :items="list" :fields="$options.tableFields">

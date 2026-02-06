@@ -13,11 +13,11 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
   end
 
   def sidebar_release_block
-    find('.milestone-sidebar .block.releases')
+    find_by_testid('milestone-sidebar-releases')
   end
 
   def sidebar_release_block_collapsed_icon
-    find('.milestone-sidebar .block.releases .sidebar-collapsed-icon')
+    find_by_testid('milestone-sidebar-releases-collapsed-icon')
   end
 
   before do
@@ -27,19 +27,22 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
   context 'when project has enabled issues' do
     before do
       visit project_milestone_path(project, milestone)
-    end
 
-    it 'shows issues tab' do
-      within('#content-body') do
-        expect(page).to have_link 'Issues', href: '#tab-issues'
-        expect(page).to have_selector active_tab_selector, count: 1
-        expect(find(active_tab_selector)).to have_content 'Issues'
-        expect(page).to have_text('Unstarted Issues')
+      if page.has_css?('.milestone-sidebar .js-sidebar-expand', wait: 0)
+        find('.milestone-sidebar .js-sidebar-expand').click
       end
     end
 
-    it 'shows issues stats' do
-      expect(find('.milestone-sidebar')).to have_content 'Issues 0'
+    it 'shows work items tab' do
+      within('#content-body') do
+        expect(page).to have_link 'Work items', href: '#tab-issues'
+        expect(page).to have_selector active_tab_selector, count: 1
+        expect(find(active_tab_selector)).to have_content 'Work items'
+      end
+    end
+
+    it 'shows Work item stats' do
+      expect(find('.milestone-sidebar')).to have_content 'Work items 0'
     end
 
     it 'shows link to browse and add issues' do
@@ -88,15 +91,15 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
       visit project_milestone_path(project, milestone)
     end
 
-    it 'does not show any issues under the issues tab' do
+    it 'does not show any work items under the work items tab' do
       within('#content-body') do
-        expect(find(active_tab_selector)).to have_content 'Issues'
+        expect(find(active_tab_selector)).to have_content 'Work items'
         expect(page).not_to have_selector '.issuable-row'
       end
     end
 
-    it 'hides issues stats' do
-      expect(find('.milestone-sidebar')).not_to have_content 'Issues 0'
+    it 'hides work items stats' do
+      expect(find('.milestone-sidebar')).not_to have_content 'Work items 0'
     end
 
     it 'hides new issue button' do
@@ -136,6 +139,10 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
   context 'when the milestone is not associated with a release' do
     before do
       visit project_milestone_path(project, milestone)
+
+      if page.has_css?('.milestone-sidebar .js-sidebar-expand', wait: 0)
+        find('.milestone-sidebar .js-sidebar-expand').click
+      end
     end
 
     it 'shows "None" in the "Releases" section' do
@@ -162,6 +169,10 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
       create(:release, project: project, name: 'Version 5', milestones: [milestone])
 
       visit project_milestone_path(project, milestone)
+
+      if page.has_css?('.milestone-sidebar .js-sidebar-expand', wait: 0)
+        find('.milestone-sidebar .js-sidebar-expand').click
+      end
     end
 
     it 'shows "Version 5" in the "Release" section' do
@@ -191,6 +202,10 @@ RSpec.describe 'Project milestone', :js, feature_category: :team_planning do
       end
 
       visit project_milestone_path(project, milestone)
+
+      if page.has_css?('.milestone-sidebar .js-sidebar-expand', wait: 0)
+        find('.milestone-sidebar .js-sidebar-expand').click
+      end
     end
 
     it 'shows a shortened list of releases in the "Releases" section' do

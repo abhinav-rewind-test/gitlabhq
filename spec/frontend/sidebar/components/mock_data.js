@@ -29,6 +29,18 @@ export const getIssueCrmContactsQueryResponse = {
   },
 };
 
+export const getIssueCrmContactsQueryResponseEmpty = {
+  data: {
+    issue: {
+      __typename: 'Issue',
+      id: 'gid://gitlab/Issue/123',
+      customerRelationsContacts: {
+        nodes: [],
+      },
+    },
+  },
+};
+
 export const issueCrmContactsUpdateNullResponse = {
   data: {
     issueCrmContactsUpdated: null,
@@ -80,3 +92,20 @@ export const mockSuggestedColors = {
   '#ed9121': 'Carrot orange',
   '#c39953': 'Aztec Gold',
 };
+
+export const mockSuggestedEpicColors = [
+  { '#E9BE74': 'Apricot' },
+  { '#D99530': 'Copper' },
+  { '#C17D10': 'Rust' },
+  { '#F57F6C': 'Pink' },
+  { '#EC5941': 'Vermilion' },
+  { '#DD2B0E': 'Red' },
+  { '#C91C00': 'Dark red' },
+  { '#52B87A': 'Teal' },
+  { '#2DA160': 'Green' },
+  { '#108548': 'Forest green' },
+  { '#63A6E9': 'Sky blue' },
+  { '#428FDC': 'Royal blue' },
+  { '#1F75CB': 'Blue' },
+  { '#1068BF': 'Midnight blue' },
+];

@@ -5,8 +5,12 @@ require 'spec_helper'
 RSpec.describe Gitlab::Ci::Build::Context::Global, feature_category: :pipeline_composition do
   let(:pipeline)       { create(:ci_pipeline) }
   let(:yaml_variables) { {} }
+  let(:logger) { instance_double(Gitlab::Ci::Pipeline::Logger) }
 
-  let(:context) { described_class.new(pipeline, yaml_variables: yaml_variables) }
+  let(:context) do
+    allow(logger).to receive(:instrument).and_yield
+    described_class.new(pipeline, yaml_variables: yaml_variables, logger: logger)
+  end
 
   shared_examples 'variables collection' do
     it { is_expected.to include('CI_COMMIT_REF_NAME' => 'master') }
@@ -15,11 +19,13 @@ RSpec.describe Gitlab::Ci::Build::Context::Global, feature_category: :pipeline_c
 
     it { is_expected.not_to have_key('CI_JOB_NAME') }
 
-    context 'with passed yaml variables' do
+    shared_examples 'with passed yaml variables' do
       let(:yaml_variables) { [{ key: 'SUPPORTED', value: 'parsed', public: true }] }
 
       it { is_expected.to include('SUPPORTED' => 'parsed') }
     end
+
+    it_behaves_like 'with passed yaml variables'
   end
 
   describe '#variables' do
@@ -36,5 +42,25 @@ RSpec.describe Gitlab::Ci::Build::Context::Global, feature_category: :pipeline_c
     it { is_expected.to be_instance_of(ActiveSupport::HashWithIndifferentAccess) }
 
     it_behaves_like 'variables collection'
+  end
+
+  describe '#top_level_worktree_paths' do
+    subject(:top_level_worktree_paths) { context.top_level_worktree_paths }
+
+    it 'delegates to pipeline' do
+      expect(pipeline).to receive(:top_level_worktree_paths)
+
+      top_level_worktree_paths
+    end
+  end
+
+  describe '#all_worktree_paths' do
+    subject(:all_worktree_paths) { context.all_worktree_paths }
+
+    it 'delegates to pipeline' do
+      expect(pipeline).to receive(:all_worktree_paths)
+
+      all_worktree_paths
+    end
   end
 end

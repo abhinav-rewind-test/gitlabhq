@@ -3,13 +3,13 @@
 require 'rubocop_spec_helper'
 require_relative '../../../../rubocop/cop/gitlab/mark_used_feature_flags'
 
-RSpec.describe RuboCop::Cop::Gitlab::MarkUsedFeatureFlags do
+RSpec.describe RuboCop::Cop::Gitlab::MarkUsedFeatureFlags, feature_category: :scalability do
   let(:defined_feature_flags) do
     %w[a_feature_flag foo_hello foo_world bar_baz baz]
   end
 
   before do
-    allow(cop).to receive(:defined_feature_flags).and_return(defined_feature_flags)
+    allow(RuboCop::FeatureFlags).to receive(:all_feature_flag_names).and_return(defined_feature_flags)
     allow(cop).to receive(:usage_data_counters_known_event_feature_flags).and_return([])
     described_class.feature_flags_already_tracked = false
   end
@@ -44,8 +44,11 @@ RSpec.describe RuboCop::Cop::Gitlab::MarkUsedFeatureFlags do
     Feature.enabled?
     Feature.disabled?
     push_frontend_feature_flag
-    YamlProcessor::FeatureFlags.enabled?
-    ::Gitlab::Ci::YamlProcessor::FeatureFlags.enabled?
+    FeatureFlags.enabled?
+    Config::FeatureFlags.enabled?
+    ::Gitlab::Ci::Config::FeatureFlags.enabled?
+    ::Gitlab::AiGateway.push_feature_flag
+    Gitlab::AiGateway.push_feature_flag
   ].each do |feature_flag_method|
     context "#{feature_flag_method} method" do
       context 'a string feature flag' do
@@ -93,6 +96,41 @@ RSpec.describe RuboCop::Cop::Gitlab::MarkUsedFeatureFlags do
 
       context 'a symbol feature flag' do
         include_examples 'sets flag as used', %|#{feature_flag_method}(:foo)|, 'gitaly_foo'
+      end
+
+      context 'an interpolated string feature flag with a string prefix' do
+        include_examples 'sets flag as used', %|#{feature_flag_method}("foo_\#{bar}")|, %w[foo_hello foo_world]
+      end
+
+      context 'an interpolated symbol feature flag with a string prefix' do
+        include_examples 'sets flag as used', %|#{feature_flag_method}(:"foo_\#{bar}")|, %w[foo_hello foo_world]
+      end
+
+      context 'an interpolated string feature flag with a string prefix and suffix' do
+        include_examples 'does not set any flags as used', %|#{feature_flag_method}(:"foo_\#{bar}_baz")|
+      end
+
+      context 'a dynamic string feature flag as a variable' do
+        include_examples 'does not set any flags as used', %|#{feature_flag_method}(a_variable, an_arg)|
+      end
+
+      context 'an integer feature flag' do
+        include_examples 'does not set any flags as used', %|#{feature_flag_method}(123)|
+      end
+    end
+  end
+
+  %w[
+    Feature::Kas.enabled?
+    Feature::Kas.disabled?
+  ].each do |feature_flag_method|
+    context "#{feature_flag_method} method", feature_category: :deployment_management do
+      context 'a string feature flag' do
+        include_examples 'sets flag as used', %|#{feature_flag_method}("foo")|, 'kas_foo'
+      end
+
+      context 'a symbol feature flag' do
+        include_examples 'sets flag as used', %|#{feature_flag_method}(:foo)|, 'kas_foo'
       end
 
       context 'an interpolated string feature flag with a string prefix' do

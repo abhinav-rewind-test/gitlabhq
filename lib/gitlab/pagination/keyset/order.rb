@@ -58,7 +58,6 @@ module Gitlab
       #         attribute_name: :created_at,
       #         column_expression: Project.arel_table[:created_at],
       #         order_expression: Project.arel_table[:created_at].asc,
-      #         distinct: false, # values in the column are not unique
       #         nullable: :nulls_last # we might see NULL values (bottom)
       #       ),
       #       Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
@@ -240,7 +239,10 @@ module Gitlab
         def build_or_query(expressions)
           return [] if expressions.blank?
 
-          or_expression = expressions.reduce { |or_expression, expression| Arel::Nodes::Or.new(or_expression, expression) }
+          or_expression = expressions.reduce do |or_expression, expression|
+            Arel::Nodes::Or.new([or_expression, expression])
+          end
+
           Arel::Nodes::Grouping.new(or_expression)
         end
 

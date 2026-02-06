@@ -19,6 +19,10 @@ class MemberPresenter < Gitlab::View::Presenter::Delegated
     []
   end
 
+  def role_type
+    'default'
+  end
+
   def can_resend_invite?
     invite? &&
       can?(current_user, admin_member_permission, source)
@@ -41,16 +45,13 @@ class MemberPresenter < Gitlab::View::Presenter::Delegated
     false
   end
 
-  # This functionality is only available in EE.
-  def custom_permissions
-    []
-  end
-
   def last_owner?
     raise NotImplementedError
   end
 
-  def member_role_description; end
+  def member_role_description
+    member.role_description
+  end
 
   private
 

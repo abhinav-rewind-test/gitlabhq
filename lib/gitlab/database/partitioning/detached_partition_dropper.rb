@@ -3,6 +3,8 @@ module Gitlab
   module Database
     module Partitioning
       class DetachedPartitionDropper
+        PROCESSING_DELAY = 1.minute
+
         def perform
           Gitlab::AppLogger.info(message: "Checking for previously detached partitions to drop")
 
@@ -12,11 +14,21 @@ module Gitlab
             else
               drop_partition(detached_partition)
             end
+
+            sleep(PROCESSING_DELAY)
           rescue StandardError => e
             Gitlab::AppLogger.error(message: "Failed to drop previously detached partition",
-                                    partition_name: detached_partition.table_name,
-                                    exception_class: e.class,
-                                    exception_message: e.message)
+              partition_name: detached_partition.table_name,
+              exception_class: e.class,
+              exception_message: e.message)
+          end
+        end
+
+        def drop_all_detached_partitions!
+          raise 'This is meant to be used only for test cleanup' unless Rails.env.test?
+
+          Postgresql::DetachedPartition.all.find_each do |detached_partition|
+            drop_partition(detached_partition) unless partition_attached?(detached_partition.fully_qualified_table_name)
           end
         end
 
@@ -76,9 +88,9 @@ module Gitlab
               connection.execute("ALTER TABLE #{connection.quote_table_name(partition_identifier)} DROP CONSTRAINT #{connection.quote_table_name(foreign_key.name)}")
 
               Gitlab::AppLogger.info(message: "Dropped foreign key for previously detached partition",
-                                     partition_name: detached_partition.table_name,
-                                     referenced_table_name: foreign_key.referenced_table_identifier,
-                                     foreign_key_name: foreign_key.name)
+                partition_name: detached_partition.table_name,
+                referenced_table_name: foreign_key.referenced_table_identifier,
+                foreign_key_name: foreign_key.name)
             end
           end
         end

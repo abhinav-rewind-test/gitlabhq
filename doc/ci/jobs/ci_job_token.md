@@ -1,14 +1,16 @@
 ---
-stage: Verify
+stage: Software Supply Chain Security
 group: Pipeline Security
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: GitLab CI/CD job token
 ---
 
-# GitLab CI/CD job token
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 When a CI/CD pipeline job is about to run, GitLab generates a unique token and makes it available
 to the job as the [`CI_JOB_TOKEN` predefined variable](../variables/predefined_variables.md).
@@ -17,37 +19,54 @@ is revoked and you cannot use the token anymore.
 
 Use a CI/CD job token to authenticate with certain GitLab features from running jobs.
 The token receives the same access level as the user that triggered the pipeline,
-but has access to fewer resources than a personal access token. A user can cause a job to run
+but has [access to fewer resources](#job-token-access) than a personal access token. A user can cause a job to run
 with an action like pushing a commit, triggering a manual job, or being the owner of a scheduled pipeline.
-This user must be have a [role that has the required privileges](../../user/permissions.md#gitlab-cicd-permissions)
+This user must have a [role that has the required privileges](../../user/permissions.md#project-cicd)
 to access the resources.
 
-You can use a job token to authenticate with GitLab to access another project's resources (the target project).
-By default, the job token's project must be [added to the target project's allowlist](#add-a-project-to-the-job-token-allowlist).
+You can use a job token to authenticate with GitLab to access another group or project's resources (the target project).
+By default, the job token's group or project must be [added to the target project's allowlist](#add-a-group-or-project-to-the-job-token-allowlist).
 
 If a project is public or internal, you can access some features without being on the allowlist.
 For example, you can fetch artifacts from the project's public pipelines.
 This access can also [be restricted](#limit-job-token-scope-for-public-or-internal-projects).
 
-| Feature                                                                                               | Additional details |
-|-------------------------------------------------------------------------------------------------------|--------------------|
-| [Container registry API](../../api/container_registry.md)                                             | The token is scoped to the container registry of the job's project only. |
-| [Container registry](../../user/packages/container_registry/build_and_push_images.md#use-gitlab-cicd) | The `$CI_REGISTRY_PASSWORD` [predefined variable](../variables/predefined_variables.md) is the CI/CD job token. |
-| [Deployments API](../../api/deployments.md)                                                          | `GET` requests are public by default. |
-| [Environments API](../../api/environments.md)                                                        | `GET` requests are public by default. |
-| [Job artifacts API](../../api/job_artifacts.md#get-job-artifacts)                                    | `GET` requests are public by default. |
-| [Jobs API](../../api/jobs.md#get-job-tokens-job)                                                     | To get the job token's job. |
-| [Package registry](../../user/packages/package_registry/index.md#to-build-packages)                  |         |
-| [Packages API](../../api/packages.md)                                                                 | `GET` requests are public by default. |
-| [Pipeline triggers](../../api/pipeline_triggers.md)                                                   | Used with the `token=` parameter to [trigger a multi-project pipeline](../pipelines/downstream_pipelines.md#trigger-a-multi-project-pipeline-by-using-the-api). |
-| [Pipelines API](../../api/pipelines.md#update-pipeline-metadata)                                      | To update pipeline metadata. |
-| [Release links API](../../api/releases/links.md)                                                     |         |
-| [Releases API](../../api/releases/index.md)                                                           | `GET` requests are public by default. |
-| [Terraform plan](../../user/infrastructure/index.md)                                                 |         |
+## Job token access
 
-A job token can access a project's resources without any configuration, but it might
-give extra permissions that aren't necessary. There is [a proposal](https://gitlab.com/groups/gitlab-org/-/epics/3559)
-to redesign the feature for more granular control of access permissions.
+{{< history >}}
+
+- Permission to get a single tag [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/216463) in GitLab 18.8.
+
+{{< /history >}}
+
+CI/CD job tokens can access the following resources:
+
+| Resource                                                                                              | Notes |
+| ----------------------------------------------------------------------------------------------------- | ----- |
+| [Branches API](../../api/branches.md)                                                                 | Can access the `GET /projects/:id/repository/branches` endpoint. |
+| [Commits API](../../api/commits.md)                                                                   | Can access the `GET /projects/:id/repository/commits/:sha` and `GET /projects/:id/repository/commits/:sha/merge_requests` endpoints. |
+| [Container registry](../../user/packages/container_registry/build_and_push_images.md#use-gitlab-cicd) | Used as the `$CI_REGISTRY_PASSWORD` [predefined variable](../variables/predefined_variables.md) to authenticate with the container registry associated with the job's project. |
+| [Package registry](../../user/packages/package_registry/_index.md#to-build-packages)                  | Used to authenticate with the registry. |
+| [Terraform module registry](../../user/packages/terraform_module_registry/_index.md)                  | Used to authenticate with the registry. |
+| [Secure files](../secure_files/_index.md#use-secure-files-in-cicd-jobs)                               | Used by the [`glab securefile`](https://gitlab.com/gitlab-org/cli/-/tree/main/docs/source/securefile) command to use secure files in jobs. |
+| [Container registry API](../../api/container_registry.md)                                             | Can authenticate only with the container registry associated with the job's project. |
+| [Deployments API](../../api/deployments.md)                                                           | Can access all endpoints in this API. |
+| [Environments API](../../api/environments.md)                                                         | Can access all endpoints in this API. |
+| [Files API](../../api/repository_files.md)                                                            | Can access the `GET /projects/:id/repository/files/:file_path/raw` endpoint. |
+| [Jobs API](../../api/jobs.md#retrieve-a-job-by-job-token)                                             | Can access only the `GET /job` endpoint. |
+| [Job artifacts API](../../api/job_artifacts.md)                                                       | Can access download endpoints only. |
+| [Merge requests API](../../api/merge_requests.md)                                                     | Can access the `GET /projects/:id/merge_requests` and `GET /projects/:id/merge_requests/:merge_request_iid` endpoints. |
+| [Notes API](../../api/notes.md)                                                                       | Can access the `GET /projects/:id/merge_requests/:merge_request_iid/notes` and `GET /projects/:id/merge_requests/:merge_request_iid/notes/:note_id` endpoints. |
+| [Packages API](../../api/packages.md)                                                                 | Can access all endpoints in this API. |
+| [Pipeline trigger tokens API](../../api/pipeline_triggers.md#trigger-a-pipeline-with-a-token)         | Can access only the `POST /projects/:id/trigger/pipeline` endpoint. |
+| [Pipelines API](../../api/pipelines.md#update-pipeline-metadata)                                      | Can access only the `PUT /projects/:id/pipelines/:pipeline_id/metadata` endpoint. |
+| [Release links API](../../api/releases/links.md)                                                      | Can access all endpoints in this API. |
+| [Releases API](../../api/releases/_index.md)                                                          | Can access all endpoints in this API. |
+| [Repositories API](../../api/repositories.md#generate-changelog-data)                                 | Can access only the `GET /projects/:id/repository/changelog` endpoint of public repositories. |
+| [Tags API](../../api/tags.md)                                                                         | Can access the `GET /projects/:id/repository/tags` and `GET /projects/:id/repository/tags/:tag_name` endpoints. |
+
+An open [proposal](https://gitlab.com/groups/gitlab-org/-/epics/3559) exists to make permissions
+more granular.
 
 ## GitLab CI/CD job token security
 
@@ -58,10 +77,10 @@ GitLab:
 - Masks the job token in job logs.
 - Grants permissions to the job token only when the job is running.
 
-You should also configure your [runners](../runners/index.md) to be secure:
+You should also configure your [runners](../runners/_index.md) to be secure:
 
 - Avoid using Docker `privileged` mode if the machines are re-used.
-- Avoid using the [`shell` executor](https://docs.gitlab.com/runner/executors/shell.html) when jobs
+- Avoid using the [`shell` executor](https://docs.gitlab.com/runner/executors/shell/) when jobs
   run on the same machine.
 
 An insecure GitLab Runner configuration increases the risk that someone can steal tokens from other
@@ -69,56 +88,71 @@ jobs.
 
 ## Control job token access to your project
 
-You can control which projects can use a job token to authenticate and access your project's resources.
+You can control which groups or projects can use a job token to authenticate and access some of your project's resources.
 
 By default, job token access is restricted to only CI/CD jobs that run in pipelines in
-your project. To allow another project to authenticate with a job token from the other
+your project. To allow another group or project to authenticate with a job token from the other
 project's pipeline:
 
-- You must [add the project to the job token allowlist](#add-a-project-to-the-job-token-allowlist).
+- You must [add the group or project to the job token allowlist](#add-a-group-or-project-to-the-job-token-allowlist).
 - The user that triggers the job must be a member of your project.
 - The user must have the [permissions](../../user/permissions.md) to perform the action.
 
 If your project is public or internal, some publicly accessible resources can be accessed
 with a job token from any project. These resources can also be [limited to only projects on the allowlist](#limit-job-token-scope-for-public-or-internal-projects).
 
-### Add a project to the job token allowlist
+GitLab Self-Managed administrators can [override and enforce this setting](../../administration/settings/continuous_integration.md#access-job-token-permission-settings).
+When the setting is enforced, the CI/CD job token is always restricted to the project's allowlist.
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/346298/) in GitLab 15.9. [Deployed behind the `:inbound_ci_scoped_job_token` feature flag](../../user/feature_flags.md), enabled by default.
-> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/346298/) in GitLab 15.10.
-> - **Allow access to this project with a CI_JOB_TOKEN** setting [renamed to **Limit access _to_ this project**](https://gitlab.com/gitlab-org/gitlab/-/issues/411406) in GitLab 16.3.
+### Add a group or project to the job token allowlist
 
-You can add projects to your job token allowlist to allow access your project's resources
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/346298/) in GitLab 15.9. [Deployed behind the `:inbound_ci_scoped_job_token` feature flag](../../administration/feature_flags/_index.md), enabled by default.
+- [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/346298/) in GitLab 15.10.
+- **Allow access to this project with a CI_JOB_TOKEN** setting [renamed to **Limit access to this project**](https://gitlab.com/gitlab-org/gitlab/-/issues/411406) in GitLab 16.3.
+- Adding groups to the job token allowlist [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/415519) in GitLab 17.0.
+- **Token Access** section renamed to **Job token permissions**, and [**Limit access to this project** setting renamed to **Authorized groups and projects**](https://gitlab.com/gitlab-org/gitlab/-/issues/415519) in GitLab 17.2.
+- **Add project** option [renamed to **Add**](https://gitlab.com/gitlab-org/gitlab/-/issues/470880/) in GitLab 17.6.
+
+{{< /history >}}
+
+You can add groups or projects to your job token allowlist to allow access to your project's resources
 with a job token for authentication. By default, the allowlist of any project only includes itself.
+Add groups or projects to the allowlist only when cross-project access is needed.
+
+Adding a project to the allowlist does not give additional [permissions](../../user/permissions.md)
+to the members of the allowlisted project. They must already have permissions to access the resources
+in your project to use a job token from the allowlisted project to access your project.
 
 For example, project A can add project B to project A's allowlist. CI/CD jobs
 in project B (the "allowed project") can now use CI/CD job tokens to
 authenticate API calls to access project A.
 
-Add projects to the allowlist only when cross-project access is needed.
-
 Prerequisites:
 
-- You must have at least the Maintainer role in the current project. If the allowed project
+- You must have at least the Maintainer role for the current project. If the allowed project
   is internal or private, you must have at least the Guest role in that project.
-- You must not have more than 200 projects added to the allowlist.
+- You must not have more than 200 groups and projects added to the allowlist.
 
-To add a project to the allowlist:
+To add a group or project to the allowlist:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > CI/CD**.
-1. Expand **Token Access**.
-1. Ensure the **Limit access _to_ this project** toggle is enabled. Enabled by default in new projects.
-   It is a security risk to disable this feature, so project maintainers or owners should
-   keep this setting enabled at all times.
-1. Select **Add project**.
-1. Input the path to the project to add to the allowlist, and select **Add project**.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **CI/CD**.
+1. Expand **Job token permissions**.
+1. Select **Add group or project**.
+1. Input the path to the group or project to add to the allowlist, and select **Add**.
 
-You can also add a project to the allowlist [with the API](../../api/graphql/reference/index.md#mutationcijobtokenscopeaddproject).
+You can also add a group or project to the allowlist [with the API](../../api/graphql/reference/_index.md#mutationcijobtokenscopeaddgrouporproject).
 
 ### Limit job token scope for public or internal projects
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/405369) in GitLab 16.6.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/405369) in GitLab 16.6.
+- Access to the repository [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/439158) in GitLab 17.0.
+
+{{< /history >}}
 
 Projects not in the allowlist can use a job token to authenticate with public or internal projects to:
 
@@ -126,6 +160,7 @@ Projects not in the allowlist can use a job token to authenticate with public or
 - Access the container registry.
 - Access the package registry.
 - Access releases, deployments, and environments.
+- Access the repository.
 
 You can limit access to these actions to only the projects on the allowlist by setting
 each feature to be only visible to project members.
@@ -136,8 +171,8 @@ Prerequisites:
 
 To set a feature to be only visible to project members:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. Set the visibility to **Only project members** for the features you want to restrict access to.
    - The ability to fetch artifacts is controlled by the CI/CD visibility setting.
@@ -145,87 +180,172 @@ To set a feature to be only visible to project members:
 
 ### Allow any project to access your project
 
-> - **Allow access to this project with a CI_JOB_TOKEN** setting [renamed to **Limit access _to_ this project**](https://gitlab.com/gitlab-org/gitlab/-/issues/411406) in GitLab 16.3.
+{{< details >}}
 
-WARNING:
-It is a security risk to disable the token access limit and allowlist. A malicious user could try to compromise
-a pipeline created in an unauthorized project. If the pipeline was created by one of
-your maintainers, the job token could be used in an attempt to access your project.
+- Offering: GitLab Self-Managed, GitLab Dedicated
 
-If you disable the **Limit access _to_ this project** setting, the allowlist is ignored.
-Jobs from any project could access your project with a job token if the user that
-triggers the pipeline has permission to access your project.
+{{< /details >}}
 
+{{< history >}}
+
+- **Allow access to this project with a CI_JOB_TOKEN** setting [renamed to **Limit access to this project**](https://gitlab.com/gitlab-org/gitlab/-/issues/411406) in GitLab 16.3.
+- **Token Access** section renamed to **Job token permissions**, and [**Limit access to this project** setting renamed to **Authorized groups and projects**](https://gitlab.com/gitlab-org/gitlab/-/issues/415519) in GitLab 17.2.
+
+{{< /history >}}
+
+> [!warning]
+> It is a security risk to disable the token access limit and allowlist. A malicious user could try to compromise
+> a pipeline created in an unauthorized project. If the pipeline was created by one of
+> your maintainers, the job token could be used in an attempt to access your project.
+
+If you disable the CI/CD job token allowlist, jobs from any project can access your project
+with a job token. The user that triggers the pipeline must have permission to access your project.
 You should only disable this setting for testing or a similar reason,
 and you should enable it again as soon as possible.
+
+This option is only available on GitLab Self-Managed or GitLab Dedicated instances with the
+[**Enable and enforce job token allowlist for all projects** setting](../../administration/settings/continuous_integration.md#enforce-job-token-allowlist)
+disabled.
 
 Prerequisites:
 
 - You must have at least the Maintainer role for the project.
 
-To disable the job token scope allowlist:
+To disable the job token allowlist:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > CI/CD**.
-1. Expand **Token Access**.
-1. Toggle **Limit access _to_ this project** to disabled.
-   Enabled by default in new projects.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **CI/CD**.
+1. Expand **Job token permissions**.
+1. Under **Authorized groups and projects**, select **All groups and projects**.
+1. Recommended. When finished testing, select **This project and any groups and projects in the allowlist** to re-enable the job token allowlist.
 
-You can also enable and disable the setting with the [GraphQL](../../api/graphql/reference/index.md#mutationprojectcicdsettingsupdate) (`inboundJobTokenScopeEnabled`) and [REST](../../api/project_job_token_scopes.md#patch-a-projects-cicd-job-token-access-settings) API.
+You can also modify this setting with the [GraphQL](../../api/graphql/reference/_index.md#mutationprojectcicdsettingsupdate)
+(`inboundJobTokenScopeEnabled`) or [REST](../../api/project_job_token_scopes.md#patch-a-projects-cicd-job-token-access-settings) API.
 
-## Use a job token to clone a private project's repository
+### Allow Git push requests to your project repository
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/389060) in GitLab 17.2. [with a flag](../../administration/feature_flags/_index.md) named `allow_push_repository_for_job_token`. Disabled by default.
+- **Token Access** section renamed to **Job token permissions**, and [**Limit access to this project** setting renamed to **Authorized groups and projects**](https://gitlab.com/gitlab-org/gitlab/-/issues/415519) in GitLab 17.2.
+
+- [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/468320) in GitLab 18.3
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/issues/468320) in GitLab 18.4. Feature flag `allow_push_repository_for_job_token` removed.
+
+{{< /history >}}
+
+You can configure your project to allow Git push requests that are authenticated with a CI/CD job
+token. This setting is turned off by default.
+
+When you turn on this setting, only job tokens generated by CI/CD jobs that run in the project
+pipelines can push to the project. Job tokens from other
+[projects or groups in the allowlist](#add-a-group-or-project-to-the-job-token-allowlist) cannot
+push to your project.
+
+When you use a job token to push to the project, no CI/CD pipelines are triggered.
+The job token has the same access permissions as the user who started the job.
+
+If you use the `semantic-release` tool, [this setting might prevent pipeline creation](#the-semantic-release-tool-and-job-tokens).
+
+> [!warning]
+> Do not enable this setting on projects configured as [pull mirrors](../../user/project/repository/mirror/pull.md),
+> especially if [pipelines are triggered for mirror updates](../../user/project/repository/mirror/pull.md#trigger-pipelines-for-mirror-updates).
+> The upstream repository owner could attempt to use the `CI_JOB_TOKEN` to push commits to the mirrored project.
+
+Prerequisites:
+
+- You must have at least the Maintainer role for the project.
+
+To grant permission to job tokens generated in your project to push to the project's repository:
+
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **CI/CD**.
+1. Expand **Job token permissions**.
+1. In the **Permissions** section, select **Allow Git push requests to the repository**.
+
+You can also control this setting with the `ci_push_repository_for_job_token_allowed` parameter in
+the [projects API](../../api/projects.md#edit-a-project).
+
+## Fine-grained permissions for job tokens
+
+You can use fine-grained permissions to explicitly allow access to a limited set of REST API endpoints.
+
+For more information, see [fine-grained permissions for CI/CD job tokens](fine_grained_permissions.md).
+
+## Git repository cloning
 
 You can use the job token to authenticate and clone a repository from a private project
-in a CI/CD job. For example:
+in a CI/CD job. Use `gitlab-ci-token` as the user, and the value of the job token as the password.
+
+For example:
 
 ```shell
 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.example.com/<namespace>/<project>
 ```
 
-You can use this job token to clone a repository even if the HTTPS protocol is [disabled by group, project, or instance settings](../../administration/settings/visibility_and_access_controls.md#configure-enabled-git-access-protocols). You cannot use a job token to push to a repository, but [issue 389060](https://gitlab.com/gitlab-org/gitlab/-/issues/389060)
-proposes to change this behavior.
+You can use this job token to clone a repository even if the HTTPS protocol is
+[disabled by group, project, or instance settings](../../administration/settings/visibility_and_access_controls.md#configure-enabled-git-access-protocols).
 
-## Limit your project's job token access (deprecated)
+## REST API authentication
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/328553) in GitLab 14.1. [Deployed behind the `:ci_scoped_job_token` feature flag](../../user/feature_flags.md), disabled by default.
-> - [Enabled on GitLab.com and self-managed](https://gitlab.com/gitlab-org/gitlab/-/issues/332272) in GitLab 14.4.
-> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/332272) in GitLab 14.6.
+You can use a job token to authenticate requests for specific
+REST API endpoints using these methods:
 
-NOTE:
-The [**Limit access _from_ this project**](#configure-the-job-token-scope-deprecated)
-setting is disabled by default for all new projects and is [scheduled for removal](https://gitlab.com/gitlab-org/gitlab/-/issues/383084)
-in GitLab 17.0. Project maintainers or owners should configure the [**Limit access _to_ this project**](#add-a-project-to-the-job-token-allowlist)
-setting instead.
+- Header: `--header "JOB-TOKEN: $CI_JOB_TOKEN"` (recommended)
+- Form: `--form "token=$CI_JOB_TOKEN"`
+- Data: `--data "job_token=$CI_JOB_TOKEN"`
+- Query string in URL: `?job_token=$CI_JOB_TOKEN` (not recommended)
 
-Control your project's job token scope by creating an allowlist of projects which
-can be accessed by your project's job token.
+For example, using the recommended header method:
 
-By default, the allowlist includes your current project.
-Other projects can be added and removed by maintainers with access to both projects.
+```shell
+curl --verbose --request POST --header "JOB-TOKEN: $CI_JOB_TOKEN" --form ref=master "https://gitlab.com/api/v4/projects/1234/trigger/pipeline"
+```
 
-With the setting disabled, all projects are considered in the allowlist and the job token is
-limited only by the user's access permissions.
+For token security guidance, see [security considerations](../../security/tokens/_index.md#security-considerations).
 
-For example, when the setting is enabled, jobs in a pipeline in project `A` have
-a `CI_JOB_TOKEN` scope limited to project `A`. If the job needs to use the token
-to make an API request to project `B`, then `B` must be added to the allowlist for `A`.
+You cannot use job tokens to authenticate GraphQL requests.
 
-### Configure the job token scope (deprecated)
+## Job token authentication log
 
-> - **Limit CI_JOB_TOKEN access** setting [renamed to **Limit access _from_ this project**](https://gitlab.com/gitlab-org/gitlab/-/issues/411406) in GitLab 16.3.
+{{< history >}}
 
-Prerequisites:
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/467292/) in GitLab 17.6.
 
-- You must not have more than 200 projects added to the token's scope.
+{{< /history >}}
 
-To configure the job token scope:
+You can track which other projects use a CI/CD job token to authenticate with your project
+in an authentication log. To check the log:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > CI/CD**.
-1. Expand **Token Access**.
-1. Toggle **Limit access _from_ this project** to enabled.
-1. Optional. Add existing projects to the token's access scope. The user adding a
-   project must have the Maintainer role in both projects.
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **CI/CD**.
+1. Expand **Job token permissions**. The **Authentication log** section displays the
+   list of other projects that accessed your project by authenticating with a job token.
+1. Optional. Select **Download CSV** to download the full authentication log, in CSV format.
+
+The authentication log displays a maximum of 100 authentication events. If the number of events
+is more than 100, download the CSV file to view the log.
+
+New authentications to a project can take up to 5 minutes to appear in the authentication log.
+
+## Use legacy format for CI/CD tokens
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/514860) in GitLab 17.10.
+
+{{< /history >}}
+
+Beginning in GitLab 19.0, CI/CD job tokens use the JWT standard by default. Projects can continue to use the legacy format by configuring the top-level group for their project. This setting is only available until the GitLab 20.0 release.
+
+To use the legacy format for your CI/CD tokens:
+
+1. In the top bar, select **Search or go to** and find your group.
+1. Select **Settings** > **CI/CD**.
+1. Expand **General pipelines**.
+1. Turn off **Enable JWT format for CI/CD job tokens**.
+
+Your CI/CD tokens now use the legacy format. If you want to use the JWT format again later, you can re-enable this setting.
 
 ## Troubleshooting
 
@@ -275,3 +395,36 @@ While troubleshooting CI/CD job token authentication issues, be aware that:
   - To remove project access.
 - The CI job token becomes invalid if the job is no longer running, has been erased,
   or if the project is in the process of being deleted.
+
+### The `semantic-release` tool and job tokens
+
+There is a known issue if you use the `semantic-release` tool with the [**Allow Git push requests to the repository** setting](#allow-git-push-requests-to-your-project-repository).
+When enabled:
+
+- The tool authenticates with the job token, even if the tool is configured to use a personal access token.
+- The job token does not trigger new pipelines, so release pipelines might not run.
+
+For more information, see the [issue 891](https://github.com/semantic-release/gitlab/issues/891).
+
+### JWT format job token errors
+
+There are some known issues with the JWT format for CI/CD job tokens.
+
+#### `Error when persisting the task ARN.` error with EC2 Fargate Runner custom executor
+
+There is [a bug](https://gitlab.com/gitlab-org/ci-cd/custom-executor-drivers/fargate/-/issues/86)
+in version `0.5.0` and earlier of the EC2 Fargate custom executor. This issue causes this error:
+
+- `Error when persisting the task ARN. Will stop the task for cleanup`
+
+To fix this issue, upgrade to version `0.5.1` or later of the Fargate custom executor.
+
+#### `invalid character '\n' in string literal` error with `base64` encoding
+
+If you use `base64` to encode job tokens, you could receive an `invalid character '\n'` error.
+
+The default behavior of the `base64` command wraps strings that are longer than 79 characters.
+When `base64` encoding JWT format job tokens during job execution, for example with
+`echo $CI_JOB_TOKEN | base64`, the token is rendered invalid.
+
+To fix this issue, use `base64 -w0` to disable automatically wrapping the token.

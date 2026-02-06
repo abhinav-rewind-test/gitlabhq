@@ -2,21 +2,17 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Resource iteration events API
 ---
 
-# Resource iteration events API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/229463) in GitLab 13.4.
-> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/229463) in GitLab 13.5.
-> - Moved to GitLab Premium in 13.9.
+{{< /details >}}
 
-Resource iteration events keep track of what happens to GitLab [issues](../user/project/issues/index.md).
-
-Use them to track which iteration was set, who did it, and when it happened.
+Use this API to access [iteration events](../user/group/iterations/_index.md) for issues.
 
 ## Issues
 
@@ -30,7 +26,7 @@ GET /projects/:id/issues/:issue_iid/resource_iteration_events
 
 | Attribute   | Type           | Required | Description                                                                     |
 | ----------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`        | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `issue_iid` | integer        | yes      | The IID of an issue                                                             |
 
 Example request:
@@ -100,9 +96,9 @@ Example response:
 ]
 ```
 
-### Get single issue iteration event
+### Retrieve an issue iteration event
 
-Returns a single iteration event for a specific project issue.
+Retrieves a single iteration event for a specified project issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_iteration_events/:resource_iteration_event_id
@@ -112,7 +108,7 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `issue_iid`                   | integer        | yes      | The IID of an issue                                                             |
 | `resource_iteration_event_id` | integer        | yes      | The ID of an iteration event                                                     |
 

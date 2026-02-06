@@ -1,52 +1,47 @@
 import { GlTab } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import ModelDetail from '~/ml/model_registry/components/model_detail.vue';
-import ModelVersionDetail from '~/ml/model_registry/components/model_version_detail.vue';
-import EmptyState from '~/ml/model_registry/components/empty_state.vue';
-import { MODEL_ENTITIES } from '~/ml/model_registry/constants';
-import { MODEL, makeModel } from '../mock_data';
+import IssuableDescription from '~/vue_shared/issuable/show/components/issuable_description.vue';
+import { model } from '../graphql_mock_data';
 
 let wrapper;
 
-const createWrapper = (model = MODEL) => {
+const createWrapper = (modelProp = model) => {
   wrapper = shallowMountExtended(ModelDetail, {
-    propsData: { model },
+    propsData: { model: modelProp },
+    provide: { createModelVersionPath: 'versions/new' },
     stubs: { GlTab },
   });
 };
 
-const findModelVersionDetail = () => wrapper.findComponent(ModelVersionDetail);
-const findEmptyState = () => wrapper.findComponent(EmptyState);
-const findVersionLink = () => wrapper.findByTestId('model-version-link');
+const findIssuable = () => wrapper.findComponent(IssuableDescription);
+const findEmptyDescription = () => wrapper.findByTestId('empty-description-state');
 
 describe('ShowMlModel', () => {
-  describe('when it has latest version', () => {
+  describe('when it has description', () => {
     beforeEach(() => {
       createWrapper();
     });
 
-    it('displays the version', () => {
-      expect(findModelVersionDetail().props('modelVersion')).toBe(MODEL.latestVersion);
-    });
-
-    it('displays a link to latest version', () => {
-      expect(wrapper.text()).toContain('Latest version:');
-      expect(findVersionLink().attributes('href')).toBe(MODEL.latestVersion.path);
-      expect(findVersionLink().text()).toBe('1.2.3');
+    it('displays description', () => {
+      expect(findEmptyDescription().exists()).toBe(false);
+      expect(findIssuable().props('issuable')).toEqual({
+        titleHtml: model.name,
+        descriptionHtml: model.descriptionHtml,
+      });
     });
   });
 
-  describe('when it does not have latest version', () => {
+  describe('when it does not have description', () => {
     beforeEach(() => {
-      createWrapper(makeModel({ latestVersion: null }));
+      createWrapper({ ...model, description: '', descriptionHtml: '' });
     });
 
-    it('shows empty state', () => {
-      expect(findEmptyState().props('entityType')).toBe(MODEL_ENTITIES.modelVersion);
-    });
-
-    it('does not render model version detail', () => {
-      expect(findModelVersionDetail().exists()).toBe(false);
+    it('displays empty state description', () => {
+      expect(findEmptyDescription().exists()).toBe(true);
+      expect(findEmptyDescription().text()).toContain(
+        'No description available. To add a description, click "Edit model" above.',
+      );
     });
   });
 });

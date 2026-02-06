@@ -28,6 +28,7 @@ export const PUSH_EVENT_REF_TYPE_TAG = 'tag';
 export const RESOURCE_PARENT_TYPE_PROJECT = 'project';
 
 // From app/models/event.rb#L39
+export const TARGET_TYPE_PROJECT = 'Project';
 export const TARGET_TYPE_ISSUE = 'Issue';
 export const TARGET_TYPE_MILESTONE = 'Milestone';
 export const TARGET_TYPE_MERGE_REQUEST = 'MergeRequest';
@@ -43,7 +44,7 @@ export const WORK_ITEM_ISSUE_TYPE_INCIDENT = 'incident';
 export const TYPE_FALLBACK = 'fallback';
 
 export const EVENT_CREATED_I18N = Object.freeze({
-  [RESOURCE_PARENT_TYPE_PROJECT]: s__('ContributionEvent|Created project %{resourceParentLink}.'),
+  [TARGET_TYPE_PROJECT]: s__('ContributionEvent|Created project %{resourceParentLink}.'),
   [TARGET_TYPE_MILESTONE]: s__(
     'ContributionEvent|Opened milestone %{targetLink} in %{resourceParentLink}.',
   ),
@@ -147,13 +148,13 @@ export const EVENT_DESTROYED_I18N = Object.freeze({
 });
 
 export const EVENT_CLOSED_ICONS = Object.freeze({
-  [WORK_ITEM_ISSUE_TYPE_ISSUE]: 'issue-closed',
+  [WORK_ITEM_ISSUE_TYPE_ISSUE]: 'issue-close',
   [TARGET_TYPE_MERGE_REQUEST]: 'merge-request-close',
   [TYPE_FALLBACK]: 'status_closed',
 });
 
 export const EVENT_REOPENED_ICONS = Object.freeze({
-  [TARGET_TYPE_MERGE_REQUEST]: 'merge-request-open',
+  [TARGET_TYPE_MERGE_REQUEST]: 'merge-request',
   [TYPE_FALLBACK]: 'status_open',
 });
 

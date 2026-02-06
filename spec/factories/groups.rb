@@ -8,7 +8,19 @@ FactoryBot.define do
     owner { nil }
     project_creation_level { ::Gitlab::Access::MAINTAINER_PROJECT_ACCESS }
 
-    after(:create) do |group|
+    transient do
+      # rubocop:disable Lint/EmptyBlock -- block is required by factorybot
+      guests {}
+      planners {}
+      reporters {}
+      security_managers {}
+      developers {}
+      maintainers {}
+      owners {}
+      # rubocop:enable Lint/EmptyBlock
+    end
+
+    after(:create) do |group, evaluator|
       if group.owner
         # We could remove this after we have proper constraint:
         # https://gitlab.com/gitlab-org/gitlab-foss/issues/43292
@@ -16,10 +28,14 @@ FactoryBot.define do
       end
 
       create(:namespace_settings, namespace: group) unless group.namespace_settings
-    end
 
-    trait :with_organization do
-      association :organization
+      group.add_members(Array.wrap(evaluator.guests), :guest)
+      group.add_members(Array.wrap(evaluator.planners), :planner)
+      group.add_members(Array.wrap(evaluator.reporters), :reporter)
+      group.add_members(Array.wrap(evaluator.security_managers), :security_manager)
+      group.add_members(Array.wrap(evaluator.developers), :developer)
+      group.add_members(Array.wrap(evaluator.maintainers), :maintainer)
+      group.add_members(Array.wrap(evaluator.owners), :owner)
     end
 
     trait :public do
@@ -98,7 +114,7 @@ FactoryBot.define do
 
           children.times do
             factory_name = parent.model_name.singular
-            child = FactoryBot.create(factory_name, parent: parent)
+            child = create(factory_name, parent: parent, organization: parent.organization)
             create_graph(parent: child, children: children, depth: depth - 1)
           end
 
@@ -121,6 +137,21 @@ FactoryBot.define do
 
     trait :with_root_storage_statistics do
       association :root_storage_statistics, factory: :namespace_root_storage_statistics
+    end
+  end
+
+  factory :group_with_deletion_schedule, parent: :group do
+    transient do
+      deleting_user { association(:user) }
+      marked_for_deletion_on { Date.current }
+    end
+
+    after(:create) do |group, evaluator|
+      create(:group_deletion_schedule,
+        group: group,
+        deleting_user: evaluator.deleting_user,
+        marked_for_deletion_on: evaluator.marked_for_deletion_on
+      )
     end
   end
 end

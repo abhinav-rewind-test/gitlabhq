@@ -3,13 +3,18 @@ import Vue, { nextTick } from 'vue';
 import Vuex from 'vuex';
 import { GlLoadingIcon } from '@gitlab/ui';
 import MockAdapter from 'axios-mock-adapter';
+import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
+import waitForPromises from 'helpers/wait_for_promises';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import EmptyState from '~/ci/job_details/components/empty_state.vue';
+import ManualJobForm from '~/ci/job_details/components/manual_job_form.vue';
+import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import EnvironmentsBlock from '~/ci/job_details/components/environments_block.vue';
 import ErasedBlock from '~/ci/job_details/components/erased_block.vue';
 import JobApp from '~/ci/job_details/job_app.vue';
 import JobLog from '~/ci/job_details/components/log/log.vue';
-import JobLogTopBar from 'ee_else_ce/ci/job_details/components/job_log_controllers.vue';
+import JobLogTopBar from '~/ci/job_details/components/job_log_top_bar.vue';
 import Sidebar from '~/ci/job_details/components/sidebar/sidebar.vue';
 import StuckBlock from '~/ci/job_details/components/stuck_block.vue';
 import UnmetPrerequisitesBlock from '~/ci/job_details/components/unmet_prerequisites_block.vue';
@@ -20,12 +25,15 @@ import { MANUAL_STATUS } from '~/ci/constants';
 import job from 'jest/ci/jobs_mock_data';
 import { mockPendingJobData } from './mock_data';
 
+jest.mock('~/panel_breakpoint_instance');
+
 describe('Job App', () => {
   Vue.use(Vuex);
 
   let store;
   let wrapper;
   let mock;
+  let triggerResize;
 
   const initSettings = {
     jobEndpoint: '/group1/project1/-/jobs/99.json',
@@ -39,23 +47,31 @@ describe('Job App', () => {
     runnerSettingsUrl: 'settings/ci-cd/runners',
     terminalPath: 'jobs/123/terminal',
     projectPath: 'user-name/project-name',
-    subscriptionsMoreMinutesUrl: 'https://customers.gitlab.com/buy_pipeline_minutes',
   };
 
-  const createComponent = () => {
+  const createComponent = ({ abilities = {}, ...options } = {}) => {
     wrapper = shallowMountExtended(JobApp, {
       propsData: { ...props },
       store,
+      provide: {
+        glAbilities: { troubleshootJobWithAi: false, ...abilities },
+      },
+      ...options,
     });
   };
 
-  const setupAndMount = async ({ jobData = {}, jobLogData = {} } = {}) => {
+  const setupAndMount = async ({
+    jobData = {},
+    jobLogData = {},
+    abilities = {},
+    ...options
+  } = {}) => {
     mock.onGet(initSettings.jobEndpoint).replyOnce(HTTP_STATUS_OK, { ...job, ...jobData });
     mock.onGet(initSettings.logEndpoint).reply(HTTP_STATUS_OK, jobLogData);
 
     const asyncInit = store.dispatch('init', initSettings);
 
-    createComponent();
+    createComponent({ abilities, ...options });
 
     await asyncInit;
     jest.runOnlyPendingTimers();
@@ -70,13 +86,18 @@ describe('Job App', () => {
   const findEnvironmentsBlockComponent = () => wrapper.findComponent(EnvironmentsBlock);
   const findErasedBlock = () => wrapper.findComponent(ErasedBlock);
   const findEmptyState = () => wrapper.findComponent(EmptyState);
+  const findJobForm = () => wrapper.findComponent(ManualJobForm);
   const findJobLog = () => wrapper.findComponent(JobLog);
   const findJobLogTopBar = () => wrapper.findComponent(JobLogTopBar);
 
   const findJobContent = () => wrapper.findByTestId('job-content');
   const findArchivedJob = () => wrapper.findByTestId('archived-job');
+  const findStickyFooter = () => wrapper.findByTestId('rca-bar-component');
 
   beforeEach(() => {
+    PanelBreakpointInstance.addResizeListener.mockImplementation((callback) => {
+      triggerResize = callback;
+    });
     mock = new MockAdapter(axios);
     store = createStore();
   });
@@ -97,6 +118,106 @@ describe('Job App', () => {
       expect(findLoadingComponent().exists()).toBe(true);
       expect(findSidebar().exists()).toBe(false);
       expect(findJobContent().exists()).toBe(false);
+    });
+  });
+
+  describe('when resizing', () => {
+    beforeEach(async () => {
+      await setupAndMount();
+
+      jest.spyOn(store, 'dispatch');
+    });
+
+    it('shows sidebar', async () => {
+      jest.spyOn(PanelBreakpointInstance, 'isDesktop').mockReturnValue(true);
+      expect(store.dispatch).not.toHaveBeenCalledWith('showSidebar');
+
+      store.state.isSidebarOpen = false;
+      triggerResize();
+      await waitForPromises();
+
+      expect(store.dispatch).toHaveBeenCalledWith('showSidebar');
+    });
+
+    it('hides sidebar on mobile', () => {
+      expect(store.dispatch).not.toHaveBeenCalledWith('hideSidebar');
+
+      jest.spyOn(PanelBreakpointInstance, 'isDesktop').mockReturnValue(false);
+
+      store.state.isSidebarOpen = true;
+      triggerResize();
+
+      expect(store.dispatch).toHaveBeenCalledWith('hideSidebar');
+    });
+  });
+
+  describe('while scrolling', () => {
+    beforeEach(async () => {
+      await setupAndMount({
+        directives: {
+          GlResizeObserver: createMockDirective('gl-resize-observer'),
+        },
+      });
+
+      jest.spyOn(store, 'dispatch');
+    });
+
+    it('should update scrolling when window scrolls', async () => {
+      expect(store.dispatch).not.toHaveBeenCalledWith('toggleScrollButtons');
+
+      window.dispatchEvent(new Event('scroll'));
+      await waitForPromises();
+
+      expect(store.dispatch).toHaveBeenCalledWith('toggleScrollButtons');
+    });
+
+    it('should update scrolling when resized', async () => {
+      expect(store.dispatch).not.toHaveBeenCalledWith('toggleScrollButtons');
+
+      getBinding(wrapper.element, 'gl-resize-observer').value();
+      await waitForPromises();
+
+      expect(store.dispatch).toHaveBeenCalledWith('toggleScrollButtons');
+    });
+  });
+
+  describe('while scrolling inside a content panel', () => {
+    let contentPanelWrapper;
+
+    beforeEach(async () => {
+      setHTMLFixture('<div class="js-static-panel-inner"></div>');
+      contentPanelWrapper = document.querySelector('.js-static-panel-inner');
+
+      await setupAndMount({
+        directives: {
+          GlResizeObserver: createMockDirective('gl-resize-observer'),
+        },
+        attachTo: document.body,
+      });
+
+      jest.spyOn(store, 'dispatch');
+    });
+
+    afterEach(() => {
+      resetHTMLFixture();
+    });
+
+    it('should update scrolling when content panel is scrolled', async () => {
+      expect(store.dispatch).not.toHaveBeenCalledWith('toggleScrollButtons');
+
+      contentPanelWrapper.dispatchEvent(new Event('scroll'));
+      await waitForPromises();
+
+      expect(store.dispatch).toHaveBeenCalledWith('toggleScrollButtons');
+    });
+
+    it('should update scrolling when resized', async () => {
+      expect(store.dispatch).not.toHaveBeenCalledWith('toggleScrollButtons');
+
+      getBinding(wrapper.element, 'gl-resize-observer').value();
+      await waitForPromises();
+
+      expect(store.dispatch).toHaveBeenCalledWith('toggleScrollButtons');
     });
   });
 
@@ -163,8 +284,14 @@ describe('Job App', () => {
               label: 'failed',
               text: 'failed',
               details_path: 'path',
+              action: {
+                confirmation_message: null,
+                button_title: 'Retry job',
+                method: 'post',
+                path: '/path',
+              },
               illustration: {
-                content: 'Retry this job in order to create the necessary resources.',
+                content: 'Run this job again in order to create the necessary resources.',
                 image: 'path',
                 size: 'svg-430',
                 title: 'Failed to create resources',
@@ -179,6 +306,45 @@ describe('Job App', () => {
           },
         }).then(() => {
           expect(findFailedJobComponent().exists()).toBe(true);
+        }));
+    });
+
+    describe('sticky footer', () => {
+      it('does not display the sticky footer if troubleshootJobWithAi is false', () =>
+        setupAndMount({
+          jobData: {
+            status: {
+              group: 'failed',
+              icon: 'status_failed',
+            },
+            has_trace: true,
+            runners: {
+              available: true,
+            },
+            tags: [],
+          },
+        }).then(() => {
+          expect(findStickyFooter().exists()).toBe(false);
+        }));
+
+      it('displays the sticky footer if troubleshootJobWithAi is true', () =>
+        setupAndMount({
+          jobData: {
+            status: {
+              group: 'failed',
+              icon: 'status_failed',
+            },
+            has_trace: true,
+            runners: {
+              available: true,
+            },
+            tags: [],
+          },
+          abilities: {
+            troubleshootJobWithAi: true,
+          },
+        }).then(() => {
+          expect(findStickyFooter().exists()).toBe(true);
         }));
     });
 
@@ -225,6 +391,77 @@ describe('Job App', () => {
         }).then(() => {
           expect(findErasedBlock().exists()).toBe(false);
         }));
+    });
+
+    describe('job form block', () => {
+      it('renders job form block when job is playable and not scheduled', async () => {
+        await setupAndMount({
+          jobData: {
+            has_trace: false,
+            playable: true,
+            scheduled: false,
+            status: {
+              group: 'pending',
+              icon: 'status_pending',
+              label: 'pending',
+              text: 'pending',
+              details_path: 'path',
+              illustration: {
+                image: 'path',
+                size: '340',
+                title: 'Empty State',
+                content: 'This is an empty state',
+              },
+              action: {
+                confirmation_message: 'Confirm',
+                button_title: 'Retry job',
+                method: 'post',
+                path: '/path',
+              },
+            },
+          },
+        });
+        expect(findJobForm().props()).toMatchObject({
+          isRetryable: true,
+          jobId: job.id,
+          jobName: job.name,
+          confirmationMessage: 'Confirm',
+        });
+      });
+
+      it('renders job form block when sidebar emits update variables', async () => {
+        await setupAndMount({
+          jobData: {
+            has_trace: false,
+            status: {
+              group: 'pending',
+              icon: 'status_pending',
+              label: 'pending',
+              text: 'pending',
+              details_path: 'path',
+              illustration: {
+                image: 'path',
+                size: '340',
+                title: 'Empty State',
+                content: 'This is an empty state',
+              },
+              action: {
+                button_title: 'Retry job',
+                method: 'post',
+                path: '/path',
+              },
+            },
+          },
+        });
+        findSidebar().vm.$emit('update-variables');
+        await nextTick();
+        expect(findJobForm().exists()).toBe(true);
+      });
+
+      it('does not render job form block when job has log but it is not running', async () => {
+        await setupAndMount({ jobData: { has_trace: true } });
+        expect(findJobForm().exists()).toBe(false);
+      });
     });
 
     describe('empty states block', () => {
@@ -303,7 +540,10 @@ describe('Job App', () => {
   });
 
   describe('job log', () => {
-    beforeEach(() => setupAndMount());
+    beforeEach(async () => {
+      await setupAndMount();
+      jest.spyOn(store, 'dispatch');
+    });
 
     it('should render job log header', () => {
       expect(findJobLogTopBar().exists()).toBe(true);

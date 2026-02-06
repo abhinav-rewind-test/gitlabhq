@@ -6,6 +6,7 @@ module Gitlab
   module Git
     class DiffCollection
       include Enumerable
+      include Gitlab::EncodingHelper
 
       attr_reader :limits
 
@@ -36,7 +37,6 @@ module Gitlab
       def initialize(iterator, options = {})
         @iterator = iterator
         @generated_files = options.fetch(:generated_files, nil)
-        @collapse_generated = options.fetch(:collapse_generated, false)
         @limits = self.class.limits(options)
         @enforce_limits = !!options.fetch(:limits, true)
         @expanded = !!options.fetch(:expanded, true)
@@ -107,6 +107,10 @@ module Gitlab
         !!@collapsed_safe_bytes
       end
 
+      def collapsed_safe_limits?
+        !!@collapsed_safe_limits
+      end
+
       def size
         @size ||= count # forces a loop using each method
       end
@@ -156,33 +160,44 @@ module Gitlab
         @collapsed_safe_files || @collapsed_safe_lines || @collapsed_safe_bytes
       end
 
-      def expand_diff?
-        # Force single-entry diff collections to always present as expanded
-        #
-        @iterator.size == 1 || !@enforce_limits || @expanded
+      def expand_diff?(raw)
+        # For binary files only check @enforce_limits and @expanded,
+        # for non-binary files also auto-expand when it's a single file diff
+        allow_expansion = !@enforce_limits || @expanded
+        diff_content = raw.is_a?(Hash) ? raw[:diff] : raw.patch
+
+        return allow_expansion if detect_binary?(diff_content) || Gitlab::Git::Diff.has_binary_notice?(diff_content)
+
+        @iterator.size == 1 || allow_expansion
       end
 
       def each_gitaly_patch
-        i = @array.length
+        @iterator.each_with_index do |raw, iterator_index|
+          @empty = false
 
-        @iterator.each do |raw|
-          options = { expanded: expand_diff? }
+          options = { expanded: expand_diff?(raw) }
           options[:generated] = @generated_files.include?(raw.from_path) if @generated_files
 
           diff = Gitlab::Git::Diff.new(raw, **options)
 
+          if raw.collapsed
+            @collapsed_safe_limits = true
+          end
+
           if raw.overflow_marker
             @overflow = true
             # If we're requesting patches with `collect_all_paths` enabled, then
-            # Once we hit the overflow marker, gitlay has still returned diffs, just without
+            # Once we hit the overflow marker, gitaly has still returned diffs, just without
             # patches, only metadata
             unless @limits[:collect_all_paths]
               break
             end
           end
 
-          yield @array[i] = diff
-          i += 1
+          if iterator_index >= @offset_index
+            @array << diff
+            yield diff
+          end
         end
       end
 
@@ -198,12 +213,10 @@ module Gitlab
             break
           end
 
-          # Discard generated field if it is already set when FF is disabled
-          raw_data = @collapse_generated ? raw : raw.except(:generated)
+          expand_diff = expand_diff?(raw)
+          diff = Gitlab::Git::Diff.new(raw, expanded: expand_diff)
 
-          diff = Gitlab::Git::Diff.new(raw_data, expanded: expand_diff?)
-
-          if !expand_diff? && over_safe_limits?(i) && diff.line_count > 0
+          if !expand_diff && over_safe_limits?(i) && diff.line_count > 0
             diff.collapse!
           end
 

@@ -2,18 +2,28 @@
 
 class Projects::WorkItemsController < Projects::ApplicationController
   include WorkhorseAuthorization
+  include WorkItemsCollections
   extend Gitlab::Utils::Override
 
   EXTENSION_ALLOWLIST = %w[csv].map(&:downcase).freeze
 
   before_action :authorize_import_access!, only: [:import_csv, :authorize] # rubocop:disable Rails/LexicallyScopedActionFilter
   before_action do
-    push_frontend_feature_flag(:notifications_todos_buttons)
-    push_force_frontend_feature_flag(:work_items, project&.work_items_feature_flag_enabled?)
-    push_force_frontend_feature_flag(:work_items_beta, project&.work_items_beta_feature_flag_enabled?)
-    push_force_frontend_feature_flag(:work_items_mvc_2, project&.work_items_mvc_2_feature_flag_enabled?)
-    push_force_frontend_feature_flag(:linked_work_items, project&.linked_work_items_feature_flag_enabled?)
+    push_frontend_feature_flag(:notifications_todos_buttons, current_user)
+    push_force_frontend_feature_flag(:glql_load_on_click, !!project&.glql_load_on_click_feature_flag_enabled?)
+    push_force_frontend_feature_flag(:work_item_planning_view,
+      !!project&.work_items_consolidated_list_enabled?(current_user))
+    push_force_frontend_feature_flag(:use_work_item_url, !!project&.use_work_item_url?)
+    push_force_frontend_feature_flag(:work_item_features_field,
+      Feature.enabled?(:work_item_features_field, current_user))
   end
+
+  before_action :check_search_rate_limit!, if: ->(c) do
+    c.action_name.to_sym == :calendar || c.action_name.to_sym == :rss
+  end
+
+  prepend_before_action(only: [:calendar]) { authenticate_sessionless_user!(:ics) }
+  prepend_before_action(only: [:rss]) { authenticate_sessionless_user!(:rss) }
 
   feature_category :team_planning
   urgency :high, [:authorize]
@@ -32,16 +42,58 @@ class Projects::WorkItemsController < Projects::ApplicationController
     end
   end
 
+  def index; end
+
+  def show
+    return if show_params[:iid] == 'new'
+
+    @work_item = issuable
+  end
+
+  def edit
+    # Check if user can edit the work item
+    work_item = issuable
+    return render_404 unless work_item
+
+    if can?(current_user, :update_work_item, work_item)
+      # Redirect to work_items detail page with edit mode enabled
+      redirect_to project_work_item_path(project, show_params[:iid], edit: 'true')
+    else
+      # Redirect to work_items detail page without edit mode
+      redirect_to project_work_item_path(project, show_params[:iid])
+    end
+  end
+
+  def calendar
+    @work_items = work_items_for_calendar
+
+    respond_to do |format|
+      format.ics do
+        response.headers['Content-Type'] = 'text/plain' if request.referer&.start_with?(::Settings.gitlab.base_url)
+      end
+    end
+  end
+
+  def rss
+    @work_items = work_items_for_rss
+
+    respond_to do |format|
+      format.atom { render layout: 'xml' }
+    end
+  end
+
   private
 
   def import_params
     params.permit(:file)
   end
 
+  def show_params
+    params.permit(:iid)
+  end
+
   def authorize_import_access!
-    can_import = can?(current_user, :import_work_items, project)
-    import_csv_feature_available = Feature.enabled?(:import_export_work_items_csv, project)
-    return if can_import && import_csv_feature_available
+    return if can?(current_user, :import_work_items, project)
 
     if current_user || action_name == 'authorize'
       render_404
@@ -66,6 +118,12 @@ class Projects::WorkItemsController < Projects::ApplicationController
 
   def file_extension_allowlist
     EXTENSION_ALLOWLIST
+  end
+
+  def issuable
+    @issuable ||= ::WorkItems::WorkItemsFinder.new(current_user, project_id: project.id)
+      .execute.with_work_item_type
+      .find_by_iid(show_params[:iid])
   end
 end
 

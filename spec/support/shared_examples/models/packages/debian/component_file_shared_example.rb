@@ -49,6 +49,10 @@ RSpec.shared_examples 'Debian Component File' do |container_type, can_freeze|
     end
   end
 
+  describe 'delegations' do
+    it { is_expected.to delegate_method(container_type).to(:component) }
+  end
+
   describe 'validations' do
     describe "#component" do
       before do
@@ -190,11 +194,6 @@ RSpec.shared_examples 'Debian Component File' do |container_type, can_freeze|
     it 'updates metadata columns' do
       expect(component_file)
         .to receive(:update_file_store)
-        .and_call_original
-
-      expect(component_file)
-        .to receive(:update_column)
-        .with('file_store', ::Packages::PackageFileUploader::Store::LOCAL)
         .and_call_original
 
       expect { subject }.to change { component_file.size }.from(nil).to(74)

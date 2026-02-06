@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Audit::NullAuthor do
+RSpec.describe Gitlab::Audit::NullAuthor, feature_category: :compliance_management do
   subject { described_class }
 
   describe '.for' do
@@ -32,6 +32,18 @@ RSpec.describe Gitlab::Audit::NullAuthor do
       allow(audit_event).to receive(:target_type).and_return(::Ci::Runner.name)
       allow(audit_event).to receive(:details)
         .and_return({ runner_registration_token: 'cde456', author_name: 'cde456', entity_type: 'User', entity_path: '/a/b' })
+
+      expect(subject.for(-1, audit_event)).to be_a(Gitlab::Audit::CiRunnerTokenAuthor)
+      expect(subject.for(-1, audit_event)).to have_attributes(id: -1, name: 'Registration token: cde456')
+    end
+
+    it 'works with string keys', :aggregate_failures do
+      allow(audit_event).to receive(:[]).with(:author_name).and_return('cde456')
+      allow(audit_event).to receive(:entity_type).and_return('User')
+      allow(audit_event).to receive(:entity_path).and_return('/a/b')
+      allow(audit_event).to receive(:target_type).and_return(::Ci::Runner.name)
+      allow(audit_event).to receive(:details)
+        .and_return({ 'runner_registration_token' => 'cde456', 'author_name' => 'cde456', 'entity_type' => 'User', 'entity_path' => '/a/b' }.with_indifferent_access)
 
       expect(subject.for(-1, audit_event)).to be_a(Gitlab::Audit::CiRunnerTokenAuthor)
       expect(subject.for(-1, audit_event)).to have_attributes(id: -1, name: 'Registration token: cde456')
@@ -70,5 +82,15 @@ RSpec.describe Gitlab::Audit::NullAuthor do
 
   describe '#current_sign_in_ip' do
     it { expect(subject.new(id: 888, name: 'Guest').current_sign_in_ip).to be_nil }
+  end
+
+  describe '#impersonated?' do
+    it { expect(subject.new(id: 888, name: 'Guest').impersonated?).to be false }
+  end
+
+  describe '#to_global_id' do
+    subject(:null_author) { described_class.new id: -1, name: 'John Doe' }
+
+    it { expect(null_author.to_global_id).to eq('gid://gitlab/ComplianceManagement::NullAuthor/@id') }
   end
 end

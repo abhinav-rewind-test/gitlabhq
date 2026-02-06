@@ -7,8 +7,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
   include GoogleApi::CloudPlatformHelpers
 
   let_it_be(:group) { create(:group) }
-
-  let(:user) { create(:user) }
+  let_it_be(:user) { create(:user) }
 
   before do
     group.add_maintainer(user)
@@ -22,17 +21,15 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
 
     describe 'functionality' do
       context 'when group has one or more clusters' do
-        let(:group) { create(:group) }
-
-        let!(:enabled_cluster) do
-          create(:cluster, :provided_by_gcp, cluster_type: :group_type, groups: [group])
+        let_it_be(:enabled_cluster) do
+          create(:cluster, :group, groups: [group])
         end
 
-        let!(:disabled_cluster) do
-          create(:cluster, :disabled, :provided_by_gcp, :production_environment, cluster_type: :group_type, groups: [group])
+        let_it_be(:disabled_cluster) do
+          create(:cluster, :disabled, :production_environment, :group, groups: [group])
         end
 
-        include_examples ':certificate_based_clusters feature flag controller responses' do
+        include_examples ':certificate_based_clusters feature flag index responses' do
           let(:subject) { go }
         end
 
@@ -64,7 +61,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
 
           before do
             allow(Clusters::Cluster).to receive(:default_per_page).and_return(1)
-            create_list(:cluster, 2, :provided_by_gcp, :production_environment, cluster_type: :group_type, groups: [group])
+            create_list(:cluster, 2, :production_environment, :group, groups: [group])
           end
 
           it 'redirects to the page' do
@@ -89,8 +86,6 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
       end
 
       context 'when group does not have a cluster' do
-        let(:group) { create(:group) }
-
         it 'returns an empty state page' do
           go
 
@@ -102,7 +97,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
     end
 
     describe 'security' do
-      let(:cluster) { create(:cluster, :provided_by_gcp, cluster_type: :group_type, groups: [group]) }
+      let_it_be(:cluster) { create(:cluster, :group, groups: [group]) }
 
       it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { expect { go }.to be_allowed_for(:admin) }
       it('is denied for admin when admin mode is disabled') { expect { go }.to be_denied_for(:admin) }
@@ -219,14 +214,32 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
     end
   end
 
-  describe 'DELETE clear cluster cache' do
+  describe 'PUT update_migration' do
     let(:cluster) { create(:cluster, :group, groups: [group]) }
-    let!(:kubernetes_namespace) do
-      create(:cluster_kubernetes_namespace,
-        cluster: cluster,
-        project: create(:project)
-      )
+    let(:redirect_path) { group_cluster_path(group, cluster, tab: 'migrate') }
+
+    def go
+      put :update_migration, params: params.merge(group_id: group, id: cluster)
     end
+
+    include_examples 'cluster update migration', :group, :user
+
+    describe 'security' do
+      it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { expect { go }.to be_allowed_for(:admin) }
+      it('is denied for admin when admin mode is disabled') { expect { go }.to be_denied_for(:admin) }
+      it { expect { go }.to be_allowed_for(:owner).of(group) }
+      it { expect { go }.to be_allowed_for(:maintainer).of(group) }
+      it { expect { go }.to be_denied_for(:developer).of(group) }
+      it { expect { go }.to be_denied_for(:reporter).of(group) }
+      it { expect { go }.to be_denied_for(:guest).of(group) }
+      it { expect { go }.to be_denied_for(:user) }
+      it { expect { go }.to be_denied_for(:external) }
+    end
+  end
+
+  describe 'DELETE clear cluster cache' do
+    let_it_be(:cluster) { create(:cluster, :group, groups: [group]) }
+    let_it_be(:kubernetes_namespace) { create(:cluster_kubernetes_namespace, cluster: cluster, project: create(:project)) }
 
     def go
       delete :clear_cache,
@@ -260,8 +273,74 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
     end
   end
 
+  describe 'POST migrate' do
+    let_it_be(:cluster) { create(:cluster, :group, groups: [group]) }
+    let_it_be(:configuration_project) { create(:project, maintainers: [user], namespace: group) }
+
+    def go
+      post :migrate,
+        params: {
+          cluster_migration: {
+            configuration_project_id: configuration_project.id,
+            agent_name: 'new-agent'
+          },
+          group_id: group,
+          id: cluster
+        }
+    end
+
+    include_examples ':certificate_based_clusters feature flag controller responses' do
+      let(:subject) { go }
+    end
+
+    it 'calls the cluster migration service to create a new agent and token' do
+      expect_next_instance_of(
+        Clusters::Migration::CreateService,
+        an_object_having_attributes(class: cluster.class, id: cluster.id),
+        current_user: user,
+        agent_name: 'new-agent',
+        configuration_project_id: configuration_project.id.to_s
+      ) do |service|
+        expect(service).to receive(:execute).and_call_original
+      end
+
+      expect { go }.to change { Clusters::Agent.count }.and change { Clusters::AgentToken.count }
+
+      expect(response).to redirect_to(group_cluster_path(group, cluster, tab: 'migrate'))
+      expect(flash[:notice]).to eq(s_('ClusterIntegration|Migrating cluster - initiated'))
+    end
+
+    context 'when the migration service does not succeed' do
+      before do
+        allow_next_instance_of(Clusters::Migration::CreateService) do |service|
+          allow(service).to receive(:execute).and_return(ServiceResponse.error(message: 'Error message'))
+        end
+      end
+
+      it 'redirects to the cluster page with an error message' do
+        go
+
+        expect(response).to redirect_to(group_cluster_path(group, cluster, tab: 'migrate'))
+        expect(flash[:alert]).to eq('Migrating cluster - failed: "Error message"')
+      end
+    end
+
+    describe 'security' do
+      it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { expect { go }.to be_allowed_for(:admin) }
+
+      it('is denied for admin when admin mode is disabled') { expect { go }.to be_denied_for(:admin) }
+      it { expect { go }.to be_allowed_for(:owner).of(group) }
+      it { expect { go }.to be_allowed_for(:maintainer).of(group) }
+      it { expect { go }.to be_denied_for(:developer).of(group) }
+      it { expect { go }.to be_denied_for(:reporter).of(group) }
+      it { expect { go }.to be_denied_for(:guest).of(group) }
+      it { expect { go }.to be_denied_for(:user) }
+      it { expect { go }.to be_denied_for(:external) }
+    end
+  end
+
   describe 'GET cluster_status' do
-    let(:cluster) { create(:cluster, :providing_by_gcp, cluster_type: :group_type, groups: [group]) }
+    let(:cluster) { create(:cluster, :group, groups: [group]) }
 
     def go
       get :cluster_status,
@@ -299,7 +378,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
   end
 
   describe 'GET show' do
-    let(:cluster) { create(:cluster, :provided_by_gcp, cluster_type: :group_type, groups: [group]) }
+    let(:cluster) { create(:cluster, :group, groups: [group]) }
 
     def go(tab: nil)
       get :show,
@@ -336,7 +415,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
       )
     end
 
-    let(:cluster) { create(:cluster, :provided_by_user, cluster_type: :group_type, groups: [group]) }
+    let(:cluster) { create(:cluster, :provided_by_user, :group, groups: [group]) }
     let(:domain) { 'test-domain.com' }
 
     let(:params) do
@@ -426,7 +505,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
     end
 
     describe 'security' do
-      let_it_be(:cluster) { create(:cluster, :provided_by_gcp, cluster_type: :group_type, groups: [group]) }
+      let_it_be(:cluster) { create(:cluster, :group, groups: [group]) }
 
       it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { expect { go }.to be_allowed_for(:admin) }
       it('is denied for admin when admin mode is disabled') { expect { go }.to be_denied_for(:admin) }
@@ -441,7 +520,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
   end
 
   describe 'DELETE destroy' do
-    let!(:cluster) { create(:cluster, :provided_by_gcp, :production_environment, cluster_type: :group_type, groups: [group]) }
+    let_it_be(:cluster) { create(:cluster, :provided_by_gcp, :production_environment, :group, groups: [group]) }
 
     def go
       delete :destroy,
@@ -470,7 +549,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
         end
 
         context 'when cluster is being created' do
-          let!(:cluster) { create(:cluster, :providing_by_gcp, :production_environment, cluster_type: :group_type, groups: [group]) }
+          let_it_be(:cluster) { create(:cluster, :providing_by_gcp, :production_environment, :group, groups: [group]) }
 
           it 'destroys and redirects back to clusters list' do
             expect { go }
@@ -484,13 +563,13 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
       end
 
       context 'when cluster is provided by user' do
-        let!(:cluster) { create(:cluster, :provided_by_user, :production_environment, cluster_type: :group_type, groups: [group]) }
+        let_it_be(:cluster) { create(:cluster, :provided_by_user, :production_environment, :group, groups: [group]) }
 
         it 'destroys and redirects back to clusters list' do
           expect { go }
             .to change { Clusters::Cluster.count }.by(-1)
             .and change { Clusters::Platforms::Kubernetes.count }.by(-1)
-            .and change { Clusters::Providers::Gcp.count }.by(0)
+            .and not_change { Clusters::Providers::Gcp.count }
 
           expect(response).to redirect_to(group_clusters_path(group))
           expect(flash[:notice]).to eq('Kubernetes cluster integration was successfully removed.')
@@ -499,7 +578,7 @@ RSpec.describe Groups::ClustersController, feature_category: :deployment_managem
     end
 
     describe 'security' do
-      let_it_be(:cluster) { create(:cluster, :provided_by_gcp, :production_environment, cluster_type: :group_type, groups: [group]) }
+      let_it_be(:cluster) { create(:cluster, :production_environment, :group, groups: [group]) }
 
       it('is allowed for admin when admin mode is enabled', :enable_admin_mode) { expect { go }.to be_allowed_for(:admin) }
       it('is denied for admin when admin mode is disabled') { expect { go }.to be_denied_for(:admin) }

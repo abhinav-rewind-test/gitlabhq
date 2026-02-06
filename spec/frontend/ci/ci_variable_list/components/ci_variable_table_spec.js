@@ -1,6 +1,7 @@
-import { GlAlert, GlBadge, GlKeysetPagination, GlCard, GlIcon } from '@gitlab/ui';
+import { GlAlert, GlBadge, GlKeysetPagination, GlIcon } from '@gitlab/ui';
 import { sprintf } from '~/locale';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
+import CrudComponent from '~/vue_shared/components/crud_component.vue';
 import CiVariableTable from '~/ci/ci_variable_list/components/ci_variable_table.vue';
 import { EXCEEDS_VARIABLE_LIMIT_TEXT, projectString } from '~/ci/ci_variable_list/constants';
 import { mockInheritedVariables, mockVariables } from '../mocks';
@@ -17,6 +18,11 @@ describe('Ci variable table', () => {
   };
 
   const mockMaxVariableLimit = defaultProps.variables.length;
+
+  const variablesWithoutSettingsPath = mockInheritedVariables.map((variable) => ({
+    ...variable,
+    groupCiCdSettingsPath: null,
+  }));
 
   const createComponent = ({ props = {}, provide = {} } = {}) => {
     wrapper = mountExtended(CiVariableTable, {
@@ -49,11 +55,14 @@ describe('Ci variable table', () => {
   const findTableColumnText = (index) => wrapper.findAll('th > div > span').at(index).text();
   const findVariableRow = (rowIndex) =>
     wrapper.findAllByTestId('ci-variable-table-row-variable').at(rowIndex);
-  const findGroupCiCdSettingsLink = (rowIndex) =>
-    wrapper.findAllByTestId('ci-variable-table-row-cicd-path').at(rowIndex).attributes('href');
   const findKeysetPagination = () => wrapper.findComponent(GlKeysetPagination);
-  const findCard = () => wrapper.findComponent(GlCard);
-
+  const findCrud = () => wrapper.findComponent(CrudComponent);
+  const findAllGroupCiCdSettingsLinks = () =>
+    wrapper.findAllByTestId('ci-variable-table-row-cicd-path');
+  const findGroupCiCdSettingsLink = (rowIndex) =>
+    findAllGroupCiCdSettingsLinks().at(rowIndex).attributes('href');
+  const findGroupNameSpan = (rowIndex) =>
+    wrapper.findAllByTestId('ci-variable-table-row-group-name').at(rowIndex);
   const generateExceedsVariableLimitText = (entity, currentVariableCount, maxVariableLimit) => {
     return sprintf(EXCEEDS_VARIABLE_LIMIT_TEXT, { entity, currentVariableCount, maxVariableLimit });
   };
@@ -61,18 +70,18 @@ describe('Ci variable table', () => {
   describe('card', () => {
     it('displays the correct title', () => {
       createComponent();
-      expect(findCard().text()).toContain('CI/CD Variables');
+      expect(findCrud().text()).toContain('CI/CD Variables');
     });
 
     it('displays the correct icon', () => {
       createComponent();
-      expect(findCard().findComponent(GlIcon).props('name')).toBe('code');
+      expect(findCrud().findComponent(GlIcon).props('name')).toBe('code');
     });
 
     it('displays the number of added CI/CD Variables', () => {
       const variables = [1, 2, 3];
       createComponent({ props: { variables } });
-      expect(findCard().text()).toContain(String(variables.length));
+      expect(findCrud().text()).toContain(String(variables.length));
     });
   });
 
@@ -127,6 +136,7 @@ describe('Ci variable table', () => {
         ${0}     | ${1}           | ${'Expanded'}
         ${1}     | ${0}           | ${'File'}
         ${1}     | ${1}           | ${'Masked'}
+        ${2}     | ${2}           | ${'Hidden'}
       `(
         'displays variable attribute $text for row $rowIndex',
         ({ rowIndex, attributeIndex, text }) => {
@@ -160,9 +170,8 @@ describe('Ci variable table', () => {
       it.each`
         index | text
         ${0}  | ${'Key'}
-        ${1}  | ${'Attributes'}
-        ${2}  | ${'Environments'}
-        ${3}  | ${'Group'}
+        ${1}  | ${'Environments'}
+        ${2}  | ${'Group'}
       `('renders the $text column', ({ index, text }) => {
         expect(findTableColumnText(index)).toEqual(text);
       });
@@ -184,7 +193,7 @@ describe('Ci variable table', () => {
         ${0}     | ${1}           | ${'Masked'}
         ${0}     | ${2}           | ${'Expanded'}
         ${2}     | ${0}           | ${'File'}
-        ${2}     | ${1}           | ${'Protected'}
+        ${3}     | ${2}           | ${'Hidden'}
       `(
         'displays variable attribute $text for row $rowIndex',
         ({ rowIndex, attributeIndex, text }) => {
@@ -196,9 +205,35 @@ describe('Ci variable table', () => {
         expect(findVariableRow(1).text()).toContain('This inherited variable has a description.');
       });
 
-      it('displays link to the group settings', () => {
+      it('displays link to the group settings when groupCiCdSettingsPath is present', () => {
         expect(findGroupCiCdSettingsLink(0)).toBe(mockInheritedVariables[0].groupCiCdSettingsPath);
         expect(findGroupCiCdSettingsLink(1)).toBe(mockInheritedVariables[1].groupCiCdSettingsPath);
+      });
+
+      it('displays static text when groupCiCdSettingsPath is null', () => {
+        createComponent({
+          props: { variables: variablesWithoutSettingsPath },
+          provide: { isInheritedGroupVars: true, ...provide },
+        });
+
+        expect(findAllGroupCiCdSettingsLinks()).toHaveLength(0);
+
+        expect(findGroupNameSpan(0).text()).toBe(variablesWithoutSettingsPath[0].groupName);
+        expect(findGroupNameSpan(0).attributes('href')).toBeUndefined();
+
+        expect(findGroupNameSpan(1).text()).toBe(variablesWithoutSettingsPath[1].groupName);
+        expect(findGroupNameSpan(1).attributes('href')).toBeUndefined();
+      });
+
+      it('displays a tooltip for the insufficient permissions when groupCiCdSettingsPath is null', () => {
+        createComponent({
+          props: { variables: variablesWithoutSettingsPath },
+          provide: { isInheritedGroupVars: true, ...provide },
+        });
+
+        expect(findGroupNameSpan(0).attributes('title')).toBe(
+          'Insufficient permissions to view Group CI/CD variable.',
+        );
       });
     });
 
@@ -225,7 +260,7 @@ describe('Ci variable table', () => {
         });
 
         it('hides alert', () => {
-          expect(findLimitReachedAlerts().length).toBe(0);
+          expect(findLimitReachedAlerts()).toHaveLength(0);
         });
       });
 
@@ -233,7 +268,7 @@ describe('Ci variable table', () => {
         it('hides alert when limit has not been reached', () => {
           createComponent({ provide });
 
-          expect(findLimitReachedAlerts().length).toBe(0);
+          expect(findLimitReachedAlerts()).toHaveLength(0);
         });
 
         it('shows alert when limit has been reached', () => {
@@ -247,7 +282,7 @@ describe('Ci variable table', () => {
             props: { maxVariableLimit: mockMaxVariableLimit },
           });
 
-          expect(findLimitReachedAlerts().length).toBe(2);
+          expect(findLimitReachedAlerts()).toHaveLength(2);
 
           expect(findLimitReachedAlerts().at(0).props('dismissible')).toBe(false);
           expect(findLimitReachedAlerts().at(0).text()).toContain(exceedsVariableLimitText);
@@ -264,13 +299,17 @@ describe('Ci variable table', () => {
       });
 
       it('reveals secret values when button is clicked', async () => {
-        expect(findHiddenValues()).toHaveLength(defaultProps.variables.length);
+        expect(findHiddenValues()).toHaveLength(
+          defaultProps.variables.filter((variable) => !variable.hidden).length,
+        );
         expect(findRevealedValues()).toHaveLength(0);
 
         await findRevealButton().trigger('click');
 
         expect(findHiddenValues()).toHaveLength(0);
-        expect(findRevealedValues()).toHaveLength(defaultProps.variables.length);
+        expect(findRevealedValues()).toHaveLength(
+          defaultProps.variables.filter((variable) => !variable.hidden).length,
+        );
       });
 
       it('dispatches `setSelectedVariable` with correct variable to edit', async () => {

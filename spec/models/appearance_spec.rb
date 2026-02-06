@@ -50,7 +50,7 @@ RSpec.describe Appearance do
   end
 
   shared_examples 'logo paths' do |logo_type|
-    let(:appearance) { create(:appearance, "with_#{logo_type}".to_sym) }
+    let(:appearance) { create(:appearance, :"with_#{logo_type}") }
     let(:filename) { 'dk.png' }
     let(:expected_path) { "/uploads/-/system/appearance/#{logo_type}/#{appearance.id}/#{filename}" }
 
@@ -125,11 +125,11 @@ RSpec.describe Appearance do
   context 'valid pwa attributes' do
     where(:attribute, :value) do
       :pwa_name        | nil
-      :pwa_name        | "G" * 255
+      :pwa_name        | ("G" * 255)
       :pwa_short_name  | nil
-      :pwa_short_name  | "S" * 255
+      :pwa_short_name  | ("S" * 255)
       :pwa_description | nil
-      :pwa_description | "T" * 2048
+      :pwa_description | ("T" * 2048)
     end
 
     with_them do
@@ -139,9 +139,9 @@ RSpec.describe Appearance do
 
   context 'invalid pwa attributes' do
     where(:attribute, :value, :message) do
-      :pwa_name        | "G" * 256  | 'is too long (maximum is 255 characters)'
-      :pwa_short_name  | "S" * 256  | 'is too long (maximum is 255 characters)'
-      :pwa_description | "T" * 2049 | 'is too long (maximum is 2048 characters)'
+      :pwa_name        | ("G" * 256)  | 'is too long (maximum is 255 characters)'
+      :pwa_short_name  | ("S" * 256)  | 'is too long (maximum is 255 characters)'
+      :pwa_description | ("T" * 2049) | 'is too long (maximum is 2048 characters)'
     end
 
     with_them do
@@ -164,6 +164,14 @@ RSpec.describe Appearance do
 
         expect(appearance.email_header_and_footer_enabled?).to eq(true)
       end
+    end
+  end
+
+  describe '#uploads_sharding_key' do
+    it 'returns epmty hash' do
+      appearance = build_stubbed(:appearance)
+
+      expect(appearance.uploads_sharding_key).to eq({})
     end
   end
 end

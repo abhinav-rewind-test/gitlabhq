@@ -7,6 +7,7 @@
 # - `#redirect_uri` return the redirect URI for the OAuth flow
 # - `#find_or_create_integration` find or create the Integrations::GitlabSlackApplication record
 # - `#installation_alias` return the alias property for the SlackIntegration record
+
 module Integrations
   module SlackInstallation
     class BaseService
@@ -52,15 +53,7 @@ module Integrations
         integration = find_or_create_integration!
         installation = integration.slack_integration || integration.build_slack_integration
 
-        installation.update!(
-          bot_user_id: slack_data['bot_user_id'],
-          bot_access_token: slack_data['access_token'],
-          team_id: slack_data.dig('team', 'id'),
-          team_name: slack_data.dig('team', 'name'),
-          alias: installation_alias,
-          user_id: slack_data.dig('authed_user', 'id'),
-          authorized_scope_names: slack_data['scope']
-        )
+        update_installation!(integration, installation, slack_data)
 
         update_other_installations!(installation)
 
@@ -73,6 +66,33 @@ module Integrations
 
       attr_reader :current_user, :params
 
+      def update_installation!(integration, installation, slack_data)
+        attributes = {
+          bot_user_id: slack_data['bot_user_id'],
+          bot_access_token: slack_data['access_token'],
+          team_id: slack_data.dig('team', 'id'),
+          team_name: slack_data.dig('team', 'name'),
+          alias: installation_alias,
+          user_id: slack_data.dig('authed_user', 'id'),
+          authorized_scope_names: slack_data['scope'],
+          organization_id: integration.organization_id,
+          group_id: integration.group_id,
+          project_id: integration.project_id
+        }
+
+        installation.update!(attributes)
+
+      rescue ActiveRecord::RecordInvalid => e
+        raise unless duplicate_alias_error?(e) && fallback_alias
+
+        attributes[:alias] = fallback_alias
+        installation.update!(attributes)
+      end
+
+      def duplicate_alias_error?(exception)
+        exception.record.errors.of_kind?(:alias, :taken)
+      end
+
       def exchange_slack_token
         query = {
           client_id: Gitlab::CurrentSettings.slack_app_id,
@@ -81,7 +101,7 @@ module Integrations
           redirect_uri: redirect_uri
         }
 
-        Gitlab::HTTP.get(SLACK_EXCHANGE_TOKEN_URL, query: query).to_hash
+        Clients::HTTP.get(SLACK_EXCHANGE_TOKEN_URL, query: query).to_hash
       end
 
       # Due to our modelling (mentioned in epic 9418) we create a SlackIntegration record
@@ -105,11 +125,12 @@ module Integrations
           'updated_at'
         )
 
-        SlackIntegration.by_team(installation.team_id).id_not_in(installation.id).each_batch do |batch|
-          batch_ids = batch.pluck_primary_key
+        SlackIntegration.by_team(installation.team_id)
+                        .id_not_in(installation.id)
+                        .each_batch do |batch|
           batch.update_all(updatable_attributes)
 
-          Integrations::SlackWorkspace::IntegrationApiScope.update_scopes(batch_ids, installation.slack_api_scopes)
+          Integrations::SlackWorkspace::IntegrationApiScope.update_scopes(batch, installation.slack_api_scopes)
         end
       end
     end

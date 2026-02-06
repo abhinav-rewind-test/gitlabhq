@@ -1,2 +1,6 @@
-// To Be implemented in https://gitlab.com/gitlab-org/gitlab/-/issues/385653
-export const usageQuotasTabsMetadata = [];
+import { getNamespaceStorageTabMetadata } from './storage/namespace/tab_metadata';
+import { mountUsageQuotasApp } from './utils';
+
+const usageQuotasTabsMetadata = [getNamespaceStorageTabMetadata()].filter(Boolean);
+
+export default () => mountUsageQuotasApp(usageQuotasTabsMetadata);

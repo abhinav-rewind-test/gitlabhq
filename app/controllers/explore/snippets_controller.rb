@@ -6,9 +6,9 @@ class Explore::SnippetsController < Explore::ApplicationController
   feature_category :source_code_management
 
   def index
-    @snippets = SnippetsFinder.new(current_user, explore: true)
+    @snippets = SnippetsFinder.new(current_user, organization_id: Current.organization.id, explore: true)
       .execute
-      .page(params[:page])
+      .page(pagination_params[:page])
       .without_count
       .inc_author
       .inc_statistics

@@ -86,11 +86,11 @@ RSpec.describe Resolvers::Projects::JiraProjectsResolver, feature_category: :int
         context 'when Jira connection is not valid' do
           before do
             WebMock.stub_request(:get, 'https://jira.example.com/rest/api/2/project')
-              .to_raise(JIRA::HTTPError.new(double(message: '{"errorMessages":["Some failure"]}')))
+              .to_raise(JIRA::HTTPError.new(double(message: 'Bad Request', body: '{"errorMessages":["Some failure."]}')))
           end
 
           it 'generates a failure error' do
-            config_docs_link_url = Rails.application.routes.url_helpers.help_page_path('integration/jira/configure')
+            config_docs_link_url = Rails.application.routes.url_helpers.help_page_path('integration/jira/configure.md')
             docs_link_start = '<a href="%{url}" target="_blank" rel="noopener noreferrer">'.html_safe % { url: config_docs_link_url }
             error_message = 'An error occurred while requesting data from Jira: Some failure. Check your %{docs_link_start}Jira integration configuration</a> and try again.' % { docs_link_start: docs_link_start }
 

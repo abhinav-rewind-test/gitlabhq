@@ -13,8 +13,8 @@ RSpec.describe User, feature_category: :system_access do
   specify 'types consistency checks', :aggregate_failures do
     expect(described_class::USER_TYPES.keys)
       .to match_array(%w[human ghost alert_bot project_bot support_bot service_user security_bot
-        visual_review_bot migration_bot automation_bot security_policy_bot admin_bot suggested_reviewers_bot
-        service_account llm_bot])
+        visual_review_bot automation_bot security_policy_bot admin_bot
+        service_account placeholder duo_code_review_bot import_user])
     expect(described_class::USER_TYPES).to include(*described_class::BOT_USER_TYPES)
     expect(described_class::USER_TYPES).to include(*described_class::NON_INTERNAL_USER_TYPES)
     expect(described_class::USER_TYPES).to include(*described_class::INTERNAL_USER_TYPES)
@@ -39,9 +39,21 @@ RSpec.describe User, feature_category: :system_access do
       end
     end
 
+    describe '.without_humans' do
+      it 'includes everyone except humans' do
+        expect(described_class.without_humans).to match_array(everyone - [human])
+      end
+    end
+
     describe '.non_internal' do
       it 'includes all non_internal users' do
         expect(described_class.non_internal).to match_array(non_internal)
+      end
+    end
+
+    describe '.with_duo_code_review_bot' do
+      it 'includes all non_internal and duo_code_review_bot users' do
+        expect(described_class.with_duo_code_review_bot).to match_array(non_internal + [duo_code_review_bot])
       end
     end
 
@@ -54,6 +66,47 @@ RSpec.describe User, feature_category: :system_access do
     describe '.without_project_bot' do
       it 'includes everyone except project_bot' do
         expect(described_class.without_project_bot).to match_array(everyone - [project_bot])
+      end
+    end
+
+    describe '.service_accounts' do
+      it 'includes only service accounts' do
+        expect(described_class.service_accounts).to match_array(service_account)
+      end
+    end
+
+    describe '.service_accounts_without_composite_identity' do
+      let_it_be(:sa_without_composite) do
+        create(:user, :service_account, composite_identity_enforced: false)
+      end
+
+      let_it_be(:sa_with_composite) do
+        create(:user, :service_account, composite_identity_enforced: true)
+      end
+
+      it 'includes service accounts with composite_identity_enforced false' do
+        result = described_class.service_accounts_without_composite_identity
+
+        expect(result).to include(sa_without_composite)
+      end
+
+      it 'excludes service accounts with composite_identity_enforced true' do
+        result = described_class.service_accounts_without_composite_identity
+
+        expect(result).not_to include(sa_with_composite)
+      end
+
+      it 'excludes non-service account users' do
+        result = described_class.service_accounts_without_composite_identity
+
+        expect(result).not_to include(human)
+        expect(result).not_to include(project_bot)
+      end
+    end
+
+    describe '.without_placeholders' do
+      it 'includes everyone except placeholder users' do
+        expect(described_class.without_placeholders).to match_array(everyone - [placeholder])
       end
     end
 
@@ -80,41 +133,59 @@ RSpec.describe User, feature_category: :system_access do
     describe '#redacted_name(viewing_user)' do
       let_it_be(:viewing_user) { human }
 
-      subject { observed_user.redacted_name(viewing_user) }
+      subject(:redacted_name) { observed_user.redacted_name(viewing_user) }
 
-      context 'when user is not a project bot' do
-        let(:observed_user) { support_bot }
+      shared_examples '#redacted_name' do
+        context 'when user is not a project bot' do
+          let(:observed_user) { support_bot }
 
-        it { is_expected.to eq(support_bot.name) }
+          it { is_expected.to eq(support_bot.name) }
+        end
+
+        context 'when user is a project_bot' do
+          let(:observed_user) { project_bot }
+
+          context 'when groups are present and user can :read_group' do
+            let_it_be(:group) { create(:group) }
+
+            before do
+              group.add_developer(observed_user)
+              group.add_developer(viewing_user)
+            end
+
+            it { is_expected.to eq(observed_user.name) }
+          end
+
+          context 'when user can :read_project' do
+            let_it_be(:project) { create(:project) }
+
+            before do
+              project.add_developer(observed_user)
+              project.add_developer(viewing_user)
+            end
+
+            it { is_expected.to eq(observed_user.name) }
+          end
+
+          context 'when requester does not have permissions to read project_bot name' do
+            it { is_expected.to eq('****') }
+          end
+        end
       end
 
-      context 'when user is a project_bot' do
-        let(:observed_user) { project_bot }
+      context 'with RequestStore enabled', :request_store do
+        it_behaves_like '#redacted_name'
 
-        context 'when groups are present and user can :read_group' do
-          let_it_be(:group) { create(:group) }
+        context 'when user is a project_bot and user does not have permissions' do
+          let(:observed_user) { project_bot }
 
-          before do
-            group.add_developer(observed_user)
-            group.add_developer(viewing_user)
+          it 'only queries the database once' do
+            expect(observed_user).to receive(:groups).once.and_call_original
+
+            2.times do
+              expect(redacted_name).to eq('****')
+            end
           end
-
-          it { is_expected.to eq(observed_user.name) }
-        end
-
-        context 'when user can :read_project' do
-          let_it_be(:project) { create(:project) }
-
-          before do
-            project.add_developer(observed_user)
-            project.add_developer(viewing_user)
-          end
-
-          it { is_expected.to eq(observed_user.name) }
-        end
-
-        context 'when requester does not have permissions to read project_bot name' do
-          it { is_expected.to eq('****') }
         end
       end
     end
@@ -152,7 +223,7 @@ RSpec.describe User, feature_category: :system_access do
       end
     end
 
-    describe 'resource_bot_owners' do
+    describe 'resource_bot_owners_and_maintainers' do
       it 'returns nil when user is not a project bot' do
         expect(human.resource_bot_resource).to be_nil
       end
@@ -161,10 +232,10 @@ RSpec.describe User, feature_category: :system_access do
         let(:user1) { create(:user) }
         let(:user2) { create(:user) }
 
-        subject(:owners) { project_bot.resource_bot_owners }
+        subject(:owners_and_maintainers) { project_bot.resource_bot_owners_and_maintainers }
 
         it 'returns an empty array when there is no owning resource' do
-          expect(owners).to match_array([])
+          expect(owners_and_maintainers).to be_empty
         end
 
         it 'returns group owners when owned by a group' do
@@ -172,15 +243,23 @@ RSpec.describe User, feature_category: :system_access do
           group.add_developer(project_bot)
           group.add_owner(user1)
 
-          expect(owners).to match_array([user1])
+          expect(owners_and_maintainers).to match_array([user1])
         end
 
-        it 'returns project maintainers when owned by a project' do
+        it 'returns project owners and maintainers when owned by a project' do
           project = create(:project)
           project.add_developer(project_bot)
           project.add_maintainer(user2)
 
-          expect(owners).to match_array([user2])
+          expect(owners_and_maintainers).to match_array([project.owner, user2])
+        end
+
+        it 'does not returns any other role than owner or maintainer' do
+          project = create(:project)
+          project.add_developer(project_bot)
+          project.add_maintainer(user2)
+
+          expect(owners_and_maintainers).not_to include(project_bot)
         end
       end
     end

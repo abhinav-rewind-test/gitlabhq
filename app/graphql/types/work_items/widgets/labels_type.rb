@@ -10,11 +10,18 @@ module Types
         graphql_name 'WorkItemWidgetLabels'
         description 'Represents the labels widget'
 
-        implements Types::WorkItems::WidgetInterface
+        implements ::Types::WorkItems::WidgetInterface
 
-        field :labels, Types::LabelType.connection_type,
+        def self.authorization_scopes
+          super + [:ai_workflows]
+        end
+
+        field :labels, ::Types::LabelType.connection_type,
           null: true,
-          description: 'Labels assigned to the work item.'
+          description: 'Labels assigned to the work item.',
+          scopes: [:api, :read_api, :ai_workflows],
+          skip_type_authorization: [:read_label],
+          resolver: Resolvers::BulkLabelsResolver
 
         field :allows_scoped_labels, GraphQL::Types::Boolean,
           null: true,

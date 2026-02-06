@@ -23,7 +23,7 @@ func TestNewSmartHTTPClient(t *testing.T) {
 		serverFixture(),
 	)
 	require.NoError(t, err)
-	testOutgoingMetadata(t, ctx)
+	testOutgoingMetadata(ctx, t)
 	require.NotNil(t, client.sidechannelRegistry)
 }
 
@@ -33,7 +33,7 @@ func TestNewBlobClient(t *testing.T) {
 		serverFixture(),
 	)
 	require.NoError(t, err)
-	testOutgoingMetadata(t, ctx)
+	testOutgoingMetadata(ctx, t)
 }
 
 func TestNewRepositoryClient(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNewRepositoryClient(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	testOutgoingMetadata(t, ctx)
+	testOutgoingMetadata(ctx, t)
 }
 
 func TestNewDiffClient(t *testing.T) {
@@ -52,10 +52,30 @@ func TestNewDiffClient(t *testing.T) {
 		serverFixture(),
 	)
 	require.NoError(t, err)
-	testOutgoingMetadata(t, ctx)
+	testOutgoingMetadata(ctx, t)
 }
 
-func testOutgoingMetadata(t *testing.T, ctx context.Context) {
+func TestNewConnection(t *testing.T) {
+	conn, err := NewConnection(serverFixture())
+	require.NotNil(t, conn)
+	require.NoError(t, err)
+}
+
+func TestSidechannel(t *testing.T) {
+	sidechannel, err := Sidechannel()
+	require.Equal(t, sidechannelRegistry, sidechannel)
+	require.NoError(t, err)
+}
+
+func TestSidechannelNotInitialized(t *testing.T) {
+	sidechannelRegistry = nil
+
+	sidechannel, err := Sidechannel()
+	require.Nil(t, sidechannel)
+	require.ErrorContains(t, err, "sidechannel is not initialized")
+}
+
+func testOutgoingMetadata(ctx context.Context, t *testing.T) {
 	t.Helper()
 	md, ok := metadata.FromOutgoingContext(ctx)
 	require.True(t, ok, "get metadata from context")
@@ -91,4 +111,55 @@ func TestWithOutgoingMetadata(t *testing.T) {
 		"username":           {"janedoe"},
 		"remote_ip":          {"1.2.3.4"},
 	}, md)
+}
+
+func TestCorrelationIDPropagation(t *testing.T) {
+	correlationID := "test-correlation-123"
+
+	ctx := context.WithValue(context.Background(), GitalyCorrelationIDKey, correlationID)
+
+	server := api.GitalyServer{
+		Address: "tcp://example.com:9999",
+		Token:   "secret-token",
+		CallMetadata: map[string]string{
+			"user_id": "123",
+		},
+	}
+
+	resultCtx := withOutgoingMetadata(ctx, server)
+
+	md, ok := metadata.FromOutgoingContext(resultCtx)
+	require.True(t, ok, "outgoing metadata should be present")
+
+	correlationValues := md.Get("x-gitlab-correlation-id")
+	require.Len(t, correlationValues, 1, "should have exactly one correlation ID")
+	require.Equal(t, correlationID, correlationValues[0], "correlation ID should match")
+
+	userIDValues := md.Get("user_id")
+	require.Len(t, userIDValues, 1, "should preserve other metadata")
+	require.Equal(t, "123", userIDValues[0], "user_id should be preserved")
+}
+
+func TestCorrelationIDPropagationWithoutCorrelationID(t *testing.T) {
+	ctx := context.Background()
+
+	server := api.GitalyServer{
+		Address: "tcp://example.com:9999",
+		Token:   "secret-token",
+		CallMetadata: map[string]string{
+			"user_id": "123",
+		},
+	}
+
+	resultCtx := withOutgoingMetadata(ctx, server)
+
+	md, ok := metadata.FromOutgoingContext(resultCtx)
+	require.True(t, ok, "outgoing metadata should be present")
+
+	correlationValues := md.Get("x-gitlab-correlation-id")
+	require.Empty(t, correlationValues, "should have no correlation ID when none provided")
+
+	userIDValues := md.Get("user_id")
+	require.Len(t, userIDValues, 1, "should still preserve other metadata")
+	require.Equal(t, "123", userIDValues[0], "user_id should be preserved")
 }

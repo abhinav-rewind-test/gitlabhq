@@ -1,4 +1,9 @@
 import * as textUtils from '~/lib/utils/text_utility';
+import { stubCrypto } from 'helpers/crypto';
+import {
+  markdownConfig,
+  strictMarkdownConfig,
+} from '../../../../app/assets/javascripts/lib/utils/text_utility';
 
 describe('text_utility', () => {
   describe('addDelimiter', () => {
@@ -49,6 +54,15 @@ describe('text_utility', () => {
 
     it('returns empty string when given string is invalid', () => {
       expect(textUtils.capitalizeFirstCharacter(undefined)).toEqual('');
+    });
+  });
+
+  describe('strictMarkdownConfig', () => {
+    it('does not allow images', () => {
+      expect(strictMarkdownConfig).toEqual({
+        ...markdownConfig,
+        ALLOWED_TAGS: expect.not.arrayContaining(['img']),
+      });
     });
   });
 
@@ -407,5 +421,46 @@ describe('text_utility', () => {
         expect(textUtils.stripQuotes(inputValue)).toBe(outputValue);
       },
     );
+  });
+
+  describe('convertEachWordToTitleCase', () => {
+    it.each`
+      inputValue   | outputValue
+      ${'Foo Bar'} | ${'Foo Bar'}
+      ${'Foo bar'} | ${'Foo Bar'}
+      ${'foo bar'} | ${'Foo Bar'}
+      ${'FOO BAr'} | ${'Foo Bar'}
+      ${'FOO BAR'} | ${'Foo Bar'}
+      ${'fOO bar'} | ${'Foo Bar'}
+    `(
+      'returns string $outputValue when called with string $inputValue',
+      ({ inputValue, outputValue }) => {
+        expect(textUtils.convertEachWordToTitleCase(inputValue)).toBe(outputValue);
+      },
+    );
+  });
+
+  describe('uniquifyString', () => {
+    it.each`
+      inputStr            | inputArray                       | inputModifier | outputValue
+      ${'Foo Bar'}        | ${['Foo Bar']}                   | ${' (copy)'}  | ${'Foo Bar (copy)'}
+      ${'Foo Bar'}        | ${['Foo Bar', 'Foo Bar (copy)']} | ${' (copy)'}  | ${'Foo Bar (copy) (copy)'}
+      ${'Foo Bar (copy)'} | ${['Foo Bar (copy)']}            | ${' (copy)'}  | ${'Foo Bar (copy) (copy)'}
+      ${'Foo Bar'}        | ${['Foo']}                       | ${' (copy)'}  | ${'Foo Bar'}
+    `(
+      'returns string $outputValue when called with string $inputStr, $inputArray, $inputModifier',
+      ({ inputStr, inputArray, inputModifier, outputValue }) => {
+        expect(textUtils.uniquifyString(inputStr, inputArray, inputModifier)).toBe(outputValue);
+      },
+    );
+  });
+
+  describe('sha256', () => {
+    beforeEach(stubCrypto);
+
+    it('returns a sha256 hash', async () => {
+      const hash = await textUtils.sha256('How vexingly quick daft zebras jump!');
+      expect(hash).toBe('3f7282eed1c3cef3efc993275e9b9cc0cfe85927450d6b0e5d73a2c59663232e');
+    });
   });
 });

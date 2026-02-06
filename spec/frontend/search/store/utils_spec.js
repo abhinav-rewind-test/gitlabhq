@@ -1,5 +1,9 @@
+// rspec spec/frontend/fixtures/search_navigation.rb to generate these files
+import noActiveItems from 'test_fixtures/search_navigation/no_active_items.json';
+import rootLevelActive from 'test_fixtures/search_navigation/root_level_active.json';
+
 import { useLocalStorageSpy } from 'helpers/local_storage_helper';
-import { MAX_FREQUENCY, SIDEBAR_PARAMS } from '~/search/store/constants';
+import { MAX_FREQUENCY, SIDEBAR_PARAMS, LS_REGEX_HANDLE } from '~/search/store/constants';
 import {
   loadDataFromLS,
   setFrequentItemToLS,
@@ -9,8 +13,15 @@ import {
   getAggregationsUrl,
   prepareSearchAggregations,
   addCountOverLimit,
+  injectRegexSearch,
+  injectUsersScope,
+  scopeCrawler,
+  buildDocumentTitle,
+  modifySearchQuery,
 } from '~/search/store/utils';
 import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
+import { TEST_HOST } from 'helpers/test_constants';
+
 import {
   MOCK_LS_KEY,
   MOCK_GROUPS,
@@ -57,7 +68,7 @@ describe('Global Search Store Utils', () => {
 
       it('wipes local storage and returns an empty array', () => {
         expect(localStorage.removeItem).toHaveBeenCalledWith(MOCK_LS_KEY);
-        expect(res).toStrictEqual([]);
+        expect(res).toStrictEqual(null);
       });
     });
   });
@@ -301,6 +312,156 @@ describe('Global Search Store Utils', () => {
 
     it('should return empty string if count is not provided', () => {
       expect(addCountOverLimit()).toEqual('');
+    });
+  });
+
+  describe('injectUsersScope', () => {
+    useMockLocationHelper();
+    it.each([
+      ['/search', `/search?scope=users`],
+      ['/search?search=test', `/search?search=test&scope=users`],
+      ['/search?search=test&scope=users', `/search?search=test&scope=users`],
+      ['/search?search=test&group_id=123', `/search?search=test&group_id=123&scope=users`],
+      ['/search?search=test&scope=projects', `/search?search=test&scope=users`],
+      [`https://gdk.test:3000/search?search=test`, `/search?search=test&scope=users`],
+      ['/groups/my-group/search', `/groups/my-group/search?scope=users`],
+      ['/groups/my-group/search?search=test', `/groups/my-group/search?search=test&scope=users`],
+    ])('transforms %s to %s', (input, expected) => {
+      expect(injectUsersScope(input)).toBe(expected);
+    });
+  });
+
+  describe('scopeCrawler', () => {
+    it('returns the correct scope when active item is at root level', () => {
+      const result = scopeCrawler(rootLevelActive);
+      expect(result).toBe('merge_requests');
+    });
+
+    it('returns null when no items are active', () => {
+      const result = scopeCrawler(noActiveItems);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('buildDocumentTitle', () => {
+    const SEARCH_WINDOW_TITLE = `Search`; // Make sure this matches your actual constant
+    let originalTitle;
+
+    beforeEach(() => {
+      originalTitle = document.title;
+    });
+
+    afterEach(() => {
+      document.title = originalTitle;
+    });
+
+    it('returns original title when document title does not include search title', () => {
+      document.title = 'GitLab';
+      expect(buildDocumentTitle('test')).toBe('test');
+    });
+
+    it('prepends new title when document title starts with search title', () => {
+      document.title = `${SEARCH_WINDOW_TITLE} · GitLab`;
+      const result = buildDocumentTitle('test');
+      expect(result).toBe(`test · ${SEARCH_WINDOW_TITLE} · GitLab`);
+    });
+
+    it('prepends new title when document title starts with dot and search title', () => {
+      document.title = ` · ${SEARCH_WINDOW_TITLE} · GitLab`;
+      const result = buildDocumentTitle('test');
+      expect(result).toBe(`test · ${SEARCH_WINDOW_TITLE} · GitLab`);
+    });
+
+    it('replaces title before search title with new title', () => {
+      document.title = `Issues · ${SEARCH_WINDOW_TITLE} · GitLab`;
+      const result = buildDocumentTitle('test');
+      expect(result).toBe(`test · ${SEARCH_WINDOW_TITLE} · GitLab`);
+    });
+
+    it('handles complex titles correctly', () => {
+      document.title = `Something · With · Dots · ${SEARCH_WINDOW_TITLE} · GitLab`;
+      const result = buildDocumentTitle('test');
+      expect(result).toBe(`test · ${SEARCH_WINDOW_TITLE} · GitLab`);
+    });
+  });
+
+  describe('modifySearchQuery', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('adds new query parameters to a URL without existing parameters', () => {
+      const result = modifySearchQuery('/search', { search: 'test' });
+
+      expect(result).toBe('/search?search=test');
+    });
+
+    it('adds new query parameters to a URL with existing parameters', () => {
+      const result = modifySearchQuery('/search?scope=projects', { search: 'test' });
+
+      expect(result).toBe('/search?scope=projects&search=test');
+    });
+
+    it('overrides existing query parameters with the same name', () => {
+      const result = modifySearchQuery('/search?search=old&scope=projects', { search: 'new' });
+
+      expect(result).toBe('/search?search=new&scope=projects');
+    });
+
+    it('handles absolute URLs correctly', () => {
+      const result = modifySearchQuery(`${TEST_HOST}/search`, { search: 'test' });
+
+      expect(result).toBe('/search?search=test');
+    });
+  });
+
+  describe('injectRegexSearch', () => {
+    describe('with objectOnly parameter', () => {
+      it('returns an empty object when regex is not enabled in localStorage', () => {
+        localStorage.setItem(LS_REGEX_HANDLE, JSON.stringify(false));
+
+        const result = injectRegexSearch('/search', true);
+
+        expect(result).toEqual({});
+      });
+
+      it('returns the regex search object when regex is enabled in localStorage', () => {
+        localStorage.setItem(LS_REGEX_HANDLE, JSON.stringify(true));
+
+        const result = injectRegexSearch('/search', true);
+        expect(result).toEqual({ regex: true });
+      });
+
+      it('returns an empty object when regex is not set in localStorage', () => {
+        localStorage.removeItem(LS_REGEX_HANDLE);
+
+        const result = injectRegexSearch('/search', true);
+
+        expect(result).toEqual({});
+      });
+    });
+
+    describe.each`
+      urlIn                                                            | urlOut
+      ${`${TEST_HOST}/search?search=test&group_id=123`}                | ${'/search?search=test&group_id=123'}
+      ${'/search?search=test&group_id=123'}                            | ${'/search?search=test&group_id=123'}
+      ${`${TEST_HOST}/search?search=test&project_id=123`}              | ${'/search?search=test&project_id=123'}
+      ${'/search?search=test&project_id=123'}                          | ${'/search?search=test&project_id=123'}
+      ${`${TEST_HOST}/search?search=test&project_id=123&group_id=123`} | ${'/search?search=test&project_id=123&group_id=123'}
+      ${'/search?search=test&project_id=123&group_id=123'}             | ${'/search?search=test&project_id=123&group_id=123'}
+    `('modifies urls and links', ({ urlIn, urlOut }) => {
+      it(`should add regex=true to ${urlIn}`, () => {
+        localStorage.setItem(LS_REGEX_HANDLE, JSON.stringify(true));
+
+        const result = injectRegexSearch(urlIn);
+
+        expect(result).toEqual(`${urlOut}&regex=true`);
+      });
+
+      it(`should NOT add regex=true to ${urlIn}`, () => {
+        localStorage.setItem(LS_REGEX_HANDLE, JSON.stringify(false));
+        expect(injectRegexSearch(urlIn)).toEqual(urlOut);
+      });
     });
   });
 });

@@ -2,22 +2,21 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
+RSpec.describe 'Group issues page', feature_category: :team_planning do
   include Features::SortingHelpers
   include FilteredSearchHelpers
-  include DragTo
 
   let(:group) { create(:group) }
   let(:project) { create(:project, :public, group: group) }
   let(:project_with_issues_disabled) { create(:project, :issues_disabled, group: group) }
   let(:path) { issues_group_path(group) }
 
-  before do
-    stub_feature_flags(or_issuable_queries: false)
-  end
-
   context 'with shared examples', :js do
     let(:issuable) { create(:issue, project: project, title: "this is my created issuable") }
+
+    before do
+      stub_feature_flags(work_item_planning_view: false)
+    end
 
     include_examples 'project features apply to issuables', Issue
 
@@ -96,6 +95,7 @@ RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
     let!(:subgroup_issue) { create(:issue, project: subgroup_project) }
 
     before do
+      stub_feature_flags(work_item_planning_view: false)
       visit issues_group_path(group_with_no_issues)
     end
 
@@ -109,13 +109,14 @@ RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
       let(:user_in_group) { create(:group_member, :maintainer, user: create(:user), group: group).user }
 
       before do
+        stub_feature_flags(work_item_planning_view: false)
         [project, project_with_issues_disabled].each { |project| project.add_maintainer(user_in_group) }
         sign_in(user_in_group)
         visit issues_group_path(group)
       end
 
       it 'shows projects only with issues feature enabled', :js do
-        click_button 'Toggle project select'
+        click_button 'Toggle project select', match: :first
 
         expect(page).to have_button project.full_name
         expect(page).not_to have_button project_with_issues_disabled.full_name
@@ -132,6 +133,7 @@ RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
 
     before do
       sign_in(user_in_group)
+      stub_feature_flags(work_item_planning_view: false)
     end
 
     it 'displays all issues' do
@@ -158,7 +160,12 @@ RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
 
       wait_for_requests
 
-      drag_to(selector: '.manual-ordering', from_index: 0, to_index: 2)
+      issue_els = all('.manual-ordering .issue')
+
+      from_item = issue_els.at(0)
+      to_item = issue_els.at(2)
+
+      from_item.drag_to(to_item)
 
       expect_issue_order
 
@@ -175,9 +182,13 @@ RSpec.describe 'Group issues page', feature_category: :groups_and_projects do
 
       wait_for_requests
 
-      drag_to(selector: '.manual-ordering', from_index: 0, to_index: 2)
+      issue_els = all('.manual-ordering .issue')
+      from_item = issue_els.at(0)
+      to_item = issue_els.at(2)
 
-      expect(page).to have_text 'An error occurred while reordering issues.'
+      from_item.drag_to(to_item)
+
+      expect(page).to have_text 'An error occurred while reordering work items.'
     end
 
     def select_manual_sort

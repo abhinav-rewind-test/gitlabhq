@@ -6,10 +6,12 @@ module Gitlab
       class << self
         def initialize_request_slis!
           request_labels = possible_request_labels
-
           Gitlab::Metrics::Sli::Apdex.initialize_sli(:rails_request, request_labels)
           Gitlab::Metrics::Sli::ErrorRate.initialize_sli(:rails_request, request_labels)
-          Gitlab::Metrics::Sli::Apdex.initialize_sli(:graphql_query, possible_graphql_query_labels)
+
+          graphql_query_labels = possible_graphql_query_labels
+          Gitlab::Metrics::Sli::Apdex.initialize_sli(:graphql_query, graphql_query_labels)
+          Gitlab::Metrics::Sli::ErrorRate.initialize_sli(:graphql_query, graphql_query_labels)
         end
 
         def request_apdex
@@ -24,6 +26,10 @@ module Gitlab
           Gitlab::Metrics::Sli::Apdex[:graphql_query]
         end
 
+        def graphql_query_error_rate
+          Gitlab::Metrics::Sli::ErrorRate[:graphql_query]
+        end
+
         private
 
         def possible_graphql_query_labels
@@ -32,8 +38,7 @@ module Gitlab
           ::Gitlab::Graphql::KnownOperations.default.operations.map do |op|
             {
               endpoint_id: op.to_caller_id,
-              # We'll be able to correlate feature_category with https://gitlab.com/gitlab-org/gitlab/-/issues/328535
-              feature_category: nil,
+              feature_category: op.feature_category,
               query_urgency: op.query_urgency.name
             }
           end
@@ -45,6 +50,8 @@ module Gitlab
 
         def possible_controller_labels
           all_controller_labels.select do |labelset|
+            next false if uninitialized_endpoints.member?(labelset[:endpoint_id])
+
             if known_git_endpoints.include?(labelset[:endpoint_id])
               Gitlab::Metrics::Environment.git?
             else
@@ -55,6 +62,8 @@ module Gitlab
 
         def possible_api_labels
           all_api_labels.select do |labelset|
+            next false if uninitialized_endpoints.member?(labelset[:endpoint_id])
+
             if known_git_endpoints.include?(labelset[:endpoint_id])
               Gitlab::Metrics::Environment.git?
             else
@@ -109,6 +118,12 @@ module Gitlab
             "Repositories::LfsStorageController#upload_authorize",
             "Repositories::LfsStorageController#upload_finalize"
           ]
+        end
+
+        def uninitialized_endpoints
+          @uninitialized_endpoints ||= Set.new(YAML.safe_load(
+            File.read(Rails.root.join("lib/gitlab/metrics/rails_slis_uninitialized_endpoints.yml"))
+          ))
         end
       end
     end

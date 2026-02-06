@@ -26,6 +26,11 @@ export default {
       required: false,
       default: '',
     },
+    encodePath: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   data() {
     return {
@@ -47,6 +52,7 @@ export default {
       return this.width && this.height;
     },
     safePath() {
+      if (!this.encodePath) return this.path;
       return this.path.startsWith(BLOB_PREFIX) ? this.path : encodeSaferUrl(this.path);
     },
   },
@@ -89,10 +95,12 @@ export default {
 
 <template>
   <div data-testid="image-viewer">
-    <div :class="innerCssClasses" class="position-relative">
+    <div :class="innerCssClasses" class="!gl-relative">
       <img ref="contentImg" :src="safePath" @load="onImgLoad" />
       <slot
         name="image-overlay"
+        :width="width"
+        :height="height"
         :rendered-width="renderedWidth"
         :rendered-height="renderedHeight"
       ></slot>

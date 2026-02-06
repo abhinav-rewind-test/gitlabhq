@@ -20,6 +20,7 @@ export default {
     GlFormTextarea,
     GlSprintf,
   },
+  expose: ['resetCommitMessage'],
   props: {
     currentBranch: {
       type: String,
@@ -50,6 +51,7 @@ export default {
       default: false,
     },
   },
+  emits: ['submit', 'resetContent', 'scrolled-to-commit-form'],
   data() {
     return {
       message: this.defaultMessage,
@@ -86,6 +88,9 @@ export default {
     onReset() {
       this.$emit('resetContent');
     },
+    resetCommitMessage() {
+      this.message = this.defaultMessage;
+    },
     scrollIntoView() {
       this.$el.scrollIntoView({ behavior: 'smooth' });
       this.$emit('scrolled-to-commit-form');
@@ -113,8 +118,9 @@ export default {
         <gl-form-textarea
           id="commit-message"
           v-model="message"
-          class="gl-font-monospace!"
+          class="!gl-font-monospace"
           required
+          no-resize
           :placeholder="defaultMessage"
         />
       </gl-form-group>
@@ -126,7 +132,7 @@ export default {
         <gl-form-input
           id="source-branch-field"
           v-model="sourceBranch"
-          class="gl-font-monospace!"
+          class="!gl-font-monospace"
           required
           data-testid="source-branch-field"
         />
@@ -143,7 +149,7 @@ export default {
           </gl-sprintf>
         </gl-form-checkbox>
       </gl-form-group>
-      <div class="gl-display-flex gl-py-5">
+      <div class="gl-flex gl-py-5">
         <gl-button
           type="submit"
           class="js-no-auto-disable gl-mr-3"

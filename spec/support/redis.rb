@@ -1,9 +1,10 @@
 # frozen_string_literal: true
+
 require 'gitlab/redis'
 
 RSpec.configure do |config|
   config.after(:each, :redis) do
-    Sidekiq.redis(&:flushdb)
+    redis_queues_cleanup!
     redis_queues_metadata_cleanup!
   end
 

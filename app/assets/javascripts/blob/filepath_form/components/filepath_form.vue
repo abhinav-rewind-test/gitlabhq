@@ -1,9 +1,10 @@
 <script>
-import { GlFormInput } from '@gitlab/ui';
+import { GlFormGroup, GlFormInput } from '@gitlab/ui';
 import TemplateSelector from '~/blob/filepath_form/components/template_selector.vue';
 
 export default {
   components: {
+    GlFormGroup,
     GlFormInput,
     TemplateSelector,
   },
@@ -31,7 +32,9 @@ export default {
   beforeMount() {
     const navLinksElement = document.querySelector('.file-editor .nav-links');
     navLinksElement?.addEventListener('click', (e) => {
-      this.showTemplateSelector = e.target.href.split('#')[1] !== 'preview';
+      if (e.target.tagName === 'A' && e.target.href) {
+        this.showTemplateSelector = e.target.href.split('#')[1] !== 'preview';
+      }
     });
   },
   methods: {
@@ -43,9 +46,16 @@ export default {
 </script>
 <template>
   <div
-    class="gl-display-flex gl-flex-direction-column gl-lg-flex-direction-row gl-w-full gl-lg-w-auto gl-gap-3 gl-mr-3"
+    class="gl-mr-3 gl-flex gl-w-full gl-flex-col gl-gap-3 @lg/panel:gl-w-auto @lg/panel:gl-flex-row"
   >
-    <gl-form-input v-model="filename" v-bind="inputOptions" />
+    <gl-form-group
+      class="gl-mb-0"
+      :label="inputOptions.label"
+      :label-for="inputOptions.id"
+      label-class="gl-sr-only"
+    >
+      <gl-form-input v-model="filename" v-bind="inputOptions" />
+    </gl-form-group>
     <template-selector
       v-if="showTemplateSelector"
       :filename="filename"

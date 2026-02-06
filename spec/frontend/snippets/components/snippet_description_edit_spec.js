@@ -1,53 +1,35 @@
-import { shallowMount } from '@vue/test-utils';
+import { shallowMount, mount } from '@vue/test-utils';
 import SnippetDescriptionEdit from '~/snippets/components/snippet_description_edit.vue';
 import MarkdownField from '~/vue_shared/components/markdown/field.vue';
+import MarkdownEditor from '~/vue_shared/components/markdown/markdown_editor.vue';
 
 describe('Snippet Description Edit component', () => {
   let wrapper;
-  const defaultDescription = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
-  const markdownPreviewPath = 'foo/';
-  const markdownDocsPath = 'help/';
-  const findTextarea = () => wrapper.find('textarea');
 
-  function createComponent(value = defaultDescription) {
-    wrapper = shallowMount(SnippetDescriptionEdit, {
+  const findMarkdownEditor = () => wrapper.findComponent(MarkdownEditor);
+  const mountComponent = ({ description = 'test' } = {}, mountFn = shallowMount) => {
+    wrapper = mountFn(SnippetDescriptionEdit, {
+      attachTo: document.body,
       propsData: {
-        value,
-        markdownPreviewPath,
-        markdownDocsPath,
+        markdownPreviewPath: '/',
+        markdownDocsPath: '/',
+        value: description,
       },
       stubs: {
         MarkdownField,
       },
     });
-  }
-
-  function isHidden(sel) {
-    return wrapper.find(sel).classes('d-none');
-  }
+  };
 
   beforeEach(() => {
-    createComponent();
+    mountComponent();
   });
 
   describe('rendering', () => {
-    it('matches the snapshot', () => {
-      expect(wrapper.element).toMatchSnapshot();
-    });
+    it('renders the description field', () => {
+      mountComponent({}, mount);
 
-    it('renders the field expanded when description exists', () => {
-      expect(wrapper.find('.js-collapsed').classes('d-none')).toBe(true);
-      expect(wrapper.find('.js-expanded').classes('d-none')).toBe(false);
-
-      expect(isHidden('.js-collapsed')).toBe(true);
-      expect(isHidden('.js-expanded')).toBe(false);
-    });
-
-    it('renders the field collapsed if there is no description yet', () => {
-      createComponent('');
-
-      expect(isHidden('.js-collapsed')).toBe(false);
-      expect(isHidden('.js-expanded')).toBe(true);
+      expect(wrapper.find('.md-area').exists()).toBe(true);
     });
   });
 
@@ -55,9 +37,28 @@ describe('Snippet Description Edit component', () => {
     it('emits "input" event when description is changed', () => {
       expect(wrapper.emitted('input')).toBeUndefined();
       const newDescription = 'dummy';
-      findTextarea().setValue(newDescription);
+      findMarkdownEditor().vm.$emit('input', newDescription);
 
       expect(wrapper.emitted('input')[0]).toEqual([newDescription]);
     });
+  });
+
+  it('uses the MarkdownEditor component to edit markdown', () => {
+    expect(findMarkdownEditor().props()).toMatchObject({
+      value: 'test',
+      renderMarkdownPath: '/',
+      autofocus: true,
+      supportsQuickActions: true,
+      markdownDocsPath: '/',
+      enableAutocomplete: true,
+    });
+  });
+
+  it('emits input event when MarkdownEditor emits input event', () => {
+    const markdown = 'markdown';
+
+    findMarkdownEditor().vm.$emit('input', markdown);
+
+    expect(wrapper.emitted('input')).toEqual([[markdown]]);
   });
 });

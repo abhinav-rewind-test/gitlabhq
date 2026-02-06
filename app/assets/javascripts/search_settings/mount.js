@@ -5,12 +5,13 @@ import { expandSection, closeSection, isExpanded } from '~/settings_panels';
 const mountSearch = ({ el }) =>
   new Vue({
     el,
+    name: 'SearchSettingsRoot',
     render: (h) =>
       h(SearchSettings, {
         ref: 'searchSettings',
         props: {
           searchRoot: document.querySelector('#content-body'),
-          sectionSelector: '.js-search-settings-section, section.settings',
+          sectionSelector: '.js-search-settings-section, section.settings, .vue-settings-block',
           hideWhenEmptySelector: '.js-hide-when-nothing-matches-search',
           isExpandedFn: isExpanded,
         },

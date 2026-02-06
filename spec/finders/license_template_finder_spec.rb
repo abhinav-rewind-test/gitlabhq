@@ -23,6 +23,10 @@ RSpec.describe LicenseTemplateFinder do
     end
   end
 
+  let(:from_licensee) do
+    Licensee::License.all({ hidden: true, pseudo: false }).map { |l| l.key } - described_class::EXCLUDED_LICENSES
+  end
+
   describe '#execute' do
     subject(:result) { described_class.new(nil, params).execute }
 
@@ -35,8 +39,6 @@ RSpec.describe LicenseTemplateFinder do
       let(:params) { { popular: nil } }
 
       it 'returns all licenses known by the Licensee gem' do
-        from_licensee = Licensee::License.all.map { |l| l.key }
-
         expect(result.map(&:key)).to match_array(from_licensee)
       end
 
@@ -50,16 +52,39 @@ RSpec.describe LicenseTemplateFinder do
           end
         end
       end
+
+      describe 'the effect of EXCLUDED_LICENSES' do
+        let(:license_exclusions) { 'mit' }
+
+        context 'when there are excluded licenses' do
+          before do
+            stub_const("#{described_class}::EXCLUDED_LICENSES", license_exclusions)
+          end
+
+          it 'does not return excluded licenses in list' do
+            expect(result.map(&:key)).not_to include(license_exclusions)
+          end
+        end
+
+        context 'when there are no excluded licenses' do
+          before do
+            stub_const("#{described_class}::EXCLUDED_LICENSES", "")
+          end
+
+          it 'returns excluded license in list' do
+            expect(result.map(&:key)).to include(license_exclusions)
+          end
+        end
+      end
     end
   end
 
   describe '#template_names' do
     let(:params) { {} }
-
-    subject(:template_names) { described_class.new(nil, params).template_names }
-
     let(:categories) { categorised_licenses.keys }
     let(:categorised_licenses) { template_names }
+
+    subject(:template_names) { described_class.new(nil, params).template_names }
 
     it_behaves_like 'filters by popular category'
 
@@ -67,8 +92,6 @@ RSpec.describe LicenseTemplateFinder do
       let(:params) { { popular: nil } }
 
       it 'returns all licenses known by the Licensee gem' do
-        from_licensee = Licensee::License.all.map { |l| l.key }
-
         expect(template_names.values.flatten.map { |x| x[:key] }).to match_array(from_licensee)
       end
     end

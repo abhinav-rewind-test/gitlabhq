@@ -1,14 +1,17 @@
 ---
 stage: Create
 group: Source Code
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Build, automate, and customize changelogs in your GitLab project.
+title: Changelogs
 ---
 
-# Changelogs
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Changelogs are generated based on commit titles and Git trailers. To be included
 in a changelog, a commit must contain a specific Git trailer. Changelogs are generated
@@ -35,12 +38,12 @@ When adding new sections, GitLab parses these titles to determine where to place
 the new information in the file. GitLab sorts sections according to their versions,
 not their dates.
 
-Each section contains changes sorted by category (like **Features**), and the format
+Each section contains changes sorted by category (like "Features"), and the format
 of these sections can be changed. The section names derive from the values of the
 Git trailer used to include or exclude commits.
 
 Commits for changelogs can be retrieved when operating on a mirror. GitLab itself
-uses this feature, because security releases can include changes from both public
+uses this feature, because patch releases can include changes from both public
 projects and private security mirrors.
 
 ## Add a trailer to a Git commit
@@ -57,6 +60,20 @@ string `Changelog: feature` to your commit message, like this:
 Changelog: feature
 ```
 
+If your merge request has multiple commits, add the `Changelog` entry to the first commit.
+This ensures the correct entry is generated when you squash commits.
+
+The `Changelog` trailer accepts these values:
+
+- `added`: New feature
+- `fixed`: Bug fix
+- `changed`: Feature change
+- `deprecated`: New deprecation
+- `removed`: Feature removal
+- `security`: Security fix
+- `performance`: Performance improvement
+- `other`: Other
+
 ## Create a changelog
 
 Changelogs are generated from the command line, using either the API or the
@@ -65,17 +82,21 @@ GitLab CLI. The changelog output is formatted in Markdown, and
 
 ### From the API
 
-To generate changelogs via the API with a `curl` command, see
-[Add changelog data to a changelog file](../../api/repositories.md#add-changelog-data-to-a-changelog-file)
+To use the API to generate changelogs with a `curl` command, see
+[Add changelog data to a changelog file](../../api/repositories.md#add-changelog-data-to-file)
 in the API documentation.
 
 ### From the GitLab CLI
 
-> - [Introduced](https://gitlab.com/gitlab-org/cli/-/merge_requests/1222) in `glab` version 1.30.0.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/cli/-/merge_requests/1222) in `glab` version 1.30.0.
+
+{{< /history >}}
 
 Prerequisites:
 
-- You have installed and configured the [GitLab CLI](../../editor_extensions/gitlab_cli/index.md),
+- You have installed and configured the [GitLab CLI](../../editor_extensions/gitlab_cli/_index.md),
   version 1.30.0 or later.
 - Your repository's tag naming schema matches
   [the expected tag naming format](#customize-the-tag-format-when-extracting-versions).
@@ -97,7 +118,7 @@ To generate the changelog:
      - `--from [string]`: The start of the range of commits (as a SHA) to use for
        generating the changelog. This commit itself isn't included in the changelog.
      - `--to [string]`: The end of the range of commits (as a SHA) to use for
-       generating the changelog. This commit _is_ included in the list. Defaults to the `HEAD`
+       generating the changelog. This commit is included in the list. Defaults to the `HEAD`
        of the default project branch.
    - `--date [string]`: The date and time of the release, in ISO 8601 (`2016-03-11T03:45:40Z`)
      format. Defaults to the current time.
@@ -105,14 +126,16 @@ To generate the changelog:
    - `--version [string]`: The version to generate the changelog for.
 
 To learn more about the parameters available in GitLab CLI, run `glab changelog generate --help`. See the
-[API documentation](../../api/repositories.md#add-changelog-data-to-a-changelog-file)
+[API documentation](../../api/repositories.md#add-changelog-data-to-file)
 for definitions and usage.
 
 ## Customize the changelog output
 
-To customize the changelog output, edit the changelog configuration file, and commit these changes to your project's Git repository.
-The default location for this configuration is `.gitlab/changelog_config.yml`. The file supports
-these variables:
+To customize the changelog output, edit the changelog configuration file, and commit these changes to your project's Git repository. The default location for this configuration is `.gitlab/changelog_config.yml`.
+
+For performance and security reasons, parsing the changelog configuration is limited to `2` seconds.
+If parsing the configuration results in timeout errors, consider reducing the size of the configuration.
+The file supports these variables:
 
 - `date_format`: The date format, in `strftime` format, used in the title of the newly added changelog data.
 - `template`: A custom template to use when generating the changelog data.
@@ -134,6 +157,12 @@ these variables:
 
 ### Custom templates
 
+{{< history >}}
+
+- Default template [changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/155806) from using `commit.reference` and `merge_request.reference` to `commit.web_url` and `merge_request.web_url` in GitLab 17.1.
+
+{{< /history >}}
+
 Category sections are generated using a template. The default template:
 
 ```plaintext
@@ -142,9 +171,9 @@ Category sections are generated using a template. The default template:
 ### {{ title }} ({% if single_change %}1 change{% else %}{{ count }} changes{% end %})
 
 {% each entries %}
-- [{{ title }}]({{ commit.reference }})\
+- [{{ title }}]({{ commit.web_url }})\
 {% if author.credit %} by {{ author.reference }}{% end %}\
-{% if merge_request %} ([merge request]({{ merge_request.reference }})){% end %}
+{% if merge_request %} ([merge request]({{ merge_request.web_url }})){% end %}
 
 {% end %}
 
@@ -232,7 +261,7 @@ template: |
   ### {{ title }}
 
   {% each entries %}
-  - [{{ title }}]({{ commit.reference }})\
+  - [{{ title }}]({{ commit.web_url }})\
   {% if author.credit %} by {{ author.reference }}{% end %}
 
   {% end %}
@@ -247,6 +276,12 @@ When specifying the template you should use `template: |` and not
 `template: >`, as the latter doesn't preserve newlines in the template.
 
 ### Template data
+
+{{< history >}}
+
+- `commit.web_url` and `merge_request.web_url` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/155806) in GitLab 17.1.
+
+{{< /history >}}
 
 At the top level, the following variable is available:
 
@@ -271,6 +306,8 @@ In an entry, the following variables are available (here `foo.bar` means that
 - `author.reference`: a reference to the commit author (for example, `@alice`).
 - `commit.reference`: a reference to the commit, for example,
   `gitlab-org/gitlab@0a4cdd86ab31748ba6dac0f69a8653f206e5cfc7`.
+- `commit.web_url`: a URL to the commit, for example,
+  `https://gitlab.com/gitlab-org/gitlab/-/commit/0a4cdd86ab31748ba6dac0f69a8653f206e5cfc7`.
 - `commit.trailers`: an object containing all the Git trailers that were present
   in the commit body.
 
@@ -295,6 +332,8 @@ In an entry, the following variables are available (here `foo.bar` means that
 
 - `merge_request.reference`: a reference to the merge request that first
   introduced the change (for example, `gitlab-org/gitlab!50063`).
+- `merge_request.web_url`: a URL to the merge request that first introduced
+  the change (for example, `https://gitlab.com/gitlab-org/gitlab/-/merge_requests/50063`).
 - `title`: the title of the changelog entry (this is the commit title).
 
 The `author` and `merge_request` objects might not be present if the data
@@ -302,8 +341,6 @@ couldn't be determined. For example, when a commit is created without a
 corresponding merge request, no merge request is displayed.
 
 ### Customize the tag format when extracting versions
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/56889) in GitLab 13.11.
 
 GitLab uses a regular expression (using the
 [re2](https://github.com/google/re2/) engine and syntax) to extract a semantic
@@ -318,7 +355,7 @@ This regular expression is based on the official
 support for tag names that start with the letter `v`.
 
 If your project uses a different format for tags, you can specify a different
-regular expression. The regular expression used _must_ produce the following
+regular expression. The regular expression used must produce the following
 capture groups. If any of these capture groups are missing, the tag is ignored:
 
 - `major`
@@ -351,8 +388,6 @@ an error is produced when generating a changelog.
 
 ## Reverted commit handling
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/55537) in GitLab 13.10.
-
 To be treated as a revert commit, the commit message must contain the string
 `This reverts commit <SHA>`, where `SHA` is the SHA of the commit to be reverted.
 
@@ -361,16 +396,22 @@ reverted in that range. In this example, commit C reverts commit B. Because
 commit C has no other trailer, only commit A is added to the changelog:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+    accTitle: Flowchart of 3 commits
+    accDescr: Shows the flow of 3 commits, where commit C reverts commit B, but it contains no trailer
     A[Commit A<br>Changelog: changed] --> B[Commit B<br>Changelog: changed]
     B --> C[Commit C<br>Reverts commit B]
 ```
 
-However, if the revert commit (commit C) _also_ contains a changelog trailer,
+However, if the revert commit (commit C) also contains a changelog trailer,
 both commits A and C are included in the changelog:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+    accTitle: Flowchart of 3 commits
+    accDescr: Shows the flow of 3 commits, where commit C reverts commit B, but both commits A and C contain trailers
     A[Commit A<br><br>Changelog: changed] --> B[Commit B<br><br>Changelog: changed]
     B --> C[Commit C<br>Reverts commit B<br>Changelog: changed]
 ```
@@ -380,3 +421,4 @@ Commit B is skipped.
 ## Related topics
 
 - [Changelog-related endpoints](../../api/repositories.md) in the Repositories API.
+- [`glab changelog`](https://gitlab.com/gitlab-org/cli/-/tree/main/docs/source/changelog) in the GitLab CLI documentation.

@@ -11,7 +11,7 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
     describe '#execute' do
       shared_examples 'fails creating work item and returns errors' do
         it 'does not create new work item if parent can not be set' do
-          expect { service_result }.not_to change(WorkItem, :count)
+          expect { service_result }.not_to change { WorkItem.count }
 
           expect(service_result[:status]).to be(:error)
           expect(service_result[:message]).to match(error_message)
@@ -27,37 +27,6 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
 
         it 'returns an access error' do
           expect(service_result.errors).to contain_exactly('Operation not allowed')
-        end
-      end
-
-      context 'when applying quick actions' do
-        let(:work_item) { service_result[:work_item] }
-        let(:opts) do
-          {
-            title: 'My work item',
-            work_item_type: work_item_type,
-            description: '/shrug'
-          }
-        end
-
-        context 'when work item type is not the default Issue' do
-          let(:work_item_type) { create(:work_item_type, :task, namespace: group) }
-
-          it 'saves the work item without applying the quick action' do
-            expect(service_result).to be_success
-            expect(work_item).to be_persisted
-            expect(work_item.description).to eq('/shrug')
-          end
-        end
-
-        context 'when work item type is the default Issue' do
-          let(:work_item_type) { WorkItems::Type.default_by_type(:issue) }
-
-          it 'saves the work item and applies the quick action' do
-            expect(service_result).to be_success
-            expect(work_item).to be_persisted
-            expect(work_item.description).to eq(' ¯\＿(ツ)＿/¯')
-          end
         end
       end
 
@@ -88,14 +57,7 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
 
         it 'returns validation errors' do
           expect(service_result.errors).to contain_exactly("Title can't be blank")
-        end
-
-        it 'does not execute after-create transaction widgets' do
-          expect(service).to receive(:create).and_call_original
-          expect(service).not_to receive(:execute_widgets)
-                                   .with(callback: :after_create_in_transaction, widget_params: widget_params)
-
-          service_result
+          expect(service_result[:work_item].persisted?).to be_falsey
         end
       end
 
@@ -144,9 +106,8 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
         let(:supported_widgets) do
           [
             {
-              klass: WorkItems::Widgets::HierarchyService::CreateService,
-              callback: :after_create_in_transaction,
-              params: { parent: parent }
+              klass: WorkItems::Callbacks::Hierarchy,
+              callback: :after_create
             }
           ]
         end
@@ -156,7 +117,7 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
         let(:widget_params) { { hierarchy_widget: { parent: parent } } }
 
         context 'when user can admin parent link' do
-          let(:current_user) { reporter }
+          let(:current_user) { guest }
 
           context 'when parent is valid work item' do
             let(:opts) do
@@ -168,8 +129,8 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
             end
 
             it 'creates new work item and sets parent reference' do
-              expect { service_result }.to change(WorkItem, :count).by(1).and(
-                change(WorkItems::ParentLink, :count).by(1)
+              expect { service_result }.to change { WorkItem.count }.by(1).and(
+                change { WorkItems::ParentLink.count }.by(1)
               )
 
               expect(service_result[:status]).to be(:success)
@@ -180,13 +141,14 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
             let_it_be(:parent) { create(:work_item, :task, **container_args) }
 
             it_behaves_like 'fails creating work item and returns errors' do
-              let(:error_message) { 'is not allowed to add this type of parent' }
+              let(:error_message) { "it's not allowed to add this type of parent item" }
             end
           end
         end
 
         context 'when user cannot admin parent link' do
           let(:current_user) { guest }
+          let_it_be(:parent) { create(:work_item, :confidential, **container_args) }
 
           let(:opts) do
             {
@@ -210,10 +172,89 @@ RSpec.describe WorkItems::CreateService, feature_category: :team_planning do
               namespace_id: kind_of(Numeric)
             )
       end
+
+      describe 'work item instrumentation tracking' do
+        context 'when create_source is provided' do
+          let(:opts) do
+            {
+              title: 'Awesome work_item',
+              description: 'please fix',
+              create_source: 'work_item_list'
+            }
+          end
+
+          before do
+            tracking_service = instance_double(Gitlab::WorkItems::Instrumentation::TrackingService)
+
+            allow(Gitlab::WorkItems::Instrumentation::TrackingService)
+              .to receive(:new)
+              .with(
+                work_item: kind_of(WorkItem),
+                current_user: current_user,
+                event: 'work_item_create_work_item_list'
+              )
+              .and_return(tracking_service)
+
+            allow(tracking_service).to receive(:execute)
+          end
+
+          it 'tracks the work item creation' do
+            result = service.execute
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService)
+              .to have_received(:new)
+              .with(
+                work_item: result[:work_item],
+                current_user: current_user,
+                event: 'work_item_create_work_item_list'
+              )
+          end
+        end
+      end
     end
   end
 
   it_behaves_like 'creates work item in container', :project
   it_behaves_like 'creates work item in container', :project_namespace
-  it_behaves_like 'creates work item in container', :group
+
+  context 'when applying quick actions' do
+    let(:service) do
+      described_class.new(
+        container: project,
+        current_user: user,
+        params: params,
+        widget_params: widget_params
+      )
+    end
+
+    let(:issuable) { service.execute[:work_item] }
+
+    it_behaves_like 'issuable record that supports quick actions'
+    it_behaves_like 'issuable record that supports quick actions', with_widgets: true
+
+    context 'when applying work item quick actions using legacy params' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:user) { project.creator }
+
+      let_it_be(:task) { create(:work_item, :task, project: project) }
+
+      let(:params) do
+        {
+          title: 'Awesome work_item',
+          description: "please fix\n/add_child #{task.to_reference}"
+        }
+      end
+
+      let(:widget_params) { {} }
+
+      it 'applies the quick action' do
+        service_result = service.execute
+
+        expect(service_result[:status]).to be(:success)
+        expect(service_result[:work_item].work_item_children).to contain_exactly(
+          task
+        )
+      end
+    end
+  end
 end

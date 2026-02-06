@@ -50,7 +50,7 @@ export default {
   <gl-disclosure-dropdown
     :toggle-text="$options.i18n.QUICK_START"
     variant="confirm"
-    placement="right"
+    placement="bottom-end"
     @shown="track('click_dropdown')"
   >
     <div class="gl-px-3 gl-py-2">
@@ -71,7 +71,7 @@ export default {
       />
 
       <code-instruction
-        class="mb-0"
+        class="!gl-mb-0"
         :label="$options.i18n.PUSH_COMMAND_LABEL"
         :instruction="dockerPushCommand"
         :copy-text="$options.i18n.COPY_PUSH_TITLE"

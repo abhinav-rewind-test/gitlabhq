@@ -8,6 +8,11 @@ RSpec.describe MergeRequestPresenter do
 
   let_it_be(:user) { create(:user) }
 
+  before do
+    # required for the issues/work_items URLs
+    stub_feature_flags(work_item_planning_view: false)
+  end
+
   describe '#mergeable_discussions_state' do
     subject { described_class.new(resource).mergeable_discussions_state }
 
@@ -48,7 +53,7 @@ RSpec.describe MergeRequestPresenter do
       let(:pipeline) { build_stubbed(:ci_pipeline) }
 
       before do
-        allow(resource).to receive(:actual_head_pipeline).and_return(pipeline)
+        allow(resource).to receive(:diff_head_pipeline).and_return(pipeline)
       end
 
       context 'success with warnings' do
@@ -158,11 +163,11 @@ RSpec.describe MergeRequestPresenter do
       subject { described_class.new(resource, current_user: user).closing_issues_links }
 
       it 'presents closing issues links' do
-        is_expected.to match("#{project.full_path}/-/issues/#{issue_a.iid}")
+        is_expected.to match(::Gitlab::UrlBuilder.instance.issue_path(issue_a))
       end
 
       it 'does not present related issues links' do
-        is_expected.not_to match("#{project.full_path}/-/issues/#{issue_b.iid}")
+        is_expected.not_to match(::Gitlab::UrlBuilder.instance.issue_path(issue_b))
       end
 
       it 'appends status when closing issue is already closed' do
@@ -178,11 +183,11 @@ RSpec.describe MergeRequestPresenter do
       end
 
       it 'presents related issues links' do
-        is_expected.to match("#{project.full_path}/-/issues/#{issue_b.iid}")
+        is_expected.to match(::Gitlab::UrlBuilder.instance.issue_path(issue_b))
       end
 
       it 'does not present closing issues links' do
-        is_expected.not_to match("#{project.full_path}/-/issues/#{issue_a.iid}")
+        is_expected.not_to match(::Gitlab::UrlBuilder.instance.issue_path(issue_a))
       end
 
       it 'appends status when mentioned issue is already closed' do
@@ -309,7 +314,7 @@ RSpec.describe MergeRequestPresenter do
         project.add_maintainer(user)
 
         is_expected
-          .to eq("/#{resource.project.full_path}/-/issues/new?merge_request_to_resolve_discussions_of=#{resource.iid}")
+          .to eq("/#{resource.project.full_path}/-/issues/new?merge_request_id=#{resource.id}&merge_request_to_resolve_discussions_of=#{resource.iid}")
       end
     end
 
@@ -686,6 +691,29 @@ RSpec.describe MergeRequestPresenter do
 
       it 'returns nil' do
         expect(subject).to be_nil
+      end
+    end
+  end
+
+  describe '#jenkins_integration_active' do
+    subject do
+      described_class.new(resource, current_user: user)
+        .jenkins_integration_active
+    end
+
+    context 'when Jenkins integration is active' do
+      it 'returns true' do
+        allow(resource.source_project).to receive(:jenkins_integration_active?).and_return(true)
+
+        is_expected.to eq(true)
+      end
+    end
+
+    context 'when Jenkins integration is not active' do
+      it 'returns false' do
+        allow(resource.source_project).to receive(:jenkins_integration_active?).and_return(false)
+
+        is_expected.to eq(false)
       end
     end
   end

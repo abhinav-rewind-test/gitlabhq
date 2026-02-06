@@ -5,10 +5,18 @@ fragment PackageData on Package {
   packageType
   createdAt
   status
+  statusMessage
   tags {
     nodes {
       id
       name
+    }
+  }
+  metadata {
+    ... on ConanMetadata {
+      id
+      packageChannel
+      packageUsername
     }
   }
   pipelines(first: 1) {
@@ -23,12 +31,7 @@ fragment PackageData on Package {
       }
     }
   }
-  project {
-    id
-    name
-    fullPath
-    webUrl
-  }
+  protectionRuleExists
   _links {
     webPath
   }

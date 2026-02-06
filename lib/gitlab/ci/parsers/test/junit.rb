@@ -6,12 +6,11 @@ module Gitlab
       module Test
         class Junit
           JunitParserError = Class.new(Gitlab::Ci::Parsers::ParserError)
-          ATTACHMENT_TAG_REGEX = /\[\[ATTACHMENT\|(?<path>.+?)\]\]/
+          ATTACHMENT_TAG_REGEX = /\[\[ATTACHMENT\|(?<path>[^\[\]\|]+?)\]\]/
 
           def parse!(xml_data, test_report, job:)
             test_suite = test_report.get_suite(job.test_suite_name)
-
-            root = Hash.from_xml(xml_data)
+            root = XmlConverter.new(xml_data).to_h
             total_parsed = 0
             max_test_cases = job.max_test_cases_per_report
 
@@ -22,6 +21,9 @@ module Gitlab
 
               ensure_test_cases_limited!(total_parsed, max_test_cases)
             end
+
+            set_total_time_from_xml(root, test_suite)
+
           rescue Nokogiri::XML::SyntaxError => e
             test_suite.set_suite_error("JUnit XML parsing failed: #{e}")
           rescue StandardError => e
@@ -29,6 +31,37 @@ module Gitlab
           end
 
           private
+
+          def set_total_time_from_xml(root, test_suite)
+            return unless root
+
+            if root.dig('testsuites', 'time')
+              test_suite.total_time = root['testsuites']['time'].to_f
+              return
+            end
+
+            testsuites = collect_all_testsuites(root)
+            total_time = testsuites.sum { |suite| suite['time']&.to_f || 0 }
+
+            total_time = add_testcase_times(testsuites) if total_time == 0
+
+            test_suite.total_time = total_time if total_time > 0
+          end
+
+          def collect_all_testsuites(root)
+            testsuites = []
+
+            testsuites.concat(Array.wrap(root.dig('testsuites', 'testsuite')))
+            testsuites.concat(Array.wrap(root['testsuite']))
+
+            testsuites.compact
+          end
+
+          def add_testcase_times(testsuites)
+            testsuites.sum do |suite|
+              Array.wrap(suite['testcase']).sum { |test_case| test_case['time']&.to_f || 0 }
+            end
+          end
 
           def ensure_test_cases_limited!(total_parsed, limit)
             return unless limit > 0 && total_parsed > limit

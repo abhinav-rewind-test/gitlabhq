@@ -12,6 +12,7 @@ import {
 } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapGetters, mapActions } from 'vuex';
+import SimpleCopyButton from '~/vue_shared/components/simple_copy_button.vue';
 import { __, s__ } from '~/locale';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import TestCaseDetails from './test_case_details.vue';
@@ -33,6 +34,7 @@ export default {
     GlPagination,
     GlEmptyState,
     GlSprintf,
+    SimpleCopyButton,
     TestCaseDetails,
   },
   directives: {
@@ -68,22 +70,22 @@ export default {
   wrapSymbols: ['::', '#', '.', '_', '-', '/', '\\'],
   i18n,
   learnMorePath: helpPagePath('ci/testing/unit_test_reports', {
-    anchor: 'viewing-unit-test-reports-on-gitlab',
+    anchor: 'view-test-results-in-pipelines',
   }),
 };
 </script>
 
 <template>
   <div>
-    <div v-if="hasSuites" class="test-reports-table gl-mb-3 js-test-cases-table">
+    <div v-if="hasSuites" class="test-reports-table js-test-cases-table gl-mb-3">
       <div class="row gl-mt-3">
-        <div class="col-12">
+        <div class="gl-col-12">
           <h4>{{ heading }}</h4>
         </div>
       </div>
       <div
         role="row"
-        class="gl-responsive-table-row table-row-header gl-font-weight-bold gl-fill-gray-700"
+        class="gl-responsive-table-row table-row-header gl-fill-gray-700 gl-font-bold"
       >
         <div role="rowheader" class="table-section section-20">
           {{ __('Suite') }}
@@ -94,7 +96,7 @@ export default {
         <div role="rowheader" class="table-section section-10">
           {{ __('Filename') }}
         </div>
-        <div role="rowheader" class="table-section section-10 text-center">
+        <div role="rowheader" class="table-section section-10 gl-text-center">
           {{ __('Status') }}
         </div>
         <div role="rowheader" class="table-section section-10">
@@ -108,45 +110,36 @@ export default {
       <div
         v-for="(testCase, index) in getSuiteTests"
         :key="index"
-        class="gl-responsive-table-row gl-rounded-base gl-align-items-flex-start"
+        class="gl-responsive-table-row gl-items-start gl-rounded-base"
         data-testid="test-case-row"
       >
         <div class="table-section section-20 section-wrap">
           <div role="rowheader" class="table-mobile-header">{{ __('Suite') }}</div>
-          <div class="table-mobile-content gl-pr-0 gl-sm-pr-2 gl-overflow-wrap-break">
+          <div class="table-mobile-content gl-break-words gl-pr-0 @sm/panel:gl-pr-2">
             <gl-friendly-wrap :symbols="$options.wrapSymbols" :text="testCase.classname" />
           </div>
         </div>
 
         <div class="table-section section-40 section-wrap">
           <div role="rowheader" class="table-mobile-header">{{ __('Name') }}</div>
-          <div class="table-mobile-content gl-pr-0 gl-sm-pr-2 gl-overflow-wrap-break">
+          <div class="table-mobile-content gl-break-words gl-pr-0 @sm/panel:gl-pr-2">
             <gl-friendly-wrap :symbols="$options.wrapSymbols" :text="testCase.name" />
           </div>
         </div>
 
         <div class="table-section section-10 section-wrap">
           <div role="rowheader" class="table-mobile-header">{{ __('Filename') }}</div>
-          <div class="table-mobile-content gl-pr-0 gl-sm-pr-2 gl-overflow-wrap-break">
+          <div class="table-mobile-content gl-break-words gl-pr-0 @sm/panel:gl-pr-2">
             <gl-link v-if="testCase.file" :href="testCase.filePath" target="_blank">
               <gl-friendly-wrap :symbols="$options.wrapSymbols" :text="testCase.file" />
             </gl-link>
-            <gl-button
-              v-if="testCase.file"
-              v-gl-tooltip
-              size="small"
-              category="tertiary"
-              icon="copy-to-clipboard"
-              :title="__('Copy to clipboard')"
-              :data-clipboard-text="testCase.file"
-              :aria-label="__('Copy to clipboard')"
-            />
+            <simple-copy-button size="small" category="tertiary" :text="testCase.file" />
           </div>
         </div>
 
         <div class="table-section section-10 section-wrap">
           <div role="rowheader" class="table-mobile-header">{{ __('Status') }}</div>
-          <div class="table-mobile-content gl-md-display-flex gl-justify-content-center">
+          <div class="table-mobile-content gl-justify-center @md/panel:gl-flex">
             <div class="ci-status-icon" :class="`ci-status-icon-${testCase.status}`">
               <gl-icon :size="24" :name="testCase.icon" />
             </div>
@@ -157,7 +150,7 @@ export default {
           <div role="rowheader" class="table-mobile-header">
             {{ __('Duration') }}
           </div>
-          <div class="table-mobile-content gl-pr-0 gl-sm-pr-2">
+          <div class="table-mobile-content gl-pr-0 @sm/panel:gl-pr-2">
             {{ testCase.formattedTime }}
           </div>
         </div>
@@ -175,7 +168,7 @@ export default {
 
       <gl-pagination
         v-model="pageInfo.page"
-        class="gl-display-flex gl-justify-content-center"
+        class="gl-flex gl-justify-center"
         :per-page="pageInfo.perPage"
         :total-items="getSuiteTestCount"
         @input="setPage"

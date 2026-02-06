@@ -7,4 +7,8 @@ feature_categories:
 - seat_cost_management
 classes:
 - GitlabSubscriptions::UserAddOnAssignment
-gitlab_schema: gitlab_main_cell
+gitlab_schema: gitlab_main_org
+sharding_key:
+  organization_id: organizations
+organization_transfer_support: todo
+table_size: small

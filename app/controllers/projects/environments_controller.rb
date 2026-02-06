@@ -1,21 +1,17 @@
 # frozen_string_literal: true
 
 class Projects::EnvironmentsController < Projects::ApplicationController
+  include ProductAnalyticsTracking
+  include KasCookie
+
   MIN_SEARCH_LENGTH = 3
   ACTIVE_STATES = %i[available stopping].freeze
   SCOPES_TO_STATES = { "active" => ACTIVE_STATES, "stopped" => %i[stopped] }.freeze
 
-  include ProductAnalyticsTracking
-  include KasCookie
-
   layout 'project'
 
   before_action only: [:show] do
-    push_frontend_feature_flag(:k8s_watch_api, project)
-  end
-
-  before_action only: [:folder] do
-    push_frontend_feature_flag(:environments_folder_new_look, project)
+    push_frontend_feature_flag(:k8s_tree_view, project)
   end
 
   before_action :authorize_read_environment!
@@ -23,13 +19,15 @@ class Projects::EnvironmentsController < Projects::ApplicationController
   before_action :authorize_stop_environment!, only: [:stop]
   before_action :authorize_update_environment!, only: [:edit, :update, :cancel_auto_stop]
   before_action :authorize_admin_environment!, only: [:terminal, :terminal_websocket_authorize]
-  before_action :environment, only: [:show, :edit, :update, :stop, :terminal, :terminal_websocket_authorize, :cancel_auto_stop]
+  before_action :environment,
+    only: [:show, :edit, :update, :stop, :terminal, :terminal_websocket_authorize, :cancel_auto_stop, :k8s]
   before_action :verify_api_request!, only: :terminal_websocket_authorize
   before_action :expire_etag_cache, only: [:index], unless: -> { request.format.json? }
-  before_action :set_kas_cookie, only: [:edit, :new, :show], if: -> { current_user && request.format.html? }
+  before_action :set_kas_cookie, only: [:edit, :new, :show, :k8s], if: -> { current_user && request.format.html? }
+  before_action :ensure_certificate_based_clusters_enabled!, only: [:terminal]
   after_action :expire_etag_cache, only: [:cancel_auto_stop]
 
-  track_event :index, :folder, :show, :new, :edit, :create, :update, :stop, :cancel_auto_stop, :terminal,
+  track_event :index, :folder, :show, :new, :edit, :create, :update, :stop, :cancel_auto_stop, :terminal, :k8s,
     name: 'users_visiting_environments_pages'
 
   feature_category :continuous_delivery
@@ -84,15 +82,16 @@ class Projects::EnvironmentsController < Projects::ApplicationController
   end
   # rubocop: enable CodeReuse/ActiveRecord
 
-  def show
-    @deployments = deployments
-  end
+  def show; end
 
   def new
     @environment = project.environments.new
   end
 
-  def edit
+  def edit; end
+
+  def k8s
+    render action: :show
   end
 
   def create
@@ -116,8 +115,10 @@ class Projects::EnvironmentsController < Projects::ApplicationController
   def stop
     return render_404 unless @environment.available?
 
-    stop_actions = @environment.stop_with_actions!(current_user)
-    job = stop_actions.first if stop_actions&.count == 1
+    service_response = Environments::StopService.new(project, current_user).execute(@environment)
+    return render_403 unless service_response.success?
+
+    job = service_response[:actions].first if service_response[:actions]&.count == 1
 
     action_or_env_url =
       if job
@@ -134,7 +135,7 @@ class Projects::EnvironmentsController < Projects::ApplicationController
 
   def cancel_auto_stop
     result = Environments::ResetAutoStopService.new(project, current_user)
-      .execute(environment)
+                                               .execute(environment)
 
     if result[:status] == :success
       respond_to do |format|
@@ -222,7 +223,12 @@ class Projects::EnvironmentsController < Projects::ApplicationController
   def search_environments(type: nil)
     search = params[:search] if params[:search] && params[:search].length >= MIN_SEARCH_LENGTH
 
-    @search_environments ||= Environments::EnvironmentsFinder.new(project, current_user, type: type, search: search).execute
+    @search_environments ||= Environments::EnvironmentsFinder.new(
+      project,
+      current_user,
+      type: type,
+      search: search
+    ).execute
   end
 
   def include_all_dashboards?
@@ -253,6 +259,10 @@ class Projects::EnvironmentsController < Projects::ApplicationController
 
   def authorize_update_environment!
     access_denied! unless can?(current_user, :update_environment, environment)
+  end
+
+  def ensure_certificate_based_clusters_enabled!
+    render_404 unless @project.certificate_based_clusters_enabled?
   end
 end
 

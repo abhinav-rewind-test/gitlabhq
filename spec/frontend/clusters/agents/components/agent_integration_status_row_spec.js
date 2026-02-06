@@ -9,13 +9,14 @@ const defaultProps = {
 describe('IntegrationStatus', () => {
   let wrapper;
 
-  const createWrapper = ({ props = {}, glFeatures = {} } = {}) => {
+  const createWrapper = ({ props = {}, glFeatures = {}, glLicensedFeatures = {} } = {}) => {
     wrapper = shallowMount(AgentIntegrationStatusRow, {
       propsData: {
         ...defaultProps,
         ...props,
       },
       provide: {
+        glLicensedFeatures,
         glFeatures,
       },
     });
@@ -27,7 +28,7 @@ describe('IntegrationStatus', () => {
 
   describe('icon', () => {
     const icon = 'status-success';
-    const iconClass = 'gl-text-green-500';
+    const iconClass = 'gl-text-success';
     it.each`
       props                  | iconName         | iconClassName
       ${{ icon, iconClass }} | ${icon}          | ${iconClass}
@@ -68,7 +69,7 @@ describe('IntegrationStatus', () => {
       expect(findBadge().exists()).toBe(false);
     });
 
-    it('does not display premium feature badge when featureName is provided and is available for the project', () => {
+    it('does not display premium feature badge when featureName is provided and is available for the project via glFeatures', () => {
       const props = { featureName: 'feature' };
       const glFeatures = { feature: true };
       createWrapper({ props, glFeatures });
@@ -76,7 +77,15 @@ describe('IntegrationStatus', () => {
       expect(findBadge().exists()).toBe(false);
     });
 
-    it('displays premium feature badge when featureName is provided and is not available for the project', () => {
+    it('does not display premium feature badge when featureName is provided and is available for the project via glLicensedFeatures', () => {
+      const props = { featureName: 'feature' };
+      const glLicensedFeatures = { feature: true };
+      createWrapper({ props, glLicensedFeatures });
+
+      expect(findBadge().exists()).toBe(false);
+    });
+
+    it('displays premium feature badge when featureName is provided and is not available for the project via glFeatures', () => {
       const props = { featureName: 'feature' };
       const glFeatures = { feature: false };
       createWrapper({ props, glFeatures });
@@ -84,7 +93,18 @@ describe('IntegrationStatus', () => {
       expect(findBadge().props()).toMatchObject({
         icon: 'license',
         variant: 'tier',
-        size: 'md',
+      });
+      expect(findBadge().text()).toBe(wrapper.vm.$options.i18n.premiumTitle);
+    });
+
+    it('displays premium feature badge when featureName is provided and is not available for the project via glLicensedFeatures', () => {
+      const props = { featureName: 'feature' };
+      const glLicensedFeatures = { feature: false };
+      createWrapper({ props, glLicensedFeatures });
+
+      expect(findBadge().props()).toMatchObject({
+        icon: 'license',
+        variant: 'tier',
       });
       expect(findBadge().text()).toBe(wrapper.vm.$options.i18n.premiumTitle);
     });

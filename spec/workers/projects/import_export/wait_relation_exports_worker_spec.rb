@@ -25,9 +25,13 @@ RSpec.describe Projects::ImportExport::WaitRelationExportsWorker, feature_catego
     it 'does not perform any operation and finishes the worker' do
       finished_export_job = create(:project_export_job, :finished)
 
+      expect(Gitlab::Export::Logger).to receive(:error).with(hash_including(
+        message: 'Project export job has invalid status: finished'
+      ))
+
       expect { described_class.new.perform(finished_export_job.id, user.id, after_export_strategy) }
-        .to change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }.by(0)
-        .and change { described_class.jobs.size }.by(0)
+        .to not_change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }
+        .and not_change { described_class.jobs.size }
     end
   end
 
@@ -40,7 +44,7 @@ RSpec.describe Projects::ImportExport::WaitRelationExportsWorker, feature_catego
 
     it 'does not enqueue ParallelProjectExportWorker and re-enqueue WaitRelationExportsWorker' do
       expect { described_class.new.perform(*job_args) }
-        .to change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }.by(0)
+        .to not_change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }
         .and change { described_class.jobs.size }.by(1)
     end
   end
@@ -64,9 +68,13 @@ RSpec.describe Projects::ImportExport::WaitRelationExportsWorker, feature_catego
       end
     end
 
-    context 'when the Sidekiq Job exporting the relation is still is no longer running' do
+    context 'when the Sidekiq Job exporting the relation is no longer running' do
       it "set the relation export's status to `failed`" do
         allow(Gitlab::SidekiqStatus).to receive(:running?).with(started_relation_export.jid).and_return(false)
+
+        expect(Gitlab::Export::Logger).to receive(:error).with(hash_including(
+          message: 'Relation export job no longer running'
+        ))
 
         expect { described_class.new.perform(*job_args) }
           .to change { described_class.jobs.size }.by(1)
@@ -85,7 +93,7 @@ RSpec.describe Projects::ImportExport::WaitRelationExportsWorker, feature_catego
     it 'enqueues ParallelProjectExportWorker and does not reenqueue WaitRelationExportsWorker' do
       expect { described_class.new.perform(*job_args) }
         .to change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }.by(1)
-        .and change { described_class.jobs.size }.by(0)
+        .and not_change { described_class.jobs.size }
     end
 
     it_behaves_like 'an idempotent worker'
@@ -116,8 +124,8 @@ RSpec.describe Projects::ImportExport::WaitRelationExportsWorker, feature_catego
 
     it 'does not enqueue ParallelProjectExportWorker and re-enqueue WaitRelationExportsWorker' do
       expect { described_class.new.perform(*job_args) }
-        .to change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }.by(0)
-        .and change { described_class.jobs.size }.by(0)
+        .to not_change { Projects::ImportExport::ParallelProjectExportWorker.jobs.size }
+        .and not_change { described_class.jobs.size }
     end
   end
 end

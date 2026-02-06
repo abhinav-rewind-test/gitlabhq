@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::CustomEmojiFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::CustomEmojiFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   let_it_be(:group) { create(:group) }
@@ -44,6 +44,12 @@ RSpec.describe Banzai::Filter::CustomEmojiFilter, feature_category: :team_planni
     expect(doc.css('gl-emoji').size).to be 0
   end
 
+  it 'does not match an unknown emoji' do
+    doc = filter(':tanuki: :tanooki:')
+
+    expect(doc.css('gl-emoji').size).to be 1
+  end
+
   it 'does not do N+1 query' do
     create(:custom_emoji, name: 'party-parrot', group: group)
 
@@ -62,5 +68,31 @@ RSpec.describe Banzai::Filter::CustomEmojiFilter, feature_category: :team_planni
     doc = filter('<p>:tanuki:</p>', group: subgroup)
 
     expect(doc.css('gl-emoji').size).to eq 1
+  end
+
+  context 'when asset proxy is configured' do
+    before do
+      stub_asset_proxy_setting(
+        enabled: true,
+        secret_key: 'shared-secret',
+        url: 'https://assets.example.com'
+      )
+    end
+
+    it 'uses the proxied url' do
+      doc = filter('<p>:tanuki:</p>')
+
+      expect(doc.css('gl-emoji').first.attributes['data-fallback-src'].value).to start_with('https://assets.example.com')
+    end
+  end
+
+  it_behaves_like 'pipeline timing check'
+  it_behaves_like 'a filter timeout' do
+    let(:text) { 'text' }
+  end
+
+  it_behaves_like 'limits the number of filtered items' do
+    let(:text) { ':tanuki: :tanuki: :tanuki:' }
+    let(:ends_with) { '</gl-emoji> :tanuki:' }
   end
 end

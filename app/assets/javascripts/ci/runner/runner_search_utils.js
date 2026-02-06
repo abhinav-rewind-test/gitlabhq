@@ -15,6 +15,8 @@ import {
   PARAM_KEY_VERSION,
   PARAM_KEY_SEARCH,
   PARAM_KEY_CREATOR,
+  PARAM_KEY_GROUP,
+  PARAM_KEY_PROJECT,
   PARAM_KEY_MEMBERSHIP,
   PARAM_KEY_SORT,
   PARAM_KEY_AFTER,
@@ -90,7 +92,7 @@ const PARAM_KEY_PAGE = 'page';
  * @returns Updated URL
  */
 const updateUrlParams = (url, params = {}) => {
-  return setUrlParams(params, url, false, true, true);
+  return setUrlParams(params, { url, railsArraySyntax: true, decodeParams: true });
 };
 
 const outdatedStatusParams = (status) => {
@@ -159,6 +161,8 @@ export const fromUrlQueryToSearch = (query = window.location.search) => {
           PARAM_KEY_TAG,
           PARAM_KEY_VERSION,
           PARAM_KEY_CREATOR,
+          PARAM_KEY_GROUP,
+          PARAM_KEY_PROJECT,
         ],
         filteredSearchTermKey: PARAM_KEY_SEARCH,
       }),
@@ -188,6 +192,8 @@ export const fromSearchToUrl = (
     [PARAM_KEY_PAUSED]: [],
     [PARAM_KEY_VERSION]: [],
     [PARAM_KEY_CREATOR]: [],
+    [PARAM_KEY_GROUP]: [],
+    [PARAM_KEY_PROJECT]: [],
     // Current filters
     ...filterToQueryObject(processFilters(filters), {
       filteredSearchTermKey: PARAM_KEY_SEARCH,
@@ -214,7 +220,10 @@ export const fromSearchToUrl = (
     [PARAM_KEY_AFTER]: pagination?.after || null,
   };
 
-  return setUrlParams({ ...filterParams, ...otherParams }, url, false, true, true);
+  return setUrlParams(
+    { ...filterParams, ...otherParams },
+    { url, railsArraySyntax: true, decodeParams: true },
+  );
 };
 
 /**
@@ -241,6 +250,7 @@ export const fromSearchToVariables = ({
   filterVariables.tagList = queryObj[PARAM_KEY_TAG];
   [filterVariables.versionPrefix] = queryObj[PARAM_KEY_VERSION] || [];
   [filterVariables.creator] = queryObj[PARAM_KEY_CREATOR] || [];
+  [filterVariables.ownerFullPath] = queryObj[PARAM_KEY_GROUP] || queryObj[PARAM_KEY_PROJECT] || [];
 
   if (queryObj[PARAM_KEY_PAUSED]) {
     filterVariables.paused = parseBoolean(queryObj[PARAM_KEY_PAUSED]);

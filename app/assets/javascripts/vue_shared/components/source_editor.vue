@@ -1,8 +1,9 @@
 <script>
 import { debounce, isEmpty } from 'lodash';
+import { markRaw } from 'vue';
 import { CONTENT_UPDATE_DEBOUNCE, EDITOR_READY_EVENT } from '~/editor/constants';
 import Editor from '~/editor/source_editor';
-import { markRaw } from '~/lib/utils/vue3compat/mark_raw';
+import DynamicHeight from '~/vue_shared/directives/dynamic_height';
 
 function initSourceEditor({ el, ...args }) {
   const editor = new Editor({
@@ -20,6 +21,9 @@ function initSourceEditor({ el, ...args }) {
 }
 
 export default {
+  directives: {
+    DynamicHeight,
+  },
   inheritAttrs: false,
   props: {
     value: {
@@ -54,12 +58,21 @@ export default {
       required: false,
       default: CONTENT_UPDATE_DEBOUNCE,
     },
+    useDynamicHeight: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   data() {
     return {
-      loading: true,
       editor: null,
     };
+  },
+  computed: {
+    directives() {
+      return this.useDynamicHeight ? { DynamicHeight } : {};
+    },
   },
   watch: {
     fileName(newVal) {
@@ -92,6 +105,7 @@ export default {
     onFileChange() {
       this.$emit('input', this.editor.getValue());
     },
+    // eslint-disable-next-line vue/no-unused-properties -- getEditor() is part of the component's public API.
     getEditor() {
       return this.editor;
     },
@@ -103,6 +117,7 @@ export default {
   <div
     :id="`source-editor-${fileGlobalId}`"
     ref="editor"
+    v-bind="directives"
     data-editor-loading
     data-testid="source-editor-container"
     @[$options.readyEvent]="$emit($options.readyEvent, $event)"

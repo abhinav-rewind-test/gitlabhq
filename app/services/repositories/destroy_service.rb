@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Repositories::DestroyService < Repositories::BaseService
+class Repositories::DestroyService < ::Repositories::BaseService
   def execute
     return success unless repository
     return success unless repo_exists?(disk_path)
@@ -23,6 +23,7 @@ class Repositories::DestroyService < Repositories::BaseService
     else
       container.run_after_commit do
         Gitlab::Git::Repository.new(current_storage, current_path, nil, nil).remove
+        project_repository&.destroy if is_a?(Project)
       end
     end
 

@@ -19,17 +19,15 @@ module IssuableCollections
     @issuables = issuables_collection
     set_pagination
 
-    return if redirect_out_of_range(@issuables, @total_pages)
+    nil if redirect_out_of_range(@issuables, @total_pages)
   end
 
   def set_pagination
-    row_count = request.format.atom? ? -1 : finder.row_count
+    pagination_result = paginate_for_collection(@issuables, row_count: finder.row_count)
 
-    @issuables          = @issuables.page(params[:page])
-    @issuables          = per_page_for_relative_position if params[:sort] == 'relative_position'
-    @issuables          = @issuables.without_count if row_count == -1
+    @issuables = pagination_result[:collection]
+    @total_pages = pagination_result[:total_pages]
     @issuable_meta_data = Gitlab::IssuableMetadata.new(current_user, @issuables).data
-    @total_pages        = page_count_for_relation(@issuables, row_count)
   end
   # rubocop:enable Gitlab/ModuleWithInstanceVariables
 
@@ -39,57 +37,42 @@ module IssuableCollections
   end
   # rubocop: enable CodeReuse/ActiveRecord
 
-  def page_count_for_relation(relation, row_count)
-    limit = relation.limit_value.to_f
-
-    return 1 if limit == 0
-    return (params[:page] || 1).to_i + 1 if row_count == -1
-
-    (row_count.to_f / limit).ceil
-  end
-
-  # manual / relative_position sorting allows for 100 items on the page
-  def per_page_for_relative_position
-    @issuables.per(100) # rubocop:disable Gitlab/ModuleWithInstanceVariables
-  end
-
   def issuable_finder_for(finder_class)
     finder_class.new(current_user, finder_options)
   end
 
   # rubocop:disable Gitlab/ModuleWithInstanceVariables
   def finder_options
-    strong_memoize(:finder_options) do
-      params[:state] = default_state if params[:state].blank?
+    params[:state] = default_state if params[:state].blank?
 
-      options = {
-        scope: params[:scope],
-        state: params[:state],
-        confidential: Gitlab::Utils.to_boolean(params[:confidential]),
-        sort: set_sort_order
-      }
+    options = {
+      scope: params[:scope],
+      state: params[:state],
+      confidential: Gitlab::Utils.to_boolean(params[:confidential]),
+      sort: set_sort_order
+    }
 
-      # Used by view to highlight active option
-      @sort = options[:sort]
+    # Used by view to highlight active option
+    @sort = options[:sort]
 
-      # When a user looks for an exact iid, we do not filter by search but only by iid
-      if params[:search] =~ /^#(?<iid>\d+)\z/
-        options[:iids] = Regexp.last_match[:iid]
-        params[:search] = nil
-      end
-
-      if @project
-        options[:project_id] = @project.id
-        options[:attempt_project_search_optimizations] = true
-      elsif @group
-        options[:group_id] = @group.id
-        options[:include_subgroups] = true
-        options[:attempt_group_search_optimizations] = true
-      end
-
-      params.permit(finder_type.valid_params).merge(options)
+    # When a user looks for an exact iid, we do not filter by search but only by iid
+    if params[:search] =~ /^#(?<iid>\d+)\z/
+      options[:iids] = Regexp.last_match[:iid]
+      params[:search] = nil
     end
+
+    if @project
+      options[:project_id] = @project.id
+      options[:attempt_project_search_optimizations] = true
+    elsif @group
+      options[:group_id] = @group.id
+      options[:include_subgroups] = true
+      options[:attempt_group_search_optimizations] = true
+    end
+
+    params.permit(finder_type.valid_params).merge(options)
   end
+  strong_memoize_attr :finder_options
   # rubocop:enable Gitlab/ModuleWithInstanceVariables
 
   def default_state
@@ -101,10 +84,10 @@ module IssuableCollections
   end
 
   def default_sort_order
-    case params[:state]
-    when 'opened', 'all'    then sort_value_created_date
-    when 'merged', 'closed' then sort_value_recently_updated
-    else sort_value_created_date
+    if %w[merged closed].include?(params[:state])
+      sort_value_recently_updated
+    else
+      sort_value_created_date
     end
   end
 
@@ -125,11 +108,15 @@ module IssuableCollections
     common_attributes = [:author, :assignees, :labels, :milestone]
     @preload_for_collection ||= case collection_type
                                 when 'Issue'
-                                  common_attributes + [:work_item_type, :project, project: :namespace]
+                                  common_attributes + [
+                                    :work_item_type,
+                                    :project, { project: :namespace }
+                                  ]
                                 when 'MergeRequest'
                                   common_attributes + [
-                                    :target_project, :latest_merge_request_diff, :approvals, :approved_by_users, :reviewers,
-                                    source_project: :route, head_pipeline: :project, target_project: :namespace
+                                    :target_project, :latest_merge_request_diff, :approvals,
+                                    :approved_by_users, :reviewers,
+                                    { source_project: :route, head_pipeline: :project, target_project: :namespace }
                                   ]
                                 end
   end

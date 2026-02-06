@@ -1,29 +1,66 @@
-import $ from 'jquery';
-import WebAuthnAuthenticate from './authenticate';
-import WebAuthnRegister from './register';
+import Vue from 'vue';
+import { convertObjectPropsToCamelCase, parseBoolean } from '~/lib/utils/common_utils';
+import WebAuthnAuthenticate from './components/authenticate.vue';
+import PasskeyAuthentication from './components/passkey_authentication.vue';
 
 export const initWebauthnAuthenticate = () => {
-  if (!gon.webauthn) {
-    return;
+  const el = document.getElementById('js-authentication-webauthn');
+
+  if (!el) {
+    return false;
   }
 
-  const webauthnAuthenticate = new WebAuthnAuthenticate(
-    $('#js-authenticate-token-2fa'),
-    '#js-login-token-2fa-form',
-    gon.webauthn,
-    document.querySelector('#js-login-2fa-device'),
-    document.querySelector('.js-2fa-form'),
-  );
-  webauthnAuthenticate.start();
+  const {
+    targetPath,
+    renderRememberMe,
+    rememberMe,
+    sendEmailOtpPath,
+    username,
+    emailVerificationData,
+  } = el.dataset;
+
+  return new Vue({
+    el,
+    name: 'WebAuthnRoot',
+    render(createElement) {
+      return createElement(WebAuthnAuthenticate, {
+        props: {
+          webauthnParams: JSON.parse(gon.webauthn.options),
+          targetPath,
+          renderRememberMe: parseBoolean(renderRememberMe),
+          rememberMe,
+          sendEmailOtpPath,
+          username,
+          emailVerificationData:
+            emailVerificationData &&
+            convertObjectPropsToCamelCase(JSON.parse(emailVerificationData)),
+        },
+      });
+    },
+  });
 };
 
-export const initWebauthnRegister = () => {
-  const el = $('#js-register-token-2fa');
+export const initPasskeyAuthentication = () => {
+  const el = document.getElementById('js-passkey-authentication');
 
-  if (!el.length) {
-    return;
+  if (!el) {
+    return false;
   }
 
-  const webauthnRegister = new WebAuthnRegister(el, gon.webauthn);
-  webauthnRegister.start();
+  const { path, rememberMe, signInPath } = el.dataset;
+
+  return new Vue({
+    el,
+    name: 'PasskeyRoot',
+    render(createElement) {
+      return createElement(PasskeyAuthentication, {
+        props: {
+          path,
+          rememberMe,
+          signInPath,
+          webauthnParams: JSON.parse(gon.webauthn.options),
+        },
+      });
+    },
+  });
 };

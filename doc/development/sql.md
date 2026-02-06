@@ -1,10 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: SQL Query Guidelines
 ---
-
-# SQL Query Guidelines
 
 This document describes various guidelines to follow when writing SQL queries,
 either using ActiveRecord/Arel or raw SQL queries.
@@ -12,7 +11,7 @@ either using ActiveRecord/Arel or raw SQL queries.
 ## Using `LIKE` Statements
 
 The most common way to search for data is using the `LIKE` statement. For
-example, to get all issues with a title starting with "Draft:" you'd write the
+example, to get all issues with a title starting with `Draft:` you'd write the
 following query:
 
 ```sql
@@ -70,7 +69,7 @@ WHERE title ILIKE '%Draft:%';
 Because the value for `ILIKE` starts with a wildcard the database is not able to
 use an index as it doesn't know where to start scanning the indexes.
 
-Luckily, PostgreSQL _does_ provide a solution: trigram Generalized Inverted Index (GIN) indexes. These
+Luckily, PostgreSQL does provide a solution: trigram Generalized Inverted Index (GIN) indexes. These
 indexes can be created as follows:
 
 ```sql
@@ -80,7 +79,7 @@ USING GIN(column_name gin_trgm_ops);
 ```
 
 The key here is the `GIN(column_name gin_trgm_ops)` part. This creates a
-[GIN index](https://www.postgresql.org/docs/current/gin.html)
+[GIN index](https://www.postgresql.org/docs/16/gin.html)
 with the operator class set to `gin_trgm_ops`. These indexes
 _can_ be used by `ILIKE` / `LIKE` and can lead to greatly improved performance.
 One downside of these indexes is that they can easily get quite large (depending
@@ -98,7 +97,7 @@ For example, a GIN/trigram index for `issues.title` would be called
 
 Due to these indexes taking quite some time to be built they should be built
 concurrently. This can be done by using `CREATE INDEX CONCURRENTLY` instead of
-just `CREATE INDEX`. Concurrent indexes can _not_ be created inside a
+just `CREATE INDEX`. Concurrent indexes can not be created inside a
 transaction. Transactions for migrations can be disabled using the following
 pattern:
 
@@ -183,12 +182,10 @@ SELECT projects.path, merge_requests.user_id FROM "projects"...
 When the raw SQL query is parameterized (needs escaping):
 
 ```ruby
-include ActiveRecord::ConnectionAdapters::Quoting
-
 """
 SELECT
-  #{quote_table_name('projects')}.#{quote_column_name('path')},
-  #{quote_table_name('merge_requests')}.#{quote_column_name('user_id')}
+  #{Gitlab::Database.quote_table_name('projects')}.#{Gitlab::Database.quote_column_name('path')},
+  #{Gitlab::Database.quote_table_name('merge_requests')}.#{Gitlab::Database.quote_column_name('user_id')}
 FROM ...
 """
 ```
@@ -225,9 +222,31 @@ Project.select(:id, :user_id).joins(:merge_requests)
 
 ## Plucking IDs
 
-Never use ActiveRecord's `pluck` to pluck a set of values into memory only to
-use them as an argument for another query. For example, this executes an
-extra unnecessary database query and load a lot of unnecessary data into memory:
+Be very careful using ActiveRecord's `pluck` to load a set of values into memory only to
+use them as an argument for another query. In general, moving query logic out of PostgreSQL
+and into Ruby is detrimental because PostgreSQL has a query optimizer that performs better
+when it has relatively more context about the desired operation.
+
+If, for some reason, you need to `pluck` and use the results in a single query then,
+most likely, a materialized CTE will be a better choice:
+
+```sql
+WITH ids AS MATERIALIZED (
+  SELECT id FROM table...
+)
+SELECT * FROM projects
+WHERE id IN (SELECT id FROM ids);
+```
+
+which will make PostgreSQL pluck the values into an internal array.
+
+Some pluck-related mistakes that you should avoid:
+
+- Passing too many integers into a query. While not explicitly limited, PostgreSQL has a
+  practical arity limit of a couple thousand IDs. We don't want to run up against this limit.
+- Generating gigantic query text that can cause problems for our logging infrastructure.
+- Accidentally scanning an entire table. For example, this executes an
+  extra unnecessary database query and load a lot of unnecessary data into memory:
 
 ```ruby
 projects = Project.all.pluck(:id)
@@ -241,9 +260,10 @@ Instead you can just use sub-queries which perform far better:
 MergeRequest.where(source_project_id: Project.all.select(:id))
 ```
 
-The _only_ time you should use `pluck` is when you actually need to operate on
-the values in Ruby itself (for example, writing them to a file). In almost all other cases
-you should ask yourself "Can I not just use a sub-query?".
+A few specific reasons you might choose `pluck`:
+
+- You actually need to operate on the values in Ruby itself. For example, writing them to a file.
+- The values get cached or memoized in order to be reused in **multiple related queries**.
 
 In line with our `CodeReuse/ActiveRecord` cop, you should only use forms like
 `pluck(:id)` or `pluck(:user_id)` within model code. In the former case, you can
@@ -251,7 +271,9 @@ use the `ApplicationRecord`-provided `.pluck_primary_key` helper method instead.
 In the latter, you should add a small helper method to the relevant model.
 
 If you have strong reasons to use `pluck`, it could make sense to limit the number
-of records plucked. `MAX_PLUCK` defaults to `1_000` in `ApplicationRecord`.
+of records plucked. `MAX_PLUCK` defaults to `1_000` in `ApplicationRecord`. In all cases,
+you should still consider using a subquery and make sure that using `pluck` is a reliably
+better option.
 
 ## Inherit from ApplicationRecord
 
@@ -271,7 +293,7 @@ get related data or data based on certain criteria, but `JOIN` performance can
 quickly deteriorate as the data involved grows.
 
 For example, if you want to get a list of projects where the name contains a
-value _or_ the name of the namespace contains a value most people would write
+value or the name of the namespace contains a value most people would write
 the following query:
 
 ```sql
@@ -411,14 +433,44 @@ scope2 = User.select(*columns).where(id: [10, 11, 12]) # uses SELECT users.*
 User.connection.execute(Gitlab::SQL::Union.new([scope1, scope2]).to_sql)
 ```
 
-## Ordering by Creation Date
+## Ordering by Creation Date (`created_at`)
 
-When ordering records based on the time they were created, you can order
-by the `id` column instead of ordering by `created_at`. Because IDs are always
-unique and incremented in the order that rows are created, doing so produces the
-exact same results. This also means there's no need to add an index on
-`created_at` to ensure consistent performance as `id` is already indexed by
-default.
+> [!warning]
+> With the [Cells architecture](https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/cells/),
+> ordering by `id` no longer reliably reflects creation order. Each Cell has a [provisioned database sequence range](cells/_index.md#database-sequences).
+> When data moves between Cells, records retain their original IDs from the source Cell.
+> 
+> For accurate sorting by creation date, use `ORDER BY created_at, id` with appropriate indexing.
+
+In short, you should prefer `ORDER BY id` over `ORDER BY created_at` unless you
+are sure it is going to cause problems for your feature.
+
+There is a common user facing desire to provide data that is sorted by
+`created_at`. It's common in paginated table views and paginated APIs to want
+to see the most recent first (or oldest first). This usually results in us
+wanting to add something like `ORDER BY created_at DESC LIMIT 20` to our
+queries. Adding this query would mean that we need to add an index on
+`created_at` (or composite index depending on the other filtering
+requirements). Adding indexes comes with
+[a cost](database/adding_database_indexes.md#maintenance-overhead).
+Furthermore, since `created_at` usually isn't a unique column then sorting
+and paginating over it would be unstable and we'd still need to add a
+[tie-breaker column to the sort](database/pagination_performance_guidelines.md#tie-breaker-column)
+(for example, `ORDER BY created_at, id`) with an appropriate index for that.
+
+But, for the majority of features our users find that `ORDER BY id` is a good
+enough proxy for what they need. It's not technically always
+true that ordering by `id` is exactly the same as ordering by `created_at` but
+it is close enough and considering that `created_at` is almost never controlled
+directly by users (ie. it's an internal implementation detail), then there is
+rarely a case where the user actually cares about the difference between these
+2 columns.
+
+So there are at least 3 advantages to ordering by `id`:
+
+1. As a primary key, it is already indexed, which may be sufficient for simple queries that don't have other filtering or sorting parameters.
+1. If a composite index is required, indexes such as `btree (namespace_id, id)` are smaller than `btree (namespace_id, created_at, id)`.
+1. It is unique and thus stable for sorting and paginating.
 
 ## Use `WHERE EXISTS` instead of `WHERE IN`
 
@@ -446,6 +498,133 @@ WHERE EXISTS (
 )
 ```
 
+## Query plan flip problem with `.exists?` queries
+
+In Rails, calling `.exists?` on an ActiveRecord scope could cause query plan flip issues, which
+could lead to database statement timeouts. When preparing query plans for review, it's advisable to
+check all variants of the underlying query form ActiveRecord scopes.
+
+Example: check if there are any epics in the group and its subgroups.
+
+```ruby
+# Similar queries, but they might behave differently (different query execution plan)
+
+Epic.where(group_id: group.first.self_and_descendant_ids).order(:id).limit(20) # for pagination
+Epic.where(group_id: group.first.self_and_descendant_ids).count # for providing total count
+Epic.where(group_id: group.first.self_and_descendant_ids).exists? # for checking if there is at least one epic present
+```
+
+When the `.exists?` method is called, Rails modifies the active record scope:
+
+- Replaces the select columns with `SELECT 1`.
+- Adds `LIMIT 1` to the query.
+
+When invoked, complex ActiveRecord scopes, such as those with `IN` queries, could negatively alter database query planning behavior.
+
+Execution plan:
+
+```ruby
+Epic.where(group_id: group.first.self_and_descendant_ids).exists?
+```
+
+```plain
+Limit  (cost=126.86..591.11 rows=1 width=4)
+  ->  Nested Loop Semi Join  (cost=126.86..3255965.65 rows=7013 width=4)
+        Join Filter: (epics.group_id = namespaces.traversal_ids[array_length(namespaces.traversal_ids, 1)])
+        ->  Index Only Scan using index_epics_on_group_id_and_iid on epics  (cost=0.42..8846.02 rows=426445 width=4)
+        ->  Materialize  (cost=126.43..808.15 rows=435 width=28)
+              ->  Bitmap Heap Scan on namespaces  (cost=126.43..805.98 rows=435 width=28)
+                    Recheck Cond: ((traversal_ids @> '{9970}'::integer[]) AND ((type)::text = 'Group'::text))
+                    ->  Bitmap Index Scan on index_namespaces_on_traversal_ids_for_groups  (cost=0.00..126.32 rows=435 width=0)
+                          Index Cond: (traversal_ids @> '{9970}'::integer[])
+```
+
+Notice the `Index Only Scan` on the `index_epics_on_group_id_and_iid` index where the planner estimates reading more than 400,000 rows.
+
+If we execute the query without `exists?`, we get a different execution plan:
+
+```ruby
+Epic.where(group_id: Group.first.self_and_descendant_ids).to_a
+```
+
+Execution plan:
+
+```plain
+Nested Loop  (cost=807.49..11198.57 rows=7013 width=1287)
+  ->  HashAggregate  (cost=807.06..811.41 rows=435 width=28)
+        Group Key: namespaces.traversal_ids[array_length(namespaces.traversal_ids, 1)]
+        ->  Bitmap Heap Scan on namespaces  (cost=126.43..805.98 rows=435 width=28)
+              Recheck Cond: ((traversal_ids @> '{9970}'::integer[]) AND ((type)::text = 'Group'::text))
+              ->  Bitmap Index Scan on index_namespaces_on_traversal_ids_for_groups  (cost=0.00..126.32 rows=435 width=0)
+                    Index Cond: (traversal_ids @> '{9970}'::integer[])
+  ->  Index Scan using index_epics_on_group_id_and_iid on epics  (cost=0.42..23.72 rows=16 width=1287)
+        Index Cond: (group_id = (namespaces.traversal_ids)[array_length(namespaces.traversal_ids, 1)])
+```
+
+This query plan doesn't contain the `MATERIALIZE` nodes and uses a more efficient access method by loading the group
+hierarchy first.
+
+Query plan flips can be accidentally introduced by even the smallest query change. Revisiting the `.exists?` query where selecting
+the group ID database column differently:
+
+```ruby
+Epic.where(group_id: group.first.select(:id)).exists?
+```
+
+```plain
+Limit  (cost=126.86..672.26 rows=1 width=4)
+  ->  Nested Loop  (cost=126.86..1763.07 rows=3 width=4)
+        ->  Bitmap Heap Scan on namespaces  (cost=126.43..805.98 rows=435 width=4)
+              Recheck Cond: ((traversal_ids @> '{9970}'::integer[]) AND ((type)::text = 'Group'::text))
+              ->  Bitmap Index Scan on index_namespaces_on_traversal_ids_for_groups  (cost=0.00..126.32 rows=435 width=0)
+                    Index Cond: (traversal_ids @> '{9970}'::integer[])
+        ->  Index Only Scan using index_epics_on_group_id_and_iid on epics  (cost=0.42..2.04 rows=16 width=4)
+              Index Cond: (group_id = namespaces.id)
+```
+
+Here we see again the better execution plan. In case we do a small change to the query, it flips again:
+
+```ruby
+Epic.where(group_id: group.first.self_and_descendants.select('id + 0')).exists?
+```
+
+```plain
+Limit  (cost=126.86..591.11 rows=1 width=4)
+  ->  Nested Loop Semi Join  (cost=126.86..3255965.65 rows=7013 width=4)
+        Join Filter: (epics.group_id = (namespaces.id + 0))
+        ->  Index Only Scan using index_epics_on_group_id_and_iid on epics  (cost=0.42..8846.02 rows=426445 width=4)
+        ->  Materialize  (cost=126.43..808.15 rows=435 width=4)
+              ->  Bitmap Heap Scan on namespaces  (cost=126.43..805.98 rows=435 width=4)
+                    Recheck Cond: ((traversal_ids @> '{9970}'::integer[]) AND ((type)::text = 'Group'::text))
+                    ->  Bitmap Index Scan on index_namespaces_on_traversal_ids_for_groups  (cost=0.00..126.32 rows=435 width=0)
+                          Index Cond: (traversal_ids @> '{9970}'::integer[])
+```
+
+Forcing an execution plan is possible if the `IN` subquery is moved to a CTE:
+
+```ruby
+cte = Gitlab::SQL::CTE.new(:group_ids, Group.first.self_and_descendant_ids)
+Epic.where('epics.id IN (SELECT id FROM group_ids)').with(cte.to_arel).exists?
+```
+
+```plain
+Limit  (cost=817.27..818.12 rows=1 width=4)
+  CTE group_ids
+    ->  Bitmap Heap Scan on namespaces  (cost=126.43..807.06 rows=435 width=4)
+          Recheck Cond: ((traversal_ids @> '{9970}'::integer[]) AND ((type)::text = 'Group'::text))
+          ->  Bitmap Index Scan on index_namespaces_on_traversal_ids_for_groups  (cost=0.00..126.32 rows=435 width=0)
+                Index Cond: (traversal_ids @> '{9970}'::integer[])
+  ->  Nested Loop  (cost=10.21..380.29 rows=435 width=4)
+        ->  HashAggregate  (cost=9.79..11.79 rows=200 width=4)
+              Group Key: group_ids.id
+              ->  CTE Scan on group_ids  (cost=0.00..8.70 rows=435 width=4)
+        ->  Index Only Scan using epics_pkey on epics  (cost=0.42..1.84 rows=1 width=4)
+              Index Cond: (id = group_ids.id)
+```
+
+> [!note]
+> Due to their complexity, using CTEs should be the last resort. Use CTEs only when simpler query changes don't produce a favorable execution plan.
+
 ## `.find_or_create_by` is not atomic
 
 The inherent pattern with methods like `.find_or_create_by` and
@@ -461,7 +640,7 @@ Using transactions does not solve this problem.
 To solve this we've added the `ApplicationRecord.safe_find_or_create_by`.
 
 This method can be used the same way as
-`find_or_create_by`, but it wraps the call in a *new* transaction (or a subtransaction) and
+`find_or_create_by`, but it wraps the call in a new transaction (or a subtransaction) and
 retries if it were to fail because of an
 `ActiveRecord::RecordNotUnique` error.
 
@@ -493,7 +672,9 @@ If your code is generally isolated (for example it's executed in a worker only) 
 
 Additionally, we have a RuboCop rule `Performance/ActiveRecordSubtransactionMethods` that prevents the usage of `.safe_find_or_create_by`. This rule can be disabled on a case by case basis via `# rubocop:disable Performance/ActiveRecordSubtransactionMethods`.
 
-## Alternative 1: `UPSERT`
+### Alternatives to .find_or_create_by
+
+#### Alternative 1: `UPSERT`
 
 The [`.upsert`](https://api.rubyonrails.org/v7.0.5/classes/ActiveRecord/Persistence/ClassMethods.html#method-i-upsert) method can be an alternative solution when the table is backed by a unique index.
 
@@ -543,7 +724,7 @@ To work around this, we have two options:
 - Remove the uniqueness validation from the `ActiveRecord` model.
 - Use the [`on` keyword](https://guides.rubyonrails.org/active_record_validations.html#on) and implement context-specific validation.
 
-### Alternative 2: Check existence and rescue
+#### Alternative 2: Check existence and rescue
 
 When the chance of concurrently creating the same record is very low, we can use a simpler approach:
 
@@ -709,5 +890,5 @@ PersonalAccessToken
   .update_all(revoked: true)
 ```
 
-NOTE:
-Avoid updating large volumes of unbounded data. If there are no [application limits](application_limits.md) on the data, or you are unsure about the data volume, you should [update the data in batches](database/iterating_tables_in_batches.md).
+> [!note]
+> Avoid updating large volumes of unbounded data. If there are no [application limits](application_limits.md) on the data, or you are unsure about the data volume, you should [update the data in batches](database/iterating_tables_in_batches.md).

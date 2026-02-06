@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module Groups
   module Registry
     class RepositoriesController < Groups::ApplicationController
@@ -42,7 +43,7 @@ module Groups
       end
 
       def authorize_read_container_image!
-        return render_404 unless can?(current_user, :read_container_image, group)
+        render_404 unless can?(current_user, :read_container_image, group)
       end
     end
   end

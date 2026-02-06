@@ -1,13 +1,16 @@
 <script>
-// NOTE! For the first iteration, we are simply copying the implementation of Assignees
-// It will soon be overhauled in Issue https://gitlab.com/gitlab-org/gitlab/-/issues/233736
-import { GlLoadingIcon } from '@gitlab/ui';
-import { n__ } from '~/locale';
+import { GlLoadingIcon, GlTooltipDirective } from '@gitlab/ui';
+import { s__ } from '~/locale';
+import ReviewerDropdown from '~/merge_requests/components/reviewers/reviewer_dropdown.vue';
 
 export default {
   name: 'ReviewerTitle',
   components: {
     GlLoadingIcon,
+    ReviewerDropdown,
+  },
+  directives: {
+    Tooltip: GlTooltipDirective,
   },
   props: {
     loading: {
@@ -15,37 +18,34 @@ export default {
       required: false,
       default: false,
     },
-    numberOfReviewers: {
-      type: Number,
-      required: true,
-    },
     editable: {
       type: Boolean,
       required: true,
     },
-  },
-  computed: {
-    reviewerTitle() {
-      const reviewers = this.numberOfReviewers;
-      return n__('Reviewer', `%d Reviewers`, reviewers);
+    reviewers: {
+      type: Array,
+      required: false,
+      default: () => [],
     },
+  },
+  i18n: {
+    changeReviewer: s__('MergeRequest|Change reviewer'),
   },
 };
 </script>
 <template>
-  <div class="hide-collapsed gl-line-height-20 gl-mb-2 gl-text-gray-900 gl-font-weight-bold">
-    {{ reviewerTitle }}
-    <gl-loading-icon v-if="loading" size="sm" inline class="align-bottom" />
-    <a
-      v-if="editable"
-      class="js-sidebar-dropdown-toggle edit-link btn gl-text-gray-900! gl-ml-auto hide-collapsed btn-default btn-sm gl-button btn-default-tertiary gl-float-right"
-      href="#"
-      data-track-action="click_edit_button"
-      data-track-label="right_sidebar"
-      data-track-property="reviewer"
-      data-testid="reviewers-edit-button"
-    >
-      {{ __('Edit') }}
-    </a>
+  <div
+    class="hide-collapsed gl-flex gl-items-center gl-gap-2 gl-font-bold gl-leading-20 gl-text-default"
+  >
+    {{ __('Reviewer') }}
+    <gl-loading-icon v-if="loading" size="sm" inline class="!gl-align-bottom" />
+    <template v-if="editable">
+      <reviewer-dropdown
+        class="gl-ml-auto"
+        usage="simple"
+        :selected-reviewers="reviewers"
+        :eligible-reviewers="reviewers"
+      />
+    </template>
   </div>
 </template>

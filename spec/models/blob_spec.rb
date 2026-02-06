@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Blob do
+RSpec.describe Blob, feature_category: :source_code_management do
   include FakeBlobHelpers
 
   using RSpec::Parameterized::TableSyntax
@@ -68,68 +68,36 @@ RSpec.describe Blob do
       end
     end
 
-    context 'when increase_diff_file_performance is turned off' do
-      before do
-        stub_feature_flags(increase_diff_file_performance: false)
-      end
+    context 'with project' do
+      let_it_be(:container) { create(:project, :repository) }
+      let_it_be(:same_container) { Project.find(container.id) }
+      let_it_be(:other_container) { create(:project, :repository) }
 
-      context 'with project' do
-        let_it_be(:container) { create(:project, :repository) }
-        let_it_be(:same_container) { Project.find(container.id) }
-        let_it_be(:other_container) { create(:project, :repository) }
+      it_behaves_like '.lazy checks'
 
-        it_behaves_like '.lazy checks'
-      end
+      context 'when the blob size limit is different' do
+        it 'fetches all blobs for the same repository and same blob size limit when one is accessed' do
+          expect(container.repository).to receive(:blobs_at)
+            .with([[commit_id, 'CHANGELOG']], blob_size_limit: 10)
+            .once.and_call_original
 
-      context 'with personal snippet' do
-        let_it_be(:container) { create(:personal_snippet, :repository) }
-        let_it_be(:same_container) { PersonalSnippet.find(container.id) }
-        let_it_be(:other_container) { create(:personal_snippet, :repository) }
+          expect(same_container.repository).to receive(:blobs_at)
+            .with([[commit_id, 'CONTRIBUTING.md'], [commit_id, 'README.md']], blob_size_limit: 20)
+            .once.and_call_original
 
-        it_behaves_like '.lazy checks'
-      end
+          expect(other_container.repository).not_to receive(:blobs_at)
 
-      context 'with project snippet' do
-        let_it_be(:container) { create(:project_snippet, :repository) }
-        let_it_be(:same_container) { ProjectSnippet.find(container.id) }
-        let_it_be(:other_container) { create(:project_snippet, :repository) }
+          changelog = described_class.lazy(container.repository, commit_id, 'CHANGELOG', blob_size_limit: 10)
+          contributing = described_class.lazy(same_container.repository, commit_id, 'CONTRIBUTING.md',
+            blob_size_limit: 20)
+          described_class.lazy(same_container.repository, commit_id, 'README.md',
+            blob_size_limit: 20)
 
-        it_behaves_like '.lazy checks'
-      end
-    end
+          described_class.lazy(other_container.repository, commit_id, 'CHANGELOG', blob_size_limit: 30)
 
-    context 'when increase_diff_file_performance is turned on' do
-      context 'with project' do
-        let_it_be(:container) { create(:project, :repository) }
-        let_it_be(:same_container) { Project.find(container.id) }
-        let_it_be(:other_container) { create(:project, :repository) }
-
-        it_behaves_like '.lazy checks'
-
-        context 'when the blob size limit is different' do
-          it 'fetches all blobs for the same repository and same blob size limit when one is accessed' do
-            expect(container.repository).to receive(:blobs_at)
-              .with([[commit_id, 'CHANGELOG']], blob_size_limit: 10)
-              .once.and_call_original
-
-            expect(same_container.repository).to receive(:blobs_at)
-              .with([[commit_id, 'CONTRIBUTING.md'], [commit_id, 'README.md']], blob_size_limit: 20)
-              .once.and_call_original
-
-            expect(other_container.repository).not_to receive(:blobs_at)
-
-            changelog = described_class.lazy(container.repository, commit_id, 'CHANGELOG', blob_size_limit: 10)
-            contributing = described_class.lazy(same_container.repository, commit_id, 'CONTRIBUTING.md',
-              blob_size_limit: 20)
-            described_class.lazy(same_container.repository, commit_id, 'README.md',
-              blob_size_limit: 20)
-
-            described_class.lazy(other_container.repository, commit_id, 'CHANGELOG', blob_size_limit: 30)
-
-            # Access property so the values are loaded
-            changelog.id
-            contributing.id
-          end
+          # Access property so the values are loaded
+          changelog.id
+          contributing.id
         end
       end
 
@@ -273,31 +241,43 @@ RSpec.describe Blob do
     end
   end
 
-  describe '#symlink?' do
-    it 'is true for symlinks' do
-      symlink_blob = fake_blob(path: 'file', mode: '120000')
+  describe 'mode inspection methods' do
+    let(:tree_blob) { fake_blob(path: 'tree', mode: '40000') }
+    let(:executable_blob) { fake_blob(path: 'file', mode: '100755') }
+    let(:non_executable_blob) { fake_blob(path: 'file', mode: '100655') }
+    let(:symlink_blob) { fake_blob(path: 'file', mode: '120000') }
 
-      expect(symlink_blob.symlink?).to eq true
+    where(:blob_type, :blob, :is_symlink, :is_executable, :is_tree) do
+      'tree' | ref(:tree_blob) | false | false | true
+      'executable' | ref(:executable_blob) | false | true | false
+      'non-executable' | ref(:non_executable_blob) | false | false | false
+      'symlink' | ref(:symlink_blob) | true | false | false
     end
 
-    it 'is false for non-symlinks' do
-      non_symlink_blob = fake_blob(path: 'file', mode: '100755')
+    with_them do
+      describe '#symlink?' do
+        let(:error) { "Expected #{blob_type} to #{'not ' unless is_symlink}be a symlink" }
 
-      expect(non_symlink_blob.symlink?).to eq false
-    end
-  end
+        subject { blob.symlink? }
 
-  describe '#executable?' do
-    it 'is true for executables' do
-      executable_blob = fake_blob(path: 'file', mode: '100755')
+        it { is_expected.to eq(is_symlink), error }
+      end
 
-      expect(executable_blob.executable?).to eq true
-    end
+      describe '#executable?' do
+        let(:error) { "Expected #{blob_type} to #{'not ' unless is_executable}be an executable" }
 
-    it 'is false for non-executables' do
-      non_executable_blob = fake_blob(path: 'file', mode: '100655')
+        subject { blob.executable? }
 
-      expect(non_executable_blob.executable?).to eq false
+        it { is_expected.to eq(is_executable), error }
+      end
+
+      describe '#tree?' do
+        let(:error) { "Expected #{blob_type} to #{'not ' unless is_tree}be a tree" }
+
+        subject { blob.tree? }
+
+        it { is_expected.to eq(is_tree), error }
+      end
     end
   end
 
@@ -314,6 +294,14 @@ RSpec.describe Blob do
       blob = fake_blob(path: 'README.md')
 
       expect(blob.file_type).to eq(:readme)
+    end
+  end
+
+  describe '#file_hash' do
+    it 'returns the file hash' do
+      blob = fake_blob(path: 'README.md')
+
+      expect(blob.file_hash).to include('b3356305')
     end
   end
 
@@ -399,6 +387,66 @@ RSpec.describe Blob do
         blob = fake_blob(path: 'file.wav', binary: true)
 
         expect(blob.rich_viewer).to be_a(BlobViewer::Audio)
+      end
+    end
+
+    context 'when the blob is a graph' do
+      context 'and PlantUML is enabled' do
+        it 'returns a matching viewer for PlantUML' do
+          blob = fake_blob(path: 'file.puml')
+          stub_application_setting(plantuml_enabled: true)
+
+          expect(blob.rich_viewer).to be_a(BlobViewer::Graph)
+        end
+      end
+
+      context 'and Kroki is enabled' do
+        it 'returns a matching viewer for PlantUML' do
+          blob = fake_blob(path: 'file.puml')
+          stub_application_setting(kroki_enabled: true)
+
+          expect(blob.rich_viewer).to be_a(BlobViewer::Graph)
+        end
+
+        it 'returns a matching viewer for GraphViz' do
+          blob = fake_blob(path: 'file.dot')
+          stub_application_setting(kroki_enabled: true)
+
+          expect(blob.rich_viewer).to be_a(BlobViewer::Graph)
+        end
+
+        it 'returns a matching viewer for Nomnoml' do
+          blob = fake_blob(path: 'file.noml')
+          stub_application_setting(kroki_enabled: true)
+
+          expect(blob.rich_viewer).to be_a(BlobViewer::Graph)
+        end
+      end
+
+      context 'default' do
+        it 'returns viewer for Mermaid' do
+          blob = fake_blob(path: 'file.mermaid')
+
+          expect(blob.rich_viewer).to be_a(BlobViewer::Graph)
+        end
+
+        it 'returns nil for PlantUML' do
+          blob = fake_blob(path: 'file.puml')
+
+          expect(blob.rich_viewer).to be_nil
+        end
+
+        it 'returns nil for GraphViz' do
+          blob = fake_blob(path: 'file.dot')
+
+          expect(blob.rich_viewer).to be_nil
+        end
+
+        it 'returns nil for GraphViz' do
+          blob = fake_blob(path: 'file.noml')
+
+          expect(blob.rich_viewer).to be_nil
+        end
       end
     end
   end

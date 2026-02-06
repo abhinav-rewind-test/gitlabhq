@@ -2,6 +2,10 @@
 
 module Snippets
   class CreateService < Snippets::BaseService
+    include Gitlab::InternalEventsTracking
+
+    FAILED_TO_CREATE_ERROR = :failed_to_create_error
+
     def initialize(project:, current_user: nil, params: {}, perform_spam_check: true)
       super(project: project, current_user: current_user, params: params)
       @perform_spam_check = perform_spam_check
@@ -23,14 +27,18 @@ module Snippets
       end
 
       if save_and_commit
-        UserAgentDetailService.new(spammable: @snippet, perform_spam_check: perform_spam_check).create
-        Gitlab::UsageDataCounters::SnippetCounter.count(:create)
+        UserAgentDetailService.new(
+          spammable: @snippet,
+          perform_spam_check: perform_spam_check,
+          current_user: current_user
+        ).create
+        track_internal_event('create_snippet', project: project, user: current_user)
 
         move_temporary_files
 
         ServiceResponse.success(payload: { snippet: @snippet })
       else
-        snippet_error_response(@snippet, 400)
+        snippet_error_response(@snippet, FAILED_TO_CREATE_ERROR)
       end
     end
 
@@ -38,12 +46,24 @@ module Snippets
 
     attr_reader :snippet, :perform_spam_check
 
+    # If the snippet is a "project snippet", specifically set it to nil to override the default database value of 1.
+    # We only want organization_id on the PersonalSnippet subclass.
+    #
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/460827
     def build_from_params
       if project
-        project.snippets.build(create_params)
+        project.snippets.build(
+          create_params.merge(organization_id: nil)
+        )
       else
-        PersonalSnippet.new(create_params)
+        PersonalSnippet.new(
+          create_params.merge(organization_id: organization_id)
+        )
       end
+    end
+
+    def organization_id
+      params[:organization_id].presence
     end
 
     # If the snippet_actions param is present
@@ -64,7 +84,8 @@ module Snippets
       end
 
       snippet_saved
-    rescue StandardError => e # Rescuing all because we can receive Creation exceptions, GRPC exceptions, Git exceptions, ...
+      # Rescuing all because we can receive Creation exceptions, GRPC exceptions, Git exceptions, etc.
+    rescue StandardError => e
       Gitlab::ErrorTracking.log_exception(e, service: 'Snippets::CreateService')
 
       # If the commit action failed we need to remove the repository if exists
@@ -109,6 +130,12 @@ module Snippets
 
     def restricted_files_actions
       :create
+    end
+
+    def commit_attrs(snippet, msg)
+      return super if Feature.enabled?(:commit_files_target_sha, snippet.project)
+
+      super.merge(skip_target_sha: true)
     end
   end
 end

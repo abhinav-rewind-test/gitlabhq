@@ -1,31 +1,29 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Create' do
-    describe 'Merge request push options', product_group: :code_review do
+  RSpec.describe 'Create', feature_category: :code_review_workflow do
+    describe 'Merge request push options' do
       # If run locally on GDK, push options need to be enabled on the host with the following command:
       #
       # git config --global receive.advertisepushoptions true
 
       let(:branch) { "push-options-test-#{SecureRandom.hex(8)}" }
       let(:title) { "MR push options test #{SecureRandom.hex(8)}" }
-
       let(:project) { create(:project, :with_readme, name: 'merge-request-push-options') }
+      let!(:runner) { create(:project_runner, project: project, name: "runner-for-#{project.name}", tags: ["runner-for-#{project.name}"]) }
 
-      let!(:runner) do
-        Resource::ProjectRunner.fabricate! do |runner|
-          runner.project = project
-          runner.name = "runner-for-#{project.name}"
-          runner.tags = ["runner-for-#{project.name}"]
-        end
-      end
-
-      after do |example|
+      after do
         runner.remove_via_api!
-        project.remove_via_api! unless example.exception
       end
 
-      it 'sets merge when pipeline succeeds', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347843' do
+      it 'sets merge when pipeline succeeds', testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347843',
+        quarantine: {
+          only: {
+            job: /praefect|gitaly-reftables-backend/
+          },
+          issue: 'https://gitlab.com/gitlab-org/quality/e2e-test-issues/-/issues/1207',
+          type: :investigating
+        } do
         create(:commit, project: project, commit_message: 'Add .gitlab-ci.yml', actions: [
           {
             action: 'create',
@@ -44,7 +42,7 @@ module QA
           push.branch_name = branch
           push.merge_request_push_options = {
             create: true,
-            merge_when_pipeline_succeeds: true,
+            auto_merge: true,
             title: title
           }
         end
@@ -66,7 +64,7 @@ module QA
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347842',
         quarantine: {
           type: :flaky,
-          issue: "https://gitlab.com/gitlab-org/gitlab/-/issues/346425"
+          issue: "https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24013"
         }
       ) do
         create(:commit, project: project, commit_message: 'Add .gitlab-ci.yml', actions: [
@@ -87,7 +85,7 @@ module QA
           push.branch_name = branch
           push.merge_request_push_options = {
             create: true,
-            merge_when_pipeline_succeeds: true,
+            auto_merge: true,
             title: title
           }
         end
@@ -95,7 +93,7 @@ module QA
         merge_request = project.merge_request_with_title(title)
 
         expect(merge_request).not_to be_nil, "There was a problem creating the merge request"
-        expect(merge_request[:merge_when_pipeline_succeeds]).to be true
+        expect(merge_request[:auto_merge]).to be true
 
         mr = nil
         begin

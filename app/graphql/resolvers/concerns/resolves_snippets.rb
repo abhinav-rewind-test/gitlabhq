@@ -8,12 +8,12 @@ module ResolvesSnippets
     type Types::SnippetType.connection_type, null: true
 
     argument :ids, [::Types::GlobalIDType[::Snippet]],
-             required: false,
-             description: 'Array of global snippet IDs. For example, `gid://gitlab/ProjectSnippet/1`.'
+      required: false,
+      description: 'Array of global snippet IDs. For example, `gid://gitlab/ProjectSnippet/1`.'
 
     argument :visibility, Types::Snippets::VisibilityScopesEnum,
-             required: false,
-             description: 'Visibility of the snippet.'
+      required: false,
+      description: 'Visibility of the snippet.'
   end
 
   def resolve(**args)
@@ -23,7 +23,8 @@ module ResolvesSnippets
   private
 
   def resolve_snippets(args)
-    SnippetsFinder.new(context[:current_user], snippet_finder_params(args)).execute
+    SnippetsFinder.new(context[:current_user], organization_id: Current.organization.id,
+      **snippet_finder_params(args)).execute
   end
 
   def snippet_finder_params(args)

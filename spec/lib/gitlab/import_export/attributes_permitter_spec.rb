@@ -93,7 +93,7 @@ RSpec.describe Gitlab::ImportExport::AttributesPermitter, feature_category: :imp
 
     let(:attributes_permitter) { described_class.new }
 
-    where(:relation_name, :permitted_attributes_defined ) do
+    where(:relation_name, :permitted_attributes_defined) do
       :user                        | true
       :author                      | false
       :ci_cd_settings              | true
@@ -136,7 +136,6 @@ RSpec.describe Gitlab::ImportExport::AttributesPermitter, feature_category: :imp
       :timelogs                    | true
       :container_expiration_policy | true
       :project_feature             | true
-      :prometheus_metrics          | true
       :service_desk_setting        | true
       :external_pull_request       | true
       :external_pull_requests      | true
@@ -169,7 +168,7 @@ RSpec.describe Gitlab::ImportExport::AttributesPermitter, feature_category: :imp
     # these are attributes for which either a special exception is made or are available only via included modules and not attribute introspection
     additional_attributes = {
       user: %w[id],
-      project: %w[auto_devops_deploy_strategy auto_devops_enabled issues_enabled jobs_enabled merge_requests_enabled snippets_enabled wiki_enabled build_git_strategy build_enabled security_and_compliance_enabled requirements_enabled]
+      project: %w[auto_devops_deploy_strategy auto_devops_enabled issues_enabled jobs_enabled merge_requests_enabled snippets_enabled wiki_enabled build_git_strategy build_enabled security_and_compliance_enabled requirements_enabled enabled_foundational_flows]
     }
 
     Gitlab::ImportExport::Config.new.to_h[:included_attributes].each do |relation_sym, permitted_attributes|

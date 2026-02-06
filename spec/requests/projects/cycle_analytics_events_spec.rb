@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe 'value stream analytics events', feature_category: :team_planning do
+RSpec.describe 'value stream analytics events', feature_category: :value_stream_management do
   include CycleAnalyticsHelpers
 
   let(:user) { create(:user) }
-  let(:project) { create(:project, :repository, public_builds: false) }
+  let(:project) { create(:project, :repository, public_builds: false, developers: user) }
   let(:issue) { create(:issue, project: project, created_at: 2.days.ago) }
 
   describe 'GET /:namespace/:project/value_stream_analytics/events/issues', :sidekiq_inline do
@@ -14,15 +14,15 @@ RSpec.describe 'value stream analytics events', feature_category: :team_planning
     let(:first_mr_iid) { project.merge_requests.sort_by_attribute(:created_desc).pick(:iid).to_s }
 
     before do
-      project.add_developer(user)
-
       3.times do |count|
         travel_to(Time.now + count.days) do
           create_cycle
         end
       end
 
-      deploy_master(user, project)
+      travel_to(Time.now + 3.days) do
+        deploy_master(user, project)
+      end
 
       login_as(user)
     end
@@ -65,7 +65,7 @@ RSpec.describe 'value stream analytics events', feature_category: :team_planning
       expect(json_response['events'].first['iid']).to eq(first_mr_iid)
     end
 
-    it 'lists the staging events' do
+    it 'lists the staging events', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/444510' do
       get project_cycle_analytics_staging_path(project, format: :json)
 
       expect(json_response['events']).not_to be_empty

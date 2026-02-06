@@ -9,7 +9,7 @@ import StatusIcon from '~/vue_merge_request_widget/components/widget/status_icon
 import StateContainer from '~/vue_merge_request_widget/components/state_container.vue';
 import { COMPONENTS } from '~/vue_merge_request_widget/components/checks/constants';
 import conflictsStateQuery from '~/vue_merge_request_widget/queries/states/conflicts.query.graphql';
-import rebaseStateQuery from '~/vue_merge_request_widget/queries/states/rebase.query.graphql';
+import rebaseStateQuery from 'ee_else_ce/vue_merge_request_widget/queries/states/rebase.query.graphql';
 
 Vue.use(VueApollo);
 
@@ -53,6 +53,10 @@ function factory(mountFn, { canMerge = true, mergeabilityChecks = [] } = {}) {
           data: {
             project: {
               id: '1',
+              allowMergeOnSkippedPipeline: true,
+              ciCdSettings: {
+                mergeTrainsEnabled: false,
+              },
               mergeRequest: {
                 id: '2',
                 rebaseInProgress: false,
@@ -115,6 +119,7 @@ describe('Merge request merge checks component', () => {
     mergeabilityChecks                                                                               | text
     ${[{ identifier: 'discussions', status: 'FAILED' }]}                                             | ${'Merge blocked: 1 check failed'}
     ${[{ identifier: 'discussions', status: 'FAILED' }, { identifier: 'rebase', status: 'FAILED' }]} | ${'Merge blocked: 2 checks failed'}
+    ${[{ identifier: 'discussions', status: 'WARNING' }]}                                            | ${'Merge with caution: Override added'}
   `('renders $text for $mergeabilityChecks', async ({ mergeabilityChecks, text }) => {
     mountComponent({ mergeabilityChecks });
 
@@ -124,9 +129,10 @@ describe('Merge request merge checks component', () => {
   });
 
   it.each`
-    status      | statusIcon
-    ${'FAILED'} | ${'failed'}
-    ${'PASSED'} | ${'success'}
+    status       | statusIcon
+    ${'FAILED'}  | ${'failed'}
+    ${'PASSED'}  | ${'success'}
+    ${'WARNING'} | ${'warning'}
   `('renders $statusIcon for $status result', async ({ status, statusIcon }) => {
     mountComponent({ mergeabilityChecks: [{ status, identifier: 'discussions' }] });
 
@@ -152,6 +158,17 @@ describe('Merge request merge checks component', () => {
     expect(wrapper.findComponent(component).exists()).toBe(true);
   });
 
+  it('renders ready to merge caution message when canMerge is false', async () => {
+    mountComponent({
+      canMerge: false,
+      mergeabilityChecks: [{ status: 'WARNING', identifier: 'discussions' }],
+    });
+
+    await waitForPromises();
+
+    expect(wrapper.text()).toBe('Ready to be merged with caution: Override added');
+  });
+
   it('expands collapsed area', async () => {
     mountComponent();
 
@@ -163,7 +180,7 @@ describe('Merge request merge checks component', () => {
   });
 
   it('sorts merge checks', async () => {
-    mountComponent({
+    shallowMountComponent({
       mergeabilityChecks: [
         { identifier: 'discussions_not_resolved', status: 'SUCCESS' },
         { identifier: 'status_checks_must_pass', status: 'INACTIVE' },
@@ -173,15 +190,11 @@ describe('Merge request merge checks component', () => {
 
     await waitForPromises();
 
-    await wrapper.findByTestId('widget-toggle').trigger('click');
+    wrapper.vm.toggleCollapsed();
 
-    const mergeChecks = wrapper.findAllByTestId('merge-check');
-
-    expect(mergeChecks.length).toBe(2);
-    expect(mergeChecks.at(0).props('check')).toEqual(expect.objectContaining({ status: 'FAILED' }));
-    expect(mergeChecks.at(1).props('check')).toEqual(
-      expect.objectContaining({ status: 'SUCCESS' }),
-    );
+    expect(wrapper.vm.sortedChecks).toHaveLength(2);
+    expect(wrapper.vm.sortedChecks[0].status).toBe('FAILED');
+    expect(wrapper.vm.sortedChecks[1].status).toBe('SUCCESS');
   });
 
   it('does not render check component if no message exists', async () => {
@@ -196,9 +209,11 @@ describe('Merge request merge checks component', () => {
 
     await wrapper.findByTestId('widget-toggle').trigger('click');
 
+    await waitForPromises();
+
     const mergeChecks = wrapper.findAllByTestId('merge-check');
 
-    expect(mergeChecks.length).toBe(1);
+    expect(mergeChecks).toHaveLength(1);
   });
 
   describe('expansion', () => {
@@ -217,23 +232,46 @@ describe('Merge request merge checks component', () => {
     });
 
     it('shows failed checks before user expands section', () => {
-      expect(findMergeChecks().length).toBe(1);
+      expect(findMergeChecks()).toHaveLength(1);
     });
 
     it('shows all checks when user expands section', async () => {
       await wrapper.findByTestId('widget-toggle').trigger('click');
 
-      expect(findMergeChecks().length).toBe(2);
+      expect(findMergeChecks()).toHaveLength(2);
     });
 
-    it('hides all checks when user collapses section', async () => {
+    it('shows failed checks when user collapses section', async () => {
       await wrapper.findByTestId('widget-toggle').trigger('click');
 
-      expect(findMergeChecks().length).toBe(2);
+      expect(findMergeChecks()).toHaveLength(2);
 
       await wrapper.findByTestId('widget-toggle').trigger('click');
 
-      expect(findMergeChecks().length).toBe(0);
+      expect(findMergeChecks()).toHaveLength(1);
+    });
+  });
+
+  describe('checking merge checks', () => {
+    const findMergeChecks = () => wrapper.findAllByTestId('merge-check');
+
+    beforeEach(() => {
+      mountComponent({
+        mergeabilityChecks: [
+          { identifier: 'discussions_not_resolved', status: 'CHECKING' },
+          { identifier: 'not_approved', status: 'SUCCESS' },
+        ],
+      });
+
+      return waitForPromises();
+    });
+
+    it('renders checking text', () => {
+      expect(wrapper.text()).toContain('Checking if merge request can be merged…');
+    });
+
+    it('renders checks expanded by default', () => {
+      expect(findMergeChecks()).toHaveLength(1);
     });
   });
 });

@@ -47,12 +47,14 @@ export default {
       required: true,
     },
   },
+  emits: ['updateCiConfig', 'switch-drawer'],
   data() {
     return {
       isNameValid: true,
       isScriptValid: true,
       isStartValid: true,
       job: JSON.parse(JSON.stringify(JOB_TEMPLATE)),
+      runners: [],
     };
   },
   apollo: {
@@ -158,9 +160,9 @@ export default {
       const targetObj = path.length === 1 ? this.job : get(this.job, path.slice(0, -1));
       const lastKey = path[path.length - 1];
       if (value !== undefined) {
-        this.$set(targetObj, lastKey, value);
+        targetObj[lastKey] = value;
       } else {
-        this.$delete(targetObj, lastKey);
+        delete targetObj[lastKey];
       }
     },
     validateJob() {
@@ -180,7 +182,7 @@ export default {
     @close="closeDrawer"
   >
     <template #title>
-      <h2 class="gl-m-0 gl-font-lg">{{ $options.i18n.ADD_JOB }}</h2>
+      <h2 class="gl-m-0 gl-text-lg">{{ $options.i18n.ADD_JOB }}</h2>
     </template>
     <gl-accordion :header-level="3">
       <job-setup-item
@@ -197,7 +199,7 @@ export default {
       <rules-item :job="job" :is-start-valid="isStartValid" @update-job="updateJob" />
     </gl-accordion>
     <template #footer>
-      <div class="gl-display-flex gl-justify-content-end">
+      <div class="gl-flex gl-justify-end">
         <gl-button
           category="primary"
           class="gl-mr-3"

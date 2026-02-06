@@ -15,7 +15,6 @@
     "versions",
     "status",
     "statusMessage",
-    "canDestroy",
     "lastDownloadedAt",
     "_links",
     "userPermissions"
@@ -39,11 +38,6 @@
         "null"
       ]
     },
-    "canDestroy": {
-      "type": [
-        "boolean"
-      ]
-    },
     "packageType": {
       "type": [
         "string"
@@ -59,7 +53,8 @@
         "GOLANG",
         "RUBYGEMS",
         "DEBIAN",
-        "HELM"
+        "HELM",
+        "TERRAFORM_MODULE"
       ]
     },
     "tags": {
@@ -138,6 +133,9 @@
         },
         {
           "$ref": "./package_pypi_metadata.json"
+        },
+        {
+          "$ref": "./package_terraform_module_metadata.json"
         },
         {
           "type": "null"
@@ -261,6 +259,9 @@
         "string",
         "null"
       ]
+    },
+    "protectionRuleExists": {
+      "type": "boolean"
     },
     "_links": {
       "type": "object",

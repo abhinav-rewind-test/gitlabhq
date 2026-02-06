@@ -29,11 +29,12 @@ export default {
 };
 </script>
 <template>
-  <gl-button variant="link" class="gl-bg-transparent!">
+  <gl-button variant="link" class="!gl-bg-transparent">
     <assignee-avatar :user="user" :img-size="24" :issuable-type="issuableType" />
     <user-name-with-status
       :name="user.name"
       :availability="availability"
+      :composite-identity-enforced="user.compositeIdentityEnforced"
       container-classes="author"
     />
   </gl-button>

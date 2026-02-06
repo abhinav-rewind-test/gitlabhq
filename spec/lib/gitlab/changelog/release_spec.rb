@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Changelog::Release do
+RSpec.describe Gitlab::Changelog::Release, feature_category: :source_code_management do
   describe '#to_markdown' do
     let(:config) { Gitlab::Changelog::Config.new(build_stubbed(:project)) }
     let(:commit) { build_stubbed(:commit) }
@@ -42,9 +42,9 @@ RSpec.describe Gitlab::Changelog::Release do
 
           ### fixed (1 change)
 
-          - [Entry title](#{commit.to_reference(full: true)}) \
+          - [Entry title](#{Gitlab::UrlBuilder.build(commit)}) \
           by #{author.to_reference(full: true)} \
-          ([merge request](#{mr.to_reference(full: true)}))
+          ([merge request](#{Gitlab::UrlBuilder.build(mr)}))
 
         OUT
       end
@@ -68,40 +68,11 @@ RSpec.describe Gitlab::Changelog::Release do
 
             ### fixed (1 change)
 
-            - [Entry title](#{commit.to_reference(full: true)}) \
+            - [Entry title](#{Gitlab::UrlBuilder.build(commit)}) \
             by #{author.to_reference(full: true)} \
-            ([merge request](#{mr.to_reference(full: true)}))
+            ([merge request](#{Gitlab::UrlBuilder.build(mr)}))
 
           OUT
-        end
-
-        context 'when feature flag "update_changelog_logic" is disabled' do
-          before do
-            stub_feature_flags(update_changelog_logic: false)
-          end
-
-          it 'uses a version with "v" at the start' do
-            allow(config).to receive(:contributor?).with(author).and_return(true)
-
-            release.add_entry(
-              title: 'Entry title',
-              commit: commit,
-              category: 'fixed',
-              author: author,
-              merge_request: mr
-            )
-
-            expect(release.to_markdown).to eq(<<~OUT)
-              ## v1.0.0 (2021-01-05)
-
-              ### fixed (1 change)
-
-              - [Entry title](#{commit.to_reference(full: true)}) \
-              by #{author.to_reference(full: true)} \
-              ([merge request](#{mr.to_reference(full: true)}))
-
-            OUT
-          end
         end
       end
     end
@@ -122,7 +93,7 @@ RSpec.describe Gitlab::Changelog::Release do
 
           ### fixed (1 change)
 
-          - [Entry title](#{commit.to_reference(full: true)}) \
+          - [Entry title](#{Gitlab::UrlBuilder.build(commit)}) \
           by #{author.to_reference(full: true)}
 
         OUT
@@ -145,7 +116,7 @@ RSpec.describe Gitlab::Changelog::Release do
 
           ### fixed (1 change)
 
-          - [Entry title](#{commit.to_reference(full: true)})
+          - [Entry title](#{Gitlab::UrlBuilder.build(commit)})
 
         OUT
       end
@@ -168,7 +139,7 @@ RSpec.describe Gitlab::Changelog::Release do
 
           ### fixed (1 change)
 
-          - [Entry title](#{commit.to_reference(full: true)}) \
+          - [Entry title](#{Gitlab::UrlBuilder.build(commit)}) \
           by #{author.to_reference(full: true)}
 
         OUT
@@ -191,7 +162,7 @@ RSpec.describe Gitlab::Changelog::Release do
 
           ### Bug fixes (1 change)
 
-          - [Entry title](#{commit.to_reference(full: true)})
+          - [Entry title](#{Gitlab::UrlBuilder.build(commit)})
 
         OUT
       end
@@ -208,13 +179,13 @@ RSpec.describe Gitlab::Changelog::Release do
     end
   end
 
-  describe '#header_start_position' do
+  describe '#header_start_pattern' do
     it 'returns a regular expression for finding the start of a release section' do
       config = Gitlab::Changelog::Config.new(build_stubbed(:project))
       release = described_class
         .new(version: '1.0.0', date: Time.utc(2021, 1, 5), config: config)
 
-      expect(release.header_start_pattern).to eq(/^##\s*1\.0\.0/)
+      expect(release.header_start_pattern).to eq(/^##\s*1\.0\.0\s/)
     end
   end
 end

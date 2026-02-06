@@ -97,6 +97,8 @@ RSpec.describe Gitlab::Metrics::GlobalSearchSlis, feature_category: :global_sear
       'advanced' | false | 2.452
       'advanced' | true  | 15.52
       'zoekt'    | true  | 15.52
+      'unknown'  | false | 5
+      nil        | false | 5
     end
 
     with_them do
@@ -196,6 +198,18 @@ RSpec.describe Gitlab::Metrics::GlobalSearchSlis, feature_category: :global_sear
         search_level: 'global',
         search_scope: 'issues'
       )
+    end
+  end
+
+  describe '.search_scopes' do
+    it 'returns all scope names from Search::Scopes' do
+      result = described_class.send(:search_scopes)
+      expect(result).to eq(::Search::Scopes.all_scope_names)
+    end
+
+    it 'includes expected scopes' do
+      result = described_class.send(:search_scopes)
+      expect(result).to include('blobs', 'issues', 'merge_requests', 'projects')
     end
   end
 end

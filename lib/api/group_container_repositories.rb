@@ -17,7 +17,7 @@ module API
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the group accessible by the authenticated user'
+        desc: 'The ID or URL-encoded path of the group accessible by the authenticated user'
     end
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'List registry repositories within a group' do
@@ -33,6 +33,7 @@ module API
       params do
         use :pagination
       end
+      route_setting :authorization, permissions: :read_container_repository, boundary_type: :group
       get ':id/registry/repositories' do
         repositories = ContainerRepositoriesFinder.new(
           user: current_user, subject: user_group

@@ -1,18 +1,19 @@
 <script>
 import { nextTick } from 'vue';
-// eslint-disable-next-line no-restricted-imports
-import { mapState, mapGetters, mapActions } from 'vuex';
+import { mapState, mapActions } from 'pinia';
 import { s__, __, sprintf } from '~/locale';
 import { createAlert } from '~/alert';
 import diffLineNoteFormMixin from '~/notes/mixins/diff_line_note_form';
 import { clearDraft } from '~/lib/utils/autosave';
 import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
 import { ignoreWhilePending } from '~/lib/utils/ignore_while_pending';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import MultilineCommentForm from '~/notes/components/multiline_comment_form.vue';
 import { commentLineOptions, formatLineRange } from '~/notes/components/multiline_comment_utils';
 import NoteForm from '~/notes/components/note_form.vue';
 import { capitalizeFirstCharacter } from '~/lib/utils/text_utility';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { useMrNotes } from '~/mr_notes/store/legacy_mr_notes';
+import { useNotes } from '~/notes/store/legacy_notes';
 import {
   DIFF_NOTE_TYPE,
   INLINE_DIFF_LINES_KEY,
@@ -26,7 +27,7 @@ export default {
     NoteForm,
     MultilineCommentForm,
   },
-  mixins: [diffLineNoteFormMixin, glFeatureFlagsMixin()],
+  mixins: [diffLineNoteFormMixin],
   props: {
     diffFileHash: {
       type: String,
@@ -68,23 +69,14 @@ export default {
     };
   },
   computed: {
-    ...mapState({
-      diffViewType: ({ diffs }) => diffs.diffViewType,
-      showSuggestPopover: ({ diffs }) => diffs.showSuggestPopover,
-      noteableData: ({ notes }) => notes.noteableData,
-      selectedCommentPosition: ({ notes }) => notes.selectedCommentPosition,
-    }),
-    ...mapGetters('diffs', ['getDiffFileByHash', 'diffLines']),
-    ...mapGetters([
-      'isLoggedIn',
-      'noteableType',
-      'getNoteableData',
-      'getNotesDataByProp',
-      'getUserData',
+    ...mapState(useLegacyDiffs, [
+      'diffViewType',
+      'showSuggestPopover',
+      'getDiffFileByHash',
+      'diffLines',
     ]),
-    author() {
-      return this.getUserData;
-    },
+    ...mapState(useMrNotes, ['isLoggedIn']),
+    ...mapState(useNotes, ['noteableData', 'noteableType', 'selectedCommentPosition']),
     formData() {
       return {
         noteableData: this.noteableData,
@@ -186,38 +178,43 @@ export default {
     }
   },
   methods: {
-    ...mapActions('diffs', [
+    ...mapActions(useLegacyDiffs, [
       'cancelCommentForm',
       'saveDiffDiscussion',
       'setSuggestPopoverDismissed',
     ]),
-    handleCancelCommentForm: ignoreWhilePending(async function handleCancelCommentForm(
-      shouldConfirm,
-      isDirty,
-    ) {
-      if (shouldConfirm && isDirty) {
-        const msg = s__('Notes|Are you sure you want to cancel creating this comment?');
+    handleCancelCommentForm: ignoreWhilePending(
+      async function handleCancelCommentForm(shouldConfirm, isDirty) {
+        if (shouldConfirm && isDirty) {
+          const msg = s__('Notes|Are you sure you want to cancel creating this comment?');
 
-        const confirmed = await confirmAction(msg, {
-          primaryBtnText: __('Discard changes'),
-          cancelBtnText: __('Continue editing'),
-        });
+          const confirmed = await confirmAction(msg, {
+            primaryBtnText: __('Discard changes'),
+            cancelBtnText: __('Continue editing'),
+          });
 
-        if (!confirmed) {
-          return;
+          if (!confirmed) {
+            return;
+          }
         }
-      }
-      this.cancelCommentForm({
-        lineCode: this.line.line_code,
-        fileHash: this.diffFileHash,
-      });
-      nextTick(() => {
-        clearDraft(this.autosaveKey);
-      });
-    }),
+        this.cancelCommentForm({
+          lineCode: this.line.line_code,
+          fileHash: this.diffFileHash,
+        });
+        nextTick(() => {
+          clearDraft(this.autosaveKey);
+        });
+      },
+    ),
     handleSaveNote(note, parentElement, errorCallback) {
       return this.saveDiffDiscussion({ note, formData: this.formData })
-        .then(() => this.handleCancelCommentForm())
+        .then((result) => {
+          if (result?.cancelled) {
+            this.$refs.noteForm.isSubmitting = false;
+            return;
+          }
+          this.handleCancelCommentForm();
+        })
         .catch((e) => {
           const reason = e.response?.data?.errors;
           const errorMessage = reason
@@ -242,7 +239,7 @@ export default {
 
 <template>
   <div class="content discussion-form discussion-form-container discussion-notes">
-    <div class="gl-mb-3 gl-text-gray-500 gl-pb-3">
+    <div class="gl-mb-3 gl-pb-3 gl-text-subtle">
       <multiline-comment-form
         :line="line"
         :line-range="lines"

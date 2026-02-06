@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'DevOps Report page', :js, feature_category: :devops_reports do
+RSpec.describe 'DevOps adoption page', :js, feature_category: :devops_reports do
   before do
     admin = create(:admin)
     sign_in(admin)
@@ -14,18 +14,6 @@ RSpec.describe 'DevOps Report page', :js, feature_category: :devops_reports do
       stub_licensed_features(devops_adoption: false)
     end
 
-    it 'has dismissable intro callout' do
-      visit admin_dev_ops_reports_path
-
-      expect(page).to have_content 'Introducing Your DevOps Report'
-
-      within_testid('devops-score-container') do
-        find_by_testid('close-icon').click
-      end
-
-      expect(page).not_to have_content 'Introducing Your DevOps Report'
-    end
-
     context 'when usage ping is disabled' do
       before do
         stub_application_setting(usage_ping_enabled: false)
@@ -35,12 +23,6 @@ RSpec.describe 'DevOps Report page', :js, feature_category: :devops_reports do
         visit admin_dev_ops_reports_path
 
         expect(page).to have_text('Service ping is off')
-      end
-
-      it 'hides the intro callout' do
-        visit admin_dev_ops_reports_path
-
-        expect(page).not_to have_content 'Introducing Your DevOps Report'
       end
     end
 

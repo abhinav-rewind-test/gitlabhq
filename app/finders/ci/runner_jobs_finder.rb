@@ -27,21 +27,17 @@ module Ci
 
     private
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def by_permission(items)
       return items if @user.can_read_all_resources?
 
       items.for_project(@user.authorized_project_mirrors(Gitlab::Access::REPORTER).select(:project_id))
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def by_status(items)
       return items unless Ci::HasStatus::AVAILABLE_STATUSES.include?(params[:status])
 
-      items.where(status: params[:status])
+      items.with_statuses(params[:status])
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     # rubocop: disable CodeReuse/ActiveRecord
     def sort_items(items)

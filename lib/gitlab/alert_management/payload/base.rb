@@ -26,13 +26,10 @@ module Gitlab
           :environment_name,
           :full_query,
           :generator_url,
-          :gitlab_alert,
           :gitlab_fingerprint,
-          :gitlab_prometheus_alert_id,
           :gitlab_y_label,
           :has_required_attributes?,
           :hosts,
-          :metric_id,
           :monitoring_tool,
           :resolved?,
           :runbook,
@@ -42,6 +39,8 @@ module Gitlab
           :status,
           :title
         ].freeze
+
+        EPOCH_MILLISECONDS_DIGIT_COUNT = (Time.current.to_f * 1000).to_i.to_s.size
 
         private_constant :EXPECTED_PAYLOAD_ATTRIBUTES
 
@@ -109,7 +108,6 @@ module Gitlab
             monitoring_tool: truncate(monitoring_tool, ::AlertManagement::Alert::TOOL_MAX_LENGTH),
             payload: payload,
             project_id: project.id,
-            prometheus_alert: gitlab_alert,
             service: truncate(service, ::AlertManagement::Alert::SERVICE_MAX_LENGTH),
             severity: severity,
             started_at: starts_at,
@@ -154,11 +152,9 @@ module Gitlab
 
         private
 
-        def plain_gitlab_fingerprint
-        end
+        def plain_gitlab_fingerprint; end
 
-        def severity_raw
-        end
+        def severity_raw; end
 
         def severity_mapping
           SEVERITY_MAPPING
@@ -188,6 +184,12 @@ module Gitlab
 
         def parse_value(value, type)
           case type
+          when :time_with_epoch_millis
+            if value.is_a?(Integer) && value.to_s.size == EPOCH_MILLISECONDS_DIGIT_COUNT
+              Time.at(0, value, :millisecond).utc
+            else
+              parse_time(value)
+            end
           when :time
             parse_time(value)
           when :integer

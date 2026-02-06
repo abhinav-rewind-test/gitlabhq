@@ -37,6 +37,10 @@ module BitbucketServer
         raw_comment['id']
       end
 
+      def author_name
+        author['displayName']
+      end
+
       def author_username
         author['username'] ||
           author['slug'] ||
@@ -74,6 +78,22 @@ module BitbucketServer
       # comments into a single discussion.
       def comments
         @comments ||= flatten_comments
+      end
+
+      def to_hash
+        parent_comment_note = parent_comment.note if parent_comment
+
+        {
+          id: id,
+          author_name: author_name,
+          author_email: author_email,
+          author_username: author_username,
+          note: note,
+          created_at: created_at,
+          updated_at: updated_at,
+          comments: comments.map(&:to_hash),
+          parent_comment_note: parent_comment_note
+        }
       end
 
       private

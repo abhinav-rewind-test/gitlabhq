@@ -14,83 +14,99 @@ RSpec.describe 'User sorts projects and order persists', feature_category: :grou
     find('button[data-testid=base-dropdown-toggle]')
   end
 
-  shared_examples_for "sort order persists across all views" do |project_paths_label, group_paths_label|
+  shared_examples_for "sort order persists across all views" do |sort_label|
     it "is set on the dashboard_projects_path" do
       visit(dashboard_projects_path)
 
-      expect(find('#sort-projects-dropdown')).to have_content(project_paths_label)
+      within '[data-testid=groups-projects-sort]' do
+        expect(find_dropdown_toggle).to have_content(sort_label)
+      end
     end
 
     it "is set on the explore_projects_path" do
+      # Feature test will be added separately in https://gitlab.com/gitlab-org/gitlab/-/issues/520596
+      stub_feature_flags(explore_projects_vue: false)
+
       visit(explore_projects_path)
 
-      expect(find('#sort-projects-dropdown')).to have_content(project_paths_label)
+      within '[data-testid=groups-projects-sort]' do
+        expect(find_dropdown_toggle).to have_content(sort_label)
+      end
     end
 
     it "is set on the group_canonical_path" do
       visit(group_canonical_path(group))
 
-      within '[data-testid=group_sort_by_dropdown]' do
-        expect(find_dropdown_toggle).to have_content(group_paths_label)
+      within '[data-testid=groups-projects-sort]' do
+        expect(find_dropdown_toggle).to have_content(sort_label)
       end
     end
 
     it "is set on the details_group_path" do
       visit(details_group_path(group))
 
-      within '[data-testid=group_sort_by_dropdown]' do
-        expect(find_dropdown_toggle).to have_content(group_paths_label)
+      within '[data-testid=groups-projects-sort]' do
+        expect(find_dropdown_toggle).to have_content(sort_label)
       end
     end
   end
 
   context "from explore projects", :js do
     before do
+      # Feature test will be added separately in https://gitlab.com/gitlab-org/gitlab/-/issues/520596
+      stub_feature_flags(explore_projects_vue: false)
+
       sign_in(user)
       visit(explore_projects_path)
-      find('#sort-projects-dropdown').click
-      first(:link, 'Updated date').click
+      within '[data-testid=groups-projects-sort]' do
+        find_dropdown_toggle.click
+        find('li', text: 'Name').click
+        wait_for_requests
+      end
     end
 
-    it_behaves_like "sort order persists across all views", 'Updated date', 'Updated'
+    it_behaves_like "sort order persists across all views", 'Name'
   end
 
   context 'from dashboard projects', :js do
     before do
       sign_in(user)
       visit(dashboard_projects_path)
-      find('#sort-projects-dropdown').click
-      first(:link, 'Name').click
-    end
-
-    it_behaves_like "sort order persists across all views", "Name", "Name"
-  end
-
-  context 'from group homepage', :js do
-    before do
-      sign_in(user)
-      visit(group_canonical_path(group))
-      within '[data-testid=group_sort_by_dropdown]' do
+      within '[data-testid=groups-projects-sort]' do
         find_dropdown_toggle.click
         find('li', text: 'Created').click
         wait_for_requests
       end
     end
 
-    it_behaves_like "sort order persists across all views", "Oldest created", "Created"
+    it_behaves_like "sort order persists across all views", "Created"
+  end
+
+  context 'from group homepage', :js do
+    before do
+      sign_in(user)
+      visit(group_canonical_path(group))
+      within '[data-testid=groups-projects-sort]' do
+        find_dropdown_toggle.click
+        find('li', text: 'Created').click
+        wait_for_requests
+      end
+    end
+
+    it_behaves_like "sort order persists across all views", "Created"
   end
 
   context 'from group details', :js do
     before do
       sign_in(user)
       visit(details_group_path(group))
-      within '[data-testid=group_sort_by_dropdown]' do
+      within '[data-testid=groups-projects-sort]' do
         find_dropdown_toggle.click
         find('li', text: 'Updated').click
         wait_for_requests
       end
     end
 
-    it_behaves_like "sort order persists across all views", "Oldest updated", "Updated"
+    it_behaves_like "sort order persists across all views", "Updated"
   end
 end

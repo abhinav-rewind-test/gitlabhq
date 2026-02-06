@@ -7,7 +7,7 @@ module BulkImports
 
     idempotent!
     deduplicate :until_executing
-    data_consistency :always
+    data_consistency :sticky
     feature_category :importers
     sidekiq_options retry: 3, dead: false
     worker_has_external_dependencies!
@@ -18,10 +18,17 @@ module BulkImports
 
     PERFORM_DELAY = 5.seconds
 
-    # Keep `_current_stage` parameter for backwards compatibility.
-    # The parameter will be remove in https://gitlab.com/gitlab-org/gitlab/-/issues/426311
-    def perform(entity_id, _current_stage = nil)
-      @entity = ::BulkImports::Entity.find(entity_id)
+    def perform(entity_id)
+      @entity = ::BulkImports::Entity.find_by_id(entity_id)
+
+      unless @entity
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          entity_id: entity_id,
+          message: 'Entity not found'
+        )
+        return
+      end
 
       return unless @entity.started?
 
@@ -38,7 +45,16 @@ module BulkImports
     end
 
     def perform_failure(exception, entity_id)
-      @entity = ::BulkImports::Entity.find(entity_id)
+      @entity = ::BulkImports::Entity.find_by_id(entity_id)
+
+      unless @entity
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          entity_id: entity_id,
+          message: 'Entity not found (failure)'
+        )
+        return
+      end
 
       Gitlab::ErrorTracking.track_exception(
         exception,
@@ -80,6 +96,13 @@ module BulkImports
             pipeline_tracker.stage,
             entity.id
           )
+
+          if Import::BulkImports::EphemeralData.new(entity.bulk_import.id).importer_user_mapping_enabled?
+            Import::LoadPlaceholderReferencesWorker.perform_async(
+              Import::SOURCE_DIRECT_TRANSFER,
+              entity.bulk_import.id
+            )
+          end
         end
       end
     end

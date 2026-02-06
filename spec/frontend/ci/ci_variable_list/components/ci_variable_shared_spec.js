@@ -2,7 +2,6 @@ import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import { GlLoadingIcon, GlTable } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
-import { assertProps } from 'helpers/assert_props';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
@@ -11,15 +10,14 @@ import { resolvers } from '~/ci/ci_variable_list/graphql/settings';
 import ciVariableShared from '~/ci/ci_variable_list/components/ci_variable_shared.vue';
 import ciVariableSettings from '~/ci/ci_variable_list/components/ci_variable_settings.vue';
 import ciVariableTable from '~/ci/ci_variable_list/components/ci_variable_table.vue';
-import { getProjectEnvironments } from '~/ci/common/private/ci_environments_dropdown';
+import {
+  getProjectEnvironments,
+  ENVIRONMENT_FETCH_ERROR,
+} from '~/ci/common/private/ci_environments_dropdown';
 import getAdminVariables from '~/ci/ci_variable_list/graphql/queries/variables.query.graphql';
 import getGroupVariables from '~/ci/ci_variable_list/graphql/queries/group_variables.query.graphql';
 import getProjectVariables from '~/ci/ci_variable_list/graphql/queries/project_variables.query.graphql';
-import {
-  environmentFetchErrorText,
-  genericMutationErrorText,
-  variableFetchErrorText,
-} from '~/ci/ci_variable_list/constants';
+import { genericMutationErrorText, variableFetchErrorText } from '~/ci/ci_variable_list/constants';
 
 import {
   createGroupProps,
@@ -172,6 +170,65 @@ describe('Ci Variable Shared Component', () => {
         });
       });
 
+      if (!isVariablePagesEnabled) {
+        describe('with too many paginated requests', () => {
+          beforeEach(async () => {
+            const mockVariablesWithPagination = {
+              data: {
+                group: {
+                  __typename: 'Group',
+                  id: 'gid://gitlab/Group/1',
+                  ciVariables: {
+                    __typename: 'CiGroupVariableConnection',
+                    limit: 200,
+                    pageInfo: {
+                      __typename: 'PageInfo',
+                      hasNextPage: true,
+                      hasPreviousPage: false,
+                      startCursor: 'start',
+                      endCursor: 'cursor',
+                    },
+                    nodes: mockGroupVariables.data.group.ciVariables.nodes,
+                  },
+                },
+              },
+            };
+
+            await createComponentWithApollo({
+              customHandlers: [
+                [getGroupVariables, jest.fn().mockResolvedValue(mockVariablesWithPagination)],
+              ],
+              props: createGroupProps(),
+              provide: createGroupProvide(),
+            });
+
+            // The component recursively calls fetchMore when hasNextPage is true,
+            // stopping after 20 iterations to prevent infinite loops.
+            // Apollo's mock doesn't trigger the result handler for fetchMore calls,
+            // so we manually set loadingCounter to simulate having reached the limit.
+            wrapper.vm.loadingCounter = 20;
+
+            wrapper.vm.$apollo.queries.ciVariables.refetch();
+            await waitForPromises();
+          });
+          it('shows an alert', () => {
+            expect(createAlert).toHaveBeenCalledWith({
+              message: 'Maximum number of variables loaded (2000)',
+            });
+          });
+
+          it('stops loading', () => {
+            expect(findCiSettings().props('isLoading')).toBe(false);
+          });
+
+          it('displays the variables that were loaded', () => {
+            expect(findCiSettings().props('variables')).toEqual(
+              mockGroupVariables.data.group.ciVariables.nodes,
+            );
+          });
+        });
+      }
+
       describe('with an error for variables', () => {
         beforeEach(async () => {
           mockEnvironments.mockResolvedValue(mockProjectEnvironments);
@@ -194,7 +251,7 @@ describe('Ci Variable Shared Component', () => {
         });
 
         it('calls createAlert with the expected error message', () => {
-          expect(createAlert).toHaveBeenCalledWith({ message: environmentFetchErrorText });
+          expect(createAlert).toHaveBeenCalledWith({ message: ENVIRONMENT_FETCH_ERROR });
         });
       });
     });
@@ -504,7 +561,7 @@ describe('Ci Variable Shared Component', () => {
             provide: { ...provide, ...pagesFeatureFlagProvide },
           });
 
-          expect(findCiSettings().props()).toEqual({
+          expect(findCiSettings().props()).toMatchObject({
             areEnvironmentsLoading: false,
             areScopedVariablesAvailable: wrapper.props().areScopedVariablesAvailable,
             entity: props.entity,
@@ -570,16 +627,6 @@ describe('Ci Variable Shared Component', () => {
               expect(error).toBeUndefined();
             }
           });
-
-          it('report custom validator error on wrong data', () => {
-            expect(() =>
-              assertProps(
-                ciVariableShared,
-                { ...defaultProps, ...createGroupProps(), queryData: { wrongKey: {} } },
-                { provide: mockProvide },
-              ),
-            ).toThrow('custom validator check failed for prop');
-          });
         });
 
         describe('mutationData', () => {
@@ -601,16 +648,6 @@ describe('Ci Variable Shared Component', () => {
               expect(wrapper.exists()).toBe(true);
               expect(error).toBeUndefined();
             }
-          });
-
-          it('report custom validator error on wrong data', () => {
-            expect(() =>
-              assertProps(
-                ciVariableShared,
-                { ...defaultProps, ...createGroupProps(), mutationData: { wrongKey: {} } },
-                { provide: { ...mockProvide, ...pagesFeatureFlagProvide } },
-              ),
-            ).toThrow('custom validator check failed for prop');
           });
         });
       });

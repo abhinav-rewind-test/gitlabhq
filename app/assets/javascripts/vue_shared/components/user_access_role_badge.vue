@@ -3,7 +3,7 @@
  * This component applies particular styling to GlBadge that isn't
  * available in the current GlBadge variants.
  * Where possible, prefer one of the supported GlBadge variants.
- * Discussion issue: https://gitlab.com/gitlab-org/gitlab-ui/-/issues/1247
+ * Discussion issue: https://gitlab.com/gitlab-org/gitlab-ui/-/issues/1247 [CLOSED]
  */
 import { GlBadge } from '@gitlab/ui';
 
@@ -12,18 +12,11 @@ export default {
   components: {
     GlBadge,
   },
-  props: {
-    size: {
-      type: String,
-      required: false,
-      default: 'md',
-    },
-  },
 };
 </script>
 
 <template>
-  <gl-badge :size="size" class="gl-bg-transparent! gl-inset-border-1-gray-100!">
+  <gl-badge variant="neutral">
     <slot></slot>
   </gl-badge>
 </template>

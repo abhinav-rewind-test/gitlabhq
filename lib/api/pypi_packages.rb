@@ -124,13 +124,15 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
         params do
           use :package_download
         end
 
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :download_pypi_package, boundary_type: :group,
+          skip_job_token_policies: true
         get 'files/:sha256/*file_identifier' do
           group = find_authorized_group!
           authorize_read_package!(group)
@@ -152,12 +154,14 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         # An API entry point but returns an HTML file instead of JSON.
         # PyPi simple API returns a list of packages as a simple HTML file.
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :read_pypi_package, boundary_type: :group,
+          skip_job_token_policies: true
         get 'simple', format: :txt do
           present_simple_index(find_authorized_group!)
         end
@@ -170,7 +174,7 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         params do
@@ -180,6 +184,8 @@ module API
         # An API entry point but returns an HTML file instead of JSON.
         # PyPi simple API returns the package descriptor as a simple HTML file.
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :read_pypi_package, boundary_type: :group,
+          skip_job_token_policies: true
         get 'simple/*package_name', format: :txt do
           present_simple_package(find_authorized_group!)
         end
@@ -200,7 +206,7 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         params do
@@ -208,8 +214,12 @@ module API
         end
 
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :download_pypi_package, boundary_type: :project,
+          job_token_policies: :read_packages,
+          allow_public_access_for_enabled_project_features: :package_registry
         get 'files/:sha256/*file_identifier' do
           project = project!
+          authorize_job_token_policies!(project)
 
           filename = "#{params[:file_identifier]}.#{params[:format]}"
           package = Packages::Pypi::PackageFinder.new(current_user, project, { filename: filename, sha256: params[:sha256] }).execute
@@ -228,14 +238,19 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         # An API entry point but returns an HTML file instead of JSON.
         # PyPi simple API returns a list of packages as a simple HTML file.
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :read_pypi_package, boundary_type: :project,
+          job_token_policies: :read_packages,
+          allow_public_access_for_enabled_project_features: :package_registry
         get 'simple', format: :txt do
-          present_simple_index(project!)
+          project = project!
+          authorize_job_token_policies!(project)
+          present_simple_index(project)
         end
 
         desc 'The PyPi Simple Project Package Endpoint' do
@@ -246,7 +261,7 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         params do
@@ -256,8 +271,13 @@ module API
         # An API entry point but returns an HTML file instead of JSON.
         # PyPi simple API returns the package descriptor as a simple HTML file.
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :read_pypi_package, boundary_type: :project,
+          job_token_policies: :read_packages,
+          allow_public_access_for_enabled_project_features: :package_registry
         get 'simple/*package_name', format: :txt do
-          present_simple_package(project!)
+          project = project!
+          authorize_job_token_policies!(project)
+          present_simple_package(project)
         end
 
         desc 'The PyPi Package upload endpoint' do
@@ -270,29 +290,32 @@ module API
             { code: 404, message: 'Not Found' },
             { code: 422, message: 'Unprocessable Entity' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         params do
           requires :content, type: ::API::Validations::Types::WorkhorseFile, desc: 'The package file to be published (generated by Multipart middleware)', documentation: { type: 'file' }
-          requires :name, type: String, documentation: { example: 'my.pypi.package' }
-          requires :version, type: String, documentation: { example: '1.3.7' }
-          optional :requires_python, type: String, documentation: { example: '>=3.7' }
-          optional :md5_digest, type: String, documentation: { example: '900150983cd24fb0d6963f7d28e17f72' }
-          optional :sha256_digest, type: String, regexp: Gitlab::Regex.sha256_regex, documentation: { example: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' }
-          optional :metadata_version, type: String, documentation: { example: '2.3' }
-          optional :author_email, type: String, documentation: { example: 'cschultz@example.com, snoopy@peanuts.com' }
-          optional :description, type: String
-          optional :description_content_type, type: String,
+          requires :name, type: String, desc: 'Name of the package', documentation: { example: 'my.pypi.package' }
+          requires :version, type: String, desc: 'Version of the package', documentation: { example: '1.3.7' }
+          optional :requires_python, type: String, desc: 'PyPI version required for the package', documentation: { example: '>=3.7' }
+          optional :md5_digest, type: String, desc: 'MD5 checksum of the package', documentation: { example: '900150983cd24fb0d6963f7d28e17f72' }
+          optional :sha256_digest, type: String, desc: 'SHA256 checksum of the package', regexp: Gitlab::Regex.sha256_regex, documentation: { example: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' }
+          optional :metadata_version, type: String, desc: 'Metadata version of the package', documentation: { example: '2.3' }
+          optional :author_email, type: String, desc: 'Email address for the package author', documentation: { example: 'cschultz@example.com, snoopy@peanuts.com' }
+          optional :description, type: String, desc: 'Description of the package'
+          optional :description_content_type, type: String, desc: 'Type of content for the package description',
             documentation: { example: 'text/markdown; charset=UTF-8; variant=GFM' }
-          optional :summary, type: String, documentation: { example: 'A module for collecting votes from beagles.' }
-          optional :keywords, type: String, documentation: { example: 'dog,puppy,voting,election' }
+          optional :summary, type: String, desc: 'Short summary of the package', documentation: { example: 'A module for collecting votes from beagles.' }
+          optional :keywords, type: String, desc: 'Keywords listed for the package', documentation: { example: 'dog,puppy,voting,election' }
         end
 
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :upload_pypi_package, boundary_type: :project,
+          job_token_policies: :admin_packages
         post do
           project = project!(action: :read_project)
           authorize_upload!(project)
+          authorize_job_token_policies!(project)
 
           if project.actual_limits.exceeded?(:pypi_max_file_size, params[:content].size)
             bad_request!('File is too large')
@@ -305,6 +328,10 @@ module API
           service_response = ::Packages::Pypi::CreatePackageService
             .new(project, current_user, declared_params.merge(build: current_authenticated_job))
             .execute
+
+          if service_response.error? && service_response.reason == Packages::Pypi::CreatePackageService::ERROR_RESPONSE_PACKAGE_PROTECTED.reason
+            forbidden!(service_response.message)
+          end
 
           bad_request!(service_response.message) if service_response.error?
 
@@ -323,12 +350,15 @@ module API
             { code: 403, message: 'Forbidden' },
             { code: 404, message: 'Not Found' }
           ]
-          tags %w[pypi_packages]
+          tags %w[packages]
         end
 
         route_setting :authentication, deploy_token_allowed: true, basic_auth_personal_access_token: true, job_token_allowed: :basic_auth
+        route_setting :authorization, permissions: :authorize_pypi_package, boundary_type: :project,
+          job_token_policies: :admin_packages
         post 'authorize' do
           project = project!(action: :read_project)
+          authorize_job_token_policies!(project)
           authorize_workhorse!(
             subject: project,
             has_length: false,

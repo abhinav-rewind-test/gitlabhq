@@ -12,7 +12,13 @@ import PerformanceBarService from '~/performance_bar/services/performance_bar_se
 import { getInstrumentationLink } from './apollo/instrumentation_link';
 import { getSuppressNetworkErrorsDuringNavigationLink } from './apollo/suppress_network_errors_during_navigation_link';
 import { getPersistLink } from './apollo/persist_link';
+import { getOperationFinishedLink } from './apollo/operation_finished_link';
 import { persistenceMapper } from './apollo/persistence_mapper';
+import { sentryBreadcrumbLink } from './apollo/sentry_breadcrumb_link';
+import { correlationIdLink } from './apollo/correlation_id_link';
+
+export const ERROR_POLICY_ALL = 'all';
+export const ERROR_POLICY_NONE = 'none';
 
 export const fetchPolicies = {
   CACHE_FIRST: 'cache-first',
@@ -53,6 +59,9 @@ export const typePolicies = {
   TreeEntry: {
     keyFields: ['webPath'],
   },
+  Blob: {
+    keyFields: ['webPath'],
+  },
   Subscription: {
     fields: {
       aiCompletionResponse: {
@@ -61,6 +70,9 @@ export const typePolicies = {
         },
       },
     },
+  },
+  GroupDora: {
+    merge: true,
   },
   Dora: {
     merge: true,
@@ -71,6 +83,9 @@ export const typePolicies = {
   ProjectValueStreamAnalyticsFlowMetrics: {
     merge: true,
   },
+  ValueStreamStageMetrics: {
+    merge: true,
+  },
   ScanExecutionPolicy: {
     keyFields: ['name'],
   },
@@ -78,6 +93,21 @@ export const typePolicies = {
     keyFields: ['name'],
   },
   ComplianceFrameworkConnection: {
+    merge: true,
+  },
+  OrganizationUserConnection: {
+    merge: true,
+  },
+  RepositoryBlob: {
+    keyFields: ({ id, path }) => {
+      if (path) {
+        return `${id}${encodeURIComponent(path)}`;
+      }
+
+      return id;
+    },
+  },
+  AiMetrics: {
     merge: true,
   },
 };
@@ -151,6 +181,10 @@ function createApolloClient(resolvers = {}, config = {}) {
 
   if (gon.version) {
     httpHeaders['x-gitlab-version'] = gon.version;
+  }
+
+  if (gon.current_organization?.id) {
+    httpHeaders['X-GitLab-Organization-ID'] = gon.current_organization.id;
   }
 
   const httpOptions = {
@@ -227,17 +261,17 @@ function createApolloClient(resolvers = {}, config = {}) {
   const hasMutation = (operation) =>
     (operation?.query?.definitions || []).some((x) => x.operation === 'mutation');
 
-  const requestCounterLink = new ApolloLink((operation, forward) => {
-    if (hasMutation(operation)) {
-      pendingApolloMutations += 1;
-    }
-
-    return forward(operation).map((response) => {
+  const mutationCounterLink = getOperationFinishedLink({
+    started: (operation) => {
+      if (hasMutation(operation)) {
+        pendingApolloMutations += 1;
+      }
+    },
+    finished: (operation) => {
       if (hasMutation(operation)) {
         pendingApolloMutations -= 1;
       }
-      return response;
-    });
+    },
   });
 
   const persistLink = getPersistLink();
@@ -249,7 +283,9 @@ function createApolloClient(resolvers = {}, config = {}) {
       [
         getSuppressNetworkErrorsDuringNavigationLink(),
         getInstrumentationLink(),
-        requestCounterLink,
+        sentryBreadcrumbLink,
+        correlationIdLink,
+        mutationCounterLink,
         performanceBarLink,
         new StartupJSLink(),
         apolloCaptchaLink,

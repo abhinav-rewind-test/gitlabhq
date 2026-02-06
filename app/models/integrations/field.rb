@@ -12,7 +12,7 @@ module Integrations
       non_empty_password_title
     ].concat(BOOLEAN_ATTRIBUTES).freeze
 
-    TYPES = %i[text textarea password checkbox select].freeze
+    TYPES = %i[text textarea password checkbox number string_array select].freeze
 
     attr_reader :name, :integration_class
 
@@ -26,12 +26,13 @@ module Integrations
       attributes[:api_only] = api_only
       attributes[:if] = attributes.fetch(:if, true)
       attributes[:is_secret] = is_secret
+      attributes[:description] ||= attributes[:help]
       @attributes = attributes.freeze
 
       invalid_attributes = attributes.keys - ATTRIBUTES
       if invalid_attributes.present?
         raise ArgumentError, "Invalid attributes #{invalid_attributes.inspect}"
-      elsif !TYPES.include?(self[:type])
+      elsif TYPES.exclude?(self[:type])
         raise ArgumentError, "Invalid type #{self[:type].inspect}"
       end
     end
@@ -62,7 +63,16 @@ module Integrations
     end
 
     def api_type
-      checkbox? ? ::API::Integrations::Boolean : String
+      case type
+      when :checkbox
+        ::API::Integrations::Boolean
+      when :number
+        Integer
+      when :string_array
+        Array[String]
+      else
+        String
+      end
     end
 
     private

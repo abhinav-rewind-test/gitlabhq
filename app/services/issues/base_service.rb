@@ -5,12 +5,19 @@ module Issues
     extend ::Gitlab::Utils::Override
     include IncidentManagement::UsageData
     include IssueTypeHelpers
+    include Gitlab::Utils::StrongMemoize
+
+    EpicAssignmentError = Class.new(::ArgumentError)
+
+    override :available_callbacks
+    def available_callbacks
+      super + [
+        ::WorkItems::Callbacks::StartAndDueDate
+      ]
+    end
 
     def hook_data(issue, action, old_associations: {})
-      hook_data = issue.to_hook_data(current_user, old_associations: old_associations)
-      hook_data[:object_attributes][:action] = action
-
-      hook_data
+      issue.to_hook_data(current_user, old_associations: old_associations, action: action)
     end
 
     def reopen_service
@@ -45,15 +52,15 @@ module Issues
 
     # overriding this because IssuableBaseService#constructor_container_arg returns { project: value }
     # Issues::ReopenService constructor signature is different now, it takes container instead of project also
-    # IssuableBaseService#change_state dynamically picks one of the `Issues::ReopenService`, `Epics::ReopenService` or
+    # IssuableBaseService#change_state dynamically picks one of the `Issues::ReopenService`,
     # MergeRequests::ReopenService, so we need this method to return { }container: value } for Issues::ReopenService
     def self.constructor_container_arg(value)
       { container: value }
     end
 
     def find_work_item_type_id(issue_type)
-      work_item_type = WorkItems::Type.default_by_type(issue_type)
-      work_item_type ||= WorkItems::Type.default_issue_type
+      work_item_type = work_item_type_provider.find_by_base_type(issue_type)
+      work_item_type ||= work_item_type_provider.default_issue_type
 
       work_item_type.id
     end
@@ -155,9 +162,14 @@ module Issues
       return unless timestamp_params.any?
 
       timestamp_params.each do |param|
-        params.delete(param) unless current_user.can?(:"set_issue_#{param}", project)
+        params.delete(param) unless current_user.can?(:"set_issue_#{param}", container)
       end
     end
+
+    def work_item_type_provider
+      ::WorkItems::TypesFramework::Provider.new(container)
+    end
+    strong_memoize_attr :work_item_type_provider
   end
 end
 

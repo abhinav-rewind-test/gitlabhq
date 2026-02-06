@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'rubocop_spec_helper'
+require 'rubocop-rails'
 require_relative '../../../../rubocop/cop/database/avoid_using_pluck_without_limit'
 
 RSpec.describe RuboCop::Cop::Database::AvoidUsingPluckWithoutLimit, feature_category: :database do
@@ -129,7 +130,7 @@ RSpec.describe RuboCop::Cop::Database::AvoidUsingPluckWithoutLimit, feature_cate
       RUBY
     end
 
-    it 'flags the use of pluck inside a service' do
+    it 'does not register the use of pluck inside a service' do
       allow(cop).to receive(:in_service_class?).and_return(true)
 
       expect_no_offenses(<<~RUBY)

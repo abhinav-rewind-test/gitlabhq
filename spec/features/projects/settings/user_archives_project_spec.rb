@@ -2,38 +2,74 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Projects > Settings > User archives a project', feature_category: :groups_and_projects do
-  let(:user) { create(:user) }
+RSpec.describe 'Projects > Settings > User archives a project', :js, feature_category: :groups_and_projects do
+  include SafeFormatHelper
+  include ActionView::Helpers::TagHelper
+
+  let_it_be(:user) { create(:user) }
+
+  let_it_be_with_reload(:group) { create(:group, owners: [user]) }
+  let_it_be_with_reload(:project) { create(:project, group: group) }
 
   before do
-    project.add_maintainer(user)
-
     sign_in(user)
-
-    visit edit_project_path(project)
   end
 
-  context 'when a project is archived' do
-    let(:project) { create(:project, :archived, namespace: user.namespace) }
+  context 'when group is archived' do
+    before do
+      group.namespace_settings.update!(archived: true)
 
-    it 'unarchives a project' do
-      expect(page).to have_content('Unarchive project')
+      visit edit_project_path(project)
+    end
 
-      click_link('Unarchive')
+    it 'renders section with no active button', :aggregate_failures do
+      find('[data-testid=cancel-icon]').hover
 
-      expect(page).not_to have_content('This is an archived project.')
+      expect(page).to have_content(s_('GroupProjectArchiveSettings|Unarchive project'))
+      expect(page).to have_selector('[role="tooltip"]', text: s_(
+        'GroupProjectUnarchiveSettings|To unarchive this project, you must unarchive its parent group.'
+      ))
+
+      expect(page).not_to have_button(s_('GroupProjectArchiveSettings|Archive'))
+      expect(page).not_to have_button(s_('GroupProjectUnarchiveSettings|Unarchive'))
     end
   end
 
-  context 'when a project is unarchived' do
-    let(:project) { create(:project, :repository, namespace: user.namespace) }
+  context 'when group is not archived' do
+    context 'when project is not archived' do
+      before do
+        visit edit_project_path(project)
+      end
 
-    it 'archives a project' do
-      expect(page).to have_content('Archive project')
+      it 'can archive project', :aggregate_failures do
+        click_button s_('GroupProjectArchiveSettings|Archive')
 
-      click_link('Archive')
+        expect(page).to have_current_path(project_path(project))
+        expect(page.body).to include(safe_format(
+          _('This project is archived. Its data is %{strong_open}read-only%{strong_close}.'),
+          tag_pair(tag.strong, :strong_open, :strong_close)
+        ))
+      end
+    end
 
-      expect(page).to have_content('This is an archived project.')
+    context 'when project is archived' do
+      before do
+        project.update!(archived: true)
+
+        visit edit_project_path(project)
+      end
+
+      it 'can unarchive project', :aggregate_failures do
+        expect(page).to have_content('Unarchive project')
+
+        click_button s_('GroupProjectUnarchiveSettings|Unarchive')
+
+        expect(page).to have_current_path(project_path(project))
+        expect(page.body).not_to include(safe_format(
+          _('This project is archived. Its data is %{strong_open}read-only%{strong_close}.'),
+          tag_pair(tag.strong, :strong_open, :strong_close)
+        ))
+      end
     end
   end
 end

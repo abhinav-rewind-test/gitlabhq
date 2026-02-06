@@ -1,23 +1,15 @@
 <script>
-import { GlAlert, GlButton, GlLink, GlIcon, GlModal, GlSprintf } from '@gitlab/ui';
+import { GlAlert, GlButton, GlLink, GlIcon, GlSprintf } from '@gitlab/ui';
 import HelpPopover from '~/vue_shared/components/help_popover.vue';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
 import GoogleCloudFieldGroup from '~/ci/runner/components/registration/google_cloud_field_group.vue';
+import GoogleCloudRegistrationInstructionsModal from '~/ci/runner/components/registration/google_cloud_registration_instructions_modal.vue';
 import GoogleCloudLearnMoreLink from '~/ci/runner/components/registration/google_cloud_learn_more_link.vue';
-import { createAlert } from '~/alert';
 import { s__, __ } from '~/locale';
 import { fetchPolicies } from '~/lib/graphql';
-import { convertToGraphQLId } from '~/graphql_shared/utils';
-import { TYPENAME_CI_RUNNER } from '~/graphql_shared/constants';
-import runnerForRegistrationQuery from '../../graphql/register/runner_for_registration.query.graphql';
 import provisionGoogleCloudRunnerGroup from '../../graphql/register/provision_google_cloud_runner_group.query.graphql';
 import provisionGoogleCloudRunnerProject from '../../graphql/register/provision_google_cloud_runner_project.query.graphql';
 
-import {
-  I18N_FETCH_ERROR,
-  STATUS_ONLINE,
-  RUNNER_REGISTRATION_POLLING_INTERVAL_MS,
-} from '../../constants';
 import { captureException } from '../../sentry_utils';
 
 const GC_PROJECT_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/; // https://cloud.google.com/resource-manager/reference/rest/v1/projects
@@ -34,63 +26,27 @@ export default {
   i18n: {
     heading: s__('Runners|Register runner'),
     headingDescription: s__(
-      'Runners|After you complete the steps below, an autoscaling fleet of runners is available to execute your CI/CD jobs in Google Cloud. Based on demand, a runner manager automatically creates temporary runners.',
+      'Runners|To set up an autoscaling fleet of runners on Google Cloud, you can use the following recommended setup or %{linkStart}customize the Terraform configuration%{linkEnd}.',
     ),
     beforeHeading: s__('Runners|Before you begin'),
     permissionsText: s__(
       'Runners|Ensure you have the %{linkStart}Owner%{linkEnd} IAM role on your Google Cloud project.',
     ),
     billingLinkText: s__(
-      'Runners|Ensure that %{linkStart}billing is enabled for your Google Cloud project%{linkEnd}.',
+      'Runners|Ensure that %{linkStart}billing is enabled%{linkEnd} for your Google Cloud project.',
     ),
     preInstallText: s__(
-      'Runners|To follow the setup instructions, %{gcloudLinkStart}install the Google Cloud CLI%{gcloudLinkEnd} and %{terraformLinkStart}install Terraform%{terraformLinkEnd}.',
+      'Runners|Install the %{gcloudLinkStart}Google Cloud CLI%{gcloudLinkEnd} and %{terraformLinkStart}Terraform%{terraformLinkEnd}.',
     ),
-    stepOneHeading: s__('Runners|Step 1: Specify environment'),
+    stepOneHeading: s__('Runners|1. Environment'),
     stepOneDescription: s__(
-      'Runners|Environment in Google Cloud where runners execute CI/CD jobs. Runners are created in temporary virtual machines based on demand.',
+      'Runners|Environment in Google Cloud where runners execute CI/CD jobs. Runners are created in temporary virtual machines based on demand. To improve security, use a Google Cloud project for CI/CD only.',
     ),
-    stepTwoHeading: s__('Runners|Step 2: Set up GitLab Runner'),
+    stepTwoHeading: s__('Runners|2. Set up GitLab Runner'),
     stepTwoDescription: s__(
       'Runners|To view the setup instructions, complete the previous form. The instructions help you set up an autoscaling fleet of runners to execute your CI/CD jobs in Google Cloud.',
     ),
-    projectIdLabel: s__('Runners|Google Cloud project ID'),
-    projectIdDescription: s__(
-      'Runners|To improve security, use a dedicated project for CI/CD, separate from resources and identity management projects. %{linkStart}Where’s my project ID in Google Cloud?%{linkEnd}',
-    ),
-    regionLabel: s__('Runners|Region'),
-    zoneLabel: s__('Runners|Zone'),
-    zonesLinkText: s__('Runners|View available zones'),
-    machineTypeLabel: s__('Runners|Machine type'),
-    machineTypeDescription: s__(
-      'Runners|For most CI/CD jobs, use a %{linkStart}N2D standard machine type%{linkEnd}.',
-    ),
     runnerSetupBtnText: s__('Runners|Setup instructions'),
-    modal: {
-      subtitle: s__(
-        'Runners|These setup instructions use your specifications and follow the best practices for performance and security.',
-      ),
-      step2_1Header: s__('Runners|Step 1: Configure your Google Cloud project'),
-      step2_1Body: s__(
-        `Runners|If you haven't already configured your Google Cloud project, this step enables the required services and creates a service account with the required permissions. `,
-      ),
-      step2_1Substep1: s__(
-        'Runners|Run the following on your command line. You might be prompted to sign in to Google.',
-      ),
-      step2_2Header: s__('Runners|Step 2: Install and register GitLab Runner'),
-      step2_2Body: s__(
-        'Runners|This step creates the required infrastructure in Google Cloud, installs GitLab Runner, and registers it to this GitLab project. ',
-      ),
-      step2_2Substep1: s__(
-        'Runners|Use a text editor to create a %{codeStart}main.tf%{codeEnd} file with the following Terraform configuration.',
-      ),
-      step2_2Substep2: s__(
-        'Runners|In the directory with that Terraform configuration file, run the following on your command line.',
-      ),
-      step2_2Substep3: s__(
-        'Runners|After GitLab Runner is installed and registered, an autoscaling fleet of runners is available to execute your CI/CD jobs in Google Cloud.',
-      ),
-    },
     copyCommands: __('Copy commands'),
     emptyFieldsAlertMessage: s__(
       'Runners|To view the setup instructions, complete the previous form.',
@@ -102,6 +58,8 @@ export default {
     externalLink: __('(external link)'),
   },
   links: {
+    terraformConfigLink:
+      'https://gitlab.com/gitlab-org/ci-cd/runner-tools/grit/-/blob/main/docs/scenarios/google/linux/docker-autoscaler-default/index.md',
     permissionsLink: 'https://cloud.google.com/iam/docs/understanding-roles#owner',
     billingLink:
       'https://cloud.google.com/billing/docs/how-to/verify-billing-enabled#confirm_billing_is_enabled_on_a_project',
@@ -119,34 +77,38 @@ export default {
     ClipboardButton,
     GoogleCloudFieldGroup,
     GoogleCloudLearnMoreLink,
+    GoogleCloudRegistrationInstructionsModal,
     GlAlert,
     GlButton,
     GlIcon,
     GlLink,
-    GlModal,
     GlSprintf,
     HelpPopover,
   },
   props: {
-    runnerId: {
+    token: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     projectPath: {
       type: String,
       required: false,
-      default: '',
+      default: null,
     },
     groupPath: {
       type: String,
       required: false,
-      default: '',
+      default: null,
+    },
+    isWidget: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
   },
   data() {
     return {
-      token: '',
-      runner: null,
       showInstructionsModal: false,
       showInstructionsButtonVariant: 'default',
 
@@ -155,44 +117,16 @@ export default {
       zone: null,
       machineType: { state: true, value: 'n2d-standard-2' },
 
-      provisioningSteps: [],
-      setupBashScript: '',
+      setupBashScript: null,
+      setupTerraformFile: null,
+      applyTerraformScript: null,
+
       showAlert: false,
       group: null,
       project: null,
     };
   },
   apollo: {
-    runner: {
-      query: runnerForRegistrationQuery,
-      variables() {
-        return {
-          id: convertToGraphQLId(TYPENAME_CI_RUNNER, this.runnerId),
-        };
-      },
-      manual: true,
-      result({ data }) {
-        if (data?.runner) {
-          const { ephemeralAuthenticationToken, ...runner } = data.runner;
-          this.runner = runner;
-
-          // The token is available in the API for a limited amount of time
-          // preserve its original value if it is missing after polling.
-          this.token = ephemeralAuthenticationToken || this.token;
-        }
-      },
-      error(error) {
-        createAlert({ message: I18N_FETCH_ERROR });
-        captureException({ error, component: this.$options.name });
-      },
-      pollInterval() {
-        if (this.isRunnerOnline) {
-          // stop polling
-          return 0;
-        }
-        return RUNNER_REGISTRATION_POLLING_INTERVAL_MS;
-      },
-    },
     project: {
       query: provisionGoogleCloudRunnerProject,
       fetchPolicy: fetchPolicies.NETWORK_ONLY,
@@ -207,8 +141,11 @@ export default {
       result({ data, error }) {
         if (!error) {
           this.showAlert = false;
-          this.provisioningSteps = data.project.runnerCloudProvisioning?.provisioningSteps;
-          this.setupBashScript = data.project.runnerCloudProvisioning?.projectSetupShellScript;
+          const { runnerCloudProvisioning } = data.project;
+
+          this.setupBashScript = runnerCloudProvisioning?.projectSetupShellScript;
+          this.setupTerraformFile = runnerCloudProvisioning?.provisioningSteps?.[0].instructions;
+          this.applyTerraformScript = runnerCloudProvisioning?.provisioningSteps?.[1].instructions;
         }
       },
       error(error) {
@@ -229,8 +166,12 @@ export default {
       result({ data, error }) {
         if (!error) {
           this.showAlert = false;
-          this.provisioningSteps = data.group.runnerCloudProvisioning?.provisioningSteps;
-          this.setupBashScript = data.group.runnerCloudProvisioning?.projectSetupShellScript;
+
+          const { runnerCloudProvisioning } = data.group;
+
+          this.setupBashScript = runnerCloudProvisioning?.projectSetupShellScript;
+          this.setupTerraformFile = runnerCloudProvisioning?.provisioningSteps?.[0].instructions;
+          this.applyTerraformScript = runnerCloudProvisioning?.provisioningSteps?.[1].instructions;
         }
       },
       error(error) {
@@ -248,9 +189,6 @@ export default {
         machineType: this.machineType?.value,
       };
     },
-    isRunnerOnline() {
-      return this.runner?.status === STATUS_ONLINE;
-    },
     tokenMessage() {
       if (this.token) {
         return s__(
@@ -265,20 +203,6 @@ export default {
       return ['cloudProjectId', 'region', 'zone', 'machineType'].filter((field) => {
         return !this[field]?.state;
       });
-    },
-    bashInstructions() {
-      return this.setupBashScript.length > 0 ? this.setupBashScript : '';
-    },
-    terraformScriptInstructions() {
-      return this.provisioningSteps.length > 0 ? this.provisioningSteps[0].instructions : '';
-    },
-    terraformApplyInstructions() {
-      return this.provisioningSteps.length > 0 ? this.provisioningSteps[1].instructions : '';
-    },
-    codeStyles() {
-      return {
-        maxHeight: '300px',
-      };
     },
   },
   watch: {
@@ -320,44 +244,44 @@ export default {
       }
     },
   },
-  cancelModalOptions: {
-    text: __('Close'),
-  },
 };
 </script>
 
 <template>
   <div>
     <div class="gl-mt-5">
-      <h1 class="gl-heading-1">{{ $options.i18n.heading }}</h1>
-      <p>
-        <gl-icon name="information-o" class="gl-text-blue-600" />
+      <p v-if="!isWidget" data-testid="runner-token-message">
+        <gl-icon name="information-o" variant="info" />
         <gl-sprintf :message="tokenMessage">
           <template #token>
             <code data-testid="runner-token">{{ token }}</code>
-            <clipboard-button
-              :text="token"
-              :title="__('Copy')"
-              size="small"
-              category="tertiary"
-              class="gl-border-none!"
-            />
+            <clipboard-button :text="token" :title="__('Copy')" size="small" category="tertiary" />
           </template>
           <template #bold="{ content }">
-            <span class="gl-font-weight-bold">{{ content }}</span>
+            <span class="gl-font-bold">{{ content }}</span>
           </template>
           <template #code="{ content }">
             <code>{{ content }}</code>
           </template>
         </gl-sprintf>
       </p>
-      <p>{{ $options.i18n.headingDescription }}</p>
+      <p>
+        <gl-sprintf :message="$options.i18n.headingDescription">
+          <template #link="{ content }">
+            <gl-link :href="$options.links.terraformConfigLink" target="_blank">
+              {{ content }}
+              <gl-icon name="external-link" :aria-label="$options.i18n.externalLink" />
+            </gl-link>
+          </template>
+        </gl-sprintf>
+      </p>
     </div>
-    <hr />
+    <hr v-if="!isWidget" />
 
     <!-- start: before you begin -->
     <div>
-      <h2 class="gl-heading-2">{{ $options.i18n.beforeHeading }}</h2>
+      <h3 v-if="isWidget" class="gl-heading-3">{{ $options.i18n.beforeHeading }}</h3>
+      <h2 v-else class="gl-heading-2">{{ $options.i18n.beforeHeading }}</h2>
       <ul>
         <li>
           <gl-sprintf :message="$options.i18n.permissionsText">
@@ -401,25 +325,28 @@ export default {
     <!-- end: before you begin -->
 
     <!-- start: step one -->
-    <h2 class="gl-heading-2">{{ $options.i18n.stepOneHeading }}</h2>
+    <h3 v-if="isWidget" class="gl-heading-3">{{ $options.i18n.stepOneHeading }}</h3>
+    <h2 v-else class="gl-heading-2">{{ $options.i18n.stepOneHeading }}</h2>
     <p>{{ $options.i18n.stepOneDescription }}</p>
 
     <google-cloud-field-group
       ref="cloudProjectId"
       v-model="cloudProjectId"
       name="cloudProjectId"
-      :label="$options.i18n.projectIdLabel"
+      :label="s__('Runners|Google Cloud project ID')"
       :invalid-feedback-if-empty="s__('Runners|Project ID is required.')"
-      :invalid-feedback-if-malformed="
-        s__(
-          'Runners|Project ID must be 6 to 30 lowercase letters, digits, or hyphens. It needs to start with a lowercase letter and end with a letter or number.',
-        )
-      "
+      :invalid-feedback-if-malformed="s__('Runners|Project ID must have the right format.')"
       :regexp="$options.GC_PROJECT_PATTERN"
       data-testid="project-id-input"
     >
       <template #description>
-        <gl-sprintf :message="$options.i18n.projectIdDescription">
+        <gl-sprintf
+          :message="
+            s__(
+              'Runners|%{linkStart}Where\'s my project ID?%{linkEnd} Can be 6 to 30 lowercase letters, digits, or hyphens. Must start with a letter and end with a letter or number. Example: %{example}.',
+            )
+          "
+        >
           <template #link="{ content }">
             <gl-link
               :href="$options.links.projectIdLink"
@@ -430,6 +357,11 @@ export default {
               <gl-icon name="external-link" :aria-label="$options.i18n.externalLink" />
             </gl-link>
           </template>
+          <!-- eslint-disable @gitlab/vue-require-i18n-strings -->
+          <template #example>
+            <code>my-sample-project-191923</code>
+          </template>
+          <!-- eslint-enable @gitlab/vue-require-i18n-strings -->
         </gl-sprintf>
       </template>
     </google-cloud-field-group>
@@ -439,22 +371,32 @@ export default {
       v-model="region"
       name="region"
       :invalid-feedback-if-empty="s__('Runners|Region is required.')"
-      :invalid-feedback-if-malformed="
-        s__('Runners|Region must have the correct format. Example: us-central1')
-      "
+      :invalid-feedback-if-malformed="s__('Runners|Region must have the right format.')"
       :regexp="$options.GC_REGION_PATTERN"
       data-testid="region-input"
     >
       <template #label>
         <div>
-          {{ $options.i18n.regionLabel }}
-          <help-popover>
+          {{ s__('Runners|Region') }}
+          <help-popover :aria-label="s__('Runners|Region help')">
             <p>
               {{ s__('Runners|Specific geographical location where you can run your resources.') }}
             </p>
             <google-cloud-learn-more-link :href="$options.links.regionAndZonesLink" />
           </help-popover>
         </div>
+      </template>
+      <template #description>
+        <gl-sprintf :message="s__('Runners|Must have the format %{format}. Example: %{example}.')">
+          <!-- eslint-disable @gitlab/vue-require-i18n-strings -->
+          <template #format>
+            <code>&lt;location&gt;-&lt;sublocation&gt;&lt;number&gt;</code>
+          </template>
+          <template #example>
+            <code>us-central1</code>
+          </template>
+          <!-- eslint-enable @gitlab/vue-require-i18n-strings -->
+        </gl-sprintf>
       </template>
     </google-cloud-field-group>
 
@@ -463,16 +405,14 @@ export default {
       v-model="zone"
       name="zone"
       :invalid-feedback-if-empty="s__('Runners|Zone is required.')"
-      :invalid-feedback-if-malformed="
-        s__('Runners|Zone must have the correct format. Example: us-central1-a')
-      "
+      :invalid-feedback-if-malformed="s__('Runners|Zone must have the right format.')"
       :regexp="$options.GC_ZONE_PATTERN"
       data-testid="zone-input"
     >
       <template #label>
         <div>
-          {{ $options.i18n.zoneLabel }}
-          <help-popover>
+          {{ s__('Runners|Zone') }}
+          <help-popover :aria-label="s__('Runners|Zone help')">
             <p>
               {{
                 s__(
@@ -485,10 +425,28 @@ export default {
         </div>
       </template>
       <template #description>
-        <gl-link :href="$options.links.zonesLink" target="_blank" data-testid="zone-link">
-          {{ $options.i18n.zonesLinkText }}
-          <gl-icon name="external-link" :aria-label="$options.i18n.externalLink" />
-        </gl-link>
+        <gl-sprintf
+          :message="
+            s__(
+              'Runners|%{linkStart}View available zones%{linkEnd}. Must have the format %{format}. Example: %{example}.',
+            )
+          "
+        >
+          <template #link="{ content }">
+            <gl-link :href="$options.links.zonesLink" target="_blank" data-testid="zone-link">
+              {{ content }}
+              <gl-icon name="external-link" :aria-label="$options.i18n.externalLink" />
+            </gl-link>
+          </template>
+          <!-- eslint-disable @gitlab/vue-require-i18n-strings -->
+          <template #format>
+            <code>&lt;region&gt;-&lt;zone_letter&gt;</code>
+          </template>
+          <template #example>
+            <code>us-central1-a</code>
+          </template>
+          <!-- eslint-enable @gitlab/vue-require-i18n-strings -->
+        </gl-sprintf>
       </template>
     </google-cloud-field-group>
 
@@ -497,18 +455,14 @@ export default {
       v-model="machineType"
       name="machineType"
       :invalid-feedback-if-empty="s__('Runners|Machine type is required.')"
-      :invalid-feedback-if-malformed="
-        s__(
-          'Runners|Machine type must have the format `family-series-size`. Example: n2d-standard-2',
-        )
-      "
+      :invalid-feedback-if-malformed="s__('Runners|Machine type must have the right format.')"
       :regexp="$options.GC_MACHINE_TYPE_PATTERN"
       data-testid="machine-type-input"
     >
       <template #label>
         <div>
-          {{ $options.i18n.machineTypeLabel }}
-          <help-popover>
+          {{ s__('Runners|Machine type') }}
+          <help-popover :aria-label="s__('Runners|Machine type help')">
             <p>
               {{
                 s__(
@@ -521,7 +475,13 @@ export default {
         </div>
       </template>
       <template #description>
-        <gl-sprintf :message="$options.i18n.machineTypeDescription">
+        <gl-sprintf
+          :message="
+            s__(
+              'Runners|For most CI/CD jobs, use a %{linkStart}N2D standard machine type%{linkEnd}. Must have the format %{format}. Example: %{example}.',
+            )
+          "
+        >
           <template #link="{ content }">
             <gl-link
               :href="$options.links.n2dMachineTypesLink"
@@ -532,6 +492,14 @@ export default {
               <gl-icon name="external-link" :aria-label="$options.i18n.externalLink" />
             </gl-link>
           </template>
+          <!-- eslint-disable @gitlab/vue-require-i18n-strings -->
+          <template #format>
+            <code>&lt;series&gt;-&lt;type&gt;</code>
+          </template>
+          <template #example>
+            <code>n2d-standard-2</code>
+          </template>
+          <!-- eslint-enable @gitlab/vue-require-i18n-strings -->
         </gl-sprintf>
       </template>
     </google-cloud-field-group>
@@ -540,7 +508,8 @@ export default {
     <!-- end: step one -->
 
     <!-- start: step two -->
-    <h2 class="gl-heading-2">{{ $options.i18n.stepTwoHeading }}</h2>
+    <h3 v-if="isWidget" class="gl-heading-3">{{ $options.i18n.stepTwoHeading }}</h3>
+    <h2 v-else class="gl-heading-2">{{ $options.i18n.stepTwoHeading }}</h2>
     <p>{{ $options.i18n.stepTwoDescription }}</p>
     <gl-alert
       v-if="showAlert"
@@ -564,60 +533,14 @@ export default {
       @click="showInstructions"
       >{{ $options.i18n.runnerSetupBtnText }}</gl-button
     >
-    <gl-modal
-      v-model="showInstructionsModal"
-      cancel-variant="light"
-      size="md"
-      :scrollable="true"
-      modal-id="setup-instructions"
-      :action-cancel="$options.cancelModalOptions"
-      :title="s__('Runners|Setup instructions')"
-    >
-      <p>{{ $options.i18n.modal.subtitle }}</p>
-      <h3 class="gl-heading-4">{{ $options.i18n.modal.step2_1Header }}</h3>
-      <p>{{ $options.i18n.modal.step2_1Body }}</p>
-      <p>{{ $options.i18n.modal.step2_1Substep1 }}</p>
-      <div class="gl-display-flex gl-align-items-flex-start">
-        <pre class="gl-w-full gl-mb-5" data-testid="bash-instructions" :style="codeStyles">{{
-          bashInstructions
-        }}</pre>
-      </div>
 
-      <h3 class="gl-heading-4">{{ $options.i18n.modal.step2_2Header }}</h3>
-      <p>{{ $options.i18n.modal.step2_2Body }}</p>
-      <p>
-        <gl-sprintf :message="$options.i18n.modal.step2_2Substep1">
-          <template #code="{ content }">
-            <code>{{ content }}</code>
-          </template>
-        </gl-sprintf>
-      </p>
-      <div class="gl-display-flex gl-align-items-flex-start">
-        <pre
-          class="gl-w-full gl-mb-5"
-          data-testid="terraform-script-instructions"
-          :style="codeStyles"
-          >{{ terraformScriptInstructions }}</pre
-        >
-      </div>
-      <p>{{ $options.i18n.modal.step2_2Substep2 }}</p>
-      <div class="gl-display-flex gl-align-items-flex-start">
-        <pre
-          class="gl-w-full gl-mb-5"
-          data-testid="terraform-apply-instructions"
-          :style="codeStyles"
-          >{{ terraformApplyInstructions }}</pre
-        >
-      </div>
-      <p>{{ $options.i18n.modal.step2_2Substep3 }}</p>
-    </gl-modal>
-    <hr />
-    <!-- end: step two -->
-    <section v-if="isRunnerOnline">
-      <h2 class="gl-heading-2">🎉 {{ s__("Runners|You've registered a new runner!") }}</h2>
-      <p>
-        {{ s__('Runners|Your runner is online and ready to run jobs.') }}
-      </p>
-    </section>
+    <google-cloud-registration-instructions-modal
+      v-model="showInstructionsModal"
+      :setup-bash-script="setupBashScript"
+      :setup-terraform-file="setupTerraformFile"
+      :apply-terraform-script="applyTerraformScript"
+    />
+
+    <hr v-if="!isWidget" />
   </div>
 </template>

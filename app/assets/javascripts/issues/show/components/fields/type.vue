@@ -29,7 +29,7 @@ export default {
   },
   data() {
     return {
-      issueState: {},
+      issueState: {}, // eslint-disable-line vue/no-unused-properties
       selectedIssueType: '',
     };
   },
@@ -70,7 +70,7 @@ export default {
 <template>
   <gl-form-group
     :label="$options.i18n.label"
-    label-class="sr-only"
+    label-class="gl-sr-only"
     label-for="issuable-type"
     class="gl-mb-0"
   >

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module ValidatesClassificationLabel
-  def validate_classification_label(record, attribute_name)
+  def validate_classification_label_param!(record, attribute_name)
     return unless ::Gitlab::ExternalAuthorization.enabled?
     return unless classification_label_change?(record, attribute_name)
 
@@ -14,11 +14,13 @@ module ValidatesClassificationLabel
       message = s_('ClassificationLabelUnavailable|is unavailable: %{reason}') % { reason: reason }
       record.errors.add(attribute_name, message)
     end
+
+    params[attribute_name] = new_label
   end
 
   def rejection_reason_for_label(label)
     reason_from_service = ::Gitlab::ExternalAuthorization.rejection_reason(current_user, label).presence
-    reason_from_service || _("Access to '%{classification_label}' not allowed") % { classification_label: label }
+    reason_from_service || (_("Access to '%{classification_label}' not allowed") % { classification_label: label })
   end
 
   def classification_label_change?(record, attribute_name)

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Project group variables', :js, feature_category: :secrets_management do
+RSpec.describe 'Project group variables', :js, feature_category: :pipeline_composition do
   let(:user) { create(:user) }
   let(:group) { create(:group) }
   let(:subgroup) { create(:group, parent: group) }
@@ -48,9 +48,8 @@ RSpec.describe 'Project group variables', :js, feature_category: :secrets_manage
         columns = find_all('[role=columnheader]')
 
         expect(columns[0].text).to eq('Key')
-        expect(columns[1].text).to eq('Attributes')
-        expect(columns[2].text).to eq('Environments')
-        expect(columns[3].text).to eq('Group')
+        expect(columns[1].text).to eq('Environments')
+        expect(columns[2].text).to eq('Group')
       end
     end
   end

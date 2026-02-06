@@ -2,9 +2,10 @@
 
 require 'spec_helper'
 
-RSpec.describe Repositories::LfsStorageController do
+RSpec.describe Repositories::LfsStorageController, feature_category: :source_code_management do
   using RSpec::Parameterized::TableSyntax
   include GitHttpHelpers
+  include ProjectForksHelper
 
   let_it_be(:project) { create(:project, :public) }
   let_it_be(:user) { create(:user) }
@@ -76,170 +77,149 @@ RSpec.describe Repositories::LfsStorageController do
     end
   end
 
+  shared_examples 'an error response' do |http_status, error_message, http_method, action|
+    it "returns #{http_status} and includes '#{error_message}'" do
+      send(http_method, action, params: params)
+
+      expect(response).to have_gitlab_http_status(http_status)
+      expect(response.body).to include(error_message)
+    end
+  end
+
   describe 'PUT #upload_finalize' do
+    let(:service_instance) { instance_double(Lfs::FinalizeUploadService, execute: service_response) }
+
     let(:headers) { workhorse_internal_api_request_header }
-    let(:extra_headers) { {} }
-    let(:uploaded_file) { temp_file }
+    let(:extra_headers) { { 'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials(user.username, pat.token) } }
 
     before do
       request.headers.merge!(extra_headers)
       request.headers.merge!(headers)
+      project.add_developer(user)
+      allow(Lfs::FinalizeUploadService).to receive(:new).and_return(service_instance)
+    end
 
-      if uploaded_file
-        allow_next_instance_of(ActionController::Parameters) do |params|
-          allow(params).to receive(:[]).and_call_original
-          allow(params).to receive(:[]).with(:file).and_return(uploaded_file)
+    context 'when the FinalizeUploadService is successful' do
+      let(:service_response) { ServiceResponse.success }
+
+      it_behaves_like 'returning response status', :ok
+    end
+
+    context 'when lfs_forbidden' do
+      [
+        [:invalid_record, 'Invalid record'],
+        [:invalid_path, 'Invalid path'],
+        [:remote_store_error, 'Remote store error']
+      ].each do |reason, message|
+        context "when #{reason} raised" do
+          let(:service_response) { ServiceResponse.error(reason: reason, message: message) }
+
+          it_behaves_like "an error response", :forbidden, 'Check your access level', :put, :upload_finalize
         end
       end
     end
 
-    after do
-      FileUtils.rm_r(temp_file) if temp_file
+    context 'when bad_request' do
+      let(:service_response) { ServiceResponse.error(reason: :invalid_uploaded_file, message: 'SHA256 or size mismatch') }
+
+      it_behaves_like "an error response", :bad_request, 'SHA256 or size mismatch', :put, :upload_finalize
     end
 
-    subject do
-      put :upload_finalize, params: params
+    context 'when unprocessable_entity' do
+      let(:service_response) { ServiceResponse.error(reason: :unprocessable_entity, message: 'Unprocessable entity') }
+
+      it_behaves_like "an error response", :unprocessable_entity, 'Unprocessable entity', :put, :upload_finalize
+    end
+  end
+
+  describe 'GET #download' do
+    let_it_be(:private_project) { create(:project, :private) }
+    let_it_be(:repository_path) { "#{private_project.full_path}.git" }
+    let_it_be(:lfs_object) { create(:lfs_object, :with_file) }
+    let_it_be(:token) { create(:personal_access_token, user: user, scopes: ['read_repository']) }
+    let_it_be(:extra_headers) { { 'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials(user.username, token.token) } }
+
+    before do
+      create(:lfs_objects_project, project: private_project, lfs_object: lfs_object)
+      request.headers.merge!(extra_headers)
     end
 
-    context 'with lfs enabled' do
-      context 'with unauthorized roles' do
-        where(:user_role, :expected_status) do
-          :guest     | :forbidden
-          :anonymous | :unauthorized
-        end
-
-        with_them do
-          let(:extra_headers) do
-            if user_role == :anonymous
-              {}
-            else
-              { 'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials(user.username, pat.token) }
-            end
-          end
-
-          before do
-            project.send("add_#{user_role}", user) unless user_role == :anonymous
-          end
-
-          it_behaves_like 'returning response status', params[:expected_status]
-        end
+    context 'with permission to download the file' do
+      before do
+        private_project.add_developer(user)
       end
 
-      context 'with at least developer role' do
-        let(:extra_headers) { { 'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials(user.username, pat.token) } }
-
-        before do
-          project.add_developer(user)
-        end
-
-        it 'creates the objects' do
-          expect { subject }
-            .to change { LfsObject.count }.by(1)
-            .and change { LfsObjectsProject.count }.by(1)
+      context 'when the LFS object exists in the project' do
+        it 'returns the file' do
+          get :download, params: { repository_path: repository_path, oid: lfs_object.oid }
 
           expect(response).to have_gitlab_http_status(:ok)
+          expect(response.body).to eq lfs_object.file.read
         end
 
-        context 'without the workhorse header' do
-          let(:headers) { {} }
-
-          it { expect { subject }.to raise_error(JWT::DecodeError) }
-        end
-
-        context 'without file' do
-          let(:uploaded_file) { nil }
-
-          it_behaves_like 'returning response status', :unprocessable_entity
-        end
-
-        context 'with an invalid file' do
-          let(:uploaded_file) { 'test' }
-
-          it_behaves_like 'returning response status', :bad_request
-        end
-
-        context 'when an expected error' do
-          [
-            ActiveRecord::RecordInvalid,
-            UploadedFile::InvalidPathError,
-            ObjectStorage::RemoteStoreError
-          ].each do |exception_class|
-            context "#{exception_class} raised" do
-              it 'renders lfs forbidden' do
-                expect(LfsObjectsProject).to receive(:safe_find_or_create_by!).and_raise(exception_class)
-
-                subject
-
-                expect(response).to have_gitlab_http_status(:forbidden)
-                expect(json_response['documentation_url']).to be_present
-                expect(json_response['message']).to eq('Access forbidden. Check your access level.')
-              end
-            end
-          end
-        end
-
-        context 'when existing file has been deleted' do
-          let(:lfs_object) { create(:lfs_object, :with_file, size: params[:size], oid: params[:oid]) }
+        context 'when the LFS object metadata exists but file is missing' do
+          let_it_be(:broken_lfs_object) { create(:lfs_object) }
+          let(:params) { { repository_path: repository_path, oid: broken_lfs_object.oid } }
 
           before do
-            FileUtils.rm(lfs_object.file.path)
+            create(:lfs_objects_project, project: private_project, lfs_object: broken_lfs_object)
+            broken_lfs_object.update_column(:file, nil)
           end
 
-          it 'replaces the file' do
-            expect(Gitlab::AppJsonLogger).to receive(:info).with(message: "LFS file replaced because it did not exist", oid: lfs_object.oid, size: lfs_object.size)
-
-            subject
-
-            expect(response).to have_gitlab_http_status(:ok)
-            expect(lfs_object.reload.file).to exist
-          end
-
-          context 'with invalid file' do
-            before do
-              allow_next_instance_of(ActionController::Parameters) do |params|
-                allow(params).to receive(:[]).and_call_original
-                allow(params).to receive(:[]).with(:file).and_return({})
-              end
-            end
-
-            it 'renders bad request' do
-              subject
-
-              expect(response).to have_gitlab_http_status(:bad_request)
-              expect(lfs_object.reload.file).not_to exist
-            end
-          end
+          it_behaves_like "an error response", :not_found, 'Not found', :get, :download
         end
+      end
 
-        context 'when file is not stored' do
-          it 'renders unprocessable entity' do
-            expect(controller).to receive(:store_file!).and_return(nil)
+      context 'when the LFS doesn not exist in the project' do
+        let_it_be(:other_lfs_object) { create(:lfs_object, :with_file) }
+        let(:params) { { repository_path: repository_path, oid: other_lfs_object.oid } }
 
-            subject
-
-            expect(response).to have_gitlab_http_status(:unprocessable_entity)
-            expect(response.body).to eq('Unprocessable entity')
-          end
-        end
+        it_behaves_like "an error response", :not_found, 'Not found', :get, :download
       end
     end
 
-    context 'with lfs disabled' do
-      let(:lfs_enabled) { false }
-      let(:extra_headers) { { 'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials(user.username, pat.token) } }
+    # When an user doesn't have download access permission,
+    # it returns a 404 to avoid exposing the existence of the container.
+    # Refer to LfsRequet#lfs_check_access!
+    context 'without permission' do
+      let(:params) { { repository_path: repository_path, oid: lfs_object.oid } }
 
-      it_behaves_like 'returning response status', :not_implemented
+      before do
+        private_project.add_guest(user)
+      end
+
+      it_behaves_like "an error response", :not_found, 'Not found', :get, :download
     end
 
-    def temp_file
-      upload_path = LfsObjectUploader.workhorse_local_upload_path
-      file_path = "#{upload_path}/lfs"
+    context 'with fork network access' do
+      let_it_be(:original_project) { create(:project, :public) }
+      let_it_be(:forked_project) { fork_project(original_project, user, repository: true) }
+      let_it_be(:fork_repository_path) { "#{forked_project.full_path}.git" }
+      let_it_be(:original_lfs_object) { create(:lfs_object, :with_file) }
 
-      FileUtils.mkdir_p(upload_path)
-      File.write(file_path, 'test')
-      File.truncate(file_path, params[:size].to_i)
+      before do
+        forked_project.add_developer(user)
+        request.headers.merge!(extra_headers)
+      end
 
-      UploadedFile.new(file_path, filename: File.basename(file_path), sha256: params[:oid])
+      context 'when the LFS object is linked to the original project' do
+        before do
+          create(:lfs_objects_project, project: original_project, lfs_object: original_lfs_object)
+        end
+
+        it 'allows access to LFS object from original project through fork' do
+          get :download, params: { repository_path: fork_repository_path, oid: original_lfs_object.oid }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response.body).to eq original_lfs_object.file.read
+        end
+      end
+
+      context 'when the LFS object is not linked to the original project' do
+        let(:params) { { repository_path: fork_repository_path, oid: original_lfs_object.oid } }
+
+        it_behaves_like "an error response", :not_found, 'Not found', :get, :download
+      end
     end
   end
 end

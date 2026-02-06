@@ -51,6 +51,10 @@ RSpec.describe Gitlab::Ssh::Signature, feature_category: :source_code_management
     end
   end
 
+  it_behaves_like 'signature with type checking', :ssh do
+    subject { signature }
+  end
+
   describe 'signature verification' do
     context 'when signature is valid and user email is verified' do
       it_behaves_like 'verified signature'
@@ -99,6 +103,90 @@ RSpec.describe Gitlab::Ssh::Signature, feature_category: :source_code_management
       end
 
       it_behaves_like 'verified signature'
+    end
+
+    context 'when using an ECDSA key' do
+      let(:public_key_text) do
+        <<~KEY.delete("\n")
+          ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABB
+          BN2N07dxUvIN0D+9mj5uhoYMX6zHa7jmJ0izUoZruVbX6ee+ZxYRUsKu65MrsfQOnpOTWb5W
+          K72GfCWobjBOSd0=
+        KEY
+      end
+
+      let(:signature_text) do
+        <<~SIG
+          -----BEGIN SSH SIGNATURE-----
+          U1NIU0lHAAAAAQAAAGgAAAATZWNkc2Etc2hhMi1uaXN0cDI1NgAAAAhuaXN0cDI1NgAAAE
+          EE3Y3Tt3FS8g3QP72aPm6GhgxfrMdruOYnSLNShmu5Vtfp575nFhFSwq7rkyux9A6ek5NZ
+          vlYrvYZ8JahuME5J3QAAAANnaXQAAAAAAAAABnNoYTUxMgAAAGUAAAATZWNkc2Etc2hhMi
+          1uaXN0cDI1NgAAAEoAAAAhAL4/U397Ppo6+v6QXExNqmcKeGE1htx5iLFT7lHOHNvqAAAA
+          IQDZwC7k2bYb0iYi0aifsdV7uJcybaxA2ZHTbQWwpIBc3g==
+          -----END SSH SIGNATURE-----
+        SIG
+      end
+
+      before do
+        key.update!(key: public_key_text)
+      end
+
+      it_behaves_like 'verified signature'
+    end
+
+    context 'when using an -sk key' do
+      let(:public_key_text) do
+        <<~KEY.delete("\n")
+          sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAI
+          DUK+/K2zQCrJq3H9FaI+sBTwKjxnXVSUAI/X2hqPg7AAAAABHNzaDo=
+        KEY
+      end
+
+      let(:signature_text) do
+        <<~SIG
+          -----BEGIN SSH SIGNATURE-----
+          U1NIU0lHAAAAAQAAAEoAAAAac2stc3NoLWVkMjU1MTlAb3BlbnNzaC5jb20AAAAgNQr78r
+          bNAKsmrcf0Voj6wFPAqPGddVJQAj9faGo+DsAAAAAEc3NoOgAAAANnaXQAAAAAAAAABnNo
+          YTUxMgAAAGcAAAAac2stc3NoLWVkMjU1MTlAb3BlbnNzaC5jb20AAABADTamaU8Jzx+muz
+          GXzmSZ+B9xrX3U+LJ7K+pyKYMbaQhoZ5p5xxfnLlUg8qImOsdDR8dQXI/qgAJpaqo358cW
+          DAEAAAAG
+          -----END SSH SIGNATURE-----
+        SIG
+      end
+
+      before do
+        key.update!(key: public_key_text)
+      end
+
+      it_behaves_like 'verified signature'
+    end
+
+    context 'when using an -sk key with -O no-touch-required' do
+      let(:public_key_text) do
+        <<~KEY.delete("\n")
+          sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb
+          3BlbnNzaC5jb20AAAAIbmlzdHAyNTYAAABBBKb9LUUgJK3gCXL1TdvQDbUUGMqRBusXEQPPN
+          wwMqnix5lzphMEhYKaNv17/zykNsyE3y0Unzb63PtWaZZRvX10AAAAEc3NoOg==
+        KEY
+      end
+
+      let(:signature_text) do
+        <<~SIG
+          -----BEGIN SSH SIGNATURE-----
+          U1NIU0lHAAAAAQAAAH8AAAAic2stZWNkc2Etc2hhMi1uaXN0cDI1NkBvcGVuc3NoLmNvbQ
+          AAAAhuaXN0cDI1NgAAAEEEpv0tRSAkreAJcvVN29ANtRQYypEG6xcRA883DAyqeLHmXOmE
+          wSFgpo2/Xv/PKQ2zITfLRSfNvrc+1ZpllG9fXQAAAARzc2g6AAAAA2dpdAAAAAAAAAAGc2
+          hhNTEyAAAAeQAAACJzay1lY2RzYS1zaGEyLW5pc3RwMjU2QG9wZW5zc2guY29tAAAASgAA
+          ACEAyr7zil0lSKx5lMUU8kChgaVu6X6uF8DREdzI8mqN1mkAAAAhAL23Sm62WzY9QnQEzg
+          C6QHjywxlIv2WbvNyBoKWO4eeeAAAAAAU=
+          -----END SSH SIGNATURE-----
+        SIG
+      end
+
+      before do
+        key.update!(key: public_key_text)
+      end
+
+      it_behaves_like 'unverified signature'
     end
 
     context 'when signed text is an empty string' do
@@ -164,8 +252,8 @@ RSpec.describe Gitlab::Ssh::Signature, feature_category: :source_code_management
         user.update!(confirmed_at: nil)
       end
 
-      it 'reports unverified status' do
-        expect(signature.verification_status).to eq(:unverified)
+      it 'reports same_user_different_email status' do
+        expect(signature.verification_status).to eq(:same_user_different_email)
       end
     end
 
@@ -313,6 +401,18 @@ RSpec.describe Gitlab::Ssh::Signature, feature_category: :source_code_management
       it 'returns public key fingerprint' do
         expect(signature.key_fingerprint).to eq('3dNIFKfIAXZb/JL30KKv95cps+mZwVAuAYQhIWxAb+8')
       end
+    end
+  end
+
+  describe '#key_fingerprint_sha256' do
+    it 'returns the pubkey sha256 fingerprint' do
+      expect(signature.key_fingerprint_sha256).to eq('dw7gPSvYtkCBU+BbTolbbckUEX3sL6NsGIJTQ4PYEnM')
+    end
+  end
+
+  describe '#user_id' do
+    it 'returns the user id from signed by key' do
+      expect(signature.user_id).to eq(user.id)
     end
   end
 end

@@ -2,15 +2,19 @@
 stage: Verify
 group: Pipeline Authoring
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: GitLab CI/CD `workflow` keyword usage for pipeline control, rule management, and preventing duplicate pipelines.
+title: GitLab CI/CD `workflow` keyword
 ---
 
-# GitLab CI/CD `workflow` keyword
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Use the [`workflow`](index.md#workflow) keyword to control when pipelines are created.
+{{< /details >}}
+
+Use the [`workflow`](_index.md#workflow) keyword in your `.gitlab-ci.yml` file to control
+when pipelines are created.
 
 The `workflow` keyword is evaluated before jobs. For example, if a job is configured to run
 for tags, but the workflow prevents tag pipelines, the job never runs.
@@ -26,7 +30,7 @@ Some example `if` clauses for `workflow: rules`:
 | `if: $CI_COMMIT_TAG`                                 | Control when tag pipelines run. |
 | `if: $CI_COMMIT_BRANCH`                              | Control when branch pipelines run. |
 
-See the [common `if` clauses for `rules`](../jobs/job_control.md#common-if-clauses-for-rules) for more examples.
+See the [common `if` clauses for `rules`](../jobs/job_rules.md#common-if-clauses-with-predefined-variables) for more examples.
 
 ## `workflow: rules` examples
 
@@ -67,12 +71,10 @@ request pipelines.
 
 ### Switch between branch pipelines and merge request pipelines
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/201845) in GitLab 13.8.
-
-To make the pipeline switch from branch pipelines to merge request pipelines after
+To make the pipeline switch from branch pipelines to [merge request pipelines](../pipelines/merge_request_pipelines.md) after
 a merge request is created, add a `workflow: rules` section to your `.gitlab-ci.yml` file.
 
-If you use both pipeline types at the same time, [duplicate pipelines](../jobs/job_control.md#avoid-duplicate-pipelines)
+If you use both pipeline types at the same time, [duplicate pipelines](../jobs/job_rules.md#avoid-duplicate-pipelines)
 might run at the same time. To prevent duplicate pipelines, use the
 [`CI_OPEN_MERGE_REQUESTS` variable](../variables/predefined_variables.md).
 
@@ -111,10 +113,10 @@ workflow:
   rules:
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
       when: never
-    - ...                # Previously defined workflow rules here
+    - # Previously defined workflow rules here
 ```
 
-[Triggered pipelines](../triggers/index.md) that run on a branch have a `$CI_COMMIT_BRANCH`
+[Triggered pipelines](../triggers/_index.md) that run on a branch have a `$CI_COMMIT_BRANCH`
 set and could be blocked by a similar rule. Triggered pipelines have a pipeline source
 of `trigger` or `pipeline`, so `&& $CI_PIPELINE_SOURCE == "push"` ensures the rule
 does not block triggered pipelines.
@@ -133,45 +135,31 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_REF_PROTECTED == "true"
 ```
 
-This example assumes that your long-lived branches are [protected](../../user/project/protected_branches.md).
+This example assumes that your default branch or other long-lived branches are [protected](../../user/project/repository/branches/protected.md).
 
-## `workflow:rules` templates
+### Skip pipelines for draft merge requests
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/217732) in GitLab 13.0.
+You can use `workflow: rules` to skip pipelines for draft merge requests. With these rules, you can avoid using compute minutes until development is complete.
 
-GitLab provides templates that set up `workflow: rules`
-for common scenarios. These templates help prevent duplicate pipelines.
-
-The [`Branch-Pipelines` template](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates/Workflows/Branch-Pipelines.gitlab-ci.yml)
-makes your pipelines run for branches and tags.
-
-Branch pipeline status is displayed in merge requests that use the branch
-as a source. However, this pipeline type does not support any features offered by
-[merge request pipelines](../pipelines/merge_request_pipelines.md), like
-[merged results pipelines](../pipelines/merged_results_pipelines.md)
-or [merge trains](../pipelines/merge_trains.md).
-This template intentionally avoids those features.
-
-To [include](index.md#include) it:
+For example, the following rules will disable CI builds for merge requests with `[Draft]`, `(Draft)`, or `Draft:` in the title:
 
 ```yaml
-include:
-  - template: 'Workflows/Branch-Pipelines.gitlab-ci.yml'
-```
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TITLE =~ /^(\[Draft\]|\(Draft\)|Draft:)/
+      when: never
 
-The [`MergeRequest-Pipelines` template](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates/Workflows/MergeRequest-Pipelines.gitlab-ci.yml)
-makes your pipelines run for the default branch, tags, and
-all types of merge request pipelines. Use this template if you use any of the
-the [merge request pipelines features](../pipelines/merge_request_pipelines.md).
+stages:
+  - build
 
-To [include](index.md#include) it:
-
-```yaml
-include:
-  - template: 'Workflows/MergeRequest-Pipelines.gitlab-ci.yml'
+build-job:
+  stage: build
+  script:
+    - echo "Testing"
 ```
 
 ## Troubleshooting
@@ -180,7 +168,7 @@ include:
 
 If a merge request displays `Checking pipeline status.`, but the message never goes
 away (the "spinner" never stops spinning), it might be due to `workflow:rules`.
-This issue can happen if a project has [**Pipelines must succeed**](../../user/project/merge_requests/merge_when_pipeline_succeeds.md#require-a-successful-pipeline-for-merge)
+This issue can happen if a project has [**Pipelines must succeed**](../../user/project/merge_requests/auto_merge.md#require-a-successful-pipeline-for-merge)
 enabled, but the `workflow:rules` prevent a pipeline from running for the merge request.
 
 For example, with this workflow, merge requests cannot be merged, because no

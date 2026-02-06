@@ -13,23 +13,23 @@ module Mutations
         RunnerID = ::Types::GlobalIDType[::Ci::Runner]
 
         argument :id, RunnerID,
-                 required: true,
-                 description: 'ID of the runner to update.'
+          required: true,
+          description: 'ID of the runner to update.'
 
         argument :active, GraphQL::Types::Boolean,
-                 required: false,
-                 description: 'Indicates the runner is allowed to receive jobs.',
-                 deprecated: { reason: :renamed, replacement: 'paused', milestone: '14.8' }
+          required: false,
+          description: 'Indicates the runner is allowed to receive jobs.',
+          deprecated: { reason: :renamed, replacement: 'paused', milestone: '14.8' }
 
         argument :associated_projects, [::Types::GlobalIDType[::Project]],
-                 required: false,
-                 description: 'Projects associated with the runner. Available only for project runners.',
-                 prepare: ->(global_ids, _ctx) { global_ids&.filter_map { |gid| gid.model_id.to_i } }
+          required: false,
+          description: 'Projects associated with the runner. Available only for project runners.',
+          prepare: ->(global_ids, _ctx) { global_ids&.filter_map { |gid| gid.model_id.to_i } }
 
         field :runner,
-              Types::Ci::RunnerType,
-              null: true,
-              description: 'Runner after mutation.'
+          Types::Ci::RunnerType,
+          null: true,
+          description: 'Runner after mutation.'
 
         def resolve(id:, **runner_attrs)
           runner = authorized_find!(id: id)
@@ -50,7 +50,7 @@ module Mutations
         def associate_runner_projects(response, runner, associated_project_ids)
           unless runner.project_type?
             raise Gitlab::Graphql::Errors::ArgumentError,
-                  "associatedProjects must not be specified for '#{runner.runner_type}' scope"
+              "associatedProjects must not be specified for '#{runner.runner_type}' scope"
           end
 
           result = ::Ci::Runners::SetRunnerAssociatedProjectsService.new(
@@ -66,7 +66,7 @@ module Mutations
         end
 
         def update_runner(response, runner, attrs)
-          result = ::Ci::Runners::UpdateRunnerService.new(runner).execute(attrs)
+          result = ::Ci::Runners::UpdateRunnerService.new(current_user, runner).execute(attrs)
           return if result.success?
 
           response[:runner] = nil
@@ -78,4 +78,4 @@ module Mutations
   end
 end
 
-Mutations::Ci::Runner::Update.prepend_mod_with('Mutations::Ci::Runner::Update')
+Mutations::Ci::Runner::Update.prepend_mod

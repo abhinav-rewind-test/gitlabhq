@@ -3,7 +3,7 @@
 module RuboCop
   module Cop
     module BackgroundMigration
-      # Checks for rescuing errors inside Batched Background Migration Job Classes.
+      # Checks for rescuing errors inside batched background migration job classes.
       #
       # @example
       #
@@ -42,6 +42,7 @@ module RuboCop
         MSG = 'Avoid rescuing exceptions inside job classes. See ' \
               'https://docs.gitlab.com/ee/development/database/batched_background_migrations.html#best-practices'
 
+        # @!method batched_migration_job_class?(node)
         def_node_matcher :batched_migration_job_class?, <<~PATTERN
           (class
             const
@@ -58,6 +59,7 @@ module RuboCop
         #         rescue JSON::ParserError => e
         #         rescue ActiveRecord::StatementTimeout => error
         #         rescue ActiveRecord::StatementTimeout, ActiveRecord::QueryCanceled => error
+        # @!method rescue_timeout_error(node)
         def_node_matcher :rescue_timeout_error, <<~PATTERN
           (resbody $_ _ (... !(send nil? :raise ...)))
         PATTERN
@@ -70,7 +72,7 @@ module RuboCop
           return unless batched_migration_job_class
 
           rescue_timeout_error(node) do |error|
-            range = error ? node.loc.keyword.join(error.loc.expression) : node.loc.keyword
+            range = error ? node.loc.keyword.join(error.source_range) : node.loc.keyword
             add_offense(range)
           end
         end

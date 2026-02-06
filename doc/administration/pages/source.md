@@ -2,21 +2,23 @@
 stage: Plan
 group: Knowledge
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: GitLab Pages administration for self-compiled installations
 ---
 
-# GitLab Pages administration for self-compiled installations
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-NOTE:
-Before attempting to enable GitLab Pages, first make sure you have
-[installed GitLab](../../install/installation.md) successfully.
+{{< /details >}}
+
+> [!note]
+> Before attempting to enable GitLab Pages, first make sure you have
+> [installed GitLab](../../install/self_compiled/_index.md) successfully.
 
 This document explains how to configure GitLab Pages for self-compiled GitLab installations.
 
-For more information about configuring GitLab Pages for Linux Package installations (recommended), see the [Linux package documentation](index.md).
+For more information about configuring GitLab Pages for Linux Package installations (recommended), see the [Linux package documentation](_index.md).
 
 The advantage of using the Linux package installation is that it contains the latest supported version of GitLab Pages.
 
@@ -30,7 +32,7 @@ to fully understand how it works.
 
 In the case of [custom domains](#custom-domains) (but not
 [wildcard domains](#wildcard-domains)), the Pages daemon needs to listen on
-ports `80` and/or `443`. For that reason, there is some flexibility in the way
+ports `80` or `443`. For that reason, there is some flexibility in the way
 which you can set it up:
 
 - Run the Pages daemon in the same server as GitLab, listening on a secondary
@@ -41,8 +43,8 @@ which you can set it up:
 - Run the Pages daemon in the same server as GitLab, listening on the same IP
   but on different ports. In that case, you must proxy the traffic with a load
   balancer. If you choose that route, you should use TCP load balancing for
-  HTTPS. If you use TLS-termination (HTTPS-load balancing), the pages aren't
-  able to be served with user-provided certificates. For HTTP, you can use HTTP
+  HTTPS. If you use TLS-termination (HTTPS-load balancing), the pages can't
+  be served with user-provided certificates. For HTTP, you can use HTTP
   or TCP load balancing.
 
 In this document, we proceed assuming the first option. If you aren't
@@ -60,7 +62,7 @@ Before proceeding with the Pages configuration, make sure that:
   Pages artifacts.
 - Optional. You have a **wildcard certificate** for the Pages domain if you
   decide to serve Pages (`*.example.io`) under HTTPS.
-- Optional but recommended. You have configured and enabled the [instance runners](../../ci/runners/index.md)
+- Optional but recommended. You have configured and enabled the [instance runners](../../ci/runners/_index.md)
   so your users don't have to bring their own.
 
 ### DNS configuration
@@ -76,9 +78,9 @@ host that GitLab runs. For example, an entry would look like this:
 Where `example.io` is the domain to serve GitLab Pages from,
 and `192.0.2.1` is the IP address of your GitLab instance.
 
-NOTE:
-You should not use the GitLab domain to serve user pages. For more information
-see the [security section](#security).
+> [!note]
+> You should not use the GitLab domain to serve user pages. For more information
+> see the [security section](#security).
 
 ## Configuration
 
@@ -89,7 +91,7 @@ because that is needed in all configurations.
 
 ### Wildcard domains
 
-**Requirements:**
+Prerequisites:
 
 - [Wildcard DNS setup](#dns-configuration)
 
@@ -192,7 +194,7 @@ The Pages daemon doesn't listen to the outside world.
 
 ### Wildcard domains with TLS support
 
-**Requirements:**
+Prerequisites:
 
 - [Wildcard DNS setup](#dns-configuration)
 - Wildcard TLS certificate
@@ -228,7 +230,7 @@ outside world.
 
 1. Edit `/etc/default/gitlab` and set `gitlab_pages_enabled` to `true` in
    order to enable the pages daemon. In `gitlab_pages_options` the
-   `-pages-domain` must match the `host` setting that you set above.
+   `-pages-domain` must match the `host` value that you set previously.
    The `-root-cert` and `-root-key` settings are the wildcard TLS certificates
    of the `example.io` domain:
 
@@ -256,7 +258,7 @@ that without TLS certificates.
 
 ### Custom domains
 
-**Requirements:**
+Prerequisites:
 
 - [Wildcard DNS setup](#dns-configuration)
 - Secondary IP
@@ -264,7 +266,7 @@ that without TLS certificates.
 URL scheme: `http://<namespace>.example.io/<project_slug>` and `http://custom-domain.com`
 
 In that case, the pages daemon is running. NGINX still proxies requests to
-the daemon, but the daemon is also able to receive requests from the outside
+the daemon, but the daemon can also receive requests from the outside
 world. Custom domains are supported, but no TLS.
 
 1. Install the Pages daemon:
@@ -319,7 +321,7 @@ world. Custom domains are supported, but no TLS.
 
 ### Custom domains with TLS support
 
-**Requirements:**
+Prerequisites:
 
 - [Wildcard DNS setup](#dns-configuration)
 - Wildcard TLS certificate
@@ -328,7 +330,7 @@ world. Custom domains are supported, but no TLS.
 URL scheme: `https://<namespace>.example.io/<project_slug>` and `https://custom-domain.com`
 
 In that case, the pages daemon is running. NGINX still proxies requests to
-the daemon, but the daemon is also able to receive requests from the outside
+the daemon, but the daemon can also receive requests from the outside
 world. Custom domains and TLS are supported.
 
 1. Install the Pages daemon:
@@ -387,8 +389,8 @@ world. Custom domains and TLS are supported.
 
 ## NGINX caveats
 
-NOTE:
-The following information applies only to self-compiled installations.
+> [!note]
+> The following information applies only to self-compiled installations.
 
 Be extra careful when setting up the domain name in the NGINX configuration. You must
 not remove the backslashes.
@@ -428,7 +430,6 @@ Each request to view a resource in a private site is authenticated by Pages
 using that token. For each request it receives, it makes a request to the GitLab
 API to check that the user is authorized to read that site.
 
-From [GitLab 12.8](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/3689) onward,
 Access Control parameters for Pages are set in a configuration file, which
 by convention is named `gitlab-pages-config`. The configuration file is passed to
 pages using the `-config flag` or `CONFIG` environment variable.
@@ -481,16 +482,20 @@ are stored.
 
 The default for the maximum size of unpacked archives per project is 100 MB.
 
+Prerequisites:
+
+- Administrator access.
+
 To change this value:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > Preferences**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **Preferences**.
 1. Expand **Pages**.
 1. Update the value for **Maximum size of pages (MB)**.
 
 ## Backup
 
-Pages are part of the [regular backup](../../administration/backup_restore/index.md) so there is nothing to configure.
+Pages are part of the [regular backup](../backup_restore/_index.md) so there is nothing to configure.
 
 ## Security
 

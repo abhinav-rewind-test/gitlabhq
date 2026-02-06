@@ -6,10 +6,10 @@ RSpec.describe IssueLinks::ListService, feature_category: :team_planning do
   let(:user) { create :user }
   let(:project) { create(:project_empty_repo, :private) }
   let(:issue) { create :issue, project: project }
-  let(:user_role) { :developer }
+  let(:user_role) { :guest }
 
   before do
-    project.add_role(user, user_role)
+    project.add_role(user, user_role) if user_role
   end
 
   describe '#execute' do
@@ -55,7 +55,7 @@ RSpec.describe IssueLinks::ListService, feature_category: :team_planning do
           title: issue_b.title,
           state: issue_b.state,
           reference: issue_b.to_reference(project),
-          path: "/#{project.full_path}/-/issues/#{issue_b.iid}",
+          path: ::Gitlab::UrlBuilder.instance.issue_path(issue_b),
           relation_path: "/#{project.full_path}/-/issues/#{issue.iid}/links/#{issue_link_a.id}"
         ))
 
@@ -64,7 +64,7 @@ RSpec.describe IssueLinks::ListService, feature_category: :team_planning do
           title: issue_c.title,
           state: issue_c.state,
           reference: issue_c.to_reference(project),
-          path: "/#{project.full_path}/-/issues/#{issue_c.iid}",
+          path: ::Gitlab::UrlBuilder.instance.issue_path(issue_c),
           relation_path: "/#{project.full_path}/-/issues/#{issue.iid}/links/#{issue_link_b.id}"
         ))
 
@@ -73,7 +73,7 @@ RSpec.describe IssueLinks::ListService, feature_category: :team_planning do
           title: issue_d.title,
           state: issue_d.state,
           reference: issue_d.to_reference(project),
-          path: "/#{project.full_path}/-/issues/#{issue_d.iid}",
+          path: ::Gitlab::UrlBuilder.instance.issue_path(issue_d),
           relation_path: "/#{project.full_path}/-/issues/#{issue.iid}/links/#{issue_link_c.id}"
         ))
       end
@@ -161,25 +161,23 @@ RSpec.describe IssueLinks::ListService, feature_category: :team_planning do
       end
 
       context 'user can admin related issues just on target project' do
-        let(:user_role) { :guest }
-        let(:target_project) { create :project }
-        let(:referenced_issue) { create :issue, project: target_project }
-
-        it 'returns no destroy relation path' do
-          target_project.add_developer(user)
-
-          expect(subject.first[:relation_path]).to be_nil
-        end
-      end
-
-      context 'user can admin related issues just on source project' do
-        let(:user_role) { :developer }
+        let(:user_role) { nil }
         let(:target_project) { create :project }
         let(:referenced_issue) { create :issue, project: target_project }
 
         it 'returns no destroy relation path' do
           target_project.add_guest(user)
 
+          expect(subject.first[:relation_path]).to be_nil
+        end
+      end
+
+      context 'user can admin related issues just on source project' do
+        let(:target_project) { create :project, :public }
+        let(:user_role) { :guest }
+        let(:referenced_issue) { create :issue, project: target_project }
+
+        it 'returns no destroy relation path' do
           expect(subject.first[:relation_path]).to be_nil
         end
       end

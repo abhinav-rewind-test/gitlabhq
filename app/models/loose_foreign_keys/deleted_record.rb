@@ -6,7 +6,6 @@ class LooseForeignKeys::DeletedRecord < Gitlab::Database::SharedModel
   PARTITION_DURATION = 1.day
 
   include PartitionedTable
-  include IgnorableColumns
 
   self.primary_key = :id
 
@@ -15,7 +14,7 @@ class LooseForeignKeys::DeletedRecord < Gitlab::Database::SharedModel
   ignore_column :partition, remove_never: true
 
   partitioned_by :partition, strategy: :sliding_list,
-    next_partition_if: -> (active_partition) do
+    next_partition_if: ->(active_partition) do
       oldest_record_in_partition = LooseForeignKeys::DeletedRecord
         .select(:id, :created_at)
         .for_partition(active_partition.value)
@@ -26,18 +25,18 @@ class LooseForeignKeys::DeletedRecord < Gitlab::Database::SharedModel
       oldest_record_in_partition.present? &&
         oldest_record_in_partition.created_at < PARTITION_DURATION.ago
     end,
-    detach_partition_if: -> (partition) do
+    detach_partition_if: ->(partition) do
       !LooseForeignKeys::DeletedRecord
         .for_partition(partition.value)
         .status_pending
         .exists?
     end
 
-  scope :for_table, -> (table) { where(fully_qualified_table_name: table) }
-  scope :for_partition, -> (partition) { where(partition: partition) }
+  scope :for_table, ->(table) { where(fully_qualified_table_name: table) }
+  scope :for_partition, ->(partition) { where(partition: partition) }
   scope :consume_order, -> { order(:partition, :consume_after, :id) }
 
-  enum status: { pending: 1, processed: 2 }, _prefix: :status
+  enum :status, { pending: 1, processed: 2 }, prefix: :status
 
   def self.load_batch_for_table(table, batch_size)
     partition_names = Gitlab::Database::PostgresPartitionedTable.each_partition(table_name).map(&:name)

@@ -22,7 +22,9 @@ module BulkImports
             raw_entry = entry.dup
             next if already_processed?(raw_entry, index)
 
-            increment_fetched_objects_counter
+            delete_partial_imported_records(entry)
+
+            increment_fetched_objects_counter(entry)
 
             transformers.each do |transformer|
               entry = run_pipeline_step(:transformer, transformer.class.name) do
@@ -33,7 +35,7 @@ module BulkImports
             run_pipeline_step(:loader, loader.class.name, entry) do
               loader.load(context, entry)
 
-              increment_imported_objects_counter
+              increment_imported_objects_counter(entry)
             end
 
             save_processed_entry(raw_entry, index)
@@ -64,12 +66,10 @@ module BulkImports
 
       def on_finish; end
 
-      private # rubocop:disable Lint/UselessAccessModifier
+      private
 
       def run_pipeline_step(step, class_name = nil, entry = nil)
         raise MarkedAsFailedError if context.entity.failed?
-
-        info(pipeline_step: step, step_class: class_name)
 
         yield
       rescue MarkedAsFailedError
@@ -80,9 +80,13 @@ module BulkImports
           importer: 'gitlab_migration'
         )
       rescue BulkImports::NetworkError => e
-        raise BulkImports::RetryPipelineError.new(e.message, e.retry_delay) if e.retriable?(context.tracker)
+        raise BulkImports::RetryPipelineError.new(e.message, e.retry_delay), cause: e if e.retriable?(context.tracker)
 
         log_and_fail(e, step, entry)
+      rescue Gitlab::Import::SourceUserMapper::FailedToObtainLockError,
+        Gitlab::Import::SourceUserMapper::DuplicatedUserError => e
+
+        raise BulkImports::RetryPipelineError.new(e.message), cause: e
       rescue BulkImports::RetryPipelineError
         raise
       rescue StandardError => e
@@ -107,6 +111,21 @@ module BulkImports
       end
 
       def save_processed_entry(*); end
+
+      # Overridden by child pipelines
+      # This method is called once for the first non-processed item returned in the extract step,
+      # meaning that, in the case of a pipeline retrial, it is called again for the latest partially
+      # processed item.
+      def delete_existing_records(*); end
+
+      def delete_partial_imported_records(entry)
+        # Using memoization to execute delete_existing_records method only once
+        @clean_up_upon_retry ||= begin
+          delete_existing_records(entry)
+
+          true
+        end
+      end
 
       def after_run(extracted_data)
         run if extracted_data.has_next_page?
@@ -209,12 +228,16 @@ module BulkImports
         ObjectCounter.set(tracker, ObjectCounter::SOURCE_COUNTER, export_status.total_objects_count)
       end
 
-      def increment_fetched_objects_counter
-        ObjectCounter.increment(tracker, ObjectCounter::FETCHED_COUNTER)
+      def increment_fetched_objects_counter(entry)
+        increment_counter(ObjectCounter::FETCHED_COUNTER, entry)
       end
 
-      def increment_imported_objects_counter
-        ObjectCounter.increment(tracker, ObjectCounter::IMPORTED_COUNTER)
+      def increment_imported_objects_counter(entry)
+        increment_counter(ObjectCounter::IMPORTED_COUNTER, entry)
+      end
+
+      def increment_counter(counter_type, entry)
+        ObjectCounter.increment_by_object(tracker, counter_type, entry)
       end
     end
   end

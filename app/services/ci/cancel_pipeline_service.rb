@@ -43,13 +43,14 @@ module Ci
       end
 
       log_pipeline_being_canceled
-
-      pipeline.update_column(:auto_canceled_by_id, @auto_canceled_by_pipeline.id) if @auto_canceled_by_pipeline
+      update_auto_canceled_pipeline_attributes
 
       if @safe_cancellation
         # Only build and bridge (trigger) jobs can be interruptible.
         # We do not cancel GenericCommitStatuses because they can't have the `interruptible` attribute.
-        cancel_jobs(pipeline.processables.cancelable.interruptible)
+        jobs = pipeline.processables.cancelable.with_interruptible_true
+
+        cancel_jobs(jobs)
       else
         cancel_jobs(pipeline.cancelable_statuses)
       end
@@ -61,16 +62,26 @@ module Ci
 
     private
 
-    attr_reader :pipeline, :current_user
+    attr_reader :pipeline, :current_user, :auto_canceled_by_pipeline
 
     def log_pipeline_being_canceled
       Gitlab::AppJsonLogger.info(
+        class: self.class.to_s,
         event: 'pipeline_cancel_running',
         pipeline_id: pipeline.id,
         auto_canceled_by_pipeline_id: @auto_canceled_by_pipeline&.id,
         cascade_to_children: cascade_to_children?,
         execute_async: execute_async?,
         **Gitlab::ApplicationContext.current
+      )
+    end
+
+    def update_auto_canceled_pipeline_attributes
+      return unless auto_canceled_by_pipeline
+
+      pipeline.update_columns(
+        auto_canceled_by_id: auto_canceled_by_pipeline.id,
+        auto_canceled_by_partition_id: auto_canceled_by_pipeline.partition_id
       )
     end
 
@@ -82,18 +93,20 @@ module Ci
       @execute_async
     end
 
-    def cancel_jobs(jobs)
-      retries = 3
-      retry_lock(jobs, retries, name: 'ci_pipeline_cancel_running') do |jobs_to_cancel|
-        preloaded_relations = [:project, :pipeline, :deployment, :taggings]
+    def cancel_jobs(cancelable_jobs)
+      # Small batch size to avoid reprocessing many records during retries
+      cancelable_jobs.each_batch(of: 50) do |batch_relation|
+        retry_lock(batch_relation, name: 'ci_pipeline_cancel_running') do |jobs_to_cancel|
+          ::Ci::Preloaders::CommitStatusPreloader
+            .new(jobs_to_cancel).execute(build_preloads)
 
-        jobs_to_cancel.find_in_batches do |batch|
-          relation = CommitStatus.id_in(batch)
-          Preloaders::CommitStatusPreloader.new(relation).execute(preloaded_relations)
-
-          relation.each { |job| cancel_job(job) }
+          jobs_to_cancel.each { |job| cancel_job(job) }
         end
       end
+    end
+
+    def build_preloads
+      [:project, :pipeline, :deployment, :taggings]
     end
 
     def cancel_job(job)
@@ -142,3 +155,5 @@ module Ci
     end
   end
 end
+
+Ci::CancelPipelineService.prepend_mod

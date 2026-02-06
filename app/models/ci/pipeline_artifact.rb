@@ -16,7 +16,8 @@ module Ci
 
     DEFAULT_FILE_NAMES = {
       code_coverage: 'code_coverage.json',
-      code_quality_mr_diff: 'code_quality_mr_diff.json'
+      code_quality_mr_diff: 'code_quality_mr_diff.json',
+      pipeline_variables: 'pipeline_variables.json'
     }.freeze
 
     REPORT_TYPES = {
@@ -38,10 +39,13 @@ module Ci
 
     update_project_statistics project_statistics_name: :pipeline_artifacts_size
 
-    enum file_type: {
+    enum :file_type, {
       code_coverage: 1,
-      code_quality_mr_diff: 2
+      code_quality_mr_diff: 2,
+      pipeline_variables: 3
     }
+
+    scope :with_file_types, ->(file_types) { where(file_type: file_types) }
 
     scope :unlocked, -> { joins(:pipeline).merge(::Ci::Pipeline.unlocked) }
 

@@ -1,10 +1,9 @@
 ---
-stage: Govern
-group: Anti-Abuse
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Software Supply Chain Security
+group: Authorization
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Exploratory testing of CAPTCHAs
 ---
-
-# Exploratory testing of CAPTCHAs
 
 You can reliably test CAPTCHA on review apps, and in your local development environment (GDK).
 You can always:
@@ -17,7 +16,7 @@ To set up testing, follow the configuration on this page.
 ## Use appropriate test data
 
 Make sure you are testing a scenario which has spam/CAPTCHA enabled. For example:
-make sure you are editing a _public_ snippet, as only public snippets are checked for spam.
+make sure you are editing a public snippet, as only public snippets are checked for spam.
 
 ## Enable feature flags
 
@@ -26,33 +25,32 @@ Enable any relevant feature flag, if the spam/CAPTCHA support is behind a featur
 ## Set up Akismet and reCAPTCHA
 
 1. To set up reCAPTCHA:
-    1. Review the [GitLab reCAPTCHA documentation](../../integration/recaptcha.md).
-    1. Get Google's official test reCAPTCHA credentials using the instructions from
-       [Google's reCAPTCHA documentation](https://developers.google.com/recaptcha/docs/faq#id-like-to-run-automated-tests-with-recaptcha.-what-should-i-do).
-        1. For **Site key**, use: `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`
-        1. For **Secret key**, use: `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe`
-    1. Go to **Admin -> Settings -> Reporting** settings: `http://gdk.test:3000/admin/application_settings/reporting#js-spam-settings`
-    1. Expand the **Spam and Anti-bot Protection** section.
-    1. Select **Enable reCAPTCHA**. Enabling for login is not required unless you are testing that feature.
-    1. Enter the **Site key** and **Secret key**.
+   1. Review the [GitLab reCAPTCHA documentation](../../integration/recaptcha.md).
+   1. Follow the instructions provided by Google to get the official [test reCAPTCHA credentials](https://developers.google.com/recaptcha/docs/faq#id-like-to-run-automated-tests-with-recaptcha.-what-should-i-do).
+      1. For **Site key**, use: `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`
+      1. For **Secret key**, use: `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe`
+   1. Go to **Admin** > **Settings** > **Reporting** settings: `http://gdk.test:3000/admin/application_settings/reporting#js-spam-settings`
+   1. Expand the **Spam and Anti-bot Protection** section.
+   1. Select **Enable reCAPTCHA**. Enabling for login is not required unless you are testing that feature.
+   1. Enter the **Site key** and **Secret key**.
 1. To set up Akismet:
-    1. Review the [GitLab documentation on Akismet](../../integration/akismet.md).
-    1. Get an Akismet API key. You can sign up for [a testing key from Akismet](https://akismet.com).
-       You must enter your local host (such as`gdk.test`) and email when signing up.
-    1. Go to GitLab Akismet settings page, for example:
-       `http://gdk.test:3000/admin/application_settings/reporting#js-spam-settings`
-    1. Enable Akismet and enter your Akismet **API key**.
+   1. Review the [GitLab documentation on Akismet](../../integration/akismet.md).
+   1. Get an Akismet API key. You can sign up for [a testing key from Akismet](https://akismet.com).
+      You must enter your local host (such as`gdk.test`) and email when signing up.
+   1. Go to GitLab Akismet settings page, for example:
+      `http://gdk.test:3000/admin/application_settings/reporting#js-spam-settings`
+   1. Enable Akismet and enter your Akismet **API key**.
 1. To force an Akismet false-positive spam check, refer to the
    [Akismet API documentation](https://akismet.com/developers/detailed-docs/comment-check/) and
    [Akismet Getting Started documentation](https://akismet.com/support/getting-started/confirm/) for more details:
-    1. You can use `akismet-guaranteed-spam@example.com` as the author email to force spam using the following steps:
-        1. Go to user email settings: `http://gdk.test:3000/-/profile/emails`
-        1. Add `akismet-guaranteed-spam@example.com` as a secondary email for the administrator user.
-        1. Confirm it in the Rails console: `bin/rails c` -> `User.find_by_username('root').emails.last.confirm`
-        1. Switch this verified email to be your primary email:
-           1. Go to **Avatar dropdown list -> Edit Profile -> Main Settings**.
-           1. For **Email**, enter `akismet-guaranteed-spam@example.com` to replace `admin@example.com`.
-           1. Select **Update Profile Settings** to save your changes.
+   1. You can use `akismet-guaranteed-spam@example.com` as the author email to force spam using the following steps:
+      1. Go to user email settings: `http://gdk.test:3000/-/profile/emails`
+      1. Add `akismet-guaranteed-spam@example.com` as a secondary email for the administrator user.
+      1. Confirm it in the Rails console: `bin/rails c` -> `User.find_by_username('root').emails.last.confirm`
+      1. Switch this verified email to be your primary email:
+         1. Go to **Avatar dropdown list** > **Edit Profile** > **Main Settings**.
+         1. For **Email**, enter `akismet-guaranteed-spam@example.com` to replace `admin@example.com`.
+         1. Select **Update Profile Settings** to save your changes.
 
 ## Test in the web UI
 
@@ -67,30 +65,26 @@ in an area of the application which already has CAPTCHA support, such as:
 After you force Spam Flagging + CAPTCHA using the steps above, you can test the
 behavior with any spam-protected model/controller action.
 
-### Test with CAPTCHA enabled (CONDITIONAL_ALLOW verdict)
+### Test with CAPTCHA enabled (`CONDITIONAL_ALLOW` verdict)
 
 If CAPTCHA is enabled in these areas, you must solve the CAPTCHA popup modal before you can resubmit the form:
 
-- **Admin -> Settings -> Reporting -> Spam**
-- **Anti-bot Protection -> Enable reCAPTCHA**
+- **Admin** > **Settings** > **Reporting** > **Spam**
+- **Anti-bot Protection** > **Enable reCAPTCHA**
 
-<!-- vale gitlab.Substitutions = NO -->
+### Testing with CAPTCHA disabled (`DISALLOW` verdict)
 
-### Testing with CAPTCHA disabled ("DISALLOW" verdict)
-
-<!-- vale gitlab.Substitutions = YES -->
-
-If CAPTCHA is disabled in **Admin -> Settings -> Reporting -> Spam** and **Anti-bot Protection -> Enable reCAPTCHA**,
+If CAPTCHA is disabled in **Admin** > **Settings** > **Reporting** > **Spam** and **Anti-bot Protection** > **Enable reCAPTCHA**,
 no CAPTCHA popup displays. You are prevented from submitting the form at all.
 
 ### HTML page to render reCAPTCHA
 
-NOTE:
-If you use **Google's official test reCAPTCHA credentials** listed in
-[Set up Akismet and reCAPTCHA](#set-up-akismet-and-recaptcha), the
-CAPTCHA response string does not matter. It can be any string. If you use a
-real, valid key pair, you must solve the CAPTCHA to obtain a
-valid CAPTCHA response to use. You can do this once only, and only before it expires.
+> [!note]
+> If you use **the Google official test reCAPTCHA credentials** listed in
+> [Set up Akismet and reCAPTCHA](#set-up-akismet-and-recaptcha), the
+> CAPTCHA response string does not matter. It can be any string. If you use a
+> real, valid key pair, you must solve the CAPTCHA to obtain a
+> valid CAPTCHA response to use. You can do this once only, and only before it expires.
 
 To directly test the GraphQL API via GraphQL Explorer (`http://gdk.test:3000/-/graphql-explorer`),
 get a reCAPTCHA response string via this form: `public/recaptcha.html` (`http://gdk.test:3000/recaptcha.html`):
@@ -142,7 +136,7 @@ For the prerequisites, you must:
    If you use **Google's official test reCAPTCHA credentials** listed in
    [Set up Akismet and reCAPTCHA](#set-up-akismet-and-recaptcha), the contents of the
    CAPTCHA response string don't matter.
-1. Go to **Admin -> Settings -> Reporting -> Spam and Anti-bot protection**.
+1. Go to **Admin** > **Settings** > **Reporting** > **Spam and Anti-bot protection**.
 1. Select or clear **Enable reCAPTCHA** and **Enable Akismet** according to your
    scenario's needs.
 
@@ -164,20 +158,6 @@ only models with full Spam and CAPTCHA support.
 In this example, Akismet and CAPTCHA are enabled:
 
 1. [Initial request](#initial-request).
-
-<!-- TODO in future edit
-
-Some example videos:
-
-- REST API:
-
-![CAPTCHA REST API](/uploads/b148cbe45496e6f4a4f63d00bb9fbd8a/captcha_rest_api.mov)
-
-GraphQL API:
-
-![CAPTCHA GraphQL API](/uploads/3c7ef0fad0b84bd588572bae51519463/captcha_graphql_api.mov)
-
--->
 
 #### Initial request
 
@@ -268,10 +248,10 @@ REST response:
 
 GraphQL request:
 
-NOTE:
-The GitLab GraphiQL implementation doesn't allow passing of headers, so we must write
-this as a `curl` query. Here, `--data-binary` is used to properly handle escaped double quotes
-in the JSON-embedded query.
+> [!note]
+> The GitLab GraphiQL implementation doesn't allow passing of headers, so we must write
+> this as a `curl` query. Here, `--data-binary` is used to properly handle escaped double quotes
+> in the JSON-embedded query.
 
 ```shell
 export CAPTCHA_RESPONSE="<CAPTCHA response obtained from HTML page to render CAPTCHA>"
@@ -287,7 +267,7 @@ GraphQL response:
 
 ### Scenario: Akismet enabled, CAPTCHA disabled
 
-For this scenario, ensure you clear **Enable reCAPTCHA** in the Admin Area settings as described above.
+For this scenario, ensure you clear **Enable reCAPTCHA** in the **Admin** area settings as described above.
 If CAPTCHA is not enabled, any request flagged as potential spam fails with no chance to resubmit,
 even if it could otherwise be resubmitted if CAPTCHA were enabled and successfully solved.
 

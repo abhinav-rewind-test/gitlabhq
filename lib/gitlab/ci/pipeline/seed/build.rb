@@ -17,7 +17,9 @@ module Gitlab
             @needs_attributes = dig(:needs_attributes)
             @resource_group_key = attributes.delete(:resource_group_key)
             @job_variables = @seed_attributes.delete(:job_variables)
+            @execution_config_attribute = @seed_attributes.delete(:execution_config)
             @root_variables_inheritance = @seed_attributes.delete(:root_variables_inheritance) { true }
+            @inputs = @seed_attributes.delete(:inputs)
 
             @using_rules  = attributes.key?(:rules)
             @using_only   = attributes.key?(:only)
@@ -69,7 +71,12 @@ module Gitlab
               .deep_merge(rules_attributes)
               .deep_merge(allow_failure_criteria_attributes)
               .deep_merge(@cache.cache_attributes)
+              .deep_merge(inputs_attributes)
               .deep_merge(runner_tags)
+              .deep_merge(build_execution_config_attribute)
+              .deep_merge(scoped_user_id_attribute)
+              .then { |attrs| add_execution_config(attrs) }
+              .except(:stage)
           end
 
           def bridge?
@@ -82,9 +89,9 @@ module Gitlab
           def to_resource
             logger.instrument(:pipeline_seed_build_to_resource) do
               if bridge?
-                ::Ci::Bridge.new(attributes)
+                ::Ci::Bridge.fabricate(attributes)
               else
-                ::Ci::Build.new(attributes)
+                ::Ci::Build.fabricate(attributes)
               end
             end
           end
@@ -94,14 +101,11 @@ module Gitlab
 
           delegate :logger, to: :@context
 
-          def initialize_processable
-            return unless reuse_build_in_seed_context?
+          def build_execution_config_attribute
+            return {} unless @execution_config_attribute
 
-            if bridge?
-              ::Ci::Bridge.new(initial_attributes)
-            else
-              ::Ci::Build.new(initial_attributes)
-            end
+            execution_config = @context.find_or_build_execution_config(@execution_config_attribute)
+            { execution_config: execution_config }
           end
 
           def all_of_only?
@@ -128,7 +132,11 @@ module Gitlab
 
               result = need_present?(need)
 
-              "'#{name}' job needs '#{need[:name]}' job, but '#{need[:name]}' is not in any previous stage" unless result
+              unless result
+                "'#{name}' job needs '#{need[:name]}' job, but '#{need[:name]}' does not exist in the pipeline. " \
+                  'This might be because of the only, except, or rules keywords. ' \
+                  'To need a job that sometimes does not exist in the pipeline, use needs:optional.'
+              end
             end.compact
           end
 
@@ -143,7 +151,7 @@ module Gitlab
           end
 
           def variable_expansion_errors
-            expanded_collection = evaluate_context.variables.sort_and_expand_all
+            expanded_collection = evaluate_context.variables_sorted_and_expanded
             errors = expanded_collection.errors
             ["#{name}: #{errors}"] if errors
           end
@@ -155,11 +163,20 @@ module Gitlab
               user: @pipeline.user,
               ref: @pipeline.ref,
               tag: @pipeline.tag,
-              trigger_request: @pipeline.legacy_trigger,
               protected: @pipeline.protected_ref?,
-              partition_id: @pipeline.partition_id,
-              metadata_attributes: { partition_id: @pipeline.partition_id }
+              partition_id: @pipeline.partition_id
             }
+          end
+
+          # Scoped user is present when the user creating the pipeline supports composite identity.
+          # For example: a service account like GitLab Duo. The scoped user is used to further restrict
+          # the permissions of the CI job token associated to the `job.user`.
+          def scoped_user_id_attribute
+            user_identity = ::Gitlab::Auth::Identity.fabricate(@pipeline.user)
+
+            return {} unless user_identity&.composite? && user_identity.linked?
+
+            { scoped_user_id: user_identity.scoped_user.id }
           end
 
           def rules_attributes
@@ -184,7 +201,7 @@ module Gitlab
           strong_memoize_attr :rules_errors
 
           def evaluate_context
-            Gitlab::Ci::Build::Context::Build.new(@pipeline, @seed_attributes)
+            Gitlab::Ci::Build::Context::Build.new(@pipeline, @seed_attributes, logger: logger)
           end
           strong_memoize_attr :evaluate_context
 
@@ -209,10 +226,30 @@ module Gitlab
             { options: { allow_failure_criteria: nil } }
           end
 
+          def inputs_attributes
+            return {} unless @inputs
+
+            {
+              options: { inputs: @inputs }
+            }
+          end
+
           def calculate_yaml_variables!
             @seed_attributes[:yaml_variables] = Gitlab::Ci::Variables::Helpers.inherit_yaml_variables(
               from: @context.root_variables, to: @job_variables, inheritance: @root_variables_inheritance
             )
+          end
+
+          def add_execution_config(attrs)
+            return attrs unless @execution_config_attribute
+
+            # Currently, `execution_config` is passed from `lib/gitlab/ci/yaml_processor/result.rb` and deleted
+            # in the `initialize` method of this class and assigned to `@execution_config_attribute`.
+            # Today, we don't want to make a huge change in the process; we only want to save the data to the
+            # `p_ci_job_definitions` table. In the future (https://gitlab.com/groups/gitlab-org/-/epics/19262), we'll
+            # remove the `build_execution_config_attribute` method and splat the `execution_config` to
+            # `build_attributes` in `lib/gitlab/ci/yaml_processor/result.rb`.
+            attrs.merge(@execution_config_attribute)
           end
         end
       end

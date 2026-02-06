@@ -10,20 +10,20 @@ class Admin::ApplicationsController < Admin::ApplicationController
 
   def index
     applications = ApplicationsFinder.new.execute
-    @applications = Kaminari.paginate_array(applications).page(params[:page])
+    @applications = applications.keyset_paginate(cursor: params[:cursor])
+    @applications_total_count = applications.count
   end
 
   def show; end
 
   def new
-    @application = Doorkeeper::Application.new
+    @application = Authn::OauthApplication.new
   end
 
-  def edit
-  end
+  def edit; end
 
   def create
-    @application = Applications::CreateService.new(current_user, application_params).execute(request)
+    @application = Applications::CreateService.new(current_user, request, application_params).execute
 
     if @application.persisted?
       flash[:notice] = I18n.t(:notice, scope: [:doorkeeper, :flash, :applications, :create])
@@ -58,6 +58,14 @@ class Admin::ApplicationsController < Admin::ApplicationController
     redirect_to admin_applications_url, status: :found, notice: _('Application was successfully destroyed.')
   end
 
+  def reset_web_ide_oauth_application_settings
+    success = ::WebIde::DefaultOauthApplication.reset_oauth_application_settings
+
+    return render json: {}, status: :internal_server_error unless success
+
+    render json: {}
+  end
+
   private
 
   def set_application
@@ -71,6 +79,7 @@ class Admin::ApplicationsController < Admin::ApplicationController
   def application_params
     super.tap do |params|
       params[:owner] = nil
+      params[:organization] = Current.organization
     end
   end
 end

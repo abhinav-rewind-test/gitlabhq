@@ -6,14 +6,14 @@ module Resolvers
       include Gitlab::Graphql::Authorize::AuthorizeResource
       include LooksAhead
 
-      type ::Types::Ci::JobType.connection_type, null: true
+      type ::Types::Ci::JobInterface.connection_type, null: true
       authorize :read_builds
       authorizes_object!
       extension ::Gitlab::Graphql::Limit::FieldCallCount, limit: 1
 
       argument :statuses, [::Types::Ci::JobStatusEnum],
-               required: false,
-               description: 'Filter jobs by status.'
+        required: false,
+        description: 'Filter jobs by status.'
 
       alias_method :runner, :object
 
@@ -35,6 +35,8 @@ module Resolvers
           project: [{ project: [:route, { namespace: [:route] }, :project_feature] }],
           detailed_status: [
             :metadata,
+            :job_definition,
+            :error_job_messages,
             { pipeline: [:merge_request] },
             { project: [:route, { namespace: :route }] }
           ],
@@ -45,7 +47,6 @@ module Resolvers
           web_path: [{ project: { namespace: [:route] } }],
           short_sha: [:pipeline],
           tags: [:tags],
-          ai_failure_analysis: [{ project: [:project_feature, :namespace] }],
           trace: [{ project: [:namespace] }, :job_artifacts_trace]
         }
       end

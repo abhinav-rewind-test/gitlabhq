@@ -1,52 +1,49 @@
 <script>
-import { GlButton } from '@gitlab/ui';
-import { GlBreakpointInstance, breakpoints } from '@gitlab/ui/dist/utils';
-import ExtraInfo from 'jh_else_ce/super_sidebar/components/extra_info.vue';
+import { computed } from 'vue';
+import { GlTooltipDirective } from '@gitlab/ui';
+import { GlBreakpointInstance, breakpoints } from '@gitlab/ui/src/utils'; // eslint-disable-line no-restricted-syntax -- GlBreakpointInstance is used intentionally here. In this case we must obtain viewport breakpoints
 import { Mousetrap } from '~/lib/mousetrap';
 import { TAB_KEY_CODE } from '~/lib/utils/keycodes';
 import { keysFor, TOGGLE_SUPER_SIDEBAR } from '~/behaviors/shortcuts/keybindings';
-import { __, s__ } from '~/locale';
+import { s__ } from '~/locale';
 import Tracking from '~/tracking';
-import eventHub from '../event_hub';
+import { sidebarState, JS_TOGGLE_EXPAND_CLASS } from '../constants';
 import {
-  sidebarState,
-  SUPER_SIDEBAR_PEEK_STATE_CLOSED as STATE_CLOSED,
-  SUPER_SIDEBAR_PEEK_STATE_WILL_OPEN as STATE_WILL_OPEN,
-  SUPER_SIDEBAR_PEEK_STATE_OPEN as STATE_OPEN,
-} from '../constants';
-import { isCollapsed, toggleSuperSidebarCollapsed } from '../super_sidebar_collapsed_state_manager';
+  isCollapsed,
+  toggleSuperSidebarCollapsed,
+  toggleSuperSidebarIconOnly,
+} from '../super_sidebar_collapsed_state_manager';
 import { trackContextAccess } from '../utils';
-import UserBar from './user_bar.vue';
 import SidebarPortalTarget from './sidebar_portal_target.vue';
+import IconOnlyToggle from './icon_only_toggle.vue';
 import HelpCenter from './help_center.vue';
 import SidebarMenu from './sidebar_menu.vue';
-import SidebarPeekBehavior from './sidebar_peek_behavior.vue';
-import SidebarHoverPeekBehavior from './sidebar_hover_peek_behavior.vue';
 import ScrollScrim from './scroll_scrim.vue';
 
 export default {
   components: {
-    GlButton,
-    UserBar,
+    IconOnlyToggle,
     HelpCenter,
-    ExtraInfo,
     SidebarMenu,
-    SidebarPeekBehavior,
-    SidebarHoverPeekBehavior,
     SidebarPortalTarget,
     ScrollScrim,
-    TrialStatusWidget: () =>
-      import('ee_component/contextual_sidebar/components/trial_status_widget.vue'),
-    TrialStatusPopover: () =>
-      import('ee_component/contextual_sidebar/components/trial_status_popover.vue'),
+    TrialWidget: () => import('jh_else_ee/contextual_sidebar/components/trial_widget.vue'),
+    TierBadge: () => import('ee_component/vue_shared/components/tier_badge/tier_badge.vue'),
+  },
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   mixins: [Tracking.mixin()],
   i18n: {
-    skipToMainContent: __('Skip to main content'),
     primaryNavigation: s__('Navigation|Primary navigation'),
-    adminArea: s__('Navigation|Admin Area'),
   },
-  inject: ['showTrialStatusWidget'],
+  inject: ['showTrialWidget'],
+  provide() {
+    return {
+      isIconOnly: computed(() => this.isIconOnly),
+      primaryCtaLink: this.sidebarData.tier_badge_href,
+    };
+  },
   props: {
     sidebarData: {
       type: Object,
@@ -58,8 +55,8 @@ export default {
       sidebarState,
       showPeekHint: false,
       isMouseover: false,
-      breakpoint: null,
-      showSuperSidebarContextHeader: true,
+      isAnimatable: false,
+      wasToggledManually: false,
     };
   },
   computed: {
@@ -74,13 +71,32 @@ export default {
         'super-sidebar-peek-hint': this.showPeekHint,
         'super-sidebar-peek': this.showOverlay,
         'super-sidebar-has-peeked': this.sidebarState.hasPeeked,
+        'super-sidebar-is-icon-only': this.isIconOnly,
+        'super-sidebar-is-mobile': this.sidebarState.isMobile,
+        'super-sidebar-animatable': this.isAnimatable,
+        'super-sidebar-toggled-manually': this.wasToggledManually,
       };
+    },
+    canIconOnly() {
+      return !this.sidebarState.isMobile;
+    },
+    isIconOnly() {
+      return this.canIconOnly && this.sidebarState.isIconOnly;
+    },
+    showTierBadge() {
+      return Boolean(this.sidebarData.tier_badge_href);
     },
   },
   watch: {
     'sidebarState.isCollapsed': {
-      handler() {
+      handler(collapsed) {
         this.setupFocusTrapListener();
+
+        if (this.isNotPeeking() && !collapsed) {
+          this.$nextTick(() => {
+            this.firstFocusableElement().focus();
+          });
+        }
       },
     },
   },
@@ -98,7 +114,10 @@ export default {
   mounted() {
     this.setupFocusTrapListener();
     Mousetrap.bind(keysFor(TOGGLE_SUPER_SIDEBAR), this.toggleSidebar);
-    eventHub.$on('toggle-menu-header', this.onToggleMenuHeader);
+
+    this.$nextTick(() => {
+      this.isAnimatable = true;
+    });
   },
   beforeDestroy() {
     document.removeEventListener('keydown', this.focusTrap);
@@ -106,18 +125,30 @@ export default {
   },
   methods: {
     toggleSidebar() {
+      if (this.canIconOnly) {
+        this.wasToggledManually = true;
+        toggleSuperSidebarIconOnly();
+        return;
+      }
+
       this.track(isCollapsed() ? 'nav_show' : 'nav_hide', {
         label: 'nav_toggle_keyboard_shortcut',
         property: 'nav_sidebar',
       });
       toggleSuperSidebarCollapsed(!isCollapsed(), true);
     },
+    isOverlapping() {
+      return GlBreakpointInstance.windowWidth() < breakpoints.xl;
+    },
+    isNotPeeking() {
+      return !(sidebarState.isHoverPeek || sidebarState.isPeek);
+    },
     setupFocusTrapListener() {
       /**
        * Only trap focus when sidebar displays over page content to avoid
        * focus moving to page content and being obscured by the sidebar
        */
-      if (GlBreakpointInstance.windowWidth() < breakpoints.xl && !this.sidebarState.isCollapsed) {
+      if (this.isOverlapping() && !this.sidebarState.isCollapsed) {
         document.addEventListener('keydown', this.focusTrap);
       } else {
         document.removeEventListener('keydown', this.focusTrap);
@@ -126,36 +157,22 @@ export default {
     collapseSidebar() {
       toggleSuperSidebarCollapsed(true, false);
     },
-    onPeekChange(state) {
-      if (state === STATE_CLOSED) {
-        this.sidebarState.isPeek = false;
-        this.sidebarState.isCollapsed = true;
-        this.showPeekHint = false;
-      } else if (state === STATE_WILL_OPEN) {
-        this.sidebarState.hasPeeked = true;
-        this.sidebarState.isPeek = false;
-        this.sidebarState.isCollapsed = true;
-        this.showPeekHint = true;
-      } else {
-        this.sidebarState.isPeek = true;
-        this.sidebarState.isCollapsed = false;
-        this.showPeekHint = false;
+    handleEscKey() {
+      if (this.isOverlapping() && this.isNotPeeking()) {
+        this.collapseSidebar();
+        document.querySelector(`.${JS_TOGGLE_EXPAND_CLASS}`)?.focus();
       }
     },
-    onHoverPeekChange(state) {
-      if (state === STATE_OPEN) {
-        this.sidebarState.hasPeeked = true;
-        this.sidebarState.isHoverPeek = true;
-        this.sidebarState.isCollapsed = false;
-      } else if (state === STATE_CLOSED) {
-        this.sidebarState.isHoverPeek = false;
-        this.sidebarState.isCollapsed = true;
-      }
+    firstFocusableElement() {
+      return this.$refs.sidebarMenu.$el.querySelector('a');
+    },
+    lastFocusableElement() {
+      return this.$refs.helpCenter.$el.querySelector('button');
     },
     focusTrap(event) {
       const { keyCode, shiftKey } = event;
-      const firstFocusableElement = this.$refs.userBar.$el.querySelector('a');
-      const lastFocusableElement = this.$refs.helpCenter.$el.querySelector('button');
+      const firstFocusableElement = this.firstFocusableElement();
+      const lastFocusableElement = this.lastFocusableElement();
 
       if (keyCode !== TAB_KEY_CODE) return;
 
@@ -169,25 +186,16 @@ export default {
         event.preventDefault();
       }
     },
-    onToggleMenuHeader(forceState) {
-      this.showSuperSidebarContextHeader = forceState;
+    handleTransitionEnd() {
+      this.wasToggledManually = false;
     },
   },
 };
 </script>
 
 <template>
-  <div>
-    <div class="super-sidebar-overlay" @click="collapseSidebar"></div>
-    <gl-button
-      v-if="sidebarData.is_logged_in"
-      class="super-sidebar-skip-to gl-sr-only-focusable gl-fixed gl-left-0 gl-m-3"
-      data-testid="super-sidebar-skip-to"
-      href="#content-body"
-      variant="confirm"
-    >
-      {{ $options.i18n.skipToMainContent }}
-    </gl-button>
+  <div v-if="menuItems.length" class="super-sidebar-wrapper">
+    <div ref="overlay" class="super-sidebar-overlay" @click="collapseSidebar"></div>
     <nav
       id="super-sidebar"
       aria-labelledby="super-sidebar-heading"
@@ -197,30 +205,25 @@ export default {
       :inert="sidebarState.isCollapsed"
       @mouseenter="isMouseover = true"
       @mouseleave="isMouseover = false"
+      @keydown.esc="handleEscKey"
+      @transitionend="handleTransitionEnd"
     >
       <h2 id="super-sidebar-heading" class="gl-sr-only">
         {{ $options.i18n.primaryNavigation }}
       </h2>
-      <user-bar ref="userBar" :has-collapse-button="!showOverlay" :sidebar-data="sidebarData" />
-      <div v-if="showTrialStatusWidget" class="gl-px-2 gl-py-2">
-        <trial-status-widget
-          class="super-sidebar-nav-item gl-rounded-base gl-relative gl-display-flex gl-align-items-center gl-mb-1 gl-px-3 gl-line-height-normal gl-text-black-normal! gl-text-decoration-none! gl-py-3"
-        />
-        <trial-status-popover />
-      </div>
-      <div
-        class="contextual-nav gl-display-flex gl-flex-direction-column gl-flex-grow-1 gl-overflow-hidden"
-      >
-        <scroll-scrim class="gl-flex-grow-1" data-testid="nav-container">
-          <div
-            v-if="showSuperSidebarContextHeader"
-            id="super-sidebar-context-header"
-            class="gl-px-5 gl-pt-3 gl-pb-2 gl-m-0 gl-reset-line-height gl-font-weight-bold gl-font-sm super-sidebar-context-header"
-          >
-            {{ sidebarData.current_context_header }}
-          </div>
+      <div class="contextual-nav gl-flex gl-grow gl-flex-col gl-overflow-hidden">
+        <div
+          v-if="sidebarData.current_context_header && !isIconOnly"
+          id="super-sidebar-context-header"
+          class="super-sidebar-context-header gl-m-0 gl-flex gl-justify-between gl-px-5 gl-py-3 gl-font-bold gl-leading-reset"
+        >
+          {{ sidebarData.current_context_header }}
+          <tier-badge v-if="showTierBadge" data-testid="sidebar-tier-badge" is-upgrade />
+        </div>
+        <scroll-scrim class="gl-grow" data-testid="nav-container">
           <sidebar-menu
             v-if="menuItems.length"
+            ref="sidebarMenu"
             :items="menuItems"
             :is-logged-in="sidebarData.is_logged_in"
             :panel-type="sidebarData.panel_type"
@@ -229,20 +232,23 @@ export default {
           />
           <sidebar-portal-target />
         </scroll-scrim>
-        <div class="gl-p-2">
-          <help-center ref="helpCenter" :sidebar-data="sidebarData" />
-          <gl-button
-            v-if="sidebarData.is_admin"
-            class="gl-fixed gl-right-0 gl-mr-3 gl-mt-2"
-            data-testid="sidebar-admin-link"
-            :href="sidebarData.admin_url"
-            icon="admin"
-            size="small"
-          >
-            {{ $options.i18n.adminArea }}
-          </gl-button>
-          <extra-info />
+        <div v-if="showTrialWidget && !isIconOnly" class="gl-p-2">
+          <trial-widget
+            class="gl-relative gl-mb-1 gl-flex gl-items-center gl-rounded-[.75rem] gl-p-3 gl-leading-normal !gl-text-default !gl-no-underline"
+          />
         </div>
+        <help-center
+          v-if="canIconOnly"
+          ref="helpCenter"
+          :sidebar-data="sidebarData"
+          class="gl-p-3"
+        />
+        <div v-else class="gl-p-2">
+          <div class="gl-flex gl-flex-col gl-justify-end">
+            <help-center ref="helpCenter" :sidebar-data="sidebarData" class="gl-mr-2" />
+          </div>
+        </div>
+        <icon-only-toggle v-if="canIconOnly" class="gl-hidden xl:gl-flex" @toggle="toggleSidebar" />
       </div>
     </nav>
     <a
@@ -250,24 +256,9 @@ export default {
       :key="shortcutLink.href"
       :href="shortcutLink.href"
       :class="shortcutLink.css_class"
-      class="gl-display-none"
+      class="gl-hidden"
     >
       {{ shortcutLink.title }}
     </a>
-
-    <!--
-      Only mount peek behavior components if the sidebar is peekable, to avoid
-      setting up event listeners unnecessarily.
-    -->
-    <sidebar-peek-behavior
-      v-if="sidebarState.isPeekable && !sidebarState.isHoverPeek"
-      :is-mouse-over-sidebar="isMouseover"
-      @change="onPeekChange"
-    />
-    <sidebar-hover-peek-behavior
-      v-if="sidebarState.isPeekable && !sidebarState.isPeek"
-      :is-mouse-over-sidebar="isMouseover"
-      @change="onHoverPeekChange"
-    />
   </div>
 </template>

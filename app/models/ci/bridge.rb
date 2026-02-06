@@ -19,7 +19,6 @@ module Ci
     self.allow_legacy_sti_class = true
 
     belongs_to :project
-    belongs_to :trigger_request
 
     has_one :downstream_pipeline, through: :sourced_pipeline, source: :pipeline
 
@@ -27,18 +26,22 @@ module Ci
 
     # rubocop:disable Cop/ActiveRecordSerialize
     serialize :options
-    serialize :yaml_variables, ::Gitlab::Serializer::Ci::Variables
+    serialize :yaml_variables, coder: ::Gitlab::Serializer::Ci::Variables
     # rubocop:enable Cop/ActiveRecordSerialize
 
     state_machine :status do
+      before_transition [:created, :manual, :waiting_for_resource] => :pending do |bridge|
+        bridge.started_at = Time.current
+      end
+
       after_transition [:created, :manual, :waiting_for_resource] => :pending do |bridge|
         bridge.run_after_commit do
           Ci::TriggerDownstreamPipelineService.new(bridge).execute # rubocop: disable CodeReuse/ServiceClass
         end
       end
 
-      event :canceling do
-        transition CANCELABLE_STATUSES.map(&:to_sym) => :canceling
+      event :created do
+        transition all => :created
       end
 
       event :pending do
@@ -53,43 +56,60 @@ module Ci
         transition all => :scheduled
       end
 
+      event :skip do
+        transition all => :skipped
+      end
+
       event :actionize do
         transition created: :manual
       end
-    end
 
-    def retryable?
-      return false if failed? && (pipeline_loop_detected? || reached_max_descendant_pipelines_depth?)
+      event :start_cancel do
+        transition CANCELABLE_STATUSES.map(&:to_sym) => :canceling
+      end
 
-      super
+      event :finish_cancel do
+        transition CANCELABLE_STATUSES.map(&:to_sym) + [:canceling] => :canceled
+      end
+
+      event :success do
+        transition all => :success
+      end
+
+      event :canceled do
+        transition all => :canceled
+      end
+
+      event :failed do
+        transition all => :failed
+      end
+
+      event :manual do
+        transition all => :manual
+      end
     end
 
     def self.with_preloads
       preload(
         :metadata,
+        :job_definition,
+        :error_job_messages,
+        user: [:followers, :followees],
         downstream_pipeline: [project: [:route, { namespace: :route }]],
         project: [:namespace]
       )
     end
 
     def self.clone_accessors
-      %i[pipeline project ref tag options name
-         allow_failure stage stage_idx
-         yaml_variables when environment description needs_attributes
-         scheduling_type ci_stage partition_id].freeze
+      %i[pipeline project ref tag name allow_failure stage_idx
+        when environment description needs_attributes
+        scheduling_type ci_stage partition_id resource_group].freeze
     end
 
-    def inherit_status_from_downstream!(pipeline)
-      case pipeline.status
-      when 'success'
-        success!
-      when 'canceled'
-        cancel!
-      when 'failed', 'skipped'
-        drop!
-      else
-        false
-      end
+    def retryable?
+      return false if failed? && (pipeline_loop_detected? || reached_max_descendant_pipelines_depth?)
+
+      super
     end
 
     def has_downstream_pipeline?
@@ -118,7 +138,7 @@ module Ci
         project = options&.dig(:trigger, :project)
         next unless project
 
-        scoped_variables.to_runner_variables.then do |all_variables|
+        scoped_variables.to_hash_variables.then do |all_variables|
           ::ExpandVariables.expand(project, all_variables)
         end
       end
@@ -162,10 +182,14 @@ module Ci
       %w[manual].include?(self.when)
     end
 
+    def can_auto_cancel_pipeline_on_job_failure?
+      true
+    end
+
     # rubocop: disable CodeReuse/ServiceClass
-    # We don't need it but we are taking `job_variables_attributes` parameter
-    # to make it consistent with `Ci::Build#play` method.
-    def play(current_user, job_variables_attributes = nil)
+    # We don't need it but we are taking `job_variables_attributes` and `_inputs`
+    # parameters to make it consistent with `Ci::Build#play` method.
+    def play(current_user, job_variables_attributes = nil, _inputs = {})
       Ci::PlayBridgeService
         .new(project, current_user)
         .execute(self)
@@ -181,7 +205,7 @@ module Ci
     def runner; end
 
     def tag_list
-      ActsAsTaggableOn::TagList.new
+      Gitlab::Ci::Tags::TagList.new
     end
 
     def artifacts?
@@ -215,8 +239,18 @@ module Ci
       branch = options&.dig(:trigger, :branch)
       return unless branch
 
-      scoped_variables.to_runner_variables.then do |all_variables|
+      scoped_variables.to_hash_variables.then do |all_variables|
         ::ExpandVariables.expand(branch, all_variables)
+      end
+    end
+
+    def has_strategy?
+      mirrored? || dependent?
+    end
+
+    def mirrored?
+      strong_memoize(:mirrored) do
+        options&.dig(:trigger, :strategy) == 'mirror'
       end
     end
 
@@ -279,13 +313,45 @@ module Ci
       end
     end
 
-    def expand_file_refs?
-      strong_memoize(:expand_file_refs) do
-        !Feature.enabled?(:ci_prevent_file_var_expansion_downstream_pipeline, project)
+    def inherit_status_from_downstream(pipeline)
+      if mirrored?
+        inherit_mirrored_status_from_downstream!(pipeline)
+      else
+        inherit_dependent_status_from_downstream!(pipeline)
       end
     end
 
     private
+
+    def inherit_mirrored_status_from_downstream!(pipeline)
+      case pipeline.status
+      when 'success'
+        success!
+      when 'canceled'
+        canceled!
+      when 'failed'
+        failed!
+      when 'manual'
+        manual!
+      when 'skipped'
+        skip!
+      else
+        false
+      end
+    end
+
+    def inherit_dependent_status_from_downstream!(pipeline)
+      case pipeline.status
+      when 'success'
+        success!
+      when 'canceled'
+        canceled!
+      when 'failed', 'skipped'
+        failed!
+      else
+        false
+      end
+    end
 
     def expose_protected_group_variables?
       return true if downstream_project.nil?
@@ -311,8 +377,9 @@ module Ci
         },
         execute_params: {
           ignore_skip_ci: true,
-          bridge: self
-        }
+          bridge: self,
+          inputs: options&.dig(:trigger, :inputs)
+        }.compact
       }
     end
 

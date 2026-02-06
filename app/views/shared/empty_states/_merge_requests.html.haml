@@ -1,5 +1,5 @@
 - button_path = local_assigns.fetch(:button_path, false)
-- button_text = _("New merge request")
+- button_text = _("Create merge request")
 - closed_merged_count = issuables_count_for_state(:merged, :closed)
 - opened_merged_count = issuables_count_for_state(:merged, :opened)
 - is_opened_state = params[:state] == 'opened'
@@ -8,15 +8,7 @@
 - tracking_data = { event_tracking: 'click_new_merge_request_empty_list' }
 
 - if has_filter_bar_param?
-  = render Pajamas::EmptyStateComponent.new(svg_path: 'illustrations/empty-state/empty-search-md.svg',
-    empty_state_options: { data: { testid: 'issuable-empty-state' } },
-    title: _("Sorry, your filter produced no results")) do |c|
-
-    - c.with_description do
-      = _("To widen your search, change or remove filters above")
-      - if can_create_merge_request
-        .gl-mt-5= link_button_to button_text, button_path || project_new_merge_request_path(@project),
-          title: button_text, variant: :confirm, data: tracking_data
+  = render ::Layouts::EmptyResultComponent.new(type: :filter, data: { testid: 'issuable-empty-state' })
 
 - elsif is_opened_state && opened_merged_count == 0 && closed_merged_count > 0
   = render Pajamas::EmptyStateComponent.new(svg_path: 'illustrations/empty-state/empty-merge-requests-md.svg',
@@ -37,10 +29,10 @@
 - else
   = render Pajamas::EmptyStateComponent.new(svg_path: 'illustrations/empty-state/empty-merge-requests-md.svg',
     empty_state_options: { data: { testid: 'issuable-empty-state' } },
-    title: _("Merge requests are a place to propose changes you've made to a project and discuss those changes with others")) do |c|
+    title: _("Create a merge request to suggest changes to the repository.")) do |c|
 
     - c.with_description do
-      = _("Interested parties can even contribute by pushing commits if they want to.")
+      = _("Use merge requests to propose, collaborate, and review code changes with others.")
       - if button_path
         .gl-mt-5= link_button_to button_text, button_path,
           title: button_text,

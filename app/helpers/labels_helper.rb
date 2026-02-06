@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module LabelsHelper
+  include ActionView::Helpers::TagHelper
   extend self
 
   def show_label_issuables_link?(label, issuables_type, current_user: nil)
@@ -35,18 +36,19 @@ module LabelsHelper
   #   # Customize link body with a block
   #   link_to_label(label) { "My Custom Label Text" }
   #
-  # Returns a String
-  def link_to_label(label, type: :issue, tooltip: true, small: false, css_class: nil, &block)
+  # Returns a String containing HTML.
+  def link_to_label(label, type: :issue, tooltip: true, css_class: nil, &block)
     link = label.filter_path(type: type)
 
     if block
       link_to link, class: css_class, &block
     else
-      render_label(label, link: link, tooltip: tooltip, small: small)
+      render_label(label, link: link, tooltip: tooltip)
     end
   end
 
-  def render_label(label, link: nil, tooltip: true, dataset: nil, small: false, tooltip_shows_title: false)
+  # Returns a String containing HTML.
+  def render_label(label, link: nil, tooltip: true, dataset: nil, tooltip_shows_title: false)
     html = render_colored_label(label)
 
     if link
@@ -54,28 +56,29 @@ module LabelsHelper
       html = render_label_link(html, link: link, title: title, dataset: dataset)
     end
 
-    wrap_label_html(html, small: small, label: label)
+    wrap_label_html(html, label: label)
   end
 
-  def render_colored_label(label, suffix: '')
+  # Renders a label, with the given suffix HTML.
+  def render_colored_label(label, in_reference: nil)
     render_label_text(
       label.name,
-      suffix: suffix,
+      in_reference: in_reference,
       css_class: "gl-label-text #{label.text_color_class}",
       bg_color: label.color
     )
   end
 
   # We need the `label` argument here for EE
-  def wrap_label_html(label_html, small:, label:)
+  def wrap_label_html(label_html, label:)
     wrapper_classes = %w[gl-label]
-    wrapper_classes << 'gl-label-sm' if small
 
     %(<span class="#{wrapper_classes.join(' ')}">#{label_html}</span>).html_safe
   end
 
+  # Returns a String containing text.
   def label_tooltip_title(label, tooltip_shows_title: false)
-    Sanitize.clean(tooltip_shows_title ? label.title : label.description)
+    tooltip_shows_title ? label.title : label.description
   end
 
   def suggested_colors
@@ -105,10 +108,6 @@ module LabelsHelper
     content_tag(:div, class: 'suggest-colors') do
       colors_html.join.html_safe
     end
-  end
-
-  def text_color_for_bg(bg_color)
-    ::Gitlab::Color.of(bg_color).contrast
   end
 
   def labels_filter_path_with_defaults(only_group_labels: false, include_ancestor_groups: true, include_descendant_groups: false)
@@ -163,17 +162,6 @@ module LabelsHelper
       _('Create project label')
     else
       _('Create new label')
-    end
-  end
-
-  def manage_labels_title(subject)
-    case subject
-    when Group
-      _('Manage group labels')
-    when Project
-      _('Manage project labels')
-    else
-      _('Manage labels')
     end
   end
 
@@ -240,15 +228,13 @@ module LabelsHelper
     link_to(label_html, link, class: classes.join(' '), data: dataset)
   end
 
-  def render_label_text(name, suffix: '', css_class: nil, bg_color: nil)
-    <<~HTML.chomp.html_safe
-      <span
-        class="#{css_class}"
-        data-container="body"
-        data-html="true"
-        #{"style=\"background-color: #{h bg_color}\"" if bg_color}
-      >#{ERB::Util.html_escape_once(name)}#{suffix}</span>
-    HTML
+  def render_label_text(name, in_reference: nil, css_class: nil, bg_color: nil)
+    label_name_html = CGI.escapeHTML(name)
+    label_name_html << " " << content_tag(:i, "in #{in_reference}") if in_reference.present?
+
+    attrs = { "class" => css_class, "data-container" => "body", "data-html" => "true" }
+    attrs["style"] = "background-color: #{bg_color}" if bg_color
+    content_tag(:span, label_name_html.html_safe, **attrs)
   end
 end
 

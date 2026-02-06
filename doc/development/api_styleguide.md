@@ -1,12 +1,27 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: API style guide
 ---
 
-# API style guide
-
 This style guide recommends best practices for API development.
+
+## GraphQL and REST APIs
+
+We offer two types of API to our customers:
+
+- [REST API](../api/rest/_index.md)
+- [GraphQL API](../api/graphql/_index.md)
+
+To reduce the technical burden of supporting two APIs in parallel,
+they should share implementations as much as possible.
+For example, they could share the same [services](reusing_abstractions.md#service-classes).
+
+## Frontend
+
+See the [frontend guide](fe_guide/_index.md#introduction)
+on details on which API to use when developing in the frontend.
 
 ## Instance variables
 
@@ -15,11 +30,48 @@ to access them as we do in Rails views), local variables are fine.
 
 ## Entities
 
-Always use an [Entity](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/entities) to present the endpoint's payload.
+Always use an [Entity](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/api/entities) to present the endpoint's payload.
+
+### Defining entity fields
+
+Every exposed field in an entity must include or reference a valid type.
+
+#### Referencing another entity
+
+When exposing a field that references another entity, use the `using` option.
+The using option only accepts a constant that points to an API::Entities class.
+A good example is as follows,
+
+```ruby
+  expose :project, using: ::API::Entities::BasicProjectDetails
+```
+
+#### Valid field types
+
+Field types must be specified as strings.
+The following types are accepted:
+
+| Category | Types |
+|----------|-------|
+| Scalar | `Integer`, `Float`, `BigDecimal`, `Numeric`, `Date`, `DateTime`, `Time`, `String`, `Symbol`, `Boolean` |
+| Structures | `Hash`, `Array`, `Set` |
+| Special | `JSON`, `File` |
+| Entity references | Any `API::Entities::*` class (as a string) |
+
+#### Field types definition
+
+Field types should be defined in the `documentation` hash:
+
+```ruby
+  expose :id, documentation: { type: 'Integer', example: 1 }
+  expose :name, documentation: { type: 'String', example: 'John Doe' }
+  expose :active, documentation: { type: 'Boolean', example: true }
+  expose :project, documentation: { type: 'API::Entities::BasicProject'}
+```
 
 ## Documentation
 
-Each new or updated API endpoint must come with documentation, unless it is internal or behind a feature flag.
+Each new or updated API endpoint must come with documentation.
 The docs should be in the same merge request, or, if strictly necessary,
 in a follow-up with the same milestone as the original merge request.
 
@@ -31,11 +83,10 @@ Every method must be described using the [Grape DSL](https://github.com/ruby-gra
 (see [`environments.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/environments.rb)
 for a good example):
 
-- `desc` for the method summary. You should pass it a block for additional
-  details such as:
-  - The GitLab version when the endpoint was added. If it is behind a feature flag, mention that instead: _This feature is gated by the :feature\_flag\_symbol feature flag._
-  - If the endpoint is deprecated, and if so, its planned removal date
-
+- `desc` for the method summary. This must include a summary string no more than 120 characters.
+- `detail` for each `desc` block. This must be a string.
+- `success` for each `desc` block. This defines the success response.
+- `tags` for each `desc` block. This should be a string, or array of strings.
 - `params` for the method parameters. This acts as description,
   [validation, and coercion of the parameters](https://github.com/ruby-grape/grape#parameter-validation-and-coercion)
 
@@ -45,6 +96,7 @@ A good example is as follows:
 desc 'Get all broadcast messages' do
   detail 'This feature was introduced in GitLab 8.12.'
   success Entities::System::BroadcastMessage
+  tags ['broadcast_messages']
 end
 params do
   optional :page,     type: Integer, desc: 'Current page number'
@@ -57,37 +109,149 @@ get do
 end
 ```
 
+### Defining endpoint desc
+
+Every endpoint must include a summary string in the `desc` block.
+The summary describes the operation on the REST resource and is used in the generated OpenAPI documentation.
+
+The summary _should_:
+
+- Begin with an action verb aligned to the HTTP method (Get, List, Create, Update, Delete)
+- Identify the resource being operated on
+- Include qualifiers when needed to distinguish similar endpoints
+
+The summary _must_:
+
+- Be a string literal or interpolated string (not a variable or method call)
+- Not exceed 120 characters
+
+A good example is as follows:
+
+```ruby
+  desc 'Get a specific environment' do
+    detail 'Returns environment details. This feature was introduced in GitLab 18.12.'
+    success Entities::Environment
+  end
+```
+
+A bad example is as follows:
+
+```ruby
+  desc 'Get a specific environment. Returns environment details. This feature was introduced in GitLab 18.12.' do
+    detail 'Only available to authenticated project owner.'
+    success Entities::Environment
+  end
+```
+
+### Defining endpoint details
+
+Every endpoint must have a `detail` value for each `desc` block. The value must be a string.
+The `detail` should describe any additional details not covered by the `desc` such as:
+
+- The GitLab version when the endpoint was added.
+- If it is behind a feature flag, mention that instead: `This feature is gated by the :feature\_flag\_symbol feature flag.`
+- If the endpoint is deprecated, and if so, its planned removal date
+
+### Defining endpoint success
+
+Every endpoint must have a `success` value for each `desc` block.
+The value should accurately describe a success response for the endpoint.
+
+Do not use the `http_codes` option to document the success response.
+Instead, format the response based on the endpoint response:
+
+- If the endpoint responds with an object, include the `Grape::Entity` class.
+  For example, `success Entities::System::BroadcastMessage`
+- If the endpoint does not respond with an object, include a status code and message.
+  For example, `success code: 204, message: 'Record was deleted'`
+
+### Marking endpoints as deprecated
+
+When deprecating an endpoint, add the following to the `desc` block:
+
+- Add a `deprecated true` [option](https://github.com/ruby-grape/grape-swagger?tab=readme-ov-file#deprecating-routes).
+- Add a note on the deprecation timing to the detail option.
+
+```ruby
+desc 'Get legacy broadcast messages' do
+  detail 'Deprecated in GitLab 17.0. Use /api/v4/broadcast_messages instead.'
+  deprecated true
+  success Entities::System::BroadcastMessage
+  tags ['broadcast_messages']
+end
+```
+
+Together, these make the deprecation programmatically discoverable in the OpenAPI specification.
+
+### Choosing a tag
+
+Every endpoint must have at least one value defined in `tags` per `desc` block.
+The tags should describe the type of objects being acted upon in the API call, in their plural form.
+
+**In most cases, the filename of the API is sufficient** but can also be too granular.
+
+#### Good tag names
+
+- `audit_events`
+- `users`
+- `clusters`
+
+#### Bad tag names
+
+- `commit` (singular)
+- `epic_management` (coupled to a product category, not an entity)
+
+If the correct name for a tag is not clear, speak to technical writers for guidance.
+
 ## Breaking changes
 
-We must not make breaking changes to our REST API v4, even in major GitLab releases.
+We must not make breaking changes to our REST API v4, even in major GitLab releases. See [what is a breaking change](#what-is-a-breaking-change) and [what is not a breaking change](#what-is-not-a-breaking-change).
 
 Our REST API maintains its own versioning independent of GitLab versioning.
-The current REST API version is `4`. [We commit to follow semantic versioning for our REST API](../api/rest/index.md#compatibility-guidelines),
-which means we cannot make breaking changes until a major version change (most likely, `5`).
+The current REST API version is `4`. Because [we commit to follow semantic versioning for our REST API](../api/rest/_index.md), we cannot make breaking changes to it. A major version change for our REST API (most likely, `5`) is currently not planned, or scheduled.
 
-Because version `5` is not scheduled, we allow rare [exceptions](#exceptions).
+The exception is API features that are [marked as experimental or beta](#experimental-beta-and-generally-available-features). These features can be removed or changed at any time.
 
-### Accommodating backward compatibility instead of breaking changes
+### What to do instead of a breaking change
 
-Backward compatibility can often be accommodated in the API by continuing to adapt a changed feature to
-the old API schema. For example, our REST API
-[exposes](https://gitlab.com/gitlab-org/gitlab/-/blob/c104f6b8/lib/api/entities/merge_request_basic.rb#L43-47) both
-`work_in_progress` and `draft` fields.
+The following sections suggest alternatives to making breaking changes.
 
-### Exceptions
+#### Adapt the schema to the change without breaking it
 
-The exception is only when:
+If a feature changes, we should aim to accommodate backwards-compatibility without making a breaking
+change to the API.
 
-- A feature must be removed in a major GitLab release.
-- Backward compatibility cannot be maintained
-  [in any form](#accommodating-backward-compatibility-instead-of-breaking-changes).
+Instead of introducing a breaking change, change the API controller layer to adapt to the feature change in a way that
+does not present any change to the API consumer.
 
-This exception should be rare.
+For example, we renamed the merge request _WIP_ feature to _Draft_. To accomplish the change, we:
 
-Even in this exception, rather than removing a field or argument, we must always do the following:
+- Added a new `draft` field to the API response.
+- Also kept the old [`work_in_progress`](https://gitlab.com/gitlab-org/gitlab/-/blob/c104f6b8/lib/api/entities/merge_request_basic.rb#L47) field.
 
-- Return an empty response for a field (for example, `"null"` or `[]`).
-- Turn an argument into a no-op.
+Customers did not experience any disruption to their existing API integrations.
+
+#### Maintain API backwards-compatibility for feature removals
+
+Even when a feature that an endpoint interfaced with is [removed](deprecation_guidelines/_index.md) in a major GitLab version, we must still maintain API backwards-compatibility.
+
+Acceptable solutions for maintaining API backwards-compatibility include:
+
+- Return a sensible static value from a field, or an empty response (for example,
+  `null` or `[]`).
+- Turn an argument into a no-op by continuing to accept the argument but having it
+  no longer be operational.
+
+The key principle is that existing customer API integrations must not experience errors.
+The endpoints continue to respond with the same fields and accept the same
+arguments, although the underlying feature interaction is no longer operational.
+
+The intended changes must be documented ahead of time
+[following the v4 deprecation guide](documentation/restful_api_styleguide.md#deprecations).
+
+For example, when we removed an application setting, we
+[kept the old API field](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/83984)
+which now returns a sensible static value.
 
 ## What is a breaking change
 
@@ -100,7 +264,7 @@ Some examples of breaking changes are:
 - Changing the type of fields in the response. In a JSON response, this would be a change of any `Number`, `String`, `Boolean`, `Array`, or `Object` type to another type.
 - Adding a new **required** argument.
 - Changing authentication, authorization, or other header requirements.
-- Changing [any status code](../api/rest/index.md#status-codes) other than `500`.
+- Changing [any status code](../api/rest/troubleshooting.md#status-codes) other than `500`.
 
 ## What is not a breaking change
 
@@ -108,23 +272,49 @@ Some examples of non-breaking changes:
 
 - Any additive change, such as adding endpoints, non-required arguments, fields, or enum values.
 - Changes to error messages.
-- Changes from a `500` status code to [any supported status code](../api/rest/index.md#status-codes) (this is a bugfix).
+- Changes from a `500` status code to [any supported status code](../api/rest/troubleshooting.md#status-codes) (this is a bugfix).
 - Changes to the order of fields returned in a response.
+
+## Experimental, beta, and generally available features
+
+You can add API elements as [experimental and beta features](../policy/development_stages_support.md). They must be additive changes, otherwise they are categorized as
+[a breaking change](#what-is-not-a-breaking-change).
+
+API elements marked as experiment or beta are exempt from the [breaking changes](#breaking-changes) policy,
+and can be changed or removed at any time without prior notice.
+
+While in the [experiment status](../policy/development_stages_support.md#experiment):
+
+- Use a feature flag that is [off by default](feature_flags/_index.md#beta-type).
+- When the flag is off:
+  - Any added endpoints must return `404 Not Found`.
+  - Any added arguments must be ignored.
+  - Any added fields must not be exposed.
+- The [API documentation](../api/api_resources.md) must [document the experimental status](documentation/experiment_beta.md) and the feature flag [must be documented](documentation/feature_flags.md).
+- The [OpenAPI documentation](../api/openapi/openapi_interactive.md) must not describe the changes (for example, using [the `hidden` option](https://github.com/ruby-grape/grape-swagger#hiding-an-endpoint-)).
+
+While in the [beta status](../policy/development_stages_support.md#beta):
+
+- Use a feature flag that is [on by default](feature_flags/_index.md#beta-type).
+- The [API documentation](../api/api_resources.md) must [document the beta status](documentation/experiment_beta.md) and the feature flag [must be documented](documentation/feature_flags.md).
+- The [OpenAPI documentation](../api/openapi/openapi_interactive.md) must not describe the changes.
+
+When the feature becomes [generally available](../policy/development_stages_support.md#generally-available):
+
+- [Remove](feature_flags/controls.md#cleaning-up) the feature flag.
+- Remove the [experiment or beta status](documentation/experiment_beta.md) from the [API documentation](../api/api_resources.md).
+- Add the [OpenAPI documentation](../api/openapi/openapi_interactive.md) to make the changes programmatically discoverable.
 
 ## Declared parameters
 
 Grape allows you to access only the parameters that have been declared by your
 `params` block. It filters out the parameters that have been passed, but are not
-allowed.
-
-– <https://github.com/ruby-grape/grape#declared>
+allowed. For more details, see the Ruby Grape [documentation for `declared()`](https://github.com/ruby-grape/grape#declared).
 
 ### Exclude parameters from parent namespaces
 
-By default `declared(params)`includes parameters that were defined in all
-parent namespaces.
-
-– <https://github.com/ruby-grape/grape#include-parent-namespaces>
+By default `declared(params)` includes parameters that were defined in all
+parent namespaces. For more details, see the Ruby Grape [documentation for `include_parent_namespaces`](https://github.com/ruby-grape/grape#include-parent-namespaces).
 
 In most cases you should exclude parameters from the parent namespaces:
 
@@ -147,9 +337,9 @@ User.create(params) # imagine the user submitted `admin=1`... :)
 User.create(declared(params, include_parent_namespaces: false).to_h)
 ```
 
-NOTE:
-`declared(params)` return a `Hashie::Mash` object, on which you must
-call `.to_h`.
+> [!note]
+> `declared(params)` return a `Hashie::Mash` object, on which you must
+> call `.to_h`.
 
 But we can use `params[key]` directly when we access single elements.
 
@@ -200,6 +390,12 @@ pass `params` to be `{ user_ids: [] }`.
 There is [an open issue in the Grape tracker](https://github.com/ruby-grape/grape/issues/2068)
 to make this easier.
 
+## Workhorse-assisted uploads
+
+All REST API endpoints that accept file content must use Workhorse-assisted uploads.
+
+See the [Workhorse uploads documentation](uploads/_index.md#workhorse-assisted-uploads) for implementation details.
+
 ## Using HTTP status helpers
 
 For non-200 HTTP responses, use the provided helpers in `lib/api/helpers.rb` to ensure correct behavior (like `not_found!` or `no_content!`). These `throw` inside Grape and abort the execution of your endpoint.
@@ -218,9 +414,9 @@ the `update` method in controllers. With Grape, the framework we use to write
 the GitLab API, you must explicitly set the `PATCH` or `PUT` HTTP verb for an
 endpoint that does updates.
 
-If the endpoint updates *all* attributes of a given resource, use the
+If the endpoint updates all attributes of a given resource, use the
 [`PUT`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/PUT) request
-method. If the endpoint updates *some* attributes of a given resource, use the
+method. If the endpoint updates some attributes of a given resource, use the
 [`PATCH`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/PATCH)
 request method.
 
@@ -242,7 +438,7 @@ helper usage must be in wrapped into the `expose_path` helper call.
 
 For instance:
 
-```haml
+```ruby
 - endpoint = expose_path(api_v4_projects_issues_related_merge_requests_path(id: @project.id, issue_iid: @issue.iid))
 ```
 
@@ -302,7 +498,7 @@ them to platform for further processing. It saves some back-and-forth
 from the server to the platform if we identify invalid parameters at the beginning.
 
 If you need to add a custom validator, it would be added to
-it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/api/validations/validators) directory.
+it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/api/validations/validators) directory.
 Since we use [Grape](https://github.com/ruby-grape/grape) to add our API
 we inherit from the `Grape::Validations::Validators::Base` class in our validator class.
 Now, all you have to do is define the `validate_param!` method which takes
@@ -318,11 +514,11 @@ Grape::Validations.register_validator(<validator name as symbol>, ::API::Helpers
 ```
 
 Once you add the validator, make sure you add the `rspec`s for it into
-it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/spec/lib/api/validations/validators) directory.
+it's own file in the [`validators`](https://gitlab.com/gitlab-org/gitlab/-/tree/master/spec/lib/api/validations/validators) directory.
 
 ## Internal API
 
-The [internal API](internal_api/index.md) is documented for internal use. Keep it up to date so we know what endpoints
+The [internal API](internal_api/_index.md) is documented for internal use. Keep it up to date so we know what endpoints
 different components are making use of.
 
 ## Avoiding N+1 problems

@@ -36,8 +36,9 @@ module API
           requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
         end
         resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
-          desc 'API to interface with MLFlow Client, REST API version 1.28.0' do
-            detail 'This feature is gated by :ml_experiment_tracking.'
+          desc 'API to interface with MLflow Client, REST API version 1.28.0' do
+            detail 'MLflow compatible API.'
+            tags ['mlops']
           end
           namespace MLFLOW_API_PREFIX do
             mount ::API::Ml::Mlflow::Experiments

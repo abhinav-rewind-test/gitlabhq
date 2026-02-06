@@ -13,11 +13,27 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
   end
 
   describe 'Sidebar > Monitor' do
-    it 'renders the menu in the sidebar' do
-      visit project_path(project)
+    context 'when hide_error_tracking_features is disabled' do
+      before do
+        stub_feature_flags(hide_error_tracking_features: false)
+      end
 
-      within_testid('super-sidebar') do
-        expect(page).to have_link('Error Tracking', visible: :hidden)
+      it 'renders the menu in the sidebar' do
+        visit project_path(project)
+
+        within_testid('super-sidebar') do
+          expect(page).to have_link('Error Tracking', visible: :hidden)
+        end
+      end
+    end
+
+    context 'when hide_error_tracking_features is enabled' do
+      it 'renders the menu in the sidebar' do
+        visit project_path(project)
+
+        within_testid('super-sidebar') do
+          expect(page).not_to have_link('Error Tracking', visible: :hidden)
+        end
       end
     end
   end
@@ -36,7 +52,7 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
       end
 
       it 'renders form for incident management' do
-        expect(page).to have_selector('h4', text: 'Incidents')
+        expect(page).to have_selector('h2', text: 'Incidents')
       end
 
       it 'sets correct default values' do
@@ -84,6 +100,7 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
         end
 
         before do
+          stub_feature_flags(hide_error_tracking_features: false)
           WebMock.stub_request(:get, sentry_list_projects_url)
           .to_return(
             status: 200,
@@ -97,7 +114,7 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
 
           wait_for_requests
 
-          within '.js-error-tracking-settings' do
+          within '#js-error-tracking-settings' do
             click_button('Expand')
             choose('cloud-hosted Sentry')
           end
@@ -142,7 +159,7 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
 
           wait_for_requests
 
-          within '.js-error-tracking-settings' do
+          within '#js-error-tracking-settings' do
             click_button('Expand')
             choose('cloud-hosted Sentry')
             check('Active')
@@ -158,18 +175,22 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
       end
 
       context 'with integrated error tracking backend' do
+        before do
+          stub_feature_flags(hide_error_tracking_features: false)
+        end
+
         it 'successfully fills and submits the form' do
           visit project_settings_operations_path(project)
 
           wait_for_requests
 
-          within '.js-error-tracking-settings' do
+          within '#js-error-tracking-settings' do
             click_button('Expand')
           end
 
           expect(page).to have_content('Error tracking backend')
 
-          within '.js-error-tracking-settings' do
+          within '#js-error-tracking-settings' do
             check('Active')
             choose('GitLab')
           end
@@ -182,11 +203,11 @@ RSpec.describe 'Projects > Settings > For a forked project', :js, feature_catego
 
           assert_text('Your changes have been saved')
 
-          within '.js-error-tracking-settings' do
+          within '#js-error-tracking-settings' do
             click_button('Expand')
           end
 
-          expect(page).to have_content('Paste this DSN into your Sentry SDK')
+          expect(page).to have_content('Paste this Data Source Name (DSN) into your Sentry SDK')
         end
       end
     end

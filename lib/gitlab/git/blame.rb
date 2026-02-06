@@ -5,24 +5,32 @@ module Gitlab
     class Blame
       include Gitlab::EncodingHelper
 
+      IgnoreRevsFormatError = Class.new(StandardError)
+      IgnoreRevsFileError = Class.new(StandardError)
+
       attr_reader :lines, :blames, :range
 
-      def initialize(repository, sha, path, range: nil)
+      def initialize(repository, sha, path, range: nil, ignore_revisions_blob: nil)
         @repo = repository
         @sha = sha
         @path = path
         @range = range
         @lines = []
+        @ignore_revisions_blob = ignore_revisions_blob
         @blames = load_blame
       end
 
       def each
+        return enum_for(:each) unless block_given?
+
         @blames.each do |blame|
           yield(blame.commit, blame.line, blame.previous_path, blame.span)
         end
       end
 
       private
+
+      attr_reader :ignore_revisions_blob
 
       def range_spec
         "#{range.first},#{range.last}" if range
@@ -34,7 +42,8 @@ module Gitlab
       end
 
       def fetch_raw_blame
-        @repo.gitaly_commit_client.raw_blame(@sha, @path, range: range_spec)
+        @repo.gitaly_commit_client.raw_blame(@sha, @path, range: range_spec,
+          ignore_revisions_blob: ignore_revisions_blob)
       rescue ArgumentError
         # Return an empty result when the blame range is out-of-range or path is not found
         ""
@@ -43,7 +52,6 @@ module Gitlab
       def process_raw_blame(output)
         start_line = nil
         lines = []
-        final = []
         info = {}
         commits = {}
         commit_id = nil
@@ -53,7 +61,7 @@ module Gitlab
         output.split("\n").each do |line|
           if line[0, 1] == "\t"
             lines << line[1, line.size]
-          elsif m = /^(\w{40}) (\d+) (\d+)\s?(\d+)?/.match(line)
+          elsif m = /^(\w{40}\w{24}?) (\d+) (\d+)\s?(\d+)?/.match(line)
             # Removed these instantiations for performance but keeping them for reference:
             # commit_id, old_lineno, lineno, span = m[1], m[2].to_i, m[3].to_i, m[4].to_i
             commit_id = m[1]
@@ -76,8 +84,8 @@ module Gitlab
         end
 
         # get it together
-        info.sort.each do |lineno, (commit_id, old_lineno, span)|
-          final << BlameLine.new(
+        final = info.sort.map do |lineno, (commit_id, old_lineno, span)|
+          BlameLine.new(
             lineno,
             old_lineno,
             commits[commit_id],

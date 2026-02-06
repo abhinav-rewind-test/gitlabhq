@@ -73,6 +73,19 @@ RSpec.describe JiraConnect::InstallationsController, feature_category: :integrat
         expect(response).to have_gitlab_http_status(:ok)
       end
 
+      it 'passes current organization id to UpdateService' do
+        expect(JiraConnectInstallations::UpdateService)
+          .to receive(:execute)
+          .with(
+            installation,
+            ActionController::Parameters
+              .new(instance_url: nil, organization_id: current_organization.id)
+              .permit(:instance_url, :organization_id))
+          .and_call_original
+
+        do_request
+      end
+
       context 'with instance_url param' do
         let(:update_instance_url) { 'https://example.com' }
 

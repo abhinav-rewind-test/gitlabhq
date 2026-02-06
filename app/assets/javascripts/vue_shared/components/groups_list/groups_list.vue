@@ -1,10 +1,15 @@
 <script>
+import {
+  TIMESTAMP_TYPES,
+  TIMESTAMP_TYPE_CREATED_AT,
+} from '~/vue_shared/components/resource_lists/constants';
 import GroupsListItem from './groups_list_item.vue';
 
 export default {
+  name: 'GroupsList',
   components: { GroupsListItem },
   props: {
-    groups: {
+    items: {
       type: Array,
       required: true,
     },
@@ -18,19 +23,34 @@ export default {
       required: false,
       default: '',
     },
+    timestampType: {
+      type: String,
+      required: false,
+      default: TIMESTAMP_TYPE_CREATED_AT,
+      validator(value) {
+        return TIMESTAMP_TYPES.includes(value);
+      },
+    },
+    includeMicrodata: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
 };
 </script>
 
 <template>
-  <ul class="gl-p-0 gl-list-style-none">
+  <ul class="gl-list-none gl-p-0">
     <groups-list-item
-      v-for="group in groups"
+      v-for="group in items"
       :key="group.id"
       :group="group"
       :show-group-icon="showGroupIcon"
-      :class="listItemClass"
-      @delete="$emit('delete', $event)"
+      :list-item-class="listItemClass"
+      :timestamp-type="timestampType"
+      :include-microdata="includeMicrodata"
+      @refetch="$emit('refetch')"
     />
   </ul>
 </template>

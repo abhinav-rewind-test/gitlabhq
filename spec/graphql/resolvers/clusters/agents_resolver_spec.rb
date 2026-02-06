@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Resolvers::Clusters::AgentsResolver do
+RSpec.describe Resolvers::Clusters::AgentsResolver, feature_category: :deployment_management do
   include GraphqlHelpers
 
   specify do
@@ -15,15 +15,15 @@ RSpec.describe Resolvers::Clusters::AgentsResolver do
 
   describe '#resolve' do
     let_it_be(:project) { create(:project) }
-    let_it_be(:maintainer) { create(:user, developer_projects: [project]) }
+    let_it_be(:maintainer) { create(:user, developer_of: project) }
     let_it_be(:reporter) { create(:user) }
     let_it_be(:agents) { create_list(:cluster_agent, 2, project: project) }
+
+    let(:ctx) { { current_user: current_user } }
 
     before do
       project.add_reporter(reporter)
     end
-
-    let(:ctx) { { current_user: current_user } }
 
     subject { resolve_agents }
 
@@ -49,7 +49,7 @@ RSpec.describe Resolvers::Clusters::AgentsResolver do
   end
 end
 
-RSpec.describe Resolvers::Clusters::AgentsResolver.single do
+RSpec.describe Resolvers::Clusters::AgentsResolver.single, feature_category: :deployment_management do
   it { expect(described_class).to be < Resolvers::Clusters::AgentsResolver }
 
   it { expect(described_class.type).to eq(::Types::Clusters::AgentType) }

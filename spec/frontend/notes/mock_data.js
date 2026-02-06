@@ -1,6 +1,5 @@
 // Copied to ee/spec/frontend/notes/mock_data.js
 import { HTTP_STATUS_OK } from '~/lib/utils/http_status';
-import { __ } from '~/locale';
 
 export const notesDataMock = {
   discussionsPath: '/gitlab-org/gitlab-foss/issues/26/discussions.json',
@@ -66,6 +65,7 @@ export const noteableDataMock = {
   web_url: '/gitlab-org/gitlab-foss/issues/26',
   noteableType: 'Issue',
   blocked_by_issues: [],
+  archived: false,
 };
 
 export const lastFetchedAt = '1501862675';
@@ -134,10 +134,12 @@ export const note = {
     state: 'active',
     avatar_url: 'https://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=80&d=identicon',
     path: '/root',
+    user_type: 'human',
   },
   created_at: '2017-08-10T15:24:03.087Z',
   updated_at: '2017-08-10T15:24:03.087Z',
   system: false,
+  imported: true,
   noteable_id: 67,
   noteable_type: 'Issue',
   noteable_iid: 7,
@@ -177,7 +179,7 @@ export const note = {
   path: '/gitlab-org/gitlab-foss/notes/546',
 };
 
-export const discussionMock = {
+export const createDiscussionMock = () => ({
   id: '9e3bd2f71a01de45fd166e6719eb380ad9f270b1',
   reply_id: '9e3bd2f71a01de45fd166e6719eb380ad9f270b1',
   expanded: true,
@@ -322,7 +324,9 @@ export const discussionMock = {
   resolvable: true,
   active: true,
   confidential: false,
-};
+});
+
+export const discussionMock = createDiscussionMock();
 
 export const loggedOutnoteableData = {
   id: '98',
@@ -694,8 +698,7 @@ export const notesWithDescriptionChanges = [
         noteable_type: 'Issue',
         resolvable: false,
         noteable_iid: 12,
-        note:
-          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+        note: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
         note_html:
           '<p dir="auto">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>',
         current_user: { can_edit: true, can_award_emoji: true },
@@ -741,8 +744,7 @@ export const notesWithDescriptionChanges = [
         noteable_type: 'Issue',
         resolvable: false,
         noteable_iid: 12,
-        note:
-          'Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.',
+        note: 'Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.',
         note_html:
           '<p dir="auto">Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.</p>',
         current_user: { can_edit: true, can_award_emoji: true },
@@ -968,8 +970,7 @@ export const collapsedSystemNotes = [
         noteable_type: 'Issue',
         resolvable: false,
         noteable_iid: 12,
-        note:
-          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+        note: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
         note_html:
           '<p dir="auto">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>',
         current_user: { can_edit: true, can_award_emoji: true },
@@ -1015,8 +1016,7 @@ export const collapsedSystemNotes = [
         noteable_type: 'Issue',
         resolvable: false,
         noteable_iid: 12,
-        note:
-          'Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.',
+        note: 'Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.',
         note_html:
           '<p dir="auto">Varius vel pharetra vel turpis nunc eget lorem. Ipsum dolor sit amet consectetur adipiscing.</p>',
         current_user: { can_edit: true, can_award_emoji: true },
@@ -1303,15 +1303,73 @@ export const draftDiffDiscussion = {
 
 export const notesFilters = [
   {
-    title: __('Show all activity'),
+    title: 'Show all activity',
     value: 0,
   },
   {
-    title: __('Show comments only'),
+    title: 'Show comments only',
     value: 1,
   },
   {
-    title: __('Show history only'),
+    title: 'Show history only',
     value: 2,
   },
 ];
+
+export const singleNoteResponseFactory = ({ urlHash, authorId = 1 } = {}) => {
+  const id = urlHash?.replace('note_', '') || '5678';
+  return {
+    data: {
+      note: {
+        id: `gid://gitlab/Note/${id}`,
+        discussion: {
+          id: 'gid://gitlab/Discussion/1',
+          userPermissions: {
+            resolveNote: true,
+          },
+          notes: {
+            nodes: [
+              {
+                id: `gid://gitlab/Note/${id}`,
+                author: {
+                  id: `gid://gitlab/User/${authorId}`,
+                  name: 'Administrator',
+                  username: 'root',
+                  avatar_url: '',
+                  web_url: '',
+                  web_path: '',
+                },
+                award_emoji: {
+                  nodes: [
+                    {
+                      emoji: 'test',
+                      name: 'test',
+                      user: {
+                        id: 'gid://gitlab/User/1',
+                        name: 'Administrator',
+                        username: 'root',
+                        avatar_url: '',
+                        web_url: '',
+                        web_path: '',
+                      },
+                    },
+                  ],
+                },
+                note_html: 'my quick note',
+                created_at: '2020-01-01T10:00:00.000Z',
+                last_edited_at: null,
+                last_edited_by: null,
+                internal: false,
+                url: '/note/1',
+                userPermissions: {
+                  awardEmoji: true,
+                  adminNote: true,
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+};

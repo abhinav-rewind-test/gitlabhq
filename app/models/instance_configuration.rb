@@ -10,17 +10,21 @@ class InstanceConfiguration
 
   def settings
     @configuration ||= Rails.cache.fetch(CACHE_KEY, expires_in: EXPIRATION_TIME) do
-      { ssh_algorithms_hashes: ssh_algorithms_hashes,
-        host: host,
-        gitlab_pages: gitlab_pages,
-        ci_cd_limits: ci_cd_limits,
-        size_limits: size_limits,
-        package_file_size_limits: package_file_size_limits,
-        rate_limits: rate_limits }.deep_symbolize_keys
+      configuration
     end
   end
 
   private
+
+  def configuration
+    { ssh_algorithms_hashes: ssh_algorithms_hashes,
+      host: host,
+      gitlab_pages: gitlab_pages,
+      ci_cd_limits: ci_cd_limits,
+      size_limits: size_limits,
+      package_file_size_limits: package_file_size_limits,
+      rate_limits: rate_limits }.deep_symbolize_keys
+  end
 
   def ssh_algorithms_hashes
     SSH_ALGORITHMS.select { |algo| ssh_algorithm_enabled?(algo) }.map { |algo| ssh_algorithm_hashes(algo) }.compact
@@ -77,7 +81,7 @@ class InstanceConfiguration
   end
 
   def rate_limits
-    {
+    rate_limits = {
       unauthenticated: {
         enabled: application_settings[:throttle_unauthenticated_enabled],
         requests_per_period: application_settings[:throttle_unauthenticated_requests_per_period],
@@ -128,8 +132,46 @@ class InstanceConfiguration
         enabled: application_settings[:users_get_by_id_limit] > 0,
         requests_per_period: application_settings[:users_get_by_id_limit],
         period_in_seconds: 10.minutes
+      },
+      pipeline_creation: application_setting_limit_per_minute(:pipeline_limit_per_project_user_sha),
+      users_api_followers: application_setting_limit_per_minute(:users_api_limit_followers),
+      users_api_following: application_setting_limit_per_minute(:users_api_limit_following),
+      users_api_status: application_setting_limit_per_minute(:users_api_limit_status),
+      users_api_ssh_keys: application_setting_limit_per_minute(:users_api_limit_ssh_keys),
+      users_api_ssh_key: application_setting_limit_per_minute(:users_api_limit_ssh_key),
+      users_api_gpg_keys: application_setting_limit_per_minute(:users_api_limit_gpg_keys),
+      users_api_gpg_key: application_setting_limit_per_minute(:users_api_limit_gpg_key),
+      groups_api: application_setting_limit_per_minute(:groups_api_limit),
+      group_api: application_setting_limit_per_minute(:group_api_limit),
+      group_projects_api: application_setting_limit_per_minute(:group_projects_api_limit),
+      group_shared_groups_api: application_setting_limit_per_minute(:group_shared_groups_api_limit),
+      group_invited_groups_api: application_setting_limit_per_minute(:group_invited_groups_api_limit),
+      group_archive_unarchive_api: application_setting_limit_per_minute(:group_archive_unarchive_api_limit),
+      projects_api: application_setting_limit_per_minute(:projects_api_limit),
+      projects_api_unauthenticated: application_setting_limit_per_minute(:projects_api_rate_limit_unauthenticated),
+      project_api: application_setting_limit_per_minute(:project_api_limit),
+      user_projects_api: application_setting_limit_per_minute(:user_projects_api_limit),
+      user_contributed_projects_api: application_setting_limit_per_minute(:user_contributed_projects_api_limit),
+      user_starred_projects_api: application_setting_limit_per_minute(:user_starred_projects_api_limit),
+      project_members_api: application_setting_limit_per_minute(:project_members_api_limit),
+      git_ssh_operations: application_setting_limit_per_minute(:gitlab_shell_operation_limit),
+      files_api_unauthenticated: {
+        enabled: application_settings[:throttle_unauthenticated_files_api_enabled],
+        requests_per_period: application_settings[:throttle_unauthenticated_files_api_requests_per_period],
+        period_in_seconds: application_settings[:throttle_unauthenticated_files_api_period_in_seconds]
+      },
+      files_api_authenticated: {
+        enabled: application_settings[:throttle_authenticated_files_api_enabled],
+        requests_per_period: application_settings[:throttle_authenticated_files_api_requests_per_period],
+        period_in_seconds: application_settings[:throttle_authenticated_files_api_period_in_seconds]
       }
     }
+
+    unless application_settings[:create_organization_api_limit].nil?
+      rate_limits[:organizations_api] = application_setting_limit_per_minute(:create_organization_api_limit)
+    end
+
+    rate_limits
   end
 
   def ci_cd_limits
@@ -188,3 +230,5 @@ class InstanceConfiguration
     }
   end
 end
+
+InstanceConfiguration.prepend_mod_with('InstanceConfiguration')

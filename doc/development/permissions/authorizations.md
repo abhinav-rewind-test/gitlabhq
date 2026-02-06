@@ -1,10 +1,9 @@
 ---
-stage: Govern
-group: Authentication
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Software Supply Chain Security
+group: Authorization
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Authorization
 ---
-
-# Authorization
 
 ## Where should permissions be checked?
 
@@ -17,7 +16,7 @@ For more information, see [guidelines for reusing abstractions](../reusing_abstr
 Protecting the same resources at many points means that if one layer of defense is compromised
 or missing, customer data is still protected by the additional layers.
 
-For more information on permissions, see the permissions section in the [secure coding guidelines](../secure_coding_guidelines.md#permissions).
+For more information on permissions, see the permissions section in the [secure coding guidelines](../secure_coding_guidelines/_index.md#permissions).
 
 ### Considerations
 
@@ -46,7 +45,7 @@ check permissions.
 
 ### Frontend
 
-When using an ability check in UI elements, make sure to _also_ use an ability
+When using an ability check in UI elements, make sure to also use an ability
 check for the underlying backend code, if there is any. This ensures there is
 absolutely no way to use the feature until the user has proper access.
 

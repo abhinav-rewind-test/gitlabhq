@@ -19,7 +19,7 @@ export default {
     toggleFocusMode() {
       hide(this.$refs.toggleFocusModeButton);
 
-      const issueBoardsContent = document.querySelector('.content-wrapper > .js-focus-mode-board');
+      const issueBoardsContent = document.querySelector('.js-content-panels');
       issueBoardsContent?.classList.toggle('is-focused');
 
       this.isFullscreen = !this.isFullscreen;
@@ -32,7 +32,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-ml-3 gl-display-none gl-md-display-flex gl-align-items-center">
+  <div class="gl-hidden gl-items-center @md/panel:gl-flex">
     <gl-button
       ref="toggleFocusModeButton"
       v-gl-tooltip

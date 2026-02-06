@@ -1,6 +1,8 @@
 import { GlButtonGroup, GlButton } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
+import { mockTracking } from 'helpers/tracking_helper';
+import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import BlobHeaderViewerSwitcher from '~/blob/components/blob_header_viewer_switcher.vue';
 import {
   RICH_BLOB_VIEWER,
@@ -11,18 +13,22 @@ import {
 
 describe('Blob Header Viewer Switcher', () => {
   let wrapper;
+  let trackingSpy;
 
   function createComponent(propsData = { showViewerToggles: true }) {
     wrapper = mountExtended(BlobHeaderViewerSwitcher, {
       propsData,
+      directives: {
+        GlHoverLoad: createMockDirective('gl-hover-load'),
+      },
     });
   }
 
   const findSimpleViewerButton = () => wrapper.findComponent('[data-viewer="simple"]');
   const findRichViewerButton = () => wrapper.findComponent('[data-viewer="rich"]');
-  const findBlameButton = () => wrapper.findByText('Blame');
+  const findBlameButton = () => wrapper.findByTestId('blame-button');
 
-  describe('intiialization', () => {
+  describe('initialization', () => {
     it('is initialized with simple viewer as active', () => {
       createComponent();
       expect(findSimpleViewerButton().props('selected')).toBe(true);
@@ -45,7 +51,7 @@ describe('Blob Header Viewer Switcher', () => {
     });
 
     it('renders exactly 2 buttons with predefined actions', () => {
-      expect(buttons.length).toBe(2);
+      expect(buttons).toHaveLength(2);
       [SIMPLE_BLOB_VIEWER_TITLE, RICH_BLOB_VIEWER_TITLE].forEach((title, i) => {
         expect(buttons.at(i).attributes('title')).toBe(title);
       });
@@ -84,9 +90,8 @@ describe('Blob Header Viewer Switcher', () => {
     });
   });
 
-  it('does not render simple and rich viewer buttons if `showViewerToggles` is `false`', async () => {
+  it('does not render simple and rich viewer buttons if `showViewerToggles` is `false`', () => {
     createComponent({ showViewerToggles: false });
-    await nextTick();
 
     expect(findSimpleViewerButton().exists()).toBe(false);
     expect(findRichViewerButton().exists()).toBe(false);
@@ -99,6 +104,23 @@ describe('Blob Header Viewer Switcher', () => {
     expect(findBlameButton().exists()).toBe(false);
   });
 
+  it('adds a hover directive to the Blame button', () => {
+    createComponent({ showBlameToggle: true });
+
+    const hoverLoadDirective = getBinding(findBlameButton().element, 'gl-hover-load');
+
+    expect(hoverLoadDirective).toBeDefined();
+    expect(hoverLoadDirective.value).toBeInstanceOf(Function);
+  });
+
+  it('emits preload-blame event on focus', () => {
+    createComponent({ showBlameToggle: true });
+
+    findBlameButton().vm.$emit('focus');
+
+    expect(wrapper.emitted('preload-blame')).toHaveLength(1);
+  });
+
   it('emits an event when the Blame button is clicked', async () => {
     createComponent({ showBlameToggle: true });
 
@@ -106,5 +128,27 @@ describe('Blob Header Viewer Switcher', () => {
     await nextTick();
 
     expect(wrapper.emitted('blame')).toHaveLength(1);
+  });
+
+  it('emits a tracking event when the Blame button is clicked', async () => {
+    trackingSpy = mockTracking(undefined, wrapper.element, jest.spyOn);
+    createComponent({ showBlameToggle: true });
+
+    findBlameButton().trigger('click');
+    await nextTick();
+
+    expect(trackingSpy).toHaveBeenCalledWith(
+      undefined,
+      'open_blame_viewer_on_blob_page',
+      expect.any(Object),
+    );
+  });
+
+  describe('viewer toggles', () => {
+    it('renders text toggles', () => {
+      createComponent({ showViewerToggles: true });
+      expect(findSimpleViewerButton().text()).toBe('Code');
+      expect(findRichViewerButton().text()).toBe('Preview');
+    });
   });
 });

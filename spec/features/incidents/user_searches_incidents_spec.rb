@@ -4,14 +4,11 @@ require 'spec_helper'
 
 RSpec.describe 'User searches Incident Management incidents', :js, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
   let_it_be(:incident) { create(:incident, project: project) }
 
-  before_all do
-    project.add_developer(developer)
-  end
-
   before do
+    stub_feature_flags(hide_incident_management_features: false)
     sign_in(developer)
 
     visit project_incidents_path(project)

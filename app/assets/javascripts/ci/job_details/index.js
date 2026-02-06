@@ -27,11 +27,13 @@ export const initJobDetails = () => {
     artifactHelpUrl,
     deploymentHelpUrl,
     runnerSettingsUrl,
-    subscriptionsMoreMinutesUrl,
     retryOutdatedJobDocsUrl,
     aiRootCauseAnalysisAvailable,
     testReportSummaryUrl,
     pipelineTestReportUrl,
+    logViewerPath,
+    duoFeaturesEnabled,
+    canSetPipelineVariables,
   } = el.dataset;
 
   const fullScreenAPIAvailable = document.fullscreenEnabled;
@@ -47,6 +49,7 @@ export const initJobDetails = () => {
 
   return new Vue({
     el,
+    name: 'JobAppRoot',
     apolloProvider,
     store,
     provide: {
@@ -54,7 +57,9 @@ export const initJobDetails = () => {
       projectPath,
       retryOutdatedJobDocsUrl,
       aiRootCauseAnalysisAvailable: parseBoolean(aiRootCauseAnalysisAvailable),
+      duoFeaturesEnabled: parseBoolean(duoFeaturesEnabled),
       pipelineTestReportUrl,
+      canSetPipelineVariables: parseBoolean(canSetPipelineVariables),
     },
     render(h) {
       return h(JobApp, {
@@ -62,7 +67,7 @@ export const initJobDetails = () => {
           artifactHelpUrl,
           deploymentHelpUrl,
           runnerSettingsUrl,
-          subscriptionsMoreMinutesUrl,
+          logViewerPath,
         },
       });
     },

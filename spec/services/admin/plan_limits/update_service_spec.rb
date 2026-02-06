@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Admin::PlanLimits::UpdateService, feature_category: :shared do
+RSpec.describe Admin::PlanLimits::UpdateService, feature_category: :consumables_cost_management do
   let_it_be(:user) { create(:admin) }
   let_it_be(:plan) { create(:plan, name: 'free') }
   let_it_be(:limits) { plan.actual_limits }
@@ -26,7 +26,10 @@ RSpec.describe Admin::PlanLimits::UpdateService, feature_category: :shared do
       pypi_max_file_size: 70,
       terraform_module_max_file_size: 80,
       storage_size_limit: 90,
-      pipeline_hierarchy_size: 250
+      pipeline_hierarchy_size: 250,
+      web_hook_calls: 600,
+      web_hook_calls_low: 400,
+      web_hook_calls_mid: 500
     }
   end
 
@@ -44,7 +47,7 @@ RSpec.describe Admin::PlanLimits::UpdateService, feature_category: :shared do
         end
       end
 
-      it 'logs the allowed attributes only' do
+      it 'logs the allowed attributes only', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/436572' do
         update_plan_limits
 
         expect(limits.limits_history).to eq(

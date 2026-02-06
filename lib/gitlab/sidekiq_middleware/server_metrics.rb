@@ -18,7 +18,7 @@ module Gitlab
       SIDEKIQ_QUEUE_DURATION_BUCKETS = [10, 60].freeze
 
       # These labels from Gitlab::SidekiqMiddleware::MetricsHelper are included in SLI metrics
-      SIDEKIQ_SLI_LABELS = [:worker, :feature_category, :urgency, :external_dependencies, :queue, :destination_shard_redis].freeze
+      SIDEKIQ_SLI_LABELS = [:worker, :feature_category, :urgency, :external_dependencies, :queue, :destination_shard_redis, :db_config_name].freeze
 
       class << self
         include ::Gitlab::SidekiqMiddleware::MetricsHelper
@@ -31,7 +31,8 @@ module Gitlab
             sidekiq_elasticsearch_requests_total: ::Gitlab::Metrics.counter(:sidekiq_elasticsearch_requests_total, 'Elasticsearch requests during a Sidekiq job execution'),
             sidekiq_running_jobs: ::Gitlab::Metrics.gauge(:sidekiq_running_jobs, 'Number of Sidekiq jobs running', {}, :all),
             sidekiq_concurrency: ::Gitlab::Metrics.gauge(:sidekiq_concurrency, 'Maximum number of Sidekiq jobs', {}, :all),
-            sidekiq_mem_total_bytes: ::Gitlab::Metrics.gauge(:sidekiq_mem_total_bytes, 'Number of bytes allocated for both objects consuming an object slot and objects that required a malloc', {}, :all)
+            sidekiq_mem_total_bytes: ::Gitlab::Metrics.gauge(:sidekiq_mem_total_bytes, 'Number of bytes allocated for both objects consuming an object slot and objects that required a malloc', {}, :all),
+            sidekiq_gvl_measurement_enabled: ::Gitlab::Metrics.gauge(:sidekiq_gvl_measurement_enabled, 'Indicates whether GVL Tools instrumentation is enabled', {}, :all)
           }
 
           if Feature.enabled?(:emit_sidekiq_histogram_metrics, type: :ops)
@@ -84,6 +85,14 @@ module Gitlab
 
           Gitlab::Metrics::SidekiqSlis.initialize_execution_slis!(possible_sli_labels)
           Gitlab::Metrics::SidekiqSlis.initialize_queueing_slis!(possible_sli_labels)
+
+          return unless Feature.enabled?(:emit_db_transaction_sli_metrics, type: :ops)
+
+          possible_sli_labels_with_db = Gitlab::Database.database_base_models.keys.flat_map do |name|
+            possible_sli_labels.map { |l| l.merge(db_config_name: name) }
+          end
+
+          Gitlab::Metrics::DatabaseTransactionSlis.initialize_slis!(possible_sli_labels_with_db)
         end
       end
 
@@ -126,16 +135,25 @@ module Gitlab
         @job_succeeded = false
         monotonic_time_start = Gitlab::Metrics::System.monotonic_time
         job_thread_cputime_start = get_thread_cputime
+
+        ensure_gvltools!
+        gvl_local_time_start = GVLTools::LocalTimer.monotonic_time
+        gvl_global_time_start = GVLTools::GlobalTimer.monotonic_time
+
         begin
           transaction = Gitlab::Metrics::BackgroundTransaction.new
           transaction.run { yield }
           @job_succeeded = true
+        rescue Gitlab::SidekiqMiddleware::RetryError => e
+          raise
         ensure
           monotonic_time_end = Gitlab::Metrics::System.monotonic_time
           job_thread_cputime_end = get_thread_cputime
 
           @monotonic_time = monotonic_time_end - monotonic_time_start
           @job_thread_cputime = job_thread_cputime_end - job_thread_cputime_start
+          @gvl_local_time = (GVLTools::LocalTimer.monotonic_time - gvl_local_time_start) / 1_000_000_000.0
+          @gvl_global_time = (GVLTools::GlobalTimer.monotonic_time - gvl_global_time_start) / 1_000_000_000.0
 
           @metrics[:sidekiq_running_jobs].increment(labels, -1)
 
@@ -162,8 +180,10 @@ module Gitlab
           end
 
           @sli_labels = labels.slice(*SIDEKIQ_SLI_LABELS)
-          record_execution_sli
+          record_execution_sli unless e.is_a?(Gitlab::SidekiqMiddleware::RetryError)
           record_queueing_sli
+          record_db_txn_sli if Feature.enabled?(:emit_db_transaction_sli_metrics, type: :ops)
+          record_gvl_measurements
         end
       end
 
@@ -178,7 +198,7 @@ module Gitlab
           @metrics[:sidekiq_jobs_completion_seconds_sum].increment(labels, monotonic_time)
           @metrics[:sidekiq_jobs_completion_count].increment(labels, 1)
           @metrics[:sidekiq_jobs_cpu_seconds_sum].increment(labels, job_thread_cputime)
-          @metrics[:sidekiq_jobs_db_seconds_sum].increment(labels, ActiveRecord::LogSubscriber.runtime / 1000)
+          @metrics[:sidekiq_jobs_db_seconds_sum].increment(labels, ActiveRecord::RuntimeRegistry.sql_runtime / 1000)
           @metrics[:sidekiq_jobs_gitaly_seconds_sum].increment(labels, get_gitaly_time(instrumentation))
           @metrics[:sidekiq_redis_requests_duration_seconds_sum].increment(labels, get_redis_time(instrumentation))
           @metrics[:sidekiq_elasticsearch_requests_duration_seconds_sum].increment(labels, get_elasticsearch_time(instrumentation))
@@ -190,7 +210,7 @@ module Gitlab
 
         @metrics[:sidekiq_jobs_completion_seconds]&.observe(labels, monotonic_time)
 
-        @metrics[:sidekiq_jobs_db_seconds]&.observe(labels, ActiveRecord::LogSubscriber.runtime / 1000)
+        @metrics[:sidekiq_jobs_db_seconds]&.observe(labels, ActiveRecord::RuntimeRegistry.sql_runtime / 1000)
         @metrics[:sidekiq_jobs_gitaly_seconds]&.observe(labels, get_gitaly_time(instrumentation))
         @metrics[:sidekiq_redis_requests_duration_seconds]&.observe(labels, get_redis_time(instrumentation))
         @metrics[:sidekiq_elasticsearch_requests_duration_seconds]&.observe(labels, get_elasticsearch_time(instrumentation))
@@ -203,6 +223,38 @@ module Gitlab
       def record_execution_sli
         Gitlab::Metrics::SidekiqSlis.record_execution_apdex(sli_labels, monotonic_time) if job_succeeded
         Gitlab::Metrics::SidekiqSlis.record_execution_error(sli_labels, !job_succeeded)
+      end
+
+      def record_db_txn_sli
+        return if ::Gitlab::SafeRequestStore[Gitlab::Metrics::DatabaseTransactionSlis::REQUEST_STORE_KEY].nil?
+
+        ::Gitlab::SafeRequestStore[Gitlab::Metrics::DatabaseTransactionSlis::REQUEST_STORE_KEY].each do |k, v|
+          Gitlab::Metrics::DatabaseTransactionSlis.record_txn_apdex(sli_labels.merge(db_config_name: k), v)
+        end
+      end
+
+      def record_gvl_measurements
+        @metrics[:sidekiq_gvl_measurement_enabled].set(labels, gvl_tools_enabled? ? 1 : 0)
+        return unless gvl_tools_enabled?
+
+        unless @metrics[:sidekiq_gvl_thread_wait_seconds]
+          @metrics[:sidekiq_gvl_thread_wait_seconds] = ::Gitlab::Metrics.histogram(
+            :sidekiq_gvl_thread_wait_seconds,
+            'Seconds of this thread waiting for GVL',
+            {},
+            SIDEKIQ_LATENCY_BUCKETS)
+        end
+
+        unless @metrics[:sidekiq_gvl_process_wait_seconds]
+          @metrics[:sidekiq_gvl_process_wait_seconds] = ::Gitlab::Metrics.gauge(
+            :sidekiq_gvl_process_wait_seconds,
+            'Seconds of this process waiting for GVL',
+            {},
+            :all)
+        end
+
+        @metrics[:sidekiq_gvl_thread_wait_seconds].observe(labels, @gvl_local_time)
+        @metrics[:sidekiq_gvl_process_wait_seconds].increment(labels, @gvl_global_time)
       end
 
       def with_load_balancing_settings(job)
@@ -238,6 +290,21 @@ module Gitlab
 
       def get_gitaly_time(payload)
         payload.fetch(:gitaly_duration_s, 0)
+      end
+
+      def ensure_gvltools!
+        # Enabling GVLTools incurs some overhead, so we ensure it's only enabled when the FF is enabled too.
+        if gvl_tools_enabled?
+          GVLTools::LocalTimer.enable
+          GVLTools::GlobalTimer.enable
+        else
+          GVLTools::LocalTimer.disable
+          GVLTools::GlobalTimer.disable
+        end
+      end
+
+      def gvl_tools_enabled?
+        Feature.enabled?(:enable_sidekiq_gvl_metrics, :current_pod, type: :ops)
       end
     end
   end

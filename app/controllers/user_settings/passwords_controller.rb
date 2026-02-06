@@ -6,6 +6,7 @@ module UserSettings
 
     skip_before_action :check_password_expiration, only: [:new, :create]
     skip_before_action :check_two_factor_requirement, only: [:new, :create]
+    skip_before_action :active_user_check, only: [:new, :create]
 
     before_action :set_user
     before_action :authorize_change_password!
@@ -14,11 +15,13 @@ module UserSettings
 
     feature_category :system_access
 
-    def new; end
+    def new
+      current_user.activate if user_signed_in? && current_user.deactivated?
+    end
 
     def create
       unless @user.password_automatically_set || @user.valid_password?(user_params[:password])
-        redirect_to new_user_settings_password_path, alert: _('You must provide a valid current password')
+        redirect_to new_user_settings_password_path, alert: _('You must provide a valid current password.')
         return
       end
 
@@ -40,7 +43,7 @@ module UserSettings
       unless @user.password_automatically_set || @user.valid_password?(user_params[:password])
         handle_invalid_current_password_attempt!
 
-        redirect_to edit_user_settings_password_path, alert: _('You must provide a valid current password')
+        redirect_to edit_user_settings_password_path, alert: _('You must provide a valid current password.')
         return
       end
 
@@ -69,7 +72,7 @@ module UserSettings
 
     def determine_layout
       if [:new, :create].include?(action_name.to_sym)
-        'application'
+        'minimal'
       else
         'profile'
       end

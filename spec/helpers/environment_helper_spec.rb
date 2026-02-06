@@ -9,7 +9,9 @@ RSpec.describe EnvironmentHelper, feature_category: :environment_management do
     let_it_be(:auto_stop_at) { Time.now.utc }
     let_it_be(:user) { create(:user) }
     let_it_be(:project, reload: true) { create(:project, :repository) }
-    let_it_be(:environment) { create(:environment, project: project, auto_stop_at: auto_stop_at) }
+    let_it_be(:environment) do
+      create(:environment, project: project, auto_stop_at: auto_stop_at, description: '_description_')
+    end
 
     before do
       allow(helper).to receive(:current_user).and_return(user)
@@ -21,6 +23,7 @@ RSpec.describe EnvironmentHelper, feature_category: :environment_management do
         name: environment.name,
         id: environment.id,
         project_full_path: project.full_path,
+        base_path: project_environment_path(project, environment),
         external_url: environment.external_url,
         can_update_environment: true,
         can_destroy_environment: true,
@@ -34,6 +37,7 @@ RSpec.describe EnvironmentHelper, feature_category: :environment_management do
         environment_terminal_path: terminal_project_environment_path(project, environment),
         has_terminals: false,
         is_environment_available: true,
+        description_html: '<p data-sourcepos="1:1-1:13" dir="auto"><em data-sourcepos="1:1-1:13">description</em></p>',
         auto_stop_at: auto_stop_at,
         graphql_etag_key: environment.etag_cache_key
       }.to_json)

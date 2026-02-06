@@ -17,6 +17,27 @@ class NotifyPreview < ActionMailer::Preview
     end
   end
 
+  def note_wiki_page_email_for_individual_note
+    note_email(:note_wiki_page_email) do
+      note = <<-MD.strip_heredoc
+        This is an individual note on a merge request :smiley:
+
+        In this notification email, we expect to see:
+
+        - The note contents (that's what you're looking at)
+        - A link to view this note on GitLab
+        - An explanation for why the user is receiving this notification
+      MD
+
+      create_note(
+        noteable_type: 'WikiPage::Meta',
+        noteable_id: wiki_page_meta.id,
+        note: note,
+        project: wiki_page_meta.project
+      )
+    end
+  end
+
   def new_user_email
     Notify.new_user_email(user.id).message
   end
@@ -60,12 +81,18 @@ class NotifyPreview < ActionMailer::Preview
         diff_refs: merge_request.diff_refs
       )
 
-      create_note(noteable_type: 'merge_request', noteable_id: merge_request.id, type: 'DiffNote', position: position, note: note)
+      create_note(
+        noteable_type: 'merge_request',
+        noteable_id: merge_request.id,
+        type: 'DiffNote',
+        position: position,
+        note: note
+      )
     end
   end
 
   def resource_access_token_about_to_expire_email
-    Notify.resource_access_tokens_about_to_expire_email(user, group, ['token_name'])
+    Notify.bot_resource_access_token_about_to_expire_email(user, group, 'token_name')
   end
 
   def access_token_created_email
@@ -83,6 +110,10 @@ class NotifyPreview < ActionMailer::Preview
 
   def access_token_about_to_expire_email
     Notify.access_token_about_to_expire_email(user, ['%w', '%w']).message
+  end
+
+  def deploy_token_about_to_expire_email
+    Notify.deploy_token_about_to_expire_email(user, 'token_name', project).message
   end
 
   def ssh_key_expired_email
@@ -119,7 +150,12 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def issues_csv_email
-    Notify.issues_csv_email(user, project, '1997,Ford,E350', { truncated: false, rows_expected: 3, rows_written: 3 }).message
+    Notify.issues_csv_email(
+      user,
+      project,
+      '1997,Ford,E350',
+      { truncated: false, rows_expected: 3, rows_written: 3 }
+    ).message
   end
 
   def new_issue_email
@@ -134,6 +170,10 @@ class NotifyPreview < ActionMailer::Preview
     cleanup do
       Notify.new_ssh_key_email(key.id).message
     end
+  end
+
+  def new_gpg_key_email
+    Notify.new_gpg_key_email(gpg_key.id).message
   end
 
   def closed_merge_request_email
@@ -160,47 +200,33 @@ class NotifyPreview < ActionMailer::Preview
     Notify.changed_milestone_merge_request_email(user.id, merge_request.id, milestone, user.id)
   end
 
-  def member_access_denied_email
-    Notify.member_access_denied_email('project', project.id, user.id).message
-  end
-
-  def member_access_granted_email
-    Notify.member_access_granted_email(member.source_type, member.id).message
-  end
-
-  def member_access_requested_email
-    Notify.member_access_requested_email(member.source_type, member.id, user.id).message
-  end
-
-  def member_invite_accepted_email
-    Notify.member_invite_accepted_email(member.source_type, member.id).message
-  end
-
-  def member_invite_declined_email
-    Notify.member_invite_declined_email(
-      'project',
-      project.id,
-      'invite@example.com',
-      user.id
-    ).message
-  end
-
-  def member_invited_email
-    Notify.member_invited_email('project', member.id, '1234').message
-  end
-
-  def member_about_to_expire_email
+  def pages_domain_enabled_email
     cleanup do
-      member = project.add_member(user, Gitlab::Access::GUEST, expires_at: 7.days.from_now.to_date)
-      Notify.member_about_to_expire_email('project', member.id).message
+      Notify.pages_domain_enabled_email(pages_domain, user).message
     end
   end
 
-  def pages_domain_enabled_email
+  def pages_domain_disabled_email
     cleanup do
-      pages_domain = PagesDomain.new(domain: 'my.example.com', project: project, verified_at: Time.now, enabled_until: 1.week.from_now)
+      Notify.pages_domain_disabled_email(pages_domain, user).message
+    end
+  end
 
-      Notify.pages_domain_enabled_email(pages_domain, user).message
+  def pages_domain_verification_succeeded_email
+    cleanup do
+      Notify.pages_domain_verification_succeeded_email(pages_domain, user).message
+    end
+  end
+
+  def pages_domain_verification_failed_email
+    cleanup do
+      Notify.pages_domain_verification_failed_email(pages_domain, user).message
+    end
+  end
+
+  def pages_domain_auto_ssl_failed_email
+    cleanup do
+      Notify.pages_domain_auto_ssl_failed_email(pages_domain, user).message
     end
   end
 
@@ -216,6 +242,26 @@ class NotifyPreview < ActionMailer::Preview
     Notify.pipeline_fixed_email(pipeline, pipeline.user.try(:email))
   end
 
+  def pipeline_variables_migration_complete_email
+    Notify.pipeline_variables_migration_complete_email(user, group, { updated_count: 5, skipped_count: 3 }).message
+  end
+
+  def pipeline_variables_migration_complete_email_all_updated
+    Notify.pipeline_variables_migration_complete_email(user, group, { updated_count: 10, skipped_count: 0 }).message
+  end
+
+  def pipeline_variables_migration_complete_email_single_project
+    Notify.pipeline_variables_migration_complete_email(user, group, { updated_count: 1, skipped_count: 0 }).message
+  end
+
+  def pipeline_variables_migration_complete_email_single_skipped
+    Notify.pipeline_variables_migration_complete_email(user, group, { updated_count: 2, skipped_count: 1 }).message
+  end
+
+  def pipeline_schedule_owner_unavailable
+    Notify.pipeline_schedule_owner_unavailable_email(pipeline_schedule, user)
+  end
+
   def autodevops_disabled_email
     Notify.autodevops_disabled_email(pipeline, user.email).message
   end
@@ -225,15 +271,39 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def unknown_sign_in_email
-    Notify.unknown_sign_in_email(user, '127.0.0.1', Time.current).message
+    Notify.unknown_sign_in_email(user, '127.0.0.1', Time.current, country: 'Germany', city: 'Frankfurt').message
   end
 
   def two_factor_otp_attempt_failed_email
     Notify.two_factor_otp_attempt_failed_email(user, '127.0.0.1').message
   end
 
+  def enabled_two_factor_passkey_email
+    Notify.enabled_two_factor_webauthn_email(user, 'MacBook Touch ID', :passkey).message
+  end
+
+  def enabled_two_factor_otp_email
+    Notify.enabled_two_factor_otp_email(user).message
+  end
+
+  def enabled_two_factor_webauthn_email
+    Notify.enabled_two_factor_webauthn_email(user, 'MacBook Touch ID').message
+  end
+
   def disabled_two_factor_email
     Notify.disabled_two_factor_email(user).message
+  end
+
+  def disabled_two_factor_passkey_email
+    Notify.disabled_two_factor_webauthn_email(user, 'MacBook Touch ID', :passkey).message
+  end
+
+  def disabled_two_factor_otp_email
+    Notify.disabled_two_factor_otp_email(user).message
+  end
+
+  def disabled_two_factor_webauthn_email
+    Notify.disabled_two_factor_webauthn_email(user, 'MacBook Touch ID').message
   end
 
   def new_email_address_added_email
@@ -241,17 +311,14 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def service_desk_new_note_email
-    # TODO: create support_bot outside of the transaction
-    # The exclusive lease is obtained when creating support_bot in app/mailers/emails/service_desk.rb
-    # The `cleanup` method wraps the email-generating-block in a transaction.
-    # See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/441523
-    Gitlab::ExclusiveLease.skipping_transaction_check do
-      cleanup do
-        note = create_note(noteable_type: 'Issue', noteable_id: issue.id, note: 'Issue note content')
-        participant = IssueEmailParticipant.create!(issue: issue, email: 'user@example.com')
+    ensure_support_bot_exists
+    ensure_visual_review_bot_exists
 
-        Notify.service_desk_new_note_email(issue.id, note.id, participant).message
-      end
+    cleanup do
+      note = create_note(noteable_type: 'Issue', noteable_id: issue.id, note: 'Issue note content')
+      participant = IssueEmailParticipant.create!(issue: issue, email: 'user@example.com')
+
+      Notify.service_desk_new_note_email(issue.id, note.id, participant).message
     end
   end
 
@@ -259,17 +326,23 @@ class NotifyPreview < ActionMailer::Preview
     Notify.service_desk_thank_you_email(issue.id).message
   end
 
-  def service_desk_custom_email_verification_email
-    # TODO: create support_bot outside of the transaction
-    # The exclusive lease is obtained when creating support_bot in app/mailers/emails/service_desk.rb
-    # The `cleanup` method wraps the email-generating-block in a transaction.
-    # See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/441523
-    Gitlab::ExclusiveLease.skipping_transaction_check do
-      cleanup do
-        setup_service_desk_custom_email_objects
+  def service_desk_new_participant_email
+    ensure_support_bot_exists
 
-        Notify.service_desk_custom_email_verification_email(service_desk_setting).message
-      end
+    cleanup do
+      participant = IssueEmailParticipant.create!(issue: issue, email: 'user@example.com')
+
+      Notify.service_desk_new_participant_email(issue.id, participant).message
+    end
+  end
+
+  def service_desk_custom_email_verification_email
+    ensure_support_bot_exists
+
+    cleanup do
+      setup_service_desk_custom_email_objects
+
+      Notify.service_desk_custom_email_verification_email(service_desk_setting).message
     end
   end
 
@@ -335,15 +408,24 @@ class NotifyPreview < ActionMailer::Preview
     Notify.project_was_exported_email(user, project).message
   end
 
+  def repository_cleanup_success_email
+    Notify.repository_cleanup_success_email(project, user).message
+  end
+
   def request_review_merge_request_email
     Notify.request_review_merge_request_email(user.id, merge_request.id, user.id).message
   end
 
   def new_review_email
-    review = Review.last
-    mr_author = review.merge_request.author
+    mr_author = merge_request.author
 
-    Notify.new_review_email(mr_author.id, review.id).message
+    cleanup do
+      review = Review.create!(project: project, merge_request: merge_request, author: mr_author)
+      Note.create!(review: review, project: project, noteable: merge_request, author: mr_author, note: 'Example note 1')
+      Note.create!(review: review, project: project, noteable: merge_request, author: mr_author, note: 'Example note 2')
+
+      Notify.new_review_email(mr_author.id, review.id).message
+    end
   end
 
   def project_was_moved_email
@@ -351,7 +433,93 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def github_gists_import_errors_email
-    Notify.github_gists_import_errors_email(user.id, { '12345' => 'Snippet maximum file count exceeded', '67890' => 'error message 2' }).message
+    Notify.github_gists_import_errors_email(
+      user.id,
+      { '12345' => 'Snippet maximum file count exceeded', '67890' => 'error message 2' }
+    ).message
+  end
+
+  def project_import_complete
+    project_id = ProjectImportState.last.project_id
+    project = Project.find(project_id)
+    creator_id = project.creator_id
+
+    Notify.project_import_complete(project_id, creator_id, true, project.safe_import_url(masked: false)).message
+  end
+
+  def bulk_import_complete
+    bulk_import = BulkImport.last
+
+    Notify.bulk_import_complete(user.id, bulk_import.id)
+  end
+
+  def bulk_import_csv_user_mapping_success
+    Notify.bulk_import_csv_user_mapping(
+      user.id,
+      group.id,
+      success_count: 94125,
+      failed_count: 0,
+      skipped_count: 50
+    )
+  end
+
+  def bulk_import_csv_user_mapping_failed
+    Notify.bulk_import_csv_user_mapping(
+      user.id,
+      group.id,
+      success_count: 71249,
+      failed_count: 824,
+      skipped_count: 152
+    )
+  end
+
+  def csv_placeholder_reassignment_failed
+    Notify.csv_placeholder_reassignment_failed(user.id, group.id)
+  end
+
+  def import_source_user_reassign
+    source_user = Import::SourceUser.last
+
+    Notify.import_source_user_reassign(source_user.id)
+  end
+
+  def import_source_user_rejected
+    source_user = Import::SourceUser.last
+
+    Notify.import_source_user_rejected(source_user.id)
+  end
+
+  def import_source_user_complete
+    source_user = Import::SourceUser.last
+
+    Notify.import_source_user_complete(source_user.id)
+  end
+
+  def repository_rewrite_history_success_email
+    Notify.repository_rewrite_history_success_email(project, user)
+  end
+
+  def repository_rewrite_history_failure_email
+    Notify.repository_rewrite_history_failure_email(project, user, 'Error message')
+  end
+
+  def project_scheduled_for_deletion
+    cleanup do
+      project.update!(marked_for_deletion_at: Time.current)
+
+      ::Notify.project_scheduled_for_deletion(user.id, project.id).message
+    end
+  end
+
+  def group_scheduled_for_deletion
+    cleanup do
+      group.create_deletion_schedule!(
+        marked_for_deletion_on: Time.current,
+        deleting_user: user
+      )
+
+      ::Notify.group_scheduled_for_deletion(user.id, group.id).message
+    end
   end
 
   private
@@ -381,23 +549,25 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def custom_email_verification
-    @custom_email_verification ||= project.service_desk_custom_email_verification || ServiceDesk::CustomEmailVerification.create!(
-      project: project,
-      token: 'XXXXXXXXXXXX',
-      triggerer: user,
-      triggered_at: Time.current,
-      state: 'started'
-    )
+    @custom_email_verification ||= project.service_desk_custom_email_verification ||
+      ServiceDesk::CustomEmailVerification.create!(
+        project: project,
+        token: 'XXXXXXXXXXXX',
+        triggerer: user,
+        triggered_at: Time.current,
+        state: 'started'
+      )
   end
 
   def custom_email_credential
-    @custom_email_credential ||= project.service_desk_custom_email_credential || ServiceDesk::CustomEmailCredential.create!(
-      project: project,
-      smtp_address: 'smtp.gmail.com', # Use gmail, because Gitlab::HTTP_V2::UrlBlocker resolves DNS
-      smtp_port: 587,
-      smtp_username: 'user@gmail.com',
-      smtp_password: 'supersecret'
-    )
+    @custom_email_credential ||= project.service_desk_custom_email_credential ||
+      ServiceDesk::CustomEmailCredential.create!(
+        project: project,
+        smtp_address: 'smtp.gmail.com', # Use gmail, because Gitlab::HTTP_V2::UrlBlocker resolves DNS
+        smtp_port: 587,
+        smtp_username: 'user@gmail.com',
+        smtp_password: 'supersecret'
+      )
   end
 
   def service_desk_setting
@@ -415,12 +585,20 @@ class NotifyPreview < ActionMailer::Preview
     @merge_request ||= project.merge_requests.first
   end
 
+  def wiki_page_meta
+    @wiki_page_meta ||= WikiPage::Meta.last
+  end
+
   def milestone
     @milestone ||= issue.milestone
   end
 
   def pipeline
     @pipeline = Ci::Pipeline.last
+  end
+
+  def pipeline_schedule
+    @pipeline_schedule ||= Ci::PipelineSchedule.last
   end
 
   def remote_mirror
@@ -436,7 +614,7 @@ class NotifyPreview < ActionMailer::Preview
   end
 
   def member
-    @member ||= Member.last
+    @member ||= Member.non_invite.non_request.last
   end
 
   def key
@@ -447,15 +625,23 @@ class NotifyPreview < ActionMailer::Preview
     Key.last || Keys::CreateService.new(user).execute
   end
 
+  def gpg_key
+    @gpg_key ||= find_or_create_gpg_key
+  end
+
+  def find_or_create_gpg_key
+    GpgKey.last || GpgKeys::CreateService.new(user, key: GpgHelpers::User1.public_key).execute
+  end
+
   def create_note(params)
     Notes::CreateService.new(project, user, params).execute
   end
 
   def note_email(method)
-    # TODO: create support_bot outside of the transaction
-    # The exclusive lease is obtained when creating support_bot in app/mailers/emails/service_desk.rb
-    # The `cleanup` method wraps the email-generating-block in a transaction.
-    # See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/441523
+    ensure_visual_review_bot_exists
+    # NOTE: This code path is only accessible in development mode so
+    # using Gitlab::ExclusiveLease.skipping_transaction_check doesn't cause
+    # production issues.
     Gitlab::ExclusiveLease.skipping_transaction_check do
       cleanup do
         note = yield
@@ -463,6 +649,21 @@ class NotifyPreview < ActionMailer::Preview
         Notify.public_send(method, user.id, note) # rubocop:disable GitlabSecurity/PublicSend
       end
     end
+  end
+
+  def ensure_support_bot_exists
+    # If not called before cleanup creating support bot in app/mailers/emails/service_desk.rb
+    # will obtain an exclusive lease.
+    # The `cleanup` method wraps the email-generating-block in a transaction.
+    # See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/441523
+    Users::Internal.in_organization(project.organization_id).support_bot
+  end
+
+  def ensure_visual_review_bot_exists
+    # If not called before cleanup creating visual_review_bot in
+    # app/services/notes/create_service.rb:191 will obtain an exclusive lease.
+    # visual_review_bot is a EE only method.
+    Users::Internal.try(:visual_review_bot)
   end
 
   def cleanup
@@ -474,6 +675,15 @@ class NotifyPreview < ActionMailer::Preview
     end
 
     email
+  end
+
+  def pages_domain
+    @pages_domain ||= PagesDomain.new(
+      domain: 'my.example.com',
+      project: project,
+      verified_at: Time.now,
+      enabled_until: 1.week.from_now
+    )
   end
 end
 

@@ -7,7 +7,7 @@ RSpec.describe Mutations::Achievements::Award, feature_category: :user_profile d
 
   let_it_be(:developer) { create(:user) }
   let_it_be(:maintainer) { create(:user) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:group) { create(:group, developers: developer, maintainers: maintainer) }
   let_it_be(:achievement) { create(:achievement, namespace: group) }
   let_it_be(:recipient) { create(:user) }
 
@@ -25,11 +25,6 @@ RSpec.describe Mutations::Achievements::Award, feature_category: :user_profile d
 
   def mutation_response
     graphql_mutation_response(:achievements_create)
-  end
-
-  before_all do
-    group.add_developer(developer)
-    group.add_maintainer(maintainer)
   end
 
   context 'when the user does not have permission' do
@@ -62,7 +57,7 @@ RSpec.describe Mutations::Achievements::Award, feature_category: :user_profile d
         subject
 
         expect(graphql_data_at(:achievements_award,
-          :errors)).to include("Couldn't find User with 'id'=#{non_existing_record_id}")
+          :errors)).to include("Couldn't find User with 'id'=\"#{non_existing_record_id}\"")
       end
     end
 

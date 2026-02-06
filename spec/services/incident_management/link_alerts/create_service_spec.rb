@@ -10,26 +10,17 @@ RSpec.describe IncidentManagement::LinkAlerts::CreateService, feature_category: 
   let_it_be(:alert2) { create(:alert_management_alert, project: project) }
   let_it_be(:external_alert) { create(:alert_management_alert, project: another_project) }
   let_it_be(:incident) { create(:incident, project: project, alert_management_alerts: [linked_alert]) }
-  let_it_be(:guest) { create(:user) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:another_developer) { create(:user) }
-
-  before_all do
-    project.add_guest(guest)
-    project.add_developer(developer)
-    project.add_developer(another_developer)
-
-    another_project.add_guest(guest)
-    another_project.add_developer(developer)
-  end
+  let_it_be(:planner) { create(:user, planner_of: [project, another_project]) }
+  let_it_be(:developer) { create(:user, developer_of: [project, another_project]) }
+  let_it_be(:another_developer) { create(:user, developer_of: project) }
 
   describe '#execute' do
     subject(:execute) { described_class.new(incident, current_user, alert_references).execute }
 
     let(:alert_references) { [alert1.to_reference, alert2.details_url] }
 
-    context 'when current user is a guest' do
-      let(:current_user) { guest }
+    context 'when current user is a planner' do
+      let(:current_user) { planner }
 
       it 'responds with error', :aggregate_failures do
         response = execute

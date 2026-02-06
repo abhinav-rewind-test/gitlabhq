@@ -19,133 +19,23 @@ RSpec.describe Ci::BuildMetadata, feature_category: :continuous_integration do
   let_it_be_with_reload(:runner) { create(:ci_runner) }
 
   let(:job) { create(:ci_build, pipeline: pipeline, runner: runner) }
-  let(:metadata) { job.metadata }
+  let(:metadata) { create(:ci_build_metadata, build: job) }
+
+  before_all do
+    Ci::ApplicationRecord.connection.execute(<<~SQL)
+      CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_100"
+        PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (100);
+      CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_101"
+        PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (101);
+      CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_102"
+        PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (102);
+    SQL
+  end
 
   it_behaves_like 'having unique enum values'
 
   it { is_expected.to belong_to(:build) }
   it { is_expected.to belong_to(:project) }
-
-  describe '#update_timeout_state' do
-    subject { metadata }
-
-    shared_examples 'sets timeout' do |source, timeout|
-      it 'sets project_timeout_source' do
-        expect { subject.update_timeout_state }.to change { subject.reload.timeout_source }.to(source)
-      end
-
-      it 'sets project timeout' do
-        expect { subject.update_timeout_state }.to change { subject.reload.timeout }.to(timeout)
-      end
-    end
-
-    context 'when job, project and runner timeouts are set' do
-      context 'when job timeout is lower then runner timeout' do
-        before do
-          runner.update!(maximum_timeout: 4000)
-          job.update!(options: { job_timeout: 3000 })
-        end
-
-        it_behaves_like 'sets timeout', 'job_timeout_source', 3000
-      end
-
-      context 'when runner timeout is lower then job timeout' do
-        before do
-          runner.update!(maximum_timeout: 2000)
-          job.update!(options: { job_timeout: 3000 })
-        end
-
-        it_behaves_like 'sets timeout', 'runner_timeout_source', 2000
-      end
-    end
-
-    context 'when job, project timeout values are set and runner is assigned' do
-      context 'when runner has no timeout set' do
-        before do
-          runner.update!(maximum_timeout: nil)
-          job.update!(options: { job_timeout: 3000 })
-        end
-
-        it_behaves_like 'sets timeout', 'job_timeout_source', 3000
-      end
-    end
-
-    context 'when only job and project timeouts are defined' do
-      context 'when job timeout is lower then project timeout' do
-        before do
-          job.update!(options: { job_timeout: 1000 })
-        end
-
-        it_behaves_like 'sets timeout', 'job_timeout_source', 1000
-      end
-
-      context 'when project timeout is lower then job timeout' do
-        before do
-          job.update!(options: { job_timeout: 3000 })
-        end
-
-        it_behaves_like 'sets timeout', 'job_timeout_source', 3000
-      end
-    end
-
-    context 'when only project and runner timeouts are defined' do
-      before do
-        runner.update!(maximum_timeout: 1900)
-      end
-
-      context 'when runner timeout is lower then project timeout' do
-        it_behaves_like 'sets timeout', 'runner_timeout_source', 1900
-      end
-
-      context 'when project timeout is lower then runner timeout' do
-        before do
-          runner.update!(maximum_timeout: 2100)
-        end
-
-        it_behaves_like 'sets timeout', 'project_timeout_source', 2000
-      end
-    end
-
-    context 'when only job and runner timeouts are defined' do
-      context 'when runner timeout is lower them job timeout' do
-        before do
-          job.update!(options: { job_timeout: 2000 })
-          runner.update!(maximum_timeout: 1900)
-        end
-
-        it_behaves_like 'sets timeout', 'runner_timeout_source', 1900
-      end
-
-      context 'when job timeout is lower them runner timeout' do
-        before do
-          job.update!(options: { job_timeout: 1000 })
-          runner.update!(maximum_timeout: 1900)
-        end
-
-        it_behaves_like 'sets timeout', 'job_timeout_source', 1000
-      end
-    end
-
-    context 'when only job timeout is defined and runner is assigned, but has no timeout set' do
-      before do
-        job.update!(options: { job_timeout: 1000 })
-        runner.update!(maximum_timeout: nil)
-      end
-
-      it_behaves_like 'sets timeout', 'job_timeout_source', 1000
-    end
-
-    context 'when only one timeout value is defined' do
-      context 'when only project timeout value is defined' do
-        before do
-          job.update!(options: { job_timeout: nil })
-          runner.update!(maximum_timeout: nil)
-        end
-
-        it_behaves_like 'sets timeout', 'project_timeout_source', 2000
-      end
-    end
-  end
 
   describe 'validations' do
     context 'when attributes are valid' do
@@ -183,17 +73,19 @@ RSpec.describe Ci::BuildMetadata, feature_category: :continuous_integration do
         end
       end
     end
-  end
 
-  describe 'set_cancel_gracefully' do
-    it 'sets cancel_gracefully' do
-      job.set_cancel_gracefully
-
-      expect(job.cancel_gracefully?).to be true
-    end
-
-    it 'returns false' do
-      expect(job.cancel_gracefully?).to be false
+    describe 'config_options schema edge validation' do
+      context 'with invalid edge cases' do
+        it 'rejects parallel.matrix missing required keys' do
+          metadata.config_options = {
+            script: ['echo'],
+            parallel: {
+              foo: 'bar'
+            }
+          }
+          expect(metadata).to be_invalid
+        end
+      end
     end
   end
 

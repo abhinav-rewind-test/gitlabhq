@@ -93,10 +93,12 @@ export const generateTreeList = (files) => {
               tempFile: file.new_file,
               deleted: file.deleted_file,
               fileHash: file.file_hash,
+              codeReviewId: file.code_review_id,
               addedLines: file.added_lines,
               removedLines: file.removed_lines,
               parentPath: parent ? `${parent.path}/` : '/',
               submodule: file.submodule,
+              href: file.href,
             });
           } else {
             Object.assign(entry, {

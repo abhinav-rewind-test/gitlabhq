@@ -72,20 +72,20 @@ class IssueEntity < IssuableEntity
     preview_markdown_path(issue.project, target_type: 'Issue', target_id: issue.iid)
   end
 
-  expose :confidential_issues_docs_path, if: -> (issue) { issue.confidential? } do |issue|
-    help_page_path('user/project/issues/confidential_issues')
+  expose :confidential_issues_docs_path, if: ->(issue) { issue.confidential? } do |issue|
+    help_page_path('user/project/issues/confidential_issues.md')
   end
 
-  expose :locked_discussion_docs_path, if: -> (issue) { issue.discussion_locked? } do |issue|
-    help_page_path('user/discussions/index', anchor: 'prevent-comments-by-locking-an-issue')
+  expose :locked_discussion_docs_path, if: ->(issue) { issue.discussion_locked? } do |issue|
+    help_page_path('user/discussions/_index.md', anchor: 'prevent-comments-by-locking-the-discussion')
   end
 
   expose :is_project_archived do |issue|
-    issue.project.archived?
+    issue.project.self_or_ancestors_archived?
   end
 
-  expose :archived_project_docs_path, if: -> (issue) { issue.project.archived? } do |issue|
-    help_page_path('user/project/settings/index', anchor: 'archive-a-project')
+  expose :archived_project_docs_path, if: ->(issue) { issue.project.self_or_ancestors_archived? } do |issue|
+    help_page_path('user/project/working_with_projects.md', anchor: 'delete-a-project')
   end
 
   expose :issue_email_participants do |issue|
@@ -101,7 +101,8 @@ class IssueEntity < IssuableEntity
   expose :issue_type,
     as: :type,
     format_with: :upcase,
-    documentation: { type: "String", desc: "One of #{::WorkItems::Type.base_types.keys.map(&:upcase)}" }
+    documentation: { type: "String",
+                     desc: "One of #{::WorkItems::TypesFramework::Provider.new.unfiltered_base_types_for_issue_type}" }
 end
 
 IssueEntity.prepend_mod_with('IssueEntity')

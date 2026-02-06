@@ -25,6 +25,10 @@ module QA
               view 'app/assets/javascripts/super_sidebar/components/user_bar.vue' do
                 element 'super-sidebar-search-button'
               end
+
+              view 'app/assets/javascripts/super_sidebar/components/super_topbar.vue' do
+                element 'super-topbar-search-button'
+              end
             end
           end
 
@@ -37,7 +41,8 @@ module QA
           end
 
           def go_to_admin_area
-            go_to_places_item("Admin Area")
+            click_element('topbar-admin-link')
+            expand_sidebar_if_collapsed
 
             return unless has_text?('Enter admin mode', wait: 1.0)
 
@@ -50,11 +55,11 @@ module QA
           def has_admin_area_link?(wait: Capybara.default_max_wait_time)
             open_global_search_modal
 
-            has_element?('places-item-link', places_item: "Admin Area", wait: wait)
+            has_element?('places-item-link', places_item: "Admin area", wait: wait)
           end
 
           def search_for(term)
-            click_element('super-sidebar-search-button')
+            open_global_search_modal
             fill_element('global-search-input', "#{term}\n")
           end
 
@@ -70,7 +75,7 @@ module QA
           end
 
           def open_global_search_modal
-            click_element('super-sidebar-search-button')
+            click_element('super-topbar-search-button')
           end
         end
       end

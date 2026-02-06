@@ -1,33 +1,37 @@
 ---
 stage: Create
-group: Source Code
+group: Code Review
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Configure external storage for merge request diffs on your GitLab instance.
+title: Merge request diffs storage
 ---
 
-# Merge request diffs storage
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 Merge request diffs are size-limited copies of diffs associated with merge
 requests. When viewing a merge request, diffs are sourced from these copies
 wherever possible as a performance optimization.
 
-By default, merge request diffs are stored in the database, in a table named
-`merge_request_diff_files`. Larger installations may find this table grows too
-large, in which case, switching to external storage is recommended.
+By default, GitLab stores merge request diffs in the database, in a table named
+`merge_request_diff_files`. Larger installations might find this table grows too
+large, in which case, you should switch to external storage.
 
-Merge request diffs can be stored [on disk](#using-external-storage), or in
-[object storage](#using-object-storage). In general, it
-is better to store the diffs in the database than on disk. A compromise is available
-that only [stores outdated diffs](#alternative-in-database-storage) outside of database.
+Merge request diffs can be stored:
+
+- Completely [on disk](#using-external-storage).
+- Completely [on object storage](#using-object-storage).
+- Current diffs in the database, and [outdated diffs in object storage](#alternative-in-database-storage).
 
 ## Using external storage
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following line:
 
@@ -47,7 +51,9 @@ that only [stores outdated diffs](#alternative-in-database-storage) outside of d
 1. Save the file and [reconfigure GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
    GitLab then migrates your existing merge request diffs to external storage.
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `/home/git/gitlab/config/gitlab.yml` and add or amend the following
    lines:
@@ -71,20 +77,29 @@ that only [stores outdated diffs](#alternative-in-database-storage) outside of d
 1. Save the file and [restart GitLab](restart_gitlab.md#self-compiled-installations) for the changes to take effect.
    GitLab then migrates your existing merge request diffs to external storage.
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ## Using object storage
 
-WARNING:
-Migrating to object storage is not reversible.
+> [!warning]
+> Migrating to object storage is not reversible.
 
-Instead of storing the external diffs on disk, we recommended the use of an object
-store like AWS S3 instead. This configuration relies on valid AWS credentials to
-be configured already.
+Instead of storing the external diffs on disk, you should use an object
+store like AWS S3. This configuration relies on valid preconfigured AWS credentials.
 
-::Tabs
+> [!note]
+> Configuring object storage for external diffs in the
+> consolidated object storage settings
+> does not automatically enable external storage for merge request diffs.
+> You must explicitly set `external_diffs_enabled` to `true`.
 
-:::TabTitle Linux package (Omnibus)
+To configure object storage for external diffs:
+
+{{< tabs >}}
+
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following line:
 
@@ -92,11 +107,13 @@ be configured already.
    gitlab_rails['external_diffs_enabled'] = true
    ```
 
-1. Set [object storage settings](#object-storage-settings).
+1. Configure the
+   [consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form).
 1. Save the file and [reconfigure GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
-   GitLab then migrates your existing merge request diffs to external storage.
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `/home/git/gitlab/config/gitlab.yml` and add or amend the following
    lines:
@@ -106,101 +123,31 @@ be configured already.
      enabled: true
    ```
 
-1. Set [object storage settings](#object-storage-settings).
-1. Save the file and [restart GitLab](restart_gitlab.md#self-compiled-installations) for the changes to take effect.
-   GitLab then migrates your existing merge request diffs to external storage.
-
-::EndTabs
-
-[Read more about using object storage with GitLab](object_storage.md).
-
-### Object Storage Settings
-
-In GitLab 13.2 and later, you should use the
-[consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form).
-This section describes the earlier configuration format.
-
-For self-compiled installations, these settings are nested under `external_diffs:` and
-then `object_store:`. On Linux package installations, they are prefixed by
-`external_diffs_object_store_`.
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `enabled` | Enable/disable object storage | `false` |
-| `remote_directory` | The bucket name where external diffs are stored| |
-| `proxy_download` | Set to `true` to enable proxying all files served. Option allows to reduce egress traffic as this allows clients to download directly from remote storage instead of proxying all data | `false` |
-| `connection` | Various connection options described below | |
-
-#### S3 compatible connection settings
-
-See [the available connection settings for different providers](object_storage.md#configure-the-connection-settings).
-
-::Tabs
-
-:::TabTitle Linux package (Omnibus)
-
-1. Edit `/etc/gitlab/gitlab.rb` and add the following lines by replacing with
-   the values you want:
-
-   ```ruby
-   gitlab_rails['external_diffs_enabled'] = true
-   gitlab_rails['external_diffs_object_store_enabled'] = true
-   gitlab_rails['external_diffs_object_store_remote_directory'] = "external-diffs"
-   gitlab_rails['external_diffs_object_store_connection'] = {
-     'provider' => 'AWS',
-     'region' => 'eu-central-1',
-     'aws_access_key_id' => 'AWS_ACCESS_KEY_ID',
-     'aws_secret_access_key' => 'AWS_SECRET_ACCESS_KEY'
-   }
-   ```
-
-   If you are using AWS IAM profiles, omit the
-   AWS access key and secret access key/value pairs. For example:
-
-   ```ruby
-   gitlab_rails['external_diffs_object_store_connection'] = {
-     'provider' => 'AWS',
-     'region' => 'eu-central-1',
-     'use_iam_profile' => true
-   }
-   ```
-
-1. Save the file and [reconfigure GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
-
-:::TabTitle Self-compiled (source)
-
-1. Edit `/home/git/gitlab/config/gitlab.yml` and add or amend the following
-   lines:
-
-   ```yaml
-   external_diffs:
-     enabled: true
-     object_store:
-       enabled: true
-       remote_directory: "external-diffs" # The bucket name
-       connection:
-         provider: AWS # Only AWS supported at the moment
-         aws_access_key_id: AWS_ACCESS_KEY_ID
-         aws_secret_access_key: AWS_SECRET_ACCESS_KEY
-         region: eu-central-1
-   ```
-
+1. Configure the
+   [consolidated object storage settings](object_storage.md#configure-a-single-storage-connection-for-all-object-types-consolidated-form).
 1. Save the file and [restart GitLab](restart_gitlab.md#self-compiled-installations) for the changes to take effect.
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
+
+After you reconfigure or restart GitLab, your existing merge request diffs are
+migrated to external storage.
+
+For more information, see [Object storage](object_storage.md).
 
 ## Alternative in-database storage
 
-Enabling external diffs may reduce the performance of merge requests, as they
+Enabling external diffs may reduce the performance of merge requests because they
 must be retrieved in a separate operation to other data. A compromise may be
 reached by only storing outdated diffs externally, while keeping current diffs
 in the database.
 
 To enable this feature, perform the following steps:
 
-::Tabs
+{{< tabs >}}
 
-:::TabTitle Linux package (Omnibus)
+{{< tab title="Linux package (Omnibus)" >}}
 
 1. Edit `/etc/gitlab/gitlab.rb` and add the following line:
 
@@ -210,7 +157,9 @@ To enable this feature, perform the following steps:
 
 1. Save the file and [reconfigure GitLab](restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 
-:::TabTitle Self-compiled (source)
+{{< /tab >}}
+
+{{< tab title="Self-compiled (source)" >}}
 
 1. Edit `/home/git/gitlab/config/gitlab.yml` and add or amend the following
    lines:
@@ -223,7 +172,9 @@ To enable this feature, perform the following steps:
 
 1. Save the file and [restart GitLab](restart_gitlab.md#self-compiled-installations) for the changes to take effect.
 
-::EndTabs
+{{< /tab >}}
+
+{{< /tabs >}}
 
 With this feature enabled, diffs are initially stored in the database, rather
 than externally. They are moved to external storage after any of these
@@ -279,3 +230,18 @@ These environment variables modify the behavior of the Rake task:
 - `BATCH` and `UPDATE_DELAY` enable the speed of the migration to be traded off
   against concurrent access to the table.
 - `ANSI` should be set to `false` if your terminal does not support ANSI escape codes.
+
+To check the distribution of external diffs between object and local storage, use the following SQL query:
+
+```shell
+gitlabhq_production=# SELECT count(*) AS total,
+  SUM(CASE
+    WHEN external_diff_store = '1' THEN 1
+    ELSE 0
+  END) AS filesystem,
+  SUM(CASE
+    WHEN external_diff_store = '2' THEN 1
+    ELSE 0
+  END) AS objectstg
+FROM merge_request_diffs;
+```

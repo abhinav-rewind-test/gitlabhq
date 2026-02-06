@@ -5,23 +5,41 @@ require 'spec_helper'
 RSpec.describe Note, feature_category: :team_planning do
   include RepoHelpers
 
+  describe 'Concerns' do
+    let_it_be(:factory) { :note }
+    let_it_be(:discussion_factory) { :discussion_note_on_issue }
+
+    let_it_be(:note1) { create(:note_on_issue) }
+    let_it_be(:note2) { create(:note_on_issue) }
+    let_it_be(:reply) { create(:note_on_issue, in_reply_to: note1, project: note1.project) }
+
+    let_it_be_with_reload(:discussion_note) { create(:discussion_note_on_issue) }
+    let_it_be_with_reload(:discussion_note_2) do
+      create(:discussion_note_on_issue, project: discussion_note.project, noteable: discussion_note.noteable)
+    end
+
+    let_it_be_with_reload(:discussion_reply) do
+      create(:discussion_note_on_issue,
+        project: discussion_note.project, noteable: discussion_note.noteable, in_reply_to: discussion_note)
+    end
+
+    it_behaves_like 'Notes::ActiveRecord'
+    it_behaves_like 'Notes::Discussion'
+  end
+
   describe 'associations' do
     it { is_expected.to belong_to(:project) }
     it { is_expected.to belong_to(:namespace) }
     it { is_expected.to belong_to(:noteable).touch(false) }
-    it { is_expected.to belong_to(:author).class_name('User') }
 
-    it { is_expected.to have_many(:todos) }
     it { is_expected.to have_one(:note_metadata).inverse_of(:note).class_name('Notes::NoteMetadata') }
     it { is_expected.to belong_to(:review).inverse_of(:notes) }
+    it { is_expected.to have_many(:events) }
   end
 
   describe 'modules' do
     subject { described_class }
 
-    it { is_expected.to include_module(Participable) }
-    it { is_expected.to include_module(Mentionable) }
-    it { is_expected.to include_module(Awardable) }
     it { is_expected.to include_module(Sortable) }
   end
 
@@ -30,10 +48,20 @@ RSpec.describe Note, feature_category: :team_planning do
   end
 
   describe 'validation' do
-    it { is_expected.to validate_length_of(:note).is_at_most(1_000_000) }
-    it { is_expected.to validate_presence_of(:note) }
     it { is_expected.to validate_presence_of(:project) }
     it { is_expected.to validate_presence_of(:namespace) }
+
+    context 'when note is on a personal snippet' do
+      before do
+        allow(subject).to receive(:for_personal_snippet?).and_return(true)
+      end
+
+      it { is_expected.to validate_presence_of(:organization) }
+
+      it { is_expected.not_to validate_presence_of(:namespace) }
+
+      it { is_expected.not_to validate_presence_of(:project) }
+    end
 
     context 'when note is on commit' do
       before do
@@ -81,11 +109,11 @@ RSpec.describe Note, feature_category: :team_planning do
       end
     end
 
-    context 'when noteable is an abuse report' do
-      subject { build(:note, noteable: build_stubbed(:abuse_report), project: nil, namespace: nil) }
+    context 'when noteable is a wiki page' do
+      subject { build(:note, noteable: build_stubbed(:wiki_page_meta), project: nil, namespace: nil) }
 
-      it 'is valid without project or namespace' do
-        is_expected.to be_valid
+      it 'is not valid without project or namespace' do
+        is_expected.to be_invalid
       end
     end
 
@@ -104,7 +132,7 @@ RSpec.describe Note, feature_category: :team_planning do
       end
 
       context 'when creating a user note' do
-        subject { build(:note, project: noteable.project, noteable: noteable) }
+        subject { build(:note, project: noteable.project, noteable: noteable.reload) }
 
         it { is_expected.not_to be_valid }
       end
@@ -185,7 +213,7 @@ RSpec.describe Note, feature_category: :team_planning do
         end
 
         context 'when noteable is not allowed to have confidential notes' do
-          let_it_be(:noteable) { create(:snippet) }
+          let_it_be(:noteable) { create(:project_snippet) }
 
           it 'can not be set confidential' do
             expect(subject).not_to be_valid
@@ -244,6 +272,40 @@ RSpec.describe Note, feature_category: :team_planning do
   end
 
   describe 'callbacks' do
+    describe '#touch_noteable' do
+      let_it_be_with_reload(:noteable) { create(:issue) }
+
+      it 'calls #touch on the noteable' do
+        note = build(:note, project: noteable.project, noteable: noteable)
+
+        expect(note).to receive(:touch_noteable).and_call_original
+        expect(note.noteable).to receive(:touch)
+
+        note.save!
+      end
+
+      shared_examples_for 'skips #touch_noteable' do
+        it 'skips #touch_noteable' do
+          expect(note).not_to receive(:touch_noteable)
+          expect(note.noteable).not_to receive(:touch)
+
+          note.save!
+        end
+      end
+
+      context "when 'importing' is true" do
+        let(:note) { build(:note, project: noteable.project, noteable: noteable, importing: true) }
+
+        it_behaves_like 'skips #touch_noteable'
+      end
+
+      context "when 'skip_touch_noteable' is true" do
+        let(:note) { build(:note, project: noteable.project, noteable: noteable, skip_touch_noteable: true) }
+
+        it_behaves_like 'skips #touch_noteable'
+      end
+    end
+
     describe '#keep_around_commit' do
       let!(:noteable) { create(:issue) }
 
@@ -329,6 +391,20 @@ RSpec.describe Note, feature_category: :team_planning do
       end
     end
 
+    describe '#ensure_organization_id' do
+      context 'for a personal snippet note' do
+        let_it_be(:snippet) { create(:personal_snippet) }
+
+        it 'sets organization_id of the personal snippet' do
+          note = build(:note, noteable: snippet, project: nil)
+
+          note.valid?
+
+          expect(note.organization_id).to eq(snippet.organization_id)
+        end
+      end
+    end
+
     describe '#ensure_namespace_id' do
       context 'for issues' do
         let!(:issue) { create(:issue) }
@@ -392,20 +468,12 @@ RSpec.describe Note, feature_category: :team_planning do
       context 'for a personal snippet note' do
         let_it_be(:snippet) { create(:personal_snippet) }
 
-        it 'copies the personal namespace_id of the author' do
+        it 'sets namespace_id to nil' do
           note = build(:note, noteable: snippet, project: nil)
 
           note.valid?
 
-          expect(note.namespace_id).to eq(snippet.author.namespace.id)
-        end
-
-        context 'when snippet author is missing' do
-          it 'does not raise an exception' do
-            note = build(:note, noteable: build(:personal_snippet, author: nil), project: nil)
-
-            expect { note.valid? }.not_to raise_error
-          end
+          expect(note.namespace_id).to be_nil
         end
       end
 
@@ -518,36 +586,85 @@ RSpec.describe Note, feature_category: :team_planning do
     let(:set_mentionable_text) { ->(txt) { subject.note = txt } }
   end
 
+  describe '#note_html' do
+    shared_examples 'note that parses work item references' do
+      it 'parses the work item reference' do
+        html_link = Nokogiri::HTML.fragment(note.note_html).css('a').first
+
+        expect(html_link.text).to eq(expected_link_text)
+        expect(html_link[:href]).to eq(work_item_path)
+      end
+    end
+
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, group: group) }
+    let_it_be(:group_work_item) { create(:work_item, :group_level, namespace: group) }
+    let_it_be(:project_work_item) { create(:work_item, :task, project: project) }
+
+    context 'when noteable is a group level work item', :aggregate_failures do
+      let(:work_item_path) { Gitlab::UrlBuilder.build(group_work_item, only_path: true) }
+      let(:expected_link_text) { group_work_item.to_reference }
+      let(:note) { create(:note, :on_group_work_item, noteable: group_work_item, note: note_text) }
+
+      context 'when note text contains a group reference (URL)' do
+        let(:work_item_path) { Gitlab::UrlBuilder.build(group_work_item) }
+        let(:note_text) { work_item_path }
+
+        it_behaves_like 'note that parses work item references'
+      end
+
+      context 'when note text contains a group reference (short)' do
+        let(:note_text) { group_work_item.to_reference }
+
+        it_behaves_like 'note that parses work item references'
+      end
+
+      context 'when note text contains a group reference (full)' do
+        let(:note_text) { group_work_item.to_reference(full: true) }
+
+        it_behaves_like 'note that parses work item references'
+      end
+
+      context 'when note text contains a project reference (URL)' do
+        let(:work_item_path) { Gitlab::UrlBuilder.build(project_work_item) }
+        let(:note_text) { work_item_path }
+        let(:expected_link_text) { "#{project.path}##{project_work_item.iid}" }
+
+        it_behaves_like 'note that parses work item references'
+      end
+    end
+  end
+
   describe "#all_references" do
     let!(:note1) { create(:note_on_issue) }
     let!(:note2) { create(:note_on_issue) }
 
     it "reads the rendered note body from the cache" do
       expect(Banzai::Renderer).to receive(:cache_collection_render)
-        .with([{
-          text: note1.note,
-          context: {
-            skip_project_check: false,
-            pipeline: :note,
-            cache_key: [note1, "note"],
-            project: note1.project,
-            rendered: note1.note_html,
-            author: note1.author
-          }
-        }]).and_call_original
+                                    .with([{
+                                      text: note1.note,
+                                      context: {
+                                        skip_project_check: false,
+                                        pipeline: :note,
+                                        cache_key: [note1, "note"],
+                                        project: note1.project,
+                                        rendered: note1.note_html,
+                                        author: note1.author
+                                      }
+                                    }]).and_call_original
 
       expect(Banzai::Renderer).to receive(:cache_collection_render)
-        .with([{
-          text: note2.note,
-          context: {
-            skip_project_check: false,
-            pipeline: :note,
-            cache_key: [note2, "note"],
-            project: note2.project,
-            rendered: note2.note_html,
-            author: note2.author
-          }
-        }]).and_call_original
+                                    .with([{
+                                      text: note2.note,
+                                      context: {
+                                        skip_project_check: false,
+                                        pipeline: :note,
+                                        cache_key: [note2, "note"],
+                                        project: note2.project,
+                                        rendered: note2.note_html,
+                                        author: note2.author
+                                      }
+                                    }]).and_call_original
 
       note1.all_references.users
       note2.all_references.users
@@ -649,6 +766,56 @@ RSpec.describe Note, feature_category: :team_planning do
     context "without updated_by" do
       it "returns false" do
         expect(note.edited?).to be_falsy
+      end
+    end
+  end
+
+  describe '#last_edited_by' do
+    let_it_be(:note, reload: true) do
+      create_timestamp = 1.day.ago
+      create(:note, created_at: create_timestamp, updated_at: create_timestamp)
+    end
+
+    let(:editor) { note.author }
+
+    context 'when the note is not edited' do
+      it 'returns nil' do
+        expect(note.last_edited_by).to be_nil
+      end
+    end
+
+    def update_note(note, **attributes)
+      # Update updated_at manually because of ThrottledTouch concern
+      note.update!(attributes.merge(updated_at: Time.current))
+    end
+
+    context 'with an edited note' do
+      before do
+        update_note(note, last_edited_at: Time.current, updated_by: editor)
+      end
+
+      it 'returns the updated_by user' do
+        expect(note.last_edited_by).to eq(editor)
+      end
+    end
+
+    context 'with an edited note by a deleted user' do
+      before do
+        update_note(note, last_edited_at: Time.current, updated_by: nil)
+      end
+
+      it 'returns the ghost user' do
+        expect(note.last_edited_by).to eq(Users::Internal.in_organization(note.organization_id).ghost)
+      end
+    end
+
+    context 'with a legacy edited note where last_edited_at is not set' do
+      before do
+        update_note(note, updated_by: editor)
+      end
+
+      it 'returns the updated_by user' do
+        expect(note.last_edited_by).to eq(editor)
       end
     end
   end
@@ -908,16 +1075,16 @@ RSpec.describe Note, feature_category: :team_planning do
         create :note, noteable: ext_issue, project: ext_proj, note: "mentioned in merge request !1", system: true
       end
 
-      it "returns true for other users" do
-        expect(note.system_note_visible_for?(private_user)).to be_truthy
+      it "returns false" do
+        expect(note.system_note_visible_for?(private_user)).to be_falsey
       end
 
-      it "returns true if user visible reference count set" do
+      it "returns false if user visible reference count set" do
         note.user_visible_reference_count = 0
         note.total_reference_count = 0
 
         expect(note).not_to receive(:reference_mentionables)
-        expect(note.system_note_visible_for?(ext_issue.author)).to be_truthy
+        expect(note.system_note_visible_for?(ext_issue.author)).to be_falsey
       end
     end
   end
@@ -1012,6 +1179,62 @@ RSpec.describe Note, feature_category: :team_planning do
     end
   end
 
+  describe 'all_referenced_mentionables_allowed?' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:issue) { create(:issue) }
+
+    RSpec.shared_examples 'does not generate N+1 queries for reference parsing' do
+      it 'does not generate N+1 queries for reference parsing', :request_store do
+        ref1 = milestone1.to_reference(issue.project, format: :name, full: true, absolute_path: true)
+        ref2 = milestone2.to_reference(issue.project, format: :name, full: true, absolute_path: true)
+        ref3 = milestone3.to_reference(issue.project, format: :name, full: true, absolute_path: true)
+
+        text = "mentioned in #{ref1}"
+        note = create(:note, :system, noteable: issue, note: text, project: issue.project)
+
+        note.system_note_visible_for?(user)
+
+        text = "mentioned in #{ref1} and #{ref2}"
+        note.update!(note: text)
+
+        control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+          note.system_note_visible_for?(user)
+        end
+
+        text = "mentioned in #{ref1} and #{ref2} and #{ref3}"
+        note.update!(note: text)
+
+        expect do
+          note.system_note_visible_for?(user)
+        end.to issue_same_number_of_queries_as(control).or_fewer
+      end
+    end
+
+    context 'with a project level milestone' do
+      let_it_be(:milestone1) { create(:milestone, project: create(:project, :private)) }
+      let_it_be(:milestone2) { create(:milestone, project: create(:project, :private)) }
+      let_it_be(:milestone3) { create(:milestone, project: create(:project, :private)) }
+      let_it_be(:milestone_event) { create(:resource_milestone_event, issue: issue, milestone: milestone1) }
+      let_it_be(:note) { MilestoneNote.from_event(milestone_event, resource: issue, resource_parent: issue.project) }
+
+      it { expect(note.system_note_visible_for?(user)).to be false }
+
+      it_behaves_like 'does not generate N+1 queries for reference parsing'
+    end
+
+    context 'with a group level milestone' do
+      let_it_be(:milestone1) { create(:milestone, group: create(:group, :private)) }
+      let_it_be(:milestone2) { create(:milestone, group: create(:group, :private)) }
+      let_it_be(:milestone3) { create(:milestone, group: create(:group, :private)) }
+      let_it_be(:milestone_event) { create(:resource_milestone_event, issue: issue, milestone: milestone1) }
+      let_it_be(:note) { MilestoneNote.from_event(milestone_event, resource: issue, resource_parent: issue.project) }
+
+      it { expect(note.system_note_visible_for?(user)).to be false }
+
+      it_behaves_like 'does not generate N+1 queries for reference parsing'
+    end
+  end
+
   describe 'clear_blank_line_code!' do
     it 'clears a blank line code before validation' do
       note = build(:note, line_code: ' ')
@@ -1027,33 +1250,6 @@ RSpec.describe Note, feature_category: :team_planning do
       note = create(:note_on_issue, noteable: issue, project: project)
 
       expect(note.participants).to include(note.author)
-    end
-  end
-
-  describe '#start_of_discussion?' do
-    let_it_be(:note) { create(:discussion_note_on_merge_request) }
-    let_it_be(:reply) { create(:discussion_note_on_merge_request, in_reply_to: note) }
-
-    it 'returns true when note is the start of a discussion' do
-      expect(note).to be_start_of_discussion
-    end
-
-    it 'returns false when note is a reply' do
-      expect(reply).not_to be_start_of_discussion
-    end
-  end
-
-  describe '.find_discussion' do
-    let!(:note) { create(:discussion_note_on_merge_request) }
-    let!(:note2) { create(:discussion_note_on_merge_request, in_reply_to: note) }
-    let(:merge_request) { note.noteable }
-
-    it 'returns a discussion with multiple notes' do
-      discussion = merge_request.notes.find_discussion(note.discussion_id)
-
-      expect(discussion).not_to be_nil
-      expect(discussion.notes).to match_array([note, note2])
-      expect(discussion.first_note.discussion_id).to eq(note.discussion_id)
     end
   end
 
@@ -1358,25 +1554,17 @@ RSpec.describe Note, feature_category: :team_planning do
     end
   end
 
+  describe '#for_wiki_page?' do
+    it 'returns true for a wiki_page' do
+      expect(build(:note_on_wiki_page).for_wiki_page?).to be_truthy
+    end
+  end
+
   describe '#for_design' do
     it 'is true when the noteable is a design' do
       note = build(:note, noteable: build(:design))
 
       expect(note).to be_for_design
-    end
-  end
-
-  describe '#for_abuse_report' do
-    it 'is true when the noteable is an abuse report' do
-      note = build(:note, noteable: build(:abuse_report))
-
-      expect(note).to be_for_abuse_report
-    end
-
-    it 'is not true when the noteable is not an abuse report' do
-      note = build(:note, noteable: build(:design))
-
-      expect(note).not_to be_for_abuse_report
     end
   end
 
@@ -1409,6 +1597,10 @@ RSpec.describe Note, feature_category: :team_planning do
 
     it 'returns alert_management_alert for an alert note' do
       expect(build(:note_on_alert).noteable_ability_name).to eq('alert_management_alert')
+    end
+
+    it 'returns wiki page for a wiki page note' do
+      expect(build(:note_on_wiki_page).noteable_ability_name).to eq('wiki_page')
     end
   end
 
@@ -1519,176 +1711,12 @@ RSpec.describe Note, feature_category: :team_planning do
     end
   end
 
-  describe "#discussion_id" do
-    let(:note) { create(:note_on_commit) }
-
-    context "when it is newly created" do
-      it "has a discussion id" do
-        expect(note.discussion_id).not_to be_nil
-        expect(note.discussion_id).to match(/\A\h{40}\z/)
-      end
-    end
-
-    context "when it didn't store a discussion id before" do
-      before do
-        note.update_column(:discussion_id, nil)
-      end
-
-      it "has a discussion id" do
-        # The discussion_id is set in `after_initialize`, so `reload` won't work
-        reloaded_note = described_class.find(note.id)
-
-        expect(reloaded_note.discussion_id).not_to be_nil
-        expect(reloaded_note.discussion_id).to match(/\A\h{40}\z/)
-      end
-    end
-
-    context 'when the note is displayed out of context' do
-      let(:merge_request) { create(:merge_request) }
-
-      it 'overrides the discussion id' do
-        expect(note.discussion_id(merge_request)).not_to eq(note.discussion_id)
-      end
-    end
-  end
-
-  describe '#to_discussion' do
-    subject { create(:discussion_note_on_merge_request) }
-
-    let!(:note2) { create(:discussion_note_on_merge_request, project: subject.project, noteable: subject.noteable, in_reply_to: subject) }
-
-    it "returns a discussion with just this note" do
-      discussion = subject.to_discussion
-
-      expect(discussion.id).to eq(subject.discussion_id)
-      expect(discussion.notes).to eq([subject])
-    end
-  end
-
-  describe "#discussion" do
-    let_it_be(:note1) { create(:discussion_note_on_merge_request) }
-    let_it_be(:note2) { create(:diff_note_on_merge_request, project: note1.project, noteable: note1.noteable) }
-
-    context 'when the note is part of a discussion' do
-      subject { create(:discussion_note_on_merge_request, project: note1.project, noteable: note1.noteable, in_reply_to: note1) }
-
-      it "returns the discussion this note is in" do
-        discussion = subject.discussion
-
-        expect(discussion.id).to eq(subject.discussion_id)
-        expect(discussion.notes).to eq([note1, subject])
-      end
-    end
-
-    context 'when the note is not part of a discussion' do
-      subject { create(:note) }
-
-      it "returns a discussion with just this note" do
-        discussion = subject.discussion
-
-        expect(discussion.id).to eq(subject.discussion_id)
-        expect(discussion.notes).to eq([subject])
-      end
-    end
-  end
-
-  describe "#part_of_discussion?" do
-    context 'for a regular note' do
-      let(:note) { build(:note) }
-
-      it 'returns false' do
-        expect(note.part_of_discussion?).to be_falsey
-      end
-    end
-
+  describe '#part_of_discussion?' do
     context 'for a diff note' do
       let(:note) { build(:diff_note_on_commit) }
 
       it 'returns true' do
         expect(note.part_of_discussion?).to be_truthy
-      end
-    end
-
-    context 'for a discussion note' do
-      let(:note) { build(:discussion_note_on_merge_request) }
-
-      it 'returns true' do
-        expect(note.part_of_discussion?).to be_truthy
-      end
-    end
-  end
-
-  describe '#in_reply_to?' do
-    context 'for a note' do
-      context 'when part of a discussion' do
-        subject { create(:discussion_note_on_issue) }
-
-        let(:note) { create(:discussion_note_on_issue, in_reply_to: subject) }
-
-        it 'checks if the note is in reply to the other discussion' do
-          expect(subject).to receive(:in_reply_to?).with(note).and_call_original
-          expect(subject).to receive(:in_reply_to?).with(note.noteable).and_call_original
-          expect(subject).to receive(:in_reply_to?).with(note.to_discussion).and_call_original
-
-          subject.in_reply_to?(note)
-        end
-      end
-
-      context 'when not part of a discussion' do
-        subject { create(:note) }
-
-        let(:note) { create(:note, in_reply_to: subject) }
-
-        it 'checks if the note is in reply to the other noteable' do
-          expect(subject).to receive(:in_reply_to?).with(note).and_call_original
-          expect(subject).to receive(:in_reply_to?).with(note.noteable).and_call_original
-
-          subject.in_reply_to?(note)
-        end
-      end
-    end
-
-    context 'for a discussion' do
-      context 'when part of the same discussion' do
-        subject { create(:diff_note_on_merge_request) }
-
-        let(:note) { create(:diff_note_on_merge_request, in_reply_to: subject) }
-
-        it 'returns true' do
-          expect(subject.in_reply_to?(note.to_discussion)).to be_truthy
-        end
-      end
-
-      context 'when not part of the same discussion' do
-        subject { create(:diff_note_on_merge_request) }
-
-        let(:note) { create(:diff_note_on_merge_request) }
-
-        it 'returns false' do
-          expect(subject.in_reply_to?(note.to_discussion)).to be_falsey
-        end
-      end
-    end
-
-    context 'for a noteable' do
-      context 'when a comment on the same noteable' do
-        subject { create(:note) }
-
-        let(:note) { create(:note, in_reply_to: subject) }
-
-        it 'returns true' do
-          expect(subject.in_reply_to?(note.noteable)).to be_truthy
-        end
-      end
-
-      context 'when not a comment on the same noteable' do
-        subject { create(:note) }
-
-        let(:note) { create(:note) }
-
-        it 'returns false' do
-          expect(subject.in_reply_to?(note.noteable)).to be_falsey
-        end
       end
     end
   end
@@ -1750,16 +1778,6 @@ RSpec.describe Note, feature_category: :team_planning do
 
       context 'when adding a note to the MR' do
         let(:note) { build(:note, noteable: merge_request, project: merge_request.project) }
-
-        it 'broadcasts an Action Cable event for the MR' do
-          expect(Noteable::NotesChannel).to receive(:broadcast_to).with(merge_request, event: 'updated')
-
-          note.save!
-        end
-      end
-
-      context 'when adding a note to a commit on the MR' do
-        let(:note) { build(:note_on_commit, commit_id: merge_request.commits.first.id, project: merge_request.project) }
 
         it 'broadcasts an Action Cable event for the MR' do
           expect(Noteable::NotesChannel).to receive(:broadcast_to).with(merge_request, event: 'updated')
@@ -1911,22 +1929,8 @@ RSpec.describe Note, feature_category: :team_planning do
         let_it_be(:banned_user) { create(:banned_user).user }
         let_it_be(:banned_note) { create(:note, author: banned_user) }
 
-        context 'when the :hidden_notes feature is disabled' do
-          before do
-            stub_feature_flags(hidden_notes: false)
-          end
-
-          it { is_expected.to include(banned_note, note1) }
-        end
-
-        context 'when the :hidden_notes feature is enabled' do
-          before do
-            stub_feature_flags(hidden_notes: true)
-          end
-
-          it { is_expected.not_to include(banned_note) }
-          it { is_expected.to include(note1) }
-        end
+        it { is_expected.not_to include(banned_note) }
+        it { is_expected.to include(note1) }
       end
     end
 
@@ -1951,6 +1955,18 @@ RSpec.describe Note, feature_category: :team_planning do
 
           expect(notes_by_author).to contain_exactly(note)
         end
+      end
+    end
+
+    describe '.order_created_at_id_asc' do
+      it 'returns notes in ascending order' do
+        expect(described_class.order_created_at_id_asc).to eq([note1, note2])
+      end
+    end
+
+    describe '.order_created_at_id_desc' do
+      it 'returns notes in descending order' do
+        expect(described_class.order_created_at_id_desc).to eq([note2, note1])
       end
     end
   end
@@ -2015,18 +2031,6 @@ RSpec.describe Note, feature_category: :team_planning do
       let(:note) { build(:note, :with_review) }
 
       it { is_expected.to be_truthy }
-    end
-  end
-
-  describe '#attachment' do
-    it 'is cleaned up correctly when project is destroyed' do
-      note = create(:note_on_issue, :with_attachment)
-
-      attachment = note.attachment
-
-      note.project.destroy!
-
-      expect(attachment).not_to be_exist
     end
   end
 
@@ -2133,6 +2137,82 @@ RSpec.describe Note, feature_category: :team_planning do
         end
 
         it { is_expected.to be_truthy }
+      end
+    end
+  end
+
+  describe '#human_max_access' do
+    let_it_be(:user) { create(:user) }
+
+    subject { note.human_max_access }
+
+    context 'when parent is a project' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:noteable) { create(:wiki_page_meta, project: project) }
+      let(:note) { create(:note, project: project, author: user, noteable: noteable) }
+
+      before do
+        project.add_developer(user)
+      end
+
+      it { is_expected.to be('Developer') }
+    end
+  end
+
+  describe '#trigger_work_item_updated_subscription' do
+    let(:issue) { create(:issue) }
+    let(:note) { build(:note, noteable: issue, system: true, project: issue.project) }
+
+    before do
+      allow(note).to receive(:for_issue?).and_return(true)
+    end
+
+    context 'when note contains metadata with specific action' do
+      %w[branch relate cross_reference].each do |action|
+        it "triggers subscription for note with '#{action}' action" do
+          build(:system_note_metadata, note: note, action: action)
+
+          expect(GraphqlTriggers).to receive(:work_item_updated).with(issue)
+
+          note.save!
+        end
+      end
+    end
+
+    context 'when note contains metadata with non-actionable action' do
+      %w[label visible assignee].each do |action|
+        it "does not trigger subscription for note with '#{action}' action" do
+          build(:system_note_metadata, note: note, action: action)
+
+          expect(GraphqlTriggers).not_to receive(:work_item_updated)
+
+          note.save!
+        end
+      end
+    end
+
+    context 'when noteable is not an issue' do
+      let(:merge_request) { create(:merge_request) }
+      let(:note) { build(:note, noteable: merge_request, system: true, note: 'merge request created', project: merge_request.project) }
+
+      before do
+        allow(note).to receive(:for_issue?).and_return(false)
+      end
+
+      it 'does not trigger subscription' do
+        expect(GraphqlTriggers).not_to receive(:work_item_updated)
+
+        note.save!
+      end
+    end
+
+    context 'when noteable is not a system note' do
+      let(:note) { build(:note, noteable: issue, system: false, note: 'merge request created', project: issue.project) }
+
+      it 'does not trigger subscription' do
+        expect(GraphqlTriggers).not_to receive(:work_item_updated)
+
+        note.save!
       end
     end
   end

@@ -9,8 +9,8 @@ module API
 
           expose :name
           expose :version
-          expose :creation_timestamp, documentation: { type: Integer }
-          expose :last_updated_timestamp, documentation: { type: Integer }
+          expose :creation_timestamp, documentation: { type: 'Integer' }
+          expose :last_updated_timestamp, documentation: { type: 'Integer' }
           expose :user_id
           expose :current_stage
           expose :description
@@ -20,9 +20,13 @@ module API
           expose :status_message
           expose :metadata, as: :tags, using: KeyValue
           expose :run_link
-          expose :aliases, documentation: { is_array: true, type: String }
+          expose :aliases, documentation: { is_array: true, type: 'String' }
 
           private
+
+          def version
+            object.id.to_s
+          end
 
           def name
             object.name
@@ -73,7 +77,7 @@ module API
           end
 
           def aliases
-            []
+            [object.version.to_s]
           end
         end
       end

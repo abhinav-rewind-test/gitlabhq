@@ -99,6 +99,20 @@ RSpec.describe BulkImports::PipelineBatchWorker, feature_category: :importers do
           expect(batch.reload).to be_skipped
         end
       end
+
+      context 'when tracker is canceled' do
+        let(:tracker) { create(:bulk_import_tracker, :canceled) }
+
+        it 'skips and logs the batch' do
+          expect_next_instance_of(BulkImports::Logger) do |logger|
+            expect(logger).to receive(:info).with(a_hash_including('message' => 'Batch tracker canceled'))
+          end
+
+          worker.perform(batch.id)
+
+          expect(batch.reload).to be_canceled
+        end
+      end
     end
 
     context 'with batch status' do
@@ -129,6 +143,30 @@ RSpec.describe BulkImports::PipelineBatchWorker, feature_category: :importers do
           worker.perform(batch.id)
 
           expect(batch.reload).to be_finished
+        end
+      end
+
+      context 'when batch status is canceled' do
+        let(:batch) { create(:bulk_import_batch_tracker, :canceled, tracker: tracker) }
+
+        it 'stays canceled and does not execute' do
+          expect(batch).not_to receive(:start!)
+
+          worker.perform(batch.id)
+
+          expect(batch.reload).to be_canceled
+        end
+      end
+
+      context 'when batch status is failed' do
+        let(:batch) { create(:bulk_import_batch_tracker, :failed, tracker: tracker) }
+
+        it 'stays failed and does not execute' do
+          expect(batch).not_to receive(:start!)
+
+          worker.perform(batch.id)
+
+          expect(batch.reload).to be_failed
         end
       end
     end
@@ -207,7 +245,24 @@ RSpec.describe BulkImports::PipelineBatchWorker, feature_category: :importers do
     end
   end
 
+  describe '.sidekiq_interruptions_exhausted' do
+    it 'sets batch status to failed' do
+      job = { 'args' => [batch.id] }
+
+      expect(BulkImports::Failure).to receive(:create).with(hash_including(
+        bulk_import_entity_id: entity.id,
+        exception_class: 'Import::Exceptions::SidekiqExhaustedInterruptionsError'
+      ))
+
+      expect(BulkImports::FinishBatchedPipelineWorker).to receive(:perform_async).with(tracker.id)
+      described_class.interruptions_exhausted_block.call(job)
+      expect(batch.reload).to be_failed
+    end
+  end
+
   context 'with stop signal from database health check' do
+    let(:setter) { instance_double('Sidekiq::Job::Setter') }
+
     around do |example|
       with_sidekiq_server_middleware do |chain|
         chain.add Gitlab::SidekiqMiddleware::SkipJobs
@@ -227,7 +282,8 @@ RSpec.describe BulkImports::PipelineBatchWorker, feature_category: :importers do
         expect(worker).not_to receive(:perform).with(batch.id)
       end
 
-      expect(described_class).to receive(:perform_in).with(described_class::DEFER_ON_HEALTH_DELAY, batch.id)
+      expect(described_class).to receive(:deferred).and_return(setter)
+      expect(setter).to receive(:perform_in).with(described_class::DEFER_ON_HEALTH_DELAY, batch.id)
 
       described_class.perform_async(batch.id)
     end
@@ -239,7 +295,7 @@ RSpec.describe BulkImports::PipelineBatchWorker, feature_category: :importers do
 
       schema, table = block.call([job_args])
 
-      expect(schema).to eq(:gitlab_main_cell)
+      expect(schema).to eq(:gitlab_main_org)
       expect(table).to eq(['labels'])
     end
 

@@ -17,8 +17,8 @@ export default {
   inject: [
     'serviceDeskCalloutSvgPath',
     'serviceDeskEmailAddress',
-    'canAdminIssues',
-    'canEditProjectSettings',
+    'canAdminIssue',
+    'canAdminProject',
     'serviceDeskSettingsPath',
     'isServiceDeskEnabled',
     'serviceDeskHelpPath',
@@ -26,26 +26,22 @@ export default {
   i18n: { infoBannerTitle, infoBannerAdminNote, infoBannerUserNote, enableServiceDesk, learnMore },
   computed: {
     canSeeEmailAddress() {
-      return this.canAdminIssues && this.isServiceDeskEnabled;
+      return this.canAdminIssue && this.isServiceDeskEnabled;
     },
     canEnableServiceDesk() {
-      return this.canEditProjectSettings && !this.isServiceDeskEnabled;
+      return this.canAdminProject && !this.isServiceDeskEnabled;
     },
   },
 };
 </script>
 
 <template>
-  <div class="gl-border-b gl-pb-3 gl-display-flex gl-align-items-flex-start">
+  <div class="gl-border-b gl-flex gl-items-start gl-pb-3">
     <!-- eslint-disable @gitlab/vue-require-i18n-attribute-strings -->
-    <img
-      :src="serviceDeskCalloutSvgPath"
-      alt=""
-      class="gl-display-none gl-sm-display-block gl-p-5"
-    />
+    <img :src="serviceDeskCalloutSvgPath" alt="" class="gl-hidden gl-p-5 @sm/panel:gl-block" />
     <!-- eslint-enable @gitlab/vue-require-i18n-attribute-strings -->
-    <div class="gl-mt-3 gl-ml-3">
-      <h5>{{ $options.i18n.infoBannerTitle }}</h5>
+    <div class="gl-ml-3 gl-mt-3">
+      <p class="gl-mt-4 gl-font-bold">{{ $options.i18n.infoBannerTitle }}</p>
       <p v-if="canSeeEmailAddress">
         {{ $options.i18n.infoBannerAdminNote }} <code>{{ serviceDeskEmailAddress }}</code>
       </p>

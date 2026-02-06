@@ -2,7 +2,12 @@ import setWindowLocation from 'helpers/set_window_location_helper';
 import { TEST_HOST } from 'helpers/test_constants';
 import * as urlUtils from '~/lib/utils/url_utility';
 import { setGlobalAlerts } from '~/lib/utils/global_alerts';
-import { safeUrls, unsafeUrls } from './mock_data';
+import {
+  appendLineRangeHashToUrl,
+  getLineRangeFromHash,
+  setLocationHash,
+} from '~/lib/utils/url_utility';
+import { validURLs, invalidURLs } from './mock_data';
 
 jest.mock('~/lib/utils/global_alerts', () => ({
   getGlobalAlerts: jest.fn().mockImplementation(() => [
@@ -76,10 +81,12 @@ describe('URL utility', () => {
         gon.relative_url_root = '/gitlab';
       });
 
-      it('returns IDE path with route', () => {
-        expect(urlUtils.webIDEUrl('/gitlab/gitlab-org/gitlab-foss/merge_requests/1')).toBe(
-          '/gitlab/-/ide/project/gitlab-org/gitlab-foss/merge_requests/1',
-        );
+      it.each`
+        route                                                | result
+        ${'/gitlab/gitlab-org/gitlab-foss/merge_requests/1'} | ${'/gitlab/-/ide/project/gitlab-org/gitlab-foss/merge_requests/1'}
+        ${'/gitlab-org/gitlab-foss/edit/main/-/'}            | ${'/gitlab/-/ide/project/gitlab-org/gitlab-foss/edit/main/-/'}
+      `('returns $result for $route', ({ route, result }) => {
+        expect(urlUtils.webIDEUrl(route)).toBe(result);
       });
     });
   });
@@ -359,6 +366,50 @@ describe('URL utility', () => {
     });
   });
 
+  describe('setLocationHash', () => {
+    let originalLocation;
+    let originalHistory;
+    const mockPathname = '/some/path';
+    const mockSearch = '?some=query';
+
+    beforeEach(() => {
+      originalLocation = window.location;
+      originalHistory = window.history;
+
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: {
+          hash: jest.fn(),
+          pathname: mockPathname,
+          search: mockSearch,
+        },
+      });
+      Object.defineProperty(window, 'history', {
+        writable: true,
+        value: {
+          replaceState: jest.fn(),
+        },
+      });
+    });
+
+    afterEach(() => {
+      window.location = originalLocation;
+      window.history = originalHistory;
+    });
+
+    it('when hash is undefined', () => {
+      setLocationHash();
+
+      expect(window.history.replaceState).toHaveBeenCalledWith({}, '', mockPathname + mockSearch);
+    });
+
+    it('when hash is a string', () => {
+      setLocationHash('hash-value');
+
+      expect(window.location.hash).toBe('hash-value');
+    });
+  });
+
   describe('doesHashExistInUrl', () => {
     beforeEach(() => {
       setWindowLocation('#note_1');
@@ -429,24 +480,83 @@ describe('URL utility', () => {
     });
   });
 
+  describe('getLineRangeFromHash', () => {
+    beforeEach(() => {
+      window.location.hash = '';
+    });
+
+    it('returns null when no line number hash is present', () => {
+      expect(getLineRangeFromHash()).toBe(null);
+    });
+
+    it('returns line number when hash is present in URL', () => {
+      window.location.hash = '#L42';
+      expect(getLineRangeFromHash()).toStrictEqual({ beginning: 42, end: 42 });
+    });
+
+    it('returns line number range when hash is present in URL', () => {
+      window.location.hash = '#L10-42';
+      expect(getLineRangeFromHash()).toStrictEqual({ beginning: 10, end: 42 });
+    });
+
+    it('returns null when hash is not a line number', () => {
+      window.location.hash = '#L42InvalidHash123';
+      expect(getLineRangeFromHash()).toBe(null);
+    });
+  });
+
+  describe('appendLineRangeHashToUrl', () => {
+    beforeEach(() => {
+      window.location.hash = '';
+    });
+
+    it('appends line number hash when present in URL', () => {
+      window.location.hash = '#L42';
+      expect(appendLineRangeHashToUrl('https://example.com/ide')).toBe(
+        'https://example.com/ide#L42',
+      );
+    });
+
+    it('appends line number range hash when present in URL', () => {
+      window.location.hash = '#L10-42';
+      expect(appendLineRangeHashToUrl('https://example.com/ide')).toBe(
+        'https://example.com/ide#L10-42',
+      );
+    });
+
+    it('returns original URL when no line number hash is present', () => {
+      window.location.hash = '#something-else';
+      expect(appendLineRangeHashToUrl('https://example.com/ide')).toBe('https://example.com/ide');
+    });
+
+    it('returns original URL when hash is not a line number', () => {
+      window.location.hash = '#L42InvalidHash123';
+      expect(appendLineRangeHashToUrl('https://example.com/ide')).toBe('https://example.com/ide');
+    });
+  });
+
   describe('visitUrl', () => {
     let originalLocation;
     const mockUrl = 'http://example.com/page';
 
-    beforeAll(() => {
+    beforeEach(() => {
       originalLocation = window.location;
 
+      const { protocol, host, href } = new URL(mockUrl);
       Object.defineProperty(window, 'location', {
         writable: true,
         value: {
           assign: jest.fn(),
-          protocol: 'http:',
-          host: TEST_HOST,
+          protocol,
+          host,
+          href,
         },
       });
+
+      gon.gitlab_url = 'http://example.com';
     });
 
-    afterAll(() => {
+    afterEach(() => {
       window.location = originalLocation;
     });
 
@@ -455,7 +565,6 @@ describe('URL utility', () => {
       ${'?scope=all&state=merged'} | ${'?scope=all&state=merged'}
       ${'?'}                       | ${'?'}
     `('handles query string: $inputQuery', ({ inputQuery, expectedQuery }) => {
-      window.location.href = mockUrl;
       urlUtils.visitUrl(inputQuery);
       expect(window.location.assign).toHaveBeenCalledWith(`${mockUrl}${expectedQuery}`);
     });
@@ -475,42 +584,65 @@ describe('URL utility', () => {
       expect(window.location.assign).toHaveBeenCalledWith(mockUrl);
     });
 
-    it('navigates to a new page', () => {
-      const otherWindow = {
-        location: {
-          assign: jest.fn(),
-        },
-      };
-
+    it('opens a new window', () => {
       Object.defineProperty(window, 'open', {
         writable: true,
-        value: jest.fn().mockReturnValue(otherWindow),
+        value: jest.fn(),
       });
 
       urlUtils.visitUrl(mockUrl, true);
 
-      expect(otherWindow.opener).toBe(null);
-      expect(otherWindow.location.assign).toHaveBeenCalledWith(mockUrl);
+      expect(window.open).toHaveBeenCalledWith(mockUrl);
+    });
+
+    describe('when the URL is external', () => {
+      beforeEach(() => {
+        gon.gitlab_url = 'http://other.com';
+      });
+
+      it('navigates (on the same window) with no referrer or opener information', () => {
+        Object.defineProperty(window, 'open', {
+          writable: true,
+          value: jest.fn(),
+        });
+
+        urlUtils.visitUrl(mockUrl);
+
+        expect(window.open).toHaveBeenCalledWith(mockUrl, '_self', 'noreferrer');
+      });
+
+      it('opens a new window with no referrer or opener information', () => {
+        Object.defineProperty(window, 'open', {
+          writable: true,
+          value: jest.fn(),
+        });
+
+        urlUtils.visitUrl(mockUrl, true);
+
+        expect(window.open).toHaveBeenCalledWith(mockUrl, '_blank', 'noreferrer');
+      });
     });
   });
 
   describe('visitUrlWithAlerts', () => {
     let originalLocation;
 
-    beforeAll(() => {
+    beforeEach(() => {
       originalLocation = window.location;
 
+      const { protocol, host, href } = new URL(TEST_HOST);
       Object.defineProperty(window, 'location', {
         writable: true,
         value: {
           assign: jest.fn(),
-          protocol: 'http:',
-          host: TEST_HOST,
+          protocol,
+          host,
+          href,
         },
       });
     });
 
-    afterAll(() => {
+    afterEach(() => {
       window.location = originalLocation;
     });
 
@@ -533,6 +665,30 @@ describe('URL utility', () => {
         alert,
       ]);
       expect(window.location.assign).toHaveBeenCalledWith(url);
+    });
+  });
+
+  describe('refreshCurrentPage', () => {
+    let originalLocation;
+
+    beforeEach(() => {
+      originalLocation = window.location;
+
+      Object.defineProperty(window, 'location', {
+        value: {
+          reload: jest.fn(),
+        },
+      });
+    });
+
+    afterEach(() => {
+      window.location = originalLocation;
+    });
+
+    it('reloads the current page', () => {
+      urlUtils.refreshCurrentPage();
+
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -633,21 +789,68 @@ describe('URL utility', () => {
     });
   });
 
-  describe('isExternal', () => {
-    const gitlabUrl = 'https://gitlab.com/';
+  describe('pathSegments', () => {
+    it.each`
+      url                              | segments
+      ${'https://foo.test'}            | ${[]}
+      ${'https://foo.test/'}           | ${[]}
+      ${'https://foo.test/..'}         | ${[]}
+      ${'https://foo.test//'}          | ${['']}
+      ${'https://foo.test/bar'}        | ${['bar']}
+      ${'https://foo.test/bar//'}      | ${['bar', '']}
+      ${'https://foo.test/bar/qux'}    | ${['bar', 'qux']}
+      ${'https://foo.test/bar/../qux'} | ${['qux']}
+      ${'https://foo.test/bar/.'}      | ${['bar']}
+    `('returns $segments for $url', ({ url, segments }) => {
+      expect(urlUtils.pathSegments(new URL(url))).toEqual(segments);
+    });
+  });
 
-    beforeEach(() => {
-      gon.gitlab_url = gitlabUrl;
+  describe('isExternal', () => {
+    describe('when installed on the root path', () => {
+      const gitlabUrl = 'https://gitlab.com';
+
+      beforeEach(() => {
+        setWindowLocation(gitlabUrl);
+        gon.gitlab_url = gitlabUrl;
+      });
+
+      it.each`
+        url                                           | urlType                    | external
+        ${'/gitlab-org/gitlab-test/-/issues/2'}       | ${'relative'}              | ${false}
+        ${gitlabUrl}                                  | ${'absolute and internal'} | ${false}
+        ${`${gitlabUrl}/gitlab-org/gitlab-test`}      | ${'absolute and internal'} | ${false}
+        ${`${gitlabUrl}:8080/gitlab-org/gitlab-test`} | ${'absolute and internal'} | ${true}
+        ${'http://jira.atlassian.net/browse/IG-1'}    | ${'absolute and external'} | ${true}
+      `('returns $external for $url ($urlType)', ({ url, external }) => {
+        expect(urlUtils.isExternal(url)).toBe(external);
+      });
     });
 
-    it.each`
-      url                                        | urlType                    | external
-      ${'/gitlab-org/gitlab-test/-/issues/2'}    | ${'relative'}              | ${false}
-      ${gitlabUrl}                               | ${'absolute and internal'} | ${false}
-      ${`${gitlabUrl}/gitlab-org/gitlab-test`}   | ${'absolute and internal'} | ${false}
-      ${'http://jira.atlassian.net/browse/IG-1'} | ${'absolute and external'} | ${true}
-    `('returns $external for $url ($urlType)', ({ url, external }) => {
-      expect(urlUtils.isExternal(url)).toBe(external);
+    describe('when installed on a relative path', () => {
+      const gitlabUrl = 'https://foo.test/gitlab';
+
+      beforeEach(() => {
+        setWindowLocation(gitlabUrl);
+        gon.gitlab_url = gitlabUrl;
+      });
+
+      it.each`
+        url                                        | urlType                    | external
+        ${'/gitlab-org/gitlab-test/-/issues/2'}    | ${'relative'}              | ${true}
+        ${'../'}                                   | ${'relative'}              | ${true}
+        ${'a'}                                     | ${'relative'}              | ${true}
+        ${'#test'}                                 | ${'relative'}              | ${false}
+        ${'?test'}                                 | ${'relative'}              | ${false}
+        ${'/gitlab/a/..'}                          | ${'relative'}              | ${false}
+        ${gitlabUrl}                               | ${'absolute and internal'} | ${false}
+        ${`${gitlabUrl}/gitlab-org/gitlab-test`}   | ${'absolute and internal'} | ${false}
+        ${'http://jira.atlassian.net/browse/IG-1'} | ${'absolute and external'} | ${true}
+        ${'https://foo.test/'}                     | ${'absolute and external'} | ${true}
+        ${'https://foo.test/not-gitlab'}           | ${'absolute and external'} | ${true}
+      `('returns $external for $url ($urlType)', ({ url, external }) => {
+        expect(urlUtils.isExternal(url)).toBe(external);
+      });
     });
   });
 
@@ -708,25 +911,15 @@ describe('URL utility', () => {
     );
   });
 
-  describe('isSafeUrl', () => {
+  describe('isValidURL', () => {
     describe('with URL constructor support', () => {
-      it.each(safeUrls)('returns true for %s', (url) => {
-        expect(urlUtils.isSafeURL(url)).toBe(true);
+      it.each(validURLs)('returns true for %s', (url) => {
+        expect(urlUtils.isValidURL(url)).toBe(true);
       });
 
-      it.each(unsafeUrls)('returns false for %s', (url) => {
-        expect(urlUtils.isSafeURL(url)).toBe(false);
+      it.each(invalidURLs)('returns false for %s', (url) => {
+        expect(urlUtils.isValidURL(url)).toBe(false);
       });
-    });
-  });
-
-  describe('sanitizeUrl', () => {
-    it.each(safeUrls)('returns the url for %s', (url) => {
-      expect(urlUtils.sanitizeUrl(url)).toBe(url);
-    });
-
-    it.each(unsafeUrls)('returns `about:blank` for %s', (url) => {
-      expect(urlUtils.sanitizeUrl(url)).toBe('about:blank');
     });
   });
 
@@ -791,23 +984,24 @@ describe('URL utility', () => {
 
   describe('queryToObject', () => {
     it.each`
-      case                                                                      | query                               | options                                             | result
-      ${'converts query'}                                                       | ${'?one=1&two=2'}                   | ${undefined}                                        | ${{ one: '1', two: '2' }}
-      ${'converts query without ?'}                                             | ${'one=1&two=2'}                    | ${undefined}                                        | ${{ one: '1', two: '2' }}
-      ${'removes undefined values'}                                             | ${'?one=1&two=2&three'}             | ${undefined}                                        | ${{ one: '1', two: '2' }}
-      ${'overwrites values with same key and does not change key'}              | ${'?one[]=1&one[]=2&two=2&two=3'}   | ${undefined}                                        | ${{ 'one[]': '2', two: '3' }}
-      ${'gathers values with the same array-key, strips `[]` from key'}         | ${'?one[]=1&one[]=2&two=2&two=3'}   | ${{ gatherArrays: true }}                           | ${{ one: ['1', '2'], two: '3' }}
-      ${'overwrites values with the same array-key name'}                       | ${'?one=1&one[]=2&two=2&two=3'}     | ${{ gatherArrays: true }}                           | ${{ one: ['2'], two: '3' }}
-      ${'overwrites values with the same key name'}                             | ${'?one[]=1&one=2&two=2&two=3'}     | ${{ gatherArrays: true }}                           | ${{ one: '2', two: '3' }}
-      ${'ignores plus symbols'}                                                 | ${'?search=a+b'}                    | ${{ legacySpacesDecode: true }}                     | ${{ search: 'a+b' }}
-      ${'ignores plus symbols in keys'}                                         | ${'?search+term=a'}                 | ${{ legacySpacesDecode: true }}                     | ${{ 'search+term': 'a' }}
-      ${'ignores plus symbols when gathering arrays'}                           | ${'?search[]=a+b'}                  | ${{ gatherArrays: true, legacySpacesDecode: true }} | ${{ search: ['a+b'] }}
-      ${'replaces plus symbols with spaces'}                                    | ${'?search=a+b'}                    | ${undefined}                                        | ${{ search: 'a b' }}
-      ${'replaces plus symbols in keys with spaces'}                            | ${'?search+term=a'}                 | ${undefined}                                        | ${{ 'search term': 'a' }}
-      ${'preserves square brackets in array params'}                            | ${'?search[]=a&search[]=b'}         | ${{ gatherArrays: true }}                           | ${{ search: ['a', 'b'] }}
-      ${'decodes encoded square brackets in array params'}                      | ${'?search%5B%5D=a&search%5B%5D=b'} | ${{ gatherArrays: true }}                           | ${{ search: ['a', 'b'] }}
-      ${'replaces plus symbols when gathering arrays'}                          | ${'?search[]=a+b'}                  | ${{ gatherArrays: true }}                           | ${{ search: ['a b'] }}
-      ${'replaces plus symbols when gathering arrays for values with same key'} | ${'?search[]=a+b&search[]=c+d'}     | ${{ gatherArrays: true }}                           | ${{ search: ['a b', 'c d'] }}
+      case                                                                      | query                                                 | options                                             | result
+      ${'converts query'}                                                       | ${'?one=1&two=2'}                                     | ${undefined}                                        | ${{ one: '1', two: '2' }}
+      ${'converts query without ?'}                                             | ${'one=1&two=2'}                                      | ${undefined}                                        | ${{ one: '1', two: '2' }}
+      ${'removes undefined values'}                                             | ${'?one=1&two=2&three'}                               | ${undefined}                                        | ${{ one: '1', two: '2' }}
+      ${'overwrites values with same key and does not change key'}              | ${'?one[]=1&one[]=2&two=2&two=3'}                     | ${undefined}                                        | ${{ 'one[]': '2', two: '3' }}
+      ${'gathers values with the same array-key, strips `[]` from key'}         | ${'?one[]=1&one[]=2&two=2&two=3'}                     | ${{ gatherArrays: true }}                           | ${{ one: ['1', '2'], two: '3' }}
+      ${'overwrites values with the same array-key name'}                       | ${'?one=1&one[]=2&two=2&two=3'}                       | ${{ gatherArrays: true }}                           | ${{ one: ['2'], two: '3' }}
+      ${'overwrites values with the same key name'}                             | ${'?one[]=1&one=2&two=2&two=3'}                       | ${{ gatherArrays: true }}                           | ${{ one: '2', two: '3' }}
+      ${'ignores plus symbols'}                                                 | ${'?search=a+b'}                                      | ${{ legacySpacesDecode: true }}                     | ${{ search: 'a+b' }}
+      ${'ignores plus symbols in keys'}                                         | ${'?search+term=a'}                                   | ${{ legacySpacesDecode: true }}                     | ${{ 'search+term': 'a' }}
+      ${'ignores plus symbols when gathering arrays'}                           | ${'?search[]=a+b'}                                    | ${{ gatherArrays: true, legacySpacesDecode: true }} | ${{ search: ['a+b'] }}
+      ${'replaces plus symbols with spaces'}                                    | ${'?search=a+b'}                                      | ${undefined}                                        | ${{ search: 'a b' }}
+      ${'replaces plus symbols in keys with spaces'}                            | ${'?search+term=a'}                                   | ${undefined}                                        | ${{ 'search term': 'a' }}
+      ${'preserves square brackets in array params'}                            | ${'?search[]=a&search[]=b'}                           | ${{ gatherArrays: true }}                           | ${{ search: ['a', 'b'] }}
+      ${'decodes encoded square brackets in array params'}                      | ${'?search%5B%5D=a&search%5B%5D=b'}                   | ${{ gatherArrays: true }}                           | ${{ search: ['a', 'b'] }}
+      ${'handles special (i.e. or/not) operators'}                              | ${'?or[search][]=feature&or[search][]=documentation'} | ${{ specialOperators: true }}                       | ${{ 'or[search][]': ['feature', 'documentation'] }}
+      ${'replaces plus symbols when gathering arrays'}                          | ${'?search[]=a+b'}                                    | ${{ gatherArrays: true }}                           | ${{ search: ['a b'] }}
+      ${'replaces plus symbols when gathering arrays for values with same key'} | ${'?search[]=a+b&search[]=c+d'}                       | ${{ gatherArrays: true }}                           | ${{ search: ['a b', 'c d'] }}
     `('$case', ({ query, options, result }) => {
       expect(urlUtils.queryToObject(query, options)).toEqual(result);
     });
@@ -957,15 +1151,15 @@ describe('URL utility', () => {
     it('adds new params as query string', () => {
       const url = 'https://gitlab.com/test';
 
-      expect(urlUtils.setUrlParams({ group_id: 'gitlab-org', project_id: 'my-project' }, url)).toBe(
-        'https://gitlab.com/test?group_id=gitlab-org&project_id=my-project',
-      );
+      expect(
+        urlUtils.setUrlParams({ group_id: 'gitlab-org', project_id: 'my-project' }, { url }),
+      ).toBe('https://gitlab.com/test?group_id=gitlab-org&project_id=my-project');
     });
 
     it('updates an existing parameter', () => {
       const url = 'https://gitlab.com/test?group_id=gitlab-org&project_id=my-project';
 
-      expect(urlUtils.setUrlParams({ project_id: 'gitlab-test' }, url)).toBe(
+      expect(urlUtils.setUrlParams({ project_id: 'gitlab-test' }, { url })).toBe(
         'https://gitlab.com/test?group_id=gitlab-org&project_id=gitlab-test',
       );
     });
@@ -973,7 +1167,7 @@ describe('URL utility', () => {
     it("removes the project_id param when it's value is null", () => {
       const url = 'https://gitlab.com/test?group_id=gitlab-org&project_id=my-project';
 
-      expect(urlUtils.setUrlParams({ project_id: null }, url)).toBe(
+      expect(urlUtils.setUrlParams({ project_id: null }, { url })).toBe(
         'https://gitlab.com/test?group_id=gitlab-org',
       );
     });
@@ -981,7 +1175,7 @@ describe('URL utility', () => {
     it('adds parameters from arrays', () => {
       const url = 'https://gitlab.com/test';
 
-      expect(urlUtils.setUrlParams({ labels: ['foo', 'bar'] }, url)).toBe(
+      expect(urlUtils.setUrlParams({ labels: ['foo', 'bar'] }, { url })).toBe(
         'https://gitlab.com/test?labels=foo&labels=bar',
       );
     });
@@ -989,13 +1183,13 @@ describe('URL utility', () => {
     it('removes parameters from empty arrays', () => {
       const url = 'https://gitlab.com/test?labels=foo&labels=bar';
 
-      expect(urlUtils.setUrlParams({ labels: [] }, url)).toBe('https://gitlab.com/test');
+      expect(urlUtils.setUrlParams({ labels: [] }, { url })).toBe('https://gitlab.com/test');
     });
 
     it('removes parameters from empty arrays while keeping other parameters', () => {
       const url = 'https://gitlab.com/test?labels=foo&labels=bar&unrelated=unrelated';
 
-      expect(urlUtils.setUrlParams({ labels: [] }, url)).toBe(
+      expect(urlUtils.setUrlParams({ labels: [] }, { url })).toBe(
         'https://gitlab.com/test?unrelated=unrelated',
       );
     });
@@ -1003,31 +1197,37 @@ describe('URL utility', () => {
     it('adds parameters from arrays when railsArraySyntax=true', () => {
       const url = 'https://gitlab.com/test';
 
-      expect(urlUtils.setUrlParams({ labels: ['foo', 'bar'] }, url, false, true)).toBe(
-        'https://gitlab.com/test?labels%5B%5D=foo&labels%5B%5D=bar',
-      );
+      expect(
+        urlUtils.setUrlParams(
+          { labels: ['foo', 'bar'] },
+          { url, clearParams: false, railsArraySyntax: true },
+        ),
+      ).toBe('https://gitlab.com/test?labels%5B%5D=foo&labels%5B%5D=bar');
     });
 
     it('removes parameters from empty arrays when railsArraySyntax=true', () => {
       const url = 'https://gitlab.com/test?labels%5B%5D=foo&labels%5B%5D=bar';
 
-      expect(urlUtils.setUrlParams({ labels: [] }, url, false, true)).toBe(
-        'https://gitlab.com/test',
-      );
+      expect(
+        urlUtils.setUrlParams({ labels: [] }, { url, clearParams: false, railsArraySyntax: true }),
+      ).toBe('https://gitlab.com/test');
     });
 
     it('decodes URI when decodeURI=true', () => {
       const url = 'https://gitlab.com/test';
 
-      expect(urlUtils.setUrlParams({ labels: ['foo', 'bar'] }, url, false, true, true)).toBe(
-        'https://gitlab.com/test?labels[]=foo&labels[]=bar',
-      );
+      expect(
+        urlUtils.setUrlParams(
+          { labels: ['foo', 'bar'] },
+          { url, clearParams: false, railsArraySyntax: true, decodeParams: true },
+        ),
+      ).toBe('https://gitlab.com/test?labels[]=foo&labels[]=bar');
     });
 
     it('removes all existing URL params and sets a new param when cleanParams=true', () => {
       const url = 'https://gitlab.com/test?group_id=gitlab-org&project_id=my-project';
 
-      expect(urlUtils.setUrlParams({ foo: 'bar' }, url, true)).toBe(
+      expect(urlUtils.setUrlParams({ foo: 'bar' }, { url, clearParams: true })).toBe(
         'https://gitlab.com/test?foo=bar',
       );
     });
@@ -1185,15 +1385,6 @@ describe('URL utility', () => {
     );
   });
 
-  describe('defaultPromoUrl', () => {
-    it('Gitlab about page url', () => {
-      // eslint-disable-next-line no-restricted-syntax
-      const url = 'https://about.gitlab.com';
-
-      expect(urlUtils.PROMO_URL).toBe(url);
-    });
-  });
-
   describe('removeUrlProtocol', () => {
     it.each`
       input                   | output
@@ -1229,6 +1420,57 @@ describe('URL utility', () => {
       ${'/'}         | ${''}      | ${'/'}
     `('path $path with ref $refType becomes $output', ({ path, refType, output }) => {
       expect(urlUtils.buildURLwithRefType({ base, path, refType })).toBe(output);
+    });
+  });
+
+  describe('stripRelativeUrlRootFromPath', () => {
+    it.each`
+      relativeUrlRoot | path                   | expectation
+      ${''}           | ${'/foo/bar'}          | ${'/foo/bar'}
+      ${'/'}          | ${'/foo/bar'}          | ${'/foo/bar'}
+      ${'/foo'}       | ${'/foo/bar'}          | ${'/bar'}
+      ${'/gitlab/'}   | ${'/gitlab/-/ide/foo'} | ${'/-/ide/foo'}
+    `(
+      'with relative_url_root="$relativeUrlRoot", "$path" should return "$expectation"',
+      ({ relativeUrlRoot, path, expectation }) => {
+        window.gon.relative_url_root = relativeUrlRoot;
+
+        expect(urlUtils.stripRelativeUrlRootFromPath(path)).toBe(expectation);
+      },
+    );
+  });
+
+  describe('isReasonableGitUrl', () => {
+    describe('when URL is valid', () => {
+      it.each([
+        'https://gitlab.com/group/project.git',
+        'http://gitlab.com/group/project.git',
+        'git://gitlab.com/group/project.git',
+        'https://github.com/user/repo',
+        'http://example.com/repo.git',
+        'git://example.com/path/to/repo',
+      ])('returns true for %s', (url) => {
+        expect(urlUtils.isReasonableGitUrl(url)).toBe(true);
+      });
+    });
+
+    describe('when URL is invalid', () => {
+      it.each([
+        5,
+        'ftp://gitlab.com/repo.git',
+        'ssh://git@gitlab.com/repo.git',
+        'gitlab.com/group/project.git',
+        'www.gitlab.com/group/project.git',
+        '//gitlab.com/repo.git',
+        'https://!!.com',
+        'http:// y',
+        'git://',
+        'https://gitlab',
+        'not a url',
+        ' ',
+      ])('returns false for invalid protocol or format: %s', (url) => {
+        expect(urlUtils.isReasonableGitUrl(url)).toBe(false);
+      });
     });
   });
 });

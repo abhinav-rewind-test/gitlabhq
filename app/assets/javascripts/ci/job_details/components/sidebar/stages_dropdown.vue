@@ -9,6 +9,7 @@ import { clickCopyToClipboardButton } from '~/behaviors/copy_to_clipboard';
 import { keysFor, MR_COPY_SOURCE_BRANCH_NAME } from '~/behaviors/shortcuts/keybindings';
 
 export default {
+  name: 'StagesDropdown',
   components: {
     ClipboardButton,
     GlDisclosureDropdown,
@@ -30,6 +31,7 @@ export default {
       required: true,
     },
   },
+  emits: ['request-sidebar-stage-dropdown'],
   computed: {
     dropdownItems() {
       return this.stages.map((stage) => ({
@@ -73,7 +75,7 @@ export default {
   },
   methods: {
     onStageClick(stage) {
-      this.$emit('requestSidebarStageDropdown', stage);
+      this.$emit('request-sidebar-stage-dropdown', stage);
     },
     handleKeyboardCopy() {
       let button;
@@ -94,18 +96,15 @@ export default {
 </script>
 <template>
   <div class="dropdown">
-    <div
-      class="gl-display-flex gl-flex-wrap gl-align-items-center gl-gap-2 js-pipeline-info"
-      data-testid="pipeline-info"
-    >
+    <div class="js-pipeline-info gl-block" data-testid="pipeline-info">
       <gl-sprintf :message="pipelineInfo">
         <template #bold="{ content }">
-          <span class="gl-display-flex gl-font-weight-bold">{{ content }}</span>
+          <span class="gl-inline-flex gl-font-bold">{{ content }}</span>
         </template>
         <template #id>
           <gl-link
             :href="pipeline.path"
-            class="js-pipeline-path link-commit gl-text-blue-500!"
+            class="js-pipeline-path link-commit !gl-text-link"
             data-testid="pipeline-path"
             >#{{ pipeline.id }}</gl-link
           >
@@ -120,7 +119,7 @@ export default {
         <template #mrId>
           <gl-link
             :href="pipeline.merge_request.path"
-            class="link-commit gl-text-blue-500!"
+            class="link-commit !gl-text-link"
             data-testid="mr-link"
             >!{{ pipeline.merge_request.iid }}</gl-link
           >
@@ -128,7 +127,7 @@ export default {
         <template #ref>
           <gl-link
             :href="pipeline.ref.path"
-            class="link-commit ref-name"
+            class="link-commit ref-name gl-break-all"
             data-testid="source-ref-link"
             >{{ pipeline.ref.name }}</gl-link
           ><clipboard-button
@@ -143,7 +142,7 @@ export default {
         <template #source>
           <gl-link
             :href="pipeline.merge_request.source_branch_path"
-            class="link-commit ref-name gl-mt-1"
+            class="link-commit ref-name gl-mt-1 gl-break-all"
             data-testid="source-branch-link"
             >{{ pipeline.merge_request.source_branch }}</gl-link
           ><clipboard-button

@@ -8,7 +8,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   include AfterNextHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:group, reload: true) { create_default(:group) }
+  let_it_be(:group, reload: true) { create_default(:group, :allow_runner_registration_token) }
   let_it_be(:project, reload: true) { create_default(:project, :repository, group: group) }
 
   let_it_be(:pipeline, reload: true) do
@@ -21,12 +21,19 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     )
   end
 
-  let_it_be(:build, refind: true) { create(:ci_build, pipeline: pipeline) }
+  let_it_be(:build, refind: true) { create(:ci_build, pipeline: pipeline, yaml_variables: []) }
+
+  let(:allow_runner_registration_token) { false }
+  let_it_be(:public_project) { create(:project, :public) }
+
+  before do
+    stub_application_setting(allow_runner_registration_token: allow_runner_registration_token)
+  end
 
   it { is_expected.to belong_to(:runner) }
-  it { is_expected.to belong_to(:trigger_request) }
   it { is_expected.to belong_to(:erased_by) }
   it { is_expected.to belong_to(:pipeline).inverse_of(:builds) }
+  it { is_expected.to belong_to(:execution_config).class_name('Ci::BuildExecutionConfig').inverse_of(:builds) }
 
   it { is_expected.to have_many(:needs).with_foreign_key(:build_id) }
 
@@ -35,9 +42,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       .inverse_of(:build)
   end
 
+  it { is_expected.to have_many(:inputs).with_foreign_key(:job_id) }
   it { is_expected.to have_many(:job_variables).with_foreign_key(:job_id) }
   it { is_expected.to have_many(:report_results).with_foreign_key(:build_id) }
   it { is_expected.to have_many(:pages_deployments).with_foreign_key(:ci_build_id) }
+  it { is_expected.to have_many(:taggings).with_foreign_key(:build_id).class_name('Ci::BuildTag').inverse_of(:build) }
+  it { is_expected.to have_many(:tags).class_name('Ci::Tag').through(:taggings).source(:tag) }
 
   it { is_expected.to have_one(:runner_manager).through(:runner_manager_build) }
   it { is_expected.to have_one(:runner_session).with_foreign_key(:build_id) }
@@ -60,15 +70,31 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
   it { is_expected.to respond_to(:has_trace?) }
   it { is_expected.to respond_to(:trace) }
-  it { is_expected.to respond_to(:set_cancel_gracefully) }
   it { is_expected.to respond_to(:cancel_gracefully?) }
 
   it { is_expected.to delegate_method(:merge_request?).to(:pipeline) }
   it { is_expected.to delegate_method(:merge_request_ref?).to(:pipeline) }
   it { is_expected.to delegate_method(:legacy_detached_merge_request_pipeline?).to(:pipeline) }
 
+  it_behaves_like 'having unique enum values'
+
+  describe 'partition query' do
+    subject { build.reload }
+
+    it_behaves_like 'including partition key for relation', :inputs
+    it_behaves_like 'including partition key for relation', :trace_chunks
+    it_behaves_like 'including partition key for relation', :job_source
+    it_behaves_like 'including partition key for relation', :job_artifacts
+    it_behaves_like 'including partition key for relation', :job_annotations
+    it_behaves_like 'including partition key for relation', :runner_manager_build
+
+    Ci::JobArtifact.file_types.each_key do |key|
+      it_behaves_like 'including partition key for relation', :"job_artifacts_#{key}"
+    end
+  end
+
   describe 'associations' do
-    it { is_expected.to belong_to(:project_mirror) }
+    it { is_expected.to belong_to(:project_mirror).with_foreign_key('project_id') }
 
     it 'has a bidirectional relationship with projects' do
       expect(described_class.reflect_on_association(:project).has_inverse?).to eq(:builds)
@@ -78,6 +104,466 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     it 'has a bidirectional relationship with project mirror' do
       expect(described_class.reflect_on_association(:project_mirror).has_inverse?).to eq(:builds)
       expect(Ci::ProjectMirror.reflect_on_association(:builds).has_inverse?).to eq(:project_mirror)
+    end
+  end
+
+  describe 'scopes' do
+    let_it_be(:old_project) { create(:project) }
+    let_it_be(:new_project) { create(:project) }
+    let_it_be(:old_build) { create(:ci_build, created_at: 1.week.ago, updated_at: 1.week.ago, project: old_project) }
+    let_it_be(:new_build) { create(:ci_build, created_at: 1.minute.ago, updated_at: 1.minute.ago, project: new_project) }
+
+    describe 'created_after' do
+      subject { described_class.created_after(1.day.ago) }
+
+      it 'returns the builds created after the given time' do
+        is_expected.to contain_exactly(new_build, build)
+      end
+    end
+
+    describe 'created_before' do
+      subject { described_class.created_before(1.day.ago) }
+
+      it 'returns the builds created before the given time' do
+        is_expected.to contain_exactly(old_build)
+      end
+    end
+
+    describe 'updated_after' do
+      subject { described_class.updated_after(1.day.ago) }
+
+      it 'returns the builds updated after the given time' do
+        is_expected.to contain_exactly(new_build, build)
+      end
+    end
+
+    describe 'with_pipeline_source_type' do
+      let_it_be(:pipeline) { create(:ci_pipeline, source: :security_orchestration_policy) }
+      let_it_be(:build) { create(:ci_build, pipeline: pipeline) }
+      let_it_be(:push_pipeline) { create(:ci_pipeline, source: :push) }
+      let_it_be(:push_build) { create(:ci_build, pipeline: push_pipeline) }
+
+      subject { described_class.with_pipeline_source_type('security_orchestration_policy') }
+
+      it 'returns the builds updated after the given time' do
+        is_expected.to contain_exactly(build)
+      end
+    end
+
+    describe 'timed_out_running_builds', :freeze_time do
+      let!(:running_build) { create(:ci_running_build, build: build) }
+      let!(:timed_out_running_build) do
+        create(:ci_running_build,
+          build: timed_out_build,
+          created_at: timed_out_build.timeout.seconds.ago)
+      end
+
+      let!(:pending_build) { create(:ci_build, :pending, timeout: 600) }
+      let(:build) { create(:ci_build, :running, timeout: 600) }
+      let(:timed_out_build) { create(:ci_build, :running, timeout: 300) }
+
+      it 'only fetches the timed out running builds' do
+        expect(described_class.timed_out_running_builds.pluck(:id)).to contain_exactly(timed_out_build.id)
+      end
+    end
+
+    describe 'not_timed_out_builds', :freeze_time do
+      let!(:running_build) { create(:ci_running_build, build: build) }
+      let!(:timed_out_running_build) do
+        create(:ci_running_build,
+          build: timed_out_build,
+          created_at: timed_out_build.timeout.seconds.ago)
+      end
+
+      let(:build) { create(:ci_build, :running, timeout: 600) }
+      let(:timed_out_build) { create(:ci_build, :running, timeout: 300) }
+
+      it 'only fetches the timed out builds' do
+        expect(described_class.not_timed_out_running_builds.pluck(:id)).to contain_exactly(build.id)
+      end
+    end
+
+    describe 'for_project_ids' do
+      subject { described_class.for_project_ids([new_project.id]) }
+
+      it 'returns the builds from given projects' do
+        is_expected.to contain_exactly(new_build)
+      end
+    end
+
+    describe 'with_token_present' do
+      it 'returns the builds with a non nil token' do
+        expect(described_class.with_token_present).to include(old_build)
+
+        old_build.remove_token!
+
+        expect(described_class.with_token_present).not_to include(old_build)
+      end
+    end
+
+    describe 'with_secure_reports_from_config_options' do
+      let_it_be(:pipeline) { create(:ci_empty_pipeline) }
+      let!(:build) { create(:ci_build, pipeline: pipeline, options: {}) }
+      let(:job_types) { %w[sast secret_detection] }
+
+      subject(:query) { described_class.with_secure_reports_from_config_options(job_types) }
+
+      it { expect(query).to be_empty }
+
+      context 'when job definition has secure report options' do
+        let!(:build) { create(:ci_build, pipeline: pipeline, options: { artifacts: { reports: { sast: "gl-sast-report.json" } } }) }
+
+        it { expect(query).to contain_exactly(build) }
+      end
+    end
+
+    describe 'with_secure_reports_from_metadata_config_options' do
+      before_all do
+        Ci::ApplicationRecord.connection.execute(<<~SQL)
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_100"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (100);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_101"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (101);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_102"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (102);
+        SQL
+      end
+
+      let_it_be(:pipeline) { create(:ci_empty_pipeline) }
+      let_it_be(:build) { create(:ci_build, pipeline: pipeline) }
+      let_it_be_with_refind(:build_metadata) { create(:ci_build_metadata, build: build) }
+      let(:job_types) { %w[sast secret_detection] }
+
+      subject(:query) { described_class.with_secure_reports_from_metadata_config_options(job_types) }
+
+      it { expect(query).to be_empty }
+
+      context 'when build metadata has secure report options' do
+        before do
+          build_metadata.update_columns(config_options: { artifacts: { reports: ['sast'] } })
+        end
+
+        it { expect(query).to contain_exactly(build) }
+      end
+    end
+
+    describe 'with_runner_assigned' do
+      let_it_be(:build_with_runner) { create(:ci_build, runner: create(:ci_runner)) }
+      let_it_be(:build_without_runner) { create(:ci_build) }
+
+      subject { described_class.with_runner_assigned }
+
+      it { is_expected.to contain_exactly(build_with_runner) }
+    end
+
+    describe 'with_no_runner_assigned' do
+      let(:builds_without_runner) { [build, old_build, new_build] }
+
+      subject { described_class.with_no_runner_assigned }
+
+      it { is_expected.to match_array(builds_without_runner) }
+    end
+
+    describe '.with_downloadable_artifacts' do
+      subject { described_class.with_downloadable_artifacts }
+
+      context 'when job does not have a downloadable artifact' do
+        let!(:job) { create(:ci_build, pipeline: pipeline) }
+
+        it 'does not return the job' do
+          is_expected.not_to include(job)
+        end
+      end
+
+      ::Enums::Ci::JobArtifact.downloadable_types.each do |type|
+        context "when job has a #{type} artifact" do
+          it 'returns the job' do
+            job = create(:ci_build, pipeline: pipeline)
+            create(
+              :ci_job_artifact,
+              file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
+              file_type: type,
+              job: job
+            )
+
+            is_expected.to include(job)
+          end
+        end
+      end
+
+      context 'when job has a non-downloadable artifact' do
+        let!(:job) { create(:ci_build, :trace_artifact, pipeline: pipeline) }
+
+        it 'does not return the job' do
+          is_expected.not_to include(job)
+        end
+      end
+    end
+
+    describe '.with_erasable_artifacts' do
+      subject { described_class.with_erasable_artifacts }
+
+      context 'when job does not have any artifacts' do
+        let!(:job) { create(:ci_build, pipeline: pipeline) }
+
+        it 'does not return the job' do
+          is_expected.not_to include(job)
+        end
+      end
+
+      ::Ci::JobArtifact.erasable_file_types.each do |type|
+        context "when job has a #{type} artifact" do
+          it 'returns the job' do
+            job = create(:ci_build, pipeline: pipeline)
+            create(
+              :ci_job_artifact,
+              file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
+              file_type: type,
+              job: job
+            )
+
+            is_expected.to include(job)
+          end
+        end
+      end
+
+      context 'when job has a non-erasable artifact' do
+        let!(:job) { create(:ci_build, :trace_artifact, pipeline: pipeline) }
+
+        it 'does not return the job' do
+          is_expected.not_to include(job)
+        end
+      end
+    end
+
+    describe '.with_any_artifacts' do
+      subject { described_class.with_any_artifacts }
+
+      context 'when job does not have any artifacts' do
+        it 'does not return the job' do
+          job = create(:ci_build, project: project)
+
+          is_expected.not_to include(job)
+        end
+      end
+
+      ::Ci::JobArtifact.file_types.each_key do |type|
+        context "when job has a #{type} artifact" do
+          it 'returns the job' do
+            job = create(:ci_build, project: project)
+            create(
+              :ci_job_artifact,
+              file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
+              file_type: type,
+              job: job
+            )
+
+            is_expected.to include(job)
+          end
+        end
+      end
+    end
+
+    describe '.with_live_trace' do
+      subject { described_class.with_live_trace }
+
+      before do
+        stub_application_setting(ci_job_live_trace_enabled: true)
+      end
+
+      context 'when build has live trace' do
+        let!(:build) { create(:ci_build, :success, :trace_live, pipeline: pipeline) }
+
+        it 'selects the build' do
+          is_expected.to eq([build])
+        end
+      end
+
+      context 'when build does not have live trace' do
+        let!(:build) { create(:ci_build, :success, :trace_artifact, pipeline: pipeline) }
+
+        it 'does not select the build' do
+          is_expected.to be_empty
+        end
+      end
+    end
+
+    describe '.with_stale_live_trace' do
+      subject { described_class.with_stale_live_trace }
+
+      before do
+        stub_application_setting(ci_job_live_trace_enabled: true)
+      end
+
+      context 'when build has a stale live trace' do
+        let!(:build) { create(:ci_build, :success, :trace_live, finished_at: 1.day.ago, pipeline: pipeline) }
+
+        it 'selects the build' do
+          is_expected.to eq([build])
+        end
+      end
+
+      context 'when build does not have a stale live trace' do
+        let!(:build) { create(:ci_build, :success, :trace_live, finished_at: 1.hour.ago, pipeline: pipeline) }
+
+        it 'does not select the build' do
+          is_expected.to be_empty
+        end
+      end
+    end
+
+    describe '.finished_before' do
+      subject { described_class.finished_before(date) }
+
+      let(:date) { 1.hour.ago }
+
+      context 'when build has finished one day ago' do
+        let!(:build) { create(:ci_build, :success, finished_at: 1.day.ago, pipeline: pipeline) }
+
+        it 'selects the build' do
+          is_expected.to eq([build])
+        end
+      end
+
+      context 'when build has finished 30 minutes ago' do
+        let!(:build) { create(:ci_build, :success, finished_at: 30.minutes.ago, pipeline: pipeline) }
+
+        it 'returns an empty array' do
+          is_expected.to be_empty
+        end
+      end
+
+      context 'when build is still running' do
+        let!(:build) { create(:ci_build, :running, pipeline: pipeline) }
+
+        it 'returns an empty array' do
+          is_expected.to be_empty
+        end
+      end
+    end
+
+    describe '.with_artifacts' do
+      subject(:builds) { described_class.with_artifacts(artifact_scope) }
+
+      let(:artifact_scope) { Ci::JobArtifact.where(file_type: 'archive') }
+
+      let_it_be(:build_1) { create(:ci_build, :artifacts, pipeline: pipeline) }
+      let_it_be(:build_2) { create(:ci_build, :codequality_reports, pipeline: pipeline) }
+      let_it_be(:build_3) { create(:ci_build, :test_reports, pipeline: pipeline) }
+      let_it_be(:build_4) { create(:ci_build, :artifacts, pipeline: pipeline) }
+
+      it 'returns artifacts matching the given scope' do
+        expect(builds).to contain_exactly(build_1, build_4)
+      end
+
+      context 'when there are multiple builds containing artifacts' do
+        before do
+          create_list(:ci_build, 5, :success, :test_reports, pipeline: pipeline)
+        end
+
+        it 'does not execute a query for selecting job artifact one by one' do
+          recorded = ActiveRecord::QueryRecorder.new do
+            builds.each do |build|
+              build.job_artifacts.map { |a| a.file.exists? }
+            end
+          end
+
+          expect(recorded.count).to eq(2)
+        end
+      end
+    end
+
+    describe '.with_needs' do
+      let_it_be(:build) { create(:ci_build, pipeline: pipeline) }
+      let_it_be(:build_b) { create(:ci_build, pipeline: pipeline) }
+      let_it_be(:build_need_a) { create(:ci_build_need, build: build) }
+      let_it_be(:build_need_b) { create(:ci_build_need, build: build_b) }
+
+      context 'when passing build name' do
+        subject { described_class.with_needs(build_need_a.name) }
+
+        it { is_expected.to contain_exactly(build) }
+      end
+
+      context 'when not passing any build name' do
+        subject { described_class.with_needs }
+
+        it { is_expected.to contain_exactly(build, build_b) }
+      end
+
+      context 'when not matching build name' do
+        subject { described_class.with_needs('undefined') }
+
+        it { is_expected.to be_empty }
+      end
+    end
+
+    describe '.without_needs' do
+      subject { described_class.without_needs }
+
+      context 'when no build_need is created' do
+        it { is_expected.to contain_exactly(build, old_build, new_build) }
+      end
+
+      context 'when a build_need is created' do
+        let!(:need_a) { create(:ci_build_need, build: build) }
+
+        it { is_expected.to contain_exactly(old_build, new_build) }
+      end
+    end
+
+    describe '.belonging_to_runner_manager' do
+      subject { described_class.belonging_to_runner_manager(runner_manager) }
+
+      let_it_be(:runner) { create(:ci_runner, :group, groups: [group]) }
+      let_it_be(:build_b) { create(:ci_build, :success) }
+
+      context 'with runner_manager of runner associated with build' do
+        let!(:runner_manager) { create(:ci_runner_machine, runner: runner) }
+        let!(:runner_manager_build) { create(:ci_runner_machine_build, build: build, runner_manager: runner_manager) }
+
+        it { is_expected.to contain_exactly(build) }
+      end
+
+      context 'with runner_manager of runner not associated with build' do
+        let!(:runner_manager) { create(:ci_runner_machine, runner: instance_runner) }
+        let!(:instance_runner) { create(:ci_runner, :with_runner_manager) }
+
+        it { is_expected.to be_empty }
+      end
+
+      context 'with nil runner_manager' do
+        let(:runner_manager) { nil }
+
+        it { is_expected.to be_empty }
+      end
+    end
+
+    describe 'scopes for preloading' do
+      let_it_be(:runner) { create(:ci_runner) }
+      let_it_be(:user) { create(:user) }
+
+      before_all do
+        build = create(:ci_build, :trace_artifact, :artifacts, :test_reports, pipeline: pipeline)
+        build.runner = runner
+        build.user = user
+        build.save!
+      end
+
+      describe '.eager_load_for_api' do
+        subject(:eager_load_for_api) { described_class.eager_load_for_api }
+
+        it { expect(eager_load_for_api.last.association(:user)).to be_loaded }
+        it { expect(eager_load_for_api.last.user.association(:user_detail)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:metadata)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:job_artifacts_archive)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:job_artifacts)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:runner)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:tags)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:ci_stage)).to be_loaded }
+        it { expect(eager_load_for_api.last.association(:pipeline)).to be_loaded }
+        it { expect(eager_load_for_api.last.pipeline.association(:project)).to be_loaded }
+      end
     end
   end
 
@@ -91,16 +577,126 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
 
     context 'when running after_commit callbacks' do
-      it 'tracks creation event' do
-        build = FactoryBot.build(:ci_build, user: create(:user))
+      let(:name) { 'test123' }
 
-        expect(Gitlab::InternalEvents).to receive(:track_event).with(
-          'create_ci_build',
-          project: build.project,
-          user: build.user
-        )
+      subject(:create_ci_build) { create(:ci_build, user: user, project: project, name: name) }
 
-        build.save!
+      it 'tracks creation event with merged properties' do
+        expect { create_ci_build }
+          .to trigger_internal_events('create_ci_build')
+          .with(
+            category: 'InternalEventTracking',
+            user: user,
+            project: project,
+            property: name
+          )
+      end
+    end
+
+    describe 'job status update subscription trigger' do
+      %w[cancel! drop! run! skip! success!].each do |action|
+        shared_examples "when build receives #{action} event" do
+          it 'triggers GraphQL subscription ciJobStatusUpdated' do
+            expect(GraphqlTriggers).to receive(:ci_job_status_updated).with(build)
+
+            build.public_send(action)
+          end
+        end
+
+        it_behaves_like "when build receives #{action} event"
+      end
+    end
+
+    describe 'job creation subscription trigger' do
+      context 'with rate limiting enabled' do
+        before do
+          allow(Gitlab::ApplicationRateLimiter).to receive(:throttled?)
+                                                     .with(:ci_job_processed_subscription, scope: build.project)
+                                                     .and_return(true)
+        end
+
+        %w[cancel! drop! run! skip! success!].each do |action|
+          shared_examples "when build receives #{action} event" do
+            it 'does not trigger GraphQL subscription ciJobProcessed' do
+              expect(GraphqlTriggers).not_to receive(:ci_job_processed).with(build)
+
+              build.public_send(action)
+            end
+          end
+        end
+      end
+
+      context 'without rate limiting enabled' do
+        before do
+          allow(Gitlab::ApplicationRateLimiter).to receive(:throttled?)
+                                                     .with(:ci_job_processed_subscription, scope: build.project)
+                                                     .and_return(false)
+        end
+
+        context 'with ci_job_created_subscription turned on' do
+          %w[cancel! drop! run! skip! success!].each do |action|
+            shared_examples "when build receives #{action} event" do
+              it 'triggers GraphQL subscription ciJobProcessed' do
+                expect(GraphqlTriggers).to receive(:ci_job_processed).with(build)
+
+                build.public_send(action)
+              end
+            end
+
+            it_behaves_like "when build receives #{action} event"
+          end
+        end
+
+        context 'with ci_job_created_subscription feature flag turned off' do
+          before do
+            stub_feature_flags(ci_job_created_subscription: false)
+          end
+
+          %w[cancel! drop! run! skip! success!].each do |action|
+            shared_examples "when build receives #{action} event" do
+              it 'does not trigger GraphQL subscription ciJobProcessed' do
+                expect(GraphqlTriggers).not_to receive(:ci_job_processed).with(build)
+
+                build.public_send(action)
+              end
+            end
+          end
+        end
+      end
+    end
+
+    describe 'stage jobs updated subscription trigger' do
+      let(:stage) { create(:ci_stage, pipeline: pipeline, project: project, name: 'deploy') }
+      let(:build_with_stage) { create(:ci_build, pipeline: pipeline, ci_stage: stage) }
+
+      %w[cancel! drop! run! skip! success!].each do |action|
+        shared_examples "when build receives #{action} event" do
+          it 'triggers GraphQL subscription ciStageUpdated' do
+            expect(GraphqlTriggers).to receive(:ci_stage_updated).with(build_with_stage)
+
+            build_with_stage.public_send(action)
+          end
+        end
+
+        it_behaves_like "when build receives #{action} event"
+      end
+
+      context 'with ci_stage_subscription feature flag disabled' do
+        before do
+          stub_feature_flags(ci_stage_subscription: false)
+        end
+
+        %w[cancel! drop! run! skip! success!].each do |action|
+          shared_examples "when build receives #{action} event" do
+            it 'does not trigger GraphQL subscription ciStageUpdated' do
+              expect(GraphqlTriggers).not_to receive(:ci_stage_updated).with(build_with_stage)
+
+              build_with_stage.public_send(action)
+            end
+          end
+
+          it_behaves_like "when build receives #{action} event"
+        end
       end
     end
   end
@@ -119,356 +715,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  it_behaves_like 'has ID tokens', :ci_build
-
   it_behaves_like 'a retryable job'
 
   it_behaves_like 'a deployable job' do
     let(:job) { build }
   end
 
-  describe '.ref_protected' do
-    subject { described_class.ref_protected }
-
-    context 'when protected is true' do
-      let!(:job) { create(:ci_build, :protected, pipeline: pipeline) }
-
-      it { is_expected.to include(job) }
-    end
-
-    context 'when protected is false' do
-      let!(:job) { create(:ci_build, pipeline: pipeline) }
-
-      it { is_expected.not_to include(job) }
-    end
-
-    context 'when protected is nil' do
-      let!(:job) { create(:ci_build, pipeline: pipeline) }
-
-      before do
-        job.update_attribute(:protected, nil)
-      end
-
-      it { is_expected.not_to include(job) }
-    end
-  end
-
-  describe '.with_downloadable_artifacts' do
-    subject { described_class.with_downloadable_artifacts }
-
-    context 'when job does not have a downloadable artifact' do
-      let!(:job) { create(:ci_build, pipeline: pipeline) }
-
-      it 'does not return the job' do
-        is_expected.not_to include(job)
-      end
-    end
-
-    ::Enums::Ci::JobArtifact.downloadable_types.each do |type|
-      context "when job has a #{type} artifact" do
-        it 'returns the job' do
-          job = create(:ci_build, pipeline: pipeline)
-          create(
-            :ci_job_artifact,
-            file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
-            file_type: type,
-            job: job
-          )
-
-          is_expected.to include(job)
-        end
-      end
-    end
-
-    context 'when job has a non-downloadable artifact' do
-      let!(:job) { create(:ci_build, :trace_artifact, pipeline: pipeline) }
-
-      it 'does not return the job' do
-        is_expected.not_to include(job)
-      end
-    end
-  end
-
-  describe '.with_erasable_artifacts' do
-    subject { described_class.with_erasable_artifacts }
-
-    context 'when job does not have any artifacts' do
-      let!(:job) { create(:ci_build, pipeline: pipeline) }
-
-      it 'does not return the job' do
-        is_expected.not_to include(job)
-      end
-    end
-
-    ::Ci::JobArtifact.erasable_file_types.each do |type|
-      context "when job has a #{type} artifact" do
-        it 'returns the job' do
-          job = create(:ci_build, pipeline: pipeline)
-          create(
-            :ci_job_artifact,
-            file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
-            file_type: type,
-            job: job
-          )
-
-          is_expected.to include(job)
-        end
-      end
-    end
-
-    context 'when job has a non-erasable artifact' do
-      let!(:job) { create(:ci_build, :trace_artifact, pipeline: pipeline) }
-
-      it 'does not return the job' do
-        is_expected.not_to include(job)
-      end
-    end
-  end
-
-  describe '.with_any_artifacts' do
-    subject { described_class.with_any_artifacts }
-
-    context 'when job does not have any artifacts' do
-      it 'does not return the job' do
-        job = create(:ci_build, project: project)
-
-        is_expected.not_to include(job)
-      end
-    end
-
-    ::Ci::JobArtifact.file_types.each_key do |type|
-      context "when job has a #{type} artifact" do
-        it 'returns the job' do
-          job = create(:ci_build, project: project)
-          create(
-            :ci_job_artifact,
-            file_format: ::Enums::Ci::JobArtifact.type_and_format_pairs[type.to_sym],
-            file_type: type,
-            job: job
-          )
-
-          is_expected.to include(job)
-        end
-      end
-    end
-  end
-
-  describe '.with_live_trace' do
-    subject { described_class.with_live_trace }
-
-    context 'when build has live trace' do
-      let!(:build) { create(:ci_build, :success, :trace_live, pipeline: pipeline) }
-
-      it 'selects the build' do
-        is_expected.to eq([build])
-      end
-    end
-
-    context 'when build does not have live trace' do
-      let!(:build) { create(:ci_build, :success, :trace_artifact, pipeline: pipeline) }
-
-      it 'does not select the build' do
-        is_expected.to be_empty
-      end
-    end
-  end
-
-  describe '.with_stale_live_trace' do
-    subject { described_class.with_stale_live_trace }
-
-    context 'when build has a stale live trace' do
-      let!(:build) { create(:ci_build, :success, :trace_live, finished_at: 1.day.ago, pipeline: pipeline) }
-
-      it 'selects the build' do
-        is_expected.to eq([build])
-      end
-    end
-
-    context 'when build does not have a stale live trace' do
-      let!(:build) { create(:ci_build, :success, :trace_live, finished_at: 1.hour.ago, pipeline: pipeline) }
-
-      it 'does not select the build' do
-        is_expected.to be_empty
-      end
-    end
-  end
-
-  describe '.license_management_jobs' do
-    subject { described_class.license_management_jobs }
-
-    let!(:management_build) { create(:ci_build, :success, name: :license_management, pipeline: pipeline) }
-    let!(:scanning_build) { create(:ci_build, :success, name: :license_scanning, pipeline: pipeline) }
-    let!(:another_build) { create(:ci_build, :success, name: :another_type, pipeline: pipeline) }
-
-    it 'returns license_scanning jobs' do
-      is_expected.to include(scanning_build)
-    end
-
-    it 'returns license_management jobs' do
-      is_expected.to include(management_build)
-    end
-
-    it 'doesnt return filtered out jobs' do
-      is_expected.not_to include(another_build)
-    end
-  end
-
-  describe '.finished_before' do
-    subject { described_class.finished_before(date) }
-
-    let(:date) { 1.hour.ago }
-
-    context 'when build has finished one day ago' do
-      let!(:build) { create(:ci_build, :success, finished_at: 1.day.ago, pipeline: pipeline) }
-
-      it 'selects the build' do
-        is_expected.to eq([build])
-      end
-    end
-
-    context 'when build has finished 30 minutes ago' do
-      let!(:build) { create(:ci_build, :success, finished_at: 30.minutes.ago, pipeline: pipeline) }
-
-      it 'returns an empty array' do
-        is_expected.to be_empty
-      end
-    end
-
-    context 'when build is still running' do
-      let!(:build) { create(:ci_build, :running, pipeline: pipeline) }
-
-      it 'returns an empty array' do
-        is_expected.to be_empty
-      end
-    end
-  end
-
-  describe '.with_exposed_artifacts' do
-    subject { described_class.with_exposed_artifacts }
-
-    let_it_be(:job1) { create(:ci_build, pipeline: pipeline) }
-    let_it_be(:job3) { create(:ci_build, pipeline: pipeline) }
-
-    let!(:job2) { create(:ci_build, options: options, pipeline: pipeline) }
-
-    context 'when some jobs have exposed artifacts and some not' do
-      let(:options) { { artifacts: { expose_as: 'test', paths: ['test'] } } }
-
-      before_all do
-        job1.ensure_metadata.update!(has_exposed_artifacts: nil)
-        job3.ensure_metadata.update!(has_exposed_artifacts: false)
-      end
-
-      it 'selects only the jobs with exposed artifacts' do
-        is_expected.to eq([job2])
-      end
-    end
-
-    context 'when job does not expose artifacts' do
-      let(:options) { nil }
-
-      it 'returns an empty array' do
-        is_expected.to be_empty
-      end
-    end
-  end
-
-  describe '.with_artifacts' do
-    subject(:builds) { described_class.with_artifacts(artifact_scope) }
-
-    let(:artifact_scope) { Ci::JobArtifact.where(file_type: 'archive') }
-
-    let_it_be(:build_1) { create(:ci_build, :artifacts, pipeline: pipeline) }
-    let_it_be(:build_2) { create(:ci_build, :codequality_reports, pipeline: pipeline) }
-    let_it_be(:build_3) { create(:ci_build, :test_reports, pipeline: pipeline) }
-    let_it_be(:build_4) { create(:ci_build, :artifacts, pipeline: pipeline) }
-
-    it 'returns artifacts matching the given scope' do
-      expect(builds).to contain_exactly(build_1, build_4)
-    end
-
-    context 'when there are multiple builds containing artifacts' do
-      before do
-        create_list(:ci_build, 5, :success, :test_reports, pipeline: pipeline)
-      end
-
-      it 'does not execute a query for selecting job artifact one by one' do
-        recorded = ActiveRecord::QueryRecorder.new do
-          builds.each do |build|
-            build.job_artifacts.map { |a| a.file.exists? }
-          end
-        end
-
-        expect(recorded.count).to eq(2)
-      end
-    end
-  end
-
-  describe '.with_needs' do
-    let_it_be(:build) { create(:ci_build, pipeline: pipeline) }
-    let_it_be(:build_b) { create(:ci_build, pipeline: pipeline) }
-    let_it_be(:build_need_a) { create(:ci_build_need, build: build) }
-    let_it_be(:build_need_b) { create(:ci_build_need, build: build_b) }
-
-    context 'when passing build name' do
-      subject { described_class.with_needs(build_need_a.name) }
-
-      it { is_expected.to contain_exactly(build) }
-    end
-
-    context 'when not passing any build name' do
-      subject { described_class.with_needs }
-
-      it { is_expected.to contain_exactly(build, build_b) }
-    end
-
-    context 'when not matching build name' do
-      subject { described_class.with_needs('undefined') }
-
-      it { is_expected.to be_empty }
-    end
-  end
-
-  describe '.without_needs' do
-    subject { described_class.without_needs }
-
-    context 'when no build_need is created' do
-      it { is_expected.to contain_exactly(build) }
-    end
-
-    context 'when a build_need is created' do
-      let!(:need_a) { create(:ci_build_need, build: build) }
-
-      it { is_expected.to be_empty }
-    end
-  end
-
-  describe '.belonging_to_runner_manager' do
-    subject { described_class.belonging_to_runner_manager(runner_manager) }
-
-    let_it_be(:runner) { create(:ci_runner, :group, groups: [group]) }
-    let_it_be(:build_b) { create(:ci_build, :success) }
-
-    context 'with runner_manager of runner associated with build' do
-      let!(:runner_manager) { create(:ci_runner_machine, runner: runner) }
-      let!(:runner_manager_build) { create(:ci_runner_machine_build, build: build, runner_manager: runner_manager) }
-
-      it { is_expected.to contain_exactly(build) }
-    end
-
-    context 'with runner_manager of runner not associated with build' do
-      let!(:runner_manager) { create(:ci_runner_machine, runner: instance_runner) }
-      let!(:instance_runner) { create(:ci_runner, :with_runner_manager) }
-
-      it { is_expected.to be_empty }
-    end
-
-    context 'with nil runner_manager' do
-      let(:runner_manager) { nil }
-
-      it { is_expected.to be_empty }
-    end
-  end
+  it_behaves_like 'a triggerable processable', :ci_build
 
   describe '#stick_build_if_status_changed' do
     it 'sticks the build if the status changed' do
@@ -707,7 +960,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   end
 
   describe '#schedule' do
-    subject { build.schedule }
+    subject(:schedule) { build.schedule }
 
     before do
       project.add_developer(user)
@@ -718,7 +971,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     it 'transits to scheduled' do
       allow(Ci::BuildScheduleWorker).to receive(:perform_at)
 
-      subject
+      schedule
 
       expect(build).to be_scheduled
     end
@@ -726,7 +979,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     it 'updates scheduled_at column' do
       allow(Ci::BuildScheduleWorker).to receive(:perform_at)
 
-      subject
+      schedule
 
       expect(build.scheduled_at).not_to be_nil
     end
@@ -736,25 +989,25 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         expect(Ci::BuildScheduleWorker)
           .to receive(:perform_at).with(be_like_time(1.minute.since), build.id)
 
-        subject
+        schedule
       end
     end
   end
 
   describe '#unschedule' do
-    subject { build.unschedule }
+    subject(:unschedule) { build.unschedule }
 
     context 'when build is scheduled' do
       let(:build) { create(:ci_build, :scheduled, pipeline: pipeline) }
 
       it 'cleans scheduled_at column' do
-        subject
+        unschedule
 
         expect(build.scheduled_at).to be_nil
       end
 
       it 'transits to manual' do
-        subject
+        unschedule
 
         expect(build).to be_manual
       end
@@ -764,7 +1017,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let(:build) { create(:ci_build, :created, pipeline: pipeline) }
 
       it 'does not transit status' do
-        subject
+        unschedule
 
         expect(build).to be_created
       end
@@ -772,7 +1025,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   end
 
   describe '#options_scheduled_at' do
-    subject { build.options_scheduled_at }
+    subject(:options_scheduled_at) { build.options_scheduled_at }
 
     let(:build) { build_stubbed(:ci_build, options: option, pipeline: pipeline) }
 
@@ -798,13 +1051,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   end
 
   describe '#enqueue_scheduled' do
-    subject { build.enqueue_scheduled }
+    subject(:enqueue_scheduled) { build.enqueue_scheduled }
 
     context 'when build is scheduled and the right time has not come yet' do
       let(:build) { create(:ci_build, :scheduled, pipeline: pipeline) }
 
       it 'does not transits the status' do
-        subject
+        enqueue_scheduled
 
         expect(build).to be_scheduled
       end
@@ -814,13 +1067,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let(:build) { create(:ci_build, :expired_scheduled, pipeline: pipeline) }
 
       it 'cleans scheduled_at column' do
-        subject
+        enqueue_scheduled
 
         expect(build.scheduled_at).to be_nil
       end
 
       it 'transits to pending' do
-        subject
+        enqueue_scheduled
 
         expect(build).to be_pending
       end
@@ -831,7 +1084,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it 'transits to preparing' do
-          subject
+          enqueue_scheduled
 
           expect(build).to be_preparing
         end
@@ -839,41 +1092,48 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe '#any_runners_online?' do
-    subject { build.any_runners_online? }
+  describe '#any_runners_online?', :freeze_time do
+    subject(:any_runners_online?) { build.any_runners_online? }
 
     context 'when no runners' do
       it { is_expected.to be_falsey }
     end
 
     context 'when there is a runner' do
-      let(:runner) { create(:ci_runner, :project, projects: [build.project]) }
-
       before do
-        runner.update!(contacted_at: 1.second.ago)
+        create(:ci_runner, *Array.wrap(runner_traits), :project, projects: [build.project])
       end
 
-      it { is_expected.to be_truthy }
+      context 'that is online' do
+        let(:runner_traits) { :online }
 
-      context 'that is inactive' do
-        before do
-          runner.update!(active: false)
+        it { is_expected.to be_truthy }
+
+        context 'and almost offline' do
+          let(:runner_traits) { :almost_offline }
+
+          it { is_expected.to be_truthy }
         end
+      end
+
+      context 'that is paused' do
+        let(:runner_traits) { [:online, :paused] }
 
         it { is_expected.to be_falsey }
       end
 
-      context 'that is not online' do
-        before do
-          runner.update!(contacted_at: nil)
-        end
+      context 'that is offline' do
+        let(:runner_traits) { :offline }
 
         it { is_expected.to be_falsey }
       end
 
       context 'that cannot handle build' do
+        let(:runner_traits) { :online }
+
         before do
-          expect_any_instance_of(Gitlab::Ci::Matching::RunnerMatcher).to receive(:matches?).with(build.build_matcher).and_return(false)
+          expect_any_instance_of(Gitlab::Ci::Matching::RunnerMatcher).to receive(:matches?).with(build.build_matcher)
+            .and_return(false)
         end
 
         it { is_expected.to be_falsey }
@@ -888,7 +1148,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   end
 
   describe '#any_runners_available?' do
-    subject { build.any_runners_available? }
+    subject(:any_runners_available?) { build.any_runners_available? }
 
     context 'when no runners' do
       it { is_expected.to be_falsey }
@@ -1076,6 +1336,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       it { is_expected.to eq(:private) }
     end
 
+    context 'artifacts with maintainer access level' do
+      let(:build) { create(:ci_build, :with_maintainer_access_artifacts, pipeline: pipeline) }
+
+      it { is_expected.to eq(:maintainer) }
+    end
+
     context 'non public artifacts via access as none' do
       let(:build) { create(:ci_build, :with_none_access_artifacts, pipeline: pipeline) }
 
@@ -1194,12 +1460,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
   describe '#cache' do
     let(:options) do
-      { cache: [{ key: "key", paths: ["public"], policy: "pull-push" }] }
+      { cache: [{ key: "cache", paths: ["public"], policy: "pull-push" }] }
     end
 
     let(:options_with_fallback_keys) do
       { cache: [
-        { key: "key", paths: ["public"], policy: "pull-push", fallback_keys: %w[key1 key2] }
+        { key: "cache", paths: ["public"], policy: "pull-push", fallback_keys: %w[cache1 cache2] }
       ] }
     end
 
@@ -1207,21 +1473,21 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when build has cache' do
       before do
-        allow(build).to receive(:options).and_return(options)
+        stub_ci_job_definition(build, options: options)
       end
 
       context 'when build has multiple caches' do
         let(:options) do
           { cache: [
-            { key: "key", paths: ["public"], policy: "pull-push" },
-            { key: "key2", paths: ["public"], policy: "pull-push" }
+            { key: "cache", paths: ["public"], policy: "pull-push" },
+            { key: "cache2", paths: ["public"], policy: "pull-push" }
           ] }
         end
 
         let(:options_with_fallback_keys) do
           { cache: [
-            { key: "key", paths: ["public"], policy: "pull-push", fallback_keys: %w[key3 key4] },
-            { key: "key2", paths: ["public"], policy: "pull-push", fallback_keys: %w[key5 key6] }
+            { key: "cache", paths: ["public"], policy: "pull-push", fallback_keys: %w[cache3 cache4] },
+            { key: "cache2", paths: ["public"], policy: "pull-push", fallback_keys: %w[cache5 cache6] }
           ] }
         end
 
@@ -1229,11 +1495,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           allow_any_instance_of(Project).to receive(:jobs_cache_index).and_return(1)
         end
 
-        it { is_expected.to match([a_hash_including(key: 'key-1-non_protected'), a_hash_including(key: 'key2-1-non_protected')]) }
+        it { is_expected.to match([a_hash_including(key: 'cache-1-non_protected'), a_hash_including(key: 'cache2-1-non_protected')]) }
 
-        context 'when pipeline is on a protected ref' do
+        context 'when build uses protected cache' do
           before do
-            allow(build.pipeline).to receive(:protected_ref?).and_return(true)
+            allow(build).to receive(:uses_protected_cache?).and_return(true)
           end
 
           context 'without the `unprotect` option' do
@@ -1302,6 +1568,28 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           end
         end
 
+        context 'when pipeline is on a protected ref' do
+          before do
+            allow(build.pipeline).to receive(:protected_ref?).and_return(true)
+            allow(build).to receive(:uses_protected_cache?).and_return(false)
+          end
+
+          it 'uses protected cache even for non-maintainer users' do
+            is_expected.to all(a_hash_including(key: a_string_matching(/-protected$/)))
+          end
+
+          context 'and the caches have fallback keys' do
+            let(:options) { options_with_fallback_keys }
+
+            it 'applies protected suffix to both keys and fallback keys' do
+              is_expected.to all(a_hash_including({
+                key: a_string_matching(/-protected$/),
+                fallback_keys: array_including(a_string_matching(/-protected$/))
+              }))
+            end
+          end
+        end
+
         context 'when separated caches are disabled' do
           before do
             allow_any_instance_of(Project).to receive(:ci_separated_caches).and_return(false)
@@ -1313,7 +1601,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
             end
 
             it 'is expected to have no type suffix' do
-              is_expected.to match([a_hash_including(key: 'key-1'), a_hash_including(key: 'key2-1')])
+              is_expected.to match([a_hash_including(key: 'cache-1'), a_hash_including(key: 'cache2-1')])
             end
 
             context 'and the caches have fallback keys' do
@@ -1322,12 +1610,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
               it do
                 is_expected.to match([
                   a_hash_including({
-                    key: 'key-1',
-                    fallback_keys: %w[key3-1 key4-1]
+                    key: 'cache-1',
+                    fallback_keys: %w[cache3-1 cache4-1]
                   }),
                   a_hash_including({
-                    key: 'key2-1',
-                    fallback_keys: %w[key5-1 key6-1]
+                    key: 'cache2-1',
+                    fallback_keys: %w[cache5-1 cache6-1]
                   })
                 ])
               end
@@ -1340,7 +1628,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
             end
 
             it 'is expected to have no type suffix' do
-              is_expected.to match([a_hash_including(key: 'key-1'), a_hash_including(key: 'key2-1')])
+              is_expected.to match([a_hash_including(key: 'cache-1'), a_hash_including(key: 'cache2-1')])
             end
 
             context 'and the caches have fallback keys' do
@@ -1349,12 +1637,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
               it do
                 is_expected.to match([
                   a_hash_including({
-                    key: 'key-1',
-                    fallback_keys: %w[key3-1 key4-1]
+                    key: 'cache-1',
+                    fallback_keys: %w[cache3-1 cache4-1]
                   }),
                   a_hash_including({
-                    key: 'key2-1',
-                    fallback_keys: %w[key5-1 key6-1]
+                    key: 'cache2-1',
+                    fallback_keys: %w[cache5-1 cache6-1]
                   })
                 ])
               end
@@ -1368,15 +1656,15 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           allow_any_instance_of(Project).to receive(:jobs_cache_index).and_return(1)
         end
 
-        it { is_expected.to be_an(Array).and all(include(key: a_string_matching(/^key-1-(?>protected|non_protected)/))) }
+        it { is_expected.to be_an(Array).and all(include(key: a_string_matching(/^cache-1-(?>protected|non_protected)/))) }
 
         context 'and the cache have fallback keys' do
           let(:options) { options_with_fallback_keys }
 
           it do
             is_expected.to be_an(Array).and all(include({
-              key: a_string_matching(/^key-1-(?>protected|non_protected)/),
-              fallback_keys: array_including(a_string_matching(/^key\d-1-(?>protected|non_protected)/))
+              key: a_string_matching(/^cache-1-(?>protected|non_protected)/),
+              fallback_keys: array_including(a_string_matching(/^cache\d-1-(?>protected|non_protected)/))
             }))
           end
         end
@@ -1388,7 +1676,8 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it do
-          is_expected.to eq(options[:cache].map { |entry| entry.merge(key: "#{entry[:key]}-non_protected") })
+          is_expected.to eq(
+            options[:cache].map { |entry| entry.merge(key: "#{entry[:key]}-non_protected").merge(fallback_keys: []) })
         end
 
         context 'and the cache have fallback keys' do
@@ -1410,10 +1699,184 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when build does not have cache' do
       before do
-        allow(build).to receive(:options).and_return({})
+        stub_ci_job_definition(build, options: {})
       end
 
       it { is_expected.to be_empty }
+    end
+  end
+
+  describe '#uses_protected_cache?' do
+    let_it_be(:cache_user) { create(:user) }
+
+    let(:test_build) { create(:ci_build, user: cache_user, project: project) }
+
+    subject { test_build.uses_protected_cache? }
+
+    before do
+      project.update!(ci_separated_caches: true)
+    end
+
+    context 'when build has no user' do
+      let(:test_build) { create(:ci_build, user: nil, project: project) }
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when ci_separated_caches is disabled' do
+      before do
+        project.update!(ci_separated_caches: false)
+      end
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when user is a developer' do
+      before do
+        project.add_developer(cache_user)
+      end
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'when user is a maintainer' do
+      before do
+        project.add_maintainer(cache_user)
+      end
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
+  describe 'cache protection integration' do
+    let_it_be(:developer_user) { create(:user) }
+    let_it_be(:maintainer_user) { create(:user) }
+
+    before_all do
+      project.add_developer(developer_user)
+      project.add_maintainer(maintainer_user)
+    end
+
+    context 'when ci_separated_caches is enabled' do
+      before do
+        project.update!(ci_separated_caches: true)
+      end
+
+      context 'with protected branch' do
+        let(:protected_branch) { create(:protected_branch, project: project, name: 'main') }
+        let(:protected_pipeline) { create(:ci_pipeline, project: project, ref: protected_branch.name) }
+
+        context 'when developer triggers pipeline on protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: protected_pipeline, user: developer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses protected cache due to branch protection' do
+            expect(test_build.cache).to all(a_hash_including(key: a_string_matching(/-protected$/)))
+          end
+        end
+
+        context 'when maintainer triggers pipeline on protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: protected_pipeline, user: maintainer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses protected cache due to user role' do
+            expect(test_build.cache).to all(a_hash_including(key: a_string_matching(/-protected$/)))
+          end
+        end
+      end
+
+      context 'with non-protected branch' do
+        let(:non_protected_pipeline) { create(:ci_pipeline, project: project, ref: 'feature-branch') }
+
+        context 'when developer triggers pipeline on non-protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: non_protected_pipeline, user: developer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses non-protected cache' do
+            expect(test_build.cache).to all(a_hash_including(key: a_string_matching(/-non_protected$/)))
+          end
+        end
+
+        context 'when maintainer triggers pipeline on non-protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: non_protected_pipeline, user: maintainer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses protected cache due to user role' do
+            expect(test_build.cache).to all(a_hash_including(key: a_string_matching(/-protected$/)))
+          end
+        end
+      end
+
+      context 'when pipeline is nil' do
+        let(:test_build) do
+          build_stubbed(:ci_build, project: project, user: developer_user, options: { cache: [{ key: 'test-cache' }] }).tap do |build|
+            allow(build).to receive(:pipeline).and_return(nil)
+          end
+        end
+
+        it 'uses non-protected cache' do
+          expect(test_build.cache).to all(a_hash_including(key: a_string_matching(/-non_protected$/)))
+        end
+      end
+    end
+
+    context 'when ci_separated_caches is disabled' do
+      before do
+        project.update!(ci_separated_caches: false)
+      end
+
+      context 'with protected branch' do
+        let(:protected_branch) { create(:protected_branch, project: project, name: 'main') }
+        let(:protected_pipeline) { create(:ci_pipeline, project: project, ref: protected_branch.name) }
+
+        context 'when developer triggers pipeline on protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: protected_pipeline, user: developer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses cache without suffix' do
+            expect(test_build.cache).to all(a_hash_including(key: 'test-cache'))
+          end
+        end
+
+        context 'when maintainer triggers pipeline on protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: protected_pipeline, user: maintainer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses cache without suffix' do
+            expect(test_build.cache).to all(a_hash_including(key: 'test-cache'))
+          end
+        end
+      end
+
+      context 'with non-protected branch' do
+        let(:non_protected_pipeline) { create(:ci_pipeline, project: project, ref: 'feature-branch') }
+
+        context 'when developer triggers pipeline on non-protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: non_protected_pipeline, user: developer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses cache without suffix' do
+            expect(test_build.cache).to all(a_hash_including(key: 'test-cache'))
+          end
+        end
+
+        context 'when maintainer triggers pipeline on non-protected branch' do
+          let(:test_build) do
+            create(:ci_build, pipeline: non_protected_pipeline, user: maintainer_user, options: { cache: [{ key: 'test-cache' }] })
+          end
+
+          it 'uses cache without suffix' do
+            expect(test_build.cache).to all(a_hash_including(key: 'test-cache'))
+          end
+        end
+      end
     end
   end
 
@@ -1426,7 +1889,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context "with fallbacks keys" do
       before do
-        allow(build).to receive(:options).and_return({
+        stub_ci_job_definition(build, options: {
           cache: [{
             key: "key1",
             fallback_keys: %w[key2]
@@ -1555,8 +2018,9 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'hide runners token' do
       let(:data) { "new #{project.runners_token} data" }
+      let(:allow_runner_registration_token) { true }
 
-      it { is_expected.to match(/^new x+ data$/) }
+      it { is_expected.to match(/^new \[MASKED\]x+ data$/) }
 
       it 'increments trace mutation metric' do
         build.hide_secrets(data, metrics)
@@ -1568,18 +2032,26 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
 
     context 'hide build token' do
-      let_it_be(:build) { FactoryBot.build(:ci_build, pipeline: pipeline) }
+      let_it_be(:build) { create(:ci_build, pipeline: pipeline) }
 
-      let(:data) { "new #{build.token} data" }
+      before do
+        stub_feature_flags(ci_job_token_jwt: token == :jwt)
+      end
 
-      it { is_expected.to match(/^new x+ data$/) }
+      where(:token) { [:database, :jwt] }
 
-      it 'increments trace mutation metric' do
-        build.hide_secrets(data, metrics)
+      with_them do
+        let(:data) { "new #{build.token} data" }
 
-        expect(metrics)
-          .to have_received(:increment_trace_operation)
-          .with(operation: :mutated)
+        it { is_expected.to match(/^new \[MASKED\]x+ data$/) }
+
+        it 'increments trace mutation metric' do
+          build.hide_secrets(data, metrics)
+
+          expect(metrics)
+            .to have_received(:increment_trace_operation)
+            .with(operation: :mutated)
+        end
       end
     end
 
@@ -1727,6 +2199,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
           it { is_expected.to be_cancelable }
         end
+
+        context 'when build is canceling' do
+          let(:build) { create(:ci_build, :canceling, pipeline: pipeline) }
+
+          it { is_expected.to be_force_cancelable }
+        end
       end
 
       context 'when build is not cancelable' do
@@ -1773,12 +2251,33 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         it { is_expected.to be_falsey }
       end
     end
+
+    describe '#can_auto_cancel_pipeline_on_job_failure?' do
+      subject { build.can_auto_cancel_pipeline_on_job_failure? }
+
+      before do
+        allow(build).to receive(:auto_retry_expected?) { auto_retry_expected }
+      end
+
+      context 'when the job can be auto-retried' do
+        let(:auto_retry_expected) { true }
+
+        it { is_expected.to be false }
+      end
+
+      context 'when the job cannot be auto-retried' do
+        let(:auto_retry_expected) { false }
+
+        it { is_expected.to be true }
+      end
+    end
   end
 
   describe '#runner_manager' do
     let_it_be(:runner) { create(:ci_runner) }
     let_it_be(:runner_manager) { create(:ci_runner_machine, runner: runner) }
-    let_it_be(:build) { create(:ci_build, runner_manager: runner_manager) }
+    let_it_be(:ci_stage) { create(:ci_stage) }
+    let_it_be(:build) { create(:ci_build, runner_manager: runner_manager, ci_stage: ci_stage) }
 
     subject(:build_runner_manager) { described_class.find(build.id).runner_manager }
 
@@ -1787,6 +2286,29 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
   describe '#tag_list' do
     let_it_be(:build) { create(:ci_build, tag_list: ['tag'], pipeline: pipeline) }
+
+    subject(:tag_list) { build.reload.tag_list }
+
+    context 'with various tag input formats' do
+      where(:tag_input, :expected_tags, :description) do
+        ['tag1,tag2']       | %w[tag1 tag2]      | 'comma-delimited string in array'
+        ['tag1, tag2']      | %w[tag1 tag2]      | 'comma-delimited string with spaces'
+        %w[tag1 tag2]       | %w[tag1 tag2]      | 'array of strings'
+        ['']                | []                 | 'empty string in array'
+        []                  | []                 | 'empty array'
+        ['  tag1  , tag2 '] | %w[tag1 tag2]      | 'string with extra whitespace'
+        'tag1,tag2'         | %w[tag1 tag2]      | 'plain comma-delimited string'
+        'tag1, tag2, tag3'  | %w[tag1 tag2 tag3] | 'multiple tags with spaces'
+      end
+
+      with_them do
+        let(:build) { create(:ci_build, tag_list: tag_input, pipeline: pipeline) }
+
+        it 'parses job_definition tags correctly' do
+          expect(tag_list).to match_array(expected_tags)
+        end
+      end
+    end
 
     context 'when tags are preloaded' do
       it 'does not trigger queries' do
@@ -1800,32 +2322,61 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     context 'when tags are not preloaded' do
       it { expect(described_class.find(build.id).tag_list).to eq(['tag']) }
     end
-  end
 
-  describe '#save_tags' do
-    let(:build) { create(:ci_build, tag_list: ['tag'], pipeline: pipeline) }
+    context 'when build has job_definition with tag_list' do
+      let(:job_definition_tags) { %w[job_definition_tag] }
 
-    it 'saves tags' do
-      build.save!
+      before do
+        stub_ci_job_definition(build, tag_list: job_definition_tags)
+      end
 
-      expect(build.tags.count).to eq(1)
-      expect(build.tags.first.name).to eq('tag')
+      it 'returns tag_list from job_definition config' do
+        is_expected.to eq(job_definition_tags)
+      end
     end
 
-    it 'strips tags' do
-      build.tag_list = ['       taga', 'tagb      ', '   tagc    ']
+    context 'when build has no job_definition' do
+      let_it_be(:build_without_job_definition) do
+        create(:ci_build, :without_job_definition, tag_list: ['tag_from_tags'], pipeline: pipeline)
+      end
 
-      build.save!
-      expect(build.tags.map(&:name)).to match_array(%w[taga tagb tagc])
+      specify do
+        expect(build_without_job_definition.job_definition).to be_nil
+      end
+
+      it 'does not create build tagging' do
+        expect(Ci::BuildTag.where(build_id: build_without_job_definition, tag_id: Ci::Tag.find_by_name('tag_from_tags')))
+          .to be_empty
+      end
+
+      it 'falls back to tags table' do
+        expect(build_without_job_definition.tag_list).to contain_exactly('tag_from_tags')
+      end
     end
 
-    context 'with BulkInsertableTags.with_bulk_insert_tags' do
-      it 'does not save_tags' do
-        Ci::BulkInsertableTags.with_bulk_insert_tags do
-          build.save!
-        end
+    context 'when build has tags and job_definition without tag_list' do
+      let_it_be(:build) { create(:ci_build, options: { script: ['echo hello'] }, pipeline: pipeline) }
 
-        expect(build.tags).to be_empty
+      before_all do
+        create(:ci_build_tag, tag: create(:ci_tag, name: 'tag1'), build: build, project_id: build.project.id)
+      end
+
+      it 'does not fall back to super' do
+        expect(build.job_definition).not_to be_nil
+        expect(build.job_definition.config).not_to be_nil
+        expect(build.job_definition.config[:tag_list]).to eq([])
+
+        is_expected.to eq([])
+      end
+    end
+
+    context 'when build has empty tag_list in job_definition config' do
+      before do
+        stub_ci_job_definition(build, tag_list: [])
+      end
+
+      it 'returns empty array from job_definition config instead of falling back to super' do
+        is_expected.to eq([])
       end
     end
   end
@@ -1945,10 +2496,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   describe '#keep_artifacts!' do
     let(:build) { create(:ci_build, artifacts_expire_at: Time.current + 7.days, pipeline: pipeline) }
 
-    subject { build.keep_artifacts! }
+    subject(:keep_artifacts!) { build.keep_artifacts! }
 
     it 'to reset expire_at' do
-      subject
+      keep_artifacts!
 
       expect(build.artifacts_expire_at).to be_nil
     end
@@ -1957,7 +2508,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let!(:artifact) { create(:ci_job_artifact, job: build, expire_in: '7 days') }
 
       it 'to reset dependent objects' do
-        subject
+        keep_artifacts!
 
         expect(artifact.reload.expire_at).to be_nil
       end
@@ -2087,20 +2638,8 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       expect(build.options['image']).to be_nil
     end
 
-    it 'persist data in build metadata' do
-      expect(build.metadata.read_attribute(:config_options)).to eq(options.symbolize_keys)
-    end
-
     it 'does not persist data in build' do
       expect(build.read_attribute(:options)).to be_nil
-    end
-
-    context 'when options include artifacts:expose_as' do
-      let(:build) { create(:ci_build, options: { artifacts: { expose_as: 'test' } }, pipeline: pipeline) }
-
-      it 'saves the presence of expose_as into build metadata' do
-        expect(build.metadata).to have_exposed_artifacts
-      end
     end
   end
 
@@ -2154,7 +2693,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
 
     it 'enqueues the build' do
-      expect(build.play(user)).to be_pending
+      result = build.play(user)
+
+      expect(result).to be_success
+      expect(result.payload[:job]).to be_pending
     end
   end
 
@@ -2242,13 +2784,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       '1-foo'              | '1-foo'
       'fix/1-foo'          | 'fix-1-foo'
       'fix-1-foo'          | 'fix-1-foo'
-      'a' * 63             | 'a' * 63
-      'a' * 64             | 'a' * 63
-      'FOO'                | 'foo'
-      '-' + 'a' * 61 + '-' | 'a' * 61
-      '-' + 'a' * 62 + '-' | 'a' * 62
-      '-' + 'a' * 63 + '-' | 'a' * 62
-      'a' * 62 + ' '       | 'a' * 62
+      ('a' * 63)             | ('a' * 63)
+      ('a' * 64)             | ('a' * 63)
+      'FOO' | 'foo'
+      ('-' + ('a' * 61) + '-') | ('a' * 61)
+      ('-' + ('a' * 62) + '-') | ('a' * 62)
+      ('-' + ('a' * 63) + '-') | ('a' * 62)
+      (('a' * 62) + ' ')       | ('a' * 62)
     end
 
     with_them do
@@ -2265,7 +2807,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when token is set' do
       before do
-        build.ensure_token
+        allow(build).to receive(:token).and_return('my-token')
       end
 
       it { is_expected.to be_a(String) }
@@ -2278,7 +2820,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when token is empty' do
       before do
-        build.update_columns(token_encrypted: nil)
+        allow(build).to receive(:token).and_return(nil)
       end
 
       it { is_expected.to be_nil }
@@ -2404,6 +2946,8 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     subject { build.variables }
 
     context 'returns variables' do
+      let(:pages_hostname) { "#{project.namespace.path}.example.com" }
+      let(:pages_url) { "http://#{pages_hostname}/#{project.path}" }
       let(:predefined_variables) do
         [
           { key: 'CI_PIPELINE_ID', value: pipeline.id.to_s, public: true, masked: false },
@@ -2412,21 +2956,20 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           { key: 'CI_JOB_URL', value: project.web_url + "/-/jobs/#{build.id}", public: true, masked: false },
           { key: 'CI_JOB_TOKEN', value: 'my-token', public: false, masked: true },
           { key: 'CI_JOB_STARTED_AT', value: build.started_at&.iso8601, public: true, masked: false },
+          { key: 'CI_JOB_STARTED_AT_SLUG', value: build.started_at && Gitlab::Utils.slugify(build.started_at.iso8601), public: true, masked: false },
           { key: 'CI_REGISTRY_USER', value: 'gitlab-ci-token', public: true, masked: false },
           { key: 'CI_REGISTRY_PASSWORD', value: 'my-token', public: false, masked: true },
           { key: 'CI_REPOSITORY_URL', value: build.repo_url, public: false, masked: false },
           { key: 'CI_DEPENDENCY_PROXY_USER', value: 'gitlab-ci-token', public: true, masked: false },
           { key: 'CI_DEPENDENCY_PROXY_PASSWORD', value: 'my-token', public: false, masked: true },
-          { key: 'CI_JOB_JWT', value: 'ci.job.jwt', public: false, masked: true },
-          { key: 'CI_JOB_JWT_V1', value: 'ci.job.jwt', public: false, masked: true },
-          { key: 'CI_JOB_JWT_V2', value: 'ci.job.jwtv2', public: false, masked: true },
           { key: 'CI_JOB_NAME', value: 'test', public: true, masked: false },
           { key: 'CI_JOB_NAME_SLUG', value: 'test', public: true, masked: false },
+          { key: 'CI_JOB_GROUP_NAME', value: 'test', public: true, masked: false },
           { key: 'CI_JOB_STAGE', value: 'test', public: true, masked: false },
           { key: 'CI_NODE_TOTAL', value: '1', public: true, masked: false },
           { key: 'CI', value: 'true', public: true, masked: false },
           { key: 'GITLAB_CI', value: 'true', public: true, masked: false },
-          { key: 'CI_SERVER_FQDN', value: Gitlab.config.gitlab_ci.server_fqdn, public: true, masked: false },
+          { key: 'CI_SERVER_FQDN', value: Gitlab.config.gitlab.server_fqdn, public: true, masked: false },
           { key: 'CI_SERVER_URL', value: Gitlab.config.gitlab.url, public: true, masked: false },
           { key: 'CI_SERVER_HOST', value: Gitlab.config.gitlab.host, public: true, masked: false },
           { key: 'CI_SERVER_PORT', value: Gitlab.config.gitlab.port.to_s, public: true, masked: false },
@@ -2444,9 +2987,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           { key: 'CI_PROJECT_NAME', value: project.path, public: true, masked: false },
           { key: 'CI_PROJECT_TITLE', value: project.title, public: true, masked: false },
           { key: 'CI_PROJECT_DESCRIPTION', value: project.description, public: true, masked: false },
+          { key: 'CI_PROJECT_TOPICS', value: project.topic_list.first(20).join(',').downcase, public: true, masked: false },
           { key: 'CI_PROJECT_PATH', value: project.full_path, public: true, masked: false },
           { key: 'CI_PROJECT_PATH_SLUG', value: project.full_path_slug, public: true, masked: false },
           { key: 'CI_PROJECT_NAMESPACE', value: project.namespace.full_path, public: true, masked: false },
+          { key: 'CI_PROJECT_NAMESPACE_SLUG', value: Gitlab::Utils.slugify(project.namespace.full_path), public: true, masked: false },
           { key: 'CI_PROJECT_NAMESPACE_ID', value: project.namespace.id.to_s, public: true, masked: false },
           { key: 'CI_PROJECT_ROOT_NAMESPACE', value: project.namespace.root_ancestor.path, public: true, masked: false },
           { key: 'CI_PROJECT_URL', value: project.web_url, public: true, masked: false },
@@ -2454,9 +2999,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           { key: 'CI_PROJECT_REPOSITORY_LANGUAGES', value: project.repository_languages.map(&:name).join(',').downcase, public: true, masked: false },
           { key: 'CI_PROJECT_CLASSIFICATION_LABEL', value: project.external_authorization_classification_label, public: true, masked: false },
           { key: 'CI_DEFAULT_BRANCH', value: project.default_branch, public: true, masked: false },
+          { key: 'CI_DEFAULT_BRANCH_SLUG', value: Gitlab::Utils.slugify(project.default_branch.to_s), public: true, masked: false },
           { key: 'CI_CONFIG_PATH', value: project.ci_config_path_or_default, public: true, masked: false },
           { key: 'CI_PAGES_DOMAIN', value: Gitlab.config.pages.host, public: true, masked: false },
-          { key: 'CI_PAGES_URL', value: Gitlab::Pages::UrlBuilder.new(project).pages_url, public: true, masked: false },
+          { key: 'CI_PAGES_HOSTNAME', value: pages_hostname, public: true, masked: false },
           { key: 'CI_DEPENDENCY_PROXY_SERVER', value: Gitlab.host_with_port, public: true, masked: false },
           { key: 'CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX',
             value: "#{Gitlab.host_with_port}/#{project.namespace.root_ancestor.path.downcase}#{DependencyProxy::URL_SUFFIX}",
@@ -2480,22 +3026,24 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           { key: 'CI_COMMIT_REF_SLUG', value: build.ref_slug, public: true, masked: false },
           { key: 'CI_COMMIT_BRANCH', value: build.ref, public: true, masked: false },
           { key: 'CI_COMMIT_MESSAGE', value: pipeline.git_commit_message, public: true, masked: false },
+          { key: "CI_COMMIT_MESSAGE_IS_TRUNCATED", masked: false, public: true, value: "false" },
           { key: 'CI_COMMIT_TITLE', value: pipeline.git_commit_title, public: true, masked: false },
           { key: 'CI_COMMIT_DESCRIPTION', value: pipeline.git_commit_description, public: true, masked: false },
           { key: 'CI_COMMIT_REF_PROTECTED', value: (!!pipeline.protected_ref?).to_s, public: true, masked: false },
           { key: 'CI_COMMIT_TIMESTAMP', value: pipeline.git_commit_timestamp, public: true, masked: false },
-          { key: 'CI_COMMIT_AUTHOR', value: pipeline.git_author_full_text, public: true, masked: false }
+          { key: 'CI_COMMIT_AUTHOR', value: pipeline.git_author_full_text, public: true, masked: false },
+          { key: 'CI_PAGES_URL', value: pages_url, public: true, masked: false }
         ]
       end
 
       before do
         allow(Gitlab::Ci::Jwt).to receive(:for_build).and_return('ci.job.jwt')
         allow(Gitlab::Ci::JwtV2).to receive(:for_build).and_return('ci.job.jwtv2')
-        build.set_token('my-token')
-        build.yaml_variables = []
+        allow(build).to receive(:token).and_return('my-token')
       end
 
       it { is_expected.to be_instance_of(Gitlab::Ci::Variables::Collection) }
+
       it { expect(subject.to_runner_variables).to eq(predefined_variables) }
 
       it 'excludes variables that require an environment or user' do
@@ -2507,21 +3055,6 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         expect(environment_based_variables_collection).to be_empty
-      end
-
-      context 'when CI_JOB_JWT generation fails' do
-        [
-          OpenSSL::PKey::RSAError,
-          Gitlab::Ci::Jwt::NoSigningKeyError
-        ].each do |reason_to_fail|
-          it 'CI_JOB_JWT is not included' do
-            expect(Gitlab::Ci::Jwt).to receive(:for_build).and_raise(reason_to_fail)
-            expect(Gitlab::ErrorTracking).to receive(:track_exception)
-
-            expect { subject }.not_to raise_error
-            expect(subject.pluck(:key)).not_to include('CI_JOB_JWT')
-          end
-        end
       end
 
       describe 'variables ordering' do
@@ -2547,7 +3080,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
               allow(builder).to receive(:pipeline_variables_builder) { pipeline_variables_builder }
             end
 
-            allow(build).to receive(:yaml_variables) { [build_yaml_var] }
+            stub_ci_job_definition(build, yaml_variables: [build_yaml_var.except(:masked)])
             allow(build).to receive(:persisted_variables) { [] }
             allow(build).to receive(:job_jwt_variables) { [job_jwt_var] }
             allow(build).to receive(:dependency_variables) { [job_dependency_var] }
@@ -2562,26 +3095,26 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           it 'returns variables in order depending on resource hierarchy' do
             expect(subject.to_runner_variables).to eq(
               [dependency_proxy_var,
-               job_jwt_var,
-               build_pre_var,
-               project_pre_var,
-               pipeline_pre_var,
-               build_yaml_var,
-               job_dependency_var,
-               { key: 'secret', value: 'value', public: false, masked: false }])
+                job_jwt_var,
+                build_pre_var,
+                project_pre_var,
+                pipeline_pre_var,
+                build_yaml_var,
+                job_dependency_var,
+                { key: 'secret', value: 'value', public: false, masked: false },
+                { key: "CI_PAGES_URL", value: pages_url, masked: false, public: true }])
           end
         end
 
         context 'when build has environment and user-provided variables' do
           let(:expected_variables) do
-            predefined_variables.map { |variable| variable.fetch(:key) } +
-              %w[YAML_VARIABLE CI_ENVIRONMENT_SLUG CI_ENVIRONMENT_URL]
+            predefined_variables.map { |variable| variable.fetch(:key) }
           end
 
           before do
-            create(:environment, project: build.project, name: 'staging')
+            environment = create(:environment, project: build.project, name: 'staging')
 
-            build.yaml_variables = [{ key: 'YAML_VARIABLE', value: 'var', public: true }]
+            stub_ci_job_definition(build, yaml_variables: [{ key: 'YAML_VARIABLE', value: 'var', public: true }])
             build.environment = 'staging'
 
             insert_expected_predefined_variables(
@@ -2592,12 +3125,21 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
                 { key: 'CI_ENVIRONMENT_URL', value: 'https://gitlab.com', public: true, masked: false }
               ],
               after: 'CI_NODE_TOTAL')
+
+            insert_expected_predefined_variables(
+              [
+                { key: 'YAML_VARIABLE', value: 'staging', public: true, masked: false },
+                { key: 'CI_ENVIRONMENT_ID', value: environment.id, public: true, masked: false },
+                { key: 'CI_ENVIRONMENT_SLUG', value: 'start', public: true, masked: false },
+                { key: 'CI_ENVIRONMENT_URL', value: 'https://gitlab.com', public: true, masked: false }
+              ],
+              after: 'CI_COMMIT_AUTHOR')
           end
 
           it 'matches explicit variables ordering' do
             received_variables = subject.map { |variable| variable[:key] }
 
-            expect(received_variables).to eq expected_variables
+            expect(received_variables).to eq(expected_variables)
           end
 
           describe 'CI_ENVIRONMENT_ACTION' do
@@ -2613,17 +3155,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
             context 'when options is set' do
               before do
-                build.update!(options: options)
+                stub_ci_job_definition(build, options: options)
               end
 
               context 'when options is empty' do
                 let(:options) { {} }
-
-                it_behaves_like 'defaults value'
-              end
-
-              context 'when options is nil' do
-                let(:options) { nil }
 
                 it_behaves_like 'defaults value'
               end
@@ -2648,9 +3184,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
       context 'when the build has ID tokens' do
         before do
-          build.update!(
-            id_tokens: { 'TEST_ID_TOKEN' => { 'aud' => 'https://client.test' } }
-          )
+          stub_ci_job_definition(build, id_tokens: { 'TEST_ID_TOKEN' => { 'aud' => 'https://client.test' } })
         end
 
         it 'includes the tokens and excludes the predefined JWT variables' do
@@ -2702,6 +3236,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     context 'when build has an environment' do
       let(:expected_environment_variables) do
         [
+          { key: 'CI_ENVIRONMENT_ID', value: build.persisted_environment.id.to_s, public: true, masked: false },
           { key: 'CI_ENVIRONMENT_NAME', value: 'production', public: true, masked: false },
           { key: 'CI_ENVIRONMENT_ACTION', value: 'start', public: true, masked: false },
           { key: 'CI_ENVIRONMENT_TIER', value: 'production', public: true, masked: false },
@@ -2709,15 +3244,19 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         ]
       end
 
-      let(:build) { create(:ci_build, :with_deployment, :deploy_to_production, ref: pipeline.ref, pipeline: pipeline) }
+      let(:build) do
+        build_attrs = { ref: pipeline.ref, pipeline: pipeline, options: try(:options) }.compact
+        create(:ci_build, :with_deployment, :deploy_to_production, **build_attrs)
+      end
 
       shared_examples 'containing environment variables' do
         it { is_expected.to include(*expected_environment_variables) }
       end
 
       context 'when no URL was set' do
+        let(:options) { { environment: { url: nil } } }
+
         before do
-          build.update!(options: { environment: { url: nil } })
           build.persisted_environment.update!(external_url: nil)
           expected_environment_variables.delete_if { |var| var[:key] == 'CI_ENVIRONMENT_URL' }
         end
@@ -2732,7 +3271,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       context 'when environment is created dynamically' do
-        let(:build) { create(:ci_build, :with_deployment, :start_review_app, ref: pipeline.ref, pipeline: pipeline) }
+        let(:build) do
+          build_attrs = { ref: pipeline.ref, pipeline: pipeline, options: try(:options) }.compact
+          create(:ci_build, :with_deployment, :start_review_app, **build_attrs)
+        end
 
         let(:expected_environment_variables) do
           [
@@ -2754,9 +3296,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         context 'when the URL was set from the job' do
-          before do
-            build.update!(options: { environment: { url: url } })
-          end
+          let(:options) { { environment: { url: url } } }
 
           it_behaves_like 'containing environment variables'
 
@@ -2766,14 +3306,17 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
             it_behaves_like 'containing environment variables'
 
             it 'puts $CI_ENVIRONMENT_URL in the last so all other variables are available to be used when runners are trying to expand it' do
-              expect(subject.to_runner_variables.last).to eq(expected_environment_variables.last)
+              ci_env_url = subject.to_runner_variables.find { |var| var[:key] == 'CI_ENVIRONMENT_URL' }
+
+              expect(ci_env_url).to eq(expected_environment_variables.last)
             end
           end
         end
 
         context 'when the URL was not set from the job, but environment' do
+          let(:options) { { environment: { url: nil } } }
+
           before do
-            build.update!(options: { environment: { url: nil } })
             build.persisted_environment.update!(external_url: url)
           end
 
@@ -2782,11 +3325,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       context 'when environment_tier is updated in options' do
-        before do
-          build.update!(options: { environment: { name: 'production', deployment_tier: 'development' } })
-        end
+        let(:options) { { environment: { name: 'production', deployment_tier: 'development' } } }
 
         it 'uses tier from options' do
+          build.clear_memoization(:expanded_deployment_tier)
+
           is_expected.to include({ key: 'CI_ENVIRONMENT_TIER', value: 'development', public: true, masked: false })
         end
       end
@@ -2978,21 +3521,6 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
     end
 
-    context 'when build is for triggers' do
-      let(:trigger) { create(:ci_trigger, project: project) }
-      let(:trigger_request) { create(:ci_trigger_request, pipeline: pipeline, trigger: trigger) }
-
-      let(:predefined_trigger_variable) do
-        { key: 'CI_PIPELINE_TRIGGERED', value: 'true', public: true, masked: false }
-      end
-
-      before do
-        build.trigger_request = trigger_request
-      end
-
-      it { is_expected.to include(predefined_trigger_variable) }
-    end
-
     context 'when pipeline has a variable' do
       let!(:pipeline_variable) { create(:ci_pipeline_variable, pipeline: pipeline) }
 
@@ -3012,6 +3540,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       it { is_expected.to include(key: pipeline_schedule_variable.key, value: pipeline_schedule_variable.value, public: false, masked: false) }
+      it { is_expected.to include(key: 'CI_PIPELINE_SCHEDULE_DESCRIPTION', value: pipeline_schedule.description, public: true, masked: false) }
     end
 
     context 'when container registry is enabled' do
@@ -3062,6 +3591,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when runner is assigned to build' do
       let(:runner) { create(:ci_runner, description: 'description', tag_list: %w[docker linux]) }
+      let(:expected_tags_value) { %w[docker linux].to_s }
 
       before do
         build.update!(runner: runner)
@@ -3069,7 +3599,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
       it { is_expected.to include({ key: 'CI_RUNNER_ID', value: runner.id.to_s, public: true, masked: false }) }
       it { is_expected.to include({ key: 'CI_RUNNER_DESCRIPTION', value: 'description', public: true, masked: false }) }
-      it { is_expected.to include({ key: 'CI_RUNNER_TAGS', value: 'docker, linux', public: true, masked: false }) }
+      it { is_expected.to include({ key: 'CI_RUNNER_TAGS', value: expected_tags_value, public: true, masked: false }) }
+
+      context 'when the tags are preloaded' do
+        subject { described_class.preload(:tags).find(build.id).variables }
+
+        it { is_expected.to include({ key: 'CI_RUNNER_TAGS', value: expected_tags_value, public: true, masked: false }) }
+      end
     end
 
     context 'when build is for a deployment' do
@@ -3104,7 +3640,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when pipeline variable overrides build variable' do
       let(:build) do
-        create(:ci_build, pipeline: pipeline, yaml_variables: [{ key: 'MYVAR', value: 'myvar', public: true }])
+        create(:ci_build, pipeline: pipeline, ci_stage: pipeline.stages.first, yaml_variables: [{ key: 'MYVAR', value: 'myvar', public: true }])
       end
 
       before do
@@ -3142,6 +3678,30 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
             { key: 'CI_NODE_TOTAL', value: total.to_s, public: true, masked: false }
           )
         end
+
+        it 'includes CI_JOB_GROUP_NAME' do
+          is_expected.to include(
+            { key: 'CI_JOB_GROUP_NAME', value: 'test', public: true, masked: false }
+          )
+        end
+      end
+
+      context 'when parallel is a matrix' do
+        let(:config) do
+          {
+            matrix: [
+              {
+                STACK: %w[ruby python],
+                DB: %w[postgresql mysql]
+              }
+            ],
+            total: 4
+          }
+        end
+
+        it_behaves_like 'parallelized jobs config' do
+          let(:total) { 4 }
+        end
       end
 
       context 'when parallel is a number' do
@@ -3167,28 +3727,43 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when build has not been persisted yet' do
       let(:build) do
-        described_class.new(
+        FactoryBot.build(:ci_build,
           name: 'rspec',
-          stage: 'test',
+          ci_stage: pipeline.stages.first,
           ref: 'feature',
           project: project,
-          pipeline: pipeline
+          pipeline: pipeline,
+          id_tokens: id_tokens
         )
       end
 
+      let(:id_tokens) { nil }
       let(:pipeline) { create(:ci_pipeline, project: project, ref: 'feature') }
 
-      it 'returns static predefined variables' do
-        expect(build.variables.size).to be >= 28
-        expect(build.variables)
-          .to include(key: 'CI_COMMIT_REF_NAME', value: 'feature', public: true, masked: false)
-        expect(build).not_to be_persisted
+      context 'and id_tokens are not present in the build' do
+        it 'does not return id_token variables' do
+          expect(build.variables)
+            .not_to include(key: 'ID_TOKEN_1', value: 'feature', public: true, masked: false)
+        end
+      end
+
+      context 'and id_tokens are present in the build' do
+        let(:id_tokens) do
+          {
+            'ID_TOKEN_1' => { aud: 'developers' },
+            'ID_TOKEN_2' => { aud: 'maintainers' }
+          }
+        end
+
+        it 'returns static predefined variables' do
+          expect(build.variables)
+            .to include(key: 'CI_COMMIT_REF_NAME', value: 'feature', public: true, masked: false)
+          expect(build).not_to be_persisted
+        end
       end
     end
 
     context 'for deploy tokens' do
-      let(:deploy_token) { create(:deploy_token, :gitlab_deploy_token) }
-
       let(:deploy_token_variables) do
         [
           { key: 'CI_DEPLOY_USER', value: deploy_token.username, public: true, masked: false },
@@ -3197,9 +3772,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       context 'when gitlab-deploy-token exists for project' do
-        before do
-          project.deploy_tokens << deploy_token
-        end
+        let!(:deploy_token) { create(:deploy_token, :gitlab_deploy_token, projects: [project]) }
 
         it 'includes deploy token variables' do
           is_expected.to include(*deploy_token_variables)
@@ -3213,9 +3786,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         context 'when gitlab-deploy-token exists for group' do
-          before do
-            group.deploy_tokens << deploy_token
-          end
+          let!(:deploy_token) { create(:deploy_token, :gitlab_deploy_token, :group, groups: [group]) }
 
           it 'includes deploy token variables' do
             is_expected.to include(*deploy_token_variables)
@@ -3444,23 +4015,54 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
     end
 
-    context 'when build has dependency which has dotenv variable' do
+    context 'when build has dependency which has dotenv variable in same project' do
       let!(:prepare) { create(:ci_build, pipeline: pipeline, stage_idx: 0) }
       let!(:build) { create(:ci_build, pipeline: pipeline, stage_idx: 1, options: { dependencies: [prepare.name] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare, accessibility: accessibility) }
 
       let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: prepare) }
 
-      it { is_expected.to include(key: job_variable.key, value: job_variable.value, public: false, masked: false) }
+      context "when artifact is public" do
+        let(:accessibility) { 'public' }
+
+        it { is_expected.to include(key: job_variable.key, value: job_variable.value, public: false, masked: false) }
+      end
+
+      context "when artifact is private" do
+        let(:accessibility) { 'private' }
+
+        it { is_expected.to include(key: job_variable.key, value: job_variable.value, public: false, masked: false) }
+      end
+    end
+
+    context 'when build has dependency which has dotenv variable in different project' do
+      let!(:prepare) { create(:ci_build, pipeline: pipeline, stage_idx: 0) }
+      let!(:build) { create(:ci_build, project: public_project, stage_idx: 1, options: { dependencies: [prepare.name] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare, accessibility: accessibility) }
+
+      let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: prepare) }
+
+      context "when artifact is public" do
+        let(:accessibility) { 'public' }
+
+        it { is_expected.to include(key: job_variable.key, value: job_variable.value, public: false, masked: false) }
+      end
+
+      context "when artifact is private" do
+        let(:accessibility) { 'private' }
+
+        it { is_expected.not_to include(key: job_variable.key, value: job_variable.value, public: false, masked: false) }
+      end
     end
 
     context 'when ID tokens are defined on the build' do
       before do
         rsa_key = OpenSSL::PKey::RSA.generate(3072).to_s
         stub_application_setting(ci_jwt_signing_key: rsa_key)
-        build.metadata.update!(id_tokens: {
-                                 'ID_TOKEN_1' => { aud: 'developers' },
-                                 'ID_TOKEN_2' => { aud: 'maintainers' }
-                               })
+        stub_ci_job_definition(build, id_tokens: {
+          'ID_TOKEN_1' => { 'aud' => 'developers' },
+          'ID_TOKEN_2' => { 'aud' => 'maintainers' }
+        })
         build.runner = build_stubbed(:ci_runner)
       end
 
@@ -3505,11 +4107,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       before do
         rsa_key = OpenSSL::PKey::RSA.generate(3072).to_s
         stub_application_setting(ci_jwt_signing_key: rsa_key)
-        build.metadata.update!(id_tokens: {
-                                 'ID_TOKEN_1' => { aud: '$CI_SERVER_URL' },
-                                 'ID_TOKEN_2' => { aud: 'https://$CI_SERVER_HOST' },
-                                 'ID_TOKEN_3' => { aud: ['developers', '$CI_SERVER_URL', 'https://$CI_SERVER_HOST'] }
-                               })
+        stub_ci_job_definition(build, id_tokens: {
+          'ID_TOKEN_1' => { 'aud' => '$CI_SERVER_URL' },
+          'ID_TOKEN_2' => { 'aud' => 'https://$CI_SERVER_HOST' },
+          'ID_TOKEN_3' => { 'aud' => ['developers', '$CI_SERVER_URL', 'https://$CI_SERVER_HOST'] }
+        })
         build.runner = build_stubbed(:ci_runner)
       end
 
@@ -3547,10 +4149,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         build.update!(environment: 'production')
         rsa_key = OpenSSL::PKey::RSA.generate(3072).to_s
         stub_application_setting(ci_jwt_signing_key: rsa_key)
-        build.metadata.update!(id_tokens: {
-                                 'ID_TOKEN_1' => { aud: '$ENVIRONMENT_SCOPED_VAR' },
-                                 'ID_TOKEN_2' => { aud: ['$CI_ENVIRONMENT_NAME', '$ENVIRONMENT_SCOPED_VAR'] }
-                               })
+        stub_ci_job_definition(build, id_tokens: {
+          'ID_TOKEN_1' => { 'aud' => '$ENVIRONMENT_SCOPED_VAR' },
+          'ID_TOKEN_2' => { 'aud' => ['$CI_ENVIRONMENT_NAME', '$ENVIRONMENT_SCOPED_VAR'] }
+        })
         build.runner = build_stubbed(:ci_runner)
       end
 
@@ -3586,10 +4188,12 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     shared_examples 'calculates scoped_variables' do
       context 'when build has not been persisted yet' do
+        let(:ci_stage) { create(:ci_stage) }
         let(:build) do
-          described_class.new(
+          FactoryBot.build(
+            :ci_build,
             name: 'rspec',
-            stage: 'test',
+            ci_stage: ci_stage,
             ref: 'feature',
             project: project,
             pipeline: pipeline,
@@ -3610,11 +4214,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
         it 'returns static predefined variables' do
           keys = %w[CI_JOB_NAME
-                    CI_COMMIT_SHA
-                    CI_COMMIT_SHORT_SHA
-                    CI_COMMIT_REF_NAME
-                    CI_COMMIT_REF_SLUG
-                    CI_JOB_STAGE]
+            CI_COMMIT_SHA
+            CI_COMMIT_SHORT_SHA
+            CI_COMMIT_REF_NAME
+            CI_COMMIT_REF_SLUG
+            CI_JOB_STAGE]
 
           variables = build.scoped_variables
 
@@ -3628,14 +4232,14 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
         it 'does not return prohibited variables' do
           keys = %w[CI_JOB_ID
-                    CI_JOB_URL
-                    CI_JOB_TOKEN
-                    CI_REGISTRY_USER
-                    CI_REGISTRY_PASSWORD
-                    CI_REPOSITORY_URL
-                    CI_ENVIRONMENT_URL
-                    CI_DEPLOY_USER
-                    CI_DEPLOY_PASSWORD]
+            CI_JOB_URL
+            CI_JOB_TOKEN
+            CI_REGISTRY_USER
+            CI_REGISTRY_PASSWORD
+            CI_REPOSITORY_URL
+            CI_ENVIRONMENT_URL
+            CI_DEPLOY_USER
+            CI_DEPLOY_PASSWORD]
 
           build.scoped_variables.map { |env| env[:key] }.tap do |names|
             expect(names).not_to include(*keys)
@@ -3643,14 +4247,43 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
       end
 
-      context 'with dependency variables' do
+      context 'with dependency variables in the same project' do
         let!(:prepare) { create(:ci_build, name: 'prepare', pipeline: pipeline, stage_idx: 0) }
         let!(:build) { create(:ci_build, pipeline: pipeline, stage_idx: 1, options: { dependencies: ['prepare'] }) }
+        let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare, accessibility: accessibility_config) }
 
         let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: prepare) }
 
-        it 'inherits dependent variables' do
-          expect(build.scoped_variables.to_hash).to include(job_variable.key => job_variable.value)
+        context 'inherits dependent variables that are public' do
+          let(:accessibility_config) { 'public' }
+
+          it { expect(build.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+        end
+
+        context 'inherits dependent variables that are private' do
+          let(:accessibility_config) { 'private' }
+
+          it { expect(build.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+        end
+      end
+
+      context 'with dependency variables in different project' do
+        let!(:prepare) { create(:ci_build, name: 'prepare', pipeline: pipeline, stage_idx: 0) }
+        let!(:build) { create(:ci_build, project: public_project, stage_idx: 1, options: { dependencies: ['prepare'] }) }
+        let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare, accessibility: accessibility_config) }
+
+        let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: prepare) }
+
+        context 'inherits dependent variables that are public' do
+          let(:accessibility_config) { 'public' }
+
+          it { expect(build.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+        end
+
+        context 'does not inherit dependent variables that are private' do
+          let(:accessibility_config) { 'private' }
+
+          it { expect(build.scoped_variables.to_hash).not_to include(job_variable.key => job_variable.value) }
         end
       end
     end
@@ -3721,10 +4354,6 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     it_behaves_like 'having consistent representation'
 
-    it 'persist data in build metadata' do
-      expect(build.metadata.read_attribute(:config_variables)).not_to be_nil
-    end
-
     it 'does not persist data in build' do
       expect(build.read_attribute(:yaml_variables)).to be_nil
     end
@@ -3733,34 +4362,101 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
   describe '#dependency_variables' do
     subject { build.dependency_variables }
 
-    context 'when using dependencies' do
+    context 'when using dependencies in the same project' do
       let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
       let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
       let!(:build) { create(:ci_build, pipeline: pipeline, stage_idx: 1, options: { dependencies: ['prepare1'] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
 
       let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
       let!(:job_variable_2) { create(:ci_job_variable, job: prepare1) }
       let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
 
-      it 'inherits only dependent variables' do
-        expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value)
+      context 'inherits only dependent variables that are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'inherits dependent variables that are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
       end
     end
 
-    context 'when using needs' do
+    context 'when using dependencies in a different project' do
+      let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
+      let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
+      let!(:build) { create(:ci_build, project: public_project, stage_idx: 1, options: { dependencies: ['prepare1'] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
+
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
+      let!(:job_variable_2) { create(:ci_job_variable, job: prepare1) }
+      let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
+
+      context 'inherits only dependent variables that are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'does not inherit dependent variables that are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).not_to eq(job_variable_1.key => job_variable_1.value) }
+      end
+    end
+
+    context 'when using needs in the same project' do
       let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
       let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
       let!(:prepare3) { create(:ci_build, name: 'prepare3', pipeline: pipeline, stage_idx: 0) }
       let!(:build) { create(:ci_build, pipeline: pipeline, stage_idx: 1, scheduling_type: 'dag') }
       let!(:build_needs_prepare1) { create(:ci_build_need, build: build, name: 'prepare1', artifacts: true) }
       let!(:build_needs_prepare2) { create(:ci_build_need, build: build, name: 'prepare2', artifacts: false) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility_config) }
 
       let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
       let!(:job_variable_2) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
       let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare3) }
 
-      it 'inherits only needs with artifacts variables' do
-        expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value)
+      context 'inherits only needs with artifacts variables that are public' do
+        let(:accessibility_config) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'inherits needs with artifacts variables that are private' do
+        let(:accessibility_config) { 'private' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+    end
+
+    context 'when using needs in a different project' do
+      let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
+      let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
+      let!(:prepare3) { create(:ci_build, name: 'prepare3', pipeline: pipeline, stage_idx: 0) }
+      let!(:build) { create(:ci_build, project: public_project, stage_idx: 1, scheduling_type: 'dag') }
+      let!(:build_needs_prepare1) { create(:ci_build_need, build: build, name: 'prepare1', artifacts: true) }
+      let!(:build_needs_prepare2) { create(:ci_build_need, build: build, name: 'prepare2', artifacts: false) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility_config) }
+
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
+      let!(:job_variable_2) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
+      let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare3) }
+
+      context 'inherits only needs with artifacts variables that are public' do
+        let(:accessibility_config) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'does not inherit needs with artifacts variables that are private' do
+        let(:accessibility_config) { 'private' }
+
+        it { expect(subject.to_hash).not_to eq(job_variable_1.key => job_variable_1.value) }
       end
     end
   end
@@ -3794,23 +4490,32 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       build.enqueue
     end
 
-    it 'assigns the token' do
-      expect { build.enqueue }.to change(build, :token).from(nil).to(an_instance_of(String))
+    context 'with a database token' do
+      before do
+        stub_feature_flags(ci_job_token_jwt: false)
+      end
+
+      it 'assigns the token' do
+        expect { build.enqueue }.to change(build, :token).from(nil).to(an_instance_of(String))
+      end
     end
   end
 
   describe 'state transition: pending: :running' do
-    let_it_be_with_reload(:runner) { create(:ci_runner) }
+    let_it_be_with_reload(:runner) { create(:ci_runner, :with_runner_manager) }
     let_it_be_with_reload(:pipeline) { create(:ci_pipeline, project: project) }
 
     let(:job) { create(:ci_build, :pending, runner: runner, pipeline: pipeline) }
+    let(:runner_manager) { runner.runner_managers.sole }
+
+    subject(:run!) { job.run!(runner_manager) }
 
     before do
       job.project.update_attribute(:build_timeout, 1800)
     end
 
     def run_job_without_exception
-      job.run!
+      run!
     rescue StateMachines::InvalidTransition
     end
 
@@ -3833,24 +4538,61 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     shared_examples 'saves data on transition' do
       it 'saves timeout' do
-        expect { job.run! }.to change { job.reload.ensure_metadata.timeout }.from(nil).to(expected_timeout)
+        expect { run! }.to change { job.reload.timeout_value }.from(nil).to(expected_timeout)
       end
 
-      it 'saves timeout_source' do
-        expect { job.run! }.to change { job.reload.ensure_metadata.timeout_source }.from('unknown_timeout_source').to(expected_timeout_source)
+      it 'saves timeout_source and runner_manager' do
+        expect { run! }
+          .to change { job.reload.timeout_source_value }.from('unknown_timeout_source').to(expected_timeout_source)
+          .and change { job.reload.runner_manager }.from(nil).to(runner.runner_managers.sole)
       end
 
-      context 'when Ci::BuildMetadata#update_timeout_state fails update' do
+      context "when runner doesn't have a runner_manager" do
+        let(:runner_manager) { nil }
+
+        it 'sets job to running and does not save runner_manager' do
+          expect(build).not_to receive(:runner_manager=)
+
+          expect { run! }
+            .to change { job.reload.status }.to('running')
+            .and not_change { job.reload.runner_manager }.from(nil)
+
+          expect(build).to be_valid
+        end
+      end
+
+      context 'when runner_manager_build creation fails' do
         before do
-          allow_any_instance_of(Ci::BuildMetadata).to receive(:update_timeout_state).and_return(false)
+          # Stub the runner_manager= setter to raise a validation error
+          allow(job).to receive(:runner_manager=).and_wrap_original do |method, *args|
+            method.call(*args)
+
+            # After the association is set, make the autosave fail
+            job.runner_manager_build.errors.add(:base, 'Simulated validation error')
+            raise ActiveRecord::RecordInvalid, job.runner_manager_build
+          end
+        end
+
+        it 'rolls back the transaction and does not change job status' do
+          expect { run! }.to raise_error(ActiveRecord::RecordInvalid)
+
+          job.reload
+          expect(job.status).to eq('pending')
+          expect(job.runner_manager).to be_nil
+        end
+      end
+
+      context 'when Ci::Build#update_timeout_state fails update' do
+        before do
+          allow_any_instance_of(described_class).to receive(:update_timeout_state).and_return(false)
         end
 
         it "doesn't save timeout" do
-          expect { run_job_without_exception }.not_to change { job.reload.ensure_metadata.timeout }
+          expect { run_job_without_exception }.not_to change { job.reload.timeout_value }
         end
 
         it "doesn't save timeout_source" do
-          expect { run_job_without_exception }.not_to change { job.reload.ensure_metadata.timeout_source }
+          expect { run_job_without_exception }.not_to change { job.reload.timeout_source_value }
         end
       end
     end
@@ -3875,6 +4617,75 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       it_behaves_like 'saves data on transition'
+    end
+  end
+
+  describe "state transition: running => failed", :freeze_time do
+    let_it_be(:pipeline) { create(:ci_pipeline, :running) }
+    let(:timeout) { 1000 }
+    let(:build) { create(:ci_build, :running, pipeline: pipeline, timeout: timeout) }
+
+    context 'when failure reason is job_execution_timeout' do
+      it 'overwrites finished_at' do
+        build.drop!(:job_execution_timeout)
+        expect(build.reload.finished_at).to eq(build.started_at + timeout.seconds)
+      end
+    end
+
+    context 'when the failure reason is not job_execution_timeout' do
+      it 'does not overwrite finished_at' do
+        build.drop!(:script_failure)
+        expect(build.reload.finished_at).not_to eq(build.started_at + timeout.seconds)
+      end
+    end
+  end
+
+  describe "state transition: canceling => canceled", :freeze_time do
+    let_it_be(:pipeline) { create(:ci_pipeline, :running) }
+    let(:timeout) { 1000 }
+    let(:build) { create(:ci_build, :canceling, pipeline: pipeline, timeout: timeout) }
+
+    context 'when failure reason is job_execution_server_timeout' do
+      it 'overwrites finished_at' do
+        build.drop!(:job_execution_server_timeout)
+        expect(build.reload.finished_at).to eq(build.started_at + timeout.seconds)
+      end
+    end
+
+    context 'when the failure reason is not job_execution_server_timeout' do
+      it 'does not overwrite finished_at' do
+        build.drop!(:script_failure)
+        expect(build.reload.finished_at).not_to eq(build.started_at + timeout.seconds)
+      end
+    end
+
+    context 'when no args are provided' do
+      it 'does not overwrite finished_at' do
+        build.drop!
+        expect(build.reload.finished_at).not_to eq(build.started_at + timeout.seconds)
+      end
+    end
+
+    context 'when a Reason class is passed as failure_reason' do
+      context 'when the reason is job_execution_server_timeout' do
+        it 'overwrites finished_at' do
+          reason = ::Gitlab::Ci::Build::Status::Reason
+                     .fabricate(build, :job_execution_server_timeout)
+
+          build.drop(reason)
+          expect(build.reload.finished_at).to eq(build.started_at + timeout.seconds)
+        end
+      end
+
+      context 'when the reason is not job_execution_server_timeout' do
+        it 'does not overwrite finished_at' do
+          reason = ::Gitlab::Ci::Build::Status::Reason
+                     .fabricate(build, :script_failure)
+
+          build.drop(reason)
+          expect(build.reload.finished_at).not_to eq(build.started_at + timeout.seconds)
+        end
+      end
     end
   end
 
@@ -4078,97 +4889,56 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe '.matches_tag_ids' do
-    let_it_be(:build, reload: true) { create(:ci_build, pipeline: pipeline, user: user) }
-
-    let(:tag_ids) { ::ActsAsTaggableOn::Tag.named_any(tag_list).ids }
-
-    subject { described_class.where(id: build).matches_tag_ids(tag_ids) }
-
-    before do
-      build.update!(tag_list: build_tag_list)
-    end
-
-    context 'when have different tags' do
-      let(:build_tag_list) { %w[A B] }
-      let(:tag_list) { %w[C D] }
-
-      it "does not match a build" do
-        is_expected.not_to contain_exactly(build)
-      end
-    end
-
-    context 'when have a subset of tags' do
-      let(:build_tag_list) { %w[A B] }
-      let(:tag_list) { %w[A B C D] }
-
-      it "does match a build" do
-        is_expected.to contain_exactly(build)
-      end
-    end
-
-    context 'when build does not have tags' do
-      let(:build_tag_list) { [] }
-      let(:tag_list) { %w[C D] }
-
-      it "does match a build" do
-        is_expected.to contain_exactly(build)
-      end
-    end
-
-    context 'when does not have a subset of tags' do
-      let(:build_tag_list) { %w[A B C] }
-      let(:tag_list) { %w[C D] }
-
-      it "does not match a build" do
-        is_expected.not_to contain_exactly(build)
-      end
-    end
-  end
-
-  describe '.matches_tags' do
-    let_it_be(:build, reload: true) { create(:ci_build, pipeline: pipeline, user: user) }
-
-    subject { described_class.where(id: build).with_any_tags }
-
-    before do
-      build.update!(tag_list: tag_list)
-    end
-
-    context 'when does have tags' do
-      let(:tag_list) { %w[A B] }
-
-      it "does match a build" do
-        is_expected.to contain_exactly(build)
-      end
-    end
-
-    context 'when does not have tags' do
-      let(:tag_list) { [] }
-
-      it "does not match a build" do
-        is_expected.not_to contain_exactly(build)
-      end
-    end
-  end
-
   describe '#pages_generator?', feature_category: :pages do
-    where(:name, :enabled, :result) do
-      'foo' | false | false
-      'pages' | false | false
-      'pages:preview' | true | false
-      'pages' | true | true
+    where(:name, :pages_config, :enabled, :result) do
+      'foo' | true | true | true
+      'foo' | { expire_in: '1 day' } | true | true
+      'foo' | false | true | false
+      'pages' | false | true | false
     end
 
     with_them do
       before do
         stub_pages_setting(enabled: enabled)
         build.update!(name: name)
+        stub_ci_job_definition(build, options: { pages: pages_config })
+        stub_feature_flags(customizable_pages_job_name: true)
       end
 
       subject { build.pages_generator? }
 
       it { is_expected.to eq(result) }
+    end
+  end
+
+  describe '#pages', feature_category: :pages do
+    where(:pages_generator, :options, :result) do
+      false | {}                    | {}
+      false | { publish: 'public' } | {}
+      true  | nil                   | {}
+      true  | { publish: '' }       | {}
+      true  | {}                    | {}
+      true  | { publish: nil }      | {}
+      true  | { publish: 'public' } | { publish: 'public' }
+      true  | { pages: { publish: 'public' } } | { publish: 'public' }
+      true  | { publish: '$CUSTOM_FOLDER' } | { publish: 'custom_folder' }
+      true  | { pages: { publish: '$CUSTOM_FOLDER' } } | { publish: 'custom_folder' }
+      true  | { publish: '$CUSTOM_FOLDER/$CUSTOM_SUBFOLDER' } | { publish: 'custom_folder/custom_subfolder' }
+      true  | { pages: { publish: '$CUSTOM_FOLDER/$CUSTOM_SUBFOLDER' } } | { publish: 'custom_folder/custom_subfolder' }
+    end
+
+    with_them do
+      before do
+        stub_ci_job_definition(build, options: options)
+        allow(build).to receive(:pages_generator?).and_return(pages_generator)
+        # Create custom variables to test that they are properly expanded in the `build.pages.publish` property
+        create(:ci_job_variable, key: 'CUSTOM_FOLDER', value: 'custom_folder', job: build)
+        create(:ci_job_variable, key: 'CUSTOM_SUBFOLDER', value: 'custom_subfolder', job: build)
+      end
+
+      subject { build.pages }
+
+      it { is_expected.to include(result) }
     end
   end
 
@@ -4181,6 +4951,16 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       end
 
       context 'and job succeeds' do
+        let(:expected_hostname) { "#{project.namespace.path}.example.com" }
+        let(:expected_url) { "http://#{expected_hostname}/#{project.path}" }
+
+        it "includes the expected variables" do
+          expect(build.variables.to_runner_variables).to include(
+            { key: 'CI_PAGES_HOSTNAME', value: expected_hostname, public: true, masked: false },
+            { key: 'CI_PAGES_URL', value: expected_url, public: true, masked: false }
+          )
+        end
+
         it "calls pages worker" do
           expect(PagesWorker).to receive(:perform_async).with(:deploy, build.id)
 
@@ -4452,6 +5232,30 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     it 'yields job artifact blob that matches the type' do
       expect { |b| build.each_report(report_types, &b) }.to yield_with_args(coverage.file_type, String, coverage)
     end
+
+    context 'when there are valid job artifact reports' do
+      let(:report_types) { Ci::JobArtifact.file_types_for_report(:test) }
+
+      before do
+        create(:ci_job_artifact_report, :validated, job_artifact: junit)
+      end
+
+      it 'yields them' do
+        expect { |b| build.each_report(report_types, &b) }.to yield_with_args(junit.file_type, String, junit)
+      end
+    end
+
+    context 'when there are invalid job artifact reports' do
+      let(:report_types) { Ci::JobArtifact.file_types_for_report(:test) }
+
+      before do
+        create(:ci_job_artifact_report, :faulty, job_artifact: junit)
+      end
+
+      it 'skips them' do
+        expect { |b| build.each_report(report_types, &b) }.not_to yield_control
+      end
+    end
   end
 
   describe '#report_artifacts' do
@@ -4647,7 +5451,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let(:options) { { allow_failure_criteria: { exit_codes: [1] } } }
 
       before do
-        build.update!(options: options)
+        stub_ci_job_definition(build, options: options)
       end
 
       context 'when runner provides given feature' do
@@ -4679,161 +5483,13 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe '#degenerated?' do
-    context 'when build is degenerated' do
-      subject { create(:ci_build, :degenerated, pipeline: pipeline) }
-
-      it { is_expected.to be_degenerated }
-    end
-
-    context 'when build is valid' do
-      subject { create(:ci_build, pipeline: pipeline) }
-
-      it { is_expected.not_to be_degenerated }
-
-      context 'and becomes degenerated' do
-        before do
-          subject.degenerate!
-        end
-
-        it { is_expected.to be_degenerated }
-      end
-    end
-  end
-
-  describe 'degenerate!' do
-    let(:build) { create(:ci_build, pipeline: pipeline) }
-
-    subject { build.degenerate! }
-
-    before do
-      build.ensure_metadata
-      build.needs.create!(name: 'another-job')
-    end
-
-    it 'drops metadata' do
-      subject
-
-      expect(build.reload).to be_degenerated
-      expect(build.metadata).to be_nil
-      expect(build.needs).to be_empty
-    end
-  end
-
-  describe '#archived?' do
-    context 'when build is degenerated' do
-      subject { create(:ci_build, :degenerated, pipeline: pipeline) }
-
-      it { is_expected.to be_archived }
-    end
-
-    context 'for old build' do
-      subject { create(:ci_build, created_at: 1.day.ago, pipeline: pipeline) }
-
-      context 'when archive_builds_in is set' do
-        before do
-          stub_application_setting(archive_builds_in_seconds: 3600)
-        end
-
-        it { is_expected.to be_archived }
-      end
-
-      context 'when archive_builds_in is not set' do
-        before do
-          stub_application_setting(archive_builds_in_seconds: nil)
-        end
-
-        it { is_expected.not_to be_archived }
-      end
-    end
-  end
-
-  describe '#read_metadata_attribute' do
-    let(:build) { create(:ci_build, :degenerated, pipeline: pipeline) }
-    let(:build_options) { { key: "build" } }
-    let(:metadata_options) { { key: "metadata" } }
-    let(:default_options) { { key: "default" } }
-
-    subject { build.send(:read_metadata_attribute, :options, :config_options, default_options) }
-
-    context 'when build and metadata options is set' do
-      before do
-        build.write_attribute(:options, build_options)
-        build.ensure_metadata.write_attribute(:config_options, metadata_options)
-      end
-
-      it 'prefers build options' do
-        is_expected.to eq(build_options)
-      end
-    end
-
-    context 'when only metadata options is set' do
-      before do
-        build.write_attribute(:options, nil)
-        build.ensure_metadata.write_attribute(:config_options, metadata_options)
-      end
-
-      it 'returns metadata options' do
-        is_expected.to eq(metadata_options)
-      end
-    end
-
-    context 'when none is set' do
-      it 'returns default value' do
-        is_expected.to eq(default_options)
-      end
-    end
-  end
-
-  describe '#write_metadata_attribute' do
-    let(:build) { create(:ci_build, :degenerated, pipeline: pipeline) }
-    let(:options) { { key: "new options" } }
-    let(:existing_options) { { key: "existing options" } }
-
-    subject { build.send(:write_metadata_attribute, :options, :config_options, options) }
-
-    context 'when data in build is already set' do
-      before do
-        build.write_attribute(:options, existing_options)
-      end
-
-      it 'does set metadata options' do
-        subject
-
-        expect(build.metadata.read_attribute(:config_options)).to eq(options)
-      end
-
-      it 'does reset build options' do
-        subject
-
-        expect(build.read_attribute(:options)).to be_nil
-      end
-    end
-  end
-
   describe '#invalid_dependencies' do
-    let!(:pre_stage_job_valid) { create(:ci_build, :manual, pipeline: pipeline, name: 'test1', stage_idx: 0) }
-    let!(:pre_stage_job_invalid) { create(:ci_build, :success, :expired, pipeline: pipeline, name: 'test2', stage_idx: 1) }
-    let!(:job) { create(:ci_build, :pending, pipeline: pipeline, stage_idx: 2, options: { dependencies: %w[test1 test2] }) }
+    it 'returns invalid dependencies' do
+      dependencies_double = instance_double(Ci::BuildDependencies)
+      allow(Ci::BuildDependencies).to receive(:new).with(build).and_return(dependencies_double)
+      expect(dependencies_double).to receive(:invalid).and_return(['invalid_job'])
 
-    context 'when pipeline is locked' do
-      before do
-        build.pipeline.unlocked!
-      end
-
-      it 'returns invalid dependencies when expired' do
-        expect(job.invalid_dependencies).to eq([pre_stage_job_invalid])
-      end
-    end
-
-    context 'when pipeline is not locked' do
-      before do
-        build.pipeline.artifacts_locked!
-      end
-
-      it 'returns no invalid dependencies when expired' do
-        expect(job.invalid_dependencies).to eq([])
-      end
+      expect(build.invalid_dependencies).to eq(['invalid_job'])
     end
   end
 
@@ -4842,20 +5498,23 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       build.clear_memoization(:build_data)
     end
 
-    context 'with project hooks' do
-      let(:build_data) { double(:BuildData, dup: double(:DupedData)) }
+    context 'when project hooks exists' do
+      let(:build_data) { double(:BuildData) }
 
       before do
         create(:project_hook, project: project, job_events: true)
+        allow(Ci::ExecuteBuildHooksWorker).to receive(:perform_async)
       end
 
-      it 'calls project.execute_hooks(build_data, :job_hooks)' do
+      it 'enqueues ExecuteBuildHooksWorker' do
         expect(::Gitlab::DataBuilder::Build)
-          .to receive(:build).with(build).and_return(build_data)
-        expect(build.project)
-          .to receive(:execute_hooks).with(build_data.dup, :job_hooks)
+            .to receive(:build).with(build).and_return(build_data)
 
         build.execute_hooks
+
+        expect(Ci::ExecuteBuildHooksWorker)
+          .to have_received(:perform_async)
+          .with(project.id, build_data)
       end
 
       context 'with blocked users' do
@@ -4863,47 +5522,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           allow(build).to receive(:user) { FactoryBot.build(:user, :blocked) }
         end
 
-        it 'does not call project.execute_hooks' do
-          expect(build.project).not_to receive(:execute_hooks)
-
+        it 'does not enqueue ExecuteBuildHooksWorker' do
           build.execute_hooks
+
+          expect(Ci::ExecuteBuildHooksWorker).not_to receive(:perform_async)
         end
-      end
-    end
-
-    context 'without project hooks' do
-      it 'does not call project.execute_hooks' do
-        expect(build.project).not_to receive(:execute_hooks)
-
-        build.execute_hooks
-      end
-    end
-
-    context 'with project services' do
-      before do
-        create(:integration, active: true, job_events: true, project: project)
-      end
-
-      it 'executes services' do
-        allow_next_found_instance_of(Integration) do |integration|
-          expect(integration).to receive(:async_execute)
-        end
-
-        build.execute_hooks
-      end
-    end
-
-    context 'without relevant project services' do
-      before do
-        create(:integration, active: true, job_events: false, project: project)
-      end
-
-      it 'does not execute services' do
-        allow_next_found_instance_of(Integration) do |integration|
-          expect(integration).not_to receive(:async_execute)
-        end
-
-        build.execute_hooks
       end
     end
   end
@@ -4931,11 +5554,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when threshold variable is defined' do
       before do
-        build.yaml_variables = [
+        stub_ci_job_definition(build, yaml_variables: [
           { key: 'SOME_VAR_1', value: 'SOME_VAL_1' },
           { key: 'DEGRADATION_THRESHOLD', value: '5' },
           { key: 'SOME_VAR_2', value: 'SOME_VAL_2' }
-        ]
+        ])
       end
 
       it { is_expected.to eq(5) }
@@ -4943,10 +5566,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when threshold variable is not defined' do
       before do
-        build.yaml_variables = [
+        stub_ci_job_definition(build, yaml_variables: [
           { key: 'SOME_VAR_1', value: 'SOME_VAL_1' },
           { key: 'SOME_VAR_2', value: 'SOME_VAL_2' }
-        ]
+        ])
       end
 
       it { is_expected.to be_nil }
@@ -4975,6 +5598,16 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
   describe '#debug_mode?' do
     subject { build.debug_mode? }
+
+    it { is_expected.to eq(false) }
+
+    context 'when debug_trace_enabled? is true' do
+      before do
+        allow(build).to receive(:debug_trace_enabled?).and_return(true)
+      end
+
+      it { is_expected.to eq(true) }
+    end
 
     context 'when CI_DEBUG_TRACE=true is in variables' do
       ['true', 1, 'y'].each do |value|
@@ -5009,15 +5642,11 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it 'when in yaml variables' do
-          build.update!(yaml_variables: [{ key: :CI_DEBUG_TRACE, value: value.to_s }])
+          stub_ci_job_definition(build, yaml_variables: [{ key: 'CI_DEBUG_TRACE', value: value.to_s }])
 
           is_expected.to eq true
         end
       end
-    end
-
-    context 'when CI_DEBUG_TRACE is not in variables' do
-      it { is_expected.to eq false }
     end
 
     context 'when CI_DEBUG_SERVICES=true is in variables' do
@@ -5053,50 +5682,18 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it 'when in yaml variables' do
-          build.update!(yaml_variables: [{ key: :CI_DEBUG_SERVICES, value: value.to_s }])
+          stub_ci_job_definition(build, yaml_variables: [{ key: 'CI_DEBUG_SERVICES', value: value.to_s }])
 
           is_expected.to eq true
         end
       end
-    end
-
-    context 'when CI_DEBUG_SERVICES is not in variables' do
-      it { is_expected.to eq false }
-    end
-
-    context 'when metadata has debug_trace_enabled true' do
-      before do
-        build.metadata.update!(debug_trace_enabled: true)
-      end
-
-      it { is_expected.to eq true }
-    end
-
-    context 'when metadata has debug_trace_enabled false' do
-      before do
-        build.metadata.update!(debug_trace_enabled: false)
-      end
-
-      it { is_expected.to eq false }
-    end
-
-    context 'when metadata does not exist' do
-      before do
-        build.metadata.destroy!
-      end
-
-      it { is_expected.to eq false }
     end
   end
 
   describe '#drop_with_exit_code!' do
     let(:exit_code) { 1 }
     let(:options) { {} }
-
-    before do
-      build.options.merge!(options)
-      build.save!
-    end
+    let(:build) { create(:ci_build, pipeline: pipeline, options: options) }
 
     subject(:drop_with_exit_code) do
       build.drop_with_exit_code!(:unknown_failure, exit_code)
@@ -5104,7 +5701,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     it 'correctly sets the exit code' do
       expect { drop_with_exit_code }
-        .to change { build.reload.metadata&.exit_code }.from(nil).to(1)
+        .to change { build.reload.exit_code }.from(nil).to(1)
     end
 
     shared_examples 'drops the build without changing allow_failure' do
@@ -5194,13 +5791,22 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
       end
     end
+
+    context 'when exit code is greater than 32767' do
+      let(:exit_code) { 32770 }
+
+      it 'wraps around to max size of a signed smallint' do
+        expect { drop_with_exit_code }
+        .to change { build.reload.exit_code }.from(nil).to(32767)
+      end
+    end
   end
 
   describe '#exit_codes_defined?' do
     let(:options) { {} }
 
     before do
-      build.options.merge!(options)
+      stub_ci_job_definition(build, options: options)
     end
 
     subject(:exit_codes_defined) do
@@ -5327,14 +5933,15 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         create(:ci_build, pipeline: pipeline, tag_list: %w[tag2 tag1])
       end
 
+      specify { expect(build_with_tags.job_definition.config[:tag_list]).to contain_exactly('tag1', 'tag2') }
+
       it { expect(matchers.size).to eq(2) }
 
       it 'groups build ids' do
-        expect(matchers.map(&:build_ids)).to match_array(
-          [
-            [build_without_tags.id],
-            match_array([build_with_tags.id, other_build_with_tags.id])
-          ])
+        expect(matchers.map(&:build_ids)).to contain_exactly(
+          [build_without_tags.id],
+          match_array([build_with_tags.id, other_build_with_tags.id])
+        )
       end
 
       it { expect(matchers.map(&:tag_list)).to match_array([[], %w[tag1 tag2]]) }
@@ -5347,6 +5954,22 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         end
 
         it { expect(matchers).to all be_protected }
+      end
+
+      context 'when job_definition has no tag_list but tags exist (hypothetical scenario)' do
+        let!(:build_without_tags_in_job_def) do
+          create(:ci_build, pipeline: pipeline).tap do |build|
+            # Manually add tags to the build via the legacy tables
+            create(:ci_build_tag, tag: create(:ci_tag, name: 'legacy_tag'), build: build, project_id: build.project.id)
+          end
+        end
+
+        it 'uses tags from tags relation' do
+          expect(matchers.map(&:build_ids)).to contain_exactly(
+            [build_without_tags.id, build_without_tags_in_job_def.id],
+            match_array([build_with_tags.id, other_build_with_tags.id])
+          )
+        end
       end
     end
   end
@@ -5378,7 +6001,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when build has a project runner assigned' do
       before do
-        build.runner = create(:ci_runner, :project)
+        build.runner = create(:ci_runner, :project, projects: [project])
       end
 
       it 'is not a shared runner build' do
@@ -5425,14 +6048,14 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     it 'delegates to Ci::BuildTraceMetadata' do
       expect(Ci::BuildTraceMetadata)
         .to receive(:find_or_upsert_for!)
-        .with(build.id, build.partition_id)
+        .with(build.id, build.partition_id, build.project_id)
 
       build.ensure_trace_metadata!
     end
   end
 
   describe '#doom!' do
-    subject { build.doom! }
+    subject(:doom!) { build.doom! }
 
     let(:traits) { [] }
     let(:build) do
@@ -5447,7 +6070,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       new_timestamp = \
         freeze_time do
           Time.current.tap do
-            subject
+            doom!
           end
         end
 
@@ -5468,7 +6091,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
         .with(a_hash_including(message: 'Build doomed', class: build.class.name, build_id: build.id))
         .and_call_original
 
-      subject
+      doom!
     end
 
     context 'with deployment' do
@@ -5478,7 +6101,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       it 'updates the deployment status', :aggregate_failures do
         expect(build.deployment).to receive(:sync_status_with).with(build).and_call_original
 
-        subject
+        doom!
 
         expect(build.deployment.reload.status).to eq("failed")
       end
@@ -5488,7 +6111,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let(:traits) { [:queued] }
 
       it 'drops associated pending build' do
-        subject
+        doom!
 
         expect(build.reload.queuing_entry).not_to be_present
       end
@@ -5498,7 +6121,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
       let(:traits) { [:picked] }
 
       it 'drops associated runtime metadata', :aggregate_failures do
-        subject
+        doom!
 
         expect(build.reload.runtime_metadata).not_to be_present
       end
@@ -5524,117 +6147,49 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
 
     context 'when the builds runner does not support canceling' do
       specify { expect(job.supports_canceling?).to be false }
-
-      context 'when the ci_canceling_status flag is disabled' do
-        before do
-          stub_feature_flags(ci_canceling_status: false)
-        end
-
-        it 'returns false' do
-          expect(job.supports_canceling?).to be false
-        end
-      end
     end
 
     context 'when the builds runner supports canceling' do
       include_context 'when canceling support'
 
-      it 'returns true' do
-        expect(job.supports_canceling?).to be true
-      end
-
-      context 'when the ci_canceling_status flag is disabled' do
-        before do
-          stub_feature_flags(ci_canceling_status: false)
-        end
-
-        it 'returns false' do
-          expect(job.supports_canceling?).to be false
-        end
-      end
+      specify { expect(job.supports_canceling?).to be true }
     end
   end
 
-  describe '#runtime_runner_features' do
-    subject do
-      build.save!
-      build.cancel_gracefully?
-    end
+  describe '#supports_force_cancel?' do
+    let(:job) { create(:ci_build, :canceling, project: project) }
 
-    let(:build) { create(:ci_build, pipeline: pipeline) }
+    context 'when the builds runner supports canceling' do
+      include_context 'when canceling support'
 
-    it 'cannot cancel gracefully' do
-      expect(subject).to be false
-    end
-
-    it 'can cancel gracefully' do
-      build.set_cancel_gracefully
-
-      expect(subject).to be true
+      specify { expect(job.supports_force_cancel?).to be true }
     end
   end
 
-  it_behaves_like 'it has loose foreign keys' do
-    let(:factory_name) { :ci_build }
-  end
+  describe 'loose foreign keys' do
+    it_behaves_like 'it has loose foreign keys' do
+      let(:worker_class) { LooseForeignKeys::CiPipelinesBuildsCleanupCronWorker }
+      let(:factory_name) { :ci_build }
+    end
 
-  it_behaves_like 'cleanup by a loose foreign key' do
-    let!(:model) { create(:ci_build, user: create(:user), pipeline: pipeline) }
-    let!(:parent) { model.user }
-  end
-
-  describe '#clone' do
-    let_it_be(:user) { create(:user) }
-
-    context 'when given new job variables' do
-      context 'when the cloned build has an action' do
-        it 'applies the new job variables' do
-          build = create(:ci_build, :actionable, pipeline: pipeline)
-          create(:ci_job_variable, job: build, key: 'TEST_KEY', value: 'old value')
-          create(:ci_job_variable, job: build, key: 'OLD_KEY', value: 'i will not live for long')
-
-          new_build = build.clone(current_user: user, new_job_variables_attributes:
-            [
-              { key: 'TEST_KEY', value: 'new value' },
-              { key: 'NEW_KEY', value: 'exciting new value' }
-            ])
-          new_build.save!
-
-          expect(new_build.job_variables.count).to be(2)
-          expect(new_build.job_variables.pluck(:key)).to contain_exactly('TEST_KEY', 'NEW_KEY')
-          expect(new_build.job_variables.map(&:value)).to contain_exactly('new value', 'exciting new value')
-        end
-      end
-
-      context 'when the cloned build does not have an action' do
-        it 'applies the old job variables' do
-          build = create(:ci_build, pipeline: pipeline)
-          create(:ci_job_variable, job: build, key: 'TEST_KEY', value: 'old value')
-
-          new_build = build.clone(
-            current_user: user,
-            new_job_variables_attributes: [{ key: 'TEST_KEY', value: 'new value' }]
-          )
-          new_build.save!
-
-          expect(new_build.job_variables.count).to be(1)
-          expect(new_build.job_variables.pluck(:key)).to contain_exactly('TEST_KEY')
-          expect(new_build.job_variables.map(&:value)).to contain_exactly('old value')
-        end
+    context 'with loose foreign key on users.id' do
+      it_behaves_like 'cleanup by a loose foreign key' do
+        let!(:model) { create(:ci_build, user: create(:user), pipeline: pipeline) }
+        let!(:parent) { model.user }
       end
     end
 
-    context 'when not given new job variables' do
-      it 'applies the old job variables' do
-        build = create(:ci_build, pipeline: pipeline)
-        create(:ci_job_variable, job: build, key: 'TEST_KEY', value: 'old value')
+    context 'with loose foreign key on projects.id' do
+      it_behaves_like 'cleanup by a loose foreign key' do
+        let!(:model) { create(:ci_build, pipeline: pipeline) }
+        let!(:parent) { model.project }
+      end
+    end
 
-        new_build = build.clone(current_user: user)
-        new_build.save!
-
-        expect(new_build.job_variables.count).to be(1)
-        expect(new_build.job_variables.pluck(:key)).to contain_exactly('TEST_KEY')
-        expect(new_build.job_variables.map(&:value)).to contain_exactly('old value')
+    context 'with loose foreign key on ci_runners.id' do
+      it_behaves_like 'cleanup by a loose foreign key' do
+        let!(:model) { create(:ci_build, runner: create(:ci_runner), pipeline: pipeline) }
+        let!(:parent) { model.runner }
       end
     end
   end
@@ -5681,14 +6236,15 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe 'partitioning', :ci_partitionable do
+  describe 'partitioning' do
     include Ci::PartitioningHelpers
 
     let(:new_pipeline) { create(:ci_pipeline, project: project) }
-    let(:ci_build) { FactoryBot.build(:ci_build, pipeline: new_pipeline) }
+    let(:ci_stage) { create(:ci_stage, pipeline: new_pipeline) }
+    let(:ci_build) { FactoryBot.build(:ci_build, pipeline: new_pipeline, ci_stage: ci_stage) }
 
     before do
-      stub_current_partition_id
+      stub_current_partition_id(ci_testing_partition_id)
     end
 
     it 'assigns partition_id to job variables successfully', :aggregate_failures do
@@ -5705,25 +6261,38 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe 'assigning token', :ci_partitionable do
+  describe 'assigning token' do
     include Ci::PartitioningHelpers
 
     let(:new_pipeline) { create(:ci_pipeline, project: project) }
     let(:ci_build) { create(:ci_build, pipeline: new_pipeline) }
 
-    before do
-      stub_current_partition_id(ci_testing_partition_id_for_check_constraints)
+    context 'when the token is a JWT' do
+      it 'includes the token prefix' do
+        expect(ci_build.token).to match(/^glcbt-/)
+      end
     end
 
-    it 'includes partition_id in the token prefix' do
-      prefix = ci_build.token.match(/^glcbt-([\h]+)_/)
-      partition_prefix = prefix[1].to_i(16)
+    context 'when the token is a database token' do
+      before do
+        stub_feature_flags(ci_job_token_jwt: false)
+        stub_current_partition_id(ci_testing_partition_id)
+      end
 
-      expect(partition_prefix).to eq(ci_testing_partition_id_for_check_constraints)
+      it 'includes partition_id in the token prefix' do
+        prefix = ci_build.token.match(/^glcbt-([\h]+)_/)
+        partition_prefix = prefix[1].to_i(16)
+
+        expect(partition_prefix).to eq(ci_testing_partition_id)
+      end
     end
   end
 
   describe '#remove_token!' do
+    before do
+      stub_feature_flags(ci_job_token_jwt: false)
+    end
+
     it 'removes the token' do
       expect(build.token).to be_present
 
@@ -5734,31 +6303,10 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe 'metadata partitioning', :ci_partitionable do
-    let(:pipeline) { create(:ci_pipeline, project: project, partition_id: ci_testing_partition_id) }
-
-    let(:build) do
-      FactoryBot.build(:ci_build, pipeline: pipeline)
-    end
-
-    it 'creates the metadata record and assigns its partition' do
-      # The record is initialized by the factory calling metadatable setters
-      build.metadata = nil
-
-      expect(build.metadata).to be_nil
-
-      expect(build.save!).to be_truthy
-
-      expect(build.metadata).to be_present
-      expect(build.metadata).to be_valid
-      expect(build.metadata.partition_id).to eq(ci_testing_partition_id)
-    end
-  end
-
   describe 'secrets management id_tokens usage data' do
     context 'when ID tokens are defined' do
       context 'on create' do
-        let(:ci_build) { FactoryBot.build(:ci_build, user: user, id_tokens: { 'ID_TOKEN_1' => { aud: 'developers' } }) }
+        let(:ci_build) { create(:ci_build, user: user, id_tokens: { 'ID_TOKEN_1' => { aud: 'developers' } }) }
 
         before do
           allow(Gitlab::UsageDataCounters::HLLRedisCounter).to receive(:track_event).and_call_original
@@ -5768,7 +6316,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           expect(::Gitlab::UsageDataCounters::HLLRedisCounter).to receive(:track_event)
             .with('i_ci_secrets_management_id_tokens_build_created', values: user.id)
 
-          ci_build.save!
+          ci_build
         end
 
         it 'tracks Snowplow event with RedisHLL context' do
@@ -5785,7 +6333,7 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
             ).to_context.to_json]
           }
 
-          ci_build.save!
+          ci_build
           expect_snowplow_event(**params)
         end
       end
@@ -5808,14 +6356,14 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
 
     context 'when ID tokens are not defined' do
-      let(:ci_build) { FactoryBot.build(:ci_build, user: user) }
+      let(:ci_build) { create(:ci_build, user: user) }
 
       context 'on create' do
         it 'does not track RedisHLL event' do
           expect(Gitlab::UsageDataCounters::HLLRedisCounter).not_to receive(:track_event)
             .with('i_ci_secrets_management_id_tokens_build_created', values: user.id)
 
-          ci_build.save!
+          ci_build
         end
 
         it 'does not track Snowplow event' do
@@ -5823,6 +6371,49 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
           expect_no_snowplow_event
         end
       end
+    end
+  end
+
+  describe 'id_tokens with ci_cd_settings integration' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:user) { create(:user) }
+    let_it_be(:pipeline) { create(:ci_pipeline, project: project, ref: 'main') }
+    let_it_be(:environment) { create(:environment, name: 'production', project: project) }
+
+    let(:build) do
+      create(
+        :ci_build,
+        project: project,
+        pipeline: pipeline,
+        user: user,
+        environment: environment.name,
+        options: { environment: { name: 'production', deployment_tier: 'production' } },
+        id_tokens: { 'ID_TOKEN_1' => { aud: 'https://example.com' } }
+      )
+    end
+
+    before do
+      stub_application_setting(ci_jwt_signing_key: OpenSSL::PKey::RSA.generate(3072).to_s)
+
+      project.ci_cd_settings.update!(
+        id_token_sub_claim_components: %w[project_path environment_protected deployment_tier]
+      )
+    end
+
+    it 'generates JWT with environment_protected and deployment_tier in sub claim' do
+      expect(build.id_tokens).to eq({ 'ID_TOKEN_1' => { 'aud' => 'https://example.com' } })
+
+      expect(project.ci_cd_settings.id_token_sub_claim_components)
+        .to eq(%w[project_path environment_protected deployment_tier])
+
+      id_token = build.variables.find { |v| v[:key] == 'ID_TOKEN_1' }
+      expect(id_token).not_to be_nil
+
+      token = JWT.decode(id_token[:value], nil, false).first
+      expect(token['sub']).to include('project_path')
+      expect(token['sub']).to include('environment_protected')
+      expect(token['sub']).to include('deployment_tier')
+      expect(token['sub']).to eq("project_path:#{project.full_path}:environment_protected:false:deployment_tier:production")
     end
   end
 
@@ -5853,40 +6444,220 @@ RSpec.describe Ci::Build, feature_category: :continuous_integration, factory_def
     end
   end
 
-  describe 'token format for builds transiting into pending' do
-    let(:partition_id) { 100 }
-    let(:ci_build) { described_class.new(partition_id: partition_id) }
+  describe 'TokenAuthenticatable' do
+    before do
+      stub_feature_flags(ci_job_token_jwt: false)
+    end
 
-    context 'when build is initialized without a token and transits to pending' do
-      let(:partition_id_prefix_in_16_bit_encode) { partition_id.to_s(16) + '_' }
+    it_behaves_like 'TokenAuthenticatable' do
+      let(:token_field) { :token }
+    end
 
-      it 'generates a token' do
-        expect { ci_build.enqueue }
-          .to change { ci_build.token }.from(nil).to(a_string_starting_with("glcbt-#{partition_id_prefix_in_16_bit_encode}"))
+    describe 'token format for builds transiting into pending' do
+      let(:partition_id) { 100 }
+      let(:ci_build) { described_class.new(partition_id: partition_id) }
+
+      context 'when build is initialized without a token and transits to pending' do
+        let(:partition_id_prefix_in_16_bit_encode) { partition_id.to_s(16) + '_' }
+
+        it 'generates a token' do
+          expect { ci_build.enqueue }
+            .to change { ci_build.token }.from(nil).to(a_string_starting_with("glcbt-#{partition_id_prefix_in_16_bit_encode}"))
+        end
+      end
+
+      context 'when build is initialized with a token and transits to pending' do
+        let(:token) { 'an_existing_secret_token' }
+
+        before do
+          ci_build.set_token(token)
+        end
+
+        it 'does not change the existing token' do
+          expect { ci_build.enqueue }
+            .not_to change { ci_build.token }.from(token)
+        end
       end
     end
 
-    context 'when build is initialized with a token and transits to pending' do
-      let(:token) { 'an_existing_secret_token' }
+    describe '#prefix_and_partition_for_token' do
+      # 100.to_s(16) -> 64
+      let(:ci_build) { described_class.new(partition_id: 100) }
 
-      before do
-        ci_build.set_token(token)
-      end
-
-      it 'does not change the existing token' do
-        expect { ci_build.enqueue }
-          .not_to change { ci_build.token }.from(token)
+      it 'is prefixed with static string and partition id' do
+        ci_build.ensure_token
+        expect(ci_build.token).to match(/^glcbt-64_[\w-]{20}$/)
       end
     end
   end
 
-  describe '#prefix_and_partition_for_token' do
-    # 100.to_s(16) -> 64
-    let(:ci_build) { described_class.new(partition_id: 100) }
+  describe '#token' do
+    subject(:token) { build.token }
 
-    it 'is prefixed with static string and partition id' do
-      ci_build.ensure_token
-      expect(ci_build.token).to match(/^glcbt-64_[\w-]{20}$/)
+    let(:jwt_token) { 'the-jwt-token' }
+    let(:database_token) { 'the-db-token' }
+
+    before do
+      allow(::Ci::JobToken::Jwt).to receive(:encode).with(build).and_return(jwt_token)
+      build.set_token(database_token)
+      allow(build).to receive_message_chain(:user, :composite_identity_enforced?).and_return(composite_identity?)
+      allow(build).to receive_message_chain(:namespace, :root_ancestor, :namespace_settings, :jwt_ci_cd_job_token_enabled?)
+        .and_return(jwt_enabled?)
+    end
+
+    where(:composite_identity?, :jwt_enabled?, :expected_token) do
+      true  | true  | ref(:jwt_token)
+      true  | false | ref(:jwt_token)
+      false | true  | ref(:jwt_token)
+      false | false | ref(:database_token)
+    end
+
+    with_them do
+      it { is_expected.to eq(expected_token) }
+    end
+  end
+
+  describe '#project_integrations' do
+    context 'when project is nil' do
+      before do
+        build.project = nil
+      end
+
+      it 'returns nil for integration accessors' do
+        expect(build.harbor_integration).to be_nil
+      end
+    end
+
+    context 'when project exists' do
+      it 'executes the query path through integration accessors' do
+        expect(build.harbor_integration).to be_nil
+      end
+    end
+  end
+
+  describe '.fabricate' do
+    let(:tag_list) { %w[ruby docker postgres] }
+    let(:build_attributes) do
+      {
+        options: { script: ['echo'] },
+        tag_list: tag_list,
+        project_id: 1,
+        partition_id: 99
+      }
+    end
+
+    subject(:fabricate) { described_class.fabricate(build_attributes) }
+
+    it 'initializes with temp_job_definition' do
+      expect(fabricate).to have_attributes(
+        temp_job_definition: instance_of(Ci::JobDefinition),
+        job_definition: nil,
+        tag_list: tag_list
+      )
+      definition = fabricate.temp_job_definition
+
+      expect(definition.config).to eq({ options: build_attributes[:options], tag_list: tag_list })
+      expect(definition.project_id).to eq(build_attributes[:project_id])
+      expect(definition.partition_id).to eq(build_attributes[:partition_id])
+    end
+  end
+
+  describe 'partition pruning' do
+    describe '.find_by_token' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+      let_it_be(:job) { create(:ci_build, pipeline: pipeline, status: :running) }
+      let_it_be(:token) { job.token }
+
+      it 'uses partition_id filter in query' do
+        recorder = ActiveRecord::QueryRecorder.new do
+          expect(described_class.find_by_token(token)).to eq(job)
+        end
+
+        expect(recorder.count).to eq(1)
+        expect(recorder.log.first).to match(/"p_ci_builds"."token_encrypted" IN/)
+        expect(recorder.log.first).to match(/"p_ci_builds"."partition_id" =/)
+      end
+    end
+
+    describe 'for persisting record' do
+      let_it_be(:project) { create(:project) }
+      let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
+      let(:job) { FactoryBot.build(:ci_build, pipeline: pipeline, status: :running) }
+
+      it 'uses partition_id filter in query' do
+        recorder = ActiveRecord::QueryRecorder.new do
+          job.save!
+        end
+
+        expect(recorder.log).to include(/"p_ci_builds"."partition_id" =/)
+      end
+    end
+  end
+
+  describe '.with_pipeline_iid' do
+    let_it_be(:project) { create(:project, :repository) }
+
+    let_it_be(:pipeline) do
+      create(:ci_pipeline,
+        project: project,
+        iid: 10,
+        sha: project.commit.id,
+        ref: project.default_branch,
+        status: 'success'
+      )
+    end
+
+    let_it_be(:build) do
+      create(:ci_build,
+        project: project,
+        commit_id: pipeline.id,
+        partition_id: pipeline.partition_id,
+        pipeline: pipeline
+      )
+    end
+
+    let_it_be(:other_pipeline) do
+      create(:ci_pipeline,
+        project: project,
+        iid: pipeline.iid + 1,
+        sha: project.commit.id,
+        ref: project.default_branch,
+        status: 'success'
+      )
+    end
+
+    let_it_be(:other_build) do
+      create(:ci_build,
+        project: project,
+        commit_id: other_pipeline.id,
+        partition_id: other_pipeline.partition_id,
+        pipeline: other_pipeline
+      )
+    end
+
+    it 'returns builds for the pipeline with the given IID' do
+      result = described_class.with_pipeline_iid(project.id, pipeline.iid)
+
+      expect(result).to contain_exactly(build)
+    end
+
+    it 'does not return builds from other pipelines' do
+      result = described_class.with_pipeline_iid(project.id, pipeline.iid)
+
+      expect(result).not_to include(other_build)
+    end
+
+    it 'returns builds for the other pipeline with its IID' do
+      result = described_class.with_pipeline_iid(project.id, other_pipeline.iid)
+
+      expect(result).to contain_exactly(other_build)
+    end
+
+    it 'returns an empty result for a nonexistent IID' do
+      result = described_class.with_pipeline_iid(project.id, -1)
+
+      expect(result).to be_empty
     end
   end
 end

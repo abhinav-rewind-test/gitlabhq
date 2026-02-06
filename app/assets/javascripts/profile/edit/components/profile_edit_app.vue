@@ -3,24 +3,29 @@ import { nextTick } from 'vue';
 import { GlForm, GlButton, GlFormGroup } from '@gitlab/ui';
 import { VARIANT_DANGER, VARIANT_INFO, createAlert } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
+import { convertObjectPropsToSnakeCase } from '~/lib/utils/common_utils';
+import { scrollTo } from '~/lib/utils/scroll_utils';
 import SetStatusForm from '~/set_status_modal/set_status_form.vue';
-import SettingsBlock from '~/packages_and_registries/shared/components/settings_block.vue';
+import SettingsSection from '~/vue_shared/components/settings/settings_section.vue';
 import TimezoneDropdown from '~/vue_shared/components/timezone_dropdown/timezone_dropdown.vue';
 import { isUserBusy, computedClearStatusAfterValue } from '~/set_status_modal/utils';
 import { AVAILABILITY_STATUS } from '~/set_status_modal/constants';
-
-import { i18n, statusI18n, timezoneI18n } from '../constants';
+import PasswordPromptModal from '~/profile/password_prompt/password_prompt_modal.vue';
+import { i18n, statusI18n, timezoneI18n, mainI18n } from '../constants';
 import UserAvatar from './user_avatar.vue';
+import UserMainSettings from './user_main_settings.vue';
 
 export default {
   components: {
     UserAvatar,
+    UserMainSettings,
     GlForm,
     GlFormGroup,
     GlButton,
-    SettingsBlock,
+    SettingsSection,
     SetStatusForm,
     TimezoneDropdown,
+    PasswordPromptModal,
   },
   inject: [
     'currentEmoji',
@@ -30,7 +35,15 @@ export default {
     'currentClearStatusAfter',
     'timezones',
     'userTimezone',
+    'userSettings',
+    'needsPasswordConfirmation',
+    'emailHelpText',
   ],
+  provide() {
+    return {
+      i18n: this.$options.i18n,
+    };
+  },
   props: {
     profilePath: {
       type: String,
@@ -43,7 +56,7 @@ export default {
   },
   data() {
     return {
-      uploadingProfile: false,
+      updatingProfile: false,
       avatarBlob: null,
       status: {
         emoji: this.currentEmoji,
@@ -51,7 +64,12 @@ export default {
         availability: isUserBusy(this.currentAvailability),
         clearStatusAfter: null,
       },
-      timezone: this.userTimezone,
+      timezone: this.userTimezone || '',
+      userMainSetting: {
+        ...this.userSettings,
+      },
+      initialEmail: this.userSettings.email,
+      currentEmailHelpText: this.emailHelpText,
     };
   },
   computed: {
@@ -63,9 +81,18 @@ export default {
     },
   },
   methods: {
-    async onSubmit() {
+    onSubmit() {
+      if (this.hasEmailChanged() && this.needsPasswordConfirmation) {
+        this.updatingProfile = true;
+        this.$refs.passwordPromptModal.show();
+        return;
+      }
+
+      this.handleSubmit();
+    },
+    async handleSubmit(password = null) {
       // TODO: Do validation before organizing data.
-      this.uploadingProfile = true;
+      this.updatingProfile = true;
       const formData = new FormData();
 
       // Setting up status data
@@ -88,6 +115,15 @@ export default {
         formData.append('user[avatar]', this.avatarBlob, 'avatar.png');
       }
 
+      const mainSettingForm = convertObjectPropsToSnakeCase(this.userMainSetting);
+      Object.entries(mainSettingForm).forEach(([key, value]) => {
+        formData.append(`user[${key}]`, value);
+      });
+
+      if (password) {
+        formData.append('user[validation_password]', password);
+      }
+
       formData.append('user[timezone]', this.timezone);
 
       try {
@@ -101,17 +137,33 @@ export default {
           variant: data.status === 'error' ? VARIANT_DANGER : VARIANT_INFO,
         });
 
-        nextTick(() => {
-          window.scrollTo(0, 0);
-          this.uploadingProfile = false;
-        });
+        if (data.status !== 'error') {
+          this.initialEmail = this.userMainSetting.email;
+
+          if (data.email_help_text !== undefined) {
+            this.currentEmailHelpText = data.email_help_text;
+          }
+        }
       } catch (e) {
         createAlert({
           message: e.message,
           variant: VARIANT_DANGER,
         });
-        this.updateProfileSettings = false;
+      } finally {
+        nextTick(() => {
+          scrollTo({ top: 0, left: 0 }, this.$el);
+          this.updatingProfile = false;
+        });
       }
+    },
+    hasEmailChanged() {
+      return this.userMainSetting.email !== this.initialEmail;
+    },
+    handleConfirmPassword(password) {
+      this.handleSubmit(password);
+    },
+    onPasswordPromptClose() {
+      this.updatingProfile = false;
     },
     syncHeaderAvatars() {
       document.dispatchEvent(
@@ -138,11 +190,15 @@ export default {
     onTimezoneInput(selectedTimezone) {
       this.timezone = selectedTimezone.identifier || '';
     },
+    onMainSettingChange(updatedUserSettings) {
+      this.userMainSetting = updatedUserSettings;
+    },
   },
   i18n: {
     ...i18n,
     ...statusI18n,
     ...timezoneI18n,
+    ...mainI18n,
   },
 };
 </script>
@@ -150,9 +206,11 @@ export default {
 <template>
   <gl-form class="edit-user" @submit.prevent="onSubmit">
     <user-avatar @blob-change="onBlobChange" />
-    <settings-block class="js-search-settings-section">
-      <template #title>{{ $options.i18n.setStatusTitle }}</template>
-      <template #description>{{ $options.i18n.setStatusDescription }}</template>
+    <settings-section
+      :heading="$options.i18n.setStatusTitle"
+      :description="$options.i18n.setStatusDescription"
+      class="js-search-settings-section"
+    >
       <div class="gl-max-w-80">
         <set-status-form
           :default-emoji="defaultEmoji"
@@ -167,23 +225,36 @@ export default {
           @availability-input="onAvailabilityInput"
         />
       </div>
-    </settings-block>
-    <settings-block class="js-search-settings-section">
-      <template #title>{{ $options.i18n.setTimezoneTitle }}</template>
-      <template #description>{{ $options.i18n.setTimezoneDescription }}</template>
-      <gl-form-group :label="__('Timezone')" class="gl-md-form-input-lg">
+    </settings-section>
+    <settings-section
+      :heading="$options.i18n.setTimezoneTitle"
+      :description="$options.i18n.setTimezoneDescription"
+      class="js-search-settings-section"
+    >
+      <gl-form-group :label="$options.i18n.timezone" class="gl-md-form-input-lg">
         <timezone-dropdown :value="timezone" :timezone-data="timezones" @input="onTimezoneInput" />
       </gl-form-group>
-    </settings-block>
+    </settings-section>
     <!-- TODO: to implement profile editing form fields -->
     <!-- It will be implemented in the upcoming MRs -->
     <!-- Related issue: https://gitlab.com/gitlab-org/gitlab/-/issues/389918 -->
-    <div class="js-hide-when-nothing-matches-search gl-border-t gl-py-6">
+    <settings-section
+      :heading="$options.i18n.mainTitle"
+      :description="$options.i18n.mainDescription"
+      class="js-search-settings-section"
+    >
+      <user-main-settings
+        :user-settings="userMainSetting"
+        :email-help-text="currentEmailHelpText"
+        @change="onMainSettingChange"
+      />
+    </settings-section>
+    <div class="js-hide-when-nothing-matches-search settings-sticky-footer gl-flex gl-gap-3">
       <gl-button
         variant="confirm"
         type="submit"
-        class="gl-mr-3 js-password-prompt-btn"
-        :disabled="uploadingProfile"
+        class="js-password-prompt-btn"
+        :disabled="updatingProfile"
       >
         {{ $options.i18n.updateProfileSettings }}
       </gl-button>
@@ -191,5 +262,10 @@ export default {
         {{ $options.i18n.cancel }}
       </gl-button>
     </div>
+    <password-prompt-modal
+      ref="passwordPromptModal"
+      @submit="handleConfirmPassword"
+      @hide="onPasswordPromptClose"
+    />
   </gl-form>
 </template>

@@ -4,12 +4,12 @@ import {
   GlDisclosureDropdownGroup,
   GlDisclosureDropdownItem,
 } from '@gitlab/ui';
-import { shallowMount } from '@vue/test-utils';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { stubComponent } from 'helpers/stub_component';
 import CodeDropdown from '~/vue_shared/components/code_dropdown/code_dropdown.vue';
-import CloneDropdownItem from '~/vue_shared/components/clone_dropdown/clone_dropdown_item.vue';
+import CodeDropdownCloneItem from '~/repository/components/code_dropdown/code_dropdown_clone_item.vue';
 
-describe('Clone Dropdown Button', () => {
+describe('Code Dropdown component', () => {
   let wrapper;
   const sshUrl = 'ssh://foo.bar';
   const httpUrl = 'http://foo.bar';
@@ -32,15 +32,15 @@ describe('Clone Dropdown Button', () => {
   const encodedSshUrl = encodeURIComponent(sshUrl);
   const encodedHttpUrl = encodeURIComponent(httpUrl);
 
-  const findCloneDropdownItems = () => wrapper.findAllComponents(CloneDropdownItem);
-  const findCloneDropdownItemAtIndex = (index) => findCloneDropdownItems().at(index);
+  const findCodeDropdownCloneItems = () => wrapper.findAllComponents(CodeDropdownCloneItem);
+  const findCodeDropdownCloneItemAtIndex = (index) => findCodeDropdownCloneItems().at(index);
   const findDropdownItems = () => wrapper.findAllComponents(GlDisclosureDropdownItem);
   const findDropdownItemAtIndex = (index) => findDropdownItems().at(index);
 
   const closeDropdown = jest.fn();
 
   const createComponent = (propsData = defaultPropsData) => {
-    wrapper = shallowMount(CodeDropdown, {
+    wrapper = shallowMountExtended(CodeDropdown, {
       propsData,
       stubs: {
         GlFormInputGroup,
@@ -63,7 +63,7 @@ describe('Clone Dropdown Button', () => {
       `('renders correct link and a copy-button for $name', ({ index, link }) => {
         createComponent();
 
-        const item = findCloneDropdownItemAtIndex(index);
+        const item = findCodeDropdownCloneItemAtIndex(index);
         expect(item.props('link')).toBe(link);
       });
 
@@ -74,7 +74,7 @@ describe('Clone Dropdown Button', () => {
       `('does not fail if only $name is set', ({ name, value }) => {
         createComponent({ [name]: value });
 
-        expect(findCloneDropdownItemAtIndex(0).props('link')).toBe(value);
+        expect(findCodeDropdownCloneItemAtIndex(0).props('link')).toBe(value);
       });
     });
 
@@ -86,13 +86,13 @@ describe('Clone Dropdown Button', () => {
       `('allows null values for the props', ({ name, value }) => {
         createComponent({ ...defaultPropsData, [name]: value });
 
-        expect(findCloneDropdownItems().length).toBe(1);
+        expect(findCodeDropdownCloneItems()).toHaveLength(1);
       });
 
       it('correctly calculates httpLabel for HTTPS protocol', () => {
         createComponent({ httpUrl: httpsUrl });
 
-        expect(findCloneDropdownItemAtIndex(0).attributes('label')).toContain('HTTPS');
+        expect(findCodeDropdownCloneItemAtIndex(0).attributes('label')).toContain('HTTPS');
       });
 
       it.each`
@@ -102,7 +102,7 @@ describe('Clone Dropdown Button', () => {
       `('does not close dropdown on $name item click', ({ index }) => {
         createComponent();
 
-        findCloneDropdownItemAtIndex(index).vm.$emit('action');
+        findCodeDropdownCloneItemAtIndex(index).vm.$emit('action');
 
         expect(closeDropdown).not.toHaveBeenCalled();
       });
@@ -127,6 +127,7 @@ describe('Clone Dropdown Button', () => {
 
         expect(item.props('item').text).toBe(name);
         expect(item.props('item').href).toContain(href);
+        expect(item.props('item').extraAttrs.isUnsafeLink).toBe(true);
       });
 
       it('closes the dropdown on click', () => {
@@ -168,7 +169,7 @@ describe('Clone Dropdown Button', () => {
     it('renders directory download links if currentPath is set', () => {
       createComponent({ ...defaultPropsData, currentPath: '/subdir' });
 
-      expect(findDropdownItems().length).toEqual(13);
+      expect(findDropdownItems()).toHaveLength(13);
     });
 
     describe.each(

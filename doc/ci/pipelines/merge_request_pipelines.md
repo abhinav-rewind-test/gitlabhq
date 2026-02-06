@@ -2,52 +2,53 @@
 stage: Verify
 group: Pipeline Execution
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Learn how to use merge request pipelines in GitLab CI/CD to test changes efficiently, run targeted jobs, and improve code quality before merging.
+title: Merge request pipelines
 ---
 
-# Merge request pipelines
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> [Renamed](https://gitlab.com/gitlab-org/gitlab/-/issues/351192) from `pipelines for merge requests` to `merge request pipelines` in GitLab 14.8.
+{{< /details >}}
 
 You can configure your pipeline to run every time you make changes to the
-source branch in a merge request.
+source branch in a merge request. This type of pipeline is called a merge request pipeline.
 
-This type of pipeline, called a merge request pipeline, runs when you:
+These pipelines run when you:
 
 - Create a new merge request from a source branch that has one or more commits.
 - Push a new commit to the source branch for a merge request.
 - Go to the **Pipelines** tab in a merge request and select **Run pipeline**.
 
-In addition, merge request pipelines:
+Merge request pipelines:
 
-- Have access to [more predefined variables](merge_request_pipelines.md#available-predefined-variables).
-- Do not have access to [protected variables](../variables/index.md#protect-a-cicd-variable) or
-  [protected runners](../runners/configure_runners.md#prevent-runners-from-revealing-sensitive-information).
+- Run on the contents of the source branch only and ignore the content of the target branch.
+- Display a `merge request` label in pipeline lists.
 
-These pipelines display a `merge request` label in pipeline lists.
-
-Merge request pipelines run on the contents of the source branch only, ignoring the content
-of the target branch. To run a pipeline that tests the result of merging the source
-and target branches together, use merged results pipelines.
+To run a pipeline that tests the result of merging the source and target branches together,
+use [merged results pipelines](merged_results_pipelines.md).
 
 ## Prerequisites
 
 To use merge request pipelines:
 
-- Your project's [`.gitlab-ci.yml` file](../index.md#the-gitlab-ciyml-file) must be configured with
-  jobs that run in merge request pipelines. To do this, you can use:
-  - [`rules`](#use-rules-to-add-jobs).
-  - [`only/except`](#use-only-to-add-jobs).
-- You must have at least the Developer role in the
-  source project to run a merge request pipeline.
-- Your repository must be a GitLab repository, not an [external repository](../ci_cd_for_external_repos/index.md).
+- Your project's `.gitlab-ci.yml` file must include job rules or workflow rules that match `CI_PIPELINE_SOURCE == "merge_request_event"`.
+- You must have at least the Developer role for the source project to run a merge request pipeline.
+- Your repository must be a GitLab repository, not an [external repository](../ci_cd_for_external_repos/_index.md).
 
-## Use `rules` to add jobs
+## Configure merge request pipelines
 
-Use the [`rules`](../yaml/index.md#rules) keyword to configure jobs to run in
+To configure merge request pipelines, you must configure jobs in your
+`.gitlab-ci.yml` file to run when `CI_PIPELINE_SOURCE` equals `merge_request_event`.
+
+You can configure individual jobs with `rules`,
+or use `workflow: rules` to control the entire pipeline.
+
+### Configure individual jobs
+
+Use the [`rules`](../yaml/_index.md#rules) keyword to configure individual jobs to run in
 merge request pipelines. For example:
 
 ```yaml
@@ -55,54 +56,52 @@ job1:
   script:
     - echo "This job runs in merge request pipelines"
   rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 ```
 
-You can also use the [`workflow: rules`](../yaml/index.md#workflowrules) keyword
-to configure the entire pipeline to run in merge request pipelines. For example:
+You can also control when jobs run based on file changes:
+
+```yaml
+test:
+  script:
+    - echo "This job always runs in merge request pipelines"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+lint:
+  script:
+    - echo "This job runs only when JavaScript files change"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "*.js"
+```
+
+### Configure the entire pipeline
+
+Use the [`workflow: rules`](../yaml/_index.md#workflowrules) keyword
+to configure all jobs in a pipeline to run in merge request pipelines.
+For example:
 
 ```yaml
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 job1:
   script:
     - echo "This job runs in merge request pipelines"
-
-job2:
-  script:
-    - echo "This job also runs in merge request pipelines"
 ```
 
-A common `workflow` configuration is to have pipelines run for merge requests, tags, and the default branch. For example:
+For more `workflow` examples, see:
 
-```yaml
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-```
+- [Switch between branch pipelines and merge request pipelines](../yaml/workflow.md#switch-between-branch-pipelines-and-merge-request-pipelines)
+- [Git Flow with merge request pipelines](../yaml/workflow.md#git-flow-with-merge-request-pipelines)
 
-## Use `only` to add jobs
-
-[`rules`](#use-rules-to-add-jobs) is the preferred method, but you can also use
-the [`only`](../yaml/index.md#onlyrefs--exceptrefs) keyword with `merge_requests`
-to configure jobs to run in merge request pipelines. For example:
-
-```yaml
-job1:
-  script:
-    - echo "This job runs in merge request pipelines"
-  only:
-    - merge_requests
-```
+To [use security scanning tools with merge request pipelines](../../user/application_security/detect/security_configuration.md#use-security-scanning-tools-with-merge-request-pipelines),
+use the CI/CD variable `AST_ENABLE_MR_PIPELINES` or the `latest` template edition.
 
 ## Use with forked projects
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/217451) in GitLab 13.3.
-> - [Moved](https://about.gitlab.com/blog/2021/01/26/new-gitlab-product-subscription-model/) to GitLab Premium in 13.9.
 
 External contributors who work in forks can't create pipelines in the parent project.
 
@@ -112,9 +111,7 @@ pipeline that:
 - Is created and runs in the fork (source) project, not the parent (target) project.
 - Uses the fork project's CI/CD configuration, resources, and project CI/CD variables.
 
-Pipelines for forks display with the **fork** badge in the parent project:
-
-![Pipeline ran in fork](img/pipeline_fork_v13_7.png)
+Pipelines for forks display with the **fork** badge in the parent project.
 
 ### Run pipelines in the parent project
 
@@ -130,18 +127,18 @@ Run pipelines in fork project MRs to ensure that the post-merge pipeline passes 
 the parent project. Additionally, if you do not trust the fork project's runner,
 running the pipeline in the parent project uses the parent project's trusted runners.
 
-WARNING:
-Fork merge requests can contain malicious code that tries to steal secrets in the parent project
-when the pipeline runs, even before merge. As a reviewer, carefully check the changes
-in the merge request before triggering the pipeline. Unless you trigger the pipeline
-through the API or the [`/rebase` quick action](../../user/project/quick_actions.md#issues-merge-requests-and-epics),
-GitLab shows a warning that you must accept before the pipeline runs. Otherwise, **no warning displays**.
+> [!warning]
+> Fork merge requests can contain malicious code that tries to steal secrets in the parent project
+> when the pipeline runs, even before merge. As a reviewer, carefully check the changes
+> in the merge request before triggering the pipeline. Unless you trigger the pipeline
+> through the API or the [`/rebase` quick action](../../user/project/quick_actions.md#rebase),
+> GitLab shows a warning that you must accept before the pipeline runs. Otherwise, **no warning displays**.
 
 Prerequisites:
 
-- The parent project's [`.gitlab-ci.yml` file](../index.md#the-gitlab-ciyml-file) must be configured to
+- The parent project's `.gitlab-ci.yml` file must be configured to
   [run jobs in merge request pipelines](#prerequisites).
-- You must be a member of the parent project with [permissions to run CI/CD pipelines](../../user/permissions.md#gitlab-cicd-permissions).
+- You must be a member of the parent project with [permissions to run CI/CD pipelines](../../user/permissions.md#project-cicd).
   You might need additional permissions if the branch is protected.
 - The fork project must be [visible](../../user/public_access.md) to the
   user running the pipeline. Otherwise, the **Pipelines** tab does not display
@@ -154,16 +151,14 @@ To use the UI to run a pipeline in the parent project for a merge request from a
 
 ### Prevent pipelines from fork projects
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/325189) in GitLab 15.3.
-
 To prevent users from running new pipelines for fork projects in the parent project
-use [the projects API](../../api/projects.md#edit-project) to disable the `ci_allow_fork_pipelines_to_run_in_parent_project`
+use [the projects API](../../api/projects.md#edit-a-project) to disable the `ci_allow_fork_pipelines_to_run_in_parent_project`
 setting.
 
-WARNING:
-Pipelines created before the setting was disabled are not affected and continue to run.
-If you rerun a job in an older pipeline, the job uses the same context as when the
-pipeline was originally created.
+> [!warning]
+> Pipelines created before the setting was disabled are not affected and continue to run.
+> If you rerun a job in an older pipeline, the job uses the same context as when the
+> pipeline was originally created.
 
 ## Available predefined variables
 
@@ -173,3 +168,35 @@ When you use merge request pipelines, you can use:
   available in branch pipelines.
 - [Additional predefined variables](../variables/predefined_variables.md#predefined-variables-for-merge-request-pipelines)
   available only to jobs in merge request pipelines.
+
+## Control access to protected variables and runners
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/188008) in GitLab 18.1
+
+{{< /history >}}
+
+You can control access to [protected CI/CD variables](../variables/_index.md#protect-a-cicd-variable)
+and [protected runners](../runners/configure_runners.md#prevent-runners-from-revealing-sensitive-information)
+from merge request pipelines.
+
+Merge request pipelines can only access these protected resources when:
+
+- Both the source and target branches are [protected](../../user/project/repository/branches/protected.md).
+- The user triggering the pipeline has push/merge access to the target branch.
+- Both source and target branches belong to the same project.
+
+Merge request pipelines from forked repositories cannot access these protected resources.
+
+Prerequisites:
+
+- Have the Maintainer or Owner role in the project.
+
+To control access to protected variables and runners:
+
+1. In the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **CI/CD**.
+1. Expand **Variables**.
+1. Under **Access protected resources in merge request pipelines**, select or clear
+   the **Allow merge request pipelines to access protected variables and runners** checkbox.

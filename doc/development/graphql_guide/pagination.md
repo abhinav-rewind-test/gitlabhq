@@ -1,10 +1,9 @@
 ---
-stage: Manage
-group: Import and Integrate
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Developer Experience
+group: API
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: GraphQL pagination
 ---
-
-# GraphQL pagination
 
 ## Types of pagination
 
@@ -23,7 +22,7 @@ and used across much of GitLab. You can recognize it by
 a list of page numbers near the bottom of a page, which, when selected,
 take you to that page of results.
 
-For example, when you select **Page 100**, we send `100` to the
+For example, when you select `Page 100`, we send `100` to the
 backend. For example, if each page has say 20 items, the
 backend calculates `20 * 100 = 2000`,
 and it queries the database by offsetting (skipping) the first 2000
@@ -75,7 +74,7 @@ Some of the benefits and tradeoffs of keyset pagination are
 - It's the best way to do infinite scrolling.
 
 - It's more difficult to program and maintain. Easy for `updated_at` and
-  `sort_order`, complicated (or impossible) for [complex sorting scenarios](#limitations-of-query-complexity).
+  `sort_order`, complicated (or impossible) for [complex sorting scenarios](#query-complexity).
 
 ## Implementation
 
@@ -137,13 +136,13 @@ Based on whether the main attribute field being sorted on is `NULL` in the curso
 condition is built. The last ordering field is considered to be unique (a primary key), meaning the
 column never contains `NULL` values.
 
-#### Limitations of query complexity
+#### Query complexity
 
 We only support two ordering fields, and one of those fields needs to be the primary key.
 
 Here are two examples of pseudocode for the query:
 
-- **Two-condition query.** `X` represents the values from the cursor. `C` represents
+- Two-condition query. `X` represents the values from the cursor. `C` represents
   the columns in the database, sorted in ascending order, using an `:after` cursor, and with `NULL`
   values sorted last.
 
@@ -186,7 +185,7 @@ Here are two examples of pseudocode for the query:
       "issues"."id" > 500
   ```
 
-- **Three-condition query.** The example below is not complete, but shows the
+- Three-condition query. The example below is not complete, but shows the
   complexity of adding one more condition. `X` represents the values from the cursor. `C` represents
   the columns in the database, sorted in ascending order, using an `:after` cursor, and with `NULL`
   values sorted last.
@@ -245,7 +244,7 @@ incorrect sort order.
 
 ### Offset pagination
 
-There are times when the [complexity of sorting](#limitations-of-query-complexity)
+There are times when the [complexity of sorting](#query-complexity)
 is more than our keyset pagination can handle.
 
 For example, in [`ProjectIssuesResolver`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/resolvers/project_issues_resolver.rb),
@@ -278,7 +277,7 @@ There may be times where you need to return data through the GitLab API that is 
 another system. In these cases you may have to paginate a third-party's API.
 
 An example of this is with our [Error Tracking](../../operations/error_tracking.md) implementation,
-where we proxy [Sentry errors](../../operations/error_tracking.md#sentry-error-tracking) through
+where we proxy [Sentry errors](../../operations/sentry_error_tracking.md) through
 the GitLab API. We do this by calling the Sentry API which enforces its own pagination rules.
 This means we cannot access the collection within GitLab to perform our own custom pagination.
 
@@ -286,7 +285,7 @@ For consistency, we manually set the pagination cursors based on values returned
 
 You can see an example implementation in the following files:
 
-- [`types/error__tracking/sentry_error_collection_type.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/types/error_tracking/sentry_error_collection_type.rb) which adds an extension to  `field :errors`.
+- [`types/error__tracking/sentry_error_collection_type.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/types/error_tracking/sentry_error_collection_type.rb) which adds an extension to `field :errors`.
 - [`resolvers/error_tracking/sentry_errors_resolver.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/graphql/resolvers/error_tracking/sentry_errors_resolver.rb) which returns the data from the resolver.
 
 ## Testing

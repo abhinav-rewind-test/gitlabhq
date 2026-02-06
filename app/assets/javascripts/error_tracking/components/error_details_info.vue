@@ -4,11 +4,10 @@ import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import TrackEventDirective from '~/vue_shared/directives/track_event';
 import { trackClickErrorLinkToSentryOptions } from '../events_tracking';
 
-const CARD_CLASS = 'gl-mr-7 gl-w-15p gl-min-w-fit-content';
-const HEADER_CLASS =
-  'gl-p-2 gl-font-weight-bold gl-display-flex gl-justify-content-center gl-align-items-center';
+const CARD_CLASS = 'gl-mr-7 gl-w-3/20 gl-min-w-fit';
+const HEADER_CLASS = 'gl-p-2 gl-font-bold gl-flex gl-justify-center gl-items-center';
 const BODY_CLASS =
-  'gl-display-flex gl-justify-content-center gl-align-items-center gl-flex-direction-column gl-my-0 gl-p-4 gl-font-weight-bold gl-text-center gl-flex-grow-1 gl-font-lg';
+  'gl-flex gl-justify-center gl-items-center gl-flex-col gl-my-0 gl-p-4 gl-font-bold gl-text-center gl-grow gl-text-lg';
 
 export default {
   components: {
@@ -55,10 +54,7 @@ export default {
 
 <template>
   <div>
-    <div
-      v-if="error"
-      class="gl-display-flex gl-flex-wrap gl-justify-content-center gl-my-7 gl-row-gap-6"
-    >
+    <div v-if="error" class="gl-my-7 gl-flex gl-flex-wrap gl-justify-center gl-gap-y-6">
       <gl-card
         :class="$options.CARD_CLASS"
         :body-class="$options.BODY_CLASS"
@@ -102,13 +98,15 @@ export default {
 
         <template v-if="error.integrated" #default>
           <time-ago-tooltip :time="error.firstSeen" />
-          <span v-if="shortFirstReleaseVersion" class="gl-font-sm gl-text-secondary">
-            <gl-icon name="commit" class="gl-mr-1" :size="12" />{{ shortFirstReleaseVersion }}
+          <span v-if="shortFirstReleaseVersion" class="gl-text-sm gl-text-subtle">
+            <gl-icon name="commit" class="gl-mr-1" :size="12" variant="subtle" />{{
+              shortFirstReleaseVersion
+            }}
           </span>
         </template>
 
         <template v-else #default>
-          <gl-link :href="firstReleaseLink" target="_blank" class="gl-font-lg">
+          <gl-link :href="firstReleaseLink" target="_blank" class="gl-text-lg">
             <time-ago-tooltip :time="error.firstSeen" />
           </gl-link>
         </template>
@@ -127,13 +125,15 @@ export default {
 
         <template v-if="error.integrated" #default>
           <time-ago-tooltip :time="error.lastSeen" />
-          <span v-if="shortLastReleaseVersion" class="gl-font-sm gl-text-secondary">
-            <gl-icon name="commit" class="gl-mr-1" :size="12" />{{ shortLastReleaseVersion }}
+          <span v-if="shortLastReleaseVersion" class="gl-text-sm gl-text-subtle">
+            <gl-icon name="commit" class="gl-mr-1" :size="12" variant="subtle" />{{
+              shortLastReleaseVersion
+            }}
           </span>
         </template>
 
         <template v-else #default>
-          <gl-link :href="lastReleaseLink" target="_blank" class="gl-font-lg">
+          <gl-link :href="lastReleaseLink" target="_blank" class="gl-text-lg">
             <time-ago-tooltip :time="error.lastSeen" />
           </gl-link>
         </template>
@@ -151,22 +151,22 @@ export default {
         </template>
 
         <template #default>
-          <gl-link :href="error.gitlabCommitPath" class="gl-font-lg">
+          <gl-link :href="error.gitlabCommitPath" class="gl-text-lg">
             {{ shortGitlabCommit }}
           </gl-link>
         </template>
       </gl-card>
     </div>
-    <div v-if="!error.integrated" class="py-3">
-      <span class="gl-font-weight-bold">{{ __('Sentry event') }}:</span>
+    <div v-if="!error.integrated" class="!gl-py-5">
+      <span class="gl-font-bold">{{ __('Sentry event') }}:</span>
       <gl-link
         v-track-event="trackClickErrorLinkToSentryOptions(error.externalUrl)"
         :href="error.externalUrl"
         target="_blank"
         data-testid="external-url-link"
       >
-        <span class="text-truncate">{{ error.externalUrl }}</span>
-        <gl-icon name="external-link" class="ml-1 flex-shrink-0" />
+        <span class="gl-truncate">{{ error.externalUrl }}</span>
+        <gl-icon name="external-link" class="!gl-ml-2 !gl-shrink-0" />
       </gl-link>
     </div>
   </div>

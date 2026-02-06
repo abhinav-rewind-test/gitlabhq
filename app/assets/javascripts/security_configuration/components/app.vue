@@ -1,27 +1,43 @@
 <script>
-import { GlTab, GlTabs, GlSprintf, GlLink, GlAlert } from '@gitlab/ui';
+import { GlTab, GlTabs, GlSprintf, GlLink, GlAlert, GlButton, GlExperimentBadge } from '@gitlab/ui';
 import Api from '~/api';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import UserCalloutDismisser from '~/vue_shared/components/user_callout_dismisser.vue';
 import SectionLayout from '~/vue_shared/security_configuration/components/section_layout.vue';
 import SafeHtml from '~/vue_shared/directives/safe_html';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { SERVICE_PING_SECURITY_CONFIGURATION_THREAT_MANAGEMENT_VISIT } from '~/tracking/constants';
+import { REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY } from '~/vue_shared/security_reports/constants';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import {
   AUTO_DEVOPS_ENABLED_ALERT_DISMISSED_STORAGE_KEY,
   TAB_VULNERABILITY_MANAGEMENT_INDEX,
   i18n,
+  SECRET_PUSH_PROTECTION,
+  SECRET_DETECTION,
+  LICENSE_INFORMATION_SOURCE,
 } from '../constants';
 import AutoDevOpsAlert from './auto_dev_ops_alert.vue';
 import AutoDevOpsEnabledAlert from './auto_dev_ops_enabled_alert.vue';
 import FeatureCard from './feature_card.vue';
-import TrainingProviderList from './training_provider_list.vue';
+import PipelineSecretDetectionFeatureCard from './pipeline_secret_detection_feature_card.vue';
+import SecretPushProtectionFeatureCard from './secret_push_protection_feature_card.vue';
+import TrainingSection from './training_section.vue';
+import RefTrackingList from './ref_tracking_list.vue';
 
 export default {
   i18n,
   components: {
+    ProjectSecurityAttributesList: () =>
+      import(
+        'ee_component/security_configuration/security_attributes/components/project_attributes_list.vue'
+      ),
     AutoDevOpsAlert,
     AutoDevOpsEnabledAlert,
     FeatureCard,
+    SecretPushProtectionFeatureCard,
+    PipelineSecretDetectionFeatureCard,
     GlAlert,
     GlLink,
     GlSprintf,
@@ -29,13 +45,30 @@ export default {
     GlTabs,
     LocalStorageSync,
     SectionLayout,
-    UpgradeBanner: () =>
-      import('ee_component/security_configuration/components/upgrade_banner.vue'),
+    GlButton,
+    GlExperimentBadge,
     UserCalloutDismisser,
-    TrainingProviderList,
+    TrainingSection,
+    RefTrackingList,
+    ScanProfileConfiguration: () =>
+      import(
+        'ee_component/security_configuration/components/scan_profiles/scan_profile_configuration.vue'
+      ),
+    ContainerScanningForRegistryFeatureCard: () =>
+      import(
+        'ee_component/security_configuration/components/container_scanning_for_registry_feature_card.vue'
+      ),
+    PageHeading,
+    VulnerabilityArchives: () =>
+      import('ee_component/security_configuration/components/vulnerability_archives.vue'),
+    LicenseInformationSourceFeatureCard: () =>
+      import(
+        'ee_component/security_configuration/components/license_information_source_feature_card.vue'
+      ),
   },
   directives: { SafeHtml },
-  inject: ['projectFullPath', 'vulnerabilityTrainingDocsPath'],
+  mixins: [glFeatureFlagsMixin()],
+  inject: ['projectFullPath', 'canReadAttributes'],
   props: {
     augmentedSecurityFeatures: {
       type: Array,
@@ -78,9 +111,6 @@ export default {
     };
   },
   computed: {
-    canUpgrade() {
-      return [...this.augmentedSecurityFeatures].some(({ available }) => !available);
-    },
     canViewCiHistory() {
       return Boolean(this.gitlabCiPresent && this.gitlabCiHistoryPath);
     },
@@ -93,8 +123,45 @@ export default {
         !this.autoDevopsEnabledAlertDismissedProjects.includes(this.projectFullPath)
       );
     },
+    shouldShowVulnerabilityArchives() {
+      return this.glFeatures?.vulnerabilityArchival;
+    },
+    shouldShowRefsTracking() {
+      return this.glFeatures?.vulnerabilitiesAcrossContexts;
+    },
+    shouldShowSecurityAttributes() {
+      return (
+        window.gon?.licensed_features?.securityAttributes &&
+        this.glFeatures?.securityContextLabels &&
+        this.canReadAttributes
+      );
+    },
+    shouldShowScannerProfiles() {
+      return this.glFeatures?.securityScanProfilesFeature;
+    },
+    trackedRefsHelpPagePath() {
+      // Once the help page content is available, we can use the anchor to link to the specific section
+      // See issue: https://gitlab.com/gitlab-org/gitlab/-/issues/578081
+      return helpPagePath('user/application_security/vulnerability_report/_index.md');
+    },
   },
   methods: {
+    getComponentName(feature) {
+      if (feature.type === SECRET_PUSH_PROTECTION) {
+        return 'secret-push-protection-feature-card';
+      }
+      if (feature.type === REPORT_TYPE_CONTAINER_SCANNING_FOR_REGISTRY) {
+        return 'container-scanning-for-registry-feature-card';
+      }
+      if (feature.type === SECRET_DETECTION) {
+        return 'pipeline-secret-detection-feature-card';
+      }
+      if (feature.type === LICENSE_INFORMATION_SOURCE) {
+        return 'license-information-source-feature-card';
+      }
+
+      return 'feature-card';
+    },
     dismissAutoDevopsEnabledAlert() {
       const dismissedProjects = new Set(this.autoDevopsEnabledAlertDismissedProjects);
       dismissedProjects.add(this.projectFullPath);
@@ -121,7 +188,7 @@ export default {
     <gl-alert
       v-if="errorMessage"
       sticky
-      class="gl-top-8 gl-z-index-1"
+      class="gl-top-8 gl-z-1"
       data-testid="manage-via-mr-error-alert"
       variant="danger"
       @dismiss="dismissAlert"
@@ -141,14 +208,8 @@ export default {
         <auto-dev-ops-alert v-if="shouldShowCallout" class="gl-mt-3" @dismiss="dismiss" />
       </template>
     </user-callout-dismisser>
-    <header>
-      <h1 class="gl-font-size-h1">{{ $options.i18n.securityConfiguration }}</h1>
-    </header>
-    <user-callout-dismisser v-if="canUpgrade" feature-name="security_configuration_upgrade_banner">
-      <template #default="{ dismiss, shouldShowCallout }">
-        <upgrade-banner v-if="shouldShowCallout" @close="dismiss" />
-      </template>
-    </user-callout-dismisser>
+
+    <page-heading :heading="$options.i18n.securityConfiguration" />
 
     <gl-tabs
       content-class="gl-pt-0"
@@ -168,7 +229,23 @@ export default {
           @dismiss="dismissAutoDevopsEnabledAlert"
         />
 
-        <section-layout class="gl-border-b-0" :heading="$options.i18n.securityTesting">
+        <section-layout
+          v-if="shouldShowScannerProfiles"
+          stacked
+          class="gl-border-b-0"
+          :heading="$options.i18n.securityProfiles"
+        >
+          <template #description>
+            <p>
+              {{ $options.i18n.securityProfilesDesc }}
+            </p>
+          </template>
+          <template #features>
+            <scan-profile-configuration />
+          </template>
+        </section-layout>
+
+        <section-layout stacked class="gl-border-b-0" :heading="$options.i18n.securityTesting">
           <template #description>
             <p>
               <span>
@@ -184,23 +261,36 @@ export default {
 
               {{ $options.i18n.description }}
             </p>
-            <p v-if="canViewCiHistory">
-              <gl-link data-testid="security-view-history-link" :href="gitlabCiHistoryPath">{{
-                $options.i18n.configurationHistory
-              }}</gl-link>
-            </p>
-          </template>
-
-          <template #features>
-            <feature-card
-              v-for="feature in augmentedSecurityFeatures"
-              :id="feature.anchor"
-              :key="feature.type"
-              data-testid="security-testing-card"
-              :feature="feature"
+            <gl-button
+              v-if="canViewCiHistory"
+              icon="external-link"
+              :href="gitlabCiHistoryPath"
+              data-testid="security-view-history-link"
               class="gl-mb-6"
-              @error="onError"
-            />
+            >
+              {{ $options.i18n.configurationHistory }}
+            </gl-button>
+          </template>
+          <template #features>
+            <div
+              class="gl-grid gl-grid-cols-1 gl-items-stretch gl-gap-5 @lg/panel:gl-grid-cols-2"
+              data-testid="security-testing-features"
+            >
+              <div
+                v-for="feature in augmentedSecurityFeatures"
+                :key="feature.type"
+                class="md:gl-w-half gl-h-full gl-w-full"
+              >
+                <component
+                  :is="getComponentName(feature)"
+                  :id="feature.anchor"
+                  data-testid="security-testing-card"
+                  :feature="feature"
+                  class="gl-flex gl-h-full gl-flex-col"
+                  @error="onError"
+                />
+              </div>
+            </div>
           </template>
         </section-layout>
       </gl-tab>
@@ -209,21 +299,46 @@ export default {
         :title="$options.i18n.vulnerabilityManagement"
         query-param-value="vulnerability-management"
       >
-        <section-layout :heading="$options.i18n.securityTraining">
+        <section-layout
+          v-if="shouldShowRefsTracking"
+          stacked
+          :heading="__('Refs')"
+          data-testid="refs-tracking-section"
+        >
           <template #description>
             <p>
-              {{ $options.i18n.securityTrainingDescription }}
+              {{
+                __(
+                  'Track vulnerabilities in up to 16 refs (branches or tags). The default branch is tracked by default on the Security Dashboard and Vulnerability report and cannot be removed.',
+                )
+              }}
             </p>
             <p>
-              <gl-link :href="vulnerabilityTrainingDocsPath">{{
-                $options.i18n.securityTrainingDoc
+              {{
+                __(
+                  'When you remove tracking of a ref, GitLab deletes any vulnerabilities associated with that ref. You have the option to archive them before their deletion.',
+                )
+              }}
+            </p>
+            <p>
+              <gl-link :href="trackedRefsHelpPagePath">{{
+                __('Learn more about vulnerability management on non-default branches and tags.')
               }}</gl-link>
             </p>
           </template>
           <template #features>
-            <training-provider-list :security-training-enabled="securityTrainingEnabled" />
+            <ref-tracking-list />
           </template>
         </section-layout>
+        <training-section :is-feature-available-on-current-tier="securityTrainingEnabled" />
+        <vulnerability-archives v-if="shouldShowVulnerabilityArchives" />
+      </gl-tab>
+      <gl-tab v-if="shouldShowSecurityAttributes" query-param-value="security-attributes">
+        <template #title>
+          {{ s__('SecurityAttributes|Security attributes') }}
+          <gl-experiment-badge type="beta" class="gl-ml-2" />
+        </template>
+        <project-security-attributes-list />
       </gl-tab>
     </gl-tabs>
   </article>

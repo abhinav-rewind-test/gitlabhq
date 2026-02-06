@@ -93,7 +93,7 @@ export default {
             code_challenge_method: PKCE_CODE_CHALLENGE_DIGEST_ALGORITHM.short,
             client_id: this.clientId,
           },
-          oauthAuthorizeURL,
+          { url: oauthAuthorizeURL },
         ),
       );
 
@@ -113,6 +113,7 @@ export default {
         this.loading = true;
         const oauthAuthorizeURL = await this.getOauthAuthorizeURL();
 
+        // eslint-disable-next-line no-restricted-properties
         window.open(oauthAuthorizeURL, I18N_DEFAULT_SIGN_IN_BUTTON_TEXT, OAUTH_WINDOW_OPTIONS);
       } catch (e) {
         if (e.message) {
@@ -168,10 +169,8 @@ export default {
       this.$emit('error');
     },
     async getOAuthToken(code) {
-      const {
-        oauth_token_payload: oauthTokenPayload,
-        oauth_token_path: oauthTokenPath,
-      } = this.oauthMetadata;
+      const { oauth_token_payload: oauthTokenPayload, oauth_token_path: oauthTokenPath } =
+        this.oauthMetadata;
       const { data } = await fetchOAuthToken(oauthTokenPath, {
         ...oauthTokenPayload,
         code,

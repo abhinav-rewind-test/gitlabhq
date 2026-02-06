@@ -19,6 +19,7 @@ RSpec.describe Types::Repository::BlobType, feature_category: :source_code_manag
       :size,
       :raw_size,
       :raw_blob,
+      :base64_encoded_blob,
       :raw_text_blob,
       :file_type,
       :edit_blob_path,
@@ -41,6 +42,7 @@ RSpec.describe Types::Repository::BlobType, feature_category: :source_code_manag
       :rich_viewer,
       :plain_data,
       :can_modify_blob,
+      :can_modify_blob_with_web_ide,
       :can_current_user_push_to_branch,
       :archived,
       :ide_edit_path,
@@ -59,5 +61,12 @@ RSpec.describe Types::Repository::BlobType, feature_category: :source_code_manag
 
     expect(resolve_field(:raw_size, huge_blob)).to eq(size)
     expect(resolve_field(:size, huge_blob)).to eq(size)
+  end
+
+  it 'applies higher complexity to blob content fields' do
+    expect(described_class.fields['rawBlob'].complexity).to eq(2)
+    expect(described_class.fields['rawTextBlob'].complexity).to eq(2)
+    expect(described_class.fields['base64EncodedBlob'].complexity).to eq(3)
+    expect(described_class.fields['plainData'].complexity).to eq(5)
   end
 end

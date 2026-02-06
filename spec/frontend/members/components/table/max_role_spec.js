@@ -1,5 +1,5 @@
 import { GlCollapsibleListbox, GlListboxItem } from '@gitlab/ui';
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
+import { GlBreakpointInstance } from '@gitlab/ui/src/utils';
 import { mount } from '@vue/test-utils';
 import Vue, { nextTick } from 'vue';
 // eslint-disable-next-line no-restricted-imports
@@ -7,7 +7,7 @@ import Vuex from 'vuex';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import waitForPromises from 'helpers/wait_for_promises';
 import MaxRole from '~/members/components/table/max_role.vue';
-import { MEMBER_TYPES } from '~/members/constants';
+import { MEMBERS_TAB_TYPES } from '~/members/constants';
 import { guestOverageConfirmAction } from 'ee_else_ce/members/guest_overage_confirm_action';
 import { logError } from '~/lib/logger';
 import * as utils from 'ee_else_ce/members/utils';
@@ -36,7 +36,7 @@ describe('MaxRole', () => {
 
     return new Vuex.Store({
       modules: {
-        [MEMBER_TYPES.user]: { namespaced: true, actions },
+        [MEMBERS_TAB_TYPES.user]: { namespaced: true, actions },
       },
     });
   };
@@ -44,7 +44,7 @@ describe('MaxRole', () => {
   const createComponent = (propsData = {}, store = createStore()) => {
     wrapper = mount(MaxRole, {
       provide: {
-        namespace: MEMBER_TYPES.user,
+        namespace: MEMBERS_TAB_TYPES.user,
         group: {
           name: 'groupname',
           path: '/grouppath/',
@@ -120,7 +120,6 @@ describe('MaxRole', () => {
         expect(actions.updateMemberRole).toHaveBeenCalledWith(expect.any(Object), {
           memberId: member.id,
           accessLevel: 30,
-          memberRoleId: null,
         });
       });
 
@@ -192,20 +191,20 @@ describe('MaxRole', () => {
   });
 
   it('sets the dropdown alignment to right on mobile', async () => {
-    jest.spyOn(bp, 'isDesktop').mockReturnValue(false);
+    jest.spyOn(GlBreakpointInstance, 'isDesktop').mockReturnValue(false);
     createComponent();
 
     await nextTick();
 
-    expect(findListbox().props('placement')).toBe('right');
+    expect(findListbox().props('placement')).toBe('bottom-end');
   });
 
   it('sets the dropdown alignment to left on desktop', async () => {
-    jest.spyOn(bp, 'isDesktop').mockReturnValue(true);
+    jest.spyOn(GlBreakpointInstance, 'isDesktop').mockReturnValue(true);
     createComponent();
 
     await nextTick();
 
-    expect(findListbox().props('placement')).toBe('left');
+    expect(findListbox().props('placement')).toBe('bottom-start');
   });
 });

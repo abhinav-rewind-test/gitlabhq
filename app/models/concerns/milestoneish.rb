@@ -61,20 +61,20 @@ module Milestoneish
       .distinct
   end
 
-  def sorted_issues(user)
-    # This method is used on milestone view to filter opened assigned, opened unassigned and closed issues columns.
-    # We want a limit of DISPLAY_ISSUES_LIMIT for total issues present on all columns.
-    limited_ids =
-      issues_visible_to_user(user).sort_by_attribute('label_priority').limit(DISPLAY_ISSUES_LIMIT)
+  def milestone_issues(user)
+    work_items_finder_params = issues_finder_params
+    work_items_finder_params[:include_descendants] = true if work_items_finder_params[:include_subgroups]
+    work_items_finder_params[:issue_types] = %w[issue epic task incident]
 
-    Issue
-      .where(id: Issue.select(:id).from(limited_ids))
+    work_item_ids = ::WorkItems::WorkItemsFinder.new(user, work_items_finder_params)
+      .execute
+      .where(milestone_id: milestoneish_id)
+      .limit(DISPLAY_ISSUES_LIMIT)
+
+    WorkItem.where(id: work_item_ids.select(:id))
+      .reorder(id: :desc) # Re-apply the default sort from the finder
       .preload_associated_models
-      .sort_by_attribute('label_priority')
-  end
-
-  def sorted_merge_requests(user)
-    merge_requests_visible_to_user(user).sort_by_attribute('label_priority')
+      .preload(namespace: :route)
   end
 
   def merge_requests_visible_to_user(user)
@@ -86,6 +86,10 @@ module Milestoneish
 
   def upcoming?
     start_date && start_date.future?
+  end
+
+  def upcoming
+    upcoming? || false
   end
 
   def expires_at
@@ -138,3 +142,5 @@ module Milestoneish
     {}
   end
 end
+
+Milestoneish.prepend_mod_with('Milestoneish')

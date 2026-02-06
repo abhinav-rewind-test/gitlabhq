@@ -9,11 +9,15 @@ import {
   GROUPS_CATEGORY,
   MSG_ISSUES_ASSIGNED_TO_ME,
   MSG_ISSUES_IVE_CREATED,
-  MSG_MR_ASSIGNED_TO_ME,
-  MSG_MR_IM_REVIEWER,
-  MSG_MR_IVE_CREATED,
   MSG_IN_ALL_GITLAB,
+  MSG_MR_IM_WORKING_ON,
 } from '~/vue_shared/global_search/constants';
+
+import {
+  SCOPE_SEARCH_PROJECT,
+  SCOPE_SEARCH_GROUP,
+  SCOPE_SEARCH_ALL,
+} from '~/super_sidebar/components/global_search/command_palette/constants';
 
 export const MOCK_USERNAME = 'anyone';
 
@@ -51,7 +55,7 @@ export const MOCK_SUBGROUP = {
   path: `${MOCK_GROUP}/mock-subgroup`,
 };
 
-export const MOCK_SEARCH_QUERY = 'http://gitlab.com/search?search=test';
+export const MOCK_SEARCH_QUERY = '/search?search=test';
 
 export const MOCK_SEARCH = 'test';
 
@@ -90,21 +94,13 @@ export const MOCK_DEFAULT_SEARCH_OPTIONS = [
     href: `${MOCK_ISSUE_PATH}/?author_username=${MOCK_USERNAME}`,
   },
   {
-    text: MSG_MR_ASSIGNED_TO_ME,
-    href: `${MOCK_MR_PATH}/?assignee_username=${MOCK_USERNAME}`,
-  },
-  {
-    text: MSG_MR_IM_REVIEWER,
-    href: `${MOCK_MR_PATH}/?reviewer_username=${MOCK_USERNAME}`,
-  },
-  {
-    text: MSG_MR_IVE_CREATED,
-    href: `${MOCK_MR_PATH}/?author_username=${MOCK_USERNAME}`,
+    text: MSG_MR_IM_WORKING_ON,
+    href: MOCK_MR_PATH,
   },
 ];
 export const MOCK_SCOPED_SEARCH_OPTIONS_DEF = [
   {
-    text: 'scoped-in-project',
+    text: SCOPE_SEARCH_PROJECT,
     scope: MOCK_PROJECT.name,
     scopeCategory: PROJECTS_CATEGORY,
     icon: ICON_PROJECT,
@@ -115,7 +111,7 @@ export const MOCK_SCOPED_SEARCH_OPTIONS_DEF = [
     },
   },
   {
-    text: 'scoped-in-group',
+    text: SCOPE_SEARCH_GROUP,
     scope: MOCK_GROUP.name,
     scopeCategory: GROUPS_CATEGORY,
     icon: ICON_GROUP,
@@ -126,7 +122,7 @@ export const MOCK_SCOPED_SEARCH_OPTIONS_DEF = [
     },
   },
   {
-    text: 'scoped-in-all',
+    text: SCOPE_SEARCH_ALL,
     description: MSG_IN_ALL_GITLAB,
     href: MOCK_ALL_PATH,
     extraAttrs: {
@@ -137,7 +133,7 @@ export const MOCK_SCOPED_SEARCH_OPTIONS_DEF = [
 ];
 export const MOCK_SCOPED_SEARCH_OPTIONS = [
   {
-    text: 'scoped-in-project',
+    text: SCOPE_SEARCH_PROJECT,
     scope: MOCK_PROJECT.name,
     scopeCategory: PROJECTS_CATEGORY,
     icon: ICON_PROJECT,
@@ -151,7 +147,7 @@ export const MOCK_SCOPED_SEARCH_OPTIONS = [
     url: MOCK_PROJECT_LONG.path,
   },
   {
-    text: 'scoped-in-group',
+    text: SCOPE_SEARCH_GROUP,
     scope: MOCK_GROUP.name,
     scopeCategory: GROUPS_CATEGORY,
     icon: ICON_GROUP,
@@ -165,7 +161,7 @@ export const MOCK_SCOPED_SEARCH_OPTIONS = [
     url: MOCK_SUBGROUP.path,
   },
   {
-    text: 'scoped-in-all',
+    text: SCOPE_SEARCH_ALL,
     description: MSG_IN_ALL_GITLAB,
     url: MOCK_ALL_PATH,
   },
@@ -174,21 +170,21 @@ export const MOCK_SCOPED_SEARCH_OPTIONS = [
 export const MOCK_SCOPED_SEARCH_GROUP = {
   items: [
     {
-      text: 'scoped-in-project',
+      text: SCOPE_SEARCH_PROJECT,
       scope: MOCK_PROJECT.name,
       scopeCategory: PROJECTS_CATEGORY,
       icon: ICON_PROJECT,
       href: MOCK_PROJECT.path,
     },
     {
-      text: 'scoped-in-group',
+      text: SCOPE_SEARCH_GROUP,
       scope: MOCK_GROUP.name,
       scopeCategory: GROUPS_CATEGORY,
       icon: ICON_GROUP,
       href: MOCK_GROUP.path,
     },
     {
-      text: 'scoped-in-all',
+      text: SCOPE_SEARCH_ALL,
       description: MSG_IN_ALL_GITLAB,
       href: MOCK_ALL_PATH,
     },
@@ -221,6 +217,41 @@ export const MOCK_AUTOCOMPLETE_OPTIONS_RES = [
     url: 'project/2',
   },
   {
+    category: 'Users',
+    id: 12457737,
+    value: 'Madelein van Niekerk',
+    label: 'maddievn',
+    url: '/maddievn',
+    avatar_url: '/uploads/-/system/user/avatar/12457737/avatar.png',
+  },
+  {
+    category: 'Users',
+    id: 18478596,
+    value: 'Ben Madden',
+    label: 'benmadden',
+    url: '/benmadden',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/85562f816f3da990011dfe131bd5d0e1b976f8fcc16416130963799aa8d08563?s=80\u0026d=identicon',
+  },
+  {
+    category: 'Users',
+    id: 13986091,
+    value: 'Dean Kadiev',
+    label: 'dean.kadiev',
+    url: '/dean.kadiev',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/544ddc3cad1e42783ddf2f3c951b84656b16f29ef6cdf6d42a9ad1b09fc3558b?s=80\u0026d=identicon',
+  },
+  {
+    category: 'Users',
+    id: 26276383,
+    value: 'Chris Madden',
+    label: 'chris1062',
+    url: '/chris1062',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/bfac33d5df10dd93d581f067403dab052362f300301bbc9d0e855840b3304b12?s=80\u0026d=identicon',
+  },
+  {
     category: 'Help',
     label: 'GitLab Help',
     url: 'help/gitlab',
@@ -251,6 +282,41 @@ export const MOCK_AUTOCOMPLETE_OPTIONS = [
     value: 'MockProject2',
     url: 'project/2',
     avatar_url: '/project/avatar/2/avatar.png',
+  },
+  {
+    category: 'Users',
+    id: 12457737,
+    value: 'Madelein van Niekerk',
+    label: 'maddievn',
+    url: '/maddievn',
+    avatar_url: '/uploads/-/system/user/avatar/12457737/avatar.png',
+  },
+  {
+    category: 'Users',
+    id: 18478596,
+    value: 'Ben Madden',
+    label: 'benmadden',
+    url: '/benmadden',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/85562f816f3da990011dfe131bd5d0e1b976f8fcc16416130963799aa8d08563?s=80\u0026d=identicon',
+  },
+  {
+    category: 'Users',
+    id: 13986091,
+    value: 'Dean Kadiev',
+    label: 'dean.kadiev',
+    url: '/dean.kadiev',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/544ddc3cad1e42783ddf2f3c951b84656b16f29ef6cdf6d42a9ad1b09fc3558b?s=80\u0026d=identicon',
+  },
+  {
+    category: 'Users',
+    id: 26276383,
+    value: 'Chris Madden',
+    label: 'chris1062',
+    url: '/chris1062',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/bfac33d5df10dd93d581f067403dab052362f300301bbc9d0e855840b3304b12?s=80\u0026d=identicon',
   },
   {
     category: 'Help',
@@ -317,6 +383,82 @@ export const MOCK_GROUPED_AUTOCOMPLETE_OPTIONS = [
         extraAttrs: {
           'data-track-action': 'click_command_palette_item',
           'data-track-label': 'projects',
+        },
+      },
+    ],
+  },
+  {
+    name: 'Users',
+    items: [
+      {
+        id: 12457737,
+        category: 'Users',
+        value: 'Madelein van Niekerk',
+        label: 'maddievn',
+        text: 'Madelein van Niekerk',
+        href: '/maddievn',
+        avatar_url: '/uploads/-/system/user/avatar/12457737/avatar.png',
+        avatar_size: 16,
+        namespace: 'maddievn',
+        entity_id: 12457737,
+        entity_name: 'maddievn',
+        extraAttrs: {
+          'data-track-action': 'click_command_palette_item',
+          'data-track-label': 'users',
+        },
+      },
+      {
+        id: 18478596,
+        category: 'Users',
+        value: 'Ben Madden',
+        label: 'benmadden',
+        text: 'Ben Madden',
+        href: '/benmadden',
+        avatar_url:
+          'https://secure.gravatar.com/avatar/85562f816f3da990011dfe131bd5d0e1b976f8fcc16416130963799aa8d08563?s=80&d=identicon',
+        avatar_size: 16,
+        namespace: 'benmadden',
+        entity_id: 18478596,
+        entity_name: 'benmadden',
+        extraAttrs: {
+          'data-track-action': 'click_command_palette_item',
+          'data-track-label': 'users',
+        },
+      },
+      {
+        id: 13986091,
+        category: 'Users',
+        value: 'Dean Kadiev',
+        label: 'dean.kadiev',
+        text: 'Dean Kadiev',
+        href: '/dean.kadiev',
+        avatar_url:
+          'https://secure.gravatar.com/avatar/544ddc3cad1e42783ddf2f3c951b84656b16f29ef6cdf6d42a9ad1b09fc3558b?s=80&d=identicon',
+        avatar_size: 16,
+        namespace: 'dean.kadiev',
+        entity_id: 13986091,
+        entity_name: 'dean.kadiev',
+        extraAttrs: {
+          'data-track-action': 'click_command_palette_item',
+          'data-track-label': 'users',
+        },
+      },
+      {
+        id: 26276383,
+        category: 'Users',
+        value: 'Chris Madden',
+        label: 'chris1062',
+        text: 'Chris Madden',
+        href: '/chris1062',
+        avatar_url:
+          'https://secure.gravatar.com/avatar/bfac33d5df10dd93d581f067403dab052362f300301bbc9d0e855840b3304b12?s=80&d=identicon',
+        avatar_size: 16,
+        namespace: 'chris1062',
+        entity_id: 26276383,
+        entity_name: 'chris1062',
+        extraAttrs: {
+          'data-track-action': 'click_command_palette_item',
+          'data-track-label': 'users',
         },
       },
     ],
@@ -390,6 +532,77 @@ export const MOCK_SORTED_AUTOCOMPLETE_OPTIONS = [
     extraAttrs: {
       'data-track-action': 'click_command_palette_item',
       'data-track-label': 'projects',
+    },
+  },
+  {
+    id: 12457737,
+    category: 'Users',
+    value: 'Madelein van Niekerk',
+    label: 'maddievn',
+    text: 'Madelein van Niekerk',
+    href: '/maddievn',
+    avatar_url: '/uploads/-/system/user/avatar/12457737/avatar.png',
+    avatar_size: 16,
+    namespace: 'maddievn',
+    entity_id: 12457737,
+    entity_name: 'maddievn',
+    extraAttrs: {
+      'data-track-action': 'click_command_palette_item',
+      'data-track-label': 'users',
+    },
+  },
+  {
+    id: 18478596,
+    category: 'Users',
+    value: 'Ben Madden',
+    label: 'benmadden',
+    text: 'Ben Madden',
+    href: '/benmadden',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/85562f816f3da990011dfe131bd5d0e1b976f8fcc16416130963799aa8d08563?s=80&d=identicon',
+    avatar_size: 16,
+    namespace: 'benmadden',
+    entity_id: 18478596,
+    entity_name: 'benmadden',
+    extraAttrs: {
+      'data-track-action': 'click_command_palette_item',
+      'data-track-label': 'users',
+    },
+  },
+  {
+    id: 13986091,
+    category: 'Users',
+    value: 'Dean Kadiev',
+    label: 'dean.kadiev',
+    text: 'Dean Kadiev',
+    href: '/dean.kadiev',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/544ddc3cad1e42783ddf2f3c951b84656b16f29ef6cdf6d42a9ad1b09fc3558b?s=80&d=identicon',
+    avatar_size: 16,
+    namespace: 'dean.kadiev',
+    entity_id: 13986091,
+    entity_name: 'dean.kadiev',
+    extraAttrs: {
+      'data-track-action': 'click_command_palette_item',
+      'data-track-label': 'users',
+    },
+  },
+  {
+    id: 26276383,
+    category: 'Users',
+    value: 'Chris Madden',
+    label: 'chris1062',
+    text: 'Chris Madden',
+    href: '/chris1062',
+    avatar_url:
+      'https://secure.gravatar.com/avatar/bfac33d5df10dd93d581f067403dab052362f300301bbc9d0e855840b3304b12?s=80&d=identicon',
+    avatar_size: 16,
+    namespace: 'chris1062',
+    entity_id: 26276383,
+    entity_name: 'chris1062',
+    extraAttrs: {
+      'data-track-action': 'click_command_palette_item',
+      'data-track-label': 'users',
     },
   },
   {

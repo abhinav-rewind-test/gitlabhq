@@ -26,10 +26,7 @@ export default {
     };
   },
   computed: {
-    ...mapState(['userLists', 'alerts', 'count', 'pageInfo', 'isLoading', 'hasError', 'options']),
-    canUserRotateToken() {
-      return this.rotateInstanceIdPath !== '';
-    },
+    ...mapState(['userLists', 'alerts', 'count', 'pageInfo', 'isLoading', 'hasError']),
     shouldRenderPagination() {
       return (
         !this.isLoading &&
@@ -43,9 +40,6 @@ export default {
     },
     shouldRenderErrorState() {
       return this.hasError && !this.isLoading;
-    },
-    shouldRenderUserLists() {
-      return !this.isLoading && this.userLists.length > 0 && !this.hasError;
     },
     hasNewPath() {
       return !isEmpty(this.newUserListPath);
@@ -75,22 +69,22 @@ export default {
 </script>
 <template>
   <div>
-    <div class="gl-display-flex gl-flex-direction-column">
-      <div class="gl-display-flex gl-flex-direction-column gl-md-display-none!">
+    <div class="gl-flex gl-flex-col">
+      <div class="gl-flex gl-flex-col @md/panel:!gl-hidden">
         <gl-button v-if="hasNewPath" :href="newUserListPath" variant="confirm">
           {{ s__('UserLists|New user list') }}
         </gl-button>
       </div>
       <div
-        class="gl-display-flex gl-align-items-baseline gl-flex-direction-column gl-md-flex-direction-row gl-justify-content-space-between gl-mt-6"
+        class="gl-mt-6 gl-flex gl-flex-col gl-items-baseline gl-justify-between @md/panel:gl-flex-row"
       >
-        <div class="gl-display-flex gl-align-items-center">
-          <h2 class="gl-font-size-h2 gl-my-0">
+        <div class="gl-flex gl-items-center">
+          <h2 class="gl-my-0 gl-text-size-h2">
             {{ s__('UserLists|User Lists') }}
           </h2>
           <gl-badge v-if="count" class="gl-ml-4">{{ count }}</gl-badge>
         </div>
-        <div class="gl-display-flex gl-align-items-center gl-justify-content-end">
+        <div class="gl-flex gl-items-center gl-justify-end">
           <gl-button v-if="hasNewPath" :href="newUserListPath" variant="confirm">
             {{ s__('UserLists|New user list') }}
           </gl-button>
@@ -107,7 +101,7 @@ export default {
         :empty-description="
           s__('UserLists|User lists allow you to define a set of users to use with Feature Flags.')
         "
-        @dismissAlert="clearAlert"
+        @dismiss-alert="clearAlert"
       >
         <user-lists-table :user-lists="userLists" @delete="deleteUserList" />
       </empty-state>

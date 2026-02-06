@@ -1,14 +1,11 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Sidekiq logging
 ---
 
-# Sidekiq logging
-
 ## Worker context
-
-> - [Introduced](https://gitlab.com/gitlab-com/gl-infra/scalability/-/issues/9) in GitLab 12.8.
 
 To have some more information about workers in the logs, we add
 [metadata to the jobs in the form of an `ApplicationContext`](../logging.md#logging-context-metadata-through-rails-or-grape-requests).
@@ -48,7 +45,7 @@ Cron workers themselves run instance wide, so they aren't scoped to
 users, namespaces, projects, or other resources that should be added to
 the context.
 
-However, they often schedule other jobs that _do_ require context.
+However, they often run services or schedule other jobs that do require context.
 
 That is why there needs to be an indication of context somewhere in
 the worker. This can be done by using one of the following methods
@@ -61,7 +58,7 @@ somewhere within the worker:
        deletion_cutoff = Gitlab::CurrentSettings
                            .deletion_adjourned_period.days.ago.to_date
        projects = Project.with_route.with_namespace
-                    .aimed_for_deletion(deletion_cutoff)
+                    .marked_for_deletion_before(deletion_cutoff)
 
        projects.find_each(batch_size: 100).with_index do |project, index|
          delay = index * INTERVAL
@@ -127,7 +124,7 @@ blocks:
 
 ## Arguments logging
 
-As of GitLab 13.6, Sidekiq job arguments are logged by default, unless [`SIDEKIQ_LOG_ARGUMENTS`](../../administration/sidekiq/sidekiq_troubleshooting.md#log-arguments-to-sidekiq-jobs)
+Sidekiq job arguments are logged by default, unless [`SIDEKIQ_LOG_ARGUMENTS`](../../administration/sidekiq/sidekiq_troubleshooting.md#log-arguments-to-sidekiq-jobs)
 is disabled.
 
 By default, the only arguments logged are numeric arguments, because

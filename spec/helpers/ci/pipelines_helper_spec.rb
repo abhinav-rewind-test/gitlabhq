@@ -5,6 +5,8 @@ require 'spec_helper'
 RSpec.describe Ci::PipelinesHelper, feature_category: :continuous_integration do
   include Devise::Test::ControllerHelpers
 
+  let_it_be(:project) { create(:project) }
+
   describe 'has_gitlab_ci?' do
     using RSpec::Parameterized::TableSyntax
 
@@ -25,8 +27,6 @@ RSpec.describe Ci::PipelinesHelper, feature_category: :continuous_integration do
   end
 
   describe '#pipelines_list_data' do
-    let_it_be(:project) { create(:project) }
-
     subject(:data) { helper.pipelines_list_data(project, 'list_url') }
 
     before do
@@ -34,23 +34,27 @@ RSpec.describe Ci::PipelinesHelper, feature_category: :continuous_integration do
     end
 
     it 'has the expected keys' do
-      expect(subject.keys).to match_array([:endpoint,
-                                           :project_id,
-                                           :default_branch_name,
-                                           :params,
-                                           :artifacts_endpoint,
-                                           :artifacts_endpoint_placeholder,
-                                           :pipeline_schedules_path,
-                                           :can_create_pipeline,
-                                           :new_pipeline_path,
-                                           :ci_lint_path,
-                                           :reset_cache_path,
-                                           :has_gitlab_ci,
-                                           :pipeline_editor_path,
-                                           :suggested_ci_templates,
-                                           :full_path,
-                                           :visibility_pipeline_id_type,
-                                           :show_jenkins_ci_prompt])
+      expect(subject.keys).to include(
+        :endpoint,
+        :project_id,
+        :default_branch_name,
+        :params,
+        :artifacts_endpoint,
+        :artifacts_endpoint_placeholder,
+        :pipeline_schedules_path,
+        :can_create_pipeline,
+        :new_pipeline_path,
+        :reset_cache_path,
+        :has_gitlab_ci,
+        :pipeline_editor_path,
+        :suggested_ci_templates,
+        :full_path,
+        :visibility_pipeline_id_type,
+        :show_jenkins_ci_prompt,
+        :pipelines_analytics_path,
+        :uses_external_config,
+        :empty_state_illustration_path
+      )
     end
   end
 
@@ -109,6 +113,78 @@ RSpec.describe Ci::PipelinesHelper, feature_category: :continuous_integration do
 
     with_them do
       it { expect(subject).to eq(result) }
+    end
+  end
+
+  describe '#new_pipeline_data' do
+    subject(:data) { helper.new_pipeline_data(project) }
+
+    it 'has the expected keys' do
+      expect(subject.keys).to include(
+        :project_id,
+        :pipelines_path,
+        :default_branch,
+        :pipeline_editor_path,
+        :can_view_pipeline_editor,
+        :ref_param,
+        :var_param,
+        :file_param,
+        :project_path,
+        :project_refs_endpoint,
+        :settings_link,
+        :max_warnings,
+        :user_role,
+        :can_set_pipeline_variables
+      )
+    end
+
+    describe 'user_role' do
+      context 'when there is no current user' do
+        it 'is nil' do
+          expect(helper.new_pipeline_data(project)[:user_role]).to be_nil
+        end
+      end
+
+      context 'when there is a current_user' do
+        let_it_be(:user) { create(:user) }
+
+        before_all do
+          project.add_developer(user)
+        end
+
+        before do
+          sign_in(user)
+        end
+
+        it "returns the human readable access level that the current user has in the pipeline's project" do
+          expect(helper.new_pipeline_data(project)[:user_role]).to eq('Developer')
+        end
+      end
+    end
+  end
+
+  describe '#uses_external_config?' do
+    using RSpec::Parameterized::TableSyntax
+
+    subject(:uses_external_config) { helper.uses_external_config?(project) }
+
+    let(:project_config) { instance_double(Gitlab::Ci::ProjectConfig, external?: is_external) }
+
+    before do
+      allow(Gitlab::Ci::ProjectConfig).to receive(:new)
+                                            .with(project: project, sha: nil)
+                                            .and_return(project_config)
+    end
+
+    where(:is_external, :expected_result) do
+      true | true
+      false | false
+    end
+
+    with_them do
+      it 'returns the expected result' do
+        expect(uses_external_config).to be expected_result
+      end
     end
   end
 end

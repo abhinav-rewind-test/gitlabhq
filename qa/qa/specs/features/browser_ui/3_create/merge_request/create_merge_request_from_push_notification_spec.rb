@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Create' do
-    describe 'new merge request from the event notification', :reliable,
-      product_group: :code_review do
+  RSpec.describe 'Create', feature_category: :code_review_workflow do
+    describe 'new merge request from the event notification' do
       let(:branch_name) { "merge-request-test-#{SecureRandom.hex(8)}" }
       let(:title) { "Merge from push event notification test #{SecureRandom.hex(8)}" }
       let(:project) { create(:project, :with_readme) }
@@ -14,6 +13,10 @@ module QA
 
       it(
         'after a push via the git CLI creates a merge request',
+        quarantine: {
+          issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/18790',
+          type: :flaky
+        },
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/360489'
       ) do
         Resource::Repository::ProjectPush.fabricate! do |push|
@@ -36,7 +39,7 @@ module QA
       it(
         'after a push via the API creates a merge request',
         quarantine: {
-          issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/403182',
+          issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9497',
           type: :flaky
         },
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/360490'

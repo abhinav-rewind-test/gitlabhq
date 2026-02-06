@@ -1,4 +1,4 @@
-import { GlIcon, GlToggle } from '@gitlab/ui';
+import { GlIcon, GlToggle, GlTableLite } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
@@ -54,6 +54,20 @@ const getDefaultProps = () => ({
       name: 'flag without description',
       description: '',
     },
+    {
+      id: 3,
+      iid: 3,
+      active: true,
+      name: 'flag with invalid strategy',
+      scopes: [],
+      strategies: [
+        {
+          name: ROLLOUT_STRATEGY_GITLAB_USER_LIST,
+          parameters: {},
+          scopes: [{ environment_scope: '*' }],
+        },
+      ],
+    },
   ],
 });
 
@@ -75,6 +89,8 @@ describe('Feature flag table', () => {
     });
   };
 
+  const findTable = () => wrapper.findComponent(GlTableLite);
+
   beforeEach(() => {
     props = getDefaultProps();
     createWrapper(props, {
@@ -94,16 +110,12 @@ describe('Feature flag table', () => {
     });
 
     it('Should render a table', () => {
-      expect(wrapper.classes('table-holder')).toBe(true);
-    });
-
-    it('Should render rows', () => {
-      expect(wrapper.find('.gl-responsive-table-row').exists()).toBe(true);
+      expect(findTable().exists()).toBe(true);
     });
 
     it('should render an ID column', () => {
-      expect(wrapper.find('.js-feature-flag-id').exists()).toBe(true);
-      expect(trimText(wrapper.find('.js-feature-flag-id').text())).toEqual('^1');
+      expect(wrapper.findByTestId('feature-flag-id').exists()).toBe(true);
+      expect(trimText(wrapper.findByTestId('feature-flag-id').text())).toEqual('^1');
     });
 
     it('Should render a status column', () => {
@@ -114,7 +126,7 @@ describe('Feature flag table', () => {
     });
 
     it('Should render a feature flag column', () => {
-      expect(wrapper.find('.js-feature-flag-title').exists()).toBe(true);
+      expect(wrapper.findByTestId('feature-flag-title').exists()).toBe(true);
       expect(trimText(wrapper.find('.feature-flag-name').text())).toEqual('flag name');
     });
 
@@ -125,10 +137,16 @@ describe('Feature flag table', () => {
     });
 
     it('should render an actions column', () => {
-      expect(wrapper.find('.table-action-buttons').exists()).toBe(true);
-      expect(wrapper.find('.js-feature-flag-delete-button').exists()).toBe(true);
-      expect(wrapper.find('.js-feature-flag-edit-button').exists()).toBe(true);
-      expect(wrapper.find('.js-feature-flag-edit-button').attributes('href')).toEqual('edit/path');
+      expect(wrapper.findByTestId('flags-table-action-buttons').exists()).toBe(true);
+      expect(wrapper.findByTestId('feature-flag-delete-button').exists()).toBe(true);
+      expect(wrapper.findByTestId('feature-flag-delete-button').attributes('aria-label')).toBe(
+        'Delete flag name',
+      );
+      expect(wrapper.findByTestId('feature-flag-edit-button').exists()).toBe(true);
+      expect(wrapper.findByTestId('feature-flag-edit-button').attributes()).toMatchObject({
+        'aria-label': 'Edit flag name',
+        href: 'edit/path',
+      });
     });
   });
 
@@ -142,8 +160,7 @@ describe('Feature flag table', () => {
     it(`${haveInfoIcon ? 'displays' : "doesn't display"} an information icon`, () => {
       expect(
         wrapper
-          .findByTestId(featureFlag.id)
-          .find('.feature-flag-description')
+          .findByTestId(`feature-flag-description-${featureFlag.id}`)
           .findComponent(GlIcon)
           .exists(),
       ).toBe(haveInfoIcon);
@@ -151,11 +168,9 @@ describe('Feature flag table', () => {
 
     if (haveInfoIcon) {
       it('includes a tooltip', () => {
-        const icon = wrapper
-          .findByTestId(featureFlag.id)
-          .find('.feature-flag-description')
-          .findComponent(GlIcon);
-        const tooltip = getBinding(icon.element, 'gl-tooltip');
+        const iconContainer = wrapper.findByTestId(`feature-flag-description-${featureFlag.id}`);
+        const button = iconContainer.find('button');
+        const tooltip = getBinding(button.element, 'gl-tooltip');
 
         expect(tooltip).toBeDefined();
         expect(tooltip.value).toBe(featureFlag.description);
@@ -174,10 +189,10 @@ describe('Feature flag table', () => {
       spy = mockTracking('_category_', toggle.element, jest.spyOn);
     });
 
-    it('should have a toggle', () => {
+    it('should have a toggle with descriptive label', () => {
       expect(toggle.exists()).toBe(true);
       expect(toggle.props()).toMatchObject({
-        label: FeatureFlagsTable.i18n.toggleLabel,
+        label: 'flag name feature flag status',
         value: true,
       });
     });
@@ -222,14 +237,18 @@ describe('Feature flag table', () => {
   });
 
   it('shows the name of a user list for user list', () => {
-    expect(labels.at(3).text()).toContain('User List - test list');
+    expect(labels.at(3).text()).toBe('User List - test list: All Environments');
+  });
+
+  it('shows the empty name of a user list if it is not provided', () => {
+    expect(labels.at(4).text()).toBe('User List: All Environments');
   });
 
   it('renders a feature flag without an iid', () => {
     delete props.featureFlags[0].iid;
     createWrapper(props);
 
-    expect(wrapper.find('.js-feature-flag-id').exists()).toBe(true);
-    expect(trimText(wrapper.find('.js-feature-flag-id').text())).toBe('');
+    expect(wrapper.findByTestId('feature-flag-id').exists()).toBe(true);
+    expect(trimText(wrapper.findByTestId('feature-flag-id').text())).toBe('');
   });
 });

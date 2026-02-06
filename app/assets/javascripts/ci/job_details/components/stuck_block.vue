@@ -1,11 +1,12 @@
 <script>
 import { GlAlert, GlBadge, GlLink, GlSprintf } from '@gitlab/ui';
 import { s__ } from '~/locale';
-import { DOCS_URL } from 'jh_else_ce/lib/utils/url_utility';
+import { DOCS_URL } from '~/constants';
 /**
  * Renders Stuck Runners block for job's view.
  */
 export default {
+  name: 'StuckBlock',
   components: {
     GlAlert,
     GlBadge,
@@ -68,17 +69,13 @@ export default {
     <p class="gl-mb-0" :data-testid="stuckData.dataTestId">
       <gl-sprintf :message="stuckData.text">
         <template #link="{ content }">
-          <a
-            class="gl-display-inline-block"
-            :href="protectedBranchSettingsDocsLink"
-            target="_blank"
-          >
+          <a class="gl-inline-block" :href="protectedBranchSettingsDocsLink" target="_blank">
             {{ content }}
           </a>
         </template>
       </gl-sprintf>
       <template v-if="stuckData.showTags">
-        <gl-badge v-for="tag in tags" :key="tag" size="sm" variant="info">
+        <gl-badge v-for="tag in tags" :key="tag" variant="info">
           {{ tag }}
         </gl-badge>
       </template>

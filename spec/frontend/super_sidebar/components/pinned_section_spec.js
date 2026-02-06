@@ -26,8 +26,11 @@ describe('PinnedSection component', () => {
   const createWrapper = (props = {}) => {
     wrapper = mountExtended(PinnedSection, {
       propsData: {
-        items: [{ title: 'Pin 1', href: '/page1' }],
+        items: [{ id: 'pin1', title: 'Pin 1', href: '/page1' }],
         ...props,
+      },
+      stubs: {
+        Draggable: true,
       },
     });
   };

@@ -4,16 +4,16 @@ module Resolvers
   class ContainerRepositoriesResolver < BaseResolver
     include ::Mutations::PackageEventable
 
-    type Types::ContainerRepositoryType, null: true
+    type Types::ContainerRegistry::ContainerRepositoryType, null: true
 
     argument :name, GraphQL::Types::String,
-              required: false,
-              description: 'Filter the container repositories by their name.'
+      required: false,
+      description: 'Filter the container repositories by their name.'
 
-    argument :sort, Types::ContainerRepositorySortEnum,
-             description: 'Sort container repositories by this criteria.',
-             required: false,
-             default_value: :created_desc
+    argument :sort, Types::ContainerRegistry::ContainerRepositorySortEnum,
+      description: 'Sort container repositories by the criteria.',
+      required: false,
+      default_value: :created_desc
 
     def resolve(name: nil, sort: nil)
       ContainerRepositoriesFinder.new(user: current_user, subject: object, params: { name: name, sort: sort })

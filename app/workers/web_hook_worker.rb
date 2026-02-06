@@ -17,14 +17,16 @@ class WebHookWorker
     hook = WebHook.find_by_id(hook_id)
     return unless hook
 
-    data = data.with_indifferent_access
+    data = Gitlab::WebHooks.prepare_data(data)
     params.symbolize_keys!
 
     # Before executing the hook, reapply any recursion detection UUID that was initially
     # present in the request header so the hook can pass this same header value in its request.
     Gitlab::WebHooks::RecursionDetection.set_request_uuid(params[:recursion_detection_request_uuid])
 
-    WebHookService.new(hook, data, hook_name, jid).execute.tap do |response|
+    idempotency_key = params[:idempotency_key]
+
+    WebHookService.new(hook, data, hook_name, jid, idempotency_key: idempotency_key).execute.tap do |response|
       log_extra_metadata_on_done(:response_status, response.status)
       log_extra_metadata_on_done(:http_status, response[:http_status])
     end

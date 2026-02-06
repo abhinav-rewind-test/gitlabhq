@@ -1,41 +1,37 @@
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
-import createDefaultClient from '~/lib/graphql';
+import { apolloProvider } from '~/graphql_shared/issuable_client';
 import { parseBoolean } from '~/lib/utils/common_utils';
-import WorkItemsListApp from 'ee_else_ce/work_items/list/components/work_items_list_app.vue';
+import JiraIssuesImportStatusApp from './components/jira_issues_import_status_app.vue';
 
-export const mountWorkItemsListApp = () => {
-  const el = document.querySelector('.js-work-items-list-root');
+export function initJiraIssuesImportStatusRoot() {
+  const el = document.querySelector('.js-jira-issues-import-status-root');
 
   if (!el) {
     return null;
   }
 
-  Vue.use(VueApollo);
+  const { issuesPath, projectPath } = el.dataset;
+  const canEdit = parseBoolean(el.dataset.canEdit);
+  const isJiraConfigured = parseBoolean(el.dataset.isJiraConfigured);
 
-  const {
-    fullPath,
-    hasEpicsFeature,
-    hasIssuableHealthStatusFeature,
-    hasIssueWeightsFeature,
-    initialSort,
-    isSignedIn,
-  } = el.dataset;
+  if (!isJiraConfigured || !canEdit) {
+    return null;
+  }
+
+  Vue.use(VueApollo);
 
   return new Vue({
     el,
-    name: 'WorkItemsListRoot',
-    apolloProvider: new VueApollo({
-      defaultClient: createDefaultClient(),
-    }),
-    provide: {
-      fullPath,
-      hasEpicsFeature: parseBoolean(hasEpicsFeature),
-      hasIssuableHealthStatusFeature: parseBoolean(hasIssuableHealthStatusFeature),
-      hasIssueWeightsFeature: parseBoolean(hasIssueWeightsFeature),
-      initialSort,
-      isSignedIn: parseBoolean(isSignedIn),
+    name: 'JiraIssuesImportStatusRoot',
+    apolloProvider,
+    render(createComponent) {
+      return createComponent(JiraIssuesImportStatusApp, {
+        props: {
+          issuesPath,
+          projectPath,
+        },
+      });
     },
-    render: (createComponent) => createComponent(WorkItemsListApp),
   });
-};
+}

@@ -7,9 +7,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
   let_it_be(:target_project) { create(:project, name: 'project', namespace: create(:namespace, name: 'my')) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project) }
 
-  before_all do
-    create(:ci_pipeline_variable, pipeline: pipeline, key: 'PVAR1', value: 'PVAL1')
-  end
+  let_it_be(:public_project) { create(:project, :public) }
 
   let(:bridge) do
     create(:ci_bridge, :variables, status: :created, options: options, pipeline: pipeline)
@@ -19,11 +17,13 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
     { trigger: { project: 'my/project', branch: 'master' } }
   end
 
+  before_all do
+    create(:ci_pipeline_variable, pipeline: pipeline, key: 'PVAR1', value: 'PVAL1')
+  end
+
   it 'has one sourced pipeline' do
     expect(bridge).to have_one(:sourced_pipeline)
   end
-
-  it_behaves_like 'has ID tokens', :ci_bridge
 
   it_behaves_like 'a retryable job'
 
@@ -50,7 +50,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
     end
 
     it 'returns an empty TagList for tag_list' do
-      expect(bridge.tag_list).to be_a(ActsAsTaggableOn::TagList)
+      expect(bridge.tag_list).to be_a(Gitlab::Ci::Tags::TagList)
     end
   end
 
@@ -77,6 +77,80 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
     it 'returns false' do
       expect(bridge.failure_reason).to eq('reached_max_descendant_pipelines_depth')
       expect(bridge.retryable?).to eq(false)
+    end
+  end
+
+  describe '.clone_accessors' do
+    it 'returns the correct list of attributes to clone' do
+      expected_accessors = %i[
+        pipeline project ref tag name allow_failure stage_idx
+        when environment description needs_attributes
+        scheduling_type ci_stage partition_id resource_group
+      ]
+
+      expect(described_class.clone_accessors).to eq(expected_accessors)
+    end
+  end
+
+  describe '#downstream_pipeline_params' do
+    it 'returns an empty hash' do
+      expect(bridge.downstream_pipeline_params).to eq({})
+    end
+
+    context 'when there is a downstream project present' do
+      it 'returns cross project params' do
+        downstream_project = create(:project)
+        options = { trigger: { project: 'our/project', inputs: {} } }
+        bridge = create(:ci_bridge, status: :created, options: options, downstream: downstream_project)
+
+        cross_project_params = {
+          project: downstream_project,
+          source: :pipeline,
+          target_revision: {
+            ref: downstream_project.default_branch,
+            variables_attributes: []
+          },
+          execute_params: {
+            ignore_skip_ci: true,
+            bridge: bridge,
+            inputs: {}
+          }
+        }
+
+        expect(bridge.downstream_pipeline_params).to eq(cross_project_params)
+      end
+    end
+
+    context 'when a child pipeline is triggered' do
+      let(:options) do
+        {
+          trigger: {
+            include: 'path/to/child.yml'
+          }
+        }
+      end
+
+      it 'returns child params' do
+        child_params = {
+          project: project,
+          source: :parent_pipeline,
+          target_revision: {
+            ref: pipeline.ref,
+            checkout_sha: pipeline.sha,
+            before: pipeline.before_sha,
+            source_sha: pipeline.source_sha,
+            target_sha: pipeline.target_sha,
+            variables_attributes: bridge.downstream_variables
+          },
+          execute_params: {
+            ignore_skip_ci: true,
+            bridge: bridge,
+            merge_request: pipeline.merge_request
+          }
+        }
+
+        expect(bridge.downstream_pipeline_params).to eq(child_params)
+      end
     end
   end
 
@@ -110,14 +184,93 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       expect(bridge.scoped_variables.map { |v| v[:key] }).to include(*variables)
     end
 
-    context 'when bridge has dependency which has dotenv variable' do
+    context 'when bridge has dependency which has dotenv variable in the same project' do
       let(:test) { create(:ci_build, pipeline: pipeline, stage_idx: 0) }
       let(:bridge) { create(:ci_bridge, pipeline: pipeline, stage_idx: 1, options: { dependencies: [test.name] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: test, accessibility: accessibility) }
 
       let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: test) }
 
-      it 'includes inherited variable' do
-        expect(bridge.scoped_variables.to_hash).to include(job_variable.key => job_variable.value)
+      context 'includes inherited variable that is public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(bridge.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+      end
+
+      context 'includes inherited variable that is private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(bridge.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+      end
+    end
+
+    context 'when bridge has dependency which has dotenv variable in a different project' do
+      let(:test) { create(:ci_build, pipeline: pipeline, project: public_project, stage_idx: 0) }
+      let(:bridge) { create(:ci_bridge, pipeline: pipeline, stage_idx: 1, options: { dependencies: [test.name] }) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: test, accessibility: accessibility) }
+
+      let!(:job_variable) { create(:ci_job_variable, :dotenv_source, job: test) }
+
+      context 'includes inherited variable that is public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(bridge.scoped_variables.to_hash).to include(job_variable.key => job_variable.value) }
+      end
+
+      context 'does not include inherited variable that is private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(bridge.scoped_variables.to_hash).not_to include(job_variable.key => job_variable.value) }
+      end
+    end
+  end
+
+  describe 'state machine events' do
+    describe 'start_cancel!' do
+      valid_statuses = Ci::HasStatus::CANCELABLE_STATUSES.map(&:to_sym)
+      # Invalid statuses are statuses that are COMPLETED_STATUSES or already canceling
+      invalid_statuses = Ci::HasStatus::AVAILABLE_STATUSES.map(&:to_sym) - valid_statuses
+
+      valid_statuses.each do |status|
+        it "transitions from #{status} to canceling" do
+          bridge = create(:ci_bridge, status: status)
+
+          bridge.start_cancel!
+
+          expect(bridge.status).to eq('canceling')
+        end
+      end
+
+      invalid_statuses.each do |status|
+        it "does not transition from #{status} to canceling" do
+          bridge = create(:ci_bridge, status: status)
+
+          expect { bridge.start_cancel! }
+            .to raise_error(StateMachines::InvalidTransition)
+        end
+      end
+    end
+
+    describe 'finish_cancel!' do
+      valid_statuses = Ci::HasStatus::CANCELABLE_STATUSES.map(&:to_sym) + [:canceling]
+      invalid_statuses = Ci::HasStatus::AVAILABLE_STATUSES.map(&:to_sym) - valid_statuses
+      valid_statuses.each do |status|
+        it "transitions from #{status} to canceling" do
+          bridge = create(:ci_bridge, status: status)
+
+          bridge.finish_cancel!
+
+          expect(bridge.status).to eq('canceled')
+        end
+      end
+
+      invalid_statuses.each do |status|
+        it "does not transition from #{status} to canceling" do
+          bridge = create(:ci_bridge, status: status)
+
+          expect { bridge.finish_cancel! }
+            .to raise_error(StateMachines::InvalidTransition)
+        end
       end
     end
   end
@@ -147,36 +300,99 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
 
         expect { bridge.enqueue! }.to raise_error(StateMachines::InvalidTransition)
       end
+
+      %i[created manual waiting_for_resource].each do |status|
+        it "sets started_at when transitioning from #{status} to pending" do
+          bridge.status = status
+          bridge.started_at = nil
+
+          freeze_time do
+            bridge.enqueue! if status != :waiting_for_resource
+            bridge.enqueue_waiting_for_resource! if status == :waiting_for_resource
+
+            expect(bridge.started_at).to be_within(1.second).of(Time.current)
+          end
+        end
+      end
     end
   end
 
-  describe '#inherit_status_from_downstream!' do
-    let(:downstream_pipeline) { build(:ci_pipeline, status: downstream_status) }
+  describe '#inherit_status_from_downstream' do
+    let(:downstream_pipeline) { create(:ci_pipeline, status: downstream_status) }
 
     before do
       bridge.status = 'pending'
       create(:ci_sources_pipeline, pipeline: downstream_pipeline, source_job: bridge)
     end
 
-    subject { bridge.inherit_status_from_downstream!(downstream_pipeline) }
+    subject { bridge.inherit_status_from_downstream(downstream_pipeline) }
 
-    context 'when status is not supported' do
-      (::Ci::Pipeline::AVAILABLE_STATUSES - ::Ci::Pipeline::COMPLETED_STATUSES).map(&:to_s).each do |status|
-        context "when status is #{status}" do
-          let(:downstream_status) { status }
+    shared_examples 'returns false for unsupported statuses' do
+      let(:downstream_status) { 'canceling' }
 
-          it 'returns false' do
-            expect(subject).to eq(false)
+      it 'returns false' do
+        expect(subject).to eq(false)
+      end
+
+      it 'does not change the bridge status' do
+        expect { subject }.not_to change { bridge.status }.from('pending')
+      end
+    end
+
+    context 'when status is not supported for a strategy' do
+      context 'when strategy is `mirror`' do
+        let(:options) { { trigger: { project: 'my/project', strategy: 'mirror' } } }
+
+        it_behaves_like 'returns false for unsupported statuses'
+      end
+
+      context 'when strategy is `depend`' do
+        let(:options) { { trigger: { project: 'my/project', strategy: 'depend' } } }
+
+        it_behaves_like 'returns false for unsupported statuses'
+      end
+    end
+
+    context 'when the bridge has strategy: mirror' do
+      let(:options) { { trigger: { project: 'my/project', strategy: 'mirror' } } }
+
+      %w[success failed canceled skipped manual].each do |bridge_starting_status|
+        context "when initial bridge status is #{bridge_starting_status}" do
+          before do
+            bridge.status = bridge_starting_status
+            create(:ci_sources_pipeline, pipeline: downstream_pipeline, source_job: bridge)
           end
 
-          it 'does not change the bridge status' do
-            expect { subject }.not_to change { bridge.status }.from('pending')
+          using RSpec::Parameterized::TableSyntax
+          where(:downstream_status, :expected_bridge_status) do
+            [
+              %w[success success],
+              %w[canceled canceled],
+              %w[failed failed],
+              %w[manual manual],
+              %w[skipped skipped]
+            ]
+          end
+
+          with_them do
+            it 'inherits the downstream status' do
+              perform_transition = -> { subject }
+              if bridge.status == expected_bridge_status
+                expect { perform_transition.call }.not_to change { bridge.status }
+              else
+                expect { perform_transition.call }.to change { bridge.status }
+                  .from(bridge_starting_status)
+                  .to(expected_bridge_status)
+              end
+            end
           end
         end
       end
     end
 
-    context 'when status is supported' do
+    context 'when the bridge has strategy: depend' do
+      let(:options) { { trigger: { project: 'my/project', strategy: 'depend' } } }
+
       using RSpec::Parameterized::TableSyntax
 
       where(:downstream_status, :upstream_status) do
@@ -193,6 +409,84 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
           expect { subject }.to change { bridge.status }.from('pending').to(upstream_status)
         end
       end
+
+      context 'when downstream has success with warnings' do
+        let(:downstream_status) { 'success' }
+
+        before do
+          create(:ci_build, :failed, :allowed_to_fail, pipeline: downstream_pipeline)
+        end
+
+        it 'inherits success status' do
+          expect(downstream_pipeline.has_warnings?).to be true
+          expect { subject }.to change { bridge.status }.from('pending').to('success')
+        end
+      end
+
+      %w[success failed canceled skipped].each do |bridge_starting_status|
+        context "when initial bridge status is {bridge_starting_status}" do
+          before do
+            bridge.status = bridge_starting_status
+            create(:ci_sources_pipeline, pipeline: downstream_pipeline, source_job: bridge)
+          end
+
+          using RSpec::Parameterized::TableSyntax
+          where(:downstream_status, :expected_bridge_status) do
+            [
+              %w[success success],
+              %w[failed failed],
+              %w[skipped failed]
+            ]
+          end
+
+          with_them do
+            it 'inherits the downstream status' do
+              perform_transition = -> { subject }
+              if bridge.status == expected_bridge_status
+                expect { perform_transition.call }.not_to change { bridge.status }
+              else
+                expect { perform_transition.call }.to change { bridge.status }
+                  .from(bridge_starting_status)
+                  .to(expected_bridge_status)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  describe '#has_strategy' do
+    subject { bridge.has_strategy? }
+
+    context 'when bridge has no strategy' do
+      it { is_expected.to be false }
+    end
+
+    context 'when bridge has `strategy: mirror`' do
+      let(:options) { { trigger: { project: 'my/project', strategy: 'mirror' } } }
+
+      it { is_expected.to be true }
+    end
+
+    context 'when bridge has `strategy: depend`' do
+      let(:options) { { trigger: { project: 'my/project', strategy: 'depend' } } }
+
+      it { is_expected.to be true }
+    end
+  end
+
+  describe '#mirrored?' do
+    subject { bridge.mirrored? }
+
+    context 'when bridge has `strategy: mirror`' do
+      let(:options) { { trigger: { project: 'my/project', strategy: 'mirror' } } }
+
+      it { is_expected.to be true }
+    end
+
+    context 'when bridge does not have `strategy: mirror`' do
+      it { is_expected.to be false }
     end
   end
 
@@ -254,7 +548,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       end
 
       before do
-        bridge.yaml_variables.concat(yaml_variables)
+        stub_ci_job_definition(bridge, yaml_variables: bridge.yaml_variables + yaml_variables)
       end
 
       it 'correctly expands variables with interpolation' do
@@ -281,7 +575,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       end
 
       before do
-        bridge.yaml_variables = yaml_variables
+        stub_ci_job_definition(bridge, yaml_variables: yaml_variables)
         create(:ci_variable, :file, project: bridge.pipeline.project, key: 'TEST_FILE_VAR', value: 'test-file-value')
       end
 
@@ -293,21 +587,11 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
 
         expect(bridge.downstream_variables).to contain_exactly(*expected_vars)
       end
-
-      context 'and feature flag is disabled' do
-        before do
-          stub_feature_flags(ci_prevent_file_var_expansion_downstream_pipeline: false)
-        end
-
-        it 'expands the file variable' do
-          expect(bridge.downstream_variables).to contain_exactly({ key: 'EXPANDED_FILE', value: 'test-file-value' })
-        end
-      end
     end
 
     context 'when recursive interpolation has been used' do
       before do
-        bridge.yaml_variables = [{ key: 'EXPANDED', value: '$EXPANDED', public: true }]
+        stub_ci_job_definition(bridge, yaml_variables: [{ key: 'EXPANDED', value: '$EXPANDED', public: true }])
       end
 
       it 'does not expand variable recursively' do
@@ -358,7 +642,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         end
 
         before do
-          bridge.yaml_variables = [{ key: 'SHARED_KEY', value: 'old_value' }]
+          stub_ci_job_definition(bridge, yaml_variables: [{ key: 'SHARED_KEY', value: 'old_value' }])
           create(:ci_pipeline_variable, pipeline: pipeline, key: 'SHARED_KEY', value: 'new value')
         end
 
@@ -373,7 +657,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         end
 
         before do
-          bridge.yaml_variables = [{ key: 'FILE_VAR', value: 'old_value' }]
+          stub_ci_job_definition(bridge, yaml_variables: [{ key: 'FILE_VAR', value: 'old_value' }])
           create(:ci_pipeline_variable, :file, pipeline: pipeline, key: 'FILE_VAR', value: 'new value')
         end
 
@@ -390,7 +674,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         end
 
         before do
-          bridge.yaml_variables = [{ key: 'YAML_VAR', value: '$PROJECT_FILE_VAR' }]
+          stub_ci_job_definition(bridge, yaml_variables: [{ key: 'YAML_VAR', value: '$PROJECT_FILE_VAR' }])
 
           create(:ci_variable, :file, project: pipeline.project, key: 'PROJECT_FILE_VAR', value: 'project file')
           create(:ci_pipeline_variable, pipeline: pipeline, key: 'FILE_VAR', value: '$PROJECT_FILE_VAR')
@@ -404,21 +688,6 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
           ]
 
           expect(bridge.downstream_variables).to contain_exactly(*expected_vars)
-        end
-
-        context 'and feature flag is disabled' do
-          before do
-            stub_feature_flags(ci_prevent_file_var_expansion_downstream_pipeline: false)
-          end
-
-          it 'expands the file variable' do
-            expected_vars = [
-              { key: 'FILE_VAR', value: 'project file' },
-              { key: 'YAML_VAR', value: 'project file' }
-            ]
-
-            expect(bridge.downstream_variables).to contain_exactly(*expected_vars)
-          end
         end
       end
 
@@ -454,7 +723,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       end
 
       before do
-        bridge.yaml_variables = []
+        stub_ci_job_definition(bridge, yaml_variables: [])
         pipeline_schedule.variables.create!(key: 'schedule_var_key', value: 'schedule var value', variable_type: :file)
       end
 
@@ -474,7 +743,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       end
 
       before do
-        bridge.yaml_variables = []
+        stub_ci_job_definition(bridge, yaml_variables: [])
         create(:ci_variable, :file, project: pipeline.project, key: 'PROJECT_FILE_VAR', value: 'project file')
         pipeline_schedule.variables.create!(key: 'schedule_var_key', value: '$PROJECT_FILE_VAR')
       end
@@ -486,16 +755,6 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         ]
 
         expect(bridge.downstream_variables).to contain_exactly(*expected_vars)
-      end
-
-      context 'and feature flag is disabled' do
-        before do
-          stub_feature_flags(ci_prevent_file_var_expansion_downstream_pipeline: false)
-        end
-
-        it 'expands the file variable' do
-          expect(bridge.downstream_variables).to contain_exactly({ key: 'schedule_var_key', value: 'project file' })
-        end
       end
     end
 
@@ -536,7 +795,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         pipeline_schedule.variables.create!(key: 'VAR4', value: 'value4 $VAR1')
         pipeline_schedule.variables.create!(key: 'VAR5', value: 'value5 $VAR1', raw: true)
 
-        bridge.yaml_variables.concat(yaml_variables)
+        stub_ci_job_definition(bridge, yaml_variables: bridge.yaml_variables + yaml_variables)
       end
 
       it 'expands variables according to their raw attributes' do
@@ -594,7 +853,11 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         create(:project, :repository, :in_group, creator: bridge_creator_user, group: bridge_group)
       end
 
-      let(:bridge) { build(:ci_bridge, :playable, pipeline: pipeline, downstream: downstream_project) }
+      let(:ci_stage) { create(:ci_stage, pipeline: pipeline, project: pipeline.project) }
+      let(:bridge) do
+        build(:ci_bridge, :playable, pipeline: pipeline, downstream: downstream_project, ci_stage: ci_stage)
+      end
+
       let!(:pipeline) { create(:ci_pipeline, project: project) }
 
       let!(:ci_variable) do
@@ -614,7 +877,7 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       end
 
       before do
-        bridge.yaml_variables = yaml_variables
+        stub_ci_job_definition(bridge, yaml_variables: yaml_variables)
         allow(bridge.project).to receive(:protected_for?).and_return(true)
       end
 
@@ -761,6 +1024,8 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
     end
   end
 
+  it_behaves_like 'a triggerable processable', :ci_bridge
+
   describe '#pipeline_variables' do
     it 'returns the pipeline variables' do
       expect(bridge.pipeline_variables).to eq(bridge.pipeline.variables)
@@ -836,22 +1101,6 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
       let(:bridge) { build(:ci_bridge, options: options) }
 
       it { expect(bridge.forward_pipeline_variables?).to eq(result) }
-    end
-  end
-
-  describe 'metadata support' do
-    it 'reads YAML variables from metadata' do
-      expect(bridge.yaml_variables).not_to be_empty
-      expect(bridge.metadata).to be_a Ci::BuildMetadata
-      expect(bridge.read_attribute(:yaml_variables)).to be_nil
-      expect(bridge.metadata.config_variables).to be bridge.yaml_variables
-    end
-
-    it 'reads options from metadata' do
-      expect(bridge.options).not_to be_empty
-      expect(bridge.metadata).to be_a Ci::BuildMetadata
-      expect(bridge.read_attribute(:options)).to be_nil
-      expect(bridge.metadata.config_options).to be bridge.options
     end
   end
 
@@ -995,22 +1244,58 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
     end
   end
 
+  describe '#can_auto_cancel_pipeline_on_job_failure?' do
+    subject { bridge.can_auto_cancel_pipeline_on_job_failure? }
+
+    it { is_expected.to be true }
+  end
+
   describe '#dependency_variables' do
     subject { bridge.dependency_variables }
 
-    context 'when downloading from previous stages' do
+    context 'when downloading from previous stages from the same project' do
       let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
       let!(:bridge) { create(:ci_bridge, pipeline: pipeline, stage_idx: 1) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
 
       let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
       let!(:job_variable_2) { create(:ci_job_variable, job: prepare1) }
 
-      it 'inherits only dependent variables' do
-        expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value)
+      context 'inherits dependent variables that are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'inherits dependent variables that are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
       end
     end
 
-    context 'when using needs' do
+    context 'when downloading from previous stages in a different project' do
+      let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, project: public_project, stage_idx: 0) }
+      let!(:bridge) { create(:ci_bridge, pipeline: pipeline, stage_idx: 1) }
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
+
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
+      let!(:job_variable_2) { create(:ci_job_variable, job: prepare1) }
+
+      context 'inherits dependent variables that are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'does not inherit dependent variables that are private' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).not_to eq(job_variable_1.key => job_variable_1.value) }
+      end
+    end
+
+    context 'when using needs within the same project' do
       let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, stage_idx: 0) }
       let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
       let!(:prepare3) { create(:ci_build, name: 'prepare3', pipeline: pipeline, stage_idx: 0) }
@@ -1024,34 +1309,56 @@ RSpec.describe Ci::Bridge, feature_category: :continuous_integration do
         )
       end
 
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
+
       let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
       let!(:job_variable_2) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
       let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare3) }
 
-      it 'inherits only needs with artifacts variables' do
-        expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value)
+      context 'inherits only needs with artifacts variables that are public' do
+        let(:accessibility) { 'public' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
+
+      context 'inherits needs with artifacts variables that are public' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
       end
     end
-  end
 
-  describe 'metadata partitioning', :ci_partitionable do
-    let(:pipeline) { create(:ci_pipeline, project: project, partition_id: ci_testing_partition_id) }
+    context 'when using needs from different project' do
+      let!(:prepare1) { create(:ci_build, name: 'prepare1', pipeline: pipeline, project: public_project, stage_idx: 0) }
+      let!(:prepare2) { create(:ci_build, name: 'prepare2', pipeline: pipeline, stage_idx: 0) }
+      let!(:prepare3) { create(:ci_build, name: 'prepare3', pipeline: pipeline, stage_idx: 0) }
+      let!(:bridge) do
+        create(
+          :ci_bridge,
+          pipeline: pipeline,
+          stage_idx: 1,
+          scheduling_type: 'dag',
+          needs_attributes: [{ name: 'prepare1', artifacts: true }, { name: 'prepare2', artifacts: false }]
+        )
+      end
 
-    let(:bridge) do
-      build(:ci_bridge, pipeline: pipeline)
-    end
+      let!(:job_artifact) { create(:ci_job_artifact, :dotenv, job: prepare1, accessibility: accessibility) }
 
-    it 'creates the metadata record and assigns its partition' do
-      # The record is initialized by the factory calling metadatable setters
-      bridge.metadata = nil
+      let!(:job_variable_1) { create(:ci_job_variable, :dotenv_source, job: prepare1) }
+      let!(:job_variable_2) { create(:ci_job_variable, :dotenv_source, job: prepare2) }
+      let!(:job_variable_3) { create(:ci_job_variable, :dotenv_source, job: prepare3) }
 
-      expect(bridge.metadata).to be_nil
+      context 'inherits only needs with artifacts variables that are public' do
+        let(:accessibility) { 'public' }
 
-      expect(bridge.save!).to be_truthy
+        it { expect(subject.to_hash).to eq(job_variable_1.key => job_variable_1.value) }
+      end
 
-      expect(bridge.metadata).to be_present
-      expect(bridge.metadata).to be_valid
-      expect(bridge.metadata.partition_id).to eq(ci_testing_partition_id)
+      context 'does not inherit needs with artifacts variables that are public' do
+        let(:accessibility) { 'private' }
+
+        it { expect(subject.to_hash).not_to eq(job_variable_1.key => job_variable_1.value) }
+      end
     end
   end
 

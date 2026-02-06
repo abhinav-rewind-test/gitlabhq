@@ -50,7 +50,7 @@ module Projects
       )
 
       begin
-        Repositories::ReplicateService.new(pool_repository.object_pool.repository)
+        ::Repositories::ReplicateService.new(pool_repository.object_pool.repository)
           .execute(target_pool_repository.object_pool.repository, :object_pool)
       rescue StandardError => e
         target_pool_repository.destroy!
@@ -94,7 +94,8 @@ module Projects
         shard: Shard.by_name(shard_name),
         source_project: pool_repository.source_project,
         disk_path: pool_repository.disk_path,
-        state: 'ready'
+        state: 'ready',
+        organization: pool_repository.organization
       )
     end
   end

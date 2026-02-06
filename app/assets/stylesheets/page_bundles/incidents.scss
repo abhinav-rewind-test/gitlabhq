@@ -19,8 +19,9 @@
 .create-timeline-event,
 .edit-timeline-event {
   .md-area {
+    // stylelint-disable-next-line gitlab/no-gl-class
     .gl-form-textarea {
-      @include gl-shadow-none;
+      @apply gl-shadow-none;
     }
   }
 }
@@ -34,7 +35,9 @@
   &::before,
   &::after {
     content: '';
-    border-left: 2px solid $gray-50;
+    @apply gl-border-l-subtle;
+    @apply gl-border-l-2;
+    @apply gl-border-l-solid;
     position: absolute;
     left: 20px;
     height: calc(100% + #{$gl-spacing-scale-5});
@@ -71,9 +74,9 @@
     &::after {
       content: '';
       position: absolute;
-      @include gl-border-gray-50;
-      @include gl-border-1;
-      @include gl-border-b-solid;
+      @apply gl-border-subtle;
+      @apply gl-border-1;
+      @apply gl-border-b-solid;
       // Border spans the whole container minus icon width and grid gap
       width: calc(100% - $gl-spacing-scale-8 - $gl-spacing-scale-5);
       bottom: $gl-spacing-scale-3;
@@ -85,18 +88,18 @@
   .timeline-entry:last-child,
   .create-timeline-event {
     .timeline-event-bottom-border {
-      border-bottom: solid $gl-border-size-1 $border-color;
+      @apply gl-border-b;
       padding-top: $gl-spacing-scale-5;
     }
   }
 }
 
 .timeline-event-note .md p {
-  color: $gray-700;
+  @apply gl-text-subtle;
 }
 
 .timeline-event-note-date {
-  @media (max-width: $breakpoint-md) {
+  @include gl-container-width-down(md, panel) {
     width: 100%;
   }
 }

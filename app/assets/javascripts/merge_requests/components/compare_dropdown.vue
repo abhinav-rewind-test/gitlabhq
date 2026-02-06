@@ -46,6 +46,11 @@ export default {
       required: false,
       default: '',
     },
+    ariaDescribedby: {
+      type: String,
+      required: false,
+      default: '',
+    },
     disabled: {
       type: Boolean,
       required: false,
@@ -128,6 +133,7 @@ export default {
       type="hidden"
       :value="current.value"
       :name="inputName"
+      :aria-describedby="ariaDescribedby"
       data-testid="target-project-input"
     />
     <gl-collapsible-listbox
@@ -138,11 +144,8 @@ export default {
       :searching="isLoading"
       :disabled="disabled"
       searchable
-      class="gl-w-full dropdown-target-project"
-      :toggle-class="[
-        'gl-align-items-flex-start! gl-justify-content-start! mr-compare-dropdown',
-        toggleClass,
-      ]"
+      block
+      :toggle-class="toggleClass"
       @shown="fetchData"
       @search="searchData"
       @select="selectItem"

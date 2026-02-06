@@ -15,6 +15,11 @@ export default {
       type: String,
       required: true,
     },
+    encodePath: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
   },
   data() {
     return {
@@ -123,6 +128,7 @@ export default {
           key="onionOldImg"
           :render-info="false"
           :path="oldPath"
+          :encode-path="encodePath"
           @imgLoaded="onionOldImgLoaded"
         />
       </div>
@@ -139,10 +145,13 @@ export default {
           key="onionNewImg"
           :render-info="false"
           :path="newPath"
+          :encode-path="encodePath"
           @imgLoaded="onionNewImgLoaded"
         >
-          <template #image-overlay="{ renderedWidth, renderedHeight }">
+          <template #image-overlay="{ width, height, renderedWidth, renderedHeight }">
             <slot
+              :width="width"
+              :height="height"
               :rendered-width="renderedWidth"
               :rendered-height="renderedHeight"
               name="image-overlay"

@@ -13,7 +13,7 @@ RSpec.describe Gitlab::Database::LoadBalancing::PrimaryHost do
 
   describe '#connection' do
     it 'returns a connection from the pool' do
-      expect(load_balancer.pool).to receive(:connection)
+      expect(load_balancer.pool).to receive(:lease_connection)
 
       host.connection
     end
@@ -34,6 +34,12 @@ RSpec.describe Gitlab::Database::LoadBalancing::PrimaryHost do
   describe '#disable_query_cache!' do
     it 'does nothing' do
       expect(host.disable_query_cache!).to be_nil
+    end
+  end
+
+  describe '#clear_query_cache' do
+    it 'does nothing' do
+      expect(host.clear_query_cache).to be_nil
     end
   end
 

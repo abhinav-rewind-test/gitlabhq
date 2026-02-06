@@ -7,21 +7,24 @@ class Projects::PipelinesController < Projects::ApplicationController
 
   urgency :low, [
     :index, :new, :builds, :show, :failures, :create,
-    :stage, :retry, :dag, :cancel, :test_report,
-    :charts, :destroy, :status
+    :stage, :retry, :cancel, :test_report,
+    :charts, :destroy, :status, :manual_variables
   ]
 
   before_action :disable_query_limiting, only: [:create, :retry]
   before_action :pipeline, except: [:index, :new, :create, :charts]
   before_action :set_pipeline_path, only: [:show]
   before_action :authorize_read_pipeline!
-  before_action :authorize_read_build!, only: [:index, :show]
+  before_action :authorize_read_build!, only: [:index]
+  before_action :authorize_read_build_on_pipeline!, only: [:show]
   before_action :authorize_read_ci_cd_analytics!, only: [:charts]
   before_action :authorize_create_pipeline!, only: [:new, :create]
   before_action :authorize_update_pipeline!, only: [:retry]
   before_action :authorize_cancel_pipeline!, only: [:cancel]
   before_action :ensure_pipeline, only: [:show, :downloadable_artifacts]
   before_action :reject_if_build_artifacts_size_refreshing!, only: [:destroy]
+  before_action :push_pipelines_graphql_ff, only: [:index]
+  before_action :push_pipeline_statuses_updated_ff, only: [:index]
 
   # Will be removed with https://gitlab.com/gitlab-org/gitlab/-/issues/225596
   before_action :redirect_for_legacy_scope_filter, only: [:index], if: -> { request.format.html? }
@@ -35,10 +38,6 @@ class Projects::PipelinesController < Projects::ApplicationController
     destinations: %i[redis_hll snowplow]
 
   track_internal_event :charts, name: 'p_analytics_ci_cd_pipelines', conditions: -> { should_track_ci_cd_pipelines? }
-  track_internal_event :charts, name: 'p_analytics_ci_cd_deployment_frequency', conditions: -> { should_track_ci_cd_deployment_frequency? }
-  track_internal_event :charts, name: 'p_analytics_ci_cd_lead_time', conditions: -> { should_track_ci_cd_lead_time? }
-  track_event :charts, name: 'p_analytics_ci_cd_time_to_restore_service', conditions: -> { should_track_ci_cd_time_to_restore_service? }
-  track_event :charts, name: 'p_analytics_ci_cd_change_failure_rate', conditions: -> { should_track_ci_cd_change_failure_rate? }
 
   wrap_parameters Ci::Pipeline
 
@@ -46,11 +45,12 @@ class Projects::PipelinesController < Projects::ApplicationController
 
   feature_category :continuous_integration, [
     :charts, :show, :stage, :cancel, :retry,
-    :builds, :dag, :failures, :status,
-    :index, :create, :new, :destroy
+    :builds, :failures, :status,
+    :index, :new, :destroy, :manual_variables
   ]
+  feature_category :pipeline_composition, [:create]
   feature_category :code_testing, [:test_report]
-  feature_category :build_artifacts, [:downloadable_artifacts]
+  feature_category :job_artifacts, [:downloadable_artifacts]
 
   def index
     @pipelines = Ci::PipelinesFinder
@@ -82,7 +82,7 @@ class Projects::PipelinesController < Projects::ApplicationController
   def create
     service_response = Ci::CreatePipelineService
       .new(project, current_user, create_params)
-      .execute(:web, ignore_skip_ci: true, save_on_errors: false)
+      .execute(:web, ignore_skip_ci: true, save_on_errors: false, **create_execute_params)
 
     @pipeline = service_response.payload
 
@@ -135,19 +135,6 @@ class Projects::PipelinesController < Projects::ApplicationController
     render_show
   end
 
-  def dag
-    respond_to do |format|
-      format.html do
-        render_show
-      end
-      format.json do
-        render json: Ci::DagPipelineSerializer
-          .new(project: @project, current_user: @current_user)
-          .represent(@pipeline)
-      end
-    end
-  end
-
   def failures
     if @pipeline.failed_builds.present?
       render_show
@@ -165,8 +152,6 @@ class Projects::PipelinesController < Projects::ApplicationController
   def stage
     @stage = pipeline.stage(params[:stage])
     return not_found unless @stage
-
-    return unless stage_stale?
 
     render json: StageSerializer
       .new(project: @project, current_user: @current_user)
@@ -216,6 +201,12 @@ class Projects::PipelinesController < Projects::ApplicationController
     end
   end
 
+  def manual_variables
+    return render_404 unless can?(current_user, :update_pipeline, pipeline) && project.ci_display_pipeline_variables?
+
+    render_show
+  end
+
   def downloadable_artifacts
     render json: Ci::DownloadableArtifactSerializer.new(
       project: project,
@@ -234,6 +225,7 @@ class Projects::PipelinesController < Projects::ApplicationController
         disable_coverage: true,
         disable_failed_builds: true,
         disable_manual_and_scheduled_actions: true,
+        disable_stage_actions: true,
         preload: true,
         preload_statuses: false,
         preload_downstream_statuses: false
@@ -258,6 +250,10 @@ class Projects::PipelinesController < Projects::ApplicationController
     params.require(:pipeline).permit(:ref, variables_attributes: %i[key variable_type secret_value])
   end
 
+  def create_execute_params
+    params.require(:pipeline).permit(inputs: {}).to_h.symbolize_keys
+  end
+
   def ensure_pipeline
     render_404 unless pipeline
   end
@@ -268,21 +264,13 @@ class Projects::PipelinesController < Projects::ApplicationController
     redirect_to url_for(safe_params.except(:scope).merge(status: safe_params[:scope])), status: :moved_permanently
   end
 
-  def stage_stale?
-    return true if Feature.disabled?(:pipeline_stage_set_last_modified, @current_user)
-
-    last_modified = [@stage.updated_at.utc, @stage.statuses.maximum(:updated_at)].max
-
-    stale?(last_modified: last_modified, etag: @stage)
-  end
-
   # rubocop: disable CodeReuse/ActiveRecord
   def pipeline
     return @pipeline if defined?(@pipeline)
 
     pipelines =
       if find_latest_pipeline?
-        project.latest_pipelines(params['ref'])
+        project.latest_pipelines(ref: params['ref'], limit: 100)
       else
         project.all_pipelines.id_in(params[:id])
       end
@@ -314,11 +302,15 @@ class Projects::PipelinesController < Projects::ApplicationController
   end
 
   def authorize_update_pipeline!
-    return access_denied! unless can?(current_user, :update_pipeline, @pipeline)
+    access_denied! unless can?(current_user, :update_pipeline, @pipeline)
   end
 
   def authorize_cancel_pipeline!
-    return access_denied! unless can?(current_user, :cancel_pipeline, @pipeline)
+    access_denied! unless can?(current_user, :cancel_pipeline, @pipeline)
+  end
+
+  def authorize_read_build_on_pipeline!
+    access_denied! unless can?(current_user, :read_build, @pipeline)
   end
 
   def limited_pipelines_count(project, scope = nil)
@@ -343,28 +335,20 @@ class Projects::PipelinesController < Projects::ApplicationController
     params[:chart].blank? || params[:chart] == 'pipelines'
   end
 
-  def should_track_ci_cd_deployment_frequency?
-    params[:chart] == 'deployment-frequency'
-  end
-
-  def should_track_ci_cd_lead_time?
-    params[:chart] == 'lead-time'
-  end
-
-  def should_track_ci_cd_time_to_restore_service?
-    params[:chart] == 'time-to-restore-service'
-  end
-
-  def should_track_ci_cd_change_failure_rate?
-    params[:chart] == 'change-failure-rate'
-  end
-
   def tracking_namespace_source
     project.namespace
   end
 
   def tracking_project_source
     project
+  end
+
+  def push_pipelines_graphql_ff
+    push_frontend_feature_flag(:pipelines_page_graphql, @project)
+  end
+
+  def push_pipeline_statuses_updated_ff
+    push_frontend_feature_flag(:ci_pipeline_statuses_updated_subscription, @project)
   end
 end
 

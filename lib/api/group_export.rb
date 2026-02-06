@@ -8,6 +8,7 @@ module API
 
     feature_category :importers
     urgency :low
+    helpers Helpers::BulkImports::AuditHelpers
 
     params do
       requires :id, type: String, desc: 'The ID of a group'
@@ -15,7 +16,7 @@ module API
     resource :groups, requirements: { id: %r{[^/]+} } do
       desc 'Download export' do
         detail 'This feature was introduced in GitLab 12.5.'
-        tags %w[group_export]
+        tags %w[group_import_and_export]
         produces %w[application/octet-stream application/json]
         success code: 200
         failure [
@@ -26,12 +27,13 @@ module API
           { code: 503, message: 'Service unavailable' }
         ]
       end
+      route_setting :authorization, permissions: :download_group_export, boundary_type: :group
       get ':id/export/download' do
         check_rate_limit! :group_download_export, scope: [current_user, user_group]
 
-        if user_group.export_file_exists?
-          if user_group.export_archive_exists?
-            present_carrierwave_file!(user_group.export_file)
+        if user_group.export_file_exists?(current_user)
+          if user_group.export_archive_exists?(current_user)
+            present_carrierwave_file!(user_group.export_file(current_user))
           else
             render_api_error!('The group export file is not available yet', 404)
           end
@@ -42,7 +44,7 @@ module API
 
       desc 'Start export' do
         detail 'This feature was introduced in GitLab 12.5.'
-        tags %w[group_export]
+        tags %w[group_import_and_export]
         success code: 202
         failure [
           { code: 401, message: 'Unauthorized' },
@@ -52,10 +54,15 @@ module API
           { code: 503, message: 'Service unavailable' }
         ]
       end
+      route_setting :authorization, permissions: :start_group_export, boundary_type: :group
       post ':id/export' do
         check_rate_limit! :group_export, scope: current_user
 
-        export_service = ::Groups::ImportExport::ExportService.new(group: user_group, user: current_user)
+        export_service = ::Groups::ImportExport::ExportService.new(
+          group: user_group,
+          user: current_user,
+          exported_by_admin: current_user.can_admin_all_resources?
+        )
 
         if export_service.async_execute
           accepted!
@@ -72,7 +79,7 @@ module API
 
         desc 'Start relations export' do
           detail 'This feature was introduced in GitLab 13.12'
-          tags %w[group_export]
+          tags %w[group_import_and_export]
           success code: 202
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -90,6 +97,13 @@ module API
             .execute
 
           if response.success?
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_INITIATED,
+              'Direct Transfer relations export initiated',
+              current_user,
+              user_group
+            )
+
             accepted!
           else
             render_api_error!(message: 'Group relations export could not be started.')
@@ -99,7 +113,7 @@ module API
         desc 'Download relations export' do
           detail 'This feature was introduced in GitLab 13.12'
           produces %w[application/octet-stream application/json]
-          tags %w[group_export]
+          tags %w[group_import_and_export]
           success code: 200
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -116,7 +130,8 @@ module API
           all_or_none_of :batched, :batch_number
         end
         get ':id/export_relations/download' do
-          export = user_group.bulk_import_exports.find_by_relation(params[:relation])
+          export = user_group.bulk_import_exports.for_user_and_relation(current_user, params[:relation])
+            .for_offline_export(nil).first
 
           break render_api_error!('Export not found', 404) unless export
 
@@ -128,12 +143,26 @@ module API
             break render_api_error!('Batch not found', 404) unless batch
             break render_api_error!('Batch file not found', 404) unless batch_file
 
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_BATCH_DOWNLOADED,
+              'Direct Transfer relation export batch downloaded',
+              current_user,
+              user_group
+            )
+
             present_carrierwave_file!(batch_file)
           else
             file = export&.upload&.export_file
 
             break render_api_error!('Export is batched', 400) if export.batched?
             break render_api_error!('Export file not found', 404) unless file
+
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_DOWNLOADED,
+              'Direct Transfer relation export downloaded',
+              current_user,
+              user_group
+            )
 
             present_carrierwave_file!(file)
           end
@@ -142,7 +171,7 @@ module API
         desc 'Relations export status' do
           detail 'This feature was introduced in GitLab 13.12'
           is_array true
-          tags %w[group_export]
+          tags %w[group_import_and_export]
           success code: 200, model: Entities::BulkImports::ExportStatus
           failure [
             { code: 401, message: 'Unauthorized' },
@@ -156,13 +185,15 @@ module API
         end
         get ':id/export_relations/status' do
           if params[:relation]
-            export = user_group.bulk_import_exports.find_by_relation(params[:relation])
+            export = user_group.bulk_import_exports.for_user_and_relation(current_user, params[:relation])
+              .for_offline_export(nil).first
 
             break render_api_error!('Export not found', 404) unless export
 
             present export, with: Entities::BulkImports::ExportStatus
           else
-            present user_group.bulk_import_exports, with: Entities::BulkImports::ExportStatus
+            present user_group.bulk_import_exports.for_user(current_user).for_offline_export(nil),
+              with: Entities::BulkImports::ExportStatus
           end
         end
       end

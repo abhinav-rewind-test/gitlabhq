@@ -30,7 +30,7 @@ RSpec.describe Gitlab::ColorSchemes do
   describe '.each' do
     it 'passes the block to the SCHEMES Array' do
       ids = []
-      described_class.each { |scheme| ids << scheme.id }
+      described_class.each { |scheme| ids << scheme.id } # rubocop:disable Style/MapIntoArray -- each is a custom method for ColorSchemes
       expect(ids).not_to be_empty
     end
   end
@@ -41,9 +41,38 @@ RSpec.describe Gitlab::ColorSchemes do
       expect(described_class.for_user(nil).id).to eq 2
     end
 
-    it "returns user's preferred color scheme" do
-      user = double(color_scheme_id: 5)
+    it "returns user's preferred light color scheme" do
+      user = double(color_scheme_id: 5, color_mode_id: 1)
       expect(described_class.for_user(user).id).to eq 5
+    end
+
+    it "returns user's preferred dark color scheme" do
+      user = double(dark_color_scheme_id: 6, color_mode_id: 2)
+      expect(described_class.for_user(user).id).to eq 6
+    end
+  end
+
+  describe '.light_for_user' do
+    it 'returns default when user is nil' do
+      stub_application_setting(default_syntax_highlighting_theme: 2)
+      expect(described_class.light_for_user(nil).id).to eq 2
+    end
+
+    it "returns user's preferred light color scheme" do
+      user = double(color_scheme_id: 5)
+      expect(described_class.light_for_user(user).id).to eq 5
+    end
+  end
+
+  describe '.dark_for_user' do
+    it 'returns default when user is nil' do
+      stub_application_setting(default_dark_syntax_highlighting_theme: 3)
+      expect(described_class.dark_for_user(nil).id).to eq 3
+    end
+
+    it "returns user's preferred dark color scheme" do
+      user = double(dark_color_scheme_id: 6)
+      expect(described_class.dark_for_user(user).id).to eq 6
     end
   end
 end

@@ -3,11 +3,13 @@ import ReportItem from '~/ci/reports/components/report_item.vue';
 import { STATUS_FAILED, STATUS_NEUTRAL, STATUS_SUCCESS } from '~/ci/reports/constants';
 import SmartVirtualList from '~/vue_shared/components/smart_virtual_list.vue';
 
-const wrapIssueWithState = (status, isNew = false) => (issue) => ({
-  status: issue.status || status,
-  isNew,
-  issue,
-});
+const wrapIssueWithState =
+  (status, isNew = false) =>
+  (issue) => ({
+    status: issue.status || status,
+    isNew,
+    issue,
+  });
 
 /**
  * Renders block of issues
@@ -17,11 +19,8 @@ export default {
     SmartVirtualList,
     ReportItem,
   },
-  // Typical height of a report item in px
-  typicalReportItemHeight: 32,
   /*
-   The maximum amount of shown issues. This is calculated by
-   ( max-height of report-block-list / typicalReportItemHeight ) + some safety margin
+   The maximum amount of shown issues.
    We will use VirtualList if we have more items than this number.
    For entries lower than this number, the virtual scroll list calculates the total height of the element wrongly.
    */
@@ -99,7 +98,6 @@ export default {
   <smart-virtual-list
     :length="issuesWithState.length"
     :remain="$options.maxShownReportItems"
-    :size="$options.typicalReportItemHeight"
     class="report-block-container"
     :class="listClasses"
     wtag="ul"

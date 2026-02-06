@@ -7,13 +7,14 @@ import {
   GlLink,
   GlLoadingIcon,
   GlTable,
+  GlForm,
   GlFormInput,
   GlDropdown,
   GlDropdownItem,
   GlDropdownDivider,
   GlSprintf,
   GlTooltipDirective,
-  GlPagination,
+  GlKeysetPagination,
 } from '@gitlab/ui';
 import { isEmpty } from 'lodash';
 // eslint-disable-next-line no-restricted-imports
@@ -22,7 +23,7 @@ import { helpPagePath } from '~/helpers/help_page_helper';
 import AccessorUtils from '~/lib/utils/accessor';
 import { __ } from '~/locale';
 import TimeAgo from '~/vue_shared/components/time_ago_tooltip.vue';
-import { sanitizeUrl, joinPaths } from '~/lib/utils/url_utility';
+import { joinPaths } from '~/lib/utils/url_utility';
 import {
   trackErrorListViewsOptions,
   trackErrorStatusUpdateOptions,
@@ -36,42 +37,41 @@ import TimelineChart from './timeline_chart.vue';
 const isValidErrorId = (errorId) => {
   return /^[0-9]+$/.test(errorId);
 };
-export const tableDataClass = 'gl-display-flex gl-md-display-table-cell gl-align-items-center';
+export const tableDataClass = 'gl-flex @md/panel:gl-table-cell gl-items-center';
 export default {
-  FIRST_PAGE: 1,
-  PREV_PAGE: 1,
-  NEXT_PAGE: 2,
   i18n: I18N_ERROR_TRACKING_LIST,
   fields: [
     {
       key: 'error',
       label: __('Error'),
-      thClass: 'gl-w-40p',
+      thClass: 'gl-w-8/20',
       tdClass: `${tableDataClass}`,
     },
     {
       key: 'timeline',
       label: __('Timeline'),
-      thClass: 'gl-text-center gl-w-20p',
-      tdClass: `${tableDataClass} gl-text-center`,
+      thClass: 'gl-w-4/20',
+      tdClass: `${tableDataClass}`,
     },
     {
       key: 'events',
       label: __('Events'),
-      thClass: 'gl-text-center gl-w-10p',
-      tdClass: `${tableDataClass} gl-text-center`,
+      thClass: 'gl-w-2/20',
+      thAlignRight: true,
+      tdClass: `${tableDataClass} gl-text-right`,
     },
     {
       key: 'users',
       label: __('Users'),
-      thClass: 'gl-text-center gl-w-10p',
-      tdClass: `${tableDataClass} gl-text-center`,
+      thClass: 'gl-w-2/20',
+      thAlignRight: true,
+      tdClass: `${tableDataClass} gl-text-right`,
     },
     {
       key: 'lastSeen',
       label: __('Last seen'),
-      thClass: 'gl-text-center gl-w-10p',
-      tdClass: `${tableDataClass} gl-text-center`,
+      thClass: 'gl-w-2/20',
+      tdClass: `${tableDataClass}`,
     },
     {
       key: 'status',
@@ -85,8 +85,8 @@ export default {
     resolved: __('Resolved'),
   },
   sortFields: {
-    last_seen: __('Last Seen'),
-    first_seen: __('First Seen'),
+    last_seen: __('Last seen'),
+    first_seen: __('First seen'),
     frequency: __('Frequency'),
   },
   components: {
@@ -100,9 +100,10 @@ export default {
     GlLink,
     GlLoadingIcon,
     GlTable,
+    GlForm,
     GlFormInput,
     GlSprintf,
-    GlPagination,
+    GlKeysetPagination,
     TimeAgo,
     ErrorTrackingActions,
     TimelineChart,
@@ -131,10 +132,6 @@ export default {
       type: String,
       required: true,
     },
-    userCanEnableErrorTracking: {
-      type: Boolean,
-      required: true,
-    },
     projectPath: {
       type: String,
       required: true,
@@ -152,7 +149,6 @@ export default {
   data() {
     return {
       errorSearchQuery: '',
-      pageValue: this.$options.FIRST_PAGE,
       isAlertDismissed: false,
     };
   },
@@ -160,24 +156,22 @@ export default {
     ...mapState('list', [
       'errors',
       'loading',
-      'searchQuery',
       'sortField',
       'recentSearches',
       'pagination',
       'statusFilter',
-      'cursor',
     ]),
     paginationRequired() {
       return !isEmpty(this.pagination);
     },
     previousPage() {
-      return this.pagination.previous ? this.$options.PREV_PAGE : null;
+      return this.pagination.previous;
     },
     nextPage() {
-      return this.pagination.next ? this.$options.NEXT_PAGE : null;
+      return this.pagination.next;
     },
     errorTrackingHelpUrl() {
-      return helpPagePath('operations/error_tracking.html#integrated-error-tracking');
+      return helpPagePath('operations/integrated_error_tracking');
     },
     showIntegratedDisabledAlert() {
       return !this.isAlertDismissed && this.showIntegratedTrackingDisabledAlert;
@@ -208,10 +202,7 @@ export default {
       'setEndpoint',
       'searchByQuery',
       'sortByField',
-      'addRecentSearch',
       'clearRecentSearches',
-      'loadRecentSearches',
-      'setIndexPath',
       'fetchPaginatedResults',
       'updateStatus',
       'removeIgnoredResolvedErrors',
@@ -234,10 +225,6 @@ export default {
     goToPrevPage() {
       this.fetchPaginatedResults(this.pagination.previous.cursor);
     },
-    goToPage(page) {
-      window.scrollTo(0, 0);
-      return page === this.$options.PREV_PAGE ? this.goToPrevPage() : this.goToNextPage();
-    },
     isCurrentSortField(field) {
       return field === this.sortField;
     },
@@ -248,7 +235,7 @@ export default {
       if (!isValidErrorId(errorId)) {
         return 'about:blank';
       }
-      return sanitizeUrl(`/${this.projectPath}/-/error_tracking/${errorId}.json`);
+      return `/${this.projectPath}/-/error_tracking/${errorId}.json`;
     },
     filterErrors(status, label) {
       this.filterValue = label;
@@ -281,7 +268,7 @@ export default {
 </script>
 
 <template>
-  <div class="error-list">
+  <div class="gl-mt-5">
     <div v-if="errorTrackingEnabled">
       <!-- Enable ET -->
       <gl-alert
@@ -315,14 +302,17 @@ export default {
 
       <!-- Search / Filter Bar -->
       <div
-        class="gl-display-flex gl-flex-direction-column gl-md-flex-direction-row gl-md-align-items-center gl-m-0 gl-p-5 gl-bg-gray-50 gl-border"
+        class="gl-m-0 gl-flex gl-flex-col gl-gap-3 gl-bg-subtle gl-p-5 @md/panel:gl-flex-row @md/panel:gl-items-center"
       >
-        <div class="search-box gl-display-flex gl-flex-grow-1 gl-mb-2 gl-md-mb-0">
-          <div class="filtered-search-box gl-mb-0">
+        <div class="gl-mb-2 gl-flex gl-grow @md/panel:gl-mb-0">
+          <div class="gl-border gl-mb-0 gl-flex gl-grow gl-rounded-base gl-bg-default">
             <gl-dropdown
+              icon="history"
+              data-testid="recent-searches-dropdown"
+              text-sr-only
+              category="tertiary"
+              toggle-class="!gl-border-none !gl-rounded-r-none !gl-rounded-l-base"
               :text="__('Recent searches')"
-              class="filtered-search-history-dropdown-wrapper"
-              toggle-class="filtered-search-history-dropdown-toggle-button gl-shadow-none! gl-border-r-gray-200! gl-border-1! gl-rounded-0!"
               :disabled="loading"
             >
               <div v-if="!$options.hasLocalStorage" class="gl-px-5">
@@ -342,33 +332,34 @@ export default {
               </template>
               <div v-else class="gl-px-5">{{ __("You don't have any recent searches") }}</div>
             </gl-dropdown>
-            <div class="filtered-search-input-container gl-flex-grow-1">
-              <gl-form-input
-                v-model="errorSearchQuery"
-                class="gl-pl-3! filtered-search"
-                :disabled="loading"
-                :placeholder="__('Search or filter results…')"
-                autofocus
-                @keyup.enter.native="searchByQuery(errorSearchQuery)"
-              />
+            <div class="gl-border-l gl-grow">
+              <gl-form @submit.prevent="searchByQuery(errorSearchQuery)">
+                <gl-form-input
+                  v-model="errorSearchQuery"
+                  :disabled="loading"
+                  class="!gl-shadow-none"
+                  :placeholder="__('Search or filter results…')"
+                  autofocus
+                />
+              </gl-form>
             </div>
-            <div class="gl-search-box-by-type-right-icons">
-              <gl-button
-                v-if="errorSearchQuery.length > 0"
-                v-gl-tooltip.hover
-                :title="__('Clear')"
-                class="clear-search gl-text-secondary"
-                name="clear"
-                icon="close"
-                @click="errorSearchQuery = ''"
-              />
-            </div>
+
+            <gl-button
+              v-if="errorSearchQuery.length > 0"
+              v-gl-tooltip.hover
+              :title="__('Clear')"
+              class="clear-search !gl-text-subtle"
+              category="tertiary"
+              name="clear"
+              icon="close"
+              @click="errorSearchQuery = ''"
+            />
           </div>
         </div>
 
         <gl-dropdown
+          data-testid="status-dropdown"
           :text="$options.statusFilters[statusFilter]"
-          class="status-dropdown gl-md-ml-2 gl-md-mr-2 gl-mb-2 gl-md-mb-0"
           :disabled="loading"
           right
         >
@@ -377,7 +368,7 @@ export default {
             :key="status"
             @click="filterErrors(status, label)"
           >
-            <span class="gl-display-flex">
+            <span class="gl-flex">
               <gl-icon
                 class="gl-dropdown-item-check-icon"
                 :class="{ invisible: !isCurrentStatusFilter(status) }"
@@ -394,7 +385,7 @@ export default {
             :key="field"
             @click="sortErrorsByField(field)"
           >
-            <span class="gl-display-flex">
+            <span class="gl-flex">
               <gl-icon
                 class="gl-dropdown-item-check-icon"
                 :class="{ invisible: !isCurrentSortField(field) }"
@@ -412,10 +403,9 @@ export default {
 
       <!-- Results Table -->
       <template v-else>
-        <h4 class="gl-display-block gl-md-display-none! gl-my-5">{{ __('Open errors') }}</h4>
+        <h4 class="gl-my-5 gl-block @md/panel:!gl-hidden">{{ __('Open errors') }}</h4>
 
         <gl-table
-          class="error-list-table gl-mt-5"
           :items="errors"
           :fields="$options.fields"
           :show-empty="true"
@@ -425,7 +415,7 @@ export default {
         >
           <!-- table head -->
           <template #head(error)>
-            <div class="gl-display-none gl-md-display-block">{{ __('Open errors') }}</div>
+            <div class="gl-hidden @md/panel:gl-block">{{ __('Open errors') }}</div>
           </template>
           <template #head(events)="data">
             {{ data.label }}
@@ -436,14 +426,14 @@ export default {
 
           <!-- table row -->
           <template #cell(error)="errors">
-            <div class="gl-display-flex gl-flex-direction-column">
+            <div class="gl-flex gl-flex-col">
               <gl-link
-                class="gl-display-flex gl-max-w-full gl-text-body"
+                class="gl-flex gl-max-w-full gl-text-default"
                 :href="getDetailsLink(errors.item.id)"
               >
-                <strong class="gl-text-truncate">{{ errors.item.title.trim() }}</strong>
+                <strong class="gl-truncate">{{ errors.item.title.trim() }}</strong>
               </gl-link>
-              <span class="gl-text-secondary gl-text-truncate gl-max-w-full">
+              <span class="gl-max-w-full gl-truncate gl-text-subtle">
                 {{ errors.item.culprit }}
               </span>
             </div>
@@ -466,7 +456,7 @@ export default {
           </template>
 
           <template #cell(lastSeen)="errors">
-            <time-ago :time="errors.item.lastSeen" class="gl-text-secondary" />
+            <time-ago :time="errors.item.lastSeen" class="gl-text-subtle" />
           </template>
 
           <template #cell(status)="errors">
@@ -480,14 +470,13 @@ export default {
             </gl-link>
           </template>
         </gl-table>
-        <gl-pagination
+        <gl-keyset-pagination
           v-show="!loading"
           v-if="paginationRequired"
-          :prev-page="previousPage"
-          :next-page="nextPage"
-          :value="pageValue"
-          align="center"
-          @input="goToPage"
+          :has-next-page="!!nextPage"
+          :has-previous-page="!!previousPage"
+          @next="goToNextPage"
+          @prev="goToPrevPage"
         />
       </template>
     </div>

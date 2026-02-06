@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_registry do
+  include PackagesManagerApiSpecHelpers
+
   let(:service) { described_class.new(project, user, params) }
 
   subject(:execute_service) { service.execute }
@@ -34,7 +36,7 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
 
         expect { subject }
           .to change { Packages::Package.count }.by(1)
-          .and change { Packages::Package.npm.count }.by(1)
+          .and change { Packages::Npm::Package.count }.by(1)
           .and change { Packages::Tag.count }.by(1)
           .and change { Packages::Npm::Metadatum.count }.by(1)
       end
@@ -50,8 +52,12 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
       end
 
       context 'with build info' do
-        let_it_be(:job) { create(:ci_build, user: user) }
+        let_it_be_with_reload(:job) { create(:ci_build, user: nil) }
         let(:params) { super().merge(build: job) }
+
+        before do
+          job.update!(user: user)
+        end
 
         it_behaves_like 'assigns build to package' do
           subject { super().payload.fetch(:package) }
@@ -66,14 +72,6 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
         subject { super().payload.fetch(:package) }
 
         it { is_expected.to have_attributes status: 'processing' }
-
-        context 'when upload_npm_packages_async feature flag is disabled' do
-          before do
-            stub_feature_flags(upload_npm_packages_async: false)
-          end
-
-          it_behaves_like 'assigns status to package'
-        end
       end
 
       context 'when the npm metadatum creation results in a size error' do
@@ -86,7 +84,7 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
 
             expect { subject }.to raise_error(ActiveRecord::RecordInvalid, /structure is too large/)
               .and not_change { Packages::Package.count }
-              .and not_change { Packages::Package.npm.count }
+              .and not_change { Packages::Npm::Package.count }
               .and not_change { Packages::Tag.count }
               .and not_change { Packages::Npm::Metadatum.count }
           end
@@ -156,7 +154,7 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
             end
           )
 
-          allow_next_instance_of(::Packages::Package) do |package|
+          allow_next_instance_of(::Packages::Npm::Package) do |package|
             allow(package).to receive(:create_npm_metadatum!).and_raise(invalid_npm_metadatum_error)
           end
 
@@ -175,7 +173,7 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
           it 'is persisted without the field' do
             expect { subject }
               .to change { Packages::Package.count }.by(1)
-              .and change { Packages::Package.npm.count }.by(1)
+              .and change { Packages::Npm::Package.count }.by(1)
               .and change { Packages::Tag.count }.by(1)
               .and change { Packages::Npm::Metadatum.count }.by(1)
             expect(package.npm_metadatum.package_json[field]).to be_blank
@@ -185,13 +183,6 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
     end
 
     context 'when scoped package' do
-      it_behaves_like 'returning a success service response'
-      it_behaves_like 'valid package'
-    end
-
-    context 'when user is no project member' do
-      let_it_be(:user) { create(:user) }
-
       it_behaves_like 'returning a success service response'
       it_behaves_like 'valid package'
     end
@@ -226,7 +217,7 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
         it 'creates a new package' do
           expect { execute_service }
             .to change { Packages::Package.count }.by(1)
-            .and change { Packages::Package.npm.count }.by(1)
+            .and change { Packages::Npm::Package.count }.by(1)
             .and change { Packages::Tag.count }.by(1)
             .and change { Packages::Npm::Metadatum.count }.by(1)
         end
@@ -304,6 +295,14 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
       end
     end
 
+    context 'with empty name' do
+      let(:params) { super().merge({ name: '' }) }
+
+      it_behaves_like 'returning an error service response', message: 'Name is empty.' do
+        it { is_expected.to have_attributes reason: :invalid_parameter }
+      end
+    end
+
     context 'with empty versions' do
       let(:params) { super().merge!({ versions: {} }) }
 
@@ -341,6 +340,22 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
       end
     end
 
+    described_class::INSTALL_SCRIPT_KEYS.each do |field|
+      context "with script #{field}" do
+        let(:package) { subject[:package] }
+
+        before do
+          params[:versions][version][:scripts] = { field => "echo 'script #{field}'" }
+        end
+
+        it "sets `hasInstallScript` attribute to `true` for package's metadata" do
+          execute_service
+
+          expect(package.npm_metadatum.package_json['hasInstallScript']).to eq(true)
+        end
+      end
+    end
+
     it 'obtains a lease to create a new package' do
       expect_to_obtain_exclusive_lease(lease_key, timeout: described_class::DEFAULT_LEASE_TIMEOUT)
 
@@ -358,86 +373,6 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
       end
     end
 
-    context 'when feature flag :packages_protected_packages disabled' do
-      let_it_be_with_reload(:package_protection_rule) do
-        create(:package_protection_rule, package_type: :npm, project: project)
-      end
-
-      before do
-        stub_feature_flags(packages_protected_packages: false)
-      end
-
-      context 'with matching package protection rule for all roles' do
-        using RSpec::Parameterized::TableSyntax
-
-        let(:package_name_pattern_no_match) { "#{package_name}_no_match" }
-
-        where(:package_name_pattern, :push_protected_up_to_access_level) do
-          ref(:package_name)                  | :developer
-          ref(:package_name)                  | :owner
-          ref(:package_name_pattern_no_match) | :developer
-          ref(:package_name_pattern_no_match) | :owner
-        end
-
-        with_them do
-          before do
-            package_protection_rule.update!(package_name_pattern: package_name_pattern,
-              push_protected_up_to_access_level: push_protected_up_to_access_level)
-          end
-
-          it_behaves_like 'valid package'
-        end
-      end
-    end
-
-    context 'with package protection rule for different roles and package_name_patterns' do
-      using RSpec::Parameterized::TableSyntax
-
-      let_it_be_with_reload(:package_protection_rule) do
-        create(:package_protection_rule, package_type: :npm, project: project)
-      end
-
-      let_it_be(:project_developer) { create(:user).tap { |u| project.add_developer(u) } }
-      let_it_be(:project_maintainer) { create(:user).tap { |u| project.add_maintainer(u) } }
-
-      let(:project_owner) { project.owner }
-      let(:package_name_pattern_no_match) { "#{package_name}_no_match" }
-
-      let(:service) { described_class.new(project, current_user, params) }
-
-      shared_examples 'protected package' do
-        it_behaves_like 'returning an error service response', message: 'Package protected.' do
-          it { is_expected.to have_attributes reason: :package_protected }
-        end
-
-        it 'does not create any npm-related package records' do
-          expect { subject }
-            .to not_change { Packages::Package.count }
-            .and not_change { Packages::Package.npm.count }
-            .and not_change { Packages::Tag.count }
-            .and not_change { Packages::Npm::Metadatum.count }
-        end
-      end
-
-      where(:package_name_pattern, :push_protected_up_to_access_level, :current_user, :shared_examples_name) do
-        ref(:package_name)                  | :developer  | ref(:project_developer)  | 'protected package'
-        ref(:package_name)                  | :developer  | ref(:project_owner)      | 'valid package'
-        ref(:package_name)                  | :maintainer | ref(:project_maintainer) | 'protected package'
-        ref(:package_name)                  | :owner      | ref(:project_owner)      | 'protected package'
-        ref(:package_name_pattern_no_match) | :developer  | ref(:project_owner)      | 'valid package'
-        ref(:package_name_pattern_no_match) | :owner      | ref(:project_owner)      | 'valid package'
-      end
-
-      with_them do
-        before do
-          package_protection_rule.update!(package_name_pattern: package_name_pattern,
-            push_protected_up_to_access_level: push_protected_up_to_access_level)
-        end
-
-        it_behaves_like params[:shared_examples_name]
-      end
-    end
-
     describe '#lease_key' do
       subject { service.send(:lease_key) }
 
@@ -446,15 +381,34 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
       end
     end
 
-    context 'when upload_npm_packages_async feature flag is disabled' do
-      before do
-        stub_feature_flags(upload_npm_packages_async: false)
+    context 'with temporary package' do
+      let!(:temp_package) do
+        create(:npm_package, :processing, name: package_name, version: "0.0.0-#{SecureRandom.uuid}",
+          package_files: [], project: project)
       end
 
-      it 'does not enqueue a background job' do
-        expect(::Packages::Npm::ProcessPackageFileWorker).not_to receive(:perform_async)
+      let!(:file) { temp_file('payload', content: params.to_json) }
+      let!(:package_file) { create(:package_file, :processing, file: file, package: temp_package, file_fixture: nil) }
+      let(:service) { described_class.new(project, user, params.merge(temp_package: temp_package.reload)) }
+      let(:data) { Base64.decode64(params['_attachments']["#{package_name}-#{version}.tgz"]['data']) }
 
-        execute_service
+      it 'creates a new npm package from temporary package' do
+        expect(::Packages::Npm::ProcessPackageFileWorker).to receive(:perform_async).once
+
+        expect { execute_service }
+          .to change { Packages::Tag.count }.by(1)
+          .and change { Packages::Npm::Metadatum.count }.by(1)
+
+        expect(temp_package.version).to eq(version)
+
+        expect(package_file.reload).to have_attributes(
+          size: data.size,
+          file_sha1: params['versions'][version]['dist']['shasum'],
+          file_name: "#{package_name}-#{version}.tgz",
+          status: 'default'
+        )
+
+        expect(package_file.file.read).to eq(data)
       end
     end
   end
@@ -479,7 +433,8 @@ RSpec.describe Packages::Npm::CreatePackageService, feature_category: :package_r
 
     subject { service.execute }
 
-    it 'only creates one package' do
+    it 'only creates one package',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/17042' do
       expect { create_packages(project, user, params) }.to change { Packages::Package.count }.by(1)
     end
 

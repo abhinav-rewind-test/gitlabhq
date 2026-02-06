@@ -56,9 +56,7 @@ describe('Tracking', () => {
 
   describe('.event', () => {
     afterEach(() => {
-      window.doNotTrack = undefined;
-      navigator.doNotTrack = undefined;
-      navigator.msDoNotTrack = undefined;
+      navigator.globalPrivacyControl = undefined;
     });
 
     it('tracks to snowplow (our current tracking system)', () => {
@@ -116,91 +114,11 @@ describe('Tracking', () => {
       expect(snowplowSpy).not.toHaveBeenCalled();
     });
 
-    it('skips tracking if the user does not want to be tracked (general spec)', () => {
-      window.doNotTrack = '1';
+    it('skips tracking if the user has Global Privacy Control enabled', () => {
+      navigator.globalPrivacyControl = true;
       Tracking.event(TEST_CATEGORY, TEST_ACTION);
 
       expect(snowplowSpy).not.toHaveBeenCalled();
-    });
-
-    it('skips tracking if the user does not want to be tracked (firefox legacy)', () => {
-      navigator.doNotTrack = 'yes';
-      Tracking.event(TEST_CATEGORY, TEST_ACTION);
-
-      expect(snowplowSpy).not.toHaveBeenCalled();
-    });
-
-    it('skips tracking if the user does not want to be tracked (IE legacy)', () => {
-      navigator.msDoNotTrack = '1';
-      Tracking.event(TEST_CATEGORY, TEST_ACTION);
-
-      expect(snowplowSpy).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('.definition', () => {
-    const TEST_VALID_BASENAME = '202108302307_default_click_button';
-    const TEST_EVENT_DATA = { category: undefined, action: 'click_button' };
-    let eventSpy;
-    let dispatcherSpy;
-
-    beforeAll(() => {
-      Tracking.definitionsManifest = {
-        '202108302307_default_click_button': 'config/events/202108302307_default_click_button.yml',
-      };
-    });
-
-    beforeEach(() => {
-      eventSpy = jest.spyOn(Tracking, 'event');
-      dispatcherSpy = jest.spyOn(Tracking, 'dispatchFromDefinition');
-    });
-
-    it('throws an error if the definition does not exists', () => {
-      const basename = '20220230_default_missing_definition';
-      const expectedError = new Error(`Missing Snowplow event definition "${basename}"`);
-
-      expect(() => Tracking.definition(basename)).toThrow(expectedError);
-    });
-
-    it('dispatches an event from a definition present in the manifest', () => {
-      Tracking.definition(TEST_VALID_BASENAME);
-
-      expect(dispatcherSpy).toHaveBeenCalledWith(TEST_VALID_BASENAME, {});
-    });
-
-    it('push events to the queue if not loaded', () => {
-      Tracking.definitionsLoaded = false;
-      Tracking.definitionsEventsQueue = [];
-
-      const dispatched = Tracking.definition(TEST_VALID_BASENAME);
-
-      expect(dispatched).toBe(false);
-      expect(Tracking.definitionsEventsQueue[0]).toStrictEqual([TEST_VALID_BASENAME, {}]);
-      expect(eventSpy).not.toHaveBeenCalled();
-    });
-
-    it('dispatch events when the definition is loaded', () => {
-      const definition = { key: TEST_VALID_BASENAME, ...TEST_EVENT_DATA };
-      Tracking.definitions = [{ ...definition }];
-      Tracking.definitionsEventsQueue = [];
-      Tracking.definitionsLoaded = true;
-
-      const dispatched = Tracking.definition(TEST_VALID_BASENAME);
-
-      expect(dispatched).not.toBe(false);
-      expect(Tracking.definitionsEventsQueue).toEqual([]);
-      expect(eventSpy).toHaveBeenCalledWith(definition.category, definition.action, {});
-    });
-
-    it('lets defined event data takes precedence', () => {
-      const definition = { key: TEST_VALID_BASENAME, category: undefined, action: 'click_button' };
-      const eventData = { category: TEST_CATEGORY };
-      Tracking.definitions = [{ ...definition }];
-      Tracking.definitionsLoaded = true;
-
-      Tracking.definition(TEST_VALID_BASENAME, eventData);
-
-      expect(eventSpy).toHaveBeenCalledWith(TEST_CATEGORY, definition.action, eventData);
     });
   });
 
@@ -396,6 +314,8 @@ describe('Tracking', () => {
       });
 
       it('ignores and removes old entries from the cache', () => {
+        window.gl.maskedDefaultReferrerUrl =
+          'https://gitlab.com/namespace:#/project:#/-/merge_requests/';
         const oldTimestamp = Date.now() - (REFERRER_TTL + 1);
         Object.defineProperty(document, 'referrer', { value: testOriginalUrl });
         setUrlsCache([
@@ -408,8 +328,28 @@ describe('Tracking', () => {
 
         Tracking.setAnonymousUrls();
 
-        expect(snowplowSpy).not.toHaveBeenCalledWith('setReferrerUrl', testUrl);
+        expect(snowplowSpy).toHaveBeenCalledWith(
+          'setReferrerUrl',
+          window.gl.maskedDefaultReferrerUrl,
+        );
         expect(localStorage.getItem(URLS_CACHE_STORAGE_KEY)).not.toContain(oldTimestamp.toString());
+      });
+
+      it('sets the referrer URL to maskedDefaultReferrerUrl if no referrer is found in cache', () => {
+        window.gl.maskedDefaultReferrerUrl =
+          'https://gitlab.com/namespace:#/project:#/-/merge_requests/';
+        setUrlsCache([]);
+
+        Object.defineProperty(document, 'referrer', {
+          value: 'https://gitlab.com/my-namespace/my-project/-/merge_requests/',
+        });
+
+        Tracking.setAnonymousUrls();
+
+        expect(snowplowSpy).toHaveBeenCalledWith(
+          'setReferrerUrl',
+          window.gl.maskedDefaultReferrerUrl,
+        );
       });
     });
   });

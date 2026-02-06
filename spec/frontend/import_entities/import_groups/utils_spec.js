@@ -5,7 +5,7 @@ import {
   isProjectCreationAllowed,
 } from '~/import_entities/import_groups/utils';
 
-const FINISHED_STATUSES = [STATUSES.FINISHED, STATUSES.FAILED, STATUSES.TIMEOUT];
+const FINISHED_STATUSES = [STATUSES.FINISHED, STATUSES.FAILED, STATUSES.TIMEOUT, STATUSES.CANCELED];
 const OTHER_STATUSES = Object.values(STATUSES).filter(
   (status) => !FINISHED_STATUSES.includes(status),
 );
@@ -71,5 +71,9 @@ describe('Direct transfer status utils', () => {
         expect(isProjectCreationAllowed({ projectCreationLevel })).toBe(expected);
       },
     );
+
+    it('when "No parent" is selected, returns true', () => {
+      expect(isProjectCreationAllowed({ fullPath: '' })).toBe(true);
+    });
   });
 });

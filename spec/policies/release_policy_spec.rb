@@ -5,15 +5,10 @@ require 'spec_helper'
 RSpec.describe ReleasePolicy, :request_store do
   let_it_be(:developer) { create(:user) }
   let_it_be(:maintainer) { create(:user) }
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository, developers: developer, maintainers: maintainer) }
   let_it_be(:release, reload: true) { create(:release, project: project) }
 
   let(:user) { developer }
-
-  before_all do
-    project.add_developer(developer)
-    project.add_maintainer(maintainer)
-  end
 
   subject { described_class.new(user, release) }
 
@@ -24,6 +19,7 @@ RSpec.describe ReleasePolicy, :request_store do
       is_expected.to be_allowed(:create_release)
       is_expected.to be_allowed(:update_release)
       is_expected.to be_allowed(:destroy_release)
+      is_expected.to be_allowed(:publish_catalog_version)
     end
   end
 
@@ -34,6 +30,7 @@ RSpec.describe ReleasePolicy, :request_store do
       is_expected.to be_disallowed(:create_release)
       is_expected.to be_disallowed(:update_release)
       is_expected.to be_disallowed(:destroy_release)
+      is_expected.to be_disallowed(:publish_catalog_version)
     end
   end
 end

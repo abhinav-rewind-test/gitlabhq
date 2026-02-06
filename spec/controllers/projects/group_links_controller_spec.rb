@@ -10,7 +10,7 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
 
   before do
     travel_to DateTime.new(2019, 4, 1)
-    project.add_maintainer(user)
+    project.add_owner(user)
     sign_in(user)
   end
 
@@ -29,8 +29,8 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
       )
     end
 
-    let(:expiry_date) { 1.month.from_now.to_date }
-    let(:group_access) { Gitlab::Access::GUEST }
+    let_it_be(:expiry_date) { 1.month.from_now.to_date }
+    let_it_be(:group_access) { Gitlab::Access::GUEST }
 
     subject(:update_link) do
       put(
@@ -76,25 +76,14 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
       expect(response).to have_gitlab_http_status(:not_found)
       expect(json_response['message']).to eq('404 Not Found')
     end
-
-    context 'when MAINTAINER tries to update the link to OWNER access' do
-      let(:group_access) { Gitlab::Access::OWNER }
-
-      it 'returns 403' do
-        update_link
-
-        expect(response).to have_gitlab_http_status(:forbidden)
-        expect(json_response['message']).to eq('Forbidden')
-      end
-    end
   end
 
   describe '#destroy' do
-    let(:group_owner) { create(:user) }
-    let(:group_access) { Gitlab::Access::DEVELOPER }
+    let_it_be(:group_owner) { create(:user) }
+    let_it_be(:group_access) { Gitlab::Access::DEVELOPER }
     let(:format) { :html }
 
-    let!(:link) do
+    let_it_be_with_reload(:link) do
       create(:project_group_link, project: project, group: group, group_access: group_access)
     end
 
@@ -110,6 +99,9 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
 
         expect(response).to redirect_to(project_project_members_path(project))
         expect(response).to have_gitlab_http_status(:found)
+        expect(flash[:notice]).to eq(
+          'Group invite removed. It might take a few minutes for the changes to user access levels to take effect.'
+        )
       end
     end
 
@@ -143,14 +135,15 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
     end
 
     context 'when user is not a group owner' do
-      context 'when user is a project maintainer' do
+      context 'when user is a project owner' do
         before do
+          project.add_owner(user)
           sign_in(user)
         end
 
         it_behaves_like 'success response'
 
-        it "returns an error when link is not destroyed" do
+        it 'returns an error when link is not destroyed' do
           allow(::Projects::GroupLinks::DestroyService).to receive_message_chain(:new, :execute)
             .and_return(ServiceResponse.error(message: 'The error message'))
 
@@ -172,16 +165,17 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
         end
       end
 
-      context 'when user is not a project maintainer' do
+      context 'when user does not have permission to destroy the link' do
         before do
-          project.add_developer(user)
+          project.add_maintainer(user)
           sign_in(user)
         end
 
         it 'returns 404' do
           expect { destroy_link }.to not_change { project.reload.project_group_links.count }
 
-          expect(response).to have_gitlab_http_status(:not_found)
+          expect(response).to redirect_to(project_project_members_path(project, tab: :groups))
+          expect(flash[:alert]).to include('The project-group link could not be removed.')
         end
       end
     end
@@ -193,7 +187,9 @@ RSpec.describe Projects::GroupLinksController, feature_category: :system_access 
       end
 
       context 'when they try to destroy a link with OWNER access level' do
-        let(:group_access) { Gitlab::Access::OWNER }
+        before do
+          link.update!(group_access: Gitlab::Access::OWNER)
+        end
 
         it 'does not destroy the link' do
           expect { destroy_link }.to not_change { project.reload.project_group_links.count }

@@ -1,4 +1,4 @@
-import { shallowMount } from '@vue/test-utils';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import SuggestionDiffRow from '~/vue_shared/components/markdown/suggestion_diff_row.vue';
 
 const oldLine = {
@@ -27,14 +27,14 @@ describe('SuggestionDiffRow', () => {
   let wrapper;
 
   const factory = (options = {}) => {
-    wrapper = shallowMount(SuggestionDiffRow, {
+    wrapper = shallowMountExtended(SuggestionDiffRow, {
       ...options,
     });
   };
 
   const findOldLineWrapper = () => wrapper.find('.old_line');
   const findNewLineWrapper = () => wrapper.find('.new_line');
-  const findSuggestionContent = () => wrapper.find('[data-testid="suggestion-diff-content"]');
+  const findSuggestionContent = () => wrapper.findByTestId('suggestion-diff-content');
 
   describe('renders correctly', () => {
     it('renders the correct base suggestion markup', () => {
@@ -96,7 +96,7 @@ describe('SuggestionDiffRow', () => {
 
       const lineContent = wrapper.find('td.line_content');
 
-      expect(lineContent.classes()).toContain('d-table-cell');
+      expect(lineContent.classes()).toContain('!gl-table-cell');
       expect(lineContent.text()).toEqual('');
     });
 
@@ -113,7 +113,7 @@ describe('SuggestionDiffRow', () => {
       });
 
       lineContent = wrapper.find('td.line_content');
-      expect(lineContent.classes()).not.toContain('d-table-cell');
+      expect(lineContent.classes()).not.toContain('!gl-table-cell');
 
       factory({
         propsData: {
@@ -125,7 +125,7 @@ describe('SuggestionDiffRow', () => {
       });
 
       lineContent = wrapper.find('td.line_content');
-      expect(lineContent.classes()).not.toContain('d-table-cell');
+      expect(lineContent.classes()).not.toContain('!gl-table-cell');
     });
   });
 

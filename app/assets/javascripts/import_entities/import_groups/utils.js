@@ -11,7 +11,9 @@ export function validationMessageFor(importTarget, field) {
 }
 
 export function isFinished(group) {
-  return [STATUSES.FINISHED, STATUSES.FAILED, STATUSES.TIMEOUT].includes(group.progress?.status);
+  return [STATUSES.FINISHED, STATUSES.FAILED, STATUSES.TIMEOUT, STATUSES.CANCELED].includes(
+    group.progress?.status,
+  );
 }
 
 export function isAvailableForImport(group) {
@@ -19,6 +21,11 @@ export function isAvailableForImport(group) {
 }
 
 export function isProjectCreationAllowed(group = {}) {
+  // When "No parent" is selected
+  if (group.fullPath === '') {
+    return true;
+  }
+
   return Boolean(group.projectCreationLevel) && group.projectCreationLevel !== 'noone';
 }
 

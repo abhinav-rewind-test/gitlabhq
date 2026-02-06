@@ -35,8 +35,6 @@ module SystemNotes
     def relate_issuable(noteable_ref)
       body = "marked this #{noteable_name} as related to #{extract_issuable_reference(noteable_ref)}"
 
-      track_issue_event(:track_issue_related_action)
-
       create_note(NoteSummary.new(noteable, project, author, body, action: 'relate'))
     end
 
@@ -50,8 +48,6 @@ module SystemNotes
     # Returns the created Note object
     def unrelate_issuable(noteable_ref)
       body = "removed the relation with #{noteable_ref.to_reference(noteable.resource_parent)}"
-
-      track_issue_event(:track_issue_unrelated_action)
 
       create_note(NoteSummary.new(noteable, project, author, body, action: 'unrelate'))
     end
@@ -133,10 +129,12 @@ module SystemNotes
       create_note(NoteSummary.new(noteable, project, author, body, action: 'reviewer'))
     end
 
-    def request_review(user)
-      body = "#{self.class.issuable_events[:review_requested]} #{user.to_reference}"
+    def request_review(user, has_unapproved)
+      body = ["#{self.class.issuable_events[:review_requested]} #{user.to_reference}"]
 
-      create_note(NoteSummary.new(noteable, project, author, body, action: 'reviewer'))
+      body << "removed approval" if has_unapproved
+
+      create_note(NoteSummary.new(noteable, project, author, body.to_sentence, action: 'reviewer'))
     end
 
     # Called when the contacts of an issuable are changed or removed
@@ -178,14 +176,14 @@ module SystemNotes
     #
     # Returns the created Note object
     def change_title(old_title)
-      new_title = noteable.title.dup
+      new_title = noteable.title
 
       old_diffs, new_diffs = Gitlab::Diff::InlineDiff.new(old_title, new_title).inline_diffs
 
-      marked_old_title = Gitlab::Diff::InlineDiffMarkdownMarker.new(old_title).mark(old_diffs)
-      marked_new_title = Gitlab::Diff::InlineDiffMarkdownMarker.new(new_title).mark(new_diffs)
+      marked_old_title = Gitlab::Diff::InlineDiffMarker.new(old_title).mark(old_diffs)
+      marked_new_title = Gitlab::Diff::InlineDiffMarker.new(new_title).mark(new_diffs)
 
-      body = "changed title from **#{marked_old_title}** to **#{marked_new_title}**"
+      body = "<p>changed title from <code class=\"idiff\">#{marked_old_title}</code> to <code class=\"idiff\">#{marked_new_title}</code></p>"
 
       track_issue_event(:track_issue_title_changed_action)
       work_item_activity_counter.track_work_item_title_changed_action(author: author) if noteable.is_a?(WorkItem)
@@ -208,7 +206,7 @@ module SystemNotes
       params = hierarchy_note_params(action, noteable, work_item)
 
       create_note(NoteSummary.new(noteable, project, author, params[:parent_note_body], action: params[:parent_action]))
-      create_note(NoteSummary.new(work_item, project, author, params[:child_note_body], action: params[:child_action]))
+      create_note(NoteSummary.new(work_item, work_item.project, author, params[:child_note_body], action: params[:child_action]))
     end
 
     # Called when the description of a Noteable is changed
@@ -248,7 +246,9 @@ module SystemNotes
     def cross_reference(mentioned_in)
       return if cross_reference_disallowed?(mentioned_in)
 
-      gfm_reference = mentioned_in.gfm_reference(noteable.project || noteable.group)
+      from = noteable.project || noteable.try(:group) || noteable.try(:namespace)
+
+      gfm_reference = mentioned_in.gfm_reference(from)
       body = cross_reference_note_content(gfm_reference)
 
       if noteable.is_a?(ExternalIssue)
@@ -262,8 +262,11 @@ module SystemNotes
       else
         track_cross_reference_action
 
-        created_at = mentioner.created_at if USE_COMMIT_DATE_FOR_CROSS_REFERENCE_NOTE && mentioner.is_a?(Commit)
-        create_note(NoteSummary.new(noteable, noteable.project, author, body, action: 'cross_reference', created_at: created_at))
+        created_at = mentioned_in.created_at if USE_COMMIT_DATE_FOR_CROSS_REFERENCE_NOTE && mentioned_in.is_a?(Commit)
+        note = create_note(NoteSummary.new(noteable, noteable.project, author, body, action: 'cross_reference', created_at: created_at), skip_touch_noteable: true)
+        track_cross_reference(mentioned_in, note)
+
+        note
       end
     end
 
@@ -285,7 +288,7 @@ module SystemNotes
 
     # Called when the status of a Task has changed
     #
-    # new_task  - TaskList::Item object.
+    # new_task  - Taskable::Item object.
     #
     # Example Note text:
     #
@@ -294,7 +297,7 @@ module SystemNotes
     # Returns the created Note object
     def change_task_status(new_task)
       status_label = new_task.complete? ? Taskable::COMPLETED : Taskable::INCOMPLETE
-      body = "marked the checklist item **#{new_task.source}** as #{status_label}"
+      body = "marked the checklist item **#{::GLFMMarkdown.escape_commonmark_inline(new_task.text)}** as #{status_label}"
 
       track_issue_event(:track_issue_description_changed_action)
 
@@ -316,10 +319,8 @@ module SystemNotes
         raise ArgumentError, "Invalid direction `#{direction}`"
       end
 
-      cross_reference = noteable_ref.to_reference(project)
+      cross_reference = noteable_ref.to_reference(container)
       body = "moved #{direction} #{cross_reference}"
-
-      track_issue_event(:track_issue_moved_action)
 
       create_note(NoteSummary.new(noteable, project, author, body, action: 'moved'))
     end
@@ -340,10 +341,8 @@ module SystemNotes
         raise ArgumentError, "Invalid direction `#{direction}`"
       end
 
-      cross_reference = noteable_ref.to_reference(project)
+      cross_reference = noteable_ref.to_reference(container)
       body = "cloned #{direction} #{cross_reference}"
-
-      track_issue_event(:track_issue_cloned_action) if direction == :to
 
       create_note(NoteSummary.new(noteable, project, author, body, action: 'cloned', created_at: created_at))
     end
@@ -438,7 +437,7 @@ module SystemNotes
     end
 
     def email_participants(body)
-      create_note(NoteSummary.new(noteable, project, author, body))
+      create_note(NoteSummary.new(noteable, project, author, body, action: 'issue_email_participants'))
     end
 
     def discussion_lock
@@ -481,7 +480,9 @@ module SystemNotes
         text = "#{self.class.cross_reference_note_prefix}%#{mentioned_in.to_reference(nil)}"
         notes.like_note_or_capitalized_note(text)
       else
-        gfm_reference = mentioned_in.gfm_reference(noteable.project || noteable.group)
+        from = noteable.project || noteable.try(:group) || noteable.try(:namespace)
+
+        gfm_reference = mentioned_in.gfm_reference(from)
         text = cross_reference_note_content(gfm_reference)
         notes.for_note_or_capitalized_note(text)
       end
@@ -512,23 +513,45 @@ module SystemNotes
       track_issue_event(:track_issue_cross_referenced_action)
     end
 
+    def track_cross_reference(mentioned_in, note)
+      work_item = case mentioned_in
+                  when Epic
+                    mentioned_in.issue
+                  when WorkItem, Issue
+                    mentioned_in
+                  end
+
+      return unless work_item
+
+      ::Gitlab::WorkItems::Instrumentation::TrackingService.new(
+        work_item: work_item,
+        current_user: note.author,
+        event: Gitlab::WorkItems::Instrumentation::EventActions::REFERENCE_ADD
+      ).execute
+    end
+
     def hierarchy_note_params(action, parent, child)
       return {} unless child && parent
 
       child_type = child.issue_type.humanize(capitalize: false)
       parent_type = parent.issue_type.humanize(capitalize: false)
+      child_reference, parent_reference = if child.namespace_id == parent.namespace_id
+                                            [child.to_reference, parent.to_reference]
+                                          else
+                                            [child.to_reference(full: true), parent.to_reference(full: true)]
+                                          end
 
       if action == 'relate'
         {
-          parent_note_body: "added #{child.to_reference} as child #{child_type}",
-          child_note_body: "added #{parent.to_reference} as parent #{parent_type}",
+          parent_note_body: "added #{child_reference} as child #{child_type}",
+          child_note_body: "added #{parent_reference} as parent #{parent_type}",
           parent_action: 'relate_to_child',
           child_action: 'relate_to_parent'
         }
       else
         {
-          parent_note_body: "removed child #{child_type} #{child.to_reference}",
-          child_note_body: "removed parent #{parent_type} #{parent.to_reference}",
+          parent_note_body: "removed child #{child_type} #{child_reference}",
+          child_note_body: "removed parent #{parent_type} #{parent_reference}",
           parent_action: 'unrelate_from_child',
           child_action: 'unrelate_from_parent'
         }

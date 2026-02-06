@@ -8,28 +8,6 @@ describe('Job Store Getters', () => {
     localState = state();
   });
 
-  describe('headerTime', () => {
-    describe('when the job has started key', () => {
-      it('returns started_at value', () => {
-        const started = '2018-08-31T16:20:49.023Z';
-        const startedAt = '2018-08-31T16:20:49.023Z';
-        localState.job.started_at = startedAt;
-        localState.job.started = started;
-
-        expect(getters.headerTime(localState)).toEqual(startedAt);
-      });
-    });
-
-    describe('when the job does not have started key', () => {
-      it('returns created_at value', () => {
-        const created = '2018-08-31T16:20:49.023Z';
-        localState.job.created_at = created;
-
-        expect(getters.headerTime(localState)).toEqual(created);
-      });
-    });
-  });
-
   describe('shouldRenderCalloutMessage', () => {
     describe('with status and callout message', () => {
       it('returns true', () => {
@@ -53,24 +31,6 @@ describe('Job Store Getters', () => {
         localState.job.status = { icon: 'passed' };
 
         expect(getters.shouldRenderCalloutMessage(localState)).toEqual(false);
-      });
-    });
-  });
-
-  describe('shouldRenderTriggeredLabel', () => {
-    describe('when started equals null', () => {
-      it('returns false', () => {
-        localState.job.started_at = null;
-
-        expect(getters.shouldRenderTriggeredLabel(localState)).toEqual(false);
-      });
-    });
-
-    describe('when started equals string', () => {
-      it('returns true', () => {
-        localState.job.started_at = '2018-08-31T16:20:49.023Z';
-
-        expect(getters.shouldRenderTriggeredLabel(localState)).toEqual(true);
       });
     });
   });
@@ -149,61 +109,6 @@ describe('Job Store Getters', () => {
     describe('when illustration is not defined', () => {
       it('returns an empty object', () => {
         expect(getters.emptyStateIllustration(localState)).toEqual({});
-      });
-    });
-  });
-
-  describe('shouldRenderSharedRunnerLimitWarning', () => {
-    describe('without runners information', () => {
-      it('returns false', () => {
-        expect(getters.shouldRenderSharedRunnerLimitWarning(localState)).toEqual(false);
-      });
-    });
-
-    describe('with runners information', () => {
-      describe('when used quota is less than limit', () => {
-        it('returns false', () => {
-          localState.job.runners = {
-            quota: {
-              used: 33,
-              limit: 2000,
-            },
-            available: true,
-            online: true,
-          };
-
-          expect(getters.shouldRenderSharedRunnerLimitWarning(localState)).toEqual(false);
-        });
-      });
-
-      describe('when used quota is equal to limit', () => {
-        it('returns true', () => {
-          localState.job.runners = {
-            quota: {
-              used: 2000,
-              limit: 2000,
-            },
-            available: true,
-            online: true,
-          };
-
-          expect(getters.shouldRenderSharedRunnerLimitWarning(localState)).toEqual(true);
-        });
-      });
-
-      describe('when used quota is bigger than limit', () => {
-        it('returns true', () => {
-          localState.job.runners = {
-            quota: {
-              used: 2002,
-              limit: 2000,
-            },
-            available: true,
-            online: true,
-          };
-
-          expect(getters.shouldRenderSharedRunnerLimitWarning(localState)).toEqual(true);
-        });
       });
     });
   });

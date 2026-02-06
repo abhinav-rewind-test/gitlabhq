@@ -31,12 +31,6 @@ RSpec.describe Packages::Npm::CreateTagService, feature_category: :package_regis
         it_behaves_like 'it creates the tag'
       end
 
-      context 'on different package type' do
-        let!(:package2) { create(:conan_package, project: package.project, name: 'conan_package_name', version: package.version) }
-
-        it_behaves_like 'it creates the tag'
-      end
-
       context 'on same package with different version' do
         let!(:package2) { create(:npm_package, project: package.project, name: package.name, version: '5.0.0-testing') }
 

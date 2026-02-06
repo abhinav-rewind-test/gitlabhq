@@ -12,16 +12,20 @@ describe('IssueBoardFilter', () => {
 
   const findBoardsFilteredSearch = () => wrapper.findComponent(BoardFilteredSearch);
 
-  const createComponent = ({ isSignedIn = false } = {}) => {
+  const createComponent = ({ isSignedIn = false, workItemTasksOnBoardsEnabled = false } = {}) => {
     wrapper = shallowMount(IssueBoardFilteredSpec, {
       propsData: {
         boardId: 'gid://gitlab/Board/1',
+        filters: {},
       },
       provide: {
         isSignedIn,
         releasesFetchPath: '/releases',
         fullPath: 'gitlab-org',
         isGroupBoard: true,
+        glFeatures: {
+          workItemTasksOnBoards: workItemTasksOnBoardsEnabled,
+        },
       },
       mocks: {
         $apollo: {},
@@ -66,5 +70,58 @@ describe('IssueBoardFilter', () => {
         expect(findBoardsFilteredSearch().props('tokens')).toEqual(orderBy(tokens, ['title']));
       },
     );
+
+    describe('task type filter', () => {
+      it('does not have `Task` in work item type filter token when `workItemTasksOnBoards` is disabled', () => {
+        createComponent({
+          isSignedIn: true,
+          workItemTasksOnBoardsEnabled: false,
+        });
+
+        const issuesToken = findBoardsFilteredSearch()
+          .props('tokens')
+          .find(({ type }) => type === 'type');
+
+        expect(issuesToken.options).toEqual([
+          expect.objectContaining({ title: 'Issue' }),
+          expect.objectContaining({ title: 'Incident' }),
+          expect.objectContaining({ title: 'Ticket' }),
+        ]);
+      });
+
+      it('has `Task` in work item type filter token when `workItemTasksOnBoards` is enabled', () => {
+        createComponent({
+          isSignedIn: true,
+          workItemTasksOnBoardsEnabled: true,
+        });
+
+        const issuesToken = findBoardsFilteredSearch()
+          .props('tokens')
+          .find(({ type }) => type === 'type');
+
+        expect(issuesToken.options).toEqual([
+          expect.objectContaining({ title: 'Issue' }),
+          expect.objectContaining({ title: 'Incident' }),
+          expect.objectContaining({ title: 'Task' }),
+          expect.objectContaining({ title: 'Ticket' }),
+        ]);
+      });
+    });
+
+    describe('ticket type filter', () => {
+      it('has `Ticket` in work item type filter token', () => {
+        createComponent({ isSignedIn: true });
+
+        const issuesToken = findBoardsFilteredSearch()
+          .props('tokens')
+          .find(({ type }) => type === 'type');
+
+        expect(issuesToken.options).toEqual([
+          expect.objectContaining({ title: 'Issue' }),
+          expect.objectContaining({ title: 'Incident' }),
+          expect.objectContaining({ title: 'Ticket' }),
+        ]);
+      });
+    });
   });
 });

@@ -3,6 +3,8 @@
 module Gitlab
   module Database
     class PostgresPartition < SharedModel
+      LIST_PARTITION_PATTERN = /FOR VALUES IN \(([^)]+)\)/
+
       self.primary_key = :identifier
 
       belongs_to :postgres_partitioned_table, foreign_key: 'parent_identifier', primary_key: 'identifier'
@@ -29,6 +31,20 @@ module Gitlab
         end
       end
 
+      scope :with_parent_tables, ->(parent_tables) do
+        parent_identifiers = parent_tables.map { |name| "#{connection.current_schema}.#{name}" }
+
+        where(parent_identifier: parent_identifiers).order(:name)
+      end
+
+      scope :with_list_constraint, ->(condition) do
+        where(sanitize_sql_for_conditions(['condition LIKE ?', "FOR VALUES IN (%'#{condition.to_i}'%)"]))
+      end
+
+      scope :above_threshold, ->(threshold) do
+        where('pg_total_relation_size(identifier) > ?', threshold)
+      end
+
       def self.partition_exists?(table_name)
         where("identifier = concat(current_schema(), '.', ?)", table_name).exists?
       end
@@ -45,6 +61,15 @@ module Gitlab
 
       def to_s
         name
+      end
+
+      def list_partition_ids
+        return [] if condition.blank?
+
+        match = condition.match(LIST_PARTITION_PATTERN)
+        return [] unless match
+
+        match[1].scan(/\d+/).map(&:to_i)
       end
     end
   end

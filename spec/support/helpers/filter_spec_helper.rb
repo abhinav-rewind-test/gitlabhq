@@ -16,6 +16,10 @@ module FilterSpecHelper
   #
   # Returns a Nokogiri::XML::DocumentFragment
   def filter(html, context = {}, result = nil)
+    described_class.call(html, filter_context(context), result)
+  end
+
+  def filter_context(context)
     if defined?(project)
       context.reverse_merge!(project: project)
     end
@@ -23,9 +27,11 @@ module FilterSpecHelper
     render_context = Banzai::RenderContext
       .new(context[:project], context[:current_user])
 
-    context = context.merge(render_context: render_context)
+    context.merge(render_context: render_context)
+  end
 
-    described_class.call(html, context, result)
+  def render_context
+    Banzai::RenderContext.new(project, current_user)
   end
 
   # Get an instance of the Filter class
@@ -38,10 +44,6 @@ module FilterSpecHelper
     described_class.new(input_text, context)
   end
 
-  def render_context
-    Banzai::RenderContext.new(project, current_user)
-  end
-
   # Run text through HTML::Pipeline with the current filter and return the
   # result Hash
   #
@@ -52,7 +54,7 @@ module FilterSpecHelper
   def pipeline_result(body, context = {})
     context.reverse_merge!(project: project) if defined?(project)
 
-    pipeline = HTML::Pipeline.new([described_class], context)
+    pipeline = Banzai::PipelineBase.new([described_class], context)
     pipeline.call(body)
   end
 
@@ -60,7 +62,7 @@ module FilterSpecHelper
     context.reverse_merge!(project: project) if defined?(project)
     context.reverse_merge!(current_user: current_user) if defined?(current_user)
 
-    filters = [Banzai::Filter::AutolinkFilter, filter].compact
+    filters = [Banzai::Filter::MarkdownFilter, filter].compact
 
     redact = context.delete(:redact)
     filters.push(Banzai::Filter::ReferenceRedactorFilter) if redact
@@ -94,6 +96,9 @@ module FilterSpecHelper
     when /\A(.+)?[^\d]\d+\z/
       # Integer-based reference with optional project prefix
       reference.gsub(/\d+\z/) { |i| i.to_i + 10_000 }
+    when /\A\[\w+:\d+\]\z/
+      # Integer-based reference with [type:number] syntax
+      reference.gsub(/\d+\]\z/) { |i| "#{i[0..-2].to_i + 10_000}]" }
     when /\A(.+@)?(#{Gitlab::Git::Commit::RAW_SHA_PATTERN}\z)/o
       # SHA-based reference with optional prefix
       reference.gsub(/#{Gitlab::Git::Commit::RAW_SHA_PATTERN}\z/o) { |v| v.reverse }

@@ -6,12 +6,21 @@
 # Don't use format parameter as file extension (old 3.0.x behavior)
 # See http://guides.rubyonrails.org/routing.html#route-globbing-and-wildcard-segments
 scope format: false do
-  get '/compare/:from...:to', to: 'compare#show', as: 'compare', constraints: { from: /.+/, to: /.+/ }
+  get '/compare/:from...:to/', to: 'compare#show', as: 'compare', constraints: { from: /.+/, to: /.+/ }
+  get '/compare/:from..:to/', to: 'compare#show', as: 'compare_with_two_dots', constraints: { from: /.+/, to: /.+/ }, defaults: { straight: "true" }
 
   resources :compare, only: [:index, :create] do
     collection do
       get :diff_for_path
       get :signatures
+      get :diffs_stream, controller: 'compare_diffs_stream'
+      get :diff_files_metadata
+      get :diffs_stats
+      get :diff_file
+
+      scope constraints: ->(req) { req.format == :json }, as: :json do
+        get :target_projects, to: 'compare#target_projects_json'
+      end
     end
   end
 
@@ -52,7 +61,7 @@ scope format: false do
 
     delete :merged_branches, controller: 'branches', action: :destroy_all_merged
     resources :tags, only: [:index, :show, :new, :create, :destroy]
-    resources :protected_branches, only: [:index, :show, :create, :update, :destroy, :patch], constraints: { id: Gitlab::PathRegex.git_reference_regex }
+    resources :protected_branches, only: [:index, :show, :create, :update, :destroy], constraints: { id: Gitlab::PathRegex.git_reference_regex }
     resources :protected_tags, only: [:index, :show, :create, :update, :destroy]
   end
 
@@ -66,6 +75,7 @@ scope format: false do
 
       scope path: '/blob/*id', as: :blob do
         get :diff
+        get :diff_lines
         get '/', action: :show
         delete '/', action: :destroy
         post '/', action: :create
@@ -80,7 +90,12 @@ scope format: false do
     get '/blame/*id', to: 'blame#show', as: :blame
 
     get '/commits', to: 'commits#commits_root', as: :commits_root
-    get '/commits/*id/signatures', to: 'commits#signatures', as: :signatures
+    # this route conflicts with branch names that end with /signatures
+    # to avoid this issue we ensure that #signatures only responds to json requests
+    # and also is not a commit pagination request, based on the 'offset' param presence
+    get '/commits/*id/signatures', to: 'commits#signatures', as: :signatures, constraints: ->(request) do
+      request.format == :json && !request.params[:offset]
+    end
     get '/commits/*id', to: 'commits#show', as: :commits
 
     post '/create_dir/*id', to: 'tree#create_dir', as: :create_dir
@@ -94,13 +109,18 @@ end
 
 resources :commit, only: [:show], constraints: { id: Gitlab::Git::Commit::SHA_PATTERN } do
   member do
-    get :branches
+    get :diffs_stream, controller: 'commit_diffs_stream'
     get :pipelines
     post :revert
     post :cherry_pick
     get :diff_for_path
     get :diff_files
     get :merge_requests
+    get :diff_files_metadata
+    get :diffs_stats
+    get :diff_file
+    get :discussions
+    post :discussions, to: 'commit#create_discussions'
   end
 end
 

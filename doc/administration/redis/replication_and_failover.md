@@ -1,14 +1,16 @@
 ---
-stage: Systems
-group: Distribution
+stage: Tenant Scale
+group: Tenant Services
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Redis replication and failover with the Linux package
 ---
 
-# Redis replication and failover with the Linux package
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 This documentation is for the Linux package. To use your own
 non-bundled Redis, see [Redis replication and failover providing your own instance](replication_and_failover_external.md).
@@ -17,14 +19,14 @@ In Redis lingo, `primary` is called `master`. In this document, `primary` is use
 instead of `master`, except the settings where `master` is required.
 
 Using [Redis](https://redis.io/) in scalable environment is possible using a **Primary** x **Replica**
-topology with a [Redis Sentinel](https://redis.io/docs/manual/sentinel/) service to watch and automatically
+topology with a [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/) service to watch and automatically
 start the failover procedure.
 
 Redis requires authentication if used with Sentinel. See
-[Redis Security](https://redis.io/docs/manual/security/) documentation for more
+[Redis Security](https://redis.io/docs/latest/operate/rc/security/) documentation for more
 information. We recommend using a combination of a Redis password and tight
 firewall rules to secure your Redis service.
-You are highly encouraged to read the [Redis Sentinel](https://redis.io/docs/manual/sentinel/) documentation
+You are highly encouraged to read the [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/) documentation
 before configuring Redis with GitLab to fully understand the topology and
 architecture.
 
@@ -68,7 +70,7 @@ When a **Primary** fails to respond, it's the application's responsibility
 for a new **Primary**).
 
 To get a better understanding on how to correctly set up Sentinel, read
-the [Redis Sentinel](https://redis.io/docs/manual/sentinel/) documentation first, as
+the [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/) documentation first, as
 failing to configure it correctly can lead to data loss or can bring your
 whole cluster down, invalidating the failover effort.
 
@@ -98,7 +100,7 @@ the Linux package in `5` **independent** machines, both with
 ### Redis setup overview
 
 You must have at least `3` Redis servers: `1` primary, `2` Replicas, and they
-need to each be on independent machines (see explanation above).
+need to each be on independent machines.
 
 You can have additional Redis nodes, that helps to survive a situation
 where more nodes goes down. Whenever there is only `2` nodes online, a failover
@@ -159,12 +161,12 @@ Here are some examples:
 - With `7` sentinels, a maximum of `3` nodes can go down.
 
 The **Leader** election can sometimes fail the voting round when **consensus**
-is not achieved (see the odd number of nodes requirement above). In that case,
+is not achieved. In that case,
 a new attempt is made after the amount of time defined in
 `sentinel['failover_timeout']` (in milliseconds).
 
-NOTE:
-We can see where `sentinel['failover_timeout']` is defined later.
+> [!note]
+> We can see where `sentinel['failover_timeout']` is defined later.
 
 The `failover_timeout` variable has a lot of different use cases. According to
 the official documentation:
@@ -195,10 +197,10 @@ It is assumed that you have installed GitLab and all its components from scratch
 If you already have Redis installed and running, read how to
 [switch from a single-machine installation](#switching-from-an-existing-single-machine-installation).
 
-NOTE:
-Redis nodes (both primary and replica) need the same password defined in
-`redis['password']`. At any time during a failover the Sentinels can
-reconfigure a node and change its status from primary to replica and vice versa.
+> [!note]
+> Redis nodes (both primary and replica) need the same password defined in
+> `redis['password']`. At any time during a failover the Sentinels can
+> reconfigure a node and change its status from primary to replica and vice versa.
 
 ### Requirements
 
@@ -278,10 +280,10 @@ If you fail to replicate first, you may loose data (unprocessed background jobs)
 
 1. [Reconfigure GitLab](../restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 
-NOTE:
-You can specify multiple roles like sentinel and Redis as:
-`roles ['redis_sentinel_role', 'redis_master_role']`.
-Read more about [roles](https://docs.gitlab.com/omnibus/roles/).
+> [!note]
+> You can specify multiple roles like sentinel and Redis as:
+> `roles ['redis_sentinel_role', 'redis_master_role']`.
+> Read more about [roles](https://docs.gitlab.com/omnibus/roles/).
 
 ### Step 2. Configuring the replica Redis instances
 
@@ -336,10 +338,10 @@ Read more about [roles](https://docs.gitlab.com/omnibus/roles/).
 1. [Reconfigure GitLab](../restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 1. Go through the steps again for all the other replica nodes.
 
-NOTE:
-You can specify multiple roles like sentinel and Redis as:
-`roles ['redis_sentinel_role', 'redis_master_role']`.
-Read more about [roles](https://docs.gitlab.com/omnibus/roles/).
+> [!note]
+> You can specify multiple roles like sentinel and Redis as:
+> `roles ['redis_sentinel_role', 'redis_master_role']`.
+> Read more about [roles](https://docs.gitlab.com/omnibus/roles/).
 
 These values don't have to be changed again in `/etc/gitlab/gitlab.rb` after
 a failover, as the nodes are managed by the Sentinels, and even after a
@@ -348,8 +350,11 @@ the same Sentinels.
 
 ### Step 3. Configuring the Redis Sentinel instances
 
-NOTE:
-[Support for Sentinel password authentication](https://gitlab.com/gitlab-org/gitlab/-/issues/235938) was introduced in GitLab 16.1.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/235938) support for Sentinel password authentication in GitLab 16.1.
+
+{{< /history >}}
 
 Now that the Redis servers are all set up, let's configure the Sentinel
 servers.
@@ -367,7 +372,7 @@ multiple machines with the Sentinel daemon.
 
 1. SSH into the server that hosts Redis Sentinel.
 1. **You can omit this step if the Sentinels is hosted in the same node as
-   the other Redis instances.**
+   the other Redis instances**.
 
    [Download and install](https://about.gitlab.com/install/) the
    Linux Enterprise Edition package using **steps 1 and 2** from the
@@ -471,9 +476,9 @@ the correct credentials for the Sentinel nodes.
 While it doesn't require a list of all Sentinel nodes, in case of a failure,
 it needs to access at least one of the listed.
 
-NOTE:
-The following steps should be performed in the GitLab application server
-which ideally should not have Redis or Sentinels on it for a HA setup.
+> [!note]
+> The following steps should be performed in the GitLab application server
+> which ideally should not have Redis or Sentinels on it for a HA setup.
 
 1. SSH into the server where the GitLab application is installed.
 1. Edit `/etc/gitlab/gitlab.rb` and add/change the following lines:
@@ -497,8 +502,6 @@ which ideally should not have Redis or Sentinels on it for a HA setup.
 1. [Reconfigure GitLab](../restart_gitlab.md#reconfigure-a-linux-package-installation) for the changes to take effect.
 
 ### Step 5. Enable Monitoring
-
-> - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/3786) in GitLab 12.0.
 
 If you enable Monitoring, it must be enabled on **all** Redis servers.
 
@@ -656,9 +659,9 @@ persistence classes.
 | `queues`           | Store Sidekiq background jobs. |
 | `shared_state`     | Store session-related and other persistent data. |
 | `actioncable`      | Pub/Sub queue backend for ActionCable. |
-| `trace_chunks`     | Store [CI trace chunks](../job_logs.md#enable-or-disable-incremental-logging) data. |
+| `trace_chunks`     | Store [CI trace chunks](../cicd/job_logs.md#incremental-logging) data. |
 | `rate_limiting`    | Store [rate limiting](../settings/user_and_ip_rate_limits.md) state. |
-| `sessions`         | Store [sessions](../../development/session.md#gitlabsession). |
+| `sessions`         | Store sessions. |
 | `repository_cache` | Store cache data specific to repositories. |
 
 To make this work with Sentinel:
@@ -723,7 +726,7 @@ To make this work with Sentinel:
    - Redis URLs should be in the format: `redis://:PASSWORD@SENTINEL_PRIMARY_NAME`, where:
      - `PASSWORD` is the plaintext password for the Redis instance.
      - `SENTINEL_PRIMARY_NAME` is the Sentinel primary name set with `redis['master_name']`,
-        for example `gitlab-redis-cache`.
+       for example `gitlab-redis-cache`.
 
 1. Save the file and reconfigure GitLab for the change to take effect:
 
@@ -731,10 +734,10 @@ To make this work with Sentinel:
    sudo gitlab-ctl reconfigure
    ```
 
-NOTE:
-For each persistence class, GitLab defaults to using the
-configuration specified in `gitlab_rails['redis_sentinels']` unless
-overridden by the previously described settings.
+> [!note]
+> For each persistence class, GitLab defaults to using the
+> configuration specified in `gitlab_rails['redis_sentinels']` unless
+> overridden by the previously described settings.
 
 ### Control running services
 
@@ -785,7 +788,11 @@ You can find the relevant attributes defined in [`gitlab_rails.rb`](https://gitl
 
 ### Control startup behavior
 
-> - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/6646) in GitLab 15.10.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/6646) in GitLab 15.10.
+
+{{< /history >}}
 
 To prevent the bundled Redis service from starting at boot or restarting after changing its configuration:
 
@@ -808,7 +815,11 @@ to ensure the node starts and restarts as expected during operation.
 
 ### Control replica configuration
 
-> - [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/6646) in GitLab 15.10.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/6646) in GitLab 15.10.
+
+{{< /history >}}
 
 To prevent the `replicaof` line from rendering in the Redis configuration file:
 
@@ -834,7 +845,7 @@ See the [Redis troubleshooting guide](troubleshooting.md).
 
 Read more:
 
-1. [Reference architectures](../reference_architectures/index.md)
+1. [Reference architectures](../reference_architectures/_index.md)
 1. [Configure the database](../postgresql/replication_and_failover.md)
 1. [Configure NFS](../nfs.md)
 1. [Configure the load balancers](../load_balancer.md)

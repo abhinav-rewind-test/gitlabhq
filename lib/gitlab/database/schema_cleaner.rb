@@ -16,6 +16,8 @@ module Gitlab
         structure.gsub!(/^COMMENT ON EXTENSION.*/, '')
         structure.gsub!(/^SET.+/, '')
         structure.gsub!(/^SELECT pg_catalog\.set_config\('search_path'.+/, '')
+        structure.gsub!(/^\\restrict.+/, '')
+        structure.gsub!(/^\\unrestrict.+/, '')
         structure.gsub!(/^--.*/, "\n")
 
         # We typically don't assume we're working with the public schema.
@@ -36,7 +38,7 @@ module Gitlab
           %r{
             ^CREATE.TRIGGER.gitlab_schema_write_trigger_\w+
             \s
-            BEFORE.INSERT.OR.DELETE.OR.UPDATE.OR.TRUNCATE.ON.\w+
+            BEFORE.INSERT.OR.DELETE.OR.UPDATE.OR.TRUNCATE.ON.[\w.]+
             \s
             FOR.EACH.STATEMENT.EXECUTE.FUNCTION.gitlab_schema_prevent_write\(\);$
           }x,

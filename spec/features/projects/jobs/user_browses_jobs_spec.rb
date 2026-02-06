@@ -40,7 +40,7 @@ RSpec.describe 'User browses jobs', feature_category: :continuous_integration do
         find_by_testid('jobs-finished-tab').click
         wait_for_requests
 
-        expect(page).to have_content('No jobs to show')
+        expect(page).to have_content('No results found')
       end
     end
 
@@ -83,10 +83,6 @@ RSpec.describe 'User browses jobs', feature_category: :continuous_integration do
         end
 
         context 'when supports canceling is false' do
-          before do
-            stub_feature_flags(ci_canceling_status: false)
-          end
-
           it 'cancels a job successfully' do
             find_by_testid('cancel-button').click
 
@@ -254,7 +250,7 @@ RSpec.describe 'User browses jobs', feature_category: :continuous_integration do
           visit project_jobs_path(private_project)
           wait_for_requests
 
-          expect(page).to have_content 'You need to sign in'
+          expect(page).to have_content 'Sign in or sign up before continuing'
           expect(page).to have_current_path("/users/sign_in")
         end
       end

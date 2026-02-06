@@ -2,34 +2,35 @@
 stage: Package
 group: Package Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Helm API
 ---
 
-# Helm API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-This is the API documentation for [Helm](../../user/packages/helm_repository/index.md).
+{{< /details >}}
 
-WARNING:
-This API is used by the Helm-related package clients such as [Helm](https://helm.sh/)
-and [`helm-push`](https://github.com/chartmuseum/helm-push/#readme),
-and is generally not meant for manual consumption.
+Use this API to interact with [Helm package clients](../../user/packages/helm_repository/_index.md).
 
-For instructions on how to upload and install Helm packages from the GitLab
-Package Registry, see the [Helm registry documentation](../../user/packages/helm_repository/index.md).
+> [!warning]
+> This API is used by the Helm-related package clients such as [Helm](https://helm.sh/)
+> and [`helm-push`](https://github.com/chartmuseum/helm-push/#readme),
+> and is generally not meant for manual consumption.
 
-NOTE:
 These endpoints do not adhere to the standard API authentication methods.
-See the [Helm registry documentation](../../user/packages/helm_repository/index.md)
+See the [Helm registry documentation](../../user/packages/helm_repository/_index.md)
 for details on which headers and token types are supported. Undocumented authentication methods might be removed in the future.
 
 ## Download a chart index
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/62757) in GitLab 14.1.
+> [!note]
+> To ensure consistent chart download URLs, the `contextPath` field in `index.yaml` responses
+> always uses the numeric project ID, whether you access the API with the project ID or the
+> full project path.
 
-Download a chart index:
+Downloads a specified chart index for a project.
 
 ```plaintext
 GET projects/:id/packages/helm/:channel/index.yaml
@@ -42,22 +43,20 @@ GET projects/:id/packages/helm/:channel/index.yaml
 
 ```shell
 curl --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/index.yaml"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/index.yaml"
 ```
 
 Write the output to a file:
 
 ```shell
 curl --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/index.yaml" \
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/index.yaml" \
      --remote-name
 ```
 
 ## Download a chart
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/61014) in GitLab 14.0.
-
-Download a chart:
+Downloads a specified chart for a project.
 
 ```plaintext
 GET projects/:id/packages/helm/:channel/charts/:file_name.tgz
@@ -71,15 +70,13 @@ GET projects/:id/packages/helm/:channel/charts/:file_name.tgz
 
 ```shell
 curl --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/charts/mychart.tgz" \
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/helm/stable/charts/mychart.tgz" \
      --remote-name
 ```
 
 ## Upload a chart
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/64814) in GitLab 14.1.
-
-Upload a chart:
+Uploads a specified chart for a project.
 
 ```plaintext
 POST projects/:id/packages/helm/api/:channel/charts
@@ -95,5 +92,5 @@ POST projects/:id/packages/helm/api/:channel/charts
 curl --request POST \
      --form 'chart=@mychart.tgz' \
      --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/helm/api/stable/charts"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/helm/api/stable/charts"
 ```

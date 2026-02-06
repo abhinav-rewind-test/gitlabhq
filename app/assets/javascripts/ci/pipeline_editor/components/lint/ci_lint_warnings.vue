@@ -24,6 +24,7 @@ export default {
       default: __('The form contains the following warning:'),
     },
   },
+  emits: ['dismiss'],
   computed: {
     totalWarnings() {
       return this.warnings.length;
@@ -47,7 +48,7 @@ export default {
 <template>
   <gl-alert class="gl-mb-4" :title="title" variant="warning" @dismiss="$emit('dismiss')">
     <details>
-      <summary>
+      <summary data-testid="warning-summary">
         <gl-sprintf :message="summaryMessage">
           <template #total>
             {{ totalWarnings }}

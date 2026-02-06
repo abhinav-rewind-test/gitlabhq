@@ -5,21 +5,14 @@ module BoardItemFilterable
 
   private
 
-  def item_filters(args, resource_parent)
+  def item_filters(args)
     filters = args.to_h
 
     set_filter_values(filters)
 
-    if filters[:not]
-      set_filter_values(filters[:not])
-    end
+    set_filter_values(filters[:not]) if filters[:not]
 
     if filters[:or]
-      if ::Feature.disabled?(:or_issuable_queries, resource_parent)
-        raise ::Gitlab::Graphql::Errors::ArgumentError,
-              "'or' arguments are only allowed when the `or_issuable_queries` feature flag is enabled."
-      end
-
       rewrite_param_name(filters[:or], :author_usernames, :author_username)
       rewrite_param_name(filters[:or], :assignee_usernames, :assignee_username)
       rewrite_param_name(filters[:or], :label_names, :label_name)
@@ -37,9 +30,7 @@ module BoardItemFilterable
       raise ::Gitlab::Graphql::Errors::ArgumentError, 'Incompatible arguments: assigneeUsername, assigneeWildcardId.'
     end
 
-    if filters[:assignee_wildcard_id]
-      filters[:assignee_id] = filters.delete(:assignee_wildcard_id)
-    end
+    filters[:assignee_id] = filters.delete(:assignee_wildcard_id) if filters[:assignee_wildcard_id]
   end
 
   def rewrite_param_name(filters, old_name, new_name)

@@ -1,21 +1,19 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Install cert-manager with a cluster management project
 ---
 
-# Install cert-manager with a cluster management project
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/project-templates/cluster-management/-/merge_requests/5) in GitLab 14.0.
-> - Support for cert-manager v1.4 was [introduced](https://gitlab.com/gitlab-org/project-templates/cluster-management/-/merge_requests/69405) in GitLab 14.3.
-> - [Upgraded](https://gitlab.com/gitlab-org/project-templates/cluster-management/-/merge_requests/23) to cert-manager 1.7 in GitLab 14.8.
+{{< /details >}}
 
 Assuming you already have a project created from a
-[management project template](../../../../../user/clusters/management_project_template.md), to install cert-manager you should
+[management project template](../../../../clusters/management_project_template.md), to install cert-manager you should
 uncomment this line from your `helmfile.yaml`:
 
 ```yaml
@@ -33,11 +31,11 @@ And update the `applications/cert-manager/helmfile.yaml` with a valid email addr
         email: example@example.com
 ```
 
-NOTE:
-If your Kubernetes version is earlier than 1.20 and you are
-[migrating from GitLab Managed Apps to a cluster management project](../../../../clusters/migrating_from_gma_to_project_template.md),
-then you can instead use `- path: applications/cert-manager-legacy/helmfile.yaml` to
-take over an existing release of cert-manager v0.10.
+> [!note]
+> If your Kubernetes version is earlier than 1.20 and you are
+> [migrating from GitLab Managed Apps to a cluster management project](../../../../clusters/migrating_from_gma_to_project_template.md),
+> then you can instead use `- path: applications/cert-manager-legacy/helmfile.yaml` to
+> take over an existing release of cert-manager v0.10.
 
 cert-manager:
 

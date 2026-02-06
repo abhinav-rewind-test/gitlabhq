@@ -7,8 +7,9 @@ module Types
       description 'Check permissions for the current user on a issue'
 
       abilities :read_issue, :admin_issue, :update_issue, :reopen_issue,
-                :read_design, :create_design, :destroy_design,
-                :create_note, :update_design, :admin_issue_relation
+        :read_design, :create_design, :destroy_design,
+        :create_note, :update_design, :move_design, :move_issue, :clone_issue,
+        :admin_issue_relation
     end
   end
 end

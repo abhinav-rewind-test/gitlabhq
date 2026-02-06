@@ -15,7 +15,13 @@ module Keeps
         milestones[current_milestone_index + milestones_ago].version
       end
 
-      private
+      def next_milestone
+        milestones[current_milestone_index.pred].version
+      end
+
+      def upcoming_milestones
+        milestones.select { |milestone| Date.parse(milestone.date).future? }.reverse
+      end
 
       def current_milestone
         @current_milestone ||=
@@ -23,6 +29,8 @@ module Keeps
           .gsub(/^(\d+\.\d+).*$/, '\1')
           .chomp
       end
+
+      private
 
       def current_milestone_index
         milestones.index { |milestone| milestone.version == current_milestone }

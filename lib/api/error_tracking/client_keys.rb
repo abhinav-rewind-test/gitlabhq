@@ -4,14 +4,13 @@ module API
   class ErrorTracking::ClientKeys < ::API::Base
     before { authenticate! }
 
-    ERROR_TRACKING_CLIENT_KEYS_TAGS = %w[error_tracking_client_keys].freeze
-
-    feature_category :error_tracking
+    ERROR_TRACKING_CLIENT_KEYS_TAGS = %w[error_tracking].freeze
+    feature_category :observability
     urgency :low
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
+        desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
     end
 
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do

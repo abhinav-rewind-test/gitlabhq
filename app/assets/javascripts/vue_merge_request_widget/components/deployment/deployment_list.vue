@@ -19,20 +19,6 @@ export default {
       type: String,
       required: true,
     },
-    hasDeploymentMetrics: {
-      type: Boolean,
-      required: true,
-    },
-    visualReviewAppMeta: {
-      type: Object,
-      required: false,
-      default: () => ({
-        sourceProjectId: '',
-        sourceProjectPath: '',
-        mergeRequestId: '',
-        appUrl: '',
-      }),
-    },
   },
   computed: {
     showCollapsedDeployments() {
@@ -51,10 +37,10 @@ export default {
 <template>
   <mr-collapsible-extension v-if="showCollapsedDeployments" :title="__('View all environments.')">
     <template #header>
-      <div class="gl-mr-3 gl-line-height-normal">
+      <div class="gl-mr-3 gl-leading-normal">
         <gl-sprintf :message="multipleDeploymentsTitle">
           <template #deployments>
-            <span class="gl-font-weight-bold gl-mr-2">{{ deployments.length }}</span>
+            <span class="gl-mr-2 gl-font-bold">{{ deployments.length }}</span>
           </template>
         </gl-sprintf>
       </div>
@@ -64,7 +50,6 @@ export default {
       :key="deployment.id"
       :class="deploymentClass"
       :deployment="deployment"
-      :show-metrics="hasDeploymentMetrics"
     />
   </mr-collapsible-extension>
   <div v-else class="mr-widget-extension">
@@ -73,7 +58,6 @@ export default {
       :key="deployment.id"
       :class="deploymentClass"
       :deployment="deployment"
-      :show-metrics="hasDeploymentMetrics"
     />
   </div>
 </template>

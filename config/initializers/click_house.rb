@@ -19,25 +19,14 @@ ClickHouse::Client.configure do |config|
 
   config.logger = ::ClickHouse::Logger.build
   config.log_proc = ->(query) do
+    redacted_sql = query.to_redacted_sql # call it to capture issues with redacted sql in non-production environments
     query_output =
-      Rails.env.production? ? query.to_redacted_sql : query.to_sql
+      Rails.env.production? ? redacted_sql : query.to_sql
     structured_log(query_output)
   end
 
   config.json_parser = Gitlab::Json
-  config.http_post_proc = ->(url, headers, body) do
-    options = {
-      multipart: true,
-      headers: headers,
-      allow_local_requests: true
-    }
-
-    body_key = body.is_a?(IO) ? :body_stream : :body
-    options[body_key] = body
-
-    response = Gitlab::HTTP.post(url, options)
-    ClickHouse::Client::Response.new(response.body, response.code, response.headers)
-  end
+  config.http_post_proc = ClickHouse::HttpClient.build_post_proc
 end
 
 def structured_log(query_string)

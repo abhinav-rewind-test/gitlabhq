@@ -5,7 +5,7 @@ import { GlBadge } from '@gitlab/ui';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import { timeIntervalInWords } from '~/lib/utils/datetime_utility';
 import { mergeUrlParams } from '~/lib/utils/url_utility';
-import { __, sprintf } from '~/locale';
+import { s__, __, sprintf } from '~/locale';
 import timeagoMixin from '~/vue_shared/mixins/timeago';
 import DetailRow from './sidebar_detail_row.vue';
 
@@ -21,6 +21,11 @@ export default {
     ...mapState(['job', 'testSummary']),
     coverage() {
       return `${this.job.coverage}%`;
+    },
+    showCoverage() {
+      const jobCoverage = this.job.coverage;
+
+      return jobCoverage || jobCoverage === 0;
     },
     duration() {
       return timeIntervalInWords(this.job.duration);
@@ -47,6 +52,7 @@ export default {
           this.job.erased_at ||
           this.job.queued_duration ||
           this.job.runner ||
+          this.job.source ||
           this.job.coverage,
       );
     },
@@ -60,6 +66,9 @@ export default {
     },
     shouldRenderBlock() {
       return Boolean(this.hasAnyDetail || this.hasTimeout || this.hasTags);
+    },
+    source() {
+      return this.$options.i18n.sources[this.job.source] || this.job.source;
     },
     timeout() {
       return `${this.job?.metadata?.timeout_human_readable}${this.timeoutSource}`;
@@ -77,7 +86,7 @@ export default {
       return this.job?.runner?.admin_path || '';
     },
     hasTestSummaryDetails() {
-      return Object.keys(this.testSummary).length > 0;
+      return Object.keys(this.testSummary).length > 0 && this.job?.test_suite_name;
     },
     testSummaryDescription() {
       let message;
@@ -97,7 +106,7 @@ export default {
     },
     testReportUrlWithJobName() {
       const urlParams = {
-        job_name: this.job.name,
+        job_name: this.job.test_suite_name,
       };
 
       return mergeUrlParams(urlParams, this.pipelineTestReportUrl);
@@ -109,9 +118,35 @@ export default {
     ERASED: __('Erased'),
     QUEUED: __('Queued'),
     RUNNER: __('Runner'),
+    SOURCE: __('Source'),
     TAGS: __('Tags'),
     TEST_SUMMARY: __('Test summary'),
     TIMEOUT: __('Timeout'),
+    // Human-readable values of possible source values found in
+    // https://docs.gitlab.com/api/graphql/reference/#cijobsource
+    sources: {
+      api: s__('JobSource|API'),
+      chat: s__('JobSource|Chat'),
+      container_registry_push: s__('JobSource|Container Registry Push'),
+      duo_workflow: s__('JobSource|Duo Agent Platform'),
+      external: s__('JobSource|External'),
+      external_pull_request_event: s__('JobSource|External Pull Request'),
+      merge_request_event: s__('JobSource|Merge Request'),
+      ondemand_dast_scan: s__('JobSource|On-Demand DAST Scan'),
+      ondemand_dast_validation: s__('JobSource|On-Demand DAST Validation'),
+      parent_pipeline: s__('JobSource|Parent Pipeline'),
+      pipeline: s__('JobSource|Pipeline'),
+      pipeline_execution_policy: s__('JobSource|Pipeline Execution Policy'),
+      pipeline_execution_policy_schedule: s__('JobSource|Scheduled Pipeline Execution Policy'),
+      push: s__('JobSource|Push'),
+      scan_execution_policy: s__('JobSource|Scan Execution Policy'),
+      schedule: s__('JobSource|Schedule'),
+      security_orchestration_policy: s__('JobSource|Scheduled Scan Execution Policy'),
+      trigger: s__('JobSource|Trigger'),
+      web: s__('JobSource|Web'),
+      webide: s__('JobSource|Web IDE'),
+      unknown: s__('JobSource|Unknown'),
+    },
   },
   TIMEOUT_HELP_URL: helpPagePath('/ci/pipelines/settings.md', {
     anchor: 'set-a-limit-for-how-long-jobs-can-run',
@@ -143,7 +178,8 @@ export default {
       :title="$options.i18n.RUNNER"
       :path="runnerAdminPath"
     />
-    <detail-row v-if="job.coverage" :value="coverage" :title="$options.i18n.COVERAGE" />
+    <detail-row v-if="job.source" :value="source" :title="$options.i18n.SOURCE" />
+    <detail-row v-if="showCoverage" :value="coverage" :title="$options.i18n.COVERAGE" />
     <detail-row
       v-if="hasTestSummaryDetails"
       :value="testSummaryDescription"
@@ -153,8 +189,8 @@ export default {
     />
 
     <p v-if="hasTags" class="build-detail-row" data-testid="job-tags">
-      <span class="font-weight-bold">{{ $options.i18n.TAGS }}:</span>
-      <gl-badge v-for="(tag, i) in job.tags" :key="i" variant="info" size="sm">{{ tag }}</gl-badge>
+      <span class="gl-font-bold">{{ $options.i18n.TAGS }}:</span>
+      <gl-badge v-for="(tag, i) in job.tags" :key="i" variant="info">{{ tag }}</gl-badge>
     </p>
   </div>
 </template>

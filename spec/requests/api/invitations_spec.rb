@@ -87,6 +87,15 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
       end
 
       context 'when authenticated as a maintainer/owner' do
+        it_behaves_like 'authorizing granular token permissions', :create_invitation do
+          let(:user) { maintainer }
+          let(:boundary_object) { source }
+          let(:request) do
+            post api("/#{source.model_name.plural}/#{source.id}/invitations", personal_access_token: pat),
+              params: { email: email, access_level: Member::DEVELOPER }
+          end
+        end
+
         context 'and new member is already a requester' do
           it 'transforms the requester into a proper member' do
             expect do
@@ -147,7 +156,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
               params: { email: unconfirmed_stranger.email, access_level: Member::DEVELOPER }
 
             expect(response).to have_gitlab_http_status(:created)
-          end.to change { source.members.invite.count }.by(1).and change { source.members.non_invite.count }.by(0)
+          end.to change { source.members.invite.count }.by(1).and not_change { source.members.non_invite.count }
         end
 
         it 'adds a new member as an invite for unconfirmed secondary email' do
@@ -158,7 +167,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
               params: { email: secondary_email.email, access_level: Member::DEVELOPER }
 
             expect(response).to have_gitlab_http_status(:created)
-          end.to change { source.members.invite.count }.by(1).and change { source.members.non_invite.count }.by(0)
+          end.to change { source.members.invite.count }.by(1).and not_change { source.members.non_invite.count }
         end
 
         it 'adds a new member by user_id' do
@@ -375,6 +384,27 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
+
+      context 'when inviting users from other organizations' do
+        let_it_be(:other_organization) { create(:organization) }
+        let_it_be(:other_user) { create(:user, organization: other_organization) }
+
+        it 'shows error for email' do
+          post invitations_url(source, maintainer),
+            params: { email: other_user.email, access_level: Member::GUEST }
+
+          expect(json_response['status']).to eq 'error'
+          expect(json_response['message'][other_user.email]).to eq('already belongs to another organization')
+        end
+
+        it 'shows error for user_id' do
+          post invitations_url(source, maintainer),
+            params: { user_id: other_user.id, access_level: Member::GUEST }
+
+          expect(json_response['status']).to eq 'error'
+          expect(json_response['message'][other_user.username]).to eq('already belongs to another organization')
+        end
+      end
     end
   end
 
@@ -418,22 +448,25 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
     end
 
     it 'does not exceed expected queries count with secondary emails', :request_store, :use_sql_query_cache do
-      create(:email, email: email, user: create(:user))
+      organization = project.organization
+      create(:email, :confirmed, email: email, user: create(:user, organizations: [organization]))
 
       post invitations_url(project, maintainer), params: { email: email, access_level: Member::DEVELOPER }
 
-      create(:email, email: email2, user: create(:user))
+      create(:email, :confirmed, email: email2, user: create(:user, organizations: [organization]))
 
       control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
         post invitations_url(project, maintainer), params: { email: email2, access_level: Member::DEVELOPER }
       end
 
-      create(:email, email: 'email4@example.com', user: create(:user))
-      create(:email, email: 'email6@example.com', user: create(:user))
+      create(:email, :confirmed, email: 'email4@example.com', user: create(:user, organizations: [organization]))
+      create(:email, :confirmed, email: 'email6@example.com', user: create(:user, organizations: [organization]))
+      create(:email, :confirmed, email: 'email8@example.com', user: create(:user, organizations: [organization]))
 
-      emails = 'email3@example.com,email4@example.com,email5@example.com,email6@example.com,email7@example.com'
+      emails = 'email3@example.com,email4@example.com,email5@example.com,email6@example.com,email7@example.com,' \
+        'EMAIL8@EXamPle.com'
 
-      unresolved_n_plus_ones = 59 # currently there are 10 queries added per email
+      unresolved_n_plus_ones = 86 # currently there are 10 queries added per email, checking if we should dispatch AuthorizationsAddedEvent makes 1 query per event (3 events dispatched)
 
       expect do
         post invitations_url(project, maintainer), params: { email: emails, access_level: Member::DEVELOPER }
@@ -500,6 +533,12 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
           expect(response).to include_pagination_headers
           expect(json_response).to be_an Array
           expect(json_response.size).to eq(0)
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :read_invitation do
+          let(:user) { maintainer }
+          let(:boundary_object) { source }
+          let(:request) { get api("/#{source.model_name.plural}/#{source.id}/invitations", personal_access_token: pat) }
         end
       end
 
@@ -611,6 +650,14 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
           end.to change { source.members.count }.by(-1)
         end
 
+        it_behaves_like 'authorizing granular token permissions', :delete_invitation do
+          let(:user) { maintainer }
+          let(:boundary_object) { source }
+          let(:request) do
+            delete api("/#{source.model_name.plural}/#{source.id}/invitations/#{invite.invite_email}", personal_access_token: pat)
+          end
+        end
+
         context 'when MAINTAINER tries to remove invitation of an OWNER' do
           let_it_be(:maintainer) { maintainer2 }
           let!(:owner_invite) do
@@ -659,13 +706,15 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
     end
   end
 
-  shared_examples 'PUT /:source_type/:id/invitations/:email' do |source_type|
+  describe 'PUT /groups/:id/invitations' do
+    let(:source) { group }
+
     def update_api(source, user, email)
       api("/#{source.model_name.plural}/#{source.id}/invitations/#{email}", user)
     end
 
-    context "with :source_type == #{source_type.pluralize}" do
-      let!(:invite) { invite_member_by_email(source, source_type, developer.email, maintainer) }
+    context "with :source_type == 'groups'" do
+      let!(:invite) { invite_member_by_email(source, 'group', developer.email, maintainer) }
 
       it_behaves_like 'a 404 response when source is private' do
         let(:route) do
@@ -689,6 +738,15 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
       end
 
       context 'when authenticated as a maintainer/owner' do
+        it_behaves_like 'authorizing granular token permissions', :update_invitation do
+          let(:user) { maintainer }
+          let(:boundary_object) { source }
+          let(:request) do
+            put api("/#{source.model_name.plural}/#{source.id}/invitations/#{invite.invite_email}", personal_access_token: pat),
+              params: { access_level: Member::MAINTAINER }
+          end
+        end
+
         context 'updating access level' do
           it 'updates the invitation' do
             put update_api(source, maintainer, invite.invite_email), params: { access_level: Member::MAINTAINER }
@@ -734,7 +792,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
       end
 
       context 'updating access expiry date' do
-        subject do
+        subject(:put_request) do
           put update_api(source, maintainer, invite.invite_email), params: { expires_at: expires_at }
         end
 
@@ -742,7 +800,7 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
           let(:expires_at) { 2.days.ago.to_date }
 
           it 'does not update the member' do
-            subject
+            put_request
 
             expect(response).to have_gitlab_http_status(:bad_request)
             expect(json_response['message']).to eq({ 'expires_at' => ['cannot be a date in the past'] })
@@ -753,19 +811,13 @@ RSpec.describe API::Invitations, feature_category: :user_profile do
           let(:expires_at) { 2.days.from_now.to_date }
 
           it 'updates the member' do
-            subject
+            put_request
 
             expect(response).to have_gitlab_http_status(:ok)
             expect(json_response['expires_at']).to eq(expires_at.to_s)
           end
         end
       end
-    end
-  end
-
-  describe 'PUT /groups/:id/invitations' do
-    it_behaves_like 'PUT /:source_type/:id/invitations/:email', 'group' do
-      let(:source) { group }
     end
   end
 end

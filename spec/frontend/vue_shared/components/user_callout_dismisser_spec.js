@@ -7,6 +7,8 @@ import waitForPromises from 'helpers/wait_for_promises';
 import dismissUserCalloutMutation from '~/graphql_shared/mutations/dismiss_user_callout.mutation.graphql';
 import getUserCalloutsQuery from '~/graphql_shared/queries/get_user_callouts.query.graphql';
 import UserCalloutDismisser from '~/vue_shared/components/user_callout_dismisser.vue';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import { logError } from '~/lib/logger';
 import {
   anonUserCalloutsResponse,
   userCalloutMutationResponse,
@@ -15,14 +17,14 @@ import {
 
 Vue.use(VueApollo);
 
+jest.mock('~/sentry/sentry_browser_wrapper');
+
+jest.mock('~/lib/logger', () => ({
+  logError: jest.fn(),
+}));
+
 const initialSlotProps = (changes = {}) => ({
   dismiss: expect.any(Function),
-  isAnonUser: false,
-  isDismissed: false,
-  isLoadingQuery: true,
-  isLoadingMutation: false,
-  mutationError: null,
-  queryError: null,
   shouldShowCallout: false,
   ...changes,
 });
@@ -31,8 +33,10 @@ describe('UserCalloutDismisser', () => {
   const MOCK_FEATURE_NAME = 'mock_feature_name';
 
   // Query handlers
-  const successHandlerFactory = (dismissedCallouts = []) => () =>
-    Promise.resolve(userCalloutsResponse(dismissedCallouts));
+  const successHandlerFactory =
+    (dismissedCallouts = []) =>
+    () =>
+      Promise.resolve(userCalloutsResponse(dismissedCallouts));
   const anonUserHandler = () => Promise.resolve(anonUserCalloutsResponse());
   const errorHandler = () => Promise.reject(new Error('query error'));
   const pendingHandler = () => new Promise(() => {});
@@ -94,8 +98,7 @@ describe('UserCalloutDismisser', () => {
     it('passes expected slot props to child', () => {
       expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
         initialSlotProps({
-          isDismissed: true,
-          isLoadingQuery: false,
+          shouldShowCallout: false,
         }),
       );
     });
@@ -113,7 +116,6 @@ describe('UserCalloutDismisser', () => {
     it('passes expected slot props to child', () => {
       expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
         initialSlotProps({
-          isLoadingQuery: false,
           shouldShowCallout: true,
         }),
       );
@@ -132,10 +134,18 @@ describe('UserCalloutDismisser', () => {
     it('passes expected slot props to child', () => {
       expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
         initialSlotProps({
-          isLoadingQuery: false,
-          queryError: expect.any(Error),
+          shouldShowCallout: false,
         }),
       );
+    });
+
+    it('reports errors to Sentry and logs', async () => {
+      callDismissSlotProp();
+
+      await waitForPromises();
+
+      expect(logError).toHaveBeenCalledWith(expect.any(Error));
+      expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -151,8 +161,7 @@ describe('UserCalloutDismisser', () => {
     it('passes expected slot props to child', () => {
       expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
         initialSlotProps({
-          isAnonUser: true,
-          isLoadingQuery: false,
+          shouldShowCallout: false,
         }),
       );
     });
@@ -182,7 +191,6 @@ describe('UserCalloutDismisser', () => {
     it('passes expected slot props to child', () => {
       expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
         initialSlotProps({
-          isLoadingQuery: false,
           shouldShowCallout: true,
         }),
       );
@@ -191,59 +199,53 @@ describe('UserCalloutDismisser', () => {
 
   describe('dismissing', () => {
     describe('given it succeeds', () => {
+      const queryHandler = jest.fn(successHandlerFactory());
+
       beforeEach(() => {
         createComponent({
-          queryHandler: successHandlerFactory(),
+          queryHandler,
           mutationHandler: mutationSuccessHandlerSpy,
         });
 
         return waitForPromises();
       });
 
-      it('dismissing calls mutation', () => {
+      it('calls mutation and updates slotProps.shouldShowCallout', async () => {
         expect(mutationSuccessHandlerSpy).not.toHaveBeenCalled();
+        expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
+          expect.objectContaining({ shouldShowCallout: true }),
+        );
 
         callDismissSlotProp();
+        await nextTick();
 
         expect(mutationSuccessHandlerSpy).toHaveBeenCalledWith({
           input: { featureName: MOCK_FEATURE_NAME },
         });
+        expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
+          expect.objectContaining({ shouldShowCallout: false }),
+        );
       });
 
-      it('passes expected slot props to child', async () => {
-        expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isLoadingQuery: false,
-            shouldShowCallout: true,
-          }),
-        );
+      it('refetches query after mutation', async () => {
+        expect(queryHandler).toHaveBeenCalledTimes(1);
 
         callDismissSlotProp();
-
-        // Wait for Vue re-render due to prop change
-        await nextTick();
-
-        expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isDismissed: true,
-            isLoadingMutation: true,
-            isLoadingQuery: false,
-          }),
-        );
-
-        // Wait for mutation to resolve
         await waitForPromises();
 
-        expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isDismissed: true,
-            isLoadingQuery: false,
-          }),
-        );
+        expect(queryHandler).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not report to Sentry on success', async () => {
+        callDismissSlotProp();
+
+        await waitForPromises();
+
+        expect(Sentry.captureException).not.toHaveBeenCalled();
       });
     });
 
-    describe('given it fails', () => {
+    describe('given it fails with GraphQL errors', () => {
       beforeEach(() => {
         createComponent({
           queryHandler: successHandlerFactory(),
@@ -263,36 +265,60 @@ describe('UserCalloutDismisser', () => {
         });
       });
 
+      it('reports GraphQL errors to Sentry', async () => {
+        callDismissSlotProp();
+
+        await waitForPromises();
+
+        expect(Sentry.captureException).toHaveBeenCalledWith(
+          new Error('User callout dismissal failed: mutation error'),
+        );
+      });
+
       it('passes expected slot props to child', async () => {
         expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isLoadingQuery: false,
-            shouldShowCallout: true,
-          }),
+          initialSlotProps({ shouldShowCallout: true }),
         );
 
         callDismissSlotProp();
 
-        // Wait for Vue re-render due to prop change
         await nextTick();
 
         expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isDismissed: true,
-            isLoadingMutation: true,
-            isLoadingQuery: false,
-          }),
+          initialSlotProps({ shouldShowCallout: false }),
         );
+      });
+    });
 
-        // Wait for mutation to resolve
+    describe('given it fails with network/client errors', () => {
+      const networkError = new Error('Network error');
+      const mutationNetworkErrorHandlerSpy = jest.fn(() => Promise.reject(networkError));
+
+      beforeEach(() => {
+        createComponent({
+          queryHandler: successHandlerFactory(),
+          mutationHandler: mutationNetworkErrorHandlerSpy,
+        });
+
+        return waitForPromises();
+      });
+
+      it('reports network errors to Sentry and logs', async () => {
+        callDismissSlotProp();
+
         await waitForPromises();
 
+        expect(logError).toHaveBeenCalledWith(networkError);
+        expect(Sentry.captureException).toHaveBeenCalledWith(networkError);
+      });
+
+      it('passes expected slot props to child', async () => {
+        callDismissSlotProp();
+
+        await nextTick();
+
         expect(defaultScopedSlotSpy).toHaveBeenLastCalledWith(
-          initialSlotProps({
-            isDismissed: true,
-            isLoadingQuery: false,
-            mutationError: ['mutation error'],
-          }),
+          initialSlotProps({ shouldShowCallout: false }),
         );
       });
     });

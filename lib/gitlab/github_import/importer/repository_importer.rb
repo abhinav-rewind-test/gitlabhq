@@ -50,7 +50,7 @@ module Gitlab
           project.ensure_repository
 
           refmap = Gitlab::GithubImport.refmap
-          project.repository.fetch_as_mirror(project.import_url, refmap: refmap, forced: true)
+          project.repository.fetch_as_mirror(project.unsafe_import_url, refmap: refmap, forced: true)
 
           project.change_head(default_branch) if default_branch
 
@@ -58,7 +58,7 @@ module Gitlab
 
           # The initial fetch can bring in lots of loose refs and objects.
           # Running a `git gc` will make importing pull requests faster.
-          Repositories::HousekeepingService.new(project, :gc).execute
+          ::Repositories::HousekeepingService.new(project, :gc).execute
 
           true
         end

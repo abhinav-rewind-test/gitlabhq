@@ -15,10 +15,15 @@ RSpec.describe ProjectGroupLink, feature_category: :groups_and_projects do
     let!(:project_group_link) { create(:project_group_link, project: project) }
 
     it { is_expected.to validate_presence_of(:project_id) }
-    it { is_expected.to validate_uniqueness_of(:group_id).scoped_to(:project_id).with_message(/already shared/) }
     it { is_expected.to validate_presence_of(:group) }
     it { is_expected.to validate_presence_of(:group_access) }
     it { is_expected.to validate_inclusion_of(:group_access).in_array(Gitlab::Access.all_values) }
+
+    it 'validates uniqueness of project_id with correct message' do
+      is_expected.to validate_uniqueness_of(:project_id)
+                       .scoped_to(:group_id)
+                       .with_message('already shared with this group')
+    end
 
     it "doesn't allow a project to be shared with the group it is in" do
       project_group_link.group = group
@@ -42,10 +47,10 @@ RSpec.describe ProjectGroupLink, feature_category: :groups_and_projects do
 
       it 'returns all records which are greater than Guests access' do
         expect(described_class.non_guests).to match_array([
-                                                            project_group_link_reporter,
+          project_group_link_reporter,
                                                             project_group_link_developer,
                                                             project_group_link_maintainer
-                                                          ])
+        ])
       end
     end
   end

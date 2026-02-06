@@ -10,14 +10,19 @@ module API
       expose :project_creation_level_str, as: :project_creation_level
       expose :auto_devops_enabled
       expose :subgroup_creation_level_str, as: :subgroup_creation_level
-      expose(:emails_disabled, documentation: { type: 'boolean' }) { |group, options| group.emails_disabled? }
-      expose :emails_enabled, documentation: { type: 'boolean' }
+      expose(:emails_disabled, documentation: { type: 'Boolean' }) { |group, options| group.emails_disabled? }
+      expose :emails_enabled, documentation: { type: 'Boolean' }
+      expose(:show_diff_preview_in_email, documentation: { type: 'Boolean' }) do |group, options|
+        group.show_diff_preview_in_email?
+      end
       expose :mentions_disabled
       expose :lfs_enabled?, as: :lfs_enabled
-      expose :math_rendering_limits_enabled, documentation: { type: 'boolean' }
-      expose :lock_math_rendering_limits_enabled, documentation: { type: 'boolean' }
+      expose(:archived, documentation: { type: 'Boolean' }) { |group, _options| group.self_or_ancestors_archived? }
+      expose :math_rendering_limits_enabled, documentation: { type: 'Boolean' }
+      expose :lock_math_rendering_limits_enabled, documentation: { type: 'Boolean' }
+      expose :default_branch_name, as: :default_branch
       expose :default_branch_protection
-      expose :default_branch_protection_defaults
+      expose :default_branch_protection_settings, as: :default_branch_protection_defaults
       expose :avatar_url do |group, options|
         group.avatar_url(only_path: false)
       end
@@ -27,11 +32,12 @@ module API
       expose :parent_id
       expose :organization_id
       expose :shared_runners_setting
+      expose :max_artifacts_size, documentation: { type: 'Integer' }
 
-      expose :custom_attributes, using: 'API::Entities::CustomAttribute', if: :with_custom_attributes
+      expose :custom_attributes, using: ::API::Entities::CustomAttribute, if: :with_custom_attributes
 
       expose :statistics, if: :statistics do
-        with_options format_with: -> (value) { value.to_i } do
+        with_options format_with: ->(value) { value.to_i } do
           expose :storage_size
           expose :repository_size
           expose :wiki_size
@@ -42,6 +48,18 @@ module API
           expose :snippets_size
           expose :uploads_size
         end
+      end
+
+      # It is always enabled since 18.0
+      expose :marked_for_deletion_on
+
+      expose :root_storage_statistics, using: Entities::Namespace::RootStorageStatistics,
+        if: ->(group, opts) {
+              expose_root_storage_statistics?(group, opts)
+            }
+
+      def expose_root_storage_statistics?(group, opts)
+        opts[:statistics] && group.root?
       end
     end
   end

@@ -7,16 +7,14 @@ module Mutations
         graphql_name 'UpdateNote'
         description "Updates a Note.\n#{QUICK_ACTION_ONLY_WARNING}"
 
-        argument :body,
-                 GraphQL::Types::String,
-                 required: false,
-                 description: copy_field_description(Types::Notes::NoteType, :body)
+        def self.authorization_scopes
+          super + [:ai_workflows]
+        end
 
-        argument :confidential,
-                 GraphQL::Types::Boolean,
-                 required: false,
-                 description: 'Confidentiality flag of a note. Default is false.',
-                 deprecated: { reason: 'No longer allowed to update confidentiality of notes', milestone: '14.10' }
+        argument :body,
+          GraphQL::Types::String,
+          required: false,
+          description: copy_field_description(Types::Notes::NoteType, :body)
 
         private
 

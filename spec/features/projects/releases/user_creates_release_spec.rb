@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe 'User creates release', :js, feature_category: :continuous_delivery do
   include Features::ReleasesHelpers
+  include MobileHelpers
 
   let_it_be(:project) { create(:project, :repository) }
   let_it_be(:milestone_1) { create(:milestone, project: project, title: '1.1') }
@@ -24,13 +25,13 @@ RSpec.describe 'User creates release', :js, feature_category: :continuous_delive
   end
 
   it 'renders the breadcrumbs', :aggregate_failures do
-    within('.breadcrumbs') do
-      expect(page).to have_content("#{project.creator.name} #{project.name} Releases New")
+    within_testid('breadcrumb-links') do
+      expect(page).to have_content("#{project.creator.name} #{project.name} Releases New release")
 
       expect(page).to have_link(project.creator.name, href: user_path(project.creator))
       expect(page).to have_link(project.name, href: project_path(project))
       expect(page).to have_link('Releases', href: project_releases_path(project))
-      expect(page).to have_link('New', href: new_project_release_path(project))
+      expect(page).to have_link('New release', href: new_project_release_path(project))
     end
   end
 
@@ -158,10 +159,10 @@ RSpec.describe 'User creates release', :js, feature_category: :continuous_delive
     add_another_asset_link
     fill_asset_link(link_2)
 
-    # Click on the body in order to trigger a `blur` event on the current field.
+    # Trigger a `blur` event on the current field.
     # This triggers the form's validation to run so that the
     # "Create release" button is enabled and clickable.
-    page.find('body').click
+    send_keys(:tab)
 
     click_button('Create release')
 

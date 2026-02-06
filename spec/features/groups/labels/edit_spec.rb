@@ -24,6 +24,10 @@ RSpec.describe 'Edit group label', feature_category: :team_planning do
     expect(label.reload.title).to eq('new label name')
   end
 
+  it_behaves_like 'unarchiving label' do
+    let(:label) { create(:group_label, :archived, group: group) }
+  end
+
   it 'allows user to delete label', :js do
     click_button 'Delete'
 

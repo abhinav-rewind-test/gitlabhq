@@ -6,19 +6,19 @@ module Packages
       include Gitlab::Utils::StrongMemoize
       include ExclusiveLeaseGuard
 
+      INSTALL_SCRIPT_KEYS = %w[preinstall install postinstall].freeze
       PACKAGE_JSON_NOT_ALLOWED_FIELDS = %w[readme readmeFilename licenseText contributors exports].freeze
       DEFAULT_LEASE_TIMEOUT = 1.hour.to_i
 
       ERROR_REASON_INVALID_PARAMETER = :invalid_parameter
       ERROR_REASON_PACKAGE_EXISTS = :package_already_exists
       ERROR_REASON_PACKAGE_LEASE_TAKEN = :package_lease_taken
-      ERROR_REASON_PACKAGE_PROTECTED = :package_protected
 
       def execute
         return error('Version is empty.', ERROR_REASON_INVALID_PARAMETER) if version.blank?
+        return error('Name is empty.', ERROR_REASON_INVALID_PARAMETER) if name.blank?
         return error('Attachment data is empty.', ERROR_REASON_INVALID_PARAMETER) if attachment['data'].blank?
         return error('Package already exists.', ERROR_REASON_PACKAGE_EXISTS) if current_package_exists?
-        return error('Package protected.', ERROR_REASON_PACKAGE_PROTECTED) if current_package_protected?
         return error('File is too large.', ERROR_REASON_INVALID_PARAMETER) if file_size_exceeded?
 
         package, package_file = try_obtain_lease do
@@ -41,9 +41,18 @@ module Packages
       end
 
       def create_npm_package!
-        package = create_package!(:npm, create_package_params)
+        # TODO: The flow with temporary package is a single use case
+        # and temporary package is always required after the rollout of
+        # the FF `packages_npm_temp_package`.
+        # Hence we could refactor the service.
+        # https://gitlab.com/gitlab-org/gitlab/-/issues/583459
+        if use_temp_package?
+          package, package_file = update_temp_package
+        else
+          package = create_package!(::Packages::Npm::Package, name: name, version: version, status: :processing)
+          package_file = ::Packages::CreatePackageFileService.new(package, file_params).execute
+        end
 
-        package_file = ::Packages::CreatePackageFileService.new(package, file_params).execute
         ::Packages::CreateDependencyService.new(package, package_dependencies).execute
         ::Packages::Npm::CreateTagService.new(package, dist_tag).execute
 
@@ -64,20 +73,11 @@ module Packages
       end
 
       def current_package_exists?
-        project.packages
-               .npm
-               .with_name(name)
-               .with_version(version)
-               .not_pending_destruction
-               .exists?
-      end
-
-      def current_package_protected?
-        return false if Feature.disabled?(:packages_protected_packages, project)
-
-        user_project_authorization_access_level = current_user.max_member_access_for_project(project.id)
-        project.package_protection_rules.for_push_exists?(access_level: user_project_authorization_access_level,
-          package_name: name, package_type: :npm)
+        ::Packages::Npm::Package.for_projects(project)
+                                .with_name(name)
+                                .with_version(version)
+                                .not_pending_destruction
+                                .exists?
       end
 
       def name
@@ -94,6 +94,10 @@ module Packages
       end
 
       def package_json
+        if version_data['scripts'] && (version_data['scripts'].keys & INSTALL_SCRIPT_KEYS).any?
+          version_data['hasInstallScript'] = true
+        end
+
         version_data.except(*PACKAGE_JSON_NOT_ALLOWED_FIELDS)
       end
 
@@ -180,12 +184,20 @@ module Packages
         filtered_field_sizes.empty? ? largest_fields : filtered_field_sizes
       end
 
-      def create_package_params
-        params = { name: name, version: version }
+      def update_temp_package
+        temp_package.update!(version: version)
+        package_file = temp_package.package_files.first
+        package_file.update!(file_params.except(:build).merge(status: :default))
 
-        params[:status] = :processing if ::Feature.enabled?(:upload_npm_packages_async, project)
+        [temp_package, package_file]
+      end
 
-        params
+      def use_temp_package?
+        temp_package.present?
+      end
+
+      def temp_package
+        params[:temp_package]
       end
     end
   end

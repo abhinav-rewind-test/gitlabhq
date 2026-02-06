@@ -1,22 +1,21 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Instance clusters API (certificate-based) (deprecated)
 ---
 
-# Instance clusters API (certificate-based) (deprecated)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/36001) in GitLab 13.2.
-> - [Deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+{{< /details >}}
 
-WARNING:
-This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
+> [!warning]
+> This feature was [deprecated](https://gitlab.com/groups/gitlab-org/configure/-/epics/8) in GitLab 14.5.
 
-With [instance-level Kubernetes clusters](../user/instance/clusters/index.md),
+With [instance-level Kubernetes clusters](../user/instance/clusters/_index.md),
 you can connect a Kubernetes cluster to the GitLab instance and use the same cluster across all of
 the projects within your instance.
 
@@ -24,7 +23,7 @@ Users need administrator access to use these endpoints.
 
 ## List instance clusters
 
-Returns a list of instance clusters.
+Lists all instance clusters.
 
 ```plaintext
 GET /admin/clusters
@@ -33,7 +32,9 @@ GET /admin/clusters
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/admin/clusters"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/clusters"
 ```
 
 Example response:
@@ -102,9 +103,9 @@ Example response:
 ]
 ```
 
-## Get a single instance cluster
+## Retrieve a single instance cluster
 
-Returns a single instance cluster.
+Retrieves a single instance cluster.
 
 Parameters:
 
@@ -119,7 +120,9 @@ GET /admin/clusters/:cluster_id
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/admin/clusters/9"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/clusters/9"
 ```
 
 Example response:
@@ -155,9 +158,9 @@ Example response:
 }
 ```
 
-## Add existing instance cluster
+## Create an instance cluster
 
-Adds an existing Kubernetes instance cluster.
+Creates an instance cluster by adding an existing Kubernetes cluster.
 
 ```plaintext
 POST /admin/clusters/add
@@ -182,10 +185,12 @@ Parameters:
 Example request:
 
 ```shell
-curl --header "Private-Token:<your_access_token>" "http://gitlab.example.com/api/v4/admin/clusters/add" \
--H "Accept:application/json" \
--H "Content-Type:application/json" \
--X POST --data '{"name":"cluster-3", "environment_scope":"production", "platform_kubernetes_attributes":{"api_url":"https://example.com", "token":"12345",  "ca_cert":"-----BEGIN CERTIFICATE-----qpoeiXXZafCM0ZDJkZjM...-----END CERTIFICATE-----"}}'
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Accept: application/json" \
+  --header "Content-Type: application/json" \
+  --data '{"name":"cluster-3", "environment_scope":"production", "platform_kubernetes_attributes":{"api_url":"https://example.com", "token":"12345", "ca_cert":"-----BEGIN CERTIFICATE-----qpoeiXXZafCM0ZDJkZjM...-----END CERTIFICATE-----"}}' \
+  --url "http://gitlab.example.com/api/v4/admin/clusters/add"
 ```
 
 Example response:
@@ -221,7 +226,7 @@ Example response:
 }
 ```
 
-## Edit instance cluster
+## Update an instance cluster
 
 Updates an existing instance cluster.
 
@@ -245,17 +250,19 @@ Parameters:
 | `platform_kubernetes_attributes[ca_cert]`   | string  | no       | TLS certificate. Required if API is using a self-signed TLS certificate.                   |
 | `platform_kubernetes_attributes[namespace]` | string  | no       | The unique namespace related to the project                                                |
 
-NOTE:
-`name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
-through the [Add existing Kubernetes cluster](../user/project/clusters/add_existing_cluster.md) option or
-through the [Add existing instance cluster](#add-existing-instance-cluster) endpoint.
+> [!note]
+> `name`, `api_url`, `ca_cert` and `token` can only be updated if the cluster was added
+> through the [Add existing Kubernetes cluster](../user/project/clusters/add_existing_cluster.md) option or
+> through the [Create an instance cluster](#create-an-instance-cluster) endpoint.
 
 Example request:
 
 ```shell
-curl --header "Private-Token: <your_access_token>" "http://gitlab.example.com/api/v4/admin/clusters/9" \
--H "Content-Type:application/json" \
--X PUT --data '{"name":"update-cluster-name", "platform_kubernetes_attributes":{"api_url":"https://new-example.com","token":"new-token"}}'
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --header "Content-Type: application/json" \
+  --data '{"name":"update-cluster-name", "platform_kubernetes_attributes":{"api_url":"https://new-example.com","token":"new-token"}}' \
+  --url "http://gitlab.example.com/api/v4/admin/clusters/9"
 ```
 
 Example response:
@@ -309,5 +316,7 @@ Parameters:
 Example request:
 
 ```shell
-curl --request DELETE --header "Private-Token: <your_access_token>" "https://gitlab.example.com/api/v4/admin/clusters/11"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/admin/clusters/11"
 ```

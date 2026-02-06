@@ -1,16 +1,15 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: db:check-migrations job
 ---
-
-# db:check-migrations job
 
 This job runs on the test stage of a merge request pipeline. It checks:
 
 1. A schema dump comparison between the author's working branch and the target branch,
    after executing a rollback of your new migrations. This check validates that the
-   schema properly resets to what it was before executing this new migration.
+   schema properly resets to what it was before executing new migrations.
 1. A schema dump comparison between the author's working branch and the `db/structure.sql`
    file that the author committed. This check validates that it contains all the expected changes
    in the migration.
@@ -22,16 +21,20 @@ This job runs on the test stage of a merge request pipeline. It checks:
 
 ### False positives
 
-This job is allowed to fail, because it can throw some false positives.
+This job is not allowed to fail, but it can throw some false positives.
 
-For example, when we drop a column and then roll back, this column is always
-re-added at the end of the list of columns. If the column was previously in
-the middle of the list, the rollback can't return the schema back exactly to
-its previous state. The job fails, but it's an acceptable situation.
+**Examples:**
 
-For a real-life example, refer to
-[this failed job](https://gitlab.com/gitlab-org/gitlab/-/jobs/2006544972#L138).
-Here, the author dropped the `position` column.
+1. When we drop a column and then roll back, the column is always
+   re-added at the end of the list of columns. If the column was previously not the last column,
+   the rollback can't return the schema back exactly to its previous state. Reference: [job failure](https://gitlab.com/gitlab-org/gitlab/-/jobs/2006544972#L138).
+1. Sometimes pg_dump can change how it orders the constraints and other database objects in minor PostgreSQL version upgrades.
+   This causes the job to fail by complaining about the ordering of statements in the schema that are not related
+   to the MR. Reference: [job failure](https://gitlab.com/gitlab-org/gitlab/-/jobs/12192481127).
+   - Do report this in #database Slack channel or create an issue, if not already done by someone else. Since this will
+     affect all the feature MRs.
+
+In such cases it's safer to add `pipeline:skip-check-migrations` label to the MR to skip this job.
 
 ### Schema dump comparison fails after rollback
 
@@ -39,15 +42,15 @@ This failure often happens if your working branch is behind the target branch.
 A real scenario:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph LR
+    accTitle: Schema dump comparison fails after rollback
+    accDescr: Diagram showing how schema dump comparison failures occur if a working branch is behind the target branch
+
     Main((main<br>commit A)) ===> |remove constraint<br>fk_rails_dbebdaa8fe| MainB((main<br>commit B))
     Main((main<br>commit A)) --> |checkout<br>dev| DevA((dev<br>commit A)):::dev
     DevA((dev<br>commit A)) --> |add column<br>dependency_proxy_size| DevC((dev<br>commit C)):::dev
     DevC -.-> |CI pipeline<br>executes| JOB-FAILED((JOB FAILED!)):::error
-
-    classDef main fill:#f4f0ff,stroke:#7b58cf
-    classDef dev fill:#e9f3fc,stroke:#1f75cb
-    classDef error fill:#f15146,stroke:#d4121a
 ```
 
 1. You check out the `dev` working branch from the `main` target branch. At this point,

@@ -12,7 +12,7 @@ import {
   GlAlert,
 } from '@gitlab/ui';
 import { s__, __ } from '~/locale';
-import ModalCopyButton from '~/vue_shared/components/modal_copy_button.vue';
+import SimpleCopyButton from '~/vue_shared/components/simple_copy_button.vue';
 
 export default {
   components: {
@@ -20,7 +20,7 @@ export default {
     GlFormInput,
     GlFormInputGroup,
     GlModal,
-    ModalCopyButton,
+    SimpleCopyButton,
     GlIcon,
     GlLoadingIcon,
     GlSprintf,
@@ -172,11 +172,7 @@ export default {
     <gl-form-group :label="$options.translations.apiUrlLabelText" label-for="api-url">
       <gl-form-input-group id="api-url" :value="unleashApiUrl" readonly type="text" name="api-url">
         <template #append>
-          <modal-copy-button
-            :text="unleashApiUrl"
-            :title="$options.translations.apiUrlCopyText"
-            :modal-id="modalId"
-          />
+          <simple-copy-button :text="unleashApiUrl" :title="$options.translations.apiUrlCopyText" />
         </template>
       </gl-form-input-group>
     </gl-form-group>
@@ -193,14 +189,13 @@ export default {
         <gl-loading-icon
           v-if="isRotating"
           size="sm"
-          class="gl-absolute gl-align-self-center gl-right-5 gl-mr-7"
+          class="gl-absolute gl-right-5 gl-mr-7 gl-self-center"
         />
 
         <template #append>
-          <modal-copy-button
+          <simple-copy-button
             :text="instanceId"
             :title="$options.translations.instanceIdCopyText"
-            :modal-id="modalId"
             :disabled="isRotating"
           />
         </template>
@@ -208,7 +203,7 @@ export default {
     </gl-form-group>
     <div
       v-if="hasRotateError"
-      class="gl-text-red-500 gl-display-flex gl-align-items-center gl-font-weight-normal gl-mb-3"
+      class="gl-mb-3 gl-flex gl-items-center gl-font-normal gl-text-danger"
       data-testid="rotate-error"
     >
       <gl-icon name="warning" class="gl-mr-2" />
@@ -221,16 +216,16 @@ export default {
       <gl-sprintf
         :message="
           s__(
-            'FeatureFlags|To prevent accidental actions we ask you to confirm your intention. Please type %{projectName} to proceed or close this modal to cancel.',
+            'FeatureFlags|To prevent accidental actions we ask you to confirm your intention. Please type %{projectName} to proceed or close this dialog to cancel.',
           )
         "
       >
         <template #projectName>
-          <span class="gl-font-weight-bold gl-text-red-500">{{ projectName }}</span>
+          <span class="gl-font-bold gl-text-danger">{{ projectName }}</span>
         </template>
       </gl-sprintf>
     </p>
-    <gl-form-group>
+    <gl-form-group :label="__('Confirm project name')" label-for="project_name_verification">
       <gl-form-input
         v-if="canUserRotateToken"
         id="project_name_verification"

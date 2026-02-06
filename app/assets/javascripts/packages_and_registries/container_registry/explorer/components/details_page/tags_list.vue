@@ -1,7 +1,6 @@
 <script>
 import { GlEmptyState } from '@gitlab/ui';
 import { createAlert } from '~/alert';
-import { n__ } from '~/locale';
 import { fetchPolicies } from '~/lib/graphql';
 import { joinPaths } from '~/lib/utils/url_utility';
 import Tracking from '~/tracking';
@@ -10,6 +9,12 @@ import PersistedPagination from '~/packages_and_registries/shared/components/per
 import PersistedSearch from '~/packages_and_registries/shared/components/persisted_search.vue';
 import TagsLoader from '~/packages_and_registries/shared/components/tags_loader.vue';
 import { FILTERED_SEARCH_TERM } from '~/vue_shared/components/filtered_search_bar/constants';
+import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import {
+  getPageParams,
+  getNextPageParams,
+  getPreviousPageParams,
+} from '~/packages_and_registries/shared/utils';
 import {
   ALERT_SUCCESS_TAG,
   ALERT_DANGER_TAG,
@@ -18,8 +23,10 @@ import {
   REMOVE_TAGS_BUTTON_TITLE,
   TAGS_LIST_TITLE,
   GRAPHQL_PAGE_SIZE,
+  GRAPHQL_PAGE_SIZE_METADATA_ENABLED,
   FETCH_IMAGES_LIST_ERROR_MESSAGE,
   NAME_SORT_FIELD,
+  PUBLISHED_SORT_FIELD,
   NO_TAGS_TITLE,
   NO_TAGS_MESSAGE,
   NO_TAGS_MATCHING_FILTERS_TITLE,
@@ -28,7 +35,6 @@ import {
 import getContainerRepositoryTagsQuery from '../../graphql/queries/get_container_repository_tags.query.graphql';
 import deleteContainerRepositoryTagsMutation from '../../graphql/mutations/delete_container_repository_tags.mutation.graphql';
 import DeleteModal from '../delete_modal.vue';
-import { getPageParams, getNextPageParams, getPreviousPageParams } from '../../utils';
 import TagsListRow from './tags_list_row.vue';
 
 export default {
@@ -42,17 +48,12 @@ export default {
     PersistedPagination,
     PersistedSearch,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [Tracking.mixin(), glFeatureFlagsMixin()],
   inject: ['config'],
   props: {
     id: {
       type: [Number, String],
       required: true,
-    },
-    isMobile: {
-      type: Boolean,
-      default: true,
-      required: false,
     },
     disabled: {
       type: Boolean,
@@ -65,7 +66,6 @@ export default {
       required: false,
     },
   },
-  sortableFields: [NAME_SORT_FIELD],
   i18n: {
     REMOVE_TAGS_BUTTON_TITLE,
     TAGS_LIST_TITLE,
@@ -96,22 +96,36 @@ export default {
     };
   },
   computed: {
-    listTitle() {
-      return n__('%d tag', '%d tags', this.tags.length);
+    defaultSort() {
+      return this.config.isMetadataDatabaseEnabled ? 'desc' : 'asc';
+    },
+    sortableFields() {
+      const fields = this.config.isMetadataDatabaseEnabled ? [PUBLISHED_SORT_FIELD] : [];
+      return fields.concat(NAME_SORT_FIELD);
     },
     tags() {
       return this.containerRepository?.tags?.nodes || [];
     },
     hideBulkDelete() {
-      return !this.containerRepository?.userPermissions.destroyContainerRepository;
+      return this.hasNoTags || this.tags.length === this.unSelectableItemIds.length;
+    },
+    unSelectableItemIds() {
+      return this.tags
+        .filter((tag) => !tag.userPermissions.destroyContainerRepositoryTag)
+        .map((tag) => tag.name);
     },
     tagsPageInfo() {
       return this.containerRepository?.tags?.pageInfo;
     },
+    pageSize() {
+      return this.config.isMetadataDatabaseEnabled
+        ? GRAPHQL_PAGE_SIZE_METADATA_ENABLED
+        : GRAPHQL_PAGE_SIZE;
+    },
     queryVariables() {
       return {
         id: joinPaths(this.config.gidPrefix, `${this.id}`),
-        first: GRAPHQL_PAGE_SIZE,
+        first: this.pageSize,
         name: this.filters?.name,
         sort: this.sort,
         ...this.pageParams,
@@ -137,6 +151,7 @@ export default {
     emptyStateDescription() {
       return this.hasFilters ? NO_TAGS_MATCHING_FILTERS_DESCRIPTION : NO_TAGS_MESSAGE;
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       return {
         label:
@@ -187,30 +202,28 @@ export default {
       }
     },
     fetchNextPage() {
-      this.pageParams = getNextPageParams(this.tagsPageInfo?.endCursor);
+      this.pageParams = getNextPageParams(this.tagsPageInfo?.endCursor, this.pageSize);
     },
     fetchPreviousPage() {
-      this.pageParams = getPreviousPageParams(this.tagsPageInfo?.startCursor);
+      this.pageParams = getPreviousPageParams(this.tagsPageInfo?.startCursor, this.pageSize);
     },
     handleSearchUpdate({ sort, filters, pageInfo }) {
-      this.pageParams = getPageParams(pageInfo);
+      this.pageParams = getPageParams(pageInfo, this.pageSize);
       this.sort = sort;
-
-      const parsed = {
-        name: '',
-      };
 
       // This takes in account the fact that we will be adding more filters types
       // this is why is an object and not an array or a simple string
-      this.filters = filters.reduce((acc, filter) => {
-        if (filter.type === FILTERED_SEARCH_TERM) {
-          return {
-            ...acc,
-            name: `${acc.name} ${filter.value.data}`.trim(),
-          };
-        }
-        return acc;
-      }, parsed);
+      this.filters = filters
+        .filter((filter) => filter.value?.data)
+        .reduce((acc, filter) => {
+          if (filter.type === FILTERED_SEARCH_TERM) {
+            return {
+              ...acc,
+              name: filter.value.data.trim(),
+            };
+          }
+          return acc;
+        }, {});
     },
   },
 };
@@ -219,9 +232,10 @@ export default {
 <template>
   <div>
     <persisted-search
-      :sortable-fields="$options.sortableFields"
-      :default-order="$options.sortableFields[0].orderBy"
-      default-sort="asc"
+      use-router
+      :sortable-fields="sortableFields"
+      :default-order="sortableFields[0].orderBy"
+      :default-sort="defaultSort"
       @update="handleSearchUpdate"
     />
     <tags-loader v-if="isLoading" />
@@ -237,18 +251,19 @@ export default {
       <template v-else>
         <registry-list
           :hidden-delete="hideBulkDelete"
-          :title="listTitle"
           :items="tags"
+          :un-selectable-item-ids="unSelectableItemIds"
           id-property="name"
           @delete="deleteTags"
         >
-          <template #default="{ selectItem, isSelected, item, first }">
+          <template #default="{ selectItem, isSelected, isSelectable, item, first }">
             <tags-list-row
               :tag="item"
               :first="first"
-              :selected="isSelected(item)"
-              :is-mobile="isMobile"
               :disabled="disabled"
+              :selected="isSelected(item)"
+              :selectable="isSelectable(item)"
+              :can-delete="!hideBulkDelete"
               @select="selectItem(item)"
               @delete="deleteTags([item])"
             />
@@ -264,8 +279,9 @@ export default {
       </template>
     </template>
 
-    <div v-if="!isDeleteInProgress" class="gl-display-flex gl-justify-content-center">
+    <div v-if="!isDeleteInProgress" class="gl-flex gl-justify-center">
       <persisted-pagination
+        use-router
         class="gl-mt-3"
         :pagination="tagsPageInfo"
         @prev="fetchPreviousPage"

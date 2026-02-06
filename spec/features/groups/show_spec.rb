@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Group show page', feature_category: :groups_and_projects do
+RSpec.describe 'Group show page', :with_current_organization, feature_category: :groups_and_projects do
   include Features::InviteMembersModalHelpers
 
   let_it_be(:user) { create(:user) }
@@ -33,32 +33,6 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
         sign_in(user)
       end
 
-      it 'shows the invite banner and persists dismissal', :js do
-        visit path
-
-        expect(page).to have_content('Collaborate with your team')
-
-        within_testid('invite-members-banner') do
-          click_button('Invite your colleagues')
-        end
-
-        page.within(invite_modal_selector) do
-          expect(page).to have_content("You're inviting members to the #{group.name} group")
-
-          click_button('Cancel')
-        end
-
-        within_testid('invite-members-banner') do
-          find_by_testid('close-icon').click
-        end
-
-        expect(page).not_to have_content('Collaborate with your team')
-
-        visit path
-
-        expect(page).not_to have_content('Collaborate with your team')
-      end
-
       context 'when group has a project with emoji in description', :js do
         let!(:project) { create(:project, description: ':smile:', namespace: group) }
 
@@ -78,9 +52,9 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
 
           visit group_path(group, sort: :stars_desc)
 
-          expect(find('.group-row:nth-child(1) .namespace-title > a')).to have_content(project2.title)
-          expect(find('.group-row:nth-child(2) .namespace-title > a')).to have_content(project1.title)
-          expect(find('.group-row:nth-child(3) .namespace-title > a')).to have_content(project3.title)
+          expect(find('li[data-testid^="projects-list-item"]:nth-child(1)')).to have_content(project2.title)
+          expect(find('li[data-testid^="projects-list-item"]:nth-child(2)')).to have_content(project1.title)
+          expect(find('li[data-testid^="projects-list-item"]:nth-child(3)')).to have_content(project3.title)
           expect(page).to have_selector('button[data-testid="base-dropdown-toggle"]', text: 'Stars')
         end
       end
@@ -91,59 +65,23 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
         before do
           group.add_owner(user)
           sign_in(user)
-          visit path
         end
 
-        it 'shows `Create new subgroup` link' do
+        subject(:page_content) do
+          visit path
+          page
+        end
+
+        it 'shows `Create subgroup` link' do
           link = new_group_path(parent_id: group.id, anchor: 'create-group-pane')
 
-          expect(page).to have_link(s_('GroupsEmptyState|Create new subgroup'), href: link)
+          expect(page_content).to have_link(_('Create subgroup'), href: link)
         end
 
-        it 'shows `Create new project` link' do
-          expect(page)
-            .to have_link(s_('GroupsEmptyState|Create new project'), href: new_project_path(namespace_id: group.id))
+        it 'shows `Create project` link' do
+          expect(page_content)
+            .to have_link(_('Create project'), href: new_project_path(namespace_id: group.id))
         end
-      end
-    end
-
-    context 'with visibility warning popover' do
-      let_it_be(:public_project) { create(:project, :public) }
-
-      shared_examples 'it shows warning popover' do
-        it 'shows warning popover', :js do
-          group_to_share_with.add_owner(user)
-          sign_in(user)
-          visit group_path(group_to_share_with)
-
-          click_link _('Shared projects')
-
-          wait_for_requests
-
-          within_testid("group-overview-item-#{public_project.id}") do
-            click_button _('Less restrictive visibility')
-          end
-
-          expect(page).to have_content _('Project visibility level is less restrictive than the group settings.')
-        end
-      end
-
-      context 'when a public project is shared with a private group' do
-        let_it_be(:group_to_share_with) { create(:group, :private) }
-        let_it_be(:project_group_link) do
-          create(:project_group_link, group: group_to_share_with, project: public_project)
-        end
-
-        include_examples 'it shows warning popover'
-      end
-
-      context 'when a public project is shared with an internal group' do
-        let_it_be(:group_to_share_with) { create(:group, :internal) }
-        let_it_be(:project_group_link) do
-          create(:project_group_link, group: group_to_share_with, project: public_project)
-        end
-
-        include_examples 'it shows warning popover'
       end
     end
 
@@ -154,14 +92,12 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
         visit path
       end
 
-      it 'does not show `Create new subgroup` link' do
-        expect(page)
-          .not_to have_link(s_('GroupsEmptyState|Create new subgroup'), href: new_group_path(parent_id: group.id))
+      it 'does not show `Create subgroup` link' do
+        expect(page).not_to have_link _('Create subgroup')
       end
 
-      it 'does not show `Create new project` link' do
-        expect(page)
-          .not_to have_link(s_('GroupsEmptyState|Create new project'), href: new_project_path(namespace_id: group.id))
+      it 'does not show `Create project` link' do
+        expect(page).not_to have_link _('Create project')
       end
 
       it 'shows empty state' do
@@ -169,8 +105,42 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
                      'or project in this group. Please contact an owner of this group to create a ' \
                      'new subgroup or project.')
 
-        expect(page).to have_content(s_('GroupsEmptyState|No subgroups or projects.'))
+        expect(page).to have_content(s_('GroupsEmptyState|There are no subgroups or projects in this group'))
         expect(page).to have_content(content)
+      end
+    end
+
+    describe 'tab frontend routing' do
+      context 'when route is not prefixed with group' do
+        before do
+          group.add_developer(user)
+          sign_in(user)
+          visit group_path(group)
+        end
+
+        it 'still allows for tab navigation and reloading', :js do
+          click_link _('Shared projects')
+          wait_for_requests
+          page.refresh
+
+          expect(page).to have_link('Shared projects')
+        end
+      end
+
+      context 'when route is prefixed with group' do
+        before do
+          group.add_developer(user)
+          sign_in(user)
+          visit group_canonical_path(group)
+        end
+
+        it 'still allows for tab navigation and reloading', :js do
+          click_link _('Shared projects')
+          wait_for_requests
+          page.refresh
+
+          expect(page).to have_link('Shared projects')
+        end
       end
     end
   end
@@ -182,28 +152,6 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
       end
 
       it_behaves_like "an autodiscoverable RSS feed without a feed token"
-    end
-
-    context 'when group has a public project', :js do
-      let!(:project) { create(:project, :public, namespace: group) }
-
-      it 'renders public project', :aggregate_failures do
-        visit path
-
-        expect(page).to have_link group.name
-        expect(page).to have_link project.name
-      end
-    end
-
-    context 'when group has a private project', :js do
-      let!(:project) { create(:project, :private, namespace: group) }
-
-      it 'does not render private project', :aggregate_failures do
-        visit path
-
-        expect(page).to have_link group.name
-        expect(page).not_to have_link project.name
-      end
     end
   end
 
@@ -222,7 +170,7 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
         it 'allows creating subgroups' do
           visit group_path(restricted_group)
 
-          expect(page).to have_link('New subgroup')
+          expect(page).to have_link(_('Create subgroup'))
         end
       end
     end
@@ -245,7 +193,7 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
           it 'allows creating subgroups' do
             visit group_path(relaxed_group)
 
-            expect(page).to have_link('New subgroup')
+            expect(page).to have_link(_('Create subgroup'))
           end
         end
 
@@ -257,7 +205,7 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
           it 'does not allow creating subgroups' do
             visit group_path(restricted_group)
 
-            expect(page).not_to have_link('New subgroup')
+            expect(page).not_to have_link(_('Create subgroup'))
           end
         end
       end
@@ -296,6 +244,13 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
     it_behaves_like 'page meta description', 'Lorem ipsum dolor sit amet'
   end
 
+  def click_group_caret(group)
+    within_testid("groups-list-item-#{group.id}") do
+      find_by_testid('nested-groups-project-list-item-toggle-button').click
+    end
+    wait_for_requests
+  end
+
   context 'for structured schema markup' do
     let_it_be(:group) { create(:group, :public, :with_avatar, description: 'foo') }
     let_it_be(:subgroup) { create(:group, :public, :with_avatar, parent: group, description: 'bar') }
@@ -322,10 +277,8 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
         end
 
         # Finding the subgroup row and expanding it
-        el = find('[itemprop="subOrganization"][itemtype="https://schema.org/Organization"]')
-        el.click
-        wait_for_all_requests
-        page.within(el) do
+        click_group_caret(subgroup)
+        within_testid("groups-list-item-#{subgroup.id}") do
           expect(page).to have_selector('[itemprop="logo"]')
           expect(page).to have_selector('[itemprop="name"]', text: subgroup.name)
           expect(page).to have_selector('[itemprop="description"]', text: subgroup.description)
@@ -346,17 +299,6 @@ RSpec.describe 'Group show page', feature_category: :groups_and_projects do
       visit group_shared_path(group)
       wait_for_all_requests
 
-      expect(page).to have_selector('li.group-row')
-      expect(page).not_to have_selector('[itemprop="owns"][itemtype="https://schema.org/SoftwareSourceCode"]')
-    end
-
-    it 'does not include structured markup in archived projects tab', :aggregate_failures, :js do
-      project.update!(archived: true)
-
-      visit group_inactive_path(group)
-      wait_for_all_requests
-
-      expect(page).to have_selector('li.group-row')
       expect(page).not_to have_selector('[itemprop="owns"][itemtype="https://schema.org/SoftwareSourceCode"]')
     end
   end

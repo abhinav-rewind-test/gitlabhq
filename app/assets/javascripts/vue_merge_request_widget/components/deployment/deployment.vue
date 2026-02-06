@@ -1,6 +1,6 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
-import { MANUAL_DEPLOY, WILL_DEPLOY, CREATED } from './constants';
+import { MANUAL_DEPLOY, WILL_DEPLOY, CREATED, BLOCKED } from './constants';
 import DeploymentActions from './deployment_actions.vue';
 import DeploymentInfo from './deployment_info.vue';
 
@@ -17,20 +17,22 @@ export default {
       type: Object,
       required: true,
     },
-    showMetrics: {
-      type: Boolean,
-      required: true,
-    },
   },
   computed: {
     computedDeploymentStatus() {
       if (this.deployment.status === CREATED) {
         return this.isManual ? MANUAL_DEPLOY : WILL_DEPLOY;
       }
+      if (this.isManualApproved && this.isManual) {
+        return MANUAL_DEPLOY;
+      }
       return this.deployment.status;
     },
     isManual() {
       return Boolean(this.deployment.details?.playable_build?.play_path);
+    },
+    isManualApproved() {
+      return this.deployment.status === BLOCKED && this.deployment.deployment_approved;
     },
   },
 };
@@ -44,7 +46,6 @@ export default {
           <deployment-info
             :computed-deployment-status="computedDeploymentStatus"
             :deployment="deployment"
-            :show-metrics="showMetrics"
           />
           <deployment-actions
             :deployment="deployment"

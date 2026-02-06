@@ -4,7 +4,8 @@ require 'spec_helper'
 
 RSpec.describe UsersController, feature_category: :user_management do
   # This user should have the same e-mail address associated with the GPG key prepared for tests
-  let(:user) { create(:user, email: GpgHelpers::User1.emails[0]) }
+  let_it_be_with_reload(:user) { create(:user, email: GpgHelpers::User1.emails[0]) }
+  let_it_be(:support_bot) { create(:support_bot) }
   let(:private_user) { create(:user, private_profile: true) }
   let(:public_user) { create(:user) }
 
@@ -262,6 +263,115 @@ RSpec.describe UsersController, feature_category: :user_management do
           expect(event).to include('created_at', 'author', 'action')
           expect(event['action']).to eq('private')
           expect(event).not_to include('ref', 'commit', 'target', 'resource_parent')
+        end
+      end
+
+      context 'when the request originates from the personal homepage' do
+        let(:older_project) { create(:project) }
+        let(:project) { create(:project) }
+
+        before do
+          stub_feature_flags(personal_homepage: true)
+          sign_in(user)
+        end
+
+        it 'returns an empty response if the user has no activity' do
+          get user_activity_url user.username, format: :json, is_personal_homepage: '1'
+
+          expect(response.body).to eq('')
+        end
+
+        describe 'parameter validation' do
+          before do
+            # Create 2 events, one associated with each project. We need events on 2 separate projects so we can
+            # match the project title in the API HTML response.
+            older_project.add_developer(user)
+            project.add_developer(user)
+
+            stub_const('UserRecentEventsFinder::DEFAULT_LIMIT', 1)
+          end
+
+          shared_examples 'returns the default number of events' do |params|
+            it 'returns the default number of events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1' }.merge(params), format: :json
+
+              expect(json_response['count']).to be(UserRecentEventsFinder::DEFAULT_LIMIT)
+            end
+          end
+
+          context 'when the limit param value is negative' do
+            it_behaves_like 'returns the default number of events', { limit: -1 }
+          end
+
+          context 'when the limit param value is nil' do
+            it_behaves_like 'returns the default number of events', { limit: nil }
+          end
+
+          context 'when the limit param is not present' do
+            it_behaves_like 'returns the default number of events', {}
+          end
+
+          context 'when the limit param value is non-numeric' do
+            it 'returns no events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1', limit: 'woof' }, format: :json
+
+              expect(response.body).to eq('')
+            end
+          end
+
+          context 'when the limit param value is zero' do
+            it 'returns zero events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1', limit: 0 }, format: :json
+
+              expect(response.body).to eq('')
+            end
+          end
+
+          context 'when the limit param value is a valid positive integer' do
+            it 'returns the specified number of events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1', limit: 2 }, format: :json
+
+              expect(json_response['count']).to be(2)
+            end
+          end
+
+          shared_examples 'returns the first page of events' do |params|
+            it 'returns the first page of events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1' }.merge(params), format: :json
+
+              expect(json_response['count']).to be(UserRecentEventsFinder::DEFAULT_LIMIT)
+              expect(json_response['html']).to match(/#{project.title}/)
+            end
+          end
+
+          context 'when the offset param value is negative' do
+            it_behaves_like 'returns the first page of events', { offset: -1 }
+          end
+
+          context 'when the offset param value is non-numeric' do
+            it_behaves_like 'returns the first page of events', { offset: 'woof' }
+          end
+
+          context 'when the offset param value is nil' do
+            it_behaves_like 'returns the first page of events', { offset: nil }
+          end
+
+          context 'when the offset param is not present' do
+            it_behaves_like 'returns the first page of events', {}
+          end
+
+          context 'when the offset param value is zero' do
+            it_behaves_like 'returns the first page of events', { offset: 0 }
+          end
+
+          context 'when the offset param value is a valid positive integer' do
+            it 'returns the specified page of events' do
+              get user_activity_url user.username, params: { is_personal_homepage: '1', offset: 1 }, format: :json
+
+              expect(json_response['count']).to be(UserRecentEventsFinder::DEFAULT_LIMIT)
+              expect(json_response['html']).to match(/#{older_project.title}/)
+            end
+          end
         end
       end
     end
@@ -754,11 +864,12 @@ RSpec.describe UsersController, feature_category: :user_management do
         allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).and_return(false)
       end
 
+      let(:exists_true_response_body) { { exists: true }.to_json }
+
       it 'returns JSON indicating the user exists' do
         get user_exists_url user.username
 
-        expected_json = { exists: true }.to_json
-        expect(response.body).to eq(expected_json)
+        expect(response.body).to eq(exists_true_response_body)
       end
 
       context 'when the casing is different' do
@@ -767,14 +878,30 @@ RSpec.describe UsersController, feature_category: :user_management do
         it 'returns JSON indicating the user exists' do
           get user_exists_url user.username.downcase
 
-          expected_json = { exists: true }.to_json
-          expect(response.body).to eq(expected_json)
+          expect(response.body).to eq(exists_true_response_body)
+        end
+      end
+
+      context 'when a group with the username exists' do
+        let_it_be(:group) { create(:group, name: 'get-user-exists') }
+        let_it_be(:subgroup) { create(:group, name: 'get-user-exists-child', parent: group) }
+
+        it 'treats the top-level group as a reserved name' do
+          get user_exists_url 'get-user-exists'
+
+          expect(response.body).to eq(exists_true_response_body)
+        end
+
+        it 'treats the sub-group as not a reserved name' do
+          get user_exists_url 'get-user-exists-child'
+
+          expect(response.body).to eq({ exists: false }.to_json)
         end
       end
     end
 
     context 'when the user does not exist' do
-      it 'will not show a signup page if registration is disabled' do
+      it 'does not show a signup page if registration is disabled' do
         stub_application_setting(signup_enabled: false)
         get user_exists_url 'foo'
 
@@ -818,7 +945,7 @@ RSpec.describe UsersController, feature_category: :user_management do
         ip = '1.2.3.4'
         expect(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).with(:username_exists, scope: ip).and_return(true)
 
-        get user_exists_url(user.username), env: { 'REMOTE_ADDR': ip }
+        get user_exists_url(user.username), env: { REMOTE_ADDR: ip }
 
         expect(response).to have_gitlab_http_status(:too_many_requests)
       end
@@ -840,11 +967,30 @@ RSpec.describe UsersController, feature_category: :user_management do
     end
 
     context 'format json' do
+      before do
+        setup_data
+      end
+
       it 'response with groups data' do
-        get user_groups_url user.username, format: :json
+        send_request
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response).to have_key('html')
+      end
+
+      it 'avoids N+1 DB queries', :request_store do
+        # warm up cache so these initial queries would not leak in our QueryRecorder
+        send_request
+
+        control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+          send_request
+        end
+
+        setup_data
+
+        expect do
+          send_request
+        end.to issue_same_number_of_queries_as(control)
       end
 
       context 'pagination' do
@@ -861,6 +1007,18 @@ RSpec.describe UsersController, feature_category: :user_management do
           expect(assigns(:groups).size).to eq(per_page_limit)
           expect(assigns(:groups)).to be_a(Kaminari::PaginatableWithoutCount)
         end
+      end
+
+      def setup_data
+        create_list(:group, 2).each do |group|
+          group.add_owner(user)
+          create(:project, group: group)
+          create(:group_member, group: group)
+        end
+      end
+
+      def send_request
+        get user_groups_url user.username, format: :json
       end
     end
   end
@@ -1022,6 +1180,32 @@ RSpec.describe UsersController, feature_category: :user_management do
         expected_message = format(_('Action not allowed.'))
         expect(flash[:alert]).to eq(expected_message)
         expect(user).not_to be_following(public_user)
+      end
+    end
+  end
+
+  describe 'POST #unfollow' do
+    before do
+      sign_in(user)
+    end
+
+    context 'when unfollow is successful' do
+      before do
+        user.follow(public_user)
+      end
+
+      it 'removes the follow relationship and sets a success message' do
+        post user_unfollow_url(username: public_user.username)
+        expect(response).to be_redirect
+        expect(user).not_to be_following(public_user)
+      end
+    end
+
+    context 'when there is an error during unfollow' do
+      it 'sets an error message and redirects' do
+        post user_unfollow_url(username: public_user.username)
+        expect(response).to be_redirect
+        expect(flash[:alert]).to eq(_('Failed to unfollow user'))
       end
     end
   end

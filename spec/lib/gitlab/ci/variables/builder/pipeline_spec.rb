@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secrets_management do
+RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :pipeline_composition do
   let_it_be(:project) { create_default(:project, :repository, create_tag: 'test').freeze }
   let_it_be(:user) { create(:user) }
 
@@ -11,27 +11,142 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
   describe '#predefined_variables' do
     subject { described_class.new(pipeline).predefined_variables }
 
-    it 'includes all predefined variables in a valid order' do
-      keys = subject.pluck(:key)
+    context 'when truncate_ci_commit_message feature flag is enabled' do
+      before do
+        stub_feature_flags(truncate_ci_commit_message: true)
+      end
 
-      expect(keys).to contain_exactly(*%w[
-        CI_PIPELINE_IID
-        CI_PIPELINE_SOURCE
-        CI_PIPELINE_CREATED_AT
-        CI_PIPELINE_NAME
-        CI_COMMIT_SHA
-        CI_COMMIT_SHORT_SHA
-        CI_COMMIT_BEFORE_SHA
-        CI_COMMIT_REF_NAME
-        CI_COMMIT_REF_SLUG
-        CI_COMMIT_BRANCH
-        CI_COMMIT_MESSAGE
-        CI_COMMIT_TITLE
-        CI_COMMIT_DESCRIPTION
-        CI_COMMIT_REF_PROTECTED
-        CI_COMMIT_TIMESTAMP
-        CI_COMMIT_AUTHOR
-      ])
+      it 'includes all predefined variables in a valid order including CI_COMMIT_MESSAGE_IS_TRUNCATED' do
+        keys = subject.pluck(:key)
+
+        expect(keys).to contain_exactly(*%w[
+          CI_PIPELINE_IID
+          CI_PIPELINE_SOURCE
+          CI_PIPELINE_CREATED_AT
+          CI_PIPELINE_NAME
+          CI_COMMIT_SHA
+          CI_COMMIT_SHORT_SHA
+          CI_COMMIT_BEFORE_SHA
+          CI_COMMIT_REF_NAME
+          CI_COMMIT_REF_SLUG
+          CI_COMMIT_BRANCH
+          CI_COMMIT_MESSAGE
+          CI_COMMIT_MESSAGE_IS_TRUNCATED
+          CI_COMMIT_TITLE
+          CI_COMMIT_DESCRIPTION
+          CI_COMMIT_REF_PROTECTED
+          CI_COMMIT_TIMESTAMP
+          CI_COMMIT_AUTHOR
+        ])
+      end
+    end
+
+    context 'when the commit message has title and body' do
+      context 'when the commit message is under the limit' do
+        let(:commit_title) { 'This is a commit title' }
+        let(:commit_description) { 'This is a detailed commit message body that explains the changes in detail. ' }
+        let(:commit_message) { "#{commit_title}\n#{commit_description}" }
+
+        let!(:commit) do
+          project.repository.create_file(
+            project.creator,
+            'message.txt',
+            'content',
+            message: commit_message,
+            branch_name: 'test-commit-message'
+          )
+          project.commit('test-commit-message')
+        end
+
+        let(:pipeline) do
+          build(
+            :ci_empty_pipeline,
+            :created,
+            project: project,
+            ref: 'test-commit-message',
+            sha: commit.id
+          )
+        end
+
+        it 'does not truncate any fields' do
+          expect(subject.to_hash)
+            .to include(
+              'CI_COMMIT_MESSAGE' => commit_message,
+              'CI_COMMIT_MESSAGE_IS_TRUNCATED' => 'false'
+            )
+        end
+      end
+
+      shared_examples 'truncating long commit messages' do |newline_character, branch_suffix|
+        let(:commit_message) { "#{commit_title}#{newline_character}#{commit_description}" }
+        let(:expected_truncated_message_pattern) do
+          commit_message.byteslice(0, described_class::MAX_COMMIT_MESSAGE_SIZE_IN_BYTES)
+        end
+
+        let(:expected_truncated_description_size) { described_class::MAX_COMMIT_MESSAGE_SIZE_IN_BYTES }
+
+        let!(:commit) do
+          project.repository.create_file(
+            project.creator,
+            "long_message_#{branch_suffix}.txt",
+            'content',
+            message: commit_message,
+            branch_name: "test-long-message-#{branch_suffix}"
+          )
+          project.commit("test-long-message-#{branch_suffix}")
+        end
+
+        let(:pipeline) do
+          build(
+            :ci_empty_pipeline,
+            :created,
+            project: project,
+            ref: "test-long-message-#{branch_suffix}",
+            sha: commit.id
+          )
+        end
+
+        it 'truncates the full message and sets all truncated flags' do
+          expect(subject.to_hash)
+            .to include(
+              'CI_COMMIT_MESSAGE' => expected_truncated_message_pattern,
+              'CI_COMMIT_MESSAGE_IS_TRUNCATED' => 'true',
+              'CI_COMMIT_DESCRIPTION' => expected_truncated_description_pattern
+            )
+
+          description_size = subject.to_hash['CI_COMMIT_DESCRIPTION'].bytesize
+          expect(description_size).to eq(expected_truncated_description_size)
+        end
+      end
+
+      context 'when the commit description exceeds the limit', :unlimited_max_formatted_output_length do
+        let(:commit_title) { 'This is a commit title' }
+        let(:commit_description) { "This is the first line of the description. #{'x' * 400_000}" }
+        let(:expected_truncated_description_pattern) { /This is the first line of the description. xxxx/ }
+        let(:expected_truncated_description_size) { 0 }
+
+        context 'when commit title and description is separated by CRLF' do
+          it_behaves_like 'truncating long commit messages',
+            "\r\n",
+            'crlf'
+        end
+
+        context 'when commit title and description is separated by LF' do
+          it_behaves_like 'truncating long commit messages',
+            "\n",
+            "lf-1"
+        end
+      end
+
+      context 'when the commit title exceeds the limit' do
+        let(:commit_title) { "This is a commit title. #{'x' * 400_000}" }
+        let(:commit_description) { 'This is a detailed commit message body that explains the changes in detail. ' }
+        let(:expected_truncated_description_pattern) { /This is a commit title/ }
+
+        it_behaves_like 'truncating long commit messages',
+          "\n",
+          "lf-2"
+      end
     end
 
     context 'when the pipeline is running for a tag' do
@@ -51,6 +166,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
           CI_COMMIT_REF_NAME
           CI_COMMIT_REF_SLUG
           CI_COMMIT_MESSAGE
+          CI_COMMIT_MESSAGE_IS_TRUNCATED
           CI_COMMIT_TITLE
           CI_COMMIT_DESCRIPTION
           CI_COMMIT_REF_PROTECTED
@@ -59,6 +175,41 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
           CI_COMMIT_TAG
           CI_COMMIT_TAG_MESSAGE
         ])
+      end
+    end
+
+    context 'when tag has an SSH signature' do
+      let(:tag_name) { 'v1.0.0' }
+      let(:tag_message_with_signature) do
+        <<~MESSAGE
+        Version 1.0.0
+        -----BEGIN SSH SIGNATURE-----
+
+        iQEzB...
+        -----END SSH SIGNATURE-----
+        MESSAGE
+      end
+
+      let(:pipeline) { build(:ci_empty_pipeline, :created, project: project, ref: tag_name, tag: true) }
+
+      before do
+        allow(project.repository).to receive(:find_tag).with(tag_name).and_return(
+          instance_double(Gitlab::Git::Tag, message: tag_message_with_signature)
+        )
+      end
+
+      it 'sanitizes SSH signature from CI_COMMIT_TAG_MESSAGE' do
+        expect(subject.to_hash['CI_COMMIT_TAG_MESSAGE']).to eq("Version 1.0.0\n\n")
+      end
+
+      context 'when "strip_signature_from_ci_commit_tag_message" FF is disabled' do
+        before do
+          stub_feature_flags(strip_signature_from_ci_commit_tag_message: false)
+        end
+
+        it 'returns signature in the message' do
+          expect(subject.to_hash['CI_COMMIT_TAG_MESSAGE']).to eq(tag_message_with_signature)
+        end
       end
     end
 
@@ -115,6 +266,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
                 merge_request.source_branch
               ).to_s,
               'CI_MERGE_REQUEST_TITLE' => merge_request.title,
+              'CI_MERGE_REQUEST_DRAFT' => merge_request.work_in_progress?.to_s,
               'CI_MERGE_REQUEST_DESCRIPTION' => merge_request.description,
               'CI_MERGE_REQUEST_DESCRIPTION_IS_TRUNCATED' => 'false',
               'CI_MERGE_REQUEST_ASSIGNEES' => merge_request.assignee_username_list,
@@ -245,6 +397,7 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
               'CI_MERGE_REQUEST_SOURCE_BRANCH_NAME' => merge_request.source_branch.to_s,
               'CI_MERGE_REQUEST_SOURCE_BRANCH_SHA' => merge_request.source_branch_sha,
               'CI_MERGE_REQUEST_TITLE' => merge_request.title,
+              'CI_MERGE_REQUEST_DRAFT' => merge_request.work_in_progress?.to_s,
               'CI_MERGE_REQUEST_DESCRIPTION' => merge_request.description,
               'CI_MERGE_REQUEST_ASSIGNEES' => merge_request.assignee_username_list,
               'CI_MERGE_REQUEST_MILESTONE' => milestone.title,
@@ -258,6 +411,62 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
               'CI_MERGE_REQUEST_DIFF_ID' => merge_request.merge_request_diff.id.to_s,
               'CI_MERGE_REQUEST_DIFF_BASE_SHA' => merge_request.merge_request_diff.base_commit_sha)
         end
+      end
+    end
+
+    context 'when pipeline triggered by upstream project' do
+      let_it_be(:upstream_project) { create(:project) }
+      let(:upstream_pipeline) { create(:ci_pipeline, project: upstream_project) }
+      let(:pipeline) { create(:ci_pipeline, project: project) }
+      let(:bridge) do
+        create(:ci_bridge, pipeline: upstream_pipeline, downstream_pipeline: pipeline, downstream: project)
+      end
+
+      before do
+        create(:ci_sources_pipeline, source_job: bridge, pipeline: pipeline)
+      end
+
+      it 'exposes upstream pipeline variables' do
+        expect(subject.to_hash)
+          .to include(
+            'CI_UPSTREAM_PROJECT_ID' => upstream_pipeline.project_id.to_s,
+            'CI_UPSTREAM_PIPELINE_ID' => upstream_pipeline.id.to_s,
+            'CI_UPSTREAM_JOB_ID' => bridge.id.to_s
+          )
+      end
+    end
+
+    context 'when child pipeline triggered by parent pipeline in same project' do
+      let(:parent_pipeline) { create(:ci_pipeline, project: project) }
+      let(:pipeline) { create(:ci_pipeline, project: project) }
+      let(:bridge) do
+        create(:ci_bridge, pipeline: parent_pipeline, downstream_pipeline: pipeline, downstream: project)
+      end
+
+      before do
+        create(:ci_sources_pipeline, source_job: bridge, pipeline: pipeline)
+      end
+
+      it 'exposes upstream pipeline variables' do
+        expect(subject.to_hash)
+          .to include(
+            'CI_UPSTREAM_PROJECT_ID' => parent_pipeline.project_id.to_s,
+            'CI_UPSTREAM_PIPELINE_ID' => parent_pipeline.id.to_s,
+            'CI_UPSTREAM_JOB_ID' => bridge.id.to_s
+          )
+      end
+    end
+
+    context 'when pipeline is not a downstream pipeline' do
+      let(:pipeline) { create(:ci_pipeline, project: project) }
+
+      it 'does not expose upstream pipeline variables' do
+        expect(subject.to_hash.keys)
+          .not_to include(
+            'CI_UPSTREAM_PROJECT_ID',
+            'CI_UPSTREAM_PIPELINE_ID',
+            'CI_UPSTREAM_JOB_ID'
+          )
       end
     end
 
@@ -278,6 +487,18 @@ RSpec.describe Gitlab::Ci::Variables::Builder::Pipeline, feature_category: :secr
             'CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_SHA' => pull_request.target_sha,
             'CI_EXTERNAL_PULL_REQUEST_SOURCE_BRANCH_NAME' => pull_request.source_branch,
             'CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME' => pull_request.target_branch
+          )
+      end
+    end
+
+    context 'when source is a pipeline schedule' do
+      let_it_be(:pipeline_schedule) { create(:ci_pipeline_schedule, project: project) }
+      let_it_be(:pipeline) { create(:ci_pipeline, pipeline_schedule: pipeline_schedule, project: project) }
+
+      it 'exposes the pipeline schedule description variable' do
+        expect(subject.to_hash)
+          .to include(
+            'CI_PIPELINE_SCHEDULE_DESCRIPTION' => pipeline.pipeline_schedule.description
           )
       end
     end

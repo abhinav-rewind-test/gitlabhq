@@ -1,23 +1,28 @@
 <script>
-import { GlLoadingIcon, GlIntersectionObserver } from '@gitlab/ui';
-import Draggable from 'vuedraggable';
+import { GlLoadingIcon, GlIntersectionObserver, GlIcon } from '@gitlab/ui';
+import Draggable from '~/lib/utils/vue3compat/draggable_compat.vue';
 import { STATUS_CLOSED } from '~/issues/constants';
 import { sprintf, __, s__ } from '~/locale';
 import { ESC_KEY_CODE } from '~/lib/utils/keycodes';
 import { defaultSortableOptions, DRAG_DELAY } from '~/sortable/constants';
 import { sortableStart, sortableEnd } from '~/sortable/utils';
 import Tracking from '~/tracking';
+import { getParameterByName } from '~/lib/utils/url_utility';
+import { getWorkItemTypeAllowedStatusMap } from '~/work_items/utils';
 import listQuery from 'ee_else_ce/boards/graphql/board_lists_deferred.query.graphql';
 import setActiveBoardItemMutation from 'ee_else_ce/boards/graphql/client/set_active_board_item.mutation.graphql';
 import BoardNewIssue from 'ee_else_ce/boards/components/board_new_issue.vue';
 import BoardCardMoveToPosition from '~/boards/components/board_card_move_to_position.vue';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import namespaceWorkItemTypesQuery from '~/work_items/graphql/namespace_work_item_types.query.graphql';
 import {
   DEFAULT_BOARD_LIST_ITEMS_SIZE,
   DraggableItemTypes,
   listIssuablesQueries,
   ListType,
+  WIP_WEIGHT,
+  INCIDENT,
 } from 'ee_else_ce/boards/constants';
+import { DETAIL_VIEW_QUERY_PARAM_NAME } from '~/work_items/constants';
 import {
   addItemToList,
   removeItemFromList,
@@ -46,8 +51,9 @@ export default {
     GlLoadingIcon,
     GlIntersectionObserver,
     BoardCardMoveToPosition,
+    GlIcon,
   },
-  mixins: [Tracking.mixin(), glFeatureFlagMixin()],
+  mixins: [Tracking.mixin()],
   inject: [
     'isEpicBoard',
     'isIssueBoard',
@@ -75,6 +81,15 @@ export default {
       required: false,
       default: false,
     },
+    columnIndex: {
+      type: Number,
+      required: true,
+    },
+    draggedType: {
+      type: String,
+      required: false,
+      default: null,
+    },
   },
   data() {
     return {
@@ -86,9 +101,12 @@ export default {
       addItemToListInProgress: false,
       updateIssueOrderInProgress: false,
       dragCancelled: false,
+      hasMadeDrawerAttempt: false,
+      workItemTypeAllowedStatusMap: {},
     };
   },
   apollo: {
+    // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     boardList: {
       query: listQuery,
       variables() {
@@ -99,6 +117,26 @@ export default {
       },
       skip() {
         return this.isEpicBoard;
+      },
+    },
+    workItemTypeAllowedStatusMap: {
+      query: namespaceWorkItemTypesQuery,
+      variables() {
+        return {
+          fullPath: this.fullPath,
+        };
+      },
+      update(data) {
+        return getWorkItemTypeAllowedStatusMap(data.namespace?.workItemTypes?.nodes);
+      },
+      skip() {
+        return this.isEpicBoard;
+      },
+      error(error) {
+        setError({
+          error,
+          message: s__('Boards|An error occurred while fetching the statuses. Please try again.'),
+        });
       },
     },
     currentList: {
@@ -122,6 +160,12 @@ export default {
           error,
           message: s__('Boards|An error occurred while fetching a list. Please try again.'),
         });
+      },
+      result({ data }) {
+        if (this.hasMadeDrawerAttempt || !data) {
+          return;
+        }
+        this.checkDrawerParams();
       },
     },
     toList: {
@@ -157,15 +201,41 @@ export default {
     boardListItems() {
       return this.currentList?.[`${this.issuableType}s`].nodes || [];
     },
-    beforeCutLine() {
+    beforeIssueCutLine() {
       return this.boardItemsSizeExceedsMax
         ? this.boardListItems.slice(0, this.list.maxIssueCount)
         : this.boardListItems;
     },
-    afterCutLine() {
+    afterIssueCutLine() {
       return this.boardItemsSizeExceedsMax
         ? this.boardListItems.slice(this.list.maxIssueCount)
         : [];
+    },
+    weightCutOffIndex() {
+      let sumOfWeight = 0;
+      const cutoffIndex = this.boardListItems.findIndex((item) => {
+        sumOfWeight += item.weight;
+        return sumOfWeight > this.list.maxIssueWeight;
+      });
+      return cutoffIndex;
+    },
+    beforeWeightCutLine() {
+      return this.weightCutOffIndex === -1
+        ? this.boardListItems
+        : this.boardListItems.slice(0, this.weightCutOffIndex);
+    },
+    afterWeightCutLine() {
+      return this.weightCutOffIndex === -1 ? [] : this.boardListItems.slice(this.weightCutOffIndex);
+    },
+    beforeCutLine() {
+      return this.list.limitMetric === WIP_WEIGHT
+        ? this.beforeWeightCutLine
+        : this.beforeIssueCutLine;
+    },
+    afterCutLine() {
+      return this.list.limitMetric === WIP_WEIGHT
+        ? this.afterWeightCutLine
+        : this.afterIssueCutLine;
     },
     listQueryVariables() {
       return {
@@ -180,6 +250,9 @@ export default {
     listItemsCount() {
       return this.isEpicBoard ? this.list.metadata.epicsCount : this.boardList?.issuesCount;
     },
+    listItemsWeight() {
+      return this.isEpicBoard ? 0 : Number(this.boardList?.totalIssueWeight ?? 0);
+    },
     paginatedIssueText() {
       return sprintf(__('Showing %{pageSize} of %{total} %{issuableType}'), {
         pageSize: this.boardListItems.length,
@@ -188,12 +261,20 @@ export default {
       });
     },
     wipLimitText() {
-      return sprintf(__('Work in progress limit: %{wipLimit}'), {
-        wipLimit: this.list.maxIssueCount,
-      });
+      const wipLimit = this.list.maxIssueCount || this.list.maxIssueWeight;
+      if (this.list.limitMetric === WIP_WEIGHT) {
+        return sprintf(s__('Boards|Work in progress limit: %{wipLimit} weight'), { wipLimit });
+      }
+      return sprintf(__('Work in progress limit: %{wipLimit} items'), { wipLimit });
     },
     boardItemsSizeExceedsMax() {
       return this.list.maxIssueCount > 0 && this.listItemsCount > this.list.maxIssueCount;
+    },
+    boardItemsWeightExceedsMax() {
+      return this.list.maxIssueWeight > 0 && this.listItemsWeight > this.list.maxIssueWeight;
+    },
+    boardLimitExceeded() {
+      return this.boardItemsSizeExceedsMax || this.boardItemsWeightExceedsMax;
     },
     hasNextPage() {
       return this.currentList?.[`${this.issuableType}s`].pageInfo?.hasNextPage;
@@ -236,6 +317,7 @@ export default {
         value: this.boardListItems,
         delay: DRAG_DELAY,
         delayOnTouchOnly: true,
+        disabled: this.isInapplicable,
       };
 
       return this.canMoveIssue ? options : {};
@@ -249,6 +331,29 @@ export default {
     shouldCloneCard() {
       return shouldCloneCard(this.list.listType, this.toList.listType);
     },
+    isInapplicable() {
+      if (!this.draggedType || !this.list?.status?.id) {
+        return false;
+      }
+
+      // Only check applicability for status lists
+      if (this.list.listType !== ListType.status) {
+        return false;
+      }
+
+      const listStatusId = this.list.status.id;
+
+      // Incidents are always inapplicable for status lists
+      if (this.draggedType === INCIDENT) {
+        return true;
+      }
+
+      // Check if the dragged work item type supports the current list status
+      const allowedStatuses = this.workItemTypeAllowedStatusMap[this.draggedType] || [];
+      const hasMatchingStatus = allowedStatuses.some((status) => status.id === listStatusId);
+
+      return !hasMatchingStatus;
+    },
   },
   watch: {
     boardListItems() {
@@ -256,6 +361,12 @@ export default {
         this.showCount = this.scrollHeight() > Math.ceil(this.listHeight());
       });
     },
+  },
+  created() {
+    window.addEventListener('popstate', this.checkDrawerParams);
+  },
+  beforeDestroy() {
+    window.removeEventListener('popstate', this.checkDrawerParams);
   },
   methods: {
     listHeight() {
@@ -287,12 +398,14 @@ export default {
     },
     handleDragOnStart({
       item: {
-        dataset: { draggableItemType },
+        dataset: { draggableItemType, itemId },
       },
     }) {
       if (draggableItemType !== DraggableItemTypes.card) {
         return;
       }
+      const draggedItem = this.boardListItems.find((item) => item.id === itemId);
+      this.$emit('dragStart', { itemType: draggedItem?.type || null });
 
       // Reset dragCancelled flag
       this.dragCancelled = false;
@@ -314,6 +427,7 @@ export default {
       if (draggableItemType !== DraggableItemTypes.card) {
         return;
       }
+      this.$emit('dragStop');
 
       // Detach listener as soon as drag ends.
       document.removeEventListener('keyup', this.handleKeyUp.bind(this));
@@ -412,7 +526,6 @@ export default {
               boardId: this.boardId,
               itemToMove,
             }),
-            withColor: this.isEpicBoard && this.glFeatures.epicColorHighlight,
           },
           update: (cache, { data: { issuableMoveList } }) =>
             this.updateCacheAfterMovingItem({
@@ -505,7 +618,6 @@ export default {
               itemToMove: item,
             }),
             positionInList,
-            withColor: this.isEpicBoard && this.glFeatures.epicColorHighlight,
           },
           optimisticResponse: {
             issuableMoveList: {
@@ -557,8 +669,13 @@ export default {
         await this.$apollo.mutate({
           mutation: listIssuablesQueries[this.issuableType].createMutation,
           variables: {
-            input: this.isEpicBoard ? input : { ...input, moveAfterId: this.boardListItems[0]?.id },
-            withColor: this.isEpicBoard && this.glFeatures.epicColorHighlight,
+            input: this.isEpicBoard
+              ? input
+              : {
+                  ...input,
+                  moveAfterId: this.boardListItems[0]?.id,
+                  iterationId: this.list.iteration?.id,
+                },
           },
           update: (cache, { data: { createIssuable } }) => {
             issuable = createIssuable.issuable;
@@ -601,15 +718,41 @@ export default {
         });
       } finally {
         this.addItemToListInProgress = false;
-        this.$apollo.mutate({
-          mutation: setActiveBoardItemMutation,
-          variables: {
-            boardItem: issuable,
-            listId: this.list.id,
-            isIssue: this.isIssueBoard,
-          },
-        });
+        // Only open the drawer if issue creation was successful (default iid of '-1' indicates failure)
+        if (issuable && issuable?.iid !== '-1') {
+          this.setActiveWorkItem(issuable);
+        }
       }
+    },
+    setActiveWorkItem(boardItem) {
+      this.$apollo.mutate({
+        mutation: setActiveBoardItemMutation,
+        variables: {
+          boardItem,
+          listId: this.list.id,
+          isIssue: this.isIssueBoard,
+        },
+      });
+    },
+    checkDrawerParams() {
+      const queryParam = getParameterByName(DETAIL_VIEW_QUERY_PARAM_NAME);
+
+      if (!queryParam) {
+        this.setActiveWorkItem(null);
+        return;
+      }
+
+      const { iid, full_path: fullPath } = JSON.parse(atob(queryParam));
+      const boardItem = this.boardListItems.find(
+        (item) => item.iid === iid && item.referencePath.includes(fullPath),
+      );
+
+      if (boardItem) {
+        this.setActiveWorkItem(boardItem);
+      } else {
+        this.$emit('cannot-find-active-item');
+      }
+      this.hasMadeDrawerAttempt = true;
     },
   },
 };
@@ -618,9 +761,22 @@ export default {
 <template>
   <div
     v-show="!list.collapsed"
-    class="board-list-component gl-relative gl-h-full gl-display-flex gl-flex-direction-column gl-min-h-0"
+    class="board-list-component gl-relative gl-flex gl-h-full gl-min-h-0 gl-flex-col"
+    :class="{ 'board-column-not-applicable': isInapplicable }"
     data-testid="board-list-cards-area"
   >
+    <div
+      v-if="isInapplicable"
+      class="board-column-not-applicable-content gl-flex gl-items-center gl-text-center"
+    >
+      <div class="gl-w-full">
+        <strong
+          ><gl-icon name="cancel" class="gl-mr-2" />{{ __('Not available for this item') }}</strong
+        >
+        <div>{{ __('This status cannot be applied to the selected item.') }}</div>
+      </div>
+    </div>
+
     <div
       v-if="loading"
       class="gl-mt-4 gl-text-center"
@@ -651,12 +807,15 @@ export default {
       :data-board="list.id"
       :data-board-type="list.listType"
       :class="{
-        'gl-bg-red-50 gl-rounded-bottom-left-base gl-rounded-bottom-right-base': boardItemsSizeExceedsMax,
+        'gl-rounded-bl-lg gl-rounded-br-lg gl-bg-red-50': boardLimitExceeded,
         'gl-overflow-hidden': disableScrollingWhenMutationInProgress,
         'gl-overflow-y-auto': !disableScrollingWhenMutationInProgress,
+        'list-empty': !listItemsCount,
+        'list-collapsed': list.collapsed,
       }"
-      draggable=".board-card"
-      class="board-list gl-w-full gl-h-full gl-list-style-none gl-mb-0 gl-p-3 gl-pt-0 gl-overflow-x-hidden"
+      :draggable="canMoveIssue ? '.board-card' : false"
+      item-key="id"
+      class="board-list gl-mb-0 gl-h-full gl-w-full gl-list-none gl-overflow-x-hidden gl-p-3 gl-pt-2"
       data-testid="tree-root-wrapper"
       @start="handleDragOnStart"
       @end="handleDragOnEnd"
@@ -668,6 +827,7 @@ export default {
         :index="index"
         :list="list"
         :item="item"
+        :column-index="columnIndex"
         :data-draggable-item-type="$options.draggableItemTypes.card"
         :show-work-item-type-icon="!isEpicBoard"
         @setFilters="$emit('setFilters', $event)"
@@ -686,16 +846,18 @@ export default {
           @appear="onReachingListBottom"
         />
       </board-card>
-      <board-cut-line v-if="boardItemsSizeExceedsMax" :cut-line-text="wipLimitText" />
+      <board-cut-line v-if="boardLimitExceeded" :cut-line-text="wipLimitText" />
       <board-card
         v-for="(item, index) in afterCutLine"
         ref="issue"
         :key="item.id"
-        :index="index"
+        :index="index + list.maxIssueCount"
         :list="list"
         :item="item"
+        :column-index="columnIndex"
         :data-draggable-item-type="$options.draggableItemTypes.card"
         :show-work-item-type-icon="!isEpicBoard"
+        :list-items-length="boardListItems.length"
         @setFilters="$emit('setFilters', $event)"
       >
         <board-card-move-to-position
@@ -712,11 +874,11 @@ export default {
           @appear="onReachingListBottom"
         />
       </board-card>
-      <div>
-        <!-- for supporting previous structure with intersection observer -->
+      <!-- for supporting previous structure with intersection observer -->
+      <template #footer>
         <li
           v-if="showCount"
-          class="board-list-count gl-text-center gl-text-secondary gl-py-4"
+          class="board-list-count gl-py-4 gl-text-center gl-text-subtle"
           data-issue-id="-1"
         >
           <gl-loading-icon
@@ -727,7 +889,7 @@ export default {
           <span v-if="showingAllItems">{{ showingAllItemsText }}</span>
           <span v-else>{{ paginatedIssueText }}</span>
         </li>
-      </div>
+      </template>
     </component>
   </div>
 </template>

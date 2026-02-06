@@ -1,51 +1,50 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Upgrade self-compiled instances
+description: Upgrade a single-node self-compiled instance.
 ---
 
-# Upgrading self-compiled installations
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-Make sure you view this upgrade guide from the branch (version) of GitLab you
-would like to install (for example, `16.0`). You can select the required version of documentation in the dropdown list in the upper-right corner of GitLab documentation page.
+{{< /details >}}
 
-In each of the following examples, replace `BRANCH` with the branch of the version you upgrading to (for example, `16-0-stable` for `16.0`). Replace `PREVIOUS_BRANCH` with the
-branch for the version you are upgrading from (for example, `15-11-stable` for `15.11`).
+Upgrade a self-compiled instance to a later version of GitLab.
 
-If the highest number stable branch is unclear check the
-[GitLab Blog](https://about.gitlab.com/blog/archive/) for installation
-guide links by version.
+## Prerequisites
 
-If you are changing from GitLab Community Edition to GitLab Enterprise Edition, see
-the [Upgrading from CE to EE](upgrading_from_ce_to_ee.md) documentation.
+Before you upgrade:
 
-## Upgrading to a new major version
+1. You must [read required information and perform required steps](plan_your_upgrade.md).
+1. Review the [software requirements](../install/self_compiled/_index.md#software-requirements) for Ruby, Node.js, Go,
+   and PostgreSQL.
 
-Major versions are reserved for backwards incompatible changes. You should first upgrade to the latest available minor version of your current major version.
-Follow the [Upgrade Recommendations](../policy/maintenance.md#upgrade-recommendations)
-to identify the ideal upgrade path.
+## Upgrade a self-compiled instance
 
-Before upgrading to a new major version, you should ensure that any background
-migration jobs from previous releases have been completed. To see the current size of the `background_migration` queue,
-[Check for background migrations before upgrading](background_migrations.md).
+To upgrade a self-compiled instance:
 
-## Guidelines for all versions
+1. Consider [turning on maintenance mode](../administration/maintenance_mode/_index.md) during the upgrade.
+1. Pause [running CI/CD pipelines and jobs](plan_your_upgrade.md#pause-cicd-pipelines-and-jobs).
+1. [Upgrade GitLab Runner](https://docs.gitlab.com/runner/install/) to the same version as your target GitLab version.
+1. Upgrade GitLab by following the instructions on this page.
 
-This section contains all the steps necessary to upgrade Community Edition or
-Enterprise Edition, regardless of the version you are upgrading to. Version
-specific guidelines (should there be any) are covered separately.
+After you upgrade:
 
-### 1. Backup
+1. Unpause [running CI/CD pipelines and jobs](plan_your_upgrade.md#pause-cicd-pipelines-and-jobs).
+1. If enabled, [turn off maintenance mode](../administration/maintenance_mode/_index.md#disable-maintenance-mode).
+1. Run [upgrade health checks](plan_your_upgrade.md#run-upgrade-health-checks).
+
+### Create a backup
 
 Prerequisites:
 
 - Make sure `rsync` is installed.
 
-Perform the backup:
+To create a backup:
 
 ```shell
 cd /home/git/gitlab
@@ -53,7 +52,9 @@ cd /home/git/gitlab
 sudo -u git -H bundle exec rake gitlab:backup:create RAILS_ENV=production
 ```
 
-### 2. Stop server
+### Stop GitLab
+
+To stop GitLab:
 
 ```shell
 # For systems running systemd
@@ -63,144 +64,154 @@ sudo systemctl stop gitlab.target
 sudo service gitlab stop
 ```
 
-### 3. Update Ruby
+### Update Ruby
 
-From GitLab 16.7, we only support Ruby 3.1.x and dropped support for Ruby 3.0. Be sure to upgrade if necessary.
-You can check which version you are running with `ruby -v`.
+If a newer version of Ruby is required, you must update Ruby:
 
-[Install Ruby](https://www.ruby-lang.org/en/documentation/installation/).
+1. To check which version of Ruby you have, run:
 
-### 4. Update Node.js
+   ```shell
+   ruby -v
+   ```
 
-To check the minimum required Node.js version, see [Node.js versions](../install/installation.md#software-requirements).
+1. For instructions on updating to newer versions of Ruby, see
+   [Ruby installation instructions](https://www.ruby-lang.org/en/documentation/installation/).
 
-GitLab also requires the use of Yarn `>= v1.10.0` to manage JavaScript
-dependencies.
+### Update Node.js
 
-In Debian or Ubuntu:
+If a newer version of Node.js is required, you must update Node.js:
 
-```shell
-sudo apt-get remove yarn
+1. To check which version of Node.js you have, run:
 
-npm install --global yarn
-```
+   ```shell
+   node -v
+   ```
 
-More information can be found on the [Yarn website](https://classic.yarnpkg.com/en/docs/install).
+1. For instructions on updating to newer versions of Node.js, see
+   [Node.js download instructions](https://nodejs.org/en/download).
 
-### 5. Update Go
+GitLab also requires Yarn `>= v1.10.0` to manage JavaScript dependencies. For more information, see the
+[Yarn website](https://classic.yarnpkg.com/en/docs/install).
 
-To check the minimum required Go version, see [Go versions](../install/installation.md#software-requirements).
+### Update Go
 
-You can check which version you are running with `go version`.
+If a newer version of Go is required, you must update Go:
 
-Download and install Go (for Linux, 64-bit):
+1. To check which version of Go you have, run:
 
-```shell
-# Remove former Go installation folder
-sudo rm -rf /usr/local/go
+   ```shell
+   go version
+   ```
 
-curl --remote-name --location --progress-bar "https://go.dev/dl/go1.20.8.linux-amd64.tar.gz"
-echo 'cc97c28d9c252fbf28f91950d830201aa403836cbed702a05932e63f7f0c7bc4  go1.20.8.linux-amd64.tar.gz' | shasum -a256 -c - && \
-  sudo tar -C /usr/local -xzf go1.20.8.linux-amd64.tar.gz
-sudo ln -sf /usr/local/go/bin/{go,gofmt} /usr/local/bin/
-rm go1.20.8.linux-amd64.tar.gz
-```
+1. For instructions on updating to newer versions of Go, see
+   [Go installation instructions](https://go.dev/doc/install).
 
-### 6. Update Git
+### Update Git
 
-To check you are running the minimum required Git version, see
-[Git versions](../install/installation.md#software-requirements).
+You should use the Git version provided by Gitaly. For more information, see
+[GitLab installation instructions for Git](../install/self_compiled/_index.md#git).
 
-From GitLab 13.6, you should use the
-[Git version provided by Gitaly](https://gitlab.com/gitlab-org/gitaly/-/issues/2729)
-that:
+### Update PostgreSQL
 
-- Is always at the version required by GitLab.
-- May contain custom patches required for proper operation.
+If a newer version of PostgreSQL is required, you must update PostgreSQL:
 
-```shell
-# Install dependencies
-sudo apt-get install -y libcurl4-openssl-dev libexpat1-dev gettext libz-dev libssl-dev libpcre2-dev build-essential
+1. To check which version of PostgreSQL you have, run:
 
-# Clone the Gitaly repository
-git clone https://gitlab.com/gitlab-org/gitaly.git -b <X-Y-stable> /tmp/gitaly
+   ```shell
+   pg_ctl --version
+   ```
 
-# Compile and install Git
-cd /tmp/gitaly
-sudo make git GIT_PREFIX=/usr/local
-```
+1. For instructions on updating to newer versions of PostgreSQL, see
+   [PostgreSQL upgrading documentation](https://www.postgresql.org/docs/16/upgrading.html).
+1. Make sure you have the required [PostgreSQL extensions](../install/requirements.md#postgresql).
 
-Replace `<X-Y-stable>` with the stable branch that matches the GitLab version you want to
-install. For example, if you want to install GitLab 13.6, use the branch name `13-6-stable`.
+### Update the GitLab codebase
 
-Remember to set `git -> bin_path` to `/usr/local/bin/git` in `config/gitlab.yml`.
+To update your clone of the GitLab codebase:
 
-### 7. Update PostgreSQL
+1. Fetch repository metadata:
 
-WARNING:
-GitLab 16.0 requires at least PostgreSQL 13.
+   ```shell
+   cd /home/git/gitlab
 
-The latest version of GitLab might depend on a more recent PostgreSQL version
-than what you are running. You may also have to enable some
-extensions. For more information, see the
-[PostgreSQL requirements](../install/requirements.md#postgresql-requirements)
+   sudo -u git -H git fetch --all --prune
+   sudo -u git -H git checkout -- Gemfile.lock db/structure.sql locale
+   ```
 
-To upgrade PostgreSQL, refer to its [documentation](https://www.postgresql.org/docs/11/upgrading.html).
+1. Check out the branch for the version you want to upgrade to:
 
-### 8. Get latest code
+   {{< tabs >}}
 
-```shell
-cd /home/git/gitlab
+   {{< tab title="GitLab Enterprise Edition" >}}
 
-sudo -u git -H git fetch --all --prune
-sudo -u git -H git checkout -- Gemfile.lock db/structure.sql locale
-```
+   ```shell
+   cd /home/git/gitlab
 
-For GitLab Community Edition:
+   sudo -u git -H git checkout <BRANCH-ee>
+   ```
 
-```shell
-cd /home/git/gitlab
+   {{< /tab >}}
 
-sudo -u git -H git checkout BRANCH
-```
+   {{< tab title="GitLab Community Edition" >}}
 
-OR
+   ```shell
+   cd /home/git/gitlab
 
-For GitLab Enterprise Edition:
+   sudo -u git -H git checkout <BRANCH>
+   ```
 
-```shell
-cd /home/git/gitlab
+   {{< /tab >}}
 
-sudo -u git -H git checkout BRANCH-ee
-```
+   {{< /tabs >}}
 
-### 9. Update configuration files
+### Update configuration files
 
-#### New configuration options for `gitlab.yml`
+GitLab upgrades might require updates to the following configuration:
 
-There might be configuration options available for [`gitlab.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example)).
-View them with the command below and apply them manually to your current `gitlab.yml`:
+- `gitlab.yml`
+- `database.yml`
+- NGINX (or Apache)
+- SMTP
+- systemd
+- SysV
 
-```shell
-cd /home/git/gitlab
+The following sections document how to determine if configuration updates are required.
 
-git diff origin/PREVIOUS_BRANCH:config/gitlab.yml.example origin/BRANCH:config/gitlab.yml.example
-```
+#### New configuration for `gitlab.yml`
 
-#### New configuration options for `database.yml`
+There might be new configuration options available for
+[`gitlab.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/gitlab.yml.example).
 
-> - [Changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/119139) in GitLab 16.0 to have `ci:` section in `config/database.yml.postgresql`.
+1. View possible new configuration:
 
-There might be configuration options available for [`database.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/database.yml.postgresql).
-View them with the command below and apply them manually to your current `database.yml`:
+   ```shell
+   cd /home/git/gitlab
+   git diff origin/PREVIOUS_BRANCH:config/gitlab.yml.example origin/BRANCH:config/gitlab.yml.example
+   ```
 
-```shell
-cd /home/git/gitlab
+1. Apply new configuration manually to your current `gitlab.yml`.
 
-git diff origin/PREVIOUS_BRANCH:config/database.yml.postgresql origin/BRANCH:config/database.yml.postgresql
-```
+#### New configuration for `database.yml`
 
-#### NGINX configuration
+{{< history >}}
+
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/119139) in GitLab 16.0 to have `ci:` section in `config/database.yml.postgresql`.
+
+{{< /history >}}
+
+There might be new configuration options available for
+[`database.yml`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/database.yml.postgresql).
+
+1. View possible new configuration:
+
+   ```shell
+   cd /home/git/gitlab
+   git diff origin/PREVIOUS_BRANCH:config/database.yml.postgresql origin/BRANCH:config/database.yml.postgresql
+   ```
+
+1. Apply new configuration manually to your current `database.yml`.
+
+#### New configuration for NGINX or Apache
 
 Ensure you're still up-to-date with the latest NGINX configuration changes:
 
@@ -214,59 +225,56 @@ git diff origin/PREVIOUS_BRANCH:lib/support/nginx/gitlab-ssl origin/BRANCH:lib/s
 git diff origin/PREVIOUS_BRANCH:lib/support/nginx/gitlab origin/BRANCH:lib/support/nginx/gitlab
 ```
 
-If you are using Strict-Transport-Security in your installation, you must enable it in your
-NGINX configuration to continue using it. This is because the GitLab application no longer
-sets it.
+The GitLab application no longer sets Strict-Transport-Security in your installation. You must enable it in your
+NGINX configuration to continue using it.
 
-If you are using Apache instead of NGINX see the updated [Apache templates](https://gitlab.com/gitlab-org/gitlab-recipes/tree/master/web-server/apache).
-Also because Apache does not support upstreams behind Unix sockets you
-must let GitLab Workhorse listen on a TCP port. You can do this
-via [`/etc/default/gitlab`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/support/init.d/gitlab.default.example#L38).
+If you are using Apache instead of NGINX, see the updated [Apache templates](https://gitlab.com/gitlab-org/gitlab-recipes/tree/master/web-server/apache).
+Because Apache does not support upstreams behind Unix sockets, you must let GitLab Workhorse listen on a TCP port by
+using [`/etc/default/gitlab`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/support/init.d/gitlab.default.example#L38).
 
 #### SMTP configuration
 
-If you use SMTP to deliver mail, you must
-add the following line to `config/initializers/smtp_settings.rb`:
+If you use SMTP to deliver mail, you must add the following line to `config/initializers/smtp_settings.rb`:
 
 ```ruby
 ActionMailer::Base.delivery_method = :smtp
 ```
 
-See [`smtp_settings.rb.sample`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/initializers/smtp_settings.rb.sample#L13) as an example.
+See [`smtp_settings.rb.sample`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/config/initializers/smtp_settings.rb.sample#L13)
+for an example.
 
 #### Configure systemd units
 
-If using the SysV init script, see [Configure SysV init script](#configure-sysv-init-script).
+1. Check if the systemd units have been updated:
 
-Check if the systemd units have been updated:
+   ```shell
+   cd /home/git/gitlab
 
-```shell
-cd /home/git/gitlab
+   git diff origin/PREVIOUS_BRANCH:lib/support/systemd origin/BRANCH:lib/support/systemd
+   ```
 
-git diff origin/PREVIOUS_BRANCH:lib/support/systemd origin/BRANCH:lib/support/systemd
-```
+1. Copy them over:
 
-Copy them over:
-
-```shell
-sudo mkdir -p /usr/local/lib/systemd/system
-sudo cp lib/support/systemd/* /usr/local/lib/systemd/system/
-sudo systemctl daemon-reload
-```
+   ```shell
+   sudo mkdir -p /usr/local/lib/systemd/system
+   sudo cp lib/support/systemd/* /usr/local/lib/systemd/system/
+   sudo systemctl daemon-reload
+   ```
 
 #### Configure SysV init script
 
-If using systemd units, see [Configure systemd units](#configure-systemd-units).
-
 There might be new configuration options available for
 [`gitlab.default.example`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/support/init.d/gitlab.default.example).
-View them with the command below and apply them manually to your current `/etc/default/gitlab`:
 
-```shell
-cd /home/git/gitlab
+1. View possible new configuration:
 
-git diff origin/PREVIOUS_BRANCH:lib/support/init.d/gitlab.default.example origin/BRANCH:lib/support/init.d/gitlab.default.example
-```
+   ```shell
+   cd /home/git/gitlab
+
+   git diff origin/PREVIOUS_BRANCH:lib/support/init.d/gitlab.default.example origin/BRANCH:lib/support/init.d/gitlab.default.example
+   ```
+
+1. Apply them manually to your current `/etc/default/gitlab`.
 
 Ensure you're still up-to-date with the latest init script changes:
 
@@ -282,36 +290,42 @@ If you are using the init script on a system running systemd as init, because yo
 sudo systemctl daemon-reload
 ```
 
-### 10. Install libraries, migrations, etc
+### Install libraries and run migrations
 
-Make sure you have the required
-[PostgreSQL extensions](../install/requirements.md#postgresql-requirements),
-then proceed to install the needed libraries:
+To install libraries and run migrations:
 
-```shell
-cd /home/git/gitlab
+1. Install the needed libraries:
 
-# If you haven't done so during installation or a previous upgrade already
-sudo -u git -H bundle config set --local deployment 'true'
-sudo -u git -H bundle config set --local without 'development test kerberos'
+   ```shell
+   cd /home/git/gitlab
 
-# Update gems
-sudo -u git -H bundle install
+   # If you haven't done so during installation or a previous upgrade already
+   sudo -u git -H bundle config set --local deployment 'true'
+   sudo -u git -H bundle config set --local without 'development test kerberos'
 
-# Optional: clean up old gems
-sudo -u git -H bundle clean
+   # Update gems
+   sudo -u git -H bundle install
 
-# Run database migrations
-sudo -u git -H bundle exec rake db:migrate RAILS_ENV=production
+   # Optional: clean up old gems
+   sudo -u git -H bundle clean
+   ```
 
-# Update node dependencies and recompile assets
-sudo -u git -H bundle exec rake yarn:install gitlab:assets:clean gitlab:assets:compile RAILS_ENV=production NODE_ENV=production NODE_OPTIONS="--max_old_space_size=4096"
+1. Run migrations:
 
-# Clean up cache
-sudo -u git -H bundle exec rake cache:clear RAILS_ENV=production
-```
+   ```shell
+   # Run database migrations
+   sudo -u git -H bundle exec rake db:migrate RAILS_ENV=production
 
-### 11. Update GitLab Shell
+   # Update node dependencies and recompile assets
+   sudo -u git -H bundle exec rake yarn:install gitlab:assets:clean gitlab:assets:compile RAILS_ENV=production NODE_ENV=production NODE_OPTIONS="--max_old_space_size=4096"
+
+   # Clean up cache
+   sudo -u git -H bundle exec rake cache:clear RAILS_ENV=production
+   ```
+
+### Update GitLab Shell
+
+To update GitLab Shell, run these commands:
 
 ```shell
 cd /home/git/gitlab-shell
@@ -321,9 +335,9 @@ sudo -u git -H git checkout v$(</home/git/gitlab/GITLAB_SHELL_VERSION)
 sudo -u git -H make build
 ```
 
-### 12. Update GitLab Workhorse
+### Update GitLab Workhorse
 
-Install and compile GitLab Workhorse.
+To install and compile GitLab Workhorse, run these commands:
 
 ```shell
 cd /home/git/gitlab
@@ -331,27 +345,28 @@ cd /home/git/gitlab
 sudo -u git -H bundle exec rake "gitlab:workhorse:install[/home/git/gitlab-workhorse]" RAILS_ENV=production
 ```
 
-### 13. Update Gitaly
+### Update Gitaly
 
-If Gitaly is located on its own server, or you use Gitaly Cluster, see [Gitaly or Gitaly Cluster](zero_downtime.md#gitaly-or-gitaly-cluster)
-on the Zero downtime upgrades page.
+Upgrade Gitaly servers to the newer version before upgrading the application server. This prevents the gRPC client
+on the application server from sending RPCs that the old Gitaly version does not support.
 
-#### Compile Gitaly
+If Gitaly is located on its own server, or you use Gitaly Cluster (Praefect), see [Zero-downtime upgrades](zero_downtime.md).
+
+During the build process, Gitaly [compiles and embeds Git binaries](https://gitlab.com/gitlab-org/gitaly/-/issues/6089),
+which requires additional dependencies.
 
 ```shell
+# Install dependencies
+sudo apt-get install -y libcurl4-openssl-dev libexpat1-dev gettext libz-dev libssl-dev libpcre2-dev build-essential
+
 # Fetch Gitaly source with Git and compile with Go
 cd /home/git/gitlab
 sudo -u git -H bundle exec rake "gitlab:gitaly:install[/home/git/gitaly,/home/git/repositories]" RAILS_ENV=production
 ```
 
-### 14. Update GitLab Pages
+### Update GitLab Pages
 
-#### Only needed if you use GitLab Pages
-
-Install and compile GitLab Pages. GitLab Pages uses
-[GNU Make](https://www.gnu.org/software/make/).
-If you are not using Linux you may have to run `gmake` instead of
-`make` below.
+To install and compile GitLab Pages:
 
 ```shell
 cd /home/git/gitlab-pages
@@ -361,7 +376,16 @@ sudo -u git -H git checkout v$(</home/git/gitlab/GITLAB_PAGES_VERSION)
 sudo -u git -H make
 ```
 
-### 15. Start application
+### Post-upgrade steps
+
+After you've upgraded:
+
+1. [Start GitLab and NGINX](#start-gitlab-and-nginx).
+1. [Check GitLab status](#check-gitlab-status).
+
+#### Start GitLab and NGINX
+
+To start GitLab and NGINX:
 
 ```shell
 # For systems running systemd
@@ -373,48 +397,48 @@ sudo service gitlab start
 sudo service nginx restart
 ```
 
-### 16. Check application status
+#### Check GitLab status
 
-Check if GitLab and its environment are configured correctly:
+To check the status of GitLab:
 
-```shell
-cd /home/git/gitlab
+1. Check if GitLab and its environment are configured correctly:
 
-sudo -u git -H bundle exec rake gitlab:env:info RAILS_ENV=production
-```
+   ```shell
+   cd /home/git/gitlab
+   sudo -u git -H bundle exec rake gitlab:env:info RAILS_ENV=production
+   ```
 
-To make sure you didn't miss anything run a more thorough check:
+1. To make sure you didn't miss anything, run a more thorough check:
 
-```shell
-cd /home/git/gitlab
+   ```shell
+   cd /home/git/gitlab
 
-sudo -u git -H bundle exec rake gitlab:check RAILS_ENV=production
-```
+   sudo -u git -H bundle exec rake gitlab:check RAILS_ENV=production
+   ```
 
 If all items are green, then congratulations, the upgrade is complete!
 
-## Version specific changes
-
-Upgrading versions might need some manual intervention. For more information,
-[check the version you are upgrading to](index.md#version-specific-upgrading-instructions)
-for additional steps required for all GitLab installations, and for
-steps that apply to self-compiled installations.
-
 ## Troubleshooting
 
-### 1. Revert the code to the previous version
+If you have trouble during the upgrade, try some of the steps in the following sections.
 
-To revert to a previous version, you must follow the upgrading guides
-for the previous version.
+### Revert the code to the previous version
 
-For example, if you have upgraded to GitLab 12.6 and want to revert back to
-12.5, follow the guides for upgrading from 12.4 to 12.5. You can
-use the version dropdown list at the top of the page to select the right version.
+To revert to a previous version, you must follow the upgrading guides for the previous version.
 
-When reverting, you should **not** follow the database migration guides, as the
-backup has already been migrated to the previous version.
+For example, if you have upgraded to GitLab 16.6 and want to revert back to
+16.5, follow the guides for upgrading from 16.4 to 16.5.
 
-### 2. Restore from the backup
+When reverting:
+
+- You should **not** follow the database migration guides, because the backup has already been migrated to the previous
+  version.
+- If you ran database migrations, you must restore a backup after the downgrade. The version of the code must be
+  compatible with the version of the schema that's used. The older schema is in the backup.
+
+### Restore from a backup
+
+To restore from a backup:
 
 ```shell
 cd /home/git/gitlab
@@ -422,4 +446,4 @@ cd /home/git/gitlab
 sudo -u git -H bundle exec rake gitlab:backup:restore RAILS_ENV=production
 ```
 
-If you have more than one backup `*.tar` file, add `BACKUP=timestamp_of_backup` to the above.
+If you have more than one backup `*.tar` file, add `BACKUP=timestamp_of_backup` to the previous code block.

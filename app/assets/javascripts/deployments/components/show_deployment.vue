@@ -5,6 +5,7 @@ import { toggleQueryPollingByVisibility, etagQueryHeaders } from '~/graphql_shar
 import { s__ } from '~/locale';
 import deploymentQuery from '../graphql/queries/deployment.query.graphql';
 import environmentQuery from '../graphql/queries/environment.query.graphql';
+import releaseQuery from '../graphql/queries/release.query.graphql';
 import DeploymentHeader from './deployment_header.vue';
 import DeploymentAside from './deployment_aside.vue';
 import DeploymentDeployBlock from './deployment_deploy_block.vue';
@@ -12,6 +13,7 @@ import DeploymentDeployBlock from './deployment_deploy_block.vue';
 const DEPLOYMENT_QUERY_POLLING_INTERVAL = 3000;
 
 export default {
+  name: 'ShowDeployment',
   components: {
     GlAlert,
     GlSprintf,
@@ -54,9 +56,25 @@ export default {
         this.errorMessage = this.$options.i18n.errorMessage;
       },
     },
+    release: {
+      query: releaseQuery,
+      variables() {
+        return { fullPath: this.projectPath, tagName: this.deployment?.ref };
+      },
+      update(data) {
+        return data?.project?.release;
+      },
+      skip() {
+        return !this.deployment?.tag;
+      },
+      error(error) {
+        captureException(error);
+        this.errorMessage = this.$options.i18n.errorMessage;
+      },
+    },
   },
   data() {
-    return { deployment: {}, environment: {}, errorMessage: '' };
+    return { deployment: {}, environment: {}, errorMessage: '', release: null };
   },
   computed: {
     hasError() {
@@ -67,6 +85,9 @@ export default {
     },
     isManual() {
       return this.deployment.job?.manualJob;
+    },
+    isLoading() {
+      return this.$apollo.queries.deployment.loading;
     },
   },
   mounted() {
@@ -85,9 +106,9 @@ export default {
 </script>
 <template>
   <div>
-    <div class="gl-display-flex gl-justify-content-space-between">
-      <div class="gl-flex-grow-1">
-        <h1 class="page-title gl-font-size-h-display">
+    <div class="gl-flex gl-justify-between">
+      <div class="gl-grow @lg/panel:gl-pr-5">
+        <h1 class="page-title gl-text-size-h-display">
           <gl-sprintf :message="$options.i18n.header">
             <template #iid>{{ deploymentIid }}</template>
           </gl-sprintf>
@@ -97,32 +118,28 @@ export default {
           v-else
           :deployment="deployment"
           :environment="environment"
-          :loading="$apollo.queries.deployment.loading"
+          :release="release"
+          :loading="isLoading"
         />
         <deployment-approvals
           v-if="hasApprovalSummary"
           :approval-summary="deployment.approvalSummary"
           :deployment="deployment"
-          class="gl-mt-6 gl-w-90p"
+          class="gl-mt-6"
           @change="$apollo.queries.deployment.refetch()"
         />
-        <deployment-deploy-block
-          v-if="isManual"
-          :deployment="deployment"
-          class="gl-w-90p gl-mt-4"
-        />
+        <deployment-deploy-block v-if="isManual" :deployment="deployment" class="gl-mt-4" />
         <deployment-timeline
           v-if="hasApprovalSummary"
           :approval-summary="deployment.approvalSummary"
-          class="gl-w-90p"
         />
       </div>
       <deployment-aside
         v-if="!hasError"
-        :loading="$apollo.queries.deployment.loading"
+        :loading="isLoading"
         :deployment="deployment"
         :environment="environment"
-        class="gl-w-20p"
+        class="gl-w-1/5 gl-shrink-0"
       />
     </div>
   </div>

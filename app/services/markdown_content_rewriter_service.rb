@@ -57,16 +57,12 @@ class MarkdownContentRewriterService
   private
 
   def validate_parameters!
-    # See https://gitlab.com/gitlab-org/gitlab/-/merge_requests/39654#note_399095117
-    raise ArgumentError, 'The rewriter classes require that `source_parent` is a `Project`' \
-      unless source_parent.is_a?(Project)
-
     if object.cached_markdown_fields[field].nil?
       raise ArgumentError, 'The `field` attribute does not contain cached markdown'
     end
   end
 
   attr_reader :current_user, :content, :source_parent,
-              :target_parent, :rewriters, :content_html,
-              :field, :html_field, :object, :result
+    :target_parent, :rewriters, :content_html,
+    :field, :html_field, :object, :result
 end

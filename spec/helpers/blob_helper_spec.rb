@@ -2,9 +2,10 @@
 
 require 'spec_helper'
 
-RSpec.describe BlobHelper do
+RSpec.describe BlobHelper, feature_category: :source_code_management do
   include TreeHelper
   include FakeBlobHelpers
+  include Devise::Test::ControllerHelpers
 
   describe "#sanitize_svg_data" do
     let(:input_svg_path) { File.join(Rails.root, 'spec', 'fixtures', 'unsanitized.svg') }
@@ -83,10 +84,6 @@ RSpec.describe BlobHelper do
   context 'viewer related' do
     let_it_be(:project) { create(:project, lfs_enabled: true) }
 
-    before do
-      allow(Gitlab.config.lfs).to receive(:enabled).and_return(true)
-    end
-
     let(:viewer_class) do
       Class.new(BlobViewer::Base) do
         include BlobViewer::ServerSide
@@ -99,6 +96,10 @@ RSpec.describe BlobHelper do
 
     let(:viewer) { viewer_class.new(blob) }
     let(:blob) { fake_blob }
+
+    before do
+      allow(Gitlab.config.lfs).to receive(:enabled).and_return(true)
+    end
 
     describe '#blob_render_error_reason' do
       context 'for error :too_large' do
@@ -210,7 +211,7 @@ RSpec.describe BlobHelper do
   end
 
   describe '#ide_edit_path' do
-    let(:project) { create(:project) }
+    let_it_be(:project) { create(:project) }
     let(:current_user) { create(:user) }
     let(:can_push_code) { true }
 
@@ -394,12 +395,50 @@ RSpec.describe BlobHelper do
 
   describe '#vue_blob_app_data' do
     let(:blob) { fake_blob(path: 'file.md', size: 2.megabytes) }
-    let(:project) { build_stubbed(:project) }
+    let(:project) { create(:project) }
     let(:user) { build_stubbed(:user) }
     let(:ref) { 'main' }
+    let(:organization) { build_stubbed(:organization) }
+
+    before do
+      Current.organization = organization
+      allow(helper).to receive_messages(selected_branch: ref, current_user: user)
+    end
+
+    context 'when there is no ignore revs file' do
+      let(:repo_double) { instance_double(Repository, ignore_revs_file_blob: nil) }
+
+      before do
+        allow(project).to receive(:repository).and_return(repo_double)
+      end
+
+      it 'includes has_revs_file as false' do
+        assign(:ref, ref)
+
+        expect(helper.vue_blob_app_data(project, blob, ref)).to include(
+          has_revs_file: 'false'
+        )
+      end
+    end
+
+    context 'when there is an ignore revs file' do
+      let(:ignore_revs_blob) { fake_blob(path: '.git-blame-ignore-revs') }
+      let(:repo_double) { instance_double(Repository, ignore_revs_file_blob: ignore_revs_blob) }
+
+      before do
+        allow(project).to receive(:repository).and_return(repo_double)
+      end
+
+      it 'includes has_revs_file as true' do
+        assign(:ref, ref)
+
+        expect(helper.vue_blob_app_data(project, blob, ref)).to include(
+          has_revs_file: 'true'
+        )
+      end
+    end
 
     it 'returns data related to blob app' do
-      allow(helper).to receive(:current_user).and_return(user)
       assign(:ref, ref)
 
       expect(helper.vue_blob_app_data(project, blob, ref)).to include({
@@ -408,8 +447,385 @@ RSpec.describe BlobHelper do
         resource_id: project.to_global_id,
         user_id: user.to_global_id,
         target_branch: ref,
-        original_branch: ref
+        original_branch: ref,
+        escaped_ref: ActionDispatch::Journey::Router::Utils.escape_path(ref),
+        can_download_code: 'false',
+        full_name: project.name_with_namespace
       })
+    end
+
+    context 'when a user can download code' do
+      let_it_be(:user) { build_stubbed(:user) }
+
+      before do
+        allow(Ability).to receive(:allowed?).and_call_original
+        allow(Ability).to receive(:allowed?).with(user, :download_code, project).and_return(true)
+      end
+
+      it 'returns true for `can_download_code` value' do
+        expect(helper.vue_blob_app_data(project, blob, ref)).to include(
+          can_download_code: 'true'
+        )
+      end
+    end
+  end
+
+  describe '#edit_blob_app_data' do
+    let(:project) { build_stubbed(:project) }
+    let(:user) { build_stubbed(:user) }
+    let(:blob) { fake_blob(path: 'test.rb', size: 100.bytes) }
+    let(:ref) { 'main' }
+    let(:id) { "#{ref}/#{blob.path}" }
+
+    before do
+      allow(helper).to receive(:current_user).and_return(user)
+      allow(helper).to receive(:selected_branch).and_return(ref)
+      allow(user).to receive(:namespace).and_return(build_stubbed(:namespace, owner: user))
+    end
+
+    context 'when editing a blob' do
+      before do
+        project_presenter = instance_double(ProjectPresenter)
+
+        allow(helper).to receive(:can?).with(user, :push_code, project).and_return(true)
+        allow(helper).to receive(:can?).with(user, :create_merge_request_in, project).and_return(true)
+        allow(project).to receive(:present).and_return(project_presenter)
+        allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(true)
+        allow(project).to receive(:empty_repo?).and_return(false)
+      end
+
+      it 'returns data related to update action' do
+        allow(blob).to receive(:stored_externally?).and_return(false)
+        allow(project).to receive(:branch_allows_collaboration?).with(user, ref).and_return(false)
+        assign(:last_commit_sha, '782426692977b2cedb4452ee6501a404410f9b00')
+
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include({
+          action: 'update',
+          update_path: project_update_blob_path(project, id),
+          cancel_path: project_blob_path(project, id),
+          original_branch: ref,
+          target_branch: ref,
+          can_push_code: 'true',
+          can_push_to_branch: 'true',
+          empty_repo: 'false',
+          blob_name: blob.name,
+          branch_allows_collaboration: 'false',
+          last_commit_sha: '782426692977b2cedb4452ee6501a404410f9b00',
+          project_id: project.id,
+          project_path: project.full_path,
+          new_merge_request_path: project_new_merge_request_path(project)
+        })
+      end
+
+      it 'returns data related to update action in a forked project' do
+        fork_project = build_stubbed(:project, id: 999)
+        allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+        allow(blob).to receive(:stored_externally?).and_return(false)
+        allow(project).to receive(:branch_allows_collaboration?).with(user, ref).and_return(false)
+        assign(:last_commit_sha, '782426692977b2cedb4452ee6501a404410f9b00')
+        # User cannot push to the original project's branch
+        project_presenter = instance_double(ProjectPresenter)
+        allow(project).to receive(:present).and_return(project_presenter)
+        allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(false)
+
+        app_data = helper.edit_blob_app_data(project, id, blob, ref, "update")
+
+        expect(app_data).to include({
+          action: 'update',
+          update_path: project_update_blob_path(project, id),
+          cancel_path: project_blob_path(project, id),
+          original_branch: ref,
+          target_branch: ref,
+          can_push_code: 'true',
+          can_push_to_branch: 'false',
+          empty_repo: 'false',
+          blob_name: blob.name,
+          branch_allows_collaboration: 'false',
+          last_commit_sha: '782426692977b2cedb4452ee6501a404410f9b00',
+          project_id: project.id,
+          project_path: project.full_path,
+          new_merge_request_path: project_new_merge_request_path(project),
+          target_project_id: 999,
+          target_project_path: fork_project.full_path,
+          next_fork_branch_name: 'patch-1'
+        })
+      end
+
+      it 'returns data related to create action' do
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "create")).to include({
+          action: 'create',
+          update_path: project_create_blob_path(project, id),
+          cancel_path: project_tree_path(project, id),
+          original_branch: ref,
+          target_branch: ref,
+          can_push_code: 'true',
+          can_push_to_branch: 'true',
+          empty_repo: 'false',
+          blob_name: nil,
+          project_id: project.id,
+          project_path: project.full_path,
+          new_merge_request_path: project_new_merge_request_path(project)
+        })
+      end
+
+      it 'uses project_create_blob_path for create action update_path' do
+        result = helper.edit_blob_app_data(project, id, blob, ref, "create")
+
+        expect(result[:update_path]).to eq(project_create_blob_path(project, id))
+      end
+
+      it 'uses project_tree_path for create action cancel_path' do
+        result = helper.edit_blob_app_data(project, id, blob, ref, "create")
+
+        expect(result[:cancel_path]).to eq(project_tree_path(project, id))
+      end
+
+      it 'uses project_update_blob_path for update action update_path' do
+        result = helper.edit_blob_app_data(project, id, blob, ref, "update")
+
+        expect(result[:update_path]).to eq(project_update_blob_path(project, id))
+      end
+
+      it 'uses project_blob_path for update action cancel_path' do
+        result = helper.edit_blob_app_data(project, id, blob, ref, "update")
+
+        expect(result[:cancel_path]).to eq(project_blob_path(project, id))
+      end
+    end
+
+    context 'when user cannot push code' do
+      it 'returns false for push permissions' do
+        allow(helper).to receive(:can?).with(user, :create_merge_request_in, project).and_return(false)
+        allow(helper).to receive(:can?).with(user, :push_code, project).and_return(false)
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include(
+          can_push_code: 'false'
+        )
+      end
+    end
+
+    context 'when user cannot push to branch' do
+      it 'returns false for branch push permissions' do
+        project_presenter = instance_double(ProjectPresenter)
+        allow(helper).to receive(:can?).with(user, :create_merge_request_in, project).and_return(false)
+        allow(helper).to receive(:can?).with(user, :push_code, project).and_return(false)
+        allow(project).to receive(:present).and_return(project_presenter)
+        allow(project_presenter).to receive(:can_current_user_push_to_branch?).with(ref).and_return(false)
+
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include(
+          can_push_to_branch: 'false'
+        )
+      end
+    end
+
+    context 'when repository is empty' do
+      it 'returns true for empty_repo' do
+        allow(project).to receive(:empty_repo?).and_return(true)
+
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include(
+          empty_repo: 'true'
+        )
+      end
+    end
+
+    context 'branch collaboration' do
+      it 'returns true when branch allows collaboration' do
+        allow(project).to receive(:branch_allows_collaboration?).with(user, ref).and_return(true)
+
+        expect(helper.edit_blob_app_data(project, id, blob, ref, "update")).to include(
+          branch_allows_collaboration: 'true'
+        )
+      end
+    end
+
+    describe '#edit_blob_update_path' do
+      it 'returns update path for update action' do
+        path = helper.send(:edit_blob_update_path, project, id, true, false)
+
+        expect(path).to eq(project_update_blob_path(project, id))
+      end
+
+      it 'returns create path for create action' do
+        path = helper.send(:edit_blob_update_path, project, id, false, true)
+
+        expect(path).to eq(project_create_blob_path(project, id))
+      end
+
+      it 'returns nil when neither is_update nor is_create is true' do
+        path = helper.send(:edit_blob_update_path, project, id, false, false)
+
+        expect(path).to be_nil
+      end
+    end
+
+    describe '#edit_blob_cancel_path' do
+      it 'returns blob path for update action' do
+        path = helper.send(:edit_blob_cancel_path, project, id, true, false)
+
+        expect(path).to eq(project_blob_path(project, id))
+      end
+
+      it 'returns tree path for create action' do
+        path = helper.send(:edit_blob_cancel_path, project, id, false, true)
+
+        expect(path).to eq(project_tree_path(project, id))
+      end
+
+      it 'returns nil when neither is_update nor is_create is true' do
+        path = helper.send(:edit_blob_cancel_path, project, id, false, false)
+
+        expect(path).to be_nil
+      end
+    end
+
+    describe '#edit_blob_fork_project_id' do
+      context 'when user can collaborate with project' do
+        before do
+          allow(helper).to receive(:can_collaborate_with_project?).with(project, ref: ref).and_return(true)
+        end
+
+        it 'returns fork project id when user has forked the project' do
+          fork_project = build_stubbed(:project, id: 999)
+          allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+
+          fork_id = helper.send(:edit_blob_fork_project_id, project, ref)
+
+          expect(fork_id).to eq(999)
+        end
+
+        it 'returns nil when current_user.fork_of returns nil' do
+          allow(user).to receive(:fork_of).with(project).and_return(nil)
+
+          fork_id = helper.send(:edit_blob_fork_project_id, project, ref)
+
+          expect(fork_id).to be_nil
+        end
+
+        context 'when current_user is nil' do
+          before do
+            allow(helper).to receive(:current_user).and_return(nil)
+            allow(helper).to receive(:can_collaborate_with_project?).with(project, ref: ref).and_return(true)
+          end
+
+          it 'returns nil' do
+            fork_id = helper.send(:edit_blob_fork_project_id, project, ref)
+
+            expect(fork_id).to be_nil
+          end
+        end
+      end
+
+      context 'when user cannot collaborate with project' do
+        before do
+          allow(helper).to receive(:can_collaborate_with_project?).with(project, ref: ref).and_return(false)
+        end
+
+        it 'returns nil' do
+          fork_id = helper.send(:edit_blob_fork_project_id, project, ref)
+
+          expect(fork_id).to be_nil
+        end
+      end
+    end
+
+    describe '#edit_blob_fork_project' do
+      context 'when user is logged in' do
+        context 'when user has forked the project' do
+          it 'returns the fork project id from the fork object' do
+            fork_project = build_stubbed(:project, id: 999)
+            allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+
+            fork = helper.send(:edit_blob_fork_project, project)
+
+            expect(fork.id).to eq(999)
+          end
+        end
+
+        context 'when user has not forked the project' do
+          it 'returns nil when current_user.fork_of returns nil' do
+            allow(user).to receive(:fork_of).with(project).and_return(nil)
+
+            fork = helper.send(:edit_blob_fork_project, project)
+
+            expect(fork).to be_nil
+          end
+        end
+
+        context 'when user has namespace but has not forked the project' do
+          before do
+            allow(user).to receive(:fork_of).with(project).and_return(nil)
+          end
+
+          it 'returns nil' do
+            fork = helper.send(:edit_blob_fork_project, project)
+
+            expect(fork).to be_nil
+          end
+        end
+
+        context 'when user namespace is nil' do
+          before do
+            allow(user).to receive(:namespace).and_return(nil)
+          end
+
+          it 'returns nil' do
+            fork = helper.send(:edit_blob_fork_project, project)
+
+            expect(fork).to be_nil
+          end
+        end
+      end
+
+      context 'when user is not logged in' do
+        before do
+          allow(helper).to receive(:current_user).and_return(nil)
+        end
+
+        it 'returns nil' do
+          fork = helper.send(:edit_blob_fork_project, project)
+
+          expect(fork).to be_nil
+        end
+      end
+    end
+
+    describe '#edit_blob_fork_project_path' do
+      context 'when user is logged in' do
+        context 'when user has forked the project' do
+          it 'returns the fork project path' do
+            fork_project = build_stubbed(:project, id: 999)
+            allow(fork_project).to receive(:full_path).and_return('user/forked-project')
+            allow(user).to receive(:fork_of).with(project).and_return(fork_project)
+
+            path = helper.send(:edit_blob_fork_project_path, project)
+
+            expect(path).to eq('user/forked-project')
+          end
+        end
+
+        context 'when user has not forked the project' do
+          before do
+            allow(user).to receive(:fork_of).with(project).and_return(nil)
+          end
+
+          it 'returns nil' do
+            path = helper.send(:edit_blob_fork_project_path, project)
+
+            expect(path).to be_nil
+          end
+        end
+      end
+
+      context 'when user is not logged in' do
+        before do
+          allow(helper).to receive(:current_user).and_return(nil)
+        end
+
+        it 'returns nil' do
+          path = helper.send(:edit_blob_fork_project_path, project)
+
+          expect(path).to be_nil
+        end
+      end
     end
   end
 
@@ -455,6 +871,124 @@ RSpec.describe BlobHelper do
 
       expect(rendered_button).to have_selector('button.gl-button.btn.btn-md.btn-confirm.common-class.js-edit-blob-link-fork-toggler', text: 'Edit Fork')
       expect(rendered_button).to have_selector('button[data-action="edit"]')
+    end
+  end
+
+  describe '#vue_blob_header_app_data' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:blob) { fake_blob(path: 'README.md') }
+    let(:ref) { 'feature' }
+    let(:ref_type) { :branch }
+    let(:breadcrumb_data) { { title: 'README.md', 'is-last': true } }
+    let(:organization) { build_stubbed(:organization) }
+
+    before do
+      Current.organization = organization
+      assign(:project, project)
+      assign(:ref, ref)
+      assign(:ref_type, ref_type)
+      allow(helper).to receive(:breadcrumb_data_attributes).and_return(breadcrumb_data)
+      allow(helper).to receive(:show_xcode_link?).and_return(true)
+      allow(helper).to receive(:xcode_uri_to_repo).with(project).and_return('xcode://example.com/project.git')
+    end
+
+    it 'returns data related to blob header' do
+      expect(helper.vue_blob_header_app_data(project, blob, ref)).to include({
+        blob_path: blob.path,
+        is_binary: blob.binary?,
+        breadcrumbs: breadcrumb_data,
+        escaped_ref: ref,
+        history_link: project_commits_path(project, ref),
+        project_id: project.id,
+        project_root_path: project_path(project),
+        project_path: project.full_path,
+        project_short_path: project.path,
+        ref_type: ref_type.to_s,
+        ref: ref,
+        root_ref: project.repository.root_ref,
+        ssh_url: ssh_clone_url_to_repo(project),
+        http_url: http_clone_url_to_repo(project),
+        xcode_url: 'xcode://example.com/project.git',
+        download_links: helper.send(:archive_download_links, project, ref, "#{project.path}-#{ref.tr('/', '-')}").to_json,
+        web_ide_button_options: helper.web_ide_button_data({ blob: blob }).merge(helper.fork_modal_options(project, blob)).to_json,
+        web_ide_button_default_branch: project.default_branch_or_main,
+        show_no_ssh_key_message: '',
+        user_settings_ssh_keys_path: user_settings_ssh_keys_path
+      })
+    end
+
+    context 'when SSH is disabled' do
+      before do
+        allow(helper).to receive(:ssh_enabled?).and_return(false)
+      end
+
+      it 'returns empty strings for SSH-related fields' do
+        result = helper.vue_blob_header_app_data(project, blob, ref)
+
+        expect(result[:ssh_url]).to eq('')
+        expect(result[:show_no_ssh_key_message]).to eq('')
+        expect(result[:user_settings_ssh_keys_path]).to eq('')
+      end
+    end
+
+    context 'when HTTP is disabled' do
+      before do
+        allow(helper).to receive(:http_enabled?).and_return(false)
+      end
+
+      it 'returns empty string for http_url' do
+        result = helper.vue_blob_header_app_data(project, blob, ref)
+
+        expect(result[:http_url]).to eq('')
+      end
+    end
+
+    context 'when Xcode link should not be shown' do
+      before do
+        allow(helper).to receive(:show_xcode_link?).with(project).and_return(false)
+      end
+
+      it 'returns empty string for xcode_url' do
+        result = helper.vue_blob_header_app_data(project, blob, ref)
+
+        expect(result[:xcode_url]).to eq('')
+      end
+    end
+
+    context 'when user has no SSH key' do
+      before do
+        allow(helper).to receive(:ssh_enabled?).and_return(true)
+        allow(helper).to receive(:show_no_ssh_key_message?).with(project).and_return(true)
+      end
+
+      it 'returns "true" for show_no_ssh_key_message' do
+        result = helper.vue_blob_header_app_data(project, blob, ref)
+
+        expect(result[:show_no_ssh_key_message]).to eq('true')
+      end
+    end
+
+    context 'when user has SSH key' do
+      before do
+        allow(helper).to receive(:ssh_enabled?).and_return(true)
+        allow(helper).to receive(:show_no_ssh_key_message?).with(project).and_return(false)
+      end
+
+      it 'returns "false" for show_no_ssh_key_message' do
+        result = helper.vue_blob_header_app_data(project, blob, ref)
+
+        expect(result[:show_no_ssh_key_message]).to eq('false')
+      end
+    end
+
+    it 'returns download links for all supported archive formats' do
+      allow(helper).to receive(:external_storage_url_or_path) { |path| "download/#{path}" }
+
+      links = helper.send(:archive_download_links, project, 'master', 'prefix')
+
+      expect(links.pluck(:text)).to eq(Gitlab::Workhorse::ARCHIVE_FORMATS)
+      expect(links.pluck(:path)).to all(start_with('download/'))
+      expect(links).to all(include(:text, :path))
     end
   end
 end

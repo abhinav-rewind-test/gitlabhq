@@ -8,7 +8,6 @@ exclude:
   - 'spec/**/*'
   - 'ee/spec/**/*'
 require:
-  - './haml_lint/linter/documentation_links.rb'
   - './haml_lint/linter/inline_javascript.rb'
   - './haml_lint/linter/no_plain_nodes.rb'
 
@@ -118,6 +117,7 @@ linters:
       - Cop/ProjectPathHelper
       - Gitlab/FeatureAvailableUsage
       - Gitlab/Json
+      - Gitlab/Rails/SafeFormat
       - GitlabSecurity/PublicSend
       - Layout/FirstHashElementIndentation
       - Layout/EmptyLineAfterGuardClause

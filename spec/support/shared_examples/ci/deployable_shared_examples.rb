@@ -169,6 +169,13 @@ RSpec.shared_examples 'a deployable job' do
       it_behaves_like 'avoid deadlock'
       it_behaves_like 'calling proper BuildFinishedWorker'
 
+      it 'queues relevant workers' do
+        expect(Environments::StopJobSuccessWorker).to receive(:perform_async).with(job.id)
+        expect(Environments::RecalculateAutoStopWorker).to receive(:perform_async).with(job.id)
+
+        subject
+      end
+
       it 'transits deployment status to success' do
         with_cross_database_modification_prevented do
           subject
@@ -281,32 +288,218 @@ RSpec.shared_examples 'a deployable job' do
     end
   end
 
-  describe '#environment_tier_from_options' do
-    subject { job.environment_tier_from_options }
-
-    let(:job) { described_class.new(options: options) }
-    let(:options) { { environment: { deployment_tier: 'production' } } }
-
-    it { is_expected.to eq('production') }
+  describe "#expanded_deployment_tier" do
+    subject { job.expanded_deployment_tier }
 
     context 'when options does not include deployment_tier' do
       let(:options) { { environment: { name: 'production' } } }
+      let(:job) { create(factory_type, options: options, pipeline: pipeline) }
 
       it { is_expected.to be_nil }
+    end
+
+    context 'when deployment_tier is a variable' do
+      let(:options) do
+        {
+          environment: {
+            name: 'production',
+            deployment_tier: '$DEPLOYMENT_TIER'
+          }
+        }
+      end
+
+      let(:job) { create(factory_type, environment: 'production', options: options, pipeline: pipeline, yaml_variables: yaml_variables) }
+
+      context 'when the value is valid' do
+        let(:yaml_variables) do
+          [
+            { key: 'DEPLOYMENT_TIER', value: 'production' }
+          ]
+        end
+
+        it 'returns the expanded value' do
+          is_expected.to eq('production')
+        end
+      end
+
+      context 'when the value is invalid' do
+        let(:yaml_variables) do
+          [
+            { key: 'DEPLOYMENT_TIER', value: 'invalid' }
+          ]
+        end
+
+        it 'returns the expanded value' do
+          is_expected.to eq('invalid')
+        end
+      end
+
+      context 'when the value is not set' do
+        let(:yaml_variables) { [] }
+
+        it { is_expected.to be_empty }
+      end
+    end
+  end
+
+  describe '#environment_permanent_metadata' do
+    let_it_be(:environment) { create(:environment, name: 'production') }
+
+    let(:options) { { script: 'script', environment: { name: 'production', action: 'prepare' } } }
+    let(:job) { create(factory_type, project: project, environment: 'production', options: options) }
+
+    subject { job.environment_permanent_metadata }
+
+    it { is_expected.to eq(job.environment_options_for_permanent_storage) }
+
+    context 'when a job environment record is present' do
+      before do
+        job.link_to_environment(environment)
+
+        # Artificially change the stored options to prove the result comes from
+        # the correct source.
+        job.job_environment.update!(options: { deployment_tier: 'production' })
+      end
+
+      it 'returns options from the job environment' do
+        expect(subject).to eq(job.job_environment.options)
+      end
+    end
+  end
+
+  describe '#environment_options_for_permanent_storage' do
+    subject { job.environment_options_for_permanent_storage }
+
+    let(:job) { FactoryBot.build(factory_type, options: options) }
+    let(:options) do
+      {
+        script: 'script',
+        environment: {
+          name: 'production',
+          deployment_tier: 'production',
+          action: 'prepare',
+          kubernetes: {
+            agent: 'agent',
+            namespace: 'namespace'
+          }
+        }
+      }
+    end
+
+    it { is_expected.to eq({ deployment_tier: 'production', action: 'prepare', kubernetes: { namespace: 'namespace' } }) }
+
+    context 'when there are kubernetes options other than namespace' do
+      let(:options) { { environment: { deployment_tier: 'production', kubernetes: { agent: 'agent' } } } }
+
+      it { is_expected.to eq({ deployment_tier: 'production' }) }
+    end
+
+    context 'when options is empty' do
+      let(:options) { nil }
+
+      it { is_expected.to eq({}) }
+    end
+
+    context 'when options is present but has no environment keyword' do
+      let(:options) { { image: 'image', script: 'script' } }
+
+      it { is_expected.to eq({}) }
+    end
+  end
+
+  describe '#link_to_environment' do
+    let_it_be(:environment) { create(:environment, name: 'production', project: project) }
+
+    let(:job) { create(factory_type, environment: environment.name, project: project) }
+
+    subject { job.link_to_environment(environment) }
+
+    it 'creates a new job_environment record' do
+      subject
+
+      expect(job.job_environment).to be_present
+      expect(job.job_environment).to have_attributes(
+        project: project,
+        environment: environment,
+        pipeline: job.pipeline,
+        expanded_environment_name: environment.name,
+        options: job.environment_options_for_permanent_storage.deep_stringify_keys
+      )
+    end
+
+    context 'the job_environment record fails to save' do
+      before do
+        environment.name = 'a' * 300 # Will cause a validation error due to length
+      end
+
+      it 'tracks an exception without raising' do
+        expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).with(
+          instance_of(ActiveRecord::RecordInvalid),
+          job_id: job.id
+        )
+
+        expect { subject }.not_to raise_error
+      end
+    end
+
+    context 'the job has not yet been saved' do
+      let(:job) { FactoryBot.build(factory_type, environment: environment.name, project: project) }
+
+      it 'does not save the job_environment record' do
+        subject
+
+        expect(job).not_to be_persisted
+        expect(job.job_environment).to be_present
+        expect(job.job_environment).not_to be_persisted
+        expect(job.job_environment).to have_attributes(
+          project: project,
+          environment: environment,
+          pipeline: job.pipeline,
+          expanded_environment_name: environment.name,
+          options: job.environment_options_for_permanent_storage.deep_stringify_keys
+        )
+      end
     end
   end
 
   describe '#environment_tier' do
     subject { job.environment_tier }
 
-    let(:options) { { environment: { deployment_tier: 'production' } } }
     let!(:environment) { create(:environment, name: 'production', tier: 'development', project: project) }
-    let(:job) { described_class.new(options: options, environment: 'production', project: project) }
 
-    it { is_expected.to eq('production') }
+    context 'when options includes deployment_tier' do
+      let(:options) { { environment: { deployment_tier: 'production' } } }
+      let(:job) { create(factory_type, options: options, environment: 'production', project: project) }
+
+      it { is_expected.to eq('production') }
+    end
+
+    context 'when deployment_tier is a variable' do
+      let(:options) do
+        {
+          environment: {
+            name: 'production',
+            deployment_tier: '$DEPLOYMENT_TIER'
+          }
+        }
+      end
+
+      let(:yaml_variables) do
+        [
+          { key: 'DEPLOYMENT_TIER', value: 'production' }
+        ]
+      end
+
+      let(:job) { create(factory_type, options: options, environment: 'production', project: project, yaml_variables: yaml_variables) }
+
+      it 'returns the expanded value' do
+        is_expected.to eq('production')
+      end
+    end
 
     context 'when options does not include deployment_tier' do
       let(:options) { { environment: { name: 'production' } } }
+      let(:job) { FactoryBot.build(factory_type, options: options, environment: 'production', project: project) }
 
       it 'uses tier from environment' do
         is_expected.to eq('development')
@@ -328,8 +521,10 @@ RSpec.shared_examples 'a deployable job' do
     it { is_expected.to eq('http://prd.example.com/$CI_JOB_NAME') }
 
     context 'when options does not include url' do
+      let(:options) { { environment: { url: nil } } }
+
       before do
-        job.update!(options: { environment: { url: nil } })
+        stub_ci_job_definition(job, options: options)
         job.persisted_environment.update!(external_url: 'http://prd.example.com/$CI_JOB_NAME')
       end
 
@@ -390,6 +585,17 @@ RSpec.shared_examples 'a deployable job' do
     describe '#expanded_environment_name' do
       subject { job.expanded_environment_name }
 
+      before_all do
+        Ci::ApplicationRecord.connection.execute(<<~SQL)
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_100"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (100);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_101"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (101);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_102"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (102);
+        SQL
+      end
+
       context 'when environment uses $CI_COMMIT_REF_NAME' do
         let(:job) do
           create(
@@ -419,7 +625,8 @@ RSpec.shared_examples 'a deployable job' do
 
         context 'when job metadata has already persisted the expanded environment name' do
           before do
-            job.metadata.expanded_environment_name = 'review/foo'
+            create(:ci_build_metadata, build: job, expanded_environment_name: 'review/foo')
+            job.reload_metadata
           end
 
           it 'returns a persisted expanded environment name without a list of variables' do
@@ -456,6 +663,40 @@ RSpec.shared_examples 'a deployable job' do
         end
 
         it { is_expected.to eq('review/master') }
+      end
+
+      context 'when there is an associated job environment record' do
+        let(:job) do
+          create(
+            factory_type,
+            ref: 'example-feature',
+            environment: 'review/example-feature',
+            pipeline: pipeline
+          )
+        end
+
+        let!(:job_environment) do
+          create(:job_environment, project: project, pipeline: pipeline, job: job,
+            expanded_environment_name: 'name-from-job-env')
+        end
+
+        it { is_expected.to eq('name-from-job-env') }
+
+        context 'when the job metadata has the namespace persisted' do
+          before do
+            create(:ci_build_metadata, build: job, expanded_environment_name: 'name-from-metadata')
+          end
+
+          it { is_expected.to eq('name-from-job-env') }
+        end
+
+        context 'when the job metadata does not exist' do
+          before do
+            job.metadata&.destroy!
+          end
+
+          it { is_expected.to eq('name-from-job-env') }
+        end
       end
     end
 
@@ -507,8 +748,66 @@ RSpec.shared_examples 'a deployable job' do
       end
     end
 
-    describe '#deployment_job?' do
-      subject { job.deployment_job? }
+    describe '#environment_auto_stop_in' do
+      subject { job.environment_auto_stop_in }
+
+      let(:job) { create(factory_type, options: options) }
+      let(:options) { { environment: { auto_stop_in: '1 week' } } }
+
+      it { is_expected.to eq('1 week') }
+
+      context 'when options does not include auto_stop_in' do
+        let(:options) { { environment: { name: 'production' } } }
+
+        it { is_expected.to be_nil }
+      end
+    end
+
+    describe '#expanded_auto_stop_in' do
+      let(:job) { create(factory_type, environment: 'environment', options: options, pipeline: pipeline) }
+      let(:options) do
+        {
+          environment: {
+            name: 'production',
+            auto_stop_in: auto_stop_in
+          }
+        }
+      end
+
+      subject { job.expanded_auto_stop_in }
+
+      context 'when auto_stop_in is not set' do
+        let(:auto_stop_in) { nil }
+
+        it { is_expected.to be_nil }
+      end
+
+      context 'when auto_stop_in is set' do
+        let(:auto_stop_in) { '1 day' }
+
+        it { is_expected.to eq('1 day') }
+      end
+
+      context 'when auto_stop_in is set to a variable' do
+        let(:auto_stop_in) { '$TTL' }
+        let(:yaml_variables) do
+          [
+            { key: "TTL", value: '2 days', public: true }
+          ]
+        end
+
+        before do
+          stub_ci_job_definition(job, yaml_variables: yaml_variables)
+        end
+
+        it { is_expected.to eq('2 days') }
+      end
+    end
+
+    shared_examples 'environment actions' do
+      before do
+        stub_ci_job_definition(job, options: options) if try(:options)
+      end
 
       context 'when environment is defined' do
         before do
@@ -516,13 +815,17 @@ RSpec.shared_examples 'a deployable job' do
         end
 
         context 'no action is defined' do
-          it { is_expected.to be_truthy }
+          it 'uses start as the default action' do
+            if action == 'start'
+              is_expected.to be_truthy
+            else
+              is_expected.to be_falsey
+            end
+          end
         end
 
-        context 'and start action is defined' do
-          before do
-            job.update!(options: { environment: { action: 'start' } })
-          end
+        context 'action is defined' do
+          let(:options) { { environment: { action: action } } }
 
           it { is_expected.to be_truthy }
         end
@@ -537,7 +840,43 @@ RSpec.shared_examples 'a deployable job' do
       end
     end
 
+    describe '#deployment_job?' do
+      let(:action) { 'start' }
+
+      subject { job.deployment_job? }
+
+      include_examples 'environment actions'
+    end
+
+    describe '#accesses_environment?' do
+      let(:action) { 'access' }
+
+      subject { job.accesses_environment? }
+
+      include_examples 'environment actions'
+    end
+
+    describe '#prepares_environment?' do
+      let(:action) { 'prepare' }
+
+      subject { job.prepares_environment? }
+
+      include_examples 'environment actions'
+    end
+
+    describe '#verifies_environment' do
+      let(:action) { 'verify' }
+
+      subject { job.verifies_environment? }
+
+      include_examples 'environment actions'
+    end
+
     describe '#stops_environment?' do
+      before do
+        stub_ci_job_definition(job, options: options) if try(:options)
+      end
+
       subject { job.stops_environment? }
 
       context 'when environment is defined' do
@@ -550,9 +889,7 @@ RSpec.shared_examples 'a deployable job' do
         end
 
         context 'and stop action is defined' do
-          before do
-            job.update!(options: { environment: { action: 'stop' } })
-          end
+          let(:options) { { environment: { action: 'stop' } } }
 
           it { is_expected.to be_truthy }
         end
@@ -642,7 +979,7 @@ RSpec.shared_examples 'a deployable job' do
   end
 
   def factory_type
-    described_class.name.underscore.tr('/', '_')
+    ::Gitlab::Utils.param_key(described_class)
   end
 end
 # rubocop:enable Layout/LineLength

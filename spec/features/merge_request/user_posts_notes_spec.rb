@@ -12,7 +12,7 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
   end
 
   let!(:note) do
-    create(:note_on_merge_request, :with_attachment, noteable: merge_request, project: project)
+    create(:note_on_merge_request, noteable: merge_request, project: project)
   end
 
   before do
@@ -98,7 +98,8 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
     end
   end
 
-  describe 'replying to a comment' do
+  describe 'replying to a comment',
+    quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6943' do
     it 'makes the discussion resolvable' do
       find('.js-reply-button').click
 
@@ -110,7 +111,8 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
       end
     end
 
-    context 'when comment is deleted' do
+    context 'when comment is deleted',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6944' do
       it 'shows an error message' do
         find('.js-reply-button').click
 
@@ -121,20 +123,22 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
 
           click_button 'Add comment now'
 
-          expect(page).to have_content('Your comment could not be submitted because discussion to reply to cannot be found')
+          expect(page).to have_content('Comment could not be submitted: discussion to reply to cannot be found')
         end
       end
     end
   end
 
   describe 'when previewing a note' do
-    it 'shows the toolbar buttons when editing a note' do
+    it 'shows the toolbar buttons when editing a note',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6945' do
       page.within('.js-main-target-form .md-header-toolbar') do
         expect(page).to have_css('button', count: 16)
       end
     end
 
-    it 'hides the toolbar buttons when previewing a note' do
+    it 'hides the toolbar buttons when previewing a note',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6946' do
       wait_for_requests
       click_button("Preview")
       page.within('.js-main-target-form .md-header-toolbar') do
@@ -151,7 +155,8 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
         find('.js-note-edit').click
       end
 
-      it 'shows the note edit form and hide the note body' do
+      it 'shows the note edit form and hide the note body',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6947' do
         page.within("#note_#{note.id}") do
           expect(find('.current-note-edit-form', visible: true)).to be_visible
           expect(find('.note-edit-form', visible: true)).to be_visible
@@ -159,7 +164,8 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
         end
       end
 
-      it 'resets the edit note form textarea with the original content of the note if cancelled' do
+      it 'resets the edit note form textarea with the original content of the note if cancelled',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6948' do
         within('.current-note-edit-form') do
           fill_in 'note[note]', with: 'Some new content'
           find_by_testid('cancel').click
@@ -172,10 +178,11 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
         expect(find('.js-note-text').text).to eq ''
       end
 
-      it 'allows using markdown buttons after saving a note and then trying to edit it again' do
+      it 'allows using markdown buttons after saving a note and then trying to edit it again',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6949' do
         page.within('.current-note-edit-form') do
           fill_in 'note[note]', with: 'This is the new content'
-          find('.btn-confirm').click
+          find_by_testid('reply-comment-button').click
         end
 
         find('.note').hover
@@ -190,10 +197,11 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
         end
       end
 
-      it 'appends the edited at time to the note' do
+      it 'appends the edited at time to the note',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/6950' do
         page.within('.current-note-edit-form') do
           fill_in 'note[note]', with: 'Some new content'
-          find('.btn-confirm').click
+          find_by_testid('reply-comment-button').click
         end
 
         page.within("#note_#{note.id}") do
@@ -201,29 +209,6 @@ RSpec.describe 'Merge request > User posts notes', :js, feature_category: :code_
           expect(find('.note_edited_ago').text)
             .to match(/just now/)
         end
-      end
-    end
-
-    describe 'deleting attachment on legacy diff note' do
-      before do
-        find('.note').hover
-
-        find('.js-note-edit').click
-      end
-
-      # TODO: https://gitlab.com/gitlab-org/gitlab-foss/issues/48034
-      xit 'shows the delete link' do
-        page.within('.note-attachment') do
-          is_expected.to have_css('.js-note-attachment-delete')
-        end
-      end
-
-      # TODO: https://gitlab.com/gitlab-org/gitlab-foss/issues/48034
-      xit 'removes the attachment div and resets the edit form' do
-        accept_confirm { find('.js-note-attachment-delete').click }
-        is_expected.not_to have_css('.note-attachment')
-        is_expected.not_to have_css('.current-note-edit-form')
-        wait_for_requests
       end
     end
   end

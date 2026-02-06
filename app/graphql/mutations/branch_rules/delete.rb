@@ -5,7 +5,7 @@ module Mutations
     class Delete < BaseMutation
       graphql_name 'BranchRuleDelete'
 
-      authorize :destroy_branch_rule
+      authorize :delete_branch_rule
 
       argument :id, ::Types::GlobalIDType[::Projects::BranchRule],
         required: true,
@@ -22,6 +22,8 @@ module Mutations
         response = ::BranchRules::DestroyService.new(branch_rule, current_user).execute
 
         { branch_rule: (branch_rule if response.error?), errors: response.errors }
+      rescue Gitlab::Access::AccessDeniedError
+        raise_resource_not_available_error!
       end
     end
   end

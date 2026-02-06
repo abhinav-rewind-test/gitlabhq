@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Helpers, feature_category: :shared do
+RSpec.describe API::Helpers, feature_category: :api do
   using RSpec::Parameterized::TableSyntax
 
   subject(:helper) { Class.new.include(described_class).new }
@@ -35,7 +35,7 @@ RSpec.describe API::Helpers, feature_category: :shared do
       allow_any_instance_of(described_class).to receive(:initial_current_user).and_return(user)
 
       expect(ApplicationRecord.sticking)
-        .to receive(:find_caught_up_replica).with(:user, 42)
+        .to receive(:find_caught_up_replica).with(:user, 42, hash_id: false)
 
       get 'user'
 
@@ -173,6 +173,192 @@ RSpec.describe API::Helpers, feature_category: :shared do
 
       context 'private project' do
         it_behaves_like 'private project without access'
+      end
+
+      # Container repository request is defined with job_token_scope = :project.
+      context 'user authenticated with job token on container repository request' do
+        let_it_be(:job) { create(:ci_build, project: project) }
+        let_it_be(:outside_project) { create(:project) }
+
+        before do
+          allow(helper).to receive(:route_authentication_setting).and_return(job_token_scope: :project)
+          allow(helper).to receive(:initial_current_user).and_return(user)
+          helper.instance_variable_set(:@current_authenticated_job, job)
+        end
+
+        context "and requested project is not equal pipeline's project" do
+          it 'returns forbidden' do
+            expect(helper).to receive(:forbidden!).with("This project's CI/CD job token cannot be used to authenticate with the container registry of a different project.")
+
+            helper.find_project!(outside_project.id)
+          end
+        end
+
+        context "and requested project is equal pipeline's project" do
+          it 'finds a project' do
+            expect(helper.find_project!(project.id)).to eq(project)
+          end
+        end
+      end
+
+      # All API requests, except for the container repository route_authentication_settings[:job_token_scope], is empty.
+      context 'user authenticated' do
+        let_it_be(:job) { create(:ci_build, project: project) }
+        let_it_be(:outside_project) { create(:project) }
+
+        before do
+          allow(helper).to receive(:route_authentication_setting).and_return(job_token_scope: nil)
+          allow(helper).to receive(:initial_current_user).and_return(user)
+          helper.instance_variable_set(:@current_authenticated_job, job)
+        end
+
+        context 'and user does not have permissions to read project' do
+          before do
+            allow(helper).to receive(:can?).with(user, :read_project, outside_project).and_return(false)
+            allow(helper).to receive(:can?).with(user, :build_read_project, outside_project).and_return(false)
+          end
+
+          context 'with job token' do
+            before do
+              allow(user).to receive(:from_ci_job_token?).and_return(true)
+              allow(user).to receive(:ci_job_token_scope).and_return(user.set_ci_job_token_scope!(job))
+            end
+
+            it 'returns forbidden without exposing project name' do
+              expect(helper).to receive(:forbidden!).with("Authentication by CI/CD job token not allowed from #{project.path} to project ##{outside_project.id}.")
+
+              helper.find_project!(outside_project.id)
+            end
+
+            context 'private project without access' do
+              before do
+                allow(helper).to receive(:authenticate_non_public?).and_return(true)
+              end
+
+              it 'returns unauthorized' do
+                expect(helper).to receive(:unauthorized!)
+
+                helper.find_project!(outside_project.id)
+              end
+            end
+          end
+
+          context 'without job token' do
+            before do
+              allow(user).to receive(:from_ci_job_token?).and_return(false)
+            end
+
+            it 'returns not_found' do
+              expect(helper).to receive(:not_found!)
+
+              helper.find_project!(outside_project.id)
+            end
+          end
+
+          context 'without job token scope' do
+            before do
+              allow(user).to receive(:from_ci_job_token?).and_return(true)
+              allow(user).to receive(:ci_job_token_scope).and_return(nil)
+            end
+
+            it 'returns not_found' do
+              expect(helper).to receive(:not_found!)
+
+              helper.find_project!(outside_project.id)
+            end
+          end
+        end
+      end
+
+      context 'user is authenticated with a job token from another project and fine grained policies are enabled' do
+        let_it_be(:runner_project) { create(:project) }
+        let_it_be(:job) { create(:ci_build, project: runner_project) }
+        let_it_be(:allowed_job_token_policy) { ::Ci::JobToken::Policies::POLICIES.first }
+        let_it_be(:job_token_policy) { allowed_job_token_policy }
+
+        before do
+          create(:ci_job_token_project_scope_link,
+            source_project: project,
+            target_project: runner_project,
+            direction: :inbound,
+            job_token_policies: [allowed_job_token_policy],
+            default_permissions: false
+          )
+
+          allow(helper).to receive(:route_authentication_setting).and_return({})
+          allow(helper).to receive(:route_setting).with(:authorization).and_return(job_token_policies: job_token_policy)
+          allow(user).to receive(:ci_job_token_scope).and_return(user.set_ci_job_token_scope!(job))
+        end
+
+        subject(:find_project!) { helper.find_project!(project.id) }
+
+        it { is_expected.to eq project }
+
+        context 'when the given policy is not allowed' do
+          let_it_be(:job_token_policy) { :not_allowed_policy }
+
+          it 'returns forbidden' do
+            expect(helper)
+              .to receive(:forbidden!)
+              .with("Insufficient permissions to access this resource in project ##{project.id}. " \
+                'The following token permission is required: not_allowed_policy.')
+
+            find_project!
+          end
+
+          context 'when multiple policies are required' do
+            let_it_be(:job_token_policy) { [:policy_1, :policy_2] }
+
+            it 'returns forbidden' do
+              expect(helper)
+                .to receive(:forbidden!)
+                .with("Insufficient permissions to access this resource in project ##{project.id}. " \
+                  'The following token permissions are required: policy_1 and policy_2.')
+
+              find_project!
+            end
+          end
+
+          context 'when job token policies are skipped' do
+            before do
+              allow(helper).to receive(:route_setting).with(:authorization).and_return(skip_job_token_policies: true)
+            end
+
+            it { is_expected.to eq project }
+          end
+
+          context 'when the project feature is publicly accessible' do
+            let_it_be(:project) { create(:project, :public, :builds_enabled) }
+
+            before do
+              allow(helper).to receive(:route_setting).with(:authorization).and_return(allow_public_access_for_enabled_project_features: :builds)
+            end
+
+            it { is_expected.to eq project }
+          end
+        end
+
+        context 'when no policy is given' do
+          let_it_be(:job_token_policy) { nil }
+
+          it 'returns forbidden' do
+            expect(helper).to receive(:forbidden!).with('This action is unauthorized for CI/CD job tokens.')
+
+            find_project!
+          end
+        end
+
+        context "when route settings don't exist" do
+          before do
+            allow(helper).to receive(:respond_to?).with(:route_setting).and_return(false)
+          end
+
+          it 'returns forbidden' do
+            expect(helper).to receive(:forbidden!).with('This action is unauthorized for CI/CD job tokens.')
+
+            find_project!
+          end
+        end
       end
     end
 
@@ -433,7 +619,7 @@ RSpec.describe API::Helpers, feature_category: :shared do
     end
 
     context 'when organization is private' do
-      let_it_be(:private_organization) { create(:organization) }
+      let_it_be(:private_organization) { create(:organization, :private) }
 
       context 'when user is authenticated' do
         context 'when user is part of the organization' do
@@ -684,6 +870,13 @@ RSpec.describe API::Helpers, feature_category: :shared do
       let(:non_existing_id) { non_existing_record_id }
 
       it_behaves_like 'namespace finder'
+
+      it 'find the namespace from up-to-date replica or primary DB' do
+        allow(Namespace.sticking).to receive(:find_caught_up_replica).and_call_original
+
+        expect(Namespace.sticking).to receive(:find_caught_up_replica).with(:namespace, existing_id)
+        expect(helper.find_namespace(existing_id)).to eq(namespace)
+      end
     end
 
     context 'when PATH is used as an argument' do
@@ -827,6 +1020,14 @@ RSpec.describe API::Helpers, feature_category: :shared do
         it 'returns disposition with the blob name' do
           expect(send_git_blob['Content-Disposition']).to eq %q(inline; filename="foobar"; filename*=UTF-8''foobar)
         end
+
+        context 'when blob name ends with an xhtml extension' do
+          let(:blob) { instance_double(Gitlab::Git::Blob, name: 'foo.bar.xhtml') }
+
+          it 'returns the name without extension' do
+            expect(send_git_blob['Content-Disposition']).to eq %q(inline; filename="foo"; filename*=UTF-8''foo)
+          end
+        end
       end
     end
   end
@@ -916,11 +1117,11 @@ RSpec.describe API::Helpers, feature_category: :shared do
     end
 
     it 'tracks an exception and renders 422 for unknown event', :aggregate_failures do
-      expect(Gitlab::InternalEvents).to receive(:track_event).and_raise(Gitlab::InternalEvents::UnknownEventError, "Unknown event: #{unknown_event}")
+      # expect(Gitlab::InternalEvents).to receive(:track_event).and_raise(Gitlab::InternalEvents::UnknownEventError, "Unknown event: #{unknown_event}")
 
       expect(Gitlab::ErrorTracking).to receive(:track_exception)
         .with(
-          instance_of(Gitlab::InternalEvents::UnknownEventError),
+          instance_of(Gitlab::Tracking::EventValidator::UnknownEventError),
           event_name: unknown_event
         )
       expect(helper).to receive(:unprocessable_entity!).with("Unknown event: #{unknown_event}")
@@ -1057,7 +1258,7 @@ RSpec.describe API::Helpers, feature_category: :shared do
       it 'does not destroy given project' do
         expect(project).not_to receive(:destroy)
 
-        expect { helper.destroy_conditionally!(project) }.to throw_symbol(:error).and change { Project.count }.by(0)
+        expect { helper.destroy_conditionally!(project) }.to throw_symbol(:error).and not_change { Project.count }
       end
     end
   end
@@ -1129,8 +1330,9 @@ RSpec.describe API::Helpers, feature_category: :shared do
     let(:dummy_instance) { dummy_class.include(described_class).new }
     let(:path) { '/tmp/file.txt' }
     let(:filename) { 'file.txt' }
+    let(:extra_response_headers) { {} }
 
-    subject { dummy_instance.present_disk_file!(path, filename) }
+    subject { dummy_instance.present_disk_file!(path, filename, extra_response_headers: extra_response_headers) }
 
     before do
       expect(dummy_instance).to receive(:content_type).with('application/octet-stream')
@@ -1157,6 +1359,204 @@ RSpec.describe API::Helpers, feature_category: :shared do
         subject
       end
     end
+
+    context 'with extra response headers' do
+      let(:extra_response_headers) { { 'x-custom-header' => 'test' } }
+
+      it 'sets them' do
+        expect(dummy_instance).to receive(:sendfile).with(path)
+
+        subject
+
+        expect(dummy_instance.headers['x-custom-header']).to eq('test')
+      end
+    end
+  end
+
+  describe '#present_carrierwave_file!' do
+    let(:supports_direct_download) { false }
+    let(:content_type) { nil }
+    let(:content_disposition) { nil }
+    let(:extra_response_headers) { {} }
+    let(:extra_send_url_params) { {} }
+
+    subject do
+      helper.present_carrierwave_file!(
+        artifact.file,
+        supports_direct_download:,
+        content_disposition:,
+        content_type:,
+        extra_response_headers:,
+        extra_send_url_params:
+      )
+    end
+
+    context 'with file storage' do
+      let_it_be(:artifact) { create(:ci_job_artifact, :zip) }
+
+      it 'calls present_disk_file!' do
+        expect(helper).to receive(:present_disk_file!).with(artifact.file.path, artifact.filename, content_type: nil, extra_response_headers: extra_response_headers)
+
+        subject
+      end
+
+      context 'with an overriden content type' do
+        let(:content_type) { 'application/zip' }
+
+        it 'calls present_disk_file! with the correct content type' do
+          expect(helper).to receive(:present_disk_file!).with(artifact.file.path, artifact.filename, content_type: content_type, extra_response_headers: extra_response_headers)
+
+          subject
+        end
+      end
+
+      context 'with extra response headers' do
+        let(:extra_response_headers) { { 'x-custom-header' => 'test' } }
+
+        it 'calls present_disk_file! with the correct extra response headers' do
+          expect(helper).to receive(:present_disk_file!)
+            .with(artifact.file.path, artifact.filename, content_type: content_type, extra_response_headers: extra_response_headers)
+
+          subject
+        end
+      end
+    end
+
+    context 'with remote storage' do
+      let(:artifact) { create(:ci_job_artifact, :zip, :remote_store) }
+
+      before do
+        allow(helper).to receive(:env).and_return({})
+        allow(helper).to receive(:request).and_return(instance_double(Rack::Request, head?: false))
+        stub_artifacts_object_storage(enabled: true)
+      end
+
+      context 'with direct upload available' do
+        let(:supports_direct_download) { true }
+
+        it 'sends a redirect' do
+          expect(helper).to receive(:redirect).with(an_instance_of(String))
+
+          subject
+        end
+
+        context 'with an overriden content type' do
+          let(:content_type) { 'application/zip' }
+          let(:content_disposition) { :inline }
+
+          it 'sends a redirect with the correct content type' do
+            expect(helper).to receive(:redirect) do |url|
+              expect(url).to include("response-content-type=#{CGI.escape(content_type)}")
+            end
+
+            subject
+          end
+        end
+
+        context 'with checksum headers' do
+          let(:extra_response_headers) { { 'X-Checksum-SHA256' => 'abc123def456' } }
+
+          it 'sends a redirect without checksum in URL parameters (not supported by object storage)' do
+            expect(helper).to receive(:redirect) do |url|
+              expect(url).not_to include('X-Checksum-SHA256')
+            end
+
+            subject
+          end
+        end
+      end
+
+      context 'with direct upload not available' do
+        let(:supports_direct_download) { false }
+
+        it 'sends a workhorse header' do
+          expect(helper).to receive(:header).with(Gitlab::Workhorse::SEND_DATA_HEADER, an_instance_of(String))
+          expect(helper).to receive(:status).with(:ok)
+          expect(helper).to receive(:body).with('')
+
+          subject
+        end
+
+        context 'with an overriden content type' do
+          let(:content_type) { 'application/zip' }
+          let(:content_disposition) { :inline }
+
+          it 'sends a workhorse header with the correct content type' do
+            expect(helper).to receive(:status).with(:ok)
+            expect(helper).to receive(:body).with('')
+            expect(helper).to receive(:header) do |name, value|
+              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+              command, encoded_params = value.split(":")
+              params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
+
+              expect(command).to eq('send-url')
+              expect(params.dig('ResponseHeaders', 'Content-Type')).to eq([content_type])
+            end
+
+            subject
+          end
+        end
+
+        context 'with extra response headers' do
+          let(:extra_response_headers) { { 'x-custom-header' => 'test' } }
+
+          it 'sends a workhorse header with the response headers' do
+            expect(helper).to receive(:status).with(:ok)
+            expect(helper).to receive(:body).with('')
+            expect(helper).to receive(:header) do |name, value|
+              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+              command, encoded_params = value.split(":")
+              params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
+
+              expect(command).to eq('send-url')
+              expect(params.dig('ResponseHeaders', 'x-custom-header')).to eq(['test'])
+            end
+
+            subject
+          end
+        end
+
+        context 'with checksum headers' do
+          let(:extra_response_headers) { { 'X-Checksum-SHA256' => 'abc123def456' } }
+
+          it 'sends a workhorse header with checksum headers' do
+            expect(helper).to receive(:status).with(:ok)
+            expect(helper).to receive(:body).with('')
+            expect(helper).to receive(:header) do |name, value|
+              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+              command, encoded_params = value.split(':')
+              params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
+
+              expect(command).to eq('send-url')
+              expect(params.dig('ResponseHeaders', 'X-Checksum-SHA256')).to eq(['abc123def456'])
+            end
+
+            subject
+          end
+        end
+
+        context 'with extra_send_url_params set' do
+          let(:extra_send_url_params) { { restrict_forwarded_response_headers: { enabled: true, allow_list: ['x-optional-header'] } } }
+
+          it 'sends a workhorse header with the response headers' do
+            expect(helper).to receive(:status).with(:ok)
+            expect(helper).to receive(:body).with('')
+            expect(helper).to receive(:header) do |name, value|
+              expect(name).to eq(Gitlab::Workhorse::SEND_DATA_HEADER)
+              command, encoded_params = value.split(":")
+              params = Gitlab::Json.parse(Base64.urlsafe_decode64(encoded_params))
+
+              expect(command).to eq('send-url')
+              restrict_forwarded_response_headers_params = params['RestrictForwardedResponseHeaders']
+              expect(restrict_forwarded_response_headers_params['Enabled']).to be_truthy
+              expect(restrict_forwarded_response_headers_params['AllowList']).to contain_exactly('x-optional-header')
+            end
+
+            subject
+          end
+        end
+      end
+    end
   end
 
   describe '#present_artifacts_file!' do
@@ -1173,10 +1573,13 @@ RSpec.describe API::Helpers, feature_category: :shared do
       end
 
       it 'redirects to a CDN-fronted URL' do
-        expect(helper).to receive(:redirect)
-        expect(helper).to receive(:cdn_fronted_url).and_call_original
+        expect_next_instance_of(ObjectStorage::CDN::FileUrl) do |instance|
+          expect(instance).to receive(:url).and_call_original
+        end
+
         expect(Gitlab::ApplicationContext).to receive(:push).with(artifact: artifact.file.model).and_call_original
         expect(Gitlab::ApplicationContext).to receive(:push).with(artifact_used_cdn: false).and_call_original
+        expect(helper).to receive(:redirect)
 
         subject
       end
@@ -1185,41 +1588,34 @@ RSpec.describe API::Helpers, feature_category: :shared do
         let(:is_head_request) { true }
 
         it 'redirects to a CDN-fronted URL' do
-          expect(helper).to receive(:redirect)
           expect(ObjectStorage::S3).to receive(:signed_head_url).and_call_original
           expect(Gitlab::ApplicationContext).to receive(:push).with(artifact: artifact.file.model).and_call_original
+          expect(helper).to receive(:redirect)
 
           subject
         end
       end
-    end
-  end
 
-  describe '#cdn_frontend_url' do
-    before do
-      allow(helper).to receive(:env).and_return({})
+      context 'with content_disposition' do
+        let(:filename) { artifact.file.filename }
+        let(:redirect_params) do
+          {
+            query: {
+              'response-content-disposition' => "attachment; filename=\"#{filename}\"; filename*=UTF-8''#{filename}",
+              'response-content-type' => 'application/zip'
+            }
+          }
+        end
 
-      stub_artifacts_object_storage(enabled: true)
-    end
+        subject { helper.present_artifacts_file!(artifact.file, content_disposition: :attachment) }
 
-    context 'with a CI artifact' do
-      let(:artifact) { create(:ci_job_artifact, :zip, :remote_store) }
+        it 'redirects as an attachment' do
+          expect(helper).to receive(:redirect)
+          expect(ObjectStorage::CDN::FileUrl).to receive(:new)
+            .with(file: anything, ip_address: anything, redirect_params: redirect_params).and_call_original
 
-      it 'retrieves a CDN-fronted URL' do
-        expect(artifact.file).to receive(:cdn_enabled_url).and_call_original
-        expect(Gitlab::ApplicationContext).to receive(:push).with(artifact_used_cdn: false).and_call_original
-        expect(helper.cdn_fronted_url(artifact.file)).to be_a(String)
-      end
-    end
-
-    context 'with a file upload' do
-      let(:url) { 'https://example.com/path/to/upload' }
-
-      it 'retrieves the file URL' do
-        file = double(url: url)
-
-        expect(Gitlab::ApplicationContext).not_to receive(:push)
-        expect(helper.cdn_fronted_url(file)).to eq(url)
+          subject
+        end
       end
     end
   end
@@ -1275,45 +1671,57 @@ RSpec.describe API::Helpers, feature_category: :shared do
     end
   end
 
-  describe '#unauthorized!' do
-    it 'renders 401' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(401, '401 Unauthorized', nil)
-
-      helper.unauthorized!
+  describe 'error helper methods with reason' do
+    where(:method_name, :expected_code, :expected_message) do
+      [
+        [:forbidden!, 403, '403 Forbidden'],
+        [:bad_request!, 400, '400 Bad request'],
+        [:unauthorized!, 401, '401 Unauthorized']
+      ]
     end
 
-    it 'renders 401 with a reason' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(401, '401 Unauthorized', 'custom reason')
+    with_them do
+      it "renders #{params[:expected_code]}" do
+        expect(helper).to receive(:render_api_error_with_reason!).with(expected_code, expected_message, nil)
 
-      helper.unauthorized!('custom reason')
-    end
-  end
+        helper.send(method_name)
+      end
 
-  describe '#forbidden!' do
-    it 'renders 401' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(403, '403 Forbidden', nil)
+      it "renders #{params[:expected_code]} with a reason" do
+        expect(helper).to receive(:render_api_error_with_reason!).with(expected_code, expected_message, 'custom reason')
 
-      helper.forbidden!
-    end
-
-    it 'renders 401 with a reason' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(403, '403 Forbidden', 'custom reason')
-
-      helper.forbidden!('custom reason')
+        helper.send(method_name, 'custom reason')
+      end
     end
   end
 
-  describe '#bad_request!' do
-    it 'renders 400' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(400, '400 Bad request', nil)
-
-      helper.bad_request!
+  describe 'error helper methods with message' do
+    where(:method_name, :expected_code, :expected_message) do
+      [
+        [:not_allowed!, :method_not_allowed, '405 Method Not Allowed'],
+        [:not_acceptable!, 406, '406 Not Acceptable'],
+        [:service_unavailable!, 503, '503 Service Unavailable'],
+        [:conflict!, 409, '409 Conflict'],
+        [:unprocessable_entity!, :unprocessable_entity, '422 Unprocessable Entity'],
+        [:file_too_large!, 413, '413 Request Entity Too Large'],
+        [:not_modified!, 304, '304 Not Modified'],
+        [:no_content!, 204, '204 No Content'],
+        [:created!, 201, '201 Created']
+      ]
     end
 
-    it 'renders 401 with a reason' do
-      expect(helper).to receive(:render_api_error_with_reason!).with(400, '400 Bad request', 'custom reason')
+    with_them do
+      it "renders #{params[:expected_code]}" do
+        expect(helper).to receive(:render_api_error!).with(expected_message, expected_code)
 
-      helper.bad_request!('custom reason')
+        helper.send(method_name)
+      end
+
+      it "renders #{params[:expected_code]} with a custom message" do
+        expect(helper).to receive(:render_api_error!).with('custom message', expected_code)
+
+        helper.send(method_name, 'custom message')
+      end
     end
   end
 
@@ -1448,6 +1856,116 @@ RSpec.describe API::Helpers, feature_category: :shared do
     end
   end
 
+  describe '#boundary_for_endpoint' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:group) { create(:group) }
+    let(:access_token) { instance_double(PersonalAccessToken, granular?: true) }
+
+    before do
+      allow(helper).to receive(:params).and_return({ id: project.id, group_id: group.id })
+      allow(helper).to receive(:find_project).and_return(project)
+      allow(helper).to receive(:find_group).and_return(group)
+      allow(helper).to receive(:access_token).and_return(access_token)
+    end
+
+    context 'with :boundary authorization setting' do
+      subject(:boundary) { helper.send(:boundary_for_endpoint) }
+
+      before do
+        allow(helper).to receive(:authorization_settings).and_return({ boundary: boundary_setting })
+        allow(helper).to receive(:project).and_return(project)
+      end
+
+      context 'when setting value responds to call' do
+        let(:boundary_setting) { -> { project } }
+
+        it 'evaluates the Proc and returns the boundary' do
+          expect(boundary).to be_a(Authz::Boundary::ProjectBoundary)
+        end
+
+        context 'when Proc returns a value that does not correspond to a valid boundary' do
+          let(:boundary_setting) { -> { 'not a boundary' } }
+
+          it 'returns nil' do
+            expect(boundary).to be_nil
+          end
+        end
+
+        context 'when Proc returns nil' do
+          let(:boundary_setting) { -> { nil } }
+
+          it 'returns nil' do
+            expect(boundary).to be_nil
+          end
+        end
+      end
+
+      context 'when setting value does not respond to call' do
+        let(:boundary_setting) { :project }
+
+        it 'returns nil' do
+          expect(boundary).to be_nil
+        end
+      end
+    end
+
+    context 'when boundaries are defined in different order' do
+      before do
+        allow(helper).to receive(:authorization_settings).and_return({
+          boundaries: [
+            { boundary_type: :instance },
+            { boundary_type: :user },
+            { boundary_type: :group },
+            { boundary_type: :project }
+          ]
+        })
+      end
+
+      it 'returns the first boundary after sorting by project, group, user, instance' do
+        boundary = helper.send(:boundary_for_endpoint)
+
+        expect(boundary).to be_a(Authz::Boundary::ProjectBoundary)
+      end
+    end
+
+    context 'when project boundary returns nil' do
+      before do
+        allow(helper).to receive(:find_project).and_return(nil)
+        allow(helper).to receive(:authorization_settings).and_return({
+          boundaries: [
+            { boundary_type: :instance },
+            { boundary_type: :project },
+            { boundary_type: :group }
+          ]
+        })
+      end
+
+      it 'returns the first non-nil boundary after sorting' do
+        boundary = helper.send(:boundary_for_endpoint)
+
+        expect(boundary).to be_a(Authz::Boundary::GroupBoundary)
+      end
+    end
+
+    context 'when only user and instance boundaries are defined' do
+      before do
+        allow(helper).to receive(:authorization_settings).and_return({
+          boundaries: [
+            { boundary_type: :instance },
+            { boundary_type: :user }
+          ]
+        })
+      end
+
+      it 'returns user boundary before instance' do
+        boundary = helper.send(:boundary_for_endpoint)
+
+        expect(boundary).to be_a(Authz::Boundary::NilBoundary)
+        expect(boundary.access).to eq(Authz::GranularScope::Access::USER)
+      end
+    end
+  end
+
   describe '#authenticate_by_gitlab_shell_or_workhorse_token!' do
     include GitlabShellHelpers
     include WorkhorseHelpers
@@ -1519,6 +2037,104 @@ RSpec.describe API::Helpers, feature_category: :shared do
 
           helper.authenticate_by_gitlab_shell_or_workhorse_token!
         end
+      end
+    end
+  end
+
+  describe '#authorize_granular_token?' do
+    let(:token) { instance_double(PersonalAccessToken) }
+    let_it_be(:user) { create(:user) }
+
+    before do
+      allow(helper).to receive(:access_token).and_return(token)
+      allow(helper).to receive(:initial_current_user).and_return(nil)
+      allow(helper).to receive(:params).and_return({})
+      allow(helper).to receive(:env).and_return({})
+      allow(helper).to receive(:scopes_registered_for_endpoint).and_return(nil)
+      allow(helper).to receive(:validate_and_save_access_token!).and_return(token)
+    end
+
+    context 'when access token is not granular' do
+      before do
+        allow(token).to receive(:granular?).and_return(false)
+      end
+
+      it 'returns false' do
+        allow(helper).to receive(:authorization_settings).and_return({})
+
+        expect(helper.send(:authorize_granular_token?)).to be(false)
+      end
+
+      it 'does not authorize granular tokens' do
+        expect(Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+        helper.current_user
+      end
+    end
+
+    context 'when access token is granular' do
+      before do
+        allow(token).to receive(:granular?).and_return(true)
+      end
+
+      context 'when skip_granular_token_authorization is not set' do
+        before do
+          allow(helper).to receive(:authorization_settings).and_return({})
+        end
+
+        it 'returns true' do
+          expect(helper.send(:authorize_granular_token?)).to be(true)
+        end
+
+        it 'authorizes granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).to receive(:new).and_call_original
+
+          helper.current_user
+        end
+      end
+
+      context 'when skip_granular_token_authorization is false' do
+        before do
+          allow(helper).to receive(:authorization_settings).and_return(skip_granular_token_authorization: false)
+        end
+
+        it 'returns true' do
+          expect(helper.send(:authorize_granular_token?)).to be(true)
+        end
+
+        it 'authorizes granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).to receive(:new).and_call_original
+
+          helper.current_user
+        end
+      end
+
+      context 'when skip_granular_token_authorization is true' do
+        before do
+          allow(helper).to receive(:authorization_settings).and_return(skip_granular_token_authorization: true)
+        end
+
+        it 'returns false' do
+          expect(helper.send(:authorize_granular_token?)).to be(false)
+        end
+
+        it 'does not authorize granular tokens' do
+          expect(Authz::Tokens::AuthorizeGranularScopesService).not_to receive(:new)
+
+          helper.current_user
+        end
+      end
+    end
+
+    context 'when access token is nil' do
+      before do
+        allow(helper).to receive(:access_token).and_return(nil)
+      end
+
+      it 'returns falsey' do
+        allow(helper).to receive(:authorization_settings).and_return({})
+
+        expect(helper.send(:authorize_granular_token?)).to be_falsey
       end
     end
   end

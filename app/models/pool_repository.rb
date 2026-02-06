@@ -9,9 +9,15 @@ class PoolRepository < ApplicationRecord
 
   belongs_to :source_project, class_name: 'Project'
 
+  belongs_to :organization, class_name: 'Organizations::Organization'
+
   has_many :member_projects, class_name: 'Project'
 
+  before_validation :set_organization
+
   after_create :set_disk_path
+
+  validates :organization, presence: true
 
   scope :by_source_project, ->(project) { where(source_project: project) }
   scope :by_disk_path, ->(disk_path) { where(disk_path: disk_path) }
@@ -40,6 +46,10 @@ class PoolRepository < ApplicationRecord
 
     event :mark_obsolete do
       transition all => :obsolete
+    end
+
+    event :reinitialize do
+      transition all - [:scheduled] => :none, unless: :pool_exists?
     end
 
     state all - [:ready] do
@@ -75,6 +85,8 @@ class PoolRepository < ApplicationRecord
 
   def create_object_pool
     object_pool.create
+  rescue GRPC::AlreadyExists
+    # The object pool already exists. Nothing to do here.
   end
 
   # The members of the pool should have fetched the missing objects to their own
@@ -90,11 +102,7 @@ class PoolRepository < ApplicationRecord
   def unlink_repository(repository, disconnect: true)
     repository.disconnect_alternates if disconnect
 
-    if member_projects.where.not(id: repository.project.id).exists?
-      true
-    else
-      mark_obsolete
-    end
+    member_projects.id_not_in(repository.project.id).exists? || mark_obsolete
   end
 
   def object_pool
@@ -112,6 +120,16 @@ class PoolRepository < ApplicationRecord
   end
 
   private
+
+  def set_organization
+    return if organization
+
+    self.organization = source_project&.organization
+  end
+
+  def pool_exists?
+    object_pool.exists?
+  end
 
   def set_disk_path
     update!(disk_path: storage.disk_path) if disk_path.blank?

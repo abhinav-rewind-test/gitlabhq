@@ -1,8 +1,24 @@
 # frozen_string_literal: true
 
+# rubocop:disable API/DescriptionSuccessResponse -- search api responds with multiple entity types
 module API
   class Search < ::API::Base
     include PaginationParams
+    include APIGuard
+    include ::API::Concerns::McpAccess
+
+    SCOPE_ENTITY = {
+      merge_requests: Entities::MergeRequestBasic,
+      issues: Entities::IssueBasic,
+      projects: Entities::BasicProjectDetails,
+      milestones: Entities::Milestone,
+      notes: Entities::Note,
+      commits: Entities::CommitDetail,
+      blobs: Entities::Blob,
+      wiki_blobs: Entities::Blob,
+      snippet_titles: Entities::Snippet,
+      users: Entities::UserBasic
+    }.freeze
 
     before do
       authenticate!
@@ -11,27 +27,17 @@ module API
         users_allowlist: Gitlab::CurrentSettings.current_application_settings.search_rate_limit_allowlist)
     end
 
+    allow_access_with_scope :ai_workflows, if: ->(request) { request.get? || request.head? }
+    allow_mcp_access_read
+
     feature_category :global_search
     urgency :low
 
-    rescue_from ActiveRecord::QueryCanceled do |e|
+    rescue_from ActiveRecord::QueryCanceled do |_e|
       render_api_error!({ error: 'Request timed out' }, 408)
     end
 
     helpers do
-      SCOPE_ENTITY = {
-        merge_requests: Entities::MergeRequestBasic,
-        issues: Entities::IssueBasic,
-        projects: Entities::BasicProjectDetails,
-        milestones: Entities::Milestone,
-        notes: Entities::Note,
-        commits: Entities::CommitDetail,
-        blobs: Entities::Blob,
-        wiki_blobs: Entities::Blob,
-        snippet_titles: Entities::Snippet,
-        users: Entities::UserBasic
-      }.freeze
-
       def scope_preload_method
         {
           merge_requests: :with_api_entity_associations,
@@ -44,22 +50,18 @@ module API
 
       def search_service(additional_params = {})
         strong_memoize_with(:search_service, additional_params) do
-          search_params = {
-            scope: params[:scope],
-            search: params[:search],
-            state: params[:state],
-            confidential: params[:confidential],
-            snippets: snippets?,
-            basic_search: params[:basic_search],
-            page: params[:page],
-            per_page: params[:per_page],
-            order_by: params[:order_by],
-            sort: params[:sort],
-            source: 'api'
-          }.merge(additional_params)
-
-          SearchService.new(current_user, search_params)
+          SearchService.new(current_user, search_params.merge(additional_params))
         end
+      end
+
+      def search_params
+        keys = Helpers::SearchHelpers.search_param_keys
+        params_hash = keys.filter_map do |key|
+          [key, params[key]] if params.key?(key)
+        end.to_h
+        params_hash[:snippets] = snippets?
+        params_hash[:source] = 'api'
+        params_hash
       end
 
       def search(additional_params = {})
@@ -70,12 +72,17 @@ module API
           forbidden!('Global Search is disabled for this scope')
         end
 
+        search_type_errors = search_service.search_type_errors
+        bad_request!(search_type_errors) if search_type_errors
+
         @search_duration_s = Benchmark.realtime do
           @results = search_service.search_objects(preload_method)
         end
 
         search_results = search_service.search_results
-        bad_request!(search_results.error) if search_results.respond_to?(:failed?) && search_results.failed?
+        if search_results.respond_to?(:failed?) && search_results.failed?(search_scope)
+          bad_request!(search_results.error(search_scope))
+        end
 
         set_global_search_log_information(additional_params)
 
@@ -86,10 +93,11 @@ module API
           search_scope: search_scope
         )
 
-        Gitlab::UsageDataCounters::SearchCounter.count(:all_searches)
+        Gitlab::InternalEvents.track_event('perform_search', category: 'API::Search', user: current_user)
+
+        preload_search_associations
 
         paginate(@results)
-
       ensure
         # If we raise an error somewhere in the @search_duration_s benchmark block, we will end up here
         # with a 200 status code, but an empty @search_duration_s.
@@ -117,7 +125,7 @@ module API
         scope_preload_method[params[:scope].to_sym]
       end
 
-      def verify_search_scope!(resource:)
+      def verify_search_scope!(_ = {})
         # no-op
       end
 
@@ -137,72 +145,128 @@ module API
           search_duration_s: @search_duration_s
         )
       end
+
+      def set_headers(additional = {})
+        header['X-Search-Type'] = search_type
+
+        additional.each do |key, value|
+          header[key] = value
+        end
+      end
+
+      def preload_search_associations
+        return unless entity.respond_to?(:execute_batch_counting)
+
+        entity.execute_batch_counting(@results)
+      end
+
+      params :search_params_common do
+        optional :state, type: String, desc: 'Filter results by state', values: Helpers::SearchHelpers.search_states
+        optional :confidential, type: Boolean, desc: 'Filter results by confidentiality'
+      end
+
+      params :search_params_archived_filter do
+        optional :include_archived, type: Boolean, default: false,
+          desc: 'Includes archived projects in the search. Introduced in GitLab 18.9.'
+      end
+
+      params :search_params_common_ee do
+        # Overridden in EE
+      end
+
+      params :search_params_forks_filter_ee do
+        # Overridden in EE
+      end
     end
+
+    # rubocop: disable Cop/InjectEnterpriseEditionModule -- params helper needs to be included before the endpoints
+    ::API::Search.prepend_mod_with('API::Search')
+    # rubocop: enable Cop/InjectEnterpriseEditionModule
 
     resource :search do
       desc 'Search on GitLab' do
         detail 'This feature was introduced in GitLab 10.5.'
+        tags ['search']
       end
+
       params do
         requires :search, type: String, desc: 'The expression it should be searched for'
-        requires :scope,
-          type: String,
-          desc: 'The scope of the search',
+        requires :scope, type: String, desc: 'The scope of the search',
           values: Helpers::SearchHelpers.global_search_scopes
-        optional :state, type: String, desc: 'Filter results by state', values: Helpers::SearchHelpers.search_states
-        optional :confidential, type: Boolean, desc: 'Filter results by confidentiality'
+
+        use :search_params_common
+        use :search_params_archived_filter
+        use :search_params_common_ee
+        use :search_params_forks_filter_ee
         use :pagination
       end
+      route_setting :mcp, tool_name: :gitlab_search_in_instance,
+        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
       get do
-        verify_search_scope!(resource: nil)
+        verify_search_scope!
+
+        set_headers('Content-Transfer-Encoding' => 'binary')
 
         present search, with: entity, current_user: current_user
       end
     end
 
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
-      desc 'Search on GitLab' do
+      desc 'Search on GitLab within a group' do
         detail 'This feature was introduced in GitLab 10.5.'
+        tags %w[search]
       end
+
       params do
-        requires :id, type: String, desc: 'The ID of a group'
+        requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the group'
         requires :search, type: String, desc: 'The expression it should be searched for'
-        requires :scope,
-          type: String,
-          desc: 'The scope of the search',
+        requires :scope, type: String, desc: 'The scope of the search',
           values: Helpers::SearchHelpers.group_search_scopes
-        optional :state, type: String, desc: 'Filter results by state', values: Helpers::SearchHelpers.search_states
-        optional :confidential, type: Boolean, desc: 'Filter results by confidentiality'
+
+        use :search_params_common
+        use :search_params_archived_filter
+        use :search_params_common_ee
+        use :search_params_forks_filter_ee
         use :pagination
       end
+      route_setting :mcp, tool_name: :gitlab_search_in_group,
+        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
       get ':id/(-/)search' do
-        verify_search_scope!(resource: user_group)
+        verify_search_scope!(group_id: user_group.id)
+        set_headers
 
         present search(group_id: user_group.id), with: entity, current_user: current_user
       end
     end
 
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
-      desc 'Search on GitLab' do
+      desc 'Search on GitLab within a project' do
         detail 'This feature was introduced in GitLab 10.5.'
+        tags %w[search projects]
       end
+
       params do
         requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
         requires :search, type: String, desc: 'The expression it should be searched for'
-        requires :scope,
-          type: String,
-          desc: 'The scope of the search',
+        requires :scope, type: String, desc: 'The scope of the search',
           values: Helpers::SearchHelpers.project_search_scopes
-        optional :ref, type: String, desc: 'The name of a repository branch or tag. If not given, the default branch is used'
-        optional :state, type: String, desc: 'Filter results by state', values: Helpers::SearchHelpers.search_states
-        optional :confidential, type: Boolean, desc: 'Filter results by confidentiality'
+
+        optional :ref, type: String,
+          desc: 'The name of a repository branch or tag. If not given, the default branch is used'
+
+        use :search_params_common
+        use :search_params_common_ee
         use :pagination
       end
+      route_setting :mcp, tool_name: :gitlab_search_in_project,
+        params: Helpers::SearchHelpers.gitlab_search_mcp_params, aggregators: [::Mcp::Tools::SearchService]
       get ':id/(-/)search' do
-        present search({ project_id: user_project.id, repository_ref: params[:ref] }), with: entity, current_user: current_user
+        set_headers
+
+        present search({ project_id: user_project.id, repository_ref: params[:ref] }), with: entity,
+          current_user: current_user
       end
     end
   end
 end
-
-API::Search.prepend_mod_with('API::Search')
+# rubocop:enable API/DescriptionSuccessResponse

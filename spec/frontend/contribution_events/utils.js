@@ -24,6 +24,7 @@ import {
   WORK_ITEM_ISSUE_TYPE_TASK,
   WORK_ITEM_ISSUE_TYPE_INCIDENT,
   RESOURCE_PARENT_TYPE_PROJECT,
+  TARGET_TYPE_PROJECT,
 } from '~/contribution_events/constants';
 
 import {
@@ -40,20 +41,22 @@ const findEventByActionAndTargetType = (action, targetType) => () =>
   events.find((event) => event.action === action && event.target?.type === targetType);
 const findEventByActionAndIssueType = (action, issueType) => () =>
   events.find((event) => event.action === action && event.target.issue_type === issueType);
-const findPushEvent = ({
-  isNew = false,
-  isRemoved = false,
-  refType = PUSH_EVENT_REF_TYPE_BRANCH,
-  commitCount = 1,
-} = {}) => () =>
-  events.find(
-    ({ action, ref, commit }) =>
-      action === EVENT_TYPE_PUSHED &&
-      ref.is_new === isNew &&
-      ref.is_removed === isRemoved &&
-      ref.type === refType &&
-      commit.count === commitCount,
-  );
+const findPushEvent =
+  ({
+    isNew = false,
+    isRemoved = false,
+    refType = PUSH_EVENT_REF_TYPE_BRANCH,
+    commitCount = 1,
+  } = {}) =>
+  () =>
+    events.find(
+      ({ action, ref, commit }) =>
+        action === EVENT_TYPE_PUSHED &&
+        ref.is_new === isNew &&
+        ref.is_removed === isRemoved &&
+        ref.type === refType &&
+        commit.count === commitCount,
+    );
 const findEventByActionAndNoteableType = (action, noteableType) => () =>
   events.find((event) => event.action === action && event.noteable?.type === noteableType);
 const findCommentedSnippet = (resourceParentType) => () =>
@@ -94,6 +97,8 @@ export const eventLeft = findEventByAction(EVENT_TYPE_LEFT);
 
 export const eventMerged = findEventByAction(EVENT_TYPE_MERGED);
 
+export const eventPushed = findEventByAction(EVENT_TYPE_PUSHED);
+
 export const eventPushedNewBranch = findPushEvent({ isNew: true });
 export const eventPushedNewTag = findPushEvent({ isNew: true, refType: PUSH_EVENT_REF_TYPE_TAG });
 export const eventPushedBranch = findPushEvent();
@@ -108,7 +113,7 @@ export const eventBulkPushedBranch = findPushEvent({ commitCount: 5 });
 export const eventPrivate = () => ({ ...events[0], action: EVENT_TYPE_PRIVATE });
 
 export const eventCreated = findEventByAction(EVENT_TYPE_CREATED);
-export const eventProjectCreated = findCreatedEvent(null);
+export const eventProjectCreated = findCreatedEvent(TARGET_TYPE_PROJECT);
 export const eventMilestoneCreated = findCreatedEvent(TARGET_TYPE_MILESTONE);
 export const eventIssueCreated = findCreatedEvent(TARGET_TYPE_ISSUE);
 export const eventMergeRequestCreated = findCreatedEvent(TARGET_TYPE_MERGE_REQUEST);

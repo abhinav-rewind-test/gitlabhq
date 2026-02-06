@@ -3,7 +3,7 @@
 # These shared examples expect a `snippets` array of snippets
 RSpec.shared_examples 'paginated snippets' do |remote: false|
   it "is limited to #{Snippet.default_per_page} items per page" do
-    expect(page.all('.snippets-list-holder .snippet-row').count).to eq(Snippet.default_per_page)
+    expect(page.all('[data-testid="snippet-link"]').count).to eq(Snippet.default_per_page)
   end
 
   context 'clicking on the link to the second page' do
@@ -14,7 +14,7 @@ RSpec.shared_examples 'paginated snippets' do |remote: false|
 
     it 'shows the remaining snippets' do
       remaining_snippets_count = [snippets.size - Snippet.default_per_page, Snippet.default_per_page].min
-      expect(page).to have_selector('.snippets-list-holder .snippet-row', count: remaining_snippets_count)
+      expect(page).to have_css('[data-testid="snippet-link"]', count: remaining_snippets_count)
     end
   end
 end
@@ -60,7 +60,10 @@ end
 
 RSpec.shared_examples 'does show New Snippet button' do
   specify do
+    find_by_testid('snippets-more-actions-dropdown-toggle').click
+
     expect(page).to have_link(text: "$#{snippet.id}")
+    expect(page).to have_selector('[data-testid="snippets-more-actions-dropdown"]')
     expect(page).to have_link('New snippet')
   end
 end
@@ -74,8 +77,8 @@ RSpec.shared_examples 'show and render proper snippet blob' do
         # shows highlighted Ruby code
         expect(page).to have_content("require 'fileutils'")
 
-        # does not show a viewer switcher
-        expect(page).not_to have_selector('.js-blob-viewer-switcher')
+        # does not show viewer switcher buttons
+        expect(page).not_to have_selector('.js-blob-viewer-switcher button')
 
         # shows an enabled copy button
         expect(page).to have_button('Copy file contents', disabled: false)

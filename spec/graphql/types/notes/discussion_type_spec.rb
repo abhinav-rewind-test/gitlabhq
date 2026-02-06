@@ -14,10 +14,17 @@ RSpec.describe GitlabSchema.types['Discussion'] do
       resolved_at
       resolved_by
       noteable
+      user_permissions
     ]
 
     expect(described_class).to have_graphql_fields(*expected_fields)
   end
 
   specify { expect(described_class).to require_graphql_authorizations(:read_note) }
+
+  describe '.authorization_scopes' do
+    it 'allows ai_workflows scope token' do
+      expect(described_class.authorization_scopes).to include(:ai_workflows)
+    end
+  end
 end

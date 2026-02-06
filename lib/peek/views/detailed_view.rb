@@ -17,7 +17,7 @@ module Peek
       end
 
       def detail_store
-        ::Gitlab::SafeRequestStore["#{key}_call_details".to_sym] ||= []
+        ::Gitlab::SafeRequestStore[:"#{key}_call_details"] ||= []
       end
 
       private
@@ -51,7 +51,7 @@ module Peek
         duration = (call[:duration] * 1000).round(3)
 
         call.merge(duration: duration,
-                   warnings: warning_for(duration, self.class.thresholds[:individual_call]))
+          warnings: warning_for(duration, self.class.thresholds[:individual_call]))
       end
 
       def warning_for(actual, threshold, label: nil)

@@ -20,15 +20,10 @@ export default {
   },
   mixins: [Tracking.mixin({ label: 'right_sidebar' })],
   props: {
-    loading: {
+    projectEmailsEnabled: {
       type: Boolean,
       required: false,
-      default: false,
-    },
-    projectEmailsDisabled: {
-      type: Boolean,
-      required: false,
-      default: false,
+      default: true,
     },
     subscribeDisabledDescription: {
       type: String,
@@ -47,6 +42,7 @@ export default {
     },
   },
   computed: {
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is used by the `Tracking` mixin
     tracking() {
       return {
         // eslint-disable-next-line no-underscore-dangle
@@ -57,19 +53,19 @@ export default {
       return this.subscribed === null;
     },
     notificationIcon() {
-      if (this.projectEmailsDisabled) {
+      if (!this.projectEmailsEnabled) {
         return ICON_OFF;
       }
       return this.subscribed ? ICON_ON : ICON_OFF;
     },
     notificationTooltip() {
-      if (this.projectEmailsDisabled) {
+      if (!this.projectEmailsEnabled) {
         return this.subscribeDisabledDescription;
       }
       return this.subscribed ? LABEL_ON : LABEL_OFF;
     },
     notificationText() {
-      if (this.projectEmailsDisabled) {
+      if (!this.projectEmailsEnabled) {
         return this.subscribeDisabledDescription;
       }
       return __('Notifications');
@@ -106,7 +102,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-display-flex gl-justify-content-space-between">
+  <div class="gl-flex gl-justify-between">
     <span
       ref="tooltip"
       v-gl-tooltip.viewport.left
@@ -118,7 +114,7 @@ export default {
     </span>
     <span class="hide-collapsed" data-testid="subscription-title"> {{ notificationText }} </span>
     <gl-toggle
-      v-if="!projectEmailsDisabled"
+      v-if="projectEmailsEnabled"
       :is-loading="showLoadingState"
       :value="subscribed"
       class="hide-collapsed"

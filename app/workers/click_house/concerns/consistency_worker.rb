@@ -66,7 +66,7 @@ module ClickHouse
       end
 
       def enabled?
-        Gitlab::ClickHouse.globally_enabled_for_analytics? && Feature.enabled?(:event_sync_worker_for_click_house)
+        Gitlab::ClickHouse.globally_enabled_for_analytics?
       end
 
       def runtime_limiter
@@ -74,7 +74,7 @@ module ClickHouse
       end
 
       def iterator
-        builder = ClickHouse::QueryBuilder.new(table.to_s)
+        builder = ClickHouse::Client::QueryBuilder.new(table.to_s)
         ClickHouse::Iterator.new(query_builder: builder, connection: connection, min_value: previous_id)
       end
 

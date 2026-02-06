@@ -1,22 +1,20 @@
 import boardListsQuery from 'ee_else_ce/boards/graphql/board_lists.query.graphql';
-import { TYPE_EPIC, TYPE_ISSUE, WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
+import { TYPE_ISSUE, WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
 import { s__, __ } from '~/locale';
 import { TYPENAME_ISSUE } from '~/graphql_shared/constants';
-import updateEpicSubscriptionMutation from '~/sidebar/queries/update_epic_subscription.mutation.graphql';
-import updateEpicTitleMutation from '~/sidebar/queries/update_epic_title.mutation.graphql';
 import createBoardListMutation from './graphql/board_list_create.mutation.graphql';
 import destroyBoardListMutation from './graphql/board_list_destroy.mutation.graphql';
 import updateBoardListMutation from './graphql/board_list_update.mutation.graphql';
 
 import toggleListCollapsedMutation from './graphql/client/board_toggle_collapsed.mutation.graphql';
-import issueSetSubscriptionMutation from './graphql/issue_set_subscription.mutation.graphql';
-import issueSetTitleMutation from './graphql/issue_set_title.mutation.graphql';
 import issueMoveListMutation from './graphql/issue_move_list.mutation.graphql';
 import issueCreateMutation from './graphql/issue_create.mutation.graphql';
 import groupBoardQuery from './graphql/group_board.query.graphql';
 import projectBoardQuery from './graphql/project_board.query.graphql';
 import listIssuesQuery from './graphql/lists_issues.query.graphql';
 import listDeferredQuery from './graphql/board_lists_deferred.query.graphql';
+
+export const BOARDS_ROUTE_NAME = 'boards';
 
 export const BoardType = {
   project: 'project',
@@ -30,12 +28,14 @@ export const ListType = {
   backlog: 'backlog',
   closed: 'closed',
   label: 'label',
+  status: 'status',
 };
 
 export const ListTypeTitles = {
   assignee: __('Assignee'),
   milestone: __('Milestone'),
   iteration: __('Iteration'),
+  status: __('Status'),
   label: __('Label'),
   backlog: __('Open'),
 };
@@ -95,35 +95,18 @@ export const deleteListQueries = {
   },
 };
 
-export const titleQueries = {
-  [TYPE_ISSUE]: {
-    mutation: issueSetTitleMutation,
-  },
-  [TYPE_EPIC]: {
-    mutation: updateEpicTitleMutation,
-  },
-};
-
-export const subscriptionQueries = {
-  [TYPE_ISSUE]: {
-    mutation: issueSetSubscriptionMutation,
-  },
-  [TYPE_EPIC]: {
-    mutation: updateEpicSubscriptionMutation,
-  },
-};
-
 export const listIssuablesQueries = {
   [TYPE_ISSUE]: {
     query: listIssuesQuery,
     moveMutation: issueMoveListMutation,
     createMutation: issueCreateMutation,
     optimisticResponse: {
+      author: { id: 'gid://gitlab/User/-1', username: '', __typename: 'UserCore' },
       assignees: { nodes: [], __typename: 'UserCoreConnection' },
       confidential: false,
       closedAt: null,
       dueDate: null,
-      emailsDisabled: false,
+      emailsEnabled: true,
       hidden: false,
       humanTimeEstimate: null,
       humanTotalTimeSpent: null,
@@ -159,6 +142,7 @@ export const FilterFields = {
     'search',
     'types',
     'weight',
+    'status',
   ],
 };
 
@@ -203,10 +187,30 @@ export const BOARD_CARD_MOVE_TO_POSITIONS_OPTIONS = [
   {
     text: BOARD_CARD_MOVE_TO_POSITIONS_START_OPTION,
     action: () => {},
+    extraAttrs: {
+      role: 'button',
+    },
   },
   {
     text: BOARD_CARD_MOVE_TO_POSITIONS_END_OPTION,
     action: () => {},
+    extraAttrs: {
+      role: 'button',
+    },
+  },
+];
+
+export const WIP_ITEMS = 'issue_count';
+export const WIP_WEIGHT = 'issue_weights';
+
+export const WIP_CATEGORY_LIST = [
+  {
+    value: WIP_ITEMS,
+    text: s__('Boards|Items'),
+  },
+  {
+    value: WIP_WEIGHT,
+    text: s__('Boards|Weight'),
   },
 ];
 

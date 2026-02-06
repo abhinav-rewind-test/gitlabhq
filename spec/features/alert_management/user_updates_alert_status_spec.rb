@@ -4,15 +4,12 @@ require 'spec_helper'
 
 RSpec.describe 'User updates Alert Management status', :js, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
   let_it_be(:alert) { create(:alert_management_alert, project: project, status: 'triggered') }
-
-  before_all do
-    project.add_developer(developer)
-  end
 
   before do
     sign_in(developer)
+    stub_feature_flags(hide_incident_management_features: false)
 
     visit project_alert_management_index_path(project)
     wait_for_requests
@@ -24,7 +21,7 @@ RSpec.describe 'User updates Alert Management status', :js, feature_category: :i
       expect(find('.dropdown-menu-selectable')).to have_content('Triggered')
     end
 
-    it 'updates the alert status' do
+    it 'updates the alert status', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/444723' do
       find('.dropdown-menu-selectable').click
       find('.gl-new-dropdown-item', text: 'Acknowledged').click
       wait_for_requests

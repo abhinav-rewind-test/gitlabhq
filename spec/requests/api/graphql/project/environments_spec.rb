@@ -8,9 +8,7 @@ RSpec.describe 'Project Environments query', feature_category: :continuous_deliv
   let_it_be(:project) { create(:project, :private, :repository) }
   let_it_be_with_refind(:production) { create(:environment, :production, project: project) }
   let_it_be_with_refind(:staging) { create(:environment, :staging, project: project) }
-  let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
-
-  subject { post_graphql(query, current_user: user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   let(:user) { developer }
 
@@ -31,6 +29,8 @@ RSpec.describe 'Project Environments query', feature_category: :continuous_deliv
       }
     )
   end
+
+  subject { post_graphql(query, current_user: user) }
 
   it 'returns the specified fields of the environment', :aggregate_failures do
     production.update!(auto_stop_at: 1.day.ago, auto_delete_at: 2.days.ago, environment_type: 'review')
@@ -268,7 +268,7 @@ RSpec.describe 'Project Environments query', feature_category: :continuous_deliv
       end
 
       context 'when user is guest' do
-        let(:user) { create(:user).tap { |u| project.add_guest(u) } }
+        let(:user) { create(:user, guest_of: project) }
 
         it 'returns nothing' do
           subject

@@ -5,36 +5,29 @@ import VueApollo from 'vue-apollo';
 import { cloneDeep } from 'lodash';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import getIssuesQuery from 'ee_else_ce/issues/dashboard/queries/get_issues.query.graphql';
-import IssueCardStatistics from 'ee_else_ce/issues/list/components/issue_card_statistics.vue';
-import IssueCardTimeInfo from 'ee_else_ce/issues/list/components/issue_card_time_info.vue';
+import getIssuesCountsQuery from 'ee_else_ce/issues/dashboard/queries/get_issues_counts.query.graphql';
+import IssueCardStatistics from 'ee_else_ce/work_items/list/components/issue_card_statistics.vue';
+import IssueCardTimeInfo from 'ee_else_ce/work_items/list/components/issue_card_time_info.vue';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { TEST_HOST } from 'helpers/test_constants';
-import { mountExtended } from 'helpers/vue_test_utils_helper';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import {
   filteredTokens,
   locationSearch,
   setSortPreferenceMutationResponse,
   setSortPreferenceMutationResponseWithErrors,
-} from 'jest/issues/list/mock_data';
+} from 'jest/work_items/list/mock_data';
 import { STATUS_ALL, STATUS_CLOSED, STATUS_OPEN } from '~/issues/constants';
 import IssuesDashboardApp from '~/issues/dashboard/components/issues_dashboard_app.vue';
-import getIssuesCountsQuery from '~/issues/dashboard/queries/get_issues_counts.query.graphql';
-import {
-  CREATED_DESC,
-  defaultTypeTokenOptions,
-  i18n,
-  TYPE_TOKEN_KEY_RESULT_OPTION,
-  TYPE_TOKEN_OBJECTIVE_OPTION,
-  UPDATED_DESC,
-  urlSortParams,
-} from '~/issues/list/constants';
-import setSortPreferenceMutation from '~/issues/list/queries/set_sort_preference.mutation.graphql';
-import { getSortKey, getSortOptions } from '~/issues/list/utils';
+import { CREATED_DESC, UPDATED_DESC, urlSortParams } from '~/work_items/list/constants';
+import setSortPreferenceMutation from '~/issues/dashboard/queries/set_sort_preference.mutation.graphql';
+import { getSortKey, getSortOptions } from '~/work_items/list/utils';
 import axios from '~/lib/utils/axios_utils';
 import { scrollUp } from '~/lib/utils/scroll_utils';
 import {
+  TOKEN_TITLE_STATUS,
   TOKEN_TYPE_ASSIGNEE,
   TOKEN_TYPE_AUTHOR,
   TOKEN_TYPE_CONFIDENTIAL,
@@ -45,7 +38,10 @@ import {
   TOKEN_TYPE_TYPE,
   TOKEN_TYPE_CREATED,
   TOKEN_TYPE_CLOSED,
+  TOKEN_TYPE_STATUS,
+  TOKEN_TYPE_SUBSCRIBED,
 } from '~/vue_shared/components/filtered_search_bar/constants';
+import EmptyResult from '~/vue_shared/components/empty_result.vue';
 import IssuableList from '~/vue_shared/issuable/list/components/issuable_list_root.vue';
 import {
   emptyIssuesQueryResponse,
@@ -74,7 +70,10 @@ describe('IssuesDashboardApp component', () => {
     hasIssueDateFilterFeature: true,
     hasIssuableHealthStatusFeature: true,
     hasIssueWeightsFeature: true,
+    hasOkrsFeature: true,
+    hasQualityManagementFeature: true,
     hasScopedLabelsFeature: true,
+    hasStatusFeature: true,
     initialSort: CREATED_DESC,
     isPublicVisibilityRestricted: false,
     isSignedIn: true,
@@ -87,24 +86,33 @@ describe('IssuesDashboardApp component', () => {
     defaultQueryResponse.data.issues.nodes[0].blockingCount = 1;
     defaultQueryResponse.data.issues.nodes[0].healthStatus = null;
     defaultQueryResponse.data.issues.nodes[0].weight = 5;
+    defaultQueryResponse.data.issues.nodes[0].status = {
+      category: 'canceled',
+      color: '#DD2B0E',
+      iconName: 'status-cancelled',
+      id: 'gid://gitlab/WorkItems::Statuses::SystemDefined::Status/4',
+      name: "Won't do",
+      description: '',
+      position: 0,
+      __typename: 'WorkItemStatus',
+    };
   }
 
-  const findCalendarButton = () => wrapper.findByRole('link', { name: i18n.calendarLabel });
   const findDisclosureDropdown = () => wrapper.findComponent(GlDisclosureDropdown);
   const findEmptyState = () => wrapper.findComponent(GlEmptyState);
+  const findEmptyResult = () => wrapper.findComponent(EmptyResult);
   const findIssuableList = () => wrapper.findComponent(IssuableList);
   const findIssueCardStatistics = () => wrapper.findComponent(IssueCardStatistics);
   const findIssueCardTimeInfo = () => wrapper.findComponent(IssueCardTimeInfo);
-  const findRssButton = () => wrapper.findByRole('link', { name: i18n.rssLabel });
 
   const mountComponent = ({
     provide = {},
-    eeTypeTokenOptions = [],
+    props = {},
     issuesQueryHandler = jest.fn().mockResolvedValue(defaultQueryResponse),
     issuesCountsQueryHandler = jest.fn().mockResolvedValue(issuesCountsQueryResponse),
     sortPreferenceMutationHandler = jest.fn().mockResolvedValue(setSortPreferenceMutationResponse),
   } = {}) => {
-    wrapper = mountExtended(IssuesDashboardApp, {
+    wrapper = shallowMountExtended(IssuesDashboardApp, {
       apolloProvider: createMockApollo([
         [getIssuesQuery, issuesQueryHandler],
         [getIssuesCountsQuery, issuesCountsQueryHandler],
@@ -115,10 +123,11 @@ describe('IssuesDashboardApp component', () => {
         ...provide,
       },
       propsData: {
-        eeTypeTokenOptions,
+        ...props,
       },
       stubs: {
         GlIntersperse: true,
+        IssuableList,
       },
     });
   };
@@ -139,36 +148,57 @@ describe('IssuesDashboardApp component', () => {
       await waitForPromises();
     });
 
-    // quarantine: https://gitlab.com/gitlab-org/gitlab/-/issues/391722
-    // eslint-disable-next-line jest/no-disabled-tests
-    it.skip('renders IssuableList component', () => {
-      expect(findIssuableList().props()).toMatchObject({
-        currentTab: STATUS_OPEN,
-        hasNextPage: true,
-        hasPreviousPage: false,
-        hasScopedLabelsFeature: defaultProvide.hasScopedLabelsFeature,
-        initialSortBy: CREATED_DESC,
-        issuables: issuesQueryResponse.data.issues.nodes,
-        issuablesLoading: false,
-        namespace: 'dashboard',
-        recentSearchesStorageKey: 'issues',
-        showPaginationControls: true,
-        sortOptions: getSortOptions({
-          hasBlockedIssuesFeature: defaultProvide.hasBlockedIssuesFeature,
-          hasIssuableHealthStatusFeature: defaultProvide.hasIssuableHealthStatusFeature,
-          hasIssueWeightsFeature: defaultProvide.hasIssueWeightsFeature,
-        }),
-        tabCounts: {
+    describe('IssuableList component', () => {
+      it('renders', () => {
+        expect(findIssuableList().props()).toMatchObject({
+          currentTab: STATUS_OPEN,
+          hasNextPage: true,
+          hasPreviousPage: false,
+          hasScopedLabelsFeature: true,
+          initialSortBy: CREATED_DESC,
+          namespace: 'dashboard',
+          recentSearchesStorageKey: 'issues',
+          showPaginationControls: true,
+          showWorkItemTypeIcon: true,
+          truncateCounts: true,
+          useKeysetPagination: true,
+        });
+      });
+
+      it('renders issues', () => {
+        expect(findIssuableList().props('issuables')).toHaveLength(1);
+      });
+
+      it('renders sort options', () => {
+        expect(findIssuableList().props('sortOptions')).toEqual(
+          getSortOptions({
+            hasBlockedIssuesFeature: defaultProvide.hasBlockedIssuesFeature,
+            hasIssuableHealthStatusFeature: defaultProvide.hasIssuableHealthStatusFeature,
+            hasIssueWeightsFeature: defaultProvide.hasIssueWeightsFeature,
+            hasStatusFeature:
+              defaultProvide.hasStatusFeature && gon.features?.workItemStatusOnDashboard,
+            hasManualSort: false,
+          }),
+        );
+      });
+
+      it('renders tabs', () => {
+        expect(findIssuableList().props('tabs')).toEqual(IssuesDashboardApp.issuableListTabs);
+      });
+
+      it('renders tab counts', () => {
+        expect(findIssuableList().props('tabCounts')).toEqual({
           opened: 1,
           closed: 2,
           all: 3,
-        },
-        tabs: IssuesDashboardApp.issuableListTabs,
-        urlParams: {
+        });
+      });
+
+      it('renders url params', () => {
+        expect(findIssuableList().props('urlParams')).toMatchObject({
           sort: urlSortParams[CREATED_DESC],
           state: STATUS_OPEN,
-        },
-        useKeysetPagination: true,
+        });
       });
     });
 
@@ -184,11 +214,11 @@ describe('IssuesDashboardApp component', () => {
       });
 
       it('renders RSS button link', () => {
-        expect(findRssButton().attributes('href')).toBe(defaultProvide.rssPath);
+        expect(findDisclosureDropdown().props('items')[0].href).toBe(defaultProvide.rssPath);
       });
 
       it('renders calendar button link', () => {
-        expect(findCalendarButton().attributes('href')).toBe(defaultProvide.calendarPath);
+        expect(findDisclosureDropdown().props('items')[1].href).toBe(defaultProvide.calendarPath);
       });
     });
 
@@ -235,11 +265,7 @@ describe('IssuesDashboardApp component', () => {
         });
 
         it('renders empty state', () => {
-          expect(findEmptyState().props()).toMatchObject({
-            description: i18n.noSearchResultsDescription,
-            svgPath: defaultProvide.emptyStateWithFilterSvgPath,
-            title: i18n.noSearchResultsTitle,
-          });
+          expect(findEmptyResult().exists()).toBe(true);
         });
       });
     });
@@ -259,9 +285,8 @@ describe('IssuesDashboardApp component', () => {
 
       it('renders empty state', () => {
         expect(findEmptyState().props()).toMatchObject({
-          description: null,
-          svgPath: defaultProvide.emptyStateWithoutFilterSvgPath,
-          title: i18n.noSearchNoFilterTitle,
+          svgPath: defaultProvide.emptyStateWithFilterSvgPath,
+          title: 'Please select at least one filter to see results',
         });
       });
     });
@@ -310,6 +335,55 @@ describe('IssuesDashboardApp component', () => {
       });
     });
 
+    describe('sort options', () => {
+      describe('when workItemStatusOnDashboard=true', () => {
+        it('includes Status in sort options', () => {
+          mountComponent({
+            provide: { hasStatusFeature: true, glFeatures: { workItemStatusOnDashboard: true } },
+          });
+
+          expect(findIssuableList().props('sortOptions')).toEqual([
+            expect.objectContaining({ title: 'Priority' }),
+            expect.objectContaining({ title: 'Created date' }),
+            expect.objectContaining({ title: 'Updated date' }),
+            expect.objectContaining({ title: 'Closed date' }),
+            expect.objectContaining({ title: 'Milestone due date' }),
+            expect.objectContaining({ title: 'Due date' }),
+            expect.objectContaining({ title: 'Popularity' }),
+            expect.objectContaining({ title: 'Label priority' }),
+            expect.objectContaining({ title: 'Title' }),
+            expect.objectContaining({ title: 'Health' }),
+            expect.objectContaining({ title: 'Status' }),
+            expect.objectContaining({ title: 'Weight' }),
+            expect.objectContaining({ title: 'Blocking' }),
+          ]);
+        });
+      });
+
+      describe('when workItemStatusOnDashboard=false', () => {
+        it('does not include Status in sort options', () => {
+          mountComponent({
+            provide: { hasStatusFeature: true, glFeatures: { workItemStatusOnDashboard: false } },
+          });
+
+          expect(findIssuableList().props('sortOptions')).toEqual([
+            expect.objectContaining({ title: 'Priority' }),
+            expect.objectContaining({ title: 'Created date' }),
+            expect.objectContaining({ title: 'Updated date' }),
+            expect.objectContaining({ title: 'Closed date' }),
+            expect.objectContaining({ title: 'Milestone due date' }),
+            expect.objectContaining({ title: 'Due date' }),
+            expect.objectContaining({ title: 'Popularity' }),
+            expect.objectContaining({ title: 'Label priority' }),
+            expect.objectContaining({ title: 'Title' }),
+            expect.objectContaining({ title: 'Health' }),
+            expect.objectContaining({ title: 'Weight' }),
+            expect.objectContaining({ title: 'Blocking' }),
+          ]);
+        });
+      });
+    });
+
     describe('state', () => {
       it('is set from the url params', () => {
         const initialState = STATUS_ALL;
@@ -333,8 +407,8 @@ describe('IssuesDashboardApp component', () => {
   describe('errors', () => {
     describe.each`
       error                      | mountOption                   | message
-      ${'fetching issues'}       | ${'issuesQueryHandler'}       | ${i18n.errorFetchingIssues}
-      ${'fetching issue counts'} | ${'issuesCountsQueryHandler'} | ${i18n.errorFetchingCounts}
+      ${'fetching issues'}       | ${'issuesQueryHandler'}       | ${'An error occurred while loading issues'}
+      ${'fetching issue counts'} | ${'issuesCountsQueryHandler'} | ${'An error occurred while getting issue counts'}
     `('when there is an error $error', ({ mountOption, message }) => {
       beforeEach(async () => {
         setWindowLocation(locationSearch);
@@ -389,34 +463,30 @@ describe('IssuesDashboardApp component', () => {
         { type: TOKEN_TYPE_MILESTONE },
         { type: TOKEN_TYPE_MY_REACTION },
         { type: TOKEN_TYPE_SEARCH_WITHIN },
+        { type: TOKEN_TYPE_SUBSCRIBED },
         { type: TOKEN_TYPE_TYPE },
       ]);
     });
 
-    describe('additional type token options', () => {
-      it('renders default type tokens when there are no additional options provided', () => {
-        mountComponent();
+    it('adds additional EE search tokens', () => {
+      const eeSearchTokens = [{ type: TOKEN_TYPE_STATUS, title: TOKEN_TITLE_STATUS }];
+      mountComponent({ props: { eeSearchTokens } });
+      const preloadedUsers = [{ ...mockCurrentUser, id: mockCurrentUser.id }];
 
-        expect(findIssuableList().props('searchTokens')).toMatchObject(
-          expect.arrayContaining([
-            expect.objectContaining({ type: TOKEN_TYPE_TYPE, options: defaultTypeTokenOptions }),
-          ]),
-        );
-      });
-
-      it('renders additional type tokens when there are additional options provided', () => {
-        const additionalOptions = [TYPE_TOKEN_OBJECTIVE_OPTION, TYPE_TOKEN_KEY_RESULT_OPTION];
-        mountComponent({ eeTypeTokenOptions: additionalOptions });
-
-        expect(findIssuableList().props('searchTokens')).toMatchObject(
-          expect.arrayContaining([
-            expect.objectContaining({
-              type: TOKEN_TYPE_TYPE,
-              options: [...defaultTypeTokenOptions, ...additionalOptions],
-            }),
-          ]),
-        );
-      });
+      expect(findIssuableList().props('searchTokens')).toMatchObject([
+        { type: TOKEN_TYPE_ASSIGNEE, preloadedUsers },
+        { type: TOKEN_TYPE_AUTHOR, preloadedUsers },
+        { type: TOKEN_TYPE_CLOSED },
+        { type: TOKEN_TYPE_CONFIDENTIAL },
+        { type: TOKEN_TYPE_CREATED },
+        { type: TOKEN_TYPE_LABEL },
+        { type: TOKEN_TYPE_MILESTONE },
+        { type: TOKEN_TYPE_MY_REACTION },
+        { type: TOKEN_TYPE_SEARCH_WITHIN },
+        { type: TOKEN_TYPE_STATUS },
+        { type: TOKEN_TYPE_SUBSCRIBED },
+        { type: TOKEN_TYPE_TYPE },
+      ]);
     });
   });
 

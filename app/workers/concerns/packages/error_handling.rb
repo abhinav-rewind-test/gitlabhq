@@ -10,12 +10,17 @@ module Packages
       ArgumentError,
       ActiveRecord::RecordInvalid,
       ::Packages::Helm::ExtractFileMetadataService::ExtractionError,
+      ::Packages::Helm::ProcessFileService::ProtectedPackageError,
       ::Packages::Nuget::ExtractMetadataFileService::ExtractionError,
       ::Packages::Nuget::UpdatePackageFromMetadataService::InvalidMetadataError,
       ::Packages::Nuget::UpdatePackageFromMetadataService::ZipError,
+      ::Packages::Nuget::UpdatePackageFromMetadataService::DuplicatePackageError,
+      ::Packages::Nuget::UpdatePackageFromMetadataService::ProtectedPackageError,
       ::Packages::Rubygems::ProcessGemService::ExtractionError,
       ::Packages::Rubygems::ProcessGemService::InvalidMetadataError,
-      ::Packages::Npm::ProcessPackageFileService::ExtractionError
+      ::Packages::Npm::ProcessPackageFileService::ExtractionError,
+      ::Packages::Npm::CheckManifestCoherenceService::MismatchError,
+      ::Packages::Conan::MetadataExtractionService::ExtractionError
     ].freeze
 
     def process_package_file_error(package_file:, exception:, extra_log_payload: {})
@@ -27,7 +32,14 @@ module Packages
 
       package_file.package.update_columns(
         status: :error,
-        status_message: truncated_status_message(exception)
+        status_message: truncated_status_message(build_status_message(exception))
+      )
+    end
+
+    def process_package_error_service_response(package_file:, message:)
+      package_file.package.update_columns(
+        status: :error,
+        status_message: truncated_status_message(message)
       )
     end
 
@@ -37,13 +49,15 @@ module Packages
       CONTROLLED_ERRORS.include?(exception.class)
     end
 
-    def truncated_status_message(exception)
+    def build_status_message(exception)
       status_message = exception.message if controlled_error?(exception)
 
       # Do not save the exception message in case it contains confidential data
-      status_message ||= "#{DEFAULT_STATUS_MESSAGE}: #{exception.class}"
+      status_message || "#{DEFAULT_STATUS_MESSAGE}: #{exception.class}"
+    end
 
-      status_message.truncate(::Packages::Package::STATUS_MESSAGE_MAX_LENGTH)
+    def truncated_status_message(message)
+      message.truncate(::Packages::Package::STATUS_MESSAGE_MAX_LENGTH)
     end
   end
 end

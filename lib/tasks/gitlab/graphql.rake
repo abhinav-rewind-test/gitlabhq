@@ -10,6 +10,29 @@ namespace :gitlab do
   TEMP_SCHEMA_DIR = Rails.root.join('tmp/tests/graphql')
   TEMPLATES_DIR = 'tooling/graphql/docs/templates/'
 
+  # Some schema items are SaaS-only, and as we want to document them,
+  # simulate SaaS when generating the GraphQL documentation.
+  #
+  # We would normally set ENV['GITLAB_SIMULATE_SAAS'] but `GitLab.com?`
+  # is hard-coded to be `false` unless in development:
+  # https://gitlab.com/gitlab-org/gitlab/-/blob/bc4cbb5d5a4b5e5a7e817f995e8d377978f246d3/lib/gitlab.rb#L58.
+  #
+  # `gitlab:graphql:check_docs` is run in our test pipelines so we need to
+  # override `Gitlab.com?` to simulate SaaS
+  task simulate_saas: :environment do
+    next if Gitlab.com? # rubocop:disable Gitlab/AvoidGitlabInstanceChecks -- Necessary here.
+
+    def Gitlab.com?
+      true
+    end
+
+    at_exit do
+      def Gitlab.com?
+        false
+      end
+    end
+  end
+
   # Make all feature flags enabled so that all feature flag
   # controlled fields are considered visible and are output.
   # Also avoids pipeline failures in case developer
@@ -20,13 +43,18 @@ namespace :gitlab do
     end
   end
 
+  task generous_gitlab_schema: :environment do
+    GitlabSchema.validate_timeout 1.second
+    puts "Validation timeout set to #{GitlabSchema.validate_timeout} second(s)"
+  end
+
   # Defines tasks for dumping the GraphQL schema:
   # - gitlab:graphql:schema:dump
   # - gitlab:graphql:schema:idl
   # - gitlab:graphql:schema:json
   GraphQL::RakeTask.new(
     schema_name: 'GitlabSchema',
-    dependencies: [:environment, :enable_feature_flags],
+    dependencies: [:environment, :enable_feature_flags, :generous_gitlab_schema],
     directory: TEMP_SCHEMA_DIR,
     idl_outfile: "gitlab_schema.graphql",
     json_outfile: "gitlab_schema.json"
@@ -48,7 +76,7 @@ namespace :gitlab do
         if summary == :client_query
           $stdout.puts " - client query"
         elsif errs.present?
-          $stdout.puts " - invalid query".color(:red)
+          $stdout.puts Rainbow(" - invalid query").red
         else
           complexity = defn.complexity(GitlabSchema)
           color = case complexity
@@ -62,7 +90,7 @@ namespace :gitlab do
                     :red
                   end
 
-          $stdout.puts " - complexity: #{complexity}".color(color)
+          $stdout.puts Rainbow(" - complexity: #{complexity}").color(color)
         end
 
         $stdout.puts ""
@@ -70,13 +98,7 @@ namespace :gitlab do
     end
 
     desc 'GitLab | GraphQL | Validate queries'
-    task validate: [:environment, :enable_feature_flags] do |t, args|
-      class GenerousTimeoutSchema < GitlabSchema # rubocop:disable Gitlab/NamespacedClass
-        validate_timeout 1.second
-      end
-
-      puts "Validating GraphQL queries. Validation timeout set to #{GenerousTimeoutSchema.validate_timeout} second(s)"
-
+    task validate: [:environment, :enable_feature_flags, :generous_gitlab_schema] do |t, args|
       queries = if args.to_a.present?
                   args.to_a.flat_map { |path| Gitlab::Graphql::Queries.find(path) }
                 else
@@ -84,18 +106,18 @@ namespace :gitlab do
                 end
 
       failed = queries.flat_map do |defn|
-        summary, errs = defn.validate(GenerousTimeoutSchema)
+        summary, errs = defn.validate(GitlabSchema)
 
         case summary
         when :client_query
           warn("SKIP  #{defn.file}: client query")
         else
-          warn("#{'OK'.color(:green)}    #{defn.file}") if errs.empty?
+          warn("#{Rainbow('OK').green}    #{defn.file}") if errs.empty?
           errs.each do |err|
             path_info = "(at #{err.path.join('.')})" if err.path
 
             warn(<<~MSG)
-            #{'ERROR'.color(:red)} #{defn.file}: #{err.message} #{path_info}
+            #{Rainbow('ERROR').red} #{defn.file}: #{err.message} #{path_info}
             MSG
           end
         end
@@ -116,7 +138,7 @@ namespace :gitlab do
     end
 
     desc 'GitLab | GraphQL | Generate GraphQL docs'
-    task compile_docs: [:environment, :enable_feature_flags] do
+    task compile_docs: [:simulate_saas, :environment, :enable_feature_flags] do
       renderer = Tooling::Graphql::Docs::Renderer.new(GitlabSchema, **render_options)
 
       renderer.write
@@ -125,10 +147,10 @@ namespace :gitlab do
     end
 
     desc 'GitLab | GraphQL | Check if GraphQL docs are up to date'
-    task check_docs: [:environment, :enable_feature_flags] do
+    task check_docs: [:simulate_saas, :environment, :enable_feature_flags] do
       renderer = Tooling::Graphql::Docs::Renderer.new(GitlabSchema, **render_options)
 
-      doc = File.read(Rails.root.join(OUTPUT_DIR, 'index.md'))
+      doc = File.read(Rails.root.join(OUTPUT_DIR, '_index.md'))
 
       if doc == renderer.contents
         puts "GraphQL documentation is up to date"

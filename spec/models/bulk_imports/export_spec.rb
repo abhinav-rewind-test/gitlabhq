@@ -3,9 +3,18 @@
 require 'spec_helper'
 
 RSpec.describe BulkImports::Export, type: :model, feature_category: :importers do
+  describe 'constants' do
+    it 'correctly defines in progress statuses' do
+      expect(described_class::IN_PROGRESS_STATUSES).to eq(
+        [described_class::PENDING, described_class::STARTED]
+      )
+    end
+  end
+
   describe 'associations' do
     it { is_expected.to belong_to(:group) }
     it { is_expected.to belong_to(:project) }
+    it { is_expected.to belong_to(:offline_export).class_name('Import::Offline::Export') }
     it { is_expected.to have_one(:upload) }
     it { is_expected.to have_many(:batches) }
   end
@@ -44,6 +53,70 @@ RSpec.describe BulkImports::Export, type: :model, feature_category: :importers d
 
         expect(export).not_to be_valid
         expect(export.errors).to include(:relation)
+      end
+    end
+  end
+
+  describe 'scopes' do
+    describe '.for_status' do
+      let(:export_1) { create(:bulk_import_export, :finished, relation: 'labels') }
+      let(:export_2) { create(:bulk_import_export, :started, relation: 'user_contributions') }
+
+      it 'returns bulk_import_exports for the given status' do
+        expect(described_class.for_status(0)).to contain_exactly(export_2)
+      end
+    end
+
+    describe '.for_offline_export' do
+      let(:offline_export) { create(:offline_export) }
+      let(:direct_transfer_relation_export) { create(:bulk_import_export) }
+      let(:offline_transfer_relation_export) { create(:bulk_import_export, offline_export: offline_export) }
+
+      it 'returns bulk_import_exports for the given offline export' do
+        expect(described_class.for_offline_export(offline_export)).to contain_exactly(offline_transfer_relation_export)
+      end
+
+      it 'returns bulk_import_exports without an offline export when given nil' do
+        expect(described_class.for_offline_export(nil)).to contain_exactly(direct_transfer_relation_export)
+      end
+    end
+  end
+
+  describe 'state machine transitions', :clean_gitlab_redis_shared_state do
+    describe '#finish!' do
+      let_it_be(:project) { create(:project) }
+
+      let(:export) { create(:bulk_import_export, :started, project: project) }
+      let(:cache_key) { "bulk_imports/#{project.class.name}/#{project.id}/user_contribution_ids" }
+
+      subject(:finish_export) { export.finish! }
+
+      before do
+        Gitlab::Cache::Import::Caching.set_add(cache_key, [1, 2, 3])
+      end
+
+      it 'sets the status to finished' do
+        expect { finish_export }.to change { export.status }.from(0).to(1)
+      end
+
+      context 'when export is for user_contributions' do
+        let(:export) { create(:bulk_import_export, :started, project: project, relation: 'user_contributions') }
+
+        it 'clears cached contributing user_ids' do
+          expect { finish_export }.to change {
+            Gitlab::Cache::Import::Caching.values_from_set(cache_key).length
+          }.from(3).to(0)
+        end
+      end
+
+      context 'when export is not for user_contributions' do
+        let(:export) { create(:bulk_import_export, :started, project: project, relation: 'issues') }
+
+        it 'does clear cached contributing user_ids' do
+          expect { finish_export }.not_to change {
+            Gitlab::Cache::Import::Caching.values_from_set(cache_key).length
+          }.from(3)
+        end
       end
     end
   end
@@ -106,6 +179,38 @@ RSpec.describe BulkImports::Export, type: :model, feature_category: :importers d
 
         expect { export.remove_existing_upload! }.not_to change { export.upload }
       end
+    end
+  end
+
+  describe '#relation_has_user_contributions?' do
+    let(:export) { build(:bulk_import_export, project: build(:project), relation: relation) }
+
+    subject { export.relation_has_user_contributions? }
+
+    context 'when the relation has user contribitions' do
+      let(:relation) { 'issues' }
+
+      it { is_expected.to eq(true) }
+    end
+
+    context 'when the relation does not have user contribitions' do
+      let(:relation) { 'labels' }
+
+      it { is_expected.to eq(false) }
+    end
+  end
+
+  describe '#offline?' do
+    context 'when associated to an offline export' do
+      subject(:export) { create(:bulk_import_export, :offline) }
+
+      it { is_expected.to be_offline }
+    end
+
+    context 'when not associated to an offline export' do
+      subject(:export) { create(:bulk_import_export) }
+
+      it { is_expected.not_to be_offline }
     end
   end
 end

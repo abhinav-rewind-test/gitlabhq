@@ -56,15 +56,18 @@ export const i18n = {
   ),
   alertInfoPublishMessage: s__('CiCatalog|How do I publish a component?'),
   alertTitle: s__('CiCatalog|Publish the CI/CD components in this project to the CI/CD Catalog'),
+  atomFeedBtnTitle: __('Subscribe to releases RSS feed'),
   catalogResourceReleaseBtnTitle: s__(
     "CiCatalog|Use the 'release' keyword in a CI/CD job to publish to the CI/CD Catalog.",
   ),
   defaultReleaseBtnTitle: __('Create a new release'),
-  catalogResourceQueryError: s__(
-    'CiCatalog|There was a problem fetching the CI/CD Catalog setting.',
-  ),
   errorMessage: __('An error occurred while fetching the releases. Please try again.'),
   newRelease: __('New release'),
   tagNameIsRequiredMessage: __('Tag name is required.'),
   tagIsAlredyInUseMessage: __('Selected tag is already in use. Choose another option.'),
 };
+
+export const CLICK_EXPAND_DEPLOYMENTS_ON_RELEASE_PAGE = 'click_expand_deployments_on_release_page';
+export const CLICK_EXPAND_ASSETS_ON_RELEASE_PAGE = 'click_expand_assets_on_release_page';
+export const CLICK_ENVIRONMENT_LINK_ON_RELEASE_PAGE = 'click_environment_link_on_release_page';
+export const CLICK_DEPLOYMENT_LINK_ON_RELEASE_PAGE = 'click_deployment_link_on_release_page';

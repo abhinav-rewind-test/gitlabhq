@@ -1,20 +1,22 @@
 # frozen_string_literal: true
 
-class AuthenticationEvent < MainClusterwide::ApplicationRecord
+class AuthenticationEvent < ApplicationRecord
   include UsageStatistics
+  include SafelyChangeColumnDefault
 
+  RETENTION_PERIOD = 1.year
   TWO_FACTOR = 'two-factor'
-  TWO_FACTOR_U2F = 'two-factor-via-u2f-device'
   TWO_FACTOR_WEBAUTHN = 'two-factor-via-webauthn-device'
   STANDARD = 'standard'
-  STATIC_PROVIDERS = [TWO_FACTOR, TWO_FACTOR_U2F, TWO_FACTOR_WEBAUTHN, STANDARD].freeze
+  STATIC_PROVIDERS = [TWO_FACTOR, TWO_FACTOR_WEBAUTHN, STANDARD].freeze
 
   belongs_to :user, optional: true
+  belongs_to :organization, class_name: 'Organizations::Organization'
 
   validates :provider, :user_name, :result, presence: true
   validates :ip_address, ip_address: true
 
-  enum result: {
+  enum :result, {
     failed: 0,
     success: 1
   }
@@ -23,6 +25,8 @@ class AuthenticationEvent < MainClusterwide::ApplicationRecord
   scope :ldap, -> { where('provider LIKE ?', 'ldap%') }
   scope :for_user, ->(user) { where(user: user) }
   scope :order_by_created_at_desc, -> { reorder(created_at: :desc) }
+
+  columns_changing_default :organization_id
 
   def self.providers
     STATIC_PROVIDERS | Devise.omniauth_providers.map(&:to_s)

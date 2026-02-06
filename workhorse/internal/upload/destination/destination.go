@@ -1,4 +1,4 @@
-// The destination package handles uploading to a specific destination (delegates
+// Package destination handles uploading to a specific destination (delegates
 // to filestore or objectstore packages) based on options from the pre-authorization
 // API and finalizing the upload.
 package destination
@@ -12,7 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/sirupsen/logrus"
 
 	"gitlab.com/gitlab-org/labkit/log"
 
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/upload/destination/objectstore"
 )
 
+// SizeError represents an error related to the size of a file or data.
 type SizeError error
 
 // ErrEntityTooLarge means that the uploaded content is bigger then maximum allowed size
@@ -111,6 +113,39 @@ type consumer interface {
 	ConsumeWithoutDelete(context.Context, io.Reader, time.Time) (int64, error)
 }
 
+// setupSizeLimiter sets up size limit checking and returns a hard limit reader if needed
+func setupSizeLimiter(reader io.Reader, size int64, opts *UploadOpts) (*hardLimitReader, io.Reader, error) {
+	if opts.MaximumSize <= 0 {
+		return nil, reader, nil
+	}
+
+	if size > opts.MaximumSize {
+		if opts.LsifProcessing {
+			return nil, nil, fmt.Errorf("the upload size %d is over maximum of %d bytes (LSIF processing may have increased file size): %w", size, opts.MaximumSize, ErrEntityTooLarge)
+		}
+		return nil, nil, fmt.Errorf("the upload size %d is over maximum of %d bytes: %w", size, opts.MaximumSize, ErrEntityTooLarge)
+	}
+
+	hlr := &hardLimitReader{r: reader, n: opts.MaximumSize}
+	return hlr, hlr, nil
+}
+
+// handleUploadError handles errors that occur during upload consumption
+func handleUploadError(ctx context.Context, err error, hlr *hardLimitReader, fh *FileHandler, opts *UploadOpts) error {
+	if (err == objectstore.ErrNotEnoughParts) || (hlr != nil && hlr.n < 0) {
+		if opts.LsifProcessing {
+			log.WithContextFields(ctx, log.Fields{
+				"uploaded_bytes":  fh.Size,
+				"maximum_bytes":   opts.MaximumSize,
+				"lsif_processing": true,
+			}).Error("upload size limit exceeded during LSIF file upload")
+			return fmt.Errorf("upload exceeded maximum size of %d bytes (LSIF processing may have increased file size): %w", opts.MaximumSize, ErrEntityTooLarge)
+		}
+		return ErrEntityTooLarge
+	}
+	return err
+}
+
 // Upload persists the provided reader content to all the location specified in opts. A cleanup will be performed once ctx is Done
 // Make sure the provided context will not expire before finalizing upload with GitLab Rails.
 func Upload(ctx context.Context, reader io.Reader, size int64, name string, opts *UploadOpts) (*FileHandler, error) {
@@ -124,18 +159,80 @@ func Upload(ctx context.Context, reader io.Reader, size int64, name string, opts
 	hashes := newMultiHash(opts.UploadHashFunctions)
 	reader = io.TeeReader(reader, hashes.Writer)
 
+	clientMode, uploadDestination, err := getClientInformation(ctx, opts, fh, size)
+	if err != nil {
+		return nil, err
+	}
+
+	logger := setupUploadLogger(ctx, clientMode, fh.Name, size, opts)
+	if opts.IsLocalTempFile() {
+		logger = logger.WithField("local_temp_path", opts.LocalTempPath)
+	} else {
+		logger = logger.WithField("remote_temp_object", opts.RemoteTempObjectID)
+	}
+
+	hlr, reader, err := setupSizeLimiter(reader, size, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if opts.SkipDelete {
+		logger.Info("Destination: Upload ConsumeWithoutDelete")
+		fh.Size, err = uploadDestination.ConsumeWithoutDelete(ctx, reader, opts.Deadline)
+	} else {
+		logger.Info("Destination: Upload Consume")
+		fh.Size, err = uploadDestination.Consume(ctx, reader, opts.Deadline)
+	}
+
+	if err != nil {
+		return nil, handleUploadError(ctx, err, hlr, fh, opts)
+	}
+
+	if size != -1 && size != fh.Size {
+		return nil, SizeError(fmt.Errorf("expected %d bytes but got only %d", size, fh.Size))
+	}
+
+	logger.WithField("copied_bytes", fh.Size).Info("Destination: Upload saved file")
+	fh.hashes = hashes.finish()
+	return fh, nil
+}
+
+func setupUploadLogger(ctx context.Context, clientMode, fileName string, size int64, opts *UploadOpts) logrus.FieldLogger {
+	logger := log.WithContextFields(ctx, log.Fields{
+		"upload_size_bytes": size,
+		"is_local":          opts.IsLocalTempFile(),
+		"is_multipart":      opts.IsMultipart(),
+		"is_remote":         !opts.IsLocalTempFile(),
+		"remote_id":         opts.RemoteID,
+		"client_mode":       clientMode,
+		"provider":          opts.ObjectStorageConfig.Provider,
+		"filename":          fileName,
+	})
+
+	if opts.ObjectStorageConfig.IsAWS() {
+		logger = logger.WithFields(logrus.Fields{
+			"s3_bucket": opts.ObjectStorageConfig.S3Config.Bucket,
+			"s3_region": opts.ObjectStorageConfig.S3Config.Region,
+		})
+	}
+
+	return logger
+}
+
+func getClientInformation(ctx context.Context, opts *UploadOpts, fh *FileHandler, size int64) (string, consumer, error) {
 	var clientMode string
 	var uploadDestination consumer
 	var err error
 	switch {
 	// This case means Workhorse is acting as an upload proxy for Rails and buffers files
 	// to disk in a temporary location, see:
-	// https://docs.gitlab.com/ee/development/uploads/background.html#moving-disk-buffering-to-workhorse
+	// https://docs.gitlab.com/ee/development/uploads/#rails-controller-upload
 	case opts.IsLocalTempFile():
 		clientMode = "local_tempfile"
 		uploadDestination, err = fh.newLocalFile(ctx, opts)
+
 	// All cases below mean we are doing a direct upload to remote i.e. object storage, see:
-	// https://docs.gitlab.com/ee/development/uploads/background.html#moving-to-object-storage-and-direct-uploads
+	// https://docs.gitlab.com/ee/development/uploads/#direct-upload
 	case opts.UseWorkhorseClientEnabled() && opts.ObjectStorageConfig.IsGoCloud():
 		clientMode = fmt.Sprintf("go_cloud:%s", opts.ObjectStorageConfig.Provider)
 		p := &objectstore.GoCloudObjectParams{
@@ -146,8 +243,8 @@ func Upload(ctx context.Context, reader io.Reader, size int64, name string, opts
 		}
 		uploadDestination, err = objectstore.NewGoCloudObject(p)
 	case opts.UseWorkhorseClientEnabled() && opts.ObjectStorageConfig.IsAWS() && opts.ObjectStorageConfig.IsValid():
-		clientMode = "s3_client"
-		uploadDestination, err = objectstore.NewS3Object(
+		clientMode = "s3_client_v2"
+		uploadDestination, err = objectstore.NewS3v2Object(
 			opts.RemoteTempObjectID,
 			opts.ObjectStorageConfig.S3Credentials,
 			opts.ObjectStorageConfig.S3Config,
@@ -171,57 +268,7 @@ func Upload(ctx context.Context, reader io.Reader, size int64, name string, opts
 			size,
 		)
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	var hlr *hardLimitReader
-	if opts.MaximumSize > 0 {
-		if size > opts.MaximumSize {
-			return nil, SizeError(fmt.Errorf("the upload size %d is over maximum of %d bytes", size, opts.MaximumSize))
-		}
-
-		hlr = &hardLimitReader{r: reader, n: opts.MaximumSize}
-		reader = hlr
-	}
-
-	if opts.SkipDelete {
-		fh.Size, err = uploadDestination.ConsumeWithoutDelete(ctx, reader, opts.Deadline)
-	} else {
-		fh.Size, err = uploadDestination.Consume(ctx, reader, opts.Deadline)
-	}
-
-	if err != nil {
-		if (err == objectstore.ErrNotEnoughParts) || (hlr != nil && hlr.n < 0) {
-			err = ErrEntityTooLarge
-		}
-		return nil, err
-	}
-
-	if size != -1 && size != fh.Size {
-		return nil, SizeError(fmt.Errorf("expected %d bytes but got only %d", size, fh.Size))
-	}
-
-	logger := log.WithContextFields(ctx, log.Fields{
-		"copied_bytes": fh.Size,
-		"is_local":     opts.IsLocalTempFile(),
-		"is_multipart": opts.IsMultipart(),
-		"is_remote":    !opts.IsLocalTempFile(),
-		"remote_id":    opts.RemoteID,
-		"client_mode":  clientMode,
-		"filename":     fh.Name,
-	})
-
-	if opts.IsLocalTempFile() {
-		logger = logger.WithField("local_temp_path", opts.LocalTempPath)
-	} else {
-		logger = logger.WithField("remote_temp_object", opts.RemoteTempObjectID)
-	}
-
-	logger.Info("saved file")
-	fh.hashes = hashes.finish()
-	return fh, nil
+	return clientMode, uploadDestination, err
 }
 
 func (fh *FileHandler) newLocalFile(ctx context.Context, opts *UploadOpts) (consumer, error) {
@@ -238,7 +285,9 @@ func (fh *FileHandler) newLocalFile(ctx context.Context, opts *UploadOpts) (cons
 
 	go func() {
 		<-ctx.Done()
-		os.Remove(file.Name())
+		if err := os.Remove(file.Name()); err != nil {
+			fmt.Printf("newLocalFile: remove file %q: %v", file.Name(), err)
+		}
 	}()
 
 	fh.LocalPath = file.Name()

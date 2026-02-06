@@ -11,15 +11,15 @@ import { Blob, mockEnvironmentName, mockEnvironmentPath } from './mock_data';
 
 describe('Blob Header Default Actions', () => {
   let wrapper;
-  let btnGroup;
   let buttons;
 
   const blobHash = 'foo-bar';
 
-  function createComponent(propsData = {}) {
+  function createComponent(propsData = {}, provided = {}) {
     wrapper = shallowMountExtended(BlobHeaderActions, {
       provide: {
         blobHash,
+        ...provided,
       },
       propsData: {
         rawPath: Blob.rawPath,
@@ -30,20 +30,22 @@ describe('Blob Header Default Actions', () => {
 
   beforeEach(() => {
     createComponent();
-    btnGroup = wrapper.findComponent(GlButtonGroup);
     buttons = wrapper.findAllComponents(GlButton);
   });
 
   describe('renders', () => {
+    const findButtonGroup = () => wrapper.findComponent(GlButtonGroup);
     const findCopyButton = () => wrapper.findByTestId('copy-contents-button');
     const findViewRawButton = () => wrapper.findByTestId('viewRawButton');
+    const findDownloadButton = () => wrapper.findByTestId('download-button');
+    const findOpenNewWindowButton = () => wrapper.findByTestId('open-new-window-button');
 
     it('gl-button-group component', () => {
-      expect(btnGroup.exists()).toBe(true);
+      expect(findButtonGroup().exists()).toBe(true);
     });
 
     it('exactly 3 buttons with predefined actions', () => {
-      expect(buttons.length).toBe(3);
+      expect(buttons).toHaveLength(3);
       [BTN_COPY_CONTENTS_TITLE, BTN_RAW_TITLE, BTN_DOWNLOAD_TITLE].forEach((title, i) => {
         expect(buttons.at(i).attributes('title')).toBe(title);
       });
@@ -85,11 +87,42 @@ describe('Blob Header Default Actions', () => {
       expect(findViewRawButton().exists()).toBe(false);
     });
 
+    it('does not render the download button if canDownloadCode is set to false', () => {
+      createComponent({}, { canDownloadCode: false });
+
+      expect(findDownloadButton().exists()).toBe(false);
+    });
+
     it('emits a copy event if overrideCopy is set to true', () => {
       createComponent({ overrideCopy: true });
       findCopyButton().vm.$emit('click');
 
       expect(wrapper.emitted('copy')).toHaveLength(1);
+    });
+
+    it('renders "Open in new window" button with inline=true in URL for PDF files', () => {
+      const pdfPath = '/namespace/project/-/raw/main/sample.pdf';
+      createComponent(
+        { rawPath: pdfPath },
+        { fileType: 'application/pdf', blobHash: 'abc123', canDownloadCode: true },
+      );
+
+      const button = findOpenNewWindowButton();
+      expect(button.exists()).toBe(true);
+      expect(button.attributes('href')).toEqual(
+        'http://test.host/namespace/project/-/raw/main/sample.pdf?inline=true',
+      );
+    });
+
+    it('does not render button for any non-PDF files', () => {
+      const nonPdfFiles = ['file.txt', 'file.docx', 'image.jpg', 'archive.zip'];
+      nonPdfFiles.forEach((path) => {
+        createComponent(
+          { rawPath: `/namespace/project/-/raw/main/${path}` },
+          { fileType: 'text/plain', blobHash: 'abc123', canDownloadCode: true },
+        );
+        expect(findOpenNewWindowButton().exists()).toBe(false);
+      });
     });
   });
 
@@ -123,6 +156,16 @@ describe('Blob Header Default Actions', () => {
       });
 
       expect(findEnvironmentButton().props('icon')).toBe('external-link');
+    });
+  });
+
+  describe('default actions layout', () => {
+    it('hides default actions for mobile layout', () => {
+      createComponent();
+
+      expect(wrapper.findComponent(GlButtonGroup).attributes('class')).toBe(
+        'gl-hidden @sm/panel:gl-inline-flex',
+      );
     });
   });
 });

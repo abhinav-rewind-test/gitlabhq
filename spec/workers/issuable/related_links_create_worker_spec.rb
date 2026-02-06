@@ -9,7 +9,7 @@ RSpec.describe Issuable::RelatedLinksCreateWorker, feature_category: :portfolio_
   let_it_be(:target2) { create(:work_item, :task, project: project) }
   let_it_be(:link1) { create(:work_item_link, source: issuable, target: target1) }
   let_it_be(:link2) { create(:work_item_link, source: issuable, target: target2) }
-  let_it_be(:user) { create(:user) }
+  let_it_be(:user) { create(:user, reporter_of: project) }
 
   let(:params) do
     {
@@ -22,7 +22,10 @@ RSpec.describe Issuable::RelatedLinksCreateWorker, feature_category: :portfolio_
   end
 
   before_all do
-    project.add_reporter(user)
+    # Ensure support bot user is created so creation doesn't count towards query limit
+    # and we don't try to obtain an exclusive lease within a transaction.
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+    create(:support_bot)
   end
 
   subject { described_class.new.perform(params) }
@@ -50,6 +53,24 @@ RSpec.describe Issuable::RelatedLinksCreateWorker, feature_category: :portfolio_
 
     it_behaves_like 'an idempotent worker' do
       let(:job_args) { params }
+    end
+
+    context 'with tracking work item events' do
+      let(:work_item) { issuable }
+      let(:current_user) { user }
+
+      context 'for relates_to links' do
+        before do
+          params.merge!(link_ids: [link1.id], link_type: 'relates_to')
+        end
+
+        def execute_service
+          described_class.new.perform(params)
+        end
+
+        it_behaves_like 'tracks work item event', :work_item, :current_user,
+          Gitlab::WorkItems::Instrumentation::EventActions::RELATED_ITEM_ADD, :execute_service
+      end
     end
 
     context 'when params contain errors' do

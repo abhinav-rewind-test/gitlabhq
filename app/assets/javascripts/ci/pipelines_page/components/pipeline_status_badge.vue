@@ -2,7 +2,7 @@
 import { TRACKING_CATEGORIES } from '~/ci/constants';
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
 import Tracking from '~/tracking';
-import PipelinesTimeago from './time_ago.vue';
+import PipelinesTimeago from './pipelines_timeago.vue';
 
 export default {
   components: {
@@ -18,7 +18,7 @@ export default {
   },
   computed: {
     pipelineStatus() {
-      return this.pipeline?.details?.status ?? {};
+      return this.pipeline?.details?.status || this.pipeline?.detailedStatus;
     },
   },
   methods: {

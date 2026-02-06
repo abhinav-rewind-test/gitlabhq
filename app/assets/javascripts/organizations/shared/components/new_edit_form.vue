@@ -1,17 +1,24 @@
 <script>
 import { GlForm, GlFormFields, GlButton } from '@gitlab/ui';
-import { formValidators } from '@gitlab/ui/dist/utils';
+import { formValidators } from '@gitlab/ui/src/utils';
 import { n__, s__, __ } from '~/locale';
 import { slugify } from '~/lib/utils/text_utility';
-import AvatarUploadDropzone from '~/vue_shared/components/upload_dropzone/avatar_upload_dropzone.vue';
+import AvatarUploadDropzone from '~/organizations/shared/components/avatar_upload_dropzone.vue';
 import MarkdownField from '~/vue_shared/components/markdown/field.vue';
+import { RESTRICTED_TOOLBAR_ITEMS_BASIC_EDITING_ONLY } from '~/vue_shared/components/markdown/constants';
 import { helpPagePath } from '~/helpers/help_page_helper';
+import VisibilityLevelRadioButtons from '~/visibility_level/components/visibility_level_radio_buttons.vue';
+import {
+  ORGANIZATION_VISIBILITY_LEVEL_DESCRIPTIONS,
+  VISIBILITY_LEVEL_PRIVATE_INTEGER,
+} from '~/visibility_level/constants';
 import {
   FORM_FIELD_NAME,
   FORM_FIELD_ID,
   FORM_FIELD_PATH,
   FORM_FIELD_DESCRIPTION,
   FORM_FIELD_AVATAR,
+  FORM_FIELD_VISIBILITY_LEVEL,
   MAX_DESCRIPTION_COUNT,
   FORM_FIELD_PATH_VALIDATORS,
   FORM_FIELD_DESCRIPTION_VALIDATORS,
@@ -27,6 +34,7 @@ export default {
     OrganizationUrlField,
     AvatarUploadDropzone,
     MarkdownField,
+    VisibilityLevelRadioButtons,
   },
   i18n: {
     cancel: __('Cancel'),
@@ -34,20 +42,14 @@ export default {
     charactersOverLimit: (char) => n__('%d character over limit', '%d characters over limit', char),
   },
   formId: 'organization-form',
-  markdownDocsPath: helpPagePath('user/organization/index', {
-    anchor: 'organization-description-supported-markdown',
+  markdownDocsPath: helpPagePath('user/organization/_index', {
+    anchor: 'supported-markdown-for-organization-description',
   }),
-  restrictedToolBarItems: [
-    'code',
-    'quote',
-    'bullet-list',
-    'numbered-list',
-    'task-list',
-    'collapsible-section',
-    'table',
-    'attach-file',
-    'full-screen',
-  ],
+  restrictedToolBarItems: RESTRICTED_TOOLBAR_ITEMS_BASIC_EDITING_ONLY,
+  // Organizations in Cells 1.0 can only be private
+  // https://handbook.gitlab.com/handbook/engineering/architecture/design-documents/organization/#organizations-on-cells-10-fy24q2-fy25q4
+  availableVisibilityLevels: [VISIBILITY_LEVEL_PRIVATE_INTEGER],
+  ORGANIZATION_VISIBILITY_LEVEL_DESCRIPTIONS,
   inject: ['organizationsPath', 'previewMarkdownPath'],
   props: {
     loading: {
@@ -63,6 +65,7 @@ export default {
           [FORM_FIELD_PATH]: '',
           [FORM_FIELD_DESCRIPTION]: '',
           [FORM_FIELD_AVATAR]: null,
+          [FORM_FIELD_VISIBILITY_LEVEL]: VISIBILITY_LEVEL_PRIVATE_INTEGER,
         };
       },
     },
@@ -70,7 +73,13 @@ export default {
       type: Array,
       required: false,
       default() {
-        return [FORM_FIELD_NAME, FORM_FIELD_PATH, FORM_FIELD_DESCRIPTION, FORM_FIELD_AVATAR];
+        return [
+          FORM_FIELD_NAME,
+          FORM_FIELD_PATH,
+          FORM_FIELD_DESCRIPTION,
+          FORM_FIELD_AVATAR,
+          FORM_FIELD_VISIBILITY_LEVEL,
+        ];
       },
     },
     submitButtonText: {
@@ -139,6 +148,9 @@ export default {
             labelSrOnly: true,
           },
         },
+        [FORM_FIELD_VISIBILITY_LEVEL]: {
+          label: s__('Organization|Organization visibility level'),
+        },
       };
 
       return Object.entries(fields).reduce((accumulator, [fieldKey, fieldDefinition]) => {
@@ -158,13 +170,13 @@ export default {
 
       if (remainingCharacters >= 0) {
         return {
-          class: 'gl-text-gray-500',
+          class: 'gl-text-subtle',
           text: this.$options.i18n.charactersRemaining(remainingCharacters),
         };
       }
 
       return {
-        class: 'gl-text-red-500',
+        class: 'gl-text-danger',
         text: this.$options.i18n.charactersOverLimit(Math.abs(remainingCharacters)),
       };
     },
@@ -183,7 +195,6 @@ export default {
       formFieldsInputEvent(event);
       this.hasPathBeenManuallySet = true;
     },
-    helpPagePath,
   },
 };
 </script>
@@ -194,7 +205,7 @@ export default {
       v-model="formValues"
       :form-id="$options.formId"
       :fields="fields"
-      class="gl-display-flex gl-column-gap-5 gl-flex-wrap"
+      class="gl-flex gl-flex-wrap gl-gap-x-5"
       @submit="$emit('submit', formValues)"
     >
       <template #input(path)="{ id, value, validation, input, blur }">
@@ -209,7 +220,7 @@ export default {
       <template #input(description)="{ id, value, input, blur }">
         <div class="gl-md-form-input-xl">
           <markdown-field
-            class="organization-description gl-mb-2"
+            class="gl-mb-2"
             :can-attach-file="false"
             :markdown-preview-path="previewMarkdownPath"
             :markdown-docs-path="$options.markdownDocsPath"
@@ -241,8 +252,17 @@ export default {
           @input="input"
         />
       </template>
+
+      <template #input(visibilityLevel)="{ value, input }">
+        <visibility-level-radio-buttons
+          :checked="value"
+          :visibility-levels="$options.availableVisibilityLevels"
+          :visibility-level-descriptions="$options.ORGANIZATION_VISIBILITY_LEVEL_DESCRIPTIONS"
+          @input="input"
+        />
+      </template>
     </gl-form-fields>
-    <div class="gl-display-flex gl-gap-3">
+    <div class="gl-flex gl-gap-3">
       <gl-button
         type="submit"
         variant="confirm"

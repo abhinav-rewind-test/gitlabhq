@@ -2,10 +2,17 @@
 
 require 'spec_helper'
 
-RSpec.describe EmailsHelper do
+RSpec.describe EmailsHelper, feature_category: :shared do
   include EmailsHelperTestHelper
+  include NotifyHelper
 
   describe 'closure_reason_text' do
+    let(:issue) { create(:issue) }
+
+    before do
+      self.instance_variable_set(:@issue, issue)
+    end
+
     context 'when given a MergeRequest' do
       let(:merge_request) { create(:merge_request) }
       let(:merge_request_presenter) { merge_request.present }
@@ -21,26 +28,26 @@ RSpec.describe EmailsHelper do
 
         context "and format is text" do
           it "returns plain text" do
-            expect(helper.closure_reason_text(merge_request, format: :text)).to eq("via merge request #{merge_request.to_reference} (#{merge_request_presenter.web_url})")
+            expect(helper.closure_reason_text(merge_request, format: :text, name: user.name)).to include("with merge request #{merge_request.to_reference} (#{merge_request_presenter.web_url})")
           end
         end
 
         context "and format is HTML" do
           it "returns HTML" do
-            expect(helper.closure_reason_text(merge_request, format: :html)).to eq("via merge request #{link_to(merge_request.to_reference, merge_request_presenter.web_url)}")
+            expect(helper.closure_reason_text(merge_request, format: :html, name: user.name)).to include("with merge request #{link_to(merge_request.to_reference, merge_request_presenter.web_url)}")
           end
         end
 
         context "and format is unknown" do
           it "returns plain text" do
-            expect(helper.closure_reason_text(merge_request, format: 'unknown')).to eq("via merge request #{merge_request.to_reference} (#{merge_request_presenter.web_url})")
+            expect(helper.closure_reason_text(merge_request, format: 'unknown', name: user.name)).to include("with merge request #{merge_request.to_reference} (#{merge_request_presenter.web_url})")
           end
         end
       end
 
       context 'when user cannot read merge request' do
         it "does not have link to merge request" do
-          expect(helper.closure_reason_text(merge_request)).to be_empty
+          expect(helper.closure_reason_text(merge_request, format: nil, name: nil)).to be_empty
         end
       end
     end
@@ -58,20 +65,28 @@ RSpec.describe EmailsHelper do
         end
 
         it "returns plain text" do
-          expect(closure_reason_text(closed_via)).to eq("via #{closed_via}")
+          expect(closure_reason_text(closed_via, format: nil, name: nil)).to include("with #{closed_via}")
         end
       end
 
       context 'when user cannot read commits' do
         it "returns plain text" do
-          expect(closure_reason_text(closed_via)).to be_empty
+          expect(closure_reason_text(closed_via, format: nil, name: nil)).to be_empty
         end
       end
     end
 
     context 'when not given anything' do
       it "returns empty string" do
-        expect(closure_reason_text(nil)).to eq("")
+        expect(closure_reason_text(nil, format: nil, name: nil)).to eq("")
+      end
+    end
+
+    context 'when only given a name' do
+      let(:user) { build_stubbed(:user) }
+
+      it "returns plain text" do
+        expect(closure_reason_text(nil, format: nil, name: user.name)).to eq("Issue was closed by #{user.name}")
       end
     end
   end
@@ -136,6 +151,25 @@ RSpec.describe EmailsHelper do
     end
   end
 
+  describe '#manage_passkeys' do
+    context 'format is html' do
+      it 'returns HTML' do
+        url = generate_link('', profile_two_factor_auth_url)
+        expect(manage_passkeys(format: :html)).to eq(
+          safe_format(_('%{link_start}Visit your account settings%{link_end} to manage your passkeys and other authentication methods.'), tag_pair(url, :link_start, :link_end))
+        )
+      end
+    end
+
+    context 'format is not specified' do
+      it 'returns text' do
+        expect(manage_passkeys).to eq(
+          format(_('To manage your passkeys and other authentication methods, visit %{two_factor_link}'), two_factor_link: profile_two_factor_auth_url)
+        )
+      end
+    end
+  end
+
   describe '#re_enable_two_factor_authentication_text' do
     context 'format is html' do
       it 'returns HTML' do
@@ -150,6 +184,25 @@ RSpec.describe EmailsHelper do
       it 'returns text' do
         expect(re_enable_two_factor_authentication_text).to eq(
           "If you want to re-enable two-factor authentication, visit #{profile_two_factor_auth_url}"
+        )
+      end
+    end
+  end
+
+  describe '#manage_two_factor_authentication_text' do
+    context 'format is html' do
+      it 'returns HTML' do
+        expect(manage_two_factor_authentication_text(format: :html)).to eq(
+          "To manage your two-factor authentication, visit the " \
+          "#{link_to('two-factor authentication settings', profile_two_factor_auth_url, target: :_blank, rel: 'noopener noreferrer')} page."
+        )
+      end
+    end
+
+    context 'format is not specified' do
+      it 'returns text' do
+        expect(manage_two_factor_authentication_text).to eq(
+          "To manage your two-factor authentication, visit #{profile_two_factor_auth_url}"
         )
       end
     end
@@ -295,6 +348,28 @@ RSpec.describe EmailsHelper do
 
         expect(list_id).to eq("12345.#{list_id_path}.#{Gitlab.config.gitlab.host}")
         expect(list_id).to satisfy { |s| s.length <= max_length }
+      end
+    end
+  end
+
+  describe '#subject_with_prefix_and_suffix' do
+    using RSpec::Parameterized::TableSyntax
+
+    where(:email_subject_prefix, :email_subject_suffix, :output) do
+      nil   | nil   | 'A message from GitLab'
+      'AAA' | nil   | 'AAA | A message from GitLab'
+      nil   | 'BBB' | 'A message from GitLab | BBB'
+      'AAA' | 'BBB' | 'AAA | A message from GitLab | BBB'
+    end
+
+    with_them do
+      before do
+        stub_config_setting(email_subject_prefix: email_subject_prefix)
+        stub_config_setting(email_subject_suffix: email_subject_suffix)
+      end
+
+      it 'pads the email subject correctly' do
+        expect(described_class.subject_with_prefix_and_suffix(['A message from GitLab'])).to eq(output)
       end
     end
   end

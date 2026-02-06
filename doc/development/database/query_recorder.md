@@ -1,10 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: QueryRecorder
 ---
-
-# QueryRecorder
 
 QueryRecorder is a tool for detecting the [N+1 queries problem](https://guides.rubyonrails.org/active_record_querying.html#eager-loading-associations) from tests.
 
@@ -12,99 +11,98 @@ QueryRecorder is a tool for detecting the [N+1 queries problem](https://guides.r
 
 As a rule, merge requests [should not increase query counts](../merge_request_concepts/performance.md#query-counts). If you find yourself adding something like `.includes(:author, :assignee)` to avoid having `N+1` queries, consider using QueryRecorder to enforce this with a test. Without this, a new feature which causes an additional model to be accessed can silently reintroduce the problem.
 
-## How it works
+## How a QueryRecorder works
 
 This style of test works by counting the number of SQL queries executed by ActiveRecord. First a control count is taken, then you add new records to the database and rerun the count. If the number of queries has significantly increased then an `N+1` queries problem exists.
 
+As an example you might create 5 issues in between counts, which would cause the query count to increase by 5 if an N+1 problem exists.
+
 ```ruby
-it "avoids N+1 database queries", :use_sql_query_cache do
+it "avoids N+1 database queries", :request_store, :use_sql_query_cache do
+  visit_some_page # warm-up
+
   control = ActiveRecord::QueryRecorder.new(skip_cached: false) { visit_some_page }
   create_list(:issue, 5)
   expect { visit_some_page }.to issue_same_number_of_queries_as(control)
 end
 ```
 
-You can if you wish, have both the expectation and the control as
-`QueryRecorder` instances:
+You can also have both the expectation and the control as `QueryRecorder` instances:
 
 ```ruby
-it "avoids N+1 database queries" do
-  control = ActiveRecord::QueryRecorder.new { visit_some_page }
+it "avoids N+1 database queries", :request_store, :use_sql_query_cache do
+  visit_some_page # warm-up
+
+  control = ActiveRecord::QueryRecorder.new(skip_cached: false) { visit_some_page }
   create_list(:issue, 5)
-  action = ActiveRecord::QueryRecorder.new { visit_some_page }
+  action = ActiveRecord::QueryRecorder.new(skip_cached: false) { visit_some_page }
 
   expect(action).to issue_same_number_of_queries_as(control)
 end
 ```
 
-As an example you might create 5 issues in between counts, which would cause the query count to increase by 5 if an N+1 problem exists.
-
 In some cases, the query count might change slightly between runs for unrelated reasons.
-In this case you might need to test `issue_same_number_of_queries_as(control_count + acceptable_change)`,
+In this case you might need to test
+`issue_same_number_of_queries_as(control).with_threshold(acceptable_change)`,
 but this should be avoided if possible.
 
 If this test fails, and the control was passed as a `QueryRecorder`, then the
 failure message indicates where the extra queries are by matching queries on
 the longest common prefix, grouping similar queries together.
 
-In some cases, N+1 specs have been written to include three requests: first one to
-warm the cache, second one to establish a control, third one to validate that
-there are no N+1 queries. Rather than make an extra request to warm the cache, prefer two requests
-(control and test) and configure your test to ignore [cached queries](#cached-queries) in N+1 specs.
+## Recommended pattern
+
+The recommended pattern for N+1 query tests includes important components to ensure your test accurately reflects production behavior:
 
 ```ruby
-it "avoids N+1 database queries" do
-  # warm up
-  visit_some_page
+it "avoids N+1 database queries", :request_store, :use_sql_query_cache do
+  visit_some_page # warm-up
 
-  control = ActiveRecord::QueryRecorder.new(skip_cached: true) { visit_some_page }
-  create_list(:issue, 5)
-  expect { visit_some_page }.to issue_same_number_of_queries_as(control)
-end
-```
-
-## Cached queries
-
-By default, QueryRecorder ignores [cached queries](../merge_request_concepts/performance.md#cached-queries) in the count.
-However, it may be better to count all queries to avoid introducing an N+1 query that may be masked by the statement cache.
-To do this, this requires the `:use_sql_query_cache` flag to be set.
-You should pass the `skip_cached` variable to `QueryRecorder` and use the `issue_same_number_of_queries_as` matcher:
-
-```ruby
-it "avoids N+1 database queries", :use_sql_query_cache do
   control = ActiveRecord::QueryRecorder.new(skip_cached: false) { visit_some_page }
   create_list(:issue, 5)
   expect { visit_some_page }.to issue_same_number_of_queries_as(control)
 end
 ```
 
-## Using RequestStore
+Each component serves a specific purpose:
 
-[`RequestStore` / `Gitlab::SafeRequestStore`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/gems/gitlab-safe_request_store/README.md)
-helps us to avoid N+1 queries by caching data in memory for the duration of a request. However, it is disabled by default in tests
-and can lead to false negatives when testing for N+1 queries.
+- `:request_store`: Enables `Gitlab::SafeRequestStore`, which caches data in memory for the duration of a request.
+  This is enabled in production but disabled by default in tests.
+  Without it, you may get false results.
+- `:use_sql_query_cache`: Enables the SQL query cache that is already active in production.
+- `skip_cached: false`: Counts ALL queries including cached ones. This catches N+1 queries that might be masked by caching.
+- `issue_same_number_of_queries_as`: Fails if the query count increases OR decreases unexpectedly (bidirectional).
+- `warm-up`: Handles one-time initialization queries that do not repeat on subsequent requests, such as schema loading.
 
-To enable `RequestStore` in tests, use the `request_store` helper when needed:
+### Why use `issue_same_number_of_queries_as` over `exceed_query_limit`
 
-```ruby
-it "avoids N+1 database queries", :request_store do
-  control = ActiveRecord::QueryRecorder.new(skip_cached: true) { visit_some_page }
-  create_list(:issue, 5)
-  expect { visit_some_page }.to issue_same_number_of_queries_as(control)
-end
-```
+Prefer `issue_same_number_of_queries_as` over `exceed_query_limit` because it is **bidirectional**;
+it fails if the query count increases OR decreases unexpectedly.
+This helps catch unintended changes in either direction,
+such as when a refactor accidentally removes necessary queries
+or when dead code is being executed.
 
-## Use request specs instead of controller specs
+In contrast, `exceed_query_limit` only fails when queries exceed the expected count, so it does not alert you
+if queries unexpectedly decrease.
+
+### Use request specs instead of controller specs
 
 Use a [request spec](https://gitlab.com/gitlab-org/gitlab/-/tree/master/spec/requests) when writing a N+1 test on the controller level.
 
 Controller specs should not be used to write N+1 tests as the controller is only initialized once per example.
 This could lead to false successes where subsequent "requests" could have queries reduced (for example, because of memoization).
 
-## Never trust a test you haven't seen fail
+### Never trust a test you haven't seen fail
 
 Before you add a test for N+1 queries, you should first verify that the test fails without your change.
 This is because the test may be broken, or the test may be passing for the wrong reasons.
+
+To verify your test:
+
+1. Write the test with the recommended pattern.
+1. Temporarily remove or comment out your N+1 fix.
+1. Run the test and confirm it fails with the expected query count increase.
+1. Restore your fix and confirm the test passes.
 
 ## Finding the source of the query
 
@@ -175,6 +173,47 @@ There are multiple ways to find the source of queries.
       --> /home/user/gitlab/gdk/gitlab/app/services/base_count_service.rb:12:in `count'
       --> /home/user/gitlab/gdk/gitlab/app/models/project.rb:1296:in `open_issues_count'
   ```
+
+## Testing query counts in the Rails console
+
+During development, it can be challenging to identify and count database queries directly in the Rails console output. `QueryRecorder` can be used interactively to help analyze and optimize query performance before writing tests.
+
+This is particularly useful when:
+
+- Debugging N+1 queries during feature development
+- Comparing different preloading strategies
+- Validating query optimizations before committing code
+
+The `QueryRecorder` helper is not automatically loaded in the Rails console, so you must require it first:
+
+```ruby
+# Important: Require the QueryRecorder helper (not loaded by default)
+require './spec/support/helpers/query_recorder.rb'
+
+# Example: Analyzing query counts for different preloading strategies
+result = {}
+package_files = Packages::PackageFile.limit(5)
+
+# Create a helper to count queries
+query_counter = proc do |&query_block|
+  ActiveRecord::QueryRecorder.new(&query_block).data.map { |_, v| v[:count] }.reduce(&:+)
+end
+
+# Test different approaches
+result['without preloading'] = query_counter.call { package_files.map(&:package) }
+result['with preload(:package)'] = query_counter.call { package_files.preload(:package).map(&:package) }
+result['with includes(package: :project)'] = query_counter.call { package_files.includes(package: :project).map(&:package) }
+
+# View results
+result
+# => {"without preloading"=>5, "with preload(:package)"=>2, "with includes(package: :project)"=>2}
+
+# Find the most efficient approach
+result.min { |a, b| a.second <=> b.second }
+# => ["with preload(:package)", 2]
+```
+
+This approach allows you to quickly test and compare different query strategies during development, helping you choose the most efficient implementation before writing your tests and code.
 
 ## See also
 

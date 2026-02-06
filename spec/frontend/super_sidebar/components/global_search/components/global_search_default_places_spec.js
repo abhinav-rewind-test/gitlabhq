@@ -1,7 +1,14 @@
 import { GlDisclosureDropdownGroup, GlDisclosureDropdownItem } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import GlobalSearchDefaultPlaces from '~/super_sidebar/components/global_search/components/global_search_default_places.vue';
-import SearchResultHoverLayover from '~/super_sidebar/components/global_search/components/global_search_hover_overlay.vue';
+import SearchResultFocusLayover from '~/super_sidebar/components/global_search/components/global_search_focus_overlay.vue';
+import {
+  EVENT_CLICK_YOUR_WORK_IN_COMMAND_PALETTE,
+  EVENT_CLICK_EXPLORE_IN_COMMAND_PALETTE,
+  EVENT_CLICK_PROFILE_IN_COMMAND_PALETTE,
+  EVENT_CLICK_PREFERENCES_IN_COMMAND_PALETTE,
+} from '~/super_sidebar/components/global_search/tracking_constants';
+import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 import { contextSwitcherLinks } from '../../../mock_data';
 
 describe('GlobalSearchDefaultPlaces', () => {
@@ -21,7 +28,7 @@ describe('GlobalSearchDefaultPlaces', () => {
 
   const findGroup = () => wrapper.findComponent(GlDisclosureDropdownGroup);
   const findItems = () => wrapper.findAllComponents(GlDisclosureDropdownItem);
-  const findLayover = () => wrapper.findComponent(SearchResultHoverLayover);
+  const findLayover = () => wrapper.findComponent(SearchResultFocusLayover);
 
   describe('given no contextSwitcherLinks', () => {
     beforeEach(() => {
@@ -29,7 +36,7 @@ describe('GlobalSearchDefaultPlaces', () => {
     });
 
     it('renders nothing', () => {
-      expect(wrapper.html()).toBe('');
+      expect(wrapper.find('*').exists()).toBe(false);
     });
 
     it('emits a nothing-to-render event', () => {
@@ -70,7 +77,7 @@ describe('GlobalSearchDefaultPlaces', () => {
           text: 'Explore',
           href: '/explore',
           extraAttrs: {
-            class: 'show-hover-layover',
+            class: 'show-focus-layover',
             'data-track-action': 'click_command_palette_item',
             'data-track-extra': '{"title":"Explore"}',
             'data-track-label': 'item_without_id',
@@ -83,7 +90,7 @@ describe('GlobalSearchDefaultPlaces', () => {
           text: 'Admin area',
           href: '/admin',
           extraAttrs: {
-            class: 'show-hover-layover',
+            class: 'show-focus-layover',
             'data-track-action': 'click_command_palette_item',
             'data-track-extra': '{"title":"Admin area"}',
             'data-track-label': 'item_without_id',
@@ -96,7 +103,7 @@ describe('GlobalSearchDefaultPlaces', () => {
           text: 'Leave admin mode',
           href: '/admin/session/destroy',
           extraAttrs: {
-            class: 'show-hover-layover',
+            class: 'show-focus-layover',
             'data-track-action': 'click_command_palette_item',
             'data-track-extra': '{"title":"Leave admin mode"}',
             'data-track-label': 'item_without_id',
@@ -111,6 +118,22 @@ describe('GlobalSearchDefaultPlaces', () => {
 
     it('renders the layover component', () => {
       expect(findLayover().exists()).toBe(true);
+    });
+
+    describe('tracking', () => {
+      const { bindInternalEventDocument } = useMockInternalEventsTracking();
+
+      it.each`
+        action           | event
+        ${'Your work'}   | ${EVENT_CLICK_YOUR_WORK_IN_COMMAND_PALETTE}
+        ${'Explore'}     | ${EVENT_CLICK_EXPLORE_IN_COMMAND_PALETTE}
+        ${'Profile'}     | ${EVENT_CLICK_PROFILE_IN_COMMAND_PALETTE}
+        ${'Preferences'} | ${EVENT_CLICK_PREFERENCES_IN_COMMAND_PALETTE}
+      `("triggers tracking event '$event' after emiting action '$action'", ({ action, event }) => {
+        const { trackEventSpy } = bindInternalEventDocument(wrapper.element);
+        findGroup().vm.$emit('action', { text: action });
+        expect(trackEventSpy).toHaveBeenCalledWith(event, {}, undefined);
+      });
     });
   });
 });

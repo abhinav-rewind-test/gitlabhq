@@ -72,17 +72,18 @@ module API
           path: params[:path],
           file_name: params[:file_name]
         ) do
+          unauthorized! if no_package_found && !current_user && params[:target].is_a?(::Group)
           not_found!('Package') if no_package_found
 
           case format
           when 'md5'
-            package_file.file_md5
+            package_file.file_md5.to_s
           when 'sha1'
-            package_file.file_sha1
+            package_file.file_sha1.to_s
           else
             track_package_event('pull_package', :maven, project: project, namespace: project&.namespace) if jar_file?(format)
 
-            present_carrierwave_file_with_head_support!(package_file)
+            download_package_file!(package_file)
           end
         end
       end
@@ -96,12 +97,15 @@ module API
         { code: 403, message: 'Forbidden' },
         { code: 404, message: 'Not Found' }
       ]
-      tags %w[maven_packages]
+      tags %w[packages]
     end
     params do
       use :path_and_file_name
     end
     route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true, basic_auth_personal_access_token: true
+    route_setting :authorization, job_token_policies: :read_packages,
+      allow_public_access_for_enabled_project_features: :package_registry,
+      permissions: :download_maven_package_file, boundary_type: :instance
     get 'packages/maven/*path/:file_name', requirements: MAVEN_ENDPOINT_REQUIREMENTS do
       # return a similar failure to authorize_read_package!(project)
 
@@ -115,6 +119,7 @@ module API
       project = find_project_by_path(params[:path])
 
       authorize_read_package!(project)
+      authorize_job_token_policies!(project)
 
       package = fetch_package(file_name: file_name, project: project)
 
@@ -125,13 +130,13 @@ module API
 
       case format
       when 'md5'
-        package_file.file_md5
+        package_file.file_md5.to_s
       when 'sha1'
-        package_file.file_sha1
+        package_file.file_sha1.to_s
       else
         track_package_event('pull_package', :maven, project: project, namespace: project.namespace) if jar_file?(format)
 
-        present_carrierwave_file_with_head_support!(package_file)
+        download_package_file!(package_file)
       end
     end
 
@@ -146,7 +151,7 @@ module API
         { code: 403, message: 'Forbidden' },
         { code: 404, message: 'Not Found' }
       ]
-      tags %w[maven_packages]
+      tags %w[packages]
     end
     params do
       requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the group'
@@ -156,20 +161,24 @@ module API
         use :path_and_file_name
       end
       route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true, basic_auth_personal_access_token: true
+      route_setting :authorization, job_token_policies: :read_packages,
+        allow_public_access_for_enabled_project_features: :package_registry,
+        permissions: :download_maven_package_file, boundary_type: :group
       get ':id/-/packages/maven/*path/:file_name', requirements: MAVEN_ENDPOINT_REQUIREMENTS do
         # return a similar failure to group = find_group(params[:id])
-        group = find_authorized_group!
+        group = find_authorized_group!(action: :read_package_within_public_registries)
 
         if Feature.disabled?(:maven_central_request_forwarding, group&.root_ancestor)
           not_found!('Group') unless path_exists?(params[:path])
         end
 
-        not_found!('Group') unless can?(current_user, :read_group, group)
-
         file_name, format = extract_format(params[:file_name])
         package = fetch_package(file_name: file_name, group: group)
 
-        authorize_read_package!(package.project) if package
+        if package
+          authorize_read_package!(package.project)
+          authorize_job_token_policies!(package.project)
+        end
 
         find_and_present_package_file(package, file_name, format, params.merge(target: group))
       end
@@ -190,12 +199,15 @@ module API
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[maven_packages]
+        tags %w[packages]
       end
       params do
         use :path_and_file_name
       end
       route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true, basic_auth_personal_access_token: true
+      route_setting :authorization, job_token_policies: :read_packages,
+        allow_public_access_for_enabled_project_features: :package_registry,
+        permissions: :download_maven_package_file, boundary_type: :project
       get ':id/packages/maven/*path/:file_name', requirements: MAVEN_ENDPOINT_REQUIREMENTS do
         project = authorized_user_project(action: :read_package)
 
@@ -205,6 +217,7 @@ module API
         end
 
         authorize_read_package!(project)
+        authorize_job_token_policies!(project)
 
         file_name, format = extract_format(params[:file_name])
 
@@ -222,15 +235,19 @@ module API
           { code: 403, message: 'Forbidden' },
           { code: 404, message: 'Not Found' }
         ]
-        tags %w[maven_packages]
+        tags %w[packages]
       end
       params do
         requires :path, type: String, desc: 'Package path', documentation: { example: 'foo/bar/mypkg/1.0-SNAPSHOT' }
         requires :file_name, type: String, desc: 'Package file name', regexp: Gitlab::Regex.maven_file_name_regex, documentation: { example: 'mypkg-1.0-SNAPSHOT.pom' }
       end
       route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true, basic_auth_personal_access_token: true
+      route_setting :authorization, job_token_policies: :admin_packages
       put ':id/packages/maven/*path/:file_name/authorize', requirements: MAVEN_ENDPOINT_REQUIREMENTS do
         authorize_upload!
+
+        package_name = params[:path].rpartition('/').first
+        protect_package!(package_name, :maven)
 
         status 200
         content_type Gitlab::Workhorse::INTERNAL_API_CONTENT_TYPE
@@ -247,7 +264,7 @@ module API
           { code: 404, message: 'Not Found' },
           { code: 422, message: 'Unprocessable Entity' }
         ]
-        tags %w[maven_packages]
+        tags %w[packages]
       end
       params do
         requires :path, type: String, desc: 'Package path', documentation: { example: 'foo/bar/mypkg/1.0-SNAPSHOT' }
@@ -255,6 +272,7 @@ module API
         requires :file, type: ::API::Validations::Types::WorkhorseFile, desc: 'The package file to be published (generated by Multipart middleware)', documentation: { type: 'file' }
       end
       route_setting :authentication, job_token_allowed: true, deploy_token_allowed: true, basic_auth_personal_access_token: true
+      route_setting :authorization, job_token_policies: :admin_packages, permissions: :upload_maven_package_file, boundary_type: :project
       put ':id/packages/maven/*path/:file_name', requirements: MAVEN_ENDPOINT_REQUIREMENTS do
         unprocessable_entity! if Gitlab::FIPS.enabled? && params[:file].md5
         authorize_upload!
@@ -268,11 +286,15 @@ module API
         # so we need to skip the second FIPS check here.
         file_name, format = extract_format(params[:file_name], skip_fips_check: true)
 
-        ::Gitlab::Database::LoadBalancing::Session.current.use_primary do
+        lb = ::ApplicationRecord.load_balancer
+        ::Gitlab::Database::LoadBalancing::SessionMap.current(lb).use_primary do
           result = ::Packages::Maven::FindOrCreatePackageService
                      .new(user_project, current_user, params.merge(build: current_authenticated_job)).execute
 
-          bad_request!(result.errors.first) if result.error?
+          if result.error?
+            forbidden!(result.errors.first) if result.cause.package_protected?
+            bad_request!(result.errors.first)
+          end
 
           package = result.payload[:package]
 

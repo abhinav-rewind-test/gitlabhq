@@ -2,13 +2,12 @@
 
 class Projects::BuildArtifactsController < Projects::ApplicationController
   include ExtractsPath
-  include RendersBlob
 
   before_action :authorize_read_build!
   before_action :extract_ref_name_and_path
   before_action :validate_artifacts!, except: [:download]
 
-  feature_category :build_artifacts
+  feature_category :job_artifacts
 
   def download
     redirect_to download_project_job_artifacts_path(project, job, params: request.query_parameters)
@@ -27,7 +26,12 @@ class Projects::BuildArtifactsController < Projects::ApplicationController
   end
 
   def latest_succeeded
-    redirect_to latest_succeeded_project_artifacts_path(project, job, ref_name_and_path: params[:ref_name_and_path], job: params[:job])
+    redirect_to latest_succeeded_project_artifacts_path(
+      project,
+      job,
+      ref_name_and_path: params[:ref_name_and_path],
+      job: params[:job]
+    )
   end
 
   private
@@ -39,7 +43,9 @@ class Projects::BuildArtifactsController < Projects::ApplicationController
   def extract_ref_name_and_path
     return unless params[:ref_name_and_path]
 
-    @ref_name, @path = extract_ref(params[:ref_name_and_path])
+    ref_extractor = ExtractsRef::RefExtractor.new(@project, {})
+
+    @ref_name, @path = ref_extractor.extract_ref(params[:ref_name_and_path])
   end
 
   def job

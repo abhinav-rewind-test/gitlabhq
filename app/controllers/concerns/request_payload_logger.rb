@@ -3,13 +3,14 @@
 module RequestPayloadLogger
   extend ActiveSupport::Concern
   include Gitlab::Logging::CloudflareHelper
+  include Gitlab::Logging::JsonMetadataHelper
 
   def append_info_to_payload(payload)
     super
 
     payload[:ua] = request.env["HTTP_USER_AGENT"]
     payload[:remote_ip] = request.remote_ip
-    payload[Labkit::Correlation::CorrelationId::LOG_KEY] = Labkit::Correlation::CorrelationId.current_id
+    payload[Labkit::Fields::CORRELATION_ID] = Labkit::Correlation::CorrelationId.current_id
 
     payload[:metadata] = Gitlab::ApplicationContext.current
 
@@ -25,8 +26,8 @@ module RequestPayloadLogger
     end
 
     payload[:queue_duration_s] = request.env[::Gitlab::Middleware::RailsQueueDuration::GITLAB_RAILS_QUEUE_DURATION_KEY]
-    payload[:response_bytes] = response.body_parts.sum(&:bytesize) if Feature.enabled?(:log_response_length)
 
     store_cloudflare_headers!(payload, request)
+    store_json_metadata_headers!(payload, request)
   end
 end

@@ -1,17 +1,16 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: GitLab scalability
 ---
-
-# GitLab scalability
 
 This section describes the current architecture of GitLab as it relates to
 scalability and reliability.
 
 ## Reference Architecture Overview
 
-![Reference Architecture Diagram](img/reference_architecture.png)
+![Reference Architecture Diagram](img/reference_architecture_v12_8.png)
 
 _[diagram source - GitLab employees only](https://docs.google.com/drawings/d/1RTGtuoUrE0bDT-9smoHbFruhEMI4Ys6uNrufe5IA-VI/edit)_
 
@@ -62,7 +61,7 @@ There are two ways to deal with this:
 
 Partitioning is a built-in PostgreSQL feature and requires minimal changes
 in the application. However, it
-[requires PostgreSQL 11](https://www.2ndquadrant.com/en/blog/partitioning-evolution-postgresql-11/).
+[requires PostgreSQL 11](https://www.enterprisedb.com/blog/postgresql-11-partitioning-evolution-postgres-96-11).
 
 For example, a natural way to partition is to
 [partition tables by dates](https://gitlab.com/groups/gitlab-org/-/epics/2023). For example,
@@ -98,11 +97,11 @@ systems.
 #### Database size
 
 A recent
-[database checkup shows a breakdown of the table sizes on GitLab.com](https://gitlab.com/gitlab-com/gl-infra/reliability/-/issues/8022#master-1022016101-8).
+[database checkup shows a breakdown of the table sizes on GitLab.com](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/8022#master-1022016101-8).
 Since `merge_request_diff_files` contains over 1 TB of data, we want to
 reduce/eliminate this table first. GitLab has support for
 [storing diffs in object storage](../administration/merge_request_diffs.md), which we
-[want to do on GitLab.com](https://gitlab.com/gitlab-com/gl-infra/reliability/-/issues/7356).
+[want to do on GitLab.com](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/7356).
 
 #### High availability
 
@@ -147,7 +146,7 @@ limitation:
 
 - Run multiple PgBouncer instances.
 - Use a multi-threaded connection pooler (for example,
-  [Odyssey](https://gitlab.com/gitlab-com/gl-infra/reliability/-/issues/7776).
+  [Odyssey](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/7776).
 
 On some Linux systems, it's possible to run
 [multiple PgBouncer instances on the same port](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/4796).
@@ -197,7 +196,7 @@ separate Redis clusters helps for two reasons:
 - Each has different persistence requirements.
 - Load isolation.
 
-For example, the cache instance can behave like an least-recently used
+For example, the cache instance can behave like a least-recently used
 (LRU) cache by setting the `maxmemory` configuration option. That option
 should not be set for the queues or persistent clusters because data
 would be evicted from memory at random times. This would cause jobs to
@@ -221,7 +220,7 @@ only when the primary fails.
 
 ### Redis Sentinels
 
-[Redis Sentinel](https://redis.io/docs/manual/sentinel/) provides high
+[Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/) provides high
 availability for Redis by watching the primary. If multiple Sentinels
 detect that the primary has gone away, the Sentinels performs an
 election to determine a new leader.
@@ -231,7 +230,7 @@ election to determine a new leader.
 No leader: A Redis cluster can get into a mode where there are no
 primaries. For example, this can happen if Redis nodes are misconfigured
 to follow the wrong node. Sometimes this requires forcing one node to
-become a primary by using the [`REPLICAOF NO ONE` command](https://redis.io/commands/replicaof/).
+become a primary by using the [`REPLICAOF NO ONE` command](https://redis.io/docs/latest/commands/replicaof/).
 
 ### Sidekiq
 
@@ -274,7 +273,7 @@ in a timely manner:
 - Redistribute/gerrymander Sidekiq processes by queue
   types. Long-running jobs (for example, relating to project import) can often
   squeeze out jobs that run fast (for example, delivering email).
-  [We used this technique to optimize our existing Sidekiq deployment](https://gitlab.com/gitlab-com/gl-infra/reliability/-/issues/7219#note_218019483).
+  [We used this technique to optimize our existing Sidekiq deployment](https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/issues/7219#note_218019483).
 - Optimize jobs. Eliminating unnecessary work, reducing network calls
   (including SQL and Gitaly), and optimizing processor time can yield significant
   benefits.
@@ -283,12 +282,12 @@ From the Sidekiq logs, it's possible to see which jobs run the most
 frequently and/or take the longest. For example, these Kibana
 visualizations show the jobs that consume the most total time:
 
-![Most time-consuming Sidekiq jobs](img/sidekiq_most_time_consuming_jobs.png)
+![Most time-consuming Sidekiq jobs](img/sidekiq_most_time_consuming_jobs_v12_8.png)
 
 _[visualization source - GitLab employees only](https://log.gitlab.net/goto/2c036582dfc3219eeaa49a76eab2564b)_
 
 This shows the jobs that had the longest durations:
 
-![Longest running Sidekiq jobs](img/sidekiq_longest_running_jobs.png)
+![Longest running Sidekiq jobs](img/sidekiq_longest_running_jobs_v12_8.png)
 
 _[visualization source - GitLab employees only](https://log.gitlab.net/goto/494f6c8afb61d98c4ff264520d184416)_

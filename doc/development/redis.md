@@ -1,17 +1,16 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Redis development guidelines
 ---
-
-# Redis development guidelines
 
 ## Redis instances
 
 GitLab uses [Redis](https://redis.io) for the following distinct purposes:
 
-- Caching (mostly via `Rails.cache`).
-- As a job processing queue with [Sidekiq](sidekiq/index.md).
+- [Caching](#caching) (mostly via `Rails.cache`).
+- As a job processing queue with [Sidekiq](sidekiq/_index.md).
 - To manage the shared application state.
 - To store CI trace chunks.
 - As a Pub/Sub queue backend for ActionCable.
@@ -30,7 +29,7 @@ can be used for inter-process communication in cases where [PostgreSQL](sql.md)
 is less appropriate. For example, transient state or data that is written much
 more often than it is read.
 
-If [Geo](geo.md) is enabled, each Geo node gets its own, independent Redis
+If [Geo](geo.md) is enabled, each Geo site gets its own, independent Redis
 database.
 
 We have [development documentation on adding a new Redis instance](redis/new_redis_instance.md).
@@ -77,21 +76,21 @@ with the [`RedisClusterValidator`](https://gitlab.com/gitlab-org/gitlab/-/blob/m
 which is enabled for the `cache` and `shared_state`
 [Redis instances](https://docs.gitlab.com/omnibus/settings/redis.html#running-with-multiple-redis-instances)..
 
-Developers are highly encouraged to use [hash-tags](https://redis.io/docs/reference/cluster-spec/#hash-tags)
+Developers are highly encouraged to use [hash-tags](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/#hash-tags)
 where appropriate to facilitate future adoption of Redis Cluster in more Redis types. For example, the Namespace model uses hash-tags
 for its [config cache keys](https://gitlab.com/gitlab-org/gitlab/-/blob/1a12337058f260d38405886d82da5e8bb5d8da0b/app/models/namespace.rb#L786).
 
 To perform multi-key commands, developers may use the [`.pipelined`](https://github.com/redis-rb/redis-cluster-client#interfaces) method which splits and sends commands to each node and aggregates replies.
-However, this does not work for [transactions](https://redis.io/docs/interact/transactions/) as Redis Cluster does not support cross-slot transactions.
+However, this does not work for [transactions](https://redis.io/docs/latest/develop/interact/transactions/) as Redis Cluster does not support cross-slot transactions.
 
 For `Rails.cache`, we handle the `MGET` command found in `read_multi_get` by [patching it](https://gitlab.com/gitlab-org/gitlab/-/blob/c2bad2aac25e2f2778897bd4759506a72b118b15/lib/gitlab/patch/redis_cache_store.rb#L10) to use the `.pipelined` method.
 The minimum size of the pipeline is set to 1000 commands and it can be adjusted by using the `GITLAB_REDIS_CLUSTER_PIPELINE_BATCH_LIMIT` environment variable.
 
 ## Redis in structured logging
 
-For GitLab Team Members: There are <i class="fa fa-youtube-play youtube" aria-hidden="true"></i>
+For GitLab Team Members: There are <i class="fa-youtube-play" aria-hidden="true"></i>
 [basic](https://www.youtube.com/watch?v=Uhdj19Dc6vU) and
-<i class="fa fa-youtube-play youtube" aria-hidden="true"></i> [advanced](https://youtu.be/jw1Wv2IJxzs)
+<i class="fa-youtube-play" aria-hidden="true"></i> [advanced](https://youtu.be/jw1Wv2IJxzs)
 videos that show how you can work with the Redis
 structured logging fields on GitLab.com.
 
@@ -123,21 +122,16 @@ requests that read the most data from the cache, we can just sort by
 
 ### The slow log
 
-NOTE:
-There is a [video showing how to see the slow log](https://youtu.be/BBI68QuYRH8) (GitLab internal)
-on GitLab.com
+> [!note]
+> There is a [video showing how to see the slow log](https://youtu.be/BBI68QuYRH8) (GitLab internal)
+> on GitLab.com
 
-<!-- vale gitlab.Substitutions = NO -->
-
-On GitLab.com, entries from the [Redis slow log](https://redis.io/commands/slowlog/) are available in the
+On GitLab.com, entries from the [Redis slow log](https://redis.io/docs/latest/commands/slowlog/) are available in the
 `pubsub-redis-inf-gprd*` index with the [`redis.slowlog` tag](https://log.gprd.gitlab.net/app/kibana#/discover?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-1d,to:now))&_a=(columns:!(json.type,json.command,json.exec_time_s),filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:AWSQX_Vf93rHTYrsexmk,key:json.tag,negate:!f,params:(query:redis.slowlog),type:phrase),query:(match:(json.tag:(query:redis.slowlog,type:phrase))))),index:AWSQX_Vf93rHTYrsexmk)).
 This shows commands that have taken a long time and may be a performance
 concern.
 
-<!-- vale gitlab.Substitutions = YES -->
-
-The
-[`fluent-plugin-redis-slowlog`](https://gitlab.com/gitlab-org/ruby/gems/fluent-plugin-redis-slowlog)
+The [`fluent-plugin-redis-slowlog`](https://gitlab.com/gitlab-org/ruby/gems/fluent-plugin-redis-slowlog)
 project is responsible for taking the `slowlog` entries from Redis and
 passing to Fluentd (and ultimately Elasticsearch).
 
@@ -154,7 +148,11 @@ is run manually on an as-needed basis.
 
 ## N+1 calls problem
 
-> - Introduced in [`spec/support/helpers/redis_commands/recorder.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/spec/support/helpers/redis_commands/recorder.rb) via [`f696f670`](https://gitlab.com/gitlab-org/gitlab/-/commit/f696f670005435472354a3dc0c01aa271aef9e32)
+{{< history >}}
+
+- Introduced in [`spec/support/helpers/redis_commands/recorder.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/spec/support/helpers/redis_commands/recorder.rb) via [`f696f670`](https://gitlab.com/gitlab-org/gitlab/-/commit/f696f670005435472354a3dc0c01aa271aef9e32)
+
+{{< /history >}}
 
 `RedisCommands::Recorder` is a tool for detecting Redis N+1 calls problem from tests.
 
@@ -225,7 +223,24 @@ and make sure that the fix for them works as expected.
 
 - [Database query recorder](database/query_recorder.md)
 
-## Utility classes
+## Caching
+
+The Redis instance used by `Rails.cache` can be
+[configured with a key eviction policy](https://docs.gitlab.com/omnibus/settings/redis/#setting-the-redis-cache-instance-as-an-lru),
+generally LRU, where the "least recently used" cache items are evicted (deleted) when a memory limit is reached.
+
+See GitLab.com's
+[key eviction configuration](https://gitlab.com/gitlab-com/gl-infra/chef-repo/-/blob/f7c1494f5546b12fe12352590590b8a883aa6388/roles/gprd-base-db-redis-cluster-cache.json#L54)
+for its Redis instance used by `Rails.cache`, `redis-cluster-cache`. This Redis instance should not reach its
+[max memory limit](https://gitlab.com/gitlab-com/gl-infra/chef-repo/-/blob/f7c1494f5546b12fe12352590590b8a883aa6388/roles/gprd-base-db-redis-cluster-cache.json#L54)
+because key eviction at maxmemory comes at the cost of latency while eviction is taking place, see [this issue](https://gitlab.com/gitlab-com/gl-infra/observability/team/-/issues/1601) for details. See [current memory usage for `redis-cluster-cache`](https://dashboards.gitlab.net/goto/1BcjmqhNR?orgId=1).
+
+As data in this cache can disappear earlier than its set expiration time,
+use `Rails.cache` for data that is truly cache-like and ephemeral.
+
+For data that should be reliably persisted in Redis rather than cached, you can use [`Gitlab::Redis::SharedState`](#gitlabrediscachesharedstatequeues).
+
+### Utility classes
 
 We have some extra classes to help with specific use cases. These are
 mostly for fine-grained control of Redis usage, so they wouldn't be used
@@ -244,7 +259,7 @@ following is true:
 1. We want to manipulate data on a non-cache Redis instance.
 1. `Rails.cache` does not support the operations we want to perform.
 
-### `Gitlab::Redis::{Cache,SharedState,Queues}`
+#### `Gitlab::Redis::{Cache,SharedState,Queues}`
 
 These classes wrap the Redis instances (using
 [`Gitlab::Redis::Wrapper`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/redis/wrapper.rb))
@@ -260,17 +275,31 @@ Gitlab::Redis::SharedState.with { |redis| redis.get(key) }
 Gitlab::Redis::Cache.with { |redis| redis.sismember(key, value) }
 ```
 
-### `Gitlab::Redis::Boolean`
+`Gitlab::Redis::Cache` [shares the same Redis instance](https://gitlab.com/gitlab-org/gitlab/-/blob/fbcb99a6edec13a4d26010ce927b705f13db1ef8/config/initializers/7_redis.rb#L18)
+as `Rails.cache`, and so has a key eviction policy if one [is configured](#caching). Use this class for data
+that is truly cache-like and could be regenerated if absent.
+
+Ensure you **always** set a TTL for keys when using this class
+as it does not set a default TTL, unlike `Rails.cache` whose default TTL
+[is 8 hours](https://gitlab.com/gitlab-org/gitlab/-/blob/a3e435da6e9f7c98dc05eccb1caa03c1aed5a2a8/lib/gitlab/redis/cache.rb#L26). Consider using an 8 hour TTL for general caching, this matches a workday and would mean that a user would generally only have one cache-miss per day for the same content.
+
+When you anticipate adding a large workload to the cache or are in doubt about its production impact, reach out to [`#g_durability`](https://gitlab.enterprise.slack.com/archives/C07U8G0LHEH).
+
+`Gitlab::Redis::SharedState` [will not be configured with a key eviction policy](https://docs.gitlab.com/omnibus/settings/redis/#setting-the-redis-cache-instance-as-an-lru).
+Use this class for data that cannot be regenerated and is expected to be persisted until its set expiration time.
+It also does not set a default TTL for keys, so a TTL should nearly always be set for keys when using this class.
+
+#### `Gitlab::Redis::Boolean`
 
 In Redis, every value is a string.
 [`Gitlab::Redis::Boolean`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/redis/boolean.rb)
 makes sure that booleans are encoded and decoded consistently.
 
-### `Gitlab::Redis::HLL`
+#### `Gitlab::Redis::HLL`
 
-The Redis [`PFCOUNT`](https://redis.io/commands/pfcount/),
-[`PFADD`](https://redis.io/commands/pfadd/), and
-[`PFMERGE`](https://redis.io/commands/pfmerge/) commands operate on
+The Redis [`PFCOUNT`](https://redis.io/docs/latest/commands/pfcount/),
+[`PFADD`](https://redis.io/docs/latest/commands/pfadd/), and
+[`PFMERGE`](https://redis.io/docs/latest/commands/pfmerge/) commands operate on
 HyperLogLogs, a data structure that allows estimating the number of unique
 elements with low memory usage. For more information,
 see [HyperLogLogs in Redis](https://thoughtbot.com/blog/hyperloglogs-in-redis).
@@ -278,13 +307,13 @@ see [HyperLogLogs in Redis](https://thoughtbot.com/blog/hyperloglogs-in-redis).
 [`Gitlab::Redis::HLL`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/redis/hll.rb)
 provides a convenient interface for adding and counting values in HyperLogLogs.
 
-### `Gitlab::SetCache`
+#### `Gitlab::SetCache`
 
 For cases where we need to efficiently check the whether an item is in a group
 of items, we can use a Redis set.
 [`Gitlab::SetCache`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/set_cache.rb)
 provides an `#include?` method that uses the
-[`SISMEMBER`](https://redis.io/commands/sismember/) command, as well as `#read`
+[`SISMEMBER`](https://redis.io/docs/latest/commands/sismember/) command, as well as `#read`
 to fetch all entries in the set.
 
 This is used by the

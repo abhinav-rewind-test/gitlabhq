@@ -7,10 +7,6 @@ require "spec_helper"
 #
 # rubocop: disable Gitlab/Json
 RSpec.describe Gitlab::Json do
-  before do
-    stub_feature_flags(json_wrapper_legacy_mode: true)
-  end
-
   describe ".parse" do
     it "is aliased" do
       [:parse!, :load, :decode].each do |method|
@@ -62,29 +58,57 @@ RSpec.describe Gitlab::Json do
       end
     end
 
-    context "feature flag is disabled" do
-      before do
-        stub_feature_flags(json_wrapper_legacy_mode: false)
+    describe 'log oversize JSON objects' do
+      let(:string) { '{"key1": "value1", "key2": ["item1", "item2"], "key3": {"nested": "value"}}' }
+
+      shared_examples 'parses JSON object without logging' do
+        it 'parses JSON object without logging' do
+          expect(Gitlab::AppJsonLogger).not_to receive(:info)
+
+          result = subject.parse(string)
+          expect(result['key1']).to eq("value1")
+        end
       end
 
-      it "parses an object" do
-        expect(subject.parse('{ "foo": "bar" }', legacy_mode: true)).to eq({ "foo" => "bar" })
+      shared_examples 'parses JSON object with logging' do |expected_fields_count|
+        it 'logs oversize JSON object and parses string' do
+          expect(Gitlab::AppJsonLogger).to receive(:info).with(
+            message: 'Large JSON object',
+            number_of_fields: expected_fields_count,
+            caller: anything
+          )
+
+          result = subject.parse(string)
+          expect(result['key1']).to eq("value1")
+        end
       end
 
-      it "parses an array" do
-        expect(subject.parse('[{ "foo": "bar" }]', legacy_mode: true)).to eq([{ "foo" => "bar" }])
+      context 'when JSON object is not oversize' do
+        before do
+          stub_env('GITLAB_JSON_SIZE_THRESHOLD', '100')
+        end
+
+        it_behaves_like 'parses JSON object without logging'
       end
 
-      it "parses a string" do
-        expect(subject.parse('"foo"', legacy_mode: true)).to eq("foo")
+      context 'when JSON object is oversize' do
+        before do
+          stub_env('GITLAB_JSON_SIZE_THRESHOLD', '5')
+        end
+
+        it_behaves_like 'parses JSON object with logging', 10
       end
 
-      it "parses a true bool" do
-        expect(subject.parse("true", legacy_mode: true)).to be(true)
+      context 'when JSON object environment variable is 0' do
+        before do
+          stub_env('GITLAB_JSON_SIZE_THRESHOLD', '0')
+        end
+
+        it_behaves_like 'parses JSON object without logging'
       end
 
-      it "parses a false bool" do
-        expect(subject.parse("false", legacy_mode: true)).to be(false)
+      context 'when threshold environment variable is not defined' do
+        it_behaves_like 'parses JSON object without logging'
       end
     end
   end
@@ -133,30 +157,173 @@ RSpec.describe Gitlab::Json do
         expect { subject.parse!("false", legacy_mode: true) }.to raise_error(JSON::ParserError)
       end
     end
+  end
 
-    context "feature flag is disabled" do
-      before do
-        stub_feature_flags(json_wrapper_legacy_mode: false)
+  describe '.safe_parse' do
+    it 'uses Gitlab::Json::StreamValidator to validate the limits' do
+      string = '{"name":"test","age":30}'
+
+      expect_next_instance_of(Gitlab::Json::StreamValidator, described_class::PARSE_LIMITS) do |validator|
+        expect(validator).to receive(:validate!).with(string)
       end
 
-      it "parses an object" do
-        expect(subject.parse!('{ "foo": "bar" }', legacy_mode: true)).to eq({ "foo" => "bar" })
+      subject.safe_parse(string)
+    end
+
+    it 'merges parse_limits with defaults' do
+      string = '{"name":"test","age":30}'
+      parse_limits = { max_depth: 5, max_json_size_bytes: 100 }
+
+      expected_limits = described_class::PARSE_LIMITS.merge(parse_limits)
+      expect_next_instance_of(Gitlab::Json::StreamValidator, expected_limits) do |validator|
+        expect(validator).to receive(:validate!).with(string)
       end
 
-      it "parses an array" do
-        expect(subject.parse!('[{ "foo": "bar" }]', legacy_mode: true)).to eq([{ "foo" => "bar" }])
+      subject.safe_parse(string, parse_limits: parse_limits)
+    end
+
+    context 'when the string is nil' do
+      it 'returns nil' do
+        expect(subject.safe_parse(nil)).to be_nil
+      end
+    end
+
+    context 'with malformed JSON strings' do
+      where(:string) do
+        [
+          '{',
+          '[',
+          '{"key"',
+          '[1,2,3',
+          '{"a":}',
+          'invalid json'
+        ]
       end
 
-      it "parses a string" do
-        expect(subject.parse!('"foo"', legacy_mode: true)).to eq("foo")
+      with_them do
+        it 'raises JSON::ParserError' do
+          expect { subject.safe_parse(string) }.to raise_error(JSON::ParserError)
+        end
+      end
+    end
+
+    context 'with valid JSON strings' do
+      where(:json, :expected) do
+        [
+          ['{}', {}],
+          ['[]', []],
+          ['{"name":"test","age":30}', { 'name' => 'test', 'age' => 30 }],
+          ['[1,2,3,4,5]', [1, 2, 3, 4, 5]],
+          ['["a","b","c"]', %w[a b c]],
+          ['[[1,2],[3,4]]', [[1, 2], [3, 4]]],
+          ['{"items":[{"id":1},{"id":2}]}', { 'items' => [{ 'id' => 1 }, { 'id' => 2 }] }],
+          ['{"value":null}', { 'value' => nil }],
+          ['{"a": {"b": {"c": "nested"}}}', { "a" => { "b" => { "c" => "nested" } } }]
+        ]
       end
 
-      it "parses a true bool" do
-        expect(subject.parse!("true", legacy_mode: true)).to be(true)
+      with_them do
+        it 'parses the JSON string' do
+          expect(subject.safe_parse(json)).to eq(expected)
+        end
+      end
+    end
+
+    context 'with literal strings' do
+      where(:string, :expected) do
+        [
+          ['true', true],
+          ['false', false],
+          ['null', nil],
+          ["123", 123],
+          ["-123", -123],
+          ["-1.23", -1.23],
+          ["-1.23e10", -12300000000.0],
+          ["-1.23E-1", -1.23e-1],
+          ['"simple"', 'simple'],
+          ['"hello world"', 'hello world'],
+          ['""', ''],
+          ['"say \\"hello\\""', 'say "hello"'],
+          ['"backslash: \\\\"', 'backslash: \\'],
+          ['"forward slash: \\/"', 'forward slash: /'],
+          ['"line1\\nline2"', "line1\nline2"],
+          ['"tab\\there"', "tab\there"],
+          ['"carriage\\rreturn"', "carriage\rreturn"],
+          ['"backspace\\bhere"', "backspace\bhere"],
+          ['"form\\ffeed"', "form\ffeed"],
+          ['"unicode: \\u0041"', 'unicode: A'],
+          ['"unicode: \\u00E9"', 'unicode: é'],
+          ['"unicode: \\u20AC"', 'unicode: €'],
+          ['"mixed: \\u0048\\u0065\\u006C\\u006C\\u006F"', 'mixed: Hello'],
+          ['"complex: \\"Hello\\nWorld\\" \\u2764"', "complex: \"Hello\nWorld\" ❤"],
+          ['"all escapes: \\"\\\\\\/ \\b\\f\\n\\r\\t \\u0041"', "all escapes: \"\\/\s\b\f\n\r\t A"]
+        ]
       end
 
-      it "parses a false bool" do
-        expect(subject.parse!("false", legacy_mode: true)).to be(false)
+      with_them do
+        it 'parses literal strings' do
+          expect(subject.safe_parse(string)).to eq(expected)
+        end
+      end
+    end
+
+    context 'when literal string exceeds max_json_size_bytes' do
+      it 'raises JSON::ParserError' do
+        string = "\"#{'a' * 10}\""
+
+        expect { subject.safe_parse(string, parse_limits: { max_json_size_bytes: 5 }) }
+          .to raise_error(JSON::ParserError, 'JSON body too large')
+      end
+    end
+
+    context 'when JSON exceeds limits' do
+      where(:parse_limits, :string, :expected_error_message, :expected_log_message, :expected_exception_class) do
+        [
+          [{ max_depth: 2 },
+            '{"a": {"b": {"c": "too deep"}}}',
+            'Parameters nested too deeply',
+            'JSON depth 3 exceeds limit of 2',
+            'Gitlab::Json::StreamValidator::DepthLimitError'],
+          [{ max_array_size: 2 },
+            '{"items": [1, 2, 3]}',
+            'Array parameter too large',
+            'Array size exceeds limit of 2 (tried to add element 3)',
+            'Gitlab::Json::StreamValidator::ArraySizeLimitError'],
+          [{ max_hash_size: 2 },
+            '{"a": 1, "b": 2, "c": 3}',
+            'Hash parameter too large',
+            'Hash size exceeds limit of 2 (tried to add key-value pair 3)',
+            'Gitlab::Json::StreamValidator::HashSizeLimitError'],
+          [{ max_total_elements: 3 },
+            '{"a": 1, "b": 2, "c": 3, "d": 4}',
+            'Too many total parameters',
+            'Total elements (3) exceeds limit of 3',
+            'Gitlab::Json::StreamValidator::ElementCountLimitError'],
+          [{ max_json_size_bytes: 10 },
+            '{"key": "very long value"}',
+            'JSON body too large',
+            'JSON body too large: 26 bytes',
+            'Gitlab::Json::StreamValidator::BodySizeExceededError']
+        ]
+      end
+
+      with_them do
+        it 'raises JSON::ParserError error with user-facing message' do
+          allow(Gitlab::AppLogger).to receive(:warn)
+
+          expect(Gitlab::AppLogger).to receive(:warn).with(
+            hash_including(
+              message: 'Exceeded allowed limits for parsing JSON input',
+              parse_limits: hash_including(parse_limits),
+              'exception.backtrace' => anything,
+              'exception.class' => expected_exception_class,
+              'exception.message' => expected_log_message
+            )
+          )
+
+          expect { subject.safe_parse(string, { parse_limits: parse_limits }) }
+            .to raise_error(JSON::ParserError, expected_error_message)
+        end
       end
     end
   end
@@ -255,11 +422,8 @@ RSpec.describe Gitlab::Json do
           "more": {
             "test": true
           },
-          "multi_line_empty_array": [
-
-          ],
-          "multi_line_empty_obj": {
-          }
+          "multi_line_empty_array": [],
+          "multi_line_empty_obj": {}
         }
       STR
 
@@ -286,27 +450,12 @@ RSpec.describe Gitlab::Json do
           "more" : {
             "test" : true
           },
-          "multi_line_empty_array" : [
-
-          ],
-          "multi_line_empty_obj" : {
-          }
+          "multi_line_empty_array" : [],
+          "multi_line_empty_obj" : {}
         }
       STR
 
       expect(json).to eq(expected_string)
-    end
-  end
-
-  context "the feature table is missing" do
-    before do
-      allow(Feature::FlipperFeature).to receive(:table_exists?).and_return(false)
-    end
-
-    it "skips legacy mode handling" do
-      expect(Feature).not_to receive(:enabled?).with(:json_wrapper_legacy_mode)
-
-      subject.send(:handle_legacy_mode!, {})
     end
   end
 

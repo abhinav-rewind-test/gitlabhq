@@ -17,9 +17,9 @@ module ShardingKeySpecHelpers
   end
 
   def has_null_check_constraint?(table_name, column_name)
-    # This is a heuristic query to look for all check constraints on the table and see if any of them contain a clause
-    # column IS NOT NULL. This is to match tables that will have multiple sharding keys where either of them can be not
-    # null. Such cases may look like:
+    # This is a heuristic query to look for all check constraints on the table and see if any of them contain a
+    # **validated** clause column IS NOT NULL. This is to match tables that will have multiple sharding keys where
+    # either of them can be not null. Such cases may look like:
     #    (project_id IS NOT NULL) OR (group_id IS NOT NULL)
     # It's possible that this will sometimes incorrectly find a check constraint that isn't exactly as strict as we want
     # but it should be pretty unlikely.
@@ -29,7 +29,12 @@ module ShardingKeySpecHelpers
     INNER JOIN pg_class ON pg_constraint.conrelid = pg_class.oid
     WHERE pg_class.relname = '#{table_name}'
     AND contype = 'c'
-    AND pg_get_constraintdef(pg_constraint.oid) ILIKE '%#{column_name} IS NOT NULL%'
+    AND convalidated = true
+    AND (
+      pg_get_constraintdef(pg_constraint.oid) ILIKE '%#{column_name} IS NOT NULL%'
+      OR
+      pg_get_constraintdef(pg_constraint.oid)  ~ '.*num_nonnulls.*#{column_name}.*(= 1|> 0).*'
+    )
     SQL
 
     result = ApplicationRecord.connection.execute(sql)
@@ -38,10 +43,31 @@ module ShardingKeySpecHelpers
   end
 
   def has_multi_column_null_check_constraint?(table_name, column_names)
-    # This regex searches for constraints that ensure at least one of a set of columns is NOT NULL.
+    # This regex searches for **validated** constraints that ensure at least one of a set of columns is NOT NULL.
     # It assumes the constraint was created using the #add_multi_column_not_null_constraint helper, which also
     # sorts the list of columns.
-    regex = "\\ACHECK \\(\\(num_nonnulls\\(#{column_names.sort.join(', ')}\\) (> [0-9]{1,}|>?= [1-9]{1,})\\)\\)\\Z"
+    #
+    # The constraint for some tables does not follow this convention hence the custom search below.
+    convalidated = true
+    regex = case ([table_name] + column_names.sort)
+            when %w[events group_id personal_namespace_id project_id]
+              '\\ACHECK \\(\\(\\(group_id IS NOT NULL\\) OR \\(project_id IS NOT NULL\\) ' \
+                'OR \\(personal_namespace_id IS NOT NULL\\)\\)\\)\\Z'
+            when %w[protected_branches namespace_id project_id]
+              '\\ACHECK \\(\\(\\(project_id IS NULL\\) <> \\(namespace_id IS NULL\\)\\)\\)\\Z'
+            when %w[protected_environments group_id project_id]
+              '\\ACHECK \\(\\(\\(project_id IS NULL\\) <> \\(group_id IS NULL\\)\\)\\)\\Z'
+            when %w[security_orchestration_policy_configurations namespace_id project_id]
+              '\\ACHECK \\(\\(\\(project_id IS NULL\\) <> \\(namespace_id IS NULL\\)\\)\\)\\Z'
+            # TODO: Remove when we validate constraint
+            # https://gitlab.com/gitlab-org/gitlab/-/issues/558353
+            when %w[labels group_id organization_id project_id]
+              convalidated = false
+              "\\ACHECK \\(\\(num_nonnulls\\(#{column_names.sort.join(', ')}\\) = 1\\)\\) NOT VALID\\Z"
+            end
+
+    # Match "> N", ">= N" (where N >= 1), or "= N" (where N >= 1)
+    regex ||= "\\ACHECK \\(\\(num_nonnulls\\(#{column_names.sort.join(', ')}\\) (> [0-9]{1,}|>?= [1-9]{1,})\\)\\)\\Z"
 
     sql = <<~SQL
     SELECT 1
@@ -49,6 +75,7 @@ module ShardingKeySpecHelpers
     INNER JOIN pg_class ON pg_constraint.conrelid = pg_class.oid
     WHERE pg_class.relname = '#{table_name}'
     AND contype = 'c'
+    AND convalidated = #{convalidated}
     AND pg_get_constraintdef(pg_constraint.oid) ~ '#{regex}'
     SQL
 
@@ -57,13 +84,27 @@ module ShardingKeySpecHelpers
     result.count > 0
   end
 
-  def has_foreign_key?(from_table_name, column_name, to_table_name: nil)
+  def referenced_foreign_keys(to_table_name)
+    ::Gitlab::Database::PostgresForeignKey.by_referenced_table_name(to_table_name)
+  end
+
+  def referenced_loose_foreign_keys(to_table_name)
+    ::Gitlab::Database::LooseForeignKeys.definitions.select do |d|
+      d.to_table == to_table_name
+    end
+  end
+
+  def has_foreign_key?(from_table_name, column_name, to_table_name: nil, foreign_key_name: nil)
     where_clause = {
       constrained_table_name: from_table_name,
       constrained_columns: [column_name]
     }
 
     where_clause[:referenced_table_name] = to_table_name if to_table_name
+    if foreign_key_name
+      where_clause[:name] = foreign_key_name
+      where_clause.delete(:constrained_columns)
+    end
 
     fk = ::Gitlab::Database::PostgresForeignKey.where(where_clause).first
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::BuildTraceChunks::Fog do
+RSpec.describe Ci::BuildTraceChunks::Fog, feature_category: :continuous_integration do
   let(:data_store) { described_class.new }
   let(:bucket) { 'artifacts' }
   let(:connection_params) { Gitlab.config.artifacts.object_store.connection.symbolize_keys }
@@ -207,7 +207,7 @@ RSpec.describe Ci::BuildTraceChunks::Fog do
       create(:ci_build_trace_chunk, :fog_with_data, chunk_index: 1, build: build)
     end
 
-    it 'deletes multiple data' do
+    it 'deletes multiple data', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/456375' do
       files = connection.directories.new(key: bucket).files
 
       expect(files.count).to eq(2)

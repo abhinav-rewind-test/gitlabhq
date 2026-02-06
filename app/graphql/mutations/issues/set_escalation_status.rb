@@ -6,8 +6,8 @@ module Mutations
       graphql_name 'IssueSetEscalationStatus'
 
       argument :status, Types::IncidentManagement::EscalationStatusEnum,
-               required: true,
-               description: 'Set the escalation status.'
+        required: true,
+        description: 'Set the escalation status.'
 
       def resolve(project_path:, iid:, status:)
         issue = authorized_find!(project_path: project_path, iid: iid)
@@ -39,7 +39,7 @@ module Mutations
       def check_feature_availability!(issue)
         return if issue.supports_escalation?
 
-        raise Gitlab::Graphql::Errors::ResourceNotAvailable, 'Feature unavailable for provided issue'
+        raise_resource_not_available_error! 'Feature unavailable for provided issue'
       end
     end
   end

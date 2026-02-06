@@ -1,20 +1,15 @@
-import { nextTick } from 'vue';
 import { GlLink, GlForm } from '@gitlab/ui';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import BubbleMenu from '~/content_editor/components/bubble_menus/bubble_menu.vue';
 import MediaBubbleMenu from '~/content_editor/components/bubble_menus/media_bubble_menu.vue';
 import { stubComponent } from 'helpers/stub_component';
 import eventHubFactory from '~/helpers/event_hub_factory';
+import waitForPromises from 'helpers/wait_for_promises';
 import Audio from '~/content_editor/extensions/audio';
 import DrawioDiagram from '~/content_editor/extensions/drawio_diagram';
 import Image from '~/content_editor/extensions/image';
 import Video from '~/content_editor/extensions/video';
-import {
-  createTestEditor,
-  emitEditorEvent,
-  mockChainedCommands,
-  createTransactionWithMeta,
-} from '../../test_utils';
+import { createTestEditor, emitEditorEvent, createTransactionWithMeta } from '../../test_utils';
 import {
   PROJECT_WIKI_ATTACHMENT_IMAGE_HTML,
   PROJECT_WIKI_ATTACHMENT_AUDIO_HTML,
@@ -22,21 +17,13 @@ import {
   PROJECT_WIKI_ATTACHMENT_DRAWIO_DIAGRAM_HTML,
 } from '../../test_constants';
 
-const TIPTAP_AUDIO_HTML = `<p dir="auto">
-  <span class="media-container audio-container"><audio src="https://gitlab.com/favicon.png" controls="true" data-setup="{}" data-title="gitlab favicon"></audio><a href="https://gitlab.com/favicon.png" class="with-attachment-icon">gitlab favicon</a></span>
-</p>`;
+const TIPTAP_AUDIO_HTML = `<p dir="auto"><span class="media-container audio-container"><audio src="https://gitlab.com/favicon.png" controls="true" data-setup="{}" data-title="gitlab favicon"></audio><a href="https://gitlab.com/favicon.png" class="with-attachment-icon">gitlab favicon</a></span></p>`;
 
-const TIPTAP_DIAGRAM_HTML = `<p dir="auto">
-  <img src="https://gitlab.com/favicon.png" alt="gitlab favicon">
-</p>`;
+const TIPTAP_DIAGRAM_HTML = `<p dir="auto"><img src="https://gitlab.com/favicon.png" alt="gitlab favicon"></p>`;
 
-const TIPTAP_IMAGE_HTML = `<p dir="auto">
-  <img src="https://gitlab.com/favicon.png" alt="gitlab favicon">
-</p>`;
+const TIPTAP_IMAGE_HTML = `<p dir="auto"><img src="https://gitlab.com/favicon.png" alt="gitlab favicon"></p>`;
 
-const TIPTAP_VIDEO_HTML = `<p dir="auto">
-  <span class="media-container video-container"><video src="https://gitlab.com/favicon.png" controls="true" data-setup="{}" data-title="gitlab favicon"></video><a href="https://gitlab.com/favicon.png" class="with-attachment-icon">gitlab favicon</a></span>
-</p>`;
+const TIPTAP_VIDEO_HTML = `<p dir="auto"><span class="media-container video-container"><video src="https://gitlab.com/favicon.png" controls="true" data-setup="{}" data-title="gitlab favicon"></video><a href="https://gitlab.com/favicon.png" class="with-attachment-icon">gitlab favicon</a></span></p>`;
 
 const createFakeEvent = () => ({ preventDefault: jest.fn(), stopPropagation: jest.fn() });
 
@@ -82,21 +69,13 @@ describe.each`
         tiptapEditor,
         params: { transaction: createTransactionWithMeta() },
       });
-      await nextTick();
+      await waitForPromises();
     };
 
     const buildWrapperAndDisplayMenu = () => {
       buildWrapper();
 
       return showMenu();
-    };
-
-    const selectFile = async (file) => {
-      const input = wrapper.findComponent({ ref: 'fileSelector' });
-
-      // override the property definition because `input.files` isn't directly modifyable
-      Object.defineProperty(input.element, 'files', { value: [file], writable: true });
-      await input.trigger('change');
     };
 
     const expectLinkButtonsToExist = (exist = true) => {
@@ -110,7 +89,7 @@ describe.each`
       tiptapEditor
         .chain()
         .insertContent(mediaHTML)
-        .setNodeSelection(4) // select the media
+        .setNodeSelection(1) // select the media
         .run();
 
       contentEditor.resolveUrl.mockResolvedValue(`/group1/project1/-/wikis/${filePath}`);
@@ -119,7 +98,7 @@ describe.each`
     it('renders bubble menu component', async () => {
       await buildWrapperAndDisplayMenu();
 
-      expect(findBubbleMenu().classes()).toEqual(['gl-shadow', 'gl-rounded-base', 'gl-bg-white']);
+      expect(findBubbleMenu().classes()).toEqual(['gl-rounded-lg', 'gl-bg-overlap', 'gl-shadow']);
     });
 
     it('shows a clickable link to the image', async () => {
@@ -185,44 +164,6 @@ describe.each`
       });
     });
 
-    describe(`replace ${mediaType} button`, () => {
-      beforeEach(buildWrapperAndDisplayMenu);
-
-      if (mediaType !== 'drawioDiagram') {
-        it('uploads and replaces the selected image when file input changes', async () => {
-          const commands = mockChainedCommands(tiptapEditor, [
-            'focus',
-            'deleteSelection',
-            'uploadAttachment',
-            'run',
-          ]);
-          const file = new File(['foo'], 'foo.png', { type: 'image/png' });
-
-          await wrapper.findByTestId('replace-media').vm.$emit('click');
-          await selectFile(file);
-
-          expect(commands.focus).toHaveBeenCalled();
-          expect(commands.deleteSelection).toHaveBeenCalled();
-          expect(commands.uploadAttachment).toHaveBeenCalledWith({ file });
-          expect(commands.run).toHaveBeenCalled();
-        });
-      } else {
-        // draw.io diagrams are replaced using the edit diagram button
-        it('invokes editDiagram command', async () => {
-          const commands = mockChainedCommands(tiptapEditor, [
-            'focus',
-            'createOrEditDiagram',
-            'run',
-          ]);
-          await wrapper.findByTestId('edit-diagram').vm.$emit('click');
-
-          expect(commands.focus).toHaveBeenCalled();
-          expect(commands.createOrEditDiagram).toHaveBeenCalled();
-          expect(commands.run).toHaveBeenCalled();
-        });
-      }
-    });
-
     describe('edit button', () => {
       let mediaSrcInput;
       let mediaAltInput;
@@ -243,6 +184,11 @@ describe.each`
       it(`shows a form to edit the ${mediaType} src/alt`, () => {
         expect(wrapper.findComponent(GlForm).exists()).toBe(true);
 
+        // Assert focus is managed correctly
+        expect(mediaSrcInput.props('autofocus')).toBe(true);
+        expect(mediaAltInput.props('autofocus')).toBe(false);
+
+        // Assert input values are correct
         expect(mediaSrcInput.element.value).toBe(filePath);
         expect(mediaAltInput.element.value).toBe('test-file');
       });

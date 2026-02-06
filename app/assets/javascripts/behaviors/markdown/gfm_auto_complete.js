@@ -11,11 +11,14 @@ export default function initGFMInput($els) {
       emojis: true,
       members: enableGFM,
       issues: enableGFM,
+      issuesAlternative: enableGFM,
+      workItems: enableGFM,
       iterations: enableGFM,
       milestones: enableGFM,
       mergeRequests: enableGFM,
       labels: enableGFM,
       vulnerabilities: enableGFM,
+      statuses: enableGFM,
     });
   });
 }

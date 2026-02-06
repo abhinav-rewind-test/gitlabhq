@@ -33,12 +33,58 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
     end
   end
 
+  describe '#find_detach_allowed_partitions' do
+    around do |example|
+      described_class.instance_variable_set(:@entries, nil)
+      test_yaml_path = Rails.root.join('db/docs/p_foo_table.yml')
+      test_yaml_path.open('w') do |f|
+        f.write <<~YAML
+          ---
+          table_name: p_foo_table
+          classes:
+          - PFooTable
+          feature_categories:
+          - database
+          description: Table that does nothing more than contain partition detach info
+          introduced_by_url: https://gitlab.com/
+          milestone: '16.5'
+          gitlab_schema: gitlab_main_org
+          sharding_key:
+            project_id: projects
+          table_size: small
+          partition_detach_info:
+            - partition_name: foo_table_100
+              bounds_clause: "FOR VALUES IN ('100')"
+              required_constraint: "(partition_id = 100)"
+              parent_schema: "public"
+
+        YAML
+      end
+      example.run
+      test_yaml_path.unlink
+    end
+
+    it 'returns a hash with the parent table and detachable partition info' do
+      expect(dictionary.find_detach_allowed_partitions).to include(
+        {
+          foo_table_100: {
+            bounds_clause: "FOR VALUES IN ('100')",
+            required_constraint: "(partition_id = 100)",
+            parent_table: "p_foo_table",
+            parent_schema: "public",
+            lock_tables: nil
+          }
+        }
+      )
+    end
+  end
+
   describe '#to_name_and_schema_mapping' do
     it 'returns a hash of name and schema mappings' do
       expect(dictionary.to_name_and_schema_mapping).to include(
         {
-          'application_settings' => :gitlab_main_clusterwide,
-          'members' => :gitlab_main_cell
+          'application_settings' => :gitlab_main_cell_setting,
+          'members' => :gitlab_main_org
         }
       )
     end
@@ -49,7 +95,7 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
       entry = dictionary.find_by_table_name('application_settings')
       expect(entry).to be_instance_of(Gitlab::Database::Dictionary::Entry)
       expect(entry.key_name).to eq('application_settings')
-      expect(entry.gitlab_schema).to eq('gitlab_main_clusterwide')
+      expect(entry.gitlab_schema).to eq('gitlab_main_cell_setting')
     end
 
     it 'returns nil if the entry is not found' do
@@ -60,9 +106,9 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
 
   describe '#find_all_by_schema' do
     it 'returns an array of entries with a given schema' do
-      entries = dictionary.find_all_by_schema('gitlab_main_cell')
+      entries = dictionary.find_all_by_schema('gitlab_main_org')
       expect(entries).to all(be_instance_of(Gitlab::Database::Dictionary::Entry))
-      expect(entries).to all(have_attributes(gitlab_schema: 'gitlab_main_cell'))
+      expect(entries).to all(have_attributes(gitlab_schema: 'gitlab_main_org'))
     end
 
     it 'returns an empty array if no entries match the schema' do
@@ -75,13 +121,13 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
     it 'returns an array of entries having desired sharding key migration job' do
       entries = dictionary.find_all_having_desired_sharding_key_migration_job
       expect(entries).to all(be_instance_of(Gitlab::Database::Dictionary::Entry))
-      expect(entries).to all(have_attributes(desired_sharding_key_migration_job_name: String))
+      expect(entries.map(&:desired_sharding_key_migration_job_name)).to all(be_present)
     end
   end
 
   describe '.any_entry' do
     it 'loads an entry from any scope' do
-      expect(described_class.any_entry('ci_pipelines')).to be_present # Regular table
+      expect(described_class.any_entry('p_ci_pipelines')).to be_present # Regular table
       expect(described_class.any_entry('audit_events_archived')).to be_present # Deleted table
       expect(described_class.any_entry('postgres_constraints')).to be_present # View
       expect(described_class.any_entry('not_a_table_ever')).to be_nil
@@ -90,7 +136,7 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
 
   describe '.entry' do
     it 'loads an Entry from the given scope' do
-      expect(described_class.entry('ci_pipelines')).to be_present # Regular table
+      expect(described_class.entry('p_ci_pipelines')).to be_present # Regular table
       expect(described_class.entry('audit_events_archived')).not_to be_present # Deleted table
       expect(described_class.entry('postgres_constraints')).not_to be_present # Deleted table
       expect(described_class.entry('audit_events_archived', 'deleted_tables')).to be_present # Deleted table
@@ -106,7 +152,10 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
 
       describe '#name_and_schema' do
         it 'returns the name of the table and its gitlab schema' do
-          expect(database_dictionary.name_and_schema).to match_array(['application_settings', :gitlab_main_clusterwide])
+          expect(database_dictionary.name_and_schema).to match_array([
+            'application_settings',
+            :gitlab_main_cell_setting
+          ])
         end
       end
 
@@ -128,16 +177,47 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
         end
       end
 
+      describe '#milestone_greater_than_or_equal_to?' do
+        using RSpec::Parameterized::TableSyntax
+
+        where(:milestone, :other_milestone, :result) do
+          '16.9'          | '16.10'        | false
+          '16.10'         | '16.11'        | false
+          '16.12'         | '16.10'        | true
+          '16.11'         | '16.10'        | true
+          '16.10'         | '16.10'        | true
+          '16.9'          | '16.6'         | true
+          '<6.0'          | '16.6'         | false
+          'TODO'          | '16.6'         | false
+        end
+
+        with_them do
+          before do
+            allow(database_dictionary).to receive(:milestone).and_return(milestone)
+          end
+
+          it 'returns the right result' do
+            expect(database_dictionary.milestone_greater_than_or_equal_to?(other_milestone)).to eq(result)
+          end
+        end
+      end
+
       describe '#gitlab_schema' do
         it 'returns the gitlab_schema of the table' do
           expect(database_dictionary.table_name).to eq('application_settings')
         end
       end
 
+      describe '#table_size' do
+        it 'returns the table_size of the table' do
+          expect(database_dictionary.table_size).to eq('small')
+        end
+      end
+
       describe '#schema?' do
         it 'checks if the given schema matches the schema of the table' do
           expect(database_dictionary.schema?('gitlab_main')).to eq(false)
-          expect(database_dictionary.schema?('gitlab_main_clusterwide')).to eq(true)
+          expect(database_dictionary.schema?('gitlab_main_cell_setting')).to eq(true)
         end
       end
 
@@ -148,11 +228,11 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
       end
 
       describe '#desired_sharding_key_migration_job_name' do
-        let(:file_path) { 'db/docs/merge_request_diffs.yml' }
+        let(:file_path) { 'db/docs/bulk_import_trackers.yml' }
 
         it 'returns the name of the migration that backfills the desired sharding key' do
           expect(database_dictionary.desired_sharding_key_migration_job_name)
-            .to eq('BackfillMergeRequestDiffsProjectId')
+            .to eq('BackfillBulkImportTrackersShardingKey')
         end
       end
 
@@ -170,7 +250,7 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
         describe '#allow_cross_to_schemas' do
           it 'returns the list of allowed schemas' do
             expect(database_dictionary.allow_cross_to_schemas(:joins))
-              .to contain_exactly(:gitlab_main_clusterwide)
+              .to be_empty
           end
         end
       end
@@ -181,7 +261,7 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
         describe '#allow_cross_to_schemas' do
           it 'returns the list of allowed schemas' do
             expect(database_dictionary.allow_cross_to_schemas(:transactions))
-              .to contain_exactly(:gitlab_main_clusterwide)
+              .to be_empty
           end
         end
       end
@@ -192,7 +272,7 @@ RSpec.describe Gitlab::Database::Dictionary, feature_category: :database do
         describe '#allow_cross_to_schemas' do
           it 'returns the list of allowed schemas' do
             expect(database_dictionary.allow_cross_to_schemas(:foreign_keys))
-              .to contain_exactly(:gitlab_main_clusterwide)
+              .to be_empty
           end
         end
       end

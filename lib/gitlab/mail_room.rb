@@ -6,6 +6,7 @@ require 'pathname'
 require 'active_support'
 require "active_support/core_ext/module/delegation"
 require_relative 'encrypted_configuration' unless defined?(Gitlab::EncryptedConfiguration)
+require_relative 'redis/config_generator' unless defined?(Gitlab::Redis::ConfigGenerator)
 require_relative 'redis/queues' unless defined?(Gitlab::Redis::Queues)
 
 # This service is run independently of the main Rails process,
@@ -112,6 +113,7 @@ module Gitlab
         gitlab_redis_queues = Gitlab::Redis::Queues.new(rails_env)
 
         config = { redis_url: gitlab_redis_queues.url, redis_db: gitlab_redis_queues.db }
+        config[:redis_ssl_params] = gitlab_redis_queues.ssl_params if gitlab_redis_queues.ssl_params
 
         if gitlab_redis_queues.sentinels?
           config[:sentinels] = gitlab_redis_queues.sentinels
@@ -164,7 +166,7 @@ module Gitlab
         encrypted_settings_path =
           File.expand_path(config_yaml.dig(:encrypted_settings, :path) ||
                            File.join(shared_path, DEFAULT_PATHS[:encrypted_settings_path]),
-                           RAILS_ROOT_DIR)
+            RAILS_ROOT_DIR)
         File.join(encrypted_settings_path, default_encrypted_secret_filename(config_key))
       end
 

@@ -11,9 +11,10 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Stage, feature_category: :pipeline_co
   let(:attributes) do
     { name: 'test',
       index: 0,
-      builds: [{ name: 'rspec', scheduling_type: :stage },
-               { name: 'spinach', scheduling_type: :stage },
-               { name: 'deploy', only: { refs: ['feature'] } }], scheduling_type: :stage }
+      builds: [{ name: 'rspec', scheduling_type: :stage, options: { script: ['test'] } },
+        { name: 'spinach', scheduling_type: :stage, options: { script: ['test'] } },
+        { name: 'deploy', only: { refs: ['feature'] }, options: { script: ['test'] } }],
+      scheduling_type: :stage }
   end
 
   subject do
@@ -66,18 +67,6 @@ RSpec.describe Gitlab::Ci::Pipeline::Seed::Stage, feature_category: :pipeline_co
       expect(subject.seeds.map(&:attributes)).to all(include(ref: 'master'))
       expect(subject.seeds.map(&:attributes)).to all(include(tag: false))
       expect(subject.seeds.map(&:attributes)).to all(include(project: pipeline.project))
-    end
-
-    context 'when a legacy trigger exists' do
-      before do
-        create(:ci_trigger_request, pipeline: pipeline)
-      end
-
-      it 'returns build seeds including legacy trigger' do
-        expect(pipeline.legacy_trigger).not_to be_nil
-        expect(subject.seeds.map(&:attributes))
-          .to all(include(trigger_request: pipeline.legacy_trigger))
-      end
     end
 
     context 'when a ref is protected' do

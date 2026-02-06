@@ -3,8 +3,11 @@
 require 'spec_helper'
 
 RSpec.describe Groups::DestroyService, feature_category: :groups_and_projects do
+  include Namespaces::StatefulHelpers
+  using RSpec::Parameterized::TableSyntax
+
   let!(:user)         { create(:user) }
-  let!(:group)        { create(:group) }
+  let!(:group)        { create(:group_with_deletion_schedule, deleted_at: Time.current) }
   let!(:nested_group) { create(:group, parent: group) }
   let!(:project)      { create(:project, :repository, :legacy_storage, namespace: group) }
   let!(:notification_setting) { create(:notification_setting, source: group) }
@@ -78,21 +81,63 @@ RSpec.describe Groups::DestroyService, feature_category: :groups_and_projects do
       it 'publishes a GroupDeletedEvent' do
         expect { destroy_group(group, user, async) }
           .to publish_event(Groups::GroupDeletedEvent)
-          .with(
-            group_id: group.id,
-            root_namespace_id: group.root_ancestor.id
-          )
+            .with(
+              group_id: group.id,
+              root_namespace_id: group.root_ancestor.id
+            )
+          .and publish_event(Groups::GroupDeletedEvent)
+            .with(
+              group_id: nested_group.id,
+              root_namespace_id: nested_group.root_ancestor.id,
+              parent_namespace_id: group.id
+            )
       end
+    end
+
+    it 'schedules removal of any associated direct transfer export uploads', :sidekiq_inline do
+      allow(::Import::BulkImports::RemoveExportUploadsService).to receive(:new).and_call_original
+      expect_next_instance_of(::Import::BulkImports::RemoveExportUploadsService) do |service|
+        expect(service).to receive(:execute)
+      end
+
+      destroy_group(group, user, async)
     end
   end
 
   describe 'asynchronous delete' do
     it_behaves_like 'group destruction', true
 
+    context 'when group state is deletion_scheduled' do
+      before do
+        set_state(group, :deletion_scheduled)
+      end
+
+      it 'transitions the group state to deletion_in_progress' do
+        expect(group).to receive(:start_deletion!).with(transition_user: user).and_call_original
+
+        expect { destroy_group(group, user, true) }.to change { group.state }
+                                                         .from(Namespaces::Stateful::STATES[:deletion_scheduled])
+                                                         .to(Namespaces::Stateful::STATES[:deletion_in_progress])
+      end
+
+      context 'when group is already in deletion_in_progress state' do
+        before do
+          set_state(group, :deletion_in_progress)
+        end
+
+        it 'does not call start_deletion!' do
+          expect(group).not_to receive(:start_deletion!)
+
+          destroy_group(group, user, true)
+        end
+      end
+    end
+
     context 'Sidekiq fake' do
       before do
         # Don't run Sidekiq to verify that group and projects are not actually destroyed
         Sidekiq::Testing.fake! { destroy_group(group, user, true) }
+        Sidekiq::Testing.fake! { destroy_group(nested_group, user, true) }
       end
 
       it 'verifies original paths and projects still exist' do
@@ -105,6 +150,101 @@ RSpec.describe Groups::DestroyService, feature_category: :groups_and_projects do
 
   describe 'synchronous delete' do
     it_behaves_like 'group destruction', false
+
+    it 'marks the group as deleted', :freeze_time do
+      expect(group).to receive(:update_attribute).with(:deleted_at, Time.current)
+
+      destroy_group(group, user, false)
+    end
+
+    context 'when destroying the group throws an error' do
+      before do
+        allow(group).to receive(:destroy).and_raise(StandardError)
+      end
+
+      it 'unmarks the group as delete' do
+        expect { destroy_group(group, user, false) }.to raise_error(StandardError)
+
+        expect(group.deleted_at).to be_nil
+      end
+
+      context 'when group state is deletion_scheduled' do
+        before do
+          set_state(group, :deletion_scheduled)
+        end
+
+        it 'reschedules the deletion by transitioning state back' do
+          expect(group).to receive(:reschedule_deletion!).with(transition_user: user).and_call_original
+
+          expect { destroy_group(group, user, false) }.to raise_error(StandardError)
+          expect(group.state).to eq(Namespaces::Stateful::STATES[:deletion_scheduled])
+        end
+
+        it 'logs the rescheduling error' do
+          expect(Gitlab::AppLogger).to receive(:error).with(
+            hash_including(
+              group_id: group.id,
+              current_user: user.id,
+              error_class: StandardError,
+              message: "Rescheduling group deletion"
+            )
+          )
+
+          expect { destroy_group(group, user, false) }.to raise_error(StandardError)
+        end
+      end
+    end
+
+    context 'when group state is deletion_scheduled' do
+      before do
+        set_state(group, :deletion_scheduled)
+      end
+
+      it 'transitions the group state to deletion_in_progress' do
+        expect(group).to receive(:start_deletion!).with(transition_user: user).and_call_original
+
+        expect { destroy_group(group, user, false) }.to change { group.state }
+          .from(Namespaces::Stateful::STATES[:deletion_scheduled])
+          .to(Namespaces::Stateful::STATES[:deletion_in_progress])
+      end
+
+      context 'when group is already in deletion_in_progress state' do
+        before do
+          set_state(group, :deletion_in_progress)
+        end
+
+        it 'does not call start_deletion!' do
+          expect(group).not_to receive(:start_deletion!)
+
+          destroy_group(group, user, false)
+        end
+      end
+
+      context 'when deletion fails and reschedule_deletion is called' do
+        where(:group_state, :nested_group_state) do
+          :deletion_scheduled | :ancestor_inherited
+          :deletion_scheduled | :archived
+          :deletion_scheduled | :deletion_scheduled
+        end
+
+        with_them do
+          before do
+            set_state(group, group_state)
+            set_state(nested_group, nested_group_state)
+            allow_next_found_instance_of(Group) do |instance|
+              allow(instance).to receive(:destroy).and_raise(StandardError)
+            end
+          end
+
+          it 'restores each group to its original state before deletion started', :aggregate_failures do
+            expect { destroy_group(group, user, false) }.to raise_error(StandardError)
+
+            expect(group.reload.state).to eq(Namespaces::Stateful::STATES[group_state])
+            expect(nested_group.reload.state).to eq(Namespaces::Stateful::STATES[nested_group_state])
+          end
+        end
+      end
+    end
   end
 
   context 'projects in pending_delete' do
@@ -123,7 +263,7 @@ RSpec.describe Groups::DestroyService, feature_category: :groups_and_projects do
       end
 
       expect { destroy_group(group, user, false) }
-        .to raise_error(Groups::DestroyService::DestroyError, "Project #{project.id} can't be deleted")
+        .to raise_error(described_class::DestroyError, "Project #{project.id} can't be deleted")
     end
   end
 
@@ -134,7 +274,30 @@ RSpec.describe Groups::DestroyService, feature_category: :groups_and_projects do
 
     it 'returns a more descriptive error message' do
       expect { destroy_group(group, user, false) }
-      .to raise_error(Groups::DestroyService::DestroyError, "You can't delete this group because you're blocked.")
+        .to raise_error(described_class::DestroyError, "You can't delete this group because you're blocked.")
+    end
+  end
+
+  context 'when user does not have authorization to delete the group' do
+    let(:unauthorized_user) { create(:user) }
+
+    it 'returns an unauthorized error response and does not mark deletion in progress' do
+      expect(group).not_to be_member(unauthorized_user)
+
+      result = destroy_group(group, unauthorized_user, false)
+
+      expect(result).to eq(described_class::UnauthorizedError)
+      expect(group.reload).not_to be_deletion_in_progress
+      expect(group).not_to be_deletion_scheduled
+    end
+
+    it 'returns an unauthorized error response for async_execute' do
+      expect(group).not_to be_member(unauthorized_user)
+
+      result = destroy_group(group, unauthorized_user, true)
+
+      expect(result).to eq(described_class::UnauthorizedError)
+      expect(group.reload).not_to be_deletion_in_progress
     end
   end
 

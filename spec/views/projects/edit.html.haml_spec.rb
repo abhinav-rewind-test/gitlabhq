@@ -104,14 +104,6 @@ RSpec.describe 'projects/edit' do
     end
   end
 
-  describe 'pages menu entry callout' do
-    it 'does show a callout' do
-      render
-
-      expect(rendered).to have_content(_('GitLab Pages has moved'))
-    end
-  end
-
   describe 'notifications on renaming the project path' do
     context 'when the GitlabAPI is supported' do
       before do
@@ -134,6 +126,34 @@ RSpec.describe 'projects/edit' do
         render
 
         expect(rendered).not_to have_content('new uploads to the container registry are blocked')
+      end
+    end
+  end
+
+  describe 'restoring a project', feature_category: :groups_and_projects do
+    let_it_be(:organization) { build_stubbed(:organization) }
+
+    context 'when project is pending deletion' do
+      let_it_be(:project) do
+        build_stubbed(:project, marked_for_deletion_at: Date.current, organization: organization)
+      end
+
+      it 'renders restore project card and action' do
+        render
+
+        expect(rendered).to render_template('shared/groups_projects/settings/_restore')
+        expect(rendered).to have_content('Restore project')
+        expect(rendered).to have_link('Restore')
+      end
+    end
+
+    context 'when project is not pending deletion' do
+      it 'does not render restore project card and action' do
+        render
+
+        expect(rendered).to render_template('shared/groups_projects/settings/_restore')
+        expect(rendered).not_to have_content('Restore project')
+        expect(rendered).not_to have_link('Restore')
       end
     end
   end

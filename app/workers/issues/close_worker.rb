@@ -34,15 +34,15 @@ module Issues
         return
       end
 
-      author = User.find_by_id(params["closed_by"])
+      user = User.find_by_id(params["user_id"])
 
-      unless author
-        logger.info(structured_payload(message: "User not found.", user_id: params["closed_by"]))
+      unless user
+        logger.info(structured_payload(message: "User not found.", user_id: params["user_id"]))
         return
       end
 
       commit = Commit.build_from_sidekiq_hash(project, params["commit_hash"])
-      service = Issues::CloseService.new(container: project, current_user: author)
+      service = Issues::CloseService.new(container: project, current_user: user)
 
       service.execute(issue, commit: commit)
     end

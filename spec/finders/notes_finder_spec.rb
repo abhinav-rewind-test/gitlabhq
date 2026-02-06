@@ -2,12 +2,13 @@
 
 require 'spec_helper'
 
-RSpec.describe NotesFinder do
-  let(:user) { create :user }
+RSpec.describe NotesFinder, :with_current_organization, feature_category: :team_planning do
+  let(:user) { create(:user) }
   let(:project) { create(:project) }
 
   before do
     project.add_maintainer(user)
+    Current.organization = current_organization
   end
 
   describe '#execute' do
@@ -134,42 +135,20 @@ RSpec.describe NotesFinder do
       let_it_be(:banned_user) { create(:banned_user).user }
       let!(:banned_note) { create(:note_on_issue, project: project, author: banned_user) }
 
-      context 'when :hidden_notes feature is not enabled' do
-        before do
-          stub_feature_flags(hidden_notes: false)
-        end
+      context 'when user is an admin' do
+        let(:user) { create(:admin) }
 
-        context 'when user is not an admin' do
-          it { is_expected.to include(banned_note) }
-        end
-
-        context 'when @current_user is nil' do
-          let(:user) { nil }
-
-          it { is_expected.to be_empty }
-        end
+        it { is_expected.to include(banned_note) }
       end
 
-      context 'when :hidden_notes feature is enabled' do
-        before do
-          stub_feature_flags(hidden_notes: true)
-        end
+      context 'when user is not an admin' do
+        it { is_expected.not_to include(banned_note) }
+      end
 
-        context 'when user is an admin' do
-          let(:user) { create(:admin) }
+      context 'when @current_user is nil' do
+        let(:user) { nil }
 
-          it { is_expected.to include(banned_note) }
-        end
-
-        context 'when user is not an admin' do
-          it { is_expected.not_to include(banned_note) }
-        end
-
-        context 'when @current_user is nil' do
-          let(:user) { nil }
-
-          it { is_expected.to be_empty }
-        end
+        it { is_expected.to be_empty }
       end
     end
 
@@ -209,6 +188,15 @@ RSpec.describe NotesFinder do
       it 'finds notes on snippets' do
         note = create(:note_on_project_snippet, project: project)
         params = { project: project, target_type: 'snippet', target_id: note.noteable.id }
+
+        notes = described_class.new(user, params).execute
+
+        expect(notes.count).to eq(1)
+      end
+
+      it 'finds notes on wiki pages' do
+        note = create(:note_on_wiki_page, project: project)
+        params = { project: project, target_type: 'wiki_page/meta', target_id: note.noteable.id }
 
         notes = described_class.new(user, params).execute
 
@@ -286,6 +274,33 @@ RSpec.describe NotesFinder do
           end
         end
       end
+
+      context 'organization_id parameter for snippet noteables' do
+        %w[snippet project_snippet personal_snippet].each do |noteable_type|
+          context "when target_type is #{noteable_type}" do
+            let(:snippet) do
+              case noteable_type
+              when 'snippet', 'project_snippet'
+                create(:project_snippet, project: project)
+              when 'personal_snippet'
+                create(:personal_snippet, author: user)
+              end
+            end
+
+            let(:note) { create(:note, noteable: snippet, project: noteable_type == 'personal_snippet' ? nil : project) }
+            let(:params) { { organization_id: current_organization.id, project: project, target_type: noteable_type, target_id: note.noteable.id } }
+
+            it 'passes organization_id to SnippetsFinder' do
+              expect(SnippetsFinder).to receive(:new).with(
+                user,
+                hash_including(organization_id: current_organization.id)
+              ).and_call_original
+
+              described_class.new(user, params).execute
+            end
+          end
+        end
+      end
     end
 
     context 'for explicit target' do
@@ -319,10 +334,10 @@ RSpec.describe NotesFinder do
         described_class.new(user, params).execute
       end
 
-      it 'defaults to sort by .fresh' do
+      it 'defaults to sort by oldest first' do
         params = { project: project }
 
-        expect(Note).to receive(:fresh).once
+        expect(Note).to receive(:order_created_at_id_asc).once
 
         described_class.new(user, params).execute
       end

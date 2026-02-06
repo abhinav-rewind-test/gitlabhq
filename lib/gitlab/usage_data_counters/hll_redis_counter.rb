@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # WARNING: This module has been deprecated and will be removed in the future
-# Use InternalEvents.track_event instead https://docs.gitlab.com/ee/development/internal_analytics/internal_event_instrumentation/index.html
+# Use InternalEvents.track_event instead https://docs.gitlab.com/ee/development/internal_analytics/internal_event_instrumentation/
 
 module Gitlab
   module UsageDataCounters
@@ -10,17 +10,6 @@ module Gitlab
       REDIS_SLOT = 'hll_counters'
       KEY_OVERRIDES_PATH = Rails.root.join('lib/gitlab/usage_data_counters/hll_redis_key_overrides.yml')
       LEGACY_EVENTS_PATH = Rails.root.join('lib/gitlab/usage_data_counters/hll_redis_legacy_events.yml')
-      # To be removed with https://gitlab.com/gitlab-org/gitlab/-/issues/439982
-      HALF_MIGRATED_EVENTS = %w[
-        i_analytics_dev_ops_adoption
-        i_analytics_dev_ops_score
-        i_quickactions_remove_email_single
-        i_quickactions_remove_email_multiple
-        g_project_management_issue_cross_referenced
-        k8s_api_proxy_requests_unique_users_via_ci_access
-        k8s_api_proxy_requests_unique_users_via_pat_access
-        k8s_api_proxy_requests_unique_users_via_user_access
-      ].freeze
 
       EventError = Class.new(StandardError)
       UnknownEvent = Class.new(EventError)
@@ -56,34 +45,34 @@ module Gitlab
         # start_date  - The start date of the time range.
         # end_date  - The end date of the time range.
         def unique_events(event_names:, start_date:, end_date:, property_name: nil)
-          count_unique_events(event_names: event_names, property_name: property_name, start_date: start_date, end_date: end_date)
+          used_in_aggregate_metric = event_names.is_a?(Array) && event_names.size > 1
+
+          count_unique_events(event_names: event_names, property_name: property_name, start_date: start_date, end_date: end_date, used_in_aggregate_metric: used_in_aggregate_metric)
         end
 
         def known_event?(event_name)
-          event_for(event_name).present?
+          known_events.include?(event_name.to_s)
         end
 
         def known_events
           @known_events ||= load_events
         end
 
-        def calculate_events_union(event_names:, property_name:, start_date:, end_date:)
-          # :used_in_aggregate_metric is needed because this method is
-          # used by AggregatedMetrics, which sends :property_name even for legacy events
-          count_unique_events(event_names: event_names, property_name: property_name, start_date: start_date, end_date: end_date, used_in_aggregate_metric: true)
+        def legacy_event?(event_name)
+          legacy_events.include?(event_name)
         end
 
         private
 
         def track(values, event_name, property_name:, time: Time.zone.now)
-          event = event_for(event_name)
-          Gitlab::ErrorTracking.track_and_raise_for_dev_exception(UnknownEvent.new("Unknown event #{event_name}")) unless event.present?
+          unless known_event?(event_name)
+            Gitlab::ErrorTracking.track_and_raise_for_dev_exception(UnknownEvent.new("Unknown event #{event_name}"))
+            return
+          end
 
-          return if event.blank?
           return unless Feature.enabled?(:redis_hll_tracking, type: :ops)
 
-          Gitlab::Redis::HLL.add(key: redis_key(event_with_property_name(event, property_name), time, false), value: values, expiry: KEY_EXPIRY_LENGTH)
-
+          Gitlab::Redis::HLL.add(key: redis_key(event_with_property_name(event_name, property_name), time, false), value: values, expiry: KEY_EXPIRY_LENGTH)
         rescue StandardError => e
           # Ignore any exceptions unless is dev or test env
           # The application flow should not be blocked by errors in tracking
@@ -101,36 +90,34 @@ module Gitlab
         end
 
         def events_with_property_names(event_names, property_name)
-          event_names = Array(event_names).map(&:to_s)
-          known_events.filter_map do |event|
-            next unless event_names.include?(event[:name])
+          Array(event_names).filter_map do |event_name|
+            next unless known_event?(event_name)
 
-            property_name ? event_with_property_name(event, property_name) : event
+            event_with_property_name(event_name, property_name)
           end
         end
 
-        def event_with_property_name(event, property_name)
-          event.merge(property_name: property_name)
+        def event_with_property_name(event_name, property_name)
+          if property_name
+            {
+              name: event_name.to_s,
+              property_name: property_name
+            }
+          else
+            { name: event_name.to_s }
+          end
         end
 
         def load_events
-          events = Gitlab::Usage::MetricDefinition.all.map do |d|
+          events_set = Set.new
+
+          Gitlab::Usage::MetricDefinition.all.each do |d| # rubocop:disable Rails/FindEach -- not an ActiveRecord::Relation
             next unless d.available?
 
-            d.events.keys
-          end.flatten.compact.uniq
-
-          events.map do |e|
-            { name: e }.with_indifferent_access
+            events_set.merge(d.events.keys)
           end
-        end
 
-        def known_events_names
-          @known_events_names ||= known_events.map { |event| event[:name] }
-        end
-
-        def event_for(event_name)
-          known_events.find { |event| event[:name] == event_name.to_s }
+          events_set
         end
 
         def redis_key(event, time, used_in_aggregate_metric)
@@ -156,17 +143,17 @@ module Gitlab
         end
 
         def validate!(event_name, property_name, used_in_aggregate_metric)
-          raise UnknownEvent, "Unknown event #{event_name}" unless known_events_names.include?(event_name.to_s)
+          raise UnknownEvent, "Unknown event #{event_name}" unless known_events.include?(event_name.to_s)
 
           return if used_in_aggregate_metric
 
           if property_name && legacy_events.include?(event_name)
-            link = Rails.application.routes.url_helpers.help_page_url("ee/development/internal_analytics/internal_event_instrumentation/migration.html#backend-1")
+            link = Rails.application.routes.url_helpers.help_page_url('development/internal_analytics/internal_event_instrumentation/migration.md', anchor: 'backend-1')
             message = "Event #{event_name} has been invoked with property_name.\n" \
                       "When an event gets migrated to Internal Events, its name needs to be removed " \
                       "from hll_redis_legacy_events.yml and added to hll_redis_key_overrides.yml: #{link}"
             Gitlab::ErrorTracking.track_and_raise_for_dev_exception(UnfinishedEventMigrationError.new(message), event_name: event_name)
-          elsif !property_name && legacy_events.exclude?(event_name) && HALF_MIGRATED_EVENTS.exclude?(event_name)
+          elsif !property_name && legacy_events.exclude?(event_name)
             message = "Event #{event_name} has been invoked with no property_name.\n" \
                       "When a new non-internal event gets created, its name needs to be added " \
                       "to the hll_redis_legacy_events.yml file."
@@ -184,7 +171,7 @@ module Gitlab
         end
 
         def legacy_events
-          YAML.safe_load(File.read(LEGACY_EVENTS_PATH))
+          YAML.safe_load(File.read(LEGACY_EVENTS_PATH)).to_set
         end
 
         strong_memoize_attr :key_overrides

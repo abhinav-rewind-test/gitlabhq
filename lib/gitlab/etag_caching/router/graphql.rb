@@ -5,6 +5,7 @@ module Gitlab
     module Router
       class Graphql
         extend EtagCaching::Router::Helpers
+
         GRAPHQL_ETAG_RESOURCE_HEADER = 'X-GITLAB-GRAPHQL-RESOURCE-ETAG'
 
         ROUTES = [
@@ -27,6 +28,11 @@ module Gitlab
             %r{\A/projects/.+/-/environments.json\z},
             'environment_details',
             'continuous_delivery'
+          ],
+          [
+            %r{\Aproject_pipelines/\d+\z},
+            'project_pipelines',
+            'continuous_integration'
           ]
         ].map { |attrs| build_graphql_route(*attrs) }.freeze
 

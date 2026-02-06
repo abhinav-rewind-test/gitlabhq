@@ -2,15 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe Mutations::IncidentManagement::TimelineEventTag::Create do
+RSpec.describe Mutations::IncidentManagement::TimelineEventTag::Create, feature_category: :api do
+  include GraphqlHelpers
   let_it_be(:current_user) { create(:user) }
-  let_it_be_with_reload(:project) { create(:project) }
+  let_it_be_with_reload(:project) { create(:project, maintainers: current_user) }
 
   let(:args) { { name: 'Test tag 1' } }
-
-  before do
-    project.add_maintainer(current_user)
-  end
+  let(:query) { GraphQL::Query.new(empty_schema, document: nil, context: {}, variables: {}) }
+  let(:context) { GraphQL::Query::Context.new(query: query, values: { current_user: current_user }) }
 
   specify { expect(described_class).to require_graphql_authorizations(:admin_incident_management_timeline_event_tag) }
 
@@ -46,7 +45,7 @@ RSpec.describe Mutations::IncidentManagement::TimelineEventTag::Create do
 
   private
 
-  def mutation_for(project, user)
-    described_class.new(object: project, context: { current_user: user }, field: nil)
+  def mutation_for(project, _user)
+    described_class.new(object: project, context: context, field: nil)
   end
 end

@@ -1,13 +1,11 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Gitaly
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Monitoring Gitaly
 ---
 
-# Monitoring Gitaly and Gitaly Cluster
-
-You can use the available logs and [Prometheus metrics](../monitoring/prometheus/index.md) to
-monitor Gitaly and Gitaly Cluster (Praefect).
+Use the available logs and [Prometheus metrics](../monitoring/prometheus/_index.md) to monitor Gitaly.
 
 Metric definitions are available:
 
@@ -15,40 +13,28 @@ Metric definitions are available:
 - Using [Grafana Explore](https://grafana.com/docs/grafana/latest/explore/) on a
   Grafana instance configured against Prometheus.
 
-## Monitor Gitaly rate limiting
-
-Gitaly can be configured to limit requests based on:
-
-- Concurrency of requests.
-- A rate limit.
-
-Monitor Gitaly request limiting with the `gitaly_requests_dropped_total` Prometheus metric. This metric provides a total count
-of requests dropped due to request limiting. The `reason` label indicates why a request was dropped:
-
-- `rate`, due to rate limiting.
-- `max_size`, because the concurrency queue size was reached.
-- `max_time`, because the request exceeded the maximum queue wait time as configured in Gitaly.
+Gitaly can be configured to limit requests based on concurrency of requests (adaptive or non-adaptive).
 
 ## Monitor Gitaly concurrency limiting
 
 You can observe specific behavior of [concurrency-queued requests](concurrency_limiting.md#limit-rpc-concurrency) using Gitaly logs and Prometheus.
 
-In the [Gitaly logs](../logs/index.md#gitaly-logs), you can identify logs related to the pack-objects concurrency limiting with entries such as:
+In the [Gitaly logs](../logs/_index.md#gitaly-logs), you can identify logs related to the pack-objects concurrency limiting with entries such as:
 
-| Log Field | Description |
-| --- | --- |
-| `limit.concurrency_queue_length` | Indicates the current length of the queue specific to the RPC type of the ongoing call. It provides insight into the number of requests waiting to be processed due to concurrency limits.                                       |
-| `limit.concurrency_queue_ms`     | Represents the duration, in milliseconds, that a request has spent waiting in the queue due to the limit on concurrent RPCs. This field helps understand the impact of concurrency limits on request processing times.           |
+| Log Field                        | Description |
+|----------------------------------|-------------|
+| `limit.concurrency_queue_length` | Indicates the current length of the queue specific to the RPC type of the ongoing call. It provides insight into the number of requests waiting to be processed due to concurrency limits. |
+| `limit.concurrency_queue_ms`     | Represents the duration, in milliseconds, that a request has spent waiting in the queue due to the limit on concurrent RPCs. This field helps understand the impact of concurrency limits on request processing times. |
 | `limit.concurrency_dropped`      | If the request is dropped due to limits being reached, this field specifies the reason: either `max_time` (request waited in the queue longer than the maximum allowed time) or `max_size` (the queue reached its maximum size). |
-| `limit.limiting_key`             | Identifies the key used for limiting.  |
-| `limit.limiting_type`            | Specifies the type of process being limited. In this context, it's `per-rpc`, indicating that the concurrency limiting is applied on a per-RPC basis.                                                                            |
+| `limit.limiting_key`             | Identifies the key used for limiting. |
+| `limit.limiting_type`            | Specifies the type of process being limited. In this context, it's `per-rpc`, indicating that the concurrency limiting is applied on a per-RPC basis. |
 
 For example:
 
 ```json
 {
-  "limit .concurrency_queue_length": 1,
-  "limit .concurrency_queue_ms": 0,
+  "limit.concurrency_queue_length": 1,
+  "limit.concurrency_queue_ms": 0,
   "limit.limiting_key": "@hashed/79/02/7902699be42c8a8e46fbbb450172651786b22c56a189f7625a6da49081b2451.git",
   "limit.limiting_type": "per-rpc"
 }
@@ -59,26 +45,29 @@ In Prometheus, look for the following metrics:
 - `gitaly_concurrency_limiting_in_progress` indicates how many concurrent requests are being processed.
 - `gitaly_concurrency_limiting_queued` indicates how many requests for an RPC for a given repository are waiting due to the concurrency limit being reached.
 - `gitaly_concurrency_limiting_acquiring_seconds` indicates how long a request has to wait due to concurrency limits before being processed.
+- `gitaly_requests_dropped_total` provides a total count of requests dropped due to request limiting. The `reason` label indicates why a request was dropped:
+  - `max_size`, because the concurrency queue size was reached.
+  - `max_time`, because the request exceeded the maximum queue wait time as configured in Gitaly.
 
 ## Monitor Gitaly pack-objects concurrency limiting
 
 You can observe specific behavior of [pack-objects limiting](concurrency_limiting.md#limit-pack-objects-concurrency) using Gitaly logs and Prometheus.
 
-In the [Gitaly logs](../logs/index.md#gitaly-logs), you can identify logs related to the pack-objects concurrency limiting with entries such as:
+In the [Gitaly logs](../logs/_index.md#gitaly-logs), you can identify logs related to the pack-objects concurrency limiting with entries such as:
 
-| Log Field | Description |
-|:---|:---|
+| Log Field                        | Description |
+|:---------------------------------|:------------|
 | `limit.concurrency_queue_length` | Current length of the queue for the pack-objects processes. Indicates the number of requests that are waiting to be processed because the limit on concurrent processes has been reached. |
-| `limit.concurrency_queue_ms` | Time a request has spent waiting in the queue, in milliseconds. Indicates how long a request has had to wait because of the limits on concurrency. |
-| `limit.limiting_key` | Remote IP of the sender. |
-| `limit.limiting_type` | Type of process being limited. In this case, `pack-objects`. |
+| `limit.concurrency_queue_ms`     | Time a request has spent waiting in the queue, in milliseconds. Indicates how long a request has had to wait because of the limits on concurrency. |
+| `limit.limiting_key`             | Remote IP of the sender. |
+| `limit.limiting_type`            | Type of process being limited. In this case, `pack-objects`. |
 
 Example configuration:
 
 ```json
 {
-  "limit .concurrency_queue_length": 1,
-  "limit .concurrency_queue_ms": 0,
+  "limit.concurrency_queue_length": 1,
+  "limit.concurrency_queue_ms": 0,
   "limit.limiting_key": "1.2.3.4",
   "limit.limiting_type": "pack-objects"
 }
@@ -92,21 +81,31 @@ In Prometheus, look for the following metrics:
 
 ## Monitor Gitaly adaptive concurrency limiting
 
-> - [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/10734) in GitLab 16.6.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/10734) in GitLab 16.6.
+
+{{< /history >}}
 
 You can observe specific behavior of [adaptive concurrency limiting](concurrency_limiting.md#adaptive-concurrency-limiting) using Gitaly logs and Prometheus.
 
-In the [Gitaly logs](../logs/index.md#gitaly-logs), you can identify logs related to the adaptive concurrency limiting when the current limits are adjusted.
+Adaptive concurrency limiting is an extension of static concurrency limiting, so all metrics and logs applicable to [static concurrency limiting](#monitor-gitaly-concurrency-limiting) are also relevant when monitoring adaptive limits. In addition, adaptive limiting introduces several specific metrics that help monitor the dynamic adjustment of limits.
+
+### Adaptive limiting logs
+
+In the [Gitaly logs](../logs/_index.md#gitaly-logs), you can identify logs related to the adaptive concurrency limiting when the current limits are adjusted.
 You can filter the content of the logs (`msg`) for "Multiplicative decrease" and "Additive increase" messages.
 
-| Log Field | Description |
-|:---|:---|
-| `limit` | The name of the limit being adjusted. |
+These debug logs are only available at debug severity level and can be verbose, but they provide detailed insights into adaptive limit adjustments.
+
+| Log Field        | Description |
+|:-----------------|:------------|
+| `limit`          | The name of the limit being adjusted. |
 | `previous_limit` | The previous limit before it was increased or decreased. |
-| `new_limit` | The new limit after it was increased or decreased. |
-| `watcher` | The resource watcher that decided the node is under pressure. For example: `CgroupCpu` or `CgroupMemory`. |
-| `reason` | The reason behind limit adjustment. |
-| `stats.*` | Some statistics behind an adjustment decision. They are for debugging purposes. |
+| `new_limit`      | The new limit after it was increased or decreased. |
+| `watcher`        | The resource watcher that decided the node is under pressure. For example: `CgroupCpu` or `CgroupMemory`. |
+| `reason`         | The reason behind limit adjustment. |
+| `stats.*`        | Some statistics behind an adjustment decision. They are for debugging purposes. |
 
 Example log:
 
@@ -124,12 +123,24 @@ Example log:
 }
 ```
 
+### Adaptive limiting metrics
+
 In Prometheus, look for the following metrics:
 
-- `gitaly_concurrency_limiting_current_limit` The current limit value of an adaptive concurrency limit.
-- `gitaly_concurrency_limiting_watcher_errors_total` indicates the total number of watcher errors while fetching resource metrics.
-- `gitaly_concurrency_limiting_backoff_events_total` indicates the total number of backoff events, which are when the limits being
-  adjusted due to resource pressure.
+General concurrency limiting metrics, applicable to both static and adaptive limits:
+
+- `gitaly_concurrency_limiting_in_progress` - Number of requests being processed.
+- `gitaly_concurrency_limiting_queued` - Number of requests waiting in the queue due to concurrency limits.
+- `gitaly_concurrency_limiting_acquiring_seconds` - Time spent by requests waiting due to concurrency limits before processing begins.
+
+Adaptive concurrency limiting specific metrics:
+
+- `gitaly_concurrency_limiting_current_limit` - A gauge showing the current limit value of an adaptive concurrency limit for each RPC type. Only adaptive limits are included in this metric.
+- `gitaly_concurrency_limiting_backoff_events_total` - Counter indicating the total number of backoff events, representing when and why limits are reduced due to resource pressure.
+- `gitaly_concurrency_limiting_watcher_errors_total` - Counter tracking errors that occur when Gitaly fails to retrieve resource data, which may impact the ability for
+  Gitaly to evaluate the current resource situation.
+
+When investigating issues with adaptive limiting, correlate these metrics with the general concurrency limiting metrics and logs to get a complete picture of system behavior.
 
 ## Monitor Gitaly cgroups
 
@@ -178,7 +189,11 @@ gitaly_streamcache_index_entries{dir="/var/opt/gitlab/git-data/repositories/+git
 
 ## Monitor Gitaly server-side backups
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitaly/-/issues/5358) in GitLab 16.7.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitaly/-/issues/5358) in GitLab 16.7.
+
+{{< /history >}}
 
 Monitor [server-side repository backups](configure_gitaly.md#configure-server-side-backups) with the following metrics:
 
@@ -222,7 +237,7 @@ The following are some queries for monitoring Gitaly:
   The only non-zero number should have `enforced="true",status="ok"`. If you have other non-zero
   numbers, something is wrong in your configuration.
 
-  The `status="ok"` number reflects your current request rate. In the example above, Gitaly is
+  The `status="ok"` number reflects your current request rate. In the previous example, Gitaly is
   handling about 4000 requests per second.
 
 - Use the following Prometheus query to observe the [Git protocol versions](../git_protocol.md)
@@ -231,69 +246,3 @@ The following are some queries for monitoring Gitaly:
   ```prometheus
   sum(rate(gitaly_git_protocol_requests_total[1m])) by (grpc_method,git_protocol,grpc_service)
   ```
-
-## Monitor Gitaly Cluster
-
-To monitor Gitaly Cluster (Praefect), you can use these Prometheus metrics. Two separate metrics endpoints are
-available from which metrics can be scraped:
-
-- The default `/metrics` endpoint.
-- `/db_metrics`, which contains metrics that require database queries.
-
-### Default Prometheus `/metrics` endpoint
-
-The following metrics are available from the `/metrics` endpoint:
-
-- `gitaly_praefect_read_distribution`, a counter to track [distribution of reads](index.md#distributed-reads).
-  It has two labels:
-
-  - `virtual_storage`.
-  - `storage`.
-
-  They reflect configuration defined for this instance of Praefect.
-
-- `gitaly_praefect_replication_latency_bucket`, a histogram measuring the amount of time it takes
-  for replication to complete after the replication job starts. Available in GitLab 12.10 and later.
-- `gitaly_praefect_replication_delay_bucket`, a histogram measuring how much time passes between
-  when the replication job is created and when it starts. Available in GitLab 12.10 and later.
-- `gitaly_praefect_connections_total`, the total number of connections to Praefect. [Introduced](https://gitlab.com/gitlab-org/gitaly/-/merge_requests/4220) in GitLab 14.7.
-- `gitaly_praefect_method_types`, a count of accessor and mutator RPCs per node.
-
-To monitor [strong consistency](index.md#strong-consistency), you can use the following Prometheus metrics:
-
-- `gitaly_praefect_transactions_total`, the number of transactions created and voted on.
-- `gitaly_praefect_subtransactions_per_transaction_total`, the number of times nodes cast a vote for
-  a single transaction. This can happen multiple times if multiple references are getting updated in
-  a single transaction.
-- `gitaly_praefect_voters_per_transaction_total`: the number of Gitaly nodes taking part in a
-  transaction.
-- `gitaly_praefect_transactions_delay_seconds`, the server-side delay introduced by waiting for the
-  transaction to be committed.
-- `gitaly_hook_transaction_voting_delay_seconds`, the client-side delay introduced by waiting for
-  the transaction to be committed.
-
-To monitor [repository verification](praefect.md#repository-verification), use the following Prometheus metrics:
-
-- `gitaly_praefect_verification_jobs_dequeued_total`, the number of verification jobs picked up by the
-  worker.
-- `gitaly_praefect_verification_jobs_completed_total`, the number of verification jobs completed by the
-  worker. The `result` label indicates the end result of the jobs:
-  - `valid` indicates the expected replica existed on the storage.
-  - `invalid` indicates the replica expected to exist did not exist on the storage.
-  - `error` indicates the job failed and has to be retried.
-- `gitaly_praefect_stale_verification_leases_released_total`, the number of stale verification leases
-  released.
-
-You can also monitor the [Praefect logs](../logs/index.md#praefect-logs).
-
-### Database metrics `/db_metrics` endpoint
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitaly/-/issues/3286) in GitLab 14.5.
-
-The following metrics are available from the `/db_metrics` endpoint:
-
-- `gitaly_praefect_unavailable_repositories`, the number of repositories that have no healthy, up to date replicas.
-- `gitaly_praefect_replication_queue_depth`, the number of jobs in the replication queue.
-- `gitaly_praefect_verification_queue_depth`, the total number of replicas pending verification.
-- `gitaly_praefect_read_only_repositories`, the number of repositories in read-only mode in a virtual storage.
-  - This metric was [removed](https://gitlab.com/gitlab-org/gitaly/-/issues/4229) in GitLab 15.4.

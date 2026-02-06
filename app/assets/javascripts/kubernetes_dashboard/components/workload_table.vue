@@ -1,6 +1,7 @@
 <script>
-import { GlTable, GlBadge, GlPagination } from '@gitlab/ui';
+import { GlTable, GlBadge, GlPagination, GlButton, GlTooltipDirective } from '@gitlab/ui';
 import { __ } from '~/locale';
+import PodLogsButton from '~/environments/environment_details/components/kubernetes/pod_logs_button.vue';
 import {
   WORKLOAD_STATUS_BADGE_VARIANTS,
   PAGE_SIZE,
@@ -12,6 +13,11 @@ export default {
     GlTable,
     GlBadge,
     GlPagination,
+    PodLogsButton,
+    GlButton,
+  },
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   props: {
     items: {
@@ -28,15 +34,11 @@ export default {
       default: PAGE_SIZE,
       required: false,
     },
-    rowClickable: {
-      type: Boolean,
-      default: true,
-      required: false,
-    },
   },
   data() {
     return {
       currentPage: 1,
+      selectedItem: null,
     };
   },
   computed: {
@@ -44,21 +46,34 @@ export default {
       return this.fields.map((field) => {
         return {
           ...field,
-          sortable: true,
+          sortable: field.sortable !== false,
         };
       });
     },
-    tableRowClass() {
-      return this.rowClickable ? 'gl-hover-cursor-pointer' : '';
+    totalPages() {
+      return Math.ceil(this.items.length / this.pageSize);
+    },
+  },
+  watch: {
+    items() {
+      if (this.currentPage > this.totalPages && this.totalPages > 0) {
+        this.currentPage = this.totalPages;
+      }
     },
   },
   methods: {
     selectItem(item) {
-      const selectedItem = item[0];
+      this.selectedItem = item;
+      this.$emit('select-item', item);
+    },
+    getDeleteAction(item) {
+      const actions = item.actions || [];
 
-      if (selectedItem) {
-        this.$emit('select-item', selectedItem);
-      }
+      return actions.find((action) => action.name === 'delete-pod') || null;
+    },
+    // eslint-disable-next-line vue/no-unused-properties -- triggered from outside of the component
+    resetPagination() {
+      this.currentPage = 1;
     },
   },
   i18n: {
@@ -76,23 +91,50 @@ export default {
       :per-page="pageSize"
       :current-page="currentPage"
       :empty-text="$options.i18n.emptyText"
-      :tbody-tr-class="tableRowClass"
-      :hover="rowClickable"
-      :selectable="rowClickable"
-      :no-select-on-click="!rowClickable"
-      select-mode="single"
-      selected-variant="primary"
+      primary-key="name"
       show-empty
-      stacked="md"
-      @row-selected="selectItem"
+      stacked="lg"
     >
-      <template #cell(status)="{ item: { status } }">
-        <gl-badge
-          :variant="$options.WORKLOAD_STATUS_BADGE_VARIANTS[status]"
-          size="sm"
-          class="gl-ml-2"
-          >{{ status }}</gl-badge
+      <template #cell(name)="{ item }">
+        <gl-button
+          :title="item.name"
+          class="gl-max-w-full gl-truncate"
+          variant="link"
+          @click="selectItem(item)"
+          >{{ item.name }}</gl-button
         >
+      </template>
+
+      <template #cell(status)="{ item: { status, statusText, statusTooltip } }">
+        <gl-badge
+          v-gl-tooltip
+          :variant="$options.WORKLOAD_STATUS_BADGE_VARIANTS[status]"
+          :title="statusTooltip"
+          :tabindex="statusTooltip ? '0' : undefined"
+        >
+          {{ statusText || status }}
+        </gl-badge>
+      </template>
+
+      <template #cell(actions)="{ item }">
+        <div class="gl-flex gl-items-center gl-justify-end gl-gap-4 @lg/panel:gl-justify-between">
+          <pod-logs-button
+            v-if="item.containers"
+            :namespace="item.namespace"
+            :pod-name="item.name"
+            :containers="item.containers"
+          />
+          <gl-button
+            v-if="getDeleteAction(item)"
+            icon="remove"
+            size="small"
+            variant="danger"
+            category="tertiary"
+            data-testid="delete-action-button"
+            :aria-label="getDeleteAction(item).text"
+            @click="$emit(getDeleteAction(item).name, item)"
+          />
+        </div>
       </template>
     </gl-table>
 

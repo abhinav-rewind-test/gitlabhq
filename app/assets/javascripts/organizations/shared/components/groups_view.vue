@@ -1,23 +1,21 @@
 <script>
-import { GlLoadingIcon, GlEmptyState, GlKeysetPagination } from '@gitlab/ui';
+import { GlLoadingIcon, GlKeysetPagination } from '@gitlab/ui';
+import groupsEmptyStateSvgPath from '@gitlab/svgs/dist/illustrations/empty-state/empty-groups-md.svg?url';
 import { createAlert } from '~/alert';
 import { s__, __ } from '~/locale';
 import GroupsList from '~/vue_shared/components/groups_list/groups_list.vue';
-import { ACTION_DELETE } from '~/vue_shared/components/list_actions/constants';
 import { DEFAULT_PER_PAGE } from '~/api';
-import { deleteGroup } from '~/rest_api';
+import { formatGroups, timestampType } from '~/organizations/shared/utils';
 import groupsQuery from '../graphql/queries/groups.query.graphql';
 import { SORT_ITEM_NAME, SORT_DIRECTION_ASC } from '../constants';
-import { formatGroups } from '../utils';
 import NewGroupButton from './new_group_button.vue';
+import GroupsAndProjectsEmptyState from './groups_and_projects_empty_state.vue';
 
 export default {
+  groupsEmptyStateSvgPath,
   i18n: {
     errorMessage: s__(
       'Organization|An error occurred loading the groups. Please refresh the page to try again.',
-    ),
-    deleteErrorMessage: s__(
-      'Organization|An error occurred deleting the group. Please refresh the page to try again.',
     ),
     emptyState: {
       title: s__("Organization|You don't have any groups yet."),
@@ -25,13 +23,17 @@ export default {
         'Organization|A group is a collection of several projects. If you organize your projects under a group, it works like a folder.',
       ),
     },
-    prev: __('Prev'),
-    next: __('Next'),
+    group: __('Group'),
   },
-  components: { GlLoadingIcon, GlEmptyState, GlKeysetPagination, GroupsList, NewGroupButton },
+  components: {
+    GlLoadingIcon,
+    GlKeysetPagination,
+    GroupsList,
+    NewGroupButton,
+    GroupsAndProjectsEmptyState,
+  },
   inject: {
     organizationGid: {},
-    groupsEmptyStateSvgPath: {},
   },
   props: {
     shouldShowEmptyStateButtons: {
@@ -136,15 +138,8 @@ export default {
     isLoading() {
       return this.$apollo.queries.groups.loading;
     },
-    emptyStateProps() {
-      const baseProps = {
-        svgHeight: 144,
-        svgPath: this.groupsEmptyStateSvgPath,
-        title: this.$options.i18n.emptyState.title,
-        description: this.$options.i18n.emptyState.description,
-      };
-
-      return baseProps;
+    timestampType() {
+      return timestampType(this.sortName);
     },
   },
   methods: {
@@ -160,21 +155,8 @@ export default {
         startCursor,
       });
     },
-    setGroupIsDeleting(nodeIndex, value) {
-      this.groups.nodes[nodeIndex].actionLoadingStates[ACTION_DELETE] = value;
-    },
-    async deleteGroup(group) {
-      const nodeIndex = this.groups.nodes.findIndex((node) => node.id === group.id);
-
-      try {
-        this.setGroupIsDeleting(nodeIndex, true);
-        await deleteGroup(group.id);
-        this.$apollo.queries.groups.refetch();
-      } catch (error) {
-        createAlert({ message: this.$options.i18n.deleteErrorMessage, error, captureError: true });
-      } finally {
-        this.setGroupIsDeleting(nodeIndex, false);
-      }
+    onRefetch() {
+      this.$apollo.queries.groups.refetch();
     },
   },
 };
@@ -184,25 +166,26 @@ export default {
   <gl-loading-icon v-if="isLoading" class="gl-mt-5" size="md" />
   <div v-else-if="nodes.length">
     <groups-list
-      :groups="nodes"
+      :items="nodes"
       show-group-icon
       :list-item-class="listItemClass"
-      @delete="deleteGroup"
+      :timestamp-type="timestampType"
+      @refetch="onRefetch"
     />
 
-    <div v-if="pageInfo.hasNextPage || pageInfo.hasPreviousPage" class="gl-text-center gl-mt-5">
-      <gl-keyset-pagination
-        v-bind="pageInfo"
-        :prev-text="$options.i18n.prev"
-        :next-text="$options.i18n.next"
-        @prev="onPrev"
-        @next="onNext"
-      />
+    <div v-if="pageInfo.hasNextPage || pageInfo.hasPreviousPage" class="gl-mt-5 gl-text-center">
+      <gl-keyset-pagination v-bind="pageInfo" @prev="onPrev" @next="onNext" />
     </div>
   </div>
-  <gl-empty-state v-else v-bind="emptyStateProps">
+  <groups-and-projects-empty-state
+    v-else
+    :svg-path="$options.groupsEmptyStateSvgPath"
+    :title="$options.i18n.emptyState.title"
+    :description="$options.i18n.emptyState.description"
+    :search="search"
+  >
     <template v-if="shouldShowEmptyStateButtons" #actions>
       <new-group-button />
     </template>
-  </gl-empty-state>
+  </groups-and-projects-empty-state>
 </template>

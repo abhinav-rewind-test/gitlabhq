@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Performance
 ---
-
-# Performance
 
 Performance is an essential part and one of the main areas of concern for any modern application.
 
@@ -203,8 +202,8 @@ All the marks and measures should be instantiated with the constants from
 `app/assets/javascripts/performance/constants.js`. When you're ready to add a new mark's or
 measurement's label, you can follow the pattern.
 
-NOTE:
-This pattern is a recommendation and not a hard rule.
+> [!note]
+> This pattern is a recommendation and not a hard rule.
 
 ```javascript
 app-*-start // for a start 'mark'
@@ -227,7 +226,7 @@ When writing code for real-time features we have to keep a couple of things in m
 Thus, we must strike a balance between sending requests and the feeling of real-time.
 Use the following rules when creating real-time solutions.
 
-<!-- vale gitlab.Spelling = NO -->
+<!-- vale gitlab_base.Spelling = NO -->
 
 1. The server tells you how much to poll by sending `Poll-Interval` in the header.
    Use that as your polling interval. This enables system administrators to change the
@@ -241,7 +240,7 @@ Use the following rules when creating real-time solutions.
 1. The backend code is likely to be using ETags. You do not and should not check for status
    `304 Not Modified`. The browser transforms it for you.
 
-<!-- vale gitlab.Spelling = YES -->
+<!-- vale gitlab_base.Spelling = YES -->
 
 ### Lazy Loading Images
 
@@ -344,21 +343,29 @@ Previously, GitLab encouraged the use of
 manually generated webpack bundles. However under this new system you should
 not ever need to manually add an entry point to the `webpack.config.js` file.
 
-NOTE:
-When unsure what controller and action corresponds to a page,
-inspect `document.body.dataset.page` in your
-browser's developer console from any page in GitLab.
+> [!note]
+> When unsure what controller and action corresponds to a page,
+> inspect `document.body.dataset.page` in your
+> browser's developer console from any page in GitLab.
+
+TROUBLESHOOTING:
+If using Vite, keep in mind that support for it is new and you may encounter unexpected effects from time to
+time. If the entrypoint is correctly configured but the JavaScript is not loading,
+try clearing the Vite cache and restarting the service:
+`rm -rf tmp/cache/vite && gdk restart vite`
+
+Alternatively, you can opt to use Webpack instead. Follow these [instructions for disabling Vite and using Webpack](https://gitlab-org.gitlab.io/gitlab-development-kit/configuration/#vite-settings).
 
 #### Important Considerations
 
-- **Keep Entry Points Lite:**
+- **Keep Entry Points Lite**:
   Page-specific JavaScript entry points should be as lite as possible. These
   files are exempt from unit tests, and should be used primarily for
   instantiation and dependency injection of classes and methods that live in
   modules outside of the entry point script. Just import, read the DOM,
   instantiate, and nothing else.
 
-- **`DOMContentLoaded` should not be used:**
+- **`DOMContentLoaded` should not be used**:
   All GitLab JavaScript files are added with the `defer` attribute.
   According to the [Mozilla documentation](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#attr-defer),
   this implies that "the script is meant to be executed after the document has
@@ -366,7 +373,7 @@ browser's developer console from any page in GitLab.
   parsed, `DOMContentLoaded` is not needed to bootstrap applications because all
   the DOM nodes are already at our disposal.
 
-- **Supporting Module Placement:**
+- **Supporting Module Placement**:
   - If a class or a module is _specific to a particular route_, try to locate
     it close to the entry point in which it is used. For instance, if
     `my_widget.js` is only imported in `pages/widget/show/index.js`, you
@@ -379,7 +386,7 @@ browser's developer console from any page in GitLab.
     place the module at `pages/widget/shared/my_widget.js` and import it with
     a relative path if possible (for example, `../shared/my_widget`).
 
-- **Enterprise Edition Caveats:**
+- **Enterprise Edition Caveats**:
   For GitLab Enterprise Edition, page-specific entry points override their
   Community Edition counterparts with the same name, so if
   `ee/app/assets/javascripts/pages/foo/bar/index.js` exists, it takes
@@ -405,7 +412,7 @@ Use `webpackChunkName` when generating dynamic imports as
 it provides a deterministic filename for the chunk which can then be cached
 in the browser across GitLab versions.
 
-More information is available in [webpack's code splitting documentation](https://webpack.js.org/guides/code-splitting/#dynamic-imports) and [vue's dynamic component documentation](https://v2.vuejs.org/v2/guide/components-dynamic-async.html).
+More information is available in the [webpack code splitting documentation](https://webpack.js.org/guides/code-splitting/#dynamic-imports) and the [Vue dynamic component documentation](https://v2.vuejs.org/v2/guide/components-dynamic-async.html).
 
 ### Minimizing page size
 
@@ -421,7 +428,7 @@ General tips:
 - If some functionality can reasonably be achieved without adding extra libraries, avoid them.
 - Use page-specific JavaScript as described above to load libraries that are only needed on certain pages.
 - Use code-splitting dynamic imports wherever possible to lazy-load code that is not needed initially.
-- [High Performance Animations](https://www.html5rocks.com/en/tutorials/speed/high-performance-animations/)
+- [High Performance Animations](https://web.dev/articles/animations-guide)
 
 ---
 

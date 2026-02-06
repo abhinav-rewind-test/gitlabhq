@@ -1,10 +1,10 @@
 ---
 stage: Create
 group: Code Review
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+description: Developer documentation explaining how the different parts of the Vue-based frontend diffs are generated.
+title: Merge request diffs frontend overview
 ---
-
-# Merge request diffs frontend overview
 
 This document provides an overview on how the frontend diffs Vue application works, and
 the various different parts that exist. It should help contributors:
@@ -36,7 +36,10 @@ This chart contains several types of items:
 | `./` | A path relative to the closest parent directory pendant node. Non-relative paths nested under parent pendant nodes are not in that directory. |
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
   flowchart TB
+    accTitle: Component rendering
+    accDescr: Flowchart of how components are rendered in the GitLab front end
     classDef code font-family: monospace;
 
     A["diffs~~app.vue"]
@@ -121,7 +124,7 @@ This chart contains several types of items:
     A -->|"Virtual Scroller is
     disabled when
     Find in page search
-    (Cmd/Ctrl+f) is used."|codeForFiles
+    (Command/Control+f) is used."|codeForFiles
     descVirtualScroller --> codeForFiles
     codeForFiles --> B --> C --> D
     B --> E
@@ -226,10 +229,10 @@ Previously, we had to request two different formats for inline and side-by-side.
 then uses this standard format to render the diff line data. With this standard format, the user
 can then switch between inline and side-by-side without the need to re-fetch any data.
 
-NOTE:
-For this component, a lot of the data used and rendered gets memoized and cached, based on
-various conditions. It is possible that data sometimes gets cached between each different
-component render.
+> [!note]
+> For this component, a lot of the data used and rendered gets memoized and cached, based on
+> various conditions. It is possible that data sometimes gets cached between each different
+> component render.
 
 ### Vuex store
 
@@ -309,7 +312,10 @@ When the request finishes, the diffs app formats the data received into a format
 it easier for the diffs app to render the diffs lines.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
+    accTitle: Formatting diffs
+    accDescr: A flowchart of steps taken when rendering a diff, including retrieval and display preparations
     A[fetchDiffFilesBatch] -->
     B[commit SET_DIFF_DATA_BATCH] -->
     C[prepareDiffData] -->
@@ -327,10 +333,10 @@ formatting happens in a computed property inside the `diff_content.vue` componen
 
 ### Render queue
 
-NOTE:
-This _might_ not be required any more. Some investigation work is required to decide
-the future of the render queue. The virtual scroll bar we created has probably removed
-any performance benefit we got from this approach.
+> [!note]
+> This might not be required any more. Some investigation work is required to decide
+> the future of the render queue. The virtual scroll bar we created has probably removed
+> any performance benefit we got from this approach.
 
 To render diffs quickly, we have a render queue that allows the diffs to render only if the
 browser is idle. This saves the browser getting frozen when rendering a lot of large diffs at once,
@@ -347,7 +353,10 @@ rendered as expected.
 This chart gives a brief overview of the pipeline that happens:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
+    accTitle: Render queue pipeline
+    accDescr: Flowchart of the steps in the render queue pipeline
     A[startRenderDiffsQueue] -->B
     B[commit RENDER_FILE current file index] -->C
     C[canRenderNextFile?]

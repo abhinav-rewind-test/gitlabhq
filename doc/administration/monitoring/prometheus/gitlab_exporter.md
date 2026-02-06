@@ -2,25 +2,28 @@
 stage: Systems
 group: Cloud Connector
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: GitLab exporter
 ---
 
-# GitLab exporter
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> Renamed from `GitLab monitor exporter` to `GitLab exporter` in [GitLab 12.3](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/16511).
+{{< /details >}}
 
-The [GitLab exporter](https://gitlab.com/gitlab-org/ruby/gems/gitlab-exporter) enables you to
-measure various GitLab metrics pulled from Redis and the database in Linux package
-instances.
+Monitor your GitLab instance's performance metrics with
+[GitLab exporter](https://gitlab.com/gitlab-org/ruby/gems/gitlab-exporter).
+For a Linux package installation, GitLab exporter takes metrics from Redis and the database
+and provides insights into bottlenecks, resource consumption patterns, and potential areas for optimization.
 
 For self-compiled installations, you must install and configure it yourself.
 
+## Enable GitLab exporter
+
 To enable the GitLab exporter in a Linux package instance:
 
-1. [Enable Prometheus](index.md#configuring-prometheus).
+1. [Enable Prometheus](_index.md#configuring-prometheus).
 1. Edit `/etc/gitlab/gitlab.rb`.
 1. Add, or find and uncomment, the following line, making sure it's set to `true`:
 
@@ -35,9 +38,6 @@ Prometheus automatically begins collecting performance data from
 the GitLab exporter exposed at `localhost:9168`.
 
 ## Use a different Rack server
-
-> - Introduced in [GitLab 13.8](https://gitlab.com/gitlab-org/omnibus-gitlab/-/merge_requests/4896).
-> - WEBrick is now the default Rack server instead of Puma.
 
 By default, the GitLab exporter runs on [WEBrick](https://github.com/ruby/webrick), a single-threaded Ruby web server.
 You can choose a different Rack server that better matches your performance needs.

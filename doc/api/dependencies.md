@@ -1,33 +1,30 @@
 ---
-stage: Secure
+stage: Application Security Testing
 group: Composition Analysis
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Access the Dependencies API to retrieve project dependency information, including package details, versions, vulnerabilities, and licenses for supported package managers.
+title: Dependencies API
 ---
 
-# Dependencies API
+{{< details >}}
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-WARNING:
-This API is in an [Experiment](../policy/experiment-beta-support.md#experiment) and considered unstable.
-The response payload may be subject to change or breakage
-across GitLab releases.
-
-> - Introduced in GitLab 12.1.
-> - Pagination introduced in 14.4.
+{{< /details >}}
 
 Every call to this endpoint requires authentication. To perform this call, user should be authorized to read repository.
 To see vulnerabilities in response, user should be authorized to read
-[Project Security Dashboard](../user/application_security/security_dashboard/index.md).
+[Project Security Dashboard](../user/application_security/security_dashboard/_index.md).
 
 ## List project dependencies
 
 Get a list of project dependencies. This API partially mirroring
-[Dependency List](../user/application_security/dependency_list/index.md) feature.
-This list can be generated only for [languages and package managers](../user/application_security/dependency_scanning/index.md#supported-languages-and-package-managers)
+[dependency list](../user/application_security/dependency_list/_index.md) feature.
+This list can be generated only for [languages and package managers](../user/application_security/dependency_scanning/_index.md#supported-languages-and-package-managers)
 supported by Gemnasium.
+
+Responses are [paginated](rest/_index.md#pagination) and return 20 results by default.
 
 ```plaintext
 GET /projects/:id/dependencies
@@ -37,11 +34,13 @@ GET /projects/:id/dependencies?package_manager=yarn,bundler
 
 | Attribute     | Type           | Required | Description                                                                                                                                                                 |
 | ------------- | -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).                                                            |
+| `id`          | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).                                                            |
 | `package_manager` | string array   | no       | Returns dependencies belonging to specified package manager. Valid values: `bundler`, `composer`, `conan`, `go`, `gradle`, `maven`, `npm`, `nuget`, `pip`, `pipenv`, `pnpm`, `yarn`, `sbt`, or `setuptools`. |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/4/dependencies"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/4/dependencies"
 ```
 
 Example response:
@@ -83,10 +82,3 @@ Example response:
   }
 ]
 ```
-
-## Dependencies pagination
-
-By default, `GET` requests return 20 results at a time because the API results
-are paginated.
-
-Read more on [pagination](rest/index.md#pagination).

@@ -29,7 +29,12 @@ RSpec.describe Projects::ImportExport::PruneExpiredExportJobsService, feature_ca
       stub_const("#{described_class.name}::BATCH_SIZE", 2)
 
       allow(described_class).to receive(:delete_uploads_for_expired_jobs).and_return(nil)
-      expect(ProjectExportJob).to receive(:prunable).and_call_original.exactly(3).times
+
+      expect(ProjectExportJob)
+        .to receive(:updated_at_before)
+        .and_call_original
+        .exactly(3)
+        .times
 
       described_class.execute
     end
@@ -90,7 +95,7 @@ RSpec.describe Projects::ImportExport::PruneExpiredExportJobsService, feature_ca
         it 'deletes stored upload files' do
           old_upload_file_paths = Uploads::Local.new.keys(old_uploads)
 
-          expect(DeleteStoredFilesWorker).to receive(:perform_async).with(Uploads::Local, old_upload_file_paths)
+          expect(DeleteStoredFilesWorker).to receive(:perform_async).with(Uploads::Local.name, old_upload_file_paths)
 
           described_class.execute
         end

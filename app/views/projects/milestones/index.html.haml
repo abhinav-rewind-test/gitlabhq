@@ -1,6 +1,8 @@
 - page_title _('Milestones')
 - add_page_specific_style 'page_bundles/milestone'
 
+%h1.gl-sr-only= page_title
+
 - if @milestone_states.any? { |name, count| count > 0 }
   .top-area
     = render 'shared/milestones_filter', counts: @milestone_states
@@ -15,9 +17,8 @@
   - if @milestones.blank?
     = render 'shared/empty_states/milestones_tab' do
       - if can?(current_user, :admin_milestone, @project)
-        .text-center
-          = link_button_to new_project_milestone_path(@project), data: { testid: "new-project-milestone-link" }, title: _('New milestone'), variant: :confirm do
-            = _('New milestone')
+        = link_button_to new_project_milestone_path(@project), data: { testid: "new-project-milestone-link" }, title: _('New milestone'), variant: :confirm do
+          = _('New milestone')
 
   - else
     .milestones
@@ -31,6 +32,5 @@
 - else
   = render 'shared/empty_states/milestones' do
     - if can?(current_user, :admin_milestone, @project)
-      .text-center
-        = link_button_to new_project_milestone_path(@project), data: { testid: "new-project-milestone-link" }, title: _('New milestone'), variant: :confirm do
-          = _('New milestone')
+      = link_button_to new_project_milestone_path(@project), data: { testid: "new-project-milestone-link" }, title: _('New milestone'), variant: :confirm do
+        = _('New milestone')

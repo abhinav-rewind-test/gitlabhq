@@ -1,6 +1,8 @@
-.code.white {
-  @import '../white_base';
+@import '../white_base';
 
+.code.white,
+.code.code-syntax-highlight-theme {
+  @include white-base;
   @include conflict-colors('white');
 
   // Highlight.js theme overrides (https://gitlab.com/gitlab-org/gitlab/-/issues/365167)
@@ -19,4 +21,6 @@
 :root {
   --default-diff-color-deletion: #eb919b;
   --default-diff-color-addition: #a0f5b4;
+  --diff-addition-color: #{$line-number-new};
+  --diff-deletion-color: #{$line-number-old};
 }

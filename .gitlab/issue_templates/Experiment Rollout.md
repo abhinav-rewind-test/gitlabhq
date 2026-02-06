@@ -49,6 +49,16 @@ Are there any other stages or teams involved that need to be kept in the loop?
 
 Note: you can use the [CXL calculator](https://cxl.com/ab-test-calculator/) to determine if your experiment has reached significance. The calculator includes an estimate for how much longer an experiment must run for before reaching significance.
 
+### Analysis Dashboards
+
+The following Tableau dashboards are available for experiment analysis:
+- [Growth Experiment Event Validation Dashboard](https://10az.online.tableau.com/#/site/gitlab/views/DRAFTPDExperimentEventValidation/GrowthExperimentEventValidationDashboard) - for initial event validation
+- [GLEX Experiment Analysis Dashboard](https://10az.online.tableau.com/#/site/gitlab/views/USETHISFINALGLEX/GLEXExperimentAnalysisDashboard) - for detailed experiment analysis
+- [General Snowplow Event Exploration Dashboard](https://10az.online.tableau.com/#/site/gitlab/views/SnowplowEventExplorationLast30Days/SnowplowEventExplorationLast30D)
+provides additional event analysis capabilities, but for production only.
+
+**Note:** Events may take 24+ hours to appear in Tableau dashboards.
+
 ## Rollout plan
 <!-- Add an overview and method for modifying the feature flag -->
 
@@ -82,8 +92,8 @@ In this rollout issue, ensure the scoped `experiment::` label is kept accurate.
 
 ## Roll Out Steps
 
-- [ ] [Confirm that end-to-end tests pass with the feature flag enabled](https://docs.gitlab.com/ee/development/testing_guide/end_to_end/feature_flags.html#confirming-that-end-to-end-tests-pass-with-a-feature-flag-enabled). If there are failing tests, contact the relevant [stable counterpart in the Quality department](https://about.gitlab.com/handbook/engineering/quality/#individual-contributors) to collaborate in updating the tests or confirming that the failing tests are not caused by the changes behind the enabled feature flag.
-  - See [`#qa-staging` Slack channel](https://gitlab.enterprise.slack.com/archives/CBS3YKMGD) and look for the following messages:
+- [ ] [Confirm that end-to-end tests pass with the feature flag enabled](https://docs.gitlab.com/development/testing_guide/end_to_end/feature_flags/#confirming-that-end-to-end-tests-pass-with-a-feature-flag-enabled). If there are failing tests, contact the relevant [stable counterpart in the Quality department](https://about.gitlab.com/handbook/engineering/quality/#individual-contributors) to collaborate in updating the tests or confirming that the failing tests are not caused by the changes behind the enabled feature flag.
+  - See [`#e2e-run-staging` Slack channel](https://gitlab.enterprise.slack.com/archives/CBS3YKMGD) and look for the following messages:
     - test kicked off: `Feature flag <feature-flag-name> has been set to true on **gstg**`
     - test result: `This pipeline was triggered due to toggling of <feature-flag-name> feature flag`
 - [ ] Enable on staging (`/chatops run feature set <feature-flag-name> true --staging`)
@@ -94,10 +104,10 @@ In this rollout issue, ensure the scoped `experiment::` label is kept accurate.
   - In `#production` mention `@sre-oncall` and `@release-managers`. Once an SRE on call and Release Manager on call confirm, you can proceed with the rollout
 - [ ] Announce on the issue an estimated time this will be enabled on GitLab.com
 - [ ] Enable on GitLab.com by running chatops command in `#production` (`/chatops run feature set <feature-flag-name> true`)
-- [ ] Cross post chatops Slack command to `#support_gitlab-com` ([more guidance when this is necessary in the dev docs](https://docs.gitlab.com/ee/development/feature_flags/controls.html#where-to-run-commands)) and in your team channel
+- [ ] Cross post chatops Slack command to `#support_gitlab-com` ([more guidance when this is necessary in the dev docs](https://docs.gitlab.com/development/feature_flags/controls/#where-to-run-commands)) and in your team channel
 - [ ] Announce on the issue that the flag has been enabled
 - [ ] Remove experiment code and feature flag and add changelog entry - a separate [cleanup issue](https://gitlab.com/gitlab-org/gitlab/-/issues/new?issuable_template=Experiment%20Successful%20Cleanup) might be required
-- [ ] After the flag removal is deployed, [clean up the feature flag](https://docs.gitlab.com/ee/development/feature_flags/controls.html#cleaning-up) by running chatops command in `#production` channel
+- [ ] After the flag removal is deployed, [clean up the feature flag](https://docs.gitlab.com/development/feature_flags/controls/#cleaning-up) by running chatops command in `#production` channel
 - [ ] Assign to the product manager to update the [knowledge base](https://about.gitlab.com/direction/growth/#growth-insights-knowledge-base) (if applicable)
 
 ## Rollback Steps

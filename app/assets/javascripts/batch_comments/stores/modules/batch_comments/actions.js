@@ -1,6 +1,6 @@
 import { isEmpty } from 'lodash';
 import { createAlert } from '~/alert';
-import { scrollToElement } from '~/lib/utils/common_utils';
+import { scrollToElement } from '~/lib/utils/scroll_utils';
 import { __ } from '~/locale';
 import { FILE_DIFF_POSITION_TYPE } from '~/diffs/constants';
 import { updateNoteErrorMessage } from '~/notes/utils';
@@ -71,15 +71,6 @@ export const fetchDrafts = ({ commit, getters, state, dispatch }) =>
         message: __('An error occurred while fetching pending comments'),
       }),
     );
-
-export const publishSingleDraft = ({ commit, getters }, draftId) => {
-  commit(types.REQUEST_PUBLISH_DRAFT, draftId);
-
-  service
-    .publishDraft(getters.getNotesData.draftsPublishPath, draftId)
-    .then(() => commit(types.RECEIVE_PUBLISH_DRAFT_SUCCESS, draftId))
-    .catch(() => commit(types.RECEIVE_PUBLISH_DRAFT_ERROR, draftId));
-};
 
 export const publishReview = ({ commit, getters }, noteData = {}) => {
   commit(types.REQUEST_PUBLISH_REVIEW);
@@ -163,3 +154,18 @@ export const toggleResolveDiscussion = ({ commit }, draftId) => {
 };
 
 export const clearDrafts = ({ commit }) => commit(types.CLEAR_DRAFTS);
+
+export const discardDrafts = ({ getters, commit }) => {
+  return service
+    .discard(getters.getNotesData.draftsDiscardPath)
+    .then(() => {
+      commit(types.CLEAR_DRAFTS);
+    })
+    .catch((error) =>
+      createAlert({
+        captureError: true,
+        error,
+        message: __('An error occurred while discarding your review. Please try again.'),
+      }),
+    );
+};

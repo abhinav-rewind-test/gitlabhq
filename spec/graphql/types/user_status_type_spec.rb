@@ -11,8 +11,9 @@ RSpec.describe Types::UserStatusType do
       message
       message_html
       availability
+      clear_status_at
     ]
 
-    expect(described_class).to have_graphql_fields(*expected_fields)
+    expect(described_class).to have_graphql_fields(*expected_fields).at_least
   end
 end

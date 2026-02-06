@@ -12,10 +12,12 @@ class Projects::CommitsController < Projects::ApplicationController
   prepend_before_action(only: [:show]) { authenticate_sessionless_user!(:rss) }
   around_action :allow_gitaly_ref_name_caching
   before_action :require_non_empty_project
-  before_action :assign_ref_vars, except: :commits_root
   before_action :authorize_read_code!
+  before_action :assign_ref_vars, except: :commits_root
+  before_action :set_is_ambiguous_ref, only: [:show]
   before_action :validate_ref!, except: :commits_root
   before_action :validate_path, if: -> { !request.format.atom? }
+  before_action :auth_for_path, except: :commits_root
   before_action :set_commits, except: :commits_root
 
   feature_category :source_code_management
@@ -30,7 +32,7 @@ class Projects::CommitsController < Projects::ApplicationController
     @merge_request = MergeRequestsFinder.new(current_user, project_id: @project.id).execute.opened
       .find_by(source_project: @project, source_branch: @ref, target_branch: @repository.root_ref)
 
-    @ref_type = ref_type
+    @ref_type = ref_type if Feature.disabled?(:verified_ref_extractor, @project)
 
     respond_to do |format|
       format.html
@@ -48,8 +50,6 @@ class Projects::CommitsController < Projects::ApplicationController
   # rubocop: enable CodeReuse/ActiveRecord
 
   def signatures
-    Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/424527')
-
     respond_to do |format|
       format.json do
         render json: {
@@ -71,10 +71,18 @@ class Projects::CommitsController < Projects::ApplicationController
   end
 
   def validate_path
-    return unless @path
+    return if @path.blank?
 
     path_exists = @repository.blob_at(@commit.id, @path) || @repository.tree(@commit.id, @path).entries.present?
     redirect_to_tree_root_for_missing_path(@project, @ref, @path) unless path_exists
+  end
+
+  def require_auth?
+    current_user.blank? && @path.present? && Feature.enabled?(:require_login_for_commit_tree, @project)
+  end
+
+  def auth_for_path
+    authenticate_user! if require_auth?
   end
 
   def set_commits

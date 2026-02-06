@@ -28,12 +28,12 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
     subject { described_class.new(context).renderable_items.find { |e| e.item_id == item_id } }
 
     shared_examples 'access rights checks' do
-      specify { is_expected.not_to be_nil }
+      it { is_expected.not_to be_nil }
 
       describe 'when the user does not have access' do
         let(:user) { nil }
 
-        specify { is_expected.to be_nil }
+        it { is_expected.to be_nil }
       end
     end
 
@@ -55,7 +55,7 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
       it_behaves_like 'access rights checks'
     end
 
-    describe 'Access Tokens' do
+    describe 'Access tokens' do
       let(:item_id) { :access_tokens }
 
       it_behaves_like 'access rights checks'
@@ -70,21 +70,21 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
     describe 'CI/CD' do
       let(:item_id) { :ci_cd }
 
-      describe 'when project is archived' do
+      describe 'when project or its ancestor is archived' do
         before do
-          allow(project).to receive(:archived?).and_return(true)
+          allow(project).to receive(:self_or_ancestors_archived?).and_return(true)
         end
 
-        specify { is_expected.to be_nil }
+        it { is_expected.to be_nil }
       end
 
-      describe 'when project is not archived' do
-        specify { is_expected.not_to be_nil }
+      describe 'when project and ancestors are not archived' do
+        it { is_expected.not_to be_nil }
 
         describe 'when the user does not have access' do
           let(:user) { nil }
 
-          specify { is_expected.to be_nil }
+          it { is_expected.to be_nil }
         end
       end
     end
@@ -92,23 +92,23 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
     describe 'Monitor' do
       let(:item_id) { :monitor }
 
-      describe 'when project is archived' do
+      describe 'when project or its ancestor is archived' do
         before do
-          allow(project).to receive(:archived?).and_return(true)
+          allow(project).to receive(:self_or_ancestors_archived?).and_return(true)
         end
 
-        specify { is_expected.to be_nil }
+        it { is_expected.to be_nil }
       end
 
-      describe 'when project is not archived' do
-        specify { is_expected.not_to be_nil }
+      describe 'when project and ancestors are not archived' do
+        it { is_expected.not_to be_nil }
 
         specify { expect(subject.title).to eq 'Monitor' }
 
         describe 'when the user does not have access' do
           let(:user) { nil }
 
-          specify { is_expected.to be_nil }
+          it { is_expected.to be_nil }
         end
       end
     end
@@ -131,18 +131,18 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
       describe 'when container registry setting is disabled' do
         let(:container_enabled) { false }
 
-        specify { is_expected.to be_nil }
+        it { is_expected.to be_nil }
       end
 
       describe 'when container registry setting is enabled' do
         let(:container_enabled) { true }
 
-        specify { is_expected.not_to be_nil }
+        it { is_expected.not_to be_nil }
 
         describe 'when the user does not have access' do
           let(:user) { nil }
 
-          specify { is_expected.to be_nil }
+          it { is_expected.to be_nil }
         end
       end
 
@@ -150,25 +150,25 @@ RSpec.describe Sidebars::Projects::Menus::SettingsMenu, feature_category: :navig
         let(:container_enabled) { false }
         let(:packages_enabled) { true }
 
-        specify { is_expected.not_to be_nil }
+        it { is_expected.not_to be_nil }
 
         describe 'when the user does not have access' do
           let(:user) { nil }
 
-          specify { is_expected.to be_nil }
+          it { is_expected.to be_nil }
         end
       end
     end
 
-    describe 'Usage Quotas' do
+    describe 'Usage quotas' do
       let(:item_id) { :usage_quotas }
 
-      specify { is_expected.not_to be_nil }
+      it { is_expected.not_to be_nil }
 
       describe 'when the user does not have access' do
         let(:user) { nil }
 
-        specify { is_expected.to be_nil }
+        it { is_expected.to be_nil }
       end
     end
   end

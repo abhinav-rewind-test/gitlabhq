@@ -2,11 +2,12 @@
 
 require 'spec_helper'
 
-RSpec.describe ApplicationRecord do
+RSpec.describe ApplicationRecord, feature_category: :database do
   describe '#id_in' do
     let(:records) { create_list(:user, 3) }
 
-    it 'returns records of the ids' do
+    it 'returns records of the ids',
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16825' do
       expect(User.id_in(records.last(2).map(&:id))).to eq(records.last(2))
     end
   end
@@ -47,6 +48,13 @@ RSpec.describe ApplicationRecord do
         expect(Suggestion).to receive(:create).and_raise(ActiveRecord::RecordNotUnique)
 
         expect(Suggestion.safe_find_or_create_by(suggestion_attributes)).to eq(existing_suggestion)
+      end
+
+      it 'logs an exception if RecordNotUnique triggered but no result returned' do
+        expect(Suggestion).to receive(:find_by).twice.and_return(nil)
+        expect(Suggestion).to receive(:create).and_raise(ActiveRecord::RecordNotUnique)
+        expect(Gitlab::ErrorTracking).to receive(:track_exception).and_call_original
+        expect(Suggestion.safe_find_or_create_by(suggestion_attributes)).to be_nil
       end
 
       it 'passes a block to find_or_create_by' do
@@ -207,7 +215,8 @@ RSpec.describe ApplicationRecord do
       let(:session) { Gitlab::Database::LoadBalancing::Session.new }
 
       before do
-        allow(::Gitlab::Database::LoadBalancing::Session).to receive(:current).and_return(session)
+        allow(::Gitlab::Database::LoadBalancing::SessionMap)
+          .to receive(:current).with(described_class.load_balancer).and_return(session)
         allow(session).to receive(:fallback_to_replicas_for_ambiguous_queries).and_yield
       end
 
@@ -310,6 +319,7 @@ RSpec.describe ApplicationRecord do
         )
       SQL
     end
+
     context 'without an ignored column' do
       let(:test_model) do
         Class.new(ApplicationRecord) do
@@ -323,7 +333,6 @@ RSpec.describe ApplicationRecord do
     context 'with an ignored column' do
       let(:test_model) do
         Class.new(ApplicationRecord) do
-          include IgnorableColumns
           self.table_name = :_test_tests
 
           ignore_columns :ignore_me, remove_after: '2100-01-01', remove_with: '99.12'
@@ -331,6 +340,58 @@ RSpec.describe ApplicationRecord do
       end
 
       it_behaves_like 'selects identically to the default'
+    end
+  end
+
+  describe '.delete_all_returning' do
+    let(:column_names) { [:id, :foo, :bar] }
+
+    subject(:delete_all_returning) { receiver.delete_all_returning(column_names) }
+
+    before do
+      allow(Gitlab::Database::DeleteRelationWithReturning).to receive(:execute)
+    end
+
+    context 'when there is no relation' do
+      let(:receiver) { User }
+
+      it 'instantiates a new scope and calls the library with it' do
+        delete_all_returning
+
+        expect(Gitlab::Database::DeleteRelationWithReturning).to have_received(:execute).with(User.all, column_names)
+      end
+    end
+
+    context 'when there is a relation' do
+      let(:receiver) { User.where(id: ...2) }
+
+      it 'calls the library with the existing relation' do
+        delete_all_returning
+
+        expect(Gitlab::Database::DeleteRelationWithReturning).to have_received(:execute).with(receiver, column_names)
+      end
+    end
+
+    describe 'arguments' do
+      context 'when called with a no argument' do
+        subject(:delete_all_returning) { User.delete_all_returning }
+
+        it 'instantiates a new scope and calls the library with correct arguments' do
+          delete_all_returning
+
+          expect(Gitlab::Database::DeleteRelationWithReturning).to have_received(:execute).with(User.all, [])
+        end
+      end
+
+      context 'when called with splash arguments' do
+        subject(:delete_all_returning) { User.delete_all_returning(:id, :foo) }
+
+        it 'instantiates a new scope and calls the library with correct arguments' do
+          delete_all_returning
+
+          expect(Gitlab::Database::DeleteRelationWithReturning).to have_received(:execute).with(User.all, [:id, :foo])
+        end
+      end
     end
   end
 end

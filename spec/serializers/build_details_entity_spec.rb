@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe BuildDetailsEntity do
+RSpec.describe BuildDetailsEntity, feature_category: :continuous_integration do
   include ProjectForksHelper
 
   it 'inherits from Ci::JobEntity' do
@@ -20,7 +20,7 @@ RSpec.describe BuildDetailsEntity do
       described_class.new(build, request: request, current_user: user, project: project)
     end
 
-    subject { entity.as_json }
+    subject(:serialized_entity) { entity.as_json }
 
     before do
       allow(request).to receive(:current_user).and_return(user)
@@ -61,13 +61,13 @@ RSpec.describe BuildDetailsEntity do
 
         let(:pipeline) { create(:ci_pipeline, project: forked_project) }
 
+        let(:merge_request) do
+          create(:merge_request, source_project: forked_project, target_project: project, source_branch: build.ref)
+        end
+
         before do
           allow(build).to receive(:merge_request).and_return(merge_request)
           forked_project.add_developer(user)
-        end
-
-        let(:merge_request) do
-          create(:merge_request, source_project: forked_project, target_project: project, source_branch: build.ref)
         end
 
         it 'contains the needed key value pairs' do
@@ -105,7 +105,7 @@ RSpec.describe BuildDetailsEntity do
     context 'when the user can only read the build' do
       let(:user) { create(:user) }
 
-      it "won't display the paths to issues and merge requests" do
+      it "does not display the paths to issues and merge requests" do
         expect(subject['new_issue_path']).to be_nil
         expect(subject['merge_request_path']).to be_nil
       end
@@ -273,7 +273,7 @@ RSpec.describe BuildDetailsEntity do
       let(:user) { create(:project_member, :guest, project: project).user }
 
       context 'when the build has public archive type artifacts' do
-        let(:build) { create(:ci_build, :artifacts) }
+        let(:build) { create(:ci_build, :artifacts, project: project) }
 
         it 'exposes public artifact details' do
           expect(subject[:artifact].keys).to include(:download_path, :browse_path, :locked)
@@ -302,6 +302,86 @@ RSpec.describe BuildDetailsEntity do
             'url' => 'https://example.com/'
           )
         ))
+      end
+    end
+
+    context 'when triggered' do
+      let_it_be(:project) { create(:project, :repository) }
+      let_it_be(:user) { project.first_owner }
+      let_it_be(:trigger) { create(:ci_trigger, project: project) }
+      let_it_be(:pipeline) { create(:ci_empty_pipeline, project: project, trigger: trigger) }
+      let_it_be(:pipeline_variable) { create(:ci_pipeline_variable, pipeline: pipeline) }
+      let_it_be(:build) { create(:ci_build, pipeline: pipeline).present(current_user: user) }
+
+      it 'exposes trigger' do
+        expect(subject[:trigger]).to be_present
+        expect(subject[:trigger][:short_token]).to eq(build.trigger_short_token)
+        expect(subject[:trigger][:variables][0][:key]).to eq(pipeline_variable.key)
+        expect(subject[:trigger][:variables][0][:value]).to eq(pipeline_variable.value)
+      end
+    end
+
+    describe 'metadata timeout fields' do
+      subject(:metadata) { serialized_entity[:metadata] }
+
+      before_all do
+        Ci::ApplicationRecord.connection.execute(<<~SQL)
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_100"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (100);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_101"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (101);
+          CREATE TABLE IF NOT EXISTS "gitlab_partitions_dynamic"."ci_builds_metadata_102"
+            PARTITION OF "p_ci_builds_metadata" FOR VALUES IN (102);
+        SQL
+      end
+
+      context 'when metadata exists' do
+        before do
+          create(:ci_build_metadata, build: build)
+        end
+
+        it 'returns default values' do
+          expect(metadata[:timeout_human_readable]).to be_nil
+          expect(metadata[:timeout_source]).to eq('unknown_timeout_source')
+        end
+      end
+
+      context 'when build.metadata does not exist' do
+        it 'returns nil values' do
+          expect(metadata[:timeout_human_readable]).to be_nil
+          expect(metadata[:timeout_source]).to eq('unknown_timeout_source')
+        end
+      end
+
+      context 'when build timeout is present' do
+        before do
+          build.write_attribute(:timeout, 90)
+        end
+
+        it 'returns human readable timeout value' do
+          expect(metadata[:timeout_human_readable]).to eq('1m 30s')
+        end
+      end
+
+      context 'when build timeout source is present' do
+        using RSpec::Parameterized::TableSyntax
+
+        where(:timeout_source, :expected_timeout_source) do
+          1 | 'unknown_timeout_source'
+          2 | 'project'
+          3 | 'runner'
+          4 | 'job'
+        end
+
+        with_them do
+          before do
+            build.write_attribute(:timeout_source, timeout_source)
+          end
+
+          it 'returns expected human readable timeout source' do
+            expect(metadata[:timeout_source]).to eq(expected_timeout_source)
+          end
+        end
       end
     end
   end

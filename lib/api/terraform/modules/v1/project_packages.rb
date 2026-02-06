@@ -6,6 +6,7 @@ module API
       module V1
         class ProjectPackages < ::API::Base
           include ::API::Helpers::Authentication
+
           helpers ::API::Helpers::PackagesHelpers
           helpers ::API::Helpers::Packages::BasicAuthHelpers
 
@@ -51,14 +52,22 @@ module API
             def package_name
               "#{params[:module_name]}/#{params[:module_system]}"
             end
+
+            def authorize_workhorse_params
+              {
+                subject: authorized_user_project,
+                maximum_size: authorized_user_project.actual_limits.terraform_module_max_file_size,
+                use_final_store_path: true
+              }
+            end
           end
 
           params do
             requires :id, types: [String, Integer], allow_blank: false, desc: 'The ID or full path of a project'
-            with(type: String, allow_blank: false, regexp: API::NO_SLASH_URL_PART_REGEX) do
-              requires :module_name, desc: 'Module name', documentation: { example: 'infra-registry' }
-              requires :module_system, desc: 'Module system', documentation: { example: 'aws' }
-            end
+            requires :module_name, type: String, allow_blank: false, regexp: API::NO_SLASH_URL_PART_REGEX,
+              desc: 'Module name', documentation: { example: 'infra-registry' }
+            requires :module_system, type: String, allow_blank: false, regexp: API::NO_SLASH_URL_PART_REGEX,
+              desc: 'Module system', documentation: { example: 'aws' }
           end
 
           resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
@@ -79,11 +88,12 @@ module API
                   { code: 403, message: 'Forbidden' },
                   { code: 404, message: 'Not found' }
                 ]
-                tags %w[terraform_registry]
+                tags %w[terraform]
               end
               params do
                 use :terraform_get
               end
+              route_setting :authorization, permissions: :download_terraform_module, boundary_type: :project
               get do
                 present_package_file
               end
@@ -101,11 +111,12 @@ module API
                     { code: 403, message: 'Forbidden' },
                     { code: 404, message: 'Not found' }
                   ]
-                  tags %w[terraform_registry]
+                  tags %w[terraform]
                 end
                 params do
                   use :terraform_get
                 end
+                route_setting :authorization, permissions: :download_terraform_module, boundary_type: :project
                 get format: false do
                   present_package_file
                 end
@@ -123,14 +134,12 @@ module API
                     failure [
                       { code: 403, message: 'Forbidden' }
                     ]
-                    tags %w[terraform_registry]
+                    tags %w[terraform]
                   end
 
+                  route_setting :authorization, permissions: :authorize_terraform_module, boundary_type: :project
                   put :authorize do
-                    authorize_workhorse!(
-                      subject: authorized_user_project,
-                      maximum_size: authorized_user_project.actual_limits.terraform_module_max_file_size
-                    )
+                    authorize_workhorse!(**authorize_workhorse_params)
                   end
 
                   desc 'Upload Terraform Module package file' do
@@ -143,7 +152,7 @@ module API
                       { code: 404, message: 'Not found' }
                     ]
                     consumes %w[multipart/form-data]
-                    tags %w[terraform_registry]
+                    tags %w[terraform]
                   end
 
                   params do
@@ -152,6 +161,7 @@ module API
                       documentation: { type: 'file' }
                   end
 
+                  route_setting :authorization, permissions: :upload_terraform_module, boundary_type: :project
                   put do
                     authorize_upload!(authorized_user_project)
 

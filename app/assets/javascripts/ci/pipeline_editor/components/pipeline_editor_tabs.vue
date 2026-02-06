@@ -8,7 +8,6 @@ import {
   EDITOR_APP_STATUS_EMPTY,
   EDITOR_APP_STATUS_INVALID,
   EDITOR_APP_STATUS_LOADING,
-  EDITOR_APP_STATUS_VALID,
   EDITOR_APP_STATUS_LINT_UNAVAILABLE,
   MERGED_TAB,
   TAB_QUERY_PARAM,
@@ -100,6 +99,7 @@ export default {
       required: true,
     },
   },
+  emits: ['set-current-tab'],
   apollo: {
     appStatus: {
       query: getAppStatus,
@@ -111,12 +111,10 @@ export default {
   data() {
     return {
       showValidateNewBadge: false,
+      appStatus: null,
     };
   },
   computed: {
-    isMergedYamlAvailable() {
-      return this.ciConfigData?.mergedYaml;
-    },
     isEmpty() {
       return this.appStatus === EDITOR_APP_STATUS_EMPTY;
     },
@@ -126,11 +124,11 @@ export default {
     isLintUnavailable() {
       return this.appStatus === EDITOR_APP_STATUS_LINT_UNAVAILABLE;
     },
-    isValid() {
-      return this.appStatus === EDITOR_APP_STATUS_VALID;
-    },
     isLoading() {
       return this.appStatus === EDITOR_APP_STATUS_LOADING;
+    },
+    isMergedYamlAvailable() {
+      return this.ciConfigData?.mergedYaml;
     },
     validateTabBadgeTitle() {
       if (this.showValidateNewBadge) {

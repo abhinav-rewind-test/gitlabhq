@@ -9,24 +9,6 @@ class Admin::ProjectsController < Admin::ApplicationController
   feature_category :groups_and_projects, [:index, :show, :transfer, :destroy, :edit, :update]
   feature_category :source_code_management, [:repository_check]
 
-  def index
-    params[:sort] ||= 'latest_activity_desc'
-    @sort = params[:sort]
-
-    params[:archived] = true if params[:last_repository_check_failed].present? && params[:archived].nil?
-
-    @projects = Admin::ProjectsFinder.new(params: params, current_user: current_user).execute
-
-    respond_to do |format|
-      format.html
-      format.json do
-        render json: {
-          html: view_to_html_string("admin/projects/_projects", projects: @projects)
-        }
-      end
-    end
-  end
-
   # rubocop: disable CodeReuse/ActiveRecord
   def show
     if @group
@@ -43,7 +25,7 @@ class Admin::ProjectsController < Admin::ApplicationController
 
   def destroy
     ::Projects::DestroyService.new(@project, current_user, {}).async_execute
-    flash[:notice] = format(_("Project '%{project_name}' is in the process of being deleted."), project_name: @project.full_name)
+    flash[:toast] = format(_("Project '%{project_name}' is being deleted."), project_name: @project.full_name)
 
     redirect_to admin_projects_path, status: :found
   rescue Projects::DestroyService::DestroyError => e
@@ -72,7 +54,8 @@ class Admin::ProjectsController < Admin::ApplicationController
         Ci::Runners::ResetRegistrationTokenService.new(@project, current_user).execute
       end
 
-      redirect_to [:admin, @project], notice: format(_("Project '%{project_name}' was successfully updated."), project_name: @project.name)
+      redirect_to [:admin, @project],
+        notice: format(_("Project '%{project_name}' was successfully updated."), project_name: @project.name)
     else
       render "edit"
     end

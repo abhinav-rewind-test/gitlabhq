@@ -1,6 +1,6 @@
 <script>
 import { GlTable } from '@gitlab/ui';
-import { s__ } from '~/locale';
+import EmptyResult from '~/vue_shared/components/empty_result.vue';
 import ProjectCell from '~/ci/admin/jobs_table/components/cells/project_cell.vue';
 import RunnerCell from '~/ci/admin/jobs_table/components/cells/runner_cell.vue';
 import { JOBS_DEFAULT_FIELDS } from '../constants';
@@ -10,9 +10,7 @@ import JobCell from './job_cells/job_cell.vue';
 import PipelineCell from './job_cells/pipeline_cell.vue';
 
 export default {
-  i18n: {
-    emptyText: s__('Jobs|No jobs to show'),
-  },
+  name: 'JobsTable',
   components: {
     ActionsCell,
     StatusCell,
@@ -21,6 +19,7 @@ export default {
     ProjectCell,
     RunnerCell,
     GlTable,
+    EmptyResult,
   },
   props: {
     jobs: {
@@ -39,8 +38,11 @@ export default {
     },
   },
   methods: {
+    showCoverage(coverage) {
+      return coverage || coverage === 0;
+    },
     formatCoverage(coverage) {
-      return coverage ? `${coverage}%` : '';
+      return `${coverage}%`;
     },
   },
 };
@@ -48,13 +50,12 @@ export default {
 
 <template>
   <gl-table
+    v-if="jobs.length > 0"
     :items="jobs"
     :fields="tableFields"
     :tbody-tr-attr="{ 'data-testid': 'jobs-table-row' }"
-    :empty-text="$options.i18n.emptyText"
     data-testid="jobs-table"
-    show-empty
-    stacked="lg"
+    stacked="md"
     fixed
   >
     <template #table-colgroup="{ fields }">
@@ -74,8 +75,8 @@ export default {
     </template>
 
     <template #cell(stage)="{ item }">
-      <div class="gl-text-truncate">
-        <span v-if="item.stage" data-testid="job-stage-name" class="gl-text-secondary">{{
+      <div class="gl-truncate">
+        <span v-if="item.stage" data-testid="job-stage-name" class="gl-text-subtle">{{
           item.stage.name
         }}</span>
       </div>
@@ -90,13 +91,14 @@ export default {
     </template>
 
     <template #cell(coverage)="{ item }">
-      <span v-if="item.coverage" data-testid="job-coverage">{{
-        formatCoverage(item.coverage)
-      }}</span>
+      <span v-if="showCoverage(item.coverage)" data-testid="job-coverage">
+        {{ formatCoverage(item.coverage) }}
+      </span>
     </template>
 
     <template #cell(actions)="{ item }">
       <actions-cell class="gl-float-right" :job="item" />
     </template>
   </gl-table>
+  <empty-result v-else type="search" />
 </template>

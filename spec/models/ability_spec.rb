@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ability do
+RSpec.describe Ability, feature_category: :system_access do
   describe '#policy_for' do
     subject(:policy) { described_class.policy_for(user, subject, **options) }
 
@@ -118,7 +118,7 @@ RSpec.describe Ability do
         user = build(:user, admin: true)
 
         expect(described_class.users_that_can_read_project([user], project))
-            .to eq([])
+          .to eq([])
       end
 
       it 'returns external users if they are the project owner' do
@@ -216,6 +216,48 @@ RSpec.describe Ability do
     end
   end
 
+  describe '.users_that_can_read_confidential_issues' do
+    shared_examples 'filtering users that can read confidential issues' do
+      let_it_be(:group) { create(:group) }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:guest) { create(:user) }
+      let_it_be(:reporter) { create(:user) }
+      let_it_be(:developer) { create(:user) }
+
+      let(:users) { [guest, reporter, developer] }
+
+      before do
+        parent.add_guest(guest)
+        parent.add_reporter(reporter)
+        parent.add_developer(developer)
+      end
+
+      it 'returns users that can read confidential issues' do
+        result = described_class.users_that_can_read_confidential_issues(users, parent)
+
+        expect(result).to match_array([reporter, developer])
+      end
+
+      it 'returns empty array when no users can read confidential issues' do
+        result = described_class.users_that_can_read_confidential_issues([guest], parent)
+
+        expect(result).to be_empty
+      end
+    end
+
+    context 'for groups' do
+      it_behaves_like 'filtering users that can read confidential issues' do
+        let(:parent) { group }
+      end
+    end
+
+    context 'for projects' do
+      it_behaves_like 'filtering users that can read confidential issues' do
+        let(:parent) { project }
+      end
+    end
+  end
+
   describe '.merge_requests_readable_by_user' do
     context 'with an admin when admin mode is enabled', :enable_admin_mode do
       it 'returns all merge requests' do
@@ -234,7 +276,7 @@ RSpec.describe Ability do
         visible_merge_request = build(:merge_request, source_project: build(:project, :public))
 
         merge_requests = described_class
-            .merge_requests_readable_by_user([hidden_merge_request, visible_merge_request], user)
+                           .merge_requests_readable_by_user([hidden_merge_request, visible_merge_request], user)
 
         expect(merge_requests).to eq([visible_merge_request])
       end
@@ -284,7 +326,7 @@ RSpec.describe Ability do
         end
 
         subject(:readable_merge_requests) do
-          read_cross_project_filter = -> (merge_requests) do
+          read_cross_project_filter = ->(merge_requests) do
             merge_requests.select { |mr| mr.source_project == project }
           end
           described_class.merge_requests_readable_by_user(
@@ -308,72 +350,6 @@ RSpec.describe Ability do
         .to eq(described_class.method(:work_items_readable_by_user))
     end
 
-    context 'with an admin when admin mode is enabled', :enable_admin_mode do
-      it 'returns all given issues' do
-        user = build(:user, admin: true)
-        issue = build(:issue)
-
-        expect(described_class.issues_readable_by_user([issue], user))
-          .to eq([issue])
-      end
-    end
-
-    context 'with an admin when admin mode is disabled' do
-      it 'returns the issues readable by the admin' do
-        user = build(:user, admin: true)
-        issue = build(:issue)
-
-        expect(issue).to receive(:readable_by?).with(user).and_return(true)
-
-        expect(described_class.issues_readable_by_user([issue], user))
-          .to eq([issue])
-      end
-
-      it 'returns no issues when not given access' do
-        user = build(:user, admin: true)
-        issue = build(:issue)
-
-        expect(described_class.issues_readable_by_user([issue], user))
-          .to be_empty
-      end
-    end
-
-    context 'with a regular user' do
-      it 'returns the issues readable by the user' do
-        user = build(:user)
-        issue = build(:issue)
-
-        expect(issue).to receive(:readable_by?).with(user).and_return(true)
-
-        expect(described_class.issues_readable_by_user([issue], user))
-          .to eq([issue])
-      end
-
-      it 'returns an empty Array when no issues are readable' do
-        user = build(:user)
-        issue = build(:issue)
-
-        expect(issue).to receive(:readable_by?).with(user).and_return(false)
-
-        expect(described_class.issues_readable_by_user([issue], user)).to eq([])
-      end
-    end
-
-    context 'without a regular user' do
-      it 'returns issues that are publicly visible' do
-        hidden_issue = build(:issue)
-        visible_issue = build(:issue)
-
-        expect(hidden_issue).to receive(:publicly_visible?).and_return(false)
-        expect(visible_issue).to receive(:publicly_visible?).and_return(true)
-
-        issues = described_class
-          .issues_readable_by_user([hidden_issue, visible_issue])
-
-        expect(issues).to eq([visible_issue])
-      end
-    end
-
     context 'when the user cannot read cross project' do
       let(:user) { create(:user) }
       let(:issue) { create(:issue) }
@@ -390,7 +366,7 @@ RSpec.describe Ability do
       it 'excludes issues from other projects whithout checking separatly when passing a scope' do
         expect(described_class).not_to receive(:allowed?).with(user, :read_issue, other_project_issue)
 
-        filters = { read_cross_project: -> (issues) { issues.where(project: project) } }
+        filters = { read_cross_project: ->(issues) { issues.where(project: project) } }
         result = described_class.issues_readable_by_user(Issue.all, user, filters: filters)
 
         expect(result).to contain_exactly(issue)
@@ -405,7 +381,7 @@ RSpec.describe Ability do
         feature_flag_2 = build(:operations_feature_flag, project: build(:project, :public))
 
         feature_flags = described_class
-            .feature_flags_readable_by_user([feature_flag_1, feature_flag_2])
+                          .feature_flags_readable_by_user([feature_flag_1, feature_flag_2])
 
         expect(feature_flags).to eq([])
       end
@@ -443,7 +419,7 @@ RSpec.describe Ability do
         end
 
         subject(:readable_feature_flags) do
-          read_cross_project_filter = -> (feature_flags) do
+          read_cross_project_filter = ->(feature_flags) do
             feature_flags.select { |flag| flag.project == project }
           end
           described_class.feature_flags_readable_by_user(
@@ -472,6 +448,159 @@ RSpec.describe Ability do
         expect(subject).not_to be_allowed(:create_wiki)
         expect(subject).not_to be_allowed(:update_wiki)
         expect(subject).not_to be_allowed(:admin_wiki)
+      end
+    end
+  end
+
+  describe '.allowed?' do
+    let_it_be(:group) { create(:group, :private) }
+    let_it_be_with_reload(:primary_user) { create(:user, :service_account) }
+    let_it_be(:scoped_user) { create(:user) }
+
+    let(:request_store_key) { format(::Gitlab::Auth::Identity::COMPOSITE_IDENTITY_KEY_FORMAT, primary_user.id) }
+
+    context 'with composite identity', :request_store do
+      before do
+        primary_user.update!(composite_identity_enforced: true)
+      end
+
+      context 'with linked identity' do
+        before do
+          ::Gitlab::Auth::Identity.new(primary_user).link!(scoped_user)
+        end
+
+        context 'when called with primary user' do
+          subject { described_class.allowed?(primary_user, :read_group, group) }
+
+          context 'when both users are members' do
+            before_all do
+              group.add_developer(scoped_user)
+              group.add_developer(primary_user)
+            end
+
+            it 'returns true' do
+              expect(subject).to be_truthy
+            end
+          end
+
+          context 'when only primary user is a member' do
+            before_all do
+              group.add_developer(primary_user)
+            end
+
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+
+            context 'with unenforced composite identity' do
+              before do
+                primary_user.update!(composite_identity_enforced: false)
+              end
+
+              it 'returns true' do
+                expect(subject).to be_truthy
+              end
+            end
+          end
+
+          context 'when only scoped user is a member' do
+            before_all do
+              group.add_developer(scoped_user)
+            end
+
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+          end
+
+          context 'when neither user is a member' do
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+          end
+
+          context 'when scoped user is a composite identity' do
+            let_it_be(:scoped_user) { primary_user }
+
+            it 'returns false' do
+              group.add_developer(primary_user)
+
+              expect(subject).to be_falsey
+            end
+          end
+        end
+
+        context 'when called with scoped user' do
+          subject { described_class.allowed?(scoped_user, :read_group, group) }
+
+          context 'when both users are members' do
+            before_all do
+              group.add_developer(scoped_user)
+              group.add_developer(primary_user)
+              scoped_user.composite_identity_enforced!
+            end
+
+            it 'returns true' do
+              expect(subject).to be_truthy
+            end
+          end
+
+          context 'when only primary user is a member' do
+            before_all do
+              group.add_developer(primary_user)
+            end
+
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+          end
+
+          context 'when only scoped user is a member' do
+            before_all do
+              scoped_user.composite_identity_enforced!
+              group.add_developer(scoped_user)
+            end
+
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+          end
+
+          context 'when neither user is a member' do
+            it 'returns false' do
+              expect(subject).to be_falsey
+            end
+          end
+        end
+      end
+
+      context 'without linked identity' do
+        before do
+          ::Gitlab::SafeRequestStore.delete(request_store_key)
+        end
+
+        before_all do
+          group.add_developer(primary_user)
+        end
+
+        subject { described_class.allowed?(primary_user, :read_group, group) }
+
+        it 'returns false' do
+          expect(subject).to be_falsey
+        end
+
+        context 'when ability check is not null safe' do
+          # some ability checks raise an error if the passed in user is nil
+          # this test has the ability check raise StandardError for a nil user to replicate this behavior
+          it 'returns false' do
+            allow(described_class).to receive(:allowed?).and_call_original
+            allow(described_class).to receive(:allowed?).with(nil, :read_group, group,
+              { composite_identity_check: false })
+              .and_raise(StandardError)
+
+            expect(subject).to be_falsey
+          end
+        end
       end
     end
   end

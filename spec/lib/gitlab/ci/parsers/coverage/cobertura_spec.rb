@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Parsers::Coverage::Cobertura do
   let(:xml_data) { double }
@@ -16,8 +16,8 @@ RSpec.describe Gitlab::Ci::Parsers::Coverage::Cobertura do
     end
   end
 
-  it 'uses Sax parser' do
-    expect(Gitlab::Ci::Parsers::Coverage::SaxDocument).to receive(:new)
+  it 'uses Cobertura parser' do
+    expect(Gitlab::Ci::Parsers::Coverage::Documents::CoberturaDocument).to receive(:new)
 
     parse_report
   end

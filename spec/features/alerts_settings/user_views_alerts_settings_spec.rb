@@ -4,13 +4,8 @@ require 'spec_helper'
 
 RSpec.describe 'Alert integrations settings form', :js, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be(:maintainer) { create(:user) }
-  let_it_be(:developer) { create(:user) }
-
-  before_all do
-    project.add_maintainer(maintainer)
-    project.add_developer(developer)
-  end
+  let_it_be(:maintainer) { create(:user, maintainer_of: project) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   before do
     sign_in(maintainer)
@@ -26,7 +21,7 @@ RSpec.describe 'Alert integrations settings form', :js, feature_category: :incid
 
       it 'shows the alerts setting form title' do
         page.within('#js-alert-management-settings') do
-          expect(find('h4')).to have_content('Alerts')
+          expect(find('h2.gl-heading-2')).to have_content('Alerts')
         end
       end
 

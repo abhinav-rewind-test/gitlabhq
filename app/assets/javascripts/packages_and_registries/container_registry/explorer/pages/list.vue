@@ -17,10 +17,15 @@ import Tracking from '~/tracking';
 import PersistedPagination from '~/packages_and_registries/shared/components/persisted_pagination.vue';
 import PersistedSearch from '~/packages_and_registries/shared/components/persisted_search.vue';
 import { FILTERED_SEARCH_TERM } from '~/vue_shared/components/filtered_search_bar/constants';
+import {
+  getPageParams,
+  getNextPageParams,
+  getPreviousPageParams,
+} from '~/packages_and_registries/shared/utils';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import DeleteImage from '../components/delete_image.vue';
 import RegistryHeader from '../components/list_page/registry_header.vue';
 import DeleteModal from '../components/delete_modal.vue';
-
 import {
   DELETE_IMAGE_SUCCESS_MESSAGE,
   DELETE_IMAGE_ERROR_MESSAGE,
@@ -29,12 +34,12 @@ import {
   EMPTY_RESULT_TITLE,
   EMPTY_RESULT_MESSAGE,
   GRAPHQL_PAGE_SIZE,
+  GRAPHQL_PAGE_SIZE_METADATA_ENABLED,
   FETCH_IMAGES_LIST_ERROR_MESSAGE,
   SORT_FIELDS,
   SETTINGS_TEXT,
 } from '../constants/index';
 import getContainerRepositoriesDetails from '../graphql/queries/get_container_repositories_details.query.graphql';
-import { getPageParams, getNextPageParams, getPreviousPageParams } from '../utils';
 
 export default {
   name: 'RegistryListPage',
@@ -96,7 +101,7 @@ export default {
         return this.queryVariables;
       },
       update(data) {
-        return data[this.graphqlResource]?.containerRepositories.nodes;
+        return data[this.graphqlResource]?.containerRepositories?.nodes ?? [];
       },
       result({ data }) {
         if (!data) {
@@ -119,7 +124,7 @@ export default {
         return this.queryVariables;
       },
       update(data) {
-        return data[this.graphqlResource]?.containerRepositories.nodes;
+        return data[this.graphqlResource]?.containerRepositories?.nodes ?? [];
       },
       error() {
         createAlert({ message: FETCH_IMAGES_LIST_ERROR_MESSAGE });
@@ -134,6 +139,8 @@ export default {
       containerRepositoriesCount: 0,
       itemToDelete: {},
       deleteAlertType: null,
+      deleteAlertMessage: null,
+      deleteImageErrorMessages: [],
       sorting: null,
       name: null,
       mutationLoading: false,
@@ -158,16 +165,22 @@ export default {
     graphqlResource() {
       return this.config.isGroupPage ? WORKSPACE_GROUP : WORKSPACE_PROJECT;
     },
+    pageSize() {
+      return this.config.isMetadataDatabaseEnabled
+        ? GRAPHQL_PAGE_SIZE_METADATA_ENABLED
+        : GRAPHQL_PAGE_SIZE;
+    },
     queryVariables() {
       return {
         name: this.name,
         sort: this.sorting,
         fullPath: this.config.isGroupPage ? this.config.groupPath : this.config.projectPath,
         isGroupPage: this.config.isGroupPage,
-        first: GRAPHQL_PAGE_SIZE,
+        first: this.pageSize,
         ...this.pageParams,
       };
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       return {
         label: 'registry_repository_delete',
@@ -185,11 +198,6 @@ export default {
     showConnectionError() {
       return this.config.connectionError || this.config.invalidPathError;
     },
-    deleteImageAlertMessage() {
-      return this.deleteAlertType === 'success'
-        ? DELETE_IMAGE_SUCCESS_MESSAGE
-        : DELETE_IMAGE_ERROR_MESSAGE;
-    },
   },
   methods: {
     deleteImage(item) {
@@ -198,21 +206,22 @@ export default {
       this.$refs.deleteModal.show();
     },
     dismissDeleteAlert() {
-      this.deleteAlertType = null;
+      this.setDeleteAlert(null, null);
+
       this.itemToDelete = {};
     },
     fetchNextPage() {
-      this.pageParams = getNextPageParams(this.pageInfo?.endCursor);
+      this.pageParams = getNextPageParams(this.pageInfo?.endCursor, this.pageSize);
     },
     fetchPreviousPage() {
-      this.pageParams = getPreviousPageParams(this.pageInfo?.startCursor);
+      this.pageParams = getPreviousPageParams(this.pageInfo?.startCursor, this.pageSize);
     },
     startDelete() {
       this.track('confirm_delete');
       this.mutationLoading = true;
     },
     handleSearchUpdate({ sort, filters, pageInfo }) {
-      this.pageParams = getPageParams(pageInfo);
+      this.pageParams = getPageParams(pageInfo, this.pageSize);
       this.sorting = sort;
 
       const search = filters.find((i) => i.type === FILTERED_SEARCH_TERM);
@@ -227,7 +236,34 @@ export default {
         }, 200);
       }
     },
+    setDeleteAlert(alertType, alertMessage) {
+      this.deleteAlertType = alertType;
+      this.deleteAlertMessage = alertMessage;
+    },
+    setDeleteErrorMessages(deleteErrorMessages = []) {
+      this.deleteImageErrorMessages = deleteErrorMessages ?? [];
+    },
+    handleDeleteImageSuccess() {
+      this.setDeleteAlert('success', DELETE_IMAGE_SUCCESS_MESSAGE);
+    },
+    handleDeleteImageError(errors = []) {
+      this.setDeleteAlert('danger', DELETE_IMAGE_ERROR_MESSAGE);
+      const errorMessages =
+        (errors || [])
+          .map((error) => {
+            return error?.message || String(error);
+          })
+          .filter(Boolean) || [];
+
+      this.setDeleteErrorMessages(errorMessages);
+    },
   },
+  dockerConnectionErrorHelpUrl: helpPagePath(
+    'user/packages/container_registry/troubleshoot_container_registry',
+    {
+      anchor: 'docker-connection-error',
+    },
+  ),
 };
 </script>
 
@@ -240,11 +276,19 @@ export default {
       dismissible
       @dismiss="dismissDeleteAlert"
     >
-      <gl-sprintf :message="deleteImageAlertMessage">
+      <gl-sprintf :message="deleteAlertMessage">
         <template #title>
           {{ itemToDelete.path }}
         </template>
       </gl-sprintf>
+
+      <div v-if="deleteImageErrorMessages.length">
+        <ul class="gl-mb-0">
+          <li v-for="(deleteImageErrorMessage, index) in deleteImageErrorMessages" :key="index">
+            {{ deleteImageErrorMessage }}
+          </li>
+        </ul>
+      </div>
     </gl-alert>
 
     <gl-empty-state
@@ -257,7 +301,7 @@ export default {
         <p>
           <gl-sprintf :message="$options.i18n.CONNECTION_ERROR_MESSAGE">
             <template #docLink="{ content }">
-              <gl-link :href="`${config.helpPagePath}#docker-connection-error`" target="_blank">
+              <gl-link :href="$options.dockerContainerErrorHelpUrl" target="_blank">
                 {{ content }}
               </gl-link>
             </template>
@@ -271,28 +315,30 @@ export default {
         :metadata-loading="isLoading"
         :images-count="containerRepositoriesCount"
         :expiration-policy="config.expirationPolicy"
-        :help-page-path="config.helpPagePath"
         :hide-expiration-policy-data="config.isGroupPage"
         :cleanup-policies-settings-path="config.cleanupPoliciesSettingsPath"
         :show-cleanup-policy-link="config.showCleanupPolicyLink"
       >
         <template #commands>
+          <gl-button
+            v-if="config.showContainerRegistrySettings"
+            v-gl-tooltip="$options.i18n.SETTINGS_TEXT"
+            icon="settings"
+            class="!gl-w-auto"
+            :href="config.settingsPath"
+            :aria-label="$options.i18n.SETTINGS_TEXT"
+          />
           <cli-commands
             v-if="showCommands"
             :docker-build-command="dockerBuildCommand"
             :docker-push-command="dockerPushCommand"
             :docker-login-command="dockerLoginCommand"
-          />
-          <gl-button
-            v-if="config.showContainerRegistrySettings"
-            v-gl-tooltip="$options.i18n.SETTINGS_TEXT"
-            icon="settings"
-            :href="config.cleanupPoliciesSettingsPath"
-            :aria-label="$options.i18n.SETTINGS_TEXT"
+            class="!gl-w-auto"
           />
         </template>
       </registry-header>
       <persisted-search
+        use-router
         :sortable-fields="$options.searchConfig"
         :default-order="$options.searchConfig[0].orderBy"
         default-sort="desc"
@@ -340,8 +386,9 @@ export default {
         </template>
       </template>
 
-      <div v-if="!mutationLoading" class="gl-display-flex gl-justify-content-center">
+      <div v-if="!mutationLoading" class="gl-flex gl-justify-center">
         <persisted-pagination
+          use-router
           class="gl-mt-3"
           :pagination="pageInfo"
           @prev="fetchPreviousPage"
@@ -352,8 +399,8 @@ export default {
       <delete-image
         :id="itemToDelete.id"
         @start="startDelete"
-        @error="deleteAlertType = 'danger'"
-        @success="deleteAlertType = 'success'"
+        @error="handleDeleteImageError"
+        @success="handleDeleteImageSuccess"
         @end="mutationLoading = false"
       >
         <template #default="{ doDelete }">

@@ -6,7 +6,6 @@ module Search
     include Gitlab::Utils::StrongMemoize
 
     DEFAULT_SCOPE = 'projects'
-    ALLOWED_SCOPES = %w[projects issues merge_requests milestones users].freeze
 
     attr_accessor :current_user, :params
 
@@ -17,27 +16,45 @@ module Search
 
     def execute
       Gitlab::SearchResults.new(current_user,
-                                params[:search],
-                                projects,
-                                order_by: params[:order_by],
-                                sort: params[:sort],
-                                filters: filters)
+        params[:search],
+        projects,
+        order_by: params[:order_by],
+        sort: params[:sort],
+        filters: filters
+      )
     end
 
     # rubocop: disable CodeReuse/ActiveRecord
     def projects
-      @projects ||= ProjectsFinder.new(current_user: current_user).execute.preload(:topics, :project_topics, :route)
+      @projects ||= ::ProjectsFinder.new(current_user: current_user).execute.preload(:topics, :project_topics, :route)
     end
 
     def allowed_scopes
-      ALLOWED_SCOPES
+      Search::Scopes.available_for_context(
+        context: :global,
+        container: searched_container,
+        requested_search_type: params[:search_type]
+      )
     end
 
     def scope
-      strong_memoize(:scope) do
-        allowed_scopes.include?(params[:scope]) ? params[:scope] : DEFAULT_SCOPE
-      end
+      allowed_scopes.include?(params[:scope]) ? params[:scope] : default_search_scope
     end
+    strong_memoize_attr :scope
+
+    private
+
+    def default_search_scope
+      if ::Gitlab::CurrentSettings.custom_default_search_scope_set? &&
+          allowed_scopes.include?(::Gitlab::CurrentSettings.default_search_scope)
+        return ::Gitlab::CurrentSettings.default_search_scope
+      end
+
+      DEFAULT_SCOPE
+    end
+
+    # Global search doesn't have a container
+    def searched_container; end
   end
 end
 

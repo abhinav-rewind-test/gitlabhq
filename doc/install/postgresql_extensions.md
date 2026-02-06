@@ -1,14 +1,17 @@
 ---
-stage: Data Stores
-group: Database
+stage: Data Access
+group: Database Operations
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Install and manage PostgreSQL extensions in GitLab Self-Managed, with guidance on handling failures and recovering from failed migrations.
+title: Managing PostgreSQL extensions
 ---
 
-# Managing PostgreSQL extensions
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 This guide documents how to manage PostgreSQL extensions for installations with an external
 PostgreSQL database.
@@ -20,8 +23,9 @@ You must load the following extensions into the main GitLab database (defaults t
 | `pg_trgm`    | 8.6                    |
 | `btree_gist` | 13.1                   |
 | `plpgsql`    | 11.7                   |
+| `amcheck`    | 18.4                   |
 
-If you are using [GitLab Geo](../administration/geo/index.md), you must load the following
+If you are using [GitLab Geo](../administration/geo/_index.md), you must load the following
 extensions into all secondary tracking databases (defaults to `gitlabhq_geo_production`):
 
 | Extension    | Minimum GitLab version |
@@ -43,7 +47,7 @@ To install a PostgreSQL extension, this procedure should be followed:
    sudo gitlab-psql -d gitlabhq_production
    ```
 
-1. Install the extension (`btree_gist` in this example) using [`CREATE EXTENSION`](https://www.postgresql.org/docs/11/sql-createextension.html):
+1. Install the extension (`btree_gist` in this example) using [`CREATE EXTENSION`](https://www.postgresql.org/docs/16/sql-createextension.html):
 
    ```sql
    CREATE EXTENSION IF NOT EXISTS btree_gist
@@ -56,6 +60,7 @@ To install a PostgreSQL extension, this procedure should be followed:
                                         List of installed extensions
         Name    | Version |   Schema   |                            Description
     ------------+---------+------------+-------------------------------------------------------------------
+    amcheck    | 1.3     | public     | functions for verifying relation integrity
     btree_gist | 1.5     | public     | support for indexing common datatypes in GiST
     pg_trgm    | 1.4     | public     | text similarity measurement and index searching based on trigrams
     plpgsql    | 1.0     | pg_catalog | PL/pgSQL procedural language

@@ -6,16 +6,6 @@ module Gitlab
       module LockRetriesConcern
         extend ActiveSupport::Concern
 
-        class_methods do
-          def enable_lock_retries!
-            @enable_lock_retries = true # rubocop:disable Gitlab/ModuleWithInstanceVariables
-          end
-
-          def enable_lock_retries?
-            @enable_lock_retries
-          end
-        end
-
         included do
           private
 
@@ -29,8 +19,6 @@ module Gitlab
         def with_lock_retries_used?
           with_lock_retries_used
         end
-
-        delegate :enable_lock_retries?, to: :class
       end
 
       # This implements a simple versioning scheme for migration helpers.
@@ -71,7 +59,16 @@ module Gitlab
       end
 
       class V2_2 < V2_1
+        def self.inherited(subclass)
+          super
+          subclass.instance_variable_set(:@_defining_file, caller_locations.first.absolute_path)
+        end
+
         include Gitlab::Database::Migrations::MilestoneMixin
+      end
+
+      class V2_3 < V2_2
+        include Gitlab::Database::MigrationHelpers::RequireDisableDdlTransactionForMultipleLocks
       end
 
       def self.[](version)
@@ -84,7 +81,7 @@ module Gitlab
 
       # The current version to be used in new migrations
       def self.current_version
-        2.2
+        2.3
       end
     end
   end

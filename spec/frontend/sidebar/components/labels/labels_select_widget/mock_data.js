@@ -77,7 +77,7 @@ export const createLabelSuccessfulResponse = {
 
 export const workspaceLabelsQueryResponse = {
   data: {
-    workspace: {
+    namespace: {
       id: 'gid://gitlab/Project/126',
       labels: {
         nodes: [
@@ -105,7 +105,7 @@ export const workspaceLabelsQueryResponse = {
 
 export const workspaceLabelsQueryEmptyResponse = {
   data: {
-    workspace: {
+    namespace: {
       id: 'gid://gitlab/Project/126',
       labels: {
         nodes: [],
@@ -116,7 +116,7 @@ export const workspaceLabelsQueryEmptyResponse = {
 
 export const issuableLabelsQueryResponse = {
   data: {
-    workspace: {
+    namespace: {
       id: 'workspace-1',
       issuable: {
         __typename: 'Issue',
@@ -178,6 +178,7 @@ export const updateLabelsMutationResponse = {
           name: 'John Smith',
           username: 'jsmith',
           webUrl: 'http://gdk.test:3000/jsmith',
+          webPath: '/jsmith',
           __typename: 'UserCore',
         },
         __typename: 'Issue',

@@ -14,6 +14,11 @@ RSpec.describe 'gitlab:usage data take tasks', :silence_stdout, :with_license, f
     # stub prometheus external http calls https://gitlab.com/gitlab-org/gitlab/-/issues/245277
     stub_prometheus_queries
     stub_database_flavor_check
+
+    # We sleep in GitlabServicePingWorker to avoid "thundering herd" problems, which doesn't happen in this test
+    allow_next_instance_of(GitlabServicePingWorker) do |obj|
+      allow(obj).to receive(:sleep)
+    end
   end
 
   after do
@@ -63,7 +68,7 @@ RSpec.describe 'gitlab:usage data take tasks', :silence_stdout, :with_license, f
       end
       stub_response(body: payload.merge(conv_index: { usage_data_id: 123 }))
       stub_response(body: nil, url: service_ping_metadata_url, status: 201)
-      create(:organization, :default)
+      create(:organization)
     end
 
     it 'generates and sends Service Ping payload' do

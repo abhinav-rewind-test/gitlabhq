@@ -2,21 +2,15 @@
 
 require 'spec_helper'
 
-RSpec.describe Issues::BuildService, feature_category: :team_planning do
+RSpec.describe Issues::BuildService, :request_store, feature_category: :team_planning do
   using RSpec::Parameterized::TableSyntax
 
   let_it_be(:project) { create(:project, :repository) }
-  let_it_be(:developer) { create(:user) }
-  let_it_be(:reporter) { create(:user) }
-  let_it_be(:guest) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:reporter) { create(:user, reporter_of: project) }
+  let_it_be(:guest) { create(:user, guest_of: project) }
 
   let(:user) { developer }
-
-  before_all do
-    project.add_developer(developer)
-    project.add_reporter(reporter)
-    project.add_guest(guest)
-  end
 
   def build_issue(issue_params = {})
     described_class.new(container: project, current_user: user, params: issue_params).execute
@@ -68,12 +62,12 @@ RSpec.describe Issues::BuildService, feature_category: :team_planning do
                     "with a blockquote\n"\
                     "> That has a quote\n"\
                     ">>>\n"
-        note_result = "    > This is a string\n"\
-                      "    > \n"\
-                      "    > >>>\n"\
-                      "    > with a blockquote\n"\
-                      "    > > That has a quote\n"\
-                      "    > >>>\n"
+        note_result = "    > This is a string\n    "\
+                      "> \n    "\
+                      "> >>>\n    "\
+                      "> with a blockquote\n    "\
+                      "> > That has a quote\n    "\
+                      "> >>>\n"
         discussion = create(:diff_note_on_merge_request, note: note_text).to_discussion
         expect(service.item_for_discussion(discussion)).to include(note_result)
       end
@@ -207,6 +201,23 @@ RSpec.describe Issues::BuildService, feature_category: :team_planning do
             expect(issue.work_item_type_id).to eq(work_item_type_id)
           end
         end
+      end
+    end
+
+    context 'when a service account with composite identity is in use' do
+      let_it_be(:service_account) { create(:user, :service_account, composite_identity_enforced: true) }
+
+      # Use a separate let to prevent interference with other specs
+      let(:user) { create(:user) }
+
+      before do
+        ::Gitlab::Auth::Identity.link_from_scoped_user(service_account, user)
+      end
+
+      it 'attributes the change to the service account' do
+        issue = build_issue(title: 'What an issue')
+
+        expect(issue.author).to eq(service_account)
       end
     end
   end

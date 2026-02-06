@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Snippets::BlobsController do
+RSpec.describe Snippets::BlobsController, feature_category: :source_code_management do
   using RSpec::Parameterized::TableSyntax
   include SnippetHelpers
 
@@ -50,6 +50,15 @@ RSpec.describe Snippets::BlobsController do
       let(:snippet) { create(:personal_snippet, visibility, author: author) }
 
       it_behaves_like 'raw snippet without repository', :redirect
+    end
+
+    context 'when ref is invalid' do
+      let(:ref) { 'ref with space' }
+
+      it 'returns 404 error' do
+        subject
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
     end
   end
 end

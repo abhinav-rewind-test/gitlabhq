@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/upload/destination/objectstore/test"
@@ -120,10 +121,10 @@ func (e *endlessReader) Read(p []byte) (n int, err error) {
 // This is important for troubleshooting in production.
 func TestObjectUploadBrokenConnection(t *testing.T) {
 	// This test server closes connection immediately
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hj, ok := w.(http.Hijacker)
 		if !ok {
-			require.FailNow(t, "webserver doesn't support hijacking")
+			assert.Fail(t, "webserver doesn't support hijacking")
 		}
 		conn, _, err := hj.Hijack()
 		if err != nil {
@@ -145,4 +146,33 @@ func TestObjectUploadBrokenConnection(t *testing.T) {
 	_, copyErr := object.Consume(ctx, &endlessReader{}, deadline)
 	require.Error(t, copyErr)
 	require.NotEqual(t, io.ErrClosedPipe, copyErr, "We are shadowing the real error")
+}
+
+func TestObjectUploadEmptyBody(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength < 0 {
+			w.WriteHeader(http.StatusLengthRequired)
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Empty(t, body)
+
+		w.Header().Set("ETag", "d41d8cd98f00b204e9800998ecf8427e")
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	deadline := time.Now().Add(testTimeout)
+	objectURL := ts.URL + test.ObjectPath
+	object, err := NewObject(objectURL, "", map[string]string{}, 0)
+	require.NoError(t, err)
+
+	// copy data
+	n, err := object.Consume(ctx, io.MultiReader(strings.NewReader("")), deadline)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n, "Uploaded file mismatch")
 }

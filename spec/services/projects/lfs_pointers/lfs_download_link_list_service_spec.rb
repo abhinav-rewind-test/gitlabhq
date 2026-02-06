@@ -10,16 +10,26 @@ RSpec.describe Projects::LfsPointers::LfsDownloadLinkListService, feature_catego
   let(:remote_uri) { URI.parse(lfs_endpoint) }
 
   let(:request_object) { HTTParty::Request.new(Net::HTTP::Post, '/') }
-  let(:parsed_block) { lambda {} }
+  let(:parsed_block) { -> {} }
   let(:success_net_response) { Net::HTTPOK.new('', '', '') }
   let(:response) { Gitlab::HTTP::Response.new(request_object, net_response, parsed_block) }
+
+  let(:invalid_object_response) do
+    [
+      'oid' => 'whatever',
+      'size' => 123
+    ]
+  end
 
   def objects_response(oids)
     body = oids.map do |oid, size|
       {
         'oid' => oid, 'size' => size,
         'actions' => {
-          'download' => { 'href' => "#{import_url}/gitlab-lfs/objects/#{oid}", header: headers }
+          'download' => {
+            'href' => "#{import_url}/gitlab-lfs/objects/#{oid}",
+            'header' => headers
+          }
         }
       }
     end
@@ -30,13 +40,6 @@ RSpec.describe Projects::LfsPointers::LfsDownloadLinkListService, feature_catego
   def custom_response(net_response, body = nil)
     allow(net_response).to receive(:body).and_return(body)
     Gitlab::HTTP::Response.new(request_object, net_response, parsed_block)
-  end
-
-  let(:invalid_object_response) do
-    [
-      'oid' => 'whatever',
-      'size' => 123
-    ]
   end
 
   subject(:service) { described_class.new(project, remote_uri: remote_uri) }
@@ -81,7 +84,7 @@ RSpec.describe Projects::LfsPointers::LfsDownloadLinkListService, feature_catego
       end
 
       def stub_request(batch, response)
-        expect(Gitlab::HTTP).to receive(:post).with(
+        expect(Import::Clients::HTTP).to receive(:post).with(
           remote_uri,
           {
             body: { operation: 'download', objects: batch.map { |k, v| { oid: k, size: v } } }.to_json,
@@ -112,6 +115,30 @@ RSpec.describe Projects::LfsPointers::LfsDownloadLinkListService, feature_catego
         end
       end
 
+      context 'when request fails with RateLimit error' do
+        def stub_rate_limit_error_request(batch)
+          rate_limit_net_response = Net::HTTPTooManyRequests.new('', '', '')
+          allow(rate_limit_net_response).to receive(:code).and_return(429)
+          response = custom_response(rate_limit_net_response, '{}')
+          allow(response).to receive(:code).and_return(429)
+          stub_request(batch, response)
+        end
+
+        context 'when rate limit is hit' do
+          before do
+            stub_const("#{described_class.name}::REQUEST_BATCH_SIZE", 5)
+
+            data = new_oids.to_a
+            stub_rate_limit_error_request(data)
+          end
+
+          it 'raises DownloadLinksError with TooManyRequests message' do
+            expect { service.each_link(new_oids) }
+              .to raise_error(described_class::DownloadLinksError, 'Unable to download due to TooManyRequests error')
+          end
+        end
+      end
+
       context 'when request fails with PayloadTooLarge error' do
         let(:error_class) { described_class::DownloadLinksRequestEntityTooLargeError }
 
@@ -130,7 +157,7 @@ RSpec.describe Projects::LfsPointers::LfsDownloadLinkListService, feature_catego
             stub_successful_request([data[4]])
           end
 
-          it 'retreives them eventually and logs exceptions' do
+          it 'retrieves them eventually and logs exceptions' do
             expect(Gitlab::ErrorTracking).to receive(:track_exception).with(
               an_instance_of(error_class), project_id: project.id, batch_size: 5, oids_count: 5
             )

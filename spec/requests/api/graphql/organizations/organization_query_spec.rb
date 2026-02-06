@@ -2,10 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe 'getting organization information', feature_category: :cell do
+RSpec.describe 'getting organization information', feature_category: :organization do
   include GraphqlHelpers
   using RSpec::Parameterized::TableSyntax
 
+  let(:object) { organization }
   let(:query) { graphql_query_for(:organization, { id: organization.to_global_id }, organization_fields) }
   let(:current_user) { user }
   let(:organization_fields) do
@@ -20,13 +21,15 @@ RSpec.describe 'getting organization information', feature_category: :cell do
     FIELDS
   end
 
-  let_it_be(:organization_user) { create(:organization_user) }
-  let_it_be(:organization) { organization_user.organization }
-  let_it_be(:user) { organization_user.user }
+  let_it_be(:organization_owner) { create(:organization_owner) }
+  let_it_be(:organization) { organization_owner.organization }
+  let_it_be(:user) { organization_owner.user }
   let_it_be(:project) { create(:project, organization: organization) { |p| p.add_developer(user) } }
   let_it_be(:other_group) do
     create(:group, name: 'other-group', organization: organization) { |g| g.add_developer(user) }
   end
+
+  let_it_be(:organization_group) { create(:group, organization: organization) }
 
   subject(:request_organization) { post_graphql(query, current_user: current_user) }
 
@@ -34,6 +37,8 @@ RSpec.describe 'getting organization information', feature_category: :cell do
     let(:current_user) { create(:user) }
 
     context 'when organization is private' do
+      let_it_be(:organization) { create(:organization, :private) }
+
       it 'returns no organization' do
         request_organization
 
@@ -42,8 +47,6 @@ RSpec.describe 'getting organization information', feature_category: :cell do
     end
 
     context 'when organization is public' do
-      let_it_be(:organization) { create(:organization, :public) }
-
       it 'only returns the public organization' do
         request_organization
 
@@ -64,11 +67,16 @@ RSpec.describe 'getting organization information', feature_category: :cell do
         <<~FIELDS
           organizationUsers {
             nodes {
+              accessLevel {
+                integerValue
+                stringValue
+              }
               badges {
                 text
                 variant
               }
               id
+              isLastOwner
               user {
                 id
               }
@@ -82,8 +90,10 @@ RSpec.describe 'getting organization information', feature_category: :cell do
 
         organization_user_nodes = graphql_data_at(:organization, :organizationUsers, :nodes)
         expected_attributes = {
-          "badges" => [{ "text" => "It's you!", "variant" => 'muted' }],
-          "id" => organization_user.to_global_id.to_s,
+          "accessLevel" => { "integerValue" => 50, "stringValue" => "OWNER" },
+          "badges" => [{ "text" => "It's you!", "variant" => 'neutral' }],
+          "id" => organization_owner.to_global_id.to_s,
+          "isLastOwner" => true,
           "user" => { "id" => user.to_global_id.to_s }
         }
         expect(organization_user_nodes).to include(expected_attributes)
@@ -110,6 +120,7 @@ RSpec.describe 'getting organization information', feature_category: :cell do
     context 'when requesting groups' do
       let(:groups) { graphql_data_at(:organization, :groups, :nodes) }
       let_it_be(:parent_group) { create(:group, name: 'parent-group', organization: organization) }
+      let_it_be(:parent_group_global_id) { parent_group.to_global_id.to_s }
       let_it_be(:public_group) do
         create(:group, name: 'public-group', parent: parent_group, organization: organization)
       end
@@ -122,13 +133,21 @@ RSpec.describe 'getting organization information', feature_category: :cell do
         create(:group, :private, name: 'no-access', organization: organization)
         private_group.add_developer(user)
         public_group.add_developer(user)
-        create(:group) { |g| g.add_developer(user) } # outside organization
+        create(:group, organization: create(:organization)) { |g| g.add_developer(user) } # outside organization
       end
 
-      it 'does not return ancestors of authorized groups' do
+      it 'returns ancestors of authorized groups' do
         request_organization
 
-        expect(groups.pluck('id')).not_to include(parent_group.to_global_id.to_s)
+        expect(groups.pluck('id')).to include(parent_group_global_id)
+      end
+
+      it 'returns all visible groups' do
+        request_organization
+
+        expected_groups = [parent_group, public_group, private_group, other_group, organization_group]
+          .map { |group| group.to_global_id.to_s }
+        expect(groups.pluck('id')).to match_array(expected_groups)
       end
 
       context 'with `search` argument' do
@@ -154,7 +173,7 @@ RSpec.describe 'getting organization information', feature_category: :cell do
       end
 
       describe 'group sorting' do
-        let_it_be(:authorized_groups) { [public_group, private_group, other_group] }
+        let_it_be(:authorized_groups) { [parent_group, public_group, private_group, other_group, organization_group] }
         let_it_be(:first_param) { 2 }
         let_it_be(:data_path) { [:organization, :groups] }
 
@@ -196,7 +215,8 @@ RSpec.describe 'getting organization information', feature_category: :cell do
       end
 
       before_all do
-        create(:project) { |p| p.add_developer(user) } # some other project that shouldn't show up in our results
+        # some other project that shouldn't show up in our results
+        create(:project, organization: create(:organization)) { |p| p.add_developer(user) }
       end
 
       before do
@@ -266,6 +286,42 @@ RSpec.describe 'getting organization information', feature_category: :cell do
           :organization, { id: organization.to_global_id },
           query_nodes(:projects, :id, include_pagination_info: true, args: params)
         )
+      end
+    end
+
+    describe 'root_path field' do
+      let(:organization_fields) do
+        <<~FIELDS
+          id
+          rootPath
+        FIELDS
+      end
+
+      context 'when organization is default' do
+        let_it_be(:default_organization) { create(:organization, :default, organization_users: [organization_owner]) } # rubocop:disable Gitlab/RSpec/AvoidCreateDefaultOrganization -- the application code checks for default organization so we need to test this.
+        let(:object) { default_organization }
+
+        it "returns unscoped root path" do
+          expect(root_path).to eq('/')
+        end
+      end
+
+      context 'when organization is not default' do
+        it 'returns scoped root path' do
+          request_organization
+
+          expect(graphql_data_at(:organization, :root_path)).to eq("/o/#{organization.path}")
+        end
+      end
+
+      context 'when organization_scoped_paths feature flag is disabled' do
+        before do
+          stub_feature_flags(organization_scoped_paths: false)
+        end
+
+        it 'returns unscoped root path' do
+          expect(root_path).to eq('/')
+        end
       end
     end
   end

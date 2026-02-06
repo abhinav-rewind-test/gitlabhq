@@ -85,56 +85,45 @@ export default {
 };
 </script>
 <template>
-  <div>
-    <div
-      v-if="commit"
-      class="gl-float-left gl-mr-5 gl-display-flex gl-align-items-center js-commit-info"
-    >
-      <gl-icon ref="commitIcon" name="commit" class="gl-mr-2" />
+  <div class="gl-flex gl-items-center gl-gap-5 gl-text-sm">
+    <div v-if="commit" class="js-commit-info gl-flex gl-items-center gl-gap-2">
+      <gl-icon ref="commitIcon" name="commit" variant="subtle" />
       <div v-gl-tooltip.bottom :title="commit.title">
-        <gl-link v-if="commitPath" :href="commitPath">
+        <gl-link
+          v-if="commitPath"
+          :href="commitPath"
+          class="gl-mr-0 gl-font-monospace gl-text-subtle"
+        >
           {{ commit.shortId }}
         </gl-link>
         <span v-else>{{ commit.shortId }}</span>
       </div>
     </div>
 
-    <div
-      v-if="tagName"
-      class="gl-float-left gl-mr-5 gl-display-flex gl-align-items-center js-tag-info"
-    >
-      <gl-icon name="tag" class="gl-mr-2" />
+    <div v-if="tagName" class="js-tag-info gl-flex gl-items-center gl-gap-2">
+      <gl-icon name="tag" variant="subtle" />
       <div v-gl-tooltip.bottom :title="__('Tag')">
-        <gl-link v-if="tagPath" :href="tagPath">
+        <gl-link v-if="tagPath" :href="tagPath" class="gl-mr-0 gl-font-monospace gl-text-subtle">
           {{ tagName }}
         </gl-link>
         <span v-else>{{ tagName }}</span>
       </div>
     </div>
-
-    <div
-      v-if="timeAt || author"
-      class="gl-float-left gl-display-flex gl-align-items-center js-author-date-info"
-    >
-      <span class="gl-text-secondary">{{ createdTime }}&nbsp;</span>
+    <div v-if="timeAt || author" class="js-author-date-info gl-flex gl-items-center">
+      <span class="gl-text-subtle">{{ createdTime }}&nbsp;</span>
       <template v-if="timeAt">
-        <span
-          v-gl-tooltip.bottom
-          :title="tooltipTitle(timeAt)"
-          class="gl-text-secondary gl-flex-shrink-0"
-        >
+        <span v-gl-tooltip.bottom :title="tooltipTitle(timeAt)" class="gl-shrink-0 gl-text-subtle">
           {{ atTimeAgo }}&nbsp;
         </span>
       </template>
 
-      <div v-if="author" class="gl-display-flex">
-        <span class="gl-text-secondary">{{ __('by') }}&nbsp;</span>
+      <div v-if="author" class="gl-flex gl-items-center gl-gap-1">
+        <span class="gl-text-subtle">{{ __('by') }}&nbsp;</span>
         <user-avatar-link
-          class="gl-my-n1 gl-display-flex"
           :link-href="author.webUrl"
           :img-src="author.avatarUrl"
           :img-alt="userImageAltDescription"
-          :img-size="24"
+          :img-size="16"
           :tooltip-text="author.username"
           tooltip-placement="bottom"
         />

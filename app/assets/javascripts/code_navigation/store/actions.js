@@ -22,7 +22,6 @@ export default {
                 ...d,
                 definitionLineNumber: parseInt(d.definition_path?.split('#L').pop() || 0, 10),
               };
-              addInteractionClass({ path, d, wrapTextNodes: state.wrapTextNodes });
             }
             return acc;
           }, {});
@@ -66,11 +65,18 @@ export default {
 
     if (el.closest('.js-code-navigation') && !isCurrentElementPopoverOpen) {
       const { lineIndex, charIndex } = el.dataset;
-      const { x, y } = el.getBoundingClientRect();
+      const blobViewer = el.closest('.file-holder')?.querySelector('.blob-viewer');
+
+      let offsetLeft = 0;
+      const blobContent = document.querySelector('.line-numbers')?.nextElementSibling;
+
+      if (blobContent?.classList.contains('blob-content')) {
+        offsetLeft = blobContent.offsetLeft;
+      }
 
       position = {
-        x: x || 0,
-        y: y + window.scrollY || 0,
+        x: (el.offsetLeft || 0) + offsetLeft,
+        y: el.offsetTop + (blobViewer?.offsetTop || 0) || 0,
         height: el.offsetHeight,
         lineIndex: parseInt(lineIndex, 10),
       };

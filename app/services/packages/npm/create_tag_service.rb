@@ -24,7 +24,7 @@ module Packages
 
       def existing_tag
         Packages::TagsFinder
-            .new(package.project, package.name, package_type: package.package_type)
+            .new(package.project, package.name, ::Packages::Npm::Package)
             .find_by_name(tag_name)
       end
       strong_memoize_attr :existing_tag

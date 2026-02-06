@@ -1,4 +1,11 @@
-import { GlAlert, GlEmptyState, GlLink, GlLoadingIcon, GlPagination, GlTabs } from '@gitlab/ui';
+import {
+  GlAlert,
+  GlEmptyState,
+  GlKeysetPagination,
+  GlLink,
+  GlLoadingIcon,
+  GlTabs,
+} from '@gitlab/ui';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
 import { trimText } from 'helpers/text_helper';
@@ -10,11 +17,13 @@ import PipelineSchedules from '~/ci/pipeline_schedules/components/pipeline_sched
 import DeletePipelineScheduleModal from '~/ci/pipeline_schedules/components/delete_pipeline_schedule_modal.vue';
 import TakeOwnershipModal from '~/ci/pipeline_schedules/components/take_ownership_modal.vue';
 import PipelineSchedulesTable from '~/ci/pipeline_schedules/components/table/pipeline_schedules_table.vue';
+import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import deletePipelineScheduleMutation from '~/ci/pipeline_schedules/graphql/mutations/delete_pipeline_schedule.mutation.graphql';
 import playPipelineScheduleMutation from '~/ci/pipeline_schedules/graphql/mutations/play_pipeline_schedule.mutation.graphql';
 import takeOwnershipMutation from '~/ci/pipeline_schedules/graphql/mutations/take_ownership.mutation.graphql';
 import getPipelineSchedulesQuery from '~/ci/pipeline_schedules/graphql/queries/get_pipeline_schedules.query.graphql';
-import { SCHEDULES_PER_PAGE } from '~/ci/pipeline_schedules/constants';
+import pipelineScheduleStatusUpdatedSubscription from '~/ci/pipeline_schedules/graphql/subscriptions/ci_pipeline_schedule_status_updated.subscription.graphql';
+import { SCHEDULES_PER_PAGE, TABLE_SORT_STORAGE_KEY } from '~/ci/pipeline_schedules/constants';
 import {
   mockGetPipelineSchedulesGraphQLResponse,
   mockPipelineScheduleNodes,
@@ -27,6 +36,7 @@ import {
   mockPipelineSchedulesResponsePlanLimitReached,
   mockPipelineSchedulesResponseUnlimited,
   noPlanLimitResponse,
+  mockScheduleUpdateResponse,
 } from '../mock_data';
 
 Vue.use(VueApollo);
@@ -51,6 +61,7 @@ describe('Pipeline schedules app', () => {
     .fn()
     .mockResolvedValue(mockPipelineSchedulesResponseUnlimited);
   const failedHandler = jest.fn().mockRejectedValue(new Error('GraphQL error'));
+  const subscriptionHandler = jest.fn().mockResolvedValue(mockScheduleUpdateResponse);
 
   const deleteMutationHandlerSuccess = jest.fn().mockResolvedValue(deleteMutationResponse);
   const deleteMutationHandlerFailed = jest.fn().mockRejectedValue(new Error('GraphQL error'));
@@ -64,7 +75,10 @@ describe('Pipeline schedules app', () => {
     .mockRejectedValue(new Error('GraphQL error'));
 
   const createMockApolloProvider = (
-    requestHandlers = [[getPipelineSchedulesQuery, successHandler]],
+    requestHandlers = [
+      [getPipelineSchedulesQuery, successHandler],
+      [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+    ],
   ) => {
     return createMockApollo(requestHandlers);
   };
@@ -72,8 +86,9 @@ describe('Pipeline schedules app', () => {
   const createComponent = (requestHandlers) => {
     wrapper = mountExtended(PipelineSchedules, {
       provide: {
-        fullPath: 'gitlab-org/gitlab',
+        projectPath: 'gitlab-org/gitlab',
         newSchedulePath: '/root/ci-project/-/pipeline_schedules/new',
+        projectId: '23',
       },
       mocks: {
         $toast,
@@ -97,9 +112,10 @@ describe('Pipeline schedules app', () => {
   const findInactiveTab = () => wrapper.findByTestId('pipeline-schedules-inactive-tab');
   const findSchedulesCharacteristics = () =>
     wrapper.findByTestId('pipeline-schedules-characteristics');
-  const findPagination = () => wrapper.findComponent(GlPagination);
-  const setPage = async (page) => {
-    findPagination().vm.$emit('input', page);
+  const findPagination = () => wrapper.findComponent(GlKeysetPagination);
+  const findLocalStorageSync = () => wrapper.findComponent(LocalStorageSync);
+  const setPage = async (direction) => {
+    findPagination().vm.$emit(direction);
     await waitForPromises();
   };
 
@@ -150,7 +166,10 @@ describe('Pipeline schedules app', () => {
     });
 
     it('shows query error alert', async () => {
-      createComponent([[getPipelineSchedulesQuery, failedHandler]]);
+      createComponent([
+        [getPipelineSchedulesQuery, failedHandler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
 
       await waitForPromises();
 
@@ -163,6 +182,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [deletePipelineScheduleMutation, deleteMutationHandlerFailed],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -178,6 +198,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [deletePipelineScheduleMutation, deleteMutationHandlerSuccess],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -226,6 +247,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [playPipelineScheduleMutation, playMutationHandlerFailed],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -241,6 +263,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [playPipelineScheduleMutation, playMutationHandlerSuccess],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -265,6 +288,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [takeOwnershipMutation, takeOwnershipMutationHandlerFailed],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -282,6 +306,7 @@ describe('Pipeline schedules app', () => {
       createComponent([
         [getPipelineSchedulesQuery, successHandler],
         [takeOwnershipMutation, takeOwnershipMutationHandlerSuccess],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
       ]);
 
       await waitForPromises();
@@ -327,7 +352,10 @@ describe('Pipeline schedules app', () => {
 
   describe('pipeline schedule tabs', () => {
     beforeEach(async () => {
-      createComponent([[getPipelineSchedulesQuery, successHandler]]);
+      createComponent([
+        [getPipelineSchedulesQuery, successHandler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
 
       await waitForPromises();
     });
@@ -365,13 +393,17 @@ describe('Pipeline schedules app', () => {
         last: null,
         nextPageCursor: '',
         prevPageCursor: '',
+        sortValue: 'ID_DESC',
       });
     });
   });
 
   describe('Empty pipeline schedules response', () => {
     it('should show an empty state', async () => {
-      createComponent([[getPipelineSchedulesQuery, successEmptyHandler]]);
+      createComponent([
+        [getPipelineSchedulesQuery, successEmptyHandler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
 
       await waitForPromises();
 
@@ -394,7 +426,10 @@ describe('Pipeline schedules app', () => {
       });
 
       it('should not show empty state', async () => {
-        createComponent([[getPipelineSchedulesQuery, successEmptyHandler]]);
+        createComponent([
+          [getPipelineSchedulesQuery, successEmptyHandler],
+          [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+        ]);
 
         await waitForPromises();
 
@@ -407,18 +442,19 @@ describe('Pipeline schedules app', () => {
     const { pageInfo } = mockPipelineSchedulesResponseWithPagination.data.project.pipelineSchedules;
 
     beforeEach(async () => {
-      createComponent([[getPipelineSchedulesQuery, successHandlerWithPagination]]);
+      createComponent([
+        [getPipelineSchedulesQuery, successHandlerWithPagination],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
 
       await waitForPromises();
     });
 
     it('displays pagination', () => {
       expect(findPagination().exists()).toBe(true);
-      expect(findPagination().props()).toMatchObject({
-        value: 1,
-        prevPage: Number(pageInfo.hasPreviousPage),
-        nextPage: Number(pageInfo.hasNextPage),
-      });
+      // Extract pageInfo without the __typename field
+      const { __typename, ...expectedPageInfo } = pageInfo;
+      expect(findPagination().props()).toMatchObject(expectedPageInfo);
       expect(successHandlerWithPagination).toHaveBeenCalledWith({
         projectPath: 'gitlab-org/gitlab',
         ids: null,
@@ -426,11 +462,12 @@ describe('Pipeline schedules app', () => {
         last: null,
         nextPageCursor: '',
         prevPageCursor: '',
+        sortValue: 'ID_DESC',
       });
     });
 
     it('updates query variables when going to next page', async () => {
-      await setPage(2);
+      await setPage('next');
 
       expect(successHandlerWithPagination).toHaveBeenCalledWith({
         projectPath: 'gitlab-org/gitlab',
@@ -439,20 +476,131 @@ describe('Pipeline schedules app', () => {
         last: null,
         prevPageCursor: '',
         nextPageCursor: pageInfo.endCursor,
+        sortValue: 'ID_DESC',
       });
-      expect(findPagination().props('value')).toEqual(2);
     });
 
     it('when switching tabs pagination should reset', async () => {
-      await setPage(2);
-
-      expect(findPagination().props('value')).toEqual(2);
+      await setPage('next');
 
       await findInactiveTab().trigger('click');
 
       await waitForPromises();
 
-      expect(findPagination().props('value')).toEqual(1);
+      expect(successHandlerWithPagination).toHaveBeenCalledWith({
+        projectPath: 'gitlab-org/gitlab',
+        ids: null,
+        status: 'INACTIVE',
+        first: SCHEDULES_PER_PAGE,
+        last: null,
+        nextPageCursor: '',
+        prevPageCursor: '',
+        sortValue: 'ID_DESC',
+      });
+    });
+  });
+
+  describe('restores sorting from local storage', () => {
+    beforeEach(async () => {
+      localStorage.setItem(
+        TABLE_SORT_STORAGE_KEY,
+        JSON.stringify({
+          sortValue: 'DESCRIPTION_DESC',
+          sortBy: 'ID',
+          sortDesc: true,
+        }),
+      );
+      createComponent([
+        [getPipelineSchedulesQuery, successHandler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
+      await waitForPromises();
+    });
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it('has local storage sync', () => {
+      expect(findLocalStorageSync().exists()).toBe(true);
+    });
+
+    it('sets localStorage storageKey to the expected key', () => {
+      expect(findLocalStorageSync().props('storageKey')).toBe(TABLE_SORT_STORAGE_KEY);
+    });
+
+    it('fetches results with saved sort settings', () => {
+      expect(successHandler).toHaveBeenCalledWith({
+        projectPath: 'gitlab-org/gitlab',
+        ids: null,
+        first: SCHEDULES_PER_PAGE,
+        last: null,
+        nextPageCursor: '',
+        prevPageCursor: '',
+        sortValue: 'DESCRIPTION_DESC',
+      });
+    });
+  });
+
+  describe('when sorting changes', () => {
+    const newSort = 'DESCRIPTION_ASC';
+
+    beforeEach(async () => {
+      createComponent([
+        [getPipelineSchedulesQuery, successHandler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
+
+      await waitForPromises();
+      await findTable().vm.$emit('update-sorting', newSort, 'description', false);
+    });
+
+    it('updates the local storage', () => {
+      expect(findLocalStorageSync().props('value')).toEqual({
+        sortValue: 'DESCRIPTION_ASC',
+        sortBy: 'description',
+        sortDesc: false,
+      });
+    });
+
+    it('passes it to the graphql query', () => {
+      expect(successHandler).toHaveBeenCalledTimes(2);
+      expect(successHandler.mock.calls[1][0]).toEqual({
+        projectPath: 'gitlab-org/gitlab',
+        ids: null,
+        first: SCHEDULES_PER_PAGE,
+        last: null,
+        nextPageCursor: '',
+        prevPageCursor: '',
+        sortValue: newSort,
+      });
+    });
+  });
+
+  describe('when update-sorting event is emitted', () => {
+    beforeEach(async () => {
+      createComponent([
+        [getPipelineSchedulesQuery, successHandlerWithPagination],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
+      await waitForPromises();
+    });
+
+    it('resets pagination when sorting changes', async () => {
+      await setPage('next');
+
+      await findTable().vm.$emit('update-sorting', 'DESCRIPTION_DESC', 'description', true);
+      await waitForPromises();
+
+      expect(successHandlerWithPagination).toHaveBeenCalledWith({
+        projectPath: 'gitlab-org/gitlab',
+        ids: null,
+        first: SCHEDULES_PER_PAGE,
+        last: null,
+        nextPageCursor: '',
+        prevPageCursor: '',
+        sortValue: 'DESCRIPTION_DESC',
+      });
     });
   });
 
@@ -464,7 +612,10 @@ describe('Pipeline schedules app', () => {
   `(
     'Alert should show: $alertExists and button should be disabled: $buttonDisabled when plan limit: $description',
     async ({ handler, buttonDisabled, alertExists }) => {
-      createComponent([[getPipelineSchedulesQuery, handler]]);
+      createComponent([
+        [getPipelineSchedulesQuery, handler],
+        [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+      ]);
 
       await waitForPromises();
 
@@ -472,4 +623,34 @@ describe('Pipeline schedules app', () => {
       expect(findPlanLimitReachedAlert().exists()).toBe(alertExists);
     },
   );
+
+  describe('subscription', () => {
+    describe('with feature flag enabled', () => {
+      it('calls subscription with correct variables', async () => {
+        createComponent();
+
+        await waitForPromises();
+
+        expect(subscriptionHandler).toHaveBeenCalledWith({ projectId: 'gid://gitlab/Project/23' });
+      });
+
+      it('does not make redundant subscription calls for refetches', async () => {
+        createComponent([
+          [getPipelineSchedulesQuery, successHandler],
+          [deletePipelineScheduleMutation, deleteMutationHandlerSuccess],
+          [pipelineScheduleStatusUpdatedSubscription, subscriptionHandler],
+        ]);
+
+        await waitForPromises();
+
+        findTable().vm.$emit('showDeleteModal', mockPipelineScheduleNodes[0].id);
+
+        findDeleteModal().vm.$emit('deleteSchedule');
+
+        await waitForPromises();
+
+        expect(subscriptionHandler).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
 });

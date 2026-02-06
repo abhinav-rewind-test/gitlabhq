@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
-RSpec.describe Gitlab::GithubImport::Representation::ProtectedBranch do
+RSpec.describe Gitlab::GithubImport::Representation::ProtectedBranch, feature_category: :importers do
   shared_examples 'a ProtectedBranch rule' do
     it 'returns an instance of ProtectedBranch' do
       expect(protected_branch).to be_an_instance_of(described_class)

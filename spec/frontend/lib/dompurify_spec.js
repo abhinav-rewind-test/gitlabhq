@@ -32,6 +32,10 @@ const unsafeUrls = [
   `${rootGon.sprite_file_icons}/../../evil/path`,
   `${absoluteGon.sprite_icons}/../evil/path`,
   `${absoluteGon.sprite_file_icons}/../../https://evil.url`,
+  `${rootGon.sprite_icons}/-/raw/main/test.svg#main`,
+  `${rootGon.sprite_file_icons}/-/raw/main/test.svg#main`,
+  `${absoluteGon.sprite_icons}/-/raw/main/test.svg#main`,
+  `${absoluteGon.sprite_file_icons}/-/raw/main/test.svg#main`,
 ];
 
 /* eslint-disable no-script-url */
@@ -95,6 +99,21 @@ describe('~/lib/dompurify', () => {
   it("doesn't allow form tags", () => {
     expect(sanitize('<form>')).toBe('');
     expect(sanitize('<form method="post" action="path"></form>')).toBe('');
+  });
+
+  describe('handles style attributes correctly', () => {
+    it('does remove all styles when style is forbidden', () => {
+      const htmlStyle = '<span style="background-color: red; color: green; width: 100%;">hello</a>';
+      expect(sanitize(htmlStyle, { FORBID_ATTR: ['style'] })).toBe('<span>hello</span>');
+    });
+
+    it("doesn't remove background-color from GlLabel style when style is forbidden", () => {
+      const htmlStyle =
+        '<span class="gl-label-text" style="background-color: red; color: green; width: 100%;">hello</a>';
+      expect(sanitize(htmlStyle, { FORBID_ATTR: ['style'] })).toBe(
+        '<span class="gl-label-text" style="background-color: red;">hello</span>',
+      );
+    });
   });
 
   describe.each`
@@ -210,6 +229,19 @@ describe('~/lib/dompurify', () => {
 
       expect(el.hasAttribute('target')).toBe(false);
       expect(el.hasAttribute('rel')).toBe(false);
+    });
+  });
+
+  describe('gl-emoji tags', () => {
+    it('does not remove the title, data-name, or data-unicode-version attributes', () => {
+      const html = `<gl-emoji title="thumbs up" data-name="thumbsup" data-unicode-version="6.0">👍</gl-emoji>`;
+      expect(sanitize(html)).toBe(html);
+    });
+
+    it('does not remove the data-name or data-unicode-version attributes even when ALLOW_DATA_ATTR is false', () => {
+      const input = `<gl-emoji data-evil="nope" title="thumbs up" data-name="thumbsup" data-unicode-version="6.0">👍</gl-emoji>`;
+      const expected = `<gl-emoji title="thumbs up" data-name="thumbsup" data-unicode-version="6.0">👍</gl-emoji>`;
+      expect(sanitize(input, { ...defaultConfig, ALLOW_DATA_ATTR: false })).toBe(expected);
     });
   });
 });

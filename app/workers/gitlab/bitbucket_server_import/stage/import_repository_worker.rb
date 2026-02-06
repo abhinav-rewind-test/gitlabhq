@@ -14,7 +14,7 @@ module Gitlab
 
           importer.execute
 
-          ImportUsersWorker.perform_async(project.id)
+          ImportPullRequestsWorker.perform_async(project.id)
         end
 
         def importer_class

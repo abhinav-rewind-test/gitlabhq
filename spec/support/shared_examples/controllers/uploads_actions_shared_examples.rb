@@ -51,6 +51,7 @@ RSpec.shared_examples 'handle uploads' do
           aggregate_failures do
             expect(upload).to exist
             expect(upload.model).to eq(model)
+            expect(upload.uploaded_by_user).to eq(user)
           end
         end
       end
@@ -70,24 +71,21 @@ RSpec.shared_examples 'handle uploads' do
 
   describe "GET #show" do
     let(:filename) { "rails_sample.jpg" }
-
-    let(:upload_service) do
-      UploadService.new(model, jpg, uploader_class).execute
+    let(:secret) { upload.secret }
+    let!(:upload) do
+      create(
+        :upload, :issuable_upload, :with_file,
+        uploader: uploader_class.to_s, model: model, filename: filename, version: legacy_version
+      )
     end
 
     let(:show_upload) do
       get :show, params: params.merge(secret: secret, filename: filename)
     end
 
-    before do
-      allow(FileUploader).to receive(:generate_secret).and_return(secret)
-      upload_service
-    end
-
     context 'when the secret is invalid' do
       let(:secret) { "../../../../../../../../" }
       let(:filename) { "Gemfile.lock" }
-      let(:upload_service) { nil }
 
       it 'responds with status 404' do
         show_upload
@@ -107,14 +105,38 @@ RSpec.shared_examples 'handle uploads' do
     end
 
     context 'when the upload does not have a MIME type that Rails knows' do
-      let(:po) { fixture_file_upload('spec/fixtures/missing_metadata.po', 'text/plain') }
+      let(:filename) { 'missing_metadata.po' }
 
       it 'falls back to the null type' do
-        UploadService.new(model, po, uploader_class).execute
-
         get :show, params: params.merge(secret: secret, filename: 'missing_metadata.po')
 
         expect(response.headers['Content-Type']).to eq('application/octet-stream')
+      end
+
+      it 'sets the :html request format' do
+        get :show, params: params.merge(secret: secret, filename: filename)
+
+        expect(response.request.format.symbol).to eq(:html)
+      end
+    end
+
+    context 'when the upload has a MIME type that Rails knows' do
+      let(:filename) { 'image.png' }
+
+      it 'sets the correct request format' do
+        get :show, params: params.merge(secret: secret, filename: filename)
+
+        expect(response.request.format.symbol).to eq(:png)
+      end
+
+      context 'when the upload is a JS file' do
+        let(:filename) { 'axios.min.js' }
+
+        it 'sets the :text request format' do
+          get :show, params: params.merge(secret: secret, filename: filename)
+
+          expect(response.request.format.symbol).to eq(:text)
+        end
       end
     end
 

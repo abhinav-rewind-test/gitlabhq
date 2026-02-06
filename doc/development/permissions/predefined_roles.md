@@ -1,10 +1,9 @@
 ---
-stage: Govern
-group: Authentication
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Software Supply Chain Security
+group: Authorization
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Predefined system of user roles
 ---
-
-# Predefined system of user roles
 
 ## Instance
 
@@ -14,10 +13,10 @@ Each user can be one of the following types:
 
 - Regular.
 - External - access to groups and projects only if direct member.
-- [Internal users](../internal_users.md) - system created.
+- [Internal users](../../administration/internal_users.md) - system created.
 - [Auditor](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/policies/ee/base_policy.rb#L9):
   - No access to projects or groups settings menu.
-  - No access to Admin Area.
+  - No access to **Admin** area.
   - Read-only access to everything else.
 - [Administrator](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/policies/base_policy.rb#L6) - read-write access.
 
@@ -40,9 +39,9 @@ The visibility level of a group can be changed only if all subgroups and
 sub-projects have the same or lower visibility level. For example, a group can be set
 to internal only if all subgroups and projects are internal or private.
 
-WARNING:
-If you migrate an existing group to a lower visibility level, that action does not migrate subgroups
-in the same way. This is a [known issue](https://gitlab.com/gitlab-org/gitlab/-/issues/22406).
+> [!warning]
+> If you migrate an existing group to a lower visibility level, that action does not migrate subgroups
+> in the same way. This is a [known issue](https://gitlab.com/gitlab-org/gitlab/-/issues/22406).
 
 Visibility levels can be found in the `Gitlab::VisibilityLevel` module.
 
@@ -57,7 +56,7 @@ Additionally, the following project features can have different visibility level
   - Pipelines
 - Analytics
 - Requirements
-- Security and Compliance
+- Security and compliance
 - Wiki
 - Snippets
 - Pages
@@ -78,6 +77,7 @@ module):
 - No access (`0`)
 - [Minimal access](../../user/permissions.md#users-with-minimal-access) (`5`)
 - Guest (`10`)
+- Planner (`15`)
 - Reporter (`20`)
 - Developer (`30`)
 - Maintainer (`40`)
@@ -92,9 +92,8 @@ can still view the groups and their entities (like epics).
 Project membership (where the group membership is already taken into account)
 is stored in the `project_authorizations` table.
 
-NOTE:
-In [GitLab 14.9](https://gitlab.com/gitlab-org/gitlab/-/issues/351211) and later, projects in personal namespaces have a maximum role of Owner.
-Because of a [known issue](https://gitlab.com/gitlab-org/gitlab/-/issues/219299) in GitLab 14.8 and earlier, projects in personal namespaces have a maximum role of Maintainer.
+> [!note]
+> Projects in personal namespaces have a maximum role of Owner.
 
 #### Guest role
 
@@ -108,7 +107,7 @@ can also view high-level project information such as:
 - Issues and epics.
 - Licenses.
 
-For more information, see [project member permissions](../../user/permissions.md#project-members-permissions).
+For more information, see [project member permissions](../../user/permissions.md#project-permissions).
 
 ### Confidential issues
 
@@ -140,18 +139,18 @@ and the _Pipelines_ are dependencies of the _Security reports_.
 
 ### Permission dependencies of Secure features
 
-Secure features have complex permissions since these features are integrated
-into different features like Merge Requests and CI flow.
+Secure features have complex permissions because these features are integrated
+into different features like Merge Requests and CI/CD flow.
 
  Here is a list of some permission dependencies.
 
-| Activity level | Resource | Locations |Permission dependency|
-|----------------|----------|-----------|-----|
-| View | License information | Dependency list, License Compliance | Can view repository |
-| View | Dependency information | Dependency list, License Compliance | Can view repository |
-| View | Vulnerabilities information | Dependency list | Can view security findings |
-| View | Black/Whitelisted licenses for the project | License Compliance, merge request  | Can view repository |
-| View | Security findings | merge request, CI job page, Pipeline security tab | Can read the project and CI jobs |
-| View | Vulnerability feedback | merge request | Can read security findings |
-| View | Dependency List page | Project | Can access Dependency information |
-| View | License Compliance page | Project | Can access License information|
+| Activity level | Resource                                        | Locations                                         | Permission dependency |
+|----------------|-------------------------------------------------|---------------------------------------------------|-----------------------|
+| View           | License information                             | Dependency list, license compliance               | Can view repository   |
+| View           | Dependency information                          | Dependency list, license compliance               | Can view repository   |
+| View           | Vulnerabilities information                     | Dependency list                                   | Can view security findings |
+| View           | Allowlisted/Denylisted licenses for the project | License compliance, merge request                 | Can view repository   |
+| View           | Security findings                               | merge request, CI job page, Pipeline security tab | Can read the project and CI jobs |
+| View           | Vulnerability feedback                          | merge request                                     | Can read security findings |
+| View           | Dependency list page                            | Project                                           | Can access dependency information |
+| View           | License compliance page                         | Project                                           | Can access license information |

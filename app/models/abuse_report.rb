@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
-class AbuseReport < MainClusterwide::ApplicationRecord
+class AbuseReport < ApplicationRecord
+  ignore_column :assignee_id_convert_to_bigint, remove_with: '17.9', remove_after: '2025-01-16'
+  ignore_column :id_convert_to_bigint, remove_with: '17.9', remove_after: '2025-01-16'
+  ignore_column :reporter_id_convert_to_bigint, remove_with: '17.9', remove_after: '2025-01-16'
+  ignore_column :resolved_by_id_convert_to_bigint, remove_with: '17.9', remove_after: '2025-01-16'
+  ignore_column :user_id_convert_to_bigint, remove_with: '17.9', remove_after: '2025-01-16'
+
   include CacheMarkdownField
   include Sortable
   include Gitlab::FileTypeDetection
@@ -8,7 +14,6 @@ class AbuseReport < MainClusterwide::ApplicationRecord
   include Gitlab::Utils::StrongMemoize
   include Mentionable
   include Noteable
-  include IgnorableColumns
 
   ignore_column :assignee_id, remove_with: '16.9', remove_after: '2024-01-19'
 
@@ -19,27 +24,23 @@ class AbuseReport < MainClusterwide::ApplicationRecord
 
   belongs_to :reporter, class_name: 'User', inverse_of: :reported_abuse_reports
   belongs_to :user, inverse_of: :abuse_reports
+  belongs_to :organization, class_name: 'Organizations::Organization', optional: false
   belongs_to :resolved_by, class_name: 'User', inverse_of: :resolved_abuse_reports
 
   has_many :events, class_name: 'ResourceEvents::AbuseReportEvent', inverse_of: :abuse_report
-  has_many :label_links, as: :target, inverse_of: :target
-  has_many :labels, through: :label_links
   has_many :admin_abuse_report_assignees, class_name: "Admin::AbuseReportAssignee"
   has_many :assignees, class_name: "User", through: :admin_abuse_report_assignees
+  has_many :abuse_events, class_name: 'AntiAbuse::Event', inverse_of: :abuse_report
+  has_many :user_mentions, class_name: 'AntiAbuse::Reports::UserMention'
 
-  has_many :abuse_events, class_name: 'Abuse::Event', inverse_of: :abuse_report
-
-  has_many :notes, as: :noteable
-  has_many :user_mentions, class_name: 'Abuse::Reports::UserMention'
-
-  validates :reporter, presence: true, on: :create
+  validates :reporter, presence: true
   validates :user, presence: true, on: :create
   validates :message, presence: true
   validates :category, presence: true
   validates :user_id,
     uniqueness: {
       scope: [:reporter_id, :category],
-      message: ->(object, data) do
+      message: ->(_object, _data) do
         _('You have already reported this user')
       end
     }, on: :create
@@ -74,9 +75,8 @@ class AbuseReport < MainClusterwide::ApplicationRecord
   scope :by_reporter_id, ->(reporter_id) { where(reporter_id: reporter_id) }
   scope :by_category, ->(category) { where(category: category) }
   scope :with_users, -> { includes(:reporter, :user) }
-  scope :with_labels, -> { includes(:labels) }
 
-  enum category: {
+  enum :category, {
     spam: 1,
     offensive: 2,
     phishing: 3,
@@ -87,7 +87,7 @@ class AbuseReport < MainClusterwide::ApplicationRecord
     other: 8
   }
 
-  enum status: {
+  enum :status, {
     open: 1,
     closed: 2
   }
@@ -102,6 +102,7 @@ class AbuseReport < MainClusterwide::ApplicationRecord
   CONTROLLER_TO_REPORT_TYPE = {
     'users' => :profile,
     'projects/issues' => :issue,
+    'projects/work_items' => :issue,
     'projects/merge_requests' => :merge_request
   }.freeze
 
@@ -143,7 +144,9 @@ class AbuseReport < MainClusterwide::ApplicationRecord
   def reported_content
     case report_type
     when :issue
-      reported_project.issues.iid_in(route_hash[:id]).pick(:description_html)
+      # WorkItems URLs identifiers are iid instead of id.
+      issue_id = route_hash[:id] || route_hash[:iid]
+      reported_project.issues.iid_in(issue_id).pick(:description_html)
     when :merge_request
       reported_project.merge_requests.iid_in(route_hash[:id]).pick(:description_html)
     when :comment
@@ -167,6 +170,10 @@ class AbuseReport < MainClusterwide::ApplicationRecord
     nil
   end
 
+  def uploads_sharding_key
+    { organization_id: organization_id }
+  end
+
   private
 
   def reported_project
@@ -177,8 +184,19 @@ class AbuseReport < MainClusterwide::ApplicationRecord
     Group.find_by_full_path(route_hash[:group_id])
   end
 
+  # NOTE: recognize_path uses RFC3986 URI parser, which is stricter and
+  # raises URI::InvalidURIError on malformed URLs. We pre-parse the input
+  # so we can fall back to stripping fragments, avoiding "bad URI (is not URI?)".
+  # Rack's RFC2396 parser can't be used here because recognize_path doesn't expose it.
   def route_hash
-    match = Rails.application.routes.recognize_path(reported_from_url)
+    url = begin
+      URI.parse(reported_from_url)
+      reported_from_url
+    rescue URI::InvalidURIError
+      reported_from_url.to_s.split('#').first
+    end
+
+    match = Rails.application.routes.recognize_path(url)
     return {} if match[:unmatched_route].present?
 
     match

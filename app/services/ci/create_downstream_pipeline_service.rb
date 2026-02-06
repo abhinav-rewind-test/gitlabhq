@@ -15,6 +15,8 @@ module Ci
     def execute(bridge)
       @bridge = bridge
 
+      return ServiceResponse.error(message: 'Can not run a failed bridge') if @bridge.failed?
+
       if @bridge.has_downstream_pipeline?
         Gitlab::ErrorTracking.track_exception(
           DuplicateDownstreamPipelineError.new,
@@ -29,7 +31,11 @@ module Ci
 
       return ServiceResponse.error(message: 'Pre-conditions not met') unless ensure_preconditions!(target_ref)
 
-      return ServiceResponse.error(message: 'Can not run the bridge') unless @bridge.run
+      # Allow retrying if the bridge is already running but has no downstream pipeline.
+      # This handles the case where a previous worker was terminated mid-execution.
+      unless @bridge.running? || @bridge.run
+        return ServiceResponse.error(message: "Cannot run the bridge, status: #{@bridge.status}")
+      end
 
       service = ::Ci::CreatePipelineService.new(
         pipeline_params.fetch(:project),
@@ -41,10 +47,15 @@ module Ci
         .payload
 
       log_downstream_pipeline_creation(downstream_pipeline)
+      log_audit_event(downstream_pipeline)
       update_bridge_status!(@bridge, downstream_pipeline)
     rescue StandardError => e
       @bridge.reset.drop!(:data_integrity_failure)
       raise e
+    end
+
+    def log_audit_event(downstream_pipeline)
+      # defined in EE
     end
 
     private
@@ -52,23 +63,31 @@ module Ci
     def update_bridge_status!(bridge, pipeline)
       Gitlab::OptimisticLocking.retry_lock(bridge, name: 'create_downstream_pipeline_update_bridge_status') do |subject|
         if pipeline.created_successfully?
-          # If bridge uses `strategy:depend` we leave it running
-          # and update the status when the downstream pipeline completes.
-          subject.success! unless subject.dependent?
+          subject.success! unless subject.has_strategy?
           ServiceResponse.success(payload: pipeline)
         else
-          message = pipeline.errors.full_messages
-          subject.options[:downstream_errors] = message
+          messages = pipeline.errors.full_messages
+
           subject.drop!(:downstream_pipeline_creation_failed)
-          ServiceResponse.error(payload: pipeline, message: message)
+          create_downstream_error_messages(subject, messages)
+          ServiceResponse.error(payload: pipeline, message: messages)
         end
       end
     rescue StateMachines::InvalidTransition => e
+      error = Ci::Bridge::InvalidTransitionError.new(e.message)
+      error.set_backtrace(caller)
       Gitlab::ErrorTracking.track_exception(
-        Ci::Bridge::InvalidTransitionError.new(e.message),
+        error,
         bridge_id: bridge.id,
         downstream_pipeline_id: pipeline.id)
       ServiceResponse.error(payload: pipeline, message: e.message)
+    end
+
+    def create_downstream_error_messages(bridge, messages)
+      messages.each do |message|
+        attributes = { content: message, project_id: bridge.project_id }
+        bridge.job_messages.error.create!(attributes)
+      end
     end
 
     def ensure_preconditions!(target_ref)
@@ -119,7 +138,7 @@ module Ci
     def can_create_downstream_pipeline?(target_ref)
       can?(current_user, :update_pipeline, project) &&
         can?(current_user, :create_pipeline, downstream_project) &&
-          can_update_branch?(target_ref)
+        can_update_branch?(target_ref)
     end
 
     def can_update_branch?(target_ref)
@@ -170,3 +189,5 @@ module Ci
     end
   end
 end
+
+Ci::CreateDownstreamPipelineService.prepend_mod_with('Ci::CreateDownstreamPipelineService')

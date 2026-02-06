@@ -15,9 +15,5 @@ RSpec.shared_examples 'search timeouts' do |scope|
     it 'renders timeout information' do
       expect(page).to have_content('Your search has timed out')
     end
-
-    it 'sets tab count to 0' do
-      expect(page.find('[data-testid="search-filter"] [aria-current="page"]')).to have_text('0')
-    end
   end
 end

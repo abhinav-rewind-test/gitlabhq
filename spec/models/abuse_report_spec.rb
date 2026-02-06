@@ -16,11 +16,9 @@ RSpec.describe AbuseReport, feature_category: :insider_threat do
     it { is_expected.to belong_to(:reporter).class_name('User').inverse_of(:reported_abuse_reports) }
     it { is_expected.to belong_to(:resolved_by).class_name('User').inverse_of(:resolved_abuse_reports) }
     it { is_expected.to belong_to(:user).inverse_of(:abuse_reports) }
+    it { is_expected.to belong_to(:organization).required }
     it { is_expected.to have_many(:events).class_name('ResourceEvents::AbuseReportEvent').inverse_of(:abuse_report) }
-    it { is_expected.to have_many(:notes) }
-    it { is_expected.to have_many(:user_mentions).class_name('Abuse::Reports::UserMention') }
-    it { is_expected.to have_many(:admin_abuse_report_assignees).class_name('Admin::AbuseReportAssignee') }
-    it { is_expected.to have_many(:assignees).class_name('User').through(:admin_abuse_report_assignees) }
+    it { is_expected.to have_many(:user_mentions).class_name('AntiAbuse::Reports::UserMention') }
 
     it "aliases reporter to author" do
       expect(subject.author).to be(subject.reporter)
@@ -33,7 +31,7 @@ RSpec.describe AbuseReport, feature_category: :insider_threat do
     let(:ftp)   { 'ftp://example.com' }
     let(:javascript) { 'javascript:alert(window.opener.document.location)' }
 
-    it { is_expected.to validate_presence_of(:reporter).on(:create) }
+    it { is_expected.to validate_presence_of(:reporter) }
     it { is_expected.to validate_presence_of(:user).on(:create) }
     it { is_expected.to validate_presence_of(:message) }
     it { is_expected.to validate_presence_of(:category) }
@@ -269,7 +267,7 @@ RSpec.describe AbuseReport, feature_category: :insider_threat do
     subject(:report_type) { report.report_type }
 
     context 'when reported from an issue' do
-      let(:url) { project_issue_url(issue.project, issue) }
+      let(:url) { ::Gitlab::UrlBuilder.build(issue) }
 
       it { is_expected.to eq :issue }
     end
@@ -328,7 +326,7 @@ RSpec.describe AbuseReport, feature_category: :insider_threat do
     subject(:reported_content) { report.reported_content }
 
     context 'when reported from an issue' do
-      let(:url) { project_issue_url(issue.project, issue) }
+      let(:url) { ::Gitlab::UrlBuilder.build(issue) }
 
       it { is_expected.to eq issue.description_html }
     end
@@ -428,5 +426,11 @@ RSpec.describe AbuseReport, feature_category: :insider_threat do
     end
 
     it { is_expected.to define_enum_for(:category).with_values(**categories) }
+  end
+
+  describe '#uploads_sharding_key' do
+    it 'returns organization_id' do
+      expect(report.uploads_sharding_key).to eq({ organization_id: report.organization_id })
+    end
   end
 end

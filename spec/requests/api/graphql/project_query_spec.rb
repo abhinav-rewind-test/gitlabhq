@@ -42,6 +42,7 @@ RSpec.describe 'getting project information', feature_category: :groups_and_proj
           'id' => pipeline_trigger.to_global_id.to_s,
           'canAccessProject' => true,
           'description' => pipeline_trigger.description,
+          'expiresAt' => nil,
           'hasTokenExposed' => true,
           'lastUsed' => nil,
           'token' => pipeline_trigger.token
@@ -67,9 +68,10 @@ RSpec.describe 'getting project information', feature_category: :groups_and_proj
             'id' => pipeline_trigger.to_global_id.to_s,
             'canAccessProject' => true,
             'description' => pipeline_trigger.description,
+            'expiresAt' => nil,
             'hasTokenExposed' => false,
             'lastUsed' => nil,
-            'token' => pipeline_trigger.token[0, 4]
+            'token' => pipeline_trigger.short_token
           })
         end
       end
@@ -216,11 +218,10 @@ RSpec.describe 'getting project information', feature_category: :groups_and_proj
     end
 
     context 'for N+1 queries with isCatalogResource' do
-      let_it_be(:project1) { create(:project, group: group) }
-      let_it_be(:project2) { create(:project, group: group) }
+      let_it_be(:project1) { create(:project, group: group, owners: current_user) }
+      let_it_be(:project2) { create(:project, group: group, owners: current_user) }
 
-      it 'avoids N+1 database queries' do
-        pending('See: https://gitlab.com/gitlab-org/gitlab/-/issues/403634')
+      it 'avoids N+1 database queries', :request_store do
         ctx = { current_user: current_user }
 
         baseline_query = graphql_query_for(:project, { full_path: project1.full_path }, 'isCatalogResource')
@@ -429,6 +430,68 @@ RSpec.describe 'getting project information', feature_category: :groups_and_proj
       let(:current_user) { nil }
 
       it_behaves_like 'public project in which the user has no membership'
+    end
+  end
+
+  describe 'trending' do
+    let_it_be(:trending_project1) { create(:project, :public, :repository) }
+    let_it_be(:trending_project2) { create(:project, :public, :repository) }
+    let_it_be(:non_trending_project) { create(:project, :public, :repository) }
+
+    before do
+      create_list(:note_on_commit, 3, project: trending_project1)
+      create_list(:note_on_commit, 2, project: trending_project2)
+
+      TrendingProject.refresh!
+    end
+
+    context 'when argument is true' do
+      let(:projects_query) { graphql_query_for(:projects, { trending: true }) }
+
+      it 'ignores the trending parameter and returns all projects' do
+        post_graphql(projects_query, current_user: current_user)
+
+        project_ids = graphql_data_at(:projects, :nodes).pluck('id')
+
+        expect(project_ids).to contain_exactly(
+          global_id_of(trending_project1).to_s,
+          global_id_of(trending_project2).to_s,
+          global_id_of(non_trending_project).to_s
+        )
+      end
+
+      context 'when disable_trending_args feature flag is disabled' do
+        before do
+          stub_feature_flags(disable_trending_args: false)
+        end
+
+        it 'returns only trending projects' do
+          post_graphql(projects_query, current_user: current_user)
+
+          project_ids = graphql_data_at(:projects, :nodes).pluck('id')
+
+          expect(project_ids).to contain_exactly(
+            global_id_of(trending_project1).to_s,
+            global_id_of(trending_project2).to_s
+          )
+        end
+      end
+    end
+
+    context 'when argument is false' do
+      let(:projects_query) { graphql_query_for(:projects, { trending: false }) }
+
+      it 'returns all projects' do
+        post_graphql(projects_query, current_user: current_user)
+
+        project_ids = graphql_data_at(:projects, :nodes).pluck('id')
+
+        expect(project_ids).to contain_exactly(
+          global_id_of(trending_project1).to_s,
+          global_id_of(trending_project2).to_s,
+          global_id_of(non_trending_project).to_s
+        )
+      end
     end
   end
 end

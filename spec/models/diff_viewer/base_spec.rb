@@ -65,18 +65,34 @@ RSpec.describe DiffViewer::Base do
   end
 
   describe '#collapsed?' do
-    context 'when the combined blob size is larger than the collapse limit' do
+    context 'when diff is not expanded' do
       before do
+        allow(diff_file).to receive(:collapsed?).and_return(true)
         allow(diff_file).to receive(:raw_size).and_return(1025.kilobytes)
       end
 
-      it 'returns true' do
+      it 'returns true for large files' do
         expect(viewer.collapsed?).to be_truthy
       end
     end
 
-    context 'when the combined blob size is smaller than the collapse limit' do
-      it 'returns false' do
+    context 'when diff is expanded' do
+      before do
+        allow(diff_file).to receive(:collapsed?).and_return(false)
+        allow(diff_file).to receive(:raw_size).and_return(1025.kilobytes)
+      end
+
+      it 'returns false even when large' do
+        expect(viewer.collapsed?).to be_falsey
+      end
+    end
+
+    context 'when file is small' do
+      before do
+        allow(diff_file).to receive(:raw_size).and_return(10.kilobytes)
+      end
+
+      it 'returns false regardless of expanded state' do
         expect(viewer.collapsed?).to be_falsey
       end
     end
@@ -96,6 +112,38 @@ RSpec.describe DiffViewer::Base do
     context 'when the blob size is smaller than the size limit' do
       it 'returns false' do
         expect(viewer.too_large?).to be_falsey
+      end
+    end
+  end
+
+  describe '#expandable?' do
+    subject(:expandable) { viewer.expandable? }
+
+    let(:too_large) { false }
+    let(:text) { true }
+
+    before do
+      allow(viewer).to receive(:too_large?).and_return(too_large)
+      allow(viewer).to receive(:text?).and_return(text)
+    end
+
+    it 'is expandable' do
+      expect(expandable).to be_truthy
+    end
+
+    context 'when it is too large' do
+      let(:too_large) { true }
+
+      it 'is not expandable' do
+        expect(expandable).to be_falsey
+      end
+    end
+
+    context 'when it is not text' do
+      let(:text) { false }
+
+      it 'is not expandable' do
+        expect(expandable).to be_falsey
       end
     end
   end

@@ -1,27 +1,26 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Rails upgrade guidelines
 ---
-
-# Rails upgrade guidelines
 
 We strive to run GitLab using the latest Rails releases to benefit from performance, security updates, and new features.
 
 ## Rails upgrade approach
 
 1. [Prepare an MR for GitLab](#prepare-an-mr-for-gitlab).
-1. [Prepare an MR for Gitaly](#prepare-an-mr-for-gitaly).
 1. [Create patch releases and backports for security patches](#create-patch-releases-and-backports-for-security-patches).
 
 ### Prepare an MR for GitLab
 
 1. Check the [Upgrading Ruby on Rails](https://guides.rubyonrails.org/upgrading_ruby_on_rails.html) guide and prepare the application for the upcoming changes.
 1. Update the `rails` gem version in `Gemfile`.
-1. Run `bundle update rails`.
-1. Run the update task `rake rails:update`.
+1. Run `bundle update --conservative rails`.
+1. For major and minor version updates, run `bin/rails app:update` and check if any of the suggested changes should be applied.
 1. Update the `activesupport` version in `qa/Gemfile`.
 1. Run `bundle update --conservative activesupport` in the `qa` folder.
+1. Run `find gems -name Gemfile -exec bundle update --gemfile {}  activesupport --patch --conservative \;` and replace `--patch` in the command with `--minor` or `--major` as needed.
 1. Resolve any Bundler conflicts.
 1. Ensure that `@rails/ujs` and `@rails/actioncable` npm packages match the new rails version in [`package.json`](https://gitlab.com/gitlab-org/gitlab/blob/master/package.json).
 1. Run `yarn patch-package @rails/ujs` after updating this to ensure our local patch file version matches.
@@ -32,11 +31,7 @@ We strive to run GitLab using the latest Rails releases to benefit from performa
 
 ### Prepare an MR for Gitaly
 
-1. Update the `activesupport` gem version in [Gitaly Ruby's Gemfile](https://gitlab.com/gitlab-org/gitaly/-/blob/master/ruby/Gemfile).
-1. Run `bundle update --conservative activesupport`.
-1. Create an MR against the Gitaly project with these changes.
-1. Make this MR dependent on the MR created in the GitLab project.
-1. Merged this MR only **after** merging the GitLab project's MR.
+No longer necessary as Gitaly no longer has Ruby code.
 
 ### Create patch releases and backports for security patches
 

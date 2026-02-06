@@ -64,11 +64,11 @@ module Gitlab
 
       def get(path, params = {})
         options = { headers: headers, query: params }
-        response = Gitlab::HTTP.get(url(path), options)
+        response = Integrations::Clients::HTTP.get(url(path), options)
 
         raise RequestError unless response.success?
 
-        Gitlab::Json.parse(response.body)
+        response.parsed_response
       rescue JSON::ParserError
         raise Error, 'invalid response format'
       end
@@ -80,7 +80,7 @@ module Gitlab
       def headers
         {
           'Content-Type': 'application/json',
-          'Token': integration.api_token
+          Token: integration.api_token
         }
       end
 

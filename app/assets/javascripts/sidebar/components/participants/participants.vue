@@ -25,6 +25,11 @@ export default {
       required: false,
       default: () => [],
     },
+    participantCount: {
+      type: Number,
+      required: false,
+      default: undefined,
+    },
     numberOfLessParticipants: {
       type: Number,
       required: false,
@@ -54,28 +59,25 @@ export default {
       return this.isShowingMoreParticipants ? this.participants : this.lessParticipants;
     },
     hasMoreParticipants() {
-      return this.participants.length > this.numberOfLessParticipants;
+      return this.participantCountCalculated > this.numberOfLessParticipants;
     },
-    toggleLabel() {
-      let label = '';
-      if (this.isShowingMoreParticipants) {
-        label = __('- show less');
-      } else {
-        label = sprintf(__('+ %{moreCount} more'), {
-          moreCount: this.participants.length - this.numberOfLessParticipants,
-        });
-      }
+    moreParticipantCount() {
+      return this.participantCountCalculated - this.numberOfLessParticipants;
+    },
+    moreParticipantsLabel() {
+      return this.isShowingMoreParticipants
+        ? __('- show less')
+        : sprintf(__('+ %{moreCount} more'), { moreCount: this.moreParticipantCount });
+    },
 
-      return label;
-    },
     participantLabel() {
       return sprintf(
-        n__('%{count} Participant', '%{count} Participants', this.participants.length),
-        { count: this.loading ? '' : this.participantCount },
+        n__('%{count} Participant', '%{count} Participants', this.participantCountCalculated),
+        { count: this.loading ? '' : this.participantCountCalculated },
       );
     },
-    participantCount() {
-      return this.participants.length;
+    participantCountCalculated() {
+      return Math.max(this.participants.length, this.participantCount || 0);
     },
   },
   methods: {
@@ -91,25 +93,28 @@ export default {
 
 <template>
   <div>
-    <div v-if="showParticipantLabel" class="title gl-line-height-20 gl-font-weight-bold gl-mb-2">
-      <gl-loading-icon v-if="loading" inline />
+    <div
+      v-if="showParticipantLabel"
+      class="gl-mb-2 gl-flex gl-items-center gl-gap-2 gl-font-bold gl-leading-24 gl-text-default"
+    >
       {{ participantLabel }}
+      <gl-loading-icon v-if="loading" inline />
     </div>
-    <div class="gl-display-flex gl-flex-wrap gl-gap-3">
+    <div class="gl-flex gl-flex-wrap gl-gap-3">
       <a
         v-for="participant in visibleParticipants"
         :key="participant.id"
         :href="participant.web_url || participant.webUrl"
         :data-user-id="getParticipantId(participant.id)"
         :data-username="participant.username"
-        class="author-link js-user-link gl-display-inline-block gl-rounded-full"
+        class="author-link js-user-link gl-inline-block gl-rounded-full"
       >
         <user-avatar-image
           :lazy="lazy"
           :img-src="participant.avatar_url || participant.avatarUrl"
           :size="24"
           :img-alt="participant.name"
-          css-classes="gl-mr-0!"
+          css-classes="!gl-mr-0"
           tooltip-placement="bottom"
         />
       </a>
@@ -121,7 +126,7 @@ export default {
       size="small"
       @click="toggleMoreParticipants"
     >
-      {{ toggleLabel }}
+      {{ moreParticipantsLabel }}
     </gl-button>
   </div>
 </template>

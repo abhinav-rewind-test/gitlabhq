@@ -11,7 +11,7 @@ module WhatsNewHelper
 
   def display_whats_new?
     (Gitlab.org_or_com? || user_signed_in?) &&
-    !Gitlab::CurrentSettings.current_application_settings.whats_new_variant_disabled?
+      !Gitlab::CurrentSettings.current_application_settings.whats_new_variant_disabled?
   end
 
   def whats_new_variants
@@ -36,7 +36,15 @@ module WhatsNewHelper
     when 'current_tier'
       _("Only include features new to your current subscription tier.")
     when 'disabled'
-      _("%{italic_start}What's new%{italic_end} is inactive and cannot be viewed.").html_safe % { italic_start: '<i>'.html_safe, italic_end: '</i>'.html_safe }
+      safe_format(_("%{italic_start}What's new%{italic_end} is inactive and cannot be viewed."),
+        tag_pair(tag.i, :italic_start, :italic_end))
     end
+  end
+
+  def whats_new_read_articles
+    return [] unless current_user
+
+    Onboarding::WhatsNew::ReadStatusService.new(current_user.id,
+      whats_new_version_digest).most_recent_version_read_articles
   end
 end

@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
-class Route < MainClusterwide::ApplicationRecord
+class Route < ApplicationRecord
   include CaseSensitivity
   include Gitlab::SQL::Pattern
   include EachBatch
+  include Cells::Claimable
+
+  cells_claims_attribute :path, type: CLAIMS_BUCKET_TYPE::ROUTES, feature_flag: :cells_claims_routes
+
+  cells_claims_metadata subject_type: CLAIMS_SUBJECT_TYPE::NAMESPACE, subject_key: :namespace_id
 
   belongs_to :source, polymorphic: true, inverse_of: :route # rubocop:disable Cop/PolymorphicAssociations
   belongs_to :namespace, inverse_of: :namespace_route
@@ -19,9 +24,10 @@ class Route < MainClusterwide::ApplicationRecord
   after_update :create_redirect_for_old_path
   after_update :rename_descendants
 
-  scope :inside_path, -> (path) { where('routes.path LIKE ?', "#{sanitize_sql_like(path)}/%") }
-  scope :for_routable, -> (routable) { where(source: routable) }
-  scope :for_routable_type, -> (routable_type) { where(source_type: routable_type) }
+  scope :by_paths, ->(paths) { where(arel_table[:path].lower.in(paths.map(&:downcase))) }
+  scope :inside_path, ->(path) { where('routes.path LIKE ?', "#{sanitize_sql_like(path)}/%") }
+  scope :for_routable, ->(routable) { where(source: routable) }
+  scope :for_routable_type, ->(routable_type) { where(source_type: routable_type) }
   scope :sort_by_path_length, -> { order('LENGTH(routes.path)', :path) }
 
   def rename_descendants
@@ -51,5 +57,9 @@ class Route < MainClusterwide::ApplicationRecord
 
   def create_redirect_for_old_path
     create_redirect(path_before_last_save) if saved_change_to_path?
+  end
+
+  def unique_attributes
+    [:path]
   end
 end

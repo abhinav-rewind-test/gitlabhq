@@ -3,6 +3,8 @@
 FactoryBot.define do
   factory :project_hook do
     url { generate(:url) }
+    name { generate(:name) }
+    description { "Description of #{name}" }
     enable_ssl_verification { false }
     project
 
@@ -28,7 +30,9 @@ FactoryBot.define do
       deployment_events { true }
       feature_flag_events { true }
       releases_events { true }
+      milestone_events { true }
       emoji_events { true }
+      vulnerability_events { true }
     end
 
     trait :with_push_branch_filter do
@@ -36,7 +40,7 @@ FactoryBot.define do
     end
 
     trait :permanently_disabled do
-      recent_failures { WebHooks::AutoDisabling::FAILURE_THRESHOLD + 1 }
+      recent_failures { WebHooks::AutoDisabling::PERMANENTLY_DISABLED_FAILURE_THRESHOLD + 1 }
     end
   end
 end

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // nolint:gosec
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +19,8 @@ import (
 
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/config"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/gitaly"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/healthcheck"
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/listener"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/queueing"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/redis"
 	"gitlab.com/gitlab-org/gitlab/workhorse/internal/secret"
@@ -51,7 +53,7 @@ func main() {
 	}
 	if err != nil {
 		if _, alreadyPrinted := err.(alreadyPrintedError); !alreadyPrinted {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(2)
 	}
@@ -68,20 +70,16 @@ func main() {
 
 type alreadyPrintedError struct{ error }
 
-// buildConfig may print messages to os.Stderr if err != nil. If err is
-// of type alreadyPrintedError it has already been printed.
-func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error) {
-	boot := &bootConfig{}
-	cfg := config.NewDefaultConfig()
-	cfg.Version = Version
-	fset := flag.NewFlagSet(arg0, flag.ContinueOnError)
+// setupFlagSet initializes and configures the flag set for command line parsing
+func setupFlagSet(arg0 string, boot *bootConfig, cfg *config.Config) (fset *flag.FlagSet, configFile, authBackend, cableBackend *string) {
+	fset = flag.NewFlagSet(arg0, flag.ContinueOnError)
 	fset.Usage = func() {
-		fmt.Fprintf(fset.Output(), "Usage of %s:\n", arg0)
-		fmt.Fprintf(fset.Output(), "\n  %s [OPTIONS]\n\nOptions:\n", arg0)
+		_, _ = fmt.Fprintf(fset.Output(), "Usage of %s:\n", arg0)
+		_, _ = fmt.Fprintf(fset.Output(), "\n  %s [OPTIONS]\n\nOptions:\n", arg0)
 		fset.PrintDefaults()
 	}
 
-	configFile := fset.String("config", "", "TOML file to load config from")
+	configFile = fset.String("config", "", "TOML file to load config from")
 
 	fset.StringVar(&boot.secretPath, "secretPath", "./.gitlab_workhorse_secret", "File with secret key to authenticate with authBackend")
 	fset.StringVar(&boot.listenAddr, "listenAddr", "localhost:8181", "Listen address for HTTP server")
@@ -96,11 +94,11 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 	fset.BoolVar(&boot.printVersion, "version", false, "Print version and exit")
 
 	// gitlab-rails backend
-	authBackend := fset.String("authBackend", upstream.DefaultBackend.String(), "Authentication/authorization backend")
+	authBackend = fset.String("authBackend", upstream.DefaultBackend.String(), "Authentication/authorization backend")
 	fset.StringVar(&cfg.Socket, "authSocket", "", "Optional: Unix domain socket to dial authBackend at")
 
 	// actioncable backend
-	cableBackend := fset.String("cableBackend", "", "ActionCable backend")
+	cableBackend = fset.String("cableBackend", "", "ActionCable backend")
 	fset.StringVar(&cfg.CableSocket, "cableSocket", "", "Optional: Unix domain socket to dial cableBackend at")
 
 	fset.StringVar(&cfg.DocumentRoot, "documentRoot", "public", "Path to static files content")
@@ -112,12 +110,24 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 	fset.DurationVar(&cfg.APICILongPollingDuration, "apiCiLongPollingDuration", 50, "Long polling duration for job requesting for runners")
 	fset.BoolVar(&cfg.PropagateCorrelationID, "propagateCorrelationID", false, "Reuse existing Correlation-ID from the incoming request header `X-Request-ID` if present")
 
+	return fset, configFile, authBackend, cableBackend
+}
+
+// buildConfig may print messages to os.Stderr if err != nil. If err is
+// of type alreadyPrintedError it has already been printed.
+func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error) {
+	boot := &bootConfig{}
+	cfg := config.NewDefaultConfig()
+	cfg.Version = Version
+
+	fset, configFile, authBackend, cableBackend := setupFlagSet(arg0, boot, cfg)
+
 	if err := fset.Parse(args); err != nil {
 		return nil, nil, alreadyPrintedError{err}
 	}
 	if fset.NArg() > 0 {
 		err := alreadyPrintedError{fmt.Errorf("unexpected arguments: %v", fset.Args())}
-		fmt.Fprintln(fset.Output(), err)
+		_, _ = fmt.Fprintln(fset.Output(), err)
 		fset.Usage()
 		return nil, nil, err
 	}
@@ -152,6 +162,7 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 	}
 
 	cfg.Redis = cfgFromFile.Redis
+	cfg.Sentinel = cfgFromFile.Sentinel
 	cfg.ObjectStorageCredentials = cfgFromFile.ObjectStorageCredentials
 	cfg.ImageResizerConfig = cfgFromFile.ImageResizerConfig
 	cfg.AltDocumentRoot = cfgFromFile.AltDocumentRoot
@@ -159,8 +170,40 @@ func buildConfig(arg0 string, args []string) (*bootConfig, *config.Config, error
 	cfg.TrustedCIDRsForXForwardedFor = cfgFromFile.TrustedCIDRsForXForwardedFor
 	cfg.TrustedCIDRsForPropagation = cfgFromFile.TrustedCIDRsForPropagation
 	cfg.Listeners = cfgFromFile.Listeners
+	cfg.HealthCheckListener = cfgFromFile.HealthCheckListener
+
+	// Apply default health check configuration if not provided
+	cfg.ApplyHealthCheckDefaults()
+
+	cfg.CircuitBreakerConfig = cfgFromFile.CircuitBreakerConfig
+	cfg.AdoptCfRayHeader = cfgFromFile.AdoptCfRayHeader
 
 	return boot, cfg, nil
+}
+
+func initializePprof(listenerAddress string, errors chan error) (*http.Server, error) {
+	if listenerAddress == "" {
+		return nil, nil
+	}
+
+	l, err := net.Listen("tcp", listenerAddress)
+	if err != nil {
+		return nil, fmt.Errorf("pprofListenAddr: %v", err)
+	}
+
+	server := &http.Server{
+		Addr:         listenerAddress,
+		Handler:      nil,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  10 * time.Second,
+	}
+
+	go func() {
+		errors <- server.Serve(l)
+	}()
+
+	return server, nil
 }
 
 // run() lets us use normal Go error handling; there is no log.Fatal in run().
@@ -169,7 +212,7 @@ func run(boot bootConfig, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	defer closer.Close()
+	defer closer.Close() //nolint:errcheck
 
 	tracing.Initialize(tracing.WithServiceName("gitlab-workhorse"))
 	log.WithField("version", Version).WithField("build_time", BuildTime).Print("Starting")
@@ -177,7 +220,7 @@ func run(boot bootConfig, cfg config.Config) error {
 
 	// Good housekeeping for Unix sockets: unlink before binding
 	if boot.listenNetwork == "unix" {
-		if err := os.Remove(boot.listenAddr); err != nil && !os.IsNotExist(err) {
+		if err = os.Remove(boot.listenAddr); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -188,27 +231,26 @@ func run(boot bootConfig, cfg config.Config) error {
 	// requests can only reach the profiler if we start a listener. So by
 	// having no profiler HTTP listener by default, the profiler is
 	// effectively disabled by default.
-	if boot.pprofListenAddr != "" {
-		l, err := net.Listen("tcp", boot.pprofListenAddr)
-		if err != nil {
-			return fmt.Errorf("pprofListenAddr: %v", err)
-		}
-
-		go func() { finalErrors <- http.Serve(l, nil) }()
+	_, err = initializePprof(boot.pprofListenAddr, finalErrors)
+	if err != nil {
+		return err
 	}
+
+	var l net.Listener
 
 	monitoringOpts := []monitoring.Option{monitoring.WithBuildInformation(Version, BuildTime)}
 	if cfg.MetricsListener != nil {
-		l, err := newListener("metrics", *cfg.MetricsListener)
+		l, err = listener.New("metrics", *cfg.MetricsListener)
 		if err != nil {
 			return err
 		}
 		monitoringOpts = append(monitoringOpts, monitoring.WithListener(l))
 	}
+
 	go func() {
 		// Unlike http.Serve, which always returns a non-nil error,
 		// monitoring.Start may return nil in which case we should not shut down.
-		if err := monitoring.Start(monitoringOpts...); err != nil {
+		if err = monitoring.Start(monitoringOpts...); err != nil {
 			finalErrors <- err
 		}
 	}()
@@ -217,7 +259,7 @@ func run(boot bootConfig, cfg config.Config) error {
 
 	log.Info("Using redis/go-redis")
 
-	rdb, err := redis.Configure(cfg.Redis)
+	rdb, err := redis.Configure(&cfg)
 	if err != nil {
 		log.WithError(err).Error("unable to configure redis client")
 	}
@@ -229,7 +271,7 @@ func run(boot bootConfig, cfg config.Config) error {
 
 	watchKeyFn := redisKeyWatcher.WatchKey
 
-	if err := cfg.RegisterGoCloudURLOpeners(); err != nil {
+	if err = cfg.RegisterGoCloudURLOpeners(); err != nil {
 		return fmt.Errorf("register cloud credentials: %v", err)
 	}
 
@@ -237,11 +279,18 @@ func run(boot bootConfig, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("configure access logger: %v", err)
 	}
-	defer accessCloser.Close()
+	defer accessCloser.Close() //nolint:errcheck
 
 	gitaly.InitializeSidechannelRegistry(accessLogger)
 
-	up := wrapRaven(upstream.NewUpstream(cfg, accessLogger, watchKeyFn))
+	// Initialize health check server
+	healthCheckServer, healthCancel, err := healthcheck.InitializeAndStart(cfg, accessLogger, finalErrors)
+	if err != nil {
+		return err
+	}
+	if healthCancel != nil {
+		defer healthCancel()
+	}
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
@@ -253,7 +302,7 @@ func run(boot bootConfig, cfg config.Config) error {
 	var listeners []net.Listener
 	oldUmask := syscall.Umask(boot.listenUmask)
 	for _, cfg := range append(cfg.Listeners, listenerFromBootConfig) {
-		l, err := newListener("upstream", cfg)
+		l, err := listener.New("upstream", cfg)
 		if err != nil {
 			return err
 		}
@@ -261,7 +310,28 @@ func run(boot bootConfig, cfg config.Config) error {
 	}
 	syscall.Umask(oldUmask)
 
-	srv := &http.Server{Handler: up}
+	shutdownCh := make(chan struct{})
+	upgradedConnsManager := &upstream.UpgradedConnsManager{}
+	up := upstream.NewUpstream(
+		cfg,
+		accessLogger,
+		watchKeyFn,
+		rdb,
+		healthCheckServer,
+		shutdownCh,
+		upgradedConnsManager,
+	)
+
+	// Apply load shedding middleware if configured
+	if healthCheckServer != nil {
+		loadShedder := healthCheckServer.GetLoadShedder()
+		if loadShedder != nil {
+			up = healthcheck.LoadSheddingMiddleware(loadShedder, accessLogger)(up)
+		}
+	}
+
+	srv := &http.Server{Handler: wrapRaven(up)}
+
 	for _, l := range listeners {
 		go func(l net.Listener) { finalErrors <- srv.Serve(l) }(l)
 	}
@@ -272,10 +342,29 @@ func run(boot bootConfig, cfg config.Config) error {
 	case sig := <-done:
 		log.WithFields(log.Fields{"shutdown_timeout_s": cfg.ShutdownTimeout.Duration.Seconds(), "signal": sig.String()}).Infof("shutdown initiated")
 
+		if healthCheckServer != nil {
+			healthCheckServer.InitiateShutdown()
+			// Signal upstream to stop accepting long polling requests because
+			// requests can arrive during the graceful shutdown time.
+			close(shutdownCh)
+			// Kick out any long poll requests
+			redisKeyWatcher.Shutdown()
+
+			// Wait for the graceful shutdown delay to complete before shutting down the server
+			gracefulShutdownDelay := healthCheckServer.GetGracefulShutdownDelay()
+			if gracefulShutdownDelay > 0 {
+				log.WithField("shutdown_delay_s", gracefulShutdownDelay.Seconds()).Info("Waiting for graceful shutdown delay")
+
+				go upgradedConnsManager.Shutdown(gracefulShutdownDelay)
+
+				time.Sleep(gracefulShutdownDelay)
+			}
+		} else {
+			redisKeyWatcher.Shutdown()
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout.Duration) // lint:allow context.Background
 		defer cancel()
-
-		redisKeyWatcher.Shutdown()
 
 		return srv.Shutdown(ctx)
 	}

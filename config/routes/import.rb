@@ -12,7 +12,7 @@ end
 namespace :import do
   resources :history, only: [:index], controller: :history
 
-  namespace :url do
+  resource :url, only: [:new], controller: :url do
     post :validate
   end
 
@@ -87,5 +87,17 @@ namespace :import do
     get :status
     get :realtime_changes
     post :upload
+  end
+
+  resources :source_users, param: :reassignment_token, only: [] do
+    get ':namespace_id/:reassignment_token', on: :collection, action: :show, as: :namespaced_show, constraints: { namespace_id: /\d+/ }
+    post ':namespace_id/:reassignment_token/accept', on: :collection, action: :accept, as: :namespaced_accept, constraints: { namespace_id: /\d+/ }
+    post ':namespace_id/:reassignment_token/decline', on: :collection, action: :decline, as: :namespaced_decline, constraints: { namespace_id: /\d+/ }
+
+    member do
+      get :show
+      post :accept
+      post :decline
+    end
   end
 end

@@ -2,14 +2,14 @@
 
 require "spec_helper"
 
-RSpec.describe ArtifactsHelper, feature_category: :build_artifacts do
+RSpec.describe ArtifactsHelper, feature_category: :job_artifacts do
   let_it_be(:user) { build_stubbed(:user) }
   let_it_be(:project) { build_stubbed(:project) }
 
   describe '#artifacts_app_data' do
     before do
       allow(helper).to receive(:current_user) { user }
-      allow(helper).to receive(:can?).with(user, :destroy_artifacts, project).and_return(false)
+      allow(helper).to receive(:can?).with(user, :delete_job_artifact, project).and_return(false)
     end
 
     subject { helper.artifacts_app_data(project) }
@@ -28,7 +28,7 @@ RSpec.describe ArtifactsHelper, feature_category: :build_artifacts do
       end
 
       it 'returns true when user has permission' do
-        allow(helper).to receive(:can?).with(user, :destroy_artifacts, project).and_return(true)
+        allow(helper).to receive(:can?).with(user, :delete_job_artifact, project).and_return(true)
 
         expect(subject[:can_destroy_artifacts]).to eq('true')
       end

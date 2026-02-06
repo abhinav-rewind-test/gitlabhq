@@ -7,6 +7,19 @@ module IconsHelper
 
   DEFAULT_ICON_SIZE = 16
 
+  VARIANT_CLASSES = {
+    current: 'gl-fill-current',
+    default: 'gl-fill-icon-default',
+    subtle: 'gl-fill-icon-subtle',
+    strong: 'gl-fill-icon-strong',
+    disabled: 'gl-fill-icon-disabled',
+    link: 'gl-fill-icon-link',
+    info: 'gl-fill-icon-info',
+    warning: 'gl-fill-icon-warning',
+    danger: 'gl-fill-icon-danger',
+    success: 'gl-fill-icon-success'
+  }.freeze
+
   def custom_icon(icon_name, size: DEFAULT_ICON_SIZE)
     memoized_icon("#{icon_name}_#{size}") do
       render partial: "shared/icons/#{icon_name}", formats: :svg, locals: { size: size }
@@ -29,8 +42,25 @@ module IconsHelper
     ActionController::Base.helpers.image_path('file_icons/file_icons.svg', host: sprite_base_url)
   end
 
-  def sprite_icon(icon_name, size: DEFAULT_ICON_SIZE, css_class: nil, file_icon: false)
-    memoized_icon("#{icon_name}_#{size}_#{css_class}") do
+  def illustrations_path
+    @illustrations_path ||= begin
+      # SVG Sprites currently don't work across domains, so in the case of a CDN
+      # we have to set the current path deliberately to prevent addition of asset_host
+      sprite_base_url = Gitlab.config.gitlab.url if ActionController::Base.asset_host
+      ActionController::Base.helpers.image_path('illustrations.svg', host: sprite_base_url)
+    end
+  end
+
+  def sprite_icon(
+    icon_name,
+    size: DEFAULT_ICON_SIZE,
+    css_class: nil,
+    file_icon: false,
+    aria_label: nil,
+    variant: nil,
+    color: nil
+  )
+    memoized_icon("#{icon_name}_#{size}_#{css_class}_#{variant}_#{color.presence || ''}") do
       unknown_icon = file_icon ? unknown_file_icon_sprite(icon_name) : unknown_icon_sprite(icon_name)
       if unknown_icon
         exception = ArgumentError.new("#{icon_name} is not a known icon in @gitlab-org/gitlab-svg")
@@ -39,14 +69,24 @@ module IconsHelper
 
       css_classes = []
       css_classes << "s#{size}" if size
+      css_classes << VARIANT_CLASSES[variant&.to_sym]
       css_classes << css_class.to_s unless css_class.blank?
+      css_classes.compact!
+
       sprite_path = file_icon ? sprite_file_icons_path : sprite_icon_path
+
+      svg_options = {
+        class: css_classes.empty? ? nil : css_classes.join(' '),
+        data: { testid: "#{icon_name}-icon" },
+        'aria-label': aria_label
+      }
+
+      svg_options[:style] = "fill: #{color};" if color.present?
 
       content_tag(
         :svg,
         content_tag(:use, '', { 'href' => "#{sprite_path}##{icon_name}" }),
-        class: css_classes.empty? ? nil : css_classes.join(' '),
-        data: { testid: "#{icon_name}-icon" }
+        svg_options
       )
     end
   end
@@ -83,14 +123,12 @@ module IconsHelper
   end
 
   def external_snippet_icon(name)
-    content_tag(:span, "", class: "gl-snippet-icon gl-snippet-icon-#{name}")
+    content_tag(:span, "", class: "gl-snippet-icon gl-snippet-icon-#{name}") # rubocop:disable Tailwind/StringInterpolation -- Not a CSS utility class
   end
 
   def audit_icon(name, css_class: nil)
     case name
-    when "standard"
-      name = "key"
-    when "two-factor"
+    when "standard", "two-factor"
       name = "key"
     when "google_oauth2"
       name = "google"
@@ -101,9 +139,10 @@ module IconsHelper
 
   def boolean_to_icon(value)
     if value
-      sprite_icon('check', css_class: 'gl-text-green-500')
+      sprite_icon('check',
+        css_class: 'gl-text-success') + content_tag(:span, _('Enabled'), class: 'gl-pl-2 gl-text-subtle')
     else
-      sprite_icon('power', css_class: 'gl-text-gray-500')
+      content_tag(:span, _('Not enabled'), class: 'gl-text-subtle')
     end
   end
 
@@ -119,13 +158,14 @@ module IconsHelper
       end
 
     css_class = options.delete(:class)
+    variant = options.delete(:variant)
 
-    sprite_icon(name, size: DEFAULT_ICON_SIZE, css_class: css_class)
+    sprite_icon(name, size: DEFAULT_ICON_SIZE, css_class: css_class, variant: variant)
   end
 
   def file_type_icon_class(type, mode, name)
     if type == 'folder'
-      'folder-o'
+      'folder'
     elsif type == 'archive'
       'archive'
     elsif mode == '120000'
@@ -151,7 +191,7 @@ module IconsHelper
         'volume-up'
       when '.mp4', '.m4p', '.m4v',
            '.mpg', '.mp2', '.mpeg', '.mpe', '.mpv',
-           '.mpg', '.mpeg', '.m2v', '.m2ts',
+           '.m2v', '.m2ts',
            '.avi', '.mkv', '.flv', '.ogv', '.mov',
            '.3gp', '.3g2'
         'live-preview'
@@ -183,13 +223,23 @@ module IconsHelper
   def known_sprites
     return if Rails.env.production?
 
-    @known_sprites ||= Gitlab::Json.parse(File.read(Rails.root.join('node_modules/@gitlab/svgs/dist/icons.json')))['icons']
+    @known_sprites ||= parse_sprite_definition('icons.json')['icons']
   end
 
   def known_file_icon_sprites
     return if Rails.env.production?
 
-    @known_file_icon_sprites ||= Gitlab::Json.parse(File.read(Rails.root.join('node_modules/@gitlab/svgs/dist/file_icons/file_icons.json')))['icons']
+    @known_file_icon_sprites ||= parse_sprite_definition('file_icons/file_icons.json')['icons']
+  end
+
+  def parse_sprite_definition(sprite_definition)
+    Gitlab::Json.safe_parse(
+      Rails.application
+           .assets_manifest
+           .find_sources(sprite_definition)
+           .first
+           .to_s
+           .force_encoding('UTF-8'))
   end
 
   def memoized_icon(key)

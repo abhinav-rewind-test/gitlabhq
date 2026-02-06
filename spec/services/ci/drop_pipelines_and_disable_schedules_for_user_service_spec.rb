@@ -120,6 +120,10 @@ RSpec.describe Ci::DropPipelinesAndDisableSchedulesForUserService, feature_categ
       end
 
       it 'avoids N+1 queries when reading data' do
+        notification_service = instance_double(NotificationService)
+        allow(NotificationService).to receive(:new).and_return(notification_service)
+        allow(notification_service).to receive(:pipeline_schedule_owner_unavailable)
+
         control_count = ActiveRecord::QueryRecorder.new do
           described_class.new.execute(user)
         end.count
@@ -139,6 +143,21 @@ RSpec.describe Ci::DropPipelinesAndDisableSchedulesForUserService, feature_categ
         expect do
           described_class.new.execute(user)
         end.not_to exceed_query_limit(control_count)
+      end
+
+      context "with notifications" do
+        let(:notification_service) { instance_double(NotificationService) }
+
+        before do
+          allow(NotificationService).to receive(:new).and_return(notification_service)
+          allow(notification_service).to receive(:pipeline_schedule_owner_unavailable)
+        end
+
+        it 'sends pipeline_schedule_owner_unavailable notification for each user owned schedule' do
+          expect(notification_service).to receive(:pipeline_schedule_owner_unavailable)
+            .exactly(user_owned_schedules.count).times
+          service
+        end
       end
 
       context 'when include_owned_projects_and_groups is true' do

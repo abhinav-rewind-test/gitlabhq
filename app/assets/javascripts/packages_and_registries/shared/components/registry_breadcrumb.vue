@@ -1,14 +1,18 @@
 <script>
 // We are using gl-breadcrumb only at the last child of the handwritten breadcrumb
-// until this gitlab-ui issue is resolved: https://gitlab.com/gitlab-org/gitlab-ui/-/issues/1079
-//
-// See the CSS workaround in app/assets/stylesheets/pages/registry.scss when this file is changed.
-import { GlBreadcrumb, GlIcon } from '@gitlab/ui';
+// until this gitlab-ui issue is resolved: https://gitlab.com/gitlab-org/gitlab-ui/-/issues/1079 [CLOSED]
+import { GlBreadcrumb } from '@gitlab/ui';
 
 export default {
+  name: 'RegistryBreadcrumb',
   components: {
     GlBreadcrumb,
-    GlIcon,
+  },
+  props: {
+    staticBreadcrumbs: {
+      type: Array,
+      required: true,
+    },
   },
   computed: {
     rootRoute() {
@@ -17,26 +21,24 @@ export default {
     detailsRoute() {
       return this.$router.options.routes.find((r) => r.name === 'details');
     },
-    isRootRoute() {
-      return this.$route.name === this.rootRoute.name;
+    isDetailsRoute() {
+      return this.$route.name === this.detailsRoute.name;
     },
     detailsRouteName() {
-      return this.detailsRoute.meta.nameGenerator();
-    },
-    isLoaded() {
-      return this.isRootRoute || this.detailsRouteName;
+      return this.detailsRoute.meta?.nameGenerator() || (this.$route.params?.id ?? '');
     },
     allCrumbs() {
       const crumbs = [
+        ...this.staticBreadcrumbs,
         {
           text: this.rootRoute.meta.nameGenerator(),
           to: this.rootRoute.path,
         },
       ];
-      if (!this.isRootRoute) {
+      if (this.isDetailsRoute) {
         crumbs.push({
           text: this.detailsRouteName,
-          href: this.detailsRoute.meta.path,
+          to: { name: this.detailsRoute.name, params: this.$route.params },
         });
       }
       return crumbs;
@@ -46,11 +48,5 @@ export default {
 </script>
 
 <template>
-  <gl-breadcrumb :key="isLoaded" :items="allCrumbs">
-    <template #separator>
-      <span class="gl-mx-n5">
-        <gl-icon name="chevron-lg-right" :size="8" />
-      </span>
-    </template>
-  </gl-breadcrumb>
+  <gl-breadcrumb :items="allCrumbs" />
 </template>

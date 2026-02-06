@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Dependencies
 ---
-
-# Dependencies
 
 ## Dependency updates
 
@@ -47,7 +46,7 @@ Thank you very much for this contribution. It seems like you are doing a "simple
 
 If a dependency update is as simple as increasing the version number, we'd like a Bot to do this to save you and ourselves some time.
 
-This has certain benefits as outlined in our <a href="https://docs.gitlab.com/ee/development/fe_guide/dependencies.html#updating-dependencies">Frontend development guidelines</a>.
+This has certain benefits as outlined in our <a href="https://docs.gitlab.com/development/fe_guide/dependencies/#updating-dependencies">Frontend development guidelines</a>.
 
 You might find that we do not currently update DEPENDENCY automatically, but we are planning to do so in [the near future](https://gitlab.com/gitlab-org/frontend/rfcs/-/issues/21).
 

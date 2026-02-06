@@ -51,14 +51,14 @@ RSpec.describe 'Profile > Account', :js, feature_category: :user_profile do
       update_username(new_username)
       visit new_user_path
       expect(page).to have_current_path(new_user_path, ignore_query: true)
-      expect(find('.user-profile-header')).to have_content(new_username)
+      expect(find_by_testid('user-profile-header')).to have_content(new_username)
     end
 
     it 'the old user path redirects to the new path' do
       update_username(new_username)
       visit old_user_path
       expect(page).to have_current_path(new_user_path, ignore_query: true)
-      expect(find('.user-profile-header')).to have_content(new_username)
+      expect(find_by_testid('user-profile-header')).to have_content(new_username)
     end
 
     context 'with a project' do
@@ -78,14 +78,14 @@ RSpec.describe 'Profile > Account', :js, feature_category: :user_profile do
         update_username(new_username)
         visit new_project_path
         expect(page).to have_current_path(new_project_path, ignore_query: true)
-        expect(find('.breadcrumbs')).to have_content(user.name)
+        expect(find_by_testid('breadcrumb-links')).to have_content(user.name)
       end
 
       it 'the old project path redirects to the new path' do
         update_username(new_username)
         visit old_project_path
         expect(page).to have_current_path(new_project_path, ignore_query: true)
-        expect(find('.breadcrumbs')).to have_content(user.name)
+        expect(find_by_testid('breadcrumb-links')).to have_content(user.name)
       end
     end
   end
@@ -100,7 +100,7 @@ RSpec.describe 'Profile > Account', :js, feature_category: :user_profile do
       let(:number_of_projects) { 0 }
 
       it 'does not show personal projects removal message' do
-        expect(page).not_to have_content(/\d personal projects? will be removed and cannot be restored/)
+        expect(page).to have_no_content(/Removes \d personal project/)
       end
     end
 
@@ -108,7 +108,7 @@ RSpec.describe 'Profile > Account', :js, feature_category: :user_profile do
       let(:number_of_projects) { 1 }
 
       it 'does show personal project removal message' do
-        expect(page).to have_content('1 personal project will be removed and cannot be restored')
+        expect(page).to have_content('Removes 1 personal project. This project cannot be restored.')
       end
     end
 
@@ -116,7 +116,7 @@ RSpec.describe 'Profile > Account', :js, feature_category: :user_profile do
       let(:number_of_projects) { 3 }
 
       it 'shows pluralized personal project removal message' do
-        expect(page).to have_content('3 personal projects will be removed and cannot be restored')
+        expect(page).to have_content('Removes 3 personal projects. These projects cannot be restored.')
       end
     end
   end

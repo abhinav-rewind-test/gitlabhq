@@ -13,6 +13,9 @@ class Projects::BlobController < Projects::ApplicationController
   include ProductAnalyticsTracking
   extend ::Gitlab::Utils::Override
 
+  MAX_PREVIEW_CONTENT = 512.kilobytes
+  MAX_EDIT_SIZE = 10.megabytes
+
   prepend_before_action :authenticate_user!, only: [:edit]
 
   around_action :allow_gitaly_ref_name_caching, only: [:show]
@@ -23,30 +26,32 @@ class Projects::BlobController < Projects::ApplicationController
 
   # We need to assign the blob vars before `authorize_edit_tree!` so we can
   # validate access to a specific ref.
-  before_action :assign_blob_vars
-
-  # Since BlobController doesn't use assign_ref_vars, we have to call this explicitly
-  before_action :rectify_renamed_default_branch!, only: [:show]
+  before_action :assign_blob_vars, except: [:show]
+  before_action :assign_ref_vars, only: [:show]
+  before_action :set_is_ambiguous_ref, only: [:show]
+  before_action :check_for_ambiguous_ref, only: [:show],
+    if: -> { Feature.disabled?(:verified_ref_extractor, @project) }
 
   before_action :authorize_edit_tree!, only: [:new, :create, :update, :destroy]
 
-  before_action :commit, except: [:new, :create]
-  before_action :set_is_ambiguous_ref, only: [:show]
-  before_action :check_for_ambiguous_ref, only: [:show]
-  before_action :blob, except: [:new, :create]
+  before_action :require_commit, except: [:new, :create]
+  before_action :require_blob, except: [:new, :create]
   before_action :require_branch_head, only: [:edit, :update]
   before_action :editor_variables, except: [:show, :preview, :diff]
   before_action :validate_diff_params, only: :diff
+
   before_action :set_last_commit_sha, only: [:edit, :update]
 
   track_internal_event :create, :update, name: 'g_edit_by_sfe'
 
   feature_category :source_code_management
-  urgency :low, [:create, :show, :edit, :update, :diff]
+  urgency :low, [:create, :show, :edit, :update, :diff, :diff_lines]
 
   before_action do
-    push_frontend_feature_flag(:explain_code_chat, current_user)
+    push_frontend_feature_flag(:inline_blame, @project)
     push_licensed_feature(:file_locks) if @project.licensed_feature_available?(:file_locks)
+    push_frontend_feature_flag(:repository_file_tree_browser, current_user)
+    push_frontend_feature_flag(:blob_edit_refactor, @project)
   end
 
   def new
@@ -64,7 +69,7 @@ class Projects::BlobController < Projects::ApplicationController
   end
 
   def show
-    conditionally_expand_blob(@blob)
+    conditionally_expand_blob(blob)
 
     respond_to do |format|
       format.html do
@@ -72,8 +77,8 @@ class Projects::BlobController < Projects::ApplicationController
       end
 
       format.json do
-        page_title @blob.path, @ref, @project.full_name
-
+        page_title blob.path, @ref, @project.full_name
+        set_last_commit_sha
         show_json
       end
     end
@@ -81,7 +86,12 @@ class Projects::BlobController < Projects::ApplicationController
 
   def edit
     if can_collaborate_with_project?(project, ref: @ref)
-      blob.load_all_data!
+      if blob.raw_size > MAX_EDIT_SIZE
+        redirect_to project_blob_path(@project, @id),
+          alert: _("File exceeds 10MB and can't be edited in the browser. Edit locally and push your changes.")
+      else
+        blob.load_all_data!
+      end
     else
       redirect_to action: 'show'
     end
@@ -104,8 +114,13 @@ class Projects::BlobController < Projects::ApplicationController
 
   def preview
     @content = params[:content]
-    @blob.load_all_data!
-    diffy = Diffy::Diff.new(@blob.data, @content, diff: '-U 3', include_diff_info: true)
+
+    if @content.bytesize >= MAX_PREVIEW_CONTENT
+      return render json: { errors: ["Preview content too large"] }, status: :payload_too_large
+    end
+
+    blob.load_all_data!
+    diffy = Diffy::Diff.new(blob.data, @content, diff: '-U 3', include_diff_info: true)
     diff_lines = diffy.diff.scan(/.*\n/)[2..]
     diff_lines = Gitlab::Diff::Parser.new.parse(diff_lines).to_a
     @diff_lines = Gitlab::Diff::Highlight.new(diff_lines, repository: @repository).highlight
@@ -136,38 +151,67 @@ class Projects::BlobController < Projects::ApplicationController
     end
   end
 
+  def diff_lines
+    params.require([:since, :to, :offset])
+
+    bottom = diff_lines_params[:bottom] == 'true'
+    closest_line_number = diff_lines_params[:closest_line_number]&.to_i
+
+    presenter = Blobs::UnfoldPresenter.new(blob, diff_params.merge({ unfold: !!closest_line_number }))
+    diff_hunks = Gitlab::Diff::ViewerHunk.init_from_expanded_lines(
+      presenter.diff_lines(with_positions_and_indent: true),
+      bottom,
+      closest_line_number
+    )
+    return render_404 if diff_hunks.empty?
+
+    hunk_presenter = if diff_view == :inline
+                       RapidDiffs::Viewers::Text::InlineHunkComponent
+                     else
+                       RapidDiffs::Viewers::Text::ParallelHunkComponent
+                     end
+
+    render hunk_presenter.with_collection(
+      diff_hunks,
+      file_hash: blob.file_hash,
+      file_path: blob.path
+    ), layout: false
+  end
+
   private
 
   attr_reader :branch_name
 
   def blob
-    @blob ||= @repository.blob_at(@commit.id, @path)
+    return unless commit
 
-    if @blob
-      @blob
-    else
-      if tree = @repository.tree(@commit.id, @path)
-        return redirect_to project_tree_path(@project, File.join(@ref, @path)) if tree.entries.any?
-      end
+    @blob = @repository.blob_at(commit.id, @path)
+  end
+  strong_memoize_attr :blob
 
-      redirect_to_tree_root_for_missing_path(@project, @ref, @path)
+  def require_blob
+    redirect_to_project_tree_path unless blob
+  end
+
+  def redirect_to_project_tree_path
+    if @repository.tree(commit.id, @path).entries.any?
+      return redirect_to(project_tree_path(@project, File.join(@ref, @path)))
     end
+
+    redirect_to_tree_root_for_missing_path(@project, @ref, @path)
   end
 
   def check_for_ambiguous_ref
     @ref_type = ref_type
-    return if Feature.enabled?(:ambiguous_ref_modal, @project)
-
-    if @ref_type == ExtractsRef::RefExtractor::BRANCH_REF_TYPE && ambiguous_ref?(@project, @ref)
-      branch = @project.repository.find_branch(@ref)
-      redirect_to project_blob_path(@project, File.join(branch.target, @path))
-    end
   end
 
   def commit
-    @commit ||= @repository.commit(@ref)
+    @commit = @repository.commit(@ref)
+  end
+  strong_memoize_attr :commit
 
-    return render_404 unless @commit
+  def require_commit
+    render_404 unless commit
   end
 
   def redirect_renamed_default_branch?
@@ -175,21 +219,21 @@ class Projects::BlobController < Projects::ApplicationController
   end
 
   def assign_blob_vars
+    ref_extractor = ExtractsRef::RefExtractor.new(@project, {})
     @id = params[:id]
-    @ref, @path = extract_ref(@id)
+
+    @ref, @path = ref_extractor.extract_ref(@id)
   rescue InvalidPathError
     render_404
   end
 
-  def rectify_renamed_default_branch!
-    @commit ||= @repository.commit(@ref)
-
-    super
-  end
-
   # rubocop: disable CodeReuse/ActiveRecord
   def after_edit_path
-    from_merge_request = MergeRequestsFinder.new(current_user, project_id: @project.id).find_by(iid: params[:from_merge_request_iid])
+    from_merge_request = MergeRequestsFinder.new(
+      current_user,
+      project_id: @project.id
+    ).find_by(iid: params[:from_merge_request_iid])
+
     if from_merge_request && @branch_name == @ref
       diffs_project_merge_request_path(from_merge_request.target_project, from_merge_request) +
         "##{hexdigest(@path)}"
@@ -211,16 +255,7 @@ class Projects::BlobController < Projects::ApplicationController
   def editor_variables
     @branch_name = params[:branch_name]
 
-    @file_path =
-      if action_name.to_s == 'create'
-        params[:file_name] = params[:file].original_filename if params[:file].present?
-
-        File.join(@path, params[:file_name])
-      elsif params[:file_path].present?
-        params[:file_path]
-      else
-        @path
-      end
+    @file_path = fetch_file_path
 
     params[:content] = params[:file] if params[:file].present?
 
@@ -232,6 +267,22 @@ class Projects::BlobController < Projects::ApplicationController
       file_content_encoding: params[:encoding],
       last_commit_sha: params[:last_commit_sha]
     }
+  end
+
+  def fetch_file_path
+    file_params = params.permit(:file, :file_name, :file_path)
+
+    if action_name.to_s == 'create'
+      file_name = file_params[:file].present? ? file_params[:file].original_filename : file_params[:file_name]
+
+      return if file_name.nil?
+
+      return File.join(@path, file_name)
+    end
+
+    return file_params[:file_path] if file_params[:file_path].present?
+
+    @path
   end
 
   def validate_diff_params
@@ -246,20 +297,22 @@ class Projects::BlobController < Projects::ApplicationController
   end
 
   def show_html
-    environment_params = @repository.branch_exists?(@ref) ? { ref: @ref } : { commit: @commit }
+    environment_params = @repository.branch_exists?(@ref) ? { ref: @ref } : { commit: commit }
     environment_params[:find_latest] = true
-    @environment = ::Environments::EnvironmentsByDeploymentsFinder.new(@project, current_user, environment_params).execute.last
-    @last_commit = @repository.last_commit_for_path(@commit.id, @blob.path, literal_pathspec: true)
-    @code_navigation_path = Gitlab::CodeNavigationPath.new(@project, @blob.commit_id).full_json_path_for(@blob.path)
+    @environment = ::Environments::EnvironmentsByDeploymentsFinder.new(
+      @project,
+      current_user,
+      environment_params
+    ).execute.last
+    @last_commit = @repository.last_commit_for_path(commit.id, blob.path, literal_pathspec: true)
+    @code_navigation_path = Gitlab::CodeNavigationPath.new(@project, blob.commit_id).full_json_path_for(blob.path)
 
     render 'show'
   end
 
   def show_json
-    set_last_commit_sha
-
-    json = {
-      id: @blob.id,
+    json = blob_viewer_json(blob).merge(
+      id: blob.id,
       last_commit_sha: @last_commit_sha,
       path: blob.path,
       name: blob.name,
@@ -275,10 +328,8 @@ class Projects::BlobController < Projects::ApplicationController
       blame_path: project_blame_path(project, @id),
       commits_path: project_commits_path(project, @id),
       tree_path: project_tree_path(project, File.join(@ref, tree_path)),
-      permalink: project_blob_path(project, File.join(@commit.id, @path))
-    }
-
-    json.merge!(blob_json(@blob) || {}) unless params[:viewer] == 'none'
+      permalink: project_blob_path(project, File.join(commit.id, @path))
+    )
 
     render json: json
   end
@@ -289,6 +340,10 @@ class Projects::BlobController < Projects::ApplicationController
 
   def diff_params
     params.permit(:full, :since, :to, :bottom, :unfold, :offset, :indent)
+  end
+
+  def diff_lines_params
+    params.permit(:full, :bottom, :since, :to, :offset, :closest_line_number)
   end
 
   override :visitor_id

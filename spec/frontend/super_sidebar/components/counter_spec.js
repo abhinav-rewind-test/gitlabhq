@@ -1,6 +1,5 @@
 import { GlIcon } from '@gitlab/ui';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import { __ } from '~/locale';
 import Counter from '~/super_sidebar/components/counter.vue';
 
 describe('Counter component', () => {
@@ -10,7 +9,7 @@ describe('Counter component', () => {
     count: 3,
     href: '',
     icon: 'issues',
-    label: __('Issues'),
+    label: 'Issues',
   };
 
   const findButton = () => wrapper.find('button');
@@ -22,6 +21,9 @@ describe('Counter component', () => {
       propsData: {
         ...defaultPropsData,
         ...props,
+      },
+      provide: {
+        projectStudioEnabled: false,
       },
     });
   };
@@ -36,7 +38,7 @@ describe('Counter component', () => {
     });
 
     it('renders button', () => {
-      expect(findButton().attributes('aria-label')).toBe('Issues 3');
+      expect(findButton().attributes('aria-label')).toBe('3 Issues');
       expect(findLink().exists()).toBe(false);
     });
   });
@@ -44,7 +46,7 @@ describe('Counter component', () => {
   describe('link', () => {
     it('renders link', () => {
       createWrapper({ href: '/dashboard/todos' });
-      expect(findLink().attributes('aria-label')).toBe('Issues 3');
+      expect(findLink().attributes('aria-label')).toBe('3 Issues');
       expect(findLink().attributes('href')).toBe('/dashboard/todos');
       expect(findButton().exists()).toBe(false);
     });
@@ -55,7 +57,7 @@ describe('Counter component', () => {
     ['110%', '110%'],
     [100, '99+'],
     [10, '10'],
-    [0, ''],
+    [0, '0'],
   ])('formats count %p as %p', (count, result) => {
     createWrapper({ count });
     expect(findButton().text()).toBe(result);

@@ -48,7 +48,8 @@ module UnnestedInFilters
       end
 
       def use_unnested_filters!
-        assert_mutability!
+        assert_modifiable!
+
         @values[:unnested_filters] = true
 
         self

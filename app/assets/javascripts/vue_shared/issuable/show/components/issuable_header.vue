@@ -1,25 +1,44 @@
 <script>
-import { GlIcon, GlBadge, GlButton, GlLink, GlSprintf, GlTooltipDirective } from '@gitlab/ui';
+import {
+  GlIcon,
+  GlBadge,
+  GlButton,
+  GlLink,
+  GlPopover,
+  GlSprintf,
+  GlTooltipDirective,
+} from '@gitlab/ui';
+import { uniqueId } from 'lodash';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import HiddenBadge from '~/issuable/components/hidden_badge.vue';
 import LockedBadge from '~/issuable/components/locked_badge.vue';
-import { issuableStatusText, STATUS_OPEN, STATUS_REOPENED } from '~/issues/constants';
+import { issuableStatusText, STATUS_OPEN, STATUS_REOPENED, TYPE_TICKET } from '~/issues/constants';
+import { isLoggedIn } from '~/lib/utils/common_utils';
+import { fallsBefore } from '~/lib/utils/datetime/date_calculation_utility';
 import { isExternal } from '~/lib/utils/url_utility';
 import { __, n__, sprintf } from '~/locale';
 import ConfidentialityBadge from '~/vue_shared/components/confidentiality_badge.vue';
+import ImportedBadge from '~/vue_shared/components/imported_badge.vue';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 import WorkItemTypeIcon from '~/work_items/components/work_item_type_icon.vue';
+import {
+  TICKET_CALLOUT_DISMISSED_END_DATE,
+  TICKET_CALLOUT_DISMISSED_KEY,
+} from '~/work_items/constants';
 
 export default {
+  iconId: uniqueId(),
   components: {
     ConfidentialityBadge,
     GlIcon,
     GlBadge,
     GlButton,
     GlLink,
+    GlPopover,
     GlSprintf,
     HiddenBadge,
     LockedBadge,
+    ImportedBadge,
     TimeAgoTooltip,
     WorkItemTypeIcon,
   },
@@ -45,11 +64,6 @@ export default {
       required: false,
       default: '',
     },
-    statusIconClass: {
-      type: String,
-      required: false,
-      default: '',
-    },
     blocked: {
       type: Boolean,
       required: false,
@@ -66,6 +80,11 @@ export default {
       default: false,
     },
     isHidden: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isImported: {
       type: Boolean,
       required: false,
       default: false,
@@ -96,6 +115,11 @@ export default {
       default: '',
     },
   },
+  data() {
+    return {
+      isTicketCalloutDismissed: localStorage.getItem(TICKET_CALLOUT_DISMISSED_KEY) === 'true',
+    };
+  },
   computed: {
     badgeText() {
       return issuableStatusText[this.issuableState];
@@ -124,6 +148,14 @@ export default {
     isAuthorExternal() {
       return isExternal(this.author.webUrl ?? '');
     },
+    showTicketCallout() {
+      return (
+        fallsBefore(Date.now(), TICKET_CALLOUT_DISMISSED_END_DATE) &&
+        this.issuableType === TYPE_TICKET &&
+        !this.isTicketCalloutDismissed &&
+        isLoggedIn()
+      );
+    },
     taskStatusString() {
       const { count, completedCount } = this.taskCompletionStatus;
 
@@ -144,6 +176,10 @@ export default {
     this.toggleSidebarButtonEl = document.querySelector('.js-toggle-right-sidebar-button');
   },
   methods: {
+    dismissTicketCallout() {
+      this.isTicketCalloutDismissed = true;
+      localStorage.setItem(TICKET_CALLOUT_DISMISSED_KEY, 'true');
+    },
     handleRightSidebarToggleClick() {
       this.$emit('toggle');
       if (this.toggleSidebarButtonEl) {
@@ -155,13 +191,10 @@ export default {
 </script>
 
 <template>
-  <div class="detail-page-header gl-flex-direction-column gl-md-flex-direction-row">
-    <div class="detail-page-header-body gl-flex-wrap gl-column-gap-2">
-      <gl-badge :variant="badgeVariant" data-testid="issue-state-badge">
-        <gl-icon v-if="statusIcon" :name="statusIcon" :class="statusIconClass" />
-        <span class="gl-display-none gl-sm-display-block" :class="{ 'gl-ml-2': statusIcon }">
-          <slot name="status-badge">{{ badgeText }}</slot>
-        </span>
+  <div class="detail-page-header gl-flex-col @md/panel:gl-flex-row">
+    <div class="detail-page-header-body gl-flex-wrap gl-gap-x-2 gl-text-subtle">
+      <gl-badge :variant="badgeVariant" :icon="statusIcon" data-testid="issue-state-badge">
+        <slot name="status-badge">{{ badgeText }}</slot>
       </gl-badge>
       <confidentiality-badge
         v-if="confidential"
@@ -169,12 +202,32 @@ export default {
         :workspace-type="workspaceType"
       />
       <locked-badge v-if="blocked" :issuable-type="issuableType" />
-      <hidden-badge v-if="isHidden" :issuable-type="issuableType" />
+      <hidden-badge v-if="isHidden" />
+      <imported-badge v-if="isImported" />
+
       <work-item-type-icon
         v-if="shouldShowWorkItemTypeIcon"
+        :id="$options.iconId"
         show-text
         :work-item-type="issuableType"
+        icon-class="gl-fill-icon-subtle"
       />
+      <gl-popover
+        v-if="showTicketCallout"
+        show
+        show-close-button
+        :target="$options.iconId"
+        :title="s__('WorkItem|Introducing Tickets')"
+        triggers=""
+        @close-button-clicked="dismissTicketCallout"
+      >
+        {{
+          s__(
+            'WorkItem|Issues created from Service Desk are now Tickets. Filter by type "Ticket" to see only these items.',
+          )
+        }}
+      </gl-popover>
+
       <gl-sprintf :message="createdMessage">
         <template #timeAgo>
           <time-ago-tooltip :time="createdAt" />
@@ -184,11 +237,12 @@ export default {
         </template>
         <template #author>
           <gl-link
-            class="gl-font-weight-bold js-user-link"
+            class="js-user-link gl-font-bold"
             :href="author.webUrl"
             :data-user-id="authorId"
+            data-testid="issue-author"
           >
-            <span :class="[{ 'gl-display-none': !isAuthorExternal }, 'gl-sm-display-inline']">
+            <span :class="[{ 'gl-hidden': !isAuthorExternal }, '@sm/panel:gl-inline']">
               {{ author.name }}
             </span>
             <gl-icon
@@ -196,7 +250,7 @@ export default {
               name="external-link"
               :aria-label="__('external link')"
             />
-            <strong v-if="author.username" class="author gl-display-inline gl-sm-display-none!"
+            <strong v-if="author.username" class="author gl-inline @sm/panel:!gl-hidden"
               >@{{ author.username }}</strong
             >
           </gl-link>
@@ -211,17 +265,17 @@ export default {
       />
       <span
         v-if="taskCompletionStatus && hasTasks"
-        class="gl-display-none gl-md-display-block gl-lg-display-inline-block"
+        class="gl-hidden @md/panel:gl-block @lg/panel:gl-inline-block"
         >{{ taskStatusString }}</span
       >
       <gl-button
         icon="chevron-double-lg-left"
-        class="gl-ml-auto gl-display-block gl-sm-display-none! js-sidebar-toggle"
+        class="js-sidebar-toggle gl-ml-auto gl-block @sm/panel:!gl-hidden"
         :aria-label="__('Expand sidebar')"
         @click="handleRightSidebarToggleClick"
       />
     </div>
-    <div class="detail-page-header-actions gl-align-self-center gl-display-flex gl-gap-3">
+    <div class="detail-page-header-actions gl-flex gl-gap-3 gl-self-center">
       <slot name="header-actions"></slot>
     </div>
   </div>

@@ -1,123 +1,103 @@
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
-import { GlLoadingIcon } from '@gitlab/ui';
 
-import { createAlert } from '~/alert';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
-import waitForPromises from 'helpers/wait_for_promises';
-import createMockApollo from 'helpers/mock_apollo_helper';
 
-import getLinkedPipelinesQuery from '~/ci/pipeline_details/graphql/queries/get_linked_pipelines.query.graphql';
-import getPipelineStagesQuery from '~/ci/pipeline_mini_graph/graphql/queries/get_pipeline_stages.query.graphql';
-import LegacyPipelineMiniGraph from '~/ci/pipeline_mini_graph/legacy_pipeline_mini_graph.vue';
 import PipelineMiniGraph from '~/ci/pipeline_mini_graph/pipeline_mini_graph.vue';
-import * as sharedGraphQlUtils from '~/graphql_shared/utils';
+import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
+import DownstreamPipelines from '~/ci/pipeline_mini_graph/downstream_pipelines.vue';
+import PipelineStages from '~/ci/pipeline_mini_graph/pipeline_stages.vue';
 
-import {
-  linkedPipelinesFetchError,
-  stagesFetchError,
-  mockPipelineStagesQueryResponse,
-  mockUpstreamDownstreamQueryResponse,
-} from './mock_data';
+import { pipelineStage, singlePipeline, mockDownstreamPipelinesGraphql } from './mock_data';
 
 Vue.use(VueApollo);
-jest.mock('~/alert');
 
 describe('PipelineMiniGraph', () => {
   let wrapper;
-  let linkedPipelinesResponse;
-  let pipelineStagesResponse;
 
-  const fullPath = 'gitlab-org/gitlab';
-  const iid = '315';
-  const pipelineEtag = '/api/graphql:pipelines/id/315';
-
-  const createComponent = ({
-    pipelineStagesHandler = pipelineStagesResponse,
-    linkedPipelinesHandler = linkedPipelinesResponse,
-  } = {}) => {
-    const handlers = [
-      [getLinkedPipelinesQuery, linkedPipelinesHandler],
-      [getPipelineStagesQuery, pipelineStagesHandler],
-    ];
-    const mockApollo = createMockApollo(handlers);
-
-    wrapper = shallowMountExtended(PipelineMiniGraph, {
-      propsData: {
-        fullPath,
-        iid,
-        pipelineEtag,
-      },
-      apolloProvider: mockApollo,
-    });
-
-    return waitForPromises();
+  const defaultProps = {
+    downstreamPipelines: mockDownstreamPipelinesGraphql.nodes,
+    isMergeTrain: true,
+    pipelinePath: '/path/to/pipeline',
+    pipelineStages: [pipelineStage],
+    upstreamPipeline: singlePipeline,
   };
 
-  const findLegacyPipelineMiniGraph = () => wrapper.findComponent(LegacyPipelineMiniGraph);
-  const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
+  const createComponent = ({ props = {} } = {}) => {
+    wrapper = shallowMountExtended(PipelineMiniGraph, {
+      propsData: {
+        ...defaultProps,
+        ...props,
+      },
+    });
+  };
 
-  beforeEach(() => {
-    linkedPipelinesResponse = jest.fn().mockResolvedValue(mockUpstreamDownstreamQueryResponse);
-    pipelineStagesResponse = jest.fn().mockResolvedValue(mockPipelineStagesQueryResponse);
-  });
+  const findUpstream = () => wrapper.findComponent(CiIcon);
+  const findDownstream = () => wrapper.findComponent(DownstreamPipelines);
+  const findStages = () => wrapper.findComponent(PipelineStages);
 
-  describe('when initial queries are loading', () => {
-    beforeEach(() => {
-      createComponent();
+  describe('on render', () => {
+    describe('stages', () => {
+      beforeEach(() => {
+        createComponent();
+      });
+
+      it('renders stages', () => {
+        expect(findStages().exists()).toBe(true);
+      });
+
+      it('sends the necessary props', () => {
+        expect(findStages().props()).toMatchObject({
+          isMergeTrain: defaultProps.isMergeTrain,
+          stages: defaultProps.pipelineStages,
+        });
+      });
+
+      it('emits miniGraphStageClick', () => {
+        findStages().vm.$emit('miniGraphStageClick');
+        expect(wrapper.emitted('miniGraphStageClick')).toHaveLength(1);
+      });
     });
 
-    it('shows a loading icon and no mini graph', () => {
-      expect(findLoadingIcon().exists()).toBe(true);
-      expect(findLegacyPipelineMiniGraph().exists()).toBe(false);
-    });
-  });
+    describe('upstream', () => {
+      it('renders upstream if available', () => {
+        createComponent();
+        expect(findUpstream().exists()).toBe(true);
+      });
 
-  describe('when queries have loaded', () => {
-    it('does not show a loading icon', async () => {
-      await createComponent();
-
-      expect(findLoadingIcon().exists()).toBe(false);
-    });
-
-    it('renders the Pipeline Mini Graph', async () => {
-      await createComponent();
-
-      expect(findLegacyPipelineMiniGraph().exists()).toBe(true);
+      it('does not render upstream if not available', () => {
+        createComponent({
+          props: { upstreamPipeline: {} },
+        });
+        expect(findUpstream().exists()).toBe(false);
+      });
     });
 
-    it('fires the queries', async () => {
-      await createComponent();
+    describe('downstream', () => {
+      it('renders downstream if available', () => {
+        createComponent();
+        expect(findDownstream().exists()).toBe(true);
+      });
 
-      expect(linkedPipelinesResponse).toHaveBeenCalledWith({ iid, fullPath });
-      expect(pipelineStagesResponse).toHaveBeenCalledWith({ iid, fullPath });
-    });
-  });
+      it('sends the necessary props', () => {
+        createComponent();
+        expect(findDownstream().props()).toMatchObject({
+          pipelines: expect.any(Array),
+          pipelinePath: expect.any(String),
+        });
+      });
 
-  describe('polling', () => {
-    it('toggles query polling with visibility check', async () => {
-      jest.spyOn(sharedGraphQlUtils, 'toggleQueryPollingByVisibility');
+      it('keeps the latest downstream pipelines', () => {
+        createComponent();
+        expect(findDownstream().props('pipelines')).toHaveLength(2);
+      });
 
-      createComponent();
-
-      await waitForPromises();
-
-      expect(sharedGraphQlUtils.toggleQueryPollingByVisibility).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('when pipeline queries are unsuccessful', () => {
-    const failedHandler = jest.fn().mockRejectedValue(new Error('GraphQL error'));
-    it.each`
-      query                 | handlerName                 | errorMessage
-      ${'pipeline stages'}  | ${'pipelineStagesHandler'}  | ${stagesFetchError}
-      ${'linked pipelines'} | ${'linkedPipelinesHandler'} | ${linkedPipelinesFetchError}
-    `('throws an error for the $query query', async ({ errorMessage, handlerName }) => {
-      await createComponent({ [handlerName]: failedHandler });
-
-      await waitForPromises();
-
-      expect(createAlert).toHaveBeenCalledWith({ message: errorMessage });
+      it('does not render downstream if not available', () => {
+        createComponent({
+          props: { downstreamPipelines: [] },
+        });
+        expect(findDownstream().exists()).toBe(false);
+      });
     });
   });
 });

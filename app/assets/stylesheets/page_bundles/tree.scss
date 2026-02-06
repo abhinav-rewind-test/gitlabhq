@@ -1,18 +1,77 @@
 @import 'mixins_and_variables_and_functions';
 
-.project-last-commit {
-  min-height: 4.75rem;
+$bottom-padding: $gl-spacing-scale-6;
+$file-tree-browser-z-index: 500;
+
+.content-wrapper:has(.navigation-root) {
+  padding-bottom: $bottom-padding;
+}
+
+.navigation-root {
+  min-height: calc(100dvh - var(--application-header-height) - #{$bottom-padding});
+}
+
+.file-tree-browser-overlay {
+  @apply gl-bg-overlay;
+  z-index: $file-tree-browser-z-index - 1;
+}
+
+// Remove the below after the UI has been fully migrated to paneled views
+html:not(.page-with-panels) .file-tree-browser  {
+  top: calc(var(--application-header-height) + 1px); // header + 1px border
+}
+
+.file-tree-browser {
+  --file-row-level-padding: #{$gl-spacing-scale-5};
+  --file-tree-min-height: 300px;
+  --file-tree-bottom-padding: #{rem-to-px($bottom-padding)};
+  top: var(--application-header-height);
+  bottom: $calc-application-footer-height;
+  background: var(--gl-background-color-default);
+  min-height: var(--file-tree-min-height);
+  z-index: $file-tree-browser-z-index;
+
+  @media (prefers-reduced-motion: no-preference) {
+    @apply gl-transition-transform;
+  }
+
+  .file-row {
+    @apply gl-border-none;
+    @apply gl-bg-transparent;
+    @apply gl-w-full;
+  }
+
+  &.file-tree-browser-peek {
+    @apply gl-shadow;
+    @apply gl-rounded-base;
+    @apply gl-rounded-l-none;
+    bottom: 0;
+  }
+}
+
+// Vue transition classes
+.file-tree-browser-slide-enter,
+.file-tree-browser-slide-leave-to {
+  transform: translate3d(-100%, 0, 0);
+}
+
+.file-tree-browser-responsive {
+  width: var(--tree-width);
+
+  @include gl-container-width-down(lg) {
+    width: 250px;
+  }
 }
 
 .tree-holder {
   .nav-block {
-    margin: $gl-spacing-scale-2 0 $gl-spacing-scale-5;
+    margin: $gl-spacing-scale-5 0 $gl-spacing-scale-5;
 
     .tree-ref-holder {
       margin-right: 15px;
     }
 
-    @include media-breakpoint-up(sm) {
+    @include gl-container-width-up(sm) {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
@@ -38,10 +97,6 @@
         float: left;
       }
 
-      .tree-ref-target-holder {
-        display: inline-block;
-      }
-
       .repo-breadcrumb {
         li:last-of-type {
           position: relative;
@@ -50,7 +105,7 @@
     }
   }
 
-  @include media-breakpoint-down(xs) {
+  @include gl-container-width-down(sm, panel) {
     .tree-ref-container {
       justify-content: space-between;
     }
@@ -64,18 +119,11 @@
       }
     }
 
-    .add-to-tree-dropdown {
-      position: absolute;
-      left: 0;
-      right: 0;
-    }
-
     .tree-controls {
       margin-bottom: 10px;
 
       .btn:not(.dropdown-toggle-split),
-      .dropdown,
-      .btn-group {
+      .dropdown {
         width: 100%;
       }
     }
@@ -101,44 +149,83 @@
   }
 
   table.tree-table {
-    margin-bottom: 0;
+    @apply dark:gl-bg-neutral-900;
+    @apply gl-mb-0;
 
-    tr {
-      border-bottom: 1px solid var(--gray-50, $gray-50);
+    thead tr th[scope="col"] {
+      @apply gl-bg-subtle;
+      @apply dark:gl-bg-neutral-800;
+      @apply gl-border-t-0;
+    }
 
-      &:last-of-type {
-        border-bottom-color: transparent;
-      }
+    tbody tr {
+      @apply gl-border-b-section;
 
       td,
       th {
         line-height: 21px;
       }
 
-      th {
-        border: 0;
+      td, th {
+        @apply gl-border-section;
       }
+    }
 
-      td {
-        border-color: var(--border-color, $border-color);
-      }
-
+    tbody tr.tree-item {
       &:hover:not(.tree-truncated-warning) {
-        td {
-          background-color: var(--blue-50, $blue-50);
-          background-clip: padding-box;
-          border-top: 1px solid var(--blue-200, $blue-200);
-          border-bottom: 1px solid var(--blue-200, $blue-200);
-          cursor: pointer;
+        td, th {
+          @apply gl-bg-blue-50;
+          @apply dark:gl-bg-neutral-800;
+          border-top: 1px solid var(--gl-action-selected-border-color-default);
+          border-bottom: 1px solid var(--gl-action-selected-border-color-default);
+
+          &:first-child {
+            box-shadow: inset 1px 0 0 0 var(--gl-action-selected-border-color-default);
+          }
+
+          &:last-child {
+            box-shadow: inset -1px 0 0 0 var(--gl-action-selected-border-color-default);
+          }
+
+          &:first-child:last-child {
+            box-shadow: inset 1px 0 0 0 var(--gl-action-selected-border-color-default),
+              inset -1px 0 0 0 var(--gl-action-selected-border-color-default);
+          }
+        }
+
+        &:last-child {
+          td, th {
+            @apply gl-border-b-0;
+            box-shadow: inset 0 -1px 0 0 var(--gl-action-selected-border-color-default);
+
+            &:first-child {
+              box-shadow: inset 1px 0 0 0 var(--gl-action-selected-border-color-default),
+                inset 0 -1px 0 0 var(--gl-action-selected-border-color-default);
+              border-bottom-left-radius: $gl-border-radius-lg-inner;
+            }
+
+            &:last-child {
+              box-shadow: inset -1px 0 0 0 var(--gl-action-selected-border-color-default),
+                inset 0 -1px 0 0 var(--gl-action-selected-border-color-default);
+              border-bottom-right-radius: $gl-border-radius-lg-inner;
+            }
+          }
         }
       }
 
       &.selected {
         td {
-          background: var(--gray-50, $gray-50);
-          border-top: 1px solid var(--border-color, $border-color);
-          border-bottom: 1px solid var(--border-color, $border-color);
+          @apply gl-bg-strong;
+          @apply dark:gl-bg-neutral-800;
+          @apply gl-border-t;
+          @apply gl-border-b;
         }
+      }
+
+      &:last-of-type,
+      &:last-of-type td,
+      &:last-of-type:hover td {
+        @apply gl-border-b-0;
       }
     }
   }
@@ -159,7 +246,7 @@
 
       i,
       a {
-        color: var(--gl-text-color, $gl-text-color);
+        @apply gl-text-default;
       }
 
       img {

@@ -10,6 +10,11 @@ export default {
       type: String,
       required: true,
     },
+    colorName: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
   computed: {
     style() {
@@ -25,11 +30,15 @@ export default {
     <span
       :style="style"
       data-testid="color-chip"
-      class="gl-display-inline-block gl-w-5 gl-h-5 gl-rounded-base gl-vertical-align-middle gl-mr-1"
+      class="gl-mr-1 gl-inline-block gl-h-5 gl-w-5 gl-rounded-base gl-border-solid gl-border-alpha-dark-24 gl-align-middle"
     ></span>
+    <span v-if="colorName" class="gl-inline-block gl-align-middle">
+      {{ colorName }}
+    </span>
     <span
+      v-else
       v-safe-html="color"
-      class="gl-display-inline-block gl-vertical-align-middle"
+      class="gl-inline-block gl-align-middle"
       data-testid="color-value"
     ></span>
   </span>

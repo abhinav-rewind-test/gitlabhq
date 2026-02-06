@@ -148,15 +148,17 @@ RSpec.describe 'Merge request > User sees pipelines', :js, feature_category: :co
         sign_in(actor)
       end
 
+      # rubocop:disable Cop/DestroyAll -- cannot delete due to not-null constraint
       after do
-        parent_project.all_pipelines.delete_all
-        forked_project.all_pipelines.delete_all
+        parent_project.all_pipelines.destroy_all
+        forked_project.all_pipelines.destroy_all
       end
+      # rubocop:enable Cop/DestroyAll
 
       context 'when actor is a developer in parent project' do
         let(:actor) { developer_in_parent }
 
-        it 'creates a pipeline in the parent project when user proceeds with the warning' do
+        it 'creates a pipeline in the parent project when user proceeds with the warning', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/2144' do
           visit project_merge_request_path(parent_project, merge_request)
 
           create_merge_request_pipeline
@@ -192,7 +194,7 @@ RSpec.describe 'Merge request > User sees pipelines', :js, feature_category: :co
       context 'when actor is a reporter in parent project and a developer in fork project' do
         let(:actor) { reporter_in_parent_and_developer_in_fork }
 
-        it 'creates a pipeline in the fork project' do
+        it 'creates a pipeline in the fork project', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/2261' do
           visit project_merge_request_path(parent_project, merge_request)
 
           create_merge_request_pipeline
@@ -209,10 +211,10 @@ RSpec.describe 'Merge request > User sees pipelines', :js, feature_category: :co
 
       def check_pipeline(expected_project:)
         page.within('.ci-table') do
-          expect(page).to have_selector('[data-testid="pipeline-table-row"]', count: 4)
+          expect(page).to have_selector('[data-testid="pipeline-table-row"]', count: 2)
 
           page.within(first('[data-testid="pipeline-table-row"]')) do
-            page.within('.pipeline-tags') do
+            within_testid('pipeline-url-table-cell') do
               expect(find_by_testid('pipeline-url-link')[:href]).to include(expected_project.full_path)
               expect(page).to have_content('merge request')
             end
@@ -240,7 +242,7 @@ RSpec.describe 'Merge request > User sees pipelines', :js, feature_category: :co
 
       def check_no_new_pipeline_created
         page.within('.ci-table') do
-          expect(page).to have_selector('[data-testid="pipeline-table-row"]', count: 2)
+          expect(page).to have_selector('[data-testid="pipeline-table-row"]', count: 1)
         end
       end
     end

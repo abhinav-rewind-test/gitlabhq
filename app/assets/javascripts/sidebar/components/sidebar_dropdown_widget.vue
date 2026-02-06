@@ -1,12 +1,11 @@
 <script>
-import { GlButton, GlIcon, GlLink, GlPopover, GlTooltipDirective } from '@gitlab/ui';
+import { GlIcon, GlLink, GlTooltipDirective } from '@gitlab/ui';
 import { kebabCase, snakeCase } from 'lodash';
 import { createAlert } from '~/alert';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { TYPE_ISSUE, TYPE_MERGE_REQUEST } from '~/issues/constants';
 import { timeFor } from '~/lib/utils/datetime_utility';
 import { __ } from '~/locale';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
 import {
   dropdowni18nText,
@@ -30,12 +29,9 @@ export default {
   components: {
     GlLink,
     GlIcon,
-    GlPopover,
-    GlButton,
     SidebarDropdown,
     SidebarEditableItem,
   },
-  mixins: [glFeatureFlagMixin()],
   inject: {
     isClassicSidebar: {
       default: false,
@@ -111,12 +107,10 @@ export default {
         };
       },
       update(data) {
-        return data.workspace?.issuable || {};
+        return data.namespace?.issuable || {};
       },
-      result({ data }) {
-        if (this.glFeatures?.epicWidgetEditConfirmation && this.isEpicAttribute) {
-          this.hasCurrentAttribute = data?.workspace?.issuable.hasEpic;
-        }
+      skip() {
+        return !this.iid;
       },
       error(error) {
         createAlert({
@@ -145,8 +139,6 @@ export default {
       updating: false,
       selectedTitle: null,
       issuable: {},
-      hasCurrentAttribute: false,
-      editConfirmation: false,
       tracking: {
         event: Tracking.editEvent,
         label: Tracking.rightSidebarLabel,
@@ -168,7 +160,7 @@ export default {
       return this.issuableAttributesQueries[this.issuableAttribute];
     },
     attributeTitle() {
-      return this.currentAttribute?.title || this.i18n.noAttribute;
+      return this.currentAttribute?.title || __('None');
     },
     attributeUrl() {
       return this.currentAttribute?.webUrl;
@@ -195,15 +187,6 @@ export default {
         kebab: kebabCase(this.issuableAttribute),
         snake: snakeCase(this.issuableAttribute),
       };
-    },
-    shouldShowConfirmationPopover() {
-      if (!this.glFeatures?.epicWidgetEditConfirmation) {
-        return false;
-      }
-
-      return this.isEpicAttribute && this.currentAttribute === null && this.hasCurrentAttribute
-        ? !this.editConfirmation
-        : false;
     },
     shouldSkipRealTimeEpicLinkUpdates() {
       return !this.issuableId || this.issuableAttribute !== IssuableAttributeType.Epic;
@@ -263,17 +246,6 @@ export default {
     showDropdown() {
       this.$refs.dropdown.show();
     },
-    handlePopoverClose() {
-      this.$refs.popover.$emit('close');
-    },
-    handlePopoverConfirm(cb) {
-      this.editConfirmation = true;
-      this.handlePopoverClose();
-      setTimeout(cb, 0);
-    },
-    handleEditConfirmation() {
-      this.$refs.popover.$emit('open');
-    },
   },
 };
 </script>
@@ -285,10 +257,8 @@ export default {
     :data-testid="`${formatIssuableAttribute.kebab}-edit`"
     :button-id="`${formatIssuableAttribute.kebab}-edit`"
     :tracking="tracking"
-    :should-show-confirmation-popover="shouldShowConfirmationPopover"
     :loading="updating || loading"
     @open="showDropdown"
-    @edit-confirm="handleEditConfirmation"
   >
     <template #collapsed>
       <slot name="value-collapsed" :current-attribute="currentAttribute">
@@ -299,7 +269,7 @@ export default {
           class="sidebar-collapsed-icon"
         >
           <gl-icon :aria-label="attributeTypeTitle" :name="attributeTypeIcon" />
-          <span class="collapse-truncated-title gl-pt-2 gl-px-3 gl-font-sm">
+          <span class="collapse-truncated-title gl-px-3 gl-pt-2 gl-text-sm">
             {{ attributeTitle }}
           </span>
         </div>
@@ -309,11 +279,7 @@ export default {
         :class="isClassicSidebar ? 'hide-collapsed' : 'gl-mt-3'"
       >
         <span v-if="updating">{{ selectedTitle }}</span>
-        <template v-else-if="!currentAttribute && hasCurrentAttribute">
-          <gl-icon name="warning" class="gl-text-orange-500" />
-          <span class="gl-text-gray-500">{{ i18n.noPermissionToView }}</span>
-        </template>
-        <span v-else-if="!currentAttribute" class="gl-text-gray-500">
+        <span v-else-if="!currentAttribute" class="gl-text-subtle">
           {{ $options.i18n.none }}
         </span>
         <slot
@@ -325,7 +291,7 @@ export default {
         >
           <gl-link
             v-gl-tooltip="tooltipText"
-            class="gl-reset-color gl-hover-text-blue-800"
+            class="gl-text-inherit hover:gl-text-blue-800"
             :href="attributeUrl"
             :data-testid="`${formatIssuableAttribute.kebab}-link`"
           >
@@ -335,40 +301,7 @@ export default {
         </slot>
       </div>
     </template>
-    <template v-if="shouldShowConfirmationPopover" #default="{ toggle }">
-      <gl-popover
-        ref="popover"
-        :target="`${formatIssuableAttribute.kebab}-edit`"
-        placement="bottomleft"
-        boundary="viewport"
-        triggers="click"
-      >
-        <div class="gl-mb-4 gl-font-base">
-          {{ i18n.editConfirmation }}
-        </div>
-        <div class="gl-display-flex gl-align-items-center">
-          <gl-button
-            size="small"
-            variant="confirm"
-            category="primary"
-            data-testid="confirm-edit-cta"
-            @click.prevent="() => handlePopoverConfirm(toggle)"
-            >{{ i18n.editConfirmationCta }}</gl-button
-          >
-          <gl-button
-            class="gl-ml-auto"
-            size="small"
-            name="cancel"
-            variant="default"
-            category="primary"
-            data-testid="confirm-edit-cancel"
-            @click.prevent="handlePopoverClose"
-            >{{ i18n.editConfirmationCancel }}</gl-button
-          >
-        </div>
-      </gl-popover>
-    </template>
-    <template v-else #default>
+    <template #default>
       <sidebar-dropdown
         ref="dropdown"
         :attr-workspace-path="attrWorkspacePath"

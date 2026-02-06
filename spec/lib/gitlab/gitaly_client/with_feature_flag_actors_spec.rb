@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::GitalyClient::WithFeatureFlagActors do
+RSpec.describe Gitlab::GitalyClient::WithFeatureFlagActors, feature_category: :gitaly do
   let(:user) { create(:user) }
   let(:service) do
     Class.new do
@@ -11,34 +11,6 @@ RSpec.describe Gitlab::GitalyClient::WithFeatureFlagActors do
   end
 
   let_it_be(:group) { create(:group) }
-
-  describe '#user_actor' do
-    context 'when user is not available in ApplicationContext' do
-      it 'returns nil' do
-        expect(service.user_actor).to be(nil)
-      end
-    end
-
-    context 'when user is available in ApplicationContext' do
-      around do |example|
-        ::Gitlab::ApplicationContext.with_context(user: user) { example.run }
-      end
-
-      it 'returns corresponding user record' do
-        expect(service.user_actor.flipper_id).to eql(user.flipper_id)
-      end
-    end
-
-    context 'when user does not exist' do
-      around do |example|
-        ::Gitlab::ApplicationContext.with_context(user: SecureRandom.uuid) { example.run }
-      end
-
-      it 'returns corresponding user record' do
-        expect(service.user_actor).to be(nil)
-      end
-    end
-  end
 
   describe '#repository, #project_actor, #group_actor' do
     context 'when normal project repository' do
@@ -183,6 +155,24 @@ RSpec.describe Gitlab::GitalyClient::WithFeatureFlagActors do
       expect(result).to be(call_result)
     end
 
+    it 'supports client call with a block' do
+      block_double = proc {}
+      result = service.gitaly_client_call(call_arg_1, call_arg_2, karg: call_arg_3, &block_double)
+
+      expect(Gitlab::GitalyClient).to have_received(:call) do |*args, **kargs, &block|
+        expect(args).to eql([call_arg_1, call_arg_2])
+        expect(kargs).to eql({ karg: call_arg_3 })
+        expect(block).to be(block_double)
+      end
+      expect(Gitlab::GitalyClient).to have_received(:with_feature_flag_actors).with(
+        repository: repository_actor,
+        user: user_actor,
+        project: project_actor,
+        group: group_actor
+      )
+      expect(result).to be(call_result)
+    end
+
     context 'when call without repository_actor' do
       before do
         allow(service).to receive(:repository_actor).and_return(nil)
@@ -192,7 +182,7 @@ RSpec.describe Gitlab::GitalyClient::WithFeatureFlagActors do
       it 'calls error tracking track_and_raise_for_dev_exception' do
         expect do
           service.gitaly_client_call(call_arg_1, call_arg_2, karg: call_arg_3)
-        end.to raise_error /gitaly_client_call called without setting repository_actor/
+        end.to raise_error(/gitaly_client_call called without setting repository_actor/)
 
         expect(Gitlab::ErrorTracking).to have_received(:track_and_raise_for_dev_exception).with(
           be_a(Feature::InvalidFeatureFlagError)

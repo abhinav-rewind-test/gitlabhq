@@ -1,5 +1,6 @@
-$super-sidebar-transition-duration: $gl-transition-duration-medium;
-$super-sidebar-transition-hint-duration: $super-sidebar-transition-duration / 4;
+$super-sidebar-transition-delay: 0.4s;
+$super-sidebar-transition-duration: 0.2s;
+$super-sidebar-transition-hint-duration: $super-sidebar-transition-duration * 0.25;
 $command-palette-spacing: px-to-rem(14px);
 
 @mixin notification-dot($color, $size, $top, $left) {
@@ -16,298 +17,195 @@ $command-palette-spacing: px-to-rem(14px);
 
 .super-sidebar-skip-to {
   top: $calc-application-bars-height;
-  width: calc(#{$super-sidebar-width} - #{$gl-spacing-scale-5});
   z-index: $super-sidebar-skip-to-z-index;
 }
 
-.super-sidebar {
-  --super-sidebar-bg: #{$gray-10};
-  --super-sidebar-border-color: #{$t-gray-a-08};
-  --super-sidebar-context-header-color: inherit;
-  --super-sidebar-active-indicator-color: #{$blue-500};
-  --super-sidebar-notification-dot: #{$blue-500};
-  --super-sidebar-user-bar-bg: #{$t-gray-a-04};
+.super-topbar,
+.super-sidebar,
+.application-chrome {
+  --super-sidebar-bg: var(--gl-background-color-strong);
+  --super-sidebar-accent-color-fg: var(--gl-color-blue-800);
+  --super-sidebar-accent-color-bg: var(--gl-color-blue-100);
 
-  --super-sidebar-user-bar-button-bg: #{$gray-10};
-  --super-sidebar-user-bar-button-color: #{$gray-900};
-  --super-sidebar-user-bar-button-border-color: #{$t-gray-a-08};
-  --super-sidebar-user-bar-button-hover-bg: #{$t-gray-a-08};
-  --super-sidebar-user-bar-button-hover-color: #{$gray-900};
-  --super-sidebar-user-bar-button-active-bg: #{$t-gray-a-16};
+  --super-sidebar-search-bar-button-bg: var(--gl-background-color-subtle);
 
-  --super-sidebar-user-bar-button-icon-color: #{$gray-500};
-  --super-sidebar-user-bar-button-icon-hover-color: #{$gray-700};
-  --super-sidebar-user-bar-button-icon-mix-blend-mode: normal;
+  --super-sidebar-nav-item-hover-bg: var(--gl-color-alpha-dark-8);
+  --super-sidebar-nav-item-active-bg: var(--gl-color-alpha-dark-16);
+  --super-sidebar-nav-item-current-bg: var(--super-sidebar-accent-color-bg);
 
-  --super-sidebar-nav-item-hover-bg: #{$t-gray-a-08};
-  --super-sidebar-nav-item-active-bg: #{$t-gray-a-16};
-  --super-sidebar-nav-item-current-bg: #{$t-gray-a-08};
-  --super-sidebar-nav-item-icon-color: #{$gray-500};
+  --super-sidebar-hr-mix-blend-mode: multiply;
+}
 
-  --super-sidebar-hr-mix-blend-mode: normal;
+.gl-dark .super-topbar,
+.gl-dark .super-sidebar,
+.gl-dark.application-chrome {
+  --super-sidebar-bg: var(--gl-background-color-subtle);
 
-  .gl-dark & {
-    --super-sidebar-border-color: #{$t-white-a-08};
-    --super-sidebar-user-bar-bg: #{$t-white-a-04};
+  --super-sidebar-accent-color-fg: var(--gl-color-blue-200);
+  --super-sidebar-accent-color-bg: var(--gl-color-neutral-950);
 
-    --super-sidebar-user-bar-button-bg: #{$gray-10};
-    --super-sidebar-user-bar-button-border-color: #{$t-white-a-08};
-    --super-sidebar-user-bar-button-hover-bg: #{$t-white-a-16};
-    --super-sidebar-user-bar-button-active-bg: #{$t-white-a-24};
+  --super-sidebar-search-bar-button-bg: var(--gl-color-alpha-light-16);
 
-    --super-sidebar-user-bar-button-icon-color: #{$gray-600};
+  --super-sidebar-nav-item-hover-bg: var(--gl-color-alpha-light-16);
+  --super-sidebar-nav-item-active-bg: var(--gl-color-alpha-light-24);
+  --super-sidebar-nav-item-current-bg: rgb(from var(--super-sidebar-accent-color-fg) r g b / 15%);
 
-    --super-sidebar-nav-item-hover-bg: #{$t-white-a-08};
-    --super-sidebar-nav-item-active-bg: #{$t-white-a-16};
-    --super-sidebar-nav-item-current-bg: #{$t-white-a-08};
-    --super-sidebar-nav-item-icon-color: #{$gray-600};
-  }
+  --super-sidebar-hr-mix-blend-mode: color-dodge;
 }
 
 @mixin super-sidebar-theme(
+  $theme-color,
+  $theme-accent-color,
+  $theme-notification-color,
   $background,
-  $user-bar-background,
-  $user-bar-button-color,
-  $user-bar-button-icon-color,
-  $context-header,
-  $active-indicator,
-  $notification-dot,
+  $accent-color-fg,
+  $accent-color-bg,
+  $accent-color-badge: $accent-color-fg,
+  $accent-notification-dot: $accent-color-fg,
 ) {
-  .super-sidebar {
+  .super-topbar,
+  .super-sidebar,
+  &.application-chrome {
+    --theme-color: #{$theme-color};
+    --theme-accent-color: #{$theme-accent-color};
+    --theme-notification-color: #{$theme-notification-color};
     --super-sidebar-bg: #{$background};
-    --super-sidebar-user-bar-bg: #{$user-bar-background};
-    --super-sidebar-context-header-color: #{$context-header};
-    --super-sidebar-active-indicator-color: #{$active-indicator};
-    --super-sidebar-notification-dot: #{$notification-dot};
+    --super-sidebar-accent-color-fg: #{$accent-color-fg};
+    --super-sidebar-accent-color-bg: #{$accent-color-bg};
+    --super-sidebar-accent-color-badge: #{$accent-color-badge};
+  }
+}
 
-    --super-sidebar-user-bar-button-bg: #{$t-white-a-16};
-    --super-sidebar-user-bar-button-color: #{$user-bar-button-color};
-    --super-sidebar-user-bar-button-border-color: #{$t-white-a-16};
-    --super-sidebar-user-bar-button-hover-bg: #{$t-white-a-24};
-    --super-sidebar-user-bar-button-hover-color: #{$user-bar-button-color};
-    --super-sidebar-user-bar-button-active-bg: #{$t-white-a-36};
+.ui-indigo {
+  @include super-sidebar-theme(
+    $theme-color: var(--gl-color-purple-500),
+    $theme-accent-color: var(--gl-color-purple-500),
+    $theme-notification-color: var(--gl-color-purple-500),
+    $background: var(--gl-color-purple-50),
+    $accent-color-fg: var(--gl-color-purple-800),
+    $accent-color-bg: var(--gl-color-purple-100),
+    $accent-notification-dot: var(--gl-color-purple-500),
+  );
 
-    --super-sidebar-user-bar-button-icon-color: #{$user-bar-button-icon-color};
-    --super-sidebar-user-bar-button-icon-hover-color: #{$user-bar-button-icon-color};
-    --super-sidebar-user-bar-button-icon-mix-blend-mode: screen;
-
-    --super-sidebar-hr-mix-blend-mode: multiply;
+  &.gl-dark {
+    @include super-sidebar-theme(
+      $theme-color: var(--gl-color-purple-500),
+      $theme-accent-color: var(--gl-color-purple-500),
+      $theme-notification-color: var(--gl-color-purple-500),
+      $background: var(--gl-background-color-subtle),
+      $accent-color-fg: var(--gl-color-purple-200),
+      $accent-color-bg: var(--gl-background-color-subtle),
+      $accent-notification-dot: var(--gl-color-purple-200),
+    );
   }
 }
 
 .ui-blue {
   @include super-sidebar-theme(
-    $background: $theme-blue-10,
-    $user-bar-background: $theme-blue-900,
-    $user-bar-button-color: $theme-blue-50,
-    $user-bar-button-icon-color: $theme-blue-100,
-    $context-header: $theme-blue-900,
-    $active-indicator: $theme-blue-900,
-    $notification-dot: $theme-blue-900,
+    $theme-color: var(--gl-color-blue-500),
+    $theme-accent-color: var(--gl-color-blue-500),
+    $theme-notification-color: var(--gl-color-blue-500),
+    $background: var(--gl-color-blue-50),
+    $accent-color-fg: var(--gl-color-blue-900),
+    $accent-color-bg: var(--gl-color-blue-100),
+    $accent-notification-dot: var(--gl-color-blue-500),
   );
 
   &.gl-dark {
     @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-blue-50,
-      $user-bar-button-color: $theme-blue-900,
-      $user-bar-button-icon-color: $theme-blue-900,
-      $context-header: $theme-blue-500,
-      $active-indicator: $theme-blue-500,
-      $notification-dot: $theme-blue-500,
-    );
-  }
-}
-
-.ui-gray {
-  @include super-sidebar-theme(
-    $background: $gray-10,
-    $user-bar-background: $gray-900,
-    $user-bar-button-color: $gray-50,
-    $user-bar-button-icon-color: $gray-100,
-    $context-header: $gray-900,
-    $active-indicator: $gray-900,
-    $notification-dot: $gray-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $gray-50,
-      $user-bar-button-color: $gray-900,
-      $user-bar-button-icon-color: $gray-900,
-      $context-header: $gray-500,
-      $active-indicator: $gray-500,
-      $notification-dot: $gray-500,
+      $theme-color: var(--gl-color-blue-500),
+      $theme-accent-color: var(--gl-color-blue-500),
+      $theme-notification-color: var(--gl-color-blue-500),
+      $background: var(--gl-background-color-subtle),
+      $accent-color-fg: var(--gl-color-blue-100),
+      $accent-color-bg: var(--gl-background-color-subtle),
+      $accent-color-badge: var(--gl-color-blue-200),
+      $accent-notification-dot: var(--gl-color-blue-200),
     );
   }
 }
 
 .ui-green {
   @include super-sidebar-theme(
-    $background: $theme-green-10,
-    $user-bar-background: $theme-green-900,
-    $user-bar-button-color: $theme-green-50,
-    $user-bar-button-icon-color: $theme-green-100,
-    $context-header: $theme-green-900,
-    $active-indicator: $theme-green-900,
-    $notification-dot: $theme-green-900,
+    $theme-color: var(--gl-color-green-500),
+    $theme-accent-color: var(--gl-color-green-500),
+    $theme-notification-color: var(--gl-color-green-500),
+    $background: var(--gl-color-green-50),
+    $accent-color-fg: var(--gl-color-green-900),
+    $accent-color-bg: var(--gl-color-green-100),
+    $accent-notification-dot: var(--gl-color-green-500),
   );
 
   &.gl-dark {
     @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-green-50,
-      $user-bar-button-color: $theme-green-900,
-      $user-bar-button-icon-color: $theme-green-900,
-      $context-header: $theme-green-500,
-      $active-indicator: $theme-green-500,
-      $notification-dot: $theme-green-500,
-    );
-  }
-}
-
-.ui-indigo {
-  @include super-sidebar-theme(
-    $background: $theme-indigo-10,
-    $user-bar-background: $theme-indigo-900,
-    $user-bar-button-color: $theme-indigo-50,
-    $user-bar-button-icon-color: $theme-indigo-100,
-    $context-header: $theme-indigo-900,
-    $active-indicator: $theme-indigo-900,
-    $notification-dot: $theme-indigo-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-indigo-50,
-      $user-bar-button-color: $theme-indigo-900,
-      $user-bar-button-icon-color: $theme-indigo-900,
-      $context-header: $theme-indigo-500,
-      $active-indicator: $theme-indigo-500,
-      $notification-dot: $theme-indigo-500,
-    );
-  }
-}
-
-.ui-light-blue {
-  @include super-sidebar-theme(
-    $background: $theme-light-blue-10,
-    $user-bar-background: $theme-light-blue-800,
-    $user-bar-button-color: $theme-light-blue-50,
-    $user-bar-button-icon-color: $theme-light-blue-100,
-    $context-header: $theme-light-blue-900,
-    $active-indicator: $theme-light-blue-900,
-    $notification-dot: $theme-light-blue-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-light-blue-100,
-      $user-bar-button-color: $theme-light-blue-900,
-      $user-bar-button-icon-color: $theme-light-blue-900,
-      $context-header: $theme-light-blue-500,
-      $active-indicator: $theme-light-blue-500,
-      $notification-dot: $theme-light-blue-500,
-    );
-  }
-}
-
-.ui-light-green {
-  @include super-sidebar-theme(
-    $background: $theme-green-10,
-    $user-bar-background: $theme-green-800,
-    $user-bar-button-color: $theme-green-50,
-    $user-bar-button-icon-color: $theme-green-100,
-    $context-header: $theme-green-900,
-    $active-indicator: $theme-green-900,
-    $notification-dot: $theme-green-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-green-100,
-      $user-bar-button-color: $theme-green-900,
-      $user-bar-button-icon-color: $theme-green-900,
-      $context-header: $theme-green-500,
-      $active-indicator: $theme-green-500,
-      $notification-dot: $theme-green-500,
-    );
-  }
-}
-
-.ui-light-indigo {
-  @include super-sidebar-theme(
-    $background: $theme-indigo-10,
-    $user-bar-background: $theme-indigo-700,
-    $user-bar-button-color: $theme-indigo-50,
-    $user-bar-button-icon-color: $theme-indigo-100,
-    $context-header: $theme-indigo-900,
-    $active-indicator: $theme-indigo-900,
-    $notification-dot: $theme-indigo-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-indigo-200,
-      $user-bar-button-color: $theme-indigo-900,
-      $user-bar-button-icon-color: $theme-indigo-900,
-      $context-header: $theme-indigo-500,
-      $active-indicator: $theme-indigo-500,
-      $notification-dot: $theme-indigo-500,
-    );
-  }
-}
-
-.ui-light-red {
-  @include super-sidebar-theme(
-    $background: $theme-light-red-10,
-    $user-bar-background: $theme-light-red-700,
-    $user-bar-button-color: $theme-light-red-50,
-    $user-bar-button-icon-color: $theme-light-red-100,
-    $context-header: $theme-light-red-900,
-    $active-indicator: $theme-light-red-900,
-    $notification-dot: $theme-light-red-900,
-  );
-
-  &.gl-dark {
-    @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-light-red-50,
-      $user-bar-button-color: $theme-light-red-900,
-      $user-bar-button-icon-color: $theme-light-red-900,
-      $context-header: $theme-light-red-500,
-      $active-indicator: $theme-light-red-500,
-      $notification-dot: $theme-light-red-500,
+      $theme-color: var(--gl-color-green-400),
+      $theme-accent-color: var(--gl-color-green-400),
+      $theme-notification-color: var(--gl-color-green-500),
+      $background: var(--gl-background-color-subtle),
+      $accent-color-fg: var(--gl-color-green-200),
+      $accent-color-bg: var(--gl-background-color-subtle),
+      $accent-notification-dot: var(--gl-color-green-200),
     );
   }
 }
 
 .ui-red {
   @include super-sidebar-theme(
-    $background: $theme-red-10,
-    $user-bar-background: $theme-red-900,
-    $user-bar-button-color: $theme-red-50,
-    $user-bar-button-icon-color: $theme-red-100,
-    $context-header: $theme-red-900,
-    $active-indicator: $theme-red-900,
-    $notification-dot: $theme-red-900,
+    $theme-color: var(--gl-color-red-500),
+    $theme-accent-color: var(--gl-color-red-500),
+    $theme-notification-color: var(--gl-color-red-500),
+    $background: var(--gl-color-red-50),
+    $accent-color-fg: var(--gl-color-red-800),
+    $accent-color-bg: var(--gl-color-red-100),
+    $accent-notification-dot: var(--gl-color-red-600),
   );
 
   &.gl-dark {
     @include super-sidebar-theme(
-      $background: $gray-10,
-      $user-bar-background: $theme-red-50,
-      $user-bar-button-color: $theme-red-900,
-      $user-bar-button-icon-color: $theme-red-900,
-      $context-header: $theme-red-500,
-      $active-indicator: $theme-red-500,
-      $notification-dot: $theme-red-500,
+      $theme-color: var(--gl-color-red-500),
+      $theme-accent-color: var(--gl-color-red-500),
+      $theme-notification-color: var(--gl-color-red-500),
+      $background: var(--gl-background-color-subtle),
+      $accent-color-fg: var(--gl-color-red-200),
+      $accent-color-bg: var(--gl-background-color-subtle),
+      $accent-notification-dot: var(--gl-color-red-200),
     );
+  }
+}
+
+.ui-gray {
+  @include super-sidebar-theme(
+    $theme-color: var(--gl-color-neutral-500),
+    $theme-accent-color: var(--gl-color-neutral-500),
+    $theme-notification-color: var(--gl-color-neutral-500),
+    $background: var(--gl-background-color-strong),
+    $accent-color-fg: var(--gl-color-neutral-800),
+    $accent-color-bg: var(--gl-color-neutral-100),
+    $accent-notification-dot: var(--gl-color-neutral-500),
+  );
+
+  &.gl-dark {
+    @include super-sidebar-theme(
+      $theme-color: var(--gl-color-neutral-500),
+      $theme-accent-color: var(--gl-color-neutral-500),
+      $theme-notification-color: var(--gl-color-blue-500),
+      $background: var(--gl-background-color-subtle),
+      $accent-color-fg: var(--gl-color-neutral-100),
+      $accent-color-bg: var(--gl-background-color-subtle),
+      $accent-notification-dot: var(--gl-color-neutral-200),
+    );
+  }
+}
+
+.ui-neutral {
+  --theme-color: var(--gl-color-neutral-500);
+  --theme-accent-color: var(--gl-color-blue-500);
+  --theme-notification-color: var(--gl-color-blue-500);
+}
+
+html:not(.application-chrome) .super-sidebar {
+  @media (forced-colors: active) {
+    border-right: 1px solid;
   }
 }
 
@@ -319,10 +217,12 @@ $command-palette-spacing: px-to-rem(14px);
   bottom: $calc-application-footer-height;
   left: 0;
   background-color: var(--super-sidebar-bg);
-  border-right: 1px solid var(--super-sidebar-border-color);
   transform: translate3d(0, 0, 0);
-  width: $super-sidebar-width;
   z-index: $super-sidebar-z-index;
+
+  &:not(.super-sidebar-is-icon-only) {
+    width: $super-sidebar-width;
+  }
 
   &.super-sidebar-loading {
     transform: translate3d(-100%, 0, 0);
@@ -334,100 +234,57 @@ $command-palette-spacing: px-to-rem(14px);
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    transition: transform $super-sidebar-transition-duration;
-  }
-
-  .user-bar {
-    background-color: var(--super-sidebar-user-bar-bg);
-
-    .organization-switcher-button {
-      background-color: transparent;
-      color: var(--super-sidebar-user-bar-button-color);
-
-      &:active,
-      &:hover,
-      &:focus {
-        background-color: var(--super-sidebar-user-bar-button-hover-bg);
-        color: var(--super-sidebar-user-bar-button-hover-color);
-      }
-    }
-
-    .user-bar-dropdown-toggle {
-      padding: $gl-spacing-scale-2;
-      border-style: none;
-
-      &[aria-expanded='true'] {
-        background-color: var(--super-sidebar-user-bar-button-hover-bg);
-      }
-    }
-
-    .brand-logo,
-    .btn-default-tertiary,
-    .user-bar-button {
-      color: var(--super-sidebar-user-bar-button-color);
-
-      .gl-icon {
-        color: var(--super-sidebar-user-bar-button-icon-color) !important;
-        mix-blend-mode: var(--super-sidebar-user-bar-button-icon-mix-blend-mode);
-      }
-
-      &:active,
-      &:hover,
-      &:focus {
-        background-color: var(--super-sidebar-user-bar-button-hover-bg);
-        color: var(--super-sidebar-user-bar-button-hover-color);
-
-        .gl-icon {
-          color: var(--super-sidebar-user-bar-button-icon-hover-color);
-        }
-      }
-
-      &:active {
-        background-color: var(--super-sidebar-user-bar-button-active-bg) !important;
-      }
-
-      &:focus,
-      &:active {
-        @include gl-focus;
-      }
-    }
-
-    /**
-     * Add transition to align with GlButton :hover/:focus transition
-     */
-    .brand-logo,
-    .user-bar-button {
-      @include transition(background-color, border-color, color, box-shadow);
-    }
-
-    .btn-default-tertiary {
-      mix-blend-mode: normal;
-    }
-
-    .user-bar-button {
-      background-color: var(--super-sidebar-user-bar-button-bg);
-      box-shadow: inset 0 0 0 $gl-border-size-1 var(--super-sidebar-user-bar-button-border-color);
-
-      &[aria-expanded='true'] {
-        background-color: var(--super-sidebar-user-bar-button-hover-bg);
-        color: var(--super-sidebar-user-bar-button-hover-color);
-      }
-    }
-
-    .gl-new-dropdown-toggle[aria-expanded='true'] {
-      background-color: var(--super-sidebar-user-bar-button-hover-bg);
-      color: var(--super-sidebar-user-bar-button-hover-color);
-    }
+    @apply gl-transition-transform;
   }
 
   .super-sidebar-nav-item {
+    font-weight: 425;
+    min-height: 1.75rem;
+
     &:hover,
-    &:focus {
+    &:focus,
+    &.with-mouse-over-flyout {
+      @apply gl-text-default;
       background-color: var(--super-sidebar-nav-item-hover-bg);
     }
 
-    &.super-sidebar-nav-item-current {
+    &:has(.gl-button-text.gl-hidden) .gl-button-icon {
+      @apply gl-mr-0 #{!important};
+    }
+
+    .badge {
+      font-size: 10px;
+      @apply gl-font-semibold;
+      color: var(--super-sidebar-accent-color-fg);
+      background: var(--super-sidebar-accent-color-bg);
+
+      .gl-dark & {
+        color: var(--gl-color-neutral-950);
+        background: var(--gl-color-neutral-300);
+      }
+    }
+
+    &.super-sidebar-nav-item-current:not(:hover) {
       background-color: var(--super-sidebar-nav-item-current-bg);
+
+      [data-testid="nav-item-link-label"] {
+        @apply gl-font-semibold;
+        color: var(--super-sidebar-accent-color-fg);
+      }
+
+      > span,
+      .super-sidebar-nav-item-icon {
+        color: var(--super-sidebar-accent-color-fg);
+      }
+
+      .badge {
+        background: var(--super-sidebar-bg);
+
+        .gl-dark & {
+          color: var(--gl-color-neutral-950);
+          background: var(--gl-color-neutral-300);
+        }
+      }
     }
 
     &:active,
@@ -436,35 +293,8 @@ $command-palette-spacing: px-to-rem(14px);
     }
   }
 
-  .super-sidebar-nav-item-icon {
-    color: var(--super-sidebar-nav-item-icon-color);
-  }
-
   hr {
     mix-blend-mode: var(--super-sidebar-hr-mix-blend-mode);
-  }
-
-  .active-indicator {
-    background-color: var(--super-sidebar-active-indicator-color);
-  }
-
-  .btn-with-notification {
-    position: relative;
-
-    .notification-dot-info {
-      @include notification-dot(var(--super-sidebar-notification-dot), 9px, 5px, 22px);
-    }
-
-    .notification-dot-warning {
-      @include notification-dot($orange-300, 12px, 1px, 19px);
-    }
-
-    &:hover,
-    &:focus {
-      .notification {
-        background-color: var(--super-sidebar-user-bar-button-hover-bg);
-      }
-    }
   }
 
   .super-sidebar-help-center-toggle[aria-expanded='true'] {
@@ -473,12 +303,12 @@ $command-palette-spacing: px-to-rem(14px);
 
   #trial-status-sidebar-widget:hover {
     text-decoration: none;
-    @include gl-text-contrast-light;
+    color: var(--gl-color-neutral-0);
   }
 }
 
 .super-sidebar-context-header {
-  color: var(--super-sidebar-context-header-color);
+  color: var(--super-sidebar-accent-color-fg);
 }
 
 .super-sidebar-overlay {
@@ -496,7 +326,7 @@ $command-palette-spacing: px-to-rem(14px);
 
 .super-sidebar-peek,
 .super-sidebar-peek-hint {
-  @include gl-shadow;
+  @apply gl-shadow;
   border-right: 0;
 }
 
@@ -507,21 +337,17 @@ $command-palette-spacing: px-to-rem(14px);
 }
 
 .super-sidebar-peek {
-  border-radius: $border-radius-default;
-
-  .user-bar {
-    border-radius: $border-radius-default $border-radius-default 0 0;
-  }
+  @apply gl-rounded-base;
 }
 
 .page-with-super-sidebar {
   padding-left: 0;
 
   @media (prefers-reduced-motion: no-preference) {
-    transition: padding-left $super-sidebar-transition-duration;
+    @apply gl-transition-padding;
   }
 
-  &:not(.page-with-super-sidebar-collapsed) {
+  &:not(.page-with-super-sidebar-collapsed,.super-sidebar-has-css-transitions-blocked) {
     .super-sidebar-overlay {
       display: block;
       position: fixed;
@@ -529,10 +355,10 @@ $command-palette-spacing: px-to-rem(14px);
       bottom: 0;
       left: 0;
       right: 0;
-      background-color: $t-gray-a-24;
+      @apply gl-bg-overlay;
       z-index: $super-sidebar-z-index - 1;
 
-      @include media-breakpoint-up(md) {
+      @include media-breakpoint-up(xl) {
         display: none;
       }
     }
@@ -582,6 +408,10 @@ $command-palette-spacing: px-to-rem(14px);
 .global-search-modal {
   padding: 3rem 0.5rem 0;
 
+  .modal-content {
+    border-radius: 0.5rem !important;
+  }
+
   &.gl-modal .modal-dialog {
     align-items: flex-start;
   }
@@ -596,10 +426,11 @@ $command-palette-spacing: px-to-rem(14px);
   }
 
 
-  .show-hover-layover {
-    &:hover {
-      .show-hover-layover-hint {
-        @include gl-opacity-10;
+  .show-focus-layover {
+    &:focus,
+    &:focus-within {
+      .show-focus-layover-hint {
+        @apply gl-opacity-10;
       }
     }
   }
@@ -616,24 +447,15 @@ $command-palette-spacing: px-to-rem(14px);
     padding: 0.5rem !important;
   }
 
-  .search-scope-help {
-    top: 1rem;
-    right: 3rem;
-  }
-
-  .modal-content {
-    border-radius: $gl-border-radius-large !important;
-  }
-
   .gl-search-box-by-type-input-borderless {
-    border-radius: $gl-border-radius-base;
+    @apply gl-rounded-base;
   }
 
   .global-search-results {
     max-height: 30rem;
 
     .gl-new-dropdown-item {
-      @include gl-px-3;
+      @apply gl-px-3;
     }
 
     // Target groups
@@ -648,24 +470,26 @@ $command-palette-spacing: px-to-rem(14px);
   }
 
   &.gl-modal .modal-footer {
-    background-color: $gray-50;
+    @apply gl-bg-strong;
+    @apply gl-border-t;
     padding: $command-palette-spacing;
-    border-top: 1px solid $gray-100;
   }
 }
 
 .transition-opacity-on-hover--context {
   .transition-opacity-on-hover--target {
-    transition: opacity $gl-transition-duration-fast linear;
+    @apply gl-transition-opacity;
+    @apply gl-duration-fast;
+    @apply gl-ease-linear;
 
     &:hover {
-      transition-delay: $gl-transition-duration-slow;
+      transition-delay: $super-sidebar-transition-delay;
     }
   }
 
   &:hover {
     .transition-opacity-on-hover--target {
-      transition-delay: $gl-transition-duration-slow;
+      transition-delay: $super-sidebar-transition-delay;
     }
   }
 }
@@ -733,7 +557,7 @@ $command-palette-spacing: px-to-rem(14px);
 
 // Styles for the ScrollScrim component.
 // Should eventually be moved to gitlab-ui.
-// See https://gitlab.com/gitlab-org/gitlab-ui/-/issues/1869
+// See https://gitlab.com/gitlab-org/gitlab-services/design.gitlab.com/-/issues/2688
 
 $scroll-scrim-height: 2.25rem;
 
@@ -756,7 +580,11 @@ $scroll-scrim-height: 2.25rem;
     margin-bottom: -$scroll-scrim-height;
 
     .top-scrim {
-      background: linear-gradient(180deg, var(--super-sidebar-bg, $gray-10) 0%, $transparent-rgba 100%);
+      background: linear-gradient(180deg, var(--gl-color-alpha-dark-8) 0%, $transparent-rgba 100%);
+
+      .gl-dark & {
+        background: linear-gradient(180deg, var(--gl-color-alpha-dark-24) 0%, $transparent-rgba 100%);
+      }
     }
   }
 
@@ -765,7 +593,11 @@ $scroll-scrim-height: 2.25rem;
     margin-top: -$scroll-scrim-height;
 
     .bottom-scrim {
-      background: linear-gradient(180deg, $transparent-rgba 0%, var(--super-sidebar-bg, $gray-10));
+      background: linear-gradient(180deg, $transparent-rgba 0%, var(--gl-color-alpha-dark-8));
+
+      .gl-dark & {
+        background: linear-gradient(180deg, $transparent-rgba 0%, var(--gl-color-alpha-dark-24));
+      }
     }
   }
 
@@ -784,6 +616,17 @@ $scroll-scrim-height: 2.25rem;
   }
 }
 
+// Tweaks to the dropdown styles width to match the
+// dropdown width
+.super-sidebar-org-switcher-dropdown .gl-new-dropdown-panel,
+.super-sidebar-mr-menu-dropdown .gl-new-dropdown-panel,
+.super-sidebar-new-menu-dropdown .gl-new-dropdown-panel,
+.super-sidebar-user-dropdown .gl-new-dropdown-panel,
+.super-sidebar-help-center-dropdown .gl-new-dropdown-panel {
+  @apply gl-min-w-28 #{!important};
+  @apply gl-w-28 #{!important};
+}
+
 // Tweaks to the styles for the ScrollScrim component above (line 418)
 // are leaking into the collapsible list box dropdowns
 // https://gitlab.com/gitlab-org/gitlab/-/issues/435538
@@ -796,4 +639,12 @@ $scroll-scrim-height: 2.25rem;
   .bottom-scrim-wrapper {
     margin-top: 0;
   }
+}
+
+.custom-gradient-progress .gl-progress {
+  background: linear-gradient(90deg, #ffb177 0%, #936fff 100%);
+}
+
+.super-sidebar {
+  background-color: var(--super-sidebar-bg);
 }

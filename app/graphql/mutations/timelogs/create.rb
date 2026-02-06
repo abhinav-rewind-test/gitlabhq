@@ -6,34 +6,38 @@ module Mutations
       graphql_name 'TimelogCreate'
 
       argument :time_spent,
-               GraphQL::Types::String,
-               required: true,
-               description: 'Amount of time spent.'
+        GraphQL::Types::String,
+        required: true,
+        description: 'Amount of time spent.'
 
       argument :spent_at,
-               Types::TimeType,
-               required: true,
-               description: 'When the time was spent.'
+        Types::TimeType,
+        required: false,
+        description: 'Timestamp of when the time was spent. If empty, defaults to current time.'
 
       argument :summary,
-               GraphQL::Types::String,
-               required: true,
-               description: 'Summary of time spent.'
+        GraphQL::Types::String,
+        required: true,
+        description: 'Summary of time spent.'
 
       argument :issuable_id,
-               ::Types::GlobalIDType[::Issuable],
-               required: true,
-               description: 'Global ID of the issuable (Issue, WorkItem or MergeRequest).'
+        ::Types::GlobalIDType[::Issuable],
+        required: true,
+        description: 'Global ID of the issuable (Issue, WorkItem or MergeRequest).'
 
       authorize :create_timelog
 
-      def resolve(issuable_id:, time_spent:, spent_at:, summary:, **args)
+      def resolve(issuable_id:, time_spent:, summary:, **args)
+        return { timelog: nil, errors: [_('Time spent must start with a number.')] } unless time_spent.match?(/\A\d/)
+
         parsed_time_spent = Gitlab::TimeTrackingFormatter.parse(time_spent)
         if parsed_time_spent.nil?
           return { timelog: nil, errors: [_('Time spent must be formatted correctly. For example: 1h 30m.')] }
         end
 
         issuable = authorized_find!(id: issuable_id)
+
+        spent_at = args[:spent_at].nil? ? DateTime.current : args[:spent_at]
 
         result = ::Timelogs::CreateService.new(
           issuable, parsed_time_spent, spent_at, summary, current_user

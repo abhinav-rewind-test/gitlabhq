@@ -1,7 +1,7 @@
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import createDefaultClient from '~/lib/graphql';
-import { showAlertFromLocalStorage } from '../local_storage_alert/show_alert_from_local_storage';
+import { showAlertFromLocalStorage } from '~/lib/utils/local_storage_alert';
 import ProjectRegisterRunnerApp from './project_register_runner_app.vue';
 
 Vue.use(VueApollo);
@@ -23,6 +23,7 @@ export const initProjectRegisterRunner = (selector = '#js-project-register-runne
 
   return new Vue({
     el,
+    name: 'ProjectRegisterRunnerAppRoot',
     apolloProvider,
     render(h) {
       return h(ProjectRegisterRunnerApp, {

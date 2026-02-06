@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Clusters::ClusterPresenter do
+RSpec.describe Clusters::ClusterPresenter, feature_category: :deployment_management do
   include Gitlab::Routing.url_helpers
 
   let(:cluster) { create(:cluster, :provided_by_gcp, :project) }
@@ -107,47 +107,32 @@ RSpec.describe Clusters::ClusterPresenter do
     end
   end
 
-  describe '#health_data' do
-    shared_examples 'cluster health data' do
-      let(:user) { create(:user) }
-      let(:cluster_presenter) { cluster.present(current_user: user) }
+  describe '#agent_migration_for_display' do
+    shared_examples 'cluster agent migration' do |cluster_type|
+      let(:cluster) { create(:cluster, cluster_type) }
+      let(:presenter) { described_class.new(cluster, current_user: user) }
 
-      let(:clusterable_presenter) do
-        ClusterablePresenter.fabricate(clusterable, current_user: user)
+      context 'when migration exists' do
+        let!(:migration) { create(:cluster_agent_migration, cluster: cluster) }
+
+        it 'returns existing migration' do
+          expect(presenter.agent_migration_for_display).to eq(migration)
+        end
       end
 
-      subject { cluster_presenter.health_data(clusterable_presenter) }
+      context 'when migration does not exist' do
+        it 'returns new migration instance' do
+          migration = presenter.agent_migration_for_display
 
-      it do
-        is_expected.to include(
-          'clusters-path': clusterable_presenter.index_path,
-          'dashboard-endpoint': clusterable_presenter.metrics_dashboard_path(cluster),
-          'documentation-path': help_page_path('user/infrastructure/clusters/manage/clusters_health'),
-          'add-dashboard-documentation-path': help_page_path('operations/metrics/dashboards/index', anchor: 'add-a-new-dashboard-to-your-project'),
-          'empty-getting-started-svg-path': match_asset_path('/assets/illustrations/monitoring/getting_started.svg'),
-          'empty-loading-svg-path': match_asset_path('/assets/illustrations/monitoring/loading.svg'),
-          'empty-no-data-svg-path': match_asset_path('/assets/illustrations/monitoring/no_data.svg'),
-          'empty-no-data-small-svg-path': match_asset_path('illustrations/chart-empty-state-small.svg'),
-          'empty-unable-to-connect-svg-path': match_asset_path('/assets/illustrations/monitoring/unable_to_connect.svg'),
-          'settings-path': '',
-          'project-path': '',
-          'tags-path': ''
-        )
+          expect(migration).to be_a(Clusters::AgentMigration)
+          expect(migration).to be_new_record
+          expect(migration.cluster).to eq(cluster)
+        end
       end
     end
 
-    context 'with project cluster' do
-      let(:cluster) { create(:cluster, :project, :provided_by_gcp) }
-      let(:clusterable) { cluster.project }
-
-      it_behaves_like 'cluster health data'
-    end
-
-    context 'with group cluster' do
-      let(:cluster) { create(:cluster, :group, :provided_by_gcp) }
-      let(:clusterable) { cluster.group }
-
-      it_behaves_like 'cluster health data'
-    end
+    it_behaves_like 'cluster agent migration', :project
+    it_behaves_like 'cluster agent migration', :group
+    it_behaves_like 'cluster agent migration', :instance
   end
 end

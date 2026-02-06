@@ -7,15 +7,15 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
   using RSpec::Parameterized::TableSyntax
 
   let_it_be_with_reload(:project) { create(:project, :public) }
-  let_it_be(:deploy_token) { create(:deploy_token, read_package_registry: true, write_package_registry: true) }
-  let_it_be(:project_deploy_token) { create(:project_deploy_token, deploy_token: deploy_token, project: project) }
+  let_it_be(:deploy_token) { create(:deploy_token, read_package_registry: true, write_package_registry: true, projects: [project]) }
   let_it_be(:package) { create(:helm_package, project: project, without_package_files: true) }
   let_it_be(:package_file1) { create(:helm_package_file, package: package) }
   let_it_be(:package_file2) { create(:helm_package_file, package: package) }
   let_it_be(:package2) { create(:helm_package, project: project, without_package_files: true) }
-  let_it_be(:package_file2_1) { create(:helm_package_file, package: package2, file_sha256: 'file2', file_name: 'filename2.tgz', description: 'hello from stable channel') }
-  let_it_be(:package_file2_2) { create(:helm_package_file, package: package2, file_sha256: 'file2', file_name: 'filename2.tgz', channel: 'test', description: 'hello from test channel') }
+  let_it_be(:package2_file1) { create(:helm_package_file, package: package2, file_sha256: 'file2', file_name: 'filename2.tgz', description: 'hello from stable channel') }
+  let_it_be(:package2_file2) { create(:helm_package_file, package: package2, file_sha256: 'file2', file_name: 'filename2.tgz', channel: 'test', description: 'hello from test channel') }
   let_it_be(:other_package) { create(:npm_package, project: project) }
+  let(:expect_metadatum) { package2_file1.helm_file_metadatum }
 
   let(:snowplow_gitlab_standard_context) { snowplow_context }
 
@@ -28,9 +28,33 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
   end
 
   describe 'GET /api/v4/projects/:id/packages/helm/:channel/index.yaml' do
+    subject(:api_request) { get api(url) }
+
     let(:project_id) { project.id }
     let(:channel) { 'stable' }
     let(:url) { "/projects/#{project_id}/packages/helm/#{channel}/index.yaml" }
+
+    it_behaves_like 'authorizing granular token permissions', :download_helm_chart do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:request) { get api(url), headers: basic_auth_header(user.username, pat.token) }
+    end
+
+    it 'enqueue a worker to sync a helm metadata cache' do
+      allow(Packages::Helm::CreateMetadataCacheWorker).to receive(:bulk_perform_async_with_contexts)
+
+      api_request
+      expect(Packages::Helm::CreateMetadataCacheWorker)
+        .to have_received(:bulk_perform_async_with_contexts) do |metadata, arguments_proc:, context_proc:|
+          expect(metadata.map(&:channel)).to match_array([channel])
+
+          expect(arguments_proc.call(expect_metadatum)).to eq([project_id, channel])
+          expect(context_proc.call(expect_metadatum)).to eq(project: project, user: nil)
+        end
+    end
 
     context 'with a project id' do
       it_behaves_like 'handling helm chart index requests'
@@ -45,13 +69,111 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
     context 'with dot in channel' do
       let(:channel) { 'with.dot' }
 
-      subject { get api(url) }
-
       before do
         project.update!(visibility: 'public')
       end
 
       it_behaves_like 'returning response status', :success
+    end
+
+    context 'when helm metadata has appVersion' do
+      where(:app_version, :expected_app_version) do
+        '4852e000'  | "\"4852e000\""
+        '1.0.0'     | "\"1.0.0\""
+        'v1.0.0'    | "\"v1.0.0\""
+        'master'    | "\"master\""
+      end
+
+      with_them do
+        before do
+          Packages::Helm::FileMetadatum.where(project_id: project_id).update_all(
+            metadata: {
+              'name' => 'Package Name',
+              'version' => '1.0.0',
+              'apiVersion' => 'v2',
+              'appVersion' => app_version
+            }
+          )
+        end
+
+        it 'returns yaml content with quoted appVersion' do
+          api_request
+
+          expect(response.body).to include("appVersion: #{expected_app_version}")
+        end
+      end
+    end
+
+    context 'when metadata cache exists' do
+      let_it_be(:channel) { 'stable' }
+      let_it_be(:metadata_cache) { create(:helm_metadata_cache, project: project, channel: channel) }
+
+      it 'returns response from metadata cache' do
+        expect(metadata_cache).to receive(:file).and_call_original
+
+        api_request
+
+        expect(response.headers['X-Sendfile']).to eq(metadata_cache.file.path)
+      end
+
+      it 'updates last_downloaded_at' do
+        freeze_time do
+          api_request
+
+          metadata_cache.reload
+          expect(metadata_cache.last_downloaded_at).to eq(Time.zone.now.utc.strftime('%Y-%m-%dT%H:%M:%S.%NZ'))
+        end
+      end
+
+      context 'for head request' do
+        it 'does not update last_downloaded_at' do
+          expect { head api(url) }.not_to change { metadata_cache.reload.last_downloaded_at }
+        end
+      end
+
+      context 'when file is stored in object storage' do
+        let(:channel) { 'test' }
+        let(:metadata_cache) { create(:helm_metadata_cache, :object_storage, project: project, channel: channel) }
+
+        context 'when direct download enabled' do
+          before do
+            stub_object_storage_uploader(
+              config: Gitlab.config.packages.object_store,
+              uploader: Packages::Helm::MetadataCacheUploader,
+              proxy_download: false
+            )
+          end
+
+          it 'returns redirect to object storage URL' do
+            expect(metadata_cache.file.file_storage?).to be_falsey
+            expect(metadata_cache.file.direct_download_enabled?).to be_truthy
+
+            api_request
+
+            expect(response).to have_gitlab_http_status(:redirect)
+            expect(response.headers).to include('Location')
+          end
+        end
+
+        context 'when direct download disabled' do
+          before do
+            stub_object_storage_uploader(
+              config: Gitlab.config.packages.object_store,
+              uploader: Packages::Helm::MetadataCacheUploader,
+              proxy_download: true
+            )
+          end
+
+          it 'returns with Workhorse-Send-Data header' do
+            expect(metadata_cache.file.file_storage?).to be_falsey
+
+            api_request
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(response.headers).to include('Gitlab-Workhorse-Send-Data')
+          end
+        end
+      end
     end
   end
 
@@ -60,13 +182,22 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
 
     subject { get api(url), headers: headers }
 
+    it_behaves_like 'authorizing granular token permissions', :download_helm_chart do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:request) { get api(url), headers: basic_auth_header(user.username, pat.token) }
+    end
+
     context 'with valid project' do
       where(:visibility, :user_role, :shared_examples_name, :expected_status) do
         :public  | :guest        | 'process helm download content request'   | :success
         :public  | :not_a_member | 'process helm download content request'   | :success
         :public  | :anonymous    | 'process helm download content request'   | :success
         :private | :reporter     | 'process helm download content request'   | :success
-        :private | :guest        | 'rejects helm packages access'            | :forbidden
+        :private | :guest        | 'process helm download content request'   | :success
         :private | :not_a_member | 'rejects helm packages access'            | :not_found
         :private | :anonymous    | 'rejects helm packages access'            | :unauthorized
       end
@@ -107,6 +238,10 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
 
       it_behaves_like 'rejects helm packages access', :maintainer, :not_found, '{"message":"404 Format prov Not Found"}'
     end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { basic_auth_header(user.username, personal_access_token.token) }
+    end
   end
 
   describe 'POST /api/v4/projects/:id/packages/helm/api/:channel/charts/authorize' do
@@ -117,6 +252,15 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
     let(:headers) { {} }
 
     subject { post api(url), headers: headers }
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_helm_chart do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:request) { post api(url), headers: basic_auth_header(user.username, pat.token).merge(workhorse_headers) }
+    end
 
     context 'with valid project' do
       where(:visibility_level, :user_role, :shared_examples_name, :expected_status) do
@@ -156,6 +300,10 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
     end
 
     it_behaves_like 'rejects helm access with unknown project id'
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { basic_auth_header(user.username, personal_access_token.token) }
+    end
   end
 
   describe 'POST /api/v4/projects/:id/packages/helm/api/:channel/charts' do
@@ -179,6 +327,24 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
         headers: headers,
         send_rewritten_field: send_rewritten_field
       )
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :upload_helm_chart do
+      before_all do
+        project.add_developer(user)
+      end
+
+      let(:boundary_object) { project }
+      let(:request) do
+        workhorse_finalize(
+          api(url),
+          method: :post,
+          file_key: :chart,
+          params: { chart: temp_file('package.tgz') },
+          headers: basic_auth_header(user.username, pat.token).merge(workhorse_headers),
+          send_rewritten_field: true
+        )
+      end
     end
 
     context 'with valid project' do
@@ -206,6 +372,21 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
       end
     end
 
+    context 'with package protection rule' do
+      let_it_be_with_reload(:package_protection_rule) do
+        create(:package_protection_rule, package_name_pattern: 'rook-ceph', package_type: :helm, project: project)
+      end
+
+      # The helm chart contains the file Chart.yml that defined the name 'rook-ceph' of the helm chart.
+      let(:params) { { chart: fixture_file_upload('spec/fixtures/packages/helm/rook-ceph-v1.5.8.tgz') } }
+
+      let(:user_headers) { basic_auth_header(user.username, personal_access_token.token) }
+      let(:headers) { user_headers.merge(workhorse_headers) }
+      let(:snowplow_gitlab_standard_context) { snowplow_context(user_role: :developer) }
+
+      it_behaves_like 'process helm upload', :developer, :created
+    end
+
     context 'when an invalid token is passed' do
       let(:headers) { basic_auth_header(user.username, 'wrong') }
 
@@ -230,6 +411,10 @@ RSpec.describe API::HelmPackages, feature_category: :package_registry do
       end
 
       it_behaves_like 'returning response status', :bad_request
+    end
+
+    it_behaves_like 'updating personal access token last used' do
+      let(:headers) { basic_auth_header(user.username, personal_access_token.token) }
     end
   end
 end

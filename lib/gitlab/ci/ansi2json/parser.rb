@@ -34,7 +34,7 @@ module Gitlab
         def self.matching_formats(mask)
           formats = []
           STYLE_SWITCHES.each do |text_format, flag|
-            formats << "term-#{text_format}" if mask & flag != 0
+            formats << "term-#{text_format}" if (mask & flag) != 0
           end
 
           formats
@@ -46,9 +46,7 @@ module Gitlab
         end
 
         def changes
-          if self.respond_to?("on_#{@command}")
-            send("on_#{@command}", @ansi_stack) # rubocop:disable GitlabSecurity/PublicSend
-          end
+          try("on_#{@command}", @ansi_stack)
         end
 
         # rubocop:disable Style/SingleLineMethods
@@ -134,21 +132,21 @@ module Gitlab
 
         def on_99(_) { fg: fg_color(9, 'l') } end
 
-        def on_100(_) { fg: bg_color(0, 'l') } end
+        def on_100(_) { bg: bg_color(0, 'l') } end
 
-        def on_101(_) { fg: bg_color(1, 'l') } end
+        def on_101(_) { bg: bg_color(1, 'l') } end
 
-        def on_102(_) { fg: bg_color(2, 'l') } end
+        def on_102(_) { bg: bg_color(2, 'l') } end
 
-        def on_103(_) { fg: bg_color(3, 'l') } end
+        def on_103(_) { bg: bg_color(3, 'l') } end
 
-        def on_104(_) { fg: bg_color(4, 'l') } end
+        def on_104(_) { bg: bg_color(4, 'l') } end
 
-        def on_105(_) { fg: bg_color(5, 'l') } end
+        def on_105(_) { bg: bg_color(5, 'l') } end
 
-        def on_106(_) { fg: bg_color(6, 'l') } end
+        def on_106(_) { bg: bg_color(6, 'l') } end
 
-        def on_107(_) { fg: bg_color(7, 'l') } end
+        def on_107(_) { bg: bg_color(7, 'l') } end
 
         def on_109(_) { fg: bg_color(9, 'l') } end
         # rubocop:enable Style/SingleLineMethods

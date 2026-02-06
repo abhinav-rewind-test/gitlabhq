@@ -11,6 +11,12 @@ module Gitlab
           Thread.current[self.suppress_key] || @suppress_in_rspec
         end
 
+        # Cached queries are not analyzed by default, even if they'd require tracking.
+        # Override `skip_cached?` in your analyzer to analyze cached queries.
+        def self.skip_cached?(parsed)
+          parsed.cached?
+        end
+
         def self.requires_tracking?(parsed)
           false
         end
@@ -31,6 +37,19 @@ module Gitlab
         # different tests concurrently.
         class << self
           attr_writer :suppress_in_rspec
+        end
+
+        # During database decomposition, db migrations using tables that will be decomposed
+        # will begin to contravene their configuration for intended gitlab_schema and database connection.
+        # As these migrations already exist, ideally they should be finalized and removed prior to decomposition.
+        # In this situations, it's necessary to suppress warnings related to their incorrect connection and schema
+        # to progress our CI pipelines.
+        def self.suppress_schema_issues_for_decomposed_tables
+          Gitlab::Database::QueryAnalyzers::RestrictAllowedSchemas.with_suppressed do
+            Gitlab::Database::QueryAnalyzers::GitlabSchemasValidateConnection.with_suppressed do
+              yield
+            end
+          end
         end
 
         def self.with_suppressed(value = true, &blk)
@@ -62,11 +81,11 @@ module Gitlab
         end
 
         def self.context_key
-          @context_key ||= "analyzer_#{self.analyzer_key}_context".to_sym
+          @context_key ||= :"analyzer_#{self.analyzer_key}_context"
         end
 
         def self.suppress_key
-          @suppress_key ||= "analyzer_#{self.analyzer_key}_suppressed".to_sym
+          @suppress_key ||= :"analyzer_#{self.analyzer_key}_suppressed"
         end
 
         def self.analyzer_key

@@ -53,6 +53,30 @@ module VisibilityLevelHelper
     !form_model.visibility_level_allowed?(level)
   end
 
+  def disallowed_visibility_level_by_organization?(form_model, level)
+    return false unless form_model.respond_to?(:visibility_level_allowed_by_organization?)
+
+    !form_model.visibility_level_allowed_by_organization?(level)
+  end
+
+  def disallowed_visibility_level_by_parent?(form_model, level)
+    return false unless form_model.respond_to?(:visibility_level_allowed_by_parent?)
+
+    !form_model.visibility_level_allowed_by_parent?(level)
+  end
+
+  def disallowed_visibility_level_by_projects?(form_model, level)
+    return false unless form_model.respond_to?(:visibility_level_allowed_by_projects?)
+
+    !form_model.visibility_level_allowed_by_projects?(level)
+  end
+
+  def disallowed_visibility_level_by_sub_groups?(form_model, level)
+    return false unless form_model.respond_to?(:visibility_level_allowed_by_sub_groups?)
+
+    !form_model.visibility_level_allowed_by_sub_groups?(level)
+  end
+
   # Visibility level can be restricted in two ways:
   #
   # 1. The group permissions (e.g. a subgroup is private, which requires
@@ -69,11 +93,24 @@ module VisibilityLevelHelper
     [requested_level, max_allowed_visibility_level(form_model)].min
   end
 
+  def all_visibility_levels
+    Gitlab::VisibilityLevel.values
+  end
+
   def available_visibility_levels(form_model)
     Gitlab::VisibilityLevel.values.reject do |level|
       disallowed_visibility_level?(form_model, level) ||
-      restricted_visibility_levels.include?(level)
+        restricted_visibility_levels.include?(level)
     end
+  end
+
+  def disabled_visibility_level?(form_model, level)
+    disallowed_visibility_level?(form_model, level) ||
+      restricted_visibility_level?(level)
+  end
+
+  def restricted_visibility_level?(level)
+    restricted_visibility_levels.include?(level)
   end
 
   def snippets_selected_visibility_level(visibility_levels, selected)
@@ -81,11 +118,7 @@ module VisibilityLevelHelper
   end
 
   def multiple_visibility_levels_restricted?
-    restricted_visibility_levels.many? # rubocop: disable CodeReuse/ActiveRecord
-  end
-
-  def all_visibility_levels_restricted?
-    Gitlab::VisibilityLevel.values == restricted_visibility_levels
+    restricted_visibility_levels.many? # rubocop:disable CodeReuse/ActiveRecord -- False positive, not AR object
   end
 
   private
@@ -102,11 +135,9 @@ module VisibilityLevelHelper
     current_level = Gitlab::VisibilityLevel::PRIVATE
 
     Gitlab::VisibilityLevel.values.sort.each do |value|
-      if disallowed_visibility_level?(form_model, value)
-        break
-      else
-        current_level = value
-      end
+      break if disallowed_visibility_level?(form_model, value)
+
+      current_level = value
     end
 
     current_level
@@ -115,7 +146,10 @@ module VisibilityLevelHelper
   def project_visibility_level_description(level)
     case level
     when Gitlab::VisibilityLevel::PRIVATE
-      s_("VisibilityLevel|Project access must be granted explicitly to each user. If this project is part of a group, access is granted to members of the group.")
+      s_(
+        "VisibilityLevel|Project access must be granted explicitly to each user. " \
+          "If this project is part of a group, access is granted to members of the group."
+      )
     when Gitlab::VisibilityLevel::INTERNAL
       s_("VisibilityLevel|The project can be accessed by any logged in user except external users.")
     when Gitlab::VisibilityLevel::PUBLIC
@@ -123,32 +157,21 @@ module VisibilityLevelHelper
     end
   end
 
-  def show_updated_public_description_for_setting(group)
-    group && !group.new_record? && Gitlab::CurrentSettings.current_application_settings.try(:should_check_namespace_plan?)
-  end
-
   def group_visibility_level_description(level, group = nil)
     case level
     when Gitlab::VisibilityLevel::PRIVATE
       s_("VisibilityLevel|The group and its projects can only be viewed by members.")
     when Gitlab::VisibilityLevel::INTERNAL
-      s_("VisibilityLevel|The group and any internal projects can be viewed by any logged in user except external users.")
+      s_(
+        "VisibilityLevel|The group and any internal projects can be viewed by any logged in user except external users."
+      )
     when Gitlab::VisibilityLevel::PUBLIC
-      unless show_updated_public_description_for_setting(group)
-        return s_('VisibilityLevel|The group and any public projects can be viewed without any authentication.')
-      end
-
-      Kernel.format(
-        s_(
-          'VisibilityLevel|The group, any public projects, and any of their members, issues, and merge requests can be viewed without authentication. ' \
-          'Public groups and projects will be indexed by search engines. ' \
-          'Read more about %{free_user_limit_doc_link_start}free user limits%{link_end}, ' \
-          'or %{group_billings_link_start}upgrade to a paid tier%{link_end}.'),
-        free_user_limit_doc_link_start: "<a href='#{help_page_path('user/free_user_limit')}' target='_blank' rel='noopener noreferrer'>".html_safe,
-        group_billings_link_start: "<a href='#{group_billings_path(group)}' target='_blank' rel='noopener noreferrer'>".html_safe,
-        link_end: "</a>".html_safe
-      ).html_safe
+      group_public_visibility_description(group)
     end
+  end
+
+  def group_public_visibility_description(_group)
+    s_('VisibilityLevel|The group and any public projects can be viewed without any authentication.')
   end
 
   def project_visibility_icon_description(level)
@@ -159,3 +182,5 @@ module VisibilityLevelHelper
     "#{visibility_level_label(level)} - #{group_visibility_level_description(level)}"
   end
 end
+
+VisibilityLevelHelper.prepend_mod

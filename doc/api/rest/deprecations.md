@@ -1,16 +1,16 @@
 ---
-stage: Manage
-group: Import and Integrate
+stage: Developer Experience
+group: API
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: REST API deprecations
+description: "List of deprecated fields and planned breaking changes in the GitLab REST API."
 ---
 
-# REST API deprecations and removals
+You should regularly review the following deprecations and make the recommended changes. These deprecations often signal improved API features and recommend using new fields
+or endpoints for features.
 
-The following API changes will occur when the v4 API is removed.
-
-The date of this change is unknown.
-For details, see [issue 216456](https://gitlab.com/gitlab-org/gitlab/-/issues/216456)
-and [issue 387485](https://gitlab.com/gitlab-org/gitlab/-/issues/387485).
+Though some deprecations mention a v5 REST API, no v5 REST API development is active.
+GitLab will not make these changes within REST API v4, and [follows semantic versioning for the REST API](_index.md#versioning-and-deprecations).
 
 ## `geo_nodes` API endpoints
 
@@ -50,7 +50,7 @@ When creating and updating users through the API, `null` was a valid value for t
 Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/322117).
 
 The endpoint to get
-[changes from a single merge request](../merge_requests.md#get-single-merge-request-changes)
+[changes from a single merge request](../merge_requests.md#retrieve-merge-request-changes)
 has been deprecated in favor the
 [list merge request diffs](../merge_requests.md#list-merge-request-diffs) endpoint.
 API users are encouraged to switch to the new diffs endpoint instead.
@@ -75,7 +75,7 @@ Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/3
 The endpoint to get the configuration of approvals for a project returns
 empty arrays for `approvers` and `approval_groups`.
 These fields were deprecated in favor of the endpoint to
-[get project-level rules](../merge_request_approvals.md#get-project-level-rules)
+[list all approval rules](../merge_request_approvals.md#list-all-approval-rules-for-a-merge-request)
 for a merge request. API users are encouraged to switch to this endpoint instead.
 
 These fields will be removed from the `get configuration` endpoint in v5 of the GitLab REST API.
@@ -87,7 +87,7 @@ Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/3
 Occurrences of the `active` identifier in the GitLab Runner GraphQL API endpoints will be
 renamed to `paused` in GitLab 16.0.
 
-- In v4 of the REST API, starting in GitLab 14.8, you can use the `paused` property in place of `active`
+- In v4 of the REST API, you can use the `paused` property in place of `active`
 - In v5 of the REST API, this change will affect endpoints taking or returning `active` property, such as:
   - `GET /runners`
   - `GET /runners/all`
@@ -116,3 +116,56 @@ Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/4
 
 In GitLab 17.0, the [Runners API](../runners.md) will return `""` in place of `ip_address` for runners.
 In v5 of the REST API, the field will be removed.
+
+## `default_branch_protection` API field
+
+Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/408315).
+
+The `default_branch_protection` field is deprecated in GitLab 17.0 for the following APIs:
+
+- [New group API](../groups.md#create-a-group).
+- [Update group API](../groups.md#update-group-attributes).
+- [Application Settings API](../settings.md#update-application-settings)
+
+You should use the `default_branch_protection_defaults` field instead, which provides more finer grained control
+over the default branch protections.
+
+The `default_branch_protection` field will be removed in v5 of the GitLab REST API.
+
+## `require_password_to_approve` API field
+
+The `require_password_to_approve` was deprecated in GitLab 16.9. Use the `require_reauthentication_to_approve` field
+instead. If you supply values to both fields, the `require_reauthentication_to_approve` field takes precedence.
+
+The `require_password_to_approve` field will be removed in v5 of the GitLab REST API.
+
+## Pull mirroring configuration with the projects API endpoint
+
+Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/494294).
+
+In GitLab 17.6, the [pull mirroring configuration with the Projects API](../project_pull_mirroring.md#update-pull-mirroring-for-a-project-deprecated) is deprecated.
+It is replaced by a new configuration and endpoint, [`projects/:id/mirror/pull`](../project_pull_mirroring.md#update-project-pull-mirroring-settings).
+
+The previous configuration using the Projects API will be removed in v5 of the GitLab REST API.
+
+## `restrict_user_defined_variables` parameter with the projects API endpoint
+
+In GitLab 17.7, the [`restrict_user_defined_variables` parameter in Projects API](../projects.md#edit-a-project)
+is deprecated in favour of using only `ci_pipeline_variables_minimum_override_role`.
+
+To match the same behavior of `restrict_user_defined_variables: false` set `ci_pipeline_variables_minimum_override_role` as `developer`.
+
+## `namespace` parameter in project import API endpoints
+
+Breaking change. [Related issue](https://gitlab.com/gitlab-org/gitlab/-/issues/511053).
+
+In GitLab 18.7, the `namespace` parameter in the [project import and export API](../project_import_export.md) is deprecated
+in favor of the `namespace_id` and `namespace_path` parameters. The `namespace` parameter accepted both an ID or path,
+which caused ambiguity when namespace paths contained only digits.
+
+Instead, you should use:
+
+- `namespace_id` when specifying a namespace by its numeric ID.
+- `namespace_path` when specifying a namespace by its path.
+
+The `namespace` parameter will be removed in v5 of the GitLab REST API.

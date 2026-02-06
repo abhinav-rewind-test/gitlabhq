@@ -21,6 +21,7 @@ export default () => {
     incomingEmail,
     outgoingName,
     projectKey,
+    ticketsConfidentialByDefault,
     reopenIssueOnExternalParticipantNote,
     addExternalParticipantsFromCc,
     selectedTemplate,
@@ -32,6 +33,7 @@ export default () => {
 
   return new Vue({
     el,
+    name: 'ServiceDeskRootRoot',
     provide: {
       serviceDeskEmail,
       serviceDeskEmailEnabled: parseBoolean(serviceDeskEmailEnabled),
@@ -41,6 +43,7 @@ export default () => {
       isIssueTrackerEnabled: parseBoolean(issueTrackerEnabled),
       outgoingName,
       projectKey,
+      areTicketsConfidentialByDefault: parseBoolean(ticketsConfidentialByDefault),
       reopenIssueOnExternalParticipantNote: parseBoolean(reopenIssueOnExternalParticipantNote),
       addExternalParticipantsFromCc: parseBoolean(addExternalParticipantsFromCc),
       selectedTemplate,

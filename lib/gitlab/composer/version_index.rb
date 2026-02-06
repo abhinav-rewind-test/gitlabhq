@@ -26,7 +26,7 @@ module Gitlab
       end
 
       def package_metadata(package)
-        json = package.composer_metadatum.composer_json
+        json = package.composer_json
 
         json.merge(
           'dist' => package_dist(package),
@@ -41,8 +41,8 @@ module Gitlab
 
         {
           'type' => 'zip',
-          'url' => expose_url(archive_api_path) + "?sha=#{package.composer_target_sha}",
-          'reference' => package.composer_target_sha,
+          'url' => expose_url(archive_api_path) + "?sha=#{package.target_sha}",
+          'reference' => package.target_sha,
           'shasum' => ''
         }
       end
@@ -53,7 +53,7 @@ module Gitlab
         {
           'type' => 'git',
           'url' => git_url,
-          'reference' => package.composer_target_sha
+          'reference' => package.target_sha
         }
       end
     end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'gitlab/middleware/strip_cookies'
 require 'gitlab/testing/request_blocker_middleware'
 require 'gitlab/testing/robots_blocker_middleware'
 require 'gitlab/testing/request_inspector_middleware'
@@ -13,6 +14,7 @@ Rails.application.configure do
   config.middleware.insert_before(ActionDispatch::Static, Gitlab::Testing::RobotsBlockerMiddleware)
   config.middleware.insert_before(ActionDispatch::Static, Gitlab::Testing::RequestInspectorMiddleware)
   config.middleware.insert_before(ActionDispatch::Static, Gitlab::Testing::ClearProcessMemoryCacheMiddleware)
+  config.middleware.insert_before(ActionDispatch::Cookies, Gitlab::Middleware::StripCookies, paths: [%r{^/assets/}])
 
   Gitlab::Testing::ActionCableBlocker.install
 
@@ -41,7 +43,7 @@ Rails.application.configure do
   config.action_controller.perform_caching = false
 
   # Raise exceptions instead of rendering exception templates
-  config.action_dispatch.show_exceptions = false
+  config.action_dispatch.show_exceptions = :none
 
   # Disable request forgery protection in test environment
   config.action_controller.allow_forgery_protection = false
@@ -51,7 +53,7 @@ Rails.application.configure do
   # ActionMailer::Base.deliveries array.
   config.action_mailer.delivery_method = :test
 
-  config.action_mailer.preview_path = GitlabEdition.path_glob('app/mailers/previews')
+  config.action_mailer.preview_paths = [GitlabEdition.path_glob('app/mailers/previews')]
 
   config.eager_load = Gitlab::Utils.to_boolean(ENV['GITLAB_TEST_EAGER_LOAD'], default: ENV['CI'].present?)
 

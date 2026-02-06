@@ -20,20 +20,20 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
 
   it { is_expected.to delegate_method(:flush).to(:tracker) }
 
-  describe '.options' do
+  describe '.frontend_client_options' do
     shared_examples 'delegates to destination' do |klass|
       before do
         allow_next_instance_of(klass) do |instance|
-          allow(instance).to receive(:options).and_call_original
+          allow(instance).to receive(:frontend_client_options).and_call_original
         end
       end
 
       it "delegates to #{klass} destination" do
         expect_next_instance_of(klass) do |instance|
-          expect(instance).to receive(:options)
+          expect(instance).to receive(:frontend_client_options)
         end
 
-        subject.options(nil)
+        subject.frontend_client_options(nil)
       end
     end
 
@@ -53,7 +53,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
           linkClickTracking: true
         }
 
-        expect(subject.options(nil)).to match(expected_fields)
+        expect(subject.frontend_client_options(nil)).to match(expected_fields)
       end
     end
 
@@ -70,7 +70,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
           linkClickTracking: true
         }
 
-        expect(subject.options(nil)).to match(expected_fields)
+        expect(subject.frontend_client_options(nil)).to match(expected_fields)
       end
     end
 
@@ -98,7 +98,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
     it 'when feature flag is disabled' do
       stub_feature_flags(additional_snowplow_tracking: false)
 
-      expect(subject.options(nil)).to include(
+      expect(subject.frontend_client_options(nil)).to include(
         formTracking: false,
         linkClickTracking: false
       )
@@ -137,7 +137,7 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
 
         expect(Gitlab::Tracking::StandardContext)
           .to receive(:new)
-                .with(project_id: project.id, user_id: user.id, namespace_id: namespace.id, plan_name: namespace.actual_plan_name, extra_key_1: 'extra value 1', extra_key_2: 'extra value 2')
+                .with(project_id: project.id, user: user, namespace: namespace, extra_key_1: 'extra value 1', extra_key_2: 'extra value 2')
                 .and_call_original
 
         expect_any_instance_of(klass).to receive(:event) do |_, category, action, args|
@@ -217,83 +217,88 @@ RSpec.describe Gitlab::Tracking, feature_category: :application_instrumentation 
 
         it_behaves_like 'delegates to destination', Gitlab::Tracking::Destinations::SnowplowMicro, :event
       end
-    end
-  end
 
-  describe '.definition' do
-    let(:namespace) { create(:namespace) }
+      context 'with the experiment logger' do
+        let(:context) { [] }
 
-    let_it_be(:definition_action) { 'definition_action' }
-    let_it_be(:definition_category) { 'definition_category' }
-    let_it_be(:label_description) { 'definition label description' }
-    let_it_be(:test_definition) { { 'category': definition_category, 'action': definition_action } }
+        subject(:event) { described_class.event('category', :some_action, context: context) }
 
-    before do
-      allow_next_instance_of(described_class) do |instance|
-        allow(instance).to receive(:event)
+        context 'when track_struct_event_logger is enabled' do
+          before do
+            # stub calls inside destination to ignore its internal logger calls
+            allow_any_instance_of(Gitlab::Tracking::Destinations::Snowplow).to receive(:event)
+            # preload destination tracker to ignore logger calls on its initialization
+            allow_any_instance_of(Gitlab::Tracking::Destinations::Snowplow).to receive(:tracker).and_return(
+              # rubocop:disable GitlabSecurity/PublicSend -- done to facilitate debug log
+              Gitlab::Tracking::Destinations::Snowplow.new.send(:tracker)
+              # rubocop:enable GitlabSecurity/PublicSend
+            )
+            stub_feature_flags(track_struct_event_logger: true)
+          end
+
+          context 'when context include experiment string' do
+            let(:context) { ['__experiment_context__'] }
+
+            it 'calls the GitLab logger' do
+              expect(Gitlab::AppLogger).to receive(:info).twice
+
+              event
+            end
+          end
+
+          context 'when context does not include experiment string' do
+            it 'does not call the GitLab logger' do
+              expect(Gitlab::AppLogger).not_to receive(:info)
+
+              event
+            end
+          end
+        end
+
+        context 'when track_struct_event_logger is disabled' do
+          before do
+            stub_feature_flags(track_struct_event_logger: false)
+          end
+
+          context 'when context include experiment string' do
+            let(:context) { ['__experiment_context__'] }
+
+            it 'does not call the GitLab logger' do
+              expect(Gitlab::AppLogger).not_to receive(:info)
+
+              event
+            end
+          end
+
+          context 'when context does not include experiment string' do
+            it 'does not call the GitLab logger' do
+              expect(Gitlab::AppLogger).not_to receive(:info)
+
+              event
+            end
+          end
+        end
       end
-      allow_next_instance_of(Gitlab::Tracking::Destinations::Snowplow) do |instance|
-        allow(instance).to receive(:event)
-      end
-      allow(YAML).to receive(:load_file).with(Rails.root.join('config/events/filename.yml')).and_return(test_definition)
-    end
-
-    it 'dispatches the data to .event' do
-      project = build_stubbed(:project)
-      user = build_stubbed(:user)
-
-      expect(described_class).to receive(:event) do |category, action, args|
-        expect(category).to eq(definition_category)
-        expect(action).to eq(definition_action)
-        expect(args[:label]).to eq('label')
-        expect(args[:property]).to eq('...')
-        expect(args[:project]).to eq(project)
-        expect(args[:user]).to eq(user)
-        expect(args[:namespace]).to eq(namespace)
-        expect(args[:extra_key_1]).to eq('extra value 1')
-      end
-
-      described_class.definition('filename',
-        category: nil,
-        action: nil,
-        label: 'label',
-        property: '...',
-        project: project,
-        user: user,
-        namespace: namespace,
-        extra_key_1: 'extra value 1')
     end
   end
 
   describe 'snowplow_micro_enabled?' do
-    where(:development?, :micro_verification_enabled?, :snowplow_micro_enabled, :result) do
-      true  | true  | true  | true
-      true  | true  | false | false
-      false | true  | true  | true
-      false | true  | false | false
-      false | false | true  | false
-      false | false | false | false
-      true  | false | true  | true
-      true  | false | false | false
+    where(:development?, :micro_verification_enabled?, :result) do
+      true  | true  | true
+      false | true  | true
+      true  | false | true
+      false | false | false
     end
 
     with_them do
       before do
         allow(Rails.env).to receive(:development?).and_return(development?)
         allow(described_class).to receive(:micro_verification_enabled?).and_return(micro_verification_enabled?)
-        stub_config(snowplow_micro: { enabled: snowplow_micro_enabled })
       end
 
       subject { described_class.snowplow_micro_enabled? }
 
       it { is_expected.to be(result) }
-    end
-
-    it 'returns false when snowplow_micro is not configured' do
-      allow(Rails.env).to receive(:development?).and_return(true)
-      allow(Gitlab.config).to receive(:snowplow_micro).and_raise(GitlabSettings::MissingSetting)
-
-      expect(described_class).not_to be_snowplow_micro_enabled
     end
   end
 

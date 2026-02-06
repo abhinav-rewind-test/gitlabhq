@@ -1,8 +1,6 @@
 ---
 key_path: gitlab_dedicated
 description: Is the instance a Gitlab Dedicated instance
-product_section: analytics
-product_stage: analytics
 product_group: analytics_instrumentation
 value_type: boolean
 status: active
@@ -13,7 +11,5 @@ data_source: database
 data_category: optional
 instrumentation_class: GitlabDedicatedMetric
 performance_indicator_type: []
-distribution:
-- ee
-tier:
+tiers:
 - ultimate

@@ -40,10 +40,15 @@ RSpec.describe Groups::GroupLinks::UpdateService, '#execute', feature_category: 
     expect { subject }.to change { group_member_user.can?(:create_release, project) }.from(true).to(false)
   end
 
-  it 'executes UserProjectAccessChangedService' do
-    expect_next_instance_of(UserProjectAccessChangedService, [group_member_user.id]) do |service|
-      expect(service).to receive(:execute)
-    end
+  it 'schedules worker with with medium priority' do
+    expect(AuthorizedProjectUpdate::EnqueueGroupMembersRefreshAuthorizedProjectsWorker).to receive(:perform_async)
+      .with(
+        group.id,
+        {
+          'priority' => UserProjectAccessChangedService::MEDIUM_PRIORITY.to_s,
+          'direct_members_only' => true
+        }
+      ).and_call_original
 
     subject
   end
@@ -51,7 +56,7 @@ RSpec.describe Groups::GroupLinks::UpdateService, '#execute', feature_category: 
   context 'with only param not requiring authorization refresh' do
     let(:group_link_params) { { expires_at: Date.tomorrow } }
 
-    it 'does not execute UserProjectAccessChangedService' do
+    it 'does not execute UserProjectAccessChangedService', :sidekiq_inline do
       expect(UserProjectAccessChangedService).not_to receive(:new)
 
       subject

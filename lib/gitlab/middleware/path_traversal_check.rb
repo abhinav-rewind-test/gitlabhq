@@ -3,29 +3,29 @@
 module Gitlab
   module Middleware
     class PathTraversalCheck
-      PATH_TRAVERSAL_MESSAGE = 'Potential path traversal attempt detected'
-
-      EXCLUDED_EXACT_PATHS = %w[/search].freeze
-      EXCLUDED_PATH_PREFIXES = %w[/search/].freeze
-
-      EXCLUDED_API_PATHS = %w[/search].freeze
-      EXCLUDED_PROJECT_API_PATHS = %w[/search].freeze
-      EXCLUDED_GROUP_API_PATHS = %w[/search].freeze
-
-      API_PREFIX = %r{/api/[^/]+}
-      API_SUFFIX = %r{(?:\.[^/]+)?}
-
-      EXCLUDED_API_PATHS_REGEX = [
-        EXCLUDED_API_PATHS.map do |path|
-          %r{\A#{API_PREFIX}#{path}#{API_SUFFIX}\z}
-        end.freeze,
-        EXCLUDED_PROJECT_API_PATHS.map do |path|
-          %r{\A#{API_PREFIX}/projects/[^/]+(?:/-)?#{path}#{API_SUFFIX}\z}
-        end.freeze,
-        EXCLUDED_GROUP_API_PATHS.map do |path|
-          %r{\A#{API_PREFIX}/groups/[^/]+(?:/-)?#{path}#{API_SUFFIX}\z}
-        end.freeze
-      ].flatten.freeze
+      PATH_TRAVERSAL_MESSAGE = 'Potential path traversal attempt detected. Feedback issue: https://gitlab.com/gitlab-org/gitlab/-/issues/520714.'
+      # Query param names known to have string parts detected as path traversal even though
+      # they are valid genuine requests
+      EXCLUDED_QUERY_PARAM_NAMES = %w[
+        search
+        search_title
+        search_query
+        term
+        name
+        filter
+        filter_projects
+        note
+        body
+        commit_message
+        content
+        description
+      ].freeze
+      NESTED_PARAMETERS_MAX_LEVEL = 5
+      REJECT_RESPONSE = [
+        Rack::Utils::SYMBOL_TO_STATUS_CODE[:bad_request],
+        { 'Content-Type' => 'text/plain' },
+        [PATH_TRAVERSAL_MESSAGE]
+      ].freeze
 
       def initialize(app)
         @app = app
@@ -34,59 +34,76 @@ module Gitlab
       def call(env)
         return @app.call(env) unless Feature.enabled?(:check_path_traversal_middleware, Feature.current_request)
 
+        request = ::ActionDispatch::Request.new(env.dup)
         log_params = {}
 
-        execution_time = measure_execution_time do
-          request = ::Rack::Request.new(env.dup)
-          check(request, log_params) unless excluded?(request)
-        end
-        log_params[:duration_ms] = execution_time.round(5) if execution_time
+        return @app.call(env) unless path_traversal_attempt?(request, log_params)
 
-        result = @app.call(env)
+        log_params[:request_rejected] = true
 
-        unless log_params.empty?
-          log_params[:status] = result.first
-          log(log_params)
-        end
+        # TODO Remove this when https://gitlab.com/gitlab-org/ruby/gems/labkit-ruby/-/issues/41 is implemented
+        log_params[:remote_ip] = request.remote_ip
 
-        result
+        log(log_params)
+
+        REJECT_RESPONSE
       end
 
       private
 
-      def measure_execution_time(&blk)
-        if Feature.enabled?(:log_execution_time_path_traversal_middleware, Feature.current_request)
-          Benchmark.ms(&blk)
-        else
-          yield
+      def path_traversal_attempt?(request, log_params)
+        with_duration_metric do |metric_labels|
+          original_fullpath = request.filtered_path
+          exclude_query_parameters(request)
 
-          nil
+          decoded_fullpath = CGI.unescape(request.fullpath)
+
+          path_traversal_attempt = Gitlab::PathTraversal.path_traversal?(decoded_fullpath, match_new_line: false)
+
+          metric_labels[:request_rejected] = path_traversal_attempt
+          if path_traversal_attempt
+            log_params[:method] = request.request_method
+            log_params[:fullpath] = original_fullpath
+            log_params[:message] = PATH_TRAVERSAL_MESSAGE
+          end
+
+          path_traversal_attempt
         end
       end
 
-      def check(request, log_params)
-        decoded_fullpath = CGI.unescape(request.fullpath)
-        ::Gitlab::PathTraversal.check_path_traversal!(decoded_fullpath, skip_decoding: true)
-      rescue ::Gitlab::PathTraversal::PathTraversalAttackError
-        log_params[:method] = request.request_method
-        log_params[:fullpath] = request.fullpath
-        log_params[:message] = PATH_TRAVERSAL_MESSAGE
+      def exclude_query_parameters(request)
+        query_params = request.GET.dup
+        return if query_params.empty?
+
+        cleanup_query_parameters!(query_params)
+
+        request.set_header(Rack::QUERY_STRING, Rack::Utils.build_nested_query(query_params))
       end
 
-      def excluded?(request)
-        path = request.path
+      def cleanup_query_parameters!(params, level: 1)
+        return params if params.empty? || level > NESTED_PARAMETERS_MAX_LEVEL
 
-        return true if path.in?(EXCLUDED_EXACT_PATHS)
-        return true if EXCLUDED_PATH_PREFIXES.any? { |p| path.start_with?(p) }
-        return true if EXCLUDED_API_PATHS_REGEX.any? { |r| path.match?(r) }
-
-        false
+        params.except!(*EXCLUDED_QUERY_PARAM_NAMES)
+        params.each { |k, v| params[k] = cleanup_query_parameters!(v, level: level + 1) if v.is_a?(Hash) }
       end
 
       def log(payload)
-        Gitlab::AppLogger.warn(
-          payload.merge(class_name: self.class.name)
-        )
+        ::Gitlab::InstrumentationHelper.add_instrumentation_data(payload)
+        Gitlab::AppLogger.warn(payload.merge(class_name: self.class.name))
+      end
+
+      def with_duration_metric
+        result = nil
+        labels = {}
+
+        duration = Benchmark.realtime do
+          result = yield(labels)
+        end
+
+        ::Gitlab::Instrumentation::Middleware::PathTraversalCheck.duration = duration
+        ::Gitlab::Metrics::Middleware::PathTraversalCheck.increment(labels: labels, duration: duration)
+
+        result
       end
     end
   end

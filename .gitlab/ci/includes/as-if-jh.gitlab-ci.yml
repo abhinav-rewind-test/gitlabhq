@@ -54,6 +54,7 @@ prepare-as-if-jh-branch:
   stage: prepare
   needs:
     - add-jh-files
+  timeout: 10m
   variables:
     # We can't apply --filter=tree:0 for runner to set up the repository,
     # so instead we tell runner to not clone anything, and we set up the
@@ -86,11 +87,14 @@ sync-as-if-jh-branch:
       - REGISTRY_GROUP
       - BUILD_OS
       - OS_VERSION
+      - RUBY_VERSION_DEFAULT
+      - RUBY_VERSION_NEXT
       - RUBY_VERSION
       - GO_VERSION
       - RUST_VERSION
       - PG_VERSION
       - RUBYGEMS_VERSION
+      - GIT_VERSION
       - CHROME_VERSION
       - NODE_ENV
   variables:

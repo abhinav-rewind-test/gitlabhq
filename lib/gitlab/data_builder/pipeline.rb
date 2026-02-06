@@ -43,7 +43,6 @@ module Gitlab
 
       private
 
-      # rubocop: disable CodeReuse/ActiveRecord
       def preload_builds(pipeline, association)
         ActiveRecord::Associations::Preloader.new(
           records: [pipeline],
@@ -51,15 +50,16 @@ module Gitlab
             association => {
               **::Ci::Pipeline::PROJECT_ROUTE_AND_NAMESPACE_ROUTE,
               runner: :tags,
+              job_environment: [],
               job_artifacts_archive: [],
               user: [],
               metadata: [],
+              job_definition: [],
               ci_stage: []
             }
           }
         ).call
       end
-      # rubocop: enable CodeReuse/ActiveRecord
 
       def hook_attrs(pipeline)
         {
@@ -67,6 +67,7 @@ module Gitlab
           iid: pipeline.iid,
           name: pipeline.name,
           ref: pipeline.source_ref,
+          ref_status_name: pipeline.ref_status_name,
           tag: pipeline.tag,
           sha: pipeline.sha,
           before_sha: pipeline.before_sha,
@@ -78,6 +79,7 @@ module Gitlab
           finished_at: pipeline.finished_at,
           duration: pipeline.duration,
           queued_duration: pipeline.queued_duration,
+          protected_ref: pipeline.protected_ref?,
           variables: pipeline.variables.map(&:hook_attrs),
           url: Gitlab::Routing.url_helpers.project_pipeline_url(pipeline.project, pipeline)
         }
@@ -165,3 +167,5 @@ module Gitlab
     end
   end
 end
+
+Gitlab::DataBuilder::Pipeline.prepend_mod

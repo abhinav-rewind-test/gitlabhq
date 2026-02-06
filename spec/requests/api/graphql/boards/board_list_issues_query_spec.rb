@@ -122,16 +122,6 @@ RSpec.describe 'get board lists', feature_category: :team_planning do
 
           expect(issue_id).to contain_exactly(issue1.to_gid.to_s, issue2.to_gid.to_s)
         end
-
-        context 'when feature flag is disabled' do
-          it 'returns an error' do
-            stub_feature_flags(or_issuable_queries: false)
-
-            subject
-
-            expect_graphql_errors_to_include("'or' arguments are only allowed when the `or_issuable_queries` feature flag is enabled.")
-          end
-        end
       end
     end
   end
@@ -157,5 +147,51 @@ RSpec.describe 'get board lists', feature_category: :team_planning do
     end
 
     it_behaves_like 'group and project board list issues query'
+  end
+
+  context 'when fetching issues' do
+    let_it_be(:board) { create(:board, resource_parent: project) }
+    let_it_be(:label_list) { create(:list, board: board, label: project_label) }
+
+    let(:query) do
+      graphql_query_for(
+        :project,
+        { 'fullPath' => project.full_path },
+        <<~BOARDS
+          boards(first: 1) {
+            nodes {
+              lists(id: "#{label_list.to_gid}") {
+                nodes {
+                  issues {
+                    nodes {
+                      id
+                      title
+                    }
+                  }
+                }
+              }
+            }
+          }
+      BOARDS
+      )
+    end
+
+    before_all do
+      create_list(:issue, 2, project: project, labels: [project_label], relative_position: 1)
+    end
+
+    it 'avoids N+1 queries', :use_sql_query_cache do
+      post_graphql(query, current_user: user)
+
+      control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+        post_graphql(query, current_user: user)
+      end
+      expect_graphql_errors_to_be_empty
+
+      create_list(:issue, 2, project: project, labels: [project_label], relative_position: 1)
+
+      expect { post_graphql(query, current_user: user) }.not_to exceed_all_query_limit(control)
+      expect_graphql_errors_to_be_empty
+    end
   end
 end

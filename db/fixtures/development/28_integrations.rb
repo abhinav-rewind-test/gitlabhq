@@ -11,14 +11,15 @@ Gitlab::Seeder.quiet do
 
     print '.'
 
-    Doorkeeper::Application.create!(
+    Authn::OauthApplication.create!(
       name: 'Customer Portal Development',
       uid: '28cc28f03b415fbc737a7364dc06af0adf12688e1b0c6669baf6850a6855132b',
       secret: '74c96596ec3f82dd137dd5775f31eba919f77b0a3114611f0411d148d727c64c',
       redirect_uri: "#{ENV['CUSTOMER_PORTAL_URL']}/auth/gitlab/callback",
       scopes: 'api read_user openid',
       trusted: true,
-      confidential: true
+      confidential: true,
+      organization: Organizations::Organization.default_organization
     )
 
     print '.'

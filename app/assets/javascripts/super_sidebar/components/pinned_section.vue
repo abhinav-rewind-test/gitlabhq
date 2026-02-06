@@ -1,6 +1,6 @@
 <script>
-import Draggable from 'vuedraggable';
 import { s__ } from '~/locale';
+import Draggable from '~/lib/utils/vue3compat/draggable_compat.vue';
 import { setCookie, getCookie } from '~/lib/utils/common_utils';
 import {
   PINNED_NAV_STORAGE_KEY,
@@ -44,6 +44,11 @@ export default {
       required: false,
       default: false,
     },
+    asyncCount: {
+      type: Object,
+      required: false,
+      default: () => ({}),
+    },
   },
   data() {
     return {
@@ -59,9 +64,6 @@ export default {
         is_active: this.wasPinnedNav,
         items: this.draggableItems,
       };
-    },
-    itemIds() {
-      return this.draggableItems.map((item) => item.id);
     },
   },
   watch: {
@@ -112,26 +114,26 @@ export default {
     <draggable
       v-if="items.length > 0"
       v-model="draggableItems"
-      class="gl-p-0 gl-m-0 gl-list-style-none"
+      class="gl-m-0 gl-list-none gl-p-0"
       data-testid="pinned-nav-items"
       handle=".js-draggable-icon"
       tag="ul"
+      item-key="id"
+      draggable=".js-draggable-item"
       @end="handleDrag"
     >
       <nav-item
         v-for="item of draggableItems"
         :key="item.id"
         :item="item"
+        :async-count="asyncCount"
         is-in-pinned-section
+        class="js-draggable-item"
         @pin-remove="onPinRemove(item.id, item.title)"
         @nav-link-click="writePinnedClick"
       />
     </draggable>
-    <li
-      v-else
-      class="gl-text-secondary gl-font-sm gl-py-3 super-sidebar-mix-blend-mode"
-      style="margin-left: 2.5rem"
-    >
+    <li v-else class="gl-ml-[2.25rem] gl-py-3 gl-text-sm gl-text-subtle">
       {{ $options.i18n.emptyHint }}
     </li>
   </menu-section>

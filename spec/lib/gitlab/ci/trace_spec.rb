@@ -2,8 +2,8 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Ci::Trace, :clean_gitlab_redis_shared_state, factory_default: :keep do
-  let_it_be(:project) { create_default(:project).freeze }
+RSpec.describe Gitlab::Ci::Trace, :clean_gitlab_redis_shared_state, factory_default: :keep, feature_category: :continuous_integration do
+  let_it_be(:project) { create_default(:project, :allow_runner_registration_token).freeze }
   let_it_be_with_reload(:build) { create(:ci_build, :success) }
 
   let(:trace) { described_class.new(build) }
@@ -37,7 +37,7 @@ RSpec.describe Gitlab::Ci::Trace, :clean_gitlab_redis_shared_state, factory_defa
 
   context 'when live trace feature is disabled' do
     before do
-      stub_feature_flags(ci_enable_live_trace: false)
+      stub_application_setting(ci_job_live_trace_enabled: false)
     end
 
     it_behaves_like 'trace with disabled live trace feature'
@@ -45,7 +45,7 @@ RSpec.describe Gitlab::Ci::Trace, :clean_gitlab_redis_shared_state, factory_defa
 
   context 'when live trace feature is enabled' do
     before do
-      stub_feature_flags(ci_enable_live_trace: true)
+      stub_application_setting(ci_job_live_trace_enabled: true)
     end
 
     it_behaves_like 'trace with enabled live trace feature'

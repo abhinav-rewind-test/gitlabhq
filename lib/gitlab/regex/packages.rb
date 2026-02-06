@@ -15,12 +15,28 @@ module Gitlab
 
       API_PATH_REGEX = %r{^/api/v\d+/(projects/[^/]+/|groups?/[^/]+/-/)?packages/[A-Za-z]+}
 
+      def cargo_package_name_regex
+        @cargo_package_name_regex ||= /\A[a-zA-Z][a-zA-Z0-9\-_]{0,63}\z/
+      end
+
+      def cargo_package_normalized_name_regex
+        @cargo_package_normalized_name_regex ||= /\A[a-z0-9-]+\z/
+      end
+
       def conan_package_reference_regex
         @conan_package_reference_regex ||= %r{\A[A-Za-z0-9]+\z}
       end
 
       def conan_revision_regex
         @conan_revision_regex ||= %r{\A0\z}
+      end
+
+      def conan_revision_regex_v2
+        # The revision can be one of two types:
+        # - "hash" (default): the checksum hash of the recipe manifest: MD5 Hash 32 Characters
+        # - "scm" or "scm_folder": the commit ID for the repository system (Git or SVN): SHA-1 Hash 40 Characters
+        # according to https://docs.conan.io/2.10/reference/conanfile/attributes.html#revision-mode
+        @conan_revision_regex_v2 ||= %r/\A(?:\h{32}|\h{40})\z/
       end
 
       def conan_recipe_user_channel_regex
@@ -41,8 +57,8 @@ module Gitlab
         @composer_dev_version_regex ||= %r{(^dev-)|(-dev$)}
       end
 
-      def package_name_regex
-        @package_name_regex ||=
+      def package_name_regex(other_accepted_chars_package_name = nil)
+        strong_memoize_with(:package_name_regex, other_accepted_chars_package_name) do
           %r{
               \A\@?
               (?> # atomic group to prevent backtracking
@@ -50,10 +66,11 @@ module Gitlab
               )
               @?
               (?> # atomic group to prevent backtracking
-                (([\w\-\.\+]*)\/)*([\w\-\.]*)
+                (([\w\-\.\+]*)\/)*([\w\-\.#{other_accepted_chars_package_name}]*)
               )
               \z
             }x
+        end
       end
 
       def maven_file_name_regex
@@ -233,17 +250,20 @@ module Gitlab
         #   - Must not have a port number, such as :8080 or :8443
 
         @go_package_regex ||= %r{
-          \b (?# word boundary)
+          (?<=^|\s|\() (?# beginning of line, whitespace character, or opening parenthesis)
           (?<domain>
-            [0-9a-z](?:(?:-|[0-9a-z]){0,61}[0-9a-z])? (?# first domain)
-            (?:\.[0-9a-z](?:(?:-|[0-9a-z]){0,61}[0-9a-z])?)* (?# inner domains)
-            \.[a-z]{2,} (?# top-level domain)
+            [0-9a-z](?:(?:-|[0-9a-z]){0,61}[0-9a-z]) (?# first domain)
+            (?:\.[0-9a-z](?:(?:-|[0-9a-z]){0,61}[0-9a-z])?){0,49} (?# inner domains)
+            \.[a-z]{2,63}(?=/|\s|$|\)) (?# top-level domain, ends with /, whitespace, or end of line)
           )
-          (?<path>/(?:
-            [-/$_.+!*'(),0-9a-z] (?# plain URL character)
-            | %[0-9a-f]{2})* (?# URL encoded character)
-          )? (?# path)
-          \b (?# word boundary)
+          (?<path>
+            /(?:
+              [-/$_.+!*'(),0-9a-z] (?# plain URL character)
+              |
+              %[0-9a-f]{2} (?# URL encoded character)
+            ){0,1000}
+          )? (?# optional path)
+          (?=$|\s|\)) (?# followed by end of line, whitespace, or closing parenthesis)
         }ix
       end
 
@@ -256,7 +276,7 @@ module Gitlab
       end
 
       def generic_package_file_name_regex
-        generic_package_name_regex
+        @generic_package_file_name_regex ||= /\A(?!~)(?!@)[A-Za-z0-9\.\_\-\+~@]+(?<!~)(?<!@)\z/
       end
 
       def sha256_regex
@@ -264,7 +284,11 @@ module Gitlab
       end
 
       def slack_link_regex
-        @slack_link_regex ||= /<(.*[|].*)>/i
+        @slack_link_regex ||= Gitlab::UntrustedRegexp.new('<([^|<>]*[|][^|<>]*)>')
+      end
+
+      def helm_index_app_version_quote_regex
+        @helm_index_app_version_quote_regex ||= /^(\s*appVersion:\s+)(?!["'])([^\n\r]+)$/m
       end
 
       private

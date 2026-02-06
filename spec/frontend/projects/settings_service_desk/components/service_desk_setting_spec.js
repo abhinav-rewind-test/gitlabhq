@@ -1,7 +1,6 @@
 import { GlButton, GlDropdown, GlLoadingIcon, GlToggle, GlAlert } from '@gitlab/ui';
-import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { extendedWrapper } from 'helpers/vue_test_utils_helper';
+import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import ServiceDeskSetting from '~/projects/settings_service_desk/components/service_desk_setting.vue';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
@@ -19,27 +18,29 @@ describe('ServiceDeskSetting', () => {
   const findSuffixFormGroup = () => wrapper.findByTestId('suffix-form-group');
   const findIssueTrackerInfo = () => wrapper.findComponent(GlAlert);
   const findIssueHelpLink = () => wrapper.findByTestId('issue-help-page');
+  const findAreTicketsConfidentialByDefaultWrapper = () =>
+    wrapper.findByTestId('service-desk-are-tickets-confidential-by-default-wrapper');
+  const findAreTicketsConfidentialByDefaultCheckbox = () =>
+    wrapper.findByTestId('service-desk-are-tickets-confidential-by-default');
   const findReopenIssueOnExternalParticipantNoteCheckbox = () =>
     wrapper.findByTestId('reopen-issue-on-external-participant-note');
   const findAddExternalParticipantsFromCcCheckbox = () =>
     wrapper.findByTestId('add-external-participants-from-cc');
 
   const createComponent = ({ props = {}, provide = {} } = {}) =>
-    extendedWrapper(
-      mount(ServiceDeskSetting, {
-        propsData: {
-          isEnabled: true,
-          isIssueTrackerEnabled: true,
-          ...props,
+    mountExtended(ServiceDeskSetting, {
+      propsData: {
+        isEnabled: true,
+        isIssueTrackerEnabled: true,
+        ...props,
+      },
+      provide: {
+        glFeatures: {
+          issueEmailParticipants: true,
         },
-        provide: {
-          glFeatures: {
-            issueEmailParticipants: true,
-          },
-          ...provide,
-        },
-      }),
-    );
+        ...provide,
+      },
+    });
 
   describe('with issue tracker', () => {
     it('does not show the info notice when enabled', () => {
@@ -58,8 +59,8 @@ describe('ServiceDeskSetting', () => {
       expect(findIssueTrackerInfo().exists()).toBe(true);
       expect(findIssueHelpLink().text()).toEqual('activate the issue tracker');
       expect(findIssueHelpLink().attributes('href')).toBe(
-        helpPagePath('user/project/settings/index.md', {
-          anchor: 'configure-project-visibility-features-and-permissions',
+        helpPagePath('user/project/settings/_index', {
+          anchor: 'configure-project-features-and-permissions',
         }),
       );
     });
@@ -215,6 +216,69 @@ describe('ServiceDeskSetting', () => {
     });
   });
 
+  describe('are tickets confidential by default checkbox', () => {
+    it('is rendered', () => {
+      wrapper = createComponent();
+
+      expect(findAreTicketsConfidentialByDefaultCheckbox().exists()).toBe(true);
+    });
+
+    describe('when project is public', () => {
+      beforeEach(() => {
+        wrapper = createComponent({
+          props: { publicProject: true, initialAreTicketsConfidentialByDefault: false },
+        });
+      });
+
+      it('displays correct help text', () => {
+        expect(findAreTicketsConfidentialByDefaultWrapper().text()).toContain(
+          ServiceDeskSetting.i18n.areTicketsConfidentialByDefault.help.publicProject,
+        );
+      });
+
+      it('checks and disables the checkbox', () => {
+        const { element } = findAreTicketsConfidentialByDefaultCheckbox();
+
+        expect(element.checked).toBe(true);
+        expect(element.disabled).toBe(true);
+      });
+    });
+
+    describe('when project is not public', () => {
+      describe('when tickets are confidential by default', () => {
+        beforeEach(() => {
+          wrapper = createComponent({ props: { initialAreTicketsConfidentialByDefault: true } });
+        });
+
+        it('forwards true as initial value to the checkbox', () => {
+          expect(findAreTicketsConfidentialByDefaultCheckbox().element.checked).toBe(true);
+        });
+
+        it('displays correct help text', () => {
+          expect(findAreTicketsConfidentialByDefaultWrapper().text()).toContain(
+            ServiceDeskSetting.i18n.areTicketsConfidentialByDefault.help.confidential,
+          );
+        });
+      });
+
+      describe('when tickets are not confidential by default', () => {
+        beforeEach(() => {
+          wrapper = createComponent({ props: { initialAreTicketsConfidentialByDefault: false } });
+        });
+
+        it('forwards false as initial value to the checkbox', () => {
+          expect(findAreTicketsConfidentialByDefaultCheckbox().element.checked).toBe(false);
+        });
+
+        it('displays correct help text', () => {
+          expect(findAreTicketsConfidentialByDefaultWrapper().text()).toContain(
+            ServiceDeskSetting.i18n.areTicketsConfidentialByDefault.help.nonConfidential,
+          );
+        });
+      });
+    });
+  });
+
   describe('reopen issue on external participant note checkbox', () => {
     it('is rendered', () => {
       wrapper = createComponent();
@@ -223,16 +287,12 @@ describe('ServiceDeskSetting', () => {
 
     it('forwards false as initial value to the checkbox', () => {
       wrapper = createComponent({ props: { initialReopenIssueOnExternalParticipantNote: false } });
-      expect(findReopenIssueOnExternalParticipantNoteCheckbox().find('input').element.checked).toBe(
-        false,
-      );
+      expect(findReopenIssueOnExternalParticipantNoteCheckbox().element.checked).toBe(false);
     });
 
     it('forwards true as initial value to the checkbox', () => {
       wrapper = createComponent({ props: { initialReopenIssueOnExternalParticipantNote: true } });
-      expect(findReopenIssueOnExternalParticipantNoteCheckbox().find('input').element.checked).toBe(
-        true,
-      );
+      expect(findReopenIssueOnExternalParticipantNoteCheckbox().element.checked).toBe(true);
     });
   });
 
@@ -244,7 +304,7 @@ describe('ServiceDeskSetting', () => {
 
     it('forwards the initial value to the checkbox', () => {
       wrapper = createComponent({ props: { initialAddExternalParticipantsFromCc: true } });
-      expect(findAddExternalParticipantsFromCcCheckbox().find('input').element.checked).toBe(true);
+      expect(findAddExternalParticipantsFromCcCheckbox().element.checked).toBe(true);
     });
 
     describe('when feature flag issue_email_participants is disabled', () => {
@@ -273,6 +333,7 @@ describe('ServiceDeskSetting', () => {
           initialSelectedFileTemplateProjectId: 42,
           initialOutgoingName: 'GitLab Support Bot',
           initialProjectKey: 'key',
+          initialAreTicketsConfidentialByDefault: false,
           initialReopenIssueOnExternalParticipantNote: true,
           initialAddExternalParticipantsFromCc: true,
         },
@@ -287,6 +348,7 @@ describe('ServiceDeskSetting', () => {
         fileTemplateProjectId: 42,
         outgoingName: 'GitLab Support Bot',
         projectKey: 'key',
+        areTicketsConfidentialByDefault: false,
         reopenIssueOnExternalParticipantNote: true,
         addExternalParticipantsFromCc: true,
       };

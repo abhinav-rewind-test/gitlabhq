@@ -25,8 +25,9 @@ func echoRequest(rw http.ResponseWriter, req *http.Request) {
 
 var echoRequestFunc = http.HandlerFunc(echoRequest)
 
-func expectHandlerWithWatcher(t *testing.T, watchHandler WatchKeyHandler, data string, contentType string, expectedHttpStatus int, msgAndArgs ...interface{}) {
-	h := RegisterHandler(echoRequestFunc, watchHandler, time.Second)
+func expectHandlerWithWatcher(t *testing.T, watchHandler WatchKeyHandler, data string, contentType string, expectedHTTPStatus int, msgAndArgs ...interface{}) {
+	shutdownChan := make(chan struct{})
+	h := RegisterHandler(echoRequestFunc, watchHandler, time.Second, shutdownChan)
 
 	rw := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/", bytes.NewBufferString(data))
@@ -34,11 +35,11 @@ func expectHandlerWithWatcher(t *testing.T, watchHandler WatchKeyHandler, data s
 
 	h.ServeHTTP(rw, req)
 
-	require.Equal(t, expectedHttpStatus, rw.Code, msgAndArgs...)
+	require.Equal(t, expectedHTTPStatus, rw.Code, msgAndArgs...)
 }
 
-func expectHandler(t *testing.T, data string, contentType string, expectedHttpStatus int, msgAndArgs ...interface{}) {
-	expectHandlerWithWatcher(t, nil, data, contentType, expectedHttpStatus, msgAndArgs...)
+func expectHandler(t *testing.T, data string, contentType string, expectedHTTPStatus int, msgAndArgs ...interface{}) {
+	expectHandlerWithWatcher(t, nil, data, contentType, expectedHTTPStatus, msgAndArgs...)
 }
 
 func TestRegisterHandlerLargeBody(t *testing.T) {
@@ -72,7 +73,7 @@ func TestRegisterHandlerMissingData(t *testing.T) {
 func expectWatcherToBeExecuted(t *testing.T, watchKeyStatus redis.WatchKeyStatus, watchKeyError error,
 	httpStatus int, msgAndArgs ...interface{}) {
 	executed := false
-	watchKeyHandler := func(ctx context.Context, key, value string, timeout time.Duration) (redis.WatchKeyStatus, error) {
+	watchKeyHandler := func(_ context.Context, _, _ string, _ time.Duration) (redis.WatchKeyStatus, error) {
 		executed = true
 		return watchKeyStatus, watchKeyError
 	}
@@ -131,13 +132,13 @@ func TestApplicationJson(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/test", nil)
 	req.Header.Set("Content-Type", "application/json")
 
-	require.True(t, isApplicationJson(req), "expected to match 'application/json' as 'application/json'")
+	require.True(t, isApplicationJSON(req), "expected to match 'application/json' as 'application/json'")
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	require.True(t, isApplicationJson(req), "expected to match 'application/json; charset=utf-8' as 'application/json'")
+	require.True(t, isApplicationJSON(req), "expected to match 'application/json; charset=utf-8' as 'application/json'")
 
 	req.Header.Set("Content-Type", "text/plain")
-	require.False(t, isApplicationJson(req), "expected not to match 'text/plain' as 'application/json'")
+	require.False(t, isApplicationJSON(req), "expected not to match 'text/plain' as 'application/json'")
 }
 
 func TestCloneRequestWithBody(t *testing.T) {
@@ -153,4 +154,20 @@ func TestCloneRequestWithBody(t *testing.T) {
 	var buffer bytes.Buffer
 	io.Copy(&buffer, newReq.Body)
 	require.Equal(t, newInput, buffer.Bytes())
+}
+
+func TestRegisterHandlerShutdown(t *testing.T) {
+	shutdownChan := make(chan struct{})
+	h := RegisterHandler(echoRequestFunc, nil, time.Second, shutdownChan)
+
+	// Close the shutdown channel to signal shutdown
+	close(shutdownChan)
+
+	rw := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/", bytes.NewBufferString(`{"token":"token","last_update":"last_update"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	h.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusNoContent, rw.Code, "should return 204 No Content when shutdown")
 }

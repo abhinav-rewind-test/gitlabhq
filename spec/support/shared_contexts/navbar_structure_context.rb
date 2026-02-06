@@ -26,12 +26,13 @@ RSpec.shared_context 'project navbar structure' do
       {
         nav_item: _('Plan'),
         nav_sub_items: [
-          _('Issues'),
+          s_('WorkItem|Work items'),
           _('Issue boards'),
           _('Milestones'),
           _('Wiki')
         ]
       },
+
       {
         nav_item: _('Code'),
         nav_sub_items: [
@@ -61,7 +62,8 @@ RSpec.shared_context 'project navbar structure' do
         nav_item: _('Deploy'),
         nav_sub_items: [
           _('Releases'),
-          s_('FeatureFlags|Feature flags')
+          s_('FeatureFlags|Feature flags'),
+          _('Model registry')
         ]
       },
       {
@@ -91,27 +93,39 @@ RSpec.shared_context 'project navbar structure' do
           _('General'),
           _('Integrations'),
           _('Webhooks'),
-          _('Access Tokens'),
+          _('Access tokens'),
           _('Repository'),
           _('Merge requests'),
           _('CI/CD'),
           _('Packages and registries'),
           _('Monitor'),
-          s_('UsageQuota|Usage Quotas')
+          s_('UsageQuota|Usage quotas')
         ]
       }
     ].compact
   end
+
+  # Projects belonging to a group have
+  # different menu elements
+  let(:group_owned_structure) do
+    structure.last[:nav_sub_items] = [
+      _('General'),
+      _('Integrations'),
+      _('Webhooks'),
+      _('Access tokens'),
+      _('Repository'),
+      _('Merge requests'),
+      _('CI/CD'),
+      _('Packages and registries'),
+      _('Monitor'),
+      _('Analytics'),
+      s_('UsageQuota|Usage quotas')
+    ]
+    structure
+  end
 end
 
 RSpec.shared_context 'group navbar structure' do
-  let(:analyze_nav_item) do
-    {
-      nav_item: _("Analyze"),
-      nav_sub_items: group_analytics_sub_nav_item
-    }
-  end
-
   let(:settings_nav_item) do
     {
       nav_item: _('Settings'),
@@ -119,13 +133,12 @@ RSpec.shared_context 'group navbar structure' do
         _('General'),
         _('Integrations'),
         _('Webhooks'),
-        _('Access Tokens'),
-        _('Projects'),
+        _('Access tokens'),
         _('Repository'),
         _('CI/CD'),
         _('Applications'),
         _('Packages and registries'),
-        s_('UsageQuota|Usage Quotas'),
+        s_('UsageQuota|Usage quotas'),
         _('Domain Verification')
       ]
     }
@@ -146,7 +159,7 @@ RSpec.shared_context 'group navbar structure' do
   end
 
   let(:plan_nav_items) do
-    [_("Issues"), _("Issue board"), _("Milestones"), (_('Iterations') if Gitlab.ee?)]
+    [s_("WorkItem|Work items"), _("Issue board"), _("Milestones"), (_('Iterations') if Gitlab.ee?)]
   end
 
   let(:customer_relations_nav_item) do
@@ -156,6 +169,13 @@ RSpec.shared_context 'group navbar structure' do
         _('Contacts'),
         _('Organizations')
       ]
+    }
+  end
+
+  let(:observability_nav_item) do
+    {
+      nav_item: _("Observability"),
+      nav_sub_items: [s_("Observability|O11y service settings"), s_('Observability|Setup')]
     }
   end
 
@@ -182,7 +202,7 @@ RSpec.shared_context 'group navbar structure' do
         nav_item: _("Operate"),
         nav_sub_items: [_("Kubernetes")]
       },
-      (analyze_nav_item if Gitlab.ee?)
+      observability_nav_item
     ]
   end
 end
@@ -199,19 +219,12 @@ RSpec.shared_context 'dashboard navbar structure' do
         nav_sub_items: []
       },
       {
-        nav_item: _('Organizations'),
-        nav_sub_items: []
-      },
-      {
         nav_item: _("Issues"),
         nav_sub_items: []
       },
       {
         nav_item: _("Merge requests"),
-        nav_sub_items: [
-          _('Assigned'),
-          _('Review requests')
-        ]
+        nav_sub_items: []
       },
       {
         nav_item: _("To-Do List"),
@@ -227,6 +240,10 @@ RSpec.shared_context 'dashboard navbar structure' do
       },
       {
         nav_item: _("Activity"),
+        nav_sub_items: []
+      },
+      {
+        nav_item: _("Import history"),
         nav_sub_items: []
       }
     ]
@@ -248,6 +265,14 @@ RSpec.shared_context '"Explore" navbar structure' do
         nav_item: _("CI/CD Catalog"),
         nav_sub_items: []
       },
+
+      if Gitlab.ee?
+        {
+          nav_item: s_("AICatalog|AI Catalog"),
+          nav_sub_items: []
+        }
+      end,
+
       {
         nav_item: _("Topics"),
         nav_sub_items: []

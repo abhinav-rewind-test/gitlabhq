@@ -22,6 +22,7 @@ module Ci
         end
 
         component_path = component_path_class.new(address: address)
+
         result = component_path.fetch_content!(current_user: current_user)
 
         if result&.content
@@ -29,15 +30,34 @@ module Ci
             content: result.content,
             path: result.path,
             project: component_path.project,
-            sha: component_path.sha
+            sha: component_path.sha,
+            name: component_path.component_name,
+            version: component_path.matched_version,
+            reference: component_path.reference
           })
+        elsif component_path.invalid_usage_for_latest?
+          ServiceResponse.error(
+            message: "#{error_prefix} The ~latest version reference is not supported for non-catalog resources. " \
+                     'Use a tag, branch, or commit SHA instead.',
+            reason: :invalid_usage)
+        elsif component_path.invalid_usage_for_partial_semver?
+          ServiceResponse.error(
+            message: "#{error_prefix} The partial semantic version reference is not supported for " \
+                     'non-catalog resources. Use a tag, branch, or commit SHA instead.',
+            reason: :invalid_usage)
         else
           ServiceResponse.error(message: "#{error_prefix} content not found", reason: :content_not_found)
         end
       rescue Gitlab::Access::AccessDeniedError
-        ServiceResponse.error(
-          message: "#{error_prefix} project does not exist or you don't have sufficient permissions",
-          reason: :not_allowed)
+        if current_user.external? && component_path.project.internal?
+          ServiceResponse.error(
+            message: "#{error_prefix} project is `Internal`, it cannot be accessed by an External User",
+            reason: :not_allowed)
+        else
+          ServiceResponse.error(
+            message: "#{error_prefix} project does not exist or you don't have sufficient permissions",
+            reason: :not_allowed)
+        end
       end
 
       private
@@ -50,7 +70,7 @@ module Ci
       strong_memoize_attr :component_path_class
 
       def error_prefix
-        "component '#{address}' -"
+        "Component '#{address}' -"
       end
     end
   end

@@ -1,5 +1,6 @@
-import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
+import { builders } from 'prosemirror-test-builder';
+import axios from '~/lib/utils/axios_utils';
 import Attachment from '~/content_editor/extensions/attachment';
 import DrawioDiagram from '~/content_editor/extensions/drawio_diagram';
 import Image from '~/content_editor/extensions/image';
@@ -9,7 +10,8 @@ import Link from '~/content_editor/extensions/link';
 import { VARIANT_DANGER } from '~/alert';
 import { HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import eventHubFactory from '~/helpers/event_hub_factory';
-import { createTestEditor, createDocBuilder, expectDocumentAfterTransaction } from '../test_utils';
+import { getLimitedMediaDimensions } from '~/lib/utils/media_utils';
+import { createTestEditor, expectDocumentAfterTransaction } from '../test_utils';
 import {
   PROJECT_WIKI_ATTACHMENT_IMAGE_HTML,
   PROJECT_WIKI_ATTACHMENT_IMAGE_SVG_HTML,
@@ -18,6 +20,10 @@ import {
   PROJECT_WIKI_ATTACHMENT_LINK_HTML,
   PROJECT_WIKI_ATTACHMENT_DRAWIO_DIAGRAM_HTML,
 } from '../test_constants';
+
+const retinaImageSize = { width: 663, height: 325 };
+
+jest.mock('~/lib/utils/media_utils');
 
 describe('content_editor/extensions/attachment', () => {
   let tiptapEditor;
@@ -34,6 +40,7 @@ describe('content_editor/extensions/attachment', () => {
 
   const uploadsPath = '/uploads/';
   const imageFile = new File(['foo'], 'test-file.png', { type: 'image/png' });
+  const imageFileRetina = new File(['foo'], 'test-file.png', { type: 'image/png' });
   const imageFileSvg = new File(['foo'], 'test-file.svg', { type: 'image/svg+xml' });
   const audioFile = new File(['foo'], 'test-file.mp3', { type: 'audio/mpeg' });
   const videoFile = new File(['foo'], 'test-file.mp4', { type: 'video/mp4' });
@@ -61,6 +68,7 @@ describe('content_editor/extensions/attachment', () => {
   const blobUrl = 'blob:https://gitlab.com/048c7ac1-98de-4a37-ab1b-0206d0ea7e1b';
 
   beforeEach(() => {
+    getLimitedMediaDimensions.mockResolvedValue(null);
     renderMarkdown = jest.fn();
     eventHub = eventHubFactory();
 
@@ -76,17 +84,14 @@ describe('content_editor/extensions/attachment', () => {
     });
 
     ({
-      builders: { doc, p, image, audio, video, link, drawioDiagram },
-    } = createDocBuilder({
-      tiptapEditor,
-      names: {
-        image: { nodeType: Image.name },
-        link: { nodeType: Link.name },
-        audio: { nodeType: Audio.name },
-        video: { nodeType: Video.name },
-        drawioDiagram: { nodeType: DrawioDiagram.name },
-      },
-    }));
+      doc,
+      paragraph: p,
+      image,
+      audio,
+      video,
+      link,
+      drawioDiagram,
+    } = builders(tiptapEditor.schema));
 
     mock = new MockAdapter(axios);
   });
@@ -107,7 +112,7 @@ describe('content_editor/extensions/attachment', () => {
       },
     });
 
-    renderMarkdown.mockResolvedValue(PROJECT_WIKI_ATTACHMENT_IMAGE_HTML);
+    renderMarkdown.mockResolvedValue({ body: PROJECT_WIKI_ATTACHMENT_IMAGE_HTML });
 
     const event = Object.assign(new Event(eventType), eventData);
     const handled = tiptapEditor.view.someProp(propName, (eventHandler) => {
@@ -133,7 +138,7 @@ describe('content_editor/extensions/attachment', () => {
       ${'drawioDiagram'} | ${PROJECT_WIKI_ATTACHMENT_DRAWIO_DIAGRAM_HTML} | ${drawioDiagramFile} | ${(attrs) => drawioDiagram(attrs)}
     `('when the file is $nodeType', ({ nodeType, html, file, mediaType }) => {
       beforeEach(() => {
-        renderMarkdown.mockResolvedValue(html);
+        renderMarkdown.mockResolvedValue({ body: html });
       });
 
       describe('when uploading succeeds', () => {
@@ -171,7 +176,7 @@ describe('content_editor/extensions/attachment', () => {
             p(
               mediaType({
                 canonicalSrc: file.name,
-                src: blobUrl,
+                src: `/${group}/${project}/-/wikis/${file.name}`,
                 alt: expect.stringContaining('test-file'),
                 uploading: false,
               }),
@@ -236,9 +241,49 @@ describe('content_editor/extensions/attachment', () => {
       });
     });
 
+    describe('when the file is a retina image', () => {
+      beforeEach(() => {
+        renderMarkdown.mockResolvedValue({ body: PROJECT_WIKI_ATTACHMENT_IMAGE_HTML });
+      });
+
+      describe('when uploading succeeds', () => {
+        const successResponse = {
+          link: {
+            markdown: `![test-file](${imageFileRetina.name})`,
+          },
+        };
+
+        beforeEach(() => {
+          mock.onPost().reply(HTTP_STATUS_OK, successResponse);
+        });
+
+        it('updates the image with width and height if available', async () => {
+          getLimitedMediaDimensions.mockResolvedValue(retinaImageSize);
+          const expectedDoc = doc(
+            p(
+              image({
+                uploading: false,
+                src: `/${group}/${project}/-/wikis/${imageFileRetina.name}`,
+                alt: imageFileRetina.name,
+                canonicalSrc: imageFileRetina.name,
+                ...retinaImageSize,
+              }),
+            ),
+          );
+
+          await expectDocumentAfterTransaction({
+            tiptapEditor,
+            number: 3,
+            expectedDoc,
+            action: () => tiptapEditor.commands.uploadAttachment({ file: imageFileRetina }),
+          });
+        });
+      });
+    });
+
     describe('when the file has a zip (or any other attachment) mime type', () => {
       beforeEach(() => {
-        renderMarkdown.mockResolvedValue(markdownApiResult[attachmentFile.name]);
+        renderMarkdown.mockResolvedValue({ body: markdownApiResult[attachmentFile.name] });
       });
 
       describe('when uploading succeeds', () => {
@@ -333,7 +378,7 @@ describe('content_editor/extensions/attachment', () => {
 
         for (const file of files) {
           renderMarkdown.mockImplementation((markdown) =>
-            Promise.resolve(markdownApiResult[markdown.match(/\((.+?)\)$/)[1]]),
+            Promise.resolve({ body: markdownApiResult[markdown.match(/\((.+?)\)$/)[1]] }),
           );
 
           mock
@@ -642,7 +687,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -699,7 +744,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -707,7 +752,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp4`,
                   canonicalSrc: 'test-file.mp4',
                   uploading: false,
                 }),
@@ -757,7 +802,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -765,7 +810,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp4`,
                   canonicalSrc: 'test-file.mp4',
                   uploading: false,
                 }),
@@ -819,7 +864,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -827,7 +872,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp4`,
                   canonicalSrc: 'test-file.mp4',
                   uploading: false,
                 }),
@@ -885,7 +930,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -893,7 +938,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp4`,
                   canonicalSrc: 'test-file.mp4',
                   uploading: false,
                 }),
@@ -921,7 +966,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file1.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file1.mp4`,
                   canonicalSrc: 'test-file1.mp4',
                   uploading: false,
                 }),
@@ -952,7 +997,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 image({
                   alt: 'test-file.png',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.png`,
                   canonicalSrc: 'test-file.png',
                   uploading: false,
                 }),
@@ -960,7 +1005,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp4`,
                   canonicalSrc: 'test-file.mp4',
                   uploading: false,
                 }),
@@ -988,7 +1033,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 video({
                   alt: 'test-file1.mp4',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file1.mp4`,
                   canonicalSrc: 'test-file1.mp4',
                   uploading: false,
                 }),
@@ -996,7 +1041,7 @@ describe('content_editor/extensions/attachment', () => {
               p(
                 audio({
                   alt: 'test-file.mp3',
-                  src: blobUrl,
+                  src: `/${group}/${project}/-/wikis/test-file.mp3`,
                   canonicalSrc: 'test-file.mp3',
                   uploading: false,
                 }),

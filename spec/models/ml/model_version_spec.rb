@@ -69,9 +69,15 @@ RSpec.describe Ml::ModelVersion, feature_category: :mlops do
 
     describe 'description' do
       context 'when description is too large' do
-        let(:description) { 'a' * 501 }
+        let(:description) { 'a' * 10_001 }
 
         it { expect(errors).to include(:description) }
+      end
+
+      context 'when description is below threshold' do
+        let(:description) { 'a' * 100 }
+
+        it { expect(errors).not_to include(:description) }
       end
     end
 
@@ -129,38 +135,6 @@ RSpec.describe Ml::ModelVersion, feature_category: :mlops do
     end
   end
 
-  describe '#find_or_create!' do
-    let_it_be(:existing_model_version) { create(:ml_model_versions, model: model1, version: '1.0.0') }
-
-    let(:version) { existing_model_version.version }
-    let(:package) { nil }
-    let(:description) { 'Some description' }
-
-    subject(:find_or_create) { described_class.find_or_create!(model1, version, package, description) }
-
-    context 'if model version exists' do
-      it 'returns the model version', :aggregate_failures do
-        expect { find_or_create }.not_to change { Ml::ModelVersion.count }
-        is_expected.to eq(existing_model_version)
-      end
-    end
-
-    context 'if model version does not exist' do
-      let(:version) { '2.0.0' }
-      let(:package) { create(:ml_model_package, project: model1.project, name: model1.name, version: version) }
-
-      it 'creates another model version', :aggregate_failures do
-        expect { find_or_create }.to change { Ml::ModelVersion.count }.by(1)
-        model_version = find_or_create
-
-        expect(model_version.version).to eq(version)
-        expect(model_version.model).to eq(model1)
-        expect(model_version.description).to eq(description)
-        expect(model_version.package).to eq(package)
-      end
-    end
-  end
-
   describe '#by_project_id_and_id' do
     let(:id) { model_version1.id }
     let(:project_id) { model_version1.project.id }
@@ -174,13 +148,13 @@ RSpec.describe Ml::ModelVersion, feature_category: :mlops do
     context 'if id has no match' do
       let(:id) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
 
     context 'if project id does not match' do
       let(:project_id) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
   end
 
@@ -199,19 +173,19 @@ RSpec.describe Ml::ModelVersion, feature_category: :mlops do
     context 'if id has no match' do
       let(:version) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
 
     context 'if project id does not match' do
       let(:project_id) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
 
     context 'if model name does not match' do
       let(:model_name) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
   end
 
@@ -227,7 +201,7 @@ RSpec.describe Ml::ModelVersion, feature_category: :mlops do
     subject { described_class.latest_by_model }
 
     it 'returns only the latest model version per model id' do
-      is_expected.to match_array([model_version4, model_version2])
+      is_expected.to match_array([model_version3, model_version2])
     end
   end
 

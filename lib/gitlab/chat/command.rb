@@ -12,7 +12,7 @@ module Gitlab
       include Utils::StrongMemoize
 
       attr_reader :project, :chat_name, :name, :arguments, :response_url,
-                  :channel
+        :channel
 
       # project - The Project to schedule the command for.
       # chat_name - The ChatName belonging to the user that scheduled the
@@ -66,14 +66,15 @@ module Gitlab
       def build_environment_variables(pipeline)
         pipeline.variables.build(
           [{ key: 'CHAT_INPUT', value: arguments },
-           { key: 'CHAT_CHANNEL', value: channel },
-           { key: 'CHAT_USER_ID', value: chat_name.chat_id }]
+            { key: 'CHAT_CHANNEL', value: channel },
+            { key: 'CHAT_USER_ID', value: chat_name.chat_id }]
         )
       end
 
       # pipeline - The `Ci::Pipeline` to create the chat data for.
       def build_chat_data(pipeline)
         pipeline.build_chat_data(
+          project_id: project.id,
           chat_name_id: chat_name.id,
           response_url: response_url
         )

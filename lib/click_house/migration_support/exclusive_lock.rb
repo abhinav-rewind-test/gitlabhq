@@ -18,7 +18,13 @@ module ClickHouse
           ttl = worker_class.click_house_worker_attrs[:migration_lock_ttl].from_now.utc
 
           Gitlab::Redis::SharedState.with do |redis|
-            redis.zadd(ACTIVE_WORKERS_REDIS_KEY, ttl.to_i, worker_id, gt: true)
+            current_score = redis.zscore(ACTIVE_WORKERS_REDIS_KEY, worker_id).to_i
+
+            if ttl.to_i > current_score
+              # DO NOT send 'gt: true' parameter to avoid compatibility
+              # problems with Redis versions older than 6.2.
+              redis.zadd(ACTIVE_WORKERS_REDIS_KEY, ttl.to_i, worker_id)
+            end
 
             yield
           ensure
@@ -47,7 +53,10 @@ module ClickHouse
             # expire keys in the past
             redis.zremrangebyscore(ACTIVE_WORKERS_REDIS_KEY, 0, "(#{min}")
             # Return if any workers are registered with a future expiry date
-            redis.zrange(ACTIVE_WORKERS_REDIS_KEY, min, '+inf', by_score: true, limit: [0, 1]).any?
+            #
+            # To be compatible with Redis 6.0 not use zrange with 'by_score: true' parameter
+            # instead use redis.zrangebyscore method.
+            redis.zrangebyscore(ACTIVE_WORKERS_REDIS_KEY, min, '+inf', limit: [0, 1]).any?
           end
         end
 
@@ -57,8 +66,6 @@ module ClickHouse
           workers_active = true
 
           loop do
-            return if Feature.disabled?(:wait_for_clickhouse_workers_during_migration)
-
             workers_active = active_sidekiq_workers?
             break unless workers_active
             break if Time.current >= worker_wait_ttl

@@ -56,7 +56,8 @@ module Gitlab
           disable_upload_object_storage do
             service = Projects::GitlabProjectsImportService.new(
               current_user,
-              import_params
+              import_params,
+              import_type: 'gitlab_project'
             )
 
             service.execute
@@ -72,9 +73,9 @@ module Gitlab
         end
 
         def show_import_start_message
-          logger.info "Importing GitLab export: #{file_path} into GitLab" \
-            " #{full_path}" \
-            " as #{current_user.name}"
+          logger.info "Importing GitLab export: #{file_path} into GitLab " \
+            "#{full_path} " \
+            "as #{current_user.name}"
         end
 
         def import_params

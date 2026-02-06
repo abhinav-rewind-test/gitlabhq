@@ -9,7 +9,6 @@ export default {
   },
   data() {
     return {
-      status: null,
       selectedValue: undefined,
     };
   },
@@ -27,8 +26,8 @@ export default {
     },
   },
   i18n: {
-    dropdownTitle: __('Change status'),
-    defaultDropdownText: __('Select status'),
+    dropdownTitle: __('Change state'),
+    defaultDropdownText: __('Select state'),
     resetText: __('Reset'),
   },
   statusDropdownOptions,

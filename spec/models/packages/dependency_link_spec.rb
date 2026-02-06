@@ -2,8 +2,8 @@
 require 'spec_helper'
 
 RSpec.describe Packages::DependencyLink, type: :model, feature_category: :package_registry do
-  let_it_be(:package1) { create(:package) }
-  let_it_be(:package2) { create(:package) }
+  let_it_be(:package1) { create(:npm_package, package_files: []) }
+  let_it_be(:package2) { create(:npm_package, package_files: []) }
   let_it_be(:dependency1) { create(:packages_dependency) }
   let_it_be(:dependency2) { create(:packages_dependency) }
 
@@ -84,19 +84,20 @@ RSpec.describe Packages::DependencyLink, type: :model, feature_category: :packag
       result = Gitlab::Json.parse(subject.to_json)
 
       expect(result.count).to eq(2)
-      expect(result).to include(
+
+      expect(result).to contain_exactly(
         hash_including(
           'package_id' => package1.id,
-          'dependency_ids_by_type' => {
-            '1' => [dependency2.id],
-            '2' => [dependency1.id]
-          }
+          'dependency_ids_by_type' => a_hash_including(
+            '1' => contain_exactly(dependency2.id),
+            '2' => contain_exactly(dependency1.id)
+          )
         ),
         hash_including(
           'package_id' => package2.id,
-          'dependency_ids_by_type' => {
-            '1' => [dependency1.id, dependency2.id]
-          }
+          'dependency_ids_by_type' => a_hash_including(
+            '1' => contain_exactly(dependency1.id, dependency2.id)
+          )
         )
       )
     end
@@ -118,5 +119,26 @@ RSpec.describe Packages::DependencyLink, type: :model, feature_category: :packag
     it 'returns only dependency_id' do
       expect(subject[0].attributes).to eq('dependency_id' => dependency1.id, 'id' => nil)
     end
+  end
+
+  describe '.without_empty_nuget_dependencies' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:nuget_package) { create(:nuget_package, without_package_files: true, project: project) }
+    let_it_be(:regular_dependency) { create(:packages_dependency, project:) }
+    let_it_be(:empty_nuget_dependency) do
+      create(:packages_dependency, name: "#{::Packages::Nuget::EMPTY_DEPENDENCY_PREFIX}-.NETStandard2.0", project: project)
+    end
+
+    let_it_be(:regular_link) do
+      create(:packages_dependency_link, package: nuget_package, dependency: regular_dependency)
+    end
+
+    let_it_be(:empty_nuget_link) do
+      create(:packages_dependency_link, package: nuget_package, dependency: empty_nuget_dependency)
+    end
+
+    subject { described_class.without_empty_nuget_dependencies }
+
+    it { is_expected.to include(regular_link).and exclude(empty_nuget_link) }
   end
 end

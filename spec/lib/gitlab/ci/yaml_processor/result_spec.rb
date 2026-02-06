@@ -5,12 +5,19 @@ require 'spec_helper'
 module Gitlab
   module Ci
     class YamlProcessor
-      RSpec.describe Result do
+      RSpec.describe Result, feature_category: :pipeline_composition do
         include StubRequests
 
         let(:user) { create(:user) }
         let(:ci_config) { Gitlab::Ci::Config.new(config_content, user: user) }
         let(:result) { described_class.new(ci_config: ci_config, warnings: ci_config&.warnings) }
+
+        let(:config_content) do
+          <<~YAML
+            job:
+              script: echo 'hello'
+          YAML
+        end
 
         describe '#builds' do
           context 'when a job has ID tokens' do
@@ -22,6 +29,231 @@ module Gitlab
 
             it 'includes `id_tokens`' do
               expect(result.builds.first[:id_tokens]).to eq({ TEST_ID_TOKEN: { aud: 'https://gitlab.com' } })
+            end
+          end
+
+          context 'when a job has manual_confirmation' do
+            let(:config_content) do
+              YAML.dump(
+                test: { stage: 'test', script: 'echo', manual_confirmation: 'manual confirmation message' }
+              )
+            end
+
+            it 'includes `manual_confirmation`' do
+              expect(result.builds.first[:options][:manual_confirmation]).to eq('manual confirmation message')
+            end
+          end
+        end
+
+        describe '#uses_nested_keyword?' do
+          subject { result.uses_nested_keyword?(%i[artifacts reports junit]) }
+
+          let(:configs) do
+            {
+              present: <<~YAML,
+                job1:
+                  script: echo
+                  artifacts:
+                    reports:
+                      junit: report.xml
+                job2:
+                  script: echo
+              YAML
+              absent: <<~YAML
+                job1:
+                  script: echo
+                job2:
+                  script: echo
+              YAML
+            }
+          end
+
+          context "when checking for keyword path" do
+            context "when the keyword path is present in a job" do
+              let(:config_content) { configs[:present] }
+
+              it { is_expected.to be_truthy }
+            end
+
+            context "when the keyword path is not present in any job" do
+              let(:config_content) { configs[:absent] }
+
+              it { is_expected.to be_falsey }
+            end
+          end
+        end
+
+        describe '#uses_inputs?' do
+          subject { result.uses_inputs? }
+
+          context 'when inputs are defined in spec' do
+            let(:config_content) do
+              <<~YAML
+                spec:
+                  inputs:
+                    environment:
+                      default: 'production'
+                ---
+                job:
+                  script: echo $[[ inputs.environment ]]
+              YAML
+            end
+
+            it { is_expected.to be_truthy }
+          end
+
+          context 'when inputs are not defined' do
+            let(:config_content) do
+              <<~YAML
+                job:
+                  script: echo 'hello'
+              YAML
+            end
+
+            it { is_expected.to be_falsey }
+          end
+
+          context 'when result is invalid' do
+            let(:result) { described_class.new(ci_config: nil, errors: ['some error']) }
+
+            it { is_expected.to be_falsey }
+          end
+        end
+
+        describe '#uses_input_rules?' do
+          subject { result.uses_input_rules? }
+
+          context 'when inputs with rules are defined in spec' do
+            let(:config_content) do
+              <<~YAML
+                spec:
+                  inputs:
+                    environment:
+                      rules:
+                        - if: '$CI_COMMIT_REF_NAME == "main"'
+                          default: 'production'
+                ---
+                job:
+                  script: echo $[[ inputs.environment ]]
+              YAML
+            end
+
+            it { is_expected.to be_truthy }
+          end
+
+          context 'when inputs are defined without rules' do
+            let(:config_content) do
+              <<~YAML
+                spec:
+                  inputs:
+                    environment:
+                      default: 'production'
+                ---
+                job:
+                  script: echo $[[ inputs.environment ]]
+              YAML
+            end
+
+            it { is_expected.to be_falsey }
+          end
+
+          context 'when inputs are not defined' do
+            let(:config_content) do
+              <<~YAML
+                job:
+                  script: echo 'hello'
+              YAML
+            end
+
+            it { is_expected.to be_falsey }
+          end
+
+          context 'when result is invalid' do
+            let(:result) { described_class.new(ci_config: nil, errors: ['some error']) }
+
+            it { is_expected.to be_falsey }
+          end
+        end
+
+        describe '#uses_keyword?' do
+          subject { result.uses_keyword?(keyword) }
+
+          using_table = {
+            run: {
+              present: <<~YAML,
+                job1:
+                  script: echo
+                job2:
+                  run:
+                    - name: test_run
+                      script: echo run step
+              YAML
+              absent: <<~YAML
+                job1:
+                  script: echo
+                job2:
+                  script: echo
+              YAML
+            },
+            only: {
+              present: <<~YAML,
+                job1:
+                  script: echo
+                  only:
+                    - main
+                    - /^issue-.*$/
+                    - merge_requests
+                job2:
+                  script: echo
+              YAML
+              absent: <<~YAML
+                job1:
+                  script: echo
+                  rules:
+                    - if: $CI_COMMIT_BRANCH
+                    - if: $CI_COMMIT_TAG
+                job2:
+                  script: echo
+                  rules:
+                    - if: $CI_COMMIT_BRANCH
+                    - if: $CI_COMMIT_TAG
+              YAML
+            },
+            except: {
+              present: <<~YAML,
+                job1:
+                  script: echo
+                job2:
+                  script: echo
+                  except:
+                    - main
+                    - /^stable-branch.*$/
+                    - schedules
+              YAML
+              absent: <<~YAML
+                job1:
+                  script: echo
+                job2:
+                  script: echo
+              YAML
+            }
+          }
+
+          using_table.each do |tested_keyword, configs|
+            context "when checking for :#{tested_keyword} keyword" do
+              let(:keyword) { tested_keyword }
+
+              context "when the :#{tested_keyword} keyword is present in a job" do
+                let(:config_content) { configs[:present] }
+
+                it { is_expected.to be_truthy }
+              end
+
+              context "when the :#{tested_keyword} keyword is not present in any job" do
+                let(:config_content) { configs[:absent] }
+
+                it { is_expected.to be_falsey }
+              end
             end
           end
         end
@@ -100,13 +332,6 @@ module Gitlab
         end
 
         describe '#stage_for' do
-          let(:config_content) do
-            <<~YAML
-              job:
-                script: echo 'hello'
-            YAML
-          end
-
           let(:job_name) { :job }
 
           subject(:stage_for) { result.stage_for(job_name) }
@@ -117,6 +342,25 @@ module Gitlab
             let(:job_name) { :invalid_job }
 
             it { is_expected.to be_nil }
+          end
+        end
+
+        describe '#included_components' do
+          it 'delegates to ci_config and memoizes the result' do
+            expect(ci_config).to receive(:included_components).once
+
+            result.included_components
+            result.included_components
+          end
+        end
+
+        describe '#clear_jobs!' do
+          it 'clears jobs' do
+            expect { result.clear_jobs! }.to change { result.jobs }.to eq({})
+          end
+
+          it 'keeps stages' do
+            expect { result.clear_jobs! }.not_to change { result.stages }
           end
         end
       end

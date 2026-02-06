@@ -87,14 +87,7 @@ export default {
       'isProjectInvalid',
       'projectSelectionLabel',
     ]),
-    ...mapState([
-      'enabled',
-      'integrated',
-      'projects',
-      'selectedProject',
-      'settingsLoading',
-      'token',
-    ]),
+    ...mapState(['enabled', 'integrated', 'projects', 'selectedProject', 'settingsLoading']),
     showGitlabDsnSetting() {
       return this.integrated && this.enabled && this.gitlabDsn;
     },
@@ -198,7 +191,7 @@ export default {
     </gl-form-group>
     <gl-form-group
       v-if="showGitlabDsnSetting"
-      :label="__('Paste this DSN into your Sentry SDK')"
+      :label="__('Paste this Data Source Name (DSN) into your Sentry SDK.')"
       data-testid="gitlab-dsn-setting-form"
     >
       <gl-form-input-group readonly :value="gitlabDsn">
@@ -218,7 +211,6 @@ export default {
           :project-selection-label="projectSelectionLabel"
           :projects="projects"
           :selected-project="selectedProject"
-          :token="token"
           @select-project="updateSelectedProject"
         />
       </div>

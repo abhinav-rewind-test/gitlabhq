@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::References::ReferenceCache, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::ReferenceCache, feature_category: :markdown do
   let_it_be(:group)    { create(:group) }
   let_it_be(:subgroup) { create(:group, parent: group) }
   let_it_be(:project)  { create(:project, group: group) }
@@ -121,7 +121,7 @@ RSpec.describe Banzai::Filter::References::ReferenceCache, feature_category: :te
         cache_single.load_reference_cache(filter_single.nodes)
       end
 
-      expect(control.count).to eq 3
+      expect(control.count).to eq 4
       # Since this is an issue filter that is not batching issue queries
       # across projects, we have to account for that.
       # 1 for for routes to find routes.source_id of projects matching paths

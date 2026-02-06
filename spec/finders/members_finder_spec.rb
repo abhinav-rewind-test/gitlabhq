@@ -217,7 +217,7 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
       described_class.new(project, user2).execute(include_relations: [:inherited, :direct, :invited_groups])
     end
 
-    let_it_be(:linked_group) { create(:group, :public) }
+    let_it_be(:linked_group) { create(:group, parent: group) }
     let_it_be(:nested_linked_group) { create(:group, parent: linked_group) }
     let_it_be(:linked_group_member) { linked_group.add_guest(user1) }
     let_it_be(:nested_linked_group_member) { nested_linked_group.add_guest(user2) }
@@ -243,6 +243,38 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
       expect(members).to contain_exactly(linked_group_member)
     end
 
+    context 'when share with group lock is enabled', :sidekiq_inline do
+      let_it_be(:top_group_member) { create(:group_member, :developer, group: group) }
+      let_it_be(:double_nested_linked_group) { create(:group, parent: nested_linked_group) }
+      let_it_be(:double_nested_linked_group_member) { double_nested_linked_group.add_developer(user3) }
+
+      before_all do
+        create(:group_group_link, shared_group: nested_group, shared_with_group: linked_group)
+        create(:project_group_link, project: project, group: double_nested_linked_group)
+      end
+
+      before do
+        project.group.update!(share_with_group_lock: true)
+      end
+
+      it 'returns no access for invited group members including members inherited from ancestors of invited groups' do
+        expect(member_access_level(nested_linked_group_member)).to eq(Gitlab::Access::NO_ACCESS)
+        expect(member_access_level(double_nested_linked_group_member)).to eq(Gitlab::Access::NO_ACCESS)
+      end
+
+      it 'returns access of inherited members' do
+        expect(member_access_level(top_group_member)).to eq(Gitlab::Access::DEVELOPER)
+      end
+
+      it 'returns access of inherited members through group sharing' do
+        expect(member_access_level(linked_group_member)).to eq(Gitlab::Access::GUEST)
+      end
+
+      def member_access_level(member)
+        members.id_in(member).first.access_level
+      end
+    end
+
     context 'when current user is a member of the shared project but not of invited group' do
       let_it_be(:project_member) { project.add_maintainer(user2) }
       let_it_be(:private_linked_group) { create(:group, :private) }
@@ -256,16 +288,6 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
       it 'includes members from invited groups not visible to the user' do
         expect(members).to contain_exactly(linked_group_member, private_linked_group_member, project_member)
       end
-
-      context 'when webui_members_inherited_users feature flag is disabled' do
-        before do
-          stub_feature_flags(webui_members_inherited_users: false)
-        end
-
-        it 'excludes members from invited groups not visible to the user' do
-          expect(members).to contain_exactly(linked_group_member, project_member)
-        end
-      end
     end
 
     context 'when the user is a member of invited group and ancestor groups' do
@@ -276,6 +298,138 @@ RSpec.describe MembersFinder, feature_category: :groups_and_projects do
 
         expect(members.map(&:user)).to contain_exactly(user1, user2)
         expect(members.max_by(&:access_level).access_level).to eq(Gitlab::Access::REPORTER)
+      end
+    end
+  end
+
+  context 'when filtering by max role' do
+    subject(:by_max_role) { described_class.new(project, user1, params: { max_role: max_role }).execute }
+
+    let_it_be(:guest_member) { create(:project_member, :guest, project: project, user: user2) }
+    let_it_be(:owner_member) { create(:project_member, :owner, project: project, user: user3) }
+
+    describe 'provided access level is incorrect' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:max_role) { [nil, '', 'static', 'xstatic-50', 'static-50x', 'static-99'] }
+
+      with_them do
+        it { is_expected.to match_array(project.members) }
+      end
+    end
+
+    describe 'none of the members have the provided access level' do
+      let(:max_role) { 'static-20' }
+
+      it { is_expected.to be_empty }
+    end
+
+    describe 'one of the members has the provided access level' do
+      let(:max_role) { 'static-50' }
+
+      it { is_expected.to contain_exactly(owner_member) }
+    end
+  end
+
+  context 'when filtering by access_levels' do
+    let_it_be(:maintainer_member) { project.add_maintainer(user1) }
+    let_it_be(:developer_member)  { project.add_developer(user2) }
+
+    it 'returns only members whose access_level matches the given filter' do
+      finder = described_class.new(project, user2, params: { access_levels: [Gitlab::Access::MAINTAINER] })
+      result = finder.execute
+
+      expect(result).to contain_exactly(maintainer_member)
+      expect(result.map(&:access_level)).to all(eq(Gitlab::Access::MAINTAINER))
+    end
+  end
+
+  context 'when filtering by user ids' do
+    let_it_be(:member1) { project.add_maintainer(user1) }
+    let_it_be(:member2) { project.add_developer(user2) }
+    let_it_be(:member3) { project.add_reporter(user3) }
+
+    subject(:including_user_ids) { described_class.new(project, user1, params: { ids: user_ids }).execute }
+
+    context 'when filtering by single user id' do
+      let(:user_ids) { [user2.id] }
+
+      it 'returns only the specified member' do
+        expect(including_user_ids).to match_array([member2])
+      end
+    end
+
+    context 'when filtering by multiple user ids' do
+      let(:user_ids) { [user1.id, user3.id] }
+
+      it 'returns members matching the specified user ids' do
+        expect(including_user_ids).to match_array([member1, member3])
+      end
+    end
+
+    context 'when filtering by non-existent user id' do
+      let(:user_ids) { [999999] }
+
+      it 'returns empty result' do
+        expect(including_user_ids).to be_empty
+      end
+    end
+
+    context 'when filtering by empty array' do
+      let(:user_ids) { [] }
+
+      it 'returns all members' do
+        expect(including_user_ids).to match_array([member1, member2, member3])
+      end
+    end
+
+    context 'when combined with other filters' do
+      let(:user_ids) { [user1.id, user2.id] }
+
+      context 'with access level filter' do
+        subject(:combined_filters) do
+          described_class.new(project, user1,
+            params: { ids: user_ids, access_levels: [Gitlab::Access::MAINTAINER] }).execute
+        end
+
+        it 'returns members matching both user ids and access level' do
+          expect(combined_filters).to match_array([member1])
+        end
+      end
+
+      context 'with owners and maintainers filter' do
+        subject(:combined_filters) do
+          described_class.new(project, user1, params: { ids: user_ids, owners_and_maintainers: true }).execute
+        end
+
+        it 'returns members matching both user ids and owners/maintainers criteria' do
+          expect(combined_filters).to match_array([member1])
+        end
+      end
+    end
+
+    context 'with different relation types' do
+      let_it_be(:group_member) { group.add_developer(user4) }
+      let(:user_ids) { [user1.id, user4.id] }
+
+      context 'when including direct relations only' do
+        subject(:direct_relations) do
+          described_class.new(project, user1, params: { ids: user_ids }).execute(include_relations: [:direct])
+        end
+
+        it 'returns only direct members matching the user ids' do
+          expect(direct_relations).to match_array([member1])
+        end
+      end
+
+      context 'when including inherited relations' do
+        subject(:inherited_relations) do
+          described_class.new(project, user1, params: { ids: user_ids }).execute(include_relations: [:inherited])
+        end
+
+        it 'returns inherited members matching the user ids' do
+          expect(inherited_relations).to match_array([group_member])
+        end
       end
     end
   end

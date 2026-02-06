@@ -7,7 +7,7 @@ RSpec.describe DeployKeys::DeployKeysFinder, feature_category: :continuous_deliv
     let_it_be(:user) { create(:user) }
     let_it_be(:project) { create(:project, :repository) }
 
-    let_it_be(:accessible_project) { create(:project, :internal).tap { |p| p.add_developer(user) } }
+    let_it_be(:accessible_project) { create(:project, :internal, developers: user) }
     let_it_be(:inaccessible_project) { create(:project, :internal) }
     let_it_be(:project_private) { create(:project, :private) }
 
@@ -59,6 +59,15 @@ RSpec.describe DeployKeys::DeployKeysFinder, feature_category: :continuous_deliv
 
         it 'returns the correct result' do
           expect(result.map(&:id)).to match_array([deploy_key_public.id])
+        end
+      end
+
+      context 'when has search' do
+        let_it_be(:another_deploy_key_public) { create(:deploy_key, public: true, title: 'new-key') }
+        let(:params) { { filter: :available_public_keys, search: 'key', in: 'title' } }
+
+        it 'returns the correct result' do
+          expect(result.map(&:id)).to match_array([another_deploy_key_public.id])
         end
       end
 

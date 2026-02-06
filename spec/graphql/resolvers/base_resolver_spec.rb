@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Resolvers::BaseResolver, feature_category: :api do
   include GraphqlHelpers
+  let_it_be(:current_user) { create(:user) }
 
   let(:resolver) do
     Class.new(described_class) do
@@ -242,37 +243,57 @@ RSpec.describe Resolvers::BaseResolver, feature_category: :api do
 
       expect(field.complexity.call({}, { sort: 'foo' }, 1)).to eq 6
       expect(field.complexity.call({}, { sort: 'foo', iid: 1 }, 1)).to eq 3
-      expect(field.complexity.call({}, { sort: 'foo', iids: [1, 2, 3] }, 1)).to eq 3
+      expect(field.complexity.call({}, { sort: 'foo', iids: [1, 2, 3] }, 1)).to eq 6
+    end
+
+    it 'does increase complexity when the number of iids present surpasses 100' do
+      field = Types::BaseField.new(name: 'test', type: GraphQL::Types::String.connection_type, resolver_class: described_class, null: false, max_page_size: 100)
+
+      expect(field.complexity.call({}, { sort: 'foo' }, 1)).to eq 6
+      iid_array = (1..1000).to_a.sample(1000)
+      expect(field.complexity.call({}, { sort: 'foo', iids: iid_array }, 1)).to eq 9
     end
   end
 
   describe '#object' do
-    let_it_be(:user) { create(:user) }
-
     it 'returns object' do
       expect_next_instance_of(resolver) do |r|
-        expect(r).to receive(:process).with(user)
+        expect(r).to receive(:process).with(current_user)
       end
 
-      resolve(resolver, obj: user)
+      resolve(resolver, obj: current_user)
     end
 
     context 'when object is a presenter' do
       it 'returns presented object' do
         expect_next_instance_of(resolver) do |r|
-          expect(r).to receive(:process).with(user)
+          expect(r).to receive(:process).with(current_user)
         end
 
-        resolve(resolver, obj: UserPresenter.new(user))
+        resolve(resolver, obj: UserPresenter.new(current_user))
       end
     end
   end
 
   describe '#offset_pagination' do
-    let(:instance) { resolver_instance(resolver) }
+    let(:instance) { resolver_instance(resolver, ctx: query_context) }
 
     it 'is sugar for OffsetPaginatedRelation.new' do
       expect(instance.offset_pagination(User.none)).to be_a(::Gitlab::Graphql::Pagination::OffsetPaginatedRelation)
+    end
+  end
+
+  describe '#authorized?' do
+    let(:object) { :object }
+    let(:scope_validator) { instance_double(::Gitlab::Auth::ScopeValidator) }
+    let(:context) { { current_user: current_user, scope_validator: scope_validator } }
+
+    it 'delegates to authorization' do
+      expect(resolver.authorization).to be_kind_of(::Gitlab::Graphql::Authorize::ObjectAuthorization)
+      expect(resolver.authorization).to receive(:ok?)
+        .with(object, current_user, scope_validator: scope_validator)
+
+      resolver.authorized?(object, context)
     end
   end
 end

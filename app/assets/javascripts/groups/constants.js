@@ -1,13 +1,13 @@
 import { __, s__ } from '~/locale';
+import {
+  SORT_LABEL_NAME,
+  SORT_LABEL_CREATED,
+  SORT_LABEL_UPDATED,
+  SORT_LABEL_STARS,
+} from '~/groups_projects/constants';
 
 export const MAX_CHILDREN_COUNT = 20;
-
-export const ACTIVE_TAB_SUBGROUPS_AND_PROJECTS = 'subgroups_and_projects';
-export const ACTIVE_TAB_SHARED = 'shared';
-export const ACTIVE_TAB_INACTIVE = 'inactive';
-
-export const GROUPS_LIST_HOLDER_CLASS = '.js-groups-list-holder';
-export const CONTENT_LIST_CLASS = '.groups-list';
+export const SEARCH_MINIMUM_LENGTH = 3;
 
 export const COMMON_STR = {
   FAILURE: __('An error occurred. Please try again.'),
@@ -26,42 +26,39 @@ export const ITEM_TYPE = {
 };
 
 export const SORTING_ITEM_NAME = {
-  label: __('Name'),
+  label: SORT_LABEL_NAME,
   asc: 'name_asc',
   desc: 'name_desc',
 };
 
 export const SORTING_ITEM_CREATED = {
-  label: __('Created'),
+  label: SORT_LABEL_CREATED,
   asc: 'created_asc',
   desc: 'created_desc',
 };
 
 export const SORTING_ITEM_UPDATED = {
-  label: __('Updated'),
+  label: SORT_LABEL_UPDATED,
   asc: 'latest_activity_asc',
   desc: 'latest_activity_desc',
 };
 
 export const SORTING_ITEM_STARS = {
-  label: __('Stars'),
+  label: SORT_LABEL_STARS,
   asc: 'stars_asc',
   desc: 'stars_desc',
 };
 
-export const OVERVIEW_TABS_SORTING_ITEMS = [
+export const GROUPS_LIST_FILTERED_SEARCH_TERM_KEY = 'filter';
+export const GROUPS_LIST_SORTING_ITEMS = [
   SORTING_ITEM_NAME,
   SORTING_ITEM_CREATED,
   SORTING_ITEM_UPDATED,
-  SORTING_ITEM_STARS,
 ];
 
-export const OVERVIEW_TABS_ARCHIVED_PROJECTS_SORTING_ITEMS = [
-  SORTING_ITEM_NAME,
-  SORTING_ITEM_CREATED,
-  SORTING_ITEM_UPDATED,
-];
+export const EXPLORE_FILTERED_SEARCH_NAMESPACE = 'explore';
 
 export const FORM_FIELD_NAME = 'name';
 export const FORM_FIELD_PATH = 'path';
+export const FORM_FIELD_ID = 'id';
 export const FORM_FIELD_VISIBILITY_LEVEL = 'visibilityLevel';

@@ -8,12 +8,7 @@ description: A scanner profile defines the scanner settings used to run an on-de
   scan
 introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/37404
 milestone: '13.3'
-gitlab_schema: gitlab_main_cell
-allow_cross_joins:
-- gitlab_main_clusterwide
-allow_cross_transactions:
-- gitlab_main_clusterwide
-allow_cross_foreign_keys:
-- gitlab_main_clusterwide
+gitlab_schema: gitlab_sec
 sharding_key:
   project_id: projects
+table_size: small

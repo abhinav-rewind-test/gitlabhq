@@ -9,6 +9,7 @@ RSpec.describe Terraform::State, feature_category: :infrastructure_as_code do
   it { is_expected.to belong_to(:locked_by_user).class_name('User') }
 
   it { is_expected.to validate_presence_of(:name) }
+  it { is_expected.to validate_length_of(:name).is_at_most(255) }
   it { is_expected.to validate_presence_of(:project_id) }
   it { is_expected.to validate_presence_of(:uuid) }
 
@@ -103,6 +104,45 @@ RSpec.describe Terraform::State, feature_category: :infrastructure_as_code do
 
           expect(migrated_version.reload.version).to eq(2)
         end
+      end
+    end
+
+    context 'when Terraform state file encryption is enabled' do
+      let(:terraform_state) { create(:terraform_state) }
+
+      before do
+        allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
+        stub_application_setting(terraform_state_encryption_enabled: true)
+      end
+
+      it 'tracks an encrypted terraform state event' do
+        expect(terraform_state).to receive(:track_internal_event).with(
+          'terraform_state_stored_with_encryption',
+          project: terraform_state.project,
+          user: terraform_state.locked_by_user
+        )
+
+        subject
+      end
+    end
+
+    context 'when Terraform state file encryption is disabled' do
+      let(:terraform_state) { create(:terraform_state) }
+
+      before do
+        stub_feature_flags(skip_encrypting_terraform_state_file: true)
+        allow(ApplicationSetting).to receive(:current).and_return(ApplicationSetting.new)
+        stub_application_setting(terraform_state_encryption_enabled: false)
+      end
+
+      it 'tracks a unencrypted terraform state event' do
+        expect(terraform_state).to receive(:track_internal_event).with(
+          'terraform_state_stored_without_encryption',
+          project: terraform_state.project,
+          user: terraform_state.locked_by_user
+        )
+
+        subject
       end
     end
   end

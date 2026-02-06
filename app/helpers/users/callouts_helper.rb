@@ -3,20 +3,25 @@
 module Users
   module CalloutsHelper
     GKE_CLUSTER_INTEGRATION = 'gke_cluster_integration'
-    GCP_SIGNUP_OFFER = 'gcp_signup_offer'
     SUGGEST_POPOVER_DISMISSED = 'suggest_popover_dismissed'
     TABS_POSITION_HIGHLIGHT = 'tabs_position_highlight'
     FEATURE_FLAGS_NEW_VERSION = 'feature_flags_new_version'
-    REGISTRATION_ENABLED_CALLOUT = 'registration_enabled_callout'
+    OPENSSL_CALLOUT = 'openssl_callout'
     UNFINISHED_TAG_CLEANUP_CALLOUT = 'unfinished_tag_cleanup_callout'
-    SECURITY_NEWSLETTER_CALLOUT = 'security_newsletter_callout'
-    MERGE_REQUEST_SETTINGS_MOVED_CALLOUT = 'merge_request_settings_moved_callout'
     PAGES_MOVED_CALLOUT = 'pages_moved_callout'
     REGISTRATION_ENABLED_CALLOUT_ALLOWED_CONTROLLER_PATHS = [/^root/, /^dashboard\S*/, /^admin\S*/].freeze
     WEB_HOOK_DISABLED = 'web_hook_disabled'
-    BRANCH_RULES_INFO_CALLOUT = 'branch_rules_info_callout'
-    NEW_NAV_FOR_EVERYONE_CALLOUT = 'new_nav_for_everyone_callout'
+    BRANCH_RULES_TIP_CALLOUT = 'branch_rules_tip_callout'
     TRANSITION_TO_JIHU_CALLOUT = 'transition_to_jihu_callout'
+    PERIOD_IN_TERRAFORM_STATE_NAME_ALERT = 'period_in_terraform_state_name_alert'
+    NEW_MR_DASHBOARD_BANNER = 'new_mr_dashboard_banner'
+    EMAIL_OTP_ENROLLMENT_CALLOUT = 'email_otp_enrollment_callout'
+
+    def render_product_usage_data_collection_changes(current_user)
+      return unless current_user&.can_admin_all_resources?
+
+      render 'shared/product_usage_data_collection_changes_callout'
+    end
 
     def show_gke_cluster_integration_callout?(project)
       active_nav_link?(controller: sidebar_operations_paths) &&
@@ -24,15 +29,9 @@ module Users
         !user_dismissed?(GKE_CLUSTER_INTEGRATION)
     end
 
-    def show_gcp_signup_offer?
-      !user_dismissed?(GCP_SIGNUP_OFFER)
-    end
+    def render_dashboard_ultimate_trial(user); end
 
-    def render_dashboard_ultimate_trial(user)
-    end
-
-    def render_two_factor_auth_recovery_settings_check
-    end
+    def render_two_factor_auth_recovery_settings_check; end
 
     def show_suggest_popover?
       !user_dismissed?(SUGGEST_POPOVER_DISMISSED)
@@ -50,17 +49,19 @@ module Users
       !Gitlab.com? &&
         current_user&.can_admin_all_resources? &&
         signup_enabled? &&
-        !user_dismissed?(REGISTRATION_ENABLED_CALLOUT) &&
         REGISTRATION_ENABLED_CALLOUT_ALLOWED_CONTROLLER_PATHS.any? { |path| controller.controller_path.match?(path) }
     end
 
-    def dismiss_two_factor_auth_recovery_settings_check
+    def show_openssl_callout?
+      return false unless Gitlab.version_info >= Gitlab::VersionInfo.new(17, 1) &&
+        Gitlab.version_info < Gitlab::VersionInfo.new(17, 7)
+
+      current_user&.can_admin_all_resources? &&
+        !user_dismissed?(OPENSSL_CALLOUT) &&
+        controller.controller_path.match?(%r{^admin(/\S*)?$})
     end
 
-    def show_security_newsletter_user_callout?
-      current_user&.can_admin_all_resources? &&
-        !user_dismissed?(SECURITY_NEWSLETTER_CALLOUT)
-    end
+    def dismiss_two_factor_auth_recovery_settings_check; end
 
     def web_hook_disabled_dismissed?(object)
       return false unless object.is_a?(::WebHooks::HasWebHooks)
@@ -68,20 +69,8 @@ module Users
       user_dismissed?(WEB_HOOK_DISABLED, object.last_webhook_failure, object: object)
     end
 
-    def show_merge_request_settings_callout?(project)
-      !user_dismissed?(MERGE_REQUEST_SETTINGS_MOVED_CALLOUT) && project.merge_requests_enabled?
-    end
-
-    def show_branch_rules_info?
-      !user_dismissed?(BRANCH_RULES_INFO_CALLOUT)
-    end
-
-    def show_new_nav_for_everyone_callout?
-      # The use_new_navigation user preference was controlled by the now removed "New navigation" toggle in the UI.
-      # We want to show this banner only to signed-in users who chose to disable the new nav (`false`).
-      # We don't want to show it for users who never touched the toggle and already had the new nav by default (`nil`)
-      user_had_new_nav_off = current_user && current_user.use_new_navigation == false
-      user_had_new_nav_off && !user_dismissed?(NEW_NAV_FOR_EVERYONE_CALLOUT)
+    def show_branch_rules_tip?
+      !user_dismissed?(BRANCH_RULES_TIP_CALLOUT)
     end
 
     def show_transition_to_jihu_callout?
@@ -89,6 +78,26 @@ module Users
         current_user&.can_admin_all_resources? &&
         %w[Asia/Hong_Kong Asia/Shanghai Asia/Macau Asia/Chongqing].include?(current_user.timezone) &&
         !user_dismissed?(TRANSITION_TO_JIHU_CALLOUT)
+    end
+
+    def show_period_in_terraform_state_name_alert_callout?
+      !user_dismissed?(PERIOD_IN_TERRAFORM_STATE_NAME_ALERT)
+    end
+
+    def show_new_mr_dashboard_banner?
+      !user_dismissed?(NEW_MR_DASHBOARD_BANNER)
+    end
+
+    def show_email_otp_enrollment_callout?
+      return false unless current_user
+      return false unless Feature.enabled?(:email_based_mfa, current_user)
+      return false if user_dismissed?(EMAIL_OTP_ENROLLMENT_CALLOUT)
+      return false unless current_user.email_otp_required_after.present?
+      # Only show for users who can log in with a password and don't have 2FA
+      return false if current_user.password_automatically_set? || current_user.two_factor_enabled?
+
+      days_until_enrollment = (current_user.email_otp_required_after.to_date - Date.current).to_i
+      days_until_enrollment.between?(8, 14)
     end
 
     private

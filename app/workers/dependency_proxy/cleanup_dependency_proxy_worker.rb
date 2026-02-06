@@ -5,10 +5,10 @@ module DependencyProxy
     include ApplicationWorker
     include CronjobQueue # rubocop:disable Scalability/CronWorkerContext
 
-    data_consistency :always
+    data_consistency :sticky
     idempotent!
 
-    feature_category :dependency_proxy
+    feature_category :virtual_registry
 
     def perform
       enqueue_blob_cleanup_job if DependencyProxy::Blob.pending_destruction.any?
@@ -26,3 +26,5 @@ module DependencyProxy
     end
   end
 end
+
+DependencyProxy::CleanupDependencyProxyWorker.prepend_mod

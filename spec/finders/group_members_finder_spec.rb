@@ -17,8 +17,12 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
   let_it_be(:user7)                { create(:user) }
 
   let_it_be(:link) do
-    create(:group_group_link, shared_group: group,     shared_with_group: public_invited_group)
-    create(:group_group_link, shared_group: sub_group, shared_with_group: private_invited_group)
+    create(:group_group_link, :maintainer, shared_group: group,     shared_with_group: public_invited_group)
+    create(:group_group_link, :maintainer, shared_group: sub_group, shared_with_group: private_invited_group)
+    create(:group_group_link, :owner, shared_with_group: public_invited_group)
+    create(:group_group_link, :owner, shared_with_group: private_invited_group)
+    create(:group_group_link, :owner, shared_group: group)
+    create(:group_group_link, :owner, shared_group: sub_group)
   end
 
   let(:groups) do
@@ -37,7 +41,7 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
         user1_sub_sub_group: create(:group_member, :maintainer, group: sub_sub_group, user: user1),
         user1_sub_group: create(:group_member, :developer, group: sub_group, user: user1),
         user1_group: create(:group_member, :reporter, group: group, user: user1),
-        user1_public_shared_group: create(:group_member, :maintainer, group: public_invited_group, user: user1),
+        user1_public_shared_group: create(:group_member, :owner, group: public_invited_group, user: user1),
         user1_private_shared_group: create(:group_member, :maintainer, group: private_invited_group, user: user1),
         user2_sub_sub_group: create(:group_member, :reporter, group: sub_sub_group, user: user2),
         user2_sub_group: create(:group_member, :developer, group: sub_group, user: user2),
@@ -52,9 +56,9 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
         user4_sub_sub_group: create(:group_member, :reporter, group: sub_sub_group, user: user4),
         user4_sub_group: create(:group_member, :developer, group: sub_group, user: user4, expires_at: 1.day.from_now),
         user4_group: create(:group_member, :developer, group: group, user: user4, expires_at: 2.days.from_now),
-        user4_public_shared_group: create(:group_member, :developer, group: public_invited_group, user: user4),
-        user4_private_shared_group: create(:group_member, :developer, group: private_invited_group, user: user4),
-        user5_private_shared_group: create(:group_member, :developer, group: private_invited_group, user: user5_2fa),
+        user4_public_shared_group: create(:group_member, :maintainer, group: public_invited_group, user: user4),
+        user4_private_shared_group: create(:group_member, :maintainer, group: private_invited_group, user: user4),
+        user5_private_shared_group: create(:group_member, :maintainer, group: private_invited_group, user: user5_2fa),
         user6_group: create(:group_member, :guest, group: group, user: user6),
         user7_private_invited_group: create(:group_member, :guest, group: private_invited_group, user: user7)
       }
@@ -77,19 +81,19 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
       [:shared_from_groups]                                    | :group         | [:user1_public_shared_group, :user2_public_shared_group, :user3_public_shared_group, :user4_public_shared_group]   | []
       [:direct, :inherited, :descendants, :shared_from_groups] | :group         | [:user1_sub_sub_group, :user2_group, :user3_sub_group, :user4_public_shared_group, :user6_group]                   | []
       []                                                       | :sub_group     | []                                                                                                                 | []
-      GroupMembersFinder::DEFAULT_RELATIONS                    | :sub_group     | [:user1_sub_group, :user2_group, :user3_sub_group, :user4_group, :user6_group]                                     | []
+      GroupMembersFinder::DEFAULT_RELATIONS                    | :sub_group     | [:user1_sub_group, :user2_group, :user3_sub_group, :user4_sub_group, :user6_group] | []
       [:direct]                                                | :sub_group     | [:user1_sub_group, :user2_sub_group, :user3_sub_group, :user4_sub_group]                                           | []
       [:inherited]                                             | :sub_group     | [:user1_group, :user2_group, :user3_group, :user4_group, :user6_group]                                             | []
       [:descendants]                                           | :sub_group     | [:user1_sub_sub_group, :user2_sub_sub_group, :user3_sub_sub_group, :user4_sub_sub_group]                           | []
       [:shared_from_groups]                                    | :sub_group     | [:user1_public_shared_group, :user2_public_shared_group, :user3_public_shared_group, :user4_public_shared_group]   | [:user5_private_shared_group, :user7_private_invited_group]
       [:direct, :inherited, :descendants, :shared_from_groups] | :sub_group     | [:user1_sub_sub_group, :user2_group, :user3_sub_group, :user4_public_shared_group, :user6_group]                   | [:user5_private_shared_group, :user7_private_invited_group]
       []                                                       | :sub_sub_group | []                                                                                                                 | []
-      GroupMembersFinder::DEFAULT_RELATIONS                    | :sub_sub_group | [:user1_sub_sub_group, :user2_group, :user3_sub_group, :user4_group, :user6_group]                                 | []
+      GroupMembersFinder::DEFAULT_RELATIONS                    | :sub_sub_group | [:user1_sub_sub_group, :user2_group, :user3_sub_sub_group, :user4_group, :user6_group] | []
       [:direct]                                                | :sub_sub_group | [:user1_sub_sub_group, :user2_sub_sub_group, :user3_sub_sub_group, :user4_sub_sub_group]                           | []
       [:inherited]                                             | :sub_sub_group | [:user1_sub_group, :user2_group, :user3_sub_group, :user4_group, :user6_group]                                     | []
       [:descendants]                                           | :sub_sub_group | []                                                                                                                 | []
       [:shared_from_groups]                                    | :sub_sub_group | [:user1_public_shared_group, :user2_public_shared_group, :user3_public_shared_group, :user4_public_shared_group]   | [:user5_private_shared_group, :user7_private_invited_group]
-      [:direct, :inherited, :descendants, :shared_from_groups] | :sub_sub_group | [:user1_sub_sub_group, :user2_group, :user3_sub_group, :user4_public_shared_group, :user6_group]                   | [:user5_private_shared_group, :user7_private_invited_group]
+      [:direct, :inherited, :descendants, :shared_from_groups] | :sub_sub_group | [:user1_sub_sub_group, :user2_group, :user3_sub_sub_group, :user4_public_shared_group, :user6_group] | [:user5_private_shared_group, :user7_private_invited_group]
     end
 
     with_them do
@@ -107,19 +111,6 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
           expect(result.to_a).to match_array(expected_members)
         end
       end
-
-      context 'when webui_members_inherited_users feature flag is disabled' do
-        before do
-          stub_feature_flags(webui_members_inherited_users: false)
-        end
-
-        it 'does not return private invited group members' do
-          result = described_class.new(groups[subject_group], user6).execute(include_relations: subject_relations)
-
-          expected_members = visible_members.map { |name| members[name] }
-          expect(result.to_a).to match_array(expected_members)
-        end
-      end
     end
 
     it 'returns the correct access level of the members shared through group sharing' do
@@ -129,7 +120,7 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
                                 .to_a
                                 .map(&:access_level)
 
-      correct_access_levels = ([Gitlab::Access::DEVELOPER] * 4) + [Gitlab::Access::GUEST, Gitlab::Access::REPORTER]
+      correct_access_levels = ([Gitlab::Access::MAINTAINER] * 3) + [Gitlab::Access::GUEST, Gitlab::Access::REPORTER, Gitlab::Access::DEVELOPER]
       expect(shared_members_access).to match_array(correct_access_levels)
     end
   end
@@ -151,7 +142,7 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
     it 'returns nothing if search only in inherited relation' do
       result = described_class.new(group, params: { search: user1.name }).execute(include_relations: [:inherited])
 
-      expect(result.to_a).to match_array([])
+      expect(result.to_a).to be_empty
     end
 
     it 'returns searched member only from sub_group if search only in inherited relation' do
@@ -311,6 +302,122 @@ RSpec.describe GroupMembersFinder, '#execute', feature_category: :groups_and_pro
 
       it 'returns unfiltered members' do
         expect(by_user_type).to match_array([user1_member, service_account_member, project_bot_member])
+      end
+    end
+  end
+
+  context 'filter by max role' do
+    subject(:by_max_role) { described_class.new(group, user1, params: { max_role: max_role }).execute }
+
+    let_it_be(:guest_member) { create(:group_member, :guest, group: group, user: user2) }
+    let_it_be(:owner_member) { create(:group_member, :owner, group: group, user: user3) }
+
+    describe 'provided access level is incorrect' do
+      where(:max_role) { [nil, '', 'static', 'xstatic-50', 'static-50x', 'static-99'] }
+
+      with_them do
+        it { is_expected.to match_array(group.members) }
+      end
+    end
+
+    describe 'none of the members have the provided access level' do
+      let(:max_role) { 'static-20' }
+
+      it { is_expected.to be_empty }
+    end
+
+    describe 'one of the members has the provided access level' do
+      let(:max_role) { 'static-50' }
+
+      it { is_expected.to contain_exactly(owner_member) }
+    end
+  end
+
+  context 'filter by user ids' do
+    let_it_be(:member1) { group.add_maintainer(user1) }
+    let_it_be(:member2) { group.add_developer(user2) }
+    let_it_be(:member3) { group.add_reporter(user3) }
+
+    subject(:including_user_ids) { described_class.new(group, user1, params: { ids: user_ids }).execute }
+
+    context 'when filtering by single user id' do
+      let(:user_ids) { [user2.id] }
+
+      it 'returns only the specified member' do
+        expect(including_user_ids).to match_array([member2])
+      end
+    end
+
+    context 'when filtering by multiple user ids' do
+      let(:user_ids) { [user1.id, user3.id] }
+
+      it 'returns members matching the specified user ids' do
+        expect(including_user_ids).to match_array([member1, member3])
+      end
+    end
+
+    context 'when filtering by non-existent user id' do
+      let(:user_ids) { [999999] }
+
+      it 'returns empty result' do
+        expect(including_user_ids).to be_empty
+      end
+    end
+
+    context 'when filtering by empty array' do
+      let(:user_ids) { [] }
+
+      it 'returns all members' do
+        expect(including_user_ids).to match_array([member1, member2, member3])
+      end
+    end
+
+    context 'when combined with other filters' do
+      let(:user_ids) { [user1.id, user2.id] }
+
+      context 'with access level filter' do
+        subject(:combined_filters) do
+          described_class.new(group, user1, params: { ids: user_ids, access_levels: [Gitlab::Access::MAINTAINER] }).execute
+        end
+
+        it 'returns members matching both user ids and access level' do
+          expect(combined_filters).to match_array([member1])
+        end
+      end
+
+      context 'with search filter' do
+        subject(:combined_filters) do
+          described_class.new(group, user1, params: { ids: user_ids, search: user2.name }).execute
+        end
+
+        it 'returns members matching both user ids and search criteria' do
+          expect(combined_filters).to match_array([member2])
+        end
+      end
+    end
+
+    context 'with different relation types' do
+      let_it_be(:sub_group_member) { sub_group.add_developer(user4) }
+      let(:user_ids) { [user1.id, user4.id] }
+
+      context 'when including direct relations only' do
+        subject(:direct_relations) do
+          described_class.new(group, user1, params: { ids: user_ids }).execute(include_relations: [:direct])
+        end
+
+        it 'returns only direct members matching the user ids' do
+          expect(direct_relations).to match_array([member1])
+        end
+      end
+
+      context 'when including descendants relations' do
+        subject(:descendants_relations) do
+          described_class.new(group, user1, params: { ids: user_ids }).execute(include_relations: [:descendants])
+        end
+
+        it 'returns descendant members matching the user ids' do
+          expect(descendants_relations).to match_array([sub_group_member])
+        end
       end
     end
   end

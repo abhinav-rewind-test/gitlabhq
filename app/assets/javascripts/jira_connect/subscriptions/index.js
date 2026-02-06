@@ -1,6 +1,6 @@
 import '~/webpack';
 
-import setConfigs from '@gitlab/ui/dist/config';
+import setConfigs from '@gitlab/ui/src/config';
 import Vue from 'vue';
 import Translate from '~/vue_shared/translate';
 
@@ -31,6 +31,7 @@ export function initJiraConnect() {
 
   return new Vue({
     el,
+    name: 'JiraConnectAppRoot',
     store,
     provide: {
       groupsPath,

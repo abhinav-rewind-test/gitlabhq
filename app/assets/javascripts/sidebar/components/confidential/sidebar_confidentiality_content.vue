@@ -1,13 +1,10 @@
 <script>
-import { GlIcon, GlAlert, GlTooltipDirective } from '@gitlab/ui';
+import { GlIcon, GlTooltipDirective } from '@gitlab/ui';
 import { __ } from '~/locale';
-import { TYPE_EPIC, WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
-import { confidentialityInfoText } from '~/vue_shared/constants';
 
 export default {
   components: {
     GlIcon,
-    GlAlert,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -17,18 +14,8 @@ export default {
       type: Boolean,
       required: true,
     },
-    issuableType: {
-      type: String,
-      required: true,
-    },
   },
   computed: {
-    confidentialBodyText() {
-      return confidentialityInfoText(
-        this.issuableType === TYPE_EPIC ? WORKSPACE_GROUP : WORKSPACE_PROJECT,
-        this.issuableType,
-      );
-    },
     confidentialIcon() {
       return this.confidential ? 'eye-slash' : 'eye';
     },
@@ -51,27 +38,18 @@ export default {
       <gl-icon
         :size="16"
         :name="confidentialIcon"
-        class="sidebar-item-icon inline"
+        class="sidebar-item-icon gl-inline-block"
         :class="{ 'is-active': confidential }"
       />
     </div>
     <gl-icon
       :size="16"
       :name="confidentialIcon"
-      class="sidebar-item-icon inline hide-collapsed"
+      class="sidebar-item-icon hide-collapsed gl-inline-block"
       :class="{ 'is-active': confidential }"
     />
     <span class="hide-collapsed" data-testid="confidential-text">
       {{ tooltipLabel }}
-      <gl-alert
-        v-if="confidential"
-        :show-icon="false"
-        :dismissible="false"
-        variant="warning"
-        class="gl-mt-3"
-      >
-        {{ confidentialBodyText }}
-      </gl-alert>
     </span>
   </div>
 </template>

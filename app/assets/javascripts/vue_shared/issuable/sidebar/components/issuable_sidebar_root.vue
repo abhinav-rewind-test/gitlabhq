@@ -1,6 +1,6 @@
 <script>
 import { GlButton, GlTooltipDirective } from '@gitlab/ui';
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { getCookie, setCookie, parseBoolean } from '~/lib/utils/common_utils';
 import { __ } from '~/locale';
 
@@ -21,7 +21,7 @@ export default {
     // 2. isExpanded reflect actual sidebar state.
     return {
       userExpanded,
-      isExpanded: userExpanded ? bp.isDesktop() : userExpanded,
+      isExpanded: userExpanded ? PanelBreakpointInstance.isDesktop() : userExpanded,
     };
   },
   computed: {
@@ -56,7 +56,7 @@ export default {
     },
     handleWindowResize() {
       if (this.userExpanded) {
-        this.isExpanded = bp.isDesktop();
+        this.isExpanded = PanelBreakpointInstance.isDesktop();
         this.updatePageContainerClass();
       }
     },
@@ -82,7 +82,7 @@ export default {
         v-gl-tooltip.hover.left
         category="tertiary"
         size="small"
-        class="gl-float-right gutter-toggle toggle-right-sidebar-button js-toggle-right-sidebar-button gl-shadow-none!"
+        class="gutter-toggle toggle-right-sidebar-button js-toggle-right-sidebar-button gl-float-right !gl-shadow-none"
         :class="collapsedToggleClass"
         data-testid="toggle-right-sidebar-button"
         :icon="toggleIcon"

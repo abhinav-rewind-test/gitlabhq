@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
-
 module Gitlab
   # Module that can be used to detect if a path points to a special file such as
   # a README or a CONTRIBUTING file.
   module FileDetector
+    PATTERNS_BASENAME = { openapi: [%r{\.(yaml|yml|json)\z}i, %r{openapi|swagger}i] }.freeze
+
     PATTERNS = {
       # Project files
       readme: /\A(#{Regexp.union(*Gitlab::MarkupHelper::PLAIN_FILENAMES).source})(\.(txt|#{Regexp.union(*Gitlab::MarkupHelper::EXTENSIONS).source}))?\z/i,
@@ -16,13 +16,12 @@ module Gitlab
       avatar: /\Alogo\.(png|jpg|gif)\z/,
       issue_template: %r{\A\.gitlab/issue_templates/[^/]+\.md\z},
       merge_request_template: %r{\A\.gitlab/merge_request_templates/[^/]+\.md\z},
-      metrics_dashboard: %r{\A\.gitlab/dashboards/[^/]+\.yml\z},
       xcode_config: %r{\A[^/]*\.(xcodeproj|xcworkspace)(/.+)?\z},
 
       # Configuration files
       gitignore: '.gitignore',
       gitlab_ci: ::Ci::Pipeline::DEFAULT_CONFIG_PATH,
-      jenkinsfile: 'jenkinsfile',
+      jenkinsfile: %r{\A([^/]*\.)?Jenkinsfile(\.[^/]*)?\z}i,
       route_map: '.gitlab/route-map.yml',
 
       # Dependency files
@@ -40,10 +39,7 @@ module Gitlab
       podspec_json: %r{\A[^/]*\.podspec\.json\z},
       podspec: %r{\A[^/]*\.podspec\z},
       requirements_txt: %r{\A[^/]*requirements\.txt\z},
-      yarn_lock: 'yarn.lock',
-
-      # OpenAPI Specification files
-      openapi: %r{[^/]*(openapi|swagger)[^/]*\.(yaml|yml|json)\z}i
+      yarn_lock: 'yarn.lock'
     }.freeze
 
     # Returns an Array of file types based on the given paths.
@@ -84,7 +80,10 @@ module Gitlab
 
         return type if did_match
       end
-
+      basename = File.basename(path)
+      PATTERNS_BASENAME.each do |type, regex|
+        return type if regex.all? { |r| basename =~ r }
+      end
       nil
     end
   end

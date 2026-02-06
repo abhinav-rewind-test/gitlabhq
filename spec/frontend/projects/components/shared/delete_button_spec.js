@@ -10,6 +10,7 @@ describe('DeleteButton', () => {
 
   const findForm = () => wrapper.findComponent(GlForm);
   const findModal = () => wrapper.findComponent(DeleteModal);
+  const findDeleteButton = () => wrapper.findComponent(GlButton);
 
   const defaultPropsData = {
     confirmPhrase: 'foo',
@@ -19,6 +20,9 @@ describe('DeleteButton', () => {
     mergeRequestsCount: 2,
     forksCount: 3,
     starsCount: 4,
+    nameWithNamespace: 'Foo / Bar',
+    markedForDeletion: false,
+    permanentDeletionDate: '2025-11-28',
   };
 
   const createComponent = (propsData) => {
@@ -26,9 +30,6 @@ describe('DeleteButton', () => {
       propsData: {
         ...defaultPropsData,
         ...propsData,
-      },
-      scopedSlots: {
-        'modal-footer': '<div data-testid="modal-footer-slot"></div>',
       },
     });
   };
@@ -55,10 +56,15 @@ describe('DeleteButton', () => {
     );
   });
 
+  it('renders the button', () => {
+    createComponent();
+    expect(wrapper.findComponent(GlButton).exists()).toBe(true);
+  });
+
   describe('when button is clicked', () => {
     beforeEach(() => {
       createComponent();
-      wrapper.findComponent(GlButton).vm.$emit('click');
+      findDeleteButton().vm.$emit('click');
     });
 
     it('opens modal', () => {
@@ -80,9 +86,19 @@ describe('DeleteButton', () => {
     });
   });
 
-  it('renders `modal-footer` slot', () => {
+  it('renders default text', () => {
     createComponent();
 
-    expect(wrapper.findByTestId('modal-footer-slot').exists()).toBe(true);
+    const button = findDeleteButton();
+
+    expect(button.text()).toBe('Delete project');
+  });
+
+  it('renders custom text', () => {
+    createComponent({ buttonText: 'Delete project immediately' });
+
+    const button = findDeleteButton();
+
+    expect(button.text()).toBe('Delete project immediately');
   });
 });

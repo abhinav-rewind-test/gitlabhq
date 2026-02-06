@@ -1,14 +1,13 @@
 <script>
 import {
+  GlBadge,
   GlDisclosureDropdown,
   GlDisclosureDropdownItem,
   GlFormCheckbox,
   GlIcon,
-  GlSprintf,
-  GlTooltipDirective,
   GlTruncate,
-  GlLink,
 } from '@gitlab/ui';
+import ProtectedBadge from '~/vue_shared/components/badges/protected_badge.vue';
 import { s__, __ } from '~/locale';
 import ListItem from '~/vue_shared/components/registry/list_item.vue';
 import {
@@ -16,32 +15,30 @@ import {
   ERRORED_PACKAGE_TEXT,
   ERROR_PUBLISHING,
   PACKAGE_ERROR_STATUS,
-  PACKAGE_DEFAULT_STATUS,
+  PACKAGE_DEPRECATED_STATUS,
+  PACKAGE_TYPE_CONAN,
   WARNING_TEXT,
 } from '~/packages_and_registries/package_registry/constants';
 import { getPackageTypeLabel } from '~/packages_and_registries/package_registry/utils';
 import PackageTags from '~/packages_and_registries/shared/components/package_tags.vue';
+import PublishMessage from '~/packages_and_registries/shared/components/publish_message.vue';
 import PublishMethod from '~/packages_and_registries/package_registry/components/list/publish_method.vue';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import TimeagoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 
 export default {
   name: 'PackageListRow',
   components: {
+    GlBadge,
     GlDisclosureDropdown,
     GlDisclosureDropdownItem,
     GlFormCheckbox,
     GlIcon,
-    GlSprintf,
     GlTruncate,
-    GlLink,
     PackageTags,
+    PublishMessage,
     PublishMethod,
     ListItem,
-    TimeagoTooltip,
-  },
-  directives: {
-    GlTooltip: GlTooltipDirective,
+    ProtectedBadge,
   },
   inject: ['isGroupPage', 'canDeletePackages'],
   props: {
@@ -69,51 +66,55 @@ export default {
       return this.packageEntity?.pipelines?.nodes[0];
     },
     projectName() {
-      return this.packageEntity.project.name;
+      return this.isGroupPage ? this.packageEntity.project?.name : '';
     },
-    projectLink() {
-      return this.packageEntity.project.webUrl;
+    projectUrl() {
+      return this.isGroupPage ? this.packageEntity.project?.webUrl : '';
     },
     pipelineUser() {
       return this.pipeline?.user?.name;
     },
-    publishedMessage() {
-      if (this.isGroupPage) {
-        if (this.pipelineUser) {
-          return s__(`PackageRegistry|Published to %{projectName} by %{author}, %{date}`);
-        }
-        return s__(`PackageRegistry|Published to %{projectName}, %{date}`);
-      }
-
-      if (this.pipelineUser) {
-        return s__(`PackageRegistry|Published by %{author}, %{date}`);
-      }
-
-      return s__(`PackageRegistry|Published %{date}`);
-    },
     errorStatusRow() {
       return this.packageEntity.status === PACKAGE_ERROR_STATUS;
+    },
+    errorStatusMessage() {
+      return this.packageEntity.statusMessage
+        ? this.packageEntity.statusMessage
+        : ERRORED_PACKAGE_TEXT;
+    },
+    showBadges() {
+      return this.showTags || this.showBadgeProtected || this.showDeprecatedBadge;
     },
     showTags() {
       return Boolean(this.packageEntity.tags?.nodes?.length);
     },
-    nonDefaultRow() {
-      return this.packageEntity.status && this.packageEntity.status !== PACKAGE_DEFAULT_STATUS;
+    showBadgeProtected() {
+      return this.packageEntity.protectionRuleExists;
+    },
+    showDeprecatedBadge() {
+      return this.packageEntity.status === PACKAGE_DEPRECATED_STATUS;
     },
     errorPackageStyle() {
       return {
-        'gl-text-red-500': this.errorStatusRow,
-        'gl-font-weight-normal': this.errorStatusRow,
+        'gl-text-danger': this.errorStatusRow,
+        'gl-font-normal': this.errorStatusRow,
       };
+    },
+    isPackageTypeConan() {
+      return (
+        this.packageEntity.packageType === PACKAGE_TYPE_CONAN &&
+        this.packageEntity.metadata?.packageChannel !== '_' &&
+        this.packageEntity.metadata?.packageUsername !== '_'
+      );
     },
   },
   i18n: {
-    erroredPackageText: ERRORED_PACKAGE_TEXT,
     createdAt: __('Created %{timestamp}'),
     deletePackage: DELETE_PACKAGE_TEXT,
     errorPublishing: ERROR_PUBLISHING,
     warning: WARNING_TEXT,
     moreActions: __('More actions'),
+    badgeProtectedTooltipText: s__('PackageRegistry|A protection rule exists for this package.'),
   },
 };
 </script>
@@ -129,73 +130,83 @@ export default {
       />
     </template>
     <template #left-primary>
-      <div class="gl-display-flex gl-align-items-center gl-mr-3 gl-min-w-0">
-        <router-link
-          v-if="containsWebPathLink"
-          :class="errorPackageStyle"
-          class="gl-text-body gl-min-w-0"
-          data-testid="details-link"
-          :to="{ name: 'details', params: { id: packageId } }"
-        >
-          <gl-truncate :text="packageEntity.name" />
-        </router-link>
-        <gl-truncate v-else :text="packageEntity.name" />
+      <div class="gl-mr-5 gl-flex gl-min-w-0 gl-items-center gl-gap-3" data-testid="package-name">
+        <div class="gl-gap-2 @sm/panel:gl-flex">
+          <router-link
+            v-if="containsWebPathLink"
+            :class="errorPackageStyle"
+            class="gl-min-w-0 gl-break-all gl-text-default"
+            data-testid="details-link"
+            :to="{ name: 'details', params: { id: packageId } }"
+          >
+            {{ packageEntity.name }}
+          </router-link>
+          <span v-else :class="errorPackageStyle">
+            {{ packageEntity.name }}
+          </span>
 
-        <package-tags
-          v-if="showTags"
-          class="gl-ml-3"
-          :tags="packageEntity.tags.nodes"
-          hide-label
-          :tag-display-limit="1"
-        />
+          <div v-if="isPackageTypeConan" data-testid="conan-metadata">
+            <span class="gl-hidden @sm/panel:gl-inline">&middot;</span>
+            <span class="gl-font-normal gl-text-subtle" data-testid="package-username">
+              {{ packageEntity.metadata.packageUsername }}
+            </span>
+            <gl-badge class="gl-ml-2" variant="info" data-testid="package-channel">
+              {{ packageEntity.metadata.packageChannel }}
+            </gl-badge>
+          </div>
+        </div>
+
+        <div v-if="showBadges" class="gl-flex gl-gap-3">
+          <package-tags
+            v-if="showTags"
+            :tags="packageEntity.tags.nodes"
+            hide-label
+            :tag-display-limit="1"
+          />
+
+          <protected-badge
+            v-if="showBadgeProtected"
+            :tooltip-text="$options.i18n.badgeProtectedTooltipText"
+          />
+
+          <gl-badge v-if="showDeprecatedBadge" variant="warning">
+            {{ s__('PackageRegistry|deprecated') }}
+          </gl-badge>
+        </div>
       </div>
     </template>
     <template #left-secondary>
       <div
         v-if="!errorStatusRow"
-        class="gl-display-flex gl-align-items-center"
+        class="gl-flex gl-items-center"
         data-testid="left-secondary-infos"
       >
         <gl-truncate
-          class="gl-max-w-15 gl-md-max-w-26"
+          class="gl-max-w-15 @md/panel:gl-max-w-26"
           :text="packageEntity.version"
           :with-tooltip="true"
         />
         <span class="gl-ml-2" data-testid="package-type">&middot; {{ packageType }}</span>
       </div>
-      <div v-else>
-        <gl-icon
-          v-gl-tooltip="{ title: $options.i18n.erroredPackageText }"
-          name="warning"
-          class="gl-text-red-500"
-          :aria-label="$options.i18n.warning"
-          data-testid="warning-icon"
-        />
-        <span class="gl-text-red-500">{{ $options.i18n.errorPublishing }}</span>
+      <div v-else class="gl-text-danger">
+        <gl-icon name="warning" :aria-label="$options.i18n.warning" data-testid="warning-icon" />
+        <span data-testid="error-message"
+          >{{ $options.i18n.errorPublishing }} &middot; {{ errorStatusMessage }}</span
+        >
       </div>
     </template>
 
-    <template #right-primary>
+    <template v-if="!errorStatusRow" #right-primary>
       <publish-method :pipeline="pipeline" />
     </template>
 
-    <template #right-secondary>
-      <span data-testid="right-secondary">
-        <gl-sprintf :message="publishedMessage">
-          <template v-if="isGroupPage" #projectName>
-            <gl-link
-              data-testid="root-link"
-              class="gl-text-decoration-underline"
-              :href="projectLink"
-              >{{ projectName }}</gl-link
-            >
-          </template>
-          <template #date>
-            <timeago-tooltip :time="packageEntity.createdAt" />
-          </template>
-          <template v-if="pipelineUser" #author>{{ pipelineUser }}</template>
-        </gl-sprintf>
-      </span>
+    <template v-if="!errorStatusRow" #right-secondary>
+      <publish-message
+        :author="pipelineUser"
+        :project-name="projectName"
+        :project-url="projectUrl"
+        :publish-date="packageEntity.createdAt"
+      />
     </template>
 
     <template v-if="packageEntity.userPermissions.destroyPackage" #right-action>
@@ -207,11 +218,13 @@ export default {
         text-sr-only
         no-caret
       >
-        <gl-disclosure-dropdown-item data-testid="action-delete" @action="$emit('delete')">
+        <gl-disclosure-dropdown-item
+          data-testid="action-delete"
+          variant="danger"
+          @action="$emit('delete')"
+        >
           <template #list-item>
-            <span class="gl-text-red-500">
-              {{ $options.i18n.deletePackage }}
-            </span>
+            {{ $options.i18n.deletePackage }}
           </template>
         </gl-disclosure-dropdown-item>
       </gl-disclosure-dropdown>

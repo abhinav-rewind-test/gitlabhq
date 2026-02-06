@@ -3,6 +3,7 @@ import VueApollo from 'vue-apollo';
 import createDefaultClient from '~/lib/graphql';
 import { sprintf } from '~/locale';
 import { parseBoolean } from '~/lib/utils/common_utils';
+import { helpPagePath } from '~/helpers/help_page_helper';
 import TransferGroupForm, { i18n } from './components/transfer_group_form.vue';
 
 export default () => {
@@ -16,7 +17,7 @@ export default () => {
   const {
     targetFormId = null,
     buttonText: confirmButtonText = '',
-    groupName = '',
+    warningMessage = '',
     groupFullPath,
     groupId: resourceId,
     isPaidGroup,
@@ -24,11 +25,31 @@ export default () => {
 
   return new Vue({
     el,
+    name: 'TransferGroupFormRoot',
     apolloProvider: new VueApollo({
       defaultClient: createDefaultClient(),
     }),
     provide: {
-      confirmDangerMessage: sprintf(i18n.confirmationMessage, { group_name: groupName }),
+      confirmDangerMessage: sprintf(
+        i18n.confirmationMessage,
+        {
+          groupName: groupFullPath,
+          codeStart: '<code>',
+          codeEnd: '</code>',
+          groupLinkStart: `<a href="${helpPagePath(
+            'user/group/manage.html#change-a-groups-path',
+          )}">`,
+          groupLinkEnd: '</a>',
+          documentationLinkStart: `<a href="${helpPagePath(
+            'user/project/repository/_index.html#repository-path-changes',
+          )}">`,
+          documentationLinkEnd: '</a>',
+        },
+        false,
+      ),
+      htmlConfirmationMessage: true,
+      additionalInformation: warningMessage,
+      confirmButtonText: i18n.confirmButtonText,
       resourceId,
     },
     render(createElement) {

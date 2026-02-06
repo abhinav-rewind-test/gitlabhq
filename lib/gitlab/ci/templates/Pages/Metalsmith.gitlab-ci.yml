@@ -1,5 +1,5 @@
 # To contribute improvements to CI/CD templates, please follow the Development guide at:
-# https://docs.gitlab.com/ee/development/cicd/templates.html
+# https://docs.gitlab.com/development/cicd/templates/
 # This specific template is located at:
 # https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Pages/Metalsmith.gitlab-ci.yml
 
@@ -12,7 +12,9 @@ pages:
     paths:
       - node_modules/
   script:
-    - npm install -g metalsmith
+    # Below config fixes the git port restriction: https://github.com/npm/npm/issues/6285#issuecomment-56640354
+    - git config --global url.https://github.com/.insteadOf git://github.com/
+    - npm install -g metalsmith@2.3.0
     - npm install
     - make build
   artifacts:

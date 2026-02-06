@@ -1,4 +1,4 @@
-import { GlLink } from '@gitlab/ui';
+import { GlLink, GlSprintf } from '@gitlab/ui';
 import { nextTick } from 'vue';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
@@ -9,7 +9,7 @@ import PackageTags from '~/packages_and_registries/shared/components/package_tag
 import { PACKAGE_ERROR_STATUS } from '~/packages_and_registries/shared/constants';
 
 import ListItem from '~/vue_shared/components/registry/list_item.vue';
-import { packageList } from '../mock_data';
+import { packageList, npmPackage } from '../mock_data';
 
 describe('packages_list_row', () => {
   let wrapper;
@@ -23,7 +23,6 @@ describe('packages_list_row', () => {
   const findPackagePath = () => wrapper.findComponent(PackagePath);
   const findDeleteButton = () => wrapper.findByTestId('action-delete');
   const findInfrastructureIconAndName = () => wrapper.findComponent(InfrastructureIconAndName);
-  const findListItem = () => wrapper.findComponent(ListItem);
   const findPackageLink = () => wrapper.findComponent(GlLink);
   const findWarningIcon = () => wrapper.findByTestId('warning-icon');
 
@@ -40,6 +39,7 @@ describe('packages_list_row', () => {
       stubs: {
         ListItem,
         InfrastructureIconAndName,
+        GlSprintf,
       },
       propsData: {
         packageLink: 'foo',
@@ -96,6 +96,24 @@ describe('packages_list_row', () => {
     });
   });
 
+  describe('published by author', () => {
+    it('shows the text when user is set', () => {
+      mountComponent({
+        packageEntity: { ...npmPackage },
+      });
+
+      expect(wrapper.text()).toContain('published by foo');
+    });
+
+    it('is hidden when user is null', () => {
+      mountComponent({
+        packageEntity: { ...npmPackage, pipeline: { ...npmPackage.pipeline, user: null } },
+      });
+
+      expect(wrapper.text()).not.toContain('published by');
+    });
+  });
+
   describe('deleteAvailable', () => {
     it('does not show when not set', () => {
       mountComponent({ disableDelete: true });
@@ -131,10 +149,6 @@ describe('packages_list_row', () => {
   describe(`when the package is in ${PACKAGE_ERROR_STATUS} status`, () => {
     beforeEach(() => {
       mountComponent({ packageEntity: { ...packageWithoutTags, status: PACKAGE_ERROR_STATUS } });
-    });
-
-    it('list item has a disabled prop', () => {
-      expect(findListItem().props('disabled')).toBe(true);
     });
 
     it('details link is disabled', () => {

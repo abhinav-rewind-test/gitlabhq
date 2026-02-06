@@ -1,14 +1,16 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Integrate your server with GitLab.com
 ---
 
-# Integrate your server with GitLab.com
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 Import projects from GitLab.com and login to your GitLab instance with your GitLab.com account.
 
@@ -16,7 +18,7 @@ To enable the GitLab.com OmniAuth provider you must register your application wi
 GitLab.com generates an application ID and secret key for you to use.
 
 1. Sign in to GitLab.com.
-1. On the left sidebar, select your avatar.
+1. In the upper-right corner, select your avatar.
 1. Select **Edit profile**.
 1. On the left sidebar, select **Applications**.
 1. Provide the required details for **Add new application**.
@@ -34,7 +36,7 @@ GitLab.com generates an application ID and secret key for you to use.
    If you:
 
    - Plan to use the importer, you can leave scopes as they are.
-   - Only want to use this application for authentication, we recommend using a more minimal set of scopes. `read_user` is sufficient.
+   - Only want to use this application for authentication, you should use a more minimal set of scopes. `read_user` is sufficient.
 
 1. Select **Save application**.
 1. You should now see an **Application ID** and **Secret**. Keep this page open as you continue
@@ -108,9 +110,9 @@ GitLab.com generates an application ID and secret key for you to use.
        args: { "client_options": { "site": 'https://gitlab.example.com' } }
    ```
 
-   NOTE:
-   In GitLab 15.1 and earlier, the `site` parameter requires an `/api/v4` suffix.
-   We recommend you drop this suffix after you upgrade to GitLab 15.2 or later.
+   > [!note]
+   > In GitLab 15.1 and earlier, the `site` parameter requires an `/api/v4` suffix.
+   > You should drop this suffix after upgrading to GitLab 15.2 or later.
 
 1. Change `'YOUR_APP_ID'` to the Application ID from the GitLab.com application page.
 1. Change `'YOUR_APP_SECRET'` to the secret from the GitLab.com application page.
@@ -127,9 +129,13 @@ signed in.
 
 ## Reduce access privileges on sign in
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/337663) in GitLab 14.8 [with a flag](../administration/feature_flags.md) named `omniauth_login_minimal_scopes`. Disabled by default.
-> - [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/351331) in GitLab 14.9.
-> - [Feature flag `omniauth_login_minimal_scopes`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/83453) removed in GitLab 15.2
+{{< history >}}
+
+- Introduced in GitLab 14.8 [with a flag](../administration/feature_flags/_index.md) named `omniauth_login_minimal_scopes`. Disabled by default.
+- [Enabled on GitLab.com](https://gitlab.com/gitlab-org/gitlab/-/issues/351331) in GitLab 14.9.
+- [Feature flag `omniauth_login_minimal_scopes`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/83453) removed in GitLab 15.2
+
+{{< /history >}}
 
 If you use a GitLab instance for authentication, you can reduce access rights when an OAuth application is used for sign in.
 

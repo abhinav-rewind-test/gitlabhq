@@ -29,7 +29,7 @@ class ProjectWiki < Wiki
   override :after_post_receive
   def after_post_receive
     # Update storage statistics
-    ProjectCacheWorker.perform_async(project.id, [], [:wiki_size])
+    ProjectCacheWorker.perform_async(project.id, [], %w[wiki_size])
 
     # This call is repeated for post-receive, to make sure we're updating
     # the activity columns for Git pushes as well.
@@ -46,7 +46,3 @@ class ProjectWiki < Wiki
     container.create_wiki_repository!
   end
 end
-
-# TODO: Remove this once we implement ES support for group wikis.
-# https://gitlab.com/gitlab-org/gitlab/-/issues/207889
-ProjectWiki.prepend_mod_with('ProjectWiki')

@@ -276,9 +276,9 @@ RSpec.describe Gitlab::Database::MigrationHelpers::V2, feature_category: :databa
     context 'when the renamed column exists' do
       let(:triggers) do
         [
-          ['trigger_020dbcb8cdd0', 'function_for_trigger_020dbcb8cdd0', before: 'insert'],
-          ['trigger_6edaca641d03', 'function_for_trigger_6edaca641d03', before: 'update'],
-          ['trigger_a3fb9f3add34', 'function_for_trigger_a3fb9f3add34', before: 'update']
+          ['trigger_020dbcb8cdd0', 'function_for_trigger_020dbcb8cdd0', { before: 'insert' }],
+          ['trigger_6edaca641d03', 'function_for_trigger_6edaca641d03', { before: 'update' }],
+          ['trigger_a3fb9f3add34', 'function_for_trigger_a3fb9f3add34', { before: 'update' }]
         ]
       end
 
@@ -372,10 +372,10 @@ RSpec.describe Gitlab::Database::MigrationHelpers::V2, feature_category: :databa
       end
     end
 
-    it 'does not raise on exhaustion by default' do
+    it 'raises on exhaustion by default' do
       with_lock_retries = double
       expect(Gitlab::Database::WithLockRetries).to receive(:new).and_return(with_lock_retries)
-      expect(with_lock_retries).to receive(:run).with(raise_on_exhaustion: false)
+      expect(with_lock_retries).to receive(:run).with(raise_on_exhaustion: true)
 
       model.with_lock_retries(env: env, logger: in_memory_logger) {}
     end
@@ -383,7 +383,7 @@ RSpec.describe Gitlab::Database::MigrationHelpers::V2, feature_category: :databa
     it 'defaults to disallowing sub-transactions' do
       with_lock_retries = double
       expect(Gitlab::Database::WithLockRetries).to receive(:new).with(hash_including(allow_savepoints: false)).and_return(with_lock_retries)
-      expect(with_lock_retries).to receive(:run).with(raise_on_exhaustion: false)
+      expect(with_lock_retries).to receive(:run).with(raise_on_exhaustion: true)
 
       model.with_lock_retries(env: env, logger: in_memory_logger) {}
     end

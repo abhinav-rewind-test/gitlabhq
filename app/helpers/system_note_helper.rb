@@ -9,13 +9,13 @@ module SystemNoteHelper
     'description' => 'pencil',
     'merged' => 'merge',
     'merge' => 'merge',
-    'opened' => 'issues',
+    'opened' => 'work-item-issue',
     'closed' => 'issue-close',
     'time_tracking' => 'timer',
     'assignee' => 'user',
     'reviewer' => 'user',
     'title' => 'pencil',
-    'task' => 'task-done',
+    'task' => 'todo-done',
     'label' => 'label',
     'cross_reference' => 'comment-dots',
     'branch' => 'fork',
@@ -37,7 +37,7 @@ module SystemNoteHelper
     'designs_removed' => 'doc-image',
     'designs_discussion_added' => 'doc-image',
     'status' => 'status',
-    'alert_issue_added' => 'issues',
+    'alert_issue_added' => 'work-item-issue',
     'new_alert_added' => 'warning',
     'severity' => 'information-o',
     'cloned' => 'documents',
@@ -47,7 +47,10 @@ module SystemNoteHelper
     'relate_to_child' => 'link',
     'unrelate_from_child' => 'link',
     'relate_to_parent' => 'link',
-    'unrelate_from_parent' => 'link'
+    'unrelate_from_parent' => 'link',
+    'requested_changes' => 'error',
+    'override' => 'review-warning',
+    'reviewed' => 'comment-lines'
   }.freeze
 
   def system_note_icon_name(note)

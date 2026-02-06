@@ -35,6 +35,7 @@ class Ci::PipelineEntity < Grape::Entity
     expose :detached_merge_request_pipeline?, as: :detached_merge_request_pipeline
     expose :merged_result_pipeline?, as: :merge_request_pipeline # deprecated, use merged_result_pipeline going forward
     expose :merged_result_pipeline?, as: :merged_result_pipeline
+    expose :type, as: :type
   end
 
   expose :details do
@@ -45,7 +46,7 @@ class Ci::PipelineEntity < Grape::Entity
     expose :event_type_name
   end
 
-  expose :merge_request, if: -> (*) { has_presentable_merge_request? }, with: MergeRequestForPipelineEntity do |pipeline|
+  expose :merge_request, if: ->(*) { has_presentable_merge_request? }, with: MergeRequestForPipelineEntity do |pipeline|
     pipeline.merge_request.present(current_user: request.current_user)
   end
 
@@ -66,26 +67,26 @@ class Ci::PipelineEntity < Grape::Entity
   end
 
   expose :commit, using: CommitEntity
-  expose :merge_request_event_type, if: -> (pipeline, _) { pipeline.merge_request? }
-  expose :source_sha, if: -> (pipeline, _) { pipeline.merged_result_pipeline? }
-  expose :target_sha, if: -> (pipeline, _) { pipeline.merged_result_pipeline? }
-  expose :yaml_errors, if: -> (pipeline, _) { pipeline.has_yaml_errors? }
-  expose :failure_reason, if: -> (pipeline, _) { pipeline.failure_reason? }
+  expose :merge_request_event_type, if: ->(pipeline, _) { pipeline.merge_request? }
+  expose :source_sha, if: ->(pipeline, _) { pipeline.merged_result_pipeline? }
+  expose :target_sha, if: ->(pipeline, _) { pipeline.merged_result_pipeline? }
+  expose :yaml_errors, if: ->(pipeline, _) { pipeline.has_yaml_errors? }
+  expose :failure_reason, if: ->(pipeline, _) { pipeline.failure_reason? }
 
-  expose :retry_path, if: -> (*) { can_retry? } do |pipeline|
+  expose :retry_path, if: ->(*) { can_retry? } do |pipeline|
     retry_project_pipeline_path(pipeline.project, pipeline)
   end
 
-  expose :cancel_path, if: -> (*) { can_cancel? } do |pipeline|
+  expose :cancel_path, if: ->(*) { can_cancel? } do |pipeline|
     cancel_project_pipeline_path(pipeline.project, pipeline)
   end
 
-  expose :delete_path, if: -> (*) { can_delete? } do |pipeline|
+  expose :delete_path, if: ->(*) { can_delete? } do |pipeline|
     project_pipeline_path(pipeline.project, pipeline)
   end
 
   expose :failed_builds,
-    if: -> (_, options) { !options[:disable_failed_builds] && can_retry? },
+    if: ->(_, options) { !options[:disable_failed_builds] && can_retry? },
     using: Ci::JobEntity do |pipeline|
     pipeline.failed_builds.each do |build|
       build.project = pipeline.project
@@ -93,8 +94,14 @@ class Ci::PipelineEntity < Grape::Entity
   end
 
   expose :failed_builds_count do |pipeline|
-    pipeline.failed_builds.size
+    if options[:disable_failed_builds]
+      pipeline.limited_failed_builds.size
+    else
+      pipeline.failed_builds.size
+    end
   end
+
+  expose :pipeline_schedule, using: Ci::PipelineScheduleEntity
 
   private
 

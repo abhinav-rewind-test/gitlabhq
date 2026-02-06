@@ -23,6 +23,7 @@ class NotesFinder
     @project = params[:project]
     @current_user = current_user
     @params = params.dup
+    @organization_id = @params.delete(:organization_id)
     @target_type = @params[:target_type]
   end
 
@@ -67,9 +68,7 @@ class NotesFinder
 
     @target =
       if target_type == "commit"
-        if Ability.allowed?(@current_user, :read_code, @project)
-          @project.commit(target_id)
-        end
+        @project.commit(target_id) if Ability.allowed?(@current_user, :read_code, @project)
       else
         noteable_for_type_by_id(target_type, target_id, target_iid)
       end
@@ -81,6 +80,9 @@ class NotesFinder
             else
               { iid: iid }
             end
+
+    # the reads finder needs to query by vulnerability_id
+    return noteables_for_type(type).find_by!(vulnerability_id: query[:id]) if type == 'vulnerability' # rubocop: disable CodeReuse/ActiveRecord
 
     noteables_for_type(type).find_by!(query) # rubocop: disable CodeReuse/ActiveRecord
   end
@@ -117,9 +119,11 @@ class NotesFinder
     when "merge_request"
       MergeRequestsFinder.new(@current_user, project_id: @project.id).execute # rubocop: disable CodeReuse/Finder
     when "snippet", "project_snippet"
-      SnippetsFinder.new(@current_user, project: @project).execute # rubocop: disable CodeReuse/Finder
+      SnippetsFinder.new(@current_user, organization_id: @organization_id, project: @project).execute # rubocop: disable CodeReuse/Finder
     when "personal_snippet"
-      SnippetsFinder.new(@current_user, only_personal: true).execute # rubocop: disable CodeReuse/Finder
+      SnippetsFinder.new(@current_user, organization_id: @organization_id, only_personal: true).execute # rubocop: disable CodeReuse/Finder
+    when "wiki_page/meta"
+      WikiPage::Meta.for_project(@project)
     else
       raise "invalid target_type '#{noteable_type}'"
     end
@@ -179,7 +183,7 @@ class NotesFinder
   def sort(notes)
     sort = @params[:sort].presence
 
-    return notes.fresh unless sort
+    return notes.order_created_at_id_asc unless sort
 
     notes.order_by(sort)
   end
@@ -192,7 +196,6 @@ class NotesFinder
   end
 
   def without_hidden_notes?
-    return false unless Feature.enabled?(:hidden_notes)
     return false if @current_user&.can_admin_all_resources?
 
     true

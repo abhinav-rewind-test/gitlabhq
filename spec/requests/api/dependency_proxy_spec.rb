@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::DependencyProxy, api: true, feature_category: :dependency_proxy do
+RSpec.describe API::DependencyProxy, :api, feature_category: :virtual_registry do
   let_it_be(:user) { create(:user) }
   let_it_be(:blob) { create(:dependency_proxy_blob) }
   let_it_be(:group, reload: true) { blob.group }
@@ -59,6 +59,13 @@ RSpec.describe API::DependencyProxy, api: true, feature_category: :dependency_pr
       let(:group_id) { ERB::Util.url_encode(group.full_path) }
 
       it_behaves_like 'responding to purge requests'
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_dependency_proxy_cache do
+      let(:boundary_object) { group }
+      let(:request) do
+        delete api("/groups/#{group.id}/dependency_proxy/cache", personal_access_token: pat)
+      end
     end
   end
 end

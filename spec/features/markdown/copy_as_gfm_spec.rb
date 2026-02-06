@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
+RSpec.describe 'Copy as GFM', :js, feature_category: :markdown do
   include MarkupHelper
   include RepoHelpers
   include ActionView::Helpers::JavaScriptHelper
@@ -17,6 +17,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
       user = create(:user)
       @project.add_maintainer(user)
       sign_in(user)
+      allow(Gitlab::QueryLimiting::Transaction).to receive(:threshold).and_return(101)
       visit project_issue_path(@project, @feat.issue)
     end
 
@@ -29,7 +30,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
     it 'transforms HTML to GFM', :aggregate_failures do
       verify(
         'nesting',
-        '> 1. [x] [**$`2 + 2`$ {-=-}{+=+} 2^2 ~~:thumbsup:~~**](http://google.com)'
+        "> 1. [x] [**$`2 + 2`$ {-=-}{+=+} 2^2 ~~:#{AwardEmoji::THUMBS_UP}:~~**](http://google.com)"
       )
 
       verify(
@@ -147,12 +148,12 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
       )
 
       verify(
-        'AutolinkFilter',
+        'MarkdownFilter',
         'https://example.com'
       )
 
       verify(
-        'TableOfContentsFilter',
+        'TableOfContentsTagFilter',
         <<~GFM,
           [[_TOC_]]
 
@@ -166,7 +167,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
 
       verify(
         'EmojiFilter',
-        ':thumbsup:'
+        ":#{AwardEmoji::THUMBS_UP}:"
       )
 
       verify(
@@ -453,7 +454,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
               <div class="js-suggestion-diff-header font-weight-bold">
                 Suggested change
                 <a href="/gitlab/help/user/discussions/index.md#suggest-changes" aria-label="Help" class="js-help-btn">
-                  <svg aria-hidden="true" class="s16 ic-question-o link-highlight">
+                  <svg aria-hidden="true" class="s16 ic-question-o">
                     <use xlink:href="/gitlab/assets/icons.svg#question-o"></use>
                   </svg>
                 </a>
@@ -656,7 +657,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
     end
 
     def project_media_uri(project, media_path)
-      "#{project_path(project)}#{media_path}"
+      "/-/project/#{project.id}#{media_path}"
     end
 
     def verify_media_with_partial_path(gfm, media_uri)
@@ -694,7 +695,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
           it 'copies as inline code' do
             verify(
               '[id="2f6fcd96b88b36ce98c38da085c795a27d92a3dd_10_9"]',
-              '`raise RuntimeError, "System commands must be given as an array of strings"`',
+              '`      raise RuntimeError, "System commands must be given as an array of strings"`',
               target: '[id="2f6fcd96b88b36ce98c38da085c795a27d92a3dd_10_9"]'
             )
           end
@@ -718,6 +719,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
 
       context 'inline diff' do
         before do
+          stub_feature_flags(rapid_diffs_on_commit_show: false)
           visit project_commit_path(project, sample_commit.id, view: 'inline')
           wait_for_requests
         end
@@ -727,6 +729,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
 
       context 'parallel diff' do
         before do
+          stub_feature_flags(rapid_diffs_on_commit_show: false)
           visit project_commit_path(project, sample_commit.id, view: 'parallel')
           wait_for_requests
         end
@@ -773,11 +776,11 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
         wait_for_requests
       end
 
-      context 'selecting one word of text' do
+      context 'selecting one line of text with a single word in it' do
         it 'copies as inline code' do
           verify(
             '.line[id="LC10"]',
-            '`end`'
+            '`    end`'
           )
         end
       end
@@ -786,7 +789,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
         it 'copies as inline code' do
           verify(
             '.line[id="LC9"]',
-            '`raise RuntimeError, "System commands must be given as an array of strings"`'
+            '`      raise RuntimeError, "System commands must be given as an array of strings"`'
           )
         end
       end
@@ -825,7 +828,7 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
         it 'copies as inline code' do
           verify(
             '.line[id="LC27"]',
-            '`"bio": null,`'
+            '`    "bio": null,`'
           )
         end
       end
@@ -833,11 +836,11 @@ RSpec.describe 'Copy as GFM', :js, feature_category: :team_planning do
       context 'selecting multiple lines of text' do
         it 'copies as a code block with the correct language' do
           verify(
-            '.line[id="LC27"], .line[id="LC28"]',
+            '.line[id="LC27"], .line[id="LC29"]',
             <<~GFM
               ```json
                   "bio": null,
-                  "skype": "",
+                  "linkedin": "",
               ```
             GFM
           )

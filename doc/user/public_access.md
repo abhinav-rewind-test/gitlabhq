@@ -1,14 +1,17 @@
 ---
-stage: Data Stores
-group: Tenant Scale
+stage: Tenant Scale
+group: Organizations
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Project and group visibility
+description: Public, private, and internal.
 ---
 
-# Project and group visibility
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Projects and groups in GitLab can be private, internal, or public.
 
@@ -29,19 +32,22 @@ Users with the Guest role cannot clone the project.
 
 Private groups can have only private subgroups and projects.
 
-NOTE:
-When you [share a private group with another group](group/manage.md#share-a-group-with-another-group),
-users who don't have access to the private group can view a list of users who have access to the inviting group
-through the endpoint `https://gitlab.com/groups/<inviting-group-name>/-/autocomplete_sources/members`.
-However, the name and path of the private group are masked, and the users' membership source is not displayed.
+> [!note]
+> When you [share a private group with another group](project/members/sharing_projects_groups.md#invite-a-group-to-a-group),
+> users who don't have access to the private group can view a list of users who have access to the inviting group
+> through the endpoint `https://gitlab.com/groups/<inviting-group-name>/-/autocomplete_sources/members`.
+> However, the name and path of the private group are masked, and the users' membership source is not displayed.
 
 ## Internal projects and groups
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+{{< details >}}
 
-For internal projects, **any authenticated user**, including users with the Guest role, can:
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+For internal projects, any authenticated user, including users with the Guest role, can:
 
 - Clone the project.
 - View the public access directory (`/public`).
@@ -54,17 +60,17 @@ Internal groups can have internal or private subgroups and projects.
 
 ## Public projects and groups
 
-For public projects, **unauthenticated users**, including users with the Guest role, can:
+For public projects, any user, including unauthenticated users, can:
 
 - Clone the project.
 - View the public access directory (`/public`).
 
 Public groups can have public, internal, or private subgroups and projects.
 
-NOTE:
-If an administrator restricts the
-[**Public** visibility level](../administration/settings/visibility_and_access_controls.md#restrict-visibility-levels),
-then the public access directory (`/public`) is visible only to authenticated users.
+> [!note]
+> If an administrator restricts the
+> [**Public** visibility level](../administration/settings/visibility_and_access_controls.md#restrict-visibility-levels),
+> then the public access directory (`/public`) is visible only to authenticated users.
 
 ## Change project visibility
 
@@ -74,8 +80,8 @@ Prerequisites:
 
 - You must have the Owner role for a project.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. From the **Project visibility** dropdown list, select an option.
    The visibility setting for a project must be at least as restrictive
@@ -88,10 +94,10 @@ You can change the visibility of individual features in a project.
 
 Prerequisites:
 
-- You must have the Owner role for the project.
+- You must have at least the Maintainer role for the project.
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Settings > General**.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Settings** > **General**.
 1. Expand **Visibility, project features, permissions**.
 1. To enable or disable a feature, turn on or turn off the feature toggle.
 1. Select **Save changes**.
@@ -107,9 +113,9 @@ Prerequisites:
   restrictive as the new setting of the parent group. For example, you cannot set a group
   to private if a project or subgroup in that group is public.
 
-1. On the left sidebar, select **Search or go to** and find your group.
-1. Select **Settings > General**.
-1. Expand **Naming, visibility**.
+1. On the top bar, select **Search or go to** and find your group.
+1. Select **Settings** > **General**.
+1. Expand **Naming, description, visibility**.
 1. For **Visibility level**, select an option.
    The visibility setting for a project must be at least as restrictive
    as the visibility of its parent group.
@@ -117,23 +123,14 @@ Prerequisites:
 
 ## Restrict use of public or internal projects
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Administrators can restrict which visibility levels users can choose when they create a project or a snippet.
 This setting can help prevent users from publicly exposing their repositories by accident.
 
 For more information, see [Restrict visibility levels](../administration/settings/visibility_and_access_controls.md#restrict-visibility-levels).
-
-<!-- ## Troubleshooting
-
-Include any troubleshooting steps that you can foresee. If you know beforehand what issues
-one might have when setting this up, or when something is changed, or on upgrading, it's
-important to describe those, too. Think of things that may go wrong and include them here.
-This is important to minimize requests for support, and to avoid doc comments with
-questions that you know someone might ask.
-
-Each scenario can be a third-level heading, for example `### Getting error message X`.
-If you have none to add when creating a doc, leave this section in place
-but commented out to help encourage others to add to it in the future. -->

@@ -8,48 +8,39 @@ module API
         authenticate_gitlab_kas_request!
       end
 
+      helpers ::API::Helpers::KasHelpers
       helpers ::API::Helpers::Kubernetes::AgentHelpers
 
       namespace 'internal' do
+        namespace 'agents' do
+          namespace 'agentk' do
+            before do
+              check_agent_token
+            end
+
+            desc 'Gets agent info for agentk' do
+              detail 'Retrieves agent info for agentk for the given token'
+            end
+            route_setting :authentication, cluster_agent_token_allowed: true
+            get '/agent_info', feature_category: :deployment_management, urgency: :low do
+              project = agent.project
+
+              status 200
+              {
+                project_id: project.id,
+                agent_id: agent.id,
+                agent_name: agent.name,
+                gitaly_info: gitaly_info(project),
+                gitaly_repository: gitaly_repository(project),
+                default_branch: project.default_branch_or_main
+              }
+            end
+          end
+        end
+
         namespace 'kubernetes' do
           before do
             check_agent_token
-          end
-
-          desc 'Gets agent info' do
-            detail 'Retrieves agent info for the given token'
-          end
-          route_setting :authentication, cluster_agent_token_allowed: true
-          get '/agent_info', feature_category: :deployment_management, urgency: :low do
-            project = agent.project
-
-            status 200
-            {
-              project_id: project.id,
-              agent_id: agent.id,
-              agent_name: agent.name,
-              gitaly_info: gitaly_info(project),
-              gitaly_repository: gitaly_repository(project),
-              default_branch: project.default_branch_or_main
-            }
-          end
-
-          desc 'Gets project info' do
-            detail 'Retrieves project info (if authorized)'
-          end
-          route_setting :authentication, cluster_agent_token_allowed: true
-          get '/project_info', feature_category: :deployment_management, urgency: :low do
-            project = find_project(params[:id])
-
-            not_found! unless agent_has_access_to_project?(project)
-
-            status 200
-            {
-              project_id: project.id,
-              gitaly_info: gitaly_info(project),
-              gitaly_repository: gitaly_repository(project),
-              default_branch: project.default_branch_or_main
-            }
           end
 
           desc 'Verify agent access to a project' do
@@ -108,6 +99,8 @@ module API
             service_response = ::Clusters::Agents::AuthorizeProxyUserService.new(user, agent).execute
             render_api_error!(service_response[:message], service_response[:reason]) unless service_response.success?
 
+            set_feature_flag_header_for_agent(user: user, agent: agent)
+
             service_response.payload
           end
         end
@@ -117,8 +110,7 @@ module API
             detail 'Updates usage metrics for agent'
           end
           params do
-            optional :counters, type: Hash do
-              optional :gitops_sync, type: Integer, desc: 'The count to increment the gitops_sync metric by'
+            optional :counters, type: Hash, desc: 'Object that contains metric counters used to increment Kubernetes API proxy operations' do
               optional :k8s_api_proxy_request, type: Integer, desc: 'The count to increment the k8s_api_proxy_request metric by'
               optional :flux_git_push_notifications_total, type: Integer, desc: 'The count to increment the flux_git_push_notifications_total metrics by'
               optional :k8s_api_proxy_requests_via_ci_access, type: Integer, desc: 'The count to increment the k8s_api_proxy_requests_via_ci_access metric by'
@@ -126,13 +118,13 @@ module API
               optional :k8s_api_proxy_requests_via_pat_access, type: Integer, desc: 'The count to increment the k8s_api_proxy_requests_via_pat_access metric by'
             end
 
-            optional :unique_counters, type: Hash do
+            optional :unique_counters, type: Hash, desc: 'Object that contains arrays of unique user and agent IDs' do
               optional :k8s_api_proxy_requests_unique_users_via_ci_access, type: Array[Integer], desc: 'An array of users that have interacted with the CI tunnel via `ci_access`'
               optional :k8s_api_proxy_requests_unique_agents_via_ci_access, type: Array[Integer], desc: 'An array of agents that have interacted with the CI tunnel via `ci_access`'
               optional :k8s_api_proxy_requests_unique_users_via_user_access, type: Array[Integer], desc: 'An array of users that have interacted with the CI tunnel via `user_access`'
               optional :k8s_api_proxy_requests_unique_agents_via_user_access, type: Array[Integer], desc: 'An array of agents that have interacted with the CI tunnel via `user_access`'
-              optional :k8s_api_proxy_requests_unique_users_via_pat_access, type: Array[Integer], desc: 'An array of users that have interacted with the CI tunnel via Personal Access Token'
-              optional :k8s_api_proxy_requests_unique_agents_via_pat_access, type: Array[Integer], desc: 'An array of agents that have interacted with the CI tunnel via Personal Access Token'
+              optional :k8s_api_proxy_requests_unique_users_via_pat_access, type: Array[Integer], desc: 'An array of users that have interacted with the CI tunnel via personal access token'
+              optional :k8s_api_proxy_requests_unique_agents_via_pat_access, type: Array[Integer], desc: 'An array of agents that have interacted with the CI tunnel via personal access token'
               optional :flux_git_push_notified_unique_projects, type: Array[Integer], desc: 'An array of projects that have been notified to reconcile their Flux workloads'
             end
           end
@@ -164,6 +156,17 @@ module API
               optional :k8s_api_proxy_requests_unique_users_via_pat_access, type: Array, desc: 'An array of events that have interacted with the CI tunnel via `ci_access`' do
                 optional :user_id, type: Integer, desc: 'User ID'
                 optional :project_id, type: Integer, desc: 'Project ID'
+              end
+              optional :register_agent_at_kas, type: Array, desc: 'An array of events that indicate an agent has been registered' do
+                optional :project_id, type: Integer, desc: 'Project ID'
+                optional :agent_version, type: String, desc: 'Agent version'
+                optional :architecture, type: String, desc: 'CPU architecture of the agent'
+                optional :agent_id, type: Integer, desc: 'Agent ID'
+                optional :kubernetes_version, type: String, desc: 'Kubernetes version of the agent'
+                optional :extra_telemetry_data, type: Hash, desc: 'Extra telemetry data of the agent' do
+                  optional :installation_method, type: String, desc: 'Installation method used to install the agent'
+                  optional :helm_chart_version, type: String, desc: 'Helm Chart version used to install the agent'
+                end
               end
             end
           end

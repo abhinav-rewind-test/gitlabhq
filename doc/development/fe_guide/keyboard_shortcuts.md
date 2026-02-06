@@ -1,10 +1,9 @@
 ---
-stage: none
-group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Growth
+group: Engagement
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Implementing keyboard shortcuts
 ---
-
-# Implementing keyboard shortcuts
 
 We use [Mousetrap](https://craig.is/killing/mice) to implement keyboard
 shortcuts in GitLab.
@@ -123,7 +122,7 @@ This is one of the reasons that being able to customize and disable shortcuts is
 so important.
 
 One important way to make keyboard shortcuts more portable is to use the `mod`
-shortcut string, which resolves to `command` on Mac and `ctrl` otherwise.
+shortcut string, which resolves to <kbd>Command</kbd> on Mac and <kbd>Control</kbd> otherwise.
 
 See [Mousetrap's documentation](https://craig.is/killing/mice#api.bind.combo)
 for more information.

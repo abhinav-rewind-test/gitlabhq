@@ -1,29 +1,26 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Avatar API
 ---
 
-# Avatar API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/19121) in GitLab 11.0.
+{{< /details >}}
 
-## Get a single avatar URL
+Use this API to interact with user avatars.
 
-Get a single [avatar](../user/profile/index.md#access-your-user-settings) URL for a user with the given email address.
+## Retrieve user account avatar
 
-If:
+Retrieves the URL of a user account [avatar](../user/profile/_index.md#access-your-user-settings) associated with a specified public email address. This endpoint does not require authentication.
 
-- No user with the given public email address is found, results from external avatar services are
-  returned.
-- Public visibility is restricted, response is `403 Forbidden` when unauthenticated.
-
-NOTE:
-This endpoint can be accessed without authentication.
+- If successful, returns the URL of the avatar.
+- If no account is associated with the given email address, returns results from external avatar services.
+- If the public visibility is restricted and the request isn't authenticated, returns `403 Forbidden`.
 
 ```plaintext
 GET /avatar?email=admin@example.com
@@ -31,15 +28,16 @@ GET /avatar?email=admin@example.com
 
 Parameters:
 
-| Attribute | Type    | Required | Description                                                                                                                             |
-|:----------|:--------|:---------|:----------------------------------------------------------------------------------------------------------------------------------------|
-| `email`   | string  | yes      | Public email address of the user.                                                                                                       |
-| `size`    | integer | no       | Single pixel dimension (because images are squares). Only used for avatar lookups at `Gravatar` or at the configured `Libravatar` server. |
+| Attribute | Type    | Required | Description |
+| --------- | ------- | -------- | ----------- |
+| `email`   | string  | yes      | Public email address of the account. |
+| `size`    | integer | no       | Single pixel dimension. Only used for avatar lookups at `Gravatar` or a configured `Libravatar` server. |
 
 Example request:
 
 ```shell
-curl "https://gitlab.example.com/api/v4/avatar?email=admin@example.com&size=32"
+curl --request GET \
+  --url "https://gitlab.example.com/api/v4/avatar?email=admin@example.com&size=32"
 ```
 
 Example response:
@@ -49,3 +47,8 @@ Example response:
   "avatar_url": "https://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=64&d=identicon"
 }
 ```
+
+## Related topics
+
+- [Upload an avatar for yourself](users.md#upload-an-avatar-for-yourself).
+- [Upload a project avatar](projects.md#upload-a-project-avatar).

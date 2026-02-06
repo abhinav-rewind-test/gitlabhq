@@ -1,6 +1,5 @@
 <script>
-import { GlAlert, GlLoadingIcon, GlSprintf, GlLink, GlCard } from '@gitlab/ui';
-import BetaBadge from '~/vue_shared/components/badges/beta_badge.vue';
+import { GlAlert, GlLoadingIcon, GlSprintf, GlLink, GlCard, GlExperimentBadge } from '@gitlab/ui';
 import axios from '~/lib/utils/axios_utils';
 import {
   FEEDBACK_ISSUE_URL,
@@ -19,7 +18,7 @@ import CustomEmail from './custom_email.vue';
 
 export default {
   components: {
-    BetaBadge,
+    GlExperimentBadge,
     GlAlert,
     GlLoadingIcon,
     GlSprintf,
@@ -169,12 +168,12 @@ export default {
 
 <template>
   <div class="row gl-mt-7">
-    <div class="col-md-9">
+    <div class="gl-col-md-9">
       <gl-card>
         <template #header>
-          <div class="gl-display-flex gl-align-items-center justify-content-between">
+          <div class="gl-flex gl-items-center !gl-justify-between">
             <h5 class="gl-my-0">{{ $options.I18N_CARD_TITLE }}</h5>
-            <beta-badge />
+            <gl-experiment-badge type="beta" />
           </div>
         </template>
 
@@ -199,7 +198,7 @@ export default {
           <gl-alert
             v-if="alertMessage"
             variant="warning"
-            class="gl-mt-n5 gl-mb-4 gl-mx-n5"
+            class="-gl-mx-5 -gl-mt-5 gl-mb-4"
             @dismiss="dismissAlert"
           >
             {{ alertMessage }}

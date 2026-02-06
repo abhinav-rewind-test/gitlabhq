@@ -21,22 +21,27 @@ module RuboCop
         TEXT_LIMIT_ATTRIBUTE_NOT_ALLOWED = 'Text columns should always have a limit set (255 is suggested). Using limit: is not supported in this version. ' \
         'You can add a limit to a `text` column by using `add_text_limit` or `.text_limit` inside `create_table`'
 
+        # @!method reverting?(node)
         def_node_matcher :reverting?, <<~PATTERN
           (def :down ...)
         PATTERN
 
+        # @!method set_text_limit?(node)
         def_node_matcher :set_text_limit?, <<~PATTERN
           (send _ :text_limit ...)
         PATTERN
 
+        # @!method add_text_limit?(node)
         def_node_matcher :add_text_limit?, <<~PATTERN
           (send _ :add_text_limit ...)
         PATTERN
 
+        # @!method text_column?(node)
         def_node_matcher :text_column?, <<~PATTERN
           (sym :text)
         PATTERN
 
+        # @!method text_operation_with_limit?(node)
         def_node_matcher :text_operation_with_limit?, <<~PATTERN
           (send _ :text ... (hash <(pair (sym :limit) _) ...>))
         PATTERN
@@ -69,7 +74,7 @@ module RuboCop
           migration_method = node.children[1]
 
           if migration_method == :text
-            modifier.type == :lvar
+            modifier.lvar_type?
           elsif ADD_COLUMN_METHODS.include?(migration_method)
             modifier.nil? && text_column?(node.children[4])
           end
@@ -99,7 +104,7 @@ module RuboCop
                                   .find { |n| TABLE_METHODS.include?(n.children[1]) }
 
             if create_table_node
-              table_name = table_name_or_const_name(create_table_node.children[2])
+              table_name = value_or_const_name(create_table_node.children[2])
             else
               # Guard against errors when a new table create/change migration
               # helper is introduced and warn the author so that it can be
@@ -111,11 +116,11 @@ module RuboCop
               )
             end
 
-            attribute_name = node.children[2].value
+            attribute_name = value_or_const_name(node.children[2])
           else
             # We are in a node for one of the ADD_COLUMN_METHODS
-            table_name = table_name_or_const_name(node.children[2])
-            attribute_name = node.children[3].value
+            table_name = value_or_const_name(node.children[2])
+            attribute_name = value_or_const_name(node.children[3])
           end
 
           [table_name, attribute_name]
@@ -148,14 +153,14 @@ module RuboCop
         end
 
         def matching_add_text_limit?(send_node, table_name, attribute_name)
-          limit_table = table_name_or_const_name(send_node.children[2])
+          limit_table = value_or_const_name(send_node.children[2])
           limit_attribute = send_node.children[3].value
 
           limit_table == table_name && limit_attribute == attribute_name
         end
 
-        def table_name_or_const_name(node)
-          node.type == :const ? node.const_name : node.value
+        def value_or_const_name(node)
+          node.const_type? ? node.const_name : node.value
         end
 
         def encrypted_attribute_name?(attribute_name)

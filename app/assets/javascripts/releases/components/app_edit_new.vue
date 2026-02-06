@@ -11,10 +11,11 @@ import {
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions, mapGetters } from 'vuex';
 import { isSameOriginUrl, getParameterByName } from '~/lib/utils/url_utility';
-import { __ } from '~/locale';
+import { __, s__ } from '~/locale';
 import MilestoneCombobox from '~/milestones/components/milestone_combobox.vue';
 import { BACK_URL_PARAM } from '~/releases/constants';
 import { putCreateReleaseNotification } from '~/releases/release_notification_service';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 import MarkdownEditor from '~/vue_shared/components/markdown/markdown_editor.vue';
 import AssetLinksForm from './asset_links_form.vue';
 import ConfirmDeleteModal from './confirm_delete_modal.vue';
@@ -23,6 +24,7 @@ import TagField from './tag_field.vue';
 export default {
   name: 'ReleaseEditNewApp',
   components: {
+    PageHeading,
     GlFormCheckbox,
     GlFormInput,
     GlFormGroup,
@@ -65,10 +67,12 @@ export default {
       'projectPath',
       'groupId',
       'groupMilestonesAvailable',
-      'tagNotes',
       'isFetchingTagNotes',
     ]),
     ...mapGetters('editNew', ['isValid', 'formattedReleaseNotes']),
+    headingText() {
+      return this.isExistingRelease ? s__('Release|Edit release') : s__('Release|New release');
+    },
     showForm() {
       return Boolean(!this.isFetchingRelease && !this.fetchError && this.release);
     },
@@ -172,20 +176,25 @@ export default {
 };
 </script>
 <template>
-  <div class="d-flex flex-column">
-    <p class="pt-3 js-subtitle-text">
-      <gl-sprintf
-        :message="
-          __(
-            'Releases are based on Git tags. We recommend tags that use semantic versioning, for example %{codeStart}1.0.0%{codeEnd}, %{codeStart}2.1.0-pre%{codeEnd}.',
-          )
-        "
-      >
-        <template #code="{ content }">
-          <code>{{ content }}</code>
-        </template>
-      </gl-sprintf>
-    </p>
+  <div class="gl-flex !gl-flex-col">
+    <page-heading :heading="headingText">
+      <template #description>
+        <span class="js-subtitle-text">
+          <gl-sprintf
+            :message="
+              __(
+                'Releases are based on Git tags. We recommend tags that use semantic versioning, for example %{codeStart}1.0.0%{codeEnd}, %{codeStart}2.1.0-pre%{codeEnd}.',
+              )
+            "
+          >
+            <template #code="{ content }">
+              <code>{{ content }}</code>
+            </template>
+          </gl-sprintf>
+        </span>
+      </template>
+    </page-heading>
+
     <form v-if="showForm" class="js-quick-submit" @submit.prevent="submitForm">
       <tag-field />
       <gl-form-group
@@ -262,19 +271,21 @@ export default {
 
       <asset-links-form />
 
-      <div class="d-flex gl-gap-x-3 pt-3">
-        <gl-button
-          class="js-no-auto-disable"
-          category="primary"
-          variant="confirm"
-          type="submit"
-          :disabled="isFormSubmissionDisabled"
-          data-testid="submit-button"
-        >
-          {{ saveButtonLabel }}
-        </gl-button>
+      <div class="gl-mt-5 gl-flex gl-flex-wrap gl-justify-between gl-gap-3">
+        <div class="gl-flex gl-flex-wrap gl-gap-3">
+          <gl-button
+            class="js-no-auto-disable"
+            category="primary"
+            variant="confirm"
+            type="submit"
+            :disabled="isFormSubmissionDisabled"
+            data-testid="submit-button"
+          >
+            {{ saveButtonLabel }}
+          </gl-button>
+          <gl-button :href="cancelPath" class="js-cancel-button">{{ __('Cancel') }}</gl-button>
+        </div>
         <confirm-delete-modal v-if="isExistingRelease" @delete="deleteRelease" />
-        <gl-button :href="cancelPath" class="js-cancel-button">{{ __('Cancel') }}</gl-button>
       </div>
     </form>
   </div>

@@ -24,13 +24,12 @@ module Projects
           upload_compressed_file
           relation_export.finish!
         else
-          fail_export(shared.errors.join(', '))
+          raise_error(shared.errors.join(', '))
         end
-      rescue StandardError => e
-        fail_export(e.message)
+
       ensure
-        FileUtils.remove_entry(shared.export_path) if File.exist?(shared.export_path)
-        FileUtils.remove_entry(shared.archive_path) if File.exist?(shared.archive_path)
+        FileUtils.rm_rf(shared.export_path)
+        FileUtils.rm_rf(shared.archive_path)
       end
 
       private
@@ -70,7 +69,9 @@ module Projects
       end
 
       def upload_compressed_file
-        upload = relation_export.build_upload
+        # Reuse existing upload if present (e.g., from a previous failed attempt)
+        # or build a new one. This avoids the NOT NULL constraint violation on retry.
+        upload = relation_export.upload || relation_export.build_upload
         File.open(archive_file_full_path) { |file| upload.export_file = file }
         upload.save!
       end
@@ -83,10 +84,8 @@ module Projects
         @archive_file ||= File.join(shared.archive_path, "#{relation}.tar.gz")
       end
 
-      def fail_export(error_message)
-        relation_export.update!(status_event: :fail_op, export_error: error_message.truncate(300))
-
-        logger.error(
+      def raise_error(error_message)
+        logger.warn(
           message: 'Project relation export failed',
           export_error: error_message,
           relation: relation_export.relation,
@@ -94,6 +93,8 @@ module Projects
           project_name: project.name,
           project_id: project.id
         )
+
+        raise ::Gitlab::ImportExport::Error.new, error_message
       end
     end
   end

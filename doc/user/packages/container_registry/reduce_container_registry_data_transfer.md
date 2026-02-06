@@ -2,24 +2,25 @@
 stage: Package
 group: Container Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Reduce container registry data transfers
+description: Tips to reduce the amount of data you transfer with GitLab container registries.
 ---
 
-# Reduce container registry data transfers
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 Depending on the frequency with which images or tags are downloaded from the container registry,
-data transfers can exceed the GitLab.com limit. This page offers several recommendations and tips for
+data transfer can be quite high. This page offers several recommendations and tips for
 reducing the amount of data you transfer with the container registry.
 
 ## Check data transfer use
 
 Transfer usage is not available within the GitLab UI. [GitLab-#350905](https://gitlab.com/gitlab-org/gitlab/-/issues/350905)
-is the epic tracking the work to surface this information. In the interim, GitLab team members may reach out to customers that have
-significantly exceeded their transfer limits to better understand their use case and offer ways to reduce data transfer
-usage.
+is the epic tracking the work to surface this information.
 
 ## Determine image size
 
@@ -32,7 +33,7 @@ Use these tools and techniques to determine your image's size:
 - Docker in CI: examine and record the image size when using GitLab CI prior to pushing an image
   with Docker. For example:
 
-  ```yaml
+  ```shell
   docker inspect "$CI_REGISTRY_IMAGE:$IMAGE_TAG" \
         | awk '/"Size": ([0-9]+)[,]?/{ printf "Final Image Size: %d\n", $2 }'
   ```
@@ -102,7 +103,7 @@ you need to install build dependencies, but you don't need them to be present in
 
 ## Use an image pull policy
 
-When using the `docker` or `docker+machine` executors, you can set a [`pull_policy`](https://docs.gitlab.com/runner/executors/docker.html#using-the-if-not-present-pull-policy)
+When using the `docker` or `docker+machine` executors, you can set a [`pull_policy`](https://docs.gitlab.com/runner/executors/docker/#using-the-if-not-present-pull-policy)
 parameter in your runner `config.toml` that defines how the runner works when pulling Docker images.
 To avoid transferring data when using large and rarely updated images, consider using the
 `if-not-present` pull policy when pulling images from remote registries.
@@ -121,15 +122,6 @@ up your builds and reduce the amount of data transferred. For more information, 
 We often create automation scripts bundled into container images to perform regular tasks on specific intervals.
 You can reduce the frequency of those intervals in cases where the automation is pulling container images from
 the GitLab Registry to a service outside of GitLab.com.
-
-## Move to GitLab Premium or Ultimate
-
-GitLab.com data transfer limits are set at the tier level. If you need a higher limit, consider
-upgrading to [GitLab Premium or Ultimate](https://about.gitlab.com/upgrade/).
-
-## Purchase additional data transfer
-
-Read more about managing your [data transfer limits](../../../subscriptions/gitlab_com/index.md#purchase-more-storage-and-transfer).
 
 ## Related issues
 

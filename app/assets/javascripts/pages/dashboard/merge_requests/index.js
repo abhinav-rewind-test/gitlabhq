@@ -1,28 +1,16 @@
-import addExtraTokensForMergeRequests from 'ee_else_ce/filtered_search/add_extra_tokens_for_merge_requests';
-import { createFilteredSearchTokenKeys } from '~/filtered_search/issuable_filtered_search_token_keys';
-import { FILTERED_SEARCH } from '~/filtered_search/constants';
-import initFilteredSearch from '~/pages/search/init_filtered_search';
-import { initNewResourceDropdown } from '~/vue_shared/components/new_resource_dropdown/init_new_resource_dropdown';
 import { RESOURCE_TYPE_MERGE_REQUEST } from '~/vue_shared/components/new_resource_dropdown/constants';
 import searchUserProjectsWithMergeRequestsEnabled from '~/vue_shared/components/new_resource_dropdown/graphql/search_user_projects_with_merge_requests_enabled.query.graphql';
+import { initMergeRequestDashboard } from '~/merge_request_dashboard';
 
-const IssuableFilteredSearchTokenKeys = createFilteredSearchTokenKeys({
-  disableReleaseFilter: true,
-});
+initMergeRequestDashboard(document.getElementById('js-merge-request-dashboard'));
 
-addExtraTokensForMergeRequests(IssuableFilteredSearchTokenKeys, {
-  disableBranchFilter: true,
-  disableReleaseFilter: true,
-  disableEnvironmentFilter: true,
-});
+requestIdleCallback(async () => {
+  const { initNewResourceDropdown } = await import(
+    '~/vue_shared/components/new_resource_dropdown/init_new_resource_dropdown'
+  );
 
-initFilteredSearch({
-  page: FILTERED_SEARCH.MERGE_REQUESTS,
-  filteredSearchTokenKeys: IssuableFilteredSearchTokenKeys,
-  useDefaultState: true,
-});
-
-initNewResourceDropdown({
-  resourceType: RESOURCE_TYPE_MERGE_REQUEST,
-  query: searchUserProjectsWithMergeRequestsEnabled,
+  initNewResourceDropdown({
+    resourceType: RESOURCE_TYPE_MERGE_REQUEST,
+    query: searchUserProjectsWithMergeRequestsEnabled,
+  });
 });

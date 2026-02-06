@@ -8,6 +8,10 @@ class MergeRequestDiff < ApplicationRecord
   include Gitlab::Utils::StrongMemoize
   include BulkInsertableAssociations
   include ShaAttribute
+  include ObjectStorable
+  include FromUnion
+
+  STORE_COLUMN = :external_diff_store
 
   # Don't display more than 100 commits at once
   COMMITS_SAFE_SIZE = 100
@@ -19,7 +23,7 @@ class MergeRequestDiff < ApplicationRecord
 
   # The files_count column is a 2-byte signed integer. Look up the true value
   # from the database if this sentinel is seen
-  FILES_COUNT_SENTINEL = 2**15 - 1
+  FILES_COUNT_SENTINEL = (2**15) - 1
 
   # External diff cache key used by diffs export
   EXTERNAL_DIFFS_CACHE_TMPDIR = 'project-%{project_id}-external-mr-%{mr_id}-diff-%{id}-cache'
@@ -34,12 +38,11 @@ class MergeRequestDiff < ApplicationRecord
     inverse_of: :merge_request_diff
 
   has_many :merge_request_diff_commits, -> { order(:merge_request_diff_id, :relative_order) }, inverse_of: :merge_request_diff do
-    def with_users
-      ActiveRecord::Associations::Preloader.new(
-        records: self,
-        associations: [:commit_author, :committer]
-      ).call
+    def with_users(include_metadata: false)
+      associations_to_preload = [:commit_author, :committer]
+      associations_to_preload << { merge_request_commits_metadata: [:commit_author, :committer] } if include_metadata
 
+      ActiveRecord::Associations::Preloader.new(records: self, associations: associations_to_preload).call
       self
     end
   end
@@ -66,7 +69,7 @@ class MergeRequestDiff < ApplicationRecord
     state :overflow_diff_lines_limit
   end
 
-  enum diff_type: {
+  enum :diff_type, {
     regular: 1,
     merge_head: 2
   }
@@ -74,15 +77,55 @@ class MergeRequestDiff < ApplicationRecord
   scope :with_files, -> { without_states(:without_files, :empty) }
   scope :viewable, -> { without_state(:empty) }
   scope :by_head_commit_sha, ->(sha) { where(head_commit_sha: sha) }
-  scope :by_commit_sha, ->(sha) do
-    joins(:merge_request_diff_commits).where(merge_request_diff_commits: { sha: sha }).reorder(nil)
+  # Finds merge request diffs by commit SHA.
+  # Commit metadata is stored in `merge_request_commits_metadata` with `project_id` set to
+  # the MR's target_project_id.
+  # - Use `project` = MR's target project
+  # - Use `target_project_ids` = array of target project IDs (cross-project cases)
+  # IMPORTANT: Do not pass the source project as `project` - it won't match the metadata's project_id.
+  scope :by_commit_sha, ->(project, sha, target_project_ids = []) do
+    if Feature.enabled?(:commit_sha_scope_logger, type: :ops) # rubocop:disable Gitlab/FeatureFlagWithoutActor  -- TODO: No actor needed
+      Gitlab::AppLogger.info(
+        event: 'merge_request_diff_by_commit_sha_call',
+        message: "MergeRequestDiff.by_commit_sha called via #{caller_locations.reject { |line| line.path.include?('/gems/') }.first}"
+      )
+    end
+
+    if Feature.enabled?(:merge_request_diff_commits_dedup, project)
+      # Need to serialize the SHAs when querying `merge_request_commits_metadata`
+      # table as `sha` column is binary and AR is not automatically serializing the SHA
+      # in this case.
+      #
+      # There are callers of this scope wherein `sha` is an array of `sha` so we need
+      # to handle that as well.
+      sha_array = Array.wrap(sha)
+      serialized_shas = sha_array.map { |s| Gitlab::Database::ShaAttribute.new.serialize(s) }
+      project_ids_list = Array.wrap(target_project_ids).presence || [project.id]
+
+      metadata_query = MergeRequestDiff.joins(:merge_request_diff_commits)
+                                       .joins(
+                                         MergeRequestDiff.sanitize_sql_array([
+                                           "INNER JOIN merge_request_commits_metadata ON merge_request_commits_metadata.id = merge_request_diff_commits.merge_request_commits_metadata_id AND merge_request_commits_metadata.project_id IN (?)",
+                                           project_ids_list
+                                         ])
+                                       ).where(merge_request_commits_metadata: { sha: serialized_shas })
+
+      diff_commits_query =
+        MergeRequestDiff
+          .joins(:merge_request_diff_commits)
+          .where(merge_request_diff_commits: { sha: sha })
+
+      from_union(metadata_query, diff_commits_query).reorder(nil)
+    else
+      joins(:merge_request_diff_commits).where(merge_request_diff_commits: { sha: sha }).reorder(nil)
+    end
   end
 
-  scope :by_project_id, -> (project_id) do
-    joins(:merge_request).where(merge_requests: { target_project_id: project_id })
+  scope :by_project_id, ->(project_id) do
+    where(project_id: project_id)
   end
 
-  scope :recent, -> (limit = 100) { order(id: :desc).limit(limit) }
+  scope :recent, ->(limit = 100) { order(id: :desc).limit(limit) }
 
   scope :files_in_database, -> do
     where(stored_externally: [false, nil]).where(arel_table[:files_count].gt(0))
@@ -100,7 +143,7 @@ class MergeRequestDiff < ApplicationRecord
     joins(arel_join.join_sources)
   end
 
-  scope :old_merged_diffs, -> (before) do
+  scope :old_merged_diffs, ->(before) do
     merge_requests = MergeRequest.arel_table
     mr_metrics = MergeRequest::Metrics.arel_table
     mr_diffs = arel_table
@@ -122,7 +165,7 @@ class MergeRequestDiff < ApplicationRecord
     joins(metrics_join.join_sources, mr_join.join_sources).where(condition)
   end
 
-  scope :old_closed_diffs, -> (before) do
+  scope :old_closed_diffs, ->(before) do
     condition = MergeRequest.arel_table[:state_id].eq(MergeRequest.available_states[:closed])
       .and(MergeRequest::Metrics.arel_table[:latest_closed_at].lteq(before))
 
@@ -135,7 +178,7 @@ class MergeRequestDiff < ApplicationRecord
   # SELECT ...
   # FROM (VALUES (MR_ID_1),(MR_ID_2)) merge_requests (id)
   # INNER JOIN LATERAL (...)
-  scope :latest_diff_for_merge_requests, -> (merge_requests) do
+  scope :latest_diff_for_merge_requests, ->(merge_requests) do
     mrs = Array(merge_requests)
     return MergeRequestDiff.none if mrs.empty?
 
@@ -205,6 +248,7 @@ class MergeRequestDiff < ApplicationRecord
   # All diff information is collected from repository after object is created.
   # It allows you to override variables like head_commit_sha before getting diff.
   after_create :save_git_content, unless: :importing?
+  after_create_commit :set_patch_id_sha, unless: :importing?
   after_create_commit :set_as_latest_diff, unless: :importing?
   after_create_commit :trigger_diff_generated_subscription, unless: :importing?
 
@@ -219,11 +263,17 @@ class MergeRequestDiff < ApplicationRecord
     collected? || without_files? || overflow?
   end
 
+  def preload_gitaly_data
+    ensure_commit_shas
+
+    reversed_compare_commits_preloaded
+    compare_diffs_preloaded
+  end
+
   # Collect information about commits and diff from repository
   # and save it to the database as serialized data
   def save_git_content
     ensure_commit_shas
-    set_patch_id_sha
 
     save_commits
     save_diffs
@@ -242,10 +292,12 @@ class MergeRequestDiff < ApplicationRecord
     return unless base_commit_sha && head_commit_sha
     return if base_commit_sha == head_commit_sha
 
-    self.patch_id_sha = project.repository&.get_patch_id(
+    patch_id_sha = project.repository&.get_patch_id(
       base_commit_sha,
       head_commit_sha
     )
+
+    update_column(:patch_id_sha, patch_id_sha)
   end
 
   def get_patch_id_sha
@@ -255,7 +307,6 @@ class MergeRequestDiff < ApplicationRecord
 
     return unless patch_id_sha.present?
 
-    save
     patch_id_sha
   end
 
@@ -345,11 +396,11 @@ class MergeRequestDiff < ApplicationRecord
   end
 
   def first_commit
-    commits.last
+    commits(load_from_gitaly: true).last
   end
 
   def last_commit
-    commits.first
+    commits(load_from_gitaly: true).first
   end
 
   def base_commit
@@ -370,11 +421,19 @@ class MergeRequestDiff < ApplicationRecord
     project.commit_by(oid: head_commit_sha)
   end
 
-  def commit_shas(limit: nil)
+  def commit_shas(limit: nil, preload_metadata: false)
     if association(:merge_request_diff_commits).loaded?
       sorted_diff_commits = merge_request_diff_commits.sort_by { |diff_commit| [diff_commit.id, diff_commit.relative_order] }
       sorted_diff_commits = sorted_diff_commits.take(limit) if limit
+
+      if preload_metadata && diff_commits_dedup_enabled?
+        # ActiveRecord::Associations::Preloader works with both arrays and relations
+        preload_metadata_for_commits(sorted_diff_commits)
+      end
+
       sorted_diff_commits.map(&:sha)
+    elsif diff_commits_dedup_enabled?
+      commit_shas_from_metadata(limit)
     else
       merge_request_diff_commits.limit(limit).pluck(:sha)
     end
@@ -386,6 +445,8 @@ class MergeRequestDiff < ApplicationRecord
     # when the number of shas is huge (1000+) we don't want
     # to pass them all as an SQL param, let's pass them in batches
     shas.each_slice(BATCH_SIZE).any? do |batched_shas|
+      break true if diff_commits_dedup_enabled? && metadata_sha_exists?(batched_shas)
+
       merge_request_diff_commits.where(sha: batched_shas).exists?
     end
   end
@@ -405,6 +466,13 @@ class MergeRequestDiff < ApplicationRecord
       head_sha: head_commit_sha
     )
   end
+
+  def diff_stats
+    return unless diff_refs
+
+    repository.diff_stats(diff_refs.base_sha, diff_refs.head_sha)
+  end
+  strong_memoize_attr(:diff_stats)
 
   # MRs created before 8.4 don't store their true diff refs (start and base),
   # but we need to get a commit SHA for the "View file @ ..." link by a file,
@@ -429,8 +497,28 @@ class MergeRequestDiff < ApplicationRecord
     )
   end
 
-  def diff_refs_by_sha?
-    base_commit_sha? && head_commit_sha? && start_commit_sha?
+  def diffs_for_streaming(diff_options = {})
+    fetching_repository_diffs(diff_options) do |comparison|
+      reorder_diff_files!
+
+      collection = Gitlab::Diff::FileCollection::MergeRequestDiffStream.new(
+        self,
+        diff_options: diff_options
+      )
+
+      if comparison
+        # Delete the offset_index from options since we don't want to offset
+        # the diffs we will request given that we are already requesting specific
+        # paths
+        diff_options.delete(:offset_index)
+        diff_options[:generated_files] = comparison.generated_files
+        diff_options[:paths] = collection.diff_paths
+
+        comparison.diffs(diff_options)
+      else
+        collection
+      end
+    end
   end
 
   def diffs_in_batch(batch_page, batch_size, diff_options:)
@@ -454,7 +542,7 @@ class MergeRequestDiff < ApplicationRecord
           )
         end
 
-        diff_options[:generated_files] = comparison.generated_files if diff_options[:collapse_generated]
+        diff_options[:generated_files] = comparison.generated_files
 
         Gitlab::Metrics.measure(:diffs_comparison) do
           comparison.diffs(diff_options)
@@ -465,12 +553,9 @@ class MergeRequestDiff < ApplicationRecord
     end
   end
 
-  def paginated_diffs(page, per_page)
-    fetching_repository_diffs({}) do |comparison|
+  def paginated_diffs(page, per_page, diff_options = {})
+    fetching_repository_diffs(diff_options) do |comparison|
       reorder_diff_files!
-
-      collapse_generated = Feature.enabled?(:collapse_generated_diff_files, project)
-      diff_options = { collapse_generated: collapse_generated }
 
       collection = Gitlab::Diff::FileCollection::PaginatedMergeRequestDiff.new(
         self,
@@ -480,15 +565,15 @@ class MergeRequestDiff < ApplicationRecord
       )
 
       if comparison
-        diff_options[:generated_files] = comparison.generated_files if collapse_generated
-
-        comparison.diffs(
-          diff_options.merge(
-            paths: collection.diff_paths,
-            page: collection.current_page,
-            per_page: collection.limit_value,
-            count: collection.total_count)
+        diff_options.merge!(
+          generated_files: comparison.generated_files,
+          paths: collection.diff_paths,
+          page: collection.current_page,
+          per_page: collection.limit_value,
+          count: collection.total_count
         )
+
+        comparison.diffs(diff_options)
       else
         collection
       end
@@ -534,15 +619,6 @@ class MergeRequestDiff < ApplicationRecord
     self.id == merge_request.latest_merge_request_diff_id
   end
 
-  # rubocop: disable CodeReuse/ServiceClass
-  def compare_with(sha)
-    # When compare merge request versions we want diff A..B instead of A...B
-    # so we handle cases when user does squash and rebase of the commits between versions.
-    # For this reason we set straight to true by default.
-    CompareService.new(project, head_commit_sha).execute(project, sha, straight: true)
-  end
-  # rubocop: enable CodeReuse/ServiceClass
-
   def modified_paths(fallback_on_overflow: false)
     if fallback_on_overflow && overflow?
       # This is an extremely slow means to find the modified paths for a given
@@ -557,7 +633,7 @@ class MergeRequestDiff < ApplicationRecord
       end
     else
       strong_memoize(:modified_paths) do
-        merge_request_diff_files.pluck(:new_path, :old_path).flatten.uniq
+        merge_request_diff_files.pluck(:new_path, :old_path).flatten.compact.uniq
       end
     end
   end
@@ -574,6 +650,10 @@ class MergeRequestDiff < ApplicationRecord
   def opening_external_diff
     return yield(nil) unless stored_externally?
     return yield(@external_diff_file) if @external_diff_file
+
+    if use_external_diff? && Gitlab.config.external_diffs.object_store.enabled && external_diff_store == ObjectStorage::Store::LOCAL
+      update_column(:external_diff_store, ObjectStorage::Store::REMOTE)
+    end
 
     external_diff.open do |file|
       @external_diff_file = file
@@ -652,7 +732,21 @@ class MergeRequestDiff < ApplicationRecord
     FileUtils.rm_rf(external_diff_cache_dir)
   end
 
+  def has_encoded_file_paths?
+    merge_request_diff_files.where(encoded_file_path: true).any?
+  end
+
   private
+
+  def preload_metadata_for_commits(commits)
+    # ActiveRecord::Associations::Preloader works with both arrays and relations
+    # The merge_request_commits_metadata association already has the project_id
+    # condition defined in the MergeRequestDiffCommit model
+    ActiveRecord::Associations::Preloader.new(
+      records: commits,
+      associations: [:merge_request_commits_metadata]
+    ).call
+  end
 
   def convert_external_diffs_to_database
     opening_external_diff do |external_file|
@@ -722,12 +816,19 @@ class MergeRequestDiff < ApplicationRecord
   end
 
   def build_merge_request_diff_files(diffs)
+    dedup_new_path_enabled = Feature.enabled?(:deduplicate_new_path_value, project)
+
     sort_diffs(diffs).map.with_index do |diff, index|
       diff_hash = diff.to_hash.merge(
         binary: false,
         merge_request_diff_id: self.id,
-        relative_order: index
+        relative_order: index,
+        project_id: self.project_id
       )
+
+      if dedup_new_path_enabled
+        diff_hash[:new_path] = diff.new_path == diff.old_path ? nil : diff.new_path
+      end
 
       # Compatibility with old diffs created with Psych.
       diff_hash.tap do |hash|
@@ -814,10 +915,16 @@ class MergeRequestDiff < ApplicationRecord
     diff_commits = diff_commits.limit(limit) if limit.present?
 
     if load_from_gitaly
-      commits = Gitlab::Git::Commit.batch_by_oid(repository, diff_commits.map(&:sha))
+      shas = if diff_commits_dedup_enabled?
+               diff_commits.commit_shas_from_metadata(project_id: project.id, limit: nil)
+             else
+               diff_commits.map(&:sha)
+             end
+
+      commits = Gitlab::Git::Commit.batch_by_oid(repository, shas)
       commits = Commit.decorate(commits, project)
     else
-      commits = diff_commits.with_users
+      commits = diff_commits.with_users(include_metadata: diff_commits_dedup_enabled?)
         .map { |commit| Commit.from_hash(commit.to_hash, project) }
     end
 
@@ -831,10 +938,7 @@ class MergeRequestDiff < ApplicationRecord
     if compare.commits.empty?
       new_attributes[:state] = :empty
     else
-      options = Commit.max_diff_options
-      options[:generated_files] = compare.generated_files if Feature.enabled?(:collapse_generated_diff_files, project)
-
-      diff_collection = compare.diffs(options)
+      diff_collection = compare_diffs_preloaded
       new_attributes[:real_size] = diff_collection.real_size
 
       if diff_collection.any?
@@ -857,8 +961,23 @@ class MergeRequestDiff < ApplicationRecord
     assign_attributes(new_attributes)
   end
 
+  def reversed_compare_commits_preloaded
+    strong_memoize(:reversed_commits) do
+      compare.commits.reverse
+    end
+  end
+
+  def compare_diffs_preloaded
+    strong_memoize(:compare_diffs) do
+      options = Commit.max_diff_options
+      options[:generated_files] = compare.generated_files
+
+      compare.diffs(options)
+    end
+  end
+
   def save_commits
-    MergeRequestDiffCommit.create_bulk(self.id, compare.commits.reverse)
+    MergeRequestDiffCommit.create_bulk(self.id, reversed_compare_commits_preloaded, project, skip_commit_data: Feature.enabled?(:optimized_commit_storage, project))
     self.class.uncached { merge_request_diff_commits.reset }
   end
 
@@ -884,8 +1003,13 @@ class MergeRequestDiff < ApplicationRecord
   end
 
   def keep_around_commits
+    # The merge head keeps track of what an actual merge might look like. The
+    # referenced merge is temporary and so is kept alive with
+    # MergeRequest#merge_ref_path which is updated as required.
+    return if merge_head?
+
     [repository, merge_request.source_project.repository].uniq.each do |repo|
-      repo.keep_around(start_commit_sha, head_commit_sha, base_commit_sha, source: self.class.name)
+      repo.keep_around(start_commit_sha, head_commit_sha, source: self.class.name)
     end
   end
 
@@ -916,7 +1040,7 @@ class MergeRequestDiff < ApplicationRecord
     return unless stored_externally?
     return if File.exist?(external_diff_cache_filepath)
 
-    Dir.mkdir(external_diff_cache_dir) unless Dir.exist?(external_diff_cache_dir)
+    FileUtils.mkdir_p(external_diff_cache_dir)
 
     opening_external_diff do |external_diff|
       File.open(external_diff_cache_filepath, 'wb') do |file|
@@ -935,6 +1059,28 @@ class MergeRequestDiff < ApplicationRecord
       EXTERNAL_DIFFS_CACHE_TMPDIR % { project_id: project.id, mr_id: merge_request_id, id: id }
     )
   end
+
+  def metadata_sha_exists?(shas)
+    MergeRequest::CommitsMetadata
+      .where(project: project, sha: shas)
+      .where_exists(
+        MergeRequestDiffCommit
+          .where(merge_request_diff_id: id)
+          .where(
+            MergeRequestDiffCommit.arel_table[:merge_request_commits_metadata_id]
+                                  .eq(MergeRequest::CommitsMetadata.arel_table[:id])
+          )
+      ).exists?
+  end
+
+  def commit_shas_from_metadata(limit)
+    MergeRequestDiffCommit.for_merge_request_diff(id).commit_shas_from_metadata(project_id: project.id, limit: limit)
+  end
+
+  def diff_commits_dedup_enabled?
+    Feature.enabled?(:merge_request_diff_commits_dedup, project)
+  end
+  strong_memoize_attr :diff_commits_dedup_enabled?
 end
 
 MergeRequestDiff.prepend_mod_with('MergeRequestDiff')

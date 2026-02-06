@@ -2,28 +2,28 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Project iterations API
 ---
 
-# Project iterations API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/118742) in GitLab 13.5.
-> - Moved to GitLab Premium in 13.9.
+{{< /details >}}
 
-This page describes the project iterations API.
-There's a separate [group iterations API](group_iterations.md) page.
+Use this API to access [project iterations](../user/group/iterations/_index.md).
 
-As of GitLab 13.5, we don't have project-level iterations, but you can use this endpoint to fetch the iterations of the project's ancestor groups.
+For group iterations, use the [group iterations API](group_iterations.md).
 
-## List project iterations
+We no longer have project-level iterations, but you can use this endpoint to fetch the iterations of the project's ancestor groups.
 
-Returns a list of project iterations.
+## List all project iterations
+
+Lists all iterations for a specified project.
 
 Iterations created by **Enable automatic scheduling** in
-[Iteration cadences](../user/group/iterations/index.md#iteration-cadences) return `null` for
+[Iteration cadences](../user/group/iterations/_index.md#iteration-cadences) return `null` for
 the `title` and `description` fields.
 
 ```plaintext
@@ -50,7 +50,9 @@ GET /projects/:id/iterations?updated_after=2013-10-02T09%3A24%3A18Z
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/5/iterations"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/5/iterations"
 ```
 
 Example response:

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
-RSpec.describe Gitlab::Ci::Config::Entry::Services do
+RSpec.describe Gitlab::Ci::Config::Entry::Services, feature_category: :pipeline_composition do
   let(:entry) { described_class.new(config) }
 
   before do
@@ -21,6 +21,14 @@ RSpec.describe Gitlab::Ci::Config::Entry::Services do
     describe '#value' do
       it 'returns valid array' do
         expect(entry.value).to eq([{ name: 'postgresql:9.5' }, { name: 'postgresql:9.1', alias: 'postgres_old' }])
+      end
+    end
+
+    context 'with nil in the array' do
+      let(:config) { [nil] }
+
+      it 'returns valid array' do
+        expect(entry.value).to eq([])
       end
     end
   end
@@ -68,9 +76,11 @@ RSpec.describe Gitlab::Ci::Config::Entry::Services do
       describe 'services alias' do
         context 'when they are not unique' do
           let(:config) do
-            ['postgresql:9.5',
-             { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
-             { name: 'ruby', alias: 'postgres_old', ports: [81] }]
+            [
+              'postgresql:9.5',
+              { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
+              { name: 'ruby', alias: 'postgres_old', ports: [81] }
+            ]
           end
 
           describe '#valid?' do
@@ -83,9 +93,11 @@ RSpec.describe Gitlab::Ci::Config::Entry::Services do
 
         context 'when they are unique' do
           let(:config) do
-            ['postgresql:9.5',
-             { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
-             { name: 'ruby', alias: 'ruby', ports: [81] }]
+            [
+              'postgresql:9.5',
+              { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
+              { name: 'ruby', alias: 'ruby', ports: [81] }
+            ]
           end
 
           describe '#valid?' do
@@ -97,9 +109,11 @@ RSpec.describe Gitlab::Ci::Config::Entry::Services do
 
         context 'when one of the duplicated alias is in a service without ports' do
           let(:config) do
-            ['postgresql:9.5',
-             { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
-             { name: 'ruby', alias: 'postgres_old' }]
+            [
+              'postgresql:9.5',
+              { name: 'postgresql:9.1', alias: 'postgres_old', ports: [80] },
+              { name: 'ruby', alias: 'postgres_old' }
+            ]
           end
 
           it 'is valid' do
@@ -109,9 +123,11 @@ RSpec.describe Gitlab::Ci::Config::Entry::Services do
 
         context 'when there are not any ports' do
           let(:config) do
-            ['postgresql:9.5',
-             { name: 'postgresql:9.1', alias: 'postgres_old' },
-             { name: 'ruby', alias: 'postgres_old' }]
+            [
+              'postgresql:9.5',
+              { name: 'postgresql:9.1', alias: 'postgres_old' },
+              { name: 'ruby', alias: 'postgres_old' }
+            ]
           end
 
           it 'is valid' do

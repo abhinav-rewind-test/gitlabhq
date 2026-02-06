@@ -6,15 +6,6 @@ exports[`Snippet Visibility Edit component rendering matches the snapshot 1`] = 
 >
   <label>
     Visibility level
-    <gl-link-stub
-      href="/foo/bar"
-      target="_blank"
-    >
-      <gl-icon-stub
-        name="question-o"
-        size="12"
-      />
-    </gl-link-stub>
   </label>
   <gl-form-group-stub
     class="gl-mb-0"
@@ -36,14 +27,15 @@ exports[`Snippet Visibility Edit component rendering matches the snapshot 1`] = 
         value="private"
       >
         <div
-          class="gl-align-items-center gl-display-flex"
+          class="gl-flex gl-items-center"
         >
           <gl-icon-stub
             name="lock"
             size="16"
+            variant="current"
           />
           <span
-            class="gl-font-weight-semibold gl-ml-2 js-visibility-option"
+            class="gl-font-semibold gl-ml-2 js-visibility-option"
             data-qa-visibility="Private"
             data-testid="visibility-content"
           >
@@ -56,14 +48,15 @@ exports[`Snippet Visibility Edit component rendering matches the snapshot 1`] = 
         value="internal"
       >
         <div
-          class="gl-align-items-center gl-display-flex"
+          class="gl-flex gl-items-center"
         >
           <gl-icon-stub
             name="shield"
             size="16"
+            variant="current"
           />
           <span
-            class="gl-font-weight-semibold gl-ml-2 js-visibility-option"
+            class="gl-font-semibold gl-ml-2 js-visibility-option"
             data-qa-visibility="Internal"
             data-testid="visibility-content"
           >
@@ -76,14 +69,15 @@ exports[`Snippet Visibility Edit component rendering matches the snapshot 1`] = 
         value="public"
       >
         <div
-          class="gl-align-items-center gl-display-flex"
+          class="gl-flex gl-items-center"
         >
           <gl-icon-stub
             name="earth"
             size="16"
+            variant="current"
           />
           <span
-            class="gl-font-weight-semibold gl-ml-2 js-visibility-option"
+            class="gl-font-semibold gl-ml-2 js-visibility-option"
             data-qa-visibility="Public"
             data-testid="visibility-content"
           >
@@ -94,7 +88,7 @@ exports[`Snippet Visibility Edit component rendering matches the snapshot 1`] = 
     </gl-form-radio-group-stub>
   </gl-form-group-stub>
   <div
-    class="gl-text-secondary"
+    class="gl-text-subtle"
     data-testid="restricted-levels-info"
   />
 </div>

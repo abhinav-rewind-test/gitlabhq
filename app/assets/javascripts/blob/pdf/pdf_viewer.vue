@@ -34,9 +34,9 @@ export default {
 </script>
 
 <template>
-  <div class="js-pdf-viewer container-fluid md gl-mt-3 gl-mb-3">
-    <div v-if="loading && !error" class="text-center loading">
-      <gl-loading-icon class="mt-5" size="lg" />
+  <div class="js-pdf-viewer container-fluid md gl-mb-3 gl-mt-3">
+    <div v-if="loading && !error" class="loading !gl-text-center">
+      <gl-loading-icon class="!gl-mt-7" size="lg" />
     </div>
     <pdf-lab
       v-if="!loadError"
@@ -45,7 +45,7 @@ export default {
       @pdflaberror="onError"
       v-on="$listeners"
     />
-    <p v-if="error" class="text-center">
+    <p v-if="error" class="!gl-text-center">
       <span v-if="loadError" ref="loadError">
         {{ __('An error occurred while loading the file. Please try again later.') }}
       </span>

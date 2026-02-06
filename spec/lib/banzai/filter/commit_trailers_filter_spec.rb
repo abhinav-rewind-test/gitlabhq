@@ -11,7 +11,7 @@ RSpec.describe Banzai::Filter::CommitTrailersFilter, feature_category: :source_c
   let(:user)                { create(:user, :public_email) }
   let(:email)               { FFaker::Internet.email }
 
-  let(:trailer)             { "#{FFaker::Lorem.word}-by:" }
+  let(:trailer)             { "#{generate(:short_text)}-by:" }
 
   let(:commit_message)      { trailer_line(trailer, user.name, user.public_email) }
   let(:commit_message_html) { commit_html(commit_message) }
@@ -39,6 +39,28 @@ RSpec.describe Banzai::Filter::CommitTrailersFilter, feature_category: :source_c
       doc = filter(message_html)
 
       expect_to_have_user_link_with_avatar(doc, user: user, trailer: trailer)
+    end
+
+    context 'with leading whitespace' do
+      let(:trailer) { "\t\t\t#{generate(:short_text)}-by:" }
+
+      it 'preserves whitespace' do
+        doc = filter(commit_message_html)
+
+        expect(doc.to_html).to include("\t\t\t")
+        expect(doc.to_html).to include(trailer.strip)
+      end
+    end
+
+    context 'with mixed whitespace' do
+      let(:trailer) { "  \t  #{generate(:short_text)}-by:" }
+
+      it 'preserves whitespace' do
+        doc = filter(commit_message_html)
+
+        expect(doc.to_html).to include("  \t  ")
+        expect(doc.to_html).to include(trailer.strip)
+      end
     end
 
     it 'does not detect GitLab users via a secondary email' do
@@ -90,7 +112,7 @@ RSpec.describe Banzai::Filter::CommitTrailersFilter, feature_category: :source_c
     end
 
     it 'multiple trailers in the same message' do
-      different_trailer = "#{FFaker::Lorem.word}-by:"
+      different_trailer = "#{generate(:short_text)}-by:"
       message = commit_html %(
         #{commit_message}
         #{trailer_line(different_trailer, FFaker::Name.name, email)}
@@ -231,4 +253,6 @@ RSpec.describe Banzai::Filter::CommitTrailersFilter, feature_category: :source_c
       end
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

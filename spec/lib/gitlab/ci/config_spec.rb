@@ -8,14 +8,14 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
 
   let_it_be(:user) { create(:user) }
 
+  let(:config) do
+    described_class.new(yml, project: nil, pipeline: nil, sha: nil, user: nil)
+  end
+
   before do
     allow_next_instance_of(Gitlab::Ci::Config::External::Context) do |instance|
       allow(instance).to receive(:check_execution_time!)
     end
-  end
-
-  let(:config) do
-    described_class.new(yml, project: nil, pipeline: nil, sha: nil, user: nil)
   end
 
   context 'when config is valid' do
@@ -35,8 +35,10 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
         hash = {
           image: 'image:1.0',
           rspec: {
-            script: ['gem install rspec',
-                     'rspec']
+            script: [
+              'gem install rspec',
+              'rspec'
+            ]
           }
         }
 
@@ -109,6 +111,24 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
         it { is_expected.to eq %w[.pre stage1 stage2 .post] }
       end
     end
+
+    context 'when pipeline ref is provided' do
+      let_it_be(:project) { create(:project, :repository) }
+      let(:ref) { 'master' }
+
+      let(:yml) do
+        <<-EOS
+          rspec:
+            script: exit 0
+        EOS
+      end
+
+      it 'sets the ref in the pipeline' do
+        expect(Ci::Pipeline).to receive(:new).with(hash_including(ref: ref)).and_call_original
+
+        described_class.new(yml, project: project, ref: ref, user: user)
+      end
+    end
   end
 
   describe '#included_templates' do
@@ -158,6 +178,59 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
           context_project: nil,
           context_sha: nil }
       )
+    end
+  end
+
+  describe '#included_components' do
+    let_it_be(:project1) { create(:project, :catalog_resource_with_components, create_tag: '1.0.0') }
+    let_it_be(:project2) { create(:project, :catalog_resource_with_components, create_tag: '1.0.0') }
+
+    let(:config) { described_class.new(yml, project: project1, user: user) }
+    let(:server_fqdn) { 'acme.com' }
+
+    let(:yml) do
+      <<-EOS
+        include:
+          - component: #{server_fqdn}/#{project1.full_path}/dast@1.0.0
+          - component: #{server_fqdn}/#{project2.full_path}/template@1.0.0
+          - local: templates/secret-detection.yml
+            inputs:
+              website: test.com
+      EOS
+    end
+
+    subject(:included_components) { config.included_components }
+
+    before do
+      project1.add_developer(user)
+      project2.add_developer(user)
+
+      allow(Gitlab.config.gitlab).to receive(:server_fqdn).and_return(server_fqdn)
+    end
+
+    it 'returns only components included with `include:component`' do
+      expect(config.metadata[:includes].size).to eq(3)
+      expect(included_components).to contain_exactly(
+        { project: project1, sha: project1.commit.sha, name: 'dast', version: nil, reference: '1.0.0' },
+        { project: project2, sha: project2.commit.sha, name: 'template', version: nil, reference: '1.0.0' }
+      )
+    end
+
+    context 'when duplicate components are included' do
+      let(:yml) do
+        <<-EOS
+          include:
+            - component: #{server_fqdn}/#{project1.full_path}/dast@1.0.0
+            - component: #{server_fqdn}/#{project1.full_path}/dast@1.0.0
+        EOS
+      end
+
+      it 'returns only unique components' do
+        expect(config.metadata[:includes].size).to eq(2)
+        expect(included_components).to contain_exactly(
+          { project: project1, sha: project1.commit.sha, name: 'dast', version: nil, reference: '1.0.0' }
+        )
+      end
     end
   end
 
@@ -680,7 +753,7 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
             job1: {
               script: ["echo 'hello from main file'"],
               variables: {
-               VARIABLE_DEFINED_IN_MAIN_FILE: 'some value'
+                VARIABLE_DEFINED_IN_MAIN_FILE: 'some value'
               }
             }
           })
@@ -894,6 +967,79 @@ RSpec.describe Gitlab::Ci::Config, feature_category: :pipeline_composition do
         it 'does not include the file' do
           expect(config.to_hash).not_to include(local_location_hash)
         end
+      end
+    end
+  end
+
+  context 'when config accepts inputs' do
+    let_it_be(:complex_inputs_example_path) { 'spec/lib/gitlab/ci/config/yaml/fixtures/complex-included-ci.yml' }
+    let_it_be(:complex_inputs_example_yaml) { File.read(Rails.root.join(complex_inputs_example_path)) }
+
+    let(:inputs) { nil }
+
+    subject(:config) do
+      described_class.new(complex_inputs_example_yaml, inputs: inputs)
+    end
+
+    context 'when not passing required inputs' do
+      it 'raises Config::ConfigError' do
+        expect { config }.to raise_error(
+          described_class::ConfigError,
+          /required value has not been provided/
+        )
+      end
+    end
+
+    context 'when the given inputs are not a hash' do
+      let(:inputs) { 'invalid' }
+
+      it 'raises a Config::ConfigError' do
+        expect { config }.to raise_error(described_class::ConfigError, 'Given inputs must be a hash')
+      end
+    end
+
+    context 'when passing required inputs' do
+      let(:inputs) do
+        {
+          deploy_strategy: 'blue-green',
+          job_stage: 'deploy',
+          test_script: ['echo "test"'],
+          test_rules: [
+            { if: '$CI_PIPELINE_SOURCE == "push"' }
+          ],
+          test_framework: '$TEST_FRAMEWORK'
+        }
+      end
+
+      let(:result) do
+        {
+          "my-job-build": a_hash_including(stage: 'deploy'),
+          "my-job-test": a_hash_including(
+            stage: 'deploy',
+            script: [
+              'echo "Testing with $TEST_FRAMEWORK"',
+              'if [ false == true ]; then echo "Coverage is enabled"; fi'
+            ]
+          ),
+          "my-job-test-2": a_hash_including(
+            stage: 'deploy',
+            script: ['echo "test"']
+          ),
+          "my-job-deploy": a_hash_including(
+            stage: 'deploy',
+            script: ['echo "Deploying to staging using blue-green strategy"']
+          )
+        }
+      end
+
+      it 'returns valid result' do
+        expect(config.valid?).to be_truthy
+        expect(config.to_hash).to match(a_hash_including(result))
+      end
+
+      it 'stores the spec for instrumentation' do
+        expect(config.spec).to be_present
+        expect(config.spec).to include(:inputs)
       end
     end
   end

@@ -11,6 +11,8 @@ const USE_VUE3 = EXPLICIT_VUE_VERSION === '3';
 
 if (USE_VUE3) {
   console.log('[V] Using Vue.js 3');
+} else {
+  console.log('[V] Using Vue.js 2');
 }
 const VUE_LOADER_MODULE = USE_VUE3 ? 'vue-loader-vue3' : 'vue-loader';
 
@@ -22,7 +24,6 @@ const BABEL_VERSION = require('@babel/core/package.json').version;
 const BABEL_LOADER_VERSION = require('babel-loader/package.json').version;
 const CompressionPlugin = require('compression-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-const glob = require('glob');
 // eslint-disable-next-line import/no-dynamic-require
 const { VueLoaderPlugin } = require(VUE_LOADER_MODULE);
 // eslint-disable-next-line import/no-dynamic-require
@@ -34,6 +35,7 @@ const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const { StatsWriterPlugin } = require('webpack-stats-plugin');
 const WEBPACK_VERSION = require('webpack/package.json').version;
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
+const { isCustomElement } = require('./vue3migration/compiler');
 
 const {
   IS_EE,
@@ -45,6 +47,8 @@ const {
   GITLAB_WEB_IDE_PUBLIC_PATH,
   copyFilesPatterns,
 } = require('./webpack.constants');
+const { PDF_JS_WORKER_PUBLIC_PATH, PDF_JS_CMAPS_PUBLIC_PATH } = require('./pdfjs.constants');
+const { generateEntries } = require('./webpack.helpers');
 
 const createIncrementalWebpackCompiler = require('./helpers/incremental_webpack_compiler');
 const vendorDllHash = require('./helpers/vendor_dll_hash');
@@ -58,7 +62,7 @@ const SUPPORTED_BROWSERS_HASH = crypto
   .digest('hex');
 
 const VENDOR_DLL = process.env.WEBPACK_VENDOR_DLL && process.env.WEBPACK_VENDOR_DLL !== 'false';
-const CACHE_PATH = process.env.WEBPACK_CACHE_PATH || path.join(ROOT_PATH, 'tmp/cache');
+const CACHE_PATH = process.env.WEBPACK_CACHE_PATH || path.join(ROOT_PATH, 'tmp/cache/webpack');
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const IS_DEV_SERVER = process.env.WEBPACK_SERVE === 'true';
 
@@ -88,11 +92,9 @@ if (WEBPACK_REPORT) {
   NO_HASHED_CHUNKS = true;
 }
 
-const devtool = IS_PRODUCTION ? 'source-map' : 'cheap-module-eval-source-map';
+console.debug(`BABEL_ENV inside Webpack is: ${process.env.BABEL_ENV}`);
 
-let autoEntriesCount = 0;
-let watchAutoEntries = [];
-const defaultEntries = ['./main'];
+const devtool = IS_PRODUCTION ? 'source-map' : 'cheap-module-eval-source-map';
 
 const incrementalCompiler = createIncrementalWebpackCompiler(
   INCREMENTAL_COMPILER_RECORD_HISTORY,
@@ -100,82 +102,6 @@ const incrementalCompiler = createIncrementalWebpackCompiler(
   path.join(CACHE_PATH, 'incremental-webpack-compiler-history.json'),
   INCREMENTAL_COMPILER_TTL,
 );
-
-function generateEntries() {
-  // generate automatic entry points
-  const autoEntries = {};
-  const autoEntriesMap = {};
-  const pageEntries = glob.sync('pages/**/index.js', {
-    cwd: path.join(ROOT_PATH, 'app/assets/javascripts'),
-  });
-  watchAutoEntries = [path.join(ROOT_PATH, 'app/assets/javascripts/pages/')];
-
-  function generateAutoEntries(entryPath, prefix = '.') {
-    const chunkPath = entryPath.replace(/\/index\.js$/, '');
-    const chunkName = chunkPath.replace(/\//g, '.');
-    autoEntriesMap[chunkName] = `${prefix}/${entryPath}`;
-  }
-
-  pageEntries.forEach((entryPath) => generateAutoEntries(entryPath));
-
-  if (IS_EE) {
-    const eePageEntries = glob.sync('pages/**/index.js', {
-      cwd: path.join(ROOT_PATH, 'ee/app/assets/javascripts'),
-    });
-    eePageEntries.forEach((entryPath) => generateAutoEntries(entryPath, 'ee'));
-    watchAutoEntries.push(path.join(ROOT_PATH, 'ee/app/assets/javascripts/pages/'));
-  }
-
-  if (IS_JH) {
-    const eePageEntries = glob.sync('pages/**/index.js', {
-      cwd: path.join(ROOT_PATH, 'jh/app/assets/javascripts'),
-    });
-    eePageEntries.forEach((entryPath) => generateAutoEntries(entryPath, 'jh'));
-    watchAutoEntries.push(path.join(ROOT_PATH, 'jh/app/assets/javascripts/pages/'));
-  }
-
-  const autoEntryKeys = Object.keys(autoEntriesMap);
-  autoEntriesCount = autoEntryKeys.length;
-
-  // import ancestor entrypoints within their children
-  autoEntryKeys.forEach((entry) => {
-    const entryPaths = [autoEntriesMap[entry]];
-    const segments = entry.split('.');
-    while (segments.pop()) {
-      const ancestor = segments.join('.');
-      if (autoEntryKeys.includes(ancestor)) {
-        entryPaths.unshift(autoEntriesMap[ancestor]);
-      }
-    }
-    autoEntries[entry] = defaultEntries.concat(entryPaths);
-  });
-
-  /*
-  If you create manual entries, ensure that these import `app/assets/javascripts/webpack.js` right at
-  the top of the entry in order to ensure that the public path is correctly determined for loading
-  assets async. See: https://webpack.js.org/configuration/output/#outputpublicpath
-
-  Note: WebPack 5 has an 'auto' option for the public path which could allow us to remove this option
-  Note 2: If you are using web-workers, you might need to reset the public path, see:
-  https://gitlab.com/gitlab-org/gitlab/-/issues/321656
-   */
-
-  const manualEntries = {
-    default: defaultEntries,
-    legacy_sentry: './sentry/legacy_index.js',
-    sentry: './sentry/index.js',
-    performance_bar: './performance_bar/index.js',
-    jira_connect_app: './jira_connect/subscriptions/index.js',
-    sandboxed_mermaid: './lib/mermaid.js',
-    redirect_listbox: './entrypoints/behaviors/redirect_listbox.js',
-    sandboxed_swagger: './lib/swagger.js',
-    super_sidebar: './entrypoints/super_sidebar.js',
-    tracker: './entrypoints/tracker.js',
-    analytics: './entrypoints/analytics.js',
-  };
-
-  return Object.assign(manualEntries, incrementalCompiler.filterEntryPoints(autoEntries));
-}
 
 const alias = {
   // Map Apollo client to apollo/client/core to prevent react related imports from being loaded
@@ -196,11 +122,27 @@ const alias = {
   // the following resolves files which are different between CE/EE/JH
   any_else_ce: path.join(ROOT_PATH, 'app/assets/javascripts'),
 
+  // consume @gitlab-ui from source to allow us to compile in either Vue 2 or Vue 3
+  '@gitlab/ui/dist/charts$': '@gitlab/ui/src/charts',
+  '@gitlab/ui$': '@gitlab/ui/src',
+
   // override loader path for icons.svg so we do not duplicate this asset
   '@gitlab/svgs/dist/icons.svg': path.join(
     ROOT_PATH,
     'app/assets/javascripts/lib/utils/icons_path.js',
   ),
+
+  // override loader path for illustrations.svg so we do not duplicate this asset
+  '@gitlab/svgs/dist/illustrations.svg': path.join(
+    ROOT_PATH,
+    'app/assets/javascripts/lib/utils/illustrations_path.js',
+  ),
+
+  // prevent loading of index.js to avoid duplicate instances of classes
+  graphql: path.join(ROOT_PATH, 'node_modules/graphql/index.mjs'),
+
+  // load mjs version instead of cjs
+  'markdown-it': path.join(ROOT_PATH, 'node_modules/markdown-it/index.mjs'),
 
   // test-environment-only aliases duplicated from Jest config
   'spec/test_constants$': path.join(ROOT_PATH, 'spec/frontend/__helpers__/test_constants'),
@@ -212,6 +154,7 @@ const alias = {
   test_helpers: path.join(ROOT_PATH, 'spec/frontend_integration/test_helpers'),
   public: path.join(ROOT_PATH, 'public'),
   storybook_addons: path.resolve(ROOT_PATH, 'storybook/config/addons'),
+  storybook_helpers: path.resolve(ROOT_PATH, 'storybook/helpers'),
 };
 
 if (IS_EE) {
@@ -222,6 +165,7 @@ if (IS_EE) {
     ee_else_ce: path.join(ROOT_PATH, 'ee/app/assets/javascripts'),
     jh_else_ee: path.join(ROOT_PATH, 'ee/app/assets/javascripts'),
     any_else_ce: path.join(ROOT_PATH, 'ee/app/assets/javascripts'),
+    fe_islands: path.join(ROOT_PATH, 'ee/frontend_islands/apps'),
 
     // test-environment-only aliases duplicated from Jest config
     ee_else_ce_jest: path.join(ROOT_PATH, 'ee/spec/frontend'),
@@ -269,6 +213,9 @@ const defaultJsOptions = {
     // Ensure that changing supported browsers will refresh the cache
     // in order to not pull in outdated files that import core-js
     SUPPORTED_BROWSERS_HASH,
+    // An EXPLICIT_VUE_VERSION changes how we alias certain packages
+    // use a different cache to prevent issues when switching between versions
+    EXPLICIT_VUE_VERSION,
   ].join('|'),
   cacheCompression: false,
 };
@@ -284,46 +231,112 @@ const vueLoaderOptions = {
     VUE_LOADER_VERSION,
     EXPLICIT_VUE_VERSION,
   ].join('|'),
+  compilerOptions: {
+    whitespace: 'preserve',
+  },
 };
 
-let shouldExcludeFromCompliling = (modulePath) =>
-  /node_modules|vendor[\\/]assets/.test(modulePath) && !/\.vue\.js/.test(modulePath);
-// We explicitly set VUE_VERSION
-// Use @gitlab-ui from source to allow us to dig differences
-// between Vue.js 2 and Vue.js 3 while using built gitlab-ui by default
-if (EXPLICIT_VUE_VERSION) {
-  Object.assign(alias, {
-    '@gitlab/ui/dist/tokens/js': path.join(ROOT_PATH, 'node_modules/@gitlab/ui/dist/tokens/js'),
-    '@gitlab/ui/dist': '@gitlab/ui/src',
-    '@gitlab/ui': '@gitlab/ui/src',
-  });
+const shouldExcludeFromCompiling = (modulePath) => {
+  // file with .vue.js extension
+  if (/\.vue\.js$/.test(modulePath)) {
+    return false;
+  }
 
-  const originalShouldExcludeFromCompliling = shouldExcludeFromCompliling;
+  // graphql-ws
+  if (/graphql-ws/.test(modulePath)) {
+    return false;
+  }
 
-  shouldExcludeFromCompliling = (modulePath) =>
-    originalShouldExcludeFromCompliling(modulePath) &&
-    !/node_modules[\\/]@gitlab[\\/]ui/.test(modulePath) &&
-    !/node_modules[\\/]bootstrap-vue[\\/]src[\\/]vue\.js/.test(modulePath);
-}
+  // GitLab UI source files (in node_modules)
+  if (new RegExp(path.join(ROOT_PATH, 'node_modules/@gitlab/ui/src')).test(modulePath)) {
+    return false;
+  }
+
+  // Exclude other ./node_modules and ./vendor/assets modules
+  return (
+    new RegExp(path.join(ROOT_PATH, 'node_modules')).test(modulePath) ||
+    new RegExp(path.join(ROOT_PATH, 'vendor/assets')).test(modulePath)
+  );
+};
 
 if (USE_VUE3) {
   Object.assign(alias, {
     // ensure we always use the same type of module for Vue
-    vue: '@vue/compat/dist/vue.runtime.esm-bundler.js',
+    '@vue/compat': '@vue/compat/dist/vue.runtime.esm-bundler.js',
+    vue: path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue.js'),
+    vuedraggable: path.join(
+      ROOT_PATH,
+      'node_modules/@gitlab/vuedraggable-vue3/src/vuedraggable.js',
+    ),
     vuex: path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vuex.js'),
     'vue-apollo': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue_apollo.js'),
     'vue-router': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/vue_router.js'),
+    'portal-vue': path.join(ROOT_PATH, 'app/assets/javascripts/lib/utils/vue3compat/portal_vue.js'),
+    // 'pinia' uses 'vue-demi' to locate the current active version of Vue.
+    // use an alias to ensure vue-demi finds the right version
+    'vue-demi': path.join(ROOT_PATH, 'node_modules/vue-demi/lib/v3/index.mjs'),
+    'vendor/vue-virtual-scroller': path.join(
+      ROOT_PATH,
+      'vendor/assets/javascripts/vue-virtual-scroller-vue3/src/index.js',
+    ),
   });
 
-  vueLoaderOptions.compiler = require.resolve('./vue3migration/compiler');
+  vueLoaderOptions.compiler = path.join(ROOT_PATH, 'config/vue3migration/compiler.js');
+  vueLoaderOptions.compilerOptions.compatConfig = {
+    MODE: 2,
+
+    COMPILER_V_BIND_OBJECT_ORDER: 'suppress-warning',
+    COMPILER_V_BIND_SYNC: 'suppress-warning',
+    COMPILER_V_IF_V_FOR_PRECEDENCE: 'suppress-warning',
+    COMPILER_V_ON_NATIVE: 'suppress-warning',
+  };
+  // Has no real effect here, since we're using thread-loader which serializes config passing to threads
+  // Implemented in custom compiler itself instead, kept here for future upgrade and consistency with vite
+  vueLoaderOptions.compilerOptions.isCustomElement = isCustomElement;
 }
 
+const entriesState = {
+  autoEntriesCount: 0,
+  watchAutoEntries: [],
+};
+const defaultEntries = ['./main'];
+
 module.exports = {
+  /*
+    If there is a compilation error in production, we want to exit immediately
+    https://v4.webpack.js.org/configuration/other-options/#bail
+   */
+  bail: !IS_DEV_SERVER,
   mode: IS_PRODUCTION ? 'production' : 'development',
 
   context: path.join(ROOT_PATH, 'app/assets/javascripts'),
 
-  entry: generateEntries,
+  entry: () => {
+    /*
+    If you create manual entries, ensure that these import `app/assets/javascripts/webpack.js` right at
+    the top of the entry in order to ensure that the public path is correctly determined for loading
+    assets async. See: https://webpack.js.org/configuration/output/#outputpublicpath
+
+    Note: WebPack 5 has an 'auto' option for the public path which could allow us to remove this option
+    Note 2: If you are using web-workers, you might need to reset the public path, see:
+    https://gitlab.com/gitlab-org/gitlab/-/issues/321656
+     */
+    return {
+      default: defaultEntries,
+      sentry: './sentry/index.js',
+      coverage_persistence: './entrypoints/coverage_persistence.js',
+      performance_bar: './entrypoints/performance_bar.js',
+      jira_connect_app: './jira_connect/subscriptions/index.js',
+      sandboxed_mermaid: './lib/mermaid.js',
+      redirect_listbox: './entrypoints/behaviors/redirect_listbox.js',
+      sandboxed_swagger: './lib/swagger.js',
+      super_sidebar: './entrypoints/super_sidebar.js',
+      tracker: './entrypoints/tracker.js',
+      analytics: './entrypoints/analytics.js',
+      graphql_explorer: './entrypoints/graphql_explorer.js',
+      ...incrementalCompiler.filterEntryPoints(generateEntries({ defaultEntries, entriesState })),
+    };
+  },
 
   output: {
     path: WEBPACK_OUTPUT_PATH,
@@ -336,7 +349,7 @@ module.exports = {
   },
 
   resolve: {
-    extensions: ['.js'],
+    extensions: ['.mjs', '.js'],
     alias,
   },
 
@@ -345,8 +358,31 @@ module.exports = {
     rules: [
       {
         type: 'javascript/auto',
+        exclude: /pdfjs-dist-v[34]/,
         test: /\.mjs$/,
         use: [],
+      },
+      {
+        test: /(pdfjs).*\.m?js?$/,
+        type: 'javascript/auto',
+        include: /node_modules/,
+        use: [
+          {
+            loader: 'babel-loader',
+            options: {
+              presets: [
+                ['@babel/preset-env', { targets: { esmodules: true }, modules: 'commonjs' }],
+              ],
+              plugins: ['@babel/plugin-transform-classes'],
+              ...defaultJsOptions,
+            },
+          },
+        ],
+      },
+      {
+        test: /(@gitlab\/web-ide).*\.js?$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
       },
       {
         test: /(@cubejs-client\/(vue|core)).*\.(js)?$/,
@@ -355,6 +391,11 @@ module.exports = {
       },
       {
         test: /gridstack\/.*\.js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+      },
+      {
+        test: /jsonc-parser\/.*\.js$/,
         include: /node_modules/,
         loader: 'babel-loader',
       },
@@ -383,17 +424,41 @@ module.exports = {
         loader: 'babel-loader',
       },
       {
-        test: /swagger-ui-dist\/.*\.js?$/,
+        test: /@graphiql\/.*\.m?js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+      },
+      {
+        test: /@radix-ui\/.*\.m?js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+      },
+      {
+        test: /(@sentry|@sentry-internal)\/.*\.m?js$/,
         include: /node_modules/,
         loader: 'babel-loader',
         options: {
-          plugins: ['@babel/plugin-transform-logical-assignment-operators'],
+          plugins: ['@babel/plugin-transform-optional-chaining'],
+        },
+      },
+      {
+        test: /swagger-ui-dist\/.*\.js?$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+        options: defaultJsOptions,
+      },
+      {
+        test: /@swagger-api\/apidom-.*\.[mc]?js$/,
+        include: /node_modules/,
+        loader: 'babel-loader',
+        options: {
+          plugins: ['@babel/plugin-transform-class-properties'],
           ...defaultJsOptions,
         },
       },
       {
         test: /\.(js|cjs)$/,
-        exclude: shouldExcludeFromCompliling,
+        exclude: shouldExcludeFromCompiling,
         use: [
           {
             loader: 'thread-loader',
@@ -511,6 +576,7 @@ module.exports = {
   optimization: {
     // Replace 'hashed' with 'deterministic' in webpack 5
     moduleIds: 'hashed',
+    chunkIds: 'named', // at least makes named chunks stable,
     runtimeChunk: 'single',
     splitChunks: {
       maxInitialRequests: 20,
@@ -522,21 +588,13 @@ module.exports = {
           priority: 20,
           name: 'main',
           chunks: 'initial',
-          minChunks: autoEntriesCount * 0.9,
+          minChunks: entriesState.autoEntriesCount * 0.9,
         }),
         prosemirror: {
           priority: 17,
           name: 'prosemirror',
           chunks: 'all',
           test: /[\\/]node_modules[\\/]prosemirror.*?[\\/]/,
-          minChunks: 2,
-          reuseExistingChunk: true,
-        },
-        graphql: {
-          priority: 16,
-          name: 'graphql',
-          chunks: 'all',
-          test: /[\\/]node_modules[\\/][^\\/]*(immer|apollo|graphql|zen-observable)[^\\/]*[\\/]/,
           minChunks: 2,
           reuseExistingChunk: true,
         },
@@ -571,6 +629,30 @@ module.exports = {
   },
 
   plugins: [
+    // A custom function is needed because chunkIds: "named" alone only
+    // affects chunks that already have names (entry points, chunks with
+    // magic comments such as:
+    //
+    // /* webpackChunkName: "my-chunk" */
+    //
+    // Anonymous chunks, such as dynamic imports without names, would
+    // still get incremental IDs and could cause different IDs to be
+    // assigned across different runs.
+    //
+    // See https://gitlab.com/gitlab-com/gl-infra/production/-/issues/20271.
+    // This should not be needed with Webpack 5.
+    !DEV_SERVER_LIVERELOAD &&
+      new webpack.NamedChunksPlugin((chunk) => {
+        // Keep named chunks as-is (entries, magic comments)
+        if (chunk.name) return chunk.name;
+
+        // Get all module IDs in this chunk, sorted for stability
+        const ids = Array.from(chunk.modulesIterable, (m) => m.id).sort();
+
+        const hash = crypto.createHash('sha256').update(ids.join('_')).digest('hex');
+
+        return hash.slice(0, 8);
+      }),
     // manifest filename must match config.webpack.manifest_filename
     // webpack-rails only needs assetsByChunkName to function properly
     new StatsWriterPlugin({
@@ -692,13 +774,61 @@ module.exports = {
         );
       }),
 
-    new webpack.NormalModuleReplacementPlugin(/markdown-it/, (resource) => {
-      // eslint-disable-next-line no-param-reassign
-      resource.request = path.join(ROOT_PATH, 'app/assets/javascripts/lib/markdown_it.js');
+    /*
+     The following `NormalModuleReplacementPlugin` adds support for exports field in `package.json`.
+     It might not necessarily be needed for all packages which expose it, but some packages
+     need it because they use the exports internally.
+
+     Webpack 4 doesn't have support for it, while vite does.
+     See also: https://github.com/webpack/webpack/issues/9509
+     */
+    ...['@swagger-api/apidom-reference'].map((packageName) => {
+      const packageJSON = fs.readFileSync(
+        path.join(ROOT_PATH, 'node_modules', packageName, 'package.json'),
+        'utf-8',
+      );
+      const { exports } = JSON.parse(packageJSON);
+      const regex = new RegExp(`^${packageName}`);
+      return new webpack.NormalModuleReplacementPlugin(regex, (resource) => {
+        const { request } = resource;
+        if (!request.endsWith('.js') && !request.endsWith('.mjs') && !request.endsWith('.cjs')) {
+          const relative = `./${path.relative(packageName, request)}`;
+          if (exports[relative]?.browser?.import || exports[relative]?.import) {
+            const newRequest = path.join(
+              packageName,
+              exports[relative]?.browser?.import || exports[relative]?.import,
+            );
+            console.log(`[exports-replacer]: ${request} => ${newRequest}`);
+            // eslint-disable-next-line no-param-reassign
+            resource.request = newRequest;
+          } else {
+            console.warn(
+              `[exports-replacer]: Could not find import field for ${relative} in exports of [${packageName}]`,
+            );
+          }
+        }
+      });
+    }),
+
+    new webpack.ContextReplacementPlugin(/^\.$/, (context) => {
+      if (/\/node_modules\/pdfjs-dist/.test(context.context)) {
+        for (const d of context.dependencies) {
+          if (d.critical) d.critical = false;
+        }
+      }
     }),
 
     !IS_JH &&
       new webpack.NormalModuleReplacementPlugin(/^jh_component\/(.*)\.vue/, (resource) => {
+        // eslint-disable-next-line no-param-reassign
+        resource.request = path.join(
+          ROOT_PATH,
+          'app/assets/javascripts/vue_shared/components/empty_component.js',
+        );
+      }),
+    !IS_EE &&
+      !IS_JH &&
+      new webpack.NormalModuleReplacementPlugin(/^jh_else_ee\/(.*)\.vue/, (resource) => {
         // eslint-disable-next-line no-param-reassign
         resource.request = path.join(
           ROOT_PATH,
@@ -728,14 +858,16 @@ module.exports = {
           if (hasMissingNodeModules) compilation.contextDependencies.add(nodeModulesPath);
 
           // watch for changes to automatic entrypoints
-          watchAutoEntries.forEach((watchPath) => compilation.contextDependencies.add(watchPath));
+          entriesState.watchAutoEntries.forEach((watchPath) =>
+            compilation.contextDependencies.add(watchPath),
+          );
 
           // report our auto-generated bundle count
           if (incrementalCompiler.enabled) {
-            incrementalCompiler.logStatus(autoEntriesCount);
+            incrementalCompiler.logStatus(entriesState.autoEntriesCount);
           } else {
             console.log(
-              `${autoEntriesCount} entries from '/pages' automatically added to webpack output.`,
+              `${entriesState.autoEntriesCount} entries from '/pages' automatically added to webpack output.`,
             );
           }
 
@@ -810,7 +942,19 @@ module.exports = {
       // This is used by Sourcegraph because these assets are loaded dnamically
       'process.env.SOURCEGRAPH_PUBLIC_PATH': JSON.stringify(SOURCEGRAPH_PUBLIC_PATH),
       'process.env.GITLAB_WEB_IDE_PUBLIC_PATH': JSON.stringify(GITLAB_WEB_IDE_PUBLIC_PATH),
+      'window.IS_VITE': JSON.stringify(false),
       ...(IS_PRODUCTION ? {} : { LIVE_RELOAD: DEV_SERVER_LIVERELOAD }),
+      'process.env.PDF_JS_WORKER_PUBLIC_PATH': JSON.stringify(PDF_JS_WORKER_PUBLIC_PATH),
+      'process.env.PDF_JS_CMAPS_PUBLIC_PATH': JSON.stringify(PDF_JS_CMAPS_PUBLIC_PATH),
+      // Vue 3 feature flags - https://link.vuejs.org/feature-flags
+      // These are required for the esm-bundler build of Vue to enable proper tree-shaking
+      ...(USE_VUE3
+        ? {
+            __VUE_OPTIONS_API__: JSON.stringify(true),
+            __VUE_PROD_DEVTOOLS__: JSON.stringify(false),
+            __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: JSON.stringify(false),
+          }
+        : {}),
     }),
 
     /* Pikaday has a optional dependency to moment.

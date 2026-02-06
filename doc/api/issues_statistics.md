@@ -2,24 +2,28 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Documentation for the REST API for issues statistics in GitLab.
+title: Issues statistics API
 ---
 
-# Issues statistics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-Every API call to the [issues](../user/project/issues/index.md) statistics API must be authenticated.
+{{< /details >}}
+
+Use this API to retrieve statistics about [issues](../user/project/issues/_index.md).
+Every call to this API requires authentication.
 
 If a user is not a member of a project and the project is private, a `GET`
 request on that project results in a `404` status code.
 
-## Get issues statistics
+## Retrieve issues statistics for a user
 
-Gets issues count statistics on all issues the authenticated user has access to. By default it
-returns only issues created by the current user. To get all issues,
-use parameter `scope=all`.
+Retrieves statistics for issues accessible by the current user. By default, 
+it returns only issues created by the current user. To get all issues,
+set the `scope` attribute to `all`.
 
 ```plaintext
 GET /issues_statistics
@@ -45,7 +49,7 @@ GET /issues_statistics?confidential=true
 | `author_username`   | string           | no         | Return issues created by the given `username`. Similar to `author_id` and mutually exclusive with `author_id`. |
 | `assignee_id`       | integer          | no         | Return issues assigned to the given user `id`. Mutually exclusive with `assignee_username`. `None` returns unassigned issues. `Any` returns issues with an assignee. |
 | `assignee_username` | string array     | no         | Return issues assigned to the given `username`. Similar to `assignee_id` and mutually exclusive with `assignee_id`. In GitLab CE `assignee_username` array should only contain a single value or an invalid parameter error is returned otherwise. |
-| `epic_id`           | integer      | no         | Return issues associated with the given epic ID. `None` returns issues that are not associated with an epic. `Any` returns issues that are associated with an epic. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/46887) in GitLab 13.6. Premium and Ultimate only. |
+| `epic_id`           | integer      | no         | Return issues associated with the given epic ID. `None` returns issues that are not associated with an epic. `Any` returns issues that are associated with an epic. Premium and Ultimate only. |
 | `my_reaction_emoji` | string           | no         | Return issues reacted by the authenticated user by the given `emoji`. `None` returns issues not given a reaction. `Any` returns issues given at least one reaction. |
 | `iids[]`            | integer array    | no         | Return only the issues having the given `iid`                                                                                                       |
 | `search`            | string           | no         | Search issues against their `title` and `description`                                                                                               |
@@ -57,7 +61,9 @@ GET /issues_statistics?confidential=true
 | `confidential`      | boolean          | no         | Filter confidential or public issues.                                                                                                               |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/issues_statistics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/issues_statistics"
 ```
 
 Example response:
@@ -74,9 +80,9 @@ Example response:
 }
 ```
 
-## Get group issues statistics
+## Retrieve issues statistics for a group
 
-Gets issues count statistics for given group.
+Retrieves statistics for issues in a specified group.
 
 ```plaintext
 GET /groups/:id/issues_statistics
@@ -95,7 +101,7 @@ GET /groups/:id/issues_statistics?confidential=true
 
 | Attribute           | Type             | Required   | Description                                                                                                                   |
 | ------------------- | ---------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                 |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                 |
 | `labels`            | string           | no         | Comma-separated list of label names, issues must have all labels to be returned. `None` lists all issues with no labels. `Any` lists all issues with at least one label. |
 | `iids[]`            | integer array    | no         | Return only the issues having the given `iid`                                                                                 |
 | `milestone`         | string           | no         | The milestone title. `None` lists all issues with no milestone. `Any` lists all issues that have an assigned milestone.       |
@@ -113,7 +119,9 @@ GET /groups/:id/issues_statistics?confidential=true
 | `confidential`      | boolean          | no         | Filter confidential or public issues.                                                                                         |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/4/issues_statistics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/4/issues_statistics"
 ```
 
 Example response:
@@ -130,9 +138,9 @@ Example response:
 }
 ```
 
-## Get project issues statistics
+## Retrieve issues statistics for a project
 
-Gets issues count statistics for given project.
+Retrieves statistics for issues in a specified project.
 
 ```plaintext
 GET /projects/:id/issues_statistics
@@ -151,7 +159,7 @@ GET /projects/:id/issues_statistics?confidential=true
 
 | Attribute           | Type             | Required   | Description                                                                                                                   |
 | ------------------- | ---------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user               |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths)               |
 | `iids[]`            | integer array    | no         | Return only the milestone having the given `iid`                                                                              |
 | `labels`            | string           | no         | Comma-separated list of label names, issues must have all labels to be returned. `None` lists all issues with no labels. `Any` lists all issues with at least one label. |
 | `milestone`         | string           | no         | The milestone title. `None` lists all issues with no milestone. `Any` lists all issues that have an assigned milestone.       |
@@ -169,7 +177,9 @@ GET /projects/:id/issues_statistics?confidential=true
 | `confidential`      | boolean          | no         | Filter confidential or public issues.                                                                                         |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/4/issues_statistics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/4/issues_statistics"
 ```
 
 Example response:

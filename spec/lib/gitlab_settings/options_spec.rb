@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe GitlabSettings::Options, :aggregate_failures, feature_category: :shared do
+RSpec.describe GitlabSettings::Options, :aggregate_failures, feature_category: :settings do
   let(:config) { { foo: { bar: 'baz' } } }
 
   subject(:options) { described_class.build(config) }
@@ -164,6 +164,25 @@ RSpec.describe GitlabSettings::Options, :aggregate_failures, feature_category: :
         options.merge!(foo: 'configs') # rubocop: disable Performance/RedundantMerge
 
         expect(options.to_hash).to eq('foo' => 'configs')
+      end
+    end
+  end
+
+  describe '#reverse_merge!' do
+    it 'merges in place with the existing options' do
+      options.reverse_merge!(more: 'configs')
+
+      expect(options.to_hash).to eq(
+        'foo' => { 'bar' => 'baz' },
+        'more' => 'configs'
+      )
+    end
+
+    context 'when the merge hash replaces existing configs' do
+      it 'merges in place with the duplicated options not replaced' do
+        options.reverse_merge!(foo: 'configs')
+
+        expect(options.to_hash).to eq('foo' => { 'bar' => 'baz' })
       end
     end
   end

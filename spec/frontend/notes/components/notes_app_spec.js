@@ -1,12 +1,14 @@
 import { mount, shallowMount } from '@vue/test-utils';
+import { createTestingPinia } from '@pinia/testing';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import $ from 'jquery';
-import { nextTick } from 'vue';
+import Vue, { nextTick } from 'vue';
+import { getActivePinia, PiniaVuePlugin, setActivePinia } from 'pinia';
+import VueApollo from 'vue-apollo';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import { mockTracking } from 'helpers/tracking_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import DraftNote from '~/batch_comments/components/draft_note.vue';
-import batchComments from '~/batch_comments/stores/modules/batch_comments';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import { getLocationHash } from '~/lib/utils/url_utility';
@@ -15,13 +17,32 @@ import notesEventHub from '~/notes/event_hub';
 import CommentForm from '~/notes/components/comment_form.vue';
 import NotesApp from '~/notes/components/notes_app.vue';
 import NotesActivityHeader from '~/notes/components/notes_activity_header.vue';
+import NoteableDiscussion from '~/notes/components/noteable_discussion.vue';
 import * as constants from '~/notes/constants';
-import createStore from '~/notes/stores';
-import OrderedLayout from '~/vue_shared/components/ordered_layout.vue';
+import OrderedLayout from '~/notes/components/ordered_layout.vue';
 // TODO: use generated fixture (https://gitlab.com/gitlab-org/gitlab-foss/issues/62491)
+import { CopyAsGFM } from '~/behaviors/markdown/copy_as_gfm';
+import { Mousetrap } from '~/lib/mousetrap';
+import { ISSUABLE_COMMENT_OR_REPLY, keysFor } from '~/behaviors/shortcuts/keybindings';
+import { useFakeRequestAnimationFrame } from 'helpers/fake_request_animation_frame';
+import { useNotes } from '~/notes/store/legacy_notes';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { globalAccessorPlugin } from '~/pinia/plugins';
+import createMockApollo from 'helpers/mock_apollo_helper';
+import noteQuery from '~/notes/graphql/note.query.graphql';
+import { useBatchComments } from '~/batch_comments/store';
+import * as types from '~/notes/stores/mutation_types';
+import { SET_BATCH_COMMENTS_DRAFTS } from '~/batch_comments/stores/modules/batch_comments/mutation_types';
+import { querySelectionClosest } from '~/lib/utils/selection';
 import * as mockData from '../mock_data';
+import { createDiscussionMock } from '../mock_data';
 
 jest.mock('~/behaviors/markdown/render_gfm');
+jest.mock('~/behaviors/markdown/copy_as_gfm');
+jest.mock('~/lib/utils/selection');
+jest.mock('~/lib/utils/resize_observer', () => ({
+  scrollToTargetOnResize: jest.fn(),
+}));
 
 const TYPE_COMMENT_FORM = 'comment-form';
 const TYPE_NOTES_LIST = 'notes-list';
@@ -34,31 +55,58 @@ const propsData = {
   notesFilterValue: TEST_NOTES_FILTER_VALUE,
 };
 
+Vue.use(VueApollo);
+Vue.use(PiniaVuePlugin);
+
 describe('note_app', () => {
   let axiosMock;
-  let mountComponent;
   let wrapper;
-  let store;
+  let pinia;
 
   const initStore = (notesData = propsData.notesData) => {
-    store.dispatch('setNotesData', notesData);
-    store.dispatch('setNoteableData', propsData.noteableData);
-    store.dispatch('setUserData', mockData.userDataMock);
-    store.dispatch('setTargetNoteHash', getLocationHash());
+    useNotes().setNotesData(notesData);
+    useNotes().setNoteableData(propsData.noteableData);
+    useNotes().setUserData(mockData.userDataMock);
+    useNotes().setTargetNoteHash(getLocationHash());
     // call after mounted hook
     queueMicrotask(() => {
       queueMicrotask(() => {
-        store.dispatch('fetchNotes');
+        useNotes().fetchNotes();
       });
     });
+  };
+
+  const mountComponent = ({ props = {} } = {}) => {
+    initStore();
+    wrapper = mount(
+      {
+        components: {
+          NotesApp,
+        },
+        template: `<div class="js-vue-notes-event">
+            <notes-app ref="notesApp" v-bind="$attrs" />
+          </div>`,
+        inheritAttrs: false,
+      },
+      {
+        propsData: {
+          ...propsData,
+          ...props,
+        },
+        pinia,
+      },
+    );
   };
 
   const findCommentButton = () => wrapper.find('[data-testid="comment-button"]');
 
   const getComponentOrder = () => {
-    return wrapper
-      .findAll('#notes-list,.js-comment-form')
-      .wrappers.map((node) => (node.is(CommentForm) ? TYPE_COMMENT_FORM : TYPE_NOTES_LIST));
+    const nodes = wrapper.findAll('#notes-list,.js-comment-form');
+    const wrappers = nodes.wrappers || nodes; // Vue 2: use wrappers; Vue 3: nodes is the array
+
+    return wrappers.map((node) =>
+      node.findComponent(CommentForm).exists() ? TYPE_COMMENT_FORM : TYPE_NOTES_LIST,
+    );
   };
 
   beforeEach(() => {
@@ -66,41 +114,23 @@ describe('note_app', () => {
 
     axiosMock = new AxiosMockAdapter(axios);
 
-    store = createStore();
-
-    mountComponent = ({ props = {} } = {}) => {
-      initStore();
-      return mount(
-        {
-          components: {
-            NotesApp,
-          },
-          template: `<div class="js-vue-notes-event">
-            <notes-app ref="notesApp" v-bind="$attrs" />
-          </div>`,
-          inheritAttrs: false,
-        },
-        {
-          propsData: {
-            ...propsData,
-            ...props,
-          },
-          store,
-        },
-      );
-    };
+    pinia = createTestingPinia({
+      plugins: [globalAccessorPlugin],
+      stubActions: false,
+    });
+    useLegacyDiffs();
+    useNotes();
+    useBatchComments();
   });
 
   afterEach(() => {
     axiosMock.restore();
-    // eslint-disable-next-line @gitlab/vtu-no-explicit-wrapper-destroy
-    wrapper.destroy();
   });
 
   describe('render', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
@@ -143,7 +173,7 @@ describe('note_app', () => {
   describe('render with comments disabled', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      wrapper = mountComponent({
+      mountComponent({
         // why: In this integration test, previously we manually set store.state.commentsDisabled
         //      This stopped working when we added `<discussion-filter>` into the component tree.
         //      Let's lean into the integration scope and use a prop that "disables comments".
@@ -167,10 +197,9 @@ describe('note_app', () => {
   describe('timeline view', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      store.state.commentsDisabled = false;
-      store.state.isTimelineEnabled = true;
+      useNotes()[types.SET_TIMELINE_VIEW](true);
 
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
@@ -181,7 +210,7 @@ describe('note_app', () => {
 
   describe('while fetching data', () => {
     beforeEach(() => {
-      wrapper = mountComponent();
+      mountComponent();
     });
 
     it('renders skeleton notes', () => {
@@ -200,7 +229,7 @@ describe('note_app', () => {
     describe('individual note', () => {
       beforeEach(() => {
         axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-        wrapper = mountComponent();
+        mountComponent();
         return waitForPromises().then(() => {
           wrapper.find('.js-note-edit').trigger('click');
         });
@@ -210,10 +239,11 @@ describe('note_app', () => {
         expect(wrapper.find('.js-vue-issue-note-form').exists()).toBe(true);
       });
 
-      it('calls the store action to update the note', () => {
+      it('calls the store action to update the note', async () => {
         jest.spyOn(axios, 'put').mockImplementation(() => Promise.resolve({ data: {} }));
         wrapper.find('.js-vue-issue-note-form').value = 'this is a note';
         wrapper.find('.js-vue-issue-save').trigger('click');
+        await waitForPromises();
 
         expect(axios.put).toHaveBeenCalled();
       });
@@ -222,7 +252,7 @@ describe('note_app', () => {
     describe('discussion note', () => {
       beforeEach(() => {
         axiosMock.onAny().reply(mockData.getDiscussionNoteResponse);
-        wrapper = mountComponent();
+        mountComponent();
         return waitForPromises().then(() => {
           wrapper.find('.js-note-edit').trigger('click');
         });
@@ -232,10 +262,11 @@ describe('note_app', () => {
         expect(wrapper.find('.js-vue-issue-note-form').exists()).toBe(true);
       });
 
-      it('updates the note and resets the edit form', () => {
+      it('updates the note and resets the edit form', async () => {
         jest.spyOn(axios, 'put').mockImplementation(() => Promise.resolve({ data: {} }));
         wrapper.find('.js-vue-issue-note-form').value = 'this is a note';
         wrapper.find('.js-vue-issue-save').trigger('click');
+        await waitForPromises();
 
         expect(axios.put).toHaveBeenCalled();
       });
@@ -245,7 +276,7 @@ describe('note_app', () => {
   describe('new note form', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
@@ -259,7 +290,7 @@ describe('note_app', () => {
   describe('edit form', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
@@ -275,34 +306,36 @@ describe('note_app', () => {
   describe('emoji awards', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(HTTP_STATUS_OK, []);
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
     it('dispatches toggleAward after toggleAward event', () => {
+      const fakeDiscussion = createDiscussionMock();
+      const [firstNote] = fakeDiscussion.notes;
+      firstNote.award_emoji = [{ name: 'test', awardName: 'test', user: { id: 1 } }];
+      useNotes()[types.ADD_NEW_NOTE]({
+        discussion: fakeDiscussion,
+      });
       const toggleAwardEvent = new CustomEvent('toggleAward', {
         detail: {
           awardName: 'test',
-          noteId: 1,
-        },
-      });
-      const toggleAwardAction = jest.fn().mockName('toggleAward');
-      wrapper.vm.$store.hotUpdate({
-        actions: {
-          toggleAward: toggleAwardAction,
+          noteId: firstNote.id,
         },
       });
 
-      wrapper.vm.$parent.$el.dispatchEvent(toggleAwardEvent);
+      const activePinia = getActivePinia();
 
-      jest.advanceTimersByTime(2);
+      wrapper.element.dispatchEvent(toggleAwardEvent);
 
-      expect(toggleAwardAction).toHaveBeenCalledTimes(1);
-      const [, payload] = toggleAwardAction.mock.calls[0];
+      jest.runOnlyPendingTimers();
 
-      expect(payload).toEqual({
+      // timers change the active pinia instance
+      setActivePinia(activePinia);
+
+      expect(useNotes().toggleAward).toHaveBeenCalledWith({
         awardName: 'test',
-        noteId: 1,
+        noteId: firstNote.id,
       });
     });
   });
@@ -310,30 +343,28 @@ describe('note_app', () => {
   describe('mounted', () => {
     beforeEach(() => {
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
-      wrapper = mountComponent();
+      mountComponent();
       return waitForPromises();
     });
 
-    it('should listen hashchange event', () => {
-      const hash = 'some dummy hash';
+    it('should listen hashchange event for notes', () => {
+      const hash = 'note_1234';
       jest.spyOn(urlUtility, 'getLocationHash').mockReturnValue(hash);
-      const dispatchMock = jest.spyOn(store, 'dispatch');
       window.dispatchEvent(new Event('hashchange'), hash);
 
-      expect(dispatchMock).toHaveBeenCalledWith('setTargetNoteHash', 'some dummy hash');
+      expect(useNotes().setTargetNoteHash).toHaveBeenCalledWith('note_1234');
     });
   });
 
   describe('when sort direction is desc', () => {
     beforeEach(() => {
-      store = createStore();
-      store.state.discussionSortOrder = constants.DESC;
-      store.state.isLoading = true;
-      store.state.discussions = [mockData.discussionMock];
+      useNotes()[types.SET_DISCUSSIONS_SORT]({ direction: constants.DESC });
+      useNotes()[types.SET_NOTES_LOADING_STATE](true);
+      useNotes()[types.ADD_NEW_NOTE]({ discussion: mockData.discussionMock });
 
       wrapper = shallowMount(NotesApp, {
         propsData,
-        store,
+        pinia,
         stubs: {
           'ordered-layout': OrderedLayout,
         },
@@ -351,13 +382,12 @@ describe('note_app', () => {
 
   describe('when sort direction is asc', () => {
     beforeEach(() => {
-      store = createStore();
-      store.state.isLoading = true;
-      store.state.discussions = [mockData.discussionMock];
+      useNotes()[types.SET_NOTES_LOADING_STATE](true);
+      useNotes()[types.ADD_NEW_NOTE]({ discussion: mockData.discussionMock });
 
       wrapper = shallowMount(NotesApp, {
         propsData,
-        store,
+        pinia,
         stubs: {
           'ordered-layout': OrderedLayout,
         },
@@ -373,19 +403,73 @@ describe('note_app', () => {
     });
   });
 
+  describe('preview note', () => {
+    let noteQueryHandler;
+
+    function hashFactory({ urlHash, authorId } = {}) {
+      jest.spyOn(urlUtility, 'getLocationHash').mockReturnValue(urlHash);
+
+      noteQueryHandler = jest
+        .fn()
+        .mockResolvedValue(mockData.singleNoteResponseFactory({ urlHash, authorId }));
+
+      useNotes()[types.SET_NOTES_LOADING_STATE](true);
+      useNotes()[types.SET_TARGET_NOTE_HASH](urlHash);
+
+      wrapper = shallowMount(NotesApp, {
+        propsData,
+        pinia,
+        apolloProvider: createMockApollo([[noteQuery, noteQueryHandler]]),
+        stubs: {
+          'ordered-layout': OrderedLayout,
+        },
+      });
+    }
+
+    it('calls query when note id exists', async () => {
+      hashFactory({ urlHash: 'note_123' });
+
+      expect(noteQueryHandler).toHaveBeenCalled();
+      await waitForPromises();
+
+      expect(wrapper.findComponent(NoteableDiscussion).exists()).toBe(true);
+    });
+
+    it('converts all ids from graphql to numeric', async () => {
+      hashFactory({ urlHash: 'note_1234', authorId: 5 });
+
+      await waitForPromises();
+
+      const note = wrapper.findComponent(NoteableDiscussion).props('discussion').notes[0];
+
+      expect(note.id).toBe('1234');
+      expect(note.author.id).toBe(5);
+    });
+
+    it('does not call query when note id does not exist', () => {
+      hashFactory();
+
+      expect(noteQueryHandler).not.toHaveBeenCalled();
+    });
+
+    it('does not call query when url hash is not a note', () => {
+      hashFactory({ urlHash: 'not_123' });
+
+      expect(noteQueryHandler).not.toHaveBeenCalled();
+    });
+  });
+
   describe('when multiple draft types are present', () => {
     beforeEach(() => {
-      store = createStore();
-      store.registerModule('batchComments', batchComments());
-      store.state.batchComments.drafts = [
+      useNotes()[types.SET_NOTES_LOADING_STATE](true);
+      useBatchComments()[SET_BATCH_COMMENTS_DRAFTS]([
         mockData.draftDiffDiscussion,
         mockData.draftReply,
         ...mockData.draftComments,
-      ];
-      store.state.isLoading = false;
+      ]);
       wrapper = shallowMount(NotesApp, {
         propsData,
-        store,
+        pinia,
         stubs: {
           OrderedLayout,
         },
@@ -404,9 +488,8 @@ describe('note_app', () => {
   describe('fetching discussions', () => {
     describe('when note anchor is not present', () => {
       it('does not include extra query params', async () => {
-        store = createStore();
         initStore();
-        wrapper = shallowMount(NotesApp, { propsData, store });
+        wrapper = shallowMount(NotesApp, { propsData, pinia });
         await waitForPromises();
 
         expect(axiosMock.history.get[0].params).toEqual({ per_page: 20 });
@@ -421,7 +504,7 @@ describe('note_app', () => {
         });
         return shallowMount(NotesApp, {
           propsData,
-          store: createStore(),
+          pinia,
         });
       };
 
@@ -463,7 +546,7 @@ describe('note_app', () => {
       window.mrTabs = { eventHub: notesEventHub };
       axiosMock.onAny().reply(mockData.getIndividualNoteResponse);
       trackingSpy = mockTracking(undefined, window.document, jest.spyOn);
-      wrapper = mountComponent();
+      mountComponent();
     });
 
     describe('when adding a new comment to an existing review', () => {
@@ -488,6 +571,78 @@ describe('note_app', () => {
           expect.any(Object),
         );
       });
+    });
+  });
+
+  describe('reply hotkey', () => {
+    useFakeRequestAnimationFrame();
+
+    it('sends quote to main reply editor', async () => {
+      querySelectionClosest.mockReturnValue(null);
+      CopyAsGFM.selectionToGfm.mockResolvedValue('foo');
+      mountComponent();
+      const replySpy = jest.spyOn(wrapper.findComponent(CommentForm).vm, 'append');
+      Mousetrap.trigger(keysFor(ISSUABLE_COMMENT_OR_REPLY)[0]);
+      await waitForPromises();
+      expect(replySpy).toHaveBeenCalledWith('foo');
+    });
+
+    it('sends quote to discussion reply editor', () => {
+      const quoteReplyHandler = jest.fn();
+      const mockDiscussionElement = document.createElement('div');
+      mockDiscussionElement.addEventListener('quoteReply', quoteReplyHandler);
+      querySelectionClosest.mockReturnValue(mockDiscussionElement);
+      mountComponent();
+      Mousetrap.trigger(keysFor(ISSUABLE_COMMENT_OR_REPLY)[0]);
+      expect(quoteReplyHandler).toHaveBeenCalled();
+    });
+
+    it('does not do anything when invisible', () => {
+      const quoteReplyHandler = jest.fn();
+      const mockDiscussionElement = document.createElement('div');
+      mockDiscussionElement.addEventListener('quoteReply', quoteReplyHandler);
+      querySelectionClosest.mockReturnValue(mockDiscussionElement);
+      mountComponent({ props: { shouldShow: false } });
+      Mousetrap.trigger(keysFor(ISSUABLE_COMMENT_OR_REPLY)[0]);
+      expect(quoteReplyHandler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('noteableType computed property', () => {
+    const createComponent = (noteableType, type) => {
+      return shallowMount(NotesApp, {
+        propsData: {
+          ...propsData,
+          noteableData: {
+            ...propsData.noteableData,
+            noteableType,
+            type,
+          },
+        },
+        pinia,
+      });
+    };
+
+    it('returns the noteableType as is for regular types', () => {
+      wrapper = createComponent('Issue', 'issue');
+      expect(wrapper.findComponent(NotesActivityHeader).props('noteableType')).toBe('Issue');
+
+      wrapper = createComponent('MergeRequest', 'merge_request');
+      expect(wrapper.findComponent(NotesActivityHeader).props('noteableType')).toBe('MergeRequest');
+    });
+
+    it('capitalizes the first letter for incident type & does not return noteableType', () => {
+      wrapper = createComponent('Incident', 'incident');
+      expect(wrapper.findComponent(NotesActivityHeader).props('noteableType')).toBe('Incident');
+
+      wrapper = createComponent('Issue', 'incident');
+      expect(wrapper.findComponent(NotesActivityHeader).props('noteableType')).toBe('Incident');
+    });
+
+    it('handles empty values gracefully', () => {
+      wrapper = createComponent('', '');
+      expect(wrapper.findComponent(NotesActivityHeader).props('noteableType')).toBe('');
+      expect(wrapper.vm.noteableType).toBe('');
     });
   });
 });

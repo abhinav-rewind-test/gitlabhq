@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe ::Gitlab::Seeders::Ci::Catalog::ResourceSeeder, feature_category: :pipeline_composition do
   let_it_be(:admin) { create(:admin) }
-  let_it_be_with_reload(:group) { create(:group) }
+  let_it_be_with_reload(:group) { create(:group, owners: admin) }
   let_it_be(:seed_count) { 2 }
   let_it_be(:last_resource_id) { seed_count - 1 }
   let(:publish) { true }
@@ -12,10 +12,6 @@ RSpec.describe ::Gitlab::Seeders::Ci::Catalog::ResourceSeeder, feature_category:
   let(:group_path) { group.path }
 
   subject(:seeder) { described_class.new(group_path: group_path, seed_count: seed_count, publish: publish) }
-
-  before_all do
-    group.add_owner(admin)
-  end
 
   describe '#seed' do
     subject(:seed) { seeder.seed }
@@ -104,7 +100,7 @@ RSpec.describe ::Gitlab::Seeders::Ci::Catalog::ResourceSeeder, feature_category:
       # We call the same command twice, as it means it would try to recreate
       # projects that were already created!
       expect { seed }.to change { group.projects.count }.by(seed_count)
-      expect { seed }.to change { group.projects.count }.by(0)
+      expect { seed }.not_to change { group.projects.count }
     end
 
     it 'creates as many projects as specific in the argument' do

@@ -9,9 +9,10 @@ RSpec.describe ::Packages::Composer::PackagesPresenter do
   let_it_be(:json) { { 'name' => package_name } }
   let_it_be(:group) { create(:group) }
   let_it_be(:project) { create(:project, :public, :custom_repo, files: { 'composer.json' => json.to_json }, group: group) }
-
-  let!(:package1) { create(:composer_package, :with_metadatum, project: project, name: package_name, version: '1.0.0', json: json) }
-  let!(:package2) { create(:composer_package, :with_metadatum, project: project, name: package_name, version: '2.0.0', json: json) }
+  let_it_be(:package1_sti) { create(:composer_package_sti, :with_metadatum, project: project, name: package_name, version: '1.0.0', json: json) }
+  let_it_be(:package2_sti) { create(:composer_package_sti, :with_metadatum, project: project, name: package_name, version: '2.0.0', json: json) }
+  let_it_be(:package1) { ::Packages::Composer::Package.find(package1_sti.id) }
+  let_it_be(:package2) { ::Packages::Composer::Package.find(package2_sti.id) }
 
   let(:branch) { project.repository.find_branch('master') }
 
@@ -42,10 +43,10 @@ RSpec.describe ::Packages::Composer::PackagesPresenter do
     end
 
     it 'returns the packages json' do
-      packages = subject['packages'][package_name]
+      result = subject['packages'][package_name]
 
-      expect(packages['1.0.0']).to eq(expected_json(package1))
-      expect(packages['2.0.0']).to eq(expected_json(package2))
+      expect(result['1.0.0']).to eq(expected_json(packages[0]))
+      expect(result['2.0.0']).to eq(expected_json(packages[1]))
     end
   end
 

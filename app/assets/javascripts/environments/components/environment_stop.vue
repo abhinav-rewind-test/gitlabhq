@@ -6,8 +6,7 @@
 
 import { GlTooltipDirective, GlButton, GlModalDirective } from '@gitlab/ui';
 import { BV_HIDE_TOOLTIP } from '~/lib/utils/constants';
-import { s__ } from '~/locale';
-import eventHub from '../event_hub';
+import { s__, sprintf } from '~/locale';
 import setEnvironmentToStopMutation from '../graphql/mutations/set_environment_to_stop.mutation.graphql';
 import isEnvironmentStoppingQuery from '../graphql/queries/is_environment_stopping.query.graphql';
 
@@ -24,11 +23,6 @@ export default {
       type: Object,
       required: true,
     },
-    graphql: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
   },
   apollo: {
     isEnvironmentStopping: {
@@ -39,8 +33,9 @@ export default {
     },
   },
   i18n: {
-    title: s__('Environments|Stop environment'),
-    stop: s__('Environments|Stop'),
+    stopTitle: s__('Environments|Stop environment'),
+    stopLabel: s__('Environments|Stop environment %{environmentName}'),
+    stoppingTitle: s__('Environments|Stopping environment'),
   },
   data() {
     return {
@@ -48,28 +43,24 @@ export default {
       isEnvironmentStopping: false,
     };
   },
-  mounted() {
-    eventHub.$on('stopEnvironment', this.onStopEnvironment);
-  },
-  beforeDestroy() {
-    eventHub.$off('stopEnvironment', this.onStopEnvironment);
+  computed: {
+    isLoadingState() {
+      return this.environment.state === 'stopping' || this.isEnvironmentStopping || this.isLoading;
+    },
+    title() {
+      return this.isLoadingState ? this.$options.i18n.stoppingTitle : this.$options.i18n.stopTitle;
+    },
+    stopLabel() {
+      return sprintf(this.$options.i18n.stopLabel, { environmentName: this.environment?.name });
+    },
   },
   methods: {
     onClick() {
       this.$root.$emit(BV_HIDE_TOOLTIP, this.$options.stopEnvironmentTooltipId);
-      if (this.graphql) {
-        this.$apollo.mutate({
-          mutation: setEnvironmentToStopMutation,
-          variables: { environment: this.environment },
-        });
-      } else {
-        eventHub.$emit('requestStopEnvironment', this.environment);
-      }
-    },
-    onStopEnvironment(environment) {
-      if (this.environment.id === environment.id) {
-        this.isLoading = true;
-      }
+      this.$apollo.mutate({
+        mutation: setEnvironmentToStopMutation,
+        variables: { environment: this.environment },
+      });
     },
   },
   stopEnvironmentTooltipId: 'stop-environment-button-tooltip',
@@ -77,16 +68,16 @@ export default {
 </script>
 <template>
   <gl-button
-    v-gl-tooltip="{ id: $options.stopEnvironmentTooltipId }"
     v-gl-modal-directive="'stop-environment-modal'"
-    :loading="isLoading || isEnvironmentStopping"
-    :title="$options.i18n.title"
-    :aria-label="$options.i18n.title"
+    v-gl-tooltip="{ id: $options.stopEnvironmentTooltipId }"
+    :title="title"
+    :tabindex="isLoadingState ? 0 : null"
+    :loading="isLoadingState"
+    :aria-label="stopLabel"
+    :class="{ 'gl-pointer-events-none': isLoadingState }"
+    data-testid="stop-environment-button"
     icon="stop"
-    category="secondary"
     variant="danger"
     @click="onClick"
-  >
-    {{ $options.i18n.stop }}
-  </gl-button>
+  />
 </template>

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Repositories
-  class LfsLocksApiController < Repositories::GitHttpClientController
+  class LfsLocksApiController < ::Repositories::GitHttpClientController
     include LfsRequest
 
     # added here as a part of the refactor, will be removed
@@ -52,9 +52,9 @@ module Repositories
 
     def error_payload(message, custom_attrs = {})
       custom_attrs.merge({
-                           message: message,
-                           documentation_url: help_url
-                         })
+        message: message,
+        documentation_url: help_url
+      })
     end
 
     def split_by_owner(locks)

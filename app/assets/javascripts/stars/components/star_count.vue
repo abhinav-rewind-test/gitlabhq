@@ -53,7 +53,7 @@ export default {
     },
     tooltip() {
       if (isLoggedIn()) {
-        return this.starText;
+        return '';
       }
 
       return s__('ProjectOverview|You must sign in to star a project');
@@ -76,6 +76,7 @@ export default {
       }
 
       try {
+        this.isLoading = true;
         const { data } = await this.$apollo.mutate({
           mutation: setStarStatusMutation,
           variables: {
@@ -94,6 +95,8 @@ export default {
       } catch (failure) {
         reportToSentry(this.$options.name, failure);
         this.showToastMessage();
+      } finally {
+        this.isLoading = false;
       }
     },
   },
@@ -102,7 +105,7 @@ export default {
 </script>
 
 <template>
-  <gl-button-group :vertical="false">
+  <gl-button-group>
     <gl-button
       v-gl-tooltip
       class="star-btn"
@@ -110,6 +113,7 @@ export default {
       data-testid="star-button"
       :title="tooltip"
       :href="starHref"
+      :disabled="isLoading"
       @click="setStarStatus()"
     >
       <gl-icon :name="starIcon" :size="16" />

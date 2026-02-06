@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Test results tracking
 ---
-
-# Test results tracking
 
 We developed the [`gitlab_quality-test_tooling`](https://gitlab.com/gitlab-org/ruby/gems/gitlab_quality-test_tooling) gem that includes several commands to automate test results tracking.
 
@@ -14,7 +13,9 @@ The initial motivation and development was tracked by [this epic](https://gitlab
 
 ## Rails test results tracking
 
-We [plan to use](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/122008) the `relate-failure-issue` command from the gem (see the gem's README for details about the command).
+The `relate-failure-issue` command from the gem creates or updates issues in the
+[Test Failure Issues](https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues) project.
+For more information about the command, see the gem's README.
 
 ## End-to-end test results tracking
 

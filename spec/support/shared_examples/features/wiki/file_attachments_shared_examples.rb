@@ -26,7 +26,6 @@ RSpec.shared_examples 'wiki file attachments' do
           click_button 'Cancel'
         end
 
-        expect(page).to have_selector('[data-testid="button-attach-file"]')
         expect(page).not_to have_button('Cancel')
         expect(page).not_to have_selector('.uploading-progress-container', visible: true)
       end
@@ -55,14 +54,14 @@ RSpec.shared_examples 'wiki file attachments' do
         wait_for_requests
 
         expect(page.find('#wiki_content').value)
-          .to match(%r{!\[dk\]\(uploads/\h{32}/dk\.png\)$})
+          .to match(%r{!\[dk\]\(uploads/\h{32}/dk\.png\)})
       end
 
       it 'the links point to the wiki root url' do
         attach_with_dropzone(true)
         wait_for_requests
 
-        click_button("Preview")
+        page.find('.wiki-form').click_button("Preview")
         file_path = page.find('input[name="files[]"]', visible: :hidden).value
         link = page.find('a.no-attachment-icon')['href']
         img_link = page.find('a.no-attachment-icon img')['src']

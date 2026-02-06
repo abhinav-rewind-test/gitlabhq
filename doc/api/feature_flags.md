@@ -1,26 +1,29 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Feature flag API
 ---
 
-# Feature flags API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/9566) in GitLab Premium 12.5.
-> - [Moved](https://gitlab.com/gitlab-org/gitlab/-/issues/212318) to GitLab Free in 13.5.
+{{< /details >}}
 
-API for accessing resources of [GitLab feature flags](../operations/feature_flags.md).
+{{< history >}}
 
-Users with at least the Developer [role](../user/permissions.md) can access the feature flag API.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/9566) in GitLab Premium 12.5.
+- [Moved](https://gitlab.com/gitlab-org/gitlab/-/issues/212318) to GitLab Free in 13.5.
 
-## Feature flags pagination
+{{< /history >}}
 
-By default, `GET` requests return 20 results at a time because the API results
-are [paginated](rest/index.md#pagination).
+Use this API to interact with GitLab [feature flags](../operations/feature_flags.md).
+
+Prerequisites:
+
+- You must have the Developer, Maintainer, or Owner role.
 
 ## List feature flags for a project
 
@@ -30,13 +33,17 @@ Gets all feature flags of the requested project.
 GET /projects/:id/feature_flags
 ```
 
+Use the `page` and `per_page` [pagination](rest/_index.md#offset-based-pagination) parameters to
+control the pagination of results.
+
 | Attribute           | Type             | Required   | Description                                                                                                                 |
 | ------------------- | ---------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).                                            |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).                                            |
 | `scope`             | string           | no         | The condition of feature flags, one of: `enabled`, `disabled`.                                                              |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/feature_flags"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/feature_flags"
 ```
 
 Example response:
@@ -122,21 +129,25 @@ Example response:
 ]
 ```
 
-## Get a single feature flag
+## Retrieve a feature flag
 
-Gets a single feature flag.
+Retrieves a specified feature flag.
 
 ```plaintext
 GET /projects/:id/feature_flags/:feature_flag_name
 ```
 
+Use the `page` and `per_page` [pagination](rest/_index.md#offset-based-pagination) parameters to
+control the pagination of results.
+
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).       |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).       |
 | `feature_flag_name` | string           | yes        | The name of the feature flag.                                                          |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/feature_flags/awesome_feature"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/feature_flags/awesome_feature"
 ```
 
 Example response:
@@ -169,7 +180,7 @@ Example response:
 
 ## Create a feature flag
 
-Creates a new feature flag.
+Creates a feature flag for a specified project.
 
 ```plaintext
 POST /projects/:id/feature_flags
@@ -177,17 +188,17 @@ POST /projects/:id/feature_flags
 
 | Attribute           | Type             | Required   | Description                                                                                                                                                                                                                                                                              |
 | ------------------- | ---------------- | ---------- |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).                                                                                                                                                                                                     |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).                                                                                                                                                                                                     |
 | `name`              | string           | yes        | The name of the feature flag.                                                                                                                                                                                                                                                            |
 | `version`           | string           | yes        | **Deprecated** The version of the feature flag. Must be `new_version_flag`. Omit to create a Legacy feature flag.                                                                                                                                                                        |
 | `description`       | string           | no         | The description of the feature flag.                                                                                                                                                                                                                                                     |
-| `active`            | boolean          | no         | The active state of the flag. Defaults to true. [Supported](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/38350) in GitLab 13.3 and later.                                                                                                                                       |
-| `strategies`        | array of strategy JSON objects | no         | The feature flag [strategies](../operations/feature_flags.md#feature-flag-strategies).                                                                                                                                                                                                   |
+| `active`            | boolean          | no         | The active state of the flag. Defaults to true.                                                                                                                                                                                                                                          |
+| `strategies`        | array of strategy JSON objects | no         | The feature flag [strategies](../operations/feature_flags.md#feature-flag-strategies).                                                                                                                                                                                     |
 | `strategies:name`   | JSON             | no         | The strategy name. Can be `default`, `gradualRolloutUserId`, `userWithId`, or `gitlabUserList`. In [GitLab 13.5](https://gitlab.com/gitlab-org/gitlab/-/issues/36380) and later, can be [`flexibleRollout`](https://docs.getunleash.io/user_guide/activation_strategy/#gradual-rollout). |
 | `strategies:parameters` | JSON         | no         | The strategy parameters.                                                                                                                                                                                                                                                                 |
 | `strategies:scopes` | JSON             | no         | The scopes for the strategy.                                                                                                                                                                                                                                                             |
 | `strategies:scopes:environment_scope` | string | no | The environment scope of the scope.                                                                                                                                                                                                                                                      |
-| `strategies:user_list_id` | integer/string | no     | The ID of the feature flag user list. If strategy is `gitlabUserList`.                                                                                                                                                                                                                   |
+| `strategies:user_list_id` | integer or string | no     | The ID of the feature flag user list. If strategy is `gitlabUserList`.                                                                                                                                                                                                                   |
 
 ```shell
 curl "https://gitlab.example.com/api/v4/projects/1/feature_flags" \
@@ -231,7 +242,7 @@ Example response:
 
 ## Update a feature flag
 
-Updates a feature flag.
+Updates a specified feature flag.
 
 ```plaintext
 PUT /projects/:id/feature_flags/:feature_flag_name
@@ -239,21 +250,21 @@ PUT /projects/:id/feature_flags/:feature_flag_name
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).       |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).   |
 | `feature_flag_name` | string           | yes        | The current name of the feature flag.                                                  |
 | `description`       | string           | no         | The description of the feature flag.                                                   |
-| `active`            | boolean          | no         | The active state of the flag. [Supported](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/38350) in GitLab 13.3 and later. |
-| `name`              | string           | no         | The new name of the feature flag. [Supported](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/38350) in GitLab 13.3 and later. |
+| `active`            | boolean          | no         | The active state of the flag.                                                          |
+| `name`              | string           | no         | The new name of the feature flag.                                                      |
 | `strategies`        | array of strategy JSON objects | no         | The feature flag [strategies](../operations/feature_flags.md#feature-flag-strategies). |
 | `strategies:id`     | JSON             | no         | The feature flag strategy ID.                                                          |
 | `strategies:name`   | JSON             | no         | The strategy name.                                                                     |
-| `strategies:_destroy` | boolean         | no         | Delete the strategy when true.                                                               |
+| `strategies:_destroy` | boolean         | no         | Delete the strategy when true.                                                        |
 | `strategies:parameters` | JSON         | no         | The strategy parameters.                                                               |
 | `strategies:scopes` | JSON             | no         | The scopes for the strategy.                                                           |
-| `strategies:scopes:id` | JSON          | no         | The environment scope ID.                                                                         |
+| `strategies:scopes:id` | JSON          | no         | The environment scope ID.                                                              |
 | `strategies:scopes:environment_scope` | string | no | The environment scope of the scope.                                                    |
-| `strategies:scopes:_destroy` | boolean | no | Delete the scope when true.                                                    |
-| `strategies:user_list_id` | integer/string | no     | The ID of the feature flag user list. If strategy is `gitlabUserList`.                 |
+| `strategies:scopes:_destroy` | boolean | no | Delete the scope when true.                                                                    |
+| `strategies:user_list_id` | integer or string | no     | The ID of the feature flag user list. If strategy is `gitlabUserList`.                 |
 
 ```shell
 curl "https://gitlab.example.com/api/v4/projects/1/feature_flags/awesome_feature" \
@@ -309,7 +320,7 @@ Example response:
 
 ## Delete a feature flag
 
-Deletes a feature flag.
+Deletes a specified feature flag.
 
 ```plaintext
 DELETE /projects/:id/feature_flags/:feature_flag_name
@@ -317,9 +328,11 @@ DELETE /projects/:id/feature_flags/:feature_flag_name
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding).       |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths).       |
 | `feature_flag_name` | string           | yes        | The name of the feature flag.                                                          |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" --request DELETE "https://gitlab.example.com/api/v4/projects/1/feature_flags/awesome_feature"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/1/feature_flags/awesome_feature"
 ```

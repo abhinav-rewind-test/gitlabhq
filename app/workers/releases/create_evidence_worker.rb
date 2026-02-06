@@ -3,12 +3,15 @@
 module Releases
   class CreateEvidenceWorker # rubocop:disable Scalability/IdempotentWorker
     include ApplicationWorker
+    include CronjobChildWorker
 
     data_consistency :always
 
     sidekiq_options retry: 3
 
     feature_category :release_evidence
+    concurrency_limit -> { 20 }
+    urgency :throttled
 
     # pipeline_id is optional for backward compatibility with existing jobs
     # caller should always try to provide the pipeline and pass nil only

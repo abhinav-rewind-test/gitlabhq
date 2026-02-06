@@ -1,5 +1,5 @@
 <script>
-import { GlAlert, GlBadge, GlPagination, GlTab, GlTabs } from '@gitlab/ui';
+import { GlAlert, GlBadge, GlKeysetPagination, GlTab, GlTabs } from '@gitlab/ui';
 import SafeHtml from '~/vue_shared/directives/safe_html';
 import Api from '~/api';
 import { updateHistory, setUrlParams } from '~/lib/utils/url_utility';
@@ -21,7 +21,7 @@ export default {
   components: {
     GlAlert,
     GlBadge,
-    GlPagination,
+    GlKeysetPagination,
     GlTabs,
     GlTab,
     FilteredSearchBar,
@@ -44,10 +44,6 @@ export default {
     },
   },
   props: {
-    items: {
-      type: Array,
-      required: true,
-    },
     itemsCount: {
       type: Object,
       required: false,
@@ -160,18 +156,14 @@ export default {
 
       return value;
     },
-    itemsForCurrentTab() {
-      return this.itemsCount?.[this.filteredByStatus.toLowerCase()] ?? 0;
-    },
     showPaginationControls() {
       return Boolean(this.pageInfo?.hasNextPage || this.pageInfo?.hasPreviousPage);
     },
-    previousPage() {
-      return Math.max(this.pagination.page - 1, 0);
-    },
-    nextPage() {
-      const nextPage = this.pagination.page + 1;
-      return nextPage > Math.ceil(this.itemsForCurrentTab / defaultPageSize) ? null : nextPage;
+    paginationInfo() {
+      return {
+        hasNextPage: Boolean(this.pageInfo?.hasNextPage),
+        hasPreviousPage: Boolean(this.pageInfo?.hasPreviousPage),
+      };
     },
   },
   mounted() {
@@ -192,25 +184,22 @@ export default {
 
       this.$emit('tabs-changed', { filters, status });
     },
-    handlePageChange(page) {
-      const { startCursor, endCursor } = this.pageInfo;
-
-      if (page > this.pagination.page) {
-        this.pagination = {
-          ...initialPaginationState,
-          nextPageCursor: endCursor,
-          page,
-        };
-      } else {
-        this.pagination = {
-          lastPageSize: defaultPageSize,
-          firstPageSize: null,
-          prevPageCursor: startCursor,
-          nextPageCursor: '',
-          page,
-        };
-      }
-
+    handleNextPage() {
+      const { endCursor } = this.pageInfo;
+      this.pagination = {
+        ...initialPaginationState,
+        nextPageCursor: endCursor,
+      };
+      this.$emit('page-changed', this.pagination);
+    },
+    handlePrevPage() {
+      const { startCursor } = this.pageInfo;
+      this.pagination = {
+        lastPageSize: defaultPageSize,
+        firstPageSize: null,
+        prevPageCursor: startCursor,
+        nextPageCursor: '',
+      };
       this.$emit('page-changed', this.pagination);
     },
     resetPagination() {
@@ -261,7 +250,7 @@ export default {
       };
 
       updateHistory({
-        url: setUrlParams(params, window.location.href, true),
+        url: setUrlParams(params, { url: window.location.href, clearParams: true }),
         title: document.title,
         replace: true,
       });
@@ -279,14 +268,12 @@ export default {
       <span v-safe-html="serverErrorMessage || i18n.errorMsg"></span>
     </gl-alert>
 
-    <div
-      class="list-header gl-display-flex gl-justify-content-space-between gl-border-b-solid gl-border-b-1 gl-border-gray-100"
-    >
+    <div class="list-header gl-flex gl-justify-between">
       <gl-tabs content-class="gl-p-0" @input="filterItemsByStatus">
         <gl-tab v-for="tab in statusTabs" :key="tab.status" :data-testid="tab.status">
           <template #title>
             <span>{{ tab.title }}</span>
-            <gl-badge v-if="itemsCount" pill size="sm" class="gl-tab-counter-badge">
+            <gl-badge v-if="itemsCount" pill class="gl-tab-counter-badge">
               {{ itemsCount[tab.status.toLowerCase()] }}
             </gl-badge>
           </template>
@@ -303,25 +290,24 @@ export default {
         :initial-filter-value="filteredSearchValue"
         initial-sortby="created_desc"
         :recent-searches-storage-key="filterSearchKey"
+        :class="{ 'gl-border-b-0': showItems }"
         class="row-content-block"
         @onFilter="handleFilterItems"
       />
     </div>
 
-    <h4 class="gl-display-block d-md-none my-3">
+    <h4 class="gl-my-5 gl-block @md/panel:gl-hidden">
       <slot name="title"></slot>
     </h4>
 
     <slot v-if="showItems" name="table"></slot>
 
-    <gl-pagination
+    <gl-keyset-pagination
       v-if="showPaginationControls"
-      :value="pagination.page"
-      :prev-page="previousPage"
-      :next-page="nextPage"
-      align="center"
-      class="gl-pagination gl-mt-3"
-      @input="handlePageChange"
+      v-bind="paginationInfo"
+      class="gl-my-6 gl-flex gl-justify-center"
+      @prev="handlePrevPage"
+      @next="handleNextPage"
     />
 
     <slot v-if="!showItems" name="empty-state"></slot>

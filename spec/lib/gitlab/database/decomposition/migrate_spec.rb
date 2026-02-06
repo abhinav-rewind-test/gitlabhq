@@ -104,7 +104,7 @@ RSpec.describe Gitlab::Database::Decomposition::Migrate, :delete, query_analyzer
         process
 
         ci_milestones = ci_connection.execute("SELECT COUNT(*) FROM milestones").getvalue(0, 0)
-        ci_pipelines = ci_connection.execute("SELECT COUNT(*) FROM ci_pipelines").getvalue(0, 0)
+        ci_pipelines = ci_connection.execute("SELECT COUNT(*) FROM p_ci_pipelines").getvalue(0, 0)
 
         expect(ci_milestones).to be(Milestone.count)
         expect(ci_pipelines).to be(Ci::Pipeline.count)
@@ -172,8 +172,17 @@ RSpec.describe Gitlab::Database::Decomposition::Migrate, :delete, query_analyzer
       it 'raises error' do
         expect { process }.to raise_error(
           Gitlab::Database::Decomposition::MigrateError,
-          "Found 1 unfinished Background Migration(s). Please wait until they are finished."
+          "Found 1 unfinished background migration(s). Please wait until they are finished."
         )
+      end
+    end
+
+    context 'when all background migrations are finished' do
+      let!(:batched_migration_1) { create(:batched_background_migration, :finished) }
+      let!(:batched_migration_2) { create(:batched_background_migration, :finalized) }
+
+      it 'does not raise an error' do
+        expect { process }.not_to raise_error
       end
     end
   end

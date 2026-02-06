@@ -51,13 +51,14 @@ RSpec.describe BulkImports::Groups::Transformers::GroupAttributesTransformer, fe
         'visibility_level' => Gitlab::VisibilityLevel.string_options[data['visibility']],
         'project_creation_level' => Gitlab::Access.project_creation_string_options[data['project_creation_level']],
         'subgroup_creation_level' => Gitlab::Access.subgroup_creation_string_options[data['subgroup_creation_level']],
-        'emails_disabled' => true,
+        'emails_enabled' => false,
         'lfs_enabled' => false,
         'mentions_disabled' => true,
         'share_with_group_lock' => false,
         'require_two_factor_authentication' => false,
         'two_factor_grace_period' => 100,
-        'request_access_enabled' => false
+        'request_access_enabled' => false,
+        'importing' => true
       })
     end
 
@@ -78,9 +79,10 @@ RSpec.describe BulkImports::Groups::Transformers::GroupAttributesTransformer, fe
           'description' => 'Source Group Description',
           'parent_id' => destination_group.id,
           'share_with_group_lock' => nil,
-          'emails_disabled' => nil,
+          'emails_enabled' => true,
           'lfs_enabled' => nil,
-          'mentions_disabled' => nil
+          'mentions_disabled' => nil,
+          'importing' => true
         })
       end
     end
@@ -98,6 +100,22 @@ RSpec.describe BulkImports::Groups::Transformers::GroupAttributesTransformer, fe
 
       it 'normalizes the path' do
         expect(transformed_data[:path]).to eq('destination-slug-path')
+      end
+    end
+
+    context 'when the destination_slug has . in the path' do
+      let(:entity) do
+        build_stubbed(
+          :bulk_import_entity,
+          bulk_import: bulk_import,
+          source_full_path: 'source/full/path',
+          destination_slug: 'Destination.slug-path.With-dots',
+          destination_namespace: destination_namespace
+        )
+      end
+
+      it 'normalizes the path but retains the .' do
+        expect(transformed_data[:path]).to eq('destination.slug-path.with-dots')
       end
     end
 

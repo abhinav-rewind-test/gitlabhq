@@ -7,6 +7,8 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
 
   before do
     stub_application_setting(import_sources: Gitlab::ImportSources.values)
+    stub_feature_flags(new_project_creation_form: false)
+    stub_feature_flags(import_by_url_new_page: false)
   end
 
   shared_examples 'shows correct navigation' do
@@ -35,6 +37,8 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
     let_it_be(:user) { create(:user) }
 
     before do
+      stub_feature_flags(new_project_creation_form: false)
+      stub_feature_flags(import_by_url_new_page: false)
       sign_in(user)
     end
 
@@ -54,7 +58,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
       click_link 'Import project'
 
       page.within('#import-project-pane') do
-        click_button 'Repository by URL'
+        click_on 'Repository by URL'
 
         expect(page).to have_content(description_label)
       end
@@ -69,7 +73,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
       end
     end
 
-    it 'shows a message if multiple levels are restricted' do
+    it 'disables the radio button for visibility levels "Private" and "Internal"' do
       stub_application_setting(default_project_visibility: Gitlab::VisibilityLevel::PUBLIC)
       stub_application_setting(
         restricted_visibility_levels: [Gitlab::VisibilityLevel::PRIVATE, Gitlab::VisibilityLevel::INTERNAL]
@@ -78,27 +82,35 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
       visit new_project_path
       click_link 'Create blank project'
 
-      expect(page).to have_content 'Other visibility settings have been disabled by the administrator.'
+      expect(page).to have_field("Private",  checked: false, disabled: true)
+      expect(page).to have_field("Internal", checked: false, disabled: true)
+      expect(page).to have_field("Public",   checked: true,  disabled: false)
     end
 
-    it 'shows a message if all levels are restricted' do
+    it 'disables all radio button for visibility levels' do
       stub_application_setting(restricted_visibility_levels: Gitlab::VisibilityLevel.values)
 
       visit new_project_path
       click_link 'Create blank project'
 
-      expect(page).to have_content 'Visibility settings have been disabled by the administrator.'
+      expect(page).to have_field("Private",  checked: true, disabled: true)
+      expect(page).to have_field("Internal", checked: false, disabled: true)
+      expect(page).to have_field("Public",   checked: false, disabled: true)
     end
   end
 
   context 'as an admin' do
     let(:user) { create(:admin) }
 
-    it_behaves_like 'shows correct navigation'
+    before do
+      sign_in(user)
+    end
 
+    it_behaves_like 'shows correct navigation'
     shared_examples '"New project" page' do
       before do
-        sign_in(user)
+        stub_feature_flags(new_project_creation_form: false)
+        stub_feature_flags(import_by_url_new_page: false)
       end
 
       it 'shows "New project" page', :js do
@@ -152,12 +164,12 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
       shared_examples 'link to importers' do
         let(:importer_routes) do
           {
-            'github': :new_import_github_path,
-            'bitbucket': :status_import_bitbucket_path,
+            github: :new_import_github_path,
+            bitbucket: :status_import_bitbucket_path,
             'bitbucket server': :status_import_bitbucket_server_path,
-            'fogbugz': :new_import_fogbugz_path,
-            'gitea': :new_import_gitea_path,
-            'manifest': :new_import_manifest_path
+            fogbugz: :new_import_fogbugz_path,
+            gitea: :new_import_gitea_path,
+            manifest: :new_import_manifest_path
           }
         end
 
@@ -201,7 +213,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
           visit new_project_path
           click_link 'Create blank project'
           page.within('#blank-project-pane') do
-            expect(find_field("project_visibility_level_#{level}")).to be_checked
+            expect(page).to have_field(key, checked: true)
           end
         end
 
@@ -212,7 +224,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
           choose(key)
           click_button('Create project')
           page.within('#blank-project-pane') do
-            expect(find_field("project_visibility_level_#{level}")).to be_checked
+            expect(page).to have_field(key, checked: true)
           end
         end
       end
@@ -230,7 +242,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
             click_link 'Create blank project'
 
             page.within('#blank-project-pane') do
-              expect(find_field("project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).to be_checked
+              expect(page).to have_field('Private', checked: true)
             end
           end
         end
@@ -239,7 +251,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
           it 'is not allowed' do
             visit new_project_path(namespace_id: group.id)
 
-            expect(page).to have_content('Not Found')
+            expect(page).to have_content('Page not found')
           end
         end
       end
@@ -257,7 +269,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
             click_link 'Create blank project'
 
             page.within('#blank-project-pane') do
-              expect(find_field("project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).to be_checked
+              expect(page).to have_field('Private', checked: true)
             end
           end
         end
@@ -266,7 +278,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
           it 'is not allowed' do
             visit new_project_path(namespace_id: group.id, project: { visibility_level: Gitlab::VisibilityLevel::PRIVATE })
 
-            expect(page).to have_content('Not Found')
+            expect(page).to have_content('Page not found')
           end
         end
       end
@@ -295,7 +307,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
       it 'does not show the initialize with Readme checkbox on "Import project" tab' do
         visit new_project_path
         click_link 'Import project'
-        click_button 'Repository by URL'
+        click_on 'Repository by URL'
 
         page.within '#import-project-pane' do
           expect(page).not_to have_css('input#project_initialize_with_readme')
@@ -363,30 +375,30 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
           click_button public_group.full_path
           select_listbox_item user.username
 
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::INTERNAL}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PUBLIC}")).not_to be_disabled
+          expect(page).to have_field("Private", disabled: false)
+          expect(page).to have_field("Internal", disabled: false)
+          expect(page).to have_field("Public", disabled: false)
 
           click_button user.username
           select_listbox_item public_group.full_path
 
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::INTERNAL}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PUBLIC}")).not_to be_disabled
+          expect(page).to have_field("Private", disabled: false)
+          expect(page).to have_field("Internal", disabled: false)
+          expect(page).to have_field("Public", disabled: false)
 
           click_button public_group.full_path
           select_listbox_item internal_group.full_path
 
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::INTERNAL}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PUBLIC}")).to be_disabled
+          expect(page).to have_field("Private", disabled: false)
+          expect(page).to have_field("Internal", disabled: false)
+          expect(page).to have_field("Public", disabled: true)
 
           click_button internal_group.full_path
           select_listbox_item private_group.full_path
 
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PRIVATE}")).not_to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::INTERNAL}")).to be_disabled
-          expect(find("#project_visibility_level_#{Gitlab::VisibilityLevel::PUBLIC}")).to be_disabled
+          expect(page).to have_field("Private", disabled: false)
+          expect(page).to have_field("Internal", disabled: true)
+          expect(page).to have_field("Public", disabled: true)
         end
       end
     end
@@ -413,7 +425,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
 
       context 'from git repository url, "Repository by URL"' do
         before do
-          first('.js-import-git-toggle-button').click
+          click_button 'Repository by URL'
         end
 
         it 'does not autocomplete sensitive git repo URL' do
@@ -430,19 +442,15 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
         end
 
         it 'reports error if repo URL is not a valid Git repository' do
-          stub_request(:get, "http://foo/bar/info/refs?service=git-upload-pack").to_return(status: 200, body: "not-a-git-repo")
+          allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with('http://foo/bar').and_return(false)
 
           fill_in 'project_import_url', with: 'http://foo/bar'
-          # simulate blur event
-          find('body').click
-
-          wait_for_requests
-
+          send_keys(:tab)
           expect(page).to have_text('There is not a valid Git repository at this URL')
         end
 
         it 'reports error if repo URL is not a valid Git repository and submit button is clicked immediately' do
-          stub_request(:get, "http://foo/bar/info/refs?service=git-upload-pack").to_return(status: 200, body: "not-a-git-repo")
+          allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with('http://foo/bar').and_return(false)
 
           fill_in 'project_import_url', with: 'http://foo/bar'
           click_on 'Create project'
@@ -454,10 +462,8 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
 
         it 'keeps "Import project" tab open after form validation error' do
           collision_project = create(:project, name: 'test-name-collision', namespace: user.namespace)
-          stub_request(:get, "http://foo/bar/info/refs?service=git-upload-pack").to_return(
-            { status: 200,
-              body: '001e# service=git-upload-pack',
-              headers: { 'Content-Type': 'application/x-git-upload-pack-advertisement' } })
+
+          allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with('http://foo/bar').and_return(true)
 
           fill_in 'project_import_url', with: 'http://foo/bar'
           fill_in 'project_name', with: collision_project.name
@@ -485,7 +491,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
         end
 
         it 'reports error when invalid url is provided' do
-          stub_request(:get, "http://foo/bar/info/refs?service=git-upload-pack").to_return(status: 200, body: "not-a-git-repo")
+          allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with('http://foo/bar').and_return(false)
 
           fill_in 'project_import_url', with: 'http://foo/bar'
 
@@ -496,10 +502,7 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
         end
 
         it 'initiates import when valid repo url is provided' do
-          stub_request(:get, "http://foo/bar/info/refs?service=git-upload-pack").to_return(
-            { status: 200,
-              body: '001e# service=git-upload-pack',
-              headers: { 'Content-Type': 'application/x-git-upload-pack-advertisement' } })
+          allow(Gitlab::GitalyClient::RemoteService).to receive(:exists?).with('http://foo/bar').and_return(true)
 
           fill_in 'project_import_url', with: 'http://foo/bar'
 
@@ -534,8 +537,8 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
     end
 
     context 'Namespace selector' do
-      context 'with group with DEVELOPER_MAINTAINER_PROJECT_ACCESS project_creation_level' do
-        let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_MAINTAINER_PROJECT_ACCESS) }
+      context 'with group with DEVELOPER_PROJECT_ACCESS project_creation_level' do
+        let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
 
         before do
           group.add_developer(user)
@@ -553,6 +556,8 @@ RSpec.describe 'New project', :js, feature_category: :groups_and_projects do
   shared_examples 'has instructions to enable OAuth' do
     context 'when OAuth is not configured' do
       before do
+        stub_feature_flags(new_project_creation_form: false)
+        stub_feature_flags(import_by_url_new_page: false)
         sign_in(user)
 
         allow(Gitlab::Auth::OAuth::Provider).to receive(:enabled?).and_call_original

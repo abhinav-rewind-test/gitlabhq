@@ -24,18 +24,19 @@ class CustomEmoji < ApplicationRecord
 
     format: { with: /\A#{NAME_REGEXP}\z/o }
 
-  scope :by_name, -> (names) { where(name: names) }
-  scope :for_namespaces, -> (namespace_ids) do
+  scope :by_name, ->(names) { where(name: names) }
+  scope :for_namespaces, ->(namespace_ids) do
     order = Gitlab::Pagination::Keyset::Order.build([
       Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
         attribute_name: 'name',
         order_expression: CustomEmoji.arel_table[:name].asc,
-        nullable: :not_nullable,
-        distinct: true
+        nullable: :not_nullable
       ),
       Gitlab::Pagination::Keyset::ColumnOrderDefinition.new(
         attribute_name: 'current_namespace',
-        order_expression: Arel.sql("CASE WHEN namespace_id = #{namespace_ids.first} THEN 0 ELSE 1 END").asc,
+        order_expression: Arel::Nodes::Case.new.when(
+          CustomEmoji.arel_table[:namespace_id].eq(namespace_ids.first)
+        ).then(0).else(1).asc,
         nullable: :not_nullable,
         add_to_projections: true
       )
@@ -45,13 +46,15 @@ class CustomEmoji < ApplicationRecord
       .order(order)
   end
 
-  alias_attribute :url, :file # this might need a change in https://gitlab.com/gitlab-org/gitlab/-/issues/230467
-
-  scope :for_resource, -> (resource) do
+  scope :for_resource, ->(resource) do
     return none if resource.nil?
     return none unless resource.is_a?(Group)
 
     resource.custom_emoji
+  end
+
+  def url
+    Gitlab::AssetProxy.proxy_url(file)
   end
 
   private

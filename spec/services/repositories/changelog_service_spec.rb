@@ -64,7 +64,7 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
     let(:commit_to_changelog) { true }
 
     it 'generates and commits a changelog section' do
-      allow(MergeRequestDiffCommit)
+      allow(MergeRequest::CommitsMetadata)
         .to receive(:oldest_merge_request_id_per_commit)
         .with(project.id, [commit2.id, commit1.id])
         .and_return(
@@ -79,7 +79,7 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
       recorder = ActiveRecord::QueryRecorder.new { service.execute(commit_to_changelog: commit_to_changelog) }
       changelog = project.repository.blob_at('master', 'CHANGELOG.md')&.data
 
-      expect(recorder.count).to eq(12)
+      expect(recorder.count).to eq(14)
       expect(changelog).to include('Title 1', 'Title 2')
     end
 
@@ -133,7 +133,7 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
       let(:commit_to_changelog) { false }
 
       it 'generates changelog section' do
-        allow(MergeRequestDiffCommit)
+        allow(MergeRequest::CommitsMetadata)
           .to receive(:oldest_merge_request_id_per_commit)
           .with(project.id, [commit2.id, commit1.id])
           .and_return(
@@ -151,20 +151,34 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
       end
     end
 
-    it 'avoids N+1 queries', :request_store do
-      RequestStore.clear!
+    context 'with queries count check' do
+      shared_examples 'request without extra queries' do
+        it 'avoids N+1 queries', :request_store do
+          RequestStore.clear!
 
-      request = ->(to) do
-        described_class
-          .new(project, creator, version: '1.0.0', from: sha1, to: to)
-          .execute(commit_to_changelog: false)
+          request = ->(to) do
+            described_class
+              .new(project, creator, version: '1.0.0', from: sha1, to: to)
+              .execute(commit_to_changelog: false)
+          end
+
+          control = ActiveRecord::QueryRecorder.new { request.call(sha2) }
+
+          RequestStore.clear!
+
+          expect { request.call(sha3) }.not_to exceed_query_limit(control)
+        end
       end
 
-      control = ActiveRecord::QueryRecorder.new { request.call(sha2) }
+      it_behaves_like 'request without extra queries'
 
-      RequestStore.clear!
+      context 'when feature flag merge_request_diff_commits_dedup is disabled' do
+        before do
+          stub_feature_flags(merge_request_diff_commits_dedup: false)
+        end
 
-      expect { request.call(sha3) }.not_to exceed_query_limit(control)
+        it_behaves_like 'request without extra queries'
+      end
     end
 
     context 'when one of commits does not exist' do
@@ -185,16 +199,6 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
       it 'raises an exception' do
         expect { service.execute(commit_to_changelog: false) }.to raise_error(Gitlab::Changelog::Error)
       end
-
-      context 'when feature flag is off' do
-        before do
-          stub_feature_flags(changelog_commits_limitation: false)
-        end
-
-        it 'returns the changelog' do
-          expect(service.execute(commit_to_changelog: false)).to include('Title 1', 'Title 2', 'Title 3')
-        end
-      end
     end
 
     context 'with specified changelog config file path' do
@@ -203,7 +207,7 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
 
         allow(Gitlab::Changelog::Config)
           .to receive(:from_git)
-          .with(project, creator, 'specified_changelog_config.yml')
+          .with(project, creator, 'specified_changelog_config.yml', 'HEAD')
           .and_return(config)
 
         described_class
@@ -213,6 +217,39 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
         changelog = project.repository.blob_at('master', 'CHANGELOG.md')&.data
 
         expect(changelog).to include('specified_changelog_content')
+      end
+    end
+
+    context 'when changelog config file is located in a specific branch' do
+      subject { described_class.new(project, creator, **service_params).execute(commit_to_changelog: false) }
+
+      let(:service_params) { { version: '1.0.0', from: sha1, config_file: changelog_file_path } }
+      let(:changelog_content) { YAML.dump('template' => 'custom changelog') }
+      let(:changelog_file_path) { 'custom_changelog.yml' }
+      let(:custom_branch) { 'foo' }
+
+      before do
+        create_commit(
+          project,
+          creator,
+          commit_message: 'Custom changelog file',
+          branch_name: custom_branch,
+          actions: [{ action: 'create', content: changelog_content, file_path: changelog_file_path }]
+        )
+      end
+
+      context 'without config_file_ref' do
+        it 'returns a default changelog template' do
+          is_expected.not_to include 'custom changelog'
+        end
+      end
+
+      context 'with config_file_ref' do
+        let(:service_params) { super().merge(config_file_ref: custom_branch) }
+
+        it 'applies the correct changelog config' do
+          is_expected.to include 'custom changelog'
+        end
       end
     end
   end
@@ -236,10 +273,10 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
         service = described_class
           .new(project, user, version: '1.0.0', to: 'bar')
 
-        finder_spy = instance_spy(Repositories::ChangelogTagFinder)
+        finder_spy = instance_spy(::Repositories::ChangelogTagFinder)
         tag = double(:tag, target_commit: double(:commit, id: '123'))
 
-        allow(Repositories::ChangelogTagFinder)
+        allow(::Repositories::ChangelogTagFinder)
           .to receive(:new)
           .with(project, regex: an_instance_of(String))
           .and_return(finder_spy)
@@ -256,9 +293,9 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
         service = described_class
           .new(project, user, version: '1.0.0', to: 'bar')
 
-        finder_spy = instance_spy(Repositories::ChangelogTagFinder)
+        finder_spy = instance_spy(::Repositories::ChangelogTagFinder)
 
-        allow(Repositories::ChangelogTagFinder)
+        allow(::Repositories::ChangelogTagFinder)
           .to receive(:new)
           .with(project, regex: an_instance_of(String))
           .and_return(finder_spy)
@@ -275,6 +312,8 @@ RSpec.describe Repositories::ChangelogService, feature_category: :source_code_ma
   end
 
   def create_commit(project, user, params)
+    RequestStore.clear!
+
     params = { start_branch: 'master', branch_name: 'master' }.merge(params)
     Files::MultiService.new(project, user, params).execute.fetch(:result)
   end

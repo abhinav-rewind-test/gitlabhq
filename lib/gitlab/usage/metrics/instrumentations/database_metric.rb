@@ -15,7 +15,7 @@ module Gitlab
           #   end
           # end
 
-          UnimplementedOperationError = Class.new(StandardError) # rubocop:disable UsageData/InstrumentationSuperclass
+          UnimplementedOperationError = Class.new(StandardError)
 
           class << self
             IMPLEMENTED_OPERATIONS = %i[count distinct_count estimate_batch_distinct_count sum average].freeze
@@ -35,9 +35,11 @@ module Gitlab
             end
 
             def relation(relation_proc = nil, &block)
-              return unless relation_proc || block
+              metric_relation = relation_proc || block
 
-              @metric_relation = (relation_proc || block)
+              return unless metric_relation
+
+              @metric_relation = metric_relation
             end
 
             def metric_options(&block)
@@ -63,8 +65,8 @@ module Gitlab
             end
 
             attr_reader :metric_operation, :metric_relation, :metric_start,
-                        :metric_finish, :metric_operation_block,
-                        :column, :cache_key, :metric_timestamp_column
+              :metric_finish, :metric_operation_block,
+              :column, :cache_key, :metric_timestamp_column
           end
 
           def value
@@ -72,11 +74,11 @@ module Gitlab
 
             method(self.class.metric_operation)
               .call(relation,
-                    self.class.column,
-                    start: start,
-                    finish: finish,
-                    **self.class.metric_options,
-                    &self.class.metric_operation_block)
+                self.class.column,
+                start: start,
+                finish: finish,
+                **self.class.metric_options,
+                &self.class.metric_operation_block)
           end
 
           def to_sql

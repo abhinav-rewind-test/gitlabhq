@@ -2,37 +2,33 @@
 stage: Package
 group: Package Registry
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: PyPI API
 ---
 
-# PyPI API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-This is the API documentation for [PyPI Packages](../../user/packages/pypi_repository/index.md).
+{{< /details >}}
 
-WARNING:
-This API is used by the [PyPI package manager client](https://pypi.org/)
-and is generally not meant for manual consumption.
+Use this API to interact with the [PyPI package manager client](../../user/packages/pypi_repository/_index.md).
 
-For instructions on how to upload and install PyPI packages from the GitLab
-Package Registry, see the [PyPI package registry documentation](../../user/packages/pypi_repository/index.md).
+> [!warning]
+> This API is used by the [PyPI package manager client](https://pypi.org/)
+> and is generally not meant for manual consumption.
 
-NOTE:
 These endpoints do not adhere to the standard API authentication methods.
-See the [PyPI package registry documentation](../../user/packages/pypi_repository/index.md)
+See the [PyPI package registry documentation](../../user/packages/pypi_repository/_index.md)
 for details on which headers and token types are supported. Undocumented authentication methods might be removed in the future.
 
-NOTE:
-[Twine 3.4.2](https://twine.readthedocs.io/en/stable/changelog.html?highlight=FIPS#id28) or greater
-is recommended when [FIPS mode](../../development/fips_compliance.md) is enabled.
+> [!note]
+> [Twine 3.4.2](https://twine.readthedocs.io/en/stable/changelog.html?highlight=FIPS#id28) or greater
+> is recommended when FIPS mode is enabled.
 
-## Download a package file from a group
+## Download a package file for a group
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/225545) in GitLab 13.12.
-
-Download a PyPI package file. The [simple API](#group-level-simple-api-entry-point)
+Downloads a specified PyPI package file for a group. The [simple API](#retrieve-package-descriptor-for-a-group)
 usually supplies this URL.
 
 ```plaintext
@@ -46,23 +42,23 @@ GET groups/:id/-/packages/pypi/files/:sha256/:file_identifier
 | `file_identifier` | string | yes      | The PyPI package file's name. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz"
 ```
 
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz" >> my.pypi.package-0.0.1.tar.gz
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz" >> my.pypi.package-0.0.1.tar.gz
 ```
 
 This writes the downloaded file to `my.pypi.package-0.0.1.tar.gz` in the current
 directory.
 
-## Group-level simple API index
+## List all packages for a group
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/327595) in GitLab 15.1.
-
-Returns a list of packages in the group as an HTML file:
+Lists all packages for the specified group in an HTML file.
 
 ```plaintext
 GET groups/:id/-/packages/pypi/simple
@@ -73,7 +69,8 @@ GET groups/:id/-/packages/pypi/simple
 | `id` | string | yes | The ID or full path of the group. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple"
 ```
 
 Example response:
@@ -94,16 +91,15 @@ Example response:
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple" >> simple_index.html
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple" >> simple_index.html
 ```
 
 This writes the downloaded file to `simple_index.html` in the current directory.
 
-## Group level simple API entry point
+## Retrieve package descriptor for a group
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/225545) in GitLab 13.12.
-
-Returns the package descriptor as an HTML file:
+Retrieves the package descriptor as an HTML file for a specified package in a group.
 
 ```plaintext
 GET groups/:id/-/packages/pypi/simple/:package_name
@@ -115,7 +111,8 @@ GET groups/:id/-/packages/pypi/simple/:package_name
 | `package_name` | string | yes      | The name of the package. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple/my.pypi.package"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple/my.pypi.package"
 ```
 
 Example response:
@@ -136,16 +133,15 @@ Example response:
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple/my.pypi.package" >> simple.html
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/groups/1/-/packages/pypi/simple/my.pypi.package" >> simple.html
 ```
 
 This writes the downloaded file to `simple.html` in the current directory.
 
-## Download a package file from a project
+## Download a package file for a project
 
-> - Introduced in GitLab 12.10.
-
-Download a PyPI package file. The [simple API](#project-level-simple-api-entry-point)
+Downloads a specified PyPI package file for a project. The [simple API](#retrieve-package-descriptor-for-a-project)
 usually supplies this URL.
 
 ```plaintext
@@ -159,23 +155,23 @@ GET projects/:id/packages/pypi/files/:sha256/:file_identifier
 | `file_identifier` | string | yes | The PyPI package filename. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz"
 ```
 
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz" >> my.pypi.package-0.0.1.tar.gz
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/files/5y57017232013c8ac80647f4ca153k3726f6cba62d055cd747844ed95b3c65ff/my.pypi.package-0.0.1.tar.gz" >> my.pypi.package-0.0.1.tar.gz
 ```
 
 This writes the downloaded file to `my.pypi.package-0.0.1.tar.gz` in the current
 directory.
 
-## Project-level simple API index
+## List all packages for a project
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/327595) in GitLab 15.1.
-
-Returns a list of packages in the project as an HTML file:
+Lists all packages for the specified project in an HTML file.
 
 ```plaintext
 GET projects/:id/packages/pypi/simple
@@ -186,7 +182,8 @@ GET projects/:id/packages/pypi/simple
 | `id` | string | yes | The ID or full path of the project. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple"
 ```
 
 Example response:
@@ -207,16 +204,15 @@ Example response:
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple" >> simple_index.html
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple" >> simple_index.html
 ```
 
 This writes the downloaded file to `simple_index.html` in the current directory.
 
-## Project-level simple API entry point
+## Retrieve package descriptor for a project
 
-> - Introduced in GitLab 12.10.
-
-Returns the package descriptor as an HTML file:
+Retrieves the package descriptor as an HTML file for a specified package in a project.
 
 ```plaintext
 GET projects/:id/packages/pypi/simple/:package_name
@@ -228,7 +224,8 @@ GET projects/:id/packages/pypi/simple/:package_name
 | `package_name` | string | yes | The name of the package. |
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple/my.pypi.package"
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple/my.pypi.package"
 ```
 
 Example response:
@@ -249,14 +246,15 @@ Example response:
 To write the output to a file:
 
 ```shell
-curl --user <username>:<personal_access_token> "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple/my.pypi.package" >> simple.html
+curl --user <username>:<personal_access_token> \
+  --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi/simple/my.pypi.package" >> simple.html
 ```
 
 This writes the downloaded file to `simple.html` in the current directory.
 
 ## Upload a package
 
-Upload a PyPI package:
+Uploads a PyPI package for a specified project.
 
 ```plaintext
 POST projects/:id/packages/pypi
@@ -264,14 +262,16 @@ POST projects/:id/packages/pypi
 
 | Attribute | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `id`      | string | yes | The ID or full path of the project. |
-| `requires_python` | string | no | The PyPI required version. |
+| `id`      | string | Yes | The ID or full path of the project. |
+| `requires_python` | string | No | The PyPI required version. |
+| `sha256_digest` | string | No | The SHA256 checksum of the package file. Not required for uploads, but without this attribute, `pip install` fails because package index URLs lack required checksums. |
 
 ```shell
 curl --request POST \
      --form 'content=@path/to/my.pypi.package-0.0.1.tar.gz' \
+     --form "sha256_digest=$(shasum -a 256 < path/to/my.pypi.package-0.0.1.tar.gz | cut -d' ' -f1)" \
      --form 'name=my.pypi.package' \
      --form 'version=1.3.7' \
      --user <username>:<personal_access_token> \
-     "https://gitlab.example.com/api/v4/projects/1/packages/pypi"
+     --url "https://gitlab.example.com/api/v4/projects/1/packages/pypi"
 ```

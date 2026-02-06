@@ -2,6 +2,7 @@
 
 module Projects
   class UpdatePagesService < BaseService
+    include Gitlab::InternalEventsTracking
     include Gitlab::Utils::StrongMemoize
 
     # old deployment can be cached by pages daemon
@@ -9,12 +10,12 @@ module Projects
     # 10 minutes is enough, but 30 feels safer
     OLD_DEPLOYMENTS_DESTRUCTION_DELAY = 30.minutes
 
-    attr_reader :build, :deployment_update
+    attr_reader :build, :deployment_validations
 
     def initialize(project, build)
       @project = project
       @build = build
-      @deployment_update = ::Gitlab::Pages::DeploymentUpdate.new(project, build)
+      @deployment_validations = ::Gitlab::Pages::DeploymentValidations.new(project, build)
     end
 
     def execute
@@ -25,17 +26,9 @@ module Projects
         job.run!
       end
 
-      return error(deployment_update.errors.first.full_message) unless deployment_update.valid?
+      return error(deployment_validations.errors.first.full_message) unless deployment_validations.valid?
 
-      build.artifacts_file.use_file do |artifacts_path|
-        deployment = create_pages_deployment(artifacts_path, build)
-
-        break error('The uploaded artifact size does not match the expected value') unless deployment
-        break error(deployment_update.errors.first.full_message) unless deployment_update.valid?
-
-        deactive_old_deployments(deployment)
-        success
-      end
+      handle_deployment_with_open_file
     rescue StandardError => e
       error(e.message)
       raise e
@@ -43,16 +36,27 @@ module Projects
 
     private
 
+    def config
+      build.pages.is_a?(Hash) ? build.pages : {}
+    end
+
+    def extra_deployment?
+      path_prefix.present?
+    end
+
+    def path_prefix
+      project.pages_url_builder(config).path_prefix
+    end
+
     def success
       commit_status.success
-      publish_deployed_event
       super
     end
 
     def error(message)
       register_failure
       log_error("Projects::UpdatePagesService: #{message}")
-      commit_status.allow_failure = !deployment_update.latest?
+      commit_status.allow_failure = !deployment_validations.latest_build?
       commit_status.description = message
       commit_status.drop(:script_failure)
       super
@@ -64,7 +68,6 @@ module Projects
         user: build.user,
         ci_stage: stage,
         name: 'pages:deploy',
-        stage: 'deploy',
         stage_idx: stage.position
       )
     end
@@ -77,28 +80,26 @@ module Projects
         stage.project = build.project
       end
     end
-    strong_memoize_attr :commit_status
+    strong_memoize_attr :stage
     # rubocop: enable Performance/ActiveRecordSubtransactionMethods
 
-    def create_pages_deployment(artifacts_path, build)
-      File.open(artifacts_path) do |file|
-        attributes = pages_deployment_attributes(file, build)
-        deployment = project.pages_deployments.build(**attributes)
+    def create_pages_deployment(file, build)
+      attributes = pages_deployment_attributes(file, build)
+      deployment = project.pages_deployments.build(**attributes)
 
-        break if deployment.file.size != file.size
+      return if deployment.file.size != file.size
 
-        deployment.tap(&:save!)
-      end
+      deployment.tap(&:save!)
     end
 
     # overridden on EE
     def pages_deployment_attributes(file, build)
       {
         file: file,
-        file_count: deployment_update.entries_count,
+        file_count: deployment_validations.entries_count,
         file_sha256: build.job_artifacts_archive.file_sha256,
         ci_build_id: build.id,
-        root_directory: build.options[:publish]
+        root_directory: build.pages[:publish]
       }
     end
 
@@ -126,14 +127,40 @@ module Projects
     end
     strong_memoize_attr :pages_deployments_failed_total_counter
 
-    def publish_deployed_event
-      event = ::Pages::PageDeployedEvent.new(data: {
-        project_id: project.id,
-        namespace_id: project.namespace_id,
-        root_namespace_id: project.root_namespace.id
-      })
+    def handle_deployment_with_open_file
+      build.artifacts_file.use_open_file(unlink_early: false) do |file|
+        handle_deployment(file)
+      end
+    end
 
-      Gitlab::EventStore.publish(event)
+    def handle_deployment(file)
+      deployment = create_pages_deployment(file, build)
+
+      return error('The uploaded artifact size does not match the expected value') unless deployment
+      return error(deployment_validations.errors.first.full_message) unless deployment_validations.valid?
+
+      track_deployment_events
+
+      deactive_old_deployments(deployment)
+      success
+    end
+
+    def track_deployment_events
+      track_internal_event(
+        'create_pages_deployment',
+        project: project,
+        namespace: project.namespace,
+        user: build.user
+      )
+
+      return unless extra_deployment?
+
+      track_internal_event(
+        'create_pages_extra_deployment',
+        project: project,
+        namespace: project.namespace,
+        user: build.user
+      )
     end
   end
 end

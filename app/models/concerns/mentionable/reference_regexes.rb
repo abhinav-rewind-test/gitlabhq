@@ -13,21 +13,22 @@ module Mentionable
         Commit.reference_pattern,
         MergeRequest.reference_pattern,
         Label.reference_pattern,
-        Milestone.reference_pattern
+        Milestone.reference_pattern,
+        WikiPage.reference_pattern
       ]
     end
 
     def self.default_pattern
       strong_memoize(:default_pattern) do
         issue_pattern = Issue.reference_pattern
-        link_patterns = Regexp.union([Issue, WorkItem, Commit, MergeRequest, Epic, Vulnerability].map(&:link_reference_pattern).compact)
+        link_patterns = Regexp.union([Issue, WorkItem, Commit, MergeRequest, Epic, Vulnerability, WikiPage].map(&:link_reference_pattern).compact)
         reference_pattern(link_patterns, issue_pattern)
       end
     end
 
     def self.external_pattern
       strong_memoize(:external_pattern) do
-        issue_pattern = Integrations::BaseIssueTracker.base_reference_pattern
+        issue_pattern = Integrations::Base::IssueTracker::REFERENCE_PATTERN_REGEXP
         link_patterns = URI::DEFAULT_PARSER.make_regexp(%w[http https])
         reference_pattern(link_patterns, issue_pattern)
       end

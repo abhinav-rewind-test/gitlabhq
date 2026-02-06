@@ -1,35 +1,45 @@
 ---
-stage: Systems
+stage: Tenant Scale
 group: Geo
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Configure GitLab Geo replication between two single-node sites for disaster recovery, supporting Linux package and Docker installations.
+title: Set up Geo for two single-node sites
 ---
 
-# Set up Geo for two single-node sites
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-The following guide provides concise instructions on how to deploy GitLab Geo for a two single-node site installation using two Linux package instances with no external services set up.
+{{< /details >}}
+
+The following guide provides concise instructions on how to deploy GitLab Geo for a two single-node site installation using two Linux package instances with no external services set up. This guide is also applicable to installations based on [Docker](../../../install/docker/_index.md).
 
 Prerequisites:
 
 - You have at least two independently working GitLab sites.
-  To create the sites, see the [GitLab reference architectures documentation](../../reference_architectures/index.md).
+  To create the sites, see the [GitLab reference architectures documentation](../../reference_architectures/_index.md).
   - One GitLab site serves as the **Geo primary site**. You can use different reference architecture sizes for each Geo site. If you already have a working GitLab instance, you can use it as the primary site.
   - The second GitLab site serves as the **Geo secondary site**. Geo supports multiple secondary sites.
 - The Geo primary site has at least a [GitLab Premium](https://about.gitlab.com/pricing/) license.
   You need only one license for all sites.
-- Confirm all sites meet the [requirements for running Geo](../index.md#requirements-for-running-geo).
+- Confirm all sites meet the [requirements for running Geo](../_index.md#requirements-for-running-geo).
 
 ## Set up Geo for Linux package (Omnibus)
 
 Prerequisites:
 
 - You use PostgreSQL 12 or later,
-  which includes the [`pg_basebackup` tool](https://www.postgresql.org/docs/12/app-pgbasebackup.html).
+  which includes the [`pg_basebackup` tool](https://www.postgresql.org/docs/16/app-pgbasebackup.html).
 
 ### Configure the primary site
+
+> [!note]
+> For Docker-based installations:
+> 
+> Either apply the settings mentioned below directly to the GitLab container's `/etc/gitlab/gitlab.rb` file, or add them to the `GITLAB_OMNIBUS_CONFIG` environment variable in its [Docker Compose](../../../install/docker/installation.md#install-gitlab-by-using-docker-compose) file.
+> 
+> When using [Docker Compose](../../../install/docker/installation.md#install-gitlab-by-using-docker-compose), use `docker-compose -f <docker-compose-file-name>.yml up` instead of `gitlab-ctl reconfigure` to apply configuration changes.
 
 1. SSH into your GitLab primary site and sign in as root:
 
@@ -37,12 +47,14 @@ Prerequisites:
    sudo -i
    ```
 
+1. [Opt out of automatic PostgreSQL upgrades](https://docs.gitlab.com/omnibus/settings/database/#opt-out-of-automatic-postgresql-upgrades) to avoid unintended downtime when upgrading GitLab. Be aware of the known [caveats when upgrading PostgreSQL with Geo](https://docs.gitlab.com/omnibus/settings/database/#caveats-when-upgrading-postgresql-with-geo). Especially for larger environments, PostgreSQL upgrades must be planned and executed consciously. As a result and going forward, ensure PostgreSQL upgrades are part of the regular maintenance activities.
+
 1. Add a unique Geo site name to `/etc/gitlab/gitlab.rb`:
 
    ```ruby
    ##
    ## The unique identifier for the Geo site. See
-   ## https://docs.gitlab.com/ee/administration/geo_sites.html#common-settings
+   ## https://docs.gitlab.com/administration/geo_sites/#common-settings
    ##
    gitlab_rails['geo_node_name'] = '<site_name_here>'
    ```
@@ -61,14 +73,21 @@ Prerequisites:
 
    This command uses the `external_url` defined in `/etc/gitlab/gitlab.rb`.
 
-1. Create a password for the `gitlab` database user.
+1. Copy the configuration example from [Complete primary site](#complete-primary-site).
+
+1. Create a password for the `gitlab` database user and update Rail to use the new password.
+
+   > [!note]
+   > The values configured for the `gitlab_rails['db_password']` and `postgresql['sql_user_password']` settings need to match.
+   > However, only the `postgresql['sql_user_password']` value should be the MD5 encrypted password.
+   > Changes to this are being discussed in [Rethink how we handle PostgreSQL passwords in cookbooks](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/5713).
 
    1. Generate a MD5 hash of the desired password:
 
       ```shell
       gitlab-ctl pg-password-md5 gitlab
-      # Enter password: <your_password_here>
-      # Confirm password: <your_password_here>
+      # Enter password: <your_db_password_here>
+      # Confirm password: <your_db_password_here>
       # fca0b89a972d69f00eb3ec98a5838484
       ```
 
@@ -76,15 +95,15 @@ Prerequisites:
 
       ```ruby
       # Fill with the hash generated by `gitlab-ctl pg-password-md5 gitlab`
-      postgresql['sql_user_password'] = '<md5_hash_of_your_password>'
+      postgresql['sql_user_password'] = '<md5_hash_of_your_db_password>'
 
       # Every node that runs Puma or Sidekiq needs to have the database
       # password specified as below. If you have a high-availability setup, this
       # must be present in all application nodes.
-      gitlab_rails['db_password'] = '<your_password_here>'
+      gitlab_rails['db_password'] = '<your_db_password_here>'
       ```
 
-1. Define a password for the database [replication user](https://wiki.postgresql.org/wiki/Streaming_Replication).
+1. Define a password for the database [replication user](https://www.postgresql.org/docs/16/warm-standby.html#STREAMING-REPLICATION).
    Use the username defined in `/etc/gitlab/gitlab.rb` under the `postgresql['sql_replication_user']`
    setting. The default value is `gitlab_replicator`.
 
@@ -93,8 +112,8 @@ Prerequisites:
       ```shell
       gitlab-ctl pg-password-md5 gitlab_replicator
 
-      # Enter password: <your_password_here>
-      # Confirm password: <your_password_here>
+      # Enter password: <your_replication_password_here>
+      # Confirm password: <your_replication_password_here>
       # 950233c0dfc2f39c64cf30457c3b7f1e
       ```
 
@@ -102,7 +121,7 @@ Prerequisites:
 
       ```ruby
       # Fill with the hash generated by `gitlab-ctl pg-password-md5 gitlab_replicator`
-      postgresql['sql_replication_password'] = '<md5_hash_of_your_password>'
+      postgresql['sql_replication_password'] = '<md5_hash_of_your_replication_password>'
       ```
 
    1. Optional. If you use an external database not managed by the Linux package, you must
@@ -152,15 +171,15 @@ Prerequisites:
       private addresses (which correspond to "internal address" for Google Cloud Platform) for
       `postgresql['md5_auth_cidr_addresses']` and `postgresql['listen_address']`.
 
-      NOTE:
-      If you need to use `0.0.0.0` or `*` as the `listen_address`, you also must add
-      `127.0.0.1/32` to the `postgresql['md5_auth_cidr_addresses']` setting, to allow
-      Rails to connect through `127.0.0.1`. For more information, see [issue 5258](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/5258).
+      > [!note]
+      > If you need to use `0.0.0.0` or `*` as the `listen_address`, you also must add
+      > `127.0.0.1/32` to the `postgresql['md5_auth_cidr_addresses']` setting, to allow
+      > Rails to connect through `127.0.0.1`. For more information, see [issue 5258](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/5258).
 
       Depending on your network configuration, the suggested addresses might
       be incorrect. If your primary and secondary sites connect over a local
-      area network, or a virtual network connecting availability zones like
-      [Amazon's VPC](https://aws.amazon.com/vpc/) or [Google's VPC](https://cloud.google.com/vpc/),
+      area network, or a virtual network connecting availability zones like the
+      [Amazon VPC](https://aws.amazon.com/vpc/) or the [Google VPC](https://cloud.google.com/vpc/),
       you should use the secondary site private address for `postgresql['md5_auth_cidr_addresses']`.
 
    1. Add the following lines to `/etc/gitlab/gitlab.rb`. Be sure to replace the IP
@@ -238,6 +257,8 @@ Prerequisites:
    sudo -i
    ```
 
+1. [Opt out of automatic PostgreSQL upgrades](https://docs.gitlab.com/omnibus/settings/database/#opt-out-of-automatic-postgresql-upgrades) to avoid unintended downtime when upgrading GitLab. Be aware of the known [caveats when upgrading PostgreSQL with Geo](https://docs.gitlab.com/omnibus/settings/database/#caveats-when-upgrading-postgresql-with-geo). Especially for larger environments, PostgreSQL upgrades must be planned and executed consciously. As a result and going forward, ensure PostgreSQL upgrades are part of the regular maintenance activities.
+
 1. To prevent any commands from running before the site is configured, stop the application server and Sidekiq:
 
    ```shell
@@ -281,15 +302,36 @@ Prerequisites:
 1. Test that the `gitlab-psql` user can connect to the primary site database.
    The default Linux package name is `gitlabhq_production`:
 
-   ```shell
-   sudo \
-      -u gitlab-psql /opt/gitlab/embedded/bin/psql \
-      --list \
-      -U gitlab_replicator \
-      -d "dbname=gitlabhq_production sslmode=verify-ca" \
-      -W \
-      -h <primary_site_ip>
-   ```
+    {{< tabs >}}
+
+    {{< tab title="Linux package" >}}
+
+    ```shell
+    sudo \
+        -u gitlab-psql /opt/gitlab/embedded/bin/psql \
+        --list \
+        -U gitlab_replicator \
+        -d "dbname=gitlabhq_production sslmode=verify-ca" \
+        -W \
+        -h <primary_site_ip>
+    ```
+
+    {{< /tab >}}
+
+    {{< tab title="Docker" >}}
+
+    ```shell
+    docker exec -it <container_name> su - gitlab-psql -c '/opt/gitlab/embedded/bin/psql \
+        --list \
+        -U gitlab_replicator \
+        -d "dbname=gitlabhq_production sslmode=verify-ca" \
+        -W \
+        -h <primary_site_ip>'
+    ```
+
+    {{< /tab >}}
+
+    {{< /tabs >}}
 
    When prompted, enter the plaintext password you set for the `gitlab_replicator` user.
    If all worked correctly, you should see the list of the primary site databases.
@@ -320,14 +362,16 @@ Prerequisites:
    ## Database credentials password (defined previously in primary site)
    ## - replicate same values here as defined in primary site
    ##
-   postgresql['sql_replication_password'] = '<md5_hash_of_your_password>'
-   postgresql['sql_user_password'] = '<md5_hash_of_your_password>'
-   gitlab_rails['db_password'] = '<your_password_here>'
+   postgresql['sql_replication_password'] = '<md5_hash_of_your_replication_password>'
+   postgresql['sql_user_password'] = '<md5_hash_of_your_db_password>'
+   gitlab_rails['db_password'] = '<your_db_password_here>'
    ```
 
    Be sure to replace the IP addresses with addresses appropriate to your network configuration.
 
-1. To apply the changes, reconfigure GitLab:
+1. Copy the configuration example from [Complete secondary site](#complete-secondary-site).
+
+1. To apply the changes, save the file and reconfigure GitLab:
 
    ```shell
    gitlab-ctl reconfigure
@@ -350,10 +394,10 @@ The script uses the default Linux package directories.
 If you changed the defaults, replace the directory and path
 names in the script below with your own names.
 
-WARNING:
-Run the replication script on only the secondary site.
-The script removes all PostgreSQL data before it runs `pg_basebackup`,
-which can lead to data loss.
+> [!warning]
+> Run the replication script on only the secondary site.
+> The script removes all PostgreSQL data before it runs `pg_basebackup`,
+> which can lead to data loss.
 
 To replicate the database:
 
@@ -363,21 +407,23 @@ To replicate the database:
    sudo -i
    ```
 
-1. Choose a database-friendly name for your secondary site to
+1. Choose a [database-friendly name](https://www.postgresql.org/docs/16/warm-standby.html#STREAMING-REPLICATION-SLOTS-MANIPULATION) for your secondary site to
    use as the replication slot name. For example, if your domain is
    `secondary.geo.example.com`, use `secondary_example` as the slot
-   name. Replication slot names must only contain lowercase letters,
+   name.
+
+   Replication slot names must only contain lowercase letters,
    numbers, and the underscore character.
 
 1. Execute the following command to back up and restore the database, and begin the replication.
 
-   WARNING:
-   Each Geo secondary site must have its own unique replication slot name.
-   Using the same slot name between two secondaries breaks PostgreSQL replication.
+   > [!warning]
+   > Each Geo secondary site must have its own unique replication slot name.
+   > Using the same slot name between two secondaries breaks PostgreSQL replication.
 
    ```shell
    gitlab-ctl replicate-geo-database \
-      --slot-name=<secondary_site_name> \
+      --slot-name=<secondary_slot_name> \
       --host=<primary_site_ip> \
       --sslmode=verify-ca
    ```
@@ -388,12 +434,18 @@ The replication process is complete.
 
 ## Configure a new secondary site
 
-After the replication process is complete, you need to [configure fast lookup of authorized SSH keys](../../operations/fast_ssh_key_lookup.md).
+After the initial replication process is complete, proceed with the configuration of the following items on the secondary site.
 
-NOTE:
-Authentication is handled by the primary site. Don't set up custom authentication for the secondary site.
-Any change that requires access to the Admin Area should be made in the primary site, because the
-secondary site is a read-only copy.
+### Fast lookup of authorized SSH keys
+
+Follow the documentation to [configure fast lookup of authorized SSH keys](../../operations/fast_ssh_key_lookup.md).
+
+Fast lookup is [required for Geo](../../operations/fast_ssh_key_lookup.md#fast-lookup-is-required-for-geo).
+
+> [!note]
+> Authentication is handled by the primary site. Don't set up custom authentication for the secondary site.
+> Any change that requires access to the **Admin** area should be made in the primary site, because the
+> secondary site is a read-only copy.
 
 ### Manually replicate secret GitLab values
 
@@ -542,7 +594,7 @@ You must manually replicate the secret file across all of your secondary sites, 
    ```ruby
    ##
    ## The unique identifier for the Geo site. See
-   ## https://docs.gitlab.com/ee/administration/geo_sites.html#common-settings
+   ## https://docs.gitlab.com/administration/geo_sites/#common-settings
    ##
    gitlab_rails['geo_node_name'] = '<site_name_here>'
    ```
@@ -556,11 +608,11 @@ You must manually replicate the secret file across all of your secondary sites, 
    ```
 
 1. Go to the primary node GitLab instance:
-   1. On the left sidebar, at the bottom, select **Admin Area**.
-   1. Select **Geo > Sites**.
+   1. In the upper-right corner, select **Admin**.
+   1. Select **Geo** > **Sites**.
    1. Select **Add site**.
 
-      ![Add secondary site](../replication/img/adding_a_secondary_v15_8.png)
+      ![Form to add a new site with three input fields: Name, External URL, and Internal URL (optional).](img/adding_a_secondary_v15_8.png)
 
    1. In **Name**, enter the value for `gitlab_rails['geo_node_name']` in
       `/etc/gitlab/gitlab.rb`. The values must match exactly.
@@ -569,7 +621,7 @@ You must manually replicate the secret file across all of your secondary sites, 
       match exactly.
    1. Optional. In **Internal URL (optional)**, enter an internal URL for the primary site.
    1. Optional. Select which groups or storage shards should be replicated by the
-      secondary site. To replicate all, leave the field blank. See [selective synchronization](../replication/configuration.md#selective-synchronization).
+      secondary site. To replicate all, leave the field blank. See [selective synchronization](../replication/selective_synchronization.md).
    1. Select **Save changes**.
 1. SSH into each Rails and Sidekiq node on your secondary site and restart the services:
 
@@ -583,7 +635,7 @@ You must manually replicate the secret file across all of your secondary sites, 
    gitlab-rake gitlab:geo:check
    ```
 
-   If any of the checks fail, see the [troubleshooting documentation](../replication/troubleshooting/index.md).
+   If any of the checks fail, see the [troubleshooting documentation](../replication/troubleshooting/_index.md).
 
 1. To verify that the secondary site is reachable, SSH into a Rails or Sidekiq server on your primary site and sign in as root:
 
@@ -591,7 +643,7 @@ You must manually replicate the secret file across all of your secondary sites, 
    gitlab-rake gitlab:geo:check
    ```
 
-   If any of the checks fail, check the [troubleshooting documentation](../replication/troubleshooting/index.md).
+   If any of the checks fail, check the [troubleshooting documentation](../replication/troubleshooting/_index.md).
 
 After the secondary site is added to the Geo administration page and restarted,
 the site automatically starts to replicate missing data from the primary site
@@ -603,6 +655,30 @@ that the secondary site can act on the notifications immediately.
 Be sure the secondary site is running and accessible. You can sign in to the
 secondary site with the same credentials as were used with the primary site.
 
+### Add primary and secondary URLs as allowed ActionCable origins
+
+This step allows websockets to work seamlessly from primary and secondary sites.
+
+1. Collect the **external URLs** of your sites (primary and secondary). You can find them in the Site pages in the Admin area, as mentioned in the section above.
+1. SSH into each Rails and Sidekiq node on your **primary site** and sign in as root:
+
+   ```shell
+   sudo -i
+   ```
+
+1. Edit `/etc/gitlab/gitlab.rb` to add the URLs collected in step 1 to the `action_cable_allowed_origins` setting:
+
+   ```ruby
+   gitlab_rails['action_cable_allowed_origins'] = ['https://secondary.example.com', 'https://primary.example.com']
+   ```
+
+1. To apply the changes, reconfigure each Rails and Sidekiq node and restart the service:
+
+   ```shell
+   gitlab-ctl reconfigure
+   gitlab-ctl restart
+   ```
+
 ### Enable Git access over HTTP/HTTPS and SSH
 
 Geo synchronizes repositories over HTTP/HTTPS, and therefore requires this clone
@@ -611,8 +687,8 @@ If you convert an existing site to Geo, you should check that the clone method i
 
 On the primary site:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Settings > General**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Settings** > **General**.
 1. Expand **Visibility and access controls**.
 1. If you use Git over SSH:
    1. Ensure **Enabled Git access protocols** is set to **Both SSH and HTTP(S)**.
@@ -626,8 +702,8 @@ the primary site.
 
 After you sign in:
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Geo > Sites**.
+1. In the upper-right corner, select **Admin**.
+1. Select **Geo** > **Sites**.
 1. Verify that the site is correctly identified as a secondary Geo site, and that
    Geo is enabled.
 
@@ -635,8 +711,120 @@ The initial replication might take some time.
 You can monitor the synchronization process on each Geo site from the primary
 site **Geo Sites** dashboard in your browser.
 
-![Geo dashboard](../replication/img/geo_dashboard_v14_0.png)
+![The Geo Sites dashboard displaying the synchronization status.](img/geo_dashboard_v14_0.png)
+
+## Example configurations
+
+### Complete primary site
+
+<!-- If you update this configuration example, also update the example in two_single_node_external_services.md -->
+
+This complete `gitlab.rb` configuration example is used for a Geo primary site:
+
+```ruby
+# Primary site configuration example
+
+## Geo Primary role
+roles(['geo_primary_role'])
+
+## The unique identifier for the Geo site
+gitlab_rails['geo_node_name'] = 'headquarters'
+
+## External URL
+external_url 'https://gitlab.example.com'
+
+## Database configuration
+gitlab_rails['db_password'] = 'your_database_password_here'
+postgresql['sql_user_password'] = 'md5_hash_of_your_database_password'
+postgresql['sql_replication_password'] = 'md5_hash_of_your_replication_password'
+
+## PostgreSQL network configuration
+postgresql['listen_address'] = '10.0.1.10'  # Primary site IP
+postgresql['md5_auth_cidr_addresses'] = ['10.0.1.10/32', '10.0.2.10/32']  # Primary and secondary IPs
+
+## Disable automatic migrations (handled centrally, and to avoid unplanned downtime)
+gitlab_rails['auto_migrate'] = false
+
+## SSL/TLS configuration
+nginx['listen_port'] = 80
+nginx['listen_https'] = false
+letsencrypt['enable'] = false
+
+## Object Storage configuration (optional)
+gitlab_rails['object_store']['enabled'] = true
+gitlab_rails['object_store']['connection'] = {
+  'provider' => 'AWS',
+  'region' => 'us-east-1',
+  'aws_access_key_id' => 'your_access_key',
+  'aws_secret_access_key' => 'your_secret_key'
+}
+
+## Monitoring configuration (optional)
+node_exporter['listen_address'] = '0.0.0.0:9100'
+gitlab_workhorse['prometheus_listen_addr'] = '0.0.0.0:9229'
+gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '10.0.0.0/8']
+
+## Gitaly configuration
+gitaly['configuration'] = {
+  prometheus_listen_addr: '0.0.0.0:9236',
+}
+
+## ActionCable allowed origins
+gitlab_rails['action_cable_allowed_origins'] = ['https://secondary.example.com', 'https://primary.example.com']
+```
+
+### Complete secondary site
+
+<!-- If you update this configuration example, also update the example in two_single_node_external_services.md -->
+
+This complete `gitlab.rb` configuration example is for a Geo secondary site:
+
+```ruby
+# Secondary site configuration example
+
+## Geo Secondary role
+roles(['geo_secondary_role'])
+
+## The unique identifier for the Geo site
+gitlab_rails['geo_node_name'] = 'location-2'
+
+## External URL (can be the same as primary for unified URL setup)
+external_url 'https://gitlab.example.com'
+
+## Database configuration
+gitlab_rails['db_password'] = 'your_database_password_here'
+postgresql['sql_user_password'] = 'md5_hash_of_your_database_password'
+postgresql['sql_replication_password'] = 'md5_hash_of_your_replication_password'
+
+## PostgreSQL network configuration
+postgresql['listen_address'] = '10.0.2.10'  # Secondary site IP
+postgresql['md5_auth_cidr_addresses'] = ['10.0.2.10/32']
+
+## SSL/TLS configuration
+nginx['listen_port'] = 80
+nginx['listen_https'] = false
+letsencrypt['enable'] = false
+
+## Object Storage configuration (must match primary)
+gitlab_rails['object_store']['enabled'] = true
+gitlab_rails['object_store']['connection'] = {
+  'provider' => 'AWS',
+  'region' => 'us-east-1',
+  'aws_access_key_id' => 'your_access_key',
+  'aws_secret_access_key' => 'your_secret_key'
+}
+
+## Monitoring configuration (optional)
+node_exporter['listen_address'] = '0.0.0.0:9100'
+gitlab_workhorse['prometheus_listen_addr'] = '0.0.0.0:9229'
+gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '10.0.0.0/8']
+
+## Gitaly configuration
+gitaly['configuration'] = {
+  prometheus_listen_addr: '0.0.0.0:9236',
+}
+```
 
 ## Related topics
 
-- [Troubleshooting Geo](../replication/troubleshooting/index.md)
+- [Troubleshooting Geo](../replication/troubleshooting/_index.md)

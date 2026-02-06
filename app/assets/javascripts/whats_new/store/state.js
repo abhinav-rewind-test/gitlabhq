@@ -2,8 +2,9 @@ export default {
   open: false,
   features: [],
   fetching: false,
-  drawerBodyHeight: null,
+  drawerBodyHeight: 0,
   pageInfo: {
     nextPage: null,
   },
+  readArticles: [],
 };

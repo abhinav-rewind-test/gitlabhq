@@ -3,12 +3,16 @@
 module Projects
   module Settings
     class RepositoryController < Projects::ApplicationController
+      include Gitlab::Utils::StrongMemoize
+
       layout 'project_settings'
       before_action :authorize_admin_project!
       before_action :define_variables, only: [:create_deploy_token]
 
       before_action do
-        push_frontend_feature_flag(:add_branch_rule, @project)
+        push_frontend_feature_flag(:web_based_commit_signing_ui, @project)
+        push_frontend_ability(ability: :admin_project, resource: @project, user: current_user)
+        push_frontend_ability(ability: :admin_protected_branch, resource: @project, user: current_user)
       end
 
       feature_category :source_code_management, [:show, :cleanup, :update]
@@ -85,32 +89,56 @@ module Projects
         @deploy_keys = DeployKeysPresenter.new(@project, current_user: current_user)
 
         define_deploy_token_variables
+        tag_names
+        branch_names
         define_protected_refs
         remote_mirror
       end
 
+      def tag_names
+        @project.repository.tag_names
+      end
+      strong_memoize_attr :tag_names
+
+      def branch_names
+        @project.repository.branch_names
+      end
+      strong_memoize_attr :branch_names
+
       # rubocop: disable CodeReuse/ActiveRecord
       def define_protected_refs
-        @protected_branches = fetch_protected_branches(@project)
-        @protected_tags = @project.protected_tags.order(:name).page(params[:page])
+        @protected_branches = fetch_protected_branches(@project).preload_access_levels
+        @protected_tags = @project.protected_tags.preload_access_levels.order(:name).page(pagination_params[:page])
         @protected_branch = @project.protected_branches.new
         @protected_tag = @project.protected_tags.new
+        @protected_tags_count = @protected_tags.reduce(0) { |sum, tag| sum + tag.matching(tag_names).size }
 
-        @protected_tags_count = @protected_tags.reduce(0) { |sum, tag| sum + tag.matching(@project.repository.tag_names).size }
         load_gon_index
       end
       # rubocop: enable CodeReuse/ActiveRecord
 
       def fetch_protected_branches(project)
-        project.protected_branches.sorted_by_name.page(params[:page])
+        project.protected_branches.sorted_by_name.page(pagination_params[:page])
       end
 
       def remote_mirror
         @remote_mirror = project.remote_mirrors.first_or_initialize
+        @remote_mirrors = project.remote_mirrors.page(pagination_params[:page])
       end
 
       def deploy_token_params
-        params.require(:deploy_token).permit(:name, :expires_at, :read_repository, :read_registry, :write_registry, :read_package_registry, :write_package_registry, :username)
+        params.require(:deploy_token).permit(
+          :name,
+          :expires_at,
+          :read_repository,
+          :read_registry,
+          :write_registry,
+          :read_virtual_registry,
+          :write_virtual_registry,
+          :read_package_registry,
+          :write_package_registry,
+          :username
+        )
       end
 
       def project_params
@@ -126,11 +154,11 @@ module Projects
       end
 
       def protectable_tags_for_dropdown
-        { open_tags: ProtectableDropdown.new(@project, :tags).hash }
+        { open_tags: ProtectableDropdown.new(@project, :tags, ref_names: tag_names).array }
       end
 
       def protectable_branches_for_dropdown
-        { open_branches: ProtectableDropdown.new(@project, :branches).hash }
+        { open_branches: ProtectableDropdown.new(@project, :branches, ref_names: branch_names).array }
       end
 
       def define_deploy_token_variables

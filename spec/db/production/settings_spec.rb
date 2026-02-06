@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'rainbow/ext/string'
 
 RSpec.describe 'seed production settings' do
   let(:settings_file) { Rails.root.join('db/fixtures/production/010_settings.rb') }
@@ -13,6 +12,7 @@ RSpec.describe 'seed production settings' do
     stub_env('IN_MEMORY_APPLICATION_SETTINGS', 'false')
   end
 
+  # NOTE: Will be removed in 18.0, see https://gitlab.com/gitlab-org/gitlab/-/issues/453949
   context 'GITLAB_SHARED_RUNNERS_REGISTRATION_TOKEN is set in the environment' do
     before do
       stub_env('GITLAB_SHARED_RUNNERS_REGISTRATION_TOKEN', '013456789')
@@ -67,6 +67,13 @@ RSpec.describe 'seed production settings' do
     it 'writes valid RSA key to the database' do
       expect { load(settings_file) }.to change { settings.reload.ci_jwt_signing_key }.from(nil)
       expect { OpenSSL::PKey::RSA.new(settings.ci_jwt_signing_key) }.not_to raise_error
+    end
+  end
+
+  context 'CI Job Token signing key', :do_not_stub_ci_job_token_signing_key do
+    it 'writes valid RSA key to the database' do
+      expect { load(settings_file) }.to change { settings.reload.ci_job_token_signing_key }.from(nil)
+      expect { OpenSSL::PKey::RSA.new(settings.ci_job_token_signing_key) }.not_to raise_error
     end
   end
 end

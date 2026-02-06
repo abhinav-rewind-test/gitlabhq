@@ -1,11 +1,10 @@
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
 import $ from 'jquery';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
 import { setCookie } from '~/lib/utils/common_utils';
 import UsersSelect from '~/users_select';
 
 export default class IssuableContext {
   constructor(currentUser) {
-    this.userSelect = new UsersSelect(currentUser);
     this.reviewersSelect = new UsersSelect(currentUser, '.js-reviewer-search');
 
     this.reviewersSelect.dropdowns.forEach((glDropdownInstance) => {
@@ -34,9 +33,6 @@ export default class IssuableContext {
     $('.issuable-sidebar .inline-update').on('change', 'select', function onClickSelect() {
       return $(this).submit();
     });
-    $('.issuable-sidebar .inline-update').on('change', '.js-assignee', function onClickAssignee() {
-      return $(this).submit();
-    });
     $(document)
       .off('click', '.issuable-sidebar .dropdown-content a')
       .on('click', '.issuable-sidebar .dropdown-content a', (e) => e.preventDefault());
@@ -62,10 +58,7 @@ export default class IssuableContext {
 
     window.addEventListener('beforeunload', () => {
       // collapsed_gutter cookie hides the sidebar
-      const bpBreakpoint = bp.getBreakpointSize();
-      const supportedSizes = ['xs', 'sm', 'md'];
-
-      if (supportedSizes.includes(bpBreakpoint)) {
+      if (!PanelBreakpointInstance.isDesktop()) {
         setCookie('collapsed_gutter', true);
       }
     });

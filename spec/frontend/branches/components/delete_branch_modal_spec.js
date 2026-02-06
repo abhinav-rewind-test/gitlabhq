@@ -46,9 +46,12 @@ const findCancelButton = () => wrapper.findByTestId('delete-branch-cancel-button
 const findFormInput = () => wrapper.findComponent(GlFormInput);
 const findForm = () => wrapper.find('form');
 const createSubmitFormSpy = () => jest.spyOn(findForm().element, 'submit');
+const triggerFormInput = (branch) => {
+  findFormInput().vm.$emit('input', branch || 'hello');
+};
 
 const emitOpenModal = (data = {}) =>
-  eventHub.$emit('openModal', {
+  eventHub.$emit('open-modal', {
     isProtectedBranch,
     branchName,
     defaultBranchName,
@@ -88,13 +91,13 @@ describe('Delete branch modal', () => {
 
       expect(submitSpy).not.toHaveBeenCalled();
 
-      findDeleteButton().trigger('click');
+      findDeleteButton().vm.$emit('click');
 
       expect(findForm().attributes('action')).toBe(deletePath);
       expect(submitSpy).toHaveBeenCalled();
     });
 
-    it('calls show on the modal when a `openModal` event is received through the event hub', () => {
+    it('calls show on the modal when a `open-modal` event is received through the event hub', () => {
       expect(showMock).not.toHaveBeenCalled();
 
       emitOpenModal();
@@ -105,7 +108,7 @@ describe('Delete branch modal', () => {
     it('calls hide on the modal when cancel button is clicked', () => {
       expect(hideMock).not.toHaveBeenCalled();
 
-      findCancelButton().trigger('click');
+      findCancelButton().vm.$emit('click');
 
       expect(hideMock).toHaveBeenCalled();
     });
@@ -145,24 +148,12 @@ describe('Delete branch modal', () => {
       });
     });
 
-    it('opens with the delete button disabled and doesn`t fire submit when clicked or pressed enter', async () => {
+    it('renders the modal with delete button disabled', () => {
       expect(findDeleteButton().props('disabled')).toBe(true);
-
-      findFormInput().vm.$emit('input', 'hello');
-
-      await waitForPromises();
-
-      const submitSpy = createSubmitFormSpy();
-
-      findDeleteButton().trigger('click');
-
-      expect(submitSpy).not.toHaveBeenCalled();
     });
 
-    it('opens with the delete button disabled and enables it when branch name is confirmed and fires submit', async () => {
-      expect(findDeleteButton().props('disabled')).toBe(true);
-
-      findFormInput().vm.$emit('input', branchName);
+    it('enables the delete button when branch name is confirmed and fires submit', async () => {
+      triggerFormInput(branchName);
 
       await waitForPromises();
 
@@ -172,9 +163,37 @@ describe('Delete branch modal', () => {
 
       expect(submitSpy).not.toHaveBeenCalled();
 
-      findDeleteButton().trigger('click');
+      findDeleteButton().vm.$emit('click');
 
       expect(submitSpy).toHaveBeenCalled();
+    });
+
+    it('enables the delete button when branch name is confirmed and form submits', async () => {
+      triggerFormInput(branchName);
+
+      await waitForPromises();
+
+      expect(findDeleteButton().props('disabled')).not.toBe(true);
+
+      const submitSpy = createSubmitFormSpy();
+
+      expect(submitSpy).not.toHaveBeenCalled();
+
+      findForm().trigger('submit');
+
+      expect(submitSpy).toHaveBeenCalled();
+    });
+
+    it('doesn`t fire when form submits', async () => {
+      triggerFormInput();
+
+      await waitForPromises();
+
+      const submitSpy = createSubmitFormSpy();
+
+      findForm().trigger('submit');
+
+      expect(submitSpy).not.toHaveBeenCalled();
     });
   });
 

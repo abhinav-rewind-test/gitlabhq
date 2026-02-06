@@ -65,7 +65,7 @@ RSpec.shared_examples 'redirects to version download' do |user_type, status, add
 
       expect(request.url).to include "#{package.name}/download"
       expect(response.headers).to include 'Location'
-      expect(response.headers['Location']).to include "#{package.name}/1.0.1/download"
+      expect(response.headers['Location']).to include "#{package.name}/#{package.version}/download"
     end
   end
 end
@@ -157,7 +157,7 @@ RSpec.shared_examples 'grants terraform module package file access' do |user_typ
 
       expect(response).to have_gitlab_http_status(status)
       expect(response.media_type).to eq('application/octet-stream')
-      expect(response.body).to eq(package.package_files.last.file.read)
+      expect(response.headers['X-Sendfile']).to eq(package.package_files.last.file.path)
     end
   end
 end
@@ -206,11 +206,11 @@ RSpec.shared_examples 'process terraform module upload' do |user_type, status, a
   RSpec.shared_examples 'creates terraform module package files' do
     it 'creates package files', :aggregate_failures do
       expect { subject }
-          .to change { project.packages.count }.by(1)
+          .to change { ::Packages::TerraformModule::Package.for_projects(project).count }.by(1)
           .and change { Packages::PackageFile.count }.by(1)
       expect(response).to have_gitlab_http_status(status)
 
-      package_file = project.packages.last.package_files.reload.last
+      package_file = ::Packages::TerraformModule::Package.for_projects(project).last.package_files.reload.last
       expect(package_file.file_name).to eq('mymodule-mysystem-1.0.0.tgz')
     end
   end
@@ -314,7 +314,7 @@ RSpec.shared_examples 'handling project level terraform module download requests
       :public   | :developer | false | :personal_access_token | 'grants terraform module package file access' | :success
       :public   | :guest     | false | :personal_access_token | 'grants terraform module package file access' | :success
       :private  | :developer | true  | :personal_access_token | 'grants terraform module package file access' | :success
-      :private  | :guest     | true  | :personal_access_token | 'rejects terraform module packages access'  | :forbidden
+      :private  | :guest     | true  | :personal_access_token | 'grants terraform module package file access' | :success
       :private  | :developer | false | :personal_access_token | 'rejects terraform module packages access'  | :not_found
       :private  | :guest     | false | :personal_access_token | 'rejects terraform module packages access'  | :not_found
       :internal | :developer | true  | :personal_access_token | 'grants terraform module package file access' | :success
@@ -327,7 +327,7 @@ RSpec.shared_examples 'handling project level terraform module download requests
       :public   | :developer  | false | :job_token  | 'grants terraform module package file access' | :success
       :public   | :guest      | false | :job_token  | 'grants terraform module package file access' | :success
       :private  | :developer  | true  | :job_token  | 'grants terraform module package file access' | :success
-      :private  | :guest      | true  | :job_token  | 'rejects terraform module packages access'    | :forbidden
+      :private  | :guest      | true  | :job_token  | 'grants terraform module package file access' | :success
       :private  | :developer  | false | :job_token  | 'rejects terraform module packages access'    | :not_found
       :private  | :guest      | false | :job_token  | 'rejects terraform module packages access'    | :not_found
       :internal | :developer  | true  | :job_token  | 'grants terraform module package file access' | :success
@@ -361,7 +361,6 @@ RSpec.shared_examples 'handling project level terraform module download requests
           property: 'i_package_terraform_module_user'
         }.tap do |context|
           context[:user] = user if token_type && token_type != :deploy_token
-          context[:user] = deploy_token if token_type == :deploy_token
         end
       end
 
@@ -392,6 +391,12 @@ RSpec.shared_examples 'handling project level terraform module download requests
 
       subject
     end
+
+    it_behaves_like 'authorizing granular token permissions', :download_terraform_module do
+      let(:boundary_object) { project }
+      let(:headers) { basic_auth_headers(user.username, pat.token) }
+      let(:request) { subject }
+    end
   end
 
   context 'with non-existent module version' do
@@ -416,7 +421,7 @@ RSpec.shared_examples 'handling project level terraform module download requests
   context 'with invalid package name' do
     let(:headers) { basic_auth_headers }
 
-    [nil, '', '%20', 'unknown', '..%2F..', '../..'].each do |pkg_name|
+    [nil, '', '%20', 'unknown'].each do |pkg_name|
       context "with package name #{pkg_name}" do
         let(:package_name) { pkg_name }
 
@@ -446,6 +451,10 @@ RSpec.shared_examples 'handling project level terraform module download requests
     let(:headers) { basic_auth_headers(::Gitlab::Auth::CI_JOB_USER, token) }
   end
 
+  it_behaves_like 'updating personal access token last used' do
+    let(:headers) { basic_auth_headers(user.username, tokens[:personal_access_token]) }
+  end
+
   def basic_auth_headers(username = user.username, password = personal_access_token.token)
     { Authorization: "Basic #{Base64.strict_encode64("#{username}:#{password}")}" }
   end
@@ -467,4 +476,15 @@ RSpec.shared_examples 'accessing a public/internal project with another project\
       it_behaves_like 'returning response status', status
     end
   end
+end
+
+RSpec.shared_examples 'allowing anyone to pull public terraform modules' do |status = :success|
+  let(:headers) { {} }
+
+  before do
+    [group, project].each { |e| e.update_column(:visibility_level, Gitlab::VisibilityLevel::PRIVATE) }
+    project.project_feature.update!(package_registry_access_level: ProjectFeature::PUBLIC)
+  end
+
+  it_behaves_like 'returning response status', status
 end

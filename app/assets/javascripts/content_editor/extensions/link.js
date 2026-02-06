@@ -50,7 +50,19 @@ export default Link.extend({
       },
       title: {
         title: null,
-        parseHTML: (element) => element.getAttribute('title'),
+        parseHTML: (element) =>
+          element.classList.contains('gfm') ? null : element.getAttribute('title'),
+      },
+      // only for gollum links (wikis)
+      isGollumLink: {
+        default: false,
+        parseHTML: (element) => Boolean(element.dataset.gollum),
+        renderHTML: () => '',
+      },
+      isWikiPage: {
+        default: false,
+        parseHTML: (element) => Boolean(element.classList.contains('gfm-gollum-wiki-page')),
+        renderHTML: ({ isWikiPage }) => (isWikiPage ? { class: 'gfm-gollum-wiki-page' } : {}),
       },
       canonicalSrc: {
         default: null,
@@ -66,9 +78,11 @@ export default Link.extend({
   addCommands() {
     return {
       ...this.parent?.(),
-      editLink: (attrs) => ({ chain }) => {
-        chain().setMeta('creatingLink', true).setLink(attrs).run();
-      },
+      editLink:
+        (attrs = { href: '' }) =>
+        ({ chain }) => {
+          chain().setMeta('creatingLink', true).setLink(attrs).run();
+        },
     };
   },
 

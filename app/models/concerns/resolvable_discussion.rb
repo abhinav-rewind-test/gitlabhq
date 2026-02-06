@@ -80,11 +80,8 @@ module ResolvableDiscussion
     resolvable? && !resolved?
   end
 
-  def can_resolve?(current_user)
-    return false unless current_user
-    return false unless resolvable?
-
-    current_user.can?(:resolve_note, self.noteable)
+  def can_resolve?(user)
+    resolvable? && Ability.allowed?(user, :resolve_note, first_note)
   end
 
   def resolve!(current_user)
@@ -114,7 +111,7 @@ module ResolvableDiscussion
     yield(notes_relation)
 
     # Set the notes array to the updated notes
-    @notes = notes_relation.fresh.to_a # rubocop:disable Gitlab/ModuleWithInstanceVariables
+    @notes = notes_relation.order_created_at_id_asc.to_a # rubocop:disable Gitlab/ModuleWithInstanceVariables
 
     noteable.broadcast_notes_changed
 

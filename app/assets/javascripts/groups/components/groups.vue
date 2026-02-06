@@ -40,12 +40,13 @@ export default {
 </script>
 
 <template>
-  <div class="groups-list-tree-container" data-testid="groups-list-tree-container">
+  <div class="groups-list-tree-container" data-testid="nested-groups-projects-list">
+    <!-- eslint-disable-next-line vue/no-undef-components -->
     <group-folder :groups="groups" :action="action" />
     <pagination-links
       :change="change"
       :page-info="pageInfo"
-      class="d-flex justify-content-center gl-mt-3"
+      class="gl-mt-3 gl-flex gl-justify-center"
     />
   </div>
 </template>

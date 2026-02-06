@@ -14,7 +14,7 @@ class JiraImportState < ApplicationRecord
   belongs_to :user
   belongs_to :label
 
-  scope :by_jira_project_key, -> (jira_project_key) { where(jira_project_key: jira_project_key) }
+  scope :by_jira_project_key, ->(jira_project_key) { where(jira_project_key: jira_project_key) }
   scope :with_status, ->(statuses) { where(status: statuses) }
 
   validates :project, presence: true
@@ -84,7 +84,7 @@ class JiraImportState < ApplicationRecord
     end
   end
 
-  enum status: STATUSES
+  enum :status, STATUSES
 
   def in_progress?
     scheduled? || started?

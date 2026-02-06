@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Guidelines for reusing abstractions
 ---
-
-# Guidelines for reusing abstractions
 
 As GitLab has grown, different patterns emerged across the codebase. Service
 classes, serializers, and presenters are just a few. These patterns made it easy
@@ -95,7 +94,7 @@ This is just a sketch, but it shows the general idea: we would use whatever the
 
 ## End goal
 
-The guidelines in this document are meant to foster _better_ code reuse, by
+The guidelines in this document are meant to foster better code reuse, by
 clearly defining what can be reused where, and what to do when you cannot reuse
 something. Clearly separating abstractions makes it harder to use the wrong one,
 makes it easier to debug the code, and (hopefully) results in fewer performance
@@ -143,7 +142,7 @@ Service classes represent operations that coordinates changes between models
 1. When there is no operation, there is no need to execute a service. The class would
    probably be better designed as an entity, a value object, or a policy.
 
-When implementing a service class, consider:
+When implementing a service class, consider using the following patterns:
 
 1. A service class initializer should contain in its arguments:
    1. A [model](#models) instance that is being acted upon. Should be first positional
@@ -187,15 +186,29 @@ When implementing a service class, consider:
       end
       ```
 
-1. It implements a single public instance method `#execute`, which invokes service class behavior:
+1. The service class should implements a single public instance method `#execute`, which invokes service class behavior:
    - The `#execute` method takes no arguments. All required data is passed into initializer.
-   - Optional. If needed, the `#execute` method returns its result via [`ServiceResponse`](#serviceresponse).
+
+1. If a return value is needed, the `#execute` method should returns its result via [`ServiceResponse`](#serviceresponse) object.
 
 Several base classes implement the service classes convention. You may consider inheriting from:
 
 - `BaseContainerService` for services scoped by container (project or group).
 - `BaseProjectService` for services scoped to projects.
 - `BaseGroupService` for services scoped to groups.
+
+For some domains or [bounded contexts](software_design.md#bounded-contexts), it may make sense for
+service classes to use different patterns. For example, the Remote Development domain uses a
+[layered architecture](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/remote_development/README.md#layered-architecture)
+with domain logic isolated to a separate domain layer following a standard pattern, which allows for a very
+[minimal service layer](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/remote_development/README.md#minimal-service-layer)
+which consists of only a single reusable `CommonService` class. It also uses
+[functional patterns with stateless singleton class methods](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/remote_development/README.md#functional-patterns).
+See the Remote Development [service layer code example](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/remote_development/README.md#service-layer-code-example) for more details.
+However, even though the invocation signature of services via this pattern is different,
+it still respects the standard Service layer contracts of always returning all results via a
+[`ServiceResponse`](#serviceresponse) object, and performing
+[defense-in-depth authorization](permissions/authorizations.md#where-should-permissions-be-checked).
 
 Classes that are not service objects should be
 [created elsewhere](software_design.md#use-namespaces-to-define-bounded-contexts),
@@ -302,7 +315,7 @@ Some examples:
 - [`DesignManagement::DesignAtVersion`](https://gitlab.com/gitlab-org/gitlab/-/blob/b62ce98cff8e0530210670f9cb0314221181b77f/app/models/design_management/design_at_version.rb)
   is a model that leverages validations to combine designs and versions.
 - [`Ci::Minutes::Usage`](https://gitlab.com/gitlab-org/gitlab/-/blob/ec52f19f7325410177c00fef06379f55ab7cab67/ee/app/models/ci/minutes/usage.rb)
-  is a Value Object that provides [compute usage](../ci/pipelines/cicd_minutes.md)
+  is a Value Object that provides [compute usage](../ci/pipelines/compute_minutes.md)
   for a given namespace.
 
 #### Model class methods
@@ -340,3 +353,83 @@ Everything in `app/workers`.
 
 Use `SomeWorker.perform_async` or `SomeWorker.perform_in` to schedule Sidekiq
 jobs. Never directly invoke a worker using `SomeWorker.new.perform`.
+
+## Abstract Methods in Base Classes
+
+If you have a base class with methods that must be implemented by subclasses, use `Gitlab::AbstractMethodError` to clearly signal that a method requires implementation.
+
+> [!note]
+> Composition and duck typing are preferred over inheritance in most cases. Use abstract methods sparingly
+> and only when clearly appropriate (such as ViewComponents with shared templates, or framework integration points).
+> This guidance is primarily for correcting existing usage of `NoMethodError` and `NotImplementedError`.
+
+### Why use `Gitlab::AbstractMethodError`?
+
+- **Semantic clarity**: Explicitly indicates that a subclass must implement the method
+- **Default error message**: No need to write boilerplate error messages
+- **Avoids `NoMethodError` issues**: No conflict with `respond_to?` behavior
+- **Avoids `NotImplementedError` misuse**: That's for platform-specific features, not abstract methods
+- **Inherits from `StandardError`**: Catchable in standard rescue blocks
+- **Enforceable**: Can be validated with RuboCop rules (future work)
+
+### Why not use `NotImplementedError` or `NoMethodError`?
+
+`NotImplementedError` in Ruby is intended for features that are not implemented on a specific platform or configuration (for example, a method that works on Linux but not on Windows), not for abstract methods in object-oriented design. As documented in the [Ruby documentation](https://docs.ruby-lang.org/en/master/NotImplementedError.html):
+
+> Raised when a feature is not implemented on the current platform. For example, methods depending on the `fsync` or `fork` system calls may raise this exception if the underlying operating system or Ruby runtime does not support them.
+
+Using `NotImplementedError` for abstract methods is misleading because it suggests the feature might be implemented later on the same class, rather than requiring implementation in a subclass.
+
+`NoMethodError` has its own semantic issues: when you define a method that raises `NoMethodError`, the object still responds to `respond_to?` for that method, which is semantically incorrect.
+
+For more details on these distinctions, see [this article on NotImplementedError](https://oleg0potapov.medium.com/ruby-notimplementederror-dont-use-it-dff1fd7228e5).
+
+```ruby
+# good - using Gitlab::AbstractMethodError for abstract methods
+
+# Real example from the GitLab codebase:
+# From ee/app/components/gitlab_subscriptions/base_discover_component.rb
+class GitlabSubscriptions::BaseDiscoverComponent < ViewComponent::Base
+  def trial_type
+    raise Gitlab::AbstractMethodError
+  end
+
+  def trial_active?
+    raise Gitlab::AbstractMethodError
+  end
+
+  def hero_header_text
+    raise Gitlab::AbstractMethodError
+  end
+end
+
+# Example with custom message for additional context:
+class BaseProcessor
+  def process
+    raise Gitlab::AbstractMethodError, 'Must return a hash with :status and :result keys'
+  end
+end
+```
+
+```ruby
+# bad - using generic raise, NotImplementedError, or NoMethodError
+class PaymentProcessor
+  def process_payment(amount)
+    raise "Subclass must implement process_payment"  # Generic string error
+  end
+end
+
+class DataExporter
+  def export_format
+    raise NotImplementedError  # Wrong: this is for platform-specific features
+  end
+
+  def export(data)
+    raise NoMethodError  # Wrong: conflicts with respond_to? semantics
+  end
+
+  def transform(data)
+    # No implementation - worst: fails silently
+  end
+end
+```

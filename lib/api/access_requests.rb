@@ -13,7 +13,7 @@ module API
     %w[group project].each do |source_type|
       params do
         requires :id, type: String,
-                      desc: "The ID or URL-encoded path of the #{source_type} owned by the authenticated user"
+          desc: "The ID or URL-encoded path of the #{source_type} owned by the authenticated user"
       end
       resource source_type.pluralize, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
         desc "Gets a list of access requests for a #{source_type}." do
@@ -25,6 +25,7 @@ module API
           use :pagination
         end
         # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :read_access_request, boundary_type: source_type.to_sym
         get ":id/access_requests" do
           source = find_source(source_type, params[:id])
 
@@ -92,19 +93,20 @@ module API
         params do
           requires :user_id, type: Integer, desc: 'The user ID of the access requester'
           optional :access_level, type: Integer, desc: 'A valid access level (defaults: `30`, the Developer role)',
-                                  default: 30
+            default: 30
         end
         # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :approve_access_request, boundary_type: source_type.to_sym
         put ':id/access_requests/:user_id/approve' do
           source = find_source(source_type, params[:id])
 
           access_requester = source.requesters.find_by!(user_id: params[:user_id])
-          member = ::Members::ApproveAccessRequestService
+          result = ::Members::ApproveAccessRequestService
             .new(current_user, declared_params)
             .execute(access_requester)
 
           status :created
-          present member, with: Entities::Member
+          present result[:member], with: Entities::Member
         end
         # rubocop: enable CodeReuse/ActiveRecord
 
@@ -116,6 +118,7 @@ module API
           requires :user_id, type: Integer, desc: 'The user ID of the access requester'
         end
         # rubocop: disable CodeReuse/ActiveRecord
+        route_setting :authorization, permissions: :delete_access_request, boundary_type: source_type.to_sym
         delete ":id/access_requests/:user_id" do
           source = find_source(source_type, params[:id])
           member = source.requesters.find_by!(user_id: params[:user_id])

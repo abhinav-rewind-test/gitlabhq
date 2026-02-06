@@ -46,3 +46,33 @@ const OPERATORS_NOT_LIKE = [{ value: OPERERATOR_NOT_LIKE, description: OPERERATO
 export const OPERATORS_LIKE_NOT = [...OPERATORS_LIKE, ...OPERATORS_NOT_LIKE];
 
 export const CUSTOM_DATE_RANGE_OPTION = 'custom';
+export const DATE_RANGE_QUERY_KEY = 'date_range';
+export const DATE_RANGE_START_QUERY_KEY = 'date_start';
+export const DATE_RANGE_END_QUERY_KEY = 'date_end';
+export const TIMESTAMP_QUERY_KEY = 'timestamp';
+
+export const FILTERED_SEARCH_TERM_QUERY_KEY = 'search';
+
+export const FULL_DATE_TIME_FORMAT = `mmm dd yyyy HH:MM:ss.l Z`;
+export const SHORT_DATE_TIME_FORMAT = `mmm dd yyyy HH:MM:ss Z`;
+
+export const ISSUE_PATH_ID_SEPARATOR = '#';
+
+export const MESSAGE_TYPES = {
+  // eslint-disable-next-line @gitlab/require-i18n-strings
+  AUTH_STATUS: 'O11Y_AUTH_STATUS',
+  // eslint-disable-next-line @gitlab/require-i18n-strings
+  JWT_LOGIN: 'O11Y_JWT_LOGIN',
+};
+export const TIMEOUTS = {
+  MAX_MESSAGE_AGE: 1 * 60 * 1000,
+  MAX_CLOCK_SKEW: 30 * 1000,
+  BASE_RETRY_DELAY: 2000,
+  CLEANUP_INTERVAL: 60 * 1000,
+  IFRAME_READY_DELAY: 100,
+};
+
+export const RETRY_CONFIG = {
+  MAX_RETRIES: 3,
+  EXPONENTIAL_BACKOFF_BASE: 2,
+};

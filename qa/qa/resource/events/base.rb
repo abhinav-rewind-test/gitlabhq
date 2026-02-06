@@ -14,8 +14,8 @@ module QA
           query << "action=#{CGI.escape(action)}" if action
           query << "target_type=#{CGI.escape(target_type)}" if target_type
           path = [api_get_events]
-          path << "?#{query.join("&")}" unless query.empty?
-          parse_body(api_get_from("#{path.join}"))
+          path << "?#{query.join('&')}" unless query.empty?
+          parse_body(api_get_from(path.join.to_s))
         end
 
         private

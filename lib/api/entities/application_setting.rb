@@ -42,6 +42,9 @@ module API
       expose :password_authentication_enabled_for_web, as: :signin_enabled
       expose :allow_local_requests_from_web_hooks_and_services, as: :allow_local_requests_from_hooks_and_services
       expose :asset_proxy_allowlist, as: :asset_proxy_whitelist
+      expose :iframe_rendering_enabled
+      expose :iframe_rendering_allowlist
+      expose :iframe_rendering_allowlist_raw
 
       # This field is deprecated and always returns true
       expose(:housekeeping_bitmaps_enabled) { |_settings, _options| true }
@@ -51,6 +54,22 @@ module API
       expose(:housekeeping_gc_period) { |settings, _options| settings.housekeeping_optimize_repository_period }
       expose(:housekeeping_incremental_repack_period) { |settings, _options| settings.housekeeping_optimize_repository_period }
       expose(:repository_storages_weighted) { |settings, _options| settings.repository_storages_with_default_weight }
+
+      # We are ignoring the container registry migration-related database columns.
+      # To be backwards compatible, we are keeping these fields in the API
+      # but we nullify them. We will eventually remove these as part of
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/409873
+      {
+        container_registry_import_max_tags_count: 0,
+        container_registry_import_max_retries: 0,
+        container_registry_import_start_max_retries: 0,
+        container_registry_import_max_step_duration: 0,
+        container_registry_pre_import_tags_rate: 0,
+        container_registry_pre_import_timeout: 0,
+        container_registry_import_timeout: 0,
+        container_registry_import_target_plan: '',
+        container_registry_import_created_before: ''
+      }.each { |field, value| expose(field) { |_, _| value } }
     end
   end
 end

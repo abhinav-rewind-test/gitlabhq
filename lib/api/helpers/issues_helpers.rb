@@ -14,6 +14,12 @@ module API
       params :issues_stats_params_ee do
       end
 
+      def self.create_issue_mcp_params
+        [
+          :id, :title, :description, :assignee_ids, :milestone_id, :labels, :confidential
+        ]
+      end
+
       def self.update_params_at_least_one_of
         [
           :assignee_id,
@@ -52,6 +58,11 @@ module API
 
         args.delete(:id)
         args[:not] ||= {}
+
+        # Use the legacy milestone filtering in the RestAPI to avoid breaking change
+        # See: https://gitlab.com/gitlab-org/gitlab/-/issues/429728
+        args[:use_legacy_milestone_filtering] = true
+
         args[:milestone_title] ||= args.delete(:milestone)
         args[:milestone_wildcard_id] ||= args.delete(:milestone_id)
         args[:not][:milestone_title] ||= args[:not].delete(:milestone)
@@ -60,7 +71,7 @@ module API
         args[:not][:label_name] ||= args[:not].delete(:labels)
         args[:scope] = args[:scope].underscore if args[:scope]
         args[:sort] = "#{args[:order_by]}_#{args[:sort]}"
-        args[:issue_types] ||= args.delete(:issue_type) || WorkItems::Type.allowed_types_for_issues
+        args[:issue_types] ||= args.delete(:issue_type) || ::WorkItems::TypesFilter.allowed_types_for_issues
 
         IssuesFinder.new(current_user, args)
       end

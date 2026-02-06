@@ -1,17 +1,20 @@
 # frozen_string_literal: true
+
 require "spec_helper"
 
-RSpec.describe Pajamas::ButtonComponent, type: :component do
+RSpec.describe Pajamas::ButtonComponent, type: :component, feature_category: :design_system do
   subject do
     described_class.new(**options)
   end
 
   let(:content) { "Button content" }
+  let(:icon_content) { nil }
   let(:options) { {} }
 
   RSpec.shared_examples 'basic button behavior' do
     before do
       render_inline(subject) do |c|
+        c.with_icon_content { icon_content } if icon_content.present?
         content
       end
     end
@@ -39,7 +42,7 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
         end
       end
 
-      context 'overriding base attributes' do
+      context 'when overriding base attributes' do
         let(:options) { { button_options: { type: 'submit' } } }
 
         it 'overrides type' do
@@ -57,8 +60,8 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
     end
 
     describe 'disabled' do
-      context 'by default (false)' do
-        it 'does not have  disabled styling and behavior' do
+      context 'with defaults (false)' do
+        it 'does not have disabled styling and behavior' do
           expect(page).not_to have_css ".disabled[disabled][aria-disabled]"
         end
       end
@@ -73,13 +76,13 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
     end
 
     describe 'loading' do
-      context 'by default (false)' do
+      context 'with defaults (false)' do
         it 'is not disabled' do
           expect(page).not_to have_css ".disabled[disabled]"
         end
 
         it 'does not render a spinner' do
-          expect(page).not_to have_css ".gl-spinner[aria-label='Loading']"
+          expect(page).not_to have_css('.gl-sr-only', text: 'Loading')
         end
       end
 
@@ -91,13 +94,13 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
         end
 
         it 'renders a spinner' do
-          expect(page).to have_css ".gl-spinner[aria-label='Loading']"
+          expect(page).to have_css('.gl-sr-only', text: 'Loading')
         end
       end
     end
 
     describe 'block' do
-      context 'by default (false)' do
+      context 'with defaults (false)' do
         it 'is inline' do
           expect(page).not_to have_css ".btn-block"
         end
@@ -112,8 +115,25 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
       end
     end
 
+    describe 'label' do
+      context 'with defaults (false)' do
+        it 'does not render a span with "btn-label" CSS class' do
+          expect(page).not_to have_css "span.btn-label"
+        end
+      end
+
+      context 'when set to true' do
+        let(:options) { { label: true } }
+
+        it 'renders a span with "btn-label" CSS class' do
+          expect(page).not_to have_css "button[type='button']"
+          expect(page).to have_css "span.btn-label"
+        end
+      end
+    end
+
     describe 'selected' do
-      context 'by default (false)' do
+      context 'with defaults (false)' do
         it 'does not have selected styling and behavior' do
           expect(page).not_to have_css ".selected"
         end
@@ -143,7 +163,7 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
       end
 
       context 'with non-category variants' do
-        where(:variant) { [:dashed, :link, :reset] }
+        where(:variant) { [:link, :reset] }
 
         let(:options) { { variant: variant, category: :tertiary } }
 
@@ -170,7 +190,7 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
     end
 
     describe 'size' do
-      context 'by default (medium)' do
+      context 'with defaults (medium)' do
         it 'applies medium class' do
           expect(page).to have_css ".btn-md"
         end
@@ -179,7 +199,7 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
       context 'when set to small' do
         let(:options) { { size: :small } }
 
-        it "applies the small class to the button" do
+        it 'applies the small class to the button' do
           expect(page).to have_css ".btn-sm"
         end
       end
@@ -214,17 +234,25 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
 
         it 'renders only a loading icon' do
           expect(page).not_to have_css "svg.gl-icon.gl-button-icon.custom-icon[data-testid='star-o-icon']"
-          expect(page).to have_css ".gl-spinner[aria-label='Loading']"
+          expect(page).to have_css('.gl-sr-only', text: 'Loading')
         end
+      end
+    end
+
+    describe 'icon_content' do
+      let(:icon_content) { 'Custom icon' }
+
+      it 'renders custom icon content' do
+        expect(page).to have_text icon_content
       end
     end
   end
 
-  context 'button component renders a button' do
+  context 'when button component renders a button' do
     include_examples 'basic button behavior'
 
     describe 'type' do
-      context 'by default' do
+      context 'with defaults' do
         it 'has type "button"' do
           expect(page).to have_css "button[type='button']"
         end
@@ -250,12 +278,35 @@ RSpec.describe Pajamas::ButtonComponent, type: :component do
         end
       end
     end
+
+    context 'when it renders a button_to form' do
+      let(:button_options) { { data: { testid: 'button-form' } } }
+      let(:options) do
+        { href: 'some_post/path', method: :post, form: true, button_options: button_options }
+      end
+
+      it 'renders a form' do
+        expect(page).to have_css "form[method='post'][action='some_post/path']"
+      end
+
+      it 'passes the data attributes to the created button' do
+        expect(page).to have_css "button[data-testid='button-form']"
+      end
+
+      context 'when params are passed in as a button option' do
+        let(:button_options) { { params: { some_param: true } } }
+
+        it 'adds the params to the form as hidden inputs' do
+          expect(page).to have_css "input[name='some_param'][value='true']", visible: :hidden
+        end
+      end
+    end
   end
 
-  context 'button component renders a link' do
+  context 'when button component renders a link' do
     let(:options) { { href: 'https://gitlab.com', target: '_self' } }
 
-    it "renders a link instead of the button" do
+    it 'renders a link instead of the button' do
       expect(page).not_to have_css "button[type='button']"
       expect(page).to have_css "a[href='https://gitlab.com'][target='_self']"
     end

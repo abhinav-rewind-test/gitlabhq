@@ -56,11 +56,6 @@ export default {
       required: false,
       default: true,
     },
-    shouldShowConfirmationPopover: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
     editTooltip: {
       type: String,
       required: false,
@@ -136,11 +131,6 @@ export default {
       window.removeEventListener('keyup', this.collapseOnEscape);
     },
     toggle({ emitEvent = true } = {}) {
-      if (this.shouldShowConfirmationPopover) {
-        this.$emit('edit-confirm');
-        return;
-      }
-
       if (this.edit) {
         this.collapse({ emitEvent });
       } else {
@@ -154,7 +144,7 @@ export default {
 <template>
   <div>
     <div
-      class="gl-display-flex gl-align-items-center gl-line-height-20 gl-text-gray-900 gl-font-weight-bold"
+      class="gl-flex gl-items-center gl-font-bold gl-leading-20 gl-text-default"
       @click.self="collapse"
     >
       <span class="hide-collapsed" data-testid="title" @click="collapse">
@@ -165,13 +155,13 @@ export default {
         v-if="loading || initialLoading"
         size="sm"
         inline
-        class="gl-ml-2 hide-collapsed"
+        class="hide-collapsed gl-ml-2"
       />
       <gl-loading-icon
         v-if="loading && isClassicSidebar"
         size="sm"
         inline
-        class="gl-mx-auto gl-my-0 hide-expanded"
+        class="hide-expanded gl-mx-auto gl-my-0"
       />
       <slot name="collapsed-right"></slot>
       <gl-button
@@ -180,7 +170,7 @@ export default {
         v-gl-tooltip.viewport.html
         category="tertiary"
         size="small"
-        class="gl-text-gray-900! gl-ml-auto hide-collapsed gl-mr-n2 shortcut-sidebar-dropdown-toggle"
+        class="hide-collapsed shortcut-sidebar-dropdown-toggle -gl-mr-2 gl-ml-auto"
         :title="editTooltipText"
         :aria-label="editAriaLabelText"
         :aria-keyshortcuts="editKeyshortcutsText"

@@ -50,7 +50,7 @@ RSpec.describe 'CI/CD Catalog', :js, feature_category: :pipeline_composition do
       end
 
       it 'navigates to the details page' do
-        expect(page).to have_content('Go to the project')
+        expect(page).to have_content('Readme')
       end
     end
   end
@@ -112,6 +112,20 @@ RSpec.describe 'CI/CD Catalog', :js, feature_category: :pipeline_composition do
       it 'does not show the catalog resource' do
         expect(page).not_to have_content(private_project.name)
       end
+    end
+  end
+
+  describe 'legal disclaimer' do
+    before do
+      visit explore_catalog_index_path
+    end
+
+    it 'does not show legal disclaimer' do
+      expect(page).not_to have_content('This catalog contains third-party content')
+      expect(page).not_to have_content(
+        'Use of this content is subject to the relevant content provider\'s terms of use.'
+      )
+      expect(page).not_to have_content('GitLab does not control and has no liability for third-party content')
     end
   end
 

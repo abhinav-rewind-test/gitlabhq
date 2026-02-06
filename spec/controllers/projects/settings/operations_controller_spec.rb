@@ -4,11 +4,7 @@ require 'spec_helper'
 
 RSpec.describe Projects::Settings::OperationsController, feature_category: :incident_management do
   let_it_be(:user) { create(:user) }
-  let_it_be(:project, reload: true) { create(:project) }
-
-  before_all do
-    project.add_maintainer(user)
-  end
+  let_it_be(:project, reload: true) { create(:project, maintainers: user) }
 
   before do
     sign_in(user)
@@ -281,7 +277,7 @@ RSpec.describe Projects::Settings::OperationsController, feature_category: :inci
     end
   end
 
-  context 'error tracking', feature_category: :error_tracking do
+  context 'error tracking', feature_category: :observability do
     describe 'GET #show' do
       context 'with existing setting' do
         let!(:error_tracking_setting) do
@@ -322,90 +318,26 @@ RSpec.describe Projects::Settings::OperationsController, feature_category: :inci
         }
       end
 
-      it_behaves_like 'PATCHable'
-    end
-  end
+      context 'when error tracking is disabled by feature flag' do
+        it 'returns 404 Not Found and does not call the service' do
+          # Error tracking is deprecated with the hide_error_tracking_features feature flag
+          # See https://gitlab.com/groups/gitlab-org/-/epics/17678 for more information
+          expect(::Projects::Operations::UpdateService).not_to receive(:new)
 
-  context 'prometheus integration' do
-    describe 'POST #reset_alerting_token' do
-      context 'with existing alerting setting' do
-        let!(:alerting_setting) do
-          create(:project_alerting_setting, project: project)
-        end
-
-        let!(:old_token) { alerting_setting.token }
-
-        it 'returns newly reset token' do
-          reset_alerting_token
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(json_response['token']).to eq(alerting_setting.reload.token)
-          expect(old_token).not_to eq(alerting_setting.token)
-        end
-      end
-
-      context 'without existing alerting setting' do
-        it 'creates a token' do
-          reset_alerting_token
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(project.alerting_setting).not_to be_nil
-          expect(json_response['token']).to eq(project.alerting_setting.token)
-        end
-      end
-
-      context 'when update fails' do
-        let(:operations_update_service) { spy(:operations_update_service) }
-        let(:alerting_params) do
-          { alerting_setting_attributes: { regenerate_token: true } }
-        end
-
-        before do
-          expect(::Projects::Operations::UpdateService)
-            .to receive(:new).with(project, user, alerting_params)
-            .and_return(operations_update_service)
-          expect(operations_update_service).to receive(:execute)
-            .and_return(status: :error)
-        end
-
-        it 'returns unprocessable_entity' do
-          reset_alerting_token
-
-          expect(response).to have_gitlab_http_status(:unprocessable_entity)
-          expect(json_response).to be_empty
-        end
-      end
-
-      context 'with insufficient permissions' do
-        before do
-          project.add_reporter(user)
-        end
-
-        it 'returns 404' do
-          reset_alerting_token
+          patch :update,
+            params: project_params(project, params),
+            format: :json
 
           expect(response).to have_gitlab_http_status(:not_found)
         end
       end
 
-      context 'as an anonymous user' do
+      context 'when error tracking is enabled by feature flag' do
         before do
-          sign_out(user)
+          stub_feature_flags(hide_error_tracking_features: false)
         end
 
-        it 'returns a redirect' do
-          reset_alerting_token
-
-          expect(response).to have_gitlab_http_status(:redirect)
-        end
-      end
-
-      private
-
-      def reset_alerting_token
-        post :reset_alerting_token,
-          params: project_params(project),
-          format: :json
+        it_behaves_like 'PATCHable'
       end
     end
   end

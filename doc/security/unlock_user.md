@@ -1,77 +1,93 @@
 ---
-stage: Govern
+stage: Software Supply Chain Security
 group: Authentication
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Locked user accounts
 ---
 
-# Locked users
-
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed, GitLab Dedicated
-
-## Self-managed users
-
-> - Configurable locked user policy [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/27048) in GitLab 16.5.
-
-By default, users are locked after 10 failed sign-in attempts. These users remain locked:
-
-- For 10 minutes, after which time they are automatically unlocked.
-- Until an administrator unlocks them from the [Admin Area](../administration/admin_area.md) or the command line in under 10 minutes.
-
-In GitLab 16.5 and later, administrators can [use the API](../api/settings.md#list-of-settings-that-can-be-accessed-via-api-calls) to configure:
-
-- The number of failed sign-in attempts that locks a user (`max_login_attempts`).
-- The time period in minutes that the locked user is locked for, after the maximum number of failed sign-in attempts is reached (`failed_login_attempts_unlock_period_in_minutes`).
-
-For example, an administrator can configure that five failed sign-in attempts locks a user, and that user will be locked for 60 minutes, with the following API call:
-
-```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/application/settings?max_login_attempts=5&failed_login_attempts_unlock_period_in_minutes=60"
-```
+GitLab locks a user account after the user unsuccessfully attempts to sign in several times.
 
 ## GitLab.com users
 
-If 2FA is not enabled users are locked after three failed sign-in attempts within 24 hours. These users remain locked until:
+{{< details >}}
 
-- Their next successful sign-in, at which point they are sent an email with a six-digit unlock code and redirected to a verification page where they can unlock their account by entering the code.
-- GitLab Support [manually unlock](https://handbook.gitlab.com/handbook/support/workflows/reinstating-blocked-accounts/#manual-unlock) the account after account ownership is verified.
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com
 
-If 2FA is enabled, users are locked after three failed sign-in attempts. Accounts are unlocked automatically after 30 minutes.
+{{< /details >}}
 
-## Unlock a user from the Admin Area
+If two-factor authentication (2FA) is enabled, accounts are locked after three failed sign-in attempts. Accounts are unlocked automatically after 30 minutes.
 
-1. On the left sidebar, at the bottom, select **Admin Area**.
-1. Select **Overview > Users**.
+If 2FA is not enabled user accounts are locked after three failed sign-in attempts within 24 hours. Accounts remain locked until either:
+
+- The user signs in again and confirms their identity with an [email verification code](email_verification.md).
+- GitLab Support verifies the identity of the user and manually unlocks the account.
+
+## GitLab Self-Managed and GitLab Dedicated users
+
+{{< details >}}
+
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- Configurable locked user policy [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/27048) in GitLab 16.5.
+
+{{< /history >}}
+
+By default, user accounts are locked after 10 failed sign-in attempts. Accounts are unlocked automatically after 10 minutes.
+
+In GitLab 16.5 and later, administrators can use the [Application settings API](../api/settings.md#update-application-settings) to modify the `max_login_attempts` or `failed_login_attempts_unlock_period_in_minutes` settings.
+
+Administrators can unlock accounts immediately by using the following tasks:
+
+### Unlock user accounts from the Admin area
+
+Prerequisites
+
+- You must be an administrator of GitLab Self-Managed.
+
+To unlock an account from the Admin area:
+
+1. In the upper-right corner, select **Admin**.
+1. Select **Overview** > **Users**.
 1. Use the search bar to find the locked user.
 1. From the **User administration** dropdown list, select **Unlock**.
 
-## Unlock a user from the command line
+The user can now sign in.
 
-To unlock a locked user:
+### Unlock user accounts from a Rails console
 
-1. SSH into your GitLab server.
-1. Start a Ruby on Rails console:
+Prerequisites
 
-   ```shell
-   ## For Omnibus GitLab
-   sudo gitlab-rails console -e production
+- You must be an administrator of GitLab Self-Managed.
+- You must know the associated username, user ID, or email address.
 
-   ## For installations from source
-   sudo -u git -H bundle exec rails console -e production
-   ```
+To unlock a user account from a Rails console:
 
-1. Find the user to unlock. You can search by email:
+1. Start a [Rails console session](../administration/operations/rails_console.md#starting-a-rails-console-session).
+1. Find the user to unlock:
 
-   ```ruby
-   user = User.find_by(email: 'admin@local.host')
-   ```
+   - By username:
 
-   Or you can search by ID:
+     ```ruby
+     user = User.find_by_username('exampleuser')
+     ```
 
-   ```ruby
-   user = User.where(id: 1).first
-   ```
+   - By user ID:
+
+     ```ruby
+     user = User.find(123)
+     ```
+
+   - By email address:
+
+     ```ruby
+     user = User.find_by(email: 'user@example.com')
+     ```
 
 1. Unlock the user:
 
@@ -79,18 +95,10 @@ To unlock a locked user:
    user.unlock_access!
    ```
 
-1. Exit the console with <kbd>Control</kbd>+<kbd>d</kbd>.
+1. Exit the console:
 
-The user should now be able to sign in.
+   ```ruby
+   exit
+   ```
 
-<!-- ## Troubleshooting
-
-Include any troubleshooting steps that you can foresee. If you know beforehand what issues
-one might have when setting this up, or when something is changed, or on upgrading, it's
-important to describe those, too. Think of things that may go wrong and include them here.
-This is important to minimize requests for support, and to avoid doc comments with
-questions that you know someone might ask.
-
-Each scenario can be a third-level heading, for example `### Getting error message X`.
-If you have none to add when creating a doc, leave this section in place
-but commented out to help encourage others to add to it in the future. -->
+The user can now sign in.

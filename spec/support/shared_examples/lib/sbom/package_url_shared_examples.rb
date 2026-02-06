@@ -3,6 +3,7 @@
 RSpec.shared_examples 'purl_types enum' do
   let(:purl_types) do
     {
+      not_provided: 0,
       composer: 1,
       conan: 2,
       gem: 3,
@@ -15,7 +16,12 @@ RSpec.shared_examples 'purl_types enum' do
       rpm: 10,
       deb: 11,
       'cbl-mariner': 12,
-      wolfi: 13
+      wolfi: 13,
+      cargo: 14,
+      swift: 15,
+      conda: 16,
+      pub: 17,
+      unknown: 999
     }
   end
 

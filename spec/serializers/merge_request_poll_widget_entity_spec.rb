@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe MergeRequestPollWidgetEntity do
+RSpec.describe MergeRequestPollWidgetEntity, feature_category: :merge_trains do
   include ProjectForksHelper
   using RSpec::Parameterized::TableSyntax
 
@@ -17,13 +17,15 @@ RSpec.describe MergeRequestPollWidgetEntity do
     described_class.new(resource, { request: request }.merge(options)).as_json
   end
 
-  it 'has default_merge_commit_message_with_description' do
-    expect(subject[:default_merge_commit_message_with_description])
-      .to eq(resource.default_merge_commit_message(include_description: true))
+  describe '#default_merge_commit_message_with_description' do
+    it 'returns empty string' do
+      expect(subject[:default_merge_commit_message_with_description]).to eq('')
+    end
   end
 
   it { is_expected.to include(ff_only_enabled: false) }
   it { is_expected.to include(ff_merge_possible: false) }
+  it { is_expected.to include(retargeted: false) }
 
   describe 'new_blob_path' do
     context 'when user can push to project' do
@@ -48,10 +50,10 @@ RSpec.describe MergeRequestPollWidgetEntity do
     end
 
     context 'when auto merge is enabled' do
-      let(:resource) { create(:merge_request, :merge_when_pipeline_succeeds) }
+      let(:resource) { create(:merge_request, :merge_when_checks_pass) }
 
       it 'returns auto merge related information' do
-        expect(subject[:auto_merge_strategy]).to eq('merge_when_pipeline_succeeds')
+        expect(subject[:auto_merge_strategy]).to eq('merge_when_checks_pass')
       end
     end
 
@@ -63,14 +65,14 @@ RSpec.describe MergeRequestPollWidgetEntity do
       end
     end
 
-    context 'when head pipeline is running', unless: Gitlab.ee? do
+    context 'when head pipeline is running' do
       before do
         create(:ci_pipeline, :running, project: project, ref: resource.source_branch, sha: resource.diff_head_sha)
         resource.update_head_pipeline
       end
 
       it 'returns available auto merge strategies' do
-        expect(subject[:available_auto_merge_strategies]).to eq(%w[merge_when_pipeline_succeeds])
+        expect(subject[:available_auto_merge_strategies]).to eq(%w[merge_when_checks_pass])
       end
     end
 
@@ -181,6 +183,32 @@ RSpec.describe MergeRequestPollWidgetEntity do
       it 'calculates mergeability and returns true' do
         expect(subject[:mergeable]).to eq(true)
       end
+    end
+  end
+
+  describe '#jenkins_integration_active' do
+    let_it_be_with_reload(:project_with_integration) { create :project, :repository }
+    let_it_be_with_reload(:integration) { create(:jenkins_integration, push_events: true, project: project_with_integration) }
+    let_it_be_with_reload(:resource) { create(:merge_request, source_project: project_with_integration, target_project: project_with_integration) }
+
+    subject do
+      described_class.new(resource, { request: request }.merge(options)).as_json
+    end
+
+    before do
+      integration.update!(active: active)
+    end
+
+    context 'with active Jenkins integration' do
+      let(:active) { true }
+
+      it { expect(subject[:jenkins_integration_active]).to eq(true) }
+    end
+
+    context 'with inactive Jenkins integration' do
+      let(:active) { false }
+
+      it { expect(subject[:jenkins_integration_active]).to eq(false) }
     end
   end
 end

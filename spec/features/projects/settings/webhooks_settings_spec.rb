@@ -38,11 +38,12 @@ RSpec.describe 'Projects > Settings > Webhook Settings', feature_category: :webh
         expect(page).to have_content('SSL Verification: enabled')
         expect(page).to have_content('Push events')
         expect(page).to have_content('Tag push events')
-        expect(page).to have_content('Issues events')
-        expect(page).to have_content('Confidential issues events')
+        expect(page).to have_content('Issue events')
+        expect(page).to have_content('Confidential issue events')
         expect(page).to have_content('Comment')
         expect(page).to have_content('Merge request events')
         expect(page).to have_content('Pipeline events')
+        expect(page).to have_content('Milestone events')
         expect(page).to have_content('Wiki page events')
         expect(page).to have_content('Releases events')
         expect(page).to have_content('Emoji events')
@@ -60,7 +61,7 @@ RSpec.describe 'Projects > Settings > Webhook Settings', feature_category: :webh
         click_button 'Add webhook'
 
         expect(page).to have_content(url)
-        expect(page).to have_content('Webhook was created')
+        expect(page).to have_content('Webhook created')
         expect(page).to have_content('SSL Verification: enabled')
         expect(page).to have_content('Tag push events')
         expect(page).to have_content('Job events')
@@ -71,12 +72,17 @@ RSpec.describe 'Projects > Settings > Webhook Settings', feature_category: :webh
         visit webhooks_path
 
         click_link 'Edit'
+        fill_in 'Name (optional)', with: 'Existing project hook'
+        fill_in 'Description (optional)', with: 'An existing project hook for testing'
         fill_in 'URL', with: url
         check 'Enable SSL verification'
         click_button 'Save changes'
 
         expect(page).to have_content('Enable SSL verification')
         expect(page).to have_current_path(edit_project_hook_path(project, hook), ignore_query: true)
+        click_link 'Close'
+        expect(page).not_to have_content('Save changes')
+        expect(page).not_to have_current_path(edit_project_hook_path(project, hook), ignore_query: true)
       end
 
       it 'test existing webhook', :js do

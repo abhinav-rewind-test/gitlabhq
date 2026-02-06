@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe InstanceConfiguration do
+RSpec.describe InstanceConfiguration, feature_category: :configuration do
   context 'without cache' do
     describe '#settings' do
       describe '#ssh_algorithms_hashes' do
@@ -96,7 +96,7 @@ RSpec.describe InstanceConfiguration do
       describe '#size_limits' do
         before do
           Gitlab::CurrentSettings.current_application_settings.update!(
-            max_attachment_size: 10,
+            max_attachment_size: 100,
             receive_max_input_size: 20,
             max_import_size: 30,
             max_export_size: 40,
@@ -112,7 +112,7 @@ RSpec.describe InstanceConfiguration do
         it 'returns size limits from application settings' do
           size_limits = subject.settings[:size_limits]
 
-          expect(size_limits[:max_attachment_size]).to eq(10.megabytes)
+          expect(size_limits[:max_attachment_size]).to eq(100.megabytes)
           expect(size_limits[:receive_max_input_size]).to eq(20.megabytes)
           expect(size_limits[:max_import_size]).to eq(30.megabytes)
           expect(size_limits[:max_export_size]).to eq(40.megabytes)
@@ -152,12 +152,12 @@ RSpec.describe InstanceConfiguration do
       end
 
       describe '#package_file_size_limits' do
-        let_it_be(:plan1) { create(:plan, name: 'plan1', title: 'Plan 1') }
-        let_it_be(:plan2) { create(:plan, name: 'plan2', title: 'Plan 2') }
+        let_it_be(:premium_plan) { create(:plan, name: 'premium') }
+        let_it_be(:ultimate_plan) { create(:plan, name: 'ultimate') }
 
         before do
           create(:plan_limits,
-            plan: plan1,
+            plan: premium_plan,
             conan_max_file_size: 1001,
             helm_max_file_size: 1008,
             maven_max_file_size: 1002,
@@ -168,7 +168,7 @@ RSpec.describe InstanceConfiguration do
             generic_packages_max_file_size: 1007
           )
           create(:plan_limits,
-            plan: plan2,
+            plan: ultimate_plan,
             conan_max_file_size: 1101,
             helm_max_file_size: 1108,
             maven_max_file_size: 1102,
@@ -183,18 +183,18 @@ RSpec.describe InstanceConfiguration do
         it 'returns package file size limits' do
           file_size_limits = subject.settings[:package_file_size_limits]
 
-          expect(file_size_limits[:Plan1]).to eq({ conan: 1001, helm: 1008, maven: 1002, npm: 1003, nuget: 1004, pypi: 1005, terraform_module: 1006, generic: 1007 })
-          expect(file_size_limits[:Plan2]).to eq({ conan: 1101, helm: 1108, maven: 1102, npm: 1103, nuget: 1104, pypi: 1105, terraform_module: 1106, generic: 1107 })
+          expect(file_size_limits[:Premium]).to eq({ conan: 1001, helm: 1008, maven: 1002, npm: 1003, nuget: 1004, pypi: 1005, terraform_module: 1006, generic: 1007 })
+          expect(file_size_limits[:Ultimate]).to eq({ conan: 1101, helm: 1108, maven: 1102, npm: 1103, nuget: 1104, pypi: 1105, terraform_module: 1106, generic: 1107 })
         end
       end
 
       describe '#ci_cd_limits' do
-        let_it_be(:plan1) { create(:plan, name: 'plan1', title: 'Plan 1') }
-        let_it_be(:plan2) { create(:plan, name: 'plan2', title: 'Plan 2') }
+        let_it_be(:premium) { create(:plan, name: 'premium') }
+        let_it_be(:ultimate) { create(:plan, name: 'ultimate') }
 
         before do
           create(:plan_limits,
-            plan: plan1,
+            plan: premium,
             ci_pipeline_size: 1001,
             ci_active_jobs: 1002,
             ci_project_subscriptions: 1004,
@@ -204,7 +204,7 @@ RSpec.describe InstanceConfiguration do
             ci_registered_project_runners: 1008
           )
           create(:plan_limits,
-            plan: plan2,
+            plan: ultimate,
             ci_pipeline_size: 1101,
             ci_active_jobs: 1102,
             ci_project_subscriptions: 1104,
@@ -218,7 +218,7 @@ RSpec.describe InstanceConfiguration do
         it 'returns CI/CD limits' do
           ci_cd_size_limits = subject.settings[:ci_cd_limits]
 
-          expect(ci_cd_size_limits[:Plan1]).to eq({
+          expect(ci_cd_size_limits[:Premium]).to eq({
             ci_active_jobs: 1002,
             ci_needs_size_limit: 1006,
             ci_pipeline_schedules: 1005,
@@ -227,7 +227,7 @@ RSpec.describe InstanceConfiguration do
             ci_registered_group_runners: 1007,
             ci_registered_project_runners: 1008
           })
-          expect(ci_cd_size_limits[:Plan2]).to eq({
+          expect(ci_cd_size_limits[:Ultimate]).to eq({
             ci_active_jobs: 1102,
             ci_needs_size_limit: 1106,
             ci_pipeline_schedules: 1105,
@@ -274,7 +274,36 @@ RSpec.describe InstanceConfiguration do
             raw_blob_request_limit: 1021,
             search_rate_limit: 1022,
             search_rate_limit_unauthenticated: 1000,
-            users_get_by_id_limit: 1023
+            users_get_by_id_limit: 1023,
+            pipeline_limit_per_project_user_sha: 1024,
+            users_api_limit_followers: 1025,
+            users_api_limit_following: 1026,
+            users_api_limit_status: 1027,
+            users_api_limit_ssh_keys: 1028,
+            users_api_limit_ssh_key: 1029,
+            users_api_limit_gpg_keys: 1030,
+            users_api_limit_gpg_key: 1031,
+            groups_api_limit: 1032,
+            group_api_limit: 1033,
+            group_projects_api_limit: 1034,
+            group_shared_groups_api_limit: 1035,
+            group_invited_groups_api_limit: 1036,
+            group_archive_unarchive_api_limit: 1037,
+            projects_api_limit: 1038,
+            project_api_limit: 1039,
+            projects_api_rate_limit_unauthenticated: 1040,
+            user_projects_api_limit: 1041,
+            user_contributed_projects_api_limit: 1042,
+            user_starred_projects_api_limit: 1043,
+            project_members_api_limit: 1044,
+            gitlab_shell_operation_limit: 1045,
+            throttle_unauthenticated_files_api_enabled: true,
+            throttle_unauthenticated_files_api_requests_per_period: 1046,
+            throttle_unauthenticated_files_api_period_in_seconds: 1047,
+            throttle_authenticated_files_api_enabled: true,
+            throttle_authenticated_files_api_requests_per_period: 1048,
+            throttle_authenticated_files_api_period_in_seconds: 1049,
+            create_organization_api_limit: 1050
           )
         end
 
@@ -300,6 +329,44 @@ RSpec.describe InstanceConfiguration do
           expect(rate_limits[:search_rate_limit]).to eq({ enabled: true, requests_per_period: 1022, period_in_seconds: 60 })
           expect(rate_limits[:search_rate_limit_unauthenticated]).to eq({ enabled: true, requests_per_period: 1000, period_in_seconds: 60 })
           expect(rate_limits[:users_get_by_id]).to eq({ enabled: true, requests_per_period: 1023, period_in_seconds: 600 })
+          expect(rate_limits[:pipeline_creation]).to eq({ enabled: true, requests_per_period: 1024, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_followers]).to eq({ enabled: true, requests_per_period: 1025, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_following]).to eq({ enabled: true, requests_per_period: 1026, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_status]).to eq({ enabled: true, requests_per_period: 1027, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_ssh_keys]).to eq({ enabled: true, requests_per_period: 1028, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_ssh_key]).to eq({ enabled: true, requests_per_period: 1029, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_gpg_keys]).to eq({ enabled: true, requests_per_period: 1030, period_in_seconds: 60 })
+          expect(rate_limits[:users_api_gpg_key]).to eq({ enabled: true, requests_per_period: 1031, period_in_seconds: 60 })
+          expect(rate_limits[:groups_api]).to eq({ enabled: true, requests_per_period: 1032, period_in_seconds: 60 })
+          expect(rate_limits[:group_api]).to eq({ enabled: true, requests_per_period: 1033, period_in_seconds: 60 })
+          expect(rate_limits[:group_projects_api]).to eq({ enabled: true, requests_per_period: 1034, period_in_seconds: 60 })
+          expect(rate_limits[:group_shared_groups_api]).to eq({ enabled: true, requests_per_period: 1035, period_in_seconds: 60 })
+          expect(rate_limits[:group_invited_groups_api]).to eq({ enabled: true, requests_per_period: 1036, period_in_seconds: 60 })
+          expect(rate_limits[:group_archive_unarchive_api]).to eq({ enabled: true, requests_per_period: 1037, period_in_seconds: 60 })
+          expect(rate_limits[:projects_api]).to eq({ enabled: true, requests_per_period: 1038, period_in_seconds: 60 })
+          expect(rate_limits[:project_api]).to eq({ enabled: true, requests_per_period: 1039, period_in_seconds: 60 })
+          expect(rate_limits[:projects_api_unauthenticated]).to eq({ enabled: true, requests_per_period: 1040, period_in_seconds: 60 })
+          expect(rate_limits[:user_projects_api]).to eq({ enabled: true, requests_per_period: 1041, period_in_seconds: 60 })
+          expect(rate_limits[:user_contributed_projects_api]).to eq({ enabled: true, requests_per_period: 1042, period_in_seconds: 60 })
+          expect(rate_limits[:user_starred_projects_api]).to eq({ enabled: true, requests_per_period: 1043, period_in_seconds: 60 })
+          expect(rate_limits[:project_members_api]).to eq({ enabled: true, requests_per_period: 1044, period_in_seconds: 60 })
+          expect(rate_limits[:git_ssh_operations]).to eq({ enabled: true, requests_per_period: 1045, period_in_seconds: 60 })
+          expect(rate_limits[:files_api_unauthenticated]).to eq({ enabled: true, requests_per_period: 1046, period_in_seconds: 1047 })
+          expect(rate_limits[:files_api_authenticated]).to eq({ enabled: true, requests_per_period: 1048, period_in_seconds: 1049 })
+          expect(rate_limits[:organizations_api]).to eq({ enabled: true, requests_per_period: 1050, period_in_seconds: 60 })
+        end
+
+        context 'when :create_organization_api_limit is nil' do
+          before do
+            mock_settings = Gitlab::CurrentSettings.current_application_settings.dup
+            mock_settings[:create_organization_api_limit] = nil
+            allow(subject).to receive(:application_settings).and_return(mock_settings)
+          end
+
+          it 'returns rate limits from application settings' do
+            rate_limits = subject.settings[:rate_limits]
+            expect(rate_limits[:organizations_api]).to be_nil
+          end
         end
       end
     end

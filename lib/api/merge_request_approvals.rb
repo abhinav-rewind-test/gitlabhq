@@ -28,7 +28,9 @@ module API
           failure [
             { code: 404, message: 'Not found' }
           ]
+          tags ['merge_request_approvals']
         end
+        route_setting :authorization, permissions: :read_merge_request_approval_state, boundary_type: :project
         get 'approvals', urgency: :low do
           merge_request = find_merge_request_with_access(params[:merge_request_iid])
 
@@ -49,16 +51,25 @@ module API
             { code: 404, message: 'Not found' },
             { code: 401, message: 'Unauthorized' }
           ]
+          tags ['merge_request_approvals']
         end
         params do
           optional :sha, type: String, desc: 'When present, must have the HEAD SHA of the source branch'
+          optional :publish_review, type: Boolean, desc: 'When `true` submits pending review comments'
 
           use :ee_approval_params
         end
+        route_setting :authorization, permissions: :approve_merge_request, boundary_type: :project
         post 'approve', urgency: :low do
           merge_request = find_merge_request_with_access(params[:merge_request_iid], :approve_merge_request)
 
           check_sha_param!(params, merge_request)
+
+          if params[:publish_review]
+            result = ::DraftNotes::PublishService.new(merge_request, current_user).execute
+
+            render_api_error('Failed to publish review', 500) unless result[:status] == :success
+          end
 
           success =
             ::MergeRequests::ApprovalService
@@ -76,7 +87,9 @@ module API
             { code: 404, message: 'Not found' },
             { code: 401, message: 'Unauthorized' }
           ]
+          tags ['merge_request_approvals']
         end
+        route_setting :authorization, permissions: :unapprove_merge_request, boundary_type: :project
         post 'unapprove', urgency: :low do
           merge_request = find_merge_request_with_access(params[:merge_request_iid], :approve_merge_request)
 
@@ -85,10 +98,6 @@ module API
             .execute(merge_request)
 
           not_found! unless success
-
-          ::MergeRequests::UpdateReviewerStateService
-            .new(project: user_project, current_user: current_user)
-            .execute(merge_request, "unreviewed")
 
           present_approval(merge_request)
         end
@@ -99,8 +108,9 @@ module API
             { code: 401, message: 'Unauthorized' },
             { code: 404, message: 'Not found' }
           ]
-          tags %w[merge_requests]
+          tags %w[merge_request_approvals]
         end
+        route_setting :authorization, permissions: :reset_approvals_merge_request, boundary_type: :project
         put 'reset_approvals', urgency: :low do
           merge_request = find_project_merge_request(params[:merge_request_iid])
 
@@ -108,6 +118,11 @@ module API
             !merge_request.merged?
 
           merge_request.approvals.delete_all
+
+          merge_request.log_approval_deletion_on_merged_or_locked_mr(
+            source: 'API::MergeRequestApprovals#reset_approvals',
+            current_user: current_user
+          )
 
           status :accepted
         end

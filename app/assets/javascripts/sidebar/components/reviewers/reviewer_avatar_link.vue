@@ -19,10 +19,6 @@ export default {
       type: Object,
       required: true,
     },
-    rootPath: {
-      type: String,
-      required: true,
-    },
     issuableType: {
       type: String,
       default: TYPE_ISSUE,
@@ -46,17 +42,17 @@ export default {
 </script>
 
 <template>
-  <!-- must be `d-inline-block` or parent flex-basis causes width issues -->
+  <!-- must be `gl-inline-block` or parent flex-basis causes width issues -->
   <gl-link
     :href="reviewerUrl"
     :data-user-id="reviewerId"
     :data-username="user.username"
     :data-cannot-merge="cannotMerge"
     data-placement="left"
-    class="gl-display-inline-block js-user-link"
+    class="js-user-link gl-inline-block !gl-text-inherit hover:!gl-text-link"
   >
-    <!-- use d-flex so that slot can be appropriately styled -->
-    <span class="gl-display-flex">
+    <!-- use gl-flex so that slot can be appropriately styled -->
+    <span class="gl-flex">
       <reviewer-avatar :user="user" :img-size="24" :issuable-type="issuableType" />
       <slot :user="user"></slot>
     </span>

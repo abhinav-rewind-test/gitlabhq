@@ -1,10 +1,9 @@
 <script>
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapGetters } from 'vuex';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import { __ } from '~/locale';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import ScopeSidebarNavigation from '~/search/sidebar/components/scope_sidebar_navigation.vue';
-import SidebarPortal from '~/super_sidebar/components/sidebar_portal.vue';
-import { toggleSuperSidebarCollapsed } from '~/super_sidebar/super_sidebar_collapsed_state_manager';
 import DomElementListener from '~/vue_shared/components/dom_element_listener.vue';
 import {
   SCOPE_ISSUES,
@@ -29,6 +28,9 @@ import WikiBlobsFilters from './wiki_blobs_filters.vue';
 import AllScopesStartFilters from './all_scopes_start_filters.vue';
 
 export default {
+  i18n: {
+    headerText: __('Search results'),
+  },
   name: 'GlobalSearchSidebar',
   components: {
     IssuesFilters,
@@ -38,19 +40,10 @@ export default {
     NotesFilters,
     WikiBlobsFilters,
     ScopeSidebarNavigation,
-    SidebarPortal,
     DomElementListener,
     CommitsFilters,
     MilestonesFilters,
     AllScopesStartFilters,
-  },
-  mixins: [glFeatureFlagsMixin()],
-  props: {
-    headerText: {
-      required: false,
-      type: String,
-      default: '',
-    },
   },
   computed: {
     ...mapState(['searchType']),
@@ -62,9 +55,7 @@ export default {
       return this.searchType === SEARCH_TYPE_ADVANCED;
     },
     isZoektSearch() {
-      return (
-        this.searchType === SEARCH_TYPE_ZOEKT && this.glFeatures.searchAddArchivedFilterToZoekt
-      );
+      return this.searchType === SEARCH_TYPE_ZOEKT;
     },
     showIssuesFilters() {
       return this.currentScope === SCOPE_ISSUES;
@@ -91,9 +82,14 @@ export default {
       return this.currentScope === SCOPE_WIKI_BLOBS;
     },
   },
+  beforeCreate() {
+    if (!this.$store) {
+      Sentry.captureException('GlobalSearchSidebar was not provided a Vuex store');
+    }
+  },
   methods: {
-    toggleFiltersFromSidebar() {
-      toggleSuperSidebarCollapsed();
+    toggleFilters() {
+      this.$refs.mobileFilters.classList.toggle('gl-hidden');
     },
   },
 };
@@ -101,15 +97,17 @@ export default {
 
 <template>
   <section>
-    <dom-element-listener selector="#js-open-mobile-filters" @click="toggleFiltersFromSidebar" />
-    <sidebar-portal>
+    <dom-element-listener
+      selector="#js-open-mobile-filters"
+      :use-event-delegation="true"
+      @click="toggleFilters"
+    />
+    <div
+      ref="mobileFilters"
+      class="filters -gl-ml-4 gl-hidden gl-min-w-30 @md/panel:gl-block"
+      data-testid="search-filters"
+    >
       <all-scopes-start-filters />
-      <div
-        v-if="headerText"
-        class="gl-px-5 gl-pt-3 gl-pb-2 gl-m-0 gl-reset-line-height gl-font-weight-bold gl-font-sm super-sidebar-context-header"
-      >
-        {{ headerText }}
-      </div>
       <scope-sidebar-navigation />
       <issues-filters v-if="showIssuesFilters" />
       <merge-requests-filters v-if="showMergeRequestFilters" />
@@ -119,6 +117,6 @@ export default {
       <commits-filters v-if="showCommitsFilters" />
       <milestones-filters v-if="showMilestonesFilters" />
       <wiki-blobs-filters v-if="showWikiBlobsFilters" />
-    </sidebar-portal>
+    </div>
   </section>
 </template>

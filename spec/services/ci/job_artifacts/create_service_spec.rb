@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state, feature_category: :build_artifacts do
+RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state, feature_category: :job_artifacts do
   include WorkhorseHelpers
   include Gitlab::Utils::Gzip
 
@@ -20,9 +20,61 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
     shared_examples_for 'handling lsif artifact' do
       context 'when artifact is lsif' do
         let(:artifact_type) { 'lsif' }
+        let(:max_artifact_size) { 200.megabytes.to_i }
+
+        before do
+          allow(Ci::JobArtifact)
+            .to receive(:max_artifact_size)
+            .with(type: artifact_type, project: project)
+            .and_return(max_artifact_size)
+        end
 
         it 'includes ProcessLsif in the headers' do
           expect(authorize[:headers][:ProcessLsif]).to eq(true)
+        end
+
+        it 'returns 200MB in bytes as maximum size' do
+          expect(authorize[:headers][:MaximumSize]).to eq(200.megabytes.to_i)
+        end
+      end
+    end
+
+    shared_examples_for 'handling scip artifact' do
+      context 'when artifact is scip' do
+        let(:artifact_type) { 'scip' }
+        let(:max_artifact_size) { 200.megabytes.to_i }
+
+        before do
+          allow(Ci::JobArtifact)
+            .to receive(:max_artifact_size)
+            .with(type: artifact_type, project: project)
+            .and_return(max_artifact_size)
+        end
+
+        context 'when scip_code_intelligence feature flag is enabled' do
+          before do
+            stub_feature_flags(scip_code_intelligence: true)
+          end
+
+          it 'includes ProcessLsif in the headers' do
+            expect(authorize[:headers][:ProcessLsif]).to eq(true)
+          end
+
+          it 'returns 200MB in bytes as maximum size' do
+            expect(authorize[:headers][:MaximumSize]).to eq(200.megabytes.to_i)
+          end
+        end
+
+        context 'when scip_code_intelligence feature flag is disabled' do
+          before do
+            stub_feature_flags(scip_code_intelligence: false)
+          end
+
+          it 'returns an error' do
+            expect(authorize[:status]).to eq(:error)
+            expect(authorize[:http_status]).to eq(:bad_request)
+            expect(authorize[:message]).to eq('SCIP artifact type is not enabled')
+          end
         end
       end
     end
@@ -73,7 +125,29 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
       end
 
       it_behaves_like 'handling lsif artifact'
+      it_behaves_like 'handling scip artifact'
       it_behaves_like 'validating requirements'
+      it_behaves_like 'specifying hash functions'
+    end
+
+    shared_examples_for 'specifying hash functions' do
+      it { expect(authorize[:headers][:UploadHashFunctions]).to eq(described_class::ARTIFACT_HASH_FUNCTIONS) }
+
+      context 'when FIPS is enabled', :fips_mode do
+        it { expect(authorize[:headers][:UploadHashFunctions]).to eq(described_class::ARTIFACT_HASH_FUNCTIONS) }
+      end
+
+      context 'when the skip_unused_job_artifact_hash_calculation feature flag is disabled' do
+        before do
+          stub_feature_flags(skip_unused_job_artifact_hash_calculation: false)
+        end
+
+        it { expect(authorize[:headers]).not_to have_key(:UploadHashFunctions) }
+
+        context 'when FIPS is enabled', :fips_mode do
+          it { expect(authorize[:headers][:UploadHashFunctions]).to match_array(%w[sha1 sha256 sha512]) }
+        end
+      end
     end
 
     context 'when object storage is enabled' do
@@ -85,7 +159,7 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
 
           allow(JobArtifactUploader)
             .to receive(:generate_final_store_path)
-            .with(root_id: project.id)
+            .with(root_hash: project.id)
             .and_return(final_store_path)
         end
 
@@ -106,7 +180,9 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
         end
 
         it_behaves_like 'handling lsif artifact'
+        it_behaves_like 'handling scip artifact'
         it_behaves_like 'validating requirements'
+        it_behaves_like 'specifying hash functions'
       end
 
       context 'and direct upload is disabled' do
@@ -202,6 +278,8 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
           expect(new_artifact.file_format).to eq('gzip')
           expect(new_artifact.file_sha256).to eq(artifacts_sha256)
           expect(new_artifact.locked).to eq(job.pipeline.locked)
+          expect(new_artifact.exposed_as).to eq(nil)
+          expect(new_artifact.exposed_paths).to eq(nil)
         end
 
         it 'logs the created artifact and metadata' do
@@ -223,6 +301,21 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
           expect(job.artifacts_expire_at).to be_within(1.minute).of(expected_expire_at)
           expect(archive_artifact.expire_at).to be_within(1.minute).of(expected_expire_at)
           expect(metadata_artifact.expire_at).to be_within(1.minute).of(expected_expire_at)
+        end
+
+        context 'when the job has exposed artifacts' do
+          let(:job) do
+            create(:ci_build, project: project,
+              options: { artifacts: { expose_as: 'test', paths: ['path1', 'test/path2'] } })
+          end
+
+          it 'creates a new metadata job artifact with exposed_* columns populated' do
+            expect { execute }.to change { Ci::JobArtifact.where(file_type: :metadata).count }.by(1)
+
+            new_artifact = job.job_artifacts.last
+            expect(new_artifact.exposed_as).to eq('test')
+            expect(new_artifact.exposed_paths).to match_array(['path1', 'test/path2'])
+          end
         end
 
         context 'when expire_in params is set to a specific value' do
@@ -467,8 +560,8 @@ RSpec.describe Ci::JobArtifacts::CreateService, :clean_gitlab_redis_shared_state
     end
 
     shared_examples_for 'handling partitioning' do
-      context 'with job partitioned', :ci_partitionable do
-        let(:partition_id) { ci_testing_partition_id_for_check_constraints }
+      context 'with job partitioned' do
+        let(:partition_id) { ci_testing_partition_id }
         let(:pipeline) { create(:ci_pipeline, project: project, partition_id: partition_id) }
         let(:job) { create(:ci_build, pipeline: pipeline) }
 

@@ -7,16 +7,17 @@ RSpec.describe Gitlab::Kroki do
   describe '.formats' do
     def default_formats
       %w[bytefield c4plantuml d2 dbml diagramsnet ditaa erd graphviz nomnoml pikchr plantuml
-         structurizr svgbob umlet vega vegalite wavedrom].freeze
+         structurizr svgbob symbolator umlet vega vegalite wavedrom wireviz].freeze
     end
 
     subject { described_class.formats(Gitlab::CurrentSettings) }
 
     where(:enabled_formats, :expected_formats) do
       ''           | default_formats
-      'blockdiag'  | default_formats + %w[actdiag blockdiag nwdiag packetdiag rackdiag seqdiag]
-      'bpmn'       | default_formats + %w[bpmn]
-      'excalidraw' | default_formats + %w[excalidraw]
+      'blockdiag'  | (default_formats + %w[actdiag blockdiag nwdiag packetdiag rackdiag seqdiag])
+      'bpmn'       | (default_formats + %w[bpmn])
+      'excalidraw' | (default_formats + %w[excalidraw])
+      'mermaid'    | (default_formats + %w[mermaid])
     end
 
     with_them do

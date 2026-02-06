@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe 'Projects > Settings > User tags a project', :js, feature_category: :groups_and_projects do
   let(:user) { create(:user) }
   let(:project) { create(:project, namespace: user.namespace) }
-  let!(:topic) { create(:topic, name: 'topic1') }
+  let!(:topic) { create(:topic, name: 'topic1', organization: project.organization) }
 
   before do
     sign_in(user)
@@ -17,9 +17,9 @@ RSpec.describe 'Projects > Settings > User tags a project', :js, feature_categor
     fill_in class: 'gl-token-selector-input', with: 'topic1'
     wait_for_all_requests
 
-    find('.gl-avatar-labeled[entity-name="topic1"]').click
+    find_by_testid('topics-token-selector-avatar-topic1').click
 
-    page.within '.general-settings' do
+    within_testid('general-settings-content') do
       click_button 'Save changes'
     end
 
@@ -32,7 +32,7 @@ RSpec.describe 'Projects > Settings > User tags a project', :js, feature_categor
 
     click_button 'Add "topic2"'
 
-    page.within '.general-settings' do
+    within_testid('general-settings-content') do
       click_button 'Save changes'
     end
 

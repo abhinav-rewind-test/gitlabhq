@@ -23,7 +23,19 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
   ]
 
   def show
-    render_diffs
+    respond_to do |format|
+      format.json do
+        render_diffs
+      end
+
+      format.patch do
+        send_git_patch @project.repository, @compare.diff_refs
+      end
+
+      format.diff do
+        send_git_diff @project.repository, @compare.diff_refs
+      end
+    end
   end
 
   def diff_by_file_hash
@@ -38,13 +50,9 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
     render_diffs
   end
 
-  # rubocop: disable Metrics/AbcSize
   def diffs_batch
-    collapse_generated = Feature.enabled?(:collapse_generated_diff_files, project)
-
     diff_options_hash = diff_options
     diff_options_hash[:paths] = params[:paths] if params[:paths]
-    diff_options_hash[:collapse_generated] = collapse_generated
 
     diffs = @compare.diffs_in_batch(params[:page], params[:per_page], diff_options: diff_options_hash)
 
@@ -70,8 +78,7 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
       params[:expanded],
       params[:page],
       params[:per_page],
-      options[:merge_ref_head_diff],
-      collapse_generated
+      options[:merge_ref_head_diff]
     ]
 
     expires_in(1.day) if cache_with_max_age?
@@ -90,7 +97,6 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
       render json: PaginatedDiffSerializer.new(current_user: current_user).represent(diffs, options)
     end
   end
-  # rubocop: enable Metrics/AbcSize
 
   def diffs_metadata
     diffs = @compare.diffs(diff_options)
@@ -137,18 +143,8 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
   def define_diff_vars
     @merge_request_diffs = @merge_request.merge_request_diffs.viewable.order_id_desc
     @compare = commit || find_merge_request_diff_compare
-    return render_404 unless @compare
+    render_404 unless @compare
   end
-
-  # rubocop: disable CodeReuse/ActiveRecord
-  def commit
-    return unless commit_id = params[:commit_id].presence
-    return unless @merge_request.all_commits.exists?(sha: commit_id) ||
-      @merge_request.recent_context_commits.map(&:id).include?(commit_id)
-
-    @commit ||= @project.commit(commit_id)
-  end
-  # rubocop: enable CodeReuse/ActiveRecord
 
   # rubocop: disable CodeReuse/ActiveRecord
   #
@@ -181,7 +177,9 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
     return @merge_request.merge_head_diff if render_merge_ref_head_diff?
 
     if @start_sha
-      @merge_request_diff.compare_with(@start_sha)
+      ::MergeRequests::MergeRequestDiffComparison
+          .new(@merge_request_diff)
+          .compare_with(@start_sha)
     else
       @merge_request_diff
     end

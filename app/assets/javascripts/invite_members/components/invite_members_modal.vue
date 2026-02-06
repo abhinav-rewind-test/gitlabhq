@@ -7,19 +7,28 @@ import Api from '~/api';
 import Tracking from '~/tracking';
 import { BV_SHOW_MODAL, BV_HIDE_MODAL } from '~/lib/utils/constants';
 import { n__, sprintf } from '~/locale';
-import { memberName, triggerExternalAlert } from 'ee_else_ce/invite_members/utils/member_utils';
-import { captureException } from '~/ci/runner/sentry_utils';
 import {
-  USERS_FILTER_ALL,
+  memberName,
+  triggerExternalAlert,
+  baseBindingAttributes,
+} from 'ee_else_ce/invite_members/utils/member_utils';
+import { responseFromSuccess } from 'ee_else_ce/invite_members/utils/response_message_parser';
+import { captureException } from '~/ci/runner/sentry_utils';
+import { helpPagePath } from '~/helpers/help_page_helper';
+import {
+  BLOCKED_SEAT_OVERAGES_ERROR_REASON,
+  BLOCKED_SEAT_OVERAGES_BODY,
+  BLOCKED_SEAT_OVERAGES_CTA,
+  BLOCKED_SEAT_OVERAGES_CTA_DOCS,
   MEMBER_MODAL_LABELS,
   INVITE_MEMBER_MODAL_TRACKING_CATEGORY,
 } from '../constants';
 import eventHub from '../event_hub';
-import { responseFromSuccess } from '../utils/response_message_parser';
 import { getInvalidFeedbackMessage } from '../utils/get_invalid_feedback_message';
 import {
   displaySuccessfulInvitationAlert,
-  reloadOnInvitationSuccess,
+  reloadOnMemberInvitationSuccess,
+  markLocalStorageForQueuedAlert,
 } from '../utils/trigger_successful_invite_alert';
 import ModalConfetti from './confetti.vue';
 import MembersTokenSelect from './members_token_select.vue';
@@ -43,6 +52,14 @@ export default {
     SafeHtml,
   },
   mixins: [Tracking.mixin({ category: INVITE_MEMBER_MODAL_TRACKING_CATEGORY })],
+  inject: {
+    addSeatsHref: {
+      default: '',
+    },
+    hasBsoEnabled: {
+      default: false,
+    },
+  },
   props: {
     id: {
       type: String,
@@ -77,16 +94,6 @@ export default {
       type: String,
       required: true,
     },
-    usersFilter: {
-      type: String,
-      required: false,
-      default: USERS_FILTER_ALL,
-    },
-    filterId: {
-      type: Number,
-      required: false,
-      default: null,
-    },
     fullPath: {
       type: String,
       required: true,
@@ -109,16 +116,19 @@ export default {
   },
   data() {
     return {
+      errorReason: '',
       invalidFeedbackMessage: '',
       isLoading: false,
       modalId: uniqueId('invite-members-modal-'),
       newUsersToInvite: [],
+      usersWithWarning: {},
       invalidMembers: {},
       source: 'unknown',
       mode: 'default',
       errorsLimit: 2,
       isErrorsSectionExpanded: false,
       shouldShowEmptyInvitesAlert: false,
+      hasIncompleteMemberInput: false,
     };
   },
   computed: {
@@ -134,8 +144,19 @@ export default {
     labelIntroText() {
       return this.$options.labels[this.inviteTo][this.mode].introText;
     },
-    isEmptyInvites() {
+    accessExpirationHelpLink() {
+      return this.isProject
+        ? helpPagePath('user/project/members/_index', { anchor: 'add-users-to-a-project' })
+        : helpPagePath('user/group/_index', { anchor: 'add-users-to-a-group' });
+    },
+    hasInvites() {
       return Boolean(this.newUsersToInvite.length);
+    },
+    hasEmptyOrIncompleteInvites() {
+      return !this.hasInvites || this.hasIncompleteMemberInput;
+    },
+    hasUsersWithWarning() {
+      return !isEmpty(this.usersWithWarning);
     },
     hasInvalidMembers() {
       return !isEmpty(this.invalidMembers);
@@ -182,17 +203,21 @@ export default {
     formGroupDescription() {
       return this.invalidFeedbackMessage ? null : this.$options.labels.placeHolder;
     },
+    shouldShowSeatOverageNotification() {
+      return this.errorReason === BLOCKED_SEAT_OVERAGES_ERROR_REASON && this.addSeatsHref;
+    },
+    primaryButtonText() {
+      return this.hasBsoEnabled ? BLOCKED_SEAT_OVERAGES_CTA_DOCS : BLOCKED_SEAT_OVERAGES_CTA;
+    },
+    baseBindingAttributes() {
+      return baseBindingAttributes(this.hasInvalidMembers);
+    },
   },
   watch: {
-    isEmptyInvites: {
-      handler(updatedValue) {
-        // nothing to do if the invites are **still** empty and the emptyInvites were never set from submit
-        if (!updatedValue && !this.shouldShowEmptyInvitesAlert) {
-          return;
-        }
-
+    hasEmptyOrIncompleteInvites(hasEmptyOrIncomplete) {
+      if (!hasEmptyOrIncomplete && this.shouldShowEmptyInvitesAlert) {
         this.clearEmptyInviteError();
-      },
+      }
     },
   },
   mounted() {
@@ -200,11 +225,14 @@ export default {
       displaySuccessfulInvitationAlert();
     }
 
-    eventHub.$on('openModal', (options) => {
+    eventHub.$on('open-modal', (options) => {
       this.openModal(options);
     });
   },
   methods: {
+    handleTokenizationStateChange(hasPendingInput) {
+      this.hasIncompleteMemberInput = hasPendingInput;
+    },
     showInvalidFeedbackMessage(response) {
       this.invalidFeedbackMessage = getInvalidFeedbackMessage(response);
     },
@@ -251,13 +279,14 @@ export default {
       };
     },
     async sendInvite({ accessLevel, expiresAt, memberRoleId }) {
-      this.isLoading = true;
       this.clearValidation();
 
-      if (!this.isEmptyInvites) {
+      if (this.hasEmptyOrIncompleteInvites) {
         this.showEmptyInvitesAlert();
         return;
       }
+
+      this.isLoading = true;
 
       const apiAddByInvite = this.isProject
         ? Api.inviteProjectMembers.bind(Api)
@@ -267,11 +296,16 @@ export default {
         const payload = this.getInvitePayload({ accessLevel, expiresAt, memberRoleId });
         const response = await apiAddByInvite(this.id, payload);
 
-        const { error, message } = responseFromSuccess(response);
+        const { error, message, usersWithWarning } = responseFromSuccess(response);
+
+        this.usersWithWarning = usersWithWarning;
 
         if (error) {
+          this.errorReason = response.data.reason;
           this.showErrors(message);
-        } else {
+        } else if (this.hasUsersWithWarning) {
+          markLocalStorageForQueuedAlert();
+        } else if (!this.hasInvalidMembers) {
           this.onInviteSuccess();
         }
       } catch (error) {
@@ -304,12 +338,13 @@ export default {
       this.isLoading = false;
       this.shouldShowEmptyInvitesAlert = false;
       this.newUsersToInvite = [];
+      this.hasIncompleteMemberInput = false;
     },
     onInviteSuccess() {
       this.track('invite_successful', { label: this.source });
 
       if (this.reloadPageOnSubmit) {
-        reloadOnInvitationSuccess();
+        reloadOnMemberInvitationSuccess();
       } else {
         this.showSuccessMessage();
       }
@@ -322,7 +357,9 @@ export default {
       this.closeModal();
     },
     clearValidation() {
+      this.errorReason = '';
       this.invalidFeedbackMessage = '';
+      this.usersWithWarning = {};
       this.invalidMembers = {};
     },
     clearEmptyInviteError() {
@@ -338,6 +375,9 @@ export default {
     },
   },
   labels: MEMBER_MODAL_LABELS,
+  i18n: {
+    BLOCKED_SEAT_OVERAGES_BODY,
+  },
 };
 </script>
 <template>
@@ -349,23 +389,27 @@ export default {
     :default-access-level="defaultAccessLevel"
     :default-member-role-id="defaultMemberRoleId"
     :help-link="helpLink"
+    :access-expiration-help-link="accessExpirationHelpLink"
     :label-intro-text="labelIntroText"
     :label-search-field="$options.labels.searchField"
     :form-group-description="formGroupDescription"
     :invalid-feedback-message="invalidFeedbackMessage"
+    :has-incomplete-member-input="hasIncompleteMemberInput"
     :is-loading="isLoading"
     :is-project="isProject"
     :new-users-to-invite="newUsersToInvite"
     :root-group-id="rootId"
     :users-limit-dataset="usersLimitDataset"
     :full-path="fullPath"
+    :role-select-label="$options.labels.roleSelectLabel"
+    v-bind="baseBindingAttributes"
     @close="onClose"
     @cancel="onCancel"
     @reset="resetFields"
     @submit="sendInvite"
   >
     <template #intro-text-before>
-      <div v-if="isCelebration" class="gl-p-4 gl-font-size-h1">
+      <div v-if="isCelebration" class="gl-p-4 gl-text-size-h1">
         <gl-emoji data-name="tada" />
       </div>
     </template>
@@ -396,7 +440,7 @@ export default {
           data-testid="alert-member-error"
         >
           {{ $options.labels.memberErrorListText }}
-          <ul class="gl-pl-5 gl-mb-0">
+          <ul class="gl-mb-0 gl-pl-5">
             <li
               v-for="error in errorsLimited"
               :key="error.member"
@@ -408,7 +452,7 @@ export default {
           </ul>
           <template v-if="shouldErrorsSectionExpand">
             <gl-collapse v-model="isErrorsSectionExpanded">
-              <ul class="gl-pl-5 gl-mb-0">
+              <ul class="gl-mb-0 gl-pl-5">
                 <li
                   v-for="error in errorsExpanded"
                   :key="error.member"
@@ -420,7 +464,7 @@ export default {
               </ul>
             </gl-collapse>
             <gl-button
-              class="gl-text-decoration-none! gl-shadow-none! gl-mt-3"
+              class="gl-mt-3 !gl-no-underline !gl-shadow-none"
               data-testid="accordion-button"
               variant="link"
               @click="toggleErrorExpansion"
@@ -428,7 +472,7 @@ export default {
               {{ errorCollapseText }}
               <gl-icon
                 name="chevron-down"
-                class="gl-transition-medium"
+                class="gl-transition-all"
                 :class="{ 'gl-rotate-180': isErrorsSectionExpanded }"
               />
             </gl-button>
@@ -454,13 +498,27 @@ export default {
         aria-labelledby="empty-invites-alert"
         :input-id="inputId"
         :exception-state="exceptionState"
-        :users-filter="usersFilter"
-        :filter-id="filterId"
-        :group-id="id"
+        :users-with-warning="usersWithWarning"
         :invalid-members="invalidMembers"
         @clear="clearValidation"
         @token-remove="removeToken"
+        @tokenization-state-change="handleTokenizationStateChange"
       />
+    </template>
+
+    <template #after-members-input>
+      <gl-alert
+        v-if="shouldShowSeatOverageNotification"
+        id="seat-overages-alert"
+        class="gl-mb-4"
+        dismissable
+        data-testid="seat-overages-alert"
+        :primary-button-link="addSeatsHref"
+        :primary-button-text="primaryButtonText"
+        @dismiss="errorReason = false"
+      >
+        {{ $options.i18n.BLOCKED_SEAT_OVERAGES_BODY }}
+      </gl-alert>
     </template>
   </invite-modal-base>
 </template>

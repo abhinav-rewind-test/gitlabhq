@@ -1,7 +1,11 @@
 import { TaskItem } from '@tiptap/extension-task-item';
+import { __, sprintf } from '~/locale';
+import { truncate } from '~/lib/utils/text_utility';
 import { PARSE_HTML_PRIORITY_HIGHEST } from '../constants';
 
 export default TaskItem.extend({
+  draggable: true,
+
   addOptions() {
     return {
       ...this.parent?.(),
@@ -42,7 +46,7 @@ export default TaskItem.extend({
         priority: PARSE_HTML_PRIORITY_HIGHEST,
       },
       {
-        tag: 'li.inapplicable > s, li.inapplicable > p:first-of-type > s',
+        tag: 'li.inapplicable s.inapplicable',
         skip: true,
         priority: PARSE_HTML_PRIORITY_HIGHEST,
       },
@@ -53,12 +57,31 @@ export default TaskItem.extend({
     const nodeView = this.parent?.();
     return ({ node, ...args }) => {
       const nodeViewInstance = nodeView({ node, ...args });
+      const checkbox = nodeViewInstance.dom.querySelector('input[type=checkbox]');
+
+      const updateAriaLabel = (textContent) => {
+        checkbox.setAttribute(
+          'aria-label',
+          sprintf(__('Check option: %{option}'), {
+            option: truncate(textContent, 100),
+          }),
+        );
+      };
+
+      updateAriaLabel(node.firstChild.textContent);
 
       if (node.attrs.inapplicable) {
-        nodeViewInstance.dom.querySelector('input[type=checkbox]').disabled = true;
+        checkbox.disabled = true;
       }
 
-      return nodeViewInstance;
+      return {
+        ...nodeViewInstance,
+        update: (updatedNode) => {
+          const result = nodeViewInstance.update(updatedNode);
+          updateAriaLabel(updatedNode.firstChild.textContent);
+          return result;
+        },
+      };
     };
   },
 });

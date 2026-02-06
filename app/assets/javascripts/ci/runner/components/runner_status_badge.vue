@@ -1,7 +1,7 @@
 <script>
 import { GlBadge, GlTooltipDirective } from '@gitlab/ui';
 import { __, sprintf } from '~/locale';
-import { getTimeago } from '~/lib/utils/datetime_utility';
+import { getTimeago, newDate } from '~/lib/utils/datetime_utility';
 import { duration } from '~/lib/utils/datetime/timeago_utility';
 import {
   I18N_STATUS_ONLINE,
@@ -59,7 +59,7 @@ export default {
     },
     contactedAtTimeAgo() {
       if (this.contactedAt) {
-        return getTimeago().format(this.contactedAt);
+        return getTimeago().format(newDate(this.contactedAt));
       }
       // Prevent "just now" from being rendered, in case data is missing.
       return __('never');
@@ -78,14 +78,14 @@ export default {
         case STATUS_NEVER_CONTACTED:
           return {
             icon: 'time-out',
-            variant: 'muted',
+            variant: 'neutral',
             label: I18N_STATUS_NEVER_CONTACTED,
             tooltip: I18N_NEVER_CONTACTED_TOOLTIP,
           };
         case STATUS_OFFLINE:
           return {
             icon: 'time-out',
-            variant: 'muted',
+            variant: 'neutral',
             label: I18N_STATUS_OFFLINE,
             tooltip: sprintf(I18N_DISCONNECTED_TOOLTIP, {
               elapsedTime: this.onlineContactTimeoutDuration,
@@ -120,8 +120,13 @@ export default {
     v-gl-tooltip="badge.tooltip"
     :variant="badge.variant"
     :icon="badge.icon"
+    :data-qa-status="status"
+    data-testid="runner-status-badge"
+    icon-optically-aligned
     v-bind="$attrs"
   >
-    {{ badge.label }}
+    <span class="gl-truncate">
+      {{ badge.label }}
+    </span>
   </gl-badge>
 </template>

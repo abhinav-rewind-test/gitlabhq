@@ -1,22 +1,6 @@
 import { isEmpty, isString, isObject } from 'lodash';
 import { sprintf, __ } from '~/locale';
 
-export class ActiveModelError extends Error {
-  constructor(errorAttributeMap = {}, ...params) {
-    // Pass remaining arguments (including vendor specific ones) to parent constructor
-    super(...params);
-
-    // Maintains proper stack trace for where our error was thrown (only available on V8)
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ActiveModelError);
-    }
-
-    this.name = 'ActiveModelError';
-    // Custom debugging information
-    this.errorAttributeMap = errorAttributeMap;
-  }
-}
-
 const DEFAULT_ERROR = {
   message: __('Something went wrong. Please try again.'),
   links: {},
@@ -52,6 +36,23 @@ function getMessageFromType(errorAttributeMap = {}, errorDictionary = {}) {
 }
 
 /**
+ * @param {String} cause
+ * @param {Object} errorDictionary
+ * @returns {(null|string)} null or error message if found
+ */
+function getMessageFromCause(cause, errorDictionary = {}) {
+  if (!cause) {
+    return null;
+  }
+  const errorType = errorDictionary[cause];
+  if (!errorType) {
+    return null;
+  }
+
+  return errorType;
+}
+
+/**
  * @example "Email has already been taken, Email is invalid"
  * // returns `${UNLINKED_ACCOUNT_ERROR}`, i.e. the `EMAIL_TAKEN_ERROR_TYPE` error message
  *
@@ -77,8 +78,7 @@ function getMessageFromErrorString(errorString, errorDictionary = {}) {
 }
 
 /**
- * Receives an Error and attempts to extract the `errorAttributeMap` in
- * case it is an `ActiveModelError` and returns the message if it exists.
+ * Receives an Error and attempts to extract the `errorAttributeMap`
  * If a match is not found it will attempt to map a message from the
  * Error.message to be returned.
  * Otherwise, it will return a general error message.
@@ -105,10 +105,15 @@ export function mapSystemToFriendlyError(
     return defaultError;
   }
 
-  const { errorAttributeMap, message } = systemError;
+  const { errorAttributeMap, cause, message } = systemError;
   const messageFromType = getMessageFromType(errorAttributeMap, errorDictionary);
   if (messageFromType) {
     return messageFromType;
+  }
+
+  const messageFromCause = getMessageFromCause(cause, errorDictionary);
+  if (messageFromCause) {
+    return messageFromCause;
   }
 
   const messageFromErrorString = getMessageFromErrorString(message, errorDictionary);
@@ -146,4 +151,20 @@ export const generateHelpTextWithLinks = (error) => {
 
   const links = generateLinks(error.links);
   return sprintf(error.message, links, false);
+};
+
+/**
+ * Receives an error code and an error dictionary and returns true
+ * if the error code is found in the dictionary and false otherwise.
+ *
+ * @param {String} errorCode
+ * @param {Object} errorDictionary
+ * @returns {Boolean}
+ */
+export const isKnownErrorCode = (errorCode, errorDictionary) => {
+  if (errorCode instanceof String || typeof errorCode === 'string') {
+    return Object.keys(errorDictionary).includes(errorCode.toLowerCase());
+  }
+
+  return false;
 };

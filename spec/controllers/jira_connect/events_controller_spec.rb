@@ -46,12 +46,14 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
     let_it_be(:client_key) { '1234' }
     let_it_be(:shared_secret) { 'secret' }
     let_it_be(:base_url) { 'https://test.atlassian.net' }
+    let_it_be(:display_url) { 'https://custom.example.com' }
 
     let(:params) do
       {
         clientKey: client_key,
         sharedSecret: shared_secret,
-        baseUrl: base_url
+        baseUrl: base_url,
+        displayUrl: display_url
       }
     end
 
@@ -76,13 +78,16 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
 
       expect(installation.shared_secret).to eq(shared_secret)
       expect(installation.base_url).to eq('https://test.atlassian.net')
+      expect(installation.organization_id).to eq(Current.organization.id)
+      expect(installation.display_url).to eq('https://custom.example.com')
     end
 
     context 'when the shared_secret param is missing' do
       let(:params) do
         {
           clientKey: client_key,
-          baseUrl: base_url
+          baseUrl: base_url,
+          displayUrl: display_url
         }
       end
 
@@ -94,7 +99,7 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
     end
 
     context 'when an installation already exists' do
-      let_it_be(:installation) { create(:jira_connect_installation, base_url: base_url, client_key: client_key, shared_secret: shared_secret) }
+      let_it_be(:installation) { create(:jira_connect_installation, base_url: base_url, client_key: client_key, shared_secret: shared_secret, display_url: display_url) }
 
       it 'validates the JWT token in authorization header and returns 200 without creating a new installation', :aggregate_failures do
         expect { subject }.not_to change { JiraConnectInstallation.count }
@@ -109,9 +114,23 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
         subject
       end
 
-      context 'when parameters include a new shared secret and base_url' do
+      it 'passes current organization id to UpdateService' do
+        expect(JiraConnectInstallations::UpdateService)
+          .to receive(:execute)
+          .with(
+            installation,
+            ActionController::Parameters
+              .new(shared_secret: shared_secret, organization_id: current_organization.id, base_url: base_url, display_url: display_url)
+              .permit(:shared_secret, :base_url, :organization_id, :display_url))
+          .and_call_original
+
+        subject
+      end
+
+      context 'when parameters include a new shared secret, base_url, and display_url' do
         let(:shared_secret) { 'new_secret' }
         let(:base_url) { 'https://new_test.atlassian.net' }
+        let(:display_url) { 'https://new_custom.example.com' }
 
         it 'updates the installation', :aggregate_failures do
           subject
@@ -119,7 +138,8 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
           expect(response).to have_gitlab_http_status(:ok)
           expect(installation.reload).to have_attributes(
             shared_secret: shared_secret,
-            base_url: base_url
+            base_url: base_url,
+            display_url: display_url
           )
         end
       end
@@ -144,24 +164,85 @@ RSpec.describe JiraConnect::EventsController, feature_category: :integrations do
       end
     end
 
-    context 'when enforce_jira_base_url_https' do
+    context 'when additional_audience_url is not configured' do
       before do
-        allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(true)
+        allow(Gitlab::CurrentSettings).to receive(:jira_connect_additional_audience_url)
+          .and_return(nil)
       end
 
-      let(:expected_claims) { { aud: "https://test.host/-/jira_connect", iss: anything, qsh: anything } }
+      context 'when enforce_jira_base_url_https is true' do
+        before do
+          allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(true)
+        end
 
-      it_behaves_like 'generates JWT validation claims'
+        let(:expected_claims) do
+          {
+            aud: ['https://test.host/-/jira_connect'],
+            iss: anything,
+            qsh: anything
+          }
+        end
+
+        it_behaves_like 'generates JWT validation claims'
+      end
+
+      context 'when enforce_jira_base_url_https is false' do
+        before do
+          allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(false)
+        end
+
+        let(:expected_claims) do
+          {
+            aud: ['http://test.host/-/jira_connect'],
+            iss: anything,
+            qsh: anything
+          }
+        end
+
+        it_behaves_like 'generates JWT validation claims'
+      end
     end
 
-    context 'when not enforce_jira_base_url_https' do
-      before do
-        allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(false)
+    context 'when additional_audience_url is configured' do
+      context 'when enforce_jira_base_url_https is true' do
+        before do
+          allow(Gitlab::CurrentSettings).to receive(:jira_connect_additional_audience_url).and_return('https://proxy.host')
+          allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(true)
+        end
+
+        let(:expected_claims) do
+          {
+            aud: [
+              'https://test.host/-/jira_connect',
+              'https://proxy.host/-/jira_connect'
+            ],
+            iss: anything,
+            qsh: anything
+          }
+        end
+
+        it_behaves_like 'generates JWT validation claims'
       end
 
-      let(:expected_claims) { { aud: "http://test.host/-/jira_connect", iss: anything, qsh: anything } }
+      context 'when enforce_jira_base_url_https is false' do
+        before do
+          allow(Gitlab::CurrentSettings).to receive(:jira_connect_additional_audience_url).and_return('https://proxy.host')
+          allow(Gitlab.config.jira_connect).to receive(:enforce_jira_base_url_https).and_return(false)
+        end
 
-      it_behaves_like 'generates JWT validation claims'
+        let(:expected_claims) do
+          {
+            aud: [
+              'http://test.host/-/jira_connect',
+              'https://proxy.host/-/jira_connect'
+            ],
+            iss: anything,
+            qsh: anything
+          }
+        end
+
+        it_behaves_like 'generates JWT validation claims'
+      end
     end
   end
 

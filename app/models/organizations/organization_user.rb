@@ -2,15 +2,19 @@
 
 module Organizations
   class OrganizationUser < ApplicationRecord
+    include ActiveModel::Dirty
+
     belongs_to :organization, inverse_of: :organization_users, optional: false
     belongs_to :user, inverse_of: :organization_users, optional: false
 
     validates :user, uniqueness: { scope: :organization_id }
     validates :access_level, presence: true
 
+    validate :last_owner_access_level_change, if: :access_level_changed?
+
     before_destroy :ensure_user_has_an_organization
 
-    enum access_level: {
+    enum :access_level, {
       # Until we develop more access_levels, we really don't know if the default access_level will be what we think of
       # as a guest. For now, we'll set to same value as guest, but call it default to denote the current ambivalence.
       default: Gitlab::Access::GUEST,
@@ -19,28 +23,19 @@ module Organizations
 
     scope :owners, -> { where(access_level: Gitlab::Access::OWNER) }
     scope :in_organization, ->(organization) { where(organization: organization) }
+    scope :with_active_users, -> { joins(:user).merge(User.active) }
+    scope :by_user, ->(user) { where(user: user) }
 
-    def self.create_default_organization_record_for(user_id, user_is_admin:)
-      upsert(
-        {
-          organization_id: Organizations::Organization::DEFAULT_ORGANIZATION_ID,
-          user_id: user_id,
-          access_level: default_organization_access_level(user_is_admin: user_is_admin)
-        },
-        unique_by: [:organization_id, :user_id]
-      )
-    end
-
-    def self.update_default_organization_record_for(user_id, user_is_admin:)
+    def self.update_home_organization_record_for(user, user_is_admin:)
       find_or_initialize_by(
-        user_id: user_id, organization_id: Organizations::Organization::DEFAULT_ORGANIZATION_ID
+        user_id: user.id, organization_id: user.organization_id
       ).tap do |record|
-        record.access_level = default_organization_access_level(user_is_admin: user_is_admin)
-        record.save
+        record.access_level = home_organization_access_level(user_is_admin: user_is_admin)
+        record.save!
       end
     end
 
-    def self.default_organization_access_level(user_is_admin: false)
+    def self.home_organization_access_level(user_is_admin: false)
       if user_is_admin
         :owner
       else
@@ -69,14 +64,33 @@ module Organizations
         )
     end
 
+    def last_owner?
+      return false unless owner?
+
+      # Try to keep the last active user as owner
+      return other_owners.with_active_users.empty? if user.active?
+
+      other_owners.empty?
+    end
+
     private
+
+    def other_owners
+      @other_owners ||= organization.organization_users.owners.id_not_in(id)
+    end
 
     def ensure_user_has_an_organization
       return unless user
 
-      return unless user.organization_users.where.not(id: id).empty?
+      return unless user.organization_users.id_not_in(id).empty?
 
       errors.add(:base, _('A user must associate with at least one organization'))
+    end
+
+    def last_owner_access_level_change
+      return unless access_level_was == 'owner' && other_owners.empty?
+
+      errors.add(:base, _('You cannot change the access of the last owner from the organization'))
     end
   end
 end

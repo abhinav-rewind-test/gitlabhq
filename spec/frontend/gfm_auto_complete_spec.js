@@ -1,6 +1,7 @@
 /* eslint no-param-reassign: "off" */
 import MockAdapter from 'axios-mock-adapter';
 import $ from 'jquery';
+import fuzzaldrinPlus from 'fuzzaldrin-plus';
 import labelsFixture from 'test_fixtures/autocomplete_sources/labels.json';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import GfmAutoComplete, {
@@ -11,6 +12,7 @@ import GfmAutoComplete, {
   CONTACTS_ADD_COMMAND,
   CONTACTS_REMOVE_COMMAND,
 } from 'ee_else_ce/gfm_auto_complete';
+import * as quickActionSuggestions from '~/editor/quick_action_suggestions';
 import { initEmojiMock, clearEmojiMock } from 'helpers/emoji';
 import '~/lib/utils/jquery_at_who';
 import { TEST_HOST } from 'helpers/test_constants';
@@ -18,24 +20,25 @@ import waitForPromises from 'helpers/wait_for_promises';
 import AjaxCache from '~/lib/utils/ajax_cache';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_STATUS_OK } from '~/lib/utils/http_status';
+import { linkedItems, currentAssignees } from '~/graphql_shared/issuable_client';
 import {
   eventlistenersMockDefaultMap,
   crmContactsMock,
+  mockIssues,
+  mockAssignees,
 } from 'ee_else_ce_jest/gfm_auto_complete/mock_data';
+import { InternalEvents } from '~/tracking';
 
-describe('escape', () => {
-  it.each`
-    xssPayload                                           | escapedPayload
-    ${'<script>alert(1)</script>'}                       | ${'&lt;script&gt;alert(1)&lt;/script&gt;'}
-    ${'%3Cscript%3E alert(1) %3C%2Fscript%3E'}           | ${'&lt;script&gt; alert(1) &lt;/script&gt;'}
-    ${'%253Cscript%253E alert(1) %253C%252Fscript%253E'} | ${'&lt;script&gt; alert(1) &lt;/script&gt;'}
-  `(
-    'escapes the input string correctly accounting for multiple encoding',
-    ({ xssPayload, escapedPayload }) => {
-      expect(escape(xssPayload)).toBe(escapedPayload);
-    },
-  );
-});
+const mockSpriteIcons = '/icons.svg';
+
+jest.mock('~/graphql_shared/issuable_client', () => ({
+  linkedItems: jest.fn(),
+  currentAssignees: jest.fn(),
+}));
+
+jest.mock('fuzzaldrin-plus', () => ({
+  filter: jest.fn((items) => items),
+}));
 
 describe('GfmAutoComplete', () => {
   const fetchDataMock = { fetchData: jest.fn() };
@@ -54,6 +57,17 @@ describe('GfmAutoComplete', () => {
 
     jest.runOnlyPendingTimers();
   };
+
+  const getAutocompleteDropdownItems = (listSelector = '') => {
+    const dropdown = document.getElementById(listSelector);
+    if (!dropdown) return [];
+    const items = dropdown.getElementsByTagName('li');
+    return [].map.call(items, (item) => item.textContent.trim());
+  };
+
+  beforeEach(() => {
+    window.gon = { sprite_icons: mockSpriteIcons };
+  });
 
   describe('DefaultOptions.filter', () => {
     let items;
@@ -176,26 +190,11 @@ describe('GfmAutoComplete', () => {
       mock = new MockAdapter(axios);
       jest.spyOn(axios, 'get');
       jest.spyOn(AjaxCache, 'retrieve');
+      jest.spyOn(InternalEvents, 'trackEvent');
     });
 
     afterEach(() => {
       mock.restore();
-    });
-
-    describe('already loading data', () => {
-      beforeEach(() => {
-        const context = {
-          isLoadingData: { '[vulnerability:': true },
-          dataSources: {},
-          cachedData: {},
-        };
-        fetchData.call(context, {}, '[vulnerability:', '');
-      });
-
-      it('should not call either axios nor AjaxCache', () => {
-        expect(axios.get).not.toHaveBeenCalled();
-        expect(AjaxCache.retrieve).not.toHaveBeenCalled();
-      });
     });
 
     describe('backend filtering', () => {
@@ -215,7 +214,36 @@ describe('GfmAutoComplete', () => {
 
           expect(axios.get).toHaveBeenCalledWith('vulnerabilities_autocomplete_url', {
             params: { search: 'query' },
+            signal: expect.any(AbortSignal),
           });
+        });
+
+        it('should abort previous request and call axios again with another search query', () => {
+          const abortSpy = jest.spyOn(AbortController.prototype, 'abort');
+
+          fetchData.call(context, {}, '[vulnerability:', 'query');
+          fetchData.call(context, {}, '[vulnerability:', 'query2');
+
+          expect(axios.get).toHaveBeenCalledWith('vulnerabilities_autocomplete_url', {
+            params: { search: 'query' },
+            signal: expect.any(AbortSignal),
+          });
+
+          expect(abortSpy).toHaveBeenCalled();
+
+          expect(axios.get).toHaveBeenCalledWith('vulnerabilities_autocomplete_url', {
+            params: { search: 'query2' },
+            signal: expect.any(AbortSignal),
+          });
+        });
+
+        it('tracks autocomplete event for wikis', () => {
+          fetchData.call(context, {}, '[[', 'query');
+
+          expect(InternalEvents.trackEvent).toHaveBeenCalledTimes(1);
+          expect(InternalEvents.trackEvent).toHaveBeenCalledWith(
+            'trigger_autocomplete_for_wiki_links',
+          );
         });
 
         it.each([HTTP_STATUS_OK, HTTP_STATUS_INTERNAL_SERVER_ERROR])(
@@ -255,27 +283,27 @@ describe('GfmAutoComplete', () => {
       describe('data is not in cache', () => {
         beforeEach(() => {
           const context = {
-            isLoadingData: { '#': false },
-            dataSources: { issues: 'issues_autocomplete_url' },
+            isLoadingData: { '/': false },
+            dataSources: { commands: 'commands_autocomplete_url' },
             cachedData: {},
           };
-          fetchData.call(context, {}, '#', 'query');
+          fetchData.call(context, {}, '/', 'query');
         });
 
         it('should call AjaxCache', () => {
-          expect(AjaxCache.retrieve).toHaveBeenCalledWith('issues_autocomplete_url', true);
+          expect(AjaxCache.retrieve).toHaveBeenCalledWith('commands_autocomplete_url', true);
         });
       });
 
       describe('data is in cache', () => {
         beforeEach(() => {
           const context = {
-            isLoadingData: { '#': false },
-            dataSources: { issues: 'issues_autocomplete_url' },
-            cachedData: { '#': [{}] },
+            isLoadingData: { '/': false },
+            dataSources: { issues: 'commands_autocomplete_url' },
+            cachedData: { '/': [{}] },
             loadData: () => {},
           };
-          fetchData.call(context, {}, '#', 'query');
+          fetchData.call(context, {}, '/', 'query');
         });
 
         it('should not call AjaxCache', () => {
@@ -537,6 +565,30 @@ describe('GfmAutoComplete', () => {
       mentionsDisabled: false,
     };
 
+    const defaultUser = {
+      username: 'my-user',
+      name: 'My User',
+      avatar_url: './users.jpg',
+      type: 'User',
+    };
+
+    const defaultExpectedOutput = {
+      username: 'my-group',
+      avatarTag:
+        '<img src="./group.jpg" alt="my-group" class="avatar rect-avatar avatar-inline s24 gl-mr-2"/>',
+      title: 'My Group (2)',
+      search: 'MyGroup my-group',
+      icon: '',
+    };
+
+    const userDefaultOutput = {
+      username: 'my-user',
+      avatarTag: '<img src="./users.jpg" alt="my-user" class="avatar  avatar-inline s24 gl-mr-2"/>',
+      title: 'My User',
+      search: 'MyUser my-user',
+      icon: '',
+    };
+
     it('should return the original object when username is null', () => {
       expect(membersBeforeSave([{ ...mockGroup, username: null }])).toEqual([
         { ...mockGroup, username: null },
@@ -546,57 +598,66 @@ describe('GfmAutoComplete', () => {
     it('should set the text avatar if avatar_url is null', () => {
       expect(membersBeforeSave([{ ...mockGroup, avatar_url: null }])).toEqual([
         {
-          username: 'my-group',
+          ...defaultExpectedOutput,
           avatarTag: '<div class="avatar rect-avatar avatar-inline s24 gl-mr-2">M</div>',
-          title: 'My Group (2)',
-          search: 'MyGroup my-group',
-          icon: '',
         },
       ]);
     });
 
     it('should set the image avatar if avatar_url is given', () => {
-      expect(membersBeforeSave([mockGroup])).toEqual([
-        {
-          username: 'my-group',
-          avatarTag:
-            '<img src="./group.jpg" alt="my-group" class="avatar rect-avatar avatar-inline s24 gl-mr-2"/>',
-          title: 'My Group (2)',
-          search: 'MyGroup my-group',
-          icon: '',
-        },
-      ]);
+      expect(membersBeforeSave([mockGroup])).toEqual([defaultExpectedOutput]);
     });
 
     it('should set mentions disabled icon if mentionsDisabled is set', () => {
       expect(membersBeforeSave([{ ...mockGroup, mentionsDisabled: true }])).toEqual([
         {
-          username: 'my-group',
-          avatarTag:
-            '<img src="./group.jpg" alt="my-group" class="avatar rect-avatar avatar-inline s24 gl-mr-2"/>',
+          ...defaultExpectedOutput,
           title: 'My Group',
-          search: 'MyGroup my-group',
-          icon:
-            '<svg class="s16 vertical-align-middle gl-ml-2"><use xlink:href="undefined#notifications-off" /></svg>',
+          icon: '<svg class="s16 vertical-align-middle gl-ml-2"><use xlink:href="/icons.svg#notifications-off" /></svg>',
         },
       ]);
     });
 
     it('should set the right image classes for User type members', () => {
+      expect(membersBeforeSave([defaultUser])).toEqual([userDefaultOutput]);
+    });
+
+    it('should include composite_identity_enforced field', () => {
       expect(
         membersBeforeSave([
-          { username: 'my-user', name: 'My User', avatar_url: './users.jpg', type: 'User' },
+          {
+            ...defaultUser,
+            composite_identity_enforced: true,
+          },
         ]),
       ).toEqual([
         {
-          username: 'my-user',
-          avatarTag:
-            '<img src="./users.jpg" alt="my-user" class="avatar  avatar-inline s24 gl-mr-2"/>',
-          title: 'My User',
-          search: 'MyUser my-user',
-          icon: '',
+          ...userDefaultOutput,
+          compositeIdentityEnforced: true,
         },
       ]);
+    });
+
+    describe('when disabled field is present', () => {
+      it.each`
+        disabled | description
+        ${true}  | ${'disabled is true'}
+        ${false} | ${'disabled is false'}
+      `('should include disabled field when $description', ({ disabled }) => {
+        expect(
+          membersBeforeSave([
+            {
+              ...defaultUser,
+              disabled,
+            },
+          ]),
+        ).toEqual([
+          {
+            ...userDefaultOutput,
+            disabled,
+          },
+        ]);
+      });
     });
   });
 
@@ -633,6 +694,17 @@ describe('GfmAutoComplete', () => {
           reference: 'grp/proj#5',
         }),
       ).toBe('<li><small>grp/proj#5</small> Some Issue</li>');
+    });
+
+    it('should include an svg image when iconName is provided', () => {
+      const expectedHtml = `<li><svg class="gl-fill-icon-subtle s16 gl-mr-2"><use xlink:href="/icons.svg#example-icon" /></svg><small>5</small> Some Issue</li>`;
+      expect(
+        GfmAutoComplete.Issues.templateFunction({
+          id: 5,
+          title: 'Some Issue',
+          iconName: 'example-icon',
+        }),
+      ).toBe(expectedHtml);
     });
 
     it('escapes title in the template as it is user input', () => {
@@ -706,6 +778,37 @@ describe('GfmAutoComplete', () => {
         );
       });
 
+      describe('when compositeIdentityEnforced is true', () => {
+        it('should add composite identity enforced badge', () => {
+          const result = GfmAutoComplete.Members.templateFunction({
+            avatarTag: 'IMG',
+            username: 'my-user',
+            title: '',
+            icon: '',
+            availabilityStatus: '',
+            compositeIdentityEnforced: true,
+          });
+          expect(result).toContain('IMG my-user');
+          expect(result).toContain('AI');
+          expect(result).toContain('gl-badge');
+        });
+      });
+
+      describe('when compositeIdentityEnforced is false', () => {
+        it('should not add composite identity enforced badge if compositeIdentityEnforced is false', () => {
+          expect(
+            GfmAutoComplete.Members.templateFunction({
+              avatarTag: 'IMG',
+              username: 'my-user',
+              title: '',
+              icon: '',
+              availabilityStatus: '',
+              compositeIdentityEnforced: false,
+            }),
+          ).toBe('<li>IMG my-user <small></small> </li>');
+        });
+      });
+
       describe('nameOrUsernameStartsWith', () => {
         it.each`
           query             | result
@@ -772,6 +875,54 @@ describe('GfmAutoComplete', () => {
     });
   });
 
+  describe('GfmAutoComplete.Wikis', () => {
+    const wikiPage1 = {
+      title: 'My Wiki Page',
+      slug: 'my-wiki-page',
+      path: '/path/to/project/-/wikis/my-wiki-page',
+    };
+    const wikiPage2 = {
+      title: 'Home',
+      slug: 'home',
+      path: '/path/to/project/-/wikis/home',
+    };
+
+    describe('templateFunction', () => {
+      it('shows both title and slug, if they are different', () => {
+        expect(GfmAutoComplete.Wikis.templateFunction(wikiPage1)).toMatchInlineSnapshot(`
+          <li>
+            <svg
+              class="gl-mr-2 s16 vertical-align-middle"
+            >
+              <use
+                xlink:href="/icons.svg#document"
+              />
+            </svg>
+            My Wiki Page
+            <small>
+              (my-wiki-page)
+            </small>
+          </li>
+        `);
+      });
+
+      it('shows only title, if title and slug are the same', () => {
+        expect(GfmAutoComplete.Wikis.templateFunction(wikiPage2)).toMatchInlineSnapshot(`
+          <li>
+            <svg
+              class="gl-mr-2 s16 vertical-align-middle"
+            >
+              <use
+                xlink:href="/icons.svg#document"
+              />
+            </svg>
+            Home
+          </li>
+        `);
+      });
+    });
+  });
+
   describe('labels', () => {
     const dataSources = {
       labels: `${TEST_HOST}/autocomplete_sources/labels`,
@@ -796,15 +947,16 @@ describe('GfmAutoComplete', () => {
       resetHTMLFixture();
     });
 
-    const getDropdownItems = () => {
-      const dropdown = document.getElementById('at-view-labels');
-      const items = dropdown.getElementsByTagName('li');
-      return [].map.call(items, (item) => item.textContent.trim());
-    };
+    const getDropdownItems = () => getAutocompleteDropdownItems('at-view-labels');
 
     const expectLabels = ({ input, output }) => {
       triggerDropdown($textarea, input);
 
+      if (input === '~bg') {
+        expect(fuzzaldrinPlus.filter).toHaveBeenCalledWith(expect.any(Array), 'bg', {
+          key: 'title',
+        });
+      }
       expect(getDropdownItems()).toEqual(output.map((label) => label.title));
     };
 
@@ -816,6 +968,7 @@ describe('GfmAutoComplete', () => {
       it.each`
         input           | output
         ${'~'}          | ${unassignedLabels}
+        ${'~bg'}        | ${unassignedLabels}
         ${'/label ~'}   | ${unassignedLabels}
         ${'/labels ~'}  | ${unassignedLabels}
         ${'/relabel ~'} | ${unassignedLabels}
@@ -831,6 +984,7 @@ describe('GfmAutoComplete', () => {
       it.each`
         input           | output
         ${'~'}          | ${allLabels}
+        ${'~bg'}        | ${allLabels}
         ${'/label ~'}   | ${unassignedLabels}
         ${'/labels ~'}  | ${unassignedLabels}
         ${'/relabel ~'} | ${allLabels}
@@ -910,7 +1064,7 @@ describe('GfmAutoComplete', () => {
       'atwho-at': ':',
       emoji: {
         c: 'symbols',
-        d: 'negative squared ab',
+        d: 'AB button (blood type)',
         e: '🆎',
         name: 'ab',
         u: '6.0',
@@ -996,11 +1150,7 @@ describe('GfmAutoComplete', () => {
       resetHTMLFixture();
     });
 
-    const getDropdownItems = () => {
-      const dropdown = document.getElementById('at-view-contacts');
-      const items = dropdown.getElementsByTagName('li');
-      return [].map.call(items, (item) => item.textContent.trim());
-    };
+    const getDropdownItems = () => getAutocompleteDropdownItems('at-view-contacts');
 
     const expectContacts = ({ input, output }) => {
       triggerDropdown($textarea, input);
@@ -1101,5 +1251,426 @@ describe('GfmAutoComplete', () => {
           }),
       ).toStrictEqual([]);
     });
+  });
+
+  describe('updateDataSources', () => {
+    const dataSources = {
+      labels: `${TEST_HOST}/autocomplete_sources/labels`,
+      members: `${TEST_HOST}/autocomplete_sources/members`,
+      commands: `${TEST_HOST}/autocomplete_sources/commands`,
+      issues: `${TEST_HOST}/autocomplete_sources/issues`,
+      mergeRequests: `${TEST_HOST}/autocomplete_sources/merge_requests`,
+      epics: `${TEST_HOST}/autocomplete_sources/epics`,
+    };
+
+    let autocomplete;
+    let $textarea;
+
+    beforeEach(() => {
+      setHTMLFixture('<textarea></textarea>');
+      autocomplete = new GfmAutoComplete(dataSources);
+      $textarea = $('textarea');
+      autocomplete.setup($textarea, {
+        labels: true,
+        members: true,
+        commands: true,
+        issues: true,
+        mergeRequests: true,
+        epics: true,
+      });
+    });
+
+    afterEach(() => {
+      autocomplete.destroy();
+      resetHTMLFixture();
+    });
+
+    it('should update dataSources correctly', () => {
+      const newDataSources = {
+        ...dataSources,
+        labels: `${TEST_HOST}/autocomplete_sources/labels?type=WorkItem&work_item_type_id=6`,
+        members: `${TEST_HOST}/autocomplete_sources/members?type=WorkItem&work_item_type_id=6`,
+      };
+
+      autocomplete.updateDataSources(newDataSources);
+
+      expect(autocomplete.dataSources).toEqual(newDataSources);
+    });
+  });
+
+  describe('[issue: and [work_item:', () => {
+    const dataSources = {
+      issues: `${TEST_HOST}/autocomplete_sources/issues`,
+    };
+
+    let autocomplete;
+    let $textarea;
+
+    const issueDropdownElementId = 'at-view-issuesalternative';
+    const workItemDropdownElementId = 'at-view-workitems';
+    const getIssueDropdownItems = () => getAutocompleteDropdownItems(issueDropdownElementId);
+    const getWorkItemDropdownItems = () => getAutocompleteDropdownItems(workItemDropdownElementId);
+    const issueMatcher = (issue) => `${issue.reference} ${issue.title}`;
+
+    const setup = () => {
+      setHTMLFixture('<textarea></textarea>');
+      autocomplete = new GfmAutoComplete(dataSources);
+      $textarea = $('textarea');
+      autocomplete.setup($textarea, { issuesAlternative: true, workItems: true });
+      autocomplete.cachedData['[issue:'] = {
+        '': [...mockIssues],
+      };
+      autocomplete.cachedData['[work_item:'] = {
+        '': [...mockIssues],
+      };
+    };
+
+    beforeEach(() => {
+      setup();
+    });
+
+    afterEach(() => {
+      autocomplete.destroy();
+      resetHTMLFixture();
+    });
+
+    it('[issue: shows issues', () => {
+      triggerDropdown($textarea, '[issue:');
+      const issues = getIssueDropdownItems();
+      expect(issues).toHaveLength(mockIssues.length);
+      expect(issues).toEqual(mockIssues.map(issueMatcher));
+    });
+
+    it('[work_item: shows work items', () => {
+      triggerDropdown($textarea, '[work_item:');
+      const workItems = getWorkItemDropdownItems();
+      expect(workItems).toHaveLength(mockIssues.length);
+      expect(workItems).toEqual(mockIssues.map(issueMatcher));
+    });
+  });
+
+  describe('Work Items', () => {
+    let autocomplete;
+    let $textarea;
+    const mockWorkItemId = 'gid://gitlab/WorkItem/1';
+    const mockWorkItemFullPath = 'gitlab-test';
+    const mockWorkItemIid = '1';
+    const dataSources = {
+      issues: `${TEST_HOST}/autocomplete_sources/issues`,
+      members: `${TEST_HOST}/autocomplete_sources/members`,
+    };
+
+    beforeEach(() => {
+      document.body.dataset.page = 'projects:issues:show';
+      setHTMLFixture(`
+        <section>
+          <div class="js-gfm-wrapper"
+              data-work-item-full-path="${mockWorkItemFullPath}"
+              data-work-item-id="${mockWorkItemId}"
+              data-work-item-iid="${mockWorkItemIid}">
+              <textarea></textarea>
+          </div>
+        </section>
+      `);
+      $textarea = $('textarea');
+      autocomplete = new GfmAutoComplete(dataSources);
+    });
+
+    afterEach(() => {
+      autocomplete.destroy();
+      resetHTMLFixture();
+    });
+
+    describe('unlink', () => {
+      const getDropdownItems = () => getAutocompleteDropdownItems('at-view-issues');
+      const issueMatcher = (issue) => `${issue.reference} ${issue.title}`;
+
+      beforeEach(() => {
+        linkedItems.mockImplementation(() => ({
+          [`${mockWorkItemFullPath}:${mockWorkItemIid}`]: [],
+        }));
+
+        autocomplete.setup($textarea, { issues: true });
+        autocomplete.cachedData['#'] = {
+          // This looks odd but that's how GFMAutoComplete
+          // caches issues data internally.
+          '': [...mockIssues],
+        };
+      });
+
+      describe('without any linked issues present', () => {
+        it('using "#" shows all the issues', () => {
+          triggerDropdown($textarea, '#');
+
+          expect(getDropdownItems()).toHaveLength(mockIssues.length);
+          expect(getDropdownItems()).toEqual(mockIssues.map(issueMatcher));
+        });
+
+        it('using "/unlink #" shows no issues', () => {
+          triggerDropdown($textarea, '/unlink #');
+
+          expect(getDropdownItems()).toHaveLength(0);
+          expect(linkedItems).toHaveBeenCalled();
+        });
+      });
+
+      describe('with linked issue present', () => {
+        beforeEach(() => {
+          linkedItems.mockImplementation(() => ({
+            [`${mockWorkItemFullPath}:${mockWorkItemIid}`]: [mockIssues[1]],
+          }));
+        });
+
+        it('using "#" shows all the issues', () => {
+          triggerDropdown($textarea, '#');
+
+          expect(getDropdownItems()).toHaveLength(mockIssues.length);
+          expect(getDropdownItems()).toEqual(mockIssues.map(issueMatcher));
+        });
+
+        it('using "/unlink #" shows only linked issues', () => {
+          triggerDropdown($textarea, '/unlink #');
+
+          expect(getDropdownItems()).toHaveLength(1);
+          expect(getDropdownItems()).toEqual([mockIssues[1]].map(issueMatcher));
+          expect(linkedItems).toHaveBeenCalled();
+        });
+      });
+    });
+
+    describe('unassign', () => {
+      const getDropdownItems = () => getAutocompleteDropdownItems('at-view-users');
+      const assigneeMatcher = (user) =>
+        `${user.username.charAt(0).toUpperCase()} ${user.username} ${user.name}`;
+
+      beforeEach(() => {
+        currentAssignees.mockImplementation(() => ({
+          [`${mockWorkItemId}`]: [],
+        }));
+
+        autocomplete.setup($textarea, { members: true });
+        autocomplete.cachedData['@'] = {
+          // This looks odd but that's how GFMAutoComplete
+          // caches issues data internally.
+          '': [...mockAssignees],
+        };
+      });
+
+      describe('without any assignees present', () => {
+        it('using "@" shows all the members', () => {
+          triggerDropdown($textarea, '@');
+
+          expect(getDropdownItems()).toHaveLength(mockAssignees.length);
+          expect(getDropdownItems()).toEqual(mockAssignees.map(assigneeMatcher));
+        });
+
+        it('using "/unassign @" shows no users', () => {
+          triggerDropdown($textarea, '/unassign @');
+
+          expect(getDropdownItems()).toHaveLength(0);
+          expect(currentAssignees).toHaveBeenCalled();
+        });
+      });
+
+      describe('with assignees present', () => {
+        beforeEach(() => {
+          currentAssignees.mockImplementation(() => ({
+            [`${mockWorkItemId}`]: [mockAssignees[1]],
+          }));
+        });
+
+        it('using "@" shows all the members', () => {
+          triggerDropdown($textarea, '@');
+
+          expect(getDropdownItems()).toHaveLength(mockAssignees.length);
+          expect(getDropdownItems()).toEqual(mockAssignees.map(assigneeMatcher));
+        });
+
+        it('using "/unassign @" shows only current assignees', () => {
+          triggerDropdown($textarea, '/unassign @');
+
+          expect(getDropdownItems()).toHaveLength(1);
+          expect(getDropdownItems()).toEqual([mockAssignees[1]].map(assigneeMatcher));
+          expect(currentAssignees).toHaveBeenCalled();
+        });
+      });
+
+      describe('with disabled members', () => {
+        const disabledMember = {
+          ...mockAssignees[0],
+          disabled: true,
+        };
+        const enabledMembers = mockAssignees.slice(1);
+
+        beforeEach(() => {
+          currentAssignees.mockImplementation(() => ({
+            [`${mockWorkItemId}`]: [],
+          }));
+
+          // This looks odd but that's how GFMAutoComplete
+          // caches issues data internally.
+          autocomplete.cachedData['@'] = {
+            '': [disabledMember, ...enabledMembers],
+          };
+        });
+
+        describe('typing @', () => {
+          beforeEach(() => {
+            triggerDropdown($textarea, '@');
+          });
+
+          it('filters out disabled users', () => {
+            expect(getDropdownItems()).toHaveLength(enabledMembers.length);
+            expect(getDropdownItems()[0]).not.toContain(disabledMember.name);
+            expect(getDropdownItems()[1]).not.toContain(disabledMember.name);
+          });
+
+          it('renders non-disabled users', () => {
+            expect(getDropdownItems()).toHaveLength(enabledMembers.length);
+            expect(getDropdownItems()[0]).toContain(enabledMembers[0].name);
+            expect(getDropdownItems()[1]).toContain(enabledMembers[1].name);
+          });
+        });
+
+        it('using "/assign @" filters out disabled members', () => {
+          triggerDropdown($textarea, '/assign @');
+
+          expect(getDropdownItems()).toHaveLength(enabledMembers.length);
+        });
+      });
+    });
+  });
+
+  describe('frequent actions', () => {
+    let autocomplete;
+    let $textarea;
+    let recordSpy;
+
+    beforeEach(() => {
+      setHTMLFixture('<textarea data-supports-quick-actions="true"></textarea>');
+
+      autocomplete = new GfmAutoComplete({
+        commands: `${TEST_HOST}/autocomplete_sources/commands`,
+      });
+      $textarea = $('textarea');
+      autocomplete.setup($textarea, { commands: true });
+
+      recordSpy = jest.spyOn(quickActionSuggestions, 'recordFrequentCommandUsage');
+    });
+
+    it('records frequent action when a dropdown quick action is selected', () => {
+      autocomplete.cachedData['/'] = [{ name: 'alpha', aliases: [], params: [], description: '' }];
+
+      triggerDropdown($textarea, '/alpha');
+
+      const dropdown = document.getElementById('at-view-commands');
+      const liItems = dropdown ? dropdown.getElementsByTagName('li') : [];
+      expect(liItems.length).toBeGreaterThan(0);
+      $(liItems[0]).trigger('click');
+
+      expect(recordSpy).toHaveBeenCalledWith('alpha');
+    });
+
+    it.each`
+      input         | known        | saves              | shouldCall | expectedArg
+      ${'/alpha '}  | ${'known'}   | ${'saves'}         | ${true}    | ${'alpha'}
+      ${'/foobar '} | ${'unknown'} | ${'does not save'} | ${false}   | ${undefined}
+    `(
+      'keyup space after typing $known quick action token ("$input") $saves to frequently used actions list',
+      ({ input, shouldCall, expectedArg }) => {
+        autocomplete.cachedData['/'] = [
+          { name: 'alpha', aliases: [], params: [], description: '' },
+        ];
+
+        $textarea.trigger('focus');
+        $textarea.val(input);
+        const el = $textarea.get(0);
+        el.selectionStart = $textarea.val().length;
+        el.selectionEnd = el.selectionStart;
+        $textarea.trigger($.Event('keyup', { key: ' ', keyCode: 32, which: 32 }));
+
+        if (shouldCall) {
+          expect(recordSpy).toHaveBeenCalledWith(expectedArg);
+        } else {
+          expect(recordSpy).not.toHaveBeenCalled();
+        }
+      },
+    );
+  });
+
+  describe('commands sorting', () => {
+    let autocomplete;
+    let $textarea;
+    let ajaxSpy;
+
+    const mockValue = [
+      { name: 'zebra', aliases: [], params: [], description: '' },
+      { name: 'alpha', aliases: [], params: [], description: '' },
+      { name: 'beta', aliases: [], params: [], description: '' },
+    ];
+
+    beforeEach(() => {
+      ajaxSpy = jest.spyOn(AjaxCache, 'retrieve').mockReturnValue(Promise.resolve(mockValue));
+
+      setHTMLFixture('<textarea data-supports-quick-actions="true"></textarea>');
+
+      autocomplete = new GfmAutoComplete({
+        commands: `${TEST_HOST}/autocomplete_sources/commands`,
+      });
+      $textarea = $('textarea');
+      autocomplete.setup($textarea, { commands: true });
+    });
+
+    const getCommandsItems = () => getAutocompleteDropdownItems('at-view-commands');
+
+    afterEach(() => {
+      autocomplete?.destroy();
+      resetHTMLFixture();
+      ajaxSpy?.mockRestore();
+    });
+
+    it('sorts default suggestions alphabetically when there is no query', async () => {
+      triggerDropdown($textarea, '/');
+      await waitForPromises();
+
+      const items = getCommandsItems();
+      expect(items).toHaveLength(3);
+      expect(items[0]).toContain('/alpha');
+      expect(items[1]).toContain('/beta');
+      expect(items[2]).toContain('/zebra');
+    });
+
+    it('does not re-sort results when a query is present; preserves source order', async () => {
+      // Stub default at.js sorter to identity so we can assert our code preserves order
+      const defaultSorterSpy = jest
+        .spyOn($.fn.atwho.default.callbacks, 'sorter')
+        .mockImplementation((q, items) => items);
+
+      // Type a query so our sorter should not alpha sort; with identity default sorter, order should match source
+      triggerDropdown($textarea, '/a');
+      await waitForPromises();
+
+      const items = getCommandsItems();
+      expect(items).toHaveLength(3);
+      expect(items[0]).toContain('/zebra');
+      expect(items[1]).toContain('/alpha');
+      expect(items[2]).toContain('/beta');
+
+      defaultSorterSpy.mockRestore();
+    });
+  });
+
+  describe('escape', () => {
+    it.each`
+      xssPayload                                           | escapedPayload
+      ${'<script>alert(1)</script>'}                       | ${'&lt;script&gt;alert(1)&lt;/script&gt;'}
+      ${'%3Cscript%3E alert(1) %3C%2Fscript%3E'}           | ${'&lt;script&gt; alert(1) &lt;/script&gt;'}
+      ${'%253Cscript%253E alert(1) %253C%252Fscript%253E'} | ${'&lt;script&gt; alert(1) &lt;/script&gt;'}
+    `(
+      'escapes the input string correctly accounting for multiple encoding',
+      ({ xssPayload, escapedPayload }) => {
+        expect(escape(xssPayload)).toBe(escapedPayload);
+      },
+    );
   });
 });

@@ -2,7 +2,9 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning do
+RSpec.describe 'Issue Boards new issue', :js, feature_category: :portfolio_management do
+  include ListboxHelpers
+
   let_it_be(:project)        { create(:project, :public) }
   let_it_be(:board)          { create(:board, project: project) }
   let_it_be(:label)          { create(:label, project: project, name: 'Label 1') }
@@ -31,7 +33,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
     end
 
     it 'does not display new issue button in closed list' do
-      page.within('.board:nth-child(3)') do
+      page.within('[data-testid="board-list"]:nth-child(3)') do
         expect(page).not_to have_button('Create new issue')
       end
     end
@@ -56,7 +58,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
       end
     end
 
-    it 'creates new issue, places it on top of the list, and opens sidebar' do
+    it 'creates new issue, places it on top of the list, opens drawer, and loads labels in drawer' do
       page.within(first('.board')) do
         click_button 'Create new issue'
       end
@@ -81,32 +83,17 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
         expect(page).to have_link(issue.title, href: /#{issue_path(issue)}/)
       end
 
-      expect(page).to have_selector('[data-testid="issue-boards-sidebar"]')
-    end
+      expect(page).to have_selector('[data-testid="work-item-drawer"]')
 
-    it 'successfuly loads labels to be added to newly created issue' do
-      page.within(first('.board')) do
-        click_button 'Create new issue'
-      end
-
-      page.within(first('.board-new-issue-form')) do
-        find('.form-control').set('new issue')
-        click_button 'Create issue'
-      end
-
-      wait_for_requests
-
-      within_testid('sidebar-labels') do
+      within_testid('work-item-labels') do
         click_button 'Edit'
 
-        wait_for_requests
-
-        expect(page).to have_content 'Label 1'
+        expect_listbox_item('Label 1')
       end
     end
 
     it 'allows creating an issue in newly created list' do
-      click_button 'Create list'
+      click_button 'New list'
       wait_for_all_requests
 
       click_button 'Select a label'
@@ -115,7 +102,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
 
       wait_for_all_requests
 
-      page.within('.board:nth-child(2)') do
+      page.within('[data-testid="board-list"]:nth-child(2)') do
         click_button('Create new issue')
 
         page.within(first('.board-new-issue-form')) do
@@ -143,7 +130,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
     end
 
     it 'does not display new issue button in label list' do
-      page.within('.board:nth-child(2)') do
+      page.within('[data-testid="board-list"]:nth-child(2)') do
         expect(page).not_to have_button('Create new issue')
       end
     end
@@ -167,7 +154,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
 
       context 'when backlog does not exist' do
         it 'does not display new issue button in label list' do
-          page.within('.board.is-draggable') do
+          page.within('[data-testid="board-list"].is-draggable') do
             expect(page).not_to have_button('Create new issue')
           end
         end
@@ -179,7 +166,7 @@ RSpec.describe 'Issue Boards new issue', :js, feature_category: :team_planning d
         end
 
         it 'does not display new issue button in label list' do
-          page.within('.board.is-draggable') do
+          page.within('[data-testid="board-list"].is-draggable') do
             expect(page).not_to have_button('Create new issue')
           end
         end

@@ -70,25 +70,25 @@ export default {
 };
 </script>
 <template>
-  <div class="timeline-event gl-display-grid">
+  <div class="timeline-event gl-grid">
     <div
-      class="gl-display-flex gl-align-items-center gl-justify-content-center gl-bg-white gl-text-gray-200 gl-border-gray-100 gl-border-1 gl-border-solid gl-rounded-full gl-mt-2 gl-w-8 gl-h-8 gl-p-3 gl-z-index-1"
+      class="timeline-event-icon gl-border gl-z-1 gl-mt-2 gl-flex gl-h-8 gl-w-8 gl-items-center gl-justify-center gl-rounded-full gl-bg-default gl-p-3"
     >
-      <gl-icon :name="getEventIcon(action)" class="note-icon" />
+      <gl-icon :name="getEventIcon(action)" class="note-icon" variant="subtle" />
     </div>
     <div class="timeline-event-note timeline-event-border">
-      <div class="gl-display-flex gl-flex-wrap gl-align-items-center gl-gap-3 gl-mb-2">
+      <div class="gl-mb-2 gl-flex gl-flex-wrap gl-items-center gl-gap-3">
         <h3
-          class="timeline-event-note-date gl-font-weight-bold gl-font-sm gl-my-0"
+          class="timeline-event-note-date gl-my-0 gl-text-sm gl-font-bold"
           data-testid="event-time"
         >
           <gl-sprintf :message="$options.i18n.timeUTC">
             <template #time>
-              <span class="gl-font-lg">{{ time }}</span>
+              <span class="gl-text-lg">{{ time }}</span>
             </template>
           </gl-sprintf>
         </h3>
-        <gl-badge v-for="tag in eventTags" :key="tag.key" variant="muted" icon="tag">
+        <gl-badge v-for="tag in eventTags" :key="tag.key" variant="neutral" icon="tag">
           {{ tag.name }}
         </gl-badge>
       </div>
@@ -96,8 +96,8 @@ export default {
     </div>
     <gl-disclosure-dropdown
       v-if="canUpdateTimelineEvent"
-      placement="right"
-      class="event-note-actions gl-align-self-start"
+      placement="bottom-end"
+      class="event-note-actions gl-self-start"
       icon="ellipsis_v"
       text-sr-only
       :toggle-text="$options.i18n.moreActions"

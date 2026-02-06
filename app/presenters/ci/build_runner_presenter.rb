@@ -7,6 +7,13 @@ module Ci
     RUNNER_REMOTE_TAG_PREFIX = 'refs/tags/'
     RUNNER_REMOTE_BRANCH_PREFIX = 'refs/remotes/origin/'
 
+    attr_reader :queue_size, :queue_depth
+
+    def set_queue_metrics(size:, depth:)
+      @queue_size = [0, size.to_i].max
+      @queue_depth = [0, depth.to_i].max
+    end
+
     def artifacts
       return unless options[:artifacts]
 
@@ -25,15 +32,29 @@ module Ci
     end
 
     def git_depth
-      if git_depth_variable
-        git_depth_variable[:value]
-      else
-        project.ci_default_git_depth
-      end.to_i
+      (git_depth_value || project.ci_default_git_depth).to_i
     end
 
     def repo_object_format
       project.repository_object_format.to_s
+    end
+
+    def runner_inputs
+      return [] unless options&.key?(:inputs)
+
+      input_values = inputs.index_by(&:name)
+
+      options.fetch(:inputs, {}).map do |name, spec|
+        input_value = input_values[name.to_s]&.value || spec[:default]
+
+        {
+          key: name,
+          value: {
+            content: input_value,
+            type: spec[:type]
+          }
+        }
+      end
     end
 
     def runner_variables
@@ -44,7 +65,7 @@ module Ci
 
     def refspecs
       specs = []
-      specs << refspec_for_persistent_ref if persistent_ref_exist?
+      specs << refspec_for_persistent_ref
 
       if git_depth > 0
         specs << refspec_for_branch(ref) if branch? || legacy_detached_merge_request_pipeline?
@@ -57,16 +78,13 @@ module Ci
       specs
     end
 
-    # rubocop: disable CodeReuse/ActiveRecord
     def all_dependencies
       dependencies = super
       ActiveRecord::Associations::Preloader.new(records: dependencies, associations: :job_artifacts_archive).call
       dependencies
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def project_jobs_running_on_instance_runners_count
-      # if not instance runner we don't care about that value and present `+Inf` as a placeholder for Prometheus
       return '+Inf' unless runner.instance_type?
 
       return project.instance_runner_running_jobs_count.to_s if
@@ -139,21 +157,18 @@ module Ci
       "+#{pipeline.persistent_ref.path}:#{pipeline.persistent_ref.path}"
     end
 
-    def persistent_ref_exist?
-      ##
-      # Persistent refs for pipelines definitely exist from GitLab 12.4,
-      # hence, we don't need to check the ref existence before passing it to runners.
-      # Checking refs pressurizes gitaly node and should be avoided.
-      # Issue: https://gitlab.com/gitlab-com/gl-infra/production/-/issues/2143
-      return true if Feature.enabled?(:ci_skip_persistent_ref_existence_check)
-
-      pipeline.persistent_ref.exist?
+    def git_depth_value
+      strong_memoize(:git_depth_value) do
+        variables&.to_hash&.dig("GIT_DEPTH")
+      end
     end
 
-    def git_depth_variable
-      strong_memoize(:git_depth_variable) do
-        variables&.find { |variable| variable[:key] == 'GIT_DEPTH' }
-      end
+    def instance_id
+      Gitlab::GlobalAnonymousId.instance_id
+    end
+
+    def instance_uuid
+      Gitlab::GlobalAnonymousId.instance_uuid
     end
   end
 end

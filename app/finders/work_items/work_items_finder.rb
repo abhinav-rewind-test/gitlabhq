@@ -4,8 +4,18 @@
 # with widgets support. Because WorkItems are internally Issues, WorkItemsFinder
 # can be almost identical to IssuesFinder, except it should return instances of
 # WorkItems instead of Issues
+# Arguments:
+#   klass - actual WorkItems class
+#   current_user - currently logged in user, if any
+#   params:
+#     work_item_parent_ids: integer[] (list of work item ids)
+#     ids: integer[] (list of work item ids)
+#
 module WorkItems
   class WorkItemsFinder < IssuesFinder
+    extend ::Gitlab::Utils::Override
+    include TimeFrameFilter
+
     def klass
       WorkItem
     end
@@ -19,11 +29,39 @@ module WorkItems
     def filter_items(items)
       items = super(items)
 
-      by_widgets(items)
+      items = by_ids(items)
+      items = by_widgets(items)
+      items = by_timeframe(items, with_namespace_cte: with_namespace_cte)
+      items = by_work_item_parent_ids(items)
+      items = by_negated_work_item_parent_ids(items)
+
+      by_parent_wildcard_id(items)
+    end
+
+    override :by_parent
+    def by_parent(items)
+      return super unless use_namespace_traversal_ids_filtering?
+
+      items_within_hierarchy = items.within_namespace_hierarchy(ancestor_group)
+                                    .with_group_level_and_project_issues_enabled(
+                                      include_group_level_items: include_group_work_items?
+                                    )
+
+      items_within_hierarchy = filter_by_projects(items_within_hierarchy)
+
+      ensure_state_filter_for_index(items_within_hierarchy)
+    end
+
+    def widget_definition_class
+      if Feature.enabled?(:work_item_system_defined_type, :instance)
+        WorkItems::TypesFramework::SystemDefined::WidgetDefinition
+      else
+        WorkItems::WidgetDefinition
+      end
     end
 
     def by_widgets(items)
-      WorkItems::WidgetDefinition.available_widgets.each do |widget_class|
+      widget_definition_class.available_widgets.each do |widget_class|
         widget_filter = widget_filter_for(widget_class)
 
         next unless widget_filter
@@ -34,36 +72,104 @@ module WorkItems
       items
     end
 
+    def by_ids(items)
+      return items unless params[:ids].present?
+
+      items.id_in(params[:ids])
+    end
+
     def widget_filter_for(widget_class)
       "WorkItems::Widgets::Filters::#{widget_class.name.demodulize.camelize}".constantize
     rescue NameError
       nil
     end
 
-    override :use_full_text_search?
-    def use_full_text_search?
-      return false if include_namespace_level_work_items?
+    def by_work_item_parent_ids(items)
+      work_item_parent_ids = params[:work_item_parent_ids]
 
-      super
-    end
+      return items unless work_item_parent_ids.present?
 
-    override :by_parent
-    def by_parent(items)
-      return super unless include_namespace_level_work_items?
-
-      relations = [group_namespaces, project_namespaces].compact
-
-      namespaces = if relations.one?
-                     relations.first
+      parent_ids = if params[:include_descendant_work_items]
+                     ::Gitlab::WorkItems::WorkItemHierarchy.new(WorkItem.id_in(work_item_parent_ids))
+                                                           .base_and_descendants
+                                                           .select(:id)
                    else
-                     Namespace.from_union(relations)
+                     work_item_parent_ids
                    end
 
-      items.in_namespaces(namespaces)
+      items.with_work_item_parent_ids(parent_ids)
     end
 
-    def include_namespace_level_work_items?
-      params.group? && Feature.enabled?(:namespace_level_work_items, params.group)
+    def by_negated_work_item_parent_ids(items)
+      not_work_item_parent_ids = not_params[:work_item_parent_ids]
+      return items unless not_work_item_parent_ids.present?
+
+      items.not_in_parent_ids(not_work_item_parent_ids)
     end
+
+    def by_parent_wildcard_id(items)
+      wildcard = params[:parent_wildcard_id]&.to_s&.downcase
+
+      case wildcard
+      when ::IssuableFinder::Params::FILTER_NONE
+        items.no_parent
+      when ::IssuableFinder::Params::FILTER_ANY
+        items.any_parent
+      else
+        items
+      end
+    end
+
+    def accessible_projects
+      return if exclude_projects?
+      return if params.group && !include_descendants? # group-level work items are not supported in CE
+
+      projects = Project
+        .public_or_visible_to_user(current_user, ProjectFeature.required_minimum_access_level(klass.base_class))
+        .with_feature_available_for_user(klass.base_class, current_user)
+
+      projects = projects.in_namespace(params.group.self_and_descendant_ids) if params.group && include_descendants?
+      projects = projects.id_in(params[:projects]) if params[:projects]
+      projects = projects.id_in(params[:project_id]) if params[:project_id]
+
+      projects
+    end
+    strong_memoize_attr :accessible_projects
+
+    def with_namespace_cte
+      false
+    end
+
+    override :include_subgroups_or_descendants?
+    def include_subgroups_or_descendants?
+      include_descendants?
+    end
+
+    def include_group_work_items?
+      false
+    end
+
+    override :ancestor_group
+    def ancestor_group
+      include_ancestors? ? params.group.root_ancestor : params.group
+    end
+    strong_memoize_attr :ancestor_group
+
+    def include_descendants?
+      params.fetch(:include_descendants, false)
+    end
+    strong_memoize_attr :include_descendants?
+
+    def include_ancestors?
+      params.fetch(:include_ancestors, false)
+    end
+    strong_memoize_attr :include_ancestors?
+
+    def exclude_projects?
+      params.fetch(:exclude_projects, false)
+    end
+    strong_memoize_attr :exclude_projects?
   end
 end
+
+WorkItems::WorkItemsFinder.prepend_mod

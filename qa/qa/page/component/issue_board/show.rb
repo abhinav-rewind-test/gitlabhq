@@ -47,7 +47,7 @@ module QA
           # with the attribute `data-testid` since such element is not unique when the
           # `is-focused` class is not set, and it was not possible to find a better solution.
           def focused_board
-            find('.issue-boards-content.js-focus-mode-board.is-focused')
+            find('.is-focused .issue-boards-content.js-focus-mode-board')
           end
 
           def boards_dropdown
@@ -113,7 +113,7 @@ module QA
           def wait_boards_list_finish_loading
             within_element('boards-list') do
               wait_until(reload: false, max_duration: 5, sleep_interval: 1) do
-                finished_loading? && (block_given? ? yield : true)
+                spinner_cleared? && (block_given? ? yield : true)
               end
             end
           end

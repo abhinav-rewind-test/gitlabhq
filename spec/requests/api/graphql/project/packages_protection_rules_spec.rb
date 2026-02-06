@@ -37,7 +37,8 @@ RSpec.describe 'getting the packages protection rules linked to a project', :agg
           hash_including(
             'packageNamePattern' => package_protection_rule.package_name_pattern,
             'packageType' => 'NPM',
-            'pushProtectedUpToAccessLevel' => 'DEVELOPER'
+            'minimumAccessLevelForDelete' => 'OWNER',
+            'minimumAccessLevelForPush' => 'MAINTAINER'
           )
         )
       end
@@ -53,25 +54,9 @@ RSpec.describe 'getting the packages protection rules linked to a project', :agg
   end
 
   context 'with unauthorized user' do
-    let_it_be(:user) { create(:user).tap { |u| project.add_developer(u) } }
+    let_it_be(:user) { create(:user, developer_of: project) }
 
     before do
-      subject
-    end
-
-    it_behaves_like 'a working graphql query'
-
-    it 'returns no package protection rules' do
-      expect(graphql_data_at(:project, :packagesProtectionRules, :nodes)).to eq []
-    end
-  end
-
-  context "when feature flag ':packages_protected_packages' disabled" do
-    let_it_be(:package_protection_rule) { create(:package_protection_rule, project: project) }
-
-    before do
-      stub_feature_flags(packages_protected_packages: false)
-
       subject
     end
 

@@ -1,6 +1,6 @@
-import { shallowMount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import mockPipelineResponse from 'test_fixtures/pipelines/pipeline_details.json';
-import { mountExtended } from 'helpers/vue_test_utils_helper';
+import { shallowMountExtended, mountExtended } from 'helpers/vue_test_utils_helper';
 import { LAYER_VIEW, STAGE_VIEW } from '~/ci/pipeline_details/graph/constants';
 import PipelineGraph from '~/ci/pipeline_details/graph/components/graph_component.vue';
 import JobItem from '~/ci/pipeline_details/graph/components/job_item.vue';
@@ -14,7 +14,6 @@ import { generateResponse, pipelineWithUpstreamDownstream } from '../mock_data';
 describe('graph component', () => {
   let wrapper;
 
-  const findDownstreamColumn = () => wrapper.findByTestId('downstream-pipelines');
   const findLinkedColumns = () => wrapper.findAllComponents(LinkedPipelinesColumn);
   const findLinksLayer = () => wrapper.findComponent(LinksLayer);
   const findStageColumns = () => wrapper.findAllComponents(StageColumnComponent);
@@ -24,14 +23,20 @@ describe('graph component', () => {
   const findStageColumnTitle = () => wrapper.findByTestId('stage-column-title');
   const findJobItem = () => wrapper.findComponent(JobItem);
 
+  const pipeline = generateResponse(mockPipelineResponse, 'root/fungi-xoxo');
+  const userPermissions = {
+    122: { updatePipeline: false },
+    [pipeline.id]: { updatePipeline: true },
+  };
   const defaultProps = {
-    pipeline: generateResponse(mockPipelineResponse, 'root/fungi-xoxo'),
+    pipeline,
     showLinks: false,
     viewType: STAGE_VIEW,
     configPaths: {
       metricsPath: '',
       graphqlResourceEtag: 'this/is/a/path',
     },
+    userPermissions,
   };
 
   const defaultData = {
@@ -43,12 +48,9 @@ describe('graph component', () => {
 
   const createComponent = ({
     data = {},
-    mountFn = shallowMount,
+    mountFn = shallowMountExtended,
     props = {},
     stubOverride = {},
-    glFeatures = {
-      newPipelineGraph: false,
-    },
   } = {}) => {
     wrapper = mountFn(PipelineGraph, {
       propsData: {
@@ -68,9 +70,6 @@ describe('graph component', () => {
         'job-group-dropdown': true,
         ...stubOverride,
       },
-      provide: {
-        glFeatures,
-      },
     });
   };
 
@@ -81,6 +80,10 @@ describe('graph component', () => {
 
     it('renders the main columns in the graph', () => {
       expect(findStageColumns()).toHaveLength(defaultProps.pipeline.stages.length);
+    });
+
+    it('provides the current pipeline user permissions to the column', () => {
+      expect(findStageColumns().at(0).props('userPermissions')).toEqual({ updatePipeline: true });
     });
 
     it('renders the links layer', () => {
@@ -129,8 +132,10 @@ describe('graph component', () => {
   });
 
   describe('when linked pipelines are not present', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       createComponent({ mountFn: mountExtended });
+
+      await nextTick();
     });
 
     it('should not render a linked pipelines column', () => {
@@ -139,15 +144,21 @@ describe('graph component', () => {
   });
 
   describe('when linked pipelines are present', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       createComponent({
         mountFn: mountExtended,
         props: { pipeline: pipelineWithUpstreamDownstream(mockPipelineResponse) },
       });
+
+      await nextTick();
     });
 
     it('should render linked pipelines columns', () => {
       expect(findLinkedColumns()).toHaveLength(2);
+    });
+
+    it('should provide user permissions', () => {
+      expect(findLinkedColumns().at(0).props('userPermissions')).toEqual(userPermissions);
     });
   });
 
@@ -181,89 +192,141 @@ describe('graph component', () => {
       });
     });
 
-    it('filters pipelines spawned from the same trigger job', () => {
-      // The mock data has one downstream with `retried: true and one
-      // with retried false. We filter the `retried: true` out so we
-      // should only pass one downstream
-      expect(findDownstreamColumn().props().linkedPipelines).toHaveLength(1);
+    it('filters pipelines spawned from the same trigger job', async () => {
+      const DownstreamColumn = (
+        await import('~/ci/pipeline_details/graph/components/linked_pipelines_column.vue')
+      ).default;
+
+      expect(wrapper.findComponent(DownstreamColumn).exists()).toBe(true);
+      expect(wrapper.findComponent(DownstreamColumn).props('linkedPipelines')).toHaveLength(1);
     });
   });
 
-  describe.each`
-    name          | value    | state
-    ${'disabled'} | ${false} | ${'should not'}
-    ${'enabled'}  | ${true}  | ${'should'}
-  `('With feature flag newPipelineGraph $name', ({ value, state }) => {
+  describe('container', () => {
     beforeEach(() => {
       createComponent({
         mountFn: mountExtended,
         stubOverride: { 'job-item': false, StageColumnComponent },
-        glFeatures: {
-          newPipelineGraph: value,
-        },
         stubs: {
           StageColumnComponent,
         },
       });
     });
 
-    it(`${state} add class pipeline-graph-container on wrapper`, () => {
-      expect(findPipelineContainer().classes('pipeline-graph-container')).toBe(value);
+    it(`has class pipeline-graph-container on wrapper`, () => {
+      expect(findPipelineContainer().classes('pipeline-graph-container')).toBe(true);
     });
 
-    it(`${state} add class is-stage-view on rootGraphLayout`, () => {
-      expect(findRootGraphLayout().classes('is-stage-view')).toBe(value);
+    it(`has class is-stage-view on rootGraphLayout`, () => {
+      expect(findRootGraphLayout().classes('is-stage-view')).toBe(true);
     });
 
-    it(`${state} add titleClasses on stageColumnTitle`, () => {
+    it(`has correct titleClasses on stageColumnTitle`, () => {
       const titleClasses = [
-        'gl-font-weight-bold',
+        'gl-font-bold',
         'gl-pipeline-job-width',
-        'gl-text-truncate',
-        'gl-line-height-36',
+        'gl-truncate',
+        'gl-leading-36',
         'gl-pl-4',
-        'gl-mb-n2',
+        '-gl-mb-2',
       ];
-      const legacyTitleClasses = [
-        'gl-font-weight-bold',
-        'gl-pipeline-job-width',
-        'gl-text-truncate',
-        'gl-line-height-36',
-        'gl-pl-3',
-      ];
-      const checkClasses = value ? titleClasses : legacyTitleClasses;
 
-      expect(findStageColumnTitle().classes()).toEqual(expect.arrayContaining(checkClasses));
+      expect(findStageColumnTitle().classes()).toEqual(expect.arrayContaining(titleClasses));
     });
 
-    it(`${state} add jobClasses on findJobItem`, () => {
+    it(`has correct jobClasses on findJobItem`, () => {
       const jobClasses = [
+        'gl-w-full',
         'gl-p-3',
         'gl-border-0',
-        'gl-bg-transparent',
-        'gl-rounded-base',
-        'gl-hover-bg-gray-50',
-        'gl-focus-bg-gray-50',
-        'gl-hover-text-gray-900',
-        'gl-focus-text-gray-900',
+        '!gl-rounded-base',
+        // for design tokens
+        'pipeline-job-action',
       ];
-      const legacyJobClasses = [
-        'gl-p-3',
-        'gl-border-gray-100',
-        'gl-border-solid',
-        'gl-border-1',
-        'gl-bg-white',
-        'gl-rounded-7',
-        'gl-hover-bg-gray-50',
-        'gl-focus-bg-gray-50',
-        'gl-hover-text-gray-900',
-        'gl-focus-text-gray-900',
-        'gl-hover-border-gray-200',
-        'gl-focus-border-gray-200',
-      ];
-      const checkClasses = value ? jobClasses : legacyJobClasses;
 
-      expect(findJobItem().props('cssClassJobName')).toEqual(expect.arrayContaining(checkClasses));
+      expect(findJobItem().props('cssClassJobName')).toEqual(expect.arrayContaining(jobClasses));
+    });
+  });
+
+  describe('sticky scrollbar', () => {
+    const findStickyScrollbar = () => wrapper.findByTestId('sticky-scrollbar');
+    const findStickyScrollbarInner = () => wrapper.findByTestId('sticky-scrollbar-inner');
+    const findMainPipelineContainer = () => wrapper.findByTestId('pipeline-container');
+
+    const mockContainerDimensions = ({ contentWidth, containerWidth }) => {
+      const mainContainer = findMainPipelineContainer().element;
+
+      jest.spyOn(mainContainer, 'scrollWidth', 'get').mockReturnValue(contentWidth);
+      jest.spyOn(mainContainer, 'clientWidth', 'get').mockReturnValue(containerWidth);
+    };
+
+    describe('when it is not a linked pipeline', () => {
+      describe('with horizontal overflow', () => {
+        beforeEach(() => {
+          createComponent({
+            mountFn: mountExtended,
+            props: { isLinkedPipeline: false },
+          });
+
+          mockContainerDimensions({ contentWidth: 1000, containerWidth: 400 });
+        });
+
+        it('renders the sticky scrollbar', () => {
+          expect(findStickyScrollbar().exists()).toBe(true);
+          const stickyScrollbarInner = findStickyScrollbarInner();
+          expect(stickyScrollbarInner.attributes('style')).toContain('1000px');
+        });
+
+        it('syncs scroll position from main container to sticky scrollbar', async () => {
+          const mainContainer = findMainPipelineContainer();
+          const stickyScrollbar = findStickyScrollbar();
+
+          mainContainer.element.scrollLeft = 100;
+          mainContainer.trigger('scroll');
+          await nextTick();
+
+          expect(stickyScrollbar.element.scrollLeft).toBe(100);
+        });
+
+        it('syncs scroll position from sticky scrollbar to main container', async () => {
+          const mainContainer = findMainPipelineContainer();
+          const stickyScrollbar = findStickyScrollbar();
+
+          stickyScrollbar.element.scrollLeft = 150;
+          stickyScrollbar.trigger('scroll');
+          await nextTick();
+
+          expect(mainContainer.element.scrollLeft).toBe(150);
+        });
+      });
+
+      describe('without horizontal overflow', () => {
+        beforeEach(() => {
+          createComponent({
+            mountFn: mountExtended,
+            props: { isLinkedPipeline: false },
+          });
+
+          mockContainerDimensions({ contentWidth: 800, containerWidth: 1000 });
+        });
+
+        it('does not render the sticky scrollbar', () => {
+          expect(findStickyScrollbar().exists()).toBe(false);
+        });
+      });
+    });
+
+    describe('when it is a linked pipeline', () => {
+      beforeEach(() => {
+        createComponent({
+          mountFn: mountExtended,
+          props: { isLinkedPipeline: true },
+        });
+      });
+
+      it('does not render the sticky scrollbar', () => {
+        expect(findStickyScrollbar().exists()).toBe(false);
+      });
     });
   });
 });

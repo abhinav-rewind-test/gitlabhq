@@ -5,6 +5,7 @@ module MergeRequests
     extend ::Gitlab::Utils::Override
     include MergeRequests::AssignsMergeParams
     include MergeRequests::ErrorLogger
+    include Gitlab::Utils::StrongMemoize
 
     delegate :repository, to: :project
 
@@ -16,22 +17,25 @@ module MergeRequests
       SystemNoteService.change_status(merge_request, merge_request.target_project, current_user, state, nil)
     end
 
-    def hook_data(merge_request, action, old_rev: nil, old_associations: {})
-      hook_data = merge_request.to_hook_data(current_user, old_associations: old_associations)
-      hook_data[:object_attributes][:action] = action
+    def hook_data(merge_request, action, old_rev: nil, old_associations: {}, system: false, system_action: nil)
+      hook_data = merge_request.to_hook_data(current_user, old_associations: old_associations, action: action)
+
       if old_rev && !Gitlab::Git.blank_ref?(old_rev)
         hook_data[:object_attributes][:oldrev] = old_rev
       end
 
+      hook_data[:object_attributes][:system] = system
+      hook_data[:object_attributes][:system_action] = system_action if system && system_action
+
       hook_data
     end
 
-    def execute_hooks(merge_request, action = 'open', old_rev: nil, old_associations: {})
+    def execute_hooks(merge_request, action = 'open', old_rev: nil, old_associations: {}, system: false, system_action: nil)
       # NOTE: Due to the async merge request diffs generation, we need to skip this for CreateService and execute it in
       #   AfterCreateService instead so that the webhook consumers receive the update when diffs are ready.
       return if merge_request.skip_ensure_merge_request_diff
 
-      merge_data = Gitlab::Lazy.new { hook_data(merge_request, action, old_rev: old_rev, old_associations: old_associations) }
+      merge_data = Gitlab::Lazy.new { hook_data(merge_request, action, old_rev: old_rev, old_associations: old_associations, system: system, system_action: system_action) }
       merge_request.project.execute_hooks(merge_data, :merge_request_hooks)
       merge_request.project.execute_integrations(merge_data, :merge_request_hooks)
 
@@ -81,13 +85,16 @@ module MergeRequests
       notification_service.async.changed_reviewer_of_merge_request(merge_request, current_user, old_reviewers)
       todo_service.reassigned_reviewable(merge_request, current_user, old_reviewers)
       invalidate_cache_counts(merge_request, users: affected_reviewers.compact)
+      invalidate_cache_counts(merge_request, users: merge_request.assignees)
 
       new_reviewers = merge_request.reviewers - old_reviewers
       merge_request_activity_counter.track_users_review_requested(users: new_reviewers)
       merge_request_activity_counter.track_reviewers_changed_action(user: current_user)
       trigger_merge_request_reviewers_updated(merge_request)
 
-      capture_suggested_reviewers_accepted(merge_request)
+      set_reviewers_approved(merge_request, new_reviewers) if new_reviewers.any?
+      set_first_reviewer_assigned_at_metrics(merge_request) if new_reviewers.any?
+      trigger_user_merge_request_updated(merge_request)
     end
 
     def cleanup_environments(merge_request)
@@ -120,7 +127,7 @@ module MergeRequests
     end
 
     def deactivate_pages_deployments(merge_request)
-      Pages::DeactivateMrDeploymentsWorker.perform_async(merge_request)
+      Pages::DeactivateMrDeploymentsWorker.perform_async(merge_request.id)
     end
 
     private
@@ -170,6 +177,10 @@ module MergeRequests
       end
     end
 
+    def request_duo_code_review(merge_request)
+      # Overriden in EE
+    end
+
     def filter_params(merge_request)
       super
 
@@ -178,7 +189,6 @@ module MergeRequests
       end
 
       filter_reviewer(merge_request)
-      filter_suggested_reviewers
     end
 
     def filter_reviewer(merge_request)
@@ -194,7 +204,11 @@ module MergeRequests
         params[:reviewer_ids] = params[:reviewer_ids].first(1)
       end
 
-      reviewer_ids = params[:reviewer_ids].select { |reviewer_id| user_can_read?(merge_request, reviewer_id) }
+      reviewer_ids = User.id_in(params[:reviewer_ids]).select do |reviewer|
+        link_composite_identity(reviewer) if reviewer.composite_identity_enforced? && reviewer.service_account?
+
+        user_can_read?(merge_request, reviewer)
+      end.map(&:id)
 
       if params[:reviewer_ids].map(&:to_s) == [IssuableFinder::Params::NONE]
         params[:reviewer_ids] = []
@@ -205,8 +219,11 @@ module MergeRequests
       end
     end
 
-    def filter_suggested_reviewers
-      # Implemented in EE
+    def set_reviewers_approved(merge_request, new_reviewers)
+      approval_users = merge_request.approvals_for_user_ids(new_reviewers.map(&:id))
+
+      merge_request.merge_request_reviewers_with(approval_users.select(:user_id))
+        .update_all(state: :approved)
     end
 
     def merge_request_metrics_service(merge_request)
@@ -224,18 +241,15 @@ module MergeRequests
     end
 
     def create_pipeline_for(merge_request, user, async: false, allow_duplicate: false)
-      create_pipeline_params = params.slice(:push_options).merge(allow_duplicate: allow_duplicate)
+      create_pipeline_params = params.slice(:push_options, :gitaly_context).merge(allow_duplicate: allow_duplicate)
+      service = MergeRequests::CreatePipelineService.new(
+        project: project, current_user: user, params: create_pipeline_params
+      )
 
       if async
-        MergeRequests::CreatePipelineWorker.perform_async(
-          project.id,
-          user.id,
-          merge_request.id,
-          create_pipeline_params.deep_stringify_keys)
+        service.execute_async(merge_request)
       else
-        MergeRequests::CreatePipelineService
-          .new(project: project, current_user: user, params: create_pipeline_params)
-          .execute(merge_request)
+        service.execute(merge_request)
       end
     end
 
@@ -274,13 +288,68 @@ module MergeRequests
       GraphqlTriggers.merge_request_approval_state_updated(merge_request)
     end
 
-    def capture_suggested_reviewers_accepted(merge_request)
-      # Implemented in EE
+    def trigger_user_merge_request_updated(merge_request)
+      [merge_request.author, *merge_request.assignees, *merge_request.reviewers].uniq.each do |user|
+        GraphqlTriggers.user_merge_request_updated(user, merge_request)
+      end
     end
 
-    def remove_approval(merge_request)
-      MergeRequests::RemoveApprovalService.new(project: project, current_user: current_user)
-        .execute(merge_request)
+    def set_first_reviewer_assigned_at_metrics(merge_request)
+      metrics = merge_request.metrics
+      return unless metrics
+
+      current_time = Time.current
+
+      return if metrics.reviewer_first_assigned_at && metrics.reviewer_first_assigned_at <= current_time
+
+      metrics.update(reviewer_first_assigned_at: current_time)
+    end
+
+    def remove_approval(merge_request, user)
+      MergeRequests::RemoveApprovalService.new(project: project, current_user: user)
+        .execute(merge_request, skip_system_note: true, skip_notification: true, skip_updating_state: true)
+    end
+
+    def update_reviewer_state(merge_request, user, state)
+      ::MergeRequests::UpdateReviewerStateService
+            .new(project: merge_request.project, current_user: user)
+            .execute(merge_request, state)
+    end
+
+    def abort_auto_merge_with_todo(merge_request, reason)
+      response = abort_auto_merge(merge_request, reason)
+      response = ServiceResponse.new(**response)
+      return unless response.success?
+
+      todo_service.merge_request_became_unmergeable(merge_request)
+    end
+
+    def duo_code_review_bot
+      ::Users::Internal.duo_code_review_bot
+    end
+    strong_memoize_attr :duo_code_review_bot
+
+    def invalidate_all_users_cache_count(merge_request)
+      invalidate_cache_counts(merge_request, users: [*merge_request.assignees, *merge_request.reviewers, merge_request.author].uniq)
+    end
+
+    override :change_state
+    def change_state(merge_request, state_event)
+      case state_event
+      when 'close'
+        close_service.new(**close_service.constructor_container_arg(project), current_user: current_user)
+                     .execute(merge_request, skip_reset: true)
+      else
+        super
+      end
+    end
+
+    def reopen_service
+      MergeRequests::ReopenService
+    end
+
+    def close_service
+      MergeRequests::CloseService
     end
   end
 end

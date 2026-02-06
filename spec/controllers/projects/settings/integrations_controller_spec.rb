@@ -96,6 +96,20 @@ RSpec.describe Projects::Settings::IntegrationsController, feature_category: :in
       expect(json_response).to eq({ 'my_payload' => true })
     end
 
+    it 'does not persist assigned attributes when testing the integration' do
+      original_external_wiki_url = integration.external_wiki_url
+      new_external_wiki_url = 'https://example.com/wiki'
+      integration_params = { active: 'true', external_wiki_url: new_external_wiki_url }
+
+      allow_next(Integrations::Test::ProjectService).to receive(:execute).and_return({ success: true })
+
+      put :test, params: project_params(service: integration_params)
+
+      integration.reload
+
+      expect(integration.external_wiki_url).to eq(original_external_wiki_url)
+    end
+
     it 'returns an error response if the test is not successful' do
       allow_next(Integrations::Test::ProjectService).to receive(:execute).and_return({ success: false })
 
@@ -239,7 +253,7 @@ RSpec.describe Projects::Settings::IntegrationsController, feature_category: :in
       let(:integration_params) { { active: true } }
       let(:params) { project_params(service: integration_params) }
 
-      let(:message) { 'Jira settings saved and active.' }
+      let(:message) { 'Jira issues settings saved and active.' }
       let(:redirect_url) { edit_project_settings_integration_path(project, integration) }
 
       before do
@@ -290,7 +304,7 @@ RSpec.describe Projects::Settings::IntegrationsController, feature_category: :in
 
       context 'when param `active` is set to false' do
         let(:integration_params) { { active: false } }
-        let(:message) { 'Jira settings saved, but not active.' }
+        let(:message) { 'Jira issues settings saved, but not active.' }
 
         it_behaves_like 'integration update'
       end

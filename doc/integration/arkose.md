@@ -1,18 +1,17 @@
 ---
-stage: Govern
-group: Anti-Abuse
+stage: Software Supply Chain Security
+group: Authorization
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Arkose Protect
 ---
 
-# Arkose Protect
+> [!warning]
+> Arkose Protect is used on GitLab.com and is not supported for GitLab Self-Managed
+> instances. The following documents the internal requirements for maintaining
+> Arkose Protect on GitLab.com. While this feature is theoretically usable in GitLab Self-Managed instances, it
+> is not recommended at the moment.
 
-DISCLAIMER:
-Arkose Protect is used on GitLab.com and is not supported for self-managed GitLab
-instances. The following documents the internal requirements for maintaining
-Arkose Protect on GitLab.com. While this feature is theoretically usable in self-managed instances, it
-is not recommended at the moment.
-
-GitLab integrates [Arkose Protect](https://www.arkoselabs.com/arkose-protect/) to guard against
+GitLab integrates [Arkose Protect](https://www.arkoselabs.com/platform/) to guard against
 malicious users from creating accounts.
 
 ## How does it work?
@@ -23,7 +22,11 @@ attempt. If Arkose Protect trusts the user, the challenge runs in transparent mo
 user doesn't need to take any additional action and can sign in as usual.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+accTitle: Sequence of an Arkose Protect challenge
+accDescr: How GitLab sends data to Arkose Labs to determine whether to present a challenge during the sign-in attempt.
+
     participant U as User
     participant G as GitLab
     participant A as Arkose Labs
@@ -57,24 +60,48 @@ To enable Arkose Protect:
 1. Enable the ArkoseLabs login challenge. Run the following commands in the Rails console, replacing `<your_public_api_key>` and `<your_private_api_key>` with your own API keys.
 
    ```ruby
-   Feature.enable(:arkose_labs_signup_challenge)
    ApplicationSetting.current.update(arkose_labs_public_api_key: '<your_public_api_key>')
    ApplicationSetting.current.update(arkose_labs_private_api_key: '<your_private_api_key>')
    ```
+
+To disable Arkose Protect, run the following command in the Rails console.
+
+   ```ruby
+   ApplicationSetting.current.update(arkose_labs_enabled: false)
+   ```
+
+> [!note]
+> Disabling Arkose also disables phone number and credit card verification.
+> New users are only required to verify their email address.
+
+It is important to note that disabling Arkose also disables phone number and credit card verification. All new users will only be required to verify their email address.
 
 ## Triage and debug ArkoseLabs issues
 
 You can triage and debug issues raised by ArkoseLabs with:
 
+- ArkoseLabs and GitLab collaboration channel on Slack: [`#ext-gitlab-arkose`](https://gitlab.slack.com/archives/C02SGF6RLPQ)
+
 - The [GitLab production logs](https://log.gprd.gitlab.net).
-- The [Arkose logging service](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/arkose/logger.rb).
+- The [Arkose logging service](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/lib/arkose/logger.rb)
+- The [Arkose Labs Portal](https://portal.arkoselabs.com) (users can request access through the Okta portal)
+
+### Analysing Arkose Labs dashboard
+
+- GitLab regularly sends session data to the Arkose team, which is used to apply custom
+  telltales to prevent malicious users from signing up.
+- When functioning normally, less than 10% of users should be classified as `high` risk
+  and over 90% of sessions should be verified.
+- If the percentage of `high` risk users or verified sessions is significantly different
+  from the expected percentages, contact the [`#ext-gitlab-arkose`](https://gitlab.slack.com/archives/C02SGF6RLPQ)
+  Slack channel.
 
 ### View ArkoseLabs Verify API response for a user session
 
 To view an ArkoseLabs Verify API response for a user, [query the GitLab production logs](https://log.gprd.gitlab.net/goto/54b82f50-935a-11ed-9f43-e3784d7fe3ca) with the following KQL:
 
 ```plaintext
-KQL: json.message:"Arkose verify response" AND json.username:replace_username_here
+KQL: json.message:"Arkose challenge solved" AND json.username:replace_username_here
 ```
 
 If the query is valid, the result contains debug information about the user's session:
@@ -91,8 +118,15 @@ If the query is valid, the result contains debug information about the user's se
 To check if a user failed to sign in because the ArkoseLabs challenge was not solved, [query the GitLab production logs](https://log.gprd.gitlab.net/goto/b97c8a80-935a-11ed-85ed-e7557b0a598c) with the following KQL:
 
 ```plaintext
-KQL: json.message:"Challenge was not solved" AND json.username:replace_username_here`
+KQL: json.message:"Arkose*" AND json.username:replace_username_here
 ```
+
+| Log message                             | Description |
+| --------------------------------------- | ----------- |
+| `Arkose was unable to verify the token` | The user solved the challenge, but Arkose could not verify the token. If this error appears repeatedly for the same user, there might be an error on Arkose's end. |
+| `Arkose challenge not solved`           | The user did not solve the challenge. |
+| `Arkose challenge solved`               | The user successfully solved the challenge. |
+| `Arkose challenge skipped`              | Arkose's status service returned an error, so the challenge was skipped. |
 
 ## Allowlists
 
@@ -107,7 +141,11 @@ This job is performed by the `Arkose::BlockedUsersReportWorker` class.
 
 ## Test your integration
 
-> - Requesting specific behaviors with Data Exchange [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/435275) in GitLab 16.8 [with a flag](../administration/feature_flags.md) named `arkose_labs_signup_data_exchange`. Disabled by default.
+{{< history >}}
+
+- Requesting specific behaviors with Data Exchange [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/435275) in GitLab 16.8 [with a flag](../administration/feature_flags/_index.md) named `arkose_labs_signup_data_exchange`. Disabled by default.
+
+{{< /history >}}
 
 In staging and development environments only, you can suppress a challenge, or force one to appear.
 You can use this feature if you want to receive a specific risk band.
@@ -128,7 +166,7 @@ index 191ae0b5cf82..b2d888b98c95 100644
 +++ b/ee/lib/arkose/data_exchange_payload.rb
 @@ -35,6 +35,7 @@ def json_data
        now = Time.current.to_i
- 
+
        data = {
 +        interactive: 'false',
          timestamp: now.to_s, # required to be a string
@@ -138,9 +176,7 @@ index 191ae0b5cf82..b2d888b98c95 100644
 
 ## Additional resources
 
-<!-- markdownlint-disable MD044 -->
-The [Anti-abuse team](https://handbook.gitlab.com/handbook/engineering/development/sec/govern/anti-abuse/#team-members) owns the ArkoseLabs Protect feature. You can join our ArkoseLabs/GitLab collaboration channel on Slack: [#ext-gitlab-arkose](https://gitlab.slack.com/archives/C02SGF6RLPQ).
-<!-- markdownlint-enable MD044 -->
+- GitLab team members only. [Identity Verification](https://internal.gitlab.com/handbook/engineering/identity-verification/#arkose-integration)
 
 ArkoseLabs also maintains the following resources:
 

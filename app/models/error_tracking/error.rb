@@ -15,7 +15,7 @@ class ErrorTracking::Error < ApplicationRecord
     -> { order(id: :desc) },
     class_name: 'ErrorTracking::ErrorEvent'
 
-  scope :for_status, -> (status) { where(status: status) }
+  scope :for_status, ->(status) { where(status: status) }
 
   validates :project, presence: true
   validates :name, presence: true, length: { maximum: 255 }
@@ -24,7 +24,7 @@ class ErrorTracking::Error < ApplicationRecord
   validates :platform, length: { maximum: 255 }
   validates :status, presence: true
 
-  enum status: {
+  enum :status, {
     unresolved: 0,
     resolved: 1,
     ignored: 2

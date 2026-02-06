@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :cloud_connector do
+RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :durability_metrics do
   shared_examples 'as configurator' do |handler_class, event_reporter_class, sleep_time_env, sleep_time|
     it 'configures the correct handler' do
       configurator.call(configuration)
@@ -63,7 +63,6 @@ RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :cloud_
   let(:configuration) { Gitlab::Memory::Watchdog::Configuration.new }
 
   # In tests, the Puma constant does not exist so we cannot use a verified double.
-  # rubocop: disable RSpec/VerifiedDoubles
   describe '.configure_for_puma' do
     let(:logger) { Gitlab::AppLogger }
     let(:puma) do
@@ -89,14 +88,14 @@ RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :cloud_
     end
 
     it_behaves_like 'as configurator',
-                    Gitlab::Memory::Watchdog::Handlers::PumaHandler,
-                    Gitlab::Memory::Watchdog::EventReporter,
-                    'GITLAB_MEMWD_SLEEP_TIME_SEC',
-                    described_class::DEFAULT_SLEEP_INTERVAL_S
+      Gitlab::Memory::Watchdog::Handlers::PumaHandler,
+      Gitlab::Memory::Watchdog::EventReporter,
+      'GITLAB_MEMWD_SLEEP_TIME_SEC',
+      described_class::DEFAULT_SLEEP_INTERVAL_S
 
     context 'with DISABLE_PUMA_WORKER_KILLER set to true' do
       let(:primary_memory_bytes) { 2_097_152_000 }
-      let(:worker_memory_bytes) { max_mem_growth * primary_memory_bytes + 1 }
+      let(:worker_memory_bytes) { (max_mem_growth * primary_memory_bytes) + 1 }
       let(:expected_payloads) do
         {
           heap_fragmentation: {
@@ -189,7 +188,6 @@ RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :cloud_
       end
     end
   end
-  # rubocop: enable RSpec/VerifiedDoubles
 
   describe '.configure_for_sidekiq' do
     let(:logger) { ::Sidekiq.logger }
@@ -197,10 +195,10 @@ RSpec.describe Gitlab::Memory::Watchdog::Configurator, feature_category: :cloud_
     subject(:configurator) { described_class.configure_for_sidekiq }
 
     it_behaves_like 'as configurator',
-                    Gitlab::Memory::Watchdog::Handlers::SidekiqHandler,
-                    Gitlab::Memory::Watchdog::SidekiqEventReporter,
-                    'SIDEKIQ_MEMORY_KILLER_CHECK_INTERVAL',
-                    described_class::DEFAULT_SIDEKIQ_SLEEP_INTERVAL_S
+      Gitlab::Memory::Watchdog::Handlers::SidekiqHandler,
+      Gitlab::Memory::Watchdog::SidekiqEventReporter,
+      'SIDEKIQ_MEMORY_KILLER_CHECK_INTERVAL',
+      described_class::DEFAULT_SIDEKIQ_SLEEP_INTERVAL_S
 
     context 'when sleep_time_seconds is less than MIN_SIDEKIQ_SLEEP_INTERVAL_S seconds' do
       before do

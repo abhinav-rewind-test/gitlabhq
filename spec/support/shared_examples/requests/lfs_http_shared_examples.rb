@@ -9,7 +9,7 @@ end
 RSpec.shared_examples 'LFS http 200 blob response' do
   it_behaves_like 'LFS http expected response code and message' do
     let(:response_code) { :ok }
-    let(:content_type) { Repositories::LfsApiController::LFS_TRANSFER_CONTENT_TYPE }
+    let(:content_type) { ::Repositories::LfsApiController::LFS_TRANSFER_CONTENT_TYPE }
     let(:response_headers) { { 'X-Sendfile' => lfs_object.file.path } }
   end
 end
@@ -82,8 +82,7 @@ RSpec.shared_examples 'LFS http requests' do
   let(:authorization) { authorize_user }
   let(:headers) do
     {
-      'Authorization' => authorization,
-      'X-Sendfile-Type' => 'X-Sendfile'
+      'Authorization' => authorization
     }
   end
 
@@ -182,6 +181,7 @@ RSpec.shared_examples 'LFS http requests' do
   context 'with download permission' do
     before do
       authorize_download
+      project.lfs_objects << lfs_object if defined?(project) && project
     end
 
     describe 'download request' do

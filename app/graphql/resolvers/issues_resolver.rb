@@ -14,7 +14,7 @@ module Resolvers
       description: 'Whether to include issues from archived projects. Defaults to `false`.'
     argument :state, Types::IssuableStateEnum,
       required: false,
-      description: 'Current state of this issue.',
+      description: 'Current state of the issue.',
       prepare: ->(state, _ctx) {
         return state unless state == 'locked'
 
@@ -24,10 +24,7 @@ module Resolvers
     type Types::IssueType.connection_type, null: true
 
     before_connection_authorization do |nodes, current_user|
-      projects = nodes.map(&:project)
-      ::Preloaders::UserMaxAccessLevelInProjectsPreloader.new(projects, current_user).execute
-      ::Preloaders::GroupPolicyPreloader.new(projects.filter_map(&:group), current_user).execute
-      ActiveRecord::Associations::Preloader.new(records: projects, associations: project_associations).call
+      ::Preloaders::IssuablesPreloader.new(nodes, current_user, project_associations).preload_all
     end
 
     def self.project_associations

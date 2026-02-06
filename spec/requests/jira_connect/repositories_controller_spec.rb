@@ -28,6 +28,12 @@ RSpec.describe JiraConnect::RepositoriesController, feature_category: :integrati
     create(:jira_connect_subscription, installation: installation, namespace: group)
   end
 
+  shared_examples 'returns 403' do
+    it 'returns 403' do
+      expect(response).to have_gitlab_http_status(:forbidden)
+    end
+  end
+
   describe 'GET /-/jira_connect/repositories/search' do
     before do
       get '/-/jira_connect/repositories/search', params: { jwt: jwt, searchQuery: search_query }
@@ -35,11 +41,29 @@ RSpec.describe JiraConnect::RepositoriesController, feature_category: :integrati
 
     let(:search_query) { nil }
 
-    context 'without JWT' do
-      let(:jwt) { nil }
+    context 'with invalid JWT' do
+      context 'with malformed JWT' do
+        let(:jwt) { '123' }
 
-      it 'returns 403' do
-        expect(response).to have_gitlab_http_status(:forbidden)
+        it_behaves_like 'returns 403'
+      end
+
+      context 'without JWT' do
+        let(:jwt) { nil }
+
+        it_behaves_like 'returns 403'
+      end
+
+      context 'with empty JWT' do
+        let(:jwt) { '' }
+
+        it_behaves_like 'returns 403'
+      end
+
+      context 'with oversized JWT' do
+        let(:jwt) { 'x' * 9.kilobytes }
+
+        it_behaves_like 'returns 403'
       end
     end
 
@@ -65,17 +89,6 @@ RSpec.describe JiraConnect::RepositoriesController, feature_category: :integrati
           expect(json_response).to include('containers' => [expected_response])
         end
       end
-
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(atlassian_new_app_based_auth_model: false)
-          get '/-/jira_connect/repositories/search', params: { jwt: jwt, searchQuery: search_query }
-        end
-
-        it 'returns 404' do
-          expect(response).to have_gitlab_http_status(:not_found)
-        end
-      end
     end
   end
 
@@ -86,11 +99,29 @@ RSpec.describe JiraConnect::RepositoriesController, feature_category: :integrati
 
     let(:id) { nil }
 
-    context 'without JWT' do
-      let(:jwt) { nil }
+    context 'with invalid JWT' do
+      context 'with malformed JWT' do
+        let(:jwt) { '123' }
 
-      it 'returns 403' do
-        expect(response).to have_gitlab_http_status(:forbidden)
+        it_behaves_like 'returns 403'
+      end
+
+      context 'without JWT' do
+        let(:jwt) { nil }
+
+        it_behaves_like 'returns 403'
+      end
+
+      context 'with empty JWT' do
+        let(:jwt) { '' }
+
+        it_behaves_like 'returns 403'
+      end
+
+      context 'with oversized JWT' do
+        let(:jwt) { 'x' * 9.kilobytes }
+
+        it_behaves_like 'returns 403'
       end
     end
 
@@ -113,17 +144,6 @@ RSpec.describe JiraConnect::RepositoriesController, feature_category: :integrati
 
         it 'renders the relevant data as JSON' do
           expect(json_response).to include(expected_response)
-        end
-      end
-
-      context 'when feature flag is disabled' do
-        before do
-          stub_feature_flags(atlassian_new_app_based_auth_model: false)
-          post '/-/jira_connect/repositories/associate', params: { jwt: jwt, id: id }
-        end
-
-        it 'returns 404' do
-          expect(response).to have_gitlab_http_status(:not_found)
         end
       end
     end

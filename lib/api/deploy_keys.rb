@@ -4,9 +4,11 @@ module API
   class DeployKeys < ::API::Base
     include PaginationParams
 
-    deploy_keys_tags = %w[deploy_keys]
-
-    before { authenticate! }
+    deploy_keys_tags = %w[deploy_resources]
+    before do
+      authenticate!
+      set_current_organization
+    end
 
     feature_category :continuous_delivery
     urgency :low
@@ -37,6 +39,7 @@ module API
       use :pagination
       optional :public, type: Boolean, default: false, desc: "Only return deploy keys that are public"
     end
+    route_setting :authorization, permissions: :read_deploy_key, boundary_type: :instance
     get "deploy_keys" do
       authenticated_as_admin!
 
@@ -45,6 +48,34 @@ module API
 
       present paginate(deploy_keys),
         with: Entities::DeployKey, include_projects_with_write_access: true, include_projects_with_readonly_access: true
+    end
+
+    desc 'Create a deploy key' do
+      detail 'Create a deploy key for the GitLab instance. This endpoint requires administrator access.'
+      success Entities::DeployKey
+      failure [
+        { code: 400, message: 'Bad request' },
+        { code: 401, message: 'Unauthorized' },
+        { code: 403, message: 'Forbidden' }
+      ]
+      tags deploy_keys_tags
+    end
+    params do
+      requires :key, type: String, desc: 'New deploy key'
+      requires :title, type: String, desc: "New deploy key's title"
+      optional :expires_at, type: DateTime, desc: 'The expiration date of the SSH key in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)'
+    end
+    route_setting :authorization, permissions: :create_deploy_key, boundary_type: :instance
+    post "deploy_keys" do
+      authenticated_as_admin!
+
+      deploy_key = ::DeployKeys::CreateService.new(current_user, declared_params.merge(public: true, organization: Current.organization)).execute
+
+      if deploy_key.persisted?
+        present deploy_key, with: Entities::DeployKey
+      else
+        render_validation_error!(deploy_key)
+      end
     end
 
     params do
@@ -66,6 +97,7 @@ module API
       params do
         use :pagination
       end
+      route_setting :authorization, permissions: :read_deploy_key, boundary_type: :project
       # rubocop: disable CodeReuse/ActiveRecord
       get ":id/deploy_keys" do
         keys = user_project.deploy_keys_projects.preload(deploy_key: :user)
@@ -86,6 +118,7 @@ module API
       params do
         requires :key_id, type: Integer, desc: 'The ID of the deploy key'
       end
+      route_setting :authorization, permissions: :read_deploy_key, boundary_type: :project
       get ":id/deploy_keys/:key_id" do
         key = find_by_deploy_key(user_project, params[:key_id])
 
@@ -108,6 +141,7 @@ module API
         optional :can_push, type: Boolean, desc: "Can deploy key push to the project's repository"
         optional :expires_at, type: DateTime, desc: 'The expiration date of the SSH key in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)'
       end
+      route_setting :authorization, permissions: :create_deploy_key, boundary_type: :project
       # rubocop: disable CodeReuse/ActiveRecord
       post ":id/deploy_keys" do
         params[:key].strip!
@@ -132,7 +166,7 @@ module API
         end
 
         # Create a new deploy key
-        deploy_key_attributes = declared_params.except(:can_push).merge(user: current_user)
+        deploy_key_attributes = declared_params.except(:can_push).merge(user: current_user, organization: Current.organization)
         deploy_key_project = add_deploy_keys_project(user_project, deploy_key_attributes: deploy_key_attributes, can_push: !!params[:can_push])
 
         if deploy_key_project.valid?
@@ -160,6 +194,7 @@ module API
         optional :can_push, type: Boolean, desc: "Can deploy key push to the project's repository"
         at_least_one_of :title, :can_push
       end
+      route_setting :authorization, permissions: :update_deploy_key, boundary_type: :project
       put ":id/deploy_keys/:key_id" do
         deploy_keys_project = find_by_deploy_key(user_project, params[:key_id])
 
@@ -197,14 +232,15 @@ module API
       params do
         requires :key_id, type: Integer, desc: 'The ID of the deploy key'
       end
+      route_setting :authorization, permissions: :enable_deploy_key, boundary_type: :project
       post ":id/deploy_keys/:key_id/enable" do
         key = ::Projects::EnableDeployKeyService.new(user_project,
-                                                      current_user, declared_params).execute
+          current_user, declared_params).execute
 
         if key
           present key, with: Entities::DeployKey
         else
-          not_found!('Deploy Key')
+          not_found!('Deploy key')
         end
       end
 
@@ -219,10 +255,11 @@ module API
       params do
         requires :key_id, type: Integer, desc: 'The ID of the deploy key'
       end
+      route_setting :authorization, permissions: :delete_deploy_key, boundary_type: :project
       # rubocop: disable CodeReuse/ActiveRecord
       delete ":id/deploy_keys/:key_id" do
         deploy_key_project = user_project.deploy_keys_projects.find_by(deploy_key_id: params[:key_id])
-        not_found!('Deploy Key') unless deploy_key_project
+        not_found!('Deploy key') unless deploy_key_project
 
         destroy_conditionally!(deploy_key_project)
       end

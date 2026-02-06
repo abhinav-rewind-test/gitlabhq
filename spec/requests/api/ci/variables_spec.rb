@@ -2,13 +2,15 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
+RSpec.describe API::Ci::Variables, feature_category: :pipeline_composition do
   let(:user) { create(:user) }
   let(:user2) { create(:user) }
   let!(:project) { create(:project, creator_id: user.id) }
   let!(:maintainer) { create(:project_member, :maintainer, user: user, project: project) }
   let!(:developer) { create(:project_member, :developer, user: user2, project: project) }
-  let!(:variable) { create(:ci_variable, project: project) }
+  let(:is_hidden_variable) { true }
+  let(:is_masked_variable) { true }
+  let!(:variable) { create(:ci_variable, project: project, hidden: is_hidden_variable, masked: is_masked_variable) }
 
   describe 'GET /projects/:id/variables' do
     context 'authorized user with proper permissions' do
@@ -17,6 +19,11 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
 
         expect(response).to have_gitlab_http_status(:ok)
         expect(json_response).to be_a(Array)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_variable do
+        let(:boundary_object) { project }
+        let(:request) { get api("/projects/#{project.id}/variables", personal_access_token: pat) }
       end
     end
 
@@ -35,20 +42,72 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         expect(response).to have_gitlab_http_status(:unauthorized)
       end
     end
+
+    context 'when CI/CD is disabled' do
+      before do
+        project.project_feature.update!(builds_access_level: ProjectFeature::DISABLED)
+      end
+
+      it 'returns forbidden for maintainer' do
+        get api("/projects/#{project.id}/variables", user)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe 'GET /projects/:id/variables/:key' do
     context 'authorized user with proper permissions' do
-      it 'returns project variable details' do
-        get api("/projects/#{project.id}/variables/#{variable.key}", user)
+      context 'when variable is hidden' do
+        let(:is_hidden_variable) { true }
 
-        expect(response).to have_gitlab_http_status(:ok)
-        expect(json_response['value']).to eq(variable.value)
-        expect(json_response['protected']).to eq(variable.protected?)
-        expect(json_response['masked']).to eq(variable.masked?)
-        expect(json_response['raw']).to eq(variable.raw?)
-        expect(json_response['variable_type']).to eq('env_var')
-        expect(json_response['description']).to be_nil
+        it 'returns project variable details and cut the value' do
+          get api("/projects/#{project.id}/variables/#{variable.key}", user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['value']).to be_nil
+          expect(json_response['protected']).to eq(variable.protected?)
+          expect(json_response['masked']).to eq(variable.masked?)
+          expect(json_response['raw']).to eq(variable.raw?)
+          expect(json_response['variable_type']).to eq('env_var')
+          expect(json_response['description']).to be_nil
+          expect(json_response['hidden']).to eq(true)
+        end
+      end
+
+      context 'when variable is not hidden' do
+        let(:is_hidden_variable) { false }
+        let(:is_masked_variable) { false }
+
+        it 'returns project variable details' do
+          get api("/projects/#{project.id}/variables/#{variable.key}", user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['value']).to eq(variable.value)
+          expect(json_response['protected']).to eq(variable.protected?)
+          expect(json_response['masked']).to eq(variable.masked?)
+          expect(json_response['raw']).to eq(variable.raw?)
+          expect(json_response['variable_type']).to eq('env_var')
+          expect(json_response['description']).to be_nil
+          expect(json_response['hidden']).to eq(false)
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :read_variable do
+          let(:boundary_object) { project }
+          let(:request) { get api("/projects/#{project.id}/variables/#{variable.key}", personal_access_token: pat) }
+        end
+      end
+
+      context 'when CI/CD is disabled' do
+        before do
+          project.project_feature.update!(builds_access_level: ProjectFeature::DISABLED)
+        end
+
+        it 'returns forbidden for maintainer' do
+          get api("/projects/#{project.id}/variables/#{variable.key}", user)
+
+          expect(response).to have_gitlab_http_status(:forbidden)
+        end
       end
 
       it 'responds with 404 Not Found if requesting non-existing variable' do
@@ -125,6 +184,22 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
           expect(json_response['key']).to eq('TEST_VARIABLE_2')
           expect(json_response['value']).to eq('PROTECTED_VALUE_2')
           expect(json_response['protected']).to be_truthy
+          expect(json_response['hidden']).to eq(false)
+          expect(json_response['masked']).to be_truthy
+          expect(json_response['raw']).to be_truthy
+          expect(json_response['variable_type']).to eq('env_var')
+        end
+
+        it 'creates variable with masked and hidden' do
+          expect do
+            post api("/projects/#{project.id}/variables", user), params: { key: 'TEST_VARIABLE_2', value: 'PROTECTED_VALUE_2', protected: true, masked_and_hidden: true, raw: true }
+          end.to change { project.variables.count }.by(1)
+
+          expect(response).to have_gitlab_http_status(:created)
+          expect(json_response['key']).to eq('TEST_VARIABLE_2')
+          expect(json_response['value']).to be_nil
+          expect(json_response['protected']).to be_truthy
+          expect(json_response['hidden']).to eq(true)
           expect(json_response['masked']).to be_truthy
           expect(json_response['raw']).to be_truthy
           expect(json_response['variable_type']).to eq('env_var')
@@ -152,12 +227,13 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
           expect(json_response['raw']).to be_falsey
           expect(json_response['variable_type']).to eq('file')
           expect(json_response['description']).to eq('description')
+          expect(json_response['hidden']).to eq(false)
         end
 
         it 'does not allow to duplicate variable key' do
           expect do
             post api("/projects/#{project.id}/variables", user), params: { key: variable.key, value: 'VALUE_2' }
-          end.to change { project.variables.count }.by(0)
+          end.not_to change { project.variables.count }
 
           expect(response).to have_gitlab_http_status(:bad_request)
         end
@@ -184,6 +260,11 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
           expect(json_response['key']).to eq(variable.key)
           expect(json_response['value']).to eq('VALUE_2')
           expect(json_response['environment_scope']).to eq('review/*')
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :create_variable do
+          let(:boundary_object) { project }
+          let(:request) { post api("/projects/#{project.id}/variables", personal_access_token: pat), params: { key: 'TEST_VARIABLE_2', value: 'PROTECTED_VALUE_2', protected: true, masked: true, raw: true } }
         end
       end
 
@@ -220,6 +301,18 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         expect(response).to have_gitlab_http_status(:unauthorized)
       end
     end
+
+    context 'when CI/CD is disabled' do
+      before do
+        project.project_feature.update!(builds_access_level: ProjectFeature::DISABLED)
+      end
+
+      it 'returns forbidden for maintainer' do
+        post api("/projects/#{project.id}/variables", user)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe 'PUT /projects/:id/variables/:key' do
@@ -238,6 +331,40 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         expect(updated_variable).to be_protected
         expect(updated_variable.variable_type).to eq('file')
         expect(updated_variable.description).to eq('updated')
+      end
+
+      context 'when variable is hidden' do
+        it 'unable to update masked attribute' do
+          put api("/projects/#{project.id}/variables/#{variable.key}", user), params: { masked: false }
+
+          updated_variable = project.variables.reload.first
+
+          expect(response).to have_gitlab_http_status(:bad_request)
+
+          expected_error_message = 'The visibility setting cannot be changed for masked and hidden variables.'
+
+          expect(json_response['message']['base']).to contain_exactly(expected_error_message)
+          expect(updated_variable).to be_masked
+        end
+      end
+
+      context 'when variable is not hidden' do
+        let(:is_hidden_variable) { false }
+        let(:is_masked_variable) { false }
+
+        it 'updates masked attribute' do
+          put api("/projects/#{project.id}/variables/#{variable.key}", user), params: { masked: true }
+
+          updated_variable = project.variables.reload.first
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(updated_variable).to be_masked
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :update_variable do
+          let(:boundary_object) { project }
+          let(:request) { put api("/projects/#{project.id}/variables/#{variable.key}", personal_access_token: pat), params: { variable_type: 'file', value: 'VALUE_1_UP', protected: true } }
+        end
       end
 
       it 'masks the new value when logging' do
@@ -302,6 +429,18 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         expect(response).to have_gitlab_http_status(:unauthorized)
       end
     end
+
+    context 'when CI/CD is disabled' do
+      before do
+        project.project_feature.update!(builds_access_level: ProjectFeature::DISABLED)
+      end
+
+      it 'returns forbidden for maintainer' do
+        put api("/projects/#{project.id}/variables/#{variable.key}", user)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
   end
 
   describe 'DELETE /projects/:id/variables/:key' do
@@ -318,6 +457,11 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         delete api("/projects/#{project.id}/variables/non_existing_variable", user)
 
         expect(response).to have_gitlab_http_status(:not_found)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_variable do
+        let(:boundary_object) { project }
+        let(:request) { delete api("/projects/#{project.id}/variables/#{variable.key}", personal_access_token: pat) }
       end
 
       context 'when there are two variables with the same key on different env' do
@@ -368,6 +512,18 @@ RSpec.describe API::Ci::Variables, feature_category: :secrets_management do
         delete api("/projects/#{project.id}/variables/#{variable.key}")
 
         expect(response).to have_gitlab_http_status(:unauthorized)
+      end
+    end
+
+    context 'when CI/CD is disabled' do
+      before do
+        project.project_feature.update!(builds_access_level: ProjectFeature::DISABLED)
+      end
+
+      it 'returns forbidden for maintainer' do
+        delete api("/projects/#{project.id}/variables/#{variable.key}", user)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
   end

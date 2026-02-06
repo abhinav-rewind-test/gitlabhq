@@ -1,13 +1,14 @@
-import { GlSearchBoxByType, GlSkeletonLoader } from '@gitlab/ui';
+import { GlSearchBoxByType } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
-import { sprintf } from '~/locale';
+import CrudComponent from '~/vue_shared/components/crud_component.vue';
+import HelpPopover from '~/vue_shared/components/help_popover.vue';
+
 import {
-  I18N_ASSIGNED_PROJECTS,
   I18N_CLEAR_FILTER_PROJECTS,
   I18N_FILTER_PROJECTS,
   I18N_NO_PROJECTS_FOUND,
@@ -35,17 +36,21 @@ describe('RunnerProjects', () => {
   let wrapper;
   let mockRunnerProjectsQuery;
 
-  const findHeading = () => wrapper.find('h3');
-  const findGlSkeletonLoading = () => wrapper.findComponent(GlSkeletonLoader);
+  const findCrud = () => wrapper.findComponent(CrudComponent);
+  const findHelpPopover = () => wrapper.findComponent(HelpPopover);
   const findGlSearchBoxByType = () => wrapper.findComponent(GlSearchBoxByType);
   const findRunnerAssignedItems = () => wrapper.findAllComponents(RunnerAssignedItem);
   const findRunnerPagination = () => wrapper.findComponent(RunnerPagination);
 
-  const createComponent = ({ mountFn = shallowMountExtended } = {}) => {
-    wrapper = mountFn(RunnerProjects, {
+  const createComponent = ({ props } = {}) => {
+    wrapper = shallowMountExtended(RunnerProjects, {
       apolloProvider: createMockApollo([[runnerProjectsQuery, mockRunnerProjectsQuery]]),
       propsData: {
         runner: mockRunner,
+        ...props,
+      },
+      stubs: {
+        CrudComponent,
       },
     });
   };
@@ -67,6 +72,7 @@ describe('RunnerProjects', () => {
     expect(mockRunnerProjectsQuery).toHaveBeenCalledWith({
       id: mockRunner.id,
       search: '',
+      sort: 'ID_ASC',
       first: RUNNER_DETAILS_PROJECTS_PAGE_SIZE,
     });
   });
@@ -81,6 +87,22 @@ describe('RunnerProjects', () => {
     });
   });
 
+  it('Shows a help popover', () => {
+    createComponent({
+      props: {
+        showAccessHelp: true,
+      },
+    });
+
+    expect(findHelpPopover().text()).toBe('Projects you have access to');
+  });
+
+  it('Hides help popover by default', () => {
+    createComponent();
+
+    expect(findHelpPopover().exists()).toBe(false);
+  });
+
   describe('When there are projects assigned', () => {
     beforeEach(async () => {
       mockRunnerProjectsQuery.mockResolvedValueOnce(runnerProjectsData);
@@ -90,13 +112,12 @@ describe('RunnerProjects', () => {
     });
 
     it('Shows a heading', () => {
-      const expected = sprintf(I18N_ASSIGNED_PROJECTS, { projectCount: mockProjects.length });
-
-      expect(findHeading().text()).toBe(expected);
+      expect(findCrud().props('title')).toContain('Assigned Projects');
+      expect(findCrud().props('count')).toBe(2);
     });
 
     it('Shows projects', () => {
-      expect(findRunnerAssignedItems().length).toBe(mockProjects.length);
+      expect(findRunnerAssignedItems()).toHaveLength(mockProjects.length);
     });
 
     it('Shows a project', () => {
@@ -108,7 +129,6 @@ describe('RunnerProjects', () => {
         name,
         fullName: nameWithNamespace,
         avatarUrl,
-        isOwner: true, // first project is always owner
       });
     });
 
@@ -124,6 +144,7 @@ describe('RunnerProjects', () => {
         expect(mockRunnerProjectsQuery).toHaveBeenLastCalledWith({
           id: mockRunner.id,
           search: '',
+          sort: 'ID_ASC',
           first: RUNNER_DETAILS_PROJECTS_PAGE_SIZE,
           after: 'AFTER_CURSOR',
         });
@@ -138,6 +159,7 @@ describe('RunnerProjects', () => {
         expect(mockRunnerProjectsQuery).toHaveBeenLastCalledWith({
           id: mockRunner.id,
           search: '',
+          sort: 'ID_ASC',
           last: RUNNER_DETAILS_PROJECTS_PAGE_SIZE,
           before: 'BEFORE_CURSOR',
         });
@@ -151,6 +173,7 @@ describe('RunnerProjects', () => {
         expect(mockRunnerProjectsQuery).toHaveBeenLastCalledWith({
           id: mockRunner.id,
           search: 'my search',
+          sort: 'ID_ASC',
           first: RUNNER_DETAILS_PROJECTS_PAGE_SIZE,
         });
       });
@@ -167,6 +190,7 @@ describe('RunnerProjects', () => {
         expect(mockRunnerProjectsQuery).toHaveBeenLastCalledWith({
           id: mockRunner.id,
           search: 'my search',
+          sort: 'ID_ASC',
           first: RUNNER_DETAILS_PROJECTS_PAGE_SIZE,
         });
       });
@@ -189,12 +213,9 @@ describe('RunnerProjects', () => {
     it('shows loading indicator and no other content', () => {
       createComponent();
 
-      expect(findGlSkeletonLoading().exists()).toBe(true);
-
       expect(wrapper.findByText(I18N_NO_PROJECTS_FOUND).exists()).toBe(false);
-      expect(findRunnerAssignedItems().length).toBe(0);
+      expect(findRunnerAssignedItems()).toHaveLength(0);
 
-      expect(findRunnerPagination().attributes('disabled')).toBeDefined();
       expect(findGlSearchBoxByType().props('isLoading')).toBe(true);
     });
   });

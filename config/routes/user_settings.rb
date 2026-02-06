@@ -5,37 +5,43 @@ namespace :user_settings do
     get :authentication_log
     get :applications, to: '/oauth/applications#index'
   end
+
   resources :active_sessions, only: [:index, :destroy]
+
   resource :profile, only: [:show, :update]
+
+  resource :identities, only: [:new, :create]
+
   resource :password, only: [:new, :create, :edit, :update] do
     member do
       put :reset
     end
   end
+
   resources :personal_access_tokens, only: [:index, :create] do
+    put :toggle_dpop, on: :collection
+
+    collection do
+      get 'granular/new', to: 'personal_access_tokens#granular_new'
+      get 'legacy/new', to: 'personal_access_tokens#legacy_new'
+    end
+  end
+
+  resources :gpg_keys, only: [:index, :create, :destroy] do
     member do
       put :revoke
     end
   end
-end
 
-# Redirect routes till GitLab 17.0 release
-
-resource :profile, only: [] do
-  resources :active_sessions, only: [:destroy], controller: 'user_settings/active_sessions'
-  resources :personal_access_tokens, controller: 'user_settings/personal_access_tokens', only: [] do
+  resources :ssh_keys, only: [:index, :show, :create, :destroy] do
     member do
-      put :revoke
+      delete :revoke
     end
   end
-  member do
-    get :show, to: redirect(path: '-/user_settings/profile')
-    put :update, controller: 'user_settings/profiles'
-    patch :update, controller: 'user_settings/profiles'
 
-    get :active_sessions, to: redirect(path: '-/user_settings/active_sessions')
-    get :personal_access_tokens, to: redirect(path: '-/user_settings/personal_access_tokens')
+  resources :integration_accounts, only: [:index, :new, :create, :destroy], controller: '/profiles/chat_names' do
+    collection do
+      delete :deny
+    end
   end
-  get 'password/new', to: redirect(path: '-/user_settings/password/new')
-  get "password/edit", to: redirect(path: '-/user_settings/password/edit')
 end

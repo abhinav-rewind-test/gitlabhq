@@ -19,14 +19,6 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
       end
     end
 
-    let(:changes) do
-      [
-        { index: 0, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789012', ref: "#{ref_prefix}/create" },
-        { index: 1, oldrev: '123456', newrev: '789012', ref: "#{ref_prefix}/update" },
-        { index: 2, oldrev: '123456', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "#{ref_prefix}/delete" }
-      ]
-    end
-
     before do
       allow(git_changes).to receive(changes_method).and_return(changes)
     end
@@ -39,6 +31,21 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
         .and_return(service)
 
       subject.execute
+    end
+
+    context 'when BranchPushService' do
+      it 'calls BranchPushService with process_commit_worker_pool' do
+        next unless push_service_class == Git::BranchPushService
+
+        expect(push_service_class)
+          .to receive(:new)
+          .with(anything, anything, hash_including(
+            process_commit_worker_pool: a_kind_of(Gitlab::Git::ProcessCommitWorkerPool)
+          )).exactly(changes.count).times
+            .and_return(service)
+
+        subject.execute
+      end
     end
 
     context 'changes exceed push_event_hooks_limit' do
@@ -74,9 +81,9 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
           { oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789012', ref: "#{ref_prefix}/create" },
           { oldrev: '123456', newrev: '789012', ref: "#{ref_prefix}/update" },
           { oldrev: '123456', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "#{ref_prefix}/delete" }
-        ].map do |change|
+        ].flat_map do |change|
           multiple_changes(change, push_event_activities_limit + 1)
-        end.flatten
+        end
       end
 
       before do
@@ -100,7 +107,7 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
       end
     end
 
-    context 'pipeline creation' do
+    context 'pipeline creation', :sidekiq_inline do
       context 'with valid .gitlab-ci.yml' do
         before do
           stub_ci_pipeline_to_return_yaml_file
@@ -120,33 +127,55 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
           allow(Gitlab::Git::Commit).to receive(:between) { [] }
         end
 
-        context 'when git_push_create_all_pipelines is disabled' do
-          before do
-            stub_feature_flags(git_push_create_all_pipelines: false)
+        context 'with a git_push_pipeline_limit value that has not reached the limit' do
+          it 'creates all pipelines' do
+            # We don't run a pipeline for a deletion
+            expect { subject.execute }.to change { Ci::Pipeline.count }.by(changes.count - 1)
           end
 
           it 'creates pipeline for branches and tags' do
             subject.execute
 
-            expect(Ci::Pipeline.pluck(:ref)).to contain_exactly('create', 'update', 'delete')
+            # We don't run a pipeline for a deletion
+            refs = changes.filter_map do |change|
+              Gitlab::Git.ref_name(change[:ref]) unless change[:newrev] == Gitlab::Git::SHA1_BLANK_SHA
+            end
+            expect(Ci::Pipeline.pluck(:ref)).to match_array(refs)
           end
 
-          it "creates exactly #{described_class::PIPELINE_PROCESS_LIMIT} pipelines" do
-            stub_const("#{described_class}::PIPELINE_PROCESS_LIMIT", changes.count - 1)
+          it "calls Gitlab::AppJsonLogger when a Git push is made" do
+            # We expect some logs from Gitlab::Ci::Pipeline::CommandLogger,
+            # but no logs from warn_if_over_process_limit
+            allow(Gitlab::AppJsonLogger).to receive(:info).and_call_original
+            expect(Gitlab::AppJsonLogger).to receive(:info).with(
+              hash_including("class" => "Gitlab::Ci::Pipeline::CommandLogger")
+            ).twice
+            expect(Gitlab::AppJsonLogger).not_to receive(:info).with(message: /ref count exceeded limit/)
 
-            expect(Gitlab::AppJsonLogger).not_to receive(:info)
-
-            expect { subject.execute }.to change { Ci::Pipeline.count }.by(described_class::PIPELINE_PROCESS_LIMIT)
+            expect { subject.execute }.to change { Ci::Pipeline.count }.by(changes.count - 1)
           end
         end
 
-        context 'when git_push_create_all_pipelines is enabled' do
+        context 'when git_push_pipeline_limit is unlimited' do
           before do
-            stub_feature_flags(git_push_create_all_pipelines: true)
+            stub_application_setting(git_push_pipeline_limit: 0)
           end
 
           it 'creates all pipelines' do
-            expect { subject.execute }.to change { Ci::Pipeline.count }.by(changes.count)
+            # We don't run a pipeline for a deletion
+            expect { subject.execute }.to change { Ci::Pipeline.count }.by(changes.count - 1)
+          end
+        end
+
+        context 'when git_push_pipeline_limit is exceeded' do
+          let(:push_pipeline_limit) { 1 }
+
+          before do
+            stub_application_setting(git_push_pipeline_limit: push_pipeline_limit)
+          end
+
+          it 'creates pipelines until the limit is reached and logs the skipped refs' do
+            expect { subject.execute }.to change { Ci::Pipeline.count }.by(push_pipeline_limit)
           end
         end
       end
@@ -165,10 +194,10 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
     end
 
     describe "housekeeping", :clean_gitlab_redis_cache, :clean_gitlab_redis_queues, :clean_gitlab_redis_shared_state do
-      let(:housekeeping) { Repositories::HousekeepingService.new(project) }
+      let(:housekeeping) { ::Repositories::HousekeepingService.new(project) }
 
       before do
-        allow(Repositories::HousekeepingService).to receive(:new).and_return(housekeeping)
+        allow(::Repositories::HousekeepingService).to receive(:new).and_return(housekeeping)
 
         allow(push_service_class)
           .to receive(:new)
@@ -210,10 +239,17 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
   end
 
   context 'branch changes' do
-    let(:changes_method) { :branch_changes }
-    let(:ref_prefix) { 'refs/heads' }
-
-    it_behaves_like 'service for processing ref changes', Git::BranchPushService
+    it_behaves_like 'service for processing ref changes', Git::BranchPushService do
+      let(:ref_prefix) { 'refs/heads' }
+      let(:changes_method) { :branch_changes }
+      let(:changes) do
+        [
+          { index: 0, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789012', ref: "refs/heads/create" },
+          { index: 1, oldrev: '123456', newrev: '789012', ref: "refs/heads/update" },
+          { index: 2, oldrev: '123456', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "refs/heads/delete" }
+        ]
+      end
+    end
 
     context 'when there are merge requests associated with branches' do
       let(:tag_changes) do
@@ -224,13 +260,13 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
 
       let(:branch_changes) do
         [
-          { index: 0, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789012', ref: "#{ref_prefix}/create1" },
-          { index: 1, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789013', ref: "#{ref_prefix}/create2" },
-          { index: 2, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789014', ref: "#{ref_prefix}/create3" },
-          { index: 3, oldrev: '789015', newrev: '789016', ref: "#{ref_prefix}/changed1" },
-          { index: 4, oldrev: '789017', newrev: '789018', ref: "#{ref_prefix}/changed2" },
-          { index: 5, oldrev: '789019', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "#{ref_prefix}/removed1" },
-          { index: 6, oldrev: '789020', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "#{ref_prefix}/removed2" }
+          { index: 0, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789012', ref: "refs/heads/create1" },
+          { index: 1, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789013', ref: "refs/heads/create2" },
+          { index: 2, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: '789014', ref: "refs/heads/create3" },
+          { index: 3, oldrev: '789015', newrev: '789016', ref: "refs/heads/changed1" },
+          { index: 4, oldrev: '789017', newrev: '789018', ref: "refs/heads/changed2" },
+          { index: 5, oldrev: '789019', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "refs/heads/removed1" },
+          { index: 6, oldrev: '789020', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "refs/heads/removed2" }
         ]
       end
 
@@ -252,48 +288,46 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
           user.id,
           Gitlab::Git::SHA1_BLANK_SHA,
           '789012',
-          "#{ref_prefix}/create1",
-          { 'push_options' => nil }).ordered
+          "refs/heads/create1",
+          { 'gitaly_context' => nil, 'push_options' => nil }).ordered
 
         expect(UpdateMergeRequestsWorker).to receive(:perform_async).with(
           project.id,
           user.id,
           Gitlab::Git::SHA1_BLANK_SHA,
           '789013',
-          "#{ref_prefix}/create2",
-          { 'push_options' => nil }).ordered
+          "refs/heads/create2",
+          { 'gitaly_context' => nil, 'push_options' => nil }).ordered
 
         expect(UpdateMergeRequestsWorker).to receive(:perform_async).with(
           project.id,
           user.id,
           '789015',
           '789016',
-          "#{ref_prefix}/changed1",
-          { 'push_options' => nil }).ordered
+          "refs/heads/changed1",
+          { 'gitaly_context' => nil, 'push_options' => nil }).ordered
 
         expect(UpdateMergeRequestsWorker).to receive(:perform_async).with(
           project.id,
           user.id,
           '789020',
           Gitlab::Git::SHA1_BLANK_SHA,
-          "#{ref_prefix}/removed2",
-          { 'push_options' => nil }).ordered
+          "refs/heads/removed2",
+          { 'gitaly_context' => nil, 'push_options' => nil }).ordered
 
         subject.execute
       end
 
-      context 'when git_push_create_all_pipelines is disabled' do
-        before do
-          stub_feature_flags(git_push_create_all_pipelines: false)
-        end
-
+      context 'when git_push_pipeline_limit is reached' do
         it 'logs a warning' do
+          allow(Gitlab::AppJsonLogger).to receive(:info).and_call_original
+
           expect(Gitlab::AppJsonLogger).to receive(:info).with(
             hash_including(
               message: "Some pipelines may not have been created because ref count exceeded limit",
-              ref_limit: described_class::PIPELINE_PROCESS_LIMIT,
+              ref_limit: Gitlab::CurrentSettings.git_push_pipeline_limit,
               total_ref_count: branch_changes.count + tag_changes.count,
-              possible_omitted_refs: ["#{ref_prefix}/changed2", "refs/tags/v10.0.0"],
+              possible_omitted_refs: ["refs/heads/changed2", "refs/tags/v10.0.0"],
               possible_omitted_ref_count: 2
             )
           )
@@ -305,9 +339,19 @@ RSpec.describe Git::ProcessRefChangesService, feature_category: :source_code_man
   end
 
   context 'tag changes' do
-    let(:changes_method) { :tag_changes }
-    let(:ref_prefix) { 'refs/tags' }
-
-    it_behaves_like 'service for processing ref changes', Git::TagPushService
+    it_behaves_like 'service for processing ref changes', Git::TagPushService do
+      let(:changes_method) { :tag_changes }
+      let(:ref_prefix) { 'refs/tags' }
+      let(:changes) do
+        tags = project.repository.tags
+        tag_1 = tags.first
+        tag_2 = tags.second
+        [
+          { index: 0, oldrev: Gitlab::Git::SHA1_BLANK_SHA, newrev: tag_1.target, ref: "refs/tags/#{tag_1.name}" },
+          { index: 1, oldrev: '123456', newrev: tag_2.target, ref: "refs/tags/#{tag_2.name}" },
+          { index: 2, oldrev: '123456', newrev: Gitlab::Git::SHA1_BLANK_SHA, ref: "refs/tags/delete" }
+        ]
+      end
+    end
   end
 end

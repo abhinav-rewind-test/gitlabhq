@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Lograge::CustomOptions do
+RSpec.describe Gitlab::Lograge::CustomOptions, feature_category: :observability do
   describe '.call' do
     let(:params) do
       {
@@ -17,7 +17,6 @@ RSpec.describe Gitlab::Lograge::CustomOptions do
       {
         params: params,
         user_id: 'test',
-        cf_ray: SecureRandom.hex,
         cf_request_id: SecureRandom.hex,
         metadata: { 'meta.user' => 'jane.doe' },
         request_urgency: :default,
@@ -26,7 +25,10 @@ RSpec.describe Gitlab::Lograge::CustomOptions do
         ua: 'Nyxt',
         queue_duration_s: 0.2,
         etag_route: '/etag',
-        response_bytes: 1234
+        json_total_elements: 2,
+        json_max_array_count: 3,
+        json_max_hash_count: 4,
+        json_max_depth: 5
       }
     end
 
@@ -56,23 +58,32 @@ RSpec.describe Gitlab::Lograge::CustomOptions do
       expect(subject[:user_id]).to eq('test')
     end
 
-    it 'adds the response length' do
-      expect(subject[:response_bytes]).to eq(1234)
-    end
-
-    context 'with log_response_length disabled' do
-      before do
-        stub_feature_flags(log_response_length: false)
-      end
-
-      it 'does not add the response length' do
-        expect(subject).not_to include(:response_bytes)
-      end
-    end
-
     it 'adds Cloudflare headers' do
-      expect(subject[:cf_ray]).to eq(event.payload[:cf_ray])
       expect(subject[:cf_request_id]).to eq(event.payload[:cf_request_id])
+    end
+
+    it 'adds JSON metadata headers' do
+      expect(subject[:json_total_elements]).to eq(2)
+      expect(subject[:json_max_array_count]).to eq(3)
+      expect(subject[:json_max_hash_count]).to eq(4)
+      expect(subject[:json_max_depth]).to eq(5)
+    end
+
+    context 'when only some JSON metadata headers are present' do
+      let(:event_payload) do
+        {
+          params: params,
+          json_total_elements: 10,
+          json_max_depth: 3
+        }
+      end
+
+      it 'includes only the present JSON metadata headers' do
+        expect(subject[:json_total_elements]).to eq(10)
+        expect(subject[:json_max_depth]).to eq(3)
+        expect(subject).not_to have_key(:json_max_array_count)
+        expect(subject).not_to have_key(:json_max_hash_count)
+      end
     end
 
     it 'adds the metadata' do
@@ -100,7 +111,7 @@ RSpec.describe Gitlab::Lograge::CustomOptions do
     end
 
     context 'when correlation_id is overridden' do
-      let(:correlation_id_key) { Labkit::Correlation::CorrelationId::LOG_KEY }
+      let(:correlation_id_key) { Labkit::Fields::CORRELATION_ID }
 
       before do
         event_payload[correlation_id_key] = '123456'

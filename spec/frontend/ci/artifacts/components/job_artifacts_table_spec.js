@@ -3,11 +3,14 @@ import {
   GlTable,
   GlLink,
   GlPagination,
+  GlPopover,
   GlModal,
   GlFormCheckbox,
+  GlAnimatedChevronRightDownIcon,
 } from '@gitlab/ui';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
+// Fixtures located in spec/frontend/fixtures/job_artifacts.rb
 import getJobArtifactsResponse from 'test_fixtures/graphql/ci/artifacts/graphql/queries/get_job_artifacts.query.graphql.json';
 import CiIcon from '~/vue_shared/components/ci_icon/ci_icon.vue';
 import waitForPromises from 'helpers/wait_for_promises';
@@ -19,6 +22,7 @@ import BulkDeleteModal from '~/ci/artifacts/components/bulk_delete_modal.vue';
 import JobCheckbox from '~/ci/artifacts/components/job_checkbox.vue';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
+import setWindowLocation from 'helpers/set_window_location_helper';
 import getJobArtifactsQuery from '~/ci/artifacts/graphql/queries/get_job_artifacts.query.graphql';
 import bulkDestroyArtifactsMutation from '~/ci/artifacts/graphql/mutations/bulk_destroy_job_artifacts.mutation.graphql';
 import { getIdFromGraphQLId, convertToGraphQLId } from '~/graphql_shared/utils';
@@ -32,6 +36,7 @@ import {
 } from '~/ci/artifacts/constants';
 import { totalArtifactsSizeForJob } from '~/ci/artifacts/utils';
 import { createAlert } from '~/alert';
+import { jobArtifactsResponseWithSecurityFiles } from './constants';
 
 const jobArtifactsCountLimit = 100;
 
@@ -53,6 +58,7 @@ describe('JobArtifactsTable component', () => {
 
   const findCount = () => wrapper.findByTestId('job-artifacts-count');
   const findCountAt = (i) => wrapper.findAllByTestId('job-artifacts-count').at(i);
+  const findCountIcon = () => findCount().findComponent(GlAnimatedChevronRightDownIcon);
 
   const findDeleteModal = () => wrapper.findComponent(ArtifactDeleteModal);
   const findBulkDeleteModal = () => wrapper.findComponent(BulkDeleteModal);
@@ -97,6 +103,12 @@ describe('JobArtifactsTable component', () => {
     await waitForPromises();
   };
 
+  const findVisibleFileTypeBadge = () => wrapper.findByTestId('visible-file-type-badge');
+  const findPopoverText = () => wrapper.findByTestId('file-types-popover-text');
+  const findAllRemainingFileTypeBadges = () =>
+    wrapper.findAllByTestId('remaining-file-type-badges');
+  const findPopover = () => wrapper.findComponent(GlPopover);
+
   const projectId = 'some/project/id';
 
   let enoughJobsToPaginate = [...getJobArtifactsResponse.data.project.jobs.nodes];
@@ -118,6 +130,24 @@ describe('JobArtifactsTable component', () => {
   };
 
   const job = getJobArtifactsResponse.data.project.jobs.nodes[0];
+  const emptyJob = {
+    ...job,
+    artifacts: { nodes: [] },
+  };
+
+  const getJobArtifactsResponseWithEmptyJob = {
+    data: {
+      ...getJobArtifactsResponse.data,
+      project: {
+        ...getJobArtifactsResponse.data.project,
+        jobs: {
+          nodes: [emptyJob],
+          pageInfo: { ...getJobArtifactsResponse.data.project.jobs.pageInfo },
+        },
+      },
+    },
+  };
+
   const archiveArtifact = job.artifacts.nodes.find(
     (artifact) => artifact.fileType === ARCHIVE_FILE_TYPE,
   );
@@ -240,22 +270,25 @@ describe('JobArtifactsTable component', () => {
     });
 
     it('shows the created time', () => {
-      expect(findCreated().text()).toBe('5 years ago');
+      expect(findCreated().text()).toBe('Jul 3, 2015');
     });
 
     describe('row expansion', () => {
       it('toggles the visibility of the row details', async () => {
-        expect(findDetailsRows().length).toBe(0);
+        expect(findDetailsRows()).toHaveLength(0);
+        expect(findCountIcon().props('isOn')).toBe(false);
 
         findCount().trigger('click');
         await nextTick();
 
-        expect(findDetailsRows().length).toBe(1);
+        expect(findDetailsRows()).toHaveLength(1);
+        expect(findCountIcon().props('isOn')).toBe(true);
 
         findCount().trigger('click');
         await nextTick();
 
-        expect(findDetailsRows().length).toBe(0);
+        expect(findDetailsRows()).toHaveLength(0);
+        expect(findCountIcon().props('isOn')).toBe(false);
       });
 
       it('expands and collapses jobs', async () => {
@@ -810,6 +843,47 @@ describe('JobArtifactsTable component', () => {
     });
   });
 
+  describe('refetch behavior', () => {
+    describe('without no empty jobs', () => {
+      const query = jest.fn().mockResolvedValue(getJobArtifactsResponse);
+
+      beforeEach(async () => {
+        createComponent({
+          handlers: {
+            getJobArtifactsQuery: query,
+          },
+        });
+
+        await waitForPromises();
+      });
+
+      it('only fetches artifacts once', () => {
+        expect(query).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('with an empty job', () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(getJobArtifactsResponseWithEmptyJob)
+        .mockResolvedValue(getJobArtifactsResponse);
+
+      beforeEach(async () => {
+        createComponent({
+          handlers: {
+            getJobArtifactsQuery: query,
+          },
+        });
+
+        await waitForPromises();
+      });
+
+      it('refetches to clear empty jobs', () => {
+        expect(query).toHaveBeenCalledTimes(2);
+      });
+    });
+  });
+
   describe('pagination', () => {
     const { pageInfo } = getJobArtifactsResponseThatPaginates.data.project.jobs;
     const query = jest.fn().mockResolvedValue(getJobArtifactsResponseThatPaginates);
@@ -864,6 +938,119 @@ describe('JobArtifactsTable component', () => {
         nextPageCursor: pageInfo.endCursor,
       });
       expect(findPagination().props('value')).toEqual(2);
+    });
+  });
+
+  describe('navigation between pages', () => {
+    const { pageInfo } = getJobArtifactsResponseThatPaginates.data.project.jobs;
+    const query = jest.fn().mockResolvedValue(getJobArtifactsResponseThatPaginates);
+
+    beforeEach(async () => {
+      jest.spyOn(window.history, 'pushState');
+      createComponent({
+        handlers: {
+          getJobArtifactsQuery: query,
+        },
+        data: { pageInfo },
+      });
+
+      await nextTick();
+    });
+
+    it.each`
+      fromPage | toPage | expectedFirstPageSize | expectedLastPageSize | expectedPrevPageCursor  | expectedNextPageCursor
+      ${1}     | ${2}   | ${JOBS_PER_PAGE}      | ${null}              | ${''}                   | ${pageInfo.endCursor}
+      ${2}     | ${1}   | ${null}               | ${JOBS_PER_PAGE}     | ${pageInfo.startCursor} | ${undefined}
+    `(
+      'updates when going from page $fromPage to $toPage',
+      async ({
+        fromPage,
+        toPage,
+        expectedFirstPageSize,
+        expectedLastPageSize,
+        expectedPrevPageCursor,
+        expectedNextPageCursor,
+      }) => {
+        findPagination().vm.$emit('input', fromPage);
+        findPagination().vm.$emit('input', toPage);
+
+        // pushes page change to browser history
+        expect(window.history.pushState).toHaveBeenCalledWith(
+          {},
+          '',
+          `http://test.host/?page=${toPage}`,
+        );
+
+        await waitForPromises();
+
+        // updates artifact data  and page in pagination
+        expect(findPagination().props('value')).toBe(toPage);
+        expect(query).toHaveBeenLastCalledWith({
+          projectPath: 'project/path',
+          firstPageSize: expectedFirstPageSize,
+          lastPageSize: expectedLastPageSize,
+          prevPageCursor: expectedPrevPageCursor,
+          nextPageCursor: expectedNextPageCursor,
+        });
+      },
+    );
+
+    it('starts on page from URL when provided', async () => {
+      const currentpage = 2;
+      await setPage(currentpage);
+
+      setWindowLocation(`?page=${currentpage}`);
+
+      expect(findPagination().props('value')).toEqual(2);
+    });
+  });
+
+  describe('file type badges', () => {
+    it('displays file type badge', async () => {
+      createComponent();
+
+      await waitForPromises();
+
+      expect(findVisibleFileTypeBadge().text()).toBe('archive');
+    });
+
+    it('displays reamining file types in popover', async () => {
+      createComponent();
+
+      await waitForPromises();
+
+      expect(findPopoverText().text()).toBe('+2 more');
+      expect(findPopover().exists()).toBe(true);
+      expect(findAllRemainingFileTypeBadges().at(0).text()).toBe('metadata');
+      expect(findAllRemainingFileTypeBadges().at(1).text()).toBe('trace');
+    });
+
+    describe('with security file types', () => {
+      const query = jest.fn().mockResolvedValue(jobArtifactsResponseWithSecurityFiles);
+
+      beforeEach(async () => {
+        createComponent({
+          handlers: {
+            getJobArtifactsQuery: query,
+          },
+        });
+
+        await waitForPromises();
+      });
+
+      it('displays security badge first in the list', () => {
+        expect(findVisibleFileTypeBadge().text()).toBe('sast');
+      });
+    });
+  });
+
+  describe('artifacts total files count', () => {
+    it('emits total artifact count and calculates fileTypeCounts correctly', async () => {
+      createComponent();
+
+      await waitForPromises();
+
+      expect(wrapper.emitted('artifact-count-update')).toEqual([[6]]);
     });
   });
 });

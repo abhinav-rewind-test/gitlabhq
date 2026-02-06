@@ -25,7 +25,9 @@ export default {
     },
   },
   data() {
-    return { tagName: '' };
+    return {
+      localQuery: this.query,
+    };
   },
   computed: {
     ...mapState('ref', ['matches']),
@@ -34,10 +36,15 @@ export default {
       return this.matches?.tags?.list || [];
     },
     createText() {
-      return this.query ? this.$options.i18n.createTag : this.$options.i18n.typeNew;
+      return this.localQuery ? this.$options.i18n.createTag : this.$options.i18n.typeNew;
     },
     selectedNotShown() {
       return this.release.tagName && !this.tags.some((tag) => tag.name === this.release.tagName);
+    },
+  },
+  watch: {
+    query(newVal) {
+      this.localQuery = newVal;
     },
   },
   created() {
@@ -46,14 +53,14 @@ export default {
   mounted() {
     this.setProjectId(this.projectId);
     this.setEnabledRefTypes([REF_TYPE_TAGS]);
-    this.search(this.query);
+    this.search(this.localQuery);
   },
   methods: {
     ...mapActions('ref', ['setEnabledRefTypes', 'setProjectId', 'search']),
     onSearchBoxInput(searchQuery = '') {
-      const query = searchQuery.trim();
-      this.$emit('change', query);
-      this.debouncedSearch(query);
+      this.localQuery = searchQuery.trim();
+      this.$emit('change', this.localQuery);
+      this.debouncedSearch(this.localQuery);
     },
     selected(tagName) {
       return (this.release?.tagName ?? '') === tagName;
@@ -69,20 +76,15 @@ export default {
 <template>
   <div data-testid="tag-name-search">
     <gl-search-box-by-type
-      :value="query"
-      class="gl-border-b-solid gl-border-b-1 gl-border-gray-200"
+      :value="localQuery"
+      class="gl-border-b-1 gl-border-dropdown gl-border-b-solid"
       borderless
       autofocus
       @input="onSearchBoxInput"
     />
-    <div class="gl-overflow-y-auto release-tag-list">
+    <div class="release-tag-list gl-overflow-y-auto">
       <div v-if="tags.length || release.tagName">
-        <gl-dropdown-item
-          v-if="selectedNotShown"
-          is-checked
-          is-check-item
-          class="gl-list-style-none"
-        >
+        <gl-dropdown-item v-if="selectedNotShown" is-checked is-check-item class="gl-list-none">
           {{ release.tagName }}
         </gl-dropdown-item>
         <gl-dropdown-item
@@ -90,30 +92,27 @@ export default {
           :key="tag.name"
           :is-checked="selected(tag.name)"
           is-check-item
-          class="gl-list-style-none"
+          class="gl-list-none"
           @click="$emit('select', tag.name)"
         >
           {{ tag.name }}
         </gl-dropdown-item>
       </div>
-      <div
-        v-else
-        class="gl-my-5 gl-text-gray-500 gl-display-flex gl-font-base gl-justify-content-center"
-      >
+      <div v-else class="gl-my-5 gl-flex gl-justify-center gl-text-base gl-text-subtle">
         {{ $options.i18n.noResults }}
       </div>
     </div>
-    <div class="gl-border-t-solid gl-border-t-1 gl-border-gray-200 gl-py-3">
+    <div class="gl-border-t-1 gl-border-dropdown gl-py-3 gl-border-t-solid">
       <gl-button
         category="tertiary"
-        class="gl-justify-content-start! gl-rounded-0!"
+        class="!gl-justify-start !gl-rounded-none"
         block
-        :disabled="!query"
-        @click="$emit('create', query)"
+        :disabled="!localQuery"
+        @click="$emit('create', localQuery)"
       >
         <gl-sprintf :message="createText">
           <template #tag>
-            <span class="gl-font-weight-bold">{{ query }}</span>
+            <span class="gl-font-bold">{{ localQuery }}</span>
           </template>
         </gl-sprintf>
       </gl-button>

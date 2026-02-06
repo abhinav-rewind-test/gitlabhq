@@ -1,12 +1,13 @@
 import MockAdapter from 'axios-mock-adapter';
-import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
 import axios from '~/lib/utils/axios_utils';
 import { HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import PersistentUserCallout from '~/persistent_user_callout';
+import { visitUrl } from '~/lib/utils/url_utility';
 
 jest.mock('~/alert');
+jest.mock('~/lib/utils/url_utility');
 
 describe('PersistentUserCallout', () => {
   const dismissEndpoint = '/dismiss';
@@ -48,23 +49,6 @@ describe('PersistentUserCallout', () => {
     return fixture;
   }
 
-  function createFollowLinkFixture() {
-    const fixture = document.createElement('div');
-    fixture.innerHTML = `
-      <ul>
-        <li
-          class="container"
-          data-dismiss-endpoint="${dismissEndpoint}"
-          data-feature-id="${featureName}"
-        >
-          <a class="js-follow-link" href="/somewhere-pleasant">A Link</a>
-        </li>
-      </ul>
-  `;
-
-    return fixture;
-  }
-
   describe('dismiss', () => {
     const buttons = {};
     let mockAxios;
@@ -75,13 +59,17 @@ describe('PersistentUserCallout', () => {
       const container = fixture.querySelector('.container');
       buttons.primary = fixture.querySelector('.js-close-primary');
       buttons.secondary = fixture.querySelector('.js-close-secondary');
+
       mockAxios = new MockAdapter(axios);
       persistentUserCallout = new PersistentUserCallout(container);
+
       jest.spyOn(persistentUserCallout.container, 'remove').mockImplementation(() => {});
     });
 
     afterEach(() => {
       mockAxios.restore();
+      jest.clearAllMocks();
+      sessionStorage.clear();
     });
 
     it.each`
@@ -101,6 +89,24 @@ describe('PersistentUserCallout', () => {
       );
     });
 
+    it('removes parent container if hasWrapper data attribute present', async () => {
+      const newFixture = createFixture();
+      const newContainer = newFixture.querySelector('.container');
+      newContainer.dataset.hasWrapper = 'true';
+
+      mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_OK);
+
+      const callout = new PersistentUserCallout(newContainer);
+      jest.spyOn(callout.container.parentElement, 'remove').mockImplementation(() => {});
+
+      expect(callout.calloutElement).toBe(newFixture);
+
+      callout.container.querySelector('.js-close').click();
+      await waitForPromises();
+
+      expect(callout.container.parentElement.remove).toHaveBeenCalled();
+    });
+
     it('invokes Flash when the dismiss request fails', async () => {
       mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_INTERNAL_SERVER_ERROR);
 
@@ -113,6 +119,48 @@ describe('PersistentUserCallout', () => {
         message: 'An error occurred while dismissing the alert. Refresh the page and try again.',
       });
     });
+
+    it('sets callout timestamp in session storage', async () => {
+      const storageKey = `user_callout_dismissed_${groupId}_${featureName}`;
+      expect(sessionStorage.getItem(storageKey)).toBe(null);
+
+      mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_OK);
+
+      buttons.primary.click();
+
+      await waitForPromises();
+
+      expect(sessionStorage.getItem(storageKey)).toEqual(expect.any(String));
+    });
+  });
+
+  describe('checks session storage on init', () => {
+    let persistentUserCallout;
+    let container;
+    let getStorageSpy;
+    const storageKey = `user_callout_dismissed_${groupId}_${featureName}`;
+
+    beforeEach(() => {
+      getStorageSpy = jest.spyOn(Storage.prototype, 'getItem');
+
+      const fixture = createFixture();
+      container = fixture.querySelector('.container');
+
+      sessionStorage.setItem(storageKey, new Date('2025-10-31').toISOString());
+      jest.spyOn(container, 'remove').mockImplementation(() => {});
+
+      persistentUserCallout = new PersistentUserCallout(container);
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+      sessionStorage.clear();
+    });
+
+    it('removes callout element if callout key is present', () => {
+      expect(getStorageSpy).toHaveBeenCalledWith(storageKey);
+      expect(persistentUserCallout.container.remove).toHaveBeenCalled();
+    });
   });
 
   describe('deferred links', () => {
@@ -121,7 +169,6 @@ describe('PersistentUserCallout', () => {
     let normalLink;
     let mockAxios;
     let persistentUserCallout;
-    let windowSpy;
 
     beforeEach(() => {
       const fixture = createDeferredLinkFixture();
@@ -132,22 +179,22 @@ describe('PersistentUserCallout', () => {
       mockAxios = new MockAdapter(axios);
       persistentUserCallout = new PersistentUserCallout(container);
       jest.spyOn(persistentUserCallout.container, 'remove').mockImplementation(() => {});
-      windowSpy = jest.spyOn(window, 'open').mockImplementation(() => {});
     });
 
     afterEach(() => {
       mockAxios.restore();
+      sessionStorage.clear();
     });
 
     it('defers loading of a link until callout is dismissed', async () => {
-      const { href, target } = deferredLink;
+      const { href } = deferredLink;
       mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_OK);
 
       deferredLink.click();
 
       await waitForPromises();
 
-      expect(windowSpy).toHaveBeenCalledWith(href, target);
+      expect(visitUrl).toHaveBeenCalledWith(href, true);
       expect(persistentUserCallout.container.remove).toHaveBeenCalled();
       expect(mockAxios.history.post[0].data).toBe(JSON.stringify({ feature_name: featureName }));
     });
@@ -157,7 +204,7 @@ describe('PersistentUserCallout', () => {
 
       await waitForPromises();
 
-      expect(windowSpy).not.toHaveBeenCalled();
+      expect(visitUrl).not.toHaveBeenCalled();
       expect(persistentUserCallout.container.remove).not.toHaveBeenCalled();
     });
 
@@ -168,57 +215,8 @@ describe('PersistentUserCallout', () => {
 
       await waitForPromises();
 
-      expect(windowSpy).not.toHaveBeenCalled();
+      expect(visitUrl).not.toHaveBeenCalled();
       expect(persistentUserCallout.container.remove).toHaveBeenCalled();
-    });
-  });
-
-  describe('follow links', () => {
-    let link;
-    let mockAxios;
-    let persistentUserCallout;
-
-    useMockLocationHelper();
-
-    beforeEach(() => {
-      const fixture = createFollowLinkFixture();
-      const container = fixture.querySelector('.container');
-      link = fixture.querySelector('.js-follow-link');
-      mockAxios = new MockAdapter(axios);
-
-      persistentUserCallout = new PersistentUserCallout(container);
-      jest.spyOn(persistentUserCallout.container, 'remove').mockImplementation(() => {});
-    });
-
-    afterEach(() => {
-      mockAxios.restore();
-    });
-
-    it('uses a link to trigger callout and defers following until callout is finished', async () => {
-      const { href } = link;
-      mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_OK);
-
-      link.click();
-
-      await waitForPromises();
-
-      expect(window.location.assign).toHaveBeenCalledWith(href);
-      expect(persistentUserCallout.container.remove).not.toHaveBeenCalled();
-      expect(mockAxios.history.post[0].data).toBe(JSON.stringify({ feature_name: featureName }));
-    });
-
-    it('invokes Flash when the dismiss request fails', async () => {
-      mockAxios.onPost(dismissEndpoint).replyOnce(HTTP_STATUS_INTERNAL_SERVER_ERROR);
-
-      link.click();
-
-      await waitForPromises();
-
-      expect(window.location.assign).not.toHaveBeenCalled();
-      expect(createAlert).toHaveBeenCalledWith({
-        message:
-          'An error occurred while acknowledging the notification. Refresh the page and try again.',
-      });
     });
   });
 

@@ -13,6 +13,10 @@ FactoryBot.define do
     fetched_objects_count { 1 }
     imported_objects_count { 1 }
 
+    trait :created do
+      status { 0 }
+    end
+
     trait :started do
       status { 1 }
     end
@@ -31,6 +35,10 @@ FactoryBot.define do
 
     trait :batched do
       batched { true }
+    end
+
+    trait :canceled do
+      status { -3 }
     end
 
     trait :stale do

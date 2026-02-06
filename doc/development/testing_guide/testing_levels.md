@@ -1,23 +1,26 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Testing levels
 ---
 
-# Testing levels
-
-![Testing priority triangle](img/testing_triangle.png)
+![Testing priority triangle](img/testing_triangle_v15_7.png)
 
 _This diagram demonstrates the relative priority of each test type we use. `e2e` stands for end-to-end._
 
-As of 2019-05-01, we have the following distribution of tests per level:
+To achieve test coverage with stability and speed, we use the testing pyramid to guide test distribution.
 
-| Test level | Community Edition | Enterprise Edition  | Community + Enterprise Edition |
-| --------- | ---------- | -------------- | ----- |
-| Black-box tests at the system level (aka end-to-end or QA tests) | 68 (0.14%) | 31 (0.2%) | 99 (0.17%) |
-| White-box tests at the system level (aka system or feature tests) | 5,471 (11.9%) | 969 (7.4%) | 6440 (10.9%) |
-| Integration tests | 8,333 (18.2%) | 2,244 (17.2%) | 10,577 (17.9%) |
-| Unit tests | 32,031 (69.7%) | 9,778 (75.1%) | 41,809 (71%) |
+Most of our tests should be at the unit level, with fewer tests as we move up each layer. End-to-end tests at the top are the most expensive to run and maintain. Because of this, they should make up the smallest portion of our total tests.
+
+As of 2025-02-03, we have the following estimated distribution of tests per level:
+
+| Test level                                                        | Community Edition | Enterprise Edition | Community + Enterprise Edition |
+|-------------------------------------------------------------------|-------------------|--------------------|--------------------------------|
+| Black-box tests at the system level (aka end-to-end or QA tests)  | 401 (0.14%)       | 303 (0.10%)        | 704 (0.24%)                    |
+| White-box tests at the system level (aka system or feature tests) | 8,362 (2.90%)     | 4,082 (1.41%)      | 12,444 (4.31%)                 |
+| Integration tests                                                 | 39,716 (13.76%)   | 17,411 (6.03%)     | 57,127 (19.79%)                |
+| Unit tests                                                        | 139,504 (48.32%)  | 78,955 (27.35%)    | 218,459 (75.66%)               |
 
 ## Unit tests
 
@@ -63,7 +66,11 @@ Unit tests are on the lowest abstraction level and typically test functionality
 that is not directly perceivable by a user.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph RL
+    accTitle: Frontend unit tests
+    accDescr: Diagram showing how frontend unit tests work and test functionality
+
     plain[Plain JavaScript];
     Vue[Vue Components];
     feature-flags[Feature flags];
@@ -87,9 +94,9 @@ graph RL
     class plain tested;
     class Vuex tested;
 
-    classDef node color:#909090,fill:#f0f0f0,stroke-width:2px,stroke:#909090
+    classDef node stroke-width:2px
     classDef label stroke-width:0;
-    classDef tested color:#000000,fill:#a0c0ff,stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    classDef tested stroke-width:2px,stroke-dasharray: 5, 5;
 
     subgraph " "
     tested;
@@ -108,7 +115,7 @@ graph RL
 - **Vuex mutations**:
   For complex Vuex mutations, you should separate the tests from other parts of the Vuex store to simplify problem-solving.
 
-#### When *not* to use unit tests
+#### When not to use unit tests
 
 - **Non-exported functions or classes**:
   Anything not exported from a module can be considered private or an implementation detail, and doesn't need to be tested.
@@ -131,14 +138,14 @@ graph RL
 - **Asynchronous background operations**:
   Background operations cannot be stopped or waited on, so they continue running in the following tests and cause side effects.
 
-#### What *not* to mock in unit tests
+#### What not to mock in unit tests
 
 - **Non-exported functions or classes**:
   Everything that is not exported can be considered private to the module, and is implicitly tested through the exported classes and functions.
 - **Methods of the class under test**:
   By mocking methods of the class under test, the mocks are tested and not the real methods.
 - **Utility functions (pure functions, or those that only modify parameters)**:
- If a function has no side effects because it has no state, it is safe to not mock it in tests.
+  If a function has no side effects because it has no state, it is safe to not mock it in tests.
 - **Full HTML pages**:
   Avoid loading the HTML of a full page in unit tests, as it slows down tests.
 
@@ -147,7 +154,11 @@ graph RL
 Component tests cover the state of a single component that is perceivable by a user depending on external signals such as user input, events fired from other components, or application state.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph RL
+    accTitle: Frontend component tests
+    accDescr: Diagram showing how component tests work
+
     plain[Plain JavaScript];
     Vue[Vue Components];
     feature-flags[Feature flags];
@@ -170,9 +181,9 @@ graph RL
 
     class Vue tested;
 
-    classDef node color:#909090,fill:#f0f0f0,stroke-width:2px,stroke:#909090
+    classDef node stroke-width:2px
     classDef label stroke-width:0;
-    classDef tested color:#000000,fill:#a0c0ff,stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    classDef tested stroke-width:2px,stroke-dasharray: 5, 5;
 
     subgraph " "
     tested;
@@ -185,7 +196,7 @@ graph RL
 
 - **Vue components**
 
-#### When *not* to use component tests
+#### When not to use component tests
 
 - **Vue applications**:
   Vue applications may contain many components.
@@ -203,7 +214,7 @@ graph RL
   Every component is tested individually, so child components are mocked.
   See also [`shallowMount()`](https://v1.test-utils.vuejs.org/api/#shallowmount)
 
-#### What *not* to mock in component tests
+#### What not to mock in component tests
 
 - **Methods or computed properties of the component under test**:
   By mocking part of the component under test, the mocks are tested and not the real component.
@@ -235,7 +246,11 @@ Integration tests cover the interaction between all components on a single page.
 Their abstraction level is comparable to how a user would interact with the UI.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph RL
+    accTitle: Frontend integration tests
+    accDescr: Diagram showing how integration tests work
+
     plain[Plain JavaScript];
     Vue[Vue Components];
     feature-flags[Feature flags];
@@ -261,11 +276,11 @@ graph RL
     class Vuex tested;
     class GraphQL tested;
     class browser tested;
-    linkStyle 0,1,2,3,4,5,6 stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    linkStyle 0,1,2,3,4,5,6 stroke-width:2px,stroke-dasharray: 5, 5;
 
-    classDef node color:#909090,fill:#f0f0f0,stroke-width:2px,stroke:#909090
+    classDef node stroke-width:2px
     classDef label stroke-width:0;
-    classDef tested color:#000000,fill:#a0c0ff,stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    classDef tested stroke-width:2px,stroke-dasharray: 5, 5;
 
     subgraph " "
     tested;
@@ -291,7 +306,7 @@ graph RL
   Background operations that affect the page must be tested on this level.
   All other background operations cannot be stopped or waited on, so they continue running in the following tests and cause side effects.
 
-#### What *not* to mock in integration tests
+#### What not to mock in integration tests
 
 - **DOM**:
   Testing on the real DOM ensures your components work in the intended environment.
@@ -323,8 +338,8 @@ Formal definitions:
 - <https://en.wikipedia.org/wiki/System_testing>
 - <https://en.wikipedia.org/wiki/White-box_testing>
 
-These kind of tests ensure the GitLab *Rails* application (for example,
-`gitlab-foss`/`gitlab`) works as expected from a *browser* point of view.
+These kind of tests ensure the GitLab Rails application (for example,
+`gitlab-foss`/`gitlab`) works as expected from a browser point of view.
 
 Note that:
 
@@ -335,7 +350,7 @@ Note that:
 These tests should only be used when:
 
 - the functionality/component being tested is small
-- the internal state of the objects/database *needs* to be tested
+- the internal state of the objects/database needs to be tested
 - it cannot be tested at a lower level
 
 For instance, to test the breadcrumbs on a given page, writing a system test
@@ -359,11 +374,15 @@ This also implies that database queries are executed which makes this category s
 
 See also:
 
-- The [RSpec testing guidelines](../testing_guide/best_practices.md#rspec).
+- The [RSpec testing guidelines](best_practices.md#rspec).
 - System / Feature tests in the [Testing Best Practices](best_practices.md#system--feature-tests).
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph RL
+    accTitle: Frontend feature tests
+    accDescr: Diagram showing how feature tests work
+
     plain[Plain JavaScript];
     Vue[Vue Components];
     feature-flags[Feature flags];
@@ -390,11 +409,11 @@ graph RL
     class Vuex tested;
     class GraphQL tested;
     class browser tested;
-    linkStyle 0,1,2,3,4,5,6,7,8,9,10 stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    linkStyle 0,1,2,3,4,5,6,7,8,9,10 stroke-width:2px,stroke-dasharray: 5, 5;
 
-    classDef node color:#909090,fill:#f0f0f0,stroke-width:2px,stroke:#909090
+    classDef node stroke-width:2px
     classDef label stroke-width:0;
-    classDef tested color:#000000,fill:#a0c0ff,stroke:#6666ff,stroke-width:2px,stroke-dasharray: 5, 5;
+    classDef tested stroke-width:2px,stroke-dasharray: 5, 5;
 
     subgraph " "
     tested;
@@ -460,7 +479,7 @@ Formal definitions:
 - <https://en.wikipedia.org/wiki/Black-box_testing>
 
 GitLab consists of [multiple pieces](../architecture.md#components) such as [GitLab Shell](https://gitlab.com/gitlab-org/gitlab-shell), [GitLab Workhorse](https://gitlab.com/gitlab-org/gitlab-workhorse),
-[Gitaly](https://gitlab.com/gitlab-org/gitaly), [GitLab Pages](https://gitlab.com/gitlab-org/gitlab-pages), [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner), and GitLab Rails. All theses pieces
+[Gitaly](https://gitlab.com/gitlab-org/gitaly), [GitLab Pages](https://gitlab.com/gitlab-org/gitlab-pages), [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner), and GitLab Rails. All these pieces
 are configured and packaged by [Omnibus GitLab](https://gitlab.com/gitlab-org/omnibus-gitlab).
 
 The QA framework and instance-level scenarios are [part of GitLab Rails](https://gitlab.com/gitlab-org/gitlab-foss/tree/master/qa) so that
@@ -478,7 +497,7 @@ Every new feature should come with a [test plan](https://gitlab.com/gitlab-org/g
 | ---------- | -------------- | ----- |
 | `qa/qa/specs/features/` | [Capybara](https://github.com/teamcapybara/capybara) + [RSpec](https://github.com/rspec/rspec-rails#feature-specs) + Custom QA framework | Tests should be placed under their corresponding [Product category](https://handbook.gitlab.com/handbook/product/categories/) |
 
-> See [end-to-end tests](end_to_end/index.md) for more information.
+> See [end-to-end tests](end_to_end/_index.md) for more information.
 
 Note that `qa/spec` contains unit tests of the QA framework itself, not to be
 confused with the application's [unit tests](#unit-tests) or
@@ -517,7 +536,7 @@ trade-off:
 - Integration tests are a bit more expensive, but don't abuse them. A system test
   is often better than an integration test that is stubbing a lot of internals.
 - System tests are expensive (compared to unit tests), even more if they require
-  a JavaScript driver. Make sure to follow the guidelines in the [Speed](best_practices.md#test-speed)
+  a JavaScript driver. Make sure to follow the guidelines in the [Speed](best_practices.md#test-slowness)
   section.
 
 Another way to see it is to think about the "cost of tests", this is well
@@ -539,4 +558,4 @@ you should write an integration test using [Frontend integration tests](https://
 
 ---
 
-[Return to Testing documentation](index.md)
+[Return to Testing documentation](_index.md)

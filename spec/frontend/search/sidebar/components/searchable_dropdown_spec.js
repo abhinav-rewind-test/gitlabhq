@@ -5,9 +5,9 @@ import Vue from 'vue';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
 import waitForPromises from 'helpers/wait_for_promises';
+import { simulateRapidTyping } from 'helpers/simulate_typing';
 import { MOCK_GROUPS, MOCK_QUERY } from 'jest/search/mock_data';
-import SearchableDropdown from '~/search/sidebar/components/searchable_dropdown.vue';
-import { ANY_OPTION, GROUP_DATA } from '~/search/sidebar/constants';
+import SearchableDropdown from '~/search/sidebar/components/shared/searchable_dropdown.vue';
 import { DEFAULT_DEBOUNCE_AND_THROTTLE_MS } from '~/lib/utils/constants';
 
 Vue.use(Vuex);
@@ -16,11 +16,15 @@ describe('Global Search Searchable Dropdown', () => {
   let wrapper;
 
   const defaultProps = {
-    headerText: GROUP_DATA.headerText,
-    name: GROUP_DATA.name,
-    fullName: GROUP_DATA.fullName,
+    headerText: 'Filter results by group',
+    name: 'name',
+    fullName: 'full_name',
     loading: false,
-    selectedItem: ANY_OPTION,
+    selectedItem: {
+      id: null,
+      name: 'Any',
+      name_with_namespace: 'Any',
+    },
     items: [],
     frequentItems: [{ ...MOCK_GROUPS[0] }],
     searchHandler: jest.fn(),
@@ -55,7 +59,18 @@ describe('Global Search Searchable Dropdown', () => {
     });
 
     const propItems = [
-      { text: '', options: [{ value: ANY_OPTION.name, text: ANY_OPTION.name, ...ANY_OPTION }] },
+      {
+        text: '',
+        options: [
+          {
+            value: 'Any',
+            text: 'Any',
+            id: null,
+            name: 'Any',
+            name_with_namespace: 'Any',
+          },
+        ],
+      },
       {
         text: 'Frequently searched',
         options: [{ value: MOCK_GROUPS[0].id, text: MOCK_GROUPS[0].full_name, ...MOCK_GROUPS[0] }],
@@ -86,7 +101,11 @@ describe('Global Search Searchable Dropdown', () => {
 
       it('emits reset', () => {
         findGlDropdown().vm.$emit('reset');
-        expect(cloneDeep(wrapper.emitted('change')[0][0])).toStrictEqual(ANY_OPTION);
+        expect(cloneDeep(wrapper.emitted('change')[0][0])).toStrictEqual({
+          id: null,
+          name: 'Any',
+          name_with_namespace: 'Any',
+        });
       });
 
       it('emits first-open', () => {
@@ -112,6 +131,72 @@ describe('Global Search Searchable Dropdown', () => {
     it('calls fetchGroups with the search paramter', () => {
       expect(defaultProps.searchHandler).toHaveBeenCalledTimes(1);
       expect(defaultProps.searchHandler).toHaveBeenCalledWith(search);
+    });
+  });
+
+  describe('debounce behavior', () => {
+    beforeAll(() => {
+      global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = DEFAULT_DEBOUNCE_AND_THROTTLE_MS;
+    });
+
+    afterAll(() => {
+      global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = undefined;
+    });
+
+    beforeEach(() => {
+      defaultProps.searchHandler.mockClear();
+    });
+
+    it('debounces rapid searches - only calls searchHandler once for rapid typing', async () => {
+      createComponent();
+
+      simulateRapidTyping(findGlDropdown().vm, 'test');
+
+      jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+      await waitForPromises();
+
+      expect(defaultProps.searchHandler).toHaveBeenCalledTimes(1);
+      expect(defaultProps.searchHandler).toHaveBeenCalledWith('test');
+    });
+  });
+
+  describe('beforeDestroy', () => {
+    beforeAll(() => {
+      global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = DEFAULT_DEBOUNCE_AND_THROTTLE_MS;
+    });
+
+    afterAll(() => {
+      global.JEST_DEBOUNCE_THROTTLE_TIMEOUT = undefined;
+    });
+
+    beforeEach(() => {
+      defaultProps.searchHandler.mockClear();
+    });
+
+    it('cancels pending debounced search when component is destroyed', async () => {
+      createComponent();
+
+      findGlDropdown().vm.$emit('search', 'test');
+
+      wrapper.destroy();
+
+      jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+      await waitForPromises();
+
+      expect(defaultProps.searchHandler).not.toHaveBeenCalled();
+    });
+
+    it('cancels rapid typing search when component is destroyed mid-typing', async () => {
+      createComponent();
+
+      simulateRapidTyping(findGlDropdown().vm, 'test');
+
+      wrapper.destroy();
+
+      jest.advanceTimersByTime(DEFAULT_DEBOUNCE_AND_THROTTLE_MS);
+      await waitForPromises();
+
+      expect(defaultProps.searchHandler).not.toHaveBeenCalled();
     });
   });
 });

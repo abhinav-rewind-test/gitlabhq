@@ -3,11 +3,9 @@ import { shallowMount } from '@vue/test-utils';
 import waitForPromises from 'helpers/wait_for_promises';
 import setWindowLocation from 'helpers/set_window_location_helper';
 import * as commonUtils from '~/lib/utils/common_utils';
-import component from '~/packages_and_registries/settings/project/components/registry_settings_app.vue';
-import ContainerExpirationPolicy from '~/packages_and_registries/settings/project/components/container_expiration_policy.vue';
-import PackagesCleanupPolicy from '~/packages_and_registries/settings/project/components/packages_cleanup_policy.vue';
-import PackagesProtectionRules from '~/packages_and_registries/settings/project/components/packages_protection_rules.vue';
-import DependencyProxyPackagesSettings from 'ee_component/packages_and_registries/settings/project/components/dependency_proxy_packages_settings.vue';
+import RegistrySettingsApp from '~/packages_and_registries/settings/project/components/registry_settings_app.vue';
+import PackageRegistrySection from '~/packages_and_registries/settings/project/components/package_registry_section.vue';
+import ContainerRegistrySection from '~/packages_and_registries/settings/project/components/container_registry_section.vue';
 import {
   SHOW_SETUP_SUCCESS_ALERT,
   UPDATE_SETTINGS_SUCCESS_MESSAGE,
@@ -18,24 +16,18 @@ jest.mock('~/lib/utils/common_utils');
 describe('Registry Settings app', () => {
   let wrapper;
 
-  const findContainerExpirationPolicy = () => wrapper.findComponent(ContainerExpirationPolicy);
-  const findPackagesCleanupPolicy = () => wrapper.findComponent(PackagesCleanupPolicy);
-  const findPackagesProtectionRules = () => wrapper.findComponent(PackagesProtectionRules);
-  const findDependencyProxyPackagesSettings = () =>
-    wrapper.findComponent(DependencyProxyPackagesSettings);
   const findAlert = () => wrapper.findComponent(GlAlert);
+  const findContainerRegistrySection = () => wrapper.findComponent(ContainerRegistrySection);
+  const findPackageRegistrySection = () => wrapper.findComponent(PackageRegistrySection);
 
   const defaultProvide = {
-    projectPath: 'path',
     showContainerRegistrySettings: true,
     showPackageRegistrySettings: true,
-    showDependencyProxySettings: false,
-    ...(IS_EE && { showDependencyProxySettings: true }),
-    glFeatures: { packagesProtectedPackages: true },
+    isContainerRegistryMetadataDatabaseEnabled: false,
   };
 
   const mountComponent = (provide = defaultProvide) => {
-    wrapper = shallowMount(component, {
+    wrapper = shallowMount(RegistrySettingsApp, {
       provide,
     });
   };
@@ -57,7 +49,7 @@ describe('Registry Settings app', () => {
 
       await waitForPromises();
 
-      expect(findAlert().exists()).toBe(true);
+      expect(findContainerRegistrySection().props('expanded')).toBe(true);
       expect(findAlert().props()).toMatchObject({
         dismissible: true,
         variant: 'success',
@@ -76,6 +68,7 @@ describe('Registry Settings app', () => {
       mountComponent();
 
       expect(findAlert().exists()).toBe(false);
+      expect(findContainerRegistrySection().props('expanded')).toBe(false);
       expect(commonUtils.historyReplaceState).not.toHaveBeenCalled();
     });
   });
@@ -88,7 +81,7 @@ describe('Registry Settings app', () => {
       ${false}                      | ${true}
       ${false}                      | ${false}
     `(
-      'container cleanup policy $showContainerRegistrySettings and package cleanup policy is $showPackageRegistrySettings',
+      'container registry section $showContainerRegistrySettings and package registry section is $showPackageRegistrySettings',
       ({ showContainerRegistrySettings, showPackageRegistrySettings }) => {
         mountComponent({
           ...defaultProvide,
@@ -96,36 +89,9 @@ describe('Registry Settings app', () => {
           showPackageRegistrySettings,
         });
 
-        expect(findContainerExpirationPolicy().exists()).toBe(showContainerRegistrySettings);
-        expect(findPackagesCleanupPolicy().exists()).toBe(showPackageRegistrySettings);
-        expect(findPackagesProtectionRules().exists()).toBe(showPackageRegistrySettings);
+        expect(findContainerRegistrySection().exists()).toBe(showContainerRegistrySettings);
+        expect(findPackageRegistrySection().exists()).toBe(showPackageRegistrySettings);
       },
     );
-
-    if (IS_EE) {
-      it.each([true, false])('when showDependencyProxySettings is %s', (value) => {
-        mountComponent({
-          ...defaultProvide,
-          showDependencyProxySettings: value,
-        });
-
-        expect(findDependencyProxyPackagesSettings().exists()).toBe(value);
-      });
-    }
-
-    describe('when feature flag "packagesProtectedPackages" is disabled', () => {
-      it.each([true, false])(
-        'package protection rules settings is hidden if showPackageRegistrySettings is %s',
-        (showPackageRegistrySettings) => {
-          mountComponent({
-            ...defaultProvide,
-            showPackageRegistrySettings,
-            glFeatures: { packagesProtectedPackages: false },
-          });
-
-          expect(findPackagesProtectionRules().exists()).toBe(false);
-        },
-      );
-    });
   });
 });

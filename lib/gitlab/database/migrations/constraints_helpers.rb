@@ -11,6 +11,9 @@ module Gitlab
         MAX_IDENTIFIER_NAME_LENGTH = 63
 
         def self.check_constraint_exists?(table, constraint_name, connection:)
+          table_name, schema_name = table.to_s.split('.').reverse
+          schema_name ||= connection.current_schema
+
           # Constraint names are unique per table in Postgres, not per schema
           # Two tables can have constraints with the same name, so we filter by
           # the table name in addition to using the constraint_name
@@ -24,8 +27,8 @@ module Gitlab
                 ON nsp.oid = con.connamespace
             WHERE con.contype = 'c'
             AND con.conname = #{connection.quote(constraint_name)}
-            AND nsp.nspname = #{connection.quote(connection.current_schema)}
-            AND rel.relname = #{connection.quote(table)}
+            AND nsp.nspname = #{connection.quote(schema_name)}
+            AND rel.relname = #{connection.quote(table_name)}
           SQL
 
           connection.select_value(check_sql.squish) > 0
@@ -250,8 +253,8 @@ module Gitlab
         end
 
         def add_multi_column_not_null_constraint(
-          table, *columns, limit: 1, operator: '=', constraint_name: nil, validate: true)
-
+          table, *columns, limit: 1, operator: '=', constraint_name: nil, validate: true
+        )
           raise 'Expected multiple columns, use add_not_null_constraint for a single column' unless columns.size > 1
 
           add_check_constraint(
@@ -307,6 +310,22 @@ module Gitlab
         end
 
         private
+
+        def column_is_nullable?(table, column)
+          table_name, schema_name = table.to_s.split('.').reverse
+          schema_name ||= current_schema
+
+          # Check if table.column has not been defined with NOT NULL
+          check_sql = <<~SQL
+            SELECT c.is_nullable
+            FROM information_schema.columns c
+            WHERE c.table_schema = #{connection.quote(schema_name)}
+              AND c.table_name = #{connection.quote(table_name)}
+              AND c.column_name = #{connection.quote(column)}
+          SQL
+
+          connection.select_value(check_sql) == 'YES'
+        end
 
         def validate_not_in_transaction!(method_name, modifier = nil)
           return unless transaction_open?

@@ -28,25 +28,26 @@ RSpec.describe Ci::PipelineEditorHelper, feature_category: :pipeline_composition
       {
         "ci-catalog-path" => explore_catalog_index_path,
         "ci-config-path": project.ci_config_path_or_default,
-        "ci-examples-help-page-path" => help_page_path('ci/examples/index'),
-        "ci-help-page-path" => help_page_path('ci/index'),
+        "ci-examples-help-page-path" => help_page_path('ci/examples/_index.md'),
+        "ci-help-page-path" => help_page_path('ci/_index.md'),
         "ci-lint-path" => project_ci_lint_path(project),
-        "ci-troubleshooting-path" => help_page_path('ci/troubleshooting', anchor: 'common-cicd-issues'),
+        "ci-troubleshooting-path" => help_page_path('ci/debugging.md', anchor: 'job-configuration-issues'),
         "default-branch" => project.default_branch_or_main,
         "empty-state-illustration-path" => 'illustrations/empty.svg',
         "initial-branch-name" => nil,
-        "includes-help-page-path" => help_page_path('ci/yaml/includes'),
-        "lint-help-page-path" => help_page_path('ci/lint', anchor: 'check-cicd-syntax'),
-        "needs-help-page-path" => help_page_path('ci/yaml/index', anchor: 'needs'),
+        "includes-help-page-path" => help_page_path('ci/yaml/includes.md'),
+        "lint-help-page-path" => help_page_path('ci/yaml/lint.md', anchor: 'check-cicd-syntax'),
+        "needs-help-page-path" => help_page_path('ci/yaml/_index.md', anchor: 'needs'),
         "new-merge-request-path" => '/mock/project/-/merge_requests/new',
+        "new-pipeline-path" => new_project_pipeline_path(project),
         "pipeline-page-path" => project_pipelines_path(project),
         "project-path" => project.path,
         "project-full-path" => project.full_path,
         "project-namespace" => project.namespace.full_path,
-        "simulate-pipeline-help-page-path" => help_page_path('ci/pipeline_editor/index', anchor: 'simulate-a-cicd-pipeline'),
+        "simulate-pipeline-help-page-path" => help_page_path('ci/pipeline_editor/_index.md', anchor: 'validate-cicd-configuration'),
         "uses-external-config" => 'false',
         "validate-tab-illustration-path" => 'illustrations/validate.svg',
-        "yml-help-page-path" => help_page_path('ci/yaml/index')
+        "yml-help-page-path" => help_page_path('ci/yaml/_index.md')
       }
     end
 
@@ -54,6 +55,11 @@ RSpec.describe Ci::PipelineEditorHelper, feature_category: :pipeline_composition
       allow(helper)
         .to receive(:namespace_project_new_merge_request_path)
         .and_return('/mock/project/-/merge_requests/new')
+
+      allow(helper)
+        .to receive(:can?)
+        .with(user, :create_pipeline, project)
+        .and_return(true)
 
       allow(helper)
         .to receive(:image_path)

@@ -22,6 +22,10 @@ module Sidebars
         add_menu(Sidebars::Groups::SuperSidebarMenus::OperationsMenu.new(context))
         add_menu(Sidebars::Groups::SuperSidebarMenus::AnalyzeMenu.new(context))
 
+        if ::Feature.enabled?(:observability_sass_features, context.group)
+          add_menu(Sidebars::Groups::SuperSidebarMenus::ObservabilityMenu.new(context))
+        end
+
         pick_from_old_menus(old_menus)
 
         insert_menu_before(
@@ -39,3 +43,5 @@ module Sidebars
     end
   end
 end
+
+Sidebars::Groups::SuperSidebarPanel.prepend_mod_with('Sidebars::Groups::SuperSidebarPanel')

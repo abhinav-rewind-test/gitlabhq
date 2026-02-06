@@ -4,24 +4,25 @@ require 'spec_helper'
 
 RSpec.describe Import::GithubService, feature_category: :importers do
   let_it_be(:user) { create(:user) }
-  let_it_be(:token) { 'complex-token' }
-  let_it_be(:access_params) { { github_access_token: 'ghp_complex-token' } }
 
+  let(:token) { 'complex-token' }
+  let(:access_params) { { github_access_token: 'ghp_complex-token' } }
   let(:settings) { instance_double(Gitlab::GithubImport::Settings) }
   let(:user_namespace_path) { user.namespace_path }
   let(:optional_stages) { nil }
   let(:timeout_strategy) { "optimistic" }
+  let(:pagination_limit) { nil }
   let(:params) do
     {
       repo_id: 123,
       new_name: 'new_repo',
       target_namespace: user_namespace_path,
       optional_stages: optional_stages,
-      timeout_strategy: timeout_strategy
+      timeout_strategy: timeout_strategy,
+      pagination_limit: pagination_limit
     }
   end
 
-  let(:scopes) { ['repo', 'read:org'] }
   let(:client) { Gitlab::GithubImport::Client.new(token) }
   let(:project_double) { instance_double(Project, persisted?: true) }
 
@@ -30,41 +31,58 @@ RSpec.describe Import::GithubService, feature_category: :importers do
   before do
     allow(client).to receive_message_chain(:octokit, :rate_limit, :limit)
     allow(client).to receive_message_chain(:octokit, :rate_limit, :remaining).and_return(100)
-    allow(client).to receive_message_chain(:octokit, :scopes).and_return(scopes)
     allow(Gitlab::GithubImport::Settings).to receive(:new).with(project_double).and_return(settings)
     allow(settings)
       .to receive(:write)
       .with(
-        extended_events: true,
         optional_stages: optional_stages,
-        timeout_strategy: timeout_strategy
+        timeout_strategy: timeout_strategy,
+        pagination_limit: pagination_limit
       )
+
+    allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).with(:github_import, scope: user).and_return(false)
   end
 
   context 'with an input error' do
     let(:exception) { Octokit::ClientError.new(status: 404, body: 'Not Found') }
 
     before do
-      expect(client).to receive(:repository).and_raise(exception)
+      allow(client).to receive_message_chain(:octokit, :repository).and_raise(exception)
     end
 
     it 'logs the original error' do
-      expect(Gitlab::Import::Logger).to receive(:error).with({
-        message: 'Import failed due to a GitHub error',
+      expect(::Import::Framework::Logger).to receive(:error).with({
+        message: 'Import failed because of a GitHub error',
         status: 404,
         error: 'Not Found'
       }).and_call_original
 
-      subject.execute(access_params, :github)
+      github_importer.execute(access_params, :github)
     end
 
     it 'returns an error with message and code' do
-      result = subject.execute(access_params, :github)
+      result = github_importer.execute(access_params, :github)
 
       expect(result).to include(
-        message: s_('GithubImport|Import failed due to a GitHub error: Not Found (HTTP 404)'),
+        message: s_('GithubImport|Import failed because of a GitHub error: Not Found (HTTP 404)'),
         status: :error,
         http_status: :unprocessable_entity
+      )
+    end
+  end
+
+  context 'when the rate limit is reached' do
+    before do
+      allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).with(:github_import, scope: user).and_return(true)
+    end
+
+    it 'returns an error relating to the rate limit' do
+      result = github_importer.execute(access_params, :github)
+
+      expect(result).to include(
+        message: _('This endpoint has been requested too many times. Try again later.'),
+        status: :error,
+        http_status: :too_many_requests
       )
     end
   end
@@ -72,189 +90,17 @@ RSpec.describe Import::GithubService, feature_category: :importers do
   it 'raises an exception for unknown error causes' do
     exception = StandardError.new('Not Implemented')
 
-    expect(client).to receive(:repository).and_raise(exception)
+    expect(client).to receive_message_chain(:octokit, :repository).and_raise(exception)
 
-    expect(Gitlab::Import::Logger).not_to receive(:error)
+    expect(::Import::Framework::Logger).not_to receive(:error)
 
-    expect { subject.execute(access_params, :github) }.to raise_error(exception)
+    expect { github_importer.execute(access_params, :github) }.to raise_error(exception)
   end
 
-  context 'when validating repository size' do
-    let(:repository_double) { { name: 'repository', size: 99 } }
-
+  describe 'access token validation' do
     before do
-      allow(subject).to receive(:authorized?).and_return(true)
-      allow(subject).to receive(:validate_scopes).and_return(nil)
-      expect(client).to receive(:repository).and_return(repository_double)
-
-      allow_next_instance_of(Gitlab::LegacyGithubImport::ProjectCreator) do |creator|
-        allow(creator).to receive(:execute).and_return(project_double)
-      end
-    end
-
-    context 'when there is no repository size limit defined' do
-      it 'skips the check, succeeds, and tracks an access level' do
-        expect(subject.execute(access_params, :github)).to include(status: :success)
-        expect(settings)
-          .to have_received(:write)
-          .with(optional_stages: nil,
-            extended_events: true,
-            timeout_strategy: timeout_strategy
-          )
-        expect_snowplow_event(
-          category: 'Import::GithubService',
-          action: 'create',
-          label: 'import_access_level',
-          user: user,
-          extra: { import_type: 'github', user_role: 'Owner' }
-        )
-      end
-    end
-
-    context 'when the target namespace repository size limit is defined' do
-      let_it_be(:group) { create(:group, repository_size_limit: 100) }
-
-      before do
-        params[:target_namespace] = group.full_path
-      end
-
-      it 'succeeds if the repository is smaller than the limit' do
-        expect(subject.execute(access_params, :github)).to include(status: :success)
-        expect(settings)
-          .to have_received(:write)
-          .with(
-            optional_stages: nil,
-            extended_events: true,
-            timeout_strategy: timeout_strategy
-          )
-        expect_snowplow_event(
-          category: 'Import::GithubService',
-          action: 'create',
-          label: 'import_access_level',
-          user: user,
-          extra: { import_type: 'github', user_role: 'Not a member' }
-        )
-      end
-
-      it 'returns error if the repository is larger than the limit' do
-        repository_double[:size] = 101
-
-        expect(subject.execute(access_params, :github)).to include(
-          size_limit_error(repository_double[:name], repository_double[:size], group.repository_size_limit)
-        )
-      end
-    end
-
-    context 'when target namespace repository limit is not defined' do
-      let_it_be(:group) { create(:group) }
-      let(:repository_size_limit) { 100 }
-
-      before do
-        stub_application_setting(repository_size_limit: 100)
-      end
-
-      context 'when application size limit is defined' do
-        it 'succeeds if the repository is smaller than the limit' do
-          expect(subject.execute(access_params, :github)).to include(status: :success)
-          expect(settings)
-            .to have_received(:write)
-            .with(
-              optional_stages: nil,
-              extended_events: true,
-              timeout_strategy: timeout_strategy
-            )
-          expect_snowplow_event(
-            category: 'Import::GithubService',
-            action: 'create',
-            label: 'import_access_level',
-            user: user,
-            extra: { import_type: 'github', user_role: 'Owner' }
-          )
-        end
-
-        it 'returns error if the repository is larger than the limit' do
-          repository_double[:size] = 101
-
-          expect(subject.execute(access_params, :github)).to include(
-            size_limit_error(repository_double[:name], repository_double[:size], repository_size_limit)
-          )
-        end
-      end
-    end
-
-    context 'when optional stages params present' do
-      let(:optional_stages) do
-        {
-          single_endpoint_issue_events_import: true,
-          single_endpoint_notes_import: 'false',
-          attachments_import: false,
-          collaborators_import: true
-        }
-      end
-
-      it 'saves optional stages choice to import_data' do
-        subject.execute(access_params, :github)
-
-        expect(settings)
-          .to have_received(:write)
-          .with(
-            optional_stages: optional_stages,
-            extended_events: true,
-            timeout_strategy: timeout_strategy
-          )
-      end
-    end
-
-    context 'when timeout strategy param is present' do
-      let(:timeout_strategy) { 'pessimistic' }
-
-      it 'saves timeout strategy to import_data' do
-        subject.execute(access_params, :github)
-
-        expect(settings)
-          .to have_received(:write)
-          .with(
-            optional_stages: optional_stages,
-            extended_events: true,
-            timeout_strategy: timeout_strategy
-          )
-      end
-    end
-
-    context 'when additional access tokens are present' do
-      it 'saves additional access tokens to import_data' do
-        subject.execute(access_params, :github)
-
-        expect(settings)
-          .to have_received(:write)
-          .with(
-            optional_stages: optional_stages,
-            extended_events: true,
-            timeout_strategy: timeout_strategy
-          )
-      end
-    end
-
-    context 'when `github_import_extended_events` feature flag is disabled' do
-      before do
-        stub_feature_flags(github_import_extended_events: false)
-      end
-
-      it 'saves extend_events to import_data' do
-        expect(settings)
-          .to receive(:write)
-          .with(a_hash_including(extended_events: false))
-
-        subject.execute(access_params, :github)
-      end
-    end
-  end
-
-  context 'when using personal access tokens' do
-    let(:repository_double) { { name: 'repository', size: 99 } }
-
-    before do
-      allow(subject).to receive(:authorized?).and_return(true)
+      allow(github_importer).to receive(:authorized?).and_return(true)
+      allow(client).to receive_message_chain(:octokit, :repository).and_return({ status: 200 })
 
       allow_next_instance_of(Gitlab::LegacyGithubImport::ProjectCreator) do |creator|
         allow(creator).to receive(:execute).and_return(project_double)
@@ -274,108 +120,66 @@ RSpec.describe Import::GithubService, feature_category: :importers do
       end
 
       before do
-        allow(subject).to receive(:repo).and_return(repository_double)
+        allow(github_importer).to receive(:repo).and_return(repository_double)
       end
 
-      it 'does not validate scopes' do
-        expect(subject).not_to receive(:validate_scopes)
+      it 'does not validate access token' do
+        expect(github_importer).not_to receive(:validate_access_token)
 
-        subject.execute(access_params, :gitea)
+        github_importer.execute(access_params, :gitea)
       end
     end
 
-    context 'when a fine-grained access token is used' do
-      let(:access_params) { { github_access_token: 'github_pat' } }
+    context 'when the caller is a github import' do
+      let(:repository_double) { { name: 'repository', size: 99 } }
 
       before do
-        allow(subject).to receive(:repo).and_return(repository_double)
+        allow(github_importer).to receive(:repo).and_return(repository_double)
       end
 
-      it 'does not validate scopes' do
-        expect(subject).not_to receive(:validate_scopes)
+      it 'validates access token' do
+        expect(github_importer).to receive(:validate_access_token)
 
-        subject.execute(access_params, :github)
+        github_importer.execute(access_params, :github)
       end
+    end
 
-      it 'logs the event and returns a warning message' do
-        expect(Gitlab::Import::Logger).to receive(:info).with({
-          message: 'Fine grained GitHub personal access token used.'
+    context 'when an unexpected Octokit error is raised' do
+      let(:exception) { Octokit::Error.new(status: 500, body: 'Internal Server Error') }
+
+      it 'rescues and logs the error' do
+        allow(client).to receive_message_chain(:octokit, :repository).and_raise(exception)
+        expect(::Import::Framework::Logger).to receive(:error).with({
+          message: 'Import failed because of a GitHub error',
+          status: 500,
+          error: 'Internal Server Error'
         }).and_call_original
 
-        expect(subject.execute(access_params, :github))
-          .to include(fine_grained_access_token_warning)
+        github_importer.execute(access_params, :github)
       end
     end
 
-    context 'when a non-classic access token is used' do
-      let(:access_params) { { github_access_token: 'ghu_token' } }
-
-      before do
-        allow(subject).to receive(:repo).and_return(repository_double)
-      end
-
-      it 'does not validate scopes' do
-        expect(subject).not_to receive(:validate_scopes)
-
-        subject.execute(access_params, :github)
-      end
-
-      it 'does not log or return a warning message' do
-        expect(Gitlab::Import::Logger).not_to receive(:info).with({
-          message: 'Fine grained GitHub personal access token used.'
-        }).and_call_original
-
-        expect(subject.execute(access_params, :github))
-          .to include(nil_warning)
-      end
-    end
-
-    context 'when the collaborator import option is true' do
-      let(:optional_stages) { { collaborators_import: true } }
-      let(:scopes) { ['repo', 'read:user'] }
-
-      it 'returns an error if the scope is not adequate' do
-        expect(subject.execute(access_params, :github)).to include(collab_import_scope_error)
-      end
-    end
-
-    context 'when the collaborator import option is false' do
+    context 'when a forbidden error is raised when fetching the repository information' do
+      let(:exception) { Octokit::Forbidden.new(status: 403, body: 'Forbidden') }
       let(:optional_stages) { { collaborators_import: false } }
 
-      context 'with minimum scope token' do
-        let(:scopes) { ['repo', 'read:user'] }
+      it 'returns an error' do
+        allow(client).to receive_message_chain(:octokit, :repository).and_raise(exception)
 
-        it 'does not raise a validation error' do
-          allow(subject).to receive(:repo).and_return(repository_double)
-
-          expect(subject).to receive(:validate_scopes).and_return(nil)
-
-          subject.execute(access_params, :github)
-        end
-      end
-
-      context 'without minimum scope token' do
-        let(:scopes) { ['read:user'] }
-
-        it 'returns a mimimum scope error' do
-          expect(subject.execute(access_params, :github)).to include(minimum_scope_error)
-        end
+        expect(github_importer.execute(access_params, :github)).to include(forbidden_token_error)
       end
     end
 
-    context 'when validating empty scopes' do
-      let(:scopes) { [] }
+    context 'when the collaborator import option is true, and an error is raised when fetching the collaborators' do
+      let(:optional_stages) { { collaborators_import: true } }
+      let(:exception) { Octokit::Unauthorized.new(status: 401, body: 'Unauthorized') }
 
-      it 'returns a minimum scope error' do
-        expect(subject.execute(access_params, :github)).to include(minimum_scope_error)
-      end
-    end
+      it 'returns an error' do
+        allow(client).to receive_message_chain(:octokit, :repository).and_return({ status: 200 })
+        allow(client).to receive_message_chain(:octokit, :collaborators).and_raise(exception)
 
-    context 'when validating minimum scope' do
-      let(:scopes) { ['write:packages'] }
-
-      it 'returns an error if the scope is not adequate' do
-        expect(subject.execute(access_params, :github)).to include(minimum_scope_error)
+        expect(github_importer.execute(access_params, :github)).to include(unauthorized_token_error)
+        github_importer.execute(access_params, :github)
       end
     end
   end
@@ -394,11 +198,13 @@ RSpec.describe Import::GithubService, feature_category: :importers do
 
     before do
       stub_application_setting(import_sources: nil)
+      allow(client).to receive_message_chain(:octokit, :repository).and_return({ status: 200 })
       allow(client).to receive(:repository).and_return(repository_double)
+      allow(Gitlab::GithubImport::Settings).to receive(:new).and_call_original
     end
 
     it 'returns forbidden' do
-      result = subject.execute(access_params, :github)
+      result = github_importer.execute(access_params, :github)
 
       expect(result).to include(
         status: :error,
@@ -421,7 +227,7 @@ RSpec.describe Import::GithubService, feature_category: :importers do
       it 'returns and logs an error' do
         allow(github_importer).to receive(:url).and_return(url)
 
-        expect(Gitlab::Import::Logger).to receive(:error).with({
+        expect(::Import::Framework::Logger).to receive(:error).with({
           message: message,
           error: error
         }).and_call_original
@@ -437,7 +243,7 @@ RSpec.describe Import::GithubService, feature_category: :importers do
 
     it 'raises an exception' do
       expect do
-        subject.execute(access_params,
+        github_importer.execute(access_params,
           :github)
       end.to raise_error(ArgumentError, s_('GithubImport|Target namespace is required'))
     end
@@ -465,50 +271,23 @@ RSpec.describe Import::GithubService, feature_category: :importers do
     end
   end
 
-  def size_limit_error(repository_name, repository_size, limit)
+  def forbidden_token_error
     {
       status: :error,
       http_status: :unprocessable_entity,
-      message: format(
-        s_('GithubImport|"%{repository_name}" size (%{repository_size}) is larger than the limit of %{limit}.'),
-        repository_name: repository_name,
-        repository_size: ActiveSupport::NumberHelper.number_to_human_size(repository_size),
-        limit: ActiveSupport::NumberHelper.number_to_human_size(limit))
+      message: "Your GitHub personal access token does not have read access to the repository. " \
+               "Please use a classic GitHub personal access token with the `repo` scope. Fine-grained tokens are not " \
+               "supported."
     }
   end
 
-  def minimum_scope_error
+  def unauthorized_token_error
     {
       status: :error,
       http_status: :unprocessable_entity,
-      message: "Your GitHub access token does not have the correct scope to import. " \
-               "Please use a token with the 'repo' scope."
-    }
-  end
-
-  def collab_import_scope_error
-    {
-      status: :error,
-      http_status: :unprocessable_entity,
-      message: "Your GitHub access token does not have the correct scope to import collaborators. " \
-               "Please use a token with the 'read:org' scope."
-    }
-  end
-
-  def fine_grained_access_token_warning
-    {
-      status: :success,
-      project: project_double,
-      warning: "Fine-grained personal access tokens are not officially supported. " \
-               "It is recommended to use a classic token instead."
-    }
-  end
-
-  def nil_warning
-    {
-      status: :success,
-      project: project_double,
-      warning: nil
+      message: "Your GitHub personal access token does not have read access to collaborators. " \
+               "Please use a classic GitHub personal access token with the `read:org` scope. Fine-grained tokens are " \
+               "not supported."
     }
   end
 

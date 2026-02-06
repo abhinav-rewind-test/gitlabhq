@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Create' do
-    describe 'Merged merge request', :requires_admin, product_group: :code_review do
+  RSpec.describe 'Create', feature_category: :code_review_workflow do
+    describe 'Merged merge request', :requires_admin do
       let(:revertible_merge_request) { create(:merge_request) }
 
       before do
         Flow::Login.sign_in
       end
 
-      it 'can be reverted', :blocking, testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347709' do
+      it 'can be reverted', :smoke, testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347709' do
         revertible_merge_request.visit!
 
         Page::MergeRequest::Show.perform do |merge_request|

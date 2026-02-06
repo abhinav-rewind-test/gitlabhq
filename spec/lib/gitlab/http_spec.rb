@@ -9,7 +9,8 @@ RSpec.describe Gitlab::HTTP, feature_category: :shared do
       deny_all_requests_except_allowed: false,
       dns_rebinding_protection_enabled: true,
       outbound_local_requests_allowlist: [],
-      silent_mode_enabled: false
+      silent_mode_enabled: false,
+      parser: Gitlab::HttpResponseParser
     }
   end
 
@@ -82,6 +83,37 @@ RSpec.describe Gitlab::HTTP, feature_category: :shared do
         end
       end
     end
+
+    context 'when response is a JSON payload' do
+      before do
+        stub_request(:get, 'http://example.org').to_return(status: 200,
+          body: '{"key1": {"key2": {"key3": "value"}}}',
+          headers: { 'Content-Type' => 'application/json' })
+      end
+
+      it 'parses the response using the Gitlab::HttpResponseParser parser' do
+        expect_next_instance_of(Gitlab::HttpResponseParser) do |parser|
+          expect(parser).to receive(:json).and_call_original
+        end
+
+        result = described_class.get('http://example.org')
+
+        expect(result.parsed_response).to eq({ 'key1' => { 'key2' => { 'key3' => 'value' } } })
+      end
+
+      context 'when body content exceeds the number of JSON structural characters' do
+        before do
+          stub_application_setting(max_http_response_json_structural_chars: 4)
+        end
+
+        it 'raises JSON::ParserError' do
+          result = described_class.get('http://example.org')
+
+          expect { result.parsed_response }
+            .to raise_error(JSON::ParserError, 'JSON response exceeded the maximum number of objects')
+        end
+      end
+    end
   end
 
   describe '.try_get' do
@@ -112,6 +144,59 @@ RSpec.describe Gitlab::HTTP, feature_category: :shared do
         expect do
           described_class.perform_request(Net::HTTP::Lock, '/path', {})
         end.to raise_error(ArgumentError, "Unsupported HTTP method: 'lock'.")
+      end
+    end
+  end
+
+  describe '.without_decompression_limit', :request_store do
+    it 'ensures SafeRequestStore[:disable_net_http_decompression] is true within the block' do
+      expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
+
+      result = described_class.without_decompression_limit do
+        Gitlab::SafeRequestStore[:disable_net_http_decompression]
+      end
+
+      expect(result).to be(true)
+      expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
+    end
+
+    it 'ensures SafeRequestStore[:disable_net_http_decompression] is reset after the block' do
+      Gitlab::SafeRequestStore[:disable_net_http_decompression] = 'previous_value'
+
+      result = described_class.without_decompression_limit do
+        Gitlab::SafeRequestStore[:disable_net_http_decompression]
+      end
+
+      expect(result).to be(true)
+      expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to eq('previous_value')
+    end
+
+    it 'ensures SafeRequestStore[:disable_net_http_decompression] is reset if an exception occurs' do
+      expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
+
+      expect do
+        described_class.without_decompression_limit do
+          raise 'test error'
+        end
+      end.to raise_error('test error')
+
+      expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
+    end
+
+    context 'when request store is disabled' do
+      before do
+        allow(Gitlab::SafeRequestStore).to receive(:active?).and_return(false)
+      end
+
+      it 'does not set SafeRequestStore[:disable_net_http_decompression] to true' do
+        expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
+
+        result = described_class.without_decompression_limit do
+          Gitlab::SafeRequestStore[:disable_net_http_decompression]
+        end
+
+        expect(result).to be_nil
+        expect(Gitlab::SafeRequestStore[:disable_net_http_decompression]).to be_nil
       end
     end
   end

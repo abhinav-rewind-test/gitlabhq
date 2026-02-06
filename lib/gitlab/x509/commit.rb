@@ -1,10 +1,11 @@
 # frozen_string_literal: true
+
 require 'openssl'
 require 'digest'
 
 module Gitlab
   module X509
-    class Commit < Gitlab::SignedCommit
+    class Commit < Gitlab::Repositories::BaseSignedCommit
       private
 
       def signature_class
@@ -14,7 +15,13 @@ module Gitlab
       def attributes
         return if @commit.sha.nil? || @commit.project.nil?
 
-        signature = X509::Signature.new(signature_text, signed_text, @commit.committer_email, @commit.created_at)
+        signature = X509::Signature.new(
+          signature_text,
+          signed_text,
+          @commit.committer_email,
+          @commit.created_at,
+          @commit.project
+        )
 
         return if signature.verified_signature.nil? || signature.x509_certificate.nil?
 
@@ -23,7 +30,9 @@ module Gitlab
           project: @commit.project,
           x509_certificate_id: signature.x509_certificate.id,
           verification_status: signature.verification_status
-        }
+        }.tap do |attrs|
+          attrs[:committer_email] = @commit.committer_email if check_for_mailmapped_commit_emails?
+        end
       end
     end
   end

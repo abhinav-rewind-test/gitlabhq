@@ -1,16 +1,12 @@
 <script>
 import { GlAlert, GlFormInputGroup, GlLink, GlSprintf, GlIcon } from '@gitlab/ui';
-import { helpPagePath } from '~/helpers/help_page_helper';
-import ModalCopyButton from '~/vue_shared/components/modal_copy_button.vue';
+import SimpleCopyButton from '~/vue_shared/components/simple_copy_button.vue';
 import CodeBlock from '~/vue_shared/components/code_block.vue';
 import { generateAgentRegistrationCommand } from '../clusters_util';
 import { I18N_AGENT_TOKEN, HELM_VERSION_POLICY_URL } from '../constants';
 
 export default {
   i18n: I18N_AGENT_TOKEN,
-  advancedInstallPath: helpPagePath('user/clusters/agent/install/index', {
-    anchor: 'advanced-installation-method',
-  }),
   HELM_VERSION_POLICY_URL,
   components: {
     GlAlert,
@@ -19,9 +15,9 @@ export default {
     GlLink,
     GlSprintf,
     GlIcon,
-    ModalCopyButton,
+    SimpleCopyButton,
   },
-  inject: ['kasAddress', 'kasVersion'],
+  inject: ['kasAddress', 'kasInstallVersion'],
   props: {
     agentName: {
       required: true,
@@ -31,17 +27,13 @@ export default {
       required: true,
       type: String,
     },
-    modalId: {
-      required: true,
-      type: String,
-    },
   },
   computed: {
     agentRegistrationCommand() {
       return generateAgentRegistrationCommand({
         name: this.agentName,
         token: this.agentToken,
-        version: this.kasVersion,
+        version: this.kasInstallVersion,
         address: this.kasAddress,
       });
     },
@@ -56,11 +48,7 @@ export default {
     <p>
       <gl-form-input-group readonly :value="agentToken" :select-on-click="true">
         <template #append>
-          <modal-copy-button
-            :text="agentToken"
-            :title="$options.i18n.copyToken"
-            :modal-id="modalId"
-          />
+          <simple-copy-button :text="agentToken" :title="$options.i18n.copyToken" />
         </template>
       </gl-form-input-group>
     </p>
@@ -86,26 +74,13 @@ export default {
       ></gl-sprintf>
     </p>
 
-    <p class="gl-display-flex gl-align-items-flex-start">
+    <p class="gl-flex gl-items-start">
       <code-block class="gl-w-full" :code="agentRegistrationCommand" />
-      <modal-copy-button
+      <simple-copy-button
         data-testid="agent-registration-command"
         :title="$options.i18n.copyCommand"
         :text="agentRegistrationCommand"
-        :modal-id="modalId"
       />
-    </p>
-
-    <p>
-      <strong>{{ $options.i18n.advancedInstallTitle }}</strong>
-    </p>
-
-    <p>
-      <gl-sprintf :message="$options.i18n.advancedInstallBody">
-        <template #link="{ content }">
-          <gl-link :href="$options.advancedInstallPath" target="_blank"> {{ content }}</gl-link>
-        </template>
-      </gl-sprintf>
     </p>
   </div>
 </template>

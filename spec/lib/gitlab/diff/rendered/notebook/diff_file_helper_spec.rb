@@ -2,7 +2,6 @@
 
 require 'fast_spec_helper'
 require 'rspec-parameterized'
-require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
 
 MOCK_LINE = Struct.new(:text, :type, :index, :old_pos, :new_pos)
 
@@ -60,7 +59,7 @@ RSpec.describe Gitlab::Diff::Rendered::Notebook::DiffFileHelper do
     end
 
     context 'text contains image' do
-      it { is_expected.to eq("<img src=\"#{img}\">") }
+      it { is_expected.to eq(" <img src=\"#{img}\">") }
     end
 
     context 'text contains image that has malicious html' do

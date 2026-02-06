@@ -8,27 +8,27 @@ module Mutations
       LIMIT = 20
       TOO_MANY_TAGS_ERROR_MESSAGE = "Number of tags is greater than #{LIMIT}"
 
-      authorize :destroy_container_image
+      authorize :destroy_container_image_tag
 
       argument :id,
-               ::Types::GlobalIDType[::ContainerRepository],
-               required: true,
-               description: 'ID of the container repository.'
+        ::Types::GlobalIDType[::ContainerRepository],
+        required: true,
+        description: 'ID of the container repository.'
 
       argument :tag_names,
-               [GraphQL::Types::String],
-               required: true,
-               description: "Container repository tag(s) to delete. Total number can't be greater than #{LIMIT}",
-               prepare: ->(tag_names, _) do
-                 raise Gitlab::Graphql::Errors::ArgumentError, TOO_MANY_TAGS_ERROR_MESSAGE if tag_names.size > LIMIT
+        [GraphQL::Types::String],
+        required: true,
+        description: "Container repository tag(s) to delete. Total number can't be greater than #{LIMIT}",
+        prepare: ->(tag_names, _) do
+          raise Gitlab::Graphql::Errors::ArgumentError, TOO_MANY_TAGS_ERROR_MESSAGE if tag_names.size > LIMIT
 
-                 tag_names
-               end
+          tag_names
+        end
 
       field :deleted_tag_names,
-            [GraphQL::Types::String],
-            description: 'Deleted container repository tags.',
-            null: false
+        [GraphQL::Types::String],
+        description: 'Deleted container repository tags.',
+        null: false
 
       def resolve(id:, tag_names:)
         container_repository = authorized_find!(id: id)

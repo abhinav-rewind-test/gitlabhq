@@ -2,14 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe CommitSignatures::GpgSignature do
+RSpec.describe CommitSignatures::GpgSignature, feature_category: :source_code_management do
   # This commit is seeded from https://gitlab.com/gitlab-org/gitlab-test
   # For instructions on how to add more seed data, see the project README
   let_it_be(:commit_sha) { '0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33' }
   let_it_be(:project) { create(:project, :repository, path: 'sample-project') }
-  let_it_be(:commit) { create(:commit, project: project, sha: commit_sha) }
   let_it_be(:gpg_key) { create(:gpg_key) }
   let_it_be(:gpg_key_subkey) { create(:gpg_key_subkey, gpg_key: gpg_key) }
+  let(:commit) { create(:commit, project: project, sha: commit_sha).present(current_user: gpg_key.user) }
 
   let(:signature) { create(:gpg_signature, commit_sha: commit_sha, gpg_key: gpg_key) }
 
@@ -22,7 +22,10 @@ RSpec.describe CommitSignatures::GpgSignature do
   end
 
   it_behaves_like 'having unique enum values'
-  it_behaves_like 'commit signature'
+  it_behaves_like 'commit signature' do
+    let(:signature_attributes) { { commit_sha: commit_sha } }
+  end
+
   it_behaves_like 'signature with type checking', :gpg
 
   describe 'associations' do
@@ -90,6 +93,116 @@ RSpec.describe CommitSignatures::GpgSignature do
   describe '#signed_by_user' do
     it 'retrieves the gpg_key user' do
       expect(signature.signed_by_user).to eq(gpg_key.user)
+    end
+
+    context 'when gpg_key is nil' do
+      before do
+        signature.update!(gpg_key_id: nil)
+      end
+
+      it 'returns nil' do
+        expect(signature.signed_by_user).to be_nil
+      end
+    end
+  end
+
+  describe '#verification_status' do
+    let(:verification_status) { :verified }
+    let(:signature) do
+      create(:gpg_signature, commit_sha: commit_sha, gpg_key: gpg_key, project: project,
+        verification_status: verification_status)
+    end
+
+    # verified is used for user signed gpg commits.
+    context 'when persisted verification_status is verified' do
+      before do
+        allow(project).to receive(:commit).with(commit_sha).and_return(commit)
+        allow(commit).to receive(:committer_email).and_return(signature_committer_email)
+      end
+
+      let(:signature_committer_email) { gpg_key.user.email }
+
+      it 'returns persisted verification status' do
+        expect(signature.verification_status).to eq('verified')
+      end
+
+      context 'when commit committer does not match the gpg_key author' do
+        let(:signature_committer_email) { 'no-match@example.org' }
+
+        it 'returns unverified_author_email' do
+          expect(signature.verification_status).to eq('unverified_author_email')
+        end
+
+        context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+          before do
+            stub_feature_flags(check_for_mailmapped_commit_emails: false)
+          end
+
+          it 'verification status is unmodified' do
+            expect(signature.verification_status).to eq('verified')
+          end
+        end
+      end
+    end
+
+    context 'when persisted verification_status not verified' do
+      let(:verification_status) { :unverified }
+
+      it 'returns the signature verification status' do
+        expect(signature.verification_status).to eq('unverified')
+      end
+    end
+
+    # verified_system is used for ui signed commits.
+    context 'when persisted verification_status is verified_system' do
+      let(:verification_status) { :verified_system }
+
+      let(:signature_committer_email) { 'committer-email-from-gitaly@email.com' }
+      let(:committer_email) { 'verified-email@email.com' }
+      let(:commit) { create(:commit, project: project, sha: commit_sha) }
+
+      let(:signature) do
+        create(:gpg_signature, commit_sha: commit_sha, gpg_key: gpg_key, project: project,
+          verification_status: verification_status, committer_email: signature_committer_email)
+      end
+
+      let(:mock_user) do
+        instance_double(User,
+          verified_emails: [signature_committer_email, committer_email])
+      end
+
+      before do
+        allow(User).to receive(:find_by_any_email)
+          .with(signature_committer_email, confirmed: true)
+          .and_return(mock_user)
+      end
+
+      context 'when commit committer email is included in verified emails' do
+        it 'returns verified_system' do
+          expect(signature.verification_status).to eq('verified_system')
+        end
+      end
+
+      context 'when committer email is not included in verified emails' do
+        before do
+          allow(project).to receive(:commit).with(commit_sha).and_return(commit)
+          allow(commit).to receive(:committer_email).and_return('unverified-email@email.com')
+        end
+
+        it 'returns unverified_author_email' do
+          expect(signature.verification_status).to eq('unverified_author_email')
+        end
+      end
+
+      context 'when check_for_mailmapped_commit_emails feature flag is disabled' do
+        before do
+          stub_feature_flags(check_for_mailmapped_commit_emails: false)
+        end
+
+        it 'verification status is unmodified' do
+          expect(signature.verification_status).to eq('verified_system')
+        end
+      end
     end
   end
 end

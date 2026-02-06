@@ -70,15 +70,19 @@ module GitalySetup
     }
   end
 
-  def config_path(service)
+  def config_name(service)
     case service
     when :gitaly
-      File.join(tmp_tests_gitaly_dir, 'config.toml')
+      'config.toml'
     when :gitaly2
-      File.join(tmp_tests_gitaly_dir, 'gitaly2.config.toml')
+      'gitaly2.config.toml'
     when :praefect
-      File.join(tmp_tests_gitaly_dir, 'praefect.config.toml')
+      'praefect.config.toml'
     end
+  end
+
+  def config_path(service)
+    File.join(tmp_tests_gitaly_dir, config_name(service))
   end
 
   def service_cmd(service, toml = nil)
@@ -100,12 +104,26 @@ module GitalySetup
     run_command(%w[make all WITH_BUNDLED_GIT=YesPlease], env: env.merge('GIT_VERSION' => nil))
   end
 
-  def start_gitaly(toml = nil)
-    start(:gitaly, toml)
-  end
+  def start_gitaly(service, toml = nil)
+    case service
+    when :gitaly
+      FileUtils.mkdir_p(GitalySetup.storage_path)
+    when :gitaly2
+      FileUtils.mkdir_p(GitalySetup.second_storage_path)
+    end
 
-  def start_gitaly2
-    start(:gitaly2)
+    if gitaly_with_transactions? && !toml
+      # The configuration file with transactions is pre-generated. Here we check
+      # whether this job should actually run with transactions and choose the pre-generated
+      # configuration with transactions enabled if so.
+      #
+      # Workhorse provides its own configuration through 'toml'. If a configuration is
+      # explicitly provided, we don't override it. Workhorse test setup has its own logic
+      # to choose the configuration with transactions enabled.
+      toml = "#{config_path(service)}.transactions"
+    end
+
+    start(service, toml)
   end
 
   def start_praefect
@@ -129,11 +147,14 @@ module GitalySetup
     # Context: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/58776#note_547613780
     env = self.env.merge('HOME' => nil, 'XDG_CONFIG_HOME' => nil)
 
+    log_system_snapshot("before_spawn")
+
     pid = spawn(env, *args, [:out, :err] => "log/#{service}-test.log")
 
     begin
       try_connect!(service, toml)
     rescue StandardError
+      process_details(pid)
       Process.kill('TERM', pid)
       raise
     end
@@ -180,21 +201,42 @@ module GitalySetup
 
   def try_connect!(service, toml)
     LOGGER.debug "Trying to connect to #{service}: "
-    timeout = 20
+
+    start_time = Time.now
+
+    timeout = 60
     delay = 0.1
     connect = connect_proc(toml)
 
-    Integer(timeout / delay).times do
+    sample_iterations = 60
+    connected = false
+
+    Integer(timeout / delay).times do |i|
       connect.call
       LOGGER.debug " OK\n"
 
-      return
+      elapsed = (Time.now - start_time).round(2)
+      log_system_snapshot("after_success_#{elapsed}s")
+
+      connected = true
+      break
     rescue Errno::ENOENT, Errno::ECONNREFUSED
       LOGGER.debug '.'
+
+      if ENV['CI'] && i > 0 && (i % sample_iterations) == 0
+        elapsed = (Time.now - start_time).round(1)
+        log_system_snapshot("during_attempt_#{elapsed}s")
+      end
+
       sleep delay
     end
 
+    return if connected
+
     LOGGER.warn " FAILED to connect to #{service}\n"
+
+    elapsed = (Time.now - start_time).round(2)
+    log_system_snapshot("after_failure_#{elapsed}s")
 
     raise "could not connect to #{service}"
   end
@@ -220,31 +262,55 @@ module GitalySetup
   end
 
   def setup_gitaly
-    unless ENV['CI']
-      # In CI Gitaly is built in the setup-test-env job and saved in the
-      # artifacts. So when tests are started, there's no need to build Gitaly.
-      build_gitaly
-    end
+    gitaly_logging_level = ENV['GITALY_TESTING_LOG_LEVEL'] || 'warn'
 
-    Gitlab::SetupHelper::Gitaly.create_configuration(
-      gitaly_dir,
-      { 'default' => storage_path },
-      force: true,
-      options: {
-        runtime_dir: runtime_dir,
-        prometheus_listen_addr: 'localhost:9236'
+    [
+      {
+        storages: { 'default' => storage_path },
+        options: {
+          runtime_dir: runtime_dir,
+          prometheus_listen_addr: 'localhost:9236',
+          config_filename: config_name(:gitaly),
+          transactions_enabled: false
+        }
+      },
+      {
+        storages: { 'test_second_storage' => second_storage_path },
+        options: {
+          runtime_dir: runtime_dir,
+          gitaly_socket: "gitaly2.socket",
+          config_filename: config_name(:gitaly2),
+          transactions_enabled: false
+        }
       }
-    )
-    Gitlab::SetupHelper::Gitaly.create_configuration(
-      gitaly_dir,
-      { 'test_second_storage' => second_storage_path },
-      force: true,
-      options: {
-        runtime_dir: runtime_dir,
-        gitaly_socket: "gitaly2.socket",
-        config_filename: "gitaly2.config.toml"
-      }
-    )
+    ].each do |params|
+      params[:options][:logging_level] = gitaly_logging_level
+      Gitlab::SetupHelper::Gitaly.create_configuration(
+        gitaly_dir,
+        params[:storages],
+        force: true,
+        options: params[:options]
+      )
+
+      # CI generates all of the configuration files in the setup-test-env job. When we eventually get
+      # to run the rspec jobs with transactions enabled, the configuration has already been created
+      # without transactions enabled.
+      #
+      # Similarly to the Praefect configuration, generate variant of the configuration file with
+      # transactions enabled. Later when the rspec job runs, we decide whether to run Gitaly
+      # using the configuration with transactions enabled or not.
+      #
+      # These configuration files are only used in the CI.
+      params[:options][:config_filename] = "#{params[:options][:config_filename]}.transactions"
+      params[:options][:transactions_enabled] = true
+
+      Gitlab::SetupHelper::Gitaly.create_configuration(
+        gitaly_dir,
+        params[:storages],
+        force: true,
+        options: params[:options]
+      )
+    end
 
     # In CI we need to pre-generate both config files.
     # For local testing we'll create the correct file on-demand.
@@ -252,7 +318,10 @@ module GitalySetup
       Gitlab::SetupHelper::Praefect.create_configuration(
         gitaly_dir,
         nil,
-        force: true
+        force: true,
+        options: {
+          logging_level: gitaly_logging_level
+        }
       )
     end
 
@@ -266,7 +335,8 @@ module GitalySetup
           config_filename: 'praefect-db.config.toml',
           pghost: ENV['CI'] ? 'postgres' : ENV.fetch('PGHOST'),
           pgport: ENV['CI'] ? 5432 : ENV.fetch('PGPORT').to_i,
-          pguser: ENV['CI'] ? 'postgres' : ENV.fetch('USER')
+          pguser: ENV['CI'] ? 'postgres' : ENV.fetch('USER'),
+          logging_level: gitaly_logging_level
         }
       )
     end
@@ -301,10 +371,10 @@ module GitalySetup
     pids = []
 
     if toml
-      pids << start_gitaly(toml)
+      pids << start_gitaly(:gitaly, toml)
     else
-      pids << start_gitaly
-      pids << start_gitaly2
+      pids << start_gitaly(:gitaly)
+      pids << start_gitaly(:gitaly2)
       pids << start_praefect
     end
 
@@ -318,7 +388,11 @@ module GitalySetup
       # running until `make test` cleans it up.
       next if ENV['GITALY_PID_FILE']
 
+      ::Gitlab::GitalyClient.clear_stubs!
+
       pids.each { |pid| stop(pid) }
+
+      [storage_path, second_storage_path].each { |storage_dir| FileUtils.rm_rf(storage_dir) }
     end
   rescue StandardError
     raise gitaly_failure_message
@@ -331,7 +405,9 @@ module GitalySetup
     message += "- The `praefect` binary does not exist: #{praefect_binary}\n" unless File.exist?(praefect_binary)
     message += "- No `git` binaries exist\n" if git_binaries.empty?
 
-    message += "\nCheck log/gitaly-test.log & log/praefect-test.log for errors.\n"
+    message += read_log_file('log/gitaly-test.log')
+    message += read_log_file('log/gitaly2-test.log')
+    message += read_log_file('log/praefect-test.log')
 
     unless ENV['CI']
       message += "\nIf binaries are missing, try running `make -C tmp/tests/gitaly all WITH_BUNDLED_GIT=YesPlease`.\n"
@@ -339,6 +415,15 @@ module GitalySetup
     end
 
     message
+  end
+
+  def read_log_file(logs_path)
+    return '' unless File.exist?(logs_path)
+
+    <<~LOGS
+      \n#{logs_path}:\n
+      #{File.read(logs_path)}
+    LOGS
   end
 
   def git_binaries
@@ -355,5 +440,51 @@ module GitalySetup
 
   def praefect_with_db?
     Gitlab::Utils.to_boolean(ENV['GITALY_PRAEFECT_WITH_DB'], default: false)
+  end
+
+  def gitaly_with_transactions?
+    Gitlab::Utils.to_boolean(ENV['GITALY_TRANSACTIONS_ENABLED'], default: false)
+  end
+
+  private
+
+  # Logs the details of the process with the given pid.
+  def process_details(pid)
+    output = `ps -p #{pid} -o pid,ppid,state,%cpu,%mem,etime,args`
+    LOGGER.debug output
+
+    stack_output = `cat /proc/#{pid}/stack 2>/dev/null || echo "Could not read process stack"`
+    LOGGER.debug stack_output
+
+    load_avg = `cat /proc/loadavg 2>/dev/null || echo "unavailable"`
+    LOGGER.debug "Load average: #{load_avg.strip}\n"
+
+    io_wait = `vmstat 1 1 2>/dev/null | tail -1 | awk '{print $16}' || echo "0"`
+    LOGGER.debug "I/O wait: #{io_wait.strip}%\n"
+
+    disk_usage = `df -h 2>/dev/null | grep overlay | awk '{print $5}' || echo "unknown"`
+    LOGGER.debug "Disk usage: #{disk_usage.strip}\n"
+  end
+
+  def log_system_snapshot(label)
+    return unless ENV['CI'] || ENV['GITLAB_TESTING_LOG_LEVEL'] == 'debug'
+
+    if RUBY_PLATFORM.include?('darwin')
+      load = `sysctl -n vm.loadavg 2>/dev/null | awk '{print $2,$3,$4}'`.strip
+      mem_mb = `vm_stat 2>/dev/null | awk '/Pages free/ {print int($3 * 4096 / 1024 / 1024)}'`.strip
+      LOGGER.debug "\n[#{label}] load=#{load} mem_free=#{mem_mb}MB\n"
+    else
+      load = `cat /proc/loadavg 2>/dev/null | awk '{print $1,$2,$3}'`.strip
+      io_wait = `vmstat 1 2 2>/dev/null | tail -1 | awk '{print $16}'`.strip
+      mem = `grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}'`.strip
+      mem_mb = (mem.to_i / 1024.0).round
+      io_pressure = `cat /proc/pressure/io 2>/dev/null | grep some | awk '{print $2}' | cut -d= -f2`.strip
+
+      metrics = "load=#{load} io_wait=#{io_wait}% mem=#{mem_mb}MB"
+      metrics += " io_pressure=#{io_pressure}%" unless io_pressure.empty?
+      LOGGER.debug "\n[#{label}] #{metrics}\n"
+    end
+  rescue StandardError => e
+    LOGGER.debug "\n[#{label}] metrics unavailable: #{e.message}\n"
   end
 end

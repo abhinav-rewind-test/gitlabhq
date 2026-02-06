@@ -2,7 +2,7 @@
 
 module Atlassian
   module JiraConnect
-    class Client < Gitlab::HTTP
+    class Client
       def self.generate_update_sequence_id
         (Time.now.utc.to_f * 1000).round
       end
@@ -17,6 +17,7 @@ module Atlassian
         dev_info = args.slice(:commits, :branches, :merge_requests)
         build_info = args.slice(:pipelines)
         deploy_info = args.slice(:deployments)
+        remove_branch_info = args.slice(:remove_branch_info)
         ff_info = args.slice(:feature_flags)
 
         responses = []
@@ -24,6 +25,7 @@ module Atlassian
         responses << store_dev_info(**common, **dev_info) if dev_info.present?
         responses << store_build_info(**common, **build_info) if build_info.present?
         responses << store_deploy_info(**common, **deploy_info) if deploy_info.present?
+        responses << remove_branch_info(**common, **remove_branch_info) if remove_branch_info.present?
         responses << store_ff_info(**common, **ff_info) if ff_info.present?
         raise ArgumentError, 'Invalid arguments' if responses.empty?
 
@@ -44,7 +46,7 @@ module Atlassian
         uri = URI.join(@base_uri, path)
         uri.query = URI.encode_www_form(query_params)
 
-        self.class.get(uri, headers: headers(uri, 'GET'))
+        Integrations::Clients::HTTP.get(uri, headers: headers(uri, 'GET'))
       end
 
       def store_ff_info(project:, feature_flags:, **opts)
@@ -71,7 +73,7 @@ module Atlassian
 
       def store_deploy_info(project:, deployments:, **opts)
         items = deployments.map { |d| ::Atlassian::JiraConnect::Serializers::DeploymentEntity.represent(d, opts) }
-        items.reject! { |d| d.issue_keys.empty? }
+        items.select! { |d| d.associations.present? }
 
         return if items.empty?
 
@@ -108,10 +110,27 @@ module Atlassian
         post('/rest/devinfo/0.10/bulk', { repositories: [repo] })
       end
 
+      def remove_branch_info(project:, remove_branch_info:, update_sequence_id: nil)
+        # converts the branch name passed as remove_branch_info into a hexdecimal as per
+        # jira's process. Note: we use the hexdigest method in the serializer to parse the id from the branch name
+        # see ../lib/atlassian/jira_connect/serializers/branch_entity.rb#L8
+        jira_branch_id = Digest::SHA256.hexdigest(remove_branch_info)
+
+        logger.info({ message: "deleting jira branch id: #{jira_branch_id}, gitlab branch name: #{remove_branch_info}" })
+
+        delete("/rest/devinfo/0.10/repository/#{project.id}/branch/#{jira_branch_id}")
+      end
+
       def post(path, payload)
         uri = URI.join(@base_uri, path)
 
-        self.class.post(uri, headers: headers(uri), body: metadata.merge(payload).to_json)
+        Integrations::Clients::HTTP.post(uri, headers: headers(uri), body: metadata.merge(payload).to_json)
+      end
+
+      def delete(path)
+        uri = URI.join(@base_uri, path)
+
+        Integrations::Clients::HTTP.delete(uri, headers: headers(uri, 'DELETE'))
       end
 
       def headers(uri, http_method = 'POST')
@@ -133,15 +152,26 @@ module Atlassian
           yield data
         else
           case response.code
-          when 400 then { 'errorMessages' => data.map { |e| e['message'] } }
+          when 400 then { 'errorMessages' => parse_jira_error_messages(data) }
           when 401 then { 'errorMessages' => ['Invalid JWT'] }
           when 403 then { 'errorMessages' => ["App does not support #{name}"] }
-          when 413 then { 'errorMessages' => ['Data too large'] + data.map { |e| e['message'] } }
+          when 413 then { 'errorMessages' => ['Data too large'] + parse_jira_error_messages(data) }
           when 429 then { 'errorMessages' => ['Rate limit exceeded'] }
           when 503 then { 'errorMessages' => ['Service unavailable'] }
           else
             { 'errorMessages' => ['Unknown error'], 'response' => data }
           end.merge('responseCode' => response.code)
+        end
+      end
+
+      def parse_jira_error_messages(data)
+        case data
+        when Array
+          data.map { |e| e['message'] }
+        when Hash
+          [data['message'] || data['error'] || 'Unknown error']
+        else
+          ['Unknown error']
         end
       end
 
@@ -180,6 +210,10 @@ module Atlassian
         )
 
         Atlassian::Jwt.encode(claims, @shared_secret)
+      end
+
+      def logger
+        Gitlab::IntegrationsLogger
       end
     end
   end

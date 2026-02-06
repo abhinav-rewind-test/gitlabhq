@@ -33,6 +33,10 @@ module Operations
       where(project: project).update_all(last_feature_flag_updated_at: Time.current)
     end
 
+    def self.prefix_for_feature_flags_client_token
+      ::Authn::TokenField::PrefixHelper.prepend_instance_prefix(FEATURE_FLAGS_CLIENT_TOKEN_PREFIX)
+    end
+
     def unleash_api_version
       DEFAULT_UNLEASH_API_VERSION
     end
@@ -50,7 +54,7 @@ module Operations
     end
 
     def prefix_for_feature_flags_client_token
-      FEATURE_FLAGS_CLIENT_TOKEN_PREFIX
+      self.class.prefix_for_feature_flags_client_token
     end
   end
 end

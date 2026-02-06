@@ -1,13 +1,18 @@
 import Vue from 'vue';
+import VueApollo from 'vue-apollo';
+import { defaultClient } from '~/graphql_shared/issuable_client';
 import Translate from '~/vue_shared/translate';
 import GlobalSearchSidebar from './components/app.vue';
 
 Vue.use(Translate);
+Vue.use(VueApollo);
+
+const apolloProvider = new VueApollo({
+  defaultClient,
+});
 
 export const initSidebar = (store) => {
   const el = document.getElementById('js-search-sidebar');
-  const hederEl = document.getElementById('super-sidebar-context-header');
-  const headerText = hederEl.innerText;
 
   if (!el) return false;
 
@@ -15,12 +20,9 @@ export const initSidebar = (store) => {
     el,
     name: 'GlobalSearchSidebar',
     store,
+    apolloProvider,
     render(createElement) {
-      return createElement(GlobalSearchSidebar, {
-        props: {
-          headerText,
-        },
-      });
+      return createElement(GlobalSearchSidebar);
     },
   });
 };

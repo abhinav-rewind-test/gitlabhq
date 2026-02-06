@@ -2,7 +2,8 @@
 import { GlButton, GlTooltipDirective } from '@gitlab/ui';
 import { __ } from '~/locale';
 import Tracking from '~/tracking';
-import { JS_TOGGLE_COLLAPSE_CLASS, JS_TOGGLE_EXPAND_CLASS, sidebarState } from '../constants';
+import { hasTouchCapability } from '~/lib/utils/touch_detection';
+import { JS_TOGGLE_EXPAND_CLASS, JS_TOGGLE_COLLAPSE_CLASS, sidebarState } from '../constants';
 import { toggleSuperSidebarCollapsed } from '../super_sidebar_collapsed_state_manager';
 
 export default {
@@ -18,6 +19,16 @@ export default {
       type: String,
       required: false,
       default: 'expand',
+    },
+    icon: {
+      type: String,
+      required: false,
+      default: 'sidebar',
+    },
+    ariaLabel: {
+      type: String,
+      required: false,
+      default: null,
     },
   },
   i18n: {
@@ -43,7 +54,14 @@ export default {
       return this.type === 'expand';
     },
     tooltip() {
+      if (hasTouchCapability() || this.ariaLabel) {
+        return null;
+      }
+
       return this.isTypeExpand ? this.$options.tooltipExpand : this.$options.tooltipCollapse;
+    },
+    computedAriaLabel() {
+      return this.ariaLabel || this.$options.i18n.primaryNavigationSidebar;
     },
     ariaExpanded() {
       return String(this.isTypeCollapse);
@@ -55,6 +73,7 @@ export default {
   beforeUnmount() {
     this.$root.$off('bv::tooltip::show', this.onTooltipShow);
   },
+
   methods: {
     toggle() {
       this.track(this.isTypeExpand ? 'nav_show' : 'nav_hide', {
@@ -66,9 +85,11 @@ export default {
     },
     focusOtherToggle() {
       this.$nextTick(() => {
-        const classSelector = this.isTypeExpand ? JS_TOGGLE_COLLAPSE_CLASS : JS_TOGGLE_EXPAND_CLASS;
-        const otherToggle = document.querySelector(`.${classSelector}`);
-        otherToggle?.focus();
+        if (!this.isTypeExpand) {
+          document.querySelector(`.${JS_TOGGLE_EXPAND_CLASS}`).focus();
+        } else {
+          document.querySelector(`.${JS_TOGGLE_COLLAPSE_CLASS}`)?.focus();
+        }
       });
     },
     onTooltipShow(bvEvent) {
@@ -92,8 +113,9 @@ export default {
     v-gl-tooltip="tooltip"
     aria-controls="super-sidebar"
     :aria-expanded="ariaExpanded"
-    :aria-label="$options.i18n.primaryNavigationSidebar"
-    icon="sidebar"
+    :aria-label="computedAriaLabel"
+    :icon="icon"
+    data-testid="super-sidebar-toggle-button"
     category="tertiary"
     @click="toggle"
   />

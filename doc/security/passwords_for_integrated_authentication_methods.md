@@ -1,20 +1,13 @@
 ---
-stage: Govern
-group: Authentication
-info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+redirect_to: '../user/profile/user_passwords.md'
+remove_date: '2026-04-12'
 ---
 
-# Generated passwords for users created through integrated authentication
+<!-- markdownlint-disable -->
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+This document was moved to [another location](../user/profile/user_passwords.md).
 
-GitLab allows users to set up accounts through integration with external [authentication and authorization providers](../administration/auth/index.md).
-
-These authentication methods do not require the user to explicitly create a password for their accounts.
-However, to maintain data consistency, GitLab requires passwords for all user accounts.
-
-For such accounts, we use the [`friendly_token`](https://github.com/heartcombo/devise/blob/f26e05c20079c9acded3c0ee16da0df435a28997/lib/devise.rb#L492) method provided by the Devise gem to generate a random, unique and secure password and sets it as the account password during sign up.
-
-The length of the generated password is [128 characters](password_length_limits.md).
+<!-- This redirect file can be deleted after <2026-04-12>. -->
+<!-- Redirects that point to other docs in the same project expire in three months. -->
+<!-- Redirects that point to docs in a different project or site (for example, link is not relative and starts with `https:`) expire in one year. -->
+<!-- Before deletion, see: https://docs.gitlab.com/development/documentation/redirects -->

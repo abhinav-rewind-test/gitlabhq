@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::GithubImport::Representation::DiffNote, :clean_gitlab_redis_cache do
+RSpec.describe Gitlab::GithubImport::Representation::DiffNote, feature_category: :importers do
   let(:hunk) do
     '@@ -1 +1 @@
     -Hello
@@ -34,6 +34,12 @@ RSpec.describe Gitlab::GithubImport::Representation::DiffNote, :clean_gitlab_red
   let(:updated_at) { Time.new(2017, 1, 1, 12, 15) }
 
   shared_examples 'a DiffNote representation' do
+    context 'when note body is present' do
+      it 'includes the note body' do
+        expect(note.note).to eq(note_body)
+      end
+    end
+
     it 'returns an instance of DiffNote' do
       expect(note).to be_an_instance_of(described_class)
     end
@@ -152,6 +158,106 @@ RSpec.describe Gitlab::GithubImport::Representation::DiffNote, :clean_gitlab_red
             note = described_class.new(diff_hunk: '', file_path: 'README.md', subject_type: 'file')
 
             expect(note.line_code).to eq('8ec9a00bfd09b3190ac6b22251dbb1aa95a0579d_1_1')
+          end
+        end
+      end
+
+      describe '#diff_hunk' do
+        context 'when diff_hunk is nil or empty' do
+          it 'generates a default diff_hunk with default content when merge_request is not available' do
+            note = described_class.new(
+              diff_hunk: nil,
+              file_path: 'README.md',
+              end_line: 15,
+              original_commit_id: 'abc123'
+            )
+
+            expect(note.diff_hunk).to eq("@@ -15,1 +15,1 @@\ncontext not found")
+          end
+
+          it 'generates a default diff_hunk using line attribute when end_line is nil' do
+            note = described_class.new(
+              diff_hunk: nil,
+              file_path: 'README.md',
+              line: 20,
+              end_line: nil,
+              original_commit_id: 'abc123'
+            )
+
+            expect(note.diff_hunk).to eq("@@ -20,1 +20,1 @@\ncontext not found")
+          end
+
+          it 'generates a default diff_hunk with line 1 when both end_line and line are nil' do
+            note = described_class.new(
+              diff_hunk: nil,
+              file_path: 'README.md',
+              original_commit_id: 'abc123'
+            )
+
+            expect(note.diff_hunk).to eq("@@ -1,1 +1,1 @@\ncontext not found")
+          end
+
+          it 'generates a default diff_hunk for empty string' do
+            note = described_class.new(
+              diff_hunk: '',
+              file_path: 'README.md',
+              end_line: 10,
+              original_commit_id: 'abc123'
+            )
+
+            expect(note.diff_hunk).to eq("@@ -10,1 +10,1 @@\ncontext not found")
+          end
+
+          it 'does not override existing diff_hunk' do
+            existing_hunk = "@@ -5,3 +5,3 @@\noriginal content"
+            note = described_class.new(
+              diff_hunk: existing_hunk,
+              file_path: 'README.md',
+              end_line: 10,
+              original_commit_id: 'abc123'
+            )
+
+            expect(note.diff_hunk).to eq(existing_hunk)
+          end
+
+          context 'when merge_request is available with repository' do
+            it 'attempts to fetch actual file content' do
+              note = described_class.new(
+                diff_hunk: nil,
+                file_path: 'README.md',
+                end_line: 2,
+                original_commit_id: 'abc123'
+              )
+
+              file_content = "Line 1\nLine 2\nLine 3\n"
+              blob = double(:blob, data: file_content)
+              repository = double(:repository)
+              allow(repository).to receive(:blob_at).with('abc123', 'README.md').and_return(blob)
+
+              project = double(:project, repository: repository)
+              merge_request = double(:merge_request, project: project)
+              note.merge_request = merge_request
+
+              expect(note.diff_hunk).to eq("@@ -2,1 +2,1 @@\nLine 2")
+            end
+
+            it 'falls back to context line when blob is not found' do
+              note = described_class.new(
+                diff_hunk: nil,
+                file_path: 'README.md',
+                end_line: 2,
+                original_commit_id: 'abc123'
+              )
+
+              repository = double(:repository)
+              allow(repository).to receive(:blob_at).with('abc123', 'README.md').and_return(nil)
+
+              project = double(:project, repository: repository)
+              merge_request = double(:merge_request, project: project)
+              note.merge_request = merge_request
+
+              expect(note.diff_hunk).to eq("@@ -2,1 +2,1 @@\ncontext not found")
+            end
           end
         end
       end

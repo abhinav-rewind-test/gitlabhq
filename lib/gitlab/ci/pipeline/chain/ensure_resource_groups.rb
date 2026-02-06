@@ -6,7 +6,7 @@ module Gitlab
       module Chain
         class EnsureResourceGroups < Chain::Base
           def perform!
-            pipeline.stages.map(&:statuses).flatten.each(&method(:ensure_resource_group))
+            pipeline.stages.flat_map(&:statuses).each(&method(:ensure_resource_group))
           end
 
           def break?
@@ -18,7 +18,7 @@ module Gitlab
           def ensure_resource_group(processable)
             return unless processable.is_a?(::Ci::Processable)
 
-            key = processable.options.delete(:resource_group_key)
+            key = processable.options[:resource_group_key]
 
             resource_group = ::Gitlab::Ci::Pipeline::Seed::Processable::ResourceGroup
               .new(processable, key).to_resource

@@ -10,7 +10,7 @@ export default {
   computed: {
     scrimClasses() {
       return {
-        'top-scrim-visible': !this.topBoundaryVisible,
+        'top-scrim-visible gl-border-t': !this.topBoundaryVisible,
         'bottom-scrim-visible gl-border-b': !this.bottomBoundaryVisible,
       };
     },
@@ -56,7 +56,7 @@ export default {
 </script>
 
 <template>
-  <div class="gl-scroll-scrim gl-overflow-auto" :class="scrimClasses">
+  <div class="gl-scroll-scrim gl-overflow-y-auto gl-overflow-x-hidden" :class="scrimClasses">
     <div class="top-scrim-wrapper">
       <div class="top-scrim"></div>
     </div>

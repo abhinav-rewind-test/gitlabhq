@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::ImageLinkFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::ImageLinkFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   let(:path) { '/uploads/e90decf88d8f96fe9e1389afc2e4a91f/test.jpg' }
@@ -19,6 +19,12 @@ RSpec.describe Banzai::Filter::ImageLinkFilter, feature_category: :team_planning
     doc = filter(image(path), context)
 
     expect(doc.at_css('img')['src']).to eq doc.at_css('a')['href']
+  end
+
+  it 'ignores images with empty data-src' do
+    doc = filter(image(path, data_src: ''), context)
+
+    expect(doc.at_css('a')).to be_nil
   end
 
   it 'does not wrap a duplicate link' do
@@ -146,4 +152,6 @@ RSpec.describe Banzai::Filter::ImageLinkFilter, feature_category: :team_planning
       end
     end
   end
+
+  it_behaves_like 'pipeline timing check'
 end

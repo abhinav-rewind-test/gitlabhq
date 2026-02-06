@@ -1,17 +1,13 @@
-import { GlEmptyState } from '@gitlab/ui';
-
 import { mountExtended } from 'jest/__helpers__/vue_test_utils_helper';
 import SubgroupsAndProjectsEmptyState from '~/groups/components/empty_states/subgroups_and_projects_empty_state.vue';
+import ResourceListsEmptyState from '~/vue_shared/components/resource_lists/empty_state.vue';
+import { SEARCH_MINIMUM_LENGTH } from '~/groups/constants';
 
 let wrapper;
 
 const defaultProvide = {
-  newProjectIllustration: '/assets/illustrations/project-create-new-sm.svg',
   newProjectPath: '/projects/new?namespace_id=231',
-  newSubgroupIllustration: '/assets/illustrations/group-new.svg',
   newSubgroupPath: '/groups/new?parent_id=231',
-  emptyProjectsIllustration: '/assets/illustrations/empty-state/empty-projects-md.svg',
-  emptySubgroupIllustration: '/assets/illustrations/empty-state/empty-subgroup-md.svg',
   canCreateSubgroups: true,
   canCreateProjects: true,
 };
@@ -25,39 +21,57 @@ const createComponent = ({ provide = {} } = {}) => {
   });
 };
 
-const findNewSubgroupLink = () =>
-  wrapper.findByRole('link', {
-    name: new RegExp(SubgroupsAndProjectsEmptyState.i18n.withLinks.subgroup.title),
-  });
-const findNewProjectLink = () =>
-  wrapper.findByRole('link', {
-    name: new RegExp(SubgroupsAndProjectsEmptyState.i18n.withLinks.project.title),
-  });
-const findNewSubgroupIllustration = () =>
-  wrapper.findByRole('img', { name: SubgroupsAndProjectsEmptyState.i18n.withLinks.subgroup.title });
-const findNewProjectIllustration = () =>
-  wrapper.findByRole('img', { name: SubgroupsAndProjectsEmptyState.i18n.withLinks.project.title });
+const findNewSubgroupButton = () => wrapper.findByTestId('create-subgroup');
+const findNewProjectButton = () => wrapper.findByTestId('create-project');
+const findEmptyState = () => wrapper.findComponent(ResourceListsEmptyState);
 
 describe('SubgroupsAndProjectsEmptyState', () => {
   describe('when user has permission to create a subgroup', () => {
-    it('renders `Create new subgroup` link', () => {
+    it('renders `Create subgroup` button', () => {
       createComponent();
 
-      expect(findNewSubgroupLink().attributes('href')).toBe(defaultProvide.newSubgroupPath);
-      expect(findNewSubgroupIllustration().attributes('src')).toBe(
-        defaultProvide.newSubgroupIllustration,
-      );
+      expect(findNewSubgroupButton().text()).toBe('Create subgroup');
+      expect(findNewSubgroupButton().props()).toMatchObject({
+        href: defaultProvide.newSubgroupPath,
+        variant: 'default',
+        category: 'secondary',
+      });
+    });
+  });
+
+  describe('when user has permission to create a subgroup but no permission to create a project', () => {
+    it('renders `Create subgroup` button', () => {
+      createComponent({ provide: { canCreateProjects: false } });
+
+      expect(findNewSubgroupButton().props()).toMatchObject({
+        variant: 'confirm',
+        category: 'primary',
+      });
     });
   });
 
   describe('when user has permission to create a project', () => {
-    it('renders `Create new project` link', () => {
+    it('renders `Create new project` button', () => {
       createComponent();
 
-      expect(findNewProjectLink().attributes('href')).toBe(defaultProvide.newProjectPath);
-      expect(findNewProjectIllustration().attributes('src')).toBe(
-        defaultProvide.newProjectIllustration,
-      );
+      expect(findNewProjectButton().text()).toBe('Create project');
+      expect(findNewProjectButton().props()).toMatchObject({
+        href: defaultProvide.newProjectPath,
+        variant: 'confirm',
+        category: 'primary',
+      });
+    });
+  });
+
+  describe('when user has permissions', () => {
+    it('renders correct title and description', () => {
+      createComponent();
+
+      expect(findEmptyState().props()).toMatchObject({
+        title: 'Organize your work with projects and subgroups',
+        description:
+          'Use projects to store Git repositories and collaborate on issues. Use subgroups as folders to organize related projects and manage team access.',
+      });
     });
   });
 
@@ -65,11 +79,15 @@ describe('SubgroupsAndProjectsEmptyState', () => {
     it('renders empty state', () => {
       createComponent({ provide: { canCreateSubgroups: false, canCreateProjects: false } });
 
-      expect(wrapper.findComponent(GlEmptyState).props()).toMatchObject({
-        title: SubgroupsAndProjectsEmptyState.i18n.withoutLinks.title,
-        description: SubgroupsAndProjectsEmptyState.i18n.withoutLinks.description,
-        svgPath: defaultProvide.emptySubgroupIllustration,
+      expect(findEmptyState().props()).toMatchObject({
+        title: 'There are no subgroups or projects in this group',
+        description:
+          'You do not have necessary permissions to create a subgroup or project in this group. Please contact an owner of this group to create a new subgroup or project.',
+        search: '',
+        searchMinimumLength: SEARCH_MINIMUM_LENGTH,
       });
+
+      expect(wrapper.findByTestId('empty-subgroup-and-projects-actions').exists()).toBe(false);
     });
   });
 });

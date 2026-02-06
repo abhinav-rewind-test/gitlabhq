@@ -18,10 +18,14 @@ module Projects
       expire_wiki_caches
       project.statistics.refresh!(only: statistics)
 
-      record_onboarding_progress
+      after_execute_hook
     end
 
     private
+
+    def after_execute_hook
+      # overridden in ee
+    end
 
     def expire_repository_caches
       if statistics.empty?
@@ -48,11 +52,7 @@ module Projects
         params[:statistics]&.map(&:to_sym)
       end
     end
-
-    def record_onboarding_progress
-      return unless repository.commit_count > 1 || repository.branch_count > 1
-
-      Onboarding::ProgressService.new(project.namespace).execute(action: :code_added)
-    end
   end
 end
+
+Projects::UpdateStatisticsService.prepend_mod

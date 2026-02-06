@@ -9,14 +9,14 @@ RSpec.shared_examples 'a harbor tags controller' do |args|
   let(:mock_artifacts) do
     [
       {
-        "artifact_id": 1,
-        "id": 1,
-        "immutable": false,
-        "name": "2",
-        "pull_time": "0001-01-01T00:00:00.000Z",
-        "push_time": "2022-04-23T08:04:08.920Z",
-        "repository_id": 1,
-        "signed": false
+        artifact_id: 1,
+        id: 1,
+        immutable: false,
+        name: "2",
+        pull_time: "0001-01-01T00:00:00.000Z",
+        push_time: "2022-04-23T08:04:08.920Z",
+        repository_id: 1,
+        signed: false
       }
     ]
   end
@@ -59,13 +59,14 @@ RSpec.shared_examples 'a harbor tags controller' do |args|
 
   before do
     stub_request(:get,
-      "https://demo.goharbor.io/api/v2.0/projects/testproject/repositories/test/artifacts/1/tags"\
-      "?page=1&page_size=10")
-    .with(
-      headers: {
-      'Authorization': 'Basic aGFyYm9ydXNlcm5hbWU6aGFyYm9ycGFzc3dvcmQ=',
-      'Content-Type': 'application/json'
-    }).to_return(status: 200, body: mock_artifacts.to_json, headers: { "x-total-count": 2 })
+      "https://demo.goharbor.io/api/v2.0/projects/testproject/repositories/test/artifacts/1/tags" \
+        "?page=1&page_size=10")
+      .with(
+        headers: {
+          Authorization: 'Basic aGFyYm9ydXNlcm5hbWU6aGFyYm9ycGFzc3dvcmQ=',
+          'Content-Type': 'application/json'
+        }).to_return(status: 200, body: mock_artifacts.to_json, headers: { "x-total-count": 2,
+                                                                           'Content-Type': 'application/json' })
     container.add_reporter(user)
     sign_in(user)
   end

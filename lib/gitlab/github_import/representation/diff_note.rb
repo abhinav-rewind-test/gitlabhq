@@ -52,6 +52,7 @@ module Gitlab
         # Builds a new note using a Hash that was built from a JSON payload.
         def self.from_json_hash(raw_hash)
           hash = Representation.symbolize_hash(raw_hash)
+
           hash[:author] &&= Representation::User.from_json_hash(hash[:author])
 
           new(hash)
@@ -69,6 +70,12 @@ module Gitlab
             start_line: attributes[:start_line],
             end_line: attributes[:end_line]
           )
+        end
+
+        def diff_hunk
+          return @attributes[:diff_hunk] if @attributes[:diff_hunk].present?
+
+          @attributes[:diff_hunk] = generate_default_diff_hunk
         end
 
         def noteable_type
@@ -92,6 +99,7 @@ module Gitlab
           return Gitlab::Git.diff_line_code(file_path, 1, 1) if on_file?
 
           diff_line = Gitlab::Diff::Parser.new.parse(diff_hunk.lines).to_a.last
+
           Gitlab::Git.diff_line_code(file_path, diff_line.new_pos, diff_line.old_pos)
         end
 
@@ -132,6 +140,22 @@ module Gitlab
         end
 
         private
+
+        def generate_default_diff_hunk
+          line_number = @attributes[:end_line] || @attributes[:line] || 1
+          "@@ -#{line_number},1 +#{line_number},1 @@\n#{fetch_file_line_content(line_number)}"
+        end
+
+        def fetch_file_line_content(line_number)
+          return 'context not found' unless merge_request&.project&.repository
+
+          @file_lines ||= begin
+            blob = merge_request.project.repository.blob_at(@attributes[:original_commit_id], @attributes[:file_path])
+            blob&.data&.lines || []
+          end
+
+          @file_lines[line_number - 1]&.chomp || 'context not found'
+        end
 
         def diff_line_params
           if addition?

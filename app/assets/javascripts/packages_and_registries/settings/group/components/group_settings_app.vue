@@ -4,7 +4,7 @@ import { __ } from '~/locale';
 import PackagesSettings from '~/packages_and_registries/settings/group/components/packages_settings.vue';
 import PackagesForwardingSettings from '~/packages_and_registries/settings/group/components/packages_forwarding_settings.vue';
 import DependencyProxySettings from '~/packages_and_registries/settings/group/components/dependency_proxy_settings.vue';
-
+import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
 import getGroupPackagesSettingsQuery from '~/packages_and_registries/settings/group/graphql/queries/get_group_packages_settings.query.graphql';
 
 export default {
@@ -15,6 +15,7 @@ export default {
     PackagesForwardingSettings,
     DependencyProxySettings,
   },
+  mixins: [glAbilitiesMixin()],
   inject: ['groupPath'],
   apollo: {
     group: {
@@ -23,6 +24,9 @@ export default {
         return {
           fullPath: this.groupPath,
         };
+      },
+      context: {
+        batchKey: 'GroupPackagesSettings',
       },
     },
   },
@@ -64,13 +68,22 @@ export default {
 </script>
 
 <template>
-  <div data-testid="packages-and-registries-group-settings">
+  <div
+    data-testid="packages-and-registries-group-settings"
+    class="js-hide-when-nothing-matches-search"
+  >
     <gl-alert v-if="alertMessage" variant="warning" class="gl-mt-4" @dismiss="dismissAlert">
       {{ alertMessage }}
     </gl-alert>
 
+    <slot
+      name="virtual-registries-setting"
+      :handle-success="handleSuccess"
+      :handle-error="handleError"
+    ></slot>
+
     <packages-settings
-      class="settings-section-no-bottom"
+      id="packages-settings"
       :package-settings="packageSettings"
       :is-loading="isLoading"
       @success="handleSuccess"
@@ -78,12 +91,15 @@ export default {
     />
 
     <packages-forwarding-settings
+      id="packages-forwarding-settings"
       :forward-settings="packageSettings"
       @success="handleSuccess"
       @error="handleError"
     />
 
     <dependency-proxy-settings
+      v-if="glAbilities.adminDependencyProxy"
+      id="dependency-proxy-settings"
       :dependency-proxy-settings="dependencyProxySettings"
       :dependency-proxy-image-ttl-policy="dependencyProxyImageTtlPolicy"
       :is-loading="isLoading"

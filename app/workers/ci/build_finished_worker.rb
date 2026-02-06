@@ -4,12 +4,12 @@ module Ci
   class BuildFinishedWorker # rubocop:disable Scalability/IdempotentWorker
     include ApplicationWorker
 
-    data_consistency :always
+    data_consistency :sticky
 
     sidekiq_options retry: 3
-    include PipelineQueue
 
     queue_namespace :pipeline_processing
+    feature_category :continuous_integration
     urgency :high
     worker_resource_boundary :cpu
 
@@ -19,8 +19,9 @@ module Ci
       return unless build = Ci::Build.find_by_id(build_id)
       return unless build.project
       return if build.project.pending_delete?
+      return unless pipeline = build.pipeline
 
-      process_build(build)
+      process_build(build, pipeline)
     end
 
     private
@@ -31,34 +32,18 @@ module Ci
     # easily.
     #
     # @param [Ci::Build] build The build to process.
-    def process_build(build)
+    def process_build(build, pipeline)
       # We execute these in sync to reduce IO.
       build.update_coverage
       Ci::BuildReportResultService.new.execute(build)
 
       build.execute_hooks
-      ChatNotificationWorker.perform_async(build.id) if build.pipeline.chat?
+      ChatNotificationWorker.perform_async(build.id) if pipeline.chat?
       build.track_deployment_usage
       build.track_verify_environment_usage
       build.remove_token!
 
       if build.failed? && !build.auto_retry_expected?
-        if Feature.enabled?(:auto_cancel_pipeline_on_job_failure, build.pipeline.project)
-          case build.pipeline.auto_cancel_on_job_failure
-          when 'none'
-            # no-op
-          when 'all'
-            ::Ci::UserCancelPipelineWorker.perform_async(
-              build.pipeline_id,
-              build.pipeline_id,
-              build.user.id
-            )
-          else
-            raise ArgumentError,
-              "Unknown auto_cancel_on_job_failure value: #{build.pipeline.auto_cancel_on_job_failure}"
-          end
-        end
-
         ::Ci::MergeRequests::AddTodoWhenBuildFailsWorker.perform_async(build.id)
       end
 
@@ -75,6 +60,9 @@ module Ci
       # details.
       #
       Ci::ArchiveTraceWorker.perform_in(ARCHIVE_TRACES_IN, build.id)
+
+      Ci::Slsa::PublishProvenanceWorker.perform_async(build.id) if
+        ::SupplyChain.publish_provenance_for_build?(build)
     end
   end
 end

@@ -4,6 +4,8 @@ require 'spec_helper'
 
 RSpec.describe AwardEmoji, feature_category: :team_planning do
   let_it_be(:user) { create(:user) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:project) { create(:project, namespace: group) }
 
   describe 'Associations' do
     it { is_expected.to belong_to(:awardable) }
@@ -22,8 +24,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     # To circumvent a bug in the shoulda matchers
     describe "scoped uniqueness validation" do
       it "rejects duplicate award emoji" do
-        user  = create(:user)
-        issue = create(:issue)
+        issue = create(:issue, project: project)
         create(:award_emoji, user: user, awardable: issue)
         new_award = build(:award_emoji, user: user, awardable: issue)
 
@@ -37,7 +38,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
       # the uniqueness validation is disabled for ghost users.
       it "allows duplicate award emoji for ghost users" do
         user  = create(:user, :ghost)
-        issue = create(:issue)
+        issue = create(:issue, project: project)
         create(:award_emoji, user: user, awardable: issue)
         new_award = build(:award_emoji, user: user, awardable: issue)
 
@@ -51,8 +52,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
       # fails to be created
       context 'when importing' do
         it 'allows duplicate award emoji' do
-          user  = create(:user)
-          issue = create(:issue)
+          issue = create(:issue, project: project)
           create(:award_emoji, user: user, awardable: issue)
           new_award = build(:award_emoji, user: user, awardable: issue, importing: true)
 
@@ -62,9 +62,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     end
 
     context 'custom emoji' do
-      let_it_be(:group) { create(:group) }
       let_it_be(:emoji) { create(:custom_emoji, name: 'partyparrot', namespace: group) }
-      let_it_be(:project) { create(:project, namespace: group) }
 
       before_all do
         group.add_maintainer(user)
@@ -96,7 +94,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
       end
 
       context 'with snippet' do
-        let(:awardable) { create(:snippet, project: project) }
+        let(:awardable) { create(:project_snippet, project: project) }
 
         include_examples 'awardable'
       end
@@ -120,8 +118,12 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
   end
 
   describe 'scopes' do
-    let_it_be(:thumbsup) { create(:award_emoji, name: 'thumbsup') }
-    let_it_be(:thumbsdown) { create(:award_emoji, name: 'thumbsdown') }
+    let_it_be(:awardable1) { create(:issue, project: project) }
+    let_it_be(:awardable2) { create(:issue, project: project) }
+    let_it_be(:thumbsup) { create(:award_emoji, name: 'thumbsup', awardable: awardable1) }
+    let_it_be(:thumbsdown) { create(:award_emoji, name: 'thumbsdown', awardable: awardable2) }
+
+    let(:awardables) { [awardable1, awardable2] }
 
     describe '.upvotes' do
       it { expect(described_class.upvotes).to contain_exactly(thumbsup) }
@@ -132,13 +134,18 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     end
 
     describe '.named' do
-      it { expect(described_class.named('thumbsup')).to contain_exactly(thumbsup) }
-      it { expect(described_class.named(%w[thumbsup thumbsdown])).to contain_exactly(thumbsup, thumbsdown) }
+      it { expect(described_class.named(AwardEmoji::THUMBS_UP)).to contain_exactly(thumbsup) }
+      it { expect(described_class.named([AwardEmoji::THUMBS_UP, AwardEmoji::THUMBS_DOWN])).to contain_exactly(thumbsup, thumbsdown) }
     end
 
     describe '.awarded_by' do
       it { expect(described_class.awarded_by(thumbsup.user)).to contain_exactly(thumbsup) }
       it { expect(described_class.awarded_by([thumbsup.user, thumbsdown.user])).to contain_exactly(thumbsup, thumbsdown) }
+    end
+
+    describe '.by_awardable' do
+      it { expect(described_class.by_awardable('Issue', awardables)).to match_array([thumbsup, thumbsdown]) }
+      it { expect(described_class.by_awardable('Issue', awardables.map(&:id))).to match_array([thumbsup, thumbsdown]) }
     end
   end
 
@@ -176,7 +183,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     end
 
     context 'on another awardable' do
-      let(:issue) { create(:issue) }
+      let(:issue) { create(:issue, project: project) }
       let(:award_emoji) { build(:award_emoji, user: user, awardable: issue) }
 
       it 'does not broadcast updates on the issue when saved' do
@@ -214,7 +221,7 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     end
 
     context 'on another awardable' do
-      let(:issue) { create(:issue) }
+      let(:issue) { create(:issue, project: project) }
       let(:award_emoji) { build(:award_emoji, user: user, awardable: issue) }
 
       it 'does not error out when saved' do
@@ -231,28 +238,28 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
     let(:user) { create(:user) }
 
     before do
-      create(:award_emoji, user: user, name: 'thumbsup')
-      create(:award_emoji, user: user, name: 'thumbsup')
-      create(:award_emoji, user: user, name: 'thumbsdown')
+      create(:award_emoji, user: user, name: AwardEmoji::THUMBS_UP)
+      create(:award_emoji, user: user, name: AwardEmoji::THUMBS_UP)
+      create(:award_emoji, user: user, name: AwardEmoji::THUMBS_DOWN)
       create(:award_emoji, user: user, name: '+1')
     end
 
     it 'returns the awarded emoji in descending order' do
       awards = described_class.award_counts_for_user(user)
 
-      expect(awards).to eq('thumbsup' => 2, 'thumbsdown' => 1, '+1' => 1)
+      expect(awards).to eq(AwardEmoji::THUMBS_UP => 2, AwardEmoji::THUMBS_DOWN => 1, '+1' => 1)
     end
 
     it 'limits the returned number of rows' do
       awards = described_class.award_counts_for_user(user, 1)
 
-      expect(awards).to eq('thumbsup' => 2)
+      expect(awards).to eq(AwardEmoji::THUMBS_UP => 2)
     end
   end
 
   describe 'updating upvotes_count' do
     context 'on an issue' do
-      let(:issue) { create(:issue) }
+      let(:issue) { create(:issue, project: project) }
       let(:upvote) { build(:award_emoji, :upvote, user: user, awardable: issue) }
       let(:downvote) { build(:award_emoji, :downvote, user: user, awardable: issue) }
 
@@ -332,11 +339,45 @@ RSpec.describe AwardEmoji, feature_category: :team_planning do
   end
 
   describe '#to_ability_name' do
-    let(:merge_request) { create(:merge_request) }
+    let(:merge_request) { create(:merge_request, source_project: project) }
     let(:award_emoji) { build(:award_emoji, user: user, awardable: merge_request) }
 
     it 'returns correct ability name' do
       expect(award_emoji.to_ability_name).to be('emoji')
+    end
+  end
+
+  describe '#ensure_sharding_key' do
+    using RSpec::Parameterized::TableSyntax
+
+    let(:project_namespace_id) { project.project_namespace_id }
+    let(:issue) { create(:issue, project: project) }
+    let(:merge_request) { create(:merge_request, source_project: project) }
+    let(:project_snippet) { create(:project_snippet, project: project) }
+    let(:personal_snippet) { create(:personal_snippet) }
+    let(:issue_note) { create(:note_on_issue, noteable: issue, project: project) }
+    let(:personal_snippet_note) { create(:note_on_personal_snippet) }
+    let(:snippet_organization_id) { personal_snippet.organization_id }
+    let(:personal_snippet_organization) { personal_snippet.organization }
+
+    where(:awardable, :namespace_id, :organization_id) do
+      ref(:issue)                 | ref(:project_namespace_id) | nil
+      ref(:merge_request)         | ref(:project_namespace_id) | nil
+      ref(:project_snippet)       | ref(:project_namespace_id) | nil
+      ref(:personal_snippet)      | nil                        | ref(:snippet_organization_id)
+      ref(:issue_note)            | ref(:project_namespace_id) | nil
+      ref(:personal_snippet_note) | nil                        | ref(:snippet_organization_id)
+    end
+
+    with_them do
+      it 'sets the correct sharding key' do
+        award_emoji = build(:award_emoji, awardable: awardable)
+        award_emoji.valid?
+
+        expect(award_emoji).to be_valid
+        expect(award_emoji.namespace_id).to eq(namespace_id)
+        expect(award_emoji.organization_id).to eq(organization_id)
+      end
     end
   end
 end

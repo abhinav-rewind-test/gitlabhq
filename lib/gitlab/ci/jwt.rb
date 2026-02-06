@@ -2,29 +2,19 @@
 
 module Gitlab
   module Ci
-    class Jwt
+    class Jwt < JwtBase
       NOT_BEFORE_TIME = 5
       DEFAULT_EXPIRE_TIME = 60 * 5
 
-      NoSigningKeyError = Class.new(StandardError)
-
       def self.for_build(build)
-        self.new(build, ttl: build.metadata_timeout).encoded
+        self.new(build, ttl: build.timeout_value).encoded
       end
 
       def initialize(build, ttl:)
+        super()
+
         @build = build
         @ttl = ttl
-      end
-
-      def payload
-        custom_claims.merge(reserved_claims)
-      end
-
-      def encoded
-        headers = { kid: kid, typ: 'JWT' }
-
-        JWT.encode(payload, key, 'RS256', headers)
       end
 
       private
@@ -33,32 +23,43 @@ module Gitlab
 
       delegate :project, :user, :pipeline, :runner, to: :build
       delegate :source_ref, :source_ref_path, to: :pipeline
-      delegate :public_key, to: :key
-      delegate :namespace, to: :project
 
-      def reserved_claims
+      def default_payload
         now = Time.now.to_i
 
-        {
+        super.merge(
           jti: SecureRandom.uuid,
           iss: Settings.gitlab.host,
           iat: now,
           nbf: now - NOT_BEFORE_TIME,
           exp: now + (ttl || DEFAULT_EXPIRE_TIME),
           sub: "job_#{build.id}"
-        }
+        )
       end
 
-      def custom_claims
+      def predefined_claims
+        project_claims.merge(job_project_claims).merge(ci_claims)
+      end
+
+      # Claims for the source project of a merge request pipeline,
+      # or else claims of the project where the pipeline is running.
+      def project_claims
+        ::JSONWebToken::UserProjectTokenClaims
+         .new(project: source_project, user: user)
+         .generate
+      end
+
+      # Claims related to the project running the job.
+      # These claims match project_claims unless this is
+      # a merge request pipeline for a fork project.
+      def job_project_claims
+        ::JSONWebToken::UserProjectTokenClaims
+         .new(project: project, user: user)
+         .project_claims(key_prefix: 'job_')
+      end
+
+      def ci_claims
         fields = {
-          namespace_id: namespace.id.to_s,
-          namespace_path: namespace.full_path,
-          project_id: project.id.to_s,
-          project_path: project.full_path,
-          user_id: user&.id.to_s,
-          user_login: user&.username,
-          user_email: user&.email,
-          user_access_level: user_access_level,
           pipeline_id: pipeline.id.to_s,
           pipeline_source: pipeline.source.to_s,
           job_id: build.id.to_s,
@@ -67,6 +68,12 @@ module Gitlab
           ref_path: source_ref_path,
           ref_protected: build.protected.to_s
         }
+
+        if Feature.enabled?(:ci_jwt_groups_direct, project, type: :ops) ||
+            Feature.enabled?(:ci_jwt_groups_direct, project.root_namespace, type: :ops)
+          direct_groups = user&.first_group_paths
+          fields[:groups_direct] = direct_groups if direct_groups
+        end
 
         if environment.present?
           fields.merge!(
@@ -78,20 +85,6 @@ module Gitlab
         end
 
         fields
-      end
-
-      def key
-        @key ||= begin
-          key_data = Gitlab::CurrentSettings.ci_jwt_signing_key
-
-          raise NoSigningKeyError unless key_data
-
-          OpenSSL::PKey::RSA.new(key_data)
-        end
-      end
-
-      def kid
-        public_key.to_jwk[:kid]
       end
 
       def ref_type
@@ -106,10 +99,10 @@ module Gitlab
         false # Overridden in EE
       end
 
-      def user_access_level
-        return unless user
-
-        project.team.human_max_access(user.id)&.downcase
+      # Source project of a merge request pipeline,
+      # or else project where the pipeline is running.
+      def source_project
+        pipeline.merge_request_from_forked_project? ? pipeline.merge_request.source_project : project
       end
     end
   end

@@ -2,10 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::UpdateInstanceVariablesService, feature_category: :secrets_management do
+RSpec.describe Ci::UpdateInstanceVariablesService, feature_category: :pipeline_composition do
   let(:params) { { variables_attributes: variables_attributes } }
+  let(:current_user) { build :user }
 
-  subject(:service) { described_class.new(params) }
+  subject(:service) { described_class.new(params, current_user) }
 
   describe '#execute' do
     context 'without variables' do

@@ -25,6 +25,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
     subject { build(:batched_background_migration) }
 
     it { is_expected.to validate_uniqueness_of(:job_arguments).scoped_to(:job_class_name, :table_name, :column_name) }
+    it { is_expected.to validate_numericality_of(:pause_ms).is_greater_than_or_equal_to(described_class::MINIMUM_PAUSE_MS) }
 
     context 'when there are failed jobs' do
       let(:batched_migration) { create(:batched_background_migration, :active, total_tuple_count: 100) }
@@ -201,6 +202,16 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
     end
   end
 
+  describe '.unfinished' do
+    let!(:migration_1) { create(:batched_background_migration, :failed) }
+    let!(:migration_2) { create(:batched_background_migration, :finished) }
+    let!(:migration_3) { create(:batched_background_migration, :finalized) }
+
+    it 'returns batched migrations that are not finished or finalized' do
+      expect(described_class.unfinished).to contain_exactly(migration_1)
+    end
+  end
+
   describe '.find_executable' do
     let(:connection) { Gitlab::Database.database_base_models[:main].connection }
     let(:migration_id) { migration.id }
@@ -268,7 +279,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       create(:batched_background_migration, :finished)
       # migration put on hold
       create(:batched_background_migration, :active, on_hold_until: 10.minutes.from_now)
-      # migration not availab for the current connection
+      # migration not available for the current connection
       create(:batched_background_migration, :active, gitlab_schema: :gitlab_not_existing)
       # active migration that is no longer on hold
       migration_1 = create(:batched_background_migration, :active, table_name: :users, on_hold_until: 10.minutes.ago)
@@ -284,7 +295,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       expect(actual).to eq([migration_1, migration_2])
     end
 
-    it 'returns epmty collection when there are no pending executable migrations' do
+    it 'returns an empty collection when there are no pending executable migrations' do
       actual = described_class.active_migrations_distinct_on_table(connection: connection, limit: 2)
 
       expect(actual).to be_empty
@@ -663,17 +674,17 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
     let_it_be(:migration) { create(:batched_background_migration, interval: 120.seconds) }
     let_it_be(:end_time) { Time.zone.now }
 
-    around do |example|
-      freeze_time do
-        example.run
-      end
-    end
-
     let_it_be(:common_attrs) do
       {
         batched_migration: migration,
         finished_at: end_time
       }
+    end
+
+    around do |example|
+      freeze_time do
+        example.run
+      end
     end
 
     context 'when there are not enough jobs' do
@@ -689,14 +700,13 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
     context 'when there are enough jobs' do
       let_it_be(:number_of_jobs) { 10 }
       let_it_be(:jobs) { create_list(:batched_background_migration_job, number_of_jobs, **common_attrs.merge(batched_migration: migration)) }
+      let!(:jobs) { create_list(:batched_background_migration_job, number_of_jobs, :succeeded, **common_attrs.merge(batched_migration: migration)) }
 
       subject { migration.smoothed_time_efficiency(number_of_jobs: number_of_jobs) }
 
-      let!(:jobs) { create_list(:batched_background_migration_job, number_of_jobs, :succeeded, **common_attrs.merge(batched_migration: migration)) }
-
       before do
         expect(migration).to receive_message_chain(:batched_jobs, :successful_in_execution_order, :reverse_order, :limit, :with_preloads)
-                               .and_return(jobs)
+          .and_return(jobs)
       end
 
       def mock_efficiencies(*effs)
@@ -752,16 +762,37 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
   end
 
   describe '#optimize!' do
-    subject { batched_migration.optimize! }
+    subject(:optimize) { batched_migration.optimize! }
 
-    let(:batched_migration) { create(:batched_background_migration) }
-    let(:optimizer) { instance_double('Gitlab::Database::BackgroundMigration::BatchOptimizer') }
+    let(:batch_size) { 10_000 }
+    let(:batched_migration) { create(:batched_background_migration, batch_size: batch_size) }
 
-    it 'calls the BatchOptimizer' do
-      expect(Gitlab::Database::BackgroundMigration::BatchOptimizer).to receive(:new).with(batched_migration).and_return(optimizer)
-      expect(optimizer).to receive(:optimize!)
+    it 'does not update batch_size when efficiency is nil' do
+      expect { optimize }.not_to change { batched_migration.reload.batch_size }
+    end
 
-      subject
+    context 'when efficiency is low' do
+      before do
+        allow(batched_migration).to receive(:smoothed_time_efficiency).and_return(0.7)
+      end
+
+      it 'updates batch_size' do
+        # With efficiency 0.7: multiplier = 0.95/0.7 = 1.357, capped at 1.2
+        # New size = 10,000 * 1.2 = 12,000
+        expect { optimize }.to change { batched_migration.reload.batch_size }.from(batch_size).to(12_000)
+      end
+    end
+
+    context 'when efficiency is high' do
+      before do
+        allow(batched_migration).to receive(:smoothed_time_efficiency).and_return(1.5)
+      end
+
+      it 'updates batch_size' do
+        # With efficiency 1.5: multiplier = 0.95/1.5 = 0.633
+        # New size = 10,000 * 0.633 = 6,333
+        expect { optimize }.to change { batched_migration.reload.batch_size }.from(batch_size).to(6_333)
+      end
     end
   end
 
@@ -818,6 +849,18 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       end
     end
 
+    context 'when the migration is finalized' do
+      let(:migration) do
+        create(:batched_background_migration, :finalized, total_tuple_count: 1).tap do |record|
+          create(:batched_background_migration_job, :succeeded, batched_migration: record, batch_size: 1)
+        end
+      end
+
+      it 'returns 100' do
+        expect(subject).to be 100
+      end
+    end
+
     context 'when the status is finished' do
       let(:migration) do
         create(:batched_background_migration, :finished, total_tuple_count: 100).tap do |record|
@@ -843,7 +886,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       let!(:batched_job) { create(:batched_background_migration_job, :succeeded, batched_migration: migration) }
 
       it 'returns nil' do
-        expect(subject).to be nil
+        expect(subject).to be_nil
       end
     end
 
@@ -855,6 +898,15 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       it 'calculates the progress' do
         expect(subject).to be 8
       end
+    end
+  end
+
+  describe '.for_job_class' do
+    let(:other_migration) { create(:batched_background_migration) }
+    let(:my_migration) { create(:batched_background_migration, job_class_name: "MyJob") }
+
+    it 'returns migrations matching the job class name' do
+      expect(described_class.for_job_class("MyJob")).to eq([my_migration])
     end
   end
 
@@ -890,7 +942,7 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       expect(actual).to be_empty
     end
 
-    it 'doesn not filter by gitlab schemas available for the connection if the column is nor present' do
+    it 'does not filter by gitlab schemas available for the connection if the column is not present' do
       skip_if_multiple_databases_not_setup(:ci)
 
       expect(described_class).to receive(:gitlab_schema_column_exists?).and_return(false)
@@ -898,6 +950,22 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       actual = described_class.for_configuration(:gitlab_main, 'MyJobClass', :projects, :id, [[:id], [:id_convert_to_bigint]])
 
       expect(actual).to contain_exactly(migration)
+    end
+
+    context 'when include_compatible: true' do
+      it 'finds the migration with compatible gitlab_schema matching the given configuration parameters' do
+        actual = described_class.for_configuration(:gitlab_main_org, 'MyJobClass', :projects, :id, [[:id], [:id_convert_to_bigint]], include_compatible: true)
+
+        expect(actual).to contain_exactly(migration)
+      end
+
+      it 'excludes migrations with incompatible gitlab_schema even if matching the given configuration parameters' do
+        skip_if_shared_database(:ci)
+
+        actual = described_class.for_configuration(:gitlab_ci, 'MyJobClass', :projects, :id, [[:id], [:id_convert_to_bigint]], include_compatible: true)
+
+        expect(actual).to be_empty
+      end
     end
   end
 
@@ -917,6 +985,23 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
       )
 
       expect(described_class.find_for_configuration(:gitlab_main, 'MyJobClass', :projects, :id, [[:id], [:id_convert_to_bigint]])).to eq(migration)
+    end
+
+    context 'when include_compatible: true' do
+      it 'returns the migration with compatible gitlab_schema when it exists' do
+        migration = create(
+          :batched_background_migration,
+          job_class_name: 'MyJobClass',
+          table_name: :projects,
+          column_name: :id,
+          job_arguments: [[:id], [:id_convert_to_bigint]],
+          gitlab_schema: :gitlab_main
+        )
+
+        expect(
+          described_class.find_for_configuration(:gitlab_main_org, 'MyJobClass', :projects, :id, [[:id], [:id_convert_to_bigint]], include_compatible: true)
+        ).to eq(migration)
+      end
     end
   end
 
@@ -945,6 +1030,33 @@ RSpec.describe Gitlab::Database::BackgroundMigration::BatchedMigration, type: :m
 
     it 'generates the correct finalize command' do
       expect(migration.finalize_command).to eq("sudo gitlab-rake gitlab:background_migrations:finalize[CopyColumnUsingBackgroundMigrationJob,events,id,'[[\"column_1\"]\\,[\"column_1_convert_to_bigint\"]]']")
+    end
+  end
+
+  describe '#health_context_tables' do
+    let(:job_class_name) { 'CopyColumnUsingBackgroundMigrationJob' }
+    let(:batched_migration) { create(:batched_background_migration, table_name: :users, job_class_name: job_class_name) }
+
+    context 'when tables to check for vacuum are not specifed' do
+      it 'defaults to [table_name]' do
+        expect(batched_migration.health_context_tables).to match_array(['users'])
+      end
+    end
+
+    context 'when tables to check for vacuum are specified' do
+      let(:job_class) do
+        Class.new(Gitlab::BackgroundMigration::CopyColumnUsingBackgroundMigrationJob) do
+          tables_to_check_for_vacuum :foo, :bar
+        end
+      end
+
+      before do
+        expect(batched_migration).to receive(:job_class).at_least(:once).and_return(job_class)
+      end
+
+      it 'returns list of specified tables' do
+        expect(batched_migration.health_context_tables).to match_array(%w[foo bar])
+      end
     end
   end
 end

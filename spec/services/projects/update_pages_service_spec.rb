@@ -76,7 +76,7 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
     it 'assigns the deploy stage' do
       expect { service.execute }
         .to change(GenericCommitStatus, :count).by(1)
-        .and change(Ci::Stage.where(name: 'deploy'), :count).by(0)
+        .and not_change(Ci::Stage.where(name: 'deploy'), :count)
 
       status = GenericCommitStatus.last
 
@@ -126,16 +126,6 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
           .from(false).to(true)
       end
 
-      it 'publishes a PageDeployedEvent event with project id and namespace id' do
-        expected_data = {
-          project_id: project.id,
-          namespace_id: project.namespace_id,
-          root_namespace_id: project.root_namespace.id
-        }
-
-        expect { service.execute }.to publish_event(Pages::PageDeployedEvent).with(expected_data)
-      end
-
       it 'creates pages_deployment' do
         expect { expect(service.execute[:status]).to eq(:success) }
           .to change { project.pages_deployments.count }
@@ -160,6 +150,14 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
           .by(1)
       end
 
+      it_behaves_like 'internal event tracking' do
+        let(:event) { 'create_pages_deployment' }
+        let(:category) { 'Projects::UpdatePagesService' }
+        let(:namespace) { project.namespace }
+
+        subject(:track_event) { service.execute }
+      end
+
       context 'when archive does not have pages directory' do
         let(:file) { empty_file }
         let(:metadata_filename) { empty_metadata_filename }
@@ -178,19 +176,43 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
         let(:file) { custom_root_file }
         let(:metadata_filename) { custom_root_file_metadata }
 
+        before do
+          allow(build).to receive(:pages_generator?).and_return(true)
+        end
+
         context 'when the directory specified with `publish` is included in the artifacts' do
-          let(:options) { { publish: 'foo' } }
+          let(:options) { { pages: { publish: 'foo' } } }
 
           it 'creates pages_deployment and saves it in the metadata' do
             expect(service.execute[:status]).to eq(:success)
 
             deployment = project.pages_deployments.last
-            expect(deployment.root_directory).to eq(options[:publish])
+            expect(deployment.root_directory).to eq(options[:pages][:publish])
+          end
+        end
+
+        context 'when the directory specified with `pages.publish` is included in the artifacts' do
+          let(:options) { { pages: { publish: 'foo' } } }
+
+          it 'sets the correct root directory for pages deployment' do
+            expect(service.execute[:status]).to eq(:success)
+
+            deployment = project.pages_deployments.last
+            expect(deployment.root_directory).to eq('foo')
+          end
+        end
+
+        context 'when `publish` and `pages.publish` is not specified and there is a folder named `public`' do
+          let(:file) { fixture_file_upload("spec/fixtures/pages.zip") }
+          let(:metadata_filename) { "spec/fixtures/pages.zip.meta" }
+
+          it 'creates pages_deployment and saves it in the metadata' do
+            expect(service.execute[:status]).to eq(:success)
           end
         end
 
         context 'when the directory specified with `publish` is not included in the artifacts' do
-          let(:options) { { publish: 'bar' } }
+          let(:options) { { pages: { publish: 'bar' } } }
 
           it 'returns an error' do
             expect(service.execute[:status]).not_to eq(:success)
@@ -202,8 +224,20 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
           end
         end
 
+        context 'when `publish` and `pages.publish` both are specified' do
+          let(:options) { { pages: { publish: 'foo' }, publish: 'bar' } }
+
+          it 'returns an error' do
+            expect(service.execute[:status]).not_to eq(:success)
+
+            expect(GenericCommitStatus.last.description)
+              .to eq(
+                "Either the `publish` or `pages.publish` option may be present in `.gitlab-ci.yml`, but not both.")
+          end
+        end
+
         context 'when there is a folder named `public`, but `publish` specifies a different one' do
-          let(:options) { { publish: 'foo' } }
+          let(:options) { { pages: { publish: 'foo' } } }
           let(:file) { fixture_file_upload("spec/fixtures/pages.zip") }
           let(:metadata_filename) { "spec/fixtures/pages.zip.meta" }
 
@@ -275,7 +309,7 @@ RSpec.describe Projects::UpdatePagesService, feature_category: :pages do
 
       context "when sha on branch was updated before deployment was uploaded" do
         before do
-          expect(subject).to receive(:create_pages_deployment).and_wrap_original do |m, *args|
+          expect(service).to receive(:create_pages_deployment).and_wrap_original do |m, *args|
             build.update!(ref: 'feature')
             m.call(*args)
           end

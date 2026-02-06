@@ -13,20 +13,19 @@ import NewAccessTokenApp from '~/access_tokens/components/new_access_token_app.v
 import TokensApp from '~/access_tokens/components/tokens_app.vue';
 import { FORM_SELECTOR } from '~/access_tokens/components/constants';
 import { FEED_TOKEN, INCOMING_EMAIL_TOKEN, STATIC_OBJECT_TOKEN } from '~/access_tokens/constants';
-import { __, sprintf } from '~/locale';
+import { sprintf } from '~/locale';
 
 describe('access tokens', () => {
   let wrapper;
 
   afterEach(() => {
-    wrapper?.destroy();
     resetHTMLFixture();
   });
 
   describe('initAccessTokenTableApp', () => {
     const accessTokenType = 'personal access token';
     const accessTokenTypePlural = 'personal access tokens';
-    const initialActiveAccessTokens = [{ revoked_path: '1' }];
+    const initialActiveAccessTokens = [{ createdAt: '2023-09-08', revoked_path: '1' }];
 
     it('mounts the component and provides required values', () => {
       setHTMLFixture(
@@ -50,7 +49,7 @@ describe('access tokens', () => {
         initialActiveAccessTokens,
 
         // Default values
-        noActiveTokensMessage: sprintf(__('This user has no active %{accessTokenTypePlural}.'), {
+        noActiveTokensMessage: sprintf('This user has no active %{accessTokenTypePlural}.', {
           accessTokenTypePlural,
         }),
         showRole: false,
@@ -75,7 +74,7 @@ describe('access tokens', () => {
       const component = wrapper.findComponent({ name: 'AccessTokenTableRoot' });
 
       expect(component.exists()).toBe(true);
-      expect(component.findComponent(AccessTokenTableApp).vm).toMatchObject({
+      expect(wrapper.findComponent(AccessTokenTableApp).vm).toMatchObject({
         accessTokenType,
         accessTokenTypePlural,
         initialActiveAccessTokens,
@@ -96,7 +95,7 @@ describe('access tokens', () => {
 
       beforeEach(() => {
         setHTMLFixture(
-          `<div class="js-access-tokens-expires-at">
+          `<div class="js-access-tokens-expires-at" data-min-date="2023-09-09">
             <input
               name="access_tokens[expires_at]"
               data-js-name="expiresAt"
@@ -142,7 +141,7 @@ describe('access tokens', () => {
       const component = wrapper.findComponent({ name: 'NewAccessTokenRoot' });
 
       expect(component.exists()).toBe(true);
-      expect(component.findComponent(NewAccessTokenApp).vm).toMatchObject({ accessTokenType });
+      expect(wrapper.findComponent(NewAccessTokenApp).vm).toMatchObject({ accessTokenType });
     });
 
     it('returns `null`', () => {

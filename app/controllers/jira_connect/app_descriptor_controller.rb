@@ -5,6 +5,9 @@
 # https://developer.atlassian.com/cloud/jira/platform/app-descriptor/
 
 class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
+  HOME_URL = 'https://gitlab.com'
+  DOC_URL = 'https://docs.gitlab.com/ee/integration/jira/'
+
   skip_before_action :verify_atlassian_jwt!
 
   def show
@@ -22,7 +25,7 @@ class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
         url: 'https://gitlab.com'
       },
       links: {
-        documentation: help_page_url('integration/jira_development_panel', anchor: 'gitlabcom-1')
+        documentation: help_page_url('integration/jira/development_panel.md')
       },
       authentication: {
         type: 'jwt'
@@ -39,9 +42,6 @@ class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
   end
 
   private
-
-  HOME_URL = 'https://gitlab.com'
-  DOC_URL = 'https://docs.gitlab.com/ee/integration/jira/'
 
   def modules
     modules = {
@@ -76,8 +76,8 @@ class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
       jiraDevelopmentTool: {
         actions: actions,
         key: 'gitlab-development-tool',
-        application: { value: 'GitLab' },
-        name: { value: 'GitLab' },
+        application: { value: Atlassian::JiraConnect.display_name },
+        name: { value: Atlassian::JiraConnect.display_name },
         url: HOME_URL,
         logoUrl: logo_url,
         capabilities: %w[branch commit pull_request]
@@ -130,16 +130,15 @@ class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
     full_path.sub(/^#{jira_connect_base_path}/, '')
   end
 
+  def create_branch_params
+    "?issue_key={issue.key}&issue_summary={issue.summary}&jwt={jwt}&addonkey=#{Atlassian::JiraConnect.app_key}"
+  end
+
   def actions
-    actions = {
+    {
       createBranch: {
-        templateUrl: "#{new_jira_connect_branch_url}?issue_key={issue.key}&issue_summary={issue.summary}"
-      }
-    }
-
-    return actions unless Feature.enabled?(:atlassian_new_app_based_auth_model)
-
-    actions.merge(
+        templateUrl: "#{route_jira_connect_branches_url}#{create_branch_params}"
+      },
       searchConnectedWorkspaces: {
         templateUrl: search_jira_connect_workspaces_url
       },
@@ -149,6 +148,6 @@ class JiraConnect::AppDescriptorController < JiraConnect::ApplicationController
       associateRepository: {
         templateUrl: associate_jira_connect_repositories_url
       }
-    )
+    }
   end
 end

@@ -1,7 +1,7 @@
 import { nextTick } from 'vue';
 import { GlAvatarLabeled, GlCollapsibleListbox } from '@gitlab/ui';
 import { mount } from '@vue/test-utils';
-import axios from 'axios';
+import axios from '~/lib/utils/axios_utils';
 import waitForPromises from 'helpers/wait_for_promises';
 import { getGroups } from '~/api/groups_api';
 import { getProjectShareLocations } from '~/api/projects_api';
@@ -125,11 +125,11 @@ describe('GroupSelect', () => {
         createComponent({ isProject });
         await waitForPromises();
 
-        expect(findAvatarByLabel(group1.full_name).attributes()).toMatchObject({
+        expect(findAvatarByLabel(group1.full_name).props()).toMatchObject({
           src: group1.avatar_url,
-          'entity-id': `${group1.id}`,
-          'entity-name': group1.full_name,
-          size: '32',
+          entityId: group1.id,
+          entityName: group1.full_name,
+          size: 32,
         });
       });
 
@@ -222,6 +222,25 @@ describe('GroupSelect', () => {
             name: infiniteScrollGroup.full_name,
             avatarUrl: infiniteScrollGroup.avatar_url,
           });
+
+          if (isProject) {
+            expect(apiAction).toHaveBeenCalledWith(
+              defaultProps.sourceId,
+              { search: '', page: 2 },
+              {
+                signal: expect.any(AbortSignal),
+              },
+            );
+          } else {
+            expect(apiAction).toHaveBeenCalledWith(
+              '',
+              expect.objectContaining({ page: 2 }),
+              undefined,
+              {
+                signal: expect.any(AbortSignal),
+              },
+            );
+          }
         });
 
         describe('when API request fails', () => {

@@ -1,16 +1,18 @@
 <script>
-import { GlLoadingIcon, GlIcon, GlAlert } from '@gitlab/ui';
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
+import { GlResizeObserverDirective, GlLoadingIcon, GlIcon, GlAlert } from '@gitlab/ui';
 import { throttle, isEmpty } from 'lodash';
 // eslint-disable-next-line no-restricted-imports
 import { mapGetters, mapState, mapActions } from 'vuex';
-import LogTopBar from 'ee_else_ce/ci/job_details/components/job_log_controllers.vue';
+import { PanelBreakpointInstance } from '~/panel_breakpoint_instance';
+import JobLogTopBar from '~/ci/job_details/components/job_log_top_bar.vue';
+import RootCauseAnalysisButton from 'ee_else_ce/ci/job_details/components/root_cause_analysis_button.vue';
 import SafeHtml from '~/vue_shared/directives/safe_html';
-import { isScrolledToBottom } from '~/lib/utils/scroll_utils';
+import glAbilitiesMixin from '~/vue_shared/mixins/gl_abilities_mixin';
 import { __, sprintf } from '~/locale';
 import delayedJobMixin from '~/ci/mixins/delayed_job_mixin';
 import Log from '~/ci/job_details/components/log/log.vue';
 import { MANUAL_STATUS } from '~/ci/constants';
+import ManualJobForm from './components/manual_job_form.vue';
 import EmptyState from './components/empty_state.vue';
 import EnvironmentsBlock from './components/environments_block.vue';
 import ErasedBlock from './components/erased_block.vue';
@@ -19,27 +21,31 @@ import StuckBlock from './components/stuck_block.vue';
 import UnmetPrerequisitesBlock from './components/unmet_prerequisites_block.vue';
 import Sidebar from './components/sidebar/sidebar.vue';
 
+const STATIC_PANEL_WRAPPER_SELECTOR = '.js-static-panel-inner';
+
 export default {
   name: 'JobPageApp',
   components: {
     JobHeader,
     EmptyState,
+    ManualJobForm,
     EnvironmentsBlock,
     ErasedBlock,
     GlIcon,
     Log,
-    LogTopBar,
+    JobLogTopBar,
+    RootCauseAnalysisButton,
     StuckBlock,
     UnmetPrerequisitesBlock,
     Sidebar,
     GlLoadingIcon,
-    SharedRunner: () => import('ee_component/ci/runner/components/shared_runner_limit_block.vue'),
     GlAlert,
   },
   directives: {
     SafeHtml,
+    GlResizeObserver: GlResizeObserverDirective,
   },
-  mixins: [delayedJobMixin],
+  mixins: [delayedJobMixin, glAbilitiesMixin()],
   props: {
     artifactHelpUrl: {
       type: String,
@@ -56,7 +62,7 @@ export default {
       required: false,
       default: null,
     },
-    subscriptionsMoreMinutesUrl: {
+    logViewerPath: {
       type: String,
       required: false,
       default: null,
@@ -64,6 +70,7 @@ export default {
   },
   data() {
     return {
+      staticPanelWrapper: document.querySelector(STATIC_PANEL_WRAPPER_SELECTOR),
       searchResults: [],
       showUpdateVariablesState: false,
     };
@@ -84,22 +91,18 @@ export default {
       'fullScreenEnabled',
     ]),
     ...mapGetters([
-      'headerTime',
       'hasUnmetPrerequisitesFailure',
       'shouldRenderCalloutMessage',
-      'shouldRenderTriggeredLabel',
       'hasEnvironment',
-      'shouldRenderSharedRunnerLimitWarning',
       'hasJobLog',
       'emptyStateIllustration',
-      'isScrollingDown',
       'emptyStateAction',
       'hasOfflineRunnersForProject',
       'fullScreenAPIAndContainerAvailable',
     ]),
 
     shouldRenderContent() {
-      return !this.isLoading && !this.hasError;
+      return (!this.isLoading && !this.hasError) || this.hasJobLog;
     },
 
     emptyStateTitle() {
@@ -124,6 +127,23 @@ export default {
     jobName() {
       return sprintf(__('%{jobName}'), { jobName: this.job.name });
     },
+    jobConfirmationMessage() {
+      return this.job.status?.action?.confirmation_message;
+    },
+    jobFailed() {
+      const failedGroups = ['failed', 'failed-with-warnings'];
+
+      return failedGroups.includes(this.job.status.group);
+    },
+    displayStickyFooter() {
+      return this.jobFailed && this.glAbilities.troubleshootJobWithAi;
+    },
+    showJobForm() {
+      return (
+        this.showUpdateVariablesState ||
+        (this.job.playable && !this.job.scheduled && !this.hasJobLog)
+      );
+    },
   },
   watch: {
     // Once the job log is loaded,
@@ -147,10 +167,16 @@ export default {
     },
   },
   created() {
-    this.throttled = throttle(this.toggleScrollButtons, 100);
+    this.throttleToggleScrollButtons = throttle(this.toggleScrollButtons, 100);
 
-    window.addEventListener('resize', this.onResize);
-    window.addEventListener('scroll', this.updateScroll);
+    if (this.staticPanelWrapper) {
+      this.staticPanelWrapper.addEventListener('scroll', this.updateScroll);
+    } else {
+      // This can be removed when `projectStudioEnabled` is removed
+      window.addEventListener('scroll', this.updateScroll);
+    }
+
+    PanelBreakpointInstance.addResizeListener(this.updateSidebar);
   },
   mounted() {
     this.updateSidebar();
@@ -158,8 +184,15 @@ export default {
   beforeDestroy() {
     this.stopPollingJobLog();
     this.stopPolling();
-    window.removeEventListener('resize', this.onResize);
-    window.removeEventListener('scroll', this.updateScroll);
+
+    if (this.staticPanelWrapper) {
+      this.staticPanelWrapper.removeEventListener('scroll', this.updateScroll);
+    } else {
+      // This can be removed when `projectStudioEnabled` is removed
+      window.removeEventListener('scroll', this.updateScroll);
+    }
+
+    PanelBreakpointInstance.removeResizeListener(this.updateSidebar);
   },
   methods: {
     ...mapActions([
@@ -173,36 +206,24 @@ export default {
       'stopPollingJobLog',
       'stopPolling',
       'toggleScrollButtons',
-      'toggleScrollAnimation',
       'enterFullscreen',
       'exitFullscreen',
     ]),
     onHideManualVariablesForm() {
       this.showUpdateVariablesState = false;
     },
-    onResize() {
-      this.updateSidebar();
-      this.updateScroll();
-    },
     onUpdateVariables() {
       this.showUpdateVariablesState = true;
     },
     updateSidebar() {
-      const breakpoint = bp.getBreakpointSize();
-      if (breakpoint === 'xs' || breakpoint === 'sm' || breakpoint === 'md') {
-        this.hideSidebar();
-      } else if (!this.isSidebarOpen) {
+      if (PanelBreakpointInstance.isDesktop()) {
         this.showSidebar();
+      } else if (this.isSidebarOpen) {
+        this.hideSidebar();
       }
     },
     updateScroll() {
-      if (!isScrolledToBottom()) {
-        this.toggleScrollAnimation(false);
-      } else if (this.isScrollingDown) {
-        this.toggleScrollAnimation(true);
-      }
-
-      this.throttled();
+      this.throttleToggleScrollButtons();
     },
     setSearchResults(searchResults) {
       this.searchResults = searchResults;
@@ -211,23 +232,17 @@ export default {
 };
 </script>
 <template>
-  <div>
+  <div
+    v-gl-resize-observer="updateScroll"
+    :class="{ 'with-job-sidebar-expanded': isSidebarOpen && !showJobForm }"
+  >
     <gl-loading-icon v-if="isLoading" size="lg" class="gl-mt-6" />
 
     <template v-else-if="shouldRenderContent">
       <div class="build-page" data-testid="job-content">
         <!-- Header Section -->
         <header>
-          <div class="build-header gl-display-flex">
-            <job-header
-              :status="job.status"
-              :time="headerTime"
-              :user="job.user"
-              :should-render-triggered-label="shouldRenderTriggeredLabel"
-              :name="jobName"
-              @clickedSidebarButton="toggleSidebar"
-            />
-          </div>
+          <job-header :job-id="job.id" :user="job.user" @clicked-sidebar-button="toggleSidebar" />
           <gl-alert
             v-if="shouldRenderHeaderCallout"
             variant="danger"
@@ -252,13 +267,6 @@ export default {
           :help-path="deploymentHelpUrl"
         />
 
-        <shared-runner
-          v-if="shouldRenderSharedRunnerLimitWarning"
-          :quota-used="job.runners.quota.used"
-          :quota-limit="job.runners.quota.limit"
-          :subscriptions-more-minutes-url="subscriptionsMoreMinutesUrl"
-        />
-
         <environments-block
           v-if="hasEnvironment"
           :deployment-status="job.deployment_status"
@@ -275,65 +283,99 @@ export default {
 
         <div
           v-if="job.archived"
-          class="gl-mt-3 gl-py-2 gl-px-3 gl-align-items-center gl-z-index-1 gl-m-auto archived-job"
-          :class="{ 'sticky-top gl-border-bottom-0': hasJobLog }"
+          class="archived-job gl-z-1 gl-m-auto gl-mt-3 gl-items-center gl-px-3 gl-py-2"
+          :class="{ 'sticky-top gl-border-b-0': hasJobLog }"
           data-testid="archived-job"
         >
-          <gl-icon name="lock" class="gl-vertical-align-bottom" />
-          {{ __('This job is archived. Only the complete pipeline can be retried.') }}
+          <gl-icon name="lock" class="gl-align-bottom" />
+          {{ __('This job is archived.') }}
         </div>
         <!-- job log -->
         <div v-if="hasJobLog && !showUpdateVariablesState" class="build-log-container gl-relative">
-          <log-top-bar
+          <job-log-top-bar
             :class="{
               'has-archived-block': job.archived,
             }"
             :size="jobLogSize"
             :raw-path="job.raw_path"
+            :log-viewer-path="logViewerPath"
             :is-scroll-bottom-disabled="isScrollBottomDisabled"
             :is-scroll-top-disabled="isScrollTopDisabled"
             :is-job-log-size-visible="isJobLogSizeVisible"
-            :is-scrolling-down="isScrollingDown"
             :is-complete="isJobLogComplete"
             :job-log="jobLog"
             :full-screen-mode-available="fullScreenAPIAndContainerAvailable"
             :full-screen-enabled="fullScreenEnabled"
-            @scrollJobLogTop="scrollTop"
-            @scrollJobLogBottom="scrollBottom"
-            @searchResults="setSearchResults"
-            @enterFullscreen="enterFullscreen"
-            @exitFullscreen="exitFullscreen"
+            @scroll-job-log-top="scrollTop"
+            @scroll-job-log-bottom="scrollBottom"
+            @search-results="setSearchResults"
+            @enter-fullscreen="enterFullscreen"
+            @exit-fullscreen="exitFullscreen"
           />
+
           <log :search-results="searchResults" />
+
+          <nav
+            v-if="displayStickyFooter"
+            :class="[
+              'rca-bar-component gl-sticky gl-z-200 gl-bg-default gl-py-3',
+              { 'rca-bar-component-fullscreen': fullScreenEnabled },
+            ]"
+            data-testid="rca-bar-component"
+          >
+            <div class="gl-flex gl-w-full">
+              <root-cause-analysis-button
+                :job-id="job.id"
+                :job-status-group="job.status.group"
+                :can-troubleshoot-job="glAbilities.troubleshootJobWithAi"
+              />
+            </div>
+          </nav>
         </div>
         <!-- EO job log -->
 
+        <!-- job form for variables and inputs -->
+
+        <template v-if="showJobForm">
+          <h2>{{ emptyStateTitle }}</h2>
+
+          <p v-if="emptyStateIllustration.content" data-testid="job-empty-state-content">
+            {{ emptyStateIllustration.content }}
+          </p>
+          <manual-job-form
+            :is-retryable="isJobRetryable"
+            :is-manual="job.playable && !job.scheduled"
+            :job-id="job.id"
+            :job-name="jobName"
+            :confirmation-message="jobConfirmationMessage"
+            @hide-manual-variables-form="onHideManualVariablesForm"
+          />
+        </template>
+
+        <!-- EO job form -->
+
         <!-- empty state -->
         <empty-state
-          v-if="!hasJobLog || showUpdateVariablesState"
+          v-else-if="!hasJobLog"
           :illustration-path="emptyStateIllustration.image"
-          :illustration-size-class="emptyStateIllustration.size"
-          :is-retryable="isJobRetryable"
-          :job-id="job.id"
           :title="emptyStateTitle"
+          :confirmation-message="jobConfirmationMessage"
           :content="emptyStateIllustration.content"
           :action="emptyStateAction"
-          :playable="job.playable"
-          :scheduled="job.scheduled"
-          @hideManualVariablesForm="onHideManualVariablesForm()"
         />
         <!-- EO empty state -->
 
         <!-- EO Body Section -->
 
         <sidebar
+          v-if="!showJobForm"
           :class="{
             'right-sidebar-expanded': isSidebarOpen,
             'right-sidebar-collapsed': !isSidebarOpen,
           }"
           :artifact-help-url="artifactHelpUrl"
           data-testid="job-sidebar"
-          @updateVariables="onUpdateVariables()"
+          @update-variables="onUpdateVariables"
         />
       </div>
     </template>

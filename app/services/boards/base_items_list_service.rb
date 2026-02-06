@@ -3,7 +3,6 @@
 module Boards
   class BaseItemsListService < Boards::BaseService
     include Gitlab::Utils::StrongMemoize
-    include ActiveRecord::ConnectionAdapters::Quoting
 
     def execute
       items = init_collection
@@ -53,13 +52,11 @@ module Boards
     end
 
     # We memoize the query here since the finder methods we use are quite complex. This does not memoize the result of the query.
-    # rubocop: disable CodeReuse/ActiveRecord
     def init_collection
       strong_memoize(:init_collection) do
-        filter(finder.execute).reorder(nil)
+        filter(finder.execute).without_order
       end
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     def filter(items)
       # when grouping board issues by epics (used in board swimlanes)
@@ -108,6 +105,7 @@ module Boards
 
     def set_state
       return if params[:all_lists]
+      return if list&.list_type == 'status'
 
       params[:state] = list && list.closed? ? 'closed' : 'opened'
     end
@@ -132,23 +130,23 @@ module Boards
     def without_board_labels(items)
       return items unless board_label_ids.any?
 
-      items.where.not('EXISTS (?)', label_links(board_label_ids).limit(1))
+      items.where(label_links(items, board_label_ids.compact).arel.exists.not)
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
-    # rubocop: disable CodeReuse/ActiveRecord
-    def label_links(label_ids)
-      LabelLink
-        .where(label_links: { target_type: item_model })
-        .where(item_model.arel_table[:id].eq(LabelLink.arel_table[:target_id]).to_sql)
-        .where(label_id: label_ids)
+    def label_links(items, label_ids)
+      labels_filter.label_link_query(items, label_ids: label_ids)
     end
-    # rubocop: enable CodeReuse/ActiveRecord
 
     # rubocop: disable CodeReuse/ActiveRecord
     def with_list_label(items)
-      items.where('EXISTS (?)', label_links(list.label_id).limit(1))
+      items.where(label_links(items, [list.label_id]).arel.exists)
     end
     # rubocop: enable CodeReuse/ActiveRecord
+
+    def labels_filter
+      Issuables::LabelFilter.new(params: {}, parent: parent)
+    end
+    strong_memoize_attr :labels_filter
   end
 end

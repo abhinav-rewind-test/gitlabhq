@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Namespaces
 ---
-
-# Namespaces
 
 Namespaces are containers for projects and associated resources. A `Namespace` is instantiated through its subclasses of `Group`, `ProjectNamespace`, and `UserNamespace`.
 
@@ -49,9 +48,13 @@ The following is a non-exhaustive list of methods to query `Namespace` hierarchi
 The root is the top most `Namespace` in the hierarchy. A root has a `nil` `parent_id`.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Root namespaces
+  accDescr: Diagram showing a namespace hierarchy, starting with the root namespace at the top
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -73,9 +76,13 @@ namespace_object.root_ancestor
 The descendants of a namespace are its children, their children, and so on.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Descendent namespaces
+  accDescr: Diagram showing namespace descendants, including children namespaces and their children namespaces
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -116,12 +123,16 @@ namespace_object.descendant_ids
 
 ### Ancestor namespaces
 
-The ancestors of a namespace are its children, their children, and so on.
+The ancestors of a namespace are its parent, its parent's parent, and so on.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Ancestor namespaces
+  accDescr: Diagram showing ancestors of a namespace, including its parent, its parent's parent, and so on
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -165,9 +176,13 @@ namespace_object.ancestor_ids
 A Namespace hierarchy is a `Namespace`, its ancestors, and its descendants.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Hierarchies
+  accDescr: Diagram showing the namespace hierarchy, including the namespace, its ancestors, and its descendants
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -215,6 +230,23 @@ namespace_object.recursive_ancestor_ids
 namespace_object.recursive_self_and_hierarchy
 ```
 
+### Search using trie data structure
+
+`Namespaces::Traversal::TrieNode` implements a trie data structure to efficiently search within
+`namespaces.traversal_ids` hierarchy for a set of Namespaces.
+
+```ruby
+traversal_ids = [[9970, 123], [9970, 456]] # Derived from (for example): Namespace.where(...).map(&:traversal_ids)
+
+trie = Namespaces::Traversal::TrieNode.build(traversal_ids)
+
+trie.prefix_search([9970]) # returns [[9970, 123], [9970, 456]]
+
+trie.covered?([9970]) # returns false
+trie.covered?([9970, 123]) # returns true
+trie.covered?([9970, 123, 789]) # returns true
+```
+
 ## Namespace query implementation
 
 The linear queries are executed using the `namespaces.traversal_ids` array column. Each array represents an ordered set of `Namespace` IDs from the root `Namespace` to the current `Namespace`.
@@ -222,9 +254,13 @@ The linear queries are executed using the `namespaces.traversal_ids` array colum
 Given the scenario:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Namespace query implementation
+  accDescr: Diagram showing how linear queries are executed using the namespaces traversal ids array column
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -273,9 +309,13 @@ WHERE namespaces.traversal_ids > ARRAY[1,2,3]
 `Namespace` queries are prone to returning duplicate results. For example, consider a query to find descendants of `A` and `A.A`:
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-  classDef active fill:#f00,color:#fff
-  classDef sel fill:#00f,color:#fff
+  accTitle: Superset
+  accDescr: Diagram showing how namespace queries can return duplicate results
+
+  classDef active stroke-width:3px
+  classDef sel stroke-width:2px
 
   A --- A.A --- A.A.A
   A.A --- A.A.B
@@ -300,3 +340,34 @@ In extreme cases this can create excessive I/O leading to poor performance.
 Redundant `Namespaces` are eliminated from a query if a `Namespace` `ID` in the `traversal_ids` attribute matches an `ID` belonging to another `Namespace` in the set of `Namespaces` being queried.
 A match of this condition signifies that an ancestor exists in the set of `Namespaces` being queried, and the current `Namespace` is therefore redundant.
 This optimization will result in much better performance of edge cases that would otherwise be very slow.
+
+## Namespace locking
+
+When modifying namespace hierarchies (creating groups or updating `parent_id`/`traversal_ids`), GitLab uses database locks to maintain data integrity.
+
+GitLab uses a lightweight locking system that employs shared locks on ancestors and exclusive locks on the modified node, reducing lock contention during concurrent operations.
+
+**On namespace create:**
+
+- Ancestors are locked with `FOR SHARE` (shared lock)
+- The new namespace is locked with `FOR NO KEY UPDATE` (exclusive lock)
+- Only the node and its descendants are updated using `Namespace::TraversalHierarchy.sync_traversal_ids!(node)`
+
+**On namespace update (parent change):**
+
+- Both old and new root ancestors are locked with `FOR NO KEY UPDATE`
+- The full hierarchy is updated from the root using `Namespace::TraversalHierarchy.for_namespace(node).sync_traversal_ids!`
+
+**Benefits:**
+
+- Concurrent group creation under the same parent is no longer serialized
+- Reduced database lock contention
+- Better performance for high-concurrency scenarios
+
+**Implementation:**
+
+The locking logic is in `Namespace::TraversalHierarchy.acquire_locks` which:
+
+1. Acquires shared locks on ancestors (if node has a parent)
+1. Acquires an exclusive lock on the node itself
+1. Uses a `LOCK_TIMEOUT` of 1000ms to prevent indefinite blocking

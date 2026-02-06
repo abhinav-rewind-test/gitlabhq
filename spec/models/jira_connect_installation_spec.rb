@@ -8,6 +8,8 @@ RSpec.describe JiraConnectInstallation, feature_category: :integrations do
   end
 
   describe 'validations' do
+    subject(:installation) { build(:jira_connect_installation) }
+
     it { is_expected.to validate_presence_of(:client_key) }
     it { is_expected.to validate_uniqueness_of(:client_key) }
     it { is_expected.to validate_presence_of(:shared_secret) }
@@ -15,6 +17,10 @@ RSpec.describe JiraConnectInstallation, feature_category: :integrations do
 
     it { is_expected.to allow_value('https://test.atlassian.net').for(:base_url) }
     it { is_expected.not_to allow_value('not/a/url').for(:base_url) }
+
+    it { is_expected.to allow_value('https://test.atlassian.net').for(:display_url) }
+    it { is_expected.to allow_value(nil).for(:display_url) }
+    it { is_expected.not_to allow_value('not/a/url').for(:display_url) }
 
     it { is_expected.to allow_value('https://test.atlassian.net').for(:instance_url) }
     it { is_expected.not_to allow_value('not/a/url').for(:instance_url) }
@@ -127,6 +133,24 @@ RSpec.describe JiraConnectInstallation, feature_category: :integrations do
       let(:installation) { build(:jira_connect_installation, instance_url: 'https://example.com') }
 
       it { is_expected.to eq('https://example.com/-/jira_connect/events/uninstalled') }
+    end
+  end
+
+  describe 'create_branch_url' do
+    context 'when the jira installation is not for a self-managed instance' do
+      let(:installation) { build(:jira_connect_installation) }
+
+      subject(:create_branch) { installation.create_branch_url }
+
+      it { is_expected.to eq(nil) }
+    end
+
+    context 'when the jira installation is for a self-managed instance' do
+      let(:installation) { build(:jira_connect_installation, instance_url: 'https://example.com') }
+
+      subject(:create_branch) { installation.create_branch_url }
+
+      it { is_expected.to eq('https://example.com/-/jira_connect/branches/new') }
     end
   end
 

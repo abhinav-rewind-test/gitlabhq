@@ -70,7 +70,6 @@ export default {
       default: i18n.SELECT_A_NAMESPACE,
     },
   },
-  initialTransferLocationsLoaded: false,
   data() {
     return {
       searchTerm: '',
@@ -82,6 +81,7 @@ export default {
       hasError: false,
       page: 1,
       totalPages: 1,
+      initialTransferLocationsLoaded: false,
     };
   },
   computed: {
@@ -128,7 +128,7 @@ export default {
       this.$emit('input', item);
     },
     async handleShow() {
-      if (this.$options.initialTransferLocationsLoaded) {
+      if (this.initialTransferLocationsLoaded) {
         return;
       }
 
@@ -140,17 +140,18 @@ export default {
       ]);
 
       this.isLoading = false;
-      this.$options.initialTransferLocationsLoaded = true;
+      this.initialTransferLocationsLoaded = true;
+
+      await this.$nextTick();
+      this.$refs.transferLocationsDropdown?.$refs.dropdown?.updatePopper?.();
     },
     async getGroupTransferLocations() {
       try {
-        const {
-          data: groupTransferLocations,
-          headers,
-        } = await this.groupTransferLocationsApiMethod(this.resourceId, {
-          page: this.page,
-          search: this.searchTerm,
-        });
+        const { data: groupTransferLocations, headers } =
+          await this.groupTransferLocationsApiMethod(this.resourceId, {
+            page: this.page,
+            search: this.searchTerm,
+          });
 
         const { totalPages } = parseIntPagination(normalizeHeaders(headers));
         this.totalPages = totalPages;
@@ -236,9 +237,11 @@ export default {
     >
     <gl-form-group :label="label">
       <gl-dropdown
+        ref="transferLocationsDropdown"
         :text="selectedText"
         data-testid="transfer-locations-dropdown"
         block
+        dropup
         toggle-class="gl-mb-0"
         class="gl-form-input-xl"
         @show="handleShow"
@@ -248,6 +251,7 @@ export default {
             v-model.trim="searchTerm"
             :is-loading="isSearchLoading"
             data-testid="transfer-locations-search"
+            @keydown.enter.prevent
           />
         </template>
         <template v-if="showAdditionalDropdownItems">
@@ -280,7 +284,7 @@ export default {
             >{{ item.humanName }}</gl-dropdown-item
           >
         </div>
-        <gl-dropdown-item v-if="hasNoResults" button-class="gl-text-gray-900!" disabled>{{
+        <gl-dropdown-item v-if="hasNoResults" button-class="!gl-text-default" disabled>{{
           $options.i18n.NO_RESULTS_TEXT
         }}</gl-dropdown-item>
         <gl-loading-icon v-if="isLoading" class="gl-mb-3" size="sm" />

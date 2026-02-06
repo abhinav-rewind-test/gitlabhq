@@ -6,7 +6,7 @@ RSpec.describe 'package details', feature_category: :package_registry do
 
   let_it_be_with_reload(:group) { create(:group) }
   let_it_be_with_reload(:project) { create(:project, group: group) }
-  let_it_be_with_reload(:composer_package) { create(:composer_package, :last_downloaded_at, project: project) }
+  let_it_be_with_reload(:composer_package) { create(:composer_package_sti, :last_downloaded_at, project: project) }
   let_it_be(:user) { create(:user) }
   let_it_be(:composer_json) { { name: 'name', type: 'type', license: 'license', version: 1 } }
   let_it_be(:composer_metadatum) do
@@ -16,7 +16,12 @@ RSpec.describe 'package details', feature_category: :package_registry do
   end
 
   let(:depth) { 3 }
-  let(:excluded) { %w[metadata apiFuzzingCiConfiguration pipeline packageFiles runners inboundAllowlistCount groupsAllowlistCount] }
+  let(:excluded) do
+    %w[metadata apiFuzzingCiConfiguration pipeline packageFiles
+      runners inboundAllowlistCount groupsAllowlistCount mergeTrains ciJobTokenAuthLogs
+      groupAllowlistAutopopulatedIds inboundAllowlistAutopopulatedIds]
+  end
+
   let(:metadata) { query_graphql_fragment('ComposerMetadata') }
   let(:package_files) { all_graphql_fields_for('PackageFile') }
   let(:package_global_id) { global_id_of(composer_package) }
@@ -38,39 +43,45 @@ RSpec.describe 'package details', feature_category: :package_registry do
 
   subject { post_graphql(query, current_user: user) }
 
-  context 'with unauthorized user' do
+  context 'when allow_guest_plus_roles_to_pull_packages is disabled' do
     before do
-      project.update!(visibility_level: Gitlab::VisibilityLevel::PRIVATE)
-      project.add_guest(user)
+      stub_feature_flags(allow_guest_plus_roles_to_pull_packages: false)
     end
 
-    it 'returns no packages' do
-      subject
-
-      expect(graphql_data_at(:package)).to be_nil
-    end
-
-    context 'with access to package registry for everyone' do
+    context 'with unauthorized user' do
       before do
-        project.project_feature.update!(package_registry_access_level: ProjectFeature::PUBLIC)
+        project.update!(visibility_level: Gitlab::VisibilityLevel::PRIVATE)
+        project.add_guest(user)
+      end
+
+      it 'returns no packages' do
         subject
+
+        expect(graphql_data_at(:package)).to be_nil
       end
 
-      it_behaves_like 'a working graphql query' do
-        it 'matches the JSON schema' do
-          expect(package_details).to match_schema('graphql/packages/package_details')
+      context 'with access to package registry for everyone' do
+        before do
+          project.project_feature.update!(package_registry_access_level: ProjectFeature::PUBLIC)
+          subject
         end
-      end
 
-      it '`public_package` returns true' do
-        expect(graphql_data_at(:package, :public_package)).to eq(true)
+        it_behaves_like 'a working graphql query' do
+          it 'matches the JSON schema' do
+            expect(package_details).to match_schema('graphql/packages/package_details')
+          end
+        end
+
+        it '`public_package` returns true' do
+          expect(graphql_data_at(:package, :public_package)).to eq(true)
+        end
       end
     end
   end
 
   context 'when project is public' do
     let_it_be(:public_project) { create(:project, :public, group: group) }
-    let_it_be(:composer_package) { create(:composer_package, project: public_project) }
+    let_it_be(:composer_package) { create(:composer_package_sti, project: public_project) }
     let(:package_global_id) { global_id_of(composer_package) }
 
     before do
@@ -151,14 +162,14 @@ RSpec.describe 'package details', feature_category: :package_registry do
         expect(graphql_data_at(:a, :name)).to eq(composer_package.name)
 
         expect_graphql_errors_to_include [/"package" field can be requested only for 1 Query\(s\) at a time./]
-        expect(graphql_data_at(:b)).to be(nil)
+        expect(graphql_data_at(:b)).to be_nil
       end
     end
 
     context 'versions field', :aggregate_failures do
-      let_it_be(:composer_package2) { create(:composer_package, project: project, name: composer_package.name) }
-      let_it_be(:composer_package3) { create(:composer_package, :error, project: project, name: composer_package.name) }
-      let_it_be(:pending_destruction) { create(:composer_package, :pending_destruction, project: project, name: composer_package.name) }
+      let_it_be(:composer_package2) { create(:composer_package_sti, project: project, name: composer_package.name) }
+      let_it_be(:composer_package3) { create(:composer_package_sti, :error, project: project, name: composer_package.name) }
+      let_it_be(:pending_destruction) { create(:composer_package_sti, :pending_destruction, project: project, name: composer_package.name) }
 
       def run_query
         versions_nodes = <<~QUERY
@@ -256,7 +267,7 @@ RSpec.describe 'package details', feature_category: :package_registry do
       end
 
       it 'returns pypi_url correctly' do
-        expect(graphql_data_at(:package, :pypi_url)).to eq("http://__token__:<your_personal_token>@localhost/api/v4/projects/#{project.id}/packages/pypi/simple")
+        expect(graphql_data_at(:package, :pypi_url)).to eq("http://gitlab-ci-token:<your_personal_token>@localhost/api/v4/projects/#{project.id}/packages/pypi/simple")
       end
 
       it 'returns pypi_setup_url correctly' do
@@ -278,13 +289,13 @@ RSpec.describe 'package details', feature_category: :package_registry do
         end
 
         it 'returns pypi_url correctly' do
-          expect(graphql_data_at(:package, :pypi_url)).to eq("http://__token__:<your_personal_token>@localhost/api/v4/projects/#{project.id}/packages/pypi/simple")
+          expect(graphql_data_at(:package, :pypi_url)).to eq("http://gitlab-ci-token:<your_personal_token>@localhost/api/v4/projects/#{project.id}/packages/pypi/simple")
         end
       end
 
       context 'when project is public' do
         let_it_be(:public_project) { create(:project, :public, group: group) }
-        let_it_be(:composer_package) { create(:composer_package, project: public_project) }
+        let_it_be(:composer_package) { create(:composer_package_sti, project: public_project) }
         let(:package_global_id) { global_id_of(composer_package) }
 
         before do
@@ -298,29 +309,45 @@ RSpec.describe 'package details', feature_category: :package_registry do
     end
 
     context 'web_path' do
-      before do
-        subject
-      end
-
-      it 'returns web_path correctly' do
-        expect(graphql_data_at(:package, :_links, :web_path)).to eq("/#{project.full_path}/-/packages/#{composer_package.id}")
-      end
-
-      context 'with terraform module' do
-        let_it_be(:terraform_package) { create(:terraform_module_package, project: project) }
-
-        let(:package_global_id) { global_id_of(terraform_package) }
-
+      shared_examples 'return web_path correctly' do
         it 'returns web_path correctly' do
-          expect(graphql_data_at(:package, :_links, :web_path)).to eq("/#{project.full_path}/-/infrastructure_registry/#{terraform_package.id}")
+          expect(graphql_data_at(:package, :_links, :web_path)).to eq("/#{project.full_path}/-/packages/#{composer_package.id}")
         end
+      end
+
+      context 'with status default' do
+        before do
+          subject
+        end
+
+        it_behaves_like 'return web_path correctly'
+
+        context 'with terraform module' do
+          let_it_be(:terraform_package) { create(:terraform_module_package, project: project) }
+
+          let(:package_global_id) { global_id_of(terraform_package) }
+
+          it 'returns web_path correctly' do
+            expect(graphql_data_at(:package, :_links, :web_path)).to eq("/#{project.full_path}/-/terraform_module_registry/#{terraform_package.id}")
+          end
+        end
+      end
+
+      context 'with status deprecated' do
+        before do
+          composer_package.deprecated!
+
+          subject
+        end
+
+        it_behaves_like 'return web_path correctly'
       end
     end
 
     context 'public_package' do
       context 'when project is private' do
         let_it_be(:private_project) { create(:project, :private, group: group) }
-        let_it_be(:composer_package) { create(:composer_package, project: private_project) }
+        let_it_be(:composer_package) { create(:composer_package_sti, project: private_project) }
         let(:package_global_id) { global_id_of(composer_package) }
 
         before do
@@ -347,7 +374,7 @@ RSpec.describe 'package details', feature_category: :package_registry do
 
       context 'when project is public' do
         let_it_be(:public_project) { create(:project, :public, group: group) }
-        let_it_be(:composer_package) { create(:composer_package, project: public_project) }
+        let_it_be(:composer_package) { create(:composer_package_sti, project: public_project) }
         let(:package_global_id) { global_id_of(composer_package) }
 
         before do

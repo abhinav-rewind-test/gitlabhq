@@ -91,16 +91,6 @@ RSpec.describe Projects::Releases::EvidencesController, :with_license do
       let(:milestone) { create(:milestone, project: project, issues: [issue]) }
       let(:release) { create(:release, project: project, tag: tag_name, milestones: [milestone]) }
 
-      shared_examples_for 'does not show the issue in evidence' do
-        it do
-          subject
-
-          expect(response).to have_gitlab_http_status(:ok)
-          expect(json_response['release']['milestones']
-            .all? { |milestone| milestone['issues'].nil? }).to eq(true)
-        end
-      end
-
       shared_examples_for 'evidence not found' do
         it do
           subject
@@ -112,7 +102,13 @@ RSpec.describe Projects::Releases::EvidencesController, :with_license do
       context 'when user is non-project member' do
         let(:user) { create(:user) }
 
-        it_behaves_like 'does not show the issue in evidence'
+        it 'does not show the issue in evidence' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['release']['milestones']
+            .all? { |milestone| milestone['issues'].nil? }).to eq(true)
+        end
 
         context 'when project is private' do
           let(:project) { create(:project, :repository, :private) }
@@ -124,24 +120,6 @@ RSpec.describe Projects::Releases::EvidencesController, :with_license do
           let(:project) { create(:project, :repository, :issues_private) }
 
           it_behaves_like 'evidence not found'
-        end
-      end
-
-      context 'when user is auditor', if: Gitlab.ee? do
-        let(:user) { create(:user, :auditor) }
-
-        it_behaves_like 'does not show the issue in evidence'
-
-        context 'when project is private' do
-          let(:project) { create(:project, :repository, :private) }
-
-          it_behaves_like 'does not show the issue in evidence'
-        end
-
-        context 'when project restricts the visibility of issues to project members only' do
-          let(:project) { create(:project, :repository, :issues_private) }
-
-          it_behaves_like 'does not show the issue in evidence'
         end
       end
 
@@ -153,6 +131,64 @@ RSpec.describe Projects::Releases::EvidencesController, :with_license do
         end
 
         it_behaves_like 'evidence not found'
+      end
+    end
+
+    context 'when tag name contains a plus sign' do
+      let(:tag_name) { "v1.0.0+rc1" }
+      let!(:release) { create(:release, project: project, tag: tag_name) }
+      let(:evidence) { release.evidences.first }
+
+      context 'when accessing with literal plus sign' do
+        let(:tag) { tag_name } # No escaping, raw "v1.0.0+rc1"
+
+        it 'returns the evidence successfully' do
+          get :show, params: {
+            namespace_id: project.namespace.to_param,
+            project_id: project,
+            tag: tag,
+            id: evidence.id,
+            format: :json
+          }
+
+          expect(response).to have_gitlab_http_status(:success)
+          expect(json_response).to eq(evidence.summary)
+        end
+      end
+    end
+
+    context 'when tag name contains special characters' do
+      where(:tag_name) do
+        [
+          'v1.0.0+rc1',
+          'release+candidate+1',
+          'v1.0.0+build.123',
+          'release with+plus'
+        ]
+      end
+
+      with_them do
+        let!(:release) { create(:release, project: project, tag: tag_name) }
+        let(:evidence) { release.evidences.first }
+        let(:tag) { tag_name }
+
+        before do
+          ::Releases::CreateEvidenceService.new(release).execute
+          sign_in(developer)
+        end
+
+        it 'handles the tag name correctly' do
+          get :show, params: {
+            namespace_id: project.namespace.to_param,
+            project_id: project,
+            tag: tag,
+            id: evidence.id,
+            format: :json
+          }
+
+          expect(response).to have_gitlab_http_status(:success)
+          expect(json_response).to eq(evidence.summary)
+        end
       end
     end
   end

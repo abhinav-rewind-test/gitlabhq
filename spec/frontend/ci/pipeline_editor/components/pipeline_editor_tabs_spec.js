@@ -31,6 +31,8 @@ import {
 
 Vue.use(VueApollo);
 
+jest.mock('~/lib/logger');
+
 Vue.config.ignoredElements = ['gl-emoji'];
 
 describe('Pipeline editor tabs component', () => {
@@ -72,11 +74,13 @@ describe('Pipeline editor tabs component', () => {
         projectFullPath: '/path/to/project',
         simulatePipelineHelpPagePath: 'path/to/help/page',
         validateTabIllustrationPath: 'path/to/svg',
+        totalBranches: 1,
         ...provide,
       },
       stubs: {
         TextEditor: MockTextEditor,
         EditorTab,
+        'gl-emoji': true,
       },
       listeners,
       ...options,

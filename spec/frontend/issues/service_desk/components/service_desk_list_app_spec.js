@@ -17,10 +17,12 @@ import IssuableList from '~/vue_shared/issuable/list/components/issuable_list_ro
 import { issuableListTabs } from '~/vue_shared/issuable/list/constants';
 import { TYPENAME_USER } from '~/graphql_shared/constants';
 import { convertToGraphQLId, getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { getSortKey, getSortOptions } from '~/issues/list/utils';
+import { getSortKey, getSortOptions } from '~/work_items/list/utils';
 import { STATUS_CLOSED, STATUS_OPEN, STATUS_ALL } from '~/issues/service_desk/constants';
 import getServiceDeskIssuesQuery from 'ee_else_ce/issues/service_desk/queries/get_service_desk_issues.query.graphql';
 import getServiceDeskIssuesCountsQuery from 'ee_else_ce/issues/service_desk/queries/get_service_desk_issues_counts.query.graphql';
+import IssueCardTimeInfo from 'ee_else_ce/work_items/list/components/issue_card_time_info.vue';
+import IssueCardStatistics from 'ee_else_ce/work_items/list/components/issue_card_statistics.vue';
 import setSortingPreferenceMutation from '~/issues/service_desk/queries/set_sorting_preference.mutation.graphql';
 import ServiceDeskListApp from '~/issues/service_desk/components/service_desk_list_app.vue';
 import InfoBanner from '~/issues/service_desk/components/info_banner.vue';
@@ -43,7 +45,7 @@ import {
   RELATIVE_POSITION_ASC,
   RELATIVE_POSITION,
   urlSortParams,
-} from '~/issues/list/constants';
+} from '~/work_items/list/constants';
 import {
   getServiceDeskIssuesQueryResponse,
   getServiceDeskIssuesQueryEmptyResponse,
@@ -113,6 +115,8 @@ describe('CE ServiceDeskListApp', () => {
     findIssuableList()
       .props('searchTokens')
       .find((token) => token.type === TOKEN_TYPE_LABEL);
+  const findIssueCardTimeInfo = () => wrapper.findComponent(IssueCardTimeInfo);
+  const findIssueCardStatistics = () => wrapper.findComponent(IssueCardStatistics);
 
   const createComponent = ({
     provide = {},
@@ -216,40 +220,59 @@ describe('CE ServiceDeskListApp', () => {
     });
   });
 
-  describe('Empty states', () => {
-    describe('when there are issues', () => {
-      it('shows EmptyStateWithAnyIssues component', () => {
-        setWindowLocation(locationSearch);
-        wrapper = createComponent({
-          serviceDeskIssuesQueryResponseHandler: mockServiceDeskIssuesQueryEmptyResponseHandler,
-        });
+  describe('slots provided to issue list', () => {
+    describe('Empty states', () => {
+      describe('when there are issues', () => {
+        it('shows EmptyStateWithAnyIssues component', () => {
+          setWindowLocation(locationSearch);
+          wrapper = createComponent({
+            serviceDeskIssuesQueryResponseHandler: mockServiceDeskIssuesQueryEmptyResponseHandler,
+          });
 
-        expect(wrapper.findComponent(EmptyStateWithAnyIssues).props()).toEqual({
-          hasSearch: true,
-          isOpenTab: true,
+          expect(wrapper.findComponent(EmptyStateWithAnyIssues).props()).toEqual({
+            hasSearch: true,
+            isOpenTab: true,
+          });
+        });
+      });
+
+      describe('when there are no issues', () => {
+        it('shows EmptyStateWithoutAnyIssues component', () => {
+          wrapper = createComponent({
+            provide: { hasAnyIssues: false },
+            serviceDeskIssuesQueryResponseHandler: mockServiceDeskIssuesQueryEmptyResponseHandler,
+          });
+
+          expect(wrapper.findComponent(EmptyStateWithoutAnyIssues).exists()).toBe(true);
         });
       });
     });
 
-    describe('when there are no issues', () => {
-      it('shows EmptyStateWithoutAnyIssues component', () => {
-        wrapper = createComponent({
-          provide: { hasAnyIssues: false },
-          serviceDeskIssuesQueryResponseHandler: mockServiceDeskIssuesQueryEmptyResponseHandler,
-        });
+    it('includes IssueCardTimeInfo component', async () => {
+      wrapper = createComponent();
+      await nextTick();
 
-        expect(wrapper.findComponent(EmptyStateWithoutAnyIssues).exists()).toBe(true);
-      });
+      expect(findIssueCardTimeInfo().exists()).toBe(true);
+    });
+
+    it('includes IssueCardStatistics component', async () => {
+      wrapper = createComponent();
+      await nextTick();
+
+      expect(findIssueCardStatistics().exists()).toBe(true);
     });
   });
 
   describe('Initial url params', () => {
     describe('search', () => {
-      it('is set from the url params', () => {
+      it('is set from the url params', async () => {
         setWindowLocation(locationSearch);
         wrapper = createComponent();
+        await waitForPromises();
 
-        expect(router.history.current.query).toMatchObject({ search: 'find issues' });
+        const { query } = router?.currentRoute || router.history.current;
+
+        expect(query).toMatchObject({ search: 'find issues' });
       });
     });
 
@@ -344,7 +367,7 @@ describe('CE ServiceDeskListApp', () => {
         return waitForPromises();
       });
 
-      it('does not render My-Reaction or Confidential tokens', () => {
+      it('does not render My reaction or Confidential tokens', () => {
         expect(findIssuableList().props('searchTokens')).not.toMatchObject([
           { type: TOKEN_TYPE_AUTHOR, preloadedUsers: [mockCurrentUser] },
           { type: TOKEN_TYPE_ASSIGNEE, preloadedUsers: [mockCurrentUser] },
@@ -688,30 +711,11 @@ describe('CE ServiceDeskListApp', () => {
   });
 
   describe('When providing token for labels', () => {
-    it('passes function to fetchLatestLabels property if frontend caching is enabled', async () => {
-      wrapper = createComponent({
-        provide: {
-          glFeatures: {
-            frontendCaching: true,
-          },
-        },
-      });
+    it('passes function to fetchLatestLabels property', async () => {
+      wrapper = createComponent();
       await waitForPromises();
 
       expect(typeof findLabelsToken().fetchLatestLabels).toBe('function');
-    });
-
-    it('passes null to fetchLatestLabels property if frontend caching is disabled', async () => {
-      wrapper = createComponent({
-        provide: {
-          glFeatures: {
-            frontendCaching: false,
-          },
-        },
-      });
-      await waitForPromises();
-
-      expect(findLabelsToken().fetchLatestLabels).toBe(null);
     });
   });
 });

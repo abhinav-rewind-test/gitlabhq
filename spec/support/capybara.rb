@@ -13,30 +13,6 @@ timeout = ENV['CI'] || ENV['CI_SERVER'] ? 30 : 10
 # Support running Capybara on a specific port to allow saving commonly used pages
 Capybara.server_port = ENV['CAPYBARA_PORT'] if ENV['CAPYBARA_PORT']
 
-# Define an error class for JS console messages
-JSConsoleError = Class.new(StandardError)
-
-# Filter out innocuous JS console messages
-JS_CONSOLE_FILTER = Regexp.union(
-  [
-    '"[HMR] Waiting for update signal from WDS..."',
-    '"[WDS] Hot Module Replacement enabled."',
-    '"[WDS] Live Reloading enabled."',
-    'Download the Vue Devtools extension',
-    'Download the Apollo DevTools',
-    "Unrecognized feature: 'interest-cohort'",
-    'Does this page need fixes or improvements?',
-
-    # Needed after https://gitlab.com/gitlab-org/gitlab/-/merge_requests/60933
-    # which opts out gitlab from FloC by default
-    # see https://web.dev/floc/ for more info on FloC
-    "Origin trial controlled feature not enabled: 'interest-cohort'",
-
-    # ERR_CONNECTION error could happen due to automated test session disabling browser network request
-    'net::ERR_CONNECTION'
-  ]
-)
-
 CAPYBARA_WINDOW_SIZE = [1366, 768].freeze
 
 SCREENSHOT_FILENAME_LENGTH = ENV['CI'] || ENV['CI_SERVER'] ? 150 : 99
@@ -50,8 +26,10 @@ Capybara.register_server :puma_via_workhorse do |app, port, host, **options|
   socket_path = file.path
   file.close! # We just want the filename
 
-  TestEnv.with_workhorse(host, port, socket_path) do
-    Capybara.servers[:puma].call(app, nil, socket_path, **options)
+  TestEnv.with_duo_workflow_service do
+    TestEnv.with_workhorse(host, port, socket_path) do
+      Capybara.servers[:puma].call(app, nil, socket_path, **options)
+    end
   end
 end
 
@@ -66,14 +44,26 @@ Capybara.register_driver :chrome do |app|
   # Chrome won't work properly in a Docker container in sandbox mode
   options.add_argument("no-sandbox")
 
-  # Run headless by default unless WEBDRIVER_HEADLESS specified
-  options.add_argument("headless") unless ENV['WEBDRIVER_HEADLESS'] =~ /^(false|no|0)$/i || ENV['CHROME_HEADLESS'] =~ /^(false|no|0)$/i
+  options.add_argument("disable-search-engine-choice-screen")
+
+  # Ensure the Chrome locale is `en` so all dates are deterministic regardless of local settings
+  options.add_preference('intl.accept_languages', 'en')
+
+  unless ENV['WEBDRIVER_HEADLESS'] =~ /^(false|no|0)$/i || ENV['CHROME_HEADLESS'] =~ /^(false|no|0)$/i
+    # Run headless by default unless WEBDRIVER_HEADLESS specified
+    options.add_argument("headless")
+
+    # Chrome may not run `requestAnimationFrame` callbacks when running multiple test cases in headless
+    # mode due to background tab optimizations. We can disable some troublesome optimizations below.
+    # See https://github.com/teamcapybara/capybara/issues/2796#issuecomment-2678172710
+
+    # Normally, Chrome will treat a 'foreground' tab instead as backgrounded if the surrounding window is occluded (aka
+    # visually covered) by another window. This flag disables that.
+    options.add_argument("disable-backgrounding-occluded-windows")
+  end
 
   # Disable /dev/shm use in CI. See https://gitlab.com/gitlab-org/gitlab/issues/4252
   options.add_argument("disable-dev-shm-usage") if ENV['CI'] || ENV['CI_SERVER']
-
-  # Explicitly set user-data-dir to prevent crashes. See https://gitlab.com/gitlab-org/gitlab-foss/issues/58882#note_179811508
-  options.add_argument("user-data-dir=/tmp/chrome") if ENV['CI'] || ENV['CI_SERVER']
 
   # Set chrome default download path
   if ENV['DEFAULT_CHROME_DOWNLOAD_PATH']
@@ -81,11 +71,13 @@ Capybara.register_driver :chrome do |app|
     options.add_preference("download.prompt_for_download", false)
   end
 
-  # Set up a proxy server to block all external traffic.
-  @blackhole_tcp_server = TCPServer.new(0)
-  Thread.new do
-    loop do
-      Thread.start(@blackhole_tcp_server.accept, &:close)
+  if @blackhole_tcp_server.nil?
+    # Set up a proxy server to block all external traffic.
+    @blackhole_tcp_server = TCPServer.new(0)
+    Thread.new do
+      loop do
+        Thread.start(@blackhole_tcp_server.accept, &:close)
+      end
     end
   end
 
@@ -122,6 +114,7 @@ Capybara.default_max_wait_time = timeout
 Capybara.ignore_hidden_elements = true
 Capybara.default_normalize_ws = true
 Capybara.enable_aria_label = true
+Capybara.default_set_options = { clear: :backspace }
 
 Capybara::Screenshot.append_timestamp = false
 
@@ -137,6 +130,7 @@ end
 
 RSpec.configure do |config|
   config.include CapybaraHelpers, type: :feature
+  config.include BrowserConsoleHelpers, type: :feature
 
   config.before(:context, :js) do
     # This prevents Selenium from creating thousands of connections while waiting for
@@ -157,6 +151,8 @@ RSpec.configure do |config|
   end
 
   config.before(:example, :js) do
+    clear_browser_logs
+
     session = Capybara.current_session
 
     allow(Gitlab::Application.routes).to receive(:default_url_options).and_return(
@@ -175,6 +171,36 @@ RSpec.configure do |config|
       rescue StandardError # ?
       end
     end
+  end
+
+  # When transactional tests are enabled, Rails ensures that all threads
+  # use the same connection for accessing the database. However this may
+  # cause a false positive with the Sidekiq worker open transaction
+  # check because:
+  #
+  # 1. A browser may have multiple requests in-flight.
+  # 2. A transaction may start in the middle of another request. For example,
+  # an update to a merge request column initiates a transaction via SAVEPOINT.
+  #
+  # To avoid false positives, disable this check. The alternative is to
+  # use the deletion strategy, but that would significantly slow tests.
+  config.around(:each, :js) do |example|
+    Sidekiq::Worker.skipping_transaction_check { example.run }
+  end
+
+  # When transactional tests are enabled, we may run into issues with
+  # Gitlab::ExclusiveLease which is not expected to be run within transactions.
+  # These leases may be required when polling the merge request end point causing
+  # the MR to recheck the mergeability status
+  config.around(:each, :js) do |example|
+    Gitlab::ExclusiveLease.skipping_transaction_check { example.run }
+  end
+
+  # Disable query limiting in feature specs because they can cause a lot of
+  # flaky tests. When transactional tests are enabled, the web server threads
+  # share the same query cache which can lead to unstable query counts.
+  config.around(:each, :js) do |example|
+    Gitlab::QueryLimiting.with_suppressed { example.run }
   end
 
   # The :capybara_ignore_server_errors metadata means unhandled exceptions raised
@@ -198,17 +224,8 @@ RSpec.configure do |config|
   end
 
   config.after(:example, :js) do |example|
-    # when a test fails, display any messages in the browser's console
-    # but fail don't add the message if the failure is a pending test that got
-    # fixed. If we raised the `JSException` the fixed test would be marked as
-    # failed again.
     if example.exception && !example.exception.is_a?(RSpec::Core::Pending::PendingExampleFixedError)
-      console = page.driver.browser.logs.get(:browser)&.reject { |log| log.message =~ JS_CONSOLE_FILTER }
-
-      if console.present?
-        message = "Unexpected browser console output:\n" + console.map(&:message).join("\n")
-        raise JSConsoleError, message
-      end
+      raise_if_unexpected_browser_console_output
     end
 
     # prevent localStorage from introducing side effects based on test order

@@ -2,8 +2,11 @@
 
 require 'spec_helper'
 
-# rubocop: disable RSpec/MultipleMemoizedHelpers
 RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shared do
+  before do
+    allow(Thread.current).to receive(:name=)
+  end
+
   shared_examples "a metrics middleware" do
     context "with mocked prometheus" do
       include_context 'server metrics with mocked prometheus'
@@ -25,7 +28,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
                                      worker: 'MergeWorker',
                                      urgency: 'high',
                                      external_dependencies: 'no',
-                                     feature_category: 'source_code_management',
+                                     feature_category: 'code_review_workflow',
                                      boundary: '',
                                      job_status: 'done',
                                      destination_shard_redis: 'main' })
@@ -35,7 +38,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
                                      worker: 'MergeWorker',
                                      urgency: 'high',
                                      external_dependencies: 'no',
-                                     feature_category: 'source_code_management',
+                                     feature_category: 'code_review_workflow',
                                      boundary: '',
                                      job_status: 'fail',
                                      destination_shard_redis: 'main' })
@@ -76,8 +79,22 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
           end
         end
 
+        context 'when emit_db_transaction_sli_metrics FF is disabled' do
+          before do
+            stub_feature_flags(emit_db_transaction_sli_metrics: false)
+            allow(Gitlab::SidekiqConfig).to receive(:current_worker_queue_mappings).and_return('MergeWorker' => 'merge')
+          end
+
+          it 'does not initialize transaction SLIs' do
+            expect(Gitlab::Metrics::DatabaseTransactionSlis).not_to receive(:initialize_slis!)
+
+            described_class.initialize_process_metrics
+          end
+        end
+
         context 'initializing execution and queueing SLIs' do
           before do
+            allow(Gitlab::Database).to receive(:database_base_models).and_return({ 'main' => nil, 'ci' => nil })
             allow(Gitlab::SidekiqConfig)
               .to receive(:current_worker_queue_mappings)
                     .and_return('MergeWorker' => 'merge', 'Ci::BuildFinishedWorker' => 'default')
@@ -89,7 +106,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
               {
                 worker: 'MergeWorker',
                 urgency: 'high',
-                feature_category: 'source_code_management',
+                feature_category: 'code_review_workflow',
                 external_dependencies: 'no',
                 queue: 'merge',
                 destination_shard_redis: 'main'
@@ -104,10 +121,16 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
               }
             ]
 
+            expected_db_labels = %w[main ci].flat_map do |name|
+              expected_labels.map { |l| l.merge(db_config_name: name) }
+            end
+
             expect(Gitlab::Metrics::SidekiqSlis)
               .to receive(:initialize_execution_slis!).with(expected_labels)
             expect(Gitlab::Metrics::SidekiqSlis)
               .to receive(:initialize_queueing_slis!).with(expected_labels)
+            expect(Gitlab::Metrics::DatabaseTransactionSlis)
+              .to receive(:initialize_slis!).with(expected_db_labels)
 
             described_class.initialize_process_metrics
           end
@@ -142,6 +165,11 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
           expect(redis_requests_total).to receive(:increment).with(labels_with_job_status, redis_calls)
           expect(elasticsearch_requests_total).to receive(:increment).with(labels_with_job_status, elasticsearch_calls)
           expect(sidekiq_mem_total_bytes).to receive(:set).with(labels_with_job_status, mem_total_bytes)
+          expect(GVLTools::LocalTimer).to receive(:enable)
+          expect(GVLTools::GlobalTimer).to receive(:enable)
+          expect(gvl_thread_metric).to receive(:observe).with(labels_with_job_status, gvl_thread_duration / 1_000_000_000.0)
+          expect(gvl_process_metric).to receive(:increment).with(labels_with_job_status, gvl_process_duration / 1_000_000_000.0)
+          expect(gvl_enabled_metric).to receive(:set).with(labels_with_job_status, 1)
           expect(Gitlab::Metrics::SidekiqSlis).to receive(:record_execution_apdex)
                                                     .with(labels.slice(:worker,
                                                       :feature_category,
@@ -164,7 +192,8 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
                                                         :urgency,
                                                         :external_dependencies,
                                                         :queue,
-                                                        :destination_shard_redis), queue_duration_for_job)
+                                                        :destination_shard_redis),
+                                                        queue_duration_for_job)
           end
 
           subject.call(worker, job, :test) { nil }
@@ -195,6 +224,55 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
           expect(Thread.current).to receive(:name=).with(Gitlab::Metrics::Samplers::ThreadsSampler::SIDEKIQ_WORKER_THREAD_NAME)
 
           subject.call(worker, job, :test) { nil }
+        end
+
+        context 'when request_store does not have db_transaction' do
+          it 'does not contribute to DatabaseTransactionSlis' do
+            expect(Gitlab::Metrics::DatabaseTransactionSlis).not_to receive(:record_txn_apdex)
+
+            subject.call(worker, job, :test) { nil }
+          end
+        end
+
+        context 'when request_store contains have db_transaction information', :request_store do
+          let(:store_details) { { 'main' => db_duration, 'ci' => db_duration * 2 } }
+
+          before do
+            Gitlab::SafeRequestStore[Gitlab::Metrics::DatabaseTransactionSlis::REQUEST_STORE_KEY] = store_details
+          end
+
+          context 'when feature flag emit_db_transaction_sli_metrics is disabled' do
+            before do
+              stub_feature_flags(emit_db_transaction_sli_metrics: false)
+            end
+
+            it 'does not contribute to DatabaseTransactionSlis' do
+              expect(Gitlab::Metrics::DatabaseTransactionSlis).not_to receive(:record_txn_apdex)
+
+              subject.call(worker, job, :test) { nil }
+            end
+          end
+
+          it 'contributes to DatabaseTransactionSlis' do
+            expect(Gitlab::Metrics::DatabaseTransactionSlis).to receive(:record_txn_apdex)
+                                                    .with(labels.slice(:worker,
+                                                      :feature_category,
+                                                      :urgency,
+                                                      :external_dependencies,
+                                                      :queue,
+                                                      :destination_shard_redis
+                                                    ).merge({ db_config_name: 'main' }), db_duration)
+            expect(Gitlab::Metrics::DatabaseTransactionSlis).to receive(:record_txn_apdex)
+                                                    .with(labels.slice(:worker,
+                                                      :feature_category,
+                                                      :urgency,
+                                                      :external_dependencies,
+                                                      :queue,
+                                                      :destination_shard_redis
+                                                    ).merge({ db_config_name: 'ci' }), db_duration * 2)
+
+            subject.call(worker, job, :test) { nil }
+          end
         end
 
         context 'when job_duration is not available' do
@@ -246,6 +324,24 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
 
           it 'sets sidekiq_jobs_interrupted_total metric' do
             expect(interrupted_total_metric).to receive(:increment)
+
+            subject.call(worker, job, :test) { nil }
+          end
+        end
+
+        context 'when enable_sidekiq_gvl_metrics FF is disabled' do
+          include_context 'server metrics with mocked prometheus'
+          include_context 'server metrics call'
+
+          before do
+            stub_feature_flags(enable_sidekiq_gvl_metrics: false)
+          end
+
+          it 'does not report gvl duration' do
+            expect(GVLTools::LocalTimer).to receive(:disable)
+            expect(GVLTools::GlobalTimer).to receive(:disable)
+            expect(Gitlab::Metrics).not_to receive(:histogram).with(:sidekiq_gvl_thread_wait_seconds, anything, anything, anything)
+            expect(Gitlab::Metrics).not_to receive(:histogram).with(:sidekiq_gvl_process_wait_seconds, anything, anything, anything)
 
             subject.call(worker, job, :test) { nil }
           end
@@ -361,6 +457,41 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
     end
   end
 
+  context 'handling RetryError' do
+    let(:middleware) { described_class.new }
+    let(:worker_class) do
+      Class.new do
+        def self.name
+          "TestWorker"
+        end
+        include ApplicationWorker
+      end
+    end
+
+    let(:worker) { worker_class.new }
+    let(:job) { {} }
+    let(:queue) { :test }
+
+    it 'does not record execution SLI metrics when RetryError is raised' do
+      running_jobs_metric = double('running jobs metric')
+      transaction = double('background transaction')
+
+      allow(middleware).to receive(:metrics).and_return(
+        { sidekiq_running_jobs: running_jobs_metric }
+      )
+      allow(running_jobs_metric).to receive(:increment)
+      allow(Gitlab::Metrics::BackgroundTransaction).to receive(:new).and_return(transaction)
+      allow(transaction).to receive(:run).and_raise(Gitlab::SidekiqMiddleware::RetryError, "Retry")
+
+      expect(Gitlab::Metrics::SidekiqSlis).not_to receive(:record_execution_apdex)
+      expect(Gitlab::Metrics::SidekiqSlis).not_to receive(:record_execution_error)
+
+      expect do
+        middleware.call(worker, job, queue) { nil }
+      end.to raise_error(Gitlab::SidekiqMiddleware::RetryError, "Retry")
+    end
+  end
+
   context 'feature attribution' do
     let(:test_worker) do
       category = worker_category
@@ -384,7 +515,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
 
     around do |example|
       with_sidekiq_server_middleware do |chain|
-        Gitlab::SidekiqMiddleware.server_configurator(
+        Gitlab::SidekiqMiddleware::Server.configurator(
           metrics: true,
           arguments_logger: false,
           skip_jobs: false
@@ -484,4 +615,3 @@ RSpec.describe Gitlab::SidekiqMiddleware::ServerMetrics, feature_category: :shar
     end
   end
 end
-# rubocop: enable RSpec/MultipleMemoizedHelpers

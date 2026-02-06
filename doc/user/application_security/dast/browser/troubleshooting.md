@@ -1,11 +1,10 @@
 ---
-stage: Secure
+type: reference, howto
+stage: Application Security Testing
 group: Dynamic Analysis
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-type: reference, howto
+title: Troubleshooting DAST scans
 ---
-
-# Troubleshooting
 
 The following troubleshooting scenarios have been collected from customer support cases. If you
 experience a problem not addressed here, or the information here does not fix your problem, create a
@@ -13,7 +12,10 @@ support ticket. For more details, see the [GitLab Support](https://about.gitlab.
 
 ## When something goes wrong
 
-When something goes wrong with a DAST scan, if you have a particular error message then check [known problems](#known-problems).
+When something goes wrong with a DAST scan:
+
+- If you're setting up DAST for the first time, check [setting up DAST](#setting-up-dast).
+- If you have a particular error message, check [known problems](#known-problems).
 
 Otherwise, try to discover the problem by answering the following questions:
 
@@ -22,6 +24,115 @@ Otherwise, try to discover the problem by answering the following questions:
 - [Any reason why DAST would not work?](#any-reason-why-dast-would-not-work)
 - [How does your application work?](#how-does-your-application-work)
 - [What is DAST doing?](#what-is-dast-doing)
+
+### Setting up DAST
+
+You might encounter the following issues when you set up DAST for the first time.
+
+#### Configuration validation failed: required field URL was not set
+
+When you include the DAST template without defining the target URL, the pipeline fails during configuration validation with the following error:
+
+```plaintext
+ERR MAIN  configuration validation failed error="the required field URL was not set"
+```
+
+This error indicates that DAST doesn't know which URL to scan. To fix this issue, define the target URL with one of these methods:
+
+- Set the `DAST_TARGET_URL` CI/CD variable in your `.gitlab-ci.yml` file:
+
+  ```yaml
+  stages:
+    - dast
+
+  include:
+    - template: Security/DAST.gitlab-ci.yml
+
+  dast:
+    variables:
+      DAST_TARGET_URL: "https://example.com"
+  ```
+
+- Create an `environment_url.txt` file in the project's root and add the target URL. Use this method to test applications in dynamic environments.
+
+#### Runner cannot connect to target application
+
+When your runner can't reach your target application, the DAST scan fails with connection errors. This commonly happens due to network configuration or firewall issues.
+
+DAST needs to connect to your application using the URL you specified:
+
+- If your `DAST_TARGET_URL` or `DAST_AUTH_URL` includes a port number, ensure your runner can access that specific port.
+- If no port is specified in the URL, DAST uses standard ports:
+  - Port `80` for HTTP URLs (for example, `http://example.com`).
+  - Port `443` for HTTPS URLs (for example, `https://example.com`).
+
+Common causes of connectivity issues include:
+
+- Mixed HTTP and HTTPS content. Your application may use both HTTP and HTTPS. For example, if your target URL is `http://example.com` but the site loads resources from `https://example.com`, ensure your runner can access both ports.
+- Custom ports. If your application runs on a non-standard port, include it in your `DAST_TARGET_URL`. For example, `https://example.com:8443`.
+- Firewall rules. If your application is behind a firewall, configure rules to allow traffic from your runner's IP address.
+- Internal and external networks. Ensure your runner is on a network that can reach your application. For example, if you test on a staging environment on an internal network, use a runner on the same network.
+
+#### Target connection issues
+
+Before DAST begins a scan, it checks if the target URL is reachable. If the target URL cannot be reached, DAST produces detailed error messages to help diagnose the issue. By default, DAST retries a connection every two seconds, up to 60 seconds. You can configure when DAST retries a connection with `DAST_TARGET_CHECK_TIMEOUT`.
+
+If you experience connectivity issues:
+
+1. Verify your `DAST_TARGET_URL` configuration.
+   - Check for typos in the hostname, port, or protocol.
+   - Ensure the URL includes the protocol (`http://` or `https://`).
+   - Verify the port number matches where your application is running.
+
+1. Test connectivity from the runner.
+   - Test the connection: `curl --verbose "http://your-target-url:port"`
+   - Check DNS resolution: `nslookup your-hostname.com`
+   - Verify the port is open: `nc -zv your-hostname.com port`
+
+1. Verify your application is running.
+   - Check that your application has started successfully.
+   - Review application logs for startup errors.
+   - Ensure all dependencies, including databases and APIs, are available.
+
+1. Check network and firewall configuration.
+   - Ensure firewall rules allow traffic on the required ports.
+   - For internal applications, ensure the runner can access internal DNS servers.
+
+1. If your application takes a long time to start or become healthy, increase the timeout:
+
+   ```yaml
+      variables:
+        DAST_TARGET_CHECK_TIMEOUT: "5m"  # Wait up to 5 minutes
+   ```
+
+#### DNS lookup failed
+
+You might see an error like `DNS lookup failed`.
+This happens when DAST can't find the server address for the hostname you provided because:
+
+- The hostname in `DAST_TARGET_URL` is misspelled or incorrect.
+- The domain hasn't been registered or doesn't exist.
+- There are DNS resolution issues in your network or runner environment.
+
+#### Connection refused
+
+You might see an error that says `connection refused`.
+This usually happens when the server exists, but:
+
+- The application hasn't finished starting up yet.
+- The application is running on a different port than specified.
+- A firewall is blocking the connection between the runner and your application.
+- The application crashed or failed to start.
+
+#### Target responded with HTTP 5xx error
+
+You might see the target application respond with an `HTTP 5xx` error. This happens when the application is reachable, but is responding with server errors like `500 Internal Server Error`, `502 Bad Gateway`, `503 Service Unavailable`, or `504 Gateway Timeout`.
+
+You might see server errors when:
+
+- The application is starting up and not fully ready.
+- The application has a configuration error.
+- Required dependencies, like databases and APIs, aren't available.
 
 ### What is the expected outcome?
 
@@ -43,10 +154,10 @@ Knowing the outcome you expect, try to replicate it manually using a browser on 
   - In Firefox: `Tools -> Browser Tools -> Web Developer Tools`.
 - If authenticating:
   - Go to the `DAST_AUTH_URL`.
-  - Type in the `DAST_USERNAME` in the `DAST_USERNAME_FIELD`.
-  - Type in the `DAST_PASSWORD` in the `DAST_PASSWORD_FIELD`.
-  - Select the `DAST_SUBMIT_FIELD`.
-- Select links and fill in forms. Go to the pages that aren't scanning correctly.
+  - Type in the `DAST_AUTH_USERNAME` in the `DAST_AUTH_USERNAME_FIELD`.
+  - Type in the `DAST_AUTH_PASSWORD` in the `DAST_AUTH_PASSWORD_FIELD`.
+  - Select the `DAST_AUTH_SUBMIT_FIELD`.
+- Select links and fill in forms. Navigate to the pages that aren't scanning correctly.
 - Observe how your application behaves. Notice if there is anything that might cause problems for an automated scanner.
 
 ### Any reason why DAST would not work?
@@ -61,7 +172,7 @@ DAST cannot scan correctly when:
 Understanding how your application works is vital to figuring out why a DAST scan isn't working. For example, the following situations
 may require additional configuration settings.
 
-- Is there a popup modal that hides elements?
+- Is there a popup dialog that hides elements?
 - Does a loaded page change dramatically after a certain period of time?
 - Is the application especially slow or fast to load?
 - Is the target application jerky while loading?
@@ -75,15 +186,24 @@ may require additional configuration settings.
 
 ### What is DAST doing?
 
-Logging remains the best way to understand what DAST is doing:
+{{< history >}}
 
-- [Browser-based analyzer logging](#browser-based-analyzer-logging), useful for understanding what the analyzer is doing.
+- Concise logs introduced in GitLab [18.3](https://gitlab.com/gitlab-org/gitlab/-/issues/553625).
+
+{{< /history >}}
+
+The job console (CI/CD job log) provides a concise summary of what DAST is doing.
+For more detailed diagnostic information, you can configure the log file to produce granular output.
+
+The following logging options are available:
+
+- [Diagnostic logs](#diagnostic-logs), useful for understanding what the analyzer is doing.
 - [Chromium DevTools logging](#chromium-devtools-logging), useful to inspect the communication between DAST and Chromium.
 - [Chromium Logs](#chromium-logs), useful for logging errors when Chromium crashes unexpectedly.
 
-## Browser-based analyzer logging
+## Diagnostic logs
 
-The analyzer log is one of the most useful tools to help diagnose problems with a scan. Different parts of the analyzer can be logged at different levels.
+Use the analyzer log file to diagnose scan issues. You can log different parts of the analyzer at different levels.
 
 ### Log message format
 
@@ -91,15 +211,14 @@ Log messages have the format `[time] [log level] [log module] [message] [additio
 
 For example, the following log entry has level `INFO`, is part of the `CRAWL` log module, has the message `Crawled path` and the additional properties `nav_id` and `path`.
 
-```txt
+```plaintext
 2021-04-21T00:34:04.000 INF CRAWL Crawled path nav_id=0cc7fd path="LoadURL [https://my.site.com:8090]"
 ```
 
 ### Log destination
 
-Logs are sent either to file or to console (the CI/CD job log). You can configure each destination to accept different logs using
-the environment variables `DAST_BROWSER_LOG` for console logs and `DAST_BROWSER_FILE_LOG` for file logs.
-
+Logs are sent to the log file artifact. You can configure each destination to accept different logs using
+the environment variable `DAST_LOG_FILE_CONFIG`.
 For example:
 
 ```yaml
@@ -109,14 +228,11 @@ include:
 dast:
   variables:
     DAST_BROWSER_SCAN: "true"
-    DAST_BROWSER_LOG: "auth:debug"                               # console log defaults to INFO level, logs AUTH module at DEBUG
-    DAST_BROWSER_FILE_LOG: "loglevel:debug,cache:warn"           # file log defaults to DEBUG level, logs CACHE module at WARN
-    DAST_BROWSER_FILE_LOG_PATH: "$CI_PROJECT_DIR/dast-scan.log"  # Save the file log in the project directory so it can be recognized as an artifact
-  artifacts:
-    paths:
-      - dast-scan.log
-    when: always
+    DAST_LOG_FILE_CONFIG: "loglevel:debug,cache:warn"           # file log defaults to DEBUG level, logs CACHE module at WARN
 ```
+
+By default, the file log is a job artifact called `gl-dast-scan.log`.
+To [configure this path](configuration/variables.md), modify the `DAST_LOG_FILE_PATH` CI/CD variable.
 
 ### Log levels
 
@@ -158,10 +274,43 @@ The modules that can be configured for logging are as follows:
 | `STAT`     | Used for general statistics while running the scan.                                               |
 | `VLDFN`    | Used for loading and parsing vulnerability definitions.                                           |
 | `WEBGW`    | Used to log messages sent to the target application when running active checks.                   |
+| `SCOPE`    | Used to log messages related to [scope management](configuration/customize_settings.md#managing-scope). |
+
+### SECURE_LOG_LEVEL
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/524632) in GitLab 17.11.
+
+{{< /history >}}
+
+As a simpler alternative to configuring log modules with `DAST_LOG_FILE_CONFIG`, you can set `SECURE_LOG_LEVEL`:
+
+- To any of the [supported log levels](#log-levels).
+  When you do this, the specified level becomes the default log level in the log file for all modules.
+- To `debug` or `trace` to enable the [auth report](configuration/authentication.md#configure-the-authentication-report).
+- To `trace` to enable [DevTools logging](#chromium-devtools-logging).
+
+For example:
+
+```yaml
+include:
+  - template: DAST.gitlab-ci.yml
+
+dast:
+  variables:
+    SECURE_LOG_LEVEL: "trace"
+    # is equivalent to:
+    # DAST_LOG_FILE_CONFIG: "loglevel:trace"
+    # DAST_LOG_DEVTOOLS_CONFIG: "Default:messageAndBody,truncate:2000"
+    # DAST_AUTH_REPORT: "true"
+```
+
+Settings from `DAST_LOG_FILE_CONFIG`, `DAST_LOG_DEVTOOLS_CONFIG`, `DAST_AUTH_REPORT` override the settings from `SECURE_LOG_LEVEL`.
 
 ### Example - log crawled paths
 
-Set the log module `CRAWL` to `DEBUG` to log navigation paths found during the crawl phase of the scan. This is useful for understanding
+Set the log file module `CRAWL` to `DEBUG` to log navigation paths found during the crawl phase of the scan to the log file. This is useful for understanding
 if DAST is crawling your target application correctly.
 
 ```yaml
@@ -170,10 +319,10 @@ include:
 
 dast:
   variables:
-    DAST_BROWSER_LOG: "crawl:debug"
+    DAST_LOG_FILE_CONFIG: "crawl:debug"
 ```
 
-For example, the following output shows that four anchor links we discovered during the crawl of the page at `https://example.com`.
+For example, the following output shows that four anchor links discovered during the crawl of the page at `https://example.com`.
 
 ```plaintext
 2022-11-17T11:18:05.578 DBG CRAWL executing step nav_id=6ec647d8255c729160dd31cb124e6f89 path="LoadURL [https://example.com]" step=1
@@ -187,9 +336,9 @@ For example, the following output shows that four anchor links we discovered dur
 
 ## Chromium DevTools logging
 
-WARNING:
-Logging DevTools messages is a security risk. The output contains secrets such as usernames, passwords and authentication tokens.
-The output is uploaded to the GitLab server and may be visible in job logs.
+> [!warning]
+> Logging DevTools messages is a security risk. The output contains secrets such as usernames, passwords and authentication tokens.
+> The output is uploaded to the GitLab server and may be visible in job logs.
 
 The DAST Browser-based scanner orchestrates a Chromium browser using the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/).
 Logging DevTools messages helps provide transparency into what the browser is doing. For example, if selecting a button does not work, a DevTools message might show that the cause is a CORS error in a browser console log.
@@ -206,7 +355,7 @@ To log all DevTools messages, turn the `CHROM` log module to `trace` and configu
 ### Customizing DevTools log levels
 
 Chrome DevTools requests, responses and events are namespaced by domain. DAST allows each domain and each domain with message to have different logging configuration.
-The environment variable `DAST_BROWSER_DEVTOOLS_LOG` accepts a semi-colon separated list of logging configurations.
+The environment variable `DAST_LOG_DEVTOOLS_CONFIG` accepts a semi-colon separated list of logging configurations.
 Logging configurations are declared using the structure `[domain/message]:[what-to-log][,truncate:[max-message-size]]`.
 
 - `domain/message` references what is being logged.
@@ -230,13 +379,8 @@ include:
 
 dast:
   variables:
-    DAST_BROWSER_FILE_LOG: "chrom:trace"
-    DAST_BROWSER_FILE_LOG_PATH: "/zap/wrk/dast-scan.log"
-    DAST_BROWSER_DEVTOOLS_LOG: "Default:messageAndBody,truncate:2000"
-  artifacts:
-    paths:
-      - dast-scan.log
-    when: always
+    DAST_LOG_FILE_CONFIG: "chrom:trace"
+    DAST_LOG_DEVTOOLS_CONFIG: "Default:messageAndBody,truncate:2000"
 ```
 
 ### Example - log HTTP messages
@@ -250,19 +394,31 @@ include:
 
 dast:
   variables:
-    DAST_BROWSER_FILE_LOG: "chrom:trace"
-    DAST_BROWSER_FILE_LOG_PATH: "/zap/wrk/dast-scan.log"
-    DAST_BROWSER_DEVTOOLS_LOG: "Default:suppress;Fetch:messageAndBody,truncate:2000;Network:messageAndBody,truncate:2000;Log:messageAndBody,truncate:2000;Console:messageAndBody,truncate:2000"
-  artifacts:
-    paths:
-      - dast-scan.log
-    when: always
+    DAST_LOG_FILE_CONFIG: "chrom:trace"
+    DAST_LOG_DEVTOOLS_CONFIG: "Default:suppress;Fetch:messageAndBody,truncate:2000;Network:messageAndBody,truncate:2000;Log:messageAndBody,truncate:2000;Console:messageAndBody,truncate:2000"
 ```
+
+### Override the job console output
+
+By default, the job console displays a concise summary of DAST activity.
+To output the full diagnostic log to the job console, set both the `DAST_FF_DIAGNOSTIC_JOB_OUTPUT` and `DAST_LOG_CONFIG` variables:
+
+```yaml
+include:
+  - template: DAST.gitlab-ci.yml
+
+dast:
+  variables:
+    DAST_FF_DIAGNOSTIC_JOB_OUTPUT: "true"
+    DAST_LOG_CONFIG: "crawl:debug"                               # console log defaults to INFO level, logs AUTH module at DEBUG
+```
+
+[Issue 552171](https://gitlab.com/gitlab-org/gitlab/-/issues/552171) proposes to remove this option in GitLab 19.0.
 
 ## Chromium logs
 
 In the rare event that Chromium crashes, it can be helpful to write the Chromium process `STDOUT` and `STDERR` to log.
-Setting the environment variable `DAST_BROWSER_LOG_CHROMIUM_OUTPUT` to `true` achieves this purpose.
+Setting the environment variable `DAST_LOG_BROWSER_OUTPUT` to `true` achieves this purpose.
 
 DAST starts and stops many Chromium processes. DAST sends each process output to all log destinations with the log module `LEASE` and log level `INFO`.
 
@@ -274,7 +430,7 @@ include:
 
 dast:
   variables:
-    DAST_BROWSER_LOG_CHROMIUM_OUTPUT: "true"
+    DAST_LOG_BROWSER_OUTPUT: "true"
 ```
 
 ## Known problems
@@ -291,13 +447,51 @@ An example log is as follows, where DAST blocked the JavaScript file found at `h
 2022-12-05T06:28:58.104 WRN CONTA request failed, attempting to continue scan error=net::ERR_BLOCKED_BY_RESPONSE index=0 requestID=38.2 url=https://example.com/large.js
 ```
 
-This can be changed using the configuration `DAST_MAX_RESPONSE_SIZE_MB`. For example,
+This can be changed using the configuration `DAST_PAGE_MAX_RESPONSE_SIZE_MB`. For example,
 
 ```yaml
-include:
-  - template: DAST.gitlab-ci.yml
-
 dast:
   variables:
-    DAST_MAX_RESPONSE_SIZE_MB: "25"
+    DAST_PAGE_MAX_RESPONSE_SIZE_MB: "25"
 ```
+
+### Crawler doesn't reach expected pages
+
+#### Try disabling the cache
+
+If DAST incorrectly caches your application pages, it can lead to DAST being unable to properly crawl your application. If you see that some pages are unexpectedly not found by the crawler, try setting `DAST_USE_CACHE: "false"` variable to see if that helps. This can significantly decrease the performance of the scan. Make sure to only disable cache when absolutely necessary. If you have a subscription, [create a support ticket](https://about.gitlab.com/support/) to investigate why cache is preventing your website from being crawled.
+
+#### Specifying target paths directly
+
+The crawler typically begins at the defined target URL and attempts to find further pages by interacting with the site. However, there are two ways to specify paths directly for the crawler to start from:
+
+- Using a sitemap.xml: [Sitemap](https://www.sitemaps.org/protocol.html) is a well defined protocol to specify the pages in a website. DAST's crawler looks for a sitemap.xml file at `<target URL>/sitemap.xml` and takes all specified URLs as a starting point for the crawler. [Sitemap Index](https://www.sitemaps.org/protocol.html#index) files are not supported.
+- Using `DAST_TARGET_PATHS`: This configuration variable allows specifying input paths for the crawler. Example: `DAST_TARGET_PATHS: /,/page/1.html,/page/2.html`.
+
+#### Make sure requests are not getting blocked
+
+By default DAST only allows requests to the target URL domain. If your website makes requests to domains other than the target's, use `DAST_SCOPE_ALLOW_HOSTS` to specify such hosts. Example: "example.com" makes an authentication request to "auth.example.com" to renew the authentication token. Because the domain is not allowed, the request gets blocked and the crawler fails to find new pages.
+
+#### Maximum actions and crawler timeout
+
+The crawler has default limits on its activity and time spent on the target site:
+
+1. By default, the crawler processes 10,000 actions. An action can be selecting a link or filling out a form. If
+   the crawler breaches this limit, you see the debug level log `not adding navigation as it exceeds max actions`.
+1. By default, the crawler runs for a maximum of 24 hours. If it exceeds this time limit, you see the trace
+   level log `crawl complete, timed out`.
+
+When the crawler reached either of these limits, the scanner stops and cannot cover the target website completely.
+Therefore, a breach of these limits might indicate a problem during the scan and a potential opportunity for optimization.
+
+If your application has template-based pages with similar structure but different data across pages or
+you notice URL patterns (for example, `/products/item-123`, `/products/item-456`, `/products/item-789`),
+configure [grouped URLs](configuration/customize_settings.md#grouped-urls) to reduce scan time while
+maintaining security coverage.
+
+Grouped URLs work well for e-commerce sites with many product pages, content-based sites, or search interfaces
+(for example, `/search?q=term&page=1`, `/search?q=term&page=2`).
+
+For more information about managing scan time, see [manage scan time](configuration/customize_settings.md#managing-scan-time).
+If no other strategy is suitable and your target site is extensive, increase the crawler timeout (`DAST_CRAWL_TIMEOUT`)
+or max actions (`DAST_CRAWL_MAX_ACTIONS`).

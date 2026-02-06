@@ -64,8 +64,8 @@ export default class MRWidgetService {
     return axios.get(this.apiApprovalsPath).then((res) => res.data);
   }
 
-  approveMergeRequest() {
-    return axios.post(this.apiApprovePath).then((res) => res.data);
+  approveMergeRequest(data) {
+    return axios.post(this.apiApprovePath, data).then((res) => res.data);
   }
 
   unapproveMergeRequest() {
@@ -74,10 +74,6 @@ export default class MRWidgetService {
 
   static executeInlineAction(url) {
     return axios.post(url);
-  }
-
-  static fetchMetrics(metricsUrl) {
-    return axios.get(`${metricsUrl}.json`);
   }
 
   static fetchInitialData() {

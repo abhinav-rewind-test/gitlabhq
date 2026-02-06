@@ -1,5 +1,6 @@
-import { GlSprintf, GlSkeletonLoader, GlButton } from '@gitlab/ui';
-import { shallowMount } from '@vue/test-utils';
+import { GlSprintf, GlSkeletonLoader, GlButton, GlBadge } from '@gitlab/ui';
+import ProtectedBadge from '~/vue_shared/components/badges/protected_badge.vue';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { createMockDirective } from 'helpers/vue_mock_directive';
 import { mockTracking } from 'helpers/tracking_helper';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
@@ -17,6 +18,7 @@ import {
 } from '~/packages_and_registries/container_registry/explorer/constants';
 import ClipboardButton from '~/vue_shared/components/clipboard_button.vue';
 import ListItem from '~/vue_shared/components/registry/list_item.vue';
+import PublishMessage from '~/packages_and_registries/shared/components/publish_message.vue';
 import { imagesListResponse } from '../../mock_data';
 import { RouterLink } from '../../stubs';
 
@@ -32,21 +34,27 @@ describe('Image List Row', () => {
   const findSkeletonLoader = () => wrapper.findComponent(GlSkeletonLoader);
   const findListItemComponent = () => wrapper.findComponent(ListItem);
   const findShowFullPathButton = () => wrapper.findComponent(GlButton);
+  const findPublishMessage = () => wrapper.findComponent(PublishMessage);
+  const findProtectedBadge = () => wrapper.findComponent(ProtectedBadge);
 
-  const mountComponent = (props) => {
-    wrapper = shallowMount(Component, {
+  const mountComponent = ({ props = {}, config = {}, provide = {} } = {}) => {
+    wrapper = shallowMountExtended(Component, {
       stubs: {
         RouterLink,
-        GlSprintf,
         ListItem,
         GlButton,
+        GlSprintf,
+        GlBadge,
       },
       propsData: {
         item,
         ...props,
       },
       provide: {
-        config: {},
+        ...provide,
+        config: {
+          ...config,
+        },
       },
       directives: {
         GlTooltip: createMockDirective('gl-tooltip'),
@@ -72,7 +80,7 @@ describe('Image List Row', () => {
     });
 
     it('when the image has no name lists the path', () => {
-      mountComponent({ item: { ...item, name: '' } });
+      mountComponent({ props: { item: { ...item, name: '' } } });
 
       expect(findDetailsLink().text()).toBe('gitlab-test');
     });
@@ -110,7 +118,7 @@ describe('Image List Row', () => {
       `(
         'when expirationPolicyCleanupStatus is $expirationPolicyCleanupStatus it is $shown that the component exists',
         ({ expirationPolicyCleanupStatus, shown }) => {
-          mountComponent({ item: { ...item, expirationPolicyCleanupStatus } });
+          mountComponent({ props: { item: { ...item, expirationPolicyCleanupStatus } } });
 
           expect(findCleanupStatus().exists()).toBe(shown);
 
@@ -125,7 +133,7 @@ describe('Image List Row', () => {
 
     describe('when the item is deleting', () => {
       beforeEach(() => {
-        mountComponent({ item: { ...item, status: IMAGE_DELETE_SCHEDULED_STATUS } });
+        mountComponent({ props: { item: { ...item, status: IMAGE_DELETE_SCHEDULED_STATUS } } });
       });
 
       it('the router link does not exist', () => {
@@ -183,12 +191,14 @@ describe('Image List Row', () => {
       'disabled is $state when userPermissions.destroyContainerRepository is $destroyContainerRepository and status is $status',
       ({ destroyContainerRepository, status, state }) => {
         mountComponent({
-          item: {
-            ...item,
-            userPermissions: {
-              destroyContainerRepository,
+          props: {
+            item: {
+              ...item,
+              userPermissions: {
+                destroyContainerRepository,
+              },
+              status,
             },
-            status,
           },
         });
 
@@ -197,7 +207,7 @@ describe('Image List Row', () => {
     );
 
     it('is disabled when migrationState is importing', () => {
-      mountComponent({ item: { ...item, migrationState: IMAGE_MIGRATING_STATE } });
+      mountComponent({ props: { item: { ...item, migrationState: IMAGE_MIGRATING_STATE } } });
 
       expect(findDeleteBtn().props('disabled')).toBe(true);
     });
@@ -210,29 +220,86 @@ describe('Image List Row', () => {
     });
 
     describe('loading state', () => {
-      it('shows a loader when metadataLoading is true', () => {
-        mountComponent({ metadataLoading: true });
+      beforeEach(() => {
+        mountComponent({ props: { metadataLoading: true } });
+      });
 
+      it('shows a loader when metadataLoading is true', () => {
         expect(findSkeletonLoader().exists()).toBe(true);
       });
 
       it('hides the tags count while loading', () => {
-        mountComponent({ metadataLoading: true });
-
         expect(findTagsCount().exists()).toBe(false);
       });
     });
 
     describe('tags count text', () => {
       it('with one tag in the image', () => {
-        mountComponent({ item: { ...item, tagsCount: 1 } });
+        mountComponent({ props: { item: { ...item, tagsCount: 1 } } });
 
         expect(findTagsCount().text()).toMatchInterpolatedText('1 tag');
       });
       it('with more than one tag in the image', () => {
-        mountComponent({ item: { ...item, tagsCount: 3 } });
+        mountComponent({ props: { item: { ...item, tagsCount: 3 } } });
 
         expect(findTagsCount().text()).toMatchInterpolatedText('3 tags');
+      });
+    });
+  });
+
+  describe('PublishMessage component', () => {
+    it('is rendered', () => {
+      mountComponent();
+
+      expect(findPublishMessage().props()).toStrictEqual({
+        author: '',
+        projectUrl: '',
+        projectName: '',
+        publishDate: item.createdAt,
+      });
+    });
+
+    it('is rendered with package name & link on group pages', () => {
+      mountComponent({
+        config: {
+          isGroupPage: true,
+        },
+      });
+
+      expect(findPublishMessage().props()).toStrictEqual({
+        author: '',
+        projectName: 'gitlab-test',
+        projectUrl: 'http://localhost:3000/gitlab-org/gitlab-test',
+        publishDate: item.createdAt,
+      });
+    });
+  });
+
+  describe('badge "protected"', () => {
+    const mountComponentForProtectedBadge = ({ itemProtectionRuleExists = true } = {}) => {
+      return mountComponent({
+        props: { item: { ...item, protectionRuleExists: itemProtectionRuleExists } },
+      });
+    };
+
+    describe('when image is protected', () => {
+      beforeEach(() => {
+        mountComponentForProtectedBadge();
+      });
+
+      it('shows badge', () => {
+        expect(findProtectedBadge().exists()).toBe(true);
+        expect(findProtectedBadge().props('tooltipText')).toBe(
+          'A protection rule exists for this container repository.',
+        );
+      });
+    });
+
+    describe('when image is not protected', () => {
+      it('does not show badge', () => {
+        mountComponentForProtectedBadge({ itemProtectionRuleExists: false });
+
+        expect(findProtectedBadge().exists()).toBe(false);
       });
     });
   });

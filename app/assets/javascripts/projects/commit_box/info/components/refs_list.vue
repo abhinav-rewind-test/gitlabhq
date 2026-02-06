@@ -1,6 +1,12 @@
 <script>
-import { GlCollapse, GlBadge, GlButton, GlIcon, GlSkeletonLoader } from '@gitlab/ui';
-import { CONTAINING_COMMIT, FETCH_CONTAINING_REFS_EVENT, BRANCHES_REF_TYPE } from '../constants';
+import { GlCollapse, GlBadge, GlButton, GlIcon, GlSkeletonLoader, GlLoadingIcon } from '@gitlab/ui';
+import {
+  CONTAINING_COMMIT,
+  FETCH_CONTAINING_REFS_EVENT,
+  BRANCHES_REF_TYPE,
+  EMPTY_BRANCHES_MESSAGE,
+  EMPTY_TAGS_MESSAGE,
+} from '../constants';
 
 export default {
   name: 'RefsList',
@@ -10,6 +16,7 @@ export default {
     GlBadge,
     GlButton,
     GlIcon,
+    GlLoadingIcon,
   },
   props: {
     urlPart: {
@@ -58,6 +65,15 @@ export default {
     refIcon() {
       return this.refType === BRANCHES_REF_TYPE ? 'branch' : 'tag';
     },
+    showEmptyMessage() {
+      return this.tippingRefs.length === 0 && !this.hasContainingRefs && !this.isLoading;
+    },
+    showNameSpace() {
+      return (this.tippingRefs.length !== 0 || this.hasContainingRefs) && !this.isLoading;
+    },
+    emptyMessage() {
+      return this.refType === BRANCHES_REF_TYPE ? EMPTY_BRANCHES_MESSAGE : EMPTY_TAGS_MESSAGE;
+    },
   },
   methods: {
     toggleCollapse() {
@@ -68,7 +84,7 @@ export default {
       this.$emit(FETCH_CONTAINING_REFS_EVENT);
     },
     getRefUrl(ref) {
-      return `${this.urlPart}${ref}?ref_type=${this.refType}`;
+      return `${this.urlPart}${encodeURIComponent(ref)}?ref_type=${this.refType}`;
     },
   },
   i18n: {
@@ -78,20 +94,21 @@ export default {
 </script>
 
 <template>
-  <div class="ref-list gl-p-5 gl-border-b-solid gl-border-b-1">
-    <gl-icon :name="refIcon" :size="14" class="gl-ml-2 gl-mr-3" />
-    <span data-testid="title" class="gl-mr-2">{{ namespace }}</span>
+  <div>
+    <gl-icon :name="refIcon" variant="default" :size="16" class="gl-ml-2 gl-mr-3" />
+    <gl-loading-icon v-if="isLoading" size="sm" inline />
+    <span v-if="showEmptyMessage">{{ emptyMessage }}</span>
+    <span v-else-if="showNameSpace" data-testid="title" class="gl-mr-2">{{ namespace }}</span>
     <gl-badge
       v-for="ref in tippingRefs"
       :key="ref"
       :href="getRefUrl(ref)"
-      class="gl-mt-2 gl-mr-2"
-      size="sm"
+      class="gl-mr-2 gl-mt-2"
       >{{ ref }}</gl-badge
     >
     <gl-button
       v-if="hasContainingRefs"
-      class="gl-mr-2 gl-font-sm!"
+      class="gl-mr-2 !gl-text-sm"
       variant="link"
       size="small"
       @click="showRefs"
@@ -106,8 +123,7 @@ export default {
           v-for="ref in containingRefs"
           :key="ref"
           :href="getRefUrl(ref)"
-          class="gl-mt-3 gl-mr-2"
-          size="sm"
+          class="gl-mr-2 gl-mt-3"
           >{{ ref }}</gl-badge
         >
       </template>

@@ -27,6 +27,7 @@ describe('content_editor/components/bubble_menus/bubble_menu', () => {
         pluginKey,
         shouldShow,
         tippyOptions,
+        ariaLabel: 'Review or edit media',
         ...propsData,
       },
       slots: {
@@ -64,7 +65,9 @@ describe('content_editor/components/bubble_menus/bubble_menu', () => {
       tippyOptions: expect.objectContaining({
         onHidden: expect.any(Function),
         onShow: expect.any(Function),
-        strategy: 'fixed',
+        popperOptions: {
+          strategy: 'fixed',
+        },
         maxWidth: '400px',
         ...tippyOptions,
       }),
@@ -94,6 +97,10 @@ describe('content_editor/components/bubble_menus/bubble_menu', () => {
 
     it('displays the menu content', () => {
       expect(wrapper.text()).toContain('menu content');
+    });
+
+    it('has an accessible label', () => {
+      expect(wrapper.attributes('aria-label')).toEqual('Review or edit media');
     });
 
     it('emits show event', () => {

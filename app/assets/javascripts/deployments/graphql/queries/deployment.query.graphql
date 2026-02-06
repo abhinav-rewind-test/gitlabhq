@@ -21,12 +21,16 @@ query fetchDeployment($fullPath: ID!, $iid: ID!) {
         ...DeploymentJob
         canPlayJob
         manualJob
+        pipeline {
+          id
+          path
+        }
       }
       commit {
         id
         shortId
-        message
-        webUrl
+        title
+        webPath
         authorGravatar
         authorName
         authorEmail

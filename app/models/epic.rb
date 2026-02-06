@@ -3,8 +3,6 @@
 # Placeholder class for model that is implemented in EE
 # It reserves '&' as a reference prefix, but the table does not exist in FOSS
 class Epic < ApplicationRecord
-  include IgnorableColumns
-
   def self.link_reference_pattern
     nil
   end
@@ -15,6 +13,14 @@ class Epic < ApplicationRecord
 
   def self.reference_prefix_escaped
     '&amp;'
+  end
+
+  def self.alternative_reference_prefix
+    '[epic:'
+  end
+
+  def self.reference_postfix
+    ']'
   end
 end
 

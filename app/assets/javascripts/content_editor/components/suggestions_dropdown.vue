@@ -1,11 +1,18 @@
 <script>
-import { GlAvatar, GlLoadingIcon } from '@gitlab/ui';
+import { GlAvatar, GlLoadingIcon, GlIcon, GlBadge } from '@gitlab/ui';
+import { escape } from 'lodash';
+import { getAdaptiveStatusColor } from '~/lib/utils/color_utils';
 import SafeHtml from '~/vue_shared/directives/safe_html';
+import { isUserBusy } from '~/set_status_modal/utils';
+import { REFERENCE_TYPES } from '~/content_editor/constants/reference_types';
+import { s__ } from '~/locale';
 
 export default {
   components: {
     GlAvatar,
     GlLoadingIcon,
+    GlIcon,
+    GlBadge,
   },
 
   directives: {
@@ -13,6 +20,11 @@ export default {
   },
 
   props: {
+    editor: {
+      type: Object,
+      required: true,
+    },
+
     char: {
       type: String,
       required: true,
@@ -63,43 +75,67 @@ export default {
     },
 
     isCommand() {
-      return this.isReference && this.nodeProps.referenceType === 'command';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.COMMAND;
     },
 
     isUser() {
-      return this.isReference && this.nodeProps.referenceType === 'user';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.USER;
     },
 
     isIssue() {
-      return this.isReference && this.nodeProps.referenceType === 'issue';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.ISSUE;
+    },
+
+    isIssueAlternative() {
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.ISSUE_ALTERNATIVE;
+    },
+
+    isWorkItem() {
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.WORK_ITEM;
     },
 
     isLabel() {
-      return this.isReference && this.nodeProps.referenceType === 'label';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.LABEL;
     },
 
     isEpic() {
-      return this.isReference && this.nodeProps.referenceType === 'epic';
+      return (
+        this.isReference &&
+        (this.nodeProps.referenceType === REFERENCE_TYPES.EPIC ||
+          this.nodeProps.referenceType === REFERENCE_TYPES.EPIC_ALTERNATIVE)
+      );
     },
 
     isSnippet() {
-      return this.isReference && this.nodeProps.referenceType === 'snippet';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.SNIPPET;
     },
 
     isVulnerability() {
-      return this.isReference && this.nodeProps.referenceType === 'vulnerability';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.VULNERABILITY;
+    },
+
+    isIteration() {
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.ITERATION;
+    },
+
+    isStatus() {
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.STATUS;
     },
 
     isMergeRequest() {
-      return this.isReference && this.nodeProps.referenceType === 'merge_request';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.MERGE_REQUEST;
     },
 
     isMilestone() {
-      return this.isReference && this.nodeProps.referenceType === 'milestone';
+      return this.isReference && this.nodeProps.referenceType === REFERENCE_TYPES.MILESTONE;
+    },
+
+    isWiki() {
+      return this.nodeProps.referenceType === REFERENCE_TYPES.WIKI;
     },
 
     isEmoji() {
-      return this.nodeType === 'emoji';
+      return this.nodeType === REFERENCE_TYPES.EMOJI;
     },
 
     shouldSelectFirstItem() {
@@ -111,10 +147,14 @@ export default {
     items() {
       this.selectedIndex = this.shouldSelectFirstItem ? 0 : -1;
     },
-    async selectedIndex() {
+    async selectedIndex(val) {
       // wait for the DOM to update before scrolling
       await this.$nextTick();
       this.scrollIntoView();
+
+      // a11y: set aria-activedescendant to the tiptap editor
+      const activeDescendantId = val >= 0 ? `suggestion-option-${val}` : '';
+      this.editor.view.dom.setAttribute('aria-activedescendant', activeDescendantId);
     },
   },
 
@@ -125,27 +165,38 @@ export default {
   },
 
   methods: {
+    getAdaptiveStatusColor,
+
     getText(item) {
       if (this.isEmoji) return item.emoji.e;
 
       switch (this.isReference && this.nodeProps.referenceType) {
-        case 'user':
+        case REFERENCE_TYPES.USER:
           return `${this.char}${item.username}`;
-        case 'issue':
-        case 'merge_request':
-          return `${this.char}${item.iid}`;
-        case 'snippet':
+        case REFERENCE_TYPES.ISSUE:
+        case REFERENCE_TYPES.MERGE_REQUEST:
+          return item.reference || `${this.char}${item.iid}`;
+        case REFERENCE_TYPES.ISSUE_ALTERNATIVE:
+        case REFERENCE_TYPES.WORK_ITEM:
+          return item.reference || `#${item.iid}`;
+        case REFERENCE_TYPES.SNIPPET:
           return `${this.char}${item.id}`;
-        case 'milestone':
+        case REFERENCE_TYPES.MILESTONE:
           return `${this.char}${item.title}`;
-        case 'label':
+        case REFERENCE_TYPES.LABEL:
           return item.title;
-        case 'command':
+        case REFERENCE_TYPES.COMMAND:
           return `${this.char}${item.name}`;
-        case 'epic':
+        case REFERENCE_TYPES.EPIC:
+        case REFERENCE_TYPES.EPIC_ALTERNATIVE:
           return item.reference;
-        case 'vulnerability':
+        case REFERENCE_TYPES.VULNERABILITY:
           return `[vulnerability:${item.id}]`;
+        case REFERENCE_TYPES.WIKI:
+        case REFERENCE_TYPES.ITERATION:
+          return item.title;
+        case REFERENCE_TYPES.STATUS:
+          return `${this.char}${item.name}${this.char}`;
         default:
           return '';
       }
@@ -178,11 +229,34 @@ export default {
         });
       }
 
+      if (this.isWiki) {
+        Object.assign(props, {
+          text: item.title,
+          href: item.path,
+          isGollumLink: true,
+          isWikiPage: true,
+          canonicalSrc: item.slug,
+        });
+      }
+
+      if (this.isIteration) {
+        Object.assign(props, {
+          originalText: item.reference,
+        });
+      }
+
+      if (this.isStatus) {
+        Object.assign(props, {
+          originalText: `${this.char}${item.name}${this.char}`,
+        });
+      }
+
       Object.assign(props, this.nodeProps);
 
       return props;
     },
 
+    // eslint-disable-next-line vue/no-unused-properties -- onKeyDown() is part of the component's public API.
     onKeyDown({ event }) {
       if (!this.items.length) return false;
 
@@ -237,103 +311,154 @@ export default {
 
     highlight(text) {
       return this.query
-        ? String(text).replace(
+        ? String(escape(text)).replace(
             new RegExp(this.query, 'i'),
-            (match) => `<strong class="gl-text-body!">${match}</strong>`,
+            (match) => `<strong class="!gl-text-default">${match}</strong>`,
           )
-        : text;
+        : escape(text);
+    },
+
+    userBadges(item) {
+      const badges = [];
+      if (item.availability && isUserBusy(item.availability)) {
+        badges.push({ variant: 'warning', label: s__('UserProfile|Busy') });
+      }
+      if (item.composite_identity_enforced) {
+        badges.push({ variant: 'neutral', label: s__('UserProfile|AI') });
+      }
+      return badges;
     },
   },
-  safeHtmlConfig: { ALLOWED_TAGS: ['strong'] },
+  safeHtmlConfig: { ALLOWED_TAGS: ['strong'], ALLOW_DATA_ATTR: false },
 };
 </script>
 
 <template>
-  <div class="gl-new-dropdown content-editor-suggestions-dropdown">
-    <div
-      v-if="!loading && items.length > 0"
-      class="gl-new-dropdown-panel gl-display-block! gl-absolute"
-    >
+  <div class="gl-new-dropdown-container content-editor-suggestions-dropdown">
+    <div v-if="!loading && items.length > 0" class="gl-new-dropdown-panel gl-absolute !gl-block">
       <div class="gl-new-dropdown-inner">
-        <ul class="gl-new-dropdown-contents" data-testid="content-editor-suggestions-dropdown">
+        <ul
+          id="content-editor-suggestions"
+          class="gl-new-dropdown-contents"
+          data-testid="content-editor-suggestions-dropdown"
+          role="listbox"
+          :aria-label="__(`Suggestions`)"
+        >
           <li
             v-for="(item, index) in items"
+            :id="`suggestion-option-${index}`"
             :key="index"
-            role="presentation"
+            role="option"
             class="gl-new-dropdown-item"
             :class="{ focused: index === selectedIndex }"
           >
             <div
+              :id="`suggestion-option-${index}`"
               ref="dropdownItems"
               type="button"
-              role="menuitem"
+              role="option"
+              :aria-selected="index === selectedIndex ? 'true' : 'false'"
               class="gl-new-dropdown-item-content"
               @click="selectItem(index)"
             >
               <div class="gl-new-dropdown-item-text-wrapper">
-                <span v-if="isUser" class="gl-flex">
+                <span v-if="isUser" class="gl-flex gl-items-center gl-gap-3">
                   <gl-avatar
                     :src="item.avatar_url"
                     :entity-name="item.username"
                     :size="24"
                     :shape="item.type === 'Group' ? 'rect' : 'circle'"
-                    class="gl-vertical-align-middle gl-mx-2"
                   />
-                  <span class="gl-vertical-align-middle">
-                    <span v-safe-html:safeHtmlConfig="highlight(item.username)"></span>
+                  <span class="gl-flex gl-flex-col">
+                    <span class="gl-flex gl-items-center gl-gap-2">
+                      <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.username)"></span>
+                      <gl-badge
+                        v-for="badge in userBadges(item)"
+                        :key="badge.label"
+                        :variant="badge.variant"
+                        size="sm"
+                        class="gl-ml-0"
+                      >
+                        {{ badge.label }}
+                      </gl-badge>
+                    </span>
                     <small
-                      v-safe-html:safeHtmlConfig="highlight(avatarSubLabel(item))"
-                      class="gl-text-gray-500"
+                      v-safe-html:[$options.safeHtmlConfig]="highlight(avatarSubLabel(item))"
+                      class="gl-text-subtle"
                     ></small>
                   </span>
                 </span>
-                <span v-if="isIssue || isMergeRequest">
+                <span v-if="isIssue || isIssueAlternative || isWorkItem || isMergeRequest">
+                  <gl-icon
+                    v-if="item.icon_name"
+                    class="gl-mr-2"
+                    variant="subtle"
+                    :name="item.icon_name"
+                  />
                   <small
-                    v-safe-html:safeHtmlConfig="highlight(item.iid)"
-                    class="gl-text-gray-500"
+                    v-safe-html:[$options.safeHtmlConfig]="highlight(item.reference || item.iid)"
+                    class="gl-text-subtle"
                   ></small>
-                  <span v-safe-html:safeHtmlConfig="highlight(item.title)"></span>
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
                 </span>
                 <span v-if="isVulnerability || isSnippet">
                   <small
-                    v-safe-html:safeHtmlConfig="highlight(item.id)"
-                    class="gl-text-gray-500"
+                    v-safe-html:[$options.safeHtmlConfig]="highlight(item.id)"
+                    class="gl-text-subtle"
                   ></small>
-                  <span v-safe-html:safeHtmlConfig="highlight(item.title)"></span>
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
                 </span>
-                <span v-if="isEpic">
+                <span v-if="isEpic || isIteration">
                   <small
-                    v-safe-html:safeHtmlConfig="highlight(item.reference)"
-                    class="gl-text-gray-500"
+                    v-safe-html:[$options.safeHtmlConfig]="highlight(item.reference)"
+                    class="gl-text-subtle"
                   ></small>
-                  <span v-safe-html:safeHtmlConfig="highlight(item.title)"></span>
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
+                </span>
+                <span v-if="isStatus">
+                  <gl-icon
+                    class="gl-mr-2"
+                    :name="item.iconName"
+                    :size="12"
+                    :style="`color: ${getAdaptiveStatusColor(item.color)}`"
+                  />
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.name)"></span>
                 </span>
                 <span v-if="isMilestone">
-                  <span v-safe-html:safeHtmlConfig="highlight(item.title)"></span>
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
                   <span v-if="item.expired">{{ __('(expired)') }}</span>
                 </span>
-                <span v-if="isLabel" class="gl-display-flex">
+                <span v-if="isWiki">
+                  <gl-icon class="gl-mr-2" name="document" />
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
+                  <small
+                    v-if="item.title.toLowerCase() !== item.slug.toLowerCase()"
+                    v-safe-html:[$options.safeHtmlConfig]="highlight(`(${item.slug})`)"
+                    class="gl-text-subtle"
+                  ></small>
+                </span>
+                <span v-if="isLabel" class="gl-flex">
                   <span
                     data-testid="label-color-box"
-                    class="dropdown-label-box gl-flex-shrink-0 gl-top-0 gl-mr-3"
+                    class="dropdown-label-box gl-top-0 gl-mr-3 gl-shrink-0"
                     :style="{ backgroundColor: item.color }"
                   ></span>
-                  <span v-safe-html:safeHtmlConfig="highlight(item.title)"></span>
+                  <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.title)"></span>
                 </span>
                 <div v-if="isCommand">
                   <div class="gl-mb-1">
-                    /<span v-safe-html:safeHtmlConfig="highlight(item.name)"></span>
-                    <span class="gl-text-gray-500 gl-font-sm">{{ item.params[0] }}</span>
+                    /<span v-safe-html:[$options.safeHtmlConfig]="highlight(item.name)"></span>
+                    <span class="gl-text-sm gl-text-subtle">{{ item.params[0] }}</span>
                   </div>
                   <em
-                    v-safe-html:safeHtmlConfig="highlight(item.description)"
-                    class="gl-text-gray-500 gl-font-sm"
+                    v-safe-html:[$options.safeHtmlConfig]="highlight(item.description)"
+                    class="gl-text-sm gl-text-subtle"
                   ></em>
                 </div>
-                <div v-if="isEmoji" class="gl-display-flex gl-align-items-center">
-                  <div class="gl-pr-4 gl-font-lg">
+                <div v-if="isEmoji" class="gl-flex gl-items-center">
+                  <div class="gl-pr-4 gl-text-lg">
                     <gl-emoji
-                      :key="item.emoji.e"
+                      :key="item.emoji.name"
                       :data-name="item.emoji.name"
                       :title="item.emoji.d"
                       :data-unicode-version="item.emoji.u"
@@ -341,8 +466,8 @@ export default {
                       >{{ item.emoji.e }}</gl-emoji
                     >
                   </div>
-                  <div class="gl-flex-grow-1">
-                    <span v-safe-html:safeHtmlConfig="highlight(item.fieldValue)"></span>
+                  <div class="gl-grow">
+                    <span v-safe-html:[$options.safeHtmlConfig]="highlight(item.fieldValue)"></span>
                   </div>
                 </div>
               </div>
@@ -351,10 +476,10 @@ export default {
         </ul>
       </div>
     </div>
-    <div v-if="loading" class="gl-new-dropdown-panel gl-display-block! gl-absolute">
+    <div v-if="loading" class="gl-new-dropdown-panel gl-absolute !gl-block">
       <div class="gl-new-dropdown-inner">
         <div class="gl-px-4 gl-py-3">
-          <gl-loading-icon size="sm" class="gl-display-inline-block" /> {{ __('Loading...') }}
+          <gl-loading-icon size="sm" class="gl-inline-block" /> {{ __('Loading…') }}
         </div>
       </div>
     </div>

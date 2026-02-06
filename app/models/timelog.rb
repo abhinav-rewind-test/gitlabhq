@@ -7,12 +7,14 @@ class Timelog < ApplicationRecord
 
   include Importable
   include Sortable
+  include EachBatch
 
+  before_validation :ensure_namespace_id
   before_save :set_project
 
-  validates :time_spent, :user, presence: true
+  validates :time_spent, :user, :namespace, presence: true
   validates :summary, length: { maximum: 255 }
-  validate :issuable_id_is_present, unless: :importing?
+  validates_with ExactlyOnePresentValidator, fields: [:issue, :merge_request]
   validate :check_total_time_spent_is_within_range, on: :create, unless: :importing?, if: :time_spent
 
   belongs_to :issue, touch: true
@@ -21,25 +23,30 @@ class Timelog < ApplicationRecord
   belongs_to :user
   belongs_to :note
   belongs_to :timelog_category, optional: true, class_name: 'TimeTracking::TimelogCategory'
+  belongs_to :namespace
 
-  scope :in_group, -> (group) do
+  scope :in_group, ->(group) do
     joins(:project).where(projects: { namespace: group.self_and_descendants })
   end
 
-  scope :in_project, -> (project) do
+  scope :in_project, ->(project) do
     where(project: project)
   end
 
-  scope :for_user, -> (user) do
+  scope :for_user, ->(user) do
     where(user: user)
   end
 
-  scope :at_or_after, -> (start_time) do
+  scope :at_or_after, ->(start_time) do
     where('spent_at >= ?', start_time)
   end
 
-  scope :at_or_before, -> (end_time) do
+  scope :at_or_before, ->(end_time) do
     where('spent_at <= ?', end_time)
+  end
+
+  scope :with_summary, ->(summary) do
+    where(summary: summary)
   end
 
   scope :order_scope_asc, ->(field) { order(arel_table[field].asc.nulls_last) }
@@ -68,20 +75,15 @@ class Timelog < ApplicationRecord
     errors.add(:base, _("Total time spent cannot exceed a year.")) if total_time_spent > MAX_TOTAL_TIME_SPENT
   end
 
-  def issuable_id_is_present
-    if issue_id && merge_request_id
-      errors.add(:base, _('Only Issue ID or merge request ID is required'))
-    elsif issuable.nil?
-      errors.add(:base, _('Issue or merge request ID is required'))
-    end
-  end
-
   def set_project
     self.project_id = issuable.project_id
   end
 
-  # Rails5 defaults to :touch_later, overwrite for normal touch
-  def belongs_to_touch_method
-    :touch
+  def ensure_namespace_id
+    self.namespace_id = if merge_request.present?
+                          merge_request.project&.project_namespace_id
+                        elsif issue.present?
+                          issue.namespace_id
+                        end
   end
 end

@@ -2,12 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe TriggerableHooks do
+RSpec.describe TriggerableHooks, feature_category: :webhooks do
+  let_it_be(:project) { create(:project) }
+
   before do
     stub_const('TestableHook', Class.new(WebHook))
 
     TestableHook.class_eval do
-      include TriggerableHooks # rubocop:disable RSpec/DescribedClass
+      include TriggerableHooks
       triggerable_hooks [:push_hooks]
 
       self.allow_legacy_sti_class = true
@@ -26,7 +28,7 @@ RSpec.describe TriggerableHooks do
   describe '.hooks_for' do
     context 'the model has the required trigger scope' do
       it 'returns the record' do
-        hook = TestableHook.create!(url: 'http://example.com', push_events: true)
+        hook = TestableHook.create!(url: 'http://example.com', project_id: project.id, push_events: true)
 
         expect(TestableHook.hooks_for(:push_hooks)).to eq [hook]
       end
@@ -34,7 +36,7 @@ RSpec.describe TriggerableHooks do
 
     context 'the model does not have the required trigger scope' do
       it 'returns an empty relation' do
-        TestableHook.create!(url: 'http://example.com')
+        TestableHook.create!(url: 'http://example.com', project_id: project.id)
 
         expect(TestableHook.hooks_for(:tag_push_hooks)).to eq []
       end
@@ -42,7 +44,7 @@ RSpec.describe TriggerableHooks do
 
     context 'the stock scope ".all" is accepted' do
       it 'returns the record' do
-        hook = TestableHook.create!(url: 'http://example.com')
+        hook = TestableHook.create!(url: 'http://example.com', project_id: project.id)
 
         expect(TestableHook.hooks_for(:all)).to eq [hook]
       end
@@ -51,8 +53,8 @@ RSpec.describe TriggerableHooks do
 
   describe '.select_active' do
     it 'returns hooks that match the active filter' do
-      TestableHook.create!(url: 'http://example1.com', push_events: true)
-      TestableHook.create!(url: 'http://example.org', push_events: true)
+      TestableHook.create!(url: 'http://example1.com', project_id: project.id, push_events: true)
+      TestableHook.create!(url: 'http://example.org', project_id: project.id, push_events: true)
       filter1 = double(:filter1)
       filter2 = double(:filter2)
       allow(ActiveHookFilter).to receive(:new).twice.and_return(filter1, filter2)
@@ -64,7 +66,7 @@ RSpec.describe TriggerableHooks do
     end
 
     it 'returns empty list if no hooks match the active filter' do
-      TestableHook.create!(url: 'http://example1.com', push_events: true)
+      TestableHook.create!(url: 'http://example1.com', project_id: project.id, push_events: true)
       filter = double(:filter)
       allow(ActiveHookFilter).to receive(:new).and_return(filter)
       expect(filter).to receive(:matches?).and_return(false)

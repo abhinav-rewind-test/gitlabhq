@@ -8,11 +8,21 @@ RSpec.describe API::ProjectSnapshots, :aggregate_failures, feature_category: :so
   let(:project) { create(:project) }
   let(:admin) { create(:admin) }
   let(:path) { "/projects/#{project.id}/snapshot" }
+  let(:retry_policy) do
+    {
+      maxAttempts: 3,
+      initialBackoff: '0.5s',
+      maxBackoff: '2s',
+      backoffMultiplier: 2,
+      retryableStatusCodes: %w[UNAVAILABLE]
+    }
+  end
 
   before do
     allow(Feature::Gitaly).to receive(:server_feature_flags).and_return({
       'gitaly-feature-foobar' => 'true'
     })
+    allow(Gitlab::GitalyClient).to receive(:retry_policy).and_return(retry_policy)
   end
 
   describe 'GET /projects/:id/snapshot' do
@@ -22,7 +32,10 @@ RSpec.describe API::ProjectSnapshots, :aggregate_failures, feature_category: :so
       expect(type).to eq('git-snapshot')
       expect(params).to eq(
         'GitalyServer' => {
-          'call_metadata' => { 'gitaly-feature-foobar' => 'true' },
+          'call_metadata' => {
+            'gitaly-feature-foobar' => 'true',
+            'retry_config' => Gitlab::Json.dump(retry_policy)
+          },
           'address' => Gitlab::GitalyClient.address(repository.project.repository_storage),
           'token' => Gitlab::GitalyClient.token(repository.project.repository_storage)
         },
@@ -59,6 +72,16 @@ RSpec.describe API::ProjectSnapshots, :aggregate_failures, feature_category: :so
 
       expect(response).to have_gitlab_http_status(:ok)
       expect_snapshot_response_for(project.wiki.repository)
+    end
+
+    context 'with granular token permissions', :enable_admin_mode do
+      it_behaves_like 'authorizing granular token permissions', :read_snapshot do
+        let(:boundary_object) { project }
+        let(:user) { admin }
+        let(:request) do
+          get api(path, personal_access_token: pat), params: { wiki: '0' }
+        end
+      end
     end
   end
 end

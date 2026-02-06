@@ -1,8 +1,9 @@
 <script>
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
+import { normalizeRender } from '~/lib/utils/vue3compat/normalize_render';
 import { assigneesQueries } from '../../queries/constants';
 
-export default {
+export default normalizeRender({
   subscription: null,
   name: 'AssigneesRealtime',
   props: {
@@ -34,7 +35,7 @@ export default {
         return this.queryVariables;
       },
       update(data) {
-        return data.workspace?.issuable;
+        return data.namespace?.issuable;
       },
       subscribeToMore: {
         document() {
@@ -84,5 +85,5 @@ export default {
   render() {
     return null;
   },
-};
+});
 </script>

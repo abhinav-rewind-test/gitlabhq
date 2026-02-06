@@ -1,16 +1,22 @@
 import Vue from 'vue';
 import { BV_SHOW_MODAL } from '~/lib/utils/constants';
 import Translate from '~/vue_shared/translate';
+import { parseBoolean } from '~/lib/utils/common_utils';
 import DeleteAccountModal from './components/delete_account_modal.vue';
 import UpdateUsername from './components/update_username.vue';
 
-export default () => {
-  Vue.use(Translate);
+Vue.use(Translate);
 
+const initUpdateUsername = () => {
   const updateUsernameElement = document.getElementById('update-username');
-  // eslint-disable-next-line no-new
-  new Vue({
+
+  if (!updateUsernameElement) {
+    return false;
+  }
+
+  return new Vue({
     el: updateUsernameElement,
+    name: 'UpdateUsernameRoot',
     components: {
       UpdateUsername,
     },
@@ -20,12 +26,22 @@ export default () => {
       });
     },
   });
+};
 
+const initDeleteAccountModal = () => {
   const deleteAccountButton = document.getElementById('delete-account-button');
   const deleteAccountModalEl = document.getElementById('delete-account-modal');
-  // eslint-disable-next-line no-new
-  new Vue({
+
+  if (!deleteAccountButton || !deleteAccountModalEl) {
+    return false;
+  }
+
+  const { actionUrl, confirmWithPassword, username, delayUserAccountSelfDeletion } =
+    deleteAccountModalEl.dataset;
+
+  return new Vue({
     el: deleteAccountModalEl,
+    name: 'DeleteAccountModalRoot',
     components: {
       DeleteAccountModal,
     },
@@ -38,11 +54,17 @@ export default () => {
     render(createElement) {
       return createElement('delete-account-modal', {
         props: {
-          actionUrl: deleteAccountModalEl.dataset.actionUrl,
-          confirmWithPassword: Boolean(deleteAccountModalEl.dataset.confirmWithPassword),
-          username: deleteAccountModalEl.dataset.username,
+          actionUrl,
+          confirmWithPassword: parseBoolean(confirmWithPassword),
+          username,
+          delayUserAccountSelfDeletion: parseBoolean(delayUserAccountSelfDeletion),
         },
       });
     },
   });
+};
+
+export default () => {
+  initUpdateUsername();
+  initDeleteAccountModal();
 };

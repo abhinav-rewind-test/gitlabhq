@@ -5,31 +5,55 @@ require 'spec_helper'
 RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category: :system_access do
   using RSpec::Parameterized::TableSyntax
 
+  before_all do
+    freeze_time
+  end
+
+  after(:all) do
+    unfreeze_time
+  end
+
   describe '#execute' do
-    let_it_be(:admin) { create(:admin) }
-    let_it_be(:user) { create(:user) }
+    let_it_be(:organization) { create(:organization) }
+    let_it_be(:admin) { create(:admin, organizations: [organization]) }
+    let_it_be(:user) { create(:user, organizations: [organization]) }
     let_it_be(:other_user) { create(:user) }
     let_it_be(:project_bot) { create(:user, :project_bot) }
+    let_it_be(:first_organization) { create(:organization) }
+    let_it_be(:second_organization) { create(:organization) }
+    let_it_be(:group) { create(:group) }
 
     let_it_be(:tokens) do
       {
-        active: create(:personal_access_token, user: user, name: 'my_pat_1'),
-        active_other: create(:personal_access_token, user: other_user, name: 'my_pat_2'),
-        expired: create(:personal_access_token, :expired, user: user),
-        revoked: create(:personal_access_token, :revoked, user: user),
-        active_impersonation: create(:personal_access_token, :impersonation, user: user),
-        expired_impersonation: create(:personal_access_token, :expired, :impersonation, user: user),
-        revoked_impersonation: create(:personal_access_token, :revoked, :impersonation, user: user),
-        bot: create(:personal_access_token, user: project_bot)
+        active: create(:personal_access_token, user: user, name: 'my_pat_1', organization: organization),
+        active_other: create(:personal_access_token, user: other_user, name: 'my_pat_2', organization: organization),
+        expired: create(:personal_access_token, :expired, user: user, organization: organization),
+        revoked: create(:personal_access_token, :revoked, user: user, organization: organization),
+        active_impersonation: create(:personal_access_token, :impersonation, user: user, organization: organization),
+        expired_impersonation: create(:personal_access_token, :expired, :impersonation, user: user, organization: organization),
+        revoked_impersonation: create(:personal_access_token, :revoked, :impersonation, user: user, organization: organization),
+        bot: create(:personal_access_token, user: project_bot, organization: organization),
+        with_group: create(:personal_access_token, organization: organization, group: group),
+        with_another_group: create(:personal_access_token, organization: organization, group: create(:group))
       }
     end
 
+    let_it_be(:tokens_from_other_organizations) do
+      {
+        with_first_organization: create(:personal_access_token, organization: first_organization),
+        with_second_organization: create(:personal_access_token, organization: second_organization)
+      }
+    end
+
+    let_it_be(:all_tokens) { tokens.merge(tokens_from_other_organizations) }
+
     let(:tokens_keys) { tokens.keys }
 
+    let(:default_params) { { organization: organization } }
     let(:params) { {} }
     let(:current_user) { admin }
 
-    subject { described_class.new(params, current_user).execute }
+    subject { described_class.new(default_params.merge(params), current_user).execute }
 
     describe 'by current user' do
       context 'with no user' do
@@ -124,11 +148,28 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
       end
     end
 
+    describe 'by_user_types' do
+      let(:user_types) { [:project_bot] }
+      let(:params) { { user_types: user_types } }
+
+      it 'returns tokens by user_types' do
+        is_expected.to match_array(PersonalAccessToken.where(user_type: user_types))
+      end
+
+      context 'when user_types are not specified' do
+        let(:user_types) { nil }
+
+        it 'returns all tokens' do
+          is_expected.to match_array(tokens.values)
+        end
+      end
+    end
+
     describe 'by impersonation' do
       where(:by_impersonation, :expected_tokens) do
         nil       | ref(:tokens_keys)
         true      | [:active_impersonation, :expired_impersonation, :revoked_impersonation]
-        false     | [:active, :active_other, :expired, :revoked, :bot]
+        false     | [:active, :active_other, :expired, :revoked, :bot, :with_group, :with_another_group]
         'other'   | ref(:tokens_keys)
       end
 
@@ -144,7 +185,7 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
     describe 'by state' do
       where(:by_state, :expected_tokens) do
         nil        | ref(:tokens_keys)
-        'active'   | [:active, :active_other, :active_impersonation, :bot]
+        'active'   | [:active, :active_other, :active_impersonation, :bot, :with_group, :with_another_group]
         'inactive' | [:expired, :revoked, :expired_impersonation, :revoked_impersonation]
         'other'    | ref(:tokens_keys)
       end
@@ -161,7 +202,7 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
     describe 'by owner type' do
       where(:by_owner_type, :expected_tokens) do
         nil     | ref(:tokens_keys)
-        'human' | [:active, :active_other, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation]
+        'human' | [:active, :active_other, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :with_group, :with_another_group]
         'other' | ref(:tokens_keys)
       end
 
@@ -176,9 +217,11 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
 
     describe 'by revoked state' do
       where(:by_revoked_state, :expected_tokens) do
-        nil   | [:active, :active_other, :expired, :active_impersonation, :expired_impersonation, :bot]
-        true  | [:revoked, :revoked_impersonation]
-        false | [:active, :active_other, :expired, :active_impersonation, :expired_impersonation, :bot]
+        nil     | [:active, :active_other, :expired, :active_impersonation, :expired_impersonation, :bot, :with_group, :with_another_group]
+        true    | [:revoked, :revoked_impersonation]
+        'true'  | [:revoked, :revoked_impersonation]
+        false   | [:active, :active_other, :expired, :active_impersonation, :expired_impersonation, :bot, :with_group, :with_another_group]
+        'false' | [:active, :active_other, :expired, :active_impersonation, :expired_impersonation, :bot, :with_group, :with_another_group]
       end
 
       with_them do
@@ -214,7 +257,7 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
       describe 'by created after' do
         where(:by_created_after, :expected_tokens) do
           6.days.ago      | ref(:tokens_keys)
-          2.days.ago      | [:active, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot]
+          2.days.ago      | [:active, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot, :with_group, :with_another_group]
           2.days.from_now | []
         end
 
@@ -224,6 +267,38 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
           it 'returns tokens by created before' do
             is_expected.to match_array(tokens.values_at(*expected_tokens))
           end
+        end
+      end
+    end
+
+    describe 'by expires before' do
+      where(:by_expires_before, :expected_tokens) do
+        2.days.ago       | []
+        29.days.from_now | [:expired, :expired_impersonation]
+        31.days.from_now | ref(:tokens_keys)
+      end
+
+      with_them do
+        let(:params) { { expires_before: by_expires_before } }
+
+        it 'returns tokens by expires before' do
+          is_expected.to match_array(tokens.values_at(*expected_tokens))
+        end
+      end
+    end
+
+    describe 'by expires after' do
+      where(:by_expires_after, :expected_tokens) do
+        2.days.ago       | ref(:tokens_keys)
+        30.days.from_now | [:active, :active_other, :revoked, :active_impersonation, :revoked_impersonation, :bot, :with_group, :with_another_group]
+        31.days.from_now | []
+      end
+
+      with_them do
+        let(:params) { { expires_after: by_expires_after } }
+
+        it 'returns tokens by expires after' do
+          is_expected.to match_array(tokens.values_at(*expected_tokens))
         end
       end
     end
@@ -253,7 +328,7 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
       describe 'by last used after' do
         where(:by_last_used_after, :expected_tokens) do
           6.days.ago      | ref(:tokens_keys)
-          2.days.ago      | [:active, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot]
+          2.days.ago      | [:active, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot, :with_group, :with_another_group]
           2.days.from_now | []
         end
 
@@ -283,25 +358,57 @@ RSpec.describe PersonalAccessTokensFinder, :enable_admin_mode, feature_category:
       end
     end
 
+    describe 'by_organization' do
+      let(:params) { { organization: first_organization } }
+
+      it 'returns tokens by organization' do
+        is_expected.to match_array(PersonalAccessToken.where(organization: first_organization))
+      end
+
+      context 'when orgnzation is not specified' do
+        let(:params) { { organization: nil } }
+
+        it 'returns all tokens' do
+          is_expected.to match_array(all_tokens.values)
+        end
+      end
+    end
+
+    describe 'by_group' do
+      let(:params) { { group: group } }
+
+      it 'returns tokens by group' do
+        is_expected.to match_array(PersonalAccessToken.where(group: group))
+      end
+
+      context 'when group is not specified' do
+        let(:params) { { group: nil } }
+
+        it 'returns all tokens' do
+          is_expected.to match_array(tokens.values)
+        end
+      end
+    end
+
     describe 'sort' do
       where(:sort, :expected_tokens) do
         nil       | ref(:tokens_keys)
-        'id_asc'  | [:active, :active_other, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot]
-        'id_desc' | [:bot, :revoked_impersonation, :expired_impersonation, :active_impersonation, :revoked, :expired, :active_other, :active]
+        'id_asc'  | [:active, :active_other, :expired, :revoked, :active_impersonation, :expired_impersonation, :revoked_impersonation, :bot, :with_group, :with_another_group]
+        'id_desc' | [:with_another_group, :with_group, :bot, :revoked_impersonation, :expired_impersonation, :active_impersonation, :revoked, :expired, :active_other, :active]
         'other'   | ref(:tokens_keys)
       end
 
       with_them do
         let(:params) { { sort: sort } }
 
-        it 'returns ordered tokens' do
+        it 'returns ordered tokens', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16796' do
           expect(subject.map(&:id)).to eq(tokens.values_at(*expected_tokens).map(&:id))
         end
       end
     end
 
     describe 'delegates' do
-      subject { described_class.new(params, current_user) }
+      subject { described_class.new(default_params.merge(params), current_user) }
 
       describe '#find_by_id' do
         it 'returns token by id' do

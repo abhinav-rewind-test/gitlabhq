@@ -68,6 +68,19 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
         expect(fork_of_project.squash_commit_template).to eq(project.squash_commit_template)
       end
 
+      context 'when source project repository storage is disabled' do
+        before do
+          stub_application_setting(pick_repository_storage: 'storage_1')
+        end
+
+        it 'uses source project repository storage for the fork' do
+          is_expected.to be_success
+
+          expect(fork_of_project.repository_storage).to eq('default')
+          expect(project.repository_storage).to eq('default')
+        end
+      end
+
       # This test is here because we had a bug where the from-project lost its
       # avatar after being forked.
       # https://gitlab.com/gitlab-org/gitlab-foss/issues/26158
@@ -91,6 +104,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
         expect(fork_network).not_to be_nil
         expect(fork_network.root_project).to eq(project)
         expect(fork_network.projects).to contain_exactly(project, fork_of_project)
+        expect(fork_network.organization).to eq(project.organization)
       end
 
       it 'imports the repository of the forked project', :sidekiq_might_not_need_inline do
@@ -106,7 +120,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
       end
 
       context 'when creating fork of the fork' do
-        let_it_be(:other_namespace) { create(:group).tap { |group| group.add_owner(user) } }
+        let_it_be(:other_namespace) { create(:group, owners: user) }
 
         it 'creates a new project' do
           fork_response = described_class.new(project, user, params).execute
@@ -259,7 +273,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
 
       context 'when forking to the group namespace' do
         context 'when user owns a target group' do
-          let_it_be_with_reload(:namespace) { create(:group).tap { |group| group.add_owner(user) } }
+          let_it_be_with_reload(:namespace) { create(:group, owners: user) }
 
           it 'creates a fork in the group' do
             is_expected.to be_success
@@ -279,7 +293,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
           end
 
           context 'when the namespace has a lower visibility level than the project' do
-            let_it_be(:namespace) { create(:group, :private).tap { |group| group.add_owner(user) } }
+            let_it_be(:namespace) { create(:group, :private, owners: user) }
             let_it_be(:project) { create(:project, :public) }
 
             it 'creates the project with the lower visibility level' do
@@ -291,7 +305,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
         end
 
         context 'when user is not a group owner' do
-          let_it_be(:namespace) { create(:group).tap { |group| group.add_developer(user) } }
+          let_it_be(:namespace) { create(:group, developers: user) }
 
           it 'does not create a fork' do
             is_expected.to be_error
@@ -341,7 +355,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
 
         context 'when target namespace has lower visibility than a project' do
           let_it_be(:project) { create(:project, :public) }
-          let_it_be(:namespace) { create(:group, :private).tap { |group| group.add_owner(user) } }
+          let_it_be(:namespace) { create(:group, :private, owners: user) }
 
           it 'sets visibility level to target namespace visibility level' do
             is_expected.to be_success
@@ -375,7 +389,7 @@ RSpec.describe Projects::ForkService, feature_category: :source_code_management 
 
       context 'when a project is already forked' do
         let_it_be(:project) { create(:project, :public, :repository) }
-        let_it_be(:group) { create(:group).tap { |group| group.add_owner(user) } }
+        let_it_be(:group) { create(:group, owners: user) }
 
         before do
           # Stub everything required to move a project to a Gitaly shard that does not exist

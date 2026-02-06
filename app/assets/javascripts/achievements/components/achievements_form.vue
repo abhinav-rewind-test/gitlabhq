@@ -1,6 +1,14 @@
 <script>
-import { GlAlert, GlAvatar, GlButton, GlDrawer, GlForm, GlFormFields } from '@gitlab/ui';
-import { formValidators } from '@gitlab/ui/dist/utils';
+import {
+  GlAlert,
+  GlAvatar,
+  GlButton,
+  GlDrawer,
+  GlForm,
+  GlFormFields,
+  GlTruncate,
+} from '@gitlab/ui';
+import { formValidators } from '@gitlab/ui/src/utils';
 import { produce } from 'immer';
 import { get as getPropValueByPath } from 'lodash';
 import { MountingPortal } from 'portal-vue';
@@ -24,6 +32,7 @@ export default {
     GlDrawer,
     GlForm,
     GlFormFields,
+    GlTruncate,
     MountingPortal,
   },
   inject: ['groupFullPath', 'groupId'],
@@ -207,12 +216,12 @@ export default {
       @close="close(false)"
     >
       <template #title>
-        <div class="gl-font-weight-bold gl-font-size-h2">
+        <div class="gl-text-size-h2 gl-font-bold">
           {{ s__('Achievements|New achievement') }}
         </div>
       </template>
       <gl-alert v-if="errorMessages.length" variant="danger" @dismiss="errorMessages = []">
-        <ul class="gl-mb-0! gl-ml-5">
+        <ul class="!gl-mb-0 gl-ml-5">
           <li v-for="error in errorMessages" :key="error">
             {{ error }}
           </li>
@@ -226,29 +235,37 @@ export default {
           @submit="save"
         >
           <template #input(avatar)>
-            <div class="gl-display-flex">
-              <gl-avatar :src="previewImage" shape="rect" class="gl-border-none gl-mr-5" />
-              <div>
-                <gl-button data-testid="select-file-button" @click="$refs.fileUpload.click()">
-                  {{ __('Choose File...') }}
-                </gl-button>
-                <span v-if="filename" class="gl-ml-3">
-                  {{ filename }}
+            <div class="gl-flex">
+              <gl-avatar :src="previewImage" shape="rect" class="gl-mr-5 gl-border-none" />
+              <div class="gl-overflow-hidden">
+                <div class="gl-flex">
+                  <gl-button data-testid="select-file-button" @click="$refs.fileUpload.click()">
+                    {{ __('Choose File…') }}
+                  </gl-button>
                   <gl-button
+                    v-if="filename"
+                    class="gl-ml-3"
                     data-testid="reset-file-button"
                     size="small"
-                    icon="close"
                     category="tertiary"
                     @click="resetFile"
-                  />
-                </span>
+                    >{{ __('Clear') }}</gl-button
+                  >
+                </div>
+                <gl-truncate
+                  v-if="filename"
+                  class="gl-mt-3"
+                  :text="filename"
+                  position="middle"
+                  with-tooltip
+                />
                 <input
                   ref="fileUpload"
                   data-testid="avatar-file-input"
                   type="file"
                   accept="image/*"
                   name="avatar_file"
-                  class="gl-display-none"
+                  class="gl-hidden"
                   @change="selectFile"
                 />
               </div>

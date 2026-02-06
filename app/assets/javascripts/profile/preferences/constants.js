@@ -1,5 +1,7 @@
 import { s__, __ } from '~/locale';
 
+export const INTEGRATION_EXTENSIONS_MARKETPLACE = 'extensions_marketplace';
+
 export const INTEGRATION_VIEW_CONFIGS = {
   sourcegraph: {
     title: s__('Preferences|Sourcegraph'),
@@ -7,9 +9,14 @@ export const INTEGRATION_VIEW_CONFIGS = {
     formName: 'sourcegraph_enabled',
   },
   gitpod: {
-    title: s__('Preferences|Gitpod'),
-    label: s__('Preferences|Enable Gitpod integration'),
+    title: s__('Preferences|Ona'),
+    label: s__('Preferences|Enable Ona integration'),
     formName: 'gitpod_enabled',
+  },
+  [INTEGRATION_EXTENSIONS_MARKETPLACE]: {
+    title: s__('Preferences|Web IDE'),
+    label: s__('Preferences|Enable extension marketplace'),
+    formName: 'extensions_marketplace_enabled',
   },
 };
 

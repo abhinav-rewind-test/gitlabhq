@@ -73,7 +73,10 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
 
     context 'with integration with data fields' do
       let(:excluded_attributes) do
-        %w[id integration_id created_at updated_at encrypted_properties encrypted_properties_iv]
+        %w[
+          id integration_id created_at updated_at encrypted_properties encrypted_properties_iv
+          group_id project_id
+        ]
       end
 
       it 'updates the data fields from the integration', :aggregate_failures do
@@ -140,6 +143,8 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
       create(:gitlab_slack_application_integration, :group,
         group: group,
         slack_integration: build(:slack_integration,
+          :group,
+          group: group,
           team_id: 'group_integration_team_id',
           team_name: 'group_integration_team_name',
           alias: 'group_alias',
@@ -154,6 +159,8 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
         group: subgroup,
         inherit_from_id: group_integration.id,
         slack_integration: build(:slack_integration,
+          :group,
+          group: subgroup,
           team_id: 'subgroup_integration_team_id',
           team_name: 'subgroup_integration_team_name',
           alias: 'subgroup_alias',
@@ -168,6 +175,8 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
         project: project,
         inherit_from_id: subgroup_integration.id,
         slack_integration: build(:slack_integration,
+          :project,
+          project: project,
           alias: 'project_alias',
           authorized_scope_names: %w[project_scope]
         )
@@ -177,6 +186,7 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
     let_it_be(:excluded_integration) do
       create(:gitlab_slack_application_integration,
         slack_integration: build(:slack_integration,
+          :instance,
           team_id: 'excluded_team_id',
           alias: 'excluded_alias',
           authorized_scope_names: %w[excluded_scope]
@@ -226,6 +236,25 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
       )
     end
 
+    it 'sets the correct sharding key on updated records' do
+      execute_service
+
+      expect(subgroup_integration.reload.slack_integration.slack_integrations_scopes).to contain_exactly(
+        have_attributes(
+          organization_id: nil,
+          group_id: subgroup.id,
+          project_id: nil
+        )
+      )
+      expect(integration.reload.slack_integration.slack_integrations_scopes).to contain_exactly(
+        have_attributes(
+          organization_id: nil,
+          group_id: nil,
+          project_id: project.id
+        )
+      )
+    end
+
     context 'when integration is disabled' do
       before do
         group_integration.update!(active: false)
@@ -250,6 +279,54 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
           excluded_integration.slack_integration.id
         )
       end
+
+      context 'and re-enabled again' do
+        before do
+          described_class.new(group_integration, batch).execute # Propagate disable
+
+          group_integration.update!(active: true)
+        end
+
+        it 'recreates SlackIntegration records and scopes using default alias' do
+          expect { execute_service }.to change { SlackIntegration.count }.by(2)
+
+          expect(subgroup_integration.reload.slack_integration).to have_attributes(
+            team_id: group_slack_integration.team_id,
+            team_name: group_slack_integration.team_name,
+            alias: subgroup.full_path,
+            user_id: group_slack_integration.user_id,
+            bot_user_id: group_slack_integration.bot_user_id,
+            bot_access_token: group_slack_integration.bot_access_token,
+            created_at: be_present,
+            updated_at: be_present,
+            authorized_scope_names: group_slack_integration.authorized_scope_names,
+            organization_id: nil,
+            group_id: subgroup.id,
+            project_id: nil
+          )
+
+          expect(integration.reload.slack_integration).to have_attributes(
+            team_id: group_slack_integration.team_id,
+            team_name: group_slack_integration.team_name,
+            alias: project.full_path,
+            user_id: group_slack_integration.user_id,
+            bot_user_id: group_slack_integration.bot_user_id,
+            bot_access_token: group_slack_integration.bot_access_token,
+            created_at: be_present,
+            updated_at: be_present,
+            authorized_scope_names: group_slack_integration.authorized_scope_names,
+            organization_id: nil,
+            group_id: nil,
+            project_id: project.id
+          )
+
+          expect(excluded_integration.reload.slack_integration).to have_attributes(
+            team_id: 'excluded_team_id',
+            alias: 'excluded_alias',
+            authorized_scope_names: %w[excluded_scope]
+          )
+        end
+      end
     end
 
     it 'avoids N+1 database queries' do
@@ -260,6 +337,8 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
         project: project_2,
         inherit_from_id: subgroup_integration.id,
         slack_integration: build(:slack_integration,
+          :project,
+          project: project_2,
           alias: 'project_2_alias',
           authorized_scope_names: %w[project_2_scope]
         )
@@ -276,16 +355,20 @@ RSpec.describe Integrations::Propagation::BulkUpdateService, feature_category: :
       )
     end
 
-    context 'when flag is disabled' do
-      before do
-        stub_feature_flags(gitlab_for_slack_app_instance_and_group_level: false)
+    describe 'propagation from instance integration' do
+      let_it_be(:instance_integration) { create(:jira_integration, :instance) }
+
+      let_it_be(:integration) do
+        create(:jira_integration, project: create(:project), inherit_from_id: instance_integration.id)
       end
 
-      it 'does not update associated SlackIntegration record or scopes' do
-        expect { execute_service }.not_to change { integration.reload.slack_integration.attributes }
-        expect(integration.slack_integration.authorized_scope_names).to eq(
-          %w[project_scope]
-        )
+      it 'does not propagate organization' do
+        batch = Integration.id_in([integration])
+
+        described_class.new(integration.reload, batch).execute
+
+        expect(instance_integration.organization).not_to be_nil
+        expect(integration.reload.organization).to be_nil
       end
     end
   end

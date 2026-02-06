@@ -1,3 +1,4 @@
+# @feature_category: source_code_management
 fragment TreeEntry on Entry {
   __typename
   id
@@ -5,6 +6,7 @@ fragment TreeEntry on Entry {
   name
   flatPath
   type
+  path
 }
 
 query getPaginatedTree(

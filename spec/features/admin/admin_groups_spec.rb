@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
+RSpec.describe 'Admin Groups', :with_current_organization, feature_category: :groups_and_projects do
   include Features::MembersHelpers
   include Features::InviteMembersModalHelpers
   include Spec::Support::Helpers::ModalHelpers
@@ -11,6 +11,10 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
 
   let_it_be(:user) { create :user }
   let_it_be(:group) { create :group }
+  let_it_be(:project) do
+    create(:project, namespace: group, statistics: create(:project_statistics, storage_size: 10.megabytes))
+  end
+
   let_it_be_with_reload(:current_user) { create(:admin) }
 
   before do
@@ -19,11 +23,20 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
     stub_application_setting(default_group_visibility: internal)
   end
 
+  it 'pushes `archive_group` feature flag' do
+    stub_feature_flags(archive_group: true)
+
+    visit admin_groups_path
+
+    expect(page).to have_pushed_frontend_feature_flags(archiveGroup: true)
+  end
+
   describe 'list' do
-    it 'renders groups' do
+    it 'renders groups', :js do
       visit admin_groups_path
 
       expect(page).to have_content(group.name)
+      expect(page).to have_content('10.00 MiB')
     end
   end
 
@@ -110,8 +123,33 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
 
       visit admin_group_path(group)
 
-      expect(page).to have_content("Group: #{group.name}")
+      expect(page).to have_content group.name
       expect(page).to have_content("ID: #{group.id}")
+    end
+
+    it 'shows the info text' do
+      group = create(:group, :private)
+
+      visit admin_group_path(group)
+
+      expect(page).to have_content("The number of direct members in the current group. Members in subgroups are " \
+        "not included. What is a direct member?")
+      expect(page).to have_content("Calculations are made based on projects in the current group. " \
+        "Projects in subgroups are not included.")
+    end
+
+    context 'with a subgroup' do
+      it 'shows the info text' do
+        group = create(:group)
+        subgroup = create(:group, parent: group)
+
+        visit admin_group_path(subgroup)
+
+        expect(page).to have_content("The number of direct members in the current group. Members in subgroups are " \
+          "not included. What is a direct member?")
+        expect(page).to have_content("Calculations are made based on projects in the current group. " \
+          "Projects in subgroups are not included.")
+      end
     end
 
     it 'has a link to the group' do
@@ -147,6 +185,17 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
   end
 
   describe 'group edit' do
+    it 'shows all breadcrumbs', :js do
+      visit admin_group_edit_path(group)
+
+      expect(page_breadcrumbs).to eq([
+        { text: 'Admin area', href: admin_root_path },
+        { text: 'Groups', href: admin_groups_path },
+        { text: group.name, href: admin_group_path(group) },
+        { text: 'Edit', href: admin_group_edit_path(group) }
+      ])
+    end
+
     it 'shows the visibility level radio populated with the group visibility_level value' do
       group = create(:group, :private)
 
@@ -218,7 +267,8 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
 
   describe 'add user into a group', :js do
     context 'when membership is set to expire' do
-      it 'renders relative time' do
+      it 'renders relative time',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16767' do
         expire_time = Time.current + 2.days
         current_user.update!(time_display_relative: true)
         group.add_member(user, Gitlab::Access::REPORTER, expires_at: expire_time)
@@ -279,7 +329,7 @@ RSpec.describe 'Admin Groups', feature_category: :groups_and_projects do
 
       visit group_group_members_path(group)
 
-      expect(members_table).not_to have_content(current_user.name)
+      expect(page).to have_content('No results found')
     end
   end
 

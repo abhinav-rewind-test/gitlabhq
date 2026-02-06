@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'New project milestone breadcrumb', feature_category: :team_planning do
+RSpec.describe 'New project milestone breadcrumb', :js, feature_category: :team_planning do
   let(:project) { create(:project) }
   let(:milestone) { create(:milestone, project: project) }
   let(:user) { project.creator }
@@ -12,8 +12,8 @@ RSpec.describe 'New project milestone breadcrumb', feature_category: :team_plann
     visit(new_project_milestone_path(project))
   end
 
-  it 'displays link to project milestones and new project   milestone' do
-    page.within '.breadcrumbs' do
+  it 'displays link to project milestones and new project milestone' do
+    within_testid 'breadcrumb-links' do
       expect(find_link('Milestones')[:href]).to end_with(project_milestones_path(project))
       expect(find_link('New')[:href]).to end_with(new_project_milestone_path(project))
     end

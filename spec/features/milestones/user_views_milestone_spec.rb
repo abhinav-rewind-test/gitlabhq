@@ -5,15 +5,16 @@ require 'spec_helper'
 RSpec.describe "User views milestone", feature_category: :team_planning do
   let_it_be(:user) { create(:user) }
   let_it_be(:group) { create(:group) }
-  let_it_be(:project) { create(:project, :repository, group: group) }
+  let_it_be(:project) { create(:project, :repository, group: group, developers: user) }
   let_it_be(:milestone) { create(:milestone, project: project, description: '**Lorem** _ipsum_ dolor sit [amet](https://example.com)') }
   let_it_be(:labels) { create_list(:label, 2, project: project) }
 
-  before_all do
-    project.add_developer(user)
-  end
-
   before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+
     sign_in(user)
   end
 
@@ -30,7 +31,7 @@ RSpec.describe "User views milestone", feature_category: :team_planning do
 
     create(:labeled_issue, issue_params)
 
-    control = ActiveRecord::QueryRecorder.new { visit_milestone }
+    control = ActiveRecord::QueryRecorder.new(skip_cached: false) { visit_milestone }
 
     create(:labeled_issue, issue_params)
 
@@ -69,14 +70,32 @@ RSpec.describe "User views milestone", feature_category: :team_planning do
     end
 
     context 'when issues on milestone are over DISPLAY_ISSUES_LIMIT' do
-      it "limits issues to display and shows warning" do
+      before do
         stub_const('Milestoneish::DISPLAY_ISSUES_LIMIT', 3)
+      end
 
-        visit(project_milestone_path(project, milestone))
+      context 'when work_item_planning_view feature flag is disabled' do
+        it "limits issues to display and shows warning with link to issues path" do
+          visit(project_milestone_path(project, milestone))
 
-        expect(page).to have_selector('.issuable-row', count: 3)
-        expect(page).to have_selector('#milestone-issue-count-warning', text: 'Showing 3 of 6 issues. View all issues')
-        expect(page).to have_link('View all issues', href: project_issues_path(project, { milestone_title: milestone.title }))
+          expect(page).to have_selector('#tab-issues li', count: 3)
+          expect(page).to have_selector('#milestone-issue-count-warning', text: 'Showing 3 of 6 items. View all')
+          expect(page).to have_link('View all', href: project_issues_path(project, { milestone_title: milestone.title }))
+        end
+      end
+
+      context 'when work_item_planning_view feature flag is enabled' do
+        before do
+          stub_feature_flags(work_item_planning_view: true)
+        end
+
+        it "limits issues to display and shows warning with link to work items path" do
+          visit(project_milestone_path(project, milestone))
+
+          expect(page).to have_selector('#tab-issues li', count: 3)
+          expect(page).to have_selector('#milestone-issue-count-warning', text: 'Showing 3 of 6 items. View all')
+          expect(page).to have_link('View all', href: project_work_items_path(project, { milestone_title: milestone.title }))
+        end
       end
     end
 
@@ -85,7 +104,7 @@ RSpec.describe "User views milestone", feature_category: :team_planning do
         visit(project_milestone_path(project, milestone))
 
         expect(page).not_to have_selector('#milestone-issue-count-warning', text: 'Showing 3 of 6 issues. View all issues')
-        expect(page).to have_selector('.issuable-row', count: 6)
+        expect(page).to have_selector('#tab-issues li', count: 6)
       end
     end
   end

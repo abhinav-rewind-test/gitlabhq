@@ -22,6 +22,7 @@ module API
         params do
           use :pagination
         end
+        route_setting :authorization, permissions: :read_cluster_agent, boundary_type: :project
         get ':id/cluster_agents' do
           not_found!('ClusterAgents') unless can?(current_user, :read_cluster_agent, user_project)
 
@@ -38,6 +39,7 @@ module API
         params do
           requires :agent_id, type: Integer, desc: 'The ID of an agent'
         end
+        route_setting :authorization, permissions: :read_cluster_agent, boundary_type: :project
         get ':id/cluster_agents/:agent_id' do
           agent = ::Clusters::AgentsFinder.new(user_project, current_user).find(params[:agent_id])
 
@@ -52,12 +54,13 @@ module API
         params do
           requires :name, type: String, desc: 'The name of the agent'
         end
+        route_setting :authorization, permissions: :create_cluster_agent, boundary_type: :project
         post ':id/cluster_agents' do
           authorize! :create_cluster, user_project
 
           params = declared_params(include_missing: false)
 
-          result = ::Clusters::Agents::CreateService.new(user_project, current_user).execute(name: params[:name])
+          result = ::Clusters::Agents::CreateService.new(user_project, current_user, { name: params[:name] }).execute
 
           bad_request!(result[:message]) if result[:status] == :error
 
@@ -71,12 +74,17 @@ module API
         params do
           requires :agent_id, type: Integer, desc: 'The ID of an agent'
         end
+        route_setting :authorization, permissions: :delete_cluster_agent, boundary_type: :project
         delete ':id/cluster_agents/:agent_id' do
           authorize! :admin_cluster, user_project
 
           agent = ::Clusters::AgentsFinder.new(user_project, current_user).find(params[:agent_id])
 
-          destroy_conditionally!(agent)
+          destroy_conditionally!(agent) do |agent|
+            ::Clusters::Agents::DeleteService
+              .new(container: agent.project, current_user: current_user, params: { cluster_agent: agent })
+              .execute
+          end
         end
       end
     end

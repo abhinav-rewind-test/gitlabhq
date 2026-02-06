@@ -1,20 +1,22 @@
 # frozen_string_literal: true
 
 class DiffNotePosition < ApplicationRecord
+  include Notes::WithAssociatedNote
+
   belongs_to :note
   attr_accessor :line_range
 
-  enum diff_content_type: {
+  enum :diff_content_type, {
     text: 0,
     image: 1
   }
 
-  enum diff_type: {
+  enum :diff_type, {
     head: 0
   }
 
   def position
-    Gitlab::Diff::Position.new(
+    ::Gitlab::Diff::Position.new(
       old_path: old_path,
       new_path: new_path,
       old_line: old_line,
@@ -44,5 +46,9 @@ class DiffNotePosition < ApplicationRecord
     position_attrs = position.to_h
     position_attrs[:diff_content_type] = position_attrs.delete(:position_type)
     position_attrs.except(:line_range, :ignore_whitespace_change)
+  end
+
+  def note_namespace_id
+    note&.namespace_id || note&.project&.project_namespace_id
   end
 end

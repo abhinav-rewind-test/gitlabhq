@@ -9,12 +9,11 @@ module Projects
         @container_repository = container_repository
 
         unless container_expiration_policy?
-          return error('access denied') unless can?(current_user, :destroy_container_image, project)
+          return error('access denied') unless can?(current_user, :destroy_container_image_tag, project)
         end
 
         @tag_names = params[:tags]
-        return error('not tags specified') if @tag_names.blank?
-        return error('repository importing') if cancel_while_importing?
+        return error('no tags specified') if @tag_names.blank?
 
         delete_tags
       end
@@ -29,7 +28,10 @@ module Projects
 
       def delete_service
         if @container_repository.client.supports_tag_delete?
-          ::Projects::ContainerRepository::Gitlab::DeleteTagsService.new(@container_repository, @tag_names)
+          ::Projects::ContainerRepository::Gitlab::DeleteTagsService.new(
+            current_user: @current_user,
+            container_repository: @container_repository,
+            tag_names: @tag_names)
         else
           ::Projects::ContainerRepository::ThirdParty::DeleteTagsService.new(@container_repository, @tag_names)
         end
@@ -51,19 +53,11 @@ module Projects
         end
       end
 
-      def cancel_while_importing?
-        return true if @container_repository.importing?
-
-        if container_expiration_policy?
-          return @container_repository.pre_importing? || @container_repository.pre_import_done?
-        end
-
-        false
-      end
-
       def container_expiration_policy?
         params[:container_expiration_policy].present?
       end
     end
   end
 end
+
+Projects::ContainerRepository::DeleteTagsService.prepend_mod_with('Projects::ContainerRepository::DeleteTagsService')

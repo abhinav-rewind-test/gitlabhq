@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module Types
   module Tree
     # rubocop: disable Graphql/AuthorizeTypes
@@ -11,9 +12,9 @@ module Types
       present_using TreeEntryPresenter
 
       field :web_path, GraphQL::Types::String, null: true,
-                                               description: 'Web path for the tree entry (directory).'
+        description: 'Web path for the tree entry (directory).'
       field :web_url, GraphQL::Types::String, null: true,
-                                              description: 'Web URL for the tree entry (directory).'
+        description: 'Web URL for the tree entry (directory).'
     end
     # rubocop: enable Graphql/AuthorizeTypes
   end

@@ -18,15 +18,15 @@ module Gitlab
     #
     #     Project.where("id IN (#{sql})")
     class SetOperator
+      def self.operator_keyword
+        raise NotImplementedError
+      end
+
       def initialize(relations, remove_duplicates: true, remove_order: true)
         verify_select_values!(relations) if Rails.env.test? || Rails.env.development?
         @relations = relations
         @remove_duplicates = remove_duplicates
         @remove_order = remove_order
-      end
-
-      def self.operator_keyword
-        raise NotImplementedError
       end
 
       def to_sql
@@ -36,7 +36,7 @@ module Gitlab
         # (thus fixing this problem), at a slight performance cost.
         fragments = ApplicationRecord.connection.unprepared_statement do
           relations.filter_map do |rel|
-            next if rel.is_a?(ActiveRecord::NullRelation)
+            next if rel.is_a?(ActiveRecord::Relation) && rel.null_relation?
 
             sql = remove_order ? rel.reorder(nil).to_sql : rel.to_sql
             sql.presence
@@ -44,9 +44,9 @@ module Gitlab
         end
 
         if fragments.any?
-          "(" + fragments.join(")\n#{operator_keyword_fragment}\n(") + ")"
+          "(#{fragments.join(")\n#{operator_keyword_fragment}\n(")})"
         else
-          'NULL'
+          relations.first&.to_sql.presence || 'NULL'
         end
       end
 
@@ -60,6 +60,8 @@ module Gitlab
       attr_reader :relations, :remove_duplicates, :remove_order
 
       def verify_select_values!(relations)
+        return if relations.empty?
+
         all_select_values = relations.map do |relation|
           if relation.respond_to?(:select_values)
             relation.select_values
@@ -68,23 +70,23 @@ module Gitlab
           end
         end
 
-        unless all_select_values.map(&:size).uniq.one?
-          relation_select_sizes = all_select_values.map.with_index do |select_values, index|
-            if select_values.empty?
-              "Relation ##{index}: *, all columns"
-            else
-              "Relation ##{index}: #{select_values.size} select values"
-            end
+        return if all_select_values.map(&:size).uniq.one?
+
+        relation_select_sizes = all_select_values.map.with_index do |select_values, index|
+          if select_values.empty?
+            "Relation ##{index}: *, all columns"
+          else
+            "Relation ##{index}: #{select_values.size} select values"
           end
-
-          exception_text = <<~EOF
-          Relations with uneven select values were passed. The UNION query could break when the underlying table changes (add or remove columns).
-
-          #{relation_select_sizes.join("\n")}
-          EOF
-
-          raise(exception_text)
         end
+
+        exception_text = <<~MESSAGE
+        Relations with uneven select values were passed. The UNION query could break when the underlying table changes (add or remove columns).
+
+        #{relation_select_sizes.join("\n")}
+        MESSAGE
+
+        raise(exception_text)
       end
     end
   end

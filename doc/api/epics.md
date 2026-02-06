@@ -2,16 +2,22 @@
 stage: Plan
 group: Product Planning
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Epics API (deprecated)
 ---
 
-# Epics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - Introduced in [GitLab Ultimate](https://about.gitlab.com/pricing/) 10.2.
-> - Single-level Epics [were moved](https://gitlab.com/gitlab-org/gitlab/-/issues/37081) to [GitLab Premium](https://about.gitlab.com/pricing/) in 12.8.
+{{< /details >}}
+
+> [!warning]
+> The Epics REST API was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/460668) in GitLab 17.0
+> and is planned for removal in v5 of the API.
+> From GitLab 17.4 to 18.0, if [the new look for epics](../user/group/epics/_index.md#epics-as-work-items) is enabled, and in GitLab 18.1 and later, use the
+> Work Items API instead. For more information, see [migrate epic APIs to work items](graphql/epic_work_items_api_migration_guide.md).
+> This change is a breaking change.
 
 Every API call to epic must be authenticated.
 
@@ -19,13 +25,17 @@ If a user is not a member of a private group, a `GET` request on that group resu
 
 If epics feature is not available a `403` status code is returned.
 
+## Legacy Epic IDs and WorkItem IDs
+
+The legacy Epic ID is not the same as the WorkItem ID. Only the `iid` matches. However, to retrieve the corresponding WorkItem ID for an epic, the response includes a `work_item_id`.
+
+This ID can be used for the WorkItem GraphQL API, e.g. the `work_item_id` would be the Global ID `gid://gitlab/WorkItem/123` on the WorkItem GraphQL API.
+
 ## Epic issues API
 
 The [epic issues API](epic_issues.md) allows you to interact with issues associated with an epic.
 
 ## Milestone dates integration
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/6448) in GitLab 11.3.
 
 Because start date and due date can be dynamically sourced from related issue milestones,
 additional fields are shown when user has edit permission. These include two boolean
@@ -36,27 +46,16 @@ fields `start_date_is_fixed` and `due_date_is_fixed`, and four date fields `star
 - `start_date_from_milestones` has been deprecated in favor of `start_date_from_inherited_source`
 - `due_date_from_milestones` has been deprecated in favor of `due_date_from_inherited_source`
 
-## Epics pagination
+## List all group epics
 
-By default, `GET` requests return 20 results at a time because the API results
-are paginated.
+Lists all epics for a specified group and its subgroups.
 
-Read more on [pagination](rest/index.md#pagination).
+Responses are [paginated](rest/_index.md#pagination) and return 20 results by default.
 
-WARNING:
-In [GitLab 12.6](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/20354) and later,
-the `reference` attribute in responses is deprecated in favor of `references`.
-
-NOTE:
-`references.relative` is relative to the group that the epic is being requested from. When an epic
-is fetched from its origin group, the `relative` format is the same as the `short` format.
-When an epic is requested across groups, the `relative` format is expected to be the same as the `full` format.
-
-## List epics for a group
-
-> - `parent_iid` and `_links[parent]` in response were [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/347527) in GitLab 14.6.
-
-Gets all epics of the requested group and its subgroups.
+> [!note]
+> `references.relative` is relative to the group that the epic is being requested from. When an epic
+> is fetched from its origin group, the `relative` format is the same as the `short` format.
+> When an epic is requested across groups, the `relative` format is expected to be the same as the `full` format.
 
 ```plaintext
 GET /groups/:id/epics
@@ -67,11 +66,11 @@ GET /groups/:id/epics?state=opened
 
 | Attribute           | Type             | Required   | Description                                                                                                                 |
 | ------------------- | ---------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user               |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group               |
 | `author_id`         | integer          | no         | Return epics created by the given user `id`                                                                                 |
-| `author_username`   | string           | no         | Return epics created by the user with the given `username`. Available in [GitLab 14.7](https://gitlab.com/gitlab-org/gitlab/-/issues/348257) and later |
+| `author_username`   | string           | no         | Return epics created by the user with the given `username`. |
 | `labels`            | string           | no         | Return epics matching a comma-separated list of labels names. Label names from the epic group or a parent group can be used |
-| `with_labels_details` | boolean        | no         | If `true`, response returns more details for each label in labels field: `:name`, `:color`, `:description`, `:description_html`, `:text_color`. Default is `false`. Available in [GitLab 12.7](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/21413) and later |
+| `with_labels_details` | boolean        | no         | If `true`, response returns more details for each label in labels field: `:name`, `:color`, `:description`, `:description_html`, `:text_color`. Default is `false`. |
 | `order_by`          | string           | no         | Return epics ordered by `created_at`, `updated_at`, or `title` fields. Default is `created_at`                              |
 | `sort`              | string           | no         | Return epics sorted in `asc` or `desc` order. Default is `desc`                                                             |
 | `search`            | string           | no         | Search epics against their `title` and `description`                                                                        |
@@ -82,11 +81,13 @@ GET /groups/:id/epics?state=opened
 | `updated_before`    | datetime         | no         | Return epics updated on or before the given time. Expected in ISO 8601 format (`2019-03-15T08:00:00Z`) |
 | `include_ancestor_groups` | boolean    | no         | Include epics from the requested group's ancestors. Default is `false`                                                      |
 | `include_descendant_groups` | boolean  | no         | Include epics from the requested group's descendants. Default is `true`                                                     |
-| `my_reaction_emoji` | string           | no         | Return epics reacted by the authenticated user by the given emoji. `None` returns epics not given a reaction. `Any` returns epics given at least one reaction. Available in [GitLab 13.0](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/31479) and later |
-| `not` | Hash | no | Return epics that do not match the parameters supplied. Accepts: `author_id`, `author_username` ([GitLab 14.7](https://gitlab.com/gitlab-org/gitlab/-/issues/348257) and later) and `labels`. Available in [GitLab 14.6](https://gitlab.com/gitlab-org/gitlab/-/issues/347525) and later |
+| `my_reaction_emoji` | string           | no         | Return epics reacted by the authenticated user by the given emoji. `None` returns epics not given a reaction. `Any` returns epics given at least one reaction. |
+| `not` | Hash | no | Return epics that do not match the parameters supplied. Accepts: `author_id`, `author_username` and `labels`. |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics"
 ```
 
 Example response:
@@ -95,6 +96,7 @@ Example response:
 [
   {
   "id": 29,
+  "work_item_id": 1032,
   "iid": 4,
   "group_id": 7,
   "parent_id": 23,
@@ -145,6 +147,7 @@ Example response:
   },
   {
   "id": 50,
+  "work_item_id": 1035,
   "iid": 35,
   "group_id": 17,
   "parent_id": 19,
@@ -181,6 +184,8 @@ Example response:
   "created_at": "2018-07-17T13:36:22.770Z",
   "updated_at": "2018-07-18T12:22:05.239Z",
   "closed_at": "2018-08-18T12:22:05.239Z",
+  "imported": false,
+  "imported_from": "none",
   "labels": [],
   "upvotes": 4,
   "downvotes": 0,
@@ -195,11 +200,9 @@ Example response:
 ]
 ```
 
-## Single epic
+## Retrieve an epic
 
-> - `parent_iid` and `_links[parent]` in response were [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/347527) in GitLab 14.6.
-
-Gets a single epic
+Retrieves a specified epic for a group.
 
 ```plaintext
 GET /groups/:id/epics/:epic_iid
@@ -207,11 +210,13 @@ GET /groups/:id/epics/:epic_iid
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.  |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.  |
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5"
 ```
 
 Example response:
@@ -219,6 +224,7 @@ Example response:
 ```json
 {
   "id": 30,
+  "work_item_id": 1099,
   "iid": 5,
   "group_id": 7,
   "parent_id": null,
@@ -226,6 +232,8 @@ Example response:
   "title": "Ea cupiditate dolores ut vero consequatur quasi veniam voluptatem et non.",
   "description": "Molestias dolorem eos vitae expedita impedit necessitatibus quo voluptatum.",
   "state": "opened",
+  "imported": false,
+  "imported_from": "none",
   "web_url": "http://gitlab.example.com/groups/test/-/epics/5",
   "reference": "&5",
   "references": {
@@ -269,16 +277,14 @@ Example response:
 }
 ```
 
-## New epic
+## Create an epic
 
-> - `parent_iid` and `_links[parent]` in response were [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/347527) in GitLab 14.6.
+Creates an epic for a specified group.
 
-Creates a new epic.
-
-NOTE:
-Starting with GitLab [11.3](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/6448), `start_date` and `end_date` should no longer be assigned
-directly, as they now represent composite values. You can configure it via the `*_is_fixed` and
-`*_fixed` fields instead.
+> [!note]
+> Starting with GitLab [11.3](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/6448), `start_date` and `end_date` should no longer be assigned
+> directly, as they now represent composite values. You can configure it via the `*_is_fixed` and
+> `*_fixed` fields instead.
 
 ```plaintext
 POST /groups/:id/epics
@@ -286,21 +292,23 @@ POST /groups/:id/epics
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
 | `title`             | string           | yes        | The title of the epic |
 | `labels`            | string           | no         | The comma-separated list of labels |
 | `description`       | string           | no         | The description of the epic. Limited to 1,048,576 characters.  |
-| `color`             | string           | no         | The color of the epic. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/7641) in GitLab 14.8, behind a feature flag named `epic_highlight_color` (disabled by default) |
+| `color`             | string           | no         | The color of the epic. Behind a feature flag named `epic_highlight_color` (disabled by default) |
 | `confidential`      | boolean          | no         | Whether the epic should be confidential |
-| `created_at`        | string           | no         | When the epic was created. Date time string, ISO 8601 formatted, for example `2016-03-11T03:45:40Z` . Requires administrator or project/group owner privileges ([available](https://gitlab.com/gitlab-org/gitlab/-/issues/255309) in GitLab 13.5 and later) |
-| `start_date_is_fixed` | boolean        | no         | Whether start date should be sourced from `start_date_fixed` or from milestones (in GitLab 11.3 and later) |
-| `start_date_fixed`  | string           | no         | The fixed start date of an epic (in GitLab 11.3 and later) |
-| `due_date_is_fixed` | boolean          | no         | Whether due date should be sourced from `due_date_fixed` or from milestones (in GitLab 11.3 and later) |
-| `due_date_fixed`    | string           | no         | The fixed due date of an epic (in GitLab 11.3 and later) |
-| `parent_id`         | integer/string   | no         | The ID of a parent epic (in GitLab 11.11 and later) |
+| `created_at`        | string           | no         | When the epic was created. Date time string, ISO 8601 formatted, for example `2016-03-11T03:45:40Z` . Requires administrator or project/group owner privileges |
+| `start_date_is_fixed` | boolean        | no         | Whether start date should be sourced from `start_date_fixed` or from milestones |
+| `start_date_fixed`  | string           | no         | The fixed start date of an epic |
+| `due_date_is_fixed` | boolean          | no         | Whether due date should be sourced from `due_date_fixed` or from milestones |
+| `due_date_fixed`    | string           | no         | The fixed due date of an epic |
+| `parent_id`         | integer or string   | no         | The ID of a parent epic |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics?title=Epic&description=Epic%20description&parent_id=29"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics?title=Epic&description=Epic%20description&parent_id=29"
 ```
 
 Example response:
@@ -308,6 +316,7 @@ Example response:
 ```json
 {
   "id": 33,
+  "work_item_id": 1020,
   "iid": 6,
   "group_id": 7,
   "parent_id": 29,
@@ -315,6 +324,8 @@ Example response:
   "title": "Epic",
   "description": "Epic description",
   "state": "opened",
+  "imported": false,
+  "imported_from": "none",
   "confidential": "false",
   "web_url": "http://gitlab.example.com/groups/test/-/epics/6",
   "reference": "&6",
@@ -358,16 +369,9 @@ Example response:
 }
 ```
 
-## Update epic
+## Update an epic
 
-> - `parent_iid` and `_links[parent]` in response were [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/347527) in GitLab 14.6.
-
-Updates an epic.
-
-NOTE:
-Starting with GitLab [11.3](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/6448), `start_date` and `end_date` should no longer be assigned
-directly, as they now represent composite values. You can configure it via the `*_is_fixed` and
-`*_fixed` fields instead.
+Updates a specified epic for a group.
 
 ```plaintext
 PUT /groups/:id/epics/:epic_iid
@@ -375,25 +379,27 @@ PUT /groups/:id/epics/:epic_iid
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic  |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic  |
 | `add_labels`        | string           | no         | Comma-separated label names to add to an issue. |
 | `confidential`      | boolean          | no         | Whether the epic should be confidential |
 | `description`       | string           | no         | The description of an epic. Limited to 1,048,576 characters.  |
-| `due_date_fixed`    | string           | no         | The fixed due date of an epic (in GitLab 11.3 and later) |
-| `due_date_is_fixed` | boolean          | no         | Whether due date should be sourced from `due_date_fixed` or from milestones (in GitLab 11.3 and later) |
+| `due_date_fixed`    | string           | no         | The fixed due date of an epic |
+| `due_date_is_fixed` | boolean          | no         | Whether due date should be sourced from `due_date_fixed` or from milestones |
 | `labels`            | string           | no         | Comma-separated label names for an issue. Set to an empty string to unassign all labels. |
-| `parent_id`         | integer/string   | no         | The ID of a parent epic. Available in [GitLab 14.6](https://gitlab.com/gitlab-org/gitlab/-/issues/348123) and later |
+| `parent_id`         | integer or string   | no         | The ID of a parent epic. |
 | `remove_labels`     | string           | no         | Comma-separated label names to remove from an issue. |
-| `start_date_fixed`  | string           | no         | The fixed start date of an epic (in GitLab 11.3 and later) |
-| `start_date_is_fixed` | boolean        | no         | Whether start date should be sourced from `start_date_fixed` or from milestones (in GitLab 11.3 and later) |
-| `state_event`       | string           | no         | State event for an epic. Set `close` to close the epic and `reopen` to reopen it (in GitLab 11.4 and later) |
+| `start_date_fixed`  | string           | no         | The fixed start date of an epic |
+| `start_date_is_fixed` | boolean        | no         | Whether start date should be sourced from `start_date_fixed` or from milestones |
+| `state_event`       | string           | no         | State event for an epic. Set `close` to close the epic and `reopen` to reopen it |
 | `title`             | string           | no         | The title of an epic |
-| `updated_at`        | string           | no         | When the epic was updated. Date time string, ISO 8601 formatted, for example `2016-03-11T03:45:40Z` . Requires administrator or project/group owner privileges ([available](https://gitlab.com/gitlab-org/gitlab/-/issues/255309) in GitLab 13.5 and later) |
-| `color`             | string           | no         | The color of the epic. [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/7641) in GitLab 14.8, behind a feature flag named `epic_highlight_color` (disabled by default) |
+| `updated_at`        | string           | no         | When the epic was updated. Date time string, ISO 8601 formatted, for example `2016-03-11T03:45:40Z` . Requires administrator or project/group owner privileges |
+| `color`             | string           | no         | The color of the epic. Behind a feature flag named `epic_highlight_color` (disabled by default) |
 
 ```shell
-curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5?title=New%20Title&parent_id=29"
+curl --request PUT \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5?title=New%20Title&parent_id=29"
 ```
 
 Example response:
@@ -401,6 +407,7 @@ Example response:
 ```json
 {
   "id": 33,
+  "work_item_id": 1019,
   "iid": 6,
   "group_id": 7,
   "parent_id": 29,
@@ -408,6 +415,8 @@ Example response:
   "title": "New Title",
   "description": "Epic description",
   "state": "opened",
+  "imported": false,
+  "imported_from": "none",
   "confidential": "false",
   "web_url": "http://gitlab.example.com/groups/test/-/epics/6",
   "reference": "&6",
@@ -445,9 +454,15 @@ Example response:
 }
 ```
 
-## Delete epic
+## Delete an epic
 
-Deletes an epic
+{{< history >}}
+
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/452189) in GitLab 16.11. In GitLab 16.10 and earlier, if you delete an epic, all its child epics and their descendants are deleted as well. If needed, you can remove child epics from the parent epic before you delete it.
+
+{{< /history >}}
+
+Deletes a specified epic from a group.
 
 ```plaintext
 DELETE /groups/:id/epics/:epic_iid
@@ -455,18 +470,18 @@ DELETE /groups/:id/epics/:epic_iid
 
 | Attribute           | Type             | Required   | Description                                                                            |
 | ------------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------|
-| `id`                | integer/string   | yes        | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user                |
-| `epic_iid`          | integer/string   | yes        | The internal ID of the epic.  |
+| `id`                | integer or string   | yes        | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group                |
+| `epic_iid`          | integer or string   | yes        | The internal ID of the epic.  |
 
 ```shell
-curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5"
+curl --request DELETE \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5"
 ```
 
-## Create a to-do item
+## Create a to-do item for an epic
 
-Manually creates a to-do item for the current user on an epic. If
-there already exists a to-do item for the user on that epic, status code `304` is
-returned.
+Creates a to-do item for the current user on a specified epic. If a to-do item already exists for the user on that epic, status code 304 is returned.
 
 ```plaintext
 POST /groups/:id/epics/:epic_iid/todo
@@ -474,11 +489,13 @@ POST /groups/:id/epics/:epic_iid/todo
 
 | Attribute   | Type    | Required | Description                          |
 |-------------|---------|----------|--------------------------------------|
-| `id`        | integer/string | yes   | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) owned by the authenticated user  |
+| `id`        | integer or string | yes   | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group  |
 | `epic_iid` | integer | yes          | The internal ID of a group's epic |
 
 ```shell
-curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/groups/1/epics/5/todo"
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/groups/1/epics/5/todo"
 ```
 
 Example response:

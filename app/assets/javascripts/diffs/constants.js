@@ -28,7 +28,7 @@ export const LENGTH_OF_AVATAR_TOOLTIP = 17;
 export const DIFF_FILE_SYMLINK_MODE = '120000';
 export const DIFF_FILE_DELETED_MODE = '0';
 
-export const MR_TREE_SHOW_KEY = 'mr_tree_show';
+export const FILE_BROWSER_VISIBLE = 'file_browser_visible';
 
 export const TREE_TYPE = 'tree';
 export const TREE_LIST_STORAGE_KEY = 'mr_diff_tree_list';
@@ -116,9 +116,6 @@ export const TRACKING_WHITESPACE_HIDE = 'i_code_review_diff_hide_whitespace';
 export const TRACKING_CLICK_SINGLE_FILE_SETTING = 'i_code_review_click_single_file_mode_setting';
 export const TRACKING_SINGLE_FILE_MODE = 'i_code_review_diff_single_file';
 export const TRACKING_MULTIPLE_FILES_MODE = 'i_code_review_diff_multiple_files';
-
-// UI
-export const ZERO_CHANGES_ALT_DISPLAY = '-';
 
 // SAST Findings
 export const SAST_FINDING_DISMISSED = 'dismissed';

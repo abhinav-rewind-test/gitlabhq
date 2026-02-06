@@ -28,14 +28,22 @@ describe('CommentTypeDropdown component', () => {
     );
   };
 
+  it('has correct button type for quick submit', () => {
+    mountComponent();
+
+    expect(findCommentButton().attributes('type')).toBe('submit');
+  });
+
   it.each`
-    isInternalNote | buttonText
-    ${false}       | ${COMMENT_FORM.comment}
-    ${true}        | ${COMMENT_FORM.internalComment}
+    isInternalNote | isReviewDropdown | buttonText
+    ${false}       | ${false}         | ${COMMENT_FORM.comment}
+    ${true}        | ${false}         | ${COMMENT_FORM.internalComment}
+    ${false}       | ${true}          | ${COMMENT_FORM.addToReviewButton.saveComment}
+    ${true}        | ${true}          | ${COMMENT_FORM.internalComment}
   `(
-    'Should label action button as "$buttonText" for comment when `isInternalNote` is $isInternalNote',
-    ({ isInternalNote, buttonText }) => {
-      mountComponent({ props: { noteType: constants.COMMENT, isInternalNote } });
+    'Should label action button as "$buttonText" for comment when `isInternalNote` is $isInternalNote and `isReviewDropdown` is $isReviewDropdown',
+    ({ isInternalNote, isReviewDropdown, buttonText }) => {
+      mountComponent({ props: { noteType: constants.COMMENT, isInternalNote, isReviewDropdown } });
 
       expect(findCommentButton().text()).toBe(buttonText);
     },
@@ -49,13 +57,17 @@ describe('CommentTypeDropdown component', () => {
   });
 
   it.each`
-    isInternalNote | buttonText
-    ${false}       | ${COMMENT_FORM.startThread}
-    ${true}        | ${COMMENT_FORM.startInternalThread}
+    isInternalNote | isReviewDropdown | buttonText
+    ${false}       | ${false}         | ${COMMENT_FORM.startThread}
+    ${true}        | ${false}         | ${COMMENT_FORM.startInternalThread}
+    ${false}       | ${true}          | ${COMMENT_FORM.addToReviewButton.saveThread}
+    ${true}        | ${true}          | ${COMMENT_FORM.startInternalThread}
   `(
-    'Should label action button as "$buttonText" for discussion when `isInternalNote` is $isInternalNote',
-    ({ isInternalNote, buttonText }) => {
-      mountComponent({ props: { noteType: constants.DISCUSSION, isInternalNote } });
+    'Should label action button as "$buttonText" for discussion when `isInternalNote` is $isInternalNote and `isReviewDropdown` is $isReviewDropdown',
+    ({ isInternalNote, isReviewDropdown, buttonText }) => {
+      mountComponent({
+        props: { noteType: constants.DISCUSSION, isInternalNote, isReviewDropdown },
+      });
 
       expect(findCommentButton().text()).toBe(buttonText);
     },
@@ -75,7 +87,7 @@ describe('CommentTypeDropdown component', () => {
     findDiscussionListboxOption().trigger('click');
 
     expect(wrapper.emitted('change')[0]).toEqual([constants.COMMENT]);
-    expect(wrapper.emitted('change').length).toEqual(1);
+    expect(wrapper.emitted('change')).toHaveLength(1);
   });
 
   it('Should emit `click` event when clicking on the action button', () => {

@@ -42,6 +42,7 @@ export default {
       default: () => [],
     },
   },
+  emits: ['update-job'],
 };
 </script>
 <template>
@@ -50,8 +51,10 @@ export default {
       :invalid-feedback="$options.i18n.THIS_FIELD_IS_REQUIRED"
       :state="isNameValid"
       :label="$options.i18n.JOB_NAME"
+      label-for="job-name-input"
     >
       <gl-form-input
+        id="job-name-input"
         :value="job.name"
         :state="isNameValid"
         data-testid="job-name-input"
@@ -69,8 +72,10 @@ export default {
       :invalid-feedback="$options.i18n.THIS_FIELD_IS_REQUIRED"
       :state="isScriptValid"
       :label="$options.i18n.SCRIPT"
+      label-for="job-script-input"
     >
       <gl-form-textarea
+        id="job-script-input"
         :value="job.script"
         :state="isScriptValid"
         :no-resize="false"
@@ -78,10 +83,11 @@ export default {
         @input="$emit('update-job', 'script', $event)"
       />
     </gl-form-group>
-    <gl-form-group :label="$options.i18n.TAGS">
+    <gl-form-group id="job-tags-input" :label="$options.i18n.TAGS">
       <gl-token-selector
         :dropdown-items="tagOptions"
         :selected-tokens="job.tags"
+        aria-labelled-by="job-tags-input"
         data-testid="job-tags-input"
         @input="$emit('update-job', 'tags', $event)"
       />

@@ -1,3 +1,9 @@
+/*
+Package upload provides middleware for handling file uploads in GitLab Workhorse.
+
+It includes functionality for processing multipart requests, authorizing uploads,
+and preparing file uploads before they are saved.
+*/
 package upload
 
 import (
@@ -12,7 +18,7 @@ import (
 // When it finds a file part (filename != ""), the middleware will save
 // the file contents to a temporary location and replace the file part
 // with a reference to the temporary location.
-func Multipart(rails PreAuthorizer, h http.Handler, p Preparer, cfg *config.Config) http.Handler {
+func Multipart(rails api.PreAuthorizer, h http.Handler, p Preparer, cfg *config.Config) http.Handler {
 	return rails.PreAuthorizeHandler(func(w http.ResponseWriter, r *http.Request, a *api.Response) {
 		s := &SavedFileTracker{Request: r}
 

@@ -56,12 +56,12 @@ const deployBoardMockData = {
     { status: 'waiting', tooltip: 'tanuki-2355 Waiting', pod_name: 'production-tanuki-1' },
     { status: 'waiting', tooltip: 'tanuki-2356 Waiting', pod_name: 'production-tanuki-1' },
   ],
-  abort_url: 'url',
-  rollback_url: 'url',
+  abortUrl: 'url',
+  rollbackUrl: 'url',
   completion: 100,
   status: 'found',
-  canary_ingress: {
-    canary_weight: 50,
+  canaryIngress: {
+    canaryWeight: 50,
   },
 };
 
@@ -315,6 +315,47 @@ const createEnvironment = (data = {}) => ({
 
 const mockKasTunnelUrl = 'https://kas.gitlab.com/k8s-proxy';
 
+const fluxResourceStatus = [{ status: 'True', type: 'Ready', message: '', reason: '' }];
+const fluxKustomization = {
+  kind: 'Kustomization',
+  status: { conditions: fluxResourceStatus },
+  spec: {},
+  metadata: {
+    name: 'my-kustomization',
+    namespace: 'my-namespace',
+    creationTimestamp: '',
+    labels: {},
+    annotations: {},
+  },
+  conditions: fluxResourceStatus,
+  inventory: [
+    { id: 'flux-system_notification-controller_apps_Deployment' },
+    { id: 'flux-system_source-controller_apps_Deployment' },
+  ],
+  __typename: 'LocalWorkloadItem',
+};
+
+const k8sDeploymentsMock = [
+  {
+    metadata: { name: 'notification-controller' },
+    status: {
+      conditions: [
+        { type: 'Available', status: 'True' },
+        { type: 'Progressing', status: 'False' },
+      ],
+    },
+  },
+  {
+    metadata: { name: 'source-controller' },
+    status: {
+      conditions: [
+        { type: 'Available', status: 'False' },
+        { type: 'Progressing', status: 'True' },
+      ],
+    },
+  },
+];
+
 export {
   environment,
   environmentsList,
@@ -324,4 +365,7 @@ export {
   deployBoardMockData,
   createEnvironment,
   mockKasTunnelUrl,
+  fluxResourceStatus,
+  fluxKustomization,
+  k8sDeploymentsMock,
 };

@@ -4,7 +4,12 @@ classes:
 - ImportExportUpload
 feature_categories:
 - importers
-description: Used to store the location of the imported or exported archives files of groups or projects when using the feature Import/Export
+description: Used to store the location of the imported or exported archives files
+  of groups or projects when using the feature Import/Export
 introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/commit/a2bf1641546a1d3eeb3e9f44734854f655c0adef
 milestone: '11.1'
-gitlab_schema: gitlab_main
+gitlab_schema: gitlab_main_org
+sharding_key:
+  project_id: projects
+  group_id: namespaces
+table_size: small

@@ -6,7 +6,8 @@ RSpec.describe Mattermost::Session, type: :request do
   include ExclusiveLeaseHelpers
   include StubRequests
 
-  let(:user) { create(:user) }
+  let_it_be(:organization) { create(:organization) }
+  let(:user) { create(:user, organizations: [organization]) }
 
   let(:gitlab_url) { "http://gitlab.com" }
   let(:mattermost_url) { "http://mattermost.com" }
@@ -39,16 +40,18 @@ RSpec.describe Mattermost::Session, type: :request do
       it 'returns nill on calling a non exisitng method on request' do
         return_value = subject.request.method_missing("non_existing_method", "something") do
         end
-        expect(return_value).to be(nil)
+        expect(return_value).to be_nil
       end
     end
 
     context 'with oauth_uri' do
       let!(:doorkeeper) do
-        Doorkeeper::Application.create!(
+        create(
+          :oauth_application,
           name: 'GitLab Mattermost',
           redirect_uri: "#{mattermost_url}/signup/gitlab/complete\n#{mattermost_url}/login/gitlab/complete",
-          scopes: '')
+          scopes: ''
+        )
       end
 
       context 'without token_uri' do
@@ -107,6 +110,13 @@ RSpec.describe Mattermost::Session, type: :request do
           end
 
           expect(result).to eq("value")
+        end
+
+        it 'creates token in the same organization as the user' do
+          expect { subject.with_session {} }
+            .to change { OauthAccessToken.find_by(resource_owner: user)&.organization_id }
+            .from(nil)
+            .to(user.organization.id)
         end
       end
     end

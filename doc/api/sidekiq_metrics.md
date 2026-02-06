@@ -1,29 +1,33 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+gitlab_dedicated: yes
+title: Sidekiq Metrics API
 ---
 
-# Sidekiq Metrics API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 This API endpoint allows you to retrieve some information about the current state
 of Sidekiq, its jobs, queues, and processes.
 
-## Get the current Queue Metrics
+## List all job queue metrics
 
-List information about all the registered queues, their backlog and their
-latency.
+Lists details about all Sidekiq job queues, including backlog size and latency.
 
 ```plaintext
 GET /sidekiq/queue_metrics
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/sidekiq/queue_metrics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/sidekiq/queue_metrics"
 ```
 
 Example response:
@@ -39,16 +43,18 @@ Example response:
 }
 ```
 
-## Get the current Process Metrics
+## List all Sidekiq processes
 
-List information about all the Sidekiq workers registered to process your queues.
+Lists details about all registered Sidekiq worker processes, including hostname, process ID, queues, and concurrency settings.
 
 ```plaintext
 GET /sidekiq/process_metrics
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/sidekiq/process_metrics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/sidekiq/process_metrics"
 ```
 
 Example response:
@@ -81,16 +87,18 @@ Example response:
 }
 ```
 
-## Get the current Job Statistics
+## Retrieve job completion metrics
 
-List information about the jobs that Sidekiq has performed.
+Retrieves statistics on the completion status of all Sidekiq jobs.
 
 ```plaintext
 GET /sidekiq/job_stats
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/sidekiq/job_stats"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/sidekiq/job_stats"
 ```
 
 Example response:
@@ -106,16 +114,18 @@ Example response:
 }
 ```
 
-## Get a compound response of all the previously mentioned metrics
+## List all Sidekiq metrics
 
-List all the currently available information about Sidekiq.
+Lists all Sidekiq metrics in a single response, including queue, process, and job completion metrics.
 
 ```plaintext
 GET /sidekiq/compound_metrics
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/sidekiq/compound_metrics"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/sidekiq/compound_metrics"
 ```
 
 Example response:

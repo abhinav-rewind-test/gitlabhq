@@ -24,12 +24,14 @@ module API
           { code: 404, message: '404 Project Not Found' },
           { code: 401, message: '401 Unauthorized' }
         ]
+        tags ['protected_branches']
       end
       params do
         use :pagination
         optional :search, type: String, desc: 'Search for a protected branch by name', documentation: { example: 'mai' }
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :read_protected_branch, boundary_type: :project
       get ':id/protected_branches' do
         authorize_read_code!
 
@@ -49,11 +51,13 @@ module API
           { code: 404, message: '404 Project Not Found' },
           { code: 401, message: '401 Unauthorized' }
         ]
+        tags ['protected_branches']
       end
       params do
         requires :name, type: String, desc: 'The name of the branch or wildcard', documentation: { example: 'main' }
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :read_protected_branch, boundary_type: :project
       get ':id/protected_branches/:name', requirements: BRANCH_ENDPOINT_REQUIREMENTS do
         authorize_read_code!
 
@@ -71,24 +75,26 @@ module API
           { code: 404, message: '404 Project Not Found' },
           { code: 401, message: '401 Unauthorized' }
         ]
+        tags ['protected_branches']
       end
       params do
         requires :name, type: String, desc: 'The name of the protected branch', documentation: { example: 'main' }
         optional :push_access_level, type: Integer,
-                                     values: ProtectedBranch::PushAccessLevel.allowed_access_levels,
-                                     desc: 'Access levels allowed to push (defaults: `40`, maintainer access level)'
+          values: ProtectedBranch::PushAccessLevel.allowed_access_levels,
+          desc: 'Access levels allowed to push (defaults: `40`, maintainer access level)'
         optional :merge_access_level, type: Integer,
-                                      values: ProtectedBranch::MergeAccessLevel.allowed_access_levels,
-                                      desc: 'Access levels allowed to merge (defaults: `40`, maintainer access level)'
+          values: ProtectedBranch::MergeAccessLevel.allowed_access_levels,
+          desc: 'Access levels allowed to merge (defaults: `40`, maintainer access level)'
         optional :allow_force_push, type: Boolean,
-                                    default: false,
-                                    desc: 'Allow force push for all users with push access.'
+          default: false,
+          desc: 'Allow force push for all users with push access.'
 
         use :optional_params_ee
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :create_protected_branch, boundary_type: :project
       post ':id/protected_branches' do
-        authorize_admin_project
+        authorize_create_protected_branch!
 
         protected_branch = user_project.protected_branches.find_by(name: params[:name])
 
@@ -116,20 +122,22 @@ module API
           { code: 401, message: '401 Unauthorized' },
           { code: 400, message: '400 Bad request' }
         ]
+        tags ['protected_branches']
       end
       params do
         requires :name, type: String, desc: 'The name of the branch', documentation: { example: 'main' }
         optional :allow_force_push, type: Boolean,
-                                    desc: 'Allow force push for all users with push access.',
-                                    allow_blank: false
+          desc: 'Allow force push for all users with push access.',
+          allow_blank: false
 
         use :optional_params_ee
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :update_protected_branch, boundary_type: :project
       patch ':id/protected_branches/:name', requirements: BRANCH_ENDPOINT_REQUIREMENTS do
-        authorize_admin_project
-
         protected_branch = user_project.protected_branches.find_by!(name: params[:name])
+
+        authorize_update_protected_branch!(protected_branch)
 
         declared_params = declared_params(include_missing: false)
         api_service = ::ProtectedBranches::ApiService.new(user_project, current_user, declared_params)
@@ -153,12 +161,14 @@ module API
           { code: 404, message: '404 Project Not Found' },
           { code: 401, message: '401 Unauthorized' }
         ]
+        tags ['protected_branches']
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :delete_protected_branch, boundary_type: :project
       delete ':id/protected_branches/:name', requirements: BRANCH_ENDPOINT_REQUIREMENTS, urgency: :low do
-        authorize_admin_project
-
         protected_branch = user_project.protected_branches.find_by!(name: params[:name])
+
+        authorize_destroy_protected_branch!(protected_branch)
 
         destroy_conditionally!(protected_branch) do
           destroy_service = ::ProtectedBranches::DestroyService.new(user_project, current_user)

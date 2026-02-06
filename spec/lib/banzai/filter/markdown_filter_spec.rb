@@ -2,14 +2,14 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::MarkdownFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::MarkdownFilter, feature_category: :markdown do
   using RSpec::Parameterized::TableSyntax
   include FilterSpecHelper
 
   describe 'markdown engine from context' do
     it 'finds the correct engine' do
-      expect(described_class.new('foo', { markdown_engine: :cmark }).render_engine)
-        .to eq Banzai::Filter::MarkdownEngines::Cmark
+      expect(described_class.new('foo', { markdown_engine: :glfm_markdown }).render_engine)
+        .to eq Banzai::Filter::MarkdownEngines::GlfmMarkdown
     end
 
     it 'defaults to the GLFM_ENGINE' do
@@ -26,9 +26,13 @@ RSpec.describe Banzai::Filter::MarkdownFilter, feature_category: :team_planning 
 
   describe 'parse_sourcepos' do
     where(:sourcepos, :expected) do
-      '1:1-1:4'     | { start: { row: 0, col: 0 }, end: { row: 0, col: 3 } }
-      '12:22-1:456' | { start: { row: 11, col: 21 }, end: { row: 0, col: 455 } }
-      '0:0-0:0'     | { start: { row: 0, col: 0 }, end: { row: 0, col: 0 } }
+      '1:1-1:4'     | { start: { line: 0, column: 0 }, end: { line: 0, column: 3 } }
+      '12:22-1:456' | { start: { line: 11, column: 21 }, end: { line: 0, column: 455 } }
+      '0:0-0:0'     | { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+      nil           | nil
+      '1-2:3'       | nil
+      '1:2'         | nil
+      '1:2-3'       | nil
       '-1:2-3:-4'   | nil
     end
 
@@ -154,5 +158,55 @@ RSpec.describe Banzai::Filter::MarkdownFilter, feature_category: :team_planning 
     result = filter(text, no_sourcepos: false)
 
     expect(result).to eq(expected.strip)
+  end
+
+  describe 'math support' do
+    it 'recognizes math syntax' do
+      text = <<~MARKDOWN
+        $`2+2`$ + $3+3$ + $$4+4$$
+
+        $$
+        5+5
+        $$
+
+        ```math
+        6+6
+        ```
+      MARKDOWN
+
+      expected = <<~EXPECTED
+        <p><code data-math-style="inline">2+2</code> + <span data-math-style="inline">3+3</span> + <span data-math-style="display">4+4</span></p>
+        <p><span data-math-style="display">
+        5+5
+        </span></p>
+        <pre lang="math" data-math-style="display"><code>6+6
+        </code></pre>
+      EXPECTED
+
+      result = filter(text, no_sourcepos: true)
+
+      expect(result).to eq(expected.strip)
+    end
+  end
+
+  # More extensive tests in https://gitlab.com/gitlab-org/ruby/gems/gitlab-glfm-markdown
+  describe 'autolink' do
+    it 'does nothing when :autolink is false' do
+      expected = "<p>http://example.com</p>"
+
+      expect(filter('http://example.com', { autolink: false, no_sourcepos: true })).to eq expected
+    end
+
+    it 'autolinks https' do
+      expected = '<p><a href="https://example.com">https://example.com</a></p>'
+
+      expect(filter('https://example.com', no_sourcepos: true)).to eq expected
+    end
+
+    it 'autolinks any scheme' do
+      expected = '<p><a href="smb:///Volumes/shared/foo.pdf">smb:///Volumes/shared/foo.pdf</a></p>'
+
+      expect(filter('smb:///Volumes/shared/foo.pdf', no_sourcepos: true)).to eq expected
+    end
   end
 end

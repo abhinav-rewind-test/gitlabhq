@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Rake tasks for developers
 ---
-
-# Rake tasks for developers
 
 Rake tasks are available for developers and others contributing to GitLab.
 
@@ -50,12 +49,15 @@ project.
 
 #### Seeding issues for Insights charts
 
-DETAILS:
-**Tier:** Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
+
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can seed issues specifically for working with the
-[Insights charts](../user/group/insights/index.md) with the
+[Insights charts](../user/project/insights/_index.md) with the
 `gitlab:seed:insights:issues` task:
 
 ```shell
@@ -76,7 +78,7 @@ You can seed groups with subgroups that contain milestones/projects/issues
 with the `gitlab:seed:group_seed` task:
 
 ```shell
-bin/rake "gitlab:seed:group_seed[subgroup_depth, username]"
+bin/rake "gitlab:seed:group_seed[subgroup_depth, username, organization_path]"
 ```
 
 Group are additionally seeded with epics if GitLab instance has epics feature available.
@@ -92,9 +94,13 @@ bin/rake "gitlab:seed:runner_fleet[username, registration_prefix, runner_count, 
 By default, the Rake task uses the `root` username to create 40 runners and 400 jobs.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 graph TD
-    G1[Top level group 1] --> G11
-    G2[Top level group 2] --> G21
+    accTitle: Seeding a runner fleet test environment
+    accDescr: Diagram showing how the runner seed rake task seeds a full runner fleet with groups, subgroups, and projects with runners and pipelines
+
+    G1[Top-level group 1] --> G11
+    G2[Top-level group 2] --> G21
     G11[Group 1.1] --> G111
     G11[Group 1.1] --> G112
     G111[Group 1.1.1] --> P1111
@@ -123,8 +129,8 @@ graph TD
     P211 --> G21R
     P211 --> IR1
 
-    classDef groups fill:#09f6,color:#000000,stroke:#333,stroke-width:3px;
-    classDef projects fill:#f96a,color:#000000,stroke:#333,stroke-width:2px;
+    classDef groups stroke-width:3px;
+    classDef projects stroke-width:2px;
     class G1,G2,G11,G111,G112,G21 groups
     class P1111,P1121,P211 projects
 ```
@@ -141,7 +147,7 @@ bundle exec rake 'gitlab:seed:development_metrics[your_project_id]'
 
 #### Seed a project with vulnerabilities
 
-You can seed a project with [security vulnerabilities](../user/application_security/vulnerabilities/index.md).
+You can seed a project with [security vulnerabilities](../user/application_security/vulnerabilities/_index.md).
 
 ```shell
 # Seed all projects
@@ -153,7 +159,7 @@ bin/rake 'gitlab:seed:vulnerabilities[group-path/project-path]'
 
 #### Seed a project with environments
 
-You can seed a project with [environments](../ci/environments/index.md).
+You can seed a project with [environments](../ci/environments/_index.md).
 
 By default, this creates 10 environments, each with the prefix `ENV_`.
 Only `project_path` is required to run this command.
@@ -174,7 +180,7 @@ bundle exec rake gitlab:seed:dependencies
 
 #### Seed CI variables
 
-You can seed a project, group, or instance with [CI variables](../ci/variables/index.md).
+You can seed a project, group, or instance with [CI variables](../ci/variables/_index.md).
 
 By default, each command creates 10 CI variables. Variable names are prepended with its own
 default prefix (`VAR_` for project-level variables, `GROUP_VAR_` for group-level variables,
@@ -283,9 +289,9 @@ To run several tests inside one directory:
 
 - `bin/rspec spec/requests/api/` for the RSpec tests if you want to test API only
 
-### Run RSpec tests which failed in Merge Request pipeline on your machine
+### Run RSpec tests which failed in merge request pipeline on your machine
 
-If your Merge Request pipeline failed with RSpec test failures,
+If your merge request pipeline failed with RSpec test failures,
 you can run all the failed tests on your machine with the following Rake task:
 
 ```shell
@@ -294,7 +300,7 @@ bin/rake spec:merge_request_rspec_failure
 
 There are a few caveats for this Rake task:
 
-- You need to be on the same branch on your machine as the source branch of the Merge Request.
+- You need to be on the same branch on your machine as the source branch of the merge request.
 - The pipeline must have been completed.
 - You may need to wait for the test report to be parsed and retry again.
 
@@ -340,7 +346,7 @@ bundle exec rake rubocop:todo:generate\[Gitlab/NamespacedClass,Lint/Syntax\]
 
 Some shells require brackets to be escaped or quoted.
 
-See [Resolving RuboCop exceptions](../development/rubocop_development_guide.md#resolving-rubocop-exceptions)
+See [Resolving RuboCop exceptions](rubocop_development_guide.md#resolving-rubocop-exceptions)
 on how to proceed from here.
 
 ### Run RuboCop in graceful mode
@@ -378,15 +384,18 @@ following:
 bundle exec rake tanuki_emoji:aliases
 ```
 
-To update the Emoji digests file (used for Emoji autocomplete), run the
-following:
+To import the fallback Emoji images, run the following:
+
+```shell
+bundle exec rake tanuki_emoji:import
+```
+
+To update the Emoji digests file (used for Emoji autocomplete) based on the currently
+available Emoji, run the following:
 
 ```shell
 bundle exec rake tanuki_emoji:digests
 ```
-
-This updates the file `fixtures/emojis/digests.json` based on the currently
-available Emoji.
 
 To generate a sprite file containing all the Emoji, run:
 
@@ -394,33 +403,11 @@ To generate a sprite file containing all the Emoji, run:
 bundle exec rake tanuki_emoji:sprite
 ```
 
-If new emoji are added, the sprite sheet may change size. To compensate for
-such changes, first generate the `emoji.png` sprite sheet with the above Rake
-task, then check the dimensions of the new sprite sheet and update the
-`SPRITESHEET_WIDTH` and `SPRITESHEET_HEIGHT` constants accordingly.
+See [How to update Emojis](fe_guide/emojis.md) for detailed instructions.
 
 ## Update project templates
 
-Starting a project from a template needs this project to be exported. On a
-up to date main branch run:
-
-```shell
-gdk start
-bundle exec rake gitlab:update_project_templates
-git checkout -b update-project-templates
-git add vendor/project_templates
-git commit
-git push -u origin update-project-templates
-```
-
-Now create a merge request and merge that to main.
-
-To update just a single template instead of all of them, specify the template name
-between square brackets. For example, for the `cluster_management` template, run:
-
-```shell
-bundle exec rake gitlab:update_project_templates\[cluster_management\]
-```
+See [contributing to project templates for GitLab team members](project_templates/add_new_template.md#for-gitlab-team-members).
 
 ## Generate route lists
 
@@ -505,7 +492,7 @@ bundle exec rake gitlab:graphql:compile_docs
 In its current state, the Rake task:
 
 - Generates output for GraphQL objects.
-- Places the output at `doc/api/graphql/reference/index.md`.
+- Places the output at `doc/api/graphql/reference/_index.md`.
 
 This uses some features from `graphql-docs` gem like its schema parser and helper methods.
 The docs generator code comes from our side giving us more flexibility, like using Haml templates and generating Markdown files.
@@ -519,7 +506,7 @@ To edit the content, you may need to edit the following:
   which is then used by the `rake` task described earlier.
 
 `@parsed_schema` is an instance variable that the `graphql-docs` gem expects to have available.
-`Gitlab::Graphql::Docs::Helper` defines the `object` method we currently use. This is also where you
+`Gitlab::Graphql::Docs::Helper` defines the `object` method we use. This is also where you
 should implement any new methods for new types you'd like to display.
 
 ### Update machine-readable schema files
@@ -543,12 +530,12 @@ bundle exec rake gitlab:graphql:update_all
 ## Update audit event types documentation
 
 For information on updating audit event types documentation, see
-[Generate documentation](audit_event_guide/index.md#generate-documentation).
+[Generate documentation](audit_event_guide/_index.md#generate-documentation).
 
 ## Update OpenAPI client for Error Tracking feature
 
-NOTE:
-This Rake task needs `docker` to be installed.
+> [!note]
+> This Rake task needs `docker` to be installed.
 
 To update generated code for OpenAPI client located in
 `gems/error_tracking_open_api` run the following commands:
@@ -565,8 +552,8 @@ git commit -m 'Update ErrorTrackingOpenAPI from OpenAPI definition' gems/error_t
 
 ## Update banned SSH keys
 
-You can add [banned SSH keys](../security/ssh_keys_restrictions.md#block-banned-or-compromised-keys)
-from any Git repository by using the `gitlab:security:update_banned_ssh_keys` Rake task:
+You can update the list of banned SSH keys from any Git repository by using the
+`gitlab:security:update_banned_ssh_keys` Rake task:
 
 1. Find a public remote Git repository containing SSH public keys.
    The public key files must have the `.pub` file extension.
@@ -585,3 +572,16 @@ This task clones the remote repository, recursively walks the file system lookin
 ending in `.pub`, parses those files as SSH public keys, and then adds the public key fingerprints
 to `output_file`. The contents of `config/security/banned_ssh_keys.yml` is read by GitLab and kept
 in memory. It is not recommended to increase the size of this file beyond 1 megabyte in size.
+
+## Output current navigation structure to YAML
+
+_This task relies on your current environment setup (licensing, feature flags, projects/groups), so output may vary from run-to-run or environment-to-environment. We may look to standardize output in a future iteration._
+
+Product, UX, and tech writing need a way to audit the entire GitLab navigation,
+yet may not be comfortable directly reviewing the code in `lib/sidebars`. You
+can dump the entire nav structure to YAML via the `gitlab:nav:dump_structure`
+Rake task:
+
+```shell
+bundle exec rake gitlab:nav:dump_structure
+```

@@ -94,7 +94,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
     let_it_be(:project) { create(:project, :repository, :wiki_repo) }
     let_it_be(:user) { create(:user) }
 
-    let(:chat_integration) { described_class.new( { project: project, webhook: webhook_url, branches_to_be_notified: 'all' }.merge(chat_integration_params)) }
+    let(:chat_integration) { described_class.new({ project: project, webhook: webhook_url, branches_to_be_notified: 'all' }.merge(chat_integration_params)) }
     let(:chat_integration_params) { {} }
     let(:data) { Gitlab::DataBuilder::Push.build_sample(project, user) }
 
@@ -238,7 +238,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
     context 'note event' do
       let_it_be(:issue_note) { create(:note_on_issue, project: project, note: "issue note") }
 
-      let(:data) { Gitlab::DataBuilder::Note.build(issue_note, user) }
+      let(:data) { Gitlab::DataBuilder::Note.build(issue_note, user, :create) }
 
       it_behaves_like 'calls the integration API with the event message', /commented on issue/
 
@@ -475,7 +475,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
       end
 
       let(:data) do
-        Gitlab::DataBuilder::Note.build(commit_note, user)
+        Gitlab::DataBuilder::Note.build(commit_note, user, :create)
       end
 
       it_behaves_like "triggered #{integration_name} integration", event_type: "commit comment"
@@ -487,7 +487,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
       end
 
       let(:data) do
-        Gitlab::DataBuilder::Note.build(merge_request_note, user)
+        Gitlab::DataBuilder::Note.build(merge_request_note, user, :create)
       end
 
       it_behaves_like "triggered #{integration_name} integration", event_type: "merge request comment"
@@ -499,7 +499,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
       end
 
       let(:data) do
-        Gitlab::DataBuilder::Note.build(issue_note, user)
+        Gitlab::DataBuilder::Note.build(issue_note, user, :create)
       end
 
       it_behaves_like "triggered #{integration_name} integration", event_type: "issue comment"
@@ -511,7 +511,7 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
       end
 
       let(:data) do
-        Gitlab::DataBuilder::Note.build(snippet_note, user)
+        Gitlab::DataBuilder::Note.build(snippet_note, user, :create)
       end
 
       it_behaves_like "triggered #{integration_name} integration", event_type: "snippet comment"
@@ -655,6 +655,14 @@ RSpec.shared_examples Integrations::SlackMattermostNotifier do |integration_name
         context 'notification enabled for all branches' do
           it_behaves_like "triggered #{integration_name} integration", event_type: "pipeline", branches_to_be_notified: "all"
         end
+      end
+    end
+
+    context "with pipeline and ref status" do
+      let(:data) { Gitlab::DataBuilder::Pipeline.build(pipeline) }
+
+      it_behaves_like 'pipeline notification integration', integration_name do
+        subject(:chat_integration) { described_class.new(project: project) }
       end
     end
   end

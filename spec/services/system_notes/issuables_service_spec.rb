@@ -12,7 +12,14 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   let(:noteable)      { create(:issue, project: project) }
   let(:issue)         { noteable }
 
-  let(:service) { described_class.new(noteable: noteable, project: project, author: author) }
+  let(:service) { described_class.new(noteable: noteable, container: project, author: author) }
+
+  before_all do
+    # Ensure support bot user is created so creation doesn't count towards query limit
+    # and we don't try to obtain an exclusive lease within a transaction.
+    # See https://gitlab.com/gitlab-org/gitlab/-/issues/509629
+    create(:support_bot)
+  end
 
   describe '#relate_issuable' do
     let_it_be(:issue1) { create(:issue, project: project) }
@@ -214,17 +221,26 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   end
 
   describe '#request_review' do
-    subject(:request_review) { service.request_review(reviewer) }
+    subject(:request_review) { service.request_review(reviewer, unapproved) }
 
     let_it_be(:reviewer) { create(:user) }
     let_it_be(:noteable) { create(:merge_request, :simple, source_project: project, reviewers: [reviewer]) }
+    let(:unapproved) { false }
 
     it_behaves_like 'a system note' do
       let(:action) { 'reviewer' }
     end
 
-    it 'builds a correct phrase when a reviewer has been requested from a reviewer' do
+    it 'builds a correct phrase when a review has been requested from a reviewer' do
       expect(request_review.note).to eq "requested review from #{reviewer.to_reference}"
+    end
+
+    context 'when unapproving' do
+      let(:unapproved) { true }
+
+      it 'builds a correct phrase when a review has been requested from a reviewer and the reviewer has been unapproved' do
+        expect(request_review.note).to eq "requested review from #{reviewer.to_reference} and removed approval"
+      end
     end
   end
 
@@ -288,11 +304,14 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
   end
 
   describe '#change_title' do
-    let(:noteable) { create(:issue, project: project, title: 'Lorem ipsum') }
+    let(:noteable) { create(:issue, project: project, title: new_title) }
 
-    subject { service.change_title('Old title') }
+    subject { service.change_title(old_title) }
 
     context 'when noteable responds to `title`' do
+      let(:new_title) { '_Lorem_ ipsum' }
+      let(:old_title) { 'Old **title**' }
+
       it_behaves_like 'a system note' do
         let(:action) { 'title' }
       end
@@ -301,7 +320,17 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'sets the note text' do
         expect(subject.note)
-          .to eq "changed title from **{-Old title-}** to **{+Lorem ipsum+}**"
+          .to eq %q(<p>changed title from <code class="idiff"><span class="idiff left right deletion">Old **title**</span></code> to <code class="idiff"><span class="idiff left right addition">_Lorem_ ipsum</span></code></p>)
+      end
+
+      context 'when changes are only parts of the title' do
+        let(:new_title) { '_title_ (foo)' }
+        let(:old_title) { 'Resolve "**title** (foo)"' }
+
+        it 'sets the note text' do
+          expect(subject.note)
+            .to eq %q(<p>changed title from <code class="idiff"><span class="idiff left deletion">Resolve &quot;**</span>title<span class="idiff deletion">**</span> (foo)<span class="idiff right deletion">&quot;</span></code> to <code class="idiff"><span class="idiff left addition">_</span>title<span class="idiff right addition">_</span> (foo)</code></p>)
+        end
       end
     end
   end
@@ -399,6 +428,16 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it_behaves_like 'a note with overridable created_at'
 
+      it 'does not touch the updated_at column of the noteable' do
+        existing_updated_at = noteable.updated_at
+
+        travel_to(2.days.from_now) do
+          subject
+
+          expect(noteable.reload.updated_at).to be_like_time(existing_updated_at)
+        end
+      end
+
       describe 'note_body' do
         context 'cross-project' do
           let(:project2) { create(:project, :repository) }
@@ -436,6 +475,36 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
         end
       end
 
+      describe 'note_date' do
+        let(:mentioned_in) { project.repository.commit }
+
+        it 'uses commit date with USE_COMMIT_DATE_FOR_CROSS_REFERENCE_NOTE' do
+          stub_const("#{described_class}::USE_COMMIT_DATE_FOR_CROSS_REFERENCE_NOTE", true)
+
+          note = service.cross_reference(mentioned_in)
+
+          expect(note.created_at).to be_like_time(mentioned_in.created_at)
+        end
+      end
+
+      context 'with WorkItem' do
+        context 'on project level' do
+          let(:noteable) { create(:work_item, project: project) }
+
+          it 'references the mentioning object' do
+            expect(subject.note).to eq "mentioned in issue #{mentioned_in.to_reference(project)}"
+          end
+        end
+
+        context 'on group level' do
+          let(:noteable) { create(:work_item, :group_level) }
+
+          it 'references the mentioning object' do
+            expect(subject.note).to eq "mentioned in issue #{mentioned_in.to_reference(noteable.namespace)}"
+          end
+        end
+      end
+
       context 'with external issue' do
         let(:noteable) { ExternalIssue.new('JIRA-123', project) }
         let(:mentioned_in) { project.commit }
@@ -450,6 +519,39 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
           )
 
           subject
+        end
+      end
+
+      context 'with work item instrumentation tracking' do
+        before do
+          allow_next_instance_of(described_class) do |instance|
+            allow(instance).to receive(:cross_reference_disallowed?).and_return(false)
+          end
+        end
+
+        context 'when mentioned_in is a WorkItem' do
+          let(:mentioned_in) { create(:work_item, project: project) }
+
+          it_behaves_like 'tracks work item event', :mentioned_in, :author, 'work_item_reference_add', :subject
+        end
+
+        context 'when mentioned_in is an Issue' do
+          let(:mentioned_in) { create(:issue, project: project) }
+          let(:work_item) { WorkItem.find(mentioned_in.id) }
+
+          it_behaves_like 'tracks work item event', :work_item, :author, 'work_item_reference_add', :subject
+        end
+
+        context 'when mentioned_in is a MergeRequest' do
+          let(:mentioned_in) { create(:merge_request, :simple, source_project: project) }
+
+          it_behaves_like 'does not track work item event', :subject
+        end
+
+        context 'when mentioned_in is a Commit' do
+          let(:mentioned_in) { project.repository.commit }
+
+          it_behaves_like 'does not track work item event', :subject
         end
       end
     end
@@ -555,7 +657,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
   describe '#change_task_status' do
     let(:noteable) { create(:issue, project: project) }
-    let(:task)     { double(:task, complete?: true, source: 'task') }
+    let(:task)     { double(:task, complete?: true, text: 'task', source: ' task') }
 
     subject { service.change_task_status(task) }
 
@@ -565,6 +667,32 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
     it "posts the 'marked the checklist item as complete' system note" do
       expect(subject.note).to eq("marked the checklist item **task** as completed")
+    end
+
+    context 'when task contains formatting' do
+      let(:markdown_before) { '- [ ] task with **Markdown**' }
+      let(:markdown_after) { '- [x] task with **Markdown**' }
+
+      let(:task) do
+        Taskable.get_updated_tasks(old_content: markdown_before, new_content: markdown_after).first
+      end
+
+      it 'does not leak Markdown into the system note' do
+        expect(subject.note).to eq("marked the checklist item **task with Markdown** as completed")
+      end
+    end
+
+    context 'when task contains partial formatting' do
+      let(:markdown_before) { '- [ ] task with** Markdown' }
+      let(:markdown_after) { '- [x] task with** Markdown' }
+
+      let(:task) do
+        Taskable.get_updated_tasks(old_content: markdown_before, new_content: markdown_after).first
+      end
+
+      it 'does not leak Markdown into the system note' do
+        expect(subject.note).to eq("marked the checklist item **task with\\*\\* Markdown** as completed")
+      end
     end
   end
 
@@ -701,36 +829,6 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
 
       it 'defaults to current time when created_at is not given', :freeze_time do
         expect(subject.created_at).to be_like_time(Time.current)
-      end
-    end
-
-    context 'metrics' do
-      context 'cloned from' do
-        let(:direction) { :from }
-
-        it 'does not tracks usage' do
-          expect(Gitlab::UsageDataCounters::IssueActivityUniqueCounter)
-            .not_to receive(:track_issue_cloned_action).with(author: author)
-
-          subject
-        end
-      end
-
-      context 'cloned to', :snowplow do
-        let(:direction) { :to }
-
-        it 'tracks usage' do
-          expect(Gitlab::UsageDataCounters::IssueActivityUniqueCounter)
-            .to receive(:track_issue_cloned_action).with(author: author, project: project)
-
-          subject
-        end
-
-        it_behaves_like 'internal event tracking' do
-          let(:event) { Gitlab::UsageDataCounters::IssueActivityUniqueCounter::ISSUE_CLONED }
-          let(:user) { author }
-          let(:namespace) { project.namespace }
-        end
       end
     end
   end
@@ -939,7 +1037,7 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
     let_it_be_with_reload(:work_item) { create(:work_item, project: project) }
     let_it_be_with_reload(:task) { create(:work_item, :task, project: project) }
 
-    let(:service) { described_class.new(noteable: work_item, project: project, author: author) }
+    let(:service) { described_class.new(noteable: work_item, container: project, author: author) }
 
     subject { service.hierarchy_changed(task, hierarchy_change_action) }
 
@@ -956,6 +1054,16 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
         expect(work_item.notes.last.note).to eq("added ##{task.iid} as child task")
         expect(task.notes.last.note).to eq("added ##{work_item.iid} as parent issue")
       end
+
+      context 'when the parent belongs to a different namespace' do
+        let(:work_item) { create(:work_item, :group_level, namespace: group) }
+
+        it 'uses full references on the system notes' do
+          expect { subject }.to change { Note.system.count }.by(2)
+          expect(work_item.notes.last.note).to eq("added #{task.namespace.full_path}##{task.iid} as child task")
+          expect(task.notes.last.note).to eq("added #{work_item.namespace.full_path}##{work_item.iid} as parent issue")
+        end
+      end
     end
 
     context 'when child task is removed' do
@@ -970,6 +1078,16 @@ RSpec.describe ::SystemNotes::IssuablesService, feature_category: :team_planning
         expect { subject }.to change { Note.system.count }.by(2)
         expect(work_item.notes.last.note).to eq("removed child task ##{task.iid}")
         expect(task.notes.last.note).to eq("removed parent issue ##{work_item.iid}")
+      end
+
+      context 'when the parent belongs to a different namespace' do
+        let(:work_item) { create(:work_item, :group_level, namespace: group) }
+
+        it 'uses full references on the system notes' do
+          expect { subject }.to change { Note.system.count }.by(2)
+          expect(work_item.notes.last.note).to eq("removed child task #{task.namespace.full_path}##{task.iid}")
+          expect(task.notes.last.note).to eq("removed parent issue #{work_item.namespace.full_path}##{work_item.iid}")
+        end
       end
     end
   end

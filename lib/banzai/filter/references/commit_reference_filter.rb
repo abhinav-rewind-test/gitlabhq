@@ -11,8 +11,10 @@ module Banzai
         self.object_class   = Commit
 
         def references_in(text, pattern = object_reference_pattern)
-          text.gsub(pattern) do |match|
-            yield match, $~[:commit], $~[:project], $~[:namespace], $~
+          replace_references_in_text_with_html(Gitlab::Utils::Gsub.gsub_with_limit(text, pattern,
+            limit: Banzai::Filter::FILTER_ITEM_LIMIT)) do |match_data|
+            yield match_data[0], match_data[:commit], match_data[:project], match_data[:namespace],
+              match_data
           end
         end
 
@@ -60,18 +62,20 @@ module Banzai
           end
         end
 
-        def object_link_text_extras(object, matches)
+        def object_link_content_html_extras(object, matches)
           extras = super
 
           path = matches[:path] if matches.names.include?("path")
           if path == '/builds'
-            extras.unshift "builds"
+            extras.unshift CGI.escapeHTML("builds")
           end
 
           extras
         end
 
         def parent_records(parent, ids)
+          return [] unless parent.respond_to?(:commits_by)
+
           parent.commits_by(oids: ids.to_a)
         end
 

@@ -1,14 +1,16 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Customize Auto DevOps
 ---
 
-# Customize Auto DevOps
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can customize components of Auto DevOps to fit your needs. For example, you can:
 
@@ -26,7 +28,7 @@ least the Maintainer role:
 The banner can be disabled for:
 
 - A user, when they dismiss it themselves.
-- A project, by explicitly [disabling Auto DevOps](index.md#enable-or-disable-auto-devops).
+- A project, by explicitly [disabling Auto DevOps](_index.md#enable-or-disable-auto-devops).
 - An entire GitLab instance:
   - By an administrator running the following in a Rails console:
 
@@ -49,37 +51,10 @@ You can customize your buildpacks when either:
 
 ### Customize buildpacks with Cloud Native Buildpacks
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/28165) in GitLab 12.10.
-
 Specify either:
 
 - The CI/CD variable `BUILDPACK_URL` with any of [`pack`'s URI specification formats](https://buildpacks.io/docs/app-developer-guide/specify-buildpacks/).
 - A [`project.toml` project descriptor](https://buildpacks.io/docs/app-developer-guide/using-project-descriptor/) with the buildpacks you would like to include.
-
-<!--- start_remove The following content will be removed on remove_date: '2024-08-22' -->
-
-### Customize buildpacks with Herokuish (deprecated)
-
-WARNING:
-Support for Herokuish was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/108234) in GitLab 15.8,
-and is planned for removal in 17.0. Use [Cloud Native Buildpacks](stages.md#moving-from-herokuish-to-cloud-native-buildpacks) instead.
-
-Specify either:
-
-- The CI/CD variable `BUILDPACK_URL`.
-- A `.buildpacks` file at the root of your project that contains one buildpack URL per line.
-
-The buildpack URL can point to either a Git repository URL or a tarball URL.
-
-For Git repositories, you can point to a specific Git reference by
-appending `#<ref>` to the Git repository URL. For example, you can
-reference:
-
-- The tag `v142`: `https://github.com/heroku/heroku-buildpack-ruby.git#v142`.
-- The branch `mybranch`: `https://github.com/heroku/heroku-buildpack-ruby.git#mybranch`.
-- The commit SHA `f97d8a8ab49`: `https://github.com/heroku/heroku-buildpack-ruby.git#f97d8a8ab49`.
-
-<!--- end_remove -->
 
 ### Multiple buildpacks
 
@@ -93,8 +68,6 @@ To use only a single custom buildpack, you should provide the project CI/CD vari
 `BUILDPACK_URL` instead.
 
 ## Custom Dockerfiles
-
-> - `DOCKERFILE_PATH` [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/35662) in GitLab 13.2.
 
 If you have a Dockerfile in the root of your project repository, Auto
 DevOps builds a Docker image based on the Dockerfile. This can be
@@ -120,15 +93,15 @@ For example, to build a Docker image based on based on the
    ARG RUBY_VERSION=latest
    FROM ruby:$RUBY_VERSION
 
-   # ... put your stuff here
+   # Include your content here
    ```
 
 To pass complex values like spaces and newlines, use Base64 encoding.
 Complex, unencoded values can cause issues with character escaping.
 
-WARNING:
-Do not pass secrets as Docker build arguments. Secrets might persist in your image. For more information, see
-[this discussion of best practices with secrets](https://github.com/moby/moby/issues/13490).
+> [!warning]
+> Do not pass secrets as Docker build arguments. Secrets might persist in your image. For more information, see
+> [this discussion of best practices with secrets](https://github.com/moby/moby/issues/13490).
 
 ## Custom container image
 
@@ -140,13 +113,13 @@ You can override this behavior by defining specific variables:
 | Image Path | `$CI_REGISTRY_IMAGE/$CI_COMMIT_REF_SLUG` for branch pipelines. `$CI_REGISTRY_IMAGE` for tag pipelines. | `$CI_APPLICATION_REPOSITORY` |
 | Image Tag | `$CI_COMMIT_SHA` for branch pipelines. `$CI_COMMIT_TAG` for tag pipelines. | `$CI_APPLICATION_TAG` |
 
-These variables also affect Auto Build and Auto Container Scanning. If you don't want to build and push an image to
+These variables also affect Auto Build and auto container scanning. If you don't want to build and push an image to
 `$CI_APPLICATION_REPOSITORY:$CI_APPLICATION_TAG`, include only `Jobs/Deploy.gitlab-ci.yml`, or
-[disable the `build` jobs](cicd_variables.md#job-disabling-variables).
+[skip the `build` jobs](cicd_variables.md#job-skipping-variables).
 
-If you use Auto Container Scanning and set a value for `$CI_APPLICATION_REPOSITORY`, then you should
+If you use auto container scanning and set a value for `$CI_APPLICATION_REPOSITORY`, then you should
 also update `$CS_DEFAULT_BRANCH_IMAGE`. For more information, see
-[Setting the default branch image](../../user/application_security/container_scanning/index.md#setting-the-default-branch-image).
+[Setting the default branch image](../../user/application_security/container_scanning/_index.md#setting-the-default-branch-image).
 
 Here is an example setup in your `.gitlab-ci.yml`:
 
@@ -160,15 +133,13 @@ variables:
 
 You can extend and manage your Auto DevOps configuration with GitLab APIs:
 
-- [Use API calls to access settings](../../api/settings.md#list-of-settings-that-can-be-accessed-via-api-calls),
+- [Use API calls to access settings](../../api/settings.md#available-settings),
   which include `auto_devops_enabled`, to enable Auto DevOps on projects by default.
-- [Create a new project](../../api/projects.md#create-project).
-- [Edit groups](../../api/groups.md#update-group).
-- [Edit projects](../../api/projects.md#edit-project).
+- [Create a new project](../../api/projects.md#create-a-project).
+- [Edit groups](../../api/groups.md#update-group-attributes).
+- [Edit projects](../../api/projects.md#edit-a-project).
 
 ## Forward CI/CD variables to the build environment
-
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/25514) in GitLab 12.3.
 
 To forward CI/CD variables to the build environment, add the names of the variables
 you want to forward to the `AUTO_DEVOPS_BUILD_IMAGE_FORWARDED_CI_VARIABLES` CI/CD variable.
@@ -211,7 +182,7 @@ repository or by specifying a project CI/CD variable:
 - **Bundled chart** - If your project has a `./chart` directory with a `Chart.yaml`
   file in it, Auto DevOps detects the chart and uses it instead of the
   [default chart](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/tree/master/assets/auto-deploy-app).
-- **Project variable** - Create a [project CI/CD variable](../../ci/variables/index.md)
+- **Project variable** - Create a [project CI/CD variable](../../ci/variables/_index.md)
   `AUTO_DEVOPS_CHART` with the URL of a custom chart. You can also create five project
   variables:
 
@@ -223,16 +194,14 @@ repository or by specifying a project CI/CD variable:
 
 ### Customize Helm chart values
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/30628) in GitLab 12.6, `.gitlab/auto-deploy-values.yaml` is used by default for Helm upgrades.
-
 To override the default values in the `values.yaml` file in the
 [default Helm chart](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/tree/master/assets/auto-deploy-app), either:
 
-- Add a file named `.gitlab/auto-deploy-values.yaml` to your repository. This file is automatically used.
+- Add a file named `.gitlab/auto-deploy-values.yaml` to your repository. This file is used by default for Helm upgrades.
 - Add a file with a different name or path to the repository. Set the
   `HELM_UPGRADE_VALUES_FILE` [CI/CD variable](cicd_variables.md) with the path and name of the file.
 
-Some values cannot be overridden with the options above, but [this issue](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/issues/31) proposes to change this behavior.
+Some values cannot be overridden with the previous options, but [this issue](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/issues/31) proposes to change this behavior.
 To override settings like `replicaCount`, use the `REPLICAS` [build and deployment](cicd_variables.md#build-and-deployment-variables) CI/CD variable.
 
 ### Customize `helm upgrade`
@@ -252,12 +221,12 @@ For a full list of options, see [the official `helm upgrade` documentation](http
 ### Limit a Helm chart to one environment
 
 To limit a custom chart to one environment, add the environment scope to your CI/CD variables.
-For more information, see [Limit the environment scope of CI/CD variables](../../ci/environments/index.md#limit-the-environment-scope-of-a-cicd-variable).
+For more information, see [Limit the environment scope of CI/CD variables](../../ci/environments/_index.md#limit-the-environment-scope-of-a-cicd-variable).
 
 ## Customize `.gitlab-ci.yml`
 
 Auto DevOps is highly customizable because the [Auto DevOps template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Auto-DevOps.gitlab-ci.yml)
-is an implementation of a [`.gitlab-ci.yml` file](../../ci/index.md#the-gitlab-ciyml-file).
+is an implementation of a `.gitlab-ci.yml` file.
 The template uses only features available to any implementation of `.gitlab-ci.yml`.
 
 To add custom behaviors to the CI/CD pipeline used by Auto DevOps:
@@ -270,7 +239,7 @@ To add custom behaviors to the CI/CD pipeline used by Auto DevOps:
    ```
 
 1. Add your changes to the `.gitlab-ci.yml` file. Your changes are merged with the Auto DevOps template. For more information about
-   how `include` merges your changes, see [the `include` documentation](../../ci/yaml/index.md#include).
+   how `include` merges your changes, see [the `include` documentation](../../ci/yaml/_index.md#include).
 
 To remove behaviors from the Auto DevOps pipeline:
 
@@ -298,17 +267,6 @@ include:
 
 For a list of available jobs, see the [Auto DevOps template](https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Auto-DevOps.gitlab-ci.yml).
 
-WARNING:
-From [GitLab 13.0](https://gitlab.com/gitlab-org/gitlab/-/issues/213336),
-Auto DevOps templates that use the [`only`](../../ci/yaml/index.md#only--except) or
-[`except`](../../ci/yaml/index.md#only--except) syntax have switched
-to the [`rules`](../../ci/yaml/index.md#rules) syntax.
-If your `.gitlab-ci.yml` extends these Auto DevOps templates and overrides `only` or
-`except`, migrate your templates to the
-[`rules`](../../ci/yaml/index.md#rules) syntax.
-If you cannot migrate, you can pin your templates to
-the [GitLab 12.10 based templates](https://gitlab.com/gitlab-org/auto-devops-v12-10).
-
 ## Use multiple Kubernetes clusters
 
 See [Multiple Kubernetes clusters for Auto DevOps](multiple_clusters_auto_devops.md).
@@ -321,11 +279,11 @@ However, this feature was [deprecated](https://gitlab.com/groups/gitlab-org/conf
 along with certificate-based integration.
 
 You should now use the `KUBE_NAMESPACE` environment variable and
-[limit its environment scope](../../ci/environments/index.md#limit-the-environment-scope-of-a-cicd-variable).
+[limit its environment scope](../../ci/environments/_index.md#limit-the-environment-scope-of-a-cicd-variable).
 
 ## Use images hosted in a local Docker registry
 
-You can configure many Auto DevOps jobs to run in an [offline environment](../../user/application_security/offline_deployments/index.md):
+You can configure many Auto DevOps jobs to run in an [offline environment](../../user/application_security/offline_deployments/_index.md):
 
 1. Copy the required Auto DevOps Docker images from Docker Hub and `registry.gitlab.com` to their local GitLab container registry.
 1. After the images are hosted and available in a local registry, edit `.gitlab-ci.yml` to point to the locally hosted images. For example:
@@ -346,10 +304,10 @@ You can configure many Auto DevOps jobs to run in an [offline environment](../..
 
 ## PostgreSQL database support
 
-WARNING:
-Provisioning a PostgreSQL database by default was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/387766)
-in GitLab 15.8 and will no longer be the default from 16.0. To enable database provisioning, set
-the associated [CI/CD variable](cicd_variables.md#database-variables).
+> [!warning]
+> Provisioning a PostgreSQL database by default was [deprecated](https://gitlab.com/gitlab-org/gitlab/-/issues/387766)
+> in GitLab 15.8 and will no longer be the default from 16.0. To enable database provisioning, set
+> the associated [CI/CD variable](cicd_variables.md#database-variables).
 
 To support applications that require a database,
 [PostgreSQL](https://www.postgresql.org/) is provisioned by default.
@@ -378,8 +336,6 @@ To use the old PostgreSQL, set the `AUTO_DEVOPS_POSTGRES_CHANNEL` variable to
 
 ### Customize values for PostgreSQL Helm Chart
 
-> - [Introduced](https://gitlab.com/gitlab-org/cluster-integration/auto-deploy-image/-/issues/113) in GitLab 13.8 with auto-deploy-image v2.
-
 To set custom values, do one of the following:
 
 - Add a file named `.gitlab/auto-deploy-postgres-values.yaml` to your repository. If found, this
@@ -398,11 +354,11 @@ external managed provider like AWS Relational Database Service.
 To use an external managed provider:
 
 1. Disable the built-in PostgreSQL installation for the required environments with
-   environment-scoped [CI/CD variables](../../ci/environments/index.md#limit-the-environment-scope-of-a-cicd-variable).
-   Because the built-in PostgreSQL setup for Review Apps and staging is sufficient, you might only need to
+   environment-scoped [CI/CD variables](../../ci/environments/_index.md#limit-the-environment-scope-of-a-cicd-variable).
+   Because the built-in PostgreSQL setup for review apps and staging is sufficient, you might only need to
    disable the installation for `production`.
 
-   ![Auto Metrics](img/disable_postgres.png)
+   ![Auto Metrics](img/disable_postgres_v12_4.png)
 
 1. Define the `DATABASE_URL` variable as an environment-scoped variable
    available to your application. This should be a URL in the following format:

@@ -2,8 +2,9 @@ import { nextTick } from 'vue';
 
 import NewEditForm from '~/organizations/shared/components/new_edit_form.vue';
 import OrganizationUrlField from '~/organizations/shared/components/organization_url_field.vue';
-import AvatarUploadDropzone from '~/vue_shared/components/upload_dropzone/avatar_upload_dropzone.vue';
+import AvatarUploadDropzone from '~/organizations/shared/components/avatar_upload_dropzone.vue';
 import MarkdownField from '~/vue_shared/components/markdown/field.vue';
+import { RESTRICTED_TOOLBAR_ITEMS_BASIC_EDITING_ONLY } from '~/vue_shared/components/markdown/constants';
 import { helpPagePath } from '~/helpers/help_page_helper';
 import {
   FORM_FIELD_NAME,
@@ -11,6 +12,11 @@ import {
   FORM_FIELD_PATH,
   FORM_FIELD_AVATAR,
 } from '~/organizations/shared/constants';
+import VisibilityLevelRadioButtons from '~/visibility_level/components/visibility_level_radio_buttons.vue';
+import {
+  ORGANIZATION_VISIBILITY_LEVEL_DESCRIPTIONS,
+  VISIBILITY_LEVEL_PRIVATE_INTEGER,
+} from '~/visibility_level/constants';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 
 describe('NewEditForm', () => {
@@ -44,6 +50,7 @@ describe('NewEditForm', () => {
   const findDescriptionCharacterCounter = () =>
     wrapper.findByTestId('description-character-counter');
   const findAvatarField = () => wrapper.findComponent(AvatarUploadDropzone);
+  const findVisibilityLevelRadioButtons = () => wrapper.findComponent(VisibilityLevelRadioButtons);
 
   const setUrlFieldValue = async (value) => {
     findUrlField().vm.$emit('input', value);
@@ -81,21 +88,11 @@ describe('NewEditForm', () => {
     expect(findDescriptionField().exists()).toBe(true);
     expect(wrapper.findComponent(MarkdownField).props()).toMatchObject({
       markdownPreviewPath: defaultProvide.previewMarkdownPath,
-      markdownDocsPath: helpPagePath('user/organization/index', {
-        anchor: 'organization-description-supported-markdown',
+      markdownDocsPath: helpPagePath('user/organization/_index', {
+        anchor: 'supported-markdown-for-organization-description',
       }),
       textareaValue: '',
-      restrictedToolBarItems: [
-        'code',
-        'quote',
-        'bullet-list',
-        'numbered-list',
-        'task-list',
-        'collapsible-section',
-        'table',
-        'attach-file',
-        'full-screen',
-      ],
+      restrictedToolBarItems: RESTRICTED_TOOLBAR_ITEMS_BASIC_EDITING_ONLY,
     });
   });
 
@@ -112,7 +109,7 @@ describe('NewEditForm', () => {
       });
 
       it('renders the character counter correctly', () => {
-        expect(findDescriptionCharacterCounter().classes()).toStrictEqual(['gl-text-gray-500']);
+        expect(findDescriptionCharacterCounter().classes()).toStrictEqual(['gl-text-subtle']);
         expect(findDescriptionCharacterCounter().text()).toBe(
           `${charactersLeft} characters remaining`,
         );
@@ -132,7 +129,7 @@ describe('NewEditForm', () => {
       });
 
       it('renders the character counter correctly', () => {
-        expect(findDescriptionCharacterCounter().classes()).toStrictEqual(['gl-text-red-500']);
+        expect(findDescriptionCharacterCounter().classes()).toStrictEqual(['gl-text-danger']);
         expect(findDescriptionCharacterCounter().text()).toBe(
           `${Math.abs(charactersLeft)} characters over limit`,
         );
@@ -175,6 +172,16 @@ describe('NewEditForm', () => {
     expect(
       wrapper.findByText('Organization URL is too short (minimum is 2 characters).').exists(),
     ).toBe(true);
+  });
+
+  it('renders `Visibility level` field with the private as the only option', () => {
+    createComponent();
+
+    expect(findVisibilityLevelRadioButtons().props()).toEqual({
+      checked: VISIBILITY_LEVEL_PRIVATE_INTEGER,
+      visibilityLevels: [VISIBILITY_LEVEL_PRIVATE_INTEGER],
+      visibilityLevelDescriptions: ORGANIZATION_VISIBILITY_LEVEL_DESCRIPTIONS,
+    });
   });
 
   describe('when `fieldsToRender` prop is set', () => {
@@ -240,7 +247,15 @@ describe('NewEditForm', () => {
 
     it('emits `submit` event with form values', () => {
       expect(wrapper.emitted('submit')).toEqual([
-        [{ name: 'Foo bar', path: 'foo-bar', description: 'Foo bar description', avatar: null }],
+        [
+          {
+            name: 'Foo bar',
+            path: 'foo-bar',
+            description: 'Foo bar description',
+            avatar: null,
+            visibilityLevel: VISIBILITY_LEVEL_PRIVATE_INTEGER,
+          },
+        ],
       ]);
     });
   });
@@ -290,9 +305,7 @@ describe('NewEditForm', () => {
     });
 
     it('does not modify `Organization URL` when typing in `Organization name`', () => {
-      expect(wrapper.emitted('submit')).toEqual([
-        [{ name: 'Foo bar baz', id: 1, path: 'foo-bar' }],
-      ]);
+      expect(wrapper.emitted('submit')).toEqual([[{ name: 'Foo bar baz', id: 1 }]]);
     });
   });
 

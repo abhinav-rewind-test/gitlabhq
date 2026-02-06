@@ -5,12 +5,11 @@ module API
     helpers ::API::Helpers::GraphqlHelpers
     include APIGuard
 
-    allow_access_with_scope [:read_user, :ai_features], if: -> (request) { request.get? || request.head? }
+    allow_access_with_scope [:read_user, :ai_features], if: ->(request) { request.get? || request.head? }
 
     before { authenticate! }
 
     METADATA_TAGS = %w[metadata].freeze
-
     feature_category :not_owned # rubocop:todo Gitlab/AvoidFeatureCategoryNotOwned
 
     METADATA_QUERY = <<~EOF
@@ -21,6 +20,7 @@ module API
           kas {
             enabled
             externalUrl
+            externalK8sProxyUrl
             version
           }
           enterprise
@@ -46,6 +46,7 @@ module API
       ]
       tags METADATA_TAGS
     end
+    route_setting :authorization, permissions: :read_instance_metadata, boundary_type: :instance
     get '/metadata' do
       run_metadata_query
     end
@@ -62,6 +63,7 @@ module API
       tags METADATA_TAGS
     end
 
+    route_setting :authorization, permissions: :read_instance_metadata, boundary_type: :instance
     get '/version' do
       run_metadata_query
     end

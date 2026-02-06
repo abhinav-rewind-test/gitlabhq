@@ -1,38 +1,56 @@
 import { GlButton, GlEmptyState, GlSprintf, GlLink } from '@gitlab/ui';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
+import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
-import { s__ } from '~/locale';
+import { useLocalStorageSpy } from 'helpers/local_storage_helper';
+import setWindowLocation from 'helpers/set_window_location_helper';
 import { WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
+import * as urlUtility from '~/lib/utils/url_utility';
+import { smoothScrollTop } from '~/lib/utils/scroll_utils';
 import ListPage from '~/packages_and_registries/package_registry/pages/list.vue';
 import PackageTitle from '~/packages_and_registries/package_registry/components/list/package_title.vue';
 import PackageSearch from '~/packages_and_registries/package_registry/components/list/package_search.vue';
 import OriginalPackageList from '~/packages_and_registries/package_registry/components/list/packages_list.vue';
 import DeletePackages from '~/packages_and_registries/package_registry/components/functional/delete_packages.vue';
+import PackageErrorsCount from '~/packages_and_registries/package_registry/components/list/package_errors_count.vue';
 import {
   GRAPHQL_PAGE_SIZE,
   EMPTY_LIST_HELP_URL,
-  PACKAGE_HELP_URL,
 } from '~/packages_and_registries/package_registry/constants';
 import PersistedPagination from '~/packages_and_registries/shared/components/persisted_pagination.vue';
+import PageSizeSelector from '~/vue_shared/components/page_size_selector.vue';
 import getPackagesQuery from '~/packages_and_registries/package_registry/graphql/queries/get_packages.query.graphql';
+import getPackagesCountQuery from '~/packages_and_registries/package_registry/graphql/queries/get_packages_count.query.graphql';
+import getGroupPackageSettings from '~/packages_and_registries/package_registry/graphql/queries/get_group_package_settings.query.graphql';
 import destroyPackagesMutation from '~/packages_and_registries/package_registry/graphql/mutations/destroy_packages.mutation.graphql';
-import { packagesListQuery, packageData, pagination } from '../mock_data';
+import {
+  packagesListQuery,
+  packagesListCountQuery,
+  groupPackageSettingsQuery,
+  groupPackageSettingsQueryForGroup,
+  packageData,
+  pagination,
+} from '../mock_data';
 
 jest.mock('~/alert');
+jest.mock('~/lib/utils/scroll_utils');
+
+Vue.use(VueApollo);
 
 describe('PackagesListApp', () => {
+  useLocalStorageSpy();
   let wrapper;
-  let apolloProvider;
 
   const defaultProvide = {
     emptyListIllustration: 'emptyListIllustration',
     isGroupPage: true,
     fullPath: 'gitlab-org',
     settingsPath: 'settings-path',
+    canDeletePackages: true,
   };
 
   const PackageList = {
@@ -44,29 +62,38 @@ describe('PackagesListApp', () => {
 
   const searchPayload = {
     sort: 'VERSION_DESC',
-    filters: { packageName: 'foo', packageType: 'CONAN', packageVersion: '1.0.1' },
+    filters: {
+      packageName: 'foo',
+      packageType: 'CONAN',
+      packageVersion: '1.0.1',
+      packageStatus: 'DEFAULT',
+    },
   };
 
   const findPackageTitle = () => wrapper.findComponent(PackageTitle);
   const findSearch = () => wrapper.findComponent(PackageSearch);
+  const findPackageErrorsCount = () => wrapper.findComponent(PackageErrorsCount);
   const findListComponent = () => wrapper.findComponent(PackageList);
   const findEmptyState = () => wrapper.findComponent(GlEmptyState);
   const findDeletePackages = () => wrapper.findComponent(DeletePackages);
   const findSettingsLink = () => wrapper.findComponent(GlButton);
   const findPagination = () => wrapper.findComponent(PersistedPagination);
+  const findPageSizeSelector = () => wrapper.findComponent(PageSizeSelector);
 
   const mountComponent = ({
     resolver = jest.fn().mockResolvedValue(packagesListQuery()),
+    countResolver = jest.fn().mockResolvedValue(packagesListCountQuery()),
+    groupPackageSettingsResolver = jest.fn().mockResolvedValue(groupPackageSettingsQueryForGroup()),
     mutationResolver,
     provide = defaultProvide,
   } = {}) => {
-    Vue.use(VueApollo);
-
     const requestHandlers = [
       [getPackagesQuery, resolver],
+      [getPackagesCountQuery, countResolver],
+      [getGroupPackageSettings, groupPackageSettingsResolver],
       [destroyPackagesMutation, mutationResolver],
     ];
-    apolloProvider = createMockApollo(requestHandlers);
+    const apolloProvider = createMockApollo(requestHandlers);
 
     wrapper = shallowMountExtended(ListPage, {
       apolloProvider,
@@ -88,25 +115,109 @@ describe('PackagesListApp', () => {
 
   const waitForFirstRequest = () => {
     // emit a search update so the query is executed
-    findSearch().vm.$emit('update', { sort: 'NAME_DESC', filters: [] });
+    findSearch().vm.$emit('update', { sort: 'NAME_DESC', filters: {} });
     return waitForPromises();
   };
 
   it('does not execute the query without sort being set', () => {
     const resolver = jest.fn().mockResolvedValue(packagesListQuery());
+    const countResolver = jest.fn().mockResolvedValue(packagesListCountQuery());
 
-    mountComponent({ resolver });
+    mountComponent({ resolver, countResolver });
 
     expect(resolver).not.toHaveBeenCalled();
+    expect(countResolver).not.toHaveBeenCalled();
   });
 
   it('has persisted pagination', async () => {
-    const resolver = jest.fn().mockResolvedValue(packagesListQuery());
-
-    mountComponent({ resolver });
+    mountComponent();
     await waitForFirstRequest();
 
     expect(findPagination().props('pagination')).toEqual(pagination());
+  });
+
+  describe('page size', () => {
+    const resolver = jest.fn().mockResolvedValue(packagesListQuery());
+
+    describe('when local storage value is not set', () => {
+      beforeEach(async () => {
+        mountComponent({ resolver });
+        await waitForFirstRequest();
+      });
+
+      it('page size selector prop is set to default value', () => {
+        expect(findPageSizeSelector().props('value')).toBe(GRAPHQL_PAGE_SIZE);
+      });
+
+      it('sets local storage value', () => {
+        expect(localStorage.getItem('packages_page_size')).toBe(String(GRAPHQL_PAGE_SIZE));
+      });
+
+      it('calls the resolver with default page size', () => {
+        expect(resolver).toHaveBeenCalledWith({
+          first: 20,
+          fullPath: 'gitlab-org',
+          groupSort: 'NAME_DESC',
+          isGroupPage: true,
+        });
+      });
+    });
+
+    describe('when localstorage value is set', () => {
+      beforeEach(async () => {
+        localStorage.setItem('packages_page_size', '50');
+
+        mountComponent({ resolver });
+
+        await waitForFirstRequest();
+      });
+
+      it('page size selector prop is set to value from local storage', () => {
+        expect(findPageSizeSelector().props('value')).toBe(50);
+      });
+
+      it('calls the resolver with page size value from local storage', () => {
+        expect(resolver).toHaveBeenCalledWith({
+          first: 50,
+          fullPath: 'gitlab-org',
+          groupSort: 'NAME_DESC',
+          isGroupPage: true,
+        });
+      });
+    });
+
+    describe('is changed', () => {
+      beforeEach(async () => {
+        setWindowLocation('?before=123&name=test');
+        jest.spyOn(urlUtility, 'updateHistory');
+        mountComponent({ resolver });
+        await waitForFirstRequest();
+        await findPageSizeSelector().vm.$emit('input', 100);
+      });
+
+      it('sets local storage value', () => {
+        expect(localStorage.getItem('packages_page_size')).toBe(String(100));
+      });
+
+      it('calls the resolver with default page size', () => {
+        expect(resolver).toHaveBeenLastCalledWith({
+          first: 100,
+          fullPath: 'gitlab-org',
+          groupSort: 'NAME_DESC',
+          isGroupPage: true,
+        });
+      });
+
+      it('updates query params', () => {
+        expect(urlUtility.updateHistory).toHaveBeenCalledWith({
+          url: '?name=test',
+        });
+      });
+
+      it('scrolls to top of page', () => {
+        expect(smoothScrollTop).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   it('has a package title', async () => {
@@ -114,11 +225,7 @@ describe('PackagesListApp', () => {
 
     await waitForFirstRequest();
 
-    expect(findPackageTitle().exists()).toBe(true);
-    expect(findPackageTitle().props()).toMatchObject({
-      count: 2,
-      helpUrl: PACKAGE_HELP_URL,
-    });
+    expect(findPackageTitle().props('count')).toBe(2);
   });
 
   describe('link to settings', () => {
@@ -138,7 +245,7 @@ describe('PackagesListApp', () => {
     });
 
     describe('when settings path is provided', () => {
-      const label = s__('PackageRegistry|Configure in settings');
+      const label = 'Configure in settings';
 
       beforeEach(() => {
         mountComponent();
@@ -200,7 +307,9 @@ describe('PackagesListApp', () => {
     });
 
     it('exists and has the right props', async () => {
-      await waitForFirstRequest();
+      findSearch().vm.$emit('update', searchPayload);
+      await waitForPromises();
+
       expect(findListComponent().props()).toMatchObject({
         list: expect.arrayContaining([expect.objectContaining({ id: packageData().id })]),
         isLoading: false,
@@ -212,6 +321,24 @@ describe('PackagesListApp', () => {
       });
     });
 
+    it('renders PackageErrorsCount component', async () => {
+      findSearch().vm.$emit('update', searchPayload);
+      await waitForPromises();
+
+      expect(findPackageErrorsCount().exists()).toBe(true);
+    });
+
+    describe('when packageStatus filter is set to error', () => {
+      beforeEach(async () => {
+        findSearch().vm.$emit('update', { filters: { packageStatus: 'error' } });
+        await nextTick();
+      });
+
+      it('does not render PackageErrorsCount component', () => {
+        expect(findPackageErrorsCount().exists()).toBe(false);
+      });
+    });
+
     it('when pagination emits next event fetches the next set of records', async () => {
       await waitForFirstRequest();
       findPagination().vm.$emit('next');
@@ -220,6 +347,7 @@ describe('PackagesListApp', () => {
       expect(resolver).toHaveBeenCalledWith(
         expect.objectContaining({ after: pagination().endCursor, first: GRAPHQL_PAGE_SIZE }),
       );
+      expect(smoothScrollTop).toHaveBeenCalledTimes(1);
     });
 
     it('when pagination emits prev event fetches the prev set of records', async () => {
@@ -229,11 +357,32 @@ describe('PackagesListApp', () => {
 
       expect(resolver).toHaveBeenCalledWith(
         expect.objectContaining({
-          first: null,
           before: pagination().startCursor,
           last: GRAPHQL_PAGE_SIZE,
         }),
       );
+      expect(smoothScrollTop).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('when canDeletePackages is false does not request group package settings query', () => {
+    const groupPackageSettingsResolver = jest
+      .fn()
+      .mockResolvedValue(groupPackageSettingsQueryForGroup());
+    beforeEach(() => {
+      mountComponent({
+        groupPackageSettingsResolver,
+        provide: {
+          ...defaultProvide,
+          canDeletePackages: false,
+        },
+      });
+
+      return waitForFirstRequest();
+    });
+
+    it('does not request group package settings query', () => {
+      expect(groupPackageSettingsResolver).not.toHaveBeenCalled();
     });
   });
 
@@ -242,15 +391,29 @@ describe('PackagesListApp', () => {
     ${WORKSPACE_PROJECT} | ${'sort'}
     ${WORKSPACE_GROUP}   | ${'groupSort'}
   `('$type query', ({ type, sortType }) => {
+    let groupPackageSettingsResolver;
     let provide;
     let resolver;
+    let countResolver;
 
     const isGroupPage = type === WORKSPACE_GROUP;
 
     beforeEach(() => {
+      jest.spyOn(Sentry, 'captureException').mockImplementation();
       provide = { ...defaultProvide, isGroupPage };
       resolver = jest.fn().mockResolvedValue(packagesListQuery({ type }));
-      mountComponent({ provide, resolver });
+      countResolver = jest.fn().mockResolvedValue(packagesListCountQuery({ type }));
+
+      const response = isGroupPage
+        ? groupPackageSettingsQueryForGroup()
+        : groupPackageSettingsQuery();
+      groupPackageSettingsResolver = jest.fn().mockResolvedValue(response);
+      mountComponent({
+        provide,
+        resolver,
+        countResolver,
+        groupPackageSettingsResolver,
+      });
       return waitForFirstRequest();
     });
 
@@ -264,6 +427,52 @@ describe('PackagesListApp', () => {
       );
     });
 
+    it('calls the count resolver with the right parameters', () => {
+      expect(countResolver).toHaveBeenCalledWith({
+        fullPath: provide.fullPath,
+        isGroupPage,
+      });
+    });
+
+    it('calls the group packageSettings resolver with the right parameters', () => {
+      expect(groupPackageSettingsResolver).toHaveBeenCalledWith({
+        fullPath: provide.fullPath,
+        isGroupPage,
+      });
+    });
+
+    it('expects not to call sentry', () => {
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    });
+
+    describe('when packagesResource query fails', () => {
+      beforeEach(() => {
+        resolver = jest.fn().mockRejectedValue(new Error('error'));
+        mountComponent({
+          resolver,
+        });
+        return waitForFirstRequest();
+      });
+
+      it('captures error in Sentry', () => {
+        expect(Sentry.captureException).toHaveBeenCalled();
+      });
+    });
+
+    describe('when packagesCount query fails', () => {
+      beforeEach(() => {
+        countResolver = jest.fn().mockRejectedValue(new Error('error'));
+        mountComponent({
+          countResolver,
+        });
+        return waitForFirstRequest();
+      });
+
+      it('captures error in Sentry', () => {
+        expect(Sentry.captureException).toHaveBeenCalled();
+      });
+    });
+
     it('list component has group settings prop set', () => {
       expect(findListComponent().props()).toMatchObject({
         groupSettings: expect.objectContaining({
@@ -273,19 +482,40 @@ describe('PackagesListApp', () => {
         }),
       });
     });
+
+    describe('when group package settings query fails', () => {
+      beforeEach(() => {
+        groupPackageSettingsResolver = jest.fn().mockRejectedValue(new Error('error'));
+        mountComponent({
+          provide,
+          resolver,
+          groupPackageSettingsResolver,
+        });
+        return waitForFirstRequest();
+      });
+
+      it('captures error in Sentry', () => {
+        expect(Sentry.captureException).toHaveBeenCalled();
+      });
+    });
   });
 
   describe.each`
-    description         | resolverResponse
-    ${'empty response'} | ${packagesListQuery({ extend: { nodes: [] } })}
+    description         | countResolverResponse
+    ${'empty response'} | ${packagesListCountQuery({ count: 0 })}
     ${'error response'} | ${{ data: { group: null } }}
-  `(`$description renders empty state`, ({ resolverResponse }) => {
+  `(`$description renders empty state`, ({ countResolverResponse }) => {
+    const groupPackageSettingsResolver = jest
+      .fn()
+      .mockResolvedValue(groupPackageSettingsQueryForGroup());
+
     beforeEach(() => {
-      const resolver = jest.fn().mockResolvedValue(resolverResponse);
-      mountComponent({ resolver });
+      const countResolver = jest.fn().mockResolvedValue(countResolverResponse);
+      mountComponent({ countResolver, groupPackageSettingsResolver });
 
       return waitForFirstRequest();
     });
+
     it('generate the correct empty list link', () => {
       const link = findListComponent().findComponent(GlLink);
 
@@ -295,6 +525,14 @@ describe('PackagesListApp', () => {
 
     it('includes the right content on the default tab', () => {
       expect(findEmptyState().text()).toContain(ListPage.i18n.emptyPageTitle);
+    });
+
+    it('does not request for group package settings', () => {
+      expect(groupPackageSettingsResolver).not.toHaveBeenCalled();
+    });
+
+    it('does not render page size selector', () => {
+      expect(findPageSizeSelector().exists()).toBe(false);
     });
   });
 
@@ -327,7 +565,10 @@ describe('PackagesListApp', () => {
       await waitForFirstRequest();
 
       expect(findDeletePackages().props()).toMatchObject({
-        refetchQueries: [{ query: getPackagesQuery, variables: {} }],
+        refetchQueries: [
+          { query: getPackagesQuery, variables: {} },
+          { query: getPackagesCountQuery, variables: {} },
+        ],
         showSuccessAlert: true,
       });
     });
@@ -340,6 +581,16 @@ describe('PackagesListApp', () => {
       findListComponent().vm.$emit('delete', [{ id: 1 }]);
 
       expect(findDeletePackages().emitted('start')).toEqual([[]]);
+    });
+
+    it('deletePackages is bound to package-errors-count delete event', async () => {
+      mountComponent();
+
+      await waitForFirstRequest();
+
+      findPackageErrorsCount().vm.$emit('confirm-delete', [{ id: 1 }]);
+
+      expect(findDeletePackages().emitted('start')).toHaveLength(1);
     });
 
     it('start and end event set loading correctly', async () => {

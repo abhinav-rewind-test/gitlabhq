@@ -3,7 +3,13 @@ import { getIdFromGraphQLId, etagQueryHeaders } from '~/graphql_shared/utils';
 import { reportToSentry } from '~/ci/utils';
 
 import { listByLayers } from '~/ci/pipeline_details/utils/parsing_utils';
-import { unwrapStagesWithNeedsAndLookup } from '~/ci/pipeline_details/utils/unwrapping_utils';
+import {
+  enrichStagesWithNeeds,
+  unwrapStagesWithLookup,
+} from '~/ci/pipeline_details/utils/unwrapping_utils';
+import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
+import { sanitize } from '~/lib/dompurify';
+import { __, s__, sprintf } from '~/locale';
 import { beginPerfMeasure, finishPerfMeasureAndSend } from './perf_utils';
 
 export { toggleQueryPollingByVisibility } from '~/graphql_shared/utils';
@@ -89,7 +95,7 @@ const unwrapPipelineData = (mainPipelineProjectPath, data) => {
     stages: { nodes: stages },
   } = pipeline;
 
-  const { stages: updatedStages, lookup } = unwrapStagesWithNeedsAndLookup(stages);
+  const { stages: updatedStages, lookup } = unwrapStagesWithLookup(stages);
 
   return {
     ...pipeline,
@@ -105,7 +111,39 @@ const unwrapPipelineData = (mainPipelineProjectPath, data) => {
   };
 };
 
+const mergePipelineWithNeeds = (pipeline, needs) => {
+  if (!pipeline || !needs) {
+    return null;
+  }
+
+  const { stages } = pipeline;
+
+  const updatedStages = enrichStagesWithNeeds(stages, needs);
+
+  return {
+    ...pipeline,
+    stages: updatedStages,
+  };
+};
+
 const validateConfigPaths = (value) => value.graphqlResourceEtag?.length > 0;
+
+const confirmJobConfirmationMessage = (jobName, message) => {
+  return confirmAction(null, {
+    title: sprintf(s__('PipelineGraph|Are you sure you want to run %{jobName}?'), {
+      jobName: sanitize(jobName),
+    }),
+    modalHtmlMessage: `
+      <p>${sprintf(__('Custom confirmation message: %{message}'), {
+        message: sanitize(message),
+      })}</p>
+      <p>${s__('PipelineGraph|Do you want to continue?')}</p>
+    `,
+    primaryBtnText: sprintf(__('Yes, run %{jobName}'), {
+      jobName: sanitize(jobName),
+    }),
+  });
+};
 
 export {
   calculatePipelineLayersInfo,
@@ -113,5 +151,7 @@ export {
   serializeGqlErr,
   serializeLoadErrors,
   unwrapPipelineData,
+  mergePipelineWithNeeds,
   validateConfigPaths,
+  confirmJobConfirmationMessage,
 };

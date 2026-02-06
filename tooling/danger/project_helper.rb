@@ -3,13 +3,13 @@
 module Tooling
   module Danger
     module ProjectHelper
-      CI_ONLY_RULES ||= %w[
+      CI_ONLY_RULES = %w[
         ce_ee_vue_templates
-        ci_templates
         datateam
-        feature_flag
+        master_pipeline_status
         roulette
         sidekiq_queues
+        spec_only
         specialization_labels
         specs
         stable_branch_patch
@@ -18,29 +18,26 @@ module Tooling
 
       # First-match win, so be sure to put more specific regex at the top...
       CATEGORIES = {
-        # GitLab Flavored Markdown Specification files. See more context at: https://docs.gitlab.com/ee/development/gitlab_flavored_markdown/specification_guide/#specification-files
-        %r{\Aglfm_specification/.+prosemirror_json\.yml} => [:frontend],
-        %r{\Aglfm_specification/.+\.yml} => [:frontend, :backend],
-
         # API auto generated doc files and schema (must come before generic docs regex)
         %r{\Adoc/api/graphql/reference/} => [:docs, :backend],
         %r{\Adoc/api/openapi/.*\.yaml\z} => [:docs, :backend],
 
         [%r{usage_data\.rb}, %r{^(\+|-).*\s+(count|distinct_count|estimate_batch_distinct_count)\(.*\)(.*)$}] => [:database, :backend, :analytics_instrumentation],
 
-        %r{\A((ee|jh)/)?config/feature_flags/} => :feature_flag,
+        %r{\A((ee|jh)/)?config/feature_flags/.*(\.(yml|yaml))\z} => :feature_flag,
 
         %r{doc/api/usage_data.md} => [:analytics_instrumentation],
 
         %r{\Adoc/.*(\.(md|png|gif|jpg|yml))\z} => :docs,
+        %r{\Adoc-locale/.*(\.md)\z} => :docs,
         %r{\A(CONTRIBUTING|LICENSE|MAINTENANCE|PHILOSOPHY|PROCESS|README)(\.md)?\z} => :docs,
         %r{\Adata/whats_new/} => :docs,
         %r{\Adata/deprecations/} => :none,
         %r{\Adata/removals/} => :none,
 
-        %r{\A((ee|jh)/)?app/finders/(.+/)?integrations/} => [:import_integrate_be, :database, :backend],
-        [%r{\A((ee|jh)/)?db/(geo/)?(migrate|post_migrate)/}, %r{(:integrations|:\w+_tracker_data)\b}] => [:import_integrate_be, :database],
-        [%r{\A((ee|jh)/)?(app|lib)/.+\.rb}, %r{\b(Integrations::|\.execute_(integrations|hooks))\b}] => [:import_integrate_be, :backend],
+        %r{\A((ee|jh)/)?app/finders/(.+/)?integrations/} => [:database, :backend],
+        [%r{\A((ee|jh)/)?db/(geo/)?(migrate|post_migrate)/}, %r{(:integrations|:\w+_tracker_data)\b}] => [:database],
+        [%r{\A((ee|jh)/)?(app|lib)/.+\.rb}, %r{\b(Integrations::|\.execute_(integrations|hooks))\b}] => [:backend],
         %r{\A(
           ((ee|jh)/)?app/((?!.*clusters)(?!.*alert_management)(?!.*views)(?!.*assets).+/)?integration.+ |
           ((ee|jh)/)?app/((?!.*search).+/)?project_service.+ |
@@ -52,13 +49,13 @@ module Tooling
           ((ee|jh)/)?lib/(.+/)?.*integration.+ |
           ((ee|jh)/)?lib/(.+/)?api/v3/github\.rb |
           ((ee|jh)/)?lib/(.+/)?api/github/entities\.rb
-        )\z}x => [:import_integrate_be, :backend],
+        )\z}x => [:backend],
 
         %r{\A(
           ((ee|jh)/)?app/(views|assets)/((?!.*clusters)(?!.*alerts_settings).+/)?integration.+ |
           ((ee|jh)/)?app/(views|assets)/(.+/)?jira_connect.+ |
           ((ee|jh)/)?app/(views|assets)/((?!.*filtered_search).+/)?hooks?.+
-        )\z}x => [:import_integrate_fe, :frontend],
+        )\z}x => [:frontend],
 
         %r{\A(
           app/assets/javascripts/tracking/.*\.js |
@@ -66,6 +63,7 @@ module Tooling
           spec/frontend/tracking_spec\.js
         )\z}x => [:frontend, :analytics_instrumentation],
         [%r{\.(vue|js)\z}, %r{trackRedis}] => [:frontend, :analytics_instrumentation],
+        [%r{\.(vue|js)\z}, %r{InternalEvents\.trackEvent}] => [:frontend, :analytics_instrumentation],
         %r{\A((ee|jh)/)?app/assets/} => :frontend,
         %r{\A((ee|jh)/)?app/views/.*\.svg} => :frontend,
         %r{\A((ee|jh)/)?app/views/} => [:frontend, :backend],
@@ -79,7 +77,6 @@ module Tooling
           \.babelrc |
           \.browserslistrc |
           \.eslintignore |
-          \.eslintrc(\.yml)? |
           \.nvmrc |
           \.prettierignore |
           \.prettierrc |
@@ -87,6 +84,7 @@ module Tooling
           \.haml-lint.yml |
           \.haml-lint_todo.yml |
           babel\.config\.js |
+          eslint\.config\.mjs |
           jest\.config\.js |
           package\.json |
           yarn\.lock |
@@ -97,6 +95,7 @@ module Tooling
           \.gitlab/ci/frontend\.gitlab-ci\.yml
         )\z}x => %i[frontend tooling],
 
+        %r{\Aee/db/seeds/data_seeder/} => [:backend],
         %r{\A((ee|jh)/)?db/(geo/)?(?!click_house|fixtures)[^/]+} => [:database],
         %r{\A((ee|jh)/)?db/[^/]+\z} => [:database], # db/ root files
         %r{\Adb/docs/.+\.yml\z} => [:database],
@@ -120,19 +119,24 @@ module Tooling
         %r{\A((ee|jh)/)?config/(events|metrics)/((.*\.yml)|(schema\.json))\z} => [:analytics_instrumentation],
         %r{\A((ee|jh)/)?lib/gitlab/usage_data(_counters)?(/|\.rb)} => [:backend, :analytics_instrumentation],
         %r{\A((ee|jh)/)?(spec/)?lib/gitlab/usage(/|\.rb)} => [:backend, :analytics_instrumentation],
-        %r{\A(
-          lib/gitlab/tracking\.rb |
-          spec/lib/gitlab/tracking_spec\.rb |
+        %r{\A(((ee|jh)/)?(
+          (spec/)?lib/((ee|jh)/)?gitlab/tracking.*\.rb |
           app/helpers/tracking_helper\.rb |
           spec/helpers/tracking_helper_spec\.rb |
           (spec/)?lib/generators/gitlab/usage_metric_\S+ |
           (spec/)?lib/generators/gitlab/usage_metric_definition/redis_hll_generator(_spec)?\.rb |
           lib/generators/rails/usage_metric_definition_generator\.rb |
           spec/lib/generators/usage_metric_definition_generator_spec\.rb |
-          generator_templates/usage_metric_definition/metric_definition\.yml)\z}x => [:backend, :analytics_instrumentation],
+          spec/support/matchers/internal_events_matchers\.rb |
+          spec/support_specs/matchers/internal_events_matchers_spec\.rb |
+          (spec/)?scripts/internal_events/\S+\.rb |
+          generator_templates/usage_metric_definition/metric_definition\.yml))\z}x => [:backend, :analytics_instrumentation],
         %r{gitlab/usage_data(_spec)?\.rb} => [:analytics_instrumentation],
         [%r{\.haml\z}, %r{data: \{ track}] => [:analytics_instrumentation],
         [%r{\.(rb|haml)\z}, %r{Gitlab::Tracking\.(event|enabled\?|options)}] => [:analytics_instrumentation],
+        [%r{\.(rb|haml)\z}, %r{Gitlab::InternalEvents\.track_event}] => [:analytics_instrumentation],
+        [%r{\.(rb|haml)\z}, %r{Gitlab::InternalEventsTracking}] => [:analytics_instrumentation],
+        [%r{\.(rb|haml)\z}, %r{track_internal_event}] => [:analytics_instrumentation],
         [%r{\.(vue|js)\z}, %r{(Tracking.event|/\btrack\(/|data-track-action)}] => [:analytics_instrumentation],
 
         %r{\A((ee|jh)/)?app/(?!assets|views)[^/]+} => :backend,
@@ -142,7 +146,7 @@ module Tooling
         %r{\A((ee|jh)/)?vendor/} => :backend,
         %r{\A(Gemfile.*|Rakefile)\z} => :backend,
         %r{\A[A-Z_]+_VERSION\z} => :backend,
-        %r{\A\.rubocop(_todo)?\.yml\z} => :backend,
+        %r{\A\.rubocop\.yml\z} => :backend,
         %r{\Agems/.*/\.rubocop\.yml\z} => :backend,
         %r{\A\.rubocop_todo/.*\.yml\z} => :backend,
         %r{\Afile_hooks/} => :backend,

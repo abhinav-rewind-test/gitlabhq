@@ -7,17 +7,42 @@ import {
   GlFormCheckbox,
   GlSprintf,
   GlTooltipDirective,
+  GlSkeletonLoader,
 } from '@gitlab/ui';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { STATUS_OPEN, STATUS_CLOSED } from '~/issues/constants';
 import { isScopedLabel } from '~/lib/utils/common_utils';
-import { isExternal, setUrlFragment } from '~/lib/utils/url_utility';
+import { isExternal, visitUrl } from '~/lib/utils/url_utility';
 import { __, n__, sprintf } from '~/locale';
 import IssuableAssignees from '~/issuable/components/issue_assignees.vue';
+import StatusBadge from '~/issuable/components/status_badge.vue';
+
 import timeagoMixin from '~/vue_shared/mixins/timeago';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import WorkItemTypeIcon from '~/work_items/components/work_item_type_icon.vue';
-import { STATE_OPEN, STATE_CLOSED } from '~/work_items/constants';
-import { isAssigneesWidget, isLabelsWidget } from '~/work_items/utils';
+import WorkItemPrefetch from '~/work_items/components/work_item_prefetch.vue';
+import {
+  METADATA_KEYS,
+  STATE_CLOSED,
+  STATE_OPEN,
+  WORK_ITEM_TYPE_NAME_INCIDENT,
+  WORK_ITEM_TYPE_NAME_ISSUE,
+  WORK_ITEM_TYPE_NAME_TEST_CASE,
+  WORK_ITEM_TYPE_NAME_TICKET,
+  WORK_ITEM_TYPE_ENUM_TEST_CASE,
+  WORK_ITEM_TYPE_ENUM_TICKET,
+  WORK_ITEM_TYPE_ENUM_INCIDENT,
+  WORK_ITEM_TYPE_ENUM_ISSUE,
+  WORK_ITEM_TYPE_ROUTE_WORK_ITEM,
+} from '~/work_items/constants';
+import {
+  isAssigneesWidget,
+  findLabelsWidget,
+  findLinkedItemsWidget,
+  canRouterNav,
+} from '~/work_items/utils';
+import { routeForWorkItemTypeName } from '~/work_items/router/utils';
+import { SUPPORT_BOT_USERNAME } from '~/issues/show/utils/issuable_data';
 
 export default {
   components: {
@@ -27,13 +52,26 @@ export default {
     GlLabel,
     GlFormCheckbox,
     GlSprintf,
+    GlSkeletonLoader,
+    StatusBadge,
     IssuableAssignees,
     WorkItemTypeIcon,
+    WorkItemPrefetch,
+    WorkItemRelationshipIcons: () =>
+      import('~/work_items/components/shared/work_item_relationship_icons.vue'),
   },
   directives: {
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [timeagoMixin],
+  mixins: [timeagoMixin, glFeatureFlagMixin()],
+  inject: {
+    isGroup: {
+      default: false,
+    },
+    getWorkItemTypeConfiguration: {
+      default: null,
+    },
+  },
   props: {
     hasScopedLabelsFeature: {
       type: Boolean,
@@ -43,6 +81,11 @@ export default {
     issuableSymbol: {
       type: String,
       required: true,
+    },
+    fullPath: {
+      type: String,
+      required: false,
+      default: null,
     },
     issuable: {
       type: Object,
@@ -77,13 +120,68 @@ export default {
       required: false,
       default: false,
     },
+    detailLoading: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    hiddenMetadataKeys: {
+      type: Array,
+      required: false,
+      default: () => [],
+    },
+  },
+  constants: {
+    METADATA_KEYS,
   },
   computed: {
     issuableId() {
-      return getIdFromGraphQLId(this.issuable.id);
+      return getIdFromGraphQLId(this.issuable.id) || this.issuable.id;
     },
     issuableIid() {
       return this.issuable.iid;
+    },
+    workItemType() {
+      return this.issuable.workItemType?.name;
+    },
+    workItemFullPath() {
+      return (
+        this.issuable.namespace?.fullPath || this.issuable.reference?.split(this.issuableSymbol)[0]
+      );
+    },
+    isIncident() {
+      // Remove once we have the workItemConfig returning real data
+      const isTypeIncident =
+        this.workItemType === WORK_ITEM_TYPE_NAME_INCIDENT ||
+        this.issuable?.type === WORK_ITEM_TYPE_ENUM_INCIDENT;
+
+      return this.workItemConfig?.isIncidentManagement || isTypeIncident;
+    },
+    isServiceDeskIssue() {
+      const isTypeServiceDeskIssue =
+        (this.issuable?.type === WORK_ITEM_TYPE_ENUM_ISSUE ||
+          this.workItemType === WORK_ITEM_TYPE_NAME_ISSUE) &&
+        this.issuable?.author?.username === SUPPORT_BOT_USERNAME;
+
+      const isTicketType =
+        this.issuable?.type === WORK_ITEM_TYPE_ENUM_TICKET ||
+        this.workItemType === WORK_ITEM_TYPE_NAME_TICKET;
+      return this.workItemConfig?.isServiceDesk || isTypeServiceDeskIssue || isTicketType;
+    },
+    isTestCase() {
+      return (
+        this.workItemType === WORK_ITEM_TYPE_NAME_TEST_CASE ||
+        this.issuable?.type === WORK_ITEM_TYPE_ENUM_TEST_CASE
+      );
+    },
+    workItemConfig() {
+      // Legacy applications may not have the configuration getter available
+      return this.getWorkItemTypeConfiguration
+        ? this.getWorkItemTypeConfiguration(this.workItemType)
+        : {};
+    },
+    useIssueView() {
+      return this.workItemConfig?.useIssueView;
     },
     author() {
       return this.issuable.author || {};
@@ -104,13 +202,13 @@ export default {
       return this.issuable.reference || `${this.issuableSymbol}${this.issuable.iid}`;
     },
     type() {
-      return this.issuable.type || this.issuable.workItemType?.name.toUpperCase();
+      return this.issuable.type || this.workItemType?.toUpperCase();
     },
     labels() {
       return (
         this.issuable.labels?.nodes ||
         this.issuable.labels ||
-        this.issuable.widgets?.find(isLabelsWidget)?.labels.nodes ||
+        findLabelsWidget(this.issuable)?.labels?.nodes ||
         []
       );
     },
@@ -121,18 +219,33 @@ export default {
       return (
         this.issuable.assignees?.nodes ||
         this.issuable.assignees ||
-        this.issuable.widgets?.find(isAssigneesWidget)?.assignees.nodes ||
+        this.issuable.widgets?.find(isAssigneesWidget)?.assignees?.nodes ||
         []
       );
     },
-    createdAt() {
-      return this.timeFormatted(this.issuable.createdAt);
+    linkedItemsWidget() {
+      return findLinkedItemsWidget(this.issuable);
     },
-    isNotOpen() {
-      return ![STATUS_OPEN, STATE_OPEN].includes(this.issuable.state);
+    blockingCount() {
+      return this.linkedItemsWidget?.blockingCount || 0;
+    },
+    blockedByCount() {
+      return this.linkedItemsWidget?.blockedByCount || 0;
+    },
+    hasBlockingRelationships() {
+      return this.blockingCount > 0 || this.blockedByCount > 0;
+    },
+    createdAt() {
+      return this.issuable.createdAt ? this.timeFormatted(this.issuable.createdAt) : undefined;
+    },
+    isOpen() {
+      return [STATUS_OPEN, STATE_OPEN].includes(this.issuable.state);
     },
     isClosed() {
       return [STATUS_CLOSED, STATE_CLOSED].includes(this.issuable.state);
+    },
+    statusTooltip() {
+      return this.issuable.mergedAt ? this.tooltipTitle(this.issuable.mergedAt) : '';
     },
     timestamp() {
       return this.isClosed && this.issuable.closedAt
@@ -189,8 +302,13 @@ export default {
           this.issuable.assignees,
       );
     },
-    issuableNotesLink() {
-      return setUrlFragment(this.issuableLinkHref, 'notes');
+    showDraftStatusBadge() {
+      return Boolean(
+        this.isMergeRequest &&
+          this.isOpen &&
+          this.issuable.draft &&
+          this.glFeatures.showMergeRequestStatusDraft,
+      );
     },
     statusBadgeVariant() {
       if (this.isMergeRequest && this.isClosed) {
@@ -203,6 +321,29 @@ export default {
       // eslint-disable-next-line no-underscore-dangle
       return this.issuable.__typename === 'MergeRequest';
     },
+    isAllowedType() {
+      return !this.isIncident && !this.isServiceDeskIssue && !this.isTestCase;
+    },
+    useWorkItemTemplate() {
+      if (this.isGroup) return false;
+
+      // Use new config-based check first, fall back to legacy hardcoded checks for backward compatibility
+      return !this.useIssueView || this.isAllowedType;
+    },
+    hiddenIssuableTitle() {
+      if (this.isMergeRequest) {
+        return __('This merge request is hidden because its author has been banned.');
+      }
+
+      return __('This issue is hidden because its author has been banned.');
+    },
+    listItemUniqueId() {
+      const availableFullPath = this.workItemFullPath || this.fullPath;
+      return `listItem-${availableFullPath}/${getIdFromGraphQLId(this.issuable.id)}`;
+    },
+    isClickableLink() {
+      return this.preventRedirect && !this.showCheckbox;
+    },
   },
   methods: {
     hasSlotContents(slotName) {
@@ -211,8 +352,7 @@ export default {
     },
     scopedLabel(label) {
       const allowsScopedLabels =
-        this.hasScopedLabelsFeature ||
-        this.issuable.widgets?.find(isLabelsWidget)?.allowsScopedLabels;
+        this.hasScopedLabelsFeature || findLabelsWidget(this.issuable)?.allowsScopedLabels;
       return allowsScopedLabels && isScopedLabel(label);
     },
     labelTitle(label) {
@@ -222,23 +362,57 @@ export default {
       const value = encodeURIComponent(this.labelTitle(label));
       return `?${this.labelFilterParam}[]=${value}`;
     },
-    /**
-     * This is needed as an independent method since
-     * when user changes current page, `$refs.authorLink`
-     * will be null until next page results are loaded & rendered.
-     */
-    getAuthorPopoverTarget() {
-      if (this.$refs.authorLink) {
-        return this.$refs.authorLink.$el;
-      }
-      return '';
-    },
     handleIssuableItemClick(e) {
-      if (e.metaKey || e.ctrlKey || !this.preventRedirect) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || this.showCheckbox || e.button === 1) {
         return;
       }
       e.preventDefault();
-      this.$emit('select-issuable', { iid: this.issuableIid, webUrl: this.issuableLinkHref });
+      // Unsupported types incidents and Service Desk issues
+      // should not open in drawer
+      if (!this.isAllowedType || !this.preventRedirect) {
+        this.navigateToIssuable();
+        return;
+      }
+
+      this.$emit('select-issuable', {
+        id: this.issuable.id,
+        iid: this.issuableIid,
+        webUrl: this.issuable.webUrl,
+        fullPath: this.workItemFullPath,
+        workItemType: this.type.toLowerCase(),
+      });
+    },
+    navigateToIssuable() {
+      if (!this.fullPath) {
+        visitUrl(this.issuableLinkHref);
+      }
+      const shouldRouterNav = canRouterNav({
+        fullPath: this.fullPath,
+        webUrl: this.issuableLinkHref,
+        isGroup: this.isGroup,
+        issueAsWorkItem: this.useWorkItemTemplate,
+      });
+
+      if (shouldRouterNav) {
+        const { useWorkItemUrl } = this.glFeatures;
+        const workItemTypeParameter = useWorkItemUrl
+          ? WORK_ITEM_TYPE_ROUTE_WORK_ITEM
+          : routeForWorkItemTypeName(this.issuable.workItemType?.name);
+        this.$router.push({
+          name: 'workItem',
+          params: {
+            iid: this.issuableIid,
+            type: workItemTypeParameter,
+          },
+        });
+      } else {
+        visitUrl(this.issuableLinkHref);
+      }
+    },
+    handleRowClick(e) {
+      if (this.preventRedirect) {
+        this.handleIssuableItemClick(e);
+      }
     },
   },
 };
@@ -247,15 +421,30 @@ export default {
 <template>
   <li
     :id="`issuable_${issuableId}`"
-    class="issue gl-display-flex! gl-px-5!"
-    :class="{ closed: issuable.closedAt, 'gl-bg-blue-50': isActive }"
+    class="issue !gl-flex gl-flex-col gl-gap-y-3 !gl-px-5 @sm/panel:gl-flex-row"
+    :class="{
+      closed: issuable.closedAt,
+      '!gl-bg-feedback-info': isActive,
+      'issue-clickable gl-relative gl-cursor-pointer': isClickableLink,
+      'hover:gl-bg-subtle': isClickableLink && !isActive,
+    }"
     :data-labels="labelIdsString"
     :data-qa-issue-id="issuableId"
     data-testid="issuable-item-wrapper"
+    @click="handleRowClick"
   >
+    <a
+      v-if="isClickableLink && issuableLinkHref"
+      tabindex="-1"
+      :href="issuableLinkHref"
+      class="!gl-absolute gl-left-0 gl-top-0 !gl-z-1 !gl-flex gl-h-full gl-w-full"
+      aria-hidden="true"
+      data-testid="issuable-card-link-overlay"
+    ></a>
+
     <gl-form-checkbox
       v-if="showCheckbox"
-      class="issue-check gl-mr-0"
+      class="gl-pr-3 gl-pt-2"
       :checked="checked"
       :data-id="issuableId"
       :data-iid="issuableIid"
@@ -265,160 +454,270 @@ export default {
       <span class="gl-sr-only">{{ issuable.title }}</span>
     </gl-form-checkbox>
     <div class="issuable-main-info">
-      <div data-testid="issuable-title" class="issue-title title">
+      <div data-testid="issuable-title" class="issue-title title gl-text-[0]">
+        <status-badge
+          v-if="showDraftStatusBadge"
+          :state="issuable.state"
+          :is-draft="issuable.draft"
+          issuable-type="merge_request"
+          class="gl-relative gl-top-2"
+          data-testid="issuable-draft-status-badge"
+        />
         <work-item-type-icon
           v-if="showWorkItemTypeIcon"
           class="gl-mr-2"
           :work-item-type="type"
           show-tooltip-on-hover
+          icon-variant="subtle"
         />
-        <gl-icon
+        <button
           v-if="issuable.confidential"
           v-gl-tooltip
-          name="eye-slash"
           :title="__('Confidential')"
-          :aria-label="__('Confidential')"
-        />
-        <gl-icon
+          class="button-reset gl-mr-2 gl-inline-block gl-w-5"
+          data-testid="confidential-icon-container"
+        >
+          <gl-icon name="eye-slash" variant="warning" />
+        </button>
+        <span
           v-if="issuable.hidden"
           v-gl-tooltip
-          name="spam"
-          :title="__('This issue is hidden because its author has been banned.')"
+          :title="hiddenIssuableTitle"
+          class="gl-mr-2 gl-inline-block gl-w-5"
+          data-testid="hidden-icon-container"
           :aria-label="__('Hidden')"
-        />
+        >
+          <gl-icon name="spam" />
+        </span>
+        <work-item-prefetch
+          v-if="preventRedirect"
+          :work-item-iid="issuableIid"
+          :work-item-full-path="workItemFullPath"
+          data-testid="issuable-prefetch-trigger"
+        >
+          <template #default="{ prefetchWorkItem, clearPrefetching }">
+            <gl-link
+              :id="listItemUniqueId"
+              class="issue-title-text gl-text-base"
+              dir="auto"
+              :href="issuableLinkHref"
+              data-testid="issuable-title-link"
+              v-bind="issuableTitleProps"
+              @click.stop="handleIssuableItemClick"
+              @mouseover.native="prefetchWorkItem(issuableIid)"
+              @mouseout.native="clearPrefetching"
+            >
+              {{ issuable.title }}
+              <gl-icon v-if="isIssuableUrlExternal" name="external-link" class="gl-ml-2" />
+            </gl-link>
+          </template>
+        </work-item-prefetch>
         <gl-link
-          class="issue-title-text"
+          v-else
+          :id="listItemUniqueId"
+          class="issue-title-text gl-text-base"
           dir="auto"
           :href="issuableLinkHref"
           data-testid="issuable-title-link"
           v-bind="issuableTitleProps"
-          @click="handleIssuableItemClick"
+          @click.stop="handleIssuableItemClick"
         >
           {{ issuable.title }}
           <gl-icon v-if="isIssuableUrlExternal" name="external-link" class="gl-ml-2" />
         </gl-link>
+        <slot v-if="hasSlotContents('title-icons')" name="title-icons"></slot>
         <span
           v-if="taskStatus"
-          class="task-status gl-display-none gl-sm-display-inline-block! gl-ml-2 gl-font-sm"
+          class="task-status gl-ml-2 gl-hidden gl-text-sm @sm/panel:!gl-inline-block"
           data-testid="task-status"
         >
           {{ taskStatus }}
         </span>
       </div>
-      <div class="issuable-info">
-        <slot v-if="hasSlotContents('reference')" name="reference"></slot>
-        <span v-else data-testid="issuable-reference" class="issuable-reference">
-          {{ reference }}
-        </span>
-        <span class="gl-display-none gl-sm-display-inline">
-          <span aria-hidden="true">&middot;</span>
-          <span class="issuable-authored gl-mr-3">
-            <gl-sprintf v-if="author.name" :message="__('created %{timeAgo} by %{author}')">
-              <template #timeAgo>
-                <span
-                  v-gl-tooltip.bottom
-                  :title="tooltipTitle(issuable.createdAt)"
-                  data-testid="issuable-created-at"
-                >
-                  {{ createdAt }}
-                </span>
-              </template>
-              <template #author>
-                <span v-if="externalAuthor" data-testid="external-author"
-                  >{{ externalAuthor }} {{ __('via') }}</span
-                >
-                <slot v-if="hasSlotContents('author')" name="author"></slot>
+      <div class="issuable-info gl-flex gl-flex-wrap gl-items-center gl-gap-3 gl-gap-y-1">
+        <slot name="reference">
+          <span data-testid="issuable-reference" class="issuable-reference">
+            {{ reference }}
+          </span>
+        </slot>
+        <span class="-gl-ml-2 gl-hidden @sm/panel:gl-block" aria-hidden="true">&middot;</span>
+        <span class="issuable-authored -gl-ml-2 gl-hidden @sm/panel:gl-block">
+          <gl-sprintf v-if="author.name" :message="__('created %{timeAgo} by %{author}')">
+            <template #timeAgo>
+              <button
+                v-if="issuable.createdAt"
+                v-gl-tooltip.bottom
+                :title="tooltipTitle(issuable.createdAt)"
+                :aria-label="tooltipTitle(issuable.createdAt)"
+                data-testid="issuable-created-at"
+                class="button-reset gl-text-subtle"
+              >
+                {{ createdAt }}
+              </button>
+            </template>
+            <template #author>
+              <span v-if="externalAuthor" data-testid="external-author"
+                >{{ externalAuthor }} {{ __('via') }}</span
+              >
+              <slot name="author">
                 <gl-link
-                  v-else
                   :data-user-id="authorId"
                   :data-username="author.username"
                   :data-name="author.name"
                   :data-avatar-url="author.avatarUrl"
-                  :href="author.webUrl"
+                  :href="author.webPath"
                   data-testid="issuable-author"
-                  class="author-link js-user-link gl-font-sm gl-text-gray-500!"
+                  class="author-link js-user-link gl-text-sm !gl-text-subtle"
+                  @click.stop
                 >
                   <span class="author">{{ author.name }}</span>
                 </gl-link>
-              </template>
-            </gl-sprintf>
-            <gl-sprintf v-else :message="__('created %{timeAgo}')">
-              <template #timeAgo>
-                <span
-                  v-gl-tooltip.bottom
-                  :title="tooltipTitle(issuable.createdAt)"
-                  data-testid="issuable-created-at"
-                >
-                  {{ createdAt }}
-                </span>
-              </template>
-            </gl-sprintf>
-          </span>
-          <slot name="timeframe"></slot>
+              </slot>
+            </template>
+          </gl-sprintf>
+          <gl-sprintf v-else :message="__('created %{timeAgo}')">
+            <template #timeAgo>
+              <span
+                v-if="issuable.createdAt"
+                v-gl-tooltip.bottom
+                :title="tooltipTitle(issuable.createdAt)"
+                data-testid="issuable-created-at"
+              >
+                {{ createdAt }}
+              </span>
+            </template>
+          </gl-sprintf>
         </span>
-        <p
-          v-if="labels.length"
-          role="group"
-          :aria-label="__('Labels')"
-          class="gl-mt-1 gl-mb-0 gl-display-flex gl-flex-wrap gl-gap-2"
+        <slot name="timeframe"></slot>
+        <slot name="target-branch"></slot>
+        <template
+          v-if="
+            labels.length && !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.LABELS)
+          "
         >
           <gl-label
             v-for="(label, index) in labels"
             :key="index"
+            :class="{ '-gl-mr-2': index < labels.length - 1 }"
             :background-color="label.color"
             :title="labelTitle(label)"
             :description="label.description"
             :scoped="scopedLabel(label)"
             :target="labelTarget(label)"
-            size="sm"
+            @click.stop
           />
-        </p>
+        </template>
       </div>
     </div>
-    <div class="issuable-meta">
-      <ul v-if="showIssuableMeta" class="controls">
+    <div class="issuable-meta @sm/panel:gl-max-w-2/8 @md/panel:gl-max-w-3/8">
+      <ul
+        v-if="showIssuableMeta"
+        class="controls gl-flex gl-max-w-full gl-flex-wrap-reverse gl-justify-end gl-gap-3 gl-gap-y-2"
+      >
         <!-- eslint-disable-next-line @gitlab/vue-prefer-dollar-scopedslots -->
-        <li v-if="$slots.status" data-testid="issuable-status">
-          <gl-badge v-if="isNotOpen" size="sm" :variant="statusBadgeVariant">
-            <slot name="status"></slot>
-          </gl-badge>
+        <li v-if="$slots.status" data-testid="issuable-status" class="!gl-mr-0">
+          <button
+            v-if="!isOpen"
+            v-gl-tooltip.top
+            :title="statusTooltip"
+            :aria-label="statusTooltip"
+            class="!gl-cursor-default gl-rounded-pill gl-border-none gl-bg-transparent gl-p-0"
+          >
+            <gl-badge :variant="statusBadgeVariant">
+              <slot name="status"></slot>
+            </gl-badge>
+          </button>
           <slot v-else name="status"></slot>
         </li>
         <slot name="pipeline-status"></slot>
-        <li v-if="assignees.length">
+        <li
+          v-if="
+            assignees.length &&
+            !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.ASSIGNEE)
+          "
+          class="!gl-mr-0"
+        >
           <issuable-assignees
             :assignees="assignees"
             :icon-size="16"
             :max-visible="4"
-            img-css-classes="gl-mr-2!"
-            class="gl-align-items-center gl-display-flex"
+            class="gl-flex gl-items-center"
           />
         </li>
-        <slot name="statistics"></slot>
-        <li
-          v-if="showDiscussions"
-          class="gl-display-none gl-sm-display-block"
-          data-testid="issuable-comments"
-        >
-          <gl-link
-            v-gl-tooltip.top
-            :title="__('Comments')"
-            :href="issuableNotesLink"
-            :class="{ 'no-comments': !notesCount }"
-            class="gl-reset-color!"
-          >
-            <gl-icon name="comments" />
-            {{ notesCount }}
-          </gl-link>
+        <li v-else-if="detailLoading" class="!gl-mr-0">
+          <gl-skeleton-loader :width="20" :lines="1" equal-width-lines />
         </li>
+        <li class="!gl-mr-0 empty:gl-hidden">
+          <slot name="reviewers"></slot>
+        </li>
+        <li class="!gl-mr-0 empty:gl-hidden">
+          <slot name="approval-status"></slot>
+        </li>
+        <slot name="discussions">
+          <li
+            v-if="
+              showDiscussions &&
+              notesCount &&
+              !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.COMMENTS)
+            "
+            class="!gl-mr-0 gl-hidden @sm/panel:gl-inline-flex"
+            data-testid="issuable-comments"
+          >
+            <button
+              v-gl-tooltip
+              :title="__('Comments')"
+              class="button-reset gl-flex gl-items-center !gl-text-inherit"
+            >
+              <gl-icon name="comments" class="gl-mr-2" />
+              {{ notesCount }}
+            </button>
+          </li>
+          <li v-else-if="detailLoading" class="!gl-mr-0">
+            <gl-skeleton-loader :width="30" :lines="1" equal-width-lines />
+          </li>
+        </slot>
+        <li
+          v-if="!hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.POPULARITY)"
+          class="!gl-mr-0 [&:not(:has(li))]:gl-hidden"
+        >
+          <slot name="statistics"></slot>
+        </li>
+        <li
+          v-if="
+            isOpen &&
+            hasBlockingRelationships &&
+            !hiddenMetadataKeys.includes($options.constants.METADATA_KEYS.BLOCKED)
+          "
+          class="!gl-mr-0 empty:gl-hidden"
+        >
+          <work-item-relationship-icons
+            :work-item-type="type"
+            :work-item-full-path="workItemFullPath"
+            :work-item-iid="issuableIid"
+            :work-item-web-url="issuableLinkHref"
+            :blocking-count="blockingCount"
+            :blocked-by-count="blockedByCount"
+          />
+        </li>
+        <li v-else-if="detailLoading" class="!gl-mr-0">
+          <gl-skeleton-loader :width="45" :lines="1" equal-width-lines />
+        </li>
+        <slot name="custom-status"></slot>
       </ul>
       <div
-        v-gl-tooltip.bottom
-        class="gl-text-gray-500 gl-display-none gl-sm-display-inline-block"
-        :title="tooltipTitle(timestamp)"
-        data-testid="issuable-timestamp"
+        class="gl-hidden @sm/panel:gl-flex @sm/panel:gl-flex-col @sm/panel:gl-items-end @md/panel:gl-flex-row @md/panel:gl-items-center"
       >
-        {{ formattedTimestamp }}
+        <slot name="health-status"></slot>
+        <button
+          v-if="timestamp"
+          v-gl-tooltip.bottom
+          :title="tooltipTitle(timestamp)"
+          :aria-label="tooltipTitle(timestamp)"
+          class="button-reset gl-text-subtle @sm/panel:gl-inline-block"
+          data-testid="issuable-timestamp"
+        >
+          {{ formattedTimestamp }}
+        </button>
       </div>
     </div>
   </li>

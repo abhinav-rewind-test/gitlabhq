@@ -9,7 +9,7 @@ module Gitlab
       #
       # In many cases this could introduce a breaking change
       # so enforcement is optional.
-      ENFORCED_TYPES = [Group].freeze
+      ENFORCED_TYPES = [Group, User].freeze
 
       def self.available_for_type?(relation)
         relation.klass.respond_to?(:supported_keyset_orderings)
@@ -20,11 +20,17 @@ module Gitlab
           order_satisfied?(relation, cursor_based_request_context)
       end
 
-      def self.enforced_for_type?(request_scope, relation)
+      def self.enforced_for_type?(request_scope, relation, current_user)
         enforced = ENFORCED_TYPES
         enforced += [::Ci::Build] if ::Feature.enabled?(:enforce_ci_builds_pagination_limit, request_scope, type: :ops)
+        enforced += [Project] if enforced_for_project?(request_scope, current_user)
         enforced.include?(relation.klass)
       end
+
+      def self.enforced_for_project?(request_scope, current_user)
+        !current_user && ::Feature.enabled?(:enforce_projects_pagination_limit, request_scope, type: :ops)
+      end
+      private_class_method :enforced_for_project?
 
       def self.order_satisfied?(relation, cursor_based_request_context)
         order_by_from_request = cursor_based_request_context.order

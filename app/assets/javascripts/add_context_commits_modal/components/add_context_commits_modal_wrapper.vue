@@ -2,6 +2,7 @@
 import { GlModal, GlTabs, GlTab, GlSprintf, GlBadge, GlFilteredSearch } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapState, mapActions } from 'vuex';
+import { markRaw } from 'vue';
 import ReviewTabContainer from '~/add_context_commits_modal/components/review_tab_container.vue';
 import { createAlert } from '~/alert';
 import { BV_SHOW_MODAL } from '~/lib/utils/constants';
@@ -51,7 +52,7 @@ export default {
   },
   data() {
     return {
-      availableTokens: [
+      availableTokens: markRaw([
         {
           icon: 'pencil',
           title: __('Author'),
@@ -91,7 +92,7 @@ export default {
           unique: true,
           optionComponent: DateOption,
         },
-      ],
+      ]),
     };
   },
   computed: {
@@ -104,6 +105,7 @@ export default {
       'contextCommits',
       'contextCommitsLoadingError',
       'selectedCommits',
+      // eslint-disable-next-line vue/no-unused-properties -- searchText is mapped from Vuex and used in handleSearchCommits(),
       'searchText',
       'toRemoveCommits',
     ]),
@@ -129,9 +131,9 @@ export default {
       );
     },
     disableSaveButton() {
-      // We should have a minimum of one commit selected and that should not be in the context commits list or we should have a context commit to delete
+      // We should have a minimum of one commit selected and that should not be in the context commits list, or we should have a context commit to delete
       return (
-        (this.selectedCommitsCount.length === 0 || this.uniqueCommits.length === 0) &&
+        (this.selectedCommitsCount === 0 || this.uniqueCommits.length === 0) &&
         this.toRemoveCommits.length === 0
       );
     },
@@ -280,9 +282,6 @@ export default {
     handleModalHide() {
       this.resetModalState();
     },
-    shouldShowInputDateFormat(value) {
-      return ['Committed-before', 'Committed-after'].indexOf(value) !== -1;
-    },
   },
 };
 </script>
@@ -294,7 +293,7 @@ export default {
     size="md"
     no-focus-on-show
     modal-class="add-review-item-modal"
-    body-class="add-review-item pt-0"
+    body-class="add-review-item !gl-pt-0"
     :scrollable="true"
     :ok-title="__('Save changes')"
     modal-id="add-review-item"
@@ -305,19 +304,19 @@ export default {
     @close="handleModalClose"
     @hide="handleModalHide"
   >
-    <gl-tabs v-model="currentTabIndex" content-class="pt-0">
+    <gl-tabs v-model="currentTabIndex" content-class="!gl-pt-0">
       <gl-tab>
         <template #title>
-          <gl-sprintf :message="__(`Commits in %{codeStart}${targetBranch}%{codeEnd}`)">
-            <template #code="{ content }">
-              <code class="gl-ml-2">{{ content }}</code>
+          <gl-sprintf :message="__('Commits in %{branchName}')">
+            <template #branchName>
+              <code class="gl-ml-2">{{ targetBranch }}</code>
             </template>
           </gl-sprintf>
         </template>
         <div class="gl-mt-3">
           <gl-filtered-search
             ref="filteredSearchInput"
-            class="flex-grow-1"
+            class="!gl-grow"
             :placeholder="__(`Search or filter commits`)"
             :available-tokens="availableTokens"
             @clear="handleSearchCommits"
@@ -330,14 +329,14 @@ export default {
             :loading-failed-text="__('Unable to load commits. Try again later.')"
             :commits="commits"
             :empty-list-text="__('Your search didn\'t match any commits. Try a different query.')"
-            @handleCommitSelect="handleCommitRowSelect"
+            @handle-commit-select="handleCommitRowSelect"
           />
         </div>
       </gl-tab>
       <gl-tab>
         <template #title>
           {{ __('Selected commits') }}
-          <gl-badge size="sm" class="gl-ml-2">{{ selectedCommitsCount }}</gl-badge>
+          <gl-badge class="gl-ml-2">{{ selectedCommitsCount }}</gl-badge>
         </template>
         <review-tab-container
           :is-loading="isLoadingContextCommits"
@@ -349,7 +348,7 @@ export default {
               'Commits you select appear here. Go to the first tab and select commits to add to this merge request.',
             )
           "
-          @handleCommitSelect="handleCommitRowSelect"
+          @handle-commit-select="handleCommitRowSelect"
         />
       </gl-tab>
     </gl-tabs>

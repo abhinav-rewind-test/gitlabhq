@@ -4,10 +4,6 @@ module Gitlab
   module Instrumentation
     # Aggregates Redis measurements from different request storage sources.
     class Redis
-      # Actioncable has it's separate instrumentation, but isn't configurable
-      # in the same way as all the other instances using a class.
-      ActionCable = Class.new(RedisBase)
-
       STORAGES = (
         Gitlab::Redis::ALL_CLASSES.map do |redis_instance_class|
           instrumentation_class = Class.new(RedisBase)
@@ -31,6 +27,10 @@ module Gitlab
           nil
         end
 
+        def shard_key
+          nil
+        end
+
         def payload
           super.merge(*STORAGES.flat_map(&:payload))
         end
@@ -46,7 +46,7 @@ module Gitlab
         end
 
         %i[get_request_count get_cross_slot_request_count get_allowed_cross_slot_request_count query_time read_bytes
-           write_bytes].each do |method|
+          write_bytes].each do |method|
           define_method method do
             STORAGES.sum(&method)
           end

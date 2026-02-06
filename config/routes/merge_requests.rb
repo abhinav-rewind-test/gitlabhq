@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 resources :merge_requests, concerns: :awardable, except: [:new, :create, :show], constraints: { id: /\d+/ } do
   member do
     get :show # Insert this first to ensure redirections using merge_requests#show match this route
@@ -34,14 +35,30 @@ resources :merge_requests, concerns: :awardable, except: [:new, :create, :show],
       get :cached_widget, to: 'merge_requests/content#cached_widget'
     end
 
+    scope constraints: ->(req) { req.format == :diff || req.format == :patch } do
+      get :diffs, to: 'merge_requests/diffs#show'
+    end
+
     scope action: :show do
       get :commits, defaults: { tab: 'commits' }
       get :pipelines, defaults: { tab: 'pipelines' }
+      get :diffs, to: 'merge_requests#rapid_diffs', defaults: { tab: 'diffs' },
+        constraints: ->(params) { params[:rapid_diffs] == 'true' }
       get :diffs, to: 'merge_requests#diffs', defaults: { tab: 'diffs' }
     end
 
     get :diff_for_path, controller: 'merge_requests/diffs'
     get 'diff_by_file_hash/:file_hash', to: 'merge_requests/diffs#diff_by_file_hash', as: :diff_by_file_hash
+    get :diffs_stream, controller: 'merge_requests/diffs_stream'
+    get :diff_files_metadata
+    get :diffs_stats
+    get :diff_file
+    get :versions
+
+    # NOTE: Fallback to `merge_requests/diffs#diff_for_path` to handle `collapsed_diff_url` from the collapsed partial
+    scope controller: 'merge_requests/diffs_stream' do
+      get :diff_for_path
+    end
 
     scope controller: 'merge_requests/conflicts' do
       get :conflicts, action: :show
@@ -75,7 +92,6 @@ scope path: 'merge_requests', controller: 'merge_requests/creations' do
     scope constraints: ->(req) { req.format == :json }, as: :json do
       get :diffs
       get :pipelines
-      get :target_projects
     end
 
     scope action: :new do
@@ -86,5 +102,9 @@ scope path: 'merge_requests', controller: 'merge_requests/creations' do
     get :diff_for_path
     get :branch_from
     get :branch_to
+    get :diffs_stream, controller: 'merge_requests/creations_diffs_stream'
+    get :diff_files_metadata
+    get :diffs_stats
+    get :diff_file
   end
 end

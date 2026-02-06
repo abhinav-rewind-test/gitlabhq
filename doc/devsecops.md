@@ -2,13 +2,12 @@
 stage: none
 group: unassigned
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-description: 'Learn how to use and administer GitLab, the most scalable Git-based fully integrated platform for software development.'
+description: Learn how to use and administer GitLab, the most scalable Git-based fully integrated platform for software development.
+title: 'GitLab: The DevSecOps platform'
 ---
 
-# GitLab: The DevSecOps platform
-
- DevSecOps is a combination of development, security, and operations.
- It is an approach to software development that integrates security throughout the development lifecycle.
+DevSecOps is a combination of development, security, and operations.
+It is an approach to software development that integrates security throughout the development lifecycle.
 
 ## DevSecOps compared to DevOps
 
@@ -38,23 +37,35 @@ DevSecOps fundamentals include:
 
 For details, see [this article about DevSecOps](https://about.gitlab.com/topics/devsecops/).
 
+## DevSecOps in practice
+
+The following GitLab features are all part of a robust DevSecOps platform:
+
+- Shift-left security: Static application security testing (SAST) and dependency scanning in merge requests catch vulnerabilities before code merge.
+- Container security: Image scanning for CVEs, runtime protection, and Kubernetes security policies enforce least-privilege access.
+- Infrastructure as Code (IaC) scanning: Automated detection of misconfigurations in Terraform, CloudFormation, and Kubernetes manifests.
+- Secret detection: Pre-commit hooks and CI/CD pipeline scans prevent credential leaks in repositories.
+- Security dashboards: Centralized vulnerability tracking with CVSS scoring, exploitability metrics, and remediation workflows.
+
 ## Is DevSecOps right for you?
 
 If your organization is facing any of the following challenges, a DevSecOps approach might be for you.
 
-- **Development, security, and operations teams are siloed.**  
+<!-- Do not delete the double spaces at the end of these lines. They improve the rendered view. -->
+
+- Development, security, and operations teams are siloed.
   If development and operations are isolated from security issues,
   they can't build secure software. And if security teams aren't part of the development process,
   they can't identify risks proactively. DevSecOps brings teams together to improve workflows
   and share ideas. Organizations might even see improved employee morale and retention.
 
-- **Long development cycles are making it difficult to meet customer or stakeholder demands.**  
+- Long development cycles are making it difficult to meet customer or stakeholder demands.
   One reason for the struggle could be security. DevSecOps implements security at every step of
   the development lifecycle, meaning that solid security doesn't require the whole process to come to a halt.
 
-- **You're migrating to the cloud (or considering it).**  
+- You're migrating to the cloud (or considering it).
   Moving to the cloud often means bringing on new development processes, tools, and systems.
-  It's a great time to make processes faster and more secure — and DevSecOps could make that a lot easier.
+  It's a great time to make processes faster and more secure, and DevSecOps could make that a lot easier.
 
 To get started with DevSecOps,
 [learn more, and try GitLab Ultimate for free](https://about.gitlab.com/solutions/security-compliance/).

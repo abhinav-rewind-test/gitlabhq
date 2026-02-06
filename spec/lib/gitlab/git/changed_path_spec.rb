@@ -2,7 +2,7 @@
 
 require 'fast_spec_helper'
 
-RSpec.describe Gitlab::Git::ChangedPath do
+RSpec.describe Gitlab::Git::ChangedPath, feature_category: :source_code_management do
   subject(:changed_path) do
     described_class.new(
       path: path,
@@ -10,7 +10,8 @@ RSpec.describe Gitlab::Git::ChangedPath do
       old_mode: old_mode,
       new_mode: new_mode,
       old_blob_id: old_blob_id,
-      new_blob_id: new_blob_id
+      new_blob_id: new_blob_id,
+      commit_id: commit_id
     )
   end
 
@@ -20,6 +21,7 @@ RSpec.describe Gitlab::Git::ChangedPath do
   let(:new_mode) { '100644' }
   let(:old_blob_id) { '0000000000000000000000000000000000000000' }
   let(:new_blob_id) { '645f6c4c82fd3f5e06f67134450a570b795e55a6' }
+  let(:commit_id) { '0b4bc9a49b562e85de7cc9e834518ea6828729b9' }
 
   describe '#new_file?' do
     subject(:new_file?) { changed_path.new_file? }
@@ -37,6 +39,36 @@ RSpec.describe Gitlab::Git::ChangedPath do
         expect(new_file?).to eq(false)
       end
     end
+  end
+
+  describe '#deleted_file?' do
+    subject(:deleted_file?) { changed_path.deleted_file? }
+
+    it { is_expected.to be_falsey }
+
+    context 'when it is a deleted file' do
+      let(:status) { :DELETED }
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
+  describe '#renamed_file?' do
+    subject(:renamed_file?) { changed_path.renamed_file? }
+
+    it { is_expected.to be_falsey }
+
+    context 'when it is a renamed file' do
+      let(:status) { :RENAMED }
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
+  describe '#modified_file?' do
+    subject(:modified_file?) { changed_path.modified_file? }
+
+    it { is_expected.to be_truthy }
   end
 
   describe '#submodule_change?' do

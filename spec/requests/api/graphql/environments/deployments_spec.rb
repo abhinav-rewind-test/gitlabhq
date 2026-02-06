@@ -7,8 +7,8 @@ RSpec.describe 'Environments Deployments query', feature_category: :continuous_d
 
   let_it_be(:project) { create(:project, :private, :repository) }
   let_it_be(:environment) { create(:environment, project: project) }
-  let_it_be(:developer) { create(:user).tap { |u| project.add_developer(u) } }
-  let_it_be(:guest) { create(:user).tap { |u| project.add_guest(u) } }
+  let_it_be(:developer) { create(:user, developer_of: project) }
+  let_it_be(:guest) { create(:user, guest_of: project) }
 
   let(:user) { developer }
 
@@ -321,7 +321,7 @@ RSpec.describe 'Environments Deployments query', feature_category: :continuous_d
       end
 
       def set_deployment_attributes(deployment, factory_type)
-        deployment.user = create(:user).tap { |u| project.add_developer(u) }
+        deployment.user = create(:user, developer_of: project)
         deployment.deployable = create(
           factory_type,
           project: project,
@@ -440,6 +440,35 @@ RSpec.describe 'Environments Deployments query', feature_category: :continuous_d
           deployment_in_record = project.deployments.find_by_iid(deployment['iid'])
 
           expect(deployment_in_record.job.to_global_id.to_s).to eq(deployment['job']['id'])
+        end
+      end
+
+      context 'when the project is public with private builds and the user is not a member' do
+        let(:user) { create(:user) }
+        let(:query) do
+          %(
+            query {
+              project(fullPath: "#{project.full_path}") {
+                deployment(iid: "#{finished_deployment_new.iid}") {
+                  id
+                  job {
+                    id
+                  }
+                }
+              }
+            }
+          )
+        end
+
+        before do
+          project.update!(visibility_level: Gitlab::VisibilityLevel::PUBLIC, public_builds: false)
+        end
+
+        it 'does not include job information' do
+          response = subject.dig('data', 'project', 'deployment')
+
+          expect(response['id']).to eq(finished_deployment_new.to_global_id.to_s)
+          expect(response['job']).to be_nil
         end
       end
     end

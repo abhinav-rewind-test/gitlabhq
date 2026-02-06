@@ -2,26 +2,23 @@
 stage: Plan
 group: Project Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Resource milestone events API
 ---
 
-# Resource milestone events API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/31720) in GitLab 13.1.
+{{< /details >}}
 
-Resource [milestone](../user/project/milestones/index.md) events keep track of what happens to
-GitLab [issues](../user/project/issues/index.md) and [merge requests](../user/project/merge_requests/index.md).
-
-Use them to track which milestone was added or removed, who did it, and when it happened.
+Use this API to interact with milestone events for issues and merge requests.
 
 ## Issues
 
 ### List project issue milestone events
 
-Gets a list of all milestone events for a single issue.
+Lists all milestone events for a single issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_milestone_events
@@ -29,7 +26,7 @@ GET /projects/:id/issues/:issue_iid/resource_milestone_events
 
 | Attribute   | Type           | Required | Description                                                                     |
 | ----------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`        | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`        | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `issue_iid` | integer        | yes      | The IID of an issue                                                             |
 
 Example request:
@@ -101,9 +98,9 @@ Example response:
 ]
 ```
 
-### Get single issue milestone event
+### Retrieve a single issue milestone event
 
-Returns a single milestone event for a specific project issue
+Retrieves a single milestone event for a specific project issue.
 
 ```plaintext
 GET /projects/:id/issues/:issue_iid/resource_milestone_events/:resource_milestone_event_id
@@ -113,7 +110,7 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `issue_iid`                   | integer        | yes      | The IID of an issue                                                             |
 | `resource_milestone_event_id` | integer        | yes      | The ID of a milestone event                                                     |
 
@@ -127,7 +124,7 @@ curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/a
 
 ### List project merge request milestone events
 
-Gets a list of all milestone events for a single merge request.
+Lists all milestone events for a single merge request.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/resource_milestone_events
@@ -135,7 +132,7 @@ GET /projects/:id/merge_requests/:merge_request_iid/resource_milestone_events
 
 | Attribute           | Type           | Required | Description                                                                     |
 | ------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                | integer/string | yes      | The ID or [URL-encoded path](rest/index.md#namespaced-path-encoding) of the project |
+| `id`                | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the project |
 | `merge_request_iid` | integer        | yes      | The IID of a merge request                                                      |
 
 Example request:
@@ -207,9 +204,9 @@ Example response:
 ]
 ```
 
-### Get single merge request milestone event
+### Retrieve a single merge request milestone event
 
-Returns a single milestone event for a specific project merge request
+Retrieves a single milestone event for a specific project merge request.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/resource_milestone_events/:resource_milestone_event_id
@@ -219,12 +216,14 @@ Parameters:
 
 | Attribute                     | Type           | Required | Description                                                                     |
 | ----------------------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| `id`                          | integer/string | yes      | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) |
+| `id`                          | integer or string | yes      | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths) |
 | `merge_request_iid`           | integer        | yes      | The IID of a merge request                                                      |
 | `resource_milestone_event_id` | integer        | yes      | The ID of a milestone event                                                     |
 
 Example request:
 
 ```shell
-curl --request GET --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/5/merge_requests/11/resource_milestone_events/120"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/projects/5/merge_requests/11/resource_milestone_events/120"
 ```

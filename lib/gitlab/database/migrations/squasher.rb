@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
-
 module Gitlab
   module Database
     module Migrations
@@ -25,7 +23,7 @@ module Gitlab
         end
 
         def files_to_delete
-          @migration_data.pluck(:path) + schema_migrations + find_migration_specs
+          @migration_data.pluck(:path) + schema_migrations + find_migration_specs + batched_background_migration_files
         end
 
         private
@@ -60,11 +58,36 @@ module Gitlab
         end
 
         def migration_specs
-          Dir.glob(Rails.root.join('spec/migrations/*.rb'))
+          Dir.glob(Rails.root.join('spec/migrations/**/*.rb'))
         end
 
         def ee_migration_specs
-          Dir.glob(Rails.root.join('ee/spec/migrations/*.rb'))
+          Dir.glob(Rails.root.join('ee/spec/migrations/**/*.rb'))
+        end
+
+        def batched_background_migration_files
+          deleted_timestamps = Set.new(@migration_data.pluck(:timestamp))
+          files_to_delete = []
+
+          Dir.glob(Rails.root.join('db/docs/batched_background_migrations/*.yml')).filter_map do |yml_file|
+            yaml_content = YAML.load_file(yml_file)
+
+            finalized_by = yaml_content['finalized_by'].to_s
+            next if finalized_by.empty?
+
+            if deleted_timestamps.include?(finalized_by)
+              files_to_delete << yml_file
+
+              filename = yaml_content['migration_job_name'].underscore
+
+              files_to_delete << "lib/gitlab/background_migration/#{filename}.rb"
+              files_to_delete << "ee/lib/ee/gitlab/background_migration/#{filename}.rb"
+              files_to_delete << "spec/lib/gitlab/background_migration/#{filename}_spec.rb"
+              files_to_delete << "ee/spec/lib/ee/gitlab/background_migration/#{filename}_spec.rb"
+            end
+          end
+
+          files_to_delete
         end
       end
     end

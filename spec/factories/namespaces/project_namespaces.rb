@@ -9,5 +9,6 @@ FactoryBot.define do
     path { project.path }
     type { Namespaces::ProjectNamespace.sti_name }
     owner { nil }
+    organization { parent.organization }
   end
 end

@@ -5,7 +5,8 @@ require 'spec_helper'
 RSpec.describe Ml::Experiment, feature_category: :mlops do
   let_it_be(:exp) { create(:ml_experiments) }
   let_it_be(:exp2) { create(:ml_experiments, project: exp.project) }
-  let_it_be(:model_experiment) { create(:ml_models, project: exp.project).default_experiment }
+  let_it_be(:model) { create(:ml_models, project: exp.project) }
+  let_it_be(:model_experiment) { model.default_experiment }
 
   let(:iid) { exp.iid }
   let(:exp_name) { exp.name }
@@ -29,12 +30,27 @@ RSpec.describe Ml::Experiment, feature_category: :mlops do
       experiment = create(:ml_models, project: exp.project).default_experiment
 
       expect { experiment.destroy! }.to raise_error(ActiveRecord::ActiveRecordError)
+      expect(experiment.errors.full_messages).to include('Cannot delete an experiment associated to a model')
     end
   end
 
   describe '.package_name' do
-    describe '.package_name' do
-      it { expect(exp.package_name).to eq("ml_experiment_#{exp.iid}") }
+    it { expect(exp.package_name).to eq("ml_experiment_#{exp.iid}") }
+
+    context 'when model belongs to package' do
+      it 'is the model name' do
+        expect(model_experiment.package_name).to eq(model.name)
+      end
+    end
+  end
+
+  describe '.for_model?' do
+    it 'is false if it is not the default experiment for a model' do
+      expect(exp.for_model?).to be(false)
+    end
+
+    it 'is true if it is not the default experiment for a model' do
+      expect(model_experiment.for_model?).to be(true)
     end
   end
 
@@ -52,6 +68,14 @@ RSpec.describe Ml::Experiment, feature_category: :mlops do
     end
   end
 
+  describe '.including_user' do
+    subject { described_class.including_user }
+
+    it 'loads latest version' do
+      expect(subject.first.association_cached?(:user)).to be(true)
+    end
+  end
+
   describe '#by_project_id_and_iid' do
     subject { described_class.by_project_id_and_iid(exp.project_id, iid) }
 
@@ -62,7 +86,7 @@ RSpec.describe Ml::Experiment, feature_category: :mlops do
     context 'if does not exist' do
       let(:iid) { non_existing_record_id }
 
-      it { is_expected.to be(nil) }
+      it { is_expected.to be_nil }
     end
   end
 

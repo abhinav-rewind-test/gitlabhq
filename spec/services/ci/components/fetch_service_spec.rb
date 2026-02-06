@@ -26,9 +26,10 @@ RSpec.describe Ci::Components::FetchService, feature_category: :pipeline_composi
       }
     )
 
-    project.repository.add_tag(project.creator, 'v0.1', project.repository.commit.sha)
+    project.repository.add_tag(project.creator, '0.1.2', project.repository.commit.sha)
 
-    create(:release, project: project, tag: 'v0.1', sha: project.repository.commit.sha)
+    create(:ci_catalog_resource, project: project)
+    create(:release, :with_catalog_resource_version, project: project, tag: '0.1.2', sha: project.repository.commit.sha)
 
     project
   end
@@ -63,27 +64,81 @@ RSpec.describe Ci::Components::FetchService, feature_category: :pipeline_composi
         let(:version) { 'master' }
         let(:current_user) { create(:user) }
 
-        it 'returns an error' do
+        it 'returns a generic error response' do
           expect(result).to be_error
           expect(result.reason).to eq(:not_allowed)
+          expect(result.message)
+            .to eq(
+              "Component '#{address}' - " \
+              "project does not exist or you don't have sufficient permissions"
+            )
+        end
+
+        context 'when the user is external and the project is internal' do
+          let(:current_user) { create(:user, :external) }
+          let(:project) do
+            project = create(
+              :project, :custom_repo, :internal,
+              files: {
+                'templates/component/template.yml' => content
+              }
+            )
+            project.repository.add_tag(project.creator, '0.1.3', project.repository.commit.sha)
+
+            create(:ci_catalog_resource, project: project)
+            create(:release, :with_catalog_resource_version,
+              project: project, tag: '0.1.3', sha: project.repository.commit.sha)
+
+            project
+          end
+
+          it 'returns an error response for external user accessing internal project' do
+            expect(result).to be_error
+            expect(result.reason).to eq(:not_allowed)
+            expect(result.message)
+              .to eq(
+                "Component '#{address}' - " \
+                "project is `Internal`, it cannot be accessed by an External User"
+              )
+          end
         end
       end
 
       context 'when version is a branch name' do
-        it_behaves_like 'component address' do
-          let(:version) { project.default_branch }
+        let(:version) { project.default_branch }
+
+        it_behaves_like 'component address'
+
+        it 'returns the reference' do
+          expect(result).to be_success
+          expect(result.payload[:reference]).to eq(version)
         end
       end
 
       context 'when version is a tag name' do
-        it_behaves_like 'component address' do
-          let(:version) { project.repository.tags.first.name }
+        let(:version) { project.repository.tags.first.name }
+
+        it_behaves_like 'component address'
+
+        it 'returns the version' do
+          expect(result).to be_success
+          expect(result.payload[:version]).to eq(version)
+        end
+
+        it 'returns the reference' do
+          expect(result).to be_success
+          expect(result.payload[:reference]).to eq(version)
         end
       end
 
       context 'when version is a commit sha' do
-        it_behaves_like 'component address' do
-          let(:version) { project.repository.tags.first.id }
+        let(:version) { project.repository.tags.first.id }
+
+        it_behaves_like 'component address'
+
+        it 'returns the reference' do
+          expect(result).to be_success
+          expect(result.payload[:reference]).to eq(version)
         end
       end
 
@@ -93,6 +148,58 @@ RSpec.describe Ci::Components::FetchService, feature_category: :pipeline_composi
         it 'returns an error' do
           expect(result).to be_error
           expect(result.reason).to eq(:content_not_found)
+        end
+      end
+
+      context 'when version is ~latest' do
+        let(:version) { '~latest' }
+        let_it_be(:project) { create(:project, :empty_repo) }
+
+        context 'and the project is not a catalog resource' do
+          it 'returns an error' do
+            expect(result).to be_error
+            expect(result.message).to eq(
+              "Component '#{current_host}/#{component_path}@~latest' - " \
+              'The ~latest version reference is not supported for non-catalog resources. ' \
+              'Use a tag, branch, or commit SHA instead.'
+            )
+            expect(result.reason).to eq(:invalid_usage)
+          end
+        end
+
+        context 'and the project does not exist' do
+          let(:component_path) { 'unknown' }
+
+          it 'returns an error' do
+            expect(result).to be_error
+            expect(result.reason).to eq(:content_not_found)
+          end
+        end
+      end
+
+      context 'when version is a partial semantic version' do
+        let(:version) { '1.0' }
+        let_it_be(:project) { create(:project, :empty_repo) }
+
+        context 'and the project is not a catalog resource' do
+          it 'returns an error' do
+            expect(result).to be_error
+            expect(result.message).to eq(
+              "Component '#{current_host}/#{component_path}@1.0' - " \
+              'The partial semantic version reference is not supported for non-catalog resources. ' \
+              'Use a tag, branch, or commit SHA instead.'
+            )
+            expect(result.reason).to eq(:invalid_usage)
+          end
+        end
+
+        context 'and the project does not exist' do
+          let(:component_path) { 'unknown' }
+
+          it 'returns an error' do
+            expect(result).to be_error
+            expect(result.reason).to eq(:content_not_found)
+          end
         end
       end
 

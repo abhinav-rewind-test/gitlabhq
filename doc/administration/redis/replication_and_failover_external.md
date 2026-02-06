@@ -1,14 +1,16 @@
 ---
-stage: Systems
-group: Distribution
+stage: Tenant Scale
+group: Tenant Services
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Redis replication and failover providing your own instance
 ---
 
-# Redis replication and failover providing your own instance
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
 
 If you're hosting GitLab on a cloud provider, you can optionally use a managed
 service for Redis. For example, AWS offers ElastiCache that runs Redis.
@@ -46,7 +48,7 @@ Note the Redis node's IP address or hostname, port, and password (if required).
    # Required if Redis authentication is configured on the Redis node
    gitlab_rails['redis_password'] = '<redis_password>'
 
-   # Set to true if instance is using Redis SSL 
+   # Set to true if instance is using Redis SSL
    gitlab_rails['redis_ssl'] = true
    ```
 
@@ -78,7 +80,7 @@ Note the Redis node's IP address or hostname, port, and password (if required).
 
 When running a single Redis instance the eviction policy should be set to `noeviction`.
 
-If you are running separate Redis Cache and Persistent instances, Cache should be configured as a [Least Recently Used cache](https://redis.io/docs/manual/eviction/) (LRU) with `allkeys-lru` while Persistent should be set to `noeviction`.
+If you are running separate Redis Cache and Persistent instances, Cache should be configured as a [Least Recently Used cache](https://redis.io/docs/latest/operate/rs/databases/memory-performance/eviction-policy/) (LRU) with `allkeys-lru` while Persistent should be set to `noeviction`.
 
 Configuring this depends on the cloud provider or service, but generally the following settings and values configure a cache:
 
@@ -123,7 +125,7 @@ In addition, read the prerequisites as described in
 
 Assuming that the Redis primary instance IP is `10.0.0.1`:
 
-1. [Install Redis](../../install/installation.md#8-redis).
+1. [Install Redis](../../install/self_compiled/_index.md#8-redis).
 1. Edit `/etc/redis/redis.conf`:
 
    ```conf
@@ -149,7 +151,7 @@ Assuming that the Redis primary instance IP is `10.0.0.1`:
 
 Assuming that the Redis replica instance IP is `10.0.0.2`:
 
-1. [Install Redis](../../install/installation.md#8-redis).
+1. [Install Redis](../../install/self_compiled/_index.md#8-redis).
 1. Edit `/etc/redis/redis.conf`:
 
    ```conf
@@ -184,7 +186,7 @@ starting with `sentinel` prefix.
 Assuming that the Redis Sentinel is installed on the same instance as Redis
 primary with IP `10.0.0.1` (some settings might overlap with the primary):
 
-1. [Install Redis Sentinel](https://redis.io/docs/manual/sentinel/).
+1. [Install Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/).
 1. Edit `/etc/redis/sentinel.conf`:
 
    ```conf
@@ -260,7 +262,7 @@ which ideally should not have Redis or Sentinels in the same machine:
    ```yaml
    # resque.yaml
    production:
-     url: redis://:redi-password-goes-here@gitlab-redis/
+     url: redis://:redis-password-goes-here@gitlab-redis/
      sentinels:
        -
          host: 10.0.0.1

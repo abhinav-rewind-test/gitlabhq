@@ -4,6 +4,7 @@ import RunnerTypeIcon from '~/ci/runner/components/runner_type_icon.vue';
 import { RUNNER_EMPTY_TEXT, RUNNER_NO_DESCRIPTION } from '../../constants';
 
 export default {
+  name: 'RunnerCell',
   i18n: {
     emptyRunnerText: RUNNER_EMPTY_TEXT,
     noRunnerDescription: RUNNER_NO_DESCRIPTION,
@@ -38,9 +39,9 @@ export default {
 </script>
 
 <template>
-  <div class="gl-text-truncate">
+  <div class="gl-truncate">
     <span v-if="adminUrl">
-      <runner-type-icon :type="runnerType" class="gl-vertical-align-middle" />
+      <runner-type-icon :type="runnerType" class="gl-align-middle" />
       <gl-link :href="adminUrl" data-testid="job-runner-link"> {{ description }} </gl-link>
     </span>
     <span v-else data-testid="empty-runner-text"> {{ $options.i18n.emptyRunnerText }}</span>

@@ -20,6 +20,7 @@ module Backup
         @storages = storages
         @paths = paths
         @skip_paths = skip_paths
+        @logger = Gitlab::BackupLogger.new(progress)
       end
 
       override :dump
@@ -42,14 +43,23 @@ module Backup
         enqueue_consecutive
 
       ensure
-        strategy.finish!
+        begin
+          strategy.finish!
+
+        rescue Error => e
+          logger.error(e.message)
+        end
 
         restore_object_pools
       end
 
+      def asynchronous?
+        false
+      end
+
       private
 
-      attr_reader :strategy, :storages, :paths, :skip_paths
+      attr_reader :strategy, :storages, :paths, :skip_paths, :logger
 
       def remove_all_repositories
         return if paths.present?
@@ -118,24 +128,22 @@ module Backup
       end
 
       def skipped_path_relation
-        Project.where.not(id: Project.where_full_path_in(skip_paths).or(
+        Project.id_not_in(Project.where_full_path_in(skip_paths).or(
           Project.where(namespace_id: Namespace.where_full_path_in(skip_paths).self_and_descendants)
         ))
       end
 
       def restore_object_pools
-        PoolRepository.includes(:source_project).find_each do |pool|
-          progress.puts " - Object pool #{pool.disk_path}..."
-
-          unless pool.source_project
-            progress.puts " - Object pool #{pool.disk_path}... " + "[SKIPPED]".color(:cyan)
-            next
+        ::Backup::Restore::PoolRepositories.reinitialize_pools! do |pool|
+          case pool.status
+          when :scheduled
+            logger.info "Object pool #{pool.disk_path}..."
+          when :skipped
+            logger.info "Object pool #{pool.disk_path}... [SKIPPED]"
+          when :failed
+            logger.info "Object pool #{pool.disk_path}... [FAILED]"
+            logger.error "Object pool #{pool.disk_path} failed to reinitialize (#{pool.error_message})"
           end
-
-          pool.state = 'none'
-          pool.save
-
-          pool.schedule
         end
       end
     end

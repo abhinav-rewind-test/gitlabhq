@@ -7,7 +7,8 @@ require 'sidekiq/job_retry'
 module Gitlab
   module SidekiqLogging
     class JSONFormatter
-      TIMESTAMP_FIELDS = %w[created_at scheduled_at enqueued_at started_at retried_at failed_at completed_at].freeze
+      TIMESTAMP_FIELDS = %w[created_at scheduled_at enqueued_at started_at retried_at failed_at completed_at
+        concurrency_limit_buffered_at].freeze
 
       def call(severity, timestamp, progname, data)
         output = {
@@ -65,7 +66,7 @@ module Gitlab
       def process_args!(payload)
         return unless payload['args']
 
-        payload['args'] = Gitlab::ErrorTracking::Processor::SidekiqProcessor
+        payload['args'] = ::Gitlab::ErrorTracking::Processor::SidekiqProcessor
                             .loggable_arguments(payload['args'], payload['class'])
       end
     end

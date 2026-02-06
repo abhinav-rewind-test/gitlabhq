@@ -23,7 +23,7 @@ module BulkImports
       # SubGroup Entities must be imported in later stage than Project Entities to avoid `full_path` naming conflicts.
 
       def config
-        {
+        base_config = {
           group: {
             pipeline: BulkImports::Groups::Pipelines::GroupPipeline,
             stage: 0
@@ -37,10 +37,6 @@ module BulkImports
             stage: 1,
             minimum_source_version: '15.0.0'
           },
-          members: {
-            pipeline: BulkImports::Common::Pipelines::MembersPipeline,
-            stage: 1
-          },
           labels: {
             pipeline: BulkImports::Common::Pipelines::LabelsPipeline,
             stage: 1
@@ -53,11 +49,6 @@ module BulkImports
             pipeline: BulkImports::Common::Pipelines::BadgesPipeline,
             stage: 1
           },
-          subgroups: {
-            pipeline: BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline,
-            stage: 2 # SubGroup Entities must be imported in later stage
-            # to Project Entities to avoid `full_path` naming conflicts.
-          },
           boards: {
             pipeline: BulkImports::Common::Pipelines::BoardsPipeline,
             stage: 2
@@ -66,11 +57,20 @@ module BulkImports
             pipeline: BulkImports::Common::Pipelines::UploadsPipeline,
             stage: 2
           },
+          subgroups: {
+            pipeline: BulkImports::Groups::Pipelines::SubgroupEntitiesPipeline,
+            stage: 3 # SubGroup Entities must be imported in later stage
+            # to Project Entities to avoid `full_path` naming conflicts.
+          },
           finisher: {
             pipeline: BulkImports::Common::Pipelines::EntityFinisher,
-            stage: 3
+            stage: 4
           }
-        }.merge(project_entities_pipeline)
+        }
+
+        base_config
+          .merge(project_entities_pipeline)
+          .merge(members_pipeline)
       end
 
       def project_entities_pipeline
@@ -78,7 +78,7 @@ module BulkImports
           {
             project_entities: {
               pipeline: BulkImports::Groups::Pipelines::ProjectEntitiesPipeline,
-              stage: 1
+              stage: 2
             }
           }
         else
@@ -86,8 +86,23 @@ module BulkImports
         end
       end
 
+      def members_pipeline
+        return {} unless migrate_memberships?
+
+        {
+          members: {
+            pipeline: BulkImports::Common::Pipelines::MembersPipeline,
+            stage: 1
+          }
+        }
+      end
+
       def migrate_projects?
         bulk_import_entity.migrate_projects
+      end
+
+      def migrate_memberships?
+        bulk_import_entity.migrate_memberships
       end
 
       def project_pipeline_available?

@@ -1,33 +1,38 @@
-import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
+import * as ProseMirror from '@tiptap/pm/model';
 import { replaceCommentsWith } from '~/lib/utils/dom_utils';
 
+export const transformQuickActions = (markdown) => {
+  // ensure 3 newlines after all quick actions so that
+  // any reference style links after it get correctly parsed
+  return markdown.replace(/^\/(.+?)\n/gm, '/$1\n\n\n');
+};
+
+/**
+ * @param {{ render: (markdown: string) => Promise<{ body: string }> }} param
+ */
 export default ({ render }) => {
-  /**
-   * Converts a Markdown string into a ProseMirror JSONDocument based
-   * on a ProseMirror schema.
-   *
-   * @param {Object} options — The schema and content for deserialization
-   * @param {ProseMirror.Schema} params.schema A ProseMirror schema that defines
-   * the types of content supported in the document
-   * @param {String} params.content An arbitrary markdown string
-   *
-   * @returns An object with the following properties:
-   *  - document: A ProseMirror document object generated from the deserialized Markdown
-   *  - dom: The Markdown Deserializer renders Markdown as HTML to generate the ProseMirror
-   *    document. The dom property contains the HTML generated from the Markdown Source.
-   */
   return {
+    /**
+     * Converts a Markdown string into a ProseMirror document based
+     * on a schema.
+     *
+     * @param {{ schema: ProseMirror.Schema, markdown: string }} params
+     * @returns {{ document: ProseMirror.Node }}
+     */
     deserialize: async ({ schema, markdown }) => {
-      const html = markdown ? await render(markdown) : '<p></p>';
+      const transformedMarkdown = transformQuickActions(markdown);
+      const html = markdown ? (await render(transformedMarkdown)).body : '<p></p>';
       const parser = new DOMParser();
       const { body } = parser.parseFromString(`<body>${html}</body>`, 'text/html');
 
       replaceCommentsWith(body, 'comment');
 
       // append original source as a comment that nodes can access
-      body.append(document.createComment(markdown));
+      body.append(document.createComment(transformedMarkdown));
 
-      return { document: ProseMirrorDOMParser.fromSchema(schema).parse(body) };
+      const doc = ProseMirror.DOMParser.fromSchema(schema).parse(body);
+
+      return { document: doc };
     },
   };
 };

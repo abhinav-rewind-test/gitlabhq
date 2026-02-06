@@ -4,15 +4,12 @@ require 'spec_helper'
 
 RSpec.describe 'Alert details', :js, feature_category: :incident_management do
   let_it_be(:project) { create(:project) }
-  let_it_be(:developer) { create(:user) }
+  let_it_be(:developer) { create(:user, developer_of: project) }
   let_it_be(:alert) { create(:alert_management_alert, project: project, status: 'triggered', title: 'Alert') }
-
-  before_all do
-    project.add_developer(developer)
-  end
 
   before do
     sign_in(developer)
+    stub_feature_flags(hide_incident_management_features: false)
 
     visit details_project_alert_management_path(project, alert)
     wait_for_requests
@@ -49,7 +46,7 @@ RSpec.describe 'Alert details', :js, feature_category: :incident_management do
       expect(page).to have_selector('[data-testid="alert-todo-button"]')
       todo_button = find_by_testid('alert-todo-button')
 
-      expect(todo_button).to have_content('Add a to do')
+      expect(todo_button).to have_content('Add a to-do item')
       find_by_testid('alert-todo-button').click
       wait_for_requests
 

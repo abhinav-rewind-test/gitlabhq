@@ -1,16 +1,16 @@
 ---
-stage: Systems
-group: Distribution
+stage: GitLab Delivery
+group: Operate
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: SMTP Rake tasks
 ---
 
-# SMTP Rake tasks
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/67802) in GitLab 14.2.
+{{< /details >}}
 
 The following are SMTP-related Rake tasks.
 
@@ -34,7 +34,7 @@ Show the contents of the current SMTP secrets.
   bundle exec rake gitlab:smtp:secret:show RAILS_ENV=production
   ```
 
-**Example output:**
+**Example output**:
 
 ```plaintext
 password: '123'

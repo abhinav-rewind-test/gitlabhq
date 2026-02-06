@@ -1,3 +1,5 @@
+@import '../highlight/common';
+
 .file-content.code {
   border: 0;
   box-shadow: none;
@@ -8,7 +10,7 @@
   pre {
     line-height: 0;
     border: 0;
-    border-radius: 0 0 $border-radius-default;
+    border-radius: 0 0 $gl-border-radius-base;
     font-family: $monospace-font;
     font-size: $code-font-size;
     margin: 0;
@@ -36,6 +38,23 @@
         &:empty::before, span:empty::before {
           content: '\200b';
         }
+
+        .selected-inline-item-mark {
+          background: #2575c6 !important;
+        }
+
+        .inline-item-mark {
+          padding: 0 5px;
+          margin-right: 5px;
+          border-radius: 4px;
+          background: $gray-500;
+          color: $white;
+        }
+
+        .inline-section-marker {
+          padding-right: 2px;
+          border-radius: 4px;
+        }
       }
     }
   }
@@ -45,13 +64,14 @@
     line-height: 19px;
     text-align: right;
     float: left;
-    border-bottom-left-radius: $border-radius-default;
+    border-bottom-left-radius: $gl-border-radius-base;
 
     a {
       font-family: $monospace-font;
       white-space: nowrap;
       display: flex;
       justify-content: flex-end;
+      position: relative;
 
       i,
       svg {
@@ -70,14 +90,34 @@
           visibility: visible;
         }
       }
+
+      &::after {
+        content: ' ';
+        display: block;
+        height: 24px;
+        position: absolute;
+        top: 50%;
+        right: 0;
+        width: 24px;
+        transform: translateY(-50%);
+      }
+    }
+
+    &:last-of-type {
+     border-bottom-left-radius: $gl-border-radius-base-inner;
     }
   }
 
   pre .line,
+  pre .plain-lines,
   .line-numbers a {
     font-size: 0.8125rem;
     line-height: 1.1875rem;
     min-height: 1.1875rem;
+  }
+
+  .mark-multiple-line-expand-button {
+    @include diff-expansion($gray-100, $gray-400, $gray-100, $gray-400);
   }
 }
 
@@ -94,6 +134,8 @@ td.line-numbers {
 }
 
 .blob-viewer {
+  --blame-line-height: 1.1875rem;
+
   .line-numbers {
     min-width: 6rem;
     // for server-side-rendering

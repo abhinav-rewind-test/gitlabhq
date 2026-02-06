@@ -1,7 +1,7 @@
 import setWindowLocation from 'helpers/set_window_location_helper';
 import {
   DEFAULT_SORT,
-  MEMBER_TYPES,
+  MEMBERS_TAB_TYPES,
   I18N_USER_YOU,
   I18N_USER_BLOCKED,
   I18N_USER_BOT,
@@ -10,7 +10,6 @@ import {
 import {
   generateBadges,
   isGroup,
-  isDirectMember,
   isCurrentUser,
   canRemove,
   canRemoveBlockedByLastOwner,
@@ -27,6 +26,7 @@ import {
   handleMemberRoleUpdate,
 } from '~/members/utils';
 import showGlobalToast from '~/vue_shared/plugins/global_toast';
+import { BASE_ROLES } from '~/access_level/constants';
 import {
   member as memberMock,
   directMember,
@@ -39,7 +39,6 @@ import {
   dataAttribute,
 } from './mock_data';
 
-jest.mock('lodash/uniqueId', () => (prefix) => `${prefix}0`);
 jest.mock('~/vue_shared/plugins/global_toast');
 
 const IS_CURRENT_USER_ID = 123;
@@ -60,7 +59,7 @@ describe('Members Utils', () => {
           expect.objectContaining({
             show: expect.any(Boolean),
             text: expect.any(String),
-            variant: expect.stringMatching(/muted|neutral|info|success|danger|warning/),
+            variant: expect.stringMatching(/neutral|info|success|danger|warning/),
           }),
         );
       });
@@ -70,7 +69,7 @@ describe('Members Utils', () => {
       member                                                            | expected
       ${memberMock}                                                     | ${{ show: true, text: I18N_USER_YOU, variant: 'success' }}
       ${{ ...memberMock, user: { ...memberMock.user, blocked: true } }} | ${{ show: true, text: I18N_USER_BLOCKED, variant: 'danger' }}
-      ${{ ...memberMock, user: { ...memberMock.user, isBot: true } }}   | ${{ show: true, text: I18N_USER_BOT, variant: 'muted' }}
+      ${{ ...memberMock, user: { ...memberMock.user, isBot: true } }}   | ${{ show: true, text: I18N_USER_BOT, variant: 'neutral' }}
       ${member2faEnabled}                                               | ${{ show: true, text: I188N_USER_2FA, variant: 'info' }}
     `('returns expected output for "$expected.text" badge', ({ member, expected }) => {
       expect(
@@ -104,16 +103,6 @@ describe('Members Utils', () => {
       ${memberMock} | ${false}
     `('returns $expected', ({ member, expected }) => {
       expect(isGroup(member)).toBe(expected);
-    });
-  });
-
-  describe('isDirectMember', () => {
-    it.each`
-      member             | expected
-      ${directMember}    | ${true}
-      ${inheritedMember} | ${false}
-    `('returns $expected', ({ member, expected }) => {
-      expect(isDirectMember(member)).toBe(expected);
     });
   });
 
@@ -306,7 +295,7 @@ describe('Members Utils', () => {
 
     it('correctly parses the data attribute', () => {
       expect(parseDataAttributes(el)).toMatchObject({
-        [MEMBER_TYPES.user]: {
+        [MEMBERS_TAB_TYPES.user]: {
           members,
           pagination,
           memberPath: '/groups/foo-bar/-/group_members/:id',
@@ -342,28 +331,18 @@ describe('Members Utils', () => {
 
   describe('roleDropdownItems', () => {
     it('returns properly flatten and formatted dropdowns', () => {
-      const { flatten, formatted } = roleDropdownItems(members[0]);
+      const roles = roleDropdownItems(members[0]);
 
-      expect(flatten).toEqual(formatted);
-      expect(flatten[0]).toMatchObject({
-        text: 'Guest',
-        value: 'role-static-0',
-        accessLevel: 10,
-        memberRoleId: null,
-      });
+      expect(roles).toEqual({ flatten: BASE_ROLES, formatted: BASE_ROLES });
     });
   });
 
   describe('initialSelectedRole', () => {
     it('find and return correct value', () => {
-      expect(
-        initialSelectedRole(
-          [{ accessLevel: 10, memberRoleId: null, text: 'Guest', value: 'role-static-0' }],
-          {
-            accessLevel: { integerValue: 10 },
-          },
-        ),
-      ).toBe('role-static-0');
+      const role = { accessLevel: 10, memberRoleId: null, text: 'Guest', value: 'role-static-0' };
+      const initialRole = initialSelectedRole([role], { accessLevel: { integerValue: 10 } });
+
+      expect(initialRole).toBe(role);
     });
   });
 

@@ -32,7 +32,7 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
         visit "#{diffs_project_merge_request_path(project, merge_request)}#{fragment}"
       end
 
-      it 'shows expanded note', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/391239' do
+      it 'shows expanded note', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9350' do
         expect(page).to have_selector(fragment, visible: true)
       end
     end
@@ -47,7 +47,7 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
       visit "#{diffs_project_merge_request_path(project, merge_request)}##{line_code}"
     end
 
-    it 'shows the linked line' do
+    it 'shows the linked line', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/496702' do
       expect(page).to have_selector("[id='#{line_code}']", visible: true, obscured: false)
     end
   end
@@ -61,6 +61,8 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
 
       page.within('.gl-alert') do
         expect(page).to have_text("Some changes are not shown. For a faster browsing experience, only 3 of 3+ files are shown. Download one of the files below to see all changes. Plain diff Patches")
+        expect(page).to have_link("Plain diff", href: merge_request_path(merge_request, format: :diff))
+        expect(page).to have_link("Patches", href: merge_request_path(merge_request, format: :patch))
       end
     end
   end
@@ -84,11 +86,11 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
     end
 
     context 'as user who needs to fork' do
-      it 'shows fork/cancel confirmation', :sidekiq_might_not_need_inline, quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/337477' do
+      it 'shows fork/cancel confirmation', :sidekiq_might_not_need_inline, quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9320' do
         sign_in(user)
         visit diffs_project_merge_request_path(project, merge_request)
 
-        find_by_scrolling("[id=\"#{changelog_id}\"]")
+        find_in_page_or_panel_by_scrolling("[id=\"#{changelog_id}\"]")
 
         # Throws `Capybara::Poltergeist::InvalidSelector` if we try to use `#hash` syntax
         find("[id=\"#{changelog_id}\"] .js-diff-more-actions").click
@@ -135,10 +137,10 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
 
         visit diffs_project_merge_request_path(project, merge_request)
 
-        find_by_scrolling("[id='#{file_hash}']")
+        find_in_page_or_panel_by_scrolling("[id='#{file_hash}']")
 
         expect(page).to have_text("function foo<input> {")
-        expect(page).to have_css(".line[lang='rust'] .k")
+        expect(page).to have_css(".line[data-lang=\"rust\"] .k")
       end
     end
 
@@ -160,7 +162,7 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
           let(:file_name) { 'a/image.png' }
 
           it 'shows an error message' do
-            expect(page).not_to have_content('could not be displayed because it is stored in LFS')
+            expect(page).not_to have_content('could not be displayed: it is stored in LFS')
           end
         end
 
@@ -168,7 +170,7 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
           let(:file_name) { 'a/ruby.rb' }
 
           it 'shows an error message' do
-            expect(page).to have_content('This source diff could not be displayed because it is stored in LFS')
+            expect(page).to have_content('source diff could not be displayed: it is stored in LFS')
           end
         end
       end
@@ -203,6 +205,10 @@ RSpec.describe 'Merge request > User sees diff', :js, feature_category: :code_re
       ).execute
 
       project.commit(branch_name)
+    end
+
+    def find_in_page_or_panel_by_scrolling(selector, **options)
+      find_in_panel_by_scrolling(selector, **options)
     end
   end
 end

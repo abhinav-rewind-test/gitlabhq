@@ -14,23 +14,6 @@ $item-remove-button-space: 42px;
   }
 }
 
-.related-items-tree {
-  .card-header {
-    .gl-label {
-      line-height: $gl-line-height;
-    }
-  }
-
-  .sortable-link {
-    white-space: normal;
-  }
-
-  .item-assignees .avatar {
-    height: $gl-padding;
-    width: $gl-padding;
-  }
-}
-
 .item-body {
   position: relative;
   line-height: $gl-line-height;
@@ -39,34 +22,23 @@ $item-remove-button-space: 42px;
 
   &:hover,
   &:focus-within {
-    background-color: $white;
-    border-color: $gray-50;
+    background-color: var(--gl-background-color-section);
+    border-color: var(--gl-border-color-section);
   }
 
-  .merge-request-status.closed {
-    color: $red-500;
-  }
-
-  .issue-token-state-icon-open,
-  .issue-token-state-icon-closed,
-  .confidential-icon,
+  .issue-token-state-icon,
   .item-milestone .icon,
   .item-weight .board-card-info-icon {
     min-width: $gl-padding;
     cursor: help;
 
     &:focus {
-      @include gl-focus;
+      @apply gl-focus;
     }
-  }
-
-  .confidential-icon {
-    color: $orange-500;
   }
 
   .item-title {
     flex-basis: 100%;
-    font-size: $gl-font-size-small;
 
     .sortable-link {
       color: $gray-900;
@@ -78,7 +50,7 @@ $item-remove-button-space: 42px;
   .item-milestone .milestone-title,
   .item-due-date,
   .item-weight .board-card-info-text {
-    color: $gl-text-color-secondary;
+    @apply gl-text-subtle;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
@@ -88,7 +60,7 @@ $item-remove-button-space: 42px;
 .item-meta {
   flex-basis: 100%;
   font-size: $gl-font-size;
-  color: $gl-text-color-secondary;
+  @apply gl-text-subtle;
 
   .item-due-date,
   .board-card-weight {
@@ -161,17 +133,17 @@ $item-remove-button-space: 42px;
 
   a:focus {
     border-radius: $gl-border-radius-full;
-    @include gl-focus;
+    @apply gl-focus;
   }
 }
 
-@include media-breakpoint-down(xs) {
+@include gl-container-width-down(sm, panel) {
   .btn-sm.dropdown-toggle-split {
     max-width: 40px;
   }
 }
 
-@include media-breakpoint-up(sm) {
+@include gl-container-width-up(sm, panel) {
   .sortable-link {
     max-width: 90%;
   }
@@ -179,8 +151,7 @@ $item-remove-button-space: 42px;
 }
 
 /* Small devices (landscape phones, 768px and up) */
-@include media-breakpoint-up(md) {
-  .related-items-tree .item-contents,
+@include gl-container-width-up(md, panel) {
   .item-body .item-title {
     max-width: 100%;
   }
@@ -201,20 +172,14 @@ $item-remove-button-space: 42px;
 }
 
 /* Medium devices (desktops, 992px and up) */
-@include media-breakpoint-up(lg) {
-  .item-body {
-    .item-title {
-      font-size: $gl-font-size;
-    }
-
-    .item-meta .item-path-id {
-      font-size: inherit; // Base size given to `item-meta` is `$gl-font-size-small`
-    }
+@include gl-container-width-up(lg, panel) {
+  .item-body .item-meta .item-path-id {
+    font-size: inherit; // Base size given to `item-meta` is `$gl-font-size-small`
   }
 }
 
 /* Large devices (large desktops, 1200px and up) */
-@include media-breakpoint-up(xl) {
+@include gl-container-width-up(xl, panel) {
   .item-body {
     .item-title {
       width: auto;

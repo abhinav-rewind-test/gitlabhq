@@ -7,8 +7,7 @@ module Mutations
         class Update < ::Mutations::BaseMutation
           graphql_name 'UpdatePackagesProtectionRule'
           description 'Updates a package protection rule to restrict access to project packages. ' \
-                      'You can prevent users without certain permissions from altering packages. ' \
-                      'Available only when feature flag `packages_protected_packages` is enabled.'
+            'You can prevent users without certain permissions from altering packages.'
 
           authorize :admin_package
 
@@ -21,22 +20,24 @@ module Mutations
             GraphQL::Types::String,
             required: false,
             validates: { allow_blank: false },
-            description:
-            'Package name protected by the protection rule. For example, `@my-scope/my-package-*`. ' \
-            'Wildcard character `*` allowed.'
+            description: copy_field_description(Types::Packages::Protection::RuleType, :package_name_pattern)
 
           argument :package_type,
             Types::Packages::Protection::RulePackageTypeEnum,
             required: false,
             validates: { allow_blank: false },
-            description: 'Package type protected by the protection rule. For example, `NPM`.'
+            description: copy_field_description(Types::Packages::Protection::RuleType, :package_type)
 
-          argument :push_protected_up_to_access_level,
+          argument :minimum_access_level_for_delete,
+            Types::Packages::Protection::RuleAccessLevelForDeleteEnum,
+            required: false,
+            experiment: { milestone: '17.10' },
+            description: copy_field_description(Types::Packages::Protection::RuleType, :minimum_access_level_for_delete)
+
+          argument :minimum_access_level_for_push,
             Types::Packages::Protection::RuleAccessLevelEnum,
             required: false,
-            validates: { allow_blank: false },
-            description:
-              'Maximum GitLab access level unable to push a package. For example, `DEVELOPER`, `MAINTAINER`, `OWNER`.'
+            description: copy_field_description(Types::Packages::Protection::RuleType, :minimum_access_level_for_push)
 
           field :package_protection_rule,
             Types::Packages::Protection::RuleType,
@@ -46,9 +47,8 @@ module Mutations
           def resolve(id:, **kwargs)
             package_protection_rule = authorized_find!(id: id)
 
-            if Feature.disabled?(:packages_protected_packages, package_protection_rule.project)
-              raise_resource_not_available_error!("'packages_protected_packages' feature flag is disabled")
-            end
+            kwargs.except!(:minimum_access_level_for_delete) if Feature.disabled?(:packages_protected_packages_delete,
+              package_protection_rule.project)
 
             response = ::Packages::Protection::UpdateRuleService.new(package_protection_rule,
               current_user: current_user, params: kwargs).execute

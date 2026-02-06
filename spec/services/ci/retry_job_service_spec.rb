@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
+RSpec.describe Ci::RetryJobService, :clean_gitlab_redis_shared_state, feature_category: :continuous_integration do
   using RSpec::Parameterized::TableSyntax
   let_it_be(:reporter) { create(:user) }
   let_it_be(:developer) { create(:user) }
-  let_it_be(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository, developers: developer, reporters: reporter) }
   let_it_be(:pipeline) do
     create(:ci_pipeline, project: project, sha: 'b83d6e391c22777fca1ed3012fce84f633d7fed0')
   end
@@ -22,21 +22,16 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
 
   let(:service) { described_class.new(project, user) }
 
-  before_all do
-    project.add_developer(developer)
-    project.add_reporter(reporter)
-  end
-
   shared_context 'retryable bridge' do
     let_it_be(:downstream_project) { create(:project, :repository) }
 
     let_it_be_with_refind(:job) do
-      create(:ci_bridge, :success,
+      create(:ci_bridge, :success, :teardown_environment,
         pipeline: pipeline, downstream: downstream_project, description: 'a trigger job', ci_stage: stage
       )
     end
 
-    let_it_be(:job_to_clone) { job }
+    let_it_be_with_refind(:job_to_clone) { job }
 
     before do
       job.update!(retried: false)
@@ -50,7 +45,7 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
 
     let_it_be(:another_pipeline) { create(:ci_empty_pipeline, project: project) }
 
-    let_it_be(:job_to_clone) do
+    let_it_be_with_refind(:job_to_clone) do
       create(
         :ci_build, :failed, :picked, :expired, :erased, :queued, :coverage, :tags,
         :allowed_to_fail, :on_tag, :triggered, :teardown_environment, :resource_group,
@@ -103,6 +98,21 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
         end
       end
 
+      context 'when the job is related to an environment' do
+        let!(:environment) { create(:environment, project: project, name: job.environment) }
+
+        it 'links the cloned job to the environment' do
+          expect(new_job.reload_job_environment).to be_present
+          expect(new_job.job_environment).to have_attributes(
+            project: project,
+            environment: environment,
+            pipeline: pipeline,
+            expanded_environment_name: environment.name,
+            options: job.environment_options_for_permanent_storage
+          )
+        end
+      end
+
       it 'marks the old job as retried' do
         expect(new_job).to be_latest
         expect(job).to be_retried
@@ -122,7 +132,7 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
 
   shared_examples_for 'does not retry the job' do
     it 'returns :not_retryable and :unprocessable_entity' do
-      expect(subject.message).to be('Job cannot be retried')
+      expect(subject.message).to be('Job is not retryable')
       expect(subject.payload[:reason]).to eq(:not_retryable)
       expect(subject.payload[:job]).to eq(job)
     end
@@ -188,15 +198,29 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
       end
     end
 
-    context 'when the pipeline is a child pipeline and the bridge uses strategy:depend' do
+    context 'when the pipeline is a child pipeline and the bridge uses a strategy' do
       let!(:parent_pipeline) { create(:ci_pipeline, project: project) }
-      let!(:bridge) { create(:ci_bridge, :strategy_depend, pipeline: parent_pipeline, status: 'success') }
-      let!(:source_pipeline) { create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge) }
 
-      it 'marks the source bridge as pending' do
-        service.execute(job)
+      context 'when the strategy is strategy:depend' do
+        it 'marks the source bridge as pending' do
+          bridge = create(:ci_bridge, :strategy_depend, pipeline: parent_pipeline, status: 'success')
+          create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge)
 
-        expect(bridge.reload).to be_pending
+          service.execute(job)
+
+          expect(bridge.reload).to be_pending
+        end
+      end
+
+      context 'when the strategy is strategy:mirror' do
+        it 'marks the source bridge as pending' do
+          bridge = create(:ci_bridge, :strategy_mirror, pipeline: parent_pipeline, status: 'success')
+          create(:ci_sources_pipeline, pipeline: pipeline, source_job: bridge)
+
+          service.execute(job)
+
+          expect(bridge.reload).to be_pending
+        end
       end
     end
   end
@@ -216,15 +240,17 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
 
       it 'creates a new deployment' do
         expect { new_job }.to change { Deployment.count }.by(1)
+        expect(new_job.job_environment.deployment).to eq(new_job.deployment)
       end
 
       it 'does not create a new environment' do
         expect { new_job }.not_to change { Environment.count }
+        expect(new_job.persisted_environment).to eq(job.persisted_environment)
       end
     end
 
     context 'when a job with a dynamic environment is retried' do
-      let_it_be(:other_developer) { create(:user).tap { |u| project.add_developer(u) } }
+      let_it_be(:other_developer) { create(:user, developer_of: project) }
 
       let(:environment_name) { 'review/$CI_COMMIT_REF_SLUG-$GITLAB_USER_ID' }
 
@@ -239,10 +265,12 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
 
       it 'creates a new deployment' do
         expect { new_job }.to change { Deployment.count }.by(1)
+        expect(new_job.job_environment.deployment).to eq(new_job.deployment)
       end
 
       it 'does not create a new environment' do
         expect { new_job }.not_to change { Environment.count }
+        expect(new_job.persisted_environment).to eq(job.persisted_environment)
       end
     end
   end
@@ -365,6 +393,49 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
           expect { new_job }.not_to raise_error
         end
       end
+
+      context "when the retried bridge job has a resource group" do
+        let(:resource_group) { create(:ci_resource_group, project: project) }
+        let(:original_job) do
+          create(
+            :ci_bridge, :retryable,
+            :allowed_to_fail, description: 'bridge-job',
+            pipeline: pipeline,
+            resource_group: resource_group
+          )
+        end
+
+        it "passes the resource group to the newly created job via bridge job retry" do
+          service_response = service.execute(original_job)
+
+          expect { service_response }.not_to raise_error
+          expect(original_job.resource_group_id).to eq(service_response[:job].resource_group_id)
+        end
+
+        it 'prevents a new pipeline from running when retried bridge is running with same resource group' do
+          retried_bridge_job = service.execute(original_job)[:job]
+
+          resource_group.assign_resource_to(retried_bridge_job)
+          retried_bridge_job.update!(status: 'running')
+
+          new_bridge_job = create(
+            :ci_bridge, :waiting_for_resource,
+            pipeline: create(:ci_pipeline, project: project),
+            resource_group: resource_group
+          )
+
+          expect(new_bridge_job.status).to eq('waiting_for_resource')
+
+          retried_bridge_job.update!(status: 'success')
+          resource_group.release_resource_from(retried_bridge_job)
+
+          Ci::ResourceGroups::AssignResourceFromResourceGroupService.new(project, user).execute(resource_group)
+
+          new_bridge_job.reload
+
+          expect(new_bridge_job.status).to eq('pending')
+        end
+      end
     end
 
     context 'when the job to be retried is a build' do
@@ -421,6 +492,7 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
             expect(new_job.job_variables.count).to be(1)
             expect(new_job.job_variables.first.key).to eq('MANUAL_VAR')
             expect(new_job.job_variables.first.value).to eq('manual test var')
+            expect(new_job.job_variables.first.project_id).to eq(job.project_id)
           end
         end
 
@@ -556,6 +628,114 @@ RSpec.describe Ci::RetryJobService, feature_category: :continuous_integration do
         end
 
         it_behaves_like 'checks enqueue_immediately?'
+      end
+    end
+
+    context 'when given job inputs' do
+      let(:inputs_spec) do
+        {
+          'environment' => { 'type' => 'string', 'default' => 'staging', 'options' => %w[staging production] },
+          'debug' => { 'type' => 'boolean', 'default' => false }
+        }
+      end
+
+      let!(:job) do
+        create(:ci_build, :success, pipeline: pipeline, ci_stage: stage, options: { inputs: inputs_spec })
+      end
+
+      subject { service.execute(job, inputs: { environment: 'production', debug: true }) }
+
+      it 'applies the inputs to the retried job' do
+        expect(subject).to be_success
+        expect(new_job.inputs.count).to eq(2)
+
+        environment_input = new_job.inputs.find_by(name: 'environment')
+        expect(environment_input.value).to eq('production')
+        expect(environment_input.project_id).to eq(project.id)
+
+        debug_input = new_job.inputs.find_by(name: 'debug')
+        expect(debug_input.value).to be(true)
+        expect(debug_input.project_id).to eq(project.id)
+      end
+
+      context 'when some inputs match their default values' do
+        subject { service.execute(job, inputs: { environment: 'staging', debug: true }) }
+
+        it 'only saves inputs that differ from defaults' do
+          expect(subject).to be_success
+          expect(new_job.inputs.count).to eq(1)
+
+          debug_input = new_job.inputs.find_by(name: 'debug')
+          expect(debug_input.value).to be(true)
+          expect(debug_input.project_id).to eq(project.id)
+
+          expect(new_job.inputs.find_by(name: 'environment')).to be_nil
+        end
+      end
+
+      context 'when all inputs match their default values' do
+        subject { service.execute(job, inputs: { environment: 'staging', debug: false }) }
+
+        it 'does not save any inputs' do
+          expect(subject).to be_success
+          expect(new_job.inputs.count).to eq(0)
+        end
+      end
+
+      context 'when inputs are invalid' do
+        it 'returns a validation error' do
+          result = service.execute(job, inputs: { environment: 'development' })
+
+          expect(result).to be_error
+          expect(result.message).to eq(
+            '`environment` input: `development` cannot be used because it is not in the list of allowed options'
+          )
+        end
+
+        it 'does not create a new job' do
+          expect { service.execute(job, inputs: { environment: 'development' }) }
+            .not_to change { Ci::Build.count }
+        end
+      end
+
+      context 'when unknown inputs are provided' do
+        it 'returns an error' do
+          result = service.execute(job, inputs: { environment: 'production', unknown_input: 'value' })
+
+          expect(result).to be_error
+          expect(result.message).to eq('Unknown input: unknown_input')
+        end
+
+        it 'does not create a new job' do
+          expect { service.execute(job, inputs: { environment: 'production', unknown_input: 'value' }) }
+            .not_to change { Ci::Build.count }
+        end
+      end
+
+      describe 'job inputs metrics' do
+        it 'tracks when new input values are provided' do
+          expect { service.execute(job, inputs: { environment: 'production', debug: true }) }
+            .to trigger_internal_events('retry_job_with_new_input_values')
+            .with(
+              category: 'Ci::RetryJobService',
+              project: project,
+              user: user
+            )
+        end
+
+        context 'when all inputs match defaults' do
+          it 'does not track the event' do
+            expect { service.execute(job, inputs: { environment: 'staging', debug: false }) }
+              .not_to trigger_internal_events('retry_job_with_new_input_values')
+          end
+        end
+
+        context 'when no inputs are provided' do
+          it 'does not track the event' do
+            expect { service.execute(job, inputs: {}) }
+              .not_to trigger_internal_events('retry_job_with_new_input_values')
+          end
+        end
       end
     end
   end

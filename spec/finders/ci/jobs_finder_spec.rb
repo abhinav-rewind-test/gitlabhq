@@ -55,9 +55,14 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
       end
 
       context 'with param `runner_type`' do
-        let_it_be(:job_with_group_runner) { create(:ci_build, :success, runner: create(:ci_runner, :group)) }
         let_it_be(:job_with_instance_runner) { create(:ci_build, :success, runner: create(:ci_runner, :instance)) }
-        let_it_be(:job_with_project_runner) { create(:ci_build, :success, runner: create(:ci_runner, :project)) }
+        let_it_be(:job_with_group_runner) do
+          create(:ci_build, :success, runner: create(:ci_runner, :group, groups: [project.parent]))
+        end
+
+        let_it_be(:job_with_project_runner) do
+          create(:ci_build, :success, runner: create(:ci_runner, :project, projects: [project]))
+        end
 
         context 'with feature flag :admin_jobs_filter_runner_type enabled' do
           using RSpec::Parameterized::TableSyntax
@@ -98,11 +103,13 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
 
       context "with params" do
         let_it_be(:job_with_running_status_and_group_runner) do
-          create(:ci_build, :running, runner: create(:ci_runner, :group))
+          create(:ci_build, :running, runner: create(:ci_runner, :group, groups: [project.parent]))
         end
 
         let_it_be(:job_with_instance_runner) { create(:ci_build, :success, runner: create(:ci_runner, :instance)) }
-        let_it_be(:job_with_project_runner) { create(:ci_build, :success, runner: create(:ci_runner, :project)) }
+        let_it_be(:job_with_project_runner) do
+          create(:ci_build, :success, runner: create(:ci_runner, :project, projects: [project]))
+        end
 
         context 'with feature flag :admin_jobs_filter_runner_type enabled' do
           using RSpec::Parameterized::TableSyntax
@@ -325,6 +332,169 @@ RSpec.describe Ci::JobsFinder, '#execute', feature_category: :continuous_integra
 
       it 'returns no jobs' do
         expect(subject).to be_empty
+      end
+    end
+
+    describe 'when match_compatible_runner_only is true' do
+      let_it_be(:owner) { create(:user) }
+      let_it_be(:maintainer) { create(:user) }
+      let_it_be(:developer) { create(:user) }
+      let_it_be(:groups) { create_list(:group, 2, owners: owner, maintainers: maintainer, developers: developer) }
+      let_it_be(:projects) { groups.map { |group| create(:project, group: group) } }
+
+      let_it_be(:runner_matching_tags) { %w[tag1 tag2 tag3] }
+
+      let_it_be(:job) do
+        create(:ci_build, :pending, :queued, name: 'pending_job', project: projects.first,
+          tag_list: runner_matching_tags.sample(2))
+      end
+
+      let_it_be(:different_project_job) do
+        create(:ci_build, :pending, :queued, project: projects.second, tag_list: runner_matching_tags)
+      end
+
+      let_it_be(:instance_runner) { create(:ci_runner, tag_list: runner_matching_tags, run_untagged: false) }
+      let_it_be(:group_runner) { create(:ci_runner, :group, groups: [groups.first], tag_list: runner_matching_tags) }
+      let_it_be(:project_runner) do
+        create(:ci_runner, :project, projects: [projects.first], tag_list: runner_matching_tags)
+      end
+
+      let(:params) do
+        { match_compatible_runner_only: true }
+      end
+
+      before_all do
+        # Add job with non-matching tags to confirm that this does not return unrelated jobs
+        create(:ci_build, :pending, :queued, project: projects.first, tag_list: %w[tag1 tag4])
+      end
+
+      context 'with instance runner' do
+        let(:runner) { instance_runner }
+
+        context 'when user has access to runner' do
+          context 'when current user is an admin', :enable_admin_mode do
+            let(:user) { admin }
+
+            it 'returns the pending jobs' do
+              is_expected.to contain_exactly(job, different_project_job)
+            end
+          end
+        end
+
+        context 'without user' do
+          let(:user) { nil }
+
+          it { is_expected.to be_empty }
+        end
+      end
+
+      context 'with group runner' do
+        let(:runner) { group_runner }
+
+        context 'when user has access to runner' do
+          context 'when current user is an admin', :enable_admin_mode do
+            let(:user) { admin }
+
+            it 'returns the pending job' do
+              expect(execute).to contain_exactly(job)
+            end
+          end
+
+          context 'when current user is an owner of group' do
+            let(:user) { owner }
+
+            it 'returns the pending job' do
+              expect(execute).to contain_exactly(job)
+            end
+          end
+
+          context 'when current user is a maintainer of group' do
+            let(:user) { maintainer }
+
+            it 'returns the pending job' do
+              expect(execute).to contain_exactly(job)
+            end
+          end
+        end
+
+        context 'when current user is a developer of group' do
+          let(:user) { developer }
+
+          it { is_expected.to be_empty }
+        end
+
+        context 'without user' do
+          let(:user) { nil }
+
+          it { is_expected.to be_empty }
+        end
+      end
+
+      context 'with project runner' do
+        let(:runner) { project_runner }
+
+        context 'when user has access to runner' do
+          context 'when current user is an admin', :enable_admin_mode do
+            let(:user) { admin }
+
+            it 'returns the pending job' do
+              expect(execute).to contain_exactly(job)
+            end
+          end
+
+          context 'when current user is an maintainer of group' do
+            let(:user) { maintainer }
+
+            it 'returns the pending job' do
+              expect(execute).to contain_exactly(job)
+            end
+          end
+
+          context 'when current user is a developer of group' do
+            let(:user) { developer }
+
+            it { is_expected.to be_empty }
+          end
+        end
+
+        context 'without user' do
+          let(:user) { nil }
+
+          it { is_expected.to be_empty }
+        end
+      end
+    end
+  end
+
+  context 'when filtering by pipeline iid' do
+    let_it_be(:pipeline_with_iid_1) { create(:ci_pipeline, project: project) }
+    let_it_be(:pipeline_with_iid_2) { create(:ci_pipeline, project: project) }
+
+    let_it_be(:job_in_pipeline_1) { create(:ci_build, pipeline: pipeline_with_iid_1, project: project) }
+    let_it_be(:job_in_pipeline_2) { create(:ci_build, pipeline: pipeline_with_iid_2, project: project) }
+
+    subject do
+      described_class.new(current_user: user, project: project, params: params).execute
+    end
+
+    before do
+      project.add_maintainer(user)
+    end
+
+    context 'when pipeline_iid param is present' do
+      let(:params) { { pipeline_iid: pipeline_with_iid_1.iid } }
+
+      it 'returns only jobs with the specified pipeline iid' do
+        expect(subject).to contain_exactly(job_in_pipeline_1)
+        expect(subject).not_to include(job_in_pipeline_2)
+      end
+    end
+
+    context 'when pipeline_iid param is absent' do
+      let(:params) { {} }
+
+      it 'returns all jobs for the project' do
+        expect(subject).to include(job_in_pipeline_1, job_in_pipeline_2)
       end
     end
   end

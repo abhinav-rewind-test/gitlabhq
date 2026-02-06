@@ -25,6 +25,7 @@ const initHomePanel = () => {
     adminPath,
     canReadProject,
     isProjectEmpty,
+    projectAvatar,
     projectId,
 
     // Dropdown component
@@ -38,7 +39,6 @@ const initHomePanel = () => {
     editPath,
 
     // Fork component
-    canCreateFork,
     canForkProject,
     canReadCode,
     forksCount,
@@ -58,6 +58,20 @@ const initHomePanel = () => {
     starCount,
     starred,
     starrersPath,
+
+    // Home Panel Heading
+    projectName,
+    projectVisibilityLevel,
+    isProjectMarkedForDeletion,
+
+    // Compliance Badge
+    complianceFrameworkBadgeColor,
+    complianceFrameworkBadgeName,
+    complianceFrameworkBadgeTitle,
+    hasComplianceFrameworkFeature,
+
+    // CI/CD Catalogue Badge
+    cicdCatalogPath,
   } = container.dataset;
 
   return new Vue({
@@ -69,7 +83,8 @@ const initHomePanel = () => {
       adminPath,
       canReadProject: parseBoolean(canReadProject),
       isProjectEmpty: parseBoolean(isProjectEmpty),
-      projectId,
+      projectAvatar,
+      projectId: parseInt(projectId, 10),
 
       // Dropdown component
       groupOrProjectId: projectId,
@@ -79,11 +94,10 @@ const initHomePanel = () => {
       requestAccessPath,
       withdrawConfirmMessage,
       withdrawPath,
-      canEdit,
+      canEdit: parseBoolean(canEdit),
       editPath,
 
       // Fork component
-      canCreateFork: parseBoolean(canCreateFork),
       canForkProject: parseBoolean(canForkProject),
       canReadCode: parseBoolean(canReadCode),
       forksCount: parseInt(forksCount, 10) || 0,
@@ -104,6 +118,20 @@ const initHomePanel = () => {
       starCount: parseInt(starCount, 10) || 0,
       starred: parseBoolean(starred),
       starrersPath,
+
+      // Home Panel Heading
+      projectName,
+      projectVisibilityLevel,
+      isProjectMarkedForDeletion: parseBoolean(isProjectMarkedForDeletion),
+
+      // Compliance Badge
+      complianceFrameworkBadgeColor,
+      complianceFrameworkBadgeName,
+      complianceFrameworkBadgeTitle,
+      hasComplianceFrameworkFeature: parseBoolean(hasComplianceFrameworkFeature),
+
+      // CI/CD Catalogue Badge
+      cicdCatalogPath,
     },
     render: (createElement) => createElement(HomePanel),
   });

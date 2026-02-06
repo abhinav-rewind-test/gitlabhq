@@ -4,13 +4,23 @@ module AutoDevops
   class DisableWorker # rubocop:disable Scalability/IdempotentWorker
     include ApplicationWorker
 
-    data_consistency :always
+    data_consistency :sticky
 
     sidekiq_options retry: 3
     include AutoDevopsQueue
 
     def perform(pipeline_id)
-      pipeline = Ci::Pipeline.find(pipeline_id)
+      pipeline = Ci::Pipeline.find_by_id(pipeline_id)
+
+      unless pipeline
+        Sidekiq.logger.warn(
+          class: self.class.name,
+          pipeline_id: pipeline_id,
+          message: 'Pipeline not found'
+        )
+        return
+      end
+
       project = pipeline.project
 
       send_notification_email(pipeline, project) if disable_service(project).execute

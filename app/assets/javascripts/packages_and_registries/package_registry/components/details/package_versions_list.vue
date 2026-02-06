@@ -1,7 +1,6 @@
 <script>
 import { GlAlert } from '@gitlab/ui';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
-import { n__ } from '~/locale';
 import VersionRow from '~/packages_and_registries/package_registry/components/details/version_row.vue';
 import PackagesListLoader from '~/packages_and_registries/shared/components/packages_list_loader.vue';
 import RegistryList from '~/packages_and_registries/shared/components/registry_list.vue';
@@ -93,15 +92,13 @@ export default {
     pageInfo() {
       return this.packageVersions?.pageInfo ?? {};
     },
-    listTitle() {
-      return n__('%d version', '%d versions', this.versions.length);
-    },
     queryVariables() {
       return {
         id: this.packageId,
         first: GRAPHQL_PAGE_SIZE,
       };
     },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       const category = this.itemToBeDeleted
         ? packageTypeToTrackCategory(this.itemToBeDeleted.packageType)
@@ -183,10 +180,8 @@ export default {
     <div v-else>
       <registry-list
         :hidden-delete="!canDestroy"
-        :is-loading="isLoading"
         :items="versions"
         :pagination="pageInfo"
-        :title="listTitle"
         @delete="setItemsToBeDeleted"
         @prev-page="fetchPreviousVersionsPage"
         @next-page="fetchNextVersionsPage"

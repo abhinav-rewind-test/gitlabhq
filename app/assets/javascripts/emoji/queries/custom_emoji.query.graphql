@@ -1,7 +1,12 @@
-query getCustomEmoji($groupPath: ID!) {
+# @feature_category: code_review_workflow
+query getCustomEmoji($groupPath: ID!, $after: String) {
   group(fullPath: $groupPath) {
     id
-    customEmoji(includeAncestorGroups: true) {
+    customEmoji(after: $after, includeAncestorGroups: true) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         id
         name

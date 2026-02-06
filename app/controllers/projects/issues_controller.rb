@@ -8,8 +8,14 @@ class Projects::IssuesController < Projects::ApplicationController
   include IssuesCalendar
   include RecordUserLastActivity
 
-  ISSUES_EXCEPT_ACTIONS = %i[index calendar new create bulk_update import_csv export_csv service_desk].freeze
+  ISSUES_EXCEPT_ACTIONS = %i[index calendar new create bulk_update import_csv export_csv service_desk can_create_branch].freeze
   SET_ISSUABLES_INDEX_ONLY_ACTIONS = %i[index calendar service_desk].freeze
+  WORK_ITEM_REDIRECT_EXCEPT_ACTIONS = (ISSUES_EXCEPT_ACTIONS + [
+    :discussions,                # it's a JSON action, but not always passed on the tests requests
+    :designs,                    # redirected on the show action
+    :description_diff,
+    :delete_description_version
+  ]).freeze
 
   prepend_before_action(only: [:index]) { authenticate_sessionless_user!(:rss) }
   prepend_before_action(only: [:calendar]) { authenticate_sessionless_user!(:ics) }
@@ -17,12 +23,12 @@ class Projects::IssuesController < Projects::ApplicationController
   prepend_before_action :store_uri, only: [:new, :show, :designs]
 
   before_action :disable_query_limiting, only: [:create_merge_request, :move, :bulk_update]
+  before_action :disable_show_query_limit!, only: :show
+  before_action :disable_create_query_limit!, only: :create
+
   before_action :check_issues_available!
   before_action :issue, unless: ->(c) { ISSUES_EXCEPT_ACTIONS.include?(c.action_name.to_sym) }
-  before_action :redirect_if_work_item, unless: ->(c) { work_item_redirect_except_actions.include?(c.action_name.to_sym) }
   before_action :require_incident_for_incident_routes, only: :show
-
-  after_action :log_issue_show, only: :show
 
   before_action :set_issuables_index, if: ->(c) {
     SET_ISSUABLES_INDEX_ONLY_ACTIONS.include?(c.action_name.to_sym) && !index_html_request?
@@ -31,11 +37,14 @@ class Projects::IssuesController < Projects::ApplicationController
     SET_ISSUABLES_INDEX_ONLY_ACTIONS.include?(c.action_name.to_sym) && !index_html_request? && params[:search].present?
   }
 
+  before_action :redirect_if_work_item
+  before_action :redirect_index_to_work_items, only: :index
+
   # Allow write(create) issue
   before_action :authorize_create_issue!, only: [:new, :create]
 
   # Allow modify issue
-  before_action :authorize_update_issuable!, only: [:edit, :update, :move, :reorder]
+  before_action :authorize_update_issuable!, only: [:update, :move, :reorder]
 
   # Allow create a new branch and empty WIP merge request from current issue
   before_action :authorize_create_merge_request_from!, only: [:create_merge_request]
@@ -44,40 +53,18 @@ class Projects::IssuesController < Projects::ApplicationController
   before_action :authorize_read_code!, only: [:related_branches]
 
   before_action do
-    push_frontend_feature_flag(:preserve_unchanged_markdown, project)
-    push_frontend_feature_flag(:issues_grid_view)
-    push_frontend_feature_flag(:service_desk_ticket)
-    push_frontend_feature_flag(:issues_list_drawer, project)
-    push_frontend_feature_flag(:linked_work_items, project)
-    push_frontend_feature_flag(:display_work_item_epic_issue_sidebar, project)
-  end
-
-  before_action only: [:index, :show] do
-    push_force_frontend_feature_flag(:work_items, project&.work_items_feature_flag_enabled?)
-  end
-
-  before_action only: [:index, :service_desk] do
-    push_frontend_feature_flag(:or_issuable_queries, project)
-    push_frontend_feature_flag(:frontend_caching, project&.group)
-    push_frontend_feature_flag(:group_multi_select_tokens, project)
-  end
-
-  before_action only: :show do
-    push_frontend_feature_flag(:work_items_beta, project&.group)
-    push_force_frontend_feature_flag(:work_items_beta, project&.work_items_beta_feature_flag_enabled?)
-    push_force_frontend_feature_flag(:work_items_mvc_2, project&.work_items_mvc_2_feature_flag_enabled?)
-    push_frontend_feature_flag(:epic_widget_edit_confirmation, project)
-    push_frontend_feature_flag(:display_work_item_epic_issue_sidebar, project)
-    push_force_frontend_feature_flag(:linked_work_items, project.linked_work_items_feature_flag_enabled?)
     push_frontend_feature_flag(:notifications_todos_buttons, current_user)
-    push_frontend_feature_flag(:mention_autocomplete_backend_filtering, project)
+    push_force_frontend_feature_flag(:work_item_planning_view, !!project&.work_items_consolidated_list_enabled?(current_user))
+    push_force_frontend_feature_flag(:glql_load_on_click, !!project&.glql_load_on_click_feature_flag_enabled?)
+    push_frontend_feature_flag(:hide_incident_management_features, project)
+    push_force_frontend_feature_flag(:work_item_features_field, Feature.enabled?(:work_item_features_field, current_user))
   end
+
+  after_action :log_issue_show, only: :show
 
   around_action :allow_gitaly_ref_name_caching, only: [:discussions]
 
   respond_to :html
-
-  alias_method :designs, :show
 
   feature_category :team_planning, [
     :index, :calendar, :show, :new, :create, :edit, :update,
@@ -87,8 +74,7 @@ class Projects::IssuesController < Projects::ApplicationController
     :can_create_branch, :create_merge_request
   ]
   urgency :low, [
-    :index, :calendar, :show, :new, :create, :edit, :update,
-    :destroy, :move, :reorder, :designs, :toggle_subscription,
+    :index, :calendar, :show, :new, :update, :move, :reorder, :designs, :toggle_subscription,
     :discussions, :bulk_update, :realtime_changes,
     :toggle_award_emoji, :mark_as_spam, :related_branches,
     :can_create_branch, :create_merge_request
@@ -102,6 +88,8 @@ class Projects::IssuesController < Projects::ApplicationController
   attr_accessor :vulnerability_id
 
   def index
+    return if redirect_if_epic_params
+
     if index_html_request?
       set_sort_order
     else
@@ -125,6 +113,7 @@ class Projects::IssuesController < Projects::ApplicationController
     build_params = issue_params.merge(
       merge_request_to_resolve_discussions_of: params[:merge_request_to_resolve_discussions_of],
       discussion_to_resolve: params[:discussion_to_resolve],
+      observability_links: { metrics: params[:observability_metric_details], logs: params[:observability_log_details], tracing: params[:observability_trace_details] },
       confidential: !!Gitlab::Utils.to_boolean(issue_params[:confidential])
     )
     service = ::Issues::BuildService.new(container: project, current_user: current_user, params: build_params)
@@ -143,14 +132,43 @@ class Projects::IssuesController < Projects::ApplicationController
     respond_with(@issue)
   end
 
+  def show
+    return super if issue.require_legacy_views? || !html_request?
+
+    if project&.work_items_consolidated_list_enabled?(current_user)
+      if params[:vueroute].present? && request.path.include?('/designs/')
+        # Only redirect to designs path if both vueroute param exists and path contains /designs/
+        # Needed since designs are aliased to show in this controller
+        redirect_to designs_project_work_item_path(project, issue.iid, vueroute: params[:vueroute], params: request.query_parameters)
+      else
+        redirect_to project_work_item_path(project, issue.iid, params: request.query_parameters)
+      end
+    else
+      @right_sidebar = false
+      @work_item = issue.becomes(::WorkItem) # rubocop:disable Cop/AvoidBecomes -- We need the instance to be a work item
+
+      render 'projects/work_items/show'
+    end
+  end
+
+  alias_method :designs, :show
+
   def edit
-    respond_with(@issue)
+    # Check if user can edit the issue
+    if can?(current_user, :update_issue, issue)
+      # Redirect to issues detail page with edit mode enabled
+      redirect_to project_issue_path(project, issue, edit: 'true')
+    else
+      # Redirect to issues detail page without edit mode
+      redirect_to project_issue_path(project, issue)
+    end
   end
 
   def create
     create_params = issue_params.merge(
       add_related_issue: add_related_issue,
       merge_request_to_resolve_discussions_of: params[:merge_request_to_resolve_discussions_of],
+      observability_links: params[:observability_links],
       discussion_to_resolve: params[:discussion_to_resolve]
     )
 
@@ -187,7 +205,9 @@ class Projects::IssuesController < Projects::ApplicationController
       new_project = Project.find(params[:move_to_project_id])
       return render_404 unless issue.can_move?(current_user, new_project)
 
-      @issue = ::Issues::MoveService.new(container: project, current_user: current_user).execute(issue, new_project)
+      @issue = ::WorkItems::DataSync::MoveService.new(
+        work_item: issue, current_user: current_user, target_namespace: new_project.project_namespace
+      ).execute[:work_item]
     end
 
     respond_to do |format|
@@ -214,7 +234,6 @@ class Projects::IssuesController < Projects::ApplicationController
     @related_branches = ::Issues::RelatedBranchesService
       .new(container: project, current_user: current_user)
       .execute(issue)
-      .map { |branch| branch.merge(link: branch_link(branch)) }
 
     respond_to do |format|
       format.json do
@@ -228,16 +247,18 @@ class Projects::IssuesController < Projects::ApplicationController
   def can_create_branch
     can_create = current_user &&
       can?(current_user, :push_code, @project) &&
-      @issue.can_be_worked_on?
+      issue.can_be_worked_on?
 
     respond_to do |format|
       format.json do
-        render json: { can_create_branch: can_create, suggested_branch_name: @issue.suggested_branch_name }
+        render json: { can_create_branch: can_create, suggested_branch_name: issue.suggested_branch_name }
       end
     end
   end
 
   def create_merge_request
+    Labkit::UserExperienceSli.start(:create_merge_request)
+
     create_params = params.slice(:branch_name, :ref).merge(issue_iid: issue.iid)
     create_params[:target_project_id] = params[:target_project_id]
     result = ::MergeRequests::CreateFromIssueService.new(project: project, current_user: current_user, mr_params: create_params).execute
@@ -253,7 +274,8 @@ class Projects::IssuesController < Projects::ApplicationController
     IssuableExportCsvWorker.perform_async(:issue, current_user.id, project.id, finder_options.to_h) # rubocop:disable CodeReuse/Worker
 
     index_path = project_issues_path(project)
-    message = _('Your CSV export has started. It will be emailed to %{email} when complete.') % { email: current_user.notification_email_or_default }
+    message = safe_format(_('Your CSV export has started. It will be emailed to %{email} when complete.'),
+      email: current_user.notification_email_or_default)
     redirect_to(index_path, notice: message)
   end
 
@@ -354,7 +376,7 @@ class Projects::IssuesController < Projects::ApplicationController
       lock_version
       discussion_locked
       issue_type
-    ] + [{ label_ids: [], assignee_ids: [], update_task: [:index, :checked, :line_number, :line_source] }]
+    ] + [{ label_ids: [], assignee_ids: [], update_task: [:checked, :line_source, :line_sourcepos] }]
   end
 
   def reorder_params
@@ -377,6 +399,10 @@ class Projects::IssuesController < Projects::ApplicationController
       perform_spam_check: true)
   end
 
+  def destroy_service
+    Issues::DestroyService.new(container: project, current_user: current_user)
+  end
+
   def finder_type
     IssuesFinder
   end
@@ -392,8 +418,14 @@ class Projects::IssuesController < Projects::ApplicationController
 
   private
 
-  def work_item_redirect_except_actions
-    ISSUES_EXCEPT_ACTIONS
+  def disable_show_query_limit!
+    Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/544875', new_threshold: 130)
+  end
+
+  def disable_create_query_limit!
+    # TODO: Investigate threshold after epic-work item sync
+    # issue: https://gitlab.com/gitlab-org/gitlab/-/issues/438295
+    Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/546668', new_threshold: 150)
   end
 
   def render_by_create_result_error(result)
@@ -402,7 +434,7 @@ class Projects::IssuesController < Projects::ApplicationController
       errors: result.errors,
       http_status: result.http_status
     )
-    error_method_name = "render_#{result.http_status}".to_sym
+    error_method_name = :"render_#{result.http_status}"
 
     if respond_to?(error_method_name, true)
       send(error_method_name) # rubocop:disable GitlabSecurity/PublicSend
@@ -413,7 +445,7 @@ class Projects::IssuesController < Projects::ApplicationController
 
   def clean_params(all_params)
     issue_type = all_params[:issue_type].to_s
-    all_params.delete(:issue_type) unless WorkItems::Type.allowed_types_for_issues.include?(issue_type)
+    all_params.delete(:issue_type) unless ::WorkItems::TypesFilter.allowed_types_for_issues.include?(issue_type)
 
     all_params
   end
@@ -422,17 +454,14 @@ class Projects::IssuesController < Projects::ApplicationController
     options = super
 
     options[:issue_types] = Issue::TYPES_FOR_LIST
+    options[:include_subepics] = true if action_name == 'export_csv'
 
     if service_desk?
       options.reject! { |key| key == 'author_username' || key == 'author_id' }
-      options[:author_id] = Users::Internal.support_bot
+      options[:author_id] = Users::Internal.in_organization(project.organization_id).support_bot
     end
 
     options
-  end
-
-  def branch_link(branch)
-    project_compare_path(project, from: project.default_branch, to: branch[:name])
   end
 
   def service_desk?
@@ -447,10 +476,31 @@ class Projects::IssuesController < Projects::ApplicationController
   # Overridden in EE
   def create_vulnerability_issue_feedback(issue); end
 
-  def redirect_if_work_item
-    return unless use_work_items_path?(issue)
+  # Overriden on EE
+  def work_item_redirect_except_actions
+    WORK_ITEM_REDIRECT_EXCEPT_ACTIONS
+  end
 
-    redirect_to project_work_item_path(project, issue.iid, params: request.query_parameters)
+  def redirect_if_work_item
+    return if work_item_redirect_except_actions.include?(action_name.to_sym)
+    return unless html_request?
+    return unless issue.show_as_work_item?
+
+    query_params = request.query_parameters
+    query_params = query_params.merge(edit: 'true') if action_name == 'edit' && can?(current_user, :update_issue, issue)
+
+    redirect_to project_work_item_path(project, issue.iid, query_params)
+  end
+
+  def redirect_index_to_work_items
+    return unless index_html_request? && project&.work_items_consolidated_list_enabled?(current_user)
+
+    redirect_to project_work_items_path(project, params: work_items_redirect_params(request.query_parameters))
+  end
+
+  # Overridden in EE
+  def work_items_redirect_params(params)
+    params.except("type", "type[]")
   end
 
   def require_incident_for_incident_routes
@@ -461,6 +511,9 @@ class Projects::IssuesController < Projects::ApplicationController
     # issue type changes
     redirect_to project_issue_path(project, issue)
   end
+
+  # Overridden in EE
+  def redirect_if_epic_params; end
 end
 
 Projects::IssuesController.prepend_mod_with('Projects::IssuesController')

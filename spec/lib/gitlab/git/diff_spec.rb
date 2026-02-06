@@ -40,7 +40,8 @@ EOT
       new_file: false,
       renamed_file: false,
       deleted_file: false,
-      too_large: false
+      too_large: false,
+      encoded_file_path: false
     }
   end
 
@@ -164,7 +165,7 @@ EOT
         context 'when expanded is set to false' do
           let(:expanded) { false }
 
-          it 'will be marked as generated and collapsed' do
+          it 'is marked as generated and collapsed' do
             expect(diff).to be_generated
             expect(diff).to be_collapsed
             expect(diff.diff).to be_empty
@@ -174,11 +175,53 @@ EOT
         context 'when expanded is set to true' do
           let(:expanded) { true }
 
-          it 'will still be marked as generated, but not as collapsed' do
+          it 'marks as generated, but not as collapsed' do
             expect(diff).to be_generated
             expect(diff).not_to be_collapsed
             expect(diff.diff).not_to be_empty
           end
+        end
+      end
+
+      context 'when the file path is encoded and cleaned up' do
+        let(:gitaly_diff) do
+          Gitlab::GitalyClient::Diff.new(
+            from_path: "\x90.gitmodules",
+            to_path: "\x90.gitmodules",
+            old_mode: 0100644,
+            new_mode: 0100644,
+            from_id: '0792c58905eff3432b721f8c4a64363d8e28d9ae',
+            to_id: 'efd587ccb47caf5f31fc954edb21f0a713d9ecc3'
+          )
+        end
+
+        let(:diff) { described_class.new(gitaly_diff) }
+
+        it 'is flagged with encoded_file_path' do
+          expect(diff.old_path).to eq(".gitmodules")
+          expect(diff.new_path).to eq(".gitmodules")
+          expect(diff.encoded_file_path).to be(true)
+        end
+      end
+
+      context 'when the file path is encoded but not cleaned up' do
+        let(:gitaly_diff) do
+          Gitlab::GitalyClient::Diff.new(
+            from_path: "\xE3\x83\x86\xE3\x82\xB9\xE3\x83\x88",
+            to_path: "\xE3\x83\x86\xE3\x82\xB9\xE3\x83\x88",
+            old_mode: 0100644,
+            new_mode: 0100644,
+            from_id: '0792c58905eff3432b721f8c4a64363d8e28d9ae',
+            to_id: 'efd587ccb47caf5f31fc954edb21f0a713d9ecc3'
+          )
+        end
+
+        let(:diff) { described_class.new(gitaly_diff) }
+
+        it 'is not flagged with encoded_file_path' do
+          expect(diff.old_path).to eq("テスト")
+          expect(diff.new_path).to eq("テスト")
+          expect(diff.encoded_file_path).to be(false)
         end
       end
     end
@@ -224,7 +267,7 @@ EOT
       let(:diff_three) { described_class.new(@raw_diff_hash.merge({ diff: bad_string_three })) }
 
       context 'when replace_invalid_utf8_chars is true' do
-        it 'will convert invalid characters and not cause an encoding error' do
+        it 'converts invalid characters and not cause an encoding error' do
           expect(diff.diff).to include(Gitlab::EncodingHelper::UNICODE_REPLACEMENT_CHARACTER)
           expect(diff_two.diff).to include(Gitlab::EncodingHelper::UNICODE_REPLACEMENT_CHARACTER)
           expect(diff_three.diff).to include(Gitlab::EncodingHelper::UNICODE_REPLACEMENT_CHARACTER)
@@ -237,7 +280,7 @@ EOT
         context 'when the diff is binary' do
           let(:project) { create(:project, :repository) }
 
-          it 'will not try to replace characters' do
+          it 'does not try to replace characters' do
             expect(Gitlab::EncodingHelper).not_to receive(:encode_utf8_with_replacement_character?)
             expect(binary_diff(project).diff).not_to be_empty
           end
@@ -245,10 +288,10 @@ EOT
       end
 
       context 'when replace_invalid_utf8_chars is false' do
-        let(:not_replaced_diff) { described_class.new(@raw_diff_hash.merge({ diff: bad_string, replace_invalid_utf8_chars: false }) ) }
-        let(:not_replaced_diff_two) { described_class.new(@raw_diff_hash.merge({ diff: bad_string_two, replace_invalid_utf8_chars: false }) ) }
+        let(:not_replaced_diff) { described_class.new(@raw_diff_hash.merge({ diff: bad_string, replace_invalid_utf8_chars: false })) }
+        let(:not_replaced_diff_two) { described_class.new(@raw_diff_hash.merge({ diff: bad_string_two, replace_invalid_utf8_chars: false })) }
 
-        it 'will not try to convert invalid characters' do
+        it 'does not try to convert invalid characters' do
           expect(Gitlab::EncodingHelper).not_to receive(:encode_utf8_with_replacement_character?)
         end
       end
@@ -311,7 +354,7 @@ EOT
   end
 
   describe '.filter_diff_options' do
-    let(:options) { { max_files: 100, invalid_opt: true } }
+    let(:options) { { max_files: 100, invalid_opt: true, offset_index: 10 } }
 
     context "without default options" do
       let(:filtered_options) { described_class.filter_diff_options(options) }
@@ -492,8 +535,8 @@ EOT
       )
     end
 
-    it { expect(described_class.new(gitaly_diff).submodule?).to eq(false) }
-    it { expect(described_class.new(gitaly_submodule_diff).submodule?).to eq(true) }
+    it { expect(described_class.new(gitaly_diff).submodule?).to be(false) }
+    it { expect(described_class.new(gitaly_submodule_diff).submodule?).to be(true) }
   end
 
   describe '#line_count' do
@@ -516,13 +559,13 @@ EOT
     it 'returns true for a diff that is too large' do
       diff = described_class.new({ diff: 'a' * 204800 })
 
-      expect(diff.too_large?).to eq(true)
+      expect(diff.too_large?).to be(true)
     end
 
     it 'returns false for a diff that is small enough' do
       diff = described_class.new({ diff: 'a' })
 
-      expect(diff.too_large?).to eq(false)
+      expect(diff.too_large?).to be(false)
     end
 
     it 'returns true for a diff that was explicitly marked as being too large' do
@@ -530,7 +573,7 @@ EOT
 
       diff.too_large!
 
-      expect(diff.too_large?).to eq(true)
+      expect(diff.too_large?).to be(true)
     end
   end
 

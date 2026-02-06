@@ -20,7 +20,7 @@ module Projects
           RepositoryCleanupWorker.perform_async(project.id, current_user.id)
         end
       rescue Project::RepositoryReadOnlyError => err
-        { status: :error, message: (_('Failed to make repository read-only. %{reason}') % { reason: err.message }) }
+        { status: :error, message: (_('Failed to make repository read-only: %{reason}') % { reason: err.message }) }
       end
 
       def cleanup_after(project)
@@ -78,7 +78,7 @@ module Projects
     def cleanup_merge_request_diffs(old_commit_shas)
       merge_request_diffs = MergeRequestDiff
         .by_project_id(project.id)
-        .by_commit_sha(old_commit_shas)
+        .by_commit_sha(project, old_commit_shas)
 
       # It's important to run the ActiveRecord callbacks here
       merge_request_diffs.destroy_all # rubocop:disable Cop/DestroyAll

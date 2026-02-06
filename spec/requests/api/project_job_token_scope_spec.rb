@@ -3,6 +3,10 @@
 require 'spec_helper'
 
 RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management do
+  before do
+    allow(::Gitlab::CurrentSettings).to receive(:enforce_ci_inbound_job_token_scope_enabled?).and_return(false)
+  end
+
   describe 'GET /projects/:id/job_token_scope' do
     let_it_be(:project) { create(:project, :public) }
     let_it_be(:user) { create(:user) }
@@ -25,6 +29,11 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
+
+      it_behaves_like 'authorizing granular token permissions', :read_job_token_scope do
+        let(:boundary_object) { project }
+        let(:request) { get api("/projects/#{project.id}/job_token_scope", personal_access_token: pat) }
+      end
 
       it 'returns ci cd settings for job token scope' do
         subject
@@ -99,6 +108,13 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
+
+      it_behaves_like 'authorizing granular token permissions', :update_job_token_scope do
+        let(:boundary_object) { project }
+        let(:request) do
+          patch api("/projects/#{project.id}/job_token_scope", personal_access_token: pat), params: { enabled: false }
+        end
+      end
 
       it 'returns unauthorized and blank response when invalid auth credentials are given' do
         invalid_personal_access_token = build(:personal_access_token, user: user)
@@ -192,6 +208,41 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
         expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
+
+    context 'when instance-level enforcement is enabled' do
+      before do
+        allow(::Gitlab::CurrentSettings).to receive(:enforce_ci_inbound_job_token_scope_enabled?).and_return(true)
+      end
+
+      context 'when authenticated user as maintainer' do
+        before_all { project.add_maintainer(user) }
+
+        context 'when trying to disable the setting' do
+          let(:patch_job_token_scope_params) { { enabled: false } }
+
+          it 'returns bad_request with an error message' do
+            subject
+
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']).to include('enforced for the instance')
+          end
+
+          it 'does not update the project setting' do
+            expect { subject }.not_to change { project.reload.ci_cd_settings.inbound_job_token_scope_enabled }
+          end
+        end
+
+        context 'when trying to enable the setting' do
+          let(:patch_job_token_scope_params) { { enabled: true } }
+
+          it 'returns no content and succeeds' do
+            subject
+
+            expect(response).to have_gitlab_http_status(:no_content)
+          end
+        end
+      end
+    end
   end
 
   describe "GET /projects/:id/job_token_scope/allowlist" do
@@ -217,6 +268,11 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
+
+      it_behaves_like 'authorizing granular token permissions', :read_job_token_scope_allowlist do
+        let(:boundary_object) { project }
+        let(:request) { get api("/projects/#{project.id}/job_token_scope/allowlist", personal_access_token: pat) }
+      end
 
       it 'returns allowlist containing only the source projects' do
         subject
@@ -289,6 +345,13 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
 
+      it_behaves_like 'authorizing granular token permissions', :read_job_token_scope_allowlist do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/job_token_scope/groups_allowlist", personal_access_token: pat)
+        end
+      end
+
       it 'returns allowlist containing empty groups list' do
         subject
 
@@ -354,6 +417,14 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
+
+      it_behaves_like 'authorizing granular token permissions', :create_job_token_scope_allowlist do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/job_token_scope/groups_allowlist", personal_access_token: pat),
+            params: { target_group_id: target_group.id }
+        end
+      end
 
       it 'returns unauthorized and blank response when invalid auth credentials are given' do
         invalid_personal_access_token = build(:personal_access_token, user: user)
@@ -494,6 +565,14 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
         project.add_maintainer(user)
       end
 
+      it_behaves_like 'authorizing granular token permissions', :delete_job_token_scope_allowlist do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api("/projects/#{project.id}/job_token_scope/groups_allowlist/#{target_group.id}",
+            personal_access_token: pat)
+        end
+      end
+
       context 'for the target project member' do
         before do
           target_group.add_guest(user)
@@ -592,6 +671,14 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
     context 'when authenticated user as maintainer' do
       before_all { project.add_maintainer(user) }
 
+      it_behaves_like 'authorizing granular token permissions', :create_job_token_scope_allowlist do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api("/projects/#{project.id}/job_token_scope/allowlist", personal_access_token: pat),
+            params: { target_project_id: project_inbound_allowed.id }
+        end
+      end
+
       it 'returns unauthorized and blank response when invalid auth credentials are given' do
         invalid_personal_access_token = build(:personal_access_token, user: user)
 
@@ -626,10 +713,14 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
         expect(response).to have_gitlab_http_status(:bad_request)
       end
 
-      it 'returns bad_request when adding the source project' do
+      it 'returns created and creates a job token scope link for self-project when adding the source project' do
         post api(post_job_token_scope_allowlist_path, user), params: { target_project_id: project.id }
 
-        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(response).to have_gitlab_http_status(:created)
+        expect(json_response).to include(
+          'target_project_id' => project.id,
+          'source_project_id' => project.id
+        )
       end
 
       it 'returns not_found when project for param `project_id` does not exist' do
@@ -742,6 +833,22 @@ RSpec.describe API::ProjectJobTokenScope, feature_category: :secrets_management 
     context 'when authenticated user as a maintainer' do
       before do
         project.add_maintainer(user)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_job_token_scope_allowlist do
+        before_all do
+          Ci::JobToken::ProjectScopeLink.find_or_create_by!(
+            source_project: project,
+            target_project: target_project,
+            direction: :inbound
+          )
+        end
+
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api("/projects/#{project.id}/job_token_scope/allowlist/#{target_project.id}",
+            personal_access_token: pat)
+        end
       end
 
       context 'for the target project member' do

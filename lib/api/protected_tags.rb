@@ -6,8 +6,6 @@ module API
 
     TAG_ENDPOINT_REQUIREMENTS = API::NAMESPACE_OR_PROJECT_REQUIREMENTS.merge(name: API::NO_SLASH_URL_PART_REGEX)
 
-    before { authorize_admin_project }
-
     feature_category :source_code_management
 
     helpers Helpers::ProtectedTagsHelpers
@@ -30,7 +28,9 @@ module API
         use :pagination
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :read_protected_tag, boundary_type: :project
       get ':id/protected_tags' do
+        authorize!(:read_protected_tags, user_project)
         protected_tags = user_project.protected_tags.preload(:create_access_levels)
 
         present paginate(protected_tags), with: Entities::ProtectedTag, project: user_project
@@ -50,7 +50,9 @@ module API
         requires :name, type: String, desc: 'The name of the tag or wildcard', documentation: { example: 'release*' }
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :read_protected_tag, boundary_type: :project
       get ':id/protected_tags/:name', requirements: TAG_ENDPOINT_REQUIREMENTS do
+        authorize!(:read_protected_tags, user_project)
         protected_tag = user_project.protected_tags.find_by!(name: params[:name])
 
         present protected_tag, with: Entities::ProtectedTag, project: user_project
@@ -70,21 +72,23 @@ module API
       params do
         requires :name, type: String, desc: 'The name of the protected tag', documentation: { example: 'release-1-0' }
         optional :create_access_level,
-                 type: Integer,
-                 values: ProtectedTag::CreateAccessLevel.allowed_access_levels,
-                 desc: 'Access levels allowed to create (defaults: `40`, maintainer access level)',
-                 documentation: { example: 30 }
+          type: Integer,
+          values: ProtectedTag::CreateAccessLevel.allowed_access_levels,
+          desc: 'Access levels allowed to create (defaults: `40`, maintainer access level)',
+          documentation: { example: 30 }
         use :optional_params_ee
       end
+      route_setting :authorization, permissions: :create_protected_tag, boundary_type: :project
       post ':id/protected_tags' do
+        authorize!(:create_protected_tags, user_project)
         protected_tags_params = {
           name: params[:name],
           create_access_levels_attributes: ::ProtectedRefs::AccessLevelParams.new(:create, params).access_levels
         }
 
         protected_tag = ::ProtectedTags::CreateService.new(user_project,
-                                                           current_user,
-                                                           protected_tags_params).execute
+          current_user,
+          protected_tags_params).execute
 
         if protected_tag.persisted?
           present protected_tag, with: Entities::ProtectedTag, project: user_project
@@ -107,10 +111,16 @@ module API
         requires :name, type: String, desc: 'The name of the protected tag', documentation: { example: 'release-1-0' }
       end
       # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :delete_protected_tag, boundary_type: :project
       delete ':id/protected_tags/:name', requirements: TAG_ENDPOINT_REQUIREMENTS do
+        authorize!(:destroy_protected_tags, user_project)
+
         protected_tag = user_project.protected_tags.find_by!(name: params[:name])
 
-        destroy_conditionally!(protected_tag)
+        destroy_conditionally!(protected_tag) do
+          destroy_service = ::ProtectedTags::DestroyService.new(user_project, current_user)
+          destroy_service.execute(protected_tag)
+        end
       end
       # rubocop: enable CodeReuse/ActiveRecord
     end

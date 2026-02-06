@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module QA
-  RSpec.describe 'Plan', product_group: :product_planning do
+  RSpec.describe 'Plan', feature_category: :portfolio_management do
     describe 'Design Management' do
       let(:design_filename) { 'banana_sample.gif' }
       let(:design) { Runtime::Path.fixture('designs', design_filename) }
@@ -22,7 +22,7 @@ module QA
         testcase: 'https://gitlab.com/gitlab-org/gitlab/-/quality/test_cases/347822' do
         issue.visit!
 
-        Page::Project::Issue::Show.perform do |issue|
+        Page::Project::WorkItem::Show.perform do |issue|
           issue.add_design(design)
           issue.click_design(design_filename)
           issue.add_annotation(annotation)

@@ -20,7 +20,7 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
 
       it 'processes the gem', :aggregate_failures do
         expect { subject }
-          .to change { Packages::Package.count }.by(0)
+          .to not_change { Packages::Package.count }
           .and change { Packages::PackageFile.count }.by(1)
 
         expect(Packages::Package.last.id).to be(package_for_processing.id)
@@ -88,8 +88,20 @@ RSpec.describe Packages::Rubygems::ExtractionWorker, type: :worker, feature_cate
         expect(::Packages::Rubygems::ProcessGemService).not_to receive(:new)
 
         expect { subject }
-          .to change { Packages::Package.count }.by(0)
-          .and change { Packages::PackageFile.count }.by(0)
+          .to not_change { Packages::Package.count }
+          .and not_change { Packages::PackageFile.count }
+      end
+    end
+
+    context 'with the error when fetching a package file' do
+      let(:exception) { ActiveRecord::QueryCanceled.new('ERROR: canceling statement due to statement timeout') }
+
+      before do
+        allow(::Packages::PackageFile).to receive(:find_by_id).with(package_file_id).and_raise(exception)
+      end
+
+      it 'raises the error' do
+        expect { subject }.to raise_error(exception.class)
       end
     end
   end

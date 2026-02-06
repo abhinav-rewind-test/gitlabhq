@@ -2,14 +2,13 @@
 
 $design-pin-diameter: 28px;
 $design-pin-diameter-sm: 24px;
-$t-gray-a-16-design-pin: rgba($black, 0.16);
-
-.design-card-header {
-  background: transparent;
-}
 
 .layout-page.design-detail-layout {
   max-height: 100vh;
+
+  .super-sidebar, .top-bar-fixed {
+    z-index: 0;
+  }
 }
 
 .design-detail {
@@ -31,12 +30,14 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
   min-width: 400px;
   flex-shrink: 4;
 
-  @media (min-width: $breakpoint-lg) {
+  @include gl-container-width-up(lg, panel) {
     width: 400px !important;
     flex-shrink: 0;
   }
 }
 
+// These are composite classes for use with Vue Transition
+// https://vuejs.org/guide/built-ins/transition
 .design-disclosure-enter-to {
   transform: translateX(0);
 }
@@ -54,21 +55,15 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
 .design-list-item {
   height: 160px;
   text-decoration: none;
-
-  .icon-version-status {
-    position: absolute;
-    right: 10px;
-    top: 10px;
-  }
 }
 
 .design-note-pin {
   display: flex;
-  height: $design-pin-diameter;
-  width: $design-pin-diameter;
+  height: $design-pin-diameter-sm;
+  width: $design-pin-diameter-sm;
   box-sizing: content-box;
-  background-color: var(--purple-500, $purple-500);
-  color: var(--white, $white);
+  @apply gl-text-neutral-0;
+  background-color: var(--gl-status-brand-icon-color);
   font-weight: $gl-font-weight-bold;
   border-radius: 50%;
   z-index: 1;
@@ -76,16 +71,19 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
   border: 0;
 
   &.draft {
-    background-color: var(--orange-500, $orange-500);
+    background-color: var(--gl-status-warning-icon-color);
   }
 
   &.resolved {
-    background-color: var(--gray-500, $gray-500);
+    @apply gl-bg-strong;
+    @apply gl-text-strong;
   }
 
   &.on-image {
-    box-shadow: 0 2px 4px $t-gray-a-08, 0 0 1px $t-gray-a-24;
-    border: var(--white, $white) 2px solid;
+    box-shadow: 0 2px 4px var(--gl-color-alpha-dark-8), 0 0 1px var(--gl-color-alpha-dark-24);
+    @apply gl-border-2;
+    @apply gl-border-solid;
+    @apply gl-border-neutral-0;
     will-change: transform, box-shadow, opacity;
     // NOTE: verbose transition property required for Safari
     transition: transform $general-hover-transition-duration linear, box-shadow $general-hover-transition-duration linear, opacity $general-hover-transition-duration linear;
@@ -97,7 +95,7 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
     }
 
     &:active {
-      box-shadow: 0 0 4px $t-gray-a-16-design-pin, 0 4px 12px $t-gray-a-16-design-pin;
+      box-shadow: 0 0 4px var(--gl-shadow-color-default), 0 4px 12px var(--gl-shadow-color-default);
     }
 
     &.inactive {
@@ -111,7 +109,9 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
 
   &.small {
     position: absolute;
-    border: 1px solid var(--white, $white);
+    @apply gl-border-1;
+    @apply gl-border-solid;
+    @apply gl-border-neutral-0;
     height: $design-pin-diameter-sm;
     width: $design-pin-diameter-sm;
   }
@@ -132,7 +132,7 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
   overflow-y: auto;
   padding: $gl-padding;
   padding-top: 50px;
-  background-color: var(--white, $white);
+  @apply gl-bg-default;
 
   .link-inherit-color {
     &,
@@ -145,10 +145,8 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
 
   .toggle-comments {
     line-height: 20px;
-    border-top: 1px solid var(--border-color, $border-color);
 
-    &.expanded {
-      border-bottom: 1px solid var(--border-color, $border-color);
+    &[aria-expanded="true"] {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
     }
@@ -159,33 +157,54 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
     }
   }
 
+  .toggle-comments ~ .design-note {
+    @apply gl-bg-subtle;
+  }
+
   .design-discussion {
     margin: $gl-padding 0;
 
     &::before {
       content: '';
-      border-left: 1px solid var(--gray-100, $gray-100);
+      @apply gl-border-l;
       position: absolute;
-      left: 12px;
+      left: 11px;
       top: -17px;
       height: 17px;
+    }
+
+    .design-note:first-child {
+      @apply gl-bg-section;
+      @apply gl-border-b;
+      @apply gl-border-b-section;
+      @apply gl-rounded-t-base;
+    }
+
+    .design-note:not(:first-child) {
+      @apply gl-bg-subtle;
+    }
+
+    &.active-discussion {
+      .design-note:first-child {
+        background-color: var(--timeline-entry-target-background-color) !important;
+      }
     }
 
     .design-note {
       padding: $gl-padding-8;
       list-style: none;
-      transition: background $gl-transition-duration-medium $general-hover-transition-curve;
-      border-top-left-radius: $border-radius-default; // same border radius used by .bordered-box
-      border-top-right-radius: $border-radius-default;
+      @apply gl-transition-background;
 
       video {
         width: 100%;
       }
     }
 
-    .reply-wrapper {
+    .reply-wrapper, .disabled-comment {
       padding: $gl-padding-8;
-      border-radius: 0 0 $border-radius-default $border-radius-default;
+      @apply gl-bg-subtle;
+      @apply gl-border-0;
+      @apply gl-rounded-b-base;
     }
   }
 
@@ -194,7 +213,7 @@ $t-gray-a-16-design-pin: rgba($black, 0.16);
   }
 }
 
-@media (max-width: map-get($grid-breakpoints, lg)) {
+@include gl-container-width-down(lg, panel) {
   .design-detail {
     overflow-y: scroll;
   }

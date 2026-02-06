@@ -3,7 +3,7 @@
 module Gitlab
   module Logging
     module CloudflareHelper
-      CLOUDFLARE_CUSTOM_HEADERS = { 'Cf-Ray' => :cf_ray, 'Cf-Request-Id' => :cf_request_id,
+      CLOUDFLARE_CUSTOM_HEADERS = { 'Cf-Request-Id' => :cf_request_id,
                                     'Cf-IPCountry' => :cf_ipcountry }.freeze
 
       def store_cloudflare_headers!(payload, request)
@@ -15,7 +15,7 @@ module Gitlab
       def valid_cloudflare_header?(value)
         return false unless value.present?
         return false if value.length > 64
-        return false if value.index(/[^[A-Za-z0-9-]]/)
+        return false if value.index(/[^[.A-Za-z0-9-]]/)
 
         true
       end

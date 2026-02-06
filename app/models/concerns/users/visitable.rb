@@ -16,8 +16,8 @@ module Users
 
       scope :for_user, ->(user_id) { where(user_id: user_id) }
 
-      scope :recently_visited, -> do
-        where('visited_at > ?', 3.months.ago)
+      scope :recently_visited, ->(since: 3.months.ago) do
+        where('visited_at > ?', since)
           .where('visited_at <= ?', Time.current)
       end
 
@@ -48,9 +48,7 @@ module Users
           LIMIT #{limit}
         SQL
 
-        ::Gitlab::Database::LoadBalancing::Session.current.fallback_to_replicas_for_ambiguous_queries do
-          connection.execute(sql).to_a
-        end
+        connection.select_all(sql).to_a
       end
     end
   end

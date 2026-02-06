@@ -1,10 +1,10 @@
 <script>
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { state } from './sidebar_reviewers.vue';
+import { sidebarState } from '~/sidebar/sidebar_state';
 
 export default {
   data() {
-    return state;
+    return sidebarState;
   },
   computed: {
     reviewers() {
@@ -28,7 +28,7 @@ export default {
       :data-avatar-url="reviewer.avatarUrl"
       :data-name="reviewer.name"
       :data-username="reviewer.username"
-      :data-can-merge="reviewer.mergeRequestInteraction.canMerge"
+      :data-can_merge="reviewer.mergeRequestInteraction.canMerge"
     />
   </div>
 </template>

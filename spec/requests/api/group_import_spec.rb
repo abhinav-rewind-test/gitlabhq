@@ -7,8 +7,8 @@ RSpec.describe API::GroupImport, feature_category: :importers do
 
   include_context 'workhorse headers'
 
-  let_it_be(:user) { create(:user) }
-  let_it_be(:group) { create(:group) }
+  let_it_be(:user) { create(:user, organizations: [current_organization]) }
+  let_it_be(:group) { create(:group, organization: current_organization) }
 
   let(:path) { '/groups/import' }
   let(:file) { File.join('spec', 'fixtures', 'group_export.tar.gz') }
@@ -28,13 +28,15 @@ RSpec.describe API::GroupImport, feature_category: :importers do
 
   describe 'POST /groups/import' do
     let(:file_upload) { fixture_file_upload(file) }
-    let(:params) do
+    let(:base_params) do
       {
         path: 'test-import-group',
         name: 'test-import-group',
         file: fixture_file_upload(file)
       }
     end
+
+    let(:params) { base_params }
 
     subject { upload_archive(file_upload, workhorse_headers, params) }
 
@@ -69,8 +71,8 @@ RSpec.describe API::GroupImport, feature_category: :importers do
           end
 
           context 'when parent group is private or internal' do
-            let(:public_parent_group) { create(:group, :public) }
-            let(:internal_parent_group) { create(:group, :internal) }
+            let(:public_parent_group) { create(:group, :public, organization: current_organization) }
+            let(:internal_parent_group) { create(:group, :internal, organization: current_organization) }
 
             before do
               public_parent_group.add_owner(user)
@@ -108,7 +110,7 @@ RSpec.describe API::GroupImport, feature_category: :importers do
 
             context 'when user is not an owner of parent group' do
               it 'returns 403 Forbidden HTTP status' do
-                params[:parent_id] = create(:group).id
+                params[:parent_id] = create(:group, organization: current_organization).id
 
                 subject
 
@@ -132,6 +134,11 @@ RSpec.describe API::GroupImport, feature_category: :importers do
 
             expect(response).to have_gitlab_http_status(:bad_request)
           end
+        end
+
+        it_behaves_like 'authorizing granular token permissions', :create_group_import do
+          let(:boundary_object) { :instance }
+          let(:request) { upload_archive(file_upload, workhorse_headers, params, personal_access_token: pat) }
         end
       end
 
@@ -242,9 +249,57 @@ RSpec.describe API::GroupImport, feature_category: :importers do
       end
     end
 
-    def upload_archive(file, headers = {}, params = {})
+    context 'when organization_id is missing' do
+      context 'and current organization is defined' do
+        it 'assigns current organization' do
+          subject
+
+          expect(Group.last.organization_id).to eq(current_organization.id)
+        end
+
+        context 'when importing to a parent group' do
+          let_it_be(:group) { create(:group, organization: current_organization) }
+
+          before do
+            group.add_owner(user)
+          end
+
+          it 'creates new group and accepts request' do
+            params[:parent_id] = group.id
+
+            subject
+
+            expect(response).to have_gitlab_http_status(:accepted)
+            expect(group.children.count).to eq(1)
+          end
+        end
+      end
+    end
+
+    context 'when organization_id param is different than parent group organization' do
+      let!(:other_organization) { create(:organization, name: 'different organization', users: [user]) }
+      let(:params) { base_params.merge(organization_id: other_organization.id) }
+
+      before do
+        group.add_owner(user)
+      end
+
+      it 'rejects the request' do
+        params[:parent_id] = group.id
+
+        subject
+
+        error_message = "You can't create a group in a different organization than the parent group."
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response["message"]).to include(error_message)
+      end
+    end
+
+    def upload_archive(file, headers = {}, params = {}, personal_access_token: nil)
+      request_user = personal_access_token.present? ? nil : user
+
       workhorse_finalize(
-        api('/groups/import', user),
+        api('/groups/import', request_user, personal_access_token: personal_access_token),
         method: :post,
         file_key: :file,
         params: params.merge(file: file),
@@ -306,6 +361,11 @@ RSpec.describe API::GroupImport, feature_category: :importers do
           expect(json_response['RemoteObject']).to be_nil
         end
       end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :authorize_group_import do
+      let(:boundary_object) { :instance }
+      let(:request) { post api('/groups/import/authorize', personal_access_token: pat), headers: workhorse_headers }
     end
   end
 end

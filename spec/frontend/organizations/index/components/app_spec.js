@@ -1,15 +1,16 @@
 import { GlButton } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
+import currentUserOrganizationsGraphQlResponse from 'test_fixtures/graphql/organizations/current_user_organizations.query.graphql.json';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
 import { DEFAULT_PER_PAGE } from '~/api';
-import { organizations as nodes, pageInfo, pageInfoEmpty } from '~/organizations/mock_data';
-import organizationsQuery from '~/organizations/shared/graphql/queries/organizations.query.graphql';
+import currentUserOrganizationsQuery from '~/organizations/shared/graphql/queries/current_user_organizations.query.graphql';
 import OrganizationsIndexApp from '~/organizations/index/components/app.vue';
 import OrganizationsView from '~/organizations/shared/components/organizations_view.vue';
+import { pageInfoEmpty } from 'jest/organizations/mock_data';
 import { MOCK_NEW_ORG_URL } from '../../shared/mock_data';
 
 jest.mock('~/alert');
@@ -20,32 +21,28 @@ describe('OrganizationsIndexApp', () => {
   let wrapper;
   let mockApollo;
 
-  const organizations = {
-    nodes,
-    pageInfo,
-  };
+  const {
+    data: {
+      currentUser: { organizations },
+    },
+  } = currentUserOrganizationsGraphQlResponse;
 
   const organizationEmpty = {
     nodes: [],
     pageInfo: pageInfoEmpty,
   };
 
-  const successHandler = jest.fn().mockResolvedValue({
-    data: {
-      currentUser: {
-        id: 'gid://gitlab/User/1',
-        organizations,
-      },
-    },
-  });
+  const successHandler = jest.fn().mockResolvedValue(currentUserOrganizationsGraphQlResponse);
 
-  const createComponent = (handler = successHandler) => {
-    mockApollo = createMockApollo([[organizationsQuery, handler]]);
+  const createComponent = ({ handler = successHandler, provide = {} } = {}) => {
+    mockApollo = createMockApollo([[currentUserOrganizationsQuery, handler]]);
 
     wrapper = shallowMountExtended(OrganizationsIndexApp, {
       apolloProvider: mockApollo,
       provide: {
         newOrganizationUrl: MOCK_NEW_ORG_URL,
+        canCreateOrganization: true,
+        ...provide,
       },
     });
   };
@@ -90,42 +87,79 @@ describe('OrganizationsIndexApp', () => {
     });
   };
 
-  describe('when API call is loading', () => {
-    beforeEach(() => {
-      createComponent(jest.fn().mockReturnValue(new Promise(() => {})));
+  describe('`canCreateOrganization` is true', () => {
+    describe('when API call is loading', () => {
+      beforeEach(() => {
+        createComponent({ handler: jest.fn().mockResolvedValue({}) });
+      });
+
+      itRendersHeaderText();
+      itRendersNewOrganizationButton();
+      itDoesNotRenderErrorMessage();
+
+      it('renders the organizations view with loading prop set to true', () => {
+        expect(findOrganizationsView().props('loading')).toBe(true);
+      });
     });
+    describe('when API call is successful', () => {
+      beforeEach(async () => {
+        createComponent();
+        await waitForPromises();
+      });
 
-    itRendersHeaderText();
-    itRendersNewOrganizationButton();
-    itDoesNotRenderErrorMessage();
+      itRendersHeaderText();
+      itRendersNewOrganizationButton();
+      itDoesNotRenderErrorMessage();
 
-    it('renders the organizations view with loading prop set to true', () => {
-      expect(findOrganizationsView().props('loading')).toBe(true);
+      it('passes organizations to view component', () => {
+        expect(findOrganizationsView().props()).toMatchObject({
+          loading: false,
+          organizations,
+        });
+      });
     });
   });
 
-  describe('when API call is successful', () => {
-    beforeEach(async () => {
-      createComponent();
-      await waitForPromises();
+  describe('`canCreateOrganization` is false', () => {
+    describe('when API call is loading', () => {
+      beforeEach(() => {
+        createComponent({
+          handler: jest.fn().mockResolvedValue({}),
+          provide: { canCreateOrganization: false },
+        });
+      });
+
+      itRendersHeaderText();
+      itDoesNotRenderNewOrganizationButton();
+      itDoesNotRenderErrorMessage();
+
+      it('renders the organizations view with loading prop set to true', () => {
+        expect(findOrganizationsView().props('loading')).toBe(true);
+      });
     });
+    describe('when API call is successful', () => {
+      beforeEach(() => {
+        createComponent({ provide: { canCreateOrganization: false } });
+        return waitForPromises();
+      });
 
-    itRendersHeaderText();
-    itRendersNewOrganizationButton();
-    itDoesNotRenderErrorMessage();
+      itRendersHeaderText();
+      itDoesNotRenderNewOrganizationButton();
+      itDoesNotRenderErrorMessage();
 
-    it('passes organizations to view component', () => {
-      expect(findOrganizationsView().props()).toMatchObject({
-        loading: false,
-        organizations,
+      it('passes organizations to view component', () => {
+        expect(findOrganizationsView().props()).toMatchObject({
+          loading: false,
+          organizations,
+        });
       });
     });
   });
 
   describe('when API call is successful and returns no organizations', () => {
     beforeEach(async () => {
-      createComponent(
-        jest.fn().mockResolvedValue({
+      createComponent({
+        handler: jest.fn().mockResolvedValue({
           data: {
             currentUser: {
               id: 'gid://gitlab/User/1',
@@ -133,7 +167,7 @@ describe('OrganizationsIndexApp', () => {
             },
           },
         }),
-      );
+      });
       await waitForPromises();
     });
 
@@ -153,7 +187,7 @@ describe('OrganizationsIndexApp', () => {
     const error = new Error();
 
     beforeEach(async () => {
-      createComponent(jest.fn().mockRejectedValue(error));
+      createComponent({ handler: jest.fn().mockRejectedValue(error) });
       await waitForPromises();
     });
 

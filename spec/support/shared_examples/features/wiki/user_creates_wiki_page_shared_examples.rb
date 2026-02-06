@@ -24,10 +24,10 @@ RSpec.shared_examples 'User creates wiki page' do
       end
     end
 
-    it "disables the submit button", :js do
+    it "does not disable the submit button", :js do
       page.within(".wiki-form") do
         fill_in(:wiki_content, with: "")
-        expect(page).to have_button('Create page', disabled: true)
+        expect(page).to have_button('Create page', disabled: false)
       end
     end
 
@@ -42,7 +42,7 @@ RSpec.shared_examples 'User creates wiki page' do
 
       click_link("link test")
 
-      expect(page).to have_content("New Page")
+      expect(page).to have_content("This page doesn't exist")
     end
 
     it "shows non-escaped link in the pages list", :js do
@@ -80,11 +80,13 @@ RSpec.shared_examples 'User creates wiki page' do
 
       click_link("test")
 
+      expect(page).to have_content("This page doesn't exist")
+
+      click_link("Create this page…")
+
       expect(page).to have_current_path(wiki_page_path(wiki, "test"), ignore_query: true)
 
-      page.within(:css, ".wiki-page-header") do
-        expect(page).to have_content("New Page")
-      end
+      click_button('Open sidebar')
 
       click_link("Home")
 
@@ -92,11 +94,11 @@ RSpec.shared_examples 'User creates wiki page' do
 
       click_link("GitLab API")
 
-      expect(page).to have_current_path(wiki_page_path(wiki, "api"), ignore_query: true)
+      expect(page).to have_content("This page doesn't exist")
 
-      page.within(:css, ".wiki-page-header") do
-        expect(page).to have_content("New Page")
-      end
+      click_link("Create this page…")
+
+      expect(page).to have_current_path(wiki_page_path(wiki, "api"), ignore_query: true)
 
       click_link("Home")
 
@@ -104,14 +106,17 @@ RSpec.shared_examples 'User creates wiki page' do
 
       click_link("Rake tasks")
 
-      expect(page).to have_current_path(wiki_page_path(wiki, "raketasks"), ignore_query: true)
+      expect(page).to have_content("This page doesn't exist")
 
-      page.within(:css, ".wiki-page-header") do
-        expect(page).to have_content("New Page")
-      end
+      click_link("Create this page…")
+
+      expect(page).to have_current_path(wiki_page_path(wiki, "raketasks"), ignore_query: true)
     end
 
-    it "creates ASCII wiki with LaTeX blocks", :js do
+    it "creates ASCII wiki with LaTeX blocks", :js, quarantine: {
+      issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24078',
+      type: :flaky
+    } do
       stub_application_setting(plantuml_url: "http://localhost", plantuml_enabled: true)
 
       ascii_content = <<~MD
@@ -140,7 +145,7 @@ RSpec.shared_examples 'User creates wiki page' do
         click_button("Create page")
       end
 
-      page.within ".md" do
+      page.within ".js-wiki-page-content" do
         expect(page).to have_selector(".katex", count: 3).and have_content("2+2 is 4")
       end
     end
@@ -166,7 +171,9 @@ RSpec.shared_examples 'User creates wiki page' do
 
       page.within('.wiki-form') do
         find('#wiki_format option[value=org]').select_option
-        fill_in(:wiki_content, with: org_content)
+
+        # use `clear: nil` to avoid extra list `*` chars from being added
+        fill_in(:wiki_content, with: org_content, fill_options: { clear: nil })
         click_button('Create page')
       end
 
@@ -188,6 +195,7 @@ RSpec.shared_examples 'User creates wiki page' do
 
     context "via the `new wiki page` page", :js do
       it "creates a page with a single word" do
+        find_by_testid('wiki-more-dropdown').click
         click_link("New page")
 
         page.within(".wiki-form") do
@@ -206,6 +214,7 @@ RSpec.shared_examples 'User creates wiki page' do
       end
 
       it "creates a page with spaces in the name", :js do
+        find_by_testid('wiki-more-dropdown').click
         click_link("New page")
 
         page.within(".wiki-form") do
@@ -224,6 +233,7 @@ RSpec.shared_examples 'User creates wiki page' do
       end
 
       it "creates a page with hyphens in the name", :js do
+        find_by_testid('wiki-more-dropdown').click
         click_link("New page")
 
         page.within(".wiki-form") do
@@ -245,8 +255,30 @@ RSpec.shared_examples 'User creates wiki page' do
                     .and have_content("My awesome wiki!")
       end
 
+      it 'removes entry from redirects.yml file' do
+        wiki.repository.update_file(
+          user, '.gitlab/redirects.yml',
+          "foo: bar\nbaz: doe",
+          message: 'Add redirect', branch_name: 'master'
+        )
+
+        find_by_testid('wiki-more-dropdown').click
+        click_link('New page')
+
+        page.within('.wiki-form') do
+          fill_in(:wiki_title, with: 'foo')
+          fill_in(:wiki_content, with: 'testing redirects')
+          click_button('Create page')
+        end
+
+        expect(page).to have_content('foo')
+
+        expect(wiki.repository.blob_at('master', '.gitlab/redirects.yml').data).to eq("---\nbaz: doe\n")
+      end
+
       context 'when a server side validation error is returned' do
         it "still displays edit form", :js do
+          find_by_testid('wiki-more-dropdown').click
           click_link("New page")
 
           page.within(".wiki-form") do
@@ -264,6 +296,7 @@ RSpec.shared_examples 'User creates wiki page' do
     end
 
     it "shows the emoji autocompletion dropdown", :js do
+      find_by_testid('wiki-more-dropdown').click
       click_link("New page")
 
       page.within(".wiki-form") do

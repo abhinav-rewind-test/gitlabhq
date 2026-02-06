@@ -1,105 +1,117 @@
 <script>
-import * as Sentry from '~/sentry/sentry_browser_wrapper';
-import Tracking from '~/tracking';
-import {
-  sprintfWorkItem,
-  I18N_WORK_ITEM_ERROR_UPDATING,
-  TRACKING_CATEGORY_SHOW,
-  WORK_ITEM_TITLE_MAX_LENGTH,
-  I18N_MAX_CHARS_IN_WORK_ITEM_TITLE_MESSAGE,
-} from '../constants';
-import updateWorkItemMutation from '../graphql/update_work_item.mutation.graphql';
-import ItemTitle from './item_title.vue';
+import { uniqueId } from 'lodash';
+import { GlFormGroup, GlFormInput, GlFormCharacterCount } from '@gitlab/ui';
+import { n__, __ } from '~/locale';
+import SafeHtml from '~/vue_shared/directives/safe_html';
+import { TITLE_LENGTH_MAX } from '../../issues/constants';
 
 export default {
   components: {
-    ItemTitle,
+    GlFormGroup,
+    GlFormInput,
+    GlFormCharacterCount,
   },
-  mixins: [Tracking.mixin()],
+  directives: {
+    SafeHtml,
+  },
+  i18n: {
+    titleLabel: __('Title (required)'),
+    requiredFieldFeedback: __('A title is required'),
+  },
   props: {
-    workItemId: {
+    title: {
+      type: String,
+      required: true,
+    },
+    titleHtml: {
       type: String,
       required: false,
-      default: '',
+      default: null,
     },
-    workItemTitle: {
-      type: String,
-      required: false,
-      default: '',
-    },
-    workItemType: {
-      type: String,
-      required: false,
-      default: '',
-    },
-    canUpdate: {
+    isEditing: {
       type: Boolean,
       required: false,
       default: false,
     },
-    useH1: {
+    isModal: {
       type: Boolean,
-      default: false,
       required: false,
+      default: false,
     },
+    isValid: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
+  },
+  data() {
+    return {
+      inputId: uniqueId('work-item-title-'),
+    };
   },
   computed: {
-    tracking() {
-      return {
-        category: TRACKING_CATEGORY_SHOW,
-        label: 'item_title',
-        property: `type_${this.workItemType}`,
-      };
+    invalidFeedback() {
+      return this.titleHtml || this.title ? '' : this.$options.i18n.requiredFieldFeedback;
     },
+  },
+  safeHtmlConfig: {
+    ADD_TAGS: ['use', 'gl-emoji'],
   },
   methods: {
-    async updateTitle(updatedTitle) {
-      if (updatedTitle === this.workItemTitle) {
-        return;
-      }
-
-      if (updatedTitle.length > WORK_ITEM_TITLE_MAX_LENGTH) {
-        this.$emit('error', sprintfWorkItem(I18N_MAX_CHARS_IN_WORK_ITEM_TITLE_MESSAGE));
-        return;
-      }
-
-      this.updateInProgress = true;
-
-      try {
-        this.track('updated_title');
-
-        const { data } = await this.$apollo.mutate({
-          mutation: updateWorkItemMutation,
-          variables: {
-            input: {
-              id: this.workItemId,
-              title: updatedTitle,
-            },
-          },
-        });
-
-        const errors = data.workItemUpdate?.errors;
-
-        if (errors?.length) {
-          throw new Error(errors[0]);
-        }
-      } catch (error) {
-        const msg = sprintfWorkItem(I18N_WORK_ITEM_ERROR_UPDATING, this.workItemType);
-        this.$emit('error', msg);
-        Sentry.captureException(error);
-      }
-
-      this.updateInProgress = false;
+    overLimitText(count) {
+      return n__('%d character over limit.', '%d characters over limit.', count);
+    },
+    emitField($event) {
+      this.$emit('updateDraft', $event);
+    },
+    // Used in ./create_work_item.vue
+    // eslint-disable-next-line vue/no-unused-properties
+    focusInput() {
+      this.$refs.workitemTitleField.focus();
     },
   },
+  TITLE_LENGTH_MAX,
 };
 </script>
 
 <template>
-  <item-title
-    :title="workItemTitle"
-    :disabled="!canUpdate"
-    :use-h1="useH1"
-    @title-changed="updateTitle"
-  />
+  <gl-form-group
+    v-if="isEditing"
+    :label="$options.i18n.titleLabel"
+    :label-for="inputId"
+    :invalid-feedback="invalidFeedback"
+    :state="isValid"
+  >
+    <gl-form-input
+      :id="inputId"
+      ref="workitemTitleField"
+      class="gl-w-full"
+      :value="title"
+      :state="isValid"
+      autofocus
+      aria-describedby="character-count-text"
+      data-testid="work-item-title-input"
+      @keydown.meta.enter="$emit('updateWorkItem')"
+      @keydown.ctrl.enter="$emit('updateWorkItem')"
+      @input="emitField"
+    />
+    <template #description>
+      <gl-form-character-count
+        :value="title"
+        :limit="$options.TITLE_LENGTH_MAX"
+        count-text-id="character-count-text"
+      >
+        <template #over-limit-text="{ count }">{{ overLimitText(count) }}</template>
+      </gl-form-character-count>
+    </template>
+  </gl-form-group>
+  <component
+    :is="isModal ? 'h2' : 'h1'"
+    v-else
+    data-testid="work-item-title"
+    class="gl-heading-1 !gl-m-0 gl-w-full gl-wrap-anywhere"
+  >
+    <span v-if="titleHtml" v-safe-html:[$options.safeHtmlConfig]="titleHtml"></span>
+    <span v-else>{{ title }}</span>
+  </component>
 </template>

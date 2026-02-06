@@ -4,16 +4,23 @@ module Groups
   class AutocompleteService < Groups::BaseService
     include LabelsAsHash
 
+    SEARCH_LIMIT = 5
+
     # rubocop: disable CodeReuse/ActiveRecord
     def issues(confidential_only: false, issue_types: nil)
-      finder_params = { group_id: group.id, include_subgroups: true, state: 'opened' }
+      finder_params = { group_id: group.id, state: 'opened' }
       finder_params[:confidential] = true if confidential_only.present?
       finder_params[:issue_types] = issue_types if issue_types.present?
+      finder_params[:include_descendants] = true
 
-      IssuesFinder.new(current_user, finder_params)
-        .execute
+      relation = WorkItems::WorkItemsFinder.new(current_user, finder_params).execute
+
+      relation = relation.gfm_autocomplete_search(params[:search]).limit(SEARCH_LIMIT) if params[:search]
+
+      relation
         .preload(project: :namespace)
-        .select(:iid, :title, :project_id, :namespace_id)
+        .with_work_item_type
+        .select(:iid, :title, :project_id, :namespace_id, 'work_item_types.icon_name')
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
@@ -35,11 +42,11 @@ module Groups
     # rubocop: enable CodeReuse/ActiveRecord
 
     def labels_as_hash(target)
-      super(target, group_id: group.id, only_group_labels: true, include_ancestor_groups: true)
+      super(target, group_id: group.id, only_group_labels: true, include_ancestor_groups: true, archived: false)
     end
 
     def commands(noteable)
-      return [] unless noteable
+      return [] unless noteable && current_user
 
       QuickActions::InterpretService.new(container: group, current_user: current_user).available_commands(noteable)
     end

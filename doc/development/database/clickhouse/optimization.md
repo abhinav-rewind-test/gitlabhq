@@ -1,12 +1,11 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: none
+group: unassigned
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Optimizing query execution
 ---
 
-# Optimizing query execution
-
-ClickHouse Inc has listed a [variety of optimization strategies](https://clickhouse.com/docs/en/optimize/).
+ClickHouse Inc has listed a [variety of optimization strategies](https://clickhouse.com/blog/clickhouse-faster-queries-with-projections-and-primary-indexes).
 
 ClickHouse relies heavily on the structure of the primary index. However, in some cases, it's possible that queries rely on a column that's part of the primary index, but isn't the first column. See [Using multiple primary indexes](https://clickhouse.com/docs/en/guides/improving-query-performance/sparse-primary-indexes/sparse-primary-indexes-multiple) which offers several options in such cases. For example: using a data skipping index as a secondary index.
 
@@ -16,7 +15,7 @@ ClickHouse blog also has a very good post, [Super charging your ClickHouse queri
 
 It is possible to use [`EXPLAIN`](https://clickhouse.com/docs/en/sql-reference/statements/explain) statements with queries to get visible steps of the query pipeline. Note the different [types](https://clickhouse.com/docs/en/sql-reference/statements/explain#explain-types) of `EXPLAIN`.
 
-Also, to get detailed query execution pipeline, you can toggle the logs level to `trace` via `clickhouse-client` and then execute the query.
+Also, to get detailed query execution pipeline, you can set the logs level to `trace` with `clickhouse-client` and then execute the query.
 
 For example:
 

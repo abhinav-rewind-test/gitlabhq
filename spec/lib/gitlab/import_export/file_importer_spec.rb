@@ -35,9 +35,114 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
     FileUtils.rm_rf(storage_path)
   end
 
-  context 'normal run' do
+  context 'when tmpdir is provided' do
+    include AfterNextHelpers
+
+    subject(:perform_import) do
+      described_class.import(
+        importable: project,
+        archive_file: archive_file,
+        shared: shared,
+        tmpdir: tmpdir,
+        user: user
+      )
+    end
+
+    let(:archive_file) { nil }
+    let_it_be(:project) { create(:project) }
+    let(:user) { project.creator }
+    let!(:import_export_upload) { create(:import_export_upload, project: project, user: user) }
+    let(:tmpdir) { Dir.mktmpdir }
+
+    shared_examples 'it cleans the target directory' do
+      it 'cleans the target directory' do
+        # The extraction directory is cleaned twice: once before extraction and
+        # again afterwards.
+        expect_next(described_class).to receive(:clean_extraction_dir!).at_least(:twice)
+
+        perform_import
+      end
+    end
+
+    shared_examples 'it does not clean the target directory' do
+      it 'does not clean the directory' do
+        expect_next(described_class).not_to receive(:clean_extraction_dir!)
+
+        perform_import
+      end
+    end
+
+    context 'when the tmpdir is outside of the system tmp folder' do
+      let(:tmpdir) { '/etc' }
+
+      it 'records an error and skips the import' do
+        perform_import
+
+        expect(shared.errors).to include('path [FILTERED] is not allowed')
+      end
+
+      it_behaves_like 'it does not clean the target directory'
+    end
+
+    context 'when the tmpdir looks like a path traversal' do
+      let(:tmpdir) { "#{Dir.tmpdir}../../../stealin/ur/etc/passwd" }
+
+      it 'records an error and skips the import' do
+        perform_import
+
+        expect(shared.errors).to include('Invalid path')
+      end
+
+      it_behaves_like 'it does not clean the target directory'
+    end
+
+    context 'and the archive file is not provided' do
+      it 'copies the archive to the provided temp dir' do
+        expected_destination_regex = %r{\A#{tmpdir}/[\w\-]+_export\.tar\.gz\z}
+
+        expect_next(described_class)
+          .to receive(:download_or_copy_upload)
+          .with(
+            an_instance_of(ImportExportUploader),
+            a_string_matching(expected_destination_regex),
+            kind_of(Hash)
+          )
+
+        perform_import
+      end
+
+      it_behaves_like 'it cleans the target directory'
+    end
+
+    context 'and the archive is provided' do
+      let(:archive_file) { File.join(Dir.tmpdir, 'file_importer_spec.gz') }
+
+      before do
+        Zlib::GzipWriter.open(archive_file) do |gz|
+          gz.write('fake tarball contents')
+        end
+      end
+
+      it 'extracts the archive to the provided tmp dir' do
+        expect_next_instance_of(described_class) do |instance|
+          expect(instance).to receive(:untar_zxf).with(
+            archive: archive_file,
+            dir: tmpdir
+          )
+        end
+
+        perform_import
+      end
+
+      it_behaves_like 'it cleans the target directory'
+    end
+  end
+
+  context 'as normal run' do
+    let(:project) { build(:project) }
+
     before do
-      described_class.import(importable: build(:project), archive_file: '', shared: shared)
+      described_class.import(importable: project, archive_file: '', shared: shared, user: project.creator)
     end
 
     it 'removes symlinks in root folder' do
@@ -65,7 +170,7 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
     end
 
     it 'does not change a valid file permissions' do
-      expect(file_permissions(valid_file)).not_to eq(0000)
+      expect(file_permissions(valid_file)).not_to eq(0o0000)
     end
 
     it 'creates the file in the right subfolder' do
@@ -76,18 +181,18 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
       include AfterNextHelpers
 
       it 'downloads the file from a remote object storage' do
-        import_export_upload = build(:import_export_upload)
-        project = build( :project, import_export_upload: import_export_upload)
+        project = create(:project)
+        create(:import_export_upload, project: project, user: project.creator)
 
         expect_next(described_class)
           .to receive(:download_or_copy_upload)
           .with(
-            import_export_upload.import_file,
+            anything,
             kind_of(String),
             size_limit: Gitlab::CurrentSettings.current_application_settings.max_import_remote_file_size.megabytes
           )
 
-        described_class.import(importable: project, archive_file: nil, shared: shared)
+        described_class.import(importable: project, archive_file: nil, shared: shared, user: project.creator)
       end
     end
 
@@ -96,8 +201,9 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
 
       it 'downloads the file from a remote object storage' do
         file_url = 'https://remote.url/file'
-        import_export_upload = build(:import_export_upload, remote_import_url: file_url)
-        project = build( :project, import_export_upload: import_export_upload)
+        project = create(:project)
+        create(:import_export_upload, remote_import_url: file_url, project: project,
+          user: project.creator)
 
         expect_next(described_class)
           .to receive(:download)
@@ -107,13 +213,17 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
             size_limit: Gitlab::CurrentSettings.current_application_settings.max_import_remote_file_size.megabytes
           )
 
-        described_class.import(importable: project, archive_file: nil, shared: shared)
+        described_class.import(importable: project, archive_file: nil, shared: shared, user: project.creator)
       end
     end
   end
 
-  context 'error' do
-    subject(:import) { described_class.import(importable: build(:project), archive_file: '', shared: shared) }
+  context 'when an error occurs' do
+    let(:project) { build(:project) }
+
+    subject(:import) do
+      described_class.import(importable: project, archive_file: '', shared: shared, user: project.creator)
+    end
 
     before do
       allow_next_instance_of(described_class) do |instance|
@@ -187,7 +297,9 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
     let(:shared) { Gitlab::ImportExport::Shared.new(project) }
     let(:filepath) { File.join(Dir.tmpdir, 'file_importer_spec.gz') }
 
-    subject { described_class.new(importable: project, archive_file: filepath, shared: shared) }
+    subject(:file_importer) do
+      described_class.new(importable: project, archive_file: filepath, shared: shared, user: project.creator)
+    end
 
     before do
       Zlib::GzipWriter.open(filepath) do |gz|
@@ -197,14 +309,51 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
     end
 
     it 'returns false and sets an error on shared' do
-      result = subject.import
+      result = file_importer.import
 
       expect(result).to eq(false)
       expect(shared.errors.join).to eq('Decompressed archive size validation failed.')
     end
   end
 
+  context 'when destination project is missing the correct ImportExportUpload' do
+    let(:project) { create(:project) }
+
+    subject(:file_importer) do
+      described_class.new(importable: project, archive_file: nil, shared: shared, user: project.creator)
+    end
+
+    context 'and it has no uploads' do
+      it 'returns false and sets an error on shared' do
+        result = file_importer.import
+
+        expect(result).to be false
+        expect(shared.errors.join).to eq(
+          "Missing import file for Project #{project.id} and user #{project.creator.id}. " \
+            "Project has 0 other file(s)."
+        )
+      end
+    end
+
+    context 'and it has other uploads' do
+      before do
+        project.import_export_uploads.create!
+      end
+
+      it 'returns false and sets an error on shared' do
+        result = file_importer.import
+
+        expect(result).to be false
+        expect(shared.errors.join).to eq(
+          "Missing import file for Project #{project.id} and user #{project.creator.id}. " \
+            "Project has 1 other file(s)."
+        )
+      end
+    end
+  end
+
   def setup_files
+    FileUtils.rm_rf(shared.export_path)
     FileUtils.mkdir_p("#{shared.export_path}/subfolder/")
     FileUtils.touch(valid_file)
     FileUtils.ln_s(valid_file, symlink_file)
@@ -212,6 +361,6 @@ RSpec.describe Gitlab::ImportExport::FileImporter, feature_category: :importers 
     FileUtils.ln_s(valid_file, hidden_symlink_file)
     FileUtils.ln_s(valid_file, evil_symlink_file)
     FileUtils.ln_s(valid_file, custom_mode_symlink_file)
-    FileUtils.chmod_R(0000, custom_mode_symlink_file)
+    FileUtils.chmod_R(0o0000, custom_mode_symlink_file)
   end
 end

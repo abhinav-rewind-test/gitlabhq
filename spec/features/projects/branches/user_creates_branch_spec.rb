@@ -21,7 +21,29 @@ RSpec.describe 'User creates branch', :js, feature_category: :source_code_manage
   shared_examples 'renders not found page' do
     specify do
       expect(page).to have_title('Not Found')
-      expect(page).to have_content('Page Not Found')
+      expect(page).to have_content('Page not found')
+    end
+  end
+
+  context 'when project has default settings' do
+    let_it_be(:project) { create(:project, :repository) }
+
+    before do
+      project.add_developer(user)
+      sign_in(user)
+
+      visit new_project_branch_path(project)
+    end
+
+    it 'renders the breadcrumbs', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/498887' do
+      within_testid('breadcrumb-links') do
+        expect(page).to have_content("#{project.creator.name} #{project.name} Branches New branch")
+
+        expect(page).to have_link(project.creator.name, href: user_path(project.creator))
+        expect(page).to have_link(project.name, href: project_path(project))
+        expect(page).to have_link('Branches', href: project_branches_path(project))
+        expect(page).to have_link('New branch', href: new_project_branch_path(project))
+      end
     end
   end
 
@@ -86,7 +108,8 @@ RSpec.describe 'User creates branch', :js, feature_category: :source_code_manage
             click_button("Create branch")
 
             expect(page).to have_content('Branch name is invalid')
-            expect(page).to have_content("can't contain spaces")
+            expect(page).to have_content("Branch name cannot contain spaces")
+            expect(page).to have_selector('.js-branch-name.is-invalid')
           end
         end
 

@@ -81,10 +81,6 @@ class PushEvent < Event
     !!(commit_from && commit_to)
   end
 
-  def valid_push?
-    push_event_payload.ref.present?
-  end
-
   def new_ref?
     push_event_payload.created?
   end
@@ -116,5 +112,13 @@ class PushEvent < Event
     return if pushed_action?
 
     errors.add(:action, "the action #{action.inspect} is not valid")
+  end
+
+  private
+
+  def project_as_target?(target_type)
+    return false if validation_context
+
+    super
   end
 end

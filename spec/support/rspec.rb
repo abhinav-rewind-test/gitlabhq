@@ -3,6 +3,7 @@
 require_relative 'rake'
 require_relative 'rspec_order'
 require_relative 'rspec_run_time'
+require_relative 'rspec_metadata_validator'
 require_relative 'system_exit_detected'
 require_relative 'helpers/stub_configuration'
 require_relative 'helpers/stub_metrics'
@@ -11,10 +12,13 @@ require_relative 'helpers/fast_rails_root'
 
 require 'gitlab/rspec/all'
 require 'gitlab/utils/all'
+require 'gitlab_quality/test_tooling'
 
 RSpec::Expectations.configuration.on_potential_false_positives = :raise
 
 RSpec.configure do |config|
+  config.shared_context_metadata_behavior = :apply_to_host_groups
+
   # See https://gitlab.com/gitlab-org/gitlab/-/issues/379686
   config.threadsafe = false
 
@@ -28,6 +32,10 @@ RSpec.configure do |config|
       match = %r{/spec/([^/]+)/}.match(metadata[:location])
       metadata[:type] = match[1].singularize.to_sym if match
     end
+  end
+
+  config.before do |example|
+    RspecMetadataValidator.validate!(example.metadata)
   end
 
   # Makes diffs show entire non-truncated values.
@@ -74,5 +82,16 @@ RSpec.configure do |config|
         example.location
       warn "Missing metadata feature_category: #{location} See https://docs.gitlab.com/ee/development/testing_guide/best_practices.html#feature-category-metadata"
     end
+  end
+
+  # If no formatter is specified at the command line, config.formatters will be empty.
+  # In this case, we need to explicitly add the default, as adding any other formatter
+  # will cause it not to be added by RSpec itself.
+  config.add_formatter config.default_formatter if config.formatters.empty?
+
+  config.add_formatter GitlabQuality::TestTooling::TestQuarantine::QuarantineFormatter
+
+  Gitlab::Rspec::Configurations::TestMetrics.configure!('backend-rspec-tests') do |exporter_config|
+    exporter_config.test_retried_proc = ->(_example) { ENV["RSPEC_RETRY_PROCESS"] == "true" }
   end
 end

@@ -8,13 +8,7 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
   let_it_be(:maintainer_user) { create(:user) }
   let_it_be(:developer_user) { create(:user) }
   let_it_be(:reporter_user) { create(:user) }
-  let_it_be(:project) { create(:project) }
-
-  before do
-    project.add_maintainer(maintainer_user)
-    project.add_developer(developer_user)
-    project.add_reporter(reporter_user)
-  end
+  let_it_be(:project) { create(:project, maintainers: maintainer_user, developers: developer_user, reporters: reporter_user) }
 
   describe 'GET /projects/:id/clusters' do
     let_it_be(:extra_cluster) { create(:cluster, :provided_by_gcp, :project) }
@@ -51,6 +45,14 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
         expect(response).to have_gitlab_http_status(:ok)
         expect(cluster_ids).to match_array(clusters.pluck(:id))
         expect(cluster_ids).not_to include(extra_cluster.id)
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_cluster do
+        let(:user) { developer_user }
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/clusters", personal_access_token: pat)
+        end
       end
     end
   end
@@ -157,6 +159,14 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
           expect(response).to have_gitlab_http_status(:not_found)
         end
       end
+
+      it_behaves_like 'authorizing granular token permissions', :read_cluster do
+        let(:user) { developer_user }
+        let(:boundary_object) { project }
+        let(:request) do
+          get api("/projects/#{project.id}/clusters/#{cluster.id}", personal_access_token: pat)
+        end
+      end
     end
   end
 
@@ -166,10 +176,6 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
     let(:authorization_type) { 'rbac' }
     let(:management_project) { create(:project, namespace: project.namespace) }
     let(:management_project_id) { management_project.id }
-
-    before do
-      management_project.add_maintainer(maintainer_user)
-    end
 
     let(:platform_kubernetes_attributes) do
       {
@@ -190,6 +196,10 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
         platform_kubernetes_attributes: platform_kubernetes_attributes,
         management_project_id: management_project_id
       }
+    end
+
+    before do
+      management_project.add_maintainer(maintainer_user)
     end
 
     include_examples ':certificate_based_clusters feature flag API responses' do
@@ -304,6 +314,14 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
       it 'responds with 403' do
         expect(response).to have_gitlab_http_status(:forbidden)
         expect(json_response['message']).to eq('403 Forbidden')
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_cluster do
+      let(:user) { maintainer_user }
+      let(:boundary_object) { project }
+      let(:request) do
+        post api("/projects/#{project.id}/clusters/user", personal_access_token: pat), params: cluster_params
       end
     end
   end
@@ -495,6 +513,14 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
           expect(response).to have_gitlab_http_status(:not_found)
         end
       end
+
+      it_behaves_like 'authorizing granular token permissions', :update_cluster do
+        let(:user) { maintainer_user }
+        let(:boundary_object) { project }
+        let(:request) do
+          put api("/projects/#{project.id}/clusters/#{cluster.id}", personal_access_token: pat), params: update_params
+        end
+      end
     end
   end
 
@@ -533,6 +559,14 @@ RSpec.describe API::ProjectClusters, feature_category: :deployment_management do
         it 'responds with 404' do
           expect(response).to have_gitlab_http_status(:not_found)
         end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :delete_cluster do
+      let(:user) { maintainer_user }
+      let(:boundary_object) { project }
+      let(:request) do
+        delete api("/projects/#{project.id}/clusters/#{cluster.id}", personal_access_token: pat)
       end
     end
   end

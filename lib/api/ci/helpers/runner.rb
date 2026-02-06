@@ -11,25 +11,32 @@ module API
         JOB_TOKEN_HEADER = 'HTTP_JOB_TOKEN'
         JOB_TOKEN_PARAM = :token
         LEGACY_SYSTEM_XID = '<legacy>'
+        RUNNER_TOKEN_HEADER = 'Runner-Token'
 
-        def authenticate_runner!(ensure_runner_manager: true, update_contacted_at: true)
+        def authenticate_runner!(ensure_runner_manager: true, creation_state: nil)
           track_runner_authentication
           forbidden! unless current_runner
 
-          runner_details = get_runner_details_from_request
-          current_runner.heartbeat(runner_details, update_contacted_at: update_contacted_at)
+          current_runner.heartbeat(creation_state: creation_state) if ensure_runner_manager
           return unless ensure_runner_manager
 
-          current_runner_manager&.heartbeat(runner_details, update_contacted_at: update_contacted_at)
+          runner_details = get_runner_details_from_request
+          current_runner_manager&.heartbeat(runner_details)
+        end
+
+        def authenticate_runner_from_header!
+          track_runner_authentication
+          forbidden! unless current_runner_from_header
         end
 
         def get_runner_details_from_request
           return get_runner_ip unless params['info'].present?
 
-          attributes_for_keys(%w[name version revision platform architecture executor], params['info'])
+          attributes_for_keys(%w[name version revision platform architecture executor labels], params['info'])
             .merge(get_system_id_from_request)
             .merge(get_runner_config_from_request)
             .merge(get_runner_ip)
+            .merge(get_runner_features_from_request)
         end
 
         def get_system_id_from_request
@@ -52,6 +59,16 @@ module API
           end
         end
 
+        def current_runner_from_header
+          token = headers[RUNNER_TOKEN_HEADER]
+
+          load_balancer_stick_request(::Ci::Runner, :runner, token) if token
+
+          strong_memoize(:current_runner_from_header) do
+            ::Ci::Runner.find_by_token(token.to_s)
+          end
+        end
+
         def current_runner_manager
           strong_memoize(:current_runner_manager) do
             system_xid = params.fetch(:system_id, LEGACY_SYSTEM_XID)
@@ -60,8 +77,10 @@ module API
         end
 
         def track_runner_authentication
-          if current_runner
-            metrics.increment_runner_authentication_success_counter(runner_type: current_runner.runner_type)
+          runner = current_runner || current_runner_from_header
+
+          if runner
+            metrics.increment_runner_authentication_success_counter(runner_type: runner.runner_type)
           else
             metrics.increment_runner_authentication_failure_counter
           end
@@ -69,20 +88,42 @@ module API
 
         # HTTP status codes to terminate the job on GitLab Runner:
         # - 403
-        def authenticate_job!(heartbeat_runner: false)
-          job = current_job
-
+        def authenticate_job!(heartbeat_runner: false, fail_on_expired_token: false)
           # 404 is not returned here because we want to terminate the job if it's
           # running. A 404 can be returned from anywhere in the networking stack which is why
           # we are explicit about a 403, we should improve this in
           # https://gitlab.com/gitlab-org/gitlab/-/issues/327703
-          forbidden! unless job
+          forbidden! unless current_job
 
-          forbidden! unless job.valid_token?(job_token)
+          # Ensure we go through the Ci::AuthJobFinder as part of this authentication
+          begin
+            job = job_from_token
 
-          forbidden!('Project has been deleted!') if job.project.nil? || job.project.pending_delete?
-          forbidden!('Job has been erased!') if job.erased?
-          job_forbidden!(job, 'Job is not processing on runner') unless processing_on_runner?(job)
+            forbidden! unless job
+          rescue ::Ci::AuthJobFinder::DeletedProjectError
+            forbidden!('Project has been deleted!')
+          rescue ::Ci::AuthJobFinder::ErasedJobError
+            forbidden!('Job has been erased!')
+          rescue ::Ci::AuthJobFinder::NotRunningJobError
+            # Pass current_job solely to load actual status of the job.
+            # AuthJobFinder currently returns no details.
+            job_forbidden!(current_job, 'Job is not processing on runner')
+          rescue ::Ci::AuthJobFinder::ExpiredJobTokenError => e
+            if fail_on_expired_token && Feature.enabled?(:fail_job_on_expired_token, e.job.project)
+              e.job.drop!(:job_token_expired)
+              log_job_failed_due_to_expired_token(e.job)
+            else
+              log_job_forbidden_due_to_expired_token(e.job)
+            end
+
+            job_forbidden!(e.job, 'Job token has expired')
+          end
+
+          # Make sure that composite identity is propagated to `PipelineProcessWorker`
+          # when the build's status change.
+          # TODO: Once https://gitlab.com/gitlab-org/gitlab/-/issues/490992 is done we should
+          # remove this because it will be embedded in `Ci::AuthJobFinder`.
+          ::Gitlab::Auth::Identity.link_from_job(job)
 
           # Only some requests (like updating the job or patching the trace) should trigger
           # runner heartbeat. Operations like artifacts uploading are executed in context of
@@ -93,7 +134,7 @@ module API
           # Runner requests done in context of job authentication should explicitly define when
           # the heartbeat should be triggered.
           if heartbeat_runner
-            job.runner&.heartbeat(get_runner_ip)
+            job.runner&.heartbeat
             job.runner_manager&.heartbeat(get_runner_ip)
           end
 
@@ -101,11 +142,17 @@ module API
         end
 
         def authenticate_job_via_dependent_job!
-          authenticate!
+          # Use primary for both main and non-main databases as authenticating in the scope of runners will load
+          # Ci::Build model and other standard authn related models like License, Project and User.
+          ::Gitlab::Database::LoadBalancing::SessionMap
+            .with_sessions.use_primary { authenticate! }
+
           forbidden! unless current_job
           forbidden! unless can?(current_user, :read_build, current_job)
+          forbidden! unless current_authenticated_job
         end
 
+        # current_job is queried by URL :id param with no authentication
         def current_job
           id = params[:id]
 
@@ -125,6 +172,20 @@ module API
           @job_token ||= (params[JOB_TOKEN_PARAM] || env[JOB_TOKEN_HEADER]).to_s
         end
 
+        def job_from_token
+          # Uses the Ci::AuthJobFinder, which we want to use
+          # as the sole centralized job token authentication service.
+          #
+          # If the token does not link to the URL-specified job,
+          # return a generic auth error with no build details.
+
+          return unless current_job
+          return unless current_job == ::Ci::AuthJobFinder.new(token: job_token).execute!
+
+          current_job
+        end
+        strong_memoize_attr :job_from_token
+
         def job_forbidden!(job, reason)
           header 'Job-Status', job.status
           forbidden!(reason)
@@ -136,7 +197,7 @@ module API
           Gitlab::ApplicationContext.push(job: current_job, runner: current_runner)
         end
 
-        def track_ci_minutes_usage!(_build, _runner)
+        def track_ci_minutes_usage!(_build)
           # noop: overridden in EE
         end
 
@@ -150,6 +211,14 @@ module API
           too_many_requests!('Executing database migrations. Please retry later.', retry_after: 1.minute)
         end
 
+        def job_router_enabled?(runner)
+          if runner.instance_type?
+            return Feature.enabled?(:job_router_instance_runners, runner) || Feature.enabled?(:job_router, :instance)
+          end
+
+          Feature.enabled?(:job_router, runner.owner&.root_ancestor)
+        end
+
         private
 
         def processing_on_runner?(job)
@@ -160,8 +229,32 @@ module API
           { config: attributes_for_keys(%w[gpus], params.dig('info', 'config')) }
         end
 
+        def get_runner_features_from_request
+          { runtime_features: attributes_for_keys(%w[features], params['info'])['features'] }.compact
+        end
+
         def metrics
           strong_memoize(:metrics) { ::Gitlab::Ci::Runner::Metrics.new }
+        end
+
+        def log_job_forbidden_due_to_expired_token(job)
+          Gitlab::AppLogger.info({
+            class: self.class.name,
+            job_id: job.id,
+            job_user_id: job.user_id,
+            job_project_id: job.project_id,
+            message: "Job forbidden due to expired JWT"
+          }.merge(Gitlab::ApplicationContext.current))
+        end
+
+        def log_job_failed_due_to_expired_token(job)
+          Gitlab::AppLogger.info({
+            class: self.class.name,
+            job_id: job.id,
+            job_user_id: job.user_id,
+            job_project_id: job.project_id,
+            message: "Job failed due to expired JWT"
+          }.merge(Gitlab::ApplicationContext.current))
         end
       end
     end

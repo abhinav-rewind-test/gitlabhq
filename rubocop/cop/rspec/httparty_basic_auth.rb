@@ -5,15 +5,24 @@ require 'rubocop-rspec'
 module RuboCop
   module Cop
     module RSpec
-      # This cop checks for invalid credentials passed to HTTParty
+      # Checks for invalid credentials passed to HTTParty
+      #
+      # HTTParty expects `username` instead of `user` in the basic_auth hash.
+      # Using `user` will silently fail authentication.
       #
       # @example
       #
       #   # bad
-      #   HTTParty.get(url, basic_auth: { user: 'foo' })
+      #   HTTParty.get(url, basic_auth: { user: 'admin' })
+      #   HTTParty.post(url, basic_auth: { user: username })
+      #   HTTParty.delete(endpoint, basic_auth: { user: ENV['API_USER'] })
+      #   HTTParty.post(url, body: data.to_json, basic_auth: { user: username, password: password })
       #
       #   # good
-      #   HTTParty.get(url, basic_auth: { username: 'foo' })
+      #   HTTParty.get(url, basic_auth: { username: 'admin' })
+      #   HTTParty.post(url, basic_auth: { username: username })
+      #   HTTParty.delete(endpoint, basic_auth: { username: ENV['API_USER'] })
+      #   HTTParty.post(url, body: data.to_json, basic_auth: { username: username, password: password })
       class HTTPartyBasicAuth < RuboCop::Cop::Base
         extend RuboCop::Cop::AutoCorrector
 
@@ -21,6 +30,7 @@ module RuboCop
 
         RESTRICT_ON_SEND = %i[get put post delete].freeze
 
+        # @!method httparty_basic_auth?(node)
         def_node_matcher :httparty_basic_auth?, <<~PATTERN
           (send
             (const _ :HTTParty)

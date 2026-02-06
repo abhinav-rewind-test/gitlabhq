@@ -1,20 +1,25 @@
-import { GlAvatarLabeled, GlIcon, GlBadge } from '@gitlab/ui';
+import MockAdapter from 'axios-mock-adapter';
+import { GlAvatarLabeled, GlIcon, GlBadge, GlTooltip, GlAvatar } from '@gitlab/ui';
+import { stubComponent } from 'helpers/stub_component';
+import GroupsListItemPlanBadge from 'ee_component/vue_shared/components/groups_list/groups_list_item_plan_badge.vue';
+import axios from '~/lib/utils/axios_utils';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import GroupsListItem from '~/vue_shared/components/groups_list/groups_list_item.vue';
-import { createMockDirective, getBinding } from 'helpers/vue_mock_directive';
-import {
-  VISIBILITY_TYPE_ICON,
-  VISIBILITY_LEVEL_INTERNAL_STRING,
-  GROUP_VISIBILITY_TYPE,
-} from '~/visibility_level/constants';
+import ListItemInactiveBadge from '~/vue_shared/components/resource_lists/list_item_inactive_badge.vue';
+import GroupListItemActions from '~/vue_shared/components/groups_list/group_list_item_actions.vue';
 import { ACCESS_LEVEL_LABELS, ACCESS_LEVEL_NO_ACCESS_INTEGER } from '~/access_level/constants';
-import ListActions from '~/vue_shared/components/list_actions/list_actions.vue';
-import { ACTION_EDIT, ACTION_DELETE } from '~/vue_shared/components/list_actions/constants';
-import DangerConfirmModal from '~/vue_shared/components/confirm_danger/confirm_danger_modal.vue';
+import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
+import {
+  TIMESTAMP_TYPE_CREATED_AT,
+  TIMESTAMP_TYPE_UPDATED_AT,
+} from '~/vue_shared/components/resource_lists/constants';
 import { groups } from './mock_data';
+
+jest.mock('~/alert');
 
 describe('GroupsListItem', () => {
   let wrapper;
+  let axiosMock;
 
   const [group] = groups;
 
@@ -23,18 +28,68 @@ describe('GroupsListItem', () => {
   const createComponent = ({ propsData = {} } = {}) => {
     wrapper = mountExtended(GroupsListItem, {
       propsData: { ...defaultPropsData, ...propsData },
-      directives: {
-        GlTooltip: createMockDirective('gl-tooltip'),
+      scopedSlots: {
+        'children-toggle': '<div data-testid="children-toggle"></div>',
+        children: '<div data-testid="children"></div>',
       },
+      stubs: { GlTooltip: stubComponent(GlTooltip) },
     });
   };
 
   const findAvatarLabeled = () => wrapper.findComponent(GlAvatarLabeled);
-  const findGroupDescription = () => wrapper.findByTestId('group-description');
+  const findGroupDescription = () => wrapper.findByTestId('description-html');
   const findVisibilityIcon = () => findAvatarLabeled().findComponent(GlIcon);
-  const findListActions = () => wrapper.findComponent(ListActions);
-  const findConfirmationModal = () => wrapper.findComponent(DangerConfirmModal);
-  const findAccessLevelBadge = () => wrapper.findByTestId('access-level-badge');
+  const findGroupListItemActions = () => wrapper.findComponent(GroupListItemActions);
+  const findAccessLevelBadge = () => wrapper.findByTestId('user-access-role');
+  const findTimeAgoTooltip = () => wrapper.findComponent(TimeAgoTooltip);
+  const findSubgroupsCount = () => wrapper.findByTestId('subgroups-count');
+  const findProjectsCount = () => wrapper.findByTestId('projects-count');
+  const findMembersCount = () => wrapper.findByTestId('members-count');
+  const findStorageSize = () => wrapper.findByTestId('storage-size');
+
+  const findInactiveBadge = () => wrapper.findComponent(ListItemInactiveBadge);
+  const findTooltipByTarget = (target) =>
+    wrapper
+      .findAllComponents(GlTooltip)
+      .wrappers.find((tooltip) => tooltip.props('target')() === target.element);
+
+  beforeEach(() => {
+    axiosMock = new MockAdapter(axios);
+  });
+
+  afterEach(() => {
+    axiosMock.restore();
+  });
+
+  describe('when includeMicrodata prop is true', () => {
+    beforeEach(() => {
+      createComponent({ propsData: { includeMicrodata: true } });
+    });
+
+    it('adds microdata attributes to list element', () => {
+      expect(wrapper.attributes()).toMatchObject({
+        itemprop: 'subOrganization',
+        itemtype: 'https://schema.org/Organization',
+        itemscope: expect.any(String),
+      });
+    });
+
+    it('adds microdata attributes to avatar', () => {
+      const avatarLabeled = findAvatarLabeled();
+
+      expect(avatarLabeled.props()).toMatchObject({
+        labelLinkAttrs: { itemprop: 'name' },
+      });
+
+      expect(avatarLabeled.findComponent(GlAvatar).attributes()).toMatchObject({
+        itemprop: 'logo',
+      });
+    });
+
+    it('adds microdata to description', () => {
+      expect(findGroupDescription().attributes()).toMatchObject({ itemprop: 'description' });
+    });
+  });
 
   it('renders group avatar', () => {
     createComponent();
@@ -43,13 +98,98 @@ describe('GroupsListItem', () => {
 
     expect(avatarLabeled.props()).toMatchObject({
       label: group.fullName,
-      labelLink: group.webUrl,
+      labelLink: group.relativeWebUrl,
+      entityId: group.id,
+      entityName: group.fullName,
+      src: group.avatarUrl,
+      shape: 'rect',
+    });
+  });
+
+  it('renders subgroups count', () => {
+    createComponent();
+
+    expect(findSubgroupsCount().props()).toMatchObject({
+      tooltipText: 'Subgroups',
+      iconName: 'subgroup',
+      stat: group.descendantGroupsCount.toString(),
+    });
+  });
+
+  describe('when subgroups count is hovered', () => {
+    beforeEach(() => {
+      createComponent();
+      findSubgroupsCount().vm.$emit('hover');
     });
 
-    expect(avatarLabeled.attributes()).toMatchObject({
-      'entity-id': group.id.toString(),
-      'entity-name': group.fullName,
-      shape: 'rect',
+    it('emits hover-stat', () => {
+      expect(wrapper.emitted('hover-stat')).toEqual([['subgroups-count']]);
+    });
+  });
+
+  describe('when subgroups count is not available', () => {
+    it.each([undefined, null])('does not render subgroup count', (descendantGroupsCount) => {
+      createComponent({ propsData: { group: { ...group, descendantGroupsCount } } });
+
+      expect(findSubgroupsCount().exists()).toBe(false);
+    });
+  });
+
+  it('renders projects count', () => {
+    createComponent();
+
+    expect(findProjectsCount().props()).toMatchObject({
+      tooltipText: 'Projects',
+      iconName: 'project',
+      stat: group.projectsCount.toString(),
+    });
+  });
+
+  describe('when projects count is hovered', () => {
+    beforeEach(() => {
+      createComponent();
+      findProjectsCount().vm.$emit('hover');
+    });
+
+    it('emits hover-stat', () => {
+      expect(wrapper.emitted('hover-stat')).toEqual([['projects-count']]);
+    });
+  });
+
+  describe('when projects count is not available', () => {
+    it.each([undefined, null])('does not render projects count', (projectsCount) => {
+      createComponent({ propsData: { group: { ...group, projectsCount } } });
+
+      expect(findProjectsCount().exists()).toBe(false);
+    });
+  });
+
+  it('renders members count', () => {
+    createComponent();
+
+    expect(findMembersCount().props()).toMatchObject({
+      tooltipText: 'Direct members',
+      iconName: 'users',
+      stat: group.groupMembersCount.toString(),
+    });
+  });
+
+  describe('when members count is hovered', () => {
+    beforeEach(() => {
+      createComponent();
+      findMembersCount().vm.$emit('hover');
+    });
+
+    it('emits hover-stat', () => {
+      expect(wrapper.emitted('hover-stat')).toEqual([['members-count']]);
+    });
+  });
+
+  describe('when members count is not available', () => {
+    it.each([undefined, null])('does not render members count', (groupMembersCount) => {
+      createComponent({ propsData: { group: { ...group, groupMembersCount } } });
+
+      expect(findMembersCount().exists()).toBe(false);
     });
   });
 
@@ -57,43 +197,21 @@ describe('GroupsListItem', () => {
     createComponent();
 
     const icon = findAvatarLabeled().findComponent(GlIcon);
-    const tooltip = getBinding(icon.element, 'gl-tooltip');
+    const tooltip = findTooltipByTarget(icon);
 
-    expect(icon.props('name')).toBe(VISIBILITY_TYPE_ICON[VISIBILITY_LEVEL_INTERNAL_STRING]);
-    expect(tooltip.value).toBe(GROUP_VISIBILITY_TYPE[VISIBILITY_LEVEL_INTERNAL_STRING]);
+    expect(icon.props('name')).toBe('earth');
+    expect(tooltip.text()).toBe(
+      'Public - The group and any public projects can be viewed without any authentication.',
+    );
   });
 
-  it('renders subgroup count', () => {
+  it('emits hover-visibility event when visibility icon tooltip is shown', () => {
     createComponent();
 
-    const countWrapper = wrapper.findByTestId('subgroups-count');
-    const tooltip = getBinding(countWrapper.element, 'gl-tooltip');
+    const icon = findAvatarLabeled().findComponent(GlIcon);
+    findTooltipByTarget(icon).vm.$emit('shown');
 
-    expect(tooltip.value).toBe(GroupsListItem.i18n.subgroups);
-    expect(countWrapper.text()).toBe(group.descendantGroupsCount.toString());
-    expect(countWrapper.findComponent(GlIcon).props('name')).toBe('subgroup');
-  });
-
-  it('renders projects count', () => {
-    createComponent();
-
-    const countWrapper = wrapper.findByTestId('projects-count');
-    const tooltip = getBinding(countWrapper.element, 'gl-tooltip');
-
-    expect(tooltip.value).toBe(GroupsListItem.i18n.projects);
-    expect(countWrapper.text()).toBe(group.projectsCount.toString());
-    expect(countWrapper.findComponent(GlIcon).props('name')).toBe('project');
-  });
-
-  it('renders members count', () => {
-    createComponent();
-
-    const countWrapper = wrapper.findByTestId('members-count');
-    const tooltip = getBinding(countWrapper.element, 'gl-tooltip');
-
-    expect(tooltip.value).toBe(GroupsListItem.i18n.directMembers);
-    expect(countWrapper.text()).toBe(group.groupMembersCount.toString());
-    expect(countWrapper.findComponent(GlIcon).props('name')).toBe('users');
+    expect(wrapper.emitted('hover-visibility')).toEqual([[group.visibility]]);
   });
 
   describe('when visibility is not provided', () => {
@@ -117,11 +235,15 @@ describe('GroupsListItem', () => {
     );
   });
 
-  describe('when access level is not available', () => {
-    const { accessLevel, ...groupWithoutAccessLevel } = group;
+  describe.each`
+    accessLevel
+    ${{ accessLevel: undefined }}
+    ${{ accessLevel: { integerValue: null } }}
+    ${{ accessLevel: { integerValue: ACCESS_LEVEL_NO_ACCESS_INTEGER } }}
+  `('when access level is $accessLevel', ({ accessLevel }) => {
     beforeEach(() => {
       createComponent({
-        propsData: { group: groupWithoutAccessLevel },
+        propsData: { group: { ...group, accessLevel } },
       });
     });
 
@@ -130,17 +252,36 @@ describe('GroupsListItem', () => {
     });
   });
 
-  describe('when access level is `No access`', () => {
+  describe('when group does not have projectStatistics key', () => {
+    const { projectStatistics, ...groupWithoutProjectStatistics } = group;
     beforeEach(() => {
       createComponent({
-        propsData: {
-          group: { ...group, accessLevel: { integerValue: ACCESS_LEVEL_NO_ACCESS_INTEGER } },
-        },
+        propsData: { group: groupWithoutProjectStatistics },
       });
     });
 
-    it('does not render level role badge', () => {
-      expect(findAccessLevelBadge().exists()).toBe(false);
+    it('does not render storage size', () => {
+      expect(findStorageSize().exists()).toBe(false);
+    });
+  });
+
+  describe('when group has projectStatistics key', () => {
+    it('renders storage size in human size', () => {
+      createComponent();
+
+      expect(findStorageSize().text()).toBe('100.00 MiB');
+    });
+
+    describe('when storage size is null', () => {
+      beforeEach(() => {
+        createComponent({
+          propsData: { group: { ...group, projectStatistics: { storageSize: null } } },
+        });
+      });
+
+      it('renders 0 B', () => {
+        expect(findStorageSize().text()).toBe('0 B');
+      });
     });
   });
 
@@ -213,54 +354,17 @@ describe('GroupsListItem', () => {
   });
 
   describe('when group has actions', () => {
-    beforeEach(() => {
-      createComponent({
-        propsData: {
-          group: {
-            ...group,
-            actionLoadingStates: { [ACTION_DELETE]: false },
-          },
-        },
-      });
+    beforeEach(createComponent);
+
+    it('renders list item actions with correct props', () => {
+      expect(findGroupListItemActions().props()).toMatchObject({ group });
     });
 
-    it('displays actions dropdown', () => {
-      expect(findListActions().props()).toMatchObject({
-        actions: {
-          [ACTION_EDIT]: {
-            href: group.editPath,
-          },
-          [ACTION_DELETE]: {
-            action: expect.any(Function),
-          },
-        },
-        availableActions: [ACTION_EDIT, ACTION_DELETE],
-      });
-    });
+    describe('when list item actions emits refetch', () => {
+      it('emits refetch', () => {
+        findGroupListItemActions().vm.$emit('refetch');
 
-    describe('when delete action is fired', () => {
-      beforeEach(() => {
-        findListActions().props('actions')[ACTION_DELETE].action();
-      });
-
-      it('displays confirmation modal with correct props', () => {
-        expect(findConfirmationModal().props()).toMatchObject({
-          visible: true,
-          phrase: group.fullName,
-          confirmLoading: false,
-        });
-      });
-
-      describe('when deletion is confirmed', () => {
-        beforeEach(() => {
-          findConfirmationModal().vm.$emit('confirm', {
-            preventDefault: jest.fn(),
-          });
-        });
-
-        it('emits `delete` event', () => {
-          expect(wrapper.emitted('delete')).toMatchObject([[group]]);
-        });
+        expect(wrapper.emitted('refetch')).toEqual([[]]);
       });
     });
   });
@@ -277,12 +381,76 @@ describe('GroupsListItem', () => {
       });
     });
 
-    it('does not display actions dropdown', () => {
-      expect(findListActions().exists()).toBe(false);
+    it('does not render list item actions', () => {
+      expect(findGroupListItemActions().exists()).toBe(false);
+    });
+  });
+
+  describe.each`
+    timestampType                | expectedText | expectedTimeProp
+    ${TIMESTAMP_TYPE_CREATED_AT} | ${'Created'} | ${group.createdAt}
+    ${TIMESTAMP_TYPE_UPDATED_AT} | ${'Updated'} | ${group.updatedAt}
+    ${undefined}                 | ${'Created'} | ${group.createdAt}
+  `(
+    'when `timestampType` prop is $timestampType',
+    ({ timestampType, expectedText, expectedTimeProp }) => {
+      beforeEach(() => {
+        createComponent({
+          propsData: {
+            timestampType,
+          },
+        });
+      });
+
+      it('displays correct text and passes correct `time` prop to `TimeAgoTooltip`', () => {
+        expect(wrapper.findByText(expectedText).exists()).toBe(true);
+        expect(findTimeAgoTooltip().props('time')).toBe(expectedTimeProp);
+      });
+    },
+  );
+
+  describe('when timestamp type is not available in group data', () => {
+    beforeEach(() => {
+      const { createdAt, ...groupWithoutCreatedAt } = group;
+      createComponent({
+        propsData: {
+          group: groupWithoutCreatedAt,
+        },
+      });
     });
 
-    it('does not display confirmation modal', () => {
-      expect(findConfirmationModal().exists()).toBe(false);
+    it('does not render timestamp', () => {
+      expect(findTimeAgoTooltip().exists()).toBe(false);
     });
+  });
+
+  it('renders listItemClass prop on first div in li element', () => {
+    createComponent({ propsData: { listItemClass: 'foo' } });
+
+    expect(wrapper.element.firstChild.classList).toContain('foo');
+  });
+
+  it('renders children-toggle slot', () => {
+    createComponent();
+
+    expect(wrapper.findByTestId('children-toggle').exists()).toBe(true);
+  });
+
+  it('renders children slot', () => {
+    createComponent();
+
+    expect(wrapper.findByTestId('children').exists()).toBe(true);
+  });
+
+  it('renders inactive badge', () => {
+    createComponent();
+
+    expect(findInactiveBadge().exists()).toBe(true);
+  });
+
+  it('renders plan badge', () => {
+    createComponent();
+
+    expect(wrapper.findComponent(GroupsListItemPlanBadge).exists()).toBe(true);
   });
 });

@@ -1,14 +1,24 @@
 # frozen_string_literal: true
+
 module Projects
   module Ml
     module ExperimentsHelper
       require 'json'
       include ActionView::Helpers::NumberHelper
 
-      def experiment_as_data(experiment)
+      def experiment_as_data(project, experiment)
         data = {
+          id: experiment.id,
           name: experiment.name,
-          path: link_to_experiment(experiment.project, experiment)
+          metadata: experiment.metadata,
+          path: link_to_experiment(project, experiment),
+          model_id: experiment.model&.id,
+          created_at: experiment.created_at,
+          user: {
+            id: experiment.user&.id,
+            name: experiment.user&.name,
+            path: experiment&.user ? user_path(experiment&.user) : nil
+          }
         }
 
         Gitlab::Json.generate(data)
@@ -33,18 +43,6 @@ module Projects
 
       def unique_logged_names(candidates, &selector)
         Gitlab::Json.generate(candidates.flat_map(&selector).map(&:name).uniq)
-      end
-
-      def experiments_as_data(project, experiments)
-        data = experiments.map do |exp|
-          {
-            name: exp.name,
-            path: link_to_experiment(project, exp),
-            candidate_count: exp.candidate_count
-          }
-        end
-
-        Gitlab::Json.generate(data)
       end
 
       def page_info(paginator)

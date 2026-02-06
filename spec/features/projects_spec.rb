@@ -5,14 +5,16 @@ require 'spec_helper'
 RSpec.describe 'Project', feature_category: :source_code_management do
   include ProjectForksHelper
   include MobileHelpers
+  include ListboxHelpers
+  include Namespaces::DeletableHelper
 
   describe 'template' do
     let(:user) { create(:user) }
 
     before do
+      stub_feature_flags(new_project_creation_form: false)
       sign_in user
       visit new_project_path
-      stub_feature_flags(project_overview_reorg: false)
     end
 
     shared_examples 'creates from template' do |template, sub_template_tab = nil|
@@ -26,6 +28,10 @@ RSpec.describe 'Project', feature_category: :source_code_management do
         click_link 'Create from template'
         find(".project-template #{sub_template_tab}").click if sub_template_tab
         find("label[for=#{template.name}]").click
+
+        click_on 'Pick a group or namespace'
+        select_listbox_item user.username
+
         fill_in("project_name", with: template.name)
 
         page.within '#content-body' do
@@ -57,6 +63,10 @@ RSpec.describe 'Project', feature_category: :source_code_management do
         focused_template = page.find(':focus').ancestor(template_option_selector)
         focused_template_name = focused_template.find(template_name_selector).text
         focused_template.find(choose_template_selector).send_keys :enter
+
+        click_on 'Pick a group or namespace'
+        select_listbox_item user.username
+
         fill_in "project_name", with: project_name
 
         expect(selected_template).to have_text(focused_template_name)
@@ -82,6 +92,7 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     let(:user)    { create(:user) }
 
     before do
+      stub_feature_flags(new_project_creation_form: false)
       sign_in user
       visit new_project_path
     end
@@ -100,19 +111,18 @@ RSpec.describe 'Project', feature_category: :source_code_management do
 
     before do
       sign_in(project.first_owner)
-      stub_feature_flags(project_overview_reorg: false)
     end
 
     it 'parses Markdown' do
       project.update_attribute(:description, 'This is **my** project')
       visit path
-      expect(page).to have_css('.home-panel-description > .home-panel-description-markdown > p > strong')
+      expect(page).to have_css('.home-panel-description .home-panel-description-markdown p > strong')
     end
 
     it 'passes through html-pipeline' do
       project.update_attribute(:description, 'This project is the :poop:')
       visit path
-      expect(page).to have_css('.home-panel-description > .home-panel-description-markdown > p > gl-emoji')
+      expect(page).to have_css('.home-panel-description .home-panel-description-markdown p > gl-emoji')
     end
 
     it 'sanitizes unwanted tags' do
@@ -128,24 +138,11 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     end
 
     context 'read more', :js do
-      let(:read_more_selector)         { '.read-more-container' }
-      let(:read_more_trigger_selector) { '.home-panel-home-desc .js-read-more-trigger' }
-
-      it 'does not display "read more" link on desktop breakpoint' do
-        project.update_attribute(:description, 'This is **my** project')
+      it 'displays "read more" link', :js do
+        project.update_attribute(:description, "This is **my** project\n\nA\n\nB\n\nC\n\nD\n\nE\n\nF\n\nG\n\nH\n\nI\n\nJ\nK\n\nL\n\nM\n\nN\n\nEnd test.")
         visit path
 
-        expect(find(read_more_trigger_selector, visible: false)).not_to be_visible
-      end
-
-      it 'displays "read more" link on mobile breakpoint' do
-        project.update_attribute(:description, 'This is **my** project')
-        visit path
-        resize_screen_xs
-
-        find(read_more_trigger_selector).click
-
-        expect(page).to have_css('.home-panel-description .is-expanded')
+        expect(page).to have_css('.home-panel-description .js-read-more-trigger')
       end
     end
 
@@ -166,7 +163,6 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     before do
       sign_in(project.first_owner)
       visit path
-      stub_feature_flags(project_overview_reorg: false)
     end
 
     it 'shows project topics' do
@@ -198,22 +194,13 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     before do
       sign_in(project.first_owner)
       visit path
-      stub_feature_flags(project_overview_reorg: false)
     end
 
-    context 'desktop component' do
-      it 'shows on md and larger breakpoints' do
-        expect(find('.git-clone-holder')).to be_visible
-        expect(find('.mobile-git-clone', visible: false)).not_to be_visible
+    it 'shows in the Code dropdown' do
+      within_testid('code-dropdown') do
+        click_button 'Code'
       end
-    end
-
-    context 'mobile component' do
-      it 'shows mobile component on sm and smaller breakpoints' do
-        resize_screen_xs
-        expect(find('.mobile-git-clone')).to be_visible
-        expect(find('.git-clone-holder', visible: false)).not_to be_visible
-      end
+      expect(page).to have_button('Copy URL')
     end
   end
 
@@ -285,28 +272,94 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     end
   end
 
-  describe 'removal', :js do
-    let(:user)    { create(:user) }
-    let(:project) { create(:project, namespace: user.namespace) }
+  describe 'project deletion', :with_current_organization, :js, :freeze_time do
+    let_it_be(:user) { create(:user, organization: current_organization) }
+    let_it_be(:admin) { create(:user, :admin, organization: current_organization) }
+    let_it_be(:group) { create(:group, :public, owners: user) }
+    let_it_be_with_reload(:project_to_delete) { create(:project, group: group) }
 
     before do
-      sign_in(user)
-      project.add_maintainer(user)
-      visit edit_project_path(project)
+      stub_application_setting(deletion_adjourned_period: 7)
     end
 
-    it 'focuses on the confirmation field' do
-      click_button 'Delete project'
-
-      expect(page).to have_selector '#confirm_name_input:focus'
+    def remove_with_confirm(button_text, confirm_with)
+      click_button button_text
+      fill_in 'confirm_name_input', with: confirm_with
+      click_button 'Yes, delete project'
+      wait_for_requests
     end
 
-    it 'deletes a project', :sidekiq_inline do
-      expect { remove_with_confirm('Delete project', project.path_with_namespace, 'Yes, delete project') }.to change { Project.count }.by(-1)
-      expect(page).to have_content "Project '#{project.full_name}' is in the process of being deleted."
-      expect(Project.all.count).to be_zero
-      expect(project.issues).to be_empty
-      expect(project.merge_requests).to be_empty
+    context 'when project is not marked for deletion' do
+      before do
+        sign_in user
+        visit edit_project_path(project_to_delete)
+      end
+
+      it 'deletes project delayed and is restorable' do
+        expect(page).to have_content("This action will permanently delete this project, including all its resources, on #{permanent_deletion_date_formatted}. Scheduled pipelines will not run during deletion.")
+
+        remove_with_confirm("Delete", project_to_delete.path_with_namespace)
+
+        expect(page).to have_content("This project and all its data will be permanently deleted on #{permanent_deletion_date_formatted}.")
+
+        visit inactive_dashboard_projects_path
+
+        expect(page).to have_content(project_to_delete.name_with_namespace)
+      end
+    end
+
+    context 'when project is marked for deletion' do
+      let_it_be_with_reload(:project_aimed_for_deletion) { create(:project, :aimed_for_deletion, group: group) }
+
+      context 'when "Allow permanent deletion" setting is enabled' do
+        before do
+          sign_in user
+          visit edit_project_path(project_aimed_for_deletion)
+        end
+
+        it 'allows permanent deletion', :sidekiq_inline do
+          remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
+
+          expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
+        end
+      end
+
+      context 'when "Allow permanent deletion" setting is disabled' do
+        before do
+          stub_application_setting(allow_immediate_namespaces_deletion: false)
+        end
+
+        context 'when allow_immediate_namespaces_deletion feature flag is disabled' do
+          before do
+            stub_feature_flags(allow_immediate_namespaces_deletion: false)
+            sign_in user
+            visit edit_project_path(project_aimed_for_deletion)
+          end
+
+          it 'allows permanent deletion', :sidekiq_inline do
+            remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
+
+            expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
+          end
+        end
+
+        it 'allows permanent deletion for admins', :enable_admin_mode, :sidekiq_inline do
+          sign_in admin
+          visit edit_project_path(project_aimed_for_deletion)
+
+          remove_with_confirm('Delete permanently', project_aimed_for_deletion.path_with_namespace)
+
+          expect(page).to have_content "#{project_aimed_for_deletion.name} is being deleted."
+        end
+
+        it 'does not allow permanent deletion' do
+          sign_in user
+          visit edit_project_path(project_aimed_for_deletion)
+
+          expect(page).not_to have_button('Delete permanently')
+          expect(page).to have_content("This project and all its data will be permanently deleted on #{permanent_deletion_date_formatted(project_aimed_for_deletion)}.")
+        end
+      end
     end
   end
 
@@ -348,7 +401,7 @@ RSpec.describe 'Project', feature_category: :source_code_management do
         wait_for_requests
 
         expect(page).not_to have_selector '.js-loading-signature-badge'
-        expect(page).to have_selector '.gl-badge.badge-muted'
+        expect(page).to have_selector '.gl-badge.badge-neutral'
       end
     end
 
@@ -376,7 +429,7 @@ RSpec.describe 'Project', feature_category: :source_code_management do
           wait_for_requests
 
           expect(page).not_to have_selector '.gl-badge.js-loading-signature-badge'
-          expect(page).to have_selector '.gl-badge.badge-muted'
+          expect(page).to have_selector '.gl-badge.badge-neutral'
         end
       end
     end
@@ -431,10 +484,6 @@ RSpec.describe 'Project', feature_category: :source_code_management do
     let(:project) { create(:project, :repository) }
     let(:user) { create(:user) }
 
-    before do
-      stub_feature_flags(project_overview_reorg: false)
-    end
-
     it 'does not contain default branch information in its content', :js do
       default_branch = 'merge-commit-analyze-side-branch'
 
@@ -448,6 +497,80 @@ RSpec.describe 'Project', feature_category: :source_code_management do
         lines_with_default_branch = page.html.lines.select { |line| line.include?(default_branch) }
         expect(lines_with_default_branch).to eq([])
       end
+    end
+  end
+
+  context 'badges' do
+    shared_examples 'show badges' do
+      it 'renders the all badges' do
+        expect(page).to have_selector('.project-badges a')
+
+        badges.each do |badge|
+          expect(page).to have_link(href: badge.rendered_link_url)
+        end
+      end
+    end
+
+    let(:user) { create(:user) }
+    let(:badges) { project.badges }
+
+    context 'has no badges' do
+      let(:project) { create(:project, :repository) }
+
+      before do
+        sign_in(user)
+        project.add_maintainer(user)
+        visit project_path(project)
+      end
+
+      it 'does not render any badge' do
+        expect(page).not_to have_selector('.project-badges')
+      end
+    end
+
+    context 'only has group badges' do
+      let(:group) { create(:group) }
+      let(:project) { create(:project, :repository, namespace: group) }
+
+      before do
+        create(:group_badge, group: project.group)
+
+        sign_in(user)
+        project.add_maintainer(user)
+        visit project_path(project)
+      end
+
+      it_behaves_like 'show badges'
+    end
+
+    context 'only has project badges' do
+      let(:project) { create(:project, :repository) }
+
+      before do
+        create(:project_badge, project: project)
+
+        sign_in(user)
+        project.add_maintainer(user)
+        visit project_path(project)
+      end
+
+      it_behaves_like 'show badges'
+    end
+
+    context 'has both group and project badges' do
+      let(:group) { create(:group) }
+      let(:project) { create(:project, :repository, namespace: group) }
+
+      before do
+        create(:project_badge, project: project)
+        create(:group_badge, group: project.group)
+
+        sign_in(user)
+        project.add_maintainer(user)
+        visit project_path(project)
+      end
+
+      it_behaves_like 'show badges'
     end
   end
 

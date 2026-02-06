@@ -7,12 +7,19 @@ import {
   TOKEN_TYPE_STATUS,
   TOKEN_TITLE_JOBS_RUNNER_TYPE,
   TOKEN_TYPE_JOBS_RUNNER_TYPE,
+  TOKEN_TITLE_JOBS_SOURCE,
+  TOKEN_TYPE_JOBS_SOURCE,
+  TOKEN_TYPE_JOB_KIND,
+  TOKEN_TITLE_JOB_KIND,
 } from '~/vue_shared/components/filtered_search_bar/constants';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import JobSourceToken from './tokens/job_source_token.vue';
 import JobStatusToken from './tokens/job_status_token.vue';
 import JobRunnerTypeToken from './tokens/job_runner_type_token.vue';
+import JobKindToken from './tokens/job_kind_token.vue';
 
 export default {
+  name: 'JobsFilteredSearch',
   components: {
     GlFilteredSearch,
   },
@@ -23,7 +30,13 @@ export default {
       required: false,
       default: null,
     },
+    admin: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
   },
+  emits: ['filterJobsBySearch'],
   computed: {
     tokens() {
       const tokens = [
@@ -35,7 +48,26 @@ export default {
           token: JobStatusToken,
           operators: OPERATORS_IS,
         },
+        {
+          type: TOKEN_TYPE_JOBS_SOURCE,
+          title: TOKEN_TITLE_JOBS_SOURCE,
+          icon: 'trigger-source',
+          unique: true,
+          token: JobSourceToken,
+          operators: OPERATORS_IS,
+        },
       ];
+
+      if (!this.admin) {
+        tokens.push({
+          type: TOKEN_TYPE_JOB_KIND,
+          title: TOKEN_TITLE_JOB_KIND,
+          icon: 'kind',
+          unique: true,
+          token: JobKindToken,
+          operators: OPERATORS_IS,
+        });
+      }
 
       if (this.glFeatures.adminJobsFilterRunnerType) {
         tokens.push({
@@ -61,6 +93,22 @@ export default {
                   value: { data: queryStringValue, operator: OPERATOR_IS },
                 },
               ];
+            case 'sources':
+              return [
+                ...acc,
+                {
+                  type: TOKEN_TYPE_JOBS_SOURCE,
+                  value: { data: queryStringValue, operator: OPERATOR_IS },
+                },
+              ];
+            case 'kind':
+              return [
+                ...acc,
+                {
+                  type: TOKEN_TYPE_JOB_KIND,
+                  value: { data: queryStringValue, operator: OPERATOR_IS },
+                },
+              ];
             case 'runnerTypes':
               if (!this.glFeatures.adminJobsFilterRunnerType) {
                 return acc;
@@ -71,6 +119,14 @@ export default {
                 {
                   type: TOKEN_TYPE_JOBS_RUNNER_TYPE,
                   value: { data: queryStringValue, operator: OPERATOR_IS },
+                },
+              ];
+            case 'name':
+              return [
+                ...acc,
+                {
+                  type: 'filtered-search-term',
+                  value: { data: queryStringValue },
                 },
               ];
             default:
@@ -91,9 +147,11 @@ export default {
 
 <template>
   <gl-filtered-search
-    :placeholder="s__('Jobs|Filter jobs')"
+    :placeholder="s__('Jobs|Search or filter jobs…')"
     :available-tokens="tokens"
     :value="filteredSearchValue"
+    :search-text-option-label="__('Search for this text')"
+    terms-as-tokens
     @submit="onSubmit"
   />
 </template>

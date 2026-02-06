@@ -3,6 +3,7 @@
 module Ci
   class DeleteObjectsWorker
     include ApplicationWorker
+    include CronjobChildWorker
 
     data_consistency :always
 
@@ -22,7 +23,7 @@ module Ci
     end
 
     def max_running_jobs
-      20
+      50
     end
 
     private

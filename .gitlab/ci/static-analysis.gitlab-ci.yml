@@ -1,9 +1,8 @@
 .static-analysis-base:
   extends:
-    - .default-retry
     - .default-before_script
+    - .lint-base
   stage: lint
-  needs: []
   variables:
     SETUP_DB: "false"
     ENABLE_SPRING: "1"
@@ -12,26 +11,27 @@
     BROWSERSLIST_IGNORE_OLD_DATA: "true"
     GRAPHQL_SCHEMA_APOLLO_FILE: "tmp/tests/graphql/gitlab_schema_apollo.graphql"
 
-update-static-analysis-cache:
-  extends:
-    - .static-analysis-base
-    - .rubocop-job-cache-push
-    - .shared:rules:update-cache
-  stage: prepare
-  script:
-    # Silence cop offenses for rules with "grace period".
-    # This will notify Slack if offenses were silenced.
-    # For the moment we only cache `tmp/rubocop_cache` so we don't need to run all the tasks.
-    - run_timed_command "fail_on_warnings bundle exec rake rubocop:check:graceful"
-
 static-analysis:
   extends:
     - .static-analysis-base
     - .static-analysis-cache
     - .static-analysis:rules:static-analysis
+    - .use-pg16
+  needs:
+    - !reference [.lint-base, needs]
+    - job: cache:ruby-gems
+      optional: true
+    - job: cache:node-modules
+      optional: true
+    - job: db:setup pg16
+      optional: true
   parallel: 2
+  variables:
+    SETUP_DB: "true"
+    OPENAPI_CHECK_DEBUG: "true"
   script:
     - yarn_install_script
+    - scripts/install_frontend_islands
     - fail_on_warnings scripts/static-analysis
 
 static-verification-with-database:
@@ -39,7 +39,7 @@ static-verification-with-database:
     - .static-analysis-base
     - .rubocop-job-cache
     - .static-analysis:rules:static-verification-with-database
-    - .use-pg14
+    - .use-pg16
   script:
     - bundle exec rake lint:static_verification_with_database
   variables:
@@ -52,7 +52,9 @@ generate-apollo-graphql-schema:
   image:
     name: ${REGISTRY_HOST}/${REGISTRY_GROUP}/gitlab-build-images:apollo
     entrypoint: [""]
-  needs: ['graphql-schema-dump']
+  needs:
+    - !reference [.lint-base, needs]
+    - 'graphql-schema-dump'
   variables:
     USE_BUNDLE_INSTALL: "false"
   script:
@@ -63,44 +65,100 @@ generate-apollo-graphql-schema:
     paths:
       - "${GRAPHQL_SCHEMA_APOLLO_FILE}"
 
+.eslint-base:
+  extends:
+    - .static-analysis-base
+  needs:
+    - !reference [.lint-base, needs]
+    - job: generate-apollo-graphql-schema
+      optional: true
+    - job: compile-fe-islands
+      optional: true
+  variables:
+    USE_BUNDLE_INSTALL: "false"
+    ESLINT_CODE_QUALITY_REPORT: "gl-code-quality-report.json"
+  before_script:
+    - !reference [.default-before_script, before_script]
+    - yarn_install_script
+  cache:
+    - !reference [.yarn-cache, cache]
+
+eslint-changed-files:
+  extends:
+    - .eslint-base
+    - .frontend:rules:eslint-changed-files
+  script:
+    - ./tooling/ci/changed_files.rb eslint
+
 eslint:
+  extends:
+    - .eslint-base
+    - .frontend:rules:eslint-default
+  script:
+    - yarn run lint:eslint:all --format gitlab
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+
+.eslint:fe-islands:
+  extends:
+    - .eslint-base
+    - .frontend:rules:fe-islands:test
+    - .fe-islands-parallel
+  needs:
+    - cache:fe-islands-hash
+    - job: validate-fe-islands-ci
+      optional: true
+    - job: compile-fe-islands
+      optional: true
+  cache:
+    - !reference [.yarn-cache, cache]
+    - !reference [.fe-islands-yarn-cache, cache]
+  before_script:
+    - !reference [.default-before_script, before_script]
+    - yarn_install_script
+  script:
+    - cd ee/frontend_islands/apps/${FE_APP_DIR}
+    - yarn run lint --format gitlab
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+
+eslint-docs:
   extends:
     - .static-analysis-base
     - .yarn-cache
-    - .frontend:rules:default-frontend-jobs
-  needs: ['generate-apollo-graphql-schema']
+    - .frontend:rules:default-frontend-jobs-with-docs-changes
   variables:
     USE_BUNDLE_INSTALL: "false"
   script:
     - yarn_install_script
-    - run_timed_command "yarn run lint:eslint:all"
+    - scripts/frontend/lint_docs_links.mjs
 
 haml-lint:
   extends:
     - .static-analysis-base
     - .ruby-cache
     - .static-analysis:rules:haml-lint
+  needs:
+    - !reference [.lint-base, needs]
+    - job: cache:ruby-gems
+      optional: true
   script:
-    - run_timed_command "bundle exec haml-lint --parallel app/views"
+    - bundle exec haml-lint --parallel
   artifacts:
     expire_in: 31d
     when: always
     paths:
       - tmp/feature_flags/
 
-haml-lint ee:
-  extends:
-    - "haml-lint"
-    - .static-analysis:rules:haml-lint-ee
-  script:
-    - run_timed_command "bundle exec haml-lint --parallel ee/app/views"
-
 rubocop:
   extends:
     - .static-analysis-base
-    - .rubocop-job-cache
+    - .rubocop-job-cache-push
     - .static-analysis:rules:rubocop
   needs:
+    - !reference [.lint-base, needs]
     - job: detect-tests
       optional: true
   variables:
@@ -108,84 +166,125 @@ rubocop:
   script:
     - |
       # For non-merge request, or when RUN_ALL_RUBOCOP is 'true', run all RuboCop rules
-      if [ -z "${CI_MERGE_REQUEST_IID}" ] || [ "${RUN_ALL_RUBOCOP}" == "true" ]; then
-        # Silence cop offenses for rules with "grace period".
-        # We won't notify Slack if offenses were silenced to avoid frequent messages.
-        # Job `update-static-analysis-cache` takes care of Slack notifications every 2 hours.
-        unset CI_SLACK_WEBHOOK_URL
-        run_timed_command "fail_on_warnings bundle exec rake rubocop:check:graceful"
+      if [ -z "${CI_MERGE_REQUEST_IID:-$FIND_CHANGES_MERGE_REQUEST_IID}" ] || [ "${RUN_ALL_RUBOCOP}" == "true" ]; then
+        if [ "${CI_PIPELINE_SOURCE}" != "schedule" ]; then
+          # Silence cop offenses for rules with "grace period".
+          # To avoid frequent notification, unset slack webhook url for everything but scheduled pipelines
+          unset CI_SLACK_WEBHOOK_URL
+        fi
+        fail_on_warnings bundle exec rake rubocop:check:graceful
       else
-        select_existing_files < "${RSPEC_CHANGED_FILES_PATH}" > "${RUBOCOP_TARGET_FILES}"
+        select_existing_files < "${GLCI_PREDICTIVE_CHANGED_FILES_PATH}" > "${RUBOCOP_TARGET_FILES}"
         # Skip running RuboCop if there's no target files
         if [ -s "${RUBOCOP_TARGET_FILES}" ]; then
-          run_timed_command "fail_on_warnings bundle exec rubocop --parallel --force-exclusion $(cat ${RUBOCOP_TARGET_FILES})"
+          fail_on_warnings bundle exec rubocop --parallel --force-exclusion $(cat ${RUBOCOP_TARGET_FILES})
         else
           echoinfo "Nothing interesting changed for RuboCop. Skipping."
         fi
       fi
 
-qa:metadata-lint:
+rubocop-docs:
   extends:
     - .static-analysis-base
-    - .static-analysis:rules:qa:metadata-lint
-  before_script:
-    - !reference [.default-before_script, before_script]
-    - cd qa/
-    - bundle_install_script
+    - .rubocop-job-cache
+    - .docs:rules:docs-lint
   script:
-    - run_timed_command "bundle exec bin/qa Test::Instance::All http://localhost:3000 --test-metadata-only"
-    - cd ..
-    - run_timed_command "./scripts/qa/testcases-check qa/tmp/test-metadata.json"
-    - run_timed_command "./scripts/qa/quarantine-types-check qa/tmp/test-metadata.json"
-  variables:
-    USE_BUNDLE_INSTALL: "false"
-    SETUP_DB: "false"
-    QA_EXPORT_TEST_METRICS: "false"
-    # Disable warnings in browserslist which can break on backports
-    # https://github.com/browserslist/browserslist/blob/a287ec6/node.js#L367-L384
-    BROWSERSLIST_IGNORE_OLD_DATA: "true"
+    - bundle exec rubocop --only Gitlab/DocumentationLinks/Link
+
+rubocop:docs-site:
+  extends:
+    - .static-analysis-base
+    - .rubocop-job-cache
+    - .docs:rules:rubocop-docs-site
+  allow_failure: true
+  script:
+    - apt-get update && apt-get -y install hugo
+    - bundle exec rake rubocop:docs
+    - cd rubocop/docs-hugo
+    - hugo --minify
+    - cd ../../
   artifacts:
+    name: rubocop-docs-site
     expire_in: 31d
     when: always
     paths:
-      - qa/tmp/
+      - rubocop/docs-hugo/public
+
+rails-next-dependency-check:
+  stage: lint
+  needs:
+    - !reference [.lint-base, needs]
+    - job: cache:ruby-gems
+      optional: true
+  extends:
+    - .ruby-cache
+    - .rails:rules:rails-next-dependency-check
+    - .lint-base
+  variables:
+    BUNDLE_GEMFILE: Gemfile.next
+  script:
+    - bundle install
+    - cp Gemfile.lock Gemfile.next.lock
+    - bundle lock
+    - bundle install
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" == "failed" ]; then
+        echo "Gemfile.next.lock contains outdated dependencies, please run the following command and push the changes:"
+        echo "bundle exec rake bundler:gemfile:sync"
+      fi
 
 feature-flags-usage:
   extends:
     - .static-analysis-base
-    - .rubocop-job-cache
-    - .static-analysis:rules:rubocop
+    # rubocop cache for this job is disabled since it creates files under tmp/feature_flags/*.used,
+    # the cache would prevent these files from being created
+    - .ruby-cache
+    # this jobs is a non optional needs for rspec:feature-flags job so it should use same rule to ensure it is present
+    - .rails:rules:rspec-feature-flags
   script:
-    # We need to disable the cache for this cop since it creates files under tmp/feature_flags/*.used,
-    # the cache would prevent these files from being created.
-    - run_timed_command "fail_on_warnings bundle exec rubocop --only Gitlab/MarkUsedFeatureFlags --cache false"
+    - fail_on_warnings bundle exec rubocop --only Gitlab/MarkUsedFeatureFlags --cache false
   artifacts:
     expire_in: 31d
     when: always
     paths:
       - tmp/feature_flags/
 
+ensure-application-settings-have-definition-file:
+  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}ruby:${RUBY_VERSION}-alpine
+  extends:
+    - .static-analysis-base
+    - .static-analysis:rules:ensure-application-settings-have-definition-file
+  variables:
+    USE_BUNDLE_INSTALL: "false"
+  script:
+    - scripts/cells/ci-ensure-application-settings-have-definition-file.rb
+
 semgrep-appsec-custom-rules:
   stage: lint
   extends:
     - .semgrep-appsec-custom-rules:rules
-  image: returntocorp/semgrep
-  needs: []
+    - .lint-base
+  rules:
+    - if: $CI_MERGE_REQUEST_DRAFT == "true"
+      when: never
+    - !reference [.semgrep-appsec-custom-rules:rules, rules]
+  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}returntocorp/semgrep:1.99.0
   script:
-    # Required to avoid a timeout https://github.com/returntocorp/semgrep/issues/5395
-    - git fetch origin master
-    - git clone $CUSTOM_RULES_REPOSITORY "${CI_BUILDS_DIR}/sast-custom-rules"
-    # Include/exclude list isn't ideal https://github.com/returntocorp/semgrep/issues/5399
+    - git clone $CUSTOM_RULES_REPOSITORY sast-custom-rules
     - |
-      semgrep ci --gitlab-sast --metrics off --config "${CI_BUILDS_DIR}/sast-custom-rules" \
+      rm "sast-custom-rules/.gitlab-ci.yml" # semgrep fails when there are yaml files that are not rules
+      semgrep ci --metrics off --config "sast-custom-rules" \
         --include app --include lib --include workhorse \
-        --exclude '*_test.go' --exclude spec --exclude qa --exclude tooling > gl-sast-report.json || true
+        --exclude '*_test.go' --exclude spec --exclude qa --exclude tooling --json --verbose > gl-sast-report.json || true
+
   variables:
-    CUSTOM_RULES_REPOSITORY: https://gitlab.com/gitlab-com/gl-security/appsec/sast-custom-rules.git
+    CUSTOM_RULES_REPOSITORY: https://gitlab.com/gitlab-com/gl-security/product-security/appsec/sast-custom-rules.git
   artifacts:
     expire_in: 30 days
     paths:
       - gl-sast-report.json
+    access: 'developer'
 
 audit-event-types-verify:
   variables:
@@ -196,7 +295,9 @@ audit-event-types-verify:
     - .default-before_script
     - .audit-event-types:rules:audit-event-types-verify
   stage: lint
-  needs: []
+  needs:
+    - job: cache:ruby-gems
+      optional: true
   script:
     - bundle exec rake gitlab:audit_event_types:check_docs
 
@@ -209,9 +310,41 @@ custom-roles-verify:
     - .default-before_script
     - .custom-roles:rules:custom-roles-verify
   stage: lint
-  needs: []
+  needs:
+    - job: cache:ruby-gems
+      optional: true
   script:
     - bundle exec rake gitlab:custom_roles:check_docs
+
+permissions-verify:
+  variables:
+    SETUP_DB: "false"
+  extends:
+    - .default-retry
+    - .ruby-cache
+    - .default-before_script
+    - .permissions:rules:permissions-verify
+  stage: lint
+  needs:
+    - job: cache:ruby-gems
+      optional: true
+  script:
+    - bundle exec rake gitlab:permissions:validate
+
+ci-job-token-policies-verify:
+  variables:
+    SETUP_DB: "false"
+  extends:
+    - .default-retry
+    - .ruby-cache
+    - .default-before_script
+    - .ci-job-token-policies:rules:ci-job-token-policies-verify
+  stage: lint
+  needs:
+    - job: cache:ruby-gems
+      optional: true
+  script:
+    - bundle exec rake ci:job_tokens:check_policies
 
 templates-shellcheck:
   extends:
@@ -219,52 +352,61 @@ templates-shellcheck:
     - .default-before_script
     - .default-retry
     - .ruby-cache
-    - .use-pg16
+    - .use-pg17
+    - .lint-base
   stage: lint
   needs:
+    - !reference [.lint-base, needs]
     - setup-test-env
   script:
-    - apt update && apt install -y shellcheck=0.9.0-1
     - bundle exec scripts/lint_templates_bash.rb
 
 ping-appsec-for-sast-findings:
   stage: lint
-  image: alpine:latest
+  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}alpine:latest
   extends:
     - .ping-appsec-for-sast-findings:rules
+    - .lint-base
+  rules:
+    - if: $CI_MERGE_REQUEST_DRAFT == "true"
+      when: never
+    - !reference [.ping-appsec-for-sast-findings:rules, rules]
   variables:
-    # Project Access Token bot ID for /gitlab-com/gl-security/appsec/sast-custom-rules
-    BOT_USER_ID: 14406065
+    # Project Access Token bot ID for /gitlab-com/gl-security/product-security/appsec/sast-custom-rules
+    BOT_USER_ID: 19650678
   needs:
+    - !reference [.lint-base, needs]
     - semgrep-appsec-custom-rules
   script:
-    - apk add jq curl
-    - scripts/process_custom_semgrep_results.sh
-
-trigger-depsaster:
-  extends: .static-analysis:rules:trigger-depsaster
-  stage: lint
-  variables:
-    MERGE_REQUEST_PROJECT_ID: $CI_MERGE_REQUEST_PROJECT_ID
-    MERGE_REQUEST_IID: $CI_MERGE_REQUEST_IID
-  trigger:
-    project: "gitlab-com/gl-security/appsec/tooling/depsaster"
-  allow_failure: true
+    - apk update
+    - apk add ruby
+    - ruby scripts/semgrep_result_processor.rb
 
 ping-appsec-for-dependency-review:
   stage: lint
-  needs: []
   variables:
     GIT_CHECKOUT: "false"
-    DISABLE_MENTIONS: "false"
-    DISABLE_SCORING: "true"
+    DISABLE_SCORING: "false"
     DISABLE_COMMENTING: "false"
-    DEPENDENCY_REVIEW_BOT_CI_REG: "${CI_REGISTRY}/gitlab-com/gl-security/appsec/tooling/depscore/master"
-  extends: [".ping-appsec-for-dependency-review:rules", ".use-docker-in-docker"]
+    DEPENDENCY_REVIEW_BOT_CI_REG: "${CI_REGISTRY}/gitlab-com/gl-security/product-security/appsec/tooling/depscore/master"
+  extends:
+    - .ping-appsec-for-dependency-review:rules
+    - .use-docker-in-docker
+    - .lint-base
   before_script:
     - apk add jq curl
     - DEPENDENCY_REVIEW_BOT_UNAME=$(curl --header "PRIVATE-TOKEN:$DEPENDENCY_REVIEW_PAT" "https://gitlab.com/api/v4/user" | jq -r '.username')
     - echo "$DEPENDENCY_REVIEW_PAT" | docker login --password-stdin -u "$DEPENDENCY_REVIEW_BOT_UNAME" -- "$DEPENDENCY_REVIEW_BOT_CI_REG"
   script:
-    - docker run --interactive --rm "$DEPENDENCY_REVIEW_BOT_CI_REG:latest" -t "$DEPENDENCY_REVIEW_PAT" -p "$CI_PROJECT_ID" -m "$CI_MERGE_REQUEST_IID" -s "$DISABLE_SCORING" -a "$DISABLE_MENTIONS" -c "$DISABLE_COMMENTING"
+    - docker run --interactive --rm -e DEPSCORE_ANTHROPIC_KEY="$DEPSCORE_ANTHROPIC_KEY" "$DEPENDENCY_REVIEW_BOT_CI_REG:latest" -t "$DEPENDENCY_REVIEW_PAT" -p "$CI_PROJECT_ID" -m "$CI_MERGE_REQUEST_IID" -s "$DISABLE_SCORING" -c "$DISABLE_COMMENTING"
   allow_failure: true
+
+check-deprecated-files:
+  extends:
+    - .static-analysis-base
+    - .static-analysis:rules:check-deprecated-files
+  variables:
+    USE_BUNDLE_INSTALL: "false"
+  script:
+    - gem install rainbow --no-document
+    - scripts/lint/check_deprecated_files.rb

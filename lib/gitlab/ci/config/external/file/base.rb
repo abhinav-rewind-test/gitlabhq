@@ -10,12 +10,22 @@ module Gitlab
 
             attr_reader :location, :params, :context, :errors
 
-            YAML_WHITELIST_EXTENSION = /.+\.(yml|yaml)$/i
+            YAML_ALLOWLIST_EXTENSION = /.+\.(yml|yaml)$/i
 
             def initialize(params, context)
               @params = params
               @context = context
               @errors = []
+              @inputs_only = false
+            end
+
+            def inputs_only!
+              @inputs_only = true
+              self
+            end
+
+            def inputs_only?
+              @inputs_only
             end
 
             def matching?
@@ -27,7 +37,7 @@ module Gitlab
             end
 
             def invalid_extension?
-              location.nil? || !::File.basename(location).match?(YAML_WHITELIST_EXTENSION)
+              location.nil? || !::File.basename(location).match?(YAML_ALLOWLIST_EXTENSION)
             end
 
             def valid?
@@ -85,7 +95,7 @@ module Gitlab
               raise NotImplementedError, 'subclass must implement `validate_context!`'
             end
 
-            def validate_content!
+            def validate_content_presence!
               errors.push("Included file `#{masked_location}` is empty or does not exist!") if content.blank?
             end
 
@@ -102,24 +112,49 @@ module Gitlab
               end
 
               validate_hash!
+              validate_content_keys! if inputs_only?
+            end
+
+            def validate_content_keys!
+              return unless expanded_content_hash
+
+              allowed_keys = %i[inputs]
+              unknown_keys = expanded_content_hash.keys - allowed_keys
+
+              return unless unknown_keys.any?
+
+              errors.push("Header include file `#{masked_location}` contains unknown keys: #{unknown_keys}")
+            end
+
+            def load_uninterpolated_yaml
+              ::Gitlab::Ci::Config::Yaml::Loader.new(content).load_uninterpolated_yaml
             end
 
             protected
 
             def content_inputs
-              # TODO: remove support for `with` syntax in 16.1, see https://gitlab.com/gitlab-org/gitlab/-/issues/408369
-              # In the interim prefer `inputs` over `with` while allow either syntax.
-              params.to_h.slice(:inputs, :with).each_value.first
+              params.to_h.slice(:inputs).each_value.first
             end
 
             def content_result
               context.logger.instrument(:config_file_fetch_content_hash) do
                 ::Gitlab::Ci::Config::Yaml::Loader.new(
-                  content, inputs: content_inputs, variables: context.variables
+                  content, inputs: content_inputs, context: yaml_context, external_context: context
                 ).load
               end
             end
             strong_memoize_attr :content_result
+
+            def yaml_context
+              ::Gitlab::Ci::Config::Yaml::Context.new(**yaml_context_attributes)
+            end
+
+            def yaml_context_attributes
+              {
+                variables: context.variables,
+                component: context.component_data
+              }
+            end
 
             def expanded_content_hash
               return if content_result.content.blank?
@@ -136,6 +171,8 @@ module Gitlab
             end
 
             def expand_includes(hash)
+              return hash if inputs_only?
+
               External::Processor.new(hash, context.mutate(expand_context_attrs)).perform
             end
 

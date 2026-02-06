@@ -4,19 +4,28 @@ module Gitlab
   module Database
     module BackgroundMigration
       class BatchedMigration < SharedModel
+        include Gitlab::Utils::StrongMemoize
+
         JOB_CLASS_MODULE = 'Gitlab::BackgroundMigration'
         BATCH_CLASS_MODULE = "#{JOB_CLASS_MODULE}::BatchingStrategies"
         MAXIMUM_FAILED_RATIO = 0.5
         MINIMUM_JOBS = 50
         FINISHED_PROGRESS_VALUE = 100
+        MINIMUM_PAUSE_MS = 100
+        DEFAULT_NUMBER_OF_JOBS = 20
+        DEFAULT_EMA_ALPHA = 0.4
 
         self.table_name = :batched_background_migrations
 
         has_many :batched_jobs, foreign_key: :batched_background_migration_id
-        has_one :last_job, -> { order(max_value: :desc) },
+        has_one :last_job,
+          ->(relation) {
+            relation.cursor? ? where.not(max_cursor: nil).order(max_cursor: :desc) : order(max_value: :desc)
+          },
           class_name: 'Gitlab::Database::BackgroundMigration::BatchedJob',
           foreign_key: :batched_background_migration_id
 
+        validates :pause_ms, numericality: { greater_than_or_equal_to: MINIMUM_PAUSE_MS }
         validates :job_arguments, uniqueness: {
           scope: [:job_class_name, :table_name, :column_name]
         }
@@ -26,6 +35,7 @@ module Gitlab
         scope :queue_order, -> { order(id: :asc) }
         scope :queued, -> { with_statuses(:active, :paused) }
         scope :finalizing, -> { with_status(:finalizing) }
+        scope :unfinished, -> { without_status(:finished, :finalized) }
         scope :ordered_by_created_at_desc, -> { order(created_at: :desc) }
 
         # on_hold_until is a temporary runtime status which puts execution "on hold"
@@ -33,13 +43,22 @@ module Gitlab
 
         scope :created_after, ->(time) { where('created_at > ?', time) }
 
-        scope :for_configuration, ->(gitlab_schema, job_class_name, table_name, column_name, job_arguments) do
+        scope :for_job_class, ->(job_class_name) { where(job_class_name: job_class_name) }
+        scope :for_configuration, ->(
+          gitlab_schema, job_class_name, table_name, column_name, job_arguments, include_compatible: false
+        ) do
           relation = where(job_class_name: job_class_name, table_name: table_name, column_name: column_name)
             .where("job_arguments = ?", job_arguments.to_json) # rubocop:disable Rails/WhereEquals
 
           # This method is called from migrations older than the gitlab_schema column,
           # check and add this filter only if the column exists.
-          relation = relation.for_gitlab_schema(gitlab_schema) if gitlab_schema_column_exists?
+          if gitlab_schema_column_exists?
+            relation = if include_compatible
+                         relation.for_gitlab_schema_compatible_with(gitlab_schema)
+                       else
+                         relation.for_gitlab_schema(gitlab_schema)
+                       end
+          end
 
           relation
         end
@@ -50,6 +69,20 @@ module Gitlab
 
         scope :for_gitlab_schema, ->(gitlab_schema) do
           where(gitlab_schema: gitlab_schema)
+        end
+
+        scope :for_gitlab_schema_compatible_with, ->(gitlab_schemas) do
+          connection_schemas = Gitlab::Database.gitlab_schemas_for_connection(connection)
+          connection_schemas_array = Arel.sql(
+            "ARRAY[#{connection_schemas.map { |s| "'#{s}'" }.join(', ')}]"
+          )
+
+          gitlab_schemas = Arel.sql(
+            "ARRAY[#{Array.wrap(gitlab_schemas).map { |s| "'#{s}'" }.join(', ')}]"
+          )
+
+          where("#{gitlab_schemas} <@ #{connection_schemas_array}")
+            .where(gitlab_schema: connection_schemas)
         end
 
         state_machine :status, initial: :paused do
@@ -97,8 +130,13 @@ module Gitlab
           state_machine.states.map(&:name)
         end
 
-        def self.find_for_configuration(gitlab_schema, job_class_name, table_name, column_name, job_arguments)
-          for_configuration(gitlab_schema, job_class_name, table_name, column_name, job_arguments).first
+        def self.find_for_configuration(
+          gitlab_schema, job_class_name, table_name, column_name, job_arguments, include_compatible: false
+        )
+          for_configuration(
+            gitlab_schema, job_class_name, table_name, column_name, job_arguments,
+            include_compatible: include_compatible
+          ).first
         end
 
         def self.find_executable(id, connection:)
@@ -123,6 +161,8 @@ module Gitlab
             .sum(:batch_size)
         end
 
+        delegate :cursor?, to: :job_class
+
         def reset_attempts_of_blocked_jobs!
           batched_jobs.blocked_by_max_attempts.each_batch(of: 100) do |batch|
             batch.update_all(attempts: 0)
@@ -137,13 +177,21 @@ module Gitlab
         end
 
         def create_batched_job!(min, max)
-          batched_jobs.create!(
-            min_value: min,
-            max_value: max,
+          job_arguments = {
             batch_size: batch_size,
             sub_batch_size: sub_batch_size,
             pause_ms: pause_ms
-          )
+          }
+
+          if cursor?
+            job_arguments[:min_cursor] = min
+            job_arguments[:max_cursor] = max
+          else
+            job_arguments[:min_value] = min
+            job_arguments[:max_value] = max
+          end
+
+          batched_jobs.create!(job_arguments)
         end
 
         def retry_failed_jobs!
@@ -170,7 +218,17 @@ module Gitlab
         end
 
         def next_min_value
-          last_job&.max_value&.next || min_value
+          if cursor?
+            # Cursors require a subtle off-by-one change: we return the end of the last batch instead
+            # of bumping it by 1 with .next because this class doesn't know what's in the cursor.
+            # This means that the min_cursor here must be logically before the beginning of the batch, not just
+            # equal to the first row (if it's equal it'll make batching skip the first row), this is because the
+            # KeysetIterator we use for cursor batching expects the cursor passed to it to be before the start of
+            # the iteration range.
+            last_job&.max_cursor || min_cursor
+          else
+            last_job&.max_value&.next || min_value
+          end
         end
 
         def job_class
@@ -208,11 +266,11 @@ module Gitlab
           efficiencies = jobs.map(&:time_efficiency).reject(&:nil?).each_with_index
 
           dividend = efficiencies.reduce(0) do |total, (job_eff, i)|
-            total + job_eff * (1 - alpha)**i
+            total + (job_eff * ((1 - alpha)**i))
           end
 
           divisor = efficiencies.reduce(0) do |total, (job_eff, i)|
-            total + (1 - alpha)**i
+            total + ((1 - alpha)**i)
           end
 
           return if divisor == 0
@@ -221,16 +279,26 @@ module Gitlab
         end
 
         def optimize!
-          BatchOptimizer.new(self).optimize!
+          return false unless batch_optimizer.should_optimize?
+
+          new_batch_size = batch_optimizer.optimized_batch_size
+          return false if new_batch_size == batch_size
+
+          update!(batch_size: new_batch_size)
         end
 
         def health_context
           @health_context ||= Gitlab::Database::HealthStatus::Context.new(
             self,
             connection,
-            [table_name],
-            gitlab_schema.to_sym
+            health_context_tables
           )
+        end
+
+        def health_context_tables
+          return [table_name] unless job_class.respond_to?(:health_context_tables)
+
+          job_class.health_context_tables.presence || [table_name]
         end
 
         def hold!(until_time: 10.minutes.from_now)
@@ -262,7 +330,7 @@ module Gitlab
         # estimated as `total_tuple_count` so the progress may not show 100%. For that reason when
         # we know migration completed successfully, we just return the 100 value
         def progress
-          return FINISHED_PROGRESS_VALUE if finished?
+          return FINISHED_PROGRESS_VALUE if finished? || finalized?
 
           return unless total_tuple_count.to_i > 0
 
@@ -280,6 +348,19 @@ module Gitlab
 
         def validate_batched_jobs_status
           errors.add(:batched_jobs, 'jobs need to be succeeded') if batched_jobs.except_succeeded.exists?
+        end
+
+        def batch_optimizer
+          time_efficiency = smoothed_time_efficiency(
+            number_of_jobs: DEFAULT_NUMBER_OF_JOBS,
+            alpha: DEFAULT_EMA_ALPHA
+          )
+
+          Gitlab::Database::Batch::Optimizer.new(
+            current_batch_size: batch_size,
+            max_batch_size: max_batch_size,
+            time_efficiency: time_efficiency
+          )
         end
       end
     end

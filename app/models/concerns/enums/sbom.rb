@@ -7,10 +7,11 @@ module Enums
     }.with_indifferent_access.freeze
 
     PURL_TYPES = {
-      composer: 1, # refered to as `packagist` in gemnasium-db
+      not_provided: 0,
+      composer: 1, # refered to as `packagist` in gemnasium-db and semver_dialects
       conan: 2,
       gem: 3,
-      golang: 4, # refered to as `go` in gemnasium-db
+      golang: 4, # refered to as `go` in gemnasium-db and semver_dialects
       maven: 5,
       npm: 6,
       nuget: 7,
@@ -19,7 +20,36 @@ module Enums
       rpm: 10,
       deb: 11,
       'cbl-mariner': 12,
-      wolfi: 13
+      wolfi: 13,
+      cargo: 14,
+      swift: 15,
+      conda: 16,
+      pub: 17,
+      unknown: 999
+    }.with_indifferent_access.freeze
+
+    # INTERNAL_PURL_TYPES are purl types that are used by GitLab internally for
+    # features. These types are not officially recognized, or even proposed, nor
+    # should they. For example, 'unknown' is the PURL type used to describe components
+    # for which we have no knowledge, and `'not_provided' is used for components`
+    # for which did not provide a PURL type. Outside of GitLab these are not usable,
+    # and should not be surfaced to customers outside of very specific contexts.
+    # A concrete example is the dependency list where customers would like to see
+    # components that have no PURL type, or have a PURL type that's not handled.
+    # In other contexts like in the Package Metadata Database admin configuration
+    # page, these don't make sense, so it's best to exclude (customers can't sync data
+    # for 'unknown' or 'not_provided' packages).
+    INTERNAL_PURL_TYPES = %w[unknown not_provided].freeze
+
+    UNKNOWN = :unknown
+    IN_USE = :in_use
+    NOT_FOUND = :not_found
+
+    REACHABILITY_TYPES = {
+      UNKNOWN => 0, # reachability analysis was not available for this component
+      # (this attribute can't be renamed as it would be a breaking change)
+      IN_USE => 1, # component is known to be in use
+      NOT_FOUND => 2 # component was not found to be in use
     }.with_indifferent_access.freeze
 
     DEPENDENCY_SCANNING_PURL_TYPES = %w[
@@ -31,6 +61,10 @@ module Enums
       npm
       nuget
       pypi
+      cargo
+      swift
+      conda
+      pub
     ].freeze
 
     CONTAINER_SCANNING_PURL_TYPES = %w[
@@ -42,22 +76,78 @@ module Enums
     ].freeze
 
     # Package types supported by Trivy are sourced from
-    # https://github.com/aquasecurity/trivy/blob/214546427e76da21bbc61a5b70ec00d5b95f6d0b/pkg/sbom/cyclonedx/marshal.go#L21
+    # https://github.com/aquasecurity/trivy/blob/8e6a7ff670c64106d4dea6972ac3f6228f9c6269/pkg/fanal/analyzer/const.go
     PACKAGE_MANAGERS_FROM_TRIVY_PKG_TYPE = {
       # OS
+      alma: 'dnf',
       alpine: 'apk',
       amazon: 'yum',
+      azurelinux: 'tdnf',
+      bottlerocket: 'bottlerocket',
       'cbl-mariner': 'tdnf',
-      debian: 'apt',
-      photon: 'tdnf',
       centos: 'dnf',
-      rocky: 'dnf',
-      alma: 'dnf',
+      chainguard: 'apk',
+      coreos: 'dnf',
+      debian: 'apt',
+      echo: 'apt',
       fedora: 'dnf',
+      minimos: 'apt',
+      opensuse: 'zypper',
+      'opensuse-leap': 'zypper',
+      'opensuse-tumbleweed': 'zypper',
       oracle: 'dnf',
+      photon: 'tdnf',
       redhat: 'dnf',
-      suse: 'zypper',
+      rocky: 'dnf',
+      slem: 'zypper',
+      sles: 'zypper',
       ubuntu: 'apt',
+      wolfi: 'apk',
+
+      # Application package types
+      bundler: 'bundler',
+      gemspec: 'bundler',
+      cargo: 'cargo',
+      composer: 'composer',
+      'composer-vendor': 'composer',
+      npm: 'npm',
+      bun: 'bun',
+      nuget: 'nuget',
+      'dotnet-core': 'nuget',
+      'packages-props': 'nuget',
+      pip: 'pip',
+      pipenv: 'pipenv',
+      poetry: 'poetry',
+      uv: 'uv',
+      'conda-pkg': 'conda',
+      'conda-environment': 'conda',
+      'python-pkg': 'pip',
+      'node-pkg': 'npm',
+      yarn: 'yarn',
+      pnpm: 'pnpm',
+      jar: 'maven',
+      pom: 'maven',
+      gradle: 'gradle',
+      sbt: 'sbt',
+      gobinary: 'go',
+      gomod: 'go',
+      javascript: 'npm',
+      rustbinary: 'cargo',
+      conan: 'conan',
+      cocoapods: 'cocoapods',
+      swift: 'cocoapods',
+      pub: 'pub',
+      hex: 'hex',
+      bitnami: 'bitnami',
+      julia: 'julia',
+
+      #######################################
+      # Historical Trivy mappings
+      # Keep for backward compatibility
+      #######################################
+
+      # OS
+      suse: 'zypper',
       'ubuntu-esm': 'apt',
 
       # OS package types
@@ -68,31 +158,11 @@ module Enums
       rpmqa: 'dnf',
 
       # Application package types
-      bundler: 'bundler',
-      gemspec: 'bundler',
-      rustbinary: 'cargo',
-      cargo: 'cargo',
-      composer: 'composer',
-      jar: 'maven',
-      pom: 'maven',
       'gradle-lockfile': 'gradle',
-      npm: 'npm',
-      'node-pkg': 'npm',
-      yarn: 'yarn',
-      pnpm: 'pnpm',
-      nuget: 'nuget',
-      'dotnet-core': 'nuget',
-      'conda-pkg': 'conda',
-      'python-pkg': 'pip',
-      pip: 'pip',
-      pipenv: 'pipenv',
-      poetry: 'poetry',
-      gobinary: 'go',
-      gomod: 'go',
+      'sbt-lockfile': 'sbt',
+      'python-egg': 'pip',
       'conan-lock': 'conan',
       'mix-lock': 'mix',
-      swift: 'cocoapods',
-      cocoapods: 'cocoapods',
       'pubspec-lock': 'pub'
     }.with_indifferent_access.freeze
 
@@ -109,13 +179,19 @@ module Enums
     end
 
     def self.purl_types
-      # return 0 by default if the purl_type is not found, to prevent
-      # consumers from producing invalid SQL caused by null entries
-      @_purl_types ||= PURL_TYPES.dup.tap { |h| h.default = 0 }
+      # if PURL is empty or nil then mark it as not_provided,
+      # othewise mark it as unsupported
+      @_purl_types ||= PURL_TYPES.dup.tap do |h|
+        h.default_proc = proc { |_, key| key.to_s.blank? ? 0 : 999 }
+      end
     end
 
     def self.purl_types_numerical
       purl_types.invert
+    end
+
+    def self.reachability_types
+      REACHABILITY_TYPES
     end
 
     def self.package_manager_from_trivy_pkg_type(pkg_type)

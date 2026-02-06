@@ -30,7 +30,7 @@ module API
       include ::Gitlab::Utils::StrongMemoize
 
       def project_or_group
-        find_authorized_group!
+        find_authorized_group!(action: required_permission)
       end
 
       def project_or_group_without_auth
@@ -42,12 +42,8 @@ module API
         project_or_group_without_auth.package_settings.nuget_symbol_server_enabled
       end
 
-      def require_authenticated!
-        unauthorized! unless current_user
-      end
-
       def snowplow_gitlab_standard_context
-        { namespace: find_authorized_group! }
+        { namespace: project_or_group }
       end
 
       def snowplow_gitlab_standard_context_without_auth
@@ -55,12 +51,17 @@ module API
       end
 
       def required_permission
-        :read_group
+        :read_package_within_public_registries
       end
     end
 
+    def self.boundary_type
+      :group
+    end
+
     params do
-      requires :id, types: [Integer, String], desc: 'The group ID or full group path.', regexp: ::API::Concerns::Packages::Nuget::PrivateEndpoints::POSITIVE_INTEGER_REGEX
+      requires :id, types: [Integer, String], desc: 'The group ID or full group path.',
+        regexp: ::API::Concerns::Packages::Nuget::PrivateEndpoints::POSITIVE_INTEGER_REGEX
     end
 
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
@@ -70,14 +71,17 @@ module API
         end
 
         authenticate_with do |accept|
-          accept.token_types(:personal_access_token_with_username, :deploy_token_with_username, :job_token_with_username)
-                .sent_through(:http_basic_auth)
+          accept.token_types(
+            :personal_access_token_with_username,
+            :deploy_token_with_username,
+            :job_token_with_username
+          ).sent_through(:http_basic_auth)
         end
 
         namespace '/nuget' do
           after_validation do
             # This API can't be accessed anonymously
-            require_authenticated!
+            authenticate!
           end
 
           include ::API::Concerns::Packages::Nuget::PrivateEndpoints

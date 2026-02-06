@@ -18,15 +18,19 @@ import (
 )
 
 const (
-	// We have to use a negative transfer.hideRefs since this is the only way
-	// to undo an already set parameter: https://www.spinics.net/lists/git/msg256772.html
+	// GitConfigShowAllRefs is a negative transfer.hideRefs value used to undo an already set parameter.
+	// See https://www.spinics.net/lists/git/msg256772.html
 	GitConfigShowAllRefs = "transfer.hideRefs=!refs"
+	// XGitalyCorrelationID is the header name for Git operation correlation IDs
+	XGitalyCorrelationID = "X-Gitaly-Correlation-Id"
 )
 
+// ReceivePack returns an HTTP handler for git-receive-pack requests
 func ReceivePack(a *api.API) http.Handler {
 	return postRPCHandler(a, "handleReceivePack", handleReceivePack, sendGitAuditEvent("git-receive-pack"), writeReceivePackError)
 }
 
+// UploadPack returns an HTTP handler for git-upload-pack requests
 func UploadPack(a *api.API) http.Handler {
 	return postRPCHandler(a, "handleUploadPack", handleUploadPack, sendGitAuditEvent("git-upload-pack"), writeUploadPackError)
 }
@@ -44,22 +48,23 @@ func gitConfigOptions(a *api.Response) []string {
 func postRPCHandler(
 	a *api.API,
 	name string,
-	handler func(*HttpResponseWriter, *http.Request, *api.Response) (*gitalypb.PackfileNegotiationStatistics, error),
+	handler func(*HTTPResponseWriter, *http.Request, *api.Response) (*gitalypb.PackfileNegotiationStatistics, error),
 	postFunc func(*api.API, *http.Request, *api.Response, *gitalypb.PackfileNegotiationStatistics),
-	errWriter func(io.Writer) error,
+	errWriter func(io.Writer, string) error,
 ) http.Handler {
 	return repoPreAuthorizeHandler(a, func(rw http.ResponseWriter, r *http.Request, ar *api.Response) {
 		cr := &countReadCloser{ReadCloser: r.Body}
 		r.Body = cr
 
-		w := NewHttpResponseWriter(rw)
+		w := NewHTTPResponseWriter(rw)
 		defer func() {
 			w.Log(r, cr.Count())
+			logGitMetadata(r, ar, w.Count())
 		}()
 
 		stats, err := handler(w, r, ar)
 		if err != nil {
-			handleLimitErr(err, w, errWriter)
+			handleLimitErr(r.Context(), err, w, errWriter)
 			// If the handler, or handleLimitErr already wrote a response this WriteHeader call is a
 			// no-op. It never reaches net/http because GitHttpResponseWriter calls
 			// WriteHeader on its underlying ResponseWriter at most once.
@@ -69,6 +74,28 @@ func postRPCHandler(
 
 		postFunc(a, r, ar, stats)
 	})
+}
+
+// logGitMetadata records Git traffic-related metadata for monitoring purposes.
+func logGitMetadata(r *http.Request, ar *api.Response, count int64) {
+	fields := log.Fields{
+		"written_bytes": count,
+		"service":       getService(r),
+	}
+
+	if ar.ProjectID != 0 {
+		fields["project_id"] = ar.ProjectID
+	}
+
+	if ar.RootNamespaceID != 0 {
+		fields["root_namespace_id"] = ar.RootNamespaceID
+	}
+
+	if correlationID := r.Header.Get(XGitalyCorrelationID); correlationID != "" {
+		fields["gitaly_correlation_id"] = correlationID
+	}
+
+	log.WithFields(fields).Info("git_traffic")
 }
 
 func repoPreAuthorizeHandler(myAPI *api.API, handleFunc api.HandleFunc) http.Handler {
@@ -90,6 +117,7 @@ func sendGitAuditEvent(action string) func(*api.API, *http.Request, *api.Respons
 			Repo:          response.GL_REPOSITORY,
 			Username:      response.GL_USERNAME,
 			PackfileStats: stats,
+			Changes:       "_any",
 		})
 		if err != nil {
 			log.WithContextFields(ctx, log.Fields{

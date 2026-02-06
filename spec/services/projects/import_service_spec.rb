@@ -337,7 +337,7 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
         allow(Gitlab::HTTP_V2::UrlBlocker).to receive(:validate!)
           .with(
-            project.import_url,
+            project.unsafe_import_url,
             ports: Project::VALID_IMPORT_PORTS,
             schemes: Project::VALID_IMPORT_PROTOCOLS,
             allow_local_network: false,
@@ -364,8 +364,8 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
     context 'when DNS rebind protection is enabled' do
       before do
-        allow(Gitlab::CurrentSettings).to receive(:http_proxy_env?).and_return(false)
-        allow(Gitlab::CurrentSettings).to receive(:dns_rebinding_protection_enabled?).and_return(true)
+        stub_application_setting(http_proxy_env?: false)
+        stub_application_setting(dns_rebinding_protection_enabled?: true)
       end
 
       context 'when https url is provided' do
@@ -374,7 +374,7 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
           allow(Gitlab::HTTP_V2::UrlBlocker).to receive(:validate!)
             .with(
-              project.import_url,
+              project.unsafe_import_url,
               ports: Project::VALID_IMPORT_PORTS,
               schemes: Project::VALID_IMPORT_PROTOCOLS,
               allow_local_network: false,
@@ -404,7 +404,7 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
             allow(Gitlab::HTTP_V2::UrlBlocker).to receive(:validate!)
               .with(
-                project.import_url,
+                project.unsafe_import_url,
                 ports: Project::VALID_IMPORT_PORTS,
                 schemes: Project::VALID_IMPORT_PROTOCOLS,
                 allow_local_network: false,
@@ -436,7 +436,7 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
           allow(Gitlab::HTTP_V2::UrlBlocker).to receive(:validate!)
             .with(
-              project.import_url,
+              project.unsafe_import_url,
               ports: Project::VALID_IMPORT_PORTS,
               schemes: Project::VALID_IMPORT_PROTOCOLS,
               allow_local_network: false,
@@ -467,7 +467,7 @@ RSpec.describe Projects::ImportService, feature_category: :importers do
 
           allow(Gitlab::HTTP_V2::UrlBlocker).to receive(:validate!)
             .with(
-              project.import_url,
+              project.unsafe_import_url,
               ports: Project::VALID_IMPORT_PORTS,
               schemes: Project::VALID_IMPORT_PROTOCOLS,
               allow_local_network: false,

@@ -1,11 +1,9 @@
-import { shallowMount } from '@vue/test-utils';
-import { GlIcon } from '@gitlab/ui';
-import { nextTick } from 'vue';
+import { GlIcon, GlButton } from '@gitlab/ui';
+import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import { file } from 'jest/ide/helpers';
-import { escapeFileUrl } from '~/lib/utils/url_utility';
+
 import FileIcon from '~/vue_shared/components/file_icon.vue';
 import FileRow from '~/vue_shared/components/file_row.vue';
-import FileHeader from '~/vue_shared/components/file_row_header.vue';
 
 const scrollIntoViewMock = jest.fn();
 HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
@@ -13,14 +11,21 @@ HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 describe('File row component', () => {
   let wrapper;
 
-  function createComponent(propsData, $router = undefined) {
-    wrapper = shallowMount(FileRow, {
+  function createComponent(propsData, router) {
+    wrapper = shallowMountExtended(FileRow, {
       propsData,
-      mocks: {
-        $router,
+      router,
+      stubs: {
+        GlTruncate: {
+          template: '<div>{{ text }}</div>',
+          props: ['text'],
+        },
       },
     });
   }
+
+  const findFileRowContainer = () => wrapper.findByTestId('file-row-container');
+  const findFileButton = () => wrapper.findByTestId('file-row');
 
   it('renders name', () => {
     const fileName = 't4';
@@ -32,6 +37,14 @@ describe('File row component', () => {
     const name = wrapper.find('.file-row-name');
 
     expect(name.text().trim()).toEqual(fileName);
+  });
+
+  it('renders as button', () => {
+    createComponent({
+      file: file('t4'),
+      level: 0,
+    });
+    expect(wrapper.find('button').exists()).toBe(true);
   });
 
   it('renders the full path as title', () => {
@@ -51,7 +64,7 @@ describe('File row component', () => {
       level: 1,
     });
 
-    expect(wrapper.element.title.trim()).toEqual('path/to/file/with a very long folder name/');
+    expect(findFileButton().attributes('title')).toBe('path/to/file/with a very long folder name/');
   });
 
   it('does not render a title attribute if no tree present', () => {
@@ -63,7 +76,7 @@ describe('File row component', () => {
     expect(wrapper.element.title.trim()).toEqual('');
   });
 
-  it('emits toggleTreeOpen on click', () => {
+  it('emits clickTree on tree click', () => {
     const fileName = 't3';
     createComponent({
       file: {
@@ -73,28 +86,51 @@ describe('File row component', () => {
       level: 0,
     });
 
-    wrapper.element.click();
+    findFileButton().trigger('click');
 
-    expect(wrapper.emitted('toggleTreeOpen')[0][0]).toEqual(fileName);
+    expect(wrapper.emitted('clickTree')).toHaveLength(1);
   });
 
-  it('calls scrollIntoView if made active', () => {
+  it('emits clickRow on tree click', () => {
+    const fileName = 'folder';
+    const filePath = 'path/to/folder';
+    createComponent({ file: { ...file(fileName), type: 'tree', path: filePath }, level: 0 });
+
+    findFileButton().trigger('click');
+
+    expect(wrapper.emitted('clickRow')).toHaveLength(1);
+    expect(wrapper.emitted('clickTree')).toHaveLength(1);
+  });
+
+  it('emits clickFile on blob click', () => {
+    const fileName = 't3';
+    const fileProp = {
+      ...file(fileName),
+      type: 'blob',
+    };
+    createComponent({
+      file: fileProp,
+      level: 1,
+    });
+
+    findFileButton().trigger('click');
+
+    expect(wrapper.emitted('clickFile')).toHaveLength(1);
+  });
+
+  it('emits clickRow event on blob click', () => {
+    const fileName = 'test.txt';
     createComponent({
       file: {
-        ...file(),
+        ...file(fileName),
         type: 'blob',
-        active: false,
       },
       level: 0,
     });
 
-    wrapper.setProps({
-      file: { ...wrapper.props('file'), active: true },
-    });
+    findFileButton().trigger('click');
 
-    return nextTick().then(() => {
-      expect(scrollIntoViewMock).toHaveBeenCalled();
-    });
+    expect(wrapper.emitted('clickRow')).toHaveLength(1);
   });
 
   it('renders header for file', () => {
@@ -107,38 +143,8 @@ describe('File row component', () => {
       level: 0,
     });
 
-    expect(wrapper.findComponent(FileHeader).exists()).toBe(true);
-  });
-
-  it('matches the current route against encoded file URL', () => {
-    const fileName = 'with space';
-    const rowFile = { ...file(fileName), url: `/${fileName}` };
-    const routerPath = `/project/${escapeFileUrl(fileName)}`;
-    createComponent(
-      {
-        file: rowFile,
-        level: 0,
-      },
-      {
-        currentRoute: {
-          path: routerPath,
-        },
-      },
-    );
-
-    expect(wrapper.vm.hasUrlAtCurrentRoute()).toBe(true);
-  });
-
-  it('render with the correct file classes prop', () => {
-    createComponent({
-      file: {
-        ...file(),
-      },
-      level: 0,
-      fileClasses: 'font-weight-bold',
-    });
-
-    expect(wrapper.find('.file-row-name').classes()).toContain('font-weight-bold');
+    expect(wrapper.attributes('title')).toBe('app/assets');
+    expect(wrapper.text()).toBe('app/assets');
   });
 
   it('renders submodule icon', () => {
@@ -155,15 +161,189 @@ describe('File row component', () => {
     expect(wrapper.findComponent(FileIcon).props('submodule')).toBe(submodule);
   });
 
-  it('renders pinned icon', () => {
+  it('renders link icon', () => {
     createComponent({
       file: {
         ...file(),
-        pinned: true,
+        linked: true,
       },
       level: 0,
     });
 
-    expect(wrapper.findComponent(GlIcon).props('name')).toBe('thumbtack');
+    expect(wrapper.findComponent(GlIcon).props('name')).toBe('link');
+  });
+
+  describe('Show more button', () => {
+    const findShowMoreButton = () => wrapper.findComponent(GlButton);
+
+    it('renders show more button when file.isShowMore is true', () => {
+      createComponent({ file: { isShowMore: true, loading: false }, level: 0 });
+
+      const showMoreButton = findShowMoreButton();
+      expect(showMoreButton.props('category')).toBe('tertiary');
+      expect(showMoreButton.props('loading')).toBe(false);
+      expect(showMoreButton.text().trim()).toBe('Show more');
+    });
+
+    it('emits showMore event when show more button is clicked', () => {
+      createComponent({ file: { isShowMore: true, loading: false }, level: 0 });
+
+      findShowMoreButton().vm.$emit('click');
+
+      expect(wrapper.emitted('showMore')).toHaveLength(1);
+    });
+
+    it('shows loading state on show more button', () => {
+      createComponent({ file: { isShowMore: true, loading: true }, level: 0 });
+
+      expect(findShowMoreButton().props('loading')).toBe(true);
+    });
+  });
+
+  describe('rovingTabindex prop', () => {
+    it('sets tabindex to 0 by default', () => {
+      createComponent({
+        file: file('test.txt'),
+        level: 0,
+        rovingTabindex: false,
+      });
+
+      expect(findFileButton().attributes('tabindex')).toBe('0');
+    });
+
+    it('sets tabindex to -1 when rovingTabindex is true', () => {
+      createComponent({
+        file: file('test.txt'),
+        level: 0,
+        rovingTabindex: true,
+      });
+
+      expect(findFileButton().attributes('tabindex')).toBe('-1');
+    });
+  });
+
+  it('emits clickSubmodule for submodules', () => {
+    createComponent({
+      file: { ...file('sub'), submodule: true, webUrl: 'https://ext.com' },
+      level: 0,
+    });
+
+    findFileButton().trigger('click');
+
+    expect(wrapper.emitted('clickSubmodule')).toHaveLength(1);
+  });
+
+  describe('Tree toggle chevron button', () => {
+    const findChevronButton = () => wrapper.findByTestId('tree-toggle-button');
+    const folderPath = 'path/to/folder';
+    const mockFile = { ...file(folderPath), type: 'tree', opened: false };
+
+    beforeEach(() => {
+      createComponent({
+        file: mockFile,
+        level: 0,
+        showTreeToggle: true,
+      });
+    });
+
+    it('renders chevron button with correct icon and text text', () => {
+      expect(findChevronButton().props()).toMatchObject({
+        category: 'tertiary',
+        size: 'small',
+        icon: 'chevron-right',
+      });
+
+      expect(findChevronButton().attributes('aria-label')).toBe('Expand path/to/folder directory');
+
+      // Ensure correct icon and aria-label when folder is expanded
+      createComponent({ file: { ...mockFile, opened: true }, level: 0, showTreeToggle: true });
+      expect(findChevronButton().props('icon')).toBe('chevron-down');
+      expect(findChevronButton().attributes('aria-label')).toBe(
+        'Collapse path/to/folder directory',
+      );
+    });
+
+    it('aligns the chevron icon correctly with indentation line', () => {
+      expect(findFileRowContainer().classes()).toContain('before:!gl-left-[calc(0.75rem-0.5px)]');
+    });
+
+    it('does not apply alignment class when showTreeToggle is false', () => {
+      createComponent({ file: mockFile, level: 0, showTreeToggle: false });
+
+      expect(findFileRowContainer().classes()).not.toContain(
+        'before:!gl-left-[calc(0.75rem-0.5px)]',
+      );
+    });
+
+    it('renders chevron button for trees and emits toggleTree when clicked', () => {
+      findChevronButton().vm.$emit('click', { stopPropagation: jest.fn() });
+
+      expect(wrapper.emitted('toggleTree')).toHaveLength(1);
+    });
+
+    it('does not render when showTreeToggle is false', () => {
+      createComponent({
+        file: mockFile,
+        level: 0,
+        showTreeToggle: false,
+      });
+
+      expect(findChevronButton().exists()).toBe(false);
+    });
+  });
+
+  it('renders as button element when file does not have href', () => {
+    createComponent({
+      file: file('test.rb'),
+      level: 0,
+    });
+
+    expect(findFileButton().element.tagName).toBe('BUTTON');
+    expect(findFileButton().attributes('href')).toBeUndefined();
+  });
+
+  it('renders as link when file has href', () => {
+    createComponent({
+      file: {
+        name: 'Readme.md',
+        href: '/gitlab-org/gitlab/-/tree/readme.md',
+      },
+      level: 0,
+    });
+
+    expect(findFileButton().element.tagName).toBe('A');
+    expect(findFileButton().attributes('href')).toBe('/gitlab-org/gitlab/-/tree/readme.md');
+  });
+
+  it('prevents default when clicking link when file has href', () => {
+    createComponent({
+      file: {
+        name: 'Readme.md',
+        href: '/gitlab-org/gitlab/-/tree/readme.md',
+      },
+      level: 0,
+    });
+
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+
+    findFileButton().element.dispatchEvent(event);
+
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
+  it('emits clickRow and clickFile when clicking blob', () => {
+    createComponent({
+      file: {
+        ...file('test.rb'),
+        type: 'blob',
+      },
+      level: 0,
+    });
+
+    findFileButton().trigger('click');
+
+    expect(wrapper.emitted('clickRow')).toHaveLength(1);
+    expect(wrapper.emitted('clickFile')).toHaveLength(1);
   });
 });

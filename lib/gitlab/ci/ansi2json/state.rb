@@ -58,9 +58,10 @@ module Gitlab
           @open_sections.key?(section)
         end
 
-        def new_line!(style: nil)
+        def new_line!(timestamps: [], offset: nil, style: nil)
           new_line = Line.new(
-            offset: @offset,
+            offset: offset || @offset,
+            timestamps: timestamps,
             style: style || @current_line.style,
             sections: @open_sections.keys
           )
@@ -108,7 +109,7 @@ module Gitlab
           decoded_state = Base64.urlsafe_decode64(encoded_state)
           return unless decoded_state.present?
 
-          ::Gitlab::Json.parse(decoded_state)
+          Gitlab::Json.safe_parse(decoded_state)
         end
 
         def sign(message)

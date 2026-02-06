@@ -1,18 +1,32 @@
 # frozen_string_literal: true
 
-require 'task_list'
-require 'task_list/filter'
-
 # Contains functionality for objects that can have task lists in their
 # descriptions.  Task list items can be added with Markdown like "* [x] Fix
 # bugs".
 #
 # Used by MergeRequest and Issue
 module Taskable
+  # Model class for task items returned by Taskable.get_tasks, Taskable.get_updated_tasks, and
+  # #task_list_items on classes included by Taskable.
+  #
+  # "complete?" is whether the item is marked complete (checked) or not.
+  #
+  # "text" is the human-friendly text relevant to the task item. It's used in
+  # SystemNotes::IssuablesService to create system notes about checking or unchecking items.
+  #
+  # "source" is the HTML source relevant to the task item. It's used in .get_updated_tasks to
+  # determine whether a task that was checked or unchecked hasn't otherwise changed. Depending on
+  # the kind of task item (task list vs. task table), it might take different forms, and shouldn't
+  # be presented to the user or otherwise stored.
+  Item = Struct.new(:complete?, :text, :source, keyword_init: true)
+
   COMPLETED          = 'completed'
   INCOMPLETE         = 'incomplete'
   COMPLETE_PATTERN   = /\[[xX]\]/
   INCOMPLETE_PATTERN = /\[[[:space:]]\]/
+
+  # Used by WorkItems::TaskListReferenceReplacementService.
+  # Do not add new uses.
   ITEM_PATTERN       = %r{
     ^
     (?:(?:>\s{0,4})*)               # optional blockquote characters
@@ -24,37 +38,22 @@ module Taskable
     (\s.+)                          # followed by whitespace and some text.
   }x
 
-  ITEM_PATTERN_UNTRUSTED =
-    '^' \
-    '(?:(?:>\s{0,4})*)' \
-    '(?P<prefix>(?:\s*(?:[-+*]|(?:\d+[.)])))+)' \
-    '\s+' \
-    '(?P<checkbox>' \
-    "#{COMPLETE_PATTERN.source}|#{INCOMPLETE_PATTERN.source}" \
-    ')' \
-    '(?P<label>\s.+)'.freeze
-
-  # ignore tasks in code or html comment blocks.  HTML blocks
-  # are ok as we allow tasks inside <detail> blocks
-  REGEX =
-    "#{::Gitlab::Regex.markdown_code_or_html_comments_untrusted}" \
-    "|" \
-    "(?P<task_item>" \
-    "#{ITEM_PATTERN_UNTRUSTED}" \
-    ")".freeze
-
   def self.get_tasks(content)
+    doc = Banzai::Pipeline::PlainMarkdownPipeline.call(content, {})[:output]
+
     items = []
+    doc.xpath(Banzai::Filter::TaskListFilter::XPATH).each do |node|
+      next if node.has_attribute?('data-inapplicable')
 
-    regex = Gitlab::UntrustedRegexp.new(REGEX, multiline: true)
-    regex.scan(content.to_s).each do |match|
-      next unless regex.extract_named_group(:task_item, match)
+      text = Banzai::Filter::TaskListFilter.text_for_task_item_from_input(node)
+      text = text.split('\n').first&.strip || ''
 
-      prefix = regex.extract_named_group(:prefix, match)
-      checkbox = regex.extract_named_group(:checkbox, match)
-      label = regex.extract_named_group(:label, match)
+      source = Banzai::Filter::TaskListFilter.text_html_for_task_item_from_input(node)
 
-      items << TaskList::Item.new("#{prefix.strip} #{checkbox}", label.strip)
+      items << Taskable::Item.new(
+        complete?: node.has_attribute?('checked'),
+        text: text,
+        source: source)
     end
 
     items
@@ -79,13 +78,13 @@ module Taskable
     @task_list_items ||= Taskable.get_tasks(description) # rubocop:disable Gitlab/ModuleWithInstanceVariables
   end
 
-  def tasks
-    @tasks ||= TaskList.new(self)
+  def complete_task_list_item_count
+    task_list_items.count(&:complete?)
   end
 
   # Return true if this object's description has any task list items.
   def tasks?
-    tasks.summary.items?
+    task_list_items.any?
   end
 
   # Return a string that describes the current state of this Taskable's task
@@ -93,14 +92,17 @@ module Taskable
   def task_status(short: false)
     return '' if description.blank?
 
-    sum = tasks.summary
-    checklist_item_noun = n_('checklist item', 'checklist items', sum.item_count)
+    checklist_item_noun = n_('checklist item', 'checklist items', task_list_items.count)
     if short
       format(s_('Tasks|%{complete_count}/%{total_count} %{checklist_item_noun}'),
-        checklist_item_noun: checklist_item_noun, complete_count: sum.complete_count, total_count: sum.item_count)
+        checklist_item_noun: checklist_item_noun,
+        complete_count: complete_task_list_item_count,
+        total_count: task_list_items.count)
     else
       format(s_('Tasks|%{complete_count} of %{total_count} %{checklist_item_noun} completed'),
-        checklist_item_noun: checklist_item_noun, complete_count: sum.complete_count, total_count: sum.item_count)
+        checklist_item_noun: checklist_item_noun,
+        complete_count: complete_task_list_item_count,
+        total_count: task_list_items.count)
     end
   end
 
@@ -112,8 +114,8 @@ module Taskable
 
   def task_completion_status
     @task_completion_status ||= {
-        count: tasks.summary.item_count,
-        completed_count: tasks.summary.complete_count
+      count: task_list_items.count,
+      completed_count: complete_task_list_item_count
     }
   end
 end

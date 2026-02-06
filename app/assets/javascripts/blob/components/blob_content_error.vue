@@ -55,13 +55,13 @@ export default {
     },
   },
   errorMessage: __(
-    'This content could not be displayed because %{reason}. You can %{options} instead.',
+    'Content could not be displayed: %{reason}. Options to address this: %{options}.',
   ),
 };
 </script>
 <template>
   <div class="file-content code">
-    <div class="text-center py-4">
+    <div class="!gl-py-6 !gl-text-center">
       <gl-sprintf :message="$options.errorMessage">
         <template #reason>{{ renderErrorReason }}</template>
         <template #options>
@@ -70,7 +70,6 @@ export default {
               <gl-link
                 :href="option.href"
                 :target="option.target"
-                :data-test-id="`option-${option.id}`"
                 @click="option.event && $emit(option.event)"
                 >{{ option.text }}</gl-link
               >

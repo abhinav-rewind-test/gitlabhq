@@ -47,6 +47,35 @@ RSpec.describe 'Destroying multiple package files', feature_category: :package_r
       end
 
       it_behaves_like 'returning response status', :success
+
+      it 'does not sync helm metadata cache' do
+        expect(::Packages::Helm::CreateMetadataCacheWorker).not_to receive(:bulk_perform_async_with_contexts)
+
+        mutation_request
+      end
+    end
+
+    shared_examples 'protected deletion of package files' do
+      it_behaves_like 'returning response status', :success
+
+      it 'returns protection errors' do
+        mutation_request
+
+        response_errors = graphql_mutation_response(:destroyPackageFiles)['errors']
+        expect(response_errors).to include("Package '#{package.name}' is deletion protected.")
+      end
+
+      it 'does not mark any package files for destruction' do
+        expect { mutation_request }.not_to change { ::Packages::PackageFile.pending_destruction.count }
+      end
+
+      context 'when feature flag is disabled' do
+        before do
+          stub_feature_flags(packages_protected_packages_delete: false)
+        end
+
+        it_behaves_like 'destroying the package files'
+      end
     end
 
     context 'with valid params' do
@@ -64,6 +93,39 @@ RSpec.describe 'Destroying multiple package files', feature_category: :package_r
         end
 
         it_behaves_like params[:shared_examples_name]
+      end
+
+      context 'when package file is helm type' do
+        let_it_be(:project) { create(:project) }
+        let_it_be(:package) { create(:helm_package, project: project) }
+        let_it_be(:package2) { create(:helm_package, project: project) }
+        let_it_be_with_reload(:expected_metadata) do
+          Packages::Helm::FileMetadatum.for_package_files([package, package2].flat_map(&:package_files))
+        end
+
+        let(:ids) do
+          [package, package2].flat_map(&:package_files).map { |pf| pf.to_global_id.to_s }
+        end
+
+        before do
+          project.add_maintainer(user)
+
+          allow(Packages::Helm::CreateMetadataCacheWorker).to receive(:bulk_perform_async_with_contexts)
+        end
+
+        it 'sync helm metadata cache', :aggregate_failures do
+          mutation_request
+
+          expect(::Packages::Helm::CreateMetadataCacheWorker)
+          .to have_received(:bulk_perform_async_with_contexts) do |metadata, arguments_proc:, context_proc:|
+            expect(metadata.map(&:channel)).to match_array(expected_metadata.map(&:channel).uniq)
+
+            expected_metadata.each do |metadatum|
+              expect(arguments_proc.call(metadatum)).to eq([project.id, metadatum.channel])
+              expect(context_proc.call(metadatum)).to eq(project: project, user: user)
+            end
+          end
+        end
       end
 
       context 'with more than 100 files' do
@@ -87,6 +149,32 @@ RSpec.describe 'Destroying multiple package files', feature_category: :package_r
         end
 
         it_behaves_like 'denying the mutation request', 'All files must be in the requested project'
+      end
+    end
+
+    context 'with protected package files' do
+      let_it_be_with_reload(:package_protection_rule) do
+        create(:package_protection_rule,
+          project: package.project,
+          package_name_pattern: package.name,
+          package_type: package.package_type,
+          minimum_access_level_for_delete: :owner
+        )
+      end
+
+      where(:user_role, :shared_examples_name) do
+        :owner      | 'destroying the package files'
+        :maintainer | 'protected deletion of package files'
+        :developer  | 'denying the mutation request'
+        :anonymous  | 'denying the mutation request'
+      end
+
+      with_them do
+        before do
+          project.send("add_#{user_role}", user) unless user_role == :anonymous
+        end
+
+        it_behaves_like params[:shared_examples_name]
       end
     end
 

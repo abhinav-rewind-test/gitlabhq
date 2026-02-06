@@ -5,22 +5,32 @@ module Gitlab
     InvalidEventError = Class.new(RuntimeError)
 
     class EventDefinition
-      EVENT_SCHEMA_PATH = Rails.root.join('config', 'events', 'schema.json')
-      SCHEMA = ::JSONSchemer.schema(EVENT_SCHEMA_PATH)
-
       attr_reader :path
-      attr_reader :attributes
+
+      IDENTIFIERS = [:user, :namespace, :project].freeze
 
       class << self
-        def paths
-          @paths ||= [Rails.root.join('config', 'events', '*.yml'), Rails.root.join('ee', 'config', 'events', '*.yml')]
-        end
+        include Gitlab::Utils::StrongMemoize
 
         def definitions
-          paths.flat_map { |glob_path| load_all_from_path(glob_path) }
+          @definitions ||= paths.flat_map { |glob_path| load_all_from_path(glob_path) }
+        end
+
+        def internal_event_exists?(event_name)
+          internal_event_actions.include?(event_name)
+        end
+
+        def find(event_name)
+          strong_memoize_with(:find, event_name) do
+            definitions.find { |definition| definition.action == event_name }
+          end
         end
 
         private
+
+        def paths
+          @paths ||= [Rails.root.join('config', 'events', '*.yml'), Rails.root.join('ee', 'config', 'events', '*.yml')]
+        end
 
         def load_from_file(path)
           definition = File.read(path)
@@ -35,6 +45,12 @@ module Gitlab
         def load_all_from_path(glob_path)
           Dir.glob(glob_path).map { |path| load_from_file(path) }
         end
+
+        def internal_event_actions
+          @internal_event_actions ||= definitions
+            .filter_map { |event| event.action if event.internal_events? }
+            .to_set
+        end
       end
 
       def initialize(path, opts = {})
@@ -42,26 +58,60 @@ module Gitlab
         @attributes = opts
       end
 
-      def to_h
-        attributes
+      def additional_properties
+        @attributes.fetch(:additional_properties, {}).except(*IDENTIFIERS)
       end
-      alias_method :to_dictionary, :to_h
+
+      def internal_events?
+        @attributes[:internal_events]
+      end
+
+      def category
+        @attributes[:category]
+      end
 
       def yaml_path
         path.delete_prefix(Rails.root.to_s)
       end
 
-      def validation_errors
-        SCHEMA.validate(attributes.stringify_keys).map do |error|
-          <<~ERROR_MSG
-            --------------- VALIDATION ERROR ---------------
-            Definition file: #{path}
-            Error type: #{error['type']}
-            Data: #{error['data']}
-            Path: #{error['data_pointer']}
-          ERROR_MSG
+      def event_selection_rules
+        @event_selection_rules ||= find_event_selection_rules
+      end
+
+      def action
+        @attributes[:action]
+      end
+
+      def extra_trackers
+        @attributes.fetch(:extra_trackers, []).to_h do |item|
+          [
+            item[:tracking_class].constantize,
+            { protected_properties: item[:protected_properties]&.keys || [] }
+          ]
         end
+      end
+
+      def duo_event?
+        @attributes[:classification] == 'duo'
+      end
+
+      def raw_attributes
+        @attributes
+      end
+
+      private
+
+      def find_event_selection_rules
+        [
+          Gitlab::Usage::EventSelectionRule.new(name: action, time_framed: false),
+          Gitlab::Usage::EventSelectionRule.new(name: action, time_framed: true),
+          *Gitlab::Usage::MetricDefinition.all.flat_map do |metric_definition|
+            metric_definition.event_selection_rules.select { |rule| rule.name == action }
+          end
+        ].uniq
       end
     end
   end
 end
+
+Gitlab::Tracking::EventDefinition.prepend_mod

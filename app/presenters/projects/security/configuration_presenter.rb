@@ -11,43 +11,66 @@ module Projects
       def to_h
         {
           auto_devops_enabled: auto_devops_source?,
-          auto_devops_help_page_path: help_page_path('topics/autodevops/index'),
+          auto_devops_help_page_path: help_page_path('topics/autodevops/_index.md'),
           auto_devops_path: auto_devops_settings_path(project),
           can_enable_auto_devops: can_enable_auto_devops?,
           features: features,
-          help_page_path: help_page_path('user/application_security/index'),
+          help_page_path: help_page_path('user/application_security/_index.md'),
           latest_pipeline_path: latest_pipeline_path,
           gitlab_ci_present: project.has_ci_config_file?,
           gitlab_ci_history_path: gitlab_ci_history_path,
-          auto_fix_enabled: autofix_enabled,
-          can_toggle_auto_fix_settings: can_toggle_autofix,
-          auto_fix_user_path: auto_fix_user_path,
           security_training_enabled: project.security_training_available?,
-          continuous_vulnerability_scans_enabled: continuous_vulnerability_scans_enabled
+          container_scanning_for_registry_enabled: container_scanning_for_registry_enabled,
+          secret_push_protection_available: secret_push_protection_available?,
+          secret_push_protection_enabled: secret_push_protection_enabled,
+          secret_push_protection_licensed: secret_push_protection_licensed?,
+          validity_checks_available: validity_checks_available,
+          validity_checks_enabled: validity_checks_enabled,
+          user_is_project_admin: user_is_project_admin?,
+          can_enable_spp: can_enable_spp?,
+          is_gitlab_com: gitlab_com?,
+          secret_detection_configuration_path: secret_detection_configuration_path,
+          license_configuration_source: license_configuration_source,
+          vulnerability_training_docs_path: vulnerability_training_docs_path,
+          upgrade_path: upgrade_path,
+          group_full_path: group_full_path,
+          can_apply_profiles: can_apply_profiles?,
+          can_read_attributes: can_read_attributes?,
+          can_manage_attributes: can_manage_attributes?,
+          group_manage_attributes_path: group_manage_attributes_path
         }
       end
 
       def to_html_data_attribute
         data = to_h
         data[:features] = data[:features].to_json
-        data[:auto_fix_enabled] = data[:auto_fix_enabled].to_json
 
         data
       end
 
       private
 
-      def autofix_enabled; end
+      def secret_push_protection_available?
+        Gitlab::CurrentSettings.current_application_settings.secret_push_protection_available
+      end
 
-      def auto_fix_user_path; end
+      def secret_push_protection_licensed?
+        project.licensed_feature_available?(:secret_push_protection)
+      end
 
       def can_enable_auto_devops?
         feature_available?(:builds, current_user) &&
-          can?(current_user, :admin_project, self) &&
+          user_is_project_admin? &&
           !archived?
       end
 
-      def can_toggle_autofix; end
+      def user_is_project_admin?
+        can?(current_user, :admin_security_testing, self)
+      end
+
+      def can_enable_spp?
+        can?(current_user, :enable_secret_push_protection, self)
+      end
 
       def gitlab_ci_history_path
         return '' if project.empty_repo?
@@ -64,10 +87,17 @@ module Projects
         # These scans are "fake" (non job) entries. Add them manually.
         scans << scan(:corpus_management, configured: true)
         scans << scan(:dast_profiles, configured: true)
+        scans << scan(:license_information_source, configured: true)
+
+        # Add SPP before secret detection
+        secret_detection_index = scans.index { |scan| scan[:type] == :secret_detection } || -1
+        scans.insert(secret_detection_index, scan(:secret_push_protection, configured: true))
+
+        scans
       end
 
       def latest_pipeline_path
-        return help_page_path('ci/pipelines/index') unless latest_default_branch_pipeline
+        return help_page_path('ci/pipelines/_index.md') unless latest_default_branch_pipeline
 
         project_pipeline_path(self, latest_default_branch_pipeline)
       end
@@ -88,14 +118,58 @@ module Projects
       end
 
       def scan_types
-        ::Security::SecurityJobsFinder.allowed_job_types + ::Security::LicenseComplianceJobsFinder.allowed_job_types
+        Enums::Security.analyzer_types.keys + ::Security::LicenseComplianceJobsFinder.allowed_job_types
       end
 
       def project_settings
         project.security_setting
       end
 
-      def continuous_vulnerability_scans_enabled; end
+      def vulnerability_training_docs_path
+        help_page_path(
+          'user/application_security/vulnerabilities/_index.md',
+          anchor: 'enable-security-training-for-vulnerabilities'
+        )
+      end
+
+      def upgrade_path
+        promo_pricing_url
+      end
+
+      def group_full_path
+        root_group.full_path if root_group
+      end
+
+      def can_apply_profiles?
+        return false unless root_group
+
+        can?(current_user, :apply_security_scan_profiles, project)
+      end
+
+      def can_read_attributes?
+        return false unless root_group
+
+        can?(current_user, :read_security_attribute, root_group)
+      end
+
+      def can_manage_attributes?
+        return false unless root_group
+
+        can?(current_user, :admin_security_attributes, root_group)
+      end
+
+      def root_group
+        @root_group ||= project.root_ancestor if project.root_ancestor.is_a?(Group)
+      end
+
+      def gitlab_com?; end
+      def validity_checks_available; end
+      def validity_checks_enabled; end
+      def container_scanning_for_registry_enabled; end
+      def secret_push_protection_enabled; end
+      def secret_detection_configuration_path; end
+      def license_configuration_source; end
+      def group_manage_attributes_path; end
     end
   end
 end

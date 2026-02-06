@@ -9,13 +9,18 @@ RSpec.describe 'issuable list', :js, feature_category: :team_planning do
   issuable_types = [:issue, :merge_request]
 
   before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+
     project.add_member(user, :developer)
     sign_in(user)
     issuable_types.each { |type| create_issuables(type) }
   end
 
   issuable_types.each do |issuable_type|
-    it "avoids N+1 database queries for #{issuable_type.to_s.humanize.pluralize}", quarantine: { issue: 'https://gitlab.com/gitlab-org/gitlab/-/issues/231426' } do
+    it "avoids N+1 database queries for #{issuable_type.to_s.humanize.pluralize}", quarantine: { issue: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9332' } do
       control = ActiveRecord::QueryRecorder.new { visit_issuable_list(issuable_type) }
 
       create_issuables(issuable_type)
@@ -23,7 +28,7 @@ RSpec.describe 'issuable list', :js, feature_category: :team_planning do
       expect { visit_issuable_list(issuable_type) }.not_to exceed_query_limit(control)
     end
 
-    it "counts upvotes, downvotes and notes count for each #{issuable_type.to_s.humanize}" do
+    it "counts upvotes, downvotes and notes count for each #{issuable_type.to_s.humanize}", quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/446199' do
       visit_issuable_list(issuable_type)
 
       expect(first('[data-testid="issuable-upvotes"]')).to have_content(1)
@@ -31,7 +36,7 @@ RSpec.describe 'issuable list', :js, feature_category: :team_planning do
       expect(first('[data-testid="issuable-comments"]')).to have_content(2)
     end
 
-    it 'sorts labels alphabetically' do
+    it 'sorts labels alphabetically', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16804' do
       label1 = create(:label, project: project, title: 'a')
       label2 = create(:label, project: project, title: 'z')
       label3 = create(:label, project: project, title: 'x')
@@ -48,7 +53,7 @@ RSpec.describe 'issuable list', :js, feature_category: :team_planning do
     end
   end
 
-  it 'displays a warning if counting the number of issues times out', quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/393344' do
+  it 'displays a warning if counting the number of issues times out', quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/9340' do
     allow_any_instance_of(IssuesFinder).to receive(:count_by_state).and_raise(ActiveRecord::QueryCanceled)
 
     visit_issuable_list(:issue)

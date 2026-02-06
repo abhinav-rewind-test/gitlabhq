@@ -1,14 +1,13 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Add a new Redis instance
 ---
-
-# Add a new Redis instance
 
 GitLab can make use of multiple [Redis instances](../redis.md#redis-instances).
 These instances are functionally partitioned so that, for example, we
-can store [CI trace chunks](../../administration/job_logs.md#incremental-logging-architecture)
+can store [CI trace chunks](../../administration/cicd/job_logs.md#incremental-logging)
 from one Redis instance while storing sessions in another.
 
 From time to time we might want to add a new Redis instance. Typically this will
@@ -87,13 +86,13 @@ may decide that it is OK to incur a small amount of data loss and switch
 over through configuration only.
 
 If there is not a more natural way to mark where the data is stored, using a
-[feature flag](../feature_flags/index.md) may be convenient:
+[feature flag](../feature_flags/_index.md) may be convenient:
 
 - It does not require an application restart to take effect.
 - It applies to all application instances (Sidekiq, API, web, etc.) at
   the same time.
 - It supports incremental rollout - ideally by actor (project, group,
-  user, etc.) - so that we can monitor for errors and roll back easily.
+  user, etc.) - so that we can monitor for errors and roll back.
 
 ## Step 3: Migrate the data
 
@@ -143,7 +142,7 @@ module Gitlab
     class Foo < ::Gitlab::Redis::MultiStoreWrapper
       ...
       def self.multistore
-        MultiStore.new(self.pool, config_fallback.pool, store_name)
+        MultiStore.create_using_pool(self.pool, config_fallback.pool, store_name)
       end
     end
   end
@@ -162,7 +161,7 @@ MultiStore uses two feature flags to control the actual migration:
 - `use_primary_and_secondary_stores_for_[store_name]`
 - `use_primary_store_as_default_for_[store_name]`
 
-For example, if our new Redis instance is called `Gitlab::Redis::Foo`, we can [create](../feature_flags/index.md#create-a-new-feature-flag) two feature flags by executing:
+For example, if our new Redis instance is called `Gitlab::Redis::Foo`, we can [create](../feature_flags/_index.md#create-a-new-feature-flag) two feature flags by executing:
 
 ```shell
 bin/feature-flag use_primary_and_secondary_stores_for_foo
@@ -198,8 +197,9 @@ Write commands are defined in the [`Gitlab::Redis::MultiStore::WRITE_COMMANDS` c
 
 ##### `pipelined` commands
 
-**NOTE:** The Ruby block passed to these commands will be executed twice, once per each store.
-Thus, excluding the Redis operations performed, the block should be idempotent.
+> [!note]
+> The Ruby block passed to these commands will be executed twice, once per each store.
+> Thus, excluding the Redis operations performed, the block should be idempotent.
 
 - `pipelined`
 - `multi`
@@ -208,12 +208,12 @@ When a command outside of the supported list is used, `method_missing` will pass
 This ensures that anything unexpected behaves like it would before. In development or test environment, an error would be raised for early
 detection.
 
-NOTE:
 By tracking `gitlab_redis_multi_store_method_missing_total` counter and `Gitlab::Redis::MultiStore::MethodMissingError`,
 a developer will need to add an implementation for missing Redis commands before proceeding with the migration.
 
-NOTE:
-Variable assignments within `pipelined` and `multi` blocks are not advised as the block should be idempotent. Refer to the [corrective fix MR](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/137734) removing non-idempotent blocks which previously led to incorrect application behavior during a migration.
+> [!note]
+> Variable assignments within `pipelined` and `multi` blocks are not advised as the block should be idempotent.
+> Refer to the [corrective fix MR](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/137734) removing non-idempotent blocks which previously led to incorrect application behavior during a migration.
 
 ##### Errors
 
@@ -231,21 +231,19 @@ Variable assignments within `pipelined` and `multi` blocks are not advised as th
 
 ## Step 4: clean up after the migration
 
-<!-- markdownlint-disable MD044 -->
 We may choose to keep the migration paths or remove them, depending on whether
-or not we expect self-managed instances to perform this migration.
-[gitlab-com/gl-infra/scalability#1131](https://gitlab.com/gitlab-com/gl-infra/scalability/-/issues/1131#note_603354746)
+or not we expect GitLab Self-Managed instances to perform this migration.
+[`gitlab-com/gl-infra/scalability#1131`](https://gitlab.com/gitlab-com/gl-infra/scalability/-/issues/1131#note_603354746)
 contains a discussion on this topic for the trace chunks feature flag. It may
 be - as in that case - that we decide that the maintenance costs of supporting
 the migration code are higher than the benefits of allowing self-managed
 instances to perform this migration seamlessly, if we expect self-managed
 instances to cope without this functional partition.
-<!-- markdownlint-enable MD044 -->
 
 If we decide to keep the migration code:
 
 - We should document the migration steps.
 - If we used a feature flag, we should ensure it's an
-  [ops type feature flag](../feature_flags/index.md#ops-type), as these are long-lived flags.
+  [ops type feature flag](../feature_flags/_index.md#ops-type), as these are long-lived flags.
 
 Otherwise, we can remove the flags and conclude the project.

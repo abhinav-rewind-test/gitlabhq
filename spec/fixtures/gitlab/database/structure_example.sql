@@ -1,3 +1,4 @@
+\restrict y3wouDIYP3FMwyd8IGypIuseLnvvBg5K9lzspwH03FEuizx9xcZzUByeEjJdABC
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -8,6 +9,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict y3wouDIYP3FMwyd8IGypIuseLnvvBg5K9lzspwH03FEuizx9xcZzUByeEjJdABC
 
 --
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
@@ -91,3 +93,5 @@ END IF;
 RETURN NEW;
 END
 $$;
+
+CREATE TRIGGER gitlab_schema_write_trigger_for_p_ci_pipeline_iids_00 BEFORE INSERT OR DELETE OR UPDATE OR TRUNCATE ON gitlab_partitions_static.p_ci_pipeline_iids_00 FOR EACH STATEMENT EXECUTE FUNCTION gitlab_schema_prevent_write();

@@ -4,55 +4,212 @@ require 'spec_helper'
 require 'webauthn/fake_client'
 
 RSpec.describe Webauthn::AuthenticateService, feature_category: :system_access do
-  let(:client) { WebAuthn::FakeClient.new(origin) }
-  let(:user) { create(:user) }
-  let(:challenge) { Base64.strict_encode64(SecureRandom.random_bytes(32)) }
+  let_it_be_with_reload(:user) { create(:user) }
 
+  # WebAuthn Request Options (from GitLab and stored in session store)
+  let(:challenge) { Base64.strict_encode64(SecureRandom.random_bytes(32)) }
   let(:origin) { 'http://localhost' }
 
-  before do
-    create_result = client.create(challenge: challenge) # rubocop:disable Rails/SaveBang
+  # Setup authenticator (from user & browser)
+  let(:client) { WebAuthn::FakeClient.new(origin) }
 
-    webauthn_credential = WebAuthn::Credential.from_create(create_result)
-
-    registration = WebauthnRegistration.new(
-      credential_xid: Base64.strict_encode64(webauthn_credential.raw_id),
-      public_key: webauthn_credential.public_key,
-      counter: 0,
-      name: 'name',
-      user_id: user.id
+  # Registration Response
+  let(:registration_challenge) { Base64.strict_encode64(SecureRandom.random_bytes(32)) }
+  let(:webauthn_creation_result) do
+    client.create( # rubocop:disable Rails/SaveBang -- .create is a FakeClient method
+      challenge: challenge,
+      extensions: {}
     )
-    registration.save!
   end
 
+  # Immediately save the registration
+  let!(:webauthn_registration) do
+    webauthn_credential = WebAuthn::Credential.from_create(webauthn_creation_result)
+
+    WebauthnRegistration.create!(
+      credential_xid: Base64.strict_encode64(webauthn_credential.raw_id),
+      public_key: webauthn_credential.public_key,
+      counter: 1,
+      name: 'My WebAuthn Authenticator',
+      user: user
+    )
+  end
+
+  # Authentication Response
+  let(:webauthn_authenticate_result) do
+    client.get(
+      challenge: challenge,
+      sign_count: webauthn_registration.counter + 1, # A valid authenticator sign_count increments or doesn't change
+      allow_credentials: user.get_all_webauthn_credential_ids,
+      extensions: {}
+    )
+  end
+
+  let!(:webauthn_credential) { WebAuthn::Credential.from_get(webauthn_authenticate_result) }
+  let(:device_response) { webauthn_authenticate_result.to_json }
+
+  # Main service
+  subject(:authenticate_service) { described_class.new(user, device_response, challenge).execute }
+
   describe '#execute' do
-    it 'returns true if the response is valid and a matching stored credential is present' do
-      get_result = client.get(challenge: challenge)
-
-      get_result['clientExtensionResults'] = {}
-      service = described_class.new(user, get_result.to_json, challenge)
-
-      expect(service.execute).to eq true
-    end
-
-    context 'when response is valid but no matching stored credential is present' do
-      it 'returns false' do
-        other_client = WebAuthn::FakeClient.new(origin)
-        other_client.create(challenge: challenge) # rubocop:disable Rails/SaveBang
-
-        get_result = other_client.get(challenge: challenge)
-
-        get_result['clientExtensionResults'] = {}
-        service = described_class.new(user, get_result.to_json, challenge)
-
-        expect(service.execute).to eq false
+    shared_examples 'returns authentication failure' do
+      it 'returns a Service.error' do
+        expect(authenticate_service).to be_a(ServiceResponse)
+        expect(authenticate_service).to be_error
       end
     end
 
-    context 'when device response includes invalid json' do
-      it 'returns false' do
-        service = described_class.new(user, 'invalid JSON', '')
-        expect(service.execute).to eq false
+    shared_examples 'returns authentication success' do
+      it 'returns a Service.success' do
+        expect(authenticate_service).to be_a(ServiceResponse)
+        expect(authenticate_service).to be_success
+      end
+    end
+
+    context 'with valid authentications' do
+      let(:encoded_raw_id) { Base64.strict_encode64(webauthn_credential.raw_id) }
+      let(:stored_webauthn_credential) do
+        described_class.new(user, device_response, challenge)
+          .send(:stored_passkey_or_second_factor_webauthn_credential, encoded_raw_id)
+      end
+
+      it_behaves_like 'returns authentication success'
+
+      it 'updates the required webauthn_registration columns' do
+        authenticate_service
+
+        expect(stored_webauthn_credential.counter).to eq(webauthn_credential.sign_count)
+        expect(stored_webauthn_credential.last_used_at).to be_present
+      end
+
+      context 'with a U2F migrated credential' do
+        let(:webauthn_authenticate_result) do
+          client.get(
+            challenge: challenge,
+            sign_count: webauthn_registration.counter + 1,
+            extensions: { "app_id" => "http://localhost.ca" }
+          )
+        end
+
+        it_behaves_like 'returns authentication success'
+      end
+
+      context 'with passkeys' do
+        let(:passkey_creation_result) do
+          client.create( # rubocop:disable Rails/SaveBang -- .create is a FakeClient method
+            challenge: challenge,
+            extensions: { "credProps" => { "rk" => true } }
+          )
+        end
+
+        # Override the webauthn registration & authentication to work as a passkey
+        let!(:webauthn_registration) do
+          passkey_credential = WebAuthn::Credential.from_create(passkey_creation_result)
+          WebauthnRegistration.create!(
+            credential_xid: Base64.strict_encode64(passkey_credential.raw_id),
+            public_key: passkey_credential.public_key,
+            counter: 1,
+            name: 'My WebAuthn Authenticator (Passkey)',
+            user: user,
+            authentication_mode: :passwordless,
+            passkey_eligible: true
+          )
+        end
+
+        let(:webauthn_authenticate_result) do
+          client.get(
+            challenge: challenge,
+            sign_count: webauthn_registration.counter + 1,
+            allow_credentials: user.get_all_webauthn_credential_ids,
+            extensions: { "credProps" => { "rk" => true } }
+          )
+        end
+
+        it_behaves_like 'returns authentication success'
+
+        it 'updates the required webauthn_registration columns' do
+          authenticate_service
+
+          expect(stored_webauthn_credential.counter).to eq(webauthn_credential.sign_count)
+          expect(stored_webauthn_credential.last_used_at).to be_present
+        end
+
+        context 'when passkey authentication is disabled for user' do
+          before do
+            allow(user).to receive(:allow_passkey_authentication?).and_return(false)
+          end
+
+          it_behaves_like 'returns authentication failure'
+
+          it 'returns generic error message' do
+            expect(authenticate_service.message).to eq(_('Failed to connect to your device. Try again.'))
+          end
+        end
+      end
+    end
+
+    context 'with invalid authentications' do
+      context 'with a tampered challenge from the browser' do
+        let(:compromised_challenge) { Base64.strict_encode64(SecureRandom.random_bytes(16)) }
+        let(:webauthn_authenticate_result) do
+          client.get(
+            challenge: compromised_challenge,
+            sign_count: webauthn_registration.counter
+          )
+        end
+
+        it_behaves_like 'returns authentication failure'
+      end
+
+      context 'with invalid JSON response' do
+        let(:device_response) { 'bad response' }
+
+        it_behaves_like 'returns authentication failure'
+      end
+
+      context 'with a cloned authenticator' do
+        let(:webauthn_authenticate_result) do
+          client.get(
+            challenge: challenge,
+            sign_count: webauthn_registration.counter - 1
+          )
+        end
+
+        it_behaves_like 'returns authentication failure'
+      end
+
+      context 'with a user trying to sign-in with a second-factor webauthn device, without having registered one' do
+        let(:device_response) do
+          create_response = client.create(challenge: challenge) # rubocop:disable Rails/SaveBang -- .create is a FakeClient method
+          credential_id = create_response["rawId"]
+
+          webauthn_authenticate_result = client.get(
+            challenge: challenge,
+            sign_count: webauthn_registration.counter + 1,
+            allow_credentials: [credential_id]
+          )
+
+          webauthn_authenticate_result.to_json
+        end
+
+        it_behaves_like 'returns authentication failure'
+
+        it 'returns an error message with a hyperlink to the recovery page' do
+          expect(authenticate_service.message).to be_html_safe
+          expect(authenticate_service.message).to include(
+            'two_factor_authentication_troubleshooting.md#recovery-options-and-2fa-reset">recover</a> your account.'
+          )
+        end
+      end
+
+      context 'when webauthn verification returns false' do
+        before do
+          allow_next_instance_of(WebAuthn::AuthenticatorAssertionResponse) do |instance|
+            allow(instance).to receive(:verify).and_return(false)
+          end
+        end
+
+        it_behaves_like 'returns authentication failure'
       end
     end
   end

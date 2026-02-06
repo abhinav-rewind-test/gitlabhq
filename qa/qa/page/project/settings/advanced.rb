@@ -18,11 +18,6 @@ module QA
             element 'change-path-button'
           end
 
-          view 'app/views/projects/settings/_archive.html.haml' do
-            element 'archive-project-link'
-            element 'unarchive-project-link'
-          end
-
           view 'app/views/projects/_export.html.haml' do
             element 'export-project-link'
             element 'download-export-link'
@@ -35,6 +30,14 @@ module QA
 
           view 'app/assets/javascripts/projects/settings/components/transfer_project_form.vue' do
             element 'transfer-project-button'
+          end
+
+          view 'app/assets/javascripts/groups_projects/archive/components/archive_settings.vue' do
+            element 'archive-button'
+          end
+
+          view 'app/assets/javascripts/groups_projects/unarchive/components/unarchive_settings.vue' do
+            element 'unarchive-button'
           end
 
           def update_project_path_to(path)
@@ -80,13 +83,13 @@ module QA
           end
 
           def archive_project
-            click_element 'archive-project-link'
-            click_confirmation_ok_button
+            click_element feature_flag_controlled_element(:archive_group, 'archive-button', 'archive-project-link')
+            click_confirmation_ok_button_if_present
           end
 
           def unarchive_project
-            click_element 'unarchive-project-link'
-            click_confirmation_ok_button
+            click_element 'unarchive-button'
+            click_confirmation_ok_button_if_present
           end
 
           def delete_project!(project_name)

@@ -5,24 +5,24 @@ module Resolvers
     class WorkItemStateCountsResolver < WorkItemsResolver
       type Types::WorkItemStateCountsType, null: true
 
-      def ready?(**args)
-        # The search filter is not supported for work times at the namespace level.
-        # See https://gitlab.com/gitlab-org/gitlab/-/work_items/393126
-        if args[:search]
-          raise Gitlab::Graphql::Errors::ArgumentError,
-            'Searching is not available for work items at the namespace level yet'
-        end
-
-        super
-      end
-
       def resolve(**args)
         return if resource_parent.nil?
 
+        work_items_finder = finder(prepare_finder_params(args))
+        work_items_finder.parent_param = resource_parent unless group_namespace?
+
+        # For the group issues list, we don't want the use the reduced query timeout, since the counts for the list
+        # can take some time to return. By contrast, the group epics list counts are cached, and can use the reduced
+        # timeout. We use the exclude_group_work_items param to differentiate the 2 queries.
+        is_group_issues_list = args[:exclude_group_work_items]
+
         Gitlab::IssuablesCountForState.new(
-          finder(args),
+          work_items_finder,
           resource_parent,
-          store_in_redis_cache: true
+          # fast_fail and store_in_redis_cache only for group namespaces, to match behaviour of project level
+          # WorkItemStateCountsResolver.
+          fast_fail: group_namespace? && !is_group_issues_list,
+          store_in_redis_cache: group_namespace?
         )
       end
     end

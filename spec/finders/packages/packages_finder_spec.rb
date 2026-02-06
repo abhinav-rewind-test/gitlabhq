@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ::Packages::PackagesFinder do
+RSpec.describe ::Packages::PackagesFinder, feature_category: :package_registry do
   let_it_be(:project) { create(:project) }
   let_it_be(:maven_package) { create(:maven_package, project: project, created_at: 2.days.ago, name: 'maven', version: '2.0.0') }
   let_it_be(:conan_package) { create(:conan_package, project: project, created_at: 1.day.ago, name: 'conan', version: '1.0.0') }
@@ -10,7 +10,7 @@ RSpec.describe ::Packages::PackagesFinder do
   describe '#execute' do
     let(:params) { {} }
 
-    subject { described_class.new(project, params).execute }
+    subject(:find_packages) { described_class.new(project, params).execute }
 
     context 'with package_type' do
       let_it_be(:npm_package1) { create(:npm_package, project: project) }
@@ -26,6 +26,15 @@ RSpec.describe ::Packages::PackagesFinder do
         let(:params) { { package_type: 'npm' } }
 
         it { is_expected.to match_array([npm_package1, npm_package2]) }
+      end
+
+      context 'with unknown type' do
+        let(:package_type) { 'zig' }
+        let(:params) { { package_type: } }
+
+        it 'raises the error' do
+          expect { find_packages }.to raise_error(ArgumentError, "'#{package_type}' is not a valid package_type")
+        end
       end
     end
 
@@ -66,9 +75,17 @@ RSpec.describe ::Packages::PackagesFinder do
     end
 
     context 'with package_name' do
+      let_it_be(:other_package) { create(:maven_package, project: project, name: 'maventoo') }
+
       let(:params) { { package_name: 'maven' } }
 
-      it { is_expected.to eq([maven_package]) }
+      it { is_expected.to contain_exactly(maven_package, other_package) }
+
+      context 'with exact package_name' do
+        let(:params) { super().merge(exact_name: true) }
+
+        it { is_expected.to contain_exactly(maven_package) }
+      end
     end
 
     context 'with nil params' do

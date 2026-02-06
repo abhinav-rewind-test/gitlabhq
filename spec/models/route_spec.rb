@@ -3,10 +3,14 @@
 require 'spec_helper'
 
 RSpec.describe Route do
-  include LooseForeignKeysHelper
-
   let(:group) { create(:group, path: 'git_lab', name: 'git_lab') }
   let(:route) { group.route }
+
+  it_behaves_like 'cells claimable model',
+    subject_type: Cells::Claimable::CLAIMS_SUBJECT_TYPE::NAMESPACE,
+    subject_key: :namespace_id,
+    source_type: Cells::Claimable::CLAIMS_SOURCE_TYPE::RAILS_TABLE_ROUTES,
+    claiming_attributes: [:path]
 
   describe 'relationships' do
     it { is_expected.to belong_to(:source) }
@@ -59,11 +63,35 @@ RSpec.describe Route do
   end
 
   describe '.for_routable_type' do
-    let!(:nested_group) { create(:group, path: 'foo', name: 'foo', parent: group) }
-    let!(:project) { create(:project, path: 'other-project') }
+    let_it_be(:group) { create(:group, path: 'git_lab', name: 'git_lab') }
+    let_it_be(:nested_group) { create(:group, path: 'foo', name: 'foo', parent: group) }
+    let_it_be(:project) { create(:project, path: 'other-project') }
 
     it 'returns correct routes' do
       expect(described_class.for_routable_type(Project.name)).to match_array([project.route])
+    end
+  end
+
+  describe '.by_paths' do
+    let!(:nested_group) { create(:group, path: 'foo', name: 'foo', parent: group) }
+    let!(:project) { create(:project, path: 'other-project', namespace: group) }
+
+    it 'returns correct routes' do
+      expect(described_class.by_paths(%w[git_lab/foo git_lab/other-project])).to match_array(
+        [nested_group.route, project.route]
+      )
+    end
+
+    context 'with all mismatched paths' do
+      it 'returns no routes' do
+        expect(described_class.by_paths(%w[foo other-project])).to be_empty
+      end
+    end
+
+    context 'with some mismatched paths' do
+      it 'returns no routes' do
+        expect(described_class.by_paths(%w[foo git_lab/other-project])).to match_array([project.route])
+      end
     end
   end
 
@@ -287,7 +315,6 @@ RSpec.describe Route do
 
           expect do
             Group.delete(conflicting_group) # delete group with conflicting route
-            process_loose_foreign_key_deletions(record: conflicting_group)
           end.to change { described_class.count }.by(-1)
 
           # check the conflicting route is gone
@@ -306,13 +333,6 @@ RSpec.describe Route do
       it 'passes validation' do
         expect(route.valid?).to be_truthy
       end
-    end
-  end
-
-  context 'with loose foreign key on routes.namespace_id' do
-    it_behaves_like 'cleanup by a loose foreign key' do
-      let_it_be(:parent) { create(:namespace) }
-      let_it_be(:model) { parent.route }
     end
   end
 end

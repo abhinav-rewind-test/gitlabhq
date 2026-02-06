@@ -2,8 +2,6 @@
 import { GlFormGroup, GlFormCheckbox, GlFormInput } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapGetters } from 'vuex';
-import { s__, __ } from '~/locale';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
 export default {
   name: 'JiraIssuesFields',
@@ -14,7 +12,6 @@ export default {
     JiraIssueCreationVulnerabilities: () =>
       import('ee_component/integrations/edit/components/jira_issue_creation_vulnerabilities.vue'),
   },
-  mixins: [glFeatureFlagsMixin()],
   props: {
     showJiraIssuesIntegration: {
       type: Boolean,
@@ -46,7 +43,22 @@ export default {
       required: false,
       default: null,
     },
+    initialProjectKeys: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    initialCustomizeJiraIssueEnabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
     isValidated: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    isIssueCreation: {
       type: Boolean,
       required: false,
       default: false,
@@ -55,99 +67,75 @@ export default {
   data() {
     return {
       enableJiraIssues: this.initialEnableJiraIssues,
-      projectKey: this.initialProjectKey,
-      projectKeys: null,
+      projectKeys: this.initialProjectKeys,
     };
   },
   computed: {
     ...mapGetters(['isInheriting']),
 
-    multipleProjectKeys() {
-      return this.glFeatures.jiraMultipleProjectKeys;
-    },
-
     checkboxDisabled() {
       return !this.showJiraIssuesIntegration || this.isInheriting;
     },
-
-    validProjectKey() {
-      return !this.enableJiraIssues || Boolean(this.projectKey) || !this.isValidated;
-    },
-  },
-  i18n: {
-    sectionDescription: s__(
-      'JiraService|Work on Jira issues without leaving GitLab. Add a Jira menu to access a read-only list of your Jira issues.',
-    ),
-    enableCheckboxLabel: s__('JiraService|Enable Jira issues'),
-    enableCheckboxHelp: s__(
-      'JiraService|Warning: All GitLab users with access to this GitLab project can view all issues from the Jira project you select.',
-    ),
-    projectKeyLabel: s__('JiraService|Jira project key'),
-    projectKeyPlaceholder: s__('JiraService|For example, AB'),
-    requiredFieldFeedback: __('This field is required.'),
   },
 };
 </script>
 
 <template>
   <div>
-    <input name="service[issues_enabled]" type="hidden" :value="enableJiraIssues || false" />
-    <gl-form-checkbox
-      v-model="enableJiraIssues"
-      :disabled="checkboxDisabled"
-      data-testid="jira-issues-enabled-checkbox"
-    >
-      {{ $options.i18n.enableCheckboxLabel }}
-      <template #help>
-        {{ $options.i18n.enableCheckboxHelp }}
-      </template>
-    </gl-form-checkbox>
+    <template v-if="!isIssueCreation">
+      <input name="service[issues_enabled]" type="hidden" :value="enableJiraIssues || false" />
+      <gl-form-checkbox
+        v-model="enableJiraIssues"
+        :disabled="checkboxDisabled"
+        data-testid="jira-issues-enabled-checkbox"
+      >
+        {{ s__('JiraService|View Jira issues') }}
+        <template #help>
+          {{
+            s__(
+              'JiraService|Warning: All users with access to this GitLab project can view all issues from the Jira project you specify.',
+            )
+          }}
+        </template>
+      </gl-form-checkbox>
+    </template>
 
-    <div v-if="enableJiraIssues" class="gl-pl-6 gl-mt-3">
+    <div v-if="enableJiraIssues" class="gl-mt-3 gl-pl-6">
       <gl-form-group
-        v-if="multipleProjectKeys"
+        v-if="!isIssueCreation"
         :label="s__('JiraService|Jira project keys')"
         label-for="service_project_keys"
-        class="gl-max-w-26"
+        :description="
+          s__(
+            'JiraService|Comma-separated list of Jira project keys. Leave blank to include all available keys.',
+          )
+        "
+        data-testid="jira-project-keys"
       >
         <gl-form-input
           id="service_project_keys"
           v-model="projectKeys"
           name="service[project_keys]"
-          :placeholder="s__('JiraService|For example, AB,CD')"
+          width="xl"
+          data-testid="jira-project-keys-field"
+          :placeholder="s__('JiraService|AB,CD')"
           :readonly="isInheriting"
         />
       </gl-form-group>
+    </div>
 
-      <gl-form-group
-        :label="$options.i18n.projectKeyLabel"
-        label-for="service_project_key"
-        :invalid-feedback="$options.i18n.requiredFieldFeedback"
-        :state="validProjectKey"
-        class="gl-max-w-26"
-        data-testid="project-key-form-group"
-      >
-        <gl-form-input
-          id="service_project_key"
-          v-model="projectKey"
-          name="service[project_key]"
-          data-testid="jira-project-key-field"
-          :placeholder="$options.i18n.projectKeyPlaceholder"
-          :required="enableJiraIssues"
-          :state="validProjectKey"
-          :readonly="isInheriting"
-        />
-      </gl-form-group>
-
+    <template v-if="isIssueCreation">
       <jira-issue-creation-vulnerabilities
-        :project-key="projectKey"
         :initial-is-enabled="initialEnableJiraVulnerabilities"
+        :initial-project-key="initialProjectKey"
         :initial-issue-type-id="initialVulnerabilitiesIssuetype"
+        :initial-customize-jira-issue-enabled="initialCustomizeJiraIssueEnabled"
+        :is-validated="isValidated"
         :show-full-feature="showJiraVulnerabilitiesIntegration"
         class="gl-mt-6"
         data-testid="jira-for-vulnerabilities"
         @request-jira-issue-types="$emit('request-jira-issue-types')"
       />
-    </div>
+    </template>
   </div>
 </template>

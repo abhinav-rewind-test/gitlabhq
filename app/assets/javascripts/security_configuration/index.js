@@ -1,8 +1,11 @@
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
+import { GlToast } from '@gitlab/ui';
+import { parseBoolean } from '~/lib/utils/common_utils';
 import createDefaultClient from '~/lib/graphql';
 import { parseBooleanDataAttributes } from '~/lib/utils/dom_utils';
 import SecurityConfigurationApp from './components/app.vue';
+import SecurityConfigurationProvider from './components/security_configuration_provider.vue';
 import { augmentFeatures } from './utils';
 
 export const initSecurityConfiguration = (el) => {
@@ -11,13 +14,39 @@ export const initSecurityConfiguration = (el) => {
   }
 
   Vue.use(VueApollo);
+  Vue.use(GlToast);
 
   const apolloProvider = new VueApollo({
     defaultClient: createDefaultClient(),
   });
 
+  const { projectId, projectFullPath, useGraphql } = el.dataset;
+
+  // Use GraphQL mode when explicitly enabled (e.g., from drawer)
+  const shouldUseGraphql = parseBoolean(useGraphql);
+
+  if (shouldUseGraphql) {
+    return new Vue({
+      el,
+      apolloProvider,
+      name: 'SecurityConfigurationRoot',
+      provide: {
+        projectId,
+        projectFullPath,
+      },
+      render(createElement) {
+        return createElement(SecurityConfigurationProvider);
+      },
+    });
+  }
+
+  // Legacy mode: use server-rendered data
   const {
-    projectFullPath,
+    groupFullPath,
+    canApplyProfiles,
+    canReadAttributes,
+    canManageAttributes,
+    groupManageAttributesPath,
     upgradePath,
     features,
     latestPipelinePath,
@@ -25,6 +54,10 @@ export const initSecurityConfiguration = (el) => {
     autoDevopsHelpPagePath,
     autoDevopsPath,
     vulnerabilityTrainingDocsPath,
+    containerScanningForRegistryEnabled,
+    secretDetectionConfigurationPath,
+    vulnerabilityArchiveExportPath,
+    licenseConfigurationSource,
   } = el.dataset;
 
   const { augmentedSecurityFeatures } = augmentFeatures(features ? JSON.parse(features) : []);
@@ -35,10 +68,29 @@ export const initSecurityConfiguration = (el) => {
     name: 'SecurityConfigurationRoot',
     provide: {
       projectFullPath,
+      groupFullPath,
+      canApplyProfiles: parseBoolean(canApplyProfiles),
+      canReadAttributes: parseBoolean(canReadAttributes),
+      canManageAttributes: parseBoolean(canManageAttributes),
+      groupManageAttributesPath,
       upgradePath,
       autoDevopsHelpPagePath,
       autoDevopsPath,
       vulnerabilityTrainingDocsPath,
+      containerScanningForRegistryEnabled,
+      vulnerabilityArchiveExportPath,
+      secretDetectionConfigurationPath,
+      licenseConfigurationSource,
+      ...parseBooleanDataAttributes(el, [
+        'secretPushProtectionAvailable',
+        'secretPushProtectionEnabled',
+        'validityChecksAvailable',
+        'validityChecksEnabled',
+        'userIsProjectAdmin',
+        'secretPushProtectionLicensed',
+        'canEnableSpp',
+        'isGitlabCom',
+      ]),
     },
     render(createElement) {
       return createElement(SecurityConfigurationApp, {

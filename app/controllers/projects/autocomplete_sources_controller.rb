@@ -7,6 +7,7 @@ class Projects::AutocompleteSourcesController < Projects::ApplicationController
   before_action :authorize_read_crm_contact!, only: :contacts
 
   feature_category :team_planning, [:issues, :labels, :milestones, :commands, :contacts]
+  feature_category :wiki, [:wikis]
   feature_category :code_review_workflow, [:merge_requests]
   feature_category :groups_and_projects, [:members]
   feature_category :source_code_management, [:snippets]
@@ -46,10 +47,18 @@ class Projects::AutocompleteSourcesController < Projects::ApplicationController
     render json: autocomplete_service.contacts(target)
   end
 
+  def wikis
+    render json: autocomplete_service.wikis
+  end
+
   private
 
   def autocomplete_service
-    @autocomplete_service ||= ::Projects::AutocompleteService.new(@project, current_user, params)
+    @autocomplete_service ||= ::Projects::AutocompleteService.new(
+      @project,
+      current_user,
+      params.merge(organization_id: Current.organization.id)
+    )
   end
 
   def target
@@ -59,12 +68,12 @@ class Projects::AutocompleteSourcesController < Projects::ApplicationController
     # TODO https://gitlab.com/gitlab-org/gitlab/-/issues/388541
     # type_id is a misnomer. QuickActions::TargetService actually requires an iid.
     QuickActions::TargetService
-      .new(container: project, current_user: current_user)
+      .new(container: project, current_user: current_user, params: params)
       .execute(target_type, params[:type_id])
   end
 
   def authorize_read_crm_contact!
-    render_404 unless can?(current_user, :read_crm_contact, project.root_ancestor)
+    render_404 unless can?(current_user, :read_crm_contact, project.crm_group)
   end
 end
 

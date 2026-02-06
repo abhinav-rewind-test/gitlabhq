@@ -6,5 +6,17 @@ FactoryBot.define do
 
     relation { :issues }
     status { 0 }
+
+    trait :started do
+      status { 1 }
+    end
+
+    trait :finished do
+      status { 2 }
+    end
+
+    trait :stale do
+      created_at { (Projects::ImportExport::RelationImportTracker::STALE_TIMEOUT + 1).ago }
+    end
   end
 end

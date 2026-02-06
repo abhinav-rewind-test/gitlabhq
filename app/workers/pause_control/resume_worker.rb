@@ -9,17 +9,16 @@ module PauseControl
 
     RESCHEDULE_DELAY = 1.second
 
-    feature_category :global_search
     data_consistency :sticky
     idempotent!
     urgency :low
+    feature_category :global_search
 
     def perform
       reschedule_job = false
 
       pause_strategies_workers.each do |strategy, workers|
         strategy_klass = Gitlab::SidekiqMiddleware::PauseControl.for(strategy)
-
         next if strategy_klass.should_pause?
 
         workers.each do |worker|

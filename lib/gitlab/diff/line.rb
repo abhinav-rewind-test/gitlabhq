@@ -10,7 +10,7 @@ module Gitlab
 
       attr_reader :marker_ranges
       attr_writer :text, :rich_text
-      attr_accessor :index, :old_pos, :new_pos, :line_code, :type, :embedded_image
+      attr_accessor :index, :old_pos, :new_pos, :line_code, :type, :embedded_image, :expanded
 
       def initialize(text, type, index, old_pos, new_pos, parent_file: nil, line_code: nil, rich_text: nil)
         @text = text
@@ -29,13 +29,13 @@ module Gitlab
 
       def self.init_from_hash(hash)
         new(hash[:text],
-            hash[:type],
-            hash[:index],
-            hash[:old_pos],
-            hash[:new_pos],
-            parent_file: hash[:parent_file],
-            line_code: hash[:line_code],
-            rich_text: hash[:rich_text])
+          hash[:type],
+          hash[:index],
+          hash[:old_pos],
+          hash[:new_pos],
+          parent_file: hash[:parent_file],
+          line_code: hash[:line_code],
+          rich_text: hash[:rich_text])
       end
 
       def self.safe_init_from_hash(hash)
@@ -96,7 +96,11 @@ module Gitlab
       end
 
       def match?
-        type == :match
+        if Feature.enabled?(:diff_line_match, Feature.current_request)
+          type.to_s == 'match'
+        else
+          type == :match
+        end
       end
 
       def discussable?
@@ -105,6 +109,10 @@ module Gitlab
 
       def suggestible?
         !removed?
+      end
+
+      def expanded?
+        expanded || false
       end
 
       def rich_text
@@ -126,6 +134,26 @@ module Gitlab
       # Conflict::File#as_json renders json diff lines in sections
       def as_json(opts = nil)
         DiffLineSerializer.new.represent(self)
+      end
+
+      def text_content
+        rich_text ? rich_text[1..] : text(prefix: false)
+      end
+
+      def id(file_hash)
+        return if meta?
+
+        hash = file_hash[0..8]
+
+        return "line_#{hash}_A#{new_pos}" if added?
+
+        "line_#{hash}_#{old_pos}"
+      end
+
+      def legacy_id(file_path)
+        return if meta?
+
+        Gitlab::Git.diff_line_code(file_path, new_pos, old_pos)
       end
 
       private

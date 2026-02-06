@@ -2,9 +2,25 @@
 
 module ServiceDesk
   class CustomEmailCredential < ApplicationRecord
+    include Gitlab::EncryptedAttribute
+
+    # Give external providers a bit more time to process the request.
+    # Service Desk emails use native attachments, so emails might be larger in size which
+    # can increase transfer and processing time.
+    #
+    # This might reduce error rate for SaaS customers where the service provider is located in another
+    # region which adds to the overall round trip time.
+    #
+    # Default for other emails is 5 seconds.
+    #
+    # For the verification email:
+    # If the credentials aren't correct some servers tend to take a while to answer
+    # which leads to some Net::ReadTimeout errors which disguises the real configuration issue.
+    SMTP_READ_TIMEOUT = 7
+
     # Used to explicitly set the SMTP AUTH method.
     # If nil Net::SMTP will choose one of methods listed by the SMTP server.
-    enum smtp_authentication: {
+    enum :smtp_authentication, {
       plain: 0,
       login: 1,
       cram_md5: 2
@@ -13,13 +29,13 @@ module ServiceDesk
     attr_encrypted :smtp_username,
       mode: :per_attribute_iv,
       algorithm: 'aes-256-gcm',
-      key: Settings.attr_encrypted_db_key_base_32,
+      key: :db_key_base_32,
       encode: false,
       encode_iv: false
     attr_encrypted :smtp_password,
       mode: :per_attribute_iv,
       algorithm: 'aes-256-gcm',
-      key: Settings.attr_encrypted_db_key_base_32,
+      key: :db_key_base_32,
       encode: false,
       encode_iv: false
 
@@ -53,7 +69,8 @@ module ServiceDesk
         address: smtp_address,
         domain: Mail::Address.new(service_desk_setting.custom_email).domain,
         port: smtp_port || 587,
-        authentication: smtp_authentication
+        authentication: smtp_authentication,
+        read_timeout: SMTP_READ_TIMEOUT
       }
     end
 

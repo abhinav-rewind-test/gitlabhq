@@ -9,10 +9,6 @@ class Admin::UsersController < Admin::ApplicationController
   before_action :ensure_destroy_prerequisites_met, only: [:destroy]
   before_action :set_shared_view_parameters, only: [:show, :projects, :keys]
 
-  before_action only: [:index] do
-    push_frontend_feature_flag(:simplified_badges, current_user)
-  end
-
   feature_category :user_management
 
   PAGINATION_WITH_COUNT_LIMIT = 1000
@@ -20,8 +16,14 @@ class Admin::UsersController < Admin::ApplicationController
   def index
     return redirect_to admin_cohorts_path if params[:tab] == 'cohorts'
 
-    @users = User.filter_items(params[:filter]).order_name_asc
-    @users = @users.search(params[:search_query], with_private_emails: true) if params[:search_query].present?
+    @users = filter_users
+
+    if params[:search_query].present?
+      # rubocop:disable Gitlab/AvoidGitlabInstanceChecks -- available only for self-managed instances
+      @users = @users.search(params[:search_query], with_private_emails: true, partial_email_search: !Gitlab.com?)
+      # rubocop:enable Gitlab/AvoidGitlabInstanceChecks
+    end
+
     @users = users_with_included_associations(@users)
     @sort = params[:sort].presence || sort_value_name
     @users = @users.sort_by_attribute(@sort)
@@ -33,8 +35,9 @@ class Admin::UsersController < Admin::ApplicationController
 
   # rubocop: disable CodeReuse/ActiveRecord
   def projects
-    @personal_projects = user.personal_projects.includes(:topics)
-    @joined_projects = user.projects.joined(@user).includes(:topics)
+    @personal_projects = user.personal_projects.includes(:topics).page(safe_params[:personal_projects_page]).per(10)
+    @joined_projects = user.projects.joined(@user).includes(:topics).page(safe_params[:projects_page])
+    @user_group_members = user.group_members.or(user.minimal_access_group_members).page(safe_params[:groups_page])
   end
 
   def keys
@@ -146,7 +149,8 @@ class Admin::UsersController < Admin::ApplicationController
     if result[:status] == :success
       redirect_back_or_admin_user(notice: _("Successfully banned"))
     else
-      redirect_back_or_admin_user(alert: _("Error occurred. User was not banned"))
+      alert = format(_("Error occurred. %{message}"), message: result[:message])
+      redirect_back_or_admin_user(alert: alert)
     end
   end
 
@@ -208,20 +212,26 @@ class Admin::UsersController < Admin::ApplicationController
   end
 
   def create
-    opts = {
-      reset_password: true,
-      skip_confirmation: true
-    }
+    opts = user_params.merge(reset_password: true, skip_confirmation: true)
+    opts[:organization_id] ||= Current.organization.id
 
-    @user = Users::CreateService.new(current_user, user_params.merge(opts)).execute
+    response = Users::CreateService.new(current_user, opts).execute
+    @user = response.payload[:user]
+
+    after_successful_create_hook(@user) if response.success?
 
     respond_to do |format|
-      if @user.persisted?
-        format.html { redirect_to [:admin, @user], notice: _('User was successfully created.') }
+      if response.success?
+        format.html { redirect_to default_route, after_successful_create_flash }
         format.json { render json: @user, status: :created, location: @user }
       else
-        format.html { render "new" }
-        format.json { render json: @user.errors, status: :unprocessable_entity }
+        if @user&.errors&.any?
+          format.html { render "new" }
+        else
+          format.html { redirect_to admin_users_path, notice: response.message }
+        end
+
+        format.json { render json: @user&.errors || {}, status: :unprocessable_entity }
       end
     end
   end
@@ -240,16 +250,15 @@ class Admin::UsersController < Admin::ApplicationController
       user_params_with_pass.merge!(password_params)
     end
 
-    cc_validation_params = process_credit_card_validation_params(user_params_with_pass.delete(:credit_card_validation_attributes))
-    user_params_with_pass.merge!(cc_validation_params)
-
     respond_to do |format|
       result = Users::UpdateService.new(current_user, user_params_with_pass.merge(user: user)).execute do |user|
         prepare_user_for_update(user)
       end
 
+      after_successful_update_hook(result[:user]) if result[:status] == :success
+
       if result[:status] == :success
-        format.html { redirect_to [:admin, user], notice: _('User was successfully updated.') }
+        format.html { redirect_to [:admin, user], after_successful_update_flash }
         format.json { head :ok }
       else
         # restore username to keep form action url.
@@ -286,27 +295,6 @@ class Admin::UsersController < Admin::ApplicationController
 
   protected
 
-  def process_credit_card_validation_params(cc_validation_params)
-    return unless cc_validation_params && cc_validation_params[:credit_card_validated_at]
-
-    cc_validation = cc_validation_params[:credit_card_validated_at]
-
-    if cc_validation == "1" && !user.credit_card_validated_at
-      {
-        credit_card_validation_attributes: {
-          credit_card_validated_at: Time.zone.now
-        }
-      }
-
-    elsif cc_validation == "0" && user.credit_card_validated_at
-      {
-        credit_card_validation_attributes: {
-          _destroy: true
-        }
-      }
-    end
-  end
-
   def paginate_without_count?
     counts = Gitlab::Database::Count.approximate_counts([User])
 
@@ -314,7 +302,7 @@ class Admin::UsersController < Admin::ApplicationController
   end
 
   def users_with_included_associations(users)
-    users.includes(:authorized_projects, :trusted_with_spam_attribute) # rubocop: disable CodeReuse/ActiveRecord
+    users.includes(:trusted_with_spam_attribute, :identities) # rubocop: disable CodeReuse/ActiveRecord
   end
 
   def admin_making_changes_for_another_user?
@@ -329,7 +317,8 @@ class Admin::UsersController < Admin::ApplicationController
     return if hard_delete?
 
     if user.solo_owned_groups.present?
-      message = s_('AdminUsers|You must transfer ownership or delete the groups owned by this user before you can delete their account')
+      message = s_('AdminUsers|You must transfer ownership or delete the ' \
+        'groups owned by this user before you can delete their account')
 
       redirect_to admin_user_path(user), status: :see_other, alert: message
     end
@@ -364,11 +353,13 @@ class Admin::UsersController < Admin::ApplicationController
       :access_level,
       :avatar,
       :bio,
+      :bluesky,
       :can_create_group,
-      :color_scheme_id,
       :color_mode_id,
+      :color_scheme_id,
       :discord,
       :email,
+      :email_otp_required_after,
       :extern_uid,
       :external,
       :force_random_password,
@@ -378,18 +369,20 @@ class Admin::UsersController < Admin::ApplicationController
       :linkedin,
       :mastodon,
       :name,
+      :note,
+      :organization_id,
+      :organization_access_level,
       :password_expires_at,
+      :private_profile,
       :projects_limit,
       :provider,
       :remember_me,
-      :skype,
       :theme_id,
       :twitter,
       :username,
       :website_url,
-      :note,
-      :private_profile,
-      credit_card_validation_attributes: [:credit_card_validated_at]
+      :github,
+      { organization_users_attributes: [:id, :organization_id, :access_level] }
     ]
   end
 
@@ -404,10 +397,11 @@ class Admin::UsersController < Admin::ApplicationController
   end
 
   def log_impersonation_event
-    Gitlab::AppLogger.info(format(_("User %{current_user_username} has started impersonating %{username}"), current_user_username: current_user.username, username: user.username))
+    Gitlab::AppLogger.info(format(_("User %{current_user_username} has started impersonating %{username}"),
+      current_user_username: current_user.username, username: user.username))
   end
 
-  # method overriden in EE
+  # method overridden in EE
   def unlock_user
     update_user(&:unlock_access!)
   end
@@ -416,13 +410,38 @@ class Admin::UsersController < Admin::ApplicationController
 
   def set_shared_view_parameters
     @can_impersonate = helpers.can_impersonate_user(user, impersonation_in_progress?)
-    @impersonation_error_text = @can_impersonate ? nil : helpers.impersonation_error_text(user, impersonation_in_progress?)
+    unless @can_impersonate
+      @impersonation_error_text =
+        helpers.impersonation_error_text(user, impersonation_in_progress?)
+    end
   end
 
-  # method overriden in EE
+  # method overridden in EE
   def prepare_user_for_update(user)
     user.skip_reconfirmation!
     user.send_only_admin_changed_your_password_notification! if admin_making_changes_for_another_user?
+  end
+
+  # method overridden in EE
+  def after_successful_create_hook(user); end
+
+  # method overridden in EE
+  def after_successful_update_hook(user); end
+
+  def after_successful_create_flash
+    { notice: _('User was successfully created.') }
+  end
+
+  def after_successful_update_flash
+    { notice: _('User was successfully updated.') }
+  end
+
+  def filter_users
+    User.filter_items(params[:filter]).order_name_asc
+  end
+
+  def safe_params
+    params.permit(:personal_projects_page, :projects_page, :groups_page)
   end
 end
 

@@ -11,8 +11,18 @@ class ProjectTeam
     add_member(user, :guest, current_user: current_user)
   end
 
+  def add_planner(user, current_user: nil)
+    add_member(user, :planner, current_user: current_user)
+  end
+
   def add_reporter(user, current_user: nil)
     add_member(user, :reporter, current_user: current_user)
+  end
+
+  def add_security_manager(user, current_user: nil)
+    return unless Gitlab::Security::SecurityManagerConfig.enabled?
+
+    add_member(user, :security_manager, current_user: current_user)
   end
 
   def add_developer(user, current_user: nil)
@@ -53,13 +63,18 @@ class ProjectTeam
     )
   end
 
-  def add_member(user, access_level, current_user: nil, expires_at: nil)
+  # NOTE: `immediately_sync_authorizations` can be expensive to run in the foreground. This should only be used in rare
+  # cases where asynchronous authorization does not work (e.g. user is created and used immediately in the same
+  # request).
+  def add_member(user, access_level, current_user: nil, expires_at: nil, immediately_sync_authorizations: false)
     Members::Projects::CreatorService.add_member( # rubocop:disable CodeReuse/ServiceClass
       project,
       user,
       access_level,
       current_user: current_user,
-      expires_at: expires_at)
+      expires_at: expires_at,
+      immediately_sync_authorizations: immediately_sync_authorizations
+    )
   end
 
   # Remove all users from project team
@@ -72,21 +87,12 @@ class ProjectTeam
   end
   alias_method :users, :members
 
-  # `members` method uses project_authorizations table which
-  # is updated asynchronously, on project move it still contains
-  # old members who may not have access to the new location,
-  # so we filter out only members of project or project's group
-  def members_in_project_and_ancestors
-    members.where(id: member_user_ids)
-      .allow_cross_joins_across_databases(url: 'https://gitlab.com/gitlab-org/gitlab/-/issues/432606')
-  end
-
-  def members_with_access_levels(access_levels = [])
-    fetch_members(access_levels)
-  end
-
   def guests
     @guests ||= fetch_members(Gitlab::Access::GUEST)
+  end
+
+  def planners
+    @planners ||= fetch_members(Gitlab::Access::PLANNER)
   end
 
   def reporters
@@ -129,27 +135,41 @@ class ProjectTeam
       !member.invite? && target_user_ids.include?(member.user_id)
     end
 
-    source_members.map! do |member|
+    new_members = source_members.map do |member|
       new_member = member.dup
       new_member.id = nil
       new_member.source = target_project
       # So that a maintainer cannot import a member with owner access
       new_member.access_level = [new_member.access_level, importer_access_level].min
       new_member.created_by = current_user
+
+      params = { access_level: new_member.access_level, member_role_id: member.member_role_id }
+      if new_member.prevent_role_assignement?(current_user, params)
+        new_member.errors.add(:base, _("Insufficient permissions to assign this member"))
+      end
+
       new_member
     end
 
     ProjectMember.transaction do
-      source_members.each(&:save)
+      new_members.each do |member|
+        next if member.errors.any?
+
+        member.save
+      end
     end
 
-    source_members
+    new_members
   rescue StandardError
     false
   end
 
   def guest?(user)
     max_member_access(user.id) == Gitlab::Access::GUEST
+  end
+
+  def planner?(user)
+    max_member_access(user.id) == Gitlab::Access::PLANNER
   end
 
   def reporter?(user)
@@ -209,6 +229,26 @@ class ProjectTeam
 
   def max_member_access(user_id)
     max_member_access_for_user_ids([user_id])[user_id]
+  end
+
+  # Return the highest access level for a user
+  #
+  # A special case is handled here when the user is a GitLab admin
+  # which implies it has "OWNER" access everywhere, but should not
+  # officially appear as a member of a project unless specifically added to it
+  #
+  # @param user [User]
+  # @param only_concrete_membership [Bool] whether require admin concrete membership status
+  def max_member_access_for_user(user, only_concrete_membership: false)
+    return ProjectMember::NO_ACCESS unless user
+    return ProjectMember::OWNER if project.owner == user
+
+    unless only_concrete_membership
+      return ProjectMember::OWNER if user.can_admin_all_resources?
+      return ProjectMember::OWNER if user.can_admin_organization?(project.organization)
+    end
+
+    max_member_access(user.id)
   end
 
   def contribution_check_for_user_ids(user_ids)

@@ -1,12 +1,15 @@
 <script>
 import { GlAlert, GlLoadingIcon, GlSprintf } from '@gitlab/ui';
+import { isGid, getIdFromGraphQLId } from '~/graphql_shared/utils';
 import getPipelineDetails from 'shared_queries/pipelines/get_pipeline_details.query.graphql';
+import getPipelineNeeds from 'shared_queries/pipelines/get_pipeline_needs.query.graphql';
 import getUserCallouts from '~/graphql_shared/queries/get_user_callouts.query.graphql';
 import { __, s__ } from '~/locale';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
 import { DEFAULT, DRAW_FAILURE, LOAD_FAILURE } from '~/ci/pipeline_details/constants';
 import getPipelineQuery from '~/ci/pipeline_details/header/graphql/queries/get_pipeline_header_data.query.graphql';
 import { reportToSentry } from '~/ci/utils';
+import getPipelinePermissions from './graphql/queries/get_pipeline_permissions.query.graphql';
 import DismissPipelineGraphCallout from './graphql/mutations/dismiss_pipeline_notification.graphql';
 import {
   ACTION_FAILURE,
@@ -15,6 +18,7 @@ import {
   SKIP_RETRY_MODAL_KEY,
   STAGE_VIEW,
   VIEW_TYPE_KEY,
+  POLL_INTERVAL,
 } from './constants';
 import PipelineGraph from './components/graph_component.vue';
 import GraphViewSelector from './components/graph_view_selector.vue';
@@ -24,6 +28,7 @@ import {
   serializeLoadErrors,
   toggleQueryPollingByVisibility,
   unwrapPipelineData,
+  mergePipelineWithNeeds,
 } from './utils';
 
 const featureName = 'pipeline_needs_hover_tip';
@@ -61,10 +66,12 @@ export default {
       currentViewType: STAGE_VIEW,
       canRefetchHeaderPipeline: false,
       pipeline: null,
+      pipelineNeeds: null,
       skipRetryModal: false,
       showAlert: false,
       showJobCountWarning: false,
       showLinks: false,
+      userPermissions: {},
     };
   },
   errors: {
@@ -104,9 +111,10 @@ export default {
         );
       },
     },
+    // eslint-disable-next-line @gitlab/vue-no-undef-apollo-properties
     headerPipeline: {
       query: getPipelineQuery,
-      // this query is already being called in pipeline_details_header.vue, which shares the same cache as this component
+      // this query is already being called in pipeline_header.vue, which shares the same cache as this component
       // the skip here is to prevent sending double network requests on page load
       skip() {
         return !this.canRefetchHeaderPipeline;
@@ -129,7 +137,7 @@ export default {
         return getQueryHeaders(this.graphqlResourceEtag);
       },
       query: getPipelineDetails,
-      pollInterval: 10000,
+      pollInterval: POLL_INTERVAL,
       variables() {
         return {
           projectPath: this.pipelineProjectPath,
@@ -173,6 +181,58 @@ export default {
         }
       },
     },
+    pipelineNeeds: {
+      query: getPipelineNeeds,
+      variables() {
+        return {
+          projectPath: this.pipelineProjectPath,
+          iid: this.pipelineIid,
+        };
+      },
+      skip() {
+        return this.graphViewType !== LAYER_VIEW || !this.pipeline;
+      },
+      update(data) {
+        return data?.project?.pipeline;
+      },
+      error() {
+        this.reportFailure({ type: LOAD_FAILURE, skipSentry: true });
+      },
+    },
+    userPermissions: {
+      query: getPipelinePermissions,
+      variables() {
+        return {
+          projectPath: this.pipelineProjectPath,
+          iid: this.pipelineIid,
+        };
+      },
+      update(data) {
+        const permissions = {};
+        const mainPipeline = data?.project?.pipeline;
+
+        if (mainPipeline?.userPermissions) {
+          const id = this.getPipelineId(mainPipeline.id);
+          permissions[id] = mainPipeline.userPermissions;
+        }
+
+        mainPipeline?.downstream?.nodes?.forEach((pipeline) => {
+          if (pipeline?.userPermissions) {
+            const id = this.getPipelineId(pipeline.id);
+            permissions[id] = pipeline.userPermissions;
+          }
+        });
+
+        if (mainPipeline?.upstream?.userPermissions) {
+          const id = this.getPipelineId(mainPipeline.upstream.id);
+          permissions[id] = mainPipeline.upstream.userPermissions;
+        }
+        return permissions;
+      },
+      error(err) {
+        reportToSentry(this.$options.name, new Error(err));
+      },
+    },
   },
   computed: {
     alert() {
@@ -196,12 +256,24 @@ export default {
     hoverTipPreviouslyDismissed() {
       return this.callouts.includes(enumFeatureName);
     },
-    showLoadingIcon() {
+    pipelineWithNeeds() {
+      return mergePipelineWithNeeds(this.pipeline, this.pipelineNeeds);
+    },
+    pipelineLoading() {
       /*
         Shows the icon only when the graph is empty, not when it is is
         being refetched, for instance, on action completion
       */
       return this.$apollo.queries.pipeline.loading && !this.pipeline;
+    },
+    pipelineNeedsLoading() {
+      return this.$apollo.queries.pipelineNeeds.loading;
+    },
+    showLoadingIcon() {
+      return this.pipelineLoading || this.pipelineNeedsLoading;
+    },
+    currentViewPipeline() {
+      return this.graphViewType === STAGE_VIEW ? this.pipeline : this.pipelineWithNeeds;
     },
     showGraphViewSelector() {
       return this.pipeline?.usesNeeds;
@@ -214,14 +286,15 @@ export default {
     toggleQueryPollingByVisibility(this.$apollo.queries.pipeline);
     this.skipRetryModal = Boolean(JSON.parse(localStorage.getItem(SKIP_RETRY_MODAL_KEY)));
   },
-  errorCaptured(err, _vm, info) {
-    reportToSentry(this.$options.name, `error: ${err}, info: ${info}`);
-  },
   methods: {
     getPipelineInfo() {
-      if (this.currentViewType === LAYER_VIEW && !this.computedPipelineInfo) {
+      if (
+        this.currentViewType === LAYER_VIEW &&
+        !this.computedPipelineInfo &&
+        this.pipelineWithNeeds
+      ) {
         this.computedPipelineInfo = calculatePipelineLayersInfo(
-          this.pipeline,
+          this.pipelineWithNeeds,
           this.$options.name,
           this.metricsPath,
         );
@@ -268,6 +341,12 @@ export default {
     },
     updateViewType(type) {
       this.currentViewType = type;
+    },
+    getPipelineId(id) {
+      if (isGid(id)) {
+        return getIdFromGraphQLId(id);
+      }
+      return id;
     },
   },
   i18n: {
@@ -320,9 +399,10 @@ export default {
     </local-storage-sync>
     <gl-loading-icon v-if="showLoadingIcon" class="gl-mx-auto gl-my-4" size="lg" />
     <pipeline-graph
-      v-if="pipeline"
+      v-if="currentViewPipeline"
       :config-paths="configPaths"
-      :pipeline="pipeline"
+      :pipeline="currentViewPipeline"
+      :user-permissions="userPermissions"
       :computed-pipeline-info="getPipelineInfo()"
       :skip-retry-modal="skipRetryModal"
       :show-links="showLinks"

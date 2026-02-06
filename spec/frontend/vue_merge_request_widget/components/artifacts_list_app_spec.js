@@ -70,7 +70,7 @@ describe('Merge Requests Artifacts list app', () => {
 
     it('renders disabled buttons', () => {
       const buttons = findButtons();
-      expect(buttons.at(0).attributes('disabled')).toBeDefined();
+      expect(buttons.at(0).attributes('aria-disabled')).toBe('true');
       expect(buttons.at(1).attributes('disabled')).toBeDefined();
     });
   });
@@ -100,7 +100,7 @@ describe('Merge Requests Artifacts list app', () => {
         findTitle().trigger('click');
         await nextTick();
 
-        expect(findTableRows().length).toEqual(2);
+        expect(findTableRows()).toHaveLength(2);
       });
     });
   });

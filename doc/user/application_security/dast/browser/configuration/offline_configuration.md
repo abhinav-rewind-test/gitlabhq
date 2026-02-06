@@ -1,42 +1,51 @@
 ---
-stage: Secure
+type: reference, howto
+stage: Application Security Testing
 group: Dynamic Analysis
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
-type: reference, howto
+title: Offline configuration
 ---
 
-# Offline configuration
+{{< details >}}
 
-For self-managed GitLab instances in an environment with limited, restricted, or intermittent access
+- Tier: Ultimate
+- Offering: GitLab Self-Managed
+
+{{< /details >}}
+
+For instances in an environment with limited, restricted, or intermittent access
 to external resources through the internet, some adjustments are required for the DAST job to
-successfully run. For more information, see [Offline environments](../../../offline_deployments/index.md).
+successfully run. For more information, see [Offline environments](../../../offline_deployments/_index.md).
 
 ## Requirements for offline DAST support
 
-To use DAST in an offline environment, you need:
+You can use any version of DAST in an offline environment. To do this, you need:
 
-- GitLab Runner with the [`docker` or `kubernetes` executor](requirements.md).
-- Docker Container Registry with a locally available copy of the DAST
+- GitLab Runner with the [`docker` or `kubernetes` executor](../_index.md).
+  The runner must have network access to the target application.
+- Docker container registry with a locally available copy of the DAST
   [container image](https://gitlab.com/security-products/dast), found in the
   [DAST container registry](https://gitlab.com/security-products/dast/container_registry).
+  See [Loading Docker images onto your offline host](../../../offline_deployments/_index.md#loading-docker-images-onto-your-offline-host).
 
-GitLab Runner has a [default `pull policy` of `always`](https://docs.gitlab.com/runner/executors/docker.html#using-the-always-pull-policy),
+GitLab Runner has a [default `pull policy` of `always`](https://docs.gitlab.com/runner/executors/docker/#using-the-always-pull-policy),
 meaning the runner tries to pull Docker images from the GitLab container registry even if a local
-copy is available. The GitLab Runner [`pull_policy` can be set to `if-not-present`](https://docs.gitlab.com/runner/executors/docker.html#using-the-if-not-present-pull-policy)
-in an offline environment if you prefer using only locally available Docker images. However, we
-recommend keeping the pull policy setting to `always` if not in an offline environment, as this
-enables the use of updated scanners in your CI/CD pipelines.
+copy is available. The GitLab Runner [`pull_policy` can be set to `if-not-present`](https://docs.gitlab.com/runner/executors/docker/#using-the-if-not-present-pull-policy)
+in an offline environment if you prefer using only locally available Docker images.
+However, you should keep the pull policy setting to `always` if you are not in an
+offline environment. This setting enables the use of updated scanners in your CI/CD
+pipelines.
 
 ## Make GitLab DAST analyzer images available inside your Docker registry
 
-For DAST, import the following default DAST analyzer image from `registry.gitlab.com` to your [local Docker container registry](../../../../packages/container_registry/index.md):
+For DAST, import the following default DAST analyzer image from `registry.gitlab.com` to your [local Docker container registry](../../../../packages/container_registry/_index.md):
 
 - `registry.gitlab.com/security-products/dast:latest`
 
 The process for importing Docker images into a local offline Docker registry depends on
 **your network security policy**. Consult your IT staff to find an accepted and approved
 process by which external resources can be imported or temporarily accessed.
-These scanners are [periodically updated](../../../index.md#vulnerability-scanner-maintenance)
+These scanners are [periodically updated](../../../detect/vulnerability_scanner_maintenance.md)
 with new definitions, and you may be able to make occasional updates on your own.
 
 For details on saving and transporting Docker images as a file, see the Docker documentation on

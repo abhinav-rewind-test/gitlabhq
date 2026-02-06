@@ -12,6 +12,7 @@ module Pajamas
     # @param disabled toggle
     # @param loading toggle
     # @param block toggle
+    # @param label toggle
     # @param selected toggle
     # @param icon select [~, star-o, issue-closed, tanuki]
     # @param text text
@@ -23,21 +24,23 @@ module Pajamas
       disabled: false,
       loading: false,
       block: false,
+      label: false,
       selected: false,
       icon: nil,
       text: "Edit"
     )
       render(Pajamas::ButtonComponent.new(
-               category: category,
-               variant: variant,
-               size: size,
-               type: type,
-               disabled: disabled,
-               loading: loading,
-               block: block,
-               selected: selected,
-               icon: icon
-             )) do
+        category: category,
+        variant: variant,
+        size: size,
+        type: type,
+        disabled: disabled,
+        loading: loading,
+        block: block,
+        label: label,
+        selected: selected,
+        icon: icon
+      )) do
         text.presence
       end
     end
@@ -49,9 +52,9 @@ module Pajamas
     # @param target select {{ Pajamas::ButtonComponent::TARGET_OPTIONS }}
     def link(target: nil)
       render(Pajamas::ButtonComponent.new(
-               href: "https://gitlab.com",
-               target: target
-             )) do
+        href: "https://gitlab.com",
+        target: target
+      )) do
         "This is a link"
       end
     end

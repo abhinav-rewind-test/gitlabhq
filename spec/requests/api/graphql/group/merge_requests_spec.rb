@@ -14,7 +14,7 @@ RSpec.describe 'Query.group.mergeRequests', feature_category: :code_review_workf
   let_it_be(:project_b) { create(:project, :repository, group: group) }
   let_it_be(:project_c) { create(:project, :repository, group: sub_group) }
   let_it_be(:project_x) { create(:project, :repository) }
-  let_it_be(:user)      { create(:user, developer_projects: [project_x]) }
+  let_it_be(:user)      { create(:user, developer_of: [project_x, group]) }
 
   let_it_be(:archived_project) { create(:project, :archived, :repository, group: group) }
   let_it_be(:archived_mr) { create(:merge_request, source_project: archived_project) }
@@ -33,10 +33,6 @@ RSpec.describe 'Query.group.mergeRequests', feature_category: :code_review_workf
   let_it_be(:other_mr) { create(:merge_request, source_project: project_x) }
 
   let(:mrs_data) { graphql_data_at(:group, :merge_requests, :nodes) }
-
-  before do
-    group.add_developer(user)
-  end
 
   def expected_mrs(mrs)
     mrs.map { |mr| a_graphql_entity_for(mr) }
@@ -102,6 +98,30 @@ RSpec.describe 'Query.group.mergeRequests', feature_category: :code_review_workf
       post_graphql(query, current_user: user, variables: { user: assignee.username, path: group.full_path })
 
       expect(mrs_data).to match_array(expected_mrs([mrs_a.first, mrs_b.second]))
+    end
+  end
+
+  context 'when filtering by reviewer' do
+    let(:query) do
+      <<~GQL
+      query($path: ID!, $user: String) {
+        group(fullPath: $path) {
+          mergeRequests(reviewerUsername: $user) { nodes { id } }
+        }
+      }
+      GQL
+    end
+
+    let_it_be(:reviewer) { create(:user) }
+
+    before do
+      mrs_a.first.reviewers << reviewer
+    end
+
+    it 'returns all merge requests assigned to reviewer' do
+      post_graphql(query, current_user: user, variables: { user: reviewer.username, path: group.full_path })
+
+      expect(mrs_data).to match_array(expected_mrs([mrs_a.first]))
     end
   end
 

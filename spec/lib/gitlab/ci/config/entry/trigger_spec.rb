@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
+require 'fast_spec_helper'
 
 RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_composition do
   subject { described_class.new(config) }
@@ -29,12 +29,12 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
     describe '#errors' do
       it 'returns an error about an empty config' do
         expect(subject.errors.first)
-          .to match /config can't be blank/
+          .to match(/config can't be blank/)
       end
     end
   end
 
-  context 'when trigger is a hash - cross-project' do
+  context 'when trigger is for a cross-project pipeline' do
     context 'when project is a string' do
       context 'when project is a non-empty string' do
         let(:config) { { project: 'some/project' } }
@@ -50,7 +50,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
         it 'returns error' do
           expect(subject).not_to be_valid
           expect(subject.errors.first)
-            .to match /project can't be blank/
+            .to match(/project can't be blank/)
         end
       end
     end
@@ -62,7 +62,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
         it 'returns error' do
           expect(subject).not_to be_valid
           expect(subject.errors.first)
-            .to match /should be a string/
+            .to match(/should be a string/)
         end
       end
 
@@ -72,7 +72,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
         it 'returns error' do
           expect(subject).not_to be_valid
           expect(subject.errors.first)
-            .to match /should be a string/
+            .to match(/should be a string/)
         end
       end
     end
@@ -92,24 +92,22 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
       end
     end
 
-    context 'when strategy is provided' do
-      context 'when strategy is depend' do
-        let(:config) { { project: 'some/project', strategy: 'depend' } }
+    context 'when inputs are provided' do
+      let(:config) { { project: 'some/project', inputs: { security_scan: false } } }
 
-        describe '#valid?' do
-          it { is_expected.to be_valid }
-        end
+      describe '#valid?' do
+        it { is_expected.to be_valid }
+      end
 
-        describe '#value' do
-          it 'returns a trigger configuration hash' do
-            expect(subject.value)
-              .to eq(project: 'some/project', strategy: 'depend')
-          end
+      describe '#value' do
+        it 'returns a trigger configuration hash' do
+          expect(subject.value)
+            .to eq(project: 'some/project', inputs: { security_scan: false })
         end
       end
 
-      context 'when strategy is invalid' do
-        let(:config) { { project: 'some/project', strategy: 'notdepend' } }
+      context 'when they are not a hash' do
+        let(:config) { { project: 'some/project', inputs: 'string' } }
 
         describe '#valid?' do
           it { is_expected.not_to be_valid }
@@ -118,7 +116,56 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
         describe '#errors' do
           it 'returns an error about unknown config key' do
             expect(subject.errors.first)
-              .to match /trigger strategy should be depend/
+              .to match(/cross project trigger inputs should be a hash/)
+          end
+        end
+      end
+    end
+
+    context 'when strategy is provided' do
+      context 'when strategy is valid' do
+        context 'when strategy is `depend`' do
+          let(:config) { { project: 'some/project', strategy: 'depend' } }
+
+          describe '#valid?' do
+            it { is_expected.to be_valid }
+          end
+
+          describe '#value' do
+            it 'returns a trigger configuration hash' do
+              expect(subject.value)
+                .to eq(project: 'some/project', strategy: 'depend')
+            end
+          end
+        end
+
+        context 'when strategy is `mirror`' do
+          let(:config) { { project: 'some/project', strategy: 'mirror' } }
+
+          describe '#valid?' do
+            it { is_expected.to be_valid }
+          end
+
+          describe '#value' do
+            it 'returns a trigger configuration hash' do
+              expect(subject.value)
+                .to eq(project: 'some/project', strategy: 'mirror')
+            end
+          end
+        end
+      end
+
+      context 'when strategy is invalid' do
+        let(:config) { { project: 'some/project', strategy: 'invalid' } }
+
+        describe '#valid?' do
+          it { is_expected.not_to be_valid }
+        end
+
+        describe '#errors' do
+          it 'returns an error about unknown config key' do
+            expect(subject.errors.first)
+              .to match(/trigger strategy should be depend/)
           end
         end
       end
@@ -134,7 +181,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
       describe '#errors' do
         it 'returns an error about unknown config key' do
           expect(subject.errors.first)
-            .to match /config contains unknown keys: unknown/
+            .to match(/config contains unknown keys: unknown/)
         end
       end
     end
@@ -156,14 +203,14 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
     end
   end
 
-  context 'when trigger is a hash - parent-child' do
+  context 'when trigger is for a parent-child pipeline' do
     context 'with simple include' do
       let(:config) { { include: 'path/to/config.yml' } }
 
       it { is_expected.to be_valid }
 
       it 'returns a trigger configuration hash' do
-        expect(subject.value).to eq(include: 'path/to/config.yml' )
+        expect(subject.value).to eq(include: 'path/to/config.yml')
       end
     end
 
@@ -174,7 +221,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
 
       it 'returns an error' do
         expect(subject.errors.first)
-          .to match /config contains unknown keys: project/
+          .to match(/config contains unknown keys: project/)
       end
     end
 
@@ -185,7 +232,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
 
       it 'returns an error' do
         expect(subject.errors.first)
-          .to match /config contains unknown keys: branch/
+          .to match(/config contains unknown keys: branch/)
       end
     end
 
@@ -217,7 +264,7 @@ RSpec.describe Gitlab::Ci::Config::Entry::Trigger, feature_category: :pipeline_c
       describe '#errors' do
         it 'returns an error message' do
           expect(subject.errors.first)
-            .to match /has to be either a string or a hash/
+            .to match(/has to be either a string or a hash/)
         end
       end
     end

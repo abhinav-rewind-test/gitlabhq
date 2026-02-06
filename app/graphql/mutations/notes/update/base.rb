@@ -9,9 +9,9 @@ module Mutations
         authorize :admin_note
 
         argument :id,
-                 ::Types::GlobalIDType[::Note],
-                 required: true,
-                 description: 'Global ID of the note to update.'
+          ::Types::GlobalIDType[::Note],
+          required: true,
+          description: 'Global ID of the note to update.'
 
         def resolve(args)
           note = authorized_find!(id: args[:id])
@@ -26,7 +26,8 @@ module Mutations
 
           {
             note: updated_note.destroyed? ? nil : updated_note.reset,
-            errors: updated_note.destroyed? ? [] : errors_on_object(updated_note)
+            errors: updated_note.destroyed? ? [] : errors_on_object(updated_note),
+            quick_actions_status: updated_note.destroyed? ? nil : updated_note.quick_actions_status&.to_h
           }
         end
 

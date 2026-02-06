@@ -4,6 +4,7 @@ module API
   class ProjectExport < ::API::Base
     feature_category :importers
     urgency :low
+    helpers Helpers::BulkImports::AuditHelpers
 
     params do
       requires :id, types: [String, Integer], desc: 'The ID or URL-encoded path of the project'
@@ -25,10 +26,11 @@ module API
             { code: 404, message: 'Not found' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
         end
+        route_setting :authorization, permissions: :read_project_export, boundary_type: :project
         get ':id/export' do
-          present user_project, with: Entities::ProjectExportStatus
+          present user_project, with: Entities::ProjectExportStatus, current_user: current_user
         end
 
         desc 'Download export' do
@@ -40,15 +42,16 @@ module API
             { code: 404, message: 'Not found' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
           produces %w[application/octet-stream application/json]
         end
+        route_setting :authorization, permissions: :download_project_export, boundary_type: :project
         get ':id/export/download' do
-          check_rate_limit! :project_download_export, scope: [current_user, user_project.namespace]
+          check_rate_limit! :project_download_export, scope: [current_user, user_project]
 
-          if user_project.export_file_exists?
-            if user_project.export_archive_exists?
-              present_carrierwave_file!(user_project.export_file)
+          if user_project.export_file_exists?(current_user)
+            if user_project.export_archive_exists?(current_user)
+              present_carrierwave_file!(user_project.export_file(current_user))
             else
               render_api_error!('The project export file is not available yet', 404)
             end
@@ -68,20 +71,21 @@ module API
             { code: 429, message: 'Too many requests' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
         end
         params do
           optional :description, type: String, desc: 'Override the project description'
-          optional :upload, type: Hash do
+          optional :upload, type: Hash, desc: 'Object that contains information on the upload' do
             optional :url, type: String, desc: 'The URL to upload the project'
             optional :http_method, type: String, default: 'PUT', values: %w[PUT POST],
-                                   desc: 'HTTP method to upload the exported project'
+              desc: 'HTTP method to upload the exported project'
           end
         end
+        route_setting :authorization, permissions: :create_project_export, boundary_type: :project
         post ':id/export' do
           check_rate_limit! :project_export, scope: current_user
 
-          user_project.remove_exports
+          user_project.remove_export_for_user(current_user)
 
           project_export_params = declared_params(include_missing: false)
           after_export_params = project_export_params.delete(:upload) || {}
@@ -89,7 +93,7 @@ module API
           export_strategy = if after_export_params[:url].present?
                               params = after_export_params.slice(:url, :http_method).symbolize_keys
 
-                              Gitlab::ImportExport::AfterExportStrategies::WebUploadStrategy.new(**params)
+                              Import::AfterExportStrategies::WebUploadStrategy.new(**params)
                             end
 
           if export_strategy&.invalid?
@@ -97,9 +101,9 @@ module API
           else
             begin
               user_project.add_export_job(current_user: current_user,
-                                          after_export_strategy: export_strategy,
-                                          params: project_export_params)
-            rescue Project::ExportLimitExceeded => e
+                after_export_strategy: export_strategy,
+                params: project_export_params)
+            rescue Project::ExportLimitExceeded, Project::ExportAlreadyInProgress => e
               render_api_error!(e.message, 400)
             end
           end
@@ -126,17 +130,25 @@ module API
             { code: 404, message: 'Not found' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
         end
         params do
           optional :batched, type: Boolean, desc: 'Whether to export in batches'
         end
+        route_setting :authorization, permissions: :create_project_relation_export, boundary_type: :project
         post ':id/export_relations' do
           response = ::BulkImports::ExportService
             .new(portable: user_project, user: current_user, batched: params[:batched])
             .execute
 
           if response.success?
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_INITIATED,
+              'Direct Transfer relations export initiated',
+              current_user,
+              user_project
+            )
+
             accepted!
           else
             render_api_error!('Project relations export could not be started.', 500)
@@ -154,7 +166,7 @@ module API
             { code: 500, message: 'Internal Server Error' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
           produces %w[application/octet-stream application/gzip application/json]
         end
         params do
@@ -164,8 +176,10 @@ module API
 
           all_or_none_of :batched, :batch_number
         end
+        route_setting :authorization, permissions: :download_project_relation_export, boundary_type: :project
         get ':id/export_relations/download' do
-          export = user_project.bulk_import_exports.find_by_relation(params[:relation])
+          export = user_project.bulk_import_exports.for_user_and_relation(current_user, params[:relation])
+            .for_offline_export(nil).first
 
           break render_api_error!('Export not found', 404) unless export
 
@@ -177,12 +191,26 @@ module API
             break render_api_error!('Batch not found', 404) unless batch
             break render_api_error!('Batch file not found', 404) unless batch_file
 
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_BATCH_DOWNLOADED,
+              'Direct Transfer relation export batch downloaded',
+              current_user,
+              user_project
+            )
+
             present_carrierwave_file!(batch_file)
           else
             file = export&.upload&.export_file
 
             break render_api_error!('Export is batched', 400) if export.batched?
             break render_api_error!('Export file not found', 404) unless file
+
+            log_direct_transfer_audit_event(
+              ::Import::BulkImports::Audit::Events::EXPORT_DOWNLOADED,
+              'Direct Transfer relation export downloaded',
+              current_user,
+              user_project
+            )
 
             present_carrierwave_file!(file)
           end
@@ -198,20 +226,23 @@ module API
             { code: 404, message: 'Not found' },
             { code: 503, message: 'Service unavailable' }
           ]
-          tags ['project_export']
+          tags ['project_import']
         end
         params do
           optional :relation, type: String, desc: 'Project relation name'
         end
+        route_setting :authorization, permissions: :read_project_relation_export, boundary_type: :project
         get ':id/export_relations/status' do
           if params[:relation]
-            export = user_project.bulk_import_exports.find_by_relation(params[:relation])
+            export = user_project.bulk_import_exports.for_user_and_relation(current_user, params[:relation])
+              .for_offline_export(nil).first
 
             break render_api_error!('Export not found', 404) unless export
 
             present export, with: Entities::BulkImports::ExportStatus
           else
-            present user_project.bulk_import_exports, with: Entities::BulkImports::ExportStatus
+            present user_project.bulk_import_exports.for_user(current_user).for_offline_export(nil),
+              with: Entities::BulkImports::ExportStatus
           end
         end
       end

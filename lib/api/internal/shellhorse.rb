@@ -29,14 +29,23 @@ module API
       namespace 'internal' do
         namespace 'shellhorse' do
           params do
-            requires :action, type: String
-            requires :protocol, type: String
-            requires :gl_repository, type: String # repository identifier, such as project-7
-            optional :packfile_stats, type: Hash do
+            requires :action, type: String,
+              desc: 'Git command being used. Possible values: `git-upload-pack`, `git-receive-pack`,
+              `git-upload-archive`.'
+            requires :protocol, type: String,
+              desc: 'Protocol used for the change. GitLab Shell uses `SSH`, Gitaly uses `HTTP` or `SSH`.'
+            requires :gl_repository, type: String,
+              desc: 'GitLab project ID with a prefix of `project-`.',
+              documentation: { example: 'project-1234' } # repository identifier, such as project-7
+            requires :changes, type: String,
+              desc: 'Changes applied. GitLab shell uses `_any`, Gitaly uses `<oldrev> <newrev> <refname>`.'
+            optional :check_ip, type: String,
+              desc: 'IP address where the call to GitLab Shell originated.'
+            optional :packfile_stats, type: Hash, desc: 'Object that contains information about client files.' do
               # wants is the number of objects the client announced it wants.
-              optional :wants, type: Integer
+              optional :wants, type: Integer, desc: 'Number of objects the client announces it wants.'
               # haves is the number of objects the client announced it has.
-              optional :haves, type: Integer
+              optional :haves, type: Integer, desc: 'Number of objects the client announces it has.'
             end
           end
 
@@ -57,13 +66,19 @@ module API
                 message: ::API::Helpers::InternalHelpers::UNKNOWN_CHECK_RESULT_ERROR)
             end
 
-            msg = {
+            audit_message = {
               protocol: params[:protocol],
               action: params[:action],
               verb: check_clone_or_pull_or_push_verb(params)
             }
-            send_git_audit_streaming_event(msg)
-            response_with_status(message: msg)
+
+            # If the protocol is SSH, we need to send the original IP from the PROXY
+            # protocol to the audit streaming event. The original IP from gitlab-shell
+            # is set through the `check_ip` parameter.
+            audit_message[:ip_address] = params[:check_ip] if include_ip_address_in_audit_event?(params[:check_ip])
+
+            send_git_audit_streaming_event(audit_message)
+            response_with_status(message: audit_message.except(:ip_address))
           end
         end
       end

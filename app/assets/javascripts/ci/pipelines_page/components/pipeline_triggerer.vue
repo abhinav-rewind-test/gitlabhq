@@ -1,6 +1,5 @@
 <script>
 import { GlAvatarLink, GlAvatar, GlTooltipDirective } from '@gitlab/ui';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 
 export default {
   components: {
@@ -10,7 +9,6 @@ export default {
   directives: {
     GlTooltip: GlTooltipDirective,
   },
-  mixins: [glFeatureFlagMixin()],
   props: {
     pipeline: {
       type: Object,
@@ -21,13 +19,19 @@ export default {
     user() {
       return this.pipeline.user;
     },
+    userPath() {
+      return this.user?.path || this.user?.webPath;
+    },
+    avatarUrl() {
+      return this.user?.avatar_url || this.user?.avatarUrl;
+    },
   },
 };
 </script>
 <template>
   <div class="pipeline-triggerer" data-testid="pipeline-triggerer">
-    <gl-avatar-link v-if="user" v-gl-tooltip :href="user.path" :title="user.name" class="gl-ml-3">
-      <gl-avatar :size="32" :src="user.avatar_url" />
+    <gl-avatar-link v-if="user" v-gl-tooltip :href="userPath" :title="user.name" class="gl-ml-3">
+      <gl-avatar :size="32" :src="avatarUrl" />
     </gl-avatar-link>
   </div>
 </template>

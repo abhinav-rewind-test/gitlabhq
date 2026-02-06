@@ -2,15 +2,16 @@
 
 require 'spec_helper'
 
-RSpec.describe GroupClusterablePresenter do
+RSpec.describe GroupClusterablePresenter, feature_category: :environment_management do
   include Gitlab::Routing.url_helpers
 
+  let_it_be(:cluster) { create(:cluster, :provided_by_gcp, :group) }
+
   let(:presenter) { described_class.new(group) }
-  let(:cluster) { create(:cluster, :provided_by_gcp, :group) }
   let(:group) { cluster.group }
 
   describe '#can_create_cluster?' do
-    let(:user) { create(:user) }
+    let_it_be(:user) { create(:user) }
 
     subject { presenter.can_create_cluster? }
 
@@ -61,21 +62,37 @@ RSpec.describe GroupClusterablePresenter do
     it { is_expected.to eq(clear_cache_group_cluster_path(group, cluster)) }
   end
 
+  describe '#create_cluster_migration_path' do
+    subject { presenter.create_cluster_migration_path(cluster) }
+
+    it { is_expected.to eq(migrate_group_cluster_path(group, cluster)) }
+  end
+
+  describe '#update_cluster_migration_path' do
+    subject { presenter.update_cluster_migration_path(cluster) }
+
+    it { is_expected.to eq(update_migration_group_cluster_path(group, cluster)) }
+  end
+
   describe '#cluster_path' do
     subject { presenter.cluster_path(cluster) }
 
     it { is_expected.to eq(group_cluster_path(group, cluster)) }
   end
 
-  describe '#metrics_dashboard_path' do
-    subject { presenter.metrics_dashboard_path(cluster) }
+  describe '#sidebar_text' do
+    subject { presenter.sidebar_text }
 
-    it { is_expected.to eq(metrics_dashboard_group_cluster_path(group, cluster)) }
+    it 'renders correct sidebar text' do
+      is_expected.to eq(s_('ClusterIntegration|Connect your group to a Kubernetes cluster with the GitLab agent and ' \
+        'share the connection across multiple projects. Use review apps, deploy your applications, ' \
+        'and easily run your pipelines for all projects using the same cluster.'))
+    end
   end
 
   describe '#learn_more_link' do
     subject { presenter.learn_more_link }
 
-    it { is_expected.to include('user/group/clusters/index') }
+    it { is_expected.to include('user/group/clusters/_index') }
   end
 end

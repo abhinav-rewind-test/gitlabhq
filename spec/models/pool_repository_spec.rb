@@ -5,8 +5,110 @@ require 'spec_helper'
 RSpec.describe PoolRepository, feature_category: :source_code_management do
   describe 'associations' do
     it { is_expected.to belong_to(:shard) }
+    it { is_expected.to belong_to(:organization) }
     it { is_expected.to belong_to(:source_project) }
     it { is_expected.to have_many(:member_projects) }
+  end
+
+  describe 'setting organization id' do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:other_organization) { create(:organization) }
+    let_it_be(:default_organization) { create(:organization, id: 1) }
+    let_it_be(:shard) { create(:shard, name: "pool_repository_testing") }
+
+    context 'when organization is not set' do
+      it 'assigns organization from the source project' do
+        pool_repo = build(
+          :pool_repository,
+          source_project: project,
+          organization: nil
+        )
+
+        expect(pool_repo.organization).to be_nil
+        pool_repo.valid?
+        expect(pool_repo.organization).to eq(pool_repo.source_project.organization)
+      end
+    end
+
+    # This is an edge case because the key would initially be based on the
+    # project's key, but the test exists to prove that we early return if
+    # the organization exists.
+    context 'when organization is set' do
+      it 'retains the same organization' do
+        pool_repo = build(
+          :pool_repository,
+          source_project: project,
+          organization: other_organization
+        )
+
+        expect(pool_repo.organization).not_to be_nil
+        pool_repo.valid?
+        expect(pool_repo.organization).not_to eq(project.organization)
+        expect(pool_repo.organization).to eq(other_organization)
+      end
+    end
+
+    context 'when model hooks are bypassed' do
+      context 'when source project is available' do
+        it 'sets organization_id from the source project via database trigger' do
+          # Use insert_all to bypass ActiveRecord callbacks and model hooks
+          result = described_class.insert_all([{
+            source_project_id: project.id,
+            organization_id: nil,
+            disk_path: 'pool/trigger_test',
+            state: 'ready',
+            shard_id: shard.id
+          }], returning: [:id, :organization_id])
+
+          pool_repo = described_class.find(result.rows.first[0])
+          expect(pool_repo.organization_id).to eq(project.organization_id)
+        end
+      end
+
+      context 'when source project is not available' do
+        it 'does not set the default organization_id' do
+          # Use insert_all to bypass ActiveRecord callbacks and model hooks
+          #
+          result = described_class.insert_all([{
+            source_project_id: nil,
+            organization_id: nil,
+            disk_path: 'pool/trigger_default_test',
+            state: 'ready',
+            shard_id: shard.id
+          }], returning: [:id, :organization_id])
+
+          pool_repo = described_class.find(result.rows.first[0])
+          expect(pool_repo.organization_id).to be_nil
+        end
+      end
+
+      context 'when organization_id is already set' do
+        it 'preserves existing organization_id' do
+          # Use insert_all to bypass ActiveRecord callbacks and model hooks
+          result = described_class.insert_all([{
+            source_project_id: project.id,
+            organization_id: other_organization.id,
+            disk_path: 'pool/trigger_preserve_test',
+            state: 'ready',
+            shard_id: shard.id
+          }], returning: [:id, :organization_id])
+
+          pool_repo = described_class.find(result.rows.first[0])
+          expect(pool_repo.organization_id).to eq(other_organization.id)
+        end
+      end
+
+      it 'works during updates when organization_id is cleared' do
+        pool_repo = create(:pool_repository, source_project: project)
+        original_org_id = pool_repo.organization_id
+
+        # Use update_all to bypass ActiveRecord callbacks
+        described_class.where(id: pool_repo.id).update_all(organization_id: nil)
+
+        pool_repo.reload
+        expect(pool_repo.organization_id).to eq(original_org_id)
+      end
+    end
   end
 
   describe 'validations' do
@@ -83,7 +185,8 @@ RSpec.describe PoolRepository, feature_category: :source_code_management do
 
     context 'when the second member leaves' do
       it 'does not schedule pool removal' do
-        other_project = create(:project, :repository, pool_repository: pool)
+        other_project = create(:project,
+          :fork_repository, forked_from_project: pool.source_project, pool_repository: pool)
         pool.link_repository(other_project.repository)
 
         expect(::ObjectPool::DestroyWorker).not_to receive(:perform_async).with(pool.id)
@@ -124,6 +227,55 @@ RSpec.describe PoolRepository, feature_category: :source_code_management do
           source_repository: nil,
           gl_project_path: nil
         )
+      end
+    end
+  end
+
+  context 'with loose foreign key on pool_repositories.source_project_id' do
+    it_behaves_like 'cleanup by a loose foreign key' do
+      let_it_be(:parent) { create(:project) }
+      let_it_be(:model) { create(:pool_repository, source_project: parent) }
+    end
+  end
+
+  context 'with state machine' do
+    subject!(:pool_repository) { create(:pool_repository) }
+
+    it { is_expected.to have_states :none, :scheduled, :ready, :failed, :obsolete }
+    it { is_expected.to handle_events :schedule, when: :none }
+    it { is_expected.to handle_events :mark_ready, when: :scheduled }
+    it { is_expected.to handle_events :mark_ready, when: :failed }
+    it { is_expected.to handle_events :mark_failed, :mark_obsolete, :reinitialize }
+
+    it 'starts as none' do
+      expect(pool_repository).to be_none
+    end
+  end
+
+  describe '#reinitialize' do
+    context 'when object_pool exists' do
+      subject(:pool_repository) { create(:pool_repository, :ready) }
+
+      it 'does not reinitialize' do
+        expect { pool_repository.reinitialize }.to not_change { pool_repository.state }
+      end
+    end
+
+    context 'when object_pool does not exist' do
+      subject(:pool_repository) { create(:pool_repository, :ready) }
+
+      it 'allows reinitializing the state machine' do
+        pool_repository.delete_object_pool
+
+        expect { pool_repository.reinitialize }.to change { pool_repository.state }.from('ready').to('none')
+      end
+    end
+
+    context 'when object_pool is already scheduled' do
+      subject(:pool_repository) { create(:pool_repository, :scheduled) }
+
+      it 'does not reinitialize' do
+        expect { pool_repository.reinitialize }.to not_change { pool_repository.state }
       end
     end
   end

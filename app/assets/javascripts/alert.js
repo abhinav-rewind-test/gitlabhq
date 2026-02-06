@@ -3,6 +3,7 @@ import isEmpty from 'lodash/isEmpty';
 import { GlAlert, GlLink, GlSprintf } from '@gitlab/ui';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { __ } from '~/locale';
+import { sanitize } from '~/lib/dompurify';
 
 export const VARIANT_SUCCESS = 'success';
 export const VARIANT_WARNING = 'warning';
@@ -46,6 +47,7 @@ export const VARIANT_TIP = 'tip';
  * @param {string} [options.title] - Alert title
  * @param {VARIANT_SUCCESS|VARIANT_WARNING|VARIANT_DANGER|VARIANT_INFO|VARIANT_TIP} [options.variant] - Which GlAlert variant to use; it defaults to VARIANT_DANGER.
  * @param {object} [options.parent] - Reference to parent element under which alert needs to appear. Defaults to `document`.
+ * @param {boolean} [options.dismissible] - Set to `false` to make an alert non-dismissible. Defaults to `true`.
  * @param {Function} [options.onDismiss] - Handler to call when this alert is dismissed.
  * @param {string} [options.containerSelector] - Selector for the container of the alert
  * @param {boolean} [options.preservePrevious] - Set to `true` to preserve previous alerts. Defaults to `false`.
@@ -60,6 +62,7 @@ export const VARIANT_TIP = 'tip';
  * @param {object} [options.messageLinks] - Object containing mapping of sprintf tokens to URLs, used to format links within the message. If needed, you can pass a full props object for GlLink instead of a URL string
  * @param {boolean} [options.captureError] - Whether to send error to Sentry
  * @param {object} [options.error] - Error to be captured in Sentry
+ * @param {boolean} [options.renderMessageHTML] - Render message as HTML if true
  */
 export const createAlert = ({
   message,
@@ -74,6 +77,8 @@ export const createAlert = ({
   captureError = false,
   error = null,
   messageLinks = null,
+  dismissible = true,
+  renderMessageHTML = false,
 }) => {
   if (captureError && error) Sentry.captureException(error);
 
@@ -88,6 +93,19 @@ export const createAlert = ({
   }
 
   const createMessageNodes = (h) => {
+    if (renderMessageHTML) {
+      return [
+        h('div', {
+          domProps: {
+            innerHTML: sanitize(message, {
+              ALLOWED_TAGS: ['a', 'ul', 'li'],
+              ALLOWED_ATTR: ['href', 'rel', 'target', 'class'],
+            }),
+          },
+        }),
+      ];
+    }
+
     if (isEmpty(messageLinks)) {
       return message;
     }
@@ -128,6 +146,7 @@ export const createAlert = ({
 
   return new Vue({
     el,
+    name: 'GlAlertRoot',
     components: {
       GlAlert,
     },
@@ -167,7 +186,7 @@ export const createAlert = ({
         {
           props: {
             title,
-            dismissible: true,
+            dismissible,
             dismissLabel: __('Dismiss'),
             variant,
             primaryButtonLink: primaryButton?.link,

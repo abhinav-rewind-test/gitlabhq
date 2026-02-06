@@ -1,4 +1,4 @@
-import { omitBy, isNil } from 'lodash';
+import { omitBy, isNil, uniqBy } from 'lodash';
 import { objectToQuery } from '~/lib/utils/url_utility';
 import { sprintf } from '~/locale';
 import {
@@ -6,10 +6,8 @@ import {
   MERGE_REQUEST_CATEGORY,
   MSG_ISSUES_ASSIGNED_TO_ME,
   MSG_ISSUES_IVE_CREATED,
-  MSG_MR_ASSIGNED_TO_ME,
-  MSG_MR_IM_REVIEWER,
-  MSG_MR_IVE_CREATED,
   MSG_IN_ALL_GITLAB,
+  MSG_MR_IM_WORKING_ON,
   PROJECTS_CATEGORY,
   GROUPS_CATEGORY,
   SEARCH_RESULTS_ORDER,
@@ -24,7 +22,12 @@ import {
   COMMAND_PALETTE_FILES_CHAR,
 } from '~/vue_shared/global_search/constants';
 import { getFormattedItem } from '../utils';
-import { TRACKING_CLICK_COMMAND_PALETTE_ITEM } from '../command_palette/constants';
+import {
+  TRACKING_CLICK_COMMAND_PALETTE_ITEM,
+  SCOPE_SEARCH_PROJECT,
+  SCOPE_SEARCH_GROUP,
+  SCOPE_SEARCH_ALL,
+} from '../command_palette/constants';
 
 import {
   ICON_GROUP,
@@ -105,21 +108,13 @@ export const defaultSearchOptions = (state, getters) => {
     },
   ];
 
-  const mergeRequests = [
+  return [
+    ...(getters.scopedIssuesPath ? issues : []),
     {
-      text: MSG_MR_ASSIGNED_TO_ME,
-      href: `${getters.scopedMRPath}/?assignee_username=${userName}`,
-    },
-    {
-      text: MSG_MR_IM_REVIEWER,
-      href: `${getters.scopedMRPath}/?reviewer_username=${userName}`,
-    },
-    {
-      text: MSG_MR_IVE_CREATED,
-      href: `${getters.scopedMRPath}/?author_username=${userName}`,
+      text: MSG_MR_IM_WORKING_ON,
+      href: getters.scopedMRPath,
     },
   ];
-  return [...(getters.scopedIssuesPath ? issues : []), ...mergeRequests];
 };
 
 export const projectUrl = (state) => {
@@ -178,7 +173,7 @@ export const scopedSearchOptions = (state, getters) => {
 
   if (state.searchContext?.project) {
     items.push({
-      text: 'scoped-in-project',
+      text: SCOPE_SEARCH_PROJECT,
       scope: state.searchContext.project?.name || '',
       scopeCategory: PROJECTS_CATEGORY,
       icon: ICON_PROJECT,
@@ -192,7 +187,7 @@ export const scopedSearchOptions = (state, getters) => {
 
   if (state.searchContext?.group) {
     items.push({
-      text: 'scoped-in-group',
+      text: SCOPE_SEARCH_GROUP,
       scope: state.searchContext.group?.name || '',
       scopeCategory: GROUPS_CATEGORY,
       icon: state.searchContext.group?.full_name?.includes('/') ? ICON_SUBGROUP : ICON_GROUP,
@@ -205,7 +200,7 @@ export const scopedSearchOptions = (state, getters) => {
   }
 
   items.push({
-    text: 'scoped-in-all',
+    text: SCOPE_SEARCH_ALL,
     description: MSG_IN_ALL_GITLAB,
     href: getters.allUrl,
     extraAttrs: {
@@ -250,6 +245,7 @@ export const autocompleteGroupedSearchOptions = (state) => {
 
     if (group) {
       group.items.push(formattedItem);
+      group.items = uniqBy(group.items, 'id');
     } else {
       groupedOptions[item.category] = {
         name: formattedItem.category,

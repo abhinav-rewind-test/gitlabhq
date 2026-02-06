@@ -76,12 +76,16 @@ RSpec.describe 'User uses shortcuts', :js, feature_category: :groups_and_project
   end
 
   context 'when navigating to the Issues pages' do
+    before do
+      visit(project_path(project))
+    end
+
     it 'redirects to the issues list page' do
       find('body').native.send_key('g')
       find('body').native.send_key('i')
 
       expect(page).to have_active_navigation('Pinned')
-      expect(page).to have_active_sub_navigation('Issues')
+      expect(page).to have_active_sub_navigation('Work items')
     end
 
     it 'redirects to the issue board page' do
@@ -96,7 +100,7 @@ RSpec.describe 'User uses shortcuts', :js, feature_category: :groups_and_project
       find('body').native.send_key('i')
 
       expect(page).to have_content(project.title)
-      expect(page).to have_content('New Issue')
+      expect(page).to have_css('h1', text: 'New issue')
     end
   end
 

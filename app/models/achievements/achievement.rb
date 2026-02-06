@@ -17,5 +17,13 @@ module Achievements
       length: { maximum: 255 },
       uniqueness: { case_sensitive: false, scope: [:namespace_id] }
     validates :description, length: { maximum: 1024 }
+
+    def unique_users
+      users.distinct
+    end
+
+    def uploads_sharding_key
+      { namespace_id: namespace_id }
+    end
   end
 end

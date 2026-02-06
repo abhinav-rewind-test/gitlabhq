@@ -154,6 +154,7 @@ MergeRequest.toggleDraftStatus = function (title, isReady) {
 
   if (titleEl) {
     titleEl.textContent = title;
+    document.title = title;
   }
 
   const draftToggles = document.querySelectorAll('.js-draft-toggle-button');
@@ -163,7 +164,7 @@ MergeRequest.toggleDraftStatus = function (title, isReady) {
       const draftToggle = el;
       const url = setUrlParams(
         { 'merge_request[wip_event]': isReady ? 'draft' : 'ready' },
-        draftToggle.href,
+        { url: draftToggle.href },
       );
 
       draftToggle.setAttribute('href', url);

@@ -8,7 +8,7 @@ import {
   mockPipeline,
   mockPipelineBranch,
   mockPipelineTag,
-} from 'jest/ci/pipeline_details/mock_data';
+} from '../../pipeline_details/mock_data';
 
 const projectPath = 'test/test';
 
@@ -18,24 +18,21 @@ describe('Pipeline Url Component', () => {
 
   const findTableCell = () => wrapper.findByTestId('pipeline-url-table-cell');
   const findPipelineUrlLink = () => wrapper.findByTestId('pipeline-url-link');
+  const findPipelineIdentifierLink = () => wrapper.findByTestId('pipeline-identifier-link');
+  const findPipelineIdentifierMissingMessage = () =>
+    wrapper.findByTestId('pipeline-identifier-missing-message');
   const findRefName = () => wrapper.findByTestId('merge-request-ref');
   const findCommitShortSha = () => wrapper.findByTestId('commit-short-sha');
   const findCommitIcon = () => wrapper.findByTestId('commit-icon');
   const findCommitIconType = () => wrapper.findByTestId('commit-icon-type');
   const findCommitRefName = () => wrapper.findByTestId('commit-ref-name');
 
-  const findCommitTitleContainer = () => wrapper.findByTestId('commit-title-container');
-  const findPipelineNameContainer = () => wrapper.findByTestId('pipeline-name-container');
-  const findCommitTitle = (commitWrapper) => commitWrapper.find('[data-testid="commit-title"]');
+  const defaultProps = { ...mockPipeline(projectPath) };
 
-  const defaultProps = { ...mockPipeline(projectPath), refClass: 'gl-text-black' };
-
-  const createComponent = (props) => {
+  const createComponent = ({ props, provide } = {}) => {
     wrapper = shallowMountExtended(PipelineUrlComponent, {
       propsData: { ...defaultProps, ...props },
-      provide: {
-        targetProjectFullPath: projectPath,
-      },
+      provide: { ...provide },
     });
   };
 
@@ -49,47 +46,84 @@ describe('Pipeline Url Component', () => {
     createComponent();
 
     expect(findPipelineUrlLink().attributes('href')).toBe('foo');
-
     expect(findPipelineUrlLink().text()).toBe('#1');
   });
 
-  it('should render the pipeline name instead of commit title', () => {
-    createComponent(merge(mockPipeline(projectPath), { pipeline: { name: 'Build pipeline' } }));
+  it('should render the  pipeline schedule', () => {
+    createComponent({
+      props: merge(mockPipeline(projectPath), {
+        pipeline: {
+          name: 'Build pipeline',
+          pipeline_schedule: { id: 1, description: 'Schedule', path: 'schedule/path' },
+        },
+      }),
+    });
 
-    expect(findCommitTitleContainer().exists()).toBe(false);
-    expect(findPipelineNameContainer().exists()).toBe(true);
     expect(findRefName().exists()).toBe(true);
     expect(findCommitShortSha().exists()).toBe(true);
+    expect(findPipelineIdentifierLink().text()).toBe('Schedule');
+    expect(findPipelineIdentifierLink().attributes('href')).toBe('schedule/path');
+    expect(findPipelineIdentifierMissingMessage().exists()).toBe(false);
   });
 
-  it('should render the commit title when pipeline has no name', () => {
-    createComponent();
+  it('should render the pipeline name identifier instead of commit title', () => {
+    createComponent({
+      props: merge(mockPipeline(projectPath), {
+        pipeline: { name: 'Build pipeline', pipeline_schedule: null },
+      }),
+    });
 
-    const commitWrapper = findCommitTitleContainer();
-
-    expect(findCommitTitle(commitWrapper).exists()).toBe(true);
     expect(findRefName().exists()).toBe(true);
     expect(findCommitShortSha().exists()).toBe(true);
-    expect(findPipelineNameContainer().exists()).toBe(false);
+    expect(findPipelineIdentifierLink().text()).toBe('Commit');
+    expect(findPipelineIdentifierLink().attributes('href')).toBe('/test/test/commit/aabbccdd');
   });
 
-  it('should pass the refClass prop to merge request link', () => {
+  it('should render the pipeline schedule identifier when pipeline has no name but schedule', () => {
+    createComponent({
+      props: merge(mockPipeline(projectPath), {
+        pipeline: {
+          pipeline_schedule: { id: 1, description: 'Schedule', path: 'schedule/path' },
+        },
+      }),
+    });
+
+    expect(findRefName().exists()).toBe(true);
+    expect(findCommitShortSha().exists()).toBe(true);
+    expect(findPipelineIdentifierLink().text()).toBe('Schedule');
+    expect(findPipelineIdentifierLink().attributes('href')).toBe('schedule/path');
+  });
+
+  it('should render the commit title when pipeline has no identifier', () => {
     createComponent();
 
-    expect(findRefName().classes()).toContain(defaultProps.refClass);
+    expect(findRefName().exists()).toBe(true);
+    expect(findCommitShortSha().exists()).toBe(true);
+    expect(findPipelineIdentifierLink().text()).toBe('Commit');
+    expect(findPipelineIdentifierLink().attributes('href')).toBe('/test/test/commit/aabbccdd');
   });
 
-  it('should pass the refClass prop to the commit ref name link', () => {
-    createComponent(mockPipelineBranch());
+  it('should render a missing ref when pipeline has no identifier or commit', () => {
+    createComponent({
+      props: merge(mockPipeline(projectPath), {
+        pipeline: { commit: null },
+      }),
+    });
 
-    expect(findCommitRefName().classes()).toContain(defaultProps.refClass);
+    expect(findRefName().exists()).toBe(true);
+    expect(findCommitShortSha().exists()).toBe(true);
+    expect(findPipelineIdentifierLink().exists()).toBe(false);
+    expect(findPipelineIdentifierMissingMessage().classes('gl-text-subtle')).toBe(true);
+    expect(findPipelineIdentifierMissingMessage().text()).toBe(
+      "Can't find HEAD commit for this branch",
+    );
   });
 
   describe('commit user avatar', () => {
     it('renders when commit author exists', () => {
       const pipelineBranch = mockPipelineBranch();
       const { avatar_url: imgSrc, name, path } = pipelineBranch.pipeline.commit.author;
-      createComponent(pipelineBranch);
+      createComponent({ props: pipelineBranch });
 
       const component = wrapper.findComponent(UserAvatarLink);
       expect(component.exists()).toBe(true);
@@ -121,7 +155,7 @@ describe('Pipeline Url Component', () => {
     ${mockPipelineBranch()} | ${'Branch'}
     ${mockPipeline()}       | ${'Merge Request'}
   `('should render tooltip $expectedTitle for commit icon type', ({ pipeline, expectedTitle }) => {
-    createComponent(pipeline);
+    createComponent({ props: pipeline });
 
     expect(findCommitIconType().attributes('title')).toBe(expectedTitle);
   });
@@ -156,7 +190,7 @@ describe('Pipeline Url Component', () => {
     });
 
     it('tracks commit ref name click', () => {
-      createComponent(mockPipelineBranch());
+      createComponent({ props: mockPipelineBranch() });
 
       findCommitRefName().vm.$emit('click');
 
@@ -166,9 +200,11 @@ describe('Pipeline Url Component', () => {
     });
 
     it('tracks commit title click', () => {
-      createComponent(merge(mockPipelineBranch(), { pipeline: { name: null } }));
+      createComponent({
+        props: merge(mockPipelineBranch(), { pipeline: { name: null } }),
+      });
 
-      findCommitTitle(findCommitTitleContainer()).vm.$emit('click');
+      findPipelineIdentifierLink().vm.$emit('click');
 
       expect(trackingSpy).toHaveBeenCalledWith(undefined, 'click_commit_title', {
         label: TRACKING_CATEGORIES.table,
@@ -176,7 +212,9 @@ describe('Pipeline Url Component', () => {
     });
 
     it('tracks commit short sha click', () => {
-      createComponent(mockPipelineBranch());
+      createComponent({
+        props: mockPipelineBranch(),
+      });
 
       findCommitShortSha().vm.$emit('click');
 

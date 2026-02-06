@@ -100,21 +100,52 @@ RSpec.describe NotePolicy, feature_category: :team_planning do
 
     context 'when the noteable is a personal snippet' do
       let(:noteable) { create(:personal_snippet, :public) }
-      let(:note) { create(:note, noteable: noteable) }
+      let(:other_user) { create(:user) }
+      let(:note) { create(:note_on_personal_snippet, noteable: noteable) }
 
       it_behaves_like 'a note on a public noteable'
 
       context 'when user is the author of the personal snippet' do
-        let(:note) { create(:note, noteable: noteable, author: user) }
+        let(:noteable) { create(:personal_snippet, :public, author: user) }
+        let(:note) { create(:note_on_personal_snippet, noteable: noteable, author: user) }
 
         it 'can edit note' do
           expect(policy).to be_allowed(:read_note, :award_emoji, :admin_note, :reposition_note, :resolve_note)
         end
 
-        context 'when it is private' do
+        context 'when the note is private' do
           let(:noteable) { create(:personal_snippet, :private) }
 
           it_behaves_like 'user cannot read or act on the note'
+        end
+
+        context 'when the note is authored by another user' do
+          let(:note) { create(:note_on_personal_snippet, noteable: noteable, author: other_user) }
+
+          it 'can edit note' do
+            expect(policy).to be_allowed(:read_note, :award_emoji, :admin_note, :reposition_note, :resolve_note)
+          end
+        end
+      end
+
+      context 'when the user is admin' do
+        let(:admin) { create(:admin) }
+        let(:policy) { described_class.new(admin, note) }
+
+        context 'when admin mode is enabled', :enable_admin_mode do
+          it 'can edit note made by other users' do
+            expect(policy).to be_allowed(:read_note, :award_emoji, :admin_note, :reposition_note, :resolve_note)
+          end
+        end
+
+        context 'when admin mode is disabled' do
+          it_behaves_like 'a note on a public noteable'
+
+          context 'when the note is private' do
+            let(:noteable) { create(:personal_snippet, :private) }
+
+            it_behaves_like 'user cannot read or act on the note'
+          end
         end
       end
     end
@@ -258,21 +289,21 @@ RSpec.describe NotePolicy, feature_category: :team_planning do
 
           context 'when notes widget is disabled for task' do
             let(:policy) { described_class.new(developer, note) }
+            let(:noteable_task) { create(:work_item, :task, project: project) }
+            let(:noteable_issue) { create(:work_item, project: project) }
 
             before do
-              WorkItems::Type.default_by_type(:task).widget_definitions.find_by_widget_type(:notes).update!(disabled: true)
+              stub_work_item_widget(noteable_task, notes: false)
             end
 
             context 'when noteable is task' do
-              let(:noteable) { create(:work_item, :task, project: project) }
-              let(:note) { create(:note, system: true, noteable: noteable, author: user, project: project) }
+              let(:note) { create(:note, system: true, noteable: noteable_task, author: user, project: project) }
 
               it_behaves_like 'user cannot read or act on the note'
             end
 
             context 'when noteable is issue' do
-              let(:noteable) { create(:work_item, project: project) }
-              let(:note) { create(:note, system: true, noteable: noteable, author: user, project: project) }
+              let(:note) { create(:note, system: true, noteable: noteable_issue, author: user, project: project) }
 
               it_behaves_like 'user can read the note'
               it_behaves_like 'user can act on the note'
@@ -367,6 +398,27 @@ RSpec.describe NotePolicy, feature_category: :team_planning do
 
           it 'disallows noteable author to read and resolve all notes' do
             expect(permissions(author, internal_note)).to be_disallowed(:read_note, :resolve_note, :award_emoji, :mark_note_as_internal, :admin_note, :reposition_note)
+          end
+
+          context 'when discussion is locked' do
+            before do
+              internal_note.noteable.update!(discussion_locked: true)
+            end
+
+            it 'does not allow noteable author to resolve internal notes' do
+              expect(permissions(author, internal_note)).to be_disallowed(:resolve_note)
+            end
+
+            it 'does not allow non-members to resolve internal notes' do
+              expect(permissions(non_member, internal_note)).to be_disallowed(:resolve_note)
+            end
+
+            it 'allows project members with developer+ role to resolve internal notes' do
+              expect(permissions(guest, internal_note)).to be_disallowed(:resolve_note)
+              expect(permissions(reporter, internal_note)).to be_disallowed(:resolve_note)
+              expect(permissions(developer, internal_note)).to be_allowed(:resolve_note)
+              expect(permissions(maintainer, internal_note)).to be_allowed(:resolve_note)
+            end
           end
         end
 

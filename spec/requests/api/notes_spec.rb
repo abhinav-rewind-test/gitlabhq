@@ -49,6 +49,37 @@ RSpec.describe API::Notes, feature_category: :team_planning do
       end
     end
 
+    context 'when system note with issue_email_participants action' do
+      let!(:email) { 'user@example.com' }
+      let!(:note_text) { "added #{email}" }
+      let!(:note) do
+        create(:note, :system, project: project, noteable: issue, author: create(:support_bot), note: note_text)
+      end
+
+      let!(:system_note_metadata) { create(:system_note_metadata, note: note, action: :issue_email_participants) }
+      let!(:another_user) { create(:user) }
+
+      let(:obfuscated_email) { 'us*****@e*****.c**' }
+
+      it 'returns obfuscated email' do
+        get api("/projects/#{project.id}/issues/#{issue.iid}/notes", another_user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(response).to include_pagination_headers
+        expect(json_response.first['body']).to include(obfuscated_email)
+      end
+
+      context 'when user has at least the reporter role in project' do
+        it 'returns email' do
+          get api("/projects/#{project.id}/issues/#{issue.iid}/notes", user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to include_pagination_headers
+          expect(json_response.first['body']).to include(email)
+        end
+      end
+    end
+
     context "when referencing other project" do
       # For testing the cross-reference of a private issue in a public project
       let(:private_project) do
@@ -214,7 +245,7 @@ RSpec.describe API::Notes, feature_category: :team_planning do
         let(:request_path) { "/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes" }
 
         before do
-          WorkItems::Type.default_by_type(:issue).widget_definitions.find_by_widget_type(:notes).update!(disabled: true)
+          stub_all_work_item_widgets(notes: false)
         end
 
         it 'does not fetch notes' do
@@ -252,6 +283,46 @@ RSpec.describe API::Notes, feature_category: :team_planning do
         end
       end
     end
+
+    describe 'granular token permissions for issue notes' do
+      let(:url) { "/projects/#{project.id}/issues/#{issue.iid}/notes" }
+      let(:note_url) { "/projects/#{project.id}/issues/#{issue.iid}/notes/#{issue_note.id}" }
+
+      it_behaves_like 'authorizing granular token permissions', :read_issue_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_issue_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(note_url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :create_issue_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api(url, personal_access_token: pat), params: { body: 'Test note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :update_issue_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          put api(note_url, personal_access_token: pat), params: { body: 'Updated note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_issue_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api(note_url, personal_access_token: pat)
+        end
+      end
+    end
   end
 
   context "when noteable is a Snippet" do
@@ -263,11 +334,109 @@ RSpec.describe API::Notes, feature_category: :team_planning do
       let(:noteable) { snippet }
       let(:note) { snippet_note }
     end
+
+    describe 'granular token permissions for snippet notes' do
+      let(:url) { "/projects/#{project.id}/snippets/#{snippet.id}/notes" }
+      let(:note_url) { "/projects/#{project.id}/snippets/#{snippet.id}/notes/#{snippet_note.id}" }
+
+      it_behaves_like 'authorizing granular token permissions', :read_snippet_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_snippet_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(note_url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :create_snippet_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api(url, personal_access_token: pat), params: { body: 'Test note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :update_snippet_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          put api(note_url, personal_access_token: pat), params: { body: 'Updated note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_snippet_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api(note_url, personal_access_token: pat)
+        end
+      end
+    end
+  end
+
+  context "when noteable is a WikiPage::Meta" do
+    let!(:wiki_page_meta) { create(:wiki_page_meta, :for_wiki_page, container: project) }
+    let!(:wiki_page_meta_note) { create(:note, noteable: wiki_page_meta, project: project, author: user) }
+
+    before do
+      project.add_developer(user)
+    end
+
+    it_behaves_like "noteable API", 'projects', 'wiki_pages', 'id' do
+      let(:parent) { project }
+      let(:noteable) { wiki_page_meta }
+      let(:note) { wiki_page_meta_note }
+    end
+
+    describe 'granular token permissions for wiki page notes' do
+      let(:url) { "/projects/#{project.id}/wiki_pages/#{wiki_page_meta.id}/notes" }
+      let(:note_url) { "/projects/#{project.id}/wiki_pages/#{wiki_page_meta.id}/notes/#{wiki_page_meta_note.id}" }
+
+      it_behaves_like 'authorizing granular token permissions', :read_wiki_page_meta_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_wiki_page_meta_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(note_url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :create_wiki_page_meta_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api(url, personal_access_token: pat), params: { body: 'Test note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :update_wiki_page_meta_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          put api(note_url, personal_access_token: pat), params: { body: 'Updated note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_wiki_page_meta_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api(note_url, personal_access_token: pat)
+        end
+      end
+    end
   end
 
   context "when noteable is a Merge Request" do
     let!(:merge_request) { create(:merge_request, source_project: project, target_project: project, author: user) }
     let!(:merge_request_note) { create(:note, noteable: merge_request, project: project, author: user) }
+    let(:request_body) { 'Hi!' }
+    let(:params) { { body: request_body } }
+    let(:request_path) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes" }
 
     it_behaves_like "noteable API", 'projects', 'merge_requests', 'iid' do
       let(:parent) { project }
@@ -275,11 +444,85 @@ RSpec.describe API::Notes, feature_category: :team_planning do
       let(:note) { merge_request_note }
     end
 
-    let(:request_body) { 'Hi!' }
-    let(:params) { { body: request_body } }
-    let(:request_path) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes" }
+    it_behaves_like 'enforcing job token policies', :read_merge_requests,
+      allow_public_access_for_enabled_project_features: [:repository, :merge_requests] do
+      let(:request) do
+        get api(request_path), params: { job_token: target_job.token }
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_merge_requests,
+      allow_public_access_for_enabled_project_features: [:repository, :merge_requests] do
+      let(:request) do
+        get api("#{request_path}/#{merge_request_note.id}"), params: { job_token: target_job.token }
+      end
+    end
 
     subject { post api(request_path, user), params: params }
+
+    context 'a note with both text and invalid command' do
+      let(:request_body) { "hello world\n/spend hello" }
+
+      before do
+        project.add_developer(user)
+      end
+
+      it 'returns 200 status' do
+        subject
+
+        expect(response).to have_gitlab_http_status(:created)
+      end
+
+      it 'creates a new note' do
+        expect { subject }.to change { Note.where(system: false).count }.by(1)
+      end
+
+      it 'does not create a system note about the change', :sidekiq_inline do
+        expect { subject }.not_to change { Note.system.count }
+      end
+
+      it 'does not apply the commands' do
+        expect { subject }.not_to change { merge_request.reset.total_time_spent }
+      end
+    end
+
+    context 'a blank note' do
+      let(:request_body) { "" }
+
+      before do
+        project.add_developer(user)
+      end
+
+      it 'returns a 400 and does not create a note' do
+        expect { subject }.not_to change { Note.where(system: false).count }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+      end
+    end
+
+    context 'an invalid command-only note' do
+      let(:request_body) { "/spend asdf" }
+
+      before do
+        project.add_developer(user)
+      end
+
+      it 'returns a 400 and does not create a note' do
+        expect { subject }.not_to change { Note.where(system: false).count }
+
+        expect(response).to have_gitlab_http_status(:bad_request)
+      end
+
+      it 'does not apply the command' do
+        expect { subject }.not_to change { merge_request.reset.total_time_spent }
+      end
+
+      it 'reports the errors' do
+        subject
+
+        expect(json_response).to eq({ "message" => "400 Bad request - Failed to apply commands." })
+      end
+    end
 
     context 'a command only note' do
       context '/spend' do
@@ -322,7 +565,7 @@ RSpec.describe API::Notes, feature_category: :team_planning do
       context '/merge' do
         let(:request_body) { "/merge" }
         let(:project) { create(:project, :public, :repository) }
-        let(:merge_request) { create(:merge_request_with_multiple_diffs, source_project: project, target_project: project, author: user) }
+        let(:merge_request) { create(:merge_request_with_diffs, source_project: project, target_project: project, author: user) }
         let(:params) { { body: request_body, merge_request_diff_head_sha: merge_request.diff_head_sha } }
 
         before do
@@ -384,6 +627,70 @@ RSpec.describe API::Notes, feature_category: :team_planning do
 
         it 'does not create a new note' do
           expect { subject }.not_to change { Note.count }
+        end
+      end
+    end
+
+    context 'when authenticated with a token that has the ai_workflows scope' do
+      let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+
+      context 'a post request creates a merge request note' do
+        subject { post api(request_path, oauth_access_token: oauth_token), params: params }
+
+        it 'is successful' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:created)
+        end
+      end
+
+      context 'a get request returns a list of merge request notes' do
+        subject { get api(request_path, oauth_access_token: oauth_token) }
+
+        it 'is successful' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:ok)
+        end
+      end
+    end
+
+    describe 'granular token permissions for merge request notes' do
+      let(:url) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes" }
+      let(:note_url) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes/#{merge_request_note.id}" }
+
+      it_behaves_like 'authorizing granular token permissions', :read_merge_request_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :read_merge_request_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(note_url, personal_access_token: pat)
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :create_merge_request_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          post api(url, personal_access_token: pat), params: { body: 'Test note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :update_merge_request_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          put api(note_url, personal_access_token: pat), params: { body: 'Updated note' }
+        end
+      end
+
+      it_behaves_like 'authorizing granular token permissions', :delete_merge_request_note do
+        let(:boundary_object) { project }
+        let(:request) do
+          delete api(note_url, personal_access_token: pat)
         end
       end
     end

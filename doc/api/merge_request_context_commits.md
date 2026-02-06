@@ -1,18 +1,25 @@
 ---
 stage: Create
 group: Code Review
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+description: Documentation for the REST API for merge request context commits in GitLab.
+title: Merge request context commits API
 ---
 
-# Merge request context commits API
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
 
-## List MR context commits
+{{< /details >}}
 
-Get a list of merge request context commits.
+If your merge request builds upon a previous merge request, you might
+need to [include previously-merged commits for context](../user/project/merge_requests/commits.md#show-commits-from-previous-merge-requests)
+in your merge request. Use this API to add commits to a merge request for more context.
+
+## List context commits for a merge request
+
+Lists context commits for a single merge request.
 
 ```plaintext
 GET /projects/:id/merge_requests/:merge_request_iid/context_commits
@@ -22,7 +29,7 @@ Parameters:
 
 | Attribute           | Type    | Required | Description |
 |---------------------|---------|----------|-------------|
-| `id`                | integer | Yes | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user. |
+| `id`                | integer | Yes | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `merge_request_iid` | integer | Yes | The internal ID of the merge request. |
 
 ```json
@@ -44,9 +51,9 @@ Parameters:
 ]
 ```
 
-## Create MR context commits
+## Create context commits for a merge request
 
-Create a list of merge request context commits.
+Creates context commits for a single merge request.
 
 ```plaintext
 POST /projects/:id/merge_requests/:merge_request_iid/context_commits
@@ -56,7 +63,7 @@ Parameters:
 
 | Attribute           | Type    | Required | Description |
 |---------------------|---------|----------|-------------|
-| `id`                | integer | Yes | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user  |
+| `id`                | integer | Yes | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths)  |
 | `merge_request_iid` | integer | Yes | The internal ID of the merge request. |
 | `commits`           | string array | Yes | The context commits' SHAs. |
 
@@ -94,9 +101,9 @@ Example response:
 ]
 ```
 
-## Delete MR context commits
+## Delete context commits from a merge request
 
-Delete a list of merge request context commits.
+Deletes context commits from a single merge request.
 
 ```plaintext
 DELETE /projects/:id/merge_requests/:merge_request_iid/context_commits
@@ -107,5 +114,5 @@ Parameters:
 | Attribute           | Type         | Required | Description  |
 |---------------------|--------------|----------|--------------|
 | `commits`           | string array | Yes | The context commits' SHA. |
-| `id`                | integer      | Yes | The ID or [URL-encoded path of the project](rest/index.md#namespaced-path-encoding) owned by the authenticated user. |
+| `id`                | integer      | Yes | The ID or [URL-encoded path of the project](rest/_index.md#namespaced-paths). |
 | `merge_request_iid` | integer      | Yes | The internal ID of the merge request. |

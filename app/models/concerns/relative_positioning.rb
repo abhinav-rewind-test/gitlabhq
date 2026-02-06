@@ -109,7 +109,7 @@ module RelativePositioning
       representative.model_class.transaction do
         indexed.each_slice(100) do |batch|
           mapping = batch.to_h.transform_values! do |i|
-            desired_pos = position + delta * (i + 1)
+            desired_pos = position + (delta * (i + 1))
             { relative_position: desired_pos.clamp(lower_bound, upper_bound) }
           end
 
@@ -201,8 +201,7 @@ module RelativePositioning
   end
 
   # Override if you want to be notified of failures to move
-  def could_not_move(exception)
-  end
+  def could_not_move(exception); end
 
   # Override if the implementing class is not a simple application record, for
   # example if the record is loaded from a union.

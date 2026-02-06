@@ -51,7 +51,9 @@ module Projects
 
       # Retrieves all lfs pointers in the repository
       def lfs_pointers_in_repository
-        @lfs_pointers_in_repository ||= LfsListService.new(project).execute
+        @lfs_pointers_in_repository ||=
+          LfsListService.new(project, current_user,
+            { updated_revisions: params[:updated_revisions] }).execute
       end
 
       def existing_lfs_objects
@@ -89,13 +91,13 @@ module Projects
       end
 
       def import_uri
-        @import_uri ||= URI.parse(project.import_url)
+        @import_uri ||= URI.parse(project.unsafe_import_url)
       rescue URI::InvalidURIError
         raise LfsObjectDownloadListError, 'Invalid project import URL'
       end
 
       def current_endpoint_uri
-        (lfsconfig_endpoint_uri || default_endpoint_uri)
+        lfsconfig_endpoint_uri || default_endpoint_uri
       end
 
       # The import url must end with '.git' here we ensure it is

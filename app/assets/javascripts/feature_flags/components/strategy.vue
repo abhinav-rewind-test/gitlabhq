@@ -1,9 +1,9 @@
 <!-- eslint-disable vue/multi-word-component-names -->
 <script>
-import { GlAlert, GlButton, GlFormSelect, GlFormGroup, GlIcon, GlLink, GlToken } from '@gitlab/ui';
+import { GlAlert, GlButton, GlFormSelect, GlFormGroup, GlLink, GlToken } from '@gitlab/ui';
 import { isNumber } from 'lodash';
-import Vue from 'vue';
 import { s__, __ } from '~/locale';
+import HelpIcon from '~/vue_shared/components/help_icon/help_icon.vue';
 import {
   EMPTY_PARAMETERS,
   STRATEGY_SELECTIONS,
@@ -19,11 +19,11 @@ export default {
     GlButton,
     GlFormGroup,
     GlFormSelect,
-    GlIcon,
     GlLink,
     GlToken,
     NewEnvironmentsDropdown,
     StrategyParameters,
+    HelpIcon,
   },
   inject: {
     strategyTypeDocsPagePath: {
@@ -114,7 +114,8 @@ export default {
     },
     removeScope(environment) {
       if (isNumber(environment.id)) {
-        Vue.set(environment, 'shouldBeDestroyed', true);
+        // eslint-disable-next-line no-param-reassign
+        environment.shouldBeDestroyed = true;
       } else {
         this.environments = this.environments.filter((e) => e !== environment);
       }
@@ -132,14 +133,14 @@ export default {
       {{ $options.i18n.considerFlexibleRollout }}
     </gl-alert>
 
-    <div class="gl-border-t-solid gl-border-t-1 gl-border-t-gray-100 gl-py-6">
-      <div class="gl-display-flex gl-flex-direction-column gl-md-flex-direction-row flex-md-wrap">
-        <div class="mr-5">
+    <div class="gl-border-t-1 gl-border-t-default gl-py-6 gl-border-t-solid">
+      <div class="gl-flex gl-flex-col @md/panel:gl-flex-row @md/panel:!gl-flex-wrap">
+        <div class="!gl-mr-7">
           <gl-form-group :label="$options.i18n.strategyTypeLabel" :label-for="strategyTypeId">
             <template #description>
               {{ $options.i18n.strategyTypeDescription }}
               <gl-link :href="strategyTypeDocsPagePath" target="_blank">
-                <gl-icon name="question-o" />
+                <help-icon />
               </gl-link>
             </template>
             <gl-form-select
@@ -160,7 +161,7 @@ export default {
         </div>
 
         <div
-          class="align-self-end align-self-md-stretch order-first offset-md-0 order-md-0 gl-ml-auto"
+          class="order-first gl-offset-md-0 gl-order-md-0 gl-ml-auto !gl-self-end @md/panel:!gl-self-stretch"
         >
           <gl-button
             data-testid="delete-strategy-button"
@@ -172,26 +173,27 @@ export default {
         </div>
       </div>
 
-      <label class="gl-display-block" :for="environmentsDropdownId">{{
+      <label class="gl-block" :for="environmentsDropdownId">{{
         $options.i18n.environmentsLabel
       }}</label>
-      <div class="gl-display-flex gl-flex-direction-column">
-        <div
-          class="gl-display-flex gl-flex-direction-column gl-md-flex-direction-row gl-md-align-items-center"
-        >
+      <div class="gl-flex gl-flex-col">
+        <div class="gl-flex gl-flex-col @md/panel:gl-flex-row @md/panel:gl-items-center">
           <new-environments-dropdown
             :id="environmentsDropdownId"
             class="gl-mr-3"
             @add="addEnvironment"
           />
-          <span v-if="appliesToAllEnvironments" class="text-secondary gl-mt-3 mt-md-0 ml-md-3">
+          <span
+            v-if="appliesToAllEnvironments"
+            class="gl-mt-3 gl-text-subtle @md/panel:!gl-ml-5 @md/panel:!gl-mt-0"
+          >
             {{ $options.i18n.allEnvironments }}
           </span>
-          <div v-else class="gl-display-flex gl-align-items-center gl-flex-wrap">
+          <div v-else class="gl-flex gl-flex-wrap gl-items-center">
             <gl-token
               v-for="environment in filteredEnvironments"
               :key="environment.id"
-              class="gl-mt-3 gl-mr-3 gl-mb-3 mt-md-0 mr-md-0 ml-md-2 rounded-pill"
+              class="rounded-pill gl-mb-3 gl-mr-3 gl-mt-3 @md/panel:!gl-ml-3 @md/panel:!gl-mr-0 @md/panel:!gl-mt-0"
               @close="removeScope(environment)"
             >
               {{ environment.environmentScope }}
@@ -199,11 +201,11 @@ export default {
           </div>
         </div>
       </div>
-      <span class="gl-display-inline-block gl-py-3">
+      <span class="gl-inline-block gl-py-3">
         {{ $options.i18n.environmentsSelectDescription }}
       </span>
       <gl-link :href="environmentsScopeDocsPath" target="_blank">
-        <gl-icon name="question-o" />
+        <help-icon />
       </gl-link>
     </div>
   </div>

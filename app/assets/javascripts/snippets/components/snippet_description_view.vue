@@ -16,11 +16,11 @@ export default {
       default: '',
     },
   },
-  safeHtmlConfig: { ADD_TAGS: ['gl-emoji'] },
+  safeHtmlConfig: { ADD_TAGS: ['gl-emoji', 'copy-code'] },
 };
 </script>
 <template>
-  <markdown-field-view class="snippet-description" data-testid="snippet-description-content">
+  <markdown-field-view data-testid="snippet-description-content">
     <div
       v-safe-html:[$options.safeHtmlConfig]="description"
       class="md js-snippet-description"

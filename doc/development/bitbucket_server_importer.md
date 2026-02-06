@@ -1,15 +1,14 @@
 ---
-stage: none
-group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Create
+group: Import
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Bitbucket Server importer developer documentation
 ---
-
-# Bitbucket Server importer developer documentation
 
 ## Prerequisites
 
 To test imports, you need a Bitbucket Server instance running locally. For information on running a local instance, see
-[these instructions](https://gitlab.com/gitlab-org/manage/import-and-integrate/team/-/blob/main/integrations/bitbucket_server.md).
+[these instructions](https://gitlab.com/gitlab-org/foundations/import-and-integrate/team/-/blob/main/integrations/bitbucket_server.md).
 
 ## Code structure
 
@@ -61,7 +60,7 @@ for 24 hours so that it doesn't have to be searched for again.
 
 This worker imports notes (comments) for all merge requests.
 
-For every merge request, a job for the `Gitlab::BitbucketServerImport::ImportPullRequestNotesWorker`
+For every merge request, a job for the `Gitlab::BitbucketServerImport::ImportPullRequestNoteWorker`
 worker is scheduled which imports all standalone comments, inline comments, merge events, and
 approved events for the merge request.
 
@@ -77,7 +76,7 @@ such as marking the import as completed.
 
 ## Pull request mentions
 
-Pull request descriptions and notes can contain @mentions to users. If a user with the
+Pull request descriptions and notes can contain mentions to users. If a user with the
 same email does not exist on GitLab, this can lead to incorrect users being tagged.
 
 To get around this, we build a cache containing all users who have access to the Bitbucket

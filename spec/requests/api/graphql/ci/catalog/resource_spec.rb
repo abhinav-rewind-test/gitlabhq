@@ -6,7 +6,7 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
   include GraphqlHelpers
 
   let_it_be(:user) { create(:user) }
-  let_it_be(:namespace) { create(:group) }
+  let_it_be(:namespace) { create(:group, developers: user) }
 
   let_it_be(:project) do
     create(
@@ -22,7 +22,9 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
     )
   end
 
-  let_it_be_with_reload(:resource) { create(:ci_catalog_resource, :published, project: project) }
+  let_it_be_with_reload(:resource) do
+    create(:ci_catalog_resource, :published, project: project, last_30_day_usage_count: 15)
+  end
 
   let(:query) do
     <<~GQL
@@ -36,10 +38,6 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
 
   subject(:post_query) { post_graphql(query, current_user: user) }
 
-  before_all do
-    namespace.add_developer(user)
-  end
-
   context 'when the current user has permission to read the namespace catalog' do
     it 'returns the resource with the expected data' do
       post_query
@@ -48,9 +46,12 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
         a_graphql_entity_for(
           resource, :name, :description,
           icon: project.avatar_path,
+          fullPath: project.full_path,
           webPath: "/#{project.full_path}",
           verificationLevel: "UNVERIFIED",
-          starCount: project.star_count
+          starCount: project.star_count,
+          last30DayUsageCount: resource.last_30_day_usage_count,
+          archived: project.archived
         )
       )
     end
@@ -66,7 +67,51 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
     end
   end
 
+  describe 'visibilityLevel' do
+    let(:query) do
+      <<~GQL
+        query {
+          ciCatalogResource(id: "#{resource.to_global_id}") {
+            visibilityLevel
+          }
+        }
+      GQL
+    end
+
+    it 'returns the visibility level for a catalog resource' do
+      post_query
+
+      expect(graphql_data['ciCatalogResource']['visibilityLevel']).to eq('private')
+    end
+  end
+
   describe 'components' do
+    let_it_be(:version) do
+      create(:release, :with_catalog_resource_version, project: project).catalog_resource_version
+    end
+
+    let_it_be(:inputs) do
+      {
+        access_token: nil,
+        environment: {
+          default: 'test'
+        },
+        tags: {
+          type: 'array'
+        },
+        website: {
+          description: 'The website',
+          regex: '^https'
+        }
+      }
+    end
+
+    let_it_be(:components) do
+      create_list(
+        :ci_catalog_resource_component, 2, version: version, last_30_day_usage_count: 9, spec: { inputs: inputs }
+      )
+    end
+
     let(:query) do
       <<~GQL
         query {
@@ -80,10 +125,14 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
                     id
                     name
                     includePath
+                    last30DayUsageCount
                     inputs {
-                      name
                       default
+                      description
+                      name
+                      regex
                       required
+                      type
                     }
                   }
                 }
@@ -94,68 +143,137 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
       GQL
     end
 
-    context 'when the catalog resource has components' do
-      let_it_be(:inputs) do
-        {
-          website: nil,
-          environment: {
-            default: 'test'
-          },
-          tags: {
-            type: 'array'
-          }
-        }
-      end
+    it 'returns the components' do
+      post_query
 
-      let_it_be(:version) do
-        create(:release, :with_catalog_resource_version, project: project).catalog_resource_version
-      end
+      expect(graphql_data_at(:ciCatalogResource)).to match(a_graphql_entity_for(resource))
 
-      let_it_be(:components) do
-        create_list(:ci_catalog_resource_component, 2, version: version, inputs: inputs, path: 'templates/comp.yml')
-      end
-
-      it 'returns the resource with the component data' do
-        post_query
-
-        expect(graphql_data_at(:ciCatalogResource)).to match(a_graphql_entity_for(resource))
-
-        expect(graphql_data_at(:ciCatalogResource, :versions, :nodes, :components, :nodes)).to contain_exactly(
-          a_graphql_entity_for(
-            components.first,
-            name: components.first.name,
-            include_path: components.first.path,
-            inputs: [
-              a_graphql_entity_for(
-                name: 'tags',
-                default: nil,
-                required: true
-              ),
-              a_graphql_entity_for(
-                name: 'website',
-                default: nil,
-                required: true
-              ),
-              a_graphql_entity_for(
-                name: 'environment',
-                default: 'test',
-                required: false
-              )
-            ]
-          ),
-          a_graphql_entity_for(
-            components.last,
-            name: components.last.name,
-            include_path: components.last.path
+      expect(graphql_data_at(:ciCatalogResource, :versions, :nodes, :components, :nodes)).to contain_exactly(
+        a_graphql_entity_for(
+          components.first,
+          name: components.first.name,
+          include_path: components.first.include_path,
+          inputs: contain_exactly(
+            a_graphql_entity_for(
+              name: 'access_token',
+              required: true,
+              type: 'STRING'
+            ),
+            a_graphql_entity_for(
+              name: 'tags',
+              required: true,
+              type: 'ARRAY'
+            ),
+            a_graphql_entity_for(
+              name: 'website',
+              required: true,
+              description: 'The website',
+              regex: '^https',
+              type: 'STRING'
+            ),
+            a_graphql_entity_for(
+              name: 'environment',
+              default: 'test',
+              required: false,
+              type: 'STRING'
+            )
           )
+        ),
+        a_graphql_entity_for(
+          components.last,
+          name: components.last.name,
+          include_path: components.last.include_path,
+          last_30_day_usage_count: components.last.last_30_day_usage_count
         )
-      end
+      )
     end
   end
 
-  describe 'version fields' do
+  describe 'querying component inputs with rules' do
+    let_it_be(:version) do
+      create(:release, :with_catalog_resource_version, project: project).catalog_resource_version
+    end
+
+    let_it_be(:inputs_with_rules) do
+      {
+        environment: {
+          type: 'string',
+          options: %w[dev staging prod],
+          default: 'dev'
+        },
+        instance_type: {
+          type: 'string',
+          rules: [
+            {
+              'if' => '$[[ inputs.environment ]] == "dev"',
+              'options' => %w[t3.micro t3.small],
+              'default' => 't3.micro'
+            },
+            {
+              'if' => '$[[ inputs.environment ]] == "prod"',
+              'options' => %w[m5.large m5.xlarge],
+              'default' => 'm5.large'
+            }
+          ]
+        }
+      }
+    end
+
+    let_it_be(:component_with_rules) do
+      create(:ci_catalog_resource_component, version: version, spec: { inputs: inputs_with_rules })
+    end
+
+    let(:query) do
+      <<~GQL
+        query {
+          ciCatalogResource(id: "#{resource.to_global_id}") {
+            versions {
+              nodes {
+                components {
+                  nodes {
+                    name
+                    inputs {
+                      name
+                      type
+                      default
+                      rules {
+                        if
+                        options
+                        default
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      GQL
+    end
+
+    it 'includes the rules field in the response' do
+      post_query
+
+      inputs = graphql_data_at(:ciCatalogResource, :versions, :nodes, 0, :components, :nodes, 0, :inputs)
+      instance_type_input = inputs.find { |i| i['name'] == 'instance_type' }
+
+      expect(instance_type_input['rules']).to contain_exactly(
+        a_hash_including(
+          'if' => '$[[ inputs.environment ]] == "dev"',
+          'options' => %w[t3.micro t3.small],
+          'default' => 't3.micro'
+        ),
+        a_hash_including(
+          'if' => '$[[ inputs.environment ]] == "prod"',
+          'options' => %w[m5.large m5.xlarge],
+          'default' => 'm5.large'
+        )
+      )
+    end
+  end
+
+  describe 'versions' do
     before_all do
-      # To test the readme_html field, we need to create versions with real commit shas
       project.repository.create_branch('branch_v2', project.default_branch)
       project.repository.update_file(
         user, 'README.md', 'Readme v2', message: 'Update readme', branch_name: 'branch_v2')
@@ -165,43 +283,76 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
     end
 
     let_it_be(:version1) do
-      version = create(:release, :with_catalog_resource_version,
+      release = create(:release,
         project: project,
         tag: '1.0.0',
         sha: project.commit('1.0.0').sha,
         released_at: Date.yesterday
-      ).catalog_resource_version
+      )
 
-      version.update!(version: '1.0.0')
-
-      version
+      create(:ci_catalog_resource_version, semver: '1.0.0', catalog_resource: resource, release: release)
     end
 
     let_it_be(:version2) do
-      version = create(:release, :with_catalog_resource_version,
+      release = create(:release,
         project: project,
         tag: '2.0.0',
         sha: project.commit('2.0.0').sha,
         released_at: Date.today
-      ).catalog_resource_version
+      )
 
-      version.update!(version: '2.0.0')
-
-      version
+      create(:ci_catalog_resource_version, semver: '2.0.0', catalog_resource: resource, release: release)
     end
 
-    describe 'versions' do
+    let(:query) do
+      <<~GQL
+        query {
+          ciCatalogResource(id: "#{resource.to_global_id}") {
+            id
+            versions {
+              nodes {
+                id
+                name
+                path
+                releasedAt
+              }
+            }
+          }
+        }
+      GQL
+    end
+
+    it 'returns the resource with the versions data' do
+      post_query
+
+      expect(graphql_data_at(:ciCatalogResource)).to match(
+        a_graphql_entity_for(resource)
+      )
+
+      expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to contain_exactly(
+        a_graphql_entity_for(
+          version1,
+          name: version1.name,
+          path: project_tag_path(project, version1.name),
+          releasedAt: version1.released_at
+        ),
+        a_graphql_entity_for(
+          version2,
+          name: version2.name,
+          path: project_tag_path(project, version2.name),
+          releasedAt: version2.released_at
+        )
+      )
+    end
+
+    context 'when the readme field is requested on more than one version' do
       let(:query) do
         <<~GQL
           query {
-            ciCatalogResource(id: "#{resource.to_global_id}") {
-              id
+            ciCatalogResource(fullPath: "#{resource.project.full_path}") {
               versions {
                 nodes {
-                  id
-                  name
-                  path
-                  releasedAt
+                  readme
                 }
               }
             }
@@ -209,185 +360,71 @@ RSpec.describe 'Query.ciCatalogResource', feature_category: :pipeline_compositio
         GQL
       end
 
-      it 'returns the resource with the versions data' do
+      it 'limits the request to 1 version at a time' do
         post_query
 
-        expect(graphql_data_at(:ciCatalogResource)).to match(
-          a_graphql_entity_for(resource)
-        )
+        expect_graphql_errors_to_include \
+          [/"readme" field can be requested only for 1 CiCatalogResourceVersion\(s\) at a time./]
+      end
+    end
+
+    context 'when the name argument is provided' do
+      let(:name) { '1.0.0' }
+
+      let(:query) do
+        <<~GQL
+          query {
+            ciCatalogResource(fullPath: "#{resource.project.full_path}") {
+              versions(name: "#{name}") {
+                nodes {
+                  id
+                  name
+                  path
+                  releasedAt
+                  readmeHtml
+                  readme
+                }
+              }
+            }
+          }
+        GQL
+      end
+
+      it 'returns the version that matches the name',
+        quarantine: 'https://gitlab.com/gitlab-org/gitlab/-/issues/465564' do
+        post_query
 
         expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to contain_exactly(
           a_graphql_entity_for(
             version1,
             name: version1.name,
             path: project_tag_path(project, version1.name),
-            releasedAt: version1.released_at
-          ),
-          a_graphql_entity_for(
-            version2,
-            name: version2.name,
-            path: project_tag_path(project, version2.name),
-            releasedAt: version2.released_at
+            releasedAt: version1.released_at,
+            readme: version1.readme,
+            readmeHtml: "<p data-sourcepos=\"1:1-1:17\" dir=\"auto\"><a data-sourcepos=\"1:1-1:17\" " \
+              "href=\"/group1/project-1/-/blob/master/README.md\" class=\"gfm\">link</a></p>"
           )
         )
       end
 
-      context 'when the readmeHtml field is requested on more than one version' do
-        let(:query) do
-          <<~GQL
-            query {
-              ciCatalogResource(fullPath: "#{resource.project.full_path}") {
-                versions {
-                  nodes {
-                    readmeHtml
-                  }
-                }
-              }
-            }
-          GQL
-        end
+      context 'when no version matches the name' do
+        let(:name) { 'does_not_exist' }
 
-        it 'limits the request to 1 version at a time' do
-          post_query
-
-          expect_graphql_errors_to_include \
-            [/"readmeHtml" field can be requested only for 1 CiCatalogResourceVersion\(s\) at a time./]
-        end
-      end
-
-      context 'when the name argument is provided' do
-        let(:name) { '1.0.0' }
-
-        let(:query) do
-          <<~GQL
-            query {
-              ciCatalogResource(fullPath: "#{resource.project.full_path}") {
-                versions(name: "#{name}") {
-                  nodes {
-                    id
-                    name
-                    path
-                    releasedAt
-                    readmeHtml
-                  }
-                }
-              }
-            }
-          GQL
-        end
-
-        it 'returns the version that matches the name' do
-          post_query
-
-          expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to contain_exactly(
-            a_graphql_entity_for(
-              version1,
-              name: version1.name,
-              path: project_tag_path(project, version1.name),
-              releasedAt: version1.released_at,
-              readmeHtml: a_string_including(
-                "#{project.full_path}/-/blob/#{project.default_branch}/README.md"
-              )
-            )
-          )
-        end
-
-        context 'when no version matches the name' do
-          let(:name) { 'does_not_exist' }
-
-          it 'returns an empty array' do
-            post_query
-
-            expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to eq([])
-          end
-        end
-      end
-
-      context 'when the resource does not have a version' do
         it 'returns an empty array' do
-          resource.versions.delete_all(:delete_all)
-
           post_query
 
           expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to eq([])
         end
       end
     end
-  end
 
-  describe 'openIssuesCount' do
-    context 'when open_issue_count is requested' do
-      let(:query) do
-        <<~GQL
-          query {
-            ciCatalogResource(id: "#{resource.to_global_id}") {
-              openIssuesCount
-            }
-          }
-        GQL
-      end
-
-      it 'returns the correct count' do
-        create(:issue, :opened, project: project)
-        create(:issue, :opened, project: project)
+    context 'when the resource does not have a version' do
+      it 'returns an empty array' do
+        resource.versions.delete_all(:delete_all)
 
         post_query
 
-        expect(graphql_data_at(:ciCatalogResource)).to match(
-          a_graphql_entity_for(
-            open_issues_count: 2
-          )
-        )
-      end
-
-      context 'when open_issue_count is zero' do
-        it 'returns zero' do
-          post_query
-
-          expect(graphql_data_at(:ciCatalogResource)).to match(
-            a_graphql_entity_for(
-              open_issues_count: 0
-            )
-          )
-        end
-      end
-    end
-  end
-
-  describe 'openMergeRequestsCount' do
-    context 'when merge_requests_count is requested' do
-      let(:query) do
-        <<~GQL
-          query {
-            ciCatalogResource(id: "#{resource.to_global_id}") {
-              openMergeRequestsCount
-            }
-          }
-        GQL
-      end
-
-      it 'returns the correct count' do
-        create(:merge_request, :opened, source_project: project)
-
-        post_query
-
-        expect(graphql_data_at(:ciCatalogResource)).to match(
-          a_graphql_entity_for(
-            open_merge_requests_count: 1
-          )
-        )
-      end
-
-      context 'when open merge_requests_count is zero' do
-        it 'returns zero' do
-          post_query
-
-          expect(graphql_data_at(:ciCatalogResource)).to match(
-            a_graphql_entity_for(
-              open_merge_requests_count: 0
-            )
-          )
-        end
+        expect(graphql_data_at(:ciCatalogResource, :versions, :nodes)).to eq([])
       end
     end
   end

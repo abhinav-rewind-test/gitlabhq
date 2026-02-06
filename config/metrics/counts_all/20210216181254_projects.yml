@@ -2,20 +2,16 @@
 data_category: operational
 key_path: counts.projects
 description: Count of Projects created
-product_section: dev
-product_stage: plan
 product_group: project_management
 value_type: number
 status: active
 time_frame: all
 data_source: database
-distribution:
-- ce
-- ee
-tier:
+tiers:
 - free
 - premium
 - ultimate
 performance_indicator_type:
 - customer_health_score
 milestone: "<13.9"
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/54332

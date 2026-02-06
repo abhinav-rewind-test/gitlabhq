@@ -3,6 +3,7 @@
 class SessionsController < Devise::SessionsController
   include InternalRedirect
   include AuthenticatesWithTwoFactor
+  include CheckInitialSetup
   include Devise::Controllers::Rememberable
   include Recaptcha::Adapters::ViewMethods
   include Recaptcha::Adapters::ControllerMethods
@@ -15,6 +16,7 @@ class SessionsController < Devise::SessionsController
   include PreferredLanguageSwitcher
   include SkipsAlreadySignedInMessage
   include AcceptsPendingInvitations
+  include SynchronizeBroadcastMessageDismissals
   extend ::Gitlab::Utils::Override
 
   skip_before_action :check_two_factor_requirement, only: [:destroy]
@@ -34,11 +36,16 @@ class SessionsController < Devise::SessionsController
   before_action :save_failed_login, if: :action_new_and_failed_login?
   before_action :load_recaptcha
   before_action :set_invite_params, only: [:new]
+  before_action only: [:new] do
+    push_frontend_feature_flag(:passkeys, Feature.current_request)
+    push_frontend_feature_flag(:sign_in_form_vue, Feature.current_request)
+    push_frontend_feature_flag(:two_step_sign_in, Feature.current_request)
+  end
 
   after_action :log_failed_login, if: :action_new_and_failed_login?
   after_action :verify_known_sign_in, only: [:create]
 
-  helper_method :captcha_enabled?, :captcha_on_login_required?
+  helper_method :captcha_enabled?, :captcha_on_login_required?, :onboarding_status_tracking_label
 
   # protect_from_forgery is already prepended in ApplicationController but
   # authenticate_with_two_factor which signs in the user is prepended before
@@ -56,11 +63,21 @@ class SessionsController < Devise::SessionsController
 
   CAPTCHA_HEADER = 'X-GitLab-Show-Login-Captcha'
   MAX_FAILED_LOGIN_ATTEMPTS = 5
+  PRESERVE_COOKIES = %w[current_signin_tab preferred_language].freeze
 
   def new
     set_minimum_password_length
 
     super
+  end
+
+  def new_passkey
+    if Feature.enabled?(:passkeys, Feature.current_request) &&
+        Gitlab::CurrentSettings.password_authentication_enabled_for_web?
+      handle_passwordless_flow
+    else
+      render_403
+    end
   end
 
   def create
@@ -78,21 +95,50 @@ class SessionsController < Devise::SessionsController
 
       accept_pending_invitations
 
+      synchronize_broadcast_message_dismissals(current_user)
+
       log_audit_event(current_user, resource, with: authentication_method)
       log_user_activity(current_user)
     end
   end
 
   def destroy
-    headers['Clear-Site-Data'] = '"*"'
-
+    headers['Clear-Site-Data'] = '"cache", "storage", "executionContexts", "clientHints"'
     Gitlab::AppLogger.info("User Logout: username=#{current_user.username} ip=#{request.remote_ip}")
+
     super
+
     # hide the signed_out notice
     flash[:notice] = nil
+
+    # cookies must be deleted after super call
+    # Warden sets some cookies for deletion, this will not override those settings
+    cookies.each do |cookie|
+      next if PRESERVE_COOKIES.include?(cookie[0])
+
+      cookies.delete(cookie[0])
+    end
+  end
+
+  def sign_in_path
+    return render_404 unless Feature.enabled?(:two_step_sign_in, Feature.current_request)
+
+    respond_to do |format|
+      format.json do
+        render json: { sign_in_path: determine_sign_in_path }
+      end
+      format.html do
+        render_404
+      end
+    end
   end
 
   private
+
+  # Overridden in EE
+  def determine_sign_in_path
+    nil
+  end
 
   override :after_pending_invitations_hook
   def after_pending_invitations_hook
@@ -181,18 +227,9 @@ class SessionsController < Devise::SessionsController
   # Handle an "initial setup" state, where there's only one user, it's an admin,
   # and they require a password change.
   def check_initial_setup
-    return unless User.limit(2).count == 1 # Count as much 2 to know if we have exactly one
+    return unless in_initial_setup_state?
 
-    user = User.admins.last
-
-    return unless user && user.require_password_creation_for_web?
-
-    Users::UpdateService.new(current_user, user: user).execute do |user|
-      @token = user.generate_reset_token
-    end
-
-    redirect_to edit_user_password_path(reset_password_token: @token),
-      notice: _("Please create a password for your new account.")
+    redirect_to new_admin_initial_setup_path
   end
 
   def ensure_password_authentication_enabled!
@@ -207,14 +244,17 @@ class SessionsController < Devise::SessionsController
     params.require(:user).permit(:login, :password, :remember_me, :otp_attempt, :device_response)
   end
 
+  def passwordless_passkey_params
+    permitted_list = [:device_response, :remember_me]
+    params.permit(permitted_list)
+  end
+
   def find_user
     strong_memoize(:find_user) do
-      if session[:otp_user_id] && user_params[:login]
-        User.by_login(user_params[:login]).find_by_id(session[:otp_user_id])
-      elsif session[:otp_user_id]
-        User.find(session[:otp_user_id])
-      elsif user_params[:login]
+      if user_params[:login]
         User.find_by_login(user_params[:login])
+      elsif session[:otp_user_id]
+        User.find_by_id(session[:otp_user_id])
       end
     end
   end
@@ -263,7 +303,8 @@ class SessionsController < Devise::SessionsController
     # Prevent alert from popping up on the first page shown after authentication.
     flash[:alert] = nil
 
-    redirect_to omniauth_authorize_path(:user, provider)
+    @provider_path = omniauth_authorize_path(:user, provider)
+    render 'devise/sessions/redirect_to_provider', layout: false
   end
 
   def valid_otp_attempt?(user)
@@ -274,10 +315,38 @@ class SessionsController < Devise::SessionsController
     user.invalidate_otp_backup_code!(user_params[:otp_attempt])
   end
 
+  def audit_event_name_for_authentication_method(method)
+    case method
+    when AuthenticationEvent::TWO_FACTOR
+      'authenticated_with_two_factor'
+    when AuthenticationEvent::TWO_FACTOR_WEBAUTHN
+      'authenticated_with_webauthn'
+    else
+      'authenticated_with_password'
+    end
+  end
+
   def log_audit_event(user, resource, options = {})
-    Gitlab::AppLogger.info("Successful Login: username=#{resource.username} ip=#{request.remote_ip} method=#{options[:with]} admin=#{resource.admin?}")
-    AuditEventService.new(user, user, options)
-      .for_authentication.security_event
+    Gitlab::AppLogger.info(
+      "Successful Login: username=#{resource.username} ip=#{request.remote_ip} " \
+        "method=#{options[:with]} admin=#{resource.admin?}"
+    )
+
+    event_name = audit_event_name_for_authentication_method(options[:with] || AuthenticationEvent::STANDARD)
+    audit_context = {
+      name: event_name,
+      author: user,
+      scope: user,
+      target: user,
+      message: "Signed in with #{options[:with]} authentication",
+      authentication_event: true,
+      organization: user.organization, # rubocop:disable Gitlab/AvoidUserOrganization -- Current.organization is not available on this context
+      authentication_provider: options[:with],
+      additional_details: {
+        with: options[:with]
+      }
+    }
+    ::Gitlab::Audit::Auditor.audit(audit_context)
   end
 
   def log_user_activity(user)
@@ -314,6 +383,9 @@ class SessionsController < Devise::SessionsController
   def set_invite_params
     @invite_email = ActionController::Base.helpers.sanitize(params[:invite_email])
   end
+
+  # overridden by EE module
+  def onboarding_status_tracking_label; end
 end
 
 SessionsController.prepend_mod_with('SessionsController')

@@ -20,6 +20,8 @@ ActiveSupport::Inflector.inflections do |inflect|
     dependency_proxy_blob_registry
     design_management_repository_registry
     dependency_proxy_manifest_registry
+    discover_premium
+    duo_enterprise
     duo_pro
     event_log
     file_registry
@@ -37,10 +39,14 @@ ActiveSupport::Inflector.inflections do |inflect|
     project_repository_registry
     project_statistics
     snippet_repository_registry
+    supply_chain_attestation_registry
     system_note_metadata
     terraform_state_version_registry
     vulnerabilities_feedback
     vulnerability_feedback
+    wiki_page_meta
+    WikiPage::Meta
+    packages_nuget_symbol_registry
   ]
   inflect.acronym 'CDN'
   inflect.acronym 'EE'

@@ -60,10 +60,10 @@ export default {
     },
   },
   mounted() {
-    eventHub.$on('openModal', this.openModal);
+    eventHub.$on('open-modal', this.openModal);
   },
   destroyed() {
-    eventHub.$off('openModal', this.openModal);
+    eventHub.$off('open-modal', this.openModal);
   },
   methods: {
     openModal({ isProtectedBranch, branchName, defaultBranchName, deletePath, merged }) {
@@ -115,21 +115,21 @@ export default {
         <gl-sprintf :message="modalMessage">
           <template #branchName>
             <strong>
-              <code class="gl-white-space-pre-wrap">{{ branchName }}</code>
+              <code class="gl-whitespace-pre-wrap">{{ branchName }}</code>
             </strong>
           </template>
         </gl-sprintf>
         <p v-if="!merged" class="gl-mb-0 gl-mt-4">
           <gl-sprintf :message="$options.i18n.unmergedWarning">
             <template #defaultBranchName>
-              <code class="gl-white-space-pre-wrap">{{ defaultBranchName }}</code>
+              <code class="gl-whitespace-pre-wrap">{{ defaultBranchName }}</code>
             </template>
           </gl-sprintf>
         </p>
       </div>
     </gl-alert>
 
-    <form ref="form" :action="deletePath" method="post" @submit.prevent>
+    <form ref="form" :action="deletePath" method="post" @submit.prevent="submitForm">
       <div v-if="isProtectedBranch" class="gl-mt-4">
         <p>
           <gl-sprintf :message="undoneWarning">
@@ -144,7 +144,7 @@ export default {
               {{ content }}
             </template>
           </gl-sprintf>
-          <code class="gl-white-space-pre-wrap">{{ branchName }}</code>
+          <code class="gl-whitespace-pre-wrap">{{ branchName }}</code>
           <gl-form-input
             v-model="enteredBranchName"
             name="delete_branch_input"
@@ -152,7 +152,6 @@ export default {
             class="gl-mt-4"
             aria-labelledby="input-label"
             autocomplete="off"
-            @keyup.enter="submitForm"
           />
         </p>
       </div>
@@ -173,7 +172,7 @@ export default {
     </form>
 
     <template #modal-footer>
-      <div class="gl-display-flex gl-flex-direction-row gl-justify-content-end gl-flex-wrap gl-m-0">
+      <div class="gl-m-0 gl-flex gl-flex-row gl-flex-wrap gl-justify-end">
         <gl-button data-testid="delete-branch-cancel-button" @click="closeModal">
           {{ $options.i18n.cancelButtonText }}
         </gl-button>

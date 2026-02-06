@@ -5,11 +5,6 @@ export default {
   components: { GlAlert, GlEmptyState, GlLink, GlLoadingIcon },
   inject: ['errorStateSvgPath', 'featureFlagsHelpPagePath'],
   props: {
-    count: {
-      required: false,
-      type: Number,
-      default: null,
-    },
     alerts: {
       required: true,
       type: Array,
@@ -43,14 +38,9 @@ export default {
       type: String,
     },
   },
-  computed: {
-    itemCount() {
-      return this.count ?? 0;
-    },
-  },
   methods: {
     clearAlert(index) {
-      this.$emit('dismissAlert', index);
+      this.$emit('dismiss-alert', index);
     },
   },
 };

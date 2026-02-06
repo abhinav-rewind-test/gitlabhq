@@ -4,16 +4,16 @@ require 'spec_helper'
 
 RSpec.describe API::Issues, feature_category: :team_planning do
   let_it_be(:user) { create(:user) }
-  let_it_be(:project, reload: true) { create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace) }
+  let_it_be(:project, reload: true) { create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, reporters: user) }
   let_it_be(:private_mrs_project) do
-    create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, merge_requests_access_level: ProjectFeature::PRIVATE)
+    create(:project, :public, :repository, creator_id: user.id, namespace: user.namespace, merge_requests_access_level: ProjectFeature::PRIVATE, reporters: user)
   end
 
-  let_it_be(:group) { create(:group, :public) }
+  let_it_be(:group) { create(:group, :public, reporters: user) }
 
   let_it_be(:user2)       { create(:user) }
   let_it_be(:non_member)  { create(:user) }
-  let_it_be(:guest)       { create(:user) }
+  let_it_be(:guest)       { create(:user, guest_of: [group, project, private_mrs_project]) }
   let_it_be(:author)      { create(:author) }
   let_it_be(:assignee)    { create(:assignee) }
   let_it_be(:admin)       { create(:user, :admin) }
@@ -87,15 +87,6 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       target_project: private_mrs_project,
       description: "closes #{issue.to_reference(private_mrs_project)}"
     )
-  end
-
-  before_all do
-    group.add_reporter(user)
-    group.add_guest(guest)
-    project.add_reporter(user)
-    project.add_guest(guest)
-    private_mrs_project.add_reporter(user)
-    private_mrs_project.add_guest(guest)
   end
 
   before do
@@ -341,6 +332,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
     it_behaves_like 'accessible merge requests count' do
       let(:api_url) { "/projects/#{project.id}/issues" }
       let(:target_issue) { issue }
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_issue do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/issues", personal_access_token: pat) }
     end
 
     context 'with labeled issues' do
@@ -603,6 +599,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
 
         it_behaves_like 'project issues statistics'
       end
+
+      it_behaves_like 'authorizing granular token permissions', :read_issue_statistic do
+        let(:boundary_object) { project }
+        let(:request) { get api("/projects/#{project.id}/issues_statistics", personal_access_token: pat) }
+      end
     end
 
     context 'filtering by assignee_username' do
@@ -725,13 +726,20 @@ RSpec.describe API::Issues, feature_category: :team_planning do
     end
 
     it 'returns 404 if issue id not found' do
-      get api("/projects/#{project.id}/issues/54321", user)
+      get api("/projects/#{project.id}/issues/#{non_existing_record_id}", user)
       expect(response).to have_gitlab_http_status(:not_found)
     end
 
     it 'returns 404 if the issue ID is used' do
-      get api("/projects/#{project.id}/issues/#{issue.id}", user)
+      # Make sure other issues don't exist with a matching id or iid to avoid flakyness
+      max_id = [Issue.maximum(:iid), Issue.maximum(:id)].max + 10
+      new_issue = create(:issue, project: project, id: max_id)
 
+      # make sure it does work with iid
+      get api("/projects/#{project.id}/issues/#{new_issue.iid}", user)
+      expect(response).to have_gitlab_http_status(:ok)
+
+      get api("/projects/#{project.id}/issues/#{new_issue.id}", user)
       expect(response).to have_gitlab_http_status(:not_found)
     end
 
@@ -785,6 +793,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       let(:api_url) { "/projects/#{project.id}/issues/#{issue.iid}" }
       let(:target_issue) { issue }
     end
+
+    it_behaves_like 'authorizing granular token permissions', :read_issue do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/issues/#{issue.iid}", personal_access_token: pat) }
+    end
   end
 
   describe 'GET :id/issues/:issue_iid/closed_by' do
@@ -800,6 +813,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       get api("/projects/#{project.id}/issues/#{issue.iid}/closed_by", user)
 
       expect_paginated_array_response(merge_request1.id)
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :read_issue_closing_merge_request do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/issues/#{issue.iid}/closed_by", personal_access_token: pat) }
     end
 
     context 'when no merge requests will close issue' do
@@ -837,6 +855,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
     end
 
     let!(:related_mr) { create_referencing_mr(user, project, issue) }
+
+    it_behaves_like 'authorizing granular token permissions', :read_issue_merge_request do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/issues/#{issue.iid}/related_merge_requests", personal_access_token: pat) }
+    end
 
     context 'when unauthenticated' do
       it 'return list of referenced merge requests from issue', :aggregate_failures do
@@ -904,6 +927,12 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       let(:path) { "/projects/#{project.id}/issues/#{issue.iid}/user_agent_detail" }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :read_issue_user_agent_detail do
+      let(:boundary_object) { project }
+      let(:user) { admin }
+      let(:request) { get api("/projects/#{project.id}/issues/#{issue.iid}/user_agent_detail", personal_access_token: pat) }
+    end
+
     context 'when unauthenticated' do
       it 'returns unauthorized' do
         get api("/projects/#{project.id}/issues/#{issue.iid}/user_agent_detail")
@@ -933,6 +962,11 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       let(:entity) { issue }
     end
 
+    it_behaves_like 'authorizing granular token permissions', :read_issue_participant do
+      let(:boundary_object) { project }
+      let(:request) { get api("/projects/#{project.id}/issues/#{issue.iid}/participants", personal_access_token: pat) }
+    end
+
     it 'returns 404 if the issue is confidential' do
       get api("/projects/#{project.id}/issues/#{confidential_issue.iid}/participants", non_member)
 
@@ -959,12 +993,26 @@ RSpec.describe API::Issues, feature_category: :team_planning do
       end
 
       context 'when user cannot see a confidential note' do
-        it 'returns a limited list of participants', :aggregate_failures do
-          get api("/projects/#{project.id}/issues/#{issue.iid}/participants", create(:user))
+        it 'returns participants with project/group access', :aggregate_failures do
+          get api("/projects/#{project.id}/issues/#{issue.iid}/participants", user)
 
           expect(response).to have_gitlab_http_status(:ok)
           participant_ids = json_response.map { |el| el['id'] }
-          expect(participant_ids).to match_array([issue.author_id])
+          expect(participant_ids).to match_array([issue.author_id, note.author_id])
+        end
+
+        context 'with remove_per_source_permission_from_participants disabled' do
+          before do
+            stub_feature_flags(remove_per_source_permission_from_participants: false)
+          end
+
+          it 'returns a limited list of participants', :aggregate_failures do
+            get api("/projects/#{project.id}/issues/#{issue.iid}/participants", create(:user))
+
+            expect(response).to have_gitlab_http_status(:ok)
+            participant_ids = json_response.map { |el| el['id'] }
+            expect(participant_ids).to match_array([issue.author_id])
+          end
         end
       end
     end

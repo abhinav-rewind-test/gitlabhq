@@ -8,9 +8,9 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
   let(:user) { create(:user, email: "user@example.com") }
   let(:user2) { create(:user, email: "user2@example.com") }
   let(:guest) { create(:user) }
-  let(:issue) { create(:issue, title: "My issue", project: project, assignees: [user2], author: create(:user)) }
+  let(:issue) { create(:issue, :unchanged, title: "My issue", project: project, assignees: [user2], author: create(:user)) }
   let(:external_issue) { ExternalIssue.new('JIRA-123', project) }
-  let(:closing_merge_request) { create(:merge_request, source_project: project) }
+  let(:closing_merge_request) { create(:merge_request, :unchanged, source_project: project) }
   let(:closing_commit) { create(:commit, project: project) }
   let!(:todo) { create(:todo, :assigned, user: user, project: project, target: issue, author: user2) }
 
@@ -42,22 +42,73 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
       service.execute(issue)
     end
 
-    it 'does not close the issue when the user is not authorized to do so' do
-      allow(service).to receive(:can?).with(user, :update_issue, issue)
-        .and_return(false)
+    context 'when the user is not authorized to close the issue' do
+      let(:target_issue) { issue }
 
-      expect(service).not_to receive(:close_issue)
-      expect(service.execute(issue)).to eq(issue)
-    end
+      before do
+        allow(service).to receive(:can?).with(user, :update_issue, target_issue).and_return(false)
+      end
 
-    it 'closes the external issue even when the user is not authorized to do so' do
-      allow(service).to receive(:can?).with(user, :update_issue, external_issue)
-        .and_return(false)
+      it 'does not close the issue' do
+        expect(service).not_to receive(:close_issue)
+        expect(service.execute(issue)).to eq(issue)
+      end
 
-      expect(service).to receive(:close_issue)
-        .with(external_issue, closed_via: nil, notifications: true, system_note: true)
+      it 'logs the failed authorization' do
+        expect(Gitlab::AppLogger).to receive(:info).with(
+          {
+            class: 'Issues::CloseService',
+            current_user_id: user.id,
+            issue_id: target_issue.id,
+            message: 'Unauthorized close issue'
+          }.stringify_keys
+        )
 
-      service.execute(external_issue)
+        service.execute(issue)
+      end
+
+      context 'when issue is closed via merge request' do
+        it 'logs the failed authorization' do
+          expect(Gitlab::AppLogger).to receive(:info).with(
+            {
+              class: 'Issues::CloseService',
+              current_user_id: user.id,
+              issue_id: target_issue.id,
+              message: 'Unauthorized close issue',
+              merge_request_id: closing_merge_request.id
+            }.stringify_keys
+          )
+
+          service.execute(issue, commit: closing_merge_request)
+        end
+      end
+
+      context 'when issue is closed via commit' do
+        it 'logs the failed authorization' do
+          expect(Gitlab::AppLogger).to receive(:info).with(
+            {
+              class: 'Issues::CloseService',
+              current_user_id: user.id,
+              issue_id: target_issue.id,
+              message: 'Unauthorized close issue',
+              commit: closing_commit.id
+            }.stringify_keys
+          )
+
+          service.execute(issue, commit: closing_commit)
+        end
+      end
+
+      context 'when issue is external' do
+        let(:target_issue) { external_issue }
+
+        it 'closes the external issue even when the user is not authorized to do so' do
+          expect(service).to receive(:close_issue)
+            .with(external_issue, closed_via: nil, notifications: true, system_note: true, status: nil)
+
+          service.execute(external_issue)
+        end
+      end
     end
 
     it 'closes the issue when the user is authorized to do so' do
@@ -65,7 +116,7 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
         .and_return(true)
 
       expect(service).to receive(:close_issue)
-        .with(issue, closed_via: nil, notifications: true, system_note: true)
+        .with(issue, closed_via: nil, notifications: true, system_note: true, status: nil)
 
       service.execute(issue)
     end
@@ -90,6 +141,10 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
       expect { service.execute(issue) }
         .to not_change { IncidentManagement::IssuableEscalationStatus.where(issue: issue).count }
         .and not_change { IncidentManagement::IssuableEscalationStatus.where(status: resolved).count }
+    end
+
+    it_behaves_like 'update service that triggers GraphQL work_item_updated subscription' do
+      subject(:execute_service) { service.execute(issue) }
     end
 
     context 'issue is incident type' do
@@ -209,10 +264,6 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
         close_issue
       end
 
-      it_behaves_like 'records an onboarding progress action', :issue_auto_closed do
-        let(:namespace) { project.namespace }
-      end
-
       context 'updating `metrics.first_mentioned_in_commit_at`' do
         context 'when `metrics.first_mentioned_in_commit_at` is not set' do
           it 'uses the first commit authored timestamp' do
@@ -265,7 +316,7 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
 
       it 'verifies the number of queries' do
         recorded = ActiveRecord::QueryRecorder.new { close_issue }
-        expected_queries = 30
+        expected_queries = 41
 
         expect(recorded.count).to be <= expected_queries
         expect(recorded.cached_count).to eq(0)
@@ -376,7 +427,7 @@ RSpec.describe Issues::CloseService, feature_category: :team_planning do
         close_issue
       end
 
-      it_behaves_like 'does not record an onboarding progress action'
+      it_behaves_like 'tracks work item event', :issue, :user, ::Gitlab::WorkItems::Instrumentation::EventActions::CLOSE, :close_issue
     end
 
     context 'when issue is not confidential' do

@@ -1,15 +1,13 @@
 <script>
-import { reportToSentry } from '~/ci/utils';
+import { GlResizeObserverDirective } from '@gitlab/ui';
 import {
   generateColumnsFromLayersListMemoized,
   keepLatestDownstreamPipelines,
 } from '~/ci/pipeline_details/utils/parsing_utils';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import LinksLayer from '../../../common/private/job_links_layer.vue';
 import { DOWNSTREAM, MAIN, UPSTREAM, ONE_COL_WIDTH, STAGE_VIEW } from '../constants';
 import { validateConfigPaths } from '../utils';
 import LinkedGraphWrapper from './linked_graph_wrapper.vue';
-import LinkedPipelinesColumn from './linked_pipelines_column.vue';
 import StageColumnComponent from './stage_column_component.vue';
 
 export default {
@@ -17,10 +15,13 @@ export default {
   components: {
     LinksLayer,
     LinkedGraphWrapper,
-    LinkedPipelinesColumn,
+    LinkedPipelinesColumn: () =>
+      import(/* webpackChunkName: 'linked_pipelines_column' */ './linked_pipelines_column.vue'),
     StageColumnComponent,
   },
-  mixins: [glFeatureFlagMixin()],
+  directives: {
+    GlResizeObserver: GlResizeObserverDirective,
+  },
   props: {
     configPaths: {
       type: Object,
@@ -59,6 +60,10 @@ export default {
       required: false,
       default: MAIN,
     },
+    userPermissions: {
+      type: Object,
+      required: true,
+    },
   },
   pipelineTypeConstants: {
     DOWNSTREAM,
@@ -79,6 +84,8 @@ export default {
         jobName: '',
         expanded: false,
       },
+      containerWidth: 0,
+      containerScrollWidth: 0,
     };
   },
   computed: {
@@ -134,15 +141,22 @@ export default {
     upstreamPipelines() {
       return this.hasUpstreamPipelines ? this.pipeline.upstream : [];
     },
-    isNewPipelineGraph() {
-      return this.glFeatures.newPipelineGraph;
+    currentPipelinePermissions() {
+      if (!this.pipeline?.id) {
+        return {};
+      }
+      return this.userPermissions[this.pipeline?.id] || {};
+    },
+    hasHorizontalOverflow() {
+      if (!this.containerWidth) return false;
+      return this.containerScrollWidth > this.containerWidth;
     },
   },
-  errorCaptured(err, _vm, info) {
-    reportToSentry(this.$options.name, `error: ${err}, info: ${info}`);
-  },
   mounted() {
-    this.getMeasurements();
+    this.$nextTick(() => {
+      this.getMeasurements();
+      this.updateContainerWidth();
+    });
   },
   methods: {
     getMeasurements() {
@@ -150,6 +164,25 @@ export default {
         width: this.$refs[this.containerId].scrollWidth,
         height: this.$refs[this.containerId].scrollHeight,
       };
+    },
+    updateContainerWidth() {
+      const container = this.$refs.mainPipelineContainer;
+      if (container) {
+        this.containerWidth = container.clientWidth;
+        this.containerScrollWidth = container.scrollWidth;
+      }
+    },
+    syncScrollToSticky({ target }) {
+      const { stickyScrollbar } = this.$refs;
+      if (!stickyScrollbar) return;
+
+      stickyScrollbar.scrollLeft = target.scrollLeft;
+    },
+    syncScrollFromSticky({ target }) {
+      const mainContainer = this.$refs.mainPipelineContainer;
+      if (!mainContainer) return;
+
+      mainContainer.scrollLeft = target.scrollLeft;
     },
     onError(payload) {
       this.$emit('error', payload);
@@ -182,18 +215,17 @@ export default {
 <template>
   <div class="js-pipeline-graph">
     <div
-      ref="mainPipelineContainer"
-      class="pipeline-graph gl-display-flex gl-position-relative gl-white-space-nowrap gl-rounded-lg"
+      :ref="isLinkedPipeline ? 'linkedPipelineContainer' : 'mainPipelineContainer'"
+      class="pipeline-graph gl-position-relative gl-flex gl-whitespace-nowrap gl-rounded-lg"
       :class="{
-        'gl-bg-gray-10': !isNewPipelineGraph,
-        'gl-pipeline-min-h gl-py-5 gl-overflow-auto': !isNewPipelineGraph && !isLinkedPipeline,
-        'pipeline-graph-container gl-bg-gray-10 gl-pipeline-min-h gl-align-items-flex-start gl-pt-3 gl-pb-8 gl-mt-3 gl-overflow-auto':
-          isNewPipelineGraph && !isLinkedPipeline,
-        'gl-bg-gray-50 gl-sm-ml-5': isNewPipelineGraph && isLinkedPipeline,
+        'pipeline-graph-container gl-pipeline-min-h gl-mt-3 gl-items-start gl-overflow-auto gl-bg-subtle gl-pb-8 gl-pt-3':
+          !isLinkedPipeline,
+        'gl-bg-strong @sm/panel:gl-ml-5': isLinkedPipeline,
       }"
       data-testid="pipeline-container"
+      @scroll="syncScrollToSticky"
     >
-      <linked-graph-wrapper>
+      <linked-graph-wrapper v-gl-resize-observer="updateContainerWidth">
         <template #upstream>
           <linked-pipelines-column
             v-if="showUpstreamPipelines"
@@ -204,6 +236,7 @@ export default {
             :skip-retry-modal="skipRetryModal"
             :type="$options.pipelineTypeConstants.UPSTREAM"
             :view-type="viewType"
+            :user-permissions="userPermissions"
             @error="onError"
             @setSkipRetryModal="$emit('setSkipRetryModal')"
           />
@@ -236,7 +269,7 @@ export default {
                 :source-job-hovered="hoveredSourceJobName"
                 :pipeline-expanded="pipelineExpanded"
                 :pipeline-id="pipeline.id"
-                :user-permissions="pipeline.userPermissions"
+                :user-permissions="currentPipelinePermissions"
                 @refreshPipelineGraph="$emit('refreshPipelineGraph')"
                 @setSkipRetryModal="$emit('setSkipRetryModal')"
                 @jobHover="setJob"
@@ -248,7 +281,7 @@ export default {
         <template #downstream>
           <linked-pipelines-column
             v-if="showDownstreamPipelines"
-            :class="{ 'gl-sm-ml-3': isNewPipelineGraph }"
+            class="@sm/panel:gl-ml-3"
             :config-paths="configPaths"
             :linked-pipelines="downstreamPipelines"
             :column-title="__('Downstream')"
@@ -256,6 +289,7 @@ export default {
             :show-links="showJobLinks"
             :type="$options.pipelineTypeConstants.DOWNSTREAM"
             :view-type="viewType"
+            :user-permissions="userPermissions"
             data-testid="downstream-pipelines"
             @downstreamHovered="setSourceJob"
             @pipelineExpandToggle="togglePipelineExpanded"
@@ -266,6 +300,20 @@ export default {
           />
         </template>
       </linked-graph-wrapper>
+    </div>
+
+    <div
+      v-if="!isLinkedPipeline && hasHorizontalOverflow"
+      ref="stickyScrollbar"
+      data-testid="sticky-scrollbar"
+      class="gl-z-10 gl-border-t gl-sticky gl-bottom-0 gl-h-5 gl-overflow-x-auto gl-overflow-y-hidden gl-bg-subtle"
+      @scroll="syncScrollFromSticky"
+    >
+      <div
+        data-testid="sticky-scrollbar-inner"
+        :style="{ width: `${containerScrollWidth}px` }"
+        class="gl-h-1"
+      ></div>
     </div>
   </div>
 </template>

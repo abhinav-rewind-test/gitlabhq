@@ -18,21 +18,13 @@ module Gitlab
       end
 
       def execute
-        Gitlab::Ci::YamlProcessor::FeatureFlags.with_actor(project) do
-          parse_config
-        end
-      end
-
-      private
-
-      def parse_config
         if @config_content.blank?
           return Result.new(errors: ['Please provide content of .gitlab-ci.yml'])
         end
 
         verify_project_sha! if verify_project_sha?
 
-        @ci_config = Gitlab::Ci::Config.new(@config_content, **@opts)
+        @ci_config = Gitlab::Ci::Config.new(@config_content, **ci_config_opts)
 
         unless @ci_config.valid?
           return Result.new(ci_config: @ci_config, errors: @ci_config.errors, warnings: @ci_config.warnings)
@@ -45,6 +37,14 @@ module Gitlab
         Result.new(ci_config: @ci_config, errors: [e.message], warnings: @ci_config&.warnings)
       rescue ValidationError => e
         Result.new(ci_config: @ci_config, errors: [e.message], warnings: @ci_config&.warnings)
+      end
+
+      private
+
+      attr_reader :opts
+
+      def ci_config_opts
+        @opts
       end
 
       def project
@@ -64,6 +64,8 @@ module Gitlab
         @stages = @ci_config.stages
         @jobs = @ci_config.normalized_jobs
 
+        error!(@ci_config.normalizer_errors.join(', ')) if @ci_config.normalizer_errors.any?
+
         @jobs.each do |name, job|
           validate_job!(name, job)
         end
@@ -78,13 +80,14 @@ module Gitlab
         validate_job_needs!(name, job)
         validate_dynamic_child_pipeline_dependencies!(name, job)
         validate_job_environment!(name, job)
+        validate_job_pages_publish!(name, job)
       end
 
       def validate_job_stage!(name, job)
         return unless job[:stage]
 
         unless job[:stage].is_a?(String) && job[:stage].in?(@stages)
-          error!("#{name} job: chosen stage does not exist; available stages are #{@stages.join(", ")}")
+          error!("#{name} job: chosen stage #{job[:stage]} does not exist; available stages are #{@stages.join(', ')}")
         end
       end
 
@@ -189,6 +192,13 @@ module Gitlab
         unless on_stop_job[:environment][:action] == 'stop'
           error!("#{name} job: on_stop job #{on_stop} needs to have action stop defined")
         end
+      end
+
+      def validate_job_pages_publish!(name, job)
+        return unless job[:pages].is_a?(Hash)
+        return unless job.key?(:publish) && job[:pages].key?(:publish)
+
+        error!("#{name} job: use either #{name}:publish or #{name}:pages:publish")
       end
 
       def check_circular_dependencies

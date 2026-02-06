@@ -1,13 +1,12 @@
 ---
-stage: Secure
-group: Threat Insights
+stage: Security Risk Management
+group: Security Insights
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Security report ingestion overview
 ---
 
-# Security report ingestion overview
-
-WARNING:
-The `Vulnerability::Feedback` model is currently undergoing deprecation and should be actively avoided in all further development. It is currently maintained with feature parity to enable revert should any issues arise, but is intended to be removed in 16.0. Any interactions relating to the Feedback model are superseded by the `StateTransition`, `IssueLink`, and `MergeRequestLink` models. You can find out more on [in this epic](https://gitlab.com/groups/gitlab-org/-/epics/5629).
+> [!warning]
+> The `Vulnerability::Feedback` model is currently undergoing deprecation and should be actively avoided in all further development. It is currently maintained with feature parity to enable revert should any issues arise, but is intended to be removed in 16.0. Any interactions relating to the Feedback model are superseded by the `StateTransition`, `IssueLink`, and `MergeRequestLink` models. You can find out more on [in this epic](https://gitlab.com/groups/gitlab-org/-/epics/5629).
 
 ## Commonly used terms
 
@@ -25,7 +24,7 @@ An instance of `Vulnerabilities::MergeRequestLink` class. They are used to link 
 
 ### Security Finding
 
-An instance of `Security::Finding` class. These serve as a meta-data store of a specific vulnerability detected in a specific `Security::Scan`. They currently store **partial** finding data to improve performance of the pipeline security report. This class has been extended to store almost all required scan information so we can stop relying on job artifacts and is [due to be used in favor of `Vulnerability::Findings` soon.](https://gitlab.com/gitlab-org/gitlab/-/issues/393394)
+An instance of `Security::Finding` class. These serve as a meta-data store of a specific vulnerability detected in a specific `Security::Scan`. They store all the required scan information necessary for the [pipeline security report](../../user/application_security/detect/security_scanning_results.md#pipeline-security-report), the [pipeline.securityReportFindings](../../api/graphql/reference/_index.md#pipelinesecurityreportfindings) GraphQL field, and the [Vulnerability Findings](../../api/vulnerability_findings.md) REST API.
 
 ### Security Scan
 
@@ -37,11 +36,11 @@ An instance of the `Vulnerabilities::StateTransition` class. This model represen
 
 ### Vulnerability
 
-An instance of `Vulnerability` class. A `Vulnerability` is representative of a `Vulnerability::Finding` which has been detected in the default branch of the project, or if the `present_on_default_branch` flag is false, is representative of a finding which has been interacted with in some way outside of the default branch, such as if it is dismissed (`State Transition`), or linked to an `Issue` or `Merge Request`. They are created based on information available in `Vulnerabilities::Finding` class. Every `Vulnerability` **must have** a corresponding `Vulnerabilities::Finding` object to be valid, however this is not enforced at the database level.
+An instance of `Vulnerability` class. A `Vulnerability` is representative of a `Vulnerabilities::Finding` record which has been detected in the default branch of the project, or if the `present_on_default_branch` flag is false, is representative of a finding which has been interacted with in some way outside of the default branch, such as if it is dismissed (`State Transition`), or linked to an `Issue` or `Merge Request`. They are created based on information available in `Vulnerabilities::Finding` class. Every `Vulnerability` **must have** a corresponding `Vulnerabilities::Finding` object to be valid, however this is not enforced at the database level.
 
-### Finding
+### Vulnerability Finding
 
-An instance of `Vulnerabilities::Finding` class. A `Vulnerability::Finding` is a database only representation of a security finding which has been merged into the default branch of a project, as the same `Vulnerability` may be present in multiple places within a project. This class was previously called `Vulnerabilities::Occurrence`; after renaming the class, we kept the associated table name `vulnerability_occurrences` due to the effort involved in renaming large tables.
+An instance of `Vulnerabilities::Finding` class. A `Vulnerabilities::Finding` record is a database-only representation of a security finding which has been merged into the default branch of a project, as the same `Vulnerability` may be present in multiple places within a project. This class was previously called `Vulnerabilities::Occurrence`; after renaming the class, we kept the associated table name `vulnerability_occurrences` due to the effort involved in renaming large tables.
 
 ### Identifier
 
@@ -49,7 +48,7 @@ An instance of the `Vulnerabilities::Identifier` class. Each vulnerability is gi
 
 ### Vulnerability Read
 
-An instance of the `Vulnerabilities::Read` class. This is a denormalized record of `Vulnerability` and `Vulnerability::Finding` data to improve performance of filtered querying of vulnerability data to the front end.
+An instance of the `Vulnerabilities::Read` class. This is a denormalized record of `Vulnerability` and `Vulnerabilities::Finding` data to improve performance of filtered querying of vulnerability data to the front end.
 
 ### Remediation
 
@@ -60,7 +59,7 @@ An instance of the `Vulnerabilities::Remediation` class. A remediation is repres
 Assumptions:
 
 - Project uses GitLab CI
-- Project uses [security scanning tools](../../user/application_security)
+- Project uses [security scanning tools](../../user/application_security/_index.md)
 - No Vulnerabilities are present in the database
 - All pipelines perform security scans
 
@@ -82,8 +81,8 @@ Some of the scenarios where these `Security::Finding` records may be promoted to
 
 If the pipeline ran on the default branch then the following steps, in addition to the steps in [Scan runs in a pipeline for a non-default branch](#scan-runs-in-a-pipeline-for-a-non-default-branch), are executed:
 
-1. `Security::StoreScansService` gets called and schedules `StoreSecurityReportsWorker`.
-1. `StoreSecurityReportsWorker` executes `Security::Ingestion::IngestReportsService`.
+1. `Security::StoreScansService` gets called and schedules `StoreSecurityReportsByProjectWorker`.
+1. `StoreSecurityReportsByProjectWorker` executes `Security::Ingestion::IngestReportsService`.
 1. `Security::Ingestion::IngestReportsService` takes all reports from a given Pipeline and calls `Security::Ingestion::IngestReportService` and then calls `Security::Ingestion::MarkAsResolvedService`.
 1. `Security::Ingestion::IngestReportService` calls `Security::Ingestion::IngestReportSliceService` which executes a number of tasks for a report slice.
 
@@ -111,6 +110,14 @@ Security Findings detected in scan run on the default branch are saved as `Vulne
 
 ## Vulnerability Read Creation
 
-`Vulnerability::Read` records are created via PostgreSQL database trigger upon the creation of a `Vulnerability::Finding` record and as such are part of our ingestion process, though they have no impact on it bar it's denormalization performance benefits on the report pages.
+`Vulnerability::Read` records are created via PostgreSQL database trigger upon the creation of a `Vulnerabilities::Finding` record and as such are part of our ingestion process, though they have no impact on it bar it's denormalization performance benefits on the report pages.
 
 This style of creation was intended to be fast and seamless, but has proven difficult to debug and maintain and may be [migrated to the application layer later](https://gitlab.com/gitlab-org/gitlab/-/issues/393912).
+
+## No longer detected
+
+The "No longer detected" badge on the vulnerability report is displayed if the `Vulnerability` record has `resolved_on_default_branch: true`.
+This is set by `Security::Ingestion::MarkAsResolvedService` when a pipeline runs on the default branch. Vulnerabilities which have
+`resolved_on_default_branch: false` and _are not_ present in the pipeline scan results are marked as resolved.
+[Secret detection](../../user/application_security/secret_detection/_index.md) and [manual](../../user/application_security/vulnerability_report/_index.md#manually-add-a-vulnerability)
+vulnerabilities are excluded from this process.

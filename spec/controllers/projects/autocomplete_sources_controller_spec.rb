@@ -11,7 +11,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
   let_it_be(:private_issue) { create(:labeled_issue, project: project, labels: [development]) }
   let_it_be(:private_work_item) { create(:work_item, project: project) }
   let_it_be(:issue) { create(:labeled_issue, project: public_project, labels: [development]) }
-  let_it_be(:work_item) { create(:work_item, project: public_project, id: 1, iid: 100) }
+  let_it_be(:work_item) { create(:work_item, project: public_project) }
   let_it_be(:user) { create(:user) }
 
   def members_by_username(username)
@@ -61,6 +61,15 @@ RSpec.describe Projects::AutocompleteSourcesController do
         let(:issuable_iid) { work_item.iid }
 
         it_behaves_like 'issuable commands'
+
+        it 'returns an array of commands when work_item_type_id is specified' do
+          sign_in(user)
+
+          get :commands, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, work_item_type_id: work_item.work_item_type_id }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response).to be_present
+        end
       end
 
       context 'with merge request' do
@@ -136,7 +145,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
         end
 
         it 'returns an array of member object' do
-          get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type }
+          get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
           expect(members_by_username('all').symbolize_keys).to include(
             username: 'all',
@@ -166,7 +175,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
           end
 
           it 'does not return the all mention user' do
-            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type }
+            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
             expect(json_response).not_to include(a_hash_including(
               { username: 'all', name: 'All Project and Group Members' }))
@@ -176,12 +185,14 @@ RSpec.describe Projects::AutocompleteSourcesController do
 
       context 'with issue' do
         let(:issuable_type) { issue.class.name }
+        let(:issuable_iid) { issue.iid }
 
         it_behaves_like 'all members are returned'
       end
 
       context 'with work item' do
         let(:issuable_type) { work_item.class.name }
+        let(:issuable_iid) { work_item.iid }
 
         it_behaves_like 'all members are returned'
       end
@@ -202,7 +213,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
         end
 
         it 'returns members including those from invited private groups' do
-          get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type }
+          get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
           expect(members_by_username('all').symbolize_keys).to include(
             username: 'all',
@@ -226,7 +237,7 @@ RSpec.describe Projects::AutocompleteSourcesController do
           end
 
           it 'does not return the all mention user' do
-            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type }
+            get :members, format: :json, params: { namespace_id: group.path, project_id: public_project.path, type: issuable_type, type_id: issuable_iid }
 
             expect(json_response).not_to include(a_hash_including(
               { username: 'all', name: 'All Project and Group Members' }))
@@ -237,20 +248,24 @@ RSpec.describe Projects::AutocompleteSourcesController do
       context 'with issue' do
         it_behaves_like 'private project is inaccessible' do
           let(:issuable_type) { private_issue.class.name }
+          let(:issuable_iid) { private_issue.iid }
         end
 
         it_behaves_like 'returns all members of public project' do
           let(:issuable_type) { issue.class.name }
+          let(:issuable_iid) { issue.iid }
         end
       end
 
       context 'with work item' do
         it_behaves_like 'private project is inaccessible' do
           let(:issuable_type) { private_work_item.class.name }
+          let(:issuable_iid) { private_work_item.iid }
         end
 
         it_behaves_like 'returns all members of public project' do
           let(:issuable_type) { work_item.class.name }
+          let(:issuable_iid) { work_item.iid }
         end
       end
     end
@@ -287,6 +302,57 @@ RSpec.describe Projects::AutocompleteSourcesController do
     end
   end
 
+  describe 'GET wikis' do
+    before do
+      create(:wiki_page, project: project, title: 'foo')
+    end
+
+    context 'when user can read wiki pages' do
+      before do
+        group.add_owner(user)
+        sign_in(user)
+      end
+
+      it 'lists wiki pages' do
+        get :wikis, format: :json, params: { namespace_id: group.path, project_id: project.path }
+
+        expect(json_response.pluck('title')).to eq(['foo'])
+      end
+
+      %w[templates uploads].each do |prefix|
+        context "with #{prefix}" do
+          before do
+            create(:wiki_page, project: project, title: "#{prefix}/#{prefix}1")
+          end
+
+          it "does not return #{prefix}" do
+            get :wikis, format: :json, params: { namespace_id: group.path, project_id: project.path }
+
+            expect(json_response.pluck('title')).not_to include("#{prefix}1")
+          end
+        end
+      end
+    end
+
+    context 'when user cannot read wiki pages' do
+      let_it_be(:group2) { create(:group, :public) }
+      let_it_be(:project2) { create(:project, :public, namespace: group2) }
+
+      before do
+        create(:wiki_page, project: project2, title: 'foo')
+
+        # set wikis feature to members only
+        project2.project_feature.update!(wiki_access_level: ProjectFeature::PRIVATE)
+      end
+
+      it 'returns an empty list' do
+        get :wikis, format: :json, params: { namespace_id: group2.path, project_id: project2.path }
+
+        expect(json_response).to eq([])
+      end
+    end
+  end
+
   describe 'GET contacts' do
     let_it_be(:contact_1) { create(:contact, group: group) }
     let_it_be(:contact_2) { create(:contact, group: group) }
@@ -295,40 +361,51 @@ RSpec.describe Projects::AutocompleteSourcesController do
       sign_in(user)
     end
 
-    context 'when feature flag is enabled' do
-      context 'when a group has crm enabled' do
-        context 'when a user can read contacts' do
-          it 'lists contacts' do
-            group.add_developer(user)
+    it 'lists contacts' do
+      group.add_developer(user)
 
-            get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
+      get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
 
-            emails = json_response.map { |contact_data| contact_data["email"] }
-            expect(emails).to match_array([contact_1.email, contact_2.email])
-          end
-        end
+      emails = json_response.map { |contact_data| contact_data["email"] }
+      expect(emails).to match_array([contact_1.email, contact_2.email])
+    end
 
-        context 'when a user can not read contacts' do
-          it 'renders 404' do
-            get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
+    context 'with contacts outside of the root group' do
+      let!(:crm_group) { create(:group) }
+      let!(:crm_settings) { create(:crm_settings, group: group, source_group: crm_group) }
+      let!(:contact_1) { create(:contact, group: crm_group) }
+      let!(:contact_2) { create(:contact, group: crm_group) }
 
-            expect(response).to have_gitlab_http_status(:not_found)
-          end
-        end
+      it 'lists contacts' do
+        project.add_developer(user)
+        crm_group.add_developer(user)
+
+        get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
+
+        emails = json_response.map { |contact_data| contact_data["email"] }
+        expect(emails).to match_array([contact_1.email, contact_2.email])
+      end
+    end
+
+    context 'when a user can not read contacts' do
+      it 'renders 404' do
+        get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
+
+        expect(response).to have_gitlab_http_status(:not_found)
+      end
+    end
+
+    context 'when a group has crm disabled' do
+      before do
+        create(:crm_settings, group: group, enabled: false)
       end
 
-      context 'when a group has crm disabled' do
-        before do
-          create(:crm_settings, group: group, enabled: false)
-        end
+      it 'renders 404' do
+        group.add_developer(user)
 
-        it 'renders 404' do
-          group.add_developer(user)
+        get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
 
-          get :contacts, format: :json, params: { namespace_id: group.path, project_id: project.path, type: issue.class.name }
-
-          expect(response).to have_gitlab_http_status(:not_found)
-        end
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
   end

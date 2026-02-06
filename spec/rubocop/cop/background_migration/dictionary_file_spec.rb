@@ -13,10 +13,14 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
   end
 
   shared_examples 'migration with missing dictionary keys offense' do |missing_key|
+    let(:missing_key_message) do
+      format(described_class::MSG[:missing_key], key: missing_key, filename: dictionary_file_path)
+    end
+
     it 'registers an offense' do
       expect_offense(<<~RUBY)
         class QueueMyMigration < Gitlab::Database::Migration[2.1]
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{format(described_class::MSG[:missing_key], key: missing_key)}
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{missing_key_message}
           MIGRATION = 'MyMigration'
 
           def up
@@ -97,6 +101,10 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
       end
 
       context 'for migrations after enforced time' do
+        let(:missing_dictionary_message) do
+          format(described_class::MSG[:missing_dictionary], filename: dictionary_file_path)
+        end
+
         before do
           allow(cop).to receive(:version).and_return(20231118100907)
         end
@@ -104,7 +112,7 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
         it 'throws offense on not having the appropriate dictionary file with migration name as a constant' do
           expect_offense(<<~RUBY)
             class QueueMyMigration < Gitlab::Database::Migration[2.1]
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{format("Missing %{file_name}. Use the generator 'batched_background_migration' to create dictionary files automatically. For more details refer: https://docs.gitlab.com/ee/development/database/batched_background_migrations.html#generator", file_name: dictionary_file_path)}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{missing_dictionary_message}
               MIGRATION = 'MyMigration'
 
               def up
@@ -121,7 +129,7 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
         it 'throws offense on not having the appropriate dictionary file with migration name as a variable' do
           expect_offense(<<~RUBY)
             class QueueMyMigration < Gitlab::Database::Migration[2.1]
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{format("Missing %{file_name}. Use the generator 'batched_background_migration' to create dictionary files automatically. For more details refer: https://docs.gitlab.com/ee/development/database/batched_background_migrations.html#generator", file_name: dictionary_file_path)}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{missing_dictionary_message}
               def up
                 queue_batched_background_migration(
                   'MyMigration',
@@ -135,19 +143,18 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
 
         context 'with dictionary file' do
           let(:introduced_by_url) { 'https://gitlab.com/gitlab-org/gitlab/-/merge_requests/132639' }
-          let(:finalize_after) { '20230507160251' }
           let(:milestone) { '16.1' }
 
           before do
             allow(File).to receive(:exist?).and_call_original
             allow(File).to receive(:exist?).with(dictionary_file_path).and_return(true)
-            allow(::RuboCop::BatchedBackgroundMigrationsDictionary).to receive(:dictionary_data).and_return({
-              '20231118100907' => {
-                finalize_after: finalize_after,
-                introduced_by_url: introduced_by_url,
-                milestone: milestone
-              }
-            })
+            allow(Gitlab::Utils::BatchedBackgroundMigrationsDictionary)
+              .to receive(:entries).and_return({
+                '20231118100907' => {
+                  introduced_by_url: introduced_by_url,
+                  milestone: milestone
+                }
+              })
           end
 
           context 'without introduced_by_url' do
@@ -156,19 +163,16 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
             end
           end
 
-          context 'without finalize_after' do
-            it_behaves_like 'migration with missing dictionary keys offense', :finalize_after do
-              let(:finalize_after) { nil }
-            end
-          end
-
           context 'when the `introduced_by_url` is not correct' do
             let(:introduced_by_url) { 'https://gitlab.com/gitlab-org/gitlab/-/merge_requests/132639/invalid' }
+            let(:invalid_url_message) do
+              format(described_class::MSG[:invalid_url], key: :introduced_by_url, filename: dictionary_file_path)
+            end
 
             it 'throws offense on having a correct url' do
               expect_offense(<<~RUBY)
                 class QueueMyMigration < Gitlab::Database::Migration[2.1]
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{format('Invalid `introduced_by_url` url for the dictionary. Please use the following format: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/XXX')}
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{invalid_url_message}
                   def up
                     queue_batched_background_migration(
                       'MyMigration',
@@ -189,11 +193,14 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
 
           context 'when milestone is a number' do
             let(:milestone) { 16.1 }
+            let(:invalid_milestone_message) do
+              format(described_class::MSG[:invalid_milestone], key: :milestone, filename: dictionary_file_path)
+            end
 
             it 'throws offense on having an invalid milestone' do
               expect_offense(<<~RUBY)
                 class QueueMyMigration < Gitlab::Database::Migration[2.1]
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{format('Invalid `milestone` for the dictionary. It must be a string. Please ensure it is quoted.')}
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{invalid_milestone_message}
                   def up
                     queue_batched_background_migration(
                       'MyMigration',
@@ -226,11 +233,118 @@ RSpec.describe RuboCop::Cop::BackgroundMigration::DictionaryFile, feature_catego
         end
       end
     end
+
+    context 'with ensure_batched_background_migration_is_finished' do
+      let(:rails_root) { File.expand_path('../../../..', __dir__) }
+      let(:dictionary_file_path) { File.join(rails_root, 'db/docs/batched_background_migrations/my_migration.yml') }
+
+      context 'for migrations before enforced time' do
+        before do
+          allow(cop).to receive(:version).and_return(20230918100907)
+        end
+
+        it 'does not throw any offenses' do
+          expect_no_offenses(<<~RUBY)
+            class FinalizeMyMigration < Gitlab::Database::Migration[2.1]
+              MIGRATION = 'MyMigration'
+
+              def up
+                ensure_batched_background_migration_is_finished(
+                  job_class_name: MIGRATION,
+                  table_name: :users,
+                  column_name: :id,
+                  job_arguments: []
+                )
+              end
+            end
+          RUBY
+        end
+      end
+
+      context 'for migrations after enforced time' do
+        before do
+          allow(cop).to receive(:version).and_return(20231118100907)
+        end
+
+        context 'with dictionary file' do
+          let(:introduced_by_url) { 'https://gitlab.com/gitlab-org/gitlab/-/merge_requests/132639' }
+          let(:milestone) { '16.1' }
+          let(:finalized_by) { '20231118100907' }
+
+          before do
+            dictionary_instance = instance_double(Gitlab::Utils::BatchedBackgroundMigrationsDictionary)
+            allow(dictionary_instance).to receive(:finalized_by).and_return(finalized_by)
+
+            allow(Gitlab::Utils::BatchedBackgroundMigrationsDictionary)
+              .to receive(:entry).with('MyMigration').and_return(dictionary_instance)
+          end
+
+          context 'without finalized_by' do
+            let(:finalized_by) { nil }
+            let(:missing_finalized_by_message) do
+              format(described_class::MSG[:missing_finalized_by], filename: dictionary_file_path)
+            end
+
+            it 'throws offense on missing finalized_by' do
+              expect_offense(<<~RUBY)
+                class FinalizeMyMigration < Gitlab::Database::Migration[2.1]
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{missing_finalized_by_message}
+                  MIGRATION = 'MyMigration'
+
+                  def up
+                    ensure_batched_background_migration_is_finished(
+                      job_class_name: MIGRATION,
+                      table_name: :users,
+                      column_name: :id,
+                      job_arguments: []
+                    )
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context 'with finalized_by' do
+            it 'does not throw offense with appropriate dictionary file' do
+              expect_no_offenses(<<~RUBY)
+                class FinalizeMyMigration < Gitlab::Database::Migration[2.1]
+                  MIGRATION = 'MyMigration'
+
+                  def up
+                    ensure_batched_background_migration_is_finished(
+                      job_class_name: MIGRATION,
+                      table_name: :users,
+                      column_name: :id,
+                      job_arguments: []
+                    )
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context 'when the migration is no-op' do
+            it 'does not throw offense' do
+              expect_no_offenses(<<~RUBY)
+                class FinalizeMyMigration < Gitlab::Database::Migration[2.1]
+                  MIGRATION = 'MyMigration'
+
+                  def up
+                    # no-op
+                  end
+                end
+              RUBY
+            end
+          end
+        end
+      end
+    end
   end
 
   describe '#external_dependency_checksum' do
-    it 'uses the RuboCop::BatchedBackgroundMigrationsDictionary.checksum' do
-      allow(RuboCop::BatchedBackgroundMigrationsDictionary).to receive(:checksum).and_return('aaaaa')
+    it 'uses the Utils::BatchedBackgroundMigrationsDictionary.checksum' do
+      allow(Gitlab::Utils::BatchedBackgroundMigrationsDictionary)
+        .to receive(:checksum).and_return('aaaaa')
 
       expect(cop.external_dependency_checksum).to eq('aaaaa')
     end

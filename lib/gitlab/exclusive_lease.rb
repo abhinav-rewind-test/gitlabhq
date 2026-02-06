@@ -90,10 +90,18 @@ module Gitlab
     end
 
     def self.set_skip_transaction_check_flag(flag = nil)
+      return @skip_transaction_check_for_exclusive_lease = flag if ::Rails.env.test?
+
       Thread.current[:skip_transaction_check_for_exclusive_lease] = flag
     end
 
     def self.skip_transaction_check?
+      # When transactional tests are in use, Rails ensures all application threads
+      # get the same connection so they can all see the data in the
+      # uncommited transaction.
+      # So we use a class instance variable so that skipping transaction checks apply to all threads.
+      return @skip_transaction_check_for_exclusive_lease if ::Rails.env.test?
+
       Thread.current[:skip_transaction_check_for_exclusive_lease]
     end
 
@@ -106,7 +114,7 @@ module Gitlab
       set_skip_transaction_check_flag(previous_skip_transaction_check)
     end
 
-    def initialize(key, uuid: nil, timeout:)
+    def initialize(key, timeout:, uuid: nil)
       @redis_shared_state_key = self.class.redis_shared_state_key(key)
       @timeout = timeout
       @uuid = uuid || SecureRandom.uuid
@@ -124,7 +132,9 @@ module Gitlab
     end
 
     def report_lock_attempt_inside_transaction
-      return unless ::ApplicationRecord.inside_transaction? || ::Ci::ApplicationRecord.inside_transaction?
+      return unless ::ApplicationRecord.inside_transaction? ||
+        Gitlab::Database.database_base_models.values
+          .reject { |c| c == ActiveRecord::Base }.any?(&:inside_transaction?)
 
       raise LeaseWithinTransactionError,
         "Exclusive lease cannot be obtained within a transaction as it could lead to idle transactions."
@@ -169,6 +179,13 @@ module Gitlab
     # Gives up this lease, allowing it to be obtained by others.
     def cancel
       self.class.cancel(@redis_shared_state_key, @uuid)
+    end
+
+    # Returns true if the UUID for the key hasn't changed.
+    def same_uuid?
+      ::Gitlab::Redis::SharedState.with do |redis|
+        redis.get(@redis_shared_state_key) == @uuid
+      end
     end
   end
 end

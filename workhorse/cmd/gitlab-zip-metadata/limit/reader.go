@@ -1,3 +1,4 @@
+// Package limit provides functionality for limiting reads from a reader
 package limit
 
 import (
@@ -6,6 +7,7 @@ import (
 	"sync/atomic"
 )
 
+// ErrLimitExceeded is returned when the reader limit is exceeded
 var ErrLimitExceeded = errors.New("reader limit exceeded")
 
 // LimitedReaderAt supports running a callback in case of reaching a read limit
@@ -17,9 +19,10 @@ type LimitedReaderAt struct {
 	limitFunc func(int64)
 }
 
+// ReadAt reads bytes from a specified offset
 func (r *LimitedReaderAt) ReadAt(p []byte, off int64) (int, error) {
-	if max := r.limit - r.read; int64(len(p)) > max {
-		p = p[0:max]
+	if maxBytes := r.limit - r.read; int64(len(p)) > maxBytes {
+		p = p[0:maxBytes]
 	}
 
 	n, err := r.parent.ReadAt(p, off)
@@ -34,6 +37,7 @@ func (r *LimitedReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return n, err
 }
 
+// NewLimitedReaderAt returns a new LimitedReaderAt with the given reader, limit, and limit function.
 func NewLimitedReaderAt(reader io.ReaderAt, limit int64, limitFunc func(int64)) io.ReaderAt {
 	return &LimitedReaderAt{parent: reader, limit: limit, limitFunc: limitFunc}
 }

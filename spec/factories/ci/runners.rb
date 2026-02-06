@@ -4,37 +4,91 @@ FactoryBot.define do
   factory :ci_runner, class: 'Ci::Runner' do
     sequence(:description) { |n| "My runner#{n}" }
 
-    platform { "darwin" }
     active { true }
     access_level { :not_protected }
 
     runner_type { :instance_type }
 
+    creation_state { :finished }
+
     transient do
       groups { [] }
       projects { [] }
+      token { nil }
       token_expires_at { nil }
       creator { nil }
+      without_projects { false }
     end
 
     after(:build) do |runner, evaluator|
+      runner.organization_id ||= evaluator.projects.first&.organization_id if runner.project_type?
       evaluator.projects.each do |proj|
         runner.runner_projects << build(:ci_runner_project, runner: runner, project: proj)
       end
 
+      runner.organization_id ||= evaluator.groups.first&.organization_id if runner.group_type?
       evaluator.groups.each do |group|
         runner.runner_namespaces << build(:ci_runner_namespace, runner: runner, namespace: group)
       end
 
       runner.creator = evaluator.creator if evaluator.creator
+
+      runner.set_token(evaluator.token) if evaluator.token
+
+      case runner.runner_type
+      when 'group_type'
+        raise ':groups is mandatory' unless evaluator.groups&.any?
+      when 'project_type'
+        raise ':projects is mandatory' unless evaluator.projects&.any? || evaluator.without_projects
+      end
     end
 
     after(:create) do |runner, evaluator|
       runner.update!(token_expires_at: evaluator.token_expires_at) if evaluator.token_expires_at
     end
 
+    trait :unregistered do
+      contacted_at { nil }
+      creation_state { :started }
+    end
+
     trait :online do
-      contacted_at { Time.now }
+      contacted_at { Time.current }
+    end
+
+    trait :almost_offline do
+      contacted_at { 0.001.seconds.after(Ci::Runner.online_contact_time_deadline) }
+    end
+
+    trait :offline do
+      contacted_at { Ci::Runner.online_contact_time_deadline }
+    end
+
+    trait :stale do
+      after(:build) do |runner, evaluator|
+        if evaluator.uncached_contacted_at.nil? && evaluator.creation_state == :finished
+          # Set stale contacted_at value unless this is an `:unregistered` runner
+          runner.contacted_at = Ci::Runner.stale_deadline
+        end
+
+        runner.created_at = [runner.created_at, runner.uncached_contacted_at, Ci::Runner.stale_deadline].compact.min
+      end
+    end
+
+    trait :contacted_within_stale_deadline do
+      contacted_at { 0.001.seconds.after(Ci::Runner.stale_deadline) }
+    end
+
+    trait :created_within_stale_deadline do
+      created_at { 0.001.seconds.after(Ci::Runner.stale_deadline) }
+    end
+
+    trait :created_before_registration_deadline do
+      created_at { 0.001.seconds.after(Ci::Runner::REGISTRATION_AVAILABILITY_TIME.ago) }
+    end
+
+    trait :created_after_registration_deadline do
+      created_at { Ci::Runner::REGISTRATION_AVAILABILITY_TIME.ago }
     end
 
     trait :instance do
@@ -46,7 +100,7 @@ FactoryBot.define do
 
       after(:build) do |runner, evaluator|
         if runner.runner_namespaces.empty?
-          runner.runner_namespaces << build(:ci_runner_namespace)
+          runner.runner_namespaces << build(:ci_runner_namespace, runner: runner)
         end
       end
     end
@@ -56,16 +110,24 @@ FactoryBot.define do
 
       after(:build) do |runner, evaluator|
         if runner.runner_projects.empty?
-          runner.runner_projects << build(:ci_runner_project)
+          runner.runner_projects << build(:ci_runner_project, runner: runner)
         end
       end
     end
 
+    # we use without_projects to create invalid runner: the one without projects
     trait :without_projects do
-      # we use that to create invalid runner:
-      # the one without projects
+      transient do
+        without_projects { true }
+      end
+
+      after(:build) do |runner, evaluator|
+        runner.organization_id = create(:common_organization).id
+      end
+
       after(:create) do |runner, evaluator|
         runner.runner_projects.delete_all
+        runner.clear_memoization(:owner)
       end
     end
 
@@ -75,7 +137,7 @@ FactoryBot.define do
       end
     end
 
-    trait :inactive do
+    trait :paused do
       active { false }
     end
 
@@ -91,6 +153,10 @@ FactoryBot.define do
 
     trait :locked do
       locked { true }
+    end
+
+    trait :hosted_runner do
+      creator { Users::Internal.in_organization(organization_id).admin_bot }
     end
   end
 end

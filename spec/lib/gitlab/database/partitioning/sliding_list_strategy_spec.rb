@@ -1,8 +1,40 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'support/shared_examples/database/partitioning/shared_model_connection_enforcement'
 
 RSpec.describe Gitlab::Database::Partitioning::SlidingListStrategy, feature_category: :database do
+  shared_context 'with shared model setup' do
+    let(:shared_model) do
+      Class.new(Gitlab::Database::SharedModel) do
+        include PartitionedTable
+        self.table_name = '_test_partitioned_shared_model'
+        self.ignored_columns = [:partition]
+        partitioned_by :partition, strategy: :sliding_list, next_partition_if: proc {
+          false
+        }, detach_partition_if: proc {
+          false
+        }
+      end
+    end
+
+    before do
+      # Create the parent table
+      connection.execute(<<~SQL)
+        CREATE TABLE #{shared_model.table_name}
+          (id serial not null, partition bigint not null default 1, PRIMARY KEY (id, partition))
+          PARTITION BY LIST (partition)
+      SQL
+
+      # Use PartitionManager to create initial partitions
+      Gitlab::Database::Partitioning::PartitionManager.new(shared_model, connection: connection).sync_partitions
+    end
+
+    after do
+      connection.execute("DROP TABLE IF EXISTS #{shared_model.table_name} CASCADE")
+    end
+  end
+
   include Gitlab::Database::DynamicModelHelpers
 
   let(:connection) { ActiveRecord::Base.connection }
@@ -298,6 +330,41 @@ RSpec.describe Gitlab::Database::Partitioning::SlidingListStrategy, feature_cate
     end
   end
 
+  describe '#after_adding_partitions' do
+    context 'when the shared connection is for the same database' do
+      it 'changes column default' do
+        expect(strategy.model.connection)
+          .to receive(:change_column_default)
+          .and_call_original
+
+        expect(Gitlab::AppLogger).not_to receive(:warn)
+
+        Gitlab::Database::SharedModel.using_connection(ApplicationRecord.connection) do
+          strategy.after_adding_partitions
+        end
+      end
+    end
+
+    context 'when the shared connection is for the wrong database' do
+      it 'does not attempt to change column default' do
+        skip_if_shared_database(:ci)
+        expect(strategy.model.connection).not_to receive(:change_column_default)
+
+        expect(Gitlab::AppLogger).to receive(:warn).with(
+          message: 'Skipping changing column default because connections mismatch',
+          model_connection_name: 'main',
+          shared_connection_name: 'ci',
+          table_name: table_name,
+          event: :partition_manager_after_adding_partitions_connection_mismatch
+        )
+
+        Gitlab::Database::SharedModel.using_connection(Ci::ApplicationRecord.connection) do
+          strategy.after_adding_partitions
+        end
+      end
+    end
+  end
+
   describe 'attributes' do
     let(:partitioning_key) { :partition }
     let(:next_partition_if) { -> { puts "next_partition_if" } }
@@ -322,5 +389,13 @@ RSpec.describe Gitlab::Database::Partitioning::SlidingListStrategy, feature_cate
         analyze_interval: analyze_interval
       })
     end
+  end
+
+  describe 'with shared model' do
+    include_context 'with shared model setup'
+
+    subject { shared_model.partitioning_strategy.current_partitions }
+
+    include_examples 'shared model connection enforcement'
   end
 end

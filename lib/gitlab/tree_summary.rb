@@ -6,7 +6,7 @@ module Gitlab
     include ::MarkupHelper
 
     CACHE_EXPIRE_IN = 1.hour
-    MAX_OFFSET = 2**31 - 1
+    MAX_OFFSET = (2**31) - 1
 
     attr_reader :commit, :project, :path, :offset, :limit, :user, :resolved_commits
 
@@ -40,7 +40,7 @@ module Gitlab
       commits_hsh = fetch_last_cached_commits_list
       prerender_commit_full_titles!(commits_hsh.values)
 
-      commits_hsh.map do |path_key, commit|
+      entries = commits_hsh.map do |path_key, commit|
         commit = cache_commit(commit)
 
         {
@@ -50,6 +50,8 @@ module Gitlab
           commit_title_html: markdown_field(commit, :full_title)
         }
       end
+
+      fill_path_locks!(entries)
     end
 
     def fetch_logs
@@ -59,6 +61,29 @@ module Gitlab
     end
 
     private
+
+    def fill_path_locks!(entries)
+      return entries unless project.lfs_enabled?
+
+      paths = entries.map { |entry| entry_path(entry) }
+      lfs_locks = project.lfs_file_locks.for_paths(paths).index_by(&:path)
+
+      entries.each do |entry|
+        path = entry_path(entry)
+        lfs_lock = lfs_locks[path]
+
+        entry[:lock_label] = lfs_lock_label(lfs_lock) if lfs_lock
+      end
+    end
+
+    def entry_path(entry)
+      File.join(*[path, entry[:file_name]].compact).force_encoding(Encoding::ASCII_8BIT)
+    end
+
+    def lfs_lock_label(lfs_lock)
+      username = lfs_lock.user.username
+      "Locked by #{username}"
+    end
 
     def next_offset(entries_count)
       return if entries_count <= limit
@@ -81,6 +106,7 @@ module Gitlab
       commits = Rails.cache.fetch(cache_key, expires_in: CACHE_EXPIRE_IN) do
         repository
           .list_last_commits_for_tree(commit.id, ensured_path, offset: offset, limit: limit + 1, literal_pathspec: true)
+          .tap { |tuple| prerender_commit_full_titles!(tuple.values) }
           .transform_values! { |commit| commit_to_hash(commit) }
       end
 

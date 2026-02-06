@@ -1,20 +1,30 @@
 <script>
 import { escape, isEmpty } from 'lodash';
 import ActionComponent from '~/ci/common/private/job_action_component.vue';
-import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { reportToSentry } from '~/ci/utils';
+import { __, s__, sprintf } from '~/locale';
+import { confirmAction } from '~/lib/utils/confirm_via_gl_modal/confirm_via_gl_modal';
+import { sanitize } from '~/lib/dompurify';
+import { FAILED_STATUS } from '~/ci/constants';
 import RootGraphLayout from './root_graph_layout.vue';
 import JobGroupDropdown from './job_group_dropdown.vue';
 import JobItem from './job_item.vue';
 
 export default {
+  name: 'StageColumnComponent',
   components: {
     ActionComponent,
     JobGroupDropdown,
     JobItem,
     RootGraphLayout,
   },
-  mixins: [glFeatureFlagMixin()],
+  i18n: {
+    confirmationModal: {
+      title: s__('PipelineGraph|Are you sure you want to run %{stageName}?'),
+      actionCancel: { text: __('Cancel') },
+      actionPrimary: { text: __('Confirm') },
+    },
+  },
   props: {
     groups: {
       type: Array,
@@ -43,11 +53,6 @@ export default {
       required: false,
       default: false,
     },
-    jobHovered: {
-      type: String,
-      required: false,
-      default: '',
-    },
     pipelineExpanded: {
       type: Object,
       required: false,
@@ -68,58 +73,18 @@ export default {
       required: true,
     },
   },
-  legacyJobClasses: [
-    'gl-p-3',
-    'gl-border-gray-100',
-    'gl-border-solid',
-    'gl-border-1',
-    'gl-bg-white',
-    'gl-rounded-7',
-    'gl-hover-bg-gray-50',
-    'gl-focus-bg-gray-50',
-    'gl-hover-text-gray-900',
-    'gl-focus-text-gray-900',
-    'gl-hover-border-gray-200',
-    'gl-focus-border-gray-200',
-  ],
-  jobClasses: [
-    'gl-p-3',
-    'gl-border-0',
-    'gl-bg-transparent',
-    'gl-rounded-base',
-    'gl-hover-bg-gray-50',
-    'gl-focus-bg-gray-50',
-    'gl-hover-text-gray-900',
-    'gl-focus-text-gray-900',
-  ],
-  legacyTitleClasses: [
-    'gl-font-weight-bold',
-    'gl-pipeline-job-width',
-    'gl-text-truncate',
-    'gl-line-height-36',
-    'gl-pl-3',
-  ],
-  titleClasses: [
-    'gl-font-weight-bold',
-    'gl-pipeline-job-width',
-    'gl-text-truncate',
-    'gl-line-height-36',
-    'gl-pl-4',
-    'gl-mb-n2',
-  ],
+  jobClasses: ['gl-w-full', 'gl-p-3', 'gl-border-0', '!gl-rounded-base', 'pipeline-job-action'],
+  data() {
+    return {
+      shouldTriggerActionClick: false,
+    };
+  },
   computed: {
     canUpdatePipeline() {
       return this.userPermissions.updatePipeline;
     },
     columnSpacingClass() {
-      if (this.isNewPipelineGraph) {
-        const baseClasses = 'stage-column gl-relative gl-flex-basis-full';
-        return this.isStageView
-          ? `${baseClasses} is-stage-view gl-m-5`
-          : `${baseClasses} gl-my-5 gl-mx-7`;
-      }
-
-      return this.isStageView ? 'gl-px-6' : 'gl-px-9';
+      return this.isStageView ? 'is-stage-view gl-m-5' : 'gl-my-5 gl-mx-7';
     },
     hasAction() {
       return !isEmpty(this.action);
@@ -127,20 +92,15 @@ export default {
     showStageName() {
       return !this.isStageView;
     },
-    isNewPipelineGraph() {
-      return this.glFeatures.newPipelineGraph;
+    withConfirmationModal() {
+      return this.action.confirmationMessage !== null;
     },
-    jobClasses() {
-      return this.isNewPipelineGraph ? this.$options.jobClasses : this.$options.legacyJobClasses;
+    nonFailedJobs() {
+      return this.groups.filter((group) => group.status?.group !== FAILED_STATUS);
     },
-    titleClasses() {
-      return this.isNewPipelineGraph
-        ? this.$options.titleClasses
-        : this.$options.legacyTitleClasses;
+    failedJobs() {
+      return this.groups.filter((group) => group.status?.group === FAILED_STATUS);
     },
-  },
-  errorCaptured(err, _vm, info) {
-    reportToSentry('stage_column_component', `error: ${err}, info: ${info}`);
   },
   mounted() {
     this.$emit('updateMeasurements');
@@ -156,7 +116,10 @@ export default {
       return this.highlightedJobs.length > 1 && !this.highlightedJobs.includes(jobName);
     },
     isParallel(group) {
-      return group.size > 1 && group.jobs.length > 1;
+      return !this.isMatrix(group) && group.size > 1;
+    },
+    isMatrix(group) {
+      return group.jobs[0].name !== group.name;
     },
     singleJobExists(group) {
       const firstJobDefined = Boolean(group.jobs?.[0]);
@@ -167,72 +130,144 @@ export default {
 
       return group.size === 1 && firstJobDefined;
     },
+    executePendingAction() {
+      this.shouldTriggerActionClick = true;
+    },
+    async actionClicked() {
+      if (this.action.confirmationMessage !== null) {
+        const confirmed = await confirmAction(null, {
+          title: sprintf(this.$options.i18n.confirmationModal.title, {
+            stageName: sanitize(this.name),
+          }),
+          modalHtmlMessage: `
+            <p>${sprintf(__('Custom confirmation message: %{message}'), {
+              message: sanitize(this.action.confirmationMessage),
+            })}</p>
+            <p>${s__('PipelineGraph|Do you want to continue?')}</p>
+          `,
+          primaryBtnText: sprintf(__('Yes, run all manual')),
+        });
+
+        if (!confirmed) {
+          return;
+        }
+      }
+      this.executePendingAction();
+    },
   },
 };
 </script>
 <template>
   <root-graph-layout
     :class="columnSpacingClass"
-    class="stage-column gl-relative gl-flex-basis-full"
+    class="stage-column gl-relative gl-basis-full"
     data-testid="stage-column"
   >
-    <template #stages>
+    <template v-if="name" #stages>
       <div
         data-testid="stage-column-title"
-        class="stage-column-title gl-display-flex gl-justify-content-space-between gl-relative"
-        :class="titleClasses"
+        class="stage-column-title gl-pipeline-job-width gl-relative -gl-mb-2 gl-flex gl-justify-between gl-truncate gl-pl-4 gl-font-bold gl-leading-36"
       >
-        <span :title="name" class="gl-text-truncate gl-pr-3 gl-w-85p">
+        <span :title="name" class="gl-w-17/20 gl-truncate gl-pr-3">
           {{ name }}
         </span>
         <action-component
           v-if="hasAction && canUpdatePipeline"
+          :should-trigger-click="shouldTriggerActionClick"
           :action-icon="action.icon"
           :tooltip-text="action.title"
           :link="action.path"
+          :with-confirmation-modal="withConfirmationModal"
           class="js-stage-action"
+          @click.native="actionClicked"
           @pipelineActionRequestComplete="$emit('refreshPipelineGraph')"
         />
       </div>
     </template>
     <template #jobs>
+      <div v-if="failedJobs.length > 0">
+        <div
+          class="gl-my-2 gl-pl-4 gl-text-sm gl-font-bold gl-text-strong"
+          data-testid="failed-jobs-title"
+        >
+          {{ s__('Pipelines|Failed jobs') }}
+        </div>
+
+        <div class="gl-px-2">
+          <div
+            v-for="group in failedJobs"
+            :id="groupId(group)"
+            :key="getGroupId(group)"
+            data-testid="stage-column-group-failed"
+            class="gl-pipeline-job-width gl-relative gl-mb-2 gl-whitespace-normal"
+            @mouseenter="$emit('jobHover', group.name)"
+            @mouseleave="$emit('jobHover', '')"
+          >
+            <div
+              v-if="isParallel(group) || isMatrix(group)"
+              :class="{ 'gl-opacity-3': isFadedOut(group.name) }"
+            >
+              <job-group-dropdown
+                :group="group"
+                :stage-name="showStageName ? group.stageName : ''"
+                :pipeline-id="pipelineId"
+                :css-class-job-name="$options.jobClasses"
+              />
+            </div>
+            <job-item
+              v-else-if="singleJobExists(group)"
+              :job="group.jobs[0]"
+              :skip-retry-modal="skipRetryModal"
+              :source-job-hovered="sourceJobHovered"
+              :pipeline-expanded="pipelineExpanded"
+              :pipeline-id="pipelineId"
+              :stage-name="showStageName ? group.stageName : ''"
+              :css-class-job-name="$options.jobClasses"
+              :class="[{ 'gl-opacity-3': isFadedOut(group.name) }, 'gl-duration-slow gl-ease-ease']"
+              @pipelineActionRequestComplete="$emit('refreshPipelineGraph')"
+              @setSkipRetryModal="$emit('setSkipRetryModal')"
+            />
+          </div>
+        </div>
+      </div>
+
       <div
-        v-for="group in groups"
-        :id="groupId(group)"
-        :key="getGroupId(group)"
-        data-testid="stage-column-group"
-        class="gl-relative gl-white-space-normal gl-pipeline-job-width"
-        :class="{
-          'gl-mb-3': !isNewPipelineGraph,
-          'gl-mb-2': isNewPipelineGraph,
-        }"
-        @mouseenter="$emit('jobHover', group.name)"
-        @mouseleave="$emit('jobHover', '')"
+        v-if="nonFailedJobs.length > 0"
+        class="gl-px-2"
+        :class="{ 'gl-border-t gl-pt-2': failedJobs.length > 0 }"
       >
-        <job-item
-          v-if="singleJobExists(group)"
-          :job="group.jobs[0]"
-          :job-hovered="jobHovered"
-          :skip-retry-modal="skipRetryModal"
-          :source-job-hovered="sourceJobHovered"
-          :pipeline-expanded="pipelineExpanded"
-          :pipeline-id="pipelineId"
-          :stage-name="showStageName ? group.stageName : ''"
-          :css-class-job-name="jobClasses"
-          :class="[
-            { 'gl-opacity-3': isFadedOut(group.name) },
-            'gl-transition-duration-slow gl-transition-timing-function-ease',
-          ]"
-          data-testid="job-item-container"
-          @pipelineActionRequestComplete="$emit('refreshPipelineGraph')"
-          @setSkipRetryModal="$emit('setSkipRetryModal')"
-        />
-        <div v-else-if="isParallel(group)" :class="{ 'gl-opacity-3': isFadedOut(group.name) }">
-          <job-group-dropdown
-            :group="group"
-            :stage-name="showStageName ? group.stageName : ''"
+        <div
+          v-for="group in nonFailedJobs"
+          :id="groupId(group)"
+          :key="getGroupId(group)"
+          data-testid="stage-column-group"
+          class="gl-pipeline-job-width gl-relative gl-mb-2 gl-whitespace-normal"
+          @mouseenter="$emit('jobHover', group.name)"
+          @mouseleave="$emit('jobHover', '')"
+        >
+          <div
+            v-if="isParallel(group) || isMatrix(group)"
+            :class="{ 'gl-opacity-3': isFadedOut(group.name) }"
+          >
+            <job-group-dropdown
+              :group="group"
+              :stage-name="showStageName ? group.stageName : ''"
+              :pipeline-id="pipelineId"
+              :css-class-job-name="$options.jobClasses"
+            />
+          </div>
+          <job-item
+            v-else-if="singleJobExists(group)"
+            :job="group.jobs[0]"
+            :skip-retry-modal="skipRetryModal"
+            :source-job-hovered="sourceJobHovered"
+            :pipeline-expanded="pipelineExpanded"
             :pipeline-id="pipelineId"
-            :css-class-job-name="jobClasses"
+            :stage-name="showStageName ? group.stageName : ''"
+            :css-class-job-name="$options.jobClasses"
+            :class="[{ 'gl-opacity-3': isFadedOut(group.name) }, 'gl-duration-slow gl-ease-ease']"
+            @pipelineActionRequestComplete="$emit('refreshPipelineGraph')"
+            @setSkipRetryModal="$emit('setSkipRetryModal')"
           />
         </div>
       </div>

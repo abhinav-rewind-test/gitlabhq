@@ -96,6 +96,15 @@ RSpec.describe TagsFinder, feature_category: :source_code_management do
         expect(result.count).to eq(0)
       end
 
+      it 'uses ::Gitlab::UntrustedRegexp for regex filter' do
+        escaped_regex = '^v1\\..*?.*?.*?.*?.*?.*?.*?.*?.*?.*?\\.0$'
+
+        expect(::Gitlab::UntrustedRegexp).to receive(:new).with(escaped_regex).once.and_call_original
+        result = load_tags({ search: '^v1.**********.0$' })
+
+        expect(result.count).to eq(2)
+      end
+
       context 'when search is not a string' do
         it 'returns no matches' do
           result = load_tags({ search: { 'a' => 'b' } })
@@ -159,6 +168,20 @@ RSpec.describe TagsFinder, feature_category: :source_code_management do
 
           expect(result.map(&:name)).to eq(%w[v1.0.0 v1.1.0])
         end
+
+        context 'when per_page is over the limit' do
+          let(:params) { { per_page: 3 } }
+
+          before do
+            stub_const('Gitlab::PaginationDelegate::MAX_PER_PAGE', 2)
+          end
+
+          it 'limits the maximum number of elements' do
+            result = subject
+
+            expect(result.map(&:name)).to eq(%w[v1.0.0 v1.1.0])
+          end
+        end
       end
 
       context 'by page_token only' do
@@ -211,6 +234,42 @@ RSpec.describe TagsFinder, feature_category: :source_code_management do
         tags_finder = described_class.new(repository, {})
 
         expect { tags_finder.execute }.to raise_error(Gitlab::Git::CommandError)
+      end
+    end
+
+    describe 'batch loading signatures' do
+      let(:cacheable_tag) { instance_double(Gitlab::Git::Tag, can_use_lazy_cached_signature?: true, name: 'cacheable_tag') }
+      let(:other_cacheable_tag) { instance_double(Gitlab::Git::Tag, can_use_lazy_cached_signature?: true, name: 'other_cacheable_tag') }
+      let(:non_cacheable_tag) do
+        instance_double(
+          Gitlab::Git::Tag,
+          can_use_lazy_cached_signature?: false,
+          name: 'non_cacheable_tag'
+        )
+      end
+
+      before do
+        allow(project.repository).to receive(:tags_sorted_by).and_return([cacheable_tag, other_cacheable_tag, non_cacheable_tag])
+      end
+
+      it 'calls the appropriate method to batch load signature data' do
+        expect(cacheable_tag).to receive(:lazy_cached_signature)
+        expect(other_cacheable_tag).to receive(:lazy_cached_signature)
+        expect(non_cacheable_tag).to receive_message_chain(:signed_tag, :signature_data)
+
+        tags_finder.execute(batch_load_signatures: true)
+      end
+
+      context 'when there is a search term' do
+        let(:params) { { search: 'other' } }
+
+        it 'calls the appropriate method to batch load signature data on the filtered tags' do
+          expect(cacheable_tag).not_to receive(:lazy_cached_signature)
+          expect(other_cacheable_tag).to receive(:lazy_cached_signature)
+          expect(non_cacheable_tag).not_to receive(:signed_tag)
+
+          tags_finder.execute(batch_load_signatures: true)
+        end
       end
     end
   end

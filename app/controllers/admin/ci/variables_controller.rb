@@ -3,7 +3,7 @@
 module Admin
   module Ci
     class VariablesController < ApplicationController
-      feature_category :secrets_management
+      feature_category :pipeline_composition
 
       def show
         respond_to do |format|
@@ -12,7 +12,7 @@ module Admin
       end
 
       def update
-        service = ::Ci::UpdateInstanceVariablesService.new(variables_params)
+        service = ::Ci::UpdateInstanceVariablesService.new(variables_params, current_user)
 
         if service.execute
           respond_to do |format|

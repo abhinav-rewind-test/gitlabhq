@@ -6,7 +6,7 @@ module RuboCop
   module Cop
     module RSpec
       module FactoryBot
-        # This cop checks for the creation of ActiveRecord objects in serializers specs specs
+        # Checks for the creation of ActiveRecord objects in serializers specs
         #
         # @example
         #
@@ -24,6 +24,7 @@ module RuboCop
           FORBIDDEN_METHODS = %i[create create_list].freeze
           RESTRICT_ON_SEND = FORBIDDEN_METHODS
 
+          # @!method forbidden_factory_usage(node)
           def_node_matcher :forbidden_factory_usage, <<~PATTERN
             (
               send

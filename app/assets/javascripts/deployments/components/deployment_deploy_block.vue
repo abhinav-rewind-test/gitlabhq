@@ -5,6 +5,7 @@ import { captureException } from '~/sentry/sentry_browser_wrapper';
 import deployMutation from '../graphql/mutations/deploy.mutation.graphql';
 
 export default {
+  name: 'DeploymentDeployBlock',
   components: {
     GlAlert,
     GlIcon,
@@ -28,11 +29,8 @@ export default {
     },
     icon() {
       return this.canPlay
-        ? { name: 'check-circle-filled', class: 'gl-fill-green-500' }
-        : { name: 'timer', class: 'gl-fill-current-color' };
-    },
-    text() {
-      return this.canPlay ? this.$options.i18n.ready : this.$options.i18n.waiting;
+        ? { name: 'check-circle-filled', variant: 'success' }
+        : { name: 'timer', variant: 'current' };
     },
     hasError() {
       return Boolean(this.errorMessage);
@@ -66,28 +64,29 @@ export default {
     },
   },
   i18n: {
-    waiting: s__('Deployment|Waiting to be deployed.'),
-    ready: s__('Deployment|Ready to be deployed.'),
-    deploy: s__('Deployment|Deploy'),
     genericError: s__(
-      'Deloyment|Something went wrong starting the deployment. Please try again later.',
+      'Deployment|Something went wrong starting the deployment. Please try again later.',
     ),
   },
 };
 </script>
 <template>
-  <div
-    v-if="isPlayable"
-    class="gl-border gl-rounded-base gl-p-5 gl-display-flex gl-align-items-center"
-  >
+  <div v-if="isPlayable" class="gl-border gl-flex gl-items-center gl-rounded-base gl-p-5">
     <gl-alert v-if="hasError" variant="danger" class="gl-w-full" @dismiss="errorMessage = ''">
       {{ errorMessage }}
     </gl-alert>
     <template v-else>
       <gl-icon v-bind="icon" />
-      <span class="gl-ml-4 gl-font-weight-bold gl-flex-grow-1">{{ text }}</span>
+      <span v-if="canPlay" class="gl-ml-4 gl-grow gl-font-bold">{{
+        s__('Deployment|Ready to be deployed.')
+      }}</span>
+      <span v-else class="gl-ml-4">
+        <span class="gl-font-bold">{{ s__('Deployment|Waiting to be deployed.') }}</span>
+        {{ s__('Deployment|You are not authorized to trigger this deployment.') }}
+      </span>
+
       <gl-button v-if="canPlay" :loading="loading" variant="confirm" @click="playJob">
-        {{ $options.i18n.deploy }}
+        {{ s__('Deployment|Deploy') }}
       </gl-button>
     </template>
   </div>

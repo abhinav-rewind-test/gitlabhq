@@ -2,12 +2,16 @@
 import { GlIcon, GlLink, GlTooltipDirective } from '@gitlab/ui';
 import { __ } from '~/locale';
 import Tracking from '~/tracking';
+import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import TooltipOnTruncate from '~/vue_shared/components/tooltip_on_truncate/tooltip_on_truncate.vue';
+import TooltipOnTruncateDirective from '~/vue_shared/directives/tooltip_on_truncate';
 import UserAvatarLink from '~/vue_shared/components/user_avatar/user_avatar_link.vue';
 import { ICONS, PIPELINE_ID_KEY, PIPELINE_IID_KEY, TRACKING_CATEGORIES } from '~/ci/constants';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import PipelineLabels from './pipeline_labels.vue';
 
 export default {
+  name: 'PipelineUrl',
   components: {
     GlIcon,
     GlLink,
@@ -17,8 +21,9 @@ export default {
   },
   directives: {
     GlTooltip: GlTooltipDirective,
+    TooltipOnTruncate: TooltipOnTruncateDirective,
   },
-  mixins: [Tracking.mixin()],
+  mixins: [Tracking.mixin(), glFeatureFlagMixin()],
   props: {
     pipeline: {
       type: Object,
@@ -32,33 +37,28 @@ export default {
         return value === PIPELINE_IID_KEY || value === PIPELINE_ID_KEY;
       },
     },
-    refClass: {
-      type: String,
-      required: false,
-      default: '',
-    },
   },
   computed: {
     mergeRequestRef() {
-      return this.pipeline?.merge_request;
+      return this.pipeline?.merge_request || this.pipeline?.mergeRequest;
     },
     commitRef() {
       return this.pipeline?.ref;
     },
     commitTag() {
-      return this.commitRef?.tag;
+      return this.commitRef?.tag || this.pipeline?.type === 'tag';
     },
     commitUrl() {
-      return this.pipeline?.commit?.commit_path;
+      return this.pipeline?.commit?.commit_path || this.pipeline?.commit?.webUrl;
     },
     commitShortSha() {
-      return this.pipeline?.commit?.short_id;
+      return this.pipeline?.commit?.short_id || this.pipeline?.commit?.shortId;
     },
     refUrl() {
-      return this.commitRef?.ref_url || this.commitRef?.path;
+      return this.commitRef?.ref_url || this.commitRef?.path || this.pipeline?.refPath;
     },
     tooltipTitle() {
-      return this.mergeRequestRef?.title || this.commitRef?.name;
+      return this.mergeRequestRef?.title || this.commitRef?.name || this.pipeline?.refText;
     },
     commitAuthor() {
       let commitAuthorInformation;
@@ -73,22 +73,23 @@ export default {
       if (pipelineCommitAuthor) {
         // 2. if person who is an author of a commit is a GitLab user
         // they can have a GitLab avatar
-        if (pipelineCommitAuthor?.avatar_url) {
+
+        if (pipelineCommitAuthor?.avatar_url || pipelineCommitAuthor?.avatarUrl) {
           commitAuthorInformation = pipelineCommitAuthor;
 
           // 3. If GitLab user does not have avatar, they might have a Gravatar
-        } else if (pipelineCommit.author_gravatar_url) {
+        } else if (pipelineCommit?.author_gravatar_url || pipelineCommitAuthor?.avatarUrl) {
           commitAuthorInformation = {
             ...pipelineCommitAuthor,
-            avatar_url: pipelineCommit.author_gravatar_url,
+            avatar_url: pipelineCommit?.author_gravatar_url || pipelineCommitAuthor?.avatarUrl,
           };
         }
         // 4. If committer is not a GitLab User, they can have a Gravatar
       } else {
         commitAuthorInformation = {
-          avatar_url: pipelineCommit.author_gravatar_url,
-          path: `mailto:${pipelineCommit.author_email}`,
-          username: pipelineCommit.author_name,
+          avatar_url: pipelineCommit?.author_gravatar_url || pipelineCommitAuthor?.avatarUrl,
+          path: `mailto:${pipelineCommit?.author_email || pipelineCommitAuthor?.publicEmail}`,
+          username: pipelineCommit?.author_name || pipelineCommitAuthor?.name,
         };
       }
 
@@ -117,11 +118,31 @@ export default {
           return __('Branch');
       }
     },
-    commitTitle() {
-      return this.pipeline?.commit?.title;
+    pipelineId() {
+      return getIdFromGraphQLId(this.pipeline[this.pipelineIdType]);
     },
     pipelineName() {
-      return this.pipeline?.name;
+      return this.pipeline?.name || '';
+    },
+    pipelineSecondaryLink() {
+      const { pipeline_schedule: pipelineSchedule } = this.pipeline || {};
+
+      if (pipelineSchedule) {
+        return {
+          text: pipelineSchedule.description,
+          href: pipelineSchedule.path,
+        };
+      }
+
+      if (this.pipeline?.commit) {
+        return {
+          text: this.pipeline?.commit?.title,
+          href: this.commitUrl,
+          trackingAction: 'click_commit_title',
+        };
+      }
+
+      return null;
     },
   },
   methods: {
@@ -132,52 +153,40 @@ export default {
 };
 </script>
 <template>
-  <div class="pipeline-tags" data-testid="pipeline-url-table-cell">
-    <div v-if="pipelineName" class="gl-mb-2" data-testid="pipeline-name-container">
-      <span class="gl-display-flex">
-        <tooltip-on-truncate
-          :title="pipelineName"
-          class="gl-flex-grow-1 gl-text-truncate gl-text-gray-900"
-        >
-          <gl-link
-            :href="pipeline.path"
-            class="gl-text-blue-600!"
-            data-testid="pipeline-url-link"
-            >{{ pipelineName }}</gl-link
-          >
-        </tooltip-on-truncate>
-      </span>
-    </div>
+  <div data-testid="pipeline-url-table-cell">
+    <gl-link
+      v-tooltip-on-truncate
+      :href="pipeline.path"
+      class="gl-mb-2 gl-block gl-truncate"
+      data-testid="pipeline-url-link"
+      @click="trackClick('click_pipeline_id')"
+      >#{{ pipelineId }} {{ pipelineName }}</gl-link
+    >
 
-    <div v-if="!pipelineName" class="commit-title gl-mb-2" data-testid="commit-title-container">
-      <span v-if="commitTitle" class="gl-display-flex">
-        <tooltip-on-truncate
-          :title="commitTitle"
-          class="gl-flex-grow-1 gl-text-truncate gl-p-3 gl-ml-n3 gl-mr-n3 gl-mt-n3 gl-mb-n3"
-        >
-          <gl-link
-            :href="commitUrl"
-            class="commit-row-message gl-text-blue-600!"
-            data-testid="commit-title"
-            @click="trackClick('click_commit_title')"
-            >{{ commitTitle }}</gl-link
-          >
-        </tooltip-on-truncate>
-      </span>
-      <span v-else class="gl-text-gray-500">{{
-        __("Can't find HEAD commit for this branch")
-      }}</span>
-    </div>
     <div class="gl-mb-2">
       <gl-link
-        :href="pipeline.path"
-        class="gl-mr-1 gl-text-blue-500!"
-        data-testid="pipeline-url-link"
-        @click="trackClick('click_pipeline_id')"
-        >#{{ pipeline[pipelineIdType] }}</gl-link
+        v-if="pipelineSecondaryLink"
+        v-tooltip-on-truncate
+        class="gl-mb-2 gl-block gl-truncate"
+        :href="pipelineSecondaryLink.href"
+        data-testid="pipeline-identifier-link"
+        @click="
+          pipelineSecondaryLink.trackingAction && trackClick(pipelineSecondaryLink.trackingAction)
+        "
       >
+        {{ pipelineSecondaryLink.text }}
+      </gl-link>
+      <div
+        v-else
+        v-tooltip-on-truncate
+        class="gl-mb-2 gl-truncate gl-text-subtle"
+        data-testid="pipeline-identifier-missing-message"
+      >
+        {{ __("Can't find HEAD commit for this branch") }}
+      </div>
+
       <!--Commit row-->
-      <div class="gl-display-inline-flex gl-rounded-base gl-px-2 gl-bg-gray-50 gl-text-gray-700">
+      <div class="gl-inline-flex gl-rounded-base gl-bg-strong gl-px-2">
         <tooltip-on-truncate :title="tooltipTitle" truncate-target="child" placement="top">
           <gl-icon
             v-gl-tooltip
@@ -185,12 +194,12 @@ export default {
             :title="commitIconTooltipTitle"
             :size="12"
             data-testid="commit-icon-type"
+            variant="subtle"
           />
           <gl-link
             v-if="mergeRequestRef"
-            :href="mergeRequestRef.path"
-            class="gl-font-sm gl-font-monospace gl-text-gray-700! gl-hover-text-gray-900!"
-            :class="refClass"
+            :href="mergeRequestRef.path || mergeRequestRef.webPath"
+            class="gl-font-monospace gl-text-sm gl-text-subtle hover:gl-text-subtle"
             data-testid="merge-request-ref"
             @click="trackClick('click_mr_ref')"
             >{{ mergeRequestRef.iid }}</gl-link
@@ -198,37 +207,37 @@ export default {
           <gl-link
             v-else
             :href="refUrl"
-            class="gl-font-sm gl-font-monospace gl-text-gray-700! gl-hover-text-gray-900!"
-            :class="refClass"
+            class="gl-font-monospace gl-text-sm gl-text-subtle hover:gl-text-subtle"
             data-testid="commit-ref-name"
             @click="trackClick('click_commit_name')"
-            >{{ commitRef.name }}</gl-link
+            >{{ commitRef.name || pipeline.ref }}</gl-link
           >
         </tooltip-on-truncate>
       </div>
-      <div
-        class="gl-display-inline-block gl-rounded-base gl-font-sm gl-px-2 gl-bg-gray-50 gl-text-black-normal"
-      >
+
+      <div class="gl-inline-block gl-rounded-base gl-bg-strong gl-px-2 gl-text-sm">
         <gl-icon
           v-gl-tooltip
           name="commit"
-          class="commit-icon gl-mr-1"
+          class="gl-mr-1"
           :title="__('Commit')"
           :size="12"
           data-testid="commit-icon"
+          variant="subtle"
         />
         <gl-link
           :href="commitUrl"
-          class="gl-font-sm gl-font-monospace gl-mr-0 gl-text-gray-700!"
+          class="gl-mr-0 gl-font-monospace gl-text-sm gl-text-subtle hover:gl-text-subtle"
           data-testid="commit-short-sha"
           @click="trackClick('click_commit_sha')"
           >{{ commitShortSha }}</gl-link
         >
       </div>
+
       <user-avatar-link
         v-if="commitAuthor"
-        :link-href="commitAuthor.path"
-        :img-src="commitAuthor.avatar_url"
+        :link-href="commitAuthor.path || commitAuthor.webPath"
+        :img-src="commitAuthor.avatar_url || commitAuthor.avatarUrl"
         :img-size="16"
         :img-alt="commitAuthor.name"
         :tooltip-text="commitAuthor.name"

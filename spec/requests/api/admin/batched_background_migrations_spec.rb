@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe API::Admin::BatchedBackgroundMigrations, feature_category: :database do
+RSpec.describe API::Admin::BatchedBackgroundMigrations, :without_current_organization, feature_category: :database do
   let(:admin) { create(:admin) }
 
   describe 'GET /admin/batched_background_migrations/:id' do
@@ -106,14 +106,21 @@ RSpec.describe API::Admin::BatchedBackgroundMigrations, feature_category: :datab
         end
       end
 
-      context 'when multiple database is enabled', :add_ci_connection do
+      context 'when multiple database is enabled' do
         let(:database) { :ci }
         let(:schema) { :gitlab_ci }
         let(:ci_model) { Ci::ApplicationRecord }
         let(:params) { { database: database } }
 
+        before do
+          skip_if_multiple_databases_not_setup
+        end
+
         context 'when CI database is provided' do
-          let(:db_config) { instance_double(ActiveRecord::DatabaseConfigurations::HashConfig, name: 'fake_db') }
+          let(:db_config) do
+            instance_double(ActiveRecord::DatabaseConfigurations::HashConfig, name: 'fake_db', database: 'db')
+          end
+
           let(:default_model) { ActiveRecord::Base }
           let(:base_models) { { 'fake_db' => default_model, 'ci' => ci_model }.with_indifferent_access }
 
@@ -157,6 +164,19 @@ RSpec.describe API::Admin::BatchedBackgroundMigrations, feature_category: :datab
               expect(json_response.first['progress']).to be_zero
             end
           end
+        end
+      end
+
+      context 'when filtering by job class name' do
+        let!(:my_job) { create(:batched_background_migration, job_class_name: "MyJob") }
+
+        let(:params) { { job_class_name: "MyJob" } }
+
+        it 'returns only relevant records' do
+          get api(path, admin, admin_mode: true), params: params
+
+          expect(json_response.count).to eq(1)
+          expect(json_response.first['id']).to eq(my_job.id)
         end
       end
     end

@@ -1,10 +1,11 @@
 <script>
-import { GlTooltipDirective, GlIcon } from '@gitlab/ui';
+import { GlButton, GlTooltipDirective, GlIcon } from '@gitlab/ui';
 import getCommitIconMap from '~/ide/commit_icon';
 import { __ } from '~/locale';
 
 export default {
   components: {
+    GlButton,
     GlIcon,
   },
   directives: {
@@ -35,6 +36,11 @@ export default {
       required: false,
       default: true,
     },
+    asButton: {
+      type: Boolean,
+      default: true,
+      required: false,
+    },
   },
   computed: {
     changedIcon() {
@@ -45,7 +51,7 @@ export default {
       return `${getCommitIconMap(this.file).icon}${suffix}`;
     },
     changedIconClass() {
-      return `${this.changedIcon} float-left d-block`;
+      return `${this.changedIcon} !gl-float-left gl-block`;
     },
     tooltipTitle() {
       if (!this.showTooltip) {
@@ -77,13 +83,26 @@ export default {
 </script>
 
 <template>
-  <span
+  <gl-button
+    v-if="showIcon && asButton"
     v-gl-tooltip.right
+    category="tertiary"
+    size="small"
     :title="tooltipTitle"
-    :class="{ 'ml-auto': isCentered }"
-    class="file-changed-icon d-inline-block"
+    :class="{ '!gl-ml-auto': isCentered }"
+    :aria-label="tooltipTitle"
+    class="file-changed-icon !gl-min-h-0 !gl-min-w-0 !gl-bg-transparent !gl-p-0"
   >
-    <gl-icon v-if="showIcon" :name="changedIcon" :size="size" :class="changedIconClass" />
+    <gl-icon :name="changedIcon" :size="size" :class="changedIconClass" />
+  </gl-button>
+  <span
+    v-else-if="showIcon"
+    v-gl-tooltip.right="tooltipTitle"
+    :class="{ '!gl-ml-auto': isCentered }"
+    :aria-label="tooltipTitle"
+    class="file-changed-icon"
+  >
+    <gl-icon :name="changedIcon" :size="size" :class="changedIconClass" />
   </span>
 </template>
 

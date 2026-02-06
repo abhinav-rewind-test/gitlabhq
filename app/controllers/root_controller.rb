@@ -9,55 +9,78 @@
 # For users who haven't customized the setting, we simply delegate to
 # `DashboardController#show`, which is the default.
 class RootController < Dashboard::ProjectsController
+  include HomepageData
+  include ::Gitlab::InternalEventsTracking
+
   skip_before_action :authenticate_user!, only: [:index]
 
   before_action :redirect_unlogged_user, if: -> { current_user.nil? }
   before_action :redirect_logged_user, if: -> { current_user.present? }
-  # We only need to load the projects when the user is logged in but did not
-  # configure a dashboard. In which case we render projects. We can do that straight
-  # from the #index action.
-  skip_before_action :projects
+
+  before_action only: [:index] do
+    push_frontend_feature_flag(:personal_homepage, current_user)
+  end
+
+  CACHE_CONTROL_HEADER = 'no-store'
+
+  DASHBOARD_PATHS = {
+    'projects' => ->(context) {
+      context.dashboard_projects_path if Feature.enabled?(:personal_homepage, context.current_user)
+    },
+    'stars' => ->(context) { context.starred_dashboard_projects_path },
+    'member_projects' => ->(context) { context.member_dashboard_projects_path },
+    'your_activity' => ->(context) { context.activity_dashboard_path },
+    'project_activity' => ->(context) { context.activity_dashboard_path(filter: 'projects') },
+    'starred_project_activity' => ->(context) { context.activity_dashboard_path(filter: 'starred') },
+    'followed_user_activity' => ->(context) { context.activity_dashboard_path(filter: 'followed') },
+    'groups' => ->(context) { context.dashboard_groups_path },
+    'todos' => ->(context) { context.dashboard_todos_path },
+    'issues' => ->(context) { context.issues_dashboard_path(assignee_username: context.current_user.username) },
+    'merge_requests' => ->(context) { context.merge_requests_dashboard_path },
+    'assigned_merge_requests' => ->(context) {
+      context.merge_requests_search_dashboard_path(assignee_username: context.current_user.username)
+    },
+    'review_merge_requests' => ->(context) {
+      context.merge_requests_search_dashboard_path(reviewer_username: context.current_user.username)
+    }
+  }.freeze
 
   def index
-    # n+1: https://gitlab.com/gitlab-org/gitlab-foss/issues/40260
-    Gitlab::GitalyClient.allow_n_plus_1_calls do
-      projects
-      super
+    @homepage_app_data = homepage_app_data(current_user)
+    if Feature.enabled?(:personal_homepage, current_user)
+      track_internal_event('user_views_homepage', user: current_user)
+      render('root/index') && return
     end
+
+    super
   end
 
   private
 
   def redirect_unlogged_user
-    if redirect_to_home_page_url?
-      redirect_to(Gitlab::CurrentSettings.home_page_url)
-    else
-      redirect_to(new_user_session_path)
-    end
+    redirect_path = redirect_to_home_page_url? ? Gitlab::CurrentSettings.home_page_url : new_user_session_path
+    status = root_redirect_enabled? ? :moved_permanently : :found
+
+    response.headers['Cache-Control'] = CACHE_CONTROL_HEADER if root_redirect_enabled?
+    redirect_to(redirect_path, status: status)
+  end
+
+  def root_redirect_enabled?
+    Gitlab::CurrentSettings.current_application_settings.root_moved_permanently_redirection
   end
 
   def redirect_logged_user
-    case current_user.dashboard
-    when 'stars'
-      flash.keep
-      redirect_to(starred_dashboard_projects_path)
-    when 'your_activity'
-      redirect_to(activity_dashboard_path)
-    when 'project_activity'
-      redirect_to(activity_dashboard_path(filter: 'projects'))
-    when 'starred_project_activity'
-      redirect_to(activity_dashboard_path(filter: 'starred'))
-    when 'followed_user_activity'
-      redirect_to(activity_dashboard_path(filter: 'followed'))
-    when 'groups'
-      redirect_to(dashboard_groups_path)
-    when 'todos'
-      redirect_to(dashboard_todos_path)
-    when 'issues'
-      redirect_to(issues_dashboard_path(assignee_username: current_user.username))
-    when 'merge_requests'
-      redirect_to(merge_requests_dashboard_path(assignee_username: current_user.username))
-    end
+    dashboard_for_routing = current_user.effective_dashboard_for_routing
+
+    redirect_path = dashboard_redirect_path(dashboard_for_routing)
+
+    flash.keep if %w[stars member_projects].include?(dashboard_for_routing)
+
+    redirect_to(redirect_path) if redirect_path
+  end
+
+  def dashboard_redirect_path(dashboard_type)
+    DASHBOARD_PATHS[dashboard_type]&.call(self)
   end
 
   def redirect_to_home_page_url?

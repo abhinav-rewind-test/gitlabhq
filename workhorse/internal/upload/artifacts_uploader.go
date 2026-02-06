@@ -2,6 +2,7 @@ package upload
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -34,7 +35,7 @@ const (
 var zipSubcommandsErrorsCounter = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "gitlab_workhorse_zip_subcommand_errors_total",
-		Help: "Errors comming from subcommands used for processing ZIP archives",
+		Help: "Errors coming from subcommands used for processing ZIP archives",
 	}, []string{"error"})
 
 type artifactsUploadProcessor struct {
@@ -59,7 +60,7 @@ func Artifacts(myAPI *api.API, h http.Handler, p Preparer, cfg *config.Config) h
 	}, "/authorize")
 }
 
-func (a *artifactsUploadProcessor) generateMetadataFromZip(ctx context.Context, file *destination.FileHandler, readerLimit int64) (*destination.FileHandler, error) {
+func (a *artifactsUploadProcessor) generateMetadataFromZip(ctx context.Context, file *destination.FileHandler, readerLimit int64) (*destination.FileHandler, error) { //nolint: funlen
 	metaOpts := &destination.UploadOpts{
 		LocalTempPath: a.tempDir,
 	}
@@ -72,20 +73,36 @@ func (a *artifactsUploadProcessor) generateMetadataFromZip(ctx context.Context, 
 		fileName = file.RemoteURL
 	}
 
+	logWriter := log.ContextLogger(ctx).Writer()
+	defer func() {
+		if closeErr := logWriter.Close(); closeErr != nil {
+			log.ContextLogger(ctx).WithError(closeErr).Error("failed to close gitlab-zip-metadata log writer")
+		}
+	}()
+
+	//nolint:gosec // G204: fileName comes from trusted internal FileHandler, not user input
 	zipMd := exec.CommandContext(ctx, "gitlab-zip-metadata", "-zip-reader-limit", strconv.FormatInt(readerLimit, 10), fileName)
-	zipMd.Stderr = log.ContextLogger(ctx).Writer()
+	zipMd.Stderr = logWriter
 	zipMd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	zipMdOut, err := zipMd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
-	defer zipMdOut.Close()
+	defer func() {
+		if zipCloseErr := zipMdOut.Close(); zipCloseErr != nil && !errors.Is(zipCloseErr, os.ErrClosed) {
+			log.ContextLogger(ctx).WithError(zipCloseErr).Error("Failed to close zip-metadata stdout")
+		}
+	}()
 
-	if err := zipMd.Start(); err != nil {
+	if err = zipMd.Start(); err != nil {
 		return nil, err
 	}
-	defer command.KillProcessGroup(zipMd)
+	defer func() {
+		if err = command.KillProcessGroup(zipMd); err != nil {
+			log.ContextLogger(ctx).WithError(err).Error("Failed to kill zip-metadata process group")
+		}
+	}()
 
 	fh, err := destination.Upload(ctx, zipMdOut, -1, "metadata.gz", metaOpts)
 	if err != nil {
@@ -146,7 +163,9 @@ func (a *artifactsUploadProcessor) ProcessFile(ctx context.Context, formName str
 		}
 
 		for k, v := range fields {
-			writer.WriteField(k, v)
+			if err := writer.WriteField(k, v); err != nil {
+				return fmt.Errorf("write metadata field error: %v", err)
+			}
 		}
 
 		a.Track("metadata", metadata.LocalPath)
@@ -163,4 +182,8 @@ func (a *artifactsUploadProcessor) TransformContents(ctx context.Context, filena
 	}
 
 	return a.SavedFileTracker.TransformContents(ctx, filename, r)
+}
+
+func (a *artifactsUploadProcessor) IsLsifProcessing() bool {
+	return a.processLSIF
 }

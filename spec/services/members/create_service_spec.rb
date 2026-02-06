@@ -5,15 +5,15 @@ require 'spec_helper'
 RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_cache, :clean_gitlab_redis_shared_state, :sidekiq_inline,
   feature_category: :groups_and_projects do
   let_it_be(:source, reload: true) { create(:project) }
-  let_it_be(:user) { create(:user) }
-  let_it_be(:member) { create(:user) }
+  let_it_be_with_reload(:user) { create(:user) }
+  let_it_be_with_reload(:member) { create(:user) }
   let_it_be(:user_invited_by_id) { create(:user) }
-  let_it_be(:user_id) { member.id.to_s }
   let_it_be(:access_level) { Gitlab::Access::GUEST }
 
   let(:additional_params) { { invite_source: '_invite_source_' } }
   let(:params) { { user_id: user_id, access_level: access_level }.merge(additional_params) }
   let(:current_user) { user }
+  let(:user_id) { member.id.to_s }
 
   subject(:execute_service) { described_class.new(current_user, params.merge({ source: source })).execute }
 
@@ -21,10 +21,8 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
     case source
     when Project
       source.add_maintainer(user)
-      Onboarding::Progress.onboard(source.namespace)
     when Group
       source.add_owner(user)
-      Onboarding::Progress.onboard(source)
     end
   end
 
@@ -71,7 +69,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
     it 'adds a user to members' do
       expect(execute_service[:status]).to eq(:success)
       expect(source.users).to include member
-      expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
     end
 
     context 'when user_id is passed as an integer' do
@@ -80,7 +77,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       it 'successfully creates member' do
         expect(execute_service[:status]).to eq(:success)
         expect(source.users).to include member
-        expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
       end
     end
 
@@ -90,7 +86,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       it 'successfully creates members' do
         expect(execute_service[:status]).to eq(:success)
         expect(source.users).to include(member, user_invited_by_id)
-        expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
       end
     end
 
@@ -100,7 +95,36 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       it 'successfully creates members' do
         expect(execute_service[:status]).to eq(:success)
         expect(source.users).to include(member, user_invited_by_id)
-        expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
+      end
+    end
+
+    context 'when composite identity is being used' do
+      context 'when a member has composite identity' do
+        before do
+          member.update!(
+            user_type: :service_account,
+            composite_identity_enforced: true
+          )
+        end
+
+        it 'successfuly adds a project member' do
+          expect(execute_service[:status]).to eq(:success)
+          expect(source.users).to include member
+        end
+      end
+
+      context 'when the user has composite identity' do
+        before do
+          user.update!(
+            user_type: :service_account,
+            composite_identity_enforced: true
+          )
+        end
+
+        it 'returns unauthorized error' do
+          expect(execute_service[:status]).to eq(:error)
+          expect(execute_service[:http_status]).to eq(:unauthorized)
+        end
       end
     end
 
@@ -110,14 +134,14 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       it 'adds a user to members' do
         expect(execute_service[:status]).to eq(:success)
         expect(source).to have_user(member)
-        expect(Onboarding::Progress.completed?(source, :user_added)).to be(true)
       end
 
       it 'triggers a members added event' do
-        expect(Gitlab::EventStore)
-          .to receive(:publish)
-          .with(an_instance_of(Members::MembersAddedEvent))
-          .and_call_original
+        expect { execute_service }.to publish_event(Members::MembersAddedEvent).with(
+          source_id: source.id,
+          source_type: 'Group',
+          invited_user_ids: match_array(be_an(Integer))
+        )
 
         expect(execute_service[:status]).to eq(:success)
       end
@@ -142,26 +166,12 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
         execute_service
       end
 
-      context 'when feature flag "add_policy_approvers_to_rules" is disabled' do
-        before do
-          stub_feature_flags(add_policy_approvers_to_rules: false)
-        end
-
-        it 'triggers the authorizations changed event' do
-          expect(Gitlab::EventStore)
-            .to receive(:publish)
-                  .with(an_instance_of(ProjectAuthorizations::AuthorizationsChangedEvent))
-                  .and_call_original
-
-          execute_service
-        end
-      end
-
       it 'triggers the members added event' do
-        expect(Gitlab::EventStore)
-          .to receive(:publish)
-          .with(an_instance_of(Members::MembersAddedEvent))
-          .and_call_original
+        expect { execute_service }.to publish_event(Members::MembersAddedEvent).with(
+          source_id: source.id,
+          source_type: 'Project',
+          invited_user_ids: match_array(be_an(Integer))
+        )
 
         expect(execute_service[:status]).to eq(:error)
         expect(execute_service[:message])
@@ -207,8 +217,8 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
 
       expect(execute_service[:status]).to eq(:error)
       expect(execute_service[:message]).to eq(s_('AddMember|No users specified.'))
+      expect(execute_service[:reason]).to eq(:blank_invites_error)
       expect(source.users).not_to include member
-      expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(false)
     end
   end
 
@@ -222,8 +232,8 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
 
       expect(execute_service[:status]).to eq(:error)
       expect(execute_service[:message]).to be_present
+      expect(execute_service[:reason]).to eq(:too_many_invites_error)
       expect(source.users).not_to include member
-      expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(false)
     end
   end
 
@@ -234,7 +244,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       expect(execute_service[:status]).to eq(:error)
       expect(execute_service[:message]).to include("#{member.username}: Access level is not included in the list")
       expect(source.users).not_to include member
-      expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(false)
     end
   end
 
@@ -246,7 +255,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
     it 'allows already invited members to be re-invited by email and updates the member access' do
       expect(execute_service[:status]).to eq(:success)
       expect(invited_member.reset.access_level).to eq ProjectMember::MAINTAINER
-      expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
     end
   end
 
@@ -264,7 +272,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
         expect(execute_service[:status]).to eq(:error)
         expect(execute_service[:http_status]).to eq(:unauthorized)
         expect(execute_service[:message]).to eq("#{project_bot.username}: not authorized to update member")
-        expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(false)
       end
     end
 
@@ -272,7 +279,6 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
       it 'adds the member' do
         expect(execute_service[:status]).to eq(:success)
         expect(source.users).to include project_bot
-        expect(Onboarding::Progress.completed?(source.namespace, :user_added)).to be(true)
       end
     end
   end
@@ -333,6 +339,40 @@ RSpec.describe Members::CreateService, :aggregate_failures, :clean_gitlab_redis_
           property: 'net_new_user',
           user: user
         )
+      end
+    end
+  end
+
+  context 'when inviting from a different organization' do
+    let_it_be(:other_organization) { create(:organization) }
+    let_it_be(:other_member) { create(:user, organization: other_organization) }
+    let(:user_id) { other_member.id.to_s }
+
+    it 'does not add the member' do
+      expect(execute_service[:status]).to eq(:error)
+      expect(source.users).not_to include other_member
+    end
+  end
+
+  context 'with raised errors' do
+    using RSpec::Parameterized::TableSyntax
+
+    where(:error, :stubbed_method, :reason) do
+      described_class::BlankInvitesError      | :validate_invite_source! | :blank_invites_error
+      described_class::TooManyInvitesError    | :validate_invitable!     | :too_many_invites_error
+      described_class::MembershipLockedError  | :add_members             | :membership_locked_error
+      described_class::SeatLimitExceededError | :add_members             | :seat_limit_exceeded_error
+    end
+
+    with_them do
+      before do
+        allow_next_instance_of(described_class) do |service|
+          allow(service).to receive(stubbed_method).and_raise(error)
+        end
+      end
+
+      it 'returns the correct reason' do
+        expect(execute_service[:reason]).to eq(reason)
       end
     end
   end

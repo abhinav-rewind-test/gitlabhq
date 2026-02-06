@@ -8,13 +8,19 @@ module Banzai
     # - Banzai::Filter::SanitizationFilter (Markdown)
     # - Banzai::Filter::AsciiDocSanitizationFilter (AsciiDoc/Asciidoctor)
     # - Banzai::Filter::BroadcastMessageSanitizationFilter (Markdown with styled links and line breaks)
+    # - Banzai::Filter::MinimumMarkdownSanitizationFilter (only inline elements)
     #
     # Extends HTML::Pipeline::SanitizationFilter with common rules.
     class BaseSanitizationFilter < HTML::Pipeline::SanitizationFilter
+      prepend Concerns::TimeoutFilterHandler
       include Gitlab::Utils::StrongMemoize
       extend Gitlab::Utils::SanitizeNodeLink
 
       UNSAFE_PROTOCOLS = %w[data javascript vbscript].freeze
+
+      def call
+        Sanitize.clean_node!(doc, allowlist)
+      end
 
       def allowlist
         strong_memoize(:allowlist) do
@@ -24,9 +30,13 @@ module Banzai
           allowlist[:elements].push('span')
 
           # Allow data-math-style attribute in order to support LaTeX formatting
+          allowlist[:attributes]['span'] = %w[data-math-style]
           allowlist[:attributes]['code'] = %w[data-math-style]
           allowlist[:attributes]['pre'] = %w[data-canonical-lang data-lang-params
             data-math-style data-mermaid-style data-kroki-style]
+
+          # Allow data-placeholder from gitlab-glfm-markdown
+          allowlist[:attributes]['span'].push('data-placeholder')
 
           # Allow html5 details/summary elements
           allowlist[:elements].push('details')
@@ -40,13 +50,16 @@ module Banzai
           allowlist[:attributes][:all].delete('name')
           allowlist[:attributes]['a'].push('name')
 
+          allowlist[:attributes]['a'].push('data-wikilink')
+          allowlist[:attributes]['a'].push('data-placeholder')
+
           allowlist[:attributes]['img'].push('data-diagram')
           allowlist[:attributes]['img'].push('data-diagram-src')
+          allowlist[:attributes]['img'].push('data-placeholder')
 
           # Allow any protocol in `a` elements
-          # and then remove links with unsafe protocols
+          # and then remove links with unsafe protocols in SanitizeLinkFilter
           allowlist[:protocols].delete('a')
-          allowlist[:transformers].push(self.class.method(:sanitize_unsafe_links))
 
           # Remove `rel` attribute from `a` elements
           allowlist[:transformers].push(self.class.remove_rel)
@@ -59,9 +72,21 @@ module Banzai
         raise NotImplementedError
       end
 
+      private
+
+      def render_timeout
+        SANITIZATION_RENDER_TIMEOUT
+      end
+
+      # If sanitization times out, we can not return partial un-sanitized results.
+      # It's ok to allow any following filters to run since this is safe HTML.
+      def returned_timeout_value
+        Banzai::PipelineBase.parse(COMPLEX_MARKDOWN_MESSAGE)
+      end
+
       class << self
         def remove_rel
-          lambda do |env|
+          ->(env) do
             if env[:node_name] == 'a'
               # we allow rel="license" to support the Rel-license microformat
               # http://microformats.org/wiki/rel-license

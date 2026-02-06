@@ -2,7 +2,7 @@
 
 module Users
   class BuildService < BaseService
-    ALLOWED_USER_TYPES = %i[project_bot security_policy_bot].freeze
+    ALLOWED_USER_TYPES = %i[project_bot security_policy_bot placeholder].freeze
 
     delegate :user_default_internal_regex_enabled?,
       :user_default_internal_regex_instance,
@@ -11,21 +11,24 @@ module Users
     def initialize(current_user, params = {})
       @current_user = current_user
       @params = params.dup
-      @organization_id = params.delete(:organization_id)
+      @organization_params = params.slice(*organization_attributes).compact
       @identity_params = params.slice(*identity_attributes)
     end
 
     def execute
       build_user
       build_identity
-      update_canonical_email
 
       user
     end
 
     private
 
-    attr_reader :identity_params, :user_params, :user
+    attr_reader :identity_params, :user_params, :user, :organization_params
+
+    def organization_attributes
+      admin? ? admin_organization_attributes : signup_organization_attributes
+    end
 
     def identity_attributes
       [:extern_uid, :provider]
@@ -38,8 +41,8 @@ module Users
         standard_build_user
       end
 
-      organization = Organizations::Organization.find_by_id(@organization_id) if @organization_id
-      user.assign_personal_namespace(organization)
+      assign_organization
+      assign_personal_namespace
     end
 
     def admin?
@@ -69,18 +72,58 @@ module Users
     def init_user
       assign_common_user_params
 
-      @user = User.new(user_params)
+      # We'll declaratively initialize the user_detail here due to possibility of assignment to user_detail
+      # in a delegation or otherwise in the assignment of attributes.
+      # This will allow our after_initialize call at the model layer to not wipe those values out and will
+      # also allow use to remove the model layer `user_detail` override eventually.
+      # Any future calls outside of this class on User.new can still wipe out set user_detail values, but
+      # once we remove the model layer override, it will be caught during test and that area, if not using
+      # this class will have to build_user_detail as well.
+      @user = User.new.tap do |base_user|
+        base_user.build_user_detail
+        base_user.assign_attributes(user_params)
+      end
+    end
+
+    def organization_access_level
+      return organization_params[:organization_access_level] if organization_params.has_key?(:organization_access_level)
+
+      Organizations::OrganizationUser.home_organization_access_level(user_is_admin: @user.admin?)
+    end
+
+    def assign_organization
+      # Allow invalid parameters for the validation errors to bubble up to the User.
+      return if organization_params.blank?
+
+      @user.organization_id = organization_params[:organization_id]
+      @user.organization_users << Organizations::OrganizationUser.new(
+        organization_id: organization_params[:organization_id],
+        access_level: organization_access_level
+      )
+    end
+
+    def assign_personal_namespace
+      organization = Organizations::Organization.find_by_id(organization_params[:organization_id])
+      user.assign_personal_namespace(organization)
     end
 
     def assign_common_user_params
       @user_params[:created_by_id] = current_user&.id
       @user_params[:external] = user_external? if set_external_param?
+      @user_params[:email_otp_required_after] = Time.current if should_enrol_in_email_otp?
 
       @user_params.delete(:user_type) unless allowed_user_type?
     end
 
     def set_external_param?
       user_default_internal_regex_enabled? && !user_params.key?(:external)
+    end
+
+    def should_enrol_in_email_otp?
+      # Email OTP applies only to users who are created with an ability
+      # to sign in with a password.
+      !@user_params[:password_automatically_set] &&
+        Feature.enabled?(:enrol_new_users_in_email_otp, :instance)
     end
 
     def user_external?
@@ -140,10 +183,6 @@ module Users
       user.identities.build(identity_params)
     end
 
-    def update_canonical_email
-      Users::UpdateCanonicalEmailService.new(user: user).execute
-    end
-
     # Allowed params for creating a user (admins only)
     def admin_create_params
       [
@@ -151,36 +190,42 @@ module Users
         :admin,
         :avatar,
         :bio,
+        :bot_namespace,
         :can_create_group,
         :color_mode_id,
         :color_scheme_id,
+        :discord,
         :email,
         :external,
         :force_random_password,
         :hide_no_password,
         :hide_no_ssh_key,
         :linkedin,
+        :location,
         :name,
+        :note,
+        :user_detail_organization,
         :password,
         :password_automatically_set,
         :password_expires_at,
+        :private_profile,
         :projects_limit,
+        :public_email,
         :remember_me,
+        :skip_ai_prefix_validation,
         :skip_confirmation,
-        :skype,
         :theme_id,
         :twitter,
-        :discord,
-        :username,
-        :website_url,
-        :private_profile,
-        :organization,
-        :location,
-        :public_email,
         :user_type,
-        :note,
-        :view_diffs_file_by_file
+        :username,
+        :view_diffs_file_by_file,
+        :website_url,
+        :github
       ]
+    end
+
+    def admin_organization_attributes
+      [:organization_id, :organization_access_level]
     end
 
     # Allowed params for user signup
@@ -196,6 +241,10 @@ module Users
         :first_name,
         :last_name
       ]
+    end
+
+    def signup_organization_attributes
+      [:organization_id]
     end
   end
 end

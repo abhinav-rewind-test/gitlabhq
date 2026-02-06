@@ -1,20 +1,28 @@
 ---
-stage: Data Stores
+stage: AI-powered
 group: Global Search
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Search admin API
 ---
 
-# Search admin API
+{{< details >}}
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** Self-managed
+- Tier: Premium, Ultimate
+- Offering: GitLab Self-Managed
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/120751) in GitLab 16.1
+{{< /details >}}
 
-The search admin API returns information about [advanced search migrations](../integration/advanced_search/elasticsearch.md#advanced-search-migrations).
+{{< history >}}
 
-You must have administrator access to use this API.
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/120751) in GitLab 16.1
+
+{{< /history >}}
+
+Use this API to retrieve information about [advanced search migrations](../integration/advanced_search/elasticsearch.md#advanced-search-migrations).
+
+Prerequisites:
+
+- You must be an administrator.
 
 ## List all advanced search migrations
 
@@ -27,7 +35,8 @@ GET /admin/search/migrations
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/admin/search/migrations"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/admin/search/migrations"
 ```
 
 Example response:
@@ -80,23 +89,25 @@ Example response:
 Get a single advanced search migration by providing the migration version or name.
 
 ```plaintext
-GET /admin/search/mirations/:version_or_name
+GET /admin/search/migrations/:version_or_name
 ```
 
 Parameters:
 
 | Attribute         | Type           | Required | Description                          |
 |-------------------|----------------|----------|--------------------------------------|
-| `version_or_name` | integer/string | Yes      | The version or name of the migration. |
+| `version_or_name` | integer or string | Yes      | The version or name of the migration. |
 
 Example request:
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/admin/search/mirations/20230503064300"
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://primary.example.com/api/v4/admin/search/mirations/BackfillProjectPermissionsInBlobsUsingPermutations"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/admin/search/migrations/20230503064300"
+curl --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://primary.example.com/api/v4/admin/search/migrations/BackfillProjectPermissionsInBlobsUsingPermutations"
 ```
 
-If successful, returns [`200`](rest/index.md#status-codes) and the following
+If successful, returns [`200`](rest/troubleshooting.md#status-codes) and the following
 response attributes:
 
 | Attribute         | Type     | Description                                           |

@@ -42,12 +42,12 @@ RSpec.describe Gitlab::Database::Partitioning::List::ConvertTable, feature_categ
         it 'raises UnableToPartition error' do
           expect { prepare }
             .to raise_error(described_class::UnableToPartition)
-                  .and change {
-                    Gitlab::Database::PostgresConstraint
-                      .check_constraints
-                      .by_table_identifier(table_identifier)
-                      .count
-                  }.by(0)
+            .and not_change {
+              Gitlab::Database::PostgresConstraint
+                .check_constraints
+                .by_table_identifier(table_identifier)
+                .count
+            }
         end
       end
 
@@ -105,12 +105,12 @@ RSpec.describe Gitlab::Database::Partitioning::List::ConvertTable, feature_categ
               expect { prepare }
                 .to raise_error(described_class::UnableToPartition,
                   starting_with('Error validating partitioning constraint'))
-                      .and change {
-                        Gitlab::Database::PostgresConstraint
-                          .check_constraints
-                          .by_table_identifier(table_identifier)
-                          .count
-                      }.by(0)
+                .and not_change {
+                  Gitlab::Database::PostgresConstraint
+                    .check_constraints
+                    .by_table_identifier(table_identifier)
+                    .count
+                }
             end
           end
         end
@@ -320,6 +320,21 @@ RSpec.describe Gitlab::Database::Partitioning::List::ConvertTable, feature_categ
           expect(migration_context.has_loose_foreign_key?(parent_table_name)).to be_truthy
         end
       end
+
+      context 'when table has FK referencing itself' do
+        before do
+          connection.execute(<<~SQL)
+            ALTER TABLE #{table_name} ADD COLUMN auto_canceled_by_id bigint;
+            ALTER TABLE #{table_name} ADD CONSTRAINT self_referencing FOREIGN KEY (#{partitioning_column}, auto_canceled_by_id) REFERENCES #{table_name} (#{partitioning_column}, id) ON DELETE SET NULL;
+          SQL
+        end
+
+        it 'does not duplicate the FK', :aggregate_failures do
+          expect { partition }.not_to raise_error
+
+          expect(migration_context.foreign_keys(parent_table_name).map(&:name)).not_to include("self_referencing")
+        end
+      end
     end
 
     context 'when a single partitioning value is given' do
@@ -382,11 +397,10 @@ RSpec.describe Gitlab::Database::Partitioning::List::ConvertTable, feature_categ
       end
 
       it 'moves sequences back to the original table' do
-        expect { revert_conversion }.to change { converter.send(:sequences_owned_by, table_name).count }
+        expect { revert_conversion }.to change { Gitlab::Database::PostgresSequence.by_table_name(table_name).count }
                                           .from(0)
                                           .and change {
-                                            converter.send(
-                                              :sequences_owned_by, parent_table_name).count
+                                            Gitlab::Database::PostgresSequence.by_table_name(parent_table_name).count
                                           }.to(0)
       end
 

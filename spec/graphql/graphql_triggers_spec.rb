@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe GraphqlTriggers, feature_category: :shared do
+RSpec.describe GraphqlTriggers, feature_category: :api do
   let_it_be(:project) { create(:project) }
   let_it_be(:issuable, refind: true) { create(:work_item, project: project) }
 
@@ -169,6 +169,217 @@ RSpec.describe GraphqlTriggers, feature_category: :shared do
         ).and_call_original
 
         described_class.work_item_updated(issue)
+      end
+    end
+  end
+
+  describe '.issuable_todo_updated' do
+    let_it_be(:user) { create(:user) }
+
+    it 'triggers the issuable_todo_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :issuable_todo_updated,
+        { issuable_id: issuable.to_gid },
+        issuable
+      ).and_call_original
+
+      described_class.issuable_todo_updated(issuable)
+    end
+  end
+
+  describe '.user_merge_request_updated' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:merge_request) { create(:merge_request) }
+
+    it 'triggers the user_merge_request_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :user_merge_request_updated,
+        { user_id: user.to_gid },
+        merge_request
+      ).and_call_original
+
+      described_class.user_merge_request_updated(user, merge_request)
+    end
+  end
+
+  describe '.ci_pipeline_status_updated' do
+    let_it_be(:pipeline) { create(:ci_pipeline) }
+    let_it_be(:user) { pipeline.project.owners.first }
+
+    it 'triggers the ci_pipeline_status_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_pipeline_status_updated,
+        { pipeline_id: pipeline.to_gid },
+        pipeline
+      ).and_call_original
+
+      described_class.ci_pipeline_status_updated(pipeline)
+    end
+  end
+
+  describe '.ci_pipeline_statuses_updated' do
+    let_it_be(:pipeline) { create(:ci_pipeline) }
+
+    it 'triggers the ci_pipeline_statuses_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_pipeline_statuses_updated,
+        { project_id: pipeline.project.to_gid },
+        pipeline
+      )
+
+      described_class.ci_pipeline_statuses_updated(pipeline)
+    end
+
+    describe 'when ci_pipeline_statuses_updated_subscription is disabled' do
+      before do
+        stub_feature_flags(ci_pipeline_statuses_updated_subscription: false)
+      end
+
+      it 'does not trigger the ci_pipeline_statuses_updated subscription' do
+        expect(GitlabSchema.subscriptions).not_to receive(:trigger).with(
+          :ci_pipeline_statuses_updated,
+          { project_id: pipeline.project.to_gid },
+          pipeline
+        )
+
+        described_class.ci_pipeline_statuses_updated(pipeline)
+      end
+    end
+  end
+
+  describe '.ci_pipeline_job_updated' do
+    let_it_be(:job) { create(:ci_build) }
+
+    it 'triggers the ci_job_status_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_job_status_updated,
+        { job_id: job.to_gid },
+        job
+      )
+
+      described_class.ci_job_status_updated(job)
+    end
+  end
+
+  describe '.ci_stage_updated' do
+    let_it_be(:stage) { create(:ci_stage) }
+    let_it_be(:job) { create(:ci_build, ci_stage: stage) }
+
+    it 'triggers the ci_stage_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_stage_updated,
+        { stage_id: stage.to_gid },
+        job
+      )
+
+      described_class.ci_stage_updated(job)
+    end
+  end
+
+  describe '.ci_pipeline_schedule_status_updated' do
+    let_it_be(:schedule) { create(:ci_pipeline_schedule, project: project, owner: project.first_owner) }
+
+    it 'triggers the ci_pipeline_schedule_status_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_pipeline_schedule_status_updated,
+        { project_id: schedule.project.to_gid },
+        schedule
+      )
+
+      described_class.ci_pipeline_schedule_status_updated(schedule)
+    end
+  end
+
+  describe '.ci_pipeline_creation_requests_updated' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:merge_request) { create(:merge_request, source_project: project, target_project: project) }
+
+    it 'triggers the ci_pipeline_creation_requests_updated subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_pipeline_creation_requests_updated,
+        { merge_request_id: merge_request.to_gid },
+        merge_request
+      ).and_call_original
+
+      described_class.ci_pipeline_creation_requests_updated(merge_request)
+    end
+
+    describe 'when FF ci_pipeline_creation_requests_realtime is disabled' do
+      before do
+        stub_feature_flags(ci_pipeline_creation_requests_realtime: false)
+      end
+
+      it 'does not trigger the subscription' do
+        expect(GitlabSchema.subscriptions).not_to receive(:trigger).with(
+          :ci_pipeline_creation_requests_updated,
+          { merge_request_id: merge_request.to_gid },
+          merge_request
+        )
+
+        described_class.ci_pipeline_creation_requests_updated(merge_request)
+      end
+    end
+
+    it 'passes correct merge request GID to subscription' do
+      expected_gid = merge_request.to_gid
+
+      expect(GitlabSchema.subscriptions).to receive(:trigger) do |subscription_name, args|
+        expect(subscription_name).to eq(:ci_pipeline_creation_requests_updated)
+        expect(args[:merge_request_id]).to eq(expected_gid)
+        expect(args[:merge_request_id]).to be_a(GlobalID)
+        expect(args[:merge_request_id].model_class).to eq(MergeRequest)
+      end
+
+      described_class.ci_pipeline_creation_requests_updated(merge_request)
+    end
+  end
+
+  describe '.ci_job_processed' do
+    let_it_be(:job) { create(:ci_build) }
+
+    it 'triggers the ci_job_processed subscription' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_job_processed,
+        { project_id: job.project.to_gid },
+        job
+      )
+
+      described_class.ci_job_processed(job)
+    end
+
+    it 'triggers the ci_job_processed_with_artifacts subscription with additional arguments' do
+      expect(GitlabSchema.subscriptions).to receive(:trigger).with(
+        :ci_job_processed,
+        { project_id: job.project.to_gid, with_artifacts: true },
+        job
+      )
+
+      described_class.ci_job_processed_with_artifacts(job)
+    end
+
+    describe 'when ci_job_created_subscription is disabled' do
+      before do
+        stub_feature_flags(ci_job_created_subscription: false)
+      end
+
+      it 'does not trigger the ci_job_processed subscription' do
+        expect(GitlabSchema.subscriptions).not_to receive(:trigger).with(
+          :ci_job_processed,
+          { project_id: job.project.to_gid },
+          job
+        )
+
+        described_class.ci_job_processed(job)
+      end
+
+      it 'does not trigger the ci_job_processed subscription with additional arguments' do
+        expect(GitlabSchema.subscriptions).not_to receive(:trigger).with(
+          :ci_job_processed,
+          { project_id: job.project.to_gid, with_artifacts: true },
+          job
+        )
+
+        described_class.ci_job_processed_with_artifacts(job)
       end
     end
   end

@@ -1,17 +1,19 @@
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
 import { GlButton, GlSprintf } from '@gitlab/ui';
+import { createTestingPinia } from '@pinia/testing';
+import { PiniaVuePlugin } from 'pinia';
 import { createMockSubscription as createMockApolloSubscription } from 'mock-apollo-client';
 import approvedByCurrentUser from 'test_fixtures/graphql/merge_requests/approvals/approvals.query.graphql.json';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import { stubComponent } from 'helpers/stub_component';
 import waitForPromises from 'helpers/wait_for_promises';
+import { globalAccessorPlugin } from '~/pinia/plugins';
 import { getIdFromGraphQLId } from '~/graphql_shared/utils';
 import { createAlert } from '~/alert';
 import Approvals from '~/vue_merge_request_widget/components/approvals/approvals.vue';
 import ApprovalsSummary from '~/vue_merge_request_widget/components/approvals/approvals_summary.vue';
-import ApprovalsSummaryOptional from '~/vue_merge_request_widget/components/approvals/approvals_summary_optional.vue';
 import {
   APPROVE_ERROR,
   UNAPPROVE_ERROR,
@@ -19,9 +21,13 @@ import {
 import eventHub from '~/vue_merge_request_widget/event_hub';
 import approvedByQuery from 'ee_else_ce/vue_merge_request_widget/components/approvals/queries/approvals.query.graphql';
 import approvedBySubscription from 'ee_else_ce/vue_merge_request_widget/components/approvals/queries/approvals.subscription.graphql';
+import { useLegacyDiffs } from '~/diffs/stores/legacy_diffs';
+import { useNotes } from '~/notes/store/legacy_notes';
+import { useBatchComments } from '~/batch_comments/store';
 import { createCanApproveResponse } from 'jest/approvals/mock_data';
 
 Vue.use(VueApollo);
+Vue.use(PiniaVuePlugin);
 
 const mockAlertDismiss = jest.fn();
 jest.mock('~/alert', () => ({
@@ -48,6 +54,7 @@ describe('MRWidget approvals', () => {
   let wrapper;
   let service;
   let mr;
+  let pinia;
   const submitSpy = jest.fn().mockImplementation((e) => {
     e.preventDefault();
   });
@@ -74,6 +81,7 @@ describe('MRWidget approvals', () => {
         ...options.props,
       },
       provide,
+      pinia,
       stubs: {
         GlSprintf,
         GlForm: {
@@ -104,7 +112,6 @@ describe('MRWidget approvals', () => {
         };
   };
   const findSummary = () => wrapper.findComponent(ApprovalsSummary);
-  const findOptionalSummary = () => wrapper.findComponent(ApprovalsSummaryOptional);
 
   beforeEach(() => {
     service = {
@@ -129,6 +136,16 @@ describe('MRWidget approvals', () => {
       iid: '1',
       requireSamlAuthToApprove: false,
     };
+    pinia = createTestingPinia({
+      plugins: [globalAccessorPlugin],
+    });
+    useLegacyDiffs().projectPath = 'gitlab-org/gitlab';
+    useNotes().noteableData.id = 1;
+    useNotes().noteableData.preview_note_path = '/preview';
+    useNotes().noteableData.noteableType = 'merge_request';
+    useNotes().notesData.markdownDocsPath = '/markdown/docs';
+    useNotes().notesData.quickActionsDocsPath = '/quickactions/docs';
+    useBatchComments();
 
     jest.spyOn(eventHub, '$emit').mockImplementation(() => {});
 
@@ -363,11 +380,14 @@ describe('MRWidget approvals', () => {
         });
 
         it('is shown', () => {
-          expect(findSummary().exists()).toBe(false);
-          expect(findOptionalSummary().props()).toEqual({
-            canApprove: true,
-            helpPath: TEST_HELP_PATH,
-          });
+          expect(findSummary().exists()).toBe(true);
+          expect(findSummary().props()).toEqual(
+            expect.objectContaining({
+              optional: true,
+              canApprove: true,
+              helpPath: TEST_HELP_PATH,
+            }),
+          );
         });
       });
 
@@ -378,11 +398,14 @@ describe('MRWidget approvals', () => {
         });
 
         it('is shown', () => {
-          expect(findSummary().exists()).toBe(false);
-          expect(findOptionalSummary().props()).toEqual({
-            canApprove: false,
-            helpPath: TEST_HELP_PATH,
-          });
+          expect(findSummary().exists()).toBe(true);
+          expect(findSummary().props()).toEqual(
+            expect.objectContaining({
+              optional: true,
+              canApprove: false,
+              helpPath: TEST_HELP_PATH,
+            }),
+          );
         });
       });
     });
@@ -397,7 +420,6 @@ describe('MRWidget approvals', () => {
     it('is rendered with props', () => {
       const summary = findSummary();
 
-      expect(findOptionalSummary().exists()).toBe(false);
       expect(summary.exists()).toBe(true);
       expect(summary.props()).toMatchObject({
         approvalState: approvedByCurrentUser.data.project.mergeRequest,

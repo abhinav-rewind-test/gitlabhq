@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Memory::Reports::HeapDump, feature_category: :cloud_connector do
+RSpec.describe Gitlab::Memory::Reports::HeapDump, feature_category: :durability_metrics do
   # Copy this class so we do not mess with its state.
   let(:klass) { described_class.dup }
 
@@ -31,6 +31,10 @@ RSpec.describe Gitlab::Memory::Reports::HeapDump, feature_category: :cloud_conne
     subject(:run) { report.run(writer) }
 
     let(:writer) { StringIO.new }
+
+    before do
+      klass.remove_instance_variable(:@write_heap_dump) if klass.instance_variable_defined?(:@write_heap_dump)
+    end
 
     context 'when no heap dump is enqueued' do
       it 'does nothing and returns false' do

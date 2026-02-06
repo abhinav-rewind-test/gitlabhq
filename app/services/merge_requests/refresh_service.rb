@@ -3,6 +3,7 @@
 module MergeRequests
   class RefreshService < MergeRequests::BaseService
     include Gitlab::Utils::StrongMemoize
+
     attr_reader :push
 
     def execute(oldrev, newrev, ref)
@@ -17,12 +18,14 @@ module MergeRequests
     def refresh_merge_requests!
       # n + 1: https://gitlab.com/gitlab-org/gitlab-foss/issues/60289
       Gitlab::GitalyClient.allow_n_plus_1_calls { find_new_commits }
-
       # Be sure to close outstanding MRs before reloading them to avoid generating an
       # empty diff during a manual merge
       close_upon_missing_source_branch_ref
+
       post_merge_manually_merged
+
       link_forks_lfs_objects
+
       reload_merge_requests
 
       merge_requests_for_source_branch.each do |mr|
@@ -31,22 +34,22 @@ module MergeRequests
         mark_pending_todos_done(mr)
       end
 
-      abort_ff_merge_requests_with_when_pipeline_succeeds
+      abort_ff_merge_requests_with_auto_merges
+
       cache_merge_requests_closing_issues
 
       merge_requests_for_source_branch.each do |mr|
         # Leave a system note if a branch was deleted/added
-        if branch_added_or_removed?
-          comment_mr_branch_presence_changed(mr)
-        end
+        comment_mr_branch_presence_changed(mr) if branch_added_or_removed?
 
         notify_about_push(mr)
+
         mark_mr_as_draft_from_commits(mr)
-        execute_mr_web_hooks(mr)
-        # Run at the end of the loop to avoid any potential contention on the MR object
-        refresh_pipelines_on_merge_requests(mr)
+
         merge_request_activity_counter.track_mr_including_ci_config(user: mr.author, merge_request: mr)
       end
+
+      execute_async_workers
 
       true
     end
@@ -62,6 +65,14 @@ module MergeRequests
       # create an `empty` diff for `closed` MRs without a source branch, keeping
       # the latest diff state as the last _valid_ one.
       merge_requests_for_source_branch.reject(&:source_branch_exists?).each do |mr|
+        Gitlab::AppLogger.info(
+          message: 'Closing merge request due to missing source branch',
+          merge_request_id: mr.id,
+          merge_request_iid: mr.iid,
+          project_id: mr.project_id,
+          source_branch: mr.source_branch
+        )
+
         MergeRequests::CloseService
           .new(project: mr.target_project, current_user: @current_user)
           .execute(mr)
@@ -77,7 +88,8 @@ module MergeRequests
       commit_ids = @commits.map(&:id)
       merge_requests = @project.merge_requests.opened
         .preload_project_and_latest_diff
-        .preload_latest_diff_commit
+        .preload_merge_data(@project)
+        .preload_latest_diff_commit(@project)
         .where(target_branch: @push.branch_name).to_a
         .select(&:diff_head_commit)
         .select do |merge_request|
@@ -98,9 +110,24 @@ module MergeRequests
         merge_request.merge_commit_sha = sha
         merge_request.merged_commit_sha = sha
 
+        # Look for a merged MR that includes the SHA to associate it with
+        # the MR we're about to mark as merged.
+        # Only the merged MRs without the event source would be considered
+        # to avoid associating it with other MRs that we may have marked as merged here.
+        source_merge_request = MergeRequestsFinder.new(
+          @current_user,
+          project_id: @project.id,
+          merged_without_event_source: true,
+          state: 'merged',
+          sort: 'merged_at',
+          commit_sha: sha
+        ).execute.first
+
+        source = source_merge_request || @project.commit(sha)
+
         MergeRequests::PostMergeService
           .new(project: merge_request.target_project, current_user: @current_user)
-          .execute(merge_request)
+          .execute(merge_request, source)
       end
     end
     # rubocop: enable CodeReuse/ActiveRecord
@@ -123,9 +150,11 @@ module MergeRequests
       merge_requests = @project.merge_requests.opened
         .by_source_or_target_branch(@push.branch_name)
         .preload_project_and_latest_diff
+        .preload_merge_data(@project)
 
       merge_requests_from_forks = merge_requests_for_forks
         .preload_project_and_latest_diff
+        .preload_merge_data(@project)
 
       merge_requests_array = merge_requests.to_a + merge_requests_from_forks.to_a
       filter_merge_requests(merge_requests_array).each do |merge_request|
@@ -133,6 +162,7 @@ module MergeRequests
 
         if branch_and_project_match?(merge_request) || @push.force_push?
           merge_request.reload_diff(current_user)
+          schedule_duo_code_review(merge_request)
           # Clear existing merge error if the push were directed at the
           # source branch. Clearing the error when the target branch
           # changes will hide the error from the user.
@@ -178,26 +208,26 @@ module MergeRequests
     def abort_auto_merges(merge_request)
       return unless abort_auto_merges?(merge_request)
 
-      abort_auto_merge(merge_request, 'source branch was updated')
+      learn_more_url = Rails.application.routes.url_helpers.help_page_url(
+        'ci/pipelines/merge_trains.md',
+        anchor: 'merge-request-dropped-from-the-merge-train'
+      )
+
+      abort_auto_merge(merge_request, "the source branch was updated. [Learn more](#{learn_more_url}).")
     end
 
-    def abort_ff_merge_requests_with_when_pipeline_succeeds
+    def abort_ff_merge_requests_with_auto_merges
       return unless @project.ff_merge_must_be_possible?
 
       merge_requests_with_auto_merge_enabled_to(@push.branch_name).each do |merge_request|
-        next unless merge_request.auto_merge_strategy == AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS
+        unless merge_request.auto_merge_strategy == AutoMergeService::STRATEGY_MERGE_WHEN_CHECKS_PASS
+          next
+        end
+
         next unless merge_request.should_be_rebased?
 
         abort_auto_merge_with_todo(merge_request, 'target branch was updated')
       end
-    end
-
-    def abort_auto_merge_with_todo(merge_request, reason)
-      response = abort_auto_merge(merge_request, reason)
-      response = ServiceResponse.new(**response)
-      return unless response.success?
-
-      todo_service.merge_request_became_unmergeable(merge_request)
     end
 
     def merge_requests_with_auto_merge_enabled_to(target_branch)
@@ -293,7 +323,7 @@ module MergeRequests
     # `MergeRequestsClosingIssues` model (as a performance optimization).
     # rubocop: disable CodeReuse/ActiveRecord
     def cache_merge_requests_closing_issues
-      @project.merge_requests.where(source_branch: @push.branch_name).each do |merge_request|
+      @project.merge_requests.where(source_branch: @push.branch_name).find_each do |merge_request|
         merge_request.cache_merge_request_closes_issues!(@current_user)
       end
     end
@@ -315,6 +345,29 @@ module MergeRequests
           .from_project(project)
           .from_source_branches(@push.branch_name)
           .from_fork
+    end
+
+    def schedule_duo_code_review(merge_request)
+      # Overridden in EE
+    end
+
+    def execute_async_workers
+      MergeRequests::Refresh::WebHooksWorker.perform_async(
+        @project.id,
+        @current_user.id,
+        @push.oldrev,
+        @push.newrev,
+        @push.ref
+      )
+
+      MergeRequests::Refresh::PipelineWorker.perform_async(
+        @project.id,
+        @current_user.id,
+        @push.oldrev,
+        @push.newrev,
+        @push.ref,
+        params.slice(:push_options, :gitaly_context).as_json # ensure sidekiq-compatible hash argument
+      )
     end
   end
 end

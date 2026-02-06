@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe X509Certificate do
+RSpec.describe X509Certificate, feature_category: :source_code_management do
   describe 'validation' do
     it { is_expected.to validate_presence_of(:subject_key_identifier) }
     it { is_expected.to validate_presence_of(:email) }
@@ -12,9 +12,12 @@ RSpec.describe X509Certificate do
 
   describe 'associations' do
     it { is_expected.to belong_to(:x509_issuer).required }
+    it { is_expected.to belong_to(:project).required }
   end
 
   describe '.safe_create!' do
+    let_it_be(:project) { create(:project) }
+
     let(:subject_key_identifier) { 'CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD:CD' }
     let(:subject) { 'CN=gitlab@example.com,OU=Example,O=World' }
     let(:email) { 'gitlab@example.com' }
@@ -27,7 +30,8 @@ RSpec.describe X509Certificate do
         subject: subject,
         email: email,
         serial_number: serial_number,
-        x509_issuer_id: issuer.id
+        x509_issuer_id: issuer.id,
+        project_id: project.id
       }
     end
 
@@ -126,6 +130,13 @@ RSpec.describe X509Certificate do
 
     it 'rejects invalid serial_number' do
       expect(build(:x509_certificate, x509_issuer: issuer, serial_number: "sgsgfsdgdsfg")).to be_invalid
+    end
+  end
+
+  describe '#all_emails' do
+    it 'creates a new certificate if it was not found' do
+      cert = build(:x509_certificate, email: 'user@example.com', emails: ['gitlab@test.com', 'test@test.com', 'user@example.com', nil])
+      expect(cert.all_emails).to contain_exactly('user@example.com', 'gitlab@test.com', 'test@test.com')
     end
   end
 end

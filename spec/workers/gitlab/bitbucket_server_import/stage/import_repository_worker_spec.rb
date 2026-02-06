@@ -18,7 +18,7 @@ RSpec.describe Gitlab::BitbucketServerImport::Stage::ImportRepositoryWorker, fea
       end
 
       it 'schedules the next stage' do
-        expect(Gitlab::BitbucketServerImport::Stage::ImportUsersWorker).to receive(:perform_async)
+        expect(Gitlab::BitbucketServerImport::Stage::ImportPullRequestsWorker).to receive(:perform_async)
           .with(project.id)
 
         worker.perform(project.id)
@@ -69,7 +69,7 @@ RSpec.describe Gitlab::BitbucketServerImport::Stage::ImportRepositoryWorker, fea
           ).and_call_original
 
         expect { worker.perform(project.id) }
-          .to change { Gitlab::BitbucketServerImport::Stage::ImportPullRequestsWorker.jobs.size }.by(0)
+          .to not_change { Gitlab::BitbucketServerImport::Stage::ImportPullRequestsWorker.jobs.size }
           .and raise_error(exception)
       end
     end

@@ -1,5 +1,5 @@
 <script>
-import ToggleSidebar from '~/sidebar/components/toggle/toggle_sidebar.vue';
+import ToggleSidebar from './toggle_sidebar.vue';
 import SidebarTodo from './sidebar_todo.vue';
 
 export default {
@@ -25,7 +25,7 @@ export default {
 </script>
 
 <template>
-  <div class="block gl-display-flex gl-justify-content-space-between gl-border-b-gray-100!">
+  <div class="block gl-flex gl-justify-between !gl-border-b-default">
     <sidebar-todo
       v-if="!sidebarCollapsed"
       :project-path="projectPath"

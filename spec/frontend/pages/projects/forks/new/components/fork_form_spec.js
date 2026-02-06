@@ -6,17 +6,16 @@ import {
   GlFormRadio,
   GlSprintf,
 } from '@gitlab/ui';
-import { getByRole } from '@testing-library/dom';
-import { mount, shallowMount } from '@vue/test-utils';
-import axios from 'axios';
 import AxiosMockAdapter from 'axios-mock-adapter';
-import { kebabCase } from 'lodash';
+import { kebabCase, merge } from 'lodash';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
+import axios from '~/lib/utils/axios_utils';
 import { createAlert } from '~/alert';
 import * as urlUtility from '~/lib/utils/url_utility';
 import ForkForm from '~/pages/projects/forks/new/components/fork_form.vue';
 import createMockApollo from 'helpers/mock_apollo_helper';
+import { shallowMountExtended, mountExtended } from 'helpers/vue_test_utils_helper';
 import searchQuery from '~/pages/projects/forks/new/queries/search_forkable_namespaces.query.graphql';
 import ProjectNamespace from '~/pages/projects/forks/new/components/project_namespace.vue';
 import { START_RULE, CONTAINS_RULE } from '~/projects/project_name_rules';
@@ -31,9 +30,9 @@ describe('ForkForm component', () => {
 
   const PROJECT_VISIBILITY_TYPE = {
     private:
-      'Private Project access must be granted explicitly to each user. If this project is part of a group, access will be granted to members of the group.',
-    internal: 'Internal The project can be accessed by any logged in user.',
-    public: 'Public The project can be accessed without any authentication.',
+      'Project access must be granted explicitly to each user. If this project is part of a group, access will be granted to members of the group.',
+    internal: 'The project can be accessed by any logged in user.',
+    public: 'The project can be accessed without any authentication.',
   };
 
   const GON_API_VERSION = 'v7';
@@ -54,63 +53,74 @@ describe('ForkForm component', () => {
 
   Vue.use(VueApollo);
 
-  const createComponentFactory = (mountFn) => (provide = {}, data = {}) => {
-    const queryResponse = {
-      project: {
-        id: 'gid://gitlab/Project/1',
-        forkTargets: {
-          nodes: [
-            {
-              id: 'gid://gitlab/Group/21',
-              fullPath: 'flightjs',
-              name: 'Flight JS',
-              visibility: 'public',
-            },
-            {
-              id: 'gid://gitlab/Namespace/4',
-              fullPath: 'root',
-              name: 'Administrator',
-              visibility: 'public',
-            },
-          ],
+  const createComponentFactory =
+    (mountFn) =>
+    (provide = {}, data = {}) => {
+      const queryResponse = {
+        project: {
+          id: 'gid://gitlab/Project/1',
+          forkTargets: {
+            nodes: [
+              {
+                id: 'gid://gitlab/Group/21',
+                fullPath: 'flightjs',
+                name: 'Flight JS',
+                visibility: 'public',
+              },
+              {
+                id: 'gid://gitlab/Namespace/4',
+                fullPath: 'root',
+                name: 'Administrator',
+                visibility: 'public',
+              },
+            ],
+          },
         },
-      },
+      };
+
+      mockQueryResponse = jest.fn().mockResolvedValue({ data: queryResponse });
+      const requestHandlers = [[searchQuery, mockQueryResponse]];
+      const apolloProvider = createMockApollo(requestHandlers);
+
+      apolloProvider.clients.defaultClient.cache.writeQuery({
+        query: searchQuery,
+        data: {
+          ...queryResponse,
+        },
+      });
+
+      let overridenFormData = {};
+
+      if (data.form) {
+        overridenFormData = {
+          form: merge({}, ForkForm.data().form, data.form || {}),
+        };
+      }
+
+      wrapper = mountFn(ForkForm, {
+        apolloProvider,
+        provide: {
+          ...DEFAULT_PROVIDE,
+          ...provide,
+        },
+        data() {
+          return {
+            ...data,
+            ...overridenFormData,
+          };
+        },
+        stubs: {
+          GlFormInputGroup,
+          GlFormInput,
+          GlFormRadioGroup,
+          GlFormRadio,
+          GlSprintf,
+        },
+      });
     };
 
-    mockQueryResponse = jest.fn().mockResolvedValue({ data: queryResponse });
-    const requestHandlers = [[searchQuery, mockQueryResponse]];
-    const apolloProvider = createMockApollo(requestHandlers);
-
-    apolloProvider.clients.defaultClient.cache.writeQuery({
-      query: searchQuery,
-      data: {
-        ...queryResponse,
-      },
-    });
-
-    wrapper = mountFn(ForkForm, {
-      apolloProvider,
-      provide: {
-        ...DEFAULT_PROVIDE,
-        ...provide,
-      },
-      data() {
-        return {
-          ...data,
-        };
-      },
-      stubs: {
-        GlFormInputGroup,
-        GlFormInput,
-        GlFormRadioGroup,
-        GlFormRadio,
-        GlSprintf,
-      },
-    });
-  };
-
-  const createComponent = createComponentFactory(shallowMount);
-  const createFullComponent = createComponentFactory(mount);
+  const createComponent = createComponentFactory(shallowMountExtended);
+  const createFullComponent = createComponentFactory(mountExtended);
 
   beforeEach(() => {
     axiosMock = new AxiosMockAdapter(axios);
@@ -123,23 +133,21 @@ describe('ForkForm component', () => {
     axiosMock.restore();
   });
 
-  const findPrivateRadio = () => wrapper.find('[data-testid="radio-private"]');
-  const findInternalRadio = () => wrapper.find('[data-testid="radio-internal"]');
-  const findPublicRadio = () => wrapper.find('[data-testid="radio-public"]');
-  const findForkNameInput = () => wrapper.find('[data-testid="fork-name-input"]');
+  const findPrivateRadio = () => wrapper.findByTestId('radio-private');
+  const findInternalRadio = () => wrapper.findByTestId('radio-internal');
+  const findPublicRadio = () => wrapper.findByTestId('radio-public');
+  const findForkNameInput = () => wrapper.findByTestId('fork-name-input');
   const findForkUrlInput = () => wrapper.findComponent(ProjectNamespace);
-  const findForkSlugInput = () => wrapper.find('[data-testid="fork-slug-input"]');
-  const findForkDescriptionTextarea = () =>
-    wrapper.find('[data-testid="fork-description-textarea"]');
-  const findVisibilityRadioGroup = () =>
-    wrapper.find('[data-testid="fork-visibility-radio-group"]');
-  const findBranchesRadioGroup = () => wrapper.find('[data-testid="fork-branches-radio-group"]');
+  const findForkSlugInput = () => wrapper.findByTestId('fork-slug-input');
+  const findForkDescriptionTextarea = () => wrapper.findByTestId('fork-description-textarea');
+  const findVisibilityRadioGroup = () => wrapper.findByTestId('fork-visibility-radio-group');
+  const findBranchesRadioGroup = () => wrapper.findByTestId('fork-branches-radio-group');
 
   it('will go to cancelPath when click cancel button', () => {
     createComponent();
 
     const { cancelPath } = DEFAULT_PROVIDE;
-    const cancelButton = wrapper.find('[data-testid="cancel-button"]');
+    const cancelButton = wrapper.findByTestId('cancel-button');
 
     expect(cancelButton.attributes('href')).toBe(cancelPath);
   });
@@ -166,8 +174,8 @@ describe('ForkForm component', () => {
   it('pre-populate form from project props', () => {
     createComponent();
 
-    expect(findForkNameInput().attributes('value')).toBe(DEFAULT_PROVIDE.projectName);
-    expect(findForkSlugInput().attributes('value')).toBe(DEFAULT_PROVIDE.projectPath);
+    expect(findForkNameInput().props('value')).toBe(DEFAULT_PROVIDE.projectName);
+    expect(findForkSlugInput().props('value')).toBe(DEFAULT_PROVIDE.projectPath);
     expect(findForkDescriptionTextarea().attributes('value')).toBe(
       DEFAULT_PROVIDE.projectDescription,
     );
@@ -176,8 +184,8 @@ describe('ForkForm component', () => {
   it('will have required attribute for required fields', () => {
     createComponent();
 
-    expect(findForkNameInput().attributes('required')).not.toBeUndefined();
-    expect(findForkSlugInput().attributes('required')).not.toBeUndefined();
+    expect(findForkNameInput().props('required')).toBe(true);
+    expect(findForkSlugInput().props('required')).toBe(true);
     expect(findVisibilityRadioGroup().attributes('required')).not.toBeUndefined();
     expect(findForkDescriptionTextarea().attributes('required')).toBeUndefined();
   });
@@ -192,7 +200,7 @@ describe('ForkForm component', () => {
     });
 
     it('initially loads slug without kebab-case transformation', () => {
-      expect(findForkSlugInput().attributes('value')).toBe(projectPath);
+      expect(findForkSlugInput().props('value')).toBe(projectPath);
     });
 
     it('changes to kebab case when project name changes', async () => {
@@ -200,7 +208,7 @@ describe('ForkForm component', () => {
       findForkNameInput().vm.$emit('input', newInput);
       await nextTick();
 
-      expect(findForkSlugInput().attributes('value')).toBe(kebabCase(newInput));
+      expect(findForkSlugInput().props('value')).toBe(kebabCase(newInput));
     });
 
     it('does not change to kebab case when project slug is changed manually', async () => {
@@ -208,7 +216,7 @@ describe('ForkForm component', () => {
       findForkSlugInput().vm.$emit('input', newInput);
       await nextTick();
 
-      expect(findForkSlugInput().attributes('value')).toBe(newInput);
+      expect(findForkSlugInput().props('value')).toBe(newInput);
     });
   });
 
@@ -233,7 +241,7 @@ describe('ForkForm component', () => {
       const formRadios = findVisibilityRadioGroup().findAllComponents(GlFormRadio);
 
       Object.keys(PROJECT_VISIBILITY_TYPE).forEach((visibilityType, index) => {
-        expect(formRadios.at(index).text()).toBe(PROJECT_VISIBILITY_TYPE[visibilityType]);
+        expect(formRadios.at(index).text()).toContain(PROJECT_VISIBILITY_TYPE[visibilityType]);
       });
     });
 
@@ -268,7 +276,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /internal/i }).checked).toBe(true);
+        expect(findInternalRadio().element.checked).toBe(true);
       });
 
       it('does not reset the visibility when current level is allowed', async () => {
@@ -283,7 +291,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /public/i }).checked).toBe(true);
+        expect(findPublicRadio().element.checked).toBe(true);
       });
 
       it('does not reset the visibility when visibility cap is increased', async () => {
@@ -305,7 +313,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /internal/i }).checked).toBe(true);
+        expect(findInternalRadio().element.checked).toBe(true);
       });
 
       it('sets the visibility to be next highest from current when restrictedVisibilityLevels is set', async () => {
@@ -322,7 +330,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /private/i }).checked).toBe(true);
+        expect(findPrivateRadio().element.checked).toBe(true);
       });
 
       it('sets the visibility to be next lowest from current when nothing lower is allowed', async () => {
@@ -338,7 +346,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /private/i }).checked).toBe(true);
+        expect(findPrivateRadio().element.checked).toBe(true);
 
         fillForm({
           name: 'six',
@@ -347,7 +355,7 @@ describe('ForkForm component', () => {
         });
         await nextTick();
 
-        expect(getByRole(wrapper.element, 'radio', { name: /internal/i }).checked).toBe(true);
+        expect(findInternalRadio().element.checked).toBe(true);
       });
     });
 
@@ -432,20 +440,43 @@ describe('ForkForm component', () => {
             restrictedVisibilityLevels,
           },
           {
-            form: { fields: { namespace: { value: { visibility: namespace } } } },
+            form: {
+              fields: {
+                visibility: { value: {} },
+                namespace: { value: { visibility: namespace } },
+              },
+            },
           },
         );
 
-        expect(findPrivateRadio().attributes('disabled')).toBe(privateIsDisabled);
-        expect(findInternalRadio().attributes('disabled')).toBe(internalIsDisabled);
-        expect(findPublicRadio().attributes('disabled')).toBe(publicIsDisabled);
+        const privateRadioDisabled = findPrivateRadio().attributes('disabled');
+        const internalRadioDisabled = findInternalRadio().attributes('disabled');
+        const publicRadioDisabled = findPublicRadio().attributes('disabled');
+
+        if (privateIsDisabled) {
+          expect(privateRadioDisabled).toBeDefined();
+        } else {
+          expect(privateRadioDisabled).toBeUndefined();
+        }
+
+        if (publicIsDisabled) {
+          expect(publicRadioDisabled).toBeDefined();
+        } else {
+          expect(publicRadioDisabled).toBeUndefined();
+        }
+
+        if (internalIsDisabled) {
+          expect(internalRadioDisabled).toBeDefined();
+        } else {
+          expect(internalRadioDisabled).toBeUndefined();
+        }
       },
     );
   });
 
   describe('onSubmit', () => {
     const setupComponent = (fields = {}) => {
-      jest.spyOn(urlUtility, 'redirectTo').mockImplementation();
+      jest.spyOn(urlUtility, 'visitUrl').mockImplementation();
 
       createFullComponent(
         {},
@@ -457,10 +488,6 @@ describe('ForkForm component', () => {
         },
       );
     };
-
-    beforeEach(() => {
-      setupComponent();
-    });
 
     const submitForm = async () => {
       fillForm();
@@ -485,7 +512,7 @@ describe('ForkForm component', () => {
 
         await submitForm();
 
-        expect(urlUtility.redirectTo).not.toHaveBeenCalled(); // eslint-disable-line import/no-deprecated
+        expect(urlUtility.visitUrl).not.toHaveBeenCalled();
       });
 
       it('does not make POST request if no visibility is checked', async () => {
@@ -543,16 +570,11 @@ describe('ForkForm component', () => {
       it('make POST request with project param', async () => {
         jest.spyOn(axios, 'post');
 
-        setupComponent();
+        createFullComponent();
         await submitForm();
 
-        const {
-          projectId,
-          projectDescription,
-          projectName,
-          projectPath,
-          projectVisibility,
-        } = DEFAULT_PROVIDE;
+        const { projectId, projectDescription, projectName, projectPath, projectVisibility } =
+          DEFAULT_PROVIDE;
 
         const url = `/api/${GON_API_VERSION}/projects/${projectId}/fork`;
         const project = {
@@ -570,23 +592,25 @@ describe('ForkForm component', () => {
 
       it('redirect to POST web_url response', async () => {
         const webUrl = `new/fork-project`;
+        jest.spyOn(urlUtility, 'visitUrl').mockImplementation();
         jest.spyOn(axios, 'post').mockResolvedValue({ data: { web_url: webUrl } });
 
-        setupComponent();
+        createFullComponent();
         await submitForm();
 
-        expect(urlUtility.redirectTo).toHaveBeenCalledWith(webUrl); // eslint-disable-line import/no-deprecated
+        expect(urlUtility.visitUrl).toHaveBeenCalledWith(webUrl);
       });
 
       it('displays an alert with message coming from server when POST is unsuccessful', async () => {
         const error = { response: { data: { message: ['Update error'] } } };
 
+        jest.spyOn(urlUtility, 'visitUrl').mockImplementation();
         jest.spyOn(axios, 'post').mockRejectedValue(error);
 
-        setupComponent();
+        createFullComponent();
         await submitForm();
 
-        expect(urlUtility.redirectTo).not.toHaveBeenCalled(); // eslint-disable-line import/no-deprecated
+        expect(urlUtility.visitUrl).not.toHaveBeenCalled();
         expect(createAlert).toHaveBeenCalledWith({
           message: 'Update error',
         });
@@ -595,12 +619,13 @@ describe('ForkForm component', () => {
       it('displays an alert with general error when POST is unsuccessful', async () => {
         const dummyError = 'Fork project failed';
 
+        jest.spyOn(urlUtility, 'visitUrl').mockImplementation();
         jest.spyOn(axios, 'post').mockRejectedValue(dummyError);
 
-        setupComponent();
+        createFullComponent();
         await submitForm();
 
-        expect(urlUtility.redirectTo).not.toHaveBeenCalled(); // eslint-disable-line import/no-deprecated
+        expect(urlUtility.visitUrl).not.toHaveBeenCalled();
         expect(createAlert).toHaveBeenCalledWith({
           message: 'An error occurred while forking the project. Please try again.',
         });

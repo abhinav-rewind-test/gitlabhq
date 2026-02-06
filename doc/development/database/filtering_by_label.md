@@ -1,9 +1,9 @@
 ---
 stage: Plan
 group: Project Management
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Filtering by label
 ---
-# Filtering by label
 
 ## Introduction
 
@@ -37,10 +37,10 @@ ORDER BY
 LIMIT 20 OFFSET 0
 ```
 
-In particular, note that:
+Specifically:
 
-1. We `GROUP BY issues.id` so that we can ...
-1. Use the `HAVING (COUNT(DISTINCT labels.title) = 2)` condition to ensure that
+1. `GROUP BY issues.id` groups the results by issues.
+1. `HAVING (COUNT(DISTINCT labels.title) = 2)` ensures that
    all matched issues have both labels.
 
 This is more complicated than is ideal. It makes the query construction more
@@ -97,9 +97,7 @@ projects and groups that the user has access to.
 
 ## Attempt B: Denormalize using an array column
 
-Having [removed MySQL support in GitLab 12.1](https://about.gitlab.com/blog/2019/06/27/removing-mysql-support/),
-using [PostgreSQL's arrays](https://www.postgresql.org/docs/11/arrays.html) became more
-tractable as we didn't have to support two databases. We discussed denormalizing
+We discussed denormalizing
 the `label_links` table for querying in
 [issue #49651](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/49651),
 with two options: label IDs and titles.
@@ -109,7 +107,7 @@ and `epics`: `issues.label_ids` would be an array column of label IDs, and
 `issues.label_titles` would be an array of label titles.
 
 These array columns can be complemented with
-[GIN indexes](https://www.postgresql.org/docs/11/gin-intro.html) to improve
+[GIN indexes](https://www.postgresql.org/docs/16/gin-intro.html) to improve
 matching.
 
 ### Attempt B1: store label IDs for each object

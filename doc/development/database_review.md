@@ -1,10 +1,9 @@
 ---
-stage: Data Stores
-group: Database
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+stage: Data Access
+group: Database Frameworks
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Database Review Guidelines
 ---
-
-# Database Review Guidelines
 
 This page is specific to database reviews. Refer to our
 [code review guide](code_review.md) for broader advice and best
@@ -27,7 +26,7 @@ A database review is required for:
   database review.
 - Changes in Service Data metrics that use `count`, `distinct_count`, `estimate_batch_distinct_count` and `sum`.
   These metrics could have complex queries over large tables.
-  See the [Analytics Instrumentation Guide](https://handbook.gitlab.com/handbook/product/analytics-instrumentation-guide/)
+  See the [Analytics Instrumentation Guide](https://handbook.gitlab.com/handbook/product/product-processes/analytics-instrumentation-guide/)
   for implementation details.
 - Changes that use [`update`, `upsert`, `delete`, `update_all`, `upsert_all`, `delete_all` or `destroy_all`](#preparation-when-using-bulk-update-operations)
   methods on an ActiveRecord object.
@@ -80,7 +79,7 @@ A database **reviewer**'s role is to:
 - Perform a first-pass review on the MR and suggest improvements to the author.
 - Once satisfied, relabel the MR with ~"database::reviewed", approve it, and
   request a review from the database **maintainer** suggested by Reviewer
-  Roulette. Remove yourself as a reviewer once this has been done.
+  Roulette.
 
 A database **maintainer**'s role is to:
 
@@ -90,7 +89,6 @@ A database **maintainer**'s role is to:
 - Finally approve the MR and relabel the MR with ~"database::approved"
 - Merge the MR if no other approvals are pending or pass it on to
   other maintainers as required (frontend, backend, documentation).
-  - If not merging, remove yourself as a reviewer.
 
 ### Distributing review workload
 
@@ -141,7 +139,7 @@ of error that would result in corruption or loss of production data.
 
 Include in the MR description:
 
-- If the migration itself is not reversible, details of how data changes could be reverted in the event of an incident. For example, in the case of a migration that deletes records (an operation that most of the times is not automatically reversible), how _could_ the deleted records be recovered.
+- If the migration itself is not reversible, details of how data changes could be reverted in the event of an incident. For example, in the case of a migration that deletes records (an operation that most of the times is not automatically reversible), how could the deleted records be recovered.
 - If the migration deletes data, apply the label `~data-deletion`.
 - Concise descriptions of possible user experience impact of an error; for example, "Issues would unexpectedly go missing from Epics".
 - Relevant data from the [query plans](#query-plans) that indicate the query works as expected; such as the approximate number of records that are modified or deleted.
@@ -170,6 +168,40 @@ Include in the MR description:
 - If a query is always used with a limit and an offset, those should always be
   included with the maximum allowed limit used and a non 0 offset.
 
+###### Tips for finding the SQL executed by the application
+
+When reviewing queries, we want to assess the SQL query that is actually executed in the database,
+including any scopes, pagination, and limits. It can be difficult or sometimes even impossible to
+infer the exact query from reading the Rails code. To get the most accurate SQL, try using one
+of these methods:
+
+1. **Use the [performance bar](../administration/monitoring/performance/performance_bar.md)**:
+   Manually test your feature, then click the `pg` section of the performance bar
+   to see the SQL queries executed. To see the queries for an API request, find and select
+   the request using the drop-down menu on the right-hand side.
+
+1. **Check `development.log`**: Test your feature then look inside `log/development.log`
+   in the GitLab directory to see all the queries executed by the application.
+   This does not include queries executed in a Sidekiq worker.
+
+1. **Run specs with `ActiveRecord::Base.logger`**: You can log queries to stdout by adding
+   these blocks to your RSpec tests:
+
+   ```ruby
+   before do
+     ActiveRecord::Base.logger = Logger.new($stdout)
+   end
+
+   after do
+     ActiveRecord::Base.logger = nil
+   end
+   ```
+
+   Run the tests with `bundle exec rspec <test_file>` and the queries will appear
+   in the test output. **This will only produce correct queries in integration tests.**
+   The output of unit tests may not be correct if there is an additional component modifying
+   the ActiveRecord relation, such as pagination middleware.
+
 ##### Query Plans
 
 - The query plan for each raw SQL query included in the merge request along with the link to the query plan following each raw SQL snippet.
@@ -186,12 +218,31 @@ Include in the MR description:
     - The `gitlab-qa` user (`user_id = 1614863`), for queries involving a user.
       - Optionally, you can also use your own `user_id`, or the `user_id` of a user with a long history within the project or group being used to generate the query plan.
   - That means that no query plan should return 0 records or less records than the provided limit (if a limit is included). If a query is used in batching, a proper example batch with adequate included results should be identified and provided.
+
+    > [!note]
+    > The `UPDATE` statement always returns 0 records. To identify the rows it updates, we need to check the following lines below.
+
+    For example, the `UPDATE` statement returns 0 records, but we can see that it updates 1 row from the line starting with `-> Index scan`.:
+
+    ```sql
+    EXPLAIN UPDATE p_ci_pipelines SET updated_at = current_timestamp WHERE id = 1606117348;
+
+     ModifyTable on public.p_ci_pipelines  (cost=0.58..3.60 rows=0 width=0) (actual time=5.977..5.978 rows=0 loops=1)
+      Buffers: shared hit=339 read=4 dirtied=4
+      WAL: records=20 fpi=4 bytes=21800
+      I/O Timings: read=4.920 write=0.000
+      ->  Index Scan using ci_pipelines_pkey on public.ci_pipelines p_ci_pipelines_1  (cost=0.58..3.60 rows=1 width=18) (actual time=0.041..0.044 rows=1 loops=1)
+            Index Cond: (p_ci_pipelines_1.id = 1606117348)
+            Buffers: shared hit=8
+            I/O Timings: read=0.000 write=0.000
+    ```
+
   - If your queries belong to a new feature in GitLab.com and thus they don't return data in production:
     - You may analyze the query and to provide the plan from a local environment.
     - [postgres.ai](https://postgres.ai/) allows updates to data (`exec UPDATE issues SET ...`) and creation of new tables and columns (`exec ALTER TABLE issues ADD COLUMN ...`).
   - More information on how to find the number of actual returned records in [Understanding EXPLAIN plans](database/understanding_explain_plans.md)
 - For query changes, it is best to provide both the SQL queries along with the
-  plan _before_ and _after_ the change. This helps spot differences quickly.
+  plan before and after the change. This helps spot differences quickly.
 - Include data that shows the performance improvement, preferably in
   the form of a benchmark.
 - When evaluating a query plan, we need the final query to be
@@ -210,86 +261,104 @@ Include in the MR description:
 #### Preparation when adding tables
 
 - Order columns based on the [Ordering Table Columns](database/ordering_table_columns.md) guidelines.
-- Add foreign keys to any columns pointing to data in other tables, including [an index](migration_style_guide.md#adding-foreign-key-constraints).
+- Add foreign keys to any columns pointing to data in other tables, including [an index](database/foreign_keys.md).
 - Add indexes for fields that are used in statements such as `WHERE`, `ORDER BY`, `GROUP BY`, and `JOIN`s.
+- New tables must be seeded by a file in `db/fixtures/development/`. These fixtures are also used
+  to ensure that [upgrades complete successfully](database/dbmigrate_multi_version_upgrade_job.md),
+  so it's important that new tables are always populated.
+- Ensure that you do not use database tables to store
+  [static data](cells/_index.md#static-data).
 - New tables and columns are not necessarily risky, but over time some access patterns are inherently
   difficult to scale. To identify these risky patterns in advance, we must document expectations for
   access and size. Include in the MR description answers to these questions:
   - What is the anticipated growth for the new table over the next 3 months, 6 months, 1 year? What assumptions are these based on?
   - How many reads and writes per hour would you expect this table to have in 3 months, 6 months, 1 year? Under what circumstances are rows updated? What assumptions are these based on?
-  - Based on the anticipated data volume and access patterns, does the new table pose an availability risk to GitLab.com or self-managed instances? Does the proposed design scale to support the needs of GitLab.com and self-managed customers?
+  - Based on the anticipated data volume and access patterns, does the new table pose an availability risk to GitLab.com or GitLab Self-Managed instances? Does the proposed design scale to support the needs of GitLab.com and GitLab Self-Managed customers?
 
 #### Preparation when removing columns, tables, indexes, or other structures
 
 - Follow the [guidelines on dropping columns](database/avoiding_downtime_in_migrations.md#dropping-columns).
 - Generally it's best practice (but not a hard rule) to remove indexes and foreign keys in a post-deployment migration.
   - Exceptions include removing indexes and foreign keys for small tables.
+- When dropping indexes, verify that composite indexes can serve as replacements by checking [composite index column order requirements](database/adding_database_indexes.md#composite-index-column-order).
 - If you're adding a composite index, another index might become redundant, so remove that in the same migration.
   For example adding `index(column_A, column_B, column_C)` makes the indexes `index(column_A, column_B)` and `index(column_A)` redundant.
 
 #### Preparation when using bulk update operations
 
-Using  `update`, `upsert`, `delete`, `update_all`, `upsert_all`, `delete_all` or `destroy_all`
+Using `update`, `upsert`, `delete`, `update_all`, `upsert_all`, `delete_all` or `destroy_all`
 ActiveRecord methods requires extra care because they modify data and can perform poorly, or they
 can destroy data if improperly scoped. These methods are also
 [incompatible with Common Table Expression (CTE) statements](sql.md#when-to-use-common-table-expressions).
-Danger will comment on a Merge Request Diff when these methods are used.
+Danger will comment on a merge request diff when these methods are used.
 
 Follow documentation for [preparation when adding or modifying queries](#preparation-when-adding-or-modifying-queries)
-to add the raw SQL query and query plan to the Merge Request description, and request a database review.
+to add the raw SQL query and query plan to the merge request description, and request a database review.
+
+### Useful tips
+
+- If you often find yourself applying and reverting migrations from a specific branch, you might want to try out
+  [`scripts/database/migrate.rb`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/scripts/database/migrate.rb)
+  to make this process more efficient.
 
 ### How to review for database
 
-- Check migrations
-  - Review relational modeling and design choices
-    - Consider [access patterns and data layout](database/layout_and_access_patterns.md) if new tables or columns are added.
-  - Review migrations follow [database migration style guide](migration_style_guide.md),
-    for example
-    - [Check ordering of columns](database/ordering_table_columns.md)
-    - [Check indexes are present for foreign keys](migration_style_guide.md#adding-foreign-key-constraints)
-  - Ensure that migrations execute in a transaction or only contain
-    concurrent index/foreign key helpers (with transactions disabled)
-  - If an index to a large table is added and its execution time was elevated (more than 1h) on [Database Lab](database/database_lab.md):
-    - Ensure it was added in a post-migration.
-    - Maintainer: After the merge request is merged, notify Release Managers about it on `#f_upcoming_release` Slack channel.
-  - Check consistency with `db/structure.sql` and that migrations are [reversible](migration_style_guide.md#reversibility)
-  - Check that the relevant version files under `db/schema_migrations` were added or removed.
-  - Check queries timing (If any): In a single transaction, cumulative query time executed in a migration
-    needs to fit comfortably in `15s` - preferably much less than that - on GitLab.com.
-  - For column removals, make sure the column has been [ignored in a previous release](database/avoiding_downtime_in_migrations.md#dropping-columns)
-- Check [batched background migrations](database/batched_background_migrations.md):
-  - Establish a time estimate for execution on GitLab.com. For historical purposes,
-    it's highly recommended to include this estimation on the merge request description.
-    This can be the number of expected batches times the delay interval.
-  - Manually trigger the [database testing](database/database_migration_pipeline.md) job (`db:gitlabcom-database-testing`) in the `test` stage.
-  - If a single `update` is below than `1s` the query can be placed
-    directly in a regular migration (inside `db/migrate`).
-  - Background migrations are usually used, but not limited to:
-    - Migrating data in larger tables.
-    - Making numerous SQL queries per record in a dataset.
-  - Review queries (for example, make sure batch sizes are fine)
-  - Because execution time can be longer than for a regular migration,
-    it's suggested to treat background migrations as
-    [post migrations](migration_style_guide.md#choose-an-appropriate-migration-type):
-    place them in `db/post_migrate` instead of `db/migrate`.
+#### Basic Migration Requirements
+
+- Make sure the [database testing](database/database_migration_pipeline.md) job (`db:gitlabcom-database-testing`) is passing.
+- Verify that `db/structure.sql` contains only changes related to migrations in this merge request - no unrelated schema modifications
+- Check migrations are [reversible](migration_style_guide.md#reversibility) and implement a `#down` method
+- Ensure migrations are either run within a transaction (Rails default) or use only concurrent operations with [disable_ddl_transaction!](migration_style_guide.md#disable-transaction-wrapped-migration)
+- Check that the relevant version files under `db/schema_migrations` were added or removed
+
+#### Style and Standards Compliance
+
+- Make sure migrations follow [database migration style guide](migration_style_guide.md)
+  - [Check ordering of columns](database/ordering_table_columns.md)
+  - [Check indexes are present for foreign keys](database/foreign_keys.md)
+
+#### Large Table and Size Restrictions
+
+- Verify that indexes and columns are not added to pre-existing tables [over the size threshold](database/large_tables_limitations.md). The author can choose to file an [exception request](https://gitlab.com/gitlab-org/database-team/team-tasks/-/issues/new?description_template=schema_change_exception) with the database frameworks team if needed
+- If an index to a large table is added and its execution time was elevated (more than 1h) on [Database Lab](database/database_lab.md):
+  - Make sure to follow the steps to add it [asynchronously](database/adding_database_indexes.md#create-indexes-asynchronously)
+  - Maintainer: After the merge request is merged, notify Release Managers about it on `#f_upcoming_release` Slack channel
+
+#### Timing and Performance Standards
+
 - Check [timing guidelines for migrations](migration_style_guide.md#how-long-a-migration-should-take)
-- Check migrations are reversible and implement a `#down` method
-- Check new table migrations:
-  - Are the stated access patterns and volume reasonable? Do the assumptions they're based on seem sound? Do these patterns pose risks to stability?
-  - Are the columns [ordered to conserve space](database/ordering_table_columns.md)?
-  - Are there foreign keys for references to other tables?
-- Check data migrations:
-  - Establish a time estimate for execution on GitLab.com.
-  - Depending on timing, data migrations can be placed on regular, post-deploy, or background migrations.
-  - Data migrations should be reversible too or come with a description of how to reverse, when possible.
-    This applies to all types of migrations (regular, post-deploy, background).
-- Query performance
-  - Check for any overly complex queries and queries the author specifically
-    points out for review (if any)
-  - If not present, ask the author to provide SQL queries and query plans
-    using [Database Lab](database/database_lab.md)
-  - For given queries, review parameters regarding data distribution
-  - [Check query plans](database/understanding_explain_plans.md) and suggest improvements
-    to queries (changing the query, schema or adding indexes and similar)
-  - General guideline is for queries to come in below [100ms execution time](database/query_performance.md#timing-guidelines-for-queries)
-  - Avoid N+1 problems and minimize the [query count](merge_request_concepts/performance.md#query-counts).
+- Check queries timing (if any): In a single transaction, cumulative query time executed in a migration needs to fit comfortably in 15 seconds - preferably much less than that - on GitLab.com
+- General guideline is for queries to come in below [100ms execution time](database/query_performance.md#timing-guidelines-for-queries)
+
+### Migration Placement and Timing
+
+- Establish a time estimate for execution on GitLab.com
+- Choose the appropriate [migration type](migration_style_guide.md#choose-an-appropriate-migration-type)
+- Data migrations should be reversible or should come with a comment on why it's no-oped or non-reversible. This applies to all types of migrations (regular, post-deploy, background migrations)
+
+#### Background Migration Specifics
+
+- Check [batched background migrations](database/batched_background_migrations.md)
+- Take note of the time estimates provided from the `gitlab-com-database-testing` comment (titled **Database Migrations (on the main database)** etc.) to make sure they adhere to our [query performance guidelines](database/query_performance.md#timing-guidelines-for-queries)
+- Background migrations are usually used, but not limited to:
+  - Migrating data in larger tables
+  - Making numerous SQL queries per record in a dataset
+- Review queries (for example, make sure batch sizes are fine)
+- Follow the placement guidelines above in the section [Migration Placement and Timing](#migration-placement-and-timing)
+
+### New Table and Column Reviews
+
+- Review relational modeling and design choices
+  - Consider [access patterns and data layout](database/layout_and_access_patterns.md) if new tables or columns are added
+- Are the stated access patterns and volume reasonable? Do the assumptions they're based on seem sound? Do these patterns pose risks to stability?
+- Are the columns [ordered to conserve space](database/ordering_table_columns.md)?
+- Are there foreign keys for references to other tables?
+- For column removals, make sure the column has been [ignored in a previous release](database/avoiding_downtime_in_migrations.md#dropping-columns)
+
+### Query Performance Analysis
+
+- Check for any overly complex queries and queries the author specifically points out for review (if any)
+- Verify all new and modified queries include both SQL statements and query plans from [Database Lab](database/database_lab.md) in the merge request description
+- For given queries, review parameters regarding data distribution
+- [Check query plans](database/understanding_explain_plans.md) and suggest necessary improvements to queries (eg: restructuring the query, adding/removing indexes, etc). If there are open questions reach out to the #database_maintainers channel.
+- Avoid N+1 problems and minimize the [query count](merge_request_concepts/performance.md#query-counts)

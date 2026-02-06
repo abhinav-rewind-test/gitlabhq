@@ -1,7 +1,7 @@
 <script>
 import { GlBadge } from '@gitlab/ui';
-// eslint-disable-next-line no-restricted-imports
-import { mapGetters } from 'vuex';
+import { mapState } from 'pinia';
+import { useBatchComments } from '~/batch_comments/store';
 
 export default {
   components: {
@@ -15,13 +15,13 @@ export default {
     },
   },
   computed: {
-    ...mapGetters('batchComments', ['draftsCount']),
+    ...mapState(useBatchComments, ['draftsCount']),
   },
 };
 </script>
 <template>
-  <gl-badge size="sm" :variant="variant" class="gl-ml-2">
+  <gl-badge :variant="variant" class="gl-ml-2">
     {{ draftsCount }}
-    <span class="sr-only"> {{ n__('draft', 'drafts', draftsCount) }} </span>
+    <span class="gl-sr-only"> {{ n__('draft', 'drafts', draftsCount) }} </span>
   </gl-badge>
 </template>

@@ -14,9 +14,9 @@ module Gitlab
         request = Gitaly::FindRemoteRepositoryRequest.new(remote: remote_url, storage_name: storage)
 
         response = GitalyClient.call(storage,
-                                     :remote_service,
-                                     :find_remote_repository, request,
-                                     timeout: GitalyClient.medium_timeout)
+          :remote_service,
+          :find_remote_repository, request,
+          timeout: GitalyClient.medium_timeout)
 
         response.exists
       end
@@ -31,11 +31,11 @@ module Gitlab
 
       def find_remote_root_ref(remote_url, authorization)
         request = Gitaly::FindRemoteRootRefRequest.new(repository: @gitaly_repo,
-                                                       remote_url: remote_url,
-                                                       http_authorization_header: authorization)
+          remote_url: remote_url,
+          http_authorization_header: authorization)
 
         response = gitaly_client_call(@storage, :remote_service,
-                                     :find_remote_root_ref, request, timeout: GitalyClient.medium_timeout)
+          :find_remote_root_ref, request, timeout: GitalyClient.medium_timeout)
 
         encode_utf8(response.ref)
       end
@@ -64,7 +64,9 @@ module Gitlab
           end
 
           slices.each do |slice|
-            y.yield Gitaly::UpdateRemoteMirrorRequest.new(only_branches_matching: slice)
+            encoded_slice = slice.map { |branch_name| encode_binary(branch_name) }
+
+            y.yield Gitaly::UpdateRemoteMirrorRequest.new(only_branches_matching: encoded_slice)
           end
         end
 

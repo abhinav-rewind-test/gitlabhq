@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe 'Projects > Files > User wants to edit a file', feature_category: :groups_and_projects do
+RSpec.describe 'Projects > Files > User wants to edit a file', :js, feature_category: :source_code_management do
   include ProjectForksHelper
   let(:project) { create(:project, :repository, :public) }
   let(:user) { project.first_owner }
@@ -13,6 +13,17 @@ RSpec.describe 'Projects > Files > User wants to edit a file', feature_category:
       commit_message: "Committing First Update",
       file_path: ".gitignore",
       file_content: "First Update",
+      last_commit_sha: Gitlab::Git::Commit.last_for_path(project.repository, project.default_branch, ".gitignore").sha
+    }
+  end
+
+  let(:second_commit_params) do
+    {
+      start_branch: project.default_branch,
+      branch_name: project.default_branch,
+      commit_message: "Committing Second Update",
+      file_path: ".gitignore",
+      file_content: "Second Update",
       last_commit_sha: Gitlab::Git::Commit.last_for_path(project.repository, project.default_branch, ".gitignore").sha
     }
   end
@@ -28,7 +39,30 @@ RSpec.describe 'Projects > Files > User wants to edit a file', feature_category:
 
       click_button 'Commit changes'
 
-      expect(page).to have_content 'Someone edited the file the same time you did.'
+      within_testid('commit-change-modal') do
+        click_button('Commit changes')
+      end
+
+      expect(page).to have_content 'You are attempting to update a file that has changed since you started editing it.'
+    end
+
+    context 'and blob_edit_refactor feature flag is false' do
+      before do
+        stub_feature_flags(blob_edit_refactor: false)
+        sign_in user
+        visit project_edit_blob_path(project, File.join(project.default_branch, '.gitignore'))
+      end
+
+      it 'file has been updated since the user opened the edit page' do
+        Files::UpdateService.new(project, user, second_commit_params).execute
+        click_button 'Commit changes'
+
+        within_testid('commit-change-modal') do
+          click_button('Commit changes')
+        end
+
+        expect(page).to have_content 'An error occurred editing the blob'
+      end
     end
   end
 
@@ -52,8 +86,12 @@ RSpec.describe 'Projects > Files > User wants to edit a file', feature_category:
         it 'renders an error message' do
           click_button 'Commit changes'
 
+          within_testid('commit-change-modal') do
+            click_button('Commit changes')
+          end
+
           expect(page).to have_content(
-            %(Error: Can't edit this file. The fork and upstream project have diverged. Edit the file on the fork)
+            'You are attempting to update a file that has changed since you started editing it.'
           )
         end
       end

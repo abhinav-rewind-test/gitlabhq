@@ -13,12 +13,16 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
 
   specify { expect(described_class).to require_graphql_authorizations(:read_project) }
 
+  specify { expect(described_class.interfaces).to include(Types::TodoableInterface) }
+
+  specify { expect(described_class.interfaces).to include(::Types::Projects::ProjectInterface) }
+
   it 'has the expected fields' do
     expected_fields = %w[
       user_permissions id full_path path name_with_namespace
       name description description_html tag_list topics ssh_url_to_repo
-      http_url_to_repo web_url star_count forks_count
-      created_at last_activity_at archived visibility
+      http_url_to_repo web_url web_path edit_path admin_show_path admin_edit_path star_count forks_count
+      created_at updated_at last_activity_at archived is_self_archived visibility
       container_registry_enabled shared_runners_enabled
       lfs_enabled merge_requests_ff_only_enabled avatar_url
       issues_enabled merge_requests_enabled wiki_enabled
@@ -26,7 +30,7 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       snippets_enabled jobs_enabled public_jobs open_issues_count open_merge_requests_count import_status
       only_allow_merge_if_pipeline_succeeds request_access_enabled
       only_allow_merge_if_all_discussions_are_resolved printing_merge_request_link_enabled
-      namespace group statistics statistics_details_paths repository merge_requests merge_request issues
+      namespace group root_group statistics statistics_details_paths repository merge_requests merge_request issues
       issue milestones pipelines removeSourceBranchAfterMerge pipeline_counts sentryDetailedError snippets
       grafanaIntegration autocloseReferencedIssues suggestion_commit_message environments
       environment boards jira_import_status jira_imports services releases release
@@ -34,23 +38,27 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       incident_management_timeline_event incident_management_timeline_events
       container_expiration_policy service_desk_enabled service_desk_address
       issue_status_counts terraform_states alert_management_integrations
-      container_repositories container_repositories_count max_access_level
+      container_protection_repository_rules container_repositories container_repositories_count max_access_level
       pipeline_analytics squash_read_only sast_ci_configuration
       cluster_agent cluster_agents agent_configurations ci_access_authorized_agents user_access_authorized_agents
       ci_template timelogs merge_commit_template squash_commit_template work_item_types
       recent_issue_boards ci_config_path_or_default packages_cleanup_policy ci_variables
-      timelog_categories fork_targets branch_rules ci_config_variables pipeline_schedules languages
+      timelog_categories fork_targets forked_from branch_rules ci_config_variables pipeline_schedules languages
       incident_management_timeline_event_tags visible_forks inherited_ci_variables autocomplete_users
       ci_cd_settings detailed_import_status value_streams ml_models
       allows_multiple_merge_request_assignees allows_multiple_merge_request_reviewers is_forked
-      protectable_branches available_deploy_keys
+      protectable_branches available_deploy_keys explore_catalog_path is_published
+      container_protection_tag_rules pages_force_https pages_use_unique_domain ci_pipeline_creation_request
+      ci_pipeline_creation_inputs marked_for_deletion_on permanent_deletion_date
+      merge_request_title_regex merge_request_title_regex_description
+      webhook custom_attributes
     ]
 
     expect(described_class).to include_graphql_fields(*expected_fields)
   end
 
   describe 'count' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user) { create(:user, :with_namespace) }
 
     let(:query) do
       %(
@@ -69,11 +77,54 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
 
     subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
 
+    before do
+      ::Current.organization = user.namespace.organization
+    end
+
     it 'returns valid projects count' do
       create(:project, namespace: user.namespace)
       create(:project, namespace: user.namespace)
 
       expect(subject.dig('data', 'projects', 'count')).to eq(2)
+    end
+  end
+
+  describe 'archived' do
+    let_it_be_with_reload(:parent_group) { create(:group) }
+    let_it_be_with_reload(:project) { create(:project, :public, namespace: parent_group) }
+
+    let(:project_full_path) { project.full_path }
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project_full_path}") {
+            archived
+          }
+        }
+      )
+    end
+
+    subject(:project_archived_result) do
+      result = GitlabSchema.execute(query).as_json
+      result.dig('data', 'project', 'archived')
+    end
+
+    where(:project_archived, :parent_archived, :expected_result) do
+      false | false | false
+      false | true  | true
+      true  | false | true
+      true  | true  | true
+    end
+
+    with_them do
+      before do
+        parent_group.update!(archived: parent_archived)
+        project.update!(archived: project_archived)
+      end
+
+      it 'returns expected archived result' do
+        expect(project_archived_result).to eq(expected_result)
+      end
     end
   end
 
@@ -136,14 +187,6 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     let_it_be(:project) { create(:project) }
     let_it_be(:user) { create(:user) }
 
-    before do
-      stub_licensed_features(security_dashboard: true)
-      project.add_developer(user)
-      allow(project.repository).to receive(:blob_data_at).and_return(gitlab_ci_yml_content)
-    end
-
-    include_context 'read ci configuration for sast enabled project'
-
     let(:query) do
       %(
         query {
@@ -194,7 +237,15 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       )
     end
 
+    before do
+      stub_licensed_features(security_dashboard: true)
+      project.add_developer(user)
+      allow(project.repository).to receive(:blob_data_at).and_return(gitlab_ci_yml_content)
+    end
+
     subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    include_context 'read ci configuration for sast enabled project'
 
     it "returns the project's sast configuration for global variables" do
       secure_analyzers = subject.dig('data', 'project', 'sastCiConfiguration', 'global', 'nodes').first
@@ -296,10 +347,12 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       let_it_be(:project) { create(:project_empty_repo) }
 
       it 'raises an error' do
-        expect(subject['errors'][0]['message']).to eq('You must <a target="_blank" rel="noopener noreferrer" ' \
-                                                      'href="http://localhost/help/user/project/repository/index.md#' \
-                                                      'add-files-to-a-repository">add at least one file to the ' \
-                                                      'repository</a> before using Security features.')
+        expect(subject['errors'][0]['message']).to eq(
+          'You must <a target="_blank" rel="noopener noreferrer" ' \
+            'href="http://localhost/help/user/project/repository/_index.md#' \
+            'add-files-to-a-repository">add at least one file to the ' \
+            'repository</a> before using Security features.'
+        )
       end
     end
   end
@@ -333,14 +386,14 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     it { is_expected.to have_graphql_resolver(Resolvers::ProjectMergeRequestsResolver) }
 
     it do
-      is_expected.to have_graphql_arguments(
+      is_expected.to include_graphql_arguments(
         :iids,
         :source_branches,
         :target_branches,
         :state,
         :draft,
-        :approved,
         :labels,
+        :label_name,
         :before,
         :after,
         :first,
@@ -349,14 +402,27 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
         :merged_before,
         :created_after,
         :created_before,
+        :deployed_after,
+        :deployed_before,
+        :deployment_id,
         :updated_after,
         :updated_before,
         :author_username,
+        :approved_by,
+        :my_reaction_emoji,
+        :merged_by,
+        :release_tag,
         :assignee_username,
+        :assignee_wildcard_id,
         :reviewer_username,
+        :reviewer_wildcard_id,
+        :review_state,
+        :review_states,
         :milestone_title,
+        :milestone_wildcard_id,
         :not,
-        :sort
+        :sort,
+        :subscribed
       )
     end
   end
@@ -378,8 +444,14 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
   describe 'grafana_integration field' do
     subject { described_class.fields['grafanaIntegration'] }
 
+    let_it_be(:project) { create(:project) }
+
     it { is_expected.to have_graphql_type(Types::GrafanaIntegrationType) }
-    it { is_expected.to have_graphql_resolver(Resolvers::Projects::GrafanaIntegrationResolver) }
+    it { is_expected.to have_graphql_resolver(nil) }
+
+    it 'returns nil for grafana_integration' do
+      expect(resolve_field(:grafana_integration, project, current_user: project.owner)).to be_nil
+    end
   end
 
   describe 'environments field' do
@@ -435,10 +507,31 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     it { is_expected.to have_graphql_resolver(Resolvers::ReleasesResolver) }
   end
 
+  describe 'pipelineScheduleStatusCount field' do
+    subject { described_class.fields['pipelineScheduleStatusCounts'] }
+
+    it { is_expected.to have_graphql_type(Types::Ci::PipelineScheduleStatusCountType) }
+    it { is_expected.to have_graphql_resolver(Resolvers::Ci::ProjectPipelineScheduleStatusCountsResolver) }
+  end
+
+  describe 'container tags expiration policy field' do
+    subject { described_class.fields['containerTagsExpirationPolicy'] }
+
+    it { is_expected.to have_graphql_type(Types::ContainerRegistry::ContainerTagsExpirationPolicyType) }
+    it { expect(subject.instance_variable_get(:@authorize)).to include(:read_container_image) }
+  end
+
   describe 'container expiration policy field' do
     subject { described_class.fields['containerExpirationPolicy'] }
 
     it { is_expected.to have_graphql_type(Types::ContainerExpirationPolicyType) }
+  end
+
+  describe 'container protection repository rules' do
+    subject { described_class.fields['containerProtectionRepositoryRules'] }
+
+    it { is_expected.to have_graphql_type(Types::ContainerRegistry::Protection::RuleType.connection_type) }
+    it { is_expected.to have_graphql_resolver(Resolvers::ProjectContainerRegistryProtectionRulesResolver) }
   end
 
   describe 'packages cleanup policy field' do
@@ -471,7 +564,7 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
   end
 
   it_behaves_like 'a GraphQL type with labels' do
-    let(:labels_resolver_arguments) { [:search_term, :includeAncestorGroups] }
+    let(:labels_resolver_arguments) { [:search_term, :includeAncestorGroups, :searchIn, :title, :archived] }
   end
 
   describe 'jira_imports' do
@@ -504,14 +597,18 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     subject { described_class.fields['pipelineAnalytics'] }
 
     it { is_expected.to have_graphql_type(Types::Ci::AnalyticsType) }
-    it { is_expected.to have_graphql_resolver(Resolvers::ProjectPipelineStatisticsResolver) }
+    it { is_expected.to have_graphql_resolver(Resolvers::Ci::PipelineAnalyticsResolver) }
   end
 
   describe 'jobs field' do
     subject { described_class.fields['jobs'] }
 
     it { is_expected.to have_graphql_type(Types::Ci::JobType.connection_type) }
-    it { is_expected.to have_graphql_arguments(:statuses, :with_artifacts) }
+
+    it do
+      is_expected.to have_graphql_arguments(:statuses, :with_artifacts, :name, :sources,
+        :after, :before, :first, :last, :kind, :pipeline_iid)
+    end
   end
 
   describe 'ci_template field' do
@@ -849,6 +946,8 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       subject.dig('data', 'project', 'branchRules', 'nodes')
     end
 
+    let(:field) { described_class.fields['branchRules'] }
+
     subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
 
     context 'when a user can read protected branches' do
@@ -857,8 +956,9 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       end
 
       it 'is present and correct' do
-        expect(branch_rules_data.count).to eq(1)
-        expect(branch_rules_data.first['name']).to eq(name)
+        expect(branch_rules_data.count).to eq(2)
+        expect(branch_rules_data.first['name']).to eq('All branches')
+        expect(branch_rules_data.last['name']).to eq(name)
       end
     end
 
@@ -871,10 +971,20 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
         expect(branch_rules_data.count).to eq(0)
       end
     end
+
+    it 'has forward-only pagination extension' do
+      expect(field.extensions).to include(
+        an_instance_of(Gitlab::Graphql::Extensions::ForwardOnlyExternallyPaginatedArrayExtension)
+      )
+    end
+
+    it 'has correct pagination settings' do
+      expect(field.max_page_size).to eq(100)
+    end
   end
 
   describe 'timeline_event_tags' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user) { create(:user, :with_namespace) }
     let_it_be(:project) do
       create(
         :project,
@@ -934,7 +1044,7 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
   end
 
   describe 'languages' do
-    let_it_be(:user) { create(:user) }
+    let_it_be(:user) { create(:user, :with_namespace) }
     let_it_be(:project) do
       create(
         :project,
@@ -960,6 +1070,7 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     end
 
     let(:mock_languages) { [] }
+    let(:languages) { subject.dig('data', 'project', 'languages') }
 
     before do
       allow_next_instance_of(::Projects::RepositoryLanguagesService) do |service|
@@ -968,8 +1079,6 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     end
 
     subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
-
-    let(:languages) { subject.dig('data', 'project', 'languages') }
 
     context "when the languages haven't been detected yet" do
       it 'returns an empty array' do
@@ -980,9 +1089,9 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     context 'when the languages were detected before' do
       let(:mock_languages) do
         [{ share: 66.69, name: "Ruby", color: "#701516" },
-         { share: 22.98, name: "JavaScript", color: "#f1e05a" },
-         { share: 7.91, name: "HTML", color: "#e34c26" },
-         { share: 2.42, name: "CoffeeScript", color: "#244776" }]
+          { share: 22.98, name: "JavaScript", color: "#f1e05a" },
+          { share: 7.91, name: "HTML", color: "#e34c26" },
+          { share: 2.42, name: "CoffeeScript", color: "#244776" }]
       end
 
       it 'returns the repository languages' do
@@ -1069,11 +1178,11 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       )
     end
 
-    subject { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
-
     let(:detailed_import_status) do
       subject.dig('data', 'project', 'detailedImportStatus')
     end
+
+    subject { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
 
     context 'when project is not imported' do
       let(:current_user) { create(:user) }
@@ -1145,6 +1254,7 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
     subject { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
 
     let_it_be(:current_user) { create(:user) }
+    let_it_be(:project) { create(:project, :empty_repo) }
 
     let(:query) do
       %(
@@ -1161,18 +1271,12 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       subject.dig('data', 'project', 'protectableBranches')
     end
 
-    let_it_be(:project) { create(:project, :empty_repo) }
-
     before_all do
       project.add_maintainer(current_user)
     end
 
     describe 'an empty repository' do
-      before_all do
-        project.repository.branch_names.each do |branch_name|
-          project.repository.delete_branch(branch_name)
-        end
-      end
+      let(:project) { create(:project, :empty_repo, maintainers: current_user) }
 
       it 'returns an empty array' do
         expect(protectable_branches).to be_empty
@@ -1217,6 +1321,26 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
           expect(protectable_branches).to match_array(branch_names)
         end
       end
+
+      context 'without read_code permissions' do
+        before do
+          project.add_guest(current_user)
+        end
+
+        it 'returns an empty array' do
+          expect(protectable_branches).to be_nil
+        end
+      end
+
+      context 'with read_code permissions' do
+        before do
+          project.add_member(current_user, Gitlab::Access::REPORTER)
+        end
+
+        it 'returns all the branch names' do
+          expect(protectable_branches).to match_array(branch_names)
+        end
+      end
     end
   end
 
@@ -1239,12 +1363,12 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
       )
     end
 
-    subject { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
-
     let_it_be(:project) { create :project }
     let_it_be(:deploy_key) { create(:deploy_keys_project, :write_access, project: project).deploy_key }
     let_it_be(:maintainer) { create(:user) }
     let(:available_deploy_keys) { subject.dig('data', 'project', 'availableDeployKeys', 'nodes') }
+
+    subject { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
 
     context 'when there are deploy keys' do
       before_all do
@@ -1271,6 +1395,690 @@ RSpec.describe GitlabSchema.types['Project'], feature_category: :groups_and_proj
         it 'does not return any deploy keys' do
           expect(available_deploy_keys).to be_nil
         end
+      end
+    end
+  end
+
+  describe 'web_path' do
+    let_it_be(:current_user) { create(:user) }
+    let_it_be(:project) { create(:project, :public) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            webPath
+          }
+        }
+      )
+    end
+
+    subject(:web_path) do
+      GitlabSchema
+        .execute(query, context: { current_user: current_user })
+        .as_json
+        .dig('data', 'project', 'webPath')
+    end
+
+    it 'returns web_path field' do
+      expect(web_path).to eq("/#{project.path_with_namespace}")
+    end
+  end
+
+  describe 'edit_path' do
+    let_it_be(:current_user) { create(:user) }
+    let_it_be(:project) { create(:project, :public) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            editPath
+          }
+        }
+      )
+    end
+
+    subject(:edit_path) do
+      GitlabSchema
+        .execute(query, context: { current_user: current_user })
+        .as_json
+        .dig('data', 'project', 'editPath')
+    end
+
+    it 'returns edit_path field' do
+      expect(edit_path).to eq("/#{project.path_with_namespace}/edit")
+    end
+  end
+
+  describe 'admin_show_path' do
+    let_it_be(:project) { create(:project, :public) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            adminShowPath
+          }
+        }
+      )
+    end
+
+    subject(:admin_show_path) do
+      GitlabSchema
+        .execute(query, context: { current_user: current_user })
+        .as_json
+        .dig('data', 'project', 'adminShowPath')
+    end
+
+    context 'when current user is an admin', :enable_admin_mode do
+      let_it_be(:current_user) { create(:user, :admin) }
+
+      it 'returns admin_show_path field' do
+        expect(admin_show_path).to eq("/admin/projects/#{project.full_path}")
+      end
+    end
+
+    context 'when current user is not an admin' do
+      let_it_be(:current_user) { create(:user) }
+
+      it 'returns admin_show_path field as null' do
+        expect(admin_show_path).to be_nil
+      end
+    end
+  end
+
+  describe 'admin_edit_path' do
+    let_it_be(:project) { create(:project, :public) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            adminEditPath
+          }
+        }
+      )
+    end
+
+    subject(:admin_edit_path) do
+      GitlabSchema
+        .execute(query, context: { current_user: current_user })
+        .as_json
+        .dig('data', 'project', 'adminEditPath')
+    end
+
+    context 'when current user is an admin', :enable_admin_mode do
+      let_it_be(:current_user) { create(:user, :admin) }
+
+      it 'returns admin_edit_path field' do
+        expect(admin_edit_path).to eq("/admin/projects/#{project.full_path}/edit")
+      end
+    end
+
+    context 'when current user is not an admin' do
+      let_it_be(:current_user) { create(:user) }
+
+      it 'returns admin_edit_path field as null' do
+        expect(admin_edit_path).to be_nil
+      end
+    end
+  end
+
+  describe 'organization_edit_path' do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:organization) { create(:organization) }
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            organizationEditPath
+          }
+        }
+      )
+    end
+
+    let(:response) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    subject(:organization_edit_path) { response.dig('data', 'project', 'organizationEditPath') }
+
+    context 'when project has an organization associated with it' do
+      let_it_be(:project) { create(:project, :public, organization: organization) }
+
+      it 'returns edit path scoped to organization' do
+        expect(organization_edit_path).to eq(
+          "/-/organizations/#{organization.path}/projects/#{project.path_with_namespace}/edit"
+        )
+      end
+    end
+  end
+
+  describe 'explore_catalog_path' do
+    let_it_be(:user) { create(:user) }
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            exploreCatalogPath
+          }
+        }
+      )
+    end
+
+    let(:response) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    subject(:explore_catalog_path) { response.dig('data', 'project', 'exploreCatalogPath') }
+
+    context 'when project is not a catalog resource' do
+      let_it_be(:project) { create(:project, :public) }
+
+      it 'returns nil for explore_catalog_path' do
+        expect(explore_catalog_path).to be_nil
+      end
+    end
+
+    context 'when project is a catalog resource' do
+      let_it_be(:project) { create(:project, :public, :catalog_resource_with_components, create_tag: '1.0.0') }
+      let_it_be(:catalog_resource) { create(:ci_catalog_resource, project: project) }
+
+      it 'returns correct path for explore_catalog_path' do
+        expect(explore_catalog_path).to eq("/explore/catalog/#{project.path_with_namespace}")
+      end
+    end
+  end
+
+  describe 'is_published' do
+    let_it_be(:user) { create(:user) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            isPublished
+          }
+        }
+      )
+    end
+
+    let(:response) { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    subject(:is_published) { response.dig('data', 'project', 'isPublished') }
+
+    context 'when project is not a catalog resource' do
+      let_it_be(:project) { create(:project, :public) }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when project is a catalog resource and is not published' do
+      let_it_be(:project) { create(:project, :public) }
+      let_it_be(:catalog_resource) { create(:ci_catalog_resource, project: project) }
+
+      it { is_expected.to eq(false) }
+    end
+
+    context 'when project is a catalog resource and is published' do
+      let_it_be(:project) { create(:project, :public, :catalog_resource_with_components, create_tag: '1.0.0') }
+      let_it_be(:catalog_resource) { create(:ci_catalog_resource, project: project, state: :published) }
+
+      it { is_expected.to eq(true) }
+    end
+  end
+
+  describe 'pages_force_https' do
+    let_it_be(:current_user) { create(:user) }
+    let_it_be(:project) { create(:project, :repository) }
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pagesForceHttps
+          }
+        }
+      )
+    end
+
+    let(:response) { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
+
+    subject(:result) { response.dig('data', 'project', 'pagesForceHttps') }
+
+    before do
+      project.add_maintainer(current_user)
+    end
+
+    context 'when the redirect from unsecured connections to HTTPS is disabled' do
+      it 'returns "false"' do
+        expect(result).to be false
+      end
+    end
+
+    context 'when the redirect from unsecured connections to HTTPS is enabled' do
+      it 'returns "true"' do
+        allow(Gitlab.config.pages).to receive(:external_https).and_return(true)
+
+        expect(result).to be true
+      end
+    end
+  end
+
+  describe 'pages_use_unique_domain' do
+    let_it_be(:current_user) { create(:user) }
+    let(:project) { create(:project, :repository, project_setting: project_settings) }
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            pagesUseUniqueDomain
+          }
+        }
+      )
+    end
+
+    let(:response) { GitlabSchema.execute(query, context: { current_user: current_user }).as_json }
+
+    subject(:result) { response.dig('data', 'project', 'pagesUseUniqueDomain') }
+
+    before do
+      project.add_maintainer(current_user)
+    end
+
+    context 'when the project pages site uses a unique subdomain' do
+      let(:project_settings) do
+        create(:project_setting, pages_unique_domain_enabled: true, pages_unique_domain: "test-unique-domain")
+      end
+
+      it 'returns "true"' do
+        expect(result).to be true
+      end
+    end
+
+    context 'when the project pages site does not use a unique subdomain' do
+      let(:project_settings) { create(:project_setting, pages_unique_domain_enabled: false) }
+
+      it 'returns "false"' do
+        expect(result).to be false
+      end
+    end
+  end
+
+  describe 'project adjourned deletion fields', time_travel_to: '2025-06-01', feature_category: :groups_and_projects do
+    let_it_be(:user) { create(:user) }
+    let_it_be(:project) { create(:project) }
+    let_it_be(:marked_for_deletion_at) { Time.new(2025, 5, 25) }
+    let_it_be(:pending_delete_group) do
+      create(:group_with_deletion_schedule, marked_for_deletion_on: marked_for_deletion_at, developers: user)
+    end
+
+    let_it_be(:project_being_deleted) do
+      create(:project, pending_delete: true, developers: user)
+    end
+
+    let_it_be(:pending_delete_project) { create(:project, marked_for_deletion_at: marked_for_deletion_at) }
+    let_it_be(:parent_pending_delete_project) { create(:project, group: pending_delete_group) }
+
+    let(:project_full_path) { pending_delete_project.full_path }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project_full_path}") {
+            markedForDeletion
+            markedForDeletionOn
+            permanentDeletionDate
+            isSelfDeletionInProgress
+            isSelfDeletionScheduled
+          }
+        }
+      )
+    end
+
+    before do
+      pending_delete_project.add_developer(user)
+      project.add_developer(user)
+      stub_application_setting(deletion_adjourned_period: 7)
+    end
+
+    subject(:project_data) do
+      result = GitlabSchema.execute(query, context: { current_user: user }).as_json
+      {
+        marked_for_deletion: result.dig('data', 'project', 'markedForDeletion'),
+        marked_for_deletion_on: result.dig('data', 'project', 'markedForDeletionOn'),
+        permanent_deletion_date: result.dig('data', 'project', 'permanentDeletionDate'),
+        is_self_deletion_in_progress: result.dig('data', 'project', 'isSelfDeletionInProgress'),
+        is_self_deletion_scheduled: result.dig('data', 'project', 'isSelfDeletionScheduled')
+      }
+    end
+
+    it 'marked_for_deletion returns true' do
+      expect(project_data[:marked_for_deletion]).to be true
+    end
+
+    it 'marked_for_deletion_on returns correct date' do
+      marked_for_deletion_on_time = Time.zone.parse(project_data[:marked_for_deletion_on])
+
+      expect(marked_for_deletion_on_time).to eq(pending_delete_project.marked_for_deletion_at.iso8601)
+    end
+
+    it 'returns false for is_self_deletion_in_progress' do
+      expect(project_data[:is_self_deletion_in_progress]).to be false
+    end
+
+    context 'when project is scheduled for deletion' do
+      it 'returns date project will be permanently deleted for permanent_deletion_date' do
+        expect(project_data[:permanent_deletion_date])
+          .to eq(
+            ::Gitlab::CurrentSettings.deletion_adjourned_period.days.since(marked_for_deletion_at).strftime('%F')
+          )
+      end
+
+      it 'returns true for is_self_deletion_scheduled' do
+        expect(project_data[:is_self_deletion_scheduled]).to be true
+      end
+    end
+
+    context 'when parent is scheduled for deletion' do
+      let(:project_full_path) { parent_pending_delete_project.full_path }
+
+      it 'marked_for_deletion returns true' do
+        expect(project_data[:marked_for_deletion]).to be true
+      end
+
+      it 'returns false for is_self_deletion_scheduled' do
+        expect(project_data[:is_self_deletion_scheduled]).to be false
+      end
+    end
+
+    context 'when project is not scheduled for deletion' do
+      let(:project_full_path) { project.full_path }
+
+      it 'marked_for_deletion returns false' do
+        expect(project_data[:marked_for_deletion]).to be false
+      end
+
+      it 'returns false for is_self_deletion_scheduled' do
+        expect(project_data[:is_self_deletion_scheduled]).to be false
+      end
+
+      it 'returns theoretical date project will be permanently deleted for permanent_deletion_date' do
+        expect(project_data[:permanent_deletion_date])
+          .to eq(::Gitlab::CurrentSettings.deletion_adjourned_period.days.since(Date.current).strftime('%F'))
+      end
+    end
+
+    context 'when project is being deleted' do
+      let(:project_full_path) { project_being_deleted.full_path }
+
+      it 'returns true for is_self_deletion_in_progress' do
+        expect(project_data[:is_self_deletion_in_progress]).to be true
+      end
+    end
+  end
+
+  describe 'container_protection_tag_rules', unless: Gitlab.ee? do
+    let_it_be(:project) { create(:project) }
+    let_it_be(:user) { create(:user) }
+
+    let(:query) do
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            containerProtectionTagRules {
+              nodes {
+                id
+                tagNamePattern
+                minimumAccessLevelForPush
+                minimumAccessLevelForDelete
+              }
+            }
+          }
+        }
+      )
+    end
+
+    before_all do
+      create(:container_registry_protection_tag_rule,
+        project: project,
+        minimum_access_level_for_push: Gitlab::Access::MAINTAINER,
+        minimum_access_level_for_delete: Gitlab::Access::OWNER,
+        tag_name_pattern: 'mutable'
+      )
+    end
+
+    subject do
+      GitlabSchema.execute(query, context: { current_user: user })
+        .as_json.dig('data', 'project', 'containerProtectionTagRules', 'nodes')
+    end
+
+    before do
+      project.add_maintainer(user)
+    end
+
+    it do
+      is_expected.to have_attributes(size: 1).and contain_exactly(
+        a_hash_including(
+          'tagNamePattern' => 'mutable',
+          'minimumAccessLevelForPush' => 'MAINTAINER',
+          'minimumAccessLevelForDelete' => 'OWNER'
+        )
+      )
+    end
+  end
+
+  describe '.authorization_scopes' do
+    it 'includes :ai_workflows' do
+      expect(described_class.authorization_scopes).to include(:ai_workflows)
+    end
+  end
+
+  describe 'fields with :ai_workflows scope' do
+    %w[id fullPath workItems languages statisticsDetailsPaths namespace group rootGroup].each do |field_name|
+      it "includes :ai_workflows scope for the #{field_name} field" do
+        field = described_class.fields[field_name]
+        expect(field.instance_variable_get(:@scopes)).to include(:ai_workflows)
+      end
+    end
+  end
+
+  describe 'ci_config_variables field' do
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:user) { create(:user, developer_of: project) }
+    let(:ref) { project.default_branch }
+    let(:fail_on_cache_miss) { nil }
+
+    let(:query) do
+      fail_on_cache_miss_arg = fail_on_cache_miss.nil? ? '' : ", failOnCacheMiss: #{fail_on_cache_miss}"
+      %(
+        query {
+          project(fullPath: "#{project.full_path}") {
+            ciConfigVariables(ref: "#{ref}"#{fail_on_cache_miss_arg}) {
+              key
+              value
+              description
+            }
+          }
+        }
+      )
+    end
+
+    subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    def mock_config_variables_service(return_value)
+      allow_next_instance_of(::Ci::ListConfigVariablesService) do |service|
+        allow(service).to receive(:execute).and_return(return_value)
+      end
+    end
+
+    context 'when service returns nil and fail_on_cache_miss is enabled' do
+      let(:fail_on_cache_miss) { true }
+
+      before do
+        mock_config_variables_service(nil)
+      end
+
+      it 'returns GraphQL error with expected message' do
+        expect(subject['errors']).to be_present
+        expect(subject['errors'].first['message']).to eq('Failed to retrieve CI/CD variables from cache.')
+        expect(subject['data']['project']['ciConfigVariables']).to be_nil
+      end
+
+      it 'includes error path information' do
+        expect(subject['errors'].first['path']).to eq(%w[project ciConfigVariables])
+      end
+    end
+
+    context 'when variables are successfully fetched' do
+      let_it_be(:ci_config_variables) do
+        {
+          KEY1: { value: 'val 1', description: 'description 1' },
+          KEY2: { value: 'val 2', description: '' },
+          KEY3: { value: 'val 3' }
+        }
+      end
+
+      before do
+        mock_config_variables_service(ci_config_variables)
+      end
+
+      it 'returns variables list' do
+        variables = subject.dig('data', 'project', 'ciConfigVariables')
+
+        expect(variables).to contain_exactly(
+          { 'key' => 'KEY1', 'value' => 'val 1', 'description' => 'description 1' },
+          { 'key' => 'KEY2', 'value' => 'val 2', 'description' => '' },
+          { 'key' => 'KEY3', 'value' => 'val 3', 'description' => nil }
+        )
+      end
+
+      it 'does not return any errors' do
+        expect(subject['errors']).to be_nil
+      end
+    end
+
+    context 'with fail_on_cache_miss argument' do
+      context 'when service is called with fail_on_cache_miss parameter' do
+        before do
+          mock_config_variables_service({})
+        end
+
+        shared_examples 'calls service with expected fail_on_cache_miss value' do |expected_value|
+          it "calls service with fail_on_cache_miss: #{expected_value}" do
+            expect_next_instance_of(::Ci::ListConfigVariablesService) do |service|
+              expect(service).to receive(:execute).with(ref)
+            end
+
+            subject
+          end
+        end
+
+        context 'with default value (not specified)' do
+          it_behaves_like 'calls service with expected fail_on_cache_miss value', false
+        end
+
+        context 'with fail_on_cache_miss: true' do
+          let(:fail_on_cache_miss) { true }
+
+          it_behaves_like 'calls service with expected fail_on_cache_miss value', true
+        end
+      end
+    end
+  end
+
+  describe 'ci_pipeline_creation_inputs field' do
+    include ReactiveCachingHelpers
+
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:user) { create(:user, developer_of: project) }
+    let(:ref) { project.default_branch }
+    let(:fail_on_cache_miss) { nil }
+
+    let(:query) do
+      fail_on_cache_miss_arg = fail_on_cache_miss.nil? ? '' : ", failOnCacheMiss: #{fail_on_cache_miss}"
+      %(
+      query {
+        project(fullPath: "#{project.full_path}") {
+          ciPipelineCreationInputs(ref: "#{ref}"#{fail_on_cache_miss_arg}) {
+            name
+            default
+            required
+          }
+        }
+      }
+    )
+    end
+
+    subject { GitlabSchema.execute(query, context: { current_user: user }).as_json }
+
+    def mock_service_response(return_value)
+      allow_next_instance_of(::Ci::PipelineCreation::FindPipelineInputsService) do |service|
+        allow(service).to receive(:execute).and_return(return_value)
+      end
+    end
+
+    context 'when service returns nil (cache miss) and fail_on_cache_miss is true' do
+      let(:fail_on_cache_miss) { true }
+
+      before do
+        mock_service_response(nil)
+      end
+
+      it 'returns GraphQL error with expected message' do
+        expect(subject['errors']).to be_present
+        expect(subject['errors'].first['message']).to eq('Failed to retrieve pipeline inputs from cache.')
+        expect(subject['data']['project']['ciPipelineCreationInputs']).to be_nil
+      end
+    end
+
+    context 'when service returns nil (cache miss) and fail_on_cache_miss is false' do
+      let(:fail_on_cache_miss) { false }
+
+      before do
+        mock_service_response(nil)
+      end
+
+      it 'returns nil without error' do
+        expect(subject['errors']).to be_nil
+        expect(subject['data']['project']['ciPipelineCreationInputs']).to be_nil
+      end
+    end
+
+    context 'when service returns nil (cache miss) and fail_on_cache_miss is not specified' do
+      before do
+        mock_service_response(nil)
+      end
+
+      it 'returns nil without error (default behavior)' do
+        expect(subject['errors']).to be_nil
+        expect(subject['data']['project']['ciPipelineCreationInputs']).to be_nil
+      end
+    end
+
+    context 'when service returns an error response' do
+      before do
+        mock_service_response(ServiceResponse.error(message: 'Some error'))
+      end
+
+      it 'returns GraphQL error with the service error message' do
+        expect(subject['errors']).to be_present
+        expect(subject['errors'].first['message']).to eq('Some error')
+      end
+    end
+
+    context 'when service returns success with inputs' do
+      let(:inputs_builder) do
+        Ci::Inputs::Builder.new({
+          'environment' => { type: 'string', default: 'production' }
+        })
+      end
+
+      before do
+        mock_service_response(ServiceResponse.success(payload: { inputs: inputs_builder }))
+      end
+
+      it 'returns the inputs' do
+        inputs = subject.dig('data', 'project', 'ciPipelineCreationInputs')
+        expect(inputs).to be_present
+        expect(inputs.first['name']).to eq('environment')
+        expect(inputs.first['default']).to eq('production')
       end
     end
   end

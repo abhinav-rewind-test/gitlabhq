@@ -6,10 +6,14 @@ module API
   class Repositories < ::API::Base
     include PaginationParams
     include Helpers::Unidiff
+    include APIGuard
 
     content_type :txt, 'text/plain'
 
     helpers ::API::Helpers::HeadersHelpers
+    helpers ::API::Helpers::BlobHelpers
+
+    allow_access_with_scope :ai_workflows, if: ->(request) { request.get? || request.head? }
 
     helpers do
       params :release_params do
@@ -17,7 +21,8 @@ module API
           type: String,
           regexp: Gitlab::Regex.unbounded_semver_regex,
           desc: 'The version of the release, using the semantic versioning format',
-          documentation: { example: '1.0.0' }
+          documentation: { example: '1.0.0' },
+          allow_blank: false
 
         optional :from,
           type: String,
@@ -39,6 +44,16 @@ module API
           desc: 'The Git trailer to use for determining if commits are to be included in the changelog',
           default: ::Repositories::ChangelogService::DEFAULT_TRAILER,
           documentation: { example: 'Changelog' }
+
+        optional :config_file,
+          type: String,
+          documentation: { example: '.gitlab/changelog_config.yml' },
+          desc: "The file path to the configuration file as stored in the project's Git repository. Defaults to '.gitlab/changelog_config.yml'"
+
+        optional :config_file_ref,
+          type: String,
+          desc: 'The git reference (for example, branch) where the changelog configuration file is defined. Defaults to the default repository branch.',
+          documentation: { example: 'main' }
       end
     end
 
@@ -48,8 +63,8 @@ module API
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the project',
-                    documentation: { example: 1 }
+        desc: 'The ID or URL-encoded path of the project',
+        documentation: { example: 1 }
     end
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       helpers do
@@ -96,19 +111,16 @@ module API
             params
           ]
         end
-
-        def rescue_not_found?
-          Feature.disabled?(:handle_structured_gitaly_errors)
-        end
       end
 
       desc 'Get a project repository tree' do
         success Entities::TreeObject
+        tags ['repositories']
       end
       params do
         optional :ref, type: String,
-                       desc: 'The name of a repository branch or tag, if not given the default branch is used',
-                       documentation: { example: 'main' }
+          desc: 'The name of a repository branch or tag, if not given the default branch is used',
+          documentation: { example: 'main' }
         optional :path, type: String, desc: 'The path of the tree', documentation: { example: 'files/html' }
         optional :recursive, type: Boolean, default: false, desc: 'Used to get a recursive tree'
 
@@ -117,8 +129,8 @@ module API
 
         given pagination: ->(value) { value == 'keyset' } do
           optional :page_token, type: String,
-                                desc: 'Record from which to start the keyset pagination',
-                                documentation: { example: 'a1e8f8d745cc87e3a9248358d9352bb7f9a0aeba' }
+            desc: 'Record from which to start the keyset pagination',
+            documentation: { example: 'a1e8f8d745cc87e3a9248358d9352bb7f9a0aeba' }
         end
 
         given pagination: ->(value) { value == 'none' } do
@@ -127,8 +139,9 @@ module API
           end
         end
       end
+      route_setting :authorization, permissions: :read_repository_tree, boundary_type: :project
       get ':id/repository/tree', urgency: :low do
-        tree_finder = ::Repositories::TreeFinder.new(user_project, declared_params(include_missing: false).merge(rescue_not_found: rescue_not_found?))
+        tree_finder = ::Repositories::TreeFinder.new(user_project, declared_params(include_missing: false).merge(rescue_not_found: false))
 
         not_found!("Tree") unless tree_finder.commit_exists?
 
@@ -140,13 +153,15 @@ module API
         not_found!(e.message)
       end
 
-      desc 'Get raw blob contents from the repository'
+      route_setting :authorization, permissions: :read_repository_blob, boundary_type: :project
+      desc 'Get raw blob contents from the repository' do
+        tags ['repositories']
+      end
       params do
         requires :sha, type: String,
-                       desc: 'The commit hash', documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
+          desc: 'The commit hash', documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
       end
       get ':id/repository/blobs/:sha/raw' do
-        # Load metadata enough to ask Workhorse to load the whole blob
         assign_blob_vars!(limit: 0)
 
         no_cache_headers
@@ -154,12 +169,23 @@ module API
         send_git_blob @repo, @blob
       end
 
-      desc 'Get a blob from the repository'
+      desc 'Get a blob from the repository' do
+        tags ['repositories']
+      end
       params do
         requires :sha, type: String,
-                       desc: 'The commit hash', documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
+          desc: 'The commit hash', documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
       end
+      route_setting :authorization, permissions: :read_repository_blob, boundary_type: :project
       get ':id/repository/blobs/:sha' do
+        # Load metadata for @blob, but not not the actual data
+        #
+        assign_blob_vars!(limit: 0)
+        check_rate_limit_for_blob(@blob)
+
+        # If #check_rate_limit_for_blob hasn't stopped the request, allow data
+        #   to actually be loaded without limit.
+        #
         assign_blob_vars!(limit: -1)
 
         {
@@ -170,15 +196,24 @@ module API
         }
       end
 
-      desc 'Get an archive of the repository'
+      desc 'Get an archive of the repository' do
+        tags ['repositories']
+      end
       params do
         optional :sha, type: String,
-                       desc: 'The commit sha of the archive to be downloaded',
-                       documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
+          desc: 'The commit sha of the archive to be downloaded',
+          documentation: { example: '7d70e02340bac451f281cecf0a980907974bd8be' }
         optional :format, type: String, desc: 'The archive format', documentation: { example: 'tar.gz' }
         optional :path, type: String,
-                        desc: 'Subfolder of the repository to be downloaded', documentation: { example: 'files/archives' }
+          desc: 'Subfolder of the repository to be downloaded', documentation: { example: 'files/archives' }
+        optional :include_lfs_blobs, type: Boolean, default: true,
+          desc: 'Used to exclude LFS objects from archive'
+        optional :exclude_paths, type: Array[String],
+          coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
+          default: [],
+          desc: 'Comma-separated list of paths to exclude from the archive'
       end
+      route_setting :authorization, permissions: :read_repository_archive, boundary_type: :project
       get ':id/repository/archive', requirements: { format: Gitlab::PathRegex.archive_formats_regex } do
         check_archive_rate_limit!(current_user, user_project) do
           render_api_error!({ error: _('This archive has been requested too many times. Try again later.') }, 429)
@@ -186,25 +221,27 @@ module API
 
         not_acceptable! if Gitlab::HotlinkingDetector.intercept_hotlinking?(request)
 
-        send_git_archive user_project.repository, ref: params[:sha], format: params[:format], append_sha: true, path: params[:path]
+        send_git_archive user_project.repository, ref: params[:sha], format: params[:format], append_sha: true, path: params[:path], include_lfs_blobs: params[:include_lfs_blobs], exclude_paths: params[:exclude_paths]
       rescue StandardError
         not_found!('File')
       end
 
       desc 'Compare two branches, tags, or commits' do
         success Entities::Compare
+        tags ['repositories']
       end
       params do
         requires :from, type: String,
-                        desc: 'The commit, branch name, or tag name to start comparison',
-                        documentation: { example: 'main' }
+          desc: 'The commit, branch name, or tag name to start comparison',
+          documentation: { example: 'main' }
         requires :to, type: String,
-                      desc: 'The commit, branch name, or tag name to stop comparison',
-                      documentation: { example: 'feature' }
+          desc: 'The commit, branch name, or tag name to stop comparison',
+          documentation: { example: 'feature' }
         optional :from_project_id, type: Integer, desc: 'The project to compare from', documentation: { example: 1 }
         optional :straight, type: Boolean, desc: 'Comparison method, `true` for direct comparison between `from` and `to` (`from`..`to`), `false` to compare using merge base (`from`...`to`)', default: false
         use :with_unidiff
       end
+      route_setting :authorization, permissions: :read_repository_comparison, boundary_type: :project
       get ':id/repository/compare', urgency: :low do
         target_project = fetch_target_project(current_user, user_project, params)
 
@@ -229,16 +266,48 @@ module API
         end
       end
 
+      desc 'Get repository health' do
+        success Entities::RepositoryHealth
+        tags ['repositories']
+      end
+      params do
+        optional :generate, type: Boolean, default: false, desc: 'Triggers a new health report to be generated'
+      end
+      route_setting :authorization, permissions: :read_repository_health, boundary_type: :project
+      get ':id/repository/health', urgency: :low do
+        authorize! :push_code, user_project
+
+        generate = params[:generate] || false
+        if generate
+          check_rate_limit!(:project_repositories_health, scope: [user_project]) do
+            render_api_error!({ error: 'Repository health has been requested too many times. Try again later.' }, 429)
+          end
+        end
+
+        health = user_project.repository.health(generate)
+
+        if health.nil?
+          not_found!
+        end
+
+        present health, with: Entities::RepositoryHealth
+      end
+
       desc 'Get repository contributors' do
         success Entities::Contributor
+        tags ['repositories']
       end
       params do
         use :pagination
+        optional :ref, type: String,
+          desc: 'The name of a repository branch or tag, if not given the default branch is used',
+          documentation: { example: 'main' }
         optional :order_by, type: String, values: %w[email name commits], default: 'commits', desc: 'Return contributors ordered by `name` or `email` or `commits`'
         optional :sort, type: String, values: %w[asc desc], default: 'asc', desc: 'Sort by asc (ascending) or desc (descending)'
       end
+      route_setting :authorization, permissions: :read_repository_contributor, boundary_type: :project
       get ':id/repository/contributors' do
-        contributors = ::Kaminari.paginate_array(user_project.repository.contributors(order_by: params[:order_by], sort: params[:sort]))
+        contributors = ::Kaminari.paginate_array(user_project.repository.contributors(ref: params[:ref], order_by: params[:order_by], sort: params[:sort]))
         present paginate(contributors), with: Entities::Contributor
       rescue StandardError
         not_found!
@@ -246,13 +315,15 @@ module API
 
       desc 'Get the common ancestor between commits' do
         success Entities::Commit
+        tags ['repositories']
       end
       params do
         requires :refs, type: Array[String],
-                        coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
-                        desc: 'The refs to find the common ancestor of, multiple refs can be passed',
-                        documentation: { example: 'main' }
+          coerce_with: ::API::Validations::Types::CommaSeparatedToArray.coerce,
+          desc: 'The refs to find the common ancestor of, multiple refs can be passed',
+          documentation: { example: 'main' }
       end
+      route_setting :authorization, permissions: :read_repository_merge_base, boundary_type: :project
       get ':id/repository/merge_base' do
         refs = params[:refs]
 
@@ -278,16 +349,19 @@ module API
       desc 'Generates a changelog section for a release and returns it' do
         detail 'This feature was introduced in GitLab 14.6'
         success Entities::Changelog
+        tags ['repositories']
       end
       params do
         use :release_params
-
-        optional :config_file,
-          type: String,
-          documentation: { example: '.gitlab/changelog_config.yml' },
-          desc: "The file path to the configuration file as stored in the project's Git repository. Defaults to '.gitlab/changelog_config.yml'"
       end
+      route_setting :authentication, job_token_allowed: true
+      route_setting :authorization, permissions: :read_repository_changelog, boundary_type: :project, job_token_policies: :read_releases,
+        allow_public_access_for_enabled_project_features: :repository
       get ':id/repository/changelog' do
+        check_rate_limit!(:project_repositories_changelog, scope: [current_user, user_project]) do
+          render_api_error!({ error: 'This changelog has been requested too many times. Try again later.' }, 429)
+        end
+
         service = ::Repositories::ChangelogService.new(
           user_project,
           current_user,
@@ -303,6 +377,7 @@ module API
       desc 'Generates a changelog section for a release and commits it in a changelog file' do
         detail 'This feature was introduced in GitLab 13.9'
         success code: 200
+        tags ['repositories']
       end
       params do
         use :release_params
@@ -311,11 +386,6 @@ module API
           type: String,
           desc: 'The branch to commit the changelog changes to',
           documentation: { example: 'main' }
-
-        optional :config_file,
-          type: String,
-          documentation: { example: '.gitlab/changelog_config.yml' },
-          desc: "The file path to the configuration file as stored in the project's Git repository. Defaults to '.gitlab/changelog_config.yml'"
 
         optional :file,
           type: String,
@@ -328,7 +398,12 @@ module API
           desc: 'The commit message to use when committing the changelog',
           documentation: { example: 'Initial commit' }
       end
+      route_setting :authorization, permissions: :create_repository_changelog, boundary_type: :project
       post ':id/repository/changelog' do
+        check_rate_limit!(:project_repositories_changelog, scope: [current_user, user_project]) do
+          render_api_error!({ error: 'This changelog has been requested too many times. Try again later.' }, 429)
+        end
+
         branch = params[:branch] || user_project.default_branch_or_main
         access = Gitlab::UserAccess.new(current_user, container: user_project)
 

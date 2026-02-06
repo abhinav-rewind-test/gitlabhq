@@ -1,118 +1,63 @@
-import { formatProjects, formatGroups, onPageChange } from '~/organizations/shared/utils';
-import { ACTION_EDIT, ACTION_DELETE } from '~/vue_shared/components/list_actions/constants';
-import { getIdFromGraphQLId } from '~/graphql_shared/utils';
-import { organizationProjects, organizationGroups } from '~/organizations/mock_data';
+import organizationGroupsGraphQlResponse from 'test_fixtures/graphql/organizations/groups.query.graphql.json';
+import organizationProjectsGraphQlResponse from 'test_fixtures/graphql/organizations/projects.query.graphql.json';
+import { formatGroups, formatProjects, timestampType } from '~/organizations/shared/utils';
+import { formatGraphQLProjects } from '~/vue_shared/components/projects_list/formatter';
+import { formatGraphQLGroups } from '~/vue_shared/components/groups_list/formatter';
+import { SORT_CREATED_AT, SORT_UPDATED_AT, SORT_NAME } from '~/organizations/shared/constants';
+import {
+  TIMESTAMP_TYPE_CREATED_AT,
+  TIMESTAMP_TYPE_UPDATED_AT,
+} from '~/vue_shared/components/resource_lists/constants';
 
-describe('formatProjects', () => {
-  it('correctly formats the projects with delete permissions', () => {
-    const [firstMockProject] = organizationProjects;
-    const formattedProjects = formatProjects(organizationProjects);
-    const [firstFormattedProject] = formattedProjects;
+jest.mock('~/vue_shared/plugins/global_toast');
 
-    expect(firstFormattedProject).toMatchObject({
-      id: getIdFromGraphQLId(firstMockProject.id),
-      name: firstMockProject.nameWithNamespace,
-      mergeRequestsAccessLevel: firstMockProject.mergeRequestsAccessLevel.stringValue,
-      issuesAccessLevel: firstMockProject.issuesAccessLevel.stringValue,
-      forkingAccessLevel: firstMockProject.forkingAccessLevel.stringValue,
-      accessLevel: {
-        integerValue: 30,
-      },
-      availableActions: [ACTION_EDIT, ACTION_DELETE],
-      actionLoadingStates: {
-        [ACTION_DELETE]: false,
-      },
-    });
+const {
+  data: {
+    organization: {
+      groups: { nodes: organizationGroups },
+    },
+  },
+} = organizationGroupsGraphQlResponse;
 
-    expect(formattedProjects.length).toBe(organizationProjects.length);
-  });
-
-  it('correctly formats the projects without delete permissions', () => {
-    const nonDeletableProject = organizationProjects[organizationProjects.length - 1];
-    const formattedProjects = formatProjects(organizationProjects);
-    const nonDeletableFormattedProject = formattedProjects[formattedProjects.length - 1];
-
-    expect(nonDeletableFormattedProject).toMatchObject({
-      id: getIdFromGraphQLId(nonDeletableProject.id),
-      name: nonDeletableProject.nameWithNamespace,
-      mergeRequestsAccessLevel: nonDeletableProject.mergeRequestsAccessLevel.stringValue,
-      issuesAccessLevel: nonDeletableProject.issuesAccessLevel.stringValue,
-      forkingAccessLevel: nonDeletableProject.forkingAccessLevel.stringValue,
-      availableActions: [ACTION_EDIT],
-      actionLoadingStates: {
-        [ACTION_DELETE]: false,
-      },
-    });
-
-    expect(formattedProjects.length).toBe(organizationProjects.length);
-  });
-});
+const {
+  data: {
+    organization: {
+      projects: { nodes: organizationProjects },
+    },
+  },
+} = organizationProjectsGraphQlResponse;
 
 describe('formatGroups', () => {
-  it('correctly formats the groups with delete permissions', () => {
-    const [firstMockGroup] = organizationGroups;
-    const formattedGroups = formatGroups(organizationGroups);
-    const [firstFormattedGroup] = formattedGroups;
-
-    expect(firstFormattedGroup).toMatchObject({
-      id: getIdFromGraphQLId(firstMockGroup.id),
-      parent: null,
-      editPath: `${firstFormattedGroup.webUrl}/-/edit`,
-      accessLevel: {
-        integerValue: 30,
-      },
-      availableActions: [ACTION_EDIT, ACTION_DELETE],
-      actionLoadingStates: {
-        [ACTION_DELETE]: false,
-      },
-    });
-    expect(formattedGroups.length).toBe(organizationGroups.length);
-  });
-
-  it('correctly formats the groups without delete permissions', () => {
-    const nonDeletableGroup = organizationGroups[organizationGroups.length - 1];
-    const formattedGroups = formatGroups(organizationGroups);
-    const nonDeletableFormattedGroup = formattedGroups[formattedGroups.length - 1];
-
-    expect(nonDeletableFormattedGroup).toMatchObject({
-      id: getIdFromGraphQLId(nonDeletableGroup.id),
-      parent: null,
-      editPath: `${nonDeletableFormattedGroup.webUrl}/-/edit`,
-      accessLevel: {
-        integerValue: 30,
-      },
-      availableActions: [ACTION_EDIT],
-      actionLoadingStates: {
-        [ACTION_DELETE]: false,
-      },
-    });
-
-    expect(formattedGroups.length).toBe(organizationGroups.length);
+  it('returns result from formatGraphQLGroups and adds editPath', () => {
+    expect(formatGroups(organizationGroups)).toEqual(
+      formatGraphQLGroups(organizationGroups).map((group) => ({
+        ...group,
+        editPath: group.organizationEditPath,
+      })),
+    );
   });
 });
 
-describe('onPageChange', () => {
-  const mockRouteQuery = { start_cursor: 'mockStartCursor', end_cursor: 'mockEndCursor' };
-
-  describe('when `startCursor` is defined', () => {
-    it('sets start cursor query param', () => {
-      expect(
-        onPageChange({
-          startCursor: 'newMockStartCursor',
-          routeQuery: mockRouteQuery,
-        }),
-      ).toEqual({ start_cursor: 'newMockStartCursor' });
-    });
+describe('formatProjects', () => {
+  it('returns result from formatGraphQLProjects and adds editPath', () => {
+    expect(formatProjects(organizationProjects)).toEqual(
+      formatGraphQLProjects(organizationProjects).map((project) => ({
+        ...project,
+        editPath: project.organizationEditPath,
+      })),
+    );
   });
+});
 
-  describe('when `endCursor` is defined', () => {
-    it('sets end cursor query param', () => {
-      expect(
-        onPageChange({
-          endCursor: 'newMockEndCursor',
-          routeQuery: mockRouteQuery,
-        }),
-      ).toEqual({ end_cursor: 'newMockEndCursor' });
+describe('timestampType', () => {
+  describe.each`
+    sortName           | expectedTimestampType
+    ${SORT_CREATED_AT} | ${TIMESTAMP_TYPE_CREATED_AT}
+    ${SORT_UPDATED_AT} | ${TIMESTAMP_TYPE_UPDATED_AT}
+    ${SORT_NAME}       | ${TIMESTAMP_TYPE_CREATED_AT}
+  `('when sort name is $sortName', ({ sortName, expectedTimestampType }) => {
+    it(`returns ${expectedTimestampType}`, () => {
+      expect(timestampType(sortName)).toBe(expectedTimestampType);
     });
   });
 });

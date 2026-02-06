@@ -5,15 +5,15 @@ import issuableDatesUpdatedSubscription from '~/graphql_shared/subscriptions/wor
 import {
   TYPE_ALERT,
   TYPE_EPIC,
+  TYPE_INCIDENT,
   TYPE_ISSUE,
+  TYPE_TICKET,
   TYPE_MERGE_REQUEST,
   TYPE_TEST_CASE,
   WORKSPACE_GROUP,
   WORKSPACE_PROJECT,
 } from '~/issues/constants';
 import updateAlertAssigneesMutation from '~/vue_shared/alert_details/graphql/mutations/alert_set_assignees.mutation.graphql';
-import abuseReportLabelsQuery from '~/admin/abuse_report/graphql/abuse_report_labels.query.graphql';
-import createAbuseReportLabelMutation from '~/admin/abuse_report/graphql/create_abuse_report_label.mutation.graphql';
 import createGroupOrProjectLabelMutation from '../components/labels/labels_select_widget/graphql/create_label.mutation.graphql';
 import updateTestCaseLabelsMutation from '../components/labels/labels_select_widget/graphql/update_test_case_labels.mutation.graphql';
 import epicLabelsQuery from '../components/labels/labels_select_widget/graphql/epic_labels.query.graphql';
@@ -42,6 +42,7 @@ import mergeRequestReferenceQuery from './merge_request_reference.query.graphql'
 import mergeRequestSubscribed from './merge_request_subscribed.query.graphql';
 import mergeRequestTimeTrackingQuery from './merge_request_time_tracking.query.graphql';
 import mergeRequestTodoQuery from './merge_request_todo.query.graphql';
+import mergeRequestTodoSubscription from './merge_request_todo.subscription.graphql';
 import todoCreateMutation from './todo_create.mutation.graphql';
 import todoMarkDoneMutation from './todo_mark_done.mutation.graphql';
 import updateEpicConfidentialMutation from './update_epic_confidential.mutation.graphql';
@@ -114,7 +115,15 @@ export const userSearchQueries = {
 };
 
 export const confidentialityQueries = {
+  [TYPE_INCIDENT]: {
+    query: issueConfidentialQuery,
+    mutation: updateIssueConfidentialMutation,
+  },
   [TYPE_ISSUE]: {
+    query: issueConfidentialQuery,
+    mutation: updateIssueConfidentialMutation,
+  },
+  [TYPE_TICKET]: {
     query: issueConfidentialQuery,
     mutation: updateIssueConfidentialMutation,
   },
@@ -143,22 +152,17 @@ export const referenceQueries = {
 export const workspaceLabelsQueries = {
   [WORKSPACE_PROJECT]: {
     query: projectLabelsQuery,
-    dataPath: 'workspace.labels',
+    dataPath: 'namespace.labels',
   },
   [WORKSPACE_GROUP]: {
     query: groupLabelsQuery,
-    dataPath: 'workspace.labels',
-  },
-  abuseReport: {
-    query: abuseReportLabelsQuery,
-    dataPath: 'labels',
+    dataPath: 'namespace.labels',
   },
 };
 
 export const workspaceCreateLabelMutation = {
   [WORKSPACE_PROJECT]: createGroupOrProjectLabelMutation,
   [WORKSPACE_GROUP]: createGroupOrProjectLabelMutation,
-  abuseReport: createAbuseReportLabelMutation,
 };
 
 export const issuableLabelsQueries = {
@@ -278,6 +282,7 @@ export const todoQueries = {
   },
   [TYPE_MERGE_REQUEST]: {
     query: mergeRequestTodoQuery,
+    subscription: mergeRequestTodoSubscription,
   },
 };
 

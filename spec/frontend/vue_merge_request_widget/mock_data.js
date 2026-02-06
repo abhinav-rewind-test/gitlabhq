@@ -94,12 +94,14 @@ export const artifacts = [
     text: 'result.txt',
     url: 'bar',
     job_name: 'generate-artifact',
+    name: 'generate-artifact',
     job_path: 'bar',
   },
   {
     text: 'foo.txt',
     url: 'foo',
     job_name: 'foo-artifact',
+    name: 'foo-artifact',
     job_path: 'foo',
   },
 ];
@@ -207,6 +209,7 @@ export default {
       stages: [
         {
           name: 'build',
+          id: 1,
           title: 'build: failed',
           status: {
             icon: 'status_failed',
@@ -222,6 +225,7 @@ export default {
         },
         {
           name: 'review',
+          id: 2,
           title: 'review: skipped',
           status: {
             icon: 'status_skipped',
@@ -366,16 +370,13 @@ export default {
   ci_troubleshooting_docs_path: 'help2',
   merge_request_pipelines_docs_path: '/help/ci/pipelines/merge_request_pipelines.md',
   squash: true,
-  visual_review_app_available: true,
   merge_trains_enabled: true,
   merge_trains_count: 3,
   merge_train_index: 1,
   security_reports_docs_path: 'security-reports-docs-path',
-  sast_comparison_path: '/sast_comparison_path',
-  secret_detection_comparison_path: '/secret_detection_comparison_path',
   gitpod_enabled: true,
   show_gitpod_button: true,
-  gitpod_url: 'http://gitpod.localhost',
+  gitpod_url: 'http://ona.localhost',
   user_preferences_gitpod_path: '/-/profile/preferences#user_gitpod_enabled',
   user_profile_enable_gitpod_path: '/-/user_settings/profile?user%5Bgitpod_enabled%5D=true',
 };
@@ -399,7 +400,7 @@ export const mockStore = {
       },
     },
     flags: {},
-    ref: {},
+    ref: { branch: '1' },
   },
   mergePipeline: {
     id: 1,
@@ -419,11 +420,16 @@ export const mockStore = {
       },
     },
     flags: {},
-    ref: {},
+    ref: { branch: '1' },
   },
+  pipelineEtag: '/etag',
+  pipelineIid: '12',
+  pipelineProjectPath: '/full/path',
   targetBranch: 'target-branch',
+  targetProjectFullPath: '/group2/project2',
   sourceBranch: 'source-branch',
   sourceBranchLink: 'source-branch-link',
+  mergeRequestPath: '/gitlab-org/gitlab/-/merge_requests/1',
   deployments: [
     {
       id: 0,
@@ -451,6 +457,9 @@ export const mockStore = {
   ciStatus: 'ci-status',
   hasCI: true,
   exposedArtifactsPath: 'exposed_artifacts.json',
+  targetProjectId: 1,
+  iid: 1,
+  retargeted: false,
 };
 
 export const mockMergePipeline = {
@@ -560,14 +569,28 @@ export const mockMergePipeline = {
   cancel_path: '/root/ci-web-terminal/pipelines/127/cancel',
 };
 
+export const mockMergePipelineQueryResponse = {
+  data: {
+    project: {
+      id: 'gid://gitlab/Project/20',
+      pipeline: {
+        id: 'gid://gitlab/Ci::Pipeline/315',
+        iid: '14',
+        project: {
+          id: 'gid://gitlab/Ci::Pipeline/1866',
+          fullPath: 'flightjs/Flight',
+        },
+      },
+    },
+  },
+};
+
 export const mockPostMergeDeployments = [
   {
     id: 15,
     name: 'review/diplo',
     url: '/root/acets-review-apps/environments/15',
     stop_url: '/root/acets-review-apps/environments/15/stop',
-    metrics_url: '/root/acets-review-apps/environments/15/deployments/1/metrics',
-    metrics_monitoring_url: '/root/acets-review-apps/environments/15/metrics',
     external_url: 'http://diplo.',
     external_url_formatted: 'diplo.',
     deployed_at: '2017-03-22T22:44:42.258Z',
@@ -595,8 +618,6 @@ export const mockDeployment = {
   name: 'review/diplo',
   url: '/root/acets-review-apps/environments/15',
   stop_url: '/root/acets-review-apps/environments/15/stop',
-  metrics_url: '/root/acets-review-apps/environments/15/deployments/1/metrics',
-  metrics_monitoring_url: '/root/acets-review-apps/environments/15/metrics',
   external_url: 'http://diplo.',
   external_url_formatted: 'diplo.',
   deployed_at: '2017-03-22T22:44:42.258Z',

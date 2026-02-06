@@ -2,24 +2,24 @@
 
 require 'spec_helper'
 
-RSpec.describe Mutations::DependencyProxy::GroupSettings::Update, feature_category: :dependency_proxy do
+RSpec.describe Mutations::DependencyProxy::GroupSettings::Update, feature_category: :virtual_registry do
+  include GraphqlHelpers
   using RSpec::Parameterized::TableSyntax
 
   let_it_be_with_reload(:group) { create(:group) }
   let_it_be_with_reload(:group_settings) { create(:dependency_proxy_group_setting, group: group) }
-  let_it_be(:user) { create(:user) }
-
-  let(:params) { { group_path: group.full_path, enabled: false } }
+  let_it_be(:current_user) { create(:user) }
+  let(:params) { { group_path: group.full_path, enabled: false, identity: 'i', secret: 's' } }
 
   specify { expect(described_class).to require_graphql_authorizations(:admin_dependency_proxy) }
 
   describe '#resolve' do
-    subject { described_class.new(object: group, context: { current_user: user }, field: nil).resolve(**params) }
+    subject { described_class.new(object: group, context: query_context, field: nil).resolve(**params) }
 
     shared_examples 'updating the dependency proxy group settings' do
       it_behaves_like 'updating the dependency proxy group settings attributes',
-        from: { enabled: true },
-        to: { enabled: false }
+        from: { enabled: true, identity: 'username', secret: 'secret' },
+        to: { enabled: false, identity: 'i', secret: 's' }
 
       it 'returns the dependency proxy settings no errors' do
         expect(subject).to eq(
@@ -47,18 +47,10 @@ RSpec.describe Mutations::DependencyProxy::GroupSettings::Update, feature_catego
     with_them do
       before do
         stub_config(dependency_proxy: { enabled: true })
-        group.send("add_#{user_role}", user) unless user_role == :anonymous
+        group.send("add_#{user_role}", current_user) unless user_role == :anonymous
       end
 
       it_behaves_like params[:shared_examples_name]
-
-      context 'with disabled admin_package feature flag' do
-        before do
-          stub_feature_flags(raise_group_admin_package_permission_to_owner: false)
-        end
-
-        it_behaves_like 'updating the dependency proxy group settings' if params[:user_role] == :maintainer
-      end
     end
   end
 end

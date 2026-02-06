@@ -106,7 +106,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Base, feature_category: :pipe
       it 'is not a valid file' do
         expect(valid?).to be_falsy
         expect(file.error_message)
-          .to eq('`some/file/xxxxxxxxxxxxxxxx.yml`: Invalid configuration format')
+          .to eq('`some/file/[MASKED]xxxxxxxx.yml`: Invalid configuration format')
       end
     end
 
@@ -145,7 +145,7 @@ RSpec.describe Gitlab::Ci::Config::External::File::Base, feature_category: :pipe
         it 'surfaces interpolation errors' do
           expect(valid?).to be_falsy
           expect(file.errors)
-            .to include('`some-location.yml`: unknown interpolation key: `abcd`')
+            .to include('`some-location.yml`: unknown interpolation provided: `abcd` in `inputs.abcd`')
         end
       end
 
@@ -207,12 +207,12 @@ RSpec.describe Gitlab::Ci::Config::External::File::Base, feature_category: :pipe
 
     subject(:metadata) { file.metadata }
 
-    it {
+    it do
       is_expected.to eq(
         context_project: project.full_path,
         context_sha: 'HEAD'
       )
-    }
+    end
   end
 
   describe '#eql?' do
@@ -286,6 +286,97 @@ RSpec.describe Gitlab::Ci::Config::External::File::Base, feature_category: :pipe
         expect(::Gitlab::UsageDataCounters::HLLRedisCounter).not_to receive(:track_event)
 
         file.load_and_validate_expanded_hash!
+      end
+    end
+  end
+
+  describe '#inputs_only!' do
+    let(:location) { 'some/file/config.yml' }
+
+    it 'sets the inputs_only flag' do
+      expect(file.inputs_only?).to be_falsy
+
+      file.inputs_only!
+
+      expect(file.inputs_only?).to be_truthy
+    end
+
+    it 'returns self for chaining' do
+      expect(file.inputs_only!).to eq(file)
+    end
+  end
+
+  describe '#inputs_only?' do
+    let(:location) { 'some/file/config.yml' }
+
+    it 'returns false by default' do
+      expect(file.inputs_only?).to be_falsy
+    end
+
+    it 'returns true after calling inputs_only!' do
+      file.inputs_only!
+      expect(file.inputs_only?).to be_truthy
+    end
+  end
+
+  describe '#validate_content_keys!' do
+    let(:location) { 'some/file/inputs.yml' }
+
+    before do
+      file.inputs_only!
+    end
+
+    context 'when content has only inputs key' do
+      let(:content) do
+        <<~YAML
+          inputs:
+            environment:
+              default: 'production'
+        YAML
+      end
+
+      it 'does not add errors' do
+        file.load_and_validate_expanded_hash!
+        expect(file.errors).to be_empty
+      end
+    end
+
+    context 'when content has unknown keys' do
+      let(:content) do
+        <<~YAML
+          inputs:
+            environment:
+              default: 'production'
+          image: 'ruby:3.0'
+          script:
+            - echo "test"
+        YAML
+      end
+
+      it 'adds an error for unknown keys' do
+        file.load_and_validate_expanded_hash!
+        expect(file.errors).to include(
+          match(/Header include file .* contains unknown keys: .*image.*script/)
+        )
+      end
+    end
+
+    context 'when not in inputs_only mode' do
+      let(:content) do
+        <<~YAML
+          image: 'ruby:3.0'
+          script:
+            - echo "test"
+        YAML
+      end
+
+      before do
+        allow(file).to receive(:inputs_only?).and_return(false)
+      end
+
+      it 'does not validate content keys' do
+        file.load_and_validate_expanded_hash!
+        expect(file.errors).to be_empty
       end
     end
   end

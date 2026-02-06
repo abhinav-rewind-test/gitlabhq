@@ -7,54 +7,6 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
 
   let_it_be(:user) { create(:user) }
 
-  describe '#group_icon, #topic_icon' do
-    shared_examples 'resource with a default avatar' do |source_type|
-      it 'returns a default avatar div' do
-        expect(public_send("#{source_type}_icon", *helper_args))
-          .to match(%r{<span class="identicon bg\d+">F</span>})
-      end
-    end
-
-    shared_examples 'resource with a custom avatar' do |source_type|
-      it 'returns a custom avatar image' do
-        expect(public_send("#{source_type}_icon", *helper_args))
-          .to eq "<img src=\"#{resource.avatar.url}\" />"
-      end
-    end
-
-    shared_examples 'Gitaly exception handling' do
-      before do
-        allow(resource).to receive(:avatar_url).and_raise(error_class)
-      end
-
-      it_behaves_like 'resource with a default avatar', 'project'
-    end
-
-    context 'when providing a group' do
-      it_behaves_like 'resource with a default avatar', 'group' do
-        let(:resource) { create(:group, name: 'foo') }
-        let(:helper_args) { [resource] }
-      end
-
-      it_behaves_like 'resource with a custom avatar', 'group' do
-        let(:resource) { create(:group, avatar: File.open(uploaded_image_temp_path)) }
-        let(:helper_args) { [resource] }
-      end
-    end
-
-    context 'when providing a topic' do
-      it_behaves_like 'resource with a default avatar', 'topic' do
-        let(:resource) { create(:topic, name: 'foo') }
-        let(:helper_args) { [resource] }
-      end
-
-      it_behaves_like 'resource with a custom avatar', 'topic' do
-        let(:resource) { create(:topic, avatar: File.open(uploaded_image_temp_path)) }
-        let(:helper_args) { [resource] }
-      end
-    end
-  end
-
   describe '#avatar_icon_for' do
     let!(:user) { create(:user, avatar: File.open(uploaded_image_temp_path), email: 'bar@example.com') }
     let(:email) { 'foo@example.com' }
@@ -276,7 +228,7 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
     end
 
     it "contains the user's avatar image" do
-      is_expected.to include(CGI.escapeHTML(user.avatar_url(size: 16)))
+      is_expected.to include(CGI.escapeHTML(user.avatar_url(size: 32)))
     end
   end
 
@@ -414,7 +366,7 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
       context 'with user parameter' do
         let(:options) { { user: user_with_avatar, only_path: false } }
 
-        it 'will return avatar with a full path' do
+        it 'returns avatar with a full path' do
           is_expected.to eq tag.img(
             alt: "#{user_with_avatar.name}'s avatar",
             src: avatar_icon_for_user(user_with_avatar, 16, only_path: false),
@@ -428,7 +380,7 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
       context 'with user_name and user_email' do
         let(:options) { { user_email: user_with_avatar.email, user_name: user_with_avatar.username, only_path: false } }
 
-        it 'will return avatar with a full path' do
+        it 'returns avatar with a full path' do
           is_expected.to eq tag.img(
             alt: "#{user_with_avatar.username}'s avatar",
             src: helper.avatar_icon_for_email(user_with_avatar.email, 16, only_path: false),
@@ -443,7 +395,7 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
     context 'with unregistered email address' do
       let(:options) { { user_email: "unregistered_email@example.com" } }
 
-      it 'will return default alt text for avatar' do
+      it 'returns default alt text for avatar' do
         expect(subject).to include("default avatar")
       end
     end
@@ -474,12 +426,11 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
       it 'displays group avatar' do
         expected_pattern = %r{
           <div\s+
-          alt="foo"\s+
+          aria-hidden="true"\s+
           class="gl-avatar\s+
           gl-avatar-s32\s+
           gl-avatar-circle\s+
           gl-mr-3\s+
-          gl-rounded-base!\s+
           gl-avatar-identicon\s+
           gl-avatar-identicon-bg\d+"\s*>
           \s*F\s*
@@ -527,7 +478,7 @@ RSpec.describe AvatarsHelper, feature_category: :source_code_management do
     context "when css_class option is not passed" do
       it "uses the default class" do
         expect(helper).to receive(:user_avatar).with(
-          hash_including(css_class: "gl-display-none gl-sm-display-inline-block")
+          hash_including(css_class: "gl-hidden @sm/panel:gl-inline-block")
         )
 
         subject

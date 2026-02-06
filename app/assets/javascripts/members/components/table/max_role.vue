@@ -1,8 +1,9 @@
 <script>
 import { GlBadge, GlCollapsibleListbox, GlTooltipDirective } from '@gitlab/ui';
-import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
-// eslint-disable-next-line no-restricted-imports
-import { mapActions } from 'vuex';
+// This component is deprecated and will be removed in https://gitlab.com/gitlab-org/gitlab/-/merge_requests/207098,
+// so it is not worth migrating to `PanelBreakpointInstance`.
+import { GlBreakpointInstance } from '@gitlab/ui/src/utils'; // eslint-disable-line no-restricted-syntax
+import { mapActions } from 'vuex'; // eslint-disable-line no-restricted-imports
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import { guestOverageConfirmAction } from 'ee_else_ce/members/guest_overage_confirm_action';
 import {
@@ -42,10 +43,9 @@ export default {
     return {
       accessLevelOptions,
       busy: false,
-      customPermissions: this.member.customPermissions ?? [],
       isDesktop: false,
       memberRoleId: this.member.accessLevel.memberRoleId ?? null,
-      selectedRole: initialSelectedRole(accessLevelOptions.flatten, this.member),
+      selectedRole: initialSelectedRole(accessLevelOptions.flatten, this.member)?.value,
     };
   },
   computed: {
@@ -54,7 +54,7 @@ export default {
     },
   },
   mounted() {
-    this.isDesktop = bp.isDesktop();
+    this.isDesktop = GlBreakpointInstance.isDesktop();
   },
   methods: {
     ...mapActions({
@@ -122,7 +122,7 @@ export default {
   <div>
     <gl-collapsible-listbox
       v-if="permissions.canUpdate"
-      :placement="isDesktop ? 'left' : 'right'"
+      :placement="isDesktop ? 'bottom-start' : 'bottom-end'"
       :header-text="__('Change role')"
       :disabled="disabled"
       :loading="busy"
@@ -132,10 +132,13 @@ export default {
       @select="handleSelect"
     >
       <template #list-item="{ item }">
-        <div data-testid="access-level-link" :class="{ 'gl-font-weight-bold': item.memberRoleId }">
+        <div data-testid="access-level-link" :class="{ 'gl-font-bold': item.memberRoleId }">
           {{ item.text }}
         </div>
-        <div v-if="item.description" class="gl-text-gray-700 gl-font-sm gl-pt-1 gl-line-clamp-2">
+        <div
+          v-if="item.memberRoleId && item.description"
+          class="gl-line-clamp-2 gl-whitespace-normal gl-pt-1 gl-text-sm gl-text-subtle"
+        >
           {{ item.description }}
         </div>
       </template>

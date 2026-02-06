@@ -6,12 +6,8 @@ export default {
   components: {
     GlButton,
   },
+  inject: ['pipelinesAnalyticsPath'],
   props: {
-    ciLintPath: {
-      type: String,
-      required: false,
-      default: null,
-    },
     isResetCacheButtonLoading: {
       type: Boolean,
       required: false,
@@ -38,6 +34,15 @@ export default {
 <template>
   <div class="nav-controls">
     <gl-button
+      v-if="pipelinesAnalyticsPath"
+      :href="pipelinesAnalyticsPath"
+      data-testid="view-analytics-link"
+      variant="link"
+    >
+      {{ s__('Pipelines|View analytics') }}
+    </gl-button>
+
+    <gl-button
       v-if="resetCachePath"
       :loading="isResetCacheButtonLoading"
       class="js-clear-cache"
@@ -45,10 +50,6 @@ export default {
       @click="onClickResetCache"
     >
       {{ s__('Pipelines|Clear runner caches') }}
-    </gl-button>
-
-    <gl-button v-if="ciLintPath" :href="ciLintPath" class="js-ci-lint" data-testid="ci-lint-button">
-      {{ s__('Pipelines|CI lint') }}
     </gl-button>
 
     <gl-button
@@ -59,7 +60,7 @@ export default {
       class="js-run-pipeline"
       data-testid="run-pipeline-button"
     >
-      {{ s__('Pipeline|Run pipeline') }}
+      {{ s__('Pipeline|New pipeline') }}
     </gl-button>
   </div>
 </template>

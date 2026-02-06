@@ -6,8 +6,9 @@ import {
   MEMBER_MODEL_TYPE_GROUP_MEMBER,
   MEMBER_MODEL_TYPE_PROJECT_MEMBER,
 } from '~/members/constants';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { I18N } from './constants';
-import LeaveGroupDropdownItem from './leave_group_dropdown_item.vue';
+import LeaveDropdownItem from './leave_dropdown_item.vue';
 import RemoveMemberDropdownItem from './remove_member_dropdown_item.vue';
 
 export default {
@@ -21,7 +22,7 @@ export default {
       ),
     LdapOverrideDropdownItem: () =>
       import('ee_component/members/components/action_dropdowns/ldap_override_dropdown_item.vue'),
-    LeaveGroupDropdownItem,
+    LeaveDropdownItem,
     RemoveMemberDropdownItem,
     BanMemberDropdownItem: () =>
       import('ee_component/members/components/action_dropdowns/ban_member_dropdown_item.vue'),
@@ -29,6 +30,7 @@ export default {
   directives: {
     GlTooltip: GlTooltipDirective,
   },
+  mixins: [glFeatureFlagMixin()],
   props: {
     member: {
       type: Object,
@@ -88,8 +90,17 @@ export default {
     showLeaveOrRemove() {
       return this.permissions.canRemove || this.permissions.canRemoveBlockedByLastOwner;
     },
+    leaveDropdownItemText() {
+      return this.member.type === MEMBER_MODEL_TYPE_PROJECT_MEMBER
+        ? this.$options.i18n.leaveProject
+        : this.$options.i18n.leaveGroup;
+    },
     showLdapOverride() {
-      return this.permissions.canOverride && !this.member.isOverridden;
+      return (
+        !this.glFeatures.showRoleDetailsInDrawer &&
+        this.permissions.canOverride &&
+        !this.member.isOverridden
+      );
     },
     showBan() {
       return !this.isCurrentUser && this.permissions.canBan;
@@ -107,7 +118,7 @@ export default {
     icon="ellipsis_v"
     category="tertiary"
     no-caret
-    placement="right"
+    placement="bottom-end"
     data-testid="user-action-dropdown"
   >
     <disable-two-factor-dropdown-item
@@ -119,9 +130,9 @@ export default {
     </disable-two-factor-dropdown-item>
 
     <template v-if="showLeaveOrRemove">
-      <leave-group-dropdown-item v-if="isCurrentUser" :member="member" :permissions="permissions">{{
-        $options.i18n.leaveGroup
-      }}</leave-group-dropdown-item>
+      <leave-dropdown-item v-if="isCurrentUser" :member="member" :permissions="permissions">{{
+        leaveDropdownItemText
+      }}</leave-dropdown-item>
 
       <remove-member-dropdown-item
         v-else

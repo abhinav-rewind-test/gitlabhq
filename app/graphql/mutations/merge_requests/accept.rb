@@ -22,28 +22,28 @@ module Mutations
       ALREADY_SCHEDULED = 'The merge request is already scheduled to be merged'
 
       argument :strategy,
-               ::Types::MergeStrategyEnum,
-               required: false,
-               as: :auto_merge_strategy,
-               description: 'How to merge the merge request.'
+        ::Types::MergeStrategyEnum,
+        required: false,
+        as: :auto_merge_strategy,
+        description: 'How to merge the merge request.'
 
       argument :commit_message, ::GraphQL::Types::String,
-               required: false,
-               description: 'Custom merge commit message.'
+        required: false,
+        description: 'Custom merge commit message.'
       argument :sha, ::GraphQL::Types::String,
-               required: true,
-               description: 'HEAD SHA at the time when the merge was requested.'
+        required: true,
+        description: 'HEAD SHA at the time when the merge was requested.'
       argument :squash_commit_message, ::GraphQL::Types::String,
-               required: false,
-               description: 'Custom squash commit message (if squash is true).'
+        required: false,
+        description: 'Custom squash commit message (if squash is true).'
 
       argument :should_remove_source_branch, ::GraphQL::Types::Boolean,
-               required: false,
-               description: 'Should the source branch be removed.'
+        required: false,
+        description: 'Should the source branch be removed.'
       argument :squash, ::GraphQL::Types::Boolean,
-               required: false,
-               default_value: false,
-               description: 'Squash commits on the source branch before merge.'
+        required: false,
+        default_value: false,
+        description: 'Squash commits on the source branch before merge.'
 
       def resolve(project_path:, iid:, **args)
         Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/4796')
@@ -51,7 +51,11 @@ module Mutations
         merge_request = authorized_find!(project_path: project_path, iid: iid)
         project = merge_request.target_project
         merge_params = args.compact.with_indifferent_access
-        merge_service = ::MergeRequests::MergeService.new(project: project, current_user: current_user, params: merge_params)
+        merge_service = ::MergeRequests::MergeService.new(
+          project: project,
+          current_user: current_user,
+          params: merge_params
+        )
 
         if error = validate(merge_request, merge_service, merge_params)
           return { merge_request: merge_request, errors: [error] }
@@ -78,9 +82,13 @@ module Mutations
       end
 
       def validate(merge_request, merge_service, merge_params)
+        skipped_checks = merge_request.skipped_auto_merge_checks(
+          auto_merge_strategy: merge_params[:auto_merge_strategy]
+        )
+
         if merge_request.auto_merge_enabled?
           ALREADY_SCHEDULED
-        elsif !merge_request.mergeable?(skip_ci_check: merge_params.key?(:auto_merge_strategy))
+        elsif !merge_request.mergeable?(**skipped_checks)
           NOT_MERGEABLE
         elsif !merge_service.hooks_validation_pass?(merge_request)
           HOOKS_VALIDATION_ERROR

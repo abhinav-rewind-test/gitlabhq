@@ -4,10 +4,12 @@ export const propsData = {
   name: '_name_',
   accessLevels: { Guest: 10, Reporter: 20, Developer: 30, Maintainer: 40, Owner: 50 },
   defaultAccessLevel: 20,
-  helpLink: 'https://example.com',
+  helpLink: 'https://example.com/help-link',
+  accessExpirationHelpLink: 'https://example.com/access-expiration-link',
   labelIntroText: '_label_intro_text_',
   labelSearchField: '_label_search_field_',
   formGroupDescription: '_form_group_description_',
+  roleSelectLabel: 'Select maximum role',
 };
 
 export const membersPath = '/members_path';

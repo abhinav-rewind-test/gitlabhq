@@ -1,10 +1,9 @@
 ---
 stage: none
 group: unassigned
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: TypeScript
 ---
-
-# TypeScript
 
 ## History with GitLab
 
@@ -41,10 +40,10 @@ Consider copying the `tsconfig.json` and `.eslintrc.json` from there.
 
 For `tsconfig.json`:
 
-- Use [`"strict": true`](https://www.typescriptlang.org/tsconfig#strict).
+- Use [`"strict": true`](https://www.typescriptlang.org/tsconfig/#strict).
   This enforces the strongest type-checking capabilities in the project and
   prohibits overriding type-safety.
-- Use [`"skipLibCheck": true`](https://www.typescriptlang.org/tsconfig#skipLibCheck).
+- Use [`"skipLibCheck": true`](https://www.typescriptlang.org/tsconfig/#skipLibCheck).
   This improves compile time by only checking references `.d.ts`
   files as opposed to all `.d.ts` files in `node_modules`.
 

@@ -6,7 +6,8 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
   include GraphqlHelpers
 
   let_it_be(:current_user) { create(:user) }
-  let_it_be(:project) { create(:project, :private) }
+  let_it_be(:reporter_user) { create(:user) }
+  let_it_be(:project) { create(:project, :private, reporters: reporter_user) }
   let_it_be(:issue) { create(:issue, project: project) }
   let_it_be(:note) { create(:note, noteable: issue, project: project) }
   let_it_be(:system_note) { create(:note, :system, noteable: issue, project: project) }
@@ -29,7 +30,7 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
     it 'returns nil' do
       post_graphql(query, current_user: current_user)
 
-      expect(note_data).to be nil
+      expect(note_data).to be_nil
     end
 
     context 'when it is a system note' do
@@ -38,13 +39,13 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
       it 'returns nil' do
         post_graphql(query, current_user: current_user)
 
-        expect(note_data).to be nil
+        expect(note_data).to be_nil
       end
     end
   end
 
   context 'when the user has access to read the note' do
-    before do
+    before_all do
       project.add_guest(current_user)
     end
 
@@ -52,6 +53,8 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
       post_graphql(query, current_user: current_user)
 
       expect(note_data['id']).to eq(global_id_of(note).to_s)
+      expect(note_data['noteableType']).to eq(note.noteable_type)
+      expect(note_data['noteableId']).to eq(note.noteable_id)
     end
 
     context 'when it is a system note' do
@@ -62,18 +65,52 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
 
         expect(note_data['id']).to eq(global_id_of(system_note).to_s)
       end
+
+      context 'with issue_email_participants action' do
+        let_it_be(:email) { 'user@example.com' }
+        let_it_be(:note_text) { "added #{email}" }
+        let_it_be(:issue_email_participants_system_note) do
+          create(:note, :system, project: project, noteable: issue, author: create(:support_bot), note: note_text)
+        end
+
+        let_it_be(:system_note_metadata) do
+          create(:system_note_metadata, note: issue_email_participants_system_note, action: :issue_email_participants)
+        end
+
+        let(:obfuscated_email) { 'us*****@e*****.c**' }
+        let(:note_params) { { 'id' => global_id_of(issue_email_participants_system_note) } }
+
+        it 'returns obfuscated email' do
+          post_graphql(query, current_user: current_user)
+
+          expect(note_data['id']).to eq(global_id_of(issue_email_participants_system_note).to_s)
+          expect(note_data['body']).to include(obfuscated_email)
+          expect(note_data['bodyHtml']).to include(obfuscated_email)
+          expect(note_data['bodyFirstLineHtml']).to include(obfuscated_email)
+        end
+
+        context 'when user has at least the reporter role in project' do
+          it 'returns email' do
+            post_graphql(query, current_user: reporter_user)
+
+            expect(note_data['id']).to eq(global_id_of(issue_email_participants_system_note).to_s)
+            expect(note_data['body']).to include(email)
+            expect(note_data['bodyHtml']).to include(email)
+            expect(note_data['bodyFirstLineHtml']).to include(email)
+          end
+        end
+      end
     end
 
     context 'and notes widget is not available' do
       before do
-        WorkItems::Type.default_by_type(:issue).widget_definitions
-          .find_by_widget_type(:notes).update!(disabled: true)
+        stub_all_work_item_widgets(notes: false)
       end
 
       it 'returns nil' do
         post_graphql(query, current_user: current_user)
 
-        expect(note_data).to be nil
+        expect(note_data).to be_nil
       end
     end
 
@@ -83,7 +120,7 @@ RSpec.describe 'Query.note(id)', feature_category: :team_planning do
       it 'returns nil' do
         post_graphql(query, current_user: current_user)
 
-        expect(note_data).to be nil
+        expect(note_data).to be_nil
       end
 
       context 'and user can read confidential notes' do

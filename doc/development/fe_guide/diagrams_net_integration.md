@@ -1,12 +1,11 @@
 ---
 stage: Plan
 group: Knowledge
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Diagrams.net integration
 ---
 
-# Diagrams.net integration
-
-In [wikis](../../user/markdown.md#diagramsnet-editor) you can use the diagrams.net editor to
+In [wikis](../../user/project/wiki/markdown.md#diagramsnet-editor) you can use the diagrams.net editor to
 create diagrams. The diagrams.net editor runs as a separate web service outside the GitLab
 application and GitLab instance administrators can
 [configure the URL](../../administration/integration/diagrams_net.md) that points to this service.
@@ -46,16 +45,16 @@ The `event` property tells the GitLab application how it should
 react to the message. The diagrams.net editor sends the following events:
 
 - `configure`: When the GitLab application receives this message, it sends back
-a `configure` action to set the color theme of the diagrams.net editor.
+  a `configure` action to set the color theme of the diagrams.net editor.
 - `init`: When the GitLab application receives this message,
-it can upload an existing diagram using the `load` action.
+  it can upload an existing diagram using the `load` action.
 - `exit`: The GitLab application closes and disposes the
-diagrams.net editor.
+  diagrams.net editor.
 - `prompt`: This event has a `value` attribute with the
-diagram's filename. If the `value` property is an empty value,
-the GitLab application should send a `prompt`requesting the user to introduce a filename.
+  diagram's filename. If the `value` property is an empty value,
+  the GitLab application should send a `prompt`requesting the user to introduce a filename.
 - `export`: This event has a `data` attribute that contains
-the diagram created by the user in the SVG format.
+  the diagram created by the user in the SVG format.
 
 ## Markdown Editor integration
 

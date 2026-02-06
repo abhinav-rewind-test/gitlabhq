@@ -7,7 +7,7 @@ module Gitlab
 
     def initialize(repository, extra_namespace: nil, expires_in: 2.weeks)
       @repository = repository
-      @namespace = "#{repository.full_path}"
+      @namespace = repository.full_path.to_s
       @namespace += ":#{repository.project.id}" if repository.project
       @namespace = "#{@namespace}:#{extra_namespace}" if extra_namespace
       @expires_in = expires_in
@@ -47,6 +47,8 @@ module Gitlab
 
       return smembers if exists
 
+      log_cache_operation(key)
+
       write(key, yield)
     end
 
@@ -66,6 +68,14 @@ module Gitlab
     end
 
     private
+
+    def log_cache_operation(key)
+      Gitlab::AppLogger.info(
+        message: 'RepositorySetCache cache miss',
+        cache_key: key,
+        class: self.class.name
+      )
+    end
 
     def cache
       Gitlab::Redis::RepositoryCache

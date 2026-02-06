@@ -6,6 +6,13 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
   let(:label)  { build_stubbed(:label) }
   let(:label2) { build_stubbed(:label) }
 
+  before do
+    # TODO: When removing the feature flag,
+    # we won't need the tests for the issues listing page, since we'll be using
+    # the work items listing page.
+    stub_feature_flags(work_item_planning_view: false)
+  end
+
   describe '#users_dropdown_label' do
     let(:user) { build_stubbed(:user) }
     let(:user2) { build_stubbed(:user) }
@@ -20,27 +27,6 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
 
     it 'returns selected user\'s name and counter' do
       expect(users_dropdown_label([user, user2])).to eq("#{user.name} + 1 more")
-    end
-  end
-
-  describe '#group_dropdown_label' do
-    let(:group) { create(:group) }
-    let(:default) { 'default label' }
-
-    it 'returns default group label when group_id is nil' do
-      expect(group_dropdown_label(nil, default)).to eq('default label')
-    end
-
-    it 'returns "any group" when group_id is 0' do
-      expect(group_dropdown_label('0', default)).to eq('Any group')
-    end
-
-    it 'returns group full path when a group was found for the provided id' do
-      expect(group_dropdown_label(group.id, default)).to eq(group.full_name)
-    end
-
-    it 'returns default label when a group was not found for the provided id' do
-      expect(group_dropdown_label(non_existing_record_id, default)).to eq('default label')
     end
   end
 
@@ -98,29 +84,6 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
     end
   end
 
-  describe '#assigned_issuables_count', feature_category: :team_planning do
-    context 'when issuable is issues' do
-      let_it_be(:user) { create(:user) }
-      let_it_be(:project) { create(:project).tap { |p| p.add_developer(user) } }
-
-      subject { helper.assigned_issuables_count(:issues) }
-
-      before do
-        allow(helper).to receive(:current_user).and_return(user)
-      end
-
-      context 'when assigned issues count is over MAX_LIMIT_FOR_ASSIGNEED_ISSUES_COUNT' do
-        before do
-          stub_const('User::MAX_LIMIT_FOR_ASSIGNEED_ISSUES_COUNT', 2)
-        end
-
-        let_it_be(:issues) { create_list(:issue, 3, project: project, assignees: [user]) }
-
-        it { is_expected.to eq 2 }
-      end
-    end
-  end
-
   describe '#issuables_state_counter_text' do
     let_it_be(:user) { create(:user) }
 
@@ -132,13 +95,13 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
 
         it 'returns navigation with badges' do
           expect(helper.issuables_state_counter_text(:issues, :opened, true))
-            .to eq('<span>Open</span> <span class="gl-badge badge badge-pill badge-muted sm gl-tab-counter-badge gl-display-none gl-sm-display-inline-flex">42</span>')
+            .to eq('<span>Open</span> <span class="gl-badge badge badge-pill badge-neutral gl-tab-counter-badge gl-hidden @sm/panel:gl-inline-flex"><span class="gl-badge-content">42</span></span>')
           expect(helper.issuables_state_counter_text(:issues, :closed, true))
-            .to eq('<span>Closed</span> <span class="gl-badge badge badge-pill badge-muted sm gl-tab-counter-badge gl-display-none gl-sm-display-inline-flex">42</span>')
+            .to eq('<span>Closed</span> <span class="gl-badge badge badge-pill badge-neutral gl-tab-counter-badge gl-hidden @sm/panel:gl-inline-flex"><span class="gl-badge-content">42</span></span>')
           expect(helper.issuables_state_counter_text(:merge_requests, :merged, true))
-            .to eq('<span>Merged</span> <span class="gl-badge badge badge-pill badge-muted sm gl-tab-counter-badge gl-display-none gl-sm-display-inline-flex">42</span>')
+            .to eq('<span>Merged</span> <span class="gl-badge badge badge-pill badge-neutral gl-tab-counter-badge gl-hidden @sm/panel:gl-inline-flex"><span class="gl-badge-content">42</span></span>')
           expect(helper.issuables_state_counter_text(:merge_requests, :all, true))
-            .to eq('<span>All</span> <span class="gl-badge badge badge-pill badge-muted sm gl-tab-counter-badge gl-display-none gl-sm-display-inline-flex">42</span>')
+            .to eq('<span>All</span> <span class="gl-badge badge badge-pill badge-neutral gl-tab-counter-badge gl-hidden @sm/panel:gl-inline-flex"><span class="gl-badge-content">42</span></span>')
         end
       end
 
@@ -170,7 +133,7 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
 
         it 'returns truncated count' do
           expect(helper.issuables_state_counter_text(:issues, :opened, true))
-            .to eq('<span>Open</span> <span class="gl-badge badge badge-pill badge-muted sm gl-tab-counter-badge gl-display-none gl-sm-display-inline-flex">1.1k</span>')
+            .to eq('<span>Open</span> <span class="gl-badge badge badge-pill badge-neutral gl-tab-counter-badge gl-hidden @sm/panel:gl-inline-flex"><span class="gl-badge-content">1.1k</span></span>')
         end
       end
     end
@@ -252,8 +215,9 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
           canUpdate: true,
           canDestroy: true,
           issuableRef: "##{issue.iid}",
-          markdownPreviewPath: "/#{@project.full_path}/preview_markdown?target_id=#{issue.iid}&target_type=Issue",
-          markdownDocsPath: '/help/user/markdown',
+          imported: issue.imported?,
+          markdownPreviewPath: "/#{@project.full_path}/-/preview_markdown?target_id=#{issue.iid}&target_type=Issue",
+          markdownDocsPath: '/help/user/markdown.md',
           lockVersion: issue.lock_version,
           issuableTemplateNamesPath: template_names_path(@project, issue),
           initialTitleHtml: issue.title,
@@ -355,12 +319,13 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
         it 'returns "Ghost user" for updated by data' do
           edited_issuable = create(:issue, author: user, description: 'issue text', last_edited_by: destroyed_user, created_at: 3.days.ago, updated_at: 1.day.ago, last_edited_at: 2.days.ago)
           @project = edited_issuable.project
+          ghost_user = Users::Internal.in_organization(@project.organization).ghost
 
           expected = {
             updatedAt: edited_issuable.last_edited_at.to_time.iso8601,
             updatedBy: {
-              name: Users::Internal.ghost.name,
-              path: user_path(Users::Internal.ghost)
+              name: ghost_user.name,
+              path: user_path(ghost_user)
             }
           }
 
@@ -476,92 +441,6 @@ RSpec.describe IssuablesHelper, feature_category: :team_planning do
         it 'returns nil' do
           expect(helper.issuable_initial_data(issue)[:movedToIssueUrl]).to be_nil
         end
-      end
-    end
-  end
-
-  describe '#assignee_sidebar_data' do
-    let(:user) { create(:user) }
-    let(:merge_request) { nil }
-
-    subject { helper.assignee_sidebar_data(user, merge_request: merge_request) }
-
-    it 'returns hash of assignee data' do
-      is_expected.to eql({
-        avatar_url: user.avatar_url,
-        name: user.name,
-        username: user.username
-      })
-    end
-
-    context 'with merge_request' do
-      let(:merge_request) { build_stubbed(:merge_request) }
-
-      where(can_merge: [true, false])
-
-      with_them do
-        before do
-          allow(merge_request).to receive(:can_be_merged_by?).and_return(can_merge)
-        end
-
-        it { is_expected.to include({ can_merge: can_merge }) }
-      end
-    end
-  end
-
-  describe '#issuable_squash_option?' do
-    using RSpec::Parameterized::TableSyntax
-
-    where(:issuable_persisted, :squash, :squash_enabled_by_default, :expectation) do
-      true  | true  | true  | true
-      true  | false | true  | false
-      false | false | false | false
-      false | false | true  | true
-      false | true  | false | false
-      false | true  | true  | true
-    end
-
-    with_them do
-      it 'returns the correct value' do
-        project = double(
-          squash_enabled_by_default?: squash_enabled_by_default
-        )
-        issuable = double(persisted?: issuable_persisted, squash: squash)
-
-        expect(helper.issuable_squash_option?(issuable, project)).to eq(expectation)
-      end
-    end
-  end
-
-  describe '#issuable_type_selector_data' do
-    using RSpec::Parameterized::TableSyntax
-
-    let_it_be(:project) { create(:project) }
-
-    where(:issuable_type, :issuable_display_type, :is_issue_allowed, :is_incident_allowed) do
-      :issue         | 'issue'    | true  | false
-      :incident      | 'incident' | false | true
-    end
-
-    with_them do
-      let(:issuable) { build_stubbed(issuable_type) }
-
-      before do
-        allow(helper).to receive(:create_issue_type_allowed?).with(project, :issue).and_return(is_issue_allowed)
-        allow(helper).to receive(:create_issue_type_allowed?).with(project, :incident).and_return(is_incident_allowed)
-        assign(:project, project)
-      end
-
-      it 'returns the correct data for the issuable type selector' do
-        expected_data = {
-          selected_type: issuable_display_type,
-          is_issue_allowed: is_issue_allowed.to_s,
-          is_incident_allowed: is_incident_allowed.to_s,
-          issue_path: new_project_issue_path(project),
-          incident_path: new_project_issue_path(project, { issuable_template: 'incident', issue: { issue_type: 'incident' } })
-        }
-
-        expect(helper.issuable_type_selector_data(issuable)).to match(expected_data)
       end
     end
   end

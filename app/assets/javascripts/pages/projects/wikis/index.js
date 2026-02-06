@@ -1,6 +1,7 @@
-import Wikis from '~/pages/shared/wikis/wikis';
-import { mountApplications } from '~/pages/shared/wikis/async_edit';
+import { mountApplications } from '~/wikis/edit';
+import { mountMoreActions } from '~/wikis/more_actions';
+import { mountWikiSidebar } from '~/wikis/mount_sidebar';
 
+mountWikiSidebar();
 mountApplications();
-
-export default new Wikis();
+mountMoreActions();

@@ -27,7 +27,7 @@ module Gitlab
             return if @command.yaml_processor_result.workflow_name.blank?
 
             name = @command.yaml_processor_result.workflow_name
-            name = ExpandVariables.expand(name, -> { global_context.variables.sort_and_expand_all })
+            name = ExpandVariables.expand(name, -> { global_context.variables_sorted_and_expanded })
 
             return if name.blank?
 
@@ -55,8 +55,6 @@ module Gitlab
           end
 
           def set_auto_cancel_on_job_failure(auto_cancel)
-            return if Feature.disabled?(:auto_cancel_pipeline_on_job_failure, pipeline.project)
-
             auto_cancel_on_job_failure = auto_cancel[:on_job_failure]
 
             return if auto_cancel_on_job_failure.blank?
@@ -66,7 +64,7 @@ module Gitlab
 
           def global_context
             Gitlab::Ci::Build::Context::Global.new(
-              pipeline, yaml_variables: @command.pipeline_seed.root_variables)
+              pipeline, yaml_variables: @command.pipeline_seed.root_variables, logger: logger)
           end
 
           def assign_to_metadata(attributes)
@@ -78,3 +76,5 @@ module Gitlab
     end
   end
 end
+
+Gitlab::Ci::Pipeline::Chain::PopulateMetadata.prepend_mod

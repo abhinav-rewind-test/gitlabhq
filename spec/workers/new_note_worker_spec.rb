@@ -14,7 +14,8 @@ RSpec.describe NewNoteWorker, feature_category: :team_planning do
       described_class.new.perform(note.id)
     end
 
-    it "calls Notes::PostProcessService#execute" do
+    it "calls Notes::PostProcessService#execute",
+      quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/24563' do
       expect_next_instance_of(Notes::PostProcessService) do |service|
         expect(service).to receive(:execute)
       end
@@ -77,7 +78,9 @@ RSpec.describe NewNoteWorker, feature_category: :team_planning do
   end
 
   context 'when Note author has been deleted' do
-    let_it_be(:note) { create(:note, author: Users::Internal.ghost) }
+    let_it_be(:organization) { create(:common_organization) }
+    let_it_be(:ghost_user) { Users::Internal.in_organization(organization).ghost }
+    let_it_be(:note) { create(:note, author: ghost_user) }
 
     it "does not call NotificationService" do
       expect(NotificationService).not_to receive(:new)

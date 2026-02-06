@@ -1,26 +1,35 @@
 ---
-stage: Deploy
-group: Environments
+stage: Verify
+group: Runner Core
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Grant users Kubernetes access
 ---
 
-# Grant users Kubernetes access
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
-**Status:** Beta
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+- Status: Beta
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/390769) in GitLab 16.1, with [flags](../../../administration/feature_flags.md) named `environment_settings_to_graphql`, `kas_user_access`, `kas_user_access_project`, and `expose_authorized_cluster_agents`. This feature is in [Beta](../../../policy/experiment-beta-support.md#beta).
-> - Feature flag `environment_settings_to_graphql` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/124177) in GitLab 16.2.
-> - Feature flags `kas_user_access`, `kas_user_access_project`, and `expose_authorized_cluster_agents` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/125835) in GitLab 16.2.
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/390769) in GitLab 16.1, with [flags](../../../administration/feature_flags/_index.md) named `environment_settings_to_graphql`, `kas_user_access`, `kas_user_access_project`, and `expose_authorized_cluster_agents`. This feature is in [beta](../../../policy/development_stages_support.md#beta).
+- Feature flag `environment_settings_to_graphql` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/124177) in GitLab 16.2.
+- Feature flags `kas_user_access`, `kas_user_access_project`, and `expose_authorized_cluster_agents` [removed](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/125835) in GitLab 16.2.
+- The [limit of agent connection sharing was raised](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/149844) from 100 to 500 in GitLab 17.0
+- The `user_access` parameter `access_as` [was made optional](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/merge_requests/2749) in GitLab 18.3. Defaults to agent impersonation.
+- [Changed](https://gitlab.com/gitlab-org/gitlab/-/issues/557818) to allow the authorization of projects and groups that belong to different top-level groups in GitLab 18.4.
+
+{{< /history >}}
 
 As an administrator of Kubernetes clusters in an organization, you can grant Kubernetes access to members
 of a specific project or group.
 
-Granting access also activates the Dashboard for Kubernetes for a project or group.
+Granting access also activates [the Dashboard for Kubernetes](../../../ci/environments/kubernetes_dashboard.md) for a project or group.
 
-For self-managed instances, make sure you either:
+For GitLab Self-Managed instances, make sure you either:
 
 - Host your GitLab instance and [KAS](../../../administration/clusters/kas.md) on the same domain.
 - Host KAS on a subdomain of GitLab. For example, GitLab on `gitlab.com` and KAS on `kas.gitlab.com`.
@@ -39,9 +48,12 @@ To configure access:
 
 - In the agent configuration file, define a `user_access` keyword with the following parameters:
 
-  - `projects`: A list of projects whose members should have access.
-  - `groups`: A list of groups whose members should have access.
-  - `access_as`: Required. For plain access, the value is `{ agent: {...} }`.
+  - `projects`: A list of projects whose members should have access. You can authorize up to 500 projects.
+  - `groups`: A list of groups whose members should have access. You can authorize up to 500 groups. It grants access to the group and all its descendants.
+  - `access_as`: For access with agent identity, the value is `{ agent: {...} }`.
+
+Authorized projects and groups must have the same top-level group or user namespace as the agent's configuration project, unless the
+[instance level authorization](ci_cd_workflow.md#authorize-all-projects-in-your-gitlab-instance-to-access-the-agent) application setting is enabled.
 
 After you configure access, requests are forwarded to the API server using
 the agent service account.
@@ -63,9 +75,12 @@ user_access:
 
 ## Configure access with user impersonation
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com, Self-managed, GitLab Dedicated
+{{< details >}}
+
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
 
 You can grant access to a Kubernetes cluster and transform
 requests into impersonation requests for authenticated users.
@@ -81,7 +96,7 @@ To configure access with user impersonation:
 
   - `projects`: A list of projects whose members should have access.
   - `groups`: A list of groups whose members should have access.
-  - `access_as`: Required. For user impersonation, the value is `{ user: {...} }`.
+  - `access_as`: For user impersonation, the value is `{ user: {...} }`.
 
 After you configure access, requests are transformed into impersonation requests for
 authenticated users.
@@ -99,8 +114,7 @@ The installed `agentk` impersonates the given users as follows:
   - `agent.gitlab.com/id`: The agent ID.
   - `agent.gitlab.com/username`: The username of the GitLab user.
   - `agent.gitlab.com/config_project_id`: The agent configuration project ID.
-  - `agent.gitlab.com/access_type`: One of `personal_access_token`,
-    `oidc_id_token`, or `session_cookie`.
+  - `agent.gitlab.com/access_type`: One of `personal_access_token` or `session_cookie`. Ultimate only.
 
 Only projects and groups directly listed in the under `user_access` in the configuration
 file are impersonated. For example:
@@ -152,7 +166,11 @@ subjects:
 
 ## Access a cluster with the Kubernetes API
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/131144) in GitLab 16.4.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/131144) in GitLab 16.4.
+
+{{< /history >}}
 
 You can configure an agent to allow GitLab users to access a cluster with the Kubernetes API.
 
@@ -162,7 +180,7 @@ Prerequisites:
 
 ### Configure local access with the GitLab CLI (recommended)
 
-You can use the [GitLab CLI `glab`](../../../editor_extensions/gitlab_cli/index.md) to create or update
+You can use the [GitLab CLI `glab`](../../../editor_extensions/gitlab_cli/_index.md) to create or update
 a Kubernetes configuration file to access the agent Kubernetes API.
 
 Use `glab cluster agent` commands to manage cluster connections:
@@ -213,8 +231,8 @@ glab cluster agent update-kubeconfig --agent '<agent-id>' --kubeconfig ~/gitlab.
 
 You can configure access to a Kubernetes cluster using a long-lived personal access token:
 
-1. On the left sidebar, select **Search or go to** and find your project.
-1. Select **Operate > Kubernetes clusters** and retrieve the numerical ID of the agent you want to access. You need the ID to construct the full API token.
+1. On the top bar, select **Search or go to** and find your project.
+1. Select **Operate** > **Kubernetes clusters** and retrieve the numerical ID of the agent you want to access. You need the ID to construct the full API token.
 1. Create a [personal access token](../../profile/personal_access_tokens.md) with the `k8s_proxy` scope. You need the access token to construct the full API token.
 1. Construct `kubeconfig` entries to access the cluster:
    1. Make sure that the proper `kubeconfig` is selected.
@@ -249,9 +267,9 @@ You can configure access to a Kubernetes cluster using a long-lived personal acc
 
 1. Check that the configuration works:
 
-    ```shell
-    kubectl get nodes
-    ```
+   ```shell
+   kubectl get nodes
+   ```
 
 The configured user can access your cluster with the Kubernetes API.
 
@@ -259,15 +277,3 @@ The configured user can access your cluster with the Kubernetes API.
 
 - [Architectural blueprint](https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/blob/master/doc/kubernetes_user_access.md)
 - [Dashboard for Kubernetes](https://gitlab.com/groups/gitlab-org/-/epics/2493)
-
-<!-- ## Troubleshooting
-
-Include any troubleshooting steps that you can foresee. If you know beforehand what issues
-one might have when setting this up, or when something is changed, or on upgrading, it's
-important to describe those, too. Think of things that may go wrong and include them here.
-This is important to minimize requests for support, and to avoid doc comments with
-questions that you know someone might ask.
-
-Each scenario can be a third-level heading, for example `### Getting error message X`.
-If you have none to add when creating a doc, leave this section in place
-but commented out to help encourage others to add to it in the future. -->

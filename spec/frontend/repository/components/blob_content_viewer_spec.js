@@ -3,23 +3,29 @@ import { mount, shallowMount } from '@vue/test-utils';
 // eslint-disable-next-line no-restricted-imports
 import Vuex from 'vuex';
 import Vue, { nextTick } from 'vue';
-import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import VueApollo from 'vue-apollo';
+import VueRouter from 'vue-router';
+import axios from '~/lib/utils/axios_utils';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import { createAlert } from '~/alert';
 import BlobContent from '~/blob/components/blob_content.vue';
-import BlobHeader from '~/blob/components/blob_header.vue';
-import BlobButtonGroup from '~/repository/components/blob_button_group.vue';
+import BlobHeader from 'ee_else_ce/blob/components/blob_header.vue';
+import BlameHeader from '~/blob/components/blame_header.vue';
 import BlobContentViewer from '~/repository/components/blob_content_viewer.vue';
-import ForkSuggestion from '~/repository/components/fork_suggestion.vue';
 import { loadViewer } from '~/repository/components/blob_viewers';
 import DownloadViewer from '~/repository/components/blob_viewers/download_viewer.vue';
 import EmptyViewer from '~/repository/components/blob_viewers/empty_viewer.vue';
 import SourceViewer from '~/vue_shared/components/source_viewer/source_viewer.vue';
+import TooLargeViewer from '~/repository/components/blob_viewers/too_large_viewer.vue';
+import LfsViewer from '~/repository/components/blob_viewers/lfs_viewer.vue';
 import blobInfoQuery from 'shared_queries/repository/blob_info.query.graphql';
-import projectInfoQuery from '~/repository/queries/project_info.query.graphql';
+import projectInfoQuery from 'ee_else_ce/repository/queries/project_info.query.graphql';
+import highlightMixin from '~/repository/mixins/highlight_mixin';
+import getRefMixin from '~/repository/mixins/get_ref';
+import { InternalEvents } from '~/tracking';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import CodeIntelligence from '~/code_navigation/components/app.vue';
 import * as urlUtility from '~/lib/utils/url_utility';
 import { isLoggedIn, handleLocationHash } from '~/lib/utils/common_utils';
@@ -27,16 +33,19 @@ import { extendedWrapper } from 'helpers/vue_test_utils_helper';
 import { HTTP_STATUS_INTERNAL_SERVER_ERROR, HTTP_STATUS_OK } from '~/lib/utils/http_status';
 import LineHighlighter from '~/blob/line_highlighter';
 import { LEGACY_FILE_TYPES } from '~/repository/constants';
-import { SIMPLE_BLOB_VIEWER, RICH_BLOB_VIEWER } from '~/blob/components/constants';
+import { SIMPLE_BLOB_VIEWER, RICH_BLOB_VIEWER, BLAME_VIEWER } from '~/blob/components/constants';
+import eventHub from '~/notes/event_hub';
 import {
   simpleViewerMock,
   richViewerMock,
-  projectMock,
   userPermissionsMock,
   propsMock,
-  refMock,
   axiosMockResponse,
-} from '../mock_data';
+  FILE_SIZE_3MB,
+  projectMock,
+  getProjectMockWithOverrides,
+} from 'ee_else_ce_jest/repository/mock_data';
+import { useMockInternalEventsTracking } from 'helpers/tracking_internal_events_helper';
 
 jest.mock('~/repository/components/blob_viewers');
 jest.mock('~/lib/utils/url_utility');
@@ -47,24 +56,36 @@ jest.mock('~/alert');
 let wrapper;
 let blobInfoMockResolver;
 let projectInfoMockResolver;
+let router;
+let mockRouterPush;
 
 Vue.use(Vuex);
+
+const { bindInternalEventDocument } = useMockInternalEventsTracking();
 
 const mockAxios = new MockAdapter(axios);
 
 const createMockStore = () =>
   new Vuex.Store({ actions: { fetchData: jest.fn, setInitialData: jest.fn() } });
 
-const mockRouterPush = jest.fn();
-const mockRouter = {
-  push: mockRouterPush,
-};
 const highlightWorker = { postMessage: jest.fn() };
 
 const legacyViewerUrl = '/some_file.js?format=json&viewer=simple';
 
-const createComponent = async (mockData = {}, mountFn = shallowMount, mockRoute = {}) => {
+const createComponent = async (mockData = {}, mountFn = shallowMount) => {
   Vue.use(VueApollo);
+  Vue.use(VueRouter);
+
+  router = new VueRouter({
+    routes: [
+      { path: '/', name: 'root', component: { template: '<div/>' } },
+      { path: '/mock_path', name: 'mock_path', component: { template: '<div/>' } },
+    ],
+    mode: 'history',
+  });
+
+  mockRouterPush = jest.fn();
+  router.push = mockRouterPush;
 
   const {
     blob = simpleViewerMock,
@@ -75,7 +96,10 @@ const createComponent = async (mockData = {}, mountFn = shallowMount, mockRoute 
     createMergeRequestIn = userPermissionsMock.createMergeRequestIn,
     isBinary,
     inject = { highlightWorker },
+    urlParams,
   } = mockData;
+
+  if (urlParams) await router.replace(urlParams);
 
   const blobInfo = {
     ...projectMock,
@@ -89,25 +113,14 @@ const createComponent = async (mockData = {}, mountFn = shallowMount, mockRoute 
     },
   };
 
-  const projectInfo = {
-    __typename: 'Project',
-    id: projectMock.id,
-    userPermissions: {
+  const projectInfo = getProjectMockWithOverrides({
+    userPermissionsOverride: {
       pushCode,
       forkProject,
       downloadCode,
       createMergeRequestIn,
     },
-    pathLocks: {
-      nodes: [
-        {
-          id: 'test',
-          path: 'locked_file.js',
-          user: { id: '123', username: 'root' },
-        },
-      ],
-    },
-  };
+  });
 
   projectInfoMockResolver = jest.fn().mockResolvedValue({
     data: { project: projectInfo },
@@ -127,16 +140,14 @@ const createComponent = async (mockData = {}, mountFn = shallowMount, mockRoute 
       store: createMockStore(),
       apolloProvider: fakeApollo,
       propsData: propsMock,
-      mixins: [{ data: () => ({ ref: refMock }) }],
-      mocks: {
-        $route: mockRoute,
-        $router: mockRouter,
-      },
+      mixins: [getRefMixin, highlightMixin, glFeatureFlagMixin(), InternalEvents.mixin()],
       provide: {
         targetBranch: 'test',
         originalBranch: 'default-ref',
+        glFeatures: { inlineBlame: true },
         ...inject,
       },
+      router,
     }),
   );
 
@@ -150,9 +161,8 @@ const execImmediately = (callback) => {
 describe('Blob content viewer component', () => {
   const findLoadingIcon = () => wrapper.findComponent(GlLoadingIcon);
   const findBlobHeader = () => wrapper.findComponent(BlobHeader);
+  const findBlameHeader = () => wrapper.findComponent(BlameHeader);
   const findBlobContent = () => wrapper.findComponent(BlobContent);
-  const findBlobButtonGroup = () => wrapper.findComponent(BlobButtonGroup);
-  const findForkSuggestion = () => wrapper.findComponent(ForkSuggestion);
   const findCodeIntelligence = () => wrapper.findComponent(CodeIntelligence);
   const findSourceViewer = () => wrapper.findComponent(SourceViewer);
 
@@ -179,10 +189,7 @@ describe('Blob content viewer component', () => {
       expect(findBlobHeader().props('hasRenderError')).toEqual(false);
       expect(findBlobHeader().props('hideViewerSwitcher')).toEqual(false);
       expect(findBlobHeader().props('blob')).toEqual(simpleViewerMock);
-      expect(findBlobHeader().props('showForkSuggestion')).toEqual(false);
       expect(findBlobHeader().props('showBlameToggle')).toEqual(true);
-      expect(findBlobHeader().props('projectPath')).toEqual(propsMock.projectPath);
-      expect(findBlobHeader().props('projectId')).toEqual(projectMock.id);
       expect(mockRouterPush).not.toHaveBeenCalled();
     });
 
@@ -204,12 +211,34 @@ describe('Blob content viewer component', () => {
 
         await triggerBlame();
 
-        expect(mockRouterPush).toHaveBeenCalledWith({ query: { blame: '1' } });
+        expect(mockRouterPush).toHaveBeenCalledWith({ path: '/', query: { blame: '1' } });
         expect(findSourceViewer().props('showBlame')).toBe(true);
 
         await triggerBlame();
 
-        expect(mockRouterPush).toHaveBeenCalledWith({ query: { blame: '0' } });
+        expect(findSourceViewer().props('showBlame')).toBe(false);
+      });
+
+      it('hides the blame when route changes', async () => {
+        loadViewer.mockReturnValueOnce(SourceViewer);
+        await createComponent({ blob: simpleViewerMock });
+        await triggerBlame(); // First open blame
+
+        await router.replace({ path: '/mock_path', query: { blame: '0' } }); // Close it via param
+        expect(findSourceViewer().props('showBlame')).toBe(false);
+
+        await router.replace({ path: '/mock_path', query: { blame: '1' } }); // Open it via param
+        expect(findSourceViewer().props('showBlame')).toBe(true);
+      });
+
+      it('hides the blame whenever the viewer changes', async () => {
+        loadViewer.mockReturnValueOnce(SourceViewer);
+        await createComponent({ blob: simpleViewerMock });
+        await triggerBlame(); // First open blame
+
+        findBlobHeader().vm.$emit('viewer-changed', SIMPLE_BLOB_VIEWER);
+        await nextTick();
+
         expect(findSourceViewer().props('showBlame')).toBe(false);
       });
 
@@ -221,6 +250,46 @@ describe('Blob content viewer component', () => {
           await triggerBlame();
 
           expect(findSourceViewer().props('showBlame')).toBe(true);
+        });
+      });
+
+      describe('blame header', () => {
+        it('does not render a blame header for binary files', async () => {
+          await createComponent({
+            blob: {
+              ...simpleViewerMock,
+              simpleViewer: { ...simpleViewerMock.simpleViewer, fileType: 'image' },
+              isBinary: true,
+            },
+          });
+          await triggerBlame();
+
+          expect(findBlameHeader().exists()).toBe(false);
+        });
+
+        it('does not render a blame header when blame is closed', async () => {
+          await createComponent({ blob: simpleViewerMock });
+
+          expect(findBlameHeader().exists()).toBe(false);
+        });
+
+        it('renders a blame header when blame is open', async () => {
+          await createComponent({ blob: simpleViewerMock });
+          await triggerBlame();
+
+          expect(findBlameHeader().exists()).toBe(true);
+        });
+
+        it('sets shouldPreloadBlame prop on the viewer when header emits preload event', async () => {
+          loadViewer.mockReturnValueOnce(SourceViewer);
+          await createComponent({ blob: simpleViewerMock });
+
+          expect(findSourceViewer().props('shouldPreloadBlame')).toBe(false); // does not preload by default
+
+          findBlobHeader().vm.$emit('preload-blame');
+          await nextTick();
+
+          expect(findSourceViewer().props('shouldPreloadBlame')).toBe(true); // preloads after receiving event
         });
       });
     });
@@ -284,6 +353,28 @@ describe('Blob content viewer component', () => {
         },
       );
 
+      describe('code navigation', () => {
+        const setup = async (viewer, viewerType) => {
+          jest.spyOn(eventHub, '$emit').mockImplementation();
+          mockAxios
+            .onGet(`/some_file.js?format=json&viewer=${viewerType}`)
+            .replyOnce(HTTP_STATUS_OK, 'test');
+          await createComponent({ blob: viewer });
+        };
+
+        it('emits showBlobInteractionZones for text files', async () => {
+          await setup(simpleViewerMock, 'simple');
+
+          expect(eventHub.$emit).toHaveBeenCalledWith('showBlobInteractionZones', 'some_file.js');
+        });
+
+        it('does not emit showBlobInteractionZones non-text files', async () => {
+          await setup(richViewerMock, 'rich');
+
+          expect(eventHub.$emit).not.toHaveBeenCalled();
+        });
+      });
+
       it('loads the LineHighlighter', async () => {
         mockAxios.onGet(legacyViewerUrl).replyOnce(HTTP_STATUS_OK, 'test');
         await createComponent({ blob: { ...simpleViewerMock, fileType } });
@@ -341,7 +432,8 @@ describe('Blob content viewer component', () => {
     });
 
     it('updates viewer type when viewer changed is clicked', async () => {
-      await createComponent({ blob: richViewerMock }, shallowMount, { path: '/mock_path' });
+      await createComponent({ blob: richViewerMock });
+      await router.replace('/mock_path');
 
       expect(findBlobContent().props('activeViewer')).toEqual(
         expect.objectContaining({
@@ -410,30 +502,75 @@ describe('Blob content viewer component', () => {
       expect(findBlobContent().exists()).toBe(false);
     });
 
+    it.each([EmptyViewer, DownloadViewer, SourceViewer, LfsViewer, TooLargeViewer])(
+      'renders viewer component for %s files',
+      async (loadViewerReturnValue) => {
+        loadViewer.mockReturnValue(loadViewerReturnValue);
+        await createComponent();
+
+        expect(wrapper.findComponent(loadViewerReturnValue).exists()).toBe(true);
+      },
+    );
+
     it.each`
-      viewer        | loadViewerReturnValue
-      ${'empty'}    | ${EmptyViewer}
-      ${'download'} | ${DownloadViewer}
-      ${'text'}     | ${SourceViewer}
-    `('renders viewer component for $viewer files', async ({ viewer, loadViewerReturnValue }) => {
-      loadViewer.mockReturnValue(loadViewerReturnValue);
-
-      createComponent({
-        blob: {
-          ...simpleViewerMock,
-          fileType: 'null',
-          simpleViewer: {
-            ...simpleViewerMock.simpleViewer,
-            fileType: viewer,
+      language  | size             | tooLarge | renderError    | expectedTooLarge
+      ${'ruby'} | ${100}           | ${false} | ${null}        | ${false}
+      ${'ruby'} | ${FILE_SIZE_3MB} | ${false} | ${null}        | ${true}
+      ${'nyan'} | ${FILE_SIZE_3MB} | ${true}  | ${null}        | ${true}
+      ${'nyan'} | ${null}          | ${false} | ${'collapsed'} | ${true}
+    `(
+      'correctly handles file size limits when language=$language, size=$size, tooLarge=$tooLarge, renderError=$renderError',
+      async ({ language, size, tooLarge, renderError, expectedTooLarge }) => {
+        await createComponent({
+          blob: {
+            ...simpleViewerMock,
+            language,
+            size,
+            simpleViewer: {
+              ...simpleViewerMock.simpleViewer,
+              tooLarge,
+              renderError,
+            },
           },
-        },
-      });
+        });
 
-      await waitForPromises();
+        if (tooLarge) {
+          const { trackEventSpy } = bindInternalEventDocument(wrapper.element);
+          expect(trackEventSpy).toHaveBeenCalledWith(
+            'repository_file_size_limit_exceeded',
+            {
+              label: language,
+              property: String(size),
+            },
+            undefined,
+          );
+        }
 
-      expect(loadViewer).toHaveBeenCalledWith(viewer, false);
-      expect(wrapper.findComponent(loadViewerReturnValue).exists()).toBe(true);
-    });
+        await waitForPromises();
+        expect(loadViewer).toHaveBeenCalledWith('text', false, expectedTooLarge);
+      },
+    );
+
+    it.each`
+      language  | size    | tooLarge | renderError    | expectedTooLarge
+      ${'nyan'} | ${null} | ${true}  | ${null}        | ${true}
+      ${'nyan'} | ${null} | ${false} | ${'collapsed'} | ${true}
+      ${'nyan'} | ${null} | ${false} | ${'too_large'} | ${true}
+      ${'nyan'} | ${null} | ${false} | ${null}        | ${false}
+    `(
+      'correctly handles file size limits when language=$language, size=$size, tooLarge=$tooLarge, renderError=$renderError',
+      async ({ tooLarge, renderError, expectedTooLarge }) => {
+        await createComponent({
+          blob: {
+            ...richViewerMock,
+            richViewer: { ...richViewerMock.richViewer, tooLarge, renderError },
+          },
+        });
+
+        await waitForPromises();
+        expect(loadViewer).toHaveBeenCalledWith('markup', false, expectedTooLarge);
+      },
+    );
   });
 
   describe('BlobHeader action slot', () => {
@@ -462,40 +599,6 @@ describe('Blob content viewer component', () => {
 
         expect(findBlobHeader().props('hideViewerSwitcher')).toBe(true);
         expect(findBlobHeader().props('isBinary')).toBe(true);
-      });
-    });
-
-    describe('BlobButtonGroup', () => {
-      const { name, path, replacePath, webPath } = simpleViewerMock;
-      const {
-        userPermissions: { pushCode, downloadCode },
-        repository: { empty },
-      } = projectMock;
-
-      it('renders component', async () => {
-        window.gon.current_user_id = 1;
-        window.gon.current_username = 'root';
-
-        await createComponent({ pushCode, downloadCode, empty }, mount);
-
-        expect(findBlobButtonGroup().props()).toMatchObject({
-          name,
-          path,
-          replacePath,
-          deletePath: webPath,
-          canPushCode: pushCode,
-          canLock: true,
-          isLocked: false,
-          emptyRepo: empty,
-        });
-      });
-
-      it('does not render if not logged in', async () => {
-        isLoggedIn.mockReturnValueOnce(false);
-
-        await createComponent();
-
-        expect(findBlobButtonGroup().exists()).toBe(false);
       });
     });
   });
@@ -535,72 +638,69 @@ describe('Blob content viewer component', () => {
 
     it('simple edit redirects to the simple editor', () => {
       findBlobHeader().vm.$emit('edit', 'simple');
-      expect(urlUtility.redirectTo).toHaveBeenCalledWith(simpleViewerMock.editBlobPath); // eslint-disable-line import/no-deprecated
+      expect(urlUtility.visitUrl).toHaveBeenCalledWith(simpleViewerMock.editBlobPath);
     });
 
     it('IDE edit redirects to the IDE editor', () => {
       findBlobHeader().vm.$emit('edit', 'ide');
-      expect(urlUtility.redirectTo).toHaveBeenCalledWith(simpleViewerMock.ideEditPath); // eslint-disable-line import/no-deprecated
+      expect(urlUtility.visitUrl).toHaveBeenCalledWith(simpleViewerMock.ideEditPath);
     });
-
-    it.each`
-      loggedIn | canModifyBlob | createMergeRequestIn | forkProject | showForkSuggestion
-      ${true}  | ${false}      | ${true}              | ${true}     | ${true}
-      ${false} | ${false}      | ${true}              | ${true}     | ${false}
-      ${true}  | ${true}       | ${false}             | ${true}     | ${false}
-      ${true}  | ${true}       | ${true}              | ${false}    | ${false}
-    `(
-      'shows/hides a fork suggestion according to a set of conditions',
-      async ({
-        loggedIn,
-        canModifyBlob,
-        createMergeRequestIn,
-        forkProject,
-        showForkSuggestion,
-      }) => {
-        isLoggedIn.mockReturnValueOnce(loggedIn);
-        await createComponent(
-          {
-            blob: { ...simpleViewerMock, canModifyBlob },
-            createMergeRequestIn,
-            forkProject,
-          },
-          mount,
-        );
-
-        findBlobHeader().vm.$emit('edit', 'simple');
-        await nextTick();
-
-        expect(findForkSuggestion().exists()).toBe(showForkSuggestion);
-      },
-    );
   });
 
   describe('active viewer based on plain attribute', () => {
     it.each`
-      hasRichViewer | plain  | activeViewerType
-      ${true}       | ${'0'} | ${RICH_BLOB_VIEWER}
-      ${true}       | ${'1'} | ${SIMPLE_BLOB_VIEWER}
-      ${false}      | ${'0'} | ${SIMPLE_BLOB_VIEWER}
-      ${false}      | ${'1'} | ${SIMPLE_BLOB_VIEWER}
+      hasRichViewer | plain  | blame  | activeViewer          | activeViewerType
+      ${true}       | ${'0'} | ${'0'} | ${RICH_BLOB_VIEWER}   | ${RICH_BLOB_VIEWER}
+      ${true}       | ${'1'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${false}      | ${'0'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${false}      | ${'1'} | ${'0'} | ${SIMPLE_BLOB_VIEWER} | ${SIMPLE_BLOB_VIEWER}
+      ${true}       | ${'0'} | ${'1'} | ${SIMPLE_BLOB_VIEWER} | ${BLAME_VIEWER}
     `(
-      'activeViewerType is `$activeViewerType` when hasRichViewer is $hasRichViewer and plain is set to $plain',
-      async ({ hasRichViewer, plain, activeViewerType }) => {
+      'activeViewerType is `$activeViewerType` when hasRichViewer is $hasRichViewer, plain is set to $plain, and blame is set to $blame',
+      async ({ hasRichViewer, plain, blame, activeViewer, activeViewerType }) => {
+        const urlParams = `?plain=${plain}&blame=${blame}`;
         await createComponent(
-          { blob: hasRichViewer ? richViewerMock : simpleViewerMock },
+          { blob: hasRichViewer ? richViewerMock : simpleViewerMock, urlParams },
           shallowMount,
-          { query: { plain } },
         );
-
-        await nextTick();
 
         expect(findBlobContent().props('activeViewer')).toEqual(
           expect.objectContaining({
-            type: activeViewerType,
+            type: activeViewer,
           }),
         );
         expect(findBlobHeader().props('activeViewerType')).toEqual(activeViewerType);
       },
     );
+  });
+
+  describe('file navigation', () => {
+    it('fetches fresh content when navigating to a different file', async () => {
+      mockAxios.onGet(/format=json/).reply(HTTP_STATUS_OK, { html: 'content', binary: false });
+
+      await createComponent({ blob: { ...richViewerMock, fileType: 'unknown' } });
+      expect(mockAxios.history.get[0].url).toContain('some_file.js');
+
+      blobInfoMockResolver.mockResolvedValueOnce({
+        data: {
+          project: {
+            ...projectMock,
+            repository: {
+              __typename: 'Repository',
+              empty: false,
+              blobs: {
+                __typename: 'RepositoryBlobConnection',
+                nodes: [{ ...richViewerMock, fileType: 'unknown', webPath: '/different_file.js' }],
+              },
+            },
+          },
+        },
+      });
+
+      await wrapper.setProps({ path: 'different_file.js' });
+      await waitForPromises();
+
+      expect(mockAxios.history.get[1].url).toContain('different_file.js');
+    });
   });
 });

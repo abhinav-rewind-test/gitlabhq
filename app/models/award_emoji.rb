@@ -1,21 +1,28 @@
 # frozen_string_literal: true
 
 class AwardEmoji < ApplicationRecord
-  DOWNVOTE_NAME = "thumbsdown"
-  UPVOTE_NAME   = "thumbsup"
+  THUMBS_UP     = 'thumbsup'
+  THUMBS_DOWN   = 'thumbsdown'
+  UPVOTE_NAME   = THUMBS_UP
+  DOWNVOTE_NAME = THUMBS_DOWN
 
   include Participable
   include GhostUser
   include Importable
+  include EachBatch
 
   belongs_to :awardable, polymorphic: true # rubocop:disable Cop/PolymorphicAssociations
   belongs_to :user
+  belongs_to :namespace
+  belongs_to :organization, class_name: 'Organizations::Organization'
 
   validates :user, presence: true
-  validates :awardable, presence: true, unless: :importing?
+  validates :awardable, presence: true
 
   validates :name, presence: true, 'gitlab/emoji_name': true
   validates :name, uniqueness: { scope: [:user, :awardable_type, :awardable_id] }, unless: -> { ghost_user? || importing? }
+
+  validates_with ExactlyOnePresentValidator, fields: [:namespace, :organization]
 
   participant :user
 
@@ -25,7 +32,9 @@ class AwardEmoji < ApplicationRecord
   scope :upvotes, -> { named(UPVOTE_NAME) }
   scope :named, ->(names) { where(name: names) }
   scope :awarded_by, ->(users) { where(user: users) }
+  scope :by_awardable, ->(type, ids) { where(awardable_type: type, awardable_id: ids) }
 
+  before_validation :ensure_sharding_key
   after_destroy :expire_cache
   after_save :expire_cache
   after_commit :broadcast_note_update, if: -> { !importing? && awardable.is_a?(Note) }
@@ -66,8 +75,13 @@ class AwardEmoji < ApplicationRecord
   def url
     return if TanukiEmoji.find_by_alpha_code(name)
 
-    Groups::CustomEmojiFinder.new(resource_parent, { include_ancestor_groups: true }).execute
-      .by_name(name)&.select(:url)&.first&.url
+    BatchLoader.for(name).batch(key: resource_parent) do |names, loader|
+      emoji = Groups::CustomEmojiFinder.new(resource_parent, { include_ancestor_groups: true }).execute.by_name(names).select(:file)
+
+      emoji.each do |e|
+        loader.call(e.name, e.url)
+      end
+    end
   end
 
   def expire_cache
@@ -87,4 +101,28 @@ class AwardEmoji < ApplicationRecord
   def hook_attrs
     Gitlab::HookData::EmojiBuilder.new(self).build
   end
+
+  private
+
+  def ensure_sharding_key
+    return if [namespace, organization].any?(&:present?)
+
+    self.namespace_id = case awardable
+                        when Issue
+                          awardable.namespace_id
+                        when MergeRequest
+                          awardable.project.project_namespace_id
+                        when Note
+                          awardable.project&.project_namespace_id || awardable.namespace_id
+                        when ProjectSnippet
+                          awardable.project&.project_namespace_id
+                        end
+
+    self.organization_id = case awardable
+                           when PersonalSnippet, Note
+                             awardable.organization_id
+                           end
+  end
 end
+
+AwardEmoji.prepend_mod

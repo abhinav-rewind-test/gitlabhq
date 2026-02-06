@@ -1,6 +1,7 @@
 import { __, s__ } from '~/locale';
 import { getDateInPast } from '~/lib/utils/datetime_utility';
 import { helpPagePath } from '~/helpers/help_page_helper';
+import { STATUS_READY, STATUS_PENDING, STATUS_FAILED } from '~/kubernetes_dashboard/constants';
 
 // These statuses are based on how the backend defines pod phases here
 // lib/gitlab/kubernetes/pod.rb
@@ -46,11 +47,6 @@ export const ENVIRONMENTS_SCOPE = {
   STOPPED: 'stopped',
 };
 
-export const ENVIRONMENT_COUNT_BY_SCOPE = {
-  [ENVIRONMENTS_SCOPE.ACTIVE]: 'activeCount',
-  [ENVIRONMENTS_SCOPE.STOPPED]: 'stoppedCount',
-};
-
 export const REVIEW_APP_MODAL_I18N = {
   title: s__('Environments|Enable Review Apps'),
   intro: s__(
@@ -91,22 +87,31 @@ export const ENVIRONMENT_EDIT_HELP_TEXT = ENVIRONMENT_NEW_HELP_TEXT;
 
 export const SERVICES_LIMIT_PER_PAGE = 10;
 
-export const CLUSTER_STATUS_HEALTHY_TEXT = s__('Environment|Healthy');
-export const CLUSTER_STATUS_UNHEALTHY_TEXT = s__('Environment|Unhealthy');
-
 export const CLUSTER_HEALTH_SUCCESS = 'success';
 export const CLUSTER_HEALTH_ERROR = 'error';
+export const CLUSTER_HEALTH_NEEDS_ATTENTION = 'needs-attention';
+export const CLUSTER_HEALTH_UNKNOWN = 'unknown';
 
 export const HEALTH_BADGES = {
   [CLUSTER_HEALTH_SUCCESS]: {
     variant: 'success',
-    text: CLUSTER_STATUS_HEALTHY_TEXT,
+    text: s__('Environment|Healthy'),
     icon: 'status-success',
   },
   [CLUSTER_HEALTH_ERROR]: {
     variant: 'danger',
-    text: CLUSTER_STATUS_UNHEALTHY_TEXT,
+    text: s__('Environment|Unhealthy'),
     icon: 'status-alert',
+  },
+  [CLUSTER_HEALTH_NEEDS_ATTENTION]: {
+    variant: 'warning',
+    text: s__('Environment|Needs attention'),
+    icon: 'status-alert',
+  },
+  [CLUSTER_HEALTH_UNKNOWN]: {
+    variant: 'neutral',
+    text: s__('Environment|Unknown'),
+    icon: 'status-waiting',
   },
 };
 
@@ -122,6 +127,12 @@ export const SYNC_STATUS_BADGES = {
     icon: 'status-running',
     text: s__('Environment|Reconciling'),
     popoverText: s__('Deployment|Flux sync reconciling'),
+  },
+  suspended: {
+    variant: 'warning',
+    icon: 'status-paused',
+    text: __('Paused'),
+    popoverText: s__('Deployment|Flux sync is suspended'),
   },
   stalled: {
     variant: 'warning',
@@ -146,14 +157,14 @@ export const SYNC_STATUS_BADGES = {
     popoverLink: 'https://gitlab.com/gitlab-org/gitlab/-/issues/419666#results',
   },
   unavailable: {
-    variant: 'muted',
+    variant: 'neutral',
     icon: 'status-waiting',
     text: s__('Deployment|Unavailable'),
     popoverTitle: s__('Deployment|Flux sync status is unavailable'),
     popoverText: s__(
       'Deployment|Sync status is unknown. %{linkStart}How do I configure Flux for my deployment?%{linkEnd}',
     ),
-    popoverLink: helpPagePath('user/clusters/agent/gitops/flux_tutorial'),
+    popoverLink: helpPagePath('user/clusters/agent/getting_started.md'),
   },
 };
 
@@ -191,3 +202,65 @@ export const KUSTOMIZATIONS_RESOURCE_TYPE = 'kustomizations';
 
 export const KUSTOMIZATION = 'Kustomization';
 export const HELM_RELEASE = 'HelmRelease';
+export const DEPLOYMENT_KIND = 'Deployment';
+
+export const TREE_ITEM_KIND_ICONS = {
+  [KUSTOMIZATION]: 'overview',
+  [DEPLOYMENT_KIND]: 'deployments',
+};
+
+const RUNNING_STATUS_ICON = { icon: 'status-running', variant: 'info' };
+const SUCCESS_STATUS_ICON = { icon: 'status-success', variant: 'success' };
+const WAITING_STATUS_ICON = { icon: 'status-waiting', variant: 'subtle' };
+const FAILED_STATUS_ICON = { icon: 'status-failed', variant: 'danger' };
+const PAUSED_STATUS_ICON = { icon: 'status-paused', variant: 'warning' };
+
+export const TREE_ITEM_STATUS_ICONS = {
+  reconciled: SUCCESS_STATUS_ICON,
+  reconciling: RUNNING_STATUS_ICON,
+  reconcilingWithBadConfig: RUNNING_STATUS_ICON,
+  stalled: PAUSED_STATUS_ICON,
+  failed: FAILED_STATUS_ICON,
+  unknown: WAITING_STATUS_ICON,
+  unavailable: WAITING_STATUS_ICON,
+  [STATUS_PENDING]: PAUSED_STATUS_ICON,
+  [STATUS_READY]: SUCCESS_STATUS_ICON,
+  [STATUS_FAILED]: FAILED_STATUS_ICON,
+};
+
+export const DELETE_POD_ACTION = {
+  name: 'delete-pod',
+  text: s__('KubernetesDashboard|Delete pod'),
+  icon: 'remove',
+  variant: 'danger',
+};
+
+export const FLUX_RECONCILE_ACTION = {
+  name: 'flux-reconcile',
+  text: s__('KubernetesDashboard|Trigger reconciliation'),
+  icon: 'retry',
+};
+
+export const FLUX_SUSPEND_ACTION = {
+  name: 'flux-suspend',
+  text: s__('KubernetesDashboard|Suspend reconciliation'),
+  variant: 'danger',
+  icon: 'stop',
+};
+
+export const FLUX_RESUME_ACTION = {
+  name: 'flux-resume',
+  text: s__('KubernetesDashboard|Resume reconciliation'),
+  icon: 'play',
+};
+
+// Ordered from latest version to oldest
+export const SUPPORTED_HELM_RELEASES = [
+  'helm.toolkit.fluxcd.io/v2',
+  'helm.toolkit.fluxcd.io/v2beta1',
+];
+export const SUPPORTED_KUSTOMIZATIONS = [
+  'kustomize.toolkit.fluxcd.io/v1',
+  'kustomize.toolkit.fluxcd.io/v1beta2',
+  'kustomize.toolkit.fluxcd.io/v1beta1',
+];

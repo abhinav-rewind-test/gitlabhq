@@ -3,10 +3,12 @@
 require 'spec_helper'
 
 RSpec.describe Discussions::ResolveService, feature_category: :code_review_workflow do
+  include DesignManagementTestHelpers
+
   describe '#execute' do
     let_it_be(:project) { create(:project, :repository) }
-    let_it_be(:user) { create(:user, developer_projects: [project]) }
-    let_it_be(:merge_request) { create(:merge_request, :merge_when_pipeline_succeeds, source_project: project) }
+    let_it_be(:user) { create(:user, developer_of: project) }
+    let_it_be(:merge_request) { create(:merge_request, :merge_when_checks_pass, source_project: project) }
 
     let(:discussion) { create(:diff_note_on_merge_request, noteable: merge_request, project: project).to_discussion }
     let(:service) { described_class.new(project, user, one_or_more_discussions: discussion) }
@@ -40,40 +42,34 @@ RSpec.describe Discussions::ResolveService, feature_category: :code_review_workf
       service.execute
     end
 
-    it 'schedules an auto-merge' do
-      expect(AutoMergeProcessWorker).to receive(:perform_async).with(discussion.noteable.id)
+    context 'when all discussions are resolved' do
+      it 'publishes the discussions resolved event' do
+        expect { service.execute }
+          .to publish_event(MergeRequests::DiscussionsResolvedEvent)
+          .with(current_user_id: user.id, merge_request_id: merge_request.id)
+      end
+    end
 
-      service.execute
+    context 'when not all discussions are resolved' do
+      before do
+        create(:diff_note_on_merge_request, noteable: merge_request, project: project).to_discussion
+      end
+
+      it 'does not publish the discussions resolved event when the project requires all discussions to be resolved' do
+        project.update!(only_allow_merge_if_all_discussions_are_resolved: true)
+
+        expect { service.execute }.not_to publish_event(MergeRequests::DiscussionsResolvedEvent)
+      end
+
+      it 'publishes the discussions resolved event when the project does not require all discussions to be resolved' do
+        expect { service.execute }.to publish_event(MergeRequests::DiscussionsResolvedEvent)
+      end
     end
 
     it 'sends GraphQL triggers' do
       expect(GraphqlTriggers).to receive(:merge_request_merge_status_updated).with(discussion.noteable)
 
       service.execute
-    end
-
-    context 'with a project that requires all discussion to be resolved' do
-      before do
-        project.update!(only_allow_merge_if_all_discussions_are_resolved: true)
-      end
-
-      after do
-        project.update!(only_allow_merge_if_all_discussions_are_resolved: false)
-      end
-
-      let_it_be(:other_discussion) { create(:diff_note_on_merge_request, noteable: merge_request, project: project).to_discussion }
-
-      it 'does not schedule an auto-merge' do
-        expect(AutoMergeProcessWorker).not_to receive(:perform_async)
-
-        service.execute
-      end
-
-      it 'schedules an auto-merge' do
-        expect(AutoMergeProcessWorker).to receive(:perform_async)
-
-        described_class.new(project, user, one_or_more_discussions: [discussion, other_discussion]).execute
-      end
     end
 
     it 'adds a system note to the discussion' do
@@ -125,10 +121,8 @@ RSpec.describe Discussions::ResolveService, feature_category: :code_review_workf
         service.execute
       end
 
-      it 'does not schedule an auto-merge' do
-        expect(AutoMergeProcessWorker).not_to receive(:perform_async)
-
-        service.execute
+      it 'does not publish the discussions resolved event' do
+        expect { service.execute }.not_to publish_event(MergeRequests::DiscussionsResolvedEvent)
       end
 
       it 'does not send GraphQL triggers' do
@@ -145,14 +139,13 @@ RSpec.describe Discussions::ResolveService, feature_category: :code_review_workf
 
       context 'in a design' do
         let_it_be(:design) { create(:design, :with_file, issue: create(:issue, project: project)) }
-        let_it_be(:user_1) { create(:user) }
-        let_it_be(:user_2) { create(:user) }
+        let_it_be(:user_1) { create(:user, developer_of: project) }
+        let_it_be(:user_2) { create(:user, developer_of: project) }
         let_it_be(:discussion_1) { create(:diff_note_on_design, noteable: design, project: project, author: user_1).to_discussion }
         let_it_be(:discussion_2) { create(:diff_note_on_design, noteable: design, project: project, author: user_2).to_discussion }
 
         before do
-          project.add_developer(user_1)
-          project.add_developer(user_2)
+          enable_design_management
         end
 
         context 'when user resolving discussion has open todos' do

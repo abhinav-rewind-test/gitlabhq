@@ -1,11 +1,32 @@
 # frozen_string_literal: true
 
 require 'parallel'
+require 'timeout'
 require_relative 'gitaly_setup'
 require_relative '../../../lib/gitlab/setup_helper'
 
 module TestEnv
   extend self
+
+  def self.measure_setup_duration(name)
+    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    result = yield
+    duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+    if duration > 0.5
+      duration = duration.round(3)
+      @durations_mutex.synchronize { @component_durations[name] ||= duration }
+      name = name.to_s
+      display_name = name.start_with?('setup_') ? name.delete_prefix('setup_').tr('_', ' ').capitalize : name
+      puts "==> #{display_name} set up in #{duration} seconds..."
+    end
+
+    result
+  end
+
+  def self.included(_)
+    raise "Don't include TestEnv. Use TestEnv.<method> instead."
+  end
 
   ComponentFailedToInstallError = Class.new(StandardError)
 
@@ -20,12 +41,16 @@ module TestEnv
   # 1. Push a new branch to gitlab-org/gitlab-test.
   # 2. Execute rm -rf tmp/tests in your gitlab repo.
   # 3. Add your branch and its HEAD commit sha to the BRANCH_SHA hash
+  # 4. Increment expected number of commits for context
+  #    "returns the number of commits in the whole repository" in spec/lib/gitlab/git/repository_spec.rb
   #
   # To add new commits to an existing branch
   #
   # 1. Push a new commit to a branch in gitlab-org/gitlab-test.
   # 2. Execute rm -rf tmp/tests in your gitlab repo.
   # 3. Update the HEAD sha value in the BRANCH_SHA hash
+  # 4. Increment expected number of commits for context
+  #    "returns the number of commits in the whole repository" in spec/lib/gitlab/git/repository_spec.rb
   #
   BRANCH_SHA = {
     'signed-commits' => 'c7794c1',
@@ -112,7 +137,12 @@ module TestEnv
     'Ääh-test-utf-8' => '7975be0',
     'ssh-signed-commit' => '7b5160f',
     'changes-with-whitespace' => 'f2d141fadb33ceaafc95667c1a0a308ad5edc5f9',
-    'lock-detection' => '1ada92f78a19f27cb442a0a205f1c451a3a15432'
+    'changes-with-only-whitespace' => '80cffbb2ad86202171dd3c05b38b5b4523b447d3',
+    'lock-detection' => '1ada92f78a19f27cb442a0a205f1c451a3a15432',
+    'expanded-whitespace-target' => '279aa723d4688e711652d230c93f1fc33801dcb8',
+    'expanded-whitespace-source' => 'e6f8b802fe2288b1b5e367c5dde736594971ebd1',
+    'submodule-with-dot' => 'b4a4435df7e7605dd9930d0c5402087b37da99bf',
+    'raw-cell-type' => '9b33108'
   }.freeze
 
   # gitlab-test-fork is a fork of gitlab-fork, but we don't necessarily
@@ -126,11 +156,20 @@ module TestEnv
   }.freeze
 
   TMP_TEST_PATH = Rails.root.join('tmp', 'tests').freeze
-  SETUP_METHODS = %i[setup_gitaly setup_gitlab_shell setup_workhorse setup_factory_repo setup_forked_repo].freeze
+  SETUP_METHODS = %i[setup_go_projects setup_factory_repo setup_forked_repo].freeze
 
   # Can be overriden
   def setup_methods
     SETUP_METHODS
+  end
+
+  # Can be overriden
+  # The Go build cache is not safe for concurrent builds:
+  # https://github.com/golang/go/issues/43645
+  def setup_go_projects
+    setup_gitaly
+    setup_gitlab_shell
+    setup_workhorse
   end
 
   # Test environment
@@ -143,18 +182,51 @@ module TestEnv
       exit 1
     end
 
-    start = Time.now
+    @component_durations = {}
+    @durations_mutex = Mutex.new
+
+    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     # Disable mailer for spinach tests
     clean_test_path
 
     # Install components in parallel as most of the setup is I/O.
-    Parallel.each(setup_methods) do |method|
-      public_send(method)
+    Parallel.each(setup_methods, in_threads: setup_methods.size) do |method|
+      measure_setup_duration(method.to_s) { public_send(method) }
     end
 
     post_init
+    duration = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start)
 
-    puts "\nTest environment set up in #{Time.now - start} seconds"
+    puts "\nTest environment set up in #{duration} seconds"
+    send_rspec_setup_duration_telemetry(duration, @component_durations)
+  end
+
+  def send_rspec_setup_duration_telemetry(duration, component_durations)
+    gdk_path = Gitlab::Utils.which('gdk')
+    return unless gdk_path
+
+    extra_args = ["--extra=gitlab_sha:#{gitlab_sha}"]
+    component_durations.each do |name, time|
+      metric_name = name.downcase.gsub(/\s+/, '_').gsub(/[^a-z0-9_]/, '_')
+      extra_args << "--extra=#{metric_name}:#{time}"
+    end
+
+    Bundler.with_unbundled_env do
+      # Add timeout in case GDK command hangs unexpectedly
+      Timeout.timeout(2) do
+        success = system(gdk_path, 'send-telemetry', 'rspec_setup_duration', duration.round(3).to_s, *extra_args)
+        warn "Failed to send RSpec setup time via telemetry command." unless success
+      end
+    end
+  rescue Timeout::Error
+    warn "Sending telemetry timed out."
+  rescue StandardError => e
+    warn "Failed to send telemetry: #{e.message}"
+  end
+
+  def gitlab_sha
+    sha, exit_status = Gitlab::Popen.popen(%W[#{Gitlab.config.git.bin_path} rev-parse HEAD], Rails.root.to_s)
+    exit_status == 0 && !sha.chomp.empty? ? sha.chomp : 'unknown'
   end
 
   # Can be overriden
@@ -172,8 +244,6 @@ module TestEnv
       end
     end
 
-    FileUtils.mkdir_p(GitalySetup.storage_path)
-    FileUtils.mkdir_p(GitalySetup.second_storage_path)
     FileUtils.mkdir_p(backup_path)
     FileUtils.mkdir_p(pages_path)
     FileUtils.mkdir_p(artifacts_path)
@@ -181,6 +251,7 @@ module TestEnv
     FileUtils.mkdir_p(terraform_state_path)
     FileUtils.mkdir_p(packages_path)
     FileUtils.mkdir_p(ci_secure_files_path)
+    FileUtils.mkdir_p(external_diffs_path)
   end
 
   def setup_gitlab_shell
@@ -194,8 +265,14 @@ module TestEnv
       task: "gitlab:gitaly:clone",
       fresh_install: ENV.key?('FORCE_GITALY_INSTALL'),
       task_args: [GitalySetup.gitaly_dir, GitalySetup.storage_path, gitaly_url].compact) do
-      GitalySetup.setup_gitaly
+      # In CI, Gitaly is built in the setup-test-env job and saved in the
+      # artifacts. So when tests are started, there's no need to build Gitaly.
+      # Locally, we skip building if GDK has already downloaded precompiled binaries.
+      GitalySetup.build_gitaly unless ENV['CI']
     end
+
+    # Always generate config files even with precompiled binaries
+    GitalySetup.setup_gitaly
   end
 
   def start_gitaly
@@ -211,23 +288,19 @@ module TestEnv
     ENV.fetch('GITALY_REPO_URL', nil)
   end
 
-  # Feature specs are run through Workhorse
   def setup_workhorse
-    # Always rebuild the config file
-    if skip_compile_workhorse?
-      Gitlab::SetupHelper::Workhorse.create_configuration(workhorse_dir, nil, force: true)
-      return
+    measure_setup_duration('GitLab Workhorse') do
+      # Always rebuild the config file
+      if skip_compile_workhorse?
+        Gitlab::SetupHelper::Workhorse.create_configuration(workhorse_dir, nil, force: true)
+      else
+        FileUtils.rm_rf(workhorse_dir)
+        Gitlab::SetupHelper::Workhorse.compile_into(workhorse_dir)
+        Gitlab::SetupHelper::Workhorse.create_configuration(workhorse_dir, nil)
+
+        File.write(workhorse_tree_file, workhorse_tree) if workhorse_source_clean?
+      end
     end
-
-    start = Time.now
-
-    FileUtils.rm_rf(workhorse_dir)
-    Gitlab::SetupHelper::Workhorse.compile_into(workhorse_dir)
-    Gitlab::SetupHelper::Workhorse.create_configuration(workhorse_dir, nil)
-
-    File.write(workhorse_tree_file, workhorse_tree) if workhorse_source_clean?
-
-    puts "==> GitLab Workhorse set up in #{Time.now - start} seconds...\n"
   end
 
   def skip_compile_workhorse?
@@ -301,9 +374,7 @@ module TestEnv
     clone_url = "https://gitlab.com/gitlab-org/#{repo_name}.git"
 
     unless File.directory?(repo_path)
-      start = Time.now
-      system(*%W[#{Gitlab.config.git.bin_path} clone --quiet -- #{clone_url} #{repo_path}])
-      puts "==> #{repo_path} set up in #{Time.now - start} seconds...\n"
+      measure_setup_duration(repo_path) { system(*%W[#{Gitlab.config.git.bin_path} clone --quiet -- #{clone_url} #{repo_path}]) }
     end
 
     create_bundle = !File.file?(repo_bundle_path)
@@ -325,9 +396,7 @@ module TestEnv
     end
 
     if create_bundle
-      start = Time.now
-      system(git_env, *%W[#{Gitlab.config.git.bin_path} -C #{repo_path} bundle create #{repo_bundle_path} --exclude refs/remotes/* --all])
-      puts "==> #{repo_bundle_path} generated in #{Time.now - start} seconds...\n"
+      measure_setup_duration(repo_bundle_path) { system(git_env, *%W[#{Gitlab.config.git.bin_path} -C #{repo_path} bundle create #{repo_bundle_path} --exclude refs/remotes/* --all]) }
     end
   end
 
@@ -357,6 +426,10 @@ module TestEnv
 
   def ci_secure_files_path
     Gitlab.config.ci_secure_files.storage_path
+  end
+
+  def external_diffs_path
+    Gitlab.config.external_diffs.storage_path
   end
 
   # When no cached assets exist, manually hit the root path to create them
@@ -390,24 +463,28 @@ module TestEnv
     # Adjust `deletion_except_tables` method to exclude seeded tables from
     # record deletions.
     Gitlab::DatabaseImporters::WorkItems::BaseTypeImporter.upsert_types
-    Gitlab::DatabaseImporters::WorkItems::HierarchyRestrictionsImporter.upsert_restrictions
-    Gitlab::DatabaseImporters::WorkItems::RelatedLinksRestrictionsImporter.upsert_restrictions
+  end
+
+  def with_duo_workflow_service
+    yield # No-op
   end
 
   private
 
   # These are directories that should be preserved at cleanup time
   def test_dirs
-    @test_dirs ||= %w[
-      frontend
-      gitaly
-      gitlab-shell
-      gitlab-test
-      gitlab-test.bundle
-      gitlab-test-fork
-      gitlab-test-fork.bundle
-      gitlab-workhorse
-      gitlab_workhorse_secret
+    @test_dirs ||= [
+      'frontend',
+      'gitaly',
+      'gitlab-shell',
+      'gitlab-test',
+      'gitlab-test.bundle',
+      'gitlab-test-fork',
+      'gitlab-test-fork.bundle',
+      'gitlab-workhorse',
+      'gitlab_workhorse_secret',
+      File.basename(GitalySetup.storage_path),
+      File.basename(GitalySetup.second_storage_path)
     ]
   end
 
@@ -436,32 +513,30 @@ module TestEnv
   end
 
   def component_timed_setup(component, install_dir:, version:, task:, fresh_install: true, task_args: [])
-    start = Time.now
-
     ensure_component_dir_name_is_correct!(component, install_dir)
 
     # On CI, once installed, components never need update
     return if File.exist?(install_dir) && ci?
 
     if component_needs_update?(install_dir, version)
-      puts "==> Starting #{component} (#{version}) set up...\n"
+      measure_setup_duration(component) do
+        puts "==> Starting #{component} (#{version}) set up...\n"
 
-      # Cleanup the component entirely to ensure we start fresh
-      FileUtils.rm_rf(install_dir) if fresh_install
+        # Cleanup the component entirely to ensure we start fresh
+        FileUtils.rm_rf(install_dir) if fresh_install
 
-      if ENV['SKIP_RAILS_ENV_IN_RAKE']
-        # When we run `scripts/setup-test-env`, we take care of loading the necessary dependencies
-        # so we can run the rake task programmatically.
-        Rake::Task[task].invoke(*task_args)
-      else
-        # In other cases, we run the task via `rake` so that the environment
-        # and dependencies are automatically loaded.
-        raise ComponentFailedToInstallError unless system('rake', "#{task}[#{task_args.join(',')}]")
+        if ENV['SKIP_RAILS_ENV_IN_RAKE']
+          # When we run `scripts/setup-test-env`, we take care of loading the necessary dependencies
+          # so we can run the rake task programmatically.
+          Rake::Task[task].invoke(*task_args)
+        else
+          # In other cases, we run the task via `rake` so that the environment
+          # and dependencies are automatically loaded.
+          raise ComponentFailedToInstallError unless system('rake', "#{task}[#{task_args.join(',')}]")
+        end
+
+        yield if block_given?
       end
-
-      yield if block_given?
-
-      puts "==> #{component} set up in #{Time.now - start} seconds...\n"
     end
   rescue ComponentFailedToInstallError
     puts "\n#{component} failed to install, cleaning up #{install_dir}!\n"
@@ -491,6 +566,8 @@ module TestEnv
 
     return false if component_ahead_of_target?(component_folder, expected_version)
 
+    return false if gdk_has_matching_binaries?(component_folder, expected_version)
+
     version = File.read(File.join(component_folder, 'VERSION')).strip
 
     # Notice that this will always yield true when using branch versions
@@ -502,6 +579,8 @@ module TestEnv
   end
 
   def component_ahead_of_target?(component_folder, expected_version)
+    return false unless Dir.exist?(File.join(component_folder, '.git'))
+
     # The HEAD of the component_folder will be used as heuristic for the version
     # of the binaries, allowing to use Git to determine if HEAD is later than
     # the expected version. Note: Git considers HEAD to be an anchestor of HEAD.
@@ -523,10 +602,45 @@ module TestEnv
 
     return false unless Dir.exist?(component_folder)
 
+    return false unless Dir.exist?(File.join(component_folder, '.git'))
+
     sha, exit_status = Gitlab::Popen.popen(%W[#{Gitlab.config.git.bin_path} rev-parse HEAD], component_folder)
     return false if exit_status != 0
 
     expected_version == sha.chomp
+  end
+
+  def gdk_has_matching_binaries?(component_folder, expected_version)
+    component_name = File.basename(component_folder)
+    # GDK only downloads gitaly binaries to tmp/tests (workhorse uses skip_compile_workhorse?)
+    return false unless component_name == 'gitaly'
+
+    gdk_root = Rails.root.parent
+    return false unless gdk_root.exist?
+
+    cache_file = gdk_root.join('.cache', '.gitaly_commit_sha')
+    return false unless File.exist?(cache_file)
+
+    begin
+      cached_sha = File.read(cache_file).strip
+    rescue StandardError
+      return false
+    end
+
+    unless cached_sha == expected_version
+      puts "Gitaly SHA mismatch! Cached: #{cached_sha}, Expected: #{expected_version}, will rebuild"
+      return false
+    end
+
+    bin_dir = File.join(component_folder, '_build', 'bin')
+
+    if Dir.exist?(bin_dir) && !Dir.empty?(bin_dir)
+      puts "==> Using precompiled Gitaly binaries from cache"
+      true
+    else
+      puts "Gitaly binary directory missing or empty, will build from source"
+      false
+    end
   end
 end
 

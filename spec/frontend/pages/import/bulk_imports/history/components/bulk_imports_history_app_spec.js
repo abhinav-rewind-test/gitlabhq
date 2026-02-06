@@ -24,7 +24,7 @@ describe('BulkImportsHistoryApp', () => {
   };
   const DUMMY_RESPONSE = [
     {
-      id: 1,
+      id: 361,
       bulk_import_id: 1,
       status: 'finished',
       entity_type: 'group',
@@ -44,7 +44,7 @@ describe('BulkImportsHistoryApp', () => {
       },
     },
     {
-      id: 2,
+      id: 843,
       bulk_import_id: 2,
       status: 'failed',
       entity_type: 'project',
@@ -74,14 +74,15 @@ describe('BulkImportsHistoryApp', () => {
 
   let wrapper;
   let mock;
+  const mockDetailsPath = '/import/:id/history/:entity_id/failures';
   const mockRealtimeChangesPath = '/import/realtime_changes.json';
 
-  function createComponent({ shallow = true, provide, props = {} } = {}) {
+  function createComponent({ shallow = true, props = {} } = {}) {
     const mountFn = shallow ? shallowMount : mount;
     wrapper = mountFn(BulkImportsHistoryApp, {
       provide: {
+        detailsPath: mockDetailsPath,
         realtimeChangesPath: mockRealtimeChangesPath,
-        ...provide,
       },
       propsData: {
         ...props,
@@ -127,7 +128,7 @@ describe('BulkImportsHistoryApp', () => {
       const table = wrapper.findComponent(GlTableLite);
       expect(table.exists()).toBe(true);
       // can't use .props() or .attributes() here
-      expect(table.vm.$attrs.items).toHaveLength(DUMMY_RESPONSE.length);
+      expect(table.props('items')).toHaveLength(DUMMY_RESPONSE.length);
     });
 
     it('changes page when requested by pagination bar', async () => {
@@ -140,13 +141,13 @@ describe('BulkImportsHistoryApp', () => {
       findPaginationBar().vm.$emit('set-page', NEW_PAGE);
       await waitForPromises();
 
-      expect(mock.history.get.length).toBe(1);
+      expect(mock.history.get).toHaveLength(1);
       expect(mock.history.get[0].params).toStrictEqual(expect.objectContaining({ page: NEW_PAGE }));
     });
   });
 
   describe('when id prop is present', () => {
-    const mockId = 2;
+    const mockId = '2';
 
     beforeEach(async () => {
       createComponent({
@@ -158,7 +159,7 @@ describe('BulkImportsHistoryApp', () => {
     });
 
     it('makes a request to bulk_import_history endpoint', () => {
-      expect(mock.history.get.length).toBe(1);
+      expect(mock.history.get).toHaveLength(1);
       expect(mock.history.get[0].url).toBe(`/api/v4/bulk_imports/${mockId}/entities`);
       expect(mock.history.get[0].params).toStrictEqual({
         page: 1,
@@ -177,7 +178,7 @@ describe('BulkImportsHistoryApp', () => {
     findPaginationBar().vm.$emit('set-page-size', NEW_PAGE_SIZE);
     await waitForPromises();
 
-    expect(mock.history.get.length).toBe(1);
+    expect(mock.history.get).toHaveLength(1);
     expect(mock.history.get[0].params).toStrictEqual(
       expect.objectContaining({ per_page: NEW_PAGE_SIZE }),
     );
@@ -195,7 +196,7 @@ describe('BulkImportsHistoryApp', () => {
     findPaginationBar().vm.$emit('set-page-size', NEW_PAGE_SIZE);
     await waitForPromises();
 
-    expect(mock.history.get.length).toBe(1);
+    expect(mock.history.get).toHaveLength(1);
     expect(mock.history.get[0].params).toStrictEqual(
       expect.objectContaining({ per_page: NEW_PAGE_SIZE, page: 1 }),
     );
@@ -256,17 +257,14 @@ describe('BulkImportsHistoryApp', () => {
     it('renders failed import status with details link', async () => {
       createComponent({
         shallow: false,
-        provide: {
-          detailsPath: '/mock-details',
-        },
       });
       await waitForPromises();
 
       const failedImportStatus = findImportStatusAt(1);
       const failedImportStatusLink = failedImportStatus.find('a');
       expect(failedImportStatus.text()).toContain('Failed');
-      expect(failedImportStatusLink.text()).toBe('See failures');
-      expect(failedImportStatusLink.attributes('href')).toContain('/mock-details');
+      expect(failedImportStatusLink.text()).toBe('Show errors >');
+      expect(failedImportStatusLink.attributes('href')).toBe('/import/2/history/843/failures');
     });
 
     it('renders import stats', () => {

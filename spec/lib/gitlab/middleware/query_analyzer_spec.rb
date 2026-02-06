@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Gitlab::Middleware::QueryAnalyzer, query_analyzers: false do
+RSpec.describe Gitlab::Middleware::QueryAnalyzer, query_analyzers: false, feature_category: :database do
   describe 'the PreventCrossDatabaseModification' do
     describe '#call' do
       let(:app) { double(:app) }
@@ -21,7 +21,8 @@ RSpec.describe Gitlab::Middleware::QueryAnalyzer, query_analyzers: false do
           end
         end
 
-        it 'detects cross modifications and tracks exception' do
+        it 'detects cross modifications and tracks exception',
+          quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16820' do
           expect(::Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception)
 
           expect { subject }.not_to raise_error

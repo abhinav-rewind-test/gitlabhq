@@ -9,6 +9,7 @@ RSpec.describe Backup::Targets::Database, :reestablished_active_record_base, fea
   let(:one_database_configured?) { base_models_for_backup.one? }
   let(:force) { true }
   let(:backup_options) { Backup::Options.new(force: force) }
+  let(:logger) { subject.logger }
   let(:timeout_service) do
     instance_double(Gitlab::Database::TransactionTimeoutSettings, restore_timeouts: nil, disable_timeouts: nil)
   end
@@ -19,7 +20,7 @@ RSpec.describe Backup::Targets::Database, :reestablished_active_record_base, fea
     end
   end
 
-  before_all do
+  before(:context) do
     Rake.application.rake_require 'active_record/railties/databases'
     Rake.application.rake_require 'tasks/gitlab/backup'
     Rake.application.rake_require 'tasks/gitlab/shell'
@@ -152,7 +153,7 @@ RSpec.describe Backup::Targets::Database, :reestablished_active_record_base, fea
         stub_env('GITLAB_BACKUP_PGHOST', 'test.invalid.')
       end
 
-      it 'will override database.yml configuration' do
+      it 'overrides database.yml configuration' do
         # Expect an error because we can't connect to test.invalid.
         expect do
           Dir.mktmpdir { |dir| databases.dump(dir, backup_id) }
@@ -263,7 +264,11 @@ RSpec.describe Backup::Targets::Database, :reestablished_active_record_base, fea
       end
     end
 
-    context 'with PostgreSQL settings defined in the environment' do
+    # Mark test as non-transactional to prevent Rails from trying to connect to the
+    # DB with invalid config.
+    # With transactional tests, Rails checks out a connection every time a new
+    # connection pool is established so that it can be pinned for all threads.
+    context 'with PostgreSQL settings defined in the environment', :delete do
       let(:config) { YAML.load_file(Rails.root.join('config/database.yml'))['test'] }
 
       before do

@@ -30,6 +30,7 @@ describe('commits service', () => {
     path = '',
     ref = 'main',
     refType = 'heads',
+    // eslint-disable-next-line max-params
   ) => loadCommits(project, path, ref, offset, refType);
 
   it('calls axios get', async () => {
@@ -47,7 +48,7 @@ describe('commits service', () => {
   });
 
   it('encodes the path and ref', async () => {
-    const encodedRef = encodeURI(refWithSpecialCharMock);
+    const encodedRef = encodeURIComponent(refWithSpecialCharMock);
     const encodedUrl = `/some-project/-/refs/${encodedRef}/logs_tree/with%20$peci@l%20ch@rs/`;
 
     await requestCommits(1, 'some-project', 'with $peci@l ch@rs/', refWithSpecialCharMock);
@@ -55,10 +56,19 @@ describe('commits service', () => {
     expect(axios.get).toHaveBeenCalledWith(encodedUrl, expect.anything());
   });
 
+  it('encodes the # character in path', async () => {
+    const pathWithHash = 'directory#with#hash/';
+    const encodedUrl = `/my-project/-/refs/main/logs_tree/directory%23with%23hash/`;
+
+    await requestCommits(1, 'my-project', pathWithHash, 'main');
+
+    expect(axios.get).toHaveBeenCalledWith(encodedUrl, expect.anything());
+  });
+
   it('calls axios get once per batch', async () => {
     await Promise.all([requestCommits(0), requestCommits(1), requestCommits(23)]);
 
-    expect(axios.get.mock.calls.length).toEqual(1);
+    expect(axios.get.mock.calls).toHaveLength(1);
   });
 
   it('updates the list of requested offsets', async () => {

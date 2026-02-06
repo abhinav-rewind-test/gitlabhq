@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'set' # rubocop:disable Lint/RedundantRequireStatement -- Ruby 3.1 and earlier needs this. Drop this line after Ruby 3.2+ is only supported.
 require 'rubocop'
 require 'yaml'
 
@@ -23,8 +22,10 @@ module RuboCop
       # with offenses.
       #
       # See https://gitlab.com/gitlab-org/gitlab/-/issues/415330#caveats
-      # on why the entry must end with `.haml.rb`.
-      RETAIN_EXCLUSIONS = %r{\.haml\.rb$}
+      RETAIN_EXCLUSIONS = %r{\.haml$}
+
+      # Special config key used to store extracted header section temporarily.
+      HEADER_SECTION_KEY = Object.new
 
       class << self
         attr_accessor :base_directory
@@ -37,8 +38,6 @@ module RuboCop
         @todos = Hash.new { |hash, cop_name| hash[cop_name] = CopTodo.new(cop_name) }
         @todo_dir = TodoDir.new(directory)
         @config_inspect_todo_dir = load_config_inspect_todo_dir
-        @config_old_todo_yml = load_config_old_todo_yml
-        check_multiple_configurations!
         create_todos_retaining_exclusions(@config_inspect_todo_dir)
 
         super
@@ -81,32 +80,20 @@ module RuboCop
         path.delete_prefix("#{parent}/")
       end
 
-      def check_multiple_configurations!
-        cop_names = @config_inspect_todo_dir.keys & @config_old_todo_yml.keys
-        return if cop_names.empty?
-
-        list = cop_names.sort.map { |cop_name| "- #{cop_name}" }.join("\n")
-        raise "Multiple configurations found for cops:\n#{list}\n"
-      end
-
       def create_todos_retaining_exclusions(inspected_cop_config)
         inspected_cop_config.each do |cop_name, config|
+          config ||= {}
           todo = @todos[cop_name]
-          todo.add_files(config.fetch('Exclude', []).grep(RETAIN_EXCLUSIONS))
+          excluded_files = config['Exclude'] || []
+          todo.add_files(excluded_files.grep(RETAIN_EXCLUSIONS))
+          todo.header_section = config.delete(HEADER_SECTION_KEY)
         end
       end
 
       def config_for(todo)
         cop_name = todo.cop_name
 
-        @config_old_todo_yml[cop_name] || @config_inspect_todo_dir[cop_name] || {}
-      end
-
-      def previously_disabled?(todo)
-        config = config_for(todo)
-        return false if config.empty?
-
-        config['Enabled'] == false
+        @config_inspect_todo_dir[cop_name] || {}
       end
 
       def grace_period?(todo)
@@ -115,13 +102,16 @@ module RuboCop
         GracefulFormatter.grace_period?(todo.cop_name, config)
       end
 
-      def configure_and_validate_todo(todo)
-        todo.previously_disabled = previously_disabled?(todo)
-        todo.grace_period = grace_period?(todo)
+      def todos_increased?(todo)
+        config = config_for(todo)
+        before = (config['Exclude'] || []).size
+        after = todo.files.size
 
-        if todo.previously_disabled && todo.grace_period
-          raise "#{todo.cop_name}: Cop must be enabled to use `#{GracefulFormatter.grace_period_key_value}`."
-        end
+        after > before
+      end
+
+      def configure_and_validate_todo(todo)
+        todo.grace_period = grace_period?(todo) || todos_increased?(todo)
 
         todo.generate?
       end
@@ -129,17 +119,33 @@ module RuboCop
       def load_config_inspect_todo_dir
         @todo_dir.list_inspect.each_with_object({}) do |path, combined|
           config = YAML.load_file(path)
-          combined.update(config) if Hash === config
+          next unless Hash === config
+
+          cop_name = config.each_key.first
+          sub_config = config[cop_name]
+          next unless sub_config
+
+          sub_config[HEADER_SECTION_KEY] = extract_header_section(path, cop_name)
+          combined.update(config)
         end
       end
 
-      # Load YAML configuration from `.rubocop_todo.yml`.
-      # We consider this file already old, obsolete, and to be removed soon.
-      def load_config_old_todo_yml
-        path = File.expand_path(File.join(directory, '../.rubocop_todo.yml'))
-        config = YAML.load_file(path) if File.exist?(path)
+      def extract_header_section(path, cop_name)
+        lines = File.read(path)
 
-        config || {}
+        from_index = lines.index("---\n")
+        to_index = lines.index("#{cop_name}:\n", from_index || 0)
+
+        raise "Failed to find `#{cop_name}:` in `#{path}`" unless to_index
+
+        # Skip from `---\n` if present
+        from_index = from_index ? from_index + 4 : 0
+        # Skip to cop name excluding the (optional) leading newline in `\nCop/Name:\n`.
+        to_index -= 2 if to_index > 0
+
+        return if from_index >= to_index
+
+        lines[from_index..to_index]
       end
     end
   end

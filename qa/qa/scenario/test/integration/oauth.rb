@@ -6,6 +6,8 @@ module QA
       module Integration
         class OAuth < Test::Instance::All
           tags :oauth
+
+          pipeline_mappings test_on_cng: %w[cng-oauth]
         end
       end
     end

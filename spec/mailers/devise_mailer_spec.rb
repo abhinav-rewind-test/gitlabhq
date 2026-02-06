@@ -29,6 +29,7 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
       it "shows the expected text" do
         expect(subject.body.encoded).to have_text "Welcome"
         expect(subject.body.encoded).not_to have_text user.email
+        expect(subject).to have_link('Confirm your account', href: user_confirmation_url(confirmation_token: 'faketoken'))
       end
     end
 
@@ -54,6 +55,43 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
         expect(subject.body.encoded).to have_text user.email
       end
     end
+
+    context 'for secondary email' do
+      let(:secondary_email) { create(:email) }
+
+      subject { described_class.confirmation_instructions(secondary_email, 'faketoken', opts) }
+
+      it_behaves_like 'it validates recipients'
+
+      it 'has the correct subject and body', :aggregate_failures do
+        is_expected.to have_subject I18n.t('devise.mailer.confirmation_instructions.subject')
+
+        is_expected.to have_text_part_content(
+          format(_("%{name}, confirm your email address now!"), name: secondary_email.user.name)
+        )
+        is_expected.to have_html_part_content(
+          format(_("%{name}, confirm your email address now!"), name: secondary_email.user.name)
+        )
+
+        is_expected.to have_text_part_content(
+          secondary_email.email
+        )
+        is_expected.to have_html_part_content(
+          secondary_email.email
+        )
+
+        is_expected.to have_text_part_content(
+          format(_('Confirm this email address within %{cut_off_days} days, otherwise the email address is removed.'), cut_off_days: ApplicationSetting::USERS_UNCONFIRMED_SECONDARY_EMAILS_DELETE_AFTER_DAYS)
+        )
+        is_expected.to have_html_part_content(
+          format(_('Confirm this email address within %{cut_off_days} days, otherwise the email address is removed.'), cut_off_days: ApplicationSetting::USERS_UNCONFIRMED_SECONDARY_EMAILS_DELETE_AFTER_DAYS)
+        )
+
+        # user_id param can be removed once the emails table is re-sharded
+        # https://gitlab.com/gitlab-org/gitlab/-/work_items/585903
+        is_expected.to have_link('Confirm your email address', href: email_confirmation_url(confirmation_token: 'faketoken', user_id: secondary_email.user_id))
+      end
+    end
   end
 
   describe '#password_change_by_admin' do
@@ -71,15 +109,15 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
     end
 
     it 'has the correct subject' do
-      is_expected.to have_subject /^Password changed by administrator$/i
+      is_expected.to have_subject(/^Password changed by administrator$/i)
     end
 
     it 'includes the correct content' do
-      is_expected.to have_body_text /An administrator changed the password for your GitLab account/
+      is_expected.to have_body_text(/An administrator changed the password for your GitLab account/)
     end
 
     it 'includes a link to GitLab' do
-      is_expected.to have_body_text /#{Gitlab.config.gitlab.url}/
+      is_expected.to have_body_text(/#{Gitlab.config.gitlab.url}/)
     end
   end
 
@@ -102,11 +140,11 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
     end
 
     it 'greets the user' do
-      is_expected.to have_body_text /Hi #{user.name}!/
+      is_expected.to have_body_text(/Hi #{user.name}!/)
     end
 
     it 'includes the correct content' do
-      is_expected.to have_body_text /Your GitLab account request has been approved!/
+      is_expected.to have_body_text(/Your GitLab account request has been approved!/)
     end
 
     it 'includes a link to GitLab' do
@@ -135,17 +173,17 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
     end
 
     it 'greets the user' do
-      is_expected.to have_body_text /Hello, #{user.name}!/
+      is_expected.to have_body_text(/Hello, #{user.name}!/)
     end
 
     it 'includes the correct content' do
-      is_expected.to have_text /Someone, hopefully you, has requested to reset the password for your GitLab account on #{Gitlab.config.gitlab.url}/
-      is_expected.to have_body_text /If you did not perform this request, you can safely ignore this email./
-      is_expected.to have_body_text /Otherwise, click the link below to complete the process./
+      is_expected.to have_text(/Someone, hopefully you, has requested to reset the password for your GitLab account on #{Gitlab.config.gitlab.url}/)
+      is_expected.to have_body_text(/If you did not perform this request, you can safely ignore this email./)
+      is_expected.to have_body_text(/Otherwise, click the link below to complete the process./)
     end
 
     it 'includes a link to reset the password' do
-      is_expected.to have_link("Reset password", href: "#{Gitlab.config.gitlab.url}/users/password/edit?reset_password_token=faketoken")
+      is_expected.to have_link("Reset password", href: edit_user_password_url(reset_password_token: 'faketoken'))
     end
 
     it 'has the mailgun suppression bypass header' do
@@ -181,7 +219,7 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
     end
 
     it 'greets the user' do
-      is_expected.to have_body_text /Hello, #{user.name}!/
+      is_expected.to have_body_text(/Hello, #{user.name}!/)
     end
 
     context 'when self-managed' do
@@ -202,8 +240,45 @@ RSpec.describe DeviseMailer, feature_category: :user_management do
       end
 
       it 'includes changed email id' do
-        is_expected.to have_body_text /email is being changed to new_email@test.com./
+        is_expected.to have_body_text(/email is being changed to new_email@test.com./)
       end
+    end
+  end
+
+  describe '#unlock_instructions' do
+    let_it_be(:user) { create(:user) }
+    let(:unlock_text) do
+      "Your GitLab account has been locked due to an excessive number of unsuccessful sign in attempts. You can wait for your account to automatically unlock in 12 minutes or you can click the link below to unlock now."
+    end
+
+    subject { described_class.unlock_instructions(user, 'faketoken', opts) }
+
+    before do
+      stub_application_setting(failed_login_attempts_unlock_period_in_minutes: 12)
+      allow(Devise).to receive(:unlock_in).and_return(ActiveSupport::Duration.build(12.minutes))
+    end
+
+    it_behaves_like 'an email sent from GitLab'
+    it_behaves_like 'it validates recipients'
+
+    it 'is sent to the user' do
+      is_expected.to deliver_to user.email
+    end
+
+    it 'has the correct subject' do
+      is_expected.to have_subject 'Unlock instructions'
+    end
+
+    it 'greets the user' do
+      is_expected.to have_body_text(/Hello, #{user.name}!/)
+    end
+
+    it 'includes explanatory text' do
+      is_expected.to have_body_text(unlock_text)
+    end
+
+    it 'includes link to unlock' do
+      is_expected.to have_link('Unlock account', href: user_unlock_url(unlock_token: 'faketoken'))
     end
   end
 end

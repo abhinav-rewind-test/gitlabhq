@@ -1,10 +1,49 @@
 # frozen_string_literal: true
 
 class GraphqlController < ApplicationController
+  include Gitlab::Auth::AuthFinders
   extend ::Gitlab::Utils::Override
+
+  ERROR_STATUS_MAP = {
+    StandardError => { status: :internal },
+
+    # ApplicationController has similar rescues but we declare these again here because the
+    # `rescue_from StandardError` above would prevent these from bubbling up to ApplicationController.
+    # These also return errors in a JSON format similar to GraphQL errors.
+    ActionController::InvalidAuthenticityToken => { status: :unprocessable_entity },
+
+    # Domain errors -> 422
+    Gitlab::Graphql::Variables::Invalid => { status: :unprocessable_entity },
+    Gitlab::Graphql::Errors::ArgumentError => { status: :unprocessable_entity },
+    Issuables::GroupMembersFilterable::TooManyGroupMembersError => { status: :unprocessable_entity },
+    Issuables::GroupMembersFilterable::TooManyAssignedIssuesError => { status: :unprocessable_entity },
+
+    # Auth errors
+    Gitlab::Auth::RestrictedLanguageServerClientError => { status: :unauthorized },
+    Gitlab::Auth::DpopValidationError => { status: :unauthorized },
+
+    # # Other errors
+    Gitlab::Auth::TooManyIps => { status: :forbidden },
+    RateLimitedService::RateLimitedError => { status: :too_many_requests },
+    Gitlab::Git::ResourceExhaustedError => { status: :service_unavailable },
+    ActiveRecord::QueryAborted => { status: :service_unavailable },
+    ActiveRecord::QueryCanceled => {
+      status: :service_unavailable,
+      custom_message: 'Request timed out. Please try a less complex query or a smaller set of records.'
+    }
+  }.freeze
 
   # Unauthenticated users have access to the API for public data
   skip_before_action :authenticate_user!
+  # This is already handled by authorize_access_api!
+  skip_before_action :active_user_check
+  # CSRF protection is only necessary when the request is authenticated via a session cookie.
+  # Also, we allow anonymous users to access the API without a CSRF token so that it is easier for users
+  # to get started with our GraphQL API.
+  skip_before_action :verify_authenticity_token, if: -> {
+    current_user.nil? || sessionless_user? || !any_mutating_query?
+  }
+  skip_before_action :check_two_factor_requirement, if: -> { sessionless_user? }
 
   # Header can be passed by tests to disable SQL query limits.
   DISABLE_SQL_QUERY_LIMIT_HEADER = 'HTTP_X_GITLAB_DISABLE_SQL_QUERY_LIMIT'
@@ -16,23 +55,11 @@ class GraphqlController < ApplicationController
   CACHED_INTROSPECTION_QUERY_STRING = CachedIntrospectionQuery.query_string
   INTROSPECTION_QUERY_OPERATION_NAME = 'IntrospectionQuery'
 
-  # If a user is using their session to access GraphQL, we need to have session
-  # storage, since the admin-mode check is session wide.
-  # We can't enable this for anonymous users because that would cause users using
-  # enforced SSO from using an auth token to access the API.
-  skip_around_action :set_session_storage, unless: :current_user
-
-  # Allow missing CSRF tokens, this would mean that if a CSRF is invalid or missing,
-  # the user won't be authenticated but can proceed as an anonymous user.
-  #
-  # If a CSRF is valid, the user is authenticated. This makes it easier to play
-  # around in GraphiQL.
-  protect_from_forgery with: :null_session, only: :execute
-
   # must come first: current_user is set up here
-  before_action(only: [:execute]) { authenticate_sessionless_user!(:api) }
+  prepend_before_action { authenticate_sessionless_user!(:graphql_api) }
 
   before_action :authorize_access_api!
+  before_action(only: [:execute]) { check_dpop! }
   before_action :set_user_last_activity
   before_action :track_vs_code_usage
   before_action :track_jetbrains_usage
@@ -42,6 +69,7 @@ class GraphqlController < ApplicationController
   before_action :track_neovim_plugin_usage
   before_action :disable_query_limiting
   before_action :limit_query_size
+  before_action :enforce_language_server_restrictions
 
   before_action :disallow_mutations_for_get
 
@@ -60,58 +88,24 @@ class GraphqlController < ApplicationController
   # SLI. But queries could be multiplexed, so the total duration could be longer.
   urgency :low, [:execute]
 
+  rescue_from(*ERROR_STATUS_MAP.keys, with: :handle_exception)
+
   def execute
-    result = if introspection_query?
-               execute_introspection_query
+    result = if multiplex?
+               execute_multiplex
              else
-               multiplex? ? execute_multiplex : execute_query
+               introspection_query? ? execute_introspection_query : execute_query
              end
 
     render json: result
   end
 
-  rescue_from StandardError do |exception|
-    @exception_object = exception
-
-    log_exception(exception)
-
+  def handle_internal_error(exception)
     if Rails.env.test? || Rails.env.development?
       render_error("Internal server error: #{exception.message}", raised_at: exception.backtrace[0..10].join(' <-- '))
     else
       render_error("Internal server error")
     end
-  end
-
-  rescue_from Gitlab::Auth::TooManyIps do |exception|
-    log_exception(exception)
-
-    render_error(exception.message, status: :forbidden)
-  end
-
-  rescue_from Gitlab::Git::ResourceExhaustedError do |exception|
-    log_exception(exception)
-
-    response.headers.merge!(exception.headers)
-    render_error(exception.message, status: :service_unavailable)
-  end
-
-  rescue_from Gitlab::Graphql::Variables::Invalid do |exception|
-    render_error(exception.message, status: :unprocessable_entity)
-  end
-
-  rescue_from Gitlab::Graphql::Errors::ArgumentError do |exception|
-    render_error(exception.message, status: :unprocessable_entity)
-  end
-
-  rescue_from ::GraphQL::CoercionError do |exception|
-    render_error(exception.message, status: :unprocessable_entity)
-  end
-
-  rescue_from ActiveRecord::QueryAborted do |exception|
-    log_exception(exception)
-
-    error = "Request timed out. Please try a less complex query or a smaller set of records."
-    render_error(error, status: :service_unavailable)
   end
 
   override :feature_category
@@ -121,8 +115,57 @@ class GraphqlController < ApplicationController
 
   private
 
+  def handle_exception(exception)
+    @exception_object = exception
+    http_status = ERROR_STATUS_MAP.dig(exception.class, :status)
+    custom_message = ERROR_STATUS_MAP.dig(exception.class, :custom_message)
+
+    response.headers.merge!(exception.headers) if exception.respond_to?(:headers)
+
+    # For exceptions that support logging of the request
+    exception.try(:log_request, request, current_user)
+
+    log_exception(exception)
+
+    return handle_internal_error(exception) if http_status.nil? || http_status == :internal
+
+    render_error(custom_message || exception.message, status: http_status)
+  end
+
+  def check_dpop!
+    return unless !!sessionless_user? # DPoP is only enforced on token-based authentication
+    return unless current_user && Feature.enabled?(:dpop_authentication, current_user)
+
+    token = extract_personal_access_token
+    return unless PersonalAccessToken.find_by_token(token.to_s) # The token is not PAT, exit early
+
+    # For authenticated requests we check if the user has DPoP enabled
+    ::Auth::DpopAuthenticationService.new(current_user: current_user,
+      personal_access_token_plaintext: token,
+      request: current_request).execute
+  end
+
+  def enforce_language_server_restrictions
+    response = Gitlab::Auth::EditorExtensions::LanguageServerClientVerifier.new(
+      current_user: current_user,
+      request: current_request
+    ).execute
+
+    raise Gitlab::Auth::RestrictedLanguageServerClientError, response.message if response.error?
+  end
+
+  def permitted_params
+    @permitted_params ||= multiplex? ? permitted_multiplex_params : permitted_standalone_query_params
+  end
+
+  def permitted_standalone_query_params
+    params.permit(:query, :operationName, :remove_deprecated, variables: {}).tap do |permitted_params|
+      permitted_params[:variables] = params[:variables]
+    end
+  end
+
   def permitted_multiplex_params
-    params.permit(_json: [:query, :operationName, { variables: {} }])
+    params.permit(:remove_deprecated, _json: [:query, :operationName, { variables: {} }])
   end
 
   def disallow_mutations_for_get
@@ -144,13 +187,13 @@ class GraphqlController < ApplicationController
 
   def any_mutating_query?
     if multiplex?
-      multiplex_queries.any? { |q| mutation?(q[:query], q[:operation_name]) }
+      multiplex_param.any? { |q| mutation?(q[:query], q[:operationName]) }
     else
       mutation?(query)
     end
   end
 
-  def mutation?(query_string, operation_name = params[:operationName])
+  def mutation?(query_string, operation_name = permitted_params[:operationName])
     ::GraphQL::Query.new(GitlabSchema, query_string, operation_name: operation_name).mutation?
   end
 
@@ -158,10 +201,16 @@ class GraphqlController < ApplicationController
   def disable_query_limiting
     return unless Gitlab::QueryLimiting.enabled_for_env?
 
-    disable_issue = request.headers[DISABLE_SQL_QUERY_LIMIT_HEADER]
-    return unless disable_issue
+    disable_reference = request.headers[DISABLE_SQL_QUERY_LIMIT_HEADER]
+    return unless disable_reference
 
-    Gitlab::QueryLimiting.disable!(disable_issue)
+    first, second = disable_reference.split(',')
+
+    if first.match?(/^\d+$/)
+      Gitlab::QueryLimiting.disable!(second, new_threshold: first&.to_i)
+    else
+      Gitlab::QueryLimiting.disable!(first)
+    end
   end
 
   def set_user_last_activity
@@ -206,14 +255,13 @@ class GraphqlController < ApplicationController
   end
 
   def execute_query
-    variables = build_variables(params[:variables])
-    operation_name = params[:operationName]
-
+    variables = build_variables(permitted_params[:variables])
+    operation_name = permitted_params[:operationName]
     GitlabSchema.execute(query, variables: variables, context: context, operation_name: operation_name)
   end
 
   def query
-    params.fetch(:query, '')
+    GraphQL::Language.escape_single_quoted_newlines(permitted_params.fetch(:query, '').to_s)
   end
 
   def multiplex_param
@@ -238,9 +286,11 @@ class GraphqlController < ApplicationController
     @context ||= {
       current_user: current_user,
       is_sessionless_user: api_user,
+      current_organization: Current.organization,
       request: request,
       scope_validator: ::Gitlab::Auth::ScopeValidator.new(api_user, request_authenticator),
-      remove_deprecated: Gitlab::Utils.to_boolean(params[:remove_deprecated], default: false)
+      remove_deprecated: Gitlab::Utils.to_boolean(permitted_params[:remove_deprecated], default: false),
+      access_token: access_token
     }
   end
 
@@ -257,7 +307,7 @@ class GraphqlController < ApplicationController
   def authorize_access_api!
     if current_user.nil? &&
         request_authenticator.authentication_token_present?
-      render_error('Invalid token', status: :unauthorized)
+      return render_error('Invalid token', status: :unauthorized)
     end
 
     return if can?(current_user, :access_api)
@@ -293,6 +343,8 @@ class GraphqlController < ApplicationController
   end
 
   def execute_introspection_query
+    context[:introspection] = true
+
     if introspection_query_can_use_cache?
       # Context for caching: https://gitlab.com/gitlab-org/gitlab/-/issues/409448
       Rails.cache.fetch(
@@ -319,8 +371,8 @@ class GraphqlController < ApplicationController
   end
 
   def introspection_query?
-    if params.key?(:operationName)
-      params[:operationName] == INTROSPECTION_QUERY_OPERATION_NAME
+    if permitted_params.key?(:operationName)
+      permitted_params[:operationName] == INTROSPECTION_QUERY_OPERATION_NAME
     else
       # If we don't provide operationName param, we infer it from the query
       graphql_query_object.selected_operation_name == INTROSPECTION_QUERY_OPERATION_NAME
@@ -329,6 +381,8 @@ class GraphqlController < ApplicationController
 
   def graphql_query_object
     @graphql_query_object ||= GraphQL::Query.new(GitlabSchema, query: query,
-      variables: build_variables(params[:variables]))
+      variables: build_variables(permitted_params[:variables]))
   end
 end
+
+GraphqlController.prepend_mod_with('GraphqlController')

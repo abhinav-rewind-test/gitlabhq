@@ -3,11 +3,12 @@ import VueApollo from 'vue-apollo';
 import VueRouter from 'vue-router';
 import createDefaultClient from '~/lib/graphql';
 import { convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
-import { ORGANIZATION_ROOT_ROUTE_NAME } from '../constants';
+import { ORGANIZATION_ROOT_ROUTE_NAME } from '~/organizations/shared/constants';
+import { userPreferenceSortName, userPreferenceSortDirection } from './utils';
 import App from './components/app.vue';
 
 export const createRouter = () => {
-  const routes = [{ path: '/', name: ORGANIZATION_ROOT_ROUTE_NAME }];
+  const routes = [{ path: '/', name: ORGANIZATION_ROOT_ROUTE_NAME, component: App }];
 
   const router = new VueRouter({
     routes,
@@ -28,13 +29,13 @@ export const initOrganizationsGroupsAndProjects = () => {
   } = el;
   const {
     organizationGid,
-    projectsEmptyStateSvgPath,
-    groupsEmptyStateSvgPath,
     newGroupPath,
     newProjectPath,
     canCreateGroup,
     canCreateProject,
     hasGroups,
+    userPreferenceSort,
+    userPreferenceDisplay,
   } = convertObjectPropsToCamelCase(JSON.parse(appData));
 
   Vue.use(VueRouter);
@@ -50,13 +51,14 @@ export const initOrganizationsGroupsAndProjects = () => {
     router,
     provide: {
       organizationGid,
-      projectsEmptyStateSvgPath,
-      groupsEmptyStateSvgPath,
       newGroupPath,
       newProjectPath,
       canCreateGroup,
       canCreateProject,
       hasGroups,
+      userPreferenceSortName: userPreferenceSortName(userPreferenceSort),
+      userPreferenceSortDirection: userPreferenceSortDirection(userPreferenceSort),
+      userPreferenceDisplay,
     },
     render(createElement) {
       return createElement(App);

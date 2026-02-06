@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Sidebars::Admin::Menus::AdminOverviewMenu, feature_category: :navigation do
+RSpec.describe Sidebars::Admin::Menus::AdminOverviewMenu, :enable_admin_mode, feature_category: :navigation do
   let(:user) { build_stubbed(:user, :admin) }
   let(:context) { Sidebars::Context.new(current_user: user, container: nil) }
 
@@ -22,15 +22,9 @@ RSpec.describe Sidebars::Admin::Menus::AdminOverviewMenu, feature_category: :nav
     describe 'Organizations' do
       let(:item_id) { :organizations }
 
-      context 'when ui_for_organizations feature flag is enabled' do
-        it { is_expected.not_to be_nil }
-      end
+      it { is_expected.not_to be_nil }
 
-      context 'when ui_for_organizations feature flag is disabled' do
-        before do
-          stub_feature_flags(ui_for_organizations: false)
-        end
-
+      context 'when ui_for_organizations_enabled? is false', :ui_for_organizations_disabled do
         it { is_expected.to be_nil }
       end
     end

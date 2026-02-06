@@ -9,13 +9,13 @@ RSpec.describe RuboCop::Cop::Rake::Require do
 
   describe '#in_rake_file?' do
     context 'in a Rake file' do
-      let(:node) { double(location: double(expression: double(source_buffer: double(name: 'foo/bar.rake')))) } # rubocop:disable RSpec/VerifiedDoubles
+      let(:node) { double(source_range: double(source_buffer: double(name: 'foo/bar.rake'))) } # rubocop:disable RSpec/VerifiedDoubles
 
       it { expect(subject.__send__(:in_rake_file?, node)).to be(true) }
     end
 
     context 'when outside of a Rake file' do
-      let(:node) { double(location: double(expression: double(source_buffer: double(name: 'foo/bar.rb')))) } # rubocop:disable RSpec/VerifiedDoubles
+      let(:node) { double(source_range: double(source_buffer: double(name: 'foo/bar.rb'))) } # rubocop:disable RSpec/VerifiedDoubles
 
       it { expect(subject.__send__(:in_rake_file?, node)).to be(false) }
     end
@@ -26,12 +26,32 @@ RSpec.describe RuboCop::Cop::Rake::Require do
       allow(cop).to receive(:in_rake_file?).and_return(true)
     end
 
-    it 'registers an offenses for require methods' do
+    it 'registers offenses for require methods' do
       expect_offense(<<~RUBY)
         require 'json'
         ^^^^^^^^^^^^^^ #{msg}
         require_relative 'gitlab/json'
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{msg}
+      RUBY
+    end
+
+    it 'registers offenses for require methods inside `namespace` definitions' do
+      expect_offense(<<~RUBY)
+        namespace :foo do
+          require 'json'
+          ^^^^^^^^^^^^^^ #{msg}
+
+          task :parse do
+          end
+        end
+
+        namespace :bar do
+          require_relative 'gitlab/json'
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #{msg}
+
+          task :parse do
+          end
+        end
       RUBY
     end
 
@@ -63,8 +83,13 @@ RSpec.describe RuboCop::Cop::Rake::Require do
           require 'json'
         end
 
+        def self.run
+          require 'yaml'
+        end
+
         task :parse do
           load_deps
+          run
         end
       RUBY
     end
@@ -83,7 +108,7 @@ RSpec.describe RuboCop::Cop::Rake::Require do
       allow(cop).to receive(:in_rake_file?).and_return(false)
     end
 
-    it 'registers an offenses for require methods' do
+    it 'does not register an offenses for require methods' do
       expect_no_offenses("require 'json'")
     end
   end

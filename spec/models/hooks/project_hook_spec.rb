@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe ProjectHook, feature_category: :webhooks do
+RSpec.describe ProjectHook, feature_category: :webhooks, quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16829' do
   include_examples 'a hook that gets automatically disabled on failure' do
     let_it_be(:project) { create(:project) }
 
@@ -17,6 +17,16 @@ RSpec.describe ProjectHook, feature_category: :webhooks do
 
   describe 'associations' do
     it { is_expected.to belong_to :project }
+    it { is_expected.to have_many(:web_hook_logs) }
+  end
+
+  describe '#destroy' do
+    it 'does not cascade to web_hook_logs' do
+      web_hook = create(:project_hook)
+      create_list(:web_hook_log, 3, web_hook: web_hook)
+
+      expect { web_hook.destroy! }.not_to change { web_hook.web_hook_logs.count }
+    end
   end
 
   describe 'validations' do
@@ -78,140 +88,17 @@ RSpec.describe ProjectHook, feature_category: :webhooks do
     end
   end
 
-  describe '#update_last_failure', :clean_gitlab_redis_shared_state do
-    let_it_be(:hook) { create(:project_hook) }
-
-    def last_failure
-      Gitlab::Redis::SharedState.with do |redis|
-        redis.get(hook.project.last_failure_redis_key)
+  describe '.available_hooks' do
+    context 'without EE license', unless: Gitlab.ee? do
+      it 'returns all available hooks' do
+        expect(described_class.available_hooks).to match_array(described_class::AVAILABLE_HOOKS)
       end
     end
 
-    def any_failed?
-      Gitlab::Redis::SharedState.with do |redis|
-        Gitlab::Utils.to_boolean(redis.get(hook.project.web_hook_failure_redis_key))
-      end
-    end
-
-    it 'is a method of this class' do
-      expect { hook.update_last_failure }.not_to raise_error
-    end
-
-    context 'when the hook is executable' do
-      let(:redis_key) { hook.project.web_hook_failure_redis_key }
-
-      def redis_value
-        any_failed?
-      end
-
-      context 'when the state was previously failing' do
-        before do
-          Gitlab::Redis::SharedState.with do |redis|
-            redis.set(redis_key, true)
-          end
-        end
-
-        it 'does update the state' do
-          expect { hook.update_last_failure }.to change { redis_value }.to(false)
-        end
-
-        context 'when there is another failing sibling hook' do
-          before do
-            create(:project_hook, :permanently_disabled, project: hook.project)
-          end
-
-          it 'does not update the state' do
-            expect { hook.update_last_failure }.not_to change { redis_value }.from(true)
-          end
-
-          it 'caches the current value' do
-            Gitlab::Redis::SharedState.with do |redis|
-              expect(redis).to receive(:set).with(redis_key, 'true', ex: 1.hour).and_call_original
-            end
-
-            hook.update_last_failure
-          end
-        end
-      end
-
-      context 'when the state was previously unknown' do
-        before do
-          Gitlab::Redis::SharedState.with do |redis|
-            redis.del(redis_key)
-          end
-        end
-
-        it 'does not update the state' do
-          expect { hook.update_last_failure }.not_to change { redis_value }.from(nil)
-        end
-      end
-
-      context 'when the state was previously not failing' do
-        before do
-          Gitlab::Redis::SharedState.with do |redis|
-            redis.set(redis_key, false)
-          end
-        end
-
-        it 'does not update the state' do
-          expect { hook.update_last_failure }.not_to change { redis_value }.from(false)
-        end
-
-        it 'does not cache the current value' do
-          Gitlab::Redis::SharedState.with do |redis|
-            expect(redis).not_to receive(:set)
-          end
-
-          hook.update_last_failure
-        end
-      end
-    end
-
-    context 'when the hook is failed' do
-      before do
-        allow(hook).to receive(:executable?).and_return(false)
-      end
-
-      context 'there is no prior value', :freeze_time do
-        it 'updates last_failure' do
-          expect { hook.update_last_failure }.to change { last_failure }.to(Time.current)
-        end
-
-        it 'updates any_failed?' do
-          expect { hook.update_last_failure }.to change { any_failed? }.to(true)
-        end
-      end
-
-      context 'when there is a prior last_failure, from before now' do
-        it 'updates the state' do
-          the_future = 1.minute.from_now
-          hook.update_last_failure
-
-          travel_to(the_future) do
-            expect { hook.update_last_failure }.to change { last_failure }.to(the_future.iso8601)
-          end
-        end
-
-        it 'does not change the failing state' do
-          the_future = 1.minute.from_now
-          hook.update_last_failure
-
-          travel_to(the_future) do
-            expect { hook.update_last_failure }.not_to change { any_failed? }.from(true)
-          end
-        end
-      end
-
-      context 'there is a prior value, from after now' do
-        it 'does not update the state' do
-          the_past = 1.minute.ago
-
-          hook.update_last_failure
-
-          travel_to(the_past) do
-            expect { hook.update_last_failure }.not_to change { last_failure }
-          end
-        end
+    context 'with EE license', if: Gitlab.ee? do
+      it 'returns all available hooks, including EE hooks' do
+        expect(described_class.available_hooks).to match_array(
+          described_class::AVAILABLE_HOOKS + EE::ProjectHook::EE_AVAILABLE_HOOKS)
       end
     end
   end

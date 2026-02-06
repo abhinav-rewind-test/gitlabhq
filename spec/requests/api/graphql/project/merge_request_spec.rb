@@ -24,9 +24,13 @@ RSpec.describe 'getting merge request information nested in a project', feature_
     # we exclude Project.pipeline because it needs arguments,
     # codequalityReportsComparer because it is behind a feature flag
     # and runners because the user is not an admin and therefore has no access
-    # and inboundAllowlistCount, groupsAllowlistCount the user has no access
+    # and inboundAllowlistCount, groupsAllowlistCount, groupAllowlistAutopopulatedIds,
+    #   inboundAllowlistAutopopulatedIds the user has no access
+    # mergeTrains because it is a licensed feature
     let(:excluded) do
-      %w[jobs pipeline runners codequalityReportsComparer mlModels inboundAllowlistCount groupsAllowlistCount]
+      %w[jobs pipeline runners codequalityReportsComparer
+        mlModels inboundAllowlistCount groupsAllowlistCount mergeTrains ciJobTokenAuthLogs mlExperiments
+        groupAllowlistAutopopulatedIds inboundAllowlistAutopopulatedIds]
     end
 
     let(:mr_fields) { all_graphql_fields_for('MergeRequest', excluded: excluded) }
@@ -83,7 +87,11 @@ RSpec.describe 'getting merge request information nested in a project', feature_
     end
   end
 
-  context 'when the merge_request has committers' do
+  shared_examples 'when the merge_request has committers' do
+    # we need to create users with emails that match the committers in gitlab-test repository
+    let!(:user1) { create(:user, email: "dmitriy.zaporozhets@gmail.com") }
+    let!(:user2) { create(:user, email: "douwe@gitlab.com") }
+
     let(:mr_fields) do
       <<~SELECT
       committers { nodes { id username } }
@@ -91,13 +99,12 @@ RSpec.describe 'getting merge request information nested in a project', feature_
     end
 
     it 'includes committers' do
-      expected = merge_request.committers.map do |r|
-        a_hash_including('id' => global_id_of(r), 'username' => r.username)
-      end
-
       post_graphql(query, current_user: current_user)
 
-      expect(graphql_data_at(:project, :merge_request, :committers, :nodes)).to match_array(expected)
+      expected = graphql_data_at(:project, :merge_request, :committers, :nodes)
+
+      expect(expected).not_to be_empty
+      expect(expected).to all(include('id', 'username'))
     end
   end
 
@@ -193,22 +200,62 @@ RSpec.describe 'getting merge request information nested in a project', feature_
     end
   end
 
-  it 'includes correct mergedAt value when merged' do
-    time = 1.week.ago
-    merge_request.mark_as_merged
-    merge_request.metrics.update!(merged_at: time)
+  describe 'mergedAt' do
+    let(:merged_at) { merge_request_graphql_data['mergedAt'] }
 
-    post_graphql(query, current_user: current_user)
-    retrieved = merge_request_graphql_data['mergedAt']
+    subject(:graphql_query) { post_graphql(query, current_user: current_user) }
 
-    expect(Time.zone.parse(retrieved)).to be_within(1.second).of(time)
+    context 'when the merge request is merged' do
+      let_it_be(:time) { 1.week.ago }
+
+      before do
+        merge_request.mark_as_merged
+        merge_request.metrics.update!(merged_at: time)
+      end
+
+      it 'includes correct mergedAt value' do
+        graphql_query
+
+        expect(Time.zone.parse(merged_at)).to be_within(1.second).of(time)
+      end
+    end
+
+    context 'when the merge request is not merged' do
+      it 'includes nil mergedAt value' do
+        graphql_query
+
+        expect(merged_at).to be_nil
+      end
+    end
   end
 
-  it 'includes nil mergedAt value when not merged' do
-    post_graphql(query, current_user: current_user)
-    retrieved = merge_request_graphql_data['mergedAt']
+  describe 'closedAt' do
+    let(:closed_at) { merge_request_graphql_data['closedAt'] }
 
-    expect(retrieved).to be_nil
+    subject(:graphql_query) { post_graphql(query, current_user: current_user) }
+
+    context 'when the merge request is closed' do
+      let_it_be(:time) { 1.week.ago }
+
+      before do
+        merge_request.close!
+        merge_request.metrics.update!(latest_closed_at: time)
+      end
+
+      it 'includes correct closedAt value' do
+        graphql_query
+
+        expect(Time.zone.parse(closed_at)).to be_within(1.second).of(time)
+      end
+    end
+
+    context 'when the merge request is not closed' do
+      it 'includes nil closedAt value' do
+        graphql_query
+
+        expect(closed_at).to be_nil
+      end
+    end
   end
 
   describe 'permissions on the merge request' do
@@ -413,19 +460,19 @@ RSpec.describe 'getting merge request information nested in a project', feature_
         project.add_maintainer(user)
         assign_user(user)
         r = merge_request.merge_request_reviewers.find_or_create_by!(reviewer: user)
-        r.update!(state: 'reviewed')
+        r.update!(state: :approved)
         merge_request.approved_by_users << user
       end
 
       it 'returns appropriate data' do
         post_graphql(query)
-        enum = ::Types::MergeRequestReviewStateEnum.values['REVIEWED']
+        enum = ::Types::MergeRequestReviewStateEnum.values['APPROVED']
 
         expect(interaction_data).to contain_exactly a_hash_including(
           'canMerge' => true,
           'canUpdate' => true,
           'reviewState' => enum.graphql_name,
-          'reviewed' => true,
+          'reviewed' => false,
           'approved' => true
         )
       end

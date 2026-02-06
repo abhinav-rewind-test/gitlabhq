@@ -1,5 +1,6 @@
 import { GlSorting, GlFilteredSearch } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
+import { markRaw } from 'vue';
 import { FILTERED_SEARCH_TERM } from '~/vue_shared/components/filtered_search_bar/constants';
 import component from '~/vue_shared/components/registry/registry_search.vue';
 
@@ -12,7 +13,7 @@ describe('Registry Search', () => {
   const defaultProps = {
     filters: [],
     sorting: { sort: 'asc', orderBy: 'name' },
-    tokens: [{ type: 'foo' }],
+    tokens: [{ type: 'foo', token: markRaw({}) }],
     sortableFields: [
       { label: 'name', orderBy: 'name' },
       { label: 'baz', orderBy: 'bar' },
@@ -20,9 +21,9 @@ describe('Registry Search', () => {
   };
 
   const defaultQueryChangedPayload = {
-    foo: '',
+    foo: null,
     orderBy: 'name',
-    search: [],
+    search: null,
     sort: 'asc',
     after: null,
     before: null,
@@ -47,7 +48,9 @@ describe('Registry Search', () => {
       expect(findFilteredSearch().props()).toMatchObject({
         value: [],
         placeholder: 'Filter results',
-        availableTokens: wrapper.vm.tokens,
+        termsAsTokens: true,
+        searchTextOptionLabel: 'Search for this text',
+        availableTokens: defaultProps.tokens,
       });
     });
 
@@ -75,12 +78,6 @@ describe('Registry Search', () => {
       expect(wrapper.emitted('filter:changed')).toEqual([[[]]]);
       expect(wrapper.emitted('filter:submit')).toEqual([[]]);
       expect(wrapper.emitted('query:changed')).toEqual([[defaultQueryChangedPayload]]);
-    });
-
-    it('binds tokens prop', () => {
-      mountComponent();
-
-      expect(findFilteredSearch().props('availableTokens')).toEqual(defaultProps.tokens);
     });
   });
 

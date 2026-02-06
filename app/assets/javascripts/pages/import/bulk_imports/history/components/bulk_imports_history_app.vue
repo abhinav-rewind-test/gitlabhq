@@ -7,6 +7,7 @@ import {
   GlTableLite,
   GlTooltipDirective as GlTooltip,
 } from '@gitlab/ui';
+import EMPTY_STATE_SVG_URL from '@gitlab/svgs/dist/illustrations/status/status-nothing-md.svg';
 import { isEmpty, isEqual } from 'lodash';
 
 import { s__, __ } from '~/locale';
@@ -23,8 +24,9 @@ import { WORKSPACE_GROUP, WORKSPACE_PROJECT } from '~/issues/constants';
 import PaginationBar from '~/vue_shared/components/pagination_bar/pagination_bar.vue';
 import TimeAgo from '~/vue_shared/components/time_ago_tooltip.vue';
 import LocalStorageSync from '~/vue_shared/components/local_storage_sync.vue';
+import PageHeading from '~/vue_shared/components/page_heading.vue';
 
-import { isImporting } from '../utils';
+import { isFailed, isImporting } from '../utils';
 import { DEFAULT_ERROR } from '../utils/error_messages';
 
 const DEFAULT_PER_PAGE = 20;
@@ -35,7 +37,7 @@ const tableCell = (config) => ({
   tdClass: (value, key, item) => {
     return {
       // eslint-disable-next-line no-underscore-dangle
-      'gl-border-b-0!': item._showDetails,
+      '!gl-border-b-0': item._showDetails,
     };
   },
   ...config,
@@ -53,13 +55,21 @@ export default {
     ImportStatus,
     TimeAgo,
     LocalStorageSync,
+    PageHeading,
   },
 
   directives: {
     GlTooltip,
   },
 
-  inject: ['realtimeChangesPath'],
+  inject: {
+    detailsPath: {
+      default: undefined,
+    },
+    realtimeChangesPath: {
+      default: undefined,
+    },
+  },
 
   props: {
     id: {
@@ -85,12 +95,12 @@ export default {
     tableCell({
       key: 'source_full_path',
       label: s__('BulkImport|Source'),
-      thClass: `gl-w-30p`,
+      thClass: `gl-w-3/10`,
     }),
     tableCell({
       key: 'destination_name',
       label: s__('BulkImport|Destination'),
-      thClass: `gl-w-30p`,
+      thClass: `gl-w-3/10`,
     }),
     tableCell({
       key: 'created_at',
@@ -99,7 +109,7 @@ export default {
     tableCell({
       key: 'status',
       label: __('Status'),
-      thClass: `gl-w-quarter`,
+      thClass: `gl-w-1/4`,
     }),
   ],
 
@@ -154,10 +164,13 @@ export default {
         const updateItem = this.historyItems[updateItemIndex];
 
         if (updateItem.status !== update.status_name) {
-          this.$set(this.historyItems, updateItemIndex, {
+          const copy = [...this.historyItems];
+          copy[updateItemIndex] = {
             ...updateItem,
             status: update.status_name,
-          });
+          };
+
+          this.historyItems = copy;
         }
       },
     });
@@ -211,6 +224,28 @@ export default {
       return !isEmpty(item.stats);
     },
 
+    showFailuresLinkInStatus(item) {
+      if (isFailed(item.status)) {
+        return true;
+      }
+      // Import has failures but no stats
+      if (item.has_failures && !this.hasStats(item)) {
+        return true;
+      }
+
+      return false;
+    },
+
+    failuresLinkHref(item) {
+      if (!item.has_failures) {
+        return '';
+      }
+
+      return this.detailsPath
+        .replace(':id', encodeURIComponent(item.bulk_import_id))
+        .replace(':entity_id', encodeURIComponent(item.id));
+    },
+
     getEntityTooltip(item) {
       switch (item.entity_type) {
         case WORKSPACE_PROJECT:
@@ -231,23 +266,21 @@ export default {
   gitlabLogo: window.gon.gitlab_logo,
   historyPaginationSizePersistKey: HISTORY_PAGINATION_SIZE_PERSIST_KEY,
   BULK_IMPORT_STATIC_ITEMS,
+  EMPTY_STATE_SVG_URL,
 };
 </script>
 
 <template>
   <div>
-    <h1 class="gl-font-size-h1 gl-my-0 gl-py-4 gl-display-flex gl-align-items-center gl-gap-3">
-      <img :src="$options.gitlabLogo" class="gl-w-6 gl-h-6" />
-      <span>{{ s__('BulkImport|Direct transfer history') }}</span>
-    </h1>
-
     <gl-loading-icon v-if="loading" size="lg" class="gl-mt-5" />
     <gl-empty-state
       v-else-if="!hasHistoryItems"
+      :svg-path="$options.EMPTY_STATE_SVG_URL"
       :title="s__('BulkImport|No history is available')"
-      :description="s__('BulkImport|Your imported groups and projects will appear here.')"
+      :description="s__('BulkImport|Your imported groups and projects appear here.')"
     />
     <template v-else>
+      <page-heading :heading="s__('BulkImport|Migration history')" />
       <gl-table-lite :fields="$options.fields" :items="historyItems" class="gl-w-full">
         <template #cell(destination_name)="{ item }">
           <gl-icon
@@ -255,7 +288,7 @@ export default {
             :name="item.entity_type"
             :title="getEntityTooltip(item)"
             :aria-label="getEntityTooltip(item)"
-            class="gl-text-gray-500"
+            variant="subtle"
           />
           <gl-link
             v-if="item.destination_full_path"
@@ -266,19 +299,19 @@ export default {
           </gl-link>
           <span v-else>{{ destinationText(item) }}</span>
         </template>
-        <template #cell(created_at)="{ value }">
+        <template #cell(created_at)="{ value = '' }">
           <time-ago :time="value" />
         </template>
         <template #cell(status)="{ value, item }">
           <div>
             <import-status
-              :id="item.bulk_import_id"
-              :entity-id="item.id"
               :has-failures="item.has_failures"
+              :failures-href="showFailuresLinkInStatus(item) ? failuresLinkHref(item) : null"
               :status="value"
             />
             <import-stats
               v-if="hasStats(item)"
+              :failures-href="failuresLinkHref(item)"
               :stats="item.stats"
               :stats-mapping="$options.BULK_IMPORT_STATIC_ITEMS"
               :status="value"

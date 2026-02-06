@@ -8,6 +8,7 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
   let(:user) { create(:user) }
 
   before do
+    stub_feature_flags(new_project_creation_form: false)
     sign_in(user)
     create(:personal_key, user: user)
   end
@@ -18,12 +19,19 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
     click_link 'Create blank project'
     fill_in(:project_name, with: 'Empty')
 
+    click_on 'Pick a group or namespace'
+    select_listbox_item user.username
+
     expect(page).to have_checked_field 'Initialize repository with a README'
     uncheck 'Initialize repository with a README'
 
     page.within('#content-body') do
       click_button('Create project')
     end
+
+    # Waiting for page to load to project is created in the backend
+    expect(page).to have_content("successfully created")
+    wait_for_requests
 
     project = Project.last
 
@@ -40,6 +48,9 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
     click_link 'Create blank project'
     fill_in(:project_name, with: 'With initial commits')
 
+    click_on 'Pick a group or namespace'
+    select_listbox_item user.username
+
     expect(page).to have_checked_field 'Initialize repository with a README'
     expect(page).to have_unchecked_field 'Enable Static Application Security Testing (SAST)'
 
@@ -48,6 +59,10 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
     page.within('#content-body') do
       click_button('Create project')
     end
+
+    # Waiting for page to load to project is created in the backend
+    expect(page).to have_content("successfully created")
+    wait_for_requests
 
     project = Project.last
 
@@ -67,6 +82,9 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
       click_button 'Experimental settings'
       fill_in(:project_name, with: 'With initial commits')
 
+      click_on 'Pick a group or namespace'
+      select_listbox_item user.username
+
       expect(page).to have_checked_field 'Initialize repository with a README'
       expect(page).to have_unchecked_field sha256_field
 
@@ -75,6 +93,10 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
       page.within('#content-body') do
         click_button('Create project')
       end
+
+      # Waiting for page to load to project is created in the backend
+      expect(page).to have_content("successfully created")
+      wait_for_requests
 
       project = Project.last
 
@@ -117,7 +139,9 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
 
       click_button('Create project')
 
+      # Waiting for page to load to project is created in the backend
       expect(page).to have_content("Project 'A Subgroup Project' was successfully created")
+      wait_for_requests
 
       project = Project.last
 
@@ -125,8 +149,8 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
     end
   end
 
-  context 'in a group with DEVELOPER_MAINTAINER_PROJECT_ACCESS project_creation_level' do
-    let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_MAINTAINER_PROJECT_ACCESS) }
+  context 'in a group with DEVELOPER_PROJECT_ACCESS project_creation_level' do
+    let(:group) { create(:group, project_creation_level: ::Gitlab::Access::DEVELOPER_PROJECT_ACCESS) }
 
     before do
       group.add_developer(user)
@@ -139,14 +163,58 @@ RSpec.describe 'User creates a project', :js, feature_category: :groups_and_proj
       fill_in :project_name, with: 'a-new-project'
       fill_in :project_path, with: 'a-new-project'
 
+      click_on 'Pick a group or namespace'
+      select_listbox_item group.full_path
+
       page.within('#content-body') do
         click_button('Create project')
       end
 
+      # Waiting for page to load to project is created in the backend
       expect(page).to have_content("Project 'a-new-project' was successfully created")
+      wait_for_requests
 
       project = Project.find_by(name: 'a-new-project')
       expect(project.namespace).to eq(group)
+    end
+  end
+
+  context 'when creating a project with default active instance integration' do
+    it 'creates a new project' do
+      integration = create(:jira_integration, :instance, active: true)
+
+      expect(integration.active?).to be(true)
+      expect(integration.instance?).to be(true)
+
+      visit(new_project_path)
+
+      click_link 'Create blank project'
+      fill_in(:project_name, with: 'With Default Integration')
+
+      click_on 'Pick a group or namespace'
+      select_listbox_item user.username
+
+      page.within('#content-body') do
+        click_button('Create project')
+      end
+
+      # Waiting for page to load to project is created in the backend
+      expect(page).to have_content("Project 'With Default Integration' was successfully created")
+      wait_for_requests
+
+      project = Project.last
+
+      expect(page).to have_current_path(project_path(project), ignore_query: true)
+
+      visit(project_settings_integrations_path(project))
+
+      within_testid('active-integrations-table') do
+        expect(page).to have_content("Jira issues")
+        expect(page).to have_content("Use Jira as this project's issue tracker.")
+      end
+
+      expect(project.jira_integration).to be_present
+      expect(project.jira_integration.inherit_from_id).to eq(integration.id)
     end
   end
 end

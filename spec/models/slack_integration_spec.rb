@@ -9,6 +9,28 @@ RSpec.describe SlackIntegration, feature_category: :integrations do
     it { is_expected.to belong_to(:integration) }
   end
 
+  describe 'constant' do
+    it 'is expected that DEFAULT_ALIAS is defined with the correct value' do
+      expect(described_class::ORGANIZATION_ALIAS).to eq('gitlab-organization')
+    end
+  end
+
+  describe '.organization_alias' do
+    it 'returns organization alias with org_id provided' do
+      expect(described_class.organization_alias(1)).to eq('gitlab-organization-1')
+    end
+
+    context 'when organization_id is not an integer' do
+      it 'raises ArgumentError', :aggregate_failures do
+        expect { described_class.organization_alias(nil) }
+          .to raise_error ArgumentError, 'organization_id must be an Integer'
+
+        expect { described_class.organization_alias('1') }
+          .to raise_error ArgumentError, 'organization_id must be an Integer'
+      end
+    end
+  end
+
   describe 'authorized_scope_names' do
     subject(:slack_integration) { integration }
 
@@ -173,5 +195,14 @@ RSpec.describe SlackIntegration, feature_category: :integrations do
     it { is_expected.to validate_presence_of(:alias) }
     it { is_expected.to validate_presence_of(:user_id) }
     it { is_expected.to validate_presence_of(:integration) }
+    it { is_expected.to validate_length_of(:bot_access_token).is_at_most(255) }
+
+    specify 'bot_access_token length validation does not invalidate existing records' do
+      slack_integration = create(:slack_integration)
+      slack_integration.bot_access_token = 'A' * 260
+      slack_integration.save!(validate: false)
+
+      expect(slack_integration.reload).to be_valid
+    end
   end
 end

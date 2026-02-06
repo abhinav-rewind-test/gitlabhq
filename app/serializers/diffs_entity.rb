@@ -39,31 +39,25 @@ class DiffsEntity < Grape::Entity
     options[:latest_diff]
   end
 
-  expose :latest_version_path, if: -> (*) { merge_request } do |diffs|
+  expose :latest_version_path, if: ->(*) { merge_request } do |diffs|
     diffs_project_merge_request_path(merge_request&.project, merge_request)
   end
 
-  # rubocop: disable CodeReuse/ActiveRecord
   expose :added_lines do |diffs|
     diffs.raw_diff_files.sum(&:added_lines)
   end
-  # rubocop: enable CodeReuse/ActiveRecord
-
-  # rubocop: disable CodeReuse/ActiveRecord
   expose :removed_lines do |diffs|
     diffs.raw_diff_files.sum(&:removed_lines)
   end
-  # rubocop: enable CodeReuse/ActiveRecord
-
   expose :render_overflow_warning do |diffs|
     render_overflow_warning?(diffs)
   end
 
-  expose :email_patch_path, if: -> (*) { merge_request } do |diffs|
+  expose :email_patch_path, if: ->(*) { merge_request } do |diffs|
     merge_request_path(merge_request, format: :patch)
   end
 
-  expose :plain_diff_path, if: -> (*) { merge_request } do |diffs|
+  expose :plain_diff_path, if: ->(*) { merge_request } do |diffs|
     merge_request_path(merge_request, format: :diff)
   end
 
@@ -79,7 +73,7 @@ class DiffsEntity < Grape::Entity
     )
   end
 
-  expose :merge_request_diffs, using: MergeRequestDiffEntity, if: -> (_, options) { options[:merge_request_diffs]&.any? } do |diffs|
+  expose :merge_request_diffs, using: MergeRequestDiffEntity, if: ->(_, options) { options[:merge_request_diffs]&.any? } do |diffs|
     options[:merge_request_diffs]
   end
 

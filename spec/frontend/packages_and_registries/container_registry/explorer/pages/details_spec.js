@@ -2,6 +2,7 @@ import { GlKeysetPagination, GlEmptyState, GlSkeletonLoader } from '@gitlab/ui';
 import { shallowMount } from '@vue/test-utils';
 import Vue, { nextTick } from 'vue';
 import VueApollo from 'vue-apollo';
+import { helpPagePath } from '~/helpers/help_page_helper';
 
 import createMockApollo from 'helpers/mock_apollo_helper';
 import waitForPromises from 'helpers/wait_for_promises';
@@ -17,14 +18,13 @@ import {
   UNFINISHED_STATUS,
   DELETE_SCHEDULED,
   ALERT_DANGER_IMAGE,
-  MISSING_OR_DELETED_IMAGE_BREADCRUMB,
   MISSING_OR_DELETED_IMAGE_TITLE,
   MISSING_OR_DELETED_IMAGE_MESSAGE,
 } from '~/packages_and_registries/container_registry/explorer/constants';
 import getContainerRepositoryDetailsQuery from '~/packages_and_registries/container_registry/explorer/graphql/queries/get_container_repository_details.query.graphql';
 
 import component from '~/packages_and_registries/container_registry/explorer/pages/details.vue';
-import Tracking from '~/tracking';
+import { mockTracking, unmockTracking } from 'helpers/tracking_helper';
 
 import {
   graphQLImageDetailsMock,
@@ -100,10 +100,6 @@ describe('Details Page', () => {
     });
   };
 
-  beforeEach(() => {
-    jest.spyOn(Tracking, 'event');
-  });
-
   describe('when isLoading is true', () => {
     it('shows the loader', () => {
       mountComponent();
@@ -151,16 +147,6 @@ describe('Details Page', () => {
 
       expect(findTagsList().exists()).toBe(true);
     });
-
-    it('has the correct props bound', async () => {
-      mountComponent();
-
-      await waitForApolloRequestRender();
-
-      expect(findTagsList().props()).toMatchObject({
-        isMobile: false,
-      });
-    });
   });
 
   describe('modal', () => {
@@ -173,6 +159,16 @@ describe('Details Page', () => {
     });
 
     describe('cancel event', () => {
+      let trackingSpy;
+
+      beforeEach(() => {
+        trackingSpy = mockTracking(undefined, undefined, jest.spyOn);
+      });
+
+      afterEach(() => {
+        unmockTracking();
+      });
+
       it('tracks cancel_delete', async () => {
         mountComponent();
 
@@ -180,7 +176,7 @@ describe('Details Page', () => {
 
         findDeleteModal().vm.$emit('cancel');
 
-        expect(Tracking.event).toHaveBeenCalledWith(undefined, 'cancel_delete', {
+        expect(trackingSpy).toHaveBeenCalledWith(undefined, 'cancel_delete', {
           label: 'registry_image_delete',
         });
       });
@@ -227,10 +223,6 @@ describe('Details Page', () => {
   });
 
   describe('Delete Alert', () => {
-    const config = {
-      isAdmin: true,
-      garbageCollectionHelpPagePath: 'baz',
-    };
     const deleteAlertType = 'success_tag';
 
     it('exists', async () => {
@@ -241,6 +233,9 @@ describe('Details Page', () => {
     });
 
     it('has the correct props', async () => {
+      const config = {
+        isAdmin: true,
+      };
       mountComponent({
         options: {
           data: () => ({
@@ -252,14 +247,46 @@ describe('Details Page', () => {
 
       await waitForApolloRequestRender();
 
-      expect(findDeleteAlert().props()).toEqual({ ...config, deleteAlertType });
+      expect(findDeleteAlert().props()).toEqual({
+        isAdmin: true,
+        deleteAlertType,
+        garbageCollectionHelpPagePath: helpPagePath('administration/packages/container_registry', {
+          anchor: 'container-registry-garbage-collection',
+        }),
+        showAdminTip: true,
+      });
+    });
+
+    it('when metadata database is enabled `showAdminTip` prop is to false', async () => {
+      const config = {
+        isAdmin: true,
+        isMetadataDatabaseEnabled: true,
+      };
+
+      mountComponent({
+        options: {
+          data: () => ({
+            deleteAlertType,
+          }),
+        },
+        config,
+      });
+
+      await waitForApolloRequestRender();
+
+      expect(findDeleteAlert().props()).toEqual({
+        isAdmin: true,
+        deleteAlertType,
+        garbageCollectionHelpPagePath: helpPagePath('administration/packages/container_registry', {
+          anchor: 'container-registry-garbage-collection',
+        }),
+        showAdminTip: false,
+      });
     });
   });
 
   describe('Partial Cleanup Alert', () => {
     const config = {
-      runCleanupPoliciesHelpPagePath: 'foo',
-      expirationPolicyHelpPagePath: 'bar',
       userCalloutsPath: 'call_out_path',
       userCalloutId: 'call_out_id',
       showUnfinishedTagCleanupCallout: true,
@@ -290,8 +317,18 @@ describe('Details Page', () => {
         await waitForApolloRequestRender();
 
         expect(findPartialCleanupAlert().props()).toEqual({
-          runCleanupPoliciesHelpPagePath: config.runCleanupPoliciesHelpPagePath,
-          cleanupPoliciesHelpPagePath: config.expirationPolicyHelpPagePath,
+          cleanupPoliciesHelpPagePath: helpPagePath(
+            'user/packages/container_registry/reduce_container_registry_storage',
+            {
+              anchor: 'cleanup-policy',
+            },
+          ),
+          runCleanupPoliciesHelpPagePath: helpPagePath(
+            'administration/packages/container_registry',
+            {
+              anchor: 'run-the-cleanup-policy',
+            },
+          ),
         });
       });
 
@@ -334,36 +371,6 @@ describe('Details Page', () => {
     });
   });
 
-  describe('Breadcrumb connection', () => {
-    it('when the details are fetched updates the name', async () => {
-      mountComponent();
-
-      await waitForApolloRequestRender();
-
-      expect(breadCrumbState.updateName).toHaveBeenCalledWith(containerRepositoryMock.name);
-    });
-
-    it(`when the image is missing set the breadcrumb to ${MISSING_OR_DELETED_IMAGE_BREADCRUMB}`, async () => {
-      mountComponent({ resolver: jest.fn().mockResolvedValue(graphQLEmptyImageDetailsMock) });
-
-      await waitForApolloRequestRender();
-
-      expect(breadCrumbState.updateName).toHaveBeenCalledWith(MISSING_OR_DELETED_IMAGE_BREADCRUMB);
-    });
-
-    it(`when the image has no name set the breadcrumb to project name`, async () => {
-      mountComponent({
-        resolver: jest
-          .fn()
-          .mockResolvedValue(graphQLImageDetailsMock({ ...containerRepositoryMock, name: null })),
-      });
-
-      await waitForApolloRequestRender();
-
-      expect(breadCrumbState.updateName).toHaveBeenCalledWith('gitlab-test');
-    });
-  });
-
   describe('when the image has a status different from null', () => {
     const resolver = jest
       .fn()
@@ -374,7 +381,6 @@ describe('Details Page', () => {
       await waitForApolloRequestRender();
 
       expect(findDetailsHeader().props('disabled')).toBe(true);
-      expect(findTagsList().props('disabled')).toBe(true);
     });
 
     it('shows a status alert', async () => {

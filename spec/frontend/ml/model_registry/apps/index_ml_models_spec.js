@@ -1,34 +1,34 @@
-import { GlExperimentBadge } from '@gitlab/ui';
+import { GlDisclosureDropdownItem } from '@gitlab/ui';
 import Vue from 'vue';
 import VueApollo from 'vue-apollo';
 import { mountExtended } from 'helpers/vue_test_utils_helper';
 import { IndexMlModels } from '~/ml/model_registry/apps';
-import ModelRow from '~/ml/model_registry/components/model_row.vue';
-import { MODEL_ENTITIES } from '~/ml/model_registry/constants';
 import TitleArea from '~/vue_shared/components/registry/title_area.vue';
-import MetadataItem from '~/vue_shared/components/registry/metadata_item.vue';
-import EmptyState from '~/ml/model_registry/components/empty_state.vue';
-import ActionsDropdown from '~/ml/model_registry/components/actions_dropdown.vue';
-import SearchableList from '~/ml/model_registry/components/searchable_list.vue';
+import EmptyState from '~/ml/model_registry/components/model_list_empty_state.vue';
+import SearchableTable from '~/ml/model_registry/components/searchable_table.vue';
 import createMockApollo from 'helpers/mock_apollo_helper';
 import getModelsQuery from '~/ml/model_registry/graphql/queries/get_models.query.graphql';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
 import waitForPromises from 'helpers/wait_for_promises';
+import DeleteModelDisclosureDropdownItem from '~/ml/model_registry/components/delete_model_disclosure_dropdown_item.vue';
+import ModelsTable from '~/ml/model_registry/components/models_table.vue';
 import { modelsQuery, modelWithOneVersion, modelWithoutVersion } from '../graphql_mock_data';
 
 Vue.use(VueApollo);
 
 const defaultProps = {
   projectPath: 'path/to/project',
-  createModelPath: 'path/to/create',
-  canWriteModelRegistry: false,
+  canWriteModelRegistry: true,
+  maxAllowedFileSize: 99999,
+  markdownPreviewPath: '/markdown-preview',
+  createModelPath: 'path/to/project/-/ml/models/new,',
 };
 
 describe('ml/model_registry/apps/index_ml_models', () => {
   let wrapper;
   let apolloProvider;
 
-  const createWrapper = ({
+  const createWrapper = async ({
     props = {},
     resolver = jest.fn().mockResolvedValue(modelsQuery()),
   } = {}) => {
@@ -44,6 +44,8 @@ describe('ml/model_registry/apps/index_ml_models', () => {
       apolloProvider,
       propsData,
     });
+
+    await waitForPromises();
   };
 
   beforeEach(() => {
@@ -52,15 +54,13 @@ describe('ml/model_registry/apps/index_ml_models', () => {
 
   const emptyQueryResolver = () => jest.fn().mockResolvedValue(modelsQuery([]));
 
-  const findAllRows = () => wrapper.findAllComponents(ModelRow);
-  const findRow = (index) => findAllRows().at(index);
+  const findSearchableTable = () => wrapper.findComponent(SearchableTable);
   const findEmptyState = () => wrapper.findComponent(EmptyState);
   const findTitleArea = () => wrapper.findComponent(TitleArea);
-  const findModelCountMetadataItem = () => findTitleArea().findComponent(MetadataItem);
-  const findBadge = () => wrapper.findComponent(GlExperimentBadge);
-  const findCreateButton = () => wrapper.findByTestId('create-model-button');
-  const findActionsDropdown = () => wrapper.findComponent(ActionsDropdown);
-  const findSearchableList = () => wrapper.findComponent(SearchableList);
+  const findModelCountMetadataItem = () => wrapper.findByTestId('metadata-item');
+  const findModelCreate = () => wrapper.findByTestId('create-model-button');
+  const findDropdownItems = () => findModelCreate().findAllComponents(GlDisclosureDropdownItem);
+  const findDeleteModal = () => wrapper.findComponent(DeleteModelDisclosureDropdownItem);
 
   describe('header', () => {
     beforeEach(() => {
@@ -70,49 +70,64 @@ describe('ml/model_registry/apps/index_ml_models', () => {
     it('displays the title', () => {
       expect(findTitleArea().text()).toContain('Model registry');
     });
-
-    it('displays the experiment badge', () => {
-      expect(findBadge().props('helpPageUrl')).toBe(
-        '/help/user/project/ml/model_registry/index.md',
-      );
-    });
-
-    it('renders the extra actions button', () => {
-      expect(findActionsDropdown().exists()).toBe(true);
-    });
   });
 
   describe('empty state', () => {
     it('shows empty state', async () => {
-      createWrapper({ resolver: emptyQueryResolver() });
+      await createWrapper({ resolver: emptyQueryResolver() });
 
-      await waitForPromises();
+      expect(findEmptyState().props()).toMatchObject({
+        title: 'Import your machine learning models',
+        description:
+          'Create your machine learning using GitLab directly or using the MLflow client',
+        primaryText: 'Create model',
+        showActionButtons: true,
+      });
+    });
 
-      expect(findEmptyState().props('entityType')).toBe(MODEL_ENTITIES.model);
+    it('passes showActionButtons prop as false when user has no permission to write model registry', async () => {
+      await createWrapper({
+        resolver: emptyQueryResolver(),
+        props: { canWriteModelRegistry: false },
+      });
+
+      expect(findEmptyState().props('showActionButtons')).toBe(false);
     });
   });
 
   describe('create button', () => {
     describe('when user has no permission to write model registry', () => {
       it('does not display create button', async () => {
-        createWrapper({ resolver: emptyQueryResolver() });
+        await createWrapper({
+          props: {
+            canWriteModelRegistry: false,
+          },
+          resolver: emptyQueryResolver(),
+        });
 
-        await waitForPromises();
-
-        expect(findCreateButton().exists()).toBe(false);
+        expect(findModelCreate().exists()).toBe(false);
       });
     });
 
     describe('when user has permission to write model registry', () => {
       it('displays create button', async () => {
-        createWrapper({
+        await createWrapper({
           props: { canWriteModelRegistry: true },
           resolver: emptyQueryResolver(),
         });
 
-        await waitForPromises();
+        expect(findModelCreate().exists()).toBe(true);
+      });
 
-        expect(findCreateButton().attributes().href).toBe('path/to/create');
+      it('has a dropdown with actions', async () => {
+        await createWrapper({
+          props: { canWriteModelRegistry: true },
+          resolver: emptyQueryResolver(),
+        });
+
+        expect(findDropdownItems()).toHaveLength(2);
+        expect(findDropdownItems().at(0).text()).toBe('Create new model');
+        expect(findDropdownItems().at(1).text()).toBe('Import model using MLflow');
       });
     });
   });
@@ -121,14 +136,12 @@ describe('ml/model_registry/apps/index_ml_models', () => {
     beforeEach(async () => {
       const error = new Error('Failure!');
 
-      createWrapper({ resolver: jest.fn().mockRejectedValue(error) });
-
-      await waitForPromises();
+      await createWrapper({ resolver: jest.fn().mockRejectedValue(error) });
     });
 
     it('error message is displayed', () => {
-      expect(findSearchableList().props('errorMessage')).toBe(
-        'Failed to load model with error: Failure!',
+      expect(findSearchableTable().props('errorMessage')).toBe(
+        'Failed to load models with error: Failure!',
       );
     });
 
@@ -139,18 +152,16 @@ describe('ml/model_registry/apps/index_ml_models', () => {
 
   describe('with data', () => {
     it('does not show empty state', async () => {
-      createWrapper();
-      await waitForPromises();
+      await createWrapper();
 
       expect(findEmptyState().exists()).toBe(false);
     });
 
     describe('header', () => {
       it('sets model metadata item to model count', async () => {
-        createWrapper();
-        await waitForPromises();
+        await createWrapper();
 
-        expect(findModelCountMetadataItem().props('text')).toBe('2 models');
+        expect(findModelCountMetadataItem().text()).toContain('2 models');
       });
     });
 
@@ -159,9 +170,11 @@ describe('ml/model_registry/apps/index_ml_models', () => {
 
       beforeEach(async () => {
         resolver = jest.fn().mockResolvedValue(modelsQuery());
-        createWrapper({ resolver });
+        await createWrapper({ resolver });
+      });
 
-        await waitForPromises();
+      it('passes ModelsTable to table prop', () => {
+        expect(findSearchableTable().props('table')).toBe(ModelsTable);
       });
 
       it('calls query only once on setup', () => {
@@ -169,76 +182,18 @@ describe('ml/model_registry/apps/index_ml_models', () => {
       });
 
       it('passes items to list', () => {
-        expect(findSearchableList().props('items')).toEqual([
+        expect(findSearchableTable().props('items')).toEqual([
           modelWithOneVersion,
           modelWithoutVersion,
         ]);
       });
 
-      it('displays package version rows', () => {
-        expect(findAllRows()).toHaveLength(2);
+      it('displays delete action in table', () => {
+        expect(findDeleteModal().props('model')).toEqual(modelWithOneVersion);
       });
 
-      it('binds the correct props', () => {
-        expect(findRow(0).props()).toMatchObject({
-          model: expect.objectContaining(modelWithOneVersion),
-        });
-
-        expect(findRow(1).props()).toMatchObject({
-          model: expect.objectContaining(modelWithoutVersion),
-        });
-      });
-    });
-
-    describe('when query is updated', () => {
-      let resolver;
-
-      beforeEach(() => {
-        resolver = jest.fn().mockResolvedValue(modelsQuery());
-        createWrapper({ resolver });
-      });
-
-      it('when orderBy or sort are not present, use default value', async () => {
-        findSearchableList().vm.$emit('fetch-page', {
-          after: 'eyJpZCI6IjIifQ',
-          first: 30,
-        });
-
-        await waitForPromises();
-
-        expect(resolver).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            fullPath: 'path/to/project',
-            first: 30,
-            name: undefined,
-            orderBy: 'CREATED_AT',
-            sort: 'DESC',
-            after: 'eyJpZCI6IjIifQ',
-          }),
-        );
-      });
-
-      it('when orderBy or sort present, updates filters', async () => {
-        findSearchableList().vm.$emit('fetch-page', {
-          after: 'eyJpZCI6IjIifQ',
-          first: 30,
-          orderBy: 'name',
-          sort: 'asc',
-          name: 'something',
-        });
-
-        await waitForPromises();
-
-        expect(resolver).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            fullPath: 'path/to/project',
-            first: 30,
-            name: 'something',
-            orderBy: 'NAME',
-            sort: 'ASC',
-            after: 'eyJpZCI6IjIifQ',
-          }),
-        );
+      it('displays model rows', () => {
+        expect(findSearchableTable().props('items')).toHaveLength(2);
       });
     });
   });

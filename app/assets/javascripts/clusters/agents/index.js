@@ -18,12 +18,13 @@ export default () => {
     emptyStateSvgPath,
     projectPath,
     kasAddress,
-    kasVersion,
+    kasInstallVersion,
     canAdminCluster,
   } = el.dataset;
 
   return new Vue({
     el,
+    name: 'AgentShowPageRoot',
     apolloProvider,
     router: createRouter(),
     provide: {
@@ -33,7 +34,7 @@ export default () => {
       emptyStateSvgPath,
       projectPath,
       kasAddress,
-      kasVersion,
+      kasInstallVersion,
       canAdminCluster: parseBoolean(canAdminCluster),
     },
     render(createElement) {

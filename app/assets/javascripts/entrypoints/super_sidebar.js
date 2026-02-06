@@ -1,6 +1,14 @@
 import '~/webpack';
 import '~/commons';
-import { initSuperSidebar, initSuperSidebarToggle } from '~/super_sidebar/super_sidebar_bundle';
+import {
+  initSuperSidebar,
+  initPageBreadcrumbs,
+  getSuperSidebarData,
+  initSuperTopbar,
+} from '~/super_sidebar/super_sidebar_bundle';
 
-initSuperSidebar();
-initSuperSidebarToggle();
+const superSidebarData = getSuperSidebarData();
+
+initSuperSidebar(superSidebarData);
+initSuperTopbar(superSidebarData);
+initPageBreadcrumbs();

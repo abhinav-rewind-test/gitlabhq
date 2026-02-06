@@ -5,27 +5,28 @@ require_relative '../../usage_data_helpers'
 module RuboCop
   module Cop
     module UsageData
+      # This cop checks that batch count and distinct_count are used in usage_data.rb files in metrics based on ActiveRecord models.
+      #
+      # @example
+      #
+      #   # bad
+      #   Issue.count
+      #   List.assignee.count
+      #   ::Ci::Pipeline.auto_devops_source.count
+      #   ZoomMeeting.distinct.count(:issue_id)
+      #
+      #   # Good
+      #   count(Issue)
+      #   count(List.assignee)
+      #   count(::Ci::Pipeline.auto_devops_source)
+      #   distinct_count(ZoomMeeting, :issue_id)
       class LargeTable < RuboCop::Cop::Base
         include UsageDataHelpers
 
-        # This cop checks that batch count and distinct_count are used in usage_data.rb files in metrics based on ActiveRecord models.
-        #
-        # @example
-        #
-        # # bad
-        # Issue.count
-        # List.assignee.count
-        # ::Ci::Pipeline.auto_devops_source.count
-        # ZoomMeeting.distinct.count(:issue_id)
-        #
-        # # Good
-        # count(Issue)
-        # count(List.assignee)
-        # count(::Ci::Pipeline.auto_devops_source)
-        # distinct_count(ZoomMeeting, :issue_id)
         MSG = 'Use one of the %{count_methods} methods for counting on %{class_name}'
 
         # Match one level const as Issue, Gitlab
+        # @!method one_level_node(node)
         def_node_matcher :one_level_node, <<~PATTERN
           (send
             (const {nil? cbase} $...)
@@ -33,6 +34,7 @@ module RuboCop
         PATTERN
 
         # Match two level const as ::Clusters::Cluster, ::Ci::Pipeline
+        # @!method two_level_node(node)
         def_node_matcher :two_level_node, <<~PATTERN
           (send
             (const
@@ -53,7 +55,7 @@ module RuboCop
             class_name = one_level_matches[0].first
             method_used = one_level_matches[1]&.first
           else
-            class_name = "#{two_level_matches[0].first}::#{two_level_matches[1].first}".to_sym
+            class_name = :"#{two_level_matches[0].first}::#{two_level_matches[1].first}"
             method_used = two_level_matches[2]&.first
           end
 

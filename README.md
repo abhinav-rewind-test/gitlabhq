@@ -19,7 +19,7 @@ To see how GitLab looks please see the [features page on our website](https://ab
 - Complete continuous integration (CI) and continuous deployment/delivery (CD) pipelines to build, test, and deploy your applications
 - Each project can also have an issue tracker, issue board, and a wiki
 - Used by more than 100,000 organizations, GitLab is the most popular solution to manage Git repositories on-premises
-- Completely free and open source (MIT Expat license)
+- Open-core, most of the code is MIT with the files in `/ee` being proprietary but source available and open for contributions.
 
 ## Editions
 
@@ -36,7 +36,7 @@ files in this repository.
 
 ## Hiring
 
-We are hiring developers, support people, and production engineers all the time, please see our [jobs page](https://about.gitlab.com/jobs/).
+We are hiring developers, support engineers, and production engineers all the time, please see our [jobs page](https://about.gitlab.com/jobs/).
 
 ## Website
 
@@ -55,20 +55,20 @@ Please see the [requirements documentation](doc/install/requirements.md) for sys
 
 ## Installation
 
-The recommended way to install GitLab is with the [Omnibus packages](https://about.gitlab.com/downloads/) on our package server.
-Compared to an installation from source, this is faster and less error prone.
+The recommended way to install GitLab is with the [Omnibus packages](https://docs.gitlab.com/install/package/) on our package server.
+Compared to [a self-compiled installation](https://docs.gitlab.com/install/self_compiled/), this is faster and less error prone.
 Just select your operating system, download the respective package (Debian or RPM) and install it using the system's package manager.
 
-There are various other options to install GitLab, please refer to the [installation page on the GitLab website](https://about.gitlab.com/installation/) for more information.
+For more information about other installation methods, see [install GitLab](https://about.gitlab.com/install/).
 
 ## Contributing
 
-GitLab is an open source project and we are very happy to accept community contributions. Please refer to [Contributing to GitLab page](https://about.gitlab.com/contributing/) for more details.
+GitLab is an open source project and we are very happy to accept community contributions. Please refer to the [`CONTRIBUTING.md`](CONTRIBUTING.md) file for more details.
 
 ## Install a development environment
 
-To work on GitLab itself, we recommend setting up your development environment with [the GitLab Development Kit](https://gitlab.com/gitlab-org/gitlab-development-kit).
-If you do not use the GitLab Development Kit you need to install and configure all the dependencies yourself, this is a lot of work and error prone.
+To work on GitLab itself, we recommend setting up your development environment with [the GitLab Development Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit).
+If you do not use GDK, you need to [install and configure all the dependencies yourself](https://docs.gitlab.com/install/installation/), this is a lot of work and error prone.
 One small thing you also have to do when installing it yourself is to copy the example development Puma configuration file:
 
 ```shell
@@ -82,10 +82,10 @@ Instructions on how to start GitLab and how to run the tests can be found in the
 GitLab is a Ruby on Rails application that runs on the following software:
 
 - Ubuntu/Debian/CentOS/RHEL/OpenSUSE
-- Ruby (MRI) 3.1.4
+- Ruby (MRI) 3.3.10
 - Git 2.33+
 - Redis 6.0+
-- PostgreSQL 12+
+- PostgreSQL 16.5+
 
 For more information please see the [architecture](https://docs.gitlab.com/ee/development/architecture.html) and [requirements](https://docs.gitlab.com/ee/install/requirements.html) documentation.
 
@@ -109,18 +109,14 @@ For upgrading information please see our [update page](https://about.gitlab.com/
 
 All documentation can be found on <https://docs.gitlab.com>.
 
+## Education
+
+Get up to speed quickly with comprehensive learning resources at [GitLab University](https://university.gitlab.com).
+
 ## Getting help
 
 Please see [Getting help for GitLab](https://about.gitlab.com/getting-help/) on our website for the many options to get help.
 
-## Why?
+## Why should I use GitLab?
 
-[Read here](https://about.gitlab.com/why/)
-
-## Is it any good?
-
-[Yes](https://about.gitlab.com/is-it-any-good/)
-
-## Is it awesome?
-
-[These people](https://twitter.com/gitlab/followers) seem to like it.
+Read [why our customers choose GitLab](https://about.gitlab.com/why-gitlab/).

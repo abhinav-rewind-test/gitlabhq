@@ -1,21 +1,24 @@
 <script>
-import { GlEmptyState } from '@gitlab/ui';
-
-import { __ } from '~/locale';
+import groupsEmptyStateIllustration from '@gitlab/svgs/dist/illustrations/empty-state/empty-groups-md.svg?url';
+import ResourceListsEmptyState from '~/vue_shared/components/resource_lists/empty_state.vue';
 
 export default {
-  components: { GlEmptyState },
-  inject: ['groupsEmptyStateIllustration'],
-  i18n: {
-    title: __('No public groups'),
+  components: { ResourceListsEmptyState },
+  groupsEmptyStateIllustration,
+  props: {
+    search: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
 };
 </script>
 
 <template>
-  <gl-empty-state
-    :title="$options.i18n.title"
-    :svg-path="groupsEmptyStateIllustration"
-    :svg-height="null"
+  <resource-lists-empty-state
+    :title="s__('GroupsEmptyState|No public or internal groups')"
+    :svg-path="$options.groupsEmptyStateIllustration"
+    :search="search"
   />
 </template>

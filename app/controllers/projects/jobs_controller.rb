@@ -6,15 +6,16 @@ class Projects::JobsController < Projects::ApplicationController
   include ContinueParams
   include ProjectStatsRefreshConflictsGuard
 
-  urgency :low, [:index, :show, :trace, :retry, :play, :cancel, :unschedule, :erase, :raw, :test_report_summary]
+  urgency :low,
+    [:index, :show, :trace, :retry, :play, :cancel, :unschedule, :erase, :viewer, :raw, :test_report_summary]
 
   before_action :find_job_as_build, except: [:index, :play, :retry, :show]
   before_action :find_job_as_processable, only: [:play, :retry, :show]
-  before_action :authorize_read_build_trace!, only: [:trace, :raw]
+  before_action :authorize_read_build_trace!, only: [:trace, :viewer, :raw]
   before_action :authorize_read_build!, except: [:test_report_summary]
   before_action :authorize_read_build_report_results!, only: [:test_report_summary]
   before_action :authorize_update_build!,
-    except: [:index, :show, :raw, :trace, :erase, :cancel, :unschedule, :test_report_summary]
+    except: [:index, :show, :viewer, :raw, :trace, :play, :erase, :cancel, :unschedule, :test_report_summary]
   before_action :authorize_cancel_build!, only: [:cancel]
   before_action :authorize_erase_build!, only: [:erase]
   before_action :authorize_use_build_terminal!, only: [:terminal, :terminal_websocket_authorize]
@@ -22,7 +23,10 @@ class Projects::JobsController < Projects::ApplicationController
   before_action :authorize_create_proxy_build!, only: :proxy_websocket_authorize
   before_action :verify_proxy_request!, only: :proxy_websocket_authorize
   before_action :reject_if_build_artifacts_size_refreshing!, only: [:erase]
-  before_action :push_ai_build_failure_cause, only: [:show]
+  before_action :push_job_subscription_feature_flag, only: [:index]
+  before_action only: [:show] do
+    push_frontend_feature_flag(:ci_job_inputs, @project)
+  end
   layout 'project'
 
   feature_category :continuous_integration
@@ -32,7 +36,11 @@ class Projects::JobsController < Projects::ApplicationController
 
   def show
     if @build.instance_of?(::Ci::Bridge)
-      redirect_to project_pipeline_path(@build.downstream_pipeline.project, @build.downstream_pipeline.id)
+      if @build.downstream_pipeline&.project
+        redirect_to project_pipeline_path(@build.downstream_pipeline&.project, @build.downstream_pipeline&.id)
+      else
+        redirect_to project_pipeline_path(@build.project, @build.pipeline.id)
+      end
     end
 
     respond_to do |format|
@@ -42,7 +50,17 @@ class Projects::JobsController < Projects::ApplicationController
 
         render json: Ci::JobSerializer
           .new(project: @project, current_user: @current_user)
-          .represent(@build.present(current_user: current_user), {}, BuildDetailsEntity)
+          .represent(
+            @build.present(current_user: current_user),
+            {
+              # Pipeline will show all failed builds by default if not using disable_failed_builds
+              disable_coverage: true,
+              disable_failed_builds: true,
+              # By default, :source is not exposed in the JobEntity. We want to expose it for this endpoint
+              enable_source: true
+            },
+            BuildDetailsEntity
+          )
       end
     end
   end
@@ -71,6 +89,8 @@ class Projects::JobsController < Projects::ApplicationController
   end
 
   def retry
+    return access_denied! unless can?(current_user, :retry_job, @build)
+
     Gitlab::QueryLimiting.disable!('https://gitlab.com/gitlab-org/gitlab/-/issues/424184')
 
     response = Ci::RetryJobService.new(project, current_user).execute(@build)
@@ -87,9 +107,11 @@ class Projects::JobsController < Projects::ApplicationController
   end
 
   def play
+    return access_denied! unless can?(current_user, :play_job, @build)
     return respond_422 unless @build.playable?
 
-    job = @build.play(current_user, play_params[:job_variables_attributes])
+    result = @build.play(current_user, play_params[:job_variables_attributes])
+    job = result.payload[:job]
 
     if job.is_a?(Ci::Bridge)
       redirect_to pipeline_path(job.pipeline)
@@ -99,7 +121,7 @@ class Projects::JobsController < Projects::ApplicationController
   end
 
   def cancel
-    service_response = Ci::BuildCancelService.new(@build, current_user).execute
+    service_response = Ci::BuildCancelService.new(@build, current_user, force_param).execute
 
     if service_response.success?
       destination = continue_params[:to].presence || builds_project_pipeline_path(@project, @build.pipeline.id)
@@ -112,6 +134,8 @@ class Projects::JobsController < Projects::ApplicationController
   end
 
   def unschedule
+    return access_denied! unless can?(current_user, :unschedule_job, @build)
+
     service_response = Ci::BuildUnscheduleService.new(@build, current_user).execute
 
     if service_response.success?
@@ -136,7 +160,8 @@ class Projects::JobsController < Projects::ApplicationController
   def raw
     if @build.trace.archived?
       workhorse_set_content_type!
-      send_upload(@build.job_artifacts_trace.file, send_params: raw_send_params, redirect_params: raw_redirect_params)
+      send_upload(@build.job_artifacts_trace.file, send_params: raw_send_params, redirect_params: raw_redirect_params,
+        proxy: params[:proxy])
     else
       @build.trace.read do |stream|
         if stream.file?
@@ -148,11 +173,14 @@ class Projects::JobsController < Projects::ApplicationController
           # to the user but, because we have the trace content, we can calculate
           # the proper content type and disposition here.
           raw_data = stream.raw
-          send_data raw_data, type: 'text/plain; charset=utf-8', disposition: raw_trace_content_disposition(raw_data), filename: 'job.log'
+          send_data raw_data, type: 'text/plain; charset=utf-8', disposition: raw_trace_content_disposition(raw_data),
+            filename: 'job.log'
         end
       end
     end
   end
+
+  def viewer; end
 
   def test_report_summary
     return not_found unless @build.report_results.present?
@@ -168,8 +196,7 @@ class Projects::JobsController < Projects::ApplicationController
     end
   end
 
-  def terminal
-  end
+  def terminal; end
 
   # GET .../terminal.ws : implemented in gitlab-workhorse
   def terminal_websocket_authorize
@@ -186,27 +213,27 @@ class Projects::JobsController < Projects::ApplicationController
   attr_reader :build
 
   def authorize_read_build_report_results!
-    return access_denied! unless can?(current_user, :read_build_report_results, build)
+    access_denied! unless can?(current_user, :read_build_report_results, build)
   end
 
   def authorize_update_build!
-    return access_denied! unless can?(current_user, :update_build, @build)
+    access_denied! unless can?(current_user, :update_build, @build)
   end
 
   def authorize_cancel_build!
-    return access_denied! unless can?(current_user, :cancel_build, @build)
+    access_denied! unless can?(current_user, :cancel_build, @build)
   end
 
   def authorize_erase_build!
-    return access_denied! unless can?(current_user, :erase_build, @build)
+    access_denied! unless can?(current_user, :erase_build, @build)
   end
 
   def authorize_use_build_terminal!
-    return access_denied! unless can?(current_user, :create_build_terminal, @build)
+    access_denied! unless can?(current_user, :create_build_terminal, @build)
   end
 
   def authorize_create_proxy_build!
-    return access_denied! unless can?(current_user, :create_build_service_proxy, @build)
+    access_denied! unless can?(current_user, :create_build_service_proxy, @build)
   end
 
   def verify_api_request!
@@ -224,6 +251,10 @@ class Projects::JobsController < Projects::ApplicationController
 
   def raw_redirect_params
     { query: { 'response-content-type' => 'text/plain; charset=utf-8', 'response-content-disposition' => 'inline' } }
+  end
+
+  def force_param
+    params[:force] == "true"
   end
 
   def play_params
@@ -276,7 +307,9 @@ class Projects::JobsController < Projects::ApplicationController
     ::Gitlab::Workhorse.channel_websocket(service)
   end
 
-  def push_ai_build_failure_cause
-    push_frontend_feature_flag(:ai_build_failure_cause, @project)
+  def push_job_subscription_feature_flag
+    push_frontend_feature_flag(:ci_job_created_subscription, @project)
   end
 end
+
+Projects::JobsController.prepend_mod_with('Projects::JobsController')

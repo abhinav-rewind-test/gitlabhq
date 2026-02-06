@@ -555,7 +555,7 @@ export const resolvedEnvironment = {
     sha: 'f3ba6dd84f8f891373e9b869135622b954852db1',
     ref: { name: 'main', refPath: '/h5bp/html5-boilerplate/-/tree/main' },
     status: 'success',
-    createdAt: '2022-01-07T15:47:27.415Z',
+    createdAt: '2022-01-07T15:46:27.415Z',
     deployedAt: '2022-01-07T15:47:32.450Z',
     tierInYaml: 'staging',
     tag: false,
@@ -806,157 +806,52 @@ export const agent = {
   name: 'agent-name',
   webPath: 'path/to/agent-page',
   tokens: { nodes: [] },
+  project: { id: '1', fullPath: 'path/to/agent/project' },
 };
 
 export const kubernetesNamespace = 'agent-namespace';
-
-const runningPod = {
-  metadata: { name: 'pod-1', namespace: 'default', creationTimestamp: '2023-07-31T11:50:17Z' },
-  status: { phase: 'Running' },
-};
-const pendingPod = {
-  metadata: {
-    name: 'pod-2',
-    namespace: 'new-namespace',
-    creationTimestamp: '2023-11-21T11:50:59Z',
-  },
-  status: { phase: 'Pending' },
-};
-const succeededPod = {
-  metadata: { name: 'pod-3', namespace: 'default', creationTimestamp: '2023-07-31T11:50:17Z' },
-  status: { phase: 'Succeeded' },
-};
-const failedPod = {
-  metadata: { name: 'pod-4', namespace: 'default', creationTimestamp: '2023-11-21T11:50:59Z' },
-  status: { phase: 'Failed' },
-};
-
-export const k8sPodsMock = [runningPod, runningPod, pendingPod, succeededPod, failedPod, failedPod];
-
-export const k8sPodsStatsData = [
-  {
-    value: 2,
-    title: 'Running',
-  },
-  {
-    value: 1,
-    title: 'Pending',
-  },
-  {
-    value: 1,
-    title: 'Succeeded',
-  },
-  {
-    value: 2,
-    title: 'Failed',
-  },
-];
-
-export const k8sPodsTableData = [
-  {
-    name: 'pod-1',
-    namespace: 'default',
-    status: 'Running',
-    age: '114d',
-  },
-  {
-    name: 'pod-1',
-    namespace: 'default',
-    status: 'Running',
-    age: '114d',
-  },
-  {
-    name: 'pod-2',
-    namespace: 'new-namespace',
-    status: 'Pending',
-    age: '1d',
-  },
-  {
-    name: 'pod-3',
-    namespace: 'default',
-    status: 'Succeeded',
-    age: '114d',
-  },
-  {
-    name: 'pod-4',
-    namespace: 'default',
-    status: 'Failed',
-    age: '1d',
-  },
-  {
-    name: 'pod-4',
-    namespace: 'default',
-    status: 'Failed',
-    age: '1d',
-  },
-];
-
-export const k8sServicesMock = [
-  {
-    metadata: {
-      name: 'my-first-service',
-      namespace: 'default',
-      creationTimestamp: new Date(),
-    },
-    spec: {
-      ports: [
-        {
-          name: 'https',
-          protocol: 'TCP',
-          port: 443,
-          targetPort: 8443,
-        },
-      ],
-      clusterIP: '10.96.0.1',
-      externalIP: '-',
-      type: 'ClusterIP',
-    },
-  },
-  {
-    metadata: {
-      name: 'my-second-service',
-      namespace: 'default',
-      creationTimestamp: '2020-07-03T14:06:04Z',
-    },
-    spec: {
-      ports: [
-        {
-          name: 'http',
-          protocol: 'TCP',
-          appProtocol: 'http',
-          port: 80,
-          targetPort: 'http',
-          nodePort: 31989,
-        },
-        {
-          name: 'https',
-          protocol: 'TCP',
-          appProtocol: 'https',
-          port: 443,
-          targetPort: 'https',
-          nodePort: 32679,
-        },
-      ],
-      clusterIP: '10.105.219.238',
-      externalIP: '-',
-      type: 'NodePort',
-    },
-  },
-];
 
 export const k8sNamespacesMock = [
   { metadata: { name: 'default' } },
   { metadata: { name: 'agent' } },
 ];
 
-export const fluxKustomizationsMock = [
-  {
-    status: 'True',
-    type: 'Ready',
-  },
-];
+const fluxResourceStatusMock = [{ status: 'True', type: 'Ready', message: '', reason: '' }];
+const fluxResourceMetadataMock = {
+  name: 'custom-resource',
+  namespace: 'custom-namespace',
+  annotations: {},
+  labels: {},
+};
+export const fluxKustomizationMock = {
+  kind: 'Kustomization',
+  metadata: fluxResourceMetadataMock,
+  status: { conditions: fluxResourceStatusMock, inventory: { entries: [{ id: 'test_resource' }] } },
+};
+export const fluxHelmReleaseMock = {
+  kind: 'HelmRelease',
+  metadata: fluxResourceMetadataMock,
+  status: { conditions: fluxResourceStatusMock },
+};
+export const fluxKustomizationMapped = {
+  kind: 'Kustomization',
+  metadata: fluxResourceMetadataMock,
+  spec: {},
+  status: fluxKustomizationMock.status,
+  conditions: fluxResourceStatusMock,
+  inventory: [{ id: 'test_resource' }],
+  __typename: 'LocalWorkloadItem',
+};
+export const fluxHelmReleaseMapped = {
+  kind: 'HelmRelease',
+  metadata: fluxResourceMetadataMock,
+  spec: {},
+  status: { conditions: fluxResourceStatusMock },
+  conditions: fluxResourceStatusMock,
+  __typename: 'LocalWorkloadItem',
+};
 
-export const fluxResourcePathMock = 'path/to/flux/resource';
+export const fluxResourcePathMock = 'kustomize.toolkit.fluxcd.io/v1/path/to/flux/resource';
 
 export const resolvedEnvironmentToDelete = {
   __typename: 'LocalEnvironment',
@@ -975,7 +870,7 @@ export const resolvedEnvironmentToRollback = {
     sha: 'f3ba6dd84f8f891373e9b869135622b954852db1',
     ref: { name: 'main', refPath: '/h5bp/html5-boilerplate/-/tree/main' },
     status: 'success',
-    createdAt: '2022-01-07T15:47:27.415Z',
+    createdAt: '2022-01-07T15:46:27.415Z',
     deployedAt: '2022-01-07T15:47:32.450Z',
     tierInYaml: 'staging',
     tag: false,

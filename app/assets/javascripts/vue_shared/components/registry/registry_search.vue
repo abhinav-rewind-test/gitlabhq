@@ -48,7 +48,7 @@ export default {
     },
     baselineQueryStringFilters() {
       return this.tokens.reduce((acc, curr) => {
-        acc[curr.type] = '';
+        acc[curr.type] = null;
         return acc;
       }, {});
     },
@@ -65,18 +65,26 @@ export default {
       const result = {
         ...this.baselineQueryStringFilters,
         ...sorting,
-        search: [],
+        search: null,
         after: null,
         before: null,
       };
 
       filter.forEach((f) => {
         if (f.type === FILTERED_SEARCH_TERM) {
-          result.search.push(f.value.data);
+          const value = f.value.data?.trim();
+          if (!value) return;
+
+          if (Array.isArray(result.search)) {
+            result.search.push(value);
+          } else {
+            result.search = [value];
+          }
         } else {
           result[f.type] = f.value.data;
         }
       });
+
       return result;
     },
     onDirectionChange() {
@@ -119,24 +127,22 @@ export default {
 
 <template>
   <div
-    class="gl-md-display-flex gl-p-5 gl-bg-gray-10 gl-border-solid gl-border-1 gl-border-gray-100"
+    class="row-content-block gl-border-t gl-border-b !-gl-mt-3 gl-flex gl-flex-col gl-gap-3 gl-border-y-0 @md/panel:gl-flex-row"
   >
-    <!-- `gl-w-full gl-md-w-15` forces fixed width needed to prevent
-    filtered component to grow beyond available width -->
     <gl-filtered-search
       v-model="internalFilter"
-      class="gl-w-full gl-md-w-15 gl-mr-4 gl-flex-grow-1"
+      class="gl-min-w-0 gl-grow"
       :placeholder="__('Filter results')"
       :available-tokens="tokens"
+      :search-text-option-label="__('Search for this text')"
+      terms-as-tokens
       @submit="submitSearch"
       @clear="clearSearch"
     />
     <gl-sorting
       data-testid="registry-sort-dropdown"
-      class="gl-mt-3 gl-md-mt-0 gl-w-full gl-md-w-auto"
       dropdown-class="gl-w-full"
-      dropdown-toggle-class="gl-inset-border-1-gray-400!"
-      sort-direction-toggle-class="gl-inset-border-1-gray-400!"
+      block
       :text="sortText"
       :is-ascending="isSortAscending"
       :sort-direction-tool-tip="sortDirectionData.tooltip"

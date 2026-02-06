@@ -14,12 +14,16 @@ module Integrations
       Gitlab::DataBuilder::Push.build_sample(project, current_user)
     end
 
+    def tag_push_events_data
+      Gitlab::DataBuilder::Push.build_sample(project, current_user, is_tag: true)
+    end
+
     def note_events_data
       note = NotesFinder.new(current_user, project: project, target: project, sort: 'id_desc').execute.first
 
       no_data_error(s_('TestHooks|Ensure the project has notes.')) unless note.present?
 
-      Gitlab::DataBuilder::Note.build(note, current_user)
+      Gitlab::DataBuilder::Note.build(note, current_user, :create)
     end
 
     def issues_events_data
@@ -27,7 +31,7 @@ module Integrations
 
       no_data_error(s_('TestHooks|Ensure the project has issues.')) unless issue.present?
 
-      issue.to_hook_data(current_user)
+      issue.to_hook_data(current_user, action: 'open')
     end
 
     def merge_requests_events_data
@@ -35,7 +39,7 @@ module Integrations
 
       no_data_error(s_('TestHooks|Ensure the project has merge requests.')) unless merge_request.present?
 
-      merge_request.to_hook_data(current_user)
+      merge_request.to_hook_data(current_user, action: 'open')
     end
 
     def job_events_data
@@ -78,12 +82,16 @@ module Integrations
       release.to_hook_data('create')
     end
 
+    def milestone_events_data
+      Gitlab::DataBuilder::Milestone.build_sample(project)
+    end
+
     def emoji_events_data
       no_data_error(s_('TestHooks|Ensure the project has notes.')) unless project.notes.any?
 
       award_emoji = AwardEmoji.new(
         id: 1,
-        name: 'thumbsup',
+        name: AwardEmoji::THUMBS_UP,
         user: current_user,
         awardable: project.notes.last,
         created_at: Time.zone.now,
@@ -103,7 +111,25 @@ module Integrations
         expires_at: 2.days.from_now
       )
 
-      Gitlab::DataBuilder::ResourceAccessToken.build(resource_access_token, :expiring, project)
+      Gitlab::DataBuilder::ResourceAccessTokenPayload.build(resource_access_token, :expiring, project)
+    end
+
+    def vulnerability_events_data
+      vulnerability = project.vulnerabilities.limit(1).last
+
+      no_data_error(s_('TestHooks|Ensure the project has vulnerabilities.')) unless vulnerability.present?
+
+      Gitlab::DataBuilder::Vulnerability.build(vulnerability)
+    end
+
+    def current_user_events_data
+      {
+        current_user: current_user
+      }
+    end
+
+    def project_events_data
+      Gitlab::HookData::ProjectBuilder.new(project).build(:create)
     end
   end
 end

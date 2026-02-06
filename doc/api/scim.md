@@ -1,22 +1,32 @@
 ---
-stage: Govern
-group: Authentication
+stage: Fulfillment
+group: Seat Management
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: SCIM API
 ---
-# SCIM API
 
-DETAILS:
-**Tier:** Premium, Ultimate
-**Offering:** GitLab.com
+{{< details >}}
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/98354) in GitLab 15.5.
+- Tier: Premium, Ultimate
+- Offering: GitLab.com, GitLab Dedicated
 
-The GitLab SCIM API manages SCIM identities within groups and provides the `/groups/:groups_id/scim/identities` and `/groups/:groups_id/scim/:uid` endpoints. The base URL is `<http|https>://<GitLab host>/api/v4`.
+{{< /details >}}
 
-To use this API, [Group SSO](../user/group/saml_sso/index.md) must be enabled for the group.
-This API is only in use where [SCIM for Group SSO](../user/group/saml_sso/scim_setup.md) is enabled. It's a prerequisite to the creation of SCIM identities.
+{{< history >}}
 
-This API is different to the [internal group SCIM API](../development/internal_api/index.md#group-scim-api) and the [instance SCIM API](../development/internal_api/index.md#instance-scim-api):
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/98354) in GitLab 15.5.
+
+{{< /history >}}
+
+Use this API to manage SCIM identities in groups.
+
+Prerequisites:
+
+- You must enable [Group SSO](../user/group/saml_sso/_index.md).
+- You must enable [SCIM for Group SSO](../user/group/saml_sso/scim_setup.md).
+- You must authenticate with a [Personal Access Token](../user/profile/personal_access_tokens.md) or [Group Access Token](../user/group/settings/group_access_tokens.md) that has the correct scope.
+
+This API differs from the [internal group SCIM API](../development/internal_api/_index.md#group-scim-api) and the [internal instance SCIM API](../development/internal_api/_index.md#instance-scim-api) which both require a SCIM token.
 
 - This API:
   - Does not implement the [RFC7644 protocol](https://www.rfc-editor.org/rfc/rfc7644).
@@ -28,9 +38,15 @@ This API is different to the [internal group SCIM API](../development/internal_a
   - Get a list of SCIM provisioned users for the group or instance.
   - Create, delete and update SCIM provisioned users for the group or instance.
 
-## Get SCIM identities for a group
+## Retrieve SCIM identities for a group
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/227841) in GitLab 15.5.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/227841) in GitLab 15.5.
+
+{{< /history >}}
+
+Retrieves SCIM identities for a group.
 
 ```plaintext
 GET /groups/:id/scim/identities
@@ -40,9 +56,9 @@ Supported attributes:
 
 | Attribute         | Type    | Required | Description           |
 |:------------------|:--------|:---------|:----------------------|
-| `id`      | integer/string | Yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`      | integer or string | Yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 
-If successful, returns [`200`](rest/index.md#status-codes) and the following
+If successful, returns [`200`](rest/troubleshooting.md#status-codes) and the following
 response attributes:
 
 | Attribute    | Type    | Description               |
@@ -66,13 +82,20 @@ Example response:
 Example request:
 
 ```shell
-curl --location --request GET "https://gitlab.example.com/api/v4/groups/33/scim/identities" \
---header "PRIVATE-TOKEN: <PRIVATE-TOKEN>"
+curl --location --request GET \
+  --url "https://gitlab.example.com/api/v4/groups/33/scim/identities" \
+  --header "PRIVATE-TOKEN: <PRIVATE-TOKEN>"
 ```
 
-## Get a single SCIM identity
+## Retrieve a single SCIM identity
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/123591) in GitLab 16.1.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/123591) in GitLab 16.1.
+
+{{< /history >}}
+
+Retrieves a single SCIM identity.
 
 ```plaintext
 GET /groups/:id/scim/:uid
@@ -82,13 +105,15 @@ Supported attributes:
 
 | Attribute | Type    | Required | Description               |
 | --------- | ------- | -------- | ------------------------- |
-| `id`      | integer | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`      | integer | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `uid`     | string  | yes      | External UID of the user. |
 
 Example request:
 
 ```shell
-curl --location --request GET "https://gitlab.example.com/api/v4/groups/33/scim/be20d8dcc028677c931e04f387" --header "PRIVATE-TOKEN: <PRIVATE TOKEN>"
+curl --location --request GET \
+  --url "https://gitlab.example.com/api/v4/groups/33/scim/be20d8dcc028677c931e04f387" \
+  --header "PRIVATE-TOKEN: <PRIVATE TOKEN>"
 ```
 
 Example response:
@@ -103,7 +128,13 @@ Example response:
 
 ## Update `extern_uid` field for a SCIM identity
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/227841) in GitLab 15.5.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/227841) in GitLab 15.5.
+
+{{< /history >}}
+
+Updates `extern_uid` field for a SCIM identity.
 
 Fields that can be updated are:
 
@@ -119,20 +150,27 @@ Parameters:
 
 | Attribute | Type   | Required | Description               |
 | --------- | ------ | -------- | ------------------------- |
-| `id`      | integer/string | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding) |
+| `id`      | integer or string | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group |
 | `uid`     | string | yes      | External UID of the user. |
 
 Example request:
 
 ```shell
-curl --location --request PATCH "https://gitlab.example.com/api/v4/groups/33/scim/be20d8dcc028677c931e04f387" \
---header "PRIVATE-TOKEN: <PRIVATE TOKEN>" \
---form "extern_uid=yrnZW46BrtBFqM7xDzE7dddd"
+curl --location --request PATCH \
+  --url "https://gitlab.example.com/api/v4/groups/33/scim/be20d8dcc028677c931e04f387" \
+  --header "PRIVATE-TOKEN: <PRIVATE TOKEN>" \
+  --form "extern_uid=yrnZW46BrtBFqM7xDzE7dddd"
 ```
 
 ## Delete a single SCIM identity
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/423592) in GitLab 16.5.
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/423592) in GitLab 16.5.
+
+{{< /history >}}
+
+Deletes a single SCIM identity.
 
 ```plaintext
 DELETE /groups/:id/scim/:uid
@@ -142,14 +180,15 @@ Supported attributes:
 
 | Attribute | Type    | Required | Description               |
 | --------- | ------- | -------- | ------------------------- |
-| `id`      | integer | yes      | The ID or [URL-encoded path of the group](rest/index.md#namespaced-path-encoding). |
+| `id`      | integer | yes      | The ID or [URL-encoded path](rest/_index.md#namespaced-paths) of the group. |
 | `uid`     | string  | yes      | External UID of the user. |
 
 Example request:
 
 ```shell
-curl --request DELETE --header "Content-Type: application/json" --header "Authorization: Bearer <your_access_token>" "https://gitlab.example.com/api/v4/groups/33/scim/yrnZW46BrtBFqM7xDzE7dddd"
-
+curl --location --request DELETE \
+  --url "https://gitlab.example.com/api/v4/groups/33/scim/yrnZW46BrtBFqM7xDzE7dddd" \
+  --header "PRIVATE-TOKEN: <your_access_token>"
 ```
 
 Example response:

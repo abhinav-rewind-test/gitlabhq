@@ -2,19 +2,21 @@
 stage: Growth
 group: Acquisition
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Experiments API
 ---
 
-# Experiments API (GitLab team only)
+{{< details >}}
 
-DETAILS:
-**Tier:** Free, Premium, Ultimate
-**Offering:** GitLab.com
+- Tier: Free, Premium, Ultimate
+- Offering: GitLab.com
 
-> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/262725) in GitLab 13.5.
+{{< /details >}}
 
-This API is for listing A/B experiments [defined in GitLab](../development/experiment_guide/index.md).
+Use this API to interact with A/B experiments. This API is for internal use only.
 
-The user must be a [GitLab team member](https://gitlab.com/groups/gitlab-com/-/group_members) to access the API.
+Prerequisites:
+
+- You must be a [GitLab team member](https://gitlab.com/groups/gitlab-com/-/group_members).
 
 ## List all experiments
 
@@ -25,7 +27,9 @@ GET /experiments
 ```
 
 ```shell
-curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/experiments"
+curl --request GET \
+  --header "PRIVATE-TOKEN: <your_access_token>" \
+  --url "https://gitlab.example.com/api/v4/experiments"
 ```
 
 Example response:

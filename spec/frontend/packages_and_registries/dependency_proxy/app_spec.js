@@ -217,7 +217,6 @@ describe('DependencyProxyApp', () => {
               describe('while loading', () => {
                 it('does not render loading component & sets loading prop', () => {
                   expect(findLoader().exists()).toBe(false);
-                  expect(findManifestList().props('loading')).toBe(true);
                 });
 
                 it('renders form group with label', () => {
@@ -230,7 +229,6 @@ describe('DependencyProxyApp', () => {
 
                 expect(resolver).toHaveBeenCalledWith({
                   before: pagination().startCursor,
-                  first: null,
                   fullPath: provideDefaults.groupPath,
                   last: GRAPHQL_PAGE_SIZE,
                 });
@@ -246,7 +244,6 @@ describe('DependencyProxyApp', () => {
               describe('while loading', () => {
                 it('does not render loading component & sets loading prop', () => {
                   expect(findLoader().exists()).toBe(false);
-                  expect(findManifestList().props('loading')).toBe(true);
                 });
 
                 it('renders form group with label', () => {
@@ -280,9 +277,8 @@ describe('DependencyProxyApp', () => {
             it('shows the clear cache dropdown list', () => {
               expect(findClearCacheDropdownList().exists()).toBe(true);
 
-              const clearCacheDropdownItem = findClearCacheDropdownList().findComponent(
-                GlDisclosureDropdownItem,
-              );
+              const clearCacheDropdownItem =
+                findClearCacheDropdownList().findComponent(GlDisclosureDropdownItem);
 
               expect(clearCacheDropdownItem.text()).toBe('Clear cache');
             });
@@ -346,7 +342,6 @@ describe('DependencyProxyApp', () => {
           await waitForPromises();
 
           expect(resolver).toHaveBeenCalledWith({
-            first: null,
             last: GRAPHQL_PAGE_SIZE,
             before: '1234',
             fullPath: provideDefaults.groupPath,
@@ -365,6 +360,14 @@ describe('DependencyProxyApp', () => {
               after: '1234',
               fullPath: provideDefaults.groupPath,
             });
+          });
+
+          it('renders loading state for a manifest list when route changes', async () => {
+            createComponent();
+            await waitForPromises();
+            await router.push('?after=1234');
+            expect(findLoader().exists()).toBe(false);
+            expect(findManifestList().props('loading')).toBe(true);
           });
         });
       });

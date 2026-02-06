@@ -4,17 +4,19 @@ module WikiPages
   # There are 3 notions of 'action' that inheriting classes must implement:
   #
   # - external_action: the action we report to external clients with webhooks
-  # - usage_counter_action: the action that we count in out internal counters
+  # - internal_event_name: the action that we count in out internal counters
   # - event_action: what we record as the value of `Event#action`
   class BaseService < ::BaseContainerService
     private
+
+    include Gitlab::InternalEventsTracking
 
     def execute_hooks(page)
       page_data = payload(page)
       container.execute_hooks(page_data, :wiki_page_hooks)
       container.execute_integrations(page_data, :wiki_page_hooks)
-      increment_usage
-      create_wiki_event(page)
+      increment_usage(page)
+      track_wiki_event(page)
     end
 
     # Passed to web-hooks, and send to external consumers.
@@ -22,9 +24,8 @@ module WikiPages
       raise NotImplementedError
     end
 
-    # Passed to the WikiPageCounter to count events.
-    # Must be one of WikiPageCounter::KNOWN_EVENTS
-    def usage_counter_action
+    # Should return a valid event name to be used with Gitlab::InternalEvents
+    def internal_event_name
       raise NotImplementedError
     end
 
@@ -38,17 +39,38 @@ module WikiPages
       Gitlab::DataBuilder::WikiPage.build(page, current_user, external_action)
     end
 
-    # This method throws an error if the action is an unanticipated value.
-    def increment_usage
-      Gitlab::UsageDataCounters::WikiPageCounter.count(usage_counter_action)
+    # This method throws an error if internal_event_name returns an unknown event name
+    def increment_usage(page)
+      track_event(page, internal_event_name)
     end
 
-    def create_wiki_event(page)
-      response = WikiPages::EventCreateService
-        .new(current_user)
-        .execute(slug_for_page(page), page, event_action, fingerprint(page))
+    def track_event(page, event_name)
+      label = 'template' if page.template?
 
-      log_error(response.message) if response.error?
+      Gitlab::InternalEvents.track_event(
+        event_name,
+        user: current_user,
+        project: project,
+        namespace: group,
+        additional_properties: {
+          label: label,
+          property: page[:format].to_s
+        }
+      )
+    end
+
+    def track_wiki_event(page)
+      return unless current_user
+
+      fingerprint = fingerprint(page)
+      wiki_page_meta = page.find_or_create_meta
+      track_internal_event('performed_wiki_action',
+        project: wiki_page_meta.project,
+        user: current_user,
+        label: event_action.to_s,
+        meta: wiki_page_meta,
+        fingerprint: fingerprint
+      )
     end
 
     def slug_for_page(page)

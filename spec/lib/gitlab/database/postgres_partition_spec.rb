@@ -31,6 +31,68 @@ RSpec.describe Gitlab::Database::PostgresPartition, type: :model, feature_catego
 
   it_behaves_like 'a postgres model'
 
+  describe 'scopes' do
+    describe '.with_parent_tables' do
+      subject(:with_parent_tables) { described_class.with_parent_tables(parent_tables) }
+
+      let(:parent_tables) { ['_test_partitioned_table'] }
+
+      it 'returns all partitions with parent tables', :aggregate_failures do
+        results = with_parent_tables
+
+        expect(results.size).to eq(1)
+        expect(results.first.identifier).to eq(identifier)
+      end
+    end
+
+    describe '.with_list_constraint' do
+      subject(:with_list_constraint) do
+        described_class
+          .with_parent_tables(Ci::Partitionable.registered_models.map(&:table_name))
+          .with_list_constraint(partition_id)
+      end
+
+      context 'when condition matches' do
+        let(:partition_id) { '102' }
+        let(:expected_size) { Ci::Partitionable.registered_models.size }
+
+        it 'returns the partitions containing the match' do
+          results = with_list_constraint
+
+          expect(results.size).to eq(expected_size)
+        end
+      end
+
+      context 'when condition does not match' do
+        let(:partition_id) { non_existing_record_id }
+
+        it 'returns an empty relation' do
+          expect(with_list_constraint).to be_empty
+        end
+      end
+    end
+
+    describe '.above_threshold' do
+      subject(:above_threshold) { described_class.above_threshold(threshold) }
+
+      context 'when the partition size is above a given threshold' do
+        let(:threshold) { 1.byte }
+
+        it 'returns all partitions above the threshold' do
+          expect(above_threshold.size).not_to be_zero
+        end
+      end
+
+      context 'when the partition size is below a given threshold' do
+        let(:threshold) { 100.megabytes }
+
+        it 'returns an empty relation' do
+          expect(above_threshold).to be_empty
+        end
+      end
+    end
+  end
+
   describe '.for_parent_table' do
     let(:second_name) { '_test_partition_02' }
 
@@ -89,7 +151,14 @@ RSpec.describe Gitlab::Database::PostgresPartition, type: :model, feature_catego
     subject { described_class.partition_exists?(table_name) }
 
     context 'when the partition exists' do
-      let(:table_name) { "ci_builds_metadata" }
+      let(:table_name) { "_test_partition_02" }
+
+      before do
+        ActiveRecord::Base.connection.execute(<<~SQL)
+          CREATE TABLE #{table_name} PARTITION OF public._test_partitioned_table
+          FOR VALUES FROM ('2020-02-01') to ('2020-03-01');
+        SQL
+      end
 
       it { is_expected.to be_truthy }
     end
@@ -105,7 +174,14 @@ RSpec.describe Gitlab::Database::PostgresPartition, type: :model, feature_catego
     subject { described_class.legacy_partition_exists?(table_name) }
 
     context 'when the partition exists' do
-      let(:table_name) { "ci_builds_metadata" }
+      let(:table_name) { "_test_partition_02" }
+
+      before do
+        ActiveRecord::Base.connection.execute(<<~SQL)
+          CREATE TABLE #{table_name} PARTITION OF public._test_partitioned_table
+          FOR VALUES FROM ('2020-02-01') to ('2020-03-01');
+        SQL
+      end
 
       it { is_expected.to be_truthy }
     end
@@ -114,6 +190,26 @@ RSpec.describe Gitlab::Database::PostgresPartition, type: :model, feature_catego
       let(:table_name) { 'partition_does_not_exist' }
 
       it { is_expected.to be_falsey }
+    end
+  end
+
+  describe '#list_partition_ids' do
+    it 'extracts partitions ids for single value' do
+      partition = described_class.new(condition: "FOR VALUES IN ('100')")
+
+      expect(partition.list_partition_ids).to eq([100])
+    end
+
+    it 'extracts partitions ids for multiple values' do
+      partition = described_class.new(condition: "FOR VALUES IN ('100', '101', '102')")
+
+      expect(partition.list_partition_ids).to match_array([100, 101, 102])
+    end
+
+    it 'returns empty array when condition is blank' do
+      partition = described_class.new(condition: nil)
+
+      expect(partition.list_partition_ids).to eq([])
     end
   end
 end

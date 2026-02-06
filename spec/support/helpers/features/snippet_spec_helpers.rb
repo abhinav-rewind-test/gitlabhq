@@ -19,11 +19,7 @@ module Features
     end
 
     def snippet_description_view_selector
-      '.snippet-header .snippet-description'
-    end
-
-    def snippet_description_field_collapsed
-      find('.js-description-input').find('input,textarea')
+      '[data-testid=snippet-description-content]'
     end
 
     def snippet_get_first_blob_path
@@ -47,8 +43,6 @@ module Features
     end
 
     def snippet_fill_in_description(value)
-      # Click placeholder first to expand full description field
-      snippet_description_field_collapsed.click
       fill_in snippet_description_locator, with: value
     end
 

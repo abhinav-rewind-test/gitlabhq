@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe API::Tags, feature_category: :source_code_management do
   let(:user) { create(:user) }
-  let(:guest) { create(:user).tap { |u| project.add_guest(u) } }
+  let(:guest) { create(:user, guest_of: project) }
   let(:project) { create(:project, :repository, creator: user, path: 'my.project') }
   let(:tag_name) { project.repository.find_tag('v1.1.0').name }
   let(:tag_message) { project.repository.find_tag('v1.1.0').message }
@@ -18,6 +18,20 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
 
   describe 'GET /projects/:id/repository/tags', :use_clean_rails_memory_store_caching do
     let(:route) { "/projects/#{project_id}/repository/tags" }
+
+    it_behaves_like 'authorizing granular token permissions', :read_repository_tag do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_repositories,
+      allow_public_access_for_enabled_project_features: :repository do
+      let(:request) do
+        get api(route), params: { job_token: target_job.token }
+      end
+    end
 
     context 'sorting' do
       let(:current_user) { user }
@@ -78,6 +92,22 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
         expect(json_response).to be_an Array
         expect(json_response.size).to eq(1)
         expect(json_response[0]['name']).to eq('v1.1.0')
+      end
+
+      context 'with page parameters' do
+        it 'returns a paginated first page' do
+          get api(route.to_s, user), params: { search: '^v', page: 1, per_page: 2 }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response.size).to eq(2)
+        end
+
+        it 'returns a paginated first page when page is nil' do
+          get api(route.to_s, user), params: { search: '^v', per_page: 2 }
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response.size).to eq(2)
+        end
       end
     end
 
@@ -171,6 +201,16 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
         expected_tag = json_response.find { |r| r['name'] == tag_name }
         expect(expected_tag['message']).to eq(tag_message)
         expect(expected_tag['release']['description']).to eq(description)
+      end
+    end
+
+    context 'with releases preload' do
+      it 'does not cause N+1 problem' do
+        control = ActiveRecord::QueryRecorder.new do
+          get api(route, user)
+        end
+
+        expect(control.log).to include(/SELECT "releases"/).once
       end
     end
 
@@ -298,6 +338,20 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
   describe 'GET /projects/:id/repository/tags/:tag_name' do
     let(:route) { "/projects/#{project_id}/repository/tags/#{tag_name}" }
 
+    it_behaves_like 'authorizing granular token permissions', :read_repository_tag do
+      let(:boundary_object) { project }
+      let(:request) do
+        get api(route, personal_access_token: pat)
+      end
+    end
+
+    it_behaves_like 'enforcing job token policies', :read_repositories,
+      allow_public_access_for_enabled_project_features: :repository do
+      let(:request) do
+        get api(route), params: { job_token: target_job.token }
+      end
+    end
+
     shared_examples_for 'repository tag' do
       it 'returns the repository branch' do
         get api(route, current_user)
@@ -393,6 +447,13 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
   describe 'POST /projects/:id/repository/tags' do
     let(:tag_name) { 'new_tag' }
     let(:route) { "/projects/#{project_id}/repository/tags" }
+
+    it_behaves_like 'authorizing granular token permissions', :create_repository_tag do
+      let(:boundary_object) { project }
+      let(:request) do
+        post api(route, personal_access_token: pat), params: { tag_name: tag_name, ref: 'master' }
+      end
+    end
 
     shared_examples_for 'repository new tag' do
       it 'creates a new tag' do
@@ -498,6 +559,13 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
       end
     end
 
+    it_behaves_like 'authorizing granular token permissions', :delete_repository_tag do
+      let(:boundary_object) { project }
+      let(:request) do
+        delete api(route, personal_access_token: pat)
+      end
+    end
+
     shared_examples_for 'repository delete tag' do
       it 'deletes a tag' do
         delete api(route, current_user)
@@ -527,13 +595,57 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
       end
     end
 
-    context 'when authenticated', 'as a maintainer' do
-      let(:current_user) { user }
+    context 'when authenticated as a guest' do
+      let(:current_user) { create(:user, guest_of: project) }
+
+      it_behaves_like '403 response' do
+        let(:request) { delete api(route, current_user) }
+      end
+    end
+
+    context 'when authenticated as a developer' do
+      let(:current_user) { create(:user, developer_of: project) }
 
       it_behaves_like 'repository delete tag'
 
       context 'requesting with the escaped project full path' do
         let(:project_id) { CGI.escape(project.full_path) }
+
+        it_behaves_like 'repository delete tag'
+      end
+
+      context 'when the tag is protected' do
+        before do
+          create(:protected_tag, project: project, name: tag_name)
+        end
+
+        it_behaves_like '403 response' do
+          let(:request) { delete api(route, current_user) }
+        end
+      end
+    end
+
+    context 'when authenticated as a maintainer' do
+      let(:current_user) { create(:user, maintainer_of: project) }
+
+      it_behaves_like 'repository delete tag'
+
+      context 'when the tag is protected' do
+        before do
+          create(:protected_tag, project: project, name: tag_name)
+        end
+
+        it_behaves_like 'repository delete tag'
+      end
+    end
+
+    context 'when authenticated as an owner' do
+      let(:current_user) { create(:user, owner_of: project) }
+
+      context 'when the tag is protected' do
+        before do
+          create(:protected_tag, project: project, name: tag_name)
+        end
 
         it_behaves_like 'repository delete tag'
       end
@@ -569,6 +681,13 @@ RSpec.describe API::Tags, feature_category: :source_code_management do
       let(:signature) { tag.signature }
       let(:x509_certificate) { signature.x509_certificate }
       let(:x509_issuer) { x509_certificate.x509_issuer }
+
+      it_behaves_like 'authorizing granular token permissions', :read_repository_tag_signature do
+        let(:boundary_object) { project }
+        let(:request) do
+          get api(route, personal_access_token: pat)
+        end
+      end
 
       it 'returns correct JSON' do
         get api(route, current_user)

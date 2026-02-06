@@ -29,6 +29,13 @@ RSpec.describe API::Submodules, feature_category: :source_code_management do
   end
 
   describe "PUT /projects/:id/repository/submodule/:submodule" do
+    it_behaves_like 'authorizing granular token permissions', :update_repository_submodule do
+      let(:boundary_object) { project }
+      let(:request) do
+        put api(route(submodule), personal_access_token: pat), params: params
+      end
+    end
+
     context 'when unauthenticated' do
       it 'returns 401' do
         put api(route(submodule)), params: params
@@ -88,6 +95,25 @@ RSpec.describe API::Submodules, feature_category: :source_code_management do
                   .and_call_original
 
           put api(route(encoded_submodule), user), params: params
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(json_response['id']).to eq project.repository.commit(branch).id
+          expect(project.repository.blob_at(branch, submodule).id).to eq commit_sha
+        end
+      end
+
+      context 'when the submodule name contains a dot' do
+        let(:branch) { 'submodule-with-dot' }
+        let(:submodule) { '.dot-submodule' }
+        let(:commit_sha) { '272ff231b7c36f7d0fdbfb55cb3c1856bd8014ae' }
+
+        it 'returns the commit' do
+          expect(Submodules::UpdateService)
+            .to receive(:new)
+                  .with(any_args, hash_including(submodule: submodule))
+                  .and_call_original
+
+          put api(route(submodule), user), params: params
 
           expect(response).to have_gitlab_http_status(:ok)
           expect(json_response['id']).to eq project.repository.commit(branch).id

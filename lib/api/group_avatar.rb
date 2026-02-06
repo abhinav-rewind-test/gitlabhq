@@ -12,9 +12,11 @@ module API
     resource :groups, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc 'Download the group avatar' do
         detail 'This feature was introduced in GitLab 14.0'
-        tags %w[group_avatar]
+        tags %w[avatars]
         success code: 200
       end
+
+      route_setting :authorization, permissions: :read_avatar, boundary_type: :group
       get ':id/avatar' do
         avatar = user_group.avatar
 

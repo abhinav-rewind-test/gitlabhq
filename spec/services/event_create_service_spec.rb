@@ -31,6 +31,66 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
     end
   end
 
+  describe 'manage event tracking' do
+    context 'when event is for a project' do
+      let(:issue) { create(:issue, project: project) }
+
+      context 'when user is human' do
+        subject { service.open_issue(issue, user) }
+
+        it 'tracks both manage_event and manage_event_human_users with project and namespace' do
+          expect { subject }
+            .to trigger_internal_events('manage_event')
+            .with(user: user, project: project, namespace: project.namespace)
+            .and trigger_internal_events('manage_event_human_users')
+            .with(user: user, project: project, namespace: project.namespace)
+        end
+      end
+
+      context 'when user is a bot' do
+        let(:bot_user) { create(:user, :project_bot) }
+
+        subject { service.open_issue(issue, bot_user) }
+
+        it 'tracks manage_event but not manage_event_human_users' do
+          expect { subject }
+            .to trigger_internal_events('manage_event')
+            .with(user: bot_user, project: project, namespace: project.namespace)
+            .and not_trigger_internal_events('manage_event_human_users')
+        end
+      end
+    end
+
+    context 'when event is for a group' do
+      let(:group) { create(:group) }
+      let(:group_milestone) { create(:milestone, group: group) }
+
+      subject { service.close_milestone(group_milestone, user) }
+
+      it 'tracks both manage_event and manage_event_human_users with namespace only' do
+        expect { subject }
+          .to trigger_internal_events('manage_event')
+          .with(user: user, namespace: group)
+          .and trigger_internal_events('manage_event_human_users')
+          .with(user: user, namespace: group)
+      end
+    end
+  end
+
+  describe 'no project or group' do
+    it 'links the event to the personal namespace of the author' do
+      author = create(:user, :with_namespace)
+      issue = create(:issue, author: author).tap do |issue|
+        issue.namespace_id = nil
+        issue.project_id = nil
+      end
+
+      event = service.open_issue(issue, issue.author)
+
+      expect(event.personal_namespace_id).to eq(issue.author.namespace_id)
+    end
+  end
+
   describe 'Issues' do
     describe '#open_issue' do
       let(:issue) { create(:issue) }
@@ -223,6 +283,13 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
       expect { subject }.to change { user.last_activity_on }.to(Date.today)
     end
 
+    it 'publishes an activity event' do
+      expect { subject }.to publish_event(Users::ActivityEvent).with({
+        user_id: user.id,
+        namespace_id: project.root_ancestor.id
+      })
+    end
+
     it 'caches the last push event for the user' do
       expect_next_instance_of(Users::LastPushEventService) do |instance|
         expect(instance).to receive(:cache_last_push_event).with(an_instance_of(PushEvent))
@@ -281,10 +348,6 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
         expect { duplicate = create_event }.not_to change(Event, :count)
 
         expect(duplicate).to eq(event)
-      end
-
-      it_behaves_like "it records the event in the event counter" do
-        let(:event_action) { :wiki_action }
       end
 
       it_behaves_like "it records a git write event"
@@ -362,39 +425,83 @@ RSpec.describe EventCreateService, :clean_gitlab_redis_cache, :clean_gitlab_redi
       let(:label) { 'usage_activity_by_stage_monthly.create.action_monthly_active_users_project_repo' }
       let(:property) { 'project_action' }
     end
+
+    # rubocop:disable Layout/LineLength -- Makes it more readable
+    context 'when user is human' do
+      it 'tracks internal events' do
+        expect { subject }.to trigger_internal_events('perform_git_operation_on_project')
+                                .with(user: user, project: project)
+                                .and increment_usage_metrics('counts.count_distinct_user_id_from_perform_git_operation_on_project_monthly')
+                                .and increment_usage_metrics('counts.count_distinct_user_id_from_perform_git_operation_on_project_weekly')
+      end
+    end
+    # rubocop:enable Layout/LineLength
+
+    context 'when user is a bot' do
+      let(:user) { create(:user, :project_bot) }
+
+      it 'does not track perform_git_operation_on_project event' do
+        expect(Gitlab::InternalEvents).not_to receive(:track_event)
+          .with('perform_git_operation_on_project', anything)
+
+        subject
+      end
+
+      it 'still tracks the regular project_action event' do
+        tracking_params = { event_names: 'project_action', **dates }
+
+        expect { subject }
+          .to change { Gitlab::UsageDataCounters::HLLRedisCounter.unique_events(**tracking_params) }
+          .by(1)
+      end
+    end
   end
 
   describe '#join_source' do
-    let(:source) { project }
-
-    subject(:join_source) { service.join_source(source, user) }
+    subject(:event) { service.join_source(source, user) }
 
     context 'when source is a group' do
       let_it_be(:source) { create(:group) }
 
-      it { is_expected.to be_falsey }
-
-      specify do
-        expect { join_source }.not_to change { Event.count }
+      it 'creates new event' do
+        expect(event).to be_nil
       end
     end
 
     context 'when source is a project' do
-      it { is_expected.to be_truthy }
+      let_it_be(:source) { project }
 
-      specify do
-        expect { join_source }.to change { Event.count }.from(0).to(1)
+      it 'creates new event', :aggregate_failures do
+        expect(event).to be_persisted
+        expect(event.target_type).to eq('Project')
       end
     end
   end
 
+  describe '#leave_project' do
+    subject(:event) { service.leave_project(project, user) }
+
+    it 'creates new event', :aggregate_failures do
+      expect(event).to be_persisted
+      expect(event.target_type).to eq('Project')
+    end
+  end
+
   describe '#expired_leave_project' do
-    subject(:expired_leave_project) { service.expired_leave_project(project, user) }
+    subject(:event) { service.expired_leave_project(project, user) }
 
-    it { is_expected.to be_truthy }
+    it 'creates new event', :aggregate_failures do
+      expect(event).to be_persisted
+      expect(event.target_type).to eq('Project')
+    end
+  end
 
-    specify do
-      expect { expired_leave_project }.to change { Event.count }.from(0).to(1)
+  describe '#create_project' do
+    subject(:event) { service.create_project(project, user) }
+
+    it 'creates new event', :aggregate_failures do
+      expect(event).to be_persisted
+      expect(event.target_type).to eq('Project')
     end
   end
 

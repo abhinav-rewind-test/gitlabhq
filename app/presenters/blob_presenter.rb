@@ -6,6 +6,7 @@ class BlobPresenter < Gitlab::View::Presenter::Delegated
   include DiffHelper
   include TreeHelper
   include ChecksCollaboration
+  include Gitlab::EncodingHelper
 
   presents ::Blob, as: :blob
 
@@ -37,7 +38,13 @@ class BlobPresenter < Gitlab::View::Presenter::Delegated
   def plain_data
     return if blob.binary?
 
-    highlight(plain: false)
+    Gitlab::Highlight.highlight(
+      blob.path,
+      blob_data(nil),
+      language: blob_language,
+      plain: false,
+      used_on: :blob
+    )
   end
 
   def trimmed_blob_data(trim_length)
@@ -94,6 +101,10 @@ class BlobPresenter < Gitlab::View::Presenter::Delegated
     url_helpers.project_blame_path(*path_params)
   end
 
+  def base64_encoded_blob
+    Base64.encode64(blob.raw)
+  end
+
   def history_path
     url_helpers.project_commits_path(*path_params)
   end
@@ -135,6 +146,10 @@ class BlobPresenter < Gitlab::View::Presenter::Delegated
     super(blob, project, commit_id)
   end
 
+  def can_modify_blob_with_web_ide?
+    super(blob, project)
+  end
+
   def can_current_user_push_to_branch?
     return false unless current_user && project.repository.branch_exists?(commit_id)
 
@@ -142,7 +157,7 @@ class BlobPresenter < Gitlab::View::Presenter::Delegated
   end
 
   def archived?
-    project.archived
+    project.self_or_ancestors_archived?
   end
 
   def ide_edit_path

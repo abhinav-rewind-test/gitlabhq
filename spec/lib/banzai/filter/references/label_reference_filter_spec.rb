@@ -3,10 +3,10 @@
 require 'spec_helper'
 require 'html/pipeline'
 
-RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_category: :markdown do
   include FilterSpecHelper
 
-  let(:project)   { create(:project, :public, name: 'sample-project') }
+  let_it_be(:project) { create(:project, :public, name: 'sample-project') }
   let(:label)     { create(:label, project: project) }
   let(:reference) { label.to_reference }
 
@@ -21,8 +21,8 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
   %w[pre code a style].each do |elem|
     it "ignores valid references contained inside '#{elem}' element" do
-      exp = act = "<#{elem}>Label #{reference}</#{elem}>"
-      expect(reference_filter(act).to_html).to eq exp
+      act = "<#{elem}>Label #{reference}</#{elem}>"
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -89,10 +89,10 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
   end
 
   context 'project that does not exist referenced' do
-    let(:result) { reference_filter('aaa/bbb~ccc') }
+    let(:result) { reference_filter('See aaa/bbb~ccc') }
 
     it 'does not link reference' do
-      expect(result.to_html).to eq 'aaa/bbb~ccc'
+      expect(result.to_html).to include 'See aaa/bbb~ccc'
     end
   end
 
@@ -122,9 +122,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid label IDs' do
-      exp = act = "Label #{invalidate_reference(reference)}"
+      act = "Label #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -146,9 +146,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid label names' do
-      exp = act = "Label #{Label.reference_prefix}#{label.name.reverse}"
+      act = "Label #{Label.reference_prefix}#{label.name.reverse}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -170,9 +170,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid label names' do
-      exp = act = "Label #{Label.reference_prefix}#{label.id}#{label.name.reverse}"
+      act = "Label #{Label.reference_prefix}#{label.id}#{label.name.reverse}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -199,7 +199,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
       act = "Label #{Label.reference_prefix}#{label.name.reverse}"
       exp = "Label #{Label.reference_prefix}&amp;mf.g?"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include exp
     end
   end
 
@@ -221,9 +221,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid label names' do
-      exp = act = %(Label #{Label.reference_prefix}"#{label.name.reverse}")
+      act = %(Label #{Label.reference_prefix}"#{label.name.reverse}")
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -245,9 +245,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid label names' do
-      exp = act = "Label #{Label.reference_prefix}#{label.id}#{label.name.reverse}"
+      act = "Label #{Label.reference_prefix}#{label.id}#{label.name.reverse}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -272,12 +272,12 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
       act = %(Label #{Label.reference_prefix}"#{label.name.reverse}")
       exp = %(Label #{Label.reference_prefix}"?secnerefer &amp; mf.g\")
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include exp
     end
   end
 
   context 'References with html entities' do
-    let!(:label) { create(:label, title: '&lt;html&gt;', project: project) }
+    let!(:label) { create(:label, title: '<html>', project: project) }
 
     it 'links to a valid reference' do
       doc = reference_filter('See ~"&lt;html&gt;"')
@@ -290,7 +290,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     it 'ignores invalid label names and escapes entities' do
       act = %(Label #{Label.reference_prefix}"&lt;non valid&gt;")
 
-      expect(reference_filter(act).to_html).to eq act
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -338,8 +338,8 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
   describe 'edge cases' do
     it 'gracefully handles non-references matching the pattern' do
-      exp = act = '(format nil "~0f" 3.0) ; 3.0'
-      expect(reference_filter(act).to_html).to eq exp
+      act = '(format nil "~0f" 3.0) ; 3.0'
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
@@ -376,8 +376,8 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
   end
 
   describe 'group label references' do
-    let(:group)       { create(:group) }
-    let(:project)     { create(:project, :public, namespace: group) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, namespace: group) }
     let(:group_label) { create(:group_label, name: 'gfm references', group: group) }
 
     context 'without project reference' do
@@ -397,9 +397,9 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
       end
 
       it 'ignores invalid label names' do
-        exp = act = %(Label #{Label.reference_prefix}"#{group_label.name.reverse}")
+        act = %(Label #{Label.reference_prefix}"#{group_label.name.reverse}")
 
-        expect(reference_filter(act).to_html).to eq exp
+        expect(reference_filter(act).to_html).to include act
       end
     end
 
@@ -420,15 +420,15 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
       end
 
       it 'ignores invalid label names' do
-        exp = act = %(Label #{project.to_reference_base}#{Label.reference_prefix}"#{group_label.name.reverse}")
+        act = %(Label #{project.to_reference_base}#{Label.reference_prefix}"#{group_label.name.reverse}")
 
-        expect(reference_filter(act).to_html).to eq exp
+        expect(reference_filter(act).to_html).to include act
       end
     end
   end
 
   describe 'cross-project / cross-namespace complete reference' do
-    let(:project2)  { create(:project) }
+    let_it_be(:project2)  { create(:project) }
     let(:label)     { create(:label, project: project2, color: '#00ff00') }
     let(:reference) { "#{project2.full_path}~#{label.name}" }
     let!(:result)   { reference_filter("See #{reference}") }
@@ -439,11 +439,21 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'has valid color' do
-      expect(result.css('a span').first.attr('style')).to match /background-color: #00ff00/
+      expect(result.css('a span').first.attr('style')).to match('background-color: #00ff00')
     end
 
     it 'has valid link text' do
       expect(result.css('a').first.text).to eq "#{label.name} in #{project2.full_name}"
+    end
+
+    it 'has correct HTML content' do
+      frag = Nokogiri::HTML.fragment("<span>")
+      span = frag.children.first
+      span.content = "#{label.name} "
+      span << i = frag.document.create_element("i")
+      i.content = "in #{project2.full_name}"
+
+      expect(result.css('a').first.to_html).to include_html(span.inner_html)
     end
 
     it 'has valid text' do
@@ -451,16 +461,16 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'cross-project / same-namespace complete reference' do
-    let(:namespace) { create(:namespace) }
-    let(:project)   { create(:project, namespace: namespace) }
-    let(:project2)  { create(:project, namespace: namespace) }
+    let_it_be(:namespace) { create(:namespace) }
+    let_it_be(:project)   { create(:project, namespace: namespace) }
+    let_it_be(:project2)  { create(:project, namespace: namespace) }
     let(:label)     { create(:label, project: project2, color: '#00ff00') }
     let(:reference) { "#{project2.full_path}~#{label.name}" }
     let!(:result)   { reference_filter("See #{reference}") }
@@ -471,7 +481,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'has valid color' do
-      expect(result.css('a span').first.attr('style')).to match /background-color: #00ff00/
+      expect(result.css('a span').first.attr('style')).to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -483,16 +493,16 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'cross-project shorthand reference' do
-    let(:namespace) { create(:namespace) }
-    let(:project)   { create(:project, namespace: namespace) }
-    let(:project2)  { create(:project, namespace: namespace) }
+    let_it_be(:namespace) { create(:namespace) }
+    let_it_be(:project)   { create(:project, namespace: namespace) }
+    let_it_be(:project2)  { create(:project, namespace: namespace) }
     let(:label)     { create(:label, project: project2, color: '#00ff00') }
     let(:reference) { "#{project2.path}~#{label.name}" }
     let!(:result)   { reference_filter("See #{reference}") }
@@ -504,7 +514,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
     it 'has valid color' do
       expect(result.css('a span').first.attr('style'))
-        .to match /background-color: #00ff00/
+        .to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -516,20 +526,20 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'cross group label references' do
-    let(:group)            { create(:group) }
-    let(:project)          { create(:project, :public, namespace: group) }
-    let(:another_group)    { create(:group) }
-    let(:another_project)  { create(:project, :public, namespace: another_group) }
-    let(:group_label)      { create(:group_label, group: another_group, color: '#00ff00') }
-    let(:reference)        { "#{another_project.full_path}~#{group_label.name}" }
-    let!(:result)          { reference_filter("See #{reference}", project: project) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, namespace: group) }
+    let_it_be(:another_group) { create(:group) }
+    let_it_be(:another_project) { create(:project, :public, namespace: another_group) }
+    let_it_be(:group_label) { create(:group_label, group: another_group, color: '#00ff00') }
+    let(:reference) { "#{another_project.full_path}~#{group_label.name}" }
+    let!(:result) { reference_filter("See #{reference}", project: project) }
 
     it 'points to referenced project issues page' do
       expect(result.css('a').first.attr('href'))
@@ -538,7 +548,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
     it 'has valid color' do
       expect(result.css('a span').first.attr('style'))
-        .to match /background-color: #00ff00/
+        .to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -552,13 +562,13 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
 
     context 'when group name has HTML entities' do
-      let(:another_group) { create(:group, name: 'random', path: 'another_group') }
+      let_it_be(:another_group) { create(:group, name: 'random', path: 'another_group') }
 
       before do
         another_group.name = "<img src=x onerror=alert(1)>"
@@ -573,8 +583,8 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
   end
 
   describe 'cross-project / same-group_label complete reference' do
-    let(:group)            { create(:group) }
-    let(:project)          { create(:project, :public, namespace: group) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, namespace: group) }
     let(:another_project)  { create(:project, :public, namespace: group) }
     let(:group_label)      { create(:group_label, group: group, color: '#00ff00') }
     let(:reference)        { "#{another_project.full_path}~#{group_label.name}" }
@@ -587,7 +597,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
     it 'has valid color' do
       expect(result.css('a span').first.attr('style'))
-        .to match /background-color: #00ff00/
+        .to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -601,15 +611,15 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'same project / same group_label complete reference' do
-    let(:group)       { create(:group) }
-    let(:project)     { create(:project, :public, namespace: group) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, namespace: group) }
     let(:group_label) { create(:group_label, group: group, color: '#00ff00') }
     let(:reference)   { "#{project.full_path}~#{group_label.name}" }
     let!(:result)     { reference_filter("See #{reference}", project: project) }
@@ -621,7 +631,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
     it 'has valid color' do
       expect(result.css('a span').first.attr('style'))
-        .to match /background-color: #00ff00/
+        .to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -633,15 +643,15 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'same project / same group_label shorthand reference' do
-    let(:group)       { create(:group) }
-    let(:project)     { create(:project, :public, namespace: group) }
+    let_it_be(:group) { create(:group) }
+    let_it_be(:project) { create(:project, :public, namespace: group) }
     let(:group_label) { create(:group_label, group: group, color: '#00ff00') }
     let(:reference)   { "#{project.path}~#{group_label.name}" }
     let!(:result)     { reference_filter("See #{reference}", project: project) }
@@ -653,7 +663,7 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
 
     it 'has valid color' do
       expect(result.css('a span').first.attr('style'))
-        .to match /background-color: #00ff00/
+        .to match(/background-color: #00ff00/)
     end
 
     it 'has valid link text' do
@@ -665,30 +675,29 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
     end
 
     it 'ignores invalid IDs on the referenced label' do
-      exp = act = "See #{invalidate_reference(reference)}"
+      act = "See #{invalidate_reference(reference)}"
 
-      expect(reference_filter(act).to_html).to eq exp
+      expect(reference_filter(act).to_html).to include act
     end
   end
 
   describe 'group context' do
+    let_it_be(:group) { create(:group) }
+    let_it_be(:subgroup) { create(:group, parent: group) }
+    let_it_be(:label) { create(:group_label, group: group) }
+
     it 'points to the page defined in label_url_method' do
-      group = create(:group)
-      label = create(:group_label, group: group)
       reference = "~#{label.name}"
 
-      result = reference_filter("See #{reference}", { project: nil, group: group, label_url_method: :group_url } )
+      result = reference_filter("See #{reference}", { project: nil, group: group, label_url_method: :group_url })
 
       expect(result.css('a').first.attr('href')).to eq(urls.group_url(group, label_name: label.name))
     end
 
     it 'finds labels also in ancestor groups' do
-      group = create(:group)
-      label = create(:group_label, group: group)
-      subgroup = create(:group, parent: group)
       reference = "~#{label.name}"
 
-      result = reference_filter("See #{reference}", { project: nil, group: subgroup, label_url_method: :group_url } )
+      result = reference_filter("See #{reference}", { project: nil, group: subgroup, label_url_method: :group_url })
 
       expect(result.css('a').first.attr('href')).to eq(urls.group_url(subgroup, label_name: label.name))
     end
@@ -698,10 +707,156 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
       label = create(:label, project: project)
       reference = "#{project.full_path}~#{label.name}"
 
-      result = reference_filter("See #{reference}", { project: nil, group: create(:group) } )
+      result = reference_filter("See #{reference}", { project: nil, group: group })
 
       expect(result.css('a').first.attr('href')).to eq(urls.project_issues_url(project, label_name: label.name))
       expect(result.css('a').first.text).to eq "#{label.name} in #{project.full_name}"
+    end
+  end
+
+  shared_examples 'absolute group reference' do
+    it 'supports absolute reference' do
+      absolute_reference = "/#{reference}"
+
+      result = reference_filter("See #{absolute_reference}", context)
+
+      if context[:label_url_method] == :group_url
+        expect(result.css('a').first.attr('href')).to eq(urls.group_url(group, label_name: group_label.name))
+      else
+        expect(result.css('a').first.attr('href')).to eq(urls.issues_group_url(group, label_name: group_label.name))
+      end
+
+      expect(result.css('a').first.attr('data-original')).to eq absolute_reference
+      expect(result.content).to eq "See #{group_label.name}"
+    end
+  end
+
+  shared_examples 'absolute project reference' do
+    it 'supports absolute reference' do
+      absolute_reference = "/#{reference}"
+
+      result = reference_filter("See #{absolute_reference}", context)
+
+      if context[:label_url_method] == :project_merge_requests_url
+        expect(result.css('a').first.attr('href')).to eq(urls.project_merge_requests_url(project, label_name: project_label.name))
+      else
+        expect(result.css('a').first.attr('href')).to eq(urls.project_issues_url(project, label_name: project_label.name))
+      end
+
+      expect(result.css('a').first.attr('data-original')).to eq absolute_reference
+      expect(result.content).to eq "See #{project_label.name}"
+    end
+  end
+
+  describe 'absolute label references' do
+    let_it_be(:parent_group)         { create(:group) }
+    let_it_be(:group)                { create(:group, parent: parent_group) }
+    let_it_be(:project)              { create(:project, :public, group: group) }
+    let_it_be(:project_label)        { create(:label, project: project) }
+    let_it_be(:group_label)          { create(:group_label, group: group) }
+    let_it_be(:parent_group_label)   { create(:group_label, group: parent_group) }
+    let_it_be(:another_parent_group) { create(:group) }
+    let_it_be(:another_group)        { create(:group, parent: another_parent_group) }
+    let_it_be(:another_project)      { create(:project, :public, group: another_group) }
+
+    context 'with a project label' do
+      let(:reference) { "#{project.full_path}~#{project_label.name}" }
+
+      it_behaves_like 'absolute project reference' do
+        let(:context) { { project: project } }
+      end
+
+      it_behaves_like 'absolute project reference' do
+        let(:context) { { project: project, label_url_method: :project_merge_requests_url } }
+      end
+    end
+
+    context 'with a group label' do
+      let_it_be(:reference) { "#{group.full_path}~#{group_label.name}" }
+
+      it_behaves_like 'absolute group reference' do
+        let(:context) { { project: nil, group: group } }
+      end
+
+      it_behaves_like 'absolute group reference' do
+        let(:context) { { project: nil, group: group, label_url_method: :group_url } }
+      end
+    end
+
+    describe 'cross-project absolute reference' do
+      let_it_be(:context) { { project: another_project } }
+
+      # a normal cross-project label works fine. So check just the absolute version.
+      it_behaves_like 'absolute project reference' do
+        let_it_be(:reference) { "#{project.full_path}~#{project_label.name}" }
+      end
+
+      it 'does not find label in ancestors' do
+        reference = "/#{project.full_path}~#{parent_group_label.name}"
+        result = reference_filter("See #{reference}", context)
+
+        expect(result.to_html).to include "See #{reference}"
+      end
+    end
+
+    describe 'cross-group absolute reference' do
+      let_it_be(:context) { { project: nil, group: another_group } }
+
+      it 'can not find the label' do
+        reference = "#{another_group.full_path}~#{group_label.name}"
+        result = reference_filter("See #{reference}", context)
+
+        expect(result.to_html).to include "See #{reference}"
+      end
+
+      it 'finds the label with relative reference' do
+        label_name = group_label.name
+        reference = "#{group.full_path}~#{label_name}"
+        result = reference_filter("See #{reference}", context)
+
+        if context[:label_url_method] == :group_url
+          expect(result.css('a').first.attr('href')).to eq(urls.group_url(group, label_name: label_name))
+        else
+          expect(result.css('a').first.attr('href')).to eq(urls.issues_group_url(group, label_name: label_name))
+        end
+      end
+
+      it 'finds label in ancestors' do
+        label_name = parent_group_label.name
+        reference = "#{group.full_path}~#{label_name}"
+        result = reference_filter("See #{reference}", context)
+
+        if context[:label_url_method] == :group_url
+          expect(result.css('a').first.attr('href')).to eq(urls.group_url(group, label_name: label_name))
+        else
+          expect(result.css('a').first.attr('href')).to eq(urls.issues_group_url(group, label_name: label_name))
+        end
+      end
+
+      it 'does not find label in ancestors' do
+        reference = "/#{group.full_path}~#{parent_group_label.name}"
+        result = reference_filter("See #{reference}", context)
+
+        expect(result.to_html).to include "See #{reference}"
+      end
+
+      it_behaves_like 'absolute group reference' do
+        let_it_be(:reference) { "#{group.full_path}~#{group_label.name}" }
+      end
+    end
+  end
+
+  context 'when invalid parent used with label_url_method' do
+    let_it_be(:group) { create(:group) }
+    let(:context) { { project: nil, group: nil } }
+
+    it 'does not raise NoMethodError' do
+      context[:label_url_method] = :project_merge_requests_url
+      filter = described_class.new(Nokogiri::HTML::DocumentFragment.parse(''), context)
+
+      result = filter.url_for_object(label, group)
+
+      expect(result).to be_nil
     end
   end
 
@@ -777,5 +932,21 @@ RSpec.describe Banzai::Filter::References::LabelReferenceFilter, feature_categor
         reference_filter(markdown)
       end.not_to exceed_all_query_limit(max_count)
     end
+  end
+
+  it_behaves_like 'a reference which does not unescape its content in data-original' do
+    let(:context)             { { project: project } }
+    let(:label_title)         { "x<script>alert('xss');</script>" }
+    let(:label_title_escaped) { "x&lt;script&gt;alert('xss');&lt;/script&gt;" }
+    let(:resource)            { create(:label, title: label_title, project: project) }
+    let(:reference)           { %(#{resource.class.reference_prefix}"#{label_title_escaped}") }
+
+    let(:expected_resource_title)   { label_title }
+    let(:expected_href)             { urls.project_issues_url(project, label_name: label_title) }
+    let(:expected_replacement_text) { label_title }
+  end
+
+  it_behaves_like 'ReferenceFilter#references_in' do
+    let(:filter_instance) { described_class.new(nil, { project: }) }
   end
 end

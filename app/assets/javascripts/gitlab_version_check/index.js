@@ -1,10 +1,10 @@
 import Vue from 'vue';
 import { parseBoolean, convertObjectPropsToCamelCase } from '~/lib/utils/common_utils';
-import GitlabVersionCheckBadge from './components/gitlab_version_check_badge.vue';
+import GitlabVersionCheckBadge from 'jh_else_ce/gitlab_version_check/components/gitlab_version_check_badge.vue';
 import SecurityPatchUpgradeAlertModal from './components/security_patch_upgrade_alert_modal.vue';
 
 const mountGitlabVersionCheckBadge = (el) => {
-  const { size, version } = el.dataset;
+  const { version } = el.dataset;
   const actionable = parseBoolean(el.dataset.actionable);
 
   try {
@@ -17,10 +17,10 @@ const mountGitlabVersionCheckBadge = (el) => {
 
     return new Vue({
       el,
+      name: 'GitlabVersionCheckBadgeRoot',
       render(createElement) {
         return createElement(GitlabVersionCheckBadge, {
           props: {
-            size,
             actionable,
             status: severity,
           },
@@ -36,14 +36,12 @@ const mountSecurityPatchUpgradeAlertModal = (el) => {
   const { currentVersion, version } = el.dataset;
 
   try {
-    const {
-      details,
-      latestStableVersions,
-      latestStableVersionOfMinor,
-    } = convertObjectPropsToCamelCase(JSON.parse(version));
+    const { details, latestStableVersions, latestStableVersionOfMinor } =
+      convertObjectPropsToCamelCase(JSON.parse(version));
 
     return new Vue({
       el,
+      name: 'SecurityPatchUpgradeAlertModalRoot',
       render(createElement) {
         return createElement(SecurityPatchUpgradeAlertModal, {
           props: {

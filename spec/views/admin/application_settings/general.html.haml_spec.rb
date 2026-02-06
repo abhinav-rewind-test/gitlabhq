@@ -11,28 +11,21 @@ RSpec.describe 'admin/application_settings/general.html.haml' do
     allow(view).to receive(:current_user).and_return(user)
   end
 
-  describe 'sourcegraph integration' do
-    let(:sourcegraph_flag) { true }
+  describe 'deletion protection settings' do
+    it 'renders the deletion protection settings' do
+      render
 
-    before do
-      allow(Gitlab::Sourcegraph).to receive(:feature_available?).and_return(sourcegraph_flag)
+      expect(rendered).to have_selector('#js-admin-deletion-protection-settings')
+      expect(rendered).to have_field('Allow permanent deletion')
     end
+  end
 
+  describe 'sourcegraph integration' do
     context 'when sourcegraph feature is enabled' do
       it 'show the form' do
         render
 
         expect(rendered).to have_field('application_setting_sourcegraph_enabled')
-      end
-    end
-
-    context 'when sourcegraph feature is disabled' do
-      let(:sourcegraph_flag) { false }
-
-      it 'show the form' do
-        render
-
-        expect(rendered).not_to have_field('application_setting_sourcegraph_enabled')
       end
     end
   end
@@ -124,7 +117,6 @@ RSpec.describe 'admin/application_settings/general.html.haml' do
 
     shared_examples 'does not render the form' do
       it 'does not render the form' do
-        expect(rendered).not_to have_field('application_setting_instance_level_code_suggestions_enabled')
         expect(rendered).not_to have_field('application_setting_instance_level_ai_beta_features_enabled')
       end
     end
@@ -139,6 +131,14 @@ RSpec.describe 'admin/application_settings/general.html.haml' do
       let(:gitlab_org_or_com?) { false }
 
       it_behaves_like 'does not render the form'
+    end
+  end
+
+  describe 'private profile restrictions', feature_category: :user_management do
+    it 'renders correct ce partial' do
+      render
+
+      expect(rendered).to render_template('admin/application_settings/_private_profile_restrictions')
     end
   end
 end

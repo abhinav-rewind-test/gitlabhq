@@ -1,17 +1,15 @@
 <script>
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
-import ReplyPlaceholder from './discussion_reply_placeholder.vue';
+import DiscussionReplyPlaceholder from './discussion_reply_placeholder.vue';
 import ResolveDiscussionButton from './discussion_resolve_button.vue';
 import ResolveWithIssueButton from './discussion_resolve_with_issue_button.vue';
 
 export default {
   name: 'DiscussionActions',
   components: {
-    ReplyPlaceholder,
+    DiscussionReplyPlaceholder,
     ResolveDiscussionButton,
     ResolveWithIssueButton,
   },
-  mixins: [glFeatureFlagsMixin()],
   props: {
     discussion: {
       type: Object,
@@ -30,6 +28,7 @@ export default {
       required: false,
       default: '',
     },
+    // eslint-disable-next-line vue/no-unused-properties -- shouldShowJumpToNextDiscussion is part of the component's public API.
     shouldShowJumpToNextDiscussion: {
       type: Boolean,
       required: true,
@@ -47,12 +46,8 @@ export default {
 </script>
 
 <template>
-  <div class="discussion-with-resolve-btn clearfix">
-    <reply-placeholder
-      data-testid="discussion-reply-tab"
-      :placeholder-text="__('Reply…')"
-      @focus="$emit('showReplyForm')"
-    />
+  <div class="discussion-with-resolve-btn gl-clearfix">
+    <discussion-reply-placeholder @focus="$emit('showReplyForm')" />
 
     <div v-if="userCanResolveDiscussion" class="btn-group discussion-actions" role="group">
       <div class="btn-group">

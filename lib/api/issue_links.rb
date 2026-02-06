@@ -6,14 +6,13 @@ module API
 
     before { authenticate! }
 
-    ISSUE_LINKS_TAGS = %w[issue_links].freeze
-
+    ISSUE_LINKS_TAGS = %w[issues].freeze
     feature_category :team_planning
     urgency :low
 
     params do
       requires :id, types: [String, Integer],
-                    desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
+        desc: 'The ID or URL-encoded path of the project owned by the authenticated user'
       requires :issue_iid, type: Integer, desc: 'The internal ID of a project’s issue'
     end
     resource :projects, requirements: { id: %r{[^/]+} } do
@@ -28,6 +27,7 @@ module API
         ]
         tags ISSUE_LINKS_TAGS
       end
+      route_setting :authorization, permissions: :read_issue_link, boundary_type: :project
       get ':id/issues/:issue_iid/links' do
         source_issue = find_project_issue(params[:issue_iid])
         related_issues = source_issue.related_issues(current_user) do |issues|
@@ -35,10 +35,10 @@ module API
         end
 
         present related_issues,
-                with: Entities::RelatedIssue,
-                current_user: current_user,
-                project: user_project,
-                include_subscribed: false
+          with: Entities::RelatedIssue,
+          current_user: current_user,
+          project: user_project,
+          include_subscribed: false
       end
 
       desc 'Create an issue link' do
@@ -53,17 +53,17 @@ module API
       end
       params do
         requires :target_project_id, types: [String, Integer],
-                                     desc: 'The ID or URL-encoded path of a target project'
+          desc: 'The ID or URL-encoded path of a target project'
         requires :target_issue_iid, types: [String, Integer], desc: 'The internal ID of a target project’s issue'
         optional :link_type, type: String, values: IssueLink.available_link_types,
-                             desc: 'The type of the relation (“relates_to”, “blocks”, “is_blocked_by”),'\
-                              'defaults to “relates_to”)'
+          desc: 'The type of the relation (“relates_to”, “blocks”, “is_blocked_by”),'\
+           'defaults to “relates_to”)'
       end
-      # rubocop: disable CodeReuse/ActiveRecord
+      route_setting :authorization, permissions: :create_issue_link, boundary_type: :project
       post ':id/issues/:issue_iid/links' do
         source_issue = find_project_issue(params[:issue_iid])
         target_issue = find_project_issue(declared_params[:target_issue_iid],
-                                          declared_params[:target_project_id])
+          declared_params[:target_project_id])
 
         create_params = { target_issuable: target_issue, link_type: declared_params[:link_type] }
 
@@ -77,8 +77,6 @@ module API
           render_api_error!(result[:message], result[:http_status])
         end
       end
-      # rubocop: enable CodeReuse/ActiveRecord
-
       desc 'Get an issue link' do
         detail 'Gets details about an issue link. This feature was introduced in GitLab 15.1.'
         success Entities::IssueLink
@@ -91,6 +89,7 @@ module API
       params do
         requires :issue_link_id, types: [String, Integer], desc: 'ID of an issue relationship'
       end
+      route_setting :authorization, permissions: :read_issue_link, boundary_type: :project
       get ':id/issues/:issue_iid/links/:issue_link_id' do
         issue = find_project_issue(params[:issue_iid])
         issue_link = IssueLink.for_source_or_target(issue).find(declared_params[:issue_link_id])
@@ -112,6 +111,7 @@ module API
       params do
         requires :issue_link_id, types: [String, Integer], desc: 'The ID of an issue relationship'
       end
+      route_setting :authorization, permissions: :delete_issue_link, boundary_type: :project
       delete ':id/issues/:issue_iid/links/:issue_link_id' do
         issue = find_project_issue(params[:issue_iid])
         issue_link = IssueLink

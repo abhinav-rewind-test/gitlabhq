@@ -2,80 +2,107 @@
 stage: Create
 group: Source Code
 info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Stash changes for later
 ---
 
-# Git stash
+Use `git stash` when you want to change to a different branch, and you want to store changes that are not ready to be
+committed.
 
-Use `git stash` when you want to change to a different branch, and you
-want to store changes that are not ready to be committed.
-
-- Stash:
+- To stash uncommitted changes without a message:
 
   ```shell
-  git stash save
-  # or
   git stash
-  # or with a message
+  ```
+
+- To stash uncommitted changes with a message:
+
+  ```shell
   git stash save "this is a message to display on the list"
   ```
 
-- Apply stash to keep working on it:
+- To retrieve changes from the stash and apply them to your branch:
 
   ```shell
   git stash apply
-  # or apply a specific one from out stack
+  ```
+
+- To apply a specific change from the stash to your branch:
+
+  ```shell
   git stash apply stash@{3}
   ```
 
-- Every time you save a stash, it gets stacked. Use `list` to see all of the
-  stashes.
+- To see all of the changes in the stash:
 
   ```shell
   git stash list
-  # or for more information (log methods)
+  ```
+
+- To see a list of changes in that stash with more information:
+
+  ```shell
   git stash list --stat
   ```
 
-- To clean the stack, manually remove them:
+- To delete the most recently stashed change from the stash:
 
   ```shell
-  # drop top stash
   git stash drop
-  # or
+  ```
+
+- To delete a specific change from the stash:
+
+  ```shell
   git stash drop <name>
-  # to clear all history we can use
+  ```
+
+- To delete all changes from the stash:
+
+  ```shell
   git stash clear
   ```
 
-- Use one command to apply and drop:
+- To apply the most recently stashed change and delete it from the stash:
 
   ```shell
   git stash pop
   ```
 
-- If you have conflicts, either reset or commit your changes.
-- Conflicts through `pop` don't drop a stash afterwards.
+If you make a lot of changes after stashing your changes, conflicts might occur when you apply
+these previous changes back to your branch. You must resolve these conflicts before the changes can be applied
+from the stash.
 
 ## Git stash sample workflow
 
-1. Modify a file.
-1. Stage file.
-1. Stash it.
-1. View the stash list.
-1. Confirm no pending changes through `git status`.
-1. Apply with `git stash pop`.
-1. View list to confirm changes.
+To try using Git stashing yourself:
 
-```shell
-# Modify edit_this_file.rb file
-git add .
+1. Modify a file in a Git repository.
+1. Stash the modification:
 
-git stash save "Saving changes from edit this file"
+   ```shell
+   git stash save "Saving changes from edit this file"
+   ```
 
-git stash list
-git status
+1. View the stash list:
 
-git stash pop
-git stash list
-git status
-```
+   ```shell
+   git stash list
+   ```
+
+1. Confirm there are no pending changes:
+
+   ```shell
+   git status
+   ```
+
+1. Apply the stashed changes and drop the change from the stash:
+
+   ```shell
+   git stash pop
+   ```
+
+1. View stash list to confirm that the change was removed:
+
+   ```shell
+   git stash list
+   ```

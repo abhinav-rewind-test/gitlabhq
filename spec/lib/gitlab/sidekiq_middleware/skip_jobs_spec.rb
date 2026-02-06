@@ -5,12 +5,15 @@ require 'spec_helper'
 RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalability do
   let(:job) { { 'jid' => 123, 'args' => [456] } }
   let(:queue) { 'test_queue' }
+  let(:setter) { instance_double('Sidekiq::Job::Setter') }
   let(:worker) do
     Class.new do
       def self.name
         'TestWorker'
       end
       include ApplicationWorker
+
+      feature_category :scalability
     end
   end
 
@@ -41,6 +44,16 @@ RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalabili
 
           expect(job).not_to include('deferred_count')
         end
+
+        context 'when deferred jobs are re-enabled' do
+          let(:job) { { 'deferred' => true, 'args' => [456], 'jid' => 123 } }
+
+          it 'does not have the deferred key in job hash' do
+            subject.call(TestWorker.new, job, queue) { nil }
+
+            expect(job).not_to include('deferred')
+          end
+        end
       end
 
       shared_examples 'drops the job' do
@@ -49,7 +62,12 @@ RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalabili
         end
 
         it 'increments counter' do
-          expect(metric).to receive(:increment).with({ worker: "TestWorker", action: "dropped" })
+          expect(metric).to receive(:increment).with({
+            worker: "TestWorker",
+            action: "dropped",
+            reason: "feature_flag",
+            feature_category: "scalability"
+          })
 
           subject.call(TestWorker.new, job, queue) { nil }
         end
@@ -73,13 +91,19 @@ RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalabili
         end
 
         it 'delays the job' do
-          expect(TestWorker).to receive(:perform_in).with(described_class::DELAY, *job['args'])
+          expect(TestWorker).to receive(:deferred).with(1, :feature_flag).and_return(setter)
+          expect(setter).to receive(:perform_in).with(described_class::DELAY, *job['args'])
 
           subject.call(TestWorker.new, job, queue) { nil }
         end
 
         it 'increments counter' do
-          expect(metric).to receive(:increment).with({ worker: "TestWorker", action: "deferred" })
+          expect(metric).to receive(:increment).with({
+            worker: "TestWorker",
+            action: "deferred",
+            reason: "feature_flag",
+            feature_category: "scalability"
+          })
 
           subject.call(TestWorker.new, job, queue) { nil }
         end
@@ -174,13 +198,31 @@ RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalabili
       end
 
       context 'with stop signal from database health check' do
+        let(:metric) { instance_double(Prometheus::Client::Counter, increment: true) }
+
         before do
           stop_signal = instance_double("Gitlab::Database::HealthStatus::Signals::Stop", stop?: true)
           allow(Gitlab::Database::HealthStatus).to receive(:evaluate).and_return([stop_signal])
+          allow(Gitlab::Metrics).to receive(:counter).and_call_original
+          allow(Gitlab::Metrics).to receive(:counter).with(described_class::COUNTER, anything).and_return(metric)
         end
 
         it 'defers the job by set time' do
-          expect(TestWorker).to receive(:perform_in).with(health_signal_attrs[:delay], *job['args'])
+          expect(TestWorker).to receive(:deferred).with(1, :database_health_check).and_return(setter)
+          expect(setter).to receive(:perform_in).with(health_signal_attrs[:delay], *job['args'])
+
+          TestWorker.perform_async(*job['args'])
+        end
+
+        it 'increments counter' do
+          expect(TestWorker).to receive(:deferred).with(1, :database_health_check).and_return(setter)
+          expect(setter).to receive(:perform_in).with(health_signal_attrs[:delay], *job['args'])
+          expect(metric).to receive(:increment).with({
+            worker: "TestWorker",
+            action: "deferred",
+            reason: "database_health_check",
+            feature_category: "scalability"
+          })
 
           TestWorker.perform_async(*job['args'])
         end
@@ -195,7 +237,7 @@ RSpec.describe Gitlab::SidekiqMiddleware::SkipJobs, feature_category: :scalabili
 
         it 'uses the lazy evaluated schema and tables returned by the block' do
           expect(Gitlab::Database::HealthStatus::Context).to receive(:new)
-            .with(anything, anything, [:ci_pipelines], :gitlab_ci).and_call_original
+            .with(anything, anything, [:ci_pipelines]).and_call_original
 
           expect { |b| subject.call(TestWorker.new, job, queue, &b) }.to yield_control
         end

@@ -25,7 +25,7 @@ RSpec.describe Groups::ParticipantsService, feature_category: :groups_and_projec
 
     it 'returns results in correct order' do
       expect(service_result.pluck(:username)).to eq([
-        'all', developer.username, parent_group.full_path, subgroup.full_path
+        'all', developer.username, parent_group.full_path, group.full_path, subgroup.full_path
       ])
     end
 
@@ -57,9 +57,14 @@ RSpec.describe Groups::ParticipantsService, feature_category: :groups_and_projec
       group_hierarchy_users = group.self_and_hierarchy.flat_map(&:group_members).map(&:user)
       expected_users = (group_hierarchy_users + subproject.users)
         .map { |user| user_to_autocompletable(user) }
+        .map { |hash| hash.slice(:type, :name, :username, :avatar_url, :availability, :composite_identity_enforced) }
+
+      got = service_result.select { |result| result[:type] == 'User' }.map do |result|
+        result.slice(:type, :name, :username, :avatar_url, :availability, :composite_identity_enforced)
+      end
 
       expect(expected_users.count).to eq(4)
-      expect(service_result).to include(*expected_users)
+      expect(got).to include(*expected_users)
     end
 
     context 'when shared with a private group' do
@@ -80,13 +85,31 @@ RSpec.describe Groups::ParticipantsService, feature_category: :groups_and_projec
     context 'when search param is given' do
       let(:params) { { search: 'johnd' } }
 
-      let_it_be(:member_1) { create(:user, name: 'John Doe').tap { |u| group.add_guest(u) } }
-      let_it_be(:member_2) { create(:user, name: 'Jane Doe ').tap { |u| group.add_guest(u) } }
+      let_it_be(:member_1) { create(:user, name: 'John Doe', guest_of: group) }
+      let_it_be(:member_2) { create(:user, name: 'Jane Doe ', guest_of: group) }
 
       it 'only returns matching members' do
         users = service_result.select { |hash| hash[:type].eql?('User') }
 
         expect(users.pluck(:username)).to eq([member_1.username])
+      end
+
+      context 'when user search already returns enough results' do
+        let(:params) { { search: 'bb' } }
+
+        let(:matching_group) { create(:group, path: 'bb') }
+
+        before do
+          matching_group.add_developer(developer)
+
+          described_class::SEARCH_LIMIT.times { |i| create(:user, name: "bb#{i}", guest_of: group) }
+        end
+
+        it 'does not return any groups' do
+          group_items = service_result.select { |hash| hash[:type].eql?('Group') }
+
+          expect(group_items).to be_empty
+        end
       end
     end
   end
@@ -97,7 +120,8 @@ RSpec.describe Groups::ParticipantsService, feature_category: :groups_and_projec
       username: user.username,
       name: user.name,
       avatar_url: user.avatar_url,
-      availability: user&.status&.availability
+      availability: user&.status&.availability,
+      composite_identity_enforced: user.composite_identity_enforced
     }
   end
 end

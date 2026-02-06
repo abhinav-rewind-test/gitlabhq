@@ -264,7 +264,6 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
       notes = {
         setupNewNote: jest.fn(),
         refresh: jest.fn(),
-        collapseLongCommitList: jest.fn(),
         updateNotesCount: jest.fn(),
         putConflictEditWarningInPlace: jest.fn(),
       };
@@ -599,7 +598,7 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
 
       await waitForPromises();
 
-      expect($notesContainer.find('.note.being-posted').length).toEqual(0);
+      expect($notesContainer.find('.note.being-posted')).toHaveLength(0);
     });
 
     describe('postComment', () => {
@@ -695,11 +694,11 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
       jest.spyOn(gl.awardsHandler, 'addAwardToEmojiBar');
       $('.js-comment-button').click();
 
-      expect($notesContainer.find('.note.being-posted').length).toEqual(1); // Placeholder shown
+      expect($notesContainer.find('.note.being-posted')).toHaveLength(1); // Placeholder shown
 
       await waitForPromises();
 
-      expect($notesContainer.find('.note.being-posted').length).toEqual(0); // Placeholder removed
+      expect($notesContainer.find('.note.being-posted')).toHaveLength(0); // Placeholder removed
     });
   });
 
@@ -728,12 +727,12 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
     it('should show message placeholder including lines starting with slash', async () => {
       $('.js-comment-button').click();
 
-      expect($notesContainer.find('.note.being-posted').length).toEqual(1); // Placeholder shown
+      expect($notesContainer.find('.note.being-posted')).toHaveLength(1); // Placeholder shown
       expect($notesContainer.find('.note-body p').text()).toEqual(sampleComment); // No quick action processing
 
       await waitForPromises();
 
-      expect($notesContainer.find('.note.being-posted').length).toEqual(0); // Placeholder removed
+      expect($notesContainer.find('.note.being-posted')).toHaveLength(0); // Placeholder removed
     });
   });
 
@@ -934,9 +933,9 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
 
       expect($tempNote.find('.timeline-icon .avatar').attr('src')).toEqual(currentUserAvatar);
       expect($tempNote.find('.timeline-content').hasClass('discussion')).toBe(false);
-      expect(
-        $tempNoteHeader.find('.gl-display-none.gl-sm-display-inline-block').text().trim(),
-      ).toEqual(currentUserFullname);
+      expect($tempNoteHeader.find('.gl-hidden.@sm/panel:gl-inline-block').text().trim()).toEqual(
+        currentUserFullname,
+      );
 
       expect($tempNoteHeader.find('.note-headline-light').text().trim()).toEqual(
         `@${currentUsername}`,
@@ -970,9 +969,9 @@ describe.skip('Old Notes (~/deprecated_notes.js)', () => {
       });
       const $tempNoteHeader = $tempNote.find('.note-header');
 
-      expect(
-        $tempNoteHeader.find('.gl-display-none.gl-sm-display-inline-block').text().trim(),
-      ).toEqual('Foo &lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;');
+      expect($tempNoteHeader.find('.gl-hidden.@sm/panel:gl-inline-block').text().trim()).toEqual(
+        'Foo &lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;',
+      );
     });
   });
 

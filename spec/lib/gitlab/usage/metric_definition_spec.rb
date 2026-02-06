@@ -7,17 +7,14 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
     {
       description: 'GitLab instance unique identifier',
       value_type: 'string',
-      product_stage: 'growth',
-      product_section: 'devops',
       status: 'active',
       milestone: '14.1',
-      default_generation: 'generation_1',
+      introduced_by_url: 'http://gdk.test',
       key_path: 'uuid',
-      product_group: 'product_analytics',
+      product_group: 'platform_insights',
       time_frame: 'none',
       data_source: 'database',
-      distribution: %w[ee ce],
-      tier: %w[free starter premium ultimate bronze silver gold],
+      tiers: %w[free premium ultimate],
       data_category: 'standard',
       removed_by_url: 'http://gdk.test'
     }
@@ -48,7 +45,7 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
     File.write(path, content)
   end
 
-  describe '.instrumentation_class' do
+  describe '#instrumentation_class' do
     context 'for non internal events' do
       let(:attributes) { { key_path: 'metric1', instrumentation_class: 'RedisHLLMetric', data_source: 'redis_hll' } }
 
@@ -67,16 +64,34 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
       end
 
       context 'for uniq counter' do
-        let(:attributes) { { key_path: 'metric1', data_source: 'internal_events', events: [{ name: 'a', unique: :id }] } }
+        let(:attributes) { { key_path: 'metric1', data_source: 'internal_events', events: [{ name: 'a', unique: 'user.id' }] } }
 
-        it 'returns RedisHLLMetric' do
-          expect(definition.instrumentation_class).to eq('RedisHLLMetric')
+        it 'returns UniqueCountMetric' do
+          expect(definition.instrumentation_class).to eq('UniqueCountMetric')
+        end
+      end
+
+      context 'for sum' do
+        let(:attributes) { { key_path: 'metric1', data_source: 'internal_events', events: [{ name: 'a', operator: 'sum(value)' }] } }
+
+        it 'returns TotalSumMetric' do
+          expect(definition.instrumentation_class).to eq('TotalSumMetric')
+        end
+      end
+
+      context 'for uniq sum' do
+        let(:attributes) do
+          { key_path: 'metric1', data_source: 'internal_events', events: [{ name: 'a', unique: 'user.id', operator: 'total' }] }
+        end
+
+        it 'returns UniqueTotalsMetric' do
+          expect(definition.instrumentation_class).to eq('UniqueTotalsMetric')
         end
       end
     end
   end
 
-  describe 'not_removed' do
+  describe '.not_removed' do
     let(:all_definitions) do
       metrics_definitions = [
         { key_path: 'metric1', instrumentation_class: 'RedisHLLMetric', status: 'active' },
@@ -98,7 +113,17 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
     end
   end
 
-  describe '#with_instrumentation_class' do
+  describe 'invalid product_group' do
+    before do
+      attributes[:product_group] = 'a_product_group'
+    end
+
+    it 'has validation errors' do
+      expect_validation_errors
+    end
+  end
+
+  describe '.with_instrumentation_class' do
     let(:all_definitions) do
       metrics_definitions = [
         { key_path: 'metric1', status: 'active', data_source: 'redis_hll', instrumentation_class: 'RedisHLLMetric' },
@@ -183,11 +208,12 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
       :time_frame         | '29d'
       :data_source        | 'other'
       :data_source        | nil
-      :distribution       | nil
-      :distribution       | 'test'
-      :tier               | %w[test ee]
+      :tiers              | %w[test ee]
       :repair_issue_url   | nil
       :removed_by_url     | 1
+      :another_attribute  | nil
+      :product_categories   | 'bad_category'
+      :product_categories   | ['bad_category']
 
       :performance_indicator_type | nil
       :instrumentation_class      | 'Metric_Class'
@@ -201,6 +227,14 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
 
       it 'has validation errors' do
         expect_validation_errors
+      end
+    end
+
+    context "validation errors" do
+      it "has descriptive error messages" do
+        attributes.delete(:milestone)
+
+        expect(described_class.new(path, attributes).validation_errors.first).to match(/"missing_keys"=>\["milestone"\]/)
       end
     end
 
@@ -233,27 +267,59 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
       end
 
       context 'internal metric' do
+        let(:default_values) do
+          {
+            data_source: 'internal_events',
+            time_frame: '7d',
+            events: [{ name: 'a', unique: 'user.id' }]
+          }
+        end
+
         before do
-          attributes[:data_source] = 'internal_events'
+          attributes.merge!(default_values)
         end
 
-        where(:instrumentation_class, :options, :events, :is_valid) do
-          'AnotherClass'     | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | false
-          'RedisHLLMetric'   | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | false
-          'RedisHLLMetric'   | { events: ['a'] } | nil | false
-          nil                | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | true
+        context 'with instrumentation_class' do
+          where(:instrumentation_class, :options, :events, :is_valid) do
+            'AnotherClass'     | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | false
+            'RedisHLLMetric'   | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | false
+            'RedisHLLMetric'   | { events: ['a'] } | nil | false
+            nil                | { events: ['a'] } | [{ name: 'a', unique: 'user.id' }] | true
+          end
+
+          with_them do
+            it 'has validation errors when invalid' do
+              attributes[:instrumentation_class] = instrumentation_class if instrumentation_class
+              attributes[:options] = options if options
+              attributes[:events] = events if events
+
+              if is_valid
+                expect_no_validation_errors
+              else
+                expect_validation_errors
+              end
+            end
+          end
         end
 
-        with_them do
-          it 'has validation errors when invalid' do
-            attributes[:instrumentation_class] = instrumentation_class if instrumentation_class
-            attributes[:options] = options if options
-            attributes[:events] = events if events
+        context 'with time_frame' do
+          where(:time_frame, :is_valid) do
+            ['7d']     | true
+            %w[7d 28d] | true
+            '7d'       | true
+            'none'     | false
+            nil        | false
+          end
 
-            if is_valid
-              expect_no_validation_errors
-            else
-              expect_validation_errors
+          with_them do
+            it 'has validation errors when invalid' do
+              attributes[:time_frame] = time_frame
+
+              if is_valid
+                expect_no_validation_errors
+              else
+                expect_validation_errors
+              end
             end
           end
         end
@@ -266,11 +332,6 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
 
         where(:instrumentation_class, :options, :is_valid) do
           'AnotherClass'                      | { event: 'a', widget: 'b' } | false
-          'MergeRequestWidgetExtensionMetric' | { event: 'a', widget: 'b' } | true
-          'MergeRequestWidgetExtensionMetric' | { event: 'a', widget: 2 } | false
-          'MergeRequestWidgetExtensionMetric' | { event: 'a', widget: 'b', c: 'd' } | false
-          'MergeRequestWidgetExtensionMetric' | { event: 'a' } | false
-          'MergeRequestWidgetExtensionMetric' | { widget: 'b' } | false
           'RedisMetric'                       | { event: 'a', prefix: 'b', include_usage_prefix: true } | true
           'RedisMetric'                       | { event: 'a', prefix: nil, include_usage_prefix: true } | true
           'RedisMetric'                       | { event: 'a', prefix: 'b', include_usage_prefix: 2 } | false
@@ -308,18 +369,6 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
           'RedisHLLMetric'   | { events: [2] } | false
           'RedisHLLMetric'   | { events: 'a' } | false
           'RedisHLLMetric'   | { event: ['a'] } | false
-          'AggregatedMetric' | { aggregate: { attribute: 'user.id' }, events: ['a'] } | true
-          'AggregatedMetric' | { aggregate: { attribute: 'project.id' }, events: %w[b c] } | true
-          'AggregatedMetric' | nil | false
-          'AggregatedMetric' | {} | false
-          'AggregatedMetric' | { aggregate: { attribute: 'user.id' }, events: ['a'], event: 'a' } | false
-          'AggregatedMetric' | { aggregate: { attribute: 'user.id' } } | false
-          'AggregatedMetric' | { events: ['a'] } | false
-          'AggregatedMetric' | { aggregate: { attribute: 'user.id' }, events: 'a' } | false
-          'AggregatedMetric' | { aggregate: 'a', events: ['a'] } | false
-          'AggregatedMetric' | { aggregate: {}, events: ['a'] } | false
-          'AggregatedMetric' | { aggregate: { attribute: 'user.id', a: 'b' }, events: ['a'] } | false
-          'AggregatedMetric' | { aggregate: { attribute: ['user.id'] }, events: ['a'] } | false
         end
 
         with_them do
@@ -373,6 +422,91 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
 
       it 'uses the new format' do
         expect(definition.events).to eq({ 'my_event' => :'project.id' })
+      end
+    end
+  end
+
+  describe '#event_selection_rules' do
+    def make_rule(name:, time_framed: true, filter: nil, unique_identifier_name: nil)
+      Gitlab::Usage::EventSelectionRule.new(
+        name: name,
+        time_framed: time_framed,
+        filter: filter,
+        unique_identifier_name: unique_identifier_name
+      )
+    end
+
+    subject { definition.event_selection_rules }
+
+    context 'when metric is not event based' do
+      it 'returns an empty array' do
+        expect(subject).to eq([])
+      end
+    end
+
+    context 'when the metric has unique keys' do
+      let(:attributes) do
+        {
+          time_frame: '7d',
+          events: [
+            { name: 'an_event', unique: 'user.id' },
+            { name: 'another_event', unique: 'project.id' }
+          ]
+        }
+      end
+
+      it 'returns unique counter event selection rules' do
+        rule1 = make_rule(name: 'an_event', unique_identifier_name: :user)
+        rule2 = make_rule(name: 'another_event', unique_identifier_name: :project)
+        expect(subject).to match_array([rule1, rule2])
+
+        subject.each do |rule|
+          expect(rule.total_counter?).to be(false)
+        end
+      end
+    end
+
+    context 'when the metric has custom additional property as unique key' do
+      let(:attributes) do
+        {
+          time_frame: '7d',
+          events: [
+            { name: 'an_event', unique: 'merge_request_iid' },
+            { name: 'another_event', unique: 'custom_property' }
+          ]
+        }
+      end
+
+      it 'returns unique counter event selection rules with custom property names' do
+        rule1 = make_rule(name: 'an_event', unique_identifier_name: :merge_request_iid)
+        rule2 = make_rule(name: 'another_event', unique_identifier_name: :custom_property)
+        expect(subject).to match_array([rule1, rule2])
+
+        subject.each do |rule|
+          expect(rule.total_counter?).to be(false)
+        end
+      end
+    end
+
+    context 'when the metric has no unique keys' do
+      let(:attributes) do
+        {
+          time_frame: '7d',
+          events: [
+            { name: 'an_event' },
+            { name: 'another_event' }
+          ]
+        }
+      end
+
+      it 'returns total counter event selection rules' do
+        rule1 = make_rule(name: 'an_event')
+        rule2 = make_rule(name: 'another_event')
+        expect(subject).to match_array([rule1, rule2])
+
+        subject.each do |rule|
+          expect(rule.total_counter?).to be(true)
+        end
       end
     end
   end
@@ -434,24 +568,48 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
 
       subject
     end
+
+    context "with array time_frame definitions" do
+      let(:yaml_content) { attributes.merge(time_frame: %w[7d 28d all]).deep_stringify_keys.to_yaml }
+
+      it "creates a metric for each of the time frames" do
+        write_metric(metric1, path, yaml_content)
+
+        expected_key_paths = %w[uuid_monthly uuid_weekly uuid]
+
+        expect(subject.length).to eq(3)
+        expect(subject.keys).to match_array(expected_key_paths)
+        expect(subject.values.map(&:key_path)).to match_array(expected_key_paths)
+      end
+
+      context "when array time_frame generates an already used key_path" do
+        let(:yaml_content2) { attributes.merge(key_path: 'uuid_monthly').deep_stringify_keys.to_yaml }
+
+        it "raises an exception" do
+          write_metric(metric1, path, yaml_content)
+          write_metric(metric2, path, yaml_content2)
+
+          expect(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception).with(instance_of(Gitlab::Usage::MetricDefinition::InvalidError))
+
+          subject
+        end
+      end
+    end
   end
 
   describe 'dump_metrics_yaml' do
+    let(:include_paths) { false }
     let(:other_attributes) do
       {
         description: 'Test metric definition',
         value_type: 'string',
-        product_stage: 'growth',
-        product_section: 'devops',
         status: 'active',
         milestone: '14.1',
-        default_generation: 'generation_1',
         key_path: 'counter.category.event',
-        product_group: 'product_analytics',
+        product_group: 'platform_insights',
         time_frame: 'none',
         data_source: 'database',
-        distribution: %w[ee ce],
-        tier: %w[free starter premium ultimate bronze silver gold],
+        tiers: %w[free starter premium ultimate bronze silver gold],
         data_category: 'optional'
       }
     end
@@ -468,6 +626,9 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
           File.join(metric2, '**', '*.yml')
         ]
       )
+
+      write_metric(metric1, path, yaml_content)
+      write_metric(metric2, other_path, other_yaml_content)
     end
 
     after do
@@ -475,13 +636,31 @@ RSpec.describe Gitlab::Usage::MetricDefinition, feature_category: :service_ping 
       FileUtils.rm_rf(metric2)
     end
 
-    subject { described_class.dump_metrics_yaml }
+    subject { described_class.dump_metrics_yaml(include_paths: include_paths) }
 
     it 'returns a YAML with both metrics in a sequence' do
-      write_metric(metric1, path, yaml_content)
-      write_metric(metric2, other_path, other_yaml_content)
-
       is_expected.to eq([attributes, other_attributes].map(&:deep_stringify_keys).to_yaml)
+    end
+
+    context "with true include_paths" do
+      let(:include_paths) { true }
+
+      it 'returns a YAML including filepaths' do
+        metrics = YAML.safe_load(subject)
+        added_attribute = ['file_path']
+
+        # First metric
+        serialized_metric = metrics[0]
+        expect(serialized_metric).to include(attributes.deep_stringify_keys)
+        expect(serialized_metric.keys - attributes.keys.map(&:to_s)).to eq(added_attribute)
+        expect(serialized_metric['file_path']).to end_with(path)
+
+        # Second metric
+        serialized_metric = metrics[1]
+        expect(serialized_metric).to include(other_attributes.deep_stringify_keys)
+        expect(serialized_metric.keys - other_attributes.keys.map(&:to_s)).to eq(added_attribute)
+        expect(serialized_metric['file_path']).to end_with(other_path)
+      end
     end
   end
 end

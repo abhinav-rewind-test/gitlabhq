@@ -1,10 +1,10 @@
 ---
 stage: Create
 group: Code Review
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+description: Developer documentation for the backend design and flow of merge request diffs.
+title: Merge request diffs development guide
 ---
-
-# Merge request diffs development guide
 
 This document explains the backend design and flow of merge request diffs.
 It should help contributors:
@@ -17,10 +17,10 @@ can change often. The code better explains these details. The components
 mentioned here are the major parts of the application for how merge request diffs
 are generated, stored, and returned to users.
 
-NOTE:
-This page is a living document. Update it accordingly when the parts
-of the codebase touched in this document are changed or removed, or when new components
-are added.
+> [!note]
+> This page is a living document. Update it accordingly when the parts
+> of the codebase touched in this document are changed or removed, or when new components
+> are added.
 
 ## Data model
 
@@ -33,7 +33,10 @@ to [Gitaly](../../gitaly.md). Additionally, they provide a logical place for:
 - General class- and instance- based logic.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 erDiagram
+  accTitle: Data model of diffs
+  accDescr: Data model of the four ActiveRecord models used in diffs
   MergeRequest ||--|{ MergeRequestDiff: ""
   MergeRequestDiff |{--|{ MergeRequestDiffCommit: ""
   MergeRequestDiff |{--|| MergeRequestDiffDetail: ""
@@ -94,7 +97,7 @@ and holds header information about the commit.
   merge_request_diff_id: 28,
   relative_order: 0,
   sha: "bb5206fee213d983da88c47f9cf4cc6caf9c66dc",
-  message: "Feature conflcit added\n\nSigned-off-by: Sample User <sample.user@example.com>\n",
+  message: "Feature conflict added\n\nSigned-off-by: Sample User <sample.user@example.com>\n",
   trailers: {},
   commit_author_id: 19,
   committer_id: 19>
@@ -128,6 +131,25 @@ relationship to the change, such as:
 - Its ordering in the diff.
 - The raw diff output itself.
 
+```ruby
+#<MergeRequestDiffFile:0x00007fd1ef7c9048
+  merge_request_diff_id: 28,
+  relative_order: 0,
+  new_file: true,
+  renamed_file: false,
+  deleted_file: false,
+  too_large: false,
+  a_mode: "0",
+  b_mode: "100644",
+  new_path: "files/ruby/feature.rb",
+  old_path: "files/ruby/feature.rb",
+  diff:
+   "@@ -0,0 +1,4 @@\n+# This file was changed in feature branch\n+# We put different code here to create a merge conflict\n+class Conflict\n+end\n",
+  binary: false,
+  external_diff_offset: nil,
+  external_diff_size: nil>
+```
+
 #### External diff storage
 
 By default, diff data of a `MergeRequestDiffFile` is stored in `diff` column in
@@ -152,22 +174,16 @@ This class provides verification information for Geo replication, but otherwise
 is not used for user-facing diffs.
 
 ```ruby
-#<MergeRequestDiffFile:0x00007fd1ef7c9048
+#<MergeRequestDiffDetail:0x0000795b4de5d860
   merge_request_diff_id: 28,
-  relative_order: 0,
-  new_file: true,
-  renamed_file: false,
-  deleted_file: false,
-  too_large: false,
-  a_mode: "0",
-  b_mode: "100644",
-  new_path: "files/ruby/feature.rb",
-  old_path: "files/ruby/feature.rb",
-  diff:
-   "@@ -0,0 +1,4 @@\n+# This file was changed in feature branch\n+# We put different code here to make merge conflict\n+class Conflict\n+end\n",
-  binary: false,
-  external_diff_offset: nil,
-  external_diff_size: nil>
+  verification_retry_at: Wed, 06 Aug 2022 06:35:52.000000000 UTC +00:00,
+  verified_at: Wed, 06 Aug 2022 06:38:59.000000000 UTC +00:00,
+  verification_retry_count: 1,
+  verification_checksum: e079a831cab27bcda7d81cd9b48296d0c3dd93df,
+  verification_failure: nil,
+  verification_state: 1,
+  verification_started_at: Wed, 06 Aug 2022 06:35:52.000000000 UTC +00:00,
+  project_id: 9>,
 ```
 
 ## Flow
@@ -191,7 +207,10 @@ On every push to a merge request branch, we create a new merge request diff vers
 This flowchart shows a basic explanation of how each component is used in this case.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 flowchart TD
+    accTitle: Flowchart of generating a new diff version
+    accDescr: High-level flowchart of components used when creating a new diff version, based on a Git push to a branch
     A[PostReceive worker] --> B[MergeRequests::RefreshService]
     B --> C[Reload diff of merge requests]
     C --> D[Create merge request diff]
@@ -216,7 +235,10 @@ flowchart TD
 This sequence diagram shows a more detailed explanation of this flow.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Data flow of building a new diff
+    accDescr: Detailed model of the data flow through the components that build a new diff version
     PostReceive-->>+MergeRequests_RefreshService: execute()
     Note over MergeRequests_RefreshService: Reload diff of merge requests
     MergeRequests_RefreshService-->>+MergeRequest: reload_diff()
@@ -273,7 +295,10 @@ This flowchart shows a basic explanation of how each component is used when gene
 a `HEAD` diff.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 flowchart TD
+    accTitle: Generating a HEAD diff (high-level view)
+    accDescr: High-level flowchart of components used when generating a HEAD diff
     A[MergeRequestMergeabilityCheckWorker] --> B[MergeRequests::MergeabilityCheckService]
     B --> C[Merge changes to ref]
     C --> L[Gitaly]
@@ -297,7 +322,10 @@ flowchart TD
 This sequence diagram shows a more detailed explanation of this flow.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Generating a HEAD diff (detail view)
+    accDescr: Detailed sequence diagram of generating a new HEAD diff
     MergeRequestMergeabilityCheckWorker-->>+MergeRequests_MergeabilityCheckService: execute()
     Note over MergeRequests_MergeabilityCheckService: Merge changes to ref
     MergeRequests_MergeabilityCheckService-->>+MergeRequests_MergeToRefService: execute()
@@ -355,7 +383,10 @@ This flowchart shows a basic explanation of how each component is used in a
 `diffs_batch.json` request.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 flowchart TD
+    accTitle: Viewing a diff
+    accDescr: High-level flowchart a diffs_batch request, which renders diffs for browser display
     A[Frontend] --> B[diffs_batch.json]
     B --> C[Preload diffs and ivars]
     C -->D[Gitaly]
@@ -382,7 +413,10 @@ latest diff version. It's also possible to view a specific diff version. These c
 have the same flow.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Viewing the most recent diff
+    accDescr: Sequence diagram showing how a particular diff is chosen for display, first with the HEAD diff, then the latest diff, followed by a specific version if it's requested
     Frontend-->>+.#diffs_batch: API call
     Note over .#diffs_batch: Preload diffs and ivars
     .#diffs_batch-->>+.#define_diff_vars: before_action
@@ -431,7 +465,10 @@ However, if **Show whitespace changes** is not selected when viewing diffs:
 - The flow changes, and now involves Gitaly.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Viewing diffs without whitespace changes
+    accDescr: Sequence diagram showing how a particular diff is chosen for display, if whitespace changes are not requested - first with the HEAD diff, then the latest diff, followed by a specific version if it's requested
     Frontend-->>+.#diffs_batch: API call
     Note over .#diffs_batch: Preload diffs and ivars
     .#diffs_batch-->>+.#define_diff_vars: before_action
@@ -453,7 +490,7 @@ sequenceDiagram
     break when ETag header is present and is not stale
         .#diffs_batch-->>+Frontend: return 304 HTTP
     end
-    opt Cache higlights and stats when viewing HEAD, latest or specific version
+    opt Cache highlights and stats when viewing HEAD, latest or specific version
         .#diffs_batch->>+Gitlab_Diff_FileCollection_MergeRequestDiffBatch: write_cache()
         Gitlab_Diff_FileCollection_MergeRequestDiffBatch->>+Gitlab_Diff_HighlightCache: write_if_empty()
         Gitlab_Diff_FileCollection_MergeRequestDiffBatch->>+Gitlab_Diff_StatsCache: write_if_empty()
@@ -485,7 +522,10 @@ from the default flow, as it makes requests to Gitaly to generate a comparison b
 diff versions. It also doesn't use Redis for highlight and stats caches.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Comparing diffs
+    accDescr: Sequence diagram of how diffs are compared against each other
     Frontend-->>+.#diffs_batch: API call
     Note over .#diffs_batch: Preload diffs and ivars
     .#diffs_batch-->>+.#define_diff_vars: before_action
@@ -528,7 +568,10 @@ differs from the default flow, and requires Gitaly to get the diff of the specif
 also doesn't use Redis for the highlight and stats caches.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Viewing commit diff
+    accDescr: Sequence diagram showing how viewing the diff of a specific commit is different from the default diff view flow
     Frontend-->>+.#diffs_batch: API call
     Note over .#diffs_batch: Preload diffs and ivars
     .#diffs_batch-->>+.#define_diff_vars: before_action
@@ -575,7 +618,10 @@ This flowchart shows a basic explanation of how each component is used in a
 `diffs.json` request.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 flowchart TD
+    accTitle: Diff request flow (high level)
+    accDescr: High-level flowchart of the components used in a diffs request
     A[Frontend] --> B[diffs.json]
     B --> C[Build merge request]
     C --> D[Get diffs]
@@ -587,7 +633,10 @@ flowchart TD
 This sequence diagram shows a more detailed explanation of this flow.
 
 ```mermaid
+%%{init: { "fontFamily": "GitLab Sans" }}%%
 sequenceDiagram
+    accTitle: Diff request flow (low level)
+    accDescr: Sequence diagram with a deeper view of the components used in a diffs request
     Frontend-->>+.#diffs: API call
     Note over .#diffs: Build merge request
     .#diffs-->>+MergeRequests_BuildService: execute

@@ -92,7 +92,7 @@ class UploadedFile
     name = name.tr("\\", "/") # work-around for IE
     name = ::File.basename(name)
     name = name.gsub(CarrierWave::SanitizedFile.sanitize_regexp, "_")
-    name = "_#{name}" if name =~ /\A\.+\z/
+    name = "_#{name}" if /\A\.+\z/.match?(name)
     name = "unnamed" if name.empty?
     name.mb_chars.to_s
   end
@@ -111,11 +111,11 @@ class UploadedFile
 
   alias_method :local_path, :path
 
-  def method_missing(method_name, *args, &block) #:nodoc:
+  def method_missing(method_name, *args, &block) # :nodoc:
     @tempfile.__send__(method_name, *args, &block) # rubocop:disable GitlabSecurity/PublicSend
   end
 
-  def respond_to?(method_name, include_private = false) #:nodoc:
+  def respond_to?(method_name, include_private = false) # :nodoc:
     @tempfile.respond_to?(method_name, include_private) || super
   end
 

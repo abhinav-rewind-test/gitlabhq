@@ -1,5 +1,6 @@
 <script>
-import CommentTemplatesDropdown from '~/vue_shared/components/markdown/comment_templates_dropdown.vue';
+import { GlButton } from '@gitlab/ui';
+import CommentTemplatesModal from '~/vue_shared/components/markdown/comment_templates_modal.vue';
 import { __, sprintf } from '~/locale';
 import { getModifierKey } from '~/constants';
 import trackUIControl from '../services/track_ui_control';
@@ -12,18 +13,23 @@ import ToolbarMoreDropdown from './toolbar_more_dropdown.vue';
 
 export default {
   components: {
+    GlButton,
     ToolbarButton,
     ToolbarTextStyleDropdown,
     ToolbarTableButton,
     ToolbarAttachmentButton,
     ToolbarMoreDropdown,
-    CommentTemplatesDropdown,
+    CommentTemplatesModal,
     HeaderDivider,
+    SummarizeCodeChanges: () =>
+      import('ee_component/merge_requests/components/summarize_code_changes.vue'),
   },
   inject: {
     newCommentTemplatePaths: { default: () => [] },
     tiptapEditor: { default: null },
     contentEditor: { default: null },
+    canSummarizeChanges: { default: false },
+    summarizeDisabledReason: { default: null },
   },
   props: {
     supportsQuickActions: {
@@ -35,6 +41,11 @@ export default {
       type: Boolean,
       default: false,
       required: false,
+    },
+    newCommentTemplatePathsProp: {
+      type: Array,
+      required: false,
+      default: () => [],
     },
   },
   data() {
@@ -55,12 +66,18 @@ export default {
         bulletList: __('Add a bullet list'),
         numberedList: __('Add a numbered list'),
         taskList: __('Add a checklist'),
+        editorToolbar: __('Editor toolbar'),
       },
     };
   },
   computed: {
     codeSuggestionsEnabled() {
       return this.contentEditor.codeSuggestionsConfig?.canSuggest;
+    },
+    commentTemplatePaths() {
+      return this.newCommentTemplatePaths.length > 0
+        ? this.newCommentTemplatePaths
+        : this.newCommentTemplatePathsProp;
     },
   },
   methods: {
@@ -70,22 +87,48 @@ export default {
     insertSavedReply(savedReply) {
       this.tiptapEditor.chain().focus().pasteContent(savedReply).run();
     },
+    insertTable({ rows, cols }) {
+      this.tiptapEditor
+        .chain()
+        .focus()
+        .insertTable({
+          rows,
+          cols,
+          withHeaderRow: true,
+        })
+        .run();
+    },
+    skipToInput() {
+      this.tiptapEditor.chain().focus().run();
+    },
   },
 };
 </script>
 <template>
   <div
-    class="gl-w-full gl-py-3 gl-row-gap-2 gl-display-flex gl-align-items-center gl-flex-wrap gl-border-b gl-border-gray-100 gl-px-3 gl-rounded-top-base"
+    class="gl-border-b gl-flex gl-w-full gl-flex-wrap gl-items-center gl-gap-y-2 gl-rounded-t-base gl-border-default gl-px-3 gl-py-3"
     data-testid="formatting-toolbar"
+    role="toolbar"
+    :aria-label="i18n.editorToolbar"
   >
-    <div class="gl-display-flex">
+    <gl-button
+      data-testid="skip-to-input"
+      size="small"
+      category="primary"
+      variant="confirm"
+      class="gl-sr-only !gl-absolute gl-left-3 gl-top-3 focus:gl-not-sr-only"
+      @click="skipToInput"
+      >{{ __('Skip to input') }}</gl-button
+    >
+
+    <div class="gl-flex">
       <toolbar-text-style-dropdown
         data-testid="text-styles"
         @execute="trackToolbarControlExecution"
       />
       <header-divider />
     </div>
-    <div v-if="codeSuggestionsEnabled" class="gl-display-flex">
+    <div v-if="codeSuggestionsEnabled" class="gl-flex">
       <toolbar-button
         v-if="codeSuggestionsEnabled"
         data-testid="code-suggestion"
@@ -114,7 +157,7 @@ export default {
       :label="i18n.italic"
       @execute="trackToolbarControlExecution"
     />
-    <div class="gl-display-flex">
+    <div class="gl-flex">
       <toolbar-button
         data-testid="strike"
         content-type="strike"
@@ -153,7 +196,7 @@ export default {
       data-testid="bullet-list"
       content-type="bulletList"
       icon-name="list-bulleted"
-      class="gl-display-none gl-sm-display-inline"
+      class="gl-hidden @sm/panel:gl-inline"
       editor-command="toggleBulletList"
       :label="i18n.bulletList"
       @execute="trackToolbarControlExecution"
@@ -162,27 +205,31 @@ export default {
       data-testid="ordered-list"
       content-type="orderedList"
       icon-name="list-numbered"
-      class="gl-display-none gl-sm-display-inline"
+      class="gl-hidden @sm/panel:gl-inline"
       editor-command="toggleOrderedList"
       :label="i18n.numberedList"
       @execute="trackToolbarControlExecution"
     />
-    <div class="gl-display-flex">
+    <div class="gl-flex">
       <toolbar-button
         data-testid="task-list"
         content-type="taskList"
         icon-name="list-task"
-        class="gl-display-none gl-sm-display-inline"
+        class="gl-hidden @sm/panel:gl-inline"
         editor-command="toggleTaskList"
         :label="i18n.taskList"
         @execute="trackToolbarControlExecution"
       />
-      <div class="gl-display-none gl-sm-display-flex">
+      <div class="gl-hidden @sm/panel:gl-flex">
         <header-divider />
       </div>
     </div>
-    <toolbar-table-button data-testid="table" @execute="trackToolbarControlExecution" />
-    <div class="gl-display-flex">
+    <toolbar-table-button
+      data-testid="table"
+      @execute="trackToolbarControlExecution"
+      @insert-table="insertTable"
+    />
+    <div class="gl-flex">
       <toolbar-attachment-button
         v-if="!hideAttachmentButton"
         data-testid="attachment"
@@ -194,18 +241,23 @@ export default {
         data-testid="quick-actions"
         content-type="quickAction"
         icon-name="quick-actions"
-        class="gl-display-none gl-sm-display-inline"
+        class="gl-hidden @sm/panel:gl-inline"
         editor-command="insertQuickAction"
         :label="__('Add a quick action')"
         @execute="trackToolbarControlExecution"
       />
-      <header-divider v-if="newCommentTemplatePaths.length" />
+      <header-divider v-if="commentTemplatePaths.length" />
     </div>
-    <comment-templates-dropdown
-      v-if="newCommentTemplatePaths.length"
-      :new-comment-template-paths="newCommentTemplatePaths"
+    <comment-templates-modal
+      v-if="commentTemplatePaths.length"
+      :new-comment-template-paths="commentTemplatePaths"
       @select="insertSavedReply"
     />
     <toolbar-more-dropdown data-testid="more" @execute="trackToolbarControlExecution" />
+    <div v-if="canSummarizeChanges" class="gl-flex">
+      <header-divider />
+      <summarize-code-changes :disabled-reason="summarizeDisabledReason" />
+    </div>
+    <slot name="header-buttons"></slot>
   </div>
 </template>

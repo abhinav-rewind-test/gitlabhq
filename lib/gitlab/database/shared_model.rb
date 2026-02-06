@@ -4,7 +4,11 @@ module Gitlab
   module Database
     # This abstract class is used for models which need to exist in multiple de-composed databases.
     class SharedModel < ActiveRecord::Base
+      include IgnorableColumns
+
       self.abstract_class = true
+
+      SHARED_SCHEMAS = %i[gitlab_shared gitlab_shared_org gitlab_shared_cell_local].freeze
 
       # if shared model is used, this allows to limit connections
       # on which this model is being shared
@@ -24,9 +28,9 @@ module Gitlab
           # in such cases it is fine to ignore such connections
           gitlab_schemas = Gitlab::Database.gitlab_schemas_for_connection(connection)
 
-          unless gitlab_schemas.nil? || gitlab_schemas.include?(:gitlab_shared)
+          unless gitlab_schemas.nil? || (gitlab_schemas & SHARED_SCHEMAS).present?
             raise "Cannot set `SharedModel` to connection from `#{Gitlab::Database.db_config_name(connection)}` " \
-              "since this connection does not include `:gitlab_shared` schema."
+              "since this connection does not include any of the shared gitlab_schema."
           end
 
           self.overriding_connection = connection
@@ -34,6 +38,14 @@ module Gitlab
           yield
         ensure
           self.overriding_connection = previous_connection
+        end
+
+        def ensure_connection_set!
+          return if overriding_connection
+
+          raise 'Connection not set for SharedModel partition strategy. ' \
+            'Use SharedModel.using_connection() to set the correct connection. ' \
+            'Using the default database is dangerous.'
         end
 
         def connection

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.shared_examples 'work item supports assignee widget updates via quick actions' do
-  let_it_be(:developer) { create(:user).tap { |user| project.add_developer(user) } }
+  let_it_be(:developer) { create(:user, developer_of: project) }
 
   context 'when assigning a user' do
     let(:body) { "/assign @#{developer.username}" }
@@ -35,12 +35,11 @@ RSpec.shared_examples 'work item supports assignee widget updates via quick acti
 end
 
 RSpec.shared_examples 'work item does not support assignee widget updates via quick actions' do
-  let(:developer) { create(:user).tap { |user| project.add_developer(user) } }
+  let(:developer) { create(:user, developer_of: project) }
   let(:body) { "Updating assignee.\n/assign @#{developer.username}" }
 
   before do
-    WorkItems::Type.default_by_type(:task).widget_definitions
-      .find_by_widget_type(:assignees).update!(disabled: true)
+    stub_all_work_item_widgets(assignees: false)
   end
 
   it 'ignores the quick action' do
@@ -105,8 +104,7 @@ RSpec.shared_examples 'work item does not support labels widget updates via quic
   let(:body) { "Updating labels.\n/labels ~\"#{label1.name}\"" }
 
   before do
-    WorkItems::Type.default_by_type(:task).widget_definitions
-      .find_by_widget_type(:labels).update!(disabled: true)
+    stub_all_work_item_widgets(labels: false)
   end
 
   it 'ignores the quick action' do
@@ -141,8 +139,7 @@ RSpec.shared_examples 'work item does not support start and due date widget upda
   let(:body) { "Updating due date.\n/due today" }
 
   before do
-    WorkItems::Type.default_by_type(:task).widget_definitions
-      .find_by_widget_type(:start_and_due_date).update!(disabled: true)
+    stub_all_work_item_widgets(start_and_due_date: false)
   end
 
   it 'ignores the quick action' do
@@ -155,12 +152,12 @@ end
 
 RSpec.shared_examples 'work item supports type change via quick actions' do
   let_it_be(:assignee) { create(:user) }
-  let_it_be(:task_type) { WorkItems::Type.default_by_type(:task) }
+  let_it_be(:task_type) { build(:work_item_system_defined_type, :task) }
 
   let(:body) { "Updating type.\n/type issue" }
 
   before do
-    noteable.update!(work_item_type: task_type)
+    noteable.update!(work_item_type_id: task_type.id)
   end
 
   shared_examples 'a quick command that changes type' do
@@ -196,8 +193,7 @@ RSpec.shared_examples 'work item supports type change via quick actions' do
       let(:body) { "\n/type Issue\n/assign @#{assignee.username}" }
 
       before do
-        WorkItems::Type.default_by_type(:issue).widget_definitions
-                       .find_by_widget_type(:assignees).update!(disabled: true)
+        stub_all_work_item_widgets(assignees: false)
       end
 
       it 'updates only type' do
@@ -208,8 +204,10 @@ RSpec.shared_examples 'work item supports type change via quick actions' do
                                                            .and change { noteable.assignees }.to([])
 
         expect(response).to have_gitlab_http_status(:success)
-        expect(mutation_response['errors'])
-          .to include("Commands only Type changed successfully. Assigned @#{assignee.username}.")
+        expect(mutation_response['errors']).to eq([])
+        expect(mutation_response['quickActionsStatus']['messages'])
+          .to include("Type changed successfully. Assigned @#{assignee.username}.")
+        expect(mutation_response['quickActionsStatus']['error_messages']).to be_nil
       end
     end
 

@@ -1,17 +1,24 @@
 # frozen_string_literal: true
 
 class Groups::RunnersController < Groups::ApplicationController
-  before_action :authorize_read_group_runners!, only: [:index, :show]
-  before_action :authorize_create_group_runners!, only: [:new, :register]
-  before_action :authorize_update_runner!, only: [:edit, :update, :destroy, :pause, :resume]
-  before_action :runner, only: [:edit, :update, :destroy, :pause, :resume, :show, :register]
+  # overrriden in EE
+  def self.needs_authorize_read_runners
+    [:index, :show]
+  end
 
-  feature_category :runner
+  before_action :authorize_read_runners!, only: needs_authorize_read_runners
+  before_action :authorize_create_runners!, only: [:new, :register]
+  before_action :authorize_update_runner!, only: [:edit, :update]
+  before_action :runner, only: [:edit, :update, :show, :register]
+
+  feature_category :runner_core
   urgency :low
 
   def index
+    @allow_registration_token = @group.allow_runner_registration_token?
     @group_runner_registration_token = @group.runners_token if can?(current_user, :register_group_runners, group)
-    @group_new_runner_path = new_group_runner_path(@group) if can?(current_user, :create_runner, group)
+
+    @group_new_runner_path = new_group_runner_path(@group) if can?(current_user, :create_runners, group)
 
     Gitlab::Tracking.event(self.class.name, 'index', user: current_user, namespace: @group)
   end
@@ -21,7 +28,7 @@ class Groups::RunnersController < Groups::ApplicationController
   def edit; end
 
   def update
-    if Ci::Runners::UpdateRunnerService.new(@runner).execute(runner_params).success?
+    if Ci::Runners::UpdateRunnerService.new(current_user, @runner).execute(runner_params).success?
       redirect_to group_runner_path(@group, @runner), notice: _('Runner was successfully updated.')
     else
       render 'edit'
@@ -56,8 +63,8 @@ class Groups::RunnersController < Groups::ApplicationController
     render_404
   end
 
-  def authorize_create_group_runners!
-    return if can?(current_user, :create_runner, group)
+  def authorize_create_runners!
+    return if can?(current_user, :create_runners, group)
 
     render_404
   end

@@ -6,25 +6,29 @@ import {
   GlTooltipDirective,
 } from '@gitlab/ui';
 import * as Sentry from '~/sentry/sentry_browser_wrapper';
+import getIssuesCountsQuery from 'ee_else_ce/issues/dashboard/queries/get_issues_counts.query.graphql';
 import getIssuesQuery from 'ee_else_ce/issues/dashboard/queries/get_issues.query.graphql';
-import IssueCardStatistics from 'ee_else_ce/issues/list/components/issue_card_statistics.vue';
-import IssueCardTimeInfo from 'ee_else_ce/issues/list/components/issue_card_time_info.vue';
-import { STATUS_ALL, STATUS_CLOSED, STATUS_OPEN } from '~/issues/constants';
-import { defaultTypeTokenOptions, i18n, PARAM_STATE, urlSortParams } from '~/issues/list/constants';
-import setSortPreferenceMutation from '~/issues/list/queries/set_sort_preference.mutation.graphql';
+import IssueCardStatistics from 'ee_else_ce/work_items/list/components/issue_card_statistics.vue';
+import IssueCardTimeInfo from 'ee_else_ce/work_items/list/components/issue_card_time_info.vue';
 import {
   convertToApiParams,
   convertToSearchQuery,
   convertToUrlParams,
   deriveSortKey,
+  getDefaultWorkItemTypes,
   getFilterTokens,
   getInitialPageParams,
   getSortOptions,
-} from '~/issues/list/utils';
+  getTypeTokenOptions,
+} from 'ee_else_ce/work_items/list/utils';
+import { STATUS_ALL, STATUS_CLOSED, STATUS_OPEN } from '~/issues/constants';
+import { i18n, PARAM_STATE, urlSortParams } from '~/work_items/list/constants';
+import setSortPreferenceMutation from '~/issues/dashboard/queries/set_sort_preference.mutation.graphql';
 import { fetchPolicies } from '~/lib/graphql';
 import axios from '~/lib/utils/axios_utils';
 import { scrollUp } from '~/lib/utils/scroll_utils';
 import { getParameterByName } from '~/lib/utils/url_utility';
+import { __ } from '~/locale';
 import {
   OPERATORS_IS,
   OPERATORS_IS_NOT_OR,
@@ -39,6 +43,7 @@ import {
   TOKEN_TITLE_TYPE,
   TOKEN_TITLE_CREATED,
   TOKEN_TITLE_CLOSED,
+  TOKEN_TITLE_SUBSCRIBED,
   TOKEN_TYPE_ASSIGNEE,
   TOKEN_TYPE_AUTHOR,
   TOKEN_TYPE_CONFIDENTIAL,
@@ -49,10 +54,11 @@ import {
   TOKEN_TYPE_TYPE,
   TOKEN_TYPE_CREATED,
   TOKEN_TYPE_CLOSED,
+  TOKEN_TYPE_SUBSCRIBED,
 } from '~/vue_shared/components/filtered_search_bar/constants';
 import IssuableList from '~/vue_shared/issuable/list/components/issuable_list_root.vue';
 import { DEFAULT_PAGE_SIZE, issuableListTabs } from '~/vue_shared/issuable/list/constants';
-import getIssuesCountsQuery from '../queries/get_issues_counts.query.graphql';
+import glFeatureFlagMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import { AutocompleteCache } from '../utils';
 
 const UserToken = () => import('~/vue_shared/components/filtered_search_bar/tokens/user_token.vue');
@@ -65,6 +71,7 @@ const MilestoneToken = () =>
   import('~/vue_shared/components/filtered_search_bar/tokens/milestone_token.vue');
 
 export default {
+  name: 'IssuesDashboardApp',
   i18n,
   issuableListTabs,
   components: {
@@ -73,10 +80,13 @@ export default {
     IssuableList,
     IssueCardStatistics,
     IssueCardTimeInfo,
+    WorkItemStatusBadge: () =>
+      import('ee_component/work_items/components/shared/work_item_status_badge.vue'),
   },
   directives: {
     GlTooltip: GlTooltipDirective,
   },
+  mixins: [glFeatureFlagMixin()],
   inject: [
     'autocompleteAwardEmojisPath',
     'autocompleteUsersPath',
@@ -89,14 +99,18 @@ export default {
     'hasIssuableHealthStatusFeature',
     'hasIssueDateFilterFeature',
     'hasIssueWeightsFeature',
+    'hasOkrsFeature',
+    'hasStatusFeature',
+    'hasQualityManagementFeature',
     'hasScopedLabelsFeature',
+    'hasStatusFeature',
     'initialSort',
     'isPublicVisibilityRestricted',
     'isSignedIn',
     'rssPath',
   ],
   props: {
-    eeTypeTokenOptions: {
+    eeSearchTokens: {
       type: Array,
       required: false,
       default: () => [],
@@ -159,16 +173,26 @@ export default {
   },
   computed: {
     apiFilterParams() {
-      return convertToApiParams(this.filterTokens);
+      return convertToApiParams(this.filterTokens, {
+        hasStatusFeature: this.hasStatusFeature,
+      });
+    },
+    defaultWorkItemTypes() {
+      return getDefaultWorkItemTypes({
+        hasOkrsFeature: this.hasOkrsFeature,
+        hasQualityManagementFeature: this.hasQualityManagementFeature,
+      });
     },
     dropdownItems() {
       return [
-        { href: this.rssPath, text: i18n.rssLabel },
-        { href: this.calendarPath, text: i18n.calendarLabel },
+        { href: this.rssPath, text: __('Subscribe to RSS feed') },
+        { href: this.calendarPath, text: __('Subscribe to calendar') },
       ];
     },
     emptyStateDescription() {
-      return this.hasSearch ? this.$options.i18n.noSearchResultsDescription : undefined;
+      return this.hasSearch
+        ? __('To widen your search, change or remove filters above')
+        : undefined;
     },
     emptyStateSvgPath() {
       return this.hasSearch
@@ -177,8 +201,8 @@ export default {
     },
     emptyStateTitle() {
       return this.hasSearch
-        ? this.$options.i18n.noSearchResultsTitle
-        : this.$options.i18n.noSearchNoFilterTitle;
+        ? __('Sorry, your filter produced no results')
+        : __('Please select at least one filter to see results');
     },
     hasSearch() {
       return Boolean(this.searchQuery || Object.keys(this.urlFilterParams).length);
@@ -202,6 +226,7 @@ export default {
         state: this.state,
         ...this.pageParams,
         ...this.apiFilterParams,
+        types: this.apiFilterParams.types || this.defaultWorkItemTypes,
       };
     },
     renderedIssues() {
@@ -283,9 +308,29 @@ export default {
         {
           type: TOKEN_TYPE_TYPE,
           title: TOKEN_TITLE_TYPE,
-          icon: 'issues',
+          icon: 'work-item-issue',
           token: GlFilteredSearchToken,
           options: this.typeTokenOptions,
+        },
+        {
+          type: TOKEN_TYPE_SUBSCRIBED,
+          title: TOKEN_TITLE_SUBSCRIBED,
+          icon: 'notifications',
+          token: GlFilteredSearchToken,
+          unique: true,
+          operators: OPERATORS_IS,
+          options: [
+            {
+              icon: 'notifications',
+              value: 'EXPLICITLY_SUBSCRIBED',
+              title: __('Explicitly subscribed'),
+            },
+            {
+              icon: 'notifications-off',
+              value: 'EXPLICITLY_UNSUBSCRIBED',
+              title: __('Explicitly unsubscribed'),
+            },
+          ],
         },
       ];
 
@@ -332,6 +377,10 @@ export default {
         }
       }
 
+      if (this.eeSearchTokens.length) {
+        tokens.push(...this.eeSearchTokens);
+      }
+
       tokens.sort((a, b) => a.title.localeCompare(b.title));
 
       return tokens;
@@ -347,6 +396,8 @@ export default {
         hasBlockedIssuesFeature: this.hasBlockedIssuesFeature,
         hasIssuableHealthStatusFeature: this.hasIssuableHealthStatusFeature,
         hasIssueWeightsFeature: this.hasIssueWeightsFeature,
+        hasStatusFeature: this.glFeatures.workItemStatusOnDashboard && this.hasStatusFeature,
+        hasManualSort: false,
       });
     },
     tabCounts() {
@@ -358,7 +409,10 @@ export default {
       };
     },
     typeTokenOptions() {
-      return [...defaultTypeTokenOptions, ...this.eeTypeTokenOptions];
+      return getTypeTokenOptions({
+        hasOkrsFeature: this.hasOkrsFeature,
+        hasQualityManagementFeature: this.hasQualityManagementFeature,
+      });
     },
     urlFilterParams() {
       return convertToUrlParams(this.filterTokens);
@@ -468,6 +522,9 @@ export default {
           Sentry.captureException(error);
         });
     },
+    showStatusBadge(issuable) {
+      return issuable?.status;
+    },
   },
 };
 </script>
@@ -525,11 +582,16 @@ export default {
       <issue-card-statistics :issue="issuable" />
     </template>
 
+    <template #custom-status="{ issuable = {} }">
+      <div v-if="showStatusBadge(issuable)" class="gl-max-w-20">
+        <work-item-status-badge :item="issuable.status" />
+      </div>
+    </template>
+
     <template #empty-state>
       <gl-empty-state
         :description="emptyStateDescription"
         :svg-path="emptyStateSvgPath"
-        :svg-height="150"
         :title="emptyStateTitle"
       />
     </template>

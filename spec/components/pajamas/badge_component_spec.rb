@@ -38,7 +38,7 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
       let(:options) { { icon: :tanuki } }
 
       it "adds the correct icon and margin" do
-        expect(page).to have_css ".gl-icon.gl-badge-icon.gl-mr-2[data-testid='tanuki-icon']"
+        expect(page).to have_css ".gl-icon.gl-badge-icon[data-testid='tanuki-icon']"
       end
     end
 
@@ -50,7 +50,7 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
 
         it "combines custom classes and component classes" do
           expect(page).to have_css \
-            ".gl-icon.gl-badge-icon.gl-mr-2.js-special-badge-icon.js-extra-special[data-testid='tanuki-icon']"
+            ".gl-icon.gl-badge-icon.js-special-badge-icon.js-extra-special[data-testid='tanuki-icon']"
         end
       end
 
@@ -59,7 +59,7 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
 
         it "combines custom classes and component classes" do
           expect(page).to have_css \
-            ".gl-icon.gl-badge-icon.gl-mr-2.js-special-badge-icon.js-extra-special[data-testid='tanuki-icon']"
+            ".gl-icon.gl-badge-icon.js-special-badge-icon.js-extra-special[data-testid='tanuki-icon']"
         end
       end
     end
@@ -67,8 +67,8 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
     describe "icon_only" do
       let(:options) { { icon: :tanuki, icon_only: true } }
 
-      it "adds no extra margin to the icon" do
-        expect(page).not_to have_css ".gl-icon.gl-mr-2"
+      it "does not show the text" do
+        expect(page).not_to have_text text
       end
 
       it "adds the text as ARIA label" do
@@ -84,28 +84,8 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
       end
     end
 
-    describe "size" do
-      where(:size) { [:sm, :md, :lg] }
-
-      with_them do
-        let(:options) { { size: size } }
-
-        it "adds size class" do
-          expect(page).to have_css ".gl-badge.#{size}"
-        end
-      end
-
-      context "with unknown size" do
-        let(:options) { { size: :xxl } }
-
-        it "adds the default size class" do
-          expect(page).to have_css ".gl-badge.md"
-        end
-      end
-    end
-
     describe "variant" do
-      where(:variant) { [:muted, :neutral, :info, :success, :warning, :danger] }
+      where(:variant) { [:neutral, :info, :success, :warning, :danger] }
 
       with_them do
         let(:options) { { variant: variant } }
@@ -119,7 +99,7 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
         let(:options) { { variant: :foo } }
 
         it "adds the default variant class" do
-          expect(page).to have_css ".gl-badge.badge-muted"
+          expect(page).to have_css ".gl-badge.badge-neutral"
         end
       end
     end
@@ -133,8 +113,8 @@ RSpec.describe Pajamas::BadgeComponent, type: :component do
     end
 
     it "can be combined with component options in no particular order" do
-      render_inline(described_class.new(text, id: "badge-34", variant: :success, data: { foo: "baz" }, size: :sm))
-      expect(page).to have_css ".gl-badge.badge-success.sm#badge-34[data-foo='baz']"
+      render_inline(described_class.new(text, id: "badge-34", variant: :success, data: { foo: "baz" }))
+      expect(page).to have_css ".gl-badge.badge-success#badge-34[data-foo='baz']"
     end
 
     context "with custom CSS classes" do

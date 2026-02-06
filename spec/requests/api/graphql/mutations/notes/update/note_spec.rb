@@ -50,7 +50,7 @@ RSpec.describe 'Updating a Note', feature_category: :team_planning do
 
       context 'without notes widget' do
         before do
-          WorkItems::Type.default_by_type(:issue).widget_definitions.find_by_widget_type(:notes).update!(disabled: true)
+          stub_all_work_item_widgets(notes: false)
         end
 
         it 'does not update the Note' do
@@ -62,6 +62,19 @@ RSpec.describe 'Updating a Note', feature_category: :team_planning do
         it_behaves_like 'a mutation that returns top-level errors',
           errors: [Gitlab::Graphql::Authorize::AuthorizeResource::RESOURCE_ACCESS_ERROR]
       end
+    end
+  end
+
+  describe '.authorization' do
+    it 'allows ai_workflows scope token' do
+      expect(Mutations::Notes::Update::Note.authorization.permitted_scopes).to include(:ai_workflows)
+    end
+  end
+
+  describe 'note field with :ai_workflows scope' do
+    it "includes :ai_workflows scope for the note field" do
+      field = Mutations::Notes::Update::Note.fields['note']
+      expect(field.instance_variable_get(:@scopes)).to include(:ai_workflows)
     end
   end
 end

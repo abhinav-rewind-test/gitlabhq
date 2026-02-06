@@ -7,11 +7,11 @@ module Mutations
         graphql_name 'JobUnschedule'
 
         field :job,
-              Types::Ci::JobType,
-              null: true,
-              description: 'Job after the mutation.'
+          Types::Ci::JobType,
+          null: true,
+          description: 'Job after the mutation.'
 
-        authorize :update_build
+        authorize :unschedule_job
 
         def resolve(id:)
           job = authorized_find!(id: id)

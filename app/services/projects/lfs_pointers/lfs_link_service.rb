@@ -7,7 +7,10 @@ module Projects
       TooManyOidsError = Class.new(StandardError)
 
       MAX_OIDS = ENV.fetch('GITLAB_LFS_MAX_OID_TO_FETCH', 100_000).to_i
-      BATCH_SIZE = 1000
+
+      def self.batch_size
+        ENV.fetch('GITLAB_LFS_LINK_BATCH_SIZE', 1000).to_i
+      end
 
       # Accept an array of oids to link
       #
@@ -26,8 +29,12 @@ module Projects
       private
 
       def validate!(oids)
-        return if oids.size <= MAX_OIDS
+        if oids.size <= MAX_OIDS
+          Gitlab::Metrics::Lfs.validate_link_objects_error_rate.increment(error: false, labels: {})
+          return
+        end
 
+        Gitlab::Metrics::Lfs.validate_link_objects_error_rate.increment(error: true, labels: {})
         raise TooManyOidsError, 'Too many LFS object ids to link, please push them manually'
       end
 
@@ -35,7 +42,7 @@ module Projects
         linked_existing_objects = []
         iterations = 0
 
-        oids.each_slice(BATCH_SIZE) do |oids_batch|
+        oids.each_slice(self.class.batch_size) do |oids_batch|
           # Load all existing LFS Objects immediately so we don't issue an extra
           # query for the `.any?`
           existent_lfs_objects = LfsObject.for_oids(oids_batch).load
@@ -56,7 +63,7 @@ module Projects
       end
 
       def log_lfs_link_results(lfs_objects_linked_count, iterations)
-        Gitlab::Import::Logger.info(
+        ::Import::Framework::Logger.info(
           class: self.class.name,
           project_id: project.id,
           project_path: project.full_path,

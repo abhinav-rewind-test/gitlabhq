@@ -11,6 +11,7 @@ import {
   getNodesOrDefault,
   toggleQueryPollingByVisibility,
   etagQueryHeaders,
+  calculateGraphQLPaginationQueryParams,
 } from '~/graphql_shared/utils';
 
 const mockType = 'Group';
@@ -28,22 +29,23 @@ describe('isGid', () => {
 });
 
 describe.each`
-  input                                           | id      | type
-  ${''}                                           | ${null} | ${null}
-  ${null}                                         | ${null} | ${null}
-  ${0}                                            | ${0}    | ${null}
-  ${'0'}                                          | ${0}    | ${null}
-  ${2}                                            | ${2}    | ${null}
-  ${'2'}                                          | ${2}    | ${null}
-  ${'gid://'}                                     | ${null} | ${null}
-  ${'gid://gitlab'}                               | ${null} | ${null}
-  ${'gid://gitlab/'}                              | ${null} | ${null}
-  ${'gid://gitlab/Environments'}                  | ${null} | ${'Environments'}
-  ${'gid://gitlab/Environments/'}                 | ${null} | ${'Environments'}
-  ${'gid://gitlab/Environments/0'}                | ${0}    | ${'Environments'}
-  ${'gid://gitlab/Environments/123'}              | ${123}  | ${'Environments'}
-  ${'gid://gitlab/Environments/123/test'}         | ${123}  | ${'Environments'}
-  ${'gid://gitlab/DesignManagement::Version/123'} | ${123}  | ${'DesignManagement::Version'}
+  input                                                                | id                                            | type
+  ${''}                                                                | ${null}                                       | ${null}
+  ${null}                                                              | ${null}                                       | ${null}
+  ${0}                                                                 | ${0}                                          | ${null}
+  ${'0'}                                                               | ${0}                                          | ${null}
+  ${2}                                                                 | ${2}                                          | ${null}
+  ${'2'}                                                               | ${2}                                          | ${null}
+  ${'gid://'}                                                          | ${null}                                       | ${null}
+  ${'gid://gitlab'}                                                    | ${null}                                       | ${null}
+  ${'gid://gitlab/'}                                                   | ${null}                                       | ${null}
+  ${'gid://gitlab/Environments'}                                       | ${null}                                       | ${'Environments'}
+  ${'gid://gitlab/Environments/'}                                      | ${null}                                       | ${'Environments'}
+  ${'gid://gitlab/Environments/0'}                                     | ${0}                                          | ${'Environments'}
+  ${'gid://gitlab/Environments/123'}                                   | ${123}                                        | ${'Environments'}
+  ${'gid://gitlab/Environments/123/test'}                              | ${123}                                        | ${'Environments'}
+  ${'gid://gitlab/DesignManagement::Version/123'}                      | ${123}                                        | ${'DesignManagement::Version'}
+  ${'gid://gitlab/LabelNote/6434a38ffa6e40c6381a6171d5b6fb5055888101'} | ${'6434a38ffa6e40c6381a6171d5b6fb5055888101'} | ${'LabelNote'}
 `('parses GraphQL ID `$input`', ({ input, id, type }) => {
   it(`getIdFromGraphQLId returns ${id}`, () => {
     expect(getIdFromGraphQLId(input)).toBe(id);
@@ -189,6 +191,32 @@ describe('etagQueryHeaders', () => {
         'X-GITLAB-GRAPHQL-RESOURCE-ETAG': 'myResource',
         'X-Requested-With': 'XMLHttpRequest',
       },
+    });
+  });
+});
+
+describe('calculateGraphQLPaginationQueryParams', () => {
+  const mockRouteQuery = { start_cursor: 'mockStartCursor', end_cursor: 'mockEndCursor' };
+
+  describe('when `startCursor` is defined', () => {
+    it('sets start cursor query param', () => {
+      expect(
+        calculateGraphQLPaginationQueryParams({
+          startCursor: 'newMockStartCursor',
+          routeQuery: mockRouteQuery,
+        }),
+      ).toEqual({ start_cursor: 'newMockStartCursor' });
+    });
+  });
+
+  describe('when `endCursor` is defined', () => {
+    it('sets end cursor query param', () => {
+      expect(
+        calculateGraphQLPaginationQueryParams({
+          endCursor: 'newMockEndCursor',
+          routeQuery: mockRouteQuery,
+        }),
+      ).toEqual({ end_cursor: 'newMockEndCursor' });
     });
   });
 });

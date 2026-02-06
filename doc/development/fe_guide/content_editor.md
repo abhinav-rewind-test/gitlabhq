@@ -1,10 +1,9 @@
 ---
 stage: Plan
 group: Knowledge
-info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/ee/development/development_processes.html#development-guidelines-review.
+info: Any user with at least the Maintainer role can merge updates to this content. For details, see https://docs.gitlab.com/development/development_processes/#development-guidelines-review.
+title: Rich text editor development guidelines
 ---
-
-# Rich text editor development guidelines
 
 The rich text editor is a UI component that provides a WYSIWYG editing
 experience for [GitLab Flavored Markdown](../../user/markdown.md) in the GitLab application.
@@ -47,10 +46,10 @@ The rich text editor requires two properties:
 
 - `renderMarkdown` is an asynchronous function that returns the response (String) of invoking the
   [Markdown API](../../api/markdown.md).
-- `uploadsPath` is a URL that points to a [GitLab upload service](../uploads/index.md)
+- `uploadsPath` is a URL that points to a [GitLab upload service](../uploads/_index.md)
   with `multipart/form-data` support.
 
-See the [`WikiForm.vue`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/assets/javascripts/pages/shared/wikis/components/wiki_form.vue#L207)
+See the [`WikiForm.vue`](https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/assets/javascripts/wikis/components/wiki_form.vue#L207)
 component for a production example of these two properties.
 
 ### Set and get Markdown
@@ -95,21 +94,20 @@ export default {
 
 ### Listen for changes
 
-You can still react to changes in the rich text editor. Reacting to changes helps
-you know if the document is empty or dirty. Use the `@change` event handler for
-this purpose.
+You can still react to changes in the rich text editor. Use the `@change` event
+handler for this purpose.
 
 ```html
 <script>
 export default {
   data() {
     return {
-      empty: false,
+      disabled: false,
     };
   },
   methods: {
-    handleContentEditorChange({ empty }) {
-      this.empty = empty;
+    handleContentEditorChange({ markdown }) {
+      this.disabled = !!/XXX/.exec(markdown);
     }
   },
 };
@@ -122,7 +120,7 @@ export default {
       @initialized="loadInitialContent"
       @change="handleContentEditorChange"
     />
-    <gl-button :disabled="empty" @click="submitChanges">
+    <gl-button :disabled="disabled" @click="submitChanges">
       {{ __('Submit changes') }}
     </gl-button>
   </div>
@@ -171,10 +169,10 @@ Node views are located in `~/content_editor/components/wrappers`.
 You can inject the Tiptap Editor object to Vue components to dispatch
 commands.
 
-NOTE:
-Do not implement logic that changes the editor's
-state in Vue components. Encapsulate this logic in commands, and dispatch
-the command from the component's methods.
+> [!note]
+> Do not implement logic that changes the editor's
+> state in Vue components. Encapsulate this logic in commands, and dispatch
+> the command from the component's methods.
 
 ```html
 <script>
@@ -327,8 +325,8 @@ sequenceDiagram
 ```
 
 Deserializers live in the extension modules. Read Tiptap documentation about
-[`parseHTML`](https://tiptap.dev/guide/custom-extensions#parse-html) and
-[`addAttributes`](https://tiptap.dev/guide/custom-extensions#attributes) to
+[`parseHTML`](https://tiptap.dev/docs/editor/guide/custom-extensions#parse-html) and
+[`addAttributes`](https://tiptap.dev/docs/editor/guide/custom-extensions#attributes) to
 learn how to implement them. The Tiptap API is a wrapper around ProseMirror's
 [schema spec API](https://prosemirror.net/docs/ref/#model.SchemaSpec).
 

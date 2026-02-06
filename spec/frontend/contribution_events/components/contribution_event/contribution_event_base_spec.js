@@ -12,7 +12,6 @@ describe('ContributionEventBase', () => {
   const defaultPropsData = {
     event: eventApproved(),
     iconName: 'approval-solid',
-    iconClass: 'gl-text-green-500',
     message: 'Approved merge request %{targetLink} in %{resourceParentLink}.',
   };
 
@@ -36,11 +35,9 @@ describe('ContributionEventBase', () => {
     const avatarLabeled = avatarLink.findComponent(GlAvatarLabeled);
 
     expect(avatarLink.attributes('href')).toBe(defaultPropsData.event.author.web_url);
-    expect(avatarLabeled.attributes()).toMatchObject({
-      src: defaultPropsData.event.author.avatar_url,
-      size: '24',
-    });
     expect(avatarLabeled.props()).toMatchObject({
+      src: defaultPropsData.event.author.avatar_url,
+      size: 24,
       label: defaultPropsData.event.author.name,
       subLabel: `@${defaultPropsData.event.author.username}`,
     });
@@ -60,7 +57,6 @@ describe('ContributionEventBase', () => {
     const icon = wrapper.findComponent(GlIcon);
 
     expect(icon.props('name')).toBe(defaultPropsData.iconName);
-    expect(icon.classes()).toContain(defaultPropsData.iconClass);
   });
 
   describe('when `message` prop is passed', () => {

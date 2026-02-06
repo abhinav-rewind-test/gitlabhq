@@ -11,7 +11,6 @@ import {
 } from '@gitlab/ui';
 // eslint-disable-next-line no-restricted-imports
 import { mapActions, mapState } from 'vuex';
-import { numberToHumanSize } from '~/lib/utils/number_utils';
 import { objectToQuery } from '~/lib/utils/url_utility';
 import { s__, __ } from '~/locale';
 import TerraformTitle from '~/packages_and_registries/infrastructure_registry/details/components/details_title.vue';
@@ -24,6 +23,7 @@ import {
   SHOW_DELETE_SUCCESS_ALERT,
 } from '~/packages_and_registries/shared/constants';
 import { TRACK_CATEGORY } from '~/packages_and_registries/infrastructure_registry/shared/constants';
+import Markdown from '~/vue_shared/components/markdown/markdown_content.vue';
 import PackageFiles from './package_files.vue';
 import PackageHistory from './package_history.vue';
 
@@ -42,6 +42,7 @@ export default {
     PackageHistory,
     TerraformInstallation,
     PackageFiles,
+    Markdown,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -49,27 +50,21 @@ export default {
   },
   mixins: [Tracking.mixin()],
   trackingActions: { ...TRACKING_ACTIONS },
+  inject: ['projectName', 'canDelete', 'svgPath', 'projectListUrl'],
   data() {
     return {
       fileToDelete: null,
     };
   },
   computed: {
-    ...mapState([
-      'projectName',
-      'packageEntity',
-      'packageFiles',
-      'isLoading',
-      'canDelete',
-      'svgPath',
-      'npmPath',
-      'npmHelpPath',
-      'projectListUrl',
-      'groupListUrl',
-    ]),
+    ...mapState(['packageEntity', 'packageFiles', 'isLoading']),
     isValidPackage() {
       return Boolean(this.packageEntity.name);
     },
+    readme() {
+      return this.packageEntity.terraform_module_metadatum?.fields?.root?.readme;
+    },
+    // eslint-disable-next-line vue/no-unused-properties -- tracking() is required by Tracking mixin.
     tracking() {
       return {
         category: TRACK_CATEGORY,
@@ -81,21 +76,21 @@ export default {
   },
   methods: {
     ...mapActions(['deletePackage', 'fetchPackageVersions', 'deletePackageFile']),
-    formatSize(size) {
-      return numberToHumanSize(size);
-    },
     getPackageVersions() {
       if (!this.packageEntity.versions) {
         this.fetchPackageVersions();
       }
     },
+    packageEntityWithName(version) {
+      return {
+        name: this.packageEntity.name,
+        ...version,
+      };
+    },
     async confirmPackageDeletion() {
       this.track(TRACKING_ACTIONS.DELETE_PACKAGE);
       await this.deletePackage();
-      const returnTo =
-        !this.groupListUrl || document.referrer.includes(this.projectName)
-          ? this.projectListUrl
-          : this.groupListUrl; // to avoid security issue url are supplied from backend
+      const returnTo = this.projectListUrl;
       const modalQuery = objectToQuery({ [SHOW_DELETE_SUCCESS_ALERT]: true });
       window.location.replace(`${returnTo}?${modalQuery}`);
     },
@@ -167,7 +162,10 @@ export default {
       <gl-tab :title="__('Detail')">
         <div>
           <package-history :package-entity="packageEntity" :project-name="projectName" />
-          <terraform-installation />
+          <terraform-installation
+            :package-name="packageEntity.name"
+            :package-version="packageEntity.version"
+          />
         </div>
 
         <package-files
@@ -188,22 +186,25 @@ export default {
         </template>
 
         <template v-else-if="hasVersions">
-          <package-list-row
-            v-for="v in packageEntity.versions"
-            :key="v.id"
-            :package-entity="/* eslint-disable @gitlab/vue-no-new-non-primitive-in-template */ {
-              name: packageEntity.name,
-              ...v,
-            } /* eslint-enable @gitlab/vue-no-new-non-primitive-in-template */"
-            :package-link="v.id.toString()"
-            :disable-delete="true"
-            :show-package-type="false"
-          />
+          <ul class="gl-pl-0">
+            <li v-for="v in packageEntity.versions" :key="v.id" class="gl-list-none">
+              <package-list-row
+                :package-entity="packageEntityWithName(v)"
+                :package-link="v.id.toString()"
+                :disable-delete="true"
+                :show-package-type="false"
+              />
+            </li>
+          </ul>
         </template>
 
         <p v-else class="gl-mt-3" data-testid="no-versions-message">
           {{ s__('PackageRegistry|There are no other versions of this package.') }}
         </p>
+      </gl-tab>
+
+      <gl-tab v-if="readme" :title="s__('PackageRegistry|Readme')" lazy>
+        <markdown :value="readme" />
       </gl-tab>
     </gl-tabs>
 

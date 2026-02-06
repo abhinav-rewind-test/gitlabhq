@@ -1,23 +1,42 @@
-import Cookies from '~/lib/utils/cookies';
+import { initEmojiMock } from 'helpers/emoji';
 import { getFrequentlyUsedEmojis, addToFrequentlyUsed } from '~/emoji/components/utils';
-
-jest.mock('~/lib/utils/cookies');
+import { EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN } from '~/emoji/constants';
 
 describe('getFrequentlyUsedEmojis', () => {
-  it('returns null when no saved emojis set', () => {
-    jest.spyOn(Cookies, 'get').mockReturnValue(null);
-
-    expect(getFrequentlyUsedEmojis()).toBe(null);
+  beforeAll(async () => {
+    await initEmojiMock();
   });
 
-  it('returns frequently used emojis object', () => {
-    jest.spyOn(Cookies, 'get').mockReturnValue('thumbsup,thumbsdown');
+  it('returns null when no saved emojis set', async () => {
+    Storage.prototype.setItem = jest.fn();
 
-    expect(getFrequentlyUsedEmojis()).toEqual({
+    expect(await getFrequentlyUsedEmojis()).toBe(null);
+  });
+
+  it('returns frequently used emojis object', async () => {
+    Storage.prototype.getItem = jest.fn(() => `${EMOJI_THUMBS_UP},${EMOJI_THUMBS_DOWN}`);
+
+    const frequentlyUsed = await getFrequentlyUsedEmojis();
+
+    expect(frequentlyUsed).toEqual({
       frequently_used: {
-        emojis: [['thumbsup', 'thumbsdown']],
+        emojis: [[EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN]],
         top: 0,
-        height: 71,
+        height: 73,
+      },
+    });
+  });
+
+  it('only returns frequently used emojis that are in the possible emoji set', async () => {
+    Storage.prototype.getItem = jest.fn(() => `${EMOJI_THUMBS_UP},${EMOJI_THUMBS_DOWN},ack`);
+
+    const frequentlyUsed = await getFrequentlyUsedEmojis();
+
+    expect(frequentlyUsed).toEqual({
+      frequently_used: {
+        emojis: [[EMOJI_THUMBS_UP, EMOJI_THUMBS_DOWN]],
+        top: 0,
+        height: 73,
       },
     });
   });
@@ -25,35 +44,29 @@ describe('getFrequentlyUsedEmojis', () => {
 
 describe('addToFrequentlyUsed', () => {
   it('sets cookie value', () => {
-    jest.spyOn(Cookies, 'get').mockReturnValue(null);
+    Storage.prototype.getItem = jest.fn(() => null);
 
-    addToFrequentlyUsed('thumbsup');
+    addToFrequentlyUsed(EMOJI_THUMBS_UP);
 
-    expect(Cookies.set).toHaveBeenCalledWith('frequently_used_emojis', 'thumbsup', {
-      expires: 365,
-      secure: false,
-    });
+    expect(localStorage.setItem).toHaveBeenCalledWith('frequently_used_emojis', EMOJI_THUMBS_UP);
   });
 
   it('sets cookie value to include previously set cookie value', () => {
-    jest.spyOn(Cookies, 'get').mockReturnValue('thumbsdown');
+    Storage.prototype.getItem = jest.fn(() => EMOJI_THUMBS_DOWN);
 
-    addToFrequentlyUsed('thumbsup');
+    addToFrequentlyUsed(EMOJI_THUMBS_UP);
 
-    expect(Cookies.set).toHaveBeenCalledWith('frequently_used_emojis', 'thumbsdown,thumbsup', {
-      expires: 365,
-      secure: false,
-    });
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      'frequently_used_emojis',
+      `${EMOJI_THUMBS_DOWN},${EMOJI_THUMBS_UP}`,
+    );
   });
 
   it('sets cookie value with uniq values', () => {
-    jest.spyOn(Cookies, 'get').mockReturnValue('thumbsup');
+    Storage.prototype.getItem = jest.fn(() => EMOJI_THUMBS_UP);
 
-    addToFrequentlyUsed('thumbsup');
+    addToFrequentlyUsed(EMOJI_THUMBS_UP);
 
-    expect(Cookies.set).toHaveBeenCalledWith('frequently_used_emojis', 'thumbsup', {
-      expires: 365,
-      secure: false,
-    });
+    expect(localStorage.setItem).toHaveBeenCalledWith('frequently_used_emojis', EMOJI_THUMBS_UP);
   });
 });

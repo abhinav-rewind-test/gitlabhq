@@ -4,32 +4,39 @@ module InternalEventsCli
   NEW_EVENT_FIELDS = [
     :description,
     :internal_events,
+    :status,
     :category,
     :action,
-    :label_description,
-    :property_description,
-    :value_description,
     :value_type,
     :extra_properties,
     :identifiers,
-    :product_section,
-    :product_stage,
+    :additional_properties,
     :product_group,
+    :product_categories,
     :milestone,
     :introduced_by_url,
-    :distributions,
-    :tiers
+    :tiers,
+    :classification
   ].freeze
 
   EVENT_DEFAULTS = {
     internal_events: true,
-    product_section: nil,
-    product_stage: nil,
+    status: 'active',
     product_group: nil,
     introduced_by_url: 'TODO'
   }.freeze
 
-  Event = Struct.new(*NEW_EVENT_FIELDS, keyword_init: true) do
+  ExistingEvent = Struct.new(*NEW_EVENT_FIELDS, :file_path, keyword_init: true) do
+    def identifiers
+      self[:identifiers] || []
+    end
+
+    def available_filters
+      additional_properties&.keys || []
+    end
+  end
+
+  NewEvent = Struct.new(*NEW_EVENT_FIELDS, keyword_init: true) do
     def formatted_output
       EVENT_DEFAULTS
         .merge(to_h.compact)
@@ -41,7 +48,7 @@ module InternalEventsCli
     def file_path
       File.join(
         *[
-          ('ee' unless distributions.include?('ce')),
+          ('ee' unless tiers.include?('free')),
           'config',
           'events',
           "#{action}.yml"
@@ -51,6 +58,16 @@ module InternalEventsCli
 
     def bulk_assign(key_value_pairs)
       key_value_pairs.each { |key, value| self[key] = value }
+    end
+  end
+
+  class Event
+    def self.parse(**args)
+      ExistingEvent.new(**args)
+    end
+
+    def self.new(**args)
+      NewEvent.new(**args)
     end
   end
 end

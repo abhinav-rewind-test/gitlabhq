@@ -10,6 +10,22 @@ RSpec.describe "User views branches", :js, feature_category: :source_code_manage
     sign_in(user)
   end
 
+  context 'when project has default settings' do
+    before do
+      visit project_branches_path(project)
+    end
+
+    it 'renders the breadcrumbs' do
+      within_testid('breadcrumb-links') do
+        expect(page).to have_content("#{project.creator.name} #{project.name} Branches")
+
+        expect(page).to have_link(project.creator.name, href: user_path(project.creator))
+        expect(page).to have_link(project.name, href: project_path(project))
+        expect(page).to have_link('Branches', href: project_branches_path(project))
+      end
+    end
+  end
+
   context "all branches" do
     before do
       visit(project_branches_path(project))
@@ -30,7 +46,8 @@ RSpec.describe "User views branches", :js, feature_category: :source_code_manage
         expect(page).not_to have_selector('[data-testid="branch-more-actions"]')
       end
 
-      it "passes axe automated accessibility testing" do
+      it "passes axe automated accessibility testing",
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/16780' do
         expect(page).to be_axe_clean.within('#content-body')
       end
     end

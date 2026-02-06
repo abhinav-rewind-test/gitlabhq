@@ -4,9 +4,10 @@ module API
   class ProjectEvents < ::API::Base
     include PaginationParams
     include APIGuard
+
     helpers ::API::Helpers::EventsHelpers
 
-    feature_category :user_profile
+    feature_category :groups_and_projects
 
     # TODO: Set higher urgency after resolving https://gitlab.com/gitlab-org/gitlab/-/issues/357839
     urgency :low
@@ -22,6 +23,7 @@ module API
     resource :projects, requirements: API::NAMESPACE_OR_PROJECT_REQUIREMENTS do
       desc "List a project's visible events" do
         success Entities::Event
+        tags ['events']
       end
       params do
         use :pagination

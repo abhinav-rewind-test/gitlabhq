@@ -7,20 +7,18 @@ module API
         Gitlab::TimeTrackingFormatter.output(time_spent)
       end
 
-      expose :time_estimate, documentation: { type: 'integer', example: 12600 }
-      expose :total_time_spent, documentation: { type: 'integer', example: 3600 }
-      expose :human_time_estimate, documentation: { type: 'string', example: '3h 30m' }
+      expose :time_estimate, documentation: { type: 'Integer', example: 12600 }
+      expose :total_time_spent, documentation: { type: 'Integer', example: 3600 }
+      expose :human_time_estimate, documentation: { type: 'String', example: '3h 30m' }
 
       with_options(format_with: :time_tracking_formatter) do
-        expose :total_time_spent, as: :human_total_time_spent, documentation: { type: 'string', example: '1h' }
+        expose :total_time_spent, as: :human_total_time_spent, documentation: { type: 'String', example: '1h' }
       end
 
-      # rubocop: disable CodeReuse/ActiveRecord
       def total_time_spent
         # Avoids an N+1 query since timelogs are preloaded
         object.timelogs.sum(&:time_spent)
       end
-      # rubocop: enable CodeReuse/ActiveRecord
     end
   end
 end

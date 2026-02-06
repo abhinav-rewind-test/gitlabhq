@@ -1,11 +1,12 @@
-import { createWrapper } from '@vue/test-utils';
-import Vue from 'vue';
 import VueApollo from 'vue-apollo';
+import { createWrapper } from '@vue/test-utils';
+import { defineComponent, h } from 'vue';
 import { setHTMLFixture, resetHTMLFixture } from 'helpers/fixtures';
 import { initSimpleApp } from '~/helpers/init_simple_app_helper';
 import createDefaultClient from '~/lib/graphql';
 
-const MockComponent = Vue.component('MockComponent', {
+const MockComponent = defineComponent({
+  name: 'MockComponent',
   props: {
     someKey: {
       type: String,
@@ -18,7 +19,7 @@ const MockComponent = Vue.component('MockComponent', {
       default: 0,
     },
   },
-  render: (createElement) => createElement('span'),
+  render: () => h('span'),
 });
 
 let wrapper;
@@ -61,9 +62,18 @@ describe('helpers/init_simple_app_helper/initSimpleApp', () => {
     });
   });
 
+  it('passes the provide to the component if data-provide exists', () => {
+    initMock(`<div id="mount-here" data-provide={"someKey":"thing","count":123}></div>`);
+
+    expect(wrapper.vm.$options.provide).toEqual({
+      someKey: 'thing',
+      count: 123,
+    });
+  });
+
   describe('options', () => {
     describe('withApolloProvider', () => {
-      describe('if not true or not VueApollo', () => {
+      describe('if false, does not add apollo', () => {
         it('apolloProvider not created', () => {
           initMock('<div id="mount-here"></div>', { withApolloProvider: false });
 
@@ -71,7 +81,7 @@ describe('helpers/init_simple_app_helper/initSimpleApp', () => {
         });
       });
 
-      describe('if true, creates default provider', () => {
+      describe('if true, sets up apollo', () => {
         it('creates a default apolloProvider', () => {
           initMock('<div id="mount-here"></div>', { withApolloProvider: true });
 
@@ -79,14 +89,33 @@ describe('helpers/init_simple_app_helper/initSimpleApp', () => {
         });
       });
 
-      describe('if VueApollo, sets as default provider', () => {
-        it('uses the provided apolloClient', () => {
-          Vue.use(VueApollo);
-          const apolloProvider = new VueApollo({ defaultClient: createDefaultClient() });
+      describe('if custom apollo provider, sets up apollo', () => {
+        it('uses apolloProvider', () => {
+          const apolloProvider = new VueApollo({
+            defaultClient: createDefaultClient(),
+          });
 
           initMock('<div id="mount-here"></div>', { withApolloProvider: apolloProvider });
 
-          expect(wrapper.vm.$apolloProvider).toBe(apolloProvider);
+          expect(wrapper.vm.$apollo).not.toBeUndefined();
+        });
+      });
+    });
+
+    describe('name', () => {
+      describe('if no name is given', () => {
+        it('name is undefined', () => {
+          initMock('<div id="mount-here"></div>');
+
+          expect(wrapper.vm.$options.name).toBeUndefined();
+        });
+      });
+
+      describe('if a name is given', () => {
+        it('name is set to the given', () => {
+          initMock('<div id="mount-here"></div>', { name: 'CoolAppRoot' });
+
+          expect(wrapper.vm.$options.name).toBe('CoolAppRoot');
         });
       });
     });

@@ -11,17 +11,17 @@ module Types
 
       alias_method :runner_manager, :object
 
+      # NOTE: instance runners are exposed by default to any authenticated user,
+      # remember to protect any sensitive fields
       field :architecture_name, GraphQL::Types::String, null: true,
         description: 'Architecture provided by the runner manager.',
         method: :architecture
       field :contacted_at, Types::TimeType, null: true,
-        description: 'Timestamp of last contact from the runner manager.',
-        method: :contacted_at
+        description: 'Timestamp of last contact from the runner manager.'
       field :created_at, Types::TimeType, null: true,
         description: 'Timestamp of creation of the runner manager.'
       field :executor_name, GraphQL::Types::String, null: true,
-        description: 'Executor last advertised by the runner.',
-        method: :executor_name
+        description: 'Executor last advertised by the runner.'
       field :id, ::Types::GlobalIDType[::Ci::RunnerManager], null: false,
         description: 'ID of the runner manager.'
       field :ip_address, GraphQL::Types::String, null: true,
@@ -29,8 +29,7 @@ module Types
       field :job_execution_status,
         Types::Ci::RunnerJobExecutionStatusEnum,
         null: true,
-        description: 'Job execution status of the runner manager.',
-        alpha: { milestone: '16.3' }
+        description: 'Job execution status of the runner manager.'
       field :platform_name, GraphQL::Types::String, null: true,
         description: 'Platform provided by the runner manager.',
         method: :platform
@@ -47,15 +46,15 @@ module Types
       field :version, GraphQL::Types::String, null: true, description: 'Version of the runner.'
 
       def executor_name
-        ::Ci::Runner::EXECUTOR_TYPE_TO_NAMES[runner_manager.executor_type&.to_sym]
+        ::Ci::RunnerManager::EXECUTOR_TYPE_TO_NAMES[runner_manager.executor_type&.to_sym]
       end
 
       def job_execution_status
         BatchLoader::GraphQL.for(runner_manager.id).batch(key: :running_builds_exist) do |runner_manager_ids, loader|
-          statuses = ::Ci::RunnerManager.id_in(runner_manager_ids).with_running_builds.index_by(&:id)
+          statuses = ::Ci::RunnerManager.id_in(runner_manager_ids).with_executing_builds.index_by(&:id)
 
           runner_manager_ids.each do |runner_manager_id|
-            loader.call(runner_manager_id, statuses[runner_manager_id] ? :running : :idle)
+            loader.call(runner_manager_id, statuses[runner_manager_id] ? :active : :idle)
           end
         end
       end

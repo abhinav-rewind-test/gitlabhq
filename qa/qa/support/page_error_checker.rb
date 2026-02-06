@@ -37,7 +37,7 @@ module QA
           if severe_errors.none?
             status_code_report(error_code)
           else
-            "There #{severe_errors.count == 1 ? 'was' : 'were'} #{severe_errors.count} "\
+            "There #{severe_errors.count == 1 ? 'was' : 'were'} #{severe_errors.count} " \
               "SEVERE level error#{severe_errors.count == 1 ? '' : 's'}:\n\n#{error_report_for(severe_errors)}"
           end
         end
@@ -50,14 +50,19 @@ module QA
         def check_page_for_error_code(page)
           QA::Runtime::Logger.debug "Performing page error check!"
 
-          # Test for 404 img alt
-          return report!(page, 404) if page_html(page).xpath("//img").map { |t| t[:alt] }.first.eql?('404')
+          # Test for error img alt
+          error_img_alt = page_html(page).xpath("//div[@class='error-container']//img").map { |t| t[:alt] }.first
 
-          # 500 error page in header surrounded by newlines, try to match
-          five_hundred_test = page_html(page).xpath("//h1/text()").map.first
-          five_hundred_title = page_html(page).xpath("//head/title/text()").map.first
-          if five_hundred_test&.text&.include?('500') && five_hundred_title&.text.eql?('Something went wrong (500)')
-            return report!(page, 500)
+          if error_img_alt && error_img_alt.match(/^([0-9]{3})/)
+            error_code = error_img_alt[0, 3].to_i
+            return report!(page, error_code)
+          end
+
+          # Basic 502 error pages render plain text in pre tags instead of structured HTML
+          error_text = page_html(page).xpath("//pre").map(&:text).first
+          if error_text&.match?(/^\d{3}\s+(Bad Gateway|Internal Server Error|Service Unavailable|Gateway Timeout)/)
+            error_code = error_text[0, 3].to_i
+            return report!(page, error_code)
           end
 
           # GDK shows backtrace rather than error page
@@ -67,6 +72,7 @@ module QA
 
           QA::Runtime::Logger.error("Page error check raised error `#{e.class}`: #{e.message}")
         end
+
         # rubocop:enable Rails/Pluck
 
         # Log request errors triggered from async api calls from the browser
@@ -92,7 +98,7 @@ module QA
             "#{error_metadata} -- #{error_body[:request_id_string]}\n#{error_body[:error_body]}"
           end
 
-          QA::Runtime::Logger.error "Interceptor Api Errors\n#{errors.join("\n")}" unless errors.nil? || errors.empty?
+          QA::Runtime::Logger.warn "Interceptor Api Errors\n#{errors.join("\n")}" unless errors.nil? || errors.empty?
 
           # clear the cache after logging the errors
           page.execute_script <<~JS
@@ -102,8 +108,8 @@ module QA
 
         def error_report_for(logs)
           logs
-              .map(&:message)
-              .map { |message| message.gsub('\\n', "\n") }
+            .map(&:message)
+            .map { |message| message.gsub('\\n', "\n") }
         end
 
         def logs(page)

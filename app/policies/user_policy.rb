@@ -8,7 +8,7 @@ class UserPolicy < BasePolicy
   condition(:subject_ghost, scope: :subject, score: 0) { @subject.ghost? }
 
   desc "The profile is private"
-  condition(:private_profile, scope: :subject, score: 0) { @subject.private_profile? }
+  condition(:private_profile, scope: :subject, score: 0) { private_profile? }
 
   desc "The user is blocked"
   condition(:blocked_user, scope: :subject, score: 0) { @subject.blocked? }
@@ -27,21 +27,35 @@ class UserPolicy < BasePolicy
     enable :update_saved_replies
     enable :destroy_saved_replies
     enable :read_user_personal_access_tokens
-    enable :read_group_count
+    enable :read_user_membership_counts
     enable :read_user_groups
     enable :read_user_organizations
     enable :read_saved_replies
     enable :read_user_email_address
     enable :admin_user_email_address
     enable :make_profile_private
+    enable :read_user_preference
+  end
+
+  rule { user_is_self | admin }.policy do
+    enable :disable_two_factor
+    enable :disable_passkey
   end
 
   rule { default }.enable :read_user_profile
   rule { (private_profile | blocked_user | unconfirmed_user) & ~(user_is_self | admin) }.prevent :read_user_profile
-  rule { user_is_self | admin }.enable :disable_two_factor
   rule { (user_is_self | admin) & ~blocked }.enable :create_user_personal_access_token
   rule { (user_is_self | admin) & ~blocked }.enable :manage_user_personal_access_token
   rule { (user_is_self | admin) & ~blocked }.enable :get_user_associations_count
+
+  rule { admin }.policy do
+    enable :read_custom_attribute
+    enable :update_custom_attribute
+  end
+
+  def private_profile?
+    @subject.private_profile?
+  end
 end
 
 UserPolicy.prepend_mod_with('UserPolicy')

@@ -36,6 +36,101 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
 
     it_behaves_like 'assigns ref vars'
 
+    describe 'ref_type detection' do
+      subject { assign_ref_vars.then { @ref_type } }
+
+      context 'when ref is a branch' do
+        let(:ref) { container.default_branch }
+
+        it { is_expected.to eq 'heads' }
+      end
+
+      context 'when ref is a tag' do
+        let(:ref) { container.repository.tag_names.first }
+
+        it { is_expected.to eq 'tags' }
+      end
+
+      context 'when ref is ambiguous' do
+        let(:ref) { 'ambiguous' }
+
+        before do
+          container.repository.create_branch(ref, sample_commit[:id])
+          container.repository.expire_branches_cache
+          container.repository.add_tag(container.owner, ref, sample_commit[:id])
+          container.repository.expire_tags_cache
+        end
+
+        after do
+          container.repository.rm_branch(container.owner, ref)
+          container.repository.rm_tag(container.owner, ref)
+        end
+
+        it { is_expected.to be_nil }
+      end
+
+      context 'when verified_ref_extractor is disabled' do
+        before do
+          stub_feature_flags(verified_ref_extractor: false)
+        end
+
+        subject { assign_ref_vars.then { ref_type } }
+
+        context 'when ref is a branch' do
+          let(:ref) { container.default_branch }
+
+          it { is_expected.to be_nil }
+        end
+
+        context 'when ref is a tag' do
+          let(:ref) { container.repository.tag_names.first }
+
+          it { is_expected.to be_nil }
+        end
+
+        context 'when ref is ambiguous' do
+          let(:ref) { 'ambiguous' }
+
+          before do
+            container.repository.create_branch(ref, sample_commit[:id])
+            container.repository.expire_branches_cache
+            container.repository.add_tag(container.owner, ref, sample_commit[:id])
+            container.repository.expire_tags_cache
+          end
+
+          after do
+            container.repository.rm_branch(container.owner, ref)
+            container.repository.rm_tag(container.owner, ref)
+          end
+
+          it { is_expected.to be_nil }
+        end
+      end
+    end
+
+    context 'when ref and path have incorrect format' do
+      let(:ref) { { wrong: :format } }
+      let(:path) { { also: :wrong } }
+
+      it 'does not raise an exception' do
+        expect(self).to receive(:render_404)
+        expect { assign_ref_vars }.not_to raise_error
+      end
+    end
+
+    context 'when a ref_type parameter is provided' do
+      let(:params) { ActionController::Parameters.new(path: path, ref: ref, ref_type: 'tags') }
+
+      it 'sets a fully_qualified_ref variable' do
+        fully_qualified_ref = "refs/tags/#{ref}"
+        expect(container.repository).to receive(:commit).with(fully_qualified_ref)
+        expect(self).to receive(:render_404)
+
+        assign_ref_vars
+        expect(@fully_qualified_ref).to eq(fully_qualified_ref)
+      end
+    end
+
     it 'log tree path has no escape sequences' do
       assign_ref_vars
 
@@ -49,6 +144,78 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
         expect(self).to receive(:render_404)
 
         assign_ref_vars
+      end
+    end
+
+    context 'ref only exists without .json suffix' do
+      context 'with a path' do
+        let(:ref) { 'v1.0.0.json' }
+        let(:path) { 'README.md' }
+
+        it 'renders a 404' do
+          expect(self).to receive(:render_404)
+
+          assign_ref_vars
+        end
+      end
+
+      context 'without a path' do
+        let(:ref) { 'v1.0.0.json' }
+        let(:path) { nil }
+
+        before do
+          assign_ref_vars
+        end
+
+        it 'sets the un-suffixed version as @ref' do
+          expect(@ref).to eq('v1.0.0')
+        end
+
+        it 'sets the request format to JSON' do
+          expect(request).to have_received(:format=).with(:json)
+        end
+      end
+    end
+
+    context 'ref exists with .json suffix' do
+      before do
+        repository = @project.repository
+        allow(repository).to receive(:commit).and_call_original
+        allow(repository).to receive(:commit).with('master.json').and_return(repository.commit('master'))
+      end
+
+      context 'with a path' do
+        let(:ref) { 'master.json' }
+        let(:path) { 'README.md' }
+
+        before do
+          assign_ref_vars
+        end
+
+        it 'sets the suffixed version as @ref' do
+          expect(@ref).to eq('master.json')
+        end
+
+        it 'does not change the request format' do
+          expect(request).not_to have_received(:format=)
+        end
+      end
+
+      context 'without a path' do
+        let(:ref) { 'master.json' }
+        let(:path) { nil }
+
+        before do
+          assign_ref_vars
+        end
+
+        it 'sets the suffixed version as @ref' do
+          expect(@ref).to eq('master.json')
+        end
+
+        it 'does not change the request format' do
+          expect(request).not_to have_received(:format=)
+        end
       end
     end
 
@@ -83,15 +250,17 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
     end
 
     context 'ref exists with .atom suffix' do
+      before do
+        repository = @project.repository
+        allow(repository).to receive(:commit).and_call_original
+        allow(repository).to receive(:commit).with('master.atom').and_return(repository.commit('master'))
+      end
+
       context 'with a path' do
         let(:ref) { 'master.atom' }
         let(:path) { 'README.md' }
 
         before do
-          repository = @project.repository
-          allow(repository).to receive(:commit).and_call_original
-          allow(repository).to receive(:commit).with('master.atom').and_return(repository.commit('master'))
-
           assign_ref_vars
         end
 
@@ -109,21 +278,15 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
         let(:path) { nil }
 
         before do
-          repository = @project.repository
-          allow(repository).to receive(:commit).and_call_original
-          allow(repository).to receive(:commit).with('master.atom').and_return(repository.commit('master'))
+          assign_ref_vars
         end
 
         it 'sets the suffixed version as @ref' do
-          assign_ref_vars
-
           expect(@ref).to eq('master.atom')
         end
 
         it 'does not change the request format' do
-          expect(request).not_to receive(:format=)
-
-          assign_ref_vars
+          expect(request).not_to have_received(:format=)
         end
       end
     end
@@ -133,8 +296,8 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
       let(:ref) { nil }
 
       it 'does not set commit' do
-        expect(container.repository).not_to receive(:commit).with('')
         expect(self).to receive(:render_404)
+        expect(container.repository).not_to receive(:commit).with('')
 
         assign_ref_vars
 
@@ -203,19 +366,56 @@ RSpec.describe ExtractsPath, feature_category: :source_code_management do
     end
   end
 
-  it_behaves_like 'extracts refs'
+  describe '#ref_type' do
+    subject { ref_type }
 
-  describe '#extract_ref_without_atom' do
-    it 'ignores any matching refs suffixed with atom' do
-      expect(extract_ref_without_atom('master.atom')).to eq('master')
+    let(:params) { ActionController::Parameters.new(ref_type: ref_type_input) }
+
+    where(:ref_type_input, :ref_type_output) do
+      [
+        %w[heads heads],
+        %w[tags tags],
+        %w[tAgS tags],
+        [nil, nil],
+        ['invalid', nil],
+        [{ 'just' => 'hash' }, nil]
+      ]
     end
 
-    it 'returns the longest matching ref' do
-      expect(extract_ref_without_atom('release/app/v1.0.0.atom')).to eq('release/app/v1.0.0')
+    with_them do
+      it "returns and assigns expected value" do
+        is_expected.to eq(ref_type_output)
+        expect(@ref_type).to eq(ref_type_output)
+      end
+
+      context 'when verified_ref_extractor is disabled' do
+        before do
+          stub_feature_flags(verified_ref_extractor: false)
+        end
+
+        it "returns and assigns expected value" do
+          is_expected.to eq(ref_type_output)
+          expect(defined?(@ref_type)).to be_nil
+        end
+      end
+    end
+  end
+
+  describe '#extract_ref_and_format' do
+    it 'ignores any matching refs suffixed with atom' do
+      expect(extract_ref_and_format('master.atom')).to eq(['master', :atom])
+    end
+
+    it 'ignores any matching refs suffixed with json' do
+      expect(extract_ref_and_format('master.json')).to eq(['master', :json])
+    end
+
+    it 'returns the exactly matching ref' do
+      expect(extract_ref_and_format('release/app/v1.0.0.atom')).to eq(['release/app/v1.0.0', :atom])
     end
 
     it 'raises an error if there are no matching refs' do
-      expect { extract_ref_without_atom('foo.atom') }.to raise_error(ExtractsPath::InvalidPathError)
+      expect { extract_ref_and_format('foo.atom') }.to raise_error(ExtractsPath::InvalidPathError)
     end
   end
 end

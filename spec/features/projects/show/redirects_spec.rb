@@ -11,11 +11,11 @@ RSpec.describe 'Projects > Show > Redirects', feature_category: :groups_and_proj
     allow(Gitlab.config.gitlab).to receive(:host).and_return('www.example.com')
   end
 
-  it 'shows public project page' do
+  it 'shows public project page', :js do
     visit project_path(public_project)
 
-    page.within '.breadcrumbs .js-breadcrumb-item-text' do
-      expect(page).to have_content(public_project.name)
+    within_testid 'breadcrumb-links' do
+      expect(find('li:last-of-type')).to have_content(public_project.name)
     end
   end
 
@@ -31,7 +31,7 @@ RSpec.describe 'Projects > Show > Redirects', feature_category: :groups_and_proj
     expect(page).to have_current_path(new_user_session_path, ignore_query: true)
   end
 
-  it 'redirects to public project page after signing in' do
+  it 'redirects to public project page after signing in', :js do
     visit project_path(public_project)
 
     first(:link, 'Sign in').click
@@ -40,20 +40,21 @@ RSpec.describe 'Projects > Show > Redirects', feature_category: :groups_and_proj
     fill_in 'user_password', with: user.password
     click_button 'Sign in'
 
-    expect(status_code).to eq(200)
     expect(page).to have_current_path("/#{public_project.full_path}", ignore_query: true)
   end
 
-  it 'redirects to private project page after sign in' do
-    visit project_path(private_project)
+  with_and_without_sign_in_form_vue do
+    it 'redirects to private project page after sign in' do
+      visit project_path(private_project)
 
-    owner = private_project.first_owner
-    fill_in 'user_login',    with: owner.email
-    fill_in 'user_password', with: owner.password
-    click_button 'Sign in'
+      owner = private_project.first_owner
+      fill_in 'user_login',    with: owner.email
+      fill_in 'user_password', with: owner.password
+      click_button 'Sign in'
 
-    expect(status_code).to eq(200)
-    expect(page).to have_current_path("/#{private_project.full_path}", ignore_query: true)
+      expect(page).to have_content('No repository')
+      expect(page).to have_current_path("/#{private_project.full_path}", ignore_query: true)
+    end
   end
 
   context 'when signed in' do

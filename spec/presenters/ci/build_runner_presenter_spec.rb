@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Ci::BuildRunnerPresenter do
+RSpec.describe Ci::BuildRunnerPresenter, feature_category: :continuous_integration do
   let(:presenter) { described_class.new(build) }
   let(:archive) { { paths: ['sample.txt'] } }
 
@@ -13,6 +13,32 @@ RSpec.describe Ci::BuildRunnerPresenter do
       paths: archive[:paths],
       untracked: archive[:untracked]
     }
+  end
+
+  describe '#set_queue_metrics' do
+    let(:build) { create(:ci_build) }
+    let(:size) { 10 }
+    let(:depth) { 2 }
+
+    subject(:executed) do
+      presenter.set_queue_metrics(size: size, depth: depth)
+      presenter
+    end
+
+    it 'tracks information about queue size and depth' do
+      expect(executed.queue_size).to eq(10)
+      expect(executed.queue_depth).to eq(2)
+    end
+
+    context 'when queue size or depth is negative' do
+      let(:size) { -1 }
+      let(:depth) { -1 }
+
+      it 'sets queue size and depth to 0' do
+        expect(executed.queue_size).to eq(0)
+        expect(executed.queue_depth).to eq(0)
+      end
+    end
   end
 
   describe '#artifacts' do
@@ -214,6 +240,18 @@ RSpec.describe Ci::BuildRunnerPresenter do
       it 'returns its value' do
         expect(git_depth).to eq(1)
       end
+
+      context 'when there are multiple GIT_DEPTH variables' do
+        before do
+          create(:ci_variable, key: 'GIT_DEPTH', value: 2, project: build.project)
+        end
+
+        # The need for this spec indicates an architectural problem with lib/gitlab/ci/variables/builder.rb
+        # Tracked in https://gitlab.com/gitlab-org/gitlab/-/issues/567742
+        it 'returns the higher precedence value' do
+          expect(git_depth).to eq(1)
+        end
+      end
     end
 
     it 'defaults to git depth setting for the project' do
@@ -311,6 +349,17 @@ RSpec.describe Ci::BuildRunnerPresenter do
       end
     end
 
+    context 'when pipeline is a workload pipeline' do
+      let_it_be(:workload_ref) { 'refs/workloads/abc123' }
+      let(:build) { create(:ci_build, ref: workload_ref, tag: false) }
+
+      it 'returns the correct refspecs' do
+        is_expected.to contain_exactly(
+          "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}"
+        )
+      end
+    end
+
     context 'when persistent pipeline ref exists' do
       let(:project) { create(:project, :repository) }
       let(:sha) { project.repository.commit.sha }
@@ -326,6 +375,52 @@ RSpec.describe Ci::BuildRunnerPresenter do
           "+refs/pipelines/#{pipeline.id}:refs/pipelines/#{pipeline.id}",
           "+refs/heads/#{build.ref}:refs/remotes/origin/#{build.ref}"
         )
+      end
+    end
+  end
+
+  describe '#runner_inputs' do
+    let(:build) { create(:ci_build, options: { inputs: inputs_spec }) }
+
+    let(:inputs_spec) do
+      {
+        string_input: {
+          type: 'string',
+          default: 'default value one'
+        },
+        array_input: {
+          type: 'array',
+          default: ['default array']
+        },
+        boolean_input: {
+          type: 'boolean',
+          default: false
+        },
+        number_input: {
+          type: 'number',
+          default: 666
+        }
+      }
+    end
+
+    before do
+      create(:ci_job_input, job: build, project: build.project, name: 'string_input', value: 'not default')
+    end
+
+    it 'returns the inputs data structured for Runner' do
+      expect(presenter.runner_inputs).to contain_exactly(
+        { key: :string_input, value: { content: 'not default', type: 'string' } },
+        { key: :array_input, value: { content: ['default array'], type: 'array' } },
+        { key: :boolean_input, value: { content: false, type: 'boolean' } },
+        { key: :number_input, value: { content: 666, type: 'number' } }
+      )
+    end
+
+    context 'when the job has no inputs defined' do
+      let(:build) { create(:ci_build, options: nil) }
+
+      it 'returns an empty array' do
+        expect(presenter.runner_inputs).to eq([])
       end
     end
   end

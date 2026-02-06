@@ -13,9 +13,15 @@ module WorkItems
     def preloads
       {
         work_item_type: :work_item_type,
-        web_url: { namespace: :route, project: [:project_namespace, { namespace: :route }] },
+        author: [:author],
+        web_url: { namespace: :route, project: [:project_namespace, {
+          namespace: [:route, :namespace_settings_with_ancestors_inherited_settings]
+        }] },
         widgets: { work_item_type: :enabled_widget_definitions },
-        archived: :project
+        archived: {
+          namespace: :namespace_settings_with_ancestors_inherited_settings,
+          project: { namespace: :namespace_settings_with_ancestors_inherited_settings }
+        }
       }
     end
 
@@ -34,14 +40,17 @@ module WorkItems
     def widget_preloads
       {
         last_edited_by: :last_edited_by,
-        assignees: :assignees,
+        assignees: :assignees_by_name_and_id,
         participants: WorkItem.participant_includes,
         parent: :work_item_parent,
+        has_parent: :work_item_parent,
         children: { work_item_children_by_relative_position: [:author, { project: :project_feature }] },
-        labels: :labels,
         milestone: { milestone: [:project, :group] },
         subscribed: [:assignees, :award_emoji, { notes: [:author, :award_emoji] }],
-        award_emoji: { award_emoji: :awardable }
+        award_emoji: { award_emoji: :awardable },
+        due_date: :dates_source,
+        start_date: :dates_source,
+        closing_merge_requests: { merge_requests_closing_issues: { merge_request: [:target_project, :author] } }
       }
     end
 

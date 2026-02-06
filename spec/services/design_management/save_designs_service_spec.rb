@@ -6,16 +6,16 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
   include ConcurrentHelpers
 
   let_it_be_with_reload(:issue) { create(:issue) }
-  let_it_be(:developer) { create(:user, developer_projects: [issue.project]) }
 
   let(:project) { issue.project }
-  let(:user) { developer }
+  let(:user) {  create(:user) }
   let(:files) { [rails_sample] }
   let(:design_repository) { project.find_or_create_design_management_repository.repository }
 
   let(:rails_sample_name) { 'rails_sample.jpg' }
   let(:rails_sample) { sample_image(rails_sample_name) }
   let(:dk_png) { sample_image('dk.png') }
+  let(:response) { run_service }
 
   def sample_image(filename)
     fixture_file_upload("spec/fixtures/#{filename}")
@@ -28,10 +28,14 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
   end
 
   before do
+    issue.instance_variable_set(:@design_collection, nil) # reload collection for each example
+
     if issue.design_collection.repository.exists?
       issue.design_collection.repository.expire_all_method_caches
       issue.design_collection.repository.raw.delete_all_refs_except([Gitlab::Git::SHA1_BLANK_SHA])
     end
+
+    project.add_reporter(user)
 
     allow(DesignManagement::NewVersionWorker)
       .to receive(:perform_async).with(Integer, false).and_return(nil)
@@ -55,8 +59,6 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
       f.tempfile.write(SecureRandom.random_bytes)
     end
   end
-
-  let(:response) { run_service }
 
   shared_examples 'a service error' do
     it 'returns an error', :aggregate_failures do
@@ -103,15 +105,9 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
       end
 
       it 'creates a commit, an event in the activity stream and updates the creation count', :aggregate_failures do
-        counter = Gitlab::UsageDataCounters::DesignsCounter
-
-        expect(Gitlab::UsageDataCounters::IssueActivityUniqueCounter).to receive(:track_issue_designs_added_action)
-                                                                           .with(author: user, project: project)
-
         expect { run_service }
           .to change { Event.count }.by(1)
           .and change { Event.for_design.created_action.count }.by(1)
-          .and change { counter.read(:create) }.by(1)
 
         expect(design_repository.commit).to have_attributes(
           author: user,
@@ -119,13 +115,8 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
         )
       end
 
-      it_behaves_like 'internal event tracking' do
-        let(:event) { Gitlab::UsageDataCounters::IssueActivityUniqueCounter::ISSUE_DESIGNS_ADDED }
-        let(:namespace) { project.namespace }
-        subject(:service_action) { run_service }
-      end
-
-      it 'can run the same command in parallel' do
+      it 'can run the same command in parallel',
+        quarantine: 'https://gitlab.com/gitlab-org/quality/test-failure-issues/-/issues/18760' do
         parellism = 4
 
         blocks = Array.new(parellism).map do
@@ -197,8 +188,12 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
 
       context 'when a design is being updated' do
         before do
-          run_service
-          touch_files
+          # This setup triggers multiple different internal events, so we'll trigger
+          # the irrelevant events farther in the past to better test the metrics
+          travel_to(2.months.ago) do
+            run_service
+            touch_files
+          end
         end
 
         it 'creates a new version for the existing design and updates the file' do
@@ -211,24 +206,9 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
           expect(updated_designs.first.versions.size).to eq(2)
         end
 
-        it 'updates UsageData for changed designs' do
-          expect(Gitlab::UsageDataCounters::IssueActivityUniqueCounter).to receive(:track_issue_designs_modified_action)
-                                                                             .with(author: user, project: project)
-
-          run_service
-        end
-
-        it_behaves_like 'internal event tracking' do
-          let(:event) { Gitlab::UsageDataCounters::IssueActivityUniqueCounter::ISSUE_DESIGNS_MODIFIED }
-          let(:namespace) { project.namespace }
-          subject(:service_action) { run_service }
-        end
-
         it 'records the correct events' do
-          counter = Gitlab::UsageDataCounters::DesignsCounter
           expect { run_service }
-            .to change { counter.read(:update) }.by(1)
-            .and change { Event.count }.by(1)
+            .to change { Event.count }.by(1)
             .and change { Event.for_design.updated_action.count }.by(1)
         end
 
@@ -285,14 +265,14 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
         let(:files) { [rails_sample, dk_png] }
 
         before do
-          # Create just the first one, which we will later update.
-          run_service([files.first])
-          touch_files([files.first])
+          travel_to(2.months.ago) do
+            # Create just the first one, which we will later update.
+            run_service([files.first])
+            touch_files([files.first])
+          end
         end
 
         it 'has the correct side-effects' do
-          counter = Gitlab::UsageDataCounters::DesignsCounter
-
           expect(DesignManagement::NewVersionWorker)
             .to receive(:perform_async).once.with(Integer, false).and_return(nil)
 
@@ -301,8 +281,6 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
             .and change { Event.for_design.count }.by(2)
             .and change { Event.created_action.count }.by(1)
             .and change { Event.updated_action.count }.by(1)
-            .and change { counter.read(:create) }.by(1)
-            .and change { counter.read(:update) }.by(1)
             .and change { commit_count }.by(1)
         end
       end
@@ -314,8 +292,7 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
           expect(response).to include(designs: have_attributes(size: 2), status: :success)
         end
 
-        it 'has the correct side-effects', :request_store do
-          counter = Gitlab::UsageDataCounters::DesignsCounter
+        it 'has the correct side-effects', :request_store, :clean_gitlab_redis_shared_state do
           service = described_class.new(project, user, issue: issue, files: files)
 
           # Some unrelated calls that are usually cached or happen only once
@@ -333,8 +310,7 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
           expect { service.execute }
             .to change { issue.designs.count }.from(0).to(2)
             .and change { DesignManagement::Version.count }.by(1)
-            .and change { counter.read(:create) }.by(2)
-            .and change { Gitlab::GitalyClient.get_request_count }.by(3)
+            .and change { Gitlab::GitalyClient.get_request_count }.by(5)
             .and change { commit_count }.by(1)
         end
 
@@ -416,6 +392,99 @@ RSpec.describe DesignManagement::SaveDesignsService, feature_category: :design_m
           baseline = ActiveRecord::QueryRecorder.new { run_service(one) }
 
           expect { run_service(two) }.not_to exceed_query_limit(baseline)
+        end
+      end
+
+      context 'with work item tracking' do
+        let(:current_user) { user }
+
+        def execute_service
+          run_service
+        end
+
+        context 'when by_action is nil' do
+          it 'does not raise an error' do
+            service = described_class.new(project, user, issue: issue, files: files)
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).not_to receive(:new)
+
+            expect { service.send(:track_design_actions, nil) }.not_to raise_error
+          end
+        end
+
+        context 'when action type is not tracked' do
+          it 'skips tracking for unknown actions' do
+            design = instance_double(DesignManagement::Design)
+            service = described_class.new(project, user, issue: issue, files: files)
+            by_action = { delete: [design] }
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).not_to receive(:new)
+
+            service.send(:track_design_actions, by_action)
+          end
+        end
+
+        context 'when creating a design' do
+          it_behaves_like 'tracks work item event', :issue, :current_user,
+            Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_CREATE,
+            :execute_service
+        end
+
+        context 'when creating multiple designs' do
+          let(:files) { [rails_sample, dk_png] }
+
+          it 'tracks event for each design' do
+            tracking_service = instance_double(Gitlab::WorkItems::Instrumentation::TrackingService)
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).twice.with(
+              work_item: issue,
+              current_user: user,
+              event: Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_CREATE
+            ).and_return(tracking_service)
+
+            expect(tracking_service).to receive(:execute).twice
+
+            execute_service
+          end
+        end
+
+        context 'when updating a design' do
+          before do
+            run_service
+            touch_files
+          end
+
+          it_behaves_like 'tracks work item event', :issue, :current_user,
+            Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_UPDATE,
+            :execute_service
+        end
+
+        context 'when mixing creates and updates' do
+          let(:files) { [rails_sample, dk_png] }
+
+          before do
+            run_service([files.first])
+            touch_files([files.first])
+          end
+
+          it 'tracks both create and update events' do
+            tracking_service = instance_double(Gitlab::WorkItems::Instrumentation::TrackingService)
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).with(
+              work_item: issue,
+              current_user: user,
+              event: Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_UPDATE
+            ).and_return(tracking_service)
+
+            expect(Gitlab::WorkItems::Instrumentation::TrackingService).to receive(:new).with(
+              work_item: issue,
+              current_user: user,
+              event: Gitlab::WorkItems::Instrumentation::EventActions::DESIGN_CREATE
+            ).and_return(tracking_service)
+
+            expect(tracking_service).to receive(:execute).twice
+
+            execute_service
+          end
         end
       end
     end

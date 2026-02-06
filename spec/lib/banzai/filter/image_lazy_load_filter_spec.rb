@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-RSpec.describe Banzai::Filter::ImageLazyLoadFilter, feature_category: :team_planning do
+RSpec.describe Banzai::Filter::ImageLazyLoadFilter, feature_category: :markdown do
   include FilterSpecHelper
 
   def image(path)
@@ -37,4 +37,6 @@ RSpec.describe Banzai::Filter::ImageLazyLoadFilter, feature_category: :team_plan
     doc = filter(image('https://i.imgur.com/DfssX9C.jpg'))
     expect(doc.at_css('img')['data-src']).to eq 'https://i.imgur.com/DfssX9C.jpg'
   end
+
+  it_behaves_like 'pipeline timing check'
 end

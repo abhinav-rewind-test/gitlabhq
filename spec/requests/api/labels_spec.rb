@@ -57,7 +57,7 @@ RSpec.describe API::Labels, feature_category: :team_planning do
         put_labels_api(route_type, user, spec_params)
 
         expect(response).to have_gitlab_http_status(:bad_request)
-        expect(json_response['error']).to eq('new_name, color, description, priority are missing, '\
+        expect(json_response['error']).to eq('new_name, color, description, priority, archived are missing, '\
                                              'at least one parameter must be provided')
       end
 
@@ -327,6 +327,14 @@ RSpec.describe API::Labels, feature_category: :team_planning do
           it_behaves_like 'fetches labels'
         end
       end
+
+      context 'when authenticated with a token that has the ai_workflows scope' do
+        let(:oauth_token) { create(:oauth_access_token, user: user, scopes: [:ai_workflows]) }
+        let(:request) { get api("/projects/#{project.id}/labels", oauth_access_token: oauth_token), params: { include_ancestor_groups: false } }
+        let(:expected_labels) { [subgroup_label.name, priority_label.name, label1.name] }
+
+        it_behaves_like 'fetches labels'
+      end
     end
   end
 
@@ -337,7 +345,8 @@ RSpec.describe API::Labels, feature_category: :team_planning do
           name: valid_label_title_2,
           color: '#FFAABB',
           description: 'test',
-          priority: 2
+          priority: 2,
+          archived: false
         }
 
       expect(response).to have_gitlab_http_status(:created)
@@ -345,6 +354,7 @@ RSpec.describe API::Labels, feature_category: :team_planning do
       expect(json_response['color']).to be_color('#FFAABB')
       expect(json_response['description']).to eq('test')
       expect(json_response['priority']).to eq(2)
+      expect(json_response['archived']).to be_falsey
     end
 
     it 'returns created label when only required params' do
@@ -435,6 +445,13 @@ RSpec.describe API::Labels, feature_category: :team_planning do
 
       expect(response).to have_gitlab_http_status(:conflict)
       expect(json_response['message']).to eq('Label already exists')
+    end
+
+    context 'with valid label params' do
+      let(:api_path) { api("/projects/#{project.id}/labels", user) }
+      let(:label_title) { valid_label_title_2 }
+
+      it_behaves_like 'ignores archived param when feature flag is disabled'
     end
   end
 
@@ -549,6 +566,14 @@ RSpec.describe API::Labels, feature_category: :team_planning do
         params: { label_id: label1.id, name: priority_label.name, new_name: 'New Label' }
 
       expect(response).to have_gitlab_http_status(:bad_request)
+    end
+
+    context 'when updating archived status' do
+      let(:api_path) { api("/projects/#{project.id}/labels/#{label1.id}", user) }
+
+      let(:label) { label1 }
+
+      it_behaves_like 'updating labels archived status'
     end
 
     context 'with group label' do

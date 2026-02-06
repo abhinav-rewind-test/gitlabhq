@@ -1,4 +1,5 @@
 import { shallowMount } from '@vue/test-utils';
+import { assertProps } from 'helpers/assert_props';
 import DesignNotePin from '~/vue_shared/components/design_management/design_note_pin.vue';
 
 describe('Design note pin component', () => {
@@ -16,26 +17,6 @@ describe('Design note pin component', () => {
     });
   }
 
-  it('should match the snapshot of note without index', () => {
-    createComponent();
-    expect(wrapper.element).toMatchSnapshot();
-  });
-
-  it('should match the snapshot of note with index', () => {
-    createComponent({ label: 1 });
-    expect(wrapper.element).toMatchSnapshot();
-  });
-
-  it('should match the snapshot when pin is resolved', () => {
-    createComponent({ isResolved: true });
-    expect(wrapper.element).toMatchSnapshot();
-  });
-
-  it('should match the snapshot when position is absent', () => {
-    createComponent({ position: null });
-    expect(wrapper.element).toMatchSnapshot();
-  });
-
   it('applies `on-image` class when isOnImage is true', () => {
     createComponent({ isOnImage: true });
 
@@ -46,6 +27,11 @@ describe('Design note pin component', () => {
     createComponent({ isDraft: true });
 
     expect(wrapper.find('.draft').exists()).toBe(true);
+  });
+
+  it('becomes non clickable', () => {
+    createComponent({ clickable: false });
+    expect(wrapper.find('button').exists()).toBe(false);
   });
 
   describe('size', () => {
@@ -61,12 +47,9 @@ describe('Design note pin component', () => {
     });
 
     it('throws when passed any other value except `sm` or `md`', () => {
-      jest.spyOn(console, 'error').mockImplementation(() => {});
-
-      createComponent({ size: 'lg' });
-
-      // eslint-disable-next-line no-console
-      expect(console.error).toHaveBeenCalled();
+      expect(() => {
+        assertProps(DesignNotePin, { size: 'lg' });
+      }).toThrow('Invalid prop: custom validator check failed');
     });
   });
 

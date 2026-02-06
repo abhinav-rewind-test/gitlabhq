@@ -1,21 +1,137 @@
 ---
 stage: Create
 group: Source Code
-info: "To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments"
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments
+title: Troubleshooting Git LFS
 ---
-
-# Troubleshooting Git LFS
 
 When working with Git LFS, you might encounter the following issues.
 
+- The Git LFS original v1 API is unsupported.
+- Git LFS requests use HTTPS credentials, which means you should use a Git
+  [credentials store](https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage).
+- [Group wikis](../../../user/project/wiki/group.md) do not support Git LFS.
+
+## Error: repository or object not found
+
+This error can occur for a few reasons, including:
+
+- You don't have permissions to access certain LFS object. Confirm you have
+  permission to push to the project, or fetch from the project.
+- The project isn't allowed to access the LFS object. The LFS object you want
+  to push (or fetch) is no longer available to the project. In most cases, the object
+  has been removed from the server.
+- The local Git repository is using deprecated version of the Git LFS API. Update
+  your local copy of Git LFS and try again.
+
+## Invalid status for `<url>` : 501
+
+Git LFS logs the failures into a log file. To view this log file:
+
+1. In your terminal window, go to your project's directory.
+1. Run this command to see recent log files:
+
+   ```shell
+   git lfs logs last
+   ```
+
+These problems can cause `501` errors:
+
+- Git LFS is not enabled in your project's settings. Check your project settings and
+  enable Git LFS.
+
+- Git LFS support is not enabled on the GitLab server. Check with your GitLab
+  administrator why Git LFS is not enabled on the server. See
+  [LFS administration documentation](../../../administration/lfs/_index.md) for instructions
+  on how to enable Git LFS support.
+
+- The Git LFS client version is not supported by GitLab server. You should:
+  1. Check your Git LFS version with `git lfs version`.
+  1. Check the Git configuration of your project for traces of the deprecated API
+     with `git lfs -l`. If your configuration sets `batch = false`,
+     remove the line, then update your Git LFS client. GitLab supports only
+     versions 1.0.1 and newer.
+
+## Credentials are always required when pushing an object
+
+Git LFS authenticates the user with HTTP Basic Authentication on every push for
+every object, so it requires user HTTPS credentials. By default, Git supports
+remembering the credentials for each repository you use. For more information, see
+the [official Git documentation](https://git-scm.com/docs/gitcredentials).
+
+For example, you can tell Git to remember your password for a period of time in
+which you expect to push objects. This example remembers your credentials for an hour
+(3600 seconds), and you must authenticate again in an hour:
+
+```shell
+git config --global credential.helper 'cache --timeout=3600'
+```
+
+To store and encrypt credentials, see:
+
+- MacOS: use `osxkeychain`.
+- Windows: use `wincred` or the Microsoft
+  [Git Credential Manager for Windows](https://github.com/Microsoft/Git-Credential-Manager-for-Windows/releases).
+
+To learn more about storing your user credentials, see the
+[Git Credential Storage documentation](https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage).
+
+## LFS objects are missing on push
+
+GitLab checks files on push to detect LFS pointers. If it detects LFS pointers,
+GitLab tries to verify that those files already exist in LFS. If you use a separate
+server for Git LFS, and you encounter this problem:
+
+1. Verify you have installed Git LFS locally.
+1. Consider a manual push with `git lfs push --all`.
+
+If you store Git LFS files outside of GitLab, you can
+[disable Git LFS](_index.md#enable-or-disable-git-lfs-for-a-project) on your project.
+
+## Hosting LFS objects externally
+
+You can host LFS objects externally by setting a custom LFS URL:
+
+```shell
+git config -f .lfsconfig lfs.url https://example.com/<project>.git/info/lfs
+```
+
+You might do this if you store LFS data on an appliance, like a Nexus Repository.
+If you use an external LFS store, GitLab can't verify the LFS objects. Pushes then
+fail if you have GitLab LFS support enabled.
+
+To stop push failures, you can disable Git LFS support in your
+[Project settings](_index.md#enable-or-disable-git-lfs-for-a-project). However, this approach
+might not be desirable, because it also disables GitLab LFS features like:
+
+- Verifying LFS objects.
+- GitLab UI integration for LFS.
+
+## I/O timeout when pushing LFS objects
+
+If your network conditions are unstable, the Git LFS client might time out when trying to upload files.
+You might see errors like:
+
+```shell
+LFS: Put "http://example.com/root/project.git/gitlab-lfs/objects/<OBJECT-ID>/15":
+read tcp your-instance-ip:54544->your-instance-ip:443: i/o timeout
+error: failed to push some refs to 'ssh://example.com:2222/root/project.git'
+```
+
+To fix this problem, set the client activity timeout a higher value. For example,
+to set the timeout to 60 seconds:
+
+```shell
+git config lfs.activitytimeout 60
+```
+
 ## Encountered `n` files that should have been pointers, but weren't
 
-This error indicates the files are expected to be tracked by LFS, but
-the repository is not tracking them as LFS. This issue can be one
-potential reason for this error:
-[Files not tracked with LFS when uploaded through the web interface](https://gitlab.com/gitlab-org/gitlab/-/issues/326342#note_586820485)
+This error indicates the repository should be tracking a file with Git LFS, but
+isn't. [Issue 326342](https://gitlab.com/gitlab-org/gitlab/-/issues/326342#note_586820485),
+fixed in GitLab 16.10, was one cause of this problem.
 
-To resolve the problem, migrate the affected file (or files) and push back to the repository:
+To fix the problem, migrate the affected files, and push them up to the repository:
 
 1. Migrate the file to LFS:
 
@@ -36,127 +152,91 @@ To resolve the problem, migrate the affected file (or files) and push back to th
    git gc --prune=now
    ```
 
-## error: Repository or object not found
+## LFS objects not checked out automatically
 
-This error can occur for a few reasons, including:
-
-- You don't have permissions to access certain LFS object
-
-Check if you have permissions to push to the project or fetch from the project.
-
-- Project is not allowed to access the LFS object
-
-LFS object you are trying to push to the project or fetch from the project is not
-available to the project anymore. Probably the object was removed from the server.
-
-- Local Git repository is using deprecated LFS API
-
-## Invalid status for `<url>` : 501
-
-Git LFS logs the failures into a log file.
-To view this log file, while in project directory:
-
-```shell
-git lfs logs last
-```
-
-If the status `error 501` is shown, it is because:
-
-- Git LFS is not enabled in project settings. Check your project settings and
-  enable Git LFS.
-
-- Git LFS support is not enabled on the GitLab server. Check with your GitLab
-  administrator why Git LFS is not enabled on the server. See
-  [LFS administration documentation](../../../administration/lfs/index.md) for instructions
-  on how to enable LFS support.
-
-- Git LFS client version is not supported by GitLab server. Check your Git LFS
-  version with `git lfs version`. Check the Git configuration of the project for traces
-  of deprecated API with `git lfs -l`. If `batch = false` is set in the configuration,
-  remove the line and try to update your Git LFS client. Only version 1.0.1 and
-  newer are supported.
-
-## `getsockopt: connection refused`
-
-If you push an LFS object to a project and receive an error like this,
-the LFS client is trying to reach GitLab through HTTPS. However, your GitLab
-instance is being served on HTTP:
+You might encounter an issue where Git LFS objects are not automatically checked out. When
+this happens, the files exist but contain pointer references instead of the actual content.
+If you open these files, instead of seeing the expected file content, you might see an LFS pointer
+that looks like this:
 
 ```plaintext
-Post <URL>/info/lfs/objects/batch: dial tcp IP: getsockopt: connection refused
+version https://git-lfs.github.com/spec/v1
+oid sha256:d276d250bc645e27a1b0ab82f7baeb01f7148df7e4816c4b333de12d580caa29
+size 2323563
 ```
 
-This behavior is caused by Git LFS using HTTPS connections by default when a
-`lfsurl` is not set in the Git configuration.
+This issue occurs when filenames do not match a rule in the `.gitattributes` file. LFS files are only
+checked out automatically when they match a rule in `.gitattributes`.
 
-To prevent this from happening, set the LFS URL in project Git configuration:
+In `git-lfs` v3.6.0, this behavior changed and [how LFS files are matched was optimized](https://github.com/git-lfs/git-lfs/pull/5699).
 
-```shell
-git config --add lfs.url "http://gitlab.example.com/group/my-sample-project.git/info/lfs"
+GitLab Runner v17.7.0 upgraded the default helper image to use `git-lfs` v3.6.0.
+
+For consistent behavior across different operating systems with varying
+case sensitivity, adjust your `.gitattributes` file to match different capitalization patterns.
+
+For example, if you have LFS files named `image.jpg` and `wombat.JPG`, use case-insensitive regular
+expressions in your `.gitattributes` file:
+
+```plaintext
+*.[jJ][pP][gG] filter=lfs diff=lfs merge=lfs -text
+*.[jJ][pP][eE][gG] filter=lfs diff=lfs merge=lfs -text
 ```
 
-## Credentials are always required when pushing an object
+If you work exclusively on case-sensitive filesystems, such as most
+Linux distributions, you can use simpler patterns. For example:
 
-NOTE:
-With 8.12 GitLab added LFS support to SSH. The Git LFS communication
-still goes over HTTP, but now the SSH client passes the correct credentials
-to the Git LFS client. No action is required by the user.
-
-Git LFS authenticates the user with HTTP Basic Authentication on every push for
-every object, so user HTTPS credentials are required.
-
-By default, Git has support for remembering the credentials for each repository
-you use. For more information, see the [official Git documentation](https://git-scm.com/docs/gitcredentials).
-
-For example, you can tell Git to remember the password for a period of time in
-which you expect to push the objects:
-
-```shell
-git config --global credential.helper 'cache --timeout=3600'
+```plaintext
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
 ```
 
-This remembers the credentials for an hour, after which Git operations
-require re-authentication.
+## Warning: Possible LFS configuration issue
 
-If you are using OS X you can use `osxkeychain` to store and encrypt your credentials.
-For Windows, you can use `wincred` or Microsoft's [Git Credential Manager for Windows](https://github.com/Microsoft/Git-Credential-Manager-for-Windows/releases).
+You might see a warning in the GitLab UI that states:
 
-More details about various methods of storing the user credentials can be found
-on [Git Credential Storage documentation](https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage).
-
-## LFS objects are missing on push
-
-GitLab checks files to detect LFS pointers on push. If LFS pointers are detected, GitLab tries to verify that those files already exist in LFS on GitLab.
-
-Verify that LFS is installed locally and consider a manual push with `git lfs push --all`.
-
-If you are storing LFS files outside of GitLab you can disable LFS on the project by setting `lfs_enabled: false` with the [projects API](../../../api/projects.md#edit-project).
-
-## Hosting LFS objects externally
-
-It is possible to host LFS objects externally by setting a custom LFS URL with `git config -f .lfsconfig lfs.url https://example.com/<project>.git/info/lfs`.
-
-You might choose to do this if you are using an appliance like a Nexus Repository to store LFS data. If you choose to use an external LFS store,
-GitLab can't verify LFS objects. Pushes then fail if you have GitLab LFS support enabled.
-
-To stop push failure, LFS support can be disabled in the [Project settings](../../../user/project/settings/index.md), which also disables GitLab LFS value-adds (Verifying LFS objects, UI integration for LFS).
-
-## I/O timeout when pushing LFS objects
-
-You might get an error that states:
-
-```shell
-LFS: Put "http://your-instance.com/root/project.git/gitlab-lfs/objects/cc29e205d04a4062d0fb131700e8bfc8e54c44d0176a8dca22f40b24ef26d325/15": read tcp your-instance-ip:54544->your-instance-ip:443: i/o timeout
-error: failed to push some refs to 'ssh://your-instance.com:2222/root/project.git'
+```plaintext
+Possible LFS configuration issue. This project contains LFS objects but there is no .gitattributes file.
+You can ignore this message if you recently added a .gitattributes file.
 ```
 
-When network conditions are unstable, the Git LFS client might time out when trying to upload files
-if network conditions are unstable.
+This warning occurs when Git LFS is enabled and contains LFS objects, but no `.gitattributes` file
+is detected in the root directory of your project. Git supports placing `.gitattributes` files in
+subdirectories, but GitLab only checks for this file in the root directory.
 
-The workaround is to set the client activity timeout a higher value.
+The workaround is to create an empty `.gitattributes` file in the root directory:
 
-For example, to set the timeout to 60 seconds:
+{{< tabs >}}
 
-```shell
-git config lfs.activitytimeout 60
-```
+{{< tab title="With Git" >}}
+
+1. Clone your repository::
+
+   ```shell
+   git clone <repository>
+   cd repository
+   ```
+
+1. Create an empty `.gitattributes` file:
+
+   ```shell
+   touch .gitattributes
+   git add .gitattributes
+   git commit -m "Add empty .gitattributes file to root directory"
+   git push
+   ```
+
+{{< /tab >}}
+
+{{< tab title="In the UI" >}}
+
+1. On the top bar, select **Search or go to** and find your project.
+1. Select the plus icon (**+**) and **New file**.
+1. In the **Filename** field, enter `.gitattributes`.
+1. Select **Commit changes**.
+1. In the **Commit message** field, enter a commit message.
+1. Select **Commit changes**.
+
+{{< /tab >}}
+
+{{< /tabs >}}

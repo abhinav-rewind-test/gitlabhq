@@ -4,6 +4,7 @@ import VueApollo from 'vue-apollo';
 import { shallowMountExtended } from 'helpers/vue_test_utils_helper';
 import waitForPromises from 'helpers/wait_for_promises';
 import createMockApollo from 'helpers/mock_apollo_helper';
+import setWindowLocation from 'helpers/set_window_location_helper';
 import { createAlert } from '~/alert';
 
 import CatalogHeader from '~/ci/catalog/components/list/catalog_header.vue';
@@ -40,6 +41,7 @@ describe('CiResourcesPage', () => {
     scope: SCOPE.all,
     searchTerm: null,
     sortValue: DEFAULT_SORT_VALUE,
+    minAccessLevel: null,
   };
 
   const createComponent = () => {
@@ -97,6 +99,7 @@ describe('CiResourcesPage', () => {
 
       it('renders the empty state', () => {
         expect(findEmptyState().exists()).toBe(true);
+        expect(findEmptyState().props('currentTab')).toBe('all');
       });
 
       it('renders the search', () => {
@@ -132,25 +135,40 @@ describe('CiResourcesPage', () => {
       });
 
       it('updates the scope after switching tabs', async () => {
-        await findCatalogTabs().vm.$emit('setScope', SCOPE.namespaces);
+        await findCatalogTabs().vm.$emit('tab-change', {
+          scope: SCOPE.namespaces,
+          name: 'namespaces',
+        });
 
         expect(catalogResourcesResponse).toHaveBeenCalledWith({
           ...defaultQueryVariables,
           scope: SCOPE.namespaces,
         });
 
-        await findCatalogTabs().vm.$emit('setScope', SCOPE.all);
+        await findCatalogTabs().vm.$emit('tab-change', { scope: SCOPE.all, name: 'all' });
 
         expect(catalogResourcesResponse).toHaveBeenCalledWith({
           ...defaultQueryVariables,
           scope: SCOPE.all,
         });
+
+        await findCatalogTabs().vm.$emit('tab-change', {
+          scope: SCOPE.namespaces,
+          name: 'analytics',
+          minAccessLevel: 'MAINTAINER',
+        });
+
+        expect(catalogResourcesResponse).toHaveBeenCalledWith({
+          ...defaultQueryVariables,
+          scope: SCOPE.namespaces,
+          minAccessLevel: 'MAINTAINER',
+        });
       });
 
       it('passes down props to the resources list', () => {
         expect(findCiResourcesList().props()).toMatchObject({
-          currentPage: 1,
           resources: nodes,
+          currentTab: 'all',
           pageInfo,
         });
       });
@@ -164,8 +182,8 @@ describe('CiResourcesPage', () => {
   describe('pagination', () => {
     it.each`
       eventName
-      ${'onPrevPage'}
-      ${'onNextPage'}
+      ${'on-prev-page'}
+      ${'on-next-page'}
     `('refetch query with new params when receiving $eventName', async ({ eventName }) => {
       const { pageInfo } = catalogResponseBody.data.ciCatalogResources;
 
@@ -178,7 +196,7 @@ describe('CiResourcesPage', () => {
 
       expect(catalogResourcesResponse).toHaveBeenCalledTimes(2);
 
-      if (eventName === 'onNextPage') {
+      if (eventName === 'on-next-page') {
         expect(catalogResourcesResponse.mock.calls[1][0]).toEqual({
           ...defaultQueryVariables,
           after: pageInfo.endCursor,
@@ -197,15 +215,27 @@ describe('CiResourcesPage', () => {
 
   describe('search and sort', () => {
     describe('on initial load', () => {
-      beforeEach(async () => {
+      beforeEach(() => {
         catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
-        await createComponent();
       });
 
-      it('calls the query without search or sort', () => {
+      it('calls the query without search or sort', async () => {
+        await createComponent();
+
         expect(catalogResourcesResponse).toHaveBeenCalledTimes(1);
         expect(catalogResourcesResponse.mock.calls[0][0]).toEqual({
           ...defaultQueryVariables,
+        });
+      });
+
+      it('calls the query with search when present in URL', async () => {
+        setWindowLocation('?search=Hello');
+        await createComponent();
+
+        expect(catalogResourcesResponse).toHaveBeenCalledTimes(1);
+        expect(catalogResourcesResponse.mock.calls[0][0]).toEqual({
+          ...defaultQueryVariables,
+          searchTerm: 'Hello',
         });
       });
     });
@@ -271,44 +301,16 @@ describe('CiResourcesPage', () => {
 
         await createComponent();
       });
-
-      it('increments and drecrements the page count correctly', async () => {
-        expect(findCiResourcesList().props().currentPage).toBe(1);
-
-        findCiResourcesList().vm.$emit('onNextPage');
-        await waitForPromises();
-
-        expect(findCiResourcesList().props().currentPage).toBe(2);
-
-        await findCiResourcesList().vm.$emit('onPrevPage');
-        await waitForPromises();
-
-        expect(findCiResourcesList().props().currentPage).toBe(1);
-      });
     });
 
     describe.each`
       event                   | payload
       ${'update-search-term'} | ${'cat'}
       ${'update-sorting'}     | ${'CREATED_ASC'}
-    `('when $event event is emitted', ({ event, payload }) => {
+    `('when $event event is emitted', () => {
       beforeEach(async () => {
         catalogResourcesResponse.mockResolvedValue(catalogResponseBody);
         await createComponent();
-      });
-
-      it('resets the page count', async () => {
-        expect(findCiResourcesList().props().currentPage).toBe(1);
-
-        findCiResourcesList().vm.$emit('onNextPage');
-        await waitForPromises();
-
-        expect(findCiResourcesList().props().currentPage).toBe(2);
-
-        await findCatalogSearch().vm.$emit(event, payload);
-        await waitForPromises();
-
-        expect(findCiResourcesList().props().currentPage).toBe(1);
       });
     });
 
@@ -324,12 +326,9 @@ describe('CiResourcesPage', () => {
         });
 
         it('does not increment the page and calls createAlert', async () => {
-          expect(findCiResourcesList().props().currentPage).toBe(1);
-
-          findCiResourcesList().vm.$emit('onNextPage');
+          findCiResourcesList().vm.$emit('on-next-page');
           await waitForPromises();
 
-          expect(findCiResourcesList().props().currentPage).toBe(1);
           expect(createAlert).toHaveBeenCalledWith({ message: errorMessage, variant: 'danger' });
         });
       });
@@ -347,17 +346,12 @@ describe('CiResourcesPage', () => {
         });
 
         it('does not decrement the page and calls createAlert', async () => {
-          expect(findCiResourcesList().props().currentPage).toBe(1);
-
-          findCiResourcesList().vm.$emit('onNextPage');
+          findCiResourcesList().vm.$emit('on-next-page');
           await waitForPromises();
 
-          expect(findCiResourcesList().props().currentPage).toBe(2);
-
-          findCiResourcesList().vm.$emit('onPrevPage');
+          findCiResourcesList().vm.$emit('on-prev-page');
           await waitForPromises();
 
-          expect(findCiResourcesList().props().currentPage).toBe(2);
           expect(createAlert).toHaveBeenCalledWith({ message: errorMessage, variant: 'danger' });
         });
       });

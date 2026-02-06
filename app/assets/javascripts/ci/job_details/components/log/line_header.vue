@@ -5,6 +5,7 @@ import DurationBadge from './duration_badge.vue';
 import LineNumber from './line_number.vue';
 
 export default {
+  name: 'LineHeader',
   components: {
     GlIcon,
     LineNumber,
@@ -40,6 +41,7 @@ export default {
       default: false,
     },
   },
+  emits: ['toggle-line'],
   data() {
     return {
       applyHashHighlight: false,
@@ -60,7 +62,7 @@ export default {
   },
   methods: {
     handleOnClick() {
-      this.$emit('toggleLine');
+      this.$emit('toggle-line');
     },
   },
 };
@@ -69,19 +71,18 @@ export default {
 <template>
   <div
     class="js-log-line job-log-line-header job-log-line"
-    :class="{ 'gl-bg-gray-700': isHighlighted || applyHashHighlight }"
+    :class="{ 'job-log-line-highlight': isHighlighted || applyHashHighlight }"
     role="button"
     @click="handleOnClick"
   >
     <gl-icon :name="iconName" class="arrow gl-absolute gl-top-2" />
     <line-number :line-number="line.lineNumber" :path="path" />
-    <span
-      v-for="(content, i) in line.content"
-      :key="i"
-      class="gl-flex-grow-1 gl-white-space-pre-wrap"
-      :class="content.style"
-      >{{ content.text }}</span
-    >
+    <span v-if="line.time" class="job-log-time">{{ line.time }}</span>
+    <span class="job-log-line-content">
+      <span v-for="(content, i) in line.content" :key="i" :class="content.style">{{
+        content.text
+      }}</span>
+    </span>
     <duration-badge v-if="duration && !hideDuration" :duration="duration" />
   </div>
 </template>

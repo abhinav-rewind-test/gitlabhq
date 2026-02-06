@@ -49,6 +49,23 @@ RSpec.describe BulkImports::EntityWorker, feature_category: :importers do
     end
   end
 
+  context 'when entity is not found' do
+    let(:non_existing_entity_id) { non_existing_record_id }
+
+    it 'logs a warning and does not execute any side effects', :aggregate_failures do
+      expect(Sidekiq.logger).to receive(:warn).with(
+        class: described_class.name,
+        entity_id: non_existing_entity_id,
+        message: 'Entity not found'
+      )
+
+      expect(BulkImports::PipelineWorker).not_to receive(:perform_async)
+      expect(described_class).not_to receive(:perform_in)
+
+      worker.perform(non_existing_entity_id)
+    end
+  end
+
   context 'when pipeline workers from a stage are running' do
     before do
       pipeline_tracker.enqueue!
@@ -89,6 +106,25 @@ RSpec.describe BulkImports::EntityWorker, feature_category: :importers do
       expect(described_class).to receive(:perform_in).with(described_class::PERFORM_DELAY, entity.id)
 
       worker.perform(entity.id)
+    end
+
+    context 'when importer_user_mapping_enabled is enabled' do
+      before do
+        allow_next_instance_of(Import::BulkImports::EphemeralData) do |ephemeral_data|
+          allow(ephemeral_data).to receive(:importer_user_mapping_enabled?).and_return(true)
+        end
+      end
+
+      it 'enqueues Import::LoadPlaceholderReferencesWorker' do
+        expect(Import::LoadPlaceholderReferencesWorker)
+          .to receive(:perform_async)
+          .with(
+            Import::SOURCE_DIRECT_TRANSFER,
+            entity.bulk_import_id
+          )
+
+        subject
+      end
     end
 
     context 'when exclusive lease cannot be obtained' do
@@ -155,6 +191,24 @@ RSpec.describe BulkImports::EntityWorker, feature_category: :importers do
       described_class.sidekiq_retries_exhausted_block.call({ 'args' => [entity.id] }, exception)
 
       expect(entity.reload.failed?).to eq(true)
+    end
+
+    context 'when entity is not found' do
+      let(:non_existing_entity_id) { non_existing_record_id }
+
+      it 'logs a warning and does not mark any entity as failed' do
+        exception = StandardError.new('Exhausted error!')
+
+        expect(Sidekiq.logger).to receive(:warn).with(
+          class: described_class.name,
+          entity_id: non_existing_entity_id,
+          message: 'Entity not found (failure)'
+        )
+
+        expect(Gitlab::ErrorTracking).not_to receive(:track_exception)
+
+        described_class.sidekiq_retries_exhausted_block.call({ 'args' => [non_existing_entity_id] }, exception)
+      end
     end
   end
 end

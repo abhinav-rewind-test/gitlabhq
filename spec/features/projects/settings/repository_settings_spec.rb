@@ -40,6 +40,20 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
       end
     end
 
+    context 'Repository maintenance', :js do
+      before do
+        visit project_settings_repository_path(project)
+      end
+
+      it 'does not render remove blobs section' do
+        expect(page).not_to have_content('Remove blobs')
+      end
+
+      it 'does not render redact text section' do
+        expect(page).not_to have_content('Redact text')
+      end
+    end
+
     context 'Branch rules', :js do
       it 'renders branch rules settings' do
         visit project_settings_repository_path(project)
@@ -47,7 +61,7 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
       end
     end
 
-    context 'Deploy Keys', :js do
+    context 'Deploy keys', :js do
       let_it_be(:private_deploy_key) { create(:deploy_key, title: 'private_deploy_key', public: false) }
       let_it_be(:public_deploy_key) { create(:another_deploy_key, title: 'public_deploy_key', public: true) }
 
@@ -215,12 +229,8 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
           click_button 'Mirror repository'
         end
 
-        # TODO: The following line is skipped because a toast with
-        # "An error occurred while loading branch rules. Please try again."
-        # shows up right after which hides the below message. It is causing flakiness.
-        # https://gitlab.com/gitlab-org/gitlab/-/issues/383717#note_1185091998
-
-        # expect(page).to have_content('Mirroring settings were successfully updated')
+        # Waiting for page to load to ensure mirror changes are saved in the backend
+        expect(page).to have_content('Mirroring settings were successfully updated')
         expect(project.reload.remote_mirrors.first.keep_divergent_refs).to eq(true)
       end
 
@@ -235,12 +245,8 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
           click_button 'Mirror repository'
         end
 
-        # TODO: The following line is skipped because a toast with
-        # "An error occurred while loading branch rules. Please try again."
-        # shows up right after which hides the below message. It is causing flakiness.
-        # https://gitlab.com/gitlab-org/gitlab/-/issues/383717#note_1185091998
-
-        # expect(page).to have_content('Mirroring settings were successfully updated')
+        # Waiting for page to load to ensure mirror changes are saved in the backend
+        expect(page).to have_content('Mirroring settings were successfully updated')
         expect(page).to have_selector('[title="Copy SSH public key"]')
       end
 
@@ -251,7 +257,7 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
         end
 
         it 'hides remote mirror settings' do
-          expect(page.find('.project-mirror-settings')).not_to have_selector('form')
+          expect(find_by_testid('mirroring-repositories-settings-content')).not_to have_selector('form')
           expect(page).to have_content('Mirror settings are only available to GitLab administrators.')
         end
       end
@@ -323,7 +329,7 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
   context 'for admin' do
     shared_examples_for 'shows mirror settings' do
       it 'shows mirror settings' do
-        expect(page.find('.project-mirror-settings')).to have_selector('form')
+        expect(find_by_testid('mirroring-repositories-settings-content')).to have_selector('form')
         expect(page).not_to have_content('Changing mirroring setting is disabled for non-admin users.')
       end
     end
@@ -344,6 +350,18 @@ RSpec.describe 'Projects > Settings > Repository settings', feature_category: :s
       let(:mirror_available) { false }
 
       include_examples 'shows mirror settings'
+    end
+
+    context 'Repository maintenance', :enable_admin_mode do
+      let(:mirror_available) { false }
+
+      it 'renders remove blobs section' do
+        expect(page).to have_content('Remove blobs')
+      end
+
+      it 'renders redact text section' do
+        expect(page).to have_content('Redact text')
+      end
     end
   end
 end

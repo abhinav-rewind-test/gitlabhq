@@ -40,7 +40,7 @@ module Gitlab
           # updating the timestamp.
           project.touch(:last_repository_updated_at)
 
-          project.repository.fetch_remote(project.import_url, refmap: Gitlab::GithubImport.refmap, forced: true)
+          project.repository.fetch_remote(project.unsafe_import_url, refmap: Gitlab::GithubImport.refmap, forced: true)
 
           pname = project.path_with_namespace
 
@@ -74,6 +74,8 @@ module Gitlab
           { state: 'all', sort: 'created', direction: 'asc' }
         end
 
+        # To avoid overloading Gitaly, we use a smaller limit for pull requests than the one defined in the
+        # application settings.
         def parallel_import_batch
           { size: 200, delay: 1.minute }
         end

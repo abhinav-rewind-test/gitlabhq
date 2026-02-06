@@ -6,6 +6,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
   let(:name) { 'audit_operation' }
   let(:author) { create(:user, :with_sign_ins) }
   let(:group) { create(:group) }
+  let_it_be(:organization) { create(:organization) }
   let(:provider) { 'standard' }
   let(:context) do
     { name: name,
@@ -14,7 +15,8 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
       target: group,
       authentication_event: true,
       authentication_provider: provider,
-      message: "Signed in using standard authentication" }
+      message: "Signed in using standard authentication",
+      organization: organization }
   end
 
   let(:logger) { instance_spy(Gitlab::AuditJsonLogger) }
@@ -28,6 +30,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
     before do
       allow(Gitlab::Audit::Type::Definition).to receive(:defined?).and_call_original
       allow(Gitlab::Audit::Type::Definition).to receive(:defined?).with(name).and_return(true)
+      stub_feature_flags(stream_audit_events_from_new_tables: false)
     end
 
     context 'when yaml definition is not defined' do
@@ -48,6 +51,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
     context 'when yaml definition is defined' do
       before do
         allow(Gitlab::Audit::Type::Definition).to receive(:defined?).and_return(true)
+        allow(Gitlab::AppLogger).to receive(:info).and_call_original
       end
 
       it 'does not raise an error' do
@@ -63,7 +67,8 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
             user_name: author.name,
             ip_address: author.current_sign_in_ip,
             result: AuthenticationEvent.results[:success],
-            provider: provider
+            provider: provider,
+            organization: organization
           }
         ).and_call_original
 
@@ -117,6 +122,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
             target: group,
             created_at: 3.weeks.ago,
             authentication_event: true,
+            organization: organization,
             authentication_provider: provider,
             message: "Signed in using standard authentication" }
         end
@@ -167,6 +173,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
             created_at: Time.zone.now,
             additional_details: additional_details,
             authentication_event: true,
+            organization: organization,
             authentication_provider: provider,
             message: "Signed in using standard authentication" }
         end
@@ -175,7 +182,8 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
           freeze_time do
             audit!
 
-            expect(AuditEvent.last.details).to include(additional_details)
+            expected_details = { action: :custom, from: false, to: true, event_name: name }
+            expect(AuditEvent.last.details).to include(expected_details)
           end
         end
 
@@ -187,7 +195,12 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
 
             expect(logger).to have_received(:info).with(
               hash_including(
-                'details' => hash_including('action' => 'custom', 'from' => 'false', 'to' => 'true'),
+                'details' => hash_including(
+                  'action' => 'custom',
+                  'from' => 'false',
+                  'to' => 'true',
+                  'event_name' => name
+                ),
                 'action' => 'custom',
                 'from' => 'false',
                 'to' => 'true'
@@ -208,6 +221,7 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
             created_at: Time.zone.now,
             target_details: target_details,
             authentication_event: true,
+            organization: organization,
             authentication_provider: provider,
             message: "Signed in using standard authentication"
           }
@@ -294,11 +308,10 @@ RSpec.describe Gitlab::Audit::Auditor, feature_category: :audit_events do
 
     context 'when audit events are invalid' do
       before do
-        expect_next_instance_of(AuditEvent) do |instance|
-          allow(instance).to receive(:save!).and_raise(ActiveRecord::RecordInvalid)
-        end
         allow(Gitlab::ErrorTracking).to receive(:track_exception)
       end
+
+      let(:author) { build(:user) } # use non-persisted author (hence non-valid id)
 
       it 'tracks error' do
         audit!

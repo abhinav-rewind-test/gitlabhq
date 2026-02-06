@@ -81,6 +81,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
     let(:request) { get api('/bulk_imports', user), params: params }
     let(:params) { {} }
 
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import do
+      let(:boundary_object) { :instance }
+      let(:request) { get api('/bulk_imports', personal_access_token: pat) }
+    end
+
     it 'returns a list of bulk imports authored by the user' do
       request
 
@@ -146,7 +151,7 @@ RSpec.describe API::BulkImports, feature_category: :importers do
     end
 
     let(:source_entity_type) { BulkImports::CreateService::ENTITY_TYPES_MAPPING.fetch(params[:entities][0][:source_type]) }
-    let(:source_entity_identifier) { ERB::Util.url_encode(params[:entities][0][:source_full_path]) }
+    let(:source_entity_identifier) { '165' }
 
     before do
       allow_next_instance_of(BulkImports::Clients::HTTP) do |instance|
@@ -158,6 +163,13 @@ RSpec.describe API::BulkImports, feature_category: :importers do
           .to receive(:instance_enterprise)
           .and_return(false)
       end
+
+      allow_next_instance_of(BulkImports::Clients::Graphql) do |client|
+        allow(client).to receive(:execute).and_return(
+          { 'data' => { 'group' => { 'id' => "gid://gitlab/Group/#{source_entity_identifier}" } } }
+        )
+      end
+
       stub_request(:get, "http://gitlab.example/api/v4/#{source_entity_type}/#{source_entity_identifier}/export_relations/status?page=1&per_page=30&private_token=access_token")
         .to_return(status: 200, body: "", headers: {})
 
@@ -166,7 +178,7 @@ RSpec.describe API::BulkImports, feature_category: :importers do
 
     shared_examples 'starting a new migration' do
       it 'starts a new migration' do
-        request
+        expect { request }.to change { BulkImports::Entity.count }
 
         expect(response).to have_gitlab_http_status(:created)
 
@@ -201,6 +213,71 @@ RSpec.describe API::BulkImports, feature_category: :importers do
             expect(user.bulk_imports.last.entities.pluck(:migrate_projects)).to contain_exactly(true)
           end
         end
+      end
+
+      describe 'migrate memberships flag' do
+        context 'when true' do
+          it 'sets true' do
+            params[:entities][0][:migrate_memberships] = true
+
+            request
+
+            expect(user.bulk_imports.last.entities.pluck(:migrate_memberships)).to contain_exactly(true)
+          end
+        end
+
+        context 'when false' do
+          it 'sets false' do
+            params[:entities][0][:migrate_memberships] = false
+
+            request
+
+            expect(user.bulk_imports.last.entities.pluck(:migrate_memberships)).to contain_exactly(false)
+          end
+        end
+
+        context 'when unspecified' do
+          it 'sets true' do
+            request
+
+            expect(user.bulk_imports.last.entities.pluck(:migrate_memberships)).to contain_exactly(true)
+          end
+        end
+      end
+
+      context 'when entities do not specify a namespace' do
+        let(:params) do
+          {
+            configuration: {
+              url: 'http://gitlab.example',
+              access_token: 'access_token'
+            },
+            entities: [
+              {
+                source_type: 'group_entity',
+                source_full_path: 'full_path',
+                destination_namespace: ''
+              }.merge(destination_param)
+            ]
+          }
+        end
+
+        it 'uses the current organization' do
+          expect { request }.to change { BulkImports::Entity.count }
+
+          expect(BulkImports::Entity.last.organization).to eq(current_organization)
+
+          expect(response).to have_gitlab_http_status(:created)
+
+          expect(json_response['status']).to eq('created')
+        end
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions', :create_bulk_import do
+      let(:boundary_object) { :instance }
+      let(:request) do
+        post api('/bulk_imports', personal_access_token: pat), params: params
       end
     end
 
@@ -283,7 +360,7 @@ RSpec.describe API::BulkImports, feature_category: :importers do
 
         request
         expect(response).to have_gitlab_http_status(:unprocessable_entity)
-        expect(json_response['message']).to eq("Import failed. Destination 'invalid-destination-namespace' is invalid, or you don't have permission.")
+        expect(json_response['message']).to eq("Import failed. 'invalid-destination-namespace' is invalid, or you do not have permission.")
       end
     end
 
@@ -319,7 +396,7 @@ RSpec.describe API::BulkImports, feature_category: :importers do
         expect(response).to have_gitlab_http_status(:bad_request)
         expect(json_response['error']).to include("entities[0][destination_slug] can only include " \
                                                   "non-accented letters, digits, '_', '-' and '.'. " \
-                                                  "It must not start with '-', end in '.', '.git', or '.atom'. " \
+                                                  "It must not start with '-', '_', or '.', nor end with '-', '_', '.', '.git', or '.atom'. " \
                                                   "For example, 'destination_namespace' not 'destination/namespace'")
       end
     end
@@ -340,11 +417,42 @@ RSpec.describe API::BulkImports, feature_category: :importers do
         }
       end
 
-      it 'returns blocked url message in the error', :aggregate_failures do
+      it 'returns not accessible message in the error', :aggregate_failures do
+        stub_request(:get, "http://gitlab.example/api/v4/#{source_entity_type}/#{source_entity_identifier}/export_relations/status?page=1&per_page=30&private_token=token")
+          .to_return(status: 403, body: "Forbidden 403", headers: {})
+
         request
 
-        expect(response).to have_gitlab_http_status(:unprocessable_entity)
-        expect(json_response['message']).to eq("URL is blocked: Only allowed schemes are http, https")
+        expect(json_response['message']).to eq("Import failed. You do not have permission to export 'full_path'.")
+      end
+    end
+
+    context 'when resource is not found on source instance' do
+      let(:params) do
+        {
+          configuration: {
+            url: 'http://gitlab.example',
+            access_token: 'access_token'
+          },
+          entities: [
+            source_type: 'group_entity',
+            source_full_path: 'full_path',
+            destination_slug: 'destination_slug',
+            destination_namespace: 'destination_namespace'
+          ]
+        }
+      end
+
+      before do
+        allow_next_instance_of(BulkImports::Clients::Graphql) do |client|
+          allow(client).to receive(:execute).and_return({ 'data' => { 'group' => nil } })
+        end
+      end
+
+      it 'returns not found message', :aggregate_failures do
+        request
+
+        expect(json_response['message']).to eq("Import failed. 'full_path' not found.")
       end
     end
 
@@ -364,16 +472,14 @@ RSpec.describe API::BulkImports, feature_category: :importers do
         }
       end
 
-      it 'returns blocked url error', :aggregate_failures do
+      it 'returns disabled instance error message', :aggregate_failures do
         stub_request(:get, "http://gitlab.example/api/v4/#{source_entity_type}/#{source_entity_identifier}/export_relations/status?page=1&per_page=30&private_token=access_token")
-          .to_return(status: 404, body: "{'error':'404 Not Found'}")
+          .to_return(status: 404, body: "Unsuccessful response 404", headers: {})
 
         request
 
-        expect(response).to have_gitlab_http_status(:unprocessable_entity)
-        expect(json_response['message']).to eq(
-          "Unsuccessful response 404 from /api/v4/groups/full_path/export_relations/status. Body: {'error':'404 Not Found'}"
-        )
+        expect(json_response['message']).to include("Migration by direct transfer is disabled on the source or destination instance. " \
+                                                    "Ask an administrator to enable this feature on both instances and try again.")
       end
     end
 
@@ -386,6 +492,7 @@ RSpec.describe API::BulkImports, feature_category: :importers do
         request
 
         expect(response).to have_gitlab_http_status(:too_many_requests)
+        expect(response.headers).to include('Retry-After' => Gitlab::ApplicationRateLimiter.interval(:bulk_import))
         expect(json_response['message']['error']).to eq('This endpoint has been requested too many times. Try again later.')
       end
     end
@@ -393,6 +500,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
 
   describe 'GET /bulk_imports/entities' do
     let(:request) { get api('/bulk_imports/entities', user) }
+
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import_entity do
+      let(:boundary_object) { :instance }
+      let(:request) { get api('/bulk_imports/entities', personal_access_token: pat) }
+    end
 
     it 'returns a list of all import entities authored by the user' do
       request
@@ -417,6 +529,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
   describe 'GET /bulk_imports/:id' do
     let(:request) { get api("/bulk_imports/#{import_1.id}", user) }
 
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import do
+      let(:boundary_object) { :instance }
+      let(:request) { get api("/bulk_imports/#{import_1.id}", personal_access_token: pat) }
+    end
+
     it 'returns specified bulk import' do
       request
 
@@ -429,6 +546,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
 
   describe 'GET /bulk_imports/:id/entities' do
     let(:request) { get api("/bulk_imports/#{import_2.id}/entities", user) }
+
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import_entity do
+      let(:boundary_object) { :instance }
+      let(:request) { get api("/bulk_imports/#{import_2.id}/entities", personal_access_token: pat) }
+    end
 
     it 'returns specified bulk import entities with failures' do
       request
@@ -451,6 +573,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
 
   describe 'GET /bulk_imports/:id/entities/:entity_id' do
     let(:request) { get api("/bulk_imports/#{import_1.id}/entities/#{entity_2.id}", user) }
+
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import_entity do
+      let(:boundary_object) { :instance }
+      let(:request) { get api("/bulk_imports/#{import_1.id}/entities/#{entity_2.id}", personal_access_token: pat) }
+    end
 
     it 'returns specified bulk import entity' do
       request
@@ -479,6 +606,11 @@ RSpec.describe API::BulkImports, feature_category: :importers do
   describe 'GET /bulk_imports/:id/entities/:entity_id/failures' do
     let(:request) { get api("/bulk_imports/#{import_2.id}/entities/#{entity_3.id}/failures", user) }
 
+    it_behaves_like 'authorizing granular token permissions', :read_bulk_import_entity_failure do
+      let(:boundary_object) { :instance }
+      let(:request) { get api("/bulk_imports/#{import_2.id}/entities/#{entity_3.id}/failures", personal_access_token: pat) }
+    end
+
     it 'returns specified entity failures' do
       request
 
@@ -487,5 +619,54 @@ RSpec.describe API::BulkImports, feature_category: :importers do
     end
 
     it_behaves_like 'disabled feature'
+  end
+
+  describe 'POST /bulk_imports/:id/cancel' do
+    let(:import) { create(:bulk_import, user: user) }
+
+    it_behaves_like 'authorizing granular token permissions', :cancel_bulk_import do
+      let(:boundary_object) { :instance }
+      let(:request) { post api("/bulk_imports/#{import.id}/cancel", personal_access_token: pat) }
+    end
+
+    context 'when user is canceling their own migration' do
+      it 'cancels the migration and returns 200' do
+        post api("/bulk_imports/#{import.id}/cancel", user)
+
+        expect(response).to have_gitlab_http_status(:ok)
+
+        expect(json_response['status']).to eq('canceled')
+      end
+    end
+
+    context 'when user is trying to cancel a migration they have not created' do
+      it 'returns an error' do
+        import = create(:bulk_import)
+
+        post api("/bulk_imports/#{import.id}/cancel", user)
+
+        expect(response).to have_gitlab_http_status(:forbidden)
+      end
+    end
+
+    context 'when authenticated as admin' do
+      let_it_be(:admin) { create(:admin) }
+
+      it 'cancels the migration and returns 200' do
+        post api("/bulk_imports/#{import.id}/cancel", admin, admin_mode: true)
+
+        expect(response).to have_gitlab_http_status(:ok)
+
+        expect(json_response['status']).to eq('canceled')
+      end
+
+      context 'when migration could not be found' do
+        it 'return 404' do
+          post api("/bulk_imports/#{non_existing_record_id}/cancel", admin, admin_mode: true)
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
+    end
   end
 end
